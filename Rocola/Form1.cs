@@ -638,7 +638,9 @@ namespace Rocola
             panelSongs.Controls.Add(songPager);
 
             lblNow = new Label(); TransLabel(lblNow, 13f); lblNow.Text = "Nada reproduciendose"; lblNow.AutoEllipsis = true;
+            lblNow.ForeColor = Color.FromArgb(125, 235, 165);   // ESTETICA: verde "sonando" (se distingue de "siguiente")
             lblNext = new Label(); TransLabel(lblNext, 11f); lblNext.Text = "Siguiente:  -"; lblNext.AutoEllipsis = true;
+            lblNext.ForeColor = Color.FromArgb(150, 200, 255);  // ESTETICA: azul claro "siguiente"
             lblCount = new Label(); TransLabel(lblCount, 11f); lblCount.TextAlign = ContentAlignment.MiddleLeft; lblCount.Text = "En cola:  0";
             lblCredits = new Label(); TransLabel(lblCredits, 14f); lblCredits.TextAlign = ContentAlignment.MiddleLeft; lblCredits.Text = "Inserta una moneda"; lblCredits.ForeColor = Color.FromArgb(255, 205, 90);
 
@@ -3083,6 +3085,7 @@ namespace Rocola
                 if (panelSongs != null && panelSongs.Visible) panelSongs.Invalidate();
             }
             albumView.BgAccent = bgAccent;
+            if (progress != null) progress.Accent = bgAccent;   // ESTETICA: la barra de progreso sigue el color del genero
 
             if (searchOpen)
             {
@@ -3174,6 +3177,11 @@ namespace Rocola
             private int sw = -1, sh = -1;
             private SolidBrush sb;
             private Pen sp;
+            // ESTETICA (glow): sprites de resplandor radial pre-horneados UNA sola vez y COMPARTIDOS por todas
+            // las instancias. Se estampan detras del nucleo de cada estrella: fuerte en la grande, tenue en la
+            // chica, nada en los puntos -> "brillan de verdad" sin contaminar visualmente.
+            private static Bitmap glowBig, glowSmall;
+            private static readonly object glowLock = new object();
             private Shoot[] shoots = new Shoot[2];
             private int nextShoot = 0, lastTick = 0;
             private Bitmap layer;   // capa de estrellas ESTATICAS (fondo transparente) para el modo cacheado
@@ -3214,6 +3222,38 @@ namespace Rocola
                 gbW = w; gbOff = off; gbFull = full; gbTop = t; gbMid = m; gbBot = b;
             }
 
+            // Hornea los dos sprites de resplandor (una vez). Caro de crear, baratisimo de estampar despues.
+            private static void EnsureGlow()
+            {
+                if (glowBig != null) return;
+                lock (glowLock)
+                {
+                    if (glowBig != null) return;
+                    glowSmall = BakeGlow(32, 70);    // chico: glow tenue (no contamina)
+                    glowBig = BakeGlow(48, 150);     // grande: glow notable, "brilla de verdad"
+                }
+            }
+
+            private static Bitmap BakeGlow(int size, int peakAlpha)
+            {
+                Bitmap bmp = new Bitmap(size, size, PixelFormat.Format32bppPArgb);
+                using (Graphics g = Graphics.FromImage(bmp))
+                using (GraphicsPath gp = new GraphicsPath())
+                {
+                    g.SmoothingMode = SmoothingMode.AntiAlias;
+                    g.Clear(Color.Transparent);
+                    gp.AddEllipse(0, 0, size, size);
+                    using (PathGradientBrush pgb = new PathGradientBrush(gp))
+                    {
+                        pgb.CenterPoint = new PointF(size / 2f, size / 2f);
+                        pgb.CenterColor = Color.FromArgb(peakAlpha, 255, 255, 255);   // nucleo blanco brillante
+                        pgb.SurroundColors = new Color[] { Color.FromArgb(0, 255, 255, 255) };   // se desvanece a transparente
+                        g.FillEllipse(pgb, 0, 0, size, size);
+                    }
+                }
+                return bmp;
+            }
+
             private void Ensure(int w, int h)
             {
                 int bucket = Environment.TickCount / 60000;   // patron NUEVO cada minuto (60000 ms)
@@ -3231,10 +3271,14 @@ namespace Rocola
                     Color.FromArgb(150, 255, 225), Color.FromArgb(255, 150, 150)                // verde-agua / rojo suave
                 };
                 stars = new Star[n];
+                // ESTETICA: insetar las posiciones para que ninguna estrella (los brazos del destello + su
+                // glow) quede CORTADA en el borde del bitmap. El margen cubre el alcance del destello grande.
+                float mfx = 22f / w; if (mfx > 0.2f) mfx = 0.2f;
+                float mfy = 22f / h; if (mfy > 0.2f) mfy = 0.2f;
                 for (int i = 0; i < n; i++)
                 {
                     Star s = new Star();
-                    s.X = (float)r.NextDouble();
+                    s.X = mfx + (float)r.NextDouble() * (1f - 2f * mfx);
                     float yy = (float)r.NextDouble();
                     if (QuietBands)   // adelgaza SUAVE hacia los bordes (abecedario arriba, estado abajo) sin cortar de golpe
                     {
@@ -3243,7 +3287,7 @@ namespace Rocola
                         else if (yy > 0.91f) keep = (1f - yy) / 0.09f; // densidad plena al salir de los cubos -> 0 en el borde de abajo
                         if (keep < 1f && (float)r.NextDouble() > keep) yy = 0.12f + (float)r.NextDouble() * 0.79f;   // reubica al centro
                     }
-                    s.Y = yy;
+                    s.Y = mfy + yy * (1f - 2f * mfy);   // ESTETICA: inset vertical (mismo motivo que el horizontal)
                     int kk = r.Next(100);
                     s.Kind = (kk < 12) ? 2 : (kk < 34) ? 1 : 0;                       // 12% destello GRANDE, 22% destello chico, resto punto
                     s.Size = (s.Kind == 2) ? (6 + r.Next(5)) : (s.Kind == 1) ? (3 + r.Next(4)) : (2 + r.Next(3));   // destellos GRANDES 6-10, chicos 3-6, puntos 2-4
@@ -3327,33 +3371,51 @@ namespace Rocola
                 int armUp = (int)(pulse * 6.0);     // y agranda MAS los brazos de los destellos
                 int szUp = (int)(pulse * 2.0);      // y los puntos y centros CRECEN con el sonido
                 float fade = StarFade();            // fundido out/in del patron (cada minuto)
-                for (int i = 0; i < stars.Length; i++)
+                EnsureGlow();                       // ESTETICA: sprites de resplandor (horneados una vez)
+                g.InterpolationMode = InterpolationMode.Bilinear;
+                float gf = fade < 0f ? 0f : (fade > 1f ? 1f : fade);   // el glow se desvanece junto al patron
+                using (ImageAttributes gia = new ImageAttributes())
                 {
-                    Star s = stars[i];
-                    double tw = (0.70 + 0.42 * (0.5 + 0.5 * Math.Sin(phase * s.Spd + s.Off)) + boost) * fade;   // MAS brillante; titileo + audio, modulado por el fundido
-                    int a = (int)(tw * 255); if (a > 255) a = 255; if (a < 0) a = 0;
-                    int cr, cg, cb;
-                    if (s.Tint > 0f) { cr = (int)(255 + (tint.R - 255) * s.Tint); cg = (int)(255 + (tint.G - 255) * s.Tint); cb = (int)(255 + (tint.B - 255) * s.Tint); }
-                    else { cr = s.R; cg = s.G; cb = s.B; }
-                    int px = (int)(s.X * w), py = (int)(s.Y * h);
-                    sb.Color = Color.FromArgb(a, cr, cg, cb);
-                    if (s.Kind == 2)
+                    ColorMatrix gcm = new ColorMatrix(); gcm.Matrix33 = gf; gia.SetColorMatrix(gcm);   // 1 sola por cuadro
+                    for (int i = 0; i < stars.Length; i++)
                     {
-                        int L = s.Size + 6 + armUp;
-                        g.FillRectangle(sb, px - L, py, L * 2 + 1, 1);
-                        g.FillRectangle(sb, px, py - L, 1, L * 2 + 1);
-                        g.FillRectangle(sb, px - 2, py, 5, 1);
-                        g.FillRectangle(sb, px, py - 2, 1, 5);
-                        int cc = s.Size + szUp; g.FillRectangle(sb, px - cc / 2, py - cc / 2, cc, cc);
+                        Star s = stars[i];
+                        double tw = (0.70 + 0.42 * (0.5 + 0.5 * Math.Sin(phase * s.Spd + s.Off)) + boost) * fade;   // MAS brillante; titileo + audio, modulado por el fundido
+                        int a = (int)(tw * 255); if (a > 255) a = 255; if (a < 0) a = 0;
+                        int cr, cg, cb;
+                        if (s.Tint > 0f) { cr = (int)(255 + (tint.R - 255) * s.Tint); cg = (int)(255 + (tint.G - 255) * s.Tint); cb = (int)(255 + (tint.B - 255) * s.Tint); }
+                        else { cr = s.R; cg = s.G; cb = s.B; }
+                        int px = (int)(s.X * w), py = (int)(s.Y * h);
+                        // GLOW detras del nucleo: fuerte en el destello GRANDE, tenue en el chico, nada en los puntos.
+                        if (s.Kind == 2)
+                        {
+                            int gd = s.Size * 3 + 6 + (int)(pulse * 10);
+                            g.DrawImage(glowBig, new Rectangle(px - gd / 2, py - gd / 2, gd, gd), 0, 0, glowBig.Width, glowBig.Height, GraphicsUnit.Pixel, gia);
+                        }
+                        else if (s.Kind == 1)
+                        {
+                            int gd = s.Size * 2 + 2 + (int)(pulse * 4);
+                            g.DrawImage(glowSmall, new Rectangle(px - gd / 2, py - gd / 2, gd, gd), 0, 0, glowSmall.Width, glowSmall.Height, GraphicsUnit.Pixel, gia);
+                        }
+                        sb.Color = Color.FromArgb(a, cr, cg, cb);
+                        if (s.Kind == 2)
+                        {
+                            int L = s.Size + 6 + armUp;
+                            g.FillRectangle(sb, px - L, py, L * 2 + 1, 1);
+                            g.FillRectangle(sb, px, py - L, 1, L * 2 + 1);
+                            g.FillRectangle(sb, px - 2, py, 5, 1);
+                            g.FillRectangle(sb, px, py - 2, 1, 5);
+                            int cc = s.Size + szUp; g.FillRectangle(sb, px - cc / 2, py - cc / 2, cc, cc);
+                        }
+                        else if (s.Kind == 1)
+                        {
+                            int L = s.Size + 2 + armUp;
+                            g.FillRectangle(sb, px - L, py, L * 2 + 1, 1);
+                            g.FillRectangle(sb, px, py - L, 1, L * 2 + 1);
+                            g.FillRectangle(sb, px - 1, py - 1, 3, 3);
+                        }
+                        else { int ds = s.Size + szUp; g.FillRectangle(sb, px - szUp / 2, py - szUp / 2, ds, ds); }
                     }
-                    else if (s.Kind == 1)
-                    {
-                        int L = s.Size + 2 + armUp;
-                        g.FillRectangle(sb, px - L, py, L * 2 + 1, 1);
-                        g.FillRectangle(sb, px, py - L, 1, L * 2 + 1);
-                        g.FillRectangle(sb, px - 1, py - 1, 3, 3);
-                    }
-                    else { int ds = s.Size + szUp; g.FillRectangle(sb, px - szUp / 2, py - szUp / 2, ds, ds); }
                 }
                 if (shooting) DrawShoots(g, w, h);
             }
@@ -3393,6 +3455,8 @@ namespace Rocola
                 using (SolidBrush b = new SolidBrush(Color.White))
                 {
                     lg.Clear(Color.Transparent);
+                    EnsureGlow();                       // ESTETICA: mismo glow que el camino vivo, horneado a la capa
+                    lg.InterpolationMode = InterpolationMode.Bilinear;
                     for (int i = 0; i < stars.Length; i++)
                     {
                         Star s = stars[i];
@@ -3402,6 +3466,8 @@ namespace Rocola
                         int cr2, cg2, cb2;
                         if (s.Tint > 0f) { cr2 = 255; cg2 = 255; cb2 = 255; }   // tenidas -> blancas en el cache
                         else { cr2 = s.R; cg2 = s.G; cb2 = s.B; }
+                        if (s.Kind == 2) { int gd = s.Size * 3 + 6; lg.DrawImage(glowBig, new Rectangle(px - gd / 2, py - gd / 2, gd, gd)); }
+                        else if (s.Kind == 1) { int gd = s.Size * 2 + 2; lg.DrawImage(glowSmall, new Rectangle(px - gd / 2, py - gd / 2, gd, gd)); }
                         b.Color = Color.FromArgb(a, cr2, cg2, cb2);
                         if (s.Kind == 2)
                         {
@@ -4367,7 +4433,9 @@ namespace Rocola
         private class ProgressView : Control
         {
             private double _value;
-            public double Value { get { return _value; } set { _value = value < 0 ? 0 : (value > 1 ? 1 : value); Invalidate(); } }
+            public double Value { get { return _value; } set { double v = value < 0 ? 0 : (value > 1 ? 1 : value); if (v != _value) { _value = v; Invalidate(); } } }
+            private Color _accent = DefaultAccent;   // ESTETICA: la barra toma el color del genero que suena
+            public Color Accent { get { return _accent; } set { if (value.ToArgb() != _accent.ToArgb()) { _accent = value; Invalidate(); } } }
 
             public ProgressView()
             {
@@ -4381,17 +4449,35 @@ namespace Rocola
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 int w = Width, h = Height;
                 if (w < 4 || h < 4) return;
+
+                // Riel HUNDIDO: oscuro translucido + borde interior tenue (parece rebajado, no plano).
                 Rectangle track = new Rectangle(0, 0, w - 1, h - 1);
                 using (GraphicsPath tp = RoundedPath(track, h / 2))
-                using (SolidBrush tb = new SolidBrush(Color.FromArgb(60, 255, 255, 255)))
-                    g.FillPath(tb, tp);
+                {
+                    using (SolidBrush tb = new SolidBrush(Color.FromArgb(130, 6, 10, 26))) g.FillPath(tb, tp);
+                    using (Pen tpen = new Pen(Color.FromArgb(40, 255, 255, 255), 1f)) g.DrawPath(tpen, tp);
+                }
+
                 int fw = (int)(_value * (w - 2));
-                if (fw >= 4)
+                if (fw >= 3)
                 {
                     Rectangle fill = new Rectangle(1, 1, fw, h - 3);
-                    using (GraphicsPath fp = RoundedPath(fill, (h - 3) / 2))
-                    using (LinearGradientBrush fb = new LinearGradientBrush(fill, Color.FromArgb(235, 245, 255), Color.FromArgb(150, 190, 255), LinearGradientMode.Vertical))
-                        g.FillPath(fb, fp);
+                    int rad = Math.Max(1, (h - 3) / 2);
+                    using (GraphicsPath fp = RoundedPath(fill, rad))
+                    {
+                        // halo "neon" alrededor del relleno (acorde al cielo estrellado)
+                        using (Pen glow = new Pen(Color.FromArgb(70, Lighten(_accent, 0.5)), 3f)) { glow.LineJoin = LineJoin.Round; g.DrawPath(glow, fp); }
+                        // cuerpo: degradado vertical brillante arriba -> acento abajo
+                        using (LinearGradientBrush fb = new LinearGradientBrush(new Rectangle(fill.X, fill.Y, fill.Width, fill.Height + 1), Lighten(_accent, 0.6), Shade(_accent, 0.1), LinearGradientMode.Vertical))
+                            g.FillPath(fb, fp);
+                        // gloss: franja clara en la mitad superior (aspecto vidrioso)
+                        Rectangle gloss = new Rectangle(fill.X + 1, fill.Y + 1, Math.Max(1, fill.Width - 2), Math.Max(1, (fill.Height - 1) / 2));
+                        using (GraphicsPath gpath = RoundedPath(gloss, Math.Max(1, gloss.Height / 2)))
+                        using (LinearGradientBrush gb = new LinearGradientBrush(new Rectangle(gloss.X, gloss.Y, gloss.Width, gloss.Height + 1), Color.FromArgb(150, 255, 255, 255), Color.FromArgb(15, 255, 255, 255), LinearGradientMode.Vertical))
+                            g.FillPath(gb, gpath);
+                        // borde nitido brillante
+                        using (Pen edge = new Pen(Color.FromArgb(180, Lighten(_accent, 0.65)), 1f)) g.DrawPath(edge, fp);
+                    }
                 }
             }
         }
