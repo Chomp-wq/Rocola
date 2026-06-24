@@ -410,8 +410,12 @@ namespace Rocola
                 r = (r * 3 + 50) / 4; g = (g * 3 + 88) / 4; b = (b * 3 + 188) / 4;
             }
             if (r > 205) r = 205; if (g > 205) g = 205; if (b > 220) b = 220;
+            r = r * SkyDark / 100; g = g * SkyDark / 100; b = b * SkyDark / 100;   // ESTETICA: cielo un poco mas oscuro (el azul se veia muy brillante)
             return Color.FromArgb(255, r, g, b);
         }
+
+        // Factor de OSCURIDAD del cielo (100 = como antes; menor = mas oscuro). Solo brillo, conserva el tinte.
+        private const int SkyDark = 75;
 
         // EN MEDIO del cielo: el "azulado default". Casi independiente del genero (apenas un dejo) para que,
         // como pediste, despues del color del genero de abajo siga el azul antes de oscurecer al negro de arriba.
@@ -419,6 +423,7 @@ namespace Rocola
         {
             int r = 22 + accent.R / 10, g = 50 + accent.G / 8, b = 120 + accent.B / 7;
             if (r > 60) r = 60; if (g > 105) g = 105; if (b > 205) b = 205;
+            r = r * SkyDark / 100; g = g * SkyDark / 100; b = b * SkyDark / 100;   // ESTETICA: mitad del cielo mas oscura
             return Color.FromArgb(255, r, g, b);
         }
 
@@ -3182,6 +3187,7 @@ namespace Rocola
             // chica, nada en los puntos -> "brillan de verdad" sin contaminar visualmente.
             private static Bitmap glowBig, glowSmall;
             private static readonly object glowLock = new object();
+            private readonly PointF[] spk = new PointF[8];   // ESTETICA: buffer reusable del sparkle (sin asignar por estrella)
             private Shoot[] shoots = new Shoot[2];
             private int nextShoot = 0, lastTick = 0;
             private Bitmap layer;   // capa de estrellas ESTATICAS (fondo transparente) para el modo cacheado
@@ -3254,6 +3260,23 @@ namespace Rocola
                 return bmp;
             }
 
+            // Dibuja una estrella de 4 puntas como UNA SOLA pieza (sparkle/destello), en vez de un cuadrito
+            // con dos palos. Usa un buffer reusable; el llamador debe tener SmoothingMode.AntiAlias activo.
+            private void DrawSparkle(Graphics g, Brush b, int px, int py, int R)
+            {
+                if (R < 2) R = 2;
+                float r = R * 0.20f; if (r < 1f) r = 1f;   // radio interior: puntas finas pero unidas al centro
+                spk[0] = new PointF(px, py - R);
+                spk[1] = new PointF(px + r, py - r);
+                spk[2] = new PointF(px + R, py);
+                spk[3] = new PointF(px + r, py + r);
+                spk[4] = new PointF(px, py + R);
+                spk[5] = new PointF(px - r, py + r);
+                spk[6] = new PointF(px - R, py);
+                spk[7] = new PointF(px - r, py - r);
+                g.FillPolygon(b, spk);
+            }
+
             private void Ensure(int w, int h)
             {
                 int bucket = Environment.TickCount / 60000;   // patron NUEVO cada minuto (60000 ms)
@@ -3275,19 +3298,33 @@ namespace Rocola
                 // glow) quede CORTADA en el borde del bitmap. El margen cubre el alcance del destello grande.
                 float mfx = 22f / w; if (mfx > 0.2f) mfx = 0.2f;
                 float mfy = 22f / h; if (mfy > 0.2f) mfy = 0.2f;
+                float minD2 = 20f * 20f;   // ESTETICA: separacion minima (px) para que NO se encimen unas con otras
                 for (int i = 0; i < n; i++)
                 {
                     Star s = new Star();
-                    s.X = mfx + (float)r.NextDouble() * (1f - 2f * mfx);
-                    float yy = (float)r.NextDouble();
-                    if (QuietBands)   // adelgaza SUAVE hacia los bordes (abecedario arriba, estado abajo) sin cortar de golpe
+                    // Posicion con SEPARACION MINIMA: hasta 12 intentos buscando un hueco lejos de las ya puestas.
+                    float sx = mfx, sy = mfy;
+                    for (int attempt = 0; attempt < 12; attempt++)
                     {
-                        float keep = 1f;
-                        if (yy < 0.12f) keep = yy / 0.12f;             // 0 en el borde de arriba -> densidad plena al llegar a los cubos
-                        else if (yy > 0.91f) keep = (1f - yy) / 0.09f; // densidad plena al salir de los cubos -> 0 en el borde de abajo
-                        if (keep < 1f && (float)r.NextDouble() > keep) yy = 0.12f + (float)r.NextDouble() * 0.79f;   // reubica al centro
+                        sx = mfx + (float)r.NextDouble() * (1f - 2f * mfx);
+                        float yy = (float)r.NextDouble();
+                        if (QuietBands)   // adelgaza SUAVE hacia los bordes (abecedario arriba, estado abajo) sin cortar de golpe
+                        {
+                            float keep = 1f;
+                            if (yy < 0.12f) keep = yy / 0.12f;             // 0 en el borde de arriba -> densidad plena al llegar a los cubos
+                            else if (yy > 0.91f) keep = (1f - yy) / 0.09f; // densidad plena al salir de los cubos -> 0 en el borde de abajo
+                            if (keep < 1f && (float)r.NextDouble() > keep) yy = 0.12f + (float)r.NextDouble() * 0.79f;   // reubica al centro
+                        }
+                        sy = mfy + yy * (1f - 2f * mfy);   // inset vertical (mismo motivo que el horizontal)
+                        bool clear = true;
+                        for (int j = 0; j < i; j++)
+                        {
+                            float dxp = (sx - stars[j].X) * w, dyp = (sy - stars[j].Y) * h;
+                            if (dxp * dxp + dyp * dyp < minD2) { clear = false; break; }
+                        }
+                        if (clear) break;   // hueco libre encontrado
                     }
-                    s.Y = mfy + yy * (1f - 2f * mfy);   // ESTETICA: inset vertical (mismo motivo que el horizontal)
+                    s.X = sx; s.Y = sy;
                     int kk = r.Next(100);
                     s.Kind = (kk < 12) ? 2 : (kk < 34) ? 1 : 0;                       // 12% destello GRANDE, 22% destello chico, resto punto
                     s.Size = (s.Kind == 2) ? (6 + r.Next(5)) : (s.Kind == 1) ? (3 + r.Next(4)) : (2 + r.Next(3));   // destellos GRANDES 6-10, chicos 3-6, puntos 2-4
@@ -3367,12 +3404,12 @@ namespace Rocola
             {
                 EnsureSkyBrush(w, h, skyTop, skyBottom);
                 g.FillRectangle(skyBrush, 0, 0, w, h);
-                double boost = pulse * 0.62;        // el audio sube MAS el brillo de TODAS las estrellas
-                int armUp = (int)(pulse * 6.0);     // y agranda MAS los brazos de los destellos
-                int szUp = (int)(pulse * 2.0);      // y los puntos y centros CRECEN con el sonido
+                double boost = pulse * 0.62;        // el audio sube el brillo de las estrellas (medianas/grandes)
+                int armUp = (int)(pulse * 7.0);     // y agranda las puntas del destello con el beat
                 float fade = StarFade();            // fundido out/in del patron (cada minuto)
                 EnsureGlow();                       // ESTETICA: sprites de resplandor (horneados una vez)
                 g.InterpolationMode = InterpolationMode.Bilinear;
+                g.SmoothingMode = SmoothingMode.AntiAlias;   // ESTETICA: el sparkle se ve liso (una sola pieza)
                 float gf = fade < 0f ? 0f : (fade > 1f ? 1f : fade);   // el glow se desvanece junto al patron
                 using (ImageAttributes gia = new ImageAttributes())
                 {
@@ -3380,41 +3417,29 @@ namespace Rocola
                     for (int i = 0; i < stars.Length; i++)
                     {
                         Star s = stars[i];
-                        double tw = (0.70 + 0.42 * (0.5 + 0.5 * Math.Sin(phase * s.Spd + s.Off)) + boost) * fade;   // MAS brillante; titileo + audio, modulado por el fundido
+                        bool reactive = (s.Kind != 0);   // BEAT (audio) SOLO en medianas (1) y grandes (2); los puntos NO
+                        double tw = (0.70 + 0.42 * (0.5 + 0.5 * Math.Sin(phase * s.Spd + s.Off)) + (reactive ? boost : 0.0)) * fade;
                         int a = (int)(tw * 255); if (a > 255) a = 255; if (a < 0) a = 0;
                         int cr, cg, cb;
                         if (s.Tint > 0f) { cr = (int)(255 + (tint.R - 255) * s.Tint); cg = (int)(255 + (tint.G - 255) * s.Tint); cb = (int)(255 + (tint.B - 255) * s.Tint); }
                         else { cr = s.R; cg = s.G; cb = s.B; }
                         int px = (int)(s.X * w), py = (int)(s.Y * h);
-                        // GLOW detras del nucleo: fuerte en el destello GRANDE, tenue en el chico, nada en los puntos.
+                        sb.Color = Color.FromArgb(a, cr, cg, cb);
+                        // GLOW detras del nucleo + estrella de 4 puntas (UNA pieza). El beat agranda glow y puntas
+                        // solo en medianas/grandes; los puntos van como punto redondo fijo.
                         if (s.Kind == 2)
                         {
                             int gd = s.Size * 3 + 6 + (int)(pulse * 10);
                             g.DrawImage(glowBig, new Rectangle(px - gd / 2, py - gd / 2, gd, gd), 0, 0, glowBig.Width, glowBig.Height, GraphicsUnit.Pixel, gia);
+                            DrawSparkle(g, sb, px, py, s.Size + 6 + armUp);
                         }
                         else if (s.Kind == 1)
                         {
                             int gd = s.Size * 2 + 2 + (int)(pulse * 4);
                             g.DrawImage(glowSmall, new Rectangle(px - gd / 2, py - gd / 2, gd, gd), 0, 0, glowSmall.Width, glowSmall.Height, GraphicsUnit.Pixel, gia);
+                            DrawSparkle(g, sb, px, py, s.Size + 2 + armUp);
                         }
-                        sb.Color = Color.FromArgb(a, cr, cg, cb);
-                        if (s.Kind == 2)
-                        {
-                            int L = s.Size + 6 + armUp;
-                            g.FillRectangle(sb, px - L, py, L * 2 + 1, 1);
-                            g.FillRectangle(sb, px, py - L, 1, L * 2 + 1);
-                            g.FillRectangle(sb, px - 2, py, 5, 1);
-                            g.FillRectangle(sb, px, py - 2, 1, 5);
-                            int cc = s.Size + szUp; g.FillRectangle(sb, px - cc / 2, py - cc / 2, cc, cc);
-                        }
-                        else if (s.Kind == 1)
-                        {
-                            int L = s.Size + 2 + armUp;
-                            g.FillRectangle(sb, px - L, py, L * 2 + 1, 1);
-                            g.FillRectangle(sb, px, py - L, 1, L * 2 + 1);
-                            g.FillRectangle(sb, px - 1, py - 1, 3, 3);
-                        }
-                        else { int ds = s.Size + szUp; g.FillRectangle(sb, px - szUp / 2, py - szUp / 2, ds, ds); }
+                        else { float ds = s.Size < 2 ? 2 : s.Size; g.FillEllipse(sb, px - ds / 2f, py - ds / 2f, ds, ds); }
                     }
                 }
                 if (shooting) DrawShoots(g, w, h);
@@ -3457,6 +3482,7 @@ namespace Rocola
                     lg.Clear(Color.Transparent);
                     EnsureGlow();                       // ESTETICA: mismo glow que el camino vivo, horneado a la capa
                     lg.InterpolationMode = InterpolationMode.Bilinear;
+                    lg.SmoothingMode = SmoothingMode.AntiAlias;   // ESTETICA: sparkle liso tambien en la capa
                     for (int i = 0; i < stars.Length; i++)
                     {
                         Star s = stars[i];
@@ -3466,26 +3492,10 @@ namespace Rocola
                         int cr2, cg2, cb2;
                         if (s.Tint > 0f) { cr2 = 255; cg2 = 255; cb2 = 255; }   // tenidas -> blancas en el cache
                         else { cr2 = s.R; cg2 = s.G; cb2 = s.B; }
-                        if (s.Kind == 2) { int gd = s.Size * 3 + 6; lg.DrawImage(glowBig, new Rectangle(px - gd / 2, py - gd / 2, gd, gd)); }
-                        else if (s.Kind == 1) { int gd = s.Size * 2 + 2; lg.DrawImage(glowSmall, new Rectangle(px - gd / 2, py - gd / 2, gd, gd)); }
                         b.Color = Color.FromArgb(a, cr2, cg2, cb2);
-                        if (s.Kind == 2)
-                        {
-                            int L = s.Size + 6;
-                            lg.FillRectangle(b, px - L, py, L * 2 + 1, 1);
-                            lg.FillRectangle(b, px, py - L, 1, L * 2 + 1);
-                            lg.FillRectangle(b, px - 2, py, 5, 1);
-                            lg.FillRectangle(b, px, py - 2, 1, 5);
-                            int cc = s.Size; lg.FillRectangle(b, px - cc / 2, py - cc / 2, cc, cc);
-                        }
-                        else if (s.Kind == 1)
-                        {
-                            int L = s.Size + 2;
-                            lg.FillRectangle(b, px - L, py, L * 2 + 1, 1);
-                            lg.FillRectangle(b, px, py - L, 1, L * 2 + 1);
-                            lg.FillRectangle(b, px - 1, py - 1, 3, 3);
-                        }
-                        else lg.FillRectangle(b, px, py, s.Size, s.Size);
+                        if (s.Kind == 2) { int gd = s.Size * 3 + 6; lg.DrawImage(glowBig, new Rectangle(px - gd / 2, py - gd / 2, gd, gd)); DrawSparkle(lg, b, px, py, s.Size + 6); }
+                        else if (s.Kind == 1) { int gd = s.Size * 2 + 2; lg.DrawImage(glowSmall, new Rectangle(px - gd / 2, py - gd / 2, gd, gd)); DrawSparkle(lg, b, px, py, s.Size + 2); }
+                        else { float ds = s.Size < 2 ? 2 : s.Size; lg.FillEllipse(b, px - ds / 2f, py - ds / 2f, ds, ds); }
                     }
                 }
             }
