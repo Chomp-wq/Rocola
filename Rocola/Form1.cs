@@ -155,6 +155,11 @@ namespace Rocola
         private const char TopMark = '\u2605';     // "letra" especial = LO MAS SONADO (disco virtual)
         private const int TopMax = 100;             // tope de canciones del disco "Lo mas sonado"
         private List<Album> topDiscs = new List<Album>();   // discos virtuales "TOP - <genero>"
+        // OPTIMIZACION (TOP): BuildTopDiscs recorre TODA la biblioteca (100k+). Antes se rebuildeaba en
+        // cada cambio de pagina dentro de "Lo mas sonado". Ahora solo cuando los datos cambian (al contar
+        // una reproduccion o tras re-escanear): topDirty=true marca que hay que reconstruir; si no, se
+        // devuelve el topDiscs ya armado. Hojear TOP queda instantaneo.
+        private bool topDirty = true;
         private readonly Dictionary<string, string> songGenre = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);   // ruta -> etiqueta de genero (capturada al sonar)
         private int page = 0;
         private int selAlbumIndex = 0;
@@ -902,6 +907,7 @@ namespace Rocola
             letterAvailable.Clear();
             foreach (KeyValuePair<char, List<Album>> kv in byLetter) if (kv.Value.Count > 0) letterAvailable.Add(kv.Key);
             if (videoAlbums != null && videoAlbums.Count > 0) letterAvailable.Add(VideoMark);
+            topDirty = true;   // OPTIMIZACION (TOP): la biblioteca se re-escaneo (nuevos Album/Track) -> reconstruir
             BuildTopDiscs();
             if (topDiscs != null && topDiscs.Count > 0) letterAvailable.Add(TopMark);   // hay estadisticas -> seccion "Lo mas sonado"
 
@@ -2345,6 +2351,7 @@ namespace Rocola
                 if (letterAvailable != null && !letterAvailable.Contains(TopMark)) { letterAvailable.Add(TopMark); if (letterBar != null) letterBar.Invalidate(); }
             }
             statsDirty = true;
+            topDirty = true;   // OPTIMIZACION (TOP): cambiaron counts/genero/artista -> reconstruir al entrar a TOP
         }
 
         private void StatsTimer_Tick(object sender, EventArgs e)
@@ -2488,6 +2495,8 @@ namespace Rocola
         // Construye los discos virtuales "TOP - <genero>" con las canciones mas pedidas de cada genero.
         private void BuildTopDiscs()
         {
+            if (!topDirty && topDiscs != null) return;   // OPTIMIZACION (TOP): nada cambio -> reusar lo ya armado
+            topDirty = false;                            // limpio AQUI: cubre todas las salidas (incluidas las tempranas)
             topDiscs = new List<Album>();
             if (songCounts.Count == 0) return;
 
@@ -2725,7 +2734,7 @@ namespace Rocola
             else
             {
                 nowPlaying.Song.EnsureTags();         // lee ID3 ahora (genero -> color de fondo)
-                if (nowPlaying.Song.Path != null) { songGenre[nowPlaying.Song.Path] = GenreLabel(nowPlaying.Song.Genre); statsDirty = true; }   // captura genero para los discos TOP
+                if (nowPlaying.Song.Path != null) { songGenre[nowPlaying.Song.Path] = GenreLabel(nowPlaying.Song.Genre); statsDirty = true; topDirty = true; }   // captura genero para los discos TOP
                 ApplyGenreBackground(nowPlaying.Song);
                 PlayTrack(nowPlaying.Song);
             }
