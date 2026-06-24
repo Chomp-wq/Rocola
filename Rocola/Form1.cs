@@ -1,0 +1,5108 @@
+﻿// Rocola - version final (rocola fisica; botones configurables, sin lenguaje de teclado de PC)
+// Reemplaza TODO Form1.cs. Si tu proyecto NO se llama "Rocola", ajusta "namespace Rocola".
+//
+// BOTONES DE LA ROCOLA (configurables): la primera vez la rocola pide presionar cada boton
+// y los guarda en rocola_teclas.txt (junto al .exe). Funciones:
+//   ARRIBA / ABAJO  = pagina   (con REGRESAR mantenido = salta de letra A, B, C...)
+//   IZQUIERDA / DERECHA = mover de disco
+//   PONER  = entrar / poner cancion        REGRESAR = volver
+//   MONEDA = credito                       SALTAR = saltar la cancion actual
+//   BUSCAR = manten REGRESAR y presiona PONER
+// Para reconfigurar botones: F8 (teclado de PC). F5 = re-escanear musica. F10 = pausa de mantenimiento.
+
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
+using System.Globalization;
+using System.IO;
+using System.Reflection;
+using System.Text;
+using System.Windows.Forms;
+using NAudio.Wave;
+using NAudio.Wave.SampleProviders;
+
+namespace Rocola
+{
+    public partial class Form1 : Form
+    {
+        private const float FixedVolume = 1.0f;
+        private const int Cols = 6;
+        private const int Rows = 3;
+        private const int PageSize = Cols * Rows;
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern short GetKeyState(int nVirtKey);
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern IntPtr GetForegroundWindow();
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool SetForegroundWindow(IntPtr hWnd);
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern uint GetWindowThreadProcessId(IntPtr hWnd, IntPtr procId);
+        [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+        private static extern uint GetCurrentThreadId();
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern IntPtr SetFocus(IntPtr hWnd);
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, UIntPtr dwExtraInfo);
+        private const uint MOUSEEVENTF_LEFTDOWN = 0x02, MOUSEEVENTF_LEFTUP = 0x04;
+        // ¿esta presionada AHORA esta tecla? (para los combos: REGRESAR + otra)
+        private static bool KeyHeld(Keys k) { return (GetKeyState((int)(k & Keys.KeyCode)) & 0x8000) != 0; }
+
+        // Sube la resolucion del reloj del sistema a 1ms para que el temporizador de animacion
+        // dispare parejo (en XP, sin esto, un intervalo de ~33ms se "redondea" y la animacion se entrecorta).
+        [System.Runtime.InteropServices.DllImport("winmm.dll")] private static extern uint timeBeginPeriod(uint p);
+        [System.Runtime.InteropServices.DllImport("winmm.dll")] private static extern uint timeEndPeriod(uint p);
+        private bool timerResRaised = false;
+
+        private static readonly Color DefaultAccent = Color.FromArgb(45, 95, 205);
+
+        // ---- Controles ----
+        private LetterBar letterBar;
+        private AlbumView albumView;
+        private Label lblHeader, lblStatus, lblNow, lblNext, lblCount, lblTime, lblAlbum, lblToast, lblCredits;
+        private HelpBar helpBar;
+        private BgPanel panelSongs;
+        private ListBox lstSongs;
+        private CubeBox cubeBox;
+        private CubeBox miniCube;
+        private ProgressView progress;
+        private SearchOverlay searchOverlay;
+        private System.Windows.Forms.Timer progressTimer, animTimer, toastTimer;
+        private System.Windows.Forms.Timer focusTimer;                 // vigia de foco al arrancar (autoarranque)
+        private bool maintMode = false;                                 // F10: pausa de mantenimiento del vigia de foco
+        private DateTime maintUntil = DateTime.MinValue;                // la pausa expira sola (30 min) por si se olvida
+
+        // ---- Reproduccion / cola ----
+        private IWavePlayer output;   // WaveOut con callback por ventana (compatible con XP SIN .NET 3.5 SP1)
+        private AudioFileReader reader;
+        private volatile float audioPeakRaw = 0f;   // ultimo RMS leido por el hilo de audio (0..1)
+        private float audioLevel = 0f;               // nivel suavizado para los visuales (hilo de UI)
+        private int playFailStreak = 0;   // fallos seguidos al reproducir (para no ciclar si NAudio falla)
+        // ----- PAGINAS de canciones (vista de disco): la lista muestra solo la pagina actual -----
+        private SongPagerBar songPager;                        // barra "pagina X de Y" con flechas, arriba de la lista
+        private List<object> songItems = new List<object>();   // TODAS las canciones/videos del disco abierto
+        private int songSel = 0;                               // seleccion global (entre todas las paginas)
+        private bool fillingSongs = false;                     // evita reentradas al llenar la lista
+        private readonly List<PlayItem> queue = new List<PlayItem>();
+        private PlayItem nowPlaying;
+
+        // ---- Estadisticas (base de "Lo mas sonado") ----
+        // Se cuenta lo que entra a la cola CON EXITO (lo que la gente pide y paga). Se guarda en
+        // rocola_stats.txt junto al .exe: en segundo plano cada minuto si hubo cambios, y al cerrar.
+        private readonly Dictionary<string, int> songCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, int> videoCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, int> artistCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        private long statsTotal = 0, statsSongTotal = 0, statsVideoTotal = 0, statsCoins = 0, statsCreditsAdded = 0;
+        private volatile bool statsDirty = false;
+        private System.Windows.Forms.Timer statsTimer;
+        // Topes del archivo de estadisticas: se conserva lo MAS sonado y reciente; lo viejo/poco sonado
+        // se descarta solo, para que el archivo nunca crezca de mas ni alente la rocola.
+        private const int SongStatCap = 2000, SongStatTarget = 1800;
+        private const int VideoStatCap = 1000, VideoStatTarget = 900;
+        private const int ArtistStatCap = 1000, ArtistStatTarget = 900;
+        private readonly Dictionary<string, long> songSeq = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);   // recencia (cuando se sono por ultima vez)
+        private readonly Dictionary<string, long> videoSeq = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+        private long statsSeq = 0;
+
+        // ---- Datos ----
+        private readonly List<Track> tracks = new List<Track>();
+        private List<Album> albums = new List<Album>();
+        private List<Album> videoAlbums = new List<Album>();   // discos que tienen archivo(s) de video
+        private Dictionary<char, List<Album>> byLetter = new Dictionary<char, List<Album>>();
+        private readonly Dictionary<string, Image> coverCache = new Dictionary<string, Image>();
+        private readonly Queue<string> coverOrder = new Queue<string>();   // orden de llegada (para acotar memoria)
+        private readonly HashSet<string> coverLoading = new HashSet<string>();
+        private readonly List<Image> coverTrash = new List<Image>();   // expulsadas, a liberar de forma segura (en el timer)
+        private volatile int coverGen = 0;     // sube al cambiar de pagina; descarta cargas de paginas viejas
+        private bool coversOnHold = false;     // true mientras se hojea rapido: NO se piden caratulas
+        private System.Windows.Forms.Timer coverSettleTimer;   // espera ~0.25s a que el usuario se detenga
+        // DOS decodificaciones a la vez (una por nucleo): con SSD el cuello es el CPU, no el disco.
+        // La interfaz no sufre (sus repintados son ligeros y por celda) y la musica esta blindada por su
+        // colchon de 1 segundo. Resultado: una pagina con miniaturas listas carga en ~70-120ms.
+        private static readonly System.Threading.Semaphore coverSem = new System.Threading.Semaphore(2, 2);
+        // ----- PERFIL DE DISCO AUTOMATICO -----
+        // Mide las primeras 16 lecturas de miniaturas y decide solo: SSD (lecturas ~0-2ms) -> 2 carriles
+        // y prelectura amplia; HDD (>6ms promedio, por el cabezal) -> 1 carril y prelectura corta. Asi
+        // la MISMA version queda optima en cualquier rocola, tenga el disco que tenga.
+        private static int diskProbeN = 0, diskProbeMs = 0;
+        private static volatile bool diskSlow = true;    // arranca en modo DISCO DURO (seguro); si las mediciones dicen SSD, se suelta
+        private static void DiskProbe(int ms)
+        {
+            if (diskProbeN >= 16) return;
+            System.Threading.Interlocked.Add(ref diskProbeMs, ms);
+            if (System.Threading.Interlocked.Increment(ref diskProbeN) == 16)
+                diskSlow = (diskProbeMs / 16) > 6;
+        }
+        private volatile int warmGen = 0;          // generacion del precalentador (se reinicia al recargar musica)
+        private volatile int lastInputTick = 0;    // ultimo boton presionado (el precalentador pausa si hay gente)
+        private List<string> cachedVideoPaths;            // rutas de video del cache de biblioteca (arranque rapido)
+        private List<string> lastVideoPaths;              // rutas de video del ultimo armado (para guardar el cache)
+        private Dictionary<string, string> cachedCovers;  // carpeta -> portada, del cache de biblioteca
+        private string lastPageSig = null;
+        private readonly object coverLock = new object();
+        private const int ThumbPx = 384;         // resolucion de miniaturas de portada (antes 256): MAS definicion
+        private const int CoverCacheMax = 150;   // ~ 384x384 x 150 ~ 84 MB tope
+        private readonly HashSet<char> letterAvailable = new HashSet<char>();
+        private readonly List<SearchItem> searchIndex = new List<SearchItem>();
+        private volatile bool libBuilding = false;   // el worker esta armando albums/byLetter/searchIndex: la UI no debe leerlos
+        private char currentLetter = '#';
+        private const char VideoMark = '\u25BA';   // "letra" especial = seccion VIDEOS
+        private const char TopMark = '\u2605';     // "letra" especial = LO MAS SONADO (disco virtual)
+        private const int TopMax = 100;             // tope de canciones del disco "Lo mas sonado"
+        private List<Album> topDiscs = new List<Album>();   // discos virtuales "TOP - <genero>"
+        private readonly Dictionary<string, string> songGenre = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);   // ruta -> etiqueta de genero (capturada al sonar)
+        private int page = 0;
+        private int selAlbumIndex = 0;
+        private Album currentAlbum;
+        private bool browsingVideo = false;        // estamos dentro de un disco de video
+        private BackgroundWorker scanner;
+        private double phase = 0;
+        private Starfield formStars = new Starfield();   // cielo estrellado del fondo del formulario
+        private int frameTick = 0;   // contador de cuadros: el fondo se refresca completo 1 de cada 3 (invisible al ojo)
+        private int lastStarBucket = -1;   // "minuto" del patron de estrellas ya aplicado a las franjas del form
+        private bool searchOpen = false;
+        private DateTime searchLastActivity = DateTime.Now;   // para auto-cerrar el buscador tras 1 min
+        private string lastQuery = null;                      // busqueda incremental
+        private List<SearchItem> lastMatches = null;          // coincidencias previas (para acotar el re-escaneo)
+        private int credits = 0;                              // creditos disponibles (cada cosa cuesta 1)
+        private const int CreditsPerCoin = 4;                 // monedas -> creditos
+
+        // ---- BOTONES DE LA ROCOLA (configurables; se guardan en rocola_teclas.txt) ----
+        // Valores por defecto (sirven para probar con teclado normal antes de configurar).
+        private Keys keyUp = Keys.Up;       // pagina anterior / subir
+        private Keys keyDown = Keys.Down;   // pagina siguiente / bajar
+        private Keys keyLeft = Keys.Left;   // disco anterior
+        private Keys keyRight = Keys.Right; // disco siguiente
+        private Keys keyOK = Keys.Enter;    // aceptar / poner
+        private Keys keyBack = Keys.Escape; // regresar
+        private Keys keyCoin = Keys.Insert; // moneda / credito
+        private Keys keySkip = Keys.ShiftKey; // saltar cancion
+        // Asistente de configuracion
+        private bool configMode = false;
+        private bool needConfig = false;
+        private int configStep = 0;
+        private readonly Keys[] configCap = new Keys[8];
+        private Label lblConfig;            // pantalla del asistente de configuracion
+        private AttractView attractView;    // modo atraccion (reposo): fondo estrellado + cubo gigante
+        private bool attractOn = false;
+        private const int AttractIdleSecs = 40;   // reposo antes de entrar al modo atraccion
+        private static readonly string[] ConfigSteps = new string[] {
+            "ARRIBA   (subir / pagina anterior)",
+            "ABAJO   (bajar / pagina siguiente)",
+            "IZQUIERDA   (disco anterior)",
+            "DERECHA   (disco siguiente)",
+            "PONER / ACEPTAR   (elegir, poner cancion)",
+            "REGRESAR   (atras / salir)",
+            "MONEDA   (credito)",
+            "SALTAR   (saltar la cancion actual)"
+        };
+
+        private Color bgAccent = DefaultAccent;
+        private Color bgAccentTarget = DefaultAccent;
+
+        // ---- Reproductor de video (Windows Media Player ActiveX, hosteado por codigo) ----
+        private VideoHost video;
+        private System.Windows.Forms.Timer videoPoll;
+        private bool videoOn = false;              // hay un video cargado/reproduciendose
+        private double videoLastPos = -1;          // ultima posicion del video (para detectar si NO avanza)
+        private int videoProgressTick = 0;         // momento del ultimo avance real (vigia de video colgado)
+        private bool videoNudged = false;          // ya se intento el empujon de rescate (play explicito)
+        private double videoMaxPos = 0;            // posicion maxima alcanzada (saber si el video SI se reprodujo)
+        private bool videoFull = false;            // video en pantalla completa (tras inactividad)
+        private DateTime lastInput = DateTime.Now; // ultima tecla (para detectar inactividad)
+        private Label lblAttract;                  // aviso amarillo pulsante "toca una tecla"
+
+        public Form1()
+        {
+            this.DoubleBuffered = true;
+            formStars.Density = 1f;      // MISMA densidad que albumView: el borde entre secciones deja de notarse
+            formStars.QuietBands = true;   // y ademas evitar acumularlas en el abecedario (arriba) y la barra de estado (abajo)
+            try { if (timeBeginPeriod(1) == 0) timerResRaised = true; } catch { }   // reloj a 1ms -> animacion pareja
+            try { int wt, ct; System.Threading.ThreadPool.GetMinThreads(out wt, out ct); System.Threading.ThreadPool.SetMinThreads(Math.Max(wt, 3), ct); } catch { }  // arranque de cargas mas agil
+            this.KeyPreview = true;                 // el formulario ve KeyPress aunque otro control tenga el foco
+            this.KeyPress += Form_KeyPress;         // admite TODO caracter en el buscador (ñ, acentos, comillas...)
+            BuildUi();
+            needConfig = !LoadKeys();   // si no hay botones guardados, lanzamos el asistente al mostrarse
+            progressTimer = new System.Windows.Forms.Timer(); progressTimer.Interval = 500; progressTimer.Tick += ProgressTimer_Tick;
+            coverSettleTimer = new System.Windows.Forms.Timer(); coverSettleTimer.Interval = 120; coverSettleTimer.Tick += CoverSettle_Tick;   // 0.12s: con SSD, casi inmediato pero sigue filtrando el hojeo
+            animTimer = new System.Windows.Forms.Timer(); animTimer.Interval = 42; animTimer.Tick += AnimTimer_Tick; animTimer.Start();   // ~24fps (giros y pulsos); el fondo completo va 1 de cada 3 cuadros
+            toastTimer = new System.Windows.Forms.Timer(); toastTimer.Interval = 1300; toastTimer.Tick += delegate (object s, EventArgs e) { toastTimer.Stop(); lblToast.Visible = false; if (searchOverlay != null) { searchOverlay.ToastOn = false; searchOverlay.Invalidate(); } };
+            videoPoll = new System.Windows.Forms.Timer(); videoPoll.Interval = 400; videoPoll.Tick += VideoPoll_Tick;
+            statsTimer = new System.Windows.Forms.Timer(); statsTimer.Interval = 60000; statsTimer.Tick += StatsTimer_Tick; statsTimer.Start();   // guarda estadisticas cada minuto si hubo cambios
+        }
+
+        protected override void OnFormClosed(FormClosedEventArgs e)
+        {
+            try { if (statsDirty) { statsDirty = false; SaveStats(false); } } catch { }   // guardar estadisticas pendientes
+            try { if (timerResRaised) { timeEndPeriod(1); timerResRaised = false; } } catch { }
+            base.OnFormClosed(e);
+        }
+
+        // Al mostrarse: acomoda la UI, carga la musica, OCULTA EL CURSOR, fuerza el FOCO DEL TECLADO
+        // (con un vigia durante el arranque) y, si hace falta, configura botones.
+        protected override void OnShown(EventArgs e)
+        {
+            base.OnShown(e);
+            LoadStats();   // estadisticas guardadas de sesiones anteriores (base de "Lo mas sonado")
+            LayoutControls();
+            LoadMusicFolder();
+
+            // SIN CURSOR: la rocola se usa con botones. Se oculta y se manda a una esquina
+            // (en el autoarranque XP lo deja dibujado a media pantalla aunque no haya mouse).
+            try
+            {
+                Cursor.Hide();
+                Cursor.Position = new Point(Screen.PrimaryScreen.Bounds.Right - 1, Screen.PrimaryScreen.Bounds.Bottom - 1);
+            }
+            catch { }
+
+            ForceFocus();
+            // VIGIA DE FOCO: con el autoarranque tras un reinicio, el escritorio de Windows termina de
+            // cargar DESPUES que la rocola y le roba el foco -> "no responde nada". Durante los primeros
+            // 2 minutos el vigia lo re-toma solo cada segundo y medio; luego se apaga (asi, si conectas
+            // teclado para dar mantenimiento, puedes salir de la rocola sin que te regrese a fuerzas).
+            // VIGIA PERMANENTE: la rocola debe estar SIEMPRE al frente. Si cualquier ventana le roba el
+            // foco (un dialogo de Windows, lo que sea), el vigia lo recupera; F10 (solo teclado de PC) lo
+            // pausa 30 minutos para mantenimiento. Costo: una llamada ligera cada 1.5s, nada.
+            maintMode = false;
+            if (focusTimer == null)
+            {
+                focusTimer = new System.Windows.Forms.Timer();
+                focusTimer.Interval = 1500;
+                focusTimer.Tick += FocusTimer_Tick;
+            }
+            focusTimer.Start();
+
+            if (needConfig) StartConfig();   // primera vez: configurar los botones de la rocola
+        }
+
+        // Trae la rocola al frente y le da el foco del teclado (robusto para el autoarranque).
+        // Windows NIEGA el foco pedido por codigo desde una app de fondo (por eso "solo con mouse
+        // funcionaba": el clic fisico si otorga el foco). Hacemos dos cosas:
+        //  1) Truco AttachThreadInput: nos "pegamos" al hilo que tiene el foco para poder tomarlo.
+        //  2) Si Windows aun se niega, generamos un CLIC DE MOUSE SINTETICO (mouse_event, no
+        //     necesita mouse fisico) en la esquina inferior de NUESTRA ventana (zona sin botones):
+        //     para Windows es identico a un clic real, y el foco se otorga siempre.
+        private void ForceFocus()
+        {
+            try
+            {
+                if (GetForegroundWindow() == this.Handle) { this.Focus(); return; }
+
+                IntPtr fg = GetForegroundWindow();
+                uint fgT = (fg != IntPtr.Zero) ? GetWindowThreadProcessId(fg, IntPtr.Zero) : 0;
+                uint myT = GetCurrentThreadId();
+                bool attached = false;
+                if (fgT != 0 && fgT != myT) { try { attached = AttachThreadInput(myT, fgT, true); } catch { } }
+
+                this.TopMost = true;
+                SetForegroundWindow(this.Handle);
+                this.Activate();
+                this.BringToFront();
+                this.TopMost = false;
+                SetFocus(this.Handle);
+                this.Focus();
+
+                if (attached) { try { AttachThreadInput(myT, fgT, false); } catch { } }
+
+                // ¿Windows se siguio negando? Clic sintetico (lo mismo que hace un mouse real).
+                if (GetForegroundWindow() != this.Handle)
+                {
+                    Rectangle sb = Screen.PrimaryScreen.Bounds;
+                    Cursor.Position = new Point(sb.Right - 2, sb.Bottom - 2);   // esquina: solo etiquetas, nada que activar
+                    mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, UIntPtr.Zero);
+                    mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, UIntPtr.Zero);
+                }
+            }
+            catch { }
+        }
+
+        private void FocusTimer_Tick(object sender, EventArgs e)
+        {
+            if (maintMode && DateTime.Now > maintUntil) { maintMode = false; ShowToast("Vigia de pantalla reactivado"); }
+            if (maintMode) return;                       // pausa de mantenimiento (F10)
+            if (GetForegroundWindow() != this.Handle) ForceFocus();
+        }
+
+        // Entrada de texto del buscador: cualquier caracter imprimible (incluye Ñ, acentos, comillas) y Borrar.
+        private void Form_KeyPress(object sender, KeyPressEventArgs e)
+        {
+            if (!searchOpen) return;
+            char c = e.KeyChar;
+            if (c == '\b') { searchOverlay.Backspace(); MarkSearchActivity(); e.Handled = true; return; }
+            if (c == '\r' || c == '\n' || c == (char)27) { e.Handled = true; return; }  // Enter/Esc ya van en ProcessCmdKey
+            if (!char.IsControl(c)) { searchOverlay.TypeChar(c); MarkSearchActivity(); e.Handled = true; }
+        }
+
+        private string ConfigFile { get { return Path.Combine(Application.StartupPath, "rocola_config.txt"); } }
+
+        // Busca automaticamente una carpeta llamada "musica" junto al programa o hasta 3 niveles arriba
+        // (ej.: nueva\Release\Rocola.exe  +  nueva\musica). No requiere elegir carpeta.
+        private string MusicFolder
+        {
+            get
+            {
+                try
+                {
+                    string dir = Application.StartupPath;
+                    for (int i = 0; i < 4 && dir != null; i++)
+                    {
+                        string cand = Path.Combine(dir, "musica");
+                        if (Directory.Exists(cand)) return cand;
+                        DirectoryInfo p = Directory.GetParent(dir);
+                        dir = (p != null) ? p.FullName : null;
+                    }
+                }
+                catch { }
+                return Path.Combine(Application.StartupPath, "musica");   // por defecto, junto al exe
+            }
+        }
+
+        protected override void OnResize(EventArgs e) { base.OnResize(e); LayoutControls(); Invalidate(); }
+
+        protected override void OnPaintBackground(PaintEventArgs e)
+        {
+            Graphics g = e.Graphics;
+            int w = ClientSize.Width, h = ClientSize.Height;
+            if (w < 2 || h < 2) { base.OnPaintBackground(e); return; }
+            formStars.SkyOffsetY = 0; formStars.SkyFullH = h; formStars.SkyMid = SkyColorMid(bgAccent);
+            formStars.DrawCached(g, w, h, SkyColor(bgAccent), SkyColor2(bgAccent));   // cielo en degradado CONTINUO; etiquetas y mini-cubo transparentes encima
+        }
+
+        private static Color Shade(Color c, double towardBlack)
+        {
+            if (towardBlack < 0) towardBlack = 0; if (towardBlack > 1) towardBlack = 1;
+            double k = 1.0 - towardBlack;
+            return Color.FromArgb(c.A, (int)(c.R * k), (int)(c.G * k), (int)(c.B * k));
+        }
+
+        // Cielo del fondo: casi negro con un toque del color del genero (arranca oscuro como el modo
+        // atraccion, pero cambia de tinte segun lo que suena).
+        private static Color SkyColor(Color accent)
+        {
+            // ARRIBA del cielo: casi negro (apenas un dejo del genero). Se oscurece hacia el cenit.
+            int r = 3 + accent.R / 22, g = 4 + accent.G / 22, b = 8 + accent.B / 18;
+            if (r > 22) r = 22; if (g > 22) g = 22; if (b > 30) b = 30;
+            return Color.FromArgb(255, r, g, b);
+        }
+
+        // Color INFERIOR del degradado del cielo: mas tenido al genero y un poco mas claro que el de arriba.
+        private static Color SkyColor2(Color accent)
+        {
+            // ABAJO del cielo: resplandor de horizonte. Sin musica = azul default; con musica = el color del
+            // genero normalizado a un brillo visible, con un leve piso azul para que siga sintiendose cielo.
+            int mx = accent.R; if (accent.G > mx) mx = accent.G; if (accent.B > mx) mx = accent.B;
+            int r, g, b;
+            if (mx < 10) { r = 50; g = 88; b = 188; }
+            else
+            {
+                r = accent.R * 165 / mx; g = accent.G * 165 / mx; b = accent.B * 165 / mx;
+                r = (r * 3 + 50) / 4; g = (g * 3 + 88) / 4; b = (b * 3 + 188) / 4;
+            }
+            if (r > 205) r = 205; if (g > 205) g = 205; if (b > 220) b = 220;
+            return Color.FromArgb(255, r, g, b);
+        }
+
+        // EN MEDIO del cielo: el "azulado default". Casi independiente del genero (apenas un dejo) para que,
+        // como pediste, despues del color del genero de abajo siga el azul antes de oscurecer al negro de arriba.
+        private static Color SkyColorMid(Color accent)
+        {
+            int r = 22 + accent.R / 10, g = 50 + accent.G / 8, b = 120 + accent.B / 7;
+            if (r > 60) r = 60; if (g > 105) g = 105; if (b > 205) b = 205;
+            return Color.FromArgb(255, r, g, b);
+        }
+
+        private static Color Lighten(Color c, double t)
+        {
+            if (t < 0) t = 0; if (t > 1) t = 1;
+            return Color.FromArgb(c.A, (int)(c.R + (255 - c.R) * t), (int)(c.G + (255 - c.G) * t), (int)(c.B + (255 - c.B) * t));
+        }
+
+        private static Color LerpColor(Color a, Color b, double t)
+        {
+            if (t < 0) t = 0; if (t > 1) t = 1;
+            return Color.FromArgb(
+                (int)(a.A + (b.A - a.A) * t), (int)(a.R + (b.R - a.R) * t),
+                (int)(a.G + (b.G - a.G) * t), (int)(a.B + (b.B - a.B) * t));
+        }
+
+        private static GraphicsPath RoundedPath(Rectangle r, int radius)
+        {
+            GraphicsPath p = new GraphicsPath();
+            int d = radius * 2;
+            if (d > r.Height) d = r.Height;
+            if (d > r.Width) d = r.Width;
+            if (d < 2) d = 2;
+            p.AddArc(r.X, r.Y, d, d, 180, 90);
+            p.AddArc(r.Right - d, r.Y, d, d, 270, 90);
+            p.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
+            p.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
+            p.CloseFigure();
+            return p;
+        }
+
+        private static string Normalize(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return "";
+            string formd = s.ToLowerInvariant().Normalize(NormalizationForm.FormD);
+            StringBuilder sb = new StringBuilder(formd.Length);
+            for (int i = 0; i < formd.Length; i++)
+                if (CharUnicodeInfo.GetUnicodeCategory(formd[i]) != UnicodeCategory.NonSpacingMark) sb.Append(formd[i]);
+            return sb.ToString();
+        }
+
+        private static bool Has(string s, params string[] keys)
+        {
+            for (int i = 0; i < keys.Length; i++) if (s.Contains(keys[i])) return true;
+            return false;
+        }
+
+        // Color por ARTISTA (excepciones) y luego por genero.
+        private static Color ColorForTrack(Track t)
+        {
+            if (t == null) return DefaultAccent;
+            string a = (t.Artist != null) ? t.Artist.ToLowerInvariant() : "";
+            if (a.Contains("bts") || a.Contains("bangtan")) return Color.FromArgb(149, 86, 220);   // morado (peticion)
+            return GenreToColor(t.Genre);
+        }
+
+        // Etiqueta canonica del genero para agrupar los discos TOP (mismas familias que GenreToColor).
+        private static string GenreLabel(string genre)
+        {
+            if (string.IsNullOrEmpty(genre)) return "Otros";
+            string g = genre.ToLowerInvariant();
+            if (Has(g, "k-pop", "kpop", "j-pop", "jpop", "anime", "idol")) return "K-Pop";
+            if (Has(g, "metal", "thrash", "death", "heavy", "hardcore", "grindcore")) return "Metal";
+            if (Has(g, "punk")) return "Punk";
+            if (Has(g, "gothic", "goth", "darkwave")) return "Gotico";
+            if (Has(g, "industrial")) return "Industrial";
+            if (Has(g, "reggaeton", "reggaet", "perreo")) return "Reggaeton";
+            if (Has(g, "hip", "rap", "trap")) return "Hip-Hop";
+            if (Has(g, "salsa", "mereng", "bachata", "tropical")) return "Tropical";
+            if (Has(g, "cumbia", "banda", "norte", "ranch", "mariach", "regional", "tejano", "grupera", "corrido", "duranguense", "sonidero")) return "Regional";
+            if (Has(g, "bolero", "tango", "ranchera")) return "Bolero";
+            if (Has(g, "flamenco", "rumba", "copla")) return "Flamenco";
+            if (Has(g, "latin", "latino", "espan")) return "Latino";
+            if (Has(g, "reggae", "ska", "dub")) return "Reggae";
+            if (Has(g, "drum", "bass", "jungle", "breakbeat", "garage")) return "DnB";
+            if (Has(g, "electro", "techno", "house", "trance", "edm", "synth", "dance", "club", "dubstep", "rave", "hardstyle")) return "Electronica";
+            if (Has(g, "ambient", "chill", "lo-fi", "lofi", "downtempo", "new age", "meditat")) return "Chill";
+            if (Has(g, "jazz", "swing", "bebop")) return "Jazz";
+            if (Has(g, "blues", "soul", "funk", "r&b", "rhythm", "motown")) return "Soul";
+            if (Has(g, "gospel", "christian", "worship", "cristiana")) return "Cristiana";
+            if (Has(g, "classic", "orchestr", "piano", "opera", "symphon", "baroque", "instrumental")) return "Clasica";
+            if (Has(g, "soundtrack", "score", "cinematic", "banda sonora")) return "Soundtrack";
+            if (Has(g, "country", "bluegrass", "americana")) return "Country";
+            if (Has(g, "folk", "acoustic", "celt")) return "Folk";
+            if (Has(g, "disco")) return "Disco";
+            if (Has(g, "oldies", "50s", "60s", "doo")) return "Oldies";
+            if (Has(g, "world", "ethnic", "african", "arab", "india", "asian")) return "World";
+            if (Has(g, "vocal", "capella", "capela")) return "Vocal";
+            if (Has(g, "comedy", "spoken", "podcast")) return "Hablado";
+            if (Has(g, "child", "kids", "infantil")) return "Infantil";
+            if (Has(g, "pop")) return "Pop";
+            if (Has(g, "rock", "grunge", "alternative", "indie")) return "Rock";
+            return "Otros";
+        }
+
+        private static Color GenreToColor(string genre)
+        {
+            if (string.IsNullOrEmpty(genre)) return DefaultAccent;
+            string g = genre.ToLowerInvariant();
+            // K-pop / J-pop / anime -> morado
+            if (Has(g, "k-pop", "kpop", "j-pop", "jpop", "anime", "idol")) return Color.FromArgb(149, 86, 220);
+            if (Has(g, "metal", "thrash", "death", "heavy", "hardcore", "grindcore")) return Color.FromArgb(205, 45, 55);
+            if (Has(g, "punk")) return Color.FromArgb(232, 80, 58);
+            if (Has(g, "gothic", "goth", "darkwave")) return Color.FromArgb(112, 58, 150);
+            if (Has(g, "industrial")) return Color.FromArgb(150, 60, 70);
+            if (Has(g, "reggaeton", "reggaet", "perreo")) return Color.FromArgb(150, 70, 210);
+            if (Has(g, "hip", "rap", "trap")) return Color.FromArgb(135, 60, 205);
+            if (Has(g, "salsa", "mereng", "bachata", "tropical")) return Color.FromArgb(235, 95, 35);
+            if (Has(g, "cumbia", "banda", "norte", "ranch", "mariach", "regional", "tejano", "grupera", "corrido", "duranguense", "sonidero")) return Color.FromArgb(225, 120, 30);
+            if (Has(g, "bolero", "tango", "ranchera")) return Color.FromArgb(195, 95, 70);
+            if (Has(g, "flamenco", "rumba", "copla")) return Color.FromArgb(210, 110, 55);
+            if (Has(g, "latin", "latino", "espan")) return Color.FromArgb(225, 130, 40);
+            if (Has(g, "reggae", "ska", "dub")) return Color.FromArgb(40, 175, 85);
+            if (Has(g, "drum", "bass", "jungle", "breakbeat", "garage")) return Color.FromArgb(20, 155, 160);
+            if (Has(g, "electro", "techno", "house", "trance", "edm", "synth", "dance", "club", "dubstep", "rave", "hardstyle")) return Color.FromArgb(30, 175, 195);
+            if (Has(g, "ambient", "chill", "lo-fi", "lofi", "downtempo", "new age", "meditat")) return Color.FromArgb(70, 165, 175);
+            if (Has(g, "jazz", "swing", "bebop")) return Color.FromArgb(215, 165, 45);
+            if (Has(g, "blues", "soul", "funk", "r&b", "rhythm", "motown")) return Color.FromArgb(205, 145, 50);
+            if (Has(g, "gospel", "christian", "worship", "cristiana")) return Color.FromArgb(210, 180, 75);
+            if (Has(g, "classic", "orchestr", "piano", "opera", "symphon", "baroque", "instrumental")) return Color.FromArgb(95, 95, 205);
+            if (Has(g, "soundtrack", "score", "cinematic", "banda sonora")) return Color.FromArgb(110, 120, 190);
+            if (Has(g, "country", "bluegrass", "americana")) return Color.FromArgb(170, 130, 55);
+            if (Has(g, "folk", "acoustic", "celt")) return Color.FromArgb(150, 140, 70);
+            if (Has(g, "disco")) return Color.FromArgb(212, 70, 160);
+            if (Has(g, "oldies", "50s", "60s", "doo")) return Color.FromArgb(192, 120, 90);
+            if (Has(g, "world", "ethnic", "african", "arab", "india", "asian")) return Color.FromArgb(180, 110, 60);
+            if (Has(g, "vocal", "capella", "capela")) return Color.FromArgb(180, 150, 120);
+            if (Has(g, "comedy", "spoken", "podcast")) return Color.FromArgb(120, 130, 150);
+            if (Has(g, "child", "kids", "infantil")) return Color.FromArgb(235, 180, 60);
+            if (Has(g, "pop")) return Color.FromArgb(215, 60, 140);
+            if (Has(g, "rock", "grunge", "alternative", "indie")) return Color.FromArgb(215, 90, 40);
+            return DefaultAccent;
+        }
+
+        private Font Bold(float size) { return new Font(this.Font.FontFamily, size, FontStyle.Bold); }
+
+        private void TransLabel(Label l, float size)
+        {
+            l.BackColor = Color.Transparent;
+            l.ForeColor = Color.White;
+            l.Font = Bold(size);
+        }
+
+        private void BuildUi()
+        {
+            this.Text = "Rocola";
+            this.StartPosition = FormStartPosition.CenterScreen;
+            this.Size = new Size(1100, 780);
+            this.MinimumSize = new Size(820, 600);
+            this.BackColor = Color.FromArgb(10, 14, 40);
+            this.FormBorderStyle = FormBorderStyle.None;     // PANTALLA COMPLETA al iniciar (sin barra de titulo)
+            this.WindowState = FormWindowState.Maximized;    // borde nulo + maximizado = cubre toda la pantalla
+
+            lblStatus = new Label(); TransLabel(lblStatus, 9.5f); lblStatus.Text = "Cargando musica...";
+            helpBar = new HelpBar();   // instrucciones con formas/colores (sin nombres de teclas)
+
+            lblAttract = new Label();
+            lblAttract.AutoSize = false;
+            lblAttract.TextAlign = ContentAlignment.MiddleCenter;
+            lblAttract.BackColor = Color.FromArgb(10, 12, 30);
+            lblAttract.ForeColor = Color.FromArgb(250, 230, 50);
+            lblAttract.Font = new Font(FontFamily.GenericSansSerif, 15f, FontStyle.Bold);
+            lblAttract.Text = "¡ PRESIONA UN BOTON PARA USAR LA ROCOLA !";
+            lblAttract.Visible = false;
+
+            letterBar = new LetterBar();
+            letterBar.Available = letterAvailable;
+            letterBar.OnPick = delegate (char c)
+            {
+                if (c == VideoMark && (videoAlbums == null || videoAlbums.Count == 0)) return;
+                if (c == TopMark) { BuildTopDiscs(); if (topDiscs == null || topDiscs.Count == 0) return; }
+                currentLetter = c; page = 0; selAlbumIndex = 0; letterBar.Current = c;
+                RefreshAlbums(); this.Focus();
+            };
+
+            lblHeader = new Label(); TransLabel(lblHeader, 12.5f);
+
+            albumView = new AlbumView();
+            albumView.GetCover = LoadCoverAsync;
+            albumView.GetCoverByPath = LoadCoverByPath;
+            albumView.OnActivate = delegate (int local)
+            {
+                List<Album> list = CurrentList();
+                int gi = page * PageSize + local;
+                if (gi >= 0 && gi < list.Count) { selAlbumIndex = gi; albumView.Selected = local; EnterAlbum(list[gi]); }
+            };
+
+            panelSongs = new BgPanel();
+            panelSongs.BackColor = Shade(DefaultAccent, 0.70);
+            panelSongs.Visible = false;
+
+            lblAlbum = new Label(); lblAlbum.BackColor = Color.Transparent; lblAlbum.ForeColor = Color.White; lblAlbum.Font = Bold(16f);
+
+            cubeBox = new CubeBox();
+            cubeBox.BackColor = Color.Transparent;
+
+            lstSongs = new ListBox();
+            lstSongs.BackColor = Shade(DefaultAccent, 0.76);
+            lstSongs.ForeColor = Color.White;
+            lstSongs.BorderStyle = BorderStyle.None;
+            lstSongs.Font = Bold(13f);
+            lstSongs.IntegralHeight = false;
+            lstSongs.MultiColumn = false;         // UNA columna por PAGINA (la barra de paginas va arriba)
+            lstSongs.DrawMode = DrawMode.OwnerDrawFixed;
+            lstSongs.ItemHeight = 30;
+            lstSongs.DrawItem += LstSongs_DrawItem;
+            lstSongs.DoubleClick += delegate (object s, EventArgs e) { EnqueueSelectedSong(); };
+            lstSongs.SelectedIndexChanged += LstSongs_SelectedIndexChanged;
+
+            songPager = new SongPagerBar();
+            songPager.Visible = false;
+            songPager.BackColor = Shade(DefaultAccent, 0.70);
+            panelSongs.Controls.Add(lblAlbum);
+            panelSongs.Controls.Add(cubeBox);
+            panelSongs.Controls.Add(lstSongs);
+            panelSongs.Controls.Add(songPager);
+
+            lblNow = new Label(); TransLabel(lblNow, 13f); lblNow.Text = "Nada reproduciendose"; lblNow.AutoEllipsis = true;
+            lblNext = new Label(); TransLabel(lblNext, 11f); lblNext.Text = "Siguiente:  -"; lblNext.AutoEllipsis = true;
+            lblCount = new Label(); TransLabel(lblCount, 11f); lblCount.TextAlign = ContentAlignment.MiddleLeft; lblCount.Text = "En cola:  0";
+            lblCredits = new Label(); TransLabel(lblCredits, 14f); lblCredits.TextAlign = ContentAlignment.MiddleLeft; lblCredits.Text = "Inserta una moneda"; lblCredits.ForeColor = Color.FromArgb(255, 205, 90);
+
+            miniCube = new CubeBox();
+            miniCube.BackColor = Color.Transparent;
+            miniCube.Visible = false;
+
+            progress = new ProgressView();
+            lblTime = new Label(); TransLabel(lblTime, 10.5f); lblTime.Text = "0:00 / 0:00";
+
+            lblToast = new Label();
+            lblToast.TextAlign = ContentAlignment.MiddleCenter;
+            lblToast.BackColor = Color.FromArgb(40, 165, 90);
+            lblToast.ForeColor = Color.White;
+            lblToast.Font = Bold(14f);
+            lblToast.Visible = false;
+
+            searchOverlay = new SearchOverlay();
+            searchOverlay.Visible = false;
+            searchOverlay.GetCover = LoadCover;
+            searchOverlay.OnQueryChanged = RecomputeResults;
+            searchOverlay.OnChoose = ChooseSearchResult;
+            searchOverlay.OnClose = CloseSearch;
+
+            attractView = new AttractView();
+            attractView.Visible = false;
+            attractView.GetCoverByPath = LoadCoverByPath;
+
+            Controls.Add(lblStatus); Controls.Add(helpBar); Controls.Add(lblCredits);
+            Controls.Add(letterBar); Controls.Add(lblHeader);
+            Controls.Add(albumView); Controls.Add(panelSongs);
+            Controls.Add(lblNow); Controls.Add(lblNext); Controls.Add(lblCount); Controls.Add(progress); Controls.Add(lblTime);
+            Controls.Add(miniCube);
+            Controls.Add(lblAttract);
+            Controls.Add(lblToast);
+            Controls.Add(searchOverlay);
+            Controls.Add(attractView);
+
+            // ----- DIAGNOSTICO TEMPORAL: letrero que muestra que tecla recibe la app -----
+            // ----- Pantalla del ASISTENTE DE CONFIGURACION de botones -----
+            lblConfig = new Label();
+            lblConfig.AutoSize = false;
+            lblConfig.TextAlign = ContentAlignment.MiddleCenter;
+            lblConfig.BackColor = Color.FromArgb(8, 10, 26);
+            lblConfig.ForeColor = Color.FromArgb(245, 248, 255);
+            lblConfig.Font = new Font(FontFamily.GenericSansSerif, 20f, FontStyle.Bold);
+            lblConfig.Text = "";
+            lblConfig.Visible = false;
+            Controls.Add(lblConfig);
+            lblConfig.BringToFront();
+        }
+
+        private SolidBrush songBgB, songHlB; private Pen songHlP;   // recursos del dibujo de la lista (reusables)
+        private Bitmap songRowBmp;   // renglon fuera de pantalla: cada elemento aparece DE GOLPE (sin parpadeo)
+
+        private void LstSongs_DrawItem(object sender, DrawItemEventArgs e)
+        {
+            if (e.Index < 0 || e.Index >= lstSongs.Items.Count) return;
+            Rectangle r = e.Bounds;
+            if (r.Width < 1 || r.Height < 1) return;
+            if (songBgB == null) { songBgB = new SolidBrush(Color.Black); songHlB = new SolidBrush(Color.Black); songHlP = new Pen(Color.Black, 1.4f); }
+            // El parpadeo era porque el renglon se pintaba DIRECTO a pantalla en pasos (fondo -> resalte
+            // -> texto). Ahora se arma completo en un bitmap reusable y se presenta en UN solo paso.
+            if (songRowBmp == null || songRowBmp.Width != r.Width || songRowBmp.Height != r.Height)
+            {
+                if (songRowBmp != null) songRowBmp.Dispose();
+                songRowBmp = new Bitmap(r.Width, r.Height, PixelFormat.Format32bppPArgb);
+            }
+            using (Graphics g = Graphics.FromImage(songRowBmp))
+            {
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                songBgB.Color = lstSongs.BackColor;
+                g.FillRectangle(songBgB, 0, 0, r.Width, r.Height);
+
+                bool sel = (e.State & DrawItemState.Selected) != 0;
+                if (sel)
+                {
+                    Rectangle hl = new Rectangle(4, 3, r.Width - 8, r.Height - 6);
+                    songHlB.Color = Color.FromArgb(150, Lighten(bgAccent, 0.15));
+                    songHlP.Color = Color.FromArgb(180, Lighten(bgAccent, 0.45));
+                    using (GraphicsPath gp = RoundedPath(hl, 9))   // UNA trayectoria para relleno y borde
+                    {
+                        g.FillPath(songHlB, gp);
+                        g.DrawPath(songHlP, gp);
+                    }
+                }
+
+                string text = lstSongs.Items[e.Index].ToString();
+                Rectangle tr = new Rectangle(16, 0, r.Width - 22, r.Height);
+                TextRenderer.DrawText(g, text, lstSongs.Font, tr, Color.White, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+            }
+            e.Graphics.DrawImageUnscaled(songRowBmp, r.X, r.Y);
+        }
+
+        private void LayoutControls()
+        {
+            if (albumView == null) return;
+            int W = ClientSize.Width, H = ClientSize.Height, pad = 14;
+
+            if (searchOverlay != null) searchOverlay.Bounds = SearchOverlayRect();
+            if (attractView != null) attractView.Bounds = new Rectangle(0, 0, W, H);
+
+            // PANTALLA COMPLETA del video: ocupa casi todo; arriba queda una franja con el aviso pulsante.
+            if (videoFull && video != null)
+            {
+                int strip = 46;
+                lblAttract.SetBounds(0, 0, W, strip);
+                video.SetBounds(0, strip, W, H - strip);
+                video.BringToFront();
+                lblAttract.BringToFront();
+                if (helpBar != null) helpBar.Visible = false;
+                return;   // lo demas queda detras del video; se reacomoda al salir
+            }
+            if (helpBar != null) helpBar.Visible = true;
+            if (lblAttract != null) lblAttract.Visible = false;
+
+            // Con video, el contenido (letras, encabezado, rejilla) se encoge a la IZQUIERDA;
+            // la barra inferior (lo de abajo) SIEMPRE ocupa todo el ancho.
+            int splitX = videoOn ? (int)(W * 0.50) : (W - pad);
+            int contentRight = videoOn ? (splitX - 12) : (W - pad);
+            int contentW = Math.Max(220, contentRight - pad);
+
+            int topRight = W - pad;
+            int helpX = pad;
+            int helpW = Math.Max(120, Math.Min(580, topRight - helpX));
+            if (helpBar != null) helpBar.SetBounds(helpX, 8, helpW, 34);
+            int statusX = helpX + helpW + 12;
+            lblStatus.SetBounds(statusX, 15, Math.Max(40, topRight - statusX), 22);
+            if (lblConfig != null) lblConfig.SetBounds(0, 0, W, H);   // asistente de config: pantalla completa
+
+            int lettersY = 48, lettersH = 40;
+            letterBar.SetBounds(pad, lettersY, contentW, lettersH);
+
+            int headerY = lettersY + lettersH + 10;
+            lblHeader.SetBounds(pad, headerY + 3, Math.Max(50, contentW), 28);
+
+            int cubeSize = 64;
+            int progH = 16;                                  // barra mas delgada
+            int progY = H - pad - progH;
+            int nextY = progY - 26;
+            int nowY = nextY - 26;
+
+            // cluster derecho del fondo:  [cubo mini] [ Creditos (grande) / En cola ]   (ancho completo)
+            int clusterTop = nowY;
+            int clusterBottom = progY + progH;
+            int clusterH = clusterBottom - clusterTop;
+            int rightTextW = 200;
+            int rightTextX = W - pad - rightTextW;
+            int cubeX = rightTextX - 10 - cubeSize;
+            int cubeY = clusterTop + (clusterH - cubeSize) / 2; if (cubeY < clusterTop) cubeY = clusterTop;
+            miniCube.SetBounds(cubeX, cubeY, cubeSize, cubeSize);
+            if (lblCredits != null) lblCredits.SetBounds(rightTextX, clusterTop + 2, rightTextW, 28);   // grande, arriba
+            lblCount.SetBounds(rightTextX, clusterTop + 34, rightTextW, 22);                            // chico, abajo
+
+            // area izquierda (texto + barra de duracion) termina antes del cubo mini
+            int leftRight = cubeX - 14;
+            int leftW = Math.Max(120, leftRight - pad);
+            int timeW = 150;
+            progress.SetBounds(pad, progY, Math.Max(50, leftW - timeW - 10), progH);
+            lblTime.SetBounds(pad + leftW - timeW, progY - 1, timeW, 24);
+            lblNext.SetBounds(pad, nextY, leftW, 22);
+            lblNow.SetBounds(pad, nowY, leftW, 24);
+
+            int albumY = headerY + 44;
+            int albumBottom = nowY - 12;
+            int albumH = Math.Max(120, albumBottom - albumY);
+            albumView.SetBounds(pad, albumY, contentW, albumH);
+            panelSongs.SetBounds(pad, albumY, contentW, albumH);
+
+            // Reproductor de video a la derecha (donde estan los cubos)
+            if (video != null)
+            {
+                int vx = splitX;
+                int vy = lettersY;
+                int vw = Math.Max(120, (W - pad) - vx);
+                int vh = Math.Max(90, albumBottom - vy);
+                video.SetBounds(vx, vy, vw, vh);
+                video.Visible = videoOn && !searchOpen;   // garantia: oculto si no hay video sonando (o si el buscador esta abierto)
+            }
+
+            LayoutSongsPanel();
+        }
+
+        private void LayoutSongsPanel()
+        {
+            int w = panelSongs.ClientSize.Width, h = panelSongs.ClientSize.Height;
+            lblAlbum.SetBounds(8, 8, Math.Max(50, w - 16), 32);
+            int cube = Math.Min(h - 80, (int)(w * 0.40));
+            if (cube < 80) cube = 80;
+            cubeBox.SetBounds(12, 52, cube, cube);
+            int listX = cube + 30, listW = Math.Max(60, w - cube - 42);
+            if (songPager != null) songPager.SetBounds(listX, 52, listW, 24);   // instrucciones de pagina, ARRIBA de la lista
+            lstSongs.SetBounds(listX, 80, listW, Math.Max(60, h - 88));
+            // La lista contiene SOLO la pagina actual (sin scroll); al cambiar el tamaño se reparte de nuevo.
+            if (panelSongs.Visible && songItems.Count > 0 && lstSongs.ItemHeight > 0) FillSongPage();
+        }
+
+        private void Letter_Refresh() { letterBar.Current = currentLetter; letterBar.Invalidate(); }
+
+        private static readonly string[] AudioExt = { ".mp3", ".wav" };
+        private static readonly string[] VideoExt = { ".mp4", ".avi", ".wmv", ".mpg", ".mpeg", ".mov", ".mkv", ".flv", ".m4v", ".vob", ".divx", ".3gp", ".asf" };
+
+        private void LoadMusicFolder()
+        {
+            if (Directory.Exists(MusicFolder)) StartScan(MusicFolder);
+            else lblStatus.Text = "No encontre una carpeta 'musica' junto al programa. Crea una carpeta llamada musica al lado del .exe.";
+        }
+
+        private void StartScan(string root)
+        {
+            if (scanner != null && scanner.IsBusy) return;   // ya hay un escaneo en curso (doble F5): ignorar
+            libBuilding = true;   // desde aqui y hasta Completed, las listas son del worker
+            if (searchOpen) CloseSearch();            // un re-escaneo invalida lo que el buscador muestra
+            lastQuery = null; lastMatches = null;     // ...y su cache incremental (evita resultados huerfanos)
+            tracks.Clear(); albums.Clear(); byLetter.Clear(); letterAvailable.Clear(); searchIndex.Clear();
+            BackToAlbums();
+            lblStatus.Text = "Buscando musica en: " + root + " ...";
+
+            scanner = new BackgroundWorker();
+            scanner.WorkerReportsProgress = true;
+            scanner.DoWork += Scanner_DoWork;
+            scanner.ProgressChanged += Scanner_ProgressChanged;
+            scanner.RunWorkerCompleted += Scanner_RunWorkerCompleted;
+            scanner.RunWorkerAsync(root);
+        }
+
+        private void Scanner_DoWork(object sender, DoWorkEventArgs e)
+        {
+            string root = (string)e.Argument;
+            // CACHE DE BIBLIOTECA: si es valido, evita las DOS caminatas del disco (en HDD eran minutos).
+            List<Track> ctk; List<string> cvd; Dictionary<string, string> ccv;
+            if (TryLoadLibraryCache(root, out ctk, out cvd, out ccv))
+            {
+                // ARMADO EN SEGUNDO PLANO: ordenar e indexar las 118 mil canciones tomaba 1-3 segundos
+                // DEL HILO DE LA INTERFAZ al arrancar; aqui corre en el worker y el arranque no se congela.
+                tracks.AddRange(ctk);
+                cachedVideoPaths = cvd; cachedCovers = ccv;
+                BuildAlbums(); BuildVideoSection(); BuildSearchIndex();
+                e.Result = true;    // vino del cache
+                return;
+            }
+            List<Track> found = new List<Track>();
+            foreach (string file in SafeEnumerateAudio(root))
+            {
+                found.Add(Track.FromFile(file));
+                if (found.Count % 50 == 0) scanner.ReportProgress(0, found.Count);
+            }
+            tracks.AddRange(found);
+            cachedVideoPaths = null; cachedCovers = null;
+            BuildAlbums(); BuildVideoSection(); BuildSearchIndex();   // tambien en segundo plano
+            e.Result = false;   // escaneo fresco
+        }
+
+        private void Scanner_ProgressChanged(object sender, ProgressChangedEventArgs e)
+        {
+            lblStatus.Text = "Encontradas " + ((int)e.UserState) + " canciones...";
+        }
+
+        private void Scanner_RunWorkerCompleted(object sender, RunWorkerCompletedEventArgs e)
+        {
+            libBuilding = false;   // las listas vuelven a ser de la interfaz (tambien si hubo error)
+            if (e.Error != null) { lblStatus.Text = "Error al escanear: " + e.Error.Message; return; }
+
+            bool fromCache = (e.Result is bool) ? (bool)e.Result : false;
+
+            letterAvailable.Clear();
+            foreach (KeyValuePair<char, List<Album>> kv in byLetter) if (kv.Value.Count > 0) letterAvailable.Add(kv.Key);
+            if (videoAlbums != null && videoAlbums.Count > 0) letterAvailable.Add(VideoMark);
+            BuildTopDiscs();
+            if (topDiscs != null && topDiscs.Count > 0) letterAvailable.Add(TopMark);   // hay estadisticas -> seccion "Lo mas sonado"
+
+            string order = "\u2605#ABCDEFGHIJKLMNOPQRSTUVWXYZ\u25BA";
+            currentLetter = '#';
+            // default: primera letra REAL disponible (NO arrancar en una seccion especial)
+            bool gotReal = false;
+            for (int i = 0; i < order.Length; i++) { char c = order[i]; if (c == TopMark || c == VideoMark) continue; if (letterAvailable.Contains(c)) { currentLetter = c; gotReal = true; break; } }
+            if (!gotReal) for (int i = 0; i < order.Length; i++) if (letterAvailable.Contains(order[i])) { currentLetter = order[i]; break; }
+            page = 0; selAlbumIndex = 0;
+            RefreshAlbums();
+
+            if (albums.Count == 0) lblStatus.Text = "No encontre MP3 en esa carpeta: " + MusicFolder;
+            else lblStatus.Text = "";   // las instrucciones las muestra la barra de ayuda (formas/colores)
+
+            StartThumbWarm();   // en segundo plano: construir las miniaturas que falten (1a vez tarda; luego todo vuela)
+
+            if (!fromCache) SaveLibraryCacheAsync();   // escaneo fresco: guardar la biblioteca para el proximo arranque
+            cachedVideoPaths = null; cachedCovers = null; lastVideoPaths = null;
+        }
+
+        // PRECALENTADOR de miniaturas: hilo de MINIMA prioridad que va construyendo en disco la
+        // miniatura de TODAS las caratulas que falten. La primera sesion en una maquina tarda unos
+        // minutos en completarse (y se PAUSA mientras alguien usa la rocola para no estorbar);
+        // a partir de ahi, abrir cualquier pagina es practicamente instantaneo para siempre.
+        private void StartThumbWarm()
+        {
+            warmGen++;
+            int myGen = warmGen;
+            List<Album> snap = new List<Album>(albums);
+            System.Threading.Thread t = new System.Threading.Thread(delegate ()
+            {
+                try
+                {
+                    System.Threading.Thread.Sleep(12000);   // dejar respirar el arranque
+                    for (int i = 0; i < snap.Count; i++)
+                    {
+                        if (myGen != warmGen) return;   // recargaron la musica: este hilo ya caduco
+                        Album a = snap[i];
+                        if (a == null || a.CoverPath == null) continue;
+                        try { if (File.Exists(ThumbCachePath(a.CoverPath))) continue; } catch { continue; }
+                        // si alguien uso la rocola hace poco, esperar (no robarle CPU ni DISCO a la interfaz)
+                        while (Environment.TickCount - lastInputTick < 8000)
+                        {
+                            System.Threading.Thread.Sleep(400);
+                            if (myGen != warmGen) return;
+                        }
+                        // si hay caratulas del primer plano en camino/formadas, o un VIDEO reproduciendose
+                        // (el video lee del disco SIN colchon), cederles el disco por completo
+                        while (true)
+                        {
+                            int busy; lock (coverLock) { busy = coverLoading.Count + coverQHi.Count + coverQLo.Count; }
+                            if (busy == 0 && !videoOn) break;
+                            System.Threading.Thread.Sleep(300);
+                            if (myGen != warmGen) return;
+                        }
+                        coverSem.WaitOne();   // mismo turno unico de disco que las cargas normales
+                        try
+                        {
+                            if (myGen != warmGen) return;
+                            // si JUSTO llego trabajo del primer plano, soltar el turno y reintentar despues
+                            bool fgBusy;
+                            lock (coverLock) { fgBusy = (coverLoading.Count + coverQHi.Count + coverQLo.Count) > 0; }
+                            if (fgBusy) { i--; System.Threading.Thread.Sleep(60); continue; }
+                            Image im = DecodeCover(a.CoverPath);   // crea la miniatura en disco como efecto
+                            if (im != null) im.Dispose();          // no ocupar memoria: solo queremos el disco
+                        }
+                        catch { }
+                        finally { coverSem.Release(); }
+                        System.Threading.Thread.Sleep(diskSlow ? 150 : 60);   // respiro mas largo en disco duro
+                    }
+                }
+                catch { }
+            });
+            t.IsBackground = true;
+            t.Priority = System.Threading.ThreadPriority.Lowest;
+            t.Start();
+        }
+
+        // ===================== CACHE DE BIBLIOTECA (arranque rapido) =====================
+        // El arranque hacia DOS caminatas completas del disco (audio y video) MAS ~una verificacion de
+        // portada por cada disco: en disco duro, minutos. Aqui se guarda el resultado en un archivo y
+        // los siguientes arranques lo leen en segundos. Se invalida solo si la carpeta de musica cambio
+        // (cantidad de carpetas o fecha de la raiz). F5 siempre fuerza un re-escaneo completo.
+        private string LibCacheFile() { return Path.Combine(Application.StartupPath, "rocola_biblioteca.txt"); }
+
+        // En arranque desde cache: portadas resueltas SIN tocar el disco.
+        private string FindCoverCached(string folder)
+        {
+            if (cachedCovers != null)
+            {
+                string cp;
+                if (cachedCovers.TryGetValue(folder, out cp)) return cp;
+                return null;
+            }
+            return FindCover(folder);
+        }
+
+        private bool TryLoadLibraryCache(string root, out List<Track> outTracks, out List<string> outVideos, out Dictionary<string, string> outCovers)
+        {
+            outTracks = null; outVideos = null; outCovers = null;
+            try
+            {
+                string f = LibCacheFile();
+                if (!File.Exists(f)) return false;
+                string[] L = File.ReadAllLines(f);
+                if (L.Length < 7 || L[0] != "ROCOLA-LIB v1") return false;
+                if (!L[1].StartsWith("root=") || !string.Equals(L[1].Substring(5), root, StringComparison.OrdinalIgnoreCase)) return false;
+                long mt; if (!L[2].StartsWith("mtime=") || !long.TryParse(L[2].Substring(6), out mt)) return false;
+                int dn; if (!L[3].StartsWith("dirs=") || !int.TryParse(L[3].Substring(5), out dn)) return false;
+                if (Directory.GetLastWriteTimeUtc(root).Ticks != mt) return false;   // cambio la raiz -> re-escanear
+                if (Directory.GetDirectories(root).Length != dn) return false;       // agregaron/quitaron discos
+
+                int li = 4;
+                int na; if (!L[li].StartsWith("A") || !int.TryParse(L[li].Substring(1), out na)) return false; li++;
+                if (li + na > L.Length) return false;
+                List<Track> tk = new List<Track>(na);
+                for (int i = 0; i < na; i++) { string p = L[li + i]; if (p.Length > 0) tk.Add(Track.FromFile(p)); }
+                li += na;
+                int nv; if (li >= L.Length || !L[li].StartsWith("V") || !int.TryParse(L[li].Substring(1), out nv)) return false; li++;
+                if (li + nv > L.Length) return false;
+                List<string> vd = new List<string>(nv);
+                for (int i = 0; i < nv; i++) { string p = L[li + i]; if (p.Length > 0) vd.Add(p); }
+                li += nv;
+                int nc; if (li >= L.Length || !L[li].StartsWith("C") || !int.TryParse(L[li].Substring(1), out nc)) return false; li++;
+                if (li + nc > L.Length) return false;
+                Dictionary<string, string> cv = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                for (int i = 0; i < nc; i++)
+                {
+                    string s = L[li + i]; int b = s.IndexOf('|'); if (b <= 0) continue;
+                    cv[s.Substring(0, b)] = s.Substring(b + 1);
+                }
+                if (tk.Count == 0) return false;
+                outTracks = tk; outVideos = vd; outCovers = cv;
+                return true;
+            }
+            catch { return false; }
+        }
+
+        // Guarda la biblioteca en segundo plano (la copia de datos es instantanea; la escritura va al pool).
+        private void SaveLibraryCacheAsync()
+        {
+            try
+            {
+                string root = MusicFolder;
+                List<string> ap = new List<string>(tracks.Count);
+                for (int i = 0; i < tracks.Count; i++) ap.Add(tracks[i].Path);
+                List<string> vp = (lastVideoPaths != null) ? new List<string>(lastVideoPaths) : new List<string>();
+                Dictionary<string, string> cv = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                for (int i = 0; i < albums.Count; i++) if (albums[i].CoverPath != null) cv[albums[i].Folder] = albums[i].CoverPath;
+                if (videoAlbums != null) for (int i = 0; i < videoAlbums.Count; i++) if (videoAlbums[i].CoverPath != null) cv[videoAlbums[i].Folder] = videoAlbums[i].CoverPath;
+                System.Threading.ThreadPool.QueueUserWorkItem(delegate (object st)
+                {
+                    try
+                    {
+                        StringBuilder sb = new StringBuilder(ap.Count * 64);
+                        sb.Append("ROCOLA-LIB v1\r\n");
+                        sb.Append("root=").Append(root).Append("\r\n");
+                        sb.Append("mtime=").Append(Directory.GetLastWriteTimeUtc(root).Ticks).Append("\r\n");
+                        sb.Append("dirs=").Append(Directory.GetDirectories(root).Length).Append("\r\n");
+                        sb.Append("A").Append(ap.Count).Append("\r\n");
+                        for (int i = 0; i < ap.Count; i++) sb.Append(ap[i]).Append("\r\n");
+                        sb.Append("V").Append(vp.Count).Append("\r\n");
+                        for (int i = 0; i < vp.Count; i++) sb.Append(vp[i]).Append("\r\n");
+                        sb.Append("C").Append(cv.Count).Append("\r\n");
+                        foreach (KeyValuePair<string, string> kv in cv) sb.Append(kv.Key).Append('|').Append(kv.Value).Append("\r\n");
+                        File.WriteAllText(LibCacheFile(), sb.ToString());
+                    }
+                    catch { }
+                });
+            }
+            catch { }
+        }
+
+        private static IEnumerable<string> SafeEnumerateAudio(string root)
+        {
+            Stack<string> dirs = new Stack<string>();
+            dirs.Push(root);
+            while (dirs.Count > 0)
+            {
+                string dir = dirs.Pop();
+                string[] files = null;
+                try { files = Directory.GetFiles(dir); } catch { }
+                if (files != null)
+                    foreach (string f in files)
+                    {
+                        string ext = Path.GetExtension(f).ToLowerInvariant();
+                        if (Array.IndexOf(AudioExt, ext) >= 0) yield return f;
+                    }
+                string[] subs = null;
+                try { subs = Directory.GetDirectories(dir); } catch { }
+                if (subs != null) foreach (string d in subs) dirs.Push(d);
+            }
+        }
+
+        private static IEnumerable<string> SafeEnumerateVideo(string root)
+        {
+            Stack<string> dirs = new Stack<string>();
+            dirs.Push(root);
+            while (dirs.Count > 0)
+            {
+                string dir = dirs.Pop();
+                string[] files = null;
+                try { files = Directory.GetFiles(dir); } catch { }
+                if (files != null)
+                    foreach (string f in files)
+                    {
+                        string ext = Path.GetExtension(f).ToLowerInvariant();
+                        if (Array.IndexOf(VideoExt, ext) >= 0) yield return f;
+                    }
+                string[] subs = null;
+                try { subs = Directory.GetDirectories(dir); } catch { }
+                if (subs != null) foreach (string d in subs) dirs.Push(d);
+            }
+        }
+
+        private void BuildAlbums()
+        {
+            Dictionary<string, Album> byFolder = new Dictionary<string, Album>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < tracks.Count; i++)
+            {
+                Track t = tracks[i];
+                string folder = Path.GetDirectoryName(t.Path);
+                if (folder == null) folder = "";
+                Album al;
+                if (!byFolder.TryGetValue(folder, out al)) { al = new Album(); al.Folder = folder; byFolder[folder] = al; }
+                al.Tracks.Add(t);
+            }
+
+            albums = new List<Album>();
+            foreach (KeyValuePair<string, Album> kv in byFolder)
+            {
+                Album al = kv.Value;
+                string leaf = LeafName(al.Folder);
+                string ar, nm;
+                if (SplitArtist(leaf, out ar, out nm)) { al.Artist = ar; al.Name = nm; }
+                else { al.Artist = leaf; al.Name = ""; }
+                al.Letter = FirstLetter(al.Artist);
+                al.CoverPath = FindCoverCached(al.Folder);
+                al.Tracks.Sort(delegate (Track a, Track b) { return string.Compare(a.Title, b.Title, StringComparison.OrdinalIgnoreCase); });
+                albums.Add(al);
+            }
+
+            albums.Sort(delegate (Album a, Album b)
+            {
+                int c = string.Compare(a.Artist, b.Artist, StringComparison.OrdinalIgnoreCase);
+                if (c != 0) return c;
+                return string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase);
+            });
+
+            byLetter = new Dictionary<char, List<Album>>();
+            for (int i = 0; i < albums.Count; i++)
+            {
+                Album al = albums[i];
+                List<Album> lst;
+                if (!byLetter.TryGetValue(al.Letter, out lst)) { lst = new List<Album>(); byLetter[al.Letter] = lst; }
+                lst.Add(al);
+            }
+        }
+
+        private static string LeafName(string folder)
+        {
+            if (string.IsNullOrEmpty(folder)) return "Video";
+            string s = folder.TrimEnd('\\', '/');
+            string leaf = Path.GetFileName(s);
+            return string.IsNullOrEmpty(leaf) ? s : leaf;
+        }
+
+        // Separa "Artista - Titulo" o "Artista-Titulo" (guion con o sin espacios). Toma el PRIMER guion.
+        private static bool SplitArtist(string s, out string left, out string right)
+        {
+            left = (s ?? "").Trim(); right = "";
+            if (string.IsNullOrEmpty(s)) return false;
+            int idx = s.IndexOf(" - ", StringComparison.Ordinal); int len = 3;
+            if (idx < 0) { idx = s.IndexOf('-'); len = 1; }
+            if (idx <= 0) return false;
+            left = s.Substring(0, idx).Trim();
+            right = s.Substring(idx + len).Trim();
+            return left.Length > 0;
+        }
+
+        private static bool AllDigits(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return false;
+            for (int i = 0; i < s.Length; i++) { char c = s[i]; if (c != ' ' && (c < '0' || c > '9')) return false; }
+            return true;
+        }
+
+        private static string AlbumLabel(Album a)
+        {
+            if (a == null) return "";
+            return (a.Name != null && a.Name.Length > 0) ? (a.Artist + " - " + a.Name) : a.Artist;
+        }
+
+        private void BuildVideoSection()
+        {
+            // carpeta -> album de audio existente
+            Dictionary<string, Album> byFolder = new Dictionary<string, Album>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < albums.Count; i++) { albums[i].VideoFiles.Clear(); byFolder[albums[i].Folder] = albums[i]; }
+
+            Dictionary<string, Album> videoOnly = new Dictionary<string, Album>(StringComparer.OrdinalIgnoreCase);
+            // fuente: cache de biblioteca (arranque rapido) o caminata fresca del disco
+            List<string> freshVids = (cachedVideoPaths == null) ? new List<string>() : null;
+            IEnumerable<string> vsrc = (cachedVideoPaths != null) ? (IEnumerable<string>)cachedVideoPaths : SafeEnumerateVideo(MusicFolder);
+            foreach (string vf in vsrc)
+            {
+                if (freshVids != null) freshVids.Add(vf);
+                string folder = Path.GetDirectoryName(vf); if (folder == null) folder = "";
+                Album al;
+                if (byFolder.TryGetValue(folder, out al)) al.VideoFiles.Add(vf);
+                else if (videoOnly.TryGetValue(folder, out al)) al.VideoFiles.Add(vf);
+                else
+                {
+                    al = new Album();
+                    al.Folder = folder;
+                    al.Artist = LeafName(folder);
+                    al.Name = "";
+                    al.Letter = FirstLetter(al.Artist);
+                    al.CoverPath = FindCoverCached(folder);
+                    al.VideoFiles.Add(vf);
+                    videoOnly[folder] = al;
+                }
+            }
+
+            videoAlbums = new List<Album>();
+            for (int i = 0; i < albums.Count; i++) if (albums[i].VideoFiles.Count > 0) videoAlbums.Add(albums[i]);
+            foreach (KeyValuePair<string, Album> kv in videoOnly) videoAlbums.Add(kv.Value);
+            videoAlbums.Sort(delegate (Album a, Album b) { return string.Compare(a.Artist, b.Artist, StringComparison.OrdinalIgnoreCase); });
+            for (int i = 0; i < videoAlbums.Count; i++) videoAlbums[i].VideoFiles.Sort(StringComparer.OrdinalIgnoreCase);
+            lastVideoPaths = (freshVids != null) ? freshVids : cachedVideoPaths;   // para guardar el cache
+        }
+
+        private void BuildSearchIndex()
+        {
+            searchIndex.Clear();
+            // Mapa artista -> todos sus discos (para el cubo que cicla caratulas)
+            Dictionary<string, List<Album>> artistAlbums = new Dictionary<string, List<Album>>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < albums.Count; i++)
+            {
+                Album a = albums[i];
+                if (string.IsNullOrEmpty(a.Artist)) continue;
+                List<Album> lst;
+                if (!artistAlbums.TryGetValue(a.Artist, out lst)) { lst = new List<Album>(); artistAlbums[a.Artist] = lst; }
+                lst.Add(a);
+            }
+            HashSet<string> artistSeen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < albums.Count; i++)
+            {
+                Album a = albums[i];
+                if (!string.IsNullOrEmpty(a.Artist) && artistSeen.Add(a.Artist))
+                {
+                    SearchItem ar = new SearchItem();
+                    ar.Kind = 0; ar.Display = a.Artist; ar.Key = Normalize(a.Artist); ar.AlbumRef = a;
+                    artistAlbums.TryGetValue(a.Artist, out ar.Albums);
+                    searchIndex.Add(ar);
+                }
+                SearchItem alb = new SearchItem();
+                alb.Kind = 1; alb.Display = a.Artist + " - " + a.Name; alb.Key = Normalize(alb.Display); alb.AlbumRef = a;
+                searchIndex.Add(alb);
+                for (int j = 0; j < a.Tracks.Count; j++)
+                {
+                    Track t = a.Tracks[j];
+                    SearchItem so = new SearchItem();
+                    so.Kind = 2; so.Display = t.Artist + " - " + t.Title; so.Key = Normalize(so.Display); so.TrackRef = t; so.AlbumRef = a;
+                    searchIndex.Add(so);
+                }
+            }
+        }
+
+        private static char FirstLetter(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return '#';
+            string n = s.Trim();
+            if (n.Length == 0) return '#';
+            char c = char.ToUpperInvariant(n[0]);
+            string norm = c.ToString().Normalize(NormalizationForm.FormD);
+            for (int i = 0; i < norm.Length; i++)
+                if (CharUnicodeInfo.GetUnicodeCategory(norm[i]) != UnicodeCategory.NonSpacingMark) { c = char.ToUpperInvariant(norm[i]); break; }
+            if (c >= 'A' && c <= 'Z') return c;
+            return '#';
+        }
+
+        private static readonly string[] CoverNames = { "portada.jpg", "portada.jpeg", "portada.png", "cover.jpg", "cover.png", "folder.jpg", "front.jpg" };
+        private static readonly string[] ImgExt = { ".jpg", ".jpeg", ".png", ".bmp" };
+
+        private static string FindCover(string folder)
+        {
+            if (string.IsNullOrEmpty(folder)) return null;
+            try
+            {
+                for (int i = 0; i < CoverNames.Length; i++) { string p = Path.Combine(folder, CoverNames[i]); if (File.Exists(p)) return p; }
+                string[] files = Directory.GetFiles(folder);
+                for (int i = 0; i < files.Length; i++) { string ext = Path.GetExtension(files[i]).ToLowerInvariant(); if (Array.IndexOf(ImgExt, ext) >= 0) return files[i]; }
+            }
+            catch { }
+            return null;
+        }
+
+        private List<Album> CurrentList()
+        {
+            if (libBuilding) return new List<Album>();   // el worker esta mutando las listas: no leerlas
+            if (currentLetter == VideoMark) return videoAlbums ?? new List<Album>();
+            if (currentLetter == TopMark) return topDiscs ?? new List<Album>();
+            List<Album> list;
+            if (!byLetter.TryGetValue(currentLetter, out list)) list = new List<Album>();
+            return list;
+        }
+
+        private void RefreshAlbums()
+        {
+            if (currentLetter == TopMark) BuildTopDiscs();   // discos TOP siempre al dia
+            List<Album> list = CurrentList();
+            int totalPages = Math.Max(1, (list.Count + PageSize - 1) / PageSize);
+            if (page < 0) page = 0;
+            if (page >= totalPages) page = totalPages - 1;
+            if (selAlbumIndex < 0) selAlbumIndex = 0;
+            if (selAlbumIndex >= list.Count) selAlbumIndex = Math.Max(0, list.Count - 1);
+
+            // Cambio de pagina/letra -> nueva "generacion": las cargas de la pagina anterior se descartan
+            // GRATIS en la bomba (revisa la generacion antes de decodificar). Gracias a eso, la pagina
+            // VISIBLE se pide AL INSTANTE, sin esperar nada -> sensacion de carga inmediata. El
+            // asentamiento (timer) queda solo para la PRELECTURA de las paginas vecinas.
+            bool newPage = false;
+            string psig = currentLetter + "|" + page;
+            if (psig != lastPageSig)
+            {
+                lastPageSig = psig; coverGen++;
+                newPage = true;
+                coversOnHold = true;   // sigue frenando las peticiones nacidas del PINTADO durante el hojeo
+                if (coverSettleTimer != null) { coverSettleTimer.Stop(); coverSettleTimer.Start(); }
+            }
+
+            List<Album> pageList = new List<Album>();
+            int start = page * PageSize;
+            for (int i = start; i < start + PageSize && i < list.Count; i++) pageList.Add(list[i]);
+
+            if (newPage)
+                for (int i = 0; i < pageList.Count; i++) RequestCover(pageList[i], false, true);   // fila ALTA, ya mismo
+
+            albumView.Page = pageList;
+            albumView.Selected = selAlbumIndex - start;
+            albumView.SelAngle = 0;
+            albumView.CancelHandoff();   // cambio de pagina/letra: cancela cualquier giro de relevo en curso
+            albumView.Invalidate();
+
+            string secName = (currentLetter == VideoMark) ? "VIDEOS" : (currentLetter == TopMark) ? "LO MAS SONADO" : ("Letra " + currentLetter);
+            lblHeader.Text = secName + "    -    pagina " + (page + 1) + " de " + totalPages;
+            Letter_Refresh();
+        }
+
+        // SINCRONO: para portadas sueltas (cubo grande del disco, mini-cubo, buscador). Pocas a la vez.
+        // SOLO MEMORIA: si la caratula no esta en cache, la ENCARGA en segundo plano y devuelve null;
+        // al llegar se aplica sola (ApplyArrivedCover). Antes decodificaba AQUI MISMO, en el hilo de la
+        // interfaz: en disco duro eso congelaba la pantalla al entrar a un disco, al cambiar de cancion
+        // y al pintar el buscador (100-500ms por caratula). Ese era el grueso de los tirones.
+        private Image LoadCover(Album a)
+        {
+            if (a == null || a.CoverPath == null) return null;
+            lock (coverLock) { Image c; if (coverCache.TryGetValue(a.CoverPath, out c)) return c; }
+            RequestCover(a, false);   // encargar SIN el freno de hojeo (esto no es la rejilla)
+            return null;
+        }
+
+        // ASINCRONO: para la rejilla (18 portadas por pagina). Devuelve la cacheada o null,
+        // y carga en segundo plano para no trabar el cambio de pagina; al terminar, repinta.
+        // El usuario se detuvo en una pagina: AHORA si pedimos sus caratulas.
+        // (Las paginas que paso de largo nunca se piden: cero trabajo desperdiciado.)
+        private void CoverSettle_Tick(object sender, EventArgs e)
+        {
+            coverSettleTimer.Stop();
+            coversOnHold = false;
+            List<Album> p = (albumView != null) ? albumView.Page : null;
+            if (p != null) for (int i = 0; i < p.Count; i++) LoadCoverAsync(p[i]);
+            // PRELECTURA: tambien se encargan las paginas vecinas (despues de la actual, por orden de
+            // llegada). En disco duro, hojear con las flechas queda servido directo de la RAM.
+            List<Album> all = CurrentList();
+            PrefetchPage(all, page + 1);
+            PrefetchPage(all, page - 1);
+            if (!diskSlow)   // con SSD sobran lecturas: dos paginas de colchon; con HDD, solo una
+            {
+                PrefetchPage(all, page + 2);
+                PrefetchPage(all, page - 2);
+            }
+        }
+
+        private void PrefetchPage(List<Album> list, int p)
+        {
+            if (list == null || p < 0) return;
+            int start = p * PageSize;
+            if (start >= list.Count) return;
+            int end = Math.Min(start + PageSize, list.Count);
+            for (int i = start; i < end; i++) RequestCover(list[i], true, false);   // fila BAJA: nunca por delante de lo visible
+        }
+
+        // Una caratula recien decodificada llega del disco: se aplica donde haga falta.
+        private void ApplyArrivedCover(string key)
+        {
+            try
+            {
+                if (albumView != null) albumView.RefreshCover(key);
+                if (panelSongs != null && panelSongs.Visible && currentAlbum != null && cubeBox != null)
+                {
+                    if (currentAlbum.IsTop && currentAlbum.TrackCovers != null && songSel >= 0 && songSel < currentAlbum.TrackCovers.Count && currentAlbum.TrackCovers[songSel] == key)
+                    { cubeBox.Cover = LoadCoverByPath(key); cubeBox.Invalidate(); }
+                    else if (!currentAlbum.IsTop && currentAlbum.CoverPath == key)
+                    { cubeBox.Cover = LoadCover(currentAlbum); cubeBox.Invalidate(); }
+                }
+                if (miniCube != null && miniCube.Visible && nowPlaying != null && nowPlaying.Disc != null && nowPlaying.Disc.CoverPath == key)
+                { miniCube.Cover = LoadCover(nowPlaying.Disc); miniCube.Invalidate(); }
+                if (searchOpen && searchOverlay != null) searchOverlay.Invalidate();
+            }
+            catch { }
+        }
+
+        private Image LoadCoverAsync(Album a) { return RequestCover(a, true, true); }
+
+        // ----- DESPACHADOR DE CARATULAS CON PRIORIDAD -----
+        // Antes todas las peticiones (pagina actual, prelectura de vecinas, lo que fuera) se formaban
+        // revueltas en el mismo turno de disco: a veces las caratulas que ESTAS viendo esperaban detras
+        // de la prelectura. Ahora hay dos filas: ALTA (lo visible) y BAJA (prelectura); una sola bomba
+        // atiende el disco y SIEMPRE saca primero la fila alta.
+        private class CoverJob { public string Key; public int Gen; }
+        private readonly List<CoverJob> coverQHi = new List<CoverJob>();
+        private readonly List<CoverJob> coverQLo = new List<CoverJob>();
+        private int coverPumpCount = 0;   // hasta 2 bombas de decodificacion (una por nucleo)
+
+        private Image RequestCover(Album a, bool respectHold) { return RequestCover(a, respectHold, true); }
+
+        // Carga una caratula por RUTA directa (cache o encargo). Usado por los discos TOP (ciclado de
+        // portadas y cambio de portada al navegar canciones).
+        private Image LoadCoverByPath(string key)
+        {
+            if (string.IsNullOrEmpty(key)) return null;
+            lock (coverLock) { Image c; if (coverCache.TryGetValue(key, out c)) return c; }
+            RequestCoverByPath(key, false);
+            return null;
+        }
+
+        private void RequestCoverByPath(string key, bool highPriority)
+        {
+            if (string.IsNullOrEmpty(key)) return;
+            lock (coverLock)
+            {
+                Image c;
+                if (coverCache.TryGetValue(key, out c)) return;
+                if (coverLoading.Contains(key)) return;
+                coverLoading.Add(key);
+                CoverJob j = new CoverJob(); j.Key = key; j.Gen = coverGen;
+                if (highPriority) coverQHi.Add(j); else coverQLo.Add(j);
+                if (coverPumpCount < (diskSlow ? 1 : 2))
+                {
+                    coverPumpCount++;
+                    System.Threading.Thread t = new System.Threading.Thread(CoverPump);
+                    t.IsBackground = true;
+                    t.Start();
+                }
+            }
+        }
+
+        private Image RequestCover(Album a, bool respectHold, bool highPriority)
+        {
+            if (a == null || a.CoverPath == null) return null;
+            string key = a.CoverPath;
+            lock (coverLock)
+            {
+                Image c;
+                if (coverCache.TryGetValue(key, out c)) return c;
+                if (respectHold && coversOnHold) return null;   // hojeando rapido: todavia no pedir
+                if (coverLoading.Contains(key)) return null;
+                coverLoading.Add(key);
+                CoverJob j = new CoverJob(); j.Key = key; j.Gen = coverGen;
+                if (highPriority) coverQHi.Add(j); else coverQLo.Add(j);
+                if (coverPumpCount < (diskSlow ? 1 : 2))   // SSD: un carril por nucleo; HDD: carril unico (cabezal)
+                {
+                    coverPumpCount++;
+                    System.Threading.Thread t = new System.Threading.Thread(CoverPump);
+                    t.IsBackground = true;
+                    t.Start();
+                }
+            }
+            return null;
+        }
+
+        // Una sola bomba de disco: fila ALTA primero, luego BAJA; termina y se apaga sola.
+        private void CoverPump()
+        {
+            while (true)
+            {
+                CoverJob j = null;
+                lock (coverLock)
+                {
+                    if (coverQHi.Count > 0) { j = coverQHi[0]; coverQHi.RemoveAt(0); }
+                    else if (coverQLo.Count > 0) { j = coverQLo[0]; coverQLo.RemoveAt(0); }
+                    else { coverPumpCount--; return; }
+                }
+                string key = j.Key;
+                if (j.Gen != coverGen) { lock (coverLock) { coverLoading.Remove(key); } continue; }
+                coverSem.WaitOne();   // turno unico de disco (compartido con el precalentador)
+                try
+                {
+                    if (j.Gen != coverGen) { lock (coverLock) { coverLoading.Remove(key); } continue; }
+                    Image thumb = DecodeCover(key);
+                    lock (coverLock) { CachePut(key, thumb); coverLoading.Remove(key); }
+                    try
+                    {
+                        if (this.IsHandleCreated)
+                            this.BeginInvoke((MethodInvoker)delegate { ApplyArrivedCover(key); });
+                    }
+                    catch { }
+                }
+                finally { coverSem.Release(); }
+            }
+        }
+
+        // Caché de miniaturas en DISCO: la 1a vez decodifica la portada grande y guarda una miniatura
+        // pequeña; las siguientes veces lee la miniatura (leer ~30KB es muchisimo mas rapido que decodificar
+        // un JPG grande del disco duro). Acelera enormemente volver a ver paginas ya vistas.
+        private static string thumbDir;
+        private static ImageCodecInfo jpegEnc;
+
+        private static string ThumbCachePath(string coverPath)
+        {
+            if (thumbDir == null)
+            {
+                string d = Path.Combine(Path.GetTempPath(), "rocola_thumbs");
+                try { if (!Directory.Exists(d)) Directory.CreateDirectory(d); } catch { }
+                thumbDir = d;
+            }
+            ulong h = Fnv64(coverPath.ToLowerInvariant());
+            return Path.Combine(thumbDir, h.ToString("x16") + "_" + ThumbPx + ".jpg");
+        }
+
+        private static ulong Fnv64(string s)
+        {
+            ulong hash = 1469598103934665603UL;
+            for (int i = 0; i < s.Length; i++) { hash ^= s[i]; hash *= 1099511628211UL; }
+            return hash;
+        }
+
+        private static void SaveThumb(Bitmap thumb, string cacheFile)
+        {
+            try
+            {
+                if (jpegEnc == null)
+                    foreach (ImageCodecInfo ci in ImageCodecInfo.GetImageEncoders()) if (ci.MimeType == "image/jpeg") { jpegEnc = ci; break; }
+                if (jpegEnc == null) { thumb.Save(cacheFile); return; }
+                using (EncoderParameters ep = new EncoderParameters(1))
+                {
+                    ep.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 82L);
+                    thumb.Save(cacheFile, jpegEnc, ep);
+                }
+            }
+            catch { }
+        }
+
+        private static Image DecodeCover(string path)
+        {
+            string cacheFile = null;
+            try { cacheFile = ThumbCachePath(path); } catch { }
+
+            // 1) miniatura en cache -> leerla (rapido)
+            if (cacheFile != null)
+            {
+                try
+                {
+                    if (File.Exists(cacheFile))
+                    {
+                        byte[] cdata;
+                        if (diskProbeN < 16)   // perfilado: cronometra las primeras lecturas de miniaturas
+                        {
+                            System.Diagnostics.Stopwatch dsw = System.Diagnostics.Stopwatch.StartNew();
+                            cdata = File.ReadAllBytes(cacheFile);
+                            dsw.Stop();
+                            DiskProbe((int)dsw.ElapsedMilliseconds);
+                        }
+                        else cdata = File.ReadAllBytes(cacheFile);   // I/O puro primero; GDI+ decodifica desde RAM
+                        using (MemoryStream cms = new MemoryStream(cdata))
+                        using (Image cimg = Image.FromStream(cms, false, false))
+                        {
+                            Bitmap tb = new Bitmap(ThumbPx, ThumbPx, PixelFormat.Format32bppPArgb);
+                            using (Graphics g = Graphics.FromImage(tb))
+                            {
+                                // la miniatura YA mide ThumbPx: copia 1:1 (mismos pixeles, sin filtro caro)
+                                g.InterpolationMode = InterpolationMode.NearestNeighbor;
+                                g.DrawImage(cimg, 0, 0, ThumbPx, ThumbPx);
+                            }
+                            return tb;
+                        }
+                    }
+                }
+                catch { /* cache corrupta -> recodificar abajo */ }
+            }
+
+            // 2) decodificar la portada original y GUARDAR la miniatura para la proxima vez
+            try
+            {
+                byte[] data = File.ReadAllBytes(path);   // I/O puro primero (lectura secuencial corta); GDI+ decodifica desde RAM
+                using (MemoryStream ms = new MemoryStream(data))
+                using (Image src = Image.FromStream(ms, false, false))
+                {
+                    Bitmap thumb = new Bitmap(ThumbPx, ThumbPx, PixelFormat.Format32bppPArgb);
+                    using (Graphics g = Graphics.FromImage(thumb))
+                    {
+                        g.InterpolationMode = InterpolationMode.HighQualityBilinear;   // filtro original de la miniatura (1 vez por disco)
+                        g.PixelOffsetMode = PixelOffsetMode.Half;
+                        g.DrawImage(src, 0, 0, ThumbPx, ThumbPx);
+                    }
+                    if (cacheFile != null) SaveThumb(thumb, cacheFile);
+                    return thumb;
+                }
+            }
+            catch { return null; }
+        }
+
+        // Guarda en cache acotando el tamaño (FIFO). Llamar SIEMPRE bajo coverLock.
+        // Las expulsadas NO se liberan aqui (el hilo de pantalla podria estar dibujandolas):
+        // se mandan a la papelera y se liberan en el temporizador, cuando no hay repintado en curso.
+        private void CachePut(string key, Image img)
+        {
+            if (coverCache.ContainsKey(key)) { coverCache[key] = img; return; }
+            coverCache[key] = img;
+            coverOrder.Enqueue(key);
+            while (coverOrder.Count > CoverCacheMax)
+            {
+                string old = coverOrder.Dequeue();
+                Image oldImg;
+                if (coverCache.TryGetValue(old, out oldImg)) { coverCache.Remove(old); if (oldImg != null) coverTrash.Add(oldImg); }
+            }
+        }
+
+        // Libera las carátulas expulsadas. Se llama desde el temporizador (mismo hilo que el dibujo,
+        // asi que NUNCA hay un DrawImage en curso). No libera las que sigan en uso por el cubo del disco
+        // o el mini-cubo (esas las recoge el GC cuando dejen de usarse).
+        private void DrainCoverTrash()
+        {
+            List<Image> dump = null;
+            lock (coverLock)
+            {
+                if (coverTrash.Count == 0) return;
+                dump = new List<Image>(coverTrash);
+                coverTrash.Clear();
+            }
+            Image pin1 = (miniCube != null) ? miniCube.Cover : null;
+            Image pin2 = (cubeBox != null) ? cubeBox.Cover : null;
+            for (int i = 0; i < dump.Count; i++)
+            {
+                Image im = dump[i];
+                if (im == null) continue;
+                if (im == pin1 || im == pin2) continue;   // sigue en uso: que lo recoja el GC luego
+                try { im.Dispose(); } catch { }
+            }
+        }
+
+        private void SetSelectedLocal(int local, int dir)
+        {
+            albumView.MoveSelectionTo(local, dir);   // mueve con efecto de relevo (el anterior gira y se apaga)
+            albumView.Invalidate();
+        }
+
+        private int PageDiscCount()
+        {
+            int total = CurrentList().Count;
+            int c = total - page * PageSize;
+            if (c < 0) c = 0;
+            if (c > PageSize) c = PageSize;
+            return c;
+        }
+
+        private void MoveInPage(int delta)
+        {
+            int cnt = PageDiscCount();
+            if (cnt == 0) return;
+            int local = selAlbumIndex - page * PageSize + delta;
+            if (local < 0) local = 0;
+            if (local >= cnt) local = cnt - 1;
+            selAlbumIndex = page * PageSize + local;
+            SetSelectedLocal(local, delta);
+        }
+
+        private void NextPage()
+        {
+            int total = CurrentList().Count;
+            int totalPages = Math.Max(1, (total + PageSize - 1) / PageSize);
+            if (page < totalPages - 1) { page++; selAlbumIndex = page * PageSize; RefreshAlbums(); }
+            else if (GotoLetter(1)) { page = 0; selAlbumIndex = 0; RefreshAlbums(); }
+        }
+
+        private void PrevPage()
+        {
+            if (page > 0) { page--; selAlbumIndex = page * PageSize; RefreshAlbums(); }
+            else if (GotoLetter(-1))
+            {
+                int total = CurrentList().Count;
+                int tp = Math.Max(1, (total + PageSize - 1) / PageSize);
+                page = tp - 1; selAlbumIndex = page * PageSize; RefreshAlbums();
+            }
+        }
+
+        private bool GotoLetter(int dir)
+        {
+            string order = "\u2605#ABCDEFGHIJKLMNOPQRSTUVWXYZ\u25BA";
+            int idx = order.IndexOf(currentLetter);
+            if (idx < 0) idx = 0;
+            int i = idx + dir;
+            while (i >= 0 && i < order.Length)
+            {
+                if (letterAvailable.Contains(order[i])) { currentLetter = order[i]; return true; }
+                i += dir;
+            }
+            return false;
+        }
+
+        private void ChangeLetter(int dir)
+        {
+            if (GotoLetter(dir)) { page = 0; selAlbumIndex = 0; RefreshAlbums(); }
+        }
+
+        private void EnterAlbum(Album a)
+        {
+            currentAlbum = a;
+            browsingVideo = (currentLetter == VideoMark);
+            bool showVideos = browsingVideo || (a != null && a.TopIsVideo);   // seccion VIDEOS o disco TOP de videos
+            lblAlbum.Text = browsingVideo ? (AlbumLabel(a) + "   (video)") : AlbumLabel(a);
+            songItems.Clear();
+            if (showVideos)
+            {
+                for (int i = 0; i < a.VideoFiles.Count; i++) songItems.Add(new VideoItem(a.VideoFiles[i]));
+            }
+            else
+            {
+                for (int i = 0; i < a.Tracks.Count; i++) songItems.Add(a.Tracks[i]);
+            }
+            songSel = 0;
+            FillSongPage();
+            cubeBox.Cover = LoadCover(a);
+            UpdateTopSongVisuals();   // disco TOP: portada/etiqueta de la cancion seleccionada
+            cubeBox.Angle = 0;
+            albumView.Visible = false;
+            letterBar.Visible = false;
+            lblHeader.Visible = false;
+            panelSongs.Visible = true;
+            this.Focus();
+        }
+
+        private void BackToAlbums()
+        {
+            panelSongs.Visible = false;
+            albumView.Visible = true;
+            letterBar.Visible = true;
+            lblHeader.Visible = true;
+            this.Focus();
+        }
+
+        private void NavigateToAlbum(Album a)
+        {
+            if (a == null) return;
+            currentLetter = a.Letter;
+            List<Album> list = CurrentList();
+            int gi = list.IndexOf(a);
+            if (gi < 0) gi = 0;
+            selAlbumIndex = gi;
+            page = (PageSize > 0) ? gi / PageSize : 0;
+            if (panelSongs.Visible) BackToAlbums();
+            RefreshAlbums();
+        }
+
+        private void MoveSong(int delta)
+        {
+            if (songItems.Count == 0) return;
+            songSel += delta;
+            if (songSel < 0) songSel = 0;
+            if (songSel >= songItems.Count) songSel = songItems.Count - 1;
+            FillSongPage();
+            UpdateTopSongVisuals();
+        }
+
+        // En un disco TOP: la portada del cubo y la etiqueta cambian a las del DISCO DE ORIGEN de la
+        // cancion seleccionada (asi el cliente sabe de que artista/album es). En discos normales no hace nada.
+        private void UpdateTopSongVisuals()
+        {
+            if (currentAlbum == null || !currentAlbum.IsTop) return;
+            int i = songSel;
+            if (currentAlbum.TrackCovers != null && i >= 0 && i < currentAlbum.TrackCovers.Count && cubeBox != null)
+            {
+                cubeBox.Cover = LoadCoverByPath(currentAlbum.TrackCovers[i]);
+                cubeBox.Invalidate();
+            }
+            if (currentAlbum.TrackInfo != null && i >= 0 && i < currentAlbum.TrackInfo.Count && lblAlbum != null)
+                lblAlbum.Text = AlbumLabel(currentAlbum) + "   /   " + currentAlbum.TrackInfo[i];
+        }
+
+        // Filas que caben en UNA pagina de la lista (se adapta a cualquier resolucion de pantalla).
+        private int SongRowsPerPage()
+        {
+            int ih = Math.Max(1, lstSongs.ItemHeight);
+            return Math.Max(1, lstSongs.ClientSize.Height / ih);
+        }
+
+        // Llena la lista con SOLO la pagina donde cae la seleccion, y actualiza la barra de paginas.
+        private void FillSongPage()
+        {
+            if (songItems.Count == 0)
+            {
+                lstSongs.Items.Clear();
+                if (songPager != null) songPager.Visible = false;
+                return;
+            }
+            if (songSel < 0) songSel = 0;
+            if (songSel >= songItems.Count) songSel = songItems.Count - 1;
+            int rpp = SongRowsPerPage();
+            int pages = (songItems.Count + rpp - 1) / rpp;
+            int pg = songSel / rpp;
+            int start = pg * rpp;
+            fillingSongs = true;
+            lstSongs.BeginUpdate();
+            lstSongs.Items.Clear();
+            for (int i = start; i < start + rpp && i < songItems.Count; i++) lstSongs.Items.Add(songItems[i]);
+            lstSongs.EndUpdate();
+            lstSongs.SelectedIndex = songSel - start;
+            fillingSongs = false;
+            if (songPager != null)
+            {
+                songPager.Page = pg; songPager.Pages = pages;
+                songPager.Visible = pages > 1;
+                songPager.Invalidate();
+            }
+        }
+
+        // Si tocan/clickean una cancion, sincroniza la seleccion global con la pagina actual.
+        private void LstSongs_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            if (fillingSongs || lstSongs.SelectedIndex < 0) return;
+            int rpp = SongRowsPerPage();
+            int pg = (songPager != null && songPager.Pages > 1) ? songPager.Page : 0;
+            songSel = pg * rpp + lstSongs.SelectedIndex;
+            if (songSel >= songItems.Count) songSel = Math.Max(0, songItems.Count - 1);
+            UpdateTopSongVisuals();
+        }
+
+        private void EnqueueSelectedSong()
+        {
+            if (songSel < 0 || songSel >= songItems.Count) return;
+            object item = songItems[songSel];
+            VideoItem vi = item as VideoItem;
+            if (vi != null)
+            {
+                Album vdisc = currentAlbum;
+                if (currentAlbum != null && currentAlbum.IsTop && currentAlbum.TrackAlbums != null && songSel >= 0 && songSel < currentAlbum.TrackAlbums.Count)
+                    vdisc = currentAlbum.TrackAlbums[songSel];   // disco real de origen del video
+                AddVideoToQueue(vi.Path, vdisc);
+            }
+            else
+            {
+                Album disc = currentAlbum;
+                if (currentAlbum != null && currentAlbum.IsTop && currentAlbum.TrackAlbums != null && songSel >= 0 && songSel < currentAlbum.TrackAlbums.Count)
+                    disc = currentAlbum.TrackAlbums[songSel];   // disco real de origen (no el de genero)
+                AddSong((Track)item, disc);
+            }
+        }
+
+        private void ToggleSearch() { if (searchOpen) CloseSearch(); else OpenSearch(); }
+
+        private void EnterAttract()
+        {
+            if (attractView == null) return;
+            // muestrear portadas repartidas por toda la coleccion (variedad) para el cubo
+            List<string> covers = new List<string>();
+            int na = albums.Count;
+            if (na > 0)
+            {
+                int start = new Random().Next(na);
+                int stride = (na > 120) ? na / 60 : 1;
+                for (int k = 0; k < na * 2 && covers.Count < 60; k++)
+                {
+                    Album al = albums[(start + k * stride) % na];
+                    if (al.CoverPath != null && !covers.Contains(al.CoverPath)) covers.Add(al.CoverPath);
+                }
+            }
+            attractView.CycleCovers = covers;
+            attractView.SongCount = tracks.Count;
+            attractView.Phase = phase;
+            for (int i = 0; i < covers.Count && i < 3; i++) RequestCoverByPath(covers[i], true);   // adelantar las primeras
+            attractView.Visible = true;
+            attractView.BringToFront();
+            attractOn = true;
+        }
+
+        private void ExitAttract()
+        {
+            attractOn = false;
+            if (attractView != null) attractView.Visible = false;
+            this.Invalidate();
+        }
+
+        private void MarkSearchActivity() { searchLastActivity = DateTime.Now; }
+
+        // El buscador NO cubre la franja de estado de abajo (cancion, progreso, creditos, cola): se
+        // recorta su alto justo encima. La barra de estado va de (H - pad - 68) hacia abajo (ver
+        // LayoutControls); aqui dejamos esa franja libre.
+        private Rectangle SearchOverlayRect()
+        {
+            int W = ClientSize.Width, H = ClientSize.Height;
+            int h = H - 14 - 68 - 4;          // tope de la barra de estado, menos un pequeno respiro
+            if (h < 260) h = H;               // pantalla muy baja: cubrir todo (respaldo)
+            return new Rectangle(0, 0, W, h);
+        }
+
+        private void OpenSearch()
+        {
+            searchOpen = true;
+            searchLastActivity = DateTime.Now;
+            lastQuery = null; lastMatches = null;   // empezar busqueda limpia
+            if (video != null) video.Visible = false;   // el ActiveX se pinta encima del buscador; lo ocultamos
+            searchOverlay.Accent = bgAccent;
+            searchOverlay.SetQuery("");
+            searchOverlay.Results = new List<SearchItem>();
+            searchOverlay.SelRow = 1; searchOverlay.SelCol = 0;
+            searchOverlay.Bounds = SearchOverlayRect();
+            searchOverlay.Visible = true;
+            searchOverlay.BringToFront();
+            searchOverlay.Focus();
+            searchOverlay.Invalidate();
+        }
+
+        private void CloseSearch()
+        {
+            searchOpen = false;
+            searchOverlay.Visible = false;
+            if (videoOn && video != null) { video.Visible = true; video.BringToFront(); }
+            this.Focus();
+        }
+
+        // OPTIMIZACION (busqueda): " " + q y q.Split(' ') se calculaban DENTRO de Score, que corre
+        // por CADA entrada de searchIndex (decenas de miles) en CADA tecla. Ahora se reciben ya
+        // calculados (una sola vez por tecla desde RecomputeResults). El puntaje es identico.
+        private static int Score(string cand, string q, string spaceQ, string[] toks)
+        {
+            if (q.Length == 0) return 0;
+            if (cand == q) return 10000;
+            if (cand.StartsWith(q, StringComparison.Ordinal)) return 6000 - Math.Min(cand.Length, 2000);
+            int wi = cand.IndexOf(spaceQ, StringComparison.Ordinal);
+            if (wi >= 0) return 4000 - wi;
+            int idx = cand.IndexOf(q, StringComparison.Ordinal);
+            if (idx >= 0) return 2000 - Math.Min(idx, 1500);
+            // Coincidencia por PALABRAS: todas las palabras de la consulta aparecen (en cualquier orden).
+            // Asi "metallica black" encuentra "Metallica - Black Album", y "enter metallica" tambien.
+            if (toks != null)
+            {
+                int sc = 0, real = 0;
+                for (int i = 0; i < toks.Length; i++)
+                {
+                    string tk = toks[i];
+                    if (tk.Length == 0) continue;
+                    real++;
+                    int at = cand.IndexOf(tk, StringComparison.Ordinal);
+                    if (at < 0) return 0;   // falta una palabra -> no coincide
+                    bool wordStart = (at == 0) || (cand[at - 1] == ' ');
+                    sc += (wordStart ? 300 : 150) - Math.Min(at, 100);
+                }
+                if (real >= 2) return 800 + sc;   // menos que substring directo, pero cuenta como coincidencia
+            }
+            return 0;
+        }
+
+        private void RecomputeResults(string query)
+        {
+            MarkSearchActivity();
+            if (libBuilding)   // el worker esta llenando searchIndex: no iterarlo (carrera = crash)
+            {
+                searchOverlay.Results = new List<SearchItem>();
+                searchOverlay.Invalidate();
+                return;
+            }
+            string q = Normalize(query);
+            List<SearchItem> res = new List<SearchItem>();
+            if (q.Length > 0)
+            {
+                // OPTIMIZACION (busqueda): partes derivadas de la consulta calculadas UNA vez por tecla,
+                // no por cada candidato del indice.
+                string spaceQ = " " + q;
+                string[] toks = (q.IndexOf(' ') >= 0) ? q.Split(' ') : null;
+                // Incremental: si la nueva busqueda EMPIEZA con la anterior, las coincidencias nuevas
+                // son un subconjunto de las anteriores -> re-evaluamos solo esas (mucho menos trabajo).
+                List<SearchItem> source =
+                    (lastQuery != null && lastQuery.Length > 0 && lastMatches != null && q.StartsWith(lastQuery, StringComparison.Ordinal))
+                    ? lastMatches : searchIndex;
+
+                List<SearchItem> matches = new List<SearchItem>();
+                for (int i = 0; i < source.Count; i++)
+                {
+                    int sc = Score(source[i].Key, q, spaceQ, toks);
+                    if (sc > 0) { source[i].Score = sc; matches.Add(source[i]); }
+                }
+                matches.Sort(delegate (SearchItem a, SearchItem b)
+                {
+                    if (b.Score != a.Score) return b.Score - a.Score;
+                    if (a.Kind != b.Kind) return a.Kind - b.Kind;
+                    return string.Compare(a.Display, b.Display, StringComparison.OrdinalIgnoreCase);
+                });
+                lastMatches = matches; lastQuery = q;
+                int take = Math.Min(40, matches.Count);   // mas resultados (la cuadricula muestra los que quepan)
+                for (int i = 0; i < take; i++) res.Add(matches[i]);
+            }
+            else { lastMatches = null; lastQuery = null; }
+            searchOverlay.Results = res;
+            searchOverlay.Invalidate();
+        }
+
+        private void ChooseSearchResult(SearchItem it)
+        {
+            if (it == null) return;
+            MarkSearchActivity();
+            if (it.Kind == 2 && it.TrackRef != null)
+            {
+                PlayItem p = new PlayItem(); p.IsVideo = false; p.Song = it.TrackRef; p.Disc = it.AlbumRef;
+                AddResult r = AddItem(p);
+                if (r == AddResult.Added) ShowSearchToast("Agregada a la cola", true);
+                else if (r == AddResult.NoCredit) ShowSearchToast("Inserta una moneda", false);
+                else ShowSearchToast("Esa cancion ya va seguida", false);
+                return; // no cierra el buscador
+            }
+            else if (it.Kind == 1 && it.AlbumRef != null) { CloseSearch(); NavigateToAlbum(it.AlbumRef); EnterAlbum(it.AlbumRef); }
+            else if (it.Kind == 0 && it.AlbumRef != null) { CloseSearch(); NavigateToAlbum(it.AlbumRef); }
+        }
+
+        private void ShowSearchToast(string msg) { ShowSearchToast(msg, true); }
+        private void ShowSearchToast(string msg, bool ok)
+        {
+            searchOverlay.ToastMsg = msg;
+            searchOverlay.ToastBack = ok ? Color.FromArgb(238, 40, 165, 90) : Color.FromArgb(238, 205, 130, 35);
+            searchOverlay.ToastOn = true;
+            searchOverlay.Invalidate();
+            toastTimer.Stop(); toastTimer.Start();
+        }
+
+        // ¿La tecla kc esta asignada a ALGUN boton de la rocola? (las teclas configuradas tienen prioridad)
+        private bool IsConfiguredKey(Keys kc)
+        {
+            return kc == keyUp || kc == keyDown || kc == keyLeft || kc == keyRight
+                || kc == keyOK || kc == keyBack || kc == keyCoin || kc == keySkip;
+        }
+        // Cada accion responde a SU boton de rocola configurado Y a la tecla de PC por defecto.
+        // La tecla de PC solo cuenta si NO esta tomada por otro boton configurado (evita choques).
+        private bool IsUp(Keys kc) { return kc == keyUp || (kc == Keys.Up && !IsConfiguredKey(Keys.Up)); }
+        private bool IsDown(Keys kc) { return kc == keyDown || (kc == Keys.Down && !IsConfiguredKey(Keys.Down)); }
+        private bool IsLeft(Keys kc) { return kc == keyLeft || (kc == Keys.Left && !IsConfiguredKey(Keys.Left)); }
+        private bool IsRight(Keys kc) { return kc == keyRight || (kc == Keys.Right && !IsConfiguredKey(Keys.Right)); }
+        private bool IsOK(Keys kc) { return kc == keyOK || (kc == Keys.Enter && !IsConfiguredKey(Keys.Enter)); }
+        private bool IsBack(Keys kc) { return kc == keyBack || (kc == Keys.Escape && !IsConfiguredKey(Keys.Escape)); }
+        private bool IsCoin(Keys kc) { return kc == keyCoin || (kc == Keys.Insert && !IsConfiguredKey(Keys.Insert)); }
+        private bool IsSkip(Keys kc) { return kc == keySkip || (kc == Keys.ShiftKey && !IsConfiguredKey(Keys.ShiftKey)); }
+        // ¿Esta presionado AHORA el boton REGRESAR (rocola) o Esc (teclado)?  (para los combos)
+        private bool BackHeld() { return KeyHeld(keyBack) || (KeyHeld(Keys.Escape) && !IsConfiguredKey(Keys.Escape)); }
+
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        {
+            lastInput = DateTime.Now;   // cualquier tecla reinicia la inactividad
+            lastInputTick = Environment.TickCount;   // el precalentador de miniaturas pausa si hay actividad
+            if (attractOn) { ExitAttract(); return true; }   // primera pulsacion: salir del modo atraccion
+
+            // ASISTENTE DE CONFIGURACION: captura el boton que se presiona para cada funcion.
+            if (configMode) { CaptureConfigKey(keyData, msg); return true; }
+
+            bool wasFull = videoFull;
+            Keys kc = keyData & Keys.KeyCode;   // tecla base (sin modificadores)
+
+            // ===== ENTRADAS ESPECIALES: SIEMPRE funcionan (buscador, video en pantalla completa, donde sea) =====
+            // MONEDA
+            if (IsCoin(kc)) { if (wasFull) ExitVideoFull(); AddCoin(); return true; }
+
+            // SALTAR: salta la cancion/video actual SIEMPRE (filtra auto-repeticion)
+            if (IsSkip(kc) && (msg.LParam.ToInt64() & 0x40000000) == 0)
+            {
+                SkipSong();   // si el video estaba en pantalla completa, StopVideoPlayback ya sale de ella
+                return true;
+            }
+
+            // Cualquier OTRA tecla, si el video esta en pantalla completa, solo "despierta" la rocola.
+            if (wasFull) { ExitVideoFull(); return true; }
+
+            // F5 = recargar musica (mantenimiento; sin boton visible)
+            if (keyData == Keys.F5) { try { File.Delete(LibCacheFile()); } catch { } LoadMusicFolder(); return true; }   // F5 ignora el cache: re-escaneo completo
+            if (keyData == Keys.F8 && !IsConfiguredKey(Keys.F8))    // F8 = relanzar el asistente de botones
+            {
+                if (searchOpen) CloseSearch();
+                StartConfig();
+                return true;
+            }
+            if (keyData == Keys.F10 && !IsConfiguredKey(Keys.F10))   // F10 = mantenimiento: pausa/reactiva el vigia de foco
+            {
+                maintMode = !maintMode;
+                if (maintMode) { maintUntil = DateTime.Now.AddMinutes(30); ShowToast("Mantenimiento: vigia pausado 30 min", Color.FromArgb(200, 130, 35)); }
+                else ShowToast("Vigia de pantalla reactivado");
+                return true;
+            }
+
+            // BUSCAR: manten REGRESAR y presiona PONER
+            if (IsOK(kc) && BackHeld()) { ToggleSearch(); return true; }
+
+            if (searchOpen)
+            {
+                MarkSearchActivity();
+                if (IsLeft(kc)) { searchOverlay.MoveSel(-1, 0); return true; }
+                if (IsRight(kc)) { searchOverlay.MoveSel(1, 0); return true; }
+                if (IsUp(kc)) { searchOverlay.MoveSel(0, -1); return true; }
+                if (IsDown(kc)) { searchOverlay.MoveSel(0, 1); return true; }
+                if (IsOK(kc)) { searchOverlay.PressSelected(); return true; }
+                if (IsBack(kc)) { searchOverlay.Backspace(); return true; }   // REGRESAR = borrar letra; cerrar = REGRESAR+PONER
+                // letras, numeros, Ñ, acentos, comillas, espacio y BORRAR los entrega KeyPress (admite TODO caracter)
+                return base.ProcessCmdKey(ref msg, keyData);
+            }
+
+            if (panelSongs.Visible)
+            {
+                int rpc = SongRowsPerPage();   // misma cuenta que la paginacion: izq/der = pagina anterior/siguiente
+                if (IsUp(kc)) { MoveSong(-1); return true; }
+                if (IsDown(kc)) { MoveSong(1); return true; }
+                if (IsLeft(kc)) { MoveSong(-rpc); return true; }     // pagina anterior
+                if (IsRight(kc)) { MoveSong(rpc); return true; }      // pagina siguiente
+                if (IsOK(kc)) { EnqueueSelectedSong(); return true; }
+                if (IsBack(kc)) { BackToAlbums(); return true; }
+            }
+            else
+            {
+                // REGRESAR + IZQ/DER = saltar de letra (A,B,C...). Solo IZQ/DER = mover de disco.
+                if (IsLeft(kc)) { if (BackHeld()) ChangeLetter(-1); else MoveInPage(-1); return true; }
+                if (IsRight(kc)) { if (BackHeld()) ChangeLetter(1); else MoveInPage(1); return true; }
+                if (IsUp(kc)) { NextPage(); return true; }
+                if (IsDown(kc)) { PrevPage(); return true; }
+                if (IsOK(kc)) { List<Album> l = CurrentList(); if (selAlbumIndex >= 0 && selAlbumIndex < l.Count) EnterAlbum(l[selAlbumIndex]); return true; }
+                if (IsBack(kc)) { return true; }
+            }
+            return base.ProcessCmdKey(ref msg, keyData);
+        }
+
+        // =================== ASISTENTE DE CONFIGURACION DE BOTONES ===================
+        private string KeysFile() { return Path.Combine(Application.StartupPath, "rocola_teclas.txt"); }
+
+        // Carga el mapeo de botones. Devuelve true solo si estan los 8 completos.
+        private bool LoadKeys()
+        {
+            try
+            {
+                string f = KeysFile();
+                if (!File.Exists(f)) return false;
+                Keys u = Keys.None, d = Keys.None, l = Keys.None, r = Keys.None, ok = Keys.None, bk = Keys.None, co = Keys.None, sk = Keys.None;
+                string[] lines = File.ReadAllLines(f);
+                for (int i = 0; i < lines.Length; i++)
+                {
+                    string s = lines[i].Trim();
+                    int eq = s.IndexOf('=');
+                    if (eq <= 0) continue;
+                    string name = s.Substring(0, eq).Trim().ToLower();
+                    int val;
+                    if (!int.TryParse(s.Substring(eq + 1).Trim(), out val)) continue;
+                    Keys k = (Keys)val;
+                    if (name == "arriba") u = k;
+                    else if (name == "abajo") d = k;
+                    else if (name == "izquierda") l = k;
+                    else if (name == "derecha") r = k;
+                    else if (name == "poner") ok = k;
+                    else if (name == "regresar") bk = k;
+                    else if (name == "moneda") co = k;
+                    else if (name == "saltar") sk = k;
+                }
+                if (u == Keys.None || d == Keys.None || l == Keys.None || r == Keys.None ||
+                    ok == Keys.None || bk == Keys.None || co == Keys.None || sk == Keys.None) return false;
+                keyUp = u; keyDown = d; keyLeft = l; keyRight = r; keyOK = ok; keyBack = bk; keyCoin = co; keySkip = sk;
+                return true;
+            }
+            catch { return false; }
+        }
+
+        private void SaveKeys()
+        {
+            try
+            {
+                StringBuilder sb = new StringBuilder();
+                sb.Append("arriba=").Append((int)keyUp).Append("\r\n");
+                sb.Append("abajo=").Append((int)keyDown).Append("\r\n");
+                sb.Append("izquierda=").Append((int)keyLeft).Append("\r\n");
+                sb.Append("derecha=").Append((int)keyRight).Append("\r\n");
+                sb.Append("poner=").Append((int)keyOK).Append("\r\n");
+                sb.Append("regresar=").Append((int)keyBack).Append("\r\n");
+                sb.Append("moneda=").Append((int)keyCoin).Append("\r\n");
+                sb.Append("saltar=").Append((int)keySkip).Append("\r\n");
+                File.WriteAllText(KeysFile(), sb.ToString());
+            }
+            catch { }
+        }
+
+        // Inicia el asistente (primera vez, o cuando se escriben diez ceros en el buscador).
+        private void StartConfig()
+        {
+            if (searchOpen) CloseSearch();
+            configMode = true;
+            configStep = 0;
+            for (int i = 0; i < configCap.Length; i++) configCap[i] = Keys.None;
+            if (lblConfig != null) { lblConfig.Visible = true; lblConfig.BringToFront(); }
+            UpdateConfigPrompt(null);
+        }
+
+        private void UpdateConfigPrompt(string warn)
+        {
+            if (lblConfig == null) return;
+            string t = "CONFIGURACION DE BOTONES DE LA ROCOLA\r\n\r\n";
+            t += "Paso " + (configStep + 1) + " de " + ConfigSteps.Length + "\r\n\r\n";
+            t += "Presiona en la rocola el boton para:\r\n\r\n";
+            t += ">>>   " + ConfigSteps[configStep] + "   <<<";
+            if (warn != null) t += "\r\n\r\n" + warn;
+            t += "\r\n\r\n\r\n(cada boton debe ser distinto)";
+            lblConfig.Text = t;
+            lblConfig.BringToFront();
+        }
+
+        // Captura el boton presionado durante la configuracion.
+        private void CaptureConfigKey(Keys keyData, Message msg)
+        {
+            if ((msg.LParam.ToInt64() & 0x40000000) != 0) return;   // ignora auto-repeticion (boton mantenido)
+            Keys k = keyData & Keys.KeyCode;
+            if (k == Keys.None || k == Keys.Menu || k == Keys.ControlKey) return;   // ignora teclas vacias/control sueltas
+            for (int j = 0; j < configStep; j++)
+                if (configCap[j] == k) { UpdateConfigPrompt("Ese boton ya esta usado. Presiona OTRO."); return; }
+            configCap[configStep] = k;
+            configStep++;
+            if (configStep >= ConfigSteps.Length) FinishConfig();
+            else UpdateConfigPrompt(null);
+        }
+
+        private void FinishConfig()
+        {
+            keyUp = configCap[0]; keyDown = configCap[1]; keyLeft = configCap[2]; keyRight = configCap[3];
+            keyOK = configCap[4]; keyBack = configCap[5]; keyCoin = configCap[6]; keySkip = configCap[7];
+            SaveKeys();
+            configMode = false;
+            needConfig = false;
+            if (lblConfig != null) lblConfig.Visible = false;
+            this.Focus();
+            ShowToast("¡Botones configurados!");
+        }
+
+        private void ShowToast(string text) { ShowToast(text, Color.FromArgb(40, 165, 90)); }
+        private void ShowToast(string text, Color back)
+        {
+            int tw = 380, th = 48;
+            lblToast.Text = text;
+            lblToast.BackColor = back;
+            lblToast.SetBounds((ClientSize.Width - tw) / 2, 80, tw, th);
+            try { using (GraphicsPath gp = RoundRect(new Rectangle(0, 0, tw, th), 16)) lblToast.Region = new Region(gp); } catch { }  // esquinas redondeadas SIEMPRE
+            lblToast.Visible = true;
+            lblToast.BringToFront();
+            toastTimer.Stop(); toastTimer.Start();
+        }
+
+        private static GraphicsPath RoundRect(Rectangle r, int radius)
+        {
+            int d = radius * 2;
+            if (d > r.Width) d = r.Width;
+            if (d > r.Height) d = r.Height;
+            if (d < 1) d = 1;
+            GraphicsPath p = new GraphicsPath();
+            p.AddArc(r.X, r.Y, d, d, 180, 90);
+            p.AddArc(r.Right - d, r.Y, d, d, 270, 90);
+            p.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
+            p.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
+            p.CloseFigure();
+            return p;
+        }
+
+        // ---- Cola unificada (canciones + videos, en orden) + creditos ----
+        private enum AddResult { Added, NoCredit, Repeat }
+
+        private AddResult AddItem(PlayItem it)
+        {
+            if (it == null) return AddResult.Repeat;
+            if (credits <= 0) return AddResult.NoCredit;                  // sin creditos no se puede poner nada
+            // no repetir lo mismo dos veces seguidas (lo ultimo en sonar/encolar)
+            PlayItem last = (queue.Count > 0) ? queue[queue.Count - 1] : nowPlaying;
+            if (last != null && string.Equals(last.PathKey(), it.PathKey(), StringComparison.OrdinalIgnoreCase)) return AddResult.Repeat;
+            queue.Add(it);
+            RecordPlay(it);                                              // estadisticas: cuenta lo pedido
+            credits--;                                                   // cada cosa cuesta 1 credito
+            UpdateCredits();
+            if (nowPlaying == null) PlayNext();   // nada sonando -> arranca; si algo suena, solo se encola
+            else UpdateNowPlayingUI();
+            return AddResult.Added;
+        }
+
+        private void AddSong(Track t, Album disc)
+        {
+            if (t == null) return;
+            PlayItem it = new PlayItem(); it.IsVideo = false; it.Song = t; it.Disc = disc;
+            AddResult r = AddItem(it);
+            if (r == AddResult.Added) ShowToast("Agregada a la cola");
+            else if (r == AddResult.NoCredit) ShowToast("Inserta una moneda", Color.FromArgb(200, 130, 35));
+            else ShowToast("Esa ya va seguida", Color.FromArgb(200, 130, 35));
+        }
+
+        private void AddVideoToQueue(string path, Album disc)
+        {
+            if (string.IsNullOrEmpty(path)) return;
+            PlayItem it = new PlayItem(); it.IsVideo = true; it.VideoPath = path; it.Disc = disc;
+            AddResult r = AddItem(it);
+            if (r == AddResult.Added) ShowToast("Video agregado a la cola");
+            else if (r == AddResult.NoCredit) ShowToast("Inserta una moneda", Color.FromArgb(200, 130, 35));
+            else ShowToast("Ese video ya va seguido", Color.FromArgb(200, 130, 35));
+        }
+
+        // Suma creditos (la moneda) y actualiza el letrero
+        private void AddCoin()
+        {
+            credits += CreditsPerCoin;
+            statsCoins++; statsCreditsAdded += CreditsPerCoin; statsDirty = true;   // estadisticas
+            UpdateCredits();
+            ShowToast("+" + CreditsPerCoin + " creditos", Color.FromArgb(40, 165, 90));
+        }
+
+        // ===================== MOTOR DE ESTADISTICAS =====================
+        private string LibStatsFile() { return Path.Combine(Application.StartupPath, "rocola_stats.txt"); }
+
+        // Registra una reproduccion pedida (algo que entro a la cola con exito).
+        private void RecordPlay(PlayItem it)
+        {
+            if (it == null) return;
+            statsTotal++;
+            if (it.IsVideo)
+            {
+                statsVideoTotal++;
+                string vp = it.VideoPath;
+                if (!string.IsNullOrEmpty(vp)) { int n; videoCounts.TryGetValue(vp, out n); videoCounts[vp] = n + 1; videoSeq[vp] = ++statsSeq; }
+            }
+            else if (it.Song != null && !string.IsNullOrEmpty(it.Song.Path))
+            {
+                statsSongTotal++;
+                int n; songCounts.TryGetValue(it.Song.Path, out n); songCounts[it.Song.Path] = n + 1;
+                songSeq[it.Song.Path] = ++statsSeq;
+                if (!string.IsNullOrEmpty(it.Song.Genre) && !songGenre.ContainsKey(it.Song.Path)) songGenre[it.Song.Path] = GenreLabel(it.Song.Genre);
+                string ar = it.Song.Artist;
+                if (!string.IsNullOrEmpty(ar)) { int a; artistCounts.TryGetValue(ar, out a); artistCounts[ar] = a + 1; }
+                // primera cancion contada -> habilitar la seccion "Lo mas sonado" en la barra de letras
+                if (letterAvailable != null && !letterAvailable.Contains(TopMark)) { letterAvailable.Add(TopMark); if (letterBar != null) letterBar.Invalidate(); }
+            }
+            statsDirty = true;
+        }
+
+        private void StatsTimer_Tick(object sender, EventArgs e)
+        {
+            if (statsDirty) { statsDirty = false; SaveStats(true); }   // guardado periodico en segundo plano
+        }
+
+        // Mantiene el archivo acotado: descarta lo menos sonado (y mas viejo) para dejar entrar lo nuevo.
+        private void PruneStats()
+        {
+            PruneCountDict(songCounts, songSeq, songGenre, SongStatCap, SongStatTarget);
+            PruneCountDict(videoCounts, videoSeq, null, VideoStatCap, VideoStatTarget);
+            PruneCountDict(artistCounts, null, null, ArtistStatCap, ArtistStatTarget);
+            if (songGenre.Count > songCounts.Count)   // limpiar generos huerfanos
+            {
+                List<string> orphans = new List<string>();
+                foreach (string k in songGenre.Keys) if (!songCounts.ContainsKey(k)) orphans.Add(k);
+                for (int i = 0; i < orphans.Count; i++) songGenre.Remove(orphans[i]);
+            }
+        }
+
+        private void PruneCountDict(Dictionary<string, int> counts, Dictionary<string, long> seq, Dictionary<string, string> extra, int cap, int target)
+        {
+            if (counts.Count <= cap) return;
+            List<string> keys = new List<string>(counts.Keys);
+            keys.Sort(delegate (string a, string b)
+            {
+                int ca = counts[a], cb = counts[b];
+                if (ca != cb) return ca - cb;              // menos sonado primero (candidato a borrar)
+                long sa = 0, sb = 0; if (seq != null) { seq.TryGetValue(a, out sa); seq.TryGetValue(b, out sb); }
+                if (sa != sb) return (sa < sb) ? -1 : 1;   // mas viejo primero
+                return string.Compare(a, b, StringComparison.OrdinalIgnoreCase);
+            });
+            int remove = counts.Count - target;
+            for (int i = 0; i < remove && i < keys.Count; i++)
+            {
+                string k = keys[i];
+                counts.Remove(k);
+                if (seq != null) seq.Remove(k);
+                if (extra != null) extra.Remove(k);
+            }
+        }
+
+        // Claves ordenadas por recencia (mas viejo primero): al guardarse asi, al recargar se reconstruye
+        // el orden de recencia leyendo el archivo de arriba hacia abajo.
+        private List<string> KeysBySeq(Dictionary<string, int> counts, Dictionary<string, long> seq)
+        {
+            List<string> ks = new List<string>(counts.Keys);
+            ks.Sort(delegate (string a, string b)
+            {
+                long sa = 0, sb = 0; seq.TryGetValue(a, out sa); seq.TryGetValue(b, out sb);
+                if (sa != sb) return (sa < sb) ? -1 : 1;
+                return string.Compare(a, b, StringComparison.OrdinalIgnoreCase);
+            });
+            return ks;
+        }
+
+        private void SaveStats(bool async)
+        {
+            PruneStats();   // acotar antes de escribir
+            string text;
+            try { text = BuildStatsText(); } catch { return; }   // se arma en el hilo de la interfaz (sin acceso cruzado a los diccionarios)
+            if (async)
+                System.Threading.ThreadPool.QueueUserWorkItem(delegate (object st) { try { File.WriteAllText(LibStatsFile(), text); } catch { } });
+            else
+                try { File.WriteAllText(LibStatsFile(), text); } catch { }   // al cerrar: sincrono (el proceso podria salir antes de un hilo de fondo)
+        }
+
+        private string BuildStatsText()
+        {
+            StringBuilder sb = new StringBuilder(songCounts.Count * 48 + 256);
+            sb.Append("ROCOLA-STATS v1\r\n");
+            sb.Append("total-reproducciones=").Append(statsTotal).Append("\r\n");
+            sb.Append("total-canciones=").Append(statsSongTotal).Append("\r\n");
+            sb.Append("total-videos=").Append(statsVideoTotal).Append("\r\n");
+            sb.Append("monedas=").Append(statsCoins).Append("\r\n");
+            sb.Append("creditos-cargados=").Append(statsCreditsAdded).Append("\r\n");
+            sb.Append("[CANCIONES] count|ruta\r\n");
+            List<string> sk = KeysBySeq(songCounts, songSeq);
+            for (int i = 0; i < sk.Count; i++) sb.Append(songCounts[sk[i]]).Append('|').Append(sk[i]).Append("\r\n");
+            sb.Append("[ARTISTAS] count|artista\r\n");
+            foreach (KeyValuePair<string, int> kv in artistCounts) sb.Append(kv.Value).Append('|').Append(kv.Key).Append("\r\n");
+            sb.Append("[VIDEOS] count|ruta\r\n");
+            List<string> vk = KeysBySeq(videoCounts, videoSeq);
+            for (int i = 0; i < vk.Count; i++) sb.Append(videoCounts[vk[i]]).Append('|').Append(vk[i]).Append("\r\n");
+            sb.Append("[GENEROS] genero|ruta\r\n");
+            foreach (KeyValuePair<string, string> kv in songGenre) sb.Append(kv.Value).Append('|').Append(kv.Key).Append("\r\n");
+            return sb.ToString();
+        }
+
+        private void LoadStats()
+        {
+            try
+            {
+                string f = LibStatsFile();
+                if (!File.Exists(f)) return;
+                string[] L = File.ReadAllLines(f);
+                if (L.Length < 1 || L[0] != "ROCOLA-STATS v1") return;
+                int section = 0;   // 0=totales 1=canciones 2=artistas 3=videos
+                for (int i = 1; i < L.Length; i++)
+                {
+                    string line = L[i];
+                    if (line.Length == 0) continue;
+                    if (line.StartsWith("[CANCIONES]")) { section = 1; continue; }
+                    if (line.StartsWith("[ARTISTAS]")) { section = 2; continue; }
+                    if (line.StartsWith("[VIDEOS]")) { section = 3; continue; }
+                    if (line.StartsWith("[GENEROS]")) { section = 4; continue; }
+                    if (section == 0)
+                    {
+                        int eq = line.IndexOf('=');
+                        if (eq <= 0) continue;
+                        string k = line.Substring(0, eq); long v;
+                        if (!long.TryParse(line.Substring(eq + 1), out v)) continue;
+                        if (k == "total-reproducciones") statsTotal = v;
+                        else if (k == "total-canciones") statsSongTotal = v;
+                        else if (k == "total-videos") statsVideoTotal = v;
+                        else if (k == "monedas") statsCoins = v;
+                        else if (k == "creditos-cargados") statsCreditsAdded = v;
+                    }
+                    else
+                    {
+                        int b = line.IndexOf('|');
+                        if (b <= 0) continue;
+                        string key = line.Substring(b + 1);
+                        if (key.Length == 0) continue;
+                        if (section == 4) { songGenre[key] = line.Substring(0, b); continue; }   // genero|ruta (lo de antes del | es la etiqueta, no un numero)
+                        int cnt; if (!int.TryParse(line.Substring(0, b), out cnt)) continue;
+                        if (section == 1) { songCounts[key] = cnt; songSeq[key] = ++statsSeq; }
+                        else if (section == 2) artistCounts[key] = cnt;
+                        else if (section == 3) { videoCounts[key] = cnt; videoSeq[key] = ++statsSeq; }
+                    }
+                }
+            }
+            catch { }
+        }
+
+        private class TopEntry { public Track T; public int C; public Album A; public string V; }
+
+        // Construye el disco virtual "Lo mas sonado" con las canciones MAS PEDIDAS (de las estadisticas),
+        // ordenadas de mas a menos. Se arma al entrar a la seccion, asi siempre refleja lo actual.
+        // Construye los discos virtuales "TOP - <genero>" con las canciones mas pedidas de cada genero.
+        private void BuildTopDiscs()
+        {
+            topDiscs = new List<Album>();
+            if (songCounts.Count == 0) return;
+
+            // 1) recolectar todas las canciones pedidas que EXISTEN en la biblioteca, con su disco de origen
+            List<TopEntry> all = new List<TopEntry>();
+            for (int i = 0; i < albums.Count; i++)
+            {
+                Album al = albums[i];
+                for (int j = 0; j < al.Tracks.Count; j++)
+                {
+                    Track t = al.Tracks[j];
+                    int c;
+                    if (t != null && t.Path != null && songCounts.TryGetValue(t.Path, out c))
+                    { TopEntry te = new TopEntry(); te.T = t; te.C = c; te.A = al; all.Add(te); }
+                }
+            }
+            if (all.Count == 0) return;
+
+            // 2) agrupar por etiqueta de genero (las que no tengan genero capturado caen en "Otros")
+            Dictionary<string, List<TopEntry>> byGenre = new Dictionary<string, List<TopEntry>>();
+            List<string> order = new List<string>();
+            for (int i = 0; i < all.Count; i++)
+            {
+                string gl;
+                if (!songGenre.TryGetValue(all[i].T.Path, out gl) || string.IsNullOrEmpty(gl)) gl = "Otros";
+                List<TopEntry> lst;
+                if (!byGenre.TryGetValue(gl, out lst)) { lst = new List<TopEntry>(); byGenre[gl] = lst; order.Add(gl); }
+                lst.Add(all[i]);
+            }
+
+            // 3) un disco virtual por genero
+            List<Album> discs = new List<Album>();
+            Dictionary<Album, long> totals = new Dictionary<Album, long>();
+            for (int gi = 0; gi < order.Count; gi++)
+            {
+                string gl = order[gi];
+                List<TopEntry> lst = byGenre[gl];
+                lst.Sort(delegate (TopEntry x, TopEntry y)
+                {
+                    if (y.C != x.C) return y.C - x.C;
+                    return string.Compare(x.T.Path, y.T.Path, StringComparison.OrdinalIgnoreCase);
+                });
+                int take = (lst.Count < TopMax) ? lst.Count : TopMax;
+                Album d = new Album();
+                d.IsTop = true; d.Letter = TopMark; d.Folder = "::TOP::" + gl;
+                d.Artist = "TOP 100"; d.Name = gl;             // AlbumLabel -> "TOP 100 - Rock"
+                d.Tracks = new List<Track>();
+                d.TrackCovers = new List<string>();
+                d.TrackInfo = new List<string>();
+                d.TrackAlbums = new List<Album>();
+                List<string> cycle = new List<string>();
+                long total = 0;
+                for (int i = 0; i < take; i++)
+                {
+                    TopEntry te = lst[i];
+                    d.Tracks.Add(te.T);
+                    d.TrackCovers.Add(te.A.CoverPath);
+                    d.TrackInfo.Add(AlbumLabel(te.A));
+                    d.TrackAlbums.Add(te.A);
+                    if (te.A.CoverPath != null && !cycle.Contains(te.A.CoverPath)) cycle.Add(te.A.CoverPath);
+                    total += te.C;
+                }
+                d.CycleCovers = cycle;
+                d.CoverPath = (cycle.Count > 0) ? cycle[0] : null;
+                totals[d] = total;
+                discs.Add(d);
+            }
+
+            // 3a) discos TOP por ARTISTA muy puesto (hasta 5): "TOP - <artista>"
+            {
+                Dictionary<string, List<TopEntry>> byArtist = new Dictionary<string, List<TopEntry>>(StringComparer.OrdinalIgnoreCase);
+                List<string> aOrder = new List<string>();
+                for (int i = 0; i < all.Count; i++)
+                {
+                    string ar = all[i].T.Artist;
+                    if (string.IsNullOrEmpty(ar)) continue;
+                    List<TopEntry> lst;
+                    if (!byArtist.TryGetValue(ar, out lst)) { lst = new List<TopEntry>(); byArtist[ar] = lst; aOrder.Add(ar); }
+                    lst.Add(all[i]);
+                }
+                // candidatos: artistas con >=2 canciones distintas puestas (un solo tema no amerita disco)
+                List<string> cand = new List<string>();
+                Dictionary<string, long> aTot = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+                for (int i = 0; i < aOrder.Count; i++)
+                {
+                    string ar = aOrder[i];
+                    List<TopEntry> lst = byArtist[ar];
+                    if (lst.Count < 2) continue;
+                    long t = 0; for (int j = 0; j < lst.Count; j++) t += lst[j].C;
+                    aTot[ar] = t; cand.Add(ar);
+                }
+                cand.Sort(delegate (string a, string b)
+                {
+                    long ta = aTot[a], tb = aTot[b];
+                    if (tb != ta) return (tb > ta) ? 1 : -1;
+                    return string.Compare(a, b, StringComparison.OrdinalIgnoreCase);
+                });
+                int amax = (cand.Count < 10) ? cand.Count : 10;   // hasta 10 artistas mas puestos
+                for (int ai = 0; ai < amax; ai++)
+                {
+                    string ar = cand[ai];
+                    List<TopEntry> lst = byArtist[ar];
+                    lst.Sort(delegate (TopEntry x, TopEntry y)
+                    {
+                        if (y.C != x.C) return y.C - x.C;
+                        return string.Compare(x.T.Path, y.T.Path, StringComparison.OrdinalIgnoreCase);
+                    });
+                    int take = (lst.Count < TopMax) ? lst.Count : TopMax;
+                    Album d = new Album();
+                    d.IsTop = true; d.Letter = TopMark; d.Folder = "::TOPART::" + ar;
+                    d.Artist = "TOP"; d.Name = ar;             // AlbumLabel -> "TOP - Depeche Mode"
+                    d.Tracks = new List<Track>();
+                    d.TrackCovers = new List<string>();
+                    d.TrackInfo = new List<string>();
+                    d.TrackAlbums = new List<Album>();
+                    List<string> cyc = new List<string>();
+                    for (int i = 0; i < take; i++)
+                    {
+                        TopEntry te = lst[i];
+                        d.Tracks.Add(te.T);
+                        d.TrackCovers.Add(te.A.CoverPath);
+                        d.TrackInfo.Add(AlbumLabel(te.A));
+                        d.TrackAlbums.Add(te.A);
+                        if (te.A.CoverPath != null && !cyc.Contains(te.A.CoverPath)) cyc.Add(te.A.CoverPath);
+                    }
+                    d.CycleCovers = cyc;
+                    d.CoverPath = (cyc.Count > 0) ? cyc[0] : null;
+                    totals[d] = aTot[ar];
+                    discs.Add(d);
+                }
+            }
+
+            // 3b) disco TOP de VIDEOS (de videoCounts, recorriendo los discos con video)
+            if (videoCounts.Count > 0 && videoAlbums != null)
+            {
+                List<TopEntry> vids = new List<TopEntry>();
+                for (int i = 0; i < videoAlbums.Count; i++)
+                {
+                    Album va = videoAlbums[i];
+                    for (int j = 0; j < va.VideoFiles.Count; j++)
+                    {
+                        string vf = va.VideoFiles[j];
+                        int c;
+                        if (vf != null && videoCounts.TryGetValue(vf, out c))
+                        { TopEntry te = new TopEntry(); te.V = vf; te.C = c; te.A = va; vids.Add(te); }
+                    }
+                }
+                if (vids.Count > 0)
+                {
+                    vids.Sort(delegate (TopEntry x, TopEntry y)
+                    {
+                        if (y.C != x.C) return y.C - x.C;
+                        return string.Compare(x.V, y.V, StringComparison.OrdinalIgnoreCase);
+                    });
+                    int vtake = (vids.Count < TopMax) ? vids.Count : TopMax;
+                    Album vd = new Album();
+                    vd.IsTop = true; vd.TopIsVideo = true; vd.Letter = TopMark; vd.Folder = "::TOPVID::";
+                    vd.Artist = "TOP 100"; vd.Name = "Videos";
+                    vd.VideoFiles = new List<string>();
+                    vd.TrackCovers = new List<string>();
+                    vd.TrackInfo = new List<string>();
+                    vd.TrackAlbums = new List<Album>();
+                    List<string> vcyc = new List<string>();
+                    long vtotal = 0;
+                    for (int i = 0; i < vtake; i++)
+                    {
+                        TopEntry te = vids[i];
+                        vd.VideoFiles.Add(te.V);
+                        vd.TrackCovers.Add(te.A.CoverPath);
+                        vd.TrackInfo.Add(AlbumLabel(te.A));
+                        vd.TrackAlbums.Add(te.A);
+                        if (te.A.CoverPath != null && !vcyc.Contains(te.A.CoverPath)) vcyc.Add(te.A.CoverPath);
+                        vtotal += te.C;
+                    }
+                    vd.CycleCovers = vcyc;
+                    vd.CoverPath = (vcyc.Count > 0) ? vcyc[0] : null;
+                    totals[vd] = vtotal;
+                    discs.Add(vd);
+                }
+            }
+
+            // 4) ordenar por CLASE (genero primero, luego videos, luego artistas) y dentro de
+            //    cada clase por total de reproducciones. Asi quedan agrupados y comodos de ver.
+            discs.Sort(delegate (Album x, Album y)
+            {
+                int cx = x.TopIsVideo ? 1 : ((x.Folder != null && x.Folder.StartsWith("::TOPART::", StringComparison.Ordinal)) ? 2 : 0);
+                int cy = y.TopIsVideo ? 1 : ((y.Folder != null && y.Folder.StartsWith("::TOPART::", StringComparison.Ordinal)) ? 2 : 0);
+                if (cx != cy) return cx - cy;
+                long tx = totals[x], ty = totals[y];
+                if (ty != tx) return (ty > tx) ? 1 : -1;
+                return string.Compare(x.Name, y.Name, StringComparison.OrdinalIgnoreCase);
+            });
+            topDiscs = discs;
+        }
+
+        // Un video no se pudo reproducir: como encolarlo costo 1 credito, se le devuelve al cliente.
+        private void RefundVideoCredit()
+        {
+            credits++;
+            UpdateCredits();
+        }
+
+        private void UpdateCredits()
+        {
+            if (lblCredits == null) return;
+            if (credits <= 0) { lblCredits.Text = "Inserta una moneda"; lblCredits.ForeColor = Color.FromArgb(255, 205, 90); }
+            else { lblCredits.Text = "Creditos:  " + credits; lblCredits.ForeColor = Color.FromArgb(120, 240, 140); }
+            lblCredits.Invalidate();
+        }
+
+        // Reproduce el siguiente elemento (cancion o video). Tambien sirve para SALTAR el actual.
+        private void PlayNext()
+        {
+            DisposePlaybackNow();      // detiene cualquier cancion (se desuscribe antes; no re-dispara)
+            StopVideoPlayback();       // detiene cualquier video
+
+            if (queue.Count == 0)
+            {
+                nowPlaying = null;
+                progress.Value = 0; lblTime.Text = "0:00 / 0:00";
+                ApplyGenreBackground(null);
+                LayoutControls(); this.Invalidate();
+                UpdateNowPlayingUI();
+                return;
+            }
+
+            nowPlaying = queue[0];
+            queue.RemoveAt(0);
+
+            if (nowPlaying.IsVideo)
+            {
+                bgAccentTarget = DefaultAccent;       // el video no tiene genero
+                StartVideoItem(nowPlaying.VideoPath);
+            }
+            else
+            {
+                nowPlaying.Song.EnsureTags();         // lee ID3 ahora (genero -> color de fondo)
+                if (nowPlaying.Song.Path != null) { songGenre[nowPlaying.Song.Path] = GenreLabel(nowPlaying.Song.Genre); statsDirty = true; }   // captura genero para los discos TOP
+                ApplyGenreBackground(nowPlaying.Song);
+                PlayTrack(nowPlaying.Song);
+            }
+            LayoutControls(); this.Invalidate();
+            UpdateNowPlayingUI();
+        }
+
+        private void SkipSong()   // SHIFT: salta el elemento actual (cancion o video)
+        {
+            if (nowPlaying != null) PlayNext();
+        }
+
+        // ===================  VIDEO (Windows Media Player ActiveX, por codigo)  ===================
+
+        // Pantalla completa del video tras inactividad (para apreciarlo mejor). Deja una franja
+        // arriba para el aviso "toca una tecla" (asi no encimamos nada sobre el ActiveX del video).
+        private void EnterVideoFull()
+        {
+            if (videoFull || !videoOn || video == null) return;
+            videoFull = true;
+            LayoutControls();
+            video.BringToFront();
+            if (lblAttract != null) { lblAttract.Visible = true; lblAttract.BringToFront(); }
+        }
+        private void ExitVideoFull()
+        {
+            if (!videoFull) return;
+            videoFull = false;
+            if (lblAttract != null) lblAttract.Visible = false;
+            LayoutControls();
+            this.Invalidate();
+        }
+
+        // Abre y reproduce un video en el reproductor de la derecha (lo llama PlayNext).
+        private void StartVideoItem(string path)
+        {
+            try
+            {
+                if (video == null)
+                {
+                    video = new VideoHost();
+                    video.TabStop = false;
+                    Controls.Add(video);
+                    IntPtr forceHandle = video.Handle;   // fuerza la creacion del control ActiveX
+                }
+                video.Visible = !searchOpen;   // si el buscador esta abierto, el cuadro queda oculto (el audio sigue)
+
+                object ocx = video.GetOcxObj();
+                if (ocx == null) throw new Exception("control WMP nulo");
+
+                Set(ocx, "uiMode", "none");
+                Set(ocx, "stretchToFit", true);
+                object settings = Get(ocx, "settings");
+                if (settings != null) { Set(settings, "autoStart", true); Set(settings, "volume", 100); }
+                Set(ocx, "URL", path);   // con autoStart=true deberia arrancar solo
+                try { object c0 = Get(ocx, "controls"); if (c0 != null) Call(c0, "play"); } catch { }   // empujon explicito: autoStart no siempre engancha al instanciar el ActiveX
+
+                videoOn = true;
+                progress.Value = 0; lblTime.Text = "0:00 / 0:00";   // limpia el tiempo de la cancion anterior; VideoPoll lo llena con pos/dur del video
+                videoLastPos = -1; videoProgressTick = Environment.TickCount; videoNudged = false; videoMaxPos = 0;   // arrancar el vigia de avance
+                video.BringToFront();
+                videoPoll.Start();
+            }
+            catch (Exception ex)
+            {
+                videoOn = false;
+                try { if (video != null) video.Visible = false; } catch { }
+                RefundVideoCredit();   // compensacion al cliente: el video no abrio
+                ShowToast("No se pudo abrir el video: credito devuelto", Color.FromArgb(200, 80, 70));
+                lblStatus.Text = "Video (WMP): " + ex.Message;
+                // el video no arranco: pasar al siguiente sin trabar la cola (tras desenredar la pila de PlayNext)
+                try { if (this.IsHandleCreated) this.BeginInvoke((MethodInvoker)delegate { PlayNext(); }); } catch { }
+            }
+        }
+
+        // Detiene/oculta el video SIN tocar la cola (lo usan PlayNext y el cierre del buscador).
+        private void StopVideoPlayback()
+        {
+            videoPoll.Stop();
+            try { if (video != null) video.Visible = false; } catch { }   // ocultar PRIMERO (aunque el OCX truene al detener)
+            try
+            {
+                if (video != null)
+                {
+                    object ocx = video.GetOcxObj();
+                    if (ocx != null)
+                    {
+                        object controls = Get(ocx, "controls");
+                        if (controls != null) Call(controls, "stop");
+                        Set(ocx, "URL", "");
+                    }
+                }
+            }
+            catch { }
+            videoOn = false;
+            if (videoFull) ExitVideoFull();   // si estaba en pantalla completa, vuelve a la vista normal
+        }
+
+        private void VideoPoll_Tick(object sender, EventArgs e)
+        {
+            if (!videoOn || video == null) { videoPoll.Stop(); return; }
+            int now = Environment.TickCount;
+            int st = -1; double pos = -1, dur = -1;
+            try
+            {
+                object ocx = video.GetOcxObj();
+                if (ocx != null)
+                {
+                    object ps = Get(ocx, "playState");
+                    if (ps != null) st = Convert.ToInt32(ps);
+                    object controls = Get(ocx, "controls");
+                    if (controls != null) { object cp = Get(controls, "currentPosition"); if (cp != null) pos = Convert.ToDouble(cp); }
+                    object media = Get(ocx, "currentMedia");
+                    if (media != null) { object d = Get(media, "duration"); if (d != null) dur = Convert.ToDouble(d); }
+                }
+            }
+            catch { }
+
+            if (pos > videoMaxPos) videoMaxPos = pos;
+
+            // El tiempo/barra del VIDEO salen de aqui (ProgressTimer solo sirve a las canciones via 'reader',
+            // que con video esta nulo). Sin esto el tiempo se quedaba congelado en lo ultimo de la cancion.
+            if (pos >= 0 && dur > 0.5)
+            {
+                double frac = pos / dur; if (frac < 0) frac = 0; if (frac > 1) frac = 1;
+                progress.Value = frac;
+                lblTime.Text = Fmt(TimeSpan.FromSeconds(pos)) + " / " + Fmt(TimeSpan.FromSeconds(dur));
+            }
+
+            // FIN NORMAL del video (sin reembolso, se reprodujo bien): MediaEnded (8); o la posicion
+            // alcanzo la duracion (algunos archivos se congelan en el ultimo cuadro y NO reportan
+            // MediaEnded -> esto era lo que dejaba la pantalla negra pegada); o Stopped tras reproducirse.
+            bool reachedEnd = (dur > 0.5 && pos >= dur - 0.6);
+            bool stoppedAfterPlaying = (st == 1 && videoMaxPos >= 3.0);
+            if (st == 8 || reachedEnd || stoppedAfterPlaying) { PlayNext(); return; }
+
+            // Stopped (1) SIN haberse reproducido = fallo real de arranque -> reembolso + saltar.
+            if (st == 1 && videoMaxPos < 3.0)
+            {
+                try { LogError("video detenido sin reproducir: " + (nowPlaying != null ? nowPlaying.VideoPath : "?"), null); } catch { }
+                RefundVideoCredit();
+                ShowToast("Video no disponible: credito devuelto", Color.FromArgb(200, 130, 35));
+                PlayNext();
+                return;
+            }
+
+            // VIGIA DE VIDEO COLGADO: si la posicion AVANZA, todo bien (se reinicia el cronometro). Si NO
+            // avanza 12 segundos seguidos (y sin haber llegado al final), se da por fallido y se SALTA solo.
+            if (pos > videoLastPos + 0.05) { videoLastPos = pos; videoProgressTick = now; }
+            else if (now - videoProgressTick > 6000 && !videoNudged)
+            {
+                // 6s sin avanzar: un EMPUJON de rescate (play explicito) por si fue una traba transitoria
+                // (no el codec). Si el archivo es reproducible pero se atoro, esto suele revivirlo.
+                videoNudged = true;
+                try { object oc = video.GetOcxObj(); if (oc != null) { object c = Get(oc, "controls"); if (c != null) Call(c, "play"); } } catch { }
+            }
+            else if (now - videoProgressTick > 12000)
+            {
+                // 12s sin avanzar pese al empujon: el sistema no puede con este archivo (codec ausente o
+                // archivo ilegible). Se salta solo y se anota la ruta para identificarlo.
+                try { LogError("video estancado (playState=" + st + "): " + (nowPlaying != null ? nowPlaying.VideoPath : "?"), null); }
+                catch { }
+                RefundVideoCredit();   // compensacion al cliente: el video no se pudo reproducir
+                ShowToast("Video no disponible: credito devuelto", Color.FromArgb(200, 130, 35));
+                PlayNext();
+            }
+        }
+
+        // Late-binding por reflexion: le hablamos al control WMP sin referencias COM ni 'dynamic'
+        // (asi funciona igual en .NET 6 y en .NET 3.5/4.0 de XP).
+        private static object Get(object o, string prop)
+        {
+            return o.GetType().InvokeMember(prop, BindingFlags.GetProperty, null, o, null);
+        }
+        private static void Set(object o, string prop, object val)
+        {
+            o.GetType().InvokeMember(prop, BindingFlags.SetProperty, null, o, new object[] { val });
+        }
+        private static object Call(object o, string method, params object[] args)
+        {
+            return o.GetType().InvokeMember(method, BindingFlags.InvokeMethod, null, o, args);
+        }
+
+        private void ApplyGenreBackground(Track t)
+        {
+            Color acc = ColorForTrack(t);   // excepcion por artista (BTS=morado) y luego genero
+            bgAccentTarget = acc;
+            Color panel = Shade(acc, 0.70);
+            Color list = Shade(acc, 0.76);
+            panelSongs.BackColor = panel;
+            if (songPager != null) { songPager.BackColor = panel; songPager.Invalidate(); }
+            cubeBox.BackColor = Color.Transparent;
+            lstSongs.BackColor = list;
+            lstSongs.Invalidate();
+        }
+
+        private void PlayTrack(Track t)
+        {
+            try
+            {
+                reader = new AudioFileReader(t.Path);
+                reader.Volume = FixedVolume;
+                // WaveOut con callback por VENTANA, no WaveOutEvent: el de eventos llama a
+                // WaitHandle.WaitOne(Int32), que NO existe en .NET 3.5 sin Service Pack 1
+                // (el de la rockola) y truena con MissingMethodException. Este no lo usa.
+                WaveOut wo = new WaveOut();
+                // El audio se rellena desde el bucle de mensajes de la interfaz; con 1 SEGUNDO de colchon,
+                // la musica aguanta CUALQUIER atoron (paginas, caratulas, GC, video) sin cortarse jamas.
+                // Rellenar 200ms de MP3 cuesta ~2-5ms de CPU: el colchon grande sale practicamente gratis.
+                wo.DesiredLatency = 1000;
+                wo.NumberOfBuffers = 5;     // 5 bloques de 200ms
+                output = wo;
+                output.PlaybackStopped += Output_PlaybackStopped;
+                output.Init(new SampleToWaveProvider16(new LevelTap(reader, this)));
+                output.Play();
+                progressTimer.Start();
+            }
+            catch (Exception ex)
+            {
+                lblStatus.Text = "No se pudo reproducir " + Path.GetFileName(t.Path) + " (" + ex.Message + ")";
+                LogError("PlayTrack " + Path.GetFileName(t.Path), ex);
+                DisposePlaybackNow();
+                // OPTIMIZACION (estabilidad): antes era PlayNext() directo. Si varias canciones seguidas
+                // no abren (archivos movidos/corruptos) se apilaba PlayTrack->PlayNext->PlayTrack... hasta
+                // un posible StackOverflow. Via BeginInvoke se desenreda la pila (igual que en el video).
+                try { if (this.IsHandleCreated) this.BeginInvoke((MethodInvoker)delegate { PlayNext(); }); } catch { }
+            }
+        }
+
+        // Guarda el error completo (tipo + mensaje + pila) en rocola_error.txt junto al .exe,
+        // para poder ver el metodo exacto que falta (p. ej. por una version equivocada de NAudio).
+        private void LogError(string context, Exception ex)
+        {
+            try
+            {
+                string f = Path.Combine(Application.StartupPath, "rocola_error.txt");
+                string msg = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "  [" + context + "]\r\n"
+                           + (ex != null ? ex.ToString() : "(sin excepcion)") + "\r\n\r\n";
+                try { FileInfo fi = new FileInfo(f); if (fi.Exists && fi.Length > 262144) fi.Delete(); } catch { }   // tope ~256KB
+                File.AppendAllText(f, msg);
+            }
+            catch { }
+        }
+
+        private void Output_PlaybackStopped(object sender, StoppedEventArgs e)
+        {
+            if (e.Exception != null)
+            {
+                lblStatus.Text = "Aviso al reproducir: " + e.Exception.Message;
+                LogError("PlaybackStopped", e.Exception);
+                playFailStreak++;
+                if (playFailStreak >= 3)
+                {
+                    // Algo de fondo esta mal (NAudio o formato). Dejamos de saltar para no ciclar.
+                    DisposePlaybackNow();
+                    nowPlaying = null;
+                    lblStatus.Text = "No se pudo reproducir. Detalle en rocola_error.txt (junto al programa)";
+                    UpdateNowPlayingUI();
+                    return;
+                }
+            }
+            else playFailStreak = 0;   // termino bien una cancion -> reinicia el contador
+            PlayNext();
+        }
+
+        private void DisposePlaybackNow()
+        {
+            progressTimer.Stop();
+            if (output != null)
+            {
+                output.PlaybackStopped -= Output_PlaybackStopped;
+                try { output.Stop(); } catch { }
+                try { output.Dispose(); } catch { }
+                output = null;
+            }
+            if (reader != null) { try { reader.Dispose(); } catch { } reader = null; }
+            audioPeakRaw = 0f;
+        }
+
+        // La llama el hilo de audio con el nivel (RMS) del bloque recien leido. Trivial a proposito.
+        public void ReportAudioPeak(float level) { audioPeakRaw = level; }
+
+        private void UpdateNowPlayingUI()
+        {
+            lblNow.Text = (nowPlaying != null) ? "Reproduciendo:  " + nowPlaying.Display() : "Nada reproduciendose";
+            lblNext.Text = (queue.Count > 0) ? "Siguiente:  " + queue[0].Display() : "Siguiente:  -";
+            lblCount.Text = "En cola:  " + queue.Count;
+            if (miniCube != null)
+            {
+                if (nowPlaying != null) { miniCube.Cover = LoadCover(nowPlaying.Disc); miniCube.Visible = true; }
+                else { miniCube.Cover = null; miniCube.Visible = false; }
+                miniCube.Invalidate();
+            }
+        }
+
+        private void ProgressTimer_Tick(object sender, EventArgs e)
+        {
+            if (reader == null) return;
+            TimeSpan cur = reader.CurrentTime, tot = reader.TotalTime;
+            if (tot.TotalSeconds > 0) progress.Value = cur.TotalSeconds / tot.TotalSeconds;
+            lblTime.Text = Fmt(cur) + " / " + Fmt(tot);
+        }
+
+        private void AnimTimer_Tick(object sender, EventArgs e)
+        {
+            phase += 0.045;
+            frameTick++;
+            int starBucket = Environment.TickCount / 60000;   // patron de estrellas NUEVO cada minuto
+            if (starBucket != lastStarBucket)
+            {
+                lastStarBucket = starBucket;
+                this.Invalidate();                                                       // franjas del form (abecedario/estado)
+                if (panelSongs != null && panelSongs.Visible) panelSongs.Invalidate();   // vista de canciones
+            }
+            // OPTIMIZACION CLAVE: los brillos del fondo se mueven MENOS DE MEDIO PIXEL por cuadro, asi
+            // que repintar TODA la pantalla 25 veces/seg por ellos es desperdicio. El fondo completo se
+            // repinta 1 de cada 3 cuadros (~8/seg, indistinguible en blobs borrosos); el cubo que gira
+            // se repinta SOLO en su casilla a velocidad plena. Esto recorta ~3x el costo fijo de CPU.
+            bool fullFrame = (frameTick % 2) == 0;   // fondo completo a 12fps (antes 1 de cada 3 = 8fps)
+
+            DrainCoverTrash();   // libera carátulas expulsadas (seguro: no hay repintado en curso)
+
+            // Nivel de audio suavizado para los visuales reactivos: ataque rapido, caida lenta (late con
+            // la musica). RMS escalado; 0 cuando no hay nada sonando. Es envolvente de energia, no beat exacto.
+            float aTgt = (nowPlaying != null) ? (audioPeakRaw * 3.0f) : 0f;
+            if (aTgt > 1f) aTgt = 1f;
+            if (aTgt > audioLevel) audioLevel = audioLevel + (aTgt - audioLevel) * 0.55f;
+            else audioLevel = audioLevel * 0.86f;
+            if (audioLevel < 0.003f) audioLevel = 0f;
+
+            bool transitioning = (bgAccent.R != bgAccentTarget.R || bgAccent.G != bgAccentTarget.G || bgAccent.B != bgAccentTarget.B);
+            if (transitioning)
+            {
+                bgAccent = LerpColor(bgAccent, bgAccentTarget, 0.16);
+                if (Math.Abs(bgAccent.R - bgAccentTarget.R) <= 2 && Math.Abs(bgAccent.G - bgAccentTarget.G) <= 2 && Math.Abs(bgAccent.B - bgAccentTarget.B) <= 2)
+                    bgAccent = bgAccentTarget;
+                this.Invalidate();   // tambien con buscador abierto: el fondo es barato y la franja de estado debe recolorear
+            }
+            // Durante el fundido de estrellas (cada minuto) repinta tambien las franjas del form y la vista
+            // de canciones, para que se fundan junto con el centro (mismo costo/duracion que una transicion).
+            int tmFade = Environment.TickCount % 60000; if (tmFade < 0) tmFade += 60000;
+            bool starFading = (tmFade >= 60000 - 1500) || (tmFade < 1700);
+            if (!transitioning && starFading && !searchOpen && !videoFull && !attractOn)   // solo en la vista normal (no detras de overlays/video)
+            {
+                this.Invalidate();
+                if (panelSongs != null && panelSongs.Visible) panelSongs.Invalidate();
+            }
+            albumView.BgAccent = bgAccent;
+
+            if (searchOpen)
+            {
+                if ((DateTime.Now - searchLastActivity).TotalSeconds >= 60) { CloseSearch(); return; }   // 1 min sin actividad
+                searchOverlay.Accent = bgAccent;
+                searchOverlay.Phase = phase;
+                searchOverlay.AudioPulse = audioLevel;
+                searchOverlay.CubeAngle += 0.075;   // gira mas rapido
+                searchOverlay.Invalidate();         // repinta cada tick (24fps): fondo + cubo mas fluidos
+                if (miniCube.Visible) { miniCube.Phase = phase; miniCube.Angle += 0.06; miniCube.Invalidate(); }   // sigue girando en la barra de estado
+                return;
+            }
+
+            // VIDEO A PANTALLA COMPLETA tras inactividad (para apreciarlo mejor)
+            if (videoOn && !videoFull && (DateTime.Now - lastInput).TotalSeconds > 8) EnterVideoFull();
+            if (videoFull)
+            {
+                if (lblAttract != null)
+                {
+                    double pz = 0.5 + 0.5 * Math.Sin(phase * 4.0);   // aviso AMARILLO PULSANTE
+                    lblAttract.ForeColor = Color.FromArgb((int)(140 + 115 * pz), (int)(110 + 125 * pz), (int)(0 + 60 * pz));
+                }
+                return;   // no repintamos lo de atras: el video va mas fluido en pantalla completa
+            }
+
+            // MODO ATRACCION: en reposo, sin nada sonando, mostrar la pantalla estrellada con el cubo.
+            if (!attractOn && nowPlaying == null && queue.Count == 0 && !searchOpen && !videoOn
+                && albums.Count > 0 && (lblConfig == null || !lblConfig.Visible)
+                && (DateTime.Now - lastInput).TotalSeconds > AttractIdleSecs)
+                EnterAttract();
+            if (attractOn)
+            {
+                attractView.Phase = phase; attractView.Angle += 0.05; attractView.Invalidate();
+                return;
+            }
+
+            if (letterBar.Visible) { letterBar.Phase = phase; letterBar.Invalidate(); }                 // 24fps
+            if (albumView.Visible) { albumView.Phase = phase; albumView.AudioPulse = audioLevel; albumView.AnimTick(fullFrame || transitioning); }
+            if (panelSongs.Visible)
+            {
+                panelSongs.Accent = bgAccent;
+                if (fullFrame || transitioning) { panelSongs.Invalidate(); lblAlbum.Invalidate(); }   // glows: 1 de cada 3
+                cubeBox.Phase = phase; cubeBox.Angle += 0.06; cubeBox.Invalidate();   // el cubo grande SI gira a pleno
+            }
+            if (miniCube.Visible) { miniCube.Phase = phase; miniCube.Angle += 0.06; miniCube.Invalidate(); }
+        }
+
+        private static string Fmt(TimeSpan t) { return ((int)t.TotalMinutes) + ":" + t.Seconds.ToString("00"); }
+
+        protected override void OnFormClosing(FormClosingEventArgs e) { DisposePlaybackNow(); base.OnFormClosing(e); }
+
+        // ==========  BOTON REDONDEADO  ==========
+
+        // ==========  RENDER DEL CUBO (compartido)  ==========
+        // Toma el nivel de audio (RMS) del bloque recien leido SIN modificar el sonido: solo observa el
+        // buffer que ya lleno el lector y lo reporta. Sirve para que las estrellas laten con la musica.
+        // Como el colchon es de ~1s, el nivel va algo adelantado de lo que se oye (envolvente de energia).
+        private class LevelTap : NAudio.Wave.ISampleProvider
+        {
+            private readonly NAudio.Wave.ISampleProvider src;
+            private readonly Form1 owner;
+            public LevelTap(NAudio.Wave.ISampleProvider s, Form1 o) { src = s; owner = o; }
+            public NAudio.Wave.WaveFormat WaveFormat { get { return src.WaveFormat; } }
+            public int Read(float[] buffer, int offset, int count)
+            {
+                int n = src.Read(buffer, offset, count);
+                if (n > 0 && owner != null)
+                {
+                    double sum = 0; int end = offset + n;
+                    for (int i = offset; i < end; i++) { float v = buffer[i]; sum += v * v; }
+                    owner.ReportAudioPeak((float)Math.Sqrt(sum / n));
+                }
+                return n;
+            }
+        }
+
+        // Campo de estrellas reutilizable: cielo + estrellas titilantes (mas brillantes) + estrellas
+        // fugaces ocasionales. Lo usan el fondo de navegacion (teñido por genero) y el modo atraccion
+        // (cielo negro y estrellas multicolor). El titileo es LENTO a proposito para verse suave aun a 8fps.
+        private class Starfield
+        {
+            public bool Varied = false;   // true = colores variados (atraccion); false = blanco->tinte (genero)
+            public float Density = 1f;    // multiplicador de cantidad de estrellas (el fondo del form usa menos)
+            public bool QuietBands = false;   // true = menos estrellas en las franjas de arriba (abecedario) y abajo (barra de estado)
+
+            private struct Star { public float X, Y; public int Size, Kind; public byte R, G, B; public float Tint, Off, Spd; }
+            private struct Shoot { public bool On; public float X, Y, VX, VY; public float Life, MaxLife; }
+            private Star[] stars;
+            private int sw = -1, sh = -1;
+            private SolidBrush sb;
+            private Pen sp;
+            private Shoot[] shoots = new Shoot[2];
+            private int nextShoot = 0, lastTick = 0;
+            private Bitmap layer;   // capa de estrellas ESTATICAS (fondo transparente) para el modo cacheado
+            private int lw = -1, lh = -1;
+            private readonly Random rnd = new Random();
+            // Cache del cuadro: el starfield se dibuja a un bitmap y solo se reconstruye cada ~110ms
+            // (para el titileo). Asi cada Draw es un blit barato aunque lo pidan muchas veces seguidas
+            // los controles transparentes encima (etiquetas de estado, lblAlbum, cubeBox). Antes se
+            // redibujaban ~89 rectangulos en cada repintado transparente -> tormenta -> traba/crash.
+            private Bitmap cache;
+            private int cw = -1, ch = -1, cSky = 0, cTint = 0, lastBuild = 0;
+            private int cSky2 = 0;                                        // color inferior del degradado del cache
+            private int sBucket = int.MinValue, lBucket = int.MinValue;   // "minuto" del patron actual (cambia cada 60s)
+            public int SkyOffsetY = 0, SkyFullH = 0;                      // posicion de este fondo en la pantalla (degradado CONTINUO entre secciones)
+            public Color SkyMid = Color.Empty;                            // color INTERMEDIO (azul noche); si Empty -> 2 paradas (punto medio)
+            private LinearGradientBrush skyBrush;                         // pincel de cielo en DEGRADADO (cacheado, ligado al genero)
+            private int gbW = -1, gbOff = -99999, gbFull = -1, gbTop = 0, gbMid = 0, gbBot = 0;
+
+            // Pincel de cielo en degradado vertical CONTINUO: el degradado abarca TODA la pantalla (SkyFullH)
+            // y se desplaza segun donde esta este fondo (SkyOffsetY), para que las secciones no se noten
+            // divididas (todo se ve como una sola pieza). Cacheado: se recrea solo al cambiar tamano/posicion/colores.
+            private void EnsureSkyBrush(int w, int h, Color top, Color bottom)
+            {
+                int off = SkyOffsetY;
+                int full = (SkyFullH > h) ? SkyFullH : h;
+                Color mid = (SkyMid.A == 0)
+                    ? Color.FromArgb(255, (top.R + bottom.R) / 2, (top.G + bottom.G) / 2, (top.B + bottom.B) / 2)   // sin mid: punto medio (= 2 paradas)
+                    : SkyMid;
+                int t = top.ToArgb(), m = mid.ToArgb(), b = bottom.ToArgb();
+                if (skyBrush != null && gbW == w && gbOff == off && gbFull == full && gbTop == t && gbMid == m && gbBot == b) return;
+                if (skyBrush != null) { skyBrush.Dispose(); skyBrush = null; }
+                LinearGradientBrush lgb = new LinearGradientBrush(new Rectangle(0, -off, w, full + 1), top, bottom, LinearGradientMode.Vertical);
+                ColorBlend cb = new ColorBlend(3);
+                cb.Colors = new Color[] { top, mid, bottom };          // negro arriba -> azul noche en medio -> resplandor/azul abajo
+                cb.Positions = new float[] { 0f, 0.42f, 1f };          // negro SOLO en el cenit; el azul domina casi toda la pantalla; genero abajo
+                lgb.InterpolationColors = cb;
+                skyBrush = lgb;
+                gbW = w; gbOff = off; gbFull = full; gbTop = t; gbMid = m; gbBot = b;
+            }
+
+            private void Ensure(int w, int h)
+            {
+                int bucket = Environment.TickCount / 60000;   // patron NUEVO cada minuto (60000 ms)
+                if (stars != null && sw == w && sh == h && sBucket == bucket) return;
+                sw = w; sh = h; sBucket = bucket;
+                Random r = new Random((20260620 + bucket * 40503) & 0x7FFFFFFF);   // seed que cambia por minuto (siempre positivo)
+                int n = (int)(((double)(w * h) / 6500) * Density);   // MAS estrellas (densidad por area), escalada por Density
+                int lo = (int)(90 * Density); if (lo < 20) lo = 20;
+                if (n < lo) n = lo; if (n > 230) n = 230;
+                Color[] pal = {
+                    Color.White, Color.White, Color.White,                                     // blancas (peso, salen mas)
+                    Color.FromArgb(170, 205, 255), Color.FromArgb(120, 170, 255),               // azul claro / azul
+                    Color.FromArgb(205, 165, 255), Color.FromArgb(255, 170, 230),               // violeta / rosa
+                    Color.FromArgb(255, 220, 140), Color.FromArgb(255, 165, 120),               // dorado / naranja
+                    Color.FromArgb(150, 255, 225), Color.FromArgb(255, 150, 150)                // verde-agua / rojo suave
+                };
+                stars = new Star[n];
+                for (int i = 0; i < n; i++)
+                {
+                    Star s = new Star();
+                    s.X = (float)r.NextDouble();
+                    float yy = (float)r.NextDouble();
+                    if (QuietBands)   // adelgaza SUAVE hacia los bordes (abecedario arriba, estado abajo) sin cortar de golpe
+                    {
+                        float keep = 1f;
+                        if (yy < 0.12f) keep = yy / 0.12f;             // 0 en el borde de arriba -> densidad plena al llegar a los cubos
+                        else if (yy > 0.91f) keep = (1f - yy) / 0.09f; // densidad plena al salir de los cubos -> 0 en el borde de abajo
+                        if (keep < 1f && (float)r.NextDouble() > keep) yy = 0.12f + (float)r.NextDouble() * 0.79f;   // reubica al centro
+                    }
+                    s.Y = yy;
+                    int kk = r.Next(100);
+                    s.Kind = (kk < 12) ? 2 : (kk < 34) ? 1 : 0;                       // 12% destello GRANDE, 22% destello chico, resto punto
+                    s.Size = (s.Kind == 2) ? (6 + r.Next(5)) : (s.Kind == 1) ? (3 + r.Next(4)) : (2 + r.Next(3));   // destellos GRANDES 6-10, chicos 3-6, puntos 2-4
+                    if (Varied)
+                    {
+                        Color c = pal[r.Next(pal.Length)]; s.R = c.R; s.G = c.G; s.B = c.B; s.Tint = 0f;   // atraccion: multicolor
+                    }
+                    else if (s.Kind == 2)
+                    {
+                        int bp = r.Next(100);   // destellos GRANDES: colores vivos como la imagen (blanco/dorado/cian/violeta)
+                        Color c = (bp < 34) ? Color.White : (bp < 60) ? pal[7] : (bp < 80) ? pal[9] : pal[5];
+                        s.R = c.R; s.G = c.G; s.B = c.B; s.Tint = 0f;
+                    }
+                    else
+                    {
+                        int pick = r.Next(100);
+                        if (pick < 35) { s.R = 255; s.G = 255; s.B = 255; s.Tint = 0f; }                                       // blanca
+                        else if (pick < 55) { s.R = 255; s.G = 255; s.B = 255; s.Tint = 0.45f + (float)r.NextDouble() * 0.55f; }   // tenida hacia el genero
+                        else { Color c = pal[3 + r.Next(pal.Length - 3)]; s.R = c.R; s.G = c.G; s.B = c.B; s.Tint = 0f; }       // mas color variado
+                    }
+                    s.Off = (float)(r.NextDouble() * Math.PI * 2);
+                    s.Spd = 0.6f + (float)r.NextDouble() * 1.6f;   // titileo LENTO
+                    stars[i] = s;
+                }
+                if (sb == null) sb = new SolidBrush(Color.White);
+                if (sp == null) sp = new Pen(Color.White, 2.2f);
+            }
+
+            // Fundido del patron (cada minuto, mismo reloj que la regeneracion): las estrellas BRILLAN,
+            // bajan a OSCURO un instante (ahi cambia el patron, invisible), y el patron NUEVO va apareciendo.
+            private static float StarFade()
+            {
+                int tm = Environment.TickCount % 60000; if (tm < 0) tm += 60000;
+                const int flareStart = 1400, darkHalf = 500, fadeIn = 1100;   // oscuro ~1s (500ms antes + 500ms despues del cambio)
+                if (tm >= 60000 - flareStart && tm < 60000 - darkHalf)
+                {
+                    float k = (float)(tm - (60000 - flareStart)) / (flareStart - darkHalf);
+                    return (k < 0.4f) ? (1f + (k / 0.4f) * 0.6f) : (1.6f * (1f - (k - 0.4f) / 0.6f));   // brilla y baja a 0
+                }
+                if (tm >= 60000 - darkHalf || tm < darkHalf) return 0f;   // oscuro (el cambio de patron cae aqui)
+                if (tm < darkHalf + fadeIn) return (float)(tm - darkHalf) / fadeIn;   // aparece el patron nuevo
+                return 1f;
+            }
+
+            public void Draw(Graphics g, int w, int h, Color skyTop, Color skyBottom, Color tint, double phase, bool shooting, float pulse)
+            {
+                if (w < 4 || h < 4) return;
+                Ensure(w, h);
+                int now = Environment.TickCount;
+                int dt = now - lastBuild;
+                bool needNew = cache == null || cw != w || ch != h;
+                // En repintados PARCIALES (p.ej. solo la casilla del cubo que gira encima) NO reconstruimos
+                // el cuadro entero: basta copiar el cache. Asi el +framerate (~24fps) no desperdicia CPU
+                // redibujando ~120 estrellas para una franja minima; el fondo completo se refresca en los
+                // repintados completos (cuando el recorte cubre toda la vista: buscador y atraccion cada cuadro).
+                RectangleF clip = g.ClipBounds;
+                bool partial = !needNew && (clip.Width < w - 1 || clip.Height < h - 1);
+                bool rebuild = needNew
+                    || (!partial && (cSky != skyTop.ToArgb() || cSky2 != skyBottom.ToArgb() || cTint != tint.ToArgb() || dt >= 40 || dt < 0));   // ~24fps
+                if (rebuild)
+                {
+                    if (needNew)
+                    {
+                        if (cache != null) cache.Dispose();
+                        cache = new Bitmap(w, h, PixelFormat.Format32bppPArgb);
+                        cw = w; ch = h;
+                    }
+                    using (Graphics cg = Graphics.FromImage(cache))
+                        RenderInto(cg, w, h, skyTop, skyBottom, tint, phase, shooting, pulse);
+                    cSky = skyTop.ToArgb(); cSky2 = skyBottom.ToArgb(); cTint = tint.ToArgb(); lastBuild = now;
+                }
+                g.DrawImageUnscaled(cache, 0, 0);
+            }
+
+            // Dibuja un cuadro completo del starfield (cielo + estrellas + fugaces) sobre el bitmap cache.
+            private void RenderInto(Graphics g, int w, int h, Color skyTop, Color skyBottom, Color tint, double phase, bool shooting, float pulse)
+            {
+                EnsureSkyBrush(w, h, skyTop, skyBottom);
+                g.FillRectangle(skyBrush, 0, 0, w, h);
+                double boost = pulse * 0.62;        // el audio sube MAS el brillo de TODAS las estrellas
+                int armUp = (int)(pulse * 6.0);     // y agranda MAS los brazos de los destellos
+                int szUp = (int)(pulse * 2.0);      // y los puntos y centros CRECEN con el sonido
+                float fade = StarFade();            // fundido out/in del patron (cada minuto)
+                for (int i = 0; i < stars.Length; i++)
+                {
+                    Star s = stars[i];
+                    double tw = (0.70 + 0.42 * (0.5 + 0.5 * Math.Sin(phase * s.Spd + s.Off)) + boost) * fade;   // MAS brillante; titileo + audio, modulado por el fundido
+                    int a = (int)(tw * 255); if (a > 255) a = 255; if (a < 0) a = 0;
+                    int cr, cg, cb;
+                    if (s.Tint > 0f) { cr = (int)(255 + (tint.R - 255) * s.Tint); cg = (int)(255 + (tint.G - 255) * s.Tint); cb = (int)(255 + (tint.B - 255) * s.Tint); }
+                    else { cr = s.R; cg = s.G; cb = s.B; }
+                    int px = (int)(s.X * w), py = (int)(s.Y * h);
+                    sb.Color = Color.FromArgb(a, cr, cg, cb);
+                    if (s.Kind == 2)
+                    {
+                        int L = s.Size + 6 + armUp;
+                        g.FillRectangle(sb, px - L, py, L * 2 + 1, 1);
+                        g.FillRectangle(sb, px, py - L, 1, L * 2 + 1);
+                        g.FillRectangle(sb, px - 2, py, 5, 1);
+                        g.FillRectangle(sb, px, py - 2, 1, 5);
+                        int cc = s.Size + szUp; g.FillRectangle(sb, px - cc / 2, py - cc / 2, cc, cc);
+                    }
+                    else if (s.Kind == 1)
+                    {
+                        int L = s.Size + 2 + armUp;
+                        g.FillRectangle(sb, px - L, py, L * 2 + 1, 1);
+                        g.FillRectangle(sb, px, py - L, 1, L * 2 + 1);
+                        g.FillRectangle(sb, px - 1, py - 1, 3, 3);
+                    }
+                    else { int ds = s.Size + szUp; g.FillRectangle(sb, px - szUp / 2, py - szUp / 2, ds, ds); }
+                }
+                if (shooting) DrawShoots(g, w, h);
+            }
+
+            // Modo BARATO: cielo solido (reactivo al genero) + una capa de estrellas estaticas cacheada.
+            // Se usa donde hay controles transparentes girando encima (cubeBox/miniCube): pintar el
+            // starfield vivo debajo de ellos cada cuadro disparaba una tormenta de repintado (freeze/crash).
+            // Aqui el costo es 1 relleno + 1 copia de bitmap (mas barato que el degradado+brillos de antes).
+            public void DrawCached(Graphics g, int w, int h, Color skyTop, Color skyBottom)
+            {
+                if (w < 4 || h < 4) return;
+                EnsureLayer(w, h);
+                EnsureSkyBrush(w, h, skyTop, skyBottom);
+                g.FillRectangle(skyBrush, 0, 0, w, h);
+                float sf = StarFade(); if (sf > 1f) sf = 1f; if (sf < 0f) sf = 0f;   // mismo fundido out/in que las vistas vivas
+                if (sf >= 0.996f) g.DrawImageUnscaled(layer, 0, 0);
+                else if (sf > 0.004f)
+                {
+                    ColorMatrix cm = new ColorMatrix(); cm.Matrix33 = sf;   // atenua TODA la capa de estrellas
+                    using (ImageAttributes ia = new ImageAttributes())
+                    {
+                        ia.SetColorMatrix(cm);
+                        g.DrawImage(layer, new Rectangle(0, 0, w, h), 0, 0, w, h, GraphicsUnit.Pixel, ia);
+                    }
+                }
+                // si sf <= 0.004 no se dibuja la capa: oscuro total (el patron cambia aqui, invisible)
+            }
+
+            private void EnsureLayer(int w, int h)
+            {
+                Ensure(w, h);
+                if (layer != null && lw == w && lh == h && lBucket == sBucket) return;
+                if (layer != null) { layer.Dispose(); layer = null; }
+                layer = new Bitmap(w, h, PixelFormat.Format32bppPArgb);
+                lw = w; lh = h; lBucket = sBucket;
+                using (Graphics lg = Graphics.FromImage(layer))
+                using (SolidBrush b = new SolidBrush(Color.White))
+                {
+                    lg.Clear(Color.Transparent);
+                    for (int i = 0; i < stars.Length; i++)
+                    {
+                        Star s = stars[i];
+                        double br = 0.80 + 0.20 * (0.5 + 0.5 * Math.Sin(s.Off));   // brillo FIJO mas alto (estrellas MAS brillantes)
+                        int a = (int)(br * 255); if (a > 255) a = 255; if (a < 0) a = 0;
+                        int px = (int)(s.X * w), py = (int)(s.Y * h);
+                        int cr2, cg2, cb2;
+                        if (s.Tint > 0f) { cr2 = 255; cg2 = 255; cb2 = 255; }   // tenidas -> blancas en el cache
+                        else { cr2 = s.R; cg2 = s.G; cb2 = s.B; }
+                        b.Color = Color.FromArgb(a, cr2, cg2, cb2);
+                        if (s.Kind == 2)
+                        {
+                            int L = s.Size + 6;
+                            lg.FillRectangle(b, px - L, py, L * 2 + 1, 1);
+                            lg.FillRectangle(b, px, py - L, 1, L * 2 + 1);
+                            lg.FillRectangle(b, px - 2, py, 5, 1);
+                            lg.FillRectangle(b, px, py - 2, 1, 5);
+                            int cc = s.Size; lg.FillRectangle(b, px - cc / 2, py - cc / 2, cc, cc);
+                        }
+                        else if (s.Kind == 1)
+                        {
+                            int L = s.Size + 2;
+                            lg.FillRectangle(b, px - L, py, L * 2 + 1, 1);
+                            lg.FillRectangle(b, px, py - L, 1, L * 2 + 1);
+                            lg.FillRectangle(b, px - 1, py - 1, 3, 3);
+                        }
+                        else lg.FillRectangle(b, px, py, s.Size, s.Size);
+                    }
+                }
+            }
+
+            private void DrawShoots(Graphics g, int w, int h)
+            {
+                int now = Environment.TickCount;
+                float dt = (lastTick == 0) ? 0f : (now - lastTick) / 1000f;
+                if (dt < 0f) dt = 0f; if (dt > 0.12f) dt = 0.12f;   // acotar saltos
+                lastTick = now;
+
+                if (now >= nextShoot)
+                {
+                    nextShoot = now + 7000 + rnd.Next(9000);   // una fugaz cada 7-16s
+                    for (int i = 0; i < shoots.Length; i++)
+                        if (!shoots[i].On)
+                        {
+                            Shoot ns = new Shoot();
+                            ns.On = true;
+                            ns.X = (float)(rnd.NextDouble() * w * 0.55);
+                            ns.Y = (float)(rnd.NextDouble() * h * 0.45);
+                            float spd = (w + h) * 0.55f;                 // px por segundo
+                            ns.VX = spd; ns.VY = spd * (0.35f + (float)rnd.NextDouble() * 0.30f);
+                            ns.MaxLife = 1.0f + (float)rnd.NextDouble() * 0.5f; ns.Life = ns.MaxLife;
+                            shoots[i] = ns;
+                            break;
+                        }
+                }
+                for (int i = 0; i < shoots.Length; i++)
+                {
+                    if (!shoots[i].On) continue;
+                    Shoot s = shoots[i];
+                    float k = s.Life / s.MaxLife; if (k < 0f) k = 0f;
+                    int la = (int)(230 * k);
+                    float tx = s.X - s.VX * 0.10f, ty = s.Y - s.VY * 0.10f;   // estela corta
+                    sp.Color = Color.FromArgb(la, 255, 255, 255);
+                    g.DrawLine(sp, tx, ty, s.X, s.Y);
+                    sb.Color = Color.FromArgb(Math.Min(255, la + 25), 255, 255, 255);
+                    g.FillRectangle(sb, (int)s.X - 1, (int)s.Y - 1, 3, 3);
+                    s.X += s.VX * dt; s.Y += s.VY * dt; s.Life -= dt;
+                    if (s.Life <= 0f || s.X > w + 60 || s.Y > h + 60) s.On = false;
+                    shoots[i] = s;
+                }
+            }
+        }
+
+        // Modo atraccion: pantalla negra con estrellas titilantes y un cubo gigante girando que cicla
+        // portadas de la coleccion (con fundido). Aparece en reposo para llamar al cliente.
+        private class AttractView : Control
+        {
+            public double Phase = 0;
+            public double Angle = 0;
+            public List<string> CycleCovers = new List<string>();
+            public Func<string, Image> GetCoverByPath;
+            public int SongCount = 0;
+
+            private SolidBrush sb;
+            private Bitmap blendBmp;
+            private Font fBig, fSmall; private StringFormat sfCen;
+
+            private Starfield attractStars = new Starfield();
+
+            public AttractView()
+            {
+                attractStars.Varied = true;   // estrellas multicolor en el modo atraccion
+                SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
+            }
+
+            private void EnsureRes()
+            {
+                if (sb == null) sb = new SolidBrush(Color.White);
+                if (fBig == null) fBig = new Font(FontFamily.GenericSansSerif, 24f, FontStyle.Bold);
+                if (fSmall == null) fSmall = new Font(FontFamily.GenericSansSerif, 15f, FontStyle.Bold);
+                if (sfCen == null) { sfCen = new StringFormat(); sfCen.Alignment = StringAlignment.Center; sfCen.LineAlignment = StringAlignment.Center; }
+            }
+
+            private Image BlendInto(Image a, Image b, float f)
+            {
+                if (blendBmp == null) blendBmp = new Bitmap(320, 320, PixelFormat.Format32bppPArgb);
+                using (Graphics g = Graphics.FromImage(blendBmp))
+                {
+                    g.Clear(Color.Black);
+                    g.InterpolationMode = InterpolationMode.Bilinear;
+                    Rectangle dst = new Rectangle(0, 0, blendBmp.Width, blendBmp.Height);
+                    if (a != null) g.DrawImage(a, dst);
+                    if (b != null && f > 0f)
+                    {
+                        ColorMatrix cm = new ColorMatrix(); cm.Matrix33 = f;
+                        using (ImageAttributes ia = new ImageAttributes())
+                        {
+                            ia.SetColorMatrix(cm, ColorMatrixFlag.Default, ColorAdjustType.Bitmap);
+                            g.DrawImage(b, dst, 0, 0, b.Width, b.Height, GraphicsUnit.Pixel, ia);
+                        }
+                    }
+                }
+                return blendBmp;
+            }
+
+            private Image CurrentCover()
+            {
+                if (CycleCovers == null || CycleCovers.Count == 0 || GetCoverByPath == null) return null;
+                int m = CycleCovers.Count;
+                double cyc = 4.2, hold = 3.0;
+                double total = cyc * m;
+                double pos = Phase - Math.Floor(Phase / total) * total;
+                int idx = (int)(pos / cyc) % m;
+                double within = pos - idx * cyc;
+                float f = 0f;
+                if (within > hold) f = (float)((within - hold) / (cyc - hold));
+                if (f < 0f) f = 0f; else if (f > 1f) f = 1f;
+                Image a = GetCoverByPath(CycleCovers[idx]);
+                Image b = (m > 1) ? GetCoverByPath(CycleCovers[(idx + 1) % m]) : null;
+                if (f <= 0.002f || b == null) return a;
+                if (a == null) return b;
+                return BlendInto(a, b, f);
+            }
+
+            protected override void OnPaint(PaintEventArgs e)
+            {
+                Graphics g = e.Graphics;
+                int w = Width, h = Height;
+                if (w < 8 || h < 8) return;
+                EnsureRes();
+                attractStars.SkyOffsetY = 0; attractStars.SkyFullH = h;
+                attractStars.Draw(g, w, h, Color.FromArgb(255, 6, 8, 26), Color.FromArgb(255, 18, 20, 54), Color.White, Phase, true, 0f);   // cielo nocturno en degradado (atraccion: sin musica)
+
+                // cubo gigante central rotando + ciclando portadas (con fundido)
+                int side = (int)(Math.Min(w, h) * 0.40);
+                if (side < 80) side = 80;
+                Rectangle area = new Rectangle(w / 2 - side / 2, (h - side) / 2 - 30, side, side);
+                g.InterpolationMode = InterpolationMode.Bilinear;
+                Cube.Draw(g, area, CurrentCover(), Angle);
+
+                // textos
+                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+                string line1 = (SongCount > 0) ? (SongCount.ToString("#,0") + " canciones") : "Tu rocola";
+                sb.Color = Color.White;
+                g.DrawString(line1, fBig, sb, new RectangleF(0, area.Bottom + 18, w, 36), sfCen);
+                double pz = 0.5 + 0.5 * Math.Sin(Phase * 3.0);
+                sb.Color = Color.FromArgb((int)(150 + 105 * pz), 255, 220, 120);
+                g.DrawString("toca un boton para elegir", fSmall, sb, new RectangleF(0, area.Bottom + 58, w, 28), sfCen);
+            }
+        }
+
+        private static class Cube
+        {
+            // OPTIMIZACION (render): estos 3 arreglos se asignaban en CADA llamada a Draw, y Draw se
+            // llama varias veces por cuadro (cubo seleccionado, relevo, cubeBox, miniCube, buscador,
+            // atraccion). Reutilizarlos via [ThreadStatic] elimina cientos de asignaciones/seg.
+            [ThreadStatic] private static double[] exBuf;
+            [ThreadStatic] private static double[] depthBuf;
+            [ThreadStatic] private static int[] orderBuf;
+
+            public static void Draw(Graphics g, Rectangle bounds, Image cover, double angle)
+            {
+                double cx = bounds.X + bounds.Width / 2.0;
+                int y0 = bounds.Y;
+                int H = bounds.Height;
+                double R = bounds.Width / 2.0;
+                double DEG = Math.PI / 180.0;
+
+                double[] ex = exBuf ?? (exBuf = new double[4]);
+                for (int k = 0; k < 4; k++) ex[k] = cx + R * Math.Cos(angle + 45 * DEG + k * 90 * DEG);
+                double[] depth = depthBuf ?? (depthBuf = new double[4]);
+                for (int k = 0; k < 4; k++) depth[k] = Math.Sin(angle + 90 * DEG + k * 90 * DEG);
+
+                int[] order = orderBuf ?? (orderBuf = new int[4]);
+                order[0] = 0; order[1] = 1; order[2] = 2; order[3] = 3;
+                for (int i = 0; i < 4; i++)
+                    for (int j = 0; j < 3 - i; j++)
+                        if (depth[order[j]] > depth[order[j + 1]]) { int tmp = order[j]; order[j] = order[j + 1]; order[j + 1] = tmp; }
+
+                for (int oi = 0; oi < 4; oi++)
+                {
+                    int k = order[oi];
+                    if (depth[k] <= 0.0) continue;
+                    int left = (int)Math.Round(Math.Min(ex[k], ex[(k + 1) % 4]));
+                    int right = (int)Math.Round(Math.Max(ex[k], ex[(k + 1) % 4]));
+                    int w = right - left;
+                    if (w < 1) continue;
+                    Rectangle rect = new Rectangle(left, y0, w, H);
+                    if (cover != null) g.DrawImage(cover, rect);
+                    else using (SolidBrush b = new SolidBrush(Color.FromArgb(60, 70, 110))) g.FillRectangle(b, rect);
+                    int darken = (int)((1.0 - depth[k]) * 130);
+                    if (darken > 0) using (SolidBrush d = new SolidBrush(Color.FromArgb(darken, 0, 0, 0))) g.FillRectangle(d, rect);
+                }
+
+                double minx = ex[0], maxx = ex[0];
+                for (int k = 1; k < 4; k++) { if (ex[k] < minx) minx = ex[k]; if (ex[k] > maxx) maxx = ex[k]; }
+                using (Pen edge = new Pen(Color.FromArgb(120, 0, 0, 0), 1))
+                    g.DrawRectangle(edge, (int)Math.Round(minx), y0, (int)Math.Round(maxx - minx), H - 1);
+            }
+        }
+
+        // Ayudantes para dibujar los controles fisicos como FORMAS (circulo rojo/verde, cruceta).
+        private static float CtrlDot(Graphics g, float x, int cy, int d, Color c)
+        {
+            using (SolidBrush b = new SolidBrush(c)) g.FillEllipse(b, x, cy - d / 2f, d, d);
+            using (Pen p = new Pen(Color.FromArgb(130, 255, 255, 255), 1.4f)) g.DrawEllipse(p, x, cy - d / 2f, d, d);
+            return x + d;
+        }
+        private static float CtrlTxt(Graphics g, Font f, string s, float x, int cy, Color c)
+        {
+            SizeF sz = g.MeasureString(s, f);
+            using (SolidBrush b = new SolidBrush(c)) g.DrawString(s, f, b, x, cy - sz.Height / 2f);
+            return x + sz.Width;
+        }
+        private static void CtrlTri(Graphics g, Color c, PointF a, PointF b, PointF d)
+        {
+            using (SolidBrush br = new SolidBrush(c)) g.FillPolygon(br, new PointF[] { a, b, d });
+        }
+        private static float CtrlPad(Graphics g, float x, int cy, int sz)   // cruceta: arriba/abajo rojo, izq/der amarillo
+        {
+            Color red = Color.FromArgb(228, 72, 72), yellow = Color.FromArgb(242, 206, 72);
+            float cx = x + sz / 2f, t = sz * 0.34f, w = t / 1.4f;
+            CtrlTri(g, red, new PointF(cx, cy - sz / 2f), new PointF(cx - w, cy - sz / 2f + t), new PointF(cx + w, cy - sz / 2f + t));
+            CtrlTri(g, red, new PointF(cx, cy + sz / 2f), new PointF(cx - w, cy + sz / 2f - t), new PointF(cx + w, cy + sz / 2f - t));
+            CtrlTri(g, yellow, new PointF(x, cy), new PointF(x + t, cy - w), new PointF(x + t, cy + w));
+            CtrlTri(g, yellow, new PointF(x + sz, cy), new PointF(x + sz - t, cy - w), new PointF(x + sz - t, cy + w));
+            return x + sz;
+        }
+        // Icono del BOTON IZQUIERDA (flecha amarilla, mismo color que la cruceta horizontal)
+        private static float CtrlDirLeft(Graphics g, float x, int cy, int sz, Color c)
+        {
+            PointF[] pts = new PointF[] {
+                new PointF(x, cy),
+                new PointF(x + sz, cy - sz * 0.5f),
+                new PointF(x + sz, cy + sz * 0.5f)
+            };
+            using (SolidBrush b = new SolidBrush(c)) g.FillPolygon(b, pts);
+            using (Pen p = new Pen(Color.FromArgb(130, 255, 255, 255), 1.4f)) g.DrawPolygon(p, pts);
+            return x + sz;
+        }
+        // Icono del BOTON DERECHA (flecha amarilla, espejo de la izquierda)
+        private static float CtrlDirRight(Graphics g, float x, int cy, int sz, Color c)
+        {
+            PointF[] pts = new PointF[] {
+                new PointF(x + sz, cy),
+                new PointF(x, cy - sz * 0.5f),
+                new PointF(x, cy + sz * 0.5f)
+            };
+            using (SolidBrush b = new SolidBrush(c)) g.FillPolygon(b, pts);
+            using (Pen p = new Pen(Color.FromArgb(130, 255, 255, 255), 1.4f)) g.DrawPolygon(p, pts);
+            return x + sz;
+        }
+
+        // Barra de ayuda: instrucciones con FORMAS y COLORES de los botones fisicos. Sin nombres de teclas.
+        private class HelpBar : Control
+        {
+            public HelpBar()
+            {
+                SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint | ControlStyles.SupportsTransparentBackColor, true);
+                BackColor = Color.Transparent;
+            }
+            protected override void OnPaint(PaintEventArgs e)
+            {
+                Graphics g = e.Graphics;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+                int cy = Height / 2;
+                Color txt = Color.FromArgb(228, 234, 250);
+                Color red = Color.FromArgb(228, 72, 72), green = Color.FromArgb(72, 212, 112);
+                int d = Math.Min(20, Height - 8); if (d < 12) d = 12;
+                float gap = 7, grp = 20;
+                using (Font f = new Font(FontFamily.GenericSansSerif, 9.5f, FontStyle.Bold))
+                {
+                    float x = 2;
+                    x = CtrlDot(g, x, cy, d, red) + 4; x = CtrlDot(g, x, cy, d, green);
+                    x = CtrlTxt(g, f, "Buscar", x + gap, cy, txt) + grp;
+                    x = CtrlPad(g, x, cy, d + 4);
+                    x = CtrlTxt(g, f, "Mover", x + gap, cy, txt) + grp;
+                    x = CtrlDot(g, x, cy, d, green);
+                    x = CtrlTxt(g, f, "Entrar / Poner", x + gap, cy, txt) + grp;
+                    x = CtrlDot(g, x, cy, d, red);
+                    x = CtrlTxt(g, f, "Volver", x + gap, cy, txt);
+                }
+            }
+        }
+
+        // ==========  VISTA DE DISCOS (fondo animado estilo PS2 + cubos)  ==========
+        // Panel con fondo estrellado (reactivo al genero), para el modo "dentro del disco"
+        private class BgPanel : Panel
+        {
+            public Color Accent = DefaultAccent;
+            public BgPanel()
+            {
+                this.SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true);
+            }
+            protected override void OnPaintBackground(PaintEventArgs e) { /* todo en OnPaint */ }
+            private Starfield stars = new Starfield();   // fondo estrellado reactivo al genero
+            protected override void OnPaint(PaintEventArgs e)
+            {
+                Graphics g = e.Graphics;
+                int w = Width, h = Height;
+                if (w < 4 || h < 4) return;
+
+                // Degradado CACHEADO: solo se reconstruye al cambiar tamaño o color (no cada cuadro).
+                // Antes se rellenaba el degradado completo en cada repintado -> en pantalla grande iba
+                // lento y parecia "screen tearing". Cacheado, solo se copia (rapido) y queda fluido.
+                stars.SkyOffsetY = this.Top; stars.SkyFullH = (this.Parent != null) ? this.Parent.ClientSize.Height : h; stars.SkyMid = SkyColorMid(Accent);
+                stars.DrawCached(g, w, h, SkyColor(Accent), SkyColor2(Accent));   // cielo en degradado CONTINUO; un cubo transparente girando encima
+            }
+
+        }
+
+        private class AlbumView : Control
+        {
+            public List<Album> Page = new List<Album>();
+            public int Selected = 0;
+            public double SelAngle = 0;
+            public double Phase = 0;
+            public Color BgAccent = DefaultAccent;
+            public Func<Album, Image> GetCover;
+            public Func<string, Image> GetCoverByPath;   // discos TOP: caratula por ruta (ciclado)
+            public Action<int> OnActivate;
+
+            private Bitmap cubeCache;
+            private int cacheW = -1, cacheH = -1;
+            private string cacheSig = null;
+            private Color cacheAccent = Color.Empty;
+            private Pen cPenGlow, cPenMid, cPenLine;   // contorno del disco seleccionado (cacheadas; antes se creaban por cuadro)
+            private GraphicsPath contourPath; private Rectangle contourRect = Rectangle.Empty;   // trayectoria del contorno (cacheada)
+            private Font lblFont; private SolidBrush lblBrush; private StringFormat lblSF;       // recursos de etiquetas (reusables)
+            private Bitmap blendBmp;   // para el fundido suave de portadas del cubo TOP
+            private Starfield stars = new Starfield();   // fondo estrellado reactivo al genero
+            public float AudioPulse = 0f;   // 0..1 nivel de audio (las estrellas laten con la musica)
+
+            private Image BlendInto(Image a, Image b, float f)
+            {
+                if (blendBmp == null) blendBmp = new Bitmap(320, 320, PixelFormat.Format32bppPArgb);
+                using (Graphics g = Graphics.FromImage(blendBmp))
+                {
+                    g.Clear(Color.Black);
+                    g.InterpolationMode = InterpolationMode.Bilinear;
+                    Rectangle dst = new Rectangle(0, 0, blendBmp.Width, blendBmp.Height);
+                    if (a != null) g.DrawImage(a, dst);
+                    if (b != null && f > 0f)
+                    {
+                        ColorMatrix cm = new ColorMatrix(); cm.Matrix33 = f;
+                        using (ImageAttributes ia = new ImageAttributes())
+                        {
+                            ia.SetColorMatrix(cm, ColorMatrixFlag.Default, ColorAdjustType.Bitmap);
+                            g.DrawImage(b, dst, 0, 0, b.Width, b.Height, GraphicsUnit.Pixel, ia);
+                        }
+                    }
+                }
+                return blendBmp;
+            }
+
+            private void EnsureLabelRes()
+            {
+                if (lblFont == null) lblFont = new Font(this.Font.FontFamily, 10f, FontStyle.Bold);
+                if (lblBrush == null) lblBrush = new SolidBrush(Color.White);
+                if (lblSF == null)
+                {
+                    lblSF = new StringFormat();
+                    lblSF.Alignment = StringAlignment.Center; lblSF.LineAlignment = StringAlignment.Center;
+                    lblSF.Trimming = StringTrimming.EllipsisCharacter;
+                    lblSF.FormatFlags = StringFormatFlags.LineLimit;
+                }
+            }
+
+            // Avanza el giro e invalida lo MINIMO: en cuadros intermedios solo la casilla del cubo que
+            // gira (y la del relevo si lo hay); el cuadro completo (fondo+brillos) va 1 de cada 3.
+            public void AnimTick(bool fullFrame)
+            {
+                Rectangle d = SpinRect();
+                StepSpin();
+                Rectangle d2 = SpinRect();
+                if (fullFrame) { Invalidate(); return; }
+                if (d2 != Rectangle.Empty) d = (d == Rectangle.Empty) ? d2 : Rectangle.Union(d, d2);
+                if (d != Rectangle.Empty) Invalidate(d);
+            }
+
+            // Rectangulo que abarca el cubo seleccionado (girando) y el cubo en relevo, con margen
+            // suficiente para el contorno blanco brillante.
+            private Rectangle SpinRect()
+            {
+                if (Page == null || Page.Count == 0) return Rectangle.Empty;
+                int w = Width, h = Height; if (w < 8 || h < 8) return Rectangle.Empty;
+                Rectangle r = Rectangle.Empty, area, lbl;
+                if (Selected >= 0 && Selected < Page.Count)
+                { Geometry(w, h, Selected, out area, out lbl); area.Inflate(16, 16); r = area; }
+                if (prevIdx >= 0 && prevIdx < Page.Count)
+                { Geometry(w, h, prevIdx, out area, out lbl); area.Inflate(16, 16); r = (r == Rectangle.Empty) ? area : Rectangle.Union(r, area); }
+                return r;
+            }
+
+            // Relevo de giro: al cambiar de cubo, el ANTERIOR da un giro rapido que decae (se "pasa la energia"),
+            // y el NUEVO arranca plano. Asi se ve cual se dejo y cual es el actual, aunque se mueva muy rapido.
+            private int prevIdx = -1;        // cubo que se acaba de dejar (gira y se apaga)
+            private double prevAngle = 0;    // su angulo actual
+            private float prevSpin = 0f;     // su velocidad de giro (decae)
+            private float spinDir = 1f;      // sentido del giro (segun la direccion del movimiento)
+
+            // Mueve la seleccion DENTRO de la pagina con efecto de relevo (lo llama el movimiento izq/der).
+            public void MoveSelectionTo(int newSel, int dir)
+            {
+                int cnt = (Page != null) ? Page.Count : 0;
+                if (newSel != Selected && Selected >= 0 && Selected < cnt)
+                {
+                    prevIdx = Selected;            // el que dejamos
+                    prevAngle = SelAngle;          // continua desde donde iba
+                    prevSpin = 0.7f * (dir >= 0 ? 1f : -1f);   // golpe de giro en el sentido del movimiento
+                }
+                spinDir = (dir >= 0 ? 1f : -1f);
+                Selected = newSel;
+                SelAngle = 0;                      // el nuevo empieza plano (y arranca a girar)
+            }
+
+            // Cancela cualquier relevo en curso (al cambiar de pagina/letra, donde los cubos ya no son los mismos).
+            public void CancelHandoff() { prevIdx = -1; prevSpin = 0f; }
+
+            // Avanza el giro del cubo actual y el del cubo en relevo (lo llama el temporizador, 24fps).
+            public void StepSpin()
+            {
+                SelAngle += 0.06 * spinDir;
+                if (prevIdx >= 0)
+                {
+                    if (Math.Abs(prevSpin) > 0.02f) { prevAngle += prevSpin; prevSpin *= 0.85f; }
+                    else
+                    {
+                        // ya casi parado: lo asentamos al multiplo de 2π mas cercano (queda plano, sin salto)
+                        double target = Math.Round(prevAngle / (2 * Math.PI)) * (2 * Math.PI);
+                        prevAngle += (target - prevAngle) * 0.25;
+                        if (Math.Abs(target - prevAngle) < 0.03) prevIdx = -1;
+                    }
+                }
+            }
+
+            public AlbumView()
+            {
+                this.SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true);
+            }
+
+            // Fuerza reconstruir la capa de cubos (cuando llega una portada en segundo plano)
+            public void InvalidateCubeCache() { cacheSig = null; Invalidate(); }
+
+            protected override void OnMouseClick(MouseEventArgs e)
+            {
+                int cw = Width / Cols, ch = Height / Rows;
+                if (cw > 0 && ch > 0)
+                {
+                    int col = e.X / cw, row = e.Y / ch;
+                    if (col >= 0 && col < Cols && row >= 0 && row < Rows)
+                    {
+                        int idx = row * Cols + col;
+                        if (Page != null && idx < Page.Count) { Selected = idx; if (OnActivate != null) OnActivate(idx); }
+                    }
+                }
+                base.OnMouseClick(e);
+            }
+
+            private string Sig()
+            {
+                if (Page == null || Page.Count == 0) return "0";
+                return Page.Count.ToString() + "|" + (Page[0].Folder == null ? "" : Page[0].Folder) + "|" + (Page[Page.Count - 1].Folder == null ? "" : Page[Page.Count - 1].Folder);
+            }
+
+            private void Geometry(int w, int h, int i, out Rectangle cubeArea, out Rectangle labelRect)
+            {
+                int cw = w / Cols, ch = h / Rows;
+                int col = i % Cols, row = i / Cols;
+                Rectangle cell = new Rectangle(col * cw, row * ch, cw, ch);
+                int labelH = 38, padX = 8, gap = 3, padY = 6;   // labelH = 2 lineas; etiqueta pegada al cubo
+                int side = Math.Min(cell.Width - 2 * padX, cell.Height - labelH - gap - 2 * padY);
+                if (side < 10) side = 10;
+                int blockH = side + gap + labelH;
+                int top = cell.Y + Math.Max(padY, (cell.Height - blockH) / 2);   // centra cubo+etiqueta en la celda
+                cubeArea = new Rectangle(cell.X + (cell.Width - side) / 2, top, side, side);
+                labelRect = new Rectangle(cell.X + 2, cubeArea.Bottom + gap, cell.Width - 4, labelH);
+            }
+
+            private void RebuildCubes(int w, int h)
+            {
+                if (cubeCache == null || cubeCache.Width != w || cubeCache.Height != h)
+                {
+                    if (cubeCache != null) cubeCache.Dispose();
+                    cubeCache = new Bitmap(w, h);
+                }
+                using (Graphics g = Graphics.FromImage(cubeCache))
+                {
+                    g.Clear(Color.Transparent);
+                    if (Page == null) return;
+                    int cw = w / Cols, ch = h / Rows;
+                    if (cw < 4 || ch < 4) return;
+                    g.InterpolationMode = InterpolationMode.Bilinear;   // mas rapido que bicubico (CPU vieja); las portadas ya son de buena resolucion
+                    g.SmoothingMode = SmoothingMode.AntiAlias;
+                    EnsureLabelRes();
+                    {
+                        Font f = lblFont; SolidBrush white = lblBrush; StringFormat sf = lblSF;   // envuelve a 2 lineas (solo lineas completas) + "..." si sobra
+                        for (int i = 0; i < Page.Count && i < PageSize; i++)
+                        {
+                            Rectangle area, lbl;
+                            Geometry(w, h, i, out area, out lbl);
+                            // Todos los cubos van estaticos (angulo 0). El seleccionado (y el de relevo) se
+                            // dibujan girando ENCIMA en OnPaint; como girando nunca son mas angostos, lo tapan.
+                            // Asi el cache NO depende de la seleccion -> moverse entre discos no lo reconstruye (fluido).
+                            Cube.Draw(g, area, (GetCover != null) ? GetCover(Page[i]) : null, 0.0);
+                            string txt = AlbumLabel(Page[i]);
+                            g.DrawString(txt, f, white, lbl, sf);
+                        }
+                    }
+                }
+            }
+
+            // Cuando llega UNA caratula, redibuja SOLO ese cubo en el cache (no los 18).
+            // Asi pasar de pagina no dispara reconstrucciones completas repetidas (evita el tiron en XP).
+            public void RefreshCover(string coverPath)
+            {
+                if (Page == null || coverPath == null) return;
+                int w = Width, h = Height;
+                if (cubeCache == null || cubeCache.Width != w || cubeCache.Height != h) { InvalidateCubeCache(); return; }
+                int cw = w / Cols, ch = h / Rows;
+                if (cw < 4 || ch < 4) return;
+                bool any = false;
+                Rectangle dirtyR = Rectangle.Empty;
+                using (Graphics g = Graphics.FromImage(cubeCache))
+                {
+                    g.InterpolationMode = InterpolationMode.Bilinear;
+                    g.SmoothingMode = SmoothingMode.AntiAlias;
+                    EnsureLabelRes();
+                    {
+                        Font f = lblFont; SolidBrush white = lblBrush; StringFormat sf = lblSF;
+                        for (int i = 0; i < Page.Count && i < PageSize; i++)
+                        {
+                            if (Page[i] == null || Page[i].CoverPath != coverPath) continue;
+                            int col = i % Cols, row = i / Cols;
+                            Rectangle cell = new Rectangle(col * cw, row * ch, cw, ch);
+                            Rectangle area, lbl;
+                            Geometry(w, h, i, out area, out lbl);
+                            g.CompositingMode = CompositingMode.SourceCopy;   // deja la celda transparente
+                            using (SolidBrush tb = new SolidBrush(Color.Transparent)) g.FillRectangle(tb, cell);
+                            g.CompositingMode = CompositingMode.SourceOver;
+                            Cube.Draw(g, area, (GetCover != null) ? GetCover(Page[i]) : null, 0.0);
+                            g.DrawString(AlbumLabel(Page[i]), f, white, lbl, sf);
+                            dirtyR = (dirtyR == Rectangle.Empty) ? cell : Rectangle.Union(dirtyR, cell);
+                            any = true;
+                        }
+                    }
+                }
+                if (any && dirtyR != Rectangle.Empty) Invalidate(dirtyR);   // solo su celda: 18 caratulas ya NO son 18 repintados completos
+            }
+
+            protected override void OnPaint(PaintEventArgs e)
+            {
+                Graphics g = e.Graphics;
+                int w = Width, h = Height;
+                if (w < 8 || h < 8) { g.Clear(Shade(BgAccent, 0.82)); return; }
+
+                bool sizeChanged = (cacheW != w || cacheH != h);
+                string sig = Sig();
+                if (sizeChanged || cubeCache == null || sig != cacheSig) RebuildCubes(w, h);   // ya NO se reconstruye por cambio de seleccion
+                cacheW = w; cacheH = h; cacheSig = sig; cacheAccent = BgAccent;
+
+                stars.SkyOffsetY = this.Top; stars.SkyFullH = (this.Parent != null) ? this.Parent.ClientSize.Height : h; stars.SkyMid = SkyColorMid(BgAccent);
+                stars.Draw(g, w, h, SkyColor(BgAccent), SkyColor2(BgAccent), BgAccent, Phase, true, AudioPulse);   // fondo en degradado CONTINUO tenido por genero + late con la musica
+                g.DrawImageUnscaled(cubeCache, 0, 0);
+
+                if (Page != null && Selected >= 0 && Selected < Page.Count)
+                {
+                    int cw = w / Cols, ch = h / Rows;
+                    if (cw >= 4 && ch >= 4)
+                    {
+                        Rectangle area, lbl;
+                        Geometry(w, h, Selected, out area, out lbl);
+                        g.InterpolationMode = InterpolationMode.Bilinear;
+                        // Contorno blanco con resplandor del disco SELECCIONADO (ademas del giro), para ubicarlo facil.
+                        Rectangle fr = area; fr.Inflate(4, 4);
+                        if (cPenGlow == null)
+                        {
+                            cPenGlow = new Pen(Color.FromArgb(20, 255, 255, 255), 11f);   // resplandor ancho y tenue
+                            cPenMid = new Pen(Color.FromArgb(45, 255, 255, 255), 6f);     // resplandor medio
+                            cPenLine = new Pen(Color.FromArgb(235, 255, 255, 255), 2.4f); // linea nitida
+                        }
+                        if (contourPath == null || fr != contourRect)   // misma casilla -> misma trayectoria (cacheada)
+                        {
+                            if (contourPath != null) contourPath.Dispose();
+                            contourPath = RoundRect(fr, 10);
+                            contourRect = fr;
+                        }
+                        g.DrawPath(cPenGlow, contourPath);
+                        g.DrawPath(cPenMid, contourPath);
+                        g.DrawPath(cPenLine, contourPath);
+                        Album selA = Page[Selected];
+                        Image selCover;
+                        if (selA != null && selA.CycleCovers != null && selA.CycleCovers.Count > 0 && GetCoverByPath != null)
+                        {
+                            // disco TOP: cicla las portadas de los discos que contiene, con FUNDIDO suave
+                            // (igual que la vista previa del buscador): mantiene ~3.2s y funde ~1s.
+                            int m = selA.CycleCovers.Count;
+                            double cyc = 3.8, hold = 2.6;
+                            double total = cyc * m;
+                            double pos = Phase - Math.Floor(Phase / total) * total;
+                            int idx = (int)(pos / cyc) % m;
+                            double within = pos - idx * cyc;
+                            float f = 0f;
+                            if (within > hold) f = (float)((within - hold) / (cyc - hold));
+                            if (f < 0f) f = 0f; else if (f > 1f) f = 1f;
+                            Image ca = GetCoverByPath(selA.CycleCovers[idx]);
+                            Image cb = (m > 1) ? GetCoverByPath(selA.CycleCovers[(idx + 1) % m]) : null;
+                            if (ca == null && GetCover != null) ca = GetCover(selA);   // mientras carga
+                            selCover = (f <= 0.002f || cb == null) ? ca : BlendInto(ca, cb, f);
+                        }
+                        else selCover = (GetCover != null) ? GetCover(selA) : null;
+                        Cube.Draw(g, area, selCover, SelAngle);
+                    }
+                }
+
+                // Cubo de RELEVO: el que acabamos de dejar sigue girando (rapido y decayendo) sobre su
+                // posicion. Como el cubo girando nunca es mas angosto que el del cache, lo tapa sin fantasma.
+                if (prevIdx >= 0 && prevIdx != Selected && Page != null && prevIdx < Page.Count)
+                {
+                    int cw = w / Cols, ch = h / Rows;
+                    if (cw >= 4 && ch >= 4)
+                    {
+                        Rectangle area2, lbl2;
+                        Geometry(w, h, prevIdx, out area2, out lbl2);
+                        g.InterpolationMode = InterpolationMode.Bilinear;
+                        Cube.Draw(g, area2, (GetCover != null) ? GetCover(Page[prevIdx]) : null, prevAngle);
+                    }
+                }
+            }
+        }
+
+        // ==========  VIDEO: host del control ActiveX de Windows Media Player  ==========
+        // (CLSID del OCX de wmp.dll)
+        private class VideoHost : AxHost
+        {
+            public VideoHost() : base("6bf52a52-394a-11d3-b153-00c04f79faa6") { }
+            public object GetOcxObj() { return this.GetOcx(); }
+        }
+
+        // Un elemento de la cola: una cancion O un video. Disc = disco para el cubo de abajo.
+        private class PlayItem
+        {
+            public bool IsVideo;
+            public Track Song;
+            public string VideoPath;
+            public Album Disc;
+            public string PathKey()
+            {
+                if (IsVideo) return VideoPath ?? "";
+                return (Song != null && Song.Path != null) ? Song.Path : "";
+            }
+            public string Display()
+            {
+                if (IsVideo)
+                {
+                    // Mostrar "album - nombre del video": el disco (carpeta) MAS el nombre del archivo.
+                    string disc = (Disc != null && !string.IsNullOrEmpty(Disc.Artist)) ? Disc.Artist : "";
+                    string file = "";
+                    try { file = System.IO.Path.GetFileNameWithoutExtension(VideoPath); } catch { }
+                    string n;
+                    if (disc.Length > 0 && file.Length > 0) n = disc + " - " + file;
+                    else if (file.Length > 0) n = file;
+                    else n = disc;
+                    return "\u25BA Video:  " + n;
+                }
+                return (Song != null) ? (Song.Artist + " - " + Song.Title) : "";
+            }
+        }
+
+        // Un archivo de video dentro de un disco; en la lista se ve solo el nombre sin extension
+        private class VideoItem
+        {
+            public string Path;
+            public VideoItem(string p) { Path = p; }
+            public override string ToString()
+            {
+                try { return System.IO.Path.GetFileNameWithoutExtension(Path); }
+                catch { return Path; }
+            }
+        }
+
+        // ==========  CUBO DE LA CANCION (gira + se inclina)  ==========
+        private class CubeBox : Control
+        {
+            public Image Cover;
+            public double Angle;
+            public double Phase;
+
+            public CubeBox()
+            {
+                this.SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.SupportsTransparentBackColor, true);
+                this.BackColor = Color.FromArgb(10, 15, 44);
+            }
+
+            protected override void OnPaint(PaintEventArgs e)
+            {
+                Graphics g = e.Graphics;
+                if (this.BackColor.A == 255) g.Clear(this.BackColor);
+                int w = Width, h = Height;
+                if (w < 12 || h < 12) return;
+                g.InterpolationMode = InterpolationMode.Bilinear;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+
+                int side = (int)(Math.Min(w, h) * 0.78);
+                Rectangle area = new Rectangle((w - side) / 2, (h - side) / 2, side, side);
+
+                float cx = w / 2f, cy = h / 2f;
+                float tilt = (float)(10.0 * Math.Sin(Phase * 0.9));
+                GraphicsState st = g.Save();
+                g.TranslateTransform(cx, cy);
+                g.RotateTransform(tilt);
+                g.TranslateTransform(-cx, -cy);
+                Cube.Draw(g, area, Cover, Angle);
+                g.Restore(st);
+            }
+        }
+
+        // ==========  TIRA DE LETRAS (con brillo animado)  ==========
+        // Barra de paginas de la lista de canciones: "Pagina X de Y" al centro, y a los lados las
+        // instrucciones VARIABLES con flechas DIBUJADAS (la fuente de XP no trae flechas unicode):
+        //   [<] pagina 1        Pagina 2 de 3        pagina 3 [>]
+        private class SongPagerBar : Control
+        {
+            public int Page = 0;    // pagina actual (desde 0)
+            public int Pages = 1;   // total de paginas
+
+            public SongPagerBar()
+            {
+                SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint |
+                         ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+            }
+
+            protected override void OnPaint(PaintEventArgs e)
+            {
+                Graphics g = e.Graphics;
+                int w = Width, h = Height;
+                using (SolidBrush bb = new SolidBrush(BackColor)) g.FillRectangle(bb, 0, 0, w, h);
+                if (Pages <= 1 || w < 60 || h < 10) return;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+                int cy = h / 2;
+                Color txt = Color.FromArgb(228, 236, 252);
+                Color dim = Color.FromArgb(175, 188, 215);
+                Color yellow = Color.FromArgb(242, 206, 72);   // mismo amarillo que la cruceta izq/der
+                using (Font f = new Font(FontFamily.GenericSansSerif, 9.5f, FontStyle.Bold))
+                {
+                    // Centro: Pagina X de Y
+                    string c = "Pagina " + (Page + 1) + " de " + Pages;
+                    SizeF cs = g.MeasureString(c, f);
+                    using (SolidBrush b = new SolidBrush(txt)) g.DrawString(c, f, b, (w - cs.Width) / 2f, cy - cs.Height / 2f);
+
+                    // Izquierda: [<] pagina anterior (solo si existe)
+                    if (Page > 0)
+                    {
+                        float x = 4;
+                        x = CtrlDirLeft(g, x, cy, 11, yellow) + 5;
+                        CtrlTxt(g, f, "pagina " + Page, x, cy, dim);
+                    }
+                    // Derecha: pagina siguiente [>] (solo si existe)
+                    if (Page < Pages - 1)
+                    {
+                        string r = "pagina " + (Page + 2);
+                        SizeF rs = g.MeasureString(r, f);
+                        float xr = w - 4 - 11 - 5 - rs.Width;
+                        xr = CtrlTxt(g, f, r, xr, cy, dim) + 5;
+                        CtrlDirRight(g, xr, cy, 11, yellow);
+                    }
+                }
+            }
+        }
+
+        private class LetterBar : Control
+        {
+            private SolidBrush pulseBrush; private Pen pulsePen;                       // resaltado de letra (reusables)
+            private GraphicsPath pulsePath; private RectangleF pulseBox = RectangleF.Empty;  // trayectoria cacheada
+            private GraphicsPath goldPath; private RectangleF goldBox = RectangleF.Empty;    // marcador TOP dorado
+            private SolidBrush goldBrush; private Pen goldPen; private SolidBrush goldTextBrush;
+            private Bitmap stripCache; private int scW = -1, scH = -1; private char scCur = '\0';
+            private string scLetters; private int scAvailN = -2;                              // firma de la tira cacheada
+            private Font fMain, fVideo; private StringFormat sfCen; private SolidBrush whiteB; // recursos fijos
+            public string Letters = "\u2605#ABCDEFGHIJKLMNOPQRSTUVWXYZ\u25BA";
+            public char Current = '#';
+            public double Phase = 0;
+            public HashSet<char> Available;
+            public Action<char> OnPick;
+
+            public LetterBar()
+            {
+                this.SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.SupportsTransparentBackColor, true);
+                this.BackColor = Color.Transparent;
+            }
+
+            protected override void OnMouseClick(MouseEventArgs e)
+            {
+                int n = Letters.Length;
+                if (n == 0 || Width <= 0) { base.OnMouseClick(e); return; }
+                int slot = Width / n;
+                if (slot <= 0) { base.OnMouseClick(e); return; }
+                int i = e.X / slot;
+                if (i >= 0 && i < n && OnPick != null) OnPick(Letters[i]);
+                base.OnMouseClick(e);
+            }
+
+            private void EnsureRes()
+            {
+                if (fMain == null) fMain = new Font(this.Font.FontFamily, 10.5f, FontStyle.Bold);
+                if (fVideo == null) fVideo = new Font(this.Font.FontFamily, 7.5f, FontStyle.Bold);
+                if (whiteB == null) whiteB = new SolidBrush(Color.White);
+                if (sfCen == null)
+                {
+                    sfCen = new StringFormat();
+                    sfCen.Alignment = StringAlignment.Center; sfCen.LineAlignment = StringAlignment.Center;
+                }
+            }
+
+            // Dibuja TODAS las letras (menos la actual, que pulsa en vivo) en una tira reusable.
+            private void RebuildStrip(int w, int h, int n, float slot)
+            {
+                if (stripCache == null || stripCache.Width != w || stripCache.Height != h)
+                {
+                    if (stripCache != null) stripCache.Dispose();
+                    stripCache = new Bitmap(w, h, PixelFormat.Format32bppPArgb);
+                }
+                using (Graphics g = Graphics.FromImage(stripCache))
+                using (SolidBrush tb = new SolidBrush(Color.White))
+                {
+                    g.Clear(Color.Transparent);
+                    g.SmoothingMode = SmoothingMode.AntiAlias;
+                    for (int i = 0; i < n; i++)
+                    {
+                        char ch = Letters[i];
+                        if (ch == Current) continue;
+                        if (ch == '\u2605' && Available != null && Available.Contains(ch)) continue;   // TOP disponible: va dorado en vivo
+                        bool isVideo = (ch == '\u25BA');
+                        bool isTop = (ch == '\u2605');
+                        string lbl = isVideo ? "VIDEO" : isTop ? "TOP" : ch.ToString();
+                        Font useF = (isVideo || isTop) ? fVideo : fMain;
+                        RectangleF slotRect = new RectangleF(i * slot, 0, slot, h);
+                        bool avail = (Available == null) || Available.Contains(ch);
+                        tb.Color = avail ? Color.FromArgb(225, 232, 245) : Color.FromArgb(110, 120, 150);
+                        g.DrawString(lbl, useF, tb, slotRect, sfCen);
+                    }
+                }
+            }
+
+            protected override void OnPaint(PaintEventArgs e)
+            {
+                Graphics g = e.Graphics;
+                int w = Width, h = Height, n = Letters.Length;
+                if (w < 4 || h < 4 || n == 0) return;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                float slot = (float)w / n;
+                double pulse = 0.5 + 0.5 * Math.Sin(Phase * 2.2);
+                EnsureRes();
+
+                // TIRA CACHEADA: las ~28 letras solo se redibujan al cambiar letra/tamano/disponibles.
+                // Por cuadro: copiar la tira + la letra ACTUAL con su resplandor (antes: ~28 textos/cuadro).
+                int availN = (Available == null) ? -1 : Available.Count;
+                if (stripCache == null || scW != w || scH != h || scCur != Current || scLetters != Letters || scAvailN != availN)
+                {
+                    RebuildStrip(w, h, n, slot);
+                    scW = w; scH = h; scCur = Current; scLetters = Letters; scAvailN = availN;
+                }
+                g.DrawImageUnscaled(stripCache, 0, 0);
+
+                for (int i = 0; i < n; i++)
+                {
+                    char ch = Letters[i];
+                    if (ch != Current || ch == '\u2605') continue;   // TOP lo dibuja el bloque dorado
+                    bool isVideo = (ch == '\u25BA');
+                    bool isTop = (ch == '\u2605');
+                    string lbl = isVideo ? "VIDEO" : isTop ? "TOP" : ch.ToString();
+                    Font useF = (isVideo || isTop) ? fVideo : fMain;
+                    RectangleF slotRect = new RectangleF(i * slot, 0, slot, h);
+                    int pad = 3;
+                    RectangleF box = new RectangleF(slotRect.X + pad, pad, slotRect.Width - 2 * pad, h - 2 * pad);
+                    int glowA = 70 + (int)(pulse * 110);
+                    if (pulsePath == null || box != pulseBox)   // misma casilla -> misma trayectoria
+                    {
+                        if (pulsePath != null) pulsePath.Dispose();
+                        pulsePath = RoundRectF(box, 8);
+                        pulseBox = box;
+                    }
+                    if (pulseBrush == null) pulseBrush = new SolidBrush(Color.Black);
+                    if (pulsePen == null) pulsePen = new Pen(Color.FromArgb(220, 150, 205, 255), 2f);
+                    pulseBrush.Color = Color.FromArgb(glowA, 90, 170, 255);
+                    g.FillPath(pulseBrush, pulsePath);
+                    g.DrawPath(pulsePen, pulsePath);
+                    g.DrawString(lbl, useF, whiteB, slotRect, sfCen);
+                    break;
+                }
+
+                // Marcador TOP: SIEMPRE dorado pulsante para llamar la atencion del cliente (solo si hay
+                // algo dentro). Se dibuja en vivo este o no seleccionado.
+                int topI = Letters.IndexOf('\u2605');
+                if (topI >= 0 && Available != null && Available.Contains('\u2605'))
+                {
+                    RectangleF gsl = new RectangleF(topI * slot, 0, slot, h);
+                    double gpu = 0.5 + 0.5 * Math.Sin(Phase * 2.6);
+                    bool topSel = (Current == '\u2605');
+                    if (goldTextBrush == null) goldTextBrush = new SolidBrush(Color.Black);
+                    if (topSel)
+                    {
+                        // SELECCIONADO: caja dorada (mismo concepto que la seleccion azul de las letras)
+                        RectangleF gbx = new RectangleF(gsl.X + 3, 3, gsl.Width - 6, h - 6);
+                        int ga = 80 + (int)(gpu * 150);
+                        if (goldPath == null || gbx != goldBox) { if (goldPath != null) goldPath.Dispose(); goldPath = RoundRectF(gbx, 8); goldBox = gbx; }
+                        if (goldBrush == null) goldBrush = new SolidBrush(Color.Black);
+                        if (goldPen == null) goldPen = new Pen(Color.Black, 2.2f);
+                        goldBrush.Color = Color.FromArgb(ga, 255, 200, 40);
+                        goldPen.Color = Color.FromArgb(235, 255, 228, 130);
+                        g.FillPath(goldBrush, goldPath);
+                        g.DrawPath(goldPen, goldPath);
+                        goldTextBrush.Color = Color.White;
+                        g.DrawString("TOP", fVideo, goldTextBrush, gsl, sfCen);
+                    }
+                    else
+                    {
+                        // NO seleccionado: BRILLAN solo las letras (sin caja, para no confundir con seleccion).
+                        // halo dorado tenue (4 pasadas desplazadas) + texto dorado pulsante encima.
+                        int hAlpha = 35 + (int)(gpu * 55);
+                        goldTextBrush.Color = Color.FromArgb(hAlpha, 255, 205, 90);
+                        g.DrawString("TOP", fVideo, goldTextBrush, new RectangleF(gsl.X - 1, gsl.Y, gsl.Width, gsl.Height), sfCen);
+                        g.DrawString("TOP", fVideo, goldTextBrush, new RectangleF(gsl.X + 1, gsl.Y, gsl.Width, gsl.Height), sfCen);
+                        g.DrawString("TOP", fVideo, goldTextBrush, new RectangleF(gsl.X, gsl.Y - 1, gsl.Width, gsl.Height), sfCen);
+                        g.DrawString("TOP", fVideo, goldTextBrush, new RectangleF(gsl.X, gsl.Y + 1, gsl.Width, gsl.Height), sfCen);
+                        int gb = 60 + (int)(gpu * 70); if (gb > 255) gb = 255;
+                        goldTextBrush.Color = Color.FromArgb(255, 255, 210, gb);   // dorado pulsante brillante
+                        g.DrawString("TOP", fVideo, goldTextBrush, gsl, sfCen);
+                    }
+                }
+            }
+
+            private static GraphicsPath RoundRectF(RectangleF r, int radius)
+            {
+                GraphicsPath p = new GraphicsPath();
+                float d = radius * 2;
+                if (d > r.Height) d = r.Height;
+                if (d > r.Width) d = r.Width;
+                if (d < 2) d = 2;
+                p.AddArc(r.X, r.Y, d, d, 180, 90);
+                p.AddArc(r.Right - d, r.Y, d, d, 270, 90);
+                p.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
+                p.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
+                p.CloseFigure();
+                return p;
+            }
+        }
+
+        // ==========  BARRA DE PROGRESO  ==========
+        private class ProgressView : Control
+        {
+            private double _value;
+            public double Value { get { return _value; } set { _value = value < 0 ? 0 : (value > 1 ? 1 : value); Invalidate(); } }
+
+            public ProgressView()
+            {
+                this.SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.SupportsTransparentBackColor, true);
+                this.BackColor = Color.Transparent;
+            }
+
+            protected override void OnPaint(PaintEventArgs e)
+            {
+                Graphics g = e.Graphics;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                int w = Width, h = Height;
+                if (w < 4 || h < 4) return;
+                Rectangle track = new Rectangle(0, 0, w - 1, h - 1);
+                using (GraphicsPath tp = RoundedPath(track, h / 2))
+                using (SolidBrush tb = new SolidBrush(Color.FromArgb(60, 255, 255, 255)))
+                    g.FillPath(tb, tp);
+                int fw = (int)(_value * (w - 2));
+                if (fw >= 4)
+                {
+                    Rectangle fill = new Rectangle(1, 1, fw, h - 3);
+                    using (GraphicsPath fp = RoundedPath(fill, (h - 3) / 2))
+                    using (LinearGradientBrush fb = new LinearGradientBrush(fill, Color.FromArgb(235, 245, 255), Color.FromArgb(150, 190, 255), LinearGradientMode.Vertical))
+                        g.FillPath(fb, fp);
+                }
+            }
+        }
+
+        // ==========  BUSCADOR EN PANTALLA  ==========
+        private enum KKind { Char, Space, Back, Choose }
+
+        private class SearchKey
+        {
+            public KKind Kind;
+            public char Ch;
+            public string Label;
+            public RectangleF R;
+        }
+
+        private class SearchOverlay : Control
+        {
+            public string Query = "";
+            public List<SearchItem> Results = new List<SearchItem>();
+            public int SelRow = 1;
+            public int SelCol = 0;
+            public bool FocusResults = false;
+            public int SelResult = 0;
+            private int resCols = 1, resRowsPerCol = 8;   // dimensiones de la cuadricula de resultados (se fijan al pintar)
+            public double CubeAngle = 0;
+            public double Phase = 0;
+            public Color Accent = DefaultAccent;
+            public Func<Album, Image> GetCover;
+            public Action<string> OnQueryChanged;
+            public Action<SearchItem> OnChoose;
+            public Action OnClose;
+            public bool ToastOn = false;
+            public string ToastMsg = "";
+            public Color ToastBack = Color.FromArgb(238, 40, 165, 90);
+            private Rectangle cubeRect = Rectangle.Empty;
+            private readonly List<Image> artistCovers = new List<Image>();
+            private Bitmap blendBmp;
+            private Starfield stars = new Starfield();   // fondo estrellado reactivo al genero
+            public float AudioPulse = 0f;   // 0..1 nivel de audio
+            // Recursos de pintado CACHEADOS: el buscador creaba ~90 objetos GDI por cuadro (fuentes,
+            // pinceles y plumas, incluso por cada tecla y resultado) a 24fps. Ahora todo es reusable.
+            private Font fQuery, fHint, fToast, fHead, fEmpty, fRes, fResSub, fPrevT, fPrevS, fPrevH;
+            private Font fChar, fSp; private float fKh = -1f;   // fuentes del teclado (dependen de su altura)
+            private SolidBrush sbS; private Pen pnS;            // pincel/pluma reusables (se les muta color/grosor)
+            private void EnsurePaintRes()
+            {
+                if (fQuery != null) return;
+                fQuery = new Font(FontFamily.GenericSansSerif, 20f, FontStyle.Bold);
+                fHint = new Font(FontFamily.GenericSansSerif, 9.5f, FontStyle.Bold);
+                fToast = new Font(FontFamily.GenericSansSerif, 15.5f, FontStyle.Bold);
+                fHead = new Font(FontFamily.GenericSansSerif, 13f, FontStyle.Bold);
+                fEmpty = new Font(FontFamily.GenericSansSerif, 11f, FontStyle.Italic);
+                fRes = new Font(FontFamily.GenericSansSerif, 10.5f, FontStyle.Bold);
+                fResSub = new Font(FontFamily.GenericSansSerif, 7.5f, FontStyle.Bold);
+                fPrevT = new Font(FontFamily.GenericSansSerif, 15f, FontStyle.Bold);
+                fPrevS = new Font(FontFamily.GenericSansSerif, 11f, FontStyle.Regular);
+                fPrevH = new Font(FontFamily.GenericSansSerif, 11f, FontStyle.Bold);
+                sbS = new SolidBrush(Color.Black);
+                pnS = new Pen(Color.Black, 1f);
+            }
+
+            private readonly List<List<SearchKey>> rows = new List<List<SearchKey>>();
+            private readonly List<KeyValuePair<RectangleF, int>> resultRects = new List<KeyValuePair<RectangleF, int>>();
+
+            public SearchOverlay()
+            {
+                this.SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.Selectable, true);
+                this.TabStop = true;
+                this.BackColor = Color.FromArgb(8, 12, 36);
+                BuildKeys();
+            }
+
+            private void BuildKeys()
+            {
+                AddRow("1234567890");
+                AddRow("QWERTYUIOP");
+                AddRow("ASDFGHJKL\u00D1");
+                AddRow("ZXCVBNM");
+                List<SearchKey> sp = new List<SearchKey>();
+                sp.Add(new SearchKey { Kind = KKind.Space, Label = "ESPACIO" });
+                sp.Add(new SearchKey { Kind = KKind.Back, Label = "BORRAR" });
+                rows.Add(sp);
+            }
+
+            private void AddRow(string s)
+            {
+                List<SearchKey> row = new List<SearchKey>();
+                for (int i = 0; i < s.Length; i++)
+                    row.Add(new SearchKey { Kind = KKind.Char, Ch = s[i], Label = s[i].ToString() });
+                rows.Add(row);
+            }
+
+            public void SetQuery(string q) { Query = q; FocusResults = false; SelResult = 0; Invalidate(); }
+            public void TypeChar(char c) { Query += c; Changed(); }
+            public void Backspace() { if (Query.Length > 0) Query = Query.Substring(0, Query.Length - 1); Changed(); }
+            private void Changed() { FocusResults = false; SelResult = 0; if (OnQueryChanged != null) OnQueryChanged(Query); Invalidate(); }
+            public void InvalidateCube() { if (cubeRect != Rectangle.Empty) Invalidate(Rectangle.Inflate(cubeRect, 6, 6)); else Invalidate(); }
+
+            public void MoveSel(int dx, int dy)
+            {
+                if (FocusResults)
+                {
+                    int cap = Math.Max(1, resCols * resRowsPerCol);
+                    int n = Math.Min((Results != null) ? Results.Count : 0, cap);
+                    if (n == 0) { if (dx < 0) FocusResults = false; Invalidate(); return; }
+                    if (SelResult < 0) SelResult = 0;
+                    if (SelResult >= n) SelResult = n - 1;
+                    int rpc = (resRowsPerCol > 0) ? resRowsPerCol : 1;
+                    int col = SelResult / rpc, row = SelResult % rpc;
+                    if (dx < 0 && col == 0) { FocusResults = false; Invalidate(); return; }   // izquierda en 1a columna -> teclado
+                    if (dy != 0)
+                    {
+                        int nr = row + dy; if (nr < 0) nr = 0; if (nr >= rpc) nr = rpc - 1;
+                        int ni = col * rpc + nr; if (ni < n) SelResult = ni;
+                    }
+                    if (dx != 0)
+                    {
+                        int nc = col + dx; if (nc < 0) nc = 0;
+                        int ni = nc * rpc + row; if (ni >= n) ni = n - 1;
+                        if (ni >= 0) SelResult = ni;
+                    }
+                    Invalidate();
+                    return;
+                }
+                if (rows.Count == 0) return;
+                if (dy != 0)
+                {
+                    SelRow += dy;
+                    if (SelRow < 0) SelRow = 0;
+                    if (SelRow >= rows.Count) SelRow = rows.Count - 1;
+                    if (SelCol >= rows[SelRow].Count) SelCol = rows[SelRow].Count - 1;
+                }
+                if (dx != 0)
+                {
+                    if (dx > 0 && SelCol >= rows[SelRow].Count - 1 && Results != null && Results.Count > 0)
+                    {
+                        FocusResults = true; SelResult = 0; Invalidate(); return;
+                    }
+                    SelCol += dx;
+                    if (SelCol < 0) SelCol = 0;
+                    if (SelCol >= rows[SelRow].Count) SelCol = rows[SelRow].Count - 1;
+                }
+                Invalidate();
+            }
+
+            public void PressSelected()
+            {
+                if (FocusResults)
+                {
+                    if (Results != null && SelResult >= 0 && SelResult < Results.Count && OnChoose != null) OnChoose(Results[SelResult]);
+                    return;
+                }
+                if (SelRow < 0 || SelRow >= rows.Count) return;
+                if (SelCol < 0 || SelCol >= rows[SelRow].Count) return;
+                Activate(rows[SelRow][SelCol]);
+            }
+
+            private void Activate(SearchKey k)
+            {
+                if (k.Kind == KKind.Char) TypeChar(k.Ch);
+                else if (k.Kind == KKind.Space) TypeChar(' ');
+                else if (k.Kind == KKind.Back) Backspace();
+                else if (k.Kind == KKind.Choose) { if (Results != null && Results.Count > 0 && OnChoose != null) OnChoose(Results[0]); }
+            }
+
+            protected override void OnMouseClick(MouseEventArgs e)
+            {
+                if (!FocusResults)
+                {
+                    for (int r = 0; r < rows.Count; r++)
+                        for (int c = 0; c < rows[r].Count; c++)
+                            if (rows[r][c].R.Contains(e.X, e.Y)) { SelRow = r; SelCol = c; Activate(rows[r][c]); Invalidate(); base.OnMouseClick(e); return; }
+                }
+                else if (cubeRect != Rectangle.Empty && cubeRect.Contains(e.X, e.Y))
+                {
+                    FocusResults = false; Invalidate(); base.OnMouseClick(e); return;
+                }
+                for (int i = 0; i < resultRects.Count; i++)
+                    if (resultRects[i].Key.Contains(e.X, e.Y))
+                    {
+                        int idx = resultRects[i].Value;
+                        if (Results != null && idx >= 0 && idx < Results.Count && OnChoose != null) OnChoose(Results[idx]);
+                        base.OnMouseClick(e); return;
+                    }
+                base.OnMouseClick(e);
+            }
+
+            protected override void OnPaint(PaintEventArgs e)
+            {
+                Graphics g = e.Graphics;
+                int W = Width, H = Height;
+                if (W < 60 || H < 60) return;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                Rectangle clip = e.ClipRectangle;
+
+                stars.SkyOffsetY = this.Top; stars.SkyFullH = (this.Parent != null) ? this.Parent.ClientSize.Height : H; stars.SkyMid = SkyColorMid(Accent);
+                stars.Draw(g, W, H, SkyColor(Accent), SkyColor2(Accent), Accent, Phase, true, AudioPulse);   // mismo fondo en degradado CONTINUO que el resto + late con la musica
+
+                int M = 30;
+                Rectangle qb = new Rectangle(M, M, W - 2 * M, 70);
+                Rectangle hintRect = new Rectangle(M, M + 72, W - 2 * M, 20);
+                if (qb.IntersectsWith(clip) || hintRect.IntersectsWith(clip))
+                {
+                    EnsurePaintRes();
+                    using (GraphicsPath gp = RoundedPath(qb, 16))
+                    {
+                        sbS.Color = Shade(Accent, 0.42); g.FillPath(sbS, gp);
+                        pnS.Color = Lighten(Accent, 0.35); pnS.Width = 2f; g.DrawPath(pnS, gp);
+                    }
+                    bool caretOn = Math.Sin(Phase * 3.0) > 0;
+                    string shown = "Buscar:  " + Query + (caretOn ? "|" : "");
+                    TextRenderer.DrawText(g, shown, fQuery, new Rectangle(qb.X + 18, qb.Y, qb.Width - 30, qb.Height), Color.White, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+                    {
+                        Font hf = fHint;
+                        int hcy = hintRect.Y + hintRect.Height / 2;
+                        Color htx = Color.FromArgb(214, 222, 242);
+                        Color hred = Color.FromArgb(228, 72, 72), hgreen = Color.FromArgb(72, 212, 112);
+                        int hd = 14; float hgap = 6, hgrp = 18;
+                        float hx = hintRect.X;
+                        hx = CtrlPad(g, hx, hcy, hd + 2);
+                        hx = CtrlTxt(g, hf, "Mover", hx + hgap, hcy, htx) + hgrp;
+                        hx = CtrlDot(g, hx, hcy, hd, hgreen);
+                        hx = CtrlTxt(g, hf, "Poner / Elegir", hx + hgap, hcy, htx) + hgrp;
+                        hx = CtrlDot(g, hx, hcy, hd, hred) + 3; hx = CtrlDot(g, hx, hcy, hd, hgreen);
+                        hx = CtrlTxt(g, hf, "Cerrar", hx + hgap, hcy, htx);
+                    }
+                }
+
+                int contentY = M + 70 + 28;
+                int contentH = H - contentY - M;
+                if (contentH < 60) return;
+                int kbW = (int)((W - 2 * M) * 0.52);   // teclado mas angosto -> resultados mas anchos (caben 2 columnas)
+                Rectangle kbRegion = new Rectangle(M, contentY, kbW, contentH);
+                Rectangle resRegion = new Rectangle(M + kbW + 20, contentY, (W - 2 * M) - kbW - 20, contentH);
+
+                bool showCube = FocusResults && Results != null && Results.Count > 0 && GetCover != null;
+                if (showCube)
+                {
+                    if (kbRegion.IntersectsWith(clip)) DrawPreviewCube(g, kbRegion);
+                }
+                else
+                {
+                    cubeRect = Rectangle.Empty;
+                    LayoutKeys(kbRegion);
+                    if (kbRegion.IntersectsWith(clip)) DrawKeys(g);
+                }
+                if (resRegion.IntersectsWith(clip)) DrawResults(g, resRegion);
+
+                if (ToastOn) DrawToast(g, W, H);
+            }
+
+            private void DrawToast(Graphics g, int W, int H)
+            {
+                int tw = 400, th = 56;
+                Rectangle r = new Rectangle((W - tw) / 2, 104, tw, th);
+                EnsurePaintRes();
+                using (GraphicsPath gp = RoundedPath(r, 16))
+                {
+                    sbS.Color = ToastBack; g.FillPath(sbS, gp);
+                    pnS.Color = Lighten(ToastBack, 0.45); pnS.Width = 2.4f; g.DrawPath(pnS, gp);
+                }
+                TextRenderer.DrawText(g, ToastMsg, fToast, r, Color.White, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+            }
+
+            private void LayoutKeys(Rectangle region)
+            {
+                int rowsN = rows.Count;
+                if (rowsN == 0) return;
+                float gap = 6;
+                float rowH = (region.Height - gap * (rowsN - 1)) / rowsN;
+                int cols = 10;
+                float keyW = (region.Width - gap * (cols - 1)) / cols;
+                for (int r = 0; r < rows.Count; r++)
+                {
+                    float y = region.Y + r * (rowH + gap);
+                    if (r < 4)
+                    {
+                        int c = rows[r].Count;
+                        float totalW = c * keyW + gap * (c - 1);
+                        float x0 = region.X + (region.Width - totalW) / 2f;
+                        for (int c2 = 0; c2 < c; c2++)
+                            rows[r][c2].R = new RectangleF(x0 + c2 * (keyW + gap), y, keyW, rowH);
+                    }
+                    else
+                    {
+                        int n = rows[r].Count;
+                        float[] frac;
+                        if (n == 2) frac = new float[] { 0.60f, 0.40f };          // ESPACIO mas ancho, BORRAR
+                        else if (n == 3) frac = new float[] { 0.40f, 0.28f, 0.32f };
+                        else { frac = new float[n]; for (int q = 0; q < n; q++) frac[q] = 1f / n; }
+                        float avail = region.Width - gap * (n - 1);
+                        float x = region.X;
+                        for (int c2 = 0; c2 < n; c2++)
+                        {
+                            float fw = avail * frac[c2];
+                            rows[r][c2].R = new RectangleF(x, y, fw, rowH);
+                            x += fw + gap;
+                        }
+                    }
+                }
+            }
+
+            private void DrawKeys(Graphics g)
+            {
+                if (rows.Count == 0 || rows[0].Count == 0) return;
+                float kh = rows[0][0].R.Height;
+                if (kh < 8) kh = 8;
+                EnsurePaintRes();
+                if (fChar == null || fKh != kh)   // fuentes del teclado: solo se recrean si cambia su altura
+                {
+                    if (fChar != null) fChar.Dispose();
+                    if (fSp != null) fSp.Dispose();
+                    fChar = new Font(FontFamily.GenericSansSerif, Math.Max(12f, kh * 0.42f), FontStyle.Bold);
+                    fSp = new Font(FontFamily.GenericSansSerif, Math.Max(9f, kh * 0.24f), FontStyle.Bold);
+                    fKh = kh;
+                }
+                {
+                    Font charFont = fChar, spFont = fSp;
+                    for (int r = 0; r < rows.Count; r++)
+                        for (int c = 0; c < rows[r].Count; c++)
+                        {
+                            SearchKey k = rows[r][c];
+                            Rectangle kr = Rectangle.Round(k.R);
+                            if (kr.Width < 2 || kr.Height < 2) continue;
+                            bool sel = (r == SelRow && c == SelCol);
+                            double kp = 0.5 + 0.5 * Math.Sin(Phase * 2.2 - (r * 0.55 + c * 0.32));
+                            using (GraphicsPath gp = RoundedPath(kr, 10))
+                            {
+                                Color top = sel ? Lighten(Accent, 0.32) : Lighten(Shade(Accent, 0.34), 0.10 + 0.14 * kp);
+                                Color bot = sel ? Accent : Shade(Accent, 0.55);
+                                using (LinearGradientBrush b = new LinearGradientBrush(kr, top, bot, LinearGradientMode.Vertical)) g.FillPath(b, gp);
+                                if (sel)
+                                {
+                                    int a = 130 + (int)((0.5 + 0.5 * Math.Sin(Phase * 2.6)) * 120);
+                                    pnS.Color = Color.FromArgb(a, 170, 215, 255); pnS.Width = 2.8f; g.DrawPath(pnS, gp);
+                                }
+                                else
+                                {
+                                    int a = 85 + (int)(kp * 130);
+                                    pnS.Color = Color.FromArgb(a, 150, 200, 255); pnS.Width = 1.7f; g.DrawPath(pnS, gp);
+                                }
+                            }
+                            Font use = (k.Kind == KKind.Char) ? charFont : spFont;
+                            TextRenderer.DrawText(g, k.Label, use, kr, Color.White, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+                        }
+                }
+            }
+
+            private void DrawResults(Graphics g, Rectangle region)
+            {
+                resultRects.Clear();
+                EnsurePaintRes();
+                TextRenderer.DrawText(g, "Resultados", fHead, new Rectangle(region.X, region.Y, region.Width, 24), Color.White, TextFormatFlags.Left);
+                int top = region.Y + 30;
+                int areaH = region.Bottom - top;
+                if (areaH < 28) { resCols = 1; resRowsPerCol = 1; return; }
+
+                int cardH = 38, gapY = 5, gapX = 8, colMinW = 185;
+                int cols = (region.Width + gapX) / (colMinW + gapX);
+                if (cols < 1) cols = 1; if (cols > 2) cols = 2;            // hasta 2 columnas en este panel
+                int colW = (region.Width - (cols - 1) * gapX) / cols;
+                int rowsPerCol = (areaH + gapY) / (cardH + gapY);
+                if (rowsPerCol < 1) rowsPerCol = 1;
+                resCols = cols; resRowsPerCol = rowsPerCol;
+
+                int capacity = cols * rowsPerCol;
+                int n = (Results != null) ? Math.Min(Results.Count, capacity) : 0;
+                if (FocusResults && n > 0) { if (SelResult < 0) SelResult = 0; if (SelResult >= n) SelResult = n - 1; }
+
+                if (n == 0)
+                {
+                    TextRenderer.DrawText(g, (Query.Length == 0) ? "Escribe para buscar..." : "Sin resultados", fEmpty, new Rectangle(region.X, top, region.Width, 28), Color.FromArgb(190, 200, 225), TextFormatFlags.Left);
+                    return;
+                }
+
+                {
+                    Font df = fRes, tf = fResSub;
+                    for (int i = 0; i < n; i++)
+                    {
+                        int col = i / rowsPerCol;       // llena hacia ABAJO y luego pasa a la SIGUIENTE columna
+                        int row = i % rowsPerCol;
+                        int rx = region.X + col * (colW + gapX);
+                        int ry = top + row * (cardH + gapY);
+                        Rectangle rr = new Rectangle(rx, ry, colW, cardH);
+                        bool sel = FocusResults ? (i == SelResult) : (i == 0);
+                        using (GraphicsPath gp = RoundedPath(rr, 8))
+                        {
+                            sbS.Color = sel ? Shade(Accent, 0.26) : Shade(Accent, 0.50); g.FillPath(sbS, gp);
+                            pnS.Color = Color.FromArgb(sel ? 215 : 100, 160, 200, 245); pnS.Width = sel ? 2f : 1.1f; g.DrawPath(pnS, gp);
+                        }
+                        SearchItem it = Results[i];
+                        string tag = (it.Kind == 0) ? "ARTISTA" : (it.Kind == 1) ? "ALBUM" : "CANCION";
+                        Color tagc = (it.Kind == 0) ? Color.FromArgb(150, 215, 255) : (it.Kind == 1) ? Color.FromArgb(255, 210, 120) : Color.FromArgb(170, 245, 170);
+                        TextRenderer.DrawText(g, tag, tf, new Rectangle(rr.X + 9, rr.Y + 4, colW - 14, 13), tagc, TextFormatFlags.Left);
+                        TextRenderer.DrawText(g, it.Display, df, new Rectangle(rr.X + 9, rr.Y + 16, colW - 16, cardH - 18), Color.White, TextFormatFlags.Left | TextFormatFlags.EndEllipsis);
+                        resultRects.Add(new KeyValuePair<RectangleF, int>(rr, i));
+                    }
+                }
+            }
+
+            // Cachea las caratulas (ya redimensionadas) de todos los discos del artista
+            // Reconstruye SIEMPRE: pide las portadas vigentes a la cache (nunca guarda una
+            // referencia que pudiera liberarse despues -> evita dibujar imagenes muertas).
+            private List<Image> EnsureArtistCovers(SearchItem it)
+            {
+                artistCovers.Clear();
+                if (it.Albums != null && GetCover != null)
+                    for (int i = 0; i < it.Albums.Count; i++)
+                    {
+                        Image im = GetCover(it.Albums[i]);
+                        if (im != null) artistCovers.Add(im);
+                    }
+                return artistCovers;
+            }
+
+            // Mezcla a->b con factor f (0..1) en un bitmap reutilizable
+            private Image BlendInto(Image a, Image b, float f)
+            {
+                if (blendBmp == null) blendBmp = new Bitmap(320, 320, PixelFormat.Format32bppPArgb);
+                using (Graphics g = Graphics.FromImage(blendBmp))
+                {
+                    g.Clear(Color.Black);
+                    g.InterpolationMode = InterpolationMode.Bilinear;
+                    Rectangle dst = new Rectangle(0, 0, blendBmp.Width, blendBmp.Height);
+                    if (a != null) g.DrawImage(a, dst);
+                    if (b != null && f > 0f)
+                    {
+                        ColorMatrix cm = new ColorMatrix();
+                        cm.Matrix33 = f;
+                        using (ImageAttributes ia = new ImageAttributes())
+                        {
+                            ia.SetColorMatrix(cm, ColorMatrixFlag.Default, ColorAdjustType.Bitmap);
+                            g.DrawImage(b, dst, 0, 0, b.Width, b.Height, GraphicsUnit.Pixel, ia);
+                        }
+                    }
+                }
+                return blendBmp;
+            }
+
+            private void DrawPreviewCube(Graphics g, Rectangle region)
+            {
+                int n = (Results != null) ? Results.Count : 0;
+                if (n == 0 || SelResult < 0 || SelResult >= n) { cubeRect = Rectangle.Empty; return; }
+                SearchItem it = Results[SelResult];
+                Image cover;
+                if (it.Kind == 0)
+                {
+                    List<Image> cov = EnsureArtistCovers(it);
+                    if (cov.Count == 0) cover = (GetCover != null && it.AlbumRef != null) ? GetCover(it.AlbumRef) : null;
+                    else if (cov.Count == 1) cover = cov[0];
+                    else
+                    {
+                        double cyc = 3.8, hold = 2.6;   // ~3.2s por caratula, funde ~1s
+                        int m = cov.Count;
+                        double total = cyc * m;
+                        double pos = Phase - Math.Floor(Phase / total) * total;
+                        int idx = (int)(pos / cyc) % m;
+                        double within = pos - idx * cyc;
+                        float f = 0f;
+                        if (within > hold) f = (float)((within - hold) / (cyc - hold));
+                        if (f < 0f) f = 0f; else if (f > 1f) f = 1f;
+                        cover = (f <= 0.002f) ? cov[idx] : BlendInto(cov[idx], cov[(idx + 1) % m], f);
+                    }
+                }
+                else cover = (GetCover != null && it.AlbumRef != null) ? GetCover(it.AlbumRef) : null;
+
+                int side = (int)(Math.Min(region.Width, region.Height) * 0.62);
+                if (side < 40) side = 40;
+                int cx = region.X + region.Width / 2;
+                int top = region.Y + (region.Height - side) / 2 - 24;
+                if (top < region.Y + 6) top = region.Y + 6;
+                Rectangle area = new Rectangle(cx - side / 2, top, side, side);
+                cubeRect = area;
+
+                g.InterpolationMode = InterpolationMode.Bilinear;
+                Cube.Draw(g, area, cover, CubeAngle);
+
+                string title, sub;
+                if (it.Kind == 1) { title = (it.AlbumRef != null) ? it.AlbumRef.Name : it.Display; sub = (it.AlbumRef != null) ? it.AlbumRef.Artist : ""; }
+                else if (it.Kind == 2 && it.TrackRef != null) { title = it.TrackRef.Title; sub = it.TrackRef.Artist + ((it.AlbumRef != null) ? "   -   " + it.AlbumRef.Name : ""); }
+                else { title = it.Display; int dc = (it.Albums != null) ? it.Albums.Count : 0; sub = dc + (dc == 1 ? " disco" : " discos"); }
+
+                int ty = area.Bottom + 12;
+                EnsurePaintRes();
+                TextRenderer.DrawText(g, title, fPrevT, new Rectangle(region.X, ty, region.Width, 28), Color.White, TextFormatFlags.HorizontalCenter | TextFormatFlags.EndEllipsis);
+                TextRenderer.DrawText(g, sub, fPrevS, new Rectangle(region.X, ty + 30, region.Width, 24), Color.FromArgb(215, 225, 245), TextFormatFlags.HorizontalCenter | TextFormatFlags.EndEllipsis);
+                // Ayuda con ICONOS (mismo estilo que la barra de arriba), centrada.
+                {
+                    Font hf = fPrevH;
+                    SmoothingMode oldsm = g.SmoothingMode; g.SmoothingMode = SmoothingMode.AntiAlias;
+                    System.Drawing.Text.TextRenderingHint oldth = g.TextRenderingHint;
+                    g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+                    Color htx = Color.FromArgb(205, 214, 238);
+                    Color yellow = Color.FromArgb(242, 206, 72), green = Color.FromArgb(72, 212, 112);
+                    int hcy = region.Bottom - 14;
+                    int dd = 15; float gap = 7, grp = 26;
+                    string t1 = "volver al teclado", t2 = "elegir";
+                    SizeF s1 = g.MeasureString(t1, hf), s2 = g.MeasureString(t2, hf);
+                    float total = dd + gap + s1.Width + grp + dd + gap + s2.Width;
+                    float hx = region.X + (region.Width - total) / 2f;
+                    hx = CtrlDirLeft(g, hx, hcy, dd, yellow) + gap;   // boton IZQUIERDA
+                    hx = CtrlTxt(g, hf, t1, hx, hcy, htx) + grp;
+                    hx = CtrlDot(g, hx, hcy, dd, green) + gap;         // boton PONER (verde)
+                    hx = CtrlTxt(g, hf, t2, hx, hcy, htx);
+                    g.SmoothingMode = oldsm; g.TextRenderingHint = oldth;
+                }
+            }
+        }
+
+        private class SearchItem
+        {
+            public int Kind;     // 0=artista, 1=album, 2=cancion
+            public string Display;
+            public string Key;
+            public int Score;
+            public Album AlbumRef;
+            public Track TrackRef;
+            public List<Album> Albums;   // todos los discos del artista (Kind==0)
+        }
+
+        private class Album
+        {
+            public string Folder;
+            public string Name;
+            public string Artist;
+            public char Letter;
+            public string CoverPath;
+            public List<Track> Tracks = new List<Track>();
+            public List<string> VideoFiles = new List<string>();
+            public bool IsTop = false;             // disco virtual de "lo mas sonado" por genero
+            public bool TopIsVideo = false;        // (TOP) este disco virtual contiene VIDEOS, no canciones
+            public List<string> CycleCovers;       // (TOP) caratulas distintas para ciclar en el cubo seleccionado
+            public List<string> TrackCovers;       // (TOP) caratula de origen por cada cancion (alineado con Tracks)
+            public List<string> TrackInfo;         // (TOP) "Artista - Album" de origen por cada cancion
+            public List<Album> TrackAlbums;        // (TOP) disco de origen por cada cancion (para "sonando")
+        }
+
+        // ==========  ETIQUETAS (ID3)  ==========
+        private class Track
+        {
+            public string Path;
+            public string Artist;
+            public string Title;
+            public string Album;
+            public string Genre;
+
+            // En la lista del disco se muestra EXACTAMENTE el nombre del archivo (sin extension), tal
+            // cual esta en la carpeta: cero adivinanzas. Title/Artist se siguen usando por dentro para
+            // "Sonando:", el color por genero y el buscador.
+            public override string ToString()
+            {
+                try { return System.IO.Path.GetFileNameWithoutExtension(Path); }
+                catch { return Title; }
+            }
+
+            private static readonly string[] Id3v1Genres = {
+                "Blues","Classic Rock","Country","Dance","Disco","Funk","Grunge","Hip-Hop","Jazz","Metal",
+                "New Age","Oldies","Other","Pop","R&B","Rap","Reggae","Rock","Techno","Industrial",
+                "Alternative","Ska","Death Metal","Pranks","Soundtrack","Euro-Techno","Ambient","Trip-Hop","Vocal","Jazz+Funk",
+                "Fusion","Trance","Classical","Instrumental","Acid","House","Game","Sound Clip","Gospel","Noise",
+                "AlternRock","Bass","Soul","Punk","Space","Meditative","Instrumental Pop","Instrumental Rock","Ethnic","Gothic",
+                "Darkwave","Techno-Industrial","Electronic","Pop-Folk","Eurodance","Dream","Southern Rock","Comedy","Cult","Gangsta",
+                "Top 40","Christian Rap","Pop/Funk","Jungle","Native American","Cabaret","New Wave","Psychadelic","Rave","Showtunes",
+                "Trailer","Lo-Fi","Tribal","Acid Punk","Acid Jazz","Polka","Retro","Musical","Rock & Roll","Hard Rock"
+            };
+
+            private static string NormalizeGenre(string raw)
+            {
+                if (string.IsNullOrEmpty(raw)) return "";
+                raw = raw.Trim();
+                if (raw.Length > 0 && raw[0] == '(')
+                {
+                    int close = raw.IndexOf(')');
+                    if (close > 1)
+                    {
+                        string num = raw.Substring(1, close - 1);
+                        int n;
+                        if (int.TryParse(num, out n) && n >= 0 && n < Id3v1Genres.Length)
+                        {
+                            string rest = raw.Substring(close + 1).Trim();
+                            if (rest.Length > 0) return rest;
+                            return Id3v1Genres[n];
+                        }
+                    }
+                }
+                int num2;
+                if (int.TryParse(raw, out num2) && num2 >= 0 && num2 < Id3v1Genres.Length) return Id3v1Genres[num2];
+                return raw;
+            }
+
+            // RAPIDO: no abre el archivo. Titulo/artista salen del nombre y la carpeta.
+            // (Con +100k canciones, abrir cada MP3 para leer ID3 era lo que tardaba.)
+            public static Track FromFile(string path)
+            {
+                Track t = new Track();
+                t.Path = path; t.Artist = ""; t.Title = ""; t.Album = ""; t.Genre = "";
+                string name = System.IO.Path.GetFileNameWithoutExtension(path);
+                string fa, ft;
+                bool split = SplitArtist(name, out fa, out ft);
+                if (split && AllDigits(fa))
+                {
+                    // "01 - X - Y": quitar el numero de pista y reanalizar -> artista X, titulo Y.
+                    string fa2, ft2;
+                    if (SplitArtist(ft, out fa2, out ft2) && !AllDigits(fa2)) { t.Artist = fa2; t.Title = ft2; }
+                    else t.Title = name;   // "01 - Titulo": igual que siempre
+                }
+                else if (split) { t.Artist = fa; t.Title = ft; }
+                else { t.Title = name; }
+                if (string.IsNullOrEmpty(t.Artist))
+                {
+                    string d = System.IO.Path.GetDirectoryName(path);
+                    string leaf = (d != null) ? LeafName(d) : "Desconocido";
+                    string da, dn;
+                    if (SplitArtist(leaf, out da, out dn)) t.Artist = da; else t.Artist = leaf;
+                }
+                return t;
+            }
+
+            // Lee el ID3 bajo demanda (una sola vez), sobre todo para el GENERO (color de fondo).
+            private bool tagsLoaded = false;
+            public void EnsureTags()
+            {
+                if (tagsLoaded) return;
+                tagsLoaded = true;
+                try { if (System.IO.Path.GetExtension(Path).ToLowerInvariant() == ".mp3") ReadId3(Path, this); }
+                catch { }
+            }
+
+            private static void ReadId3(string path, Track t)
+            {
+                using (FileStream fs = new FileStream(path, FileMode.Open, FileAccess.Read))
+                {
+                    byte[] header = new byte[10];
+                    if (fs.Read(header, 0, 10) == 10 && header[0] == (byte)'I' && header[1] == (byte)'D' && header[2] == (byte)'3')
+                    {
+                        int major = header[3];
+                        int size = ((header[6] & 0x7f) << 21) | ((header[7] & 0x7f) << 14) | ((header[8] & 0x7f) << 7) | (header[9] & 0x7f);
+                        byte[] tag = new byte[size];
+                        int read = 0, r;
+                        while (read < size && (r = fs.Read(tag, read, size - read)) > 0) read += r;
+                        ParseId3v2(tag, read, major, t);
+                    }
+                }
+                if (string.IsNullOrEmpty(t.Title) || string.IsNullOrEmpty(t.Artist) || string.IsNullOrEmpty(t.Album) || string.IsNullOrEmpty(t.Genre)) ReadId3v1(path, t);
+            }
+
+            private static void ParseId3v2(byte[] tag, int len, int major, Track t)
+            {
+                int pos = 0;
+                while (pos + 10 <= len)
+                {
+                    string id = Encoding.ASCII.GetString(tag, pos, 4);
+                    if (id[0] == '\0') break;
+                    bool valid = true;
+                    for (int i = 0; i < 4; i++) { char c = id[i]; if (!((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'))) { valid = false; break; } }
+                    if (!valid) break;
+                    int frameSize;
+                    if (major >= 4) frameSize = ((tag[pos + 4] & 0x7f) << 21) | ((tag[pos + 5] & 0x7f) << 14) | ((tag[pos + 6] & 0x7f) << 7) | (tag[pos + 7] & 0x7f);
+                    else frameSize = (tag[pos + 4] << 24) | (tag[pos + 5] << 16) | (tag[pos + 6] << 8) | tag[pos + 7];
+                    int startPos = pos + 10;
+                    if (frameSize <= 0 || startPos + frameSize > len) break;
+                    if (id == "TIT2" || id == "TPE1" || id == "TALB" || id == "TCON")
+                    {
+                        string val = DecodeText(tag, startPos, frameSize);
+                        if (val != null) val = val.Trim();
+                        bool has = !string.IsNullOrEmpty(val);
+                        // El ID3 MANDA sobre titulo/artista: el nombre de archivo es solo una adivinanza
+                        // (en discos de varios artistas suele venir al reves, o sin titulo siquiera).
+                        if (id == "TIT2" && has) t.Title = val;
+                        else if (id == "TPE1" && has) t.Artist = val;
+                        else if (id == "TALB" && has && string.IsNullOrEmpty(t.Album)) t.Album = val;
+                        else if (id == "TCON" && has && string.IsNullOrEmpty(t.Genre)) t.Genre = NormalizeGenre(val);
+                    }
+                    pos = startPos + frameSize;
+                }
+            }
+
+            private static string DecodeText(byte[] b, int start, int size)
+            {
+                if (size < 1) return "";
+                byte enc = b[start];
+                int s = start + 1, n = size - 1;
+                string result;
+                switch (enc)
+                {
+                    case 1:
+                        if (n >= 2 && b[s] == 0xFF && b[s + 1] == 0xFE) result = Encoding.Unicode.GetString(b, s + 2, n - 2);
+                        else if (n >= 2 && b[s] == 0xFE && b[s + 1] == 0xFF) result = Encoding.BigEndianUnicode.GetString(b, s + 2, n - 2);
+                        else result = Encoding.Unicode.GetString(b, s, n);
+                        break;
+                    case 2: result = Encoding.BigEndianUnicode.GetString(b, s, n); break;
+                    case 3: result = Encoding.UTF8.GetString(b, s, n); break;
+                    default: result = Encoding.GetEncoding(28591).GetString(b, s, n); break;
+                }
+                int z = result.IndexOf('\0');
+                if (z >= 0) result = result.Substring(0, z);
+                return result.Trim();
+            }
+
+            private static void ReadId3v1(string path, Track t)
+            {
+                using (FileStream fs = new FileStream(path, FileMode.Open, FileAccess.Read))
+                {
+                    if (fs.Length < 128) return;
+                    fs.Seek(-128, SeekOrigin.End);
+                    byte[] b = new byte[128];
+                    if (fs.Read(b, 0, 128) != 128) return;
+                    if (!(b[0] == (byte)'T' && b[1] == (byte)'A' && b[2] == (byte)'G')) return;
+                    Encoding latin = Encoding.GetEncoding(28591);
+                    char[] tc = new char[] { '\0', ' ' };
+                    string title = latin.GetString(b, 3, 30).Trim(tc);
+                    string artist = latin.GetString(b, 33, 30).Trim(tc);
+                    string album = latin.GetString(b, 63, 30).Trim(tc);
+                    if (string.IsNullOrEmpty(t.Title) && title.Length > 0) t.Title = title;
+                    if (string.IsNullOrEmpty(t.Artist) && artist.Length > 0) t.Artist = artist;
+                    if (string.IsNullOrEmpty(t.Album) && album.Length > 0) t.Album = album;
+                    int gi = b[127];
+                    if (string.IsNullOrEmpty(t.Genre) && gi >= 0 && gi < Id3v1Genres.Length) t.Genre = Id3v1Genres[gi];
+                }
+            }
+        }
+    }
+}
