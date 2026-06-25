@@ -3492,16 +3492,41 @@ namespace Rocola
             }
 
             // Fondo de la vista de discos: cielo cacheado (copia directa) + estrellas TITILANTES por cuadros
-            // horneados (una copia por cuadro, sin recalcular). Recupera el titileo animado manteniendo la
-            // fluidez: el costo por cuadro son 2 copias de bitmap, no el render vivo de ~120 estrellas.
-            public void DrawReactive(Graphics g, int w, int h, Color skyTop, Color skyBottom)
+            // horneados (una copia por cuadro, sin recalcular). Ademas LATE con la musica: las medianas y
+            // grandes destellan con el beat (~40 dibujos chicos, no una pasada de pantalla completa).
+            public void DrawReactive(Graphics g, int w, int h, Color skyTop, Color skyBottom, float pulse)
             {
                 if (w < 4 || h < 4) return;
                 EnsureSkyCache(w, h, skyTop, skyBottom);
                 EnsureLayers(w, h);
                 BlitSkyAndStars(g, w, h);
                 RectangleF clip = g.ClipBounds;
-                if (clip.Width >= w - 1 && clip.Height >= h - 1) DrawShoots(g, w, h);   // fugaces solo en repintado COMPLETO (no en la casilla del cubo)
+                if (clip.Width >= w - 1 && clip.Height >= h - 1)   // solo en repintado COMPLETO (no en la casilla del cubo)
+                {
+                    if (pulse > 0.04f) DrawBeatFlare(g, w, h, pulse);   // latido: glow extra en medianas/grandes con la musica
+                    DrawShoots(g, w, h);
+                }
+            }
+
+            // LATIDO con la musica: a las estrellas medianas/grandes (las que llevan glow) les estampa un glow
+            // EXTRA que crece con la energia del audio. Es barato: ~40 sprites pre-horneados, no recalculo ni
+            // pasada de pantalla completa. Del MISMO color (sprite por color). Solo en repintado completo.
+            private void DrawBeatFlare(Graphics g, int w, int h, float pulse)
+            {
+                if (stars == null) return;
+                int extra = (int)(pulse * 16f);   // cuanto crece el halo con el beat
+                for (int i = 0; i < stars.Length; i++)
+                {
+                    Star s = stars[i];
+                    if (s.Kind == 0) continue;   // los puntos no reaccionan
+                    int cr, cg, cb;
+                    if (s.Tint > 0f) { cr = 255; cg = 255; cb = 255; } else { cr = s.R; cg = s.G; cb = s.B; }
+                    Bitmap gb = GlowFor(cr, cg, cb);
+                    if (gb == null) continue;
+                    int px = (int)(s.X * w), py = (int)(s.Y * h);
+                    int gd = s.Size * 2 + 4 + extra;
+                    g.DrawImage(gb, new Rectangle(px - gd / 2, py - gd / 2, gd, gd));
+                }
             }
 
             // Hornea los TwK cuadros de titileo UNA vez (al arrancar / al cambiar de tamano). El patron es
@@ -4118,7 +4143,7 @@ namespace Rocola
                 cacheW = w; cacheH = h; cacheSig = sig; cacheAccent = BgAccent;
 
                 stars.SkyOffsetY = this.Top; stars.SkyFullH = (this.Parent != null) ? this.Parent.ClientSize.Height : h; stars.SkyMid = SkyColorMid(BgAccent);
-                stars.DrawReactive(g, w, h, SkyColor(BgAccent), SkyColor2(BgAccent));   // fondo CACHEADO: cielo+estrellas en UN bitmap -> 1 blit por cuadro; estatico para no cargar el CPU lento de la rocola
+                stars.DrawReactive(g, w, h, SkyColor(BgAccent), SkyColor2(BgAccent), AudioPulse);   // fondo cacheado titilante + LATIDO (medianas/grandes destellan con la musica)
                 g.DrawImageUnscaled(cubeCache, 0, 0);
 
                 if (Page != null && Selected >= 0 && Selected < Page.Count)
