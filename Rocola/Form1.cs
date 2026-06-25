@@ -3060,7 +3060,7 @@ namespace Rocola
             // que repintar TODA la pantalla 25 veces/seg por ellos es desperdicio. El fondo completo se
             // repinta 1 de cada 3 cuadros (~8/seg, indistinguible en blobs borrosos); el cubo que gira
             // se repinta SOLO en su casilla a velocidad plena. Esto recorta ~3x el costo fijo de CPU.
-            bool fullFrame = (frameTick % 2) == 0;   // fondo completo a 12fps (antes 1 de cada 3 = 8fps)
+            bool fullFrame = (frameTick % 3) == 0;   // fondo completo 1 de cada 3 (~8fps): el fondo es estatico, repintarlo mas seguido solo gasta CPU (clave en el CPU lento de la rocola)
 
             DrainCoverTrash();   // libera carátulas expulsadas (seguro: no hay repintado en curso)
 
@@ -3218,6 +3218,9 @@ namespace Rocola
             private Bitmap skyCache;                                       // RENDIMIENTO: cielo (degradado) HORNEADO a bitmap; se copia por cuadro en vez de rellenar el degradado cada vez
             private int scW = -1, scH = -1;
             private LinearGradientBrush scFrom;                           // de que pincel se horneo skyCache (si el genero/tamano cambia el pincel, se re-hornea)
+            private Bitmap bgStarCache;                                    // RENDIMIENTO: cielo + estrellas YA COMBINADOS en un solo bitmap -> en reposo el fondo es UN solo blit por cuadro
+            private int bsW = -1, bsH = -1, bsStamp = int.MinValue;
+            private LinearGradientBrush bsFrom;
 
             // Pincel de cielo en degradado vertical CONTINUO: el degradado abarca TODA la pantalla (SkyFullH)
             // y se desplaza segun donde esta este fondo (SkyOffsetY), para que las secciones no se noten
@@ -3507,28 +3510,52 @@ namespace Rocola
                 scFrom = skyBrush;
             }
 
-            // Modo REACTIVO BARATO para la vista de discos: cielo cacheado (bitmap) + capa de estrellas
-            // PRE-HORNEADA (glow + destellos), ambos solo se COPIAN por cuadro. El audio modula el brillo de
-            // TODO el campo de una sola vez (un blit con matriz, no por estrella). En reposo es un blit liso.
-            // Asi pasar de pagina o estar quieto NO reconstruye ~230 estrellas por cuadro -> sin tirones.
-            public void DrawReactive(Graphics g, int w, int h, Color skyTop, Color skyBottom, float pulse)
+            // Combina cielo + estrellas (ambos ya horneados) en UN bitmap. Asi el reposo es un solo blit por
+            // cuadro (no dos). Se recombina solo si cambia el cielo (genero/tamano) o el patron (cada minuto).
+            private void EnsureBgStar(int w, int h)
+            {
+                if (bgStarCache != null && bsW == w && bsH == h && bsFrom == skyBrush && bsStamp == lBucket) return;
+                if (bgStarCache == null || bsW != w || bsH != h)
+                {
+                    if (bgStarCache != null) bgStarCache.Dispose();
+                    bgStarCache = new Bitmap(w, h, PixelFormat.Format32bppPArgb);
+                    bsW = w; bsH = h;
+                }
+                using (Graphics bg = Graphics.FromImage(bgStarCache))
+                {
+                    bg.DrawImageUnscaled(skyCache, 0, 0);   // cielo ya horneado
+                    bg.DrawImageUnscaled(layer, 0, 0);      // estrellas pre-horneadas encima
+                }
+                bsFrom = skyBrush; bsStamp = lBucket;
+            }
+
+            // Fondo BARATO para la vista de discos: en reposo, UN solo blit del cielo+estrellas ya combinados
+            // (igual de barato que el fondo cacheado de la version anterior, clave para el CPU lento de la
+            // rocola). Solo durante el fundido del patron (cada minuto) usa el camino de 2 blits con matriz.
+            // El fondo NO titila ni late con la musica: en una CPU lenta, repintarlo vivo cada cuadro (relleno
+            // del degradado + ~120 estrellas con glow y destello) era justo la causa del tiron.
+            public void DrawReactive(Graphics g, int w, int h, Color skyTop, Color skyBottom)
             {
                 if (w < 4 || h < 4) return;
                 EnsureSkyCache(w, h, skyTop, skyBottom);
                 EnsureLayer(w, h);
-                g.DrawImageUnscaled(skyCache, 0, 0);                                  // cielo: copia barata (sin recalcular el degradado)
-                float sf = StarFade(); if (sf > 1f) sf = 1f; if (sf < 0f) sf = 0f;    // mismo fundido out/in del patron (cada minuto)
-                bool reactive = pulse > 0.012f;                                       // hay musica sonando: el campo LATE con ella
-                float bright = sf;
-                if (reactive) { bright = sf * (0.72f + 0.42f * pulse); if (bright > 1f) bright = 1f; }   // late entre ~0.72 y 1.0 segun energia
-                if (!reactive && sf >= 0.996f) g.DrawImageUnscaled(layer, 0, 0);      // REPOSO: blit liso (baratisimo, a cualquier resolucion)
-                else if (bright > 0.01f)
+                float sf = StarFade(); if (sf > 1f) sf = 1f; if (sf < 0f) sf = 0f;   // fundido out/in del patron (cada minuto)
+                if (sf >= 0.996f)
                 {
-                    ColorMatrix cm = new ColorMatrix(); cm.Matrix33 = bright;         // UN solo blit con matriz modula todo el campo (no por estrella)
-                    using (ImageAttributes ia = new ImageAttributes())
+                    EnsureBgStar(w, h);
+                    g.DrawImageUnscaled(bgStarCache, 0, 0);   // REPOSO: UN solo blit (cielo + estrellas ya combinados)
+                }
+                else
+                {
+                    g.DrawImageUnscaled(skyCache, 0, 0);      // durante el fundido del patron: cielo + estrellas atenuadas
+                    if (sf > 0.004f)
                     {
-                        ia.SetColorMatrix(cm);
-                        g.DrawImage(layer, new Rectangle(0, 0, w, h), 0, 0, w, h, GraphicsUnit.Pixel, ia);
+                        ColorMatrix cm = new ColorMatrix(); cm.Matrix33 = sf;
+                        using (ImageAttributes ia = new ImageAttributes())
+                        {
+                            ia.SetColorMatrix(cm);
+                            g.DrawImage(layer, new Rectangle(0, 0, w, h), 0, 0, w, h, GraphicsUnit.Pixel, ia);
+                        }
                     }
                 }
                 RectangleF clip = g.ClipBounds;
@@ -4123,7 +4150,7 @@ namespace Rocola
                 cacheW = w; cacheH = h; cacheSig = sig; cacheAccent = BgAccent;
 
                 stars.SkyOffsetY = this.Top; stars.SkyFullH = (this.Parent != null) ? this.Parent.ClientSize.Height : h; stars.SkyMid = SkyColorMid(BgAccent);
-                stars.DrawReactive(g, w, h, SkyColor(BgAccent), SkyColor2(BgAccent), AudioPulse);   // fondo CACHEADO (cielo + estrellas pre-horneadas) que LATE global con la musica; NO reconstruye por cuadro -> sin tirones al navegar ni en reposo
+                stars.DrawReactive(g, w, h, SkyColor(BgAccent), SkyColor2(BgAccent));   // fondo CACHEADO: cielo+estrellas en UN bitmap -> 1 blit por cuadro; estatico para no cargar el CPU lento de la rocola
                 g.DrawImageUnscaled(cubeCache, 0, 0);
 
                 if (Page != null && Selected >= 0 && Selected < Page.Count)
