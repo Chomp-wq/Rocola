@@ -146,7 +146,7 @@ namespace Rocola
         private string lastPageSig = null;
         private readonly object coverLock = new object();
         private const int ThumbPx = 256;         // resolucion de miniaturas (256 sobra a 1024x768; 384 gastaba 2x memoria sin verse mejor en la rocola)
-        private const int CoverCacheMax = 96;    // ~ 256x256 x 96 ~ 24 MB tope (antes 84 MB): menos memoria/recoleccion en el PC viejo de la rocola
+        private const int CoverCacheMax = 220;   // ~ 256x256 x 220 ~ 56 MB (igual que la version fluida): cache amplia -> hojear no re-decodifica portadas (menos CPU al navegar)
         private readonly HashSet<char> letterAvailable = new HashSet<char>();
         private readonly List<SearchItem> searchIndex = new List<SearchItem>();
         private volatile bool libBuilding = false;   // el worker esta armando albums/byLetter/searchIndex: la UI no debe leerlos
@@ -169,7 +169,6 @@ namespace Rocola
         private double phase = 0;
         private Starfield formStars = new Starfield();   // cielo estrellado del fondo del formulario
         private int frameTick = 0;   // contador de cuadros: el fondo se refresca completo 1 de cada 3 (invisible al ojo)
-        private int lastStarBucket = -1;   // "minuto" del patron de estrellas ya aplicado a las franjas del form
         private bool searchOpen = false;
         private DateTime searchLastActivity = DateTime.Now;   // para auto-cerrar el buscador tras 1 min
         private string lastQuery = null;                      // busqueda incremental
@@ -3049,13 +3048,6 @@ namespace Rocola
         {
             phase += 0.045;
             frameTick++;
-            int starBucket = Environment.TickCount / 60000;   // patron de estrellas NUEVO cada minuto
-            if (starBucket != lastStarBucket)
-            {
-                lastStarBucket = starBucket;
-                this.Invalidate();                                                       // franjas del form (abecedario/estado)
-                if (panelSongs != null && panelSongs.Visible) panelSongs.Invalidate();   // vista de canciones
-            }
             // OPTIMIZACION CLAVE: los brillos del fondo se mueven MENOS DE MEDIO PIXEL por cuadro, asi
             // que repintar TODA la pantalla 25 veces/seg por ellos es desperdicio. El fondo completo se
             // repinta 1 de cada 3 cuadros (~8/seg, indistinguible en blobs borrosos); el cubo que gira
@@ -3079,15 +3071,6 @@ namespace Rocola
                 if (Math.Abs(bgAccent.R - bgAccentTarget.R) <= 2 && Math.Abs(bgAccent.G - bgAccentTarget.G) <= 2 && Math.Abs(bgAccent.B - bgAccentTarget.B) <= 2)
                     bgAccent = bgAccentTarget;
                 this.Invalidate();   // tambien con buscador abierto: el fondo es barato y la franja de estado debe recolorear
-            }
-            // Durante el fundido de estrellas (cada minuto) repinta tambien las franjas del form y la vista
-            // de canciones, para que se fundan junto con el centro (mismo costo/duracion que una transicion).
-            int tmFade = Environment.TickCount % 60000; if (tmFade < 0) tmFade += 60000;
-            bool starFading = (tmFade >= 60000 - 1500) || (tmFade < 1700);
-            if (!transitioning && starFading && !searchOpen && !videoFull && !attractOn)   // solo en la vista normal (no detras de overlays/video)
-            {
-                this.Invalidate();
-                if (panelSongs != null && panelSongs.Visible) panelSongs.Invalidate();
             }
             albumView.BgAccent = bgAccent;
             if (progress != null) progress.Accent = bgAccent;   // ESTETICA: la barra de progreso sigue el color del genero
@@ -3466,7 +3449,10 @@ namespace Rocola
                 EnsureSkyCache(w, h, skyTop, skyBottom);
                 EnsureLayer(w, h);
                 EnsureBgStar(w, h);
-                g.DrawImageUnscaled(bgStarCache, 0, 0);   // cielo + estrellas combinados (estatico): copia barata
+                CompositingMode ocm = g.CompositingMode;
+                g.CompositingMode = CompositingMode.SourceCopy;   // fondo OPACO: copia directa (sin mezclar alfa) -> blit mas rapido en CPU lento
+                g.DrawImageUnscaled(bgStarCache, 0, 0);
+                g.CompositingMode = ocm;
             }
 
             // Hornea el cielo (degradado) a un bitmap y lo reutiliza. Copiar un bitmap es mas barato que
@@ -3506,35 +3492,20 @@ namespace Rocola
                 bsFrom = skyBrush; bsStamp = lBucket;
             }
 
-            // Fondo BARATO para la vista de discos: en reposo, UN solo blit del cielo+estrellas ya combinados
-            // (igual de barato que el fondo cacheado de la version anterior, clave para el CPU lento de la
-            // rocola). Solo durante el fundido del patron (cada minuto) usa el camino de 2 blits con matriz.
-            // El fondo NO titila ni late con la musica: en una CPU lenta, repintarlo vivo cada cuadro (relleno
-            // del degradado + ~120 estrellas con glow y destello) era justo la causa del tiron.
+            // Fondo BARATO para la vista de discos: cielo+estrellas YA combinados en un bitmap OPACO -> UN
+            // solo blit por cuadro, ademas con SourceCopy (copia directa, sin mezclar alfa: mas rapido en el
+            // CPU lento de la rocola). El fondo es estatico (no titila ni late): repintarlo vivo cada cuadro
+            // (relleno del degradado + ~120 estrellas con glow y destello) era justo la causa del tiron.
             public void DrawReactive(Graphics g, int w, int h, Color skyTop, Color skyBottom)
             {
                 if (w < 4 || h < 4) return;
                 EnsureSkyCache(w, h, skyTop, skyBottom);
                 EnsureLayer(w, h);
-                float sf = StarFade(); if (sf > 1f) sf = 1f; if (sf < 0f) sf = 0f;   // fundido out/in del patron (cada minuto)
-                if (sf >= 0.996f)
-                {
-                    EnsureBgStar(w, h);
-                    g.DrawImageUnscaled(bgStarCache, 0, 0);   // REPOSO: UN solo blit (cielo + estrellas ya combinados)
-                }
-                else
-                {
-                    g.DrawImageUnscaled(skyCache, 0, 0);      // durante el fundido del patron: cielo + estrellas atenuadas
-                    if (sf > 0.004f)
-                    {
-                        ColorMatrix cm = new ColorMatrix(); cm.Matrix33 = sf;
-                        using (ImageAttributes ia = new ImageAttributes())
-                        {
-                            ia.SetColorMatrix(cm);
-                            g.DrawImage(layer, new Rectangle(0, 0, w, h), 0, 0, w, h, GraphicsUnit.Pixel, ia);
-                        }
-                    }
-                }
+                EnsureBgStar(w, h);
+                CompositingMode ocm = g.CompositingMode;
+                g.CompositingMode = CompositingMode.SourceCopy;   // fondo OPACO: copia directa (sin alfa) -> blit mas rapido
+                g.DrawImageUnscaled(bgStarCache, 0, 0);
+                g.CompositingMode = ocm;
                 RectangleF clip = g.ClipBounds;
                 if (clip.Width >= w - 1 && clip.Height >= h - 1) DrawShoots(g, w, h);   // fugaces solo en repintado COMPLETO (no en la casilla del cubo)
             }
@@ -3895,7 +3866,7 @@ namespace Rocola
             private string cacheSig = null;
             private Color cacheAccent = Color.Empty;
             private Pen cPenGlow, cPenMid, cPenLine;   // contorno del disco seleccionado (cacheadas; antes se creaban por cuadro)
-            private GraphicsPath contourPath; private Rectangle contourRect = Rectangle.Empty;   // trayectoria del contorno (cacheada)
+            private Bitmap contourSprite; private Size contourSpriteSize = Size.Empty;   // contorno HORNEADO (3 trazos AA -> 1 copia); todas las casillas miden igual
             private Font lblFont; private SolidBrush lblBrush; private StringFormat lblSF;       // recursos de etiquetas (reusables)
             private Bitmap blendBmp;   // para el fundido suave de portadas del cubo TOP
             private Starfield stars = new Starfield();   // fondo estrellado reactivo al genero
@@ -4143,21 +4114,32 @@ namespace Rocola
                         g.InterpolationMode = InterpolationMode.Bilinear;
                         // Contorno blanco con resplandor del disco SELECCIONADO (ademas del giro), para ubicarlo facil.
                         Rectangle fr = area; fr.Inflate(4, 4);
-                        if (cPenGlow == null)
+                        // Contorno HORNEADO a un sprite (los 3 trazos antialias se hacen UNA vez y luego se
+                        // copia). Todas las casillas miden igual, asi que el sprite sirve para la que este
+                        // seleccionada; solo se re-hornea si cambia el tamano. Antes: 3 DrawPath AA por cuadro.
+                        const int CM = 8;   // margen para el resplandor ancho (11px)
+                        Size need = new Size(fr.Width + 2 * CM, fr.Height + 2 * CM);
+                        if (contourSprite == null || contourSpriteSize != need)
                         {
-                            cPenGlow = new Pen(Color.FromArgb(20, 255, 255, 255), 11f);   // resplandor ancho y tenue
-                            cPenMid = new Pen(Color.FromArgb(45, 255, 255, 255), 6f);     // resplandor medio
-                            cPenLine = new Pen(Color.FromArgb(235, 255, 255, 255), 2.4f); // linea nitida
+                            if (cPenGlow == null)
+                            {
+                                cPenGlow = new Pen(Color.FromArgb(20, 255, 255, 255), 11f);   // resplandor ancho y tenue
+                                cPenMid = new Pen(Color.FromArgb(45, 255, 255, 255), 6f);     // resplandor medio
+                                cPenLine = new Pen(Color.FromArgb(235, 255, 255, 255), 2.4f); // linea nitida
+                            }
+                            if (contourSprite != null) contourSprite.Dispose();
+                            contourSprite = new Bitmap(need.Width, need.Height, PixelFormat.Format32bppPArgb);
+                            using (Graphics cg = Graphics.FromImage(contourSprite))
+                            using (GraphicsPath cp = RoundRect(new Rectangle(CM, CM, fr.Width, fr.Height), 10))
+                            {
+                                cg.SmoothingMode = SmoothingMode.AntiAlias;
+                                cg.DrawPath(cPenGlow, cp);
+                                cg.DrawPath(cPenMid, cp);
+                                cg.DrawPath(cPenLine, cp);
+                            }
+                            contourSpriteSize = need;
                         }
-                        if (contourPath == null || fr != contourRect)   // misma casilla -> misma trayectoria (cacheada)
-                        {
-                            if (contourPath != null) contourPath.Dispose();
-                            contourPath = RoundRect(fr, 10);
-                            contourRect = fr;
-                        }
-                        g.DrawPath(cPenGlow, contourPath);
-                        g.DrawPath(cPenMid, contourPath);
-                        g.DrawPath(cPenLine, contourPath);
+                        g.DrawImageUnscaled(contourSprite, fr.X - CM, fr.Y - CM);
                         Album selA = Page[Selected];
                         Image selCover;
                         if (selA != null && selA.CycleCovers != null && selA.CycleCovers.Count > 0 && GetCoverByPath != null)
