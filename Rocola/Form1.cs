@@ -252,6 +252,9 @@ namespace Rocola
         protected override void OnShown(EventArgs e)
         {
             base.OnShown(e);
+#if ROCOLA_GPU
+            try { GpuProbe.Run(this.Handle); } catch { }   // prueba de viabilidad GPU (solo con el simbolo ROCOLA_GPU)
+#endif
             LoadStats();   // estadisticas guardadas de sesiones anteriores (base de "Lo mas sonado")
             LayoutControls();
             LoadMusicFolder();
