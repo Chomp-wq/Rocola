@@ -3185,17 +3185,7 @@ namespace Rocola
             // ESTETICA (glow): sprites de resplandor radial pre-horneados UNA sola vez y COMPARTIDOS por todas
             // las instancias. Se estampan detras del nucleo de cada estrella: fuerte en la grande, tenue en la
             // chica, nada en los puntos -> "brillan de verdad" sin contaminar visualmente.
-            private static Bitmap[] glowPal;   // ESTETICA/RENDIMIENTO: un sprite de glow PRE-HORNEADO por color
-            private static readonly Color[] glowCols = {
-                Color.White,                          // 0 blanco
-                Color.FromArgb(255, 120, 120),        // 1 rojo
-                Color.FromArgb(255, 180, 110),        // 2 naranja
-                Color.FromArgb(255, 225, 140),        // 3 dorado
-                Color.FromArgb(150, 255, 180),        // 4 verde
-                Color.FromArgb(150, 235, 255),        // 5 cian
-                Color.FromArgb(150, 180, 255),        // 6 azul
-                Color.FromArgb(225, 165, 255)         // 7 violeta/rosa
-            };
+            private static Bitmap glowBig, glowSmall;
             private static readonly object glowLock = new object();
             private readonly PointF[] spk = new PointF[8];   // ESTETICA: buffer reusable del sparkle (sin asignar por estrella)
             private Shoot[] shoots = new Shoot[2];
@@ -3238,49 +3228,19 @@ namespace Rocola
                 gbW = w; gbOff = off; gbFull = full; gbTop = t; gbMid = m; gbBot = b;
             }
 
-            // El degradado del cielo se RASTERIZABA por pixel en CADA cuadro (caro, y crece con la resolucion).
-            // Ahora se hornea UNA vez a un bitmap y se COPIA (rapido). Se rehace solo si cambia tamano/colores/posicion.
-            private Bitmap skyBmp;
-            private int sbmW = -1, sbmH = -1, sbmTop = 0, sbmMid = 0, sbmBot = 0, sbmOff = -99999, sbmFull = -1;
-            private void EnsureSkyBmp(int w, int h, Color top, Color bottom)
-            {
-                EnsureSkyBrush(w, h, top, bottom);   // deja skyBrush al dia y gb* con la firma vigente del cielo
-                if (skyBmp != null && sbmW == w && sbmH == h && sbmTop == gbTop && sbmMid == gbMid && sbmBot == gbBot && sbmOff == gbOff && sbmFull == gbFull) return;
-                if (skyBmp != null) { skyBmp.Dispose(); skyBmp = null; }
-                skyBmp = new Bitmap(w, h, PixelFormat.Format32bppPArgb);
-                using (Graphics sg = Graphics.FromImage(skyBmp)) sg.FillRectangle(skyBrush, 0, 0, w, h);
-                sbmW = w; sbmH = h; sbmTop = gbTop; sbmMid = gbMid; sbmBot = gbBot; sbmOff = gbOff; sbmFull = gbFull;
-            }
-
             // Hornea los dos sprites de resplandor (una vez). Caro de crear, baratisimo de estampar despues.
             private static void EnsureGlow()
             {
-                if (glowPal != null) return;
+                if (glowBig != null) return;
                 lock (glowLock)
                 {
-                    if (glowPal != null) return;
-                    Bitmap[] g2 = new Bitmap[glowCols.Length];
-                    for (int i = 0; i < glowCols.Length; i++) g2[i] = BakeGlow(48, 185, glowCols[i]);   // glow FUERTE por color
-                    glowPal = g2;
+                    if (glowBig != null) return;
+                    glowSmall = BakeGlow(32, 70);    // chico: glow tenue (no contamina)
+                    glowBig = BakeGlow(48, 150);     // grande: glow notable, "brilla de verdad"
                 }
             }
 
-            // Glow del MISMO COLOR que la estrella: elige el sprite pre-horneado mas cercano (sin matriz por estrella).
-            private static Bitmap GlowFor(int r, int g, int b)
-            {
-                Bitmap[] gp = glowPal;
-                if (gp == null) return null;
-                int best = 0, bd = int.MaxValue;
-                for (int i = 0; i < glowCols.Length; i++)
-                {
-                    int dr = r - glowCols[i].R, dg = g - glowCols[i].G, db = b - glowCols[i].B;
-                    int d = dr * dr + dg * dg + db * db;
-                    if (d < bd) { bd = d; best = i; }
-                }
-                return gp[best];
-            }
-
-            private static Bitmap BakeGlow(int size, int peakAlpha, Color color)
+            private static Bitmap BakeGlow(int size, int peakAlpha)
             {
                 Bitmap bmp = new Bitmap(size, size, PixelFormat.Format32bppPArgb);
                 using (Graphics g = Graphics.FromImage(bmp))
@@ -3292,8 +3252,8 @@ namespace Rocola
                     using (PathGradientBrush pgb = new PathGradientBrush(gp))
                     {
                         pgb.CenterPoint = new PointF(size / 2f, size / 2f);
-                        pgb.CenterColor = Color.FromArgb(peakAlpha, color.R, color.G, color.B);   // nucleo del color de la estrella
-                        pgb.SurroundColors = new Color[] { Color.FromArgb(0, color.R, color.G, color.B) };   // se desvanece a transparente
+                        pgb.CenterColor = Color.FromArgb(peakAlpha, 255, 255, 255);   // nucleo blanco brillante
+                        pgb.SurroundColors = new Color[] { Color.FromArgb(0, 255, 255, 255) };   // se desvanece a transparente
                         g.FillEllipse(pgb, 0, 0, size, size);
                     }
                 }
@@ -3417,7 +3377,9 @@ namespace Rocola
                 int dt = now - lastBuild;
                 bool needNew = cache == null || cw != w || ch != h;
                 // En repintados PARCIALES (p.ej. solo la casilla del cubo que gira encima) NO reconstruimos
-                // el cuadro entero: basta copiar el cache.
+                // el cuadro entero: basta copiar el cache. Asi el +framerate (~24fps) no desperdicia CPU
+                // redibujando ~120 estrellas para una franja minima; el fondo completo se refresca en los
+                // repintados completos (cuando el recorte cubre toda la vista: buscador y atraccion cada cuadro).
                 RectangleF clip = g.ClipBounds;
                 bool partial = !needNew && (clip.Width < w - 1 || clip.Height < h - 1);
                 bool rebuild = needNew
@@ -3440,34 +3402,45 @@ namespace Rocola
             // Dibuja un cuadro completo del starfield (cielo + estrellas + fugaces) sobre el bitmap cache.
             private void RenderInto(Graphics g, int w, int h, Color skyTop, Color skyBottom, Color tint, double phase, bool shooting, float pulse)
             {
-                EnsureSkyBmp(w, h, skyTop, skyBottom);
-                g.DrawImageUnscaled(skyBmp, 0, 0);   // RENDIMIENTO: cielo CACHEADO (copia) en vez de rellenar el degradado por pixel cada cuadro
+                EnsureSkyBrush(w, h, skyTop, skyBottom);
+                g.FillRectangle(skyBrush, 0, 0, w, h);
                 double boost = pulse * 0.62;        // el audio sube el brillo de las estrellas (medianas/grandes)
                 int armUp = (int)(pulse * 7.0);     // y agranda las puntas del destello con el beat
                 float fade = StarFade();            // fundido out/in del patron (cada minuto)
-                float gfade = fade < 0f ? 0f : (fade > 1f ? 1f : fade);   // el glow encoge a 0 en el parpadeo del patron (sincronizado con los nucleos)
-                EnsureGlow();
+                EnsureGlow();                       // ESTETICA: sprites de resplandor (horneados una vez)
                 g.InterpolationMode = InterpolationMode.Bilinear;
                 g.SmoothingMode = SmoothingMode.AntiAlias;   // ESTETICA: el sparkle se ve liso (una sola pieza)
-                for (int i = 0; i < stars.Length; i++)
+                float gf = fade < 0f ? 0f : (fade > 1f ? 1f : fade);   // el glow se desvanece junto al patron
+                using (ImageAttributes gia = new ImageAttributes())
                 {
-                    Star s = stars[i];
-                    bool reactive = (s.Kind != 0);   // BEAT (audio) + glow SOLO en medianas (1) y grandes (2); los puntos NO
-                    double tw = (0.70 + 0.42 * (0.5 + 0.5 * Math.Sin(phase * s.Spd + s.Off)) + (reactive ? boost : 0.0)) * fade;
-                    int a = (int)(tw * 255); if (a > 255) a = 255; if (a < 0) a = 0;
-                    int cr, cg, cb;
-                    if (s.Tint > 0f) { cr = (int)(255 + (tint.R - 255) * s.Tint); cg = (int)(255 + (tint.G - 255) * s.Tint); cb = (int)(255 + (tint.B - 255) * s.Tint); }
-                    else { cr = s.R; cg = s.G; cb = s.B; }
-                    int px = (int)(s.X * w), py = (int)(s.Y * h);
-                    sb.Color = Color.FromArgb(a, cr, cg, cb);
-                    if (reactive)   // medianas + grandes: glow FUERTE del MISMO COLOR que la estrella (sprite pre-horneado, sin matriz por estrella)
+                    ColorMatrix gcm = new ColorMatrix(); gcm.Matrix33 = gf; gia.SetColorMatrix(gcm);   // 1 sola por cuadro
+                    for (int i = 0; i < stars.Length; i++)
                     {
-                        int gd = (int)((s.Size * 3 + 6 + (int)(pulse * 10)) * gfade);   // el beat agranda el glow; el fundido lo encoge
-                        Bitmap gb = GlowFor(cr, cg, cb);
-                        if (gb != null && gd > 0) g.DrawImage(gb, new Rectangle(px - gd / 2, py - gd / 2, gd, gd));
-                        DrawSparkle(g, sb, px, py, (s.Kind == 2 ? s.Size + 6 : s.Size + 2) + armUp);
+                        Star s = stars[i];
+                        bool reactive = (s.Kind != 0);   // BEAT (audio) SOLO en medianas (1) y grandes (2); los puntos NO
+                        double tw = (0.70 + 0.42 * (0.5 + 0.5 * Math.Sin(phase * s.Spd + s.Off)) + (reactive ? boost : 0.0)) * fade;
+                        int a = (int)(tw * 255); if (a > 255) a = 255; if (a < 0) a = 0;
+                        int cr, cg, cb;
+                        if (s.Tint > 0f) { cr = (int)(255 + (tint.R - 255) * s.Tint); cg = (int)(255 + (tint.G - 255) * s.Tint); cb = (int)(255 + (tint.B - 255) * s.Tint); }
+                        else { cr = s.R; cg = s.G; cb = s.B; }
+                        int px = (int)(s.X * w), py = (int)(s.Y * h);
+                        sb.Color = Color.FromArgb(a, cr, cg, cb);
+                        // GLOW detras del nucleo + estrella de 4 puntas (UNA pieza). El beat agranda glow y puntas
+                        // solo en medianas/grandes; los puntos van como punto redondo fijo.
+                        if (s.Kind == 2)
+                        {
+                            int gd = s.Size * 3 + 6 + (int)(pulse * 10);
+                            g.DrawImage(glowBig, new Rectangle(px - gd / 2, py - gd / 2, gd, gd), 0, 0, glowBig.Width, glowBig.Height, GraphicsUnit.Pixel, gia);
+                            DrawSparkle(g, sb, px, py, s.Size + 6 + armUp);
+                        }
+                        else if (s.Kind == 1)
+                        {
+                            int gd = s.Size * 2 + 2 + (int)(pulse * 4);
+                            g.DrawImage(glowSmall, new Rectangle(px - gd / 2, py - gd / 2, gd, gd), 0, 0, glowSmall.Width, glowSmall.Height, GraphicsUnit.Pixel, gia);
+                            DrawSparkle(g, sb, px, py, s.Size + 2 + armUp);
+                        }
+                        else { float ds = s.Size < 2 ? 2 : s.Size; g.FillEllipse(sb, px - ds / 2f, py - ds / 2f, ds, ds); }
                     }
-                    else { float ds = s.Size < 2 ? 2 : s.Size; g.FillEllipse(sb, px - ds / 2f, py - ds / 2f, ds, ds); }
                 }
                 if (shooting) DrawShoots(g, w, h);
             }
@@ -3480,8 +3453,8 @@ namespace Rocola
             {
                 if (w < 4 || h < 4) return;
                 EnsureLayer(w, h);
-                EnsureSkyBmp(w, h, skyTop, skyBottom);
-                g.DrawImageUnscaled(skyBmp, 0, 0);   // RENDIMIENTO: cielo CACHEADO (copia) en vez de rellenar el degradado por pixel
+                EnsureSkyBrush(w, h, skyTop, skyBottom);
+                g.FillRectangle(skyBrush, 0, 0, w, h);
                 float sf = StarFade(); if (sf > 1f) sf = 1f; if (sf < 0f) sf = 0f;   // mismo fundido out/in que las vistas vivas
                 if (sf >= 0.996f) g.DrawImageUnscaled(layer, 0, 0);
                 else if (sf > 0.004f)
@@ -3520,13 +3493,8 @@ namespace Rocola
                         if (s.Tint > 0f) { cr2 = 255; cg2 = 255; cb2 = 255; }   // tenidas -> blancas en el cache
                         else { cr2 = s.R; cg2 = s.G; cb2 = s.B; }
                         b.Color = Color.FromArgb(a, cr2, cg2, cb2);
-                        if (s.Kind != 0)
-                        {
-                            int gd = s.Size * 3 + 6;
-                            Bitmap gb = GlowFor(cr2, cg2, cb2);   // glow del MISMO COLOR (sprite pre-horneado, sin matriz)
-                            if (gb != null) lg.DrawImage(gb, new Rectangle(px - gd / 2, py - gd / 2, gd, gd));
-                            DrawSparkle(lg, b, px, py, s.Kind == 2 ? s.Size + 6 : s.Size + 2);
-                        }
+                        if (s.Kind == 2) { int gd = s.Size * 3 + 6; lg.DrawImage(glowBig, new Rectangle(px - gd / 2, py - gd / 2, gd, gd)); DrawSparkle(lg, b, px, py, s.Size + 6); }
+                        else if (s.Kind == 1) { int gd = s.Size * 2 + 2; lg.DrawImage(glowSmall, new Rectangle(px - gd / 2, py - gd / 2, gd, gd)); DrawSparkle(lg, b, px, py, s.Size + 2); }
                         else { float ds = s.Size < 2 ? 2 : s.Size; lg.FillEllipse(b, px - ds / 2f, py - ds / 2f, ds, ds); }
                     }
                 }
