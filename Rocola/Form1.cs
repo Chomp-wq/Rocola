@@ -3185,7 +3185,17 @@ namespace Rocola
             // ESTETICA (glow): sprites de resplandor radial pre-horneados UNA sola vez y COMPARTIDOS por todas
             // las instancias. Se estampan detras del nucleo de cada estrella: fuerte en la grande, tenue en la
             // chica, nada en los puntos -> "brillan de verdad" sin contaminar visualmente.
-            private static Bitmap glowBig, glowSmall;
+            private static Bitmap[] glowPal;   // ESTETICA/RENDIMIENTO: un sprite de glow PRE-HORNEADO por color (sin matriz por estrella)
+            private static readonly Color[] glowCols = {
+                Color.White,                          // 0 blanco
+                Color.FromArgb(255, 120, 120),        // 1 rojo
+                Color.FromArgb(255, 180, 110),        // 2 naranja
+                Color.FromArgb(255, 225, 140),        // 3 dorado
+                Color.FromArgb(150, 255, 180),        // 4 verde
+                Color.FromArgb(150, 235, 255),        // 5 cian
+                Color.FromArgb(150, 180, 255),        // 6 azul
+                Color.FromArgb(225, 165, 255)         // 7 violeta/rosa
+            };
             private static readonly object glowLock = new object();
             private readonly PointF[] spk = new PointF[8];   // ESTETICA: buffer reusable del sparkle (sin asignar por estrella)
             private Shoot[] shoots = new Shoot[2];
@@ -3228,19 +3238,35 @@ namespace Rocola
                 gbW = w; gbOff = off; gbFull = full; gbTop = t; gbMid = m; gbBot = b;
             }
 
-            // Hornea los dos sprites de resplandor (una vez). Caro de crear, baratisimo de estampar despues.
+            // Hornea un sprite de resplandor por color (una vez). Caro de crear, baratisimo de estampar despues.
             private static void EnsureGlow()
             {
-                if (glowBig != null) return;
+                if (glowPal != null) return;
                 lock (glowLock)
                 {
-                    if (glowBig != null) return;
-                    glowSmall = BakeGlow(32, 70);    // chico: glow tenue (no contamina)
-                    glowBig = BakeGlow(48, 150);     // grande: glow notable, "brilla de verdad"
+                    if (glowPal != null) return;
+                    Bitmap[] g2 = new Bitmap[glowCols.Length];
+                    for (int i = 0; i < glowCols.Length; i++) g2[i] = BakeGlow(48, 185, glowCols[i]);   // glow FUERTE por color
+                    glowPal = g2;
                 }
             }
 
-            private static Bitmap BakeGlow(int size, int peakAlpha)
+            // Glow del MISMO COLOR que la estrella: elige el sprite pre-horneado mas cercano (sin matriz por estrella).
+            private static Bitmap GlowFor(int r, int g, int b)
+            {
+                Bitmap[] gp = glowPal;
+                if (gp == null) return null;
+                int best = 0, bd = int.MaxValue;
+                for (int i = 0; i < glowCols.Length; i++)
+                {
+                    int dr = r - glowCols[i].R, dg = g - glowCols[i].G, db = b - glowCols[i].B;
+                    int d = dr * dr + dg * dg + db * db;
+                    if (d < bd) { bd = d; best = i; }
+                }
+                return gp[best];
+            }
+
+            private static Bitmap BakeGlow(int size, int peakAlpha, Color color)
             {
                 Bitmap bmp = new Bitmap(size, size, PixelFormat.Format32bppPArgb);
                 using (Graphics g = Graphics.FromImage(bmp))
@@ -3252,8 +3278,8 @@ namespace Rocola
                     using (PathGradientBrush pgb = new PathGradientBrush(gp))
                     {
                         pgb.CenterPoint = new PointF(size / 2f, size / 2f);
-                        pgb.CenterColor = Color.FromArgb(peakAlpha, 255, 255, 255);   // nucleo blanco brillante
-                        pgb.SurroundColors = new Color[] { Color.FromArgb(0, 255, 255, 255) };   // se desvanece a transparente
+                        pgb.CenterColor = Color.FromArgb(peakAlpha, color.R, color.G, color.B);   // nucleo del color de la estrella
+                        pgb.SurroundColors = new Color[] { Color.FromArgb(0, color.R, color.G, color.B) };   // se desvanece a transparente
                         g.FillEllipse(pgb, 0, 0, size, size);
                     }
                 }
@@ -3410,37 +3436,28 @@ namespace Rocola
                 EnsureGlow();                       // ESTETICA: sprites de resplandor (horneados una vez)
                 g.InterpolationMode = InterpolationMode.Bilinear;
                 g.SmoothingMode = SmoothingMode.AntiAlias;   // ESTETICA: el sparkle se ve liso (una sola pieza)
-                float gf = fade < 0f ? 0f : (fade > 1f ? 1f : fade);   // el glow se desvanece junto al patron
-                using (ImageAttributes gia = new ImageAttributes())
+                float gfade = fade < 0f ? 0f : (fade > 1f ? 1f : fade);   // el glow encoge a 0 en el parpadeo del patron (sync con los nucleos)
+                for (int i = 0; i < stars.Length; i++)
                 {
-                    ColorMatrix gcm = new ColorMatrix(); gcm.Matrix33 = gf; gia.SetColorMatrix(gcm);   // 1 sola por cuadro
-                    for (int i = 0; i < stars.Length; i++)
+                    Star s = stars[i];
+                    bool reactive = (s.Kind != 0);   // BEAT (audio) + glow SOLO en medianas (1) y grandes (2); los puntos NO
+                    double tw = (0.70 + 0.42 * (0.5 + 0.5 * Math.Sin(phase * s.Spd + s.Off)) + (reactive ? boost : 0.0)) * fade;
+                    int a = (int)(tw * 255); if (a > 255) a = 255; if (a < 0) a = 0;
+                    int cr, cg, cb;
+                    if (s.Tint > 0f) { cr = (int)(255 + (tint.R - 255) * s.Tint); cg = (int)(255 + (tint.G - 255) * s.Tint); cb = (int)(255 + (tint.B - 255) * s.Tint); }
+                    else { cr = s.R; cg = s.G; cb = s.B; }
+                    int px = (int)(s.X * w), py = (int)(s.Y * h);
+                    sb.Color = Color.FromArgb(a, cr, cg, cb);
+                    // GLOW del MISMO COLOR detras del nucleo + estrella de 4 puntas. El beat agranda glow y puntas
+                    // solo en medianas/grandes; los puntos van como punto redondo fijo, sin glow.
+                    if (reactive)
                     {
-                        Star s = stars[i];
-                        bool reactive = (s.Kind != 0);   // BEAT (audio) SOLO en medianas (1) y grandes (2); los puntos NO
-                        double tw = (0.70 + 0.42 * (0.5 + 0.5 * Math.Sin(phase * s.Spd + s.Off)) + (reactive ? boost : 0.0)) * fade;
-                        int a = (int)(tw * 255); if (a > 255) a = 255; if (a < 0) a = 0;
-                        int cr, cg, cb;
-                        if (s.Tint > 0f) { cr = (int)(255 + (tint.R - 255) * s.Tint); cg = (int)(255 + (tint.G - 255) * s.Tint); cb = (int)(255 + (tint.B - 255) * s.Tint); }
-                        else { cr = s.R; cg = s.G; cb = s.B; }
-                        int px = (int)(s.X * w), py = (int)(s.Y * h);
-                        sb.Color = Color.FromArgb(a, cr, cg, cb);
-                        // GLOW detras del nucleo + estrella de 4 puntas (UNA pieza). El beat agranda glow y puntas
-                        // solo en medianas/grandes; los puntos van como punto redondo fijo.
-                        if (s.Kind == 2)
-                        {
-                            int gd = s.Size * 3 + 6 + (int)(pulse * 10);
-                            g.DrawImage(glowBig, new Rectangle(px - gd / 2, py - gd / 2, gd, gd), 0, 0, glowBig.Width, glowBig.Height, GraphicsUnit.Pixel, gia);
-                            DrawSparkle(g, sb, px, py, s.Size + 6 + armUp);
-                        }
-                        else if (s.Kind == 1)
-                        {
-                            int gd = s.Size * 2 + 2 + (int)(pulse * 4);
-                            g.DrawImage(glowSmall, new Rectangle(px - gd / 2, py - gd / 2, gd, gd), 0, 0, glowSmall.Width, glowSmall.Height, GraphicsUnit.Pixel, gia);
-                            DrawSparkle(g, sb, px, py, s.Size + 2 + armUp);
-                        }
-                        else { float ds = s.Size < 2 ? 2 : s.Size; g.FillEllipse(sb, px - ds / 2f, py - ds / 2f, ds, ds); }
+                        int gd = (int)((s.Size * 3 + 6 + (int)(pulse * 10)) * gfade);   // el beat agranda el glow; el fundido lo encoge
+                        Bitmap gb = GlowFor(cr, cg, cb);
+                        if (gb != null && gd > 0) g.DrawImage(gb, new Rectangle(px - gd / 2, py - gd / 2, gd, gd));
+                        DrawSparkle(g, sb, px, py, (s.Kind == 2 ? s.Size + 6 : s.Size + 2) + armUp);
                     }
+                    else { float ds = s.Size < 2 ? 2 : s.Size; g.FillEllipse(sb, px - ds / 2f, py - ds / 2f, ds, ds); }
                 }
                 if (shooting) DrawShoots(g, w, h);
             }
@@ -3493,8 +3510,13 @@ namespace Rocola
                         if (s.Tint > 0f) { cr2 = 255; cg2 = 255; cb2 = 255; }   // tenidas -> blancas en el cache
                         else { cr2 = s.R; cg2 = s.G; cb2 = s.B; }
                         b.Color = Color.FromArgb(a, cr2, cg2, cb2);
-                        if (s.Kind == 2) { int gd = s.Size * 3 + 6; lg.DrawImage(glowBig, new Rectangle(px - gd / 2, py - gd / 2, gd, gd)); DrawSparkle(lg, b, px, py, s.Size + 6); }
-                        else if (s.Kind == 1) { int gd = s.Size * 2 + 2; lg.DrawImage(glowSmall, new Rectangle(px - gd / 2, py - gd / 2, gd, gd)); DrawSparkle(lg, b, px, py, s.Size + 2); }
+                        if (s.Kind != 0)
+                        {
+                            int gd = s.Size * 3 + 6;
+                            Bitmap gb = GlowFor(cr2, cg2, cb2);   // glow del MISMO COLOR (sprite pre-horneado, sin matriz)
+                            if (gb != null) lg.DrawImage(gb, new Rectangle(px - gd / 2, py - gd / 2, gd, gd));
+                            DrawSparkle(lg, b, px, py, s.Kind == 2 ? s.Size + 6 : s.Size + 2);
+                        }
                         else { float ds = s.Size < 2 ? 2 : s.Size; lg.FillEllipse(b, px - ds / 2f, py - ds / 2f, ds, ds); }
                     }
                 }
