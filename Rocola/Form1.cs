@@ -3183,7 +3183,11 @@ namespace Rocola
             private readonly PointF[] spk = new PointF[8];   // ESTETICA: buffer reusable del sparkle (sin asignar por estrella)
             private Shoot[] shoots = new Shoot[2];
             private int nextShoot = 0, lastTick = 0;
-            private Bitmap layer;   // capa de estrellas ESTATICAS (fondo transparente) para el modo cacheado
+            // TITILEO por CUADROS HORNEADOS: K capas con el MISMO patron de estrellas a distinto brillo.
+            // Rotarlas (una copia por cuadro) reproduce el titileo SIN recalcular ~120 estrellas por cuadro:
+            // recupera el efecto animado al costo de una copia (no de recalculo) -> fluido en el CPU lento.
+            private const int TwK = 8;
+            private Bitmap[] layers;
             private int lw = -1, lh = -1;
             private readonly Random rnd = new Random();
             // Cache del cuadro: el starfield se dibuja a un bitmap y solo se reconstruye cada ~110ms
@@ -3201,9 +3205,6 @@ namespace Rocola
             private Bitmap skyCache;                                       // RENDIMIENTO: cielo (degradado) HORNEADO a bitmap; se copia por cuadro en vez de rellenar el degradado cada vez
             private int scW = -1, scH = -1;
             private LinearGradientBrush scFrom;                           // de que pincel se horneo skyCache (si el genero/tamano cambia el pincel, se re-hornea)
-            private Bitmap bgStarCache;                                    // RENDIMIENTO: cielo + estrellas YA COMBINADOS en un solo bitmap -> en reposo el fondo es UN solo blit por cuadro
-            private int bsW = -1, bsH = -1, bsStamp = int.MinValue;
-            private LinearGradientBrush bsFrom;
 
             // Pincel de cielo en degradado vertical CONTINUO: el degradado abarca TODA la pantalla (SkyFullH)
             // y se desplaza segun donde esta este fondo (SkyOffsetY), para que las secciones no se noten
@@ -3440,19 +3441,13 @@ namespace Rocola
                 if (shooting) DrawShoots(g, w, h);
             }
 
-            // Modo BARATO: cielo + estrellas YA COMBINADOS en un bitmap -> UN solo blit por cuadro.
-            // Se usa en el fondo del formulario (franjas con controles transparentes encima). Antes rellenaba
-            // el degradado a pantalla completa en cada repintado (caro en la rocola); ahora solo copia.
+            // Fondo del formulario (franjas): cielo cacheado + estrellas TITILANTES por cuadros horneados.
             public void DrawCached(Graphics g, int w, int h, Color skyTop, Color skyBottom)
             {
                 if (w < 4 || h < 4) return;
                 EnsureSkyCache(w, h, skyTop, skyBottom);
-                EnsureLayer(w, h);
-                EnsureBgStar(w, h);
-                CompositingMode ocm = g.CompositingMode;
-                g.CompositingMode = CompositingMode.SourceCopy;   // fondo OPACO: copia directa (sin mezclar alfa) -> blit mas rapido en CPU lento
-                g.DrawImageUnscaled(bgStarCache, 0, 0);
-                g.CompositingMode = ocm;
+                EnsureLayers(w, h);
+                BlitSkyAndStars(g, w, h);
             }
 
             // Hornea el cielo (degradado) a un bitmap y lo reutiliza. Copiar un bitmap es mas barato que
@@ -3473,77 +3468,99 @@ namespace Rocola
                 scFrom = skyBrush;
             }
 
-            // Combina cielo + estrellas (ambos ya horneados) en UN bitmap. Asi el reposo es un solo blit por
-            // cuadro (no dos). Se recombina solo si cambia el cielo (genero/tamano) o el patron (cada minuto).
-            private void EnsureBgStar(int w, int h)
+            // Pinta el fondo: cielo OPACO por copia directa (SourceCopy, rapido) + la capa de estrellas del
+            // cuadro de titileo ACTUAL encima (SourceOver). Rotar el cuadro reproduce el titileo por copia.
+            private void BlitSkyAndStars(Graphics g, int w, int h)
             {
-                if (bgStarCache != null && bsW == w && bsH == h && bsFrom == skyBrush && bsStamp == lBucket) return;
-                if (bgStarCache == null || bsW != w || bsH != h)
-                {
-                    if (bgStarCache != null) bgStarCache.Dispose();
-                    bgStarCache = new Bitmap(w, h, PixelFormat.Format32bppPArgb);
-                    bsW = w; bsH = h;
-                }
-                using (Graphics bg = Graphics.FromImage(bgStarCache))
-                {
-                    bg.DrawImageUnscaled(skyCache, 0, 0);   // cielo ya horneado
-                    bg.DrawImageUnscaled(layer, 0, 0);      // estrellas pre-horneadas encima
-                }
-                bsFrom = skyBrush; bsStamp = lBucket;
+                CompositingMode ocm = g.CompositingMode;
+                g.CompositingMode = CompositingMode.SourceCopy;   // cielo opaco: copia directa (sin mezclar alfa)
+                g.DrawImageUnscaled(skyCache, 0, 0);
+                g.CompositingMode = CompositingMode.SourceOver;   // estrellas con transparencia encima
+                Bitmap sl = CurrentStarLayer();
+                if (sl != null) g.DrawImageUnscaled(sl, 0, 0);
+                g.CompositingMode = ocm;
             }
 
-            // Fondo BARATO para la vista de discos: cielo+estrellas YA combinados en un bitmap OPACO -> UN
-            // solo blit por cuadro, ademas con SourceCopy (copia directa, sin mezclar alfa: mas rapido en el
-            // CPU lento de la rocola). El fondo es estatico (no titila ni late): repintarlo vivo cada cuadro
-            // (relleno del degradado + ~120 estrellas con glow y destello) era justo la causa del tiron.
+            // Indice del cuadro de titileo segun el reloj (rota ~5 veces/seg). Los armonicos son ENTEROS, asi
+            // que el set entero cicla y el titileo se repite suave y continuo, sin recalcular nada por cuadro.
+            private Bitmap CurrentStarLayer()
+            {
+                if (layers == null || layers.Length == 0) return null;
+                int idx = (Environment.TickCount / 200) % layers.Length;
+                if (idx < 0) idx += layers.Length;
+                return layers[idx];
+            }
+
+            // Fondo de la vista de discos: cielo cacheado (copia directa) + estrellas TITILANTES por cuadros
+            // horneados (una copia por cuadro, sin recalcular). Recupera el titileo animado manteniendo la
+            // fluidez: el costo por cuadro son 2 copias de bitmap, no el render vivo de ~120 estrellas.
             public void DrawReactive(Graphics g, int w, int h, Color skyTop, Color skyBottom)
             {
                 if (w < 4 || h < 4) return;
                 EnsureSkyCache(w, h, skyTop, skyBottom);
-                EnsureLayer(w, h);
-                EnsureBgStar(w, h);
-                CompositingMode ocm = g.CompositingMode;
-                g.CompositingMode = CompositingMode.SourceCopy;   // fondo OPACO: copia directa (sin alfa) -> blit mas rapido
-                g.DrawImageUnscaled(bgStarCache, 0, 0);
-                g.CompositingMode = ocm;
+                EnsureLayers(w, h);
+                BlitSkyAndStars(g, w, h);
                 RectangleF clip = g.ClipBounds;
                 if (clip.Width >= w - 1 && clip.Height >= h - 1) DrawShoots(g, w, h);   // fugaces solo en repintado COMPLETO (no en la casilla del cubo)
             }
 
-            private void EnsureLayer(int w, int h)
+            // Hornea los TwK cuadros de titileo UNA vez (al arrancar / al cambiar de tamano). El patron es
+            // fijo; lo unico que cambia entre cuadros es el brillo de cada estrella -> al rotarlos se ve titilar.
+            private void EnsureLayers(int w, int h)
             {
                 Ensure(w, h);
-                if (layer != null && lw == w && lh == h && lBucket == sBucket) return;
-                if (layer != null) { layer.Dispose(); layer = null; }
-                layer = new Bitmap(w, h, PixelFormat.Format32bppPArgb);
+                if (layers != null && lw == w && lh == h && lBucket == sBucket) return;
+                if (layers != null) { for (int k = 0; k < layers.Length; k++) if (layers[k] != null) layers[k].Dispose(); }
+                layers = new Bitmap[TwK];
                 lw = w; lh = h; lBucket = sBucket;
-                using (Graphics lg = Graphics.FromImage(layer))
+                EnsureGlow();
+                for (int j = 0; j < TwK; j++) layers[j] = BakeStarFrame(w, h, j);
+            }
+
+            // Un cuadro de titileo: el patron con el brillo de cada estrella en la fase j (armonicos enteros
+            // -> el set cicla exacto). Solo se ejecuta al hornear, no por cuadro, asi que puede ser detallado.
+            private Bitmap BakeStarFrame(int w, int h, int j)
+            {
+                Bitmap bmp = new Bitmap(w, h, PixelFormat.Format32bppPArgb);
+                using (Graphics lg = Graphics.FromImage(bmp))
                 using (SolidBrush b = new SolidBrush(Color.White))
                 {
                     lg.Clear(Color.Transparent);
-                    EnsureGlow();                       // ESTETICA: mismo glow que el camino vivo, horneado a la capa
                     lg.InterpolationMode = InterpolationMode.Bilinear;
-                    lg.SmoothingMode = SmoothingMode.AntiAlias;   // ESTETICA: sparkle liso tambien en la capa
+                    lg.SmoothingMode = SmoothingMode.AntiAlias;
+                    double ph = 2.0 * Math.PI * j / TwK;   // fase de este cuadro
                     for (int i = 0; i < stars.Length; i++)
                     {
                         Star s = stars[i];
-                        double br = 0.80 + 0.20 * (0.5 + 0.5 * Math.Sin(s.Off));   // brillo FIJO mas alto (estrellas MAS brillantes)
-                        int a = (int)(br * 255); if (a > 255) a = 255; if (a < 0) a = 0;
+                        int harm = 1 + (i % 2);   // armonico ENTERO (1 o 2: bien muestreado con TwK=8) -> el set cicla exacto
+                        double tw = 0.62 + 0.38 * (0.5 + 0.5 * Math.Sin(ph * harm + s.Off));   // titileo 0.62..1.00
+                        int a = (int)(tw * 255); if (a > 255) a = 255; if (a < 0) a = 0;
                         int px = (int)(s.X * w), py = (int)(s.Y * h);
                         int cr2, cg2, cb2;
-                        if (s.Tint > 0f) { cr2 = 255; cg2 = 255; cb2 = 255; }   // tenidas -> blancas en el cache
+                        if (s.Tint > 0f) { cr2 = 255; cg2 = 255; cb2 = 255; }   // tenidas -> blancas
                         else { cr2 = s.R; cg2 = s.G; cb2 = s.B; }
                         b.Color = Color.FromArgb(a, cr2, cg2, cb2);
                         if (s.Kind != 0)
                         {
                             int gd = s.Size * 3 + 6;
-                            Bitmap gb = GlowFor(cr2, cg2, cb2);   // glow del MISMO COLOR (sprite pre-horneado, sin matriz)
-                            if (gb != null) lg.DrawImage(gb, new Rectangle(px - gd / 2, py - gd / 2, gd, gd));
+                            Bitmap gb = GlowFor(cr2, cg2, cb2);   // glow del MISMO COLOR (sprite pre-horneado)
+                            if (gb != null)
+                            {
+                                Rectangle gr = new Rectangle(px - gd / 2, py - gd / 2, gd, gd);
+                                if (a >= 250) lg.DrawImage(gb, gr);
+                                else using (ImageAttributes ia = new ImageAttributes())   // el glow tambien titila (matriz solo al hornear)
+                                {
+                                    ColorMatrix cm = new ColorMatrix(); cm.Matrix33 = (float)tw;
+                                    ia.SetColorMatrix(cm);
+                                    lg.DrawImage(gb, gr, 0, 0, gb.Width, gb.Height, GraphicsUnit.Pixel, ia);
+                                }
+                            }
                             DrawSparkle(lg, b, px, py, s.Kind == 2 ? s.Size + 6 : s.Size + 2);
                         }
                         else { float ds = s.Size < 2 ? 2 : s.Size; lg.FillEllipse(b, px - ds / 2f, py - ds / 2f, ds, ds); }
                     }
                 }
+                return bmp;
             }
 
             private void DrawShoots(Graphics g, int w, int h)
