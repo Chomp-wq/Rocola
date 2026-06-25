@@ -2099,6 +2099,9 @@ namespace Rocola
 
             // F5 = recargar musica (mantenimiento; sin boton visible)
             if (keyData == Keys.F5) { try { File.Delete(LibCacheFile()); } catch { } LoadMusicFolder(); return true; }   // F5 ignora el cache: re-escaneo completo
+#if ROCOLA_GPU
+            if (keyData == Keys.F12) { GpuTestWindow.Toggle(); return true; }   // F12 = ventana de prueba del render por GPU (Direct3D 9)
+#endif
             if (keyData == Keys.F8 && !IsConfiguredKey(Keys.F8))    // F8 = relanzar el asistente de botones
             {
                 if (searchOpen) CloseSearch();
