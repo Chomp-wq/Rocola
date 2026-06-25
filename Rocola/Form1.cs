@@ -145,8 +145,8 @@ namespace Rocola
         private Dictionary<string, string> cachedCovers;  // carpeta -> portada, del cache de biblioteca
         private string lastPageSig = null;
         private readonly object coverLock = new object();
-        private const int ThumbPx = 384;         // resolucion de miniaturas de portada (antes 256): MAS definicion
-        private const int CoverCacheMax = 150;   // ~ 384x384 x 150 ~ 84 MB tope
+        private const int ThumbPx = 256;         // resolucion de miniaturas (256 sobra a 1024x768; 384 gastaba 2x memoria sin verse mejor en la rocola)
+        private const int CoverCacheMax = 96;    // ~ 256x256 x 96 ~ 24 MB tope (antes 84 MB): menos memoria/recoleccion en el PC viejo de la rocola
         private readonly HashSet<char> letterAvailable = new HashSet<char>();
         private readonly List<SearchItem> searchIndex = new List<SearchItem>();
         private volatile bool libBuilding = false;   // el worker esta armando albums/byLetter/searchIndex: la UI no debe leerlos
@@ -3311,7 +3311,7 @@ namespace Rocola
 
             private void Ensure(int w, int h)
             {
-                int bucket = Environment.TickCount / 60000;   // patron NUEVO cada minuto (60000 ms)
+                int bucket = 0;   // patron FIJO: regenerarlo cada minuto obligaba a re-hornear ~120 estrellas (glow+destello) -> tiron periodico en la rocola
                 if (stars != null && sw == w && sh == h && sBucket == bucket) return;
                 sw = w; sh = h; sBucket = bucket;
                 Random r = new Random((20260620 + bucket * 40503) & 0x7FFFFFFF);   // seed que cambia por minuto (siempre positivo)
@@ -3385,21 +3385,10 @@ namespace Rocola
                 if (sp == null) sp = new Pen(Color.White, 2.2f);
             }
 
-            // Fundido del patron (cada minuto, mismo reloj que la regeneracion): las estrellas BRILLAN,
-            // bajan a OSCURO un instante (ahi cambia el patron, invisible), y el patron NUEVO va apareciendo.
-            private static float StarFade()
-            {
-                int tm = Environment.TickCount % 60000; if (tm < 0) tm += 60000;
-                const int flareStart = 1400, darkHalf = 500, fadeIn = 1100;   // oscuro ~1s (500ms antes + 500ms despues del cambio)
-                if (tm >= 60000 - flareStart && tm < 60000 - darkHalf)
-                {
-                    float k = (float)(tm - (60000 - flareStart)) / (flareStart - darkHalf);
-                    return (k < 0.4f) ? (1f + (k / 0.4f) * 0.6f) : (1.6f * (1f - (k - 0.4f) / 0.6f));   // brilla y baja a 0
-                }
-                if (tm >= 60000 - darkHalf || tm < darkHalf) return 0f;   // oscuro (el cambio de patron cae aqui)
-                if (tm < darkHalf + fadeIn) return (float)(tm - darkHalf) / fadeIn;   // aparece el patron nuevo
-                return 1f;
-            }
+            // Patron FIJO (sin fundido): el campo de estrellas ya no cambia cada minuto. Antes el fundido +
+            // la regeneracion provocaban un tiron periodico (re-hornear ~120 estrellas) y 3s de repintados
+            // extra por minuto, costoso en el CPU lento de la rocola. Se mantiene 1 (sin atenuar) siempre.
+            private static float StarFade() { return 1f; }
 
             public void Draw(Graphics g, int w, int h, Color skyTop, Color skyBottom, Color tint, double phase, bool shooting, float pulse)
             {
@@ -3468,28 +3457,16 @@ namespace Rocola
                 if (shooting) DrawShoots(g, w, h);
             }
 
-            // Modo BARATO: cielo solido (reactivo al genero) + una capa de estrellas estaticas cacheada.
-            // Se usa donde hay controles transparentes girando encima (cubeBox/miniCube): pintar el
-            // starfield vivo debajo de ellos cada cuadro disparaba una tormenta de repintado (freeze/crash).
-            // Aqui el costo es 1 relleno + 1 copia de bitmap (mas barato que el degradado+brillos de antes).
+            // Modo BARATO: cielo + estrellas YA COMBINADOS en un bitmap -> UN solo blit por cuadro.
+            // Se usa en el fondo del formulario (franjas con controles transparentes encima). Antes rellenaba
+            // el degradado a pantalla completa en cada repintado (caro en la rocola); ahora solo copia.
             public void DrawCached(Graphics g, int w, int h, Color skyTop, Color skyBottom)
             {
                 if (w < 4 || h < 4) return;
+                EnsureSkyCache(w, h, skyTop, skyBottom);
                 EnsureLayer(w, h);
-                EnsureSkyBrush(w, h, skyTop, skyBottom);
-                g.FillRectangle(skyBrush, 0, 0, w, h);
-                float sf = StarFade(); if (sf > 1f) sf = 1f; if (sf < 0f) sf = 0f;   // mismo fundido out/in que las vistas vivas
-                if (sf >= 0.996f) g.DrawImageUnscaled(layer, 0, 0);
-                else if (sf > 0.004f)
-                {
-                    ColorMatrix cm = new ColorMatrix(); cm.Matrix33 = sf;   // atenua TODA la capa de estrellas
-                    using (ImageAttributes ia = new ImageAttributes())
-                    {
-                        ia.SetColorMatrix(cm);
-                        g.DrawImage(layer, new Rectangle(0, 0, w, h), 0, 0, w, h, GraphicsUnit.Pixel, ia);
-                    }
-                }
-                // si sf <= 0.004 no se dibuja la capa: oscuro total (el patron cambia aqui, invisible)
+                EnsureBgStar(w, h);
+                g.DrawImageUnscaled(bgStarCache, 0, 0);   // cielo + estrellas combinados (estatico): copia barata
             }
 
             // Hornea el cielo (degradado) a un bitmap y lo reutiliza. Copiar un bitmap es mas barato que
@@ -3746,6 +3723,8 @@ namespace Rocola
             [ThreadStatic] private static double[] exBuf;
             [ThreadStatic] private static double[] depthBuf;
             [ThreadStatic] private static int[] orderBuf;
+            [ThreadStatic] private static SolidBrush faceBrush;   // pincel reusable (cara/oscurecido): antes asignaba 1-2 por cara y cuadro
+            [ThreadStatic] private static Pen edgePen;            // lapiz de contorno reusable (antes 1 por cuadro)
 
             public static void Draw(Graphics g, Rectangle bounds, Image cover, double angle)
             {
@@ -3775,16 +3754,17 @@ namespace Rocola
                     int w = right - left;
                     if (w < 1) continue;
                     Rectangle rect = new Rectangle(left, y0, w, H);
+                    SolidBrush fb = faceBrush ?? (faceBrush = new SolidBrush(Color.Black));
                     if (cover != null) g.DrawImage(cover, rect);
-                    else using (SolidBrush b = new SolidBrush(Color.FromArgb(60, 70, 110))) g.FillRectangle(b, rect);
+                    else { fb.Color = Color.FromArgb(60, 70, 110); g.FillRectangle(fb, rect); }
                     int darken = (int)((1.0 - depth[k]) * 130);
-                    if (darken > 0) using (SolidBrush d = new SolidBrush(Color.FromArgb(darken, 0, 0, 0))) g.FillRectangle(d, rect);
+                    if (darken > 0) { fb.Color = Color.FromArgb(darken, 0, 0, 0); g.FillRectangle(fb, rect); }
                 }
 
                 double minx = ex[0], maxx = ex[0];
                 for (int k = 1; k < 4; k++) { if (ex[k] < minx) minx = ex[k]; if (ex[k] > maxx) maxx = ex[k]; }
-                using (Pen edge = new Pen(Color.FromArgb(120, 0, 0, 0), 1))
-                    g.DrawRectangle(edge, (int)Math.Round(minx), y0, (int)Math.Round(maxx - minx), H - 1);
+                Pen ep = edgePen ?? (edgePen = new Pen(Color.FromArgb(120, 0, 0, 0), 1));
+                g.DrawRectangle(ep, (int)Math.Round(minx), y0, (int)Math.Round(maxx - minx), H - 1);
             }
         }
 
