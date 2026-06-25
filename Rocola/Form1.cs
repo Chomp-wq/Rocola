@@ -3210,6 +3210,12 @@ namespace Rocola
             private Bitmap cache;
             private int cw = -1, ch = -1, cSky = 0, cTint = 0, lastBuild = 0;
             private int cSky2 = 0;                                        // color inferior del degradado del cache
+            // RENDIMIENTO: en modo MANUAL el titileo del fondo solo avanza cuando el timer llama Animate().
+            // Asi pasar de pagina (que invalida toda la vista) NO reconstruye el starfield entero cada vez:
+            // solo copia el cache (como la version anterior con su fondo cacheado) -> sin tirones al navegar.
+            public bool ManualAnimate = false;
+            private bool animatePending = false;
+            public void Animate() { animatePending = true; }
             private int sBucket = int.MinValue, lBucket = int.MinValue;   // "minuto" del patron actual (cambia cada 60s)
             public int SkyOffsetY = 0, SkyFullH = 0;                      // posicion de este fondo en la pantalla (degradado CONTINUO entre secciones)
             public Color SkyMid = Color.Empty;                            // color INTERMEDIO (azul noche); si Empty -> 2 paradas (punto medio)
@@ -3408,8 +3414,11 @@ namespace Rocola
                 // repintados completos (cuando el recorte cubre toda la vista: buscador y atraccion cada cuadro).
                 RectangleF clip = g.ClipBounds;
                 bool partial = !needNew && (clip.Width < w - 1 || clip.Height < h - 1);
+                // El titileo se reconstruye ~24fps en vivo; en modo MANUAL solo cuando el timer lo pide (Animate),
+                // de modo que los repintados por navegacion (pasar de pagina) SOLO copien el cache, no reconstruyan.
+                bool twinkle = ManualAnimate ? animatePending : (dt >= 40 || dt < 0);   // ~24fps
                 bool rebuild = needNew
-                    || (!partial && (cSky != skyTop.ToArgb() || cSky2 != skyBottom.ToArgb() || cTint != tint.ToArgb() || dt >= 40 || dt < 0));   // ~24fps
+                    || (!partial && (cSky != skyTop.ToArgb() || cSky2 != skyBottom.ToArgb() || cTint != tint.ToArgb() || twinkle));
                 if (rebuild)
                 {
                     if (needNew)
@@ -3421,6 +3430,7 @@ namespace Rocola
                     using (Graphics cg = Graphics.FromImage(cache))
                         RenderInto(cg, w, h, skyTop, skyBottom, tint, phase, shooting, pulse);
                     cSky = skyTop.ToArgb(); cSky2 = skyBottom.ToArgb(); cTint = tint.ToArgb(); lastBuild = now;
+                    animatePending = false;
                 }
                 g.DrawImageUnscaled(cache, 0, 0);
             }
@@ -3887,7 +3897,7 @@ namespace Rocola
                 Rectangle d = SpinRect();
                 StepSpin();
                 Rectangle d2 = SpinRect();
-                if (fullFrame) { Invalidate(); return; }
+                if (fullFrame) { stars.Animate(); Invalidate(); return; }   // cuadro completo: deja avanzar el titileo del fondo y repinta todo
                 if (d2 != Rectangle.Empty) d = (d == Rectangle.Empty) ? d2 : Rectangle.Union(d, d2);
                 if (d != Rectangle.Empty) Invalidate(d);
             }
@@ -3951,6 +3961,7 @@ namespace Rocola
             public AlbumView()
             {
                 this.SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true);
+                stars.ManualAnimate = true;   // el fondo solo titila cuando lo pide el timer; navegar NO reconstruye el starfield (sin tirones)
             }
 
             // Fuerza reconstruir la capa de cubos (cuando llega una portada en segundo plano)
