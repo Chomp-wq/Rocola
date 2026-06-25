@@ -3210,17 +3210,14 @@ namespace Rocola
             private Bitmap cache;
             private int cw = -1, ch = -1, cSky = 0, cTint = 0, lastBuild = 0;
             private int cSky2 = 0;                                        // color inferior del degradado del cache
-            // RENDIMIENTO: en modo MANUAL el titileo del fondo solo avanza cuando el timer llama Animate().
-            // Asi pasar de pagina (que invalida toda la vista) NO reconstruye el starfield entero cada vez:
-            // solo copia el cache (como la version anterior con su fondo cacheado) -> sin tirones al navegar.
-            public bool ManualAnimate = false;
-            private bool animatePending = false;
-            public void Animate() { animatePending = true; }
             private int sBucket = int.MinValue, lBucket = int.MinValue;   // "minuto" del patron actual (cambia cada 60s)
             public int SkyOffsetY = 0, SkyFullH = 0;                      // posicion de este fondo en la pantalla (degradado CONTINUO entre secciones)
             public Color SkyMid = Color.Empty;                            // color INTERMEDIO (azul noche); si Empty -> 2 paradas (punto medio)
             private LinearGradientBrush skyBrush;                         // pincel de cielo en DEGRADADO (cacheado, ligado al genero)
             private int gbW = -1, gbOff = -99999, gbFull = -1, gbTop = 0, gbMid = 0, gbBot = 0;
+            private Bitmap skyCache;                                       // RENDIMIENTO: cielo (degradado) HORNEADO a bitmap; se copia por cuadro en vez de rellenar el degradado cada vez
+            private int scW = -1, scH = -1;
+            private LinearGradientBrush scFrom;                           // de que pincel se horneo skyCache (si el genero/tamano cambia el pincel, se re-hornea)
 
             // Pincel de cielo en degradado vertical CONTINUO: el degradado abarca TODA la pantalla (SkyFullH)
             // y se desplaza segun donde esta este fondo (SkyOffsetY), para que las secciones no se noten
@@ -3414,11 +3411,8 @@ namespace Rocola
                 // repintados completos (cuando el recorte cubre toda la vista: buscador y atraccion cada cuadro).
                 RectangleF clip = g.ClipBounds;
                 bool partial = !needNew && (clip.Width < w - 1 || clip.Height < h - 1);
-                // El titileo se reconstruye ~24fps en vivo; en modo MANUAL solo cuando el timer lo pide (Animate),
-                // de modo que los repintados por navegacion (pasar de pagina) SOLO copien el cache, no reconstruyan.
-                bool twinkle = ManualAnimate ? animatePending : (dt >= 40 || dt < 0);   // ~24fps
                 bool rebuild = needNew
-                    || (!partial && (cSky != skyTop.ToArgb() || cSky2 != skyBottom.ToArgb() || cTint != tint.ToArgb() || twinkle));
+                    || (!partial && (cSky != skyTop.ToArgb() || cSky2 != skyBottom.ToArgb() || cTint != tint.ToArgb() || dt >= 40 || dt < 0));   // ~24fps
                 if (rebuild)
                 {
                     if (needNew)
@@ -3430,7 +3424,6 @@ namespace Rocola
                     using (Graphics cg = Graphics.FromImage(cache))
                         RenderInto(cg, w, h, skyTop, skyBottom, tint, phase, shooting, pulse);
                     cSky = skyTop.ToArgb(); cSky2 = skyBottom.ToArgb(); cTint = tint.ToArgb(); lastBuild = now;
-                    animatePending = false;
                 }
                 g.DrawImageUnscaled(cache, 0, 0);
             }
@@ -3494,6 +3487,52 @@ namespace Rocola
                     }
                 }
                 // si sf <= 0.004 no se dibuja la capa: oscuro total (el patron cambia aqui, invisible)
+            }
+
+            // Hornea el cielo (degradado) a un bitmap y lo reutiliza. Copiar un bitmap es mas barato que
+            // rellenar un degradado de 3 paradas a pantalla completa en cada cuadro (clave en alta resolucion).
+            // Se re-hornea solo si cambia el tamano o el pincel (genero/posicion); en una transicion de color
+            // reusa el MISMO bitmap (solo lo vuelve a rellenar) para no asignar memoria por cuadro.
+            private void EnsureSkyCache(int w, int h, Color top, Color bottom)
+            {
+                EnsureSkyBrush(w, h, top, bottom);
+                if (skyCache != null && scW == w && scH == h && scFrom == skyBrush) return;
+                if (skyCache == null || scW != w || scH != h)
+                {
+                    if (skyCache != null) skyCache.Dispose();
+                    skyCache = new Bitmap(w, h, PixelFormat.Format32bppPArgb);
+                    scW = w; scH = h;
+                }
+                using (Graphics sg = Graphics.FromImage(skyCache)) sg.FillRectangle(skyBrush, 0, 0, w, h);
+                scFrom = skyBrush;
+            }
+
+            // Modo REACTIVO BARATO para la vista de discos: cielo cacheado (bitmap) + capa de estrellas
+            // PRE-HORNEADA (glow + destellos), ambos solo se COPIAN por cuadro. El audio modula el brillo de
+            // TODO el campo de una sola vez (un blit con matriz, no por estrella). En reposo es un blit liso.
+            // Asi pasar de pagina o estar quieto NO reconstruye ~230 estrellas por cuadro -> sin tirones.
+            public void DrawReactive(Graphics g, int w, int h, Color skyTop, Color skyBottom, float pulse)
+            {
+                if (w < 4 || h < 4) return;
+                EnsureSkyCache(w, h, skyTop, skyBottom);
+                EnsureLayer(w, h);
+                g.DrawImageUnscaled(skyCache, 0, 0);                                  // cielo: copia barata (sin recalcular el degradado)
+                float sf = StarFade(); if (sf > 1f) sf = 1f; if (sf < 0f) sf = 0f;    // mismo fundido out/in del patron (cada minuto)
+                bool reactive = pulse > 0.012f;                                       // hay musica sonando: el campo LATE con ella
+                float bright = sf;
+                if (reactive) { bright = sf * (0.72f + 0.42f * pulse); if (bright > 1f) bright = 1f; }   // late entre ~0.72 y 1.0 segun energia
+                if (!reactive && sf >= 0.996f) g.DrawImageUnscaled(layer, 0, 0);      // REPOSO: blit liso (baratisimo, a cualquier resolucion)
+                else if (bright > 0.01f)
+                {
+                    ColorMatrix cm = new ColorMatrix(); cm.Matrix33 = bright;         // UN solo blit con matriz modula todo el campo (no por estrella)
+                    using (ImageAttributes ia = new ImageAttributes())
+                    {
+                        ia.SetColorMatrix(cm);
+                        g.DrawImage(layer, new Rectangle(0, 0, w, h), 0, 0, w, h, GraphicsUnit.Pixel, ia);
+                    }
+                }
+                RectangleF clip = g.ClipBounds;
+                if (clip.Width >= w - 1 && clip.Height >= h - 1) DrawShoots(g, w, h);   // fugaces solo en repintado COMPLETO (no en la casilla del cubo)
             }
 
             private void EnsureLayer(int w, int h)
@@ -3897,7 +3936,7 @@ namespace Rocola
                 Rectangle d = SpinRect();
                 StepSpin();
                 Rectangle d2 = SpinRect();
-                if (fullFrame) { stars.Animate(); Invalidate(); return; }   // cuadro completo: deja avanzar el titileo del fondo y repinta todo
+                if (fullFrame) { Invalidate(); return; }
                 if (d2 != Rectangle.Empty) d = (d == Rectangle.Empty) ? d2 : Rectangle.Union(d, d2);
                 if (d != Rectangle.Empty) Invalidate(d);
             }
@@ -3961,7 +4000,6 @@ namespace Rocola
             public AlbumView()
             {
                 this.SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true);
-                stars.ManualAnimate = true;   // el fondo solo titila cuando lo pide el timer; navegar NO reconstruye el starfield (sin tirones)
             }
 
             // Fuerza reconstruir la capa de cubos (cuando llega una portada en segundo plano)
@@ -4085,7 +4123,7 @@ namespace Rocola
                 cacheW = w; cacheH = h; cacheSig = sig; cacheAccent = BgAccent;
 
                 stars.SkyOffsetY = this.Top; stars.SkyFullH = (this.Parent != null) ? this.Parent.ClientSize.Height : h; stars.SkyMid = SkyColorMid(BgAccent);
-                stars.Draw(g, w, h, SkyColor(BgAccent), SkyColor2(BgAccent), BgAccent, Phase, true, AudioPulse);   // fondo en degradado CONTINUO tenido por genero + late con la musica
+                stars.DrawReactive(g, w, h, SkyColor(BgAccent), SkyColor2(BgAccent), AudioPulse);   // fondo CACHEADO (cielo + estrellas pre-horneadas) que LATE global con la musica; NO reconstruye por cuadro -> sin tirones al navegar ni en reposo
                 g.DrawImageUnscaled(cubeCache, 0, 0);
 
                 if (Page != null && Selected >= 0 && Selected < Page.Count)
