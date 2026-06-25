@@ -200,10 +200,12 @@ namespace Rocola
         private D3D9.Vtx[] skyV = new D3D9.Vtx[6];
         private D3D9.Vtx[] starV;
         private int startTick;
+        private int frames, fpsTick, fps;
+        private const string BaseTitle = "Rocola - Prueba de render por GPU (Direct3D 9) - F12 o Esc para cerrar";
 
         public GpuTestWindow()
         {
-            Text = "Rocola - Prueba de render por GPU (Direct3D 9) - F12 o Esc para cerrar";
+            Text = BaseTitle;
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
@@ -269,6 +271,13 @@ namespace Rocola
                 vi += 6;
             }
             gpu.Render(w, h, skyV, starV, nStars * 2);
+
+            frames++;
+            if (Environment.TickCount - fpsTick >= 1000)
+            {
+                fps = frames; frames = 0; fpsTick = Environment.TickCount;
+                Text = BaseTitle + "   [" + fps + " FPS, " + nStars + " estrellas]";
+            }
         }
 
         // Escala el RGB de un color ARGB por f (0..1+); para el brillo aditivo.
