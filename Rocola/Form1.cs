@@ -169,6 +169,9 @@ namespace Rocola
         private double phase = 0;
         private Starfield formStars = new Starfield();   // cielo estrellado del fondo del formulario
         private int frameTick = 0;   // contador de cuadros: el fondo se refresca completo 1 de cada 3 (invisible al ojo)
+#if ROCOLA_GPU
+        private GpuPanel gpuPanel;   // fondo de discos por GPU (experimental, Ctrl+F12)
+#endif
         private bool searchOpen = false;
         private DateTime searchLastActivity = DateTime.Now;   // para auto-cerrar el buscador tras 1 min
         private string lastQuery = null;                      // busqueda incremental
@@ -2101,6 +2104,7 @@ namespace Rocola
             if (keyData == Keys.F5) { try { File.Delete(LibCacheFile()); } catch { } LoadMusicFolder(); return true; }   // F5 ignora el cache: re-escaneo completo
 #if ROCOLA_GPU
             if (keyData == Keys.F12) { GpuTestWindow.Toggle(); return true; }   // F12 = ventana de prueba del render por GPU (Direct3D 9)
+            if (keyData == (Keys.Control | Keys.F12)) { ToggleAlbumGpu(); return true; }   // Ctrl+F12 = fondo de discos por GPU (experimental)
 #endif
             if (keyData == Keys.F8 && !IsConfiguredKey(Keys.F8))    // F8 = relanzar el asistente de botones
             {
@@ -3050,6 +3054,30 @@ namespace Rocola
             lblTime.Text = Fmt(cur) + " / " + Fmt(tot);
         }
 
+#if ROCOLA_GPU
+        private static uint ToD3D(Color c) { return 0xFF000000u | ((uint)c.R << 16) | ((uint)c.G << 8) | (uint)c.B; }
+
+        // Ctrl+F12: muestra/oculta el fondo de discos renderizado por GPU (Direct3D 9). Es un panel encima
+        // de la vista de discos; si el dispositivo no inicia, se queda en CPU (no rompe nada).
+        private void ToggleAlbumGpu()
+        {
+            if (gpuPanel == null)
+            {
+                gpuPanel = new GpuPanel();
+                gpuPanel.GetPulse = delegate { return audioLevel; };
+                Controls.Add(gpuPanel);
+            }
+            if (!gpuPanel.Visible)
+            {
+                gpuPanel.Bounds = albumView.Bounds;
+                gpuPanel.SkyTop = ToD3D(SkyColor(bgAccent)); gpuPanel.SkyBot = ToD3D(SkyColor2(bgAccent));
+                gpuPanel.Visible = true; gpuPanel.BringToFront();
+                if (!gpuPanel.StartGpu()) { gpuPanel.Visible = false; MessageBox.Show("No se pudo iniciar el render GPU del fondo (se queda en CPU)."); }
+            }
+            else { gpuPanel.StopGpu(); gpuPanel.Visible = false; }
+        }
+#endif
+
         private void AnimTimer_Tick(object sender, EventArgs e)
         {
             phase += 0.045;
@@ -3079,6 +3107,9 @@ namespace Rocola
                 this.Invalidate();   // tambien con buscador abierto: el fondo es barato y la franja de estado debe recolorear
             }
             albumView.BgAccent = bgAccent;
+#if ROCOLA_GPU
+            if (gpuPanel != null && gpuPanel.Visible) { gpuPanel.SkyTop = ToD3D(SkyColor(bgAccent)); gpuPanel.SkyBot = ToD3D(SkyColor2(bgAccent)); }
+#endif
             if (progress != null) progress.Accent = bgAccent;   // ESTETICA: la barra de progreso sigue el color del genero
 
             if (searchOpen)
@@ -3117,7 +3148,11 @@ namespace Rocola
             }
 
             if (letterBar.Visible) { letterBar.Phase = phase; letterBar.Invalidate(); }                 // 24fps
-            if (albumView.Visible) { albumView.Phase = phase; albumView.AudioPulse = audioLevel; albumView.AnimTick(fullFrame || transitioning); }
+            bool albumGpuBg = false;
+#if ROCOLA_GPU
+            albumGpuBg = (gpuPanel != null && gpuPanel.Visible);   // si el fondo GPU cubre los discos, no malgastes el render CPU detras
+#endif
+            if (albumView.Visible && !albumGpuBg) { albumView.Phase = phase; albumView.AudioPulse = audioLevel; albumView.AnimTick(fullFrame || transitioning); }
             if (panelSongs.Visible)
             {
                 panelSongs.Accent = bgAccent;
