@@ -49,7 +49,7 @@ namespace Rocola
         public const uint PT_TRIANGLELIST = 4;
         public const uint RS_ZENABLE = 7, RS_CULLMODE = 22, RS_LIGHTING = 137;
         public const uint RS_ALPHABLENDENABLE = 27, RS_SRCBLEND = 19, RS_DESTBLEND = 20;
-        public const uint BLEND_ONE = 2, BLEND_SRCALPHA = 5;
+        public const uint BLEND_ONE = 2, BLEND_SRCALPHA = 5, BLEND_INVSRCALPHA = 6;
         public const uint CULL_NONE = 1;
         public const uint TSS_COLOROP = 1, TSS_COLORARG1 = 2, TSS_COLORARG2 = 3, TSS_ALPHAOP = 4, TSS_ALPHAARG1 = 5, TSS_ALPHAARG2 = 6;
         public const uint TOP_SELECTARG1 = 2, TOP_MODULATE = 4, TA_DIFFUSE = 0, TA_TEXTURE = 2;
@@ -169,42 +169,92 @@ namespace Rocola
             return tex;
         }
 
-        // Cuadro completo: cielo (color del vertice) + estrellas (textura de glow, aditivo).
-        public void Render(int w, int h, D3D9.Vtx[] sky, D3D9.Vtx[] stars, int starTris, IntPtr glowTex)
+        // Inicia el cuadro (maneja perdida de dispositivo). Devuelve true si se puede dibujar.
+        public bool BeginFrame()
         {
-            if (dev == IntPtr.Zero) return;
+            if (dev == IntPtr.Zero) return false;
             if (lost)
             {
                 int tc = testCoop(dev);
-                if (tc == D3D9.E_DEVICENOTRESET) { if (reset(dev, ref pp) >= 0) { lost = false; InitStates(); } else return; }
-                else return;
+                if (tc == D3D9.E_DEVICENOTRESET) { if (reset(dev, ref pp) >= 0) { lost = false; InitStates(); } else return false; }
+                else return false;
             }
-
             clear(dev, 0, IntPtr.Zero, D3D9.CLEAR_TARGET, 0xFF05060F, 1f, 0);
-            if (begin(dev) < 0) return;
-            try
-            {
-                setTex(dev, 0, IntPtr.Zero);
-                setTSS(dev, 0, D3D9.TSS_COLOROP, D3D9.TOP_SELECTARG1); setTSS(dev, 0, D3D9.TSS_COLORARG1, D3D9.TA_DIFFUSE);
-                setTSS(dev, 0, D3D9.TSS_ALPHAOP, D3D9.TOP_SELECTARG1); setTSS(dev, 0, D3D9.TSS_ALPHAARG1, D3D9.TA_DIFFUSE);
-                setRS(dev, D3D9.RS_ALPHABLENDENABLE, 0);
-                Draw(sky, 2);
+            return begin(dev) >= 0;
+        }
 
-                if (starTris > 0 && glowTex != IntPtr.Zero)
-                {
-                    setTex(dev, 0, glowTex);
-                    setTSS(dev, 0, D3D9.TSS_COLOROP, D3D9.TOP_MODULATE); setTSS(dev, 0, D3D9.TSS_COLORARG1, D3D9.TA_TEXTURE); setTSS(dev, 0, D3D9.TSS_COLORARG2, D3D9.TA_DIFFUSE);
-                    setTSS(dev, 0, D3D9.TSS_ALPHAOP, D3D9.TOP_MODULATE); setTSS(dev, 0, D3D9.TSS_ALPHAARG1, D3D9.TA_TEXTURE); setTSS(dev, 0, D3D9.TSS_ALPHAARG2, D3D9.TA_DIFFUSE);
-                    setRS(dev, D3D9.RS_ALPHABLENDENABLE, 1);
-                    setRS(dev, D3D9.RS_SRCBLEND, D3D9.BLEND_SRCALPHA);
-                    setRS(dev, D3D9.RS_DESTBLEND, D3D9.BLEND_ONE);
-                    Draw(stars, starTris);
-                }
-            }
-            finally { end(dev); }
-
+        public void EndFrame()
+        {
+            end(dev);
             int hr = present(dev, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
             if (hr == D3D9.E_DEVICELOST) lost = true;
+        }
+
+        private void TssDiffuse()   // usa el color del vertice (sin textura)
+        {
+            setTSS(dev, 0, D3D9.TSS_COLOROP, D3D9.TOP_SELECTARG1); setTSS(dev, 0, D3D9.TSS_COLORARG1, D3D9.TA_DIFFUSE);
+            setTSS(dev, 0, D3D9.TSS_ALPHAOP, D3D9.TOP_SELECTARG1); setTSS(dev, 0, D3D9.TSS_ALPHAARG1, D3D9.TA_DIFFUSE);
+        }
+        private void TssModulate()  // textura * color del vertice
+        {
+            setTSS(dev, 0, D3D9.TSS_COLOROP, D3D9.TOP_MODULATE); setTSS(dev, 0, D3D9.TSS_COLORARG1, D3D9.TA_TEXTURE); setTSS(dev, 0, D3D9.TSS_COLORARG2, D3D9.TA_DIFFUSE);
+            setTSS(dev, 0, D3D9.TSS_ALPHAOP, D3D9.TOP_MODULATE); setTSS(dev, 0, D3D9.TSS_ALPHAARG1, D3D9.TA_TEXTURE); setTSS(dev, 0, D3D9.TSS_ALPHAARG2, D3D9.TA_DIFFUSE);
+        }
+
+        // Cielo (color del vertice, sin mezcla) + estrellas (textura de glow, aditivo).
+        public void DrawSkyStars(D3D9.Vtx[] sky, D3D9.Vtx[] stars, int starTris, IntPtr glowTex)
+        {
+            setTex(dev, 0, IntPtr.Zero); TssDiffuse();
+            setRS(dev, D3D9.RS_ALPHABLENDENABLE, 0);
+            Draw(sky, 2);
+            if (starTris > 0 && glowTex != IntPtr.Zero)
+            {
+                setTex(dev, 0, glowTex); TssModulate();
+                setRS(dev, D3D9.RS_ALPHABLENDENABLE, 1);
+                setRS(dev, D3D9.RS_SRCBLEND, D3D9.BLEND_SRCALPHA); setRS(dev, D3D9.RS_DESTBLEND, D3D9.BLEND_ONE);
+                Draw(stars, starTris);
+            }
+        }
+
+        // Un cuadro texturizado (2 triangulos) con mezcla NORMAL (encima): para los cubos, etiquetas, etc.
+        public void DrawTexQuad(IntPtr tex, D3D9.Vtx[] quad)
+        {
+            if (tex == IntPtr.Zero) return;
+            setTex(dev, 0, tex); TssModulate();
+            setRS(dev, D3D9.RS_ALPHABLENDENABLE, 1);
+            setRS(dev, D3D9.RS_SRCBLEND, D3D9.BLEND_SRCALPHA); setRS(dev, D3D9.RS_DESTBLEND, D3D9.BLEND_INVSRCALPHA);
+            Draw(quad, 2);
+        }
+
+        private static int Pow2(int n) { int p = 1; while (p < n) p <<= 1; return p; }
+
+        // Crea una textura de tamano POTENCIA DE DOS (compatible con GPU vieja) y sube el bitmap en su
+        // esquina superior izquierda. Devuelve las coordenadas de textura maximas usadas (uMax, vMax).
+        public IntPtr CreateTexturePow2(Bitmap bmp, out float uMax, out float vMax)
+        {
+            uMax = 1f; vMax = 1f;
+            if (dev == IntPtr.Zero) return IntPtr.Zero;
+            int w = bmp.Width, h = bmp.Height, tw = Pow2(w), th = Pow2(h);
+            IntPtr tex;
+            if (createTex(dev, (uint)tw, (uint)th, 1, 0, D3D9.FMT_A8R8G8B8, D3D9.POOL_MANAGED, out tex, IntPtr.Zero) < 0) return IntPtr.Zero;
+            D3D9.LockRectDel lockR = D3D9.Fn<D3D9.LockRectDel>(tex, 19);
+            D3D9.UnlockRectDel unlockR = D3D9.Fn<D3D9.UnlockRectDel>(tex, 20);
+            D3D9.LockedRect lr;
+            if (lockR(tex, 0, out lr, IntPtr.Zero, 0) >= 0)
+            {
+                BitmapData bd = bmp.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+                int rowBytes = w * 4;
+                byte[] buf = new byte[rowBytes];
+                for (int y = 0; y < h; y++)
+                {
+                    Marshal.Copy(new IntPtr(bd.Scan0.ToInt64() + (long)y * bd.Stride), buf, 0, rowBytes);
+                    Marshal.Copy(buf, 0, new IntPtr(lr.Bits.ToInt64() + (long)y * lr.Pitch), rowBytes);
+                }
+                bmp.UnlockBits(bd);
+                unlockR(tex, 0);
+            }
+            uMax = (float)w / tw; vMax = (float)h / th;
+            return tex;
         }
 
         private void Draw(D3D9.Vtx[] verts, int tris)
@@ -242,10 +292,15 @@ namespace Rocola
         }
 
         public void SetSky(uint top, uint bot) { skyTop = top; skyBot = bot; }
+        public IntPtr CreateOverlay(Bitmap bmp, out float uMax, out float vMax) { return gpu.CreateTexturePow2(bmp, out uMax, out vMax); }
 
-        public void Render(int w, int h, float pulse)
+        public void Render(int w, int h, float pulse) { Render(w, h, pulse, IntPtr.Zero, null); }
+
+        // Dibuja el cielo + estrellas y, si se pasa, una textura ENCIMA (los cubos) con mezcla normal.
+        public void Render(int w, int h, float pulse, IntPtr overlayTex, D3D9.Vtx[] overlayQuad)
         {
             if (!Ok) return;
+            if (!gpu.BeginFrame()) return;
             float t = (Environment.TickCount - startTick) / 1000f;
             SetQuad(skyV, 0, 0, 0, w, h, skyTop, skyTop, skyBot, skyBot);
             int vi = 0;
@@ -259,7 +314,9 @@ namespace Rocola
                 SetQuad(starV, vi, sx[i] - s, sy[i] - s, sx[i] + s, sy[i] + s, c, c, c, c);
                 vi += 6;
             }
-            gpu.Render(w, h, skyV, starV, nStars * 2, glowTex);
+            gpu.DrawSkyStars(skyV, starV, nStars * 2, glowTex);
+            if (overlayTex != IntPtr.Zero && overlayQuad != null) gpu.DrawTexQuad(overlayTex, overlayQuad);
+            gpu.EndFrame();
         }
 
         public void Dispose()
@@ -397,8 +454,12 @@ namespace Rocola
         private GpuStarfield stars;
         private readonly Timer timer = new Timer();
         private int frames, fpsTick;
+        private IntPtr cubeTex; private int cubeVer = -1; private float cubeU = 1f, cubeV = 1f;
+        private readonly D3D9.Vtx[] cubeQuad = new D3D9.Vtx[6];
         public int Fps;                                   // cuadros por segundo (para mostrar mientras integramos)
         public Func<float> GetPulse;                      // el form provee el nivel de audio (0..1)
+        public Func<Bitmap> GetCubes;                     // el form provee el bitmap de cubos+etiquetas (cubeCache)
+        public Func<int> GetCubesVersion;                 // cambia cuando cubeCache se reconstruye (re-subir textura)
         public uint SkyTop = 0xFF06081A, SkyBot = 0xFF1A2C5A;   // el form los setea por genero
 
         public GpuPanel()
@@ -421,6 +482,8 @@ namespace Rocola
         public void StopGpu()
         {
             timer.Stop();
+            if (cubeTex != IntPtr.Zero) { D3D9.Release(cubeTex); cubeTex = IntPtr.Zero; }
+            cubeVer = -1;
             if (stars != null) { stars.Dispose(); stars = null; }
         }
 
@@ -428,11 +491,32 @@ namespace Rocola
         {
             if (stars == null || !stars.Ok) return;
             stars.SetSky(SkyTop, SkyBot);
+            // Sube/actualiza la textura de cubos solo cuando cambia (al pasar de pagina / llegar caratula).
+            if (GetCubes != null && GetCubesVersion != null)
+            {
+                int v = GetCubesVersion();
+                if (v != cubeVer)
+                {
+                    if (cubeTex != IntPtr.Zero) { D3D9.Release(cubeTex); cubeTex = IntPtr.Zero; }
+                    Bitmap bm = GetCubes();
+                    if (bm != null) cubeTex = stars.CreateOverlay(bm, out cubeU, out cubeV);
+                    cubeVer = v;
+                }
+            }
+            D3D9.Vtx[] overlay = null;
+            if (cubeTex != IntPtr.Zero) { SetTexQuad(cubeQuad, 0, 0, Width, Height, cubeU, cubeV); overlay = cubeQuad; }
             float pulse = (GetPulse != null) ? GetPulse() : 0f;
-            stars.Render(Width, Height, pulse);
+            stars.Render(Width, Height, pulse, cubeTex, overlay);
             frames++;
             if (Environment.TickCount - fpsTick >= 1000) { Fps = frames; frames = 0; fpsTick = Environment.TickCount; }
         }
+
+        private static void SetTexQuad(D3D9.Vtx[] v, float x0, float y0, float x1, float y1, float uMax, float vMax)
+        {
+            SetV(ref v[0], x0, y0, 0, 0); SetV(ref v[1], x1, y0, uMax, 0); SetV(ref v[2], x1, y1, uMax, vMax);
+            SetV(ref v[3], x0, y0, 0, 0); SetV(ref v[4], x1, y1, uMax, vMax); SetV(ref v[5], x0, y1, 0, vMax);
+        }
+        private static void SetV(ref D3D9.Vtx vx, float x, float y, float u, float vv) { vx.X = x; vx.Y = y; vx.Z = 0; vx.Rhw = 1; vx.Color = 0xFFFFFFFF; vx.U = u; vx.V = vv; }
 
         protected override void OnPaint(PaintEventArgs e) { RenderFrame(); }   // WM_PAINT -> dibuja por D3D9
         protected override void OnPaintBackground(PaintEventArgs e) { }        // no borra (D3D9 es dueño de los pixeles)

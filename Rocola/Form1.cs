@@ -3075,11 +3075,14 @@ namespace Rocola
             {
                 gpuPanel = new GpuPanel();
                 gpuPanel.GetPulse = delegate { return audioLevel; };
+                gpuPanel.GetCubes = delegate { return albumView.CubeBitmap; };       // los cubos+etiquetas van ENCIMA del fondo GPU
+                gpuPanel.GetCubesVersion = delegate { return albumView.CubeVersion; };
                 gpuPanel.Dock = DockStyle.Fill;          // cubre exactamente la vista de discos (es su hijo)
                 albumView.Controls.Add(gpuPanel);
             }
             if (!gpuPanel.Visible)
             {
+                albumView.InvalidateCubeCache();         // fuerza reconstruir cubeCache fresco para subirlo a la GPU
                 lblGpu.Location = new Point(ClientSize.Width - 270, 46);
                 lblGpu.Text = "GPU: iniciando..."; lblGpu.Visible = true; lblGpu.BringToFront();   // feedback inmediato: la tecla SI llego
                 gpuPanel.SkyTop = ToD3D(SkyColor(bgAccent)); gpuPanel.SkyBot = ToD3D(SkyColor2(bgAccent));
@@ -3963,6 +3966,10 @@ namespace Rocola
             private Bitmap cubeCache;
             private int cacheW = -1, cacheH = -1;
             private string cacheSig = null;
+#if ROCOLA_GPU
+            public int CubeVersion;                                  // sube cuando cubeCache cambia (para resubir la textura GPU)
+            public Bitmap CubeBitmap { get { return cubeCache; } }   // capa de cubos+etiquetas (la usa el panel GPU como textura)
+#endif
             private Color cacheAccent = Color.Empty;
             private Pen cPenGlow, cPenMid, cPenLine;   // contorno del disco seleccionado (cacheadas; antes se creaban por cuadro)
             private Bitmap contourSprite; private Size contourSpriteSize = Size.Empty;   // contorno HORNEADO (3 trazos AA -> 1 copia); todas las casillas miden igual
@@ -4119,6 +4126,9 @@ namespace Rocola
 
             private void RebuildCubes(int w, int h)
             {
+#if ROCOLA_GPU
+                CubeVersion++;
+#endif
                 if (cubeCache == null || cubeCache.Width != w || cubeCache.Height != h)
                 {
                     if (cubeCache != null) cubeCache.Dispose();
@@ -4186,6 +4196,9 @@ namespace Rocola
                     }
                 }
                 if (any && dirtyR != Rectangle.Empty) Invalidate(dirtyR);   // solo su celda: 18 caratulas ya NO son 18 repintados completos
+#if ROCOLA_GPU
+                if (any) CubeVersion++;   // la textura GPU de cubos debe resubirse
+#endif
             }
 
             protected override void OnPaint(PaintEventArgs e)
