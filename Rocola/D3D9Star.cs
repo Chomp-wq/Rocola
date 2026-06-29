@@ -452,7 +452,7 @@ namespace Rocola
     internal sealed class GpuPanel : Control
     {
         private GpuStarfield stars;
-        private readonly Timer timer = new Timer();
+        private bool idleHooked;
         private int frames, fpsTick;
         private IntPtr cubeTex; private int cubeVer = -1; private float cubeU = 1f, cubeV = 1f;
         private readonly D3D9.Vtx[] cubeQuad = new D3D9.Vtx[6];
@@ -462,26 +462,40 @@ namespace Rocola
         public Func<int> GetCubesVersion;                 // cambia cuando cubeCache se reconstruye (re-subir textura)
         public uint SkyTop = 0xFF06081A, SkyBot = 0xFF1A2C5A;   // el form los setea por genero
 
+        // Bucle de render por Application.Idle (patron estandar para D3D en WinForms): dibuja tan rapido como
+        // permita el vsync (60 FPS) mientras no haya mensajes pendientes; al llegar un mensaje (tecla, timer)
+        // sale, lo procesa y vuelve. El Timer de WinForms era impreciso (se quedaba en ~40 fps).
+        [StructLayout(LayoutKind.Sequential)]
+        private struct NativeMessage { public IntPtr Hwnd; public uint Msg; public IntPtr W; public IntPtr L; public uint Time; public Point Pt; }
+        [DllImport("user32.dll")] private static extern int PeekMessage(out NativeMessage msg, IntPtr hWnd, uint min, uint max, uint remove);
+        private static bool AppIdle() { NativeMessage m; return PeekMessage(out m, IntPtr.Zero, 0, 0, 0) == 0; }   // 0 = PM_NOREMOVE
+
         public GpuPanel()
         {
             SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.Opaque, true);
             SetStyle(ControlStyles.OptimizedDoubleBuffer, false);   // D3D9 maneja sus pixeles: nada de doble-buffer GDI
-            timer.Interval = 16;
-            timer.Tick += delegate { RenderFrame(); };
+        }
+
+        private void OnIdle(object sender, EventArgs e)
+        {
+            while (stars != null && stars.Ok && Visible && AppIdle()) RenderFrame();
         }
 
         public bool StartGpu()
         {
-            if (stars != null && stars.Ok) { timer.Start(); return true; }
-            stars = new GpuStarfield(this.Handle, Width, Height, 4321);
-            if (!stars.Ok) { stars.Dispose(); stars = null; return false; }
-            timer.Start();
+            if (stars == null || !stars.Ok)
+            {
+                if (stars != null) stars.Dispose();
+                stars = new GpuStarfield(this.Handle, Width, Height, 4321);
+                if (!stars.Ok) { stars.Dispose(); stars = null; return false; }
+            }
+            if (!idleHooked) { Application.Idle += OnIdle; idleHooked = true; }
             return true;
         }
 
         public void StopGpu()
         {
-            timer.Stop();
+            if (idleHooked) { Application.Idle -= OnIdle; idleHooked = false; }
             if (cubeTex != IntPtr.Zero) { D3D9.Release(cubeTex); cubeTex = IntPtr.Zero; }
             cubeVer = -1;
             if (stars != null) { stars.Dispose(); stars = null; }
