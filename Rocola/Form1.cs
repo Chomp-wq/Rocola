@@ -3077,6 +3077,8 @@ namespace Rocola
                 gpuPanel.GetPulse = delegate { return audioLevel; };
                 gpuPanel.GetCubes = delegate { return albumView.CubeBitmap; };       // los cubos+etiquetas van ENCIMA del fondo GPU
                 gpuPanel.GetCubesVersion = delegate { return albumView.CubeVersion; };
+                gpuPanel.GetContour = delegate { return albumView.ContourSpriteBmp; };          // resalte de seleccion
+                gpuPanel.GetContourRect = delegate { return albumView.ContourScreenRect(); };
                 gpuPanel.Dock = DockStyle.Fill;          // cubre exactamente la vista de discos (es su hijo)
                 albumView.Controls.Add(gpuPanel);
             }
@@ -3969,6 +3971,16 @@ namespace Rocola
 #if ROCOLA_GPU
             public int CubeVersion;                                  // sube cuando cubeCache cambia (para resubir la textura GPU)
             public Bitmap CubeBitmap { get { return cubeCache; } }   // capa de cubos+etiquetas (la usa el panel GPU como textura)
+            public Bitmap ContourSpriteBmp { get { return contourSprite; } }   // sprite del resalte de seleccion
+            public Rectangle ContourScreenRect()                     // donde va el contorno (celda seleccionada)
+            {
+                if (contourSprite == null || Page == null || Selected < 0 || Selected >= Page.Count) return Rectangle.Empty;
+                int w = Width, h = Height; if (w < 8 || h < 8) return Rectangle.Empty;
+                int cw = w / Cols, ch = h / Rows; if (cw < 4 || ch < 4) return Rectangle.Empty;
+                Rectangle area, lbl; Geometry(w, h, Selected, out area, out lbl);
+                Rectangle fr = area; fr.Inflate(4, 4);
+                return new Rectangle(fr.X - 8, fr.Y - 8, contourSprite.Width, contourSprite.Height);   // 8 = margen del sprite (CM)
+            }
 #endif
             private Color cacheAccent = Color.Empty;
             private Pen cPenGlow, cPenMid, cPenLine;   // contorno del disco seleccionado (cacheadas; antes se creaban por cuadro)

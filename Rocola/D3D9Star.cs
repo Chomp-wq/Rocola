@@ -294,13 +294,13 @@ namespace Rocola
         public void SetSky(uint top, uint bot) { skyTop = top; skyBot = bot; }
         public IntPtr CreateOverlay(Bitmap bmp, out float uMax, out float vMax) { return gpu.CreateTexturePow2(bmp, out uMax, out vMax); }
 
-        public void Render(int w, int h, float pulse) { Render(w, h, pulse, IntPtr.Zero, null); }
+        public void Render(int w, int h, float pulse) { if (Begin(w, h, pulse)) End(); }   // solo cielo+estrellas (ventana de prueba)
 
-        // Dibuja el cielo + estrellas y, si se pasa, una textura ENCIMA (los cubos) con mezcla normal.
-        public void Render(int w, int h, float pulse, IntPtr overlayTex, D3D9.Vtx[] overlayQuad)
+        // Inicia el cuadro: dibuja el cielo + estrellas. Luego se pueden apilar texturas con DrawQuad y cerrar con End.
+        public bool Begin(int w, int h, float pulse)
         {
-            if (!Ok) return;
-            if (!gpu.BeginFrame()) return;
+            if (!Ok) return false;
+            if (!gpu.BeginFrame()) return false;
             float t = (Environment.TickCount - startTick) / 1000f;
             SetQuad(skyV, 0, 0, 0, w, h, skyTop, skyTop, skyBot, skyBot);
             int vi = 0;
@@ -315,9 +315,10 @@ namespace Rocola
                 vi += 6;
             }
             gpu.DrawSkyStars(skyV, starV, nStars * 2, glowTex);
-            if (overlayTex != IntPtr.Zero && overlayQuad != null) gpu.DrawTexQuad(overlayTex, overlayQuad);
-            gpu.EndFrame();
+            return true;
         }
+        public void DrawQuad(IntPtr tex, D3D9.Vtx[] quad) { if (Ok) gpu.DrawTexQuad(tex, quad); }
+        public void End() { if (Ok) gpu.EndFrame(); }
 
         public void Dispose()
         {
@@ -456,10 +457,14 @@ namespace Rocola
         private int frames, fpsTick;
         private IntPtr cubeTex; private int cubeVer = -1; private float cubeU = 1f, cubeV = 1f;
         private readonly D3D9.Vtx[] cubeQuad = new D3D9.Vtx[6];
+        private IntPtr contourTex; private Bitmap lastContour; private float contU = 1f, contV = 1f;
+        private readonly D3D9.Vtx[] contourQuad = new D3D9.Vtx[6];
         public int Fps;                                   // cuadros por segundo (para mostrar mientras integramos)
         public Func<float> GetPulse;                      // el form provee el nivel de audio (0..1)
         public Func<Bitmap> GetCubes;                     // el form provee el bitmap de cubos+etiquetas (cubeCache)
         public Func<int> GetCubesVersion;                 // cambia cuando cubeCache se reconstruye (re-subir textura)
+        public Func<Bitmap> GetContour;                   // sprite del contorno de seleccion
+        public Func<Rectangle> GetContourRect;            // donde va el contorno (celda seleccionada), en coords del panel
         public uint SkyTop = 0xFF06081A, SkyBot = 0xFF1A2C5A;   // el form los setea por genero
 
         // Bucle de render por Application.Idle (patron estandar para D3D en WinForms): dibuja tan rapido como
@@ -497,7 +502,8 @@ namespace Rocola
         {
             if (idleHooked) { Application.Idle -= OnIdle; idleHooked = false; }
             if (cubeTex != IntPtr.Zero) { D3D9.Release(cubeTex); cubeTex = IntPtr.Zero; }
-            cubeVer = -1;
+            if (contourTex != IntPtr.Zero) { D3D9.Release(contourTex); contourTex = IntPtr.Zero; }
+            cubeVer = -1; lastContour = null;
             if (stars != null) { stars.Dispose(); stars = null; }
         }
 
@@ -505,7 +511,7 @@ namespace Rocola
         {
             if (stars == null || !stars.Ok) return;
             stars.SetSky(SkyTop, SkyBot);
-            // Sube/actualiza la textura de cubos solo cuando cambia (al pasar de pagina / llegar caratula).
+            // Cubos: textura que cambia al navegar / llegar caratula.
             if (GetCubes != null && GetCubesVersion != null)
             {
                 int v = GetCubesVersion();
@@ -517,10 +523,26 @@ namespace Rocola
                     cubeVer = v;
                 }
             }
-            D3D9.Vtx[] overlay = null;
-            if (cubeTex != IntPtr.Zero) { SetTexQuad(cubeQuad, 0, 0, Width, Height, cubeU, cubeV); overlay = cubeQuad; }
+            // Contorno de seleccion: sprite estatico (se sube cuando cambia el bitmap, p.ej. al cambiar tamano).
+            if (GetContour != null)
+            {
+                Bitmap cb = GetContour();
+                if (cb != lastContour)
+                {
+                    if (contourTex != IntPtr.Zero) { D3D9.Release(contourTex); contourTex = IntPtr.Zero; }
+                    if (cb != null) contourTex = stars.CreateOverlay(cb, out contU, out contV);
+                    lastContour = cb;
+                }
+            }
             float pulse = (GetPulse != null) ? GetPulse() : 0f;
-            stars.Render(Width, Height, pulse, cubeTex, overlay);
+            if (!stars.Begin(Width, Height, pulse)) return;
+            if (cubeTex != IntPtr.Zero) { SetTexQuad(cubeQuad, 0, 0, Width, Height, cubeU, cubeV); stars.DrawQuad(cubeTex, cubeQuad); }
+            if (contourTex != IntPtr.Zero && GetContourRect != null)
+            {
+                Rectangle r = GetContourRect();
+                if (r.Width > 0 && r.Height > 0) { SetTexQuad(contourQuad, r.X, r.Y, r.X + r.Width, r.Y + r.Height, contU, contV); stars.DrawQuad(contourTex, contourQuad); }
+            }
+            stars.End();
             frames++;
             if (Environment.TickCount - fpsTick >= 1000) { Fps = frames; frames = 0; fpsTick = Environment.TickCount; }
         }
