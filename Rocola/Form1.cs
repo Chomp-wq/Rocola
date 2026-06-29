@@ -3076,7 +3076,7 @@ namespace Rocola
                 gpuPanel = new GpuPanel();
                 gpuPanel.GetPulse = delegate { return audioLevel; };
                 gpuPanel.GetCubes = delegate { return albumView.CubeBitmap; };       // los cubos+etiquetas van ENCIMA del fondo GPU
-                gpuPanel.GetCubesVersion = delegate { return albumView.CubeVersion; };
+                gpuPanel.GetCubesVersion = delegate { return albumView.EnsureGpuCubesVersion(); };   // reconstruye los cubos si cambio la pagina (aunque venga del buscador)
                 gpuPanel.GetContour = delegate { return albumView.ContourSpriteBmp; };          // resalte de seleccion
                 gpuPanel.GetContourRect = delegate { return albumView.ContourScreenRect(); };
                 gpuPanel.Dock = DockStyle.Fill;          // cubre exactamente la vista de discos (es su hijo)
@@ -3971,6 +3971,22 @@ namespace Rocola
 #if ROCOLA_GPU
             public int CubeVersion;                                  // sube cuando cubeCache cambia (para resubir la textura GPU)
             public Bitmap CubeBitmap { get { return cubeCache; } }   // capa de cubos+etiquetas (la usa el panel GPU como textura)
+            // Asegura que cubeCache este al dia (lo reconstruye si cambio la pagina) SIN depender de OnPaint:
+            // asi el panel GPU se entera de cambios que vienen del buscador u otras rutas. Devuelve la version.
+            public int EnsureGpuCubesVersion()
+            {
+                int w = Width, h = Height;
+                if (w >= 8 && h >= 8)
+                {
+                    string sig = Sig();
+                    if (cacheW != w || cacheH != h || cubeCache == null || sig != cacheSig)
+                    {
+                        RebuildCubes(w, h);
+                        cacheW = w; cacheH = h; cacheSig = sig;
+                    }
+                }
+                return CubeVersion;
+            }
             public Bitmap ContourSpriteBmp { get { return contourSprite; } }   // sprite del resalte de seleccion
             public Rectangle ContourScreenRect()                     // donde va el contorno (celda seleccionada)
             {
