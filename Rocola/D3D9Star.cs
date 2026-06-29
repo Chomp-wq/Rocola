@@ -257,6 +257,30 @@ namespace Rocola
             return tex;
         }
 
+        // Actualiza EN SITIO los pixeles de una textura pow2 ya creada (mismo tamaño de bitmap). Evita
+        // recrear/liberar una textura ~24 veces/seg (el cubo girando), que en sesiones largas de rocola
+        // podria fragmentar memoria de video. Solo bloquea, copia y desbloquea (el pool MANAGED lo re-sube).
+        public bool UpdateTexturePow2(IntPtr tex, Bitmap bmp)
+        {
+            if (dev == IntPtr.Zero || tex == IntPtr.Zero) return false;
+            int w = bmp.Width, h = bmp.Height;
+            D3D9.LockRectDel lockR = D3D9.Fn<D3D9.LockRectDel>(tex, 19);
+            D3D9.UnlockRectDel unlockR = D3D9.Fn<D3D9.UnlockRectDel>(tex, 20);
+            D3D9.LockedRect lr;
+            if (lockR(tex, 0, out lr, IntPtr.Zero, 0) < 0) return false;
+            BitmapData bd = bmp.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+            int rowBytes = w * 4;
+            byte[] buf = new byte[rowBytes];
+            for (int y = 0; y < h; y++)
+            {
+                Marshal.Copy(new IntPtr(bd.Scan0.ToInt64() + (long)y * bd.Stride), buf, 0, rowBytes);
+                Marshal.Copy(buf, 0, new IntPtr(lr.Bits.ToInt64() + (long)y * lr.Pitch), rowBytes);
+            }
+            bmp.UnlockBits(bd);
+            unlockR(tex, 0);
+            return true;
+        }
+
         private void Draw(D3D9.Vtx[] verts, int tris)
         {
             GCHandle gh = GCHandle.Alloc(verts, GCHandleType.Pinned);
@@ -293,6 +317,7 @@ namespace Rocola
 
         public void SetSky(uint top, uint bot) { skyTop = top; skyBot = bot; }
         public IntPtr CreateOverlay(Bitmap bmp, out float uMax, out float vMax) { return gpu.CreateTexturePow2(bmp, out uMax, out vMax); }
+        public bool UpdateOverlay(IntPtr tex, Bitmap bmp) { return gpu.UpdateTexturePow2(tex, bmp); }   // re-sube pixeles sin recrear (mismo tamaño)
 
         public void Render(int w, int h, float pulse) { if (Begin(w, h, pulse)) End(); }   // solo cielo+estrellas (ventana de prueba)
 
@@ -459,12 +484,18 @@ namespace Rocola
         private readonly D3D9.Vtx[] cubeQuad = new D3D9.Vtx[6];
         private IntPtr contourTex; private Bitmap lastContour; private float contU = 1f, contV = 1f;
         private readonly D3D9.Vtx[] contourQuad = new D3D9.Vtx[6];
+        private IntPtr spinTex; private int spinVer = -1; private float spinU = 1f, spinV = 1f;
+        private int spinBmpW = -1, spinBmpH = -1;          // tamaño del bitmap subido (para actualizar en sitio si no cambia)
+        private readonly D3D9.Vtx[] spinQuad = new D3D9.Vtx[6];
         public int Fps;                                   // cuadros por segundo (para mostrar mientras integramos)
         public Func<float> GetPulse;                      // el form provee el nivel de audio (0..1)
         public Func<Bitmap> GetCubes;                     // el form provee el bitmap de cubos+etiquetas (cubeCache)
         public Func<int> GetCubesVersion;                 // cambia cuando cubeCache se reconstruye (re-subir textura)
         public Func<Bitmap> GetContour;                   // sprite del contorno de seleccion
         public Func<Rectangle> GetContourRect;            // donde va el contorno (celda seleccionada), en coords del panel
+        public Func<Bitmap> GetSpin;                      // hornea el cubo seleccionado girando (+ relevo) y lo devuelve
+        public Func<int> GetSpinVersion;                  // sube ~24fps al avanzar el giro (re-subir textura)
+        public Func<Rectangle> GetSpinRect;               // donde va el overlay del giro (coords del panel)
         public uint SkyTop = 0xFF06081A, SkyBot = 0xFF1A2C5A;   // el form los setea por genero
 
         // Bucle de render por Application.Idle (patron estandar para D3D en WinForms): dibuja tan rapido como
@@ -503,7 +534,8 @@ namespace Rocola
             if (idleHooked) { Application.Idle -= OnIdle; idleHooked = false; }
             if (cubeTex != IntPtr.Zero) { D3D9.Release(cubeTex); cubeTex = IntPtr.Zero; }
             if (contourTex != IntPtr.Zero) { D3D9.Release(contourTex); contourTex = IntPtr.Zero; }
-            cubeVer = -1; lastContour = null;
+            if (spinTex != IntPtr.Zero) { D3D9.Release(spinTex); spinTex = IntPtr.Zero; }
+            cubeVer = -1; lastContour = null; spinVer = -1; spinBmpW = spinBmpH = -1;
             if (stars != null) { stars.Dispose(); stars = null; }
         }
 
@@ -534,6 +566,31 @@ namespace Rocola
                     lastContour = cb;
                 }
             }
+            // Cubo seleccionado GIRANDO (+ relevo): se re-hornea al ritmo del giro (~24fps); entre medias se reusa.
+            if (GetSpin != null && GetSpinVersion != null)
+            {
+                int sv = GetSpinVersion();
+                if (sv != spinVer)
+                {
+                    Bitmap sb = GetSpin();
+                    if (sb == null)
+                    {
+                        if (spinTex != IntPtr.Zero) { D3D9.Release(spinTex); spinTex = IntPtr.Zero; }
+                        spinBmpW = spinBmpH = -1;
+                    }
+                    else if (spinTex != IntPtr.Zero && sb.Width == spinBmpW && sb.Height == spinBmpH)
+                    {
+                        stars.UpdateOverlay(spinTex, sb);   // mismo tamaño: actualiza pixeles EN SITIO (sin recrear)
+                    }
+                    else
+                    {
+                        if (spinTex != IntPtr.Zero) { D3D9.Release(spinTex); spinTex = IntPtr.Zero; }
+                        spinTex = stars.CreateOverlay(sb, out spinU, out spinV);
+                        spinBmpW = sb.Width; spinBmpH = sb.Height;
+                    }
+                    spinVer = sv;
+                }
+            }
             float pulse = (GetPulse != null) ? GetPulse() : 0f;
             if (!stars.Begin(Width, Height, pulse)) return;
             if (cubeTex != IntPtr.Zero) { SetTexQuad(cubeQuad, 0, 0, Width, Height, cubeU, cubeV); stars.DrawQuad(cubeTex, cubeQuad); }
@@ -541,6 +598,11 @@ namespace Rocola
             {
                 Rectangle r = GetContourRect();
                 if (r.Width > 0 && r.Height > 0) { SetTexQuad(contourQuad, r.X, r.Y, r.X + r.Width, r.Y + r.Height, contU, contV); stars.DrawQuad(contourTex, contourQuad); }
+            }
+            if (spinTex != IntPtr.Zero && GetSpinRect != null)   // el cubo girando va ENCIMA del contorno (igual que en CPU)
+            {
+                Rectangle rs = GetSpinRect();
+                if (rs.Width > 0 && rs.Height > 0) { SetTexQuad(spinQuad, rs.X, rs.Y, rs.X + rs.Width, rs.Y + rs.Height, spinU, spinV); stars.DrawQuad(spinTex, spinQuad); }
             }
             stars.End();
             frames++;

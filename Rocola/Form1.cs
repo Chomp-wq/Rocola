@@ -3079,6 +3079,9 @@ namespace Rocola
                 gpuPanel.GetCubesVersion = delegate { return albumView.EnsureGpuCubesVersion(); };   // reconstruye los cubos si cambio la pagina (aunque venga del buscador)
                 gpuPanel.GetContour = delegate { return albumView.ContourSpriteBmp; };          // resalte de seleccion
                 gpuPanel.GetContourRect = delegate { return albumView.ContourScreenRect(); };
+                gpuPanel.GetSpin = delegate { return albumView.SpinOverlayBmp(); };             // cubo seleccionado GIRANDO (+ relevo), como en software
+                gpuPanel.GetSpinVersion = delegate { return albumView.SpinVersion; };           // sube ~24fps al avanzar el giro
+                gpuPanel.GetSpinRect = delegate { return albumView.SpinScreenRect; };           // donde va el overlay del giro
                 gpuPanel.Dock = DockStyle.Fill;          // cubre exactamente la vista de discos (es su hijo)
                 albumView.Controls.Add(gpuPanel);
             }
@@ -3174,6 +3177,9 @@ namespace Rocola
             albumGpuBg = (gpuPanel != null && gpuPanel.Visible);   // si el fondo GPU cubre los discos, no malgastes el render CPU detras
 #endif
             if (albumView.Visible && !albumGpuBg) { albumView.Phase = phase; albumView.AudioPulse = audioLevel; albumView.AnimTick(fullFrame || transitioning); }
+#if ROCOLA_GPU
+            else if (albumView.Visible && albumGpuBg) { albumView.Phase = phase; albumView.StepSpinGpu(); }   // el giro avanza aunque el fondo+cubos los pinte la GPU (sin repintar por CPU)
+#endif
             if (panelSongs.Visible)
             {
                 panelSongs.Accent = bgAccent;
@@ -3997,6 +4003,60 @@ namespace Rocola
                 Rectangle fr = area; fr.Inflate(4, 4);
                 return new Rectangle(fr.X - 8, fr.Y - 8, contourSprite.Width, contourSprite.Height);   // 8 = margen del sprite (CM)
             }
+
+            // --- Cubo SELECCIONADO girando (+ el de relevo) para el modo GPU ---
+            // En CPU se dibujan ENCIMA de los cubos estaticos en cada cuadro. En GPU hacemos lo mismo:
+            // los horneamos en un bitmap pequeño (del tamaño de SpinRect) y el panel lo sube como textura
+            // y lo dibuja como un quad sobre la capa de cubos. Reusa Cube.Draw -> identico a software.
+            private Bitmap spinCache;
+            private Rectangle spinRectCache = Rectangle.Empty;
+            public int SpinVersion;                                  // sube cada vez que avanza el giro (resubir textura ~24fps)
+            public Rectangle SpinScreenRect { get { return spinRectCache; } }
+
+            // Avanza el giro SIN repintar por CPU (el fondo y los cubos los pinta la GPU). Lo llama el
+            // temporizador a 24fps cuando el fondo GPU esta activo, en vez de AnimTick (que invalida y repinta).
+            public void StepSpinGpu() { StepSpin(); SpinVersion++; }
+
+            // Hornea el overlay del giro (seleccionado + relevo) y deja su rectangulo en SpinScreenRect.
+            // Devuelve el bitmap (o null si no hay nada que dibujar). Igual orden que OnPaint: relevo y luego
+            // el seleccionado encima; el panel ya pinto el contorno debajo.
+            public Bitmap SpinOverlayBmp()
+            {
+                spinRectCache = Rectangle.Empty;
+                int w = Width, h = Height;
+                if (Page == null || Page.Count == 0 || w < 8 || h < 8) return null;
+                int cw = w / Cols, ch = h / Rows;
+                if (cw < 4 || ch < 4) return null;
+                Rectangle sr = SpinRect();
+                if (sr == Rectangle.Empty) return null;
+                sr.Intersect(new Rectangle(0, 0, w, h));
+                if (sr.Width < 2 || sr.Height < 2) return null;
+
+                if (spinCache == null || spinCache.Width != sr.Width || spinCache.Height != sr.Height)
+                {
+                    if (spinCache != null) spinCache.Dispose();
+                    spinCache = new Bitmap(sr.Width, sr.Height, PixelFormat.Format32bppPArgb);
+                }
+                using (Graphics g = Graphics.FromImage(spinCache))
+                {
+                    g.Clear(Color.Transparent);
+                    g.InterpolationMode = InterpolationMode.Bilinear;
+                    g.SmoothingMode = SmoothingMode.AntiAlias;
+                    g.TranslateTransform(-sr.X, -sr.Y);   // dibujamos en coords de pantalla; el bitmap cubre SpinRect
+                    if (prevIdx >= 0 && prevIdx != Selected && prevIdx < Page.Count)   // RELEVO: el que dejamos, girando y decayendo
+                    {
+                        Rectangle a2, l2; Geometry(w, h, prevIdx, out a2, out l2);
+                        Cube.Draw(g, a2, (GetCover != null) ? GetCover(Page[prevIdx]) : null, prevAngle);
+                    }
+                    if (Selected >= 0 && Selected < Page.Count)                        // SELECCIONADO: gira a pleno (cicla portadas si es TOP)
+                    {
+                        Rectangle area, lbl; Geometry(w, h, Selected, out area, out lbl);
+                        Cube.Draw(g, area, SelectedCover(), SelAngle);
+                    }
+                }
+                spinRectCache = sr;
+                return spinCache;
+            }
 #endif
             private Color cacheAccent = Color.Empty;
             private Pen cPenGlow, cPenMid, cPenLine;   // contorno del disco seleccionado (cacheadas; antes se creaban por cuadro)
@@ -4026,6 +4086,32 @@ namespace Rocola
                     }
                 }
                 return blendBmp;
+            }
+
+            // Caratula del disco SELECCIONADO: para discos TOP cicla sus portadas con FUNDIDO suave
+            // (igual que la vista previa del buscador); si no, devuelve la suya. La usa OnPaint (CPU) y
+            // tambien el overlay del giro por GPU, asi ambos eligen exactamente la misma imagen.
+            private Image SelectedCover()
+            {
+                if (Page == null || Selected < 0 || Selected >= Page.Count) return null;
+                Album selA = Page[Selected];
+                if (selA != null && selA.CycleCovers != null && selA.CycleCovers.Count > 0 && GetCoverByPath != null)
+                {
+                    int m = selA.CycleCovers.Count;
+                    double cyc = 3.8, hold = 2.6;
+                    double total = cyc * m;
+                    double pos = Phase - Math.Floor(Phase / total) * total;
+                    int idx = (int)(pos / cyc) % m;
+                    double within = pos - idx * cyc;
+                    float f = 0f;
+                    if (within > hold) f = (float)((within - hold) / (cyc - hold));
+                    if (f < 0f) f = 0f; else if (f > 1f) f = 1f;
+                    Image ca = GetCoverByPath(selA.CycleCovers[idx]);
+                    Image cb = (m > 1) ? GetCoverByPath(selA.CycleCovers[(idx + 1) % m]) : null;
+                    if (ca == null && GetCover != null) ca = GetCover(selA);   // mientras carga
+                    return (f <= 0.002f || cb == null) ? ca : BlendInto(ca, cb, f);
+                }
+                return (GetCover != null) ? GetCover(selA) : null;
             }
 
             private void EnsureLabelRes()
@@ -4280,28 +4366,7 @@ namespace Rocola
                             contourSpriteSize = need;
                         }
                         g.DrawImageUnscaled(contourSprite, fr.X - CM, fr.Y - CM);
-                        Album selA = Page[Selected];
-                        Image selCover;
-                        if (selA != null && selA.CycleCovers != null && selA.CycleCovers.Count > 0 && GetCoverByPath != null)
-                        {
-                            // disco TOP: cicla las portadas de los discos que contiene, con FUNDIDO suave
-                            // (igual que la vista previa del buscador): mantiene ~3.2s y funde ~1s.
-                            int m = selA.CycleCovers.Count;
-                            double cyc = 3.8, hold = 2.6;
-                            double total = cyc * m;
-                            double pos = Phase - Math.Floor(Phase / total) * total;
-                            int idx = (int)(pos / cyc) % m;
-                            double within = pos - idx * cyc;
-                            float f = 0f;
-                            if (within > hold) f = (float)((within - hold) / (cyc - hold));
-                            if (f < 0f) f = 0f; else if (f > 1f) f = 1f;
-                            Image ca = GetCoverByPath(selA.CycleCovers[idx]);
-                            Image cb = (m > 1) ? GetCoverByPath(selA.CycleCovers[(idx + 1) % m]) : null;
-                            if (ca == null && GetCover != null) ca = GetCover(selA);   // mientras carga
-                            selCover = (f <= 0.002f || cb == null) ? ca : BlendInto(ca, cb, f);
-                        }
-                        else selCover = (GetCover != null) ? GetCover(selA) : null;
-                        Cube.Draw(g, area, selCover, SelAngle);
+                        Cube.Draw(g, area, SelectedCover(), SelAngle);
                     }
                 }
 
