@@ -171,6 +171,7 @@ namespace Rocola
         private int frameTick = 0;   // contador de cuadros: el fondo se refresca completo 1 de cada 3 (invisible al ojo)
 #if ROCOLA_GPU
         private GpuPanel gpuPanel;   // fondo de discos por GPU (experimental, Ctrl+F12)
+        private Label lblGpu;        // etiqueta de estado/FPS del modo GPU (esquina)
 #endif
         private bool searchOpen = false;
         private DateTime searchLastActivity = DateTime.Now;   // para auto-cerrar el buscador tras 1 min
@@ -3061,20 +3062,31 @@ namespace Rocola
         // de la vista de discos; si el dispositivo no inicia, se queda en CPU (no rompe nada).
         private void ToggleAlbumGpu()
         {
+            if (lblGpu == null)
+            {
+                lblGpu = new Label();
+                lblGpu.AutoSize = false; lblGpu.Size = new Size(260, 26);
+                lblGpu.BackColor = Color.FromArgb(200, 0, 0, 0); lblGpu.ForeColor = Color.Yellow;
+                lblGpu.Font = new Font(FontFamily.GenericMonospace, 10f, FontStyle.Bold);
+                lblGpu.TextAlign = ContentAlignment.MiddleCenter; lblGpu.Visible = false;
+                Controls.Add(lblGpu);
+            }
             if (gpuPanel == null)
             {
                 gpuPanel = new GpuPanel();
                 gpuPanel.GetPulse = delegate { return audioLevel; };
-                Controls.Add(gpuPanel);
+                gpuPanel.Dock = DockStyle.Fill;          // cubre exactamente la vista de discos (es su hijo)
+                albumView.Controls.Add(gpuPanel);
             }
             if (!gpuPanel.Visible)
             {
-                gpuPanel.Bounds = albumView.Bounds;
+                lblGpu.Location = new Point(ClientSize.Width - 270, 46);
+                lblGpu.Text = "GPU: iniciando..."; lblGpu.Visible = true; lblGpu.BringToFront();   // feedback inmediato: la tecla SI llego
                 gpuPanel.SkyTop = ToD3D(SkyColor(bgAccent)); gpuPanel.SkyBot = ToD3D(SkyColor2(bgAccent));
                 gpuPanel.Visible = true; gpuPanel.BringToFront();
-                if (!gpuPanel.StartGpu()) { gpuPanel.Visible = false; MessageBox.Show("No se pudo iniciar el render GPU del fondo (se queda en CPU)."); }
+                if (!gpuPanel.StartGpu()) { gpuPanel.Visible = false; lblGpu.Text = "GPU: fallo el dispositivo (sigue CPU)"; }
             }
-            else { gpuPanel.StopGpu(); gpuPanel.Visible = false; }
+            else { gpuPanel.StopGpu(); gpuPanel.Visible = false; if (lblGpu != null) lblGpu.Visible = false; }
         }
 #endif
 
@@ -3108,7 +3120,11 @@ namespace Rocola
             }
             albumView.BgAccent = bgAccent;
 #if ROCOLA_GPU
-            if (gpuPanel != null && gpuPanel.Visible) { gpuPanel.SkyTop = ToD3D(SkyColor(bgAccent)); gpuPanel.SkyBot = ToD3D(SkyColor2(bgAccent)); }
+            if (gpuPanel != null && gpuPanel.Visible)
+            {
+                gpuPanel.SkyTop = ToD3D(SkyColor(bgAccent)); gpuPanel.SkyBot = ToD3D(SkyColor2(bgAccent));
+                if (lblGpu != null) lblGpu.Text = "GPU D3D9: " + gpuPanel.Fps + " FPS";
+            }
 #endif
             if (progress != null) progress.Accent = bgAccent;   // ESTETICA: la barra de progreso sigue el color del genero
 

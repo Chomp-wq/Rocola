@@ -396,6 +396,8 @@ namespace Rocola
     {
         private GpuStarfield stars;
         private readonly Timer timer = new Timer();
+        private int frames, fpsTick;
+        public int Fps;                                   // cuadros por segundo (para mostrar mientras integramos)
         public Func<float> GetPulse;                      // el form provee el nivel de audio (0..1)
         public uint SkyTop = 0xFF06081A, SkyBot = 0xFF1A2C5A;   // el form los setea por genero
 
@@ -428,6 +430,8 @@ namespace Rocola
             stars.SetSky(SkyTop, SkyBot);
             float pulse = (GetPulse != null) ? GetPulse() : 0f;
             stars.Render(Width, Height, pulse);
+            frames++;
+            if (Environment.TickCount - fpsTick >= 1000) { Fps = frames; frames = 0; fpsTick = Environment.TickCount; }
         }
 
         protected override void OnPaint(PaintEventArgs e) { RenderFrame(); }   // WM_PAINT -> dibuja por D3D9
