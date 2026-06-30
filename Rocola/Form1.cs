@@ -3068,6 +3068,16 @@ namespace Rocola
                     st.Sel.Angle = searchOverlay.PreviewAngle; st.Sel.CoverA = ca as Bitmap; st.Sel.CoverB = cb as Bitmap; st.Sel.Fade = f;
                 }
             }
+            else if (panelSongs != null && panelSongs.Visible && cubeBox != null)
+            {
+                st = new GpuCubeState();
+                if (cubeBox.Cover != null)   // el cubo GRANDE del interior (gira); coords de panelSongs -> pantalla
+                {
+                    st.Sel.Has = true;
+                    st.Sel.X = panelSongs.Left + cubeBox.Left; st.Sel.Y = panelSongs.Top + cubeBox.Top; st.Sel.W = cubeBox.Width; st.Sel.H = cubeBox.Height;
+                    st.Sel.Angle = cubeBox.Angle; st.Sel.CoverA = cubeBox.Cover as Bitmap;
+                }
+            }
             else
             {
                 st = albumView.BuildCubeState();
@@ -3089,15 +3099,17 @@ namespace Rocola
         private void SyncGpuFullScreen()
         {
             if (gpuPanel == null || !gpuEnabled) return;
-            bool noModal = !videoOn && !videoFull && !attractOn && (lblConfig == null || !lblConfig.Visible) && (panelSongs == null || !panelSongs.Visible);
-            bool nav = albumView.Visible && !searchOpen && noModal;
-            bool search = searchOpen && noModal;
-            if (nav || search)
+            bool noBlock = !videoOn && !videoFull && !attractOn && (lblConfig == null || !lblConfig.Visible);
+            bool disc = panelSongs != null && panelSongs.Visible;
+            bool nav = albumView.Visible && !searchOpen && !disc && noBlock;
+            bool search = searchOpen && noBlock;
+            bool discMode = disc && !searchOpen && noBlock;
+            if (nav || search || discMode)
             {
                 if (gpuPanel.Left != 0 || gpuPanel.Top != 0 || gpuPanel.Width != ClientSize.Width || gpuPanel.Height != ClientSize.Height)
                     gpuPanel.Bounds = new Rectangle(0, 0, ClientSize.Width, ClientSize.Height);
                 gpuPanel.AlbumRect = albumView.Bounds;
-                gpuPanel.ShowAlbum = nav;   // en el buscador NO se dibuja la rejilla de cubos (la cubre el buscador)
+                gpuPanel.ShowAlbum = nav;   // solo en navegacion se dibuja la rejilla de cubos (buscador/disco la cubren)
                 if (!gpuPanel.Visible) { gpuPanel.Visible = true; gpuPanel.BringToFront(); }
             }
             else if (gpuPanel.Visible) { gpuPanel.Visible = false; Invalidate(true); }   // otro modo: deja ver los controles normales
@@ -3122,9 +3134,18 @@ namespace Rocola
                 g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;   // gris: ClearType deja flecos sobre transparente
                 if (searchOpen && searchOverlay != null)
                 {
-                    System.Drawing.Drawing2D.GraphicsState gs = g.Save();   // parte superior = BUSCADOR (su UI sin starfield ni cubo)
+                    System.Drawing.Drawing2D.GraphicsState gs = g.Save();   // BUSCADOR (su UI sin starfield ni cubo)
                     g.TranslateTransform(searchOverlay.Left, searchOverlay.Top);
                     searchOverlay.RenderContent(g, new Rectangle(0, 0, searchOverlay.Width, searchOverlay.Height), true);
+                    g.Restore(gs);
+                }
+                else if (panelSongs != null && panelSongs.Visible)
+                {
+                    System.Drawing.Drawing2D.GraphicsState gs = g.Save();   // INTERIOR DE DISCO: etiqueta + lista + barra de paginas (el cubo grande lo pone la GPU)
+                    g.TranslateTransform(panelSongs.Left, panelSongs.Top);   // los controles del disco son hijos de panelSongs
+                    DrawLabelOverlay(g, lblAlbum);
+                    DrawCtrlOverlay(g, songList);
+                    if (songPager != null && songPager.Visible) DrawCtrlOverlay(g, songPager);
                     g.Restore(gs);
                 }
                 else
@@ -3166,6 +3187,9 @@ namespace Rocola
                   .Append('|').Append(searchOverlay.Results == null ? 0 : searchOverlay.Results.Count)
                   .Append('|').Append(searchOverlay.ToastOn).Append(searchOverlay.ToastMsg)
                   .Append('|').Append(Math.Sin(searchOverlay.Phase * 3.0) > 0 ? 1 : 0);   // parpadeo del cursor
+            else if (panelSongs != null && panelSongs.Visible)   // INTERIOR DE DISCO: etiqueta, seleccion, pagina
+                sb.Append("|D").Append(lblAlbum != null ? lblAlbum.Text : "").Append('|').Append(songSel).Append('|').Append(songItems.Count)
+                  .Append('|').Append(songList != null ? songList.PageStart : 0).Append('|').Append(bgAccent.ToArgb());
             else if (letterBar != null)                // parte superior = navegacion (A-Z + encabezado)
                 sb.Append("|N").Append(letterBar.Current).Append(letterBar.Letters).Append(letterBar.Available == null ? 0 : letterBar.Available.Count)
                   .Append('|').Append(lblHeader != null ? lblHeader.Text : "").Append('|').Append(lblStatus != null ? lblStatus.Text : "");
@@ -3188,7 +3212,9 @@ namespace Rocola
             HelpBar hb = c as HelpBar;
             if (hb != null) hb.RenderContent(g);
             else { LetterBar lb = c as LetterBar; if (lb != null) lb.RenderContent(g);
-                   else { ProgressView pv = c as ProgressView; if (pv != null) pv.RenderContent(g); } }
+            else { ProgressView pv = c as ProgressView; if (pv != null) pv.RenderContent(g);
+            else { SongListView sl = c as SongListView; if (sl != null) sl.RenderContent(g);
+            else { SongPagerBar sp = c as SongPagerBar; if (sp != null) sp.RenderContent(g); } } } }
             g.Restore(st);
         }
 
@@ -4591,9 +4617,10 @@ namespace Rocola
                          ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
             }
 
-            protected override void OnPaint(PaintEventArgs e)
+            protected override void OnPaint(PaintEventArgs e) { RenderContent(e.Graphics); }
+            // Dibuja la barra de paginas en cualquier Graphics (el control, o la textura de UI del modo GPU).
+            public void RenderContent(Graphics g)
             {
-                Graphics g = e.Graphics;
                 int w = Width, h = Height;
                 using (SolidBrush bb = new SolidBrush(BackColor)) g.FillRectangle(bb, 0, 0, w, h);
                 if (Pages <= 1 || w < 60 || h < 10) return;
