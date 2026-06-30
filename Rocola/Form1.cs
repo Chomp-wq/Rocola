@@ -67,7 +67,7 @@ namespace Rocola
         private Label lblHeader, lblStatus, lblNow, lblNext, lblCount, lblTime, lblAlbum, lblToast, lblCredits;
         private HelpBar helpBar;
         private BgPanel panelSongs;
-        private ListBox lstSongs;
+        private SongListView songList;
         private CubeBox cubeBox;
         private CubeBox miniCube;
         private ProgressView progress;
@@ -630,25 +630,21 @@ namespace Rocola
             cubeBox = new CubeBox();
             cubeBox.BackColor = Color.Transparent;
 
-            lstSongs = new ListBox();
-            lstSongs.BackColor = Shade(DefaultAccent, 0.76);
-            lstSongs.ForeColor = Color.White;
-            lstSongs.BorderStyle = BorderStyle.None;
-            lstSongs.Font = Bold(13f);
-            lstSongs.IntegralHeight = false;
-            lstSongs.MultiColumn = false;         // UNA columna por PAGINA (la barra de paginas va arriba)
-            lstSongs.DrawMode = DrawMode.OwnerDrawFixed;
-            lstSongs.ItemHeight = 30;
-            lstSongs.DrawItem += LstSongs_DrawItem;
-            lstSongs.DoubleClick += delegate (object s, EventArgs e) { EnqueueSelectedSong(); };
-            lstSongs.SelectedIndexChanged += LstSongs_SelectedIndexChanged;
+            songList = new SongListView();
+            songList.BackColor = Shade(DefaultAccent, 0.76);
+            songList.Font = Bold(13f);
+            songList.RowH = 30;
+            songList.GetCount = delegate { return songItems.Count; };
+            songList.GetText = delegate (int i) { return (i >= 0 && i < songItems.Count) ? songItems[i].ToString() : ""; };
+            songList.OnPick = delegate (int idx) { songSel = idx; FillSongPage(); UpdateTopSongVisuals(); };         // click simple
+            songList.OnActivate = delegate (int idx) { songSel = idx; FillSongPage(); EnqueueSelectedSong(); };      // doble-click
 
             songPager = new SongPagerBar();
             songPager.Visible = false;
             songPager.BackColor = Shade(DefaultAccent, 0.70);
             panelSongs.Controls.Add(lblAlbum);
             panelSongs.Controls.Add(cubeBox);
-            panelSongs.Controls.Add(lstSongs);
+            panelSongs.Controls.Add(songList);
             panelSongs.Controls.Add(songPager);
 
             lblNow = new Label(); TransLabel(lblNow, 13f); lblNow.Text = "Nada reproduciendose"; lblNow.AutoEllipsis = true;
@@ -705,48 +701,6 @@ namespace Rocola
             lblConfig.Visible = false;
             Controls.Add(lblConfig);
             lblConfig.BringToFront();
-        }
-
-        private SolidBrush songBgB, songHlB; private Pen songHlP;   // recursos del dibujo de la lista (reusables)
-        private Bitmap songRowBmp;   // renglon fuera de pantalla: cada elemento aparece DE GOLPE (sin parpadeo)
-
-        private void LstSongs_DrawItem(object sender, DrawItemEventArgs e)
-        {
-            if (e.Index < 0 || e.Index >= lstSongs.Items.Count) return;
-            Rectangle r = e.Bounds;
-            if (r.Width < 1 || r.Height < 1) return;
-            if (songBgB == null) { songBgB = new SolidBrush(Color.Black); songHlB = new SolidBrush(Color.Black); songHlP = new Pen(Color.Black, 1.4f); }
-            // El parpadeo era porque el renglon se pintaba DIRECTO a pantalla en pasos (fondo -> resalte
-            // -> texto). Ahora se arma completo en un bitmap reusable y se presenta en UN solo paso.
-            if (songRowBmp == null || songRowBmp.Width != r.Width || songRowBmp.Height != r.Height)
-            {
-                if (songRowBmp != null) songRowBmp.Dispose();
-                songRowBmp = new Bitmap(r.Width, r.Height, PixelFormat.Format32bppPArgb);
-            }
-            using (Graphics g = Graphics.FromImage(songRowBmp))
-            {
-                g.SmoothingMode = SmoothingMode.AntiAlias;
-                songBgB.Color = lstSongs.BackColor;
-                g.FillRectangle(songBgB, 0, 0, r.Width, r.Height);
-
-                bool sel = (e.State & DrawItemState.Selected) != 0;
-                if (sel)
-                {
-                    Rectangle hl = new Rectangle(4, 3, r.Width - 8, r.Height - 6);
-                    songHlB.Color = Color.FromArgb(150, Lighten(bgAccent, 0.15));
-                    songHlP.Color = Color.FromArgb(180, Lighten(bgAccent, 0.45));
-                    using (GraphicsPath gp = RoundedPath(hl, 9))   // UNA trayectoria para relleno y borde
-                    {
-                        g.FillPath(songHlB, gp);
-                        g.DrawPath(songHlP, gp);
-                    }
-                }
-
-                string text = lstSongs.Items[e.Index].ToString();
-                Rectangle tr = new Rectangle(16, 0, r.Width - 22, r.Height);
-                TextRenderer.DrawText(g, text, lstSongs.Font, tr, Color.White, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
-            }
-            e.Graphics.DrawImageUnscaled(songRowBmp, r.X, r.Y);
         }
 
         private void LayoutControls()
@@ -847,9 +801,9 @@ namespace Rocola
             cubeBox.SetBounds(12, 52, cube, cube);
             int listX = cube + 30, listW = Math.Max(60, w - cube - 42);
             if (songPager != null) songPager.SetBounds(listX, 52, listW, 24);   // instrucciones de pagina, ARRIBA de la lista
-            lstSongs.SetBounds(listX, 80, listW, Math.Max(60, h - 88));
+            songList.SetBounds(listX, 80, listW, Math.Max(60, h - 88));
             // La lista contiene SOLO la pagina actual (sin scroll); al cambiar el tamaño se reparte de nuevo.
-            if (panelSongs.Visible && songItems.Count > 0 && lstSongs.ItemHeight > 0) FillSongPage();
+            if (panelSongs.Visible && songItems.Count > 0 && songList.RowH > 0) FillSongPage();
         }
 
         private void Letter_Refresh() { letterBar.Current = currentLetter; letterBar.Invalidate(); }
@@ -1818,17 +1772,16 @@ namespace Rocola
         // Filas que caben en UNA pagina de la lista (se adapta a cualquier resolucion de pantalla).
         private int SongRowsPerPage()
         {
-            int ih = Math.Max(1, lstSongs.ItemHeight);
-            return Math.Max(1, lstSongs.ClientSize.Height / ih);
+            return (songList != null) ? songList.RowsPerPage : 1;
         }
 
-        // Llena la lista con SOLO la pagina donde cae la seleccion, y actualiza la barra de paginas.
+        // Apunta la lista a la PAGINA donde cae la seleccion (songSel) y actualiza la barra de paginas.
         private void FillSongPage()
         {
             if (songItems.Count == 0)
             {
-                lstSongs.Items.Clear();
                 if (songPager != null) songPager.Visible = false;
+                songList.PageStart = 0; songList.Sel = -1; songList.Invalidate();
                 return;
             }
             if (songSel < 0) songSel = 0;
@@ -1836,31 +1789,14 @@ namespace Rocola
             int rpp = SongRowsPerPage();
             int pages = (songItems.Count + rpp - 1) / rpp;
             int pg = songSel / rpp;
-            int start = pg * rpp;
-            fillingSongs = true;
-            lstSongs.BeginUpdate();
-            lstSongs.Items.Clear();
-            for (int i = start; i < start + rpp && i < songItems.Count; i++) lstSongs.Items.Add(songItems[i]);
-            lstSongs.EndUpdate();
-            lstSongs.SelectedIndex = songSel - start;
-            fillingSongs = false;
+            songList.PageStart = pg * rpp; songList.Sel = songSel; songList.Accent = bgAccent;
+            songList.Invalidate();
             if (songPager != null)
             {
                 songPager.Page = pg; songPager.Pages = pages;
                 songPager.Visible = pages > 1;
                 songPager.Invalidate();
             }
-        }
-
-        // Si tocan/clickean una cancion, sincroniza la seleccion global con la pagina actual.
-        private void LstSongs_SelectedIndexChanged(object sender, EventArgs e)
-        {
-            if (fillingSongs || lstSongs.SelectedIndex < 0) return;
-            int rpp = SongRowsPerPage();
-            int pg = (songPager != null && songPager.Pages > 1) ? songPager.Page : 0;
-            songSel = pg * rpp + lstSongs.SelectedIndex;
-            if (songSel >= songItems.Count) songSel = Math.Max(0, songItems.Count - 1);
-            UpdateTopSongVisuals();
         }
 
         private void EnqueueSelectedSong()
@@ -2947,8 +2883,8 @@ namespace Rocola
             panelSongs.BackColor = panel;
             if (songPager != null) { songPager.BackColor = panel; songPager.Invalidate(); }
             cubeBox.BackColor = Color.Transparent;
-            lstSongs.BackColor = list;
-            lstSongs.Invalidate();
+            songList.BackColor = list; songList.Accent = acc;
+            songList.Invalidate();
         }
 
         private void PlayTrack(Track t)
@@ -4924,6 +4860,78 @@ namespace Rocola
                         using (Pen edge = new Pen(Color.FromArgb(180, Lighten(_accent, 0.65)), 1f)) g.DrawPath(edge, fp);
                     }
                 }
+            }
+        }
+
+        // ==========  LISTA DE CANCIONES (dibujada a mano, no ListBox nativo) ==========
+        // Reemplaza al ListBox: asi el interior del disco se puede componer por GPU (un control nativo no se
+        // puede poner sobre D3D). Es una VISTA de UNA pagina: la seleccion global la maneja el form (songSel).
+        private class SongListView : Control
+        {
+            public Func<int> GetCount;          // total de items (songItems.Count)
+            public Func<int, string> GetText;   // texto del item i
+            public int PageStart = 0;           // primer item de la pagina visible
+            public int Sel = 0;                 // seleccion GLOBAL (entre todas las paginas)
+            public int RowH = 30;
+            public Color Accent = DefaultAccent;   // color del genero (para el resaltado)
+            public Action<int> OnActivate;      // doble-click sobre un item (encolar)
+            public Action<int> OnPick;          // click simple: fija la seleccion
+
+            private SolidBrush hlB; private Pen hlP;
+
+            public SongListView()
+            {
+                SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true);
+                BackColor = Shade(DefaultAccent, 0.76);
+            }
+
+            public int RowsPerPage { get { int ih = Math.Max(1, RowH); return Math.Max(1, ClientSize.Height / ih); } }
+
+            protected override void OnPaintBackground(PaintEventArgs e) { /* todo en OnPaint */ }
+            protected override void OnPaint(PaintEventArgs e) { RenderContent(e.Graphics); }
+
+            // Dibuja la pagina visible en cualquier Graphics (el control, o la textura de UI del modo GPU).
+            // El fondo es OPACO (como el ListBox): la lista tapa el starfield donde esta (igual que en CPU).
+            public void RenderContent(Graphics g)
+            {
+                int w = ClientSize.Width, h = ClientSize.Height;
+                if (w < 4 || h < 4) return;
+                int n = (GetCount != null) ? GetCount() : 0;
+                int rpp = RowsPerPage;
+                if (hlB == null) { hlB = new SolidBrush(Color.Black); hlP = new Pen(Color.Black, 1.4f); }
+                using (SolidBrush bg = new SolidBrush(BackColor)) g.FillRectangle(bg, 0, 0, w, h);
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                for (int row = 0; row < rpp; row++)
+                {
+                    int idx = PageStart + row;
+                    if (idx >= n) break;
+                    Rectangle r = new Rectangle(0, row * RowH, w, RowH);
+                    if (idx == Sel)
+                    {
+                        Rectangle hl = new Rectangle(r.X + 4, r.Y + 3, r.Width - 8, r.Height - 6);
+                        hlB.Color = Color.FromArgb(150, Lighten(Accent, 0.15));
+                        hlP.Color = Color.FromArgb(180, Lighten(Accent, 0.45));
+                        using (GraphicsPath gp = RoundedPath(hl, 9)) { g.FillPath(hlB, gp); g.DrawPath(hlP, gp); }
+                    }
+                    Rectangle tr = new Rectangle(r.X + 16, r.Y, r.Width - 22, r.Height);
+                    string text = (GetText != null) ? GetText(idx) : "";
+                    TextRenderer.DrawText(g, text, Font, tr, Color.White, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+                }
+            }
+
+            private int RowIndexAt(int y) { int row = y / Math.Max(1, RowH); return PageStart + row; }
+
+            protected override void OnMouseClick(MouseEventArgs e)
+            {
+                int idx = RowIndexAt(e.Y);
+                if (GetCount != null && idx >= 0 && idx < GetCount() && OnPick != null) OnPick(idx);
+                base.OnMouseClick(e);
+            }
+            protected override void OnMouseDoubleClick(MouseEventArgs e)
+            {
+                int idx = RowIndexAt(e.Y);
+                if (GetCount != null && idx >= 0 && idx < GetCount() && OnActivate != null) OnActivate(idx);
+                base.OnMouseDoubleClick(e);
             }
         }
 
