@@ -4068,7 +4068,8 @@ namespace Rocola
 
             private Image BlendInto(Image a, Image b, float f)
             {
-                if (blendBmp == null) blendBmp = new Bitmap(320, 320, PixelFormat.Format32bppPArgb);
+                // 192 basta: el cubo se dibuja a ~154px; antes 320 gastaba el doble de relleno en cada fundido.
+                if (blendBmp == null) blendBmp = new Bitmap(192, 192, PixelFormat.Format32bppPArgb);
                 using (Graphics g = Graphics.FromImage(blendBmp))
                 {
                     g.Clear(Color.Black);

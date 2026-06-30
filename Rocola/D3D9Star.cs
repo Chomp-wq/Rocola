@@ -21,6 +21,8 @@ namespace Rocola
     internal static class D3D9
     {
         [DllImport("d3d9.dll")] public static extern IntPtr Direct3DCreate9(uint sdkVersion);
+        // Copia bloque a bloque entre punteros sin pasar por un arreglo administrado (mitad de copias que Marshal.Copy).
+        [DllImport("kernel32.dll", EntryPoint = "RtlMoveMemory")] public static extern void CopyMemory(IntPtr dst, IntPtr src, UIntPtr len);
 
         [StructLayout(LayoutKind.Sequential)]
         public struct PresentParams
@@ -158,12 +160,8 @@ namespace Rocola
             if (lockR(tex, 0, out lr, IntPtr.Zero, 0) < 0) return tex;
             BitmapData bd = bmp.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
             int rowBytes = w * 4;
-            byte[] buf = new byte[rowBytes];
             for (int y = 0; y < h; y++)
-            {
-                Marshal.Copy(new IntPtr(bd.Scan0.ToInt64() + (long)y * bd.Stride), buf, 0, rowBytes);
-                Marshal.Copy(buf, 0, new IntPtr(lr.Bits.ToInt64() + (long)y * lr.Pitch), rowBytes);
-            }
+                D3D9.CopyMemory(new IntPtr(lr.Bits.ToInt64() + (long)y * lr.Pitch), new IntPtr(bd.Scan0.ToInt64() + (long)y * bd.Stride), (UIntPtr)(uint)rowBytes);
             bmp.UnlockBits(bd);
             unlockR(tex, 0);
             return tex;
@@ -244,12 +242,8 @@ namespace Rocola
             {
                 BitmapData bd = bmp.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
                 int rowBytes = w * 4;
-                byte[] buf = new byte[rowBytes];
                 for (int y = 0; y < h; y++)
-                {
-                    Marshal.Copy(new IntPtr(bd.Scan0.ToInt64() + (long)y * bd.Stride), buf, 0, rowBytes);
-                    Marshal.Copy(buf, 0, new IntPtr(lr.Bits.ToInt64() + (long)y * lr.Pitch), rowBytes);
-                }
+                    D3D9.CopyMemory(new IntPtr(lr.Bits.ToInt64() + (long)y * lr.Pitch), new IntPtr(bd.Scan0.ToInt64() + (long)y * bd.Stride), (UIntPtr)(uint)rowBytes);
                 bmp.UnlockBits(bd);
                 unlockR(tex, 0);
             }
@@ -270,12 +264,8 @@ namespace Rocola
             if (lockR(tex, 0, out lr, IntPtr.Zero, 0) < 0) return false;
             BitmapData bd = bmp.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
             int rowBytes = w * 4;
-            byte[] buf = new byte[rowBytes];
             for (int y = 0; y < h; y++)
-            {
-                Marshal.Copy(new IntPtr(bd.Scan0.ToInt64() + (long)y * bd.Stride), buf, 0, rowBytes);
-                Marshal.Copy(buf, 0, new IntPtr(lr.Bits.ToInt64() + (long)y * lr.Pitch), rowBytes);
-            }
+                D3D9.CopyMemory(new IntPtr(lr.Bits.ToInt64() + (long)y * lr.Pitch), new IntPtr(bd.Scan0.ToInt64() + (long)y * bd.Stride), (UIntPtr)(uint)rowBytes);
             bmp.UnlockBits(bd);
             unlockR(tex, 0);
             return true;
@@ -614,7 +604,9 @@ namespace Rocola
             SetV(ref v[0], x0, y0, 0, 0); SetV(ref v[1], x1, y0, uMax, 0); SetV(ref v[2], x1, y1, uMax, vMax);
             SetV(ref v[3], x0, y0, 0, 0); SetV(ref v[4], x1, y1, uMax, vMax); SetV(ref v[5], x0, y1, 0, vMax);
         }
-        private static void SetV(ref D3D9.Vtx vx, float x, float y, float u, float vv) { vx.X = x; vx.Y = y; vx.Z = 0; vx.Rhw = 1; vx.Color = 0xFFFFFFFF; vx.U = u; vx.V = vv; }
+        // -0.5 px: regla de D3D9 (el centro del pixel esta en x+0.5). Sin este ajuste, una textura mapeada
+        // 1:1 (los cubos y sobre todo el TEXTO de las etiquetas) se muestrea entre texeles y se ve borrosa.
+        private static void SetV(ref D3D9.Vtx vx, float x, float y, float u, float vv) { vx.X = x - 0.5f; vx.Y = y - 0.5f; vx.Z = 0; vx.Rhw = 1; vx.Color = 0xFFFFFFFF; vx.U = u; vx.V = vv; }
 
         protected override void OnPaint(PaintEventArgs e) { RenderFrame(); }   // WM_PAINT -> dibuja por D3D9
         protected override void OnPaintBackground(PaintEventArgs e) { }        // no borra (D3D9 es dueño de los pixeles)
