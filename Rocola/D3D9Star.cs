@@ -224,6 +224,54 @@ namespace Rocola
             Draw(quad, 2);
         }
 
+        // Buffers reutilizables del cubo (evita asignar por cuadro). Solo se usan desde el hilo de render.
+        private readonly D3D9.Vtx[] cubeFaceV = new D3D9.Vtx[6];
+        private readonly double[] cbx = new double[4];
+        private readonly double[] cbz = new double[4];
+        private readonly int[] cbo = new int[4];
+
+        // Dibuja un cubo GIRANDO (mismo aspecto que Cube.Draw del render por CPU) directo en GPU desde la
+        // textura de la portada: el giro es solo geometria (4 caras como cuadrangulos, ordenadas por
+        // profundidad y oscurecidas igual). Si tex es nulo usa un relleno azulado (portada aun cargando).
+        // alpha < 1 permite FUNDIR una portada sobre otra (discos TOP) en dos pasadas.
+        public void DrawCube(IntPtr tex, float uMax, float vMax, float ax, float ay, float aw, float ah, double angle, float alpha)
+        {
+            if (dev == IntPtr.Zero || alpha <= 0.001f || aw < 1f || ah < 1f) return;
+            double cx = ax + aw / 2.0; float y0 = ay; float Hh = ah; double R = aw / 2.0; double DEG = Math.PI / 180.0;
+            for (int k = 0; k < 4; k++) cbx[k] = cx + R * Math.Cos(angle + 45 * DEG + k * 90 * DEG);
+            for (int k = 0; k < 4; k++) cbz[k] = Math.Sin(angle + 90 * DEG + k * 90 * DEG);
+            cbo[0] = 0; cbo[1] = 1; cbo[2] = 2; cbo[3] = 3;
+            for (int i = 0; i < 4; i++)                          // ordena las caras de atras hacia adelante
+                for (int j = 0; j < 3 - i; j++)
+                    if (cbz[cbo[j]] > cbz[cbo[j + 1]]) { int t = cbo[j]; cbo[j] = cbo[j + 1]; cbo[j + 1] = t; }
+            bool textured = tex != IntPtr.Zero;
+            if (textured) { setTex(dev, 0, tex); TssModulate(); } else { setTex(dev, 0, IntPtr.Zero); TssDiffuse(); }
+            setRS(dev, D3D9.RS_ALPHABLENDENABLE, 1);
+            setRS(dev, D3D9.RS_SRCBLEND, D3D9.BLEND_SRCALPHA); setRS(dev, D3D9.RS_DESTBLEND, D3D9.BLEND_INVSRCALPHA);
+            uint av = (uint)(alpha * 255f + 0.5f); if (av > 255) av = 255;
+            for (int oi = 0; oi < 4; oi++)
+            {
+                int k = cbo[oi];
+                if (cbz[k] <= 0.0) continue;                     // cara trasera: no se ve
+                float left = (float)Math.Round(Math.Min(cbx[k], cbx[(k + 1) % 4]));
+                float right = (float)Math.Round(Math.Max(cbx[k], cbx[(k + 1) % 4]));
+                if (right - left < 1f) continue;
+                int darken = (int)((1.0 - cbz[k]) * 130); if (darken < 0) darken = 0; if (darken > 255) darken = 255;
+                uint g = (uint)(255 - darken);
+                uint col = textured
+                    ? (av << 24) | (g << 16) | (g << 8) | g                                   // textura * gris (oscurecido por profundidad)
+                    : (av << 24) | ((60u * g / 255u) << 16) | ((70u * g / 255u) << 8) | (110u * g / 255u);  // relleno azulado (sin portada)
+                CubeFace(cubeFaceV, left, y0, right, y0 + Hh, uMax, vMax, col);
+                Draw(cubeFaceV, 2);
+            }
+        }
+        private static void CubeFace(D3D9.Vtx[] v, float x0, float y0, float x1, float y1, float uM, float vM, uint c)
+        {
+            CFV(ref v[0], x0, y0, c, 0, 0); CFV(ref v[1], x1, y0, c, uM, 0); CFV(ref v[2], x1, y1, c, uM, vM);
+            CFV(ref v[3], x0, y0, c, 0, 0); CFV(ref v[4], x1, y1, c, uM, vM); CFV(ref v[5], x0, y1, c, 0, vM);
+        }
+        private static void CFV(ref D3D9.Vtx v, float x, float y, uint c, float u, float vv) { v.X = x - 0.5f; v.Y = y - 0.5f; v.Z = 0f; v.Rhw = 1f; v.Color = c; v.U = u; v.V = vv; }
+
         private static int Pow2(int n) { int p = 1; while (p < n) p <<= 1; return p; }
 
         // Crea una textura de tamano POTENCIA DE DOS (compatible con GPU vieja) y sube el bitmap en su
@@ -249,26 +297,6 @@ namespace Rocola
             }
             uMax = (float)w / tw; vMax = (float)h / th;
             return tex;
-        }
-
-        // Actualiza EN SITIO los pixeles de una textura pow2 ya creada (mismo tamaño de bitmap). Evita
-        // recrear/liberar una textura ~24 veces/seg (el cubo girando), que en sesiones largas de rocola
-        // podria fragmentar memoria de video. Solo bloquea, copia y desbloquea (el pool MANAGED lo re-sube).
-        public bool UpdateTexturePow2(IntPtr tex, Bitmap bmp)
-        {
-            if (dev == IntPtr.Zero || tex == IntPtr.Zero) return false;
-            int w = bmp.Width, h = bmp.Height;
-            D3D9.LockRectDel lockR = D3D9.Fn<D3D9.LockRectDel>(tex, 19);
-            D3D9.UnlockRectDel unlockR = D3D9.Fn<D3D9.UnlockRectDel>(tex, 20);
-            D3D9.LockedRect lr;
-            if (lockR(tex, 0, out lr, IntPtr.Zero, 0) < 0) return false;
-            BitmapData bd = bmp.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
-            int rowBytes = w * 4;
-            for (int y = 0; y < h; y++)
-                D3D9.CopyMemory(new IntPtr(lr.Bits.ToInt64() + (long)y * lr.Pitch), new IntPtr(bd.Scan0.ToInt64() + (long)y * bd.Stride), (UIntPtr)(uint)rowBytes);
-            bmp.UnlockBits(bd);
-            unlockR(tex, 0);
-            return true;
         }
 
         private void Draw(D3D9.Vtx[] verts, int tris)
@@ -307,7 +335,8 @@ namespace Rocola
 
         public void SetSky(uint top, uint bot) { skyTop = top; skyBot = bot; }
         public IntPtr CreateOverlay(Bitmap bmp, out float uMax, out float vMax) { return gpu.CreateTexturePow2(bmp, out uMax, out vMax); }
-        public bool UpdateOverlay(IntPtr tex, Bitmap bmp) { return gpu.UpdateTexturePow2(tex, bmp); }   // re-sube pixeles sin recrear (mismo tamaño)
+        public void DrawCube(IntPtr tex, float uMax, float vMax, float x, float y, float w, float h, double angle, float alpha)
+        { if (Ok) gpu.DrawCube(tex, uMax, vMax, x, y, w, h, angle, alpha); }
 
         public void Render(int w, int h, float pulse) { if (Begin(w, h, pulse)) End(); }   // solo cielo+estrellas (ventana de prueba)
 
@@ -462,6 +491,19 @@ namespace Rocola
         }
     }
 
+    // Datos de un cubo que GIRA para dibujarlo por GPU: celda, angulo y portada(s). Para discos TOP,
+    // CoverB + Fade hacen el fundido suave entre la portada actual y la siguiente.
+    internal struct GpuCubeInfo
+    {
+        public bool Has;
+        public float X, Y, W, H;       // celda donde va el cubo (coords del panel)
+        public double Angle;           // giro actual (radianes)
+        public Bitmap CoverA;          // portada principal (null si aun no cargo -> relleno azulado)
+        public Bitmap CoverB;          // portada siguiente para el fundido TOP (null si no aplica)
+        public float Fade;             // 0..1 mezcla A->B
+    }
+    internal struct GpuCubeState { public GpuCubeInfo Sel, Relay; }   // seleccionado (gira a pleno) + relevo (decae)
+
     // -------- Control D3D9 para usar el campo estrellado como FONDO de la vista de discos --------
     //  Es un control aparte (su propia ventana) con estilos aptos para D3D9 (sin doble-buffer GDI).
     //  Se muestra ENCIMA de la vista de discos al activar el modo GPU; el render lo maneja D3D9.
@@ -474,18 +516,18 @@ namespace Rocola
         private readonly D3D9.Vtx[] cubeQuad = new D3D9.Vtx[6];
         private IntPtr contourTex; private Bitmap lastContour; private float contU = 1f, contV = 1f;
         private readonly D3D9.Vtx[] contourQuad = new D3D9.Vtx[6];
-        private IntPtr spinTex; private int spinVer = -1; private float spinU = 1f, spinV = 1f;
-        private int spinBmpW = -1, spinBmpH = -1;          // tamaño del bitmap subido (para actualizar en sitio si no cambia)
-        private readonly D3D9.Vtx[] spinQuad = new D3D9.Vtx[6];
+        // Cubos que GIRAN (seleccionado + relevo): se dibujan como GEOMETRIA en GPU desde la textura de la
+        // portada. La portada se sube UNA vez (al cambiar), no en cada cuadro -> casi cero CPU por cubo.
+        private IntPtr selTexA, selTexB, relTex;          // texturas de portada: seleccionada A, fundido B (TOP), relevo
+        private Bitmap selImgA, selImgB, relImg;          // ultima portada subida en cada ranura (para re-subir solo al cambiar)
+        private float selUA = 1f, selVA = 1f, selUB = 1f, selVB = 1f, relU = 1f, relV = 1f;
         public int Fps;                                   // cuadros por segundo (para mostrar mientras integramos)
         public Func<float> GetPulse;                      // el form provee el nivel de audio (0..1)
         public Func<Bitmap> GetCubes;                     // el form provee el bitmap de cubos+etiquetas (cubeCache)
         public Func<int> GetCubesVersion;                 // cambia cuando cubeCache se reconstruye (re-subir textura)
         public Func<Bitmap> GetContour;                   // sprite del contorno de seleccion
         public Func<Rectangle> GetContourRect;            // donde va el contorno (celda seleccionada), en coords del panel
-        public Func<Bitmap> GetSpin;                      // hornea el cubo seleccionado girando (+ relevo) y lo devuelve
-        public Func<int> GetSpinVersion;                  // sube ~24fps al avanzar el giro (re-subir textura)
-        public Func<Rectangle> GetSpinRect;               // donde va el overlay del giro (coords del panel)
+        public Func<GpuCubeState> GetCubeState;           // celdas/angulos/portadas de los cubos que giran (seleccionado + relevo)
         public uint SkyTop = 0xFF06081A, SkyBot = 0xFF1A2C5A;   // el form los setea por genero
 
         // Bucle de render por Application.Idle (patron estandar para D3D en WinForms): dibuja tan rapido como
@@ -524,9 +566,21 @@ namespace Rocola
             if (idleHooked) { Application.Idle -= OnIdle; idleHooked = false; }
             if (cubeTex != IntPtr.Zero) { D3D9.Release(cubeTex); cubeTex = IntPtr.Zero; }
             if (contourTex != IntPtr.Zero) { D3D9.Release(contourTex); contourTex = IntPtr.Zero; }
-            if (spinTex != IntPtr.Zero) { D3D9.Release(spinTex); spinTex = IntPtr.Zero; }
-            cubeVer = -1; lastContour = null; spinVer = -1; spinBmpW = spinBmpH = -1;
+            if (selTexA != IntPtr.Zero) { D3D9.Release(selTexA); selTexA = IntPtr.Zero; }
+            if (selTexB != IntPtr.Zero) { D3D9.Release(selTexB); selTexB = IntPtr.Zero; }
+            if (relTex != IntPtr.Zero) { D3D9.Release(relTex); relTex = IntPtr.Zero; }
+            cubeVer = -1; lastContour = null; selImgA = selImgB = relImg = null;
             if (stars != null) { stars.Dispose(); stars = null; }
+        }
+
+        // Sube la portada como textura SOLO si cambio respecto a la ranura (referencia distinta). Asi el
+        // cubo girando no sube nada en la mayoria de cuadros: solo al navegar o al ciclar un disco TOP.
+        private void EnsureCover(ref IntPtr tex, ref Bitmap last, ref float u, ref float v, Bitmap cur)
+        {
+            if (ReferenceEquals(cur, last)) return;
+            if (tex != IntPtr.Zero) { D3D9.Release(tex); tex = IntPtr.Zero; }
+            if (cur != null) { float uu, vv; tex = stars.CreateOverlay(cur, out uu, out vv); u = uu; v = vv; }
+            last = cur;
         }
 
         private void RenderFrame()
@@ -556,31 +610,12 @@ namespace Rocola
                     lastContour = cb;
                 }
             }
-            // Cubo seleccionado GIRANDO (+ relevo): se re-hornea al ritmo del giro (~24fps); entre medias se reusa.
-            if (GetSpin != null && GetSpinVersion != null)
-            {
-                int sv = GetSpinVersion();
-                if (sv != spinVer)
-                {
-                    Bitmap sb = GetSpin();
-                    if (sb == null)
-                    {
-                        if (spinTex != IntPtr.Zero) { D3D9.Release(spinTex); spinTex = IntPtr.Zero; }
-                        spinBmpW = spinBmpH = -1;
-                    }
-                    else if (spinTex != IntPtr.Zero && sb.Width == spinBmpW && sb.Height == spinBmpH)
-                    {
-                        stars.UpdateOverlay(spinTex, sb);   // mismo tamaño: actualiza pixeles EN SITIO (sin recrear)
-                    }
-                    else
-                    {
-                        if (spinTex != IntPtr.Zero) { D3D9.Release(spinTex); spinTex = IntPtr.Zero; }
-                        spinTex = stars.CreateOverlay(sb, out spinU, out spinV);
-                        spinBmpW = sb.Width; spinBmpH = sb.Height;
-                    }
-                    spinVer = sv;
-                }
-            }
+            // Cubos que GIRAN (seleccionado + relevo): suben la PORTADA como textura SOLO cuando cambia
+            // (al navegar o al ciclar un disco TOP), no en cada cuadro. El giro luego es solo geometria.
+            GpuCubeState cs = (GetCubeState != null) ? GetCubeState() : new GpuCubeState();
+            EnsureCover(ref selTexA, ref selImgA, ref selUA, ref selVA, cs.Sel.CoverA);
+            EnsureCover(ref selTexB, ref selImgB, ref selUB, ref selVB, cs.Sel.CoverB);
+            EnsureCover(ref relTex, ref relImg, ref relU, ref relV, cs.Relay.CoverA);
             float pulse = (GetPulse != null) ? GetPulse() : 0f;
             if (!stars.Begin(Width, Height, pulse)) return;
             if (cubeTex != IntPtr.Zero) { SetTexQuad(cubeQuad, 0, 0, Width, Height, cubeU, cubeV); stars.DrawQuad(cubeTex, cubeQuad); }
@@ -589,10 +624,14 @@ namespace Rocola
                 Rectangle r = GetContourRect();
                 if (r.Width > 0 && r.Height > 0) { SetTexQuad(contourQuad, r.X, r.Y, r.X + r.Width, r.Y + r.Height, contU, contV); stars.DrawQuad(contourTex, contourQuad); }
             }
-            if (spinTex != IntPtr.Zero && GetSpinRect != null)   // el cubo girando va ENCIMA del contorno (igual que en CPU)
+            // Cubos girando ENCIMA del contorno (igual orden que en CPU): primero el relevo, luego el seleccionado.
+            if (cs.Relay.Has)
+                stars.DrawCube(relTex, relU, relV, cs.Relay.X, cs.Relay.Y, cs.Relay.W, cs.Relay.H, cs.Relay.Angle, 1f);
+            if (cs.Sel.Has)
             {
-                Rectangle rs = GetSpinRect();
-                if (rs.Width > 0 && rs.Height > 0) { SetTexQuad(spinQuad, rs.X, rs.Y, rs.X + rs.Width, rs.Y + rs.Height, spinU, spinV); stars.DrawQuad(spinTex, spinQuad); }
+                stars.DrawCube(selTexA, selUA, selVA, cs.Sel.X, cs.Sel.Y, cs.Sel.W, cs.Sel.H, cs.Sel.Angle, 1f);
+                if (cs.Sel.CoverB != null && cs.Sel.Fade > 0.002f)   // disco TOP: 2a portada encima con alfa = fundido
+                    stars.DrawCube(selTexB, selUB, selVB, cs.Sel.X, cs.Sel.Y, cs.Sel.W, cs.Sel.H, cs.Sel.Angle, cs.Sel.Fade);
             }
             stars.End();
             frames++;
