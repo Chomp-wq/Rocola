@@ -200,12 +200,12 @@ namespace Rocola
         }
 
         // Cielo (color del vertice, sin mezcla) + estrellas (textura de glow, aditivo).
-        // Cielo (color del vertice, sin mezcla). Se dibuja una vez por cuadro.
+        // Cielo (color del vertice, sin mezcla). 2 quads apilados = degradado de 3 paradas (4 triangulos).
         public void DrawSky(D3D9.Vtx[] sky)
         {
             setTex(dev, 0, IntPtr.Zero); TssDiffuse();
             setRS(dev, D3D9.RS_ALPHABLENDENABLE, 0);
-            Draw(sky, 2);
+            Draw(sky, 4);
         }
         // Estrellas (textura de glow, aditivo). Se puede llamar 2 veces (patron anterior + nuevo) en el entrecruzado.
         public void DrawStars(D3D9.Vtx[] stars, int starTris, IntPtr glowTex)
@@ -331,8 +331,8 @@ namespace Rocola
     {
         private D3D9Device gpu; private IntPtr glowTex;
         private float[] sx, sy, sphase, sspeed, ssize; private int[] skind; private uint[] scol; private int nStars;
-        private D3D9.Vtx[] skyV = new D3D9.Vtx[6]; private D3D9.Vtx[] starV;
-        private uint skyTop = 0xFF06081A, skyBot = 0xFF1A2C5A;
+        private D3D9.Vtx[] skyV = new D3D9.Vtx[12]; private D3D9.Vtx[] starV;   // cielo = 2 quads apilados (3 paradas de color)
+        private uint skyTop = 0xFF06081A, skyMid = 0xFF101C3A, skyBot = 0xFF1A2C5A;
         private readonly int startTick = Environment.TickCount;
         private int seed0;                                   // semilla base (el patron de cada minuto = seed0 + minuto*paso)
         private int curMinute = int.MinValue;                // minuto del patron actual (cambia cada 60s)
@@ -363,7 +363,7 @@ namespace Rocola
             BuildStars(w, h, seed);
         }
 
-        public void SetSky(uint top, uint bot) { skyTop = top; skyBot = bot; }
+        public void SetSky(uint top, uint mid, uint bot) { skyTop = top; skyMid = mid; skyBot = bot; }
         public IntPtr CreateOverlay(Bitmap bmp, out float uMax, out float vMax) { return gpu.CreateTexturePow2(bmp, out uMax, out vMax); }
         public void DrawCube(IntPtr tex, float uMax, float vMax, float x, float y, float w, float h, double angle, float alpha)
         { if (Ok) gpu.DrawCube(tex, uMax, vMax, x, y, w, h, angle, alpha); }
@@ -395,7 +395,11 @@ namespace Rocola
             float tr = transing ? (nowMs - transStart) / (float)TransMs : 1f;
             if (tr >= 1f) { transing = false; tr = 1f; }
 
-            SetQuad(skyV, 0, 0, 0, w, h, skyTop, skyTop, skyBot, skyBot);
+            // Cielo de 3 PARADAS como en CPU: negro arriba -> azul noche al 42% -> color del genero abajo
+            // (antes 2 paradas: el genero teñia casi toda la pantalla). Dos quads apilados en la parada media.
+            float midY = h * 0.42f;
+            SetQuad(skyV, 0, 0, 0, w, midY, skyTop, skyTop, skyMid, skyMid);
+            SetQuad(skyV, 6, 0, midY, w, h, skyMid, skyMid, skyBot, skyBot);
             gpu.DrawSky(skyV);
             if (transing && px != null)   // patron ANTERIOR desvaneciendose
             {
@@ -665,7 +669,7 @@ namespace Rocola
         public Func<Bitmap> GetContour;                   // sprite del contorno de seleccion
         public Func<Rectangle> GetContourRect;            // donde va el contorno (celda seleccionada), en coords del panel
         public Func<GpuCubeState> GetCubeState;           // celdas/angulos/portadas de los cubos que giran (seleccionado + relevo)
-        public uint SkyTop = 0xFF06081A, SkyBot = 0xFF1A2C5A;   // el form los setea por genero
+        public uint SkyTop = 0xFF06081A, SkyMid = 0xFF101C3A, SkyBot = 0xFF1A2C5A;   // el form los setea por genero (3 paradas)
 
         // Bucle de render por Application.Idle (patron estandar para D3D en WinForms): dibuja tan rapido como
         // permita el vsync (60 FPS) mientras no haya mensajes pendientes; al llegar un mensaje (tecla, timer)
@@ -725,7 +729,7 @@ namespace Rocola
         private void RenderFrame()
         {
             if (stars == null || !stars.Ok) return;
-            stars.SetSky(SkyTop, SkyBot);
+            stars.SetSky(SkyTop, SkyMid, SkyBot);
             // Cubos: textura que cambia al navegar / llegar caratula.
             if (GetCubes != null && GetCubesVersion != null)
             {

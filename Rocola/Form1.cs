@@ -3102,7 +3102,7 @@ namespace Rocola
                 uiOverlaySig = null;                     // fuerza reconstruir la textura de UI
                 gpuPanel.AlbumRect = albumView.Bounds;
                 gpuPanel.Bounds = new Rectangle(0, 0, ClientSize.Width, ClientSize.Height);   // PANTALLA COMPLETA
-                gpuPanel.SkyTop = ToD3D(SkyColor(bgAccent)); gpuPanel.SkyBot = ToD3D(SkyColor2(bgAccent));
+                gpuPanel.SkyTop = ToD3D(SkyColor(bgAccent)); gpuPanel.SkyMid = ToD3D(SkyColorMid(bgAccent)); gpuPanel.SkyBot = ToD3D(SkyColor2(bgAccent));
                 gpuPanel.Visible = true; gpuPanel.BringToFront();
                 if (gpuPanel.StartGpu()) { gpuEnabled = true; lblGpu.Visible = false; }
                 else { gpuPanel.Visible = false; lblGpu.Text = "GPU: fallo el dispositivo (sigue CPU)"; lblGpu.Visible = true; lblGpu.BringToFront(); }
@@ -3276,7 +3276,7 @@ namespace Rocola
             SyncGpuFullScreen();   // muestra/oculta el panel GPU (pantalla completa) segun el modo, ANTES de los returns por modo
             if (gpuPanel != null && gpuPanel.Visible)
             {
-                gpuPanel.SkyTop = ToD3D(SkyColor(bgAccent)); gpuPanel.SkyBot = ToD3D(SkyColor2(bgAccent));   // el degradado sigue al genero
+                gpuPanel.SkyTop = ToD3D(SkyColor(bgAccent)); gpuPanel.SkyMid = ToD3D(SkyColorMid(bgAccent)); gpuPanel.SkyBot = ToD3D(SkyColor2(bgAccent));   // el degradado sigue al genero
             }
 #endif
             if (progress != null) progress.Accent = bgAccent;   // ESTETICA: la barra de progreso sigue el color del genero
