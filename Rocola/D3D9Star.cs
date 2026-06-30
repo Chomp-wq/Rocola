@@ -200,18 +200,21 @@ namespace Rocola
         }
 
         // Cielo (color del vertice, sin mezcla) + estrellas (textura de glow, aditivo).
-        public void DrawSkyStars(D3D9.Vtx[] sky, D3D9.Vtx[] stars, int starTris, IntPtr glowTex)
+        // Cielo (color del vertice, sin mezcla). Se dibuja una vez por cuadro.
+        public void DrawSky(D3D9.Vtx[] sky)
         {
             setTex(dev, 0, IntPtr.Zero); TssDiffuse();
             setRS(dev, D3D9.RS_ALPHABLENDENABLE, 0);
             Draw(sky, 2);
-            if (starTris > 0 && glowTex != IntPtr.Zero)
-            {
-                setTex(dev, 0, glowTex); TssModulate();
-                setRS(dev, D3D9.RS_ALPHABLENDENABLE, 1);
-                setRS(dev, D3D9.RS_SRCBLEND, D3D9.BLEND_SRCALPHA); setRS(dev, D3D9.RS_DESTBLEND, D3D9.BLEND_ONE);
-                Draw(stars, starTris);
-            }
+        }
+        // Estrellas (textura de glow, aditivo). Se puede llamar 2 veces (patron anterior + nuevo) en el entrecruzado.
+        public void DrawStars(D3D9.Vtx[] stars, int starTris, IntPtr glowTex)
+        {
+            if (dev == IntPtr.Zero || starTris <= 0 || glowTex == IntPtr.Zero) return;
+            setTex(dev, 0, glowTex); TssModulate();
+            setRS(dev, D3D9.RS_ALPHABLENDENABLE, 1);
+            setRS(dev, D3D9.RS_SRCBLEND, D3D9.BLEND_SRCALPHA); setRS(dev, D3D9.RS_DESTBLEND, D3D9.BLEND_ONE);
+            Draw(stars, starTris);
         }
 
         // Estelas de estrellas fugaces: cuadrangulos BLANCOS con mezcla ADITIVA y SIN textura (color del vertice).
@@ -333,12 +336,20 @@ namespace Rocola
         private readonly int startTick = Environment.TickCount;
         private int seed0;                                   // semilla base (el patron de cada minuto = seed0 + minuto*paso)
         private int curMinute = int.MinValue;                // minuto del patron actual (cambia cada 60s)
+        // ENTRECRUZADO del patron: al cambiar de minuto se conserva el patron anterior y se desvanece mientras
+        // el nuevo aparece, en vez de atenuar TODO el cielo. Asi el fondo nunca se queda sin estrellas.
+        private float[] px, py, pphase, pspeed, psize; private int[] pkind; private uint[] pcol; private int pnStars;
+        private D3D9.Vtx[] starV2;                            // vertices del patron ANTERIOR durante el entrecruzado
+        private int transStart; private bool transing;
+        private const int TransMs = 1300;                    // duracion del entrecruzado
         // Estrellas FUGACES: en CPU se podian pero costaban; en GPU son un par de cuadrangulos aditivos.
-        private struct Shoot { public bool On; public float X, Y, VX, VY, Life, MaxLife; }
+        // Cada una con tamaño, color, velocidad y largo de estela distintos.
+        private struct Shoot { public bool On; public float X, Y, VX, VY, Life, MaxLife, Wdt, Tail; public uint Col; }
         private readonly Shoot[] shoots = new Shoot[2];
         private D3D9.Vtx[] shootV = new D3D9.Vtx[2 * 12];    // 2 fugaces x (estela 6 + cabeza 6) vertices
         private int nextShoot, lastShootTick;
         private readonly Random srnd = new Random();
+        private static readonly uint[] shootPal = { 0x00FFFFFF, 0x00FFFFFF, 0x00CFE6FF, 0x00FFE6A0, 0x00A0FFE0, 0x00FFC0E0 };   // blanco (x2), azul, dorado, aqua, rosa
 
         public bool Ok { get { return gpu != null && gpu.Ok; } }
         public int Count { get { return nStars; } }
@@ -367,35 +378,51 @@ namespace Rocola
             int nowMs = Environment.TickCount;
             float t = (nowMs - startTick) / 1000f;
 
-            // PATRON que cambia cada minuto. En la rocola por CPU costaba (re-hornear ~120 estrellas); por GPU
-            // basta re-sortear posiciones. Se hace un fundido suave para que el cambio no salte de golpe.
+            // PATRON que cambia cada minuto, con ENTRECRUZADO: se conserva el patron anterior y se desvanece
+            // mientras el nuevo aparece (el cielo nunca se queda sin estrellas). Por GPU re-sortear es barato.
             int minute = (int)(t / 60f);
             if (minute != curMinute)
             {
-                if (curMinute != int.MinValue) BuildStars(w, h, unchecked(seed0 + minute * 40503));   // nuevo patron (no en el 1er cuadro: ya se construyo)
+                if (curMinute != int.MinValue)
+                {
+                    px = sx; py = sy; pphase = sphase; pspeed = sspeed; psize = ssize; pkind = skind; pcol = scol; pnStars = nStars;   // guarda el actual como ANTERIOR
+                    BuildStars(w, h, unchecked(seed0 + minute * 40503));     // construye el NUEVO (asigna arreglos nuevos; no pisa los anteriores)
+                    if (starV2 == null || starV2.Length < pnStars * 6) starV2 = new D3D9.Vtx[pnStars * 6];
+                    transing = true; transStart = nowMs;
+                }
                 curMinute = minute;
             }
-            float secInto = t - minute * 60f;            // 0..60
-            float fw = 0.9f, fade = 1f;                  // ventana de fundido a cada lado del cambio
-            if (secInto > 60f - fw) fade = (60f - secInto) / fw;   // se apaga antes del cambio
-            else if (secInto < fw) fade = secInto / fw;            // y vuelve despues
-            if (fade < 0f) fade = 0f; else if (fade > 1f) fade = 1f;
+            float tr = transing ? (nowMs - transStart) / (float)TransMs : 1f;
+            if (tr >= 1f) { transing = false; tr = 1f; }
 
             SetQuad(skyV, 0, 0, 0, w, h, skyTop, skyTop, skyBot, skyBot);
-            int vi = 0;
-            for (int i = 0; i < nStars; i++)
+            gpu.DrawSky(skyV);
+            if (transing && px != null)   // patron ANTERIOR desvaneciendose
             {
-                double tw = 0.45 + 0.55 * (0.5 + 0.5 * Math.Sin(t * sspeed[i] + sphase[i]));
-                uint a = (uint)(tw * fade * 255); if (a > 255) a = 255;
-                uint c = (a << 24) | (scol[i] & 0x00FFFFFF);             // alfa = brillo (titileo * fundido de patron); rgb = color
-                float s = ssize[i];
-                if (skind[i] != 0 && pulse > 0.02f) s += pulse * (skind[i] == 2 ? 9f : 5f);   // latido: medianas/grandes crecen con la musica
-                SetQuad(starV, vi, sx[i] - s, sy[i] - s, sx[i] + s, sy[i] + s, c, c, c, c);
-                vi += 6;
+                BuildStarVerts(starV2, px, py, pphase, pspeed, psize, pkind, pcol, pnStars, t, 1f - tr, pulse);
+                gpu.DrawStars(starV2, pnStars * 2, glowTex);
             }
-            gpu.DrawSkyStars(skyV, starV, nStars * 2, glowTex);
+            BuildStarVerts(starV, sx, sy, sphase, sspeed, ssize, skind, scol, nStars, t, transing ? tr : 1f, pulse);   // patron ACTUAL
+            gpu.DrawStars(starV, nStars * 2, glowTex);
             UpdateAndDrawShoots(w, h, nowMs);
             return true;
+        }
+
+        // Construye los vertices de un campo de estrellas (titileo + latido) con un factor de brillo global
+        // (para el entrecruzado del patron). Reutilizable por el patron actual y por el anterior.
+        private static void BuildStarVerts(D3D9.Vtx[] buf, float[] xs, float[] ys, float[] ph, float[] spd, float[] sz, int[] kd, uint[] col, int n, float t, float fade, float pulse)
+        {
+            int vi = 0;
+            for (int i = 0; i < n; i++)
+            {
+                double tw = 0.45 + 0.55 * (0.5 + 0.5 * Math.Sin(t * spd[i] + ph[i]));
+                uint a = (uint)(tw * fade * 255); if (a > 255) a = 255;
+                uint c = (a << 24) | (col[i] & 0x00FFFFFF);             // alfa = brillo (titileo * entrecruzado); rgb = color
+                float s = sz[i];
+                if (kd[i] != 0 && pulse > 0.02f) s += pulse * (kd[i] == 2 ? 9f : 5f);   // latido: medianas/grandes crecen con la musica
+                SetQuad(buf, vi, xs[i] - s, ys[i] - s, xs[i] + s, ys[i] + s, c, c, c, c);
+                vi += 6;
+            }
         }
 
         // Estrellas FUGACES: una cada 7-16s, desde arriba-izquierda hacia abajo-derecha, con estela que se
@@ -414,11 +441,14 @@ namespace Rocola
                     if (!shoots[i].On)
                     {
                         shoots[i].On = true;
-                        shoots[i].X = (float)(srnd.NextDouble() * w * 0.55);
+                        shoots[i].X = (float)(srnd.NextDouble() * w * 0.6);
                         shoots[i].Y = (float)(srnd.NextDouble() * h * 0.45);
-                        float spd = (w + h) * 0.55f;
-                        shoots[i].VX = spd; shoots[i].VY = spd * (0.35f + (float)srnd.NextDouble() * 0.30f);
-                        shoots[i].MaxLife = 1.0f + (float)srnd.NextDouble() * 0.5f; shoots[i].Life = shoots[i].MaxLife;
+                        float spd = (w + h) * (0.40f + (float)srnd.NextDouble() * 0.45f);   // VELOCIDAD variada
+                        shoots[i].VX = spd; shoots[i].VY = spd * (0.30f + (float)srnd.NextDouble() * 0.40f);
+                        shoots[i].MaxLife = 0.9f + (float)srnd.NextDouble() * 0.8f; shoots[i].Life = shoots[i].MaxLife;
+                        shoots[i].Wdt = 0.9f + (float)srnd.NextDouble() * 1.5f;      // GROSOR variado
+                        shoots[i].Tail = 0.07f + (float)srnd.NextDouble() * 0.10f;   // LARGO de estela variado
+                        shoots[i].Col = shootPal[srnd.Next(shootPal.Length)];        // COLOR variado
                         break;
                     }
             }
@@ -429,15 +459,16 @@ namespace Rocola
                 Shoot s = shoots[i];
                 float k = s.Life / s.MaxLife; if (k < 0f) k = 0f;
                 uint la = (uint)(230 * k); if (la > 255) la = 255;
-                float tailX = s.X - s.VX * 0.10f, tailY = s.Y - s.VY * 0.10f;   // estela corta
+                float tailX = s.X - s.VX * s.Tail, tailY = s.Y - s.VY * s.Tail;   // estela de largo variado
                 float len = (float)Math.Sqrt(s.VX * s.VX + s.VY * s.VY);
                 float nx = (len > 0.001f) ? s.VX / len : 1f, ny = (len > 0.001f) ? s.VY / len : 0f;
-                float px = -ny * 1.3f, py = nx * 1.3f;   // perpendicular (medio ancho ~1.3px)
-                uint headC = (la << 24) | 0x00FFFFFF, tailC = 0x00FFFFFF;   // estela: brillante en cabeza -> transparente en cola
-                VShoot(shootV, vi + 0, s.X + px, s.Y + py, headC); VShoot(shootV, vi + 1, s.X - px, s.Y - py, headC); VShoot(shootV, vi + 2, tailX - px, tailY - py, tailC);
-                VShoot(shootV, vi + 3, s.X + px, s.Y + py, headC); VShoot(shootV, vi + 4, tailX - px, tailY - py, tailC); VShoot(shootV, vi + 5, tailX + px, tailY + py, tailC);
+                float ox = -ny * s.Wdt, oy = nx * s.Wdt;   // perpendicular (medio ancho variado)
+                uint rgb = s.Col & 0x00FFFFFF;
+                uint headC = (la << 24) | rgb, tailC = rgb;   // estela: brillante en cabeza -> transparente en cola
+                VShoot(shootV, vi + 0, s.X + ox, s.Y + oy, headC); VShoot(shootV, vi + 1, s.X - ox, s.Y - oy, headC); VShoot(shootV, vi + 2, tailX - ox, tailY - oy, tailC);
+                VShoot(shootV, vi + 3, s.X + ox, s.Y + oy, headC); VShoot(shootV, vi + 4, tailX - ox, tailY - oy, tailC); VShoot(shootV, vi + 5, tailX + ox, tailY + oy, tailC);
                 vi += 6;
-                uint hc = (Math.Min(255u, la + 40u) << 24) | 0x00FFFFFF; float hs = 1.8f;   // cabeza: cuadrito brillante
+                uint hc = (Math.Min(255u, la + 40u) << 24) | rgb; float hs = 0.9f + s.Wdt;   // cabeza brillante, tamaño segun grosor
                 VShoot(shootV, vi + 0, s.X - hs, s.Y - hs, hc); VShoot(shootV, vi + 1, s.X + hs, s.Y - hs, hc); VShoot(shootV, vi + 2, s.X + hs, s.Y + hs, hc);
                 VShoot(shootV, vi + 3, s.X - hs, s.Y - hs, hc); VShoot(shootV, vi + 4, s.X + hs, s.Y + hs, hc); VShoot(shootV, vi + 5, s.X - hs, s.Y + hs, hc);
                 vi += 6;
@@ -465,15 +496,28 @@ namespace Rocola
             sx = new float[nStars]; sy = new float[nStars]; sphase = new float[nStars];
             sspeed = new float[nStars]; ssize = new float[nStars]; skind = new int[nStars]; scol = new uint[nStars];
             uint[] pal = { 0xFFFFFFFF, 0xFFFFFFFF, 0xFFB4CDFF, 0xFFCDA5FF, 0xFFFFAAE6, 0xFFFFDC8C, 0xFF96FFE1 };
+            float minD2 = 30f * 30f;   // separacion minima entre estrellas: evita que se amontonen
             for (int i = 0; i < nStars; i++)
             {
-                sx[i] = (float)(rnd.NextDouble() * w);
-                sy[i] = (float)(rnd.NextDouble() * h);
+                float bx = 0f, by = 0f;
+                for (int attempt = 0; attempt < 10; attempt++)   // busca un hueco lejos de las ya puestas
+                {
+                    bx = (float)(rnd.NextDouble() * w);
+                    by = (float)(rnd.NextDouble() * h);
+                    bool clear = true;
+                    for (int j = 0; j < i; j++)
+                    {
+                        float dx = bx - sx[j], dy = by - sy[j];
+                        if (dx * dx + dy * dy < minD2) { clear = false; break; }
+                    }
+                    if (clear) break;
+                }
+                sx[i] = bx; sy[i] = by;
                 sphase[i] = (float)(rnd.NextDouble() * Math.PI * 2);
                 sspeed[i] = 0.6f + (float)rnd.NextDouble() * 1.8f;
                 int kk = rnd.Next(100);
-                skind[i] = (kk < 12) ? 2 : (kk < 34) ? 1 : 0;
-                ssize[i] = (skind[i] == 2) ? (16 + rnd.Next(12)) : (skind[i] == 1) ? (9 + rnd.Next(7)) : (4 + rnd.Next(4));
+                skind[i] = (kk < 7) ? 2 : (kk < 26) ? 1 : 0;   // MENOS grandes: 7% grandes (antes 12%), 19% medianas, resto puntos
+                ssize[i] = (skind[i] == 2) ? (10 + rnd.Next(5)) : (skind[i] == 1) ? (6 + rnd.Next(4)) : (3 + rnd.Next(3));   // mas chicas (antes 16-27 las grandes)
                 scol[i] = pal[rnd.Next(pal.Length)];
             }
             starV = new D3D9.Vtx[nStars * 6];
