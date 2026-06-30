@@ -3907,11 +3907,13 @@ namespace Rocola
                 SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint | ControlStyles.SupportsTransparentBackColor, true);
                 BackColor = Color.Transparent;
             }
-            protected override void OnPaint(PaintEventArgs e)
+            protected override void OnPaint(PaintEventArgs e) { e.Graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit; RenderContent(e.Graphics); }
+            // Dibuja la leyenda en un Graphics cualquiera (el control, o la textura de UI del modo GPU). El
+            // llamador fija el TextRenderingHint: ClearType para pantalla; AntiAlias (gris) para la textura
+            // transparente del modo GPU (ClearType deja flecos de color sobre fondo transparente).
+            public void RenderContent(Graphics g)
             {
-                Graphics g = e.Graphics;
                 g.SmoothingMode = SmoothingMode.AntiAlias;
-                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
                 int cy = Height / 2;
                 Color txt = Color.FromArgb(228, 234, 250);
                 Color red = Color.FromArgb(228, 72, 72), green = Color.FromArgb(72, 212, 112);
@@ -4586,9 +4588,10 @@ namespace Rocola
                 }
             }
 
-            protected override void OnPaint(PaintEventArgs e)
+            protected override void OnPaint(PaintEventArgs e) { RenderContent(e.Graphics); }
+            // Dibuja la barra de letras en cualquier Graphics (el control, o la textura de UI del modo GPU).
+            public void RenderContent(Graphics g)
             {
-                Graphics g = e.Graphics;
                 int w = Width, h = Height, n = Letters.Length;
                 if (w < 4 || h < 4 || n == 0) return;
                 g.SmoothingMode = SmoothingMode.AntiAlias;
@@ -4704,9 +4707,10 @@ namespace Rocola
                 this.BackColor = Color.Transparent;
             }
 
-            protected override void OnPaint(PaintEventArgs e)
+            protected override void OnPaint(PaintEventArgs e) { RenderContent(e.Graphics); }
+            // Dibuja la barra de progreso en cualquier Graphics (el control, o la textura de UI del modo GPU).
+            public void RenderContent(Graphics g)
             {
-                Graphics g = e.Graphics;
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 int w = Width, h = Height;
                 if (w < 4 || h < 4) return;
