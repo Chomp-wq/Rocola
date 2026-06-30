@@ -633,7 +633,7 @@ namespace Rocola
         public Bitmap CoverB;          // portada siguiente para el fundido TOP (null si no aplica)
         public float Fade;             // 0..1 mezcla A->B
     }
-    internal struct GpuCubeState { public GpuCubeInfo Sel, Relay; }   // seleccionado (gira a pleno) + relevo (decae)
+    internal struct GpuCubeState { public GpuCubeInfo Sel, Relay, Mini; }   // album: seleccionado (gira) + relevo (decae); Mini = cubo de la barra inferior
 
     // -------- Control D3D9 para usar el campo estrellado como FONDO de la vista de discos --------
     //  Es un control aparte (su propia ventana) con estilos aptos para D3D9 (sin doble-buffer GDI).
@@ -649,9 +649,15 @@ namespace Rocola
         private readonly D3D9.Vtx[] contourQuad = new D3D9.Vtx[6];
         // Cubos que GIRAN (seleccionado + relevo): se dibujan como GEOMETRIA en GPU desde la textura de la
         // portada. La portada se sube UNA vez (al cambiar), no en cada cuadro -> casi cero CPU por cubo.
-        private IntPtr selTexA, selTexB, relTex;          // texturas de portada: seleccionada A, fundido B (TOP), relevo
-        private Bitmap selImgA, selImgB, relImg;          // ultima portada subida en cada ranura (para re-subir solo al cambiar)
-        private float selUA = 1f, selVA = 1f, selUB = 1f, selVB = 1f, relU = 1f, relV = 1f;
+        private IntPtr selTexA, selTexB, relTex, miniTex;          // texturas de portada: seleccionada A, fundido B (TOP), relevo, mini-cubo
+        private Bitmap selImgA, selImgB, relImg, miniImg;          // ultima portada subida en cada ranura (para re-subir solo al cambiar)
+        private float selUA = 1f, selVA = 1f, selUB = 1f, selVB = 1f, relU = 1f, relV = 1f, miniU = 1f, miniV = 1f;
+        // Textura de UI (barras superior e inferior) compuesta sobre el fondo a pantalla completa.
+        private IntPtr uiTex; private int uiVer = -1; private float uiU = 1f, uiV = 1f;
+        private readonly D3D9.Vtx[] uiQuad = new D3D9.Vtx[6];
+        public Rectangle AlbumRect;                       // donde van los cubos del album (coords del panel = pantalla); el form la fija
+        public Func<Bitmap> GetUi;                        // bitmap transparente con las barras (lo provee el form)
+        public Func<int> GetUiVersion;                    // cambia cuando alguna barra cambia (re-subir textura)
         public int Fps;                                   // cuadros por segundo (para mostrar mientras integramos)
         public Func<float> GetPulse;                      // el form provee el nivel de audio (0..1)
         public Func<Bitmap> GetCubes;                     // el form provee el bitmap de cubos+etiquetas (cubeCache)
@@ -700,7 +706,9 @@ namespace Rocola
             if (selTexA != IntPtr.Zero) { D3D9.Release(selTexA); selTexA = IntPtr.Zero; }
             if (selTexB != IntPtr.Zero) { D3D9.Release(selTexB); selTexB = IntPtr.Zero; }
             if (relTex != IntPtr.Zero) { D3D9.Release(relTex); relTex = IntPtr.Zero; }
-            cubeVer = -1; lastContour = null; selImgA = selImgB = relImg = null;
+            if (miniTex != IntPtr.Zero) { D3D9.Release(miniTex); miniTex = IntPtr.Zero; }
+            if (uiTex != IntPtr.Zero) { D3D9.Release(uiTex); uiTex = IntPtr.Zero; }
+            cubeVer = -1; lastContour = null; selImgA = selImgB = relImg = miniImg = null; uiVer = -1;
             if (stars != null) { stars.Dispose(); stars = null; }
         }
 
@@ -747,9 +755,23 @@ namespace Rocola
             EnsureCover(ref selTexA, ref selImgA, ref selUA, ref selVA, cs.Sel.CoverA);
             EnsureCover(ref selTexB, ref selImgB, ref selUB, ref selVB, cs.Sel.CoverB);
             EnsureCover(ref relTex, ref relImg, ref relU, ref relV, cs.Relay.CoverA);
+            EnsureCover(ref miniTex, ref miniImg, ref miniU, ref miniV, cs.Mini.CoverA);   // mini-cubo de la barra inferior
+            // Barras (UI) a textura: se re-sube solo cuando cambia algun texto/estado (firma del form).
+            if (GetUi != null && GetUiVersion != null)
+            {
+                int uv = GetUiVersion();
+                if (uv != uiVer)
+                {
+                    if (uiTex != IntPtr.Zero) { D3D9.Release(uiTex); uiTex = IntPtr.Zero; }
+                    Bitmap ub = GetUi();
+                    if (ub != null) uiTex = stars.CreateOverlay(ub, out uiU, out uiV);
+                    uiVer = uv;
+                }
+            }
             float pulse = (GetPulse != null) ? GetPulse() : 0f;
             if (!stars.Begin(Width, Height, pulse)) return;
-            if (cubeTex != IntPtr.Zero) { SetTexQuad(cubeQuad, 0, 0, Width, Height, cubeU, cubeV); stars.DrawQuad(cubeTex, cubeQuad); }
+            Rectangle ar = (AlbumRect.Width > 0 && AlbumRect.Height > 0) ? AlbumRect : new Rectangle(0, 0, Width, Height);
+            if (cubeTex != IntPtr.Zero) { SetTexQuad(cubeQuad, ar.X, ar.Y, ar.Right, ar.Bottom, cubeU, cubeV); stars.DrawQuad(cubeTex, cubeQuad); }
             if (contourTex != IntPtr.Zero && GetContourRect != null)
             {
                 Rectangle r = GetContourRect();
@@ -764,6 +786,11 @@ namespace Rocola
                 if (cs.Sel.CoverB != null && cs.Sel.Fade > 0.002f)   // disco TOP: 2a portada encima con alfa = fundido
                     stars.DrawCube(selTexB, selUB, selVB, cs.Sel.X, cs.Sel.Y, cs.Sel.W, cs.Sel.H, cs.Sel.Angle, cs.Sel.Fade);
             }
+            // Barras superior e inferior (textura de UI) ENCIMA del fondo y los cubos.
+            if (uiTex != IntPtr.Zero) { SetTexQuad(uiQuad, 0, 0, Width, Height, uiU, uiV); stars.DrawQuad(uiTex, uiQuad); }
+            // Mini-cubo de la barra inferior (gira): cubo GPU, encima de la barra.
+            if (cs.Mini.Has)
+                stars.DrawCube(miniTex, miniU, miniV, cs.Mini.X, cs.Mini.Y, cs.Mini.W, cs.Mini.H, cs.Mini.Angle, 1f);
             stars.End();
             frames++;
             if (Environment.TickCount - fpsTick >= 1000) { Fps = frames; frames = 0; fpsTick = Environment.TickCount; }

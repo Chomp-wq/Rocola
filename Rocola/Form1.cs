@@ -381,6 +381,9 @@ namespace Rocola
             Graphics g = e.Graphics;
             int w = ClientSize.Width, h = ClientSize.Height;
             if (w < 2 || h < 2) { base.OnPaintBackground(e); return; }
+#if ROCOLA_GPU
+            if (gpuPanel != null && gpuPanel.Visible) return;   // el panel GPU (pantalla completa) ya cubre todo; no gastes CPU pintando el cielo detras
+#endif
             formStars.SkyOffsetY = 0; formStars.SkyFullH = h; formStars.SkyMid = SkyColorMid(bgAccent);
             formStars.DrawCached(g, w, h, SkyColor(bgAccent), SkyColor2(bgAccent));   // cielo en degradado CONTINUO; etiquetas y mini-cubo transparentes encima
         }
@@ -3058,14 +3061,19 @@ namespace Rocola
 #if ROCOLA_GPU
         private static uint ToD3D(Color c) { return 0xFF000000u | ((uint)c.R << 16) | ((uint)c.G << 8) | (uint)c.B; }
 
-        // Ctrl+F12: muestra/oculta el fondo de discos renderizado por GPU (Direct3D 9). Es un panel encima
-        // de la vista de discos; si el dispositivo no inicia, se queda en CPU (no rompe nada).
+        private bool gpuEnabled;                          // el usuario activo el modo GPU (Ctrl+F12)
+        private Bitmap uiOverlay; private int uiOverlayVer; private string uiOverlaySig;   // textura de las barras (UI)
+
+        // Ctrl+F12: activa/desactiva el render por GPU (Direct3D 9) A PANTALLA COMPLETA. El panel cubre toda
+        // la ventana y compone: fondo estrellado + cubos + barras (textura) + mini-cubo. Si el dispositivo no
+        // inicia, se queda en CPU (no rompe nada).
         private void ToggleAlbumGpu()
         {
             if (lblGpu == null)
             {
                 lblGpu = new Label();
-                lblGpu.AutoSize = false; lblGpu.Size = new Size(260, 26);
+                lblGpu.AutoSize = false; lblGpu.Size = new Size(380, 26);
+                lblGpu.Location = new Point(ClientSize.Width - 390, 46);
                 lblGpu.BackColor = Color.FromArgb(200, 0, 0, 0); lblGpu.ForeColor = Color.Yellow;
                 lblGpu.Font = new Font(FontFamily.GenericMonospace, 10f, FontStyle.Bold);
                 lblGpu.TextAlign = ContentAlignment.MiddleCenter; lblGpu.Visible = false;
@@ -3078,21 +3086,160 @@ namespace Rocola
                 gpuPanel.GetCubes = delegate { return albumView.CubeBitmap; };       // los cubos+etiquetas van ENCIMA del fondo GPU
                 gpuPanel.GetCubesVersion = delegate { return albumView.EnsureGpuCubesVersion(); };   // reconstruye los cubos si cambio la pagina (aunque venga del buscador)
                 gpuPanel.GetContour = delegate { return albumView.ContourSpriteBmp; };          // resalte de seleccion
-                gpuPanel.GetContourRect = delegate { return albumView.ContourScreenRect(); };
-                gpuPanel.GetCubeState = delegate { return albumView.BuildCubeState(); };         // cubos que giran (seleccionado + relevo): se dibujan como geometria en GPU
-                gpuPanel.Dock = DockStyle.Fill;          // cubre exactamente la vista de discos (es su hijo)
-                albumView.Controls.Add(gpuPanel);
+                gpuPanel.GetContourRect = delegate {
+                    Rectangle r = albumView.ContourScreenRect();
+                    if (r.Width > 0) r.Offset(albumView.Left, albumView.Top);   // coords de albumView -> pantalla
+                    return r;
+                };
+                gpuPanel.GetCubeState = delegate { return BuildGpuCubeState(); };   // album (offset a pantalla) + mini-cubo
+                gpuPanel.GetUi = delegate { return uiOverlay; };                    // barras superior e inferior
+                gpuPanel.GetUiVersion = delegate { return EnsureUiOverlay(); };
+                Controls.Add(gpuPanel);
             }
-            if (!gpuPanel.Visible)
+            if (!gpuEnabled)
             {
-                albumView.InvalidateCubeCache();         // fuerza reconstruir cubeCache fresco para subirlo a la GPU
-                lblGpu.Location = new Point(ClientSize.Width - 270, 46);
-                lblGpu.Text = "GPU: iniciando..."; lblGpu.Visible = true; lblGpu.BringToFront();   // feedback inmediato: la tecla SI llego
+                albumView.InvalidateCubeCache();         // cubeCache fresco para subirlo a la GPU
+                uiOverlaySig = null;                     // fuerza reconstruir la textura de UI
+                gpuPanel.AlbumRect = albumView.Bounds;
+                gpuPanel.Bounds = new Rectangle(0, 0, ClientSize.Width, ClientSize.Height);   // PANTALLA COMPLETA
                 gpuPanel.SkyTop = ToD3D(SkyColor(bgAccent)); gpuPanel.SkyBot = ToD3D(SkyColor2(bgAccent));
                 gpuPanel.Visible = true; gpuPanel.BringToFront();
-                if (!gpuPanel.StartGpu()) { gpuPanel.Visible = false; lblGpu.Text = "GPU: fallo el dispositivo (sigue CPU)"; }
+                if (gpuPanel.StartGpu()) { gpuEnabled = true; lblGpu.Visible = false; }
+                else { gpuPanel.Visible = false; lblGpu.Text = "GPU: fallo el dispositivo (sigue CPU)"; lblGpu.Visible = true; lblGpu.BringToFront(); }
             }
-            else { gpuPanel.StopGpu(); gpuPanel.Visible = false; if (lblGpu != null) lblGpu.Visible = false; }
+            else
+            {
+                gpuEnabled = false;
+                gpuPanel.StopGpu(); gpuPanel.Visible = false;
+                if (lblGpu != null) lblGpu.Visible = false;
+                Invalidate(true);   // repinta la UI normal (CPU) que estaba tapada por el panel
+            }
+        }
+
+        // Estado de los cubos que giran: album (seleccionado + relevo, pasados a coords de PANTALLA) + el
+        // mini-cubo de la barra inferior (ya en coords del form).
+        private GpuCubeState BuildGpuCubeState()
+        {
+            GpuCubeState st = albumView.BuildCubeState();
+            int ox = albumView.Left, oy = albumView.Top;
+            if (st.Sel.Has) { st.Sel.X += ox; st.Sel.Y += oy; }
+            if (st.Relay.Has) { st.Relay.X += ox; st.Relay.Y += oy; }
+            if (miniCube != null && miniCube.Visible && miniCube.Cover != null)
+            {
+                st.Mini.Has = true;
+                st.Mini.X = miniCube.Left; st.Mini.Y = miniCube.Top; st.Mini.W = miniCube.Width; st.Mini.H = miniCube.Height;
+                st.Mini.Angle = miniCube.Angle; st.Mini.CoverA = miniCube.Cover as Bitmap;
+            }
+            return st;
+        }
+
+        // Muestra/oculta el panel GPU (a pantalla completa) segun el modo: SOLO en navegacion (no en disco,
+        // video, atraccion, config ni buscador). Cubre los controles; al salir de navegacion los deja ver.
+        private void SyncGpuFullScreen()
+        {
+            if (gpuPanel == null || !gpuEnabled) return;
+            bool nav = albumView.Visible && !searchOpen && !videoOn && !attractOn && !videoFull
+                       && (lblConfig == null || !lblConfig.Visible) && (panelSongs == null || !panelSongs.Visible);
+            if (nav)
+            {
+                if (gpuPanel.Left != 0 || gpuPanel.Top != 0 || gpuPanel.Width != ClientSize.Width || gpuPanel.Height != ClientSize.Height)
+                    gpuPanel.Bounds = new Rectangle(0, 0, ClientSize.Width, ClientSize.Height);
+                gpuPanel.AlbumRect = albumView.Bounds;
+                if (!gpuPanel.Visible) { gpuPanel.Visible = true; gpuPanel.BringToFront(); }
+            }
+            else if (gpuPanel.Visible) { gpuPanel.Visible = false; Invalidate(true); }   // otro modo: deja ver los controles normales
+        }
+
+        // Reconstruye la textura de las barras (superior + inferior) SOLO si cambio algo (firma). Devuelve la version.
+        private int EnsureUiOverlay()
+        {
+            int w = ClientSize.Width, h = ClientSize.Height;
+            if (w < 8 || h < 8) return uiOverlayVer;
+            string sig = UiSig();
+            if (uiOverlay != null && uiOverlay.Width == w && uiOverlay.Height == h && sig == uiOverlaySig) return uiOverlayVer;
+            if (uiOverlay == null || uiOverlay.Width != w || uiOverlay.Height != h)
+            {
+                if (uiOverlay != null) uiOverlay.Dispose();
+                uiOverlay = new Bitmap(w, h, PixelFormat.Format32bppPArgb);
+            }
+            using (Graphics g = Graphics.FromImage(uiOverlay))
+            {
+                g.Clear(Color.Transparent);
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;   // gris: ClearType deja flecos sobre transparente
+                DrawCtrlOverlay(g, helpBar);
+                DrawCtrlOverlay(g, letterBar);
+                DrawLabelOverlay(g, lblHeader);
+                DrawLabelOverlay(g, lblStatus);
+                DrawLabelOverlay(g, lblNow);
+                DrawLabelOverlay(g, lblNext);
+                DrawLabelOverlay(g, lblTime);
+                DrawLabelOverlay(g, lblCredits);
+                DrawLabelOverlay(g, lblCount);
+                DrawCtrlOverlay(g, progress);
+                // FPS (diagnostico): caja oscura + texto amarillo arriba a la derecha (como la etiqueta original).
+                string fpsTxt = "GPU D3D9: " + (gpuPanel != null ? gpuPanel.Fps : 0) + " FPS";
+                using (Font ff = new Font(FontFamily.GenericMonospace, 9.5f, FontStyle.Bold))
+                using (SolidBrush bg = new SolidBrush(Color.FromArgb(190, 0, 0, 0)))
+                using (SolidBrush yb = new SolidBrush(Color.FromArgb(235, 245, 225, 60)))
+                {
+                    SizeF sz = g.MeasureString(fpsTxt, ff);
+                    float fx = w - sz.Width - 16, fy = 6f;
+                    g.FillRectangle(bg, fx - 6, fy - 2, sz.Width + 12, sz.Height + 4);
+                    g.DrawString(fpsTxt, ff, yb, fx, fy);
+                }
+            }
+            uiOverlaySig = sig; uiOverlayVer++;
+            return uiOverlayVer;
+        }
+
+        private string UiSig()
+        {
+            System.Text.StringBuilder sb = new System.Text.StringBuilder(160);
+            sb.Append(ClientSize.Width).Append('x').Append(ClientSize.Height);
+            if (letterBar != null) sb.Append('|').Append(letterBar.Current).Append(letterBar.Letters).Append(letterBar.Available == null ? 0 : letterBar.Available.Count);
+            if (lblHeader != null) sb.Append('|').Append(lblHeader.Text);
+            if (lblStatus != null) sb.Append('|').Append(lblStatus.Text);
+            if (lblNow != null) sb.Append('|').Append(lblNow.Text);
+            if (lblNext != null) sb.Append('|').Append(lblNext.Text);
+            if (lblTime != null) sb.Append('|').Append(lblTime.Text);
+            if (lblCredits != null) sb.Append('|').Append(lblCredits.Text);
+            if (lblCount != null) sb.Append('|').Append(lblCount.Text);
+            if (progress != null) sb.Append('|').Append((int)(progress.Value * 300)).Append(progress.Accent.ToArgb());
+            if (gpuPanel != null) sb.Append('|').Append(gpuPanel.Fps);
+            return sb.ToString();
+        }
+
+        // Dibuja un control (HelpBar/LetterBar/ProgressView) en la textura de UI, en su posicion del form.
+        private static void DrawCtrlOverlay(Graphics g, Control c)
+        {
+            if (c == null || c.Width < 1 || c.Height < 1) return;
+            System.Drawing.Drawing2D.GraphicsState st = g.Save();
+            g.TranslateTransform(c.Left, c.Top);
+            HelpBar hb = c as HelpBar;
+            if (hb != null) hb.RenderContent(g);
+            else { LetterBar lb = c as LetterBar; if (lb != null) lb.RenderContent(g);
+                   else { ProgressView pv = c as ProgressView; if (pv != null) pv.RenderContent(g); } }
+            g.Restore(st);
+        }
+
+        // Dibuja el texto de una etiqueta en la textura de UI, respetando su fuente, color, alineacion y caja.
+        private static void DrawLabelOverlay(Graphics g, Label l)
+        {
+            if (l == null || string.IsNullOrEmpty(l.Text)) return;
+            using (StringFormat sf = new StringFormat())
+            using (SolidBrush b = new SolidBrush(l.ForeColor))
+            {
+                sf.FormatFlags = StringFormatFlags.NoWrap; sf.Trimming = StringTrimming.EllipsisCharacter;
+                ContentAlignment a = l.TextAlign;
+                if ((a & (ContentAlignment.TopLeft | ContentAlignment.MiddleLeft | ContentAlignment.BottomLeft)) != 0) sf.Alignment = StringAlignment.Near;
+                else if ((a & (ContentAlignment.TopRight | ContentAlignment.MiddleRight | ContentAlignment.BottomRight)) != 0) sf.Alignment = StringAlignment.Far;
+                else sf.Alignment = StringAlignment.Center;
+                if ((a & (ContentAlignment.TopLeft | ContentAlignment.TopCenter | ContentAlignment.TopRight)) != 0) sf.LineAlignment = StringAlignment.Near;
+                else if ((a & (ContentAlignment.BottomLeft | ContentAlignment.BottomCenter | ContentAlignment.BottomRight)) != 0) sf.LineAlignment = StringAlignment.Far;
+                else sf.LineAlignment = StringAlignment.Center;
+                g.DrawString(l.Text, l.Font, b, (RectangleF)l.Bounds, sf);
+            }
         }
 #endif
 
@@ -3126,10 +3273,10 @@ namespace Rocola
             }
             albumView.BgAccent = bgAccent;
 #if ROCOLA_GPU
+            SyncGpuFullScreen();   // muestra/oculta el panel GPU (pantalla completa) segun el modo, ANTES de los returns por modo
             if (gpuPanel != null && gpuPanel.Visible)
             {
-                gpuPanel.SkyTop = ToD3D(SkyColor(bgAccent)); gpuPanel.SkyBot = ToD3D(SkyColor2(bgAccent));
-                if (lblGpu != null) lblGpu.Text = "GPU D3D9: " + gpuPanel.Fps + " FPS";
+                gpuPanel.SkyTop = ToD3D(SkyColor(bgAccent)); gpuPanel.SkyBot = ToD3D(SkyColor2(bgAccent));   // el degradado sigue al genero
             }
 #endif
             if (progress != null) progress.Accent = bgAccent;   // ESTETICA: la barra de progreso sigue el color del genero
