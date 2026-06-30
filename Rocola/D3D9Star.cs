@@ -214,6 +214,16 @@ namespace Rocola
             }
         }
 
+        // Estelas de estrellas fugaces: cuadrangulos BLANCOS con mezcla ADITIVA y SIN textura (color del vertice).
+        public void DrawShootStreaks(D3D9.Vtx[] v, int tris)
+        {
+            if (dev == IntPtr.Zero || tris <= 0) return;
+            setTex(dev, 0, IntPtr.Zero); TssDiffuse();
+            setRS(dev, D3D9.RS_ALPHABLENDENABLE, 1);
+            setRS(dev, D3D9.RS_SRCBLEND, D3D9.BLEND_SRCALPHA); setRS(dev, D3D9.RS_DESTBLEND, D3D9.BLEND_ONE);
+            Draw(v, tris);
+        }
+
         // Un cuadro texturizado (2 triangulos) con mezcla NORMAL (encima): para los cubos, etiquetas, etc.
         public void DrawTexQuad(IntPtr tex, D3D9.Vtx[] quad)
         {
@@ -321,6 +331,14 @@ namespace Rocola
         private D3D9.Vtx[] skyV = new D3D9.Vtx[6]; private D3D9.Vtx[] starV;
         private uint skyTop = 0xFF06081A, skyBot = 0xFF1A2C5A;
         private readonly int startTick = Environment.TickCount;
+        private int seed0;                                   // semilla base (el patron de cada minuto = seed0 + minuto*paso)
+        private int curMinute = int.MinValue;                // minuto del patron actual (cambia cada 60s)
+        // Estrellas FUGACES: en CPU se podian pero costaban; en GPU son un par de cuadrangulos aditivos.
+        private struct Shoot { public bool On; public float X, Y, VX, VY, Life, MaxLife; }
+        private readonly Shoot[] shoots = new Shoot[2];
+        private D3D9.Vtx[] shootV = new D3D9.Vtx[2 * 12];    // 2 fugaces x (estela 6 + cabeza 6) vertices
+        private int nextShoot, lastShootTick;
+        private readonly Random srnd = new Random();
 
         public bool Ok { get { return gpu != null && gpu.Ok; } }
         public int Count { get { return nStars; } }
@@ -329,6 +347,7 @@ namespace Rocola
         {
             gpu = new D3D9Device(hwnd, w, h);
             if (!gpu.Ok) return;
+            seed0 = seed;
             using (Bitmap tex = BakeStarTexture(64)) glowTex = gpu.CreateTextureFromBitmap(tex);
             BuildStars(w, h, seed);
         }
@@ -345,22 +364,90 @@ namespace Rocola
         {
             if (!Ok) return false;
             if (!gpu.BeginFrame()) return false;
-            float t = (Environment.TickCount - startTick) / 1000f;
+            int nowMs = Environment.TickCount;
+            float t = (nowMs - startTick) / 1000f;
+
+            // PATRON que cambia cada minuto. En la rocola por CPU costaba (re-hornear ~120 estrellas); por GPU
+            // basta re-sortear posiciones. Se hace un fundido suave para que el cambio no salte de golpe.
+            int minute = (int)(t / 60f);
+            if (minute != curMinute)
+            {
+                if (curMinute != int.MinValue) BuildStars(w, h, unchecked(seed0 + minute * 40503));   // nuevo patron (no en el 1er cuadro: ya se construyo)
+                curMinute = minute;
+            }
+            float secInto = t - minute * 60f;            // 0..60
+            float fw = 0.9f, fade = 1f;                  // ventana de fundido a cada lado del cambio
+            if (secInto > 60f - fw) fade = (60f - secInto) / fw;   // se apaga antes del cambio
+            else if (secInto < fw) fade = secInto / fw;            // y vuelve despues
+            if (fade < 0f) fade = 0f; else if (fade > 1f) fade = 1f;
+
             SetQuad(skyV, 0, 0, 0, w, h, skyTop, skyTop, skyBot, skyBot);
             int vi = 0;
             for (int i = 0; i < nStars; i++)
             {
                 double tw = 0.45 + 0.55 * (0.5 + 0.5 * Math.Sin(t * sspeed[i] + sphase[i]));
-                uint a = (uint)(tw * 255); if (a > 255) a = 255;
-                uint c = (a << 24) | (scol[i] & 0x00FFFFFF);             // alfa = brillo (titileo); rgb = color
+                uint a = (uint)(tw * fade * 255); if (a > 255) a = 255;
+                uint c = (a << 24) | (scol[i] & 0x00FFFFFF);             // alfa = brillo (titileo * fundido de patron); rgb = color
                 float s = ssize[i];
                 if (skind[i] != 0 && pulse > 0.02f) s += pulse * (skind[i] == 2 ? 9f : 5f);   // latido: medianas/grandes crecen con la musica
                 SetQuad(starV, vi, sx[i] - s, sy[i] - s, sx[i] + s, sy[i] + s, c, c, c, c);
                 vi += 6;
             }
             gpu.DrawSkyStars(skyV, starV, nStars * 2, glowTex);
+            UpdateAndDrawShoots(w, h, nowMs);
             return true;
         }
+
+        // Estrellas FUGACES: una cada 7-16s, desde arriba-izquierda hacia abajo-derecha, con estela que se
+        // apaga. Igual logica que el render por CPU (DrawShoots), pero dibujada como cuadrangulos aditivos.
+        private void UpdateAndDrawShoots(int w, int h, int nowMs)
+        {
+            if (lastShootTick == 0) { lastShootTick = nowMs; nextShoot = nowMs + 4000 + srnd.Next(8000); return; }   // 1er cuadro: agenda la 1a, sin saltos
+            float dt = (nowMs - lastShootTick) / 1000f;
+            if (dt < 0f) dt = 0f; if (dt > 0.12f) dt = 0.12f;   // acota saltos
+            lastShootTick = nowMs;
+
+            if (nowMs >= nextShoot)
+            {
+                nextShoot = nowMs + 7000 + srnd.Next(9000);   // una cada 7-16s
+                for (int i = 0; i < shoots.Length; i++)
+                    if (!shoots[i].On)
+                    {
+                        shoots[i].On = true;
+                        shoots[i].X = (float)(srnd.NextDouble() * w * 0.55);
+                        shoots[i].Y = (float)(srnd.NextDouble() * h * 0.45);
+                        float spd = (w + h) * 0.55f;
+                        shoots[i].VX = spd; shoots[i].VY = spd * (0.35f + (float)srnd.NextDouble() * 0.30f);
+                        shoots[i].MaxLife = 1.0f + (float)srnd.NextDouble() * 0.5f; shoots[i].Life = shoots[i].MaxLife;
+                        break;
+                    }
+            }
+            int vi = 0;
+            for (int i = 0; i < shoots.Length; i++)
+            {
+                if (!shoots[i].On) continue;
+                Shoot s = shoots[i];
+                float k = s.Life / s.MaxLife; if (k < 0f) k = 0f;
+                uint la = (uint)(230 * k); if (la > 255) la = 255;
+                float tailX = s.X - s.VX * 0.10f, tailY = s.Y - s.VY * 0.10f;   // estela corta
+                float len = (float)Math.Sqrt(s.VX * s.VX + s.VY * s.VY);
+                float nx = (len > 0.001f) ? s.VX / len : 1f, ny = (len > 0.001f) ? s.VY / len : 0f;
+                float px = -ny * 1.3f, py = nx * 1.3f;   // perpendicular (medio ancho ~1.3px)
+                uint headC = (la << 24) | 0x00FFFFFF, tailC = 0x00FFFFFF;   // estela: brillante en cabeza -> transparente en cola
+                VShoot(shootV, vi + 0, s.X + px, s.Y + py, headC); VShoot(shootV, vi + 1, s.X - px, s.Y - py, headC); VShoot(shootV, vi + 2, tailX - px, tailY - py, tailC);
+                VShoot(shootV, vi + 3, s.X + px, s.Y + py, headC); VShoot(shootV, vi + 4, tailX - px, tailY - py, tailC); VShoot(shootV, vi + 5, tailX + px, tailY + py, tailC);
+                vi += 6;
+                uint hc = (Math.Min(255u, la + 40u) << 24) | 0x00FFFFFF; float hs = 1.8f;   // cabeza: cuadrito brillante
+                VShoot(shootV, vi + 0, s.X - hs, s.Y - hs, hc); VShoot(shootV, vi + 1, s.X + hs, s.Y - hs, hc); VShoot(shootV, vi + 2, s.X + hs, s.Y + hs, hc);
+                VShoot(shootV, vi + 3, s.X - hs, s.Y - hs, hc); VShoot(shootV, vi + 4, s.X + hs, s.Y + hs, hc); VShoot(shootV, vi + 5, s.X - hs, s.Y + hs, hc);
+                vi += 6;
+                s.X += s.VX * dt; s.Y += s.VY * dt; s.Life -= dt;
+                if (s.Life <= 0f || s.X > w + 60 || s.Y > h + 60) s.On = false;
+                shoots[i] = s;
+            }
+            if (vi > 0) gpu.DrawShootStreaks(shootV, vi / 3);
+        }
+        private static void VShoot(D3D9.Vtx[] v, int o, float x, float y, uint c) { v[o].X = x; v[o].Y = y; v[o].Z = 0f; v[o].Rhw = 1f; v[o].Color = c; v[o].U = 0f; v[o].V = 0f; }
         public void DrawQuad(IntPtr tex, D3D9.Vtx[] quad) { if (Ok) gpu.DrawTexQuad(tex, quad); }
         public void End() { if (Ok) gpu.EndFrame(); }
 
