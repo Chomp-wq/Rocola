@@ -4925,6 +4925,20 @@ namespace Rocola
             public string ToastMsg = "";
             public Color ToastBack = Color.FromArgb(238, 40, 165, 90);
             private Rectangle cubeRect = Rectangle.Empty;
+            public double PreviewAngle { get { return CubeAngle; } }   // angulo del cubo de vista previa (lo dibuja la GPU)
+            // Calcula EN VIVO el cubo de vista previa (celda + par de portadas a fundir) para que la GPU lo
+            // dibuje como geometria. Devuelve false si no hay cubo de vista previa visible ahora.
+            public bool GetPreviewCube(out Rectangle area, out Image ca, out Image cb, out float f)
+            {
+                area = Rectangle.Empty; ca = null; cb = null; f = 0f;
+                int W = Width, H = Height;
+                if (W < 60 || H < 60) return false;
+                if (!(FocusResults && Results != null && Results.Count > 0 && GetCover != null)) return false;
+                int M = 30, contentY = M + 70 + 28, contentH = H - contentY - M;
+                if (contentH < 60) return false;
+                int kbW = (int)((W - 2 * M) * 0.52);
+                return ComputePreview(new Rectangle(M, contentY, kbW, contentH), out ca, out cb, out f, out area);
+            }
             private readonly List<Image> artistCovers = new List<Image>();
             private Bitmap blendBmp;
             private Starfield stars = new Starfield();   // fondo estrellado reactivo al genero
@@ -5077,16 +5091,22 @@ namespace Rocola
                 base.OnMouseClick(e);
             }
 
-            protected override void OnPaint(PaintEventArgs e)
+            protected override void OnPaint(PaintEventArgs e) { RenderContent(e.Graphics, e.ClipRectangle, false); }
+
+            // Dibuja el buscador en cualquier Graphics. forGpu=true: NO pinta el starfield ni el cubo de vista
+            // previa (los pone la GPU: starfield de fondo + cubo como geometria); aqui solo la UI (transparente).
+            public void RenderContent(Graphics g, Rectangle clip, bool forGpu)
             {
-                Graphics g = e.Graphics;
                 int W = Width, H = Height;
                 if (W < 60 || H < 60) return;
                 g.SmoothingMode = SmoothingMode.AntiAlias;
-                Rectangle clip = e.ClipRectangle;
+                if (forGpu) clip = new Rectangle(0, 0, W, H);
 
-                stars.SkyOffsetY = this.Top; stars.SkyFullH = (this.Parent != null) ? this.Parent.ClientSize.Height : H; stars.SkyMid = SkyColorMid(Accent);
-                stars.Draw(g, W, H, SkyColor(Accent), SkyColor2(Accent), Accent, Phase, true, AudioPulse);   // mismo fondo en degradado CONTINUO que el resto + late con la musica
+                if (!forGpu)
+                {
+                    stars.SkyOffsetY = this.Top; stars.SkyFullH = (this.Parent != null) ? this.Parent.ClientSize.Height : H; stars.SkyMid = SkyColorMid(Accent);
+                    stars.Draw(g, W, H, SkyColor(Accent), SkyColor2(Accent), Accent, Phase, true, AudioPulse);   // mismo fondo en degradado CONTINUO que el resto + late con la musica
+                }
 
                 int M = 30;
                 Rectangle qb = new Rectangle(M, M, W - 2 * M, 70);
@@ -5128,7 +5148,12 @@ namespace Rocola
                 bool showCube = FocusResults && Results != null && Results.Count > 0 && GetCover != null;
                 if (showCube)
                 {
-                    if (kbRegion.IntersectsWith(clip)) DrawPreviewCube(g, kbRegion);
+                    if (forGpu)
+                    {
+                        Image ca, cb; float f; Rectangle area;
+                        if (ComputePreview(kbRegion, out ca, out cb, out f, out area)) DrawPreviewInfo(g, kbRegion, area);   // el cubo lo dibuja la GPU; aqui solo el texto/ayuda
+                    }
+                    else if (kbRegion.IntersectsWith(clip)) DrawPreviewCube(g, kbRegion);
                 }
                 else
                 {
@@ -5329,17 +5354,19 @@ namespace Rocola
                 return blendBmp;
             }
 
-            private void DrawPreviewCube(Graphics g, Rectangle region)
+            // Calcula la(s) portada(s) y la celda del cubo de vista previa (sin dibujarlo). ca/cb/f = par a
+            // fundir (discos TOP/artista con varias portadas). Devuelve false si no hay nada que mostrar.
+            private bool ComputePreview(Rectangle region, out Image ca, out Image cb, out float f, out Rectangle area)
             {
+                ca = null; cb = null; f = 0f; area = Rectangle.Empty;
                 int n = (Results != null) ? Results.Count : 0;
-                if (n == 0 || SelResult < 0 || SelResult >= n) { cubeRect = Rectangle.Empty; return; }
+                if (n == 0 || SelResult < 0 || SelResult >= n) { cubeRect = Rectangle.Empty; return false; }
                 SearchItem it = Results[SelResult];
-                Image cover;
                 if (it.Kind == 0)
                 {
                     List<Image> cov = EnsureArtistCovers(it);
-                    if (cov.Count == 0) cover = (GetCover != null && it.AlbumRef != null) ? GetCover(it.AlbumRef) : null;
-                    else if (cov.Count == 1) cover = cov[0];
+                    if (cov.Count == 0) ca = (GetCover != null && it.AlbumRef != null) ? GetCover(it.AlbumRef) : null;
+                    else if (cov.Count == 1) ca = cov[0];
                     else
                     {
                         double cyc = 3.8, hold = 2.6;   // ~3.2s por caratula, funde ~1s
@@ -5348,25 +5375,41 @@ namespace Rocola
                         double pos = Phase - Math.Floor(Phase / total) * total;
                         int idx = (int)(pos / cyc) % m;
                         double within = pos - idx * cyc;
-                        float f = 0f;
-                        if (within > hold) f = (float)((within - hold) / (cyc - hold));
-                        if (f < 0f) f = 0f; else if (f > 1f) f = 1f;
-                        cover = (f <= 0.002f) ? cov[idx] : BlendInto(cov[idx], cov[(idx + 1) % m], f);
+                        float ff = 0f;
+                        if (within > hold) ff = (float)((within - hold) / (cyc - hold));
+                        if (ff < 0f) ff = 0f; else if (ff > 1f) ff = 1f;
+                        ca = cov[idx]; cb = cov[(idx + 1) % m]; f = ff;
                     }
                 }
-                else cover = (GetCover != null && it.AlbumRef != null) ? GetCover(it.AlbumRef) : null;
+                else ca = (GetCover != null && it.AlbumRef != null) ? GetCover(it.AlbumRef) : null;
 
                 int side = (int)(Math.Min(region.Width, region.Height) * 0.62);
                 if (side < 40) side = 40;
                 int cx = region.X + region.Width / 2;
                 int top = region.Y + (region.Height - side) / 2 - 24;
                 if (top < region.Y + 6) top = region.Y + 6;
-                Rectangle area = new Rectangle(cx - side / 2, top, side, side);
+                area = new Rectangle(cx - side / 2, top, side, side);
                 cubeRect = area;
+                return true;
+            }
 
+            // CPU: dibuja el cubo de vista previa (girando) + su texto.
+            private void DrawPreviewCube(Graphics g, Rectangle region)
+            {
+                Image ca, cb; float f; Rectangle area;
+                if (!ComputePreview(region, out ca, out cb, out f, out area)) return;
+                Image cover = (cb == null || f <= 0.002f) ? ca : BlendInto(ca, cb, f);
                 g.InterpolationMode = InterpolationMode.Bilinear;
                 Cube.Draw(g, area, cover, CubeAngle);
+                DrawPreviewInfo(g, region, area);
+            }
 
+            // Texto de la vista previa (titulo, subtitulo y ayuda) debajo del cubo. Comun a CPU y GPU.
+            private void DrawPreviewInfo(Graphics g, Rectangle region, Rectangle area)
+            {
+                int n = (Results != null) ? Results.Count : 0;
+                if (SelResult < 0 || SelResult >= n) return;
+                SearchItem it = Results[SelResult];
                 string title, sub;
                 if (it.Kind == 1) { title = (it.AlbumRef != null) ? it.AlbumRef.Name : it.Display; sub = (it.AlbumRef != null) ? it.AlbumRef.Artist : ""; }
                 else if (it.Kind == 2 && it.TrackRef != null) { title = it.TrackRef.Title; sub = it.TrackRef.Artist + ((it.AlbumRef != null) ? "   -   " + it.AlbumRef.Name : ""); }
