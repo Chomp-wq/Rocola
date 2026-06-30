@@ -660,6 +660,7 @@ namespace Rocola
         private IntPtr uiTex; private int uiVer = -1; private float uiU = 1f, uiV = 1f;
         private readonly D3D9.Vtx[] uiQuad = new D3D9.Vtx[6];
         public Rectangle AlbumRect;                       // donde van los cubos del album (coords del panel = pantalla); el form la fija
+        public bool ShowAlbum = true;                     // navegacion: dibuja la rejilla de cubos + contorno. Buscador: false (lo cubre el buscador)
         public Func<Bitmap> GetUi;                        // bitmap transparente con las barras (lo provee el form)
         public Func<int> GetUiVersion;                    // cambia cuando alguna barra cambia (re-subir textura)
         public int Fps;                                   // cuadros por segundo (para mostrar mientras integramos)
@@ -775,8 +776,8 @@ namespace Rocola
             float pulse = (GetPulse != null) ? GetPulse() : 0f;
             if (!stars.Begin(Width, Height, pulse)) return;
             Rectangle ar = (AlbumRect.Width > 0 && AlbumRect.Height > 0) ? AlbumRect : new Rectangle(0, 0, Width, Height);
-            if (cubeTex != IntPtr.Zero) { SetTexQuad(cubeQuad, ar.X, ar.Y, ar.Right, ar.Bottom, cubeU, cubeV); stars.DrawQuad(cubeTex, cubeQuad); }
-            if (contourTex != IntPtr.Zero && GetContourRect != null)
+            if (ShowAlbum && cubeTex != IntPtr.Zero) { SetTexQuad(cubeQuad, ar.X, ar.Y, ar.Right, ar.Bottom, cubeU, cubeV); stars.DrawQuad(cubeTex, cubeQuad); }
+            if (ShowAlbum && contourTex != IntPtr.Zero && GetContourRect != null)
             {
                 Rectangle r = GetContourRect();
                 if (r.Width > 0 && r.Height > 0) { SetTexQuad(contourQuad, r.X, r.Y, r.X + r.Width, r.Y + r.Height, contU, contV); stars.DrawQuad(contourTex, contourQuad); }

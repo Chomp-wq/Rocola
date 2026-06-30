@@ -3116,15 +3116,30 @@ namespace Rocola
             }
         }
 
-        // Estado de los cubos que giran: album (seleccionado + relevo, pasados a coords de PANTALLA) + el
-        // mini-cubo de la barra inferior (ya en coords del form).
+        // Estado de los cubos que giran (en coords de PANTALLA). En navegacion: album (seleccionado + relevo).
+        // En el buscador: el cubo de vista previa. El mini-cubo de la barra inferior es comun a ambos.
         private GpuCubeState BuildGpuCubeState()
         {
-            GpuCubeState st = albumView.BuildCubeState();
-            int ox = albumView.Left, oy = albumView.Top;
-            if (st.Sel.Has) { st.Sel.X += ox; st.Sel.Y += oy; }
-            if (st.Relay.Has) { st.Relay.X += ox; st.Relay.Y += oy; }
-            if (miniCube != null && miniCube.Visible && miniCube.Cover != null)
+            GpuCubeState st;
+            if (searchOpen && searchOverlay != null)
+            {
+                st = new GpuCubeState();
+                Rectangle area; Image ca, cb; float f;
+                if (searchOverlay.GetPreviewCube(out area, out ca, out cb, out f))
+                {
+                    area.Offset(searchOverlay.Left, searchOverlay.Top);   // coords del buscador -> pantalla
+                    st.Sel.Has = true; st.Sel.X = area.X; st.Sel.Y = area.Y; st.Sel.W = area.Width; st.Sel.H = area.Height;
+                    st.Sel.Angle = searchOverlay.PreviewAngle; st.Sel.CoverA = ca as Bitmap; st.Sel.CoverB = cb as Bitmap; st.Sel.Fade = f;
+                }
+            }
+            else
+            {
+                st = albumView.BuildCubeState();
+                int ox = albumView.Left, oy = albumView.Top;
+                if (st.Sel.Has) { st.Sel.X += ox; st.Sel.Y += oy; }
+                if (st.Relay.Has) { st.Relay.X += ox; st.Relay.Y += oy; }
+            }
+            if (miniCube != null && miniCube.Visible && miniCube.Cover != null)   // mini-cubo (barra inferior): comun
             {
                 st.Mini.Has = true;
                 st.Mini.X = miniCube.Left; st.Mini.Y = miniCube.Top; st.Mini.W = miniCube.Width; st.Mini.H = miniCube.Height;
@@ -3133,18 +3148,20 @@ namespace Rocola
             return st;
         }
 
-        // Muestra/oculta el panel GPU (a pantalla completa) segun el modo: SOLO en navegacion (no en disco,
-        // video, atraccion, config ni buscador). Cubre los controles; al salir de navegacion los deja ver.
+        // Muestra/oculta el panel GPU (a pantalla completa) segun el modo: en NAVEGACION y en el BUSCADOR
+        // (ambos se componen por GPU). En disco/video/atraccion/config se oculta y deja ver los controles CPU.
         private void SyncGpuFullScreen()
         {
             if (gpuPanel == null || !gpuEnabled) return;
-            bool nav = albumView.Visible && !searchOpen && !videoOn && !attractOn && !videoFull
-                       && (lblConfig == null || !lblConfig.Visible) && (panelSongs == null || !panelSongs.Visible);
-            if (nav)
+            bool noModal = !videoOn && !videoFull && !attractOn && (lblConfig == null || !lblConfig.Visible) && (panelSongs == null || !panelSongs.Visible);
+            bool nav = albumView.Visible && !searchOpen && noModal;
+            bool search = searchOpen && noModal;
+            if (nav || search)
             {
                 if (gpuPanel.Left != 0 || gpuPanel.Top != 0 || gpuPanel.Width != ClientSize.Width || gpuPanel.Height != ClientSize.Height)
                     gpuPanel.Bounds = new Rectangle(0, 0, ClientSize.Width, ClientSize.Height);
                 gpuPanel.AlbumRect = albumView.Bounds;
+                gpuPanel.ShowAlbum = nav;   // en el buscador NO se dibuja la rejilla de cubos (la cubre el buscador)
                 if (!gpuPanel.Visible) { gpuPanel.Visible = true; gpuPanel.BringToFront(); }
             }
             else if (gpuPanel.Visible) { gpuPanel.Visible = false; Invalidate(true); }   // otro modo: deja ver los controles normales
@@ -3167,10 +3184,20 @@ namespace Rocola
                 g.Clear(Color.Transparent);
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;   // gris: ClearType deja flecos sobre transparente
-                DrawCtrlOverlay(g, helpBar);
-                DrawCtrlOverlay(g, letterBar);
-                DrawLabelOverlay(g, lblHeader);
-                DrawLabelOverlay(g, lblStatus);
+                if (searchOpen && searchOverlay != null)
+                {
+                    System.Drawing.Drawing2D.GraphicsState gs = g.Save();   // parte superior = BUSCADOR (su UI sin starfield ni cubo)
+                    g.TranslateTransform(searchOverlay.Left, searchOverlay.Top);
+                    searchOverlay.RenderContent(g, new Rectangle(0, 0, searchOverlay.Width, searchOverlay.Height), true);
+                    g.Restore(gs);
+                }
+                else
+                {
+                    DrawCtrlOverlay(g, helpBar);
+                    DrawCtrlOverlay(g, letterBar);
+                    DrawLabelOverlay(g, lblHeader);
+                    DrawLabelOverlay(g, lblStatus);
+                }
                 DrawLabelOverlay(g, lblNow);
                 DrawLabelOverlay(g, lblNext);
                 DrawLabelOverlay(g, lblTime);
@@ -3195,11 +3222,17 @@ namespace Rocola
 
         private string UiSig()
         {
-            System.Text.StringBuilder sb = new System.Text.StringBuilder(160);
+            System.Text.StringBuilder sb = new System.Text.StringBuilder(192);
             sb.Append(ClientSize.Width).Append('x').Append(ClientSize.Height);
-            if (letterBar != null) sb.Append('|').Append(letterBar.Current).Append(letterBar.Letters).Append(letterBar.Available == null ? 0 : letterBar.Available.Count);
-            if (lblHeader != null) sb.Append('|').Append(lblHeader.Text);
-            if (lblStatus != null) sb.Append('|').Append(lblStatus.Text);
+            if (searchOpen && searchOverlay != null)   // parte superior = buscador
+                sb.Append("|S").Append(searchOverlay.Query).Append('|').Append(searchOverlay.SelRow).Append(',').Append(searchOverlay.SelCol)
+                  .Append('|').Append(searchOverlay.FocusResults).Append(searchOverlay.SelResult)
+                  .Append('|').Append(searchOverlay.Results == null ? 0 : searchOverlay.Results.Count)
+                  .Append('|').Append(searchOverlay.ToastOn).Append(searchOverlay.ToastMsg)
+                  .Append('|').Append(Math.Sin(searchOverlay.Phase * 3.0) > 0 ? 1 : 0);   // parpadeo del cursor
+            else if (letterBar != null)                // parte superior = navegacion (A-Z + encabezado)
+                sb.Append("|N").Append(letterBar.Current).Append(letterBar.Letters).Append(letterBar.Available == null ? 0 : letterBar.Available.Count)
+                  .Append('|').Append(lblHeader != null ? lblHeader.Text : "").Append('|').Append(lblStatus != null ? lblStatus.Text : "");
             if (lblNow != null) sb.Append('|').Append(lblNow.Text);
             if (lblNext != null) sb.Append('|').Append(lblNext.Text);
             if (lblTime != null) sb.Append('|').Append(lblTime.Text);
