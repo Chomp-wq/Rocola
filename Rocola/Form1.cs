@@ -87,7 +87,6 @@ namespace Rocola
         private SongPagerBar songPager;                        // barra "pagina X de Y" con flechas, arriba de la lista
         private List<object> songItems = new List<object>();   // TODAS las canciones/videos del disco abierto
         private int songSel = 0;                               // seleccion global (entre todas las paginas)
-        private bool fillingSongs = false;                     // evita reentradas al llenar la lista
         private readonly List<PlayItem> queue = new List<PlayItem>();
         private PlayItem nowPlaying;
 
@@ -5125,7 +5124,7 @@ namespace Rocola
             public Action<int> OnPick;          // click simple: fija la seleccion
 
             private SolidBrush hlB; private Pen hlP;
-            private SolidBrush txtB; private StringFormat txtFmt;
+            private SolidBrush txtB; private StringFormat txtFmt; private SolidBrush bgB;
 
             public SongListView()
             {
@@ -5156,7 +5155,8 @@ namespace Rocola
                     txtFmt.Alignment = StringAlignment.Near;
                     txtFmt.LineAlignment = StringAlignment.Center;
                 }
-                using (SolidBrush bg = new SolidBrush(BackColor)) g.FillRectangle(bg, 0, 0, w, h);
+                if (bgB == null) bgB = new SolidBrush(BackColor); else bgB.Color = BackColor;
+                g.FillRectangle(bgB, 0, 0, w, h);
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 for (int row = 0; row < rpp; row++)
                 {
