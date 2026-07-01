@@ -2045,11 +2045,11 @@ namespace Rocola
 #if ROCOLA_GPU
             if (keyData == Keys.F12) { GpuTestWindow.Toggle(); return true; }   // F12 = ventana de prueba del render por GPU (Direct3D 9)
             if (keyData == (Keys.Control | Keys.F12)) { ToggleAlbumGpu(); return true; }   // Ctrl+F12 = fondo de discos por GPU (experimental)
-            if (keyData == (Keys.Control | Keys.F11))   // Ctrl+F11 = DIAGNOSTICO: probar el interior de disco por GPU (por defecto se compone por CPU)
+            if (keyData == (Keys.Control | Keys.F11))   // Ctrl+F11 = alterna el interior de disco entre GPU (por defecto) y CPU (valvula de escape)
             {
                 gpuDiscTry = !gpuDiscTry;
                 uiOverlaySig = null;   // fuerza rehacer la textura de UI
-                if (lblStatus != null) lblStatus.Text = "Interior de disco por " + (gpuDiscTry ? "GPU (prueba)" : "CPU");
+                if (lblStatus != null) lblStatus.Text = "Interior de disco por " + (gpuDiscTry ? "GPU" : "CPU");
                 SyncGpuFullScreen(); Invalidate(true);
                 return true;
             }
@@ -3006,7 +3006,7 @@ namespace Rocola
         private static uint ToD3D(Color c) { return 0xFF000000u | ((uint)c.R << 16) | ((uint)c.G << 8) | (uint)c.B; }
 
         private bool gpuEnabled;                          // el usuario activo el modo GPU (Ctrl+F12)
-        private bool gpuDiscTry;                          // DIAGNOSTICO (Ctrl+F11): probar el interior de disco por GPU. Por defecto OFF = interior por CPU (que funciona)
+        private bool gpuDiscTry = true;                   // interior de disco por GPU (por defecto). Ctrl+F11 lo alterna a CPU como valvula de escape
         private Bitmap uiOverlay; private int uiOverlayVer; private string uiOverlaySig;   // textura de las barras (UI)
 
         // Ctrl+F12: activa/desactiva el render por GPU (Direct3D 9) A PANTALLA COMPLETA. El panel cubre toda
@@ -3112,9 +3112,10 @@ namespace Rocola
             bool disc = panelSongs != null && panelSongs.Visible;
             bool nav = albumView.Visible && !searchOpen && !disc && noBlock;
             bool search = searchOpen && noBlock;
-            // Interior de disco: por defecto se compone por CPU (el panel GPU se oculta), porque la composicion
-            // GPU del interior tenia un bug de posicion de la lista que no pude aislar sin ejecutar. Ctrl+F11
-            // (gpuDiscTry) reactiva la via GPU del interior SOLO para diagnosticarla. Navegacion y buscador van por GPU.
+            // Interior de disco por GPU (por defecto). El bug de la lista era que RenderContent usaba
+            // TextRenderer (GDI), que ignora la traslacion del Graphics: sobre la textura de UI (trasladada
+            // a la posicion del panel) el texto caia en 0,0. Ya usa DrawString (GDI+), que la respeta.
+            // Ctrl+F11 (gpuDiscTry) alterna a CPU como valvula de escape. Navegacion y buscador van por GPU.
             bool discGpu = disc && gpuDiscTry && !searchOpen && noBlock;
             if (nav || search || discGpu)
             {
@@ -3159,20 +3160,6 @@ namespace Rocola
                     DrawCtrlOverlay(g, songList);
                     if (songPager != null && songPager.Visible) DrawCtrlOverlay(g, songPager);
                     g.Restore(gs);
-                    // DIAGNOSTICO (Ctrl+F11): vuelca las cajas reales que usa el compositor para ver donde cae la lista.
-                    string dbg = "panelSongs=" + panelSongs.Bounds
-                        + "  songList=" + songList.Bounds + " client=" + songList.ClientSize
-                        + "  pager=" + (songPager != null ? songPager.Bounds.ToString() + "/" + songPager.Visible : "null")
-                        + "\nitems=" + songItems.Count + " sel=" + songSel + " pageStart=" + (songList != null ? songList.PageStart : -1)
-                        + " rpp=" + (songList != null ? songList.RowsPerPage : -1) + " rowH=" + (songList != null ? songList.RowH : -1);
-                    using (Font df = new Font(FontFamily.GenericMonospace, 9f, FontStyle.Bold))
-                    using (SolidBrush dbgBg = new SolidBrush(Color.FromArgb(210, 0, 0, 0)))
-                    using (SolidBrush dbgFg = new SolidBrush(Color.FromArgb(255, 120, 255, 120)))
-                    {
-                        SizeF dz = g.MeasureString(dbg, df);
-                        g.FillRectangle(dbgBg, 8, 60, dz.Width + 10, dz.Height + 8);
-                        g.DrawString(dbg, df, dbgFg, 12, 64);
-                    }
                 }
                 else
                 {
@@ -4931,6 +4918,7 @@ namespace Rocola
             public Action<int> OnPick;          // click simple: fija la seleccion
 
             private SolidBrush hlB; private Pen hlP;
+            private SolidBrush txtB; private StringFormat txtFmt;
 
             public SongListView()
             {
@@ -4952,6 +4940,15 @@ namespace Rocola
                 int n = (GetCount != null) ? GetCount() : 0;
                 int rpp = RowsPerPage;
                 if (hlB == null) { hlB = new SolidBrush(Color.Black); hlP = new Pen(Color.Black, 1.4f); }
+                if (txtB == null)
+                {   // GDI+ (DrawString), NO TextRenderer: TextRenderer usa GDI e IGNORA la traslacion del Graphics,
+                    txtB = new SolidBrush(Color.White);   // asi que sobre la textura de UI (trasladada) el texto caia en 0,0
+                    txtFmt = new StringFormat();
+                    txtFmt.FormatFlags = StringFormatFlags.NoWrap;
+                    txtFmt.Trimming = StringTrimming.EllipsisCharacter;
+                    txtFmt.Alignment = StringAlignment.Near;
+                    txtFmt.LineAlignment = StringAlignment.Center;
+                }
                 using (SolidBrush bg = new SolidBrush(BackColor)) g.FillRectangle(bg, 0, 0, w, h);
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 for (int row = 0; row < rpp; row++)
@@ -4968,7 +4965,7 @@ namespace Rocola
                     }
                     Rectangle tr = new Rectangle(r.X + 16, r.Y, r.Width - 22, r.Height);
                     string text = (GetText != null) ? GetText(idx) : "";
-                    TextRenderer.DrawText(g, text, Font, tr, Color.White, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+                    g.DrawString(text, Font, txtB, tr, txtFmt);   // GDI+: respeta la traslacion del Graphics (en el control es identidad; en la textura de UI lleva la lista a su sitio)
                 }
             }
 
