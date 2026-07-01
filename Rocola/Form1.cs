@@ -3083,8 +3083,7 @@ namespace Rocola
                 if (cubeBox.Cover != null)   // el cubo GRANDE del interior (gira); coords de panelSongs -> pantalla
                 {
                     st.Sel.Has = true;
-                    st.Sel.X = panelSongs.Left + cubeBox.Left; st.Sel.Y = panelSongs.Top + cubeBox.Top; st.Sel.W = cubeBox.Width; st.Sel.H = cubeBox.Height;
-                    st.Sel.Angle = cubeBox.Angle; st.Sel.CoverA = cubeBox.Cover as Bitmap;
+                    FillCubeBoxGeom(ref st.Sel, cubeBox, panelSongs.Left + cubeBox.Left, panelSongs.Top + cubeBox.Top);
                 }
             }
             else
@@ -3097,10 +3096,24 @@ namespace Rocola
             if (miniCube != null && miniCube.Visible && miniCube.Cover != null)   // mini-cubo (barra inferior): comun
             {
                 st.Mini.Has = true;
-                st.Mini.X = miniCube.Left; st.Mini.Y = miniCube.Top; st.Mini.W = miniCube.Width; st.Mini.H = miniCube.Height;
-                st.Mini.Angle = miniCube.Angle; st.Mini.CoverA = miniCube.Cover as Bitmap;
+                FillCubeBoxGeom(ref st.Mini, miniCube, miniCube.Left, miniCube.Top);
             }
             return st;
+        }
+
+        // Encuadre + bamboleo de un CubeBox (grande o mini) para que el cubo por GPU COINCIDA con el de CPU:
+        // CubeBox.OnPaint dibuja el cubo al 78% del control (centrado) y lo inclina +/-10 grados segun Phase.
+        // Sin esto el cubo por GPU salia mas grande (100% del control) y sin el bamboleo (giro plano).
+        private static void FillCubeBoxGeom(ref GpuCubeInfo info, CubeBox cb, int screenX, int screenY)
+        {
+            int side = (int)(Math.Min(cb.Width, cb.Height) * 0.78);
+            if (side < 1) side = 1;
+            info.X = screenX + (cb.Width - side) / 2;
+            info.Y = screenY + (cb.Height - side) / 2;
+            info.W = side; info.H = side;
+            info.Angle = cb.Angle;
+            info.CoverA = cb.Cover as Bitmap;
+            info.Tilt = (float)(10.0 * Math.Sin(cb.Phase * 0.9) * Math.PI / 180.0);   // mismo bamboleo que CubeBox.OnPaint
         }
 
         // Muestra/oculta el panel GPU (a pantalla completa) segun el modo: en NAVEGACION y en el BUSCADOR
@@ -3205,7 +3218,8 @@ namespace Rocola
                   .Append('|').Append(songList != null ? songList.PageStart : 0).Append('|').Append(bgAccent.ToArgb());
             else if (letterBar != null)                // parte superior = navegacion (A-Z + encabezado)
                 sb.Append("|N").Append(letterBar.Current).Append(letterBar.Letters).Append(letterBar.Available == null ? 0 : letterBar.Available.Count)
-                  .Append('|').Append(lblHeader != null ? lblHeader.Text : "").Append('|').Append(lblStatus != null ? lblStatus.Text : "");
+                  .Append('|').Append(lblHeader != null ? lblHeader.Text : "").Append('|').Append(lblStatus != null ? lblStatus.Text : "")
+                  .Append('|').Append((int)(letterBar.Phase * 13));   // fase cuantizada (~13fps): anima el resplandor de la letra actual y el marcador TOP sin rehacer la textura cada cuadro
             if (lblNow != null) sb.Append('|').Append(lblNow.Text);
             if (lblNext != null) sb.Append('|').Append(lblNext.Text);
             if (lblTime != null) sb.Append('|').Append(lblTime.Text);

@@ -247,10 +247,11 @@ namespace Rocola
         // textura de la portada: el giro es solo geometria (4 caras como cuadrangulos, ordenadas por
         // profundidad y oscurecidas igual). Si tex es nulo usa un relleno azulado (portada aun cargando).
         // alpha < 1 permite FUNDIR una portada sobre otra (discos TOP) en dos pasadas.
-        public void DrawCube(IntPtr tex, float uMax, float vMax, float ax, float ay, float aw, float ah, double angle, float alpha)
+        public void DrawCube(IntPtr tex, float uMax, float vMax, float ax, float ay, float aw, float ah, double angle, float alpha, double tilt)
         {
             if (dev == IntPtr.Zero || alpha <= 0.001f || aw < 1f || ah < 1f) return;
             double cx = ax + aw / 2.0; float y0 = ay; float Hh = ah; double R = aw / 2.0; double DEG = Math.PI / 180.0;
+            double cyc = y0 + Hh / 2.0, ct = Math.Cos(tilt), stt = Math.Sin(tilt);   // bamboleo: rota el cubo entero alrededor de su centro (igual que RotateTransform en CPU)
             for (int k = 0; k < 4; k++) cbx[k] = cx + R * Math.Cos(angle + 45 * DEG + k * 90 * DEG);
             for (int k = 0; k < 4; k++) cbz[k] = Math.Sin(angle + 90 * DEG + k * 90 * DEG);
             cbo[0] = 0; cbo[1] = 1; cbo[2] = 2; cbo[3] = 3;
@@ -274,14 +275,24 @@ namespace Rocola
                 uint col = textured
                     ? (av << 24) | (g << 16) | (g << 8) | g                                   // textura * gris (oscurecido por profundidad)
                     : (av << 24) | ((60u * g / 255u) << 16) | ((70u * g / 255u) << 8) | (110u * g / 255u);  // relleno azulado (sin portada)
-                CubeFace(cubeFaceV, left, y0, right, y0 + Hh, uMax, vMax, col);
+                CubeFace(cubeFaceV, left, y0, right, y0 + Hh, cx, cyc, ct, stt, uMax, vMax, col);
                 Draw(cubeFaceV, 2);
             }
         }
-        private static void CubeFace(D3D9.Vtx[] v, float x0, float y0, float x1, float y1, float uM, float vM, uint c)
+        // Construye la cara (2 triangulos) con sus 4 esquinas ROTADAS el bamboleo alrededor de (cx,cy).
+        private static void CubeFace(D3D9.Vtx[] v, float x0, float y0, float x1, float y1,
+            double cx, double cy, double ct, double st, float uM, float vM, uint c)
         {
-            CFV(ref v[0], x0, y0, c, 0, 0); CFV(ref v[1], x1, y0, c, uM, 0); CFV(ref v[2], x1, y1, c, uM, vM);
-            CFV(ref v[3], x0, y0, c, 0, 0); CFV(ref v[4], x1, y1, c, uM, vM); CFV(ref v[5], x0, y1, c, 0, vM);
+            float tlx, tly, trx, tryy, brx, bry, blx, bly;
+            RotP(x0, y0, cx, cy, ct, st, out tlx, out tly); RotP(x1, y0, cx, cy, ct, st, out trx, out tryy);
+            RotP(x1, y1, cx, cy, ct, st, out brx, out bry); RotP(x0, y1, cx, cy, ct, st, out blx, out bly);
+            CFV(ref v[0], tlx, tly, c, 0, 0); CFV(ref v[1], trx, tryy, c, uM, 0); CFV(ref v[2], brx, bry, c, uM, vM);
+            CFV(ref v[3], tlx, tly, c, 0, 0); CFV(ref v[4], brx, bry, c, uM, vM); CFV(ref v[5], blx, bly, c, 0, vM);
+        }
+        private static void RotP(float x, float y, double cx, double cy, double ct, double st, out float ox, out float oy)
+        {
+            double dx = x - cx, dy = y - cy;
+            ox = (float)(cx + dx * ct - dy * st); oy = (float)(cy + dx * st + dy * ct);
         }
         private static void CFV(ref D3D9.Vtx v, float x, float y, uint c, float u, float vv) { v.X = x - 0.5f; v.Y = y - 0.5f; v.Z = 0f; v.Rhw = 1f; v.Color = c; v.U = u; v.V = vv; }
 
@@ -365,8 +376,8 @@ namespace Rocola
 
         public void SetSky(uint top, uint mid, uint bot) { skyTop = top; skyMid = mid; skyBot = bot; }
         public IntPtr CreateOverlay(Bitmap bmp, out float uMax, out float vMax) { return gpu.CreateTexturePow2(bmp, out uMax, out vMax); }
-        public void DrawCube(IntPtr tex, float uMax, float vMax, float x, float y, float w, float h, double angle, float alpha)
-        { if (Ok) gpu.DrawCube(tex, uMax, vMax, x, y, w, h, angle, alpha); }
+        public void DrawCube(IntPtr tex, float uMax, float vMax, float x, float y, float w, float h, double angle, float alpha, double tilt)
+        { if (Ok) gpu.DrawCube(tex, uMax, vMax, x, y, w, h, angle, alpha, tilt); }
 
         public void Render(int w, int h, float pulse) { if (Begin(w, h, pulse)) End(); }   // solo cielo+estrellas (ventana de prueba)
 
@@ -636,6 +647,7 @@ namespace Rocola
         public Bitmap CoverA;          // portada principal (null si aun no cargo -> relleno azulado)
         public Bitmap CoverB;          // portada siguiente para el fundido TOP (null si no aplica)
         public float Fade;             // 0..1 mezcla A->B
+        public float Tilt;             // bamboleo del cubo entero (radianes); los CubeBox grande/mini lo usan
     }
     internal struct GpuCubeState { public GpuCubeInfo Sel, Relay, Mini; }   // album: seleccionado (gira) + relevo (decae); Mini = cubo de la barra inferior
 
@@ -784,18 +796,18 @@ namespace Rocola
             }
             // Cubos girando ENCIMA del contorno (igual orden que en CPU): primero el relevo, luego el seleccionado.
             if (cs.Relay.Has)
-                stars.DrawCube(relTex, relU, relV, cs.Relay.X, cs.Relay.Y, cs.Relay.W, cs.Relay.H, cs.Relay.Angle, 1f);
+                stars.DrawCube(relTex, relU, relV, cs.Relay.X, cs.Relay.Y, cs.Relay.W, cs.Relay.H, cs.Relay.Angle, 1f, cs.Relay.Tilt);
             if (cs.Sel.Has)
             {
-                stars.DrawCube(selTexA, selUA, selVA, cs.Sel.X, cs.Sel.Y, cs.Sel.W, cs.Sel.H, cs.Sel.Angle, 1f);
+                stars.DrawCube(selTexA, selUA, selVA, cs.Sel.X, cs.Sel.Y, cs.Sel.W, cs.Sel.H, cs.Sel.Angle, 1f, cs.Sel.Tilt);
                 if (cs.Sel.CoverB != null && cs.Sel.Fade > 0.002f)   // disco TOP: 2a portada encima con alfa = fundido
-                    stars.DrawCube(selTexB, selUB, selVB, cs.Sel.X, cs.Sel.Y, cs.Sel.W, cs.Sel.H, cs.Sel.Angle, cs.Sel.Fade);
+                    stars.DrawCube(selTexB, selUB, selVB, cs.Sel.X, cs.Sel.Y, cs.Sel.W, cs.Sel.H, cs.Sel.Angle, cs.Sel.Fade, cs.Sel.Tilt);
             }
             // Barras superior e inferior (textura de UI) ENCIMA del fondo y los cubos.
             if (uiTex != IntPtr.Zero) { SetTexQuad(uiQuad, 0, 0, Width, Height, uiU, uiV); stars.DrawQuad(uiTex, uiQuad); }
             // Mini-cubo de la barra inferior (gira): cubo GPU, encima de la barra.
             if (cs.Mini.Has)
-                stars.DrawCube(miniTex, miniU, miniV, cs.Mini.X, cs.Mini.Y, cs.Mini.W, cs.Mini.H, cs.Mini.Angle, 1f);
+                stars.DrawCube(miniTex, miniU, miniV, cs.Mini.X, cs.Mini.Y, cs.Mini.W, cs.Mini.H, cs.Mini.Angle, 1f, cs.Mini.Tilt);
             stars.End();
             frames++;
             if (Environment.TickCount - fpsTick >= 1000) { Fps = frames; frames = 0; fpsTick = Environment.TickCount; }
