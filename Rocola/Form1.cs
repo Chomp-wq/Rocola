@@ -1878,9 +1878,21 @@ namespace Rocola
             searchOverlay.Results = new List<SearchItem>();
             searchOverlay.SelRow = 1; searchOverlay.SelCol = 0;
             searchOverlay.Bounds = SearchOverlayRect();
-            searchOverlay.Visible = true;
-            searchOverlay.BringToFront();
-            searchOverlay.Focus();
+#if ROCOLA_GPU
+            if (gpuEnabled && gpuPanel != null)
+            {
+                // El buscador se compone por GPU: el control CPU NO se pinta (queda oculto detras del panel).
+                // La entrada sigue funcionando por el formulario (ProcessCmdKey + Form_KeyPress con KeyPreview).
+                searchOverlay.Visible = false;
+                gpuPanel.Visible = true; gpuPanel.BringToFront();
+            }
+            else
+#endif
+            {
+                searchOverlay.Visible = true;
+                searchOverlay.BringToFront();
+                searchOverlay.Focus();
+            }
             searchOverlay.Invalidate();
         }
 
@@ -3212,7 +3224,8 @@ namespace Rocola
                   .Append('|').Append(searchOverlay.FocusResults).Append(searchOverlay.SelResult)
                   .Append('|').Append(searchOverlay.Results == null ? 0 : searchOverlay.Results.Count)
                   .Append('|').Append(searchOverlay.ToastOn).Append(searchOverlay.ToastMsg)
-                  .Append('|').Append(Math.Sin(searchOverlay.Phase * 3.0) > 0 ? 1 : 0);   // parpadeo del cursor
+                  .Append('|').Append(Math.Sin(searchOverlay.Phase * 3.0) > 0 ? 1 : 0)   // parpadeo del cursor
+                  .Append('|').Append((int)(searchOverlay.Phase * 13));   // fase cuantizada (~13fps): anima el brillo de las teclas sin rehacer la textura cada cuadro
             else if (panelSongs != null && panelSongs.Visible)   // INTERIOR DE DISCO: etiqueta, seleccion, pagina
                 sb.Append("|D").Append(lblAlbum != null ? lblAlbum.Text : "").Append('|').Append(songSel).Append('|').Append(songItems.Count)
                   .Append('|').Append(songList != null ? songList.PageStart : 0).Append('|').Append(bgAccent.ToArgb());
