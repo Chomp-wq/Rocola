@@ -179,6 +179,13 @@ namespace Rocola
         private List<SearchItem> lastMatches = null;          // coincidencias previas (para acotar el re-escaneo)
         private int credits = 0;                              // creditos disponibles (cada cosa cuesta 1)
         private const int CreditsPerCoin = 4;                 // monedas -> creditos
+        // ACUMULACION de avisos: si repites la MISMA accion rapido (mientras su aviso sigue visible), el aviso
+        // suma en vez de reiniciarse: monedas -> +4, +8, +12...; canciones -> "Cancion agregada", "... X2", "X3".
+        private enum ToastKind { Other, Coin, Song }
+        private ToastKind toastKind = ToastKind.Other; private int toastKindTick;
+        private int coinTotal, songTotal;
+        private void MarkToast(ToastKind k) { toastKind = k; toastKindTick = Environment.TickCount; }
+        private bool SameToastActive(ToastKind k) { return toastKind == k && (Environment.TickCount - toastKindTick) < 1300; }   // 1300 = duracion del aviso
 
         // ---- BOTONES DE LA ROCOLA (configurables; se guardan en rocola_teclas.txt) ----
         // Valores por defecto (sirven para probar con teclado normal antes de configurar).
@@ -2008,7 +2015,7 @@ namespace Rocola
             {
                 PlayItem p = new PlayItem(); p.IsVideo = false; p.Song = it.TrackRef; p.Disc = it.AlbumRef;
                 AddResult r = AddItem(p);
-                if (r == AddResult.Added) ShowSearchToast("Agregada a la cola", true);
+                if (r == AddResult.Added) ShowSongAddedToast(true);
                 else if (r == AddResult.NoCredit) ShowSearchToast("Inserta una moneda", false);
                 else ShowSearchToast("Esa cancion ya va seguida", false);
                 return; // no cierra el buscador
@@ -2020,6 +2027,7 @@ namespace Rocola
         private void ShowSearchToast(string msg) { ShowSearchToast(msg, true); }
         private void ShowSearchToast(string msg, bool ok)
         {
+            toastKind = ToastKind.Other;   // por defecto NO acumulable; cancion lo re-marca tras llamar
             searchOverlay.ToastMsg = msg;
             searchOverlay.ToastBack = ok ? Color.FromArgb(238, 40, 165, 90) : Color.FromArgb(238, 205, 130, 35);
             searchOverlay.ToastOn = true;
@@ -2266,6 +2274,7 @@ namespace Rocola
         private void ShowToast(string text) { ShowToast(text, Color.FromArgb(40, 165, 90)); }
         private void ShowToast(string text, Color back)
         {
+            toastKind = ToastKind.Other;   // por defecto NO acumulable; moneda/cancion lo re-marcan tras llamar
             int tw = 380, th = 48;
             lblToast.Text = text;
             lblToast.BackColor = back;
@@ -2315,9 +2324,19 @@ namespace Rocola
             if (t == null) return;
             PlayItem it = new PlayItem(); it.IsVideo = false; it.Song = t; it.Disc = disc;
             AddResult r = AddItem(it);
-            if (r == AddResult.Added) ShowToast("Agregada a la cola");
+            if (r == AddResult.Added) ShowSongAddedToast(false);
             else if (r == AddResult.NoCredit) ShowToast("Inserta una moneda", Color.FromArgb(200, 130, 35));
             else ShowToast("Esa ya va seguida", Color.FromArgb(200, 130, 35));
+        }
+
+        // Aviso de cancion agregada, con acumulacion: si agregas varias rapido (mientras el aviso sigue),
+        // dice "Cancion agregada", "Cancion agregada  X2", "X3"... para que quede claro cuantas van y no confunda.
+        private void ShowSongAddedToast(bool search)
+        {
+            songTotal = SameToastActive(ToastKind.Song) ? songTotal + 1 : 1;
+            string msg = songTotal > 1 ? "Cancion agregada  X" + songTotal : "Cancion agregada";
+            if (search) ShowSearchToast(msg, true); else ShowToast(msg);
+            MarkToast(ToastKind.Song);
         }
 
         private void AddVideoToQueue(string path, Album disc)
@@ -2336,7 +2355,11 @@ namespace Rocola
             credits += CreditsPerCoin;
             statsCoins++; statsCreditsAdded += CreditsPerCoin; statsDirty = true;   // estadisticas
             UpdateCredits();
-            ShowToast("+" + CreditsPerCoin + " creditos", Color.FromArgb(40, 165, 90));
+            // Monedas rapidas seguidas: el aviso SUMA (+4, +8, +12...) en vez de reiniciar; si ya paso su
+            // tiempo (el usuario fue lento), arranca de nuevo en +4.
+            coinTotal = SameToastActive(ToastKind.Coin) ? coinTotal + CreditsPerCoin : CreditsPerCoin;
+            ShowToast("+" + coinTotal + " creditos", Color.FromArgb(40, 165, 90));
+            MarkToast(ToastKind.Coin);
         }
 
         // ===================== MOTOR DE ESTADISTICAS =====================
@@ -5515,8 +5538,11 @@ namespace Rocola
                 int accentArgb = Accent.ToArgb();
                 if (kbCache == null || kbCacheW != region.Width || kbCacheH != region.Height || kbCacheAccent != accentArgb || kbCacheKh != kh)
                 {
-                    if (kbCache != null) kbCache.Dispose();
-                    kbCache = new Bitmap(region.Width, region.Height, PixelFormat.Format32bppPArgb);
+                    if (kbCache == null || kbCache.Width != region.Width || kbCache.Height != region.Height)   // REUSA si el tamano no cambio (p.ej. solo cambio el color)
+                    {
+                        if (kbCache != null) kbCache.Dispose();
+                        kbCache = new Bitmap(region.Width, region.Height, PixelFormat.Format32bppPArgb);
+                    }
                     using (Graphics cg = Graphics.FromImage(kbCache))
                     {
                         cg.Clear(Color.Transparent);
@@ -5594,8 +5620,12 @@ namespace Rocola
                 int accentArgb = Accent.ToArgb();
                 if (resCache == null || resCacheW != region.Width || resCacheH != region.Height || resCacheAccent != accentArgb || resCacheQuery != Query)
                 {
-                    if (resCache != null) resCache.Dispose();
-                    resCache = new Bitmap(Math.Max(1, region.Width), Math.Max(1, region.Height), PixelFormat.Format32bppPArgb);
+                    int rw = Math.Max(1, region.Width), rh = Math.Max(1, region.Height);
+                    if (resCache == null || resCache.Width != rw || resCache.Height != rh)   // REUSA el bitmap si el tamano no cambio
+                    {
+                        if (resCache != null) resCache.Dispose();   // solo se reasigna al cambiar de tamano, no en cada tecla (menos basura/tirones)
+                        resCache = new Bitmap(rw, rh, PixelFormat.Format32bppPArgb);
+                    }
                     using (Graphics cg = Graphics.FromImage(resCache))
                     {
                         cg.Clear(Color.Transparent);
