@@ -3248,17 +3248,8 @@ namespace Rocola
                     DrawLabelOverlay(g, lblCount);
                     DrawCtrlOverlay(g, progress);
                 }
-                // FPS (diagnostico): caja oscura + texto amarillo arriba a la derecha (como la etiqueta original).
-                string fpsTxt = "GPU D3D9: " + (gpuPanel != null ? gpuPanel.Fps : 0) + " FPS";
-                using (Font ff = new Font(FontFamily.GenericMonospace, 9.5f, FontStyle.Bold))
-                using (SolidBrush bg = new SolidBrush(Color.FromArgb(190, 0, 0, 0)))
-                using (SolidBrush yb = new SolidBrush(Color.FromArgb(235, 245, 225, 60)))
-                {
-                    SizeF sz = g.MeasureString(fpsTxt, ff);
-                    float fx = w - sz.Width - 16, fy = 6f;
-                    g.FillRectangle(bg, fx - 6, fy - 2, sz.Width + 12, sz.Height + 4);
-                    g.DrawString(fpsTxt, ff, yb, fx, fy);
-                }
+                // El contador de FPS ya NO va aqui: lo pinta el GpuPanel en su propia textura pequeña (asi no
+                // obliga a rehacer esta textura a pantalla completa 1 vez/seg -> el buscador ya no oscila).
             }
             uiOverlaySig = sig; uiOverlayVer++;
             return uiOverlayVer;
@@ -3290,7 +3281,8 @@ namespace Rocola
             if (lblCredits != null) sb.Append('|').Append(lblCredits.Text);
             if (lblCount != null) sb.Append('|').Append(lblCount.Text);
             if (progress != null) sb.Append('|').Append((int)(progress.Value * 300)).Append(progress.Accent.ToArgb());
-            if (gpuPanel != null) sb.Append('|').Append(gpuPanel.Fps);
+            // El FPS ya NO entra en la firma: se pinta en su propia textura, asi que su cambio (1/seg) no
+            // obliga a rehacer esta textura -> en reposo la firma es constante -> 0 reconstrucciones.
             return sb.ToString();
         }
 
@@ -5129,6 +5121,11 @@ namespace Rocola
             private Font fQuery, fHint, fToast, fHead, fEmpty, fRes, fResSub, fPrevT, fPrevS, fPrevH;
             private Font fChar, fSp; private float fKh = -1f;   // fuentes del teclado (dependen de su altura)
             private SolidBrush sbS; private Pen pnS;            // pincel/pluma reusables (se les muta color/grosor)
+            // CACHE del teclado SIN seleccion: las ~40 teclas (con degradado, contorno y texto) son carisimas
+            // de redibujar cada vez (RoundedPath + LinearGradientBrush por tecla). Como el teclado es estatico,
+            // se dibuja UNA vez a un bitmap y luego solo se copia + se pinta EN VIVO la tecla seleccionada.
+            private Bitmap kbCache; private int kbCacheW = -1, kbCacheH = -1, kbCacheAccent; private float kbCacheKh = -1f;
+            private Point kbCacheOrigin;
             private void EnsurePaintRes()
             {
                 if (fQuery != null) return;
@@ -5342,7 +5339,7 @@ namespace Rocola
                 {
                     cubeRect = Rectangle.Empty;
                     LayoutKeys(kbRegion);
-                    if (kbRegion.IntersectsWith(clip)) DrawKeys(g);
+                    if (kbRegion.IntersectsWith(clip)) DrawKeys(g, kbRegion);
                 }
                 if (resRegion.IntersectsWith(clip)) DrawResults(g, resRegion);
 
@@ -5400,7 +5397,7 @@ namespace Rocola
                 }
             }
 
-            private void DrawKeys(Graphics g)
+            private void DrawKeys(Graphics g, Rectangle region)
             {
                 if (rows.Count == 0 || rows[0].Count == 0) return;
                 float kh = rows[0][0].R.Height;
@@ -5414,36 +5411,58 @@ namespace Rocola
                     fSp = new Font(FontFamily.GenericSansSerif, Math.Max(9f, kh * 0.24f), FontStyle.Bold);
                     fKh = kh;
                 }
+                if (region.Width < 2 || region.Height < 2) return;
+                // CACHE de las teclas SIN seleccion: se rehace solo si cambia tamano/altura/color (casi nunca).
+                // Dibujar 40 teclas (degradado + contorno + texto) en cada cuadro era lo que hundia el FPS del
+                // buscador; ahora se copia el cache + SOLO la tecla seleccionada en vivo (barato).
+                int accentArgb = Accent.ToArgb();
+                if (kbCache == null || kbCacheW != region.Width || kbCacheH != region.Height || kbCacheAccent != accentArgb || kbCacheKh != kh)
                 {
-                    Font charFont = fChar, spFont = fSp;
-                    for (int r = 0; r < rows.Count; r++)
-                        for (int c = 0; c < rows[r].Count; c++)
-                        {
-                            SearchKey k = rows[r][c];
-                            Rectangle kr = Rectangle.Round(k.R);
-                            if (kr.Width < 2 || kr.Height < 2) continue;
-                            bool sel = (r == SelRow && c == SelCol);
-                            double kp = 0.5 + 0.5 * Math.Sin(Phase * 2.2 - (r * 0.55 + c * 0.32));
-                            using (GraphicsPath gp = RoundedPath(kr, 10))
-                            {
-                                Color top = sel ? Lighten(Accent, 0.32) : Lighten(Shade(Accent, 0.34), 0.10 + 0.14 * kp);
-                                Color bot = sel ? Accent : Shade(Accent, 0.55);
-                                using (LinearGradientBrush b = new LinearGradientBrush(kr, top, bot, LinearGradientMode.Vertical)) g.FillPath(b, gp);
-                                if (sel)
-                                {
-                                    int a = 130 + (int)((0.5 + 0.5 * Math.Sin(Phase * 2.6)) * 120);
-                                    pnS.Color = Color.FromArgb(a, 170, 215, 255); pnS.Width = 2.8f; g.DrawPath(pnS, gp);
-                                }
-                                else
-                                {
-                                    int a = 85 + (int)(kp * 130);
-                                    pnS.Color = Color.FromArgb(a, 150, 200, 255); pnS.Width = 1.7f; g.DrawPath(pnS, gp);
-                                }
-                            }
-                            Font use = (k.Kind == KKind.Char) ? charFont : spFont;
-                            TextRenderer.DrawText(g, k.Label, use, kr, Color.White, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
-                        }
+                    if (kbCache != null) kbCache.Dispose();
+                    kbCache = new Bitmap(region.Width, region.Height, PixelFormat.Format32bppPArgb);
+                    using (Graphics cg = Graphics.FromImage(kbCache))
+                    {
+                        cg.Clear(Color.Transparent);
+                        cg.SmoothingMode = SmoothingMode.AntiAlias;
+                        for (int r = 0; r < rows.Count; r++)
+                            for (int c = 0; c < rows[r].Count; c++)
+                                DrawOneKey(cg, r, c, false, -region.X, -region.Y);   // TODAS sin seleccion, en coords del bitmap
+                    }
+                    kbCacheW = region.Width; kbCacheH = region.Height; kbCacheAccent = accentArgb; kbCacheKh = kh; kbCacheOrigin = region.Location;
                 }
+                g.DrawImageUnscaled(kbCache, kbCacheOrigin.X, kbCacheOrigin.Y);
+                // Tecla seleccionada EN VIVO encima: su relleno es opaco y tapa la version sin seleccion del cache.
+                if (SelRow >= 0 && SelRow < rows.Count && SelCol >= 0 && SelCol < rows[SelRow].Count)
+                    DrawOneKey(g, SelRow, SelCol, true, 0, 0);
+            }
+
+            // Dibuja UNA tecla. dx/dy desplaza el rect (para el cache: coords relativas al bitmap). Se usa
+            // Offset directo -en vez de TranslateTransform del Graphics- porque TextRenderer (GDI) IGNORA la
+            // transformacion y el texto caeria fuera del cache.
+            private void DrawOneKey(Graphics g, int r, int c, bool sel, int dx, int dy)
+            {
+                SearchKey k = rows[r][c];
+                Rectangle kr = Rectangle.Round(k.R); kr.Offset(dx, dy);
+                if (kr.Width < 2 || kr.Height < 2) return;
+                double kp = 0.5 + 0.5 * Math.Sin(Phase * 2.2 - (r * 0.55 + c * 0.32));
+                using (GraphicsPath gp = RoundedPath(kr, 10))
+                {
+                    Color top = sel ? Lighten(Accent, 0.32) : Lighten(Shade(Accent, 0.34), 0.10 + 0.14 * kp);
+                    Color bot = sel ? Accent : Shade(Accent, 0.55);
+                    using (LinearGradientBrush b = new LinearGradientBrush(kr, top, bot, LinearGradientMode.Vertical)) g.FillPath(b, gp);
+                    if (sel)
+                    {
+                        int a = 130 + (int)((0.5 + 0.5 * Math.Sin(Phase * 2.6)) * 120);
+                        pnS.Color = Color.FromArgb(a, 170, 215, 255); pnS.Width = 2.8f; g.DrawPath(pnS, gp);
+                    }
+                    else
+                    {
+                        int a = 85 + (int)(kp * 130);
+                        pnS.Color = Color.FromArgb(a, 150, 200, 255); pnS.Width = 1.7f; g.DrawPath(pnS, gp);
+                    }
+                }
+                Font use = (k.Kind == KKind.Char) ? fChar : fSp;
+                TextRenderer.DrawText(g, k.Label, use, kr, Color.White, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
             }
 
             private void DrawResults(Graphics g, Rectangle region)

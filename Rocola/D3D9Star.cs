@@ -674,6 +674,10 @@ namespace Rocola
         // Textura de UI (barras superior e inferior) compuesta sobre el fondo a pantalla completa.
         private IntPtr uiTex; private int uiVer = -1; private float uiU = 1f, uiV = 1f;
         private readonly D3D9.Vtx[] uiQuad = new D3D9.Vtx[6];
+        // Contador de FPS (diagnostico) en su PROPIA textura pequeña: si fuera parte de la textura de UI
+        // obligaria a rehacerla (pantalla completa) 1 vez/seg -> el buscador oscilaba. Aparte cuesta nada.
+        private IntPtr fpsTex; private int fpsShown = int.MinValue; private float fpsU = 1f, fpsV = 1f; private int fpsTW, fpsTH;
+        private readonly D3D9.Vtx[] fpsQuad = new D3D9.Vtx[6];
         public Rectangle AlbumRect;                       // donde van los cubos del album (coords del panel = pantalla); el form la fija
         public bool ShowAlbum = true;                     // navegacion: dibuja la rejilla de cubos + contorno. Buscador: false (lo cubre el buscador)
         public Func<Bitmap> GetUi;                        // bitmap transparente con las barras (lo provee el form)
@@ -728,7 +732,8 @@ namespace Rocola
             if (relTex != IntPtr.Zero) { D3D9.Release(relTex); relTex = IntPtr.Zero; }
             if (miniTex != IntPtr.Zero) { D3D9.Release(miniTex); miniTex = IntPtr.Zero; }
             if (uiTex != IntPtr.Zero) { D3D9.Release(uiTex); uiTex = IntPtr.Zero; }
-            cubeVer = -1; lastContour = null; selImgA = selImgB = relImg = miniImg = null; uiVer = -1;
+            if (fpsTex != IntPtr.Zero) { D3D9.Release(fpsTex); fpsTex = IntPtr.Zero; }
+            cubeVer = -1; lastContour = null; selImgA = selImgB = relImg = miniImg = null; uiVer = -1; fpsShown = int.MinValue;
             if (stars != null) { stars.Dispose(); stars = null; }
         }
 
@@ -801,6 +806,7 @@ namespace Rocola
                 }
                 else if (heavyUiTurn) heavyUiTurn = false;   // la UI no necesitaba: cede el turno a la rejilla
             }
+            EnsureFpsTex();   // crea/actualiza la textura del contador ANTES de Begin (como el resto de texturas)
             float pulse = (GetPulse != null) ? GetPulse() : 0f;
             if (!stars.Begin(Width, Height, pulse)) return;
             Rectangle ar = (AlbumRect.Width > 0 && AlbumRect.Height > 0) ? AlbumRect : new Rectangle(0, 0, Width, Height);
@@ -824,9 +830,34 @@ namespace Rocola
             // Mini-cubo de la barra inferior (gira): cubo GPU, encima de la barra.
             if (cs.Mini.Has)
                 stars.DrawCube(miniTex, miniU, miniV, cs.Mini.X, cs.Mini.Y, cs.Mini.W, cs.Mini.H, cs.Mini.Angle, 1f, cs.Mini.Tilt);
+            // Contador de FPS (diagnostico) encima de todo, en su textura pequeña (se resube solo al cambiar el numero).
+            if (fpsTex != IntPtr.Zero) { SetTexQuad(fpsQuad, Width - fpsTW - 10, 6, Width - 10, 6 + fpsTH, fpsU, fpsV); stars.DrawQuad(fpsTex, fpsQuad); }
             stars.End();
             frames++;
             if (Environment.TickCount - fpsTick >= 1000) { Fps = frames; frames = 0; fpsTick = Environment.TickCount; }
+        }
+
+        // Rehace la textura del contador SOLO cuando cambia el numero (~1/seg). Es diminuta: coste despreciable.
+        private void EnsureFpsTex()
+        {
+            if (fpsTex != IntPtr.Zero && fpsShown == Fps) return;
+            fpsShown = Fps;
+            fpsTW = 190; fpsTH = 26;
+            using (Bitmap bmp = new Bitmap(fpsTW, fpsTH, System.Drawing.Imaging.PixelFormat.Format32bppPArgb))
+            {
+                using (Graphics g = Graphics.FromImage(bmp))
+                using (Font f = new Font(FontFamily.GenericMonospace, 9.5f, FontStyle.Bold))
+                using (SolidBrush bg = new SolidBrush(Color.FromArgb(190, 0, 0, 0)))
+                using (SolidBrush yb = new SolidBrush(Color.FromArgb(235, 245, 225, 60)))
+                {
+                    g.Clear(Color.Transparent);
+                    g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
+                    g.FillRectangle(bg, 0, 0, fpsTW, fpsTH);
+                    g.DrawString("GPU D3D9: " + Fps + " FPS", f, yb, 6, 4);
+                }
+                if (fpsTex != IntPtr.Zero) { D3D9.Release(fpsTex); fpsTex = IntPtr.Zero; }
+                fpsTex = stars.CreateOverlay(bmp, out fpsU, out fpsV);
+            }
         }
 
         private static void SetTexQuad(D3D9.Vtx[] v, float x0, float y0, float x1, float y1, float uMax, float vMax)
