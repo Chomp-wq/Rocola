@@ -9,6 +9,7 @@
 // ====================================================================================================
 #if ROCOLA_GPU
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
@@ -693,6 +694,12 @@ namespace Rocola
     }
     internal struct GpuCubeState { public GpuCubeInfo Sel, Relay, Mini; }   // album: seleccionado (gira) + relevo (decae); Mini = cubo de la barra inferior
 
+    // Una CELDA de la rejilla de discos para dibujarla como su PROPIO quad con textura (en vez de recomponer una
+    // textura a pantalla completa por pagina). Bmp = disco estatico + etiqueta ya horneado (null si aun no listo).
+    // Key = Folder (estable) para cachear su textura entre paginas; null = no cachear (discos TOP / sin carpeta).
+    internal struct GpuGridCell { public string Key; public Bitmap Bmp; public int Slot; public float X, Y, W, H; }
+    internal delegate int GpuGridFetch(GpuGridCell[] buf);   // llena buf con las celdas de la pagina actual; devuelve cuantas (<= buf.Length)
+
     // -------- Control D3D9 para usar el campo estrellado como FONDO de la vista de discos --------
     //  Es un control aparte (su propia ventana) con estilos aptos para D3D9 (sin doble-buffer GDI).
     //  Se muestra ENCIMA de la vista de discos al activar el modo GPU; el render lo maneja D3D9.
@@ -701,11 +708,23 @@ namespace Rocola
         private GpuStarfield stars;
         private bool idleHooked;
         private int frames, fpsTick;
-        private int lastHeavyMs;                          // ultima reconstruccion PESADA (rejilla de discos o barras); limita su ritmo
-        private bool heavyUiTurn;                         // a quien le toca la franja pesada (alterna rejilla<->barras para que ninguna se congele al paginar)
+        private int lastHeavyMs;                          // ultima reconstruccion PESADA de la UI (barras); limita su ritmo
         private int heavyGapMs = 40;                      // espera minima entre reconstrucciones pesadas; SE AUTOAJUSTA al coste real (ver NoteHeavy)
-        private IntPtr cubeTex; private int cubeVer = -1; private float cubeU = 1f, cubeV = 1f; private int cubeBmpW = -1, cubeBmpH = -1;
-        private readonly D3D9.Vtx[] cubeQuad = new D3D9.Vtx[6];
+        // REJILLA DE DISCOS POR CELDAS: cada disco es su PROPIO quad con su textura (disco estatico + etiqueta),
+        // subida UNA vez y cacheada por Folder. Hojear = elegir texturas + posiciones y dibujar quads: instantaneo
+        // al revisitar, sin reconstruir ni resubir una textura a pantalla completa por pagina. Las subidas nuevas
+        // se reparten por cuadro (presupuesto) para que un barrido de paginas nuevas no baje los fps.
+        private const int MaxCells = 32;
+        private const int CellTexCap = 3 * 18;            // ~3 paginas de texturas de celda en VRAM (acotado); se expulsa lo mas viejo
+        private const int GridUploadBudget = 6;           // texturas de celda NUEVAS subidas por cuadro (barrer sin bajon)
+        private sealed class CellTex { public IntPtr Tex; public int Bw, Bh; public float U = 1f, V = 1f; public Bitmap Bmp; public int Frame; }
+        private readonly Dictionary<string, CellTex> cellTexCache = new Dictionary<string, CellTex>();
+        private readonly CellTex[] slotTex = new CellTex[MaxCells];   // celdas sin Folder (TOP): textura por slot, no se cachea entre paginas
+        private readonly GpuGridCell[] gridBuf = new GpuGridCell[MaxCells];
+        private readonly IntPtr[] gridTex = new IntPtr[MaxCells];     // textura resuelta por celda (subida ANTES de Begin, dibujada despues)
+        private readonly float[] gridU = new float[MaxCells], gridV = new float[MaxCells];
+        private int gridN, cellFrame;
+        private readonly D3D9.Vtx[] cellQuad = new D3D9.Vtx[6];
         private IntPtr contourTex; private Bitmap lastContour; private float contU = 1f, contV = 1f;
         private readonly D3D9.Vtx[] contourQuad = new D3D9.Vtx[6];
         // Cubos que GIRAN (seleccionado + relevo): se dibujan como GEOMETRIA en GPU desde la textura de la
@@ -727,8 +746,7 @@ namespace Rocola
         public Func<int> GetUiVersion;                    // cambia cuando alguna barra cambia (re-subir textura)
         public int Fps;                                   // cuadros por segundo (para mostrar mientras integramos)
         public Func<float> GetPulse;                      // el form provee el nivel de audio (0..1)
-        public Func<Bitmap> GetCubes;                     // el form provee el bitmap de cubos+etiquetas (cubeCache)
-        public Func<int> GetCubesVersion;                 // cambia cuando cubeCache se reconstruye (re-subir textura)
+        public GpuGridFetch GetGrid;                      // el form llena el buffer con las celdas de la pagina actual (rejilla por quads)
         public Func<Bitmap> GetContour;                   // sprite del contorno de seleccion
         public Func<Rectangle> GetContourRect;            // donde va el contorno (celda seleccionada), en coords del panel
         public Func<GpuCubeState> GetCubeState;           // celdas/angulos/portadas de los cubos que giran (seleccionado + relevo)
@@ -768,7 +786,7 @@ namespace Rocola
         public void StopGpu()
         {
             if (idleHooked) { Application.Idle -= OnIdle; idleHooked = false; }
-            if (cubeTex != IntPtr.Zero) { D3D9.Release(cubeTex); cubeTex = IntPtr.Zero; }
+            ReleaseCellTex();   // libera todas las texturas de celda (cache por Folder + slots TOP)
             if (contourTex != IntPtr.Zero) { D3D9.Release(contourTex); contourTex = IntPtr.Zero; }
             if (selTexA != IntPtr.Zero) { D3D9.Release(selTexA); selTexA = IntPtr.Zero; }
             if (selTexB != IntPtr.Zero) { D3D9.Release(selTexB); selTexB = IntPtr.Zero; }
@@ -776,9 +794,20 @@ namespace Rocola
             if (miniTex != IntPtr.Zero) { D3D9.Release(miniTex); miniTex = IntPtr.Zero; }
             if (uiTex != IntPtr.Zero) { D3D9.Release(uiTex); uiTex = IntPtr.Zero; }
             if (fpsTex != IntPtr.Zero) { D3D9.Release(fpsTex); fpsTex = IntPtr.Zero; }
-            cubeVer = -1; lastContour = null; selImgA = selImgB = relImg = miniImg = null; uiVer = -1; fpsShown = int.MinValue;
-            cubeBmpW = cubeBmpH = uiBmpW = uiBmpH = -1;   // fuerza recrear las texturas reutilizables tras reiniciar el device
+            lastContour = null; selImgA = selImgB = relImg = miniImg = null; uiVer = -1; fpsShown = int.MinValue;
+            uiBmpW = uiBmpH = -1;   // fuerza recrear las texturas reutilizables tras reiniciar el device
             if (stars != null) { stars.Dispose(); stars = null; }
+        }
+
+        // Libera y olvida todas las texturas de celda (cache por Folder + fallback por slot). Al reiniciar el
+        // device o apagar la GPU: sus IntPtr dejan de ser validos.
+        private void ReleaseCellTex()
+        {
+            foreach (CellTex ct in cellTexCache.Values) if (ct.Tex != IntPtr.Zero) D3D9.Release(ct.Tex);
+            cellTexCache.Clear();
+            for (int i = 0; i < slotTex.Length; i++) { CellTex ct = slotTex[i]; if (ct != null && ct.Tex != IntPtr.Zero) D3D9.Release(ct.Tex); slotTex[i] = null; }
+            for (int i = 0; i < gridTex.Length; i++) gridTex[i] = IntPtr.Zero;
+            gridN = 0;
         }
 
         // Sube la portada como textura SOLO si cambio respecto a la ranura (referencia distinta). Asi el
@@ -795,29 +824,27 @@ namespace Rocola
         {
             if (stars == null || !stars.Ok) return;
             stars.SetSky(SkyTop, SkyMid, SkyBot);
-            // LIMITE DE TRABAJO PESADO: reconstruir la rejilla de discos (RebuildCubes + subir una textura
-            // enorme) y las barras (bitmap a pantalla completa) cuesta mucho. Al paginar rapido eso pasaba en
-            // CADA cuadro y atascaba TODO el bucle -> el fondo caia a ~1fps. Ahora solo se permite UNA
-            // reconstruccion pesada por franja (heavyGapMs, que SE AUTOAJUSTA al coste real): la UI cacheada
-            // del buscador es barata -> franja corta -> fluido; la rejilla al paginar es cara -> franja larga
-            // -> el fondo respira. Entre franjas el FONDO y los cubos que giran siguen a pleno ritmo.
+            // TRABAJO PESADO acotado: rehacer las barras (UI, bitmap a pantalla completa) cuesta; se limita a UNA
+            // por franja (heavyGapMs, que SE AUTOAJUSTA al coste real). La rejilla de discos ya NO es trabajo
+            // pesado: cada disco es su propio quad con textura cacheada (rejilla por celdas, mas abajo).
             int nowMs = Environment.TickCount;
             bool canHeavy = (nowMs - lastHeavyMs) >= heavyGapMs;
-            bool cubeTurn = !heavyUiTurn;   // esta franja le toca a la rejilla (si no la necesita, cede a la UI mas abajo)
-            // Cubos: textura que cambia al navegar / llegar caratula. GetCubesVersion() reconstruye por dentro
-            // si cambio la pagina (caro), asi que solo lo llamamos si es su turno (o si aun no hay textura).
-            if (GetCubes != null && GetCubesVersion != null && (cubeTex == IntPtr.Zero || (canHeavy && cubeTurn)))
+            // REJILLA POR CELDAS: pedimos las celdas de la pagina y aseguramos (subimos si falta) su textura ANTES
+            // de Begin, repartiendo las subidas NUEVAS por cuadro (presupuesto) para no bajar los fps al barrer.
+            gridN = 0;
+            if (ShowAlbum && GetGrid != null)
             {
-                int t0 = Environment.TickCount;
-                int v = GetCubesVersion();   // puede reconstruir la rejilla por dentro (lo mas caro)
-                if (v != cubeVer)
+                gridN = GetGrid(gridBuf);
+                cellFrame++;
+                int upBudget = GridUploadBudget;
+                for (int i = 0; i < gridN; i++)
                 {
-                    Bitmap bm = GetCubes();
-                    if (bm != null) cubeTex = Upload(cubeTex, ref cubeBmpW, ref cubeBmpH, bm, out cubeU, out cubeV);   // reutiliza la textura si el tamano no cambio
-                    cubeVer = v; canHeavy = false; heavyUiTurn = true;   // gasta la franja; el proximo hueco es de la UI
-                    NoteHeavy(t0);   // mide el coste real (rejilla + subida) y ajusta la espera
+                    IntPtr tex; float u, v;
+                    if (gridBuf[i].Bmp != null && EnsureCellTex(gridBuf[i], ref upBudget, out tex, out u, out v))
+                    { gridTex[i] = tex; gridU[i] = u; gridV[i] = v; }
+                    else gridTex[i] = IntPtr.Zero;   // aun sin hornear o sin presupuesto de subida: se salta este cuadro (aparece luego)
                 }
-                else if (cubeTurn) heavyUiTurn = true;   // la rejilla no necesitaba: cede este hueco a la UI
+                EvictCellTex();
             }
             // Contorno de seleccion: sprite estatico (se sube cuando cambia el bitmap, p.ej. al cambiar tamano).
             if (GetContour != null)
@@ -837,13 +864,11 @@ namespace Rocola
             EnsureCover(ref selTexB, ref selImgB, ref selUB, ref selVB, cs.Sel.CoverB);
             EnsureCover(ref relTex, ref relImg, ref relU, ref relV, cs.Relay.CoverA);
             EnsureCover(ref miniTex, ref miniImg, ref miniU, ref miniV, cs.Mini.CoverA);   // mini-cubo de la barra inferior
-            // Barras (UI) a textura: se re-sube solo cuando cambia algun texto/estado (firma del form), y
-            // ademas limitada por la MISMA franja pesada (alternando con la rejilla) para que el numero de
-            // pagina no se congele al paginar rapido mientras la rejilla acapara todos los huecos.
-            // UiUrgent: al CAMBIAR DE MODO (p.ej. cerrar el buscador) hay que rehacer la UI en ESTE mismo cuadro,
-            // sin esperar franja: si no, se veria la rejilla de discos por los huecos del teclado un instante.
+            // Barras (UI) a textura: se re-sube solo cuando cambia algun texto/estado (firma del form), limitada a
+            // UNA por franja (heavyGapMs). UiUrgent: al CAMBIAR DE MODO (p.ej. cerrar el buscador) hay que rehacerla
+            // en ESTE mismo cuadro, sin esperar franja: si no, se veria la rejilla por los huecos del teclado un instante.
             bool uiUrgent = UiUrgent; UiUrgent = false;
-            if (GetUi != null && GetUiVersion != null && (uiTex == IntPtr.Zero || uiUrgent || (canHeavy && heavyUiTurn)))
+            if (GetUi != null && GetUiVersion != null && (uiTex == IntPtr.Zero || uiUrgent || canHeavy))
             {
                 int t0 = Environment.TickCount;
                 int uv = GetUiVersion();   // puede rehacer el bitmap de la UI por dentro
@@ -851,16 +876,19 @@ namespace Rocola
                 {
                     Bitmap ub = GetUi();
                     if (ub != null) uiTex = Upload(uiTex, ref uiBmpW, ref uiBmpH, ub, out uiU, out uiV);   // reutiliza la textura (no re-crear a pantalla completa cada vez)
-                    uiVer = uv; canHeavy = false; heavyUiTurn = false;   // gasta la franja; el proximo hueco es de la rejilla
-                    NoteHeavy(t0);   // la UI cacheada es barata -> espera corta -> el buscador va fluido
+                    uiVer = uv;
+                    NoteHeavy(t0);   // mide el coste real y ajusta la espera (la UI cacheada es barata -> franja corta)
                 }
-                else if (heavyUiTurn) heavyUiTurn = false;   // la UI no necesitaba: cede el turno a la rejilla
             }
             EnsureFpsTex();   // crea/actualiza la textura del contador ANTES de Begin (como el resto de texturas)
             float pulse = (GetPulse != null) ? GetPulse() : 0f;
             if (!stars.Begin(Width, Height, pulse)) return;
-            Rectangle ar = (AlbumRect.Width > 0 && AlbumRect.Height > 0) ? AlbumRect : new Rectangle(0, 0, Width, Height);
-            if (ShowAlbum && cubeTex != IntPtr.Zero) { SetTexQuad(cubeQuad, ar.X, ar.Y, ar.Right, ar.Bottom, cubeU, cubeV); stars.DrawQuad(cubeTex, cubeQuad); }
+            // Rejilla de discos: un quad por celda (textura ya resuelta arriba). Las celdas aun sin textura (recien
+            // horneadas o sin presupuesto de subida este cuadro) se saltan y aparecen en los cuadros siguientes.
+            if (ShowAlbum)
+                for (int i = 0; i < gridN; i++)
+                    if (gridTex[i] != IntPtr.Zero)
+                    { GpuGridCell c = gridBuf[i]; SetTexQuad(cellQuad, c.X, c.Y, c.X + c.W, c.Y + c.H, gridU[i], gridV[i]); stars.DrawQuad(gridTex[i], cellQuad); }
             if (ShowAlbum && contourTex != IntPtr.Zero && GetContourRect != null)
             {
                 Rectangle r = GetContourRect();
@@ -885,6 +913,65 @@ namespace Rocola
             stars.End();
             frames++;
             if (Environment.TickCount - fpsTick >= 1000) { Fps = frames; frames = 0; fpsTick = Environment.TickCount; }
+        }
+
+        // Asegura (subiendo si hace falta) la textura de una celda y devuelve tex/u/v. Cachea por Folder (Key) para
+        // que revisitar una pagina no resuba NADA (instantaneo). Celdas sin Key (discos TOP) usan una textura por
+        // SLOT (no cruza paginas). Respeta el presupuesto de subidas por cuadro: si se agota y no hay textura
+        // previa, devuelve false (la celda se salta este cuadro y aparece en el siguiente).
+        private bool EnsureCellTex(GpuGridCell c, ref int upBudget, out IntPtr tex, out float u, out float v)
+        {
+            tex = IntPtr.Zero; u = 1f; v = 1f;
+            if (c.Key != null)
+            {
+                CellTex ct;
+                if (cellTexCache.TryGetValue(c.Key, out ct))
+                {
+                    ct.Frame = cellFrame;
+                    if (ReferenceEquals(ct.Bmp, c.Bmp) && ct.Tex != IntPtr.Zero) { tex = ct.Tex; u = ct.U; v = ct.V; return true; }   // ya subida y sin cambios
+                    if (upBudget <= 0) { if (ct.Tex == IntPtr.Zero) return false; tex = ct.Tex; u = ct.U; v = ct.V; return true; }   // sin presupuesto: usa la vieja (p.ej. placeholder) hasta que toque
+                    upBudget--;
+                    ct.Tex = Upload(ct.Tex, ref ct.Bw, ref ct.Bh, c.Bmp, out ct.U, out ct.V);   // portada llego / re-horneada: re-sube (mismo tamano -> reutiliza)
+                    ct.Bmp = c.Bmp;
+                    if (ct.Tex == IntPtr.Zero) return false;
+                    tex = ct.Tex; u = ct.U; v = ct.V; return true;
+                }
+                if (upBudget <= 0) return false;   // celda nueva sin presupuesto: se salta este cuadro
+                upBudget--;
+                ct = new CellTex();
+                ct.Tex = Upload(IntPtr.Zero, ref ct.Bw, ref ct.Bh, c.Bmp, out ct.U, out ct.V);
+                ct.Bmp = c.Bmp; ct.Frame = cellFrame;
+                cellTexCache[c.Key] = ct;
+                if (ct.Tex == IntPtr.Zero) return false;
+                tex = ct.Tex; u = ct.U; v = ct.V; return true;
+            }
+            int s = c.Slot; if (s < 0 || s >= slotTex.Length) return false;   // celda sin Folder (TOP): textura por slot
+            CellTex st = slotTex[s]; if (st == null) { st = new CellTex(); slotTex[s] = st; }
+            st.Frame = cellFrame;
+            if (!ReferenceEquals(st.Bmp, c.Bmp) || st.Tex == IntPtr.Zero)
+            {
+                if (upBudget <= 0) { if (st.Tex == IntPtr.Zero) return false; tex = st.Tex; u = st.U; v = st.V; return true; }
+                upBudget--;
+                st.Tex = Upload(st.Tex, ref st.Bw, ref st.Bh, c.Bmp, out st.U, out st.V);
+                st.Bmp = c.Bmp;
+                if (st.Tex == IntPtr.Zero) return false;
+            }
+            tex = st.Tex; u = st.U; v = st.V; return true;
+        }
+
+        // Expulsa las texturas de celda mas VIEJAS (no usadas este cuadro) cuando se pasa del tope, para acotar VRAM.
+        private void EvictCellTex()
+        {
+            while (cellTexCache.Count > CellTexCap)
+            {
+                string oldestKey = null; int oldest = int.MaxValue;
+                foreach (KeyValuePair<string, CellTex> kv in cellTexCache)
+                    if (kv.Value.Frame < oldest) { oldest = kv.Value.Frame; oldestKey = kv.Key; }
+                if (oldestKey == null || oldest == cellFrame) break;   // no expulsar lo que se dibujo este cuadro
+                CellTex ct = cellTexCache[oldestKey];
+                if (ct.Tex != IntPtr.Zero) D3D9.Release(ct.Tex);
+                cellTexCache.Remove(oldestKey);
+            }
         }
 
         // Rehace la textura del contador SOLO cuando cambia el numero (~1/seg). Es diminuta: coste despreciable.

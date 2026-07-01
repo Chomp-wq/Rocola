@@ -3110,8 +3110,7 @@ namespace Rocola
             {
                 gpuPanel = new GpuPanel();
                 gpuPanel.GetPulse = delegate { return audioLevel; };
-                gpuPanel.GetCubes = delegate { return albumView.CubeBitmap; };       // los cubos+etiquetas van ENCIMA del fondo GPU
-                gpuPanel.GetCubesVersion = delegate { return albumView.EnsureGpuCubesVersion(); };   // reconstruye los cubos si cambio la pagina (aunque venga del buscador)
+                gpuPanel.GetGrid = albumView.BuildGpuGrid;   // rejilla de discos: cada celda su propio quad con textura cacheada (hojear = elegir texturas + posiciones)
                 gpuPanel.GetContour = delegate { return albumView.ContourSpriteBmp; };          // resalte de seleccion
                 gpuPanel.GetContourRect = delegate {
                     Rectangle r = albumView.ContourScreenRect();
@@ -4345,24 +4344,8 @@ namespace Rocola
             private int cellCacheW = -1, cellCacheH = -1;   // tamano con el que se horneo (si cambia, se limpia todo)
             private const int CellCacheCap = 6 * PageSize;  // ~6 paginas de historial en memoria (acotado; hojear ida/vuelta cae dentro)
 #if ROCOLA_GPU
-            public int CubeVersion;                                  // sube cuando cubeCache cambia (para resubir la textura GPU)
-            public Bitmap CubeBitmap { get { return cubeCache; } }   // capa de cubos+etiquetas (la usa el panel GPU como textura)
-            // Asegura que cubeCache este al dia (lo reconstruye si cambio la pagina) SIN depender de OnPaint:
-            // asi el panel GPU se entera de cambios que vienen del buscador u otras rutas. Devuelve la version.
-            public int EnsureGpuCubesVersion()
-            {
-                int w = Width, h = Height;
-                if (w >= 8 && h >= 8)
-                {
-                    string sig = Sig();
-                    if (cacheW != w || cacheH != h || cubeCache == null || sig != cacheSig)
-                    {
-                        RebuildCubes(w, h);
-                        cacheW = w; cacheH = h; cacheSig = sig;
-                    }
-                }
-                return CubeVersion;
-            }
+            // La rejilla por GPU ya NO usa una textura a pantalla completa (cubeCache): el panel pide las celdas
+            // con BuildGpuGrid y dibuja cada disco como su propio quad. cubeCache queda solo para el render por CPU.
             public Bitmap ContourSpriteBmp { get { EnsureContourSprite(); return contourSprite; } }   // sprite del resalte (lo hornea si falta: el panel GPU lo lee aunque el OnPaint por CPU este suprimido)
             public Rectangle ContourScreenRect()                     // donde va el contorno (celda seleccionada)
             {
@@ -4405,6 +4388,38 @@ namespace Rocola
                     st.Relay.Angle = prevAngle; st.Relay.CoverA = ((GetCover != null) ? GetCover(Page[prevIdx]) : null) as Bitmap;
                 }
                 return st;
+            }
+
+            private const int GridBakeBudget = 6;   // celdas NUEVAS horneadas por cuadro (barrer paginas nuevas sin bajar fps)
+
+            // Llena 'buf' con las celdas (disco estatico + etiqueta) de la pagina actual, en coords de PANTALLA (el
+            // panel GPU es a pantalla completa). Cada celda trae su bitmap ya horneado para que el panel lo suba como
+            // su PROPIA textura (cacheada por Folder). Se llama cada cuadro: para celdas cacheadas es casi gratis; las
+            // nuevas se hornean con presupuesto (el resto sale null y el panel las salta hasta el proximo cuadro).
+            public int BuildGpuGrid(GpuGridCell[] buf)
+            {
+                if (Page == null || buf == null) return 0;
+                int w = Width, h = Height;
+                if (w < 8 || h < 8) return 0;
+                int cw = w / Cols, ch = h / Rows;
+                if (cw < 4 || ch < 4) return 0;
+                if (cellCacheW != w || cellCacheH != h) { ClearCellCache(); cellCacheW = w; cellCacheH = h; }   // tamano nuevo: rehornear
+                else if (cellCache.Count > CellCacheCap) ClearCellCache();                                      // limite de memoria (raro)
+                int side, labelH, gap; CellMetrics(cw, ch, out side, out labelH, out gap);
+                int ox = this.Left, oy = this.Top;   // coords de albumView -> pantalla (mismo criterio que los cubos que giran)
+                int budget = GridBakeBudget;
+                int n = 0;
+                for (int i = 0; i < Page.Count && i < PageSize && n < buf.Length; i++)
+                {
+                    Rectangle area, lbl; Geometry(w, h, i, out area, out lbl);
+                    Album a = Page[i];
+                    buf[n].Key = CellKey(a);
+                    buf[n].Bmp = PeekOrBakeCell(a, cw, side, labelH, gap, (GetCover != null) ? GetCover(a) : null, ref budget);
+                    buf[n].Slot = i;
+                    buf[n].X = ox + (i % Cols) * cw; buf[n].Y = oy + area.Y; buf[n].W = cw; buf[n].H = side + gap + labelH;
+                    n++;
+                }
+                return n;
             }
 #endif
             private Color cacheAccent = Color.Empty;
@@ -4607,6 +4622,15 @@ namespace Rocola
                 if (side < 10) side = 10;
             }
 
+            // Clave de cache de la celda: Folder (estable y unico) para discos normales. Para discos TOP ("Lo mas
+            // sonado"), que reusan el mismo Folder sintetico pero cuya portada cambia al variar las reproducciones,
+            // se le agrega la ruta de portada: asi se re-hornea cuando cambia (la etiqueta es fija). null = no cachea.
+            private static string CellKey(Album a)
+            {
+                if (a == null || a.Folder == null) return null;
+                return a.IsTop ? (a.Folder + "|" + (a.CoverPath ?? "")) : a.Folder;
+            }
+
             // Hornea la celda de un disco (portada estatica en angulo 0 + etiqueta a 2 lineas) a un bitmap propio.
             private Bitmap BakeCell(Album a, int cw, int side, int labelH, int gap, Image cover)
             {
@@ -4624,12 +4648,10 @@ namespace Rocola
             }
 
             // Devuelve el bitmap horneado de la celda del album; lo re-hornea si falta o si cambio el estado de
-            // portada (placeholder -> cargada). Clave = Folder (estable y unico). Sin Folder no se cachea.
+            // portada (placeholder -> cargada). Clave = CellKey(a) (ver arriba). Sin clave no se cachea.
             private Bitmap GetOrBakeCell(Album a, int cw, int side, int labelH, int gap, Image cover)
             {
-                // Los discos TOP ("Lo mas sonado") son dinamicos (reusan el mismo Folder sintetico pero su portada
-                // cambia al variar las reproducciones) y son poquitos -> no se cachean (se hornean al vuelo).
-                string key = (a != null && !a.IsTop) ? a.Folder : null;
+                string key = CellKey(a);
                 bool hasCover = (cover != null);
                 CellSprite cs = null;
                 if (key != null && cellCache.TryGetValue(key, out cs) && cs.Bmp != null && cs.HasCover == hasCover)
@@ -4643,17 +4665,38 @@ namespace Rocola
                 return bmp;
             }
 
+            // Como GetOrBakeCell pero con PRESUPUESTO de horneado por cuadro (para la rejilla por GPU): si la celda
+            // no esta cacheada y no queda presupuesto, devuelve la version vieja (placeholder) si la hay, o null (el
+            // panel la salta y aparece en el siguiente cuadro). Asi un barrido de paginas NUEVAS no hornea 18 celdas
+            // de golpe -> los fps no bajan. Comparte cellCache con GetOrBakeCell (mismas claves).
+            private Bitmap PeekOrBakeCell(Album a, int cw, int side, int labelH, int gap, Image cover, ref int budget)
+            {
+                string key = CellKey(a);
+                bool hasCover = (cover != null);
+                CellSprite cs = null;
+                if (key != null && cellCache.TryGetValue(key, out cs) && cs.Bmp != null && cs.HasCover == hasCover)
+                    return cs.Bmp;   // cacheada -> gratis
+                if (budget <= 0) return (cs != null) ? cs.Bmp : null;   // sin presupuesto: usa la vieja (placeholder) si hay; si no, se salta
+                budget--;
+                Bitmap bmp = BakeCell(a, cw, side, labelH, gap, cover);
+                if (key != null)
+                {
+                    if (cs != null && cs.Bmp != null && cs.Bmp != bmp) cs.Bmp.Dispose();
+                    cellCache[key] = new CellSprite { Bmp = bmp, HasCover = hasCover };
+                }
+                return bmp;
+            }
+
             private void ClearCellCache()
             {
                 foreach (CellSprite cs in cellCache.Values) if (cs.Bmp != null) cs.Bmp.Dispose();
                 cellCache.Clear();
             }
 
+            // Compone la rejilla en cubeCache (bitmap a pantalla completa) para el render por CPU. En modo GPU NO se
+            // usa (el panel dibuja cada disco como su propio quad via BuildGpuGrid); OnPaint por CPU esta suprimido.
             private void RebuildCubes(int w, int h)
             {
-#if ROCOLA_GPU
-                CubeVersion++;
-#endif
                 if (cubeCache == null || cubeCache.Width != w || cubeCache.Height != h)
                 {
                     if (cubeCache != null) cubeCache.Dispose();
@@ -4712,9 +4755,8 @@ namespace Rocola
                     }
                 }
                 if (any && dirtyR != Rectangle.Empty) Invalidate(dirtyR);   // solo su celda: 18 caratulas ya NO son 18 repintados completos
-#if ROCOLA_GPU
-                if (any) CubeVersion++;   // la textura GPU de cubos debe resubirse
-#endif
+                // En modo GPU (cubeCache es null) esta ruta no se ejecuta: la portada llega a la rejilla por GPU sola,
+                // porque BuildGpuGrid consulta GetCover cada cuadro y re-hornea la celda cuando la portada aparece.
             }
 
             private const int ContourMargin = 8;   // margen del sprite del contorno (para el resplandor ancho de 11px)
@@ -4757,9 +4799,9 @@ namespace Rocola
                 int w = Width, h = Height;
                 if (w < 8 || h < 8) { g.Clear(Shade(BgAccent, 0.82)); return; }
                 // Cuando el fondo GPU (pantalla completa, opaco) esta encima, TODO esto queda oculto. Reconstruir
-                // la rejilla (RebuildCubes) + pintar estrellas + cubo por CPU en cada Invalidate (p.ej. al paginar,
-                // que llama Invalidate por cambio de pagina) era trabajo invisible que ademas SALTABA la franja de
-                // la GPU -> tirones al hojear. El panel GPU ya arma cubeCache por su cuenta (EnsureGpuCubesVersion).
+                // la rejilla + pintar estrellas + cubo por CPU en cada Invalidate (p.ej. al paginar, que llama
+                // Invalidate por cambio de pagina) era trabajo invisible que ademas SALTABA la franja de la GPU
+                // -> tirones al hojear. El panel GPU dibuja la rejilla por su cuenta (BuildGpuGrid, un quad/celda).
                 if (GpuCovered) return;
 
                 bool sizeChanged = (cacheW != w || cacheH != h);
