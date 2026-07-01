@@ -323,6 +323,28 @@ namespace Rocola
             return tex;
         }
 
+        // Re-sube el contenido a una textura pow2 YA existente (mismo tamano de bitmap) en vez de crear una
+        // nueva: evita el churn de crear/destruir una textura a pantalla completa en cada reconstruccion de UI.
+        // El llamador garantiza el mismo tamano. Devuelve false si no pudo bloquearla (entonces se recrea).
+        public bool UpdateTexturePow2(IntPtr tex, Bitmap bmp, out float uMax, out float vMax)
+        {
+            uMax = 1f; vMax = 1f;
+            if (dev == IntPtr.Zero || tex == IntPtr.Zero) return false;
+            int w = bmp.Width, h = bmp.Height, tw = Pow2(w), th = Pow2(h);
+            D3D9.LockRectDel lockR = D3D9.Fn<D3D9.LockRectDel>(tex, 19);
+            D3D9.UnlockRectDel unlockR = D3D9.Fn<D3D9.UnlockRectDel>(tex, 20);
+            D3D9.LockedRect lr;
+            if (lockR(tex, 0, out lr, IntPtr.Zero, 0) < 0) return false;
+            BitmapData bd = bmp.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+            int rowBytes = w * 4;
+            for (int y = 0; y < h; y++)
+                D3D9.CopyMemory(new IntPtr(lr.Bits.ToInt64() + (long)y * lr.Pitch), new IntPtr(bd.Scan0.ToInt64() + (long)y * bd.Stride), (UIntPtr)(uint)rowBytes);
+            bmp.UnlockBits(bd);
+            unlockR(tex, 0);
+            uMax = (float)w / tw; vMax = (float)h / th;
+            return true;
+        }
+
         private void Draw(D3D9.Vtx[] verts, int tris)
         {
             GCHandle gh = GCHandle.Alloc(verts, GCHandleType.Pinned);
@@ -376,6 +398,7 @@ namespace Rocola
 
         public void SetSky(uint top, uint mid, uint bot) { skyTop = top; skyMid = mid; skyBot = bot; }
         public IntPtr CreateOverlay(Bitmap bmp, out float uMax, out float vMax) { return gpu.CreateTexturePow2(bmp, out uMax, out vMax); }
+        public bool UpdateOverlay(IntPtr tex, Bitmap bmp, out float uMax, out float vMax) { return gpu.UpdateTexturePow2(tex, bmp, out uMax, out vMax); }
         public void DrawCube(IntPtr tex, float uMax, float vMax, float x, float y, float w, float h, double angle, float alpha, double tilt)
         { if (Ok) gpu.DrawCube(tex, uMax, vMax, x, y, w, h, angle, alpha, tilt); }
 
@@ -662,7 +685,7 @@ namespace Rocola
         private int lastHeavyMs;                          // ultima reconstruccion PESADA (rejilla de discos o barras); limita su ritmo
         private bool heavyUiTurn;                         // a quien le toca la franja pesada (alterna rejilla<->barras para que ninguna se congele al paginar)
         private int heavyGapMs = 40;                      // espera minima entre reconstrucciones pesadas; SE AUTOAJUSTA al coste real (ver NoteHeavy)
-        private IntPtr cubeTex; private int cubeVer = -1; private float cubeU = 1f, cubeV = 1f;
+        private IntPtr cubeTex; private int cubeVer = -1; private float cubeU = 1f, cubeV = 1f; private int cubeBmpW = -1, cubeBmpH = -1;
         private readonly D3D9.Vtx[] cubeQuad = new D3D9.Vtx[6];
         private IntPtr contourTex; private Bitmap lastContour; private float contU = 1f, contV = 1f;
         private readonly D3D9.Vtx[] contourQuad = new D3D9.Vtx[6];
@@ -672,7 +695,7 @@ namespace Rocola
         private Bitmap selImgA, selImgB, relImg, miniImg;          // ultima portada subida en cada ranura (para re-subir solo al cambiar)
         private float selUA = 1f, selVA = 1f, selUB = 1f, selVB = 1f, relU = 1f, relV = 1f, miniU = 1f, miniV = 1f;
         // Textura de UI (barras superior e inferior) compuesta sobre el fondo a pantalla completa.
-        private IntPtr uiTex; private int uiVer = -1; private float uiU = 1f, uiV = 1f;
+        private IntPtr uiTex; private int uiVer = -1; private float uiU = 1f, uiV = 1f; private int uiBmpW = -1, uiBmpH = -1;
         private readonly D3D9.Vtx[] uiQuad = new D3D9.Vtx[6];
         // Contador de FPS (diagnostico) en su PROPIA textura pequeña: si fuera parte de la textura de UI
         // obligaria a rehacerla (pantalla completa) 1 vez/seg -> el buscador oscilaba. Aparte cuesta nada.
@@ -735,6 +758,7 @@ namespace Rocola
             if (uiTex != IntPtr.Zero) { D3D9.Release(uiTex); uiTex = IntPtr.Zero; }
             if (fpsTex != IntPtr.Zero) { D3D9.Release(fpsTex); fpsTex = IntPtr.Zero; }
             cubeVer = -1; lastContour = null; selImgA = selImgB = relImg = miniImg = null; uiVer = -1; fpsShown = int.MinValue;
+            cubeBmpW = cubeBmpH = uiBmpW = uiBmpH = -1;   // fuerza recrear las texturas reutilizables tras reiniciar el device
             if (stars != null) { stars.Dispose(); stars = null; }
         }
 
@@ -769,9 +793,8 @@ namespace Rocola
                 int v = GetCubesVersion();   // puede reconstruir la rejilla por dentro (lo mas caro)
                 if (v != cubeVer)
                 {
-                    if (cubeTex != IntPtr.Zero) { D3D9.Release(cubeTex); cubeTex = IntPtr.Zero; }
                     Bitmap bm = GetCubes();
-                    if (bm != null) cubeTex = stars.CreateOverlay(bm, out cubeU, out cubeV);
+                    if (bm != null) cubeTex = Upload(cubeTex, ref cubeBmpW, ref cubeBmpH, bm, out cubeU, out cubeV);   // reutiliza la textura si el tamano no cambio
                     cubeVer = v; canHeavy = false; heavyUiTurn = true;   // gasta la franja; el proximo hueco es de la UI
                     NoteHeavy(t0);   // mide el coste real (rejilla + subida) y ajusta la espera
                 }
@@ -807,9 +830,8 @@ namespace Rocola
                 int uv = GetUiVersion();   // puede rehacer el bitmap de la UI por dentro
                 if (uv != uiVer)
                 {
-                    if (uiTex != IntPtr.Zero) { D3D9.Release(uiTex); uiTex = IntPtr.Zero; }
                     Bitmap ub = GetUi();
-                    if (ub != null) uiTex = stars.CreateOverlay(ub, out uiU, out uiV);
+                    if (ub != null) uiTex = Upload(uiTex, ref uiBmpW, ref uiBmpH, ub, out uiU, out uiV);   // reutiliza la textura (no re-crear a pantalla completa cada vez)
                     uiVer = uv; canHeavy = false; heavyUiTurn = false;   // gasta la franja; el proximo hueco es de la rejilla
                     NoteHeavy(t0);   // la UI cacheada es barata -> espera corta -> el buscador va fluido
                 }
@@ -879,6 +901,19 @@ namespace Rocola
             int cost = lastHeavyMs - t0; if (cost < 0) cost = 0;
             int g = cost + cost / 2;   // ~1.5x el coste
             heavyGapMs = g < 16 ? 16 : (g > 250 ? 250 : g);
+        }
+
+        // Sube 'bmp' a 'tex' REUTILIZANDO la textura si el bitmap tiene el mismo tamano (barato: solo re-copia
+        // el contenido); si cambio de tamano o no habia, la recrea. Evita crear/destruir una textura a pantalla
+        // completa en cada reconstruccion (lo caro), p.ej. la UI ~13fps por el brillo de la letra en navegacion.
+        private IntPtr Upload(IntPtr tex, ref int bw, ref int bh, Bitmap bmp, out float u, out float v)
+        {
+            if (tex != IntPtr.Zero && bw == bmp.Width && bh == bmp.Height && stars.UpdateOverlay(tex, bmp, out u, out v))
+                return tex;   // actualizada in situ (misma textura)
+            if (tex != IntPtr.Zero) D3D9.Release(tex);
+            tex = stars.CreateOverlay(bmp, out u, out v);
+            bw = bmp.Width; bh = bmp.Height;
+            return tex;
         }
 
         private static void SetTexQuad(D3D9.Vtx[] v, float x0, float y0, float x1, float y1, float uMax, float vMax)
