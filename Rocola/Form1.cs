@@ -3365,22 +3365,24 @@ namespace Rocola
         }
 
         // Dibuja el texto de una etiqueta en la textura de UI, respetando su fuente, color, alineacion y caja.
+        // GDI reusables (StringFormat + pincel al que se muta el color): esto se llama ~6-7 veces por cada
+        // reconstruccion de la textura de UI (que ocurre ~13fps en navegacion por el brillo de la letra).
+        [ThreadStatic] private static StringFormat lblSf;
+        [ThreadStatic] private static SolidBrush lblBr;
         private static void DrawLabelOverlay(Graphics g, Label l)
         {
             if (l == null || string.IsNullOrEmpty(l.Text)) return;
-            using (StringFormat sf = new StringFormat())
-            using (SolidBrush b = new SolidBrush(l.ForeColor))
-            {
-                sf.FormatFlags = StringFormatFlags.NoWrap; sf.Trimming = StringTrimming.EllipsisCharacter;
-                ContentAlignment a = l.TextAlign;
-                if ((a & (ContentAlignment.TopLeft | ContentAlignment.MiddleLeft | ContentAlignment.BottomLeft)) != 0) sf.Alignment = StringAlignment.Near;
-                else if ((a & (ContentAlignment.TopRight | ContentAlignment.MiddleRight | ContentAlignment.BottomRight)) != 0) sf.Alignment = StringAlignment.Far;
-                else sf.Alignment = StringAlignment.Center;
-                if ((a & (ContentAlignment.TopLeft | ContentAlignment.TopCenter | ContentAlignment.TopRight)) != 0) sf.LineAlignment = StringAlignment.Near;
-                else if ((a & (ContentAlignment.BottomLeft | ContentAlignment.BottomCenter | ContentAlignment.BottomRight)) != 0) sf.LineAlignment = StringAlignment.Far;
-                else sf.LineAlignment = StringAlignment.Center;
-                g.DrawString(l.Text, l.Font, b, (RectangleF)l.Bounds, sf);
-            }
+            StringFormat sf = lblSf ?? (lblSf = new StringFormat());
+            SolidBrush b = lblBr ?? (lblBr = new SolidBrush(Color.White)); b.Color = l.ForeColor;
+            sf.FormatFlags = StringFormatFlags.NoWrap; sf.Trimming = StringTrimming.EllipsisCharacter;
+            ContentAlignment a = l.TextAlign;
+            if ((a & (ContentAlignment.TopLeft | ContentAlignment.MiddleLeft | ContentAlignment.BottomLeft)) != 0) sf.Alignment = StringAlignment.Near;
+            else if ((a & (ContentAlignment.TopRight | ContentAlignment.MiddleRight | ContentAlignment.BottomRight)) != 0) sf.Alignment = StringAlignment.Far;
+            else sf.Alignment = StringAlignment.Center;
+            if ((a & (ContentAlignment.TopLeft | ContentAlignment.TopCenter | ContentAlignment.TopRight)) != 0) sf.LineAlignment = StringAlignment.Near;
+            else if ((a & (ContentAlignment.BottomLeft | ContentAlignment.BottomCenter | ContentAlignment.BottomRight)) != 0) sf.LineAlignment = StringAlignment.Far;
+            else sf.LineAlignment = StringAlignment.Center;
+            g.DrawString(l.Text, l.Font, b, (RectangleF)l.Bounds, sf);
         }
 #endif
 
@@ -4191,21 +4193,31 @@ namespace Rocola
         }
 
         // Ayudantes para dibujar los controles fisicos como FORMAS (circulo rojo/verde, cruceta).
+        // GDI reusables para las formas de instrucciones (se llaman muchas veces por cuadro): pincel al que se
+        // le muta el color, contorno blanco fijo y un buffer de 3 puntos. Evita asignar objetos GDI por forma.
+        [ThreadStatic] private static SolidBrush ctrlB;
+        [ThreadStatic] private static Pen ctrlOutline;
+        [ThreadStatic] private static PointF[] ctrlTri3;
+        private static SolidBrush CB(Color c) { if (ctrlB == null) ctrlB = new SolidBrush(c); else ctrlB.Color = c; return ctrlB; }
+        private static Pen COut() { return ctrlOutline ?? (ctrlOutline = new Pen(Color.FromArgb(130, 255, 255, 255), 1.4f)); }
+
         private static float CtrlDot(Graphics g, float x, int cy, int d, Color c)
         {
-            using (SolidBrush b = new SolidBrush(c)) g.FillEllipse(b, x, cy - d / 2f, d, d);
-            using (Pen p = new Pen(Color.FromArgb(130, 255, 255, 255), 1.4f)) g.DrawEllipse(p, x, cy - d / 2f, d, d);
+            g.FillEllipse(CB(c), x, cy - d / 2f, d, d);
+            g.DrawEllipse(COut(), x, cy - d / 2f, d, d);
             return x + d;
         }
         private static float CtrlTxt(Graphics g, Font f, string s, float x, int cy, Color c)
         {
             SizeF sz = g.MeasureString(s, f);
-            using (SolidBrush b = new SolidBrush(c)) g.DrawString(s, f, b, x, cy - sz.Height / 2f);
+            g.DrawString(s, f, CB(c), x, cy - sz.Height / 2f);
             return x + sz.Width;
         }
         private static void CtrlTri(Graphics g, Color c, PointF a, PointF b, PointF d)
         {
-            using (SolidBrush br = new SolidBrush(c)) g.FillPolygon(br, new PointF[] { a, b, d });
+            PointF[] p = ctrlTri3 ?? (ctrlTri3 = new PointF[3]);
+            p[0] = a; p[1] = b; p[2] = d;
+            g.FillPolygon(CB(c), p);
         }
         private static float CtrlPad(Graphics g, float x, int cy, int sz)   // cruceta: arriba/abajo rojo, izq/der amarillo
         {
@@ -4220,25 +4232,17 @@ namespace Rocola
         // Icono del BOTON IZQUIERDA (flecha amarilla, mismo color que la cruceta horizontal)
         private static float CtrlDirLeft(Graphics g, float x, int cy, int sz, Color c)
         {
-            PointF[] pts = new PointF[] {
-                new PointF(x, cy),
-                new PointF(x + sz, cy - sz * 0.5f),
-                new PointF(x + sz, cy + sz * 0.5f)
-            };
-            using (SolidBrush b = new SolidBrush(c)) g.FillPolygon(b, pts);
-            using (Pen p = new Pen(Color.FromArgb(130, 255, 255, 255), 1.4f)) g.DrawPolygon(p, pts);
+            PointF[] pts = ctrlTri3 ?? (ctrlTri3 = new PointF[3]);
+            pts[0] = new PointF(x, cy); pts[1] = new PointF(x + sz, cy - sz * 0.5f); pts[2] = new PointF(x + sz, cy + sz * 0.5f);
+            g.FillPolygon(CB(c), pts); g.DrawPolygon(COut(), pts);
             return x + sz;
         }
         // Icono del BOTON DERECHA (flecha amarilla, espejo de la izquierda)
         private static float CtrlDirRight(Graphics g, float x, int cy, int sz, Color c)
         {
-            PointF[] pts = new PointF[] {
-                new PointF(x + sz, cy),
-                new PointF(x, cy - sz * 0.5f),
-                new PointF(x, cy + sz * 0.5f)
-            };
-            using (SolidBrush b = new SolidBrush(c)) g.FillPolygon(b, pts);
-            using (Pen p = new Pen(Color.FromArgb(130, 255, 255, 255), 1.4f)) g.DrawPolygon(p, pts);
+            PointF[] pts = ctrlTri3 ?? (ctrlTri3 = new PointF[3]);
+            pts[0] = new PointF(x + sz, cy); pts[1] = new PointF(x, cy - sz * 0.5f); pts[2] = new PointF(x, cy + sz * 0.5f);
+            g.FillPolygon(CB(c), pts); g.DrawPolygon(COut(), pts);
             return x + sz;
         }
 
@@ -4259,6 +4263,7 @@ namespace Rocola
             public void Flash(int which) { flash.Fire(which, which == FEntrar ? GreenC : which == FVolver ? RedC : Color.White); }
             public void FlashMove(bool vertical) { flash.Fire(FMover, vertical ? RedC : YellowC); }   // arriba/abajo ROJO, izq/der AMARILLO
             public int FlashSig() { return flash.Sig(); }
+            private Font hbFont;   // fuente cacheada: la barra se redibuja ~13fps (glow) -> no crear una por cuadro
 
             protected override void OnPaint(PaintEventArgs e) { e.Graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit; RenderContent(e.Graphics); }
             // Dibuja la leyenda en un Graphics cualquiera (el control, o la textura de UI del modo GPU). El
@@ -4271,22 +4276,21 @@ namespace Rocola
                 Color txt = Color.FromArgb(228, 234, 250);
                 int d = Math.Min(20, Height - 8); if (d < 12) d = 12;
                 float gap = 7, grp = 20;
-                using (Font f = new Font(FontFamily.GenericSansSerif, 9.5f, FontStyle.Bold))
-                {
-                    float x = 2;
-                    GlowAround(g, x, cy, d * 2 + 4, flash.Level(FBuscar), flash.Col);   // BUSCAR = 2 puntos
-                    x = CtrlDot(g, x, cy, d, RedC) + 4; x = CtrlDot(g, x, cy, d, GreenC);
-                    x = CtrlTxt(g, f, "Buscar", x + gap, cy, txt) + grp;
-                    GlowAround(g, x, cy, d + 4, flash.Level(FMover), flash.Col);        // MOVER = cruceta (color segun direccion)
-                    x = CtrlPad(g, x, cy, d + 4);
-                    x = CtrlTxt(g, f, "Mover", x + gap, cy, txt) + grp;
-                    GlowAround(g, x, cy, d, flash.Level(FEntrar), flash.Col);           // ENTRAR/PONER = punto verde
-                    x = CtrlDot(g, x, cy, d, GreenC);
-                    x = CtrlTxt(g, f, "Entrar / Poner", x + gap, cy, txt) + grp;
-                    GlowAround(g, x, cy, d, flash.Level(FVolver), flash.Col);           // VOLVER = punto rojo
-                    x = CtrlDot(g, x, cy, d, RedC);
-                    x = CtrlTxt(g, f, "Volver", x + gap, cy, txt);
-                }
+                if (hbFont == null) hbFont = new Font(FontFamily.GenericSansSerif, 9.5f, FontStyle.Bold);
+                Font f = hbFont;
+                float x = 2;
+                GlowAround(g, x, cy, d * 2 + 4, flash.Level(FBuscar), flash.Col);   // BUSCAR = 2 puntos
+                x = CtrlDot(g, x, cy, d, RedC) + 4; x = CtrlDot(g, x, cy, d, GreenC);
+                x = CtrlTxt(g, f, "Buscar", x + gap, cy, txt) + grp;
+                GlowAround(g, x, cy, d + 4, flash.Level(FMover), flash.Col);        // MOVER = cruceta (color segun direccion)
+                x = CtrlPad(g, x, cy, d + 4);
+                x = CtrlTxt(g, f, "Mover", x + gap, cy, txt) + grp;
+                GlowAround(g, x, cy, d, flash.Level(FEntrar), flash.Col);           // ENTRAR/PONER = punto verde
+                x = CtrlDot(g, x, cy, d, GreenC);
+                x = CtrlTxt(g, f, "Entrar / Poner", x + gap, cy, txt) + grp;
+                GlowAround(g, x, cy, d, flash.Level(FVolver), flash.Col);           // VOLVER = punto rojo
+                x = CtrlDot(g, x, cy, d, RedC);
+                x = CtrlTxt(g, f, "Volver", x + gap, cy, txt);
             }
         }
 
@@ -4824,6 +4828,7 @@ namespace Rocola
         {
             public int Page = 0;    // pagina actual (desde 0)
             public int Pages = 1;   // total de paginas
+            private Font pgFont;    // fuente cacheada (esta barra se redibuja al paginar / con el brillo)
 
             public SongPagerBar()
             {
@@ -4836,7 +4841,7 @@ namespace Rocola
             public void RenderContent(Graphics g)
             {
                 int w = Width, h = Height;
-                using (SolidBrush bb = new SolidBrush(BackColor)) g.FillRectangle(bb, 0, 0, w, h);
+                g.FillRectangle(CB(BackColor), 0, 0, w, h);   // pincel reusable (mutado)
                 if (Pages <= 1 || w < 60 || h < 10) return;
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
@@ -4844,12 +4849,13 @@ namespace Rocola
                 Color txt = Color.FromArgb(228, 236, 252);
                 Color dim = Color.FromArgb(175, 188, 215);
                 Color yellow = Color.FromArgb(242, 206, 72);   // mismo amarillo que la cruceta izq/der
-                using (Font f = new Font(FontFamily.GenericSansSerif, 9.5f, FontStyle.Bold))
+                if (pgFont == null) pgFont = new Font(FontFamily.GenericSansSerif, 9.5f, FontStyle.Bold);
+                Font f = pgFont;
                 {
                     // Centro: Pagina X de Y
                     string c = "Pagina " + (Page + 1) + " de " + Pages;
                     SizeF cs = g.MeasureString(c, f);
-                    using (SolidBrush b = new SolidBrush(txt)) g.DrawString(c, f, b, (w - cs.Width) / 2f, cy - cs.Height / 2f);
+                    g.DrawString(c, f, CB(txt), (w - cs.Width) / 2f, cy - cs.Height / 2f);
 
                     // Izquierda: [<] pagina anterior (solo si existe)
                     if (Page > 0)
