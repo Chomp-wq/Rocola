@@ -660,6 +660,7 @@ namespace Rocola
         private bool idleHooked;
         private int frames, fpsTick;
         private int lastHeavyMs;                          // ultima reconstruccion PESADA (rejilla de discos o barras); limita su ritmo
+        private bool heavyUiTurn;                         // a quien le toca la franja pesada (alterna rejilla<->barras para que ninguna se congele al paginar)
         private const int HeavyMinMs = 66;                // como mucho ~15 reconstrucciones pesadas/seg: al paginar rapido el FONDO sigue fluido y la rejilla se pone al dia sola
         private IntPtr cubeTex; private int cubeVer = -1; private float cubeU = 1f, cubeV = 1f;
         private readonly D3D9.Vtx[] cubeQuad = new D3D9.Vtx[6];
@@ -752,9 +753,10 @@ namespace Rocola
             // pleno ritmo con la ultima textura, y la rejilla se pone al dia sola (~15fps) sin que se note.
             int nowMs = Environment.TickCount;
             bool canHeavy = (nowMs - lastHeavyMs) >= HeavyMinMs;
+            bool cubeTurn = !heavyUiTurn;   // esta franja le toca a la rejilla (si no la necesita, cede a la UI mas abajo)
             // Cubos: textura que cambia al navegar / llegar caratula. GetCubesVersion() reconstruye por dentro
-            // si cambio la pagina, asi que solo lo llamamos en las franjas permitidas (o si aun no hay textura).
-            if (GetCubes != null && GetCubesVersion != null && (canHeavy || cubeTex == IntPtr.Zero))
+            // si cambio la pagina, asi que solo lo llamamos si es su turno (o si aun no hay textura).
+            if (GetCubes != null && GetCubesVersion != null && (cubeTex == IntPtr.Zero || (canHeavy && cubeTurn)))
             {
                 int v = GetCubesVersion();
                 if (v != cubeVer)
@@ -762,8 +764,9 @@ namespace Rocola
                     if (cubeTex != IntPtr.Zero) { D3D9.Release(cubeTex); cubeTex = IntPtr.Zero; }
                     Bitmap bm = GetCubes();
                     if (bm != null) cubeTex = stars.CreateOverlay(bm, out cubeU, out cubeV);
-                    cubeVer = v; lastHeavyMs = nowMs; canHeavy = false;   // gasta la franja: la UI espera al siguiente hueco
+                    cubeVer = v; lastHeavyMs = nowMs; canHeavy = false; heavyUiTurn = true;   // gasta la franja; el proximo hueco es de la UI
                 }
+                else if (cubeTurn) heavyUiTurn = true;   // la rejilla no necesitaba: cede este hueco a la UI
             }
             // Contorno de seleccion: sprite estatico (se sube cuando cambia el bitmap, p.ej. al cambiar tamano).
             if (GetContour != null)
@@ -784,8 +787,9 @@ namespace Rocola
             EnsureCover(ref relTex, ref relImg, ref relU, ref relV, cs.Relay.CoverA);
             EnsureCover(ref miniTex, ref miniImg, ref miniU, ref miniV, cs.Mini.CoverA);   // mini-cubo de la barra inferior
             // Barras (UI) a textura: se re-sube solo cuando cambia algun texto/estado (firma del form), y
-            // ademas limitada por la misma franja pesada (evita rehacer el bitmap a pantalla completa cada cuadro).
-            if (GetUi != null && GetUiVersion != null && (canHeavy || uiTex == IntPtr.Zero))
+            // ademas limitada por la MISMA franja pesada (alternando con la rejilla) para que el numero de
+            // pagina no se congele al paginar rapido mientras la rejilla acapara todos los huecos.
+            if (GetUi != null && GetUiVersion != null && (uiTex == IntPtr.Zero || (canHeavy && heavyUiTurn)))
             {
                 int uv = GetUiVersion();
                 if (uv != uiVer)
@@ -793,8 +797,9 @@ namespace Rocola
                     if (uiTex != IntPtr.Zero) { D3D9.Release(uiTex); uiTex = IntPtr.Zero; }
                     Bitmap ub = GetUi();
                     if (ub != null) uiTex = stars.CreateOverlay(ub, out uiU, out uiV);
-                    uiVer = uv; lastHeavyMs = nowMs; canHeavy = false;
+                    uiVer = uv; lastHeavyMs = nowMs; canHeavy = false; heavyUiTurn = false;   // gasta la franja; el proximo hueco es de la rejilla
                 }
+                else if (heavyUiTurn) heavyUiTurn = false;   // la UI no necesitaba: cede el turno a la rejilla
             }
             float pulse = (GetPulse != null) ? GetPulse() : 0f;
             if (!stars.Begin(Width, Height, pulse)) return;
