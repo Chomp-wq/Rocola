@@ -2072,14 +2072,22 @@ namespace Rocola
             // Cualquier OTRA tecla, si el video esta en pantalla completa, solo "despierta" la rocola.
             if (wasFull) { ExitVideoFull(); return true; }
 
-            // BRILLO DE INSTRUCCIONES: al pulsar un boton fisico, resalta su simbolo en la barra de ayuda
-            // (solo donde esa barra se muestra: navegacion e interior de disco). Guia visual para el cliente.
-            if (helpBar != null && !searchOpen && !attractOn)
+            // BRILLO DE INSTRUCCIONES: al pulsar un boton fisico, resalta su simbolo en la barra de ayuda.
+            // Mover: arriba/abajo ROJO, izq/der AMARILLO (como las flechas de la cruceta). Guia visual.
+            if (searchOpen && searchOverlay != null)   // barra del buscador (Mover / Poner-Elegir / Cerrar)
+            {
+                if (IsOK(kc) && BackHeld()) searchOverlay.FlashClose();
+                else if (IsOK(kc)) searchOverlay.FlashOK();
+                else if (IsUp(kc) || IsDown(kc)) searchOverlay.FlashMove(true);
+                else if (IsLeft(kc) || IsRight(kc)) searchOverlay.FlashMove(false);
+            }
+            else if (helpBar != null && !attractOn)    // barra de navegacion / interior de disco
             {
                 if (IsOK(kc) && BackHeld()) helpBar.Flash(HelpBar.FBuscar);
                 else if (IsOK(kc)) helpBar.Flash(HelpBar.FEntrar);
                 else if (IsBack(kc)) helpBar.Flash(HelpBar.FVolver);
-                else if (IsLeft(kc) || IsRight(kc) || IsUp(kc) || IsDown(kc)) helpBar.Flash(HelpBar.FMover);
+                else if (IsUp(kc) || IsDown(kc)) helpBar.FlashMove(true);
+                else if (IsLeft(kc) || IsRight(kc)) helpBar.FlashMove(false);
             }
 
             // F5 = recargar musica (mantenimiento; sin boton visible)
@@ -3279,9 +3287,10 @@ namespace Rocola
                 sb.Append("|S").Append(searchOverlay.Query).Append('|').Append(searchOverlay.SelRow).Append(',').Append(searchOverlay.SelCol)
                   .Append('|').Append(searchOverlay.FocusResults).Append(searchOverlay.SelResult)
                   .Append('|').Append(searchOverlay.Results == null ? 0 : searchOverlay.Results.Count)
-                  .Append('|').Append(searchOverlay.ToastOn).Append(searchOverlay.ToastMsg);
-                  // NADA de fase aqui: el teclado (40 teclas) es carisimo de rehacer. En reposo la firma NO
-                  // cambia -> 0 reconstrucciones -> pleno FPS. Solo se rehace al teclear o mover la seleccion.
+                  .Append('|').Append(searchOverlay.ToastOn).Append(searchOverlay.ToastMsg)
+                  .Append('|').Append(searchOverlay.HintFlashSig());   // brillo del boton pulsado (0 en reposo -> no reconstruye)
+                  // Sin fase del teclado aqui: es carisimo de rehacer. En reposo la firma solo cambia por el
+                  // brillo (breve) -> 0 reconstrucciones cuando no pulsas -> pleno FPS.
             else if (panelSongs != null && panelSongs.Visible)   // INTERIOR DE DISCO: etiqueta, seleccion, pagina
                 sb.Append("|D").Append(lblAlbum != null ? lblAlbum.Text : "").Append('|').Append(songSel).Append('|').Append(songItems.Count)
                   .Append('|').Append(songList != null ? songList.PageStart : 0).Append('|').Append(bgAccent.ToArgb());
@@ -4101,6 +4110,49 @@ namespace Rocola
             }
         }
 
+        // Estado del "brillo" de un simbolo de la barra de instrucciones al pulsar su boton (halo que decae).
+        // Lo comparten la barra de navegacion/disco (HelpBar) y la del buscador. El color se fija al dispararlo
+        // (asi Mover puede ser ROJO en arriba/abajo o AMARILLO en izq/der, segun la flecha de la cruceta).
+        private sealed class InstrFlash
+        {
+            private const int Ms = 420;
+            private int which = -1; private int tick; private Color col = Color.White;
+            public void Fire(int w, Color c) { which = w; tick = Environment.TickCount; col = c; }
+            public float Level(int w)
+            {
+                if (which != w) return 0f;
+                int dt = Environment.TickCount - tick;
+                if (dt < 0 || dt > Ms) return 0f;
+                return 1f - (float)dt / Ms;
+            }
+            public Color Col { get { return col; } }
+            public int Sig()   // cambia mientras dura el brillo (para rehacer la textura y animarlo); 0 = sin brillo
+            {
+                if (which < 0) return 0;
+                int dt = Environment.TickCount - tick;
+                if (dt < 0 || dt > Ms) return 0;
+                return (which + 1) * 1000 + dt / 40;
+            }
+        }
+
+        // Halo suave (radial) centrado en un simbolo de instrucciones; intensidad segun 'level' (0..1).
+        private static void GlowAround(Graphics g, float leftX, float cy, float symW, float level, Color c)
+        {
+            if (level <= 0.02f) return;
+            float cx = leftX + symW / 2f, r = symW * 0.9f + 6f;
+            using (GraphicsPath gp = new GraphicsPath())
+            {
+                gp.AddEllipse(cx - r, cy - r, 2 * r, 2 * r);
+                using (PathGradientBrush pb = new PathGradientBrush(gp))
+                {
+                    pb.CenterPoint = new PointF(cx, cy);
+                    pb.CenterColor = Color.FromArgb((int)(level * 215), c);
+                    pb.SurroundColors = new Color[] { Color.FromArgb(0, c) };
+                    g.FillPath(pb, gp);
+                }
+            }
+        }
+
         // Ayudantes para dibujar los controles fisicos como FORMAS (circulo rojo/verde, cruceta).
         private static float CtrlDot(Graphics g, float x, int cy, int d, Color c)
         {
@@ -4157,8 +4209,8 @@ namespace Rocola
         private class HelpBar : Control
         {
             public const int FBuscar = 0, FMover = 1, FEntrar = 2, FVolver = 3;   // simbolo a resaltar
-            private const int FlashMs = 420;
-            private int flashWhich = -1; private int flashTick;
+            private static readonly Color RedC = Color.FromArgb(228, 72, 72), GreenC = Color.FromArgb(72, 212, 112), YellowC = Color.FromArgb(242, 206, 72);
+            private readonly InstrFlash flash = new InstrFlash();
 
             public HelpBar()
             {
@@ -4167,22 +4219,9 @@ namespace Rocola
             }
 
             // El usuario pulso un boton: resalta (brillo que decae) el simbolo correspondiente.
-            public void Flash(int which) { flashWhich = which; flashTick = Environment.TickCount; }
-            private float FlashLevel(int which)
-            {
-                if (flashWhich != which) return 0f;
-                int dt = Environment.TickCount - flashTick;
-                if (dt < 0 || dt > FlashMs) return 0f;
-                return 1f - (float)dt / FlashMs;
-            }
-            // Firma que CAMBIA mientras dura un brillo (para que la textura de UI se rehaga y lo anime). 0 = sin brillo.
-            public int FlashSig()
-            {
-                if (flashWhich < 0) return 0;
-                int dt = Environment.TickCount - flashTick;
-                if (dt < 0 || dt > FlashMs) return 0;
-                return (flashWhich + 1) * 1000 + dt / 40;
-            }
+            public void Flash(int which) { flash.Fire(which, which == FEntrar ? GreenC : which == FVolver ? RedC : Color.White); }
+            public void FlashMove(bool vertical) { flash.Fire(FMover, vertical ? RedC : YellowC); }   // arriba/abajo ROJO, izq/der AMARILLO
+            public int FlashSig() { return flash.Sig(); }
 
             protected override void OnPaint(PaintEventArgs e) { e.Graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit; RenderContent(e.Graphics); }
             // Dibuja la leyenda en un Graphics cualquiera (el control, o la textura de UI del modo GPU). El
@@ -4193,42 +4232,23 @@ namespace Rocola
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 int cy = Height / 2;
                 Color txt = Color.FromArgb(228, 234, 250);
-                Color red = Color.FromArgb(228, 72, 72), green = Color.FromArgb(72, 212, 112), yellow = Color.FromArgb(242, 206, 72);
                 int d = Math.Min(20, Height - 8); if (d < 12) d = 12;
                 float gap = 7, grp = 20;
                 using (Font f = new Font(FontFamily.GenericSansSerif, 9.5f, FontStyle.Bold))
                 {
                     float x = 2;
-                    GlowAround(g, x, cy, d * 2 + 4, FlashLevel(FBuscar), Color.White);   // BUSCAR = 2 puntos
-                    x = CtrlDot(g, x, cy, d, red) + 4; x = CtrlDot(g, x, cy, d, green);
+                    GlowAround(g, x, cy, d * 2 + 4, flash.Level(FBuscar), flash.Col);   // BUSCAR = 2 puntos
+                    x = CtrlDot(g, x, cy, d, RedC) + 4; x = CtrlDot(g, x, cy, d, GreenC);
                     x = CtrlTxt(g, f, "Buscar", x + gap, cy, txt) + grp;
-                    GlowAround(g, x, cy, d + 4, FlashLevel(FMover), yellow);            // MOVER = cruceta
+                    GlowAround(g, x, cy, d + 4, flash.Level(FMover), flash.Col);        // MOVER = cruceta (color segun direccion)
                     x = CtrlPad(g, x, cy, d + 4);
                     x = CtrlTxt(g, f, "Mover", x + gap, cy, txt) + grp;
-                    GlowAround(g, x, cy, d, FlashLevel(FEntrar), green);                // ENTRAR/PONER = punto verde
-                    x = CtrlDot(g, x, cy, d, green);
+                    GlowAround(g, x, cy, d, flash.Level(FEntrar), flash.Col);           // ENTRAR/PONER = punto verde
+                    x = CtrlDot(g, x, cy, d, GreenC);
                     x = CtrlTxt(g, f, "Entrar / Poner", x + gap, cy, txt) + grp;
-                    GlowAround(g, x, cy, d, FlashLevel(FVolver), red);                  // VOLVER = punto rojo
-                    x = CtrlDot(g, x, cy, d, red);
+                    GlowAround(g, x, cy, d, flash.Level(FVolver), flash.Col);           // VOLVER = punto rojo
+                    x = CtrlDot(g, x, cy, d, RedC);
                     x = CtrlTxt(g, f, "Volver", x + gap, cy, txt);
-                }
-            }
-
-            // Halo suave (radial) centrado en el simbolo, con intensidad segun 'level' (0..1).
-            private static void GlowAround(Graphics g, float leftX, float cy, float symW, float level, Color c)
-            {
-                if (level <= 0.02f) return;
-                float cx = leftX + symW / 2f, r = symW * 0.9f + 6f;
-                using (GraphicsPath gp = new GraphicsPath())
-                {
-                    gp.AddEllipse(cx - r, cy - r, 2 * r, 2 * r);
-                    using (PathGradientBrush pb = new PathGradientBrush(gp))
-                    {
-                        pb.CenterPoint = new PointF(cx, cy);
-                        pb.CenterColor = Color.FromArgb((int)(level * 215), c);
-                        pb.SurroundColors = new Color[] { Color.FromArgb(0, c) };
-                        g.FillPath(pb, gp);
-                    }
                 }
             }
         }
@@ -5178,6 +5198,14 @@ namespace Rocola
             private Bitmap blendBmp;
             private Starfield stars = new Starfield();   // fondo estrellado reactivo al genero
             public float AudioPulse = 0f;   // 0..1 nivel de audio
+            // Brillo de la barra de instrucciones del buscador (Mover / Poner-Elegir / Cerrar) al pulsar.
+            public const int SMover = 0, SPoner = 1, SCerrar = 2;
+            private static readonly Color SRed = Color.FromArgb(228, 72, 72), SGreen = Color.FromArgb(72, 212, 112), SYellow = Color.FromArgb(242, 206, 72);
+            private readonly InstrFlash hintFlash = new InstrFlash();
+            public void FlashMove(bool vertical) { hintFlash.Fire(SMover, vertical ? SRed : SYellow); }   // arriba/abajo ROJO, izq/der AMARILLO
+            public void FlashOK() { hintFlash.Fire(SPoner, SGreen); }
+            public void FlashClose() { hintFlash.Fire(SCerrar, Color.White); }
+            public int HintFlashSig() { return hintFlash.Sig(); }
             // Recursos de pintado CACHEADOS: el buscador creaba ~90 objetos GDI por cuadro (fuentes,
             // pinceles y plumas, incluso por cada tecla y resultado) a 24fps. Ahora todo es reusable.
             private Font fQuery, fHint, fToast, fHead, fEmpty, fRes, fResSub, fPrevT, fPrevS, fPrevH;
@@ -5355,7 +5383,7 @@ namespace Rocola
 
                 int M = 30;
                 Rectangle qb = new Rectangle(M, M, W - 2 * M, 70);
-                Rectangle hintRect = new Rectangle(M, M + 72, W - 2 * M, 20);
+                Rectangle hintRect = new Rectangle(M, M + 72, W - 2 * M, 26);
                 if (qb.IntersectsWith(clip) || hintRect.IntersectsWith(clip))
                 {
                     EnsurePaintRes();
@@ -5373,14 +5401,16 @@ namespace Rocola
                         Font hf = fHint;
                         int hcy = hintRect.Y + hintRect.Height / 2;
                         Color htx = Color.FromArgb(214, 222, 242);
-                        Color hred = Color.FromArgb(228, 72, 72), hgreen = Color.FromArgb(72, 212, 112);
-                        int hd = 14; float hgap = 6, hgrp = 18;
+                        int hd = 20; float hgap = 7, hgrp = 20;   // MISMO tamano que la barra principal
                         float hx = hintRect.X;
+                        GlowAround(g, hx, hcy, hd + 2, hintFlash.Level(SMover), hintFlash.Col);   // MOVER = cruceta (color segun direccion)
                         hx = CtrlPad(g, hx, hcy, hd + 2);
                         hx = CtrlTxt(g, hf, "Mover", hx + hgap, hcy, htx) + hgrp;
-                        hx = CtrlDot(g, hx, hcy, hd, hgreen);
+                        GlowAround(g, hx, hcy, hd, hintFlash.Level(SPoner), hintFlash.Col);        // PONER/ELEGIR = punto verde
+                        hx = CtrlDot(g, hx, hcy, hd, SGreen);
                         hx = CtrlTxt(g, hf, "Poner / Elegir", hx + hgap, hcy, htx) + hgrp;
-                        hx = CtrlDot(g, hx, hcy, hd, hred) + 3; hx = CtrlDot(g, hx, hcy, hd, hgreen);
+                        GlowAround(g, hx, hcy, hd * 2 + 3, hintFlash.Level(SCerrar), hintFlash.Col);   // CERRAR = 2 puntos
+                        hx = CtrlDot(g, hx, hcy, hd, SRed) + 3; hx = CtrlDot(g, hx, hcy, hd, SGreen);
                         hx = CtrlTxt(g, hf, "Cerrar", hx + hgap, hcy, htx);
                     }
                 }
