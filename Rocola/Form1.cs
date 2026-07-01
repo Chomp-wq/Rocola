@@ -5126,6 +5126,11 @@ namespace Rocola
             // se dibuja UNA vez a un bitmap y luego solo se copia + se pinta EN VIVO la tecla seleccionada.
             private Bitmap kbCache; private int kbCacheW = -1, kbCacheH = -1, kbCacheAccent; private float kbCacheKh = -1f;
             private Point kbCacheOrigin;
+            // CACHE de la lista de resultados (mismo motivo que el teclado): ~40 tarjetas con degradado, contorno
+            // y 2 textos cada una. Los resultados dependen SOLO de la consulta, asi que se cachean por Query y
+            // solo se pinta EN VIVO la tarjeta seleccionada. Moverse por teclas/resultados deja de dar tirones.
+            private Bitmap resCache; private string resCacheQuery = "\0"; private int resCacheW = -1, resCacheH = -1, resCacheAccent;
+            private Point resCacheOrigin;
             private void EnsurePaintRes()
             {
                 if (fQuery != null) return;
@@ -5469,52 +5474,75 @@ namespace Rocola
             {
                 resultRects.Clear();
                 EnsurePaintRes();
-                TextRenderer.DrawText(g, "Resultados", fHead, new Rectangle(region.X, region.Y, region.Width, 24), Color.White, TextFormatFlags.Left);
                 int top = region.Y + 30;
                 int areaH = region.Bottom - top;
-                if (areaH < 28) { resCols = 1; resRowsPerCol = 1; return; }
-
-                int cardH = 38, gapY = 5, gapX = 8, colMinW = 185;
-                int cols = (region.Width + gapX) / (colMinW + gapX);
-                if (cols < 1) cols = 1; if (cols > 2) cols = 2;            // hasta 2 columnas en este panel
-                int colW = (region.Width - (cols - 1) * gapX) / cols;
-                int rowsPerCol = (areaH + gapY) / (cardH + gapY);
-                if (rowsPerCol < 1) rowsPerCol = 1;
-                resCols = cols; resRowsPerCol = rowsPerCol;
-
-                int capacity = cols * rowsPerCol;
-                int n = (Results != null) ? Math.Min(Results.Count, capacity) : 0;
-                if (FocusResults && n > 0) { if (SelResult < 0) SelResult = 0; if (SelResult >= n) SelResult = n - 1; }
-
-                if (n == 0)
+                int n = 0, cardH = 38;
+                if (areaH < 28) { resCols = 1; resRowsPerCol = 1; }
+                else
                 {
-                    TextRenderer.DrawText(g, (Query.Length == 0) ? "Escribe para buscar..." : "Sin resultados", fEmpty, new Rectangle(region.X, top, region.Width, 28), Color.FromArgb(190, 200, 225), TextFormatFlags.Left);
-                    return;
-                }
-
-                {
-                    Font df = fRes, tf = fResSub;
-                    for (int i = 0; i < n; i++)
+                    int gapY = 5, gapX = 8, colMinW = 185;
+                    int cols = (region.Width + gapX) / (colMinW + gapX);
+                    if (cols < 1) cols = 1; if (cols > 2) cols = 2;            // hasta 2 columnas en este panel
+                    int colW = (region.Width - (cols - 1) * gapX) / cols;
+                    int rowsPerCol = (areaH + gapY) / (cardH + gapY);
+                    if (rowsPerCol < 1) rowsPerCol = 1;
+                    resCols = cols; resRowsPerCol = rowsPerCol;
+                    int capacity = cols * rowsPerCol;
+                    n = (Results != null) ? Math.Min(Results.Count, capacity) : 0;
+                    if (FocusResults && n > 0) { if (SelResult < 0) SelResult = 0; if (SelResult >= n) SelResult = n - 1; }
+                    for (int i = 0; i < n; i++)   // solo geometria (barato): rects absolutos para el raton y para pintar
                     {
-                        int col = i / rowsPerCol;       // llena hacia ABAJO y luego pasa a la SIGUIENTE columna
-                        int row = i % rowsPerCol;
-                        int rx = region.X + col * (colW + gapX);
-                        int ry = top + row * (cardH + gapY);
-                        Rectangle rr = new Rectangle(rx, ry, colW, cardH);
-                        bool sel = FocusResults ? (i == SelResult) : (i == 0);
-                        using (GraphicsPath gp = RoundedPath(rr, 8))
-                        {
-                            sbS.Color = sel ? Shade(Accent, 0.26) : Shade(Accent, 0.50); g.FillPath(sbS, gp);
-                            pnS.Color = Color.FromArgb(sel ? 215 : 100, 160, 200, 245); pnS.Width = sel ? 2f : 1.1f; g.DrawPath(pnS, gp);
-                        }
-                        SearchItem it = Results[i];
-                        string tag = (it.Kind == 0) ? "ARTISTA" : (it.Kind == 1) ? "ALBUM" : "CANCION";
-                        Color tagc = (it.Kind == 0) ? Color.FromArgb(150, 215, 255) : (it.Kind == 1) ? Color.FromArgb(255, 210, 120) : Color.FromArgb(170, 245, 170);
-                        TextRenderer.DrawText(g, tag, tf, new Rectangle(rr.X + 9, rr.Y + 4, colW - 14, 13), tagc, TextFormatFlags.Left);
-                        TextRenderer.DrawText(g, it.Display, df, new Rectangle(rr.X + 9, rr.Y + 16, colW - 16, cardH - 18), Color.White, TextFormatFlags.Left | TextFormatFlags.EndEllipsis);
-                        resultRects.Add(new KeyValuePair<RectangleF, int>(rr, i));
+                        int col = i / rowsPerCol, row = i % rowsPerCol;   // llena hacia ABAJO y luego a la siguiente columna
+                        int rx = region.X + col * (colW + gapX), ry = top + row * (cardH + gapY);
+                        resultRects.Add(new KeyValuePair<RectangleF, int>(new Rectangle(rx, ry, colW, cardH), i));
                     }
                 }
+                // CACHE: cabecera + tarjetas SIN seleccion. Se rehace solo al cambiar la consulta/region/color;
+                // moverse por los resultados NO lo toca (solo copia el cache + la tarjeta seleccionada en vivo).
+                int accentArgb = Accent.ToArgb();
+                if (resCache == null || resCacheW != region.Width || resCacheH != region.Height || resCacheAccent != accentArgb || resCacheQuery != Query)
+                {
+                    if (resCache != null) resCache.Dispose();
+                    resCache = new Bitmap(Math.Max(1, region.Width), Math.Max(1, region.Height), PixelFormat.Format32bppPArgb);
+                    using (Graphics cg = Graphics.FromImage(resCache))
+                    {
+                        cg.Clear(Color.Transparent);
+                        cg.SmoothingMode = SmoothingMode.AntiAlias;
+                        TextRenderer.DrawText(cg, "Resultados", fHead, new Rectangle(0, 0, region.Width, 24), Color.White, TextFormatFlags.Left);
+                        if (n == 0)
+                            TextRenderer.DrawText(cg, (Query.Length == 0) ? "Escribe para buscar..." : "Sin resultados", fEmpty, new Rectangle(0, 30, region.Width, 28), Color.FromArgb(190, 200, 225), TextFormatFlags.Left);
+                        else
+                            for (int i = 0; i < n; i++)
+                            {
+                                Rectangle rr = Rectangle.Round(resultRects[i].Key); rr.Offset(-region.X, -region.Y);
+                                DrawOneResultCard(cg, i, rr, false);
+                            }
+                    }
+                    resCacheW = region.Width; resCacheH = region.Height; resCacheAccent = accentArgb; resCacheQuery = Query; resCacheOrigin = region.Location;
+                }
+                g.DrawImageUnscaled(resCache, resCacheOrigin.X, resCacheOrigin.Y);
+                // Tarjeta seleccionada EN VIVO encima: su relleno es opaco y tapa la version sin seleccion del cache.
+                if (n > 0)
+                {
+                    int selIdx = FocusResults ? SelResult : 0;
+                    if (selIdx >= 0 && selIdx < n) DrawOneResultCard(g, selIdx, Rectangle.Round(resultRects[selIdx].Key), true);
+                }
+            }
+
+            // Dibuja UNA tarjeta de resultado en rr (ya en las coords donde toca: absolutas en vivo, relativas en el cache).
+            private void DrawOneResultCard(Graphics g, int i, Rectangle rr, bool sel)
+            {
+                if (Results == null || i < 0 || i >= Results.Count) return;
+                using (GraphicsPath gp = RoundedPath(rr, 8))
+                {
+                    sbS.Color = sel ? Shade(Accent, 0.26) : Shade(Accent, 0.50); g.FillPath(sbS, gp);
+                    pnS.Color = Color.FromArgb(sel ? 215 : 100, 160, 200, 245); pnS.Width = sel ? 2f : 1.1f; g.DrawPath(pnS, gp);
+                }
+                SearchItem it = Results[i];
+                string tag = (it.Kind == 0) ? "ARTISTA" : (it.Kind == 1) ? "ALBUM" : "CANCION";
+                Color tagc = (it.Kind == 0) ? Color.FromArgb(150, 215, 255) : (it.Kind == 1) ? Color.FromArgb(255, 210, 120) : Color.FromArgb(170, 245, 170);
+                TextRenderer.DrawText(g, tag, fResSub, new Rectangle(rr.X + 9, rr.Y + 4, rr.Width - 14, 13), tagc, TextFormatFlags.Left);
+                TextRenderer.DrawText(g, it.Display, fRes, new Rectangle(rr.X + 9, rr.Y + 16, rr.Width - 16, rr.Height - 18), Color.White, TextFormatFlags.Left | TextFormatFlags.EndEllipsis);
             }
 
             // Cachea las caratulas (ya redimensionadas) de todos los discos del artista
