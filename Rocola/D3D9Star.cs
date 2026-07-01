@@ -661,7 +661,7 @@ namespace Rocola
         private int frames, fpsTick;
         private int lastHeavyMs;                          // ultima reconstruccion PESADA (rejilla de discos o barras); limita su ritmo
         private bool heavyUiTurn;                         // a quien le toca la franja pesada (alterna rejilla<->barras para que ninguna se congele al paginar)
-        private const int HeavyMinMs = 66;                // como mucho ~15 reconstrucciones pesadas/seg: al paginar rapido el FONDO sigue fluido y la rejilla se pone al dia sola
+        private int heavyGapMs = 40;                      // espera minima entre reconstrucciones pesadas; SE AUTOAJUSTA al coste real (ver NoteHeavy)
         private IntPtr cubeTex; private int cubeVer = -1; private float cubeU = 1f, cubeV = 1f;
         private readonly D3D9.Vtx[] cubeQuad = new D3D9.Vtx[6];
         private IntPtr contourTex; private Bitmap lastContour; private float contU = 1f, contV = 1f;
@@ -753,23 +753,26 @@ namespace Rocola
             stars.SetSky(SkyTop, SkyMid, SkyBot);
             // LIMITE DE TRABAJO PESADO: reconstruir la rejilla de discos (RebuildCubes + subir una textura
             // enorme) y las barras (bitmap a pantalla completa) cuesta mucho. Al paginar rapido eso pasaba en
-            // CADA cuadro y atascaba TODO el bucle -> el fondo caia a ~1fps. Ahora solo se permite una
-            // reconstruccion pesada cada HeavyMinMs; entre medias el FONDO y los cubos que giran siguen a
-            // pleno ritmo con la ultima textura, y la rejilla se pone al dia sola (~15fps) sin que se note.
+            // CADA cuadro y atascaba TODO el bucle -> el fondo caia a ~1fps. Ahora solo se permite UNA
+            // reconstruccion pesada por franja (heavyGapMs, que SE AUTOAJUSTA al coste real): la UI cacheada
+            // del buscador es barata -> franja corta -> fluido; la rejilla al paginar es cara -> franja larga
+            // -> el fondo respira. Entre franjas el FONDO y los cubos que giran siguen a pleno ritmo.
             int nowMs = Environment.TickCount;
-            bool canHeavy = (nowMs - lastHeavyMs) >= HeavyMinMs;
+            bool canHeavy = (nowMs - lastHeavyMs) >= heavyGapMs;
             bool cubeTurn = !heavyUiTurn;   // esta franja le toca a la rejilla (si no la necesita, cede a la UI mas abajo)
             // Cubos: textura que cambia al navegar / llegar caratula. GetCubesVersion() reconstruye por dentro
-            // si cambio la pagina, asi que solo lo llamamos si es su turno (o si aun no hay textura).
+            // si cambio la pagina (caro), asi que solo lo llamamos si es su turno (o si aun no hay textura).
             if (GetCubes != null && GetCubesVersion != null && (cubeTex == IntPtr.Zero || (canHeavy && cubeTurn)))
             {
-                int v = GetCubesVersion();
+                int t0 = Environment.TickCount;
+                int v = GetCubesVersion();   // puede reconstruir la rejilla por dentro (lo mas caro)
                 if (v != cubeVer)
                 {
                     if (cubeTex != IntPtr.Zero) { D3D9.Release(cubeTex); cubeTex = IntPtr.Zero; }
                     Bitmap bm = GetCubes();
                     if (bm != null) cubeTex = stars.CreateOverlay(bm, out cubeU, out cubeV);
-                    cubeVer = v; lastHeavyMs = nowMs; canHeavy = false; heavyUiTurn = true;   // gasta la franja; el proximo hueco es de la UI
+                    cubeVer = v; canHeavy = false; heavyUiTurn = true;   // gasta la franja; el proximo hueco es de la UI
+                    NoteHeavy(t0);   // mide el coste real (rejilla + subida) y ajusta la espera
                 }
                 else if (cubeTurn) heavyUiTurn = true;   // la rejilla no necesitaba: cede este hueco a la UI
             }
@@ -796,13 +799,15 @@ namespace Rocola
             // pagina no se congele al paginar rapido mientras la rejilla acapara todos los huecos.
             if (GetUi != null && GetUiVersion != null && (uiTex == IntPtr.Zero || (canHeavy && heavyUiTurn)))
             {
-                int uv = GetUiVersion();
+                int t0 = Environment.TickCount;
+                int uv = GetUiVersion();   // puede rehacer el bitmap de la UI por dentro
                 if (uv != uiVer)
                 {
                     if (uiTex != IntPtr.Zero) { D3D9.Release(uiTex); uiTex = IntPtr.Zero; }
                     Bitmap ub = GetUi();
                     if (ub != null) uiTex = stars.CreateOverlay(ub, out uiU, out uiV);
-                    uiVer = uv; lastHeavyMs = nowMs; canHeavy = false; heavyUiTurn = false;   // gasta la franja; el proximo hueco es de la rejilla
+                    uiVer = uv; canHeavy = false; heavyUiTurn = false;   // gasta la franja; el proximo hueco es de la rejilla
+                    NoteHeavy(t0);   // la UI cacheada es barata -> espera corta -> el buscador va fluido
                 }
                 else if (heavyUiTurn) heavyUiTurn = false;   // la UI no necesitaba: cede el turno a la rejilla
             }
@@ -858,6 +863,18 @@ namespace Rocola
                 if (fpsTex != IntPtr.Zero) { D3D9.Release(fpsTex); fpsTex = IntPtr.Zero; }
                 fpsTex = stars.CreateOverlay(bmp, out fpsU, out fpsV);
             }
+        }
+
+        // Ajusta la espera entre reconstrucciones pesadas al COSTE REAL de la ultima: la espera es ~1.5x el
+        // coste, asi el trabajo pesado ocupa como mucho ~40% del tiempo y el fondo siempre respira.
+        // Reconstruccion barata (UI cacheada del buscador) -> espera corta -> fluido; rejilla cara (paginar
+        // discos) -> espera larga -> el fondo no se atasca. Se auto-ajusta al equipo (banco potente o rocola vieja).
+        private void NoteHeavy(int t0)
+        {
+            lastHeavyMs = Environment.TickCount;
+            int cost = lastHeavyMs - t0; if (cost < 0) cost = 0;
+            int g = cost + cost / 2;   // ~1.5x el coste
+            heavyGapMs = g < 16 ? 16 : (g > 250 ? 250 : g);
         }
 
         private static void SetTexQuad(D3D9.Vtx[] v, float x0, float y0, float x1, float y1, float uMax, float vMax)
