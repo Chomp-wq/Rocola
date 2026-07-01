@@ -3103,16 +3103,18 @@ namespace Rocola
             bool disc = panelSongs != null && panelSongs.Visible;
             bool nav = albumView.Visible && !searchOpen && !disc && noBlock;
             bool search = searchOpen && noBlock;
-            bool discMode = disc && !searchOpen && noBlock;
-            if (nav || search || discMode)
+            // Interior de disco: por ahora se compone por CPU (el panel se oculta). La composicion GPU del
+            // interior tenia un bug de posicion de la lista que no pude aislar sin poder ejecutar; el interior
+            // por CPU (con la lista propia) ya funciona bien. Navegacion y buscador siguen por GPU.
+            if (nav || search)
             {
                 if (gpuPanel.Left != 0 || gpuPanel.Top != 0 || gpuPanel.Width != ClientSize.Width || gpuPanel.Height != ClientSize.Height)
                     gpuPanel.Bounds = new Rectangle(0, 0, ClientSize.Width, ClientSize.Height);
                 gpuPanel.AlbumRect = albumView.Bounds;
-                gpuPanel.ShowAlbum = nav;   // solo en navegacion se dibuja la rejilla de cubos (buscador/disco la cubren)
+                gpuPanel.ShowAlbum = nav;   // solo en navegacion se dibuja la rejilla de cubos (buscador la cubre)
                 if (!gpuPanel.Visible) { gpuPanel.Visible = true; gpuPanel.BringToFront(); }
             }
-            else if (gpuPanel.Visible) { gpuPanel.Visible = false; Invalidate(true); }   // otro modo: deja ver los controles normales
+            else if (gpuPanel.Visible) { gpuPanel.Visible = false; Invalidate(true); }   // disco/video/etc: interior por CPU (deja ver los controles normales)
         }
 
         // Reconstruye la textura de las barras (superior + inferior) SOLO si cambio algo (firma). Devuelve la version.
