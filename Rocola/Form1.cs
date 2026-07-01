@@ -3272,9 +3272,9 @@ namespace Rocola
                 sb.Append("|S").Append(searchOverlay.Query).Append('|').Append(searchOverlay.SelRow).Append(',').Append(searchOverlay.SelCol)
                   .Append('|').Append(searchOverlay.FocusResults).Append(searchOverlay.SelResult)
                   .Append('|').Append(searchOverlay.Results == null ? 0 : searchOverlay.Results.Count)
-                  .Append('|').Append(searchOverlay.ToastOn).Append(searchOverlay.ToastMsg)
-                  .Append('|').Append(Math.Sin(searchOverlay.Phase * 3.0) > 0 ? 1 : 0)   // parpadeo del cursor
-                  .Append('|').Append((int)(searchOverlay.Phase * 13));   // fase cuantizada (~13fps): anima el brillo de las teclas sin rehacer la textura cada cuadro
+                  .Append('|').Append(searchOverlay.ToastOn).Append(searchOverlay.ToastMsg);
+                  // NADA de fase aqui: el teclado (40 teclas) es carisimo de rehacer. En reposo la firma NO
+                  // cambia -> 0 reconstrucciones -> pleno FPS. Solo se rehace al teclear o mover la seleccion.
             else if (panelSongs != null && panelSongs.Visible)   // INTERIOR DE DISCO: etiqueta, seleccion, pagina
                 sb.Append("|D").Append(lblAlbum != null ? lblAlbum.Text : "").Append('|').Append(songSel).Append('|').Append(songItems.Count)
                   .Append('|').Append(songList != null ? songList.PageStart : 0).Append('|').Append(bgAccent.ToArgb());
@@ -5300,7 +5300,9 @@ namespace Rocola
                         sbS.Color = Shade(Accent, 0.42); g.FillPath(sbS, gp);
                         pnS.Color = Lighten(Accent, 0.35); pnS.Width = 2f; g.DrawPath(pnS, gp);
                     }
-                    bool caretOn = Math.Sin(Phase * 3.0) > 0;
+                    // En GPU el cursor NO parpadea (fijo): parpadear obligaria a rehacer la textura del teclado
+                    // (40 teclas) ~1/seg, carisimo. Fijo => el buscador en reposo no reconstruye nada -> pleno FPS.
+                    bool caretOn = forGpu || Math.Sin(Phase * 3.0) > 0;
                     string shown = "Buscar:  " + Query + (caretOn ? "|" : "");
                     TextRenderer.DrawText(g, shown, fQuery, new Rectangle(qb.X + 18, qb.Y, qb.Width - 30, qb.Height), Color.White, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
                     {
