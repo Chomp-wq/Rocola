@@ -5063,6 +5063,8 @@ namespace Rocola
             private Color _accent = DefaultAccent;   // ESTETICA: la barra toma el color del genero que suena
             public Color Accent { get { return _accent; } set { if (value.ToArgb() != _accent.ToArgb()) { _accent = value; Invalidate(); } } }
 
+            private SolidBrush trackB; private Pen trackP;   // riel: colores fijos -> se cachean (se dibuja en cada reconstruccion de UI)
+
             public ProgressView()
             {
                 this.SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.SupportsTransparentBackColor, true);
@@ -5079,10 +5081,11 @@ namespace Rocola
 
                 // Riel HUNDIDO: oscuro translucido + borde interior tenue (parece rebajado, no plano).
                 Rectangle track = new Rectangle(0, 0, w - 1, h - 1);
+                if (trackB == null) { trackB = new SolidBrush(Color.FromArgb(130, 6, 10, 26)); trackP = new Pen(Color.FromArgb(40, 255, 255, 255), 1f); }
                 using (GraphicsPath tp = RoundedPath(track, h / 2))
                 {
-                    using (SolidBrush tb = new SolidBrush(Color.FromArgb(130, 6, 10, 26))) g.FillPath(tb, tp);
-                    using (Pen tpen = new Pen(Color.FromArgb(40, 255, 255, 255), 1f)) g.DrawPath(tpen, tp);
+                    g.FillPath(trackB, tp);
+                    g.DrawPath(trackP, tp);
                 }
 
                 int fw = (int)(_value * (w - 2));
