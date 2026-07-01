@@ -1842,15 +1842,30 @@ namespace Rocola
             attractView.SongCount = tracks.Count;
             attractView.Phase = phase;
             for (int i = 0; i < covers.Count && i < 3; i++) RequestCoverByPath(covers[i], true);   // adelantar las primeras
-            attractView.Visible = true;
-            attractView.BringToFront();
             attractOn = true;
+#if ROCOLA_GPU
+            if (gpuEnabled && gpuPanel != null)
+            {
+                // La atraccion se compone por GPU: el control CPU no se pinta (queda oculto detras del panel).
+                attractView.Visible = false;
+                uiOverlaySig = null;   // fuerza rehacer la textura de UI (textos de atraccion)
+                gpuPanel.Visible = true; gpuPanel.BringToFront();
+            }
+            else
+#endif
+            {
+                attractView.Visible = true;
+                attractView.BringToFront();
+            }
         }
 
         private void ExitAttract()
         {
             attractOn = false;
             if (attractView != null) attractView.Visible = false;
+#if ROCOLA_GPU
+            uiOverlaySig = null;   // rehace la textura de UI de inmediato (deja los textos de atraccion por la barra normal)
+#endif
             this.Invalidate();
         }
 
@@ -3078,6 +3093,18 @@ namespace Rocola
         private GpuCubeState BuildGpuCubeState()
         {
             GpuCubeState st;
+            if (attractOn && attractView != null)   // MODO ATRACCION: cubo gigante centrado que cicla portadas (con fundido)
+            {
+                st = new GpuCubeState();
+                Image ca, cb; float f;
+                attractView.GetCoverPair(out ca, out cb, out f);   // puede dar null (portadas aun cargando): el cubo muestra relleno azulado
+                int w = ClientSize.Width, h = ClientSize.Height;
+                int side = (int)(Math.Min(w, h) * 0.40); if (side < 80) side = 80;
+                st.Sel.Has = true;
+                st.Sel.X = w / 2 - side / 2; st.Sel.Y = (h - side) / 2 - 30; st.Sel.W = side; st.Sel.H = side;
+                st.Sel.Angle = attractView.Angle; st.Sel.CoverA = ca as Bitmap; st.Sel.CoverB = cb as Bitmap; st.Sel.Fade = f;
+                return st;   // en atraccion no hay mini-cubo (no suena nada)
+            }
             if (searchOpen && searchOverlay != null)
             {
                 st = new GpuCubeState();
@@ -3133,7 +3160,8 @@ namespace Rocola
         private void SyncGpuFullScreen()
         {
             if (gpuPanel == null || !gpuEnabled) return;
-            bool noBlock = !videoOn && !videoFull && !attractOn && (lblConfig == null || !lblConfig.Visible);
+            bool notBlockedByVideoCfg = !videoOn && !videoFull && (lblConfig == null || !lblConfig.Visible);
+            bool noBlock = notBlockedByVideoCfg && !attractOn;
             bool disc = panelSongs != null && panelSongs.Visible;
             bool nav = albumView.Visible && !searchOpen && !disc && noBlock;
             bool search = searchOpen && noBlock;
@@ -3142,12 +3170,13 @@ namespace Rocola
             // a la posicion del panel) el texto caia en 0,0. Ya usa DrawString (GDI+), que la respeta.
             // Ctrl+F11 (gpuDiscTry) alterna a CPU como valvula de escape. Navegacion y buscador van por GPU.
             bool discGpu = disc && gpuDiscTry && !searchOpen && noBlock;
-            if (nav || search || discGpu)
+            bool attract = attractOn && notBlockedByVideoCfg;   // modo atraccion (reposo): cubo gigante + estrellas por GPU
+            if (nav || search || discGpu || attract)
             {
                 if (gpuPanel.Left != 0 || gpuPanel.Top != 0 || gpuPanel.Width != ClientSize.Width || gpuPanel.Height != ClientSize.Height)
                     gpuPanel.Bounds = new Rectangle(0, 0, ClientSize.Width, ClientSize.Height);
                 gpuPanel.AlbumRect = albumView.Bounds;
-                gpuPanel.ShowAlbum = nav;   // solo en navegacion se dibuja la rejilla de cubos (buscador/disco la cubren)
+                gpuPanel.ShowAlbum = nav;   // solo en navegacion se dibuja la rejilla de cubos (buscador/disco/atraccion la cubren)
                 if (!gpuPanel.Visible) { gpuPanel.Visible = true; gpuPanel.BringToFront(); }
             }
             else if (gpuPanel.Visible) { gpuPanel.Visible = false; Invalidate(true); }   // disco(CPU)/video/etc: deja ver los controles normales
@@ -3186,6 +3215,23 @@ namespace Rocola
                     if (songPager != null && songPager.Visible) DrawCtrlOverlay(g, songPager);
                     g.Restore(gs);
                 }
+                else if (attractOn)   // MODO ATRACCION: solo los dos textos (el cubo gigante y las estrellas los pone la GPU)
+                {
+                    int side = (int)(Math.Min(w, h) * 0.40); if (side < 80) side = 80;
+                    int cubeBottom = (h - side) / 2 - 30 + side;
+                    string line1 = (attractView != null && attractView.SongCount > 0) ? (attractView.SongCount.ToString("#,0") + " canciones") : "Tu rocola";
+                    using (Font fBig = new Font(FontFamily.GenericSansSerif, 24f, FontStyle.Bold))
+                    using (Font fSmall = new Font(FontFamily.GenericSansSerif, 15f, FontStyle.Bold))
+                    using (StringFormat sfc = new StringFormat())
+                    using (SolidBrush tb = new SolidBrush(Color.White))
+                    {
+                        sfc.Alignment = StringAlignment.Center; sfc.LineAlignment = StringAlignment.Center;
+                        g.DrawString(line1, fBig, tb, new RectangleF(0, cubeBottom + 18, w, 36), sfc);
+                        double pz = 0.5 + 0.5 * Math.Sin(phase * 3.0);
+                        tb.Color = Color.FromArgb((int)(150 + 105 * pz), 255, 220, 120);
+                        g.DrawString("toca un boton para elegir", fSmall, tb, new RectangleF(0, cubeBottom + 58, w, 28), sfc);
+                    }
+                }
                 else
                 {
                     DrawCtrlOverlay(g, helpBar);
@@ -3193,12 +3239,15 @@ namespace Rocola
                     DrawLabelOverlay(g, lblHeader);
                     DrawLabelOverlay(g, lblStatus);
                 }
-                DrawLabelOverlay(g, lblNow);
-                DrawLabelOverlay(g, lblNext);
-                DrawLabelOverlay(g, lblTime);
-                DrawLabelOverlay(g, lblCredits);
-                DrawLabelOverlay(g, lblCount);
-                DrawCtrlOverlay(g, progress);
+                if (!attractOn)   // en atraccion la pantalla es limpia (cubo + 2 textos); no van las etiquetas de estado
+                {
+                    DrawLabelOverlay(g, lblNow);
+                    DrawLabelOverlay(g, lblNext);
+                    DrawLabelOverlay(g, lblTime);
+                    DrawLabelOverlay(g, lblCredits);
+                    DrawLabelOverlay(g, lblCount);
+                    DrawCtrlOverlay(g, progress);
+                }
                 // FPS (diagnostico): caja oscura + texto amarillo arriba a la derecha (como la etiqueta original).
                 string fpsTxt = "GPU D3D9: " + (gpuPanel != null ? gpuPanel.Fps : 0) + " FPS";
                 using (Font ff = new Font(FontFamily.GenericMonospace, 9.5f, FontStyle.Bold))
@@ -3229,6 +3278,8 @@ namespace Rocola
             else if (panelSongs != null && panelSongs.Visible)   // INTERIOR DE DISCO: etiqueta, seleccion, pagina
                 sb.Append("|D").Append(lblAlbum != null ? lblAlbum.Text : "").Append('|').Append(songSel).Append('|').Append(songItems.Count)
                   .Append('|').Append(songList != null ? songList.PageStart : 0).Append('|').Append(bgAccent.ToArgb());
+            else if (attractOn)                        // MODO ATRACCION: cantidad de canciones + pulso del texto amarillo
+                sb.Append("|A").Append(attractView != null ? attractView.SongCount : 0).Append('|').Append((int)(phase * 10));
             else if (letterBar != null)                // parte superior = navegacion (A-Z + encabezado)
                 sb.Append("|N").Append(letterBar.Current).Append(letterBar.Letters).Append(letterBar.Available == null ? 0 : letterBar.Available.Count)
                   .Append('|').Append(lblHeader != null ? lblHeader.Text : "").Append('|').Append(lblStatus != null ? lblStatus.Text : "")
@@ -3311,7 +3362,10 @@ namespace Rocola
             SyncGpuFullScreen();   // muestra/oculta el panel GPU (pantalla completa) segun el modo, ANTES de los returns por modo
             if (gpuPanel != null && gpuPanel.Visible)
             {
-                gpuPanel.SkyTop = ToD3D(SkyColor(bgAccent)); gpuPanel.SkyMid = ToD3D(SkyColorMid(bgAccent)); gpuPanel.SkyBot = ToD3D(SkyColor2(bgAccent));   // el degradado sigue al genero
+                if (attractOn)   // atraccion: cielo nocturno fijo (sin musica, no sigue al genero)
+                { gpuPanel.SkyTop = 0xFF06081Au; gpuPanel.SkyMid = 0xFF0C0E28u; gpuPanel.SkyBot = 0xFF12143Au; }
+                else
+                { gpuPanel.SkyTop = ToD3D(SkyColor(bgAccent)); gpuPanel.SkyMid = ToD3D(SkyColorMid(bgAccent)); gpuPanel.SkyBot = ToD3D(SkyColor2(bgAccent)); }   // el degradado sigue al genero
             }
 #endif
             if (progress != null) progress.Accent = bgAccent;   // ESTETICA: la barra de progreso sigue el color del genero
@@ -3930,20 +3984,29 @@ namespace Rocola
                 return blendBmp;
             }
 
-            private Image CurrentCover()
+            // Par de portadas a fundir + factor (0..1) segun la fase. Lo usa el CPU (BlendInto) y tambien la
+            // GPU (que hace el fundido como en los discos TOP, sin generar el bitmap mezclado).
+            public bool GetCoverPair(out Image a, out Image b, out float f)
             {
-                if (CycleCovers == null || CycleCovers.Count == 0 || GetCoverByPath == null) return null;
+                a = null; b = null; f = 0f;
+                if (CycleCovers == null || CycleCovers.Count == 0 || GetCoverByPath == null) return false;
                 int m = CycleCovers.Count;
                 double cyc = 4.2, hold = 3.0;
                 double total = cyc * m;
                 double pos = Phase - Math.Floor(Phase / total) * total;
                 int idx = (int)(pos / cyc) % m;
                 double within = pos - idx * cyc;
-                float f = 0f;
                 if (within > hold) f = (float)((within - hold) / (cyc - hold));
                 if (f < 0f) f = 0f; else if (f > 1f) f = 1f;
-                Image a = GetCoverByPath(CycleCovers[idx]);
-                Image b = (m > 1) ? GetCoverByPath(CycleCovers[(idx + 1) % m]) : null;
+                a = GetCoverByPath(CycleCovers[idx]);
+                b = (m > 1) ? GetCoverByPath(CycleCovers[(idx + 1) % m]) : null;
+                return a != null || b != null;
+            }
+
+            private Image CurrentCover()
+            {
+                Image a, b; float f;
+                if (!GetCoverPair(out a, out b, out f)) return null;
                 if (f <= 0.002f || b == null) return a;
                 if (a == null) return b;
                 return BlendInto(a, b, f);
