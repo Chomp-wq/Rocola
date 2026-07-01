@@ -2045,6 +2045,14 @@ namespace Rocola
 #if ROCOLA_GPU
             if (keyData == Keys.F12) { GpuTestWindow.Toggle(); return true; }   // F12 = ventana de prueba del render por GPU (Direct3D 9)
             if (keyData == (Keys.Control | Keys.F12)) { ToggleAlbumGpu(); return true; }   // Ctrl+F12 = fondo de discos por GPU (experimental)
+            if (keyData == (Keys.Control | Keys.F11))   // Ctrl+F11 = DIAGNOSTICO: probar el interior de disco por GPU (por defecto se compone por CPU)
+            {
+                gpuDiscTry = !gpuDiscTry;
+                uiOverlaySig = null;   // fuerza rehacer la textura de UI
+                if (lblStatus != null) lblStatus.Text = "Interior de disco por " + (gpuDiscTry ? "GPU (prueba)" : "CPU");
+                SyncGpuFullScreen(); Invalidate(true);
+                return true;
+            }
 #endif
             if (keyData == Keys.F8 && !IsConfiguredKey(Keys.F8))    // F8 = relanzar el asistente de botones
             {
@@ -2998,6 +3006,7 @@ namespace Rocola
         private static uint ToD3D(Color c) { return 0xFF000000u | ((uint)c.R << 16) | ((uint)c.G << 8) | (uint)c.B; }
 
         private bool gpuEnabled;                          // el usuario activo el modo GPU (Ctrl+F12)
+        private bool gpuDiscTry;                          // DIAGNOSTICO (Ctrl+F11): probar el interior de disco por GPU. Por defecto OFF = interior por CPU (que funciona)
         private Bitmap uiOverlay; private int uiOverlayVer; private string uiOverlaySig;   // textura de las barras (UI)
 
         // Ctrl+F12: activa/desactiva el render por GPU (Direct3D 9) A PANTALLA COMPLETA. El panel cubre toda
@@ -3103,18 +3112,19 @@ namespace Rocola
             bool disc = panelSongs != null && panelSongs.Visible;
             bool nav = albumView.Visible && !searchOpen && !disc && noBlock;
             bool search = searchOpen && noBlock;
-            // Interior de disco: por ahora se compone por CPU (el panel se oculta). La composicion GPU del
-            // interior tenia un bug de posicion de la lista que no pude aislar sin poder ejecutar; el interior
-            // por CPU (con la lista propia) ya funciona bien. Navegacion y buscador siguen por GPU.
-            if (nav || search)
+            // Interior de disco: por defecto se compone por CPU (el panel GPU se oculta), porque la composicion
+            // GPU del interior tenia un bug de posicion de la lista que no pude aislar sin ejecutar. Ctrl+F11
+            // (gpuDiscTry) reactiva la via GPU del interior SOLO para diagnosticarla. Navegacion y buscador van por GPU.
+            bool discGpu = disc && gpuDiscTry && !searchOpen && noBlock;
+            if (nav || search || discGpu)
             {
                 if (gpuPanel.Left != 0 || gpuPanel.Top != 0 || gpuPanel.Width != ClientSize.Width || gpuPanel.Height != ClientSize.Height)
                     gpuPanel.Bounds = new Rectangle(0, 0, ClientSize.Width, ClientSize.Height);
                 gpuPanel.AlbumRect = albumView.Bounds;
-                gpuPanel.ShowAlbum = nav;   // solo en navegacion se dibuja la rejilla de cubos (buscador la cubre)
+                gpuPanel.ShowAlbum = nav;   // solo en navegacion se dibuja la rejilla de cubos (buscador/disco la cubren)
                 if (!gpuPanel.Visible) { gpuPanel.Visible = true; gpuPanel.BringToFront(); }
             }
-            else if (gpuPanel.Visible) { gpuPanel.Visible = false; Invalidate(true); }   // disco/video/etc: interior por CPU (deja ver los controles normales)
+            else if (gpuPanel.Visible) { gpuPanel.Visible = false; Invalidate(true); }   // disco(CPU)/video/etc: deja ver los controles normales
         }
 
         // Reconstruye la textura de las barras (superior + inferior) SOLO si cambio algo (firma). Devuelve la version.
@@ -3149,6 +3159,20 @@ namespace Rocola
                     DrawCtrlOverlay(g, songList);
                     if (songPager != null && songPager.Visible) DrawCtrlOverlay(g, songPager);
                     g.Restore(gs);
+                    // DIAGNOSTICO (Ctrl+F11): vuelca las cajas reales que usa el compositor para ver donde cae la lista.
+                    string dbg = "panelSongs=" + panelSongs.Bounds
+                        + "  songList=" + songList.Bounds + " client=" + songList.ClientSize
+                        + "  pager=" + (songPager != null ? songPager.Bounds.ToString() + "/" + songPager.Visible : "null")
+                        + "\nitems=" + songItems.Count + " sel=" + songSel + " pageStart=" + (songList != null ? songList.PageStart : -1)
+                        + " rpp=" + (songList != null ? songList.RowsPerPage : -1) + " rowH=" + (songList != null ? songList.RowH : -1);
+                    using (Font df = new Font(FontFamily.GenericMonospace, 9f, FontStyle.Bold))
+                    using (SolidBrush dbgBg = new SolidBrush(Color.FromArgb(210, 0, 0, 0)))
+                    using (SolidBrush dbgFg = new SolidBrush(Color.FromArgb(255, 120, 255, 120)))
+                    {
+                        SizeF dz = g.MeasureString(dbg, df);
+                        g.FillRectangle(dbgBg, 8, 60, dz.Width + 10, dz.Height + 8);
+                        g.DrawString(dbg, df, dbgFg, 12, 64);
+                    }
                 }
                 else
                 {
