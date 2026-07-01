@@ -1917,6 +1917,11 @@ namespace Rocola
             searchOverlay.Visible = false;
             if (videoOn && video != null) { video.Visible = true; video.BringToFront(); }
             this.Focus();
+#if ROCOLA_GPU
+            // Aplica el cambio de modo YA (no esperes al proximo AnimTimer, ~40ms): asi al cerrar el buscador
+            // la vista vuelve de inmediato en vez de "tardar en responder" y dar el tiron de la transicion.
+            if (gpuPanel != null && gpuEnabled) { uiOverlaySig = null; SyncGpuFullScreen(); }
+#endif
         }
 
         // OPTIMIZACION (busqueda): " " + q y q.Split(' ') se calculaban DENTRO de Score, que corre
@@ -2066,6 +2071,16 @@ namespace Rocola
 
             // Cualquier OTRA tecla, si el video esta en pantalla completa, solo "despierta" la rocola.
             if (wasFull) { ExitVideoFull(); return true; }
+
+            // BRILLO DE INSTRUCCIONES: al pulsar un boton fisico, resalta su simbolo en la barra de ayuda
+            // (solo donde esa barra se muestra: navegacion e interior de disco). Guia visual para el cliente.
+            if (helpBar != null && !searchOpen && !attractOn)
+            {
+                if (IsOK(kc) && BackHeld()) helpBar.Flash(HelpBar.FBuscar);
+                else if (IsOK(kc)) helpBar.Flash(HelpBar.FEntrar);
+                else if (IsBack(kc)) helpBar.Flash(HelpBar.FVolver);
+                else if (IsLeft(kc) || IsRight(kc) || IsUp(kc) || IsDown(kc)) helpBar.Flash(HelpBar.FMover);
+            }
 
             // F5 = recargar musica (mantenimiento; sin boton visible)
             if (keyData == Keys.F5) { try { File.Delete(LibCacheFile()); } catch { } LoadMusicFolder(); return true; }   // F5 ignora el cache: re-escaneo completo
@@ -3208,6 +3223,7 @@ namespace Rocola
                 }
                 else if (panelSongs != null && panelSongs.Visible)
                 {
+                    DrawCtrlOverlay(g, helpBar);   // instrucciones ARRIBA tambien dentro del disco (guian al usuario, como en software)
                     System.Drawing.Drawing2D.GraphicsState gs = g.Save();   // INTERIOR DE DISCO: etiqueta + lista + barra de paginas (el cubo grande lo pone la GPU)
                     g.TranslateTransform(panelSongs.Left, panelSongs.Top);   // los controles del disco son hijos de panelSongs
                     DrawLabelOverlay(g, lblAlbum);
@@ -3281,6 +3297,7 @@ namespace Rocola
             if (lblCredits != null) sb.Append('|').Append(lblCredits.Text);
             if (lblCount != null) sb.Append('|').Append(lblCount.Text);
             if (progress != null) sb.Append('|').Append((int)(progress.Value * 300)).Append(progress.Accent.ToArgb());
+            if (helpBar != null) sb.Append('|').Append(helpBar.FlashSig());   // anima el brillo del boton pulsado (0 = sin brillo -> no afecta en reposo)
             // El FPS ya NO entra en la firma: se pinta en su propia textura, asi que su cambio (1/seg) no
             // obliga a rehacer esta textura -> en reposo la firma es constante -> 0 reconstrucciones.
             return sb.ToString();
@@ -4139,11 +4156,34 @@ namespace Rocola
         // Barra de ayuda: instrucciones con FORMAS y COLORES de los botones fisicos. Sin nombres de teclas.
         private class HelpBar : Control
         {
+            public const int FBuscar = 0, FMover = 1, FEntrar = 2, FVolver = 3;   // simbolo a resaltar
+            private const int FlashMs = 420;
+            private int flashWhich = -1; private int flashTick;
+
             public HelpBar()
             {
                 SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint | ControlStyles.SupportsTransparentBackColor, true);
                 BackColor = Color.Transparent;
             }
+
+            // El usuario pulso un boton: resalta (brillo que decae) el simbolo correspondiente.
+            public void Flash(int which) { flashWhich = which; flashTick = Environment.TickCount; }
+            private float FlashLevel(int which)
+            {
+                if (flashWhich != which) return 0f;
+                int dt = Environment.TickCount - flashTick;
+                if (dt < 0 || dt > FlashMs) return 0f;
+                return 1f - (float)dt / FlashMs;
+            }
+            // Firma que CAMBIA mientras dura un brillo (para que la textura de UI se rehaga y lo anime). 0 = sin brillo.
+            public int FlashSig()
+            {
+                if (flashWhich < 0) return 0;
+                int dt = Environment.TickCount - flashTick;
+                if (dt < 0 || dt > FlashMs) return 0;
+                return (flashWhich + 1) * 1000 + dt / 40;
+            }
+
             protected override void OnPaint(PaintEventArgs e) { e.Graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit; RenderContent(e.Graphics); }
             // Dibuja la leyenda en un Graphics cualquiera (el control, o la textura de UI del modo GPU). El
             // llamador fija el TextRenderingHint: ClearType para pantalla; AntiAlias (gris) para la textura
@@ -4153,20 +4193,42 @@ namespace Rocola
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 int cy = Height / 2;
                 Color txt = Color.FromArgb(228, 234, 250);
-                Color red = Color.FromArgb(228, 72, 72), green = Color.FromArgb(72, 212, 112);
+                Color red = Color.FromArgb(228, 72, 72), green = Color.FromArgb(72, 212, 112), yellow = Color.FromArgb(242, 206, 72);
                 int d = Math.Min(20, Height - 8); if (d < 12) d = 12;
                 float gap = 7, grp = 20;
                 using (Font f = new Font(FontFamily.GenericSansSerif, 9.5f, FontStyle.Bold))
                 {
                     float x = 2;
+                    GlowAround(g, x, cy, d * 2 + 4, FlashLevel(FBuscar), Color.White);   // BUSCAR = 2 puntos
                     x = CtrlDot(g, x, cy, d, red) + 4; x = CtrlDot(g, x, cy, d, green);
                     x = CtrlTxt(g, f, "Buscar", x + gap, cy, txt) + grp;
+                    GlowAround(g, x, cy, d + 4, FlashLevel(FMover), yellow);            // MOVER = cruceta
                     x = CtrlPad(g, x, cy, d + 4);
                     x = CtrlTxt(g, f, "Mover", x + gap, cy, txt) + grp;
+                    GlowAround(g, x, cy, d, FlashLevel(FEntrar), green);                // ENTRAR/PONER = punto verde
                     x = CtrlDot(g, x, cy, d, green);
                     x = CtrlTxt(g, f, "Entrar / Poner", x + gap, cy, txt) + grp;
+                    GlowAround(g, x, cy, d, FlashLevel(FVolver), red);                  // VOLVER = punto rojo
                     x = CtrlDot(g, x, cy, d, red);
                     x = CtrlTxt(g, f, "Volver", x + gap, cy, txt);
+                }
+            }
+
+            // Halo suave (radial) centrado en el simbolo, con intensidad segun 'level' (0..1).
+            private static void GlowAround(Graphics g, float leftX, float cy, float symW, float level, Color c)
+            {
+                if (level <= 0.02f) return;
+                float cx = leftX + symW / 2f, r = symW * 0.9f + 6f;
+                using (GraphicsPath gp = new GraphicsPath())
+                {
+                    gp.AddEllipse(cx - r, cy - r, 2 * r, 2 * r);
+                    using (PathGradientBrush pb = new PathGradientBrush(gp))
+                    {
+                        pb.CenterPoint = new PointF(cx, cy);
+                        pb.CenterColor = Color.FromArgb((int)(level * 215), c);
+                        pb.SurroundColors = new Color[] { Color.FromArgb(0, c) };
+                        g.FillPath(pb, gp);
+                    }
                 }
             }
         }
