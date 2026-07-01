@@ -680,6 +680,7 @@ namespace Rocola
         private readonly D3D9.Vtx[] fpsQuad = new D3D9.Vtx[6];
         public Rectangle AlbumRect;                       // donde van los cubos del album (coords del panel = pantalla); el form la fija
         public bool ShowAlbum = true;                     // navegacion: dibuja la rejilla de cubos + contorno. Buscador: false (lo cubre el buscador)
+        public bool UiUrgent;                             // el form lo pone al cambiar de modo: rehacer la UI YA (sin esperar franja) para que la transicion sea atomica
         public Func<Bitmap> GetUi;                        // bitmap transparente con las barras (lo provee el form)
         public Func<int> GetUiVersion;                    // cambia cuando alguna barra cambia (re-subir textura)
         public int Fps;                                   // cuadros por segundo (para mostrar mientras integramos)
@@ -797,7 +798,10 @@ namespace Rocola
             // Barras (UI) a textura: se re-sube solo cuando cambia algun texto/estado (firma del form), y
             // ademas limitada por la MISMA franja pesada (alternando con la rejilla) para que el numero de
             // pagina no se congele al paginar rapido mientras la rejilla acapara todos los huecos.
-            if (GetUi != null && GetUiVersion != null && (uiTex == IntPtr.Zero || (canHeavy && heavyUiTurn)))
+            // UiUrgent: al CAMBIAR DE MODO (p.ej. cerrar el buscador) hay que rehacer la UI en ESTE mismo cuadro,
+            // sin esperar franja: si no, se veria la rejilla de discos por los huecos del teclado un instante.
+            bool uiUrgent = UiUrgent; UiUrgent = false;
+            if (GetUi != null && GetUiVersion != null && (uiTex == IntPtr.Zero || uiUrgent || (canHeavy && heavyUiTurn)))
             {
                 int t0 = Environment.TickCount;
                 int uv = GetUiVersion();   // puede rehacer el bitmap de la UI por dentro

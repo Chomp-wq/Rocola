@@ -1727,6 +1727,9 @@ namespace Rocola
             lblHeader.Visible = false;
             panelSongs.Visible = true;
             this.Focus();
+#if ROCOLA_GPU
+            if (gpuPanel != null && gpuEnabled) SyncGpuFullScreen();   // aplica el modo disco YA (transicion atomica)
+#endif
         }
 
         private void BackToAlbums()
@@ -1736,6 +1739,9 @@ namespace Rocola
             letterBar.Visible = true;
             lblHeader.Visible = true;
             this.Focus();
+#if ROCOLA_GPU
+            if (gpuPanel != null && gpuEnabled) SyncGpuFullScreen();   // aplica el modo navegacion YA: no ver el interior detras un instante
+#endif
         }
 
         private void NavigateToAlbum(Album a)
@@ -1907,6 +1913,7 @@ namespace Rocola
                 // La entrada sigue funcionando por el formulario (ProcessCmdKey + Form_KeyPress con KeyPreview).
                 searchOverlay.Visible = false;
                 gpuPanel.Visible = true; gpuPanel.BringToFront();
+                SyncGpuFullScreen();   // aplica el modo buscador YA (ShowAlbum=false + UI urgente): transicion atomica, sin ver la rejilla un instante
             }
             else
 #endif
@@ -1925,9 +1932,10 @@ namespace Rocola
             if (videoOn && video != null) { video.Visible = true; video.BringToFront(); }
             this.Focus();
 #if ROCOLA_GPU
-            // Aplica el cambio de modo YA (no esperes al proximo AnimTimer, ~40ms): asi al cerrar el buscador
-            // la vista vuelve de inmediato en vez de "tardar en responder" y dar el tiron de la transicion.
-            if (gpuPanel != null && gpuEnabled) { uiOverlaySig = null; SyncGpuFullScreen(); }
+            // Aplica el cambio de modo YA (no esperes al proximo AnimTimer, ~40ms). SyncGpuFullScreen detecta la
+            // transicion buscador->navegacion y fuerza rehacer la UI en el MISMO cuadro en que reaparece la
+            // rejilla de discos; si no, se veria la rejilla por los huecos del teclado un instante.
+            if (gpuPanel != null && gpuEnabled) SyncGpuFullScreen();
 #endif
         }
 
@@ -3080,6 +3088,7 @@ namespace Rocola
 
         private bool gpuEnabled;                          // el usuario activo el modo GPU (Ctrl+F12)
         private bool gpuDiscTry = true;                   // interior de disco por GPU (por defecto). Ctrl+F11 lo alterna a CPU como valvula de escape
+        private int gpuMode = -1;                          // modo GPU actual (nav/buscador/disco/atraccion); al cambiar se rehace la UI atomica
         private Bitmap uiOverlay; private int uiOverlayVer; private string uiOverlaySig;   // textura de las barras (UI)
 
         // Ctrl+F12: activa/desactiva el render por GPU (Direct3D 9) A PANTALLA COMPLETA. El panel cubre toda
@@ -3217,6 +3226,11 @@ namespace Rocola
             // Ctrl+F11 (gpuDiscTry) alterna a CPU como valvula de escape. Navegacion y buscador van por GPU.
             bool discGpu = disc && gpuDiscTry && !searchOpen && noBlock;
             bool attract = attractOn && notBlockedByVideoCfg;   // modo atraccion (reposo): cubo gigante + estrellas por GPU
+            // Al CAMBIAR de modo, rehacer la textura de UI en el MISMO cuadro que cambia lo que se dibuja
+            // (ShowAlbum, cubos): si no, se ve un instante el modo viejo detras del nuevo (p.ej. la rejilla de
+            // discos por los huecos del teclado al cerrar el buscador). UiUrgent salta la limitacion de franja.
+            int mode = search ? 2 : discGpu ? 3 : attract ? 4 : nav ? 1 : 0;
+            if (mode != gpuMode) { gpuMode = mode; uiOverlaySig = null; gpuPanel.UiUrgent = true; }
             if (nav || search || discGpu || attract)
             {
                 if (gpuPanel.Left != 0 || gpuPanel.Top != 0 || gpuPanel.Width != ClientSize.Width || gpuPanel.Height != ClientSize.Height)
