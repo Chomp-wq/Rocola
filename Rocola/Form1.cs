@@ -894,6 +894,7 @@ namespace Rocola
             for (int i = 0; i < order.Length; i++) { char c = order[i]; if (c == TopMark || c == VideoMark) continue; if (letterAvailable.Contains(c)) { currentLetter = c; gotReal = true; break; } }
             if (!gotReal) for (int i = 0; i < order.Length; i++) if (letterAvailable.Contains(order[i])) { currentLetter = order[i]; break; }
             page = 0; selAlbumIndex = 0;
+            if (albumView != null) albumView.ResetCellCache();   // re-escaneo: descarta celdas horneadas (etiqueta/portada pueden haber cambiado para el mismo Folder)
             RefreshAlbums();
 
             if (albums.Count == 0) lblStatus.Text = "No encontre MP3 en esa carpeta: " + MusicFolder;
@@ -3137,6 +3138,7 @@ namespace Rocola
             {
                 gpuEnabled = false;
                 gpuPanel.StopGpu(); gpuPanel.Visible = false;
+                if (albumView != null) albumView.GpuCovered = false;   // vuelve a pintar la rejilla por CPU (ya no hay panel encima)
                 if (lblGpu != null) lblGpu.Visible = false;
                 Invalidate(true);   // repinta la UI normal (CPU) que estaba tapada por el panel
             }
@@ -3230,6 +3232,7 @@ namespace Rocola
             // discos por los huecos del teclado al cerrar el buscador). UiUrgent salta la limitacion de franja.
             int mode = search ? 2 : discGpu ? 3 : attract ? 4 : nav ? 1 : 0;
             if (mode != gpuMode) { gpuMode = mode; uiOverlaySig = null; gpuPanel.UiUrgent = true; }
+            albumView.GpuCovered = (nav || search || discGpu || attract);   // panel GPU encima: albumView no repinta por CPU (evita rebuild invisible al paginar)
             if (nav || search || discGpu || attract)
             {
                 if (gpuPanel.Left != 0 || gpuPanel.Top != 0 || gpuPanel.Width != ClientSize.Width || gpuPanel.Height != ClientSize.Height)
@@ -4329,10 +4332,18 @@ namespace Rocola
             public Func<Album, Image> GetCover;
             public Func<string, Image> GetCoverByPath;   // discos TOP: caratula por ruta (ciclado)
             public Action<int> OnActivate;
+            public bool GpuCovered;   // el panel GPU (pantalla completa, opaco) tapa esta vista: no malgastes su OnPaint (rejilla+estrellas) por CPU
 
             private Bitmap cubeCache;
             private int cacheW = -1, cacheH = -1;
             private string cacheSig = null;
+            // CACHE DE CELDAS: cada disco (portada estatica + etiqueta) se HORNEA a un bitmap UNA vez y luego se
+            // COPIA (blit 1:1) en cubeCache al paginar. Antes cada pagina re-ESCALABA 18 portadas y re-MAQUETABA
+            // 18 etiquetas (ajuste de linea) -> carisimo al paginar rapido. Ahora paginar es casi solo copias.
+            private sealed class CellSprite { public Bitmap Bmp; public bool HasCover; }
+            private readonly Dictionary<string, CellSprite> cellCache = new Dictionary<string, CellSprite>();
+            private int cellCacheW = -1, cellCacheH = -1;   // tamano con el que se horneo (si cambia, se limpia todo)
+            private const int CellCacheCap = 6 * PageSize;  // ~6 paginas de historial en memoria (acotado; hojear ida/vuelta cae dentro)
 #if ROCOLA_GPU
             public int CubeVersion;                                  // sube cuando cubeCache cambia (para resubir la textura GPU)
             public Bitmap CubeBitmap { get { return cubeCache; } }   // capa de cubos+etiquetas (la usa el panel GPU como textura)
@@ -4352,7 +4363,7 @@ namespace Rocola
                 }
                 return CubeVersion;
             }
-            public Bitmap ContourSpriteBmp { get { return contourSprite; } }   // sprite del resalte de seleccion
+            public Bitmap ContourSpriteBmp { get { EnsureContourSprite(); return contourSprite; } }   // sprite del resalte (lo hornea si falta: el panel GPU lo lee aunque el OnPaint por CPU este suprimido)
             public Rectangle ContourScreenRect()                     // donde va el contorno (celda seleccionada)
             {
                 if (contourSprite == null || Page == null || Selected < 0 || Selected >= Page.Count) return Rectangle.Empty;
@@ -4360,7 +4371,7 @@ namespace Rocola
                 int cw = w / Cols, ch = h / Rows; if (cw < 4 || ch < 4) return Rectangle.Empty;
                 Rectangle area, lbl; Geometry(w, h, Selected, out area, out lbl);
                 Rectangle fr = area; fr.Inflate(4, 4);
-                return new Rectangle(fr.X - 8, fr.Y - 8, contourSprite.Width, contourSprite.Height);   // 8 = margen del sprite (CM)
+                return new Rectangle(fr.X - ContourMargin, fr.Y - ContourMargin, contourSprite.Width, contourSprite.Height);
             }
 
             // --- Cubos que GIRAN (seleccionado + relevo) para el modo GPU ---
@@ -4549,6 +4560,9 @@ namespace Rocola
 
             // Fuerza reconstruir la capa de cubos (cuando llega una portada en segundo plano)
             public void InvalidateCubeCache() { cacheSig = null; Invalidate(); }
+            // Descarta las celdas horneadas (p.ej. tras re-escanear la biblioteca: mismo Folder pero etiqueta/portada
+            // pueden haber cambiado). Fuerza rehornear en el proximo RebuildCubes.
+            public void ResetCellCache() { ClearCellCache(); cellCacheW = cellCacheH = -1; cacheSig = null; Invalidate(); }
 
             protected override void OnMouseClick(MouseEventArgs e)
             {
@@ -4585,6 +4599,56 @@ namespace Rocola
                 labelRect = new Rectangle(cell.X + 2, cubeArea.Bottom + gap, cell.Width - 4, labelH);
             }
 
+            // Dimensiones de la celda (cuadro del disco) IGUAL que las calcula Geometry, para hornear/colocar.
+            private static void CellMetrics(int cw, int ch, out int side, out int labelH, out int gap)
+            {
+                labelH = 38; gap = 3; int padX = 8, padY = 6;
+                side = Math.Min(cw - 2 * padX, ch - labelH - gap - 2 * padY);
+                if (side < 10) side = 10;
+            }
+
+            // Hornea la celda de un disco (portada estatica en angulo 0 + etiqueta a 2 lineas) a un bitmap propio.
+            private Bitmap BakeCell(Album a, int cw, int side, int labelH, int gap, Image cover)
+            {
+                Bitmap bmp = new Bitmap(cw, side + gap + labelH, PixelFormat.Format32bppPArgb);
+                using (Graphics g = Graphics.FromImage(bmp))
+                {
+                    g.Clear(Color.Transparent);
+                    g.InterpolationMode = InterpolationMode.Bilinear;   // mas rapido que bicubico (CPU vieja); las portadas ya son de buena resolucion
+                    g.SmoothingMode = SmoothingMode.AntiAlias;
+                    Cube.Draw(g, new Rectangle((cw - side) / 2, 0, side, side), cover, 0.0);   // disco centrado (mismo x que Geometry)
+                    EnsureLabelRes();
+                    g.DrawString(AlbumLabel(a), lblFont, lblBrush, new Rectangle(2, side + gap, cw - 4, labelH), lblSF);   // etiqueta pegada al disco
+                }
+                return bmp;
+            }
+
+            // Devuelve el bitmap horneado de la celda del album; lo re-hornea si falta o si cambio el estado de
+            // portada (placeholder -> cargada). Clave = Folder (estable y unico). Sin Folder no se cachea.
+            private Bitmap GetOrBakeCell(Album a, int cw, int side, int labelH, int gap, Image cover)
+            {
+                // Los discos TOP ("Lo mas sonado") son dinamicos (reusan el mismo Folder sintetico pero su portada
+                // cambia al variar las reproducciones) y son poquitos -> no se cachean (se hornean al vuelo).
+                string key = (a != null && !a.IsTop) ? a.Folder : null;
+                bool hasCover = (cover != null);
+                CellSprite cs = null;
+                if (key != null && cellCache.TryGetValue(key, out cs) && cs.Bmp != null && cs.HasCover == hasCover)
+                    return cs.Bmp;   // reutiliza (paginar = solo copiar)
+                Bitmap bmp = BakeCell(a, cw, side, labelH, gap, cover);
+                if (key != null)
+                {
+                    if (cs != null && cs.Bmp != null && cs.Bmp != bmp) cs.Bmp.Dispose();   // reemplaza el placeholder por la version con portada
+                    cellCache[key] = new CellSprite { Bmp = bmp, HasCover = hasCover };
+                }
+                return bmp;
+            }
+
+            private void ClearCellCache()
+            {
+                foreach (CellSprite cs in cellCache.Values) if (cs.Bmp != null) cs.Bmp.Dispose();
+                cellCache.Clear();
+            }
+
             private void RebuildCubes(int w, int h)
             {
 #if ROCOLA_GPU
@@ -4595,28 +4659,23 @@ namespace Rocola
                     if (cubeCache != null) cubeCache.Dispose();
                     cubeCache = new Bitmap(w, h);
                 }
+                if (cellCacheW != w || cellCacheH != h) { ClearCellCache(); cellCacheW = w; cellCacheH = h; }   // tamano nuevo: las celdas horneadas ya no encajan
+                else if (cellCache.Count > CellCacheCap) ClearCellCache();                                     // limite de memoria (raro: solo tras paginar mucho)
                 using (Graphics g = Graphics.FromImage(cubeCache))
                 {
                     g.Clear(Color.Transparent);
                     if (Page == null) return;
                     int cw = w / Cols, ch = h / Rows;
                     if (cw < 4 || ch < 4) return;
-                    g.InterpolationMode = InterpolationMode.Bilinear;   // mas rapido que bicubico (CPU vieja); las portadas ya son de buena resolucion
-                    g.SmoothingMode = SmoothingMode.AntiAlias;
-                    EnsureLabelRes();
+                    int side, labelH, gap; CellMetrics(cw, ch, out side, out labelH, out gap);
+                    for (int i = 0; i < Page.Count && i < PageSize; i++)
                     {
-                        Font f = lblFont; SolidBrush white = lblBrush; StringFormat sf = lblSF;   // envuelve a 2 lineas (solo lineas completas) + "..." si sobra
-                        for (int i = 0; i < Page.Count && i < PageSize; i++)
-                        {
-                            Rectangle area, lbl;
-                            Geometry(w, h, i, out area, out lbl);
-                            // Todos los cubos van estaticos (angulo 0). El seleccionado (y el de relevo) se
-                            // dibujan girando ENCIMA en OnPaint; como girando nunca son mas angostos, lo tapan.
-                            // Asi el cache NO depende de la seleccion -> moverse entre discos no lo reconstruye (fluido).
-                            Cube.Draw(g, area, (GetCover != null) ? GetCover(Page[i]) : null, 0.0);
-                            string txt = AlbumLabel(Page[i]);
-                            g.DrawString(txt, f, white, lbl, sf);
-                        }
+                        // Todos los discos van estaticos (angulo 0). El seleccionado (y el de relevo) se dibujan
+                        // girando ENCIMA en OnPaint; como girando nunca son mas angostos, lo tapan. Asi el cache
+                        // NO depende de la seleccion -> moverse entre discos no lo reconstruye (fluido).
+                        Rectangle area, lbl; Geometry(w, h, i, out area, out lbl);
+                        Bitmap cell = GetOrBakeCell(Page[i], cw, side, labelH, gap, (GetCover != null) ? GetCover(Page[i]) : null);
+                        g.DrawImageUnscaled(cell, (i % Cols) * cw, area.Y);   // copia 1:1 (sin re-escalar portada ni re-maquetar texto)
                     }
                 }
             }
@@ -4630,30 +4689,26 @@ namespace Rocola
                 if (cubeCache == null || cubeCache.Width != w || cubeCache.Height != h) { InvalidateCubeCache(); return; }
                 int cw = w / Cols, ch = h / Rows;
                 if (cw < 4 || ch < 4) return;
+                int side, labelH, gap; CellMetrics(cw, ch, out side, out labelH, out gap);
                 bool any = false;
                 Rectangle dirtyR = Rectangle.Empty;
                 using (Graphics g = Graphics.FromImage(cubeCache))
                 {
-                    g.InterpolationMode = InterpolationMode.Bilinear;
-                    g.SmoothingMode = SmoothingMode.AntiAlias;
-                    EnsureLabelRes();
+                    for (int i = 0; i < Page.Count && i < PageSize; i++)
                     {
-                        Font f = lblFont; SolidBrush white = lblBrush; StringFormat sf = lblSF;
-                        for (int i = 0; i < Page.Count && i < PageSize; i++)
-                        {
-                            if (Page[i] == null || Page[i].CoverPath != coverPath) continue;
-                            int col = i % Cols, row = i / Cols;
-                            Rectangle cell = new Rectangle(col * cw, row * ch, cw, ch);
-                            Rectangle area, lbl;
-                            Geometry(w, h, i, out area, out lbl);
-                            g.CompositingMode = CompositingMode.SourceCopy;   // deja la celda transparente
-                            using (SolidBrush tb = new SolidBrush(Color.Transparent)) g.FillRectangle(tb, cell);
-                            g.CompositingMode = CompositingMode.SourceOver;
-                            Cube.Draw(g, area, (GetCover != null) ? GetCover(Page[i]) : null, 0.0);
-                            g.DrawString(AlbumLabel(Page[i]), f, white, lbl, sf);
-                            dirtyR = (dirtyR == Rectangle.Empty) ? cell : Rectangle.Union(dirtyR, cell);
-                            any = true;
-                        }
+                        if (Page[i] == null || Page[i].CoverPath != coverPath) continue;
+                        int col = i % Cols, row = i / Cols;
+                        Rectangle cell = new Rectangle(col * cw, row * ch, cw, ch);
+                        Rectangle area, lbl; Geometry(w, h, i, out area, out lbl);
+                        // rehornea la celda CON la portada (GetOrBakeCell detecta que HasCover cambio) y actualiza
+                        // el cache: revisitar la pagina sigue siendo instantaneo. Luego la copia en cubeCache.
+                        Bitmap cell2 = GetOrBakeCell(Page[i], cw, side, labelH, gap, (GetCover != null) ? GetCover(Page[i]) : null);
+                        g.CompositingMode = CompositingMode.SourceCopy;   // deja la celda transparente antes de recomponer
+                        using (SolidBrush tb = new SolidBrush(Color.Transparent)) g.FillRectangle(tb, cell);
+                        g.CompositingMode = CompositingMode.SourceOver;
+                        g.DrawImageUnscaled(cell2, col * cw, area.Y);
+                        dirtyR = (dirtyR == Rectangle.Empty) ? cell : Rectangle.Union(dirtyR, cell);
+                        any = true;
                     }
                 }
                 if (any && dirtyR != Rectangle.Empty) Invalidate(dirtyR);   // solo su celda: 18 caratulas ya NO son 18 repintados completos
@@ -4662,11 +4717,50 @@ namespace Rocola
 #endif
             }
 
+            private const int ContourMargin = 8;   // margen del sprite del contorno (para el resplandor ancho de 11px)
+
+            // Hornea el sprite del contorno de seleccion (3 trazos AA -> 1 copia). Es INDEPENDIENTE de cual celda
+            // este seleccionada (todas miden igual): solo se re-hornea al cambiar de tamano. Lo llaman el OnPaint
+            // (CPU) y el panel GPU (via ContourSpriteBmp), asi existe aunque el OnPaint por CPU este suprimido.
+            private void EnsureContourSprite()
+            {
+                int w = Width, h = Height;
+                if (w < 8 || h < 8) return;
+                int cw = w / Cols, ch = h / Rows;
+                if (cw < 4 || ch < 4) return;
+                Rectangle area, lbl; Geometry(w, h, 0, out area, out lbl);
+                Rectangle fr = area; fr.Inflate(4, 4);
+                Size need = new Size(fr.Width + 2 * ContourMargin, fr.Height + 2 * ContourMargin);
+                if (contourSprite != null && contourSpriteSize == need) return;
+                if (cPenGlow == null)
+                {
+                    cPenGlow = new Pen(Color.FromArgb(20, 255, 255, 255), 11f);   // resplandor ancho y tenue
+                    cPenMid = new Pen(Color.FromArgb(45, 255, 255, 255), 6f);     // resplandor medio
+                    cPenLine = new Pen(Color.FromArgb(235, 255, 255, 255), 2.4f); // linea nitida
+                }
+                if (contourSprite != null) contourSprite.Dispose();
+                contourSprite = new Bitmap(need.Width, need.Height, PixelFormat.Format32bppPArgb);
+                using (Graphics cg = Graphics.FromImage(contourSprite))
+                using (GraphicsPath cp = RoundRect(new Rectangle(ContourMargin, ContourMargin, fr.Width, fr.Height), 10))
+                {
+                    cg.SmoothingMode = SmoothingMode.AntiAlias;
+                    cg.DrawPath(cPenGlow, cp);
+                    cg.DrawPath(cPenMid, cp);
+                    cg.DrawPath(cPenLine, cp);
+                }
+                contourSpriteSize = need;
+            }
+
             protected override void OnPaint(PaintEventArgs e)
             {
                 Graphics g = e.Graphics;
                 int w = Width, h = Height;
                 if (w < 8 || h < 8) { g.Clear(Shade(BgAccent, 0.82)); return; }
+                // Cuando el fondo GPU (pantalla completa, opaco) esta encima, TODO esto queda oculto. Reconstruir
+                // la rejilla (RebuildCubes) + pintar estrellas + cubo por CPU en cada Invalidate (p.ej. al paginar,
+                // que llama Invalidate por cambio de pagina) era trabajo invisible que ademas SALTABA la franja de
+                // la GPU -> tirones al hojear. El panel GPU ya arma cubeCache por su cuenta (EnsureGpuCubesVersion).
+                if (GpuCovered) return;
 
                 bool sizeChanged = (cacheW != w || cacheH != h);
                 string sig = Sig();
@@ -4687,32 +4781,8 @@ namespace Rocola
                         g.InterpolationMode = InterpolationMode.Bilinear;
                         // Contorno blanco con resplandor del disco SELECCIONADO (ademas del giro), para ubicarlo facil.
                         Rectangle fr = area; fr.Inflate(4, 4);
-                        // Contorno HORNEADO a un sprite (los 3 trazos antialias se hacen UNA vez y luego se
-                        // copia). Todas las casillas miden igual, asi que el sprite sirve para la que este
-                        // seleccionada; solo se re-hornea si cambia el tamano. Antes: 3 DrawPath AA por cuadro.
-                        const int CM = 8;   // margen para el resplandor ancho (11px)
-                        Size need = new Size(fr.Width + 2 * CM, fr.Height + 2 * CM);
-                        if (contourSprite == null || contourSpriteSize != need)
-                        {
-                            if (cPenGlow == null)
-                            {
-                                cPenGlow = new Pen(Color.FromArgb(20, 255, 255, 255), 11f);   // resplandor ancho y tenue
-                                cPenMid = new Pen(Color.FromArgb(45, 255, 255, 255), 6f);     // resplandor medio
-                                cPenLine = new Pen(Color.FromArgb(235, 255, 255, 255), 2.4f); // linea nitida
-                            }
-                            if (contourSprite != null) contourSprite.Dispose();
-                            contourSprite = new Bitmap(need.Width, need.Height, PixelFormat.Format32bppPArgb);
-                            using (Graphics cg = Graphics.FromImage(contourSprite))
-                            using (GraphicsPath cp = RoundRect(new Rectangle(CM, CM, fr.Width, fr.Height), 10))
-                            {
-                                cg.SmoothingMode = SmoothingMode.AntiAlias;
-                                cg.DrawPath(cPenGlow, cp);
-                                cg.DrawPath(cPenMid, cp);
-                                cg.DrawPath(cPenLine, cp);
-                            }
-                            contourSpriteSize = need;
-                        }
-                        g.DrawImageUnscaled(contourSprite, fr.X - CM, fr.Y - CM);
+                        EnsureContourSprite();   // sprite horneado (3 trazos AA -> 1 copia); solo se re-hornea al cambiar tamano
+                        if (contourSprite != null) g.DrawImageUnscaled(contourSprite, fr.X - ContourMargin, fr.Y - ContourMargin);
                         Cube.Draw(g, area, SelectedCover(), SelAngle);
                     }
                 }

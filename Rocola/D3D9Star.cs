@@ -383,6 +383,13 @@ namespace Rocola
         private int nextShoot, lastShootTick;
         private readonly Random srnd = new Random();
         private static readonly uint[] shootPal = { 0x00FFFFFF, 0x00FFFFFF, 0x00CFE6FF, 0x00FFE6A0, 0x00A0FFE0, 0x00FFC0E0 };   // blanco (x2), azul, dorado, aqua, rosa
+        // DERIVA con la musica: al sonar, el campo entero se desliza LENTO en diagonal (abajo-derecha, como las
+        // fugaces) y se envuelve por los bordes (bucle infinito). Es baratisimo: solo un desplazamiento + modulo
+        // por estrella dentro del bucle que ya existe; ni asignaciones ni draws extra.
+        private int driftLastMs;                             // ultimo Begin (ms) para medir dt de la deriva
+        private float driftEnv;                              // envolvente 0..1: sube al sonar, baja al parar (arranque/paro suave)
+        private float driftX, driftY;                        // desplazamiento acumulado (px), envuelto con w/h
+        private const float DriftVX = 18f, DriftVY = 9f;     // px/seg (derecha, abajo): lento, diagonal suave 2:1
 
         public bool Ok { get { return gpu != null && gpu.Ok; } }
         public int Count { get { return nStars; } }
@@ -412,6 +419,16 @@ namespace Rocola
             int nowMs = Environment.TickCount;
             float t = (nowMs - startTick) / 1000f;
 
+            // DERIVA DIAGONAL con la musica: al sonar (pulse>0) el campo entero se desliza LENTO abajo-derecha
+            // y se envuelve por los bordes. Envolvente suave para arrancar/parar sin saltos. Coste ~nulo.
+            float ddt = (driftLastMs == 0) ? 0f : (nowMs - driftLastMs) / 1000f;
+            driftLastMs = nowMs;
+            if (ddt < 0f) ddt = 0f; else if (ddt > 0.1f) ddt = 0.1f;   // acota saltos (p.ej. tras un atasco)
+            float dTgt = (pulse > 0.02f) ? 1f : 0f;
+            driftEnv += (dTgt - driftEnv) * (dTgt > driftEnv ? Math.Min(1f, ddt * 2.5f) : Math.Min(1f, ddt * 0.6f));   // ataque medio, caida lenta
+            driftX += driftEnv * DriftVX * ddt; if (w > 0) driftX %= w;   // env>=0 -> solo crece; el modulo lo deja en [0,w)
+            driftY += driftEnv * DriftVY * ddt; if (h > 0) driftY %= h;
+
             // PATRON que cambia cada minuto, con ENTRECRUZADO: se conserva el patron anterior y se desvanece
             // mientras el nuevo aparece (el cielo nunca se queda sin estrellas). Por GPU re-sortear es barato.
             int minute = (int)(t / 60f);
@@ -437,10 +454,10 @@ namespace Rocola
             gpu.DrawSky(skyV);
             if (transing && px != null)   // patron ANTERIOR desvaneciendose
             {
-                BuildStarVerts(starV2, px, py, pphase, pspeed, psize, pkind, pcol, pnStars, t, 1f - tr, pulse);
+                BuildStarVerts(starV2, px, py, pphase, pspeed, psize, pkind, pcol, pnStars, t, 1f - tr, pulse, driftX, driftY, w, h);
                 gpu.DrawStars(starV2, pnStars * 2, glowTex);
             }
-            BuildStarVerts(starV, sx, sy, sphase, sspeed, ssize, skind, scol, nStars, t, transing ? tr : 1f, pulse);   // patron ACTUAL
+            BuildStarVerts(starV, sx, sy, sphase, sspeed, ssize, skind, scol, nStars, t, transing ? tr : 1f, pulse, driftX, driftY, w, h);   // patron ACTUAL
             gpu.DrawStars(starV, nStars * 2, glowTex);
             UpdateAndDrawShoots(w, h, nowMs);
             return true;
@@ -448,7 +465,7 @@ namespace Rocola
 
         // Construye los vertices de un campo de estrellas (titileo + latido) con un factor de brillo global
         // (para el entrecruzado del patron). Reutilizable por el patron actual y por el anterior.
-        private static void BuildStarVerts(D3D9.Vtx[] buf, float[] xs, float[] ys, float[] ph, float[] spd, float[] sz, int[] kd, uint[] col, int n, float t, float fade, float pulse)
+        private static void BuildStarVerts(D3D9.Vtx[] buf, float[] xs, float[] ys, float[] ph, float[] spd, float[] sz, int[] kd, uint[] col, int n, float t, float fade, float pulse, float dx, float dy, float w, float h)
         {
             int vi = 0;
             for (int i = 0; i < n; i++)
@@ -458,7 +475,9 @@ namespace Rocola
                 uint c = (a << 24) | (col[i] & 0x00FFFFFF);             // alfa = brillo (titileo * entrecruzado); rgb = color
                 float s = sz[i];
                 if (kd[i] != 0 && pulse > 0.02f) s += pulse * (kd[i] == 2 ? 9f : 5f);   // latido: medianas/grandes crecen con la musica
-                SetQuad(buf, vi, xs[i] - s, ys[i] - s, xs[i] + s, ys[i] + s, c, c, c, c);
+                float x = xs[i] + dx; if (x >= w) x -= w;   // deriva + envuelve (xs,dx en [0,w) -> x en [0,2w) -> 1 resta basta)
+                float y = ys[i] + dy; if (y >= h) y -= h;
+                SetQuad(buf, vi, x - s, y - s, x + s, y + s, c, c, c, c);
                 vi += 6;
             }
         }
