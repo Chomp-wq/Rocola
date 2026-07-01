@@ -659,6 +659,8 @@ namespace Rocola
         private GpuStarfield stars;
         private bool idleHooked;
         private int frames, fpsTick;
+        private int lastHeavyMs;                          // ultima reconstruccion PESADA (rejilla de discos o barras); limita su ritmo
+        private const int HeavyMinMs = 66;                // como mucho ~15 reconstrucciones pesadas/seg: al paginar rapido el FONDO sigue fluido y la rejilla se pone al dia sola
         private IntPtr cubeTex; private int cubeVer = -1; private float cubeU = 1f, cubeV = 1f;
         private readonly D3D9.Vtx[] cubeQuad = new D3D9.Vtx[6];
         private IntPtr contourTex; private Bitmap lastContour; private float contU = 1f, contV = 1f;
@@ -743,8 +745,16 @@ namespace Rocola
         {
             if (stars == null || !stars.Ok) return;
             stars.SetSky(SkyTop, SkyMid, SkyBot);
-            // Cubos: textura que cambia al navegar / llegar caratula.
-            if (GetCubes != null && GetCubesVersion != null)
+            // LIMITE DE TRABAJO PESADO: reconstruir la rejilla de discos (RebuildCubes + subir una textura
+            // enorme) y las barras (bitmap a pantalla completa) cuesta mucho. Al paginar rapido eso pasaba en
+            // CADA cuadro y atascaba TODO el bucle -> el fondo caia a ~1fps. Ahora solo se permite una
+            // reconstruccion pesada cada HeavyMinMs; entre medias el FONDO y los cubos que giran siguen a
+            // pleno ritmo con la ultima textura, y la rejilla se pone al dia sola (~15fps) sin que se note.
+            int nowMs = Environment.TickCount;
+            bool canHeavy = (nowMs - lastHeavyMs) >= HeavyMinMs;
+            // Cubos: textura que cambia al navegar / llegar caratula. GetCubesVersion() reconstruye por dentro
+            // si cambio la pagina, asi que solo lo llamamos en las franjas permitidas (o si aun no hay textura).
+            if (GetCubes != null && GetCubesVersion != null && (canHeavy || cubeTex == IntPtr.Zero))
             {
                 int v = GetCubesVersion();
                 if (v != cubeVer)
@@ -752,7 +762,7 @@ namespace Rocola
                     if (cubeTex != IntPtr.Zero) { D3D9.Release(cubeTex); cubeTex = IntPtr.Zero; }
                     Bitmap bm = GetCubes();
                     if (bm != null) cubeTex = stars.CreateOverlay(bm, out cubeU, out cubeV);
-                    cubeVer = v;
+                    cubeVer = v; lastHeavyMs = nowMs; canHeavy = false;   // gasta la franja: la UI espera al siguiente hueco
                 }
             }
             // Contorno de seleccion: sprite estatico (se sube cuando cambia el bitmap, p.ej. al cambiar tamano).
@@ -773,8 +783,9 @@ namespace Rocola
             EnsureCover(ref selTexB, ref selImgB, ref selUB, ref selVB, cs.Sel.CoverB);
             EnsureCover(ref relTex, ref relImg, ref relU, ref relV, cs.Relay.CoverA);
             EnsureCover(ref miniTex, ref miniImg, ref miniU, ref miniV, cs.Mini.CoverA);   // mini-cubo de la barra inferior
-            // Barras (UI) a textura: se re-sube solo cuando cambia algun texto/estado (firma del form).
-            if (GetUi != null && GetUiVersion != null)
+            // Barras (UI) a textura: se re-sube solo cuando cambia algun texto/estado (firma del form), y
+            // ademas limitada por la misma franja pesada (evita rehacer el bitmap a pantalla completa cada cuadro).
+            if (GetUi != null && GetUiVersion != null && (canHeavy || uiTex == IntPtr.Zero))
             {
                 int uv = GetUiVersion();
                 if (uv != uiVer)
@@ -782,7 +793,7 @@ namespace Rocola
                     if (uiTex != IntPtr.Zero) { D3D9.Release(uiTex); uiTex = IntPtr.Zero; }
                     Bitmap ub = GetUi();
                     if (ub != null) uiTex = stars.CreateOverlay(ub, out uiU, out uiV);
-                    uiVer = uv;
+                    uiVer = uv; lastHeavyMs = nowMs; canHeavy = false;
                 }
             }
             float pulse = (GetPulse != null) ? GetPulse() : 0f;
