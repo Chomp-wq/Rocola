@@ -426,36 +426,108 @@ namespace Rocola
             return roots;
         }
 
-        // Ctrl+F2: agrega OTRA carpeta de musica (otro disco duro/SSD o directorio) y re-escanea. Se guarda
-        // en el config, asi que queda para siempre. El cursor se muestra solo mientras dura el dialogo.
-        private void AddMusicDirDialog()
+        // Ctrl+F2: GESTOR VISUAL de carpetas de musica. Lista la principal ("musica", fija) y las ADICIONALES
+        // (pueden estar en otros discos, SSD/HDD); permite AGREGAR y QUITAR. Los cambios se guardan al cerrar
+        // y disparan UN solo re-escaneo. Es una herramienta de mantenimiento (requiere teclado/mouse): el
+        // cursor se muestra solo mientras el gestor esta abierto y el vigia de foco queda en pausa.
+        private void ShowMusicDirManager()
         {
             if (searchOpen) CloseSearch();
             bool wasMaint = maintMode;
-            maintMode = true; maintUntil = DateTime.Now.AddMinutes(5);   // pausa el vigia de foco: el dialogo necesita quedarse al frente
+            maintMode = true; maintUntil = DateTime.Now.AddMinutes(10);   // pausa el vigia de foco: el dialogo modal necesita quedarse al frente
+            bool changed = false;
             try
             {
                 Cursor.Show();
-                using (FolderBrowserDialog fb = new FolderBrowserDialog())
+                using (Font fUi = new Font(FontFamily.GenericSansSerif, 10f))
+                using (Form dlg = new Form())
                 {
-                    fb.Description = "Elige una carpeta ADICIONAL con musica (puede estar en otro disco). La rocola la escaneara junto con la carpeta 'musica' principal.";
-                    fb.ShowNewFolderButton = false;
-                    if (fb.ShowDialog(this) == DialogResult.OK && !string.IsNullOrEmpty(fb.SelectedPath))
+                    dlg.Text = "Rocola - Carpetas de musica";
+                    dlg.FormBorderStyle = FormBorderStyle.FixedDialog;
+                    dlg.MaximizeBox = false; dlg.MinimizeBox = false; dlg.ShowInTaskbar = false; dlg.ShowIcon = false;
+                    dlg.StartPosition = FormStartPosition.CenterParent;
+                    dlg.ClientSize = new Size(640, 372);
+                    dlg.BackColor = Color.FromArgb(14, 18, 42);
+                    dlg.Font = fUi;
+
+                    Label info = new Label();
+                    info.SetBounds(14, 10, 612, 42);
+                    info.BackColor = Color.Transparent;
+                    info.ForeColor = Color.FromArgb(205, 214, 238);
+                    info.Text = "La carpeta 'musica' (junto al programa) siempre se incluye. Aqui puedes agregar o quitar carpetas ADICIONALES, incluso de otros discos (SSD/HDD).";
+
+                    ListBox list = new ListBox();
+                    list.SetBounds(14, 58, 612, 230);
+                    list.BackColor = Color.FromArgb(24, 30, 62);
+                    list.ForeColor = Color.White;
+                    list.BorderStyle = BorderStyle.FixedSingle;
+                    list.IntegralHeight = false;
+
+                    Button bAdd = new Button(), bDel = new Button(), bOk = new Button();
+                    bAdd.Text = "Agregar carpeta..."; bAdd.SetBounds(14, 300, 180, 36);
+                    bDel.Text = "Quitar seleccionada"; bDel.SetBounds(202, 300, 180, 36);
+                    bOk.Text = "Listo"; bOk.SetBounds(530, 300, 96, 36);
+                    Button[] bs = { bAdd, bDel, bOk };
+                    for (int i = 0; i < bs.Length; i++)
                     {
-                        string p = fb.SelectedPath;
-                        bool dup = string.Equals(p, MusicFolder, StringComparison.OrdinalIgnoreCase);
-                        for (int i = 0; i < extraMusicDirs.Count && !dup; i++)
-                            if (string.Equals(extraMusicDirs[i], p, StringComparison.OrdinalIgnoreCase)) dup = true;
-                        if (dup) ShowToast("Esa carpeta ya esta incluida", Color.FromArgb(200, 130, 35));
-                        else
-                        {
-                            extraMusicDirs.Add(p);
-                            SaveConfigPrefs();
-                            ShowToast("Carpeta agregada: escaneando musica...");
-                            try { File.Delete(LibCacheFile()); } catch { }   // el cache de biblioteca ya no corresponde
-                            LoadMusicFolder();
-                        }
+                        bs[i].FlatStyle = FlatStyle.Flat;
+                        bs[i].FlatAppearance.BorderColor = Color.FromArgb(90, 110, 170);
+                        bs[i].BackColor = Color.FromArgb(34, 44, 86);
+                        bs[i].ForeColor = Color.White;
                     }
+
+                    // Rellena la lista: [0] = principal (fija); debajo las adicionales, marcando las no disponibles
+                    // (disco desconectado): esas siguen guardadas y vuelven solas cuando el disco reaparezca.
+                    Action refresh = delegate
+                    {
+                        list.Items.Clear();
+                        string main = MusicFolder;
+                        bool mainOk = false; try { mainOk = Directory.Exists(main); } catch { }
+                        list.Items.Add(main + "   [principal - fija]" + (mainOk ? "" : "   (NO EXISTE)"));
+                        for (int i = 0; i < extraMusicDirs.Count; i++)
+                        {
+                            bool ok = false; try { ok = Directory.Exists(extraMusicDirs[i]); } catch { }
+                            list.Items.Add(extraMusicDirs[i] + (ok ? "" : "   (no disponible)"));
+                        }
+                        bDel.Enabled = extraMusicDirs.Count > 0;
+                    };
+
+                    bAdd.Click += delegate
+                    {
+                        using (FolderBrowserDialog fb = new FolderBrowserDialog())
+                        {
+                            fb.Description = "Elige una carpeta ADICIONAL con musica (puede estar en otro disco).";
+                            fb.ShowNewFolderButton = false;
+                            if (fb.ShowDialog(dlg) != DialogResult.OK || string.IsNullOrEmpty(fb.SelectedPath)) return;
+                            string p = fb.SelectedPath;
+                            bool dup = string.Equals(p, MusicFolder, StringComparison.OrdinalIgnoreCase);
+                            for (int i = 0; i < extraMusicDirs.Count && !dup; i++)
+                                if (string.Equals(extraMusicDirs[i], p, StringComparison.OrdinalIgnoreCase)) dup = true;
+                            if (dup) { MessageBox.Show(dlg, "Esa carpeta ya esta incluida.", "Rocola"); return; }
+                            extraMusicDirs.Add(p); changed = true; refresh();
+                        }
+                    };
+                    bDel.Click += delegate
+                    {
+                        int i = list.SelectedIndex;
+                        if (i < 0) { MessageBox.Show(dlg, "Selecciona una carpeta de la lista.", "Rocola"); return; }
+                        if (i == 0) { MessageBox.Show(dlg, "La carpeta principal 'musica' no se puede quitar.", "Rocola"); return; }
+                        extraMusicDirs.RemoveAt(i - 1); changed = true; refresh();
+                    };
+                    bOk.Click += delegate { dlg.Close(); };
+                    dlg.CancelButton = bOk;   // Esc tambien cierra (los cambios ya hechos se aplican igual)
+
+                    dlg.Controls.Add(info); dlg.Controls.Add(list);
+                    dlg.Controls.Add(bAdd); dlg.Controls.Add(bDel); dlg.Controls.Add(bOk);
+                    refresh();
+                    dlg.ShowDialog(this);
+                }
+                if (changed)
+                {
+                    SaveConfigPrefs();
+                    ShowToast("Carpetas actualizadas: escaneando musica...");
+                    try { File.Delete(LibCacheFile()); } catch { }   // el cache de biblioteca ya no corresponde
+                    LoadMusicFolder();
                 }
             }
             catch { }
@@ -2275,9 +2347,9 @@ namespace Rocola
                 return true;
             }
 #endif
-            if (keyData == (Keys.Control | Keys.F2))   // Ctrl+F2 = agregar OTRA carpeta de musica (otro disco/directorio)
+            if (keyData == (Keys.Control | Keys.F2))   // Ctrl+F2 = gestor de carpetas de musica (agregar/quitar; otros discos)
             {
-                AddMusicDirDialog();
+                ShowMusicDirManager();
                 return true;
             }
             if (keyData == Keys.F8 && !IsConfiguredKey(Keys.F8))    // F8 = relanzar el asistente de botones
