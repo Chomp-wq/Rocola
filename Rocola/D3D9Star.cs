@@ -961,14 +961,16 @@ namespace Rocola
         }
 
         // Expulsa las texturas de celda mas VIEJAS (no usadas este cuadro) cuando se pasa del tope, para acotar VRAM.
+        // La "edad" se calcula por RESTA (cellFrame - Frame): sobrevive el desbordamiento del contador de cuadros
+        // (int a 60fps se desborda a los ~414 dias encendida; misma familia que el TickCount de las fugaces).
         private void EvictCellTex()
         {
             while (cellTexCache.Count > CellTexCap)
             {
-                string oldestKey = null; int oldest = int.MaxValue;
+                string oldestKey = null; int oldestAge = -1;
                 foreach (KeyValuePair<string, CellTex> kv in cellTexCache)
-                    if (kv.Value.Frame < oldest) { oldest = kv.Value.Frame; oldestKey = kv.Key; }
-                if (oldestKey == null || oldest == cellFrame) break;   // no expulsar lo que se dibujo este cuadro
+                { int age = cellFrame - kv.Value.Frame; if (age > oldestAge) { oldestAge = age; oldestKey = kv.Key; } }
+                if (oldestKey == null || oldestAge <= 0) break;   // no expulsar lo que se dibujo este cuadro
                 CellTex ct = cellTexCache[oldestKey];
                 if (ct.Tex != IntPtr.Zero) D3D9.Release(ct.Tex);
                 cellTexCache.Remove(oldestKey);

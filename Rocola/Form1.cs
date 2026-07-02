@@ -3894,13 +3894,18 @@ namespace Rocola
 
             // Pinta el fondo: cielo OPACO por copia directa (SourceCopy, rapido) + la capa de estrellas del
             // cuadro de titileo ACTUAL encima (SourceOver). Rotar el cuadro reproduce el titileo por copia.
-            private void BlitSkyAndStars(Graphics g, int w, int h)
+            // 'advance'=false (repintado PARCIAL: la casilla del cubo que gira) reusa la capa del ultimo repintado
+            // completo: si avanzara por reloj, la casilla mostraria un cuadro de titileo distinto al del resto.
+            private int shownLayer = -1;   // capa mostrada en el ultimo repintado completo
+            private void BlitSkyAndStars(Graphics g, int w, int h) { BlitSkyAndStars(g, w, h, true); }
+            private void BlitSkyAndStars(Graphics g, int w, int h, bool advance)
             {
                 CompositingMode ocm = g.CompositingMode;
                 g.CompositingMode = CompositingMode.SourceCopy;   // cielo opaco: copia directa (sin mezclar alfa)
                 g.DrawImageUnscaled(skyCache, 0, 0);
                 g.CompositingMode = CompositingMode.SourceOver;   // estrellas con transparencia encima
-                Bitmap sl = CurrentStarLayer();
+                if (advance || shownLayer < 0 || layers == null || shownLayer >= layers.Length) shownLayer = CurrentStarLayerIndex();
+                Bitmap sl = (layers != null && shownLayer >= 0 && shownLayer < layers.Length) ? layers[shownLayer] : null;
                 if (sl != null)
                 {
                     int dx = (int)driftX, dy = (int)driftY;   // deriva con la musica; envuelve toroidalmente (4 copias que PARTEN la pantalla, ~coste de 1 blit)
@@ -3918,12 +3923,12 @@ namespace Rocola
 
             // Indice del cuadro de titileo segun el reloj (rota ~5 veces/seg). Los armonicos son ENTEROS, asi
             // que el set entero cicla y el titileo se repite suave y continuo, sin recalcular nada por cuadro.
-            private Bitmap CurrentStarLayer()
+            private int CurrentStarLayerIndex()
             {
-                if (layers == null || layers.Length == 0) return null;
+                if (layers == null || layers.Length == 0) return -1;
                 int idx = (Environment.TickCount / 200) % layers.Length;
                 if (idx < 0) idx += layers.Length;
-                return layers[idx];
+                return idx;
             }
 
             // Fondo de la vista de discos: cielo cacheado (copia directa) + estrellas TITILANTES por cuadros
@@ -3937,7 +3942,7 @@ namespace Rocola
                 RectangleF clip = g.ClipBounds;
                 bool full = (clip.Width >= w - 1 && clip.Height >= h - 1);   // repintado COMPLETO (no la casilla del cubo)
                 if (full) UpdateDrift(w, h, pulse);   // la deriva SOLO avanza en repintado completo; las casillas parciales usan la posicion actual y cuadran
-                BlitSkyAndStars(g, w, h);
+                BlitSkyAndStars(g, w, h, full);      // idem la capa de titileo: los parciales reusan la del ultimo cuadro completo (sin costura en la casilla)
                 if (full)
                 {
                     if (pulse > 0.04f) DrawBeatFlare(g, w, h, pulse);   // latido: glow extra en medianas/grandes con la musica
@@ -4503,7 +4508,6 @@ namespace Rocola
                 return n;
             }
 #endif
-            private Color cacheAccent = Color.Empty;
             private Pen cPenGlow, cPenMid, cPenLine;   // contorno del disco seleccionado (cacheadas; antes se creaban por cuadro)
             private Bitmap contourSprite; private Size contourSpriteSize = Size.Empty;   // contorno HORNEADO (3 trazos AA -> 1 copia); todas las casillas miden igual
             private Font lblFont; private SolidBrush lblBrush; private StringFormat lblSF;       // recursos de etiquetas (reusables)
@@ -4891,7 +4895,7 @@ namespace Rocola
                 bool sizeChanged = (cacheW != w || cacheH != h);
                 string sig = Sig();
                 if (sizeChanged || cubeCache == null || sig != cacheSig || cubesPending) RebuildCubes(w, h);   // ya NO se reconstruye por cambio de seleccion; cubesPending completa el horneado repartido
-                cacheW = w; cacheH = h; cacheSig = sig; cacheAccent = BgAccent;
+                cacheW = w; cacheH = h; cacheSig = sig;
 
                 stars.SkyOffsetY = this.Top; stars.SkyFullH = (this.Parent != null) ? this.Parent.ClientSize.Height : h; stars.SkyMid = SkyColorMid(BgAccent);
                 stars.DrawReactive(g, w, h, SkyColor(BgAccent), SkyColor2(BgAccent), AudioPulse);   // fondo cacheado titilante + LATIDO (medianas/grandes destellan con la musica)
