@@ -3599,6 +3599,25 @@ namespace Rocola
             private Bitmap skyCache;                                       // RENDIMIENTO: cielo (degradado) HORNEADO a bitmap; se copia por cuadro en vez de rellenar el degradado cada vez
             private int scW = -1, scH = -1;
             private LinearGradientBrush scFrom;                           // de que pincel se horneo skyCache (si el genero/tamano cambia el pincel, se re-hornea)
+            // DERIVA con la musica (igual que la version GPU): al sonar, el campo entero se desliza LENTO en diagonal
+            // (abajo-derecha) y se envuelve por los bordes. Barato: en la vista de discos solo desplaza el blit de la
+            // capa de estrellas (toroidal); en el buscador desplaza cada estrella. Solo avanza en repintados COMPLETOS.
+            private int driftLastMs; private float driftEnv, driftX, driftY;
+            private const float DriftVX = 18f, DriftVY = 9f;             // px/seg (derecha, abajo): lento, diagonal 2:1 (como GPU)
+
+            // Avanza la deriva segun el tiempo real, con envolvente suave (arranca/para sin saltos). Se llama SOLO
+            // en repintados completos para que las casillas parciales (el cubo que gira) cuadren con el fondo.
+            private void UpdateDrift(int w, int h, float pulse)
+            {
+                int now = Environment.TickCount;
+                float dt = (driftLastMs == 0) ? 0f : (now - driftLastMs) / 1000f;
+                driftLastMs = now;
+                if (dt < 0f) dt = 0f; else if (dt > 0.2f) dt = 0.2f;   // acota saltos (tras un hueco largo, p.ej. saliendo de GPU)
+                float tgt = (pulse > 0.02f) ? 1f : 0f;
+                driftEnv += (tgt - driftEnv) * (tgt > driftEnv ? Math.Min(1f, dt * 2.5f) : Math.Min(1f, dt * 0.6f));   // ataque medio, caida lenta
+                driftX += driftEnv * DriftVX * dt; if (w > 0) driftX %= w;   // env>=0 -> solo crece; modulo -> [0,w)
+                driftY += driftEnv * DriftVY * dt; if (h > 0) driftY %= h;
+            }
 
             // Pincel de cielo en degradado vertical CONTINUO: el degradado abarca TODA la pantalla (SkyFullH)
             // y se desplaza segun donde esta este fondo (SkyOffsetY), para que las secciones no se noten
@@ -3810,6 +3829,8 @@ namespace Rocola
                 g.InterpolationMode = InterpolationMode.Bilinear;
                 g.SmoothingMode = SmoothingMode.AntiAlias;   // ESTETICA: el sparkle se ve liso (una sola pieza)
                 float gfade = fade < 0f ? 0f : (fade > 1f ? 1f : fade);   // el glow encoge a 0 en el parpadeo del patron (sync con los nucleos)
+                UpdateDrift(w, h, pulse);           // deriva con la musica (RenderInto solo corre en reconstruccion completa, ~24fps)
+                int dx = (int)driftX, dy = (int)driftY;
                 for (int i = 0; i < stars.Length; i++)
                 {
                     Star s = stars[i];
@@ -3819,7 +3840,8 @@ namespace Rocola
                     int cr, cg, cb;
                     if (s.Tint > 0f) { cr = (int)(255 + (tint.R - 255) * s.Tint); cg = (int)(255 + (tint.G - 255) * s.Tint); cb = (int)(255 + (tint.B - 255) * s.Tint); }
                     else { cr = s.R; cg = s.G; cb = s.B; }
-                    int px = (int)(s.X * w), py = (int)(s.Y * h);
+                    int px = (int)(s.X * w) + dx; if (px >= w) px -= w;   // + deriva con la musica (envuelve)
+                    int py = (int)(s.Y * h) + dy; if (py >= h) py -= h;
                     sb.Color = Color.FromArgb(a, cr, cg, cb);
                     // GLOW del MISMO COLOR detras del nucleo + estrella de 4 puntas. El beat agranda glow y puntas
                     // solo en medianas/grandes; los puntos van como punto redondo fijo, sin glow.
@@ -3871,7 +3893,18 @@ namespace Rocola
                 g.DrawImageUnscaled(skyCache, 0, 0);
                 g.CompositingMode = CompositingMode.SourceOver;   // estrellas con transparencia encima
                 Bitmap sl = CurrentStarLayer();
-                if (sl != null) g.DrawImageUnscaled(sl, 0, 0);
+                if (sl != null)
+                {
+                    int dx = (int)driftX, dy = (int)driftY;   // deriva con la musica; envuelve toroidalmente (4 copias que PARTEN la pantalla, ~coste de 1 blit)
+                    if (dx == 0 && dy == 0) g.DrawImageUnscaled(sl, 0, 0);
+                    else
+                    {
+                        g.DrawImageUnscaled(sl, dx, dy);
+                        g.DrawImageUnscaled(sl, dx - w, dy);
+                        g.DrawImageUnscaled(sl, dx, dy - h);
+                        g.DrawImageUnscaled(sl, dx - w, dy - h);
+                    }
+                }
                 g.CompositingMode = ocm;
             }
 
@@ -3893,9 +3926,11 @@ namespace Rocola
                 if (w < 4 || h < 4) return;
                 EnsureSkyCache(w, h, skyTop, skyBottom);
                 EnsureLayers(w, h);
-                BlitSkyAndStars(g, w, h);
                 RectangleF clip = g.ClipBounds;
-                if (clip.Width >= w - 1 && clip.Height >= h - 1)   // solo en repintado COMPLETO (no en la casilla del cubo)
+                bool full = (clip.Width >= w - 1 && clip.Height >= h - 1);   // repintado COMPLETO (no la casilla del cubo)
+                if (full) UpdateDrift(w, h, pulse);   // la deriva SOLO avanza en repintado completo; las casillas parciales usan la posicion actual y cuadran
+                BlitSkyAndStars(g, w, h);
+                if (full)
                 {
                     if (pulse > 0.04f) DrawBeatFlare(g, w, h, pulse);   // latido: glow extra en medianas/grandes con la musica
                     DrawShoots(g, w, h);
@@ -3909,6 +3944,7 @@ namespace Rocola
             {
                 if (stars == null) return;
                 int extra = (int)(pulse * 16f);   // cuanto crece el halo con el beat
+                int dx = (int)driftX, dy = (int)driftY;   // sigue la deriva de la capa de estrellas
                 for (int i = 0; i < stars.Length; i++)
                 {
                     Star s = stars[i];
@@ -3917,7 +3953,8 @@ namespace Rocola
                     if (s.Tint > 0f) { cr = 255; cg = 255; cb = 255; } else { cr = s.R; cg = s.G; cb = s.B; }
                     Bitmap gb = GlowFor(cr, cg, cb);
                     if (gb == null) continue;
-                    int px = (int)(s.X * w), py = (int)(s.Y * h);
+                    int px = (int)(s.X * w) + dx; if (px >= w) px -= w;   // + deriva (envuelve)
+                    int py = (int)(s.Y * h) + dy; if (py >= h) py -= h;
                     int gd = s.Size * 2 + 4 + extra;
                     g.DrawImage(gb, new Rectangle(px - gd / 2, py - gd / 2, gd, gd));
                 }
