@@ -1654,13 +1654,14 @@ namespace Rocola
             return c;
         }
 
+        // Mueve la seleccion DENTRO de la pagina, con CICLO: derecha en el ultimo disco -> vuelve al
+        // primero; izquierda en el primero -> va al ultimo. Nunca se atasca (agiliza busquedas cortas).
         private void MoveInPage(int delta)
         {
             int cnt = PageDiscCount();
             if (cnt == 0) return;
             int local = selAlbumIndex - page * PageSize + delta;
-            if (local < 0) local = 0;
-            if (local >= cnt) local = cnt - 1;
+            local = ((local % cnt) + cnt) % cnt;   // modulo con negativos: -1 -> ultimo, cnt -> primero
             selAlbumIndex = page * PageSize + local;
             SetSelectedLocal(local, delta);
         }
@@ -1670,13 +1671,13 @@ namespace Rocola
             int total = CurrentList().Count;
             int totalPages = Math.Max(1, (total + PageSize - 1) / PageSize);
             if (page < totalPages - 1) { page++; selAlbumIndex = page * PageSize; RefreshAlbums(); }
-            else if (GotoLetter(1)) { page = 0; selAlbumIndex = 0; RefreshAlbums(); }
+            else if (GotoLetter(1, true)) { page = 0; selAlbumIndex = 0; RefreshAlbums(); }   // ultima pagina de la ultima seccion: CICLA al inicio
         }
 
         private void PrevPage()
         {
             if (page > 0) { page--; selAlbumIndex = page * PageSize; RefreshAlbums(); }
-            else if (GotoLetter(-1))
+            else if (GotoLetter(-1, true))   // primera pagina de la primera seccion: CICLA al final
             {
                 int total = CurrentList().Count;
                 int tp = Math.Max(1, (total + PageSize - 1) / PageSize);
@@ -1684,23 +1685,27 @@ namespace Rocola
             }
         }
 
-        private bool GotoLetter(int dir)
+        // Salta a la letra DISPONIBLE siguiente/anterior. Con 'wrap', al pasar el extremo CICLA al otro
+        // lado (VIDEO -> TOP/#/A... y viceversa): el abecedario es una rueda, nunca se atasca.
+        private bool GotoLetter(int dir, bool wrap)
         {
             string order = "\u2605#ABCDEFGHIJKLMNOPQRSTUVWXYZ\u25BA";
+            int n = order.Length;
             int idx = order.IndexOf(currentLetter);
             if (idx < 0) idx = 0;
-            int i = idx + dir;
-            while (i >= 0 && i < order.Length)
+            int steps = wrap ? n : (dir > 0 ? n - 1 - idx : idx);   // sin wrap: hasta el extremo; con wrap: la vuelta completa (incluye regresar a la misma si es la unica)
+            for (int k = 1; k <= steps; k++)
             {
+                int i = idx + dir * k;
+                if (wrap) i = ((i % n) + n) % n;
                 if (letterAvailable.Contains(order[i])) { currentLetter = order[i]; return true; }
-                i += dir;
             }
             return false;
         }
 
         private void ChangeLetter(int dir)
         {
-            if (GotoLetter(dir)) { page = 0; selAlbumIndex = 0; RefreshAlbums(); }
+            if (GotoLetter(dir, true)) { page = 0; selAlbumIndex = 0; RefreshAlbums(); }   // REGRESAR+izq/der: las letras CICLAN
         }
 
         private void EnterAlbum(Album a)
