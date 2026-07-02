@@ -168,6 +168,7 @@ namespace Rocola
         private double phase = 0;
         private Starfield formStars = new Starfield();   // cielo estrellado del fondo del formulario
         private int frameTick = 0;   // contador de cuadros: el fondo se refresca completo 1 de cada 3 (invisible al ojo)
+        private int helpFlashPrev = 0;   // firma previa del brillo de la barra de ayuda (para el ultimo repintado que lo borra, en CPU)
 #if ROCOLA_GPU
         private GpuPanel gpuPanel;   // fondo de discos por GPU (experimental, Ctrl+F12)
         private Label lblGpu;        // etiqueta de estado/FPS del modo GPU (esquina)
@@ -1763,10 +1764,15 @@ namespace Rocola
             RefreshAlbums();
         }
 
+        // Mueve la seleccion en la lista de canciones. Paso de a UNO (arriba/abajo): CICLA en los extremos
+        // (ultima -> primera y al reves), igual que los discos. Salto de PAGINA (izq/der): se detiene en los
+        // bordes (teletransportarse de la ultima pagina a la primera a mitad de lista confundiria).
         private void MoveSong(int delta)
         {
             if (songItems.Count == 0) return;
             songSel += delta;
+            if (delta == 1 && songSel >= songItems.Count) songSel = 0;
+            else if (delta == -1 && songSel < 0) songSel = songItems.Count - 1;
             if (songSel < 0) songSel = 0;
             if (songSel >= songItems.Count) songSel = songItems.Count - 1;
             FillSongPage();
@@ -3514,6 +3520,15 @@ namespace Rocola
 #if ROCOLA_GPU
             albumGpuBg = (gpuPanel != null && gpuPanel.Visible);   // el panel GPU (opaco, pantalla completa) tapa los controles CPU: repintarlos seria trabajo invisible que ademas corta el bucle de render GPU
 #endif
+            // (CPU) Anima el BRILLO del boton pulsado en la barra de ayuda: sin esto el destello se disparaba
+            // pero nadie repintaba el control -> no se veia. Repinta mientras dura (~0.4s) y UNA vez mas al
+            // expirar (para borrar el ultimo halo). En GPU lo anima la textura de UI (FlashSig entra en la firma).
+            if (helpBar != null)
+            {
+                int hfs = helpBar.FlashSig();
+                if ((hfs != 0 || helpFlashPrev != 0) && helpBar.Visible && !albumGpuBg) helpBar.Invalidate();
+                helpFlashPrev = hfs;
+            }
             if (letterBar.Visible) { letterBar.Phase = phase; if (!albumGpuBg) letterBar.Invalidate(); }   // 24fps; en GPU el brillo de la letra lo anima la textura de UI (UiSig cuantiza su fase)
             if (albumView.Visible && !albumGpuBg) { albumView.Phase = phase; albumView.AudioPulse = audioLevel; albumView.AnimTick(fullFrame || transitioning); }
 #if ROCOLA_GPU
@@ -5526,7 +5541,6 @@ namespace Rocola
             public void TypeChar(char c) { Query += c; Changed(); }
             public void Backspace() { if (Query.Length > 0) Query = Query.Substring(0, Query.Length - 1); Changed(); }
             private void Changed() { FocusResults = false; SelResult = 0; if (OnQueryChanged != null) OnQueryChanged(Query); Invalidate(); }
-            public void InvalidateCube() { if (cubeRect != Rectangle.Empty) Invalidate(Rectangle.Inflate(cubeRect, 6, 6)); else Invalidate(); }
 
             public void MoveSel(int dx, int dy)
             {
