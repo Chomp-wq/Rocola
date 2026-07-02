@@ -267,6 +267,9 @@ namespace Rocola
 #endif
             LoadStats();   // estadisticas guardadas de sesiones anteriores (base de "Lo mas sonado")
             LayoutControls();
+#if ROCOLA_GPU
+            if (LoadGpuPref()) ApplyAlbumGpu(true, false, false);   // render por GPU por defecto (o preferencia guardada); silencioso si el device falla; no re-guarda
+#endif
             LoadMusicFolder();
 
             // SIN CURSOR: la rocola se usa con botones. Se oculta y se manda a una esquina
@@ -2119,6 +2122,12 @@ namespace Rocola
                 SyncGpuFullScreen(); Invalidate(true);
                 return true;
             }
+            if (keyData == (Keys.Control | Keys.F1))   // Ctrl+F1 = muestra/oculta el contador de FPS (oculto por defecto)
+            {
+                gpuShowFps = !gpuShowFps;
+                if (gpuPanel != null) gpuPanel.ShowFps = gpuShowFps;
+                return true;
+            }
 #endif
             if (keyData == Keys.F8 && !IsConfiguredKey(Keys.F8))    // F8 = relanzar el asistente de botones
             {
@@ -3086,15 +3095,19 @@ namespace Rocola
 #if ROCOLA_GPU
         private static uint ToD3D(Color c) { return 0xFF000000u | ((uint)c.R << 16) | ((uint)c.G << 8) | (uint)c.B; }
 
-        private bool gpuEnabled;                          // el usuario activo el modo GPU (Ctrl+F12)
+        private bool gpuEnabled;                          // render por GPU activo. Por defecto SI (se guarda al alternar con Ctrl+F12)
+        private bool gpuShowFps;                          // mostrar el contador de FPS (diagnostico). Oculto por defecto; Ctrl+F1 lo alterna
         private bool gpuDiscTry = true;                   // interior de disco por GPU (por defecto). Ctrl+F11 lo alterna a CPU como valvula de escape
         private int gpuMode = -1;                          // modo GPU actual (nav/buscador/disco/atraccion); al cambiar se rehace la UI atomica
         private Bitmap uiOverlay; private int uiOverlayVer; private string uiOverlaySig;   // textura de las barras (UI)
 
-        // Ctrl+F12: activa/desactiva el render por GPU (Direct3D 9) A PANTALLA COMPLETA. El panel cubre toda
-        // la ventana y compone: fondo estrellado + cubos + barras (textura) + mini-cubo. Si el dispositivo no
-        // inicia, se queda en CPU (no rompe nada).
-        private void ToggleAlbumGpu()
+        // Ctrl+F12: alterna el render entre GPU (Direct3D 9, por defecto) y CPU, y GUARDA la preferencia.
+        private void ToggleAlbumGpu() { ApplyAlbumGpu(!gpuEnabled, true, true); }
+
+        // Aplica el modo de render. 'on' = destino (GPU/CPU); 'announceFail' = avisar si el dispositivo no inicia;
+        // 'persist' = guardar la preferencia (solo cuando lo pide el usuario con Ctrl+F12, no en el arranque). El
+        // panel GPU (Direct3D 9) cubre toda la ventana y compone: fondo estrellado + cubos + barras + mini-cubo.
+        private void ApplyAlbumGpu(bool on, bool announceFail, bool persist)
         {
             if (lblGpu == null)
             {
@@ -3109,6 +3122,7 @@ namespace Rocola
             if (gpuPanel == null)
             {
                 gpuPanel = new GpuPanel();
+                gpuPanel.ShowFps = gpuShowFps;
                 gpuPanel.GetPulse = delegate { return audioLevel; };
                 gpuPanel.GetGrid = albumView.BuildGpuGrid;   // rejilla de discos: cada celda su propio quad con textura cacheada (hojear = elegir texturas + posiciones)
                 gpuPanel.GetContour = delegate { return albumView.ContourSpriteBmp; };          // resalte de seleccion
@@ -3122,7 +3136,7 @@ namespace Rocola
                 gpuPanel.GetUiVersion = delegate { return EnsureUiOverlay(); };
                 Controls.Add(gpuPanel);
             }
-            if (!gpuEnabled)
+            if (on && !gpuEnabled)
             {
                 albumView.InvalidateCubeCache();         // cubeCache fresco para subirlo a la GPU
                 uiOverlaySig = null;                     // fuerza reconstruir la textura de UI
@@ -3131,9 +3145,9 @@ namespace Rocola
                 gpuPanel.SkyTop = ToD3D(SkyColor(bgAccent)); gpuPanel.SkyMid = ToD3D(SkyColorMid(bgAccent)); gpuPanel.SkyBot = ToD3D(SkyColor2(bgAccent));
                 gpuPanel.Visible = true; gpuPanel.BringToFront();
                 if (gpuPanel.StartGpu()) { gpuEnabled = true; lblGpu.Visible = false; }
-                else { gpuPanel.Visible = false; lblGpu.Text = "GPU: fallo el dispositivo (sigue CPU)"; lblGpu.Visible = true; lblGpu.BringToFront(); }
+                else { gpuPanel.Visible = false; if (announceFail) { lblGpu.Text = "GPU: fallo el dispositivo (sigue CPU)"; lblGpu.Visible = true; lblGpu.BringToFront(); } }
             }
-            else
+            else if (!on && gpuEnabled)
             {
                 gpuEnabled = false;
                 gpuPanel.StopGpu(); gpuPanel.Visible = false;
@@ -3141,6 +3155,29 @@ namespace Rocola
                 if (lblGpu != null) lblGpu.Visible = false;
                 Invalidate(true);   // repinta la UI normal (CPU) que estaba tapada por el panel
             }
+            if (persist) SaveGpuPref(gpuEnabled);   // recuerda la eleccion para el proximo arranque
+        }
+
+        // Preferencia de render (GPU/CPU), guardada junto al exe. Por defecto GPU. Se escribe solo con Ctrl+F12.
+        private bool LoadGpuPref()
+        {
+            try
+            {
+                string f = ConfigFile;
+                if (File.Exists(f))
+                    foreach (string line in File.ReadAllLines(f))
+                    {
+                        string s = line.Trim();
+                        if (s.StartsWith("gpu=")) return s.Substring(4).Trim() != "0";
+                    }
+            }
+            catch { }
+            return true;   // sin preferencia guardada: GPU por defecto
+        }
+        private void SaveGpuPref(bool on)
+        {
+            try { File.WriteAllText(ConfigFile, "gpu=" + (on ? "1" : "0") + "\r\n"); }
+            catch { }
         }
 
         // Estado de los cubos que giran (en coords de PANTALLA). En navegacion: album (seleccionado + relevo).

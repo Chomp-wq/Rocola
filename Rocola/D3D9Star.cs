@@ -744,7 +744,8 @@ namespace Rocola
         public bool UiUrgent;                             // el form lo pone al cambiar de modo: rehacer la UI YA (sin esperar franja) para que la transicion sea atomica
         public Func<Bitmap> GetUi;                        // bitmap transparente con las barras (lo provee el form)
         public Func<int> GetUiVersion;                    // cambia cuando alguna barra cambia (re-subir textura)
-        public int Fps;                                   // cuadros por segundo (para mostrar mientras integramos)
+        public int Fps;                                   // cuadros por segundo (diagnostico)
+        public bool ShowFps;                              // dibujar el contador de FPS (oculto por defecto; el form lo alterna con Ctrl+F1)
         public Func<float> GetPulse;                      // el form provee el nivel de audio (0..1)
         public GpuGridFetch GetGrid;                      // el form llena el buffer con las celdas de la pagina actual (rejilla por quads)
         public Func<Bitmap> GetContour;                   // sprite del contorno de seleccion
@@ -880,7 +881,7 @@ namespace Rocola
                     NoteHeavy(t0);   // mide el coste real y ajusta la espera (la UI cacheada es barata -> franja corta)
                 }
             }
-            EnsureFpsTex();   // crea/actualiza la textura del contador ANTES de Begin (como el resto de texturas)
+            if (ShowFps) EnsureFpsTex();   // crea/actualiza la textura del contador ANTES de Begin (solo si se pide, Ctrl+F1)
             float pulse = (GetPulse != null) ? GetPulse() : 0f;
             if (!stars.Begin(Width, Height, pulse)) return;
             // Rejilla de discos: un quad por celda (textura ya resuelta arriba). Las celdas aun sin textura (recien
@@ -908,8 +909,8 @@ namespace Rocola
             // Mini-cubo de la barra inferior (gira): cubo GPU, encima de la barra.
             if (cs.Mini.Has)
                 stars.DrawCube(miniTex, miniU, miniV, cs.Mini.X, cs.Mini.Y, cs.Mini.W, cs.Mini.H, cs.Mini.Angle, 1f, cs.Mini.Tilt);
-            // Contador de FPS (diagnostico) encima de todo, en su textura pequeña (se resube solo al cambiar el numero).
-            if (fpsTex != IntPtr.Zero) { SetTexQuad(fpsQuad, Width - fpsTW - 10, 6, Width - 10, 6 + fpsTH, fpsU, fpsV); stars.DrawQuad(fpsTex, fpsQuad); }
+            // Contador de FPS (diagnostico) encima de todo, en su textura pequeña. Oculto por defecto (Ctrl+F1).
+            if (ShowFps && fpsTex != IntPtr.Zero) { SetTexQuad(fpsQuad, Width - fpsTW - 10, 6, Width - 10, 6 + fpsTH, fpsU, fpsV); stars.DrawQuad(fpsTex, fpsQuad); }
             stars.End();
             frames++;
             if (Environment.TickCount - fpsTick >= 1000) { Fps = frames; frames = 0; fpsTick = Environment.TickCount; }
