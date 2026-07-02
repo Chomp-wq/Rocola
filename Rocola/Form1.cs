@@ -586,6 +586,7 @@ namespace Rocola
         private void BuildUi()
         {
             this.Text = "Rocola";
+            try { this.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }   // estrella metalica (barra de tareas / Alt-Tab); el exe ya la lleva embebida
             this.StartPosition = FormStartPosition.CenterScreen;
             this.Size = new Size(1100, 780);
             this.MinimumSize = new Size(820, 600);
