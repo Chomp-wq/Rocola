@@ -80,8 +80,16 @@ namespace Rocola
         // ---- Reproduccion / cola ----
         private IWavePlayer output;   // WaveOut con callback por ventana (compatible con XP SIN .NET 3.5 SP1)
         private AudioFileReader reader;
-        private volatile float audioPeakRaw = 0f;   // ultimo RMS leido por el hilo de audio (0..1)
-        private float audioLevel = 0f;               // nivel suavizado para los visuales (hilo de UI)
+        // ---- BEAT para los visuales ----
+        // El RMS se mide al LLENAR el colchon de WaveOut (~1s de buffers), o sea ~0.85s ANTES de que ese
+        // pedazo SE OIGA: por eso el fondo "no iba con la musica" (pulsaba adelantado). Ahora cada bloque
+        // se parte en sub-trozos de ~50ms con la MARCA DE TIEMPO en que sonaran, y el temporizador de UI
+        // consume el trozo cuyo momento ya llego -> el pulso cae ENCIMA del golpe que se esta oyendo.
+        private readonly object levelLock = new object();
+        private readonly Queue<KeyValuePair<int, float>> levelQ = new Queue<KeyValuePair<int, float>>();   // (tick en que se OYE, rms)
+        private const int AudioVisualDelayMs = 850;   // colchon de WaveOut (5 x 200ms; en regimen va ~4 buffers adelantado)
+        private float audioRms = 0f, audioAvg = 0f;   // rms retrasado (lo que se oye AHORA) y piso movil (referencia del golpe)
+        private float audioLevel = 0f;                // nivel para los visuales (golpes marcados + fondo suave)
         private int playFailStreak = 0;   // fallos seguidos al reproducir (para no ciclar si NAudio falla)
         // ----- PAGINAS de canciones (vista de disco): la lista muestra solo la pagina actual -----
         private SongPagerBar songPager;                        // barra "pagina X de Y" con flechas, arriba de la lista
@@ -169,6 +177,12 @@ namespace Rocola
         private Starfield formStars = new Starfield();   // cielo estrellado del fondo del formulario
         private int frameTick = 0;   // contador de cuadros: el fondo se refresca completo 1 de cada 3 (invisible al ojo)
         private int helpFlashPrev = 0;   // firma previa del brillo de la barra de ayuda (para el ultimo repintado que lo borra, en CPU)
+        // ATENUACION al navegar con musica: mientras alguien usa los botones (para poner mas canciones) el
+        // campo estrellado baja de brillo (evita agobiar con el movimiento/brillos); a los 10s sin botones
+        // vuelve solo, con transicion suave. Solo atenua las ESTRELLAS (el cielo y los discos quedan igual).
+        private float bgDim = 1f;
+        private const float BgDimLevel = 0.45f;   // brillo del starfield mientras se navega (1 = normal)
+        private const int BgDimIdleSecs = 10;     // segundos sin botones para volver al brillo normal
 #if ROCOLA_GPU
         private GpuPanel gpuPanel;   // fondo de discos por GPU (experimental, Ctrl+F12)
         private Label lblGpu;        // etiqueta de estado/FPS del modo GPU (esquina)
@@ -264,9 +278,10 @@ namespace Rocola
         {
             base.OnShown(e);
             LoadStats();   // estadisticas guardadas de sesiones anteriores (base de "Lo mas sonado")
+            LoadConfigPrefs();   // preferencias: render GPU/CPU + carpetas de musica adicionales (Ctrl+F2)
             LayoutControls();
 #if ROCOLA_GPU
-            if (LoadGpuPref()) ApplyAlbumGpu(true, false, false);   // render por GPU por defecto (o preferencia guardada); silencioso si el device falla; no re-guarda
+            if (gpuPrefOn) ApplyAlbumGpu(true, false, false);   // render por GPU por defecto (o preferencia guardada); silencioso si el device falla; no re-guarda
 #endif
             LoadMusicFolder();
 
@@ -358,6 +373,94 @@ namespace Rocola
         }
 
         private string ConfigFile { get { return Path.Combine(Application.StartupPath, "rocola_config.txt"); } }
+
+        // ===================== PREFERENCIAS (rocola_config.txt) =====================
+        // gpu=1/0 (render por GPU, Ctrl+F12) y dir=<ruta> (carpetas de musica ADICIONALES, Ctrl+F2; una por
+        // linea, pueden estar en otros discos). Ambos savers escriben el archivo COMPLETO: nada se pisa.
+        private bool gpuPrefOn = true;                                  // preferencia de render (GPU por defecto)
+        private readonly List<string> extraMusicDirs = new List<string>();   // carpetas de musica extra (ademas de "musica")
+
+        private void LoadConfigPrefs()
+        {
+            try
+            {
+                if (!File.Exists(ConfigFile)) return;
+                foreach (string line in File.ReadAllLines(ConfigFile))
+                {
+                    string s = line.Trim();
+                    if (s.StartsWith("gpu=")) gpuPrefOn = s.Substring(4).Trim() != "0";
+                    else if (s.StartsWith("dir="))
+                    {
+                        string d = s.Substring(4).Trim();
+                        if (d.Length > 0 && !extraMusicDirs.Contains(d)) extraMusicDirs.Add(d);
+                    }
+                }
+            }
+            catch { }
+        }
+
+        private void SaveConfigPrefs()
+        {
+            try
+            {
+                StringBuilder sb = new StringBuilder();
+                sb.Append("gpu=").Append(gpuPrefOn ? "1" : "0").Append("\r\n");
+                for (int i = 0; i < extraMusicDirs.Count; i++) sb.Append("dir=").Append(extraMusicDirs[i]).Append("\r\n");
+                File.WriteAllText(ConfigFile, sb.ToString());
+            }
+            catch { }
+        }
+
+        // Todas las raices de musica que EXISTEN ahora: la carpeta "musica" principal + las agregadas con Ctrl+F2.
+        private List<string> AllMusicRoots()
+        {
+            List<string> roots = new List<string>();
+            try { if (Directory.Exists(MusicFolder)) roots.Add(MusicFolder); } catch { }
+            for (int i = 0; i < extraMusicDirs.Count; i++)
+            {
+                string d = extraMusicDirs[i];
+                bool dup = false;
+                for (int j = 0; j < roots.Count; j++) if (string.Equals(roots[j], d, StringComparison.OrdinalIgnoreCase)) { dup = true; break; }
+                try { if (!dup && Directory.Exists(d)) roots.Add(d); } catch { }
+            }
+            return roots;
+        }
+
+        // Ctrl+F2: agrega OTRA carpeta de musica (otro disco duro/SSD o directorio) y re-escanea. Se guarda
+        // en el config, asi que queda para siempre. El cursor se muestra solo mientras dura el dialogo.
+        private void AddMusicDirDialog()
+        {
+            if (searchOpen) CloseSearch();
+            bool wasMaint = maintMode;
+            maintMode = true; maintUntil = DateTime.Now.AddMinutes(5);   // pausa el vigia de foco: el dialogo necesita quedarse al frente
+            try
+            {
+                Cursor.Show();
+                using (FolderBrowserDialog fb = new FolderBrowserDialog())
+                {
+                    fb.Description = "Elige una carpeta ADICIONAL con musica (puede estar en otro disco). La rocola la escaneara junto con la carpeta 'musica' principal.";
+                    fb.ShowNewFolderButton = false;
+                    if (fb.ShowDialog(this) == DialogResult.OK && !string.IsNullOrEmpty(fb.SelectedPath))
+                    {
+                        string p = fb.SelectedPath;
+                        bool dup = string.Equals(p, MusicFolder, StringComparison.OrdinalIgnoreCase);
+                        for (int i = 0; i < extraMusicDirs.Count && !dup; i++)
+                            if (string.Equals(extraMusicDirs[i], p, StringComparison.OrdinalIgnoreCase)) dup = true;
+                        if (dup) ShowToast("Esa carpeta ya esta incluida", Color.FromArgb(200, 130, 35));
+                        else
+                        {
+                            extraMusicDirs.Add(p);
+                            SaveConfigPrefs();
+                            ShowToast("Carpeta agregada: escaneando musica...");
+                            try { File.Delete(LibCacheFile()); } catch { }   // el cache de biblioteca ya no corresponde
+                            LoadMusicFolder();
+                        }
+                    }
+                }
+            }
+            catch { }
+            finally { try { Cursor.Hide(); } catch { } maintMode = wasMaint; ForceFocus(); }
+        }
 
         // Busca automaticamente una carpeta llamada "musica" junto al programa o hasta 3 niveles arriba
         // (ej.: nueva\Release\Rocola.exe  +  nueva\musica). No requiere elegir carpeta.
@@ -821,11 +924,14 @@ namespace Rocola
 
         private void LoadMusicFolder()
         {
-            if (Directory.Exists(MusicFolder)) StartScan(MusicFolder);
-            else lblStatus.Text = "No encontre una carpeta 'musica' junto al programa. Crea una carpeta llamada musica al lado del .exe.";
+            List<string> roots = AllMusicRoots();   // carpeta "musica" principal + las agregadas con Ctrl+F2 (otros discos)
+            if (roots.Count > 0) StartScan(roots);
+            else lblStatus.Text = "No encontre una carpeta 'musica' junto al programa. Crea una carpeta llamada musica al lado del .exe (o agrega una con Ctrl+F2).";
         }
 
-        private void StartScan(string root)
+        private List<string> scanRoots;   // raices del escaneo en curso/vigente (las usa el worker; solo se asignan aqui)
+
+        private void StartScan(List<string> roots)
         {
             if (scanner != null && scanner.IsBusy) return;   // ya hay un escaneo en curso (doble F5): ignorar
             libBuilding = true;   // desde aqui y hasta Completed, las listas son del worker
@@ -833,22 +939,23 @@ namespace Rocola
             lastQuery = null; lastMatches = null;     // ...y su cache incremental (evita resultados huerfanos)
             tracks.Clear(); albums.Clear(); byLetter.Clear(); letterAvailable.Clear(); searchIndex.Clear();
             BackToAlbums();
-            lblStatus.Text = "Buscando musica en: " + root + " ...";
+            scanRoots = roots;
+            lblStatus.Text = "Buscando musica en: " + roots[0] + (roots.Count > 1 ? (" (+" + (roots.Count - 1) + " carpetas mas)") : "") + " ...";
 
             scanner = new BackgroundWorker();
             scanner.WorkerReportsProgress = true;
             scanner.DoWork += Scanner_DoWork;
             scanner.ProgressChanged += Scanner_ProgressChanged;
             scanner.RunWorkerCompleted += Scanner_RunWorkerCompleted;
-            scanner.RunWorkerAsync(root);
+            scanner.RunWorkerAsync(roots);
         }
 
         private void Scanner_DoWork(object sender, DoWorkEventArgs e)
         {
-            string root = (string)e.Argument;
+            List<string> roots = (List<string>)e.Argument;
             // CACHE DE BIBLIOTECA: si es valido, evita las DOS caminatas del disco (en HDD eran minutos).
             List<Track> ctk; List<string> cvd; Dictionary<string, string> ccv;
-            if (TryLoadLibraryCache(root, out ctk, out cvd, out ccv))
+            if (TryLoadLibraryCache(roots, out ctk, out cvd, out ccv))
             {
                 // ARMADO EN SEGUNDO PLANO: ordenar e indexar las 118 mil canciones tomaba 1-3 segundos
                 // DEL HILO DE LA INTERFAZ al arrancar; aqui corre en el worker y el arranque no se congela.
@@ -859,11 +966,12 @@ namespace Rocola
                 return;
             }
             List<Track> found = new List<Track>();
-            foreach (string file in SafeEnumerateAudio(root))
-            {
-                found.Add(Track.FromFile(file));
-                if (found.Count % 50 == 0) scanner.ReportProgress(0, found.Count);
-            }
+            for (int r = 0; r < roots.Count; r++)
+                foreach (string file in SafeEnumerateAudio(roots[r]))
+                {
+                    found.Add(Track.FromFile(file));
+                    if (found.Count % 50 == 0) scanner.ReportProgress(0, found.Count);
+                }
             tracks.AddRange(found);
             cachedVideoPaths = null; cachedCovers = null;
             BuildAlbums(); BuildVideoSection(); BuildSearchIndex();   // tambien en segundo plano
@@ -906,6 +1014,10 @@ namespace Rocola
 
             if (!fromCache) SaveLibraryCacheAsync();   // escaneo fresco: guardar la biblioteca para el proximo arranque
             cachedVideoPaths = null; cachedCovers = null; lastVideoPaths = null;
+
+            // REANUDACION tras corte de luz: con la biblioteca ya armada, restaura creditos/cola/cancion
+            // guardados (solo el PRIMER armado; un F5 a media jornada no toca lo que este sonando).
+            if (!stateRestored && nowPlaying == null && queue.Count == 0) RestoreState();
         }
 
         // PRECALENTADOR de miniaturas: hilo de MINIMA prioridad que va construyendo en disco la
@@ -985,7 +1097,19 @@ namespace Rocola
             return FindCover(folder);
         }
 
-        private bool TryLoadLibraryCache(string root, out List<Track> outTracks, out List<string> outVideos, out Dictionary<string, string> outCovers)
+        // Firma de una raiz: fecha de modificacion + cantidad de subcarpetas (si cambia, hay que re-escanear).
+        private static string RootSig(string root)
+        {
+            return Directory.GetLastWriteTimeUtc(root).Ticks + ":" + Directory.GetDirectories(root).Length;
+        }
+        private static string JoinRoots(List<string> roots)
+        {
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < roots.Count; i++) { if (i > 0) sb.Append('|'); sb.Append(roots[i]); }
+            return sb.ToString();
+        }
+
+        private bool TryLoadLibraryCache(List<string> roots, out List<Track> outTracks, out List<string> outVideos, out Dictionary<string, string> outCovers)
         {
             outTracks = null; outVideos = null; outCovers = null;
             try
@@ -993,12 +1117,11 @@ namespace Rocola
                 string f = LibCacheFile();
                 if (!File.Exists(f)) return false;
                 string[] L = File.ReadAllLines(f);
-                if (L.Length < 7 || L[0] != "ROCOLA-LIB v1") return false;
-                if (!L[1].StartsWith("root=") || !string.Equals(L[1].Substring(5), root, StringComparison.OrdinalIgnoreCase)) return false;
-                long mt; if (!L[2].StartsWith("mtime=") || !long.TryParse(L[2].Substring(6), out mt)) return false;
-                int dn; if (!L[3].StartsWith("dirs=") || !int.TryParse(L[3].Substring(5), out dn)) return false;
-                if (Directory.GetLastWriteTimeUtc(root).Ticks != mt) return false;   // cambio la raiz -> re-escanear
-                if (Directory.GetDirectories(root).Length != dn) return false;       // agregaron/quitaron discos
+                if (L.Length < 7 || L[0] != "ROCOLA-LIB v2") return false;   // v2: multiples raices (Ctrl+F2)
+                if (!L[1].StartsWith("roots=") || !string.Equals(L[1].Substring(6), JoinRoots(roots), StringComparison.OrdinalIgnoreCase)) return false;
+                string sig = ""; try { StringBuilder ss = new StringBuilder(); for (int i = 0; i < roots.Count; i++) { if (i > 0) ss.Append('|'); ss.Append(RootSig(roots[i])); } sig = ss.ToString(); } catch { return false; }
+                if (!L[2].StartsWith("sig=") || L[2].Substring(4) != sig) return false;   // alguna raiz cambio -> re-escanear
+                if (!L[3].StartsWith("dirs=")) return false;   // linea reservada (compatibilidad de formato)
 
                 int li = 4;
                 int na; if (!L[li].StartsWith("A") || !int.TryParse(L[li].Substring(1), out na)) return false; li++;
@@ -1031,7 +1154,8 @@ namespace Rocola
         {
             try
             {
-                string root = MusicFolder;
+                List<string> roots = (scanRoots != null && scanRoots.Count > 0) ? new List<string>(scanRoots) : AllMusicRoots();
+                if (roots.Count == 0) return;
                 List<string> ap = new List<string>(tracks.Count);
                 for (int i = 0; i < tracks.Count; i++) ap.Add(tracks[i].Path);
                 List<string> vp = (lastVideoPaths != null) ? new List<string>(lastVideoPaths) : new List<string>();
@@ -1043,10 +1167,12 @@ namespace Rocola
                     try
                     {
                         StringBuilder sb = new StringBuilder(ap.Count * 64);
-                        sb.Append("ROCOLA-LIB v1\r\n");
-                        sb.Append("root=").Append(root).Append("\r\n");
-                        sb.Append("mtime=").Append(Directory.GetLastWriteTimeUtc(root).Ticks).Append("\r\n");
-                        sb.Append("dirs=").Append(Directory.GetDirectories(root).Length).Append("\r\n");
+                        sb.Append("ROCOLA-LIB v2\r\n");
+                        sb.Append("roots=").Append(JoinRoots(roots)).Append("\r\n");
+                        sb.Append("sig=");
+                        for (int i = 0; i < roots.Count; i++) { if (i > 0) sb.Append('|'); sb.Append(RootSig(roots[i])); }
+                        sb.Append("\r\n");
+                        sb.Append("dirs=0\r\n");   // linea reservada (el formato v1 la usaba; se conserva la posicion)
                         sb.Append("A").Append(ap.Count).Append("\r\n");
                         for (int i = 0; i < ap.Count; i++) sb.Append(ap[i]).Append("\r\n");
                         sb.Append("V").Append(vp.Count).Append("\r\n");
@@ -1080,6 +1206,14 @@ namespace Rocola
                 try { subs = Directory.GetDirectories(dir); } catch { }
                 if (subs != null) foreach (string d in subs) dirs.Push(d);
             }
+        }
+
+        // Videos de TODAS las raices de musica (la principal + las de Ctrl+F2). Lo usa BuildVideoSection.
+        private IEnumerable<string> EnumerateVideoAllRoots()
+        {
+            List<string> roots = (scanRoots != null && scanRoots.Count > 0) ? scanRoots : AllMusicRoots();
+            for (int r = 0; r < roots.Count; r++)
+                foreach (string vf in SafeEnumerateVideo(roots[r])) yield return vf;
         }
 
         private static IEnumerable<string> SafeEnumerateVideo(string root)
@@ -1188,9 +1322,9 @@ namespace Rocola
             for (int i = 0; i < albums.Count; i++) { albums[i].VideoFiles.Clear(); byFolder[albums[i].Folder] = albums[i]; }
 
             Dictionary<string, Album> videoOnly = new Dictionary<string, Album>(StringComparer.OrdinalIgnoreCase);
-            // fuente: cache de biblioteca (arranque rapido) o caminata fresca del disco
+            // fuente: cache de biblioteca (arranque rapido) o caminata fresca del disco (TODAS las raices)
             List<string> freshVids = (cachedVideoPaths == null) ? new List<string>() : null;
-            IEnumerable<string> vsrc = (cachedVideoPaths != null) ? (IEnumerable<string>)cachedVideoPaths : SafeEnumerateVideo(MusicFolder);
+            IEnumerable<string> vsrc = (cachedVideoPaths != null) ? (IEnumerable<string>)cachedVideoPaths : EnumerateVideoAllRoots();
             foreach (string vf in vsrc)
             {
                 if (freshVids != null) freshVids.Add(vf);
@@ -2141,6 +2275,11 @@ namespace Rocola
                 return true;
             }
 #endif
+            if (keyData == (Keys.Control | Keys.F2))   // Ctrl+F2 = agregar OTRA carpeta de musica (otro disco/directorio)
+            {
+                AddMusicDirDialog();
+                return true;
+            }
             if (keyData == Keys.F8 && !IsConfiguredKey(Keys.F8))    // F8 = relanzar el asistente de botones
             {
                 if (searchOpen) CloseSearch();
@@ -2343,8 +2482,8 @@ namespace Rocola
             RecordPlay(it);                                              // estadisticas: cuenta lo pedido
             credits--;                                                   // cada cosa cuesta 1 credito
             UpdateCredits();
-            if (nowPlaying == null) PlayNext();   // nada sonando -> arranca; si algo suena, solo se encola
-            else UpdateNowPlayingUI();
+            if (nowPlaying == null) PlayNext();   // nada sonando -> arranca (PlayNext guarda el estado); si algo suena, solo se encola
+            else { UpdateNowPlayingUI(); SaveState(); }   // estado vivo: cola/creditos cambiaron
             return AddResult.Added;
         }
 
@@ -2384,11 +2523,111 @@ namespace Rocola
             credits += CreditsPerCoin;
             statsCoins++; statsCreditsAdded += CreditsPerCoin; statsDirty = true;   // estadisticas
             UpdateCredits();
+            SaveState();   // estado vivo: si se corta la luz, el dinero del cliente no se pierde
             // Monedas rapidas seguidas: el aviso SUMA (+4, +8, +12...) en vez de reiniciar; si ya paso su
             // tiempo (el usuario fue lento), arranca de nuevo en +4.
             coinTotal = SameToastActive(ToastKind.Coin) ? coinTotal + CreditsPerCoin : CreditsPerCoin;
             ShowToast("+" + coinTotal + " creditos", Color.FromArgb(40, 165, 90));
             MarkToast(ToastKind.Coin);
+        }
+
+        // ===================== ESTADO VIVO (reanudar tras un corte de luz) =====================
+        // Guarda creditos + lo que suena (y su posicion) + la cola en rocola_estado.txt. Si se corta la luz,
+        // al volver la rocola RETOMA la cancion donde iba, la cola y los creditos del cliente (su dinero no se
+        // pierde). Para el CIERRE del negocio: SALTAR borra creditos y salta lo que quede -> estado vacio ->
+        // el dia siguiente arranca limpio aunque se apague desconectandola.
+        private string StateFile() { return Path.Combine(Application.StartupPath, "rocola_estado.txt"); }
+        private bool stateRestored = false;   // la restauracion corre UNA vez (al primer armado de biblioteca)
+        private int statePosSaveTick = 0;     // ultima escritura de la posicion (cada ~5s mientras suena)
+        private int resumeSeconds = 0;        // posicion a reanudar (la consume PlayTrack una sola vez)
+
+        private void SaveState()
+        {
+            try
+            {
+                StringBuilder sb = new StringBuilder(256);
+                sb.Append("ROCOLA-ESTADO v1\r\n");
+                sb.Append("creditos=").Append(credits).Append("\r\n");
+                if (nowPlaying != null)
+                {
+                    sb.Append("sonando=").Append(nowPlaying.IsVideo ? 'V' : 'S').Append('|').Append(nowPlaying.PathKey()).Append("\r\n");
+                    int pos = 0;
+                    if (!nowPlaying.IsVideo && reader != null) { try { pos = (int)reader.CurrentTime.TotalSeconds; } catch { } }
+                    sb.Append("pos=").Append(pos).Append("\r\n");
+                }
+                for (int i = 0; i < queue.Count; i++)
+                    sb.Append("cola=").Append(queue[i].IsVideo ? 'V' : 'S').Append('|').Append(queue[i].PathKey()).Append("\r\n");
+                File.WriteAllText(StateFile(), sb.ToString());   // archivo diminuto (<1KB): escritura sincrona sin costo notable
+            }
+            catch { }
+        }
+
+        // Reconstruye creditos/cola/cancion desde el archivo de estado (si hay algo que reanudar).
+        private void RestoreState()
+        {
+            if (stateRestored) return;
+            stateRestored = true;
+            try
+            {
+                string f = StateFile();
+                if (!File.Exists(f)) return;
+                string[] L = File.ReadAllLines(f);
+                if (L.Length < 1 || L[0] != "ROCOLA-ESTADO v1") return;
+                // mapas ruta -> cancion/disco para reconstruir los elementos (solo lo que SIGA existiendo)
+                Dictionary<string, Track> byPath = new Dictionary<string, Track>(StringComparer.OrdinalIgnoreCase);
+                Dictionary<string, Album> discByPath = new Dictionary<string, Album>(StringComparer.OrdinalIgnoreCase);
+                for (int i = 0; i < albums.Count; i++)
+                    for (int j = 0; j < albums[i].Tracks.Count; j++)
+                    {
+                        Track t = albums[i].Tracks[j];
+                        if (t != null && t.Path != null && !byPath.ContainsKey(t.Path)) { byPath[t.Path] = t; discByPath[t.Path] = albums[i]; }
+                    }
+                Dictionary<string, Album> vidDisc = new Dictionary<string, Album>(StringComparer.OrdinalIgnoreCase);
+                if (videoAlbums != null)
+                    for (int i = 0; i < videoAlbums.Count; i++)
+                        for (int j = 0; j < videoAlbums[i].VideoFiles.Count; j++)
+                        { string vp = videoAlbums[i].VideoFiles[j]; if (vp != null && !vidDisc.ContainsKey(vp)) vidDisc[vp] = videoAlbums[i]; }
+
+                int cr = 0, pos = 0; PlayItem playing = null; List<PlayItem> q = new List<PlayItem>();
+                for (int i = 1; i < L.Length; i++)
+                {
+                    string s = L[i];
+                    if (s.Length == 0) continue;
+                    if (s.StartsWith("creditos=")) { int.TryParse(s.Substring(9), out cr); continue; }
+                    if (s.StartsWith("pos=")) { int.TryParse(s.Substring(4), out pos); continue; }
+                    bool isNow = s.StartsWith("sonando=");
+                    if (!isNow && !s.StartsWith("cola=")) continue;
+                    string v = s.Substring(s.IndexOf('=') + 1);
+                    if (v.Length < 3 || v[1] != '|') continue;
+                    bool isVid = (v[0] == 'V'); string path = v.Substring(2);
+                    PlayItem it = null;
+                    if (isVid)
+                    {
+                        bool exists = false; try { exists = File.Exists(path); } catch { }
+                        if (exists) { it = new PlayItem(); it.IsVideo = true; it.VideoPath = path; Album d; vidDisc.TryGetValue(path, out d); it.Disc = d; }
+                    }
+                    else
+                    {
+                        Track t;
+                        if (byPath.TryGetValue(path, out t)) { it = new PlayItem(); it.Song = t; Album d; discByPath.TryGetValue(path, out d); it.Disc = d; }
+                    }
+                    if (it == null) continue;   // el archivo ya no existe / se re-escaneo distinto: se omite
+                    if (isNow) playing = it; else q.Add(it);
+                }
+                if (cr <= 0 && playing == null && q.Count == 0) return;   // estado vacio: arranque limpio
+                credits = Math.Max(0, cr);
+                UpdateCredits();
+                queue.AddRange(q);
+                if (playing != null)
+                {
+                    queue.Insert(0, playing);
+                    resumeSeconds = playing.IsVideo ? 0 : pos;   // la cancion retoma donde iba; el video re-arranca (WMP no reanuda fiable)
+                    PlayNext();
+                    ShowToast("Reanudando la musica");
+                }
+                else UpdateNowPlayingUI();
+            }
+            catch { }
         }
 
         // ===================== MOTOR DE ESTADISTICAS =====================
@@ -2763,6 +3002,7 @@ namespace Rocola
         {
             credits++;
             UpdateCredits();
+            SaveState();   // estado vivo: los creditos cambiaron
         }
 
         private void UpdateCredits()
@@ -2786,11 +3026,13 @@ namespace Rocola
                 ApplyGenreBackground(null);
                 LayoutControls(); this.Invalidate();
                 UpdateNowPlayingUI();
+                SaveState();   // estado vivo: ya no suena nada (los creditos que queden se conservan)
                 return;
             }
 
             nowPlaying = queue[0];
             queue.RemoveAt(0);
+            SaveState();   // estado vivo: cambio lo que suena / la cola (para reanudar tras un corte de luz)
 
             if (nowPlaying.IsVideo)
             {
@@ -2808,9 +3050,14 @@ namespace Rocola
             UpdateNowPlayingUI();
         }
 
-        private void SkipSong()   // SHIFT: salta el elemento actual (cancion o video)
+        // SALTAR: salta el elemento actual (cancion o video) y ademas BORRA LOS CREDITOS pendientes.
+        // Es la herramienta de CIERRE del negocio: saltando lo que quede y borrando creditos, el estado
+        // guardado queda vacio y la rocola arranca limpia al dia siguiente (aunque se corte la luz al salir).
+        private void SkipSong()
         {
-            if (nowPlaying != null) PlayNext();
+            if (credits > 0) { credits = 0; UpdateCredits(); ShowToast("Creditos borrados", Color.FromArgb(200, 130, 35)); }
+            if (nowPlaying != null) PlayNext();   // PlayNext guarda el estado; si no habia nada sonando, guarda aqui
+            else SaveState();
         }
 
         // ===================  VIDEO (Windows Media Player ActiveX, por codigo)  ===================
@@ -3003,6 +3250,11 @@ namespace Rocola
             {
                 reader = new AudioFileReader(t.Path);
                 reader.Volume = FixedVolume;
+                if (resumeSeconds > 0)   // reanudacion tras corte de luz: retoma donde iba (si el archivo alcanza)
+                {
+                    try { if (reader.TotalTime.TotalSeconds > resumeSeconds + 3) reader.CurrentTime = TimeSpan.FromSeconds(resumeSeconds); } catch { }
+                    resumeSeconds = 0;
+                }
                 // WaveOut con callback por VENTANA, no WaveOutEvent: el de eventos llama a
                 // WaitHandle.WaitOne(Int32), que NO existe en .NET 3.5 sin Service Pack 1
                 // (el de la rockola) y truena con MissingMethodException. Este no lo usa.
@@ -3077,11 +3329,33 @@ namespace Rocola
                 output = null;
             }
             if (reader != null) { try { reader.Dispose(); } catch { } reader = null; }
-            audioPeakRaw = 0f;
+            lock (levelLock) levelQ.Clear();   // sin cancion no hay trozos pendientes: el pulso cae a cero
+            audioRms = 0f; audioAvg = 0f;
         }
 
-        // La llama el hilo de audio con el nivel (RMS) del bloque recien leido. Trivial a proposito.
-        public void ReportAudioPeak(float level) { audioPeakRaw = level; }
+        // La llama el hilo de audio con el bloque recien leido: lo parte en sub-trozos de ~50ms, calcula el
+        // RMS de cada uno y lo encola con la MARCA DE TIEMPO en que ese trozo SONARA (ahora + colchon).
+        // El temporizador de UI los consume cuando les llega su momento -> el pulso va CON lo que se oye.
+        public void ReportAudioBlock(float[] buffer, int offset, int count, int samplesPerSec)
+        {
+            if (count <= 0) return;
+            int now = Environment.TickCount;
+            int chunks = 4; int len = count / chunks;
+            if (len < 256) { chunks = 1; len = count; }   // bloque chico: un solo trozo
+            lock (levelLock)
+            {
+                for (int c = 0; c < chunks; c++)
+                {
+                    int start = offset + c * len;
+                    int end = (c == chunks - 1) ? offset + count : start + len;
+                    double sum = 0; for (int i = start; i < end; i++) { float v = buffer[i]; sum += v * v; }
+                    float rms = (float)Math.Sqrt(sum / Math.Max(1, end - start));
+                    int atMs = now + (int)((long)(c * len) * 1000 / Math.Max(1, samplesPerSec));   // desfase del trozo dentro del bloque
+                    levelQ.Enqueue(new KeyValuePair<int, float>(atMs, rms));
+                }
+                while (levelQ.Count > 96) levelQ.Dequeue();   // acotado (~5s de historial maximo)
+            }
+        }
 
         private void UpdateNowPlayingUI()
         {
@@ -3102,6 +3376,8 @@ namespace Rocola
             TimeSpan cur = reader.CurrentTime, tot = reader.TotalTime;
             if (tot.TotalSeconds > 0) progress.Value = cur.TotalSeconds / tot.TotalSeconds;
             lblTime.Text = Fmt(cur) + " / " + Fmt(tot);
+            if (Environment.TickCount - statePosSaveTick >= 5000)   // posicion cada ~5s: reanudar tras un corte de luz pierde 5s como mucho
+            { statePosSaveTick = Environment.TickCount; SaveState(); }
         }
 
 #if ROCOLA_GPU
@@ -3167,30 +3443,9 @@ namespace Rocola
                 if (lblGpu != null) lblGpu.Visible = false;
                 Invalidate(true);   // repinta la UI normal (CPU) que estaba tapada por el panel
             }
-            if (persist) SaveGpuPref(gpuEnabled);   // recuerda la eleccion para el proximo arranque
+            if (persist) { gpuPrefOn = gpuEnabled; SaveConfigPrefs(); }   // recuerda la eleccion para el proximo arranque
         }
 
-        // Preferencia de render (GPU/CPU), guardada junto al exe. Por defecto GPU. Se escribe solo con Ctrl+F12.
-        private bool LoadGpuPref()
-        {
-            try
-            {
-                string f = ConfigFile;
-                if (File.Exists(f))
-                    foreach (string line in File.ReadAllLines(f))
-                    {
-                        string s = line.Trim();
-                        if (s.StartsWith("gpu=")) return s.Substring(4).Trim() != "0";
-                    }
-            }
-            catch { }
-            return true;   // sin preferencia guardada: GPU por defecto
-        }
-        private void SaveGpuPref(bool on)
-        {
-            try { File.WriteAllText(ConfigFile, "gpu=" + (on ? "1" : "0") + "\r\n"); }
-            catch { }
-        }
 
         // Estado de los cubos que giran (en coords de PANTALLA). En navegacion: album (seleccionado + relevo).
         // En el buscador: el cubo de vista previa. El mini-cubo de la barra inferior es comun a ambos.
@@ -3448,13 +3703,30 @@ namespace Rocola
 
             DrainCoverTrash();   // libera carátulas expulsadas (seguro: no hay repintado en curso)
 
-            // Nivel de audio suavizado para los visuales reactivos: ataque rapido, caida lenta (late con
-            // la musica). RMS escalado; 0 cuando no hay nada sonando. Es envolvente de energia, no beat exacto.
-            float aTgt = (nowPlaying != null) ? (audioPeakRaw * 3.0f) : 0f;
-            if (aTgt > 1f) aTgt = 1f;
-            if (aTgt > audioLevel) audioLevel = audioLevel + (aTgt - audioLevel) * 0.55f;
-            else audioLevel = audioLevel * 0.86f;
+            // BEAT: toma el RMS cuyo momento de OIRSE ya llego (medido ~0.85s antes, al llenar el colchon) y
+            // detecta GOLPES contra un piso movil: el pulso visual cae encima del golpe que se esta oyendo,
+            // con ataque INSTANTANEO y caida rapida (pulso marcado), mas un fondo suave para que no muera
+            // entre golpes. Antes era una envolvente de sonoridad adelantada ~1s: no transmitia el ritmo.
+            int nowT = Environment.TickCount;
+            lock (levelLock)
+                while (levelQ.Count > 0 && nowT - (levelQ.Peek().Key + AudioVisualDelayMs) >= 0) audioRms = levelQ.Dequeue().Value;
+            if (nowPlaying == null) audioRms = 0f;
+            audioAvg += (audioRms - audioAvg) * 0.06f;                    // piso movil (~0.7s): sigue la seccion de la cancion
+            float beat = (audioRms > audioAvg * 1.22f + 0.008f) ? Math.Min(1f, (audioRms - audioAvg) * 9f) : 0f;   // cuanto SOBRESALE el golpe del piso
+            float aTgt = Math.Max(beat, Math.Min(1f, audioRms * 2.2f) * 0.30f);   // golpe dominante + fondo suave
+            if (aTgt > audioLevel) audioLevel = aTgt;                     // ataque instantaneo: el golpe se ve al momento
+            else audioLevel *= 0.78f;                                     // caida rapida (~0.35s): pulso nitido, no lavado
             if (audioLevel < 0.003f) audioLevel = 0f;
+
+            // ATENUACION del starfield mientras se navega con musica sonando (ver BgDimLevel); transicion suave.
+            float dimTgt = (nowPlaying != null && !attractOn && (DateTime.Now - lastInput).TotalSeconds < BgDimIdleSecs) ? BgDimLevel : 1f;
+            bgDim += (dimTgt - bgDim) * 0.12f;
+            if (Math.Abs(bgDim - dimTgt) < 0.01f) bgDim = dimTgt;
+            albumView.BgDim = bgDim;
+            if (searchOverlay != null) searchOverlay.BgDim = bgDim;
+#if ROCOLA_GPU
+            if (gpuPanel != null) gpuPanel.Dim = bgDim;
+#endif
 
             bool transitioning = (bgAccent.R != bgAccentTarget.R || bgAccent.G != bgAccentTarget.G || bgAccent.B != bgAccentTarget.B);
             if (transitioning)
@@ -3564,11 +3836,7 @@ namespace Rocola
             {
                 int n = src.Read(buffer, offset, count);
                 if (n > 0 && owner != null)
-                {
-                    double sum = 0; int end = offset + n;
-                    for (int i = offset; i < end; i++) { float v = buffer[i]; sum += v * v; }
-                    owner.ReportAudioPeak((float)Math.Sqrt(sum / n));
-                }
+                    owner.ReportAudioBlock(buffer, offset, n, Math.Max(1, WaveFormat.SampleRate * WaveFormat.Channels));   // trozos de ~50ms con marca de tiempo
                 return n;
             }
         }
@@ -3581,6 +3849,7 @@ namespace Rocola
             public bool Varied = false;   // true = colores variados (atraccion); false = blanco->tinte (genero)
             public float Density = 1f;    // multiplicador de cantidad de estrellas (el fondo del form usa menos)
             public bool QuietBands = false;   // true = menos estrellas en las franjas de arriba (abecedario) y abajo (barra de estado)
+            public float Dim = 1f;        // atenuacion del starfield (1 = normal; ~0.45 mientras se navega con musica). Solo estrellas/brillos, no el cielo
 
             private struct Star { public float X, Y; public int Size, Kind; public byte R, G, B; public float Tint, Off, Spd; }
             private struct Shoot { public bool On; public float X, Y, VX, VY; public float Life, MaxLife; }
@@ -3851,9 +4120,10 @@ namespace Rocola
             {
                 EnsureSkyBrush(w, h, skyTop, skyBottom);
                 g.FillRectangle(skyBrush, 0, 0, w, h);
+                pulse *= Dim;                       // atenuado mientras se navega: el beat tambien baja
                 double boost = pulse * 0.62;        // el audio sube el brillo de las estrellas (medianas/grandes)
                 int armUp = (int)(pulse * 7.0);     // y agranda las puntas del destello con el beat
-                float fade = StarFade();            // fundido out/in del patron (cada minuto)
+                float fade = StarFade() * Dim;      // fundido out/in del patron (cada minuto) x atenuacion al navegar
                 EnsureGlow();                       // ESTETICA: sprites de resplandor (horneados una vez)
                 g.InterpolationMode = InterpolationMode.Bilinear;
                 g.SmoothingMode = SmoothingMode.AntiAlias;   // ESTETICA: el sparkle se ve liso (una sola pieza)
@@ -3930,7 +4200,13 @@ namespace Rocola
                 if (sl != null)
                 {
                     int dx = (int)driftX, dy = (int)driftY;   // deriva con la musica; envuelve toroidalmente (4 copias que PARTEN la pantalla, ~coste de 1 blit)
-                    if (dx == 0 && dy == 0) g.DrawImageUnscaled(sl, 0, 0);
+                    if (Dim < 0.985f)
+                    {
+                        EnsureDimIA();   // copia con ALFA (atenuado): solo mientras se navega con musica
+                        BlitLayerDim(g, sl, dx, dy, w, h);
+                        if (dx != 0 || dy != 0) { BlitLayerDim(g, sl, dx - w, dy, w, h); BlitLayerDim(g, sl, dx, dy - h, w, h); BlitLayerDim(g, sl, dx - w, dy - h, w, h); }
+                    }
+                    else if (dx == 0 && dy == 0) g.DrawImageUnscaled(sl, 0, 0);
                     else
                     {
                         g.DrawImageUnscaled(sl, dx, dy);
@@ -3940,6 +4216,22 @@ namespace Rocola
                     }
                 }
                 g.CompositingMode = ocm;
+            }
+
+            // Atributos de imagen con el alfa de la atenuacion (cacheados; la matriz se rehace solo si Dim cambio de escalon)
+            private ImageAttributes dimIA; private int dimIAKey = -1;
+            private void EnsureDimIA()
+            {
+                int key = (int)(Dim * 50f);   // escalones de 0.02: sin rehacer la matriz cada cuadro durante la transicion
+                if (dimIA != null && dimIAKey == key) return;
+                if (dimIA == null) dimIA = new ImageAttributes();
+                ColorMatrix cm = new ColorMatrix(); cm.Matrix33 = Dim;
+                dimIA.SetColorMatrix(cm, ColorMatrixFlag.Default, ColorAdjustType.Bitmap);
+                dimIAKey = key;
+            }
+            private void BlitLayerDim(Graphics g, Bitmap sl, int x, int y, int w, int h)
+            {
+                g.DrawImage(sl, new Rectangle(x, y, w, h), 0, 0, w, h, GraphicsUnit.Pixel, dimIA);
             }
 
             // Indice del cuadro de titileo segun el reloj (rota ~5 veces/seg). Los armonicos son ENTEROS, asi
@@ -3966,7 +4258,7 @@ namespace Rocola
                 BlitSkyAndStars(g, w, h, full);      // idem la capa de titileo: los parciales reusan la del ultimo cuadro completo (sin costura en la casilla)
                 if (full)
                 {
-                    if (pulse > 0.04f) DrawBeatFlare(g, w, h, pulse);   // latido: glow extra en medianas/grandes con la musica
+                    if (pulse * Dim > 0.04f) DrawBeatFlare(g, w, h, pulse * Dim);   // latido: glow extra en medianas/grandes con la musica (atenuado al navegar)
                     DrawShoots(g, w, h);
                 }
             }
@@ -4082,7 +4374,7 @@ namespace Rocola
                     if (!shoots[i].On) continue;
                     Shoot s = shoots[i];
                     float k = s.Life / s.MaxLife; if (k < 0f) k = 0f;
-                    int la = (int)(230 * k);
+                    int la = (int)(230 * k * Dim);   // atenuada mientras se navega con musica
                     float tx = s.X - s.VX * 0.10f, ty = s.Y - s.VY * 0.10f;   // estela corta
                     sp.Color = Color.FromArgb(la, 255, 255, 255);
                     g.DrawLine(sp, tx, ty, s.X, s.Y);
@@ -4437,6 +4729,7 @@ namespace Rocola
             public Func<string, Image> GetCoverByPath;   // discos TOP: caratula por ruta (ciclado)
             public Action<int> OnActivate;
             public bool GpuCovered;   // el panel GPU (pantalla completa, opaco) tapa esta vista: no malgastes su OnPaint (rejilla+estrellas) por CPU
+            public float BgDim = 1f;  // atenuacion del starfield mientras se navega con musica (el form la anima)
 
             private Bitmap cubeCache;
             private int cacheW = -1, cacheH = -1;
@@ -4919,6 +5212,7 @@ namespace Rocola
                 cacheW = w; cacheH = h; cacheSig = sig;
 
                 stars.SkyOffsetY = this.Top; stars.SkyFullH = (this.Parent != null) ? this.Parent.ClientSize.Height : h; stars.SkyMid = SkyColorMid(BgAccent);
+                stars.Dim = BgDim;   // atenuado mientras se navega con musica (vuelve solo tras 10s sin botones)
                 stars.DrawReactive(g, w, h, SkyColor(BgAccent), SkyColor2(BgAccent), AudioPulse);   // fondo cacheado titilante + LATIDO (medianas/grandes destellan con la musica)
                 g.DrawImageUnscaled(cubeCache, 0, 0);
 
@@ -5466,6 +5760,7 @@ namespace Rocola
             private Bitmap blendBmp;
             private Starfield stars = new Starfield();   // fondo estrellado reactivo al genero
             public float AudioPulse = 0f;   // 0..1 nivel de audio
+            public float BgDim = 1f;        // atenuacion del starfield mientras se navega con musica (el form la anima)
             // Brillo de la barra de instrucciones del buscador (Mover / Poner-Elegir / Cerrar) al pulsar.
             public const int SMover = 0, SPoner = 1, SCerrar = 2;
             private static readonly Color SRed = Color.FromArgb(228, 72, 72), SGreen = Color.FromArgb(72, 212, 112), SYellow = Color.FromArgb(242, 206, 72);
@@ -5645,6 +5940,7 @@ namespace Rocola
                 if (!forGpu)
                 {
                     stars.SkyOffsetY = this.Top; stars.SkyFullH = (this.Parent != null) ? this.Parent.ClientSize.Height : H; stars.SkyMid = SkyColorMid(Accent);
+                    stars.Dim = BgDim;   // atenuado mientras se navega con musica
                     stars.Draw(g, W, H, SkyColor(Accent), SkyColor2(Accent), Accent, Phase, true, AudioPulse);   // mismo fondo en degradado CONTINUO que el resto + late con la musica
                 }
 

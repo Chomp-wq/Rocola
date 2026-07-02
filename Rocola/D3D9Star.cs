@@ -394,6 +394,8 @@ namespace Rocola
 
         public bool Ok { get { return gpu != null && gpu.Ok; } }
         public int Count { get { return nStars; } }
+        private float dim = 1f;   // atenuacion del campo (estrellas + fugaces) mientras se navega con musica
+        public void SetDim(float d) { dim = d < 0f ? 0f : (d > 1f ? 1f : d); }
 
         public GpuStarfield(IntPtr hwnd, int w, int h, int seed)
         {
@@ -455,10 +457,10 @@ namespace Rocola
             gpu.DrawSky(skyV);
             if (transing && px != null)   // patron ANTERIOR desvaneciendose
             {
-                BuildStarVerts(starV2, px, py, pphase, pspeed, psize, pkind, pcol, pnStars, t, 1f - tr, pulse, driftX, driftY, w, h);
+                BuildStarVerts(starV2, px, py, pphase, pspeed, psize, pkind, pcol, pnStars, t, (1f - tr) * dim, pulse, driftX, driftY, w, h);
                 gpu.DrawStars(starV2, pnStars * 2, glowTex);
             }
-            BuildStarVerts(starV, sx, sy, sphase, sspeed, ssize, skind, scol, nStars, t, transing ? tr : 1f, pulse, driftX, driftY, w, h);   // patron ACTUAL
+            BuildStarVerts(starV, sx, sy, sphase, sspeed, ssize, skind, scol, nStars, t, (transing ? tr : 1f) * dim, pulse, driftX, driftY, w, h);   // patron ACTUAL (x atenuacion al navegar)
             gpu.DrawStars(starV, nStars * 2, glowTex);
             UpdateAndDrawShoots(w, h, nowMs);
             return true;
@@ -516,7 +518,7 @@ namespace Rocola
                 if (!shoots[i].On) continue;
                 Shoot s = shoots[i];
                 float k = s.Life / s.MaxLife; if (k < 0f) k = 0f;
-                uint la = (uint)(230 * k); if (la > 255) la = 255;
+                uint la = (uint)(230 * k * dim); if (la > 255) la = 255;   // fugaz atenuada mientras se navega con musica
                 float tailX = s.X - s.VX * s.Tail, tailY = s.Y - s.VY * s.Tail;   // estela de largo variado
                 float len = (float)Math.Sqrt(s.VX * s.VX + s.VY * s.VY);
                 float nx = (len > 0.001f) ? s.VX / len : 1f, ny = (len > 0.001f) ? s.VY / len : 0f;
@@ -746,6 +748,7 @@ namespace Rocola
         public Func<int> GetUiVersion;                    // cambia cuando alguna barra cambia (re-subir textura)
         public int Fps;                                   // cuadros por segundo (diagnostico)
         public bool ShowFps;                              // dibujar el contador de FPS (oculto por defecto; el form lo alterna con Ctrl+F1)
+        public float Dim = 1f;                            // atenuacion del starfield mientras se navega con musica (el form la anima; 1 = normal)
         public Func<float> GetPulse;                      // el form provee el nivel de audio (0..1)
         public GpuGridFetch GetGrid;                      // el form llena el buffer con las celdas de la pagina actual (rejilla por quads)
         public Func<Bitmap> GetContour;                   // sprite del contorno de seleccion
@@ -882,7 +885,8 @@ namespace Rocola
                 }
             }
             if (ShowFps) EnsureFpsTex();   // crea/actualiza la textura del contador ANTES de Begin (solo si se pide, Ctrl+F1)
-            float pulse = (GetPulse != null) ? GetPulse() : 0f;
+            stars.SetDim(Dim);             // atenuacion mientras se navega con musica (estrellas/brillos; el cielo queda igual)
+            float pulse = ((GetPulse != null) ? GetPulse() : 0f) * Dim;   // el beat tambien baja mientras esta atenuado
             if (!stars.Begin(Width, Height, pulse)) return;
             // Rejilla de discos: un quad por celda (textura ya resuelta arriba). Las celdas aun sin textura (recien
             // horneadas o sin presupuesto de subida este cuadro) se saltan y aparecen en los cuadros siguientes.
