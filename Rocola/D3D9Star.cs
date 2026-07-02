@@ -492,7 +492,7 @@ namespace Rocola
             if (dt < 0f) dt = 0f; if (dt > 0.12f) dt = 0.12f;   // acota saltos
             lastShootTick = nowMs;
 
-            if (nowMs >= nextShoot)
+            if (nowMs - nextShoot >= 0)   // RESTA, no >=: sobrevive el desbordamiento de TickCount (~25 dias encendida)
             {
                 nextShoot = nowMs + 7000 + srnd.Next(9000);   // una cada 7-16s
                 for (int i = 0; i < shoots.Length; i++)
@@ -916,10 +916,10 @@ namespace Rocola
             if (Environment.TickCount - fpsTick >= 1000) { Fps = frames; frames = 0; fpsTick = Environment.TickCount; }
         }
 
-        // Asegura (subiendo si hace falta) la textura de una celda y devuelve tex/u/v. Cachea por Folder (Key) para
-        // que revisitar una pagina no resuba NADA (instantaneo). Celdas sin Key (discos TOP) usan una textura por
-        // SLOT (no cruza paginas). Respeta el presupuesto de subidas por cuadro: si se agota y no hay textura
-        // previa, devuelve false (la celda se salta este cuadro y aparece en el siguiente).
+        // Asegura (subiendo si hace falta) la textura de una celda y devuelve tex/u/v. Cachea por Key (Folder; los
+        // discos TOP llevan Folder+portada) para que revisitar una pagina no resuba NADA (instantaneo). Celdas SIN
+        // Key (raras: album sin carpeta) usan una textura por SLOT (no cruza paginas). Respeta el presupuesto de
+        // subidas por cuadro: si se agota y no hay textura previa, devuelve false (la celda aparece al siguiente cuadro).
         private bool EnsureCellTex(GpuGridCell c, ref int upBudget, out IntPtr tex, out float u, out float v)
         {
             tex = IntPtr.Zero; u = 1f; v = 1f;

@@ -1863,6 +1863,7 @@ namespace Rocola
                 attractView.Visible = false;
                 uiOverlaySig = null;   // fuerza rehacer la textura de UI (textos de atraccion)
                 gpuPanel.Visible = true; gpuPanel.BringToFront();
+                SyncGpuFullScreen();   // aplica el modo atraccion YA (transicion atomica, como los demas modos)
             }
             else
 #endif
@@ -1878,6 +1879,7 @@ namespace Rocola
             if (attractView != null) attractView.Visible = false;
 #if ROCOLA_GPU
             uiOverlaySig = null;   // rehace la textura de UI de inmediato (deja los textos de atraccion por la barra normal)
+            if (gpuPanel != null && gpuEnabled) SyncGpuFullScreen();   // aplica el modo navegacion YA (sin un cuadro mezclado de por medio)
 #endif
             this.Invalidate();
         }
@@ -2075,8 +2077,9 @@ namespace Rocola
             Keys kc = keyData & Keys.KeyCode;   // tecla base (sin modificadores)
 
             // ===== ENTRADAS ESPECIALES: SIEMPRE funcionan (buscador, video en pantalla completa, donde sea) =====
-            // MONEDA
-            if (IsCoin(kc)) { if (wasFull) ExitVideoFull(); AddCoin(); return true; }
+            // MONEDA (filtra AUTO-REPETICION: si la señal queda "mantenida", el teclado la repite y sumaria
+            // creditos de mas; cada pulso real del monedero trae su propio pulsar/soltar y pasa siempre)
+            if (IsCoin(kc)) { if ((msg.LParam.ToInt64() & 0x40000000) == 0) { if (wasFull) ExitVideoFull(); AddCoin(); } return true; }
 
             // SALTAR: salta la cancion/video actual SIEMPRE (filtra auto-repeticion)
             if (IsSkip(kc) && (msg.LParam.ToInt64() & 0x40000000) == 0)
@@ -3469,8 +3472,12 @@ namespace Rocola
                 searchOverlay.Phase = phase;
                 searchOverlay.AudioPulse = audioLevel;
                 searchOverlay.CubeAngle += 0.075;   // gira mas rapido
-                searchOverlay.Invalidate();         // repinta cada tick (24fps): fondo + cubo mas fluidos
-                if (miniCube.Visible) { miniCube.Phase = phase; miniCube.Angle += 0.06; miniCube.Invalidate(); }   // sigue girando en la barra de estado
+                searchOverlay.Invalidate();         // repinta cada tick (24fps): fondo + cubo mas fluidos (no-op si el buscador va por GPU: el control esta oculto)
+                bool sGpu = false;
+#if ROCOLA_GPU
+                sGpu = (gpuPanel != null && gpuPanel.Visible);   // panel GPU encima: el mini-cubo lo dibuja la GPU (repintar el control seria invisible)
+#endif
+                if (miniCube.Visible) { miniCube.Phase = phase; miniCube.Angle += 0.06; if (!sGpu) miniCube.Invalidate(); }   // el angulo avanza siempre (la GPU lo lee)
                 return;
             }
 
@@ -3497,11 +3504,11 @@ namespace Rocola
                 return;
             }
 
-            if (letterBar.Visible) { letterBar.Phase = phase; letterBar.Invalidate(); }                 // 24fps
             bool albumGpuBg = false;
 #if ROCOLA_GPU
-            albumGpuBg = (gpuPanel != null && gpuPanel.Visible);   // si el fondo GPU cubre los discos, no malgastes el render CPU detras
+            albumGpuBg = (gpuPanel != null && gpuPanel.Visible);   // el panel GPU (opaco, pantalla completa) tapa los controles CPU: repintarlos seria trabajo invisible que ademas corta el bucle de render GPU
 #endif
+            if (letterBar.Visible) { letterBar.Phase = phase; if (!albumGpuBg) letterBar.Invalidate(); }   // 24fps; en GPU el brillo de la letra lo anima la textura de UI (UiSig cuantiza su fase)
             if (albumView.Visible && !albumGpuBg) { albumView.Phase = phase; albumView.AudioPulse = audioLevel; albumView.AnimTick(fullFrame || transitioning); }
 #if ROCOLA_GPU
             else if (albumView.Visible && albumGpuBg) { albumView.Phase = phase; albumView.StepSpinGpu(); }   // el giro avanza aunque el fondo+cubos los pinte la GPU (sin repintar por CPU)
@@ -3509,10 +3516,11 @@ namespace Rocola
             if (panelSongs.Visible)
             {
                 panelSongs.Accent = bgAccent;
-                if (fullFrame || transitioning) { panelSongs.Invalidate(); lblAlbum.Invalidate(); }   // glows: 1 de cada 3
-                cubeBox.Phase = phase; cubeBox.Angle += 0.06; cubeBox.Invalidate();   // el cubo grande SI gira a pleno
+                if ((fullFrame || transitioning) && !albumGpuBg) { panelSongs.Invalidate(); lblAlbum.Invalidate(); }   // glows: 1 de cada 3 (solo si el CPU esta a la vista)
+                cubeBox.Phase = phase; cubeBox.Angle += 0.06;   // el angulo/bamboleo avanzan SIEMPRE (la GPU los lee via BuildGpuCubeState)
+                if (!albumGpuBg) cubeBox.Invalidate();          // el cubo grande por CPU solo se repinta si se ve
             }
-            if (miniCube.Visible) { miniCube.Phase = phase; miniCube.Angle += 0.06; miniCube.Invalidate(); }
+            if (miniCube.Visible) { miniCube.Phase = phase; miniCube.Angle += 0.06; if (!albumGpuBg) miniCube.Invalidate(); }   // idem mini-cubo (en GPU lo dibuja el panel)
         }
 
         private static string Fmt(TimeSpan t) { return ((int)t.TotalMinutes) + ":" + t.Seconds.ToString("00"); }
@@ -4026,7 +4034,7 @@ namespace Rocola
                 if (dt < 0f) dt = 0f; if (dt > 0.12f) dt = 0.12f;   // acotar saltos
                 lastTick = now;
 
-                if (now >= nextShoot)
+                if (now - nextShoot >= 0)   // RESTA, no >=: sobrevive el desbordamiento de TickCount (~25 dias encendida)
                 {
                     nextShoot = now + 7000 + rnd.Next(9000);   // una fugaz cada 7-16s
                     for (int i = 0; i < shoots.Length; i++)
