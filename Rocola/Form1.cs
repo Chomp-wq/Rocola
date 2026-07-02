@@ -262,9 +262,6 @@ namespace Rocola
         protected override void OnShown(EventArgs e)
         {
             base.OnShown(e);
-#if ROCOLA_GPU
-            try { GpuProbe.Run(this.Handle); } catch { }   // prueba de viabilidad GPU (solo con el simbolo ROCOLA_GPU)
-#endif
             LoadStats();   // estadisticas guardadas de sesiones anteriores (base de "Lo mas sonado")
             LayoutControls();
 #if ROCOLA_GPU
@@ -4380,6 +4377,8 @@ namespace Rocola
             private readonly Dictionary<string, CellSprite> cellCache = new Dictionary<string, CellSprite>();
             private int cellCacheW = -1, cellCacheH = -1;   // tamano con el que se horneo (si cambia, se limpia todo)
             private const int CellCacheCap = 6 * PageSize;  // ~6 paginas de historial en memoria (acotado; hojear ida/vuelta cae dentro)
+            private bool cubesPending;                       // (CPU) quedan celdas por hornear: se reparte en varios repintados (como en GPU) para no congelar en equipos lentos
+            private const int CpuBakeBudget = 9;             // (CPU) celdas horneadas por repintado (media pagina): una pagina nueva se llena en 2 pasadas, sin congelon
 #if ROCOLA_GPU
             // La rejilla por GPU ya NO usa una textura a pantalla completa (cubeCache): el panel pide las celdas
             // con BuildGpuGrid y dibuja cada disco como su propio quad. cubeCache queda solo para el render por CPU.
@@ -4741,6 +4740,8 @@ namespace Rocola
                 }
                 if (cellCacheW != w || cellCacheH != h) { ClearCellCache(); cellCacheW = w; cellCacheH = h; }   // tamano nuevo: las celdas horneadas ya no encajan
                 else if (cellCache.Count > CellCacheCap) ClearCellCache();                                     // limite de memoria (raro: solo tras paginar mucho)
+                int budget = CpuBakeBudget;   // HORNEADO REPARTIDO (como en GPU): a lo mas CpuBakeBudget celdas nuevas por repintado; el
+                cubesPending = false;         // resto queda para el proximo (OnPaint re-invalida). Evita el congelon de hornear 18 de golpe.
                 using (Graphics g = Graphics.FromImage(cubeCache))
                 {
                     g.Clear(Color.Transparent);
@@ -4754,8 +4755,9 @@ namespace Rocola
                         // girando ENCIMA en OnPaint; como girando nunca son mas angostos, lo tapan. Asi el cache
                         // NO depende de la seleccion -> moverse entre discos no lo reconstruye (fluido).
                         Rectangle area, lbl; Geometry(w, h, i, out area, out lbl);
-                        Bitmap cell = GetOrBakeCell(Page[i], cw, side, labelH, gap, (GetCover != null) ? GetCover(Page[i]) : null);
-                        g.DrawImageUnscaled(cell, (i % Cols) * cw, area.Y);   // copia 1:1 (sin re-escalar portada ni re-maquetar texto)
+                        Bitmap cell = PeekOrBakeCell(Page[i], cw, side, labelH, gap, (GetCover != null) ? GetCover(Page[i]) : null, ref budget);
+                        if (cell != null) g.DrawImageUnscaled(cell, (i % Cols) * cw, area.Y);   // copia 1:1 (sin re-escalar portada ni re-maquetar texto)
+                        else if (Page[i] != null && Page[i].Folder != null) cubesPending = true;   // solo celdas CACHEABLES se completan luego (convergen); las raras sin Folder no bloquean el bucle
                     }
                 }
             }
@@ -4843,7 +4845,7 @@ namespace Rocola
 
                 bool sizeChanged = (cacheW != w || cacheH != h);
                 string sig = Sig();
-                if (sizeChanged || cubeCache == null || sig != cacheSig) RebuildCubes(w, h);   // ya NO se reconstruye por cambio de seleccion
+                if (sizeChanged || cubeCache == null || sig != cacheSig || cubesPending) RebuildCubes(w, h);   // ya NO se reconstruye por cambio de seleccion; cubesPending completa el horneado repartido
                 cacheW = w; cacheH = h; cacheSig = sig; cacheAccent = BgAccent;
 
                 stars.SkyOffsetY = this.Top; stars.SkyFullH = (this.Parent != null) ? this.Parent.ClientSize.Height : h; stars.SkyMid = SkyColorMid(BgAccent);
@@ -4879,6 +4881,7 @@ namespace Rocola
                         Cube.Draw(g, area2, (GetCover != null) ? GetCover(Page[prevIdx]) : null, prevAngle);
                     }
                 }
+                if (cubesPending) Invalidate();   // quedan celdas por hornear: pide otro repintado para completarlas (repartido, sin congelar)
             }
         }
 
