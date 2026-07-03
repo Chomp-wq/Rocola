@@ -182,6 +182,7 @@ namespace Rocola
         // campo estrellado baja de brillo (evita agobiar con el movimiento/brillos); a los 10s sin botones
         // vuelve solo, con transicion suave. Solo atenua las ESTRELLAS (el cielo y los discos quedan igual).
         private float bgDim = 1f;
+        private float bgDimPrev = 1f;              // valor del cuadro anterior: si cambia, se repinta TAMBIEN el fondo del form (franjas) para que atenue en sincronia con la rejilla
         private const float BgDimLevel = 0.45f;   // brillo del starfield mientras se navega (1 = normal)
         private const int BgDimIdleSecs = 10;     // segundos sin botones para volver al brillo normal
 #if ROCOLA_GPU
@@ -567,7 +568,9 @@ namespace Rocola
 #if ROCOLA_GPU
             if (gpuPanel != null && gpuPanel.Visible) return;   // el panel GPU (pantalla completa) ya cubre todo; no gastes CPU pintando el cielo detras
 #endif
-            formStars.SkyOffsetY = 0; formStars.SkyFullH = h; formStars.SkyMid = SkyColorMid(bgAccent);
+            formStars.SkyOffsetX = 0; formStars.SkyOffsetY = 0; formStars.SkyFullW = w; formStars.SkyFullH = h;
+            formStars.SkyMid = SkyColorMid(bgAccent);
+            formStars.Dim = bgDim;   // atenua TAMBIEN las franjas de arriba/abajo en sincronia con la rejilla (una sola pieza)
             formStars.DrawCached(g, w, h, SkyColor(bgAccent), SkyColor2(bgAccent));   // cielo en degradado CONTINUO; etiquetas y mini-cubo transparentes encima
         }
 
@@ -796,6 +799,7 @@ namespace Rocola
             lblHeader = new Label(); TransLabel(lblHeader, 12.5f);
 
             albumView = new AlbumView();
+            albumView.Sky = formStars;   // MISMO campo de estrellas que el fondo del form: la rejilla pinta su ventana (una sola pieza, sin costuras)
             albumView.GetCover = LoadCoverAsync;
             albumView.GetCoverByPath = LoadCoverByPath;
             albumView.OnActivate = delegate (int local)
@@ -806,6 +810,7 @@ namespace Rocola
             };
 
             panelSongs = new BgPanel();
+            panelSongs.Sky = formStars;   // idem: el interior del disco pinta su ventana del MISMO campo compartido
             panelSongs.BackColor = Shade(DefaultAccent, 0.70);
             panelSongs.Visible = false;
 
@@ -3806,7 +3811,12 @@ namespace Rocola
             bgDim += (dimTgt - bgDim) * 0.12f;
             if (Math.Abs(bgDim - dimTgt) < 0.01f) bgDim = dimTgt;
             albumView.BgDim = bgDim;
+            if (panelSongs != null) panelSongs.BgDim = bgDim;   // el interior del disco comparte el mismo campo: atenua igual
             if (searchOverlay != null) searchOverlay.BgDim = bgDim;
+            // Mientras la atenuacion CAMBIA, repinta el fondo del form (franjas de arriba/abajo) para que atenuen
+            // junto con la rejilla: el campo es UNA SOLA PIEZA (si no, se veria una banda mas clara arriba/abajo).
+            if (Math.Abs(bgDim - bgDimPrev) > 0.0015f) this.Invalidate();
+            bgDimPrev = bgDim;
 #if ROCOLA_GPU
             if (gpuPanel != null) gpuPanel.Dim = bgDim;
 #endif
@@ -3973,13 +3983,19 @@ namespace Rocola
             private int cw = -1, ch = -1, cSky = 0, cTint = 0, lastBuild = 0;
             private int cSky2 = 0;                                        // color inferior del degradado del cache
             private int sBucket = int.MinValue, lBucket = int.MinValue;   // "minuto" del patron actual (cambia cada 60s)
-            public int SkyOffsetY = 0, SkyFullH = 0;                      // posicion de este fondo en la pantalla (degradado CONTINUO entre secciones)
+            // PANTALLA COMPLETA como UNA SOLA PIEZA: el campo de estrellas se hornea al tamano de TODA la pantalla
+            // (SkyFullW x SkyFullH) y cada fondo (franjas del form, rejilla de discos, interior del disco) pinta
+            // solo su VENTANA (offset SkyOffsetX/Y). Asi las estrellas cruzan los bordes de las secciones sin
+            // cortarse ni desalinearse: el patron, el cielo y la densidad son continuos entre secciones.
+            public int SkyOffsetX = 0, SkyOffsetY = 0, SkyFullW = 0, SkyFullH = 0;
+            private int FullW(int w) { return SkyFullW > w ? SkyFullW : w; }   // ancho de pantalla completa (>= la ventana); si no se fijo, la ventana ES la pantalla
+            private int FullH(int h) { return SkyFullH > h ? SkyFullH : h; }
             public Color SkyMid = Color.Empty;                            // color INTERMEDIO (azul noche); si Empty -> 2 paradas (punto medio)
             private LinearGradientBrush skyBrush;                         // pincel de cielo en DEGRADADO (cacheado, ligado al genero)
             private int gbW = -1, gbOff = -99999, gbFull = -1, gbTop = 0, gbMid = 0, gbBot = 0;
             private Bitmap skyCache;                                       // RENDIMIENTO: cielo (degradado) HORNEADO a bitmap; se copia por cuadro en vez de rellenar el degradado cada vez
             private int scW = -1, scH = -1;
-            private LinearGradientBrush scFrom;                           // de que pincel se horneo skyCache (si el genero/tamano cambia el pincel, se re-hornea)
+            private int fscTop = 0, fscMid = 0, fscBot = 0;               // colores con los que se horneo el cielo de pantalla completa (se re-hornea solo al cambiar genero/tamano)
             // DERIVA con la musica (igual que la version GPU): al sonar, el campo entero se desliza LENTO en diagonal
             // (abajo-derecha) y se envuelve por los bordes. Barato: en la vista de discos solo desplaza el blit de la
             // capa de estrellas (toroidal); en el buscador desplaza cada estrella. Solo avanza en repintados COMPLETOS.
@@ -4095,7 +4111,10 @@ namespace Rocola
                 Random r = new Random((20260620 + bucket * 40503) & 0x7FFFFFFF);   // seed que cambia por minuto (siempre positivo)
                 int n = (int)(((double)(w * h) / 6500) * Density);   // MAS estrellas (densidad por area), escalada por Density
                 int lo = (int)(90 * Density); if (lo < 20) lo = 20;
-                if (n < lo) n = lo; if (n > 230) n = 230;
+                // Tope de estrellas: este campo ahora cubre la PANTALLA COMPLETA (fondo + rejilla + interior de disco,
+                // todo una sola pieza), asi que el tope sube para que no se vea disperso en monitores grandes. En la
+                // rocola (1024x768) el conteo por area (~121) queda MUY por debajo del tope, asi que no cambia nada alli.
+                if (n < lo) n = lo; if (n > 340) n = 340;
                 Color[] pal = {
                     Color.White, Color.White, Color.White,                                     // blancas (peso, salen mas)
                     Color.FromArgb(170, 205, 255), Color.FromArgb(120, 170, 255),               // azul claro / azul
@@ -4248,55 +4267,61 @@ namespace Rocola
                 BlitSkyAndStars(g, w, h);
             }
 
-            // Hornea el cielo (degradado) a un bitmap y lo reutiliza. Copiar un bitmap es mas barato que
-            // rellenar un degradado de 3 paradas a pantalla completa en cada cuadro (clave en alta resolucion).
-            // Se re-hornea solo si cambia el tamano o el pincel (genero/posicion); en una transicion de color
-            // reusa el MISMO bitmap (solo lo vuelve a rellenar) para no asignar memoria por cuadro.
+            // Hornea el cielo (degradado) al tamano de la PANTALLA COMPLETA (FullW x FullH) y lo reutiliza. Cada
+            // fondo copia solo su ventana (en BlitSkyAndStars, con offset), asi el degradado es CONTINUO entre las
+            // secciones sin costuras. Copiar un bitmap es mas barato que rellenar un degradado de 3 paradas por
+            // cuadro (clave en alta resolucion). Se re-hornea solo al cambiar tamano de pantalla o colores (genero).
             private void EnsureSkyCache(int w, int h, Color top, Color bottom)
             {
-                EnsureSkyBrush(w, h, top, bottom);
-                if (skyCache != null && scW == w && scH == h && scFrom == skyBrush) return;
-                if (skyCache == null || scW != w || scH != h)
+                int FW = FullW(w), FH = FullH(h);
+                Color mid = (SkyMid.A == 0)
+                    ? Color.FromArgb(255, (top.R + bottom.R) / 2, (top.G + bottom.G) / 2, (top.B + bottom.B) / 2)   // sin mid: punto medio
+                    : SkyMid;
+                int t = top.ToArgb(), m = mid.ToArgb(), b = bottom.ToArgb();
+                if (skyCache != null && scW == FW && scH == FH && fscTop == t && fscMid == m && fscBot == b) return;
+                if (skyCache == null || scW != FW || scH != FH)
                 {
                     if (skyCache != null) skyCache.Dispose();
-                    skyCache = new Bitmap(w, h, PixelFormat.Format32bppPArgb);
-                    scW = w; scH = h;
+                    skyCache = new Bitmap(FW, FH, PixelFormat.Format32bppPArgb);
+                    scW = FW; scH = FH;
                 }
-                using (Graphics sg = Graphics.FromImage(skyCache)) sg.FillRectangle(skyBrush, 0, 0, w, h);
-                scFrom = skyBrush;
+                using (LinearGradientBrush lgb = new LinearGradientBrush(new Rectangle(0, 0, FW, FH + 1), top, bottom, LinearGradientMode.Vertical))
+                {
+                    ColorBlend cb = new ColorBlend(3);
+                    cb.Colors = new Color[] { top, mid, bottom };          // negro arriba -> azul noche en medio -> resplandor/genero abajo
+                    cb.Positions = new float[] { 0f, 0.42f, 1f };          // negro SOLO en el cenit; el azul domina casi toda la pantalla
+                    lgb.InterpolationColors = cb;
+                    using (Graphics sg = Graphics.FromImage(skyCache)) sg.FillRectangle(lgb, 0, 0, FW, FH);
+                }
+                fscTop = t; fscMid = m; fscBot = b;
             }
 
-            // Pinta el fondo: cielo OPACO por copia directa (SourceCopy, rapido) + la capa de estrellas del
-            // cuadro de titileo ACTUAL encima (SourceOver). Rotar el cuadro reproduce el titileo por copia.
+            // Pinta la VENTANA de este fondo dentro del campo de PANTALLA COMPLETA: cielo OPACO por copia directa
+            // (SourceCopy, rapido) + la capa de estrellas del cuadro de titileo ACTUAL encima (SourceOver). Ambos
+            // bitmaps son de pantalla completa; se dibujan corridos por (-SkyOffsetX, -SkyOffsetY) y el recorte del
+            // pintor deja ver solo su seccion. Como todas las secciones leen el MISMO bitmap a la MISMA posicion de
+            // pantalla, las estrellas cruzan los bordes sin cortarse ni desalinearse (todo es UNA SOLA PIEZA).
             // 'advance'=false (repintado PARCIAL: la casilla del cubo que gira) reusa la capa del ultimo repintado
             // completo: si avanzara por reloj, la casilla mostraria un cuadro de titileo distinto al del resto.
             private int shownLayer = -1;   // capa mostrada en el ultimo repintado completo
             private void BlitSkyAndStars(Graphics g, int w, int h) { BlitSkyAndStars(g, w, h, true); }
             private void BlitSkyAndStars(Graphics g, int w, int h, bool advance)
             {
+                int offX = SkyOffsetX, offY = SkyOffsetY;
                 CompositingMode ocm = g.CompositingMode;
                 g.CompositingMode = CompositingMode.SourceCopy;   // cielo opaco: copia directa (sin mezclar alfa)
-                g.DrawImageUnscaled(skyCache, 0, 0);
+                g.DrawImageUnscaled(skyCache, -offX, -offY);      // la ventana [offX,offY] cae en (0,0); el recorte del pintor limita el area
                 g.CompositingMode = CompositingMode.SourceOver;   // estrellas con transparencia encima
                 if (advance || shownLayer < 0 || layers == null || shownLayer >= layers.Length) shownLayer = CurrentStarLayerIndex();
                 Bitmap sl = (layers != null && shownLayer >= 0 && shownLayer < layers.Length) ? layers[shownLayer] : null;
                 if (sl != null)
                 {
-                    int dx = (int)driftX, dy = (int)driftY;   // deriva con la musica; envuelve toroidalmente (4 copias que PARTEN la pantalla, ~coste de 1 blit)
                     if (Dim < 0.985f)
                     {
                         EnsureDimIA();   // copia con ALFA (atenuado): solo mientras se navega con musica
-                        BlitLayerDim(g, sl, dx, dy, w, h);
-                        if (dx != 0 || dy != 0) { BlitLayerDim(g, sl, dx - w, dy, w, h); BlitLayerDim(g, sl, dx, dy - h, w, h); BlitLayerDim(g, sl, dx - w, dy - h, w, h); }
+                        BlitLayerDim(g, sl, -offX, -offY, sl.Width, sl.Height);
                     }
-                    else if (dx == 0 && dy == 0) g.DrawImageUnscaled(sl, 0, 0);
-                    else
-                    {
-                        g.DrawImageUnscaled(sl, dx, dy);
-                        g.DrawImageUnscaled(sl, dx - w, dy);
-                        g.DrawImageUnscaled(sl, dx, dy - h);
-                        g.DrawImageUnscaled(sl, dx - w, dy - h);
-                    }
+                    else g.DrawImageUnscaled(sl, -offX, -offY);
                 }
                 g.CompositingMode = ocm;
             }
@@ -4327,9 +4352,11 @@ namespace Rocola
                 return idx;
             }
 
-            // Fondo de la vista de discos: cielo cacheado (copia directa) + estrellas TITILANTES por cuadros
-            // horneados (una copia por cuadro, sin recalcular). Ademas LATE con la musica: las medianas y
-            // grandes destellan con el beat (~40 dibujos chicos, no una pasada de pantalla completa).
+            // Vista de discos (VENTANA del campo COMPARTIDO de pantalla completa): cielo cacheado + estrellas
+            // titilantes + LATIDO con la musica. El cielo y las estrellas salen del MISMO bitmap de pantalla
+            // completa que pinta el fondo del form, corridos por (SkyOffsetX/Y): por eso las estrellas cruzan
+            // los bordes de las secciones sin costura. El latido y las fugaces solo en repintado COMPLETO (en el
+            // parcial de la casilla del cubo se reusa la capa: no relatir ni relanzar fugaces por una franja).
             public void DrawReactive(Graphics g, int w, int h, Color skyTop, Color skyBottom, float pulse)
             {
                 if (w < 4 || h < 4) return;
@@ -4337,49 +4364,50 @@ namespace Rocola
                 EnsureLayers(w, h);
                 RectangleF clip = g.ClipBounds;
                 bool full = (clip.Width >= w - 1 && clip.Height >= h - 1);   // repintado COMPLETO (no la casilla del cubo)
-                if (full) UpdateDrift(w, h, pulse);   // la deriva SOLO avanza en repintado completo; las casillas parciales usan la posicion actual y cuadran
-                BlitSkyAndStars(g, w, h, full);      // idem la capa de titileo: los parciales reusan la del ultimo cuadro completo (sin costura en la casilla)
-                if (full)
-                {
-                    if (pulse * Dim > 0.04f) DrawBeatFlare(g, w, h, pulse * Dim);   // latido: glow extra en medianas/grandes con la musica (atenuado al navegar)
-                    DrawShoots(g, w, h);
-                }
+                BlitSkyAndStars(g, w, h, full);
+                if (full && pulse * Dim > 0.04f) DrawBeatFlare(g, w, h, pulse * Dim);   // latido con la musica (atenuado al navegar)
+                if (full) DrawShoots(g, w, h);
             }
 
             // LATIDO con la musica: a las estrellas medianas/grandes (las que llevan glow) les estampa un glow
             // EXTRA que crece con la energia del audio. Es barato: ~40 sprites pre-horneados, no recalculo ni
-            // pasada de pantalla completa. Del MISMO color (sprite por color). Solo en repintado completo.
+            // pasada de pantalla completa. Del MISMO color (sprite por color). Solo en repintado completo. Las
+            // estrellas se posicionan en coordenadas de PANTALLA COMPLETA menos el offset de la ventana; las que
+            // caen fuera se saltan (el resto las recorta el clip del pintor).
             private void DrawBeatFlare(Graphics g, int w, int h, float pulse)
             {
                 if (stars == null) return;
+                int FW = FullW(w), FH = FullH(h), offX = SkyOffsetX, offY = SkyOffsetY;
                 int extra = (int)(pulse * 16f);   // cuanto crece el halo con el beat
-                int dx = (int)driftX, dy = (int)driftY;   // sigue la deriva de la capa de estrellas
                 for (int i = 0; i < stars.Length; i++)
                 {
                     Star s = stars[i];
                     if (s.Kind == 0) continue;   // los puntos no reaccionan
+                    int gd = s.Size * 2 + 4 + extra;
+                    int px = (int)(s.X * FW) - offX, py = (int)(s.Y * FH) - offY;
+                    if (px + gd < 0 || px - gd > w || py + gd < 0 || py - gd > h) continue;   // fuera de la ventana: se salta
                     int cr, cg, cb;
                     if (s.Tint > 0f) { cr = 255; cg = 255; cb = 255; } else { cr = s.R; cg = s.G; cb = s.B; }
                     Bitmap gb = GlowFor(cr, cg, cb);
                     if (gb == null) continue;
-                    int px = (int)(s.X * w) + dx; if (px >= w) px -= w;   // + deriva (envuelve)
-                    int py = (int)(s.Y * h) + dy; if (py >= h) py -= h;
-                    int gd = s.Size * 2 + 4 + extra;
                     g.DrawImage(gb, new Rectangle(px - gd / 2, py - gd / 2, gd, gd));
                 }
             }
 
-            // Hornea los TwK cuadros de titileo UNA vez (al arrancar / al cambiar de tamano). El patron es
-            // fijo; lo unico que cambia entre cuadros es el brillo de cada estrella -> al rotarlos se ve titilar.
+            // Hornea los TwK cuadros de titileo UNA vez (al arrancar / al cambiar de tamano de PANTALLA). Se hornean
+            // al tamano de la pantalla COMPLETA (FullW x FullH), no al de la ventana: asi un solo juego de capas
+            // sirve a todas las secciones (fondo del form, rejilla, interior del disco) y cada una copia su ventana.
+            // El patron es fijo; lo unico que cambia entre cuadros es el brillo de cada estrella -> al rotarlos titila.
             private void EnsureLayers(int w, int h)
             {
-                Ensure(w, h);
-                if (layers != null && lw == w && lh == h && lBucket == sBucket) return;
+                int FW = FullW(w), FH = FullH(h);
+                Ensure(FW, FH);
+                if (layers != null && lw == FW && lh == FH && lBucket == sBucket) return;
                 if (layers != null) { for (int k = 0; k < layers.Length; k++) if (layers[k] != null) layers[k].Dispose(); }
                 layers = new Bitmap[TwK];
-                lw = w; lh = h; lBucket = sBucket;
+                lw = FW; lh = FH; lBucket = sBucket;
                 EnsureGlow();
-                for (int j = 0; j < TwK; j++) layers[j] = BakeStarFrame(w, h, j);
+                for (int j = 0; j < TwK; j++) layers[j] = BakeStarFrame(FW, FH, j);
             }
 
             // Un cuadro de titileo: el patron con el brillo de cada estrella en la fase j (armonicos enteros
@@ -4780,23 +4808,29 @@ namespace Rocola
         private class BgPanel : Panel
         {
             public Color Accent = DefaultAccent;
+            public float BgDim = 1f;   // atenuacion del starfield mientras se navega con musica (el form la anima; igual que la rejilla)
             public BgPanel()
             {
                 this.SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true);
             }
             protected override void OnPaintBackground(PaintEventArgs e) { /* todo en OnPaint */ }
-            private Starfield stars = new Starfield();   // fondo estrellado reactivo al genero
+            public Starfield Sky;   // COMPARTIDO con el fondo del form: este panel pinta su VENTANA del mismo campo (una sola pieza)
             protected override void OnPaint(PaintEventArgs e)
             {
                 Graphics g = e.Graphics;
                 int w = Width, h = Height;
                 if (w < 4 || h < 4) return;
 
-                // Degradado CACHEADO: solo se reconstruye al cambiar tamaño o color (no cada cuadro).
-                // Antes se rellenaba el degradado completo en cada repintado -> en pantalla grande iba
-                // lento y parecia "screen tearing". Cacheado, solo se copia (rapido) y queda fluido.
-                stars.SkyOffsetY = this.Top; stars.SkyFullH = (this.Parent != null) ? this.Parent.ClientSize.Height : h; stars.SkyMid = SkyColorMid(Accent);
-                stars.DrawCached(g, w, h, SkyColor(Accent), SkyColor2(Accent));   // cielo en degradado CONTINUO; un cubo transparente girando encima
+                // VENTANA del campo COMPARTIDO de pantalla completa: cielo + estrellas salen del mismo bitmap que
+                // pinta el fondo del form, corridos por (Left, Top). Cacheado: solo se copia (rapido) y va fluido,
+                // y las estrellas cruzan el borde con las franjas de arriba/abajo sin cortarse.
+                if (Sky == null) return;
+                Sky.SkyOffsetX = this.Left; Sky.SkyOffsetY = this.Top;
+                Sky.SkyFullW = (this.Parent != null) ? this.Parent.ClientSize.Width : w;
+                Sky.SkyFullH = (this.Parent != null) ? this.Parent.ClientSize.Height : h;
+                Sky.SkyMid = SkyColorMid(Accent);
+                Sky.Dim = BgDim;   // en sincronia con la rejilla y las franjas (una sola pieza)
+                Sky.DrawCached(g, w, h, SkyColor(Accent), SkyColor2(Accent));   // cielo en degradado CONTINUO; un cubo transparente girando encima
             }
 
         }
@@ -4911,7 +4945,7 @@ namespace Rocola
             private Bitmap contourSprite; private Size contourSpriteSize = Size.Empty;   // contorno HORNEADO (3 trazos AA -> 1 copia); todas las casillas miden igual
             private Font lblFont; private SolidBrush lblBrush; private StringFormat lblSF;       // recursos de etiquetas (reusables)
             private Bitmap blendBmp;   // para el fundido suave de portadas del cubo TOP
-            private Starfield stars = new Starfield();   // fondo estrellado reactivo al genero
+            public Starfield Sky;   // COMPARTIDO con el fondo del form: esta vista pinta su VENTANA del mismo campo (una sola pieza)
             public float AudioPulse = 0f;   // 0..1 nivel de audio (las estrellas laten con la musica)
 
             private Image BlendInto(Image a, Image b, float f)
@@ -5298,9 +5332,15 @@ namespace Rocola
                 if (sizeChanged || cubeCache == null || sig != cacheSig || cubesPending) RebuildCubes(w, h);   // ya NO se reconstruye por cambio de seleccion; cubesPending completa el horneado repartido
                 cacheW = w; cacheH = h; cacheSig = sig;
 
-                stars.SkyOffsetY = this.Top; stars.SkyFullH = (this.Parent != null) ? this.Parent.ClientSize.Height : h; stars.SkyMid = SkyColorMid(BgAccent);
-                stars.Dim = BgDim;   // atenuado mientras se navega con musica (vuelve solo tras 10s sin botones)
-                stars.DrawReactive(g, w, h, SkyColor(BgAccent), SkyColor2(BgAccent), AudioPulse);   // fondo cacheado titilante + LATIDO (medianas/grandes destellan con la musica)
+                if (Sky != null)
+                {
+                    Sky.SkyOffsetX = this.Left; Sky.SkyOffsetY = this.Top;   // VENTANA del campo COMPARTIDO de pantalla completa (una sola pieza con las franjas)
+                    Sky.SkyFullW = (this.Parent != null) ? this.Parent.ClientSize.Width : w;
+                    Sky.SkyFullH = (this.Parent != null) ? this.Parent.ClientSize.Height : h;
+                    Sky.SkyMid = SkyColorMid(BgAccent);
+                    Sky.Dim = BgDim;   // atenuado mientras se navega con musica (vuelve solo tras 10s sin botones)
+                    Sky.DrawReactive(g, w, h, SkyColor(BgAccent), SkyColor2(BgAccent), AudioPulse);   // fondo cacheado titilante + LATIDO (medianas/grandes destellan con la musica)
+                }
                 g.DrawImageUnscaled(cubeCache, 0, 0);
 
                 if (Page != null && Selected >= 0 && Selected < Page.Count)
