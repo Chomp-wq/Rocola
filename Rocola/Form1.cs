@@ -177,6 +177,7 @@ namespace Rocola
         private Starfield formStars = new Starfield();   // cielo estrellado del fondo del formulario
         private int frameTick = 0;   // contador de cuadros: el fondo se refresca completo 1 de cada 3 (invisible al ojo)
         private int helpFlashPrev = 0;   // firma previa del brillo de la barra de ayuda (para el ultimo repintado que lo borra, en CPU)
+        private int skipHoldStart = 0;   // desde cuando se MANTIENE SALTAR con todo vacio (candado de 3s para borrar creditos)
         // ATENUACION al navegar con musica: mientras alguien usa los botones (para poner mas canciones) el
         // campo estrellado baja de brillo (evita agobiar con el movimiento/brillos); a los 10s sin botones
         // vuelve solo, con transicion suave. Solo atenua las ESTRELLAS (el cielo y los discos quedan igual).
@@ -2604,14 +2605,13 @@ namespace Rocola
         }
 
         // ===================== ESTADO VIVO (reanudar tras un corte de luz) =====================
-        // Guarda creditos + lo que suena (y su posicion) + la cola en rocola_estado.txt. Si se corta la luz,
-        // al volver la rocola RETOMA la cancion donde iba, la cola y los creditos del cliente (su dinero no se
-        // pierde). Para el CIERRE del negocio: SALTAR repetido vacia la cola; con todo vacio, un toque mas
-        // borra los creditos (son LO ULTIMO de la fila) -> estado vacio -> arranca limpia aunque se desconecte.
+        // Guarda creditos + lo que suena + la cola en rocola_estado.txt (solo cambia en eventos: moneda,
+        // encolar, cambio de cancion). Si se corta la luz, al volver la rocola RETOMA: la cancion que estaba
+        // sonando arranca DESDE EL PRINCIPIO (a peticion: media cancion confunde mas de lo que ayuda), con su
+        // cola y los creditos del cliente intactos. Para el CIERRE del negocio: SALTAR repetido vacia la cola
+        // y, con todo vacio, MANTENER SALTAR 3s borra los creditos -> estado vacio -> arranca limpia.
         private string StateFile() { return Path.Combine(Application.StartupPath, "rocola_estado.txt"); }
         private bool stateRestored = false;   // la restauracion corre UNA vez (al primer armado de biblioteca)
-        private int statePosSaveTick = 0;     // ultima escritura de la posicion (cada ~5s mientras suena)
-        private int resumeSeconds = 0;        // posicion a reanudar (la consume PlayTrack una sola vez)
 
         private void SaveState()
         {
@@ -2621,12 +2621,7 @@ namespace Rocola
                 sb.Append("ROCOLA-ESTADO v1\r\n");
                 sb.Append("creditos=").Append(credits).Append("\r\n");
                 if (nowPlaying != null)
-                {
                     sb.Append("sonando=").Append(nowPlaying.IsVideo ? 'V' : 'S').Append('|').Append(nowPlaying.PathKey()).Append("\r\n");
-                    int pos = 0;
-                    if (!nowPlaying.IsVideo && reader != null) { try { pos = (int)reader.CurrentTime.TotalSeconds; } catch { } }
-                    sb.Append("pos=").Append(pos).Append("\r\n");
-                }
                 for (int i = 0; i < queue.Count; i++)
                     sb.Append("cola=").Append(queue[i].IsVideo ? 'V' : 'S').Append('|').Append(queue[i].PathKey()).Append("\r\n");
                 File.WriteAllText(StateFile(), sb.ToString());   // archivo diminuto (<1KB): escritura sincrona sin costo notable
@@ -2660,13 +2655,13 @@ namespace Rocola
                         for (int j = 0; j < videoAlbums[i].VideoFiles.Count; j++)
                         { string vp = videoAlbums[i].VideoFiles[j]; if (vp != null && !vidDisc.ContainsKey(vp)) vidDisc[vp] = videoAlbums[i]; }
 
-                int cr = 0, pos = 0; PlayItem playing = null; List<PlayItem> q = new List<PlayItem>();
+                int cr = 0; PlayItem playing = null; List<PlayItem> q = new List<PlayItem>();
                 for (int i = 1; i < L.Length; i++)
                 {
                     string s = L[i];
                     if (s.Length == 0) continue;
                     if (s.StartsWith("creditos=")) { int.TryParse(s.Substring(9), out cr); continue; }
-                    if (s.StartsWith("pos=")) { int.TryParse(s.Substring(4), out pos); continue; }
+                    if (s.StartsWith("pos=")) continue;   // formato viejo: la posicion ya no se usa (siempre desde el principio)
                     bool isNow = s.StartsWith("sonando=");
                     if (!isNow && !s.StartsWith("cola=")) continue;
                     string v = s.Substring(s.IndexOf('=') + 1);
@@ -2692,8 +2687,7 @@ namespace Rocola
                 queue.AddRange(q);
                 if (playing != null)
                 {
-                    queue.Insert(0, playing);
-                    resumeSeconds = playing.IsVideo ? 0 : pos;   // la cancion retoma donde iba; el video re-arranca (WMP no reanuda fiable)
+                    queue.Insert(0, playing);   // lo que estaba sonando vuelve a entrar y arranca DESDE EL PRINCIPIO
                     PlayNext();
                     ShowToast("Reanudando la musica");
                 }
@@ -3122,15 +3116,15 @@ namespace Rocola
             UpdateNowPlayingUI();
         }
 
-        // SALTAR: salta el elemento actual (cancion o video). Los CREDITOS son LO ULTIMO de la fila:
-        // SOLO se borran si ya no queda nada sonando NI en cola (una pulsacion mas tras vaciar todo).
-        // Asi, en uso normal saltar una cancion NO toca el dinero del cliente; y al CIERRE del negocio,
-        // SALTAR repetido vacia la cola cancion por cancion y el ultimo toque borra los creditos ->
-        // estado guardado vacio -> la rocola arranca limpia al dia siguiente aunque se desconecte.
+        // SALTAR: salta el elemento actual (cancion o video). Los CREDITOS son LO ULTIMO de la fila y llevan
+        // DOBLE SEGURO: solo se borran si ya no queda nada sonando NI en cola, Y ademas hay que MANTENER
+        // presionado SALTAR 3 segundos seguidos (el conteo lo hace AnimTimer con KeyHeld). Un toque suelto
+        // con todo vacio solo muestra el aviso de como hacerlo. Asi ni el personal ni un cliente pueden
+        // borrar dinero por accidente; al cierre: vaciar la cola a toques y luego mantener 3s.
         private void SkipSong()
         {
             if (nowPlaying != null || queue.Count > 0) { PlayNext(); return; }   // salta (o reanuda la cola si quedo detenida); PlayNext guarda el estado
-            if (credits > 0) { credits = 0; UpdateCredits(); ShowToast("Creditos borrados", Color.FromArgb(200, 130, 35)); SaveState(); }
+            if (credits > 0) ShowToast("Manten SALTAR 3 segundos para borrar los creditos", Color.FromArgb(200, 130, 35));
         }
 
         // ===================  VIDEO (Windows Media Player ActiveX, por codigo)  ===================
@@ -3323,11 +3317,6 @@ namespace Rocola
             {
                 reader = new AudioFileReader(t.Path);
                 reader.Volume = FixedVolume;
-                if (resumeSeconds > 0)   // reanudacion tras corte de luz: retoma donde iba (si el archivo alcanza)
-                {
-                    try { if (reader.TotalTime.TotalSeconds > resumeSeconds + 3) reader.CurrentTime = TimeSpan.FromSeconds(resumeSeconds); } catch { }
-                    resumeSeconds = 0;
-                }
                 // WaveOut con callback por VENTANA, no WaveOutEvent: el de eventos llama a
                 // WaitHandle.WaitOne(Int32), que NO existe en .NET 3.5 sin Service Pack 1
                 // (el de la rockola) y truena con MissingMethodException. Este no lo usa.
@@ -3409,22 +3398,27 @@ namespace Rocola
         // La llama el hilo de audio con el bloque recien leido: lo parte en sub-trozos de ~50ms, calcula el
         // RMS de cada uno y lo encola con la MARCA DE TIEMPO en que ese trozo SONARA (ahora + colchon).
         // El temporizador de UI los consume cuando les llega su momento -> el pulso va CON lo que se oye.
+        [ThreadStatic] private static float[] rmsTmp;   // buffer chico reusable del hilo de audio (4 trozos max)
         public void ReportAudioBlock(float[] buffer, int offset, int count, int samplesPerSec)
         {
             if (count <= 0) return;
             int now = Environment.TickCount;
             int chunks = 4; int len = count / chunks;
             if (len < 256) { chunks = 1; len = count; }   // bloque chico: un solo trozo
+            float[] tmp = rmsTmp ?? (rmsTmp = new float[4]);
+            for (int c = 0; c < chunks; c++)              // el RMS se calcula FUERA del lock (no retiene a la UI)
+            {
+                int start = offset + c * len;
+                int end = (c == chunks - 1) ? offset + count : start + len;
+                double sum = 0; for (int i = start; i < end; i++) { float v = buffer[i]; sum += v * v; }
+                tmp[c] = (float)Math.Sqrt(sum / Math.Max(1, end - start));
+            }
             lock (levelLock)
             {
                 for (int c = 0; c < chunks; c++)
                 {
-                    int start = offset + c * len;
-                    int end = (c == chunks - 1) ? offset + count : start + len;
-                    double sum = 0; for (int i = start; i < end; i++) { float v = buffer[i]; sum += v * v; }
-                    float rms = (float)Math.Sqrt(sum / Math.Max(1, end - start));
                     int atMs = now + (int)((long)(c * len) * 1000 / Math.Max(1, samplesPerSec));   // desfase del trozo dentro del bloque
-                    levelQ.Enqueue(new KeyValuePair<int, float>(atMs, rms));
+                    levelQ.Enqueue(new KeyValuePair<int, float>(atMs, tmp[c]));
                 }
                 while (levelQ.Count > 96) levelQ.Dequeue();   // acotado (~5s de historial maximo)
             }
@@ -3449,8 +3443,8 @@ namespace Rocola
             TimeSpan cur = reader.CurrentTime, tot = reader.TotalTime;
             if (tot.TotalSeconds > 0) progress.Value = cur.TotalSeconds / tot.TotalSeconds;
             lblTime.Text = Fmt(cur) + " / " + Fmt(tot);
-            if (Environment.TickCount - statePosSaveTick >= 5000)   // posicion cada ~5s: reanudar tras un corte de luz pierde 5s como mucho
-            { statePosSaveTick = Environment.TickCount; SaveState(); }
+            // (la posicion ya NO se guarda: al reanudar tras un corte de luz la cancion arranca desde el
+            // principio, asi que el estado solo se escribe en eventos -> cero escrituras periodicas a disco)
         }
 
 #if ROCOLA_GPU
@@ -3790,6 +3784,22 @@ namespace Rocola
             if (aTgt > audioLevel) audioLevel = aTgt;                     // ataque instantaneo: el golpe se ve al momento
             else audioLevel *= 0.78f;                                     // caida rapida (~0.35s): pulso nitido, no lavado
             if (audioLevel < 0.003f) audioLevel = 0f;
+
+            // CANDADO DE CREDITOS (cierre del negocio): con TODO vacio (nada sonando ni en cola), MANTENER
+            // SALTAR presionado 3 segundos seguidos borra los creditos. Se mide con KeyHeld (estado fisico
+            // del boton), asi funciona aunque el boton de la rocola no auto-repita; al soltar, se reinicia.
+            bool skipHeld = KeyHeld(keySkip) || (KeyHeld(Keys.ShiftKey) && !IsConfiguredKey(Keys.ShiftKey));
+            if (skipHeld && nowPlaying == null && queue.Count == 0 && credits > 0)
+            {
+                if (skipHoldStart == 0) skipHoldStart = Environment.TickCount;
+                else if (Environment.TickCount - skipHoldStart >= 3000)
+                {
+                    credits = 0; UpdateCredits(); SaveState();
+                    ShowToast("Creditos borrados", Color.FromArgb(200, 130, 35));
+                    skipHoldStart = 0;
+                }
+            }
+            else skipHoldStart = 0;
 
             // ATENUACION del starfield mientras se navega con musica sonando (ver BgDimLevel); transicion suave.
             float dimTgt = (nowPlaying != null && !attractOn && (DateTime.Now - lastInput).TotalSeconds < BgDimIdleSecs) ? BgDimLevel : 1f;
@@ -4801,7 +4811,9 @@ namespace Rocola
             public Func<Album, Image> GetCover;
             public Func<string, Image> GetCoverByPath;   // discos TOP: caratula por ruta (ciclado)
             public Action<int> OnActivate;
+#if ROCOLA_GPU
             public bool GpuCovered;   // el panel GPU (pantalla completa, opaco) tapa esta vista: no malgastes su OnPaint (rejilla+estrellas) por CPU
+#endif
             public float BgDim = 1f;  // atenuacion del starfield mientras se navega con musica (el form la anima)
 
             private Bitmap cubeCache;
@@ -5277,7 +5289,9 @@ namespace Rocola
                 // la rejilla + pintar estrellas + cubo por CPU en cada Invalidate (p.ej. al paginar, que llama
                 // Invalidate por cambio de pagina) era trabajo invisible que ademas SALTABA la franja de la GPU
                 // -> tirones al hojear. El panel GPU dibuja la rejilla por su cuenta (BuildGpuGrid, un quad/celda).
+#if ROCOLA_GPU
                 if (GpuCovered) return;
+#endif
 
                 bool sizeChanged = (cacheW != w || cacheH != h);
                 string sig = Sig();
