@@ -2606,8 +2606,8 @@ namespace Rocola
         // ===================== ESTADO VIVO (reanudar tras un corte de luz) =====================
         // Guarda creditos + lo que suena (y su posicion) + la cola en rocola_estado.txt. Si se corta la luz,
         // al volver la rocola RETOMA la cancion donde iba, la cola y los creditos del cliente (su dinero no se
-        // pierde). Para el CIERRE del negocio: SALTAR borra creditos y salta lo que quede -> estado vacio ->
-        // el dia siguiente arranca limpio aunque se apague desconectandola.
+        // pierde). Para el CIERRE del negocio: SALTAR repetido vacia la cola; con todo vacio, un toque mas
+        // borra los creditos (son LO ULTIMO de la fila) -> estado vacio -> arranca limpia aunque se desconecte.
         private string StateFile() { return Path.Combine(Application.StartupPath, "rocola_estado.txt"); }
         private bool stateRestored = false;   // la restauracion corre UNA vez (al primer armado de biblioteca)
         private int statePosSaveTick = 0;     // ultima escritura de la posicion (cada ~5s mientras suena)
@@ -3122,14 +3122,15 @@ namespace Rocola
             UpdateNowPlayingUI();
         }
 
-        // SALTAR: salta el elemento actual (cancion o video) y ademas BORRA LOS CREDITOS pendientes.
-        // Es la herramienta de CIERRE del negocio: saltando lo que quede y borrando creditos, el estado
-        // guardado queda vacio y la rocola arranca limpia al dia siguiente (aunque se corte la luz al salir).
+        // SALTAR: salta el elemento actual (cancion o video). Los CREDITOS son LO ULTIMO de la fila:
+        // SOLO se borran si ya no queda nada sonando NI en cola (una pulsacion mas tras vaciar todo).
+        // Asi, en uso normal saltar una cancion NO toca el dinero del cliente; y al CIERRE del negocio,
+        // SALTAR repetido vacia la cola cancion por cancion y el ultimo toque borra los creditos ->
+        // estado guardado vacio -> la rocola arranca limpia al dia siguiente aunque se desconecte.
         private void SkipSong()
         {
-            if (credits > 0) { credits = 0; UpdateCredits(); ShowToast("Creditos borrados", Color.FromArgb(200, 130, 35)); }
-            if (nowPlaying != null) PlayNext();   // PlayNext guarda el estado; si no habia nada sonando, guarda aqui
-            else SaveState();
+            if (nowPlaying != null || queue.Count > 0) { PlayNext(); return; }   // salta (o reanuda la cola si quedo detenida); PlayNext guarda el estado
+            if (credits > 0) { credits = 0; UpdateCredits(); ShowToast("Creditos borrados", Color.FromArgb(200, 130, 35)); SaveState(); }
         }
 
         // ===================  VIDEO (Windows Media Player ActiveX, por codigo)  ===================
