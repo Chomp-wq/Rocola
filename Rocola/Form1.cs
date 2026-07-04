@@ -191,7 +191,6 @@ namespace Rocola
         private Starfield formStars = new Starfield();   // cielo estrellado del fondo del formulario
         private int frameTick = 0;   // contador de cuadros: el fondo se refresca completo 1 de cada 3 (invisible al ojo)
         private int helpFlashPrev = 0;   // firma previa del brillo de la barra de ayuda (para el ultimo repintado que lo borra, en CPU)
-        private int skipHoldStart = 0;   // desde cuando se MANTIENE SALTAR con todo vacio (candado de 3s para borrar creditos)
         // ATENUACION al navegar con musica: mientras alguien usa los botones (para poner mas canciones) el
         // campo estrellado baja de brillo (evita agobiar con el movimiento/brillos); a los 10s sin botones
         // vuelve solo, con transicion suave. Solo atenua las ESTRELLAS (el cielo y los discos quedan igual).
@@ -2693,7 +2692,7 @@ namespace Rocola
         // encolar, cambio de cancion). Si se corta la luz, al volver la rocola RETOMA: la cancion que estaba
         // sonando arranca DESDE EL PRINCIPIO (a peticion: media cancion confunde mas de lo que ayuda), con su
         // cola y los creditos del cliente intactos. Para el CIERRE del negocio: SALTAR repetido vacia la cola
-        // y, con todo vacio, MANTENER SALTAR 3s borra los creditos -> estado vacio -> arranca limpia.
+        // y, con todo vacio, una pulsacion de SALTAR borra los creditos -> estado vacio -> arranca limpia.
         private string StateFile() { return Path.Combine(Application.StartupPath, "rocola_estado.txt"); }
         private bool stateRestored = false;   // la restauracion corre UNA vez (al primer armado de biblioteca)
 
@@ -3200,15 +3199,17 @@ namespace Rocola
             UpdateNowPlayingUI();
         }
 
-        // SALTAR: salta el elemento actual (cancion o video). Los CREDITOS son LO ULTIMO de la fila y llevan
-        // DOBLE SEGURO: solo se borran si ya no queda nada sonando NI en cola, Y ademas hay que MANTENER
-        // presionado SALTAR 3 segundos seguidos (el conteo lo hace AnimTimer con KeyHeld). Un toque suelto
-        // con todo vacio solo muestra el aviso de como hacerlo. Asi ni el personal ni un cliente pueden
-        // borrar dinero por accidente; al cierre: vaciar la cola a toques y luego mantener 3s.
+        // SALTAR: salta el elemento actual (cancion o video). Los CREDITOS son LO ULTIMO de la fila: solo se
+        // borran cuando ya no queda NADA sonando NI en cola (asi SALTAR nunca borra dinero mientras haya musica
+        // pendiente). Con todo vacio, UNA pulsacion de SALTAR borra los creditos (para cerrar el negocio).
         private void SkipSong()
         {
             if (nowPlaying != null || queue.Count > 0) { PlayNext(); return; }   // salta (o reanuda la cola si quedo detenida); PlayNext guarda el estado
-            if (credits > 0) ShowToast("Manten SALTAR 3 segundos para borrar los creditos", Color.FromArgb(200, 130, 35));
+            if (credits > 0)
+            {
+                credits = 0; UpdateCredits(); SaveState();
+                ShowToast("Creditos borrados", Color.FromArgb(200, 130, 35));
+            }
         }
 
         // ===================  VIDEO (Windows Media Player ActiveX, por codigo)  ===================
@@ -3878,22 +3879,6 @@ namespace Rocola
             if (aTgt > audioLevel) audioLevel = aTgt;                     // ataque instantaneo: el golpe se ve al momento
             else audioLevel *= 0.78f;                                     // caida rapida (~0.35s): pulso nitido, no lavado
             if (audioLevel < 0.003f) audioLevel = 0f;
-
-            // CANDADO DE CREDITOS (cierre del negocio): con TODO vacio (nada sonando ni en cola), MANTENER
-            // SALTAR presionado 3 segundos seguidos borra los creditos. Se mide con KeyHeld (estado fisico
-            // del boton), asi funciona aunque el boton de la rocola no auto-repita; al soltar, se reinicia.
-            bool skipHeld = KeyHeld(keySkip) || (KeyHeld(Keys.ShiftKey) && !IsConfiguredKey(Keys.ShiftKey));
-            if (skipHeld && nowPlaying == null && queue.Count == 0 && credits > 0)
-            {
-                if (skipHoldStart == 0) skipHoldStart = Environment.TickCount;
-                else if (Environment.TickCount - skipHoldStart >= 3000)
-                {
-                    credits = 0; UpdateCredits(); SaveState();
-                    ShowToast("Creditos borrados", Color.FromArgb(200, 130, 35));
-                    skipHoldStart = 0;
-                }
-            }
-            else skipHoldStart = 0;
 
             // ATENUACION del starfield mientras se navega con musica sonando (ver BgDimLevel); transicion suave.
             float dimTgt = (nowPlaying != null && !attractOn && (DateTime.Now - lastInput).TotalSeconds < BgDimIdleSecs) ? BgDimLevel : 1f;
