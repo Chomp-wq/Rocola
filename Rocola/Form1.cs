@@ -86,10 +86,16 @@ namespace Rocola
         // se parte en sub-trozos de ~50ms con la MARCA DE TIEMPO en que sonaran, y el temporizador de UI
         // consume el trozo cuyo momento ya llego -> el pulso cae ENCIMA del golpe que se esta oyendo.
         private readonly object levelLock = new object();
-        private readonly Queue<KeyValuePair<int, float>> levelQ = new Queue<KeyValuePair<int, float>>();   // (tick en que se OYE, rms)
+        // 3 BANDAS (graves/medios/agudos) para que se SIENTA la separacion de beats: las estrellas GRANDES laten con
+        // los graves (bombo), las medianas con medios/agudos. Cada trozo lleva el rms de las 3 bandas + su marca de tiempo.
+        private struct Lvl { public int At; public float Lo, Mid, Hi; public Lvl(int at, float lo, float mid, float hi) { At = at; Lo = lo; Mid = mid; Hi = hi; } }
+        private readonly Queue<Lvl> levelQ = new Queue<Lvl>();
         private const int AudioVisualDelayMs = 850;   // colchon de WaveOut (5 x 200ms; en regimen va ~4 buffers adelantado)
-        private float audioRms = 0f, audioAvg = 0f;   // rms retrasado (lo que se oye AHORA) y piso movil (referencia del golpe)
-        private float audioLevel = 0f;                // nivel para los visuales (golpes marcados + fondo suave)
+        private float fLp1, fLp2;                      // estado de los filtros paso-bajo (hilo de audio) que separan las bandas
+        private float rmsLo, rmsMid, rmsHi;            // rms retrasado por banda (lo que se oye AHORA)
+        private float avgLo, avgMid, avgHi;            // piso movil por banda (referencia del golpe)
+        private float levLo, levMid, levHi;            // pulso (envolvente) por banda para los visuales
+        private float audioLevel = 0f;                // nivel GLOBAL (max de las 3 bandas): deriva, GPU, buscador
         private int playFailStreak = 0;   // fallos seguidos al reproducir (para no ciclar si NAudio falla)
         // ---- NIVELADO DE VOLUMEN (que todas las canciones suenen PAREJO) ----
         // Cada cancion viene masterizada a distinto volumen. Aqui se mide la sonoridad (RMS integrado) de cada
@@ -3717,39 +3723,71 @@ namespace Rocola
             curTap = null;   // ya no hay tap actual
             FinalizeLoudMeasure();   // guarda la sonoridad medida de la cancion que acaba de sonar (audio ya detenido: sin carrera)
             lock (levelLock) levelQ.Clear();   // sin cancion no hay trozos pendientes: el pulso cae a cero
-            audioRms = 0f; audioAvg = 0f;
+            rmsLo = rmsMid = rmsHi = 0f; avgLo = avgMid = avgHi = 0f;
         }
 
         // La llama el hilo de audio con el bloque recien leido: lo parte en sub-trozos de ~50ms, calcula el
         // RMS de cada uno y lo encola con la MARCA DE TIEMPO en que ese trozo SONARA (ahora + colchon).
         // El temporizador de UI los consume cuando les llega su momento -> el pulso va CON lo que se oye.
-        [ThreadStatic] private static float[] rmsTmp;   // buffer chico reusable del hilo de audio (4 trozos max)
+        // Buffers reusables del hilo de audio (4 trozos x 3 bandas). ThreadStatic: sin asignar por bloque.
+        [ThreadStatic] private static float[] tmpLo; [ThreadStatic] private static float[] tmpMid; [ThreadStatic] private static float[] tmpHi;
         public void ReportAudioBlock(float[] buffer, int offset, int count, int samplesPerSec)
         {
             if (count <= 0) return;
             int now = Environment.TickCount;
             int chunks = 4; int len = count / chunks;
             if (len < 256) { chunks = 1; len = count; }   // bloque chico: un solo trozo
-            float[] tmp = rmsTmp ?? (rmsTmp = new float[4]);
+            float[] tLo = tmpLo ?? (tmpLo = new float[4]);
+            float[] tMid = tmpMid ?? (tmpMid = new float[4]);
+            float[] tHi = tmpHi ?? (tmpHi = new float[4]);
+            // Dos filtros paso-bajo de una via separan el audio en 3 bandas: grave = lp1, medio = lp2-lp1, agudo = x-lp2.
+            // Los coeficientes marcan cortes aproximados (~150 Hz y ~2 kHz sobre el stream interleaved); es un
+            // visualizador, no un ecualizador: basta que "se sienta" la separacion. El estado persiste entre bloques.
+            const float A1 = 0.012f, A2 = 0.13f;
+            float lp1 = fLp1, lp2 = fLp2;
             double blockSumSq = 0;
             for (int c = 0; c < chunks; c++)              // el RMS se calcula FUERA del lock (no retiene a la UI)
             {
                 int start = offset + c * len;
                 int end = (c == chunks - 1) ? offset + count : start + len;
-                double sum = 0; for (int i = start; i < end; i++) { float v = buffer[i]; sum += v * v; }
-                blockSumSq += sum;
-                tmp[c] = (float)Math.Sqrt(sum / Math.Max(1, end - start));
+                double sumRaw = 0, sumLo = 0, sumMid = 0, sumHi = 0;
+                for (int i = start; i < end; i++)
+                {
+                    float v = buffer[i];
+                    sumRaw += v * v;
+                    lp1 += (v - lp1) * A1;               // paso-bajo grave
+                    lp2 += (v - lp2) * A2;               // paso-bajo medio
+                    float lo = lp1, mid = lp2 - lp1, hi = v - lp2;
+                    sumLo += lo * lo; sumMid += mid * mid; sumHi += hi * hi;
+                }
+                int n = Math.Max(1, end - start);
+                blockSumSq += sumRaw;
+                tLo[c] = (float)Math.Sqrt(sumLo / n);
+                tMid[c] = (float)Math.Sqrt(sumMid / n);
+                tHi[c] = (float)Math.Sqrt(sumHi / n);
             }
-            if (curMeasurePath != null) { curSumSq += blockSumSq; curSamples += count; }   // NIVELADO: acumula la sonoridad integrada CRUDA de la cancion (antes de la ganancia)
+            fLp1 = lp1; fLp2 = lp2;   // persiste el estado de los filtros para el proximo bloque
+            if (curMeasurePath != null) { curSumSq += blockSumSq; curSamples += count; }   // NIVELADO: sonoridad integrada CRUDA (sin bandas)
             lock (levelLock)
             {
                 for (int c = 0; c < chunks; c++)
                 {
                     int atMs = now + (int)((long)(c * len) * 1000 / Math.Max(1, samplesPerSec));   // desfase del trozo dentro del bloque
-                    levelQ.Enqueue(new KeyValuePair<int, float>(atMs, tmp[c]));
+                    levelQ.Enqueue(new Lvl(atMs, tLo[c], tMid[c], tHi[c]));
                 }
                 while (levelQ.Count > 96) levelQ.Dequeue();   // acotado (~5s de historial maximo)
             }
+        }
+
+        // Detecta el golpe de UNA banda contra su propio piso movil y devuelve su pulso (0..1) con ataque instantaneo
+        // y caida rapida. Como cada banda tiene MENOS energia que el total, sube algo la sensibilidad. Igual para las 3.
+        private static float BandBeat(float rms, ref float avg, float lev)
+        {
+            avg += (rms - avg) * 0.06f;                                                     // piso movil (~0.7s)
+            float beat = (rms > avg * 1.22f + 0.006f) ? Math.Min(1f, (rms - avg) * 11f) : 0f;   // cuanto SOBRESALE del piso
+            float tgt = Math.Max(beat, Math.Min(1f, rms * 3.0f) * 0.22f);                  // golpe dominante + fondo suave
+            if (tgt > lev) lev = tgt; else lev *= 0.78f;                                    // ataque instantaneo, caida rapida
+            return lev < 0.003f ? 0f : lev;
         }
 
         private void UpdateNowPlayingUI()
@@ -4043,7 +4081,7 @@ namespace Rocola
             if (lblCredits != null) sb.Append('|').Append(lblCredits.Text);
             if (lblCount != null) sb.Append('|').Append(lblCount.Text);
             if (progress != null) sb.Append('|').Append((int)(progress.Value * 300)).Append(progress.Accent.ToArgb());
-            if (helpBar != null) sb.Append('|').Append(helpBar.FlashCoarse());   // GRUESO: el brillo del boton pulsado no re-hornea la textura en cada cuadro del desvanecido
+            if (helpBar != null) sb.Append('|').Append(helpBar.FlashSig());   // anima el brillo del boton pulsado (0 = sin brillo -> no afecta en reposo)
             // El FPS ya NO entra en la firma: se pinta en su propia textura, asi que su cambio (1/seg) no
             // obliga a rehacer esta textura -> en reposo la firma es constante -> 0 reconstrucciones.
             return sb.ToString();
@@ -4104,14 +4142,15 @@ namespace Rocola
             // entre golpes. Antes era una envolvente de sonoridad adelantada ~1s: no transmitia el ritmo.
             int nowT = Environment.TickCount;
             lock (levelLock)
-                while (levelQ.Count > 0 && nowT - (levelQ.Peek().Key + AudioVisualDelayMs) >= 0) audioRms = levelQ.Dequeue().Value;
-            if (nowPlaying == null) audioRms = 0f;
-            audioAvg += (audioRms - audioAvg) * 0.06f;                    // piso movil (~0.7s): sigue la seccion de la cancion
-            float beat = (audioRms > audioAvg * 1.22f + 0.008f) ? Math.Min(1f, (audioRms - audioAvg) * 9f) : 0f;   // cuanto SOBRESALE el golpe del piso
-            float aTgt = Math.Max(beat, Math.Min(1f, audioRms * 2.2f) * 0.30f);   // golpe dominante + fondo suave
-            if (aTgt > audioLevel) audioLevel = aTgt;                     // ataque instantaneo: el golpe se ve al momento
-            else audioLevel *= 0.78f;                                     // caida rapida (~0.35s): pulso nitido, no lavado
-            if (audioLevel < 0.003f) audioLevel = 0f;
+                while (levelQ.Count > 0 && nowT - (levelQ.Peek().At + AudioVisualDelayMs) >= 0)
+                { Lvl l = levelQ.Dequeue(); rmsLo = l.Lo; rmsMid = l.Mid; rmsHi = l.Hi; }
+            if (nowPlaying == null) { rmsLo = rmsMid = rmsHi = 0f; }
+            // Cada banda detecta su propio golpe contra su propio piso movil (ataque instantaneo, caida rapida). Asi
+            // el bombo (graves) y los platillos/voz (agudos) laten por separado y se SIENTE la separacion de beats.
+            levLo = BandBeat(rmsLo, ref avgLo, levLo);
+            levMid = BandBeat(rmsMid, ref avgMid, levMid);
+            levHi = BandBeat(rmsHi, ref avgHi, levHi);
+            audioLevel = Math.Max(levLo, Math.Max(levMid, levHi));   // nivel GLOBAL (deriva/GPU/buscador): el mas fuerte de las 3
 
             // ATENUACION del starfield mientras se navega con musica sonando (ver BgDimLevel); transicion suave.
             float dimTgt = (nowPlaying != null && !attractOn && (DateTime.Now - lastInput).TotalSeconds < BgDimIdleSecs) ? BgDimLevel : 1f;
@@ -4202,7 +4241,7 @@ namespace Rocola
                 helpFlashPrev = hfs;
             }
             if (letterBar.Visible) { letterBar.Phase = phase; if (!albumGpuBg) letterBar.Invalidate(); }   // 24fps; en GPU el brillo de la letra lo anima la textura de UI (UiSig cuantiza su fase)
-            if (albumView.Visible && !albumGpuBg) { albumView.Phase = phase; albumView.AudioPulse = audioLevel; albumView.AnimTick(fullFrame || transitioning); }
+            if (albumView.Visible && !albumGpuBg) { albumView.Phase = phase; albumView.PulseLo = levLo; albumView.PulseMid = levMid; albumView.PulseHi = levHi; albumView.AnimTick(fullFrame || transitioning); }
 #if ROCOLA_GPU
             else if (albumView.Visible && albumGpuBg) { albumView.Phase = phase; albumView.StepSpinGpu(); }   // el giro avanza aunque el fondo+cubos los pinte la GPU (sin repintar por CPU)
 #endif
@@ -4309,7 +4348,7 @@ namespace Rocola
             public bool QuietBands = false;   // true = menos estrellas en las franjas de arriba (abecedario) y abajo (barra de estado)
             public float Dim = 1f;        // atenuacion del starfield (1 = normal; ~0.45 mientras se navega con musica). Solo estrellas/brillos, no el cielo
 
-            private struct Star { public float X, Y; public int Size, Kind; public byte R, G, B; public float Tint, Off, Spd; }
+            private struct Star { public float X, Y; public int Size, Kind; public byte R, G, B; public float Tint, Off, Spd; public byte Band; }   // Band: 0=graves,1=medios,2=agudos (a que frecuencia late)
             private struct Shoot { public bool On; public float X, Y, VX, VY; public float Life, MaxLife; }
             private Star[] stars;
             private int sw = -1, sh = -1;
@@ -4522,6 +4561,9 @@ namespace Rocola
                     int kk = r.Next(100);
                     s.Kind = (kk < 12) ? 2 : (kk < 34) ? 1 : 0;                       // 12% destello GRANDE, 22% destello chico, resto punto
                     s.Size = (s.Kind == 2) ? (6 + r.Next(5)) : (s.Kind == 1) ? (3 + r.Next(4)) : (2 + r.Next(3));   // destellos GRANDES 6-10, chicos 3-6, puntos 2-4
+                    // A QUE FRECUENCIA late cada estrella (para SENTIR la separacion): las GRANDES con los graves
+                    // (bombo), las medianas repartidas entre medios y agudos. Los puntos no laten (no reaccionan).
+                    s.Band = (s.Kind == 2) ? (byte)0 : (byte)(1 + r.Next(2));
                     if (Varied)
                     {
                         Color c = pal[r.Next(pal.Length)]; s.R = c.R; s.G = c.G; s.B = c.B; s.Tint = 0f;   // atraccion: multicolor
@@ -4722,7 +4764,8 @@ namespace Rocola
             // completa que pinta el fondo del form, corridos por (SkyOffsetX/Y): por eso las estrellas cruzan
             // los bordes de las secciones sin costura. El latido y las fugaces solo en repintado COMPLETO (en el
             // parcial de la casilla del cubo se reusa la capa: no relatir ni relanzar fugaces por una franja).
-            public void DrawReactive(Graphics g, int w, int h, Color skyTop, Color skyBottom, float pulse)
+            // pLo/pMid/pHi = pulso de graves/medios/agudos (0..1). Cada estrella late con SU banda (ver DrawBeatFlare).
+            public void DrawReactive(Graphics g, int w, int h, Color skyTop, Color skyBottom, float pLo, float pMid, float pHi)
             {
                 if (w < 4 || h < 4) return;
                 EnsureSkyCache(w, h, skyTop, skyBottom);
@@ -4730,7 +4773,8 @@ namespace Rocola
                 RectangleF clip = g.ClipBounds;
                 bool full = (clip.Width >= w - 1 && clip.Height >= h - 1);   // repintado COMPLETO (no la casilla del cubo)
                 BlitSkyAndStars(g, w, h, full);
-                if (full && pulse * Dim > 0.04f) DrawBeatFlare(g, w, h, pulse * Dim);   // latido con la musica (atenuado al navegar)
+                float pMax = Math.Max(pLo, Math.Max(pMid, pHi));
+                if (full && pMax * Dim > 0.04f) DrawBeatFlare(g, w, h, pLo * Dim, pMid * Dim, pHi * Dim);   // latido por banda (atenuado al navegar)
                 if (full) DrawShoots(g, w, h);
             }
 
@@ -4739,16 +4783,19 @@ namespace Rocola
             // pasada de pantalla completa. Del MISMO color (sprite por color). Solo en repintado completo. Las
             // estrellas se posicionan en coordenadas de PANTALLA COMPLETA menos el offset de la ventana; las que
             // caen fuera se saltan (el resto las recorta el clip del pintor).
-            private void DrawBeatFlare(Graphics g, int w, int h, float pulse)
+            // Cada estrella late con SU banda (grandes=graves, medianas=medios/agudos): recibe los 3 pulsos y usa el
+            // de su Band. Las estrellas cuya banda NO esta sonando no reciben halo -> se VE la separacion de beats.
+            private void DrawBeatFlare(Graphics g, int w, int h, float pLo, float pMid, float pHi)
             {
                 if (stars == null) return;
                 int FW = FullW(w), FH = FullH(h), offX = SkyOffsetX, offY = SkyOffsetY;
-                int extra = (int)(pulse * 16f);   // cuanto crece el halo con el beat
                 for (int i = 0; i < stars.Length; i++)
                 {
                     Star s = stars[i];
                     if (s.Kind == 0) continue;   // los puntos no reaccionan
-                    int gd = s.Size * 2 + 4 + extra;
+                    float pulse = (s.Band == 0) ? pLo : (s.Band == 1) ? pMid : pHi;   // el pulso de SU frecuencia
+                    if (pulse <= 0.02f) continue;   // su banda no suena ahora: sin halo (asi se nota la separacion)
+                    int gd = s.Size * 2 + 4 + (int)(pulse * 16f);   // el halo crece con el golpe de su banda
                     int px = (int)(s.X * FW) - offX, py = (int)(s.Y * FH) - offY;
                     if (px + gd < 0 || px - gd > w || py + gd < 0 || py - gd > h) continue;   // fuera de la ventana: se salta
                     int cr, cg, cb;
@@ -5046,17 +5093,6 @@ namespace Rocola
                 if (dt < 0 || dt > Ms) return 0;
                 return (which + 1) * 1000 + dt / 40;
             }
-            // Version GRUESA para la textura de UI por GPU: cambia SOLO al encenderse (que boton) y al apagarse, NO
-            // durante el desvanecido. Asi el destello ya no obliga a re-hornear+re-subir la textura de pantalla completa
-            // ~10 veces por pulsacion (lo que trababa el tecleo del buscador); el brillo se hornea al pulsar y se limpia
-            // al expirar. En CPU se sigue usando Sig() (fino) para animar el desvanecido suave.
-            public int CoarseSig()
-            {
-                if (which < 0) return 0;
-                int dt = Environment.TickCount - tick;
-                if (dt < 0 || dt > Ms) return 0;
-                return which + 1;
-            }
         }
 
         // Halo suave (radial) centrado en un simbolo de instrucciones; intensidad segun 'level' (0..1).
@@ -5147,8 +5183,7 @@ namespace Rocola
             // El usuario pulso un boton: resalta (brillo que decae) el simbolo correspondiente.
             public void Flash(int which) { flash.Fire(which, which == FEntrar ? GreenC : which == FVolver ? RedC : Color.White); }
             public void FlashMove(bool vertical) { flash.Fire(FMover, vertical ? RedC : YellowC); }   // arriba/abajo ROJO, izq/der AMARILLO
-            public int FlashSig() { return flash.Sig(); }              // fino (CPU): anima el desvanecido del brillo
-            public int FlashCoarse() { return flash.CoarseSig(); }      // grueso (textura GPU): no re-hornea durante el desvanecido
+            public int FlashSig() { return flash.Sig(); }
             private Font hbFont;   // fuente cacheada: la barra se redibuja ~13fps (glow) -> no crear una por cuadro
 
             protected override void OnPaint(PaintEventArgs e) { e.Graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit; RenderContent(e.Graphics); }
@@ -5323,7 +5358,7 @@ namespace Rocola
             private Font lblFont; private SolidBrush lblBrush; private StringFormat lblSF;       // recursos de etiquetas (reusables)
             private Bitmap blendBmp;   // para el fundido suave de portadas del cubo TOP
             public Starfield Sky;   // COMPARTIDO con el fondo del form: esta vista pinta su VENTANA del mismo campo (una sola pieza)
-            public float AudioPulse = 0f;   // 0..1 nivel de audio (las estrellas laten con la musica)
+            public float PulseLo = 0f, PulseMid = 0f, PulseHi = 0f;   // pulso 0..1 por banda (graves/medios/agudos): cada estrella late con SU frecuencia
 
             private Image BlendInto(Image a, Image b, float f)
             {
@@ -5716,7 +5751,7 @@ namespace Rocola
                     Sky.SkyFullH = (this.Parent != null) ? this.Parent.ClientSize.Height : h;
                     Sky.SkyMid = SkyColorMid(BgAccent);
                     Sky.Dim = BgDim;   // atenuado mientras se navega con musica (vuelve solo tras 10s sin botones)
-                    Sky.DrawReactive(g, w, h, SkyColor(BgAccent), SkyColor2(BgAccent), AudioPulse);   // fondo cacheado titilante + LATIDO (medianas/grandes destellan con la musica)
+                    Sky.DrawReactive(g, w, h, SkyColor(BgAccent), SkyColor2(BgAccent), PulseLo, PulseMid, PulseHi);   // fondo titilante + LATIDO por banda (grandes=graves, medianas=medios/agudos)
                 }
                 g.DrawImageUnscaled(cubeCache, 0, 0);
 
@@ -6272,7 +6307,7 @@ namespace Rocola
             public void FlashMove(bool vertical) { hintFlash.Fire(SMover, vertical ? SRed : SYellow); }   // arriba/abajo ROJO, izq/der AMARILLO
             public void FlashOK() { hintFlash.Fire(SPoner, SGreen); }
             public void FlashClose() { hintFlash.Fire(SCerrar, Color.White); }
-            public int HintFlashSig() { return hintFlash.CoarseSig(); }   // GRUESO: el destello ya no re-hornea la textura de UI por GPU en cada cuadro del desvanecido (tecleo fluido)
+            public int HintFlashSig() { return hintFlash.Sig(); }
             // Recursos de pintado CACHEADOS: el buscador creaba ~90 objetos GDI por cuadro (fuentes,
             // pinceles y plumas, incluso por cada tecla y resultado) a 24fps. Ahora todo es reusable.
             private Font fQuery, fHint, fToast, fHead, fEmpty, fRes, fResSub, fPrevT, fPrevS, fPrevH;
