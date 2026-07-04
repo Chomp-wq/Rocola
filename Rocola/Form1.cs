@@ -101,9 +101,15 @@ namespace Rocola
         private bool normalizeOn = true;                                                     // nivelado activo (por defecto si)
         private readonly Dictionary<string, float> loudCache = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);   // ruta -> RMS integrado medido
         private string curMeasurePath = null;                                                // cancion que se esta MIDIENDO ahora (null = no medir)
+        private LevelTap curTap;                                                              // tap de la cancion actual (para cambiarle la ganancia en vivo desde Ctrl+F3)
         private double curSumSq = 0; private long curSamples = 0;                             // acumuladores del RMS integrado de la cancion actual (los llena el hilo de audio)
-        private const float NormTargetRms = 0.14f;                                            // nivel objetivo comun (RMS lineal ~ -17 dBFS): parejo y con margen para no saturar
-        private const float NormGainMin = 0.35f, NormGainMax = 3.5f;                          // limites de la ganancia (~ -9 dB .. +11 dB): evita subir de mas una cancion muy floja
+        // "SUBIR EL PISO": las canciones BAJITAS se SUBEN hacia un volumen objetivo; las que ya suenan FUERTE
+        // NO se bajan (se prioriza subir las flojas, como pidio el operador). Ajustable desde la interfaz (Ctrl+F3).
+        //   ganancia = (objetivo / rms) ^ fuerza , recortada a [1 , tope]   (fuerza 0..1; nunca por debajo de 1 = no baja)
+        private float normTarget = 0.22f;                                                     // volumen OBJETIVO (RMS lineal) al que se suben las bajitas; mas alto = todo mas fuerte
+        private float normStrength = 0.90f;                                                   // FUERZA del nivelado 0..1 (cuanto se acerca al objetivo; 0 = no toca nada)
+        private const float NormMaxBoost = 4.0f;                                              // tope de SUBIDA (~ +12 dB): evita amplificar al infinito una cancion casi muda
+        private const float NormTargetMin = 0.06f, NormTargetMax = 0.34f;                     // rango del volumen objetivo que ofrece la interfaz (de flojo a muy fuerte)
         private const long NormMinSamples = 800000;                                           // ~9s en estereo 44.1k: minimo para aceptar una medida (si se salta antes, no se guarda)
         // ARCHIVOS INCOMPATIBLES: canciones que NO se pudieron reproducir ni con el lector tolerante (p.ej. MP3
         // demasiado dañados). Se anotan (una vez) en rocola_incompatibles.txt para poder repararlas/reconvertirlas.
@@ -410,6 +416,8 @@ namespace Rocola
                     string s = line.Trim();
                     if (s.StartsWith("gpu=")) gpuPrefOn = s.Substring(4).Trim() != "0";
                     else if (s.StartsWith("normalizar=")) normalizeOn = s.Substring(11).Trim() != "0";   // nivelar volumen de las canciones (por defecto si)
+                    else if (s.StartsWith("nivel_objetivo=")) { float v; if (float.TryParse(s.Substring(15).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) normTarget = Clampf(v, NormTargetMin, NormTargetMax); }
+                    else if (s.StartsWith("nivel_fuerza=")) { float v; if (float.TryParse(s.Substring(13).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) normStrength = Clampf(v, 0f, 1f); }
                     else if (s.StartsWith("dir="))
                     {
                         string d = s.Substring(4).Trim();
@@ -420,6 +428,8 @@ namespace Rocola
             catch { }
         }
 
+        private static float Clampf(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
+
         private void SaveConfigPrefs()
         {
             try
@@ -427,6 +437,8 @@ namespace Rocola
                 StringBuilder sb = new StringBuilder();
                 sb.Append("gpu=").Append(gpuPrefOn ? "1" : "0").Append("\r\n");
                 sb.Append("normalizar=").Append(normalizeOn ? "1" : "0").Append("\r\n");
+                sb.Append("nivel_objetivo=").Append(normTarget.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
+                sb.Append("nivel_fuerza=").Append(normStrength.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 for (int i = 0; i < extraMusicDirs.Count; i++) sb.Append("dir=").Append(extraMusicDirs[i]).Append("\r\n");
                 File.WriteAllText(ConfigFile, sb.ToString());
             }
@@ -472,13 +484,22 @@ namespace Rocola
         // Ganancia de nivelado para una cancion, segun su sonoridad medida (si ya se oyo alguna vez). 1 = sin cambio.
         private float NormGainFor(string path)
         {
-            if (!normalizeOn || path == null) return 1f;
+            if (!normalizeOn || normStrength <= 0.001f || path == null) return 1f;
             float rms;
             if (!loudCache.TryGetValue(path, out rms) || rms <= 0.0001f) return 1f;   // aun no medida: va a su volumen original y se aprende en esta pasada
-            float g = NormTargetRms / rms;
-            if (g < NormGainMin) g = NormGainMin; else if (g > NormGainMax) g = NormGainMax;
+            // "Subir el piso": si la cancion suena mas BAJITO que el objetivo, se SUBE (segun la fuerza). Si ya suena
+            // igual o mas FUERTE que el objetivo, se deja igual (nunca se baja). Con tope de subida para no reventar.
+            float g = (float)Math.Pow(normTarget / rms, normStrength);
+            if (g < 1f) g = 1f; else if (g > NormMaxBoost) g = NormMaxBoost;
             return g;
         }
+
+        // Convierte entre el volumen objetivo (RMS lineal) y el porcentaje 0..100 que muestra la interfaz.
+        private int TargetToPct(float t) { int p = (int)Math.Round((t - NormTargetMin) / (NormTargetMax - NormTargetMin) * 100f); return p < 0 ? 0 : (p > 100 ? 100 : p); }
+        private float TargetFromPct(int p) { return NormTargetMin + (p / 100f) * (NormTargetMax - NormTargetMin); }
+
+        // Aplica el nivelado a la cancion que suena AHORA (para oir el cambio al instante mientras se ajusta en Ctrl+F3).
+        private void ApplyNormNow() { LevelTap t = curTap; if (t != null && nowPlaying != null && nowPlaying.Song != null) t.Gain = NormGainFor(nowPlaying.Song.Path); }
 
         // Cierra la medida de la cancion que acaba de sonar: calcula su RMS integrado y lo guarda (si se oyo lo
         // suficiente). La llama DisposePlaybackNow, ya con el audio detenido (sin carrera con el hilo de sonido).
@@ -615,6 +636,92 @@ namespace Rocola
                 }
             }
             catch { }
+            finally { try { Cursor.Hide(); } catch { } maintMode = wasMaint; ForceFocus(); }
+        }
+
+        // Ctrl+F3: ajuste VISUAL del nivelado de volumen. Dos perillas: "volumen objetivo" (que tan fuerte quedan
+        // todas) y "fuerza" (cuanto se suben las bajitas). Filosofia: subir las flojas, NO bajar las que ya suenan
+        // fuerte. El cambio se oye al instante en la cancion actual (si ya se habia medido) y aplica a las siguientes.
+        private void ShowVolumeManager()
+        {
+            if (searchOpen) CloseSearch();
+            bool wasMaint = maintMode;
+            maintMode = true; maintUntil = DateTime.Now.AddMinutes(10);
+            bool changed = false;
+            float bkTarget = normTarget, bkStrength = normStrength; bool bkOn = normalizeOn;   // por si se Cancela
+            try
+            {
+                Cursor.Show();
+                using (Font fUi = new Font(FontFamily.GenericSansSerif, 10f))
+                using (Font fBig = new Font(FontFamily.GenericSansSerif, 12f, FontStyle.Bold))
+                using (Form dlg = new Form())
+                {
+                    dlg.Text = "Rocola - Volumen parejo";
+                    dlg.FormBorderStyle = FormBorderStyle.FixedDialog;
+                    dlg.MaximizeBox = false; dlg.MinimizeBox = false; dlg.ShowInTaskbar = false; dlg.ShowIcon = false;
+                    dlg.StartPosition = FormStartPosition.CenterParent;
+                    dlg.ClientSize = new Size(600, 400);
+                    dlg.BackColor = Color.FromArgb(14, 18, 42);
+                    dlg.Font = fUi;
+
+                    Label info = new Label();
+                    info.SetBounds(16, 12, 568, 60); info.BackColor = Color.Transparent; info.ForeColor = Color.FromArgb(205, 214, 238);
+                    info.Text = "Empareja el volumen de las canciones. Las canciones BAJITAS se suben hacia el 'volumen objetivo'; las que ya suenan FUERTE no se bajan. Sube el objetivo si quieres que todo suene mas fuerte.";
+
+                    CheckBox chkOn = new CheckBox();
+                    chkOn.SetBounds(16, 78, 568, 26); chkOn.BackColor = Color.Transparent; chkOn.ForeColor = Color.White;
+                    chkOn.Font = fBig; chkOn.Text = "Nivelar el volumen (que todas suenen parejo)"; chkOn.Checked = normalizeOn;
+
+                    Label lTarget = new Label(); lTarget.SetBounds(16, 122, 568, 24); lTarget.BackColor = Color.Transparent; lTarget.ForeColor = Color.FromArgb(150, 240, 170);
+                    TrackBar tbTarget = new TrackBar(); tbTarget.SetBounds(12, 148, 576, 45); tbTarget.Minimum = 0; tbTarget.Maximum = 100; tbTarget.TickFrequency = 10;
+                    tbTarget.BackColor = dlg.BackColor; tbTarget.Value = TargetToPct(normTarget);
+
+                    Label lStr = new Label(); lStr.SetBounds(16, 208, 568, 24); lStr.BackColor = Color.Transparent; lStr.ForeColor = Color.FromArgb(150, 200, 255);
+                    TrackBar tbStr = new TrackBar(); tbStr.SetBounds(12, 234, 576, 45); tbStr.Minimum = 0; tbStr.Maximum = 100; tbStr.TickFrequency = 10;
+                    tbStr.BackColor = dlg.BackColor; tbStr.Value = (int)Math.Round(normStrength * 100f);
+
+                    Label hint = new Label(); hint.SetBounds(16, 288, 568, 40); hint.BackColor = Color.Transparent; hint.ForeColor = Color.FromArgb(160, 170, 200);
+                    hint.Text = "El cambio se oye al instante en la cancion actual (si ya se midio antes) y se aplica a las siguientes. Cada cancion se mide la primera vez que suena.";
+
+                    Button bReset = new Button(), bOk = new Button();
+                    bReset.Text = "Recomendado"; bReset.SetBounds(16, 344, 150, 38);
+                    bOk.Text = "Listo"; bOk.SetBounds(488, 344, 96, 38);
+                    Button[] bs = { bReset, bOk };
+                    for (int i = 0; i < bs.Length; i++) { bs[i].FlatStyle = FlatStyle.Flat; bs[i].FlatAppearance.BorderColor = Color.FromArgb(90, 110, 170); bs[i].BackColor = Color.FromArgb(34, 44, 86); bs[i].ForeColor = Color.White; }
+
+                    Action updateLabels = delegate
+                    {
+                        lTarget.Text = "Volumen objetivo:  " + tbTarget.Value + "%   (mas alto = todo suena mas fuerte)";
+                        lStr.Text = "Fuerza del nivelado:  " + tbStr.Value + "%   (cuanto se suben las bajitas; 0 = no nivelar)";
+                        bool en = chkOn.Checked;
+                        tbTarget.Enabled = en; tbStr.Enabled = en;
+                        lTarget.ForeColor = en ? Color.FromArgb(150, 240, 170) : Color.FromArgb(110, 118, 140);
+                        lStr.ForeColor = en ? Color.FromArgb(150, 200, 255) : Color.FromArgb(110, 118, 140);
+                    };
+                    EventHandler apply = delegate
+                    {
+                        normalizeOn = chkOn.Checked;
+                        normTarget = TargetFromPct(tbTarget.Value);
+                        normStrength = tbStr.Value / 100f;
+                        changed = true;
+                        updateLabels();
+                        ApplyNormNow();   // se oye el cambio al instante en la cancion que suena
+                    };
+                    tbTarget.Scroll += apply; tbStr.Scroll += apply; chkOn.CheckedChanged += apply;
+                    bReset.Click += delegate { chkOn.Checked = true; tbTarget.Value = TargetToPct(0.22f); tbStr.Value = 90; apply(bReset, EventArgs.Empty); };
+                    bOk.Click += delegate { dlg.Close(); };
+                    dlg.CancelButton = bOk;
+
+                    dlg.Controls.Add(info); dlg.Controls.Add(chkOn);
+                    dlg.Controls.Add(lTarget); dlg.Controls.Add(tbTarget);
+                    dlg.Controls.Add(lStr); dlg.Controls.Add(tbStr);
+                    dlg.Controls.Add(hint); dlg.Controls.Add(bReset); dlg.Controls.Add(bOk);
+                    updateLabels();
+                    dlg.ShowDialog(this);
+                }
+                if (changed) { SaveConfigPrefs(); ShowToast("Nivelado de volumen actualizado", Color.FromArgb(40, 130, 90)); }
+            }
+            catch { normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; }   // si algo truena, deja los valores como estaban
             finally { try { Cursor.Hide(); } catch { } maintMode = wasMaint; ForceFocus(); }
         }
 
@@ -2440,6 +2547,11 @@ namespace Rocola
                 ShowMusicDirManager();
                 return true;
             }
+            if (keyData == (Keys.Control | Keys.F3))   // Ctrl+F3 = ajuste del nivelado de volumen (que todo suene parejo)
+            {
+                ShowVolumeManager();
+                return true;
+            }
             if (keyData == Keys.F8 && !IsConfiguredKey(Keys.F8))    // F8 = relanzar el asistente de botones
             {
                 if (searchOpen) CloseSearch();
@@ -3413,6 +3525,7 @@ namespace Rocola
                 curSumSq = 0; curSamples = 0;
                 LevelTap tap = new LevelTap(reader, this);
                 tap.Gain = NormGainFor(t.Path);
+                curTap = tap;   // referencia para ajustar la ganancia en vivo (Ctrl+F3)
                 // WaveOut con callback por VENTANA, no WaveOutEvent: el de eventos llama a
                 // WaitHandle.WaitOne(Int32), que NO existe en .NET 3.5 sin Service Pack 1
                 // (el de la rockola) y truena con MissingMethodException. Este no lo usa.
@@ -3587,6 +3700,7 @@ namespace Rocola
                 output = null;
             }
             if (reader != null) { try { reader.Dispose(); } catch { } reader = null; }
+            curTap = null;   // ya no hay tap actual
             FinalizeLoudMeasure();   // guarda la sonoridad medida de la cancion que acaba de sonar (audio ya detenido: sin carrera)
             lock (levelLock) levelQ.Clear();   // sin cancion no hay trozos pendientes: el pulso cae a cero
             audioRms = 0f; audioAvg = 0f;
