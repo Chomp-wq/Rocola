@@ -523,6 +523,9 @@ namespace Rocola
             if (rms <= 0.0001f) return;
             float prev; bool had = loudCache.TryGetValue(path, out prev);
             float val = had ? (prev * 0.5f + rms * 0.5f) : rms;   // promedia con la medida anterior: se estabiliza si la cancion se salto en distinto punto
+            // Si ya estaba medida y el valor casi no cambia, NO reescribir el archivo: en una biblioteca ya
+            // "aprendida" el guardado deja de dispararse en cada cancion (menos escrituras a disco, cero churn).
+            if (had && Math.Abs(val - prev) < 0.004f) return;
             loudCache[path] = val;
             SaveLoudCache();
         }
