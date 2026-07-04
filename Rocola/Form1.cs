@@ -79,7 +79,7 @@ namespace Rocola
 
         // ---- Reproduccion / cola ----
         private IWavePlayer output;   // WaveOut con callback por ventana (compatible con XP SIN .NET 3.5 SP1)
-        private AudioFileReader reader;
+        private IAudioSource reader;   // fuente de audio: normal (AudioFileReader) o TOLERANTE (MP3 con frecuencia mezclada)
         // ---- BEAT para los visuales ----
         // El RMS se mide al LLENAR el colchon de WaveOut (~1s de buffers), o sea ~0.85s ANTES de que ese
         // pedazo SE OIGA: por eso el fondo "no iba con la musica" (pulsaba adelantado). Ahora cada bloque
@@ -105,6 +105,9 @@ namespace Rocola
         private const float NormTargetRms = 0.14f;                                            // nivel objetivo comun (RMS lineal ~ -17 dBFS): parejo y con margen para no saturar
         private const float NormGainMin = 0.35f, NormGainMax = 3.5f;                          // limites de la ganancia (~ -9 dB .. +11 dB): evita subir de mas una cancion muy floja
         private const long NormMinSamples = 800000;                                           // ~9s en estereo 44.1k: minimo para aceptar una medida (si se salta antes, no se guarda)
+        // ARCHIVOS INCOMPATIBLES: canciones que NO se pudieron reproducir ni con el lector tolerante (p.ej. MP3
+        // demasiado dañados). Se anotan (una vez) en rocola_incompatibles.txt para poder repararlas/reconvertirlas.
+        private readonly HashSet<string> incompatibleLogged = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         // ----- PAGINAS de canciones (vista de disco): la lista muestra solo la pagina actual -----
         private SongPagerBar songPager;                        // barra "pagina X de Y" con flechas, arriba de la lista
         private List<object> songItems = new List<object>();   // TODAS las canciones/videos del disco abierto
@@ -295,6 +298,7 @@ namespace Rocola
             LoadStats();   // estadisticas guardadas de sesiones anteriores (base de "Lo mas sonado")
             LoadConfigPrefs();   // preferencias: render GPU/CPU + carpetas de musica adicionales (Ctrl+F2)
             LoadLoudCache();     // sonoridad medida por cancion (para nivelar el volumen de todas)
+            LoadIncompatible();  // rutas ya anotadas como no reproducibles (para no repetirlas)
             LayoutControls();
 #if ROCOLA_GPU
             if (gpuPrefOn) ApplyAlbumGpu(true, false, false);   // render por GPU por defecto (o preferencia guardada); silencioso si el device falla; no re-guarda
@@ -3400,7 +3404,7 @@ namespace Rocola
         {
             try
             {
-                reader = new AudioFileReader(t.Path);
+                reader = OpenAudio(t.Path);   // normal; si NAudio rechaza el MP3 (frecuencia mezclada, etc.) reintenta con el lector TOLERANTE
                 reader.Volume = FixedVolume;   // se queda en 1.0 (crudo): el nivelado se aplica en LevelTap, tras medir el volumen REAL
                 // NIVELADO: si esta cancion ya se oyo antes, se aplica la ganancia que la lleva al nivel comun; si es
                 // nueva, va a su volumen original y se APRENDE su sonoridad en esta pasada (para nivelarla la proxima vez).
@@ -3427,12 +3431,108 @@ namespace Rocola
             {
                 lblStatus.Text = "No se pudo reproducir " + Path.GetFileName(t.Path) + " (" + ex.Message + ")";
                 LogError("PlayTrack " + Path.GetFileName(t.Path), ex);
+                NoteIncompatible(t.Path, ex);   // ni con el lector tolerante: deja la ruta en rocola_incompatibles.txt para repararla
                 DisposePlaybackNow();
                 // OPTIMIZACION (estabilidad): antes era PlayNext() directo. Si varias canciones seguidas
                 // no abren (archivos movidos/corruptos) se apilaba PlayTrack->PlayNext->PlayTrack... hasta
                 // un posible StackOverflow. Via BeginInvoke se desenreda la pila (igual que en el video).
                 try { if (this.IsHandleCreated) this.BeginInvoke((MethodInvoker)delegate { PlayNext(); }); } catch { }
             }
+        }
+
+        // Abre el audio. Camino NORMAL: AudioFileReader (rapido, para el 99.99% de los archivos). Si NAudio lo
+        // rechaza (tipico: MP3 que CAMBIA de frecuencia a mitad -> "Got a frame at sample rate ..."), reintenta con
+        // un lector TOLERANTE que reconstruye el MP3 dejando solo los frames de la frecuencia dominante. Si tampoco
+        // asi, relanza el error original (el llamador lo anota y salta). El reintento NUNCA afecta a los archivos
+        // sanos y, en el peor caso, hace lo mismo que antes: saltar.
+        private IAudioSource OpenAudio(string path)
+        {
+            try { return new FileAudioSource(path); }
+            catch
+            {
+                bool isMp3 = path != null && path.Length > 4 && path.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase);
+                if (isMp3)
+                {
+                    MemoryStream clean = null;
+                    try
+                    {
+                        clean = BuildCleanMp3(path);
+                        if (clean != null) return new TolerantMp3Source(clean);   // reconstruido a una sola frecuencia: ahora SI suena
+                    }
+                    catch { if (clean != null) { try { clean.Dispose(); } catch { } } }   // el tolerante tampoco pudo: cae al throw de abajo
+                }
+                throw;   // que el catch de PlayTrack muestre el aviso, lo anote y salte a la siguiente
+            }
+        }
+
+        // Reconstruye un MP3 de frecuencia MEZCLADA como uno de una sola frecuencia (la dominante), copiando solo
+        // los frames de esa frecuencia a memoria. NAudio 1.9 no soporta cambios de frecuencia dentro de un MP3;
+        // esto le entrega un stream que SI puede reproducir. Los frames de la minoria (raros) se descartan: a lo
+        // sumo un pequeño salto. Todo con la API de frames de NAudio, disponible en XP (decodificacion ACM).
+        private static MemoryStream BuildCleanMp3(string path)
+        {
+            Dictionary<int, int> rateCount = new Dictionary<int, int>();
+            using (FileStream fs = File.OpenRead(path))               // pasada 1: cuenta frecuencias -> elige la DOMINANTE
+            {
+                while (true)
+                {
+                    Mp3Frame f; try { f = Mp3Frame.LoadFromStream(fs); } catch { break; }
+                    if (f == null) break;
+                    int c; rateCount.TryGetValue(f.SampleRate, out c); rateCount[f.SampleRate] = c + 1;
+                }
+            }
+            if (rateCount.Count == 0) return null;
+            int domRate = 0, best = -1;
+            foreach (KeyValuePair<int, int> kv in rateCount) if (kv.Value > best) { best = kv.Value; domRate = kv.Key; }
+
+            MemoryStream ms = new MemoryStream();
+            using (FileStream fs = File.OpenRead(path))               // pasada 2: copia SOLO los frames de la frecuencia dominante
+            {
+                while (true)
+                {
+                    Mp3Frame f; try { f = Mp3Frame.LoadFromStream(fs); } catch { break; }
+                    if (f == null) break;
+                    if (f.SampleRate == domRate && f.RawData != null) ms.Write(f.RawData, 0, f.RawData.Length);
+                }
+            }
+            if (ms.Length < 2048) { ms.Dispose(); return null; }     // casi nada util: que el tolerante falle y se salte
+            ms.Position = 0;
+            return ms;
+        }
+
+        // Anota (una sola vez, incluso entre reinicios) una cancion que no se pudo reproducir, en rocola_incompatibles.txt
+        // junto al .exe: lista lista para reconvertir esos pocos archivos (p.ej. con ffmpeg -ar 44100).
+        private void NoteIncompatible(string path, Exception ex)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(path) || !incompatibleLogged.Add(path)) return;   // ya anotada
+                string reason = (ex != null) ? ex.Message : "desconocido";
+                if (reason.Length > 160) reason = reason.Substring(0, 160);
+                File.AppendAllText(Path.Combine(Application.StartupPath, "rocola_incompatibles.txt"),
+                    DateTime.Now.ToString("yyyy-MM-dd HH:mm") + "  |  " + path + "  |  " + reason + "\r\n");
+            }
+            catch { }
+        }
+
+        // Carga las rutas ya anotadas para no repetirlas en rocola_incompatibles.txt entre reinicios.
+        private void LoadIncompatible()
+        {
+            try
+            {
+                string f = Path.Combine(Application.StartupPath, "rocola_incompatibles.txt");
+                if (!File.Exists(f)) return;
+                foreach (string line in File.ReadAllLines(f))
+                {
+                    int a = line.IndexOf("  |  ");
+                    if (a < 0) continue;
+                    int b = line.IndexOf("  |  ", a + 5);
+                    string p = (b > a) ? line.Substring(a + 5, b - (a + 5)) : line.Substring(a + 5);
+                    p = p.Trim();
+                    if (p.Length > 0) incompatibleLogged.Add(p);
+                }
+            }
+            catch { }
         }
 
         // Guarda el error completo (tipo + mensaje + pila) en rocola_error.txt junto al .exe,
@@ -3988,6 +4088,50 @@ namespace Rocola
         protected override void OnFormClosing(FormClosingEventArgs e) { DisposePlaybackNow(); base.OnFormClosing(e); }
 
         // ==========  BOTON REDONDEADO  ==========
+
+        // Fuente de audio para reproducir: expone lo que la rocola necesita (muestras float para el tap + medicion,
+        // volumen, y tiempo actual/total para la barra de progreso). Dos implementaciones: la NORMAL (AudioFileReader,
+        // cualquier formato) y la TOLERANTE (MP3 con frecuencia mezclada que NAudio rechazaria).
+        private interface IAudioSource : NAudio.Wave.ISampleProvider, IDisposable
+        {
+            float Volume { set; }
+            TimeSpan CurrentTime { get; }
+            TimeSpan TotalTime { get; }
+        }
+
+        // Camino NORMAL: envoltura fina sobre AudioFileReader (float + volumen + tiempos en un solo objeto).
+        private sealed class FileAudioSource : IAudioSource
+        {
+            private readonly AudioFileReader r;
+            public FileAudioSource(string path) { r = new AudioFileReader(path); }
+            public NAudio.Wave.WaveFormat WaveFormat { get { return r.WaveFormat; } }
+            public int Read(float[] buffer, int offset, int count) { return r.Read(buffer, offset, count); }
+            public float Volume { set { r.Volume = value; } }
+            public TimeSpan CurrentTime { get { return r.CurrentTime; } }
+            public TimeSpan TotalTime { get { return r.TotalTime; } }
+            public void Dispose() { r.Dispose(); }
+        }
+
+        // Camino TOLERANTE: reproduce un MP3 ya reconstruido a una sola frecuencia (stream en memoria). Mp3FileReader
+        // decodifica (float via SampleChannel, que ademas da el volumen); el tiempo actual/total sale del Mp3FileReader.
+        private sealed class TolerantMp3Source : IAudioSource
+        {
+            private readonly MemoryStream ms;
+            private readonly Mp3FileReader mp3;
+            private readonly SampleChannel sample;
+            public TolerantMp3Source(MemoryStream cleanMp3)
+            {
+                ms = cleanMp3;
+                mp3 = new Mp3FileReader(ms);
+                sample = new SampleChannel(mp3, false);
+            }
+            public NAudio.Wave.WaveFormat WaveFormat { get { return sample.WaveFormat; } }
+            public int Read(float[] buffer, int offset, int count) { return sample.Read(buffer, offset, count); }
+            public float Volume { set { sample.Volume = value; } }
+            public TimeSpan CurrentTime { get { return mp3.CurrentTime; } }
+            public TimeSpan TotalTime { get { return mp3.TotalTime; } }
+            public void Dispose() { try { mp3.Dispose(); } catch { } try { ms.Dispose(); } catch { } }
+        }
 
         // ==========  RENDER DEL CUBO (compartido)  ==========
         // Toma el nivel de audio (RMS) del bloque recien leido SIN modificar el sonido: solo observa el
