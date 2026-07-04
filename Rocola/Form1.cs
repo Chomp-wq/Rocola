@@ -2335,15 +2335,22 @@ namespace Rocola
             searchOverlay.Results = new List<SearchItem>();
             searchOverlay.SelRow = 1; searchOverlay.SelCol = 0;
             searchOverlay.Bounds = SearchOverlayRect();
-            searchOverlay.Visible = true;
-            searchOverlay.BringToFront();
-            searchOverlay.Focus();
 #if ROCOLA_GPU
-            // El buscador se dibuja por CPU (repintado directo con doble-buffer): mucho mas fluido al teclear que
-            // recomponer el teclado en una textura de pantalla completa y re-subirla a la tarjeta en cada tecla.
-            // SyncGpuFullScreen detecta el modo buscador y OCULTA el panel GPU (su bucle de render se detiene).
-            if (gpuEnabled && gpuPanel != null) SyncGpuFullScreen();
+            if (gpuEnabled && gpuPanel != null)
+            {
+                // El buscador se compone por GPU: el control CPU NO se pinta (queda oculto detras del panel).
+                // La entrada sigue funcionando por el formulario (ProcessCmdKey + Form_KeyPress con KeyPreview).
+                searchOverlay.Visible = false;
+                gpuPanel.Visible = true; gpuPanel.BringToFront();
+                SyncGpuFullScreen();   // aplica el modo buscador YA (ShowAlbum=false + UI urgente): transicion atomica, sin ver la rejilla un instante
+            }
+            else
 #endif
+            {
+                searchOverlay.Visible = true;
+                searchOverlay.BringToFront();
+                searchOverlay.Focus();
+            }
             searchOverlay.Invalidate();
         }
 
@@ -3923,21 +3930,16 @@ namespace Rocola
             // discos por los huecos del teclado al cerrar el buscador). UiUrgent salta la limitacion de franja.
             int mode = search ? 2 : discGpu ? 3 : attract ? 4 : nav ? 1 : 0;
             if (mode != gpuMode) { gpuMode = mode; uiOverlaySig = null; gpuPanel.UiUrgent = true; }
-            albumView.GpuCovered = (nav || search || discGpu || attract);   // panel GPU encima (o el buscador CPU): albumView no repinta por CPU
-            // El BUSCADOR ya NO se compone por GPU: se dibuja por CPU (el control searchOverlay, encima). Componer el
-            // teclado en una textura de pantalla completa y RE-SUBIRLA a la tarjeta en cada tecla (y ~10 veces mas por
-            // el destello) trababa el tecleo. Por CPU es un repintado directo con doble-buffer -> fluido. Aqui se OCULTA
-            // el panel en modo buscador (su bucle de render se detiene con Visible=false), como ya se hace con el disco por CPU.
-            bool showPanel = nav || discGpu || attract;
-            if (showPanel)
+            albumView.GpuCovered = (nav || search || discGpu || attract);   // panel GPU encima: albumView no repinta por CPU (evita rebuild invisible al paginar)
+            if (nav || search || discGpu || attract)
             {
                 if (gpuPanel.Left != 0 || gpuPanel.Top != 0 || gpuPanel.Width != ClientSize.Width || gpuPanel.Height != ClientSize.Height)
                     gpuPanel.Bounds = new Rectangle(0, 0, ClientSize.Width, ClientSize.Height);
                 gpuPanel.AlbumRect = albumView.Bounds;
-                gpuPanel.ShowAlbum = nav;   // solo en navegacion se dibuja la rejilla de cubos (disco/atraccion la cubren)
+                gpuPanel.ShowAlbum = nav;   // solo en navegacion se dibuja la rejilla de cubos (buscador/disco/atraccion la cubren)
                 if (!gpuPanel.Visible) { gpuPanel.Visible = true; gpuPanel.BringToFront(); }
             }
-            else if (gpuPanel.Visible) { gpuPanel.Visible = false; Invalidate(true); }   // buscador/disco(CPU)/video/etc: deja ver los controles normales
+            else if (gpuPanel.Visible) { gpuPanel.Visible = false; Invalidate(true); }   // disco(CPU)/video/etc: deja ver los controles normales
         }
 
         // Reconstruye la textura de las barras (superior + inferior) SOLO si cambio algo (firma). Devuelve la version.
@@ -4041,7 +4043,7 @@ namespace Rocola
             if (lblCredits != null) sb.Append('|').Append(lblCredits.Text);
             if (lblCount != null) sb.Append('|').Append(lblCount.Text);
             if (progress != null) sb.Append('|').Append((int)(progress.Value * 300)).Append(progress.Accent.ToArgb());
-            if (helpBar != null) sb.Append('|').Append(helpBar.FlashSig());   // anima el brillo del boton pulsado (0 = sin brillo -> no afecta en reposo)
+            if (helpBar != null) sb.Append('|').Append(helpBar.FlashCoarse());   // GRUESO: el brillo del boton pulsado no re-hornea la textura en cada cuadro del desvanecido
             // El FPS ya NO entra en la firma: se pinta en su propia textura, asi que su cambio (1/seg) no
             // obliga a rehacer esta textura -> en reposo la firma es constante -> 0 reconstrucciones.
             return sb.ToString();
@@ -4154,7 +4156,7 @@ namespace Rocola
                 searchOverlay.Phase = phase;
                 searchOverlay.AudioPulse = audioLevel;
                 searchOverlay.CubeAngle += 0.075;   // gira mas rapido
-                searchOverlay.Invalidate();         // repinta cada tick (24fps) SIEMPRE por CPU: fondo + cubo fluidos (el buscador ya no usa el panel GPU)
+                searchOverlay.Invalidate();         // repinta cada tick (24fps): fondo + cubo mas fluidos (no-op si el buscador va por GPU: el control esta oculto)
                 bool sGpu = false;
 #if ROCOLA_GPU
                 sGpu = (gpuPanel != null && gpuPanel.Visible);   // panel GPU encima: el mini-cubo lo dibuja la GPU (repintar el control seria invisible)
@@ -5044,6 +5046,17 @@ namespace Rocola
                 if (dt < 0 || dt > Ms) return 0;
                 return (which + 1) * 1000 + dt / 40;
             }
+            // Version GRUESA para la textura de UI por GPU: cambia SOLO al encenderse (que boton) y al apagarse, NO
+            // durante el desvanecido. Asi el destello ya no obliga a re-hornear+re-subir la textura de pantalla completa
+            // ~10 veces por pulsacion (lo que trababa el tecleo del buscador); el brillo se hornea al pulsar y se limpia
+            // al expirar. En CPU se sigue usando Sig() (fino) para animar el desvanecido suave.
+            public int CoarseSig()
+            {
+                if (which < 0) return 0;
+                int dt = Environment.TickCount - tick;
+                if (dt < 0 || dt > Ms) return 0;
+                return which + 1;
+            }
         }
 
         // Halo suave (radial) centrado en un simbolo de instrucciones; intensidad segun 'level' (0..1).
@@ -5134,7 +5147,8 @@ namespace Rocola
             // El usuario pulso un boton: resalta (brillo que decae) el simbolo correspondiente.
             public void Flash(int which) { flash.Fire(which, which == FEntrar ? GreenC : which == FVolver ? RedC : Color.White); }
             public void FlashMove(bool vertical) { flash.Fire(FMover, vertical ? RedC : YellowC); }   // arriba/abajo ROJO, izq/der AMARILLO
-            public int FlashSig() { return flash.Sig(); }
+            public int FlashSig() { return flash.Sig(); }              // fino (CPU): anima el desvanecido del brillo
+            public int FlashCoarse() { return flash.CoarseSig(); }      // grueso (textura GPU): no re-hornea durante el desvanecido
             private Font hbFont;   // fuente cacheada: la barra se redibuja ~13fps (glow) -> no crear una por cuadro
 
             protected override void OnPaint(PaintEventArgs e) { e.Graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit; RenderContent(e.Graphics); }
@@ -6258,7 +6272,7 @@ namespace Rocola
             public void FlashMove(bool vertical) { hintFlash.Fire(SMover, vertical ? SRed : SYellow); }   // arriba/abajo ROJO, izq/der AMARILLO
             public void FlashOK() { hintFlash.Fire(SPoner, SGreen); }
             public void FlashClose() { hintFlash.Fire(SCerrar, Color.White); }
-            public int HintFlashSig() { return hintFlash.Sig(); }
+            public int HintFlashSig() { return hintFlash.CoarseSig(); }   // GRUESO: el destello ya no re-hornea la textura de UI por GPU en cada cuadro del desvanecido (tecleo fluido)
             // Recursos de pintado CACHEADOS: el buscador creaba ~90 objetos GDI por cuadro (fuentes,
             // pinceles y plumas, incluso por cada tecla y resultado) a 24fps. Ahora todo es reusable.
             private Font fQuery, fHint, fToast, fHead, fEmpty, fRes, fResSub, fPrevT, fPrevS, fPrevH;
