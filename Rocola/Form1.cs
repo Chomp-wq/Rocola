@@ -2335,22 +2335,15 @@ namespace Rocola
             searchOverlay.Results = new List<SearchItem>();
             searchOverlay.SelRow = 1; searchOverlay.SelCol = 0;
             searchOverlay.Bounds = SearchOverlayRect();
+            searchOverlay.Visible = true;
+            searchOverlay.BringToFront();
+            searchOverlay.Focus();
 #if ROCOLA_GPU
-            if (gpuEnabled && gpuPanel != null)
-            {
-                // El buscador se compone por GPU: el control CPU NO se pinta (queda oculto detras del panel).
-                // La entrada sigue funcionando por el formulario (ProcessCmdKey + Form_KeyPress con KeyPreview).
-                searchOverlay.Visible = false;
-                gpuPanel.Visible = true; gpuPanel.BringToFront();
-                SyncGpuFullScreen();   // aplica el modo buscador YA (ShowAlbum=false + UI urgente): transicion atomica, sin ver la rejilla un instante
-            }
-            else
+            // El buscador se dibuja por CPU (repintado directo con doble-buffer): mucho mas fluido al teclear que
+            // recomponer el teclado en una textura de pantalla completa y re-subirla a la tarjeta en cada tecla.
+            // SyncGpuFullScreen detecta el modo buscador y OCULTA el panel GPU (su bucle de render se detiene).
+            if (gpuEnabled && gpuPanel != null) SyncGpuFullScreen();
 #endif
-            {
-                searchOverlay.Visible = true;
-                searchOverlay.BringToFront();
-                searchOverlay.Focus();
-            }
             searchOverlay.Invalidate();
         }
 
@@ -3930,16 +3923,21 @@ namespace Rocola
             // discos por los huecos del teclado al cerrar el buscador). UiUrgent salta la limitacion de franja.
             int mode = search ? 2 : discGpu ? 3 : attract ? 4 : nav ? 1 : 0;
             if (mode != gpuMode) { gpuMode = mode; uiOverlaySig = null; gpuPanel.UiUrgent = true; }
-            albumView.GpuCovered = (nav || search || discGpu || attract);   // panel GPU encima: albumView no repinta por CPU (evita rebuild invisible al paginar)
-            if (nav || search || discGpu || attract)
+            albumView.GpuCovered = (nav || search || discGpu || attract);   // panel GPU encima (o el buscador CPU): albumView no repinta por CPU
+            // El BUSCADOR ya NO se compone por GPU: se dibuja por CPU (el control searchOverlay, encima). Componer el
+            // teclado en una textura de pantalla completa y RE-SUBIRLA a la tarjeta en cada tecla (y ~10 veces mas por
+            // el destello) trababa el tecleo. Por CPU es un repintado directo con doble-buffer -> fluido. Aqui se OCULTA
+            // el panel en modo buscador (su bucle de render se detiene con Visible=false), como ya se hace con el disco por CPU.
+            bool showPanel = nav || discGpu || attract;
+            if (showPanel)
             {
                 if (gpuPanel.Left != 0 || gpuPanel.Top != 0 || gpuPanel.Width != ClientSize.Width || gpuPanel.Height != ClientSize.Height)
                     gpuPanel.Bounds = new Rectangle(0, 0, ClientSize.Width, ClientSize.Height);
                 gpuPanel.AlbumRect = albumView.Bounds;
-                gpuPanel.ShowAlbum = nav;   // solo en navegacion se dibuja la rejilla de cubos (buscador/disco/atraccion la cubren)
+                gpuPanel.ShowAlbum = nav;   // solo en navegacion se dibuja la rejilla de cubos (disco/atraccion la cubren)
                 if (!gpuPanel.Visible) { gpuPanel.Visible = true; gpuPanel.BringToFront(); }
             }
-            else if (gpuPanel.Visible) { gpuPanel.Visible = false; Invalidate(true); }   // disco(CPU)/video/etc: deja ver los controles normales
+            else if (gpuPanel.Visible) { gpuPanel.Visible = false; Invalidate(true); }   // buscador/disco(CPU)/video/etc: deja ver los controles normales
         }
 
         // Reconstruye la textura de las barras (superior + inferior) SOLO si cambio algo (firma). Devuelve la version.
@@ -4156,7 +4154,7 @@ namespace Rocola
                 searchOverlay.Phase = phase;
                 searchOverlay.AudioPulse = audioLevel;
                 searchOverlay.CubeAngle += 0.075;   // gira mas rapido
-                searchOverlay.Invalidate();         // repinta cada tick (24fps): fondo + cubo mas fluidos (no-op si el buscador va por GPU: el control esta oculto)
+                searchOverlay.Invalidate();         // repinta cada tick (24fps) SIEMPRE por CPU: fondo + cubo fluidos (el buscador ya no usa el panel GPU)
                 bool sGpu = false;
 #if ROCOLA_GPU
                 sGpu = (gpuPanel != null && gpuPanel.Visible);   // panel GPU encima: el mini-cubo lo dibuja la GPU (repintar el control seria invisible)
