@@ -469,16 +469,27 @@ namespace Rocola
             catch { }
         }
 
+        // Guarda la tabla de sonoridades. Para no frenar el cambio de cancion en bibliotecas GRANDES (el archivo
+        // puede tener miles de lineas), se toma una COPIA rapida en el hilo de la interfaz y el volcado a disco se
+        // hace en SEGUNDO PLANO. Un candado asegura un solo escritor a la vez. Si algo truena, se ignora (la medida
+        // se vuelve a aprender sola). Un archivo perdido/roto no rompe nada: se reconstruye oyendo las canciones.
+        private readonly object loudSaveLock = new object();
         private void SaveLoudCache()
         {
-            try
+            List<KeyValuePair<string, float>> snap;
+            try { snap = new List<KeyValuePair<string, float>>(loudCache); }   // copia (rapida) en el hilo de UI: la tabla solo se toca aqui
+            catch { return; }
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate
             {
-                StringBuilder sb = new StringBuilder();
-                foreach (KeyValuePair<string, float> kv in loudCache)
-                    sb.Append(kv.Value.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture)).Append('|').Append(kv.Key).Append("\r\n");
-                File.WriteAllText(LoudFile(), sb.ToString());
-            }
-            catch { }
+                try
+                {
+                    StringBuilder sb = new StringBuilder(snap.Count * 48 + 16);
+                    for (int i = 0; i < snap.Count; i++)
+                        sb.Append(snap[i].Value.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture)).Append('|').Append(snap[i].Key).Append("\r\n");
+                    lock (loudSaveLock) File.WriteAllText(LoudFile(), sb.ToString());   // el disco, fuera del hilo de la interfaz (no frena la musica)
+                }
+                catch { }
+            });
         }
 
         // Ganancia de nivelado para una cancion, segun su sonoridad medida (si ya se oyo alguna vez). 1 = sin cambio.
