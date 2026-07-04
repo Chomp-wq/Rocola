@@ -91,6 +91,20 @@ namespace Rocola
         private float audioRms = 0f, audioAvg = 0f;   // rms retrasado (lo que se oye AHORA) y piso movil (referencia del golpe)
         private float audioLevel = 0f;                // nivel para los visuales (golpes marcados + fondo suave)
         private int playFailStreak = 0;   // fallos seguidos al reproducir (para no ciclar si NAudio falla)
+        // ---- NIVELADO DE VOLUMEN (que todas las canciones suenen PAREJO) ----
+        // Cada cancion viene masterizada a distinto volumen. Aqui se mide la sonoridad (RMS integrado) de cada
+        // cancion MIENTRAS suena (aprovechando la medicion que ya se hace para el beat) y se guarda por ruta en
+        // rocola_volumen.txt. En reproducciones siguientes se aplica una ganancia para llevarla a un nivel objetivo
+        // COMUN, con recorte suave de picos. Asi, tras oirse una vez, cada cancion suena al mismo volumen que las
+        // demas. La PRIMERA vez que se oye una cancion nueva va a su volumen original (aun no hay medida): se
+        // aprende en esa pasada y ya queda pareja para siempre. Se puede apagar con normalizar=0 en rocola_config.txt.
+        private bool normalizeOn = true;                                                     // nivelado activo (por defecto si)
+        private readonly Dictionary<string, float> loudCache = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);   // ruta -> RMS integrado medido
+        private string curMeasurePath = null;                                                // cancion que se esta MIDIENDO ahora (null = no medir)
+        private double curSumSq = 0; private long curSamples = 0;                             // acumuladores del RMS integrado de la cancion actual (los llena el hilo de audio)
+        private const float NormTargetRms = 0.14f;                                            // nivel objetivo comun (RMS lineal ~ -17 dBFS): parejo y con margen para no saturar
+        private const float NormGainMin = 0.35f, NormGainMax = 3.5f;                          // limites de la ganancia (~ -9 dB .. +11 dB): evita subir de mas una cancion muy floja
+        private const long NormMinSamples = 800000;                                           // ~9s en estereo 44.1k: minimo para aceptar una medida (si se salta antes, no se guarda)
         // ----- PAGINAS de canciones (vista de disco): la lista muestra solo la pagina actual -----
         private SongPagerBar songPager;                        // barra "pagina X de Y" con flechas, arriba de la lista
         private List<object> songItems = new List<object>();   // TODAS las canciones/videos del disco abierto
@@ -281,6 +295,7 @@ namespace Rocola
             base.OnShown(e);
             LoadStats();   // estadisticas guardadas de sesiones anteriores (base de "Lo mas sonado")
             LoadConfigPrefs();   // preferencias: render GPU/CPU + carpetas de musica adicionales (Ctrl+F2)
+            LoadLoudCache();     // sonoridad medida por cancion (para nivelar el volumen de todas)
             LayoutControls();
 #if ROCOLA_GPU
             if (gpuPrefOn) ApplyAlbumGpu(true, false, false);   // render por GPU por defecto (o preferencia guardada); silencioso si el device falla; no re-guarda
@@ -391,6 +406,7 @@ namespace Rocola
                 {
                     string s = line.Trim();
                     if (s.StartsWith("gpu=")) gpuPrefOn = s.Substring(4).Trim() != "0";
+                    else if (s.StartsWith("normalizar=")) normalizeOn = s.Substring(11).Trim() != "0";   // nivelar volumen de las canciones (por defecto si)
                     else if (s.StartsWith("dir="))
                     {
                         string d = s.Substring(4).Trim();
@@ -407,10 +423,73 @@ namespace Rocola
             {
                 StringBuilder sb = new StringBuilder();
                 sb.Append("gpu=").Append(gpuPrefOn ? "1" : "0").Append("\r\n");
+                sb.Append("normalizar=").Append(normalizeOn ? "1" : "0").Append("\r\n");
                 for (int i = 0; i < extraMusicDirs.Count; i++) sb.Append("dir=").Append(extraMusicDirs[i]).Append("\r\n");
                 File.WriteAllText(ConfigFile, sb.ToString());
             }
             catch { }
+        }
+
+        // ===================== NIVELADO DE VOLUMEN (rocola_volumen.txt) =====================
+        // Una linea por cancion: "<rms>|<ruta>". El RMS integrado se mide al oirse la cancion y se guarda para que
+        // la proxima vez suene al mismo nivel que las demas. Archivo chico (una linea por cancion oida).
+        private string LoudFile() { return Path.Combine(Application.StartupPath, "rocola_volumen.txt"); }
+
+        private void LoadLoudCache()
+        {
+            try
+            {
+                string f = LoudFile();
+                if (!File.Exists(f)) return;
+                foreach (string line in File.ReadAllLines(f))
+                {
+                    int bar = line.IndexOf('|');
+                    if (bar <= 0 || bar >= line.Length - 1) continue;
+                    float rms;
+                    if (float.TryParse(line.Substring(0, bar), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out rms)
+                        && rms > 0.0001f)
+                        loudCache[line.Substring(bar + 1)] = rms;
+                }
+            }
+            catch { }
+        }
+
+        private void SaveLoudCache()
+        {
+            try
+            {
+                StringBuilder sb = new StringBuilder();
+                foreach (KeyValuePair<string, float> kv in loudCache)
+                    sb.Append(kv.Value.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture)).Append('|').Append(kv.Key).Append("\r\n");
+                File.WriteAllText(LoudFile(), sb.ToString());
+            }
+            catch { }
+        }
+
+        // Ganancia de nivelado para una cancion, segun su sonoridad medida (si ya se oyo alguna vez). 1 = sin cambio.
+        private float NormGainFor(string path)
+        {
+            if (!normalizeOn || path == null) return 1f;
+            float rms;
+            if (!loudCache.TryGetValue(path, out rms) || rms <= 0.0001f) return 1f;   // aun no medida: va a su volumen original y se aprende en esta pasada
+            float g = NormTargetRms / rms;
+            if (g < NormGainMin) g = NormGainMin; else if (g > NormGainMax) g = NormGainMax;
+            return g;
+        }
+
+        // Cierra la medida de la cancion que acaba de sonar: calcula su RMS integrado y lo guarda (si se oyo lo
+        // suficiente). La llama DisposePlaybackNow, ya con el audio detenido (sin carrera con el hilo de sonido).
+        private void FinalizeLoudMeasure()
+        {
+            string path = curMeasurePath; curMeasurePath = null;
+            double sumSq = curSumSq; long samples = curSamples; curSumSq = 0; curSamples = 0;
+            if (path == null || samples < NormMinSamples) return;
+            float rms = (float)Math.Sqrt(sumSq / samples);
+            if (rms <= 0.0001f) return;
+            float prev; bool had = loudCache.TryGetValue(path, out prev);
+            float val = had ? (prev * 0.5f + rms * 0.5f) : rms;   // promedia con la medida anterior: se estabiliza si la cancion se salto en distinto punto
+            loudCache[path] = val;
+            SaveLoudCache();
         }
 
         // Todas las raices de musica que EXISTEN ahora: la carpeta "musica" principal + las agregadas con Ctrl+F2.
@@ -3321,7 +3400,13 @@ namespace Rocola
             try
             {
                 reader = new AudioFileReader(t.Path);
-                reader.Volume = FixedVolume;
+                reader.Volume = FixedVolume;   // se queda en 1.0 (crudo): el nivelado se aplica en LevelTap, tras medir el volumen REAL
+                // NIVELADO: si esta cancion ya se oyo antes, se aplica la ganancia que la lleva al nivel comun; si es
+                // nueva, va a su volumen original y se APRENDE su sonoridad en esta pasada (para nivelarla la proxima vez).
+                curMeasurePath = normalizeOn ? t.Path : null;   // empieza a medir esta cancion
+                curSumSq = 0; curSamples = 0;
+                LevelTap tap = new LevelTap(reader, this);
+                tap.Gain = NormGainFor(t.Path);
                 // WaveOut con callback por VENTANA, no WaveOutEvent: el de eventos llama a
                 // WaitHandle.WaitOne(Int32), que NO existe en .NET 3.5 sin Service Pack 1
                 // (el de la rockola) y truena con MissingMethodException. Este no lo usa.
@@ -3333,7 +3418,7 @@ namespace Rocola
                 wo.NumberOfBuffers = 5;     // 5 bloques de 200ms
                 output = wo;
                 output.PlaybackStopped += Output_PlaybackStopped;
-                output.Init(new SampleToWaveProvider16(new LevelTap(reader, this)));
+                output.Init(new SampleToWaveProvider16(tap));
                 output.Play();
                 progressTimer.Start();
             }
@@ -3396,6 +3481,7 @@ namespace Rocola
                 output = null;
             }
             if (reader != null) { try { reader.Dispose(); } catch { } reader = null; }
+            FinalizeLoudMeasure();   // guarda la sonoridad medida de la cancion que acaba de sonar (audio ya detenido: sin carrera)
             lock (levelLock) levelQ.Clear();   // sin cancion no hay trozos pendientes: el pulso cae a cero
             audioRms = 0f; audioAvg = 0f;
         }
@@ -3411,13 +3497,16 @@ namespace Rocola
             int chunks = 4; int len = count / chunks;
             if (len < 256) { chunks = 1; len = count; }   // bloque chico: un solo trozo
             float[] tmp = rmsTmp ?? (rmsTmp = new float[4]);
+            double blockSumSq = 0;
             for (int c = 0; c < chunks; c++)              // el RMS se calcula FUERA del lock (no retiene a la UI)
             {
                 int start = offset + c * len;
                 int end = (c == chunks - 1) ? offset + count : start + len;
                 double sum = 0; for (int i = start; i < end; i++) { float v = buffer[i]; sum += v * v; }
+                blockSumSq += sum;
                 tmp[c] = (float)Math.Sqrt(sum / Math.Max(1, end - start));
             }
+            if (curMeasurePath != null) { curSumSq += blockSumSq; curSamples += count; }   // NIVELADO: acumula la sonoridad integrada CRUDA de la cancion (antes de la ganancia)
             lock (levelLock)
             {
                 for (int c = 0; c < chunks; c++)
@@ -3923,13 +4012,27 @@ namespace Rocola
         {
             private readonly NAudio.Wave.ISampleProvider src;
             private readonly Form1 owner;
+            public float Gain = 1f;   // NIVELADO: ganancia de volumen de esta cancion (1 = sin cambio). Se aplica DESPUES de medir el nivel crudo.
             public LevelTap(NAudio.Wave.ISampleProvider s, Form1 o) { src = s; owner = o; }
             public NAudio.Wave.WaveFormat WaveFormat { get { return src.WaveFormat; } }
             public int Read(float[] buffer, int offset, int count)
             {
                 int n = src.Read(buffer, offset, count);
                 if (n > 0 && owner != null)
-                    owner.ReportAudioBlock(buffer, offset, n, Math.Max(1, WaveFormat.SampleRate * WaveFormat.Channels));   // trozos de ~50ms con marca de tiempo
+                {
+                    owner.ReportAudioBlock(buffer, offset, n, Math.Max(1, WaveFormat.SampleRate * WaveFormat.Channels));   // mide el nivel CRUDO (beat + sonoridad); trozos de ~50ms con marca de tiempo
+                    float g = Gain;
+                    if (g != 1f)   // aplica el nivelado: lleva la cancion al volumen comun, con recorte duro de picos (raro con objetivo moderado)
+                    {
+                        int end = offset + n;
+                        for (int i = offset; i < end; i++)
+                        {
+                            float v = buffer[i] * g;
+                            if (v > 1f) v = 1f; else if (v < -1f) v = -1f;
+                            buffer[i] = v;
+                        }
+                    }
+                }
                 return n;
             }
         }
