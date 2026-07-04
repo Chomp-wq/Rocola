@@ -3150,8 +3150,9 @@ namespace Rocola
             topDiscs = discs;
         }
 
-        // Un video no se pudo reproducir: como encolarlo costo 1 credito, se le devuelve al cliente.
-        private void RefundVideoCredit()
+        // Algo que el cliente pago (cancion o video) no se pudo reproducir: como encolarlo costo 1 credito, se le
+        // devuelve. Sube 1 credito y guarda el estado. El aviso ("credito devuelto") lo pone cada llamador.
+        private void RefundCredit()
         {
             credits++;
             UpdateCredits();
@@ -3271,7 +3272,7 @@ namespace Rocola
             {
                 videoOn = false;
                 try { if (video != null) video.Visible = false; } catch { }
-                RefundVideoCredit();   // compensacion al cliente: el video no abrio
+                RefundCredit();   // compensacion al cliente: el video no abrio
                 ShowToast("No se pudo abrir el video: credito devuelto", Color.FromArgb(200, 80, 70));
                 lblStatus.Text = "Video (WMP): " + ex.Message;
                 // el video no arranco: pasar al siguiente sin trabar la cola (tras desenredar la pila de PlayNext)
@@ -3344,7 +3345,7 @@ namespace Rocola
             if (st == 1 && videoMaxPos < 3.0)
             {
                 try { LogError("video detenido sin reproducir: " + (nowPlaying != null ? nowPlaying.VideoPath : "?"), null); } catch { }
-                RefundVideoCredit();
+                RefundCredit();
                 ShowToast("Video no disponible: credito devuelto", Color.FromArgb(200, 130, 35));
                 PlayNext();
                 return;
@@ -3366,7 +3367,7 @@ namespace Rocola
                 // archivo ilegible). Se salta solo y se anota la ruta para identificarlo.
                 try { LogError("video estancado (playState=" + st + "): " + (nowPlaying != null ? nowPlaying.VideoPath : "?"), null); }
                 catch { }
-                RefundVideoCredit();   // compensacion al cliente: el video no se pudo reproducir
+                RefundCredit();   // compensacion al cliente: el video no se pudo reproducir
                 ShowToast("Video no disponible: credito devuelto", Color.FromArgb(200, 130, 35));
                 PlayNext();
             }
@@ -3432,6 +3433,8 @@ namespace Rocola
                 lblStatus.Text = "No se pudo reproducir " + Path.GetFileName(t.Path) + " (" + ex.Message + ")";
                 LogError("PlayTrack " + Path.GetFileName(t.Path), ex);
                 NoteIncompatible(t.Path, ex);   // ni con el lector tolerante: deja la ruta en rocola_incompatibles.txt para repararla
+                RefundCredit();   // la cancion que el cliente pago no sono: se le devuelve el credito
+                ShowToast("No se pudo reproducir: credito devuelto", Color.FromArgb(200, 80, 70));
                 DisposePlaybackNow();
                 // OPTIMIZACION (estabilidad): antes era PlayNext() directo. Si varias canciones seguidas
                 // no abren (archivos movidos/corruptos) se apilaba PlayTrack->PlayNext->PlayTrack... hasta
@@ -3556,6 +3559,8 @@ namespace Rocola
             {
                 lblStatus.Text = "Aviso al reproducir: " + e.Exception.Message;
                 LogError("PlaybackStopped", e.Exception);
+                RefundCredit();   // la cancion que el cliente pago fallo al reproducirse: se le devuelve el credito
+                ShowToast("No se pudo reproducir: credito devuelto", Color.FromArgb(200, 80, 70));
                 playFailStreak++;
                 if (playFailStreak >= 3)
                 {
