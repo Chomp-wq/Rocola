@@ -2503,7 +2503,16 @@ namespace Rocola
         {
             lastInput = DateTime.Now;   // cualquier tecla reinicia la inactividad
             lastInputTick = Environment.TickCount;   // el precalentador de miniaturas pausa si hay actividad
-            if (attractOn) { ExitAttract(); return true; }   // primera pulsacion: salir del modo atraccion
+            if (attractOn)
+            {
+                // Cualquier boton despierta la rocola... pero la MONEDA ademas ACREDITA. Antes este return se
+                // tragaba el pulso del monedero: el cliente metia su moneda durante la atraccion (el estado MAS
+                // comun al acercarse, entra sola a los 40s de reposo) y SU DINERO SE PERDIA sin dar creditos.
+                ExitAttract();
+                Keys akc = keyData & Keys.KeyCode;
+                if (IsCoin(akc) && (msg.LParam.ToInt64() & 0x40000000) == 0) AddCoin();   // mismo filtro de auto-repeticion que abajo
+                return true;
+            }
 
             // ASISTENTE DE CONFIGURACION: captura el boton que se presiona para cada funcion.
             if (configMode) { CaptureConfigKey(keyData, msg); return true; }
