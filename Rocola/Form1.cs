@@ -2832,12 +2832,21 @@ namespace Rocola
         private string StateFile() { return Path.Combine(Application.StartupPath, "rocola_estado.txt"); }
         private bool stateRestored = false;   // la restauracion corre UNA vez (al primer armado de biblioteca)
 
+        // El estado de recuperacion pertenece a UN "dia del negocio", que ARRANCA a las 7 AM (hora del sistema): a
+        // esa hora ya cerro, y nada de la noche anterior debe cruzar las 7 AM. Todo lo de antes de las 7 AM cuenta
+        // como el dia ANTERIOR. Al pasar esa hora: el estado guardado se DESCARTA al restaurar (arranque limpio en
+        // la manana) y se LIMPIA si la rocola sigue encendida (creditos/cola a cero) -> cada dia arranca en cero.
+        private const int BusinessDayStartHour = 7;
+        private static DateTime BusinessDay(DateTime dt) { return dt.AddHours(-BusinessDayStartHour).Date; }
+        private DateTime stateDay = BusinessDay(DateTime.Now);   // dia del negocio del estado vivo actual
+
         private void SaveState()
         {
             try
             {
                 StringBuilder sb = new StringBuilder(256);
                 sb.Append("ROCOLA-ESTADO v1\r\n");
+                sb.Append("ts=").Append(DateTime.Now.Ticks).Append("\r\n");   // cuando se guardo (para descartarlo si cruza las 7 AM)
                 sb.Append("creditos=").Append(credits).Append("\r\n");
                 if (nowPlaying != null)
                     sb.Append("sonando=").Append(nowPlaying.IsVideo ? 'V' : 'S').Append('|').Append(nowPlaying.PathKey()).Append("\r\n");
@@ -2846,6 +2855,31 @@ namespace Rocola
                 File.WriteAllText(StateFile(), sb.ToString());   // archivo diminuto (<1KB): escritura sincrona sin costo notable
             }
             catch { }
+        }
+
+        // Si la rocola sigue ENCENDIDA y el reloj cruza las 7 AM (nuevo dia del negocio), reinicia el estado:
+        // creditos y cola a cero, y borra el archivo guardado. Una cancion que este sonando (raro a esa hora)
+        // termina sola y, al vaciarse la cola, para. Asi nada de la noche anterior cruza el corte del dia.
+        private void CheckBusinessDayReset()
+        {
+            DateTime today = BusinessDay(DateTime.Now);
+            if (today == stateDay) return;   // mismo dia del negocio: nada que hacer (comun)
+            stateDay = today;                // paso a un dia nuevo (>= 7 AM): reinicia UNA vez
+            bool had = credits > 0 || queue.Count > 0;
+            credits = 0; queue.Clear();
+            UpdateCredits();
+            if (nowPlaying != null) SaveState();                       // sigue sonando algo: deja el archivo al dia (con la nueva marca)
+            else { try { File.Delete(StateFile()); } catch { } }       // nada suena: borra el estado guardado -> arranque limpio
+            if (had) UpdateNowPlayingUI();                              // refresca el letrero "En cola" (los labels se repintan solos)
+        }
+
+        // Cuando se guardo el estado: la marca "ts=" (ticks); si falta (formato viejo), la fecha del archivo.
+        private static DateTime SavedStateTime(string[] lines, string file)
+        {
+            for (int i = 0; i < lines.Length; i++)
+                if (lines[i].StartsWith("ts="))
+                { long t; if (long.TryParse(lines[i].Substring(3), out t) && t > 0) { try { return new DateTime(t); } catch { } } break; }
+            try { return File.GetLastWriteTime(file); } catch { return DateTime.Now; }
         }
 
         // Reconstruye creditos/cola/cancion desde el archivo de estado (si hay algo que reanudar).
@@ -2859,6 +2893,9 @@ namespace Rocola
                 if (!File.Exists(f)) return;
                 string[] L = File.ReadAllLines(f);
                 if (L.Length < 1 || L[0] != "ROCOLA-ESTADO v1") return;
+                // El estado solo vale DENTRO del mismo dia del negocio (corte a las 7 AM). Si ya cruzo esa hora
+                // (lo de anoche, visto ya en la manana), se descarta y se borra el archivo: la rocola arranca limpia.
+                if (BusinessDay(DateTime.Now) != BusinessDay(SavedStateTime(L, f))) { try { File.Delete(f); } catch { } return; }
                 // mapas ruta -> cancion/disco para reconstruir los elementos (solo lo que SIGA existiendo)
                 Dictionary<string, Track> byPath = new Dictionary<string, Track>(StringComparer.OrdinalIgnoreCase);
                 Dictionary<string, Album> discByPath = new Dictionary<string, Album>(StringComparer.OrdinalIgnoreCase);
@@ -4156,6 +4193,7 @@ namespace Rocola
             bool fullFrame = (frameTick % 3) == 0;   // fondo completo 1 de cada 3 (~8fps): el fondo es estatico, repintarlo mas seguido solo gasta CPU (clave en el CPU lento de la rocola)
 
             DrainCoverTrash();   // libera carátulas expulsadas (seguro: no hay repintado en curso)
+            CheckBusinessDayReset();   // al cruzar las 7 AM: reinicia el estado (nada de anoche cruza el corte del dia)
 
             // BEAT: toma el RMS cuyo momento de OIRSE ya llego (medido ~0.85s antes, al llenar el colchon) y
             // detecta GOLPES contra un piso movil: el pulso visual cae encima del golpe que se esta oyendo,
