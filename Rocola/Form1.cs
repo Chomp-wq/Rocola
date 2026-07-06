@@ -2829,6 +2829,10 @@ namespace Rocola
         // sonando arranca DESDE EL PRINCIPIO (a peticion: media cancion confunde mas de lo que ayuda), con su
         // cola y los creditos del cliente intactos. Para el CIERRE del negocio: SALTAR repetido vacia la cola
         // y, con todo vacio, una pulsacion de SALTAR borra los creditos -> estado vacio -> arranca limpia.
+        // El archivo se DESCARTA por tres vias que distinguen "cierre" de "apagon": (1) apagado deliberado
+        // (boton de poder -> Windows apaga, u Alt+F4) borra el archivo en OnFormClosing; (2) al cruzar las 7 AM
+        // estando ociosa (CheckBusinessDayReset); (3) al restaurar, si el estado ya cruzo las 7 AM y no es reciente.
+        // Un apagon no dispara nada de esto -> el archivo sobrevive y la rocola reanuda.
         private string StateFile() { return Path.Combine(Application.StartupPath, "rocola_estado.txt"); }
         private bool stateRestored = false;   // la restauracion corre UNA vez (al primer armado de biblioteca)
 
@@ -4319,7 +4323,18 @@ namespace Rocola
 
         private static string Fmt(TimeSpan t) { return ((int)t.TotalMinutes) + ":" + t.Seconds.ToString("00"); }
 
-        protected override void OnFormClosing(FormClosingEventArgs e) { DisposePlaybackNow(); base.OnFormClosing(e); }
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            DisposePlaybackNow();
+            // APAGADO DELIBERADO vs APAGON. El boton de poder de la rocola esta configurado en Windows para APAGAR
+            // -> al presionarlo, Windows avisa y ESTE evento se dispara (CloseReason.WindowsShutDown; tambien Alt+F4
+            // = UserClosing). Ahi borramos el estado vivo para que manana arranque LIMPIA. En cambio, un APAGON corta
+            // la corriente de golpe y no corre NADA de esto: el archivo SOBREVIVE y, al volver la luz, la rocola
+            // REANUDA (creditos + cola). Es decir, la sola presencia del archivo al arrancar delata que fue apagon.
+            if (e.CloseReason == CloseReason.WindowsShutDown || e.CloseReason == CloseReason.UserClosing)
+                try { File.Delete(StateFile()); } catch { }
+            base.OnFormClosing(e);
+        }
 
         // ==========  BOTON REDONDEADO  ==========
 
