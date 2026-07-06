@@ -2270,7 +2270,7 @@ namespace Rocola
 
         private void EnterAttract()
         {
-            if (attractView == null) return;
+            if (attractView == null || libBuilding) return;   // el worker esta armando 'albums': muestrearlo aqui seria una carrera (crash)
             // muestrear portadas repartidas por toda la coleccion (variedad) para el cubo
             List<string> covers = new List<string>();
             int na = albums.Count;
@@ -3130,6 +3130,7 @@ namespace Rocola
         private void BuildTopDiscs()
         {
             if (!topDirty && topDiscs != null) return;   // OPTIMIZACION (TOP): nada cambio -> reusar lo ya armado
+            if (libBuilding) return;                     // el worker esta mutando albums/videoAlbums: iterarlos seria una carrera (crash). topDirty queda puesto -> se reconstruye al terminar
             topDirty = false;                            // limpio AQUI: cubre todas las salidas (incluidas las tempranas)
             topDiscs = new List<Album>();
             if (songCounts.Count == 0) return;
@@ -4283,7 +4284,8 @@ namespace Rocola
             }
 
             // MODO ATRACCION: en reposo, sin nada sonando, mostrar la pantalla estrellada con el cubo.
-            if (!attractOn && nowPlaying == null && queue.Count == 0 && !searchOpen && !videoOn
+            // (nunca durante un re-escaneo: EnterAttract muestrea 'albums' y el worker lo esta mutando)
+            if (!attractOn && nowPlaying == null && queue.Count == 0 && !searchOpen && !videoOn && !libBuilding
                 && albums.Count > 0 && (lblConfig == null || !lblConfig.Visible)
                 && (DateTime.Now - lastInput).TotalSeconds > AttractIdleSecs)
                 EnterAttract();
@@ -4589,7 +4591,7 @@ namespace Rocola
                 int bucket = 0;   // patron FIJO: regenerarlo cada minuto obligaba a re-hornear ~120 estrellas (glow+destello) -> tiron periodico en la rocola
                 if (stars != null && sw == w && sh == h && sBucket == bucket) return;
                 sw = w; sh = h; sBucket = bucket;
-                Random r = new Random((20260620 + bucket * 40503) & 0x7FFFFFFF);   // seed que cambia por minuto (siempre positivo)
+                Random r = new Random((20260620 + bucket * 40503) & 0x7FFFFFFF);   // seed FIJO (bucket=0): el patron ya no rota por minuto (regenerarlo daba un tiron periodico)
                 int n = (int)(((double)(w * h) / 6500) * Density);   // MAS estrellas (densidad por area), escalada por Density
                 int lo = (int)(90 * Density); if (lo < 20) lo = 20;
                 // Tope de estrellas: este campo ahora cubre la PANTALLA COMPLETA (fondo + rejilla + interior de disco,
@@ -7098,10 +7100,13 @@ namespace Rocola
                     {
                         int major = header[3];
                         int size = ((header[6] & 0x7f) << 21) | ((header[7] & 0x7f) << 14) | ((header[8] & 0x7f) << 7) | (header[9] & 0x7f);
-                        byte[] tag = new byte[size];
-                        int read = 0, r;
-                        while (read < size && (r = fs.Read(tag, read, size - read)) > 0) read += r;
-                        ParseId3v2(tag, read, major, t);
+                        if (size > 0 && size <= 33554432)   // tope 32MB: un encabezado CORRUPTO puede declarar hasta 256MB y ese new byte[] tumbaria la RAM de la rocola; se cae al ID3v1
+                        {
+                            byte[] tag = new byte[size];
+                            int read = 0, r;
+                            while (read < size && (r = fs.Read(tag, read, size - read)) > 0) read += r;
+                            ParseId3v2(tag, read, major, t);
+                        }
                     }
                 }
                 if (string.IsNullOrEmpty(t.Title) || string.IsNullOrEmpty(t.Artist) || string.IsNullOrEmpty(t.Album) || string.IsNullOrEmpty(t.Genre)) ReadId3v1(path, t);
