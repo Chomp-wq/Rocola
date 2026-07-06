@@ -363,7 +363,7 @@ namespace Rocola
     // -------- Campo estrellado reusable (titileo + latido), teñible por genero --------
     internal sealed class GpuStarfield
     {
-        private D3D9Device gpu; private IntPtr glowTex;
+        private D3D9Device gpu; private IntPtr glowTex; private IntPtr uiGlowTex;   // glow de estrella (con chispa) / glow radial LISO para el destello de UI
         private float[] sx, sy, sphase, sspeed, ssize; private int[] skind; private uint[] scol; private int nStars;
         private D3D9.Vtx[] skyV = new D3D9.Vtx[12]; private D3D9.Vtx[] starV;   // cielo = 2 quads apilados (3 paradas de color)
         private uint skyTop = 0xFF06081A, skyMid = 0xFF101C3A, skyBot = 0xFF1A2C5A;
@@ -403,6 +403,7 @@ namespace Rocola
             if (!gpu.Ok) return;
             seed0 = seed;
             using (Bitmap tex = BakeStarTexture(64)) glowTex = gpu.CreateTextureFromBitmap(tex);
+            using (Bitmap g2 = BakeRadialGlow(64)) uiGlowTex = gpu.CreateTextureFromBitmap(g2);   // glow LISO (sin chispa) para el destello del boton
             BuildStars(w, h, seed);
         }
 
@@ -411,6 +412,22 @@ namespace Rocola
         public bool UpdateOverlay(IntPtr tex, Bitmap bmp, out float uMax, out float vMax) { return gpu.UpdateTexturePow2(tex, bmp, out uMax, out vMax); }
         public void DrawCube(IntPtr tex, float uMax, float vMax, float x, float y, float w, float h, double angle, float alpha, double tilt)
         { if (Ok) gpu.DrawCube(tex, uMax, vMax, x, y, w, h, angle, alpha, tilt); }
+
+        // Un halo (glow radial ADITIVO) centrado en (cx,cy) de radio r, teñido/atenuado por 'argb'. Reusa la textura
+        // de glow de las estrellas. Sirve para el DESTELLO del boton pulsado del buscador: lo anima la GPU (alfa que
+        // baja) sin re-hornear ni re-subir la textura de UI -> el destello se desvanece suave y el tecleo va fluido.
+        private readonly D3D9.Vtx[] glowV = new D3D9.Vtx[6];
+        public void DrawGlow(float cx, float cy, float r, uint argb)
+        {
+            IntPtr t = uiGlowTex != IntPtr.Zero ? uiGlowTex : glowTex;
+            if (!Ok || t == IntPtr.Zero || r < 1f) return;
+            float x0 = cx - r, y0 = cy - r, x1 = cx + r, y1 = cy + r;
+            GV(0, x0, y0, argb, 0f, 0f); GV(1, x1, y0, argb, 1f, 0f); GV(2, x0, y1, argb, 0f, 1f);
+            GV(3, x1, y0, argb, 1f, 0f); GV(4, x1, y1, argb, 1f, 1f); GV(5, x0, y1, argb, 0f, 1f);
+            gpu.DrawStars(glowV, 2, t);   // mismo camino aditivo que las estrellas (2 triangulos)
+        }
+        private void GV(int i, float x, float y, uint c, float u, float v)
+        { glowV[i].X = x - 0.5f; glowV[i].Y = y - 0.5f; glowV[i].Z = 0f; glowV[i].Rhw = 1f; glowV[i].Color = c; glowV[i].U = u; glowV[i].V = v; }
 
         public void Render(int w, int h, float pulse) { if (Begin(w, h, pulse)) End(); }   // solo cielo+estrellas (ventana de prueba)
 
@@ -545,6 +562,7 @@ namespace Rocola
         public void Dispose()
         {
             if (glowTex != IntPtr.Zero) { D3D9.Release(glowTex); glowTex = IntPtr.Zero; }
+            if (uiGlowTex != IntPtr.Zero) { D3D9.Release(uiGlowTex); uiGlowTex = IntPtr.Zero; }
             if (gpu != null) { gpu.Dispose(); gpu = null; }
         }
 
@@ -581,6 +599,30 @@ namespace Rocola
                 scol[i] = pal[rnd.Next(pal.Length)];
             }
             starV = new D3D9.Vtx[nStars * 6];
+        }
+
+        // Glow radial LISO (sin la chispa de 4 puntas de las estrellas): para el destello del boton pulsado del
+        // buscador, que debe verse como un halo suave (no como una estrellita).
+        private static Bitmap BakeRadialGlow(int size)
+        {
+            Bitmap bmp = new Bitmap(size, size, PixelFormat.Format32bppArgb);
+            using (Graphics g = Graphics.FromImage(bmp))
+            {
+                g.Clear(Color.Transparent);
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                using (GraphicsPath gp = new GraphicsPath())
+                {
+                    gp.AddEllipse(0, 0, size, size);
+                    using (PathGradientBrush pgb = new PathGradientBrush(gp))
+                    {
+                        pgb.CenterPoint = new PointF(size / 2f, size / 2f);
+                        pgb.CenterColor = Color.FromArgb(220, 255, 255, 255);
+                        pgb.SurroundColors = new Color[] { Color.FromArgb(0, 255, 255, 255) };
+                        g.FillEllipse(pgb, 0, 0, size, size);
+                    }
+                }
+            }
+            return bmp;
         }
 
         private static Bitmap BakeStarTexture(int size)
@@ -746,6 +788,11 @@ namespace Rocola
         public bool UiUrgent;                             // el form lo pone al cambiar de modo: rehacer la UI YA (sin esperar franja) para que la transicion sea atomica
         public Func<Bitmap> GetUi;                        // bitmap transparente con las barras (lo provee el form)
         public Func<int> GetUiVersion;                    // cambia cuando alguna barra cambia (re-subir textura)
+        // DESTELLOS del boton pulsado (buscador): halos que se desvanecen. La GPU los dibuja como quads propios (no
+        // en la textura de UI), asi el desvanecido NO obliga a re-subir la textura -> tecleo fluido y brillo suave.
+        public struct UiGlow { public float Cx, Cy, R; public uint Argb; }
+        public Func<UiGlow[], int> GetUiGlows;            // el form llena el buffer con los destellos activos y devuelve cuantos
+        private readonly UiGlow[] uiGlowBuf = new UiGlow[8];
         public int Fps;                                   // cuadros por segundo (diagnostico)
         public bool ShowFps;                              // dibujar el contador de FPS (oculto por defecto; el form lo alterna con Ctrl+F1)
         public float Dim = 1f;                            // atenuacion del starfield mientras se navega con musica (el form la anima; 1 = normal)
@@ -910,6 +957,12 @@ namespace Rocola
             }
             // Barras superior e inferior (textura de UI) ENCIMA del fondo y los cubos.
             if (uiTex != IntPtr.Zero) { SetTexQuad(uiQuad, 0, 0, Width, Height, uiU, uiV); stars.DrawQuad(uiTex, uiQuad); }
+            // DESTELLOS del boton pulsado (buscador): halos aditivos ENCIMA de la UI, animados por la GPU (sin re-subir textura).
+            if (GetUiGlows != null)
+            {
+                int ng = GetUiGlows(uiGlowBuf);
+                for (int i = 0; i < ng && i < uiGlowBuf.Length; i++) { UiGlow ug = uiGlowBuf[i]; stars.DrawGlow(ug.Cx, ug.Cy, ug.R, ug.Argb); }
+            }
             // Mini-cubo de la barra inferior (gira): cubo GPU, encima de la barra.
             if (cs.Mini.Has)
                 stars.DrawCube(miniTex, miniU, miniV, cs.Mini.X, cs.Mini.Y, cs.Mini.W, cs.Mini.H, cs.Mini.Angle, 1f, cs.Mini.Tilt);

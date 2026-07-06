@@ -3855,6 +3855,7 @@ namespace Rocola
                 gpuPanel.GetCubeState = delegate { return BuildGpuCubeState(); };   // album (offset a pantalla) + mini-cubo
                 gpuPanel.GetUi = delegate { return uiOverlay; };                    // barras superior e inferior
                 gpuPanel.GetUiVersion = delegate { return EnsureUiOverlay(); };
+                gpuPanel.GetUiGlows = FillUiGlows;                                   // destellos del boton pulsado (buscador): la GPU los anima como quads (sin re-subir textura)
                 Controls.Add(gpuPanel);
             }
             if (on && !gpuEnabled)
@@ -4054,6 +4055,26 @@ namespace Rocola
             return uiOverlayVer;
         }
 
+        // Llena el buffer con los DESTELLOS activos del buscador (el boton pulsado que se desvanece), en coords de
+        // pantalla. La GPU los dibuja como halos aditivos animados por el alfa: el destello se ve suave SIN re-subir
+        // la textura de UI en cada cuadro del desvanecido -> tecleo fluido. Devuelve cuantos escribio.
+        private int FillUiGlows(GpuPanel.UiGlow[] buf)
+        {
+            if (buf == null) return 0;
+            int n = 0;
+            if (searchOpen && searchOverlay != null)
+            {
+                int sx = searchOverlay.Left, sy = searchOverlay.Top;
+                for (int k = 0; k < 3 && n < buf.Length; k++)
+                {
+                    float cx, cy, r; int argb;
+                    if (searchOverlay.GetHintGlow(k, out cx, out cy, out r, out argb))
+                    { buf[n].Cx = sx + cx; buf[n].Cy = sy + cy; buf[n].R = r; buf[n].Argb = (uint)argb; n++; }
+                }
+            }
+            return n;
+        }
+
         private string UiSig()
         {
             System.Text.StringBuilder sb = new System.Text.StringBuilder(192);
@@ -4062,10 +4083,10 @@ namespace Rocola
                 sb.Append("|S").Append(searchOverlay.Query).Append('|').Append(searchOverlay.SelRow).Append(',').Append(searchOverlay.SelCol)
                   .Append('|').Append(searchOverlay.FocusResults).Append(searchOverlay.SelResult)
                   .Append('|').Append(searchOverlay.Results == null ? 0 : searchOverlay.Results.Count)
-                  .Append('|').Append(searchOverlay.ToastOn).Append(searchOverlay.ToastMsg)
-                  .Append('|').Append(searchOverlay.HintFlashSig());   // brillo del boton pulsado (0 en reposo -> no reconstruye)
-                  // Sin fase del teclado aqui: es carisimo de rehacer. En reposo la firma solo cambia por el
-                  // brillo (breve) -> 0 reconstrucciones cuando no pulsas -> pleno FPS.
+                  .Append('|').Append(searchOverlay.ToastOn).Append(searchOverlay.ToastMsg);
+                  // El DESTELLO del boton pulsado YA NO entra en la firma: lo dibuja la GPU como halo aparte (FillUiGlows),
+                  // asi que su desvanecido no re-hornea ni re-sube la textura del teclado -> tecleo fluido con brillo suave.
+                  // Tampoco la fase del teclado (carisima). En reposo la firma es constante -> 0 reconstrucciones.
             else if (panelSongs != null && panelSongs.Visible)   // INTERIOR DE DISCO: etiqueta, seleccion, pagina
                 sb.Append("|D").Append(lblAlbum != null ? lblAlbum.Text : "").Append('|').Append(songSel).Append('|').Append(songItems.Count)
                   .Append('|').Append(songList != null ? songList.PageStart : 0).Append('|').Append(bgAccent.ToArgb());
@@ -6308,6 +6329,21 @@ namespace Rocola
             public void FlashOK() { hintFlash.Fire(SPoner, SGreen); }
             public void FlashClose() { hintFlash.Fire(SCerrar, Color.White); }
             public int HintFlashSig() { return hintFlash.Sig(); }
+            // Centro/radio de los 3 halos del hint bar (Mover/Poner/Cerrar), guardados al maquetar. En GPU el halo NO
+            // se hornea en la textura: lo dibuja la GPU como quad (GetHintGlow) para que el desvanecido no re-suba la textura.
+            private readonly float[] hgCx = new float[3], hgCy = new float[3], hgR = new float[3];
+            private void StoreHintGlow(int k, float leftX, float cy, float symW) { hgCx[k] = leftX + symW / 2f; hgCy[k] = cy; hgR[k] = symW * 0.9f + 6f; }
+            public bool GetHintGlow(int k, out float cx, out float cy, out float r, out int argb)
+            {
+                cx = cy = r = 0f; argb = 0;
+                if (k < 0 || k > 2) return false;
+                float lvl = hintFlash.Level(k);   // k == SMover/SPoner/SCerrar (0/1/2)
+                if (lvl <= 0.02f) return false;
+                cx = hgCx[k]; cy = hgCy[k]; r = hgR[k];
+                Color c = hintFlash.Col;
+                argb = Color.FromArgb((int)(lvl * 215f), c.R, c.G, c.B).ToArgb();   // alfa = brillo del destello; rgb = su color
+                return true;
+            }
             // Recursos de pintado CACHEADOS: el buscador creaba ~90 objetos GDI por cuadro (fuentes,
             // pinceles y plumas, incluso por cada tecla y resultado) a 24fps. Ahora todo es reusable.
             private Font fQuery, fHint, fToast, fHead, fEmpty, fRes, fResSub, fPrevT, fPrevS, fPrevH;
@@ -6505,13 +6541,18 @@ namespace Rocola
                         Color htx = Color.FromArgb(214, 222, 242);
                         int hd = 20; float hgap = 7, hgrp = 20;   // MISMO tamano que la barra principal
                         float hx = hintRect.X;
-                        GlowAround(g, hx, hcy, hd + 2, hintFlash.Level(SMover), hintFlash.Col);   // MOVER = cruceta (color segun direccion)
+                        // Guarda el centro/radio del halo (para dibujarlo por GPU). En GPU NO se hornea aqui (forGpu);
+                        // en CPU si se pinta como siempre. Asi el destello se anima por GPU sin re-subir la textura.
+                        StoreHintGlow(SMover, hx, hcy, hd + 2);
+                        if (!forGpu) GlowAround(g, hx, hcy, hd + 2, hintFlash.Level(SMover), hintFlash.Col);   // MOVER = cruceta (color segun direccion)
                         hx = CtrlPad(g, hx, hcy, hd + 2);
                         hx = CtrlTxt(g, hf, "Mover", hx + hgap, hcy, htx) + hgrp;
-                        GlowAround(g, hx, hcy, hd, hintFlash.Level(SPoner), hintFlash.Col);        // PONER/ELEGIR = punto verde
+                        StoreHintGlow(SPoner, hx, hcy, hd);
+                        if (!forGpu) GlowAround(g, hx, hcy, hd, hintFlash.Level(SPoner), hintFlash.Col);        // PONER/ELEGIR = punto verde
                         hx = CtrlDot(g, hx, hcy, hd, SGreen);
                         hx = CtrlTxt(g, hf, "Poner / Elegir", hx + hgap, hcy, htx) + hgrp;
-                        GlowAround(g, hx, hcy, hd * 2 + 3, hintFlash.Level(SCerrar), hintFlash.Col);   // CERRAR = 2 puntos
+                        StoreHintGlow(SCerrar, hx, hcy, hd * 2 + 3);
+                        if (!forGpu) GlowAround(g, hx, hcy, hd * 2 + 3, hintFlash.Level(SCerrar), hintFlash.Col);   // CERRAR = 2 puntos
                         hx = CtrlDot(g, hx, hcy, hd, SRed) + 3; hx = CtrlDot(g, hx, hcy, hd, SGreen);
                         hx = CtrlTxt(g, hf, "Cerrar", hx + hgap, hcy, htx);
                     }
