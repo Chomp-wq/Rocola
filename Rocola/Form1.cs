@@ -1862,6 +1862,7 @@ namespace Rocola
                     coverPumpCount++;
                     System.Threading.Thread t = new System.Threading.Thread(CoverPump);
                     t.IsBackground = true;
+                    t.Priority = System.Threading.ThreadPriority.BelowNormal;   // decodificar caratulas NUNCA por delante de la interfaz/render (clave si el CPU es de un nucleo)
                     t.Start();
                 }
             }
@@ -1885,6 +1886,7 @@ namespace Rocola
                     coverPumpCount++;
                     System.Threading.Thread t = new System.Threading.Thread(CoverPump);
                     t.IsBackground = true;
+                    t.Priority = System.Threading.ThreadPriority.BelowNormal;   // idem: la caratula puede esperar; un cuadro perdido se NOTA
                     t.Start();
                 }
             }
@@ -3898,9 +3900,11 @@ namespace Rocola
                     return r;
                 };
                 gpuPanel.GetCubeState = delegate { return BuildGpuCubeState(); };   // album (offset a pantalla) + mini-cubo
-                gpuPanel.GetUi = delegate { return uiOverlay; };                    // barras superior e inferior
+                gpuPanel.GetUi = delegate { return uiOverlay; };                    // textura PRINCIPAL de la UI (altura segun el modo)
                 gpuPanel.GetUiVersion = delegate { return EnsureUiOverlay(); };
-                gpuPanel.GetUiGlows = FillUiGlows;                                   // destellos del boton pulsado (buscador): la GPU los anima como quads (sin re-subir textura)
+                gpuPanel.GetUiBot = delegate { return uiBotOverlay; };              // franja de ESTADO de abajo (textura chica aparte: el reloj no rehace la principal)
+                gpuPanel.GetUiBotVersion = delegate { return EnsureUiBotOverlay(); };
+                gpuPanel.GetUiGlows = FillUiGlows;                                   // halos animados (destello de boton, pulso de letra, TOP, atraccion): quads GPU, sin re-subir textura
                 Controls.Add(gpuPanel);
             }
             if (on && !gpuEnabled)
@@ -4026,17 +4030,41 @@ namespace Rocola
             else if (gpuPanel.Visible) { gpuPanel.Visible = false; Invalidate(true); }   // disco(CPU)/video/etc: deja ver los controles normales
         }
 
-        // Reconstruye la textura de las barras (superior + inferior) SOLO si cambio algo (firma). Devuelve la version.
+        // Donde EMPIEZA la franja de estado de abajo (la que va en su propia textura chica).
+        private int BotStripTop(int h)
+        {
+            int t = (lblNow != null) ? lblNow.Top - 4 : h - 96;
+            if (t < h / 2) t = h / 2;
+            if (t > h - 8) t = h - 8;
+            return t;
+        }
+
+        // Reconstruye la textura PRINCIPAL de la UI SOLO si cambio algo (firma). Devuelve la version.
+        // La textura mide LO QUE EL MODO NECESITA, no la pantalla completa: en NAVEGACION solo la franja superior
+        // (instrucciones + letras + encabezado, ~140px) -> rehacerla y subirla al paginar cuesta ~7x menos que
+        // antes. Buscador/disco/atraccion usan hasta la franja de estado (que tiene su propia textura, mas abajo).
         private int EnsureUiOverlay()
         {
             int w = ClientSize.Width, h = ClientSize.Height;
             if (w < 8 || h < 8) return uiOverlayVer;
+            int mainH;
+            if (searchOpen || (panelSongs != null && panelSongs.Visible) || attractOn) mainH = BotStripTop(h);
+            else
+            {
+                mainH = 60;   // navegacion: hasta el fondo del encabezado/letras/instrucciones
+                if (helpBar != null && helpBar.Bottom > mainH) mainH = helpBar.Bottom;
+                if (letterBar != null && letterBar.Visible && letterBar.Bottom > mainH) mainH = letterBar.Bottom;
+                if (lblHeader != null && lblHeader.Bottom > mainH) mainH = lblHeader.Bottom;
+                if (lblStatus != null && lblStatus.Bottom > mainH) mainH = lblStatus.Bottom;
+                mainH += 6;
+            }
+            if (mainH > h) mainH = h; if (mainH < 8) mainH = 8;
             string sig = UiSig();
-            if (uiOverlay != null && uiOverlay.Width == w && uiOverlay.Height == h && sig == uiOverlaySig) return uiOverlayVer;
-            if (uiOverlay == null || uiOverlay.Width != w || uiOverlay.Height != h)
+            if (uiOverlay != null && uiOverlay.Width == w && uiOverlay.Height == mainH && sig == uiOverlaySig) return uiOverlayVer;
+            if (uiOverlay == null || uiOverlay.Width != w || uiOverlay.Height != mainH)
             {
                 if (uiOverlay != null) uiOverlay.Dispose();
-                uiOverlay = new Bitmap(w, h, PixelFormat.Format32bppPArgb);
+                uiOverlay = new Bitmap(w, mainH, PixelFormat.Format32bppPArgb);
             }
             using (Graphics g = Graphics.FromImage(uiOverlay))
             {
@@ -4072,8 +4100,7 @@ namespace Rocola
                     {
                         sfc.Alignment = StringAlignment.Center; sfc.LineAlignment = StringAlignment.Center;
                         g.DrawString(line1, fBig, tb, new RectangleF(0, cubeBottom + 18, w, 36), sfc);
-                        double pz = 0.5 + 0.5 * Math.Sin(phase * 3.0);
-                        tb.Color = Color.FromArgb((int)(150 + 105 * pz), 255, 220, 120);
+                        tb.Color = Color.FromArgb(235, 255, 220, 120);   // FIJO: el "respiro" lo pone un halo por GPU (FillUiGlows) -> esta textura no se rehace nunca en atraccion
                         g.DrawString("toca un boton para elegir", fSmall, tb, new RectangleF(0, cubeBottom + 58, w, 28), sfc);
                     }
                 }
@@ -4084,8 +4111,39 @@ namespace Rocola
                     DrawLabelOverlay(g, lblHeader);
                     DrawLabelOverlay(g, lblStatus);
                 }
-                if (!attractOn)   // en atraccion la pantalla es limpia (cubo + 2 textos); no van las etiquetas de estado
+                // Las etiquetas de estado de abajo YA NO van aqui: tienen su propia textura chica
+                // (EnsureUiBotOverlay), asi el reloj de la cancion no rehace esta textura 2 veces/seg.
+                // El contador de FPS tampoco: lo pinta el GpuPanel en su propia textura pequeña.
+            }
+            uiOverlaySig = sig; uiOverlayVer++;
+            return uiOverlayVer;
+        }
+
+        // Reconstruye la textura de la FRANJA DE ESTADO de abajo (sonando/siguiente/tiempo/creditos/cola/
+        // progreso) SOLO si cambio algo. Es una tira chica (~90px de alto): el tic del reloj y la barra de
+        // progreso (~2 cambios/seg con musica) cuestan ~10x menos que rehacer la pantalla completa de antes.
+        private Bitmap uiBotOverlay; private int uiBotVer; private string uiBotLastSig;
+        private int EnsureUiBotOverlay()
+        {
+            int w = ClientSize.Width, h = ClientSize.Height;
+            if (w < 8 || h < 8) return uiBotVer;
+            int top = BotStripTop(h);
+            int bh = h - top;
+            string sig = UiBotSig();
+            if (uiBotOverlay != null && uiBotOverlay.Width == w && uiBotOverlay.Height == bh && sig == uiBotLastSig) return uiBotVer;
+            if (uiBotOverlay == null || uiBotOverlay.Width != w || uiBotOverlay.Height != bh)
+            {
+                if (uiBotOverlay != null) uiBotOverlay.Dispose();
+                uiBotOverlay = new Bitmap(w, bh, PixelFormat.Format32bppPArgb);
+            }
+            using (Graphics g = Graphics.FromImage(uiBotOverlay))
+            {
+                g.Clear(Color.Transparent);
+                if (!attractOn)   // en atraccion la pantalla es limpia: la franja queda transparente
                 {
+                    g.SmoothingMode = SmoothingMode.AntiAlias;
+                    g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;   // gris: ClearType deja flecos sobre transparente
+                    g.TranslateTransform(0, -top);   // las etiquetas estan en coords del form; la tira empieza en 'top'
                     DrawLabelOverlay(g, lblNow);
                     DrawLabelOverlay(g, lblNext);
                     DrawLabelOverlay(g, lblTime);
@@ -4093,16 +4151,16 @@ namespace Rocola
                     DrawLabelOverlay(g, lblCount);
                     DrawCtrlOverlay(g, progress);
                 }
-                // El contador de FPS ya NO va aqui: lo pinta el GpuPanel en su propia textura pequeña (asi no
-                // obliga a rehacer esta textura a pantalla completa 1 vez/seg -> el buscador ya no oscila).
             }
-            uiOverlaySig = sig; uiOverlayVer++;
-            return uiOverlayVer;
+            uiBotLastSig = sig; uiBotVer++;
+            return uiBotVer;
         }
 
-        // Llena el buffer con los DESTELLOS activos del buscador (el boton pulsado que se desvanece), en coords de
-        // pantalla. La GPU los dibuja como halos aditivos animados por el alfa: el destello se ve suave SIN re-subir
-        // la textura de UI en cada cuadro del desvanecido -> tecleo fluido. Devuelve cuantos escribio.
+        // Llena el buffer con los HALOS ANIMADOS de la UI, en coords de pantalla. La GPU los dibuja como quads
+        // aditivos: TODA animacion continua (destello del boton pulsado, pulso de la letra actual, dorado del TOP,
+        // respiro del texto de atraccion) vive AQUI y no en la textura de UI -> la textura solo se rehace cuando
+        // cambia un TEXTO real. Antes estos pulsos re-horneaban y RE-SUBIAN la pantalla completa hasta ~13+10
+        // veces/seg: ese era el stuttering de la rocola. Devuelve cuantos escribio.
         private int FillUiGlows(GpuPanel.UiGlow[] buf)
         {
             if (buf == null) return 0;
@@ -4115,6 +4173,45 @@ namespace Rocola
                     float cx, cy, r; int argb;
                     if (searchOverlay.GetHintGlow(k, out cx, out cy, out r, out argb))
                     { buf[n].Cx = sx + cx; buf[n].Cy = sy + cy; buf[n].R = r; buf[n].Argb = (uint)argb; n++; }
+                }
+            }
+            else if (attractOn)
+            {
+                // Respiro DORADO detras de "toca un boton para elegir" (el texto va fijo en la textura).
+                int w = ClientSize.Width, h = ClientSize.Height;
+                int side = (int)(Math.Min(w, h) * 0.40); if (side < 80) side = 80;
+                int cubeBottom = (h - side) / 2 - 30 + side;
+                double p = 0.5 + 0.5 * Math.Sin(phase * 3.0);
+                buf[n].Cx = w / 2f; buf[n].Cy = cubeBottom + 72; buf[n].R = 150f;
+                buf[n].Argb = (uint)Color.FromArgb((int)(16 + 38 * p), 255, 220, 120).ToArgb(); n++;
+            }
+            else
+            {
+                if (helpBar != null && helpBar.Visible)   // destello del boton pulsado (navegacion e interior de disco)
+                {
+                    int hx = helpBar.Left, hy = helpBar.Top;
+                    for (int k = 0; k < 4 && n < buf.Length; k++)
+                    {
+                        float cx, cy, r; int argb;
+                        if (helpBar.GetFlashGlow(k, out cx, out cy, out r, out argb))
+                        { buf[n].Cx = hx + cx; buf[n].Cy = hy + cy; buf[n].R = r; buf[n].Argb = (uint)argb; n++; }
+                    }
+                }
+                if (letterBar != null && letterBar.Visible)
+                {
+                    float cx, cy, r;
+                    if (n < buf.Length && letterBar.GetCurrentGlow(out cx, out cy, out r))   // pulso de la letra actual
+                    {
+                        double p = 0.5 + 0.5 * Math.Sin(phase * 2.2);   // mismo ritmo que antes, pero ahora a cuadro pleno y GRATIS
+                        buf[n].Cx = letterBar.Left + cx; buf[n].Cy = letterBar.Top + cy; buf[n].R = r;
+                        buf[n].Argb = (uint)Color.FromArgb((int)(45 + 65 * p), 110, 180, 255).ToArgb(); n++;
+                    }
+                    if (n < buf.Length && letterBar.GetTopGlow(out cx, out cy, out r))       // dorado pulsante del marcador TOP
+                    {
+                        double p = 0.5 + 0.5 * Math.Sin(phase * 2.6);
+                        buf[n].Cx = letterBar.Left + cx; buf[n].Cy = letterBar.Top + cy; buf[n].R = r;
+                        buf[n].Argb = (uint)Color.FromArgb((int)(22 + 50 * p), 255, 205, 90).ToArgb(); n++;
+                    }
                 }
             }
             return n;
@@ -4135,21 +4232,34 @@ namespace Rocola
             else if (panelSongs != null && panelSongs.Visible)   // INTERIOR DE DISCO: etiqueta, seleccion, pagina
                 sb.Append("|D").Append(lblAlbum != null ? lblAlbum.Text : "").Append('|').Append(songSel).Append('|').Append(songItems.Count)
                   .Append('|').Append(songList != null ? songList.PageStart : 0).Append('|').Append(bgAccent.ToArgb());
-            else if (attractOn)                        // MODO ATRACCION: cantidad de canciones + pulso del texto amarillo
-                sb.Append("|A").Append(attractView != null ? attractView.SongCount : 0).Append('|').Append((int)(phase * 10));
+            else if (attractOn)                        // MODO ATRACCION: solo la cantidad de canciones (el pulso del texto va como halo por quad)
+                sb.Append("|A").Append(attractView != null ? attractView.SongCount : 0);
             else if (letterBar != null)                // parte superior = navegacion (A-Z + encabezado)
                 sb.Append("|N").Append(letterBar.Current).Append(letterBar.Letters).Append(letterBar.Available == null ? 0 : letterBar.Available.Count)
-                  .Append('|').Append(lblHeader != null ? lblHeader.Text : "").Append('|').Append(lblStatus != null ? lblStatus.Text : "")
-                  .Append('|').Append((int)(letterBar.Phase * 13));   // fase cuantizada (~13fps): anima el resplandor de la letra actual y el marcador TOP sin rehacer la textura cada cuadro
+                  .Append('|').Append(lblHeader != null ? lblHeader.Text : "").Append('|').Append(lblStatus != null ? lblStatus.Text : "");
+            // NI la fase del pulso de la letra NI el destello del boton pulsado (FlashSig) entran ya en la firma:
+            // ambos los dibuja la GPU como halos aparte (FillUiGlows). Antes obligaban a rehacer Y RE-SUBIR esta
+            // textura ~13 veces/seg en navegacion (pulso) y ~10 veces por CADA tecla (destello): ESE era el
+            // stuttering de la rocola al paginar. Ahora, quieto en una pagina, la firma es constante -> 0 rehechas.
+            // Las etiquetas de estado de abajo (sonando/tiempo/creditos/progreso) van en SU PROPIA textura chica
+            // (UiBotSig/EnsureUiBotOverlay): el reloj de la cancion ya no rehace la pantalla completa 2 veces/seg.
+            // El FPS tambien va en su propia textura (1/seg, diminuta).
+            return sb.ToString();
+        }
+
+        // Firma de la FRANJA DE ESTADO de abajo (sonando/siguiente/tiempo/creditos/cola/progreso): cambia ~2
+        // veces/seg con musica sonando, pero su textura es una tira chica (~400KB vs ~4MB de pantalla completa).
+        private string UiBotSig()
+        {
+            System.Text.StringBuilder sb = new System.Text.StringBuilder(128);
+            sb.Append(ClientSize.Width).Append('x').Append(ClientSize.Height);
+            if (attractOn) { sb.Append("|A"); return sb.ToString(); }   // en atraccion la franja va limpia (transparente)
             if (lblNow != null) sb.Append('|').Append(lblNow.Text);
             if (lblNext != null) sb.Append('|').Append(lblNext.Text);
             if (lblTime != null) sb.Append('|').Append(lblTime.Text);
             if (lblCredits != null) sb.Append('|').Append(lblCredits.Text);
             if (lblCount != null) sb.Append('|').Append(lblCount.Text);
             if (progress != null) sb.Append('|').Append((int)(progress.Value * 300)).Append(progress.Accent.ToArgb());
-            if (helpBar != null) sb.Append('|').Append(helpBar.FlashSig());   // anima el brillo del boton pulsado (0 = sin brillo -> no afecta en reposo)
-            // El FPS ya NO entra en la firma: se pinta en su propia textura, asi que su cambio (1/seg) no
-            // obliga a rehacer esta textura -> en reposo la firma es constante -> 0 reconstrucciones.
             return sb.ToString();
         }
 
@@ -4160,8 +4270,8 @@ namespace Rocola
             System.Drawing.Drawing2D.GraphicsState st = g.Save();
             g.TranslateTransform(c.Left, c.Top);
             HelpBar hb = c as HelpBar;
-            if (hb != null) hb.RenderContent(g);
-            else { LetterBar lb = c as LetterBar; if (lb != null) lb.RenderContent(g);
+            if (hb != null) hb.RenderContent(g, true);   // forGpu: sus pulsos van como halos por quad, no en la textura
+            else { LetterBar lb = c as LetterBar; if (lb != null) lb.RenderContent(g, true);
             else { ProgressView pv = c as ProgressView; if (pv != null) pv.RenderContent(g);
             else { SongListView sl = c as SongListView; if (sl != null) sl.RenderContent(g);
             else { SongPagerBar sp = c as SongPagerBar; if (sp != null) sp.RenderContent(g); } } } }
@@ -4301,14 +4411,14 @@ namespace Rocola
 #endif
             // (CPU) Anima el BRILLO del boton pulsado en la barra de ayuda: sin esto el destello se disparaba
             // pero nadie repintaba el control -> no se veia. Repinta mientras dura (~0.4s) y UNA vez mas al
-            // expirar (para borrar el ultimo halo). En GPU lo anima la textura de UI (FlashSig entra en la firma).
+            // expirar (para borrar el ultimo halo). En GPU lo dibuja el panel como halo aparte (FillUiGlows).
             if (helpBar != null)
             {
                 int hfs = helpBar.FlashSig();
                 if ((hfs != 0 || helpFlashPrev != 0) && helpBar.Visible && !albumGpuBg) helpBar.Invalidate();
                 helpFlashPrev = hfs;
             }
-            if (letterBar.Visible) { letterBar.Phase = phase; if (!albumGpuBg) letterBar.Invalidate(); }   // 24fps; en GPU el brillo de la letra lo anima la textura de UI (UiSig cuantiza su fase)
+            if (letterBar.Visible) { letterBar.Phase = phase; if (!albumGpuBg) letterBar.Invalidate(); }   // 24fps (CPU); en GPU el pulso de la letra es un halo por quad (FillUiGlows): la textura NO se rehace
             if (albumView.Visible && !albumGpuBg) { albumView.Phase = phase; albumView.PulseLo = levLo; albumView.PulseMid = levMid; albumView.PulseHi = levHi; albumView.AnimTick(fullFrame || transitioning); }
 #if ROCOLA_GPU
             else if (albumView.Visible && albumGpuBg) { albumView.Phase = phase; albumView.StepSpinGpu(); }   // el giro avanza aunque el fondo+cubos los pinte la GPU (sin repintar por CPU)
@@ -5265,11 +5375,29 @@ namespace Rocola
             public int FlashSig() { return flash.Sig(); }
             private Font hbFont;   // fuente cacheada: la barra se redibuja ~13fps (glow) -> no crear una por cuadro
 
-            protected override void OnPaint(PaintEventArgs e) { e.Graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit; RenderContent(e.Graphics); }
+            protected override void OnPaint(PaintEventArgs e) { e.Graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit; RenderContent(e.Graphics, false); }
+            // Centro/radio de los 4 halos (Buscar/Mover/Entrar/Volver), guardados al maquetar. En GPU el destello
+            // NO se hornea en la textura: lo dibuja la GPU como quad (GetFlashGlow) -> pulsar un boton (p.ej. al
+            // PAGINAR rapido) ya no re-hornea ni re-sube la textura de UI ~10 veces por tecla.
+            private readonly float[] fgX = new float[4], fgY = new float[4], fgW = new float[4];
+            private void StoreGlow(int k, float leftX, float cy, float symW) { fgX[k] = leftX + symW / 2f; fgY[k] = cy; fgW[k] = symW * 0.9f + 6f; }
+            public bool GetFlashGlow(int k, out float cx, out float cy, out float r, out int argb)
+            {
+                cx = cy = r = 0f; argb = 0;
+                if (k < 0 || k > 3) return false;
+                float lvl = flash.Level(k);
+                if (lvl <= 0.02f) return false;
+                cx = fgX[k]; cy = fgY[k]; r = fgW[k];
+                Color c = flash.Col;
+                argb = Color.FromArgb((int)(lvl * 215f), c.R, c.G, c.B).ToArgb();   // alfa = brillo del destello; rgb = su color
+                return true;
+            }
+            public void RenderContent(Graphics g) { RenderContent(g, false); }
             // Dibuja la leyenda en un Graphics cualquiera (el control, o la textura de UI del modo GPU). El
             // llamador fija el TextRenderingHint: ClearType para pantalla; AntiAlias (gris) para la textura
             // transparente del modo GPU (ClearType deja flecos de color sobre fondo transparente).
-            public void RenderContent(Graphics g)
+            // forGpu=true: NO hornea el halo del boton pulsado (lo pone la GPU via GetFlashGlow); solo guarda posiciones.
+            public void RenderContent(Graphics g, bool forGpu)
             {
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 int cy = Height / 2;
@@ -5279,16 +5407,20 @@ namespace Rocola
                 if (hbFont == null) hbFont = new Font(FontFamily.GenericSansSerif, 9.5f, FontStyle.Bold);
                 Font f = hbFont;
                 float x = 2;
-                GlowAround(g, x, cy, d * 2 + 4, flash.Level(FBuscar), flash.Col);   // BUSCAR = 2 puntos
+                StoreGlow(FBuscar, x, cy, d * 2 + 4);
+                if (!forGpu) GlowAround(g, x, cy, d * 2 + 4, flash.Level(FBuscar), flash.Col);   // BUSCAR = 2 puntos
                 x = CtrlDot(g, x, cy, d, RedC) + 4; x = CtrlDot(g, x, cy, d, GreenC);
                 x = CtrlTxt(g, f, "Buscar", x + gap, cy, txt) + grp;
-                GlowAround(g, x, cy, d + 4, flash.Level(FMover), flash.Col);        // MOVER = cruceta (color segun direccion)
+                StoreGlow(FMover, x, cy, d + 4);
+                if (!forGpu) GlowAround(g, x, cy, d + 4, flash.Level(FMover), flash.Col);        // MOVER = cruceta (color segun direccion)
                 x = CtrlPad(g, x, cy, d + 4);
                 x = CtrlTxt(g, f, "Mover", x + gap, cy, txt) + grp;
-                GlowAround(g, x, cy, d, flash.Level(FEntrar), flash.Col);           // ENTRAR/PONER = punto verde
+                StoreGlow(FEntrar, x, cy, d);
+                if (!forGpu) GlowAround(g, x, cy, d, flash.Level(FEntrar), flash.Col);           // ENTRAR/PONER = punto verde
                 x = CtrlDot(g, x, cy, d, GreenC);
                 x = CtrlTxt(g, f, "Entrar / Poner", x + gap, cy, txt) + grp;
-                GlowAround(g, x, cy, d, flash.Level(FVolver), flash.Col);           // VOLVER = punto rojo
+                StoreGlow(FVolver, x, cy, d);
+                if (!forGpu) GlowAround(g, x, cy, d, flash.Level(FVolver), flash.Col);           // VOLVER = punto rojo
                 x = CtrlDot(g, x, cy, d, RedC);
                 x = CtrlTxt(g, f, "Volver", x + gap, cy, txt);
             }
@@ -5418,7 +5550,8 @@ namespace Rocola
                 int side, labelH, gap; CellMetrics(cw, ch, out side, out labelH, out gap);
                 int ox = this.Left, oy = this.Top;   // coords de albumView -> pantalla (mismo criterio que los cubos que giran)
                 int budget = GridBakeBudget;
-                int n = 0;
+                int bakeT0 = Environment.TickCount;   // tope de TIEMPO ademas del de cantidad: en el CPU lento de la
+                int n = 0;                            // rocola 6 horneadas podian pasar de 16ms -> cuadro perdido al paginar
                 for (int i = 0; i < Page.Count && i < PageSize && n < buf.Length; i++)
                 {
                     Rectangle area, lbl; Geometry(w, h, i, out area, out lbl);
@@ -5428,6 +5561,7 @@ namespace Rocola
                     buf[n].Slot = i;
                     buf[n].X = ox + (i % Cols) * cw; buf[n].Y = oy + area.Y; buf[n].W = cw; buf[n].H = side + gap + labelH;
                     n++;
+                    if (budget < GridBakeBudget && budget > 0 && Environment.TickCount - bakeT0 >= 6) budget = 0;   // ~6ms horneando: el resto al proximo cuadro
                 }
                 return n;
             }
@@ -6084,15 +6218,43 @@ namespace Rocola
                 }
             }
 
-            protected override void OnPaint(PaintEventArgs e) { RenderContent(e.Graphics); }
+            protected override void OnPaint(PaintEventArgs e) { RenderContent(e.Graphics, false); }
+            // Casilla de la letra ACTUAL (para el pulso por GPU): centro/radio en coords del control.
+            // false si no aplica (la actual es TOP, que lleva su propio halo dorado, o no esta en la tira).
+            public bool GetCurrentGlow(out float cx, out float cy, out float r)
+            {
+                cx = cy = r = 0f;
+                int n = Letters.Length; if (n == 0 || Width < 4 || Height < 4) return false;
+                if (Current == '\u2605') return false;
+                int i = Letters.IndexOf(Current); if (i < 0) return false;
+                float slot = (float)Width / n;
+                cx = i * slot + slot / 2f; cy = Height / 2f;
+                r = Math.Max(slot, Height) * 0.75f;
+                return true;
+            }
+            // Casilla del marcador TOP (para su dorado pulsante por GPU); false si TOP no esta disponible.
+            public bool GetTopGlow(out float cx, out float cy, out float r)
+            {
+                cx = cy = r = 0f;
+                int n = Letters.Length; if (n == 0 || Width < 4 || Height < 4) return false;
+                if (Available == null || !Available.Contains('\u2605')) return false;
+                int i = Letters.IndexOf('\u2605'); if (i < 0) return false;
+                float slot = (float)Width / n;
+                cx = i * slot + slot / 2f; cy = Height / 2f;
+                r = Math.Max(slot, Height) * 0.75f;
+                return true;
+            }
+            public void RenderContent(Graphics g) { RenderContent(g, false); }
             // Dibuja la barra de letras en cualquier Graphics (el control, o la textura de UI del modo GPU).
-            public void RenderContent(Graphics g)
+            // forGpu=true: brillos FIJOS (mitad del pulso) en la textura; el pulso vivo lo ponen los halos por
+            // quad (GetCurrentGlow/GetTopGlow) -> la textura de UI ya no se rehace ~13 veces/seg por esta barra.
+            public void RenderContent(Graphics g, bool forGpu)
             {
                 int w = Width, h = Height, n = Letters.Length;
                 if (w < 4 || h < 4 || n == 0) return;
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 float slot = (float)w / n;
-                double pulse = 0.5 + 0.5 * Math.Sin(Phase * 2.2);
+                double pulse = forGpu ? 0.45 : 0.5 + 0.5 * Math.Sin(Phase * 2.2);
                 EnsureRes();
 
                 // TIRA CACHEADA: las ~28 letras solo se redibujan al cambiar letra/tamano/disponibles.
@@ -6138,7 +6300,7 @@ namespace Rocola
                 if (topI >= 0 && Available != null && Available.Contains('\u2605'))
                 {
                     RectangleF gsl = new RectangleF(topI * slot, 0, slot, h);
-                    double gpu = 0.5 + 0.5 * Math.Sin(Phase * 2.6);
+                    double gpu = forGpu ? 0.5 : 0.5 + 0.5 * Math.Sin(Phase * 2.6);   // GPU: brillo FIJO en la textura (el pulso dorado lo pone el halo por quad, GetTopGlow)
                     bool topSel = (Current == '\u2605');
                     if (goldTextBrush == null) goldTextBrush = new SolidBrush(Color.Black);
                     if (topSel)

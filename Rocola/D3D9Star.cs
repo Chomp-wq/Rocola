@@ -776,9 +776,16 @@ namespace Rocola
         private IntPtr selTexA, selTexB, relTex, miniTex;          // texturas de portada: seleccionada A, fundido B (TOP), relevo, mini-cubo
         private Bitmap selImgA, selImgB, relImg, miniImg;          // ultima portada subida en cada ranura (para re-subir solo al cambiar)
         private float selUA = 1f, selVA = 1f, selUB = 1f, selVB = 1f, relU = 1f, relV = 1f, miniU = 1f, miniV = 1f;
-        // Textura de UI (barras superior e inferior) compuesta sobre el fondo a pantalla completa.
+        // Textura PRINCIPAL de la UI: su alto depende del modo (en navegacion es solo la franja superior,
+        // ~7x mas barata de rehacer/subir que la pantalla completa). Se dibuja anclada ARRIBA, a su tamano real.
         private IntPtr uiTex; private int uiVer = -1; private float uiU = 1f, uiV = 1f; private int uiBmpW = -1, uiBmpH = -1;
         private readonly D3D9.Vtx[] uiQuad = new D3D9.Vtx[6];
+        // Franja de ESTADO de abajo (sonando/tiempo/creditos/progreso) en SU PROPIA textura chica: el tic del
+        // reloj (~2 cambios/seg con musica) ya no rehace ni re-sube la textura principal. Anclada ABAJO.
+        private IntPtr uiBotTex; private int uiBotVer = -1; private float uiBotU = 1f, uiBotV = 1f; private int uiBotW = -1, uiBotH = -1;
+        private readonly D3D9.Vtx[] uiBotQuad = new D3D9.Vtx[6];
+        public Func<Bitmap> GetUiBot;                     // bitmap de la franja de estado (lo provee el form)
+        public Func<int> GetUiBotVersion;                 // cambia cuando algo de la franja cambia (re-subir textura)
         // Contador de FPS (diagnostico) en su PROPIA textura pequeña: si fuera parte de la textura de UI
         // obligaria a rehacerla (pantalla completa) 1 vez/seg -> el buscador oscilaba. Aparte cuesta nada.
         private IntPtr fpsTex; private int fpsShown = int.MinValue; private float fpsU = 1f, fpsV = 1f; private int fpsTW, fpsTH;
@@ -844,9 +851,10 @@ namespace Rocola
             if (relTex != IntPtr.Zero) { D3D9.Release(relTex); relTex = IntPtr.Zero; }
             if (miniTex != IntPtr.Zero) { D3D9.Release(miniTex); miniTex = IntPtr.Zero; }
             if (uiTex != IntPtr.Zero) { D3D9.Release(uiTex); uiTex = IntPtr.Zero; }
+            if (uiBotTex != IntPtr.Zero) { D3D9.Release(uiBotTex); uiBotTex = IntPtr.Zero; }
             if (fpsTex != IntPtr.Zero) { D3D9.Release(fpsTex); fpsTex = IntPtr.Zero; }
-            lastContour = null; selImgA = selImgB = relImg = miniImg = null; uiVer = -1; fpsShown = int.MinValue;
-            uiBmpW = uiBmpH = -1;   // fuerza recrear las texturas reutilizables tras reiniciar el device
+            lastContour = null; selImgA = selImgB = relImg = miniImg = null; uiVer = -1; uiBotVer = -1; fpsShown = int.MinValue;
+            uiBmpW = uiBmpH = -1; uiBotW = uiBotH = -1;   // fuerza recrear las texturas reutilizables tras reiniciar el device
             if (stars != null) { stars.Dispose(); stars = null; }
         }
 
@@ -931,6 +939,18 @@ namespace Rocola
                     NoteHeavy(t0);   // mide el coste real y ajusta la espera (la UI cacheada es barata -> franja corta)
                 }
             }
+            // Franja de ESTADO de abajo: textura chica aparte. El tic del reloj/progreso (~2/seg con musica)
+            // rehace y sube SOLO esta tira (~400KB), no la textura principal. Misma franja de trabajo pesado.
+            if (GetUiBot != null && GetUiBotVersion != null && (uiBotTex == IntPtr.Zero || uiUrgent || canHeavy))
+            {
+                int bv = GetUiBotVersion();   // puede rehacer el bitmap de la tira por dentro
+                if (bv != uiBotVer)
+                {
+                    Bitmap bb = GetUiBot();
+                    if (bb != null) uiBotTex = Upload(uiBotTex, ref uiBotW, ref uiBotH, bb, out uiBotU, out uiBotV);
+                    uiBotVer = bv;
+                }
+            }
             if (ShowFps) EnsureFpsTex();   // crea/actualiza la textura del contador ANTES de Begin (solo si se pide, Ctrl+F1)
             stars.SetDim(Dim);             // atenuacion mientras se navega con musica (estrellas/brillos; el cielo queda igual)
             float pulse = ((GetPulse != null) ? GetPulse() : 0f) * Dim;   // el beat tambien baja mientras esta atenuado
@@ -955,8 +975,10 @@ namespace Rocola
                 if (cs.Sel.CoverB != null && cs.Sel.Fade > 0.002f)   // disco TOP: 2a portada encima con alfa = fundido
                     stars.DrawCube(selTexB, selUB, selVB, cs.Sel.X, cs.Sel.Y, cs.Sel.W, cs.Sel.H, cs.Sel.Angle, cs.Sel.Fade, cs.Sel.Tilt);
             }
-            // Barras superior e inferior (textura de UI) ENCIMA del fondo y los cubos.
-            if (uiTex != IntPtr.Zero) { SetTexQuad(uiQuad, 0, 0, Width, Height, uiU, uiV); stars.DrawQuad(uiTex, uiQuad); }
+            // UI ENCIMA del fondo y los cubos: la textura principal anclada ARRIBA (a su tamano real: en
+            // navegacion es solo la franja superior) y la franja de estado anclada ABAJO.
+            if (uiTex != IntPtr.Zero && uiBmpW > 0 && uiBmpH > 0) { SetTexQuad(uiQuad, 0, 0, uiBmpW, uiBmpH, uiU, uiV); stars.DrawQuad(uiTex, uiQuad); }
+            if (uiBotTex != IntPtr.Zero && uiBotW > 0 && uiBotH > 0) { SetTexQuad(uiBotQuad, 0, Height - uiBotH, uiBotW, Height, uiBotU, uiBotV); stars.DrawQuad(uiBotTex, uiBotQuad); }
             // DESTELLOS del boton pulsado (buscador): halos aditivos ENCIMA de la UI, animados por la GPU (sin re-subir textura).
             if (GetUiGlows != null)
             {
