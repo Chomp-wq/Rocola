@@ -4011,11 +4011,16 @@ namespace Rocola
         private void SyncGpuFullScreen()
         {
             if (gpuPanel == null || !gpuEnabled) return;
-            bool notBlockedByVideoCfg = !videoOn && !videoFull && (lblConfig == null || !lblConfig.Visible);
+            bool cfgOn = (lblConfig != null && lblConfig.Visible);
+            bool notBlockedByVideoCfg = !videoOn && !videoFull && !cfgOn;
             bool noBlock = notBlockedByVideoCfg && !attractOn;
             bool disc = panelSongs != null && panelSongs.Visible;
             bool nav = albumView.Visible && !searchOpen && !disc && noBlock;
-            bool search = searchOpen && noBlock;
+            // El VIDEO no bloquea el BUSCADOR: OpenSearch OCULTA el cuadro del video (el audio sigue), asi que
+            // el panel GPU puede componer el buscador encima sin taparlo. Antes el video SI lo bloqueaba y el
+            // buscador "se abria" INVISIBLE (panel oculto por video + overlay CPU oculto por GPU): el cliente
+            // solo veia desaparecer y reaparecer el video. Nav/disco SI siguen bloqueados (ahi el video se VE).
+            bool search = searchOpen && !attractOn && !cfgOn && !videoFull;
             // Interior de disco por GPU (por defecto). El bug de la lista era que RenderContent usaba
             // TextRenderer (GDI), que ignora la traslacion del Graphics: sobre la textura de UI (trasladada
             // a la posicion del panel) el texto caia en 0,0. Ya usa DrawString (GDI+), que la respeta.
