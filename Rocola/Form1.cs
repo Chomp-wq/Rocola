@@ -2546,7 +2546,7 @@ namespace Rocola
             }
             else if (helpBar != null && !attractOn)    // barra de navegacion / interior de disco
             {
-                if (IsOK(kc) && BackHeld()) helpBar.Flash(HelpBar.FBuscar);
+                if (IsOK(kc) && BackHeld()) { helpBar.Flash(HelpBar.FBuscar); helpBar.Flash(HelpBar.FEntrar); helpBar.Flash(HelpBar.FVolver); }   // combo: brillan el par Buscar Y los dos botones fisicos (verde + rojo) a la vez
                 else if (IsOK(kc)) helpBar.Flash(HelpBar.FEntrar);
                 else if (IsBack(kc)) helpBar.Flash(HelpBar.FVolver);
                 else if (IsUp(kc) || IsDown(kc)) helpBar.FlashMove(true);
@@ -3211,7 +3211,7 @@ namespace Rocola
                 discs.Add(d);
             }
 
-            // 3a) discos TOP por ARTISTA muy puesto (hasta 5): "TOP - <artista>"
+            // 3a) discos TOP por ARTISTA muy puesto (hasta 10), RANKEADOS: "TOP #1 - <artista>" ... "TOP #10 - ..."
             {
                 Dictionary<string, List<TopEntry>> byArtist = new Dictionary<string, List<TopEntry>>(StringComparer.OrdinalIgnoreCase);
                 List<string> aOrder = new List<string>();
@@ -3252,8 +3252,11 @@ namespace Rocola
                     });
                     int take = (lst.Count < TopMax) ? lst.Count : TopMax;
                     Album d = new Album();
-                    d.IsTop = true; d.Letter = TopMark; d.Folder = "::TOPART::" + ar;
-                    d.Artist = "TOP"; d.Name = ar;             // AlbumLabel -> "TOP - Depeche Mode"
+                    // RANKING VISIBLE: el puesto (#1..#10, por total de reproducciones) va en la etiqueta. Tambien
+                    // va en Folder (la CLAVE de la celda horneada): si un artista cambia de puesto, su etiqueta se
+                    // re-hornea; con la clave vieja se habria quedado el numero anterior pegado en el cache.
+                    d.IsTop = true; d.Letter = TopMark; d.Folder = "::TOPART::" + (ai + 1) + "|" + ar;
+                    d.Artist = "TOP #" + (ai + 1); d.Name = ar;             // AlbumLabel -> "TOP #1 - Depeche Mode"
                     d.Tracks = new List<Track>();
                     d.TrackCovers = new List<string>();
                     d.TrackInfo = new List<string>();
@@ -5273,28 +5276,42 @@ namespace Rocola
             }
         }
 
-        // Estado del "brillo" de un simbolo de la barra de instrucciones al pulsar su boton (halo que decae).
-        // Lo comparten la barra de navegacion/disco (HelpBar) y la del buscador. El color se fija al dispararlo
-        // (asi Mover puede ser ROJO en arriba/abajo o AMARILLO en izq/der, segun la flecha de la cruceta).
+        // Estado del "brillo" de los simbolos de la barra de instrucciones al pulsar sus botones (halo que
+        // decae). UN BRILLO POR SIMBOLO: en los COMBOS (p.ej. REGRESAR mantenido + PONER) se encienden VARIOS
+        // a la vez y cada uno decae por su cuenta. (Antes habia UN solo brillo global: el nuevo pisaba al
+        // anterior y en los combos solo se veia uno.) El color se fija al dispararlo (asi Mover puede ser
+        // ROJO en arriba/abajo o AMARILLO en izq/der). Lo comparten HelpBar (4 simbolos) y el buscador (3).
         private sealed class InstrFlash
         {
             private const int Ms = 420;
-            private int which = -1; private int tick; private Color col = Color.White;
-            public void Fire(int w, Color c) { which = w; tick = Environment.TickCount; col = c; }
+            private readonly int[] tick = new int[4];      // momento del disparo por simbolo (0 = nunca disparado)
+            private readonly Color[] cols = new Color[4];
+            public void Fire(int w, Color c)
+            {
+                if (w < 0 || w >= tick.Length) return;
+                int t = Environment.TickCount;
+                tick[w] = (t == 0) ? 1 : t;   // 0 esta reservado como "nunca"
+                cols[w] = c;
+            }
             public float Level(int w)
             {
-                if (which != w) return 0f;
-                int dt = Environment.TickCount - tick;
+                if (w < 0 || w >= tick.Length || tick[w] == 0) return 0f;
+                int dt = Environment.TickCount - tick[w];
                 if (dt < 0 || dt > Ms) return 0f;
                 return 1f - (float)dt / Ms;
             }
-            public Color Col { get { return col; } }
-            public int Sig()   // cambia mientras dura el brillo (para rehacer la textura y animarlo); 0 = sin brillo
+            public Color Col(int w) { return (w >= 0 && w < cols.Length) ? cols[w] : Color.White; }
+            public int Sig()   // cambia mientras dure ALGUN brillo (para animarlo por CPU); 0 = todo apagado
             {
-                if (which < 0) return 0;
-                int dt = Environment.TickCount - tick;
-                if (dt < 0 || dt > Ms) return 0;
-                return (which + 1) * 1000 + dt / 40;
+                int now = Environment.TickCount, s = 0;
+                for (int w = 0; w < tick.Length; w++)
+                {
+                    if (tick[w] == 0) continue;
+                    int dt = now - tick[w];
+                    if (dt < 0 || dt > Ms) continue;
+                    s = s * 37 + (w + 1) * 1000 + dt / 40;
+                }
+                return s;
             }
         }
 
@@ -5402,7 +5419,7 @@ namespace Rocola
                 float lvl = flash.Level(k);
                 if (lvl <= 0.02f) return false;
                 cx = fgX[k]; cy = fgY[k]; r = fgW[k];
-                Color c = flash.Col;
+                Color c = flash.Col(k);
                 argb = Color.FromArgb((int)(lvl * 215f), c.R, c.G, c.B).ToArgb();   // alfa = brillo del destello; rgb = su color
                 return true;
             }
@@ -5422,19 +5439,19 @@ namespace Rocola
                 Font f = hbFont;
                 float x = 2;
                 StoreGlow(FBuscar, x, cy, d * 2 + 4);
-                if (!forGpu) GlowAround(g, x, cy, d * 2 + 4, flash.Level(FBuscar), flash.Col);   // BUSCAR = 2 puntos
+                if (!forGpu) GlowAround(g, x, cy, d * 2 + 4, flash.Level(FBuscar), flash.Col(FBuscar));   // BUSCAR = 2 puntos
                 x = CtrlDot(g, x, cy, d, RedC) + 4; x = CtrlDot(g, x, cy, d, GreenC);
                 x = CtrlTxt(g, f, "Buscar", x + gap, cy, txt) + grp;
                 StoreGlow(FMover, x, cy, d + 4);
-                if (!forGpu) GlowAround(g, x, cy, d + 4, flash.Level(FMover), flash.Col);        // MOVER = cruceta (color segun direccion)
+                if (!forGpu) GlowAround(g, x, cy, d + 4, flash.Level(FMover), flash.Col(FMover));        // MOVER = cruceta (color segun direccion)
                 x = CtrlPad(g, x, cy, d + 4);
                 x = CtrlTxt(g, f, "Mover", x + gap, cy, txt) + grp;
                 StoreGlow(FEntrar, x, cy, d);
-                if (!forGpu) GlowAround(g, x, cy, d, flash.Level(FEntrar), flash.Col);           // ENTRAR/PONER = punto verde
+                if (!forGpu) GlowAround(g, x, cy, d, flash.Level(FEntrar), flash.Col(FEntrar));           // ENTRAR/PONER = punto verde
                 x = CtrlDot(g, x, cy, d, GreenC);
                 x = CtrlTxt(g, f, "Entrar / Poner", x + gap, cy, txt) + grp;
                 StoreGlow(FVolver, x, cy, d);
-                if (!forGpu) GlowAround(g, x, cy, d, flash.Level(FVolver), flash.Col);           // VOLVER = punto rojo
+                if (!forGpu) GlowAround(g, x, cy, d, flash.Level(FVolver), flash.Col(FVolver));           // VOLVER = punto rojo
                 x = CtrlDot(g, x, cy, d, RedC);
                 x = CtrlTxt(g, f, "Volver", x + gap, cy, txt);
             }
@@ -6562,7 +6579,6 @@ namespace Rocola
             public void FlashMove(bool vertical) { hintFlash.Fire(SMover, vertical ? SRed : SYellow); }   // arriba/abajo ROJO, izq/der AMARILLO
             public void FlashOK() { hintFlash.Fire(SPoner, SGreen); }
             public void FlashClose() { hintFlash.Fire(SCerrar, Color.White); }
-            public int HintFlashSig() { return hintFlash.Sig(); }
             // Centro/radio de los 3 halos del hint bar (Mover/Poner/Cerrar), guardados al maquetar. En GPU el halo NO
             // se hornea en la textura: lo dibuja la GPU como quad (GetHintGlow) para que el desvanecido no re-suba la textura.
             private readonly float[] hgCx = new float[3], hgCy = new float[3], hgR = new float[3];
@@ -6574,7 +6590,7 @@ namespace Rocola
                 float lvl = hintFlash.Level(k);   // k == SMover/SPoner/SCerrar (0/1/2)
                 if (lvl <= 0.02f) return false;
                 cx = hgCx[k]; cy = hgCy[k]; r = hgR[k];
-                Color c = hintFlash.Col;
+                Color c = hintFlash.Col(k);
                 argb = Color.FromArgb((int)(lvl * 215f), c.R, c.G, c.B).ToArgb();   // alfa = brillo del destello; rgb = su color
                 return true;
             }
@@ -6778,15 +6794,15 @@ namespace Rocola
                         // Guarda el centro/radio del halo (para dibujarlo por GPU). En GPU NO se hornea aqui (forGpu);
                         // en CPU si se pinta como siempre. Asi el destello se anima por GPU sin re-subir la textura.
                         StoreHintGlow(SMover, hx, hcy, hd + 2);
-                        if (!forGpu) GlowAround(g, hx, hcy, hd + 2, hintFlash.Level(SMover), hintFlash.Col);   // MOVER = cruceta (color segun direccion)
+                        if (!forGpu) GlowAround(g, hx, hcy, hd + 2, hintFlash.Level(SMover), hintFlash.Col(SMover));   // MOVER = cruceta (color segun direccion)
                         hx = CtrlPad(g, hx, hcy, hd + 2);
                         hx = CtrlTxt(g, hf, "Mover", hx + hgap, hcy, htx) + hgrp;
                         StoreHintGlow(SPoner, hx, hcy, hd);
-                        if (!forGpu) GlowAround(g, hx, hcy, hd, hintFlash.Level(SPoner), hintFlash.Col);        // PONER/ELEGIR = punto verde
+                        if (!forGpu) GlowAround(g, hx, hcy, hd, hintFlash.Level(SPoner), hintFlash.Col(SPoner));        // PONER/ELEGIR = punto verde
                         hx = CtrlDot(g, hx, hcy, hd, SGreen);
                         hx = CtrlTxt(g, hf, "Poner / Elegir", hx + hgap, hcy, htx) + hgrp;
                         StoreHintGlow(SCerrar, hx, hcy, hd * 2 + 3);
-                        if (!forGpu) GlowAround(g, hx, hcy, hd * 2 + 3, hintFlash.Level(SCerrar), hintFlash.Col);   // CERRAR = 2 puntos
+                        if (!forGpu) GlowAround(g, hx, hcy, hd * 2 + 3, hintFlash.Level(SCerrar), hintFlash.Col(SCerrar));   // CERRAR = 2 puntos
                         hx = CtrlDot(g, hx, hcy, hd, SRed) + 3; hx = CtrlDot(g, hx, hcy, hd, SGreen);
                         hx = CtrlTxt(g, hf, "Cerrar", hx + hgap, hcy, htx);
                     }
