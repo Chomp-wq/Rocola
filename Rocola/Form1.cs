@@ -120,6 +120,17 @@ namespace Rocola
         // banda alta que sobrevivio (~5.5 kHz+), saturarla SUAVE (eso genera armonicos nuevos mas arriba) y
         // mezclar una pizca de vuelta. Se aplica en LevelTap tras nivelar; perilla en Ctrl+F3; "realce=" en config.
         private float excAmount = 0.35f;                                                      // intensidad del realce 0..1 (0 = apagado); 0.35 = sutil
+        // ===== NIVELES DE MEJORA DE AUDIO segun la maquina (Ctrl+F3) =====
+        // NIVEL 1: exciter (excAmount, arriba) - corre en CUALQUIER equipo (~1-2% de CPU).
+        // NIVEL 2: reconstructor espectral (SpectralTap) - solo en maquinas que cumplen requisitos (ProbeAudioTier).
+        // NIVEL 3 (futuro): DSEE con red neuronal. NO se puede embarcar honestamente en XP/.NET 3.5 (no existe
+        //   runtime de inferencia y el CPU no alcanza); si algun dia la rocola corre en Windows 10 + .NET moderno,
+        //   ESTE es el punto de enchufe: otro tap en la cadena de PlayTrack, gateado igual por ProbeAudioTier.
+        private bool sbrOn = false;          // reconstruccion espectral activa (dsee= en config; Ctrl+F3)
+        private bool sbrAllowed = false;     // la maquina cumple los requisitos (se mide al arrancar)
+        private bool sbrForce = false;       // dsee_forzar=1 en config: salta la puerta (para pruebas)
+        private string sbrReason = "";       // por que NO esta disponible (se muestra en Ctrl+F3)
+        private SpectralTap curSbr;          // tap de la cancion actual (para alternar A/B en vivo)
         private const float NormMaxBoost = 4.0f;                                              // tope de SUBIDA (~ +12 dB): evita amplificar al infinito una cancion casi muda
         private const float NormTargetMin = 0.06f, NormTargetMax = 0.34f;                     // rango del volumen objetivo que ofrece la interfaz (de flojo a muy fuerte)
         private const long NormMinSamples = 800000;                                           // ~9s en estereo 44.1k: minimo para aceptar una medida (si se salta antes, no se guarda)
@@ -180,6 +191,39 @@ namespace Rocola
             if (System.Threading.Interlocked.Increment(ref diskProbeN) == 16)
                 diskSlow = (diskProbeMs / 16) > 6;
         }
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        private struct MemStatusEx { public uint Length, MemoryLoad; public ulong TotalPhys, AvailPhys, TotalPageFile, AvailPageFile, TotalVirtual, AvailVirtual, AvailExtendedVirtual; }
+        [System.Runtime.InteropServices.DllImport("kernel32.dll")] private static extern bool GlobalMemoryStatusEx(ref MemStatusEx b);
+
+        // Mide la maquina UNA vez (al arrancar) y decide si el NIVEL 2 (reconstructor espectral) se ofrece.
+        // Regla: 2+ nucleos O un nucleo rapido (>=2200 MHz), y >=900 MB de RAM. El STFT en si usa poca RAM;
+        // la puerta protege a los equipos que ya andan justos. Si la RAM no se pudo medir, no se bloquea por
+        // eso; el CPU si es estricto (para eso existe la puerta). dsee_forzar=1 en config la salta (pruebas).
+        private void ProbeAudioTier()
+        {
+            int cores = 1, mhz = 0; ulong ramMb = 0;
+            try { cores = Environment.ProcessorCount; } catch { }
+            try
+            {
+                using (Microsoft.Win32.RegistryKey k = Microsoft.Win32.Registry.LocalMachine.OpenSubKey("HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0"))
+                { object v = (k != null) ? k.GetValue("~MHz") : null; if (v != null) mhz = Convert.ToInt32(v); }
+            }
+            catch { }
+            try
+            {
+                MemStatusEx ms = new MemStatusEx();
+                ms.Length = (uint)System.Runtime.InteropServices.Marshal.SizeOf(typeof(MemStatusEx));
+                if (GlobalMemoryStatusEx(ref ms)) ramMb = ms.TotalPhys / (1024UL * 1024UL);
+            }
+            catch { }
+            bool cpuOk = (cores >= 2) || (mhz >= 2200);
+            bool ramOk = (ramMb == 0) || (ramMb >= 900);
+            sbrAllowed = cpuOk && ramOk;
+            if (!sbrAllowed)
+                sbrReason = "CPU de " + cores + " nucleo(s) a " + mhz + " MHz" + (ramOk ? "" : (", RAM de " + ramMb + " MB"))
+                          + "  (pide 2 nucleos o 2200 MHz, y 900 MB)";
+        }
+
         private volatile int warmGen = 0;          // generacion del precalentador (se reinicia al recargar musica)
         private volatile int lastInputTick = 0;    // ultimo boton presionado (el precalentador pausa si hay gente)
         private List<string> cachedVideoPaths;            // rutas de video del cache de biblioteca (arranque rapido)
@@ -314,6 +358,7 @@ namespace Rocola
         {
             base.OnShown(e);
             LoadStats();   // estadisticas guardadas de sesiones anteriores (base de "Lo mas sonado")
+            ProbeAudioTier();    // requisitos de maquina para el NIVEL 2 de audio (antes de leer dsee= de config)
             LoadConfigPrefs();   // preferencias: render GPU/CPU + carpetas de musica adicionales (Ctrl+F2)
             LoadLoudCache();     // sonoridad medida por cancion (para nivelar el volumen de todas)
             LoadIncompatible();  // rutas ya anotadas como no reproducibles (para no repetirlas)
@@ -431,6 +476,8 @@ namespace Rocola
                     else if (s.StartsWith("nivel_objetivo=")) { float v; if (float.TryParse(s.Substring(15).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) normTarget = Clampf(v, NormTargetMin, NormTargetMax); }
                     else if (s.StartsWith("nivel_fuerza=")) { float v; if (float.TryParse(s.Substring(13).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) normStrength = Clampf(v, 0f, 1f); }
                     else if (s.StartsWith("realce=")) { float v; if (float.TryParse(s.Substring(7).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) excAmount = Clampf(v, 0f, 1f); }   // realce de agudos (exciter, tipo DSEE)
+                    else if (s.StartsWith("dsee=")) sbrOn = s.Substring(5).Trim() == "1";   // reconstruccion espectral (NIVEL 2)
+                    else if (s.StartsWith("dsee_forzar=")) { if (s.Substring(12).Trim() == "1") { sbrForce = true; sbrAllowed = true; sbrReason = ""; } }   // salta la puerta de requisitos (pruebas)
                     else if (s.StartsWith("dir="))
                     {
                         string d = s.Substring(4).Trim();
@@ -439,6 +486,7 @@ namespace Rocola
                 }
             }
             catch { }
+            if (!sbrAllowed) sbrOn = false;   // la maquina no cumple los requisitos del NIVEL 2: apagado si o si
         }
 
         private static float Clampf(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
@@ -453,6 +501,8 @@ namespace Rocola
                 sb.Append("nivel_objetivo=").Append(normTarget.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("nivel_fuerza=").Append(normStrength.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("realce=").Append(excAmount.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
+                sb.Append("dsee=").Append(sbrOn ? "1" : "0").Append("\r\n");
+                if (sbrForce) sb.Append("dsee_forzar=1\r\n");   // conservar la bandera manual de pruebas (este saver reescribe el archivo completo)
                 for (int i = 0; i < extraMusicDirs.Count; i++) sb.Append("dir=").Append(extraMusicDirs[i]).Append("\r\n");
                 File.WriteAllText(ConfigFile, sb.ToString());
             }
@@ -524,7 +574,11 @@ namespace Rocola
         private float TargetFromPct(int p) { return NormTargetMin + (p / 100f) * (NormTargetMax - NormTargetMin); }
 
         // Aplica el nivelado a la cancion que suena AHORA (para oir el cambio al instante mientras se ajusta en Ctrl+F3).
-        private void ApplyNormNow() { LevelTap t = curTap; if (t != null && nowPlaying != null && nowPlaying.Song != null) { t.Gain = NormGainFor(nowPlaying.Song.Path); t.Excite = excAmount; } }
+        private void ApplyNormNow()
+        {
+            LevelTap t = curTap; if (t != null && nowPlaying != null && nowPlaying.Song != null) { t.Gain = NormGainFor(nowPlaying.Song.Path); t.Excite = excAmount; }
+            SpectralTap sp = curSbr; if (sp != null) sp.Active = sbrOn;   // reconstruccion espectral: alterna EN VIVO (A/B desde Ctrl+F3)
+        }
 
         // Cierra la medida de la cancion que acaba de sonar: calcula su RMS integrado y lo guarda (si se oyo lo
         // suficiente). La llama DisposePlaybackNow, ya con el audio detenido (sin carrera con el hilo de sonido).
@@ -677,7 +731,7 @@ namespace Rocola
             bool wasMaint = maintMode;
             maintMode = true; maintUntil = DateTime.Now.AddMinutes(10);
             bool changed = false;
-            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount; bool bkOn = normalizeOn;   // por si se Cancela
+            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount; bool bkOn = normalizeOn, bkSbr = sbrOn;   // por si se Cancela
             try
             {
                 Cursor.Show();
@@ -689,7 +743,7 @@ namespace Rocola
                     dlg.FormBorderStyle = FormBorderStyle.FixedDialog;
                     dlg.MaximizeBox = false; dlg.MinimizeBox = false; dlg.ShowInTaskbar = false; dlg.ShowIcon = false;
                     dlg.StartPosition = FormStartPosition.CenterParent;
-                    dlg.ClientSize = new Size(600, 472);
+                    dlg.ClientSize = new Size(600, 518);
                     dlg.BackColor = Color.FromArgb(14, 18, 42);
                     dlg.Font = fUi;
 
@@ -714,12 +768,23 @@ namespace Rocola
                     TrackBar tbExc = new TrackBar(); tbExc.SetBounds(12, 320, 576, 45); tbExc.Minimum = 0; tbExc.Maximum = 100; tbExc.TickFrequency = 10;
                     tbExc.BackColor = dlg.BackColor; tbExc.Value = (int)Math.Round(excAmount * 100f);
 
-                    Label hint = new Label(); hint.SetBounds(16, 374, 568, 40); hint.BackColor = Color.Transparent; hint.ForeColor = Color.FromArgb(160, 170, 200);
+                    // NIVEL 2: reconstructor espectral (solo maquinas que cumplen requisitos; ver ProbeAudioTier)
+                    CheckBox chkSbr = new CheckBox();
+                    chkSbr.SetBounds(16, 372, 568, 24); chkSbr.BackColor = Color.Transparent; chkSbr.ForeColor = Color.FromArgb(190, 225, 255);
+                    chkSbr.Text = "Reconstruir agudos perdidos (DSEE espectral)  -  EXPERIMENTAL";
+                    chkSbr.Checked = sbrOn && sbrAllowed; chkSbr.Enabled = sbrAllowed;
+                    Label lSbrInfo = new Label(); lSbrInfo.SetBounds(35, 396, 549, 18); lSbrInfo.BackColor = Color.Transparent;
+                    lSbrInfo.ForeColor = sbrAllowed ? Color.FromArgb(150, 160, 190) : Color.FromArgb(200, 150, 120);
+                    lSbrInfo.Text = sbrAllowed
+                        ? "Re-crea la banda que el codec corto (transposicion espectral). Alterna con musica sonando y compara."
+                        : "NO disponible en este equipo: " + sbrReason;
+
+                    Label hint = new Label(); hint.SetBounds(16, 420, 568, 40); hint.BackColor = Color.Transparent; hint.ForeColor = Color.FromArgb(160, 170, 200);
                     hint.Text = "Todo se oye al instante en la cancion actual y aplica a las siguientes. El realce recupera el 'aire' (agudos) que el MP3 recorta; cada cancion se mide la primera vez que suena.";
 
                     Button bReset = new Button(), bOk = new Button();
-                    bReset.Text = "Recomendado"; bReset.SetBounds(16, 424, 150, 38);
-                    bOk.Text = "Listo"; bOk.SetBounds(488, 424, 96, 38);
+                    bReset.Text = "Recomendado"; bReset.SetBounds(16, 470, 150, 38);
+                    bOk.Text = "Listo"; bOk.SetBounds(488, 470, 96, 38);
                     Button[] bs = { bReset, bOk };
                     for (int i = 0; i < bs.Length; i++) { bs[i].FlatStyle = FlatStyle.Flat; bs[i].FlatAppearance.BorderColor = Color.FromArgb(90, 110, 170); bs[i].BackColor = Color.FromArgb(34, 44, 86); bs[i].ForeColor = Color.White; }
 
@@ -739,12 +804,13 @@ namespace Rocola
                         normTarget = TargetFromPct(tbTarget.Value);
                         normStrength = tbStr.Value / 100f;
                         excAmount = tbExc.Value / 100f;
+                        sbrOn = chkSbr.Checked && sbrAllowed;
                         changed = true;
                         updateLabels();
                         ApplyNormNow();   // se oye el cambio al instante en la cancion que suena
                     };
-                    tbTarget.Scroll += apply; tbStr.Scroll += apply; tbExc.Scroll += apply; chkOn.CheckedChanged += apply;
-                    bReset.Click += delegate { chkOn.Checked = true; tbTarget.Value = TargetToPct(0.22f); tbStr.Value = 90; tbExc.Value = 35; apply(bReset, EventArgs.Empty); };
+                    tbTarget.Scroll += apply; tbStr.Scroll += apply; tbExc.Scroll += apply; chkOn.CheckedChanged += apply; chkSbr.CheckedChanged += apply;
+                    bReset.Click += delegate { chkOn.Checked = true; tbTarget.Value = TargetToPct(0.22f); tbStr.Value = 90; tbExc.Value = 35; if (chkSbr.Enabled) chkSbr.Checked = false; apply(bReset, EventArgs.Empty); };   // recomendado: espectral apagado (es experimental)
                     bOk.Click += delegate { dlg.Close(); };
                     dlg.CancelButton = bOk;
 
@@ -752,13 +818,14 @@ namespace Rocola
                     dlg.Controls.Add(lTarget); dlg.Controls.Add(tbTarget);
                     dlg.Controls.Add(lStr); dlg.Controls.Add(tbStr);
                     dlg.Controls.Add(lExc); dlg.Controls.Add(tbExc);
+                    dlg.Controls.Add(chkSbr); dlg.Controls.Add(lSbrInfo);
                     dlg.Controls.Add(hint); dlg.Controls.Add(bReset); dlg.Controls.Add(bOk);
                     updateLabels();
                     dlg.ShowDialog(this);
                 }
                 if (changed) { SaveConfigPrefs(); ShowToast("Sonido actualizado", Color.FromArgb(40, 130, 90)); }
             }
-            catch { normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; }   // si algo truena, deja los valores como estaban
+            catch { normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; sbrOn = bkSbr; }   // si algo truena, deja los valores como estaban
             finally { try { Cursor.Hide(); } catch { } maintMode = wasMaint; ForceFocus(); }
         }
 
@@ -3619,7 +3686,12 @@ namespace Rocola
                 // nueva, va a su volumen original y se APRENDE su sonoridad en esta pasada (para nivelarla la proxima vez).
                 curMeasurePath = normalizeOn ? t.Path : null;   // empieza a medir esta cancion
                 curSumSq = 0; curSamples = 0;
-                LevelTap tap = new LevelTap(reader, this);
+                // NIVEL 2 (reconstructor espectral): solo se INSERTA en maquinas que cumplen requisitos; con
+                // Active=false es un pase directo (costo ~cero). Ctrl+F3 lo alterna EN VIVO para comparar A/B.
+                NAudio.Wave.ISampleProvider chain = reader;
+                if (sbrAllowed) { curSbr = new SpectralTap(reader); curSbr.Active = sbrOn; chain = curSbr; }
+                else curSbr = null;
+                LevelTap tap = new LevelTap(chain, this);
                 tap.Gain = NormGainFor(t.Path);
                 tap.Excite = excAmount;   // realce de agudos (exciter, tipo DSEE): se aplica DESPUES de nivelar
                 curTap = tap;   // referencia para ajustar la ganancia en vivo (Ctrl+F3)
@@ -3797,7 +3869,7 @@ namespace Rocola
                 output = null;
             }
             if (reader != null) { try { reader.Dispose(); } catch { } reader = null; }
-            curTap = null;   // ya no hay tap actual
+            curTap = null; curSbr = null;   // ya no hay taps actuales
             FinalizeLoudMeasure();   // guarda la sonoridad medida de la cancion que acaba de sonar (audio ya detenido: sin carrera)
             lock (levelLock) levelQ.Clear();   // sin cancion no hay trozos pendientes: el pulso cae a cero
             rmsLo = rmsMid = rmsHi = 0f; avgLo = avgMid = avgHi = 0f;
@@ -4527,6 +4599,218 @@ namespace Rocola
             public TimeSpan CurrentTime { get { return mp3.CurrentTime; } }
             public TimeSpan TotalTime { get { return mp3.TotalTime; } }
             public void Dispose() { try { mp3.Dispose(); } catch { } try { ms.Dispose(); } catch { } }
+        }
+
+        // ==========  RECONSTRUCTOR ESPECTRAL DE AGUDOS (el DSEE "serio"; NIVEL 2)  ==========
+        // Trabaja como el DSEE de Sony pero sin red neuronal: parte el audio en ventanas (STFT de 2048 puntos,
+        // solape 50%, ventana raiz-de-Hann en analisis Y sintesis: con el espectro intacto la reconstruccion
+        // es EXACTA), LOCALIZA el "acantilado" donde el codec corto los agudos y RE-CREA la banda faltante
+        // transponiendola UNA OCTAVA hacia arriba (bin destino t <- bin fuente t/2, como el SBR de HE-AAC),
+        // con la magnitud EMPATADA en la costura y decayendo ~9 dB/octava (como decae la musica real). La fase
+        // se hereda de la fuente (suena natural, no metalico). Archivos ya completos (WAV / 320kbps, corte
+        // >= ~19.3 kHz) pasan INTACTOS: sin acantilado no se toca ni un bin. Costo: ~3-5% de CPU (4 FFT de
+        // 2048 por ciclo de ~23ms en estereo); por eso SOLO se ofrece si la maquina cumple requisitos
+        // (ProbeAudioTier). Active se alterna EN VIVO desde Ctrl+F3 para comparar A/B (al alternar hay un
+        // microcorte de ~46ms: es el colchon del STFT llenandose; normal y esperado).
+        private sealed class SpectralTap : NAudio.Wave.ISampleProvider
+        {
+            private const int Frame = 2048, Hop = Frame / 2;
+            private readonly NAudio.Wave.ISampleProvider src;
+            private readonly int ch, rate;
+            private readonly float binHz;
+            public volatile bool Active;                   // false = pase directo (costo ~cero)
+            private bool wasActive;                        // para reiniciar el colchon al alternar (A/B)
+            private readonly float[][] inBuf, outAcc;      // por canal: ventana de entrada y acumulador de solape
+            private int fill;                              // muestras acumuladas (por canal) en inBuf
+            private readonly float[] re, im, win;          // espectro de trabajo y ventana raiz-de-Hann
+            private readonly int[] bitrev; private readonly float[] twCos, twSin;   // tablas de la FFT
+            private readonly float[] inter;                // buffer intercalado para leer del origen
+            private readonly float[] outQ; private int qHead, qLen;   // FIFO de salida (intercalado)
+            private float cutHz;                           // acantilado suavizado (0 = aun sin medir)
+            private bool srcEnded;
+
+            public SpectralTap(NAudio.Wave.ISampleProvider s)
+            {
+                src = s;
+                ch = Math.Max(1, s.WaveFormat.Channels);
+                rate = Math.Max(8000, s.WaveFormat.SampleRate);
+                binHz = (float)rate / Frame;
+                inBuf = new float[ch][]; outAcc = new float[ch][];
+                for (int c = 0; c < ch; c++) { inBuf[c] = new float[Frame]; outAcc[c] = new float[Frame]; }
+                re = new float[Frame]; im = new float[Frame];
+                win = new float[Frame];
+                for (int i = 0; i < Frame; i++) win[i] = (float)Math.Sqrt(0.5 - 0.5 * Math.Cos(2.0 * Math.PI * i / Frame));   // raiz de Hann: analisis*sintesis = Hann, que al 50% suma EXACTO 1
+                bitrev = new int[Frame];
+                for (int i = 1, j = 0; i < Frame; i++)
+                {
+                    int bit = Frame >> 1;
+                    for (; (j & bit) != 0; bit >>= 1) j ^= bit;
+                    j |= bit; bitrev[i] = j;
+                }
+                twCos = new float[Frame / 2]; twSin = new float[Frame / 2];
+                for (int k = 0; k < Frame / 2; k++) { twCos[k] = (float)Math.Cos(2.0 * Math.PI * k / Frame); twSin[k] = (float)Math.Sin(2.0 * Math.PI * k / Frame); }
+                inter = new float[Hop * ch];
+                outQ = new float[Frame * ch * 2];          // FIFO holgado (nunca acumula mas de Hop*ch)
+            }
+
+            public NAudio.Wave.WaveFormat WaveFormat { get { return src.WaveFormat; } }
+
+            public int Read(float[] buffer, int offset, int count)
+            {
+                bool act = Active;
+                if (act != wasActive)   // alternado en vivo: reinicia el colchon (microcorte de ~46ms) y sigue
+                {
+                    wasActive = act;
+                    fill = 0; qHead = 0; qLen = 0;
+                    for (int c = 0; c < ch; c++) Array.Clear(outAcc[c], 0, Frame);
+                }
+                if (!act) return src.Read(buffer, offset, count);   // pase directo
+
+                int written = 0;
+                while (written < count)
+                {
+                    if (qLen > 0)                                    // hay salida lista: entregarla
+                    {
+                        int take = Math.Min(qLen, count - written);
+                        for (int i = 0; i < take; i++) { buffer[offset + written + i] = outQ[qHead]; qHead++; if (qHead >= outQ.Length) qHead = 0; }
+                        qLen -= take; written += take;
+                        continue;
+                    }
+                    if (srcEnded) break;                             // origen agotado y FIFO vacio -> fin (WaveOut detiene)
+                    int need = (Frame - fill) * ch;                  // llenar la ventana de analisis
+                    if (need > inter.Length) need = inter.Length;
+                    int got = src.Read(inter, 0, need);
+                    if (got <= 0)
+                    {
+                        srcEnded = true;
+                        if (fill > 0)                                // cola final: completar con silencio y procesar una vez
+                        {
+                            for (int c = 0; c < ch; c++) Array.Clear(inBuf[c], fill, Frame - fill);
+                            fill = Frame; ProcessFrame();
+                        }
+                        continue;
+                    }
+                    int frames = got / ch;
+                    for (int f = 0; f < frames; f++)
+                        for (int c = 0; c < ch; c++) inBuf[c][fill + f] = inter[f * ch + c];
+                    fill += frames;
+                    if (fill >= Frame) ProcessFrame();
+                }
+                return written;
+            }
+
+            // Procesa UNA ventana completa: FFT -> (detector + regeneracion) -> iFFT -> solape-y-suma.
+            // Emite Hop muestras por canal al FIFO y desliza entrada/salida media ventana.
+            private void ProcessFrame()
+            {
+                for (int c = 0; c < ch; c++)
+                {
+                    float[] xin = inBuf[c];
+                    for (int i = 0; i < Frame; i++) { re[i] = xin[i] * win[i]; im[i] = 0f; }
+                    Fft(false);
+                    if (c == 0) DetectCliff();   // el acantilado es del ARCHIVO: se mide en el canal 0 y aplica a todos
+                    Regenerate();
+                    Fft(true);
+                    float[] acc = outAcc[c];
+                    for (int i = 0; i < Frame; i++) acc[i] += re[i] * win[i];
+                }
+                for (int f = 0; f < Hop; f++)      // la primera mitad ya recibio sus DOS solapes: lista para salir
+                    for (int c = 0; c < ch; c++)
+                    { int tail = qHead + qLen; if (tail >= outQ.Length) tail -= outQ.Length; outQ[tail] = outAcc[c][f]; qLen++; }
+                for (int c = 0; c < ch; c++)
+                {
+                    Array.Copy(outAcc[c], Hop, outAcc[c], 0, Frame - Hop); Array.Clear(outAcc[c], Frame - Hop, Hop);
+                    Array.Copy(inBuf[c], Hop, inBuf[c], 0, Frame - Hop);
+                }
+                fill = Frame - Hop;
+            }
+
+            private int Hz(float hz) { int b = (int)(hz / binHz); int ny = Frame / 2; return b < 1 ? 1 : (b > ny - 1 ? ny - 1 : b); }
+
+            // Localiza el "acantilado" del codec: la frecuencia MAS ALTA donde todavia hay energia comparable
+            // a la banda media (4-8 kHz). Suavizado entre ventanas para que no baile; en silencio no se mide.
+            private void DetectCliff()
+            {
+                int b4 = Hz(4000f), b8 = Hz(8000f);
+                if (b8 <= b4 + 4) return;
+                double refE = 0; for (int b = b4; b < b8; b++) refE += re[b] * re[b] + im[b] * im[b];
+                refE /= (b8 - b4);
+                if (refE < 1e-10) return;                        // silencio: conservar la medida previa
+                float top = Math.Min(20000f, (Frame / 2) * binHz * 0.94f);
+                float found = 0f;
+                for (float hz = top - 300f; hz >= 9000f; hz -= 300f)
+                {
+                    int a = Hz(hz), b = Hz(hz + 300f); if (b <= a) b = a + 1;
+                    double e = 0; for (int k = a; k < b; k++) e += re[k] * re[k] + im[k] * im[k];
+                    e /= (b - a);
+                    if (e > refE * 0.002) { found = hz + 300f; break; }   // ~-27 dB de la banda media: aqui sigue VIVO
+                }
+                if (found <= 0f) found = 9000f;                  // nada vivo arriba de 9k: el corte anda por ahi
+                cutHz = (cutHz <= 0f) ? found : (cutHz * 0.85f + found * 0.15f);
+            }
+
+            // Re-crea la banda por ENCIMA del acantilado: t <- t/2 (una octava abajo = contenido REAL que
+            // sobrevivio), magnitud empatada en la costura y decayendo ~9 dB/octava. Sin acantilado, intacto.
+            private void Regenerate()
+            {
+                if (cutHz <= 0f || cutHz >= 19300f) return;      // sin medida aun, o archivo ya completo
+                int ny = Frame / 2;
+                int cut = (int)(cutHz / binHz);
+                if (cut < 64) return;                             // corte absurdamente bajo: no inventar tanto
+                int topBin = Math.Min((int)(Math.Min(20500f, ny * binHz * 0.95f) / binHz), Math.Min(2 * cut - 2, ny - 4));
+                if (topBin <= cut + 4) return;
+                double mBelow = 0, mSrc = 0;                      // costura: magnitud media bajo el corte vs banda fuente
+                for (int k = cut - 6; k < cut; k++) mBelow += Math.Sqrt(re[k] * re[k] + im[k] * im[k]);
+                int s0 = cut >> 1;
+                for (int k = s0; k < s0 + 6; k++) mSrc += Math.Sqrt(re[k] * re[k] + im[k] * im[k]);
+                if (mSrc < 1e-9) return;
+                float g = (float)(mBelow / mSrc) * 0.85f;         // empatada con colchon (que la costura NUNCA suba)
+                if (g > 1.1f) g = 1.1f;
+                if (g <= 1e-6f) return;
+                float step = (float)Math.Pow(10.0, -0.45 / cut);  // ~-9 dB por octava (una octava = cut bins)
+                float f = g;
+                for (int t = cut; t <= topBin; t++)
+                {
+                    int s = t >> 1;                               // fuente: una octava abajo (siempre < cut: contenido real)
+                    re[t] += re[s] * f; im[t] += im[s] * f;
+                    int m = Frame - t;                            // espejo (frecuencias negativas): la señal sigue siendo real
+                    re[m] = re[t]; im[m] = -im[t];
+                    f *= step;
+                }
+            }
+
+            // FFT radix-2 iterativa en sitio (tablas precalculadas). inverse=true incluye la escala 1/N.
+            private void Fft(bool inverse)
+            {
+                int n = Frame;
+                for (int i = 0; i < n; i++)
+                {
+                    int j = bitrev[i];
+                    if (j > i) { float t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t; }
+                }
+                for (int size = 2; size <= n; size <<= 1)
+                {
+                    int half = size >> 1, tstep = n / size;
+                    for (int i = 0; i < n; i += size)
+                    {
+                        int k = 0;
+                        for (int j = i; j < i + half; j++, k += tstep)
+                        {
+                            float wr = twCos[k], wi = inverse ? twSin[k] : -twSin[k];
+                            int b = j + half;
+                            float tr = re[b] * wr - im[b] * wi;
+                            float ti = re[b] * wi + im[b] * wr;
+                            re[b] = re[j] - tr; im[b] = im[j] - ti;
+                            re[j] += tr; im[j] += ti;
+                        }
+                    }
+                }
+                if (inverse)
+                {
+                    float sc = 1f / n;
+                    for (int i = 0; i < n; i++) { re[i] *= sc; im[i] *= sc; }
+                }
+            }
         }
 
         // ==========  RENDER DEL CUBO (compartido)  ==========
