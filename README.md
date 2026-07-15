@@ -18,11 +18,13 @@ estadísticas ("Lo más sonado") y modo atracción.
     cae automaticamente al WaveOut clasico.
   - **Reconstructor espectral fino**: el DSEE espectral usa STFT de **4096** (bins mas finos =
     deteccion del corte y costura mas limpias) en vez de 2048.
-  - **Hoja de ruta NIVEL 3 — IA real**: el punto de enchufe ya existe (otro *tap* en la cadena de
-    `PlayTrack`, gateado por `tierHd`). Plan tecnico: `Microsoft.ML.OnnxRuntime` (x64) + un modelo de
-    extension de ancho de banda / mejora musical en TIEMPO REAL. Hoy no existe un modelo libre digno
-    de produccion para musica en tiempo real; cuando exista (o se entrene uno), se integra aqui.
-    Regla de la casa: **no se embarca nada llamado "IA" que no lo sea.**
+  - **NIVEL 3 — IA PROPIA (ya existe)**: una red neuronal chica entrenada POR NOSOTROS
+    (`ia/entrenar_ia.py`, numpy) que predice la ENVOLVENTE de los agudos perdidos; el
+    reconstructor espectral la usa en vez de su curva fija cuando `rocola_ia.bin` esta junto
+    al exe. El `.bin` incluido es prueba de concepto (audio sintetico; 2.8x mejor que la curva
+    fija prediciendo la envolvente real, paridad python<->C# de 2e-6); para el mejor sonido,
+    entrena con tu propia musica (`--musica`). Ver `ia/LEEME.md`.
+    Regla de la casa: **no se embarca nada llamado "IA" que no lo sea** — esta lo es.
 
 ## Proyecto
 

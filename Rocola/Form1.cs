@@ -371,6 +371,7 @@ namespace Rocola
             base.OnShown(e);
             LoadStats();   // estadisticas guardadas de sesiones anteriores (base de "Lo mas sonado")
             ProbeAudioTier();    // requisitos de maquina para el NIVEL 2 de audio (antes de leer dsee= de config)
+            NeuralEnv.TryLoad(Path.Combine(Application.StartupPath, "rocola_ia.bin"));   // IA propia (si hay modelo entrenado junto al exe)
             LoadConfigPrefs();   // preferencias: render GPU/CPU + carpetas de musica adicionales (Ctrl+F2)
             LoadLoudCache();     // sonoridad medida por cancion (para nivelar el volumen de todas)
             LoadIncompatible();  // rutas ya anotadas como no reproducibles (para no repetirlas)
@@ -790,7 +791,9 @@ namespace Rocola
                     Label lSbrInfo = new Label(); lSbrInfo.SetBounds(35, 396, 549, 18); lSbrInfo.BackColor = Color.Transparent;
                     lSbrInfo.ForeColor = sbrAllowed ? Color.FromArgb(150, 160, 190) : Color.FromArgb(200, 150, 120);
                     lSbrInfo.Text = sbrAllowed
-                        ? "Re-crea la banda que el codec corto (transposicion espectral). Alterna con musica sonando y compara."
+                        ? (NeuralEnv.Loaded
+                            ? "Con IA PROPIA (rocola_ia.bin): la envolvente de agudos la predice nuestra red entrenada."
+                            : "Re-crea la banda que el codec corto (transposicion espectral). Alterna con musica sonando y compara.")
                         : "NO disponible en este equipo: " + sbrReason;
 
                     Label hint = new Label(); hint.SetBounds(16, 420, 568, 40); hint.BackColor = Color.Transparent; hint.ForeColor = Color.FromArgb(160, 170, 200);
@@ -4642,6 +4645,76 @@ namespace Rocola
             public void Dispose() { try { mp3.Dispose(); } catch { } try { ms.Dispose(); } catch { } }
         }
 
+        // ==========  IA PROPIA: RED DE ENVOLVENTE ESPECTRAL (NIVEL 3, rama HD)  ==========
+        // Un MLP chico (28 -> 48 -> 48 -> 12, tanh) ENTRENADO POR NOSOTROS (ia/entrenar_ia.py) que, viendo la
+        // FORMA del espectro que sobrevivio al codec (24 bandas log + sonoridad + posicion del corte +
+        // planitud), PREDICE la envolvente correcta de la banda perdida (12 sub-bandas sobre el corte,
+        // relativas a la costura). El reconstructor espectral la usa EN VEZ de la caida fija de -9 dB/octava:
+        // platillos recuperan su brillo real, pasajes oscuros se quedan oscuros. Pesos en rocola_ia.bin junto
+        // al exe (formato RIA1); sin archivo, el reconstructor sigue con su curva fija (cero cambio). La
+        // inferencia son ~4300 multiplicaciones por ventana (~23ms): costo despreciable hasta en un Atom.
+        private static class NeuralEnv
+        {
+            public static volatile bool Loaded;
+            private static float[][] W, B;            // pesos (fila-mayor) y sesgos por capa
+            private static int[] rOut, cIn;           // dimensiones por capa
+            private static float[] buf1, buf2;        // buffers de trabajo (sin asignar por ventana)
+
+            public static void TryLoad(string path)
+            {
+                try
+                {
+                    if (!File.Exists(path)) return;
+                    byte[] d = File.ReadAllBytes(path);
+                    if (d.Length < 12 || d[0] != (byte)'R' || d[1] != (byte)'I' || d[2] != (byte)'A' || d[3] != (byte)'1') return;
+                    int p = 4;
+                    int nl = BitConverter.ToInt32(d, p); p += 4;
+                    if (nl < 1 || nl > 8) return;
+                    float[][] w = new float[nl][], b = new float[nl][];
+                    int[] ro = new int[nl], ci = new int[nl]; int maxDim = 0;
+                    for (int L = 0; L < nl; L++)
+                    {
+                        int r = BitConverter.ToInt32(d, p); p += 4;
+                        int c = BitConverter.ToInt32(d, p); p += 4;
+                        if (r < 1 || r > 512 || c < 1 || c > 512) return;
+                        w[L] = new float[r * c]; b[L] = new float[r];
+                        for (int i = 0; i < r * c; i++) { w[L][i] = BitConverter.ToSingle(d, p); p += 4; }
+                        for (int i = 0; i < r; i++) { b[L][i] = BitConverter.ToSingle(d, p); p += 4; }
+                        ro[L] = r; ci[L] = c; if (r > maxDim) maxDim = r; if (c > maxDim) maxDim = c;
+                    }
+                    if (ci[0] != 28 || ro[nl - 1] != 12) return;   // contrato de esta version (RIA1)
+                    for (int L = 1; L < nl; L++) if (ci[L] != ro[L - 1]) return;
+                    buf1 = new float[maxDim]; buf2 = new float[maxDim];
+                    W = w; B = b; rOut = ro; cIn = ci;
+                    Loaded = true;
+                }
+                catch { Loaded = false; }
+            }
+
+            // y = red(x). Capas ocultas con tanh; la de salida lineal. Devuelve false si no hay modelo.
+            public static bool Predict(float[] x, float[] y)
+            {
+                float[][] w = W, b = B;
+                if (!Loaded || w == null) return false;
+                float[] cur = x, nxt = buf1;
+                int curN = cIn[0];
+                for (int L = 0; L < w.Length; L++)
+                {
+                    int r = rOut[L]; float[] wl = w[L], bl = b[L];
+                    float[] dst = (L == w.Length - 1) ? y : nxt;
+                    for (int i = 0; i < r; i++)
+                    {
+                        float s = bl[i]; int off = i * curN;
+                        for (int j = 0; j < curN; j++) s += wl[off + j] * cur[j];
+                        dst[i] = (L == w.Length - 1) ? s : (float)Math.Tanh(s);
+                    }
+                    cur = dst; curN = r;
+                    nxt = (cur == buf1) ? buf2 : buf1;   // alterna buffers (la entrada x no se toca)
+                }
+                return true;
+            }
+        }
+
         // ==========  RECONSTRUCTOR ESPECTRAL DE AGUDOS (el DSEE "serio"; NIVEL 2)  ==========
         // Trabaja como el DSEE de Sony pero sin red neuronal: parte el audio en ventanas (STFT de 2048 puntos,
         // solape 50%, ventana raiz-de-Hann en analisis Y sintesis: con el espectro intacto la reconstruccion
@@ -4669,6 +4742,7 @@ namespace Rocola
             private readonly float[] outQ; private int qHead, qLen;   // FIFO de salida (intercalado)
             private float cutHz;                           // acantilado suavizado (0 = aun sin medir)
             private bool srcEnded;
+            private readonly float[] iaIn = new float[28], iaOut = new float[12];   // IA propia: entrada/salida de la red (reusables)
 
             public SpectralTap(NAudio.Wave.ISampleProvider s, int frameSize)
             {
@@ -4792,7 +4866,8 @@ namespace Rocola
             }
 
             // Re-crea la banda por ENCIMA del acantilado: t <- t/2 (una octava abajo = contenido REAL que
-            // sobrevivio), magnitud empatada en la costura y decayendo ~9 dB/octava. Sin acantilado, intacto.
+            // sobrevivio). La ENVOLVENTE (cuanto suena cada sub-banda nueva) la decide la IA PROPIA si hay
+            // modelo cargado (rocola_ia.bin); si no, la curva clasica: costura empatada y ~-9 dB/octava.
             private void Regenerate()
             {
                 if (cutHz <= 0f || cutHz >= 19300f) return;      // sin medida aun, o archivo ya completo
@@ -4801,6 +4876,7 @@ namespace Rocola
                 if (cut < 64) return;                             // corte absurdamente bajo: no inventar tanto
                 int topBin = Math.Min((int)(Math.Min(20500f, ny * binHz * 0.95f) / binHz), Math.Min(2 * cut - 2, ny - 4));
                 if (topBin <= cut + 4) return;
+                if (NeuralEnv.Loaded && RegenNeural(cut, topBin)) return;   // IA propia: envolvente APRENDIDA
                 double mBelow = 0, mSrc = 0;                      // costura: magnitud media bajo el corte vs banda fuente
                 for (int k = cut - 6; k < cut; k++) mBelow += Math.Sqrt(re[k] * re[k] + im[k] * im[k]);
                 int s0 = cut >> 1;
@@ -4819,6 +4895,74 @@ namespace Rocola
                     re[m] = re[t]; im[m] = -im[t];
                     f *= step;
                 }
+            }
+
+            // ---- IA PROPIA: caracteristicas + envolvente aprendida ----
+            // CONTRATO RIA1 (debe COINCIDIR EXACTO con ia/entrenar_ia.py):
+            //   entrada[0..23]  = log10(energia media por bin, |X/N|^2) de 24 bandas log de 200 Hz al corte,
+            //                     restandoles su media (forma espectral, invariante al volumen)
+            //   entrada[24]     = esa media (sonoridad global, log10)
+            //   entrada[25]     = corte en Hz / 20000
+            //   entrada[26]     = planitud de las ultimas 8 bandas bajo el corte (log10 geo - log10 arit; <= 0)
+            //   entrada[27]     = 0 (reservado)
+            //   salida[0..11]   = log10(energia objetivo / energia de la COSTURA) por 12 sub-bandas log del
+            //                     corte a min(2*corte, 20 kHz)   [costura = banda 0.92*corte .. corte]
+            private bool BuildIaFeatures(int cut)
+            {
+                float n2 = (float)Frame * (float)Frame;
+                float fc = cut * binHz;
+                if (fc < 1200f) return false;
+                double sum = 0;
+                for (int i = 0; i < 24; i++)
+                {
+                    int a = Hz(200f * (float)Math.Pow(fc / 200f, i / 24.0));
+                    int b = Hz(200f * (float)Math.Pow(fc / 200f, (i + 1) / 24.0));
+                    if (b <= a) b = a + 1;
+                    double e = 0; for (int k = a; k < b; k++) e += re[k] * re[k] + im[k] * im[k];
+                    iaIn[i] = (float)Math.Log10(e / ((b - a) * n2) + 1e-12);
+                    sum += iaIn[i];
+                }
+                float mean = (float)(sum / 24.0);
+                for (int i = 0; i < 24; i++) iaIn[i] -= mean;
+                iaIn[24] = mean;
+                iaIn[25] = fc / 20000f;
+                double am = 0, gm = 0;
+                for (int i = 16; i < 24; i++) { am += Math.Pow(10.0, iaIn[i] + mean); gm += iaIn[i] + mean; }
+                iaIn[26] = (float)(gm / 8.0 - Math.Log10(am / 8.0 + 1e-12));
+                iaIn[27] = 0f;
+                return true;
+            }
+
+            private bool RegenNeural(int cut, int topBin)
+            {
+                if (!BuildIaFeatures(cut)) return false;
+                if (!NeuralEnv.Predict(iaIn, iaOut)) return false;
+                float n2 = (float)Frame * (float)Frame;
+                int sa = Hz(cut * binHz * 0.92f); if (sa >= cut) sa = cut - 1;
+                double seamE = 0; for (int k = sa; k < cut; k++) seamE += re[k] * re[k] + im[k] * im[k];
+                seamE = seamE / ((cut - sa) * n2) + 1e-12;
+                float fc = cut * binHz, top = topBin * binHz;
+                for (int j = 0; j < 12; j++)
+                {
+                    int a = Hz(fc * (float)Math.Pow(top / fc, j / 12.0));
+                    int b = Hz(fc * (float)Math.Pow(top / fc, (j + 1) / 12.0));
+                    if (a < cut) a = cut; if (b > topBin) b = topBin; if (b <= a) continue;
+                    double mapped = 0;                               // energia de la fuente transpuesta en esta sub-banda
+                    for (int t = a; t < b; t++) { int s = t >> 1; mapped += re[s] * re[s] + im[s] * im[s]; }
+                    mapped = mapped / ((b - a) * n2);
+                    if (mapped < 1e-14) continue;                    // fuente muda: nada que transponer aqui
+                    float yj = iaOut[j]; if (yj > 0.1f) yj = 0.1f; else if (yj < -4f) yj = -4f;   // tope: nunca mas fuerte que la costura (+~1dB)
+                    float sc = (float)Math.Sqrt(seamE * Math.Pow(10.0, yj) / mapped) * 0.9f;      // 0.9 = colchon
+                    if (sc > 3f) sc = 3f;
+                    for (int t = a; t < b; t++)
+                    {
+                        int s = t >> 1;
+                        re[t] += re[s] * sc; im[t] += im[s] * sc;
+                        int m = Frame - t;                           // espejo: la señal sigue siendo real
+                        re[m] = re[t]; im[m] = -im[t];
+                    }
+                }
+                return true;
             }
 
             // FFT radix-2 iterativa en sitio (tablas precalculadas). inverse=true incluye la escala 1/N.
