@@ -1,4 +1,7 @@
 ﻿// Rocola - version final (rocola fisica; botones configurables, sin lenguaje de teclado de PC)
+// RAMA rocola-hd: para rocolas POTENTES (Windows 7+, 4+ nucleos, .NET 4.8). Suma el NIVEL HD (se detecta
+// solo al arrancar): salida WASAPI FLOTANTE (float de punta a punta), STFT fino (4096) en el reconstructor
+// espectral, y el punto de enchufe para IA real (ver README, seccion "Rama rocola-hd").
 // Reemplaza TODO Form1.cs. Si tu proyecto NO se llama "Rocola", ajusta "namespace Rocola".
 //
 // BOTONES DE LA ROCOLA (configurables): la primera vez la rocola pide presionar cada boton
@@ -90,7 +93,7 @@ namespace Rocola
         // los graves (bombo), las medianas con medios/agudos. Cada trozo lleva el rms de las 3 bandas + su marca de tiempo.
         private struct Lvl { public int At; public float Lo, Mid, Hi; public Lvl(int at, float lo, float mid, float hi) { At = at; Lo = lo; Mid = mid; Hi = hi; } }
         private readonly Queue<Lvl> levelQ = new Queue<Lvl>();
-        private const int AudioVisualDelayMs = 850;   // colchon de WaveOut (5 x 200ms; en regimen va ~4 buffers adelantado)
+        private int audioVisualDelayMs = 850;          // colchon REAL de la salida: ~850ms con WaveOut (5x200ms); ~240ms con WASAPI (300ms) - se fija al crear la salida
         private float fLp1, fLp2;                      // estado de los filtros paso-bajo (hilo de audio) que separan las bandas
         private float rmsLo, rmsMid, rmsHi;            // rms retrasado por banda (lo que se oye AHORA)
         private float avgLo, avgMid, avgHi;            // piso movil por banda (referencia del golpe)
@@ -126,6 +129,14 @@ namespace Rocola
         // NIVEL 3 (futuro): DSEE con red neuronal. NO se puede embarcar honestamente en XP/.NET 3.5 (no existe
         //   runtime de inferencia y el CPU no alcanza); si algun dia la rocola corre en Windows 10 + .NET moderno,
         //   ESTE es el punto de enchufe: otro tap en la cadena de PlayTrack, gateado igual por ProbeAudioTier.
+        // ===== NIVEL HD (rama rocola-hd): maquinas potentes =====
+        // Requisitos (ProbeAudioTier): 4+ nucleos, >=3.5 GB de RAM y Windows Vista/7+. Activa:
+        //   - STFT fino (4096) en el reconstructor espectral (bins mas finos -> costura mas limpia)
+        //   - salida WASAPI flotante por defecto (salida=auto)
+        // NIVEL 3 (IA real): el punto de enchufe es OTRO tap en la cadena de PlayTrack, gateado por tierHd
+        // (+ ONNX Runtime x64). Sin un modelo digno de produccion NO se embarca nada llamado "IA" (README).
+        private bool tierHd = false;
+        private string outPref = "auto";     // salida= en config: auto (WASAPI si la maquina es HD) | wasapi | waveout
         private bool sbrOn = false;          // reconstruccion espectral activa (dsee= en config; Ctrl+F3)
         private bool sbrAllowed = false;     // la maquina cumple los requisitos (se mide al arrancar)
         private bool sbrForce = false;       // dsee_forzar=1 en config: salta la puerta (para pruebas)
@@ -219,6 +230,7 @@ namespace Rocola
             bool cpuOk = (cores >= 2) || (mhz >= 2200);
             bool ramOk = (ramMb == 0) || (ramMb >= 900);
             sbrAllowed = cpuOk && ramOk;
+            tierHd = (cores >= 4) && (ramMb == 0 || ramMb >= 3500) && (Environment.OSVersion.Version.Major >= 6);   // NIVEL HD: potente + Windows moderno
             if (!sbrAllowed)
                 sbrReason = "CPU de " + cores + " nucleo(s) a " + mhz + " MHz" + (ramOk ? "" : (", RAM de " + ramMb + " MB"))
                           + "  (pide 2 nucleos o 2200 MHz, y 900 MB)";
@@ -477,6 +489,7 @@ namespace Rocola
                     else if (s.StartsWith("nivel_fuerza=")) { float v; if (float.TryParse(s.Substring(13).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) normStrength = Clampf(v, 0f, 1f); }
                     else if (s.StartsWith("realce=")) { float v; if (float.TryParse(s.Substring(7).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) excAmount = Clampf(v, 0f, 1f); }   // realce de agudos (exciter, tipo DSEE)
                     else if (s.StartsWith("dsee=")) sbrOn = s.Substring(5).Trim() == "1";   // reconstruccion espectral (NIVEL 2)
+                    else if (s.StartsWith("salida=")) { string v = s.Substring(7).Trim().ToLowerInvariant(); if (v == "auto" || v == "wasapi" || v == "waveout") outPref = v; }   // salida de audio (rama HD)
                     else if (s.StartsWith("dsee_forzar=")) { if (s.Substring(12).Trim() == "1") { sbrForce = true; sbrAllowed = true; sbrReason = ""; } }   // salta la puerta de requisitos (pruebas)
                     else if (s.StartsWith("dir="))
                     {
@@ -502,6 +515,7 @@ namespace Rocola
                 sb.Append("nivel_fuerza=").Append(normStrength.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("realce=").Append(excAmount.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("dsee=").Append(sbrOn ? "1" : "0").Append("\r\n");
+                sb.Append("salida=").Append(outPref).Append("\r\n");
                 if (sbrForce) sb.Append("dsee_forzar=1\r\n");   // conservar la bandera manual de pruebas (este saver reescribe el archivo completo)
                 for (int i = 0; i < extraMusicDirs.Count; i++) sb.Append("dir=").Append(extraMusicDirs[i]).Append("\r\n");
                 File.WriteAllText(ConfigFile, sb.ToString());
@@ -3689,24 +3703,49 @@ namespace Rocola
                 // NIVEL 2 (reconstructor espectral): solo se INSERTA en maquinas que cumplen requisitos; con
                 // Active=false es un pase directo (costo ~cero). Ctrl+F3 lo alterna EN VIVO para comparar A/B.
                 NAudio.Wave.ISampleProvider chain = reader;
-                if (sbrAllowed) { curSbr = new SpectralTap(reader); curSbr.Active = sbrOn; chain = curSbr; }
+                if (sbrAllowed) { curSbr = new SpectralTap(reader, tierHd ? 4096 : 2048); curSbr.Active = sbrOn; chain = curSbr; }   // HD: ventana fina
                 else curSbr = null;
                 LevelTap tap = new LevelTap(chain, this);
                 tap.Gain = NormGainFor(t.Path);
                 tap.Excite = excAmount;   // realce de agudos (exciter, tipo DSEE): se aplica DESPUES de nivelar
                 curTap = tap;   // referencia para ajustar la ganancia en vivo (Ctrl+F3)
-                // WaveOut con callback por VENTANA, no WaveOutEvent: el de eventos llama a
-                // WaitHandle.WaitOne(Int32), que NO existe en .NET 3.5 sin Service Pack 1
-                // (el de la rockola) y truena con MissingMethodException. Este no lo usa.
-                WaveOut wo = new WaveOut();
-                // El audio se rellena desde el bucle de mensajes de la interfaz; con 1 SEGUNDO de colchon,
-                // la musica aguanta CUALQUIER atoron (paginas, caratulas, GC, video) sin cortarse jamas.
-                // Rellenar 200ms de MP3 cuesta ~2-5ms de CPU: el colchon grande sale practicamente gratis.
-                wo.DesiredLatency = 1000;
-                wo.NumberOfBuffers = 5;     // 5 bloques de 200ms
-                output = wo;
-                output.PlaybackStopped += Output_PlaybackStopped;
-                output.Init(new SampleToWaveProvider16(tap));
+                // ===== SALIDA DE AUDIO (rama HD) =====
+                // WASAPI compartido con muestras FLOTANTES: float de punta a punta hasta el motor de audio
+                // moderno (sin bajar a 16 bits ni pasar por el mezclador clasico) y latencia menor. Si
+                // CUALQUIER paso falla (driver raro, formato, Windows viejo), cae SOLO al WaveOut clasico
+                // de siempre. salida= en config: auto (WASAPI si la maquina es HD) | wasapi | waveout.
+                bool wantWasapi = outPref == "wasapi" || (outPref != "waveout" && tierHd);
+                bool isWasapi = false;
+                output = null;
+                if (wantWasapi && Environment.OSVersion.Version.Major >= 6)
+                {
+                    NAudio.Wave.WasapiOut wa = null;
+                    try
+                    {
+                        wa = new NAudio.Wave.WasapiOut(NAudio.CoreAudioApi.AudioClientShareMode.Shared, 300);   // 300ms: colchon comodo con latencia baja
+                        wa.Init(new NAudio.Wave.SampleProviders.SampleToWaveProvider(tap));   // FLOAT de punta a punta (nada de 16 bits)
+                        wa.PlaybackStopped += Output_PlaybackStopped;
+                        output = wa; isWasapi = true;
+                    }
+                    catch (Exception wex)
+                    {
+                        LogError("WasapiOut (cayendo a WaveOut)", wex);
+                        if (wa != null) { try { wa.Dispose(); } catch { } }
+                        output = null;
+                    }
+                }
+                if (output == null)
+                {
+                    // Camino CLASICO: WaveOut con callback por ventana y 1 SEGUNDO de colchon (aguanta
+                    // cualquier atoron). Rellenar 200ms de MP3 cuesta ~2-5ms de CPU: el colchon sale gratis.
+                    WaveOut wo = new WaveOut();
+                    wo.DesiredLatency = 1000;
+                    wo.NumberOfBuffers = 5;     // 5 bloques de 200ms
+                    output = wo;
+                    output.PlaybackStopped += Output_PlaybackStopped;
+                    output.Init(new SampleToWaveProvider16(tap));
+                }
+                audioVisualDelayMs = isWasapi ? 240 : 850;   // el pulso visual se alinea al colchon REAL de la salida en uso
                 output.Play();
                 progressTimer.Start();
             }
@@ -3837,6 +3876,8 @@ namespace Rocola
 
         private void Output_PlaybackStopped(object sender, StoppedEventArgs e)
         {
+            // WASAPI (rama HD) avisa desde SU hilo de reproduccion; todo lo de abajo toca UI -> saltar al hilo de la interfaz
+            if (InvokeRequired) { try { BeginInvoke((MethodInvoker)delegate { Output_PlaybackStopped(sender, e); }); } catch { } return; }
             if (e.Exception != null)
             {
                 lblStatus.Text = "Aviso al reproducir: " + e.Exception.Message;
@@ -4426,7 +4467,7 @@ namespace Rocola
             // entre golpes. Antes era una envolvente de sonoridad adelantada ~1s: no transmitia el ritmo.
             int nowT = Environment.TickCount;
             lock (levelLock)
-                while (levelQ.Count > 0 && nowT - (levelQ.Peek().At + AudioVisualDelayMs) >= 0)
+                while (levelQ.Count > 0 && nowT - (levelQ.Peek().At + audioVisualDelayMs) >= 0)
                 { Lvl l = levelQ.Dequeue(); rmsLo = l.Lo; rmsMid = l.Mid; rmsHi = l.Hi; }
             if (nowPlaying == null) { rmsLo = rmsMid = rmsHi = 0f; }
             // Cada banda detecta su propio golpe contra su propio piso movil (ataque instantaneo, caida rapida). Asi
@@ -4614,7 +4655,7 @@ namespace Rocola
         // microcorte de ~46ms: es el colchon del STFT llenandose; normal y esperado).
         private sealed class SpectralTap : NAudio.Wave.ISampleProvider
         {
-            private const int Frame = 2048, Hop = Frame / 2;
+            private readonly int Frame, Hop;   // 2048 normal; 4096 en NIVEL HD (bins mas finos = deteccion y costura mas limpias)
             private readonly NAudio.Wave.ISampleProvider src;
             private readonly int ch, rate;
             private readonly float binHz;
@@ -4629,8 +4670,9 @@ namespace Rocola
             private float cutHz;                           // acantilado suavizado (0 = aun sin medir)
             private bool srcEnded;
 
-            public SpectralTap(NAudio.Wave.ISampleProvider s)
+            public SpectralTap(NAudio.Wave.ISampleProvider s, int frameSize)
             {
+                Frame = (frameSize >= 4096) ? 4096 : 2048; Hop = Frame / 2;   // solo potencias de 2 conocidas
                 src = s;
                 ch = Math.Max(1, s.WaveFormat.Channels);
                 rate = Math.Max(8000, s.WaveFormat.SampleRate);

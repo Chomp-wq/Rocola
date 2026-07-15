@@ -5,6 +5,25 @@ botonera/teclado, monedero con créditos, búsqueda con teclado en pantalla, sec
 de videos (Windows Media Player), portadas en cubos 3D, fondo estrellado por género,
 estadísticas ("Lo más sonado") y modo atracción.
 
+## Ramas
+
+- **Clasica (XP)** — la rocola fisica original: .NET Framework **3.5 sin SP1**, Windows XP 32-bit,
+  CPU modesto. Es la rama de referencia; todo lo nuevo nace ahi y se prueba en el fierro real.
+- **`rocola-hd`** (esta rama) — para rocolas **POTENTES**: Windows 7+ (ideal 10), **4+ nucleos**,
+  **4+ GB de RAM**. Proyecto retargeteado a **.NET Framework 4.8**. Todo lo de la clasica, mas el
+  **NIVEL HD** (la maquina se mide sola al arrancar, `ProbeAudioTier`):
+  - **Salida WASAPI flotante** (`salida=auto|wasapi|waveout` en `rocola_config.txt`): muestras float
+    de punta a punta hasta el motor de audio moderno, sin bajar a 16 bits ni pasar por el mezclador
+    clasico, y con menos latencia (el pulso visual se re-alinea solo). Si cualquier cosa falla,
+    cae automaticamente al WaveOut clasico.
+  - **Reconstructor espectral fino**: el DSEE espectral usa STFT de **4096** (bins mas finos =
+    deteccion del corte y costura mas limpias) en vez de 2048.
+  - **Hoja de ruta NIVEL 3 — IA real**: el punto de enchufe ya existe (otro *tap* en la cadena de
+    `PlayTrack`, gateado por `tierHd`). Plan tecnico: `Microsoft.ML.OnnxRuntime` (x64) + un modelo de
+    extension de ancho de banda / mejora musical en TIEMPO REAL. Hoy no existe un modelo libre digno
+    de produccion para musica en tiempo real; cuando exista (o se entrene uno), se integra aqui.
+    Regla de la casa: **no se embarca nada llamado "IA" que no lo sea.**
+
 ## Proyecto
 
 Proyecto clásico de **.NET Framework 3.5** (Visual Studio). Abre `Rocola.slnx`
