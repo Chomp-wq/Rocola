@@ -142,6 +142,7 @@ namespace Rocola
         // al sonar, si la version IA ya esta lista la reproduce, si no reproduce la ORIGINAL al instante (nunca
         // se bloquea). Ctrl+F4 la enciende/apaga. Requiere que la maquina de la rocola tenga GPU y el motor abierto.
         private bool iaVivo = false;
+        private bool iaNowEnhanced = false;   // la cancion actual suena con IA (version mejorada de la cache); para el indicador [IA]
         private string iaMezcla = "auto";     // cuanta IA (auto | 0..100); coincide con el motor
         private string iaCacheDir = null;     // cache compartida con el motor (ia_cache= en config; por defecto junto al exe)
         private string outPref = "auto";     // salida= en config: auto (WASAPI si la maquina es HD) | wasapi | waveout
@@ -760,7 +761,7 @@ namespace Rocola
             bool wasMaint = maintMode;
             maintMode = true; maintUntil = DateTime.Now.AddMinutes(10);
             bool changed = false;
-            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount; bool bkOn = normalizeOn, bkSbr = sbrOn;   // por si se Cancela
+            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount; bool bkOn = normalizeOn, bkSbr = sbrOn, bkIa = iaVivo; string bkIaMez = iaMezcla;   // por si se Cancela
             try
             {
                 Cursor.Show();
@@ -772,7 +773,7 @@ namespace Rocola
                     dlg.FormBorderStyle = FormBorderStyle.FixedDialog;
                     dlg.MaximizeBox = false; dlg.MinimizeBox = false; dlg.ShowInTaskbar = false; dlg.ShowIcon = false;
                     dlg.StartPosition = FormStartPosition.CenterParent;
-                    dlg.ClientSize = new Size(600, 518);
+                    dlg.ClientSize = new Size(600, 664);
                     dlg.BackColor = Color.FromArgb(14, 18, 42);
                     dlg.Font = fUi;
 
@@ -800,22 +801,36 @@ namespace Rocola
                     // NIVEL 2: reconstructor espectral (solo maquinas que cumplen requisitos; ver ProbeAudioTier)
                     CheckBox chkSbr = new CheckBox();
                     chkSbr.SetBounds(16, 372, 568, 24); chkSbr.BackColor = Color.Transparent; chkSbr.ForeColor = Color.FromArgb(190, 225, 255);
-                    chkSbr.Text = "Reconstruir agudos perdidos (DSEE espectral)  -  EXPERIMENTAL";
-                    chkSbr.Checked = sbrOn && sbrAllowed; chkSbr.Enabled = sbrAllowed;
+                    chkSbr.Text = "DSEE  (reconstruccion espectral de agudos)";
+                    chkSbr.Checked = sbrOn && sbrAllowed;
                     Label lSbrInfo = new Label(); lSbrInfo.SetBounds(35, 396, 549, 18); lSbrInfo.BackColor = Color.Transparent;
-                    lSbrInfo.ForeColor = sbrAllowed ? Color.FromArgb(150, 160, 190) : Color.FromArgb(200, 150, 120);
+                    lSbrInfo.ForeColor = Color.FromArgb(150, 160, 190);
                     lSbrInfo.Text = sbrAllowed
-                        ? (NeuralEnv.Loaded
-                            ? "Con IA PROPIA (rocola_ia.bin): la envolvente de agudos la predice nuestra red entrenada."
-                            : "Re-crea la banda que el codec corto (transposicion espectral). Alterna con musica sonando y compara.")
+                        ? (NeuralEnv.Loaded ? "Reconstruye agudos dentro de la rocola, con IA propia (rocola_ia.bin)." : "Reconstruye agudos dentro de la rocola (ligero).")
                         : "NO disponible en este equipo: " + sbrReason;
 
-                    Label hint = new Label(); hint.SetBounds(16, 420, 568, 40); hint.BackColor = Color.Transparent; hint.ForeColor = Color.FromArgb(160, 170, 200);
-                    hint.Text = "Todo se oye al instante en la cancion actual y aplica a las siguientes. El realce recupera el 'aire' (agudos) que el MP3 recorta; cada cancion se mide la primera vez que suena.";
+                    // DSEE ULTRA = IA (Apollo por demanda). Al activarlo, el DSEE normal se pone en GRIS (no van juntos).
+                    CheckBox chkUltra = new CheckBox();
+                    chkUltra.SetBounds(16, 424, 568, 24); chkUltra.BackColor = Color.Transparent; chkUltra.ForeColor = Color.FromArgb(255, 210, 130);
+                    chkUltra.Font = fBig; chkUltra.Text = "DSEE ULTRA  (IA - maxima calidad)"; chkUltra.Checked = iaVivo;
+                    Label lUltraInfo = new Label(); lUltraInfo.SetBounds(35, 450, 549, 18); lUltraInfo.BackColor = Color.Transparent; lUltraInfo.ForeColor = Color.FromArgb(180, 170, 150);
+                    lUltraInfo.Text = "Restaura con IA (Apollo). Necesita la GPU y la carpeta 'ia'; la 1a vez que suena una cancion va normal y queda lista para la proxima.";
+                    CheckBox chkIaAuto = new CheckBox();
+                    chkIaAuto.SetBounds(35, 472, 549, 22); chkIaAuto.BackColor = Color.Transparent; chkIaAuto.ForeColor = Color.White;
+                    chkIaAuto.Text = "IA automatica segun el dano (recomendado)";
+                    int iaMixInit = 70; bool iaAutoInit = true;
+                    if (iaMezcla != null && iaMezcla != "auto") { int tmp; if (int.TryParse(iaMezcla, out tmp)) { iaMixInit = tmp < 0 ? 0 : (tmp > 100 ? 100 : tmp); iaAutoInit = false; } }
+                    chkIaAuto.Checked = iaAutoInit;
+                    Label lIaMix = new Label(); lIaMix.SetBounds(16, 498, 568, 22); lIaMix.BackColor = Color.Transparent; lIaMix.ForeColor = Color.FromArgb(255, 214, 140);
+                    TrackBar tbIaMix = new TrackBar(); tbIaMix.SetBounds(12, 520, 576, 45); tbIaMix.Minimum = 0; tbIaMix.Maximum = 100; tbIaMix.TickFrequency = 10;
+                    tbIaMix.BackColor = dlg.BackColor; tbIaMix.Value = iaMixInit;
+
+                    Label hint = new Label(); hint.SetBounds(16, 570, 568, 36); hint.BackColor = Color.Transparent; hint.ForeColor = Color.FromArgb(160, 170, 200);
+                    hint.Text = "El nivelado y el realce se oyen al instante; DSEE / DSEE ULTRA aplican desde la SIGUIENTE cancion. DSEE ULTRA y DSEE normal no van juntos.";
 
                     Button bReset = new Button(), bOk = new Button();
-                    bReset.Text = "Recomendado"; bReset.SetBounds(16, 470, 150, 38);
-                    bOk.Text = "Listo"; bOk.SetBounds(488, 470, 96, 38);
+                    bReset.Text = "Recomendado"; bReset.SetBounds(16, 612, 150, 38);
+                    bOk.Text = "Listo"; bOk.SetBounds(488, 612, 96, 38);
                     Button[] bs = { bReset, bOk };
                     for (int i = 0; i < bs.Length; i++) { bs[i].FlatStyle = FlatStyle.Flat; bs[i].FlatAppearance.BorderColor = Color.FromArgb(90, 110, 170); bs[i].BackColor = Color.FromArgb(34, 44, 86); bs[i].ForeColor = Color.White; }
 
@@ -828,6 +843,15 @@ namespace Rocola
                         tbTarget.Enabled = en; tbStr.Enabled = en;
                         lTarget.ForeColor = en ? Color.FromArgb(150, 240, 170) : Color.FromArgb(110, 118, 140);
                         lStr.ForeColor = en ? Color.FromArgb(150, 200, 255) : Color.FromArgb(110, 118, 140);
+                        bool ultra = chkUltra.Checked;
+                        chkSbr.Enabled = sbrAllowed && !ultra;                          // ULTRA activo -> DSEE normal en GRIS
+                        chkSbr.ForeColor = chkSbr.Enabled ? Color.FromArgb(190, 225, 255) : Color.FromArgb(110, 118, 140);
+                        lSbrInfo.ForeColor = chkSbr.Enabled ? Color.FromArgb(150, 160, 190) : Color.FromArgb(95, 100, 120);
+                        chkIaAuto.Enabled = ultra;
+                        tbIaMix.Enabled = ultra && !chkIaAuto.Checked;
+                        lIaMix.ForeColor = tbIaMix.Enabled ? Color.FromArgb(255, 214, 140) : Color.FromArgb(110, 118, 140);
+                        lUltraInfo.ForeColor = ultra ? Color.FromArgb(200, 190, 165) : Color.FromArgb(110, 118, 140);
+                        lIaMix.Text = "Cuanta IA:  " + (chkIaAuto.Checked ? "automatica" : tbIaMix.Value + "%") + "   (mezcla con el original; menos IA = mas natural)";
                     };
                     EventHandler apply = delegate
                     {
@@ -835,13 +859,18 @@ namespace Rocola
                         normTarget = TargetFromPct(tbTarget.Value);
                         normStrength = tbStr.Value / 100f;
                         excAmount = tbExc.Value / 100f;
-                        sbrOn = chkSbr.Checked && sbrAllowed;
+                        bool ultra = chkUltra.Checked;
+                        iaVivo = ultra;
+                        iaMezcla = chkIaAuto.Checked ? "auto" : tbIaMix.Value.ToString();
+                        sbrOn = chkSbr.Checked && sbrAllowed && !ultra;                 // exclusion mutua: nunca ambos
                         changed = true;
                         updateLabels();
                         ApplyNormNow();   // se oye el cambio al instante en la cancion que suena
                     };
                     tbTarget.Scroll += apply; tbStr.Scroll += apply; tbExc.Scroll += apply; chkOn.CheckedChanged += apply; chkSbr.CheckedChanged += apply;
-                    bReset.Click += delegate { chkOn.Checked = true; tbTarget.Value = TargetToPct(0.22f); tbStr.Value = 90; tbExc.Value = 35; if (chkSbr.Enabled) chkSbr.Checked = false; apply(bReset, EventArgs.Empty); };   // recomendado: espectral apagado (es experimental)
+                    tbIaMix.Scroll += apply; chkIaAuto.CheckedChanged += apply;
+                    chkUltra.CheckedChanged += delegate { if (chkUltra.Checked) { IaEnsureMotor(); IaRequestQueueJobs(); } apply(chkUltra, EventArgs.Empty); };   // al encender ULTRA: motor oculto + preparar cola
+                    bReset.Click += delegate { chkOn.Checked = true; tbTarget.Value = TargetToPct(0.22f); tbStr.Value = 90; tbExc.Value = 35; chkUltra.Checked = false; if (chkSbr.Enabled) chkSbr.Checked = false; chkIaAuto.Checked = true; apply(bReset, EventArgs.Empty); };
                     bOk.Click += delegate { dlg.Close(); };
                     dlg.CancelButton = bOk;
 
@@ -850,13 +879,15 @@ namespace Rocola
                     dlg.Controls.Add(lStr); dlg.Controls.Add(tbStr);
                     dlg.Controls.Add(lExc); dlg.Controls.Add(tbExc);
                     dlg.Controls.Add(chkSbr); dlg.Controls.Add(lSbrInfo);
+                    dlg.Controls.Add(chkUltra); dlg.Controls.Add(lUltraInfo);
+                    dlg.Controls.Add(chkIaAuto); dlg.Controls.Add(lIaMix); dlg.Controls.Add(tbIaMix);
                     dlg.Controls.Add(hint); dlg.Controls.Add(bReset); dlg.Controls.Add(bOk);
                     updateLabels();
                     dlg.ShowDialog(this);
                 }
                 if (changed) { SaveConfigPrefs(); ShowToast("Sonido actualizado", Color.FromArgb(40, 130, 90)); }
             }
-            catch { normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; sbrOn = bkSbr; }   // si algo truena, deja los valores como estaban
+            catch { normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; sbrOn = bkSbr; iaVivo = bkIa; iaMezcla = bkIaMez; }   // si algo truena, deja los valores como estaban
             finally { try { Cursor.Hide(); } catch { } maintMode = wasMaint; ForceFocus(); }
         }
 
@@ -2693,14 +2724,6 @@ namespace Rocola
                 ShowMusicDirManager();
                 return true;
             }
-            if (keyData == (Keys.Control | Keys.F4))   // Ctrl+F4 = IA en vivo (Apollo por demanda) on/off
-            {
-                iaVivo = !iaVivo;
-                if (iaVivo) { IaEnsureMotor(); IaRequestQueueJobs(); }
-                SaveConfigPrefs();
-                ShowToast(iaVivo ? "IA en vivo: ACTIVADA" : "IA en vivo: apagada", iaVivo ? Color.FromArgb(40, 130, 90) : Color.FromArgb(120, 90, 40));
-                return true;
-            }
             if (keyData == (Keys.Control | Keys.F3))   // Ctrl+F3 = ajuste del nivelado de volumen (que todo suene parejo)
             {
                 ShowVolumeManager();
@@ -3840,7 +3863,9 @@ namespace Rocola
                 {
                     string enh = IaEnhancedPath(t.Path);
                     if (enh != null) iaSrc = enh; else IaRequestJob(t.Path);
+                    iaNowEnhanced = (enh != null);
                 }
+                else iaNowEnhanced = false;
                 reader = OpenAudio(iaSrc);   // normal; si NAudio rechaza el MP3 (frecuencia mezclada, etc.) reintenta con el lector TOLERANTE
                 reader.Volume = FixedVolume;   // se queda en 1.0 (crudo): el nivelado se aplica en LevelTap, tras medir el volumen REAL
                 // NIVELADO: si esta cancion ya se oyo antes, se aplica la ganancia que la lleva al nivel comun; si es
@@ -4129,7 +4154,7 @@ namespace Rocola
 
         private void UpdateNowPlayingUI()
         {
-            lblNow.Text = (nowPlaying != null) ? "Reproduciendo:  " + nowPlaying.Display() : "Nada reproduciendose";
+            lblNow.Text = (nowPlaying != null) ? ("Reproduciendo:  " + nowPlaying.Display() + (iaNowEnhanced ? "   [IA]" : "")) : "Nada reproduciendose";
             lblNext.Text = (queue.Count > 0) ? "Siguiente:  " + queue[0].Display() : "Siguiente:  -";
             lblCount.Text = "En cola:  " + queue.Count;
             if (miniCube != null)
