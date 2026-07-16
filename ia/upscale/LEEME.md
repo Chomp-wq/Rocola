@@ -5,6 +5,15 @@ se mejora la biblioteca UNA VEZ, offline, en tu PC potente (RTX 4070 Super), con
 (restauracion de musica con perdida, Tsinghua; GAN entrenada para deshacer el dano del MP3).
 La rocola (cualquiera de las ramas, hasta la de XP) solo reproduce los archivos mejorados.
 
+## MODO FACIL (recomendado): dos dobles clics
+
+1. Doble clic a **`1_instalar.bat`** — instala todo solo. Si pide cerrar y volver a abrir, hazlo
+   (puede pedirlo 2-3 veces). Termina cuando diga **TODO LISTO**.
+2. Doble clic a **`2_piloto.bat`** — arrastra tu carpeta de canciones a la ventana, Enter, y espera.
+   El resultado queda en `piloto_resultado\`.
+
+Lo de abajo es lo mismo pero a mano (por si prefieres la consola).
+
 ## Puesta a punto (una vez, en tu PC — Windows)
 
 ```bat
