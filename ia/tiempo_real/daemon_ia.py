@@ -25,6 +25,12 @@ def hash_trabajo(src, mezcla):
     clave = (os.path.abspath(src).lower() + "|" + str(size) + "|" + str(mezcla)).encode("utf-8", "replace")
     return hashlib.sha1(clave).hexdigest()[:16]
 
+def _log(cache, msg):
+    try:
+        with open(os.path.join(cache, "motor_log.txt"), "a", encoding="utf-8") as f:
+            f.write(time.strftime("%Y-%m-%d %H:%M:%S  ") + msg + "\n")
+    except OSError: pass
+
 def _dirs(cache):
     p = os.path.join(cache, "pendientes"); l = os.path.join(cache, "listos")
     os.makedirs(p, exist_ok=True); os.makedirs(l, exist_ok=True)
@@ -90,6 +96,14 @@ def un_ciclo(pend, listos, proc, ffmpeg, tope_gb, seg=10.0):
     if n: evictar(listos, tope_gb)
     return n
 
+def _un_ciclo_log(pend, listos, proc, ffmpeg, tope_gb, cache, seg=10.0):
+    jobs = sorted(glob.glob(os.path.join(pend, "*.job")), key=lambda p: os.path.getmtime(p))
+    for j in jobs:
+        r = procesar_uno(j, listos, proc, ffmpeg, seg)
+        _log(cache, ("procesada -> " + os.path.basename(r)) if r else ("fallo un trabajo: " + os.path.basename(j)))
+    if jobs: evictar(listos, tope_gb)
+    return len(jobs)
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--cache", default=os.path.join(AQUI, "cache"))
@@ -99,9 +113,16 @@ def main():
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg: print("[X] Falta ffmpeg"); return 1
     pend, listos = _dirs(a.cache)
+    _log(a.cache, "arrancando motor; cache=" + a.cache)
     print("Motor de IA: cargando Apollo en la GPU (una vez)...")
-    import modelo_apollo
-    proc = modelo_apollo.cargar()
+    try:
+        import modelo_apollo
+        proc = modelo_apollo.cargar()
+    except Exception as e:
+        _log(a.cache, "ERROR cargando Apollo: " + repr(e))
+        print("[X] No se pudo cargar Apollo:", e)
+        raise
+    _log(a.cache, "Apollo LISTO")
     print("Motor de IA LISTO. Escuchando trabajos en:", pend)
     print("Deja esta ventana ABIERTA mientras uses la rocola con IA en vivo.")
     vivo = os.path.join(a.cache, "motor.vivo")
@@ -109,7 +130,7 @@ def main():
         try:
             try: open(vivo, "w").write(str(int(time.time())))   # LATIDO: la rocola ve que el motor corre (no lo re-lanza)
             except OSError: pass
-            hechos = un_ciclo(pend, listos, proc, ffmpeg, a.tope_gb, a.seg)
+            hechos = _un_ciclo_log(pend, listos, proc, ffmpeg, a.tope_gb, a.cache, a.seg)
             time.sleep(0.2 if hechos else 0.6)     # atiende rapido si hay cola; descansa si no
         except KeyboardInterrupt:
             print("\nMotor detenido."); return 0

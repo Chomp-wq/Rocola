@@ -142,7 +142,8 @@ namespace Rocola
         // al sonar, si la version IA ya esta lista la reproduce, si no reproduce la ORIGINAL al instante (nunca
         // se bloquea). Ctrl+F4 la enciende/apaga. Requiere que la maquina de la rocola tenga GPU y el motor abierto.
         private bool iaVivo = false;
-        private bool iaNowEnhanced = false;   // la cancion actual suena con IA (version mejorada de la cache); para el indicador [IA]
+        private bool iaNowEnhanced = false;      // la cancion actual suena con la version IA (Apollo) de la cache -> indicador [IA]
+        private bool iaSpectralFallback = false; // ULTRA activo pero la version IA aun no esta lista -> DSEE espectral MIENTRAS (1a vez) -> indicador [DSEE]
         private string iaMezcla = "auto";     // cuanta IA (auto | 0..100); coincide con el motor
         private string iaCacheDir = null;     // cache compartida con el motor (ia_cache= en config; por defecto junto al exe)
         private string outPref = "auto";     // salida= en config: auto (WASAPI si la maquina es HD) | wasapi | waveout
@@ -3740,7 +3741,15 @@ namespace Rocola
         }
 
         // ===== Puente con el motor de IA en vivo (carpeta compartida, mismo hash que daemon_ia.py) =====
-        private string IaCache() { return string.IsNullOrEmpty(iaCacheDir) ? Path.Combine(Application.StartupPath, "ia_cache") : iaCacheDir; }
+        // Cache compartida con el motor. Por defecto: la MISMA que usa daemon_ia.py (ia\tiempo_real\cache),
+        // hallada junto a la rocola -> rocola y motor coinciden SOLOS, sin configurar ni arrastrar nada.
+        private string IaCache()
+        {
+            if (!string.IsNullOrEmpty(iaCacheDir)) return iaCacheDir;
+            string py, dm;
+            if (IaFindEngine(out py, out dm)) return Path.Combine(Path.GetDirectoryName(dm), "cache");
+            return Path.Combine(Application.StartupPath, "ia_cache");
+        }
 
         // Hash IDENTICO al de daemon_ia.py: sha1( ruta_absoluta_minusculas | tamano_bytes | mezcla )[:16].
         private static string IaHashFor(string path, string mezcla)
@@ -3859,10 +3868,11 @@ namespace Rocola
             try
             {
                 string iaSrc = t.Path;   // IA EN VIVO: si ya hay version mejorada en cache, suena ESA; si no, la original (y se pide para la proxima)
+                iaSpectralFallback = false;
                 if (iaVivo && t.Path != null)
                 {
                     string enh = IaEnhancedPath(t.Path);
-                    if (enh != null) iaSrc = enh; else IaRequestJob(t.Path);
+                    if (enh != null) iaSrc = enh; else { IaRequestJob(t.Path); iaSpectralFallback = sbrAllowed; }   // aun no lista -> DSEE espectral mientras
                     iaNowEnhanced = (enh != null);
                 }
                 else iaNowEnhanced = false;
@@ -3875,7 +3885,7 @@ namespace Rocola
                 // NIVEL 2 (reconstructor espectral): solo se INSERTA en maquinas que cumplen requisitos; con
                 // Active=false es un pase directo (costo ~cero). Ctrl+F3 lo alterna EN VIVO para comparar A/B.
                 NAudio.Wave.ISampleProvider chain = reader;
-                if (sbrAllowed) { curSbr = new SpectralTap(reader, tierHd ? 4096 : 2048); curSbr.Active = sbrOn; chain = curSbr; }   // HD: ventana fina
+                if (sbrAllowed) { curSbr = new SpectralTap(reader, tierHd ? 4096 : 2048); curSbr.Active = sbrOn || iaSpectralFallback; chain = curSbr; }   // HD: ventana fina; respaldo espectral si ULTRA aun no tiene la version IA
                 else curSbr = null;
                 LevelTap tap = new LevelTap(chain, this);
                 tap.Gain = NormGainFor(t.Path);
@@ -4154,7 +4164,7 @@ namespace Rocola
 
         private void UpdateNowPlayingUI()
         {
-            lblNow.Text = (nowPlaying != null) ? ("Reproduciendo:  " + nowPlaying.Display() + (iaNowEnhanced ? "   [IA]" : "")) : "Nada reproduciendose";
+            lblNow.Text = (nowPlaying != null) ? ("Reproduciendo:  " + nowPlaying.Display() + (iaNowEnhanced ? "   [IA]" : ((sbrOn || iaSpectralFallback) ? "   [DSEE]" : ""))) : "Nada reproduciendose";
             lblNext.Text = (queue.Count > 0) ? "Siguiente:  " + queue[0].Display() : "Siguiente:  -";
             lblCount.Text = "En cola:  " + queue.Count;
             if (miniCube != null)

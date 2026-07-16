@@ -39,3 +39,19 @@ Si la rocola corre en un gabinete sin GPU, esto no aplica: ahi conviene el proce
                    con la que le das al motor en iniciar_motor.bat).
 
 El modelo se cambia igual que en offline (upscale\modelo.txt): el motor usa el mismo cargador.
+
+## Si "no aparece nada en listos" (diagnostico)
+
+1. La rocola y el motor ahora usan LA MISMA cache sola (`ia\tiempo_real\cache`). No hay que
+   configurar rutas. Si pusiste `ia_cache=` en el config, quitalo (deja que coincidan solos).
+2. Arranca el motor en modo VISIBLE con `iniciar_motor.bat` y mira:
+   - Debe decir "Apollo LISTO". Si truena al cargar Apollo, el error sale ahi y en
+     `cache\motor_log.txt`.
+   - Pon una cancion en la rocola con DSEE ULTRA encendido: en el log debe aparecer
+     "procesada -> ...". Si aparece, en `cache\listos` ya hay un `.wav`.
+3. En la rocola, la etiqueta "Reproduciendo" muestra:
+   - `[DSEE]` = suena con el reconstructor espectral (respaldo instantaneo, 1a vez que suena
+     esa cancion, o DSEE normal).
+   - `[IA]`   = suena con la version de Apollo (ya procesada; ponla por 2a vez para verla).
+   Si SIEMPRE ves `[DSEE]` y nunca `[IA]`, el motor no esta produciendo: revisa el log.
+4. Recuerda: la rocola debe ser el `Rocola.exe` RECOMPILADO desde la rama rocola-hd.

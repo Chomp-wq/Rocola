@@ -2,19 +2,16 @@
 setlocal
 cd /d "%~dp0"
 echo ============================================================
-echo  MOTOR DE IA EN VIVO   -   para la rocola-hd
+echo  MOTOR DE IA EN VIVO   -   modo visible, para ver que pasa
 echo ------------------------------------------------------------
-echo  Mantiene Apollo en la GPU y procesa las canciones que pones
-echo  en la rocola. DEJA ESTA VENTANA ABIERTA mientras la uses.
+echo  Deja esta ventana ABIERTA. Usa la MISMA cache que la rocola
+echo  en ia\tiempo_real\cache, asi que no hay que configurar nada.
+echo  Si prefieres que arranque solo y oculto, no uses esto: la
+echo  rocola lo lanza al activar DSEE ULTRA.
 echo ============================================================
 echo.
 if not exist ..\upscale\venv\Scripts\python.exe ( echo [X] Primero corre el 1_instalar.bat de la carpeta upscale & pause & exit /b 1 )
-echo Arrastra aqui la carpeta DONDE ESTA Rocola.exe y presiona Enter.
-echo La rocola y el motor deben compartir la carpeta ia_cache que esta ahi.
-set /p R=Carpeta de Rocola.exe: 
-set R=%R:"=%
-if not exist "%R%" ( echo [X] Esa carpeta no existe. & pause & exit /b 1 )
+..\upscale\venv\Scripts\python daemon_ia.py
 echo.
-echo Motor arrancando... la primera vez carga Apollo unos segundos.
-..\upscale\venv\Scripts\python daemon_ia.py --cache "%R%\ia_cache"
+echo El motor se detuvo. Revisa arriba o cache\motor_log.txt si hubo error.
 pause
