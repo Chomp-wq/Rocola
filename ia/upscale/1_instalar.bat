@@ -2,7 +2,7 @@
 setlocal
 cd /d "%~dp0"
 echo ============================================================
-echo  INSTALADOR DEL KIT DE LA ROCOLA   paso 1 de 2   v4
+echo  INSTALADOR DEL KIT DE LA ROCOLA   paso 1 de 2   v5
 echo ------------------------------------------------------------
 echo  Instala todo lo necesario EL SOLO. Si te pide cerrar y
 echo  volver a dar doble clic, hazlo. Descarga varios GB la
@@ -97,7 +97,7 @@ if not defined TORCH_OK (
   exit /b 1
 )
 echo    Motor instalado desde el canal: %TORCH_OK%
-venv\Scripts\python -m pip install numpy matplotlib einops rotary-embedding-torch huggingface_hub soundfile
+venv\Scripts\python -m pip install numpy matplotlib einops rotary-embedding-torch huggingface_hub soundfile omegaconf ml_collections
 if not exist Apollo (
   echo [5/6] Descargando Apollo, el modelo de restauracion...
   git clone https://github.com/JusperLee/Apollo
