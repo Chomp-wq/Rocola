@@ -136,6 +136,14 @@ namespace Rocola
         // NIVEL 3 (IA real): el punto de enchufe es OTRO tap en la cadena de PlayTrack, gateado por tierHd
         // (+ ONNX Runtime x64). Sin un modelo digno de produccion NO se embarca nada llamado "IA" (README).
         private bool tierHd = false;
+        // ===== IA EN VIVO (Apollo por demanda, rama HD) =====
+        // Un motor externo (ia/tiempo_real/daemon_ia.py) mantiene Apollo en la GPU y procesa las canciones
+        // que se ENCOLAN, dejando el resultado en una cache compartida. La rocola: al encolar pide el trabajo;
+        // al sonar, si la version IA ya esta lista la reproduce, si no reproduce la ORIGINAL al instante (nunca
+        // se bloquea). Ctrl+F4 la enciende/apaga. Requiere que la maquina de la rocola tenga GPU y el motor abierto.
+        private bool iaVivo = false;
+        private string iaMezcla = "auto";     // cuanta IA (auto | 0..100); coincide con el motor
+        private string iaCacheDir = null;     // cache compartida con el motor (ia_cache= en config; por defecto junto al exe)
         private string outPref = "auto";     // salida= en config: auto (WASAPI si la maquina es HD) | wasapi | waveout
         private bool sbrOn = false;          // reconstruccion espectral activa (dsee= en config; Ctrl+F3)
         private bool sbrAllowed = false;     // la maquina cumple los requisitos (se mide al arrancar)
@@ -491,6 +499,9 @@ namespace Rocola
                     else if (s.StartsWith("realce=")) { float v; if (float.TryParse(s.Substring(7).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) excAmount = Clampf(v, 0f, 1f); }   // realce de agudos (exciter, tipo DSEE)
                     else if (s.StartsWith("dsee=")) sbrOn = s.Substring(5).Trim() == "1";   // reconstruccion espectral (NIVEL 2)
                     else if (s.StartsWith("salida=")) { string v = s.Substring(7).Trim().ToLowerInvariant(); if (v == "auto" || v == "wasapi" || v == "waveout") outPref = v; }   // salida de audio (rama HD)
+                    else if (s.StartsWith("ia_vivo=")) iaVivo = s.Substring(8).Trim() == "1";           // Apollo en vivo (Ctrl+F4)
+                    else if (s.StartsWith("ia_mezcla=")) iaMezcla = s.Substring(10).Trim();             // cuanta IA en vivo
+                    else if (s.StartsWith("ia_cache=")) { string d = s.Substring(9).Trim(); if (d.Length > 0) iaCacheDir = d; }
                     else if (s.StartsWith("dsee_forzar=")) { if (s.Substring(12).Trim() == "1") { sbrForce = true; sbrAllowed = true; sbrReason = ""; } }   // salta la puerta de requisitos (pruebas)
                     else if (s.StartsWith("dir="))
                     {
@@ -517,6 +528,8 @@ namespace Rocola
                 sb.Append("realce=").Append(excAmount.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("dsee=").Append(sbrOn ? "1" : "0").Append("\r\n");
                 sb.Append("salida=").Append(outPref).Append("\r\n");
+                sb.Append("ia_vivo=").Append(iaVivo ? "1" : "0").Append("\r\n");
+                sb.Append("ia_mezcla=").Append(iaMezcla).Append("\r\n");
                 if (sbrForce) sb.Append("dsee_forzar=1\r\n");   // conservar la bandera manual de pruebas (este saver reescribe el archivo completo)
                 for (int i = 0; i < extraMusicDirs.Count; i++) sb.Append("dir=").Append(extraMusicDirs[i]).Append("\r\n");
                 File.WriteAllText(ConfigFile, sb.ToString());
@@ -2679,6 +2692,14 @@ namespace Rocola
                 ShowMusicDirManager();
                 return true;
             }
+            if (keyData == (Keys.Control | Keys.F4))   // Ctrl+F4 = IA en vivo (Apollo por demanda) on/off
+            {
+                iaVivo = !iaVivo;
+                if (iaVivo) IaRequestQueueJobs();
+                SaveConfigPrefs();
+                ShowToast(iaVivo ? "IA en vivo: ACTIVADA" : "IA en vivo: apagada", iaVivo ? Color.FromArgb(40, 130, 90) : Color.FromArgb(120, 90, 40));
+                return true;
+            }
             if (keyData == (Keys.Control | Keys.F3))   // Ctrl+F3 = ajuste del nivelado de volumen (que todo suene parejo)
             {
                 ShowVolumeManager();
@@ -2883,6 +2904,7 @@ namespace Rocola
             PlayItem last = (queue.Count > 0) ? queue[queue.Count - 1] : nowPlaying;
             if (last != null && string.Equals(last.PathKey(), it.PathKey(), StringComparison.OrdinalIgnoreCase)) return AddResult.Repeat;
             queue.Add(it);
+            if (iaVivo && !it.IsVideo && it.Song != null) IaRequestJob(it.Song.Path);   // IA EN VIVO: prepara desde que se encola (lista para cuando le toque)
             RecordPlay(it);                                              // estadisticas: cuenta lo pedido
             credits--;                                                   // cada cosa cuesta 1 credito
             UpdateCredits();
@@ -3693,11 +3715,84 @@ namespace Rocola
             songList.Invalidate();
         }
 
+        // ===== Puente con el motor de IA en vivo (carpeta compartida, mismo hash que daemon_ia.py) =====
+        private string IaCache() { return string.IsNullOrEmpty(iaCacheDir) ? Path.Combine(Application.StartupPath, "ia_cache") : iaCacheDir; }
+
+        // Hash IDENTICO al de daemon_ia.py: sha1( ruta_absoluta_minusculas | tamano_bytes | mezcla )[:16].
+        private static string IaHashFor(string path, string mezcla)
+        {
+            try
+            {
+                string full = Path.GetFullPath(path).ToLowerInvariant();
+                long size = 0; try { size = new FileInfo(path).Length; } catch { }
+                byte[] data = Encoding.UTF8.GetBytes(full + "|" + size + "|" + mezcla);
+                using (System.Security.Cryptography.SHA1 sha = System.Security.Cryptography.SHA1.Create())
+                {
+                    byte[] h = sha.ComputeHash(data);
+                    StringBuilder sb = new StringBuilder(40);
+                    for (int i = 0; i < h.Length; i++) sb.Append(h[i].ToString("x2"));
+                    return sb.ToString().Substring(0, 16);
+                }
+            }
+            catch { return null; }
+        }
+
+        // Ruta de la version IA ya lista para esta cancion, o null si aun no esta en cache.
+        private string IaEnhancedPath(string path)
+        {
+            try
+            {
+                string h = IaHashFor(path, iaMezcla); if (h == null) return null;
+                string p = Path.Combine(IaCache(), "listos", h + ".wav");
+                return File.Exists(p) ? p : null;
+            }
+            catch { return null; }
+        }
+
+        // Le pide al motor que procese esta cancion (deja un .job atomico). Barato e idempotente.
+        private void IaRequestJob(string path)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(path)) return;
+                string h = IaHashFor(path, iaMezcla); if (h == null) return;
+                string pend = Path.Combine(IaCache(), "pendientes");
+                if (File.Exists(Path.Combine(IaCache(), "listos", h + ".wav"))) return;   // ya listo
+                Directory.CreateDirectory(pend);
+                string job = Path.Combine(pend, h + ".job");
+                if (File.Exists(job)) return;
+                string esc = path.Replace("\\", "\\\\").Replace("\"", "\\\"");
+                string json = "{\"src\":\"" + esc + "\",\"mezcla\":\"" + iaMezcla + "\"}";
+                string tmp = job + ".tmp";
+                File.WriteAllText(tmp, json);
+                try { if (File.Exists(job)) File.Delete(job); } catch { }
+                File.Move(tmp, job);   // aparicion atomica del job
+            }
+            catch { }
+        }
+
+        // Al encender la IA: prepara lo que ya esta sonando y en cola (para que la IA los alcance).
+        private void IaRequestQueueJobs()
+        {
+            try
+            {
+                if (nowPlaying != null && !nowPlaying.IsVideo && nowPlaying.Song != null) IaRequestJob(nowPlaying.Song.Path);
+                for (int i = 0; i < queue.Count; i++) if (!queue[i].IsVideo && queue[i].Song != null) IaRequestJob(queue[i].Song.Path);
+            }
+            catch { }
+        }
+
         private void PlayTrack(Track t)
         {
             try
             {
-                reader = OpenAudio(t.Path);   // normal; si NAudio rechaza el MP3 (frecuencia mezclada, etc.) reintenta con el lector TOLERANTE
+                string iaSrc = t.Path;   // IA EN VIVO: si ya hay version mejorada en cache, suena ESA; si no, la original (y se pide para la proxima)
+                if (iaVivo && t.Path != null)
+                {
+                    string enh = IaEnhancedPath(t.Path);
+                    if (enh != null) iaSrc = enh; else IaRequestJob(t.Path);
+                }
+                reader = OpenAudio(iaSrc);   // normal; si NAudio rechaza el MP3 (frecuencia mezclada, etc.) reintenta con el lector TOLERANTE
                 reader.Volume = FixedVolume;   // se queda en 1.0 (crudo): el nivelado se aplica en LevelTap, tras medir el volumen REAL
                 // NIVELADO: si esta cancion ya se oyo antes, se aplica la ganancia que la lleva al nivel comun; si es
                 // nueva, va a su volumen original y se APRENDE su sonoridad en esta pasada (para nivelarla la proxima vez).
