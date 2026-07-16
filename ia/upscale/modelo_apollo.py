@@ -8,10 +8,31 @@ import numpy as np
 def _repo_apollo():
     return os.path.join(os.path.dirname(os.path.abspath(__file__)), "Apollo")
 
-def descargar_checkpoint():
-    """Baja el modelo de Hugging Face (cache; una vez) y devuelve la ruta LOCAL del checkpoint."""
-    from huggingface_hub import snapshot_download
-    carpeta = snapshot_download(repo_id="JusperLee/Apollo")
+def fuente_modelo():
+    """Que modelo usar. Por defecto JusperLee/Apollo. Se puede cambiar SIN tocar codigo: crea un
+    archivo 'modelo.txt' junto a este script con UNA linea = un repo de Hugging Face
+    (p.ej. baicai1145/Apollo-universal) o la ruta local de un .ckpt. Asi se prueban modelos
+    mejores de la comunidad con cero cambios de programa; se comparan por oido como todo lo demas."""
+    cfg = os.path.join(os.path.dirname(os.path.abspath(__file__)), "modelo.txt")
+    if os.path.exists(cfg):
+        for linea in open(cfg, encoding="utf-8"):
+            s = linea.strip()
+            if s and not s.startswith("#"):
+                return s
+    return "JusperLee/Apollo"
+
+def descargar_checkpoint(fuente=None):
+    """Devuelve la ruta LOCAL del checkpoint. 'fuente' = repo de Hugging Face o ruta local
+    (archivo .ckpt o carpeta). Un repo se baja a la cache una vez."""
+    if fuente is None:
+        fuente = fuente_modelo()
+    if os.path.isfile(fuente):                     # ya es un .ckpt local
+        return fuente
+    if os.path.isdir(fuente):
+        carpeta = fuente
+    else:                                          # repo de Hugging Face
+        from huggingface_hub import snapshot_download
+        carpeta = snapshot_download(repo_id=fuente)
     import torch
     cand = []
     for ext in ("*.ckpt", "*.bin", "*.pt", "*.pth", "*.safetensors"):
@@ -33,7 +54,9 @@ def cargar():
     sys.path.insert(0, _repo_apollo())
     import torch
     import look2hear.models
-    ruta = descargar_checkpoint()
+    fuente = fuente_modelo()
+    print("   modelo de IA:", fuente)
+    ruta = descargar_checkpoint(fuente)
     cfg = dict(sr=44100, win=20, feature_dim=256, layer=6)
     try:
         model = look2hear.models.BaseModel.from_pretrain(ruta, **cfg)     # camino documentado, ya con ruta local

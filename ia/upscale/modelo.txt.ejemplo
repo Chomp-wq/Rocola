@@ -1,0 +1,10 @@
+# Modelo de IA para el upscaling. Descomenta UNA linea (quita el #) para probar otro modelo.
+# Se compara por oido con 6_comparar.bat como todo lo demas. Vuelve a poner el # para el default.
+#
+# Por defecto (si todo esta comentado): JusperLee/Apollo  (el modelo base, solido y probado).
+#
+# Ejemplos de la comunidad (repos de Hugging Face; se bajan solos la 1a vez):
+#baicai1145/Apollo-universal
+#
+# O un checkpoint que TU entrenes/descargues (ruta local a un .ckpt):
+#C:\ruta\a\mi_modelo.ckpt
