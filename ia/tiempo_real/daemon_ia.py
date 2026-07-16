@@ -15,6 +15,12 @@
 #    python daemon_ia.py [--cache <carpeta>] [--tope_gb 20]
 # ============================================================================================
 import sys, os, json, time, glob, hashlib, tempfile, subprocess, argparse, shutil
+# Bajo pythonw.exe (la rocola lo lanza SIN consola) sys.stdout y sys.stderr son None: cualquier
+# print() nuestro o barra de progreso de una libreria (huggingface/tqdm) reventaria con
+# "'NoneType' object has no attribute 'write'". Los redirigimos a la nada para que nada truene;
+# nuestro registro real va aparte a cache/motor_log.txt.
+if sys.stdout is None: sys.stdout = open(os.devnull, "w")
+if sys.stderr is None: sys.stderr = open(os.devnull, "w")
 AQUI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(AQUI, "..", "upscale"))
 from util_audio import FS, leer_wav, escribir_wav, acantilado_hz, por_trozos, mezclar, mezcla_auto
@@ -117,6 +123,13 @@ def main():
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg: print("[X] Falta ffmpeg"); return 1
     pend, listos = _dirs(a.cache)
+    vivo0 = os.path.join(a.cache, "motor.vivo")
+    try:
+        if os.path.exists(vivo0) and (time.time() - os.path.getmtime(vivo0)) < 12:
+            _log(a.cache, "ya hay un motor vivo; salgo para no duplicar")
+            return 0
+    except OSError:
+        pass
     _log(a.cache, "arrancando motor; cache=" + a.cache)
     print("Motor de IA: cargando Apollo en la GPU (una vez)...")
     try:

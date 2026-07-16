@@ -3835,11 +3835,13 @@ namespace Rocola
         // Lanza el motor de IA OCULTO (sin ventana) si no esta corriendo ya. Asi la IA en vivo "solo funciona":
         // el operador no cuida ninguna terminal. Si el motor no esta instalado, no pasa nada (la IA no actua).
         private System.Diagnostics.Process iaMotorProc;
+        private int iaMotorLaunchTick = 0;
         private void IaEnsureMotor()
         {
             try
             {
                 if (IaMotorAlive()) return;                       // ya corre (este arranque u otro): no duplicar
+                if (iaMotorLaunchTick != 0 && Environment.TickCount - iaMotorLaunchTick < 20000) return;   // lanzado hace poco: dale ~20s a cargar Apollo antes de reintentar (sin enjambre)
                 string py, dm;
                 if (!IaFindEngine(out py, out dm)) return;        // sin motor: la IA en vivo simplemente no hace nada
                 System.Diagnostics.ProcessStartInfo psi = new System.Diagnostics.ProcessStartInfo();
@@ -3849,6 +3851,7 @@ namespace Rocola
                 psi.UseShellExecute = false; psi.CreateNoWindow = true;
                 psi.WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden;
                 iaMotorProc = System.Diagnostics.Process.Start(psi);
+                iaMotorLaunchTick = Environment.TickCount;
             }
             catch { }
         }
