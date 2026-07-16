@@ -1,3 +1,15 @@
+## DESPLIEGUE (integrado con el release, portable entre discos)
+
+El motor va CON la rocola, sin correr nada a mano:
+1. Junto a `Rocola.exe` (en el MISMO disco que la carpeta `musica`) deja la carpeta **`ia`**
+   completa (con `ia\upscale\venv` ya instalado por su `1_instalar.bat`, e `ia\tiempo_real`).
+2. Enciende DSEE ULTRA (Ctrl+F3). La rocola ARRANCA el motor sola y oculto, y lo MANTIENE vivo
+   (si se cae, lo revive; revisa cada ~10s). Nunca abres `iniciar_motor.bat`.
+3. TODO es relativo al `.exe` y queda en su disco: la cache y los temporales viven en
+   `ia\tiempo_real\cache` (y `cache\tmp`), NUNCA en C:. Muevelo de disco y sigue funcionando.
+
+`iniciar_motor.bat` queda SOLO para depurar (ver mensajes de Apollo la primera vez).
+
 # IA en vivo (Apollo por demanda) para la rocola-hd
 
 Procesa con IA SOLO las canciones que suenan, cuando suenan, con interruptor. No hay que

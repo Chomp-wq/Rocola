@@ -37,7 +37,11 @@ def _dirs(cache):
     return p, l
 
 def procesar_uno(job_path, listos, proc, ffmpeg, seg=10.0):
-    """Procesa UN trabajo: decodifica, Apollo, mezcla, escribe cache/listos/<hash>.wav (atomico)."""
+    """Procesa UN trabajo: decodifica, Apollo, mezcla, escribe cache/listos/<hash>.wav (atomico).
+    Los temporales van a cache/tmp (MISMO disco del release), nunca a C:\Temp."""
+    tmpdir = os.path.join(os.path.dirname(listos), "tmp")
+    try: os.makedirs(tmpdir, exist_ok=True)
+    except OSError: tmpdir = os.path.dirname(listos)
     try:
         with open(job_path, encoding="utf-8") as f: job = json.load(f)
     except Exception:
@@ -50,7 +54,7 @@ def procesar_uno(job_path, listos, proc, ffmpeg, seg=10.0):
         _quita(job_path); return dst
     src = job.get("src"); mez = job.get("mezcla", "auto")
     try:
-        tmp = os.path.join(tempfile.gettempdir(), "ia_dec_%s.wav" % h)
+        tmp = os.path.join(tmpdir, "ia_dec_%s.wav" % h)
         subprocess.run([ffmpeg, "-y", "-v", "error", "-i", src, "-ac", "2", "-ar", str(FS),
                         "-sample_fmt", "s16", tmp], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         x, _ = leer_wav(tmp)

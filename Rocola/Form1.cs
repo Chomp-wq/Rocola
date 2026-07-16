@@ -144,6 +144,7 @@ namespace Rocola
         private bool iaVivo = false;
         private bool iaNowEnhanced = false;      // la cancion actual suena con la version IA (Apollo) de la cache -> indicador [IA]
         private bool iaSpectralFallback = false; // ULTRA activo pero la version IA aun no esta lista -> DSEE espectral MIENTRAS (1a vez) -> indicador [DSEE]
+        private int iaMotorCheckTick = 0;        // vigia: cada ~10s, si ULTRA esta activo y el motor no responde, lo relanza
         private string iaMezcla = "auto";     // cuanta IA (auto | 0..100); coincide con el motor
         private string iaCacheDir = null;     // cache compartida con el motor (ia_cache= en config; por defecto junto al exe)
         private string outPref = "auto";     // salida= en config: auto (WASAPI si la maquina es HD) | wasapi | waveout
@@ -4642,6 +4643,10 @@ namespace Rocola
 
             DrainCoverTrash();   // libera carátulas expulsadas (seguro: no hay repintado en curso)
             CheckBusinessDayReset();   // al cruzar las 7 AM: reinicia el estado (nada de anoche cruza el corte del dia)
+            // VIGIA DEL MOTOR DE IA: si DSEE ULTRA esta activo y el motor no responde (recien arrancado, o se
+            // cayo), lo (re)lanza OCULTO. Cada ~10s. Asi el motor va integrado con el release: nunca hay que
+            // abrir un .bat a mano, y si el motor muere se revive solo.
+            if (iaVivo && Environment.TickCount - iaMotorCheckTick > 10000) { iaMotorCheckTick = Environment.TickCount; if (!IaMotorAlive()) IaEnsureMotor(); }
 
             // BEAT: toma el RMS cuyo momento de OIRSE ya llego (medido ~0.85s antes, al llenar el colchon) y
             // detecta GOLPES contra un piso movil: el pulso visual cae encima del golpe que se esta oyendo,
