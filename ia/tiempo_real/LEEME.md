@@ -10,12 +10,17 @@ La maquina DONDE CORRE LA ROCOLA debe tener la GPU (tu RTX 4070 Super) y este mo
 Si la rocola corre en un gabinete sin GPU, esto no aplica: ahi conviene el procesado offline
 (carpeta upscale) desde tu PC potente.
 
-## Como se usa
+## Como se usa (automatico, sin cuidar terminales)
 
-1. En tu PC de la rocola, ya con la carpeta `upscale` instalada (su `1_instalar.bat` en OK).
-2. Doble clic a **`iniciar_motor.bat`** y arrastra la carpeta donde esta `Rocola.exe`. Deja esa
-   ventana ABIERTA. La primera vez carga Apollo unos segundos.
-3. En la rocola, **Ctrl+F4** enciende/apaga la IA en vivo (sale un aviso). Se recuerda en config.
+1. Instala la carpeta `upscale` una vez (su `1_instalar.bat` en OK). Deja las carpetas `ia`
+   junto a la rocola (la rocola busca `ia\upscale\venv` e `ia\tiempo_real` a su lado o
+   hasta 5 niveles arriba, igual que busca la carpeta `musica`).
+2. En la rocola: **Ctrl+F4** enciende/apaga la IA en vivo. Al encenderla, la rocola **arranca
+   el motor SOLA y OCULTO** (sin ventana negra que cuidar). Con `ia_vivo=1` en config, arranca
+   encendida. Al cerrar la rocola, el motor que ella lanzo se cierra tambien.
+
+`iniciar_motor.bat` sigue existiendo por si quieres arrancar el motor a mano y VER sus mensajes
+(util para depurar la primera vez).
 
 ## Que pasa por dentro
 
