@@ -39,3 +39,10 @@ deben coincidir EXACTO:
 
 Resultados de la prueba de concepto (validacion): la red predice la envolvente real con
 **mse 0.54** contra **1.53** de la curva fija (2.8x mejor).
+
+## Upscaling offline (MP3 -> "FLAC"): carpeta `upscale/`
+
+Para la meta de maxima calidad NO se procesa en la rocola: se mejora la biblioteca UNA VEZ,
+offline, con Apollo (restauracion neuronal de musica) en un PC con GPU. El piloto A/B esta en
+`upscale/` (ver su LEEME.md). La IA de envolvente de esta carpeta sigue siendo util para lo que
+no se haya pre-procesado.
