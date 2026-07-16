@@ -43,12 +43,18 @@ if os.path.isdir(apollo):
     try:
         import look2hear.models
         rev(True, "look2hear importa", "")
-        if "--descargar" in sys.argv:
-            print("  ... descargando/cargando el checkpoint Apollo (Hugging Face: JusperLee/Apollo)")
-            m = look2hear.models.BaseModel.from_pretrain("JusperLee/Apollo", sr=44100, win=20, feature_dim=256, layer=6)
-            rev(m is not None, "Checkpoint Apollo cargado", "No se pudo cargar el checkpoint")
     except Exception as e:
         rev(False, "", "look2hear no importa (%s). Prueba:  pip install -r Apollo/requirements.txt" % e)
+    if "--descargar" in sys.argv:
+        print("  ... descargando + cargando Apollo (Hugging Face: JusperLee/Apollo). La 1a vez baja ~180 MB.")
+        try:
+            import modelo_apollo
+            proc = modelo_apollo.cargar()
+            import numpy as _np
+            y = proc(_np.zeros((44100, 2), dtype=_np.float64))   # prueba real: procesa 1 segundo de silencio
+            rev(y is not None and y.shape[1] == 2, "Apollo cargado y probado en la GPU", "Apollo cargo pero la prueba fallo")
+        except Exception as e:
+            rev(False, "", "No se pudo cargar Apollo (%s)" % e)
 
 print("== %s ==" % ("TODO LISTO: corre 01_piloto.py" if fallas == 0 else "%d pendiente(s) arriba" % fallas))
 sys.exit(fallas)

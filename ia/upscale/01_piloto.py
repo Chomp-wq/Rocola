@@ -18,23 +18,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import numpy as np
 from util_audio import FS, leer_wav, escribir_wav, decodificar_a_wav, acantilado_hz, igualar_rms, por_trozos
 
-def cargar_apollo(ruta):
-    sys.path.insert(0, ruta)
-    import torch, look2hear.models
-    m = look2hear.models.BaseModel.from_pretrain("JusperLee/Apollo", sr=44100, win=20, feature_dim=256, layer=6).cuda().eval()
-    def proc(x):  # x float64 [n, ch] -> [n, ch]
-        t = torch.from_numpy(np.ascontiguousarray(x.T, dtype=np.float32)).unsqueeze(0).cuda()  # [1, ch, n]
-        with torch.no_grad():
-            try:
-                y = m(t)
-            except Exception:                       # si el modelo exige mono: canal por canal
-                outs = []
-                for c in range(t.shape[1]):
-                    outs.append(m(t[:, c:c+1, :]))
-                y = torch.cat(outs, dim=1)
-        return y.squeeze(0).cpu().numpy().T.astype(np.float64)
-    return proc
-
+# La carga de Apollo vive en modelo_apollo.py (robusta: descarga de HF + ruta local).
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--entrada", required=True, help="carpeta con canciones REALES de la rocola (mp3/wav/flac)")
@@ -53,8 +37,9 @@ def main():
 
     for d in ("pares", "ciego", "espectros"):
         os.makedirs(os.path.join(a.salida, d), exist_ok=True)
-    print("Cargando Apollo (primera vez descarga el checkpoint)...")
-    proc = cargar_apollo(a.apollo)
+    print("Cargando Apollo (primera vez descarga el checkpoint, ~180 MB)...")
+    import modelo_apollo
+    proc = modelo_apollo.cargar()
 
     try: import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
     except ImportError: plt = None; print("(sin matplotlib: no habra espectrogramas;  pip install matplotlib)")
