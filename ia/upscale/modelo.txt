@@ -1,2 +1,3 @@
-# comentario
-baicai1145/Apollo-universal
+# Modelo de IA. Por defecto (todo comentado) usa el base JusperLee/Apollo, solido y probado.
+# Para probar otro: pon UNA linea con un repo de Hugging Face VERIFICADO o la ruta de un .ckpt.
+# Si el modelo falla o no existe, el sistema avisa y sigue con el base (no se rompe).

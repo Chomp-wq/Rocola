@@ -56,7 +56,15 @@ def cargar():
     import look2hear.models
     fuente = fuente_modelo()
     print("   modelo de IA:", fuente)
-    ruta = descargar_checkpoint(fuente)
+    try:
+        ruta = descargar_checkpoint(fuente)
+    except Exception as e:
+        if fuente != "JusperLee/Apollo":
+            print("   aviso: no pude usar '%s' (%s). Uso el modelo base." % (fuente, e))
+            fuente = "JusperLee/Apollo"
+            ruta = descargar_checkpoint(fuente)
+        else:
+            raise
     cfg = dict(sr=44100, win=20, feature_dim=256, layer=6)
     try:
         model = look2hear.models.BaseModel.from_pretrain(ruta, **cfg)     # camino documentado, ya con ruta local

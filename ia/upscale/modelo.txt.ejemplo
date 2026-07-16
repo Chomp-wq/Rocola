@@ -1,10 +1,11 @@
-# Modelo de IA para el upscaling. Descomenta UNA linea (quita el #) para probar otro modelo.
-# Se compara por oido con 6_comparar.bat como todo lo demas. Vuelve a poner el # para el default.
+# Modelo de IA para el upscaling. Por defecto (todo comentado) = JusperLee/Apollo (base, probado).
 #
-# Por defecto (si todo esta comentado): JusperLee/Apollo  (el modelo base, solido y probado).
+# Para probar OTRO modelo, descomenta UNA linea (quita el #):
+#  - un repo de Hugging Face que exista de verdad (busca "Apollo" en huggingface.co o mvsep.com
+#    y copia el id EXACTO, p.ej. usuario/nombre-del-modelo), o
+#  - la ruta local de un .ckpt que tu descargues/entrenes.
 #
-# Ejemplos de la comunidad (repos de Hugging Face; se bajan solos la 1a vez):
-#baicai1145/Apollo-universal
+# Si el nombre esta mal o el repo no existe, NO se rompe: avisa y usa el base.
 #
-# O un checkpoint que TU entrenes/descargues (ruta local a un .ckpt):
+#algun-usuario/algun-Apollo-que-exista
 #C:\ruta\a\mi_modelo.ckpt

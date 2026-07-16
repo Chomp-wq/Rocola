@@ -104,8 +104,11 @@ def main():
     proc = modelo_apollo.cargar()
     print("Motor de IA LISTO. Escuchando trabajos en:", pend)
     print("Deja esta ventana ABIERTA mientras uses la rocola con IA en vivo.")
+    vivo = os.path.join(a.cache, "motor.vivo")
     while True:
         try:
+            try: open(vivo, "w").write(str(int(time.time())))   # LATIDO: la rocola ve que el motor corre (no lo re-lanza)
+            except OSError: pass
             hechos = un_ciclo(pend, listos, proc, ffmpeg, a.tope_gb, a.seg)
             time.sleep(0.2 if hechos else 0.6)     # atiende rapido si hay cola; descansa si no
         except KeyboardInterrupt:

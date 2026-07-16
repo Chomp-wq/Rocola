@@ -381,6 +381,7 @@ namespace Rocola
             ProbeAudioTier();    // requisitos de maquina para el NIVEL 2 de audio (antes de leer dsee= de config)
             NeuralEnv.TryLoad(Path.Combine(Application.StartupPath, "rocola_ia.bin"));   // IA propia (si hay modelo entrenado junto al exe)
             LoadConfigPrefs();   // preferencias: render GPU/CPU + carpetas de musica adicionales (Ctrl+F2)
+            if (iaVivo) IaEnsureMotor();   // IA en vivo encendida -> arranca el motor OCULTO (sin terminal que cuidar)
             LoadLoudCache();     // sonoridad medida por cancion (para nivelar el volumen de todas)
             LoadIncompatible();  // rutas ya anotadas como no reproducibles (para no repetirlas)
             LayoutControls();
@@ -2695,7 +2696,7 @@ namespace Rocola
             if (keyData == (Keys.Control | Keys.F4))   // Ctrl+F4 = IA en vivo (Apollo por demanda) on/off
             {
                 iaVivo = !iaVivo;
-                if (iaVivo) IaRequestQueueJobs();
+                if (iaVivo) { IaEnsureMotor(); IaRequestQueueJobs(); }
                 SaveConfigPrefs();
                 ShowToast(iaVivo ? "IA en vivo: ACTIVADA" : "IA en vivo: apagada", iaVivo ? Color.FromArgb(40, 130, 90) : Color.FromArgb(120, 90, 40));
                 return true;
@@ -3771,6 +3772,54 @@ namespace Rocola
             catch { }
         }
 
+        // ¿Esta corriendo el motor de IA? Lo delata su "latido" (motor.vivo, refrescado cada ~medio segundo).
+        private bool IaMotorAlive()
+        {
+            try { string v = Path.Combine(IaCache(), "motor.vivo"); return File.Exists(v) && (DateTime.Now - File.GetLastWriteTime(v)).TotalSeconds < 15; }
+            catch { return false; }
+        }
+
+        // Busca el motor (Python del venv + daemon) junto al programa o hasta 5 niveles arriba (como la carpeta 'musica').
+        private static bool IaFindEngine(out string python, out string daemon)
+        {
+            python = null; daemon = null;
+            try
+            {
+                string dir = Application.StartupPath;
+                for (int i = 0; i < 6 && dir != null; i++)
+                {
+                    string py = Path.Combine(dir, "ia\\upscale\\venv\\Scripts\\pythonw.exe");
+                    string dm = Path.Combine(dir, "ia\\tiempo_real\\daemon_ia.py");
+                    if (File.Exists(py) && File.Exists(dm)) { python = py; daemon = dm; return true; }
+                    DirectoryInfo p = Directory.GetParent(dir);
+                    dir = (p != null) ? p.FullName : null;
+                }
+            }
+            catch { }
+            return false;
+        }
+
+        // Lanza el motor de IA OCULTO (sin ventana) si no esta corriendo ya. Asi la IA en vivo "solo funciona":
+        // el operador no cuida ninguna terminal. Si el motor no esta instalado, no pasa nada (la IA no actua).
+        private System.Diagnostics.Process iaMotorProc;
+        private void IaEnsureMotor()
+        {
+            try
+            {
+                if (IaMotorAlive()) return;                       // ya corre (este arranque u otro): no duplicar
+                string py, dm;
+                if (!IaFindEngine(out py, out dm)) return;        // sin motor: la IA en vivo simplemente no hace nada
+                System.Diagnostics.ProcessStartInfo psi = new System.Diagnostics.ProcessStartInfo();
+                psi.FileName = py;                                // pythonw.exe = sin ventana negra
+                psi.Arguments = "\"" + dm + "\" --cache \"" + IaCache() + "\"";
+                psi.WorkingDirectory = Path.GetDirectoryName(dm);
+                psi.UseShellExecute = false; psi.CreateNoWindow = true;
+                psi.WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden;
+                iaMotorProc = System.Diagnostics.Process.Start(psi);
+            }
+            catch { }
+        }
+
         // Al encender la IA: prepara lo que ya esta sonando y en cola (para que la IA los alcance).
         private void IaRequestQueueJobs()
         {
@@ -4691,6 +4740,7 @@ namespace Rocola
             // REANUDA (creditos + cola). Es decir, la sola presencia del archivo al arrancar delata que fue apagon.
             if (e.CloseReason == CloseReason.WindowsShutDown || e.CloseReason == CloseReason.UserClosing)
                 try { File.Delete(StateFile()); } catch { }
+            if (iaMotorProc != null) try { if (!iaMotorProc.HasExited) iaMotorProc.Kill(); } catch { }   // motor que lanzamos: se va con la rocola
             base.OnFormClosing(e);
         }
 
