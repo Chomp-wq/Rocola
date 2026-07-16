@@ -69,3 +69,23 @@ def por_trozos(x, proc, fs=FS, seg=10.0, sol=0.5):
         if q >= n: break
         p = q - O
     return out / np.maximum(wsum, 1e-9)
+
+def mezclar(mejorada, original, m):
+    """Wet/dry: combina 'mejorada' (Apollo) con 'original' en proporcion m (0..1).
+    m=0 -> original; m=1 -> puro Apollo. Se igualan longitud y RMS para que sea justo y
+    la mezcla no cambie el volumen. Suaviza el vaiven de la IA en material muy danado."""
+    n = min(len(mejorada), len(original))
+    a = igualar_rms(mejorada[:n], original[:n])          # Apollo al volumen del original
+    b = original[:n]
+    if m <= 0.0: return b.copy()
+    if m >= 1.0: return a
+    return igualar_rms(m * a + (1.0 - m) * b, b)          # mezcla, re-igualada (volumen estable entre niveles)
+
+def mezcla_auto(cliff_hz):
+    """Cuanta IA aplicar segun que tan danada esta: mientras MENOS sobrevivio (corte bajo),
+    mas suave (la IA inventa mas y se nota mas el vaiven)."""
+    if cliff_hz <= 0:     return 0.60
+    if cliff_hz <= 9000:  return 0.55     # brutal: el modelo alucina mucho -> suave
+    if cliff_hz <= 12500: return 0.70
+    if cliff_hz <= 15500: return 0.82
+    return 1.00                            # poco danada: la IA acierta -> a fondo

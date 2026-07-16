@@ -14,6 +14,17 @@ Orden de los dobles clic:
 
 `2_piloto.bat` sigue existiendo para probar con una carpeta cualquiera que tu elijas.
 
+## "Cuanta IA" (mezcla wet/dry)
+
+En canciones MUY danadas la IA a veces suena despareja (pedazos igual al original, otros de
+repente muy nitidos): es el modelo dudando segun el contenido. Por eso el detalle mejorado se
+MEZCLA con el original ("cuanta IA"), como el wet/dry de un estudio:
+- `4_muestras.bat` -> `6_comparar.bat`: genera cada cancion en varios niveles (0/40/55/70/100%%)
+  para que oigas y elijas. El nivel `_AUTO` es el que el sistema pondria solo segun el dano.
+- `5_procesar.bat` te pregunta "cuanta IA": **auto** (suave en lo muy danado, fuerte en lo
+  poco danado) o un numero fijo 0-100. Auto es lo recomendado.
+
+
 ---
 
 # Kit de upscaling (Fase 1: piloto) — que un MP3 suene como FLAC

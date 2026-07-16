@@ -21,6 +21,10 @@ echo.
 echo Formato de salida:  mp3 = compatible con todo, 320k.  flac = maxima calidad, mas pesado.
 set /p F=Escribe mp3 o flac y Enter (Enter = mp3): 
 if "%F%"=="" set F=mp3
-venv\Scripts\python 05_procesar_todo.py --musica "%M%" --salida "%S%" --formato %F%
+echo.
+echo Cuanta IA: auto = suave en lo muy danado, fuerte en lo poco danado. O un numero 0-100.
+set /p IA=Escribe auto o un numero y Enter (Enter = auto): 
+if "%IA%"=="" set IA=auto
+venv\Scripts\python 05_procesar_todo.py --musica "%M%" --salida "%S%" --formato %F% --mezcla %IA%
 echo.
 pause

@@ -11,7 +11,7 @@
 # ============================================================================================
 import sys, os, csv, time, shutil, tempfile, argparse, subprocess, threading
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from util_audio import FS, leer_wav, escribir_wav, acantilado_hz, igualar_rms, por_trozos
+from util_audio import FS, leer_wav, escribir_wav, acantilado_hz, igualar_rms, por_trozos, mezclar, mezcla_auto
 
 UMBRAL_BUENA = 18500.0   # arriba de esto: se copia tal cual (no hay casi nada que ganar)
 EXTS = (".mp3", ".wav", ".flac", ".m4a", ".ogg", ".wma")
@@ -62,6 +62,7 @@ def main():
     ap.add_argument("--formato", choices=["mp3", "flac", "wav"], default="mp3")
     ap.add_argument("--calidad", type=int, default=320)
     ap.add_argument("--seg", type=float, default=10.0)
+    ap.add_argument("--mezcla", default="auto", help="cuanta IA: auto (segun dano) o un numero 0..100")
     a = ap.parse_args()
 
     ffmpeg = shutil.which("ffmpeg")
@@ -95,7 +96,9 @@ def main():
                 dst = destino(a.musica, a.salida, src, "copia")
                 shutil.copyfile(src, dst); copiadas += 1
             else:                                             # danada -> restaurar con Apollo
-                y = igualar_rms(por_trozos(x, proc, seg=a.seg), x)
+                y = por_trozos(x, proc, seg=a.seg)
+                m = mezcla_auto(cliff) if a.mezcla == "auto" else max(0.0, min(1.0, float(a.mezcla) / 100.0))
+                y = mezclar(y, x, m)                          # wet/dry: suaviza el vaiven de la IA en lo muy danado
                 out_wav = os.path.join(tempfile.gettempdir(), "hd_out_%d.wav" % threading.get_ident())
                 escribir_wav(out_wav, y)
                 dst = destino(a.musica, a.salida, src, a.formato)
