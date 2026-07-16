@@ -1,3 +1,21 @@
+# Kit de upscaling — flujo completo
+
+Orden de los dobles clic:
+
+1. **`1_instalar.bat`** — instala todo una vez (ver detalle abajo).
+2. **`3_escanear.bat`** — mide TODA tu biblioteca y arma `calidad_biblioteca.csv` +
+   `peores_canciones.txt` (las mas danadas: donde el upscaling brilla).
+3. **`4_muestras.bat`** — toma un abanico de las canciones MAS danadas y arma el A/B ciego
+   (`piloto_danadas\ciego`). **Esta es la prueba que decide todo** — con archivos danados de
+   verdad, no con rips buenos. Escucha X/Y sin ver, anota, abre `clave.txt` al final.
+4. **`5_procesar.bat`** — SOLO si el A/B te convence: procesa TODA la biblioteca a una carpeta
+   nueva en otro disco (mejora las danadas, copia las buenas tal cual, conserva etiquetas y
+   portada, reanuda si lo cierras). Esa carpeta nueva tambien te sirve de RESPALDO.
+
+`2_piloto.bat` sigue existiendo para probar con una carpeta cualquiera que tu elijas.
+
+---
+
 # Kit de upscaling (Fase 1: piloto) — que un MP3 suene como FLAC
 
 La ruta completa esta en la conversacion del proyecto; resumen: **NO se procesa en la rocola** —
