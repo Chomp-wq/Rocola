@@ -363,6 +363,7 @@ namespace Rocola
             LoadStats();   // estadisticas guardadas de sesiones anteriores (base de "Lo mas sonado")
             ProbeAudioTier();    // requisitos de maquina para el NIVEL 2 de audio (antes de leer dsee= de config)
             LoadConfigPrefs();   // preferencias: render GPU/CPU + carpetas de musica adicionales (Ctrl+F2)
+            NeuralEnv.TryLoad(Path.Combine(Application.StartupPath, "rocola_ia.bin"));   // IA propia (si hay modelo entrenado junto al exe)
             LoadLoudCache();     // sonoridad medida por cancion (para nivelar el volumen de todas)
             LoadIncompatible();  // rutas ya anotadas como no reproducibles (para no repetirlas)
             LayoutControls();
@@ -779,7 +780,8 @@ namespace Rocola
                     Label lSbrInfo = new Label(); lSbrInfo.SetBounds(35, 396, 549, 18); lSbrInfo.BackColor = Color.Transparent;
                     lSbrInfo.ForeColor = sbrAllowed ? Color.FromArgb(150, 160, 190) : Color.FromArgb(200, 150, 120);
                     lSbrInfo.Text = sbrAllowed
-                        ? "Re-crea la banda que el codec corto (transposicion espectral). Alterna con musica sonando y compara."
+                        ? (NeuralEnv.Loaded ? "Re-crea la banda que el codec corto, con IA PROPIA (rocola_ia.bin entrenada con tu musica)."
+                                            : "Re-crea la banda que el codec corto (transposicion espectral). Alterna con musica sonando y compara.")
                         : "NO disponible en este equipo: " + sbrReason;
 
                     Label hint = new Label(); hint.SetBounds(16, 420, 568, 40); hint.BackColor = Color.Transparent; hint.ForeColor = Color.FromArgb(160, 170, 200);
@@ -4694,6 +4696,69 @@ namespace Rocola
         // 2048 por ciclo de ~23ms en estereo); por eso SOLO se ofrece si la maquina cumple requisitos
         // (ProbeAudioTier). Active se alterna EN VIVO desde Ctrl+F3 para comparar A/B (al alternar hay un
         // microcorte de ~46ms: es el colchon del STFT llenandose; normal y esperado).
+
+        private static class NeuralEnv
+        {
+            public static volatile bool Loaded;
+            private static float[][] W, B;            // pesos (fila-mayor) y sesgos por capa
+            private static int[] rOut, cIn;           // dimensiones por capa
+            private static float[] buf1, buf2;        // buffers de trabajo (sin asignar por ventana)
+
+            public static void TryLoad(string path)
+            {
+                try
+                {
+                    if (!File.Exists(path)) return;
+                    byte[] d = File.ReadAllBytes(path);
+                    if (d.Length < 12 || d[0] != (byte)'R' || d[1] != (byte)'I' || d[2] != (byte)'A' || d[3] != (byte)'1') return;
+                    int p = 4;
+                    int nl = BitConverter.ToInt32(d, p); p += 4;
+                    if (nl < 1 || nl > 8) return;
+                    float[][] w = new float[nl][], b = new float[nl][];
+                    int[] ro = new int[nl], ci = new int[nl]; int maxDim = 0;
+                    for (int L = 0; L < nl; L++)
+                    {
+                        int r = BitConverter.ToInt32(d, p); p += 4;
+                        int c = BitConverter.ToInt32(d, p); p += 4;
+                        if (r < 1 || r > 512 || c < 1 || c > 512) return;
+                        w[L] = new float[r * c]; b[L] = new float[r];
+                        for (int i = 0; i < r * c; i++) { w[L][i] = BitConverter.ToSingle(d, p); p += 4; }
+                        for (int i = 0; i < r; i++) { b[L][i] = BitConverter.ToSingle(d, p); p += 4; }
+                        ro[L] = r; ci[L] = c; if (r > maxDim) maxDim = r; if (c > maxDim) maxDim = c;
+                    }
+                    if (ci[0] != 28 || ro[nl - 1] != 12) return;   // contrato de esta version (RIA1)
+                    for (int L = 1; L < nl; L++) if (ci[L] != ro[L - 1]) return;
+                    buf1 = new float[maxDim]; buf2 = new float[maxDim];
+                    W = w; B = b; rOut = ro; cIn = ci;
+                    Loaded = true;
+                }
+                catch { Loaded = false; }
+            }
+
+            // y = red(x). Capas ocultas con tanh; la de salida lineal. Devuelve false si no hay modelo.
+            public static bool Predict(float[] x, float[] y)
+            {
+                float[][] w = W, b = B;
+                if (!Loaded || w == null) return false;
+                float[] cur = x, nxt = buf1;
+                int curN = cIn[0];
+                for (int L = 0; L < w.Length; L++)
+                {
+                    int r = rOut[L]; float[] wl = w[L], bl = b[L];
+                    float[] dst = (L == w.Length - 1) ? y : nxt;
+                    for (int i = 0; i < r; i++)
+                    {
+                        float s = bl[i]; int off = i * curN;
+                        for (int j = 0; j < curN; j++) s += wl[off + j] * cur[j];
+                        dst[i] = (L == w.Length - 1) ? s : (float)Math.Tanh(s);
+                    }
+                    cur = dst; curN = r;
+                    nxt = (cur == buf1) ? buf2 : buf1;   // alterna buffers (la entrada x no se toca)
+                }
+                return true;
+            }
+        }
+
         private sealed class SpectralTap : NAudio.Wave.ISampleProvider
         {
             private const int Frame = 2048, Hop = Frame / 2;
@@ -4710,6 +4775,7 @@ namespace Rocola
             private readonly float[] outQ; private int qHead, qLen;   // FIFO de salida (intercalado)
             private float cutHz;                           // acantilado suavizado (0 = aun sin medir)
             private bool srcEnded;
+            private readonly float[] iaIn = new float[28], iaOut = new float[12];   // IA propia: entrada/salida de la red (reusables)
 
             private volatile bool mejoro;                  // ya reconstruyo al menos UNA vez en esta cancion
             // La cancion FUE mejorada en esta reproduccion: en cuanto Regenerate() actua un cuadro, esto
@@ -4838,8 +4904,69 @@ namespace Rocola
                 cutHz = (cutHz <= 0f) ? found : (cutHz * 0.85f + found * 0.15f);
             }
 
+
+            private bool BuildIaFeatures(int cut)
+            {
+                float n2 = (float)Frame * (float)Frame;
+                float fc = cut * binHz;
+                if (fc < 1200f) return false;
+                double sum = 0;
+                for (int i = 0; i < 24; i++)
+                {
+                    int a = Hz(200f * (float)Math.Pow(fc / 200f, i / 24.0));
+                    int b = Hz(200f * (float)Math.Pow(fc / 200f, (i + 1) / 24.0));
+                    if (b <= a) b = a + 1;
+                    double e = 0; for (int k = a; k < b; k++) e += re[k] * re[k] + im[k] * im[k];
+                    iaIn[i] = (float)Math.Log10(e / ((b - a) * n2) + 1e-12);
+                    sum += iaIn[i];
+                }
+                float mean = (float)(sum / 24.0);
+                for (int i = 0; i < 24; i++) iaIn[i] -= mean;
+                iaIn[24] = mean;
+                iaIn[25] = fc / 20000f;
+                double am = 0, gm = 0;
+                for (int i = 16; i < 24; i++) { am += Math.Pow(10.0, iaIn[i] + mean); gm += iaIn[i] + mean; }
+                iaIn[26] = (float)(gm / 8.0 - Math.Log10(am / 8.0 + 1e-12));
+                iaIn[27] = 0f;
+                return true;
+            }
+
+            
+            private bool RegenNeural(int cut, int topBin)
+            {
+                if (!BuildIaFeatures(cut)) return false;
+                if (!NeuralEnv.Predict(iaIn, iaOut)) return false;
+                float n2 = (float)Frame * (float)Frame;
+                int sa = Hz(cut * binHz * 0.92f); if (sa >= cut) sa = cut - 1;
+                double seamE = 0; for (int k = sa; k < cut; k++) seamE += re[k] * re[k] + im[k] * im[k];
+                seamE = seamE / ((cut - sa) * n2) + 1e-12;
+                float fc = cut * binHz, top = topBin * binHz;
+                for (int j = 0; j < 12; j++)
+                {
+                    int a = Hz(fc * (float)Math.Pow(top / fc, j / 12.0));
+                    int b = Hz(fc * (float)Math.Pow(top / fc, (j + 1) / 12.0));
+                    if (a < cut) a = cut; if (b > topBin) b = topBin; if (b <= a) continue;
+                    double mapped = 0;                               // energia de la fuente transpuesta en esta sub-banda
+                    for (int t = a; t < b; t++) { int s = t >> 1; mapped += re[s] * re[s] + im[s] * im[s]; }
+                    mapped = mapped / ((b - a) * n2);
+                    if (mapped < 1e-14) continue;                    // fuente muda: nada que transponer aqui
+                    float yj = iaOut[j]; if (yj > 0.1f) yj = 0.1f; else if (yj < -4f) yj = -4f;   // tope: nunca mas fuerte que la costura (+~1dB)
+                    float sc = (float)Math.Sqrt(seamE * Math.Pow(10.0, yj) / mapped) * 0.9f;      // 0.9 = colchon
+                    if (sc > 3f) sc = 3f;
+                    for (int t = a; t < b; t++)
+                    {
+                        int s = t >> 1;
+                        re[t] += re[s] * sc; im[t] += im[s] * sc;
+                        int m = Frame - t;                           // espejo: la señal sigue siendo real
+                        re[m] = re[t]; im[m] = -im[t];
+                    }
+                }
+                return true;
+            }
+
             // Re-crea la banda por ENCIMA del acantilado: t <- t/2 (una octava abajo = contenido REAL que
-            // sobrevivio), magnitud empatada en la costura y decayendo ~9 dB/octava. Sin acantilado, intacto.
+            // sobrevivio). La ENVOLVENTE (cuanto suena cada sub-banda nueva) la decide la IA PROPIA si hay
+            // modelo cargado (rocola_ia.bin); si no, la curva clasica: costura empatada y ~-9 dB/octava.
             private void Regenerate()
             {
                 if (cutHz <= 0f || cutHz >= 19300f) return;      // sin medida aun, o archivo ya completo
@@ -4849,6 +4976,7 @@ namespace Rocola
                 mejoro = true;                                    // desde aqui SI se reconstruye: el letrero queda toda la cancion
                 int topBin = Math.Min((int)(Math.Min(20500f, ny * binHz * 0.95f) / binHz), Math.Min(2 * cut - 2, ny - 4));
                 if (topBin <= cut + 4) return;
+                if (NeuralEnv.Loaded && RegenNeural(cut, topBin)) return;   // IA propia: envolvente APRENDIDA
                 double mBelow = 0, mSrc = 0;                      // costura: magnitud media bajo el corte vs banda fuente
                 for (int k = cut - 6; k < cut; k++) mBelow += Math.Sqrt(re[k] * re[k] + im[k] * im[k]);
                 int s0 = cut >> 1;
