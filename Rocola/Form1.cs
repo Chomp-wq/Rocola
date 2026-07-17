@@ -3965,13 +3965,21 @@ namespace Rocola
             }
         }
 
+        // El letrero corresponde a una MEJORA REAL: switch prendido Y el reconstructor de la cancion
+        // actual reconstruyendo de verdad (su puerta interna deja intactos los archivos ya completos).
+        private bool MejActivo()
+        {
+            SpectralTap sp = curSbr;
+            return sbrOn && nowPlaying != null && !nowPlaying.IsVideo && sp != null && sp.Mejorando;
+        }
+
         // Coloca el letrero "MEJORADA" justo despues del texto de "Reproduciendo" (misma fila). Si el
         // titulo es largo, lblNow se ENCOGE (elipsa antes) para que el letrero siempre quepa sin encimarse.
         // Dorado: en esta rama el DSEE espectral es el unico que mejora, asi que el letrero es uno solo.
         private void PositionMejorada()
         {
             if (lblMejorada == null || lblNow == null) return;
-            bool on = sbrOn && nowPlaying != null && !nowPlaying.IsVideo;   // los videos no pasan por la cadena DSEE
+            bool on = MejActivo();
             if (!on)
             {
                 if (lblMejorada.Visible) lblMejorada.Visible = false;
@@ -3992,7 +4000,9 @@ namespace Rocola
         // la franja y el brillo es un destello que RECORRE las letras (FillUiGlows): cero rehechas de textura.
         private void TickMejorada(bool gpuCovered)
         {
-            if (lblMejorada == null || !lblMejorada.Visible) return;
+            if (lblMejorada == null) return;
+            if (MejActivo() != lblMejorada.Visible) PositionMejorada();   // el acantilado se mide ya SONANDO la cancion (~0.1s): el letrero aparece/desaparece solo
+            if (!lblMejorada.Visible) return;
             if (!gpuCovered)
             {
                 double pm = 0.5 + 0.5 * Math.Sin(phase * 2.8);
@@ -4700,6 +4710,14 @@ namespace Rocola
             private readonly float[] outQ; private int qHead, qLen;   // FIFO de salida (intercalado)
             private float cutHz;                           // acantilado suavizado (0 = aun sin medir)
             private bool srcEnded;
+
+            // La mejora esta OCURRIENDO de verdad: activo, acantilado ya medido y dentro del rango que
+            // Regenerate() reconstruye (sus MISMAS condiciones). El letrero MEJORADA lee esto: asi solo
+            // aparece cuando de verdad se esta reconstruyendo algo, no siempre que el switch este prendido.
+            public bool Mejorando
+            {
+                get { float c = cutHz; return Active && c > 0f && c < 19300f && (int)(c / binHz) >= 64; }
+            }
 
             public SpectralTap(NAudio.Wave.ISampleProvider s)
             {
