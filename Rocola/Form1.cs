@@ -127,6 +127,9 @@ namespace Rocola
         //   runtime de inferencia y el CPU no alcanza); si algun dia la rocola corre en Windows 10 + .NET moderno,
         //   ESTE es el punto de enchufe: otro tap en la cadena de PlayTrack, gateado igual por ProbeAudioTier.
         private bool sbrOn = false;          // reconstruccion espectral activa (dsee= en config; Ctrl+F3)
+        private Label lblMejorada;           // letrero "MEJORADA" dorado junto a "Reproduciendo": brilla cuando la cancion suena con DSEE
+        private int mejRowW = 120;           // ancho total de la fila "Reproduciendo" (lo fija el layout; el letrero se acomoda dentro)
+        private static readonly Color MejGoldBase = Color.FromArgb(238, 192, 76), MejGoldHi = Color.FromArgb(255, 233, 145);   // dorado: base y brillo
         private bool sbrAllowed = false;     // la maquina cumple los requisitos (se mide al arrancar)
         private bool sbrForce = false;       // dsee_forzar=1 en config: salta la puerta (para pruebas)
         private string sbrReason = "";       // por que NO esta disponible (se muestra en Ctrl+F3)
@@ -808,6 +811,7 @@ namespace Rocola
                         changed = true;
                         updateLabels();
                         ApplyNormNow();   // se oye el cambio al instante en la cancion que suena
+                        UpdateNowPlayingUI();   // y el letrero MEJORADA aparece/desaparece al instante
                     };
                     tbTarget.Scroll += apply; tbStr.Scroll += apply; tbExc.Scroll += apply; chkOn.CheckedChanged += apply; chkSbr.CheckedChanged += apply;
                     bReset.Click += delegate { chkOn.Checked = true; tbTarget.Value = TargetToPct(0.22f); tbStr.Value = 90; tbExc.Value = 35; if (chkSbr.Enabled) chkSbr.Checked = false; apply(bReset, EventArgs.Empty); };   // recomendado: espectral apagado (es experimental)
@@ -1135,6 +1139,8 @@ namespace Rocola
             lblNext.ForeColor = Color.FromArgb(150, 200, 255);  // ESTETICA: azul claro "siguiente"
             lblCount = new Label(); TransLabel(lblCount, 11f); lblCount.TextAlign = ContentAlignment.MiddleLeft; lblCount.Text = "En cola:  0";
             lblCredits = new Label(); TransLabel(lblCredits, 14f); lblCredits.TextAlign = ContentAlignment.MiddleLeft; lblCredits.Text = "Inserta una moneda"; lblCredits.ForeColor = Color.FromArgb(255, 205, 90);
+            lblMejorada = new Label(); TransLabel(lblMejorada, 10f); lblMejorada.Text = "MEJORADA"; lblMejorada.ForeColor = MejGoldBase;
+            lblMejorada.TextAlign = ContentAlignment.MiddleLeft; lblMejorada.Visible = false;   // aparece solo si la cancion suena con DSEE (PositionMejorada)
 
             miniCube = new CubeBox();
             miniCube.BackColor = Color.Transparent;
@@ -1164,7 +1170,7 @@ namespace Rocola
             Controls.Add(lblStatus); Controls.Add(helpBar); Controls.Add(lblCredits);
             Controls.Add(letterBar); Controls.Add(lblHeader);
             Controls.Add(albumView); Controls.Add(panelSongs);
-            Controls.Add(lblNow); Controls.Add(lblNext); Controls.Add(lblCount); Controls.Add(progress); Controls.Add(lblTime);
+            Controls.Add(lblNow); Controls.Add(lblMejorada); Controls.Add(lblNext); Controls.Add(lblCount); Controls.Add(progress); Controls.Add(lblTime);
             Controls.Add(miniCube);
             Controls.Add(lblAttract);
             Controls.Add(lblToast);
@@ -1253,6 +1259,7 @@ namespace Rocola
             lblTime.SetBounds(pad + leftW - timeW, progY - 1, timeW, 24);
             lblNext.SetBounds(pad, nextY, leftW, 22);
             lblNow.SetBounds(pad, nowY, leftW, 24);
+            mejRowW = leftW; PositionMejorada();   // el letrero MEJORADA se acomoda tras el texto (y encoge lblNow si hace falta)
 
             int albumY = headerY + 44;
             int albumBottom = nowY - 12;
@@ -3942,6 +3949,7 @@ namespace Rocola
         private void UpdateNowPlayingUI()
         {
             lblNow.Text = (nowPlaying != null) ? "Reproduciendo:  " + nowPlaying.Display() : "Nada reproduciendose";
+            PositionMejorada();
             lblNext.Text = (queue.Count > 0) ? "Siguiente:  " + queue[0].Display() : "Siguiente:  -";
             lblCount.Text = "En cola:  " + queue.Count;
             if (miniCube != null)
@@ -3950,6 +3958,42 @@ namespace Rocola
                 else { miniCube.Cover = null; miniCube.Visible = false; }
                 miniCube.Invalidate();
             }
+        }
+
+        // Coloca el letrero "MEJORADA" justo despues del texto de "Reproduciendo" (misma fila). Si el
+        // titulo es largo, lblNow se ENCOGE (elipsa antes) para que el letrero siempre quepa sin encimarse.
+        // Dorado: en esta rama el DSEE espectral es el unico que mejora, asi que el letrero es uno solo.
+        private void PositionMejorada()
+        {
+            if (lblMejorada == null || lblNow == null) return;
+            bool on = sbrOn && nowPlaying != null && !nowPlaying.IsVideo;   // los videos no pasan por la cadena DSEE
+            if (!on)
+            {
+                if (lblMejorada.Visible) lblMejorada.Visible = false;
+                if (lblNow.Width != mejRowW) lblNow.Width = mejRowW;
+                return;
+            }
+            int bw = TextRenderer.MeasureText(lblMejorada.Text, lblMejorada.Font).Width + 4;
+            int nw = Math.Max(60, mejRowW - bw - 12);
+            if (lblNow.Width != nw) lblNow.Width = nw;
+            int tw = TextRenderer.MeasureText(lblNow.Text, lblNow.Font).Width;
+            if (tw > nw) tw = nw;
+            lblMejorada.SetBounds(lblNow.Left + tw + 10, lblNow.Top + 2, bw, 20);
+            lblMejorada.Visible = true;
+        }
+
+        // Anima el brillo del letrero MEJORADA. Sin panel GPU encima (gpuCovered=false) las letras RESPIRAN
+        // de color (repintar una etiqueta chica es barato); con el panel GPU el texto va FIJO en la textura de
+        // la franja y el brillo es un destello que RECORRE las letras (FillUiGlows): cero rehechas de textura.
+        private void TickMejorada(bool gpuCovered)
+        {
+            if (lblMejorada == null || !lblMejorada.Visible) return;
+            if (!gpuCovered)
+            {
+                double pm = 0.5 + 0.5 * Math.Sin(phase * 2.8);
+                lblMejorada.ForeColor = LerpColor(MejGoldBase, MejGoldHi, pm);
+            }
+            else if (lblMejorada.ForeColor.ToArgb() != MejGoldBase.ToArgb()) lblMejorada.ForeColor = MejGoldBase;   // al volver de CPU: color base fijo en la textura
         }
 
         private void ProgressTimer_Tick(object sender, EventArgs e)
@@ -4252,6 +4296,7 @@ namespace Rocola
                     g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;   // gris: ClearType deja flecos sobre transparente
                     g.TranslateTransform(0, -top);   // las etiquetas estan en coords del form; la tira empieza en 'top'
                     DrawLabelOverlay(g, lblNow);
+                    if (lblMejorada != null && lblMejorada.Visible) DrawLabelOverlay(g, lblMejorada);   // letrero MEJORADA (su brillo es un halo por quad, no rehace esta textura)
                     DrawLabelOverlay(g, lblNext);
                     DrawLabelOverlay(g, lblTime);
                     DrawLabelOverlay(g, lblCredits);
@@ -4321,6 +4366,25 @@ namespace Rocola
                     }
                 }
             }
+            // Letrero "MEJORADA" (franja de estado, visible en todos los modos menos atraccion): un resplandor
+            // dorado suave que RESPIRA + un destello que RECORRE las letras cada ~4s (reflejo metalico).
+            // El texto va FIJO en la textura de la franja: estos halos no rehacen NINGUNA textura.
+            if (!attractOn && lblMejorada != null && lblMejorada.Visible && n + 1 < buf.Length)
+            {
+                float cy2 = lblMejorada.Top + lblMejorada.Height / 2f;
+                double pb = 0.5 + 0.5 * Math.Sin(phase * 2.8);
+                buf[n].Cx = lblMejorada.Left + lblMejorada.Width / 2f; buf[n].Cy = cy2;
+                buf[n].R = lblMejorada.Width * 0.72f;
+                buf[n].Argb = (uint)Color.FromArgb((int)(9 + 15 * pb), 255, 210, 100).ToArgb(); n++;
+                double sw = (phase * 0.22) % 1.0;   // ciclo ~4s: 55% barrido de izq a der, 45% descanso
+                if (sw < 0.55)
+                {
+                    double t = sw / 0.55;
+                    int a = (int)(95 * Math.Sin(Math.PI * t));   // entra y sale suave
+                    buf[n].Cx = lblMejorada.Left + (float)(t * lblMejorada.Width); buf[n].Cy = cy2; buf[n].R = 26f;
+                    buf[n].Argb = (uint)Color.FromArgb(a, 255, 232, 150).ToArgb(); n++;
+                }
+            }
             return n;
         }
 
@@ -4362,6 +4426,7 @@ namespace Rocola
             sb.Append(ClientSize.Width).Append('x').Append(ClientSize.Height);
             if (attractOn) { sb.Append("|A"); return sb.ToString(); }   // en atraccion la franja va limpia (transparente)
             if (lblNow != null) sb.Append('|').Append(lblNow.Text);
+            if (lblMejorada != null && lblMejorada.Visible) sb.Append("|M").Append(lblMejorada.Left).Append(',').Append(lblMejorada.ForeColor.ToArgb());
             if (lblNext != null) sb.Append('|').Append(lblNext.Text);
             if (lblTime != null) sb.Append('|').Append(lblTime.Text);
             if (lblCredits != null) sb.Append('|').Append(lblCredits.Text);
@@ -4485,6 +4550,7 @@ namespace Rocola
                 sGpu = (gpuPanel != null && gpuPanel.Visible);   // panel GPU encima: el mini-cubo lo dibuja la GPU (repintar el control seria invisible)
 #endif
                 if (miniCube.Visible) { miniCube.Phase = phase; miniCube.Angle += 0.06; if (!sGpu) miniCube.Invalidate(); }   // el angulo avanza siempre (la GPU lo lee)
+                TickMejorada(sGpu);   // la franja de estado sigue visible bajo el buscador: el letrero sigue brillando
                 return;
             }
 
@@ -4526,6 +4592,7 @@ namespace Rocola
                 helpFlashPrev = hfs;
             }
             if (letterBar.Visible) { letterBar.Phase = phase; if (!albumGpuBg) letterBar.Invalidate(); }   // 24fps (CPU); en GPU el pulso de la letra es un halo por quad (FillUiGlows): la textura NO se rehace
+            TickMejorada(albumGpuBg);   // brillo del letrero MEJORADA (dorado, DSEE espectral)
             if (albumView.Visible && !albumGpuBg) { albumView.Phase = phase; albumView.PulseLo = levLo; albumView.PulseMid = levMid; albumView.PulseHi = levHi; albumView.AnimTick(fullFrame || transitioning); }
 #if ROCOLA_GPU
             else if (albumView.Visible && albumGpuBg) { albumView.Phase = phase; albumView.StepSpinGpu(); }   // el giro avanza aunque el fondo+cubos los pinte la GPU (sin repintar por CPU)

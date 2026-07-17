@@ -799,7 +799,7 @@ namespace Rocola
         // en la textura de UI), asi el desvanecido NO obliga a re-subir la textura -> tecleo fluido y brillo suave.
         public struct UiGlow { public float Cx, Cy, R; public uint Argb; }
         public Func<UiGlow[], int> GetUiGlows;            // el form llena el buffer con los destellos activos y devuelve cuantos
-        private readonly UiGlow[] uiGlowBuf = new UiGlow[8];
+        private readonly UiGlow[] uiGlowBuf = new UiGlow[10];   // 4 destellos de botones + 2 de letras + 2 del letrero MEJORADA, con holgura
         public int Fps;                                   // cuadros por segundo (diagnostico)
         public bool ShowFps;                              // dibujar el contador de FPS (oculto por defecto; el form lo alterna con Ctrl+F1)
         public float Dim = 1f;                            // atenuacion del starfield mientras se navega con musica (el form la anima; 1 = normal)
