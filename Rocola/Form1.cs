@@ -3837,10 +3837,19 @@ namespace Rocola
             catch { }
         }
 
-        // ¿Esta corriendo el motor de IA? Lo delata su "latido" (motor.vivo, refrescado cada ~medio segundo).
+        // ¿Esta corriendo el motor de IA? Primero el testigo mas fuerte: el PROCESO que esta rocola
+        // lanzo sigue vivo (aunque Apollo apenas este cargando y el latido aun no exista). Si no,
+        // el "latido" (motor.vivo, que el motor refresca cada ~3s desde un hilo, SIEMPRE, incluso
+        // a mitad de un trabajo largo). Sin esto, el vigia lanzaba motores de mas: N Apollos a la
+        // vez = toda la RAM/VRAM del equipo (el candado motor.lock del motor es la ultima barrera).
         private bool IaMotorAlive()
         {
-            try { string v = Path.Combine(IaCache(), "motor.vivo"); return File.Exists(v) && (DateTime.Now - File.GetLastWriteTime(v)).TotalSeconds < 15; }
+            try
+            {
+                System.Diagnostics.Process p = iaMotorProc;
+                if (p != null && !p.HasExited) return true;
+                string v = Path.Combine(IaCache(), "motor.vivo"); return File.Exists(v) && (DateTime.Now - File.GetLastWriteTime(v)).TotalSeconds < 15;
+            }
             catch { return false; }
         }
 

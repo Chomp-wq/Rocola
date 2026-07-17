@@ -51,6 +51,11 @@ Si la rocola corre en un gabinete sin GPU, esto no aplica: ahi conviene el proce
   rescatados: un mp3 corrupto puede "decodificar" horas de basura y comerse toda la RAM) NO
   pasan por la IA: quedan marcadas y suenan con su original tal cual. El motor ademas corre
   con prioridad BAJA: la rocola y Windows siempre respiran primero.
+- UN SOLO MOTOR, COLA DE UNO EN UNO: un candado del sistema (cache\motor.lock) hace IMPOSIBLE
+  que corran dos motores a la vez sobre la misma cache (dos Apollos = doble RAM y VRAM), y los
+  trabajos se procesan estrictamente uno por uno, en el orden en que se encolaron. El latido
+  (motor.vivo) late cada ~3s desde un hilo propio, desde el segundo cero: la rocola ya no
+  relanza motores mientras Apollo carga ni a mitad de un trabajo largo.
 
 ## Ajustes (en rocola_config.txt, junto a Rocola.exe)
 

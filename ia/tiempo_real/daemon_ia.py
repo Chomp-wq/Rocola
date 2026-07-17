@@ -80,6 +80,38 @@ def _marca_original(listos, h, motivo):
     except OSError: pass
     return dst
 
+def _candado(cache):
+    """UN SOLO MOTOR por cache, garantizado por el SISTEMA OPERATIVO: candado de archivo que se
+    libera solo cuando el proceso muere (sin ventanas de carrera ni candados huerfanos).
+    El chequeo anterior (latido con menos de 12s) fallaba en DOS ventanas: el latido no existia
+    mientras Apollo cargaba (~30-90s) y se quedaba viejo durante un trabajo largo -> el vigia de
+    la rocola lanzaba OTRO motor, cada motor tomaba el siguiente trabajo pendiente, y N Apollos
+    en paralelo se comian toda la RAM y VRAM (el congelon con varias canciones encoladas)."""
+    p = os.path.join(cache, "motor.lock")
+    try:
+        f = open(p, "a+")
+        if os.name == "nt":
+            import msvcrt
+            f.seek(0); msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return f            # mantener VIVA la referencia: el candado dura lo que el proceso
+    except OSError:
+        return None
+
+def _vivo_bomba(cache):
+    """Latido en un HILO propio desde el segundo cero: motor.vivo se refresca cada ~3s SIEMPRE,
+    aunque Apollo este cargando o un trabajo tarde minutos. Asi la rocola nunca relanza de mas."""
+    import threading
+    vivo = os.path.join(cache, "motor.vivo")
+    def bomba():
+        while True:
+            try: open(vivo, "w").write(str(int(time.time())))
+            except OSError: pass
+            time.sleep(3.0)
+    threading.Thread(target=bomba, daemon=True).start()
+
 def _dirs(cache):
     p = os.path.join(cache, "pendientes"); l = os.path.join(cache, "listos")
     os.makedirs(p, exist_ok=True); os.makedirs(l, exist_ok=True)
@@ -215,13 +247,11 @@ def main():
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg: print("[X] Falta ffmpeg"); return 1
     pend, listos = _dirs(a.cache)
-    vivo0 = os.path.join(a.cache, "motor.vivo")
-    try:
-        if os.path.exists(vivo0) and (time.time() - os.path.getmtime(vivo0)) < 12:
-            _log(a.cache, "ya hay un motor vivo; salgo para no duplicar")
-            return 0
-    except OSError:
-        pass
+    candado = _candado(a.cache)          # NO se suelta nunca: vive lo que el proceso
+    if candado is None:
+        _log(a.cache, "ya hay un motor con el candado; salgo para no duplicar")
+        print("Ya hay un motor corriendo con esta cache; este se cierra."); return 0
+    _vivo_bomba(a.cache)                 # latido desde YA, aun sin Apollo cargado
     _log(a.cache, "arrancando motor; cache=" + a.cache)
     print("Motor de IA: cargando Apollo en la GPU (una vez)...")
     try:
@@ -234,11 +264,8 @@ def main():
     _log(a.cache, "Apollo LISTO")
     print("Motor de IA LISTO. Escuchando trabajos en:", pend)
     print("Deja esta ventana ABIERTA mientras uses la rocola con IA en vivo.")
-    vivo = os.path.join(a.cache, "motor.vivo")
     while True:
         try:
-            try: open(vivo, "w").write(str(int(time.time())))   # LATIDO: la rocola ve que el motor corre (no lo re-lanza)
-            except OSError: pass
             hechos = _un_ciclo_log(pend, listos, proc, ffmpeg, a.tope_gb, a.cache, a.seg)
             time.sleep(0.2 if hechos else 0.6)     # atiende rapido si hay cola; descansa si no
         except KeyboardInterrupt:
