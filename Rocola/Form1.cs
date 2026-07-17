@@ -120,6 +120,8 @@ namespace Rocola
         // banda alta que sobrevivio (~5.5 kHz+), saturarla SUAVE (eso genera armonicos nuevos mas arriba) y
         // mezclar una pizca de vuelta. Se aplica en LevelTap tras nivelar; perilla en Ctrl+F3; "realce=" en config.
         private float excAmount = 0.35f;                                                      // intensidad del realce 0..1 (0 = apagado); 0.35 = sutil
+        private float masterDb = 0f;         // SUBIR TODO: dB extra para ABSOLUTAMENTE todas las canciones (0..12; barra en Ctrl+F3, "subir_db=" en config)
+        private float MasterLin() { return (float)Math.Pow(10.0, masterDb / 20.0); }   // dB -> ganancia lineal
         // ===== NIVELES DE MEJORA DE AUDIO segun la maquina (Ctrl+F3) =====
         // NIVEL 1: exciter (excAmount, arriba) - corre en CUALQUIER equipo (~1-2% de CPU).
         // NIVEL 2: reconstructor espectral (SpectralTap) - solo en maquinas que cumplen requisitos (ProbeAudioTier).
@@ -480,6 +482,7 @@ namespace Rocola
                     else if (s.StartsWith("nivel_objetivo=")) { float v; if (float.TryParse(s.Substring(15).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) normTarget = Clampf(v, NormTargetMin, NormTargetMax); }
                     else if (s.StartsWith("nivel_fuerza=")) { float v; if (float.TryParse(s.Substring(13).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) normStrength = Clampf(v, 0f, 1f); }
                     else if (s.StartsWith("realce=")) { float v; if (float.TryParse(s.Substring(7).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) excAmount = Clampf(v, 0f, 1f); }   // realce de agudos (exciter, tipo DSEE)
+                    else if (s.StartsWith("subir_db=")) { float v; if (float.TryParse(s.Substring(9).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) masterDb = Clampf(v, 0f, 12f); }   // SUBIR TODO (dB extra general)
                     else if (s.StartsWith("dsee=")) sbrOn = s.Substring(5).Trim() == "1";   // reconstruccion espectral (NIVEL 2)
                     else if (s.StartsWith("dsee_forzar=")) { if (s.Substring(12).Trim() == "1") { sbrForce = true; sbrAllowed = true; sbrReason = ""; } }   // salta la puerta de requisitos (pruebas)
                     else if (s.StartsWith("dir="))
@@ -505,6 +508,7 @@ namespace Rocola
                 sb.Append("nivel_objetivo=").Append(normTarget.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("nivel_fuerza=").Append(normStrength.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("realce=").Append(excAmount.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
+                sb.Append("subir_db=").Append(masterDb.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("dsee=").Append(sbrOn ? "1" : "0").Append("\r\n");
                 if (sbrForce) sb.Append("dsee_forzar=1\r\n");   // conservar la bandera manual de pruebas (este saver reescribe el archivo completo)
                 for (int i = 0; i < extraMusicDirs.Count; i++) sb.Append("dir=").Append(extraMusicDirs[i]).Append("\r\n");
@@ -580,7 +584,7 @@ namespace Rocola
         // Aplica el nivelado a la cancion que suena AHORA (para oir el cambio al instante mientras se ajusta en Ctrl+F3).
         private void ApplyNormNow()
         {
-            LevelTap t = curTap; if (t != null && nowPlaying != null && nowPlaying.Song != null) { t.Gain = NormGainFor(nowPlaying.Song.Path); t.Excite = excAmount; }
+            LevelTap t = curTap; if (t != null && nowPlaying != null && nowPlaying.Song != null) { t.Gain = NormGainFor(nowPlaying.Song.Path); t.Excite = excAmount; t.Master = MasterLin(); }
             SpectralTap sp = curSbr; if (sp != null) sp.Active = sbrOn;   // reconstruccion espectral: alterna EN VIVO (A/B desde Ctrl+F3)
         }
 
@@ -735,7 +739,7 @@ namespace Rocola
             bool wasMaint = maintMode;
             maintMode = true; maintUntil = DateTime.Now.AddMinutes(10);
             bool changed = false;
-            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount; bool bkOn = normalizeOn, bkSbr = sbrOn;   // por si se Cancela
+            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkUp = masterDb; bool bkOn = normalizeOn, bkSbr = sbrOn;   // por si se Cancela
             try
             {
                 Cursor.Show();
@@ -747,7 +751,7 @@ namespace Rocola
                     dlg.FormBorderStyle = FormBorderStyle.FixedDialog;
                     dlg.MaximizeBox = false; dlg.MinimizeBox = false; dlg.ShowInTaskbar = false; dlg.ShowIcon = false;
                     dlg.StartPosition = FormStartPosition.CenterParent;
-                    dlg.ClientSize = new Size(600, 518);
+                    dlg.ClientSize = new Size(600, 568);
                     dlg.BackColor = Color.FromArgb(14, 18, 42);
                     dlg.Font = fUi;
 
@@ -768,28 +772,34 @@ namespace Rocola
                     tbStr.BackColor = dlg.BackColor; tbStr.Value = (int)Math.Round(normStrength * 100f);
 
                     // REALCE DE BRILLO (exciter, tipo DSEE): independiente del nivelado (0 = apagado).
-                    Label lExc = new Label(); lExc.SetBounds(16, 294, 568, 24); lExc.BackColor = Color.Transparent; lExc.ForeColor = Color.FromArgb(255, 214, 140);
-                    TrackBar tbExc = new TrackBar(); tbExc.SetBounds(12, 320, 576, 45); tbExc.Minimum = 0; tbExc.Maximum = 100; tbExc.TickFrequency = 10;
+                    // SUBIR TODO: dB extra para ABSOLUTAMENTE todas las canciones (ademas del nivelado, que solo
+                    // sube a las bajitas). La rodilla suave del LevelTap redondea los picos: fuerte sin aspereza.
+                    Label lUp = new Label(); lUp.SetBounds(16, 292, 250, 24); lUp.BackColor = Color.Transparent; lUp.ForeColor = Color.FromArgb(255, 170, 150);
+                    TrackBar tbUp = new TrackBar(); tbUp.SetBounds(268, 286, 316, 45); tbUp.Minimum = 0; tbUp.Maximum = 12; tbUp.TickFrequency = 1;
+                    tbUp.BackColor = dlg.BackColor; tbUp.Value = (int)Math.Round(masterDb);
+
+                    Label lExc = new Label(); lExc.SetBounds(16, 344, 568, 24); lExc.BackColor = Color.Transparent; lExc.ForeColor = Color.FromArgb(255, 214, 140);
+                    TrackBar tbExc = new TrackBar(); tbExc.SetBounds(12, 370, 576, 45); tbExc.Minimum = 0; tbExc.Maximum = 100; tbExc.TickFrequency = 10;
                     tbExc.BackColor = dlg.BackColor; tbExc.Value = (int)Math.Round(excAmount * 100f);
 
                     // NIVEL 2: reconstructor espectral (solo maquinas que cumplen requisitos; ver ProbeAudioTier)
                     CheckBox chkSbr = new CheckBox();
-                    chkSbr.SetBounds(16, 372, 568, 24); chkSbr.BackColor = Color.Transparent; chkSbr.ForeColor = Color.FromArgb(190, 225, 255);
+                    chkSbr.SetBounds(16, 422, 568, 24); chkSbr.BackColor = Color.Transparent; chkSbr.ForeColor = Color.FromArgb(190, 225, 255);
                     chkSbr.Text = "Reconstruir agudos perdidos (DSEE espectral)  -  EXPERIMENTAL";
                     chkSbr.Checked = sbrOn && sbrAllowed; chkSbr.Enabled = sbrAllowed;
-                    Label lSbrInfo = new Label(); lSbrInfo.SetBounds(35, 396, 549, 18); lSbrInfo.BackColor = Color.Transparent;
+                    Label lSbrInfo = new Label(); lSbrInfo.SetBounds(35, 446, 549, 18); lSbrInfo.BackColor = Color.Transparent;
                     lSbrInfo.ForeColor = sbrAllowed ? Color.FromArgb(150, 160, 190) : Color.FromArgb(200, 150, 120);
                     lSbrInfo.Text = sbrAllowed
                         ? (NeuralEnv.Loaded ? "Re-crea la banda que el codec corto, con IA PROPIA (rocola_ia.bin entrenada con tu musica)."
                                             : "Re-crea la banda que el codec corto (transposicion espectral). Alterna con musica sonando y compara.")
                         : "NO disponible en este equipo: " + sbrReason;
 
-                    Label hint = new Label(); hint.SetBounds(16, 420, 568, 40); hint.BackColor = Color.Transparent; hint.ForeColor = Color.FromArgb(160, 170, 200);
+                    Label hint = new Label(); hint.SetBounds(16, 470, 568, 40); hint.BackColor = Color.Transparent; hint.ForeColor = Color.FromArgb(160, 170, 200);
                     hint.Text = "Todo se oye al instante en la cancion actual y aplica a las siguientes. El realce recupera el 'aire' (agudos) que el MP3 recorta; cada cancion se mide la primera vez que suena.";
 
                     Button bReset = new Button(), bOk = new Button();
-                    bReset.Text = "Recomendado"; bReset.SetBounds(16, 470, 150, 38);
-                    bOk.Text = "Listo"; bOk.SetBounds(488, 470, 96, 38);
+                    bReset.Text = "Recomendado"; bReset.SetBounds(16, 520, 150, 38);
+                    bOk.Text = "Listo"; bOk.SetBounds(488, 520, 96, 38);
                     Button[] bs = { bReset, bOk };
                     for (int i = 0; i < bs.Length; i++) { bs[i].FlatStyle = FlatStyle.Flat; bs[i].FlatAppearance.BorderColor = Color.FromArgb(90, 110, 170); bs[i].BackColor = Color.FromArgb(34, 44, 86); bs[i].ForeColor = Color.White; }
 
@@ -798,6 +808,7 @@ namespace Rocola
                         lTarget.Text = "Volumen objetivo:  " + tbTarget.Value + "%   (mas alto = todo suena mas fuerte)";
                         lStr.Text = "Fuerza del nivelado:  " + tbStr.Value + "%   (cuanto se suben las bajitas; 0 = no nivelar)";
                         lExc.Text = "Realce de brillo (tipo DSEE):  " + tbExc.Value + "%   (el 'aire' que el MP3 apaga; 0 = sin realce)";
+                        lUp.Text = "Subir TODO el volumen:  +" + tbUp.Value + " dB";
                         bool en = chkOn.Checked;
                         tbTarget.Enabled = en; tbStr.Enabled = en;
                         lTarget.ForeColor = en ? Color.FromArgb(150, 240, 170) : Color.FromArgb(110, 118, 140);
@@ -809,20 +820,22 @@ namespace Rocola
                         normTarget = TargetFromPct(tbTarget.Value);
                         normStrength = tbStr.Value / 100f;
                         excAmount = tbExc.Value / 100f;
+                        masterDb = tbUp.Value;
                         sbrOn = chkSbr.Checked && sbrAllowed;
                         changed = true;
                         updateLabels();
                         ApplyNormNow();   // se oye el cambio al instante en la cancion que suena
                         UpdateNowPlayingUI();   // y el letrero MEJORADA aparece/desaparece al instante
                     };
-                    tbTarget.Scroll += apply; tbStr.Scroll += apply; tbExc.Scroll += apply; chkOn.CheckedChanged += apply; chkSbr.CheckedChanged += apply;
-                    bReset.Click += delegate { chkOn.Checked = true; tbTarget.Value = TargetToPct(0.22f); tbStr.Value = 90; tbExc.Value = 35; if (chkSbr.Enabled) chkSbr.Checked = false; apply(bReset, EventArgs.Empty); };   // recomendado: espectral apagado (es experimental)
+                    tbTarget.Scroll += apply; tbStr.Scroll += apply; tbExc.Scroll += apply; tbUp.Scroll += apply; chkOn.CheckedChanged += apply; chkSbr.CheckedChanged += apply;
+                    bReset.Click += delegate { chkOn.Checked = true; tbTarget.Value = TargetToPct(0.22f); tbStr.Value = 90; tbExc.Value = 35; tbUp.Value = 0; if (chkSbr.Enabled) chkSbr.Checked = false; apply(bReset, EventArgs.Empty); };   // recomendado: espectral apagado (es experimental)
                     bOk.Click += delegate { dlg.Close(); };
                     dlg.CancelButton = bOk;
 
                     dlg.Controls.Add(info); dlg.Controls.Add(chkOn);
                     dlg.Controls.Add(lTarget); dlg.Controls.Add(tbTarget);
                     dlg.Controls.Add(lStr); dlg.Controls.Add(tbStr);
+                    dlg.Controls.Add(lUp); dlg.Controls.Add(tbUp);
                     dlg.Controls.Add(lExc); dlg.Controls.Add(tbExc);
                     dlg.Controls.Add(chkSbr); dlg.Controls.Add(lSbrInfo);
                     dlg.Controls.Add(hint); dlg.Controls.Add(bReset); dlg.Controls.Add(bOk);
@@ -831,7 +844,7 @@ namespace Rocola
                 }
                 if (changed) { SaveConfigPrefs(); ShowToast("Sonido actualizado", Color.FromArgb(40, 130, 90)); }
             }
-            catch { normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; sbrOn = bkSbr; }   // si algo truena, deja los valores como estaban
+            catch { normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; masterDb = bkUp; sbrOn = bkSbr; }   // si algo truena, deja los valores como estaban
             finally { try { Cursor.Hide(); } catch { } maintMode = wasMaint; ForceFocus(); }
         }
 
@@ -3708,6 +3721,7 @@ namespace Rocola
                 LevelTap tap = new LevelTap(chain, this);
                 tap.Gain = NormGainFor(t.Path);
                 tap.Excite = excAmount;   // realce de agudos (exciter, tipo DSEE): se aplica DESPUES de nivelar
+                tap.Master = MasterLin();  // SUBIR TODO: los dB extra de Ctrl+F3 (con rodilla suave anti-distorsion)
                 curTap = tap;   // referencia para ajustar la ganancia en vivo (Ctrl+F3)
                 // WaveOut con callback por VENTANA, no WaveOutEvent: el de eventos llama a
                 // WaitHandle.WaitOne(Int32), que NO existe en .NET 3.5 sin Service Pack 1
@@ -5040,6 +5054,7 @@ namespace Rocola
             private readonly NAudio.Wave.ISampleProvider src;
             private readonly Form1 owner;
             public float Gain = 1f;   // NIVELADO: ganancia de volumen de esta cancion (1 = sin cambio). Se aplica DESPUES de medir el nivel crudo.
+            public float Master = 1f; // SUBIR TODO: ganancia general (dB de Ctrl+F3) para todas las canciones. Los picos que se pasen los redondea la RODILLA SUAVE de abajo (no recorte aspero).
             // REALCE DE AGUDOS (exciter armonico, tipo DSEE): separa la banda alta con un paso-alto de un polo,
             // la satura suave (tanh: crea armonicos NUEVOS por encima, el "aire" que el MP3 recorta) y mezcla
             // una pizca de vuelta. Todo en el dominio del tiempo: ~2 operaciones y un tanh por muestra, ~1-2%
@@ -5054,7 +5069,7 @@ namespace Rocola
                 if (n > 0 && owner != null)
                 {
                     owner.ReportAudioBlock(buffer, offset, n, Math.Max(1, WaveFormat.SampleRate * WaveFormat.Channels));   // mide el nivel CRUDO (beat + sonoridad) ANTES de tocar nada
-                    float g = Gain, ex = Excite;
+                    float g = Gain * Master, ex = Excite;
                     bool exOn = ex > 0.001f;
                     if (g != 1f || exOn)   // nivelado + realce en UNA pasada, con recorte duro de picos al final
                     {
@@ -5073,6 +5088,10 @@ namespace Rocola
                                 v += (float)Math.Tanh(h * 2.5) * 0.4f * mix;        // saturacion suave = armonicos nuevos por encima (brillo/presencia)
                                 ci++; if (ci >= ch) ci = 0;
                             }
+                            // RODILLA SUAVE desde 0.95: al subir todo el volumen, los picos se redondean con
+                            // tanh en vez de recortarse en seco (el recorte duro queda solo como ultima garantia).
+                            if (v > 0.95f) v = 0.95f + 0.05f * (float)Math.Tanh((v - 0.95f) * 20f);
+                            else if (v < -0.95f) v = -0.95f - 0.05f * (float)Math.Tanh((-v - 0.95f) * 20f);
                             if (v > 1f) v = 1f; else if (v < -1f) v = -1f;
                             buffer[i] = v;
                         }
