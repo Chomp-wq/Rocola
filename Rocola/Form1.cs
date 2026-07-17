@@ -4001,7 +4001,7 @@ namespace Rocola
         private void TickMejorada(bool gpuCovered)
         {
             if (lblMejorada == null) return;
-            if (MejActivo() != lblMejorada.Visible) PositionMejorada();   // el acantilado se mide ya SONANDO la cancion (~0.1s): el letrero aparece/desaparece solo
+            if (MejActivo() != lblMejorada.Visible) PositionMejorada();   // en cuanto el reconstructor ACTUA (~0.1s) aparece, y queda TODA la cancion (solo se va con el switch o al cambiar de cancion)
             if (!lblMejorada.Visible) return;
             if (!gpuCovered)
             {
@@ -4711,13 +4711,12 @@ namespace Rocola
             private float cutHz;                           // acantilado suavizado (0 = aun sin medir)
             private bool srcEnded;
 
-            // La mejora esta OCURRIENDO de verdad: activo, acantilado ya medido y dentro del rango que
-            // Regenerate() reconstruye (sus MISMAS condiciones). El letrero MEJORADA lee esto: asi solo
-            // aparece cuando de verdad se esta reconstruyendo algo, no siempre que el switch este prendido.
-            public bool Mejorando
-            {
-                get { float c = cutHz; return Active && c > 0f && c < 19300f && (int)(c / binHz) >= 64; }
-            }
+            private volatile bool mejoro;                  // ya reconstruyo al menos UNA vez en esta cancion
+            // La cancion FUE mejorada en esta reproduccion: en cuanto Regenerate() actua un cuadro, esto
+            // queda prendido hasta que la cancion cambie (cada cancion estrena su propio SpectralTap).
+            // Es un SEGURO, no un termometro: el letrero MEJORADA no parpadea aunque la medicion del
+            // acantilado vaya y venga; una cancion ya completa (que nunca se reconstruye) jamas lo prende.
+            public bool Mejorando { get { return Active && mejoro; } }
 
             public SpectralTap(NAudio.Wave.ISampleProvider s)
             {
@@ -4847,6 +4846,7 @@ namespace Rocola
                 int ny = Frame / 2;
                 int cut = (int)(cutHz / binHz);
                 if (cut < 64) return;                             // corte absurdamente bajo: no inventar tanto
+                mejoro = true;                                    // desde aqui SI se reconstruye: el letrero queda toda la cancion
                 int topBin = Math.Min((int)(Math.Min(20500f, ny * binHz * 0.95f) / binHz), Math.Min(2 * cut - 2, ny - 4));
                 if (topBin <= cut + 4) return;
                 double mBelow = 0, mSrc = 0;                      // costura: magnitud media bajo el corte vs banda fuente
