@@ -4273,7 +4273,7 @@ namespace Rocola
         private void TickMejorada(bool gpuCovered)
         {
             if (lblMejorada == null) return;
-            int k = MejKind();   // el acantilado se mide ya SONANDO la cancion (~0.1s): el letrero aparece/desaparece/cambia solo
+            int k = MejKind();   // en cuanto el reconstructor ACTUA (~0.1s) el plateado aparece y queda TODA la cancion; el dorado (version IA) dura toda la cancion de origen
             if (k != iaBadgeKind || (k != 0) != lblMejorada.Visible) { iaBadgeKind = k; PositionMejorada(); }
             if (!lblMejorada.Visible) return;
             if (!gpuCovered)
@@ -5065,13 +5065,12 @@ namespace Rocola
             private readonly float[] outQ; private int qHead, qLen;   // FIFO de salida (intercalado)
             private float cutHz;                           // acantilado suavizado (0 = aun sin medir)
 
-            // La mejora esta OCURRIENDO de verdad: activo, acantilado ya medido y dentro del rango que
-            // Regenerate() reconstruye (sus MISMAS condiciones). El letrero MEJORADA lee esto: asi el
-            // plateado solo aparece cuando de verdad se esta reconstruyendo algo en esta cancion.
-            public bool Mejorando
-            {
-                get { float c = cutHz; return Active && c > 0f && c < 19300f && (int)(c / binHz) >= 64; }
-            }
+            private volatile bool mejoro;                  // ya reconstruyo al menos UNA vez en esta cancion
+            // La cancion FUE mejorada en esta reproduccion: en cuanto Regenerate() actua un cuadro, esto
+            // queda prendido hasta que la cancion cambie (cada cancion estrena su propio SpectralTap).
+            // Es un SEGURO, no un termometro: el letrero plateado no parpadea aunque la medicion del
+            // acantilado vaya y venga; una cancion ya completa (que nunca se reconstruye) jamas lo prende.
+            public bool Mejorando { get { return Active && mejoro; } }
             private bool srcEnded;
             private readonly float[] iaIn = new float[28], iaOut = new float[12];   // IA propia: entrada/salida de la red (reusables)
 
@@ -5205,6 +5204,7 @@ namespace Rocola
                 int ny = Frame / 2;
                 int cut = (int)(cutHz / binHz);
                 if (cut < 64) return;                             // corte absurdamente bajo: no inventar tanto
+                mejoro = true;                                    // desde aqui SI se reconstruye (neural o clasico): el letrero queda toda la cancion
                 int topBin = Math.Min((int)(Math.Min(20500f, ny * binHz * 0.95f) / binHz), Math.Min(2 * cut - 2, ny - 4));
                 if (topBin <= cut + 4) return;
                 if (NeuralEnv.Loaded && RegenNeural(cut, topBin)) return;   // IA propia: envolvente APRENDIDA
