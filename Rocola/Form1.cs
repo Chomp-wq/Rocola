@@ -4214,7 +4214,7 @@ namespace Rocola
         private void UpdateNowPlayingUI()
         {
             lblNow.Text = (nowPlaying != null) ? ("Reproduciendo:  " + nowPlaying.Display()) : "Nada reproduciendose";
-            iaBadgeKind = (nowPlaying == null || nowPlaying.IsVideo) ? 0 : (iaNowEnhanced ? 2 : ((sbrOn || iaSpectralFallback) ? 1 : 0));   // dorado = version IA (Apollo); plateado = DSEE espectral (los videos no pasan por la cadena DSEE)
+            iaBadgeKind = MejKind();   // dorado = version IA (Apollo); plateado = DSEE espectral reconstruyendo DE VERDAD
             PositionMejorada();
             lblNext.Text = (queue.Count > 0) ? "Siguiente:  " + queue[0].Display() : "Siguiente:  -";
             lblCount.Text = "En cola:  " + queue.Count;
@@ -4224,6 +4224,17 @@ namespace Rocola
                 else { miniCube.Cover = null; miniCube.Visible = false; }
                 miniCube.Invalidate();
             }
+        }
+
+        // 0 = sin letrero, 1 = plateado (DSEE espectral RECONSTRUYENDO de verdad), 2 = dorado (version IA).
+        // El plateado exige que la puerta interna del reconstructor este actuando: con el switch prendido
+        // pero la cancion ya completa (pase directo) NO hay letrero, porque no se esta mejorando nada.
+        private int MejKind()
+        {
+            if (nowPlaying == null || nowPlaying.IsVideo) return 0;
+            if (iaNowEnhanced) return 2;
+            SpectralTap sp = curSbr;
+            return ((sbrOn || iaSpectralFallback) && sp != null && sp.Mejorando) ? 1 : 0;
         }
 
         // Coloca el letrero "MEJORADA" justo despues del texto de "Reproduciendo" (misma fila). Si el
@@ -4252,7 +4263,10 @@ namespace Rocola
         // la franja y el brillo es un destello que RECORRE las letras (FillUiGlows): cero rehechas de textura.
         private void TickMejorada(bool gpuCovered)
         {
-            if (lblMejorada == null || !lblMejorada.Visible) return;
+            if (lblMejorada == null) return;
+            int k = MejKind();   // el acantilado se mide ya SONANDO la cancion (~0.1s): el letrero aparece/desaparece/cambia solo
+            if (k != iaBadgeKind || (k != 0) != lblMejorada.Visible) { iaBadgeKind = k; PositionMejorada(); }
+            if (!lblMejorada.Visible) return;
             if (!gpuCovered)
             {
                 double pm = 0.5 + 0.5 * Math.Sin(phase * 2.8);
@@ -5041,6 +5055,14 @@ namespace Rocola
             private readonly float[] inter;                // buffer intercalado para leer del origen
             private readonly float[] outQ; private int qHead, qLen;   // FIFO de salida (intercalado)
             private float cutHz;                           // acantilado suavizado (0 = aun sin medir)
+
+            // La mejora esta OCURRIENDO de verdad: activo, acantilado ya medido y dentro del rango que
+            // Regenerate() reconstruye (sus MISMAS condiciones). El letrero MEJORADA lee esto: asi el
+            // plateado solo aparece cuando de verdad se esta reconstruyendo algo en esta cancion.
+            public bool Mejorando
+            {
+                get { float c = cutHz; return Active && c > 0f && c < 19300f && (int)(c / binHz) >= 64; }
+            }
             private bool srcEnded;
             private readonly float[] iaIn = new float[28], iaOut = new float[12];   // IA propia: entrada/salida de la red (reusables)
 
