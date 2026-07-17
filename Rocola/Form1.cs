@@ -122,7 +122,9 @@ namespace Rocola
         // propio DSEE y los EXCITERS ARMONICOS clasicos (las cajas Aphex/BBE de los equipos de bar): tomar la
         // banda alta que sobrevivio (~5.5 kHz+), saturarla SUAVE (eso genera armonicos nuevos mas arriba) y
         // mezclar una pizca de vuelta. Se aplica en LevelTap tras nivelar; perilla en Ctrl+F3; "realce=" en config.
-        private float excAmount = 0.35f;                                                      // intensidad del realce 0..1 (0 = apagado); 0.35 = sutil
+        private float excAmount = 0.35f;
+        private float masterDb = 0f;         // SUBIR TODO: dB extra para ABSOLUTAMENTE todas las canciones (0..12; barra en Ctrl+F3, "subir_db=" en config)
+        private float MasterLin() { return (float)Math.Pow(10.0, masterDb / 20.0); }   // dB -> ganancia lineal                                                      // intensidad del realce 0..1 (0 = apagado); 0.35 = sutil
         // ===== NIVELES DE MEJORA DE AUDIO segun la maquina (Ctrl+F3) =====
         // NIVEL 1: exciter (excAmount, arriba) - corre en CUALQUIER equipo (~1-2% de CPU).
         // NIVEL 2: reconstructor espectral (SpectralTap) - solo en maquinas que cumplen requisitos (ProbeAudioTier).
@@ -507,6 +509,7 @@ namespace Rocola
                     else if (s.StartsWith("nivel_objetivo=")) { float v; if (float.TryParse(s.Substring(15).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) normTarget = Clampf(v, NormTargetMin, NormTargetMax); }
                     else if (s.StartsWith("nivel_fuerza=")) { float v; if (float.TryParse(s.Substring(13).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) normStrength = Clampf(v, 0f, 1f); }
                     else if (s.StartsWith("realce=")) { float v; if (float.TryParse(s.Substring(7).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) excAmount = Clampf(v, 0f, 1f); }   // realce de agudos (exciter, tipo DSEE)
+                    else if (s.StartsWith("subir_db=")) { float v; if (float.TryParse(s.Substring(9).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) masterDb = Clampf(v, 0f, 12f); }   // SUBIR TODO (dB extra general)
                     else if (s.StartsWith("dsee=")) sbrOn = s.Substring(5).Trim() == "1";   // reconstruccion espectral (NIVEL 2)
                     else if (s.StartsWith("salida=")) { string v = s.Substring(7).Trim().ToLowerInvariant(); if (v == "auto" || v == "wasapi" || v == "waveout") outPref = v; }   // salida de audio (rama HD)
                     else if (s.StartsWith("ia_vivo=")) iaVivo = s.Substring(8).Trim() == "1";           // Apollo en vivo (Ctrl+F4)
@@ -537,6 +540,7 @@ namespace Rocola
                 sb.Append("nivel_objetivo=").Append(normTarget.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("nivel_fuerza=").Append(normStrength.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("realce=").Append(excAmount.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
+                sb.Append("subir_db=").Append(masterDb.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("dsee=").Append(sbrOn ? "1" : "0").Append("\r\n");
                 sb.Append("salida=").Append(outPref).Append("\r\n");
                 sb.Append("ia_vivo=").Append(iaVivo ? "1" : "0").Append("\r\n");
@@ -616,7 +620,7 @@ namespace Rocola
         // Aplica el nivelado a la cancion que suena AHORA (para oir el cambio al instante mientras se ajusta en Ctrl+F3).
         private void ApplyNormNow()
         {
-            LevelTap t = curTap; if (t != null && nowPlaying != null && nowPlaying.Song != null) { t.Gain = NormGainFor(nowPlaying.Song.Path); t.Excite = excAmount; }
+            LevelTap t = curTap; if (t != null && nowPlaying != null && nowPlaying.Song != null) { t.Gain = NormGainFor(nowPlaying.Song.Path); t.Excite = excAmount; t.Master = MasterLin(); }
             SpectralTap sp = curSbr; if (sp != null) sp.Active = sbrOn || iaSpectralFallback;   // reconstruccion espectral: alterna EN VIVO (Ctrl+F3) SIN matar el respaldo de ULTRA
         }
 
@@ -771,7 +775,7 @@ namespace Rocola
             bool wasMaint = maintMode;
             maintMode = true; maintUntil = DateTime.Now.AddMinutes(10);
             bool changed = false;
-            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount; bool bkOn = normalizeOn, bkSbr = sbrOn, bkIa = iaVivo; string bkIaMez = iaMezcla, bkIaGpu = iaGpu;   // por si se Cancela
+            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkUp = masterDb; bool bkOn = normalizeOn, bkSbr = sbrOn, bkIa = iaVivo; string bkIaMez = iaMezcla, bkIaGpu = iaGpu;   // por si se Cancela
             try
             {
                 Cursor.Show();
@@ -783,7 +787,7 @@ namespace Rocola
                     dlg.FormBorderStyle = FormBorderStyle.FixedDialog;
                     dlg.MaximizeBox = false; dlg.MinimizeBox = false; dlg.ShowInTaskbar = false; dlg.ShowIcon = false;
                     dlg.StartPosition = FormStartPosition.CenterParent;
-                    dlg.ClientSize = new Size(600, 700);
+                    dlg.ClientSize = new Size(600, 750);
                     dlg.BackColor = Color.FromArgb(14, 18, 42);
                     dlg.Font = fUi;
 
@@ -804,16 +808,22 @@ namespace Rocola
                     tbStr.BackColor = dlg.BackColor; tbStr.Value = (int)Math.Round(normStrength * 100f);
 
                     // REALCE DE BRILLO (exciter, tipo DSEE): independiente del nivelado (0 = apagado).
-                    Label lExc = new Label(); lExc.SetBounds(16, 294, 568, 24); lExc.BackColor = Color.Transparent; lExc.ForeColor = Color.FromArgb(255, 214, 140);
-                    TrackBar tbExc = new TrackBar(); tbExc.SetBounds(12, 320, 576, 45); tbExc.Minimum = 0; tbExc.Maximum = 100; tbExc.TickFrequency = 10;
+                    // SUBIR TODO: dB extra para ABSOLUTAMENTE todas las canciones (ademas del nivelado, que solo
+                    // sube a las bajitas). La rodilla suave del LevelTap redondea los picos: fuerte sin aspereza.
+                    Label lUp = new Label(); lUp.SetBounds(16, 292, 250, 24); lUp.BackColor = Color.Transparent; lUp.ForeColor = Color.FromArgb(255, 170, 150);
+                    TrackBar tbUp = new TrackBar(); tbUp.SetBounds(268, 286, 316, 45); tbUp.Minimum = 0; tbUp.Maximum = 12; tbUp.TickFrequency = 1;
+                    tbUp.BackColor = dlg.BackColor; tbUp.Value = (int)Math.Round(masterDb);
+
+                    Label lExc = new Label(); lExc.SetBounds(16, 344, 568, 24); lExc.BackColor = Color.Transparent; lExc.ForeColor = Color.FromArgb(255, 214, 140);
+                    TrackBar tbExc = new TrackBar(); tbExc.SetBounds(12, 370, 576, 45); tbExc.Minimum = 0; tbExc.Maximum = 100; tbExc.TickFrequency = 10;
                     tbExc.BackColor = dlg.BackColor; tbExc.Value = (int)Math.Round(excAmount * 100f);
 
                     // NIVEL 2: reconstructor espectral (solo maquinas que cumplen requisitos; ver ProbeAudioTier)
                     CheckBox chkSbr = new CheckBox();
-                    chkSbr.SetBounds(16, 372, 568, 24); chkSbr.BackColor = Color.Transparent; chkSbr.ForeColor = Color.FromArgb(190, 225, 255);
+                    chkSbr.SetBounds(16, 422, 568, 24); chkSbr.BackColor = Color.Transparent; chkSbr.ForeColor = Color.FromArgb(190, 225, 255);
                     chkSbr.Text = "DSEE  (reconstruccion espectral de agudos)";
                     chkSbr.Checked = sbrOn && sbrAllowed;
-                    Label lSbrInfo = new Label(); lSbrInfo.SetBounds(35, 396, 549, 18); lSbrInfo.BackColor = Color.Transparent;
+                    Label lSbrInfo = new Label(); lSbrInfo.SetBounds(35, 446, 549, 18); lSbrInfo.BackColor = Color.Transparent;
                     lSbrInfo.ForeColor = Color.FromArgb(150, 160, 190);
                     lSbrInfo.Text = sbrAllowed
                         ? (NeuralEnv.Loaded ? "Reconstruye agudos dentro de la rocola, con IA propia (rocola_ia.bin)." : "Reconstruye agudos dentro de la rocola (ligero).")
@@ -821,25 +831,25 @@ namespace Rocola
 
                     // DSEE ULTRA = IA (Apollo por demanda). Al activarlo, el DSEE normal se pone en GRIS (no van juntos).
                     CheckBox chkUltra = new CheckBox();
-                    chkUltra.SetBounds(16, 424, 568, 24); chkUltra.BackColor = Color.Transparent; chkUltra.ForeColor = Color.FromArgb(255, 210, 130);
+                    chkUltra.SetBounds(16, 474, 568, 24); chkUltra.BackColor = Color.Transparent; chkUltra.ForeColor = Color.FromArgb(255, 210, 130);
                     chkUltra.Font = fBig; chkUltra.Text = "DSEE ULTRA  (IA - maxima calidad)"; chkUltra.Checked = iaVivo;
-                    Label lUltraInfo = new Label(); lUltraInfo.SetBounds(35, 450, 549, 18); lUltraInfo.BackColor = Color.Transparent; lUltraInfo.ForeColor = Color.FromArgb(180, 170, 150);
+                    Label lUltraInfo = new Label(); lUltraInfo.SetBounds(35, 500, 549, 18); lUltraInfo.BackColor = Color.Transparent; lUltraInfo.ForeColor = Color.FromArgb(180, 170, 150);
                     lUltraInfo.Text = "Restaura con IA (Apollo). Necesita la GPU y la carpeta 'ia'; la 1a vez que suena una cancion va normal y queda lista para la proxima.";
                     CheckBox chkIaAuto = new CheckBox();
-                    chkIaAuto.SetBounds(35, 472, 549, 22); chkIaAuto.BackColor = Color.Transparent; chkIaAuto.ForeColor = Color.White;
+                    chkIaAuto.SetBounds(35, 522, 549, 22); chkIaAuto.BackColor = Color.Transparent; chkIaAuto.ForeColor = Color.White;
                     chkIaAuto.Text = "IA automatica segun el dano (recomendado)";
                     int iaMixInit = 70; bool iaAutoInit = true;
                     if (iaMezcla != null && iaMezcla != "auto") { int tmp; if (int.TryParse(iaMezcla, out tmp)) { iaMixInit = tmp < 0 ? 0 : (tmp > 100 ? 100 : tmp); iaAutoInit = false; } }
                     chkIaAuto.Checked = iaAutoInit;
-                    Label lIaMix = new Label(); lIaMix.SetBounds(16, 498, 568, 22); lIaMix.BackColor = Color.Transparent; lIaMix.ForeColor = Color.FromArgb(255, 214, 140);
-                    TrackBar tbIaMix = new TrackBar(); tbIaMix.SetBounds(12, 520, 576, 45); tbIaMix.Minimum = 0; tbIaMix.Maximum = 100; tbIaMix.TickFrequency = 10;
+                    Label lIaMix = new Label(); lIaMix.SetBounds(16, 548, 568, 22); lIaMix.BackColor = Color.Transparent; lIaMix.ForeColor = Color.FromArgb(255, 214, 140);
+                    TrackBar tbIaMix = new TrackBar(); tbIaMix.SetBounds(12, 570, 576, 45); tbIaMix.Minimum = 0; tbIaMix.Maximum = 100; tbIaMix.TickFrequency = 10;
                     tbIaMix.BackColor = dlg.BackColor; tbIaMix.Value = iaMixInit;
 
                     // GPU QUE HACE LOS CALCULOS DE IA: la lista la escribe el motor (cache\gpus.txt) al arrancar,
                     // con los nombres reales que ve torch (el indice de la lista ES el indice CUDA).
-                    Label lGpu = new Label(); lGpu.SetBounds(35, 572, 235, 22); lGpu.BackColor = Color.Transparent; lGpu.ForeColor = Color.White;
+                    Label lGpu = new Label(); lGpu.SetBounds(35, 622, 235, 22); lGpu.BackColor = Color.Transparent; lGpu.ForeColor = Color.White;
                     lGpu.Text = "GPU que hace los calculos de IA:";
-                    ComboBox cbGpu = new ComboBox(); cbGpu.SetBounds(272, 568, 312, 26); cbGpu.DropDownStyle = ComboBoxStyle.DropDownList;
+                    ComboBox cbGpu = new ComboBox(); cbGpu.SetBounds(272, 618, 312, 26); cbGpu.DropDownStyle = ComboBoxStyle.DropDownList;
                     cbGpu.BackColor = Color.FromArgb(34, 44, 86); cbGpu.ForeColor = Color.White; cbGpu.FlatStyle = FlatStyle.Flat;
                     cbGpu.Items.Add("Automatica");
                     string[] gpus = IaGpuList();
@@ -847,12 +857,12 @@ namespace Rocola
                     int selGpu = 0; { int gn; if (iaGpu != "auto" && int.TryParse(iaGpu, out gn) && gn >= 0 && gn + 1 < cbGpu.Items.Count) selGpu = gn + 1; }
                     cbGpu.SelectedIndex = selGpu;   // antes de enganchar el evento: sin reinicios fantasma
 
-                    Label hint = new Label(); hint.SetBounds(16, 606, 568, 36); hint.BackColor = Color.Transparent; hint.ForeColor = Color.FromArgb(160, 170, 200);
+                    Label hint = new Label(); hint.SetBounds(16, 656, 568, 36); hint.BackColor = Color.Transparent; hint.ForeColor = Color.FromArgb(160, 170, 200);
                     hint.Text = "El nivelado y el realce se oyen al instante; DSEE / DSEE ULTRA aplican desde la SIGUIENTE cancion. DSEE ULTRA y DSEE normal no van juntos.";
 
                     Button bReset = new Button(), bOk = new Button();
-                    bReset.Text = "Recomendado"; bReset.SetBounds(16, 648, 150, 38);
-                    bOk.Text = "Listo"; bOk.SetBounds(488, 648, 96, 38);
+                    bReset.Text = "Recomendado"; bReset.SetBounds(16, 698, 150, 38);
+                    bOk.Text = "Listo"; bOk.SetBounds(488, 698, 96, 38);
                     Button[] bs = { bReset, bOk };
                     for (int i = 0; i < bs.Length; i++) { bs[i].FlatStyle = FlatStyle.Flat; bs[i].FlatAppearance.BorderColor = Color.FromArgb(90, 110, 170); bs[i].BackColor = Color.FromArgb(34, 44, 86); bs[i].ForeColor = Color.White; }
 
@@ -861,6 +871,7 @@ namespace Rocola
                         lTarget.Text = "Volumen objetivo:  " + tbTarget.Value + "%   (mas alto = todo suena mas fuerte)";
                         lStr.Text = "Fuerza del nivelado:  " + tbStr.Value + "%   (cuanto se suben las bajitas; 0 = no nivelar)";
                         lExc.Text = "Realce de brillo (tipo DSEE):  " + tbExc.Value + "%   (el 'aire' que el MP3 apaga; 0 = sin realce)";
+                        lUp.Text = "Subir TODO el volumen:  +" + tbUp.Value + " dB";
                         bool en = chkOn.Checked;
                         tbTarget.Enabled = en; tbStr.Enabled = en;
                         lTarget.ForeColor = en ? Color.FromArgb(150, 240, 170) : Color.FromArgb(110, 118, 140);
@@ -883,6 +894,7 @@ namespace Rocola
                         normTarget = TargetFromPct(tbTarget.Value);
                         normStrength = tbStr.Value / 100f;
                         excAmount = tbExc.Value / 100f;
+                        masterDb = tbUp.Value;
                         bool ultra = chkUltra.Checked;
                         iaVivo = ultra;
                         iaMezcla = chkIaAuto.Checked ? "auto" : tbIaMix.Value.ToString();
@@ -892,7 +904,7 @@ namespace Rocola
                         ApplyNormNow();   // se oye el cambio al instante en la cancion que suena
                         UpdateNowPlayingUI();   // y el letrero MEJORADA se actualiza al instante (aparece/cambia de color)
                     };
-                    tbTarget.Scroll += apply; tbStr.Scroll += apply; tbExc.Scroll += apply; chkOn.CheckedChanged += apply; chkSbr.CheckedChanged += apply;
+                    tbTarget.Scroll += apply; tbStr.Scroll += apply; tbExc.Scroll += apply; tbUp.Scroll += apply; chkOn.CheckedChanged += apply; chkSbr.CheckedChanged += apply;
                     tbIaMix.Scroll += apply; chkIaAuto.CheckedChanged += apply;
                     chkUltra.CheckedChanged += delegate { if (chkUltra.Checked) { IaEnsureMotor(); IaRequestQueueJobs(); } apply(chkUltra, EventArgs.Empty); };   // al encender ULTRA: motor oculto + preparar cola
                     cbGpu.SelectedIndexChanged += delegate
@@ -901,13 +913,14 @@ namespace Rocola
                         changed = true;
                         IaRestartMotor();   // el motor renace OCULTO con la GPU elegida (Apollo recarga en ella)
                     };
-                    bReset.Click += delegate { chkOn.Checked = true; tbTarget.Value = TargetToPct(0.22f); tbStr.Value = 90; tbExc.Value = 35; chkUltra.Checked = false; if (chkSbr.Enabled) chkSbr.Checked = false; chkIaAuto.Checked = true; apply(bReset, EventArgs.Empty); };
+                    bReset.Click += delegate { chkOn.Checked = true; tbTarget.Value = TargetToPct(0.22f); tbStr.Value = 90; tbExc.Value = 35; tbUp.Value = 0; chkUltra.Checked = false; if (chkSbr.Enabled) chkSbr.Checked = false; chkIaAuto.Checked = true; apply(bReset, EventArgs.Empty); };
                     bOk.Click += delegate { dlg.Close(); };
                     dlg.CancelButton = bOk;
 
                     dlg.Controls.Add(info); dlg.Controls.Add(chkOn);
                     dlg.Controls.Add(lTarget); dlg.Controls.Add(tbTarget);
                     dlg.Controls.Add(lStr); dlg.Controls.Add(tbStr);
+                    dlg.Controls.Add(lUp); dlg.Controls.Add(tbUp);
                     dlg.Controls.Add(lExc); dlg.Controls.Add(tbExc);
                     dlg.Controls.Add(chkSbr); dlg.Controls.Add(lSbrInfo);
                     dlg.Controls.Add(chkUltra); dlg.Controls.Add(lUltraInfo);
@@ -919,7 +932,7 @@ namespace Rocola
                 }
                 if (changed) { SaveConfigPrefs(); ShowToast("Sonido actualizado", Color.FromArgb(40, 130, 90)); }
             }
-            catch { normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; sbrOn = bkSbr; iaVivo = bkIa; iaMezcla = bkIaMez; iaGpu = bkIaGpu; }   // si algo truena, deja los valores como estaban
+            catch { normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; masterDb = bkUp; sbrOn = bkSbr; iaVivo = bkIa; iaMezcla = bkIaMez; iaGpu = bkIaGpu; }   // si algo truena, deja los valores como estaban
             finally { try { Cursor.Hide(); } catch { } maintMode = wasMaint; ForceFocus(); }
         }
 
@@ -3997,6 +4010,7 @@ namespace Rocola
                 LevelTap tap = new LevelTap(chain, this);
                 tap.Gain = NormGainFor(t.Path);
                 tap.Excite = excAmount;   // realce de agudos (exciter, tipo DSEE): se aplica DESPUES de nivelar
+                tap.Master = MasterLin();  // SUBIR TODO: los dB extra de Ctrl+F3 (con rodilla suave anti-distorsion)
                 curTap = tap;   // referencia para ajustar la ganancia en vivo (Ctrl+F3)
                 // ===== SALIDA DE AUDIO (rama HD) =====
                 // WASAPI compartido con muestras FLOTANTES: float de punta a punta hasta el motor de audio
@@ -5388,6 +5402,7 @@ namespace Rocola
             private readonly NAudio.Wave.ISampleProvider src;
             private readonly Form1 owner;
             public float Gain = 1f;   // NIVELADO: ganancia de volumen de esta cancion (1 = sin cambio). Se aplica DESPUES de medir el nivel crudo.
+            public float Master = 1f; // SUBIR TODO: ganancia general (dB de Ctrl+F3) para todas las canciones. Los picos que se pasen los redondea la RODILLA SUAVE de abajo (no recorte aspero).
             // REALCE DE AGUDOS (exciter armonico, tipo DSEE): separa la banda alta con un paso-alto de un polo,
             // la satura suave (tanh: crea armonicos NUEVOS por encima, el "aire" que el MP3 recorta) y mezcla
             // una pizca de vuelta. Todo en el dominio del tiempo: ~2 operaciones y un tanh por muestra, ~1-2%
@@ -5402,7 +5417,7 @@ namespace Rocola
                 if (n > 0 && owner != null)
                 {
                     owner.ReportAudioBlock(buffer, offset, n, Math.Max(1, WaveFormat.SampleRate * WaveFormat.Channels));   // mide el nivel CRUDO (beat + sonoridad) ANTES de tocar nada
-                    float g = Gain, ex = Excite;
+                    float g = Gain * Master, ex = Excite;
                     bool exOn = ex > 0.001f;
                     if (g != 1f || exOn)   // nivelado + realce en UNA pasada, con recorte duro de picos al final
                     {
@@ -5421,6 +5436,10 @@ namespace Rocola
                                 v += (float)Math.Tanh(h * 2.5) * 0.4f * mix;        // saturacion suave = armonicos nuevos por encima (brillo/presencia)
                                 ci++; if (ci >= ch) ci = 0;
                             }
+                            // RODILLA SUAVE desde 0.95: al subir todo el volumen, los picos se redondean con
+                            // tanh en vez de recortarse en seco (el recorte duro queda solo como ultima garantia).
+                            if (v > 0.95f) v = 0.95f + 0.05f * (float)Math.Tanh((v - 0.95f) * 20f);
+                            else if (v < -0.95f) v = -0.95f - 0.05f * (float)Math.Tanh((-v - 0.95f) * 20f);
                             if (v > 1f) v = 1f; else if (v < -1f) v = -1f;
                             buffer[i] = v;
                         }
