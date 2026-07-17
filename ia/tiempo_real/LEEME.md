@@ -60,6 +60,9 @@ Si la rocola corre en un gabinete sin GPU, esto no aplica: ahi conviene el proce
 ## Ajustes (en rocola_config.txt, junto a Rocola.exe)
 
 - `ia_vivo=1`      enciende la IA en vivo al arrancar (o el switch DSEE ULTRA en Ctrl+F3).
+- `ia_gpu=auto`    que GPU hace los calculos de IA (auto, 0, 1, ...). Mas facil: el SELECTOR en
+                   Ctrl+F3 (muestra los nombres reales; al cambiarla el motor renace solo en esa
+                   GPU). La lista la publica el motor en cache\gpus.txt al arrancar.
 - `ia_mezcla=auto` cuanta IA: auto (recomendado) o un numero 0..100.
 - `ia_cache=RUTA`  carpeta de cache (por defecto `ia_cache` junto a Rocola.exe; debe COINCIDIR
                    con la que le das al motor en iniciar_motor.bat).

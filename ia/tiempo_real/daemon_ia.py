@@ -243,6 +243,7 @@ def main():
     ap.add_argument("--cache", default=os.path.join(AQUI, "cache"))
     ap.add_argument("--tope_gb", type=float, default=20.0)
     ap.add_argument("--seg", type=float, default=10.0)
+    ap.add_argument("--gpu", default="auto")   # que GPU usa Apollo (auto | 0 | 1 | ...); lo manda la rocola (Ctrl+F3)
     a = ap.parse_args()
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg: print("[X] Falta ffmpeg"); return 1
@@ -256,12 +257,18 @@ def main():
     print("Motor de IA: cargando Apollo en la GPU (una vez)...")
     try:
         import modelo_apollo
-        proc = modelo_apollo.cargar()
+        proc = modelo_apollo.cargar(gpu=a.gpu)
     except Exception as e:
         _log(a.cache, "ERROR cargando Apollo: " + repr(e))
         print("[X] No se pudo cargar Apollo:", e)
         raise
-    _log(a.cache, "Apollo LISTO")
+    try:
+        # publica las GPUs detectadas para el selector de la rocola (nombres REALES de torch)
+        with open(os.path.join(a.cache, "gpus.txt"), "w", encoding="utf-8") as f:
+            f.write("\n".join(modelo_apollo.lista_gpus()))
+    except Exception:
+        pass
+    _log(a.cache, "Apollo LISTO (gpu=%s)" % a.gpu)
     print("Motor de IA LISTO. Escuchando trabajos en:", pend)
     print("Deja esta ventana ABIERTA mientras uses la rocola con IA en vivo.")
     while True:

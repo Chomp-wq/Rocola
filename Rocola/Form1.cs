@@ -151,6 +151,7 @@ namespace Rocola
         private static readonly Color IaGoldBase = Color.FromArgb(238, 192, 76), IaGoldHi = Color.FromArgb(255, 233, 145);        // dorado: base y brillo
         private int iaMotorCheckTick = 0;        // vigia: cada ~10s, si ULTRA esta activo y el motor no responde, lo relanza
         private string iaMezcla = "auto";     // cuanta IA (auto | 0..100); coincide con el motor
+        private string iaGpu = "auto";        // que GPU hace los calculos de IA (auto | 0 | 1 | ...); selector en Ctrl+F3
         private string iaCacheDir = null;     // cache compartida con el motor (ia_cache= en config; por defecto junto al exe)
         private string outPref = "auto";     // salida= en config: auto (WASAPI si la maquina es HD) | wasapi | waveout
         private bool sbrOn = false;          // reconstruccion espectral activa (dsee= en config; Ctrl+F3)
@@ -510,6 +511,7 @@ namespace Rocola
                     else if (s.StartsWith("salida=")) { string v = s.Substring(7).Trim().ToLowerInvariant(); if (v == "auto" || v == "wasapi" || v == "waveout") outPref = v; }   // salida de audio (rama HD)
                     else if (s.StartsWith("ia_vivo=")) iaVivo = s.Substring(8).Trim() == "1";           // Apollo en vivo (Ctrl+F4)
                     else if (s.StartsWith("ia_mezcla=")) iaMezcla = s.Substring(10).Trim();             // cuanta IA en vivo
+                    else if (s.StartsWith("ia_gpu=")) { string g = s.Substring(7).Trim(); int gn; iaGpu = (g == "auto" || int.TryParse(g, out gn)) ? g : "auto"; }   // GPU de la IA (saneado)
                     else if (s.StartsWith("ia_cache=")) { string d = s.Substring(9).Trim(); if (d.Length > 0) iaCacheDir = d; }
                     else if (s.StartsWith("dsee_forzar=")) { if (s.Substring(12).Trim() == "1") { sbrForce = true; sbrAllowed = true; sbrReason = ""; } }   // salta la puerta de requisitos (pruebas)
                     else if (s.StartsWith("dir="))
@@ -539,6 +541,7 @@ namespace Rocola
                 sb.Append("salida=").Append(outPref).Append("\r\n");
                 sb.Append("ia_vivo=").Append(iaVivo ? "1" : "0").Append("\r\n");
                 sb.Append("ia_mezcla=").Append(iaMezcla).Append("\r\n");
+                sb.Append("ia_gpu=").Append(iaGpu).Append("\r\n");
                 if (sbrForce) sb.Append("dsee_forzar=1\r\n");   // conservar la bandera manual de pruebas (este saver reescribe el archivo completo)
                 for (int i = 0; i < extraMusicDirs.Count; i++) sb.Append("dir=").Append(extraMusicDirs[i]).Append("\r\n");
                 File.WriteAllText(ConfigFile, sb.ToString());
@@ -768,7 +771,7 @@ namespace Rocola
             bool wasMaint = maintMode;
             maintMode = true; maintUntil = DateTime.Now.AddMinutes(10);
             bool changed = false;
-            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount; bool bkOn = normalizeOn, bkSbr = sbrOn, bkIa = iaVivo; string bkIaMez = iaMezcla;   // por si se Cancela
+            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount; bool bkOn = normalizeOn, bkSbr = sbrOn, bkIa = iaVivo; string bkIaMez = iaMezcla, bkIaGpu = iaGpu;   // por si se Cancela
             try
             {
                 Cursor.Show();
@@ -780,7 +783,7 @@ namespace Rocola
                     dlg.FormBorderStyle = FormBorderStyle.FixedDialog;
                     dlg.MaximizeBox = false; dlg.MinimizeBox = false; dlg.ShowInTaskbar = false; dlg.ShowIcon = false;
                     dlg.StartPosition = FormStartPosition.CenterParent;
-                    dlg.ClientSize = new Size(600, 664);
+                    dlg.ClientSize = new Size(600, 700);
                     dlg.BackColor = Color.FromArgb(14, 18, 42);
                     dlg.Font = fUi;
 
@@ -832,12 +835,24 @@ namespace Rocola
                     TrackBar tbIaMix = new TrackBar(); tbIaMix.SetBounds(12, 520, 576, 45); tbIaMix.Minimum = 0; tbIaMix.Maximum = 100; tbIaMix.TickFrequency = 10;
                     tbIaMix.BackColor = dlg.BackColor; tbIaMix.Value = iaMixInit;
 
-                    Label hint = new Label(); hint.SetBounds(16, 570, 568, 36); hint.BackColor = Color.Transparent; hint.ForeColor = Color.FromArgb(160, 170, 200);
+                    // GPU QUE HACE LOS CALCULOS DE IA: la lista la escribe el motor (cache\gpus.txt) al arrancar,
+                    // con los nombres reales que ve torch (el indice de la lista ES el indice CUDA).
+                    Label lGpu = new Label(); lGpu.SetBounds(35, 572, 235, 22); lGpu.BackColor = Color.Transparent; lGpu.ForeColor = Color.White;
+                    lGpu.Text = "GPU que hace los calculos de IA:";
+                    ComboBox cbGpu = new ComboBox(); cbGpu.SetBounds(272, 568, 312, 26); cbGpu.DropDownStyle = ComboBoxStyle.DropDownList;
+                    cbGpu.BackColor = Color.FromArgb(34, 44, 86); cbGpu.ForeColor = Color.White; cbGpu.FlatStyle = FlatStyle.Flat;
+                    cbGpu.Items.Add("Automatica");
+                    string[] gpus = IaGpuList();
+                    for (int gi = 0; gi < gpus.Length; gi++) cbGpu.Items.Add("GPU " + gi + " - " + gpus[gi]);
+                    int selGpu = 0; { int gn; if (iaGpu != "auto" && int.TryParse(iaGpu, out gn) && gn >= 0 && gn + 1 < cbGpu.Items.Count) selGpu = gn + 1; }
+                    cbGpu.SelectedIndex = selGpu;   // antes de enganchar el evento: sin reinicios fantasma
+
+                    Label hint = new Label(); hint.SetBounds(16, 606, 568, 36); hint.BackColor = Color.Transparent; hint.ForeColor = Color.FromArgb(160, 170, 200);
                     hint.Text = "El nivelado y el realce se oyen al instante; DSEE / DSEE ULTRA aplican desde la SIGUIENTE cancion. DSEE ULTRA y DSEE normal no van juntos.";
 
                     Button bReset = new Button(), bOk = new Button();
-                    bReset.Text = "Recomendado"; bReset.SetBounds(16, 612, 150, 38);
-                    bOk.Text = "Listo"; bOk.SetBounds(488, 612, 96, 38);
+                    bReset.Text = "Recomendado"; bReset.SetBounds(16, 648, 150, 38);
+                    bOk.Text = "Listo"; bOk.SetBounds(488, 648, 96, 38);
                     Button[] bs = { bReset, bOk };
                     for (int i = 0; i < bs.Length; i++) { bs[i].FlatStyle = FlatStyle.Flat; bs[i].FlatAppearance.BorderColor = Color.FromArgb(90, 110, 170); bs[i].BackColor = Color.FromArgb(34, 44, 86); bs[i].ForeColor = Color.White; }
 
@@ -858,6 +873,8 @@ namespace Rocola
                         tbIaMix.Enabled = ultra && !chkIaAuto.Checked;
                         lIaMix.ForeColor = tbIaMix.Enabled ? Color.FromArgb(255, 214, 140) : Color.FromArgb(110, 118, 140);
                         lUltraInfo.ForeColor = ultra ? Color.FromArgb(200, 190, 165) : Color.FromArgb(110, 118, 140);
+                        cbGpu.Enabled = ultra;
+                        lGpu.ForeColor = ultra ? Color.White : Color.FromArgb(110, 118, 140);
                         lIaMix.Text = "Cuanta IA:  " + (chkIaAuto.Checked ? "automatica" : tbIaMix.Value + "%") + "   (mezcla con el original; menos IA = mas natural)";
                     };
                     EventHandler apply = delegate
@@ -878,6 +895,12 @@ namespace Rocola
                     tbTarget.Scroll += apply; tbStr.Scroll += apply; tbExc.Scroll += apply; chkOn.CheckedChanged += apply; chkSbr.CheckedChanged += apply;
                     tbIaMix.Scroll += apply; chkIaAuto.CheckedChanged += apply;
                     chkUltra.CheckedChanged += delegate { if (chkUltra.Checked) { IaEnsureMotor(); IaRequestQueueJobs(); } apply(chkUltra, EventArgs.Empty); };   // al encender ULTRA: motor oculto + preparar cola
+                    cbGpu.SelectedIndexChanged += delegate
+                    {
+                        iaGpu = (cbGpu.SelectedIndex <= 0) ? "auto" : (cbGpu.SelectedIndex - 1).ToString();
+                        changed = true;
+                        IaRestartMotor();   // el motor renace OCULTO con la GPU elegida (Apollo recarga en ella)
+                    };
                     bReset.Click += delegate { chkOn.Checked = true; tbTarget.Value = TargetToPct(0.22f); tbStr.Value = 90; tbExc.Value = 35; chkUltra.Checked = false; if (chkSbr.Enabled) chkSbr.Checked = false; chkIaAuto.Checked = true; apply(bReset, EventArgs.Empty); };
                     bOk.Click += delegate { dlg.Close(); };
                     dlg.CancelButton = bOk;
@@ -889,13 +912,14 @@ namespace Rocola
                     dlg.Controls.Add(chkSbr); dlg.Controls.Add(lSbrInfo);
                     dlg.Controls.Add(chkUltra); dlg.Controls.Add(lUltraInfo);
                     dlg.Controls.Add(chkIaAuto); dlg.Controls.Add(lIaMix); dlg.Controls.Add(tbIaMix);
+                    dlg.Controls.Add(lGpu); dlg.Controls.Add(cbGpu);
                     dlg.Controls.Add(hint); dlg.Controls.Add(bReset); dlg.Controls.Add(bOk);
                     updateLabels();
                     dlg.ShowDialog(this);
                 }
                 if (changed) { SaveConfigPrefs(); ShowToast("Sonido actualizado", Color.FromArgb(40, 130, 90)); }
             }
-            catch { normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; sbrOn = bkSbr; iaVivo = bkIa; iaMezcla = bkIaMez; }   // si algo truena, deja los valores como estaban
+            catch { normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; sbrOn = bkSbr; iaVivo = bkIa; iaMezcla = bkIaMez; iaGpu = bkIaGpu; }   // si algo truena, deja los valores como estaban
             finally { try { Cursor.Hide(); } catch { } maintMode = wasMaint; ForceFocus(); }
         }
 
@@ -3887,7 +3911,7 @@ namespace Rocola
                 if (!IaFindEngine(out py, out dm)) return;        // sin motor: la IA en vivo simplemente no hace nada
                 System.Diagnostics.ProcessStartInfo psi = new System.Diagnostics.ProcessStartInfo();
                 psi.FileName = py;                                // pythonw.exe = sin ventana negra
-                psi.Arguments = "\"" + dm + "\" --cache \"" + IaCache() + "\"";
+                psi.Arguments = "\"" + dm + "\" --cache \"" + IaCache() + "\" --gpu " + iaGpu;
                 psi.WorkingDirectory = Path.GetDirectoryName(dm);
                 psi.UseShellExecute = false; psi.CreateNoWindow = true;
                 psi.WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden;
@@ -3895,6 +3919,31 @@ namespace Rocola
                 iaMotorLaunchTick = Environment.TickCount;
             }
             catch { }
+        }
+
+        // GPUs CUDA que el motor detecto (cache\gpus.txt: una linea por GPU, el indice es la posicion).
+        // Lo escribe el motor al arrancar; si aun no existe, el selector muestra solo "Automatica".
+        private string[] IaGpuList()
+        {
+            try
+            {
+                string f = Path.Combine(IaCache(), "gpus.txt");
+                if (!File.Exists(f)) return new string[0];
+                List<string> lines = new List<string>();
+                foreach (string l in File.ReadAllLines(f)) if (l.Trim().Length > 0) lines.Add(l.Trim());
+                return lines.ToArray();
+            }
+            catch { return new string[0]; }
+        }
+
+        // Reinicia el motor de IA (para aplicar YA un cambio de GPU): mata el que lanzo esta rocola,
+        // suelta el freno de 20s y lo relanza con los argumentos nuevos. Si el motor corriendo es de
+        // otro (iniciar_motor.bat a mano), no se puede matar desde aqui: el cambio aplica cuando muera.
+        private void IaRestartMotor()
+        {
+            try { if (iaMotorProc != null && !iaMotorProc.HasExited) iaMotorProc.Kill(); } catch { }
+            iaMotorProc = null; iaMotorLaunchTick = 0;
+            if (iaVivo) IaEnsureMotor();
         }
 
         // Al encender la IA: prepara lo que ya esta sonando y en cola (para que la IA los alcance).

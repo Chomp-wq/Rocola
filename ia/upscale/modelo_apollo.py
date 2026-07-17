@@ -49,8 +49,31 @@ def descargar_checkpoint(fuente=None):
         return cand[0]
     raise RuntimeError("Descargue el repo pero no encontre checkpoint en: " + carpeta)
 
-def cargar():
-    """Devuelve proc(x[n,ch] float64) -> y[n,ch] float64, con Apollo listo en la GPU."""
+def lista_gpus():
+    """Nombres de las GPUs CUDA visibles (la posicion en la lista ES el indice de --gpu).
+    El motor la escribe en cache/gpus.txt para que el selector de la rocola muestre nombres reales."""
+    try:
+        import torch
+        if not torch.cuda.is_available(): return []
+        return [torch.cuda.get_device_name(i) for i in range(torch.cuda.device_count())]
+    except Exception:
+        return []
+
+def _dispositivo(gpu):
+    """torch.device segun --gpu: 'auto' = la GPU por defecto (o CPU si no hay CUDA);
+    un numero = esa GPU en especifico, validado (si no existe, cae a la automatica)."""
+    import torch
+    if not torch.cuda.is_available(): return torch.device("cpu")
+    try:
+        n = int(gpu)
+        if 0 <= n < torch.cuda.device_count(): return torch.device("cuda:%d" % n)
+        print("   aviso: no existe la GPU %s; uso la automatica" % gpu)
+    except (TypeError, ValueError):
+        pass
+    return torch.device("cuda")
+
+def cargar(gpu="auto"):
+    """Devuelve proc(x[n,ch] float64) -> y[n,ch] float64, con Apollo listo en la GPU elegida."""
     sys.path.insert(0, _repo_apollo())
     import torch
     try: torch.set_num_threads(2)   # convive con la rocola: que torch no acapare todos los nucleos del CPU
@@ -82,10 +105,16 @@ def cargar():
         sd = d.get("state_dict", d) if isinstance(d, dict) else d
         sd = { (k[len("audio_model."):] if k.startswith("audio_model.") else k): v for k, v in sd.items() }
         model.load_state_dict(sd, strict=False)
-    model = model.cuda().eval()
+    dev = _dispositivo(gpu)
+    try:
+        nombre = torch.cuda.get_device_name(dev) if dev.type == "cuda" else "CPU"
+    except Exception:
+        nombre = str(dev)
+    print("   dispositivo:", dev, "-", nombre)
+    model = model.to(dev).eval()
 
     def proc(x):
-        t = torch.from_numpy(np.ascontiguousarray(x.T, dtype=np.float32)).unsqueeze(0).cuda()  # [1, ch, n]
+        t = torch.from_numpy(np.ascontiguousarray(x.T, dtype=np.float32)).unsqueeze(0).to(dev)  # [1, ch, n]
         with torch.no_grad():
             try:
                 y = model(t)
