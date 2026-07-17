@@ -7,11 +7,15 @@ que sobrevivio. El reconstructor espectral de la rocola la usa en vez de su curv
 
 ## Como se usa
 
-1. **Entrenar** (requiere `python3` + `numpy`):
+1. **Entrenar con TU musica, facil**: doble clic a **`entrenar_con_mi_musica.bat`** (o arrastra
+   tu carpeta de musica encima). Hace todo solo: recorre la biblioteca, junta 600 canciones de
+   CALIDAD COMPLETA (las danadas no pueden ensenar: no tienen los agudos reales que la red debe
+   aprender), las convierte y entrena. Tarda un buen rato la primera vez; es reanudable.
+   A mano (requiere `python3` + `numpy`):
    - Prueba de concepto (audio sintetico):  `python3 entrenar_ia.py`
-   - **Produccion (con TU musica)**:  `python3 entrenar_ia.py --musica /carpeta/con/wavs`
-     (WAV 44.1 kHz / 16 bits; convierte MP3 con `ffmpeg -i cancion.mp3 cancion.wav`.
-     Con unas 200-500 canciones variadas ya aprende bien.)
+   - Con tus wavs:  `python3 entrenar_ia.py --musica /carpeta/con/wavs --clips 7200 --por_archivo 12`
+     (WAV 44.1 kHz / 16 bits; `preparar_entrenamiento.py` los genera desde mp3/flac.
+     Con unas 500-600 canciones variadas y BUENAS el modelo queda saturado: es chico.)
 2. **Activar**: copia `rocola_ia.bin` JUNTO a `Rocola.exe` y reinicia. En Ctrl+F3, la nota del
    reconstructor dira "Con IA PROPIA". Sin el archivo, el reconstructor sigue con su curva
    clasica (cero cambio).

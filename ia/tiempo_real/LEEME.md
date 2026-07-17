@@ -47,6 +47,10 @@ Si la rocola corre en un gabinete sin GPU, esto no aplica: ahi conviene el proce
   de calidad completa solo queda una marca `.orig` de unos bytes (suena el original tal cual).
 - La cache se limpia sola al pasar el tope (20 GB por defecto ~= unas 1500 canciones; se quita
   lo menos usado, y lo borrado simplemente se vuelve a procesar si algun dia se repite).
+- BLINDAJE: canciones de mas de 15 min o archivos que ffprobe no puede leer (tipico de discos
+  rescatados: un mp3 corrupto puede "decodificar" horas de basura y comerse toda la RAM) NO
+  pasan por la IA: quedan marcadas y suenan con su original tal cual. El motor ademas corre
+  con prioridad BAJA: la rocola y Windows siempre respiran primero.
 
 ## Ajustes (en rocola_config.txt, junto a Rocola.exe)
 

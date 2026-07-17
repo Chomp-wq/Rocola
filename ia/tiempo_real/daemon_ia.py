@@ -26,6 +26,12 @@ if sys.stderr is None: sys.stderr = open(os.devnull, "w")
 # ffmpeg es un programa de CONSOLA: lanzado desde pythonw (que no tiene consola) Windows le creaba
 # una ventana CMD nueva por cada cancion (el parpadeo molesto). CREATE_NO_WINDOW la suprime.
 NOWIN = getattr(subprocess, "CREATE_NO_WINDOW", 0)   # 0 fuera de Windows
+# BLINDAJE ANTI-CONGELON: un archivo corrupto (tipico de discos rescatados) puede decodificar a
+# HORAS de audio basura -> gigas y gigas en RAM -> Windows se ahoga en swap y la maquina entera se
+# congela. Tope duro: canciones de mas de 15 min (o que ffprobe no puede leer) NO pasan por la IA;
+# se marcan .orig y la rocola reproduce el original tal cual. Ademas la decodificacion lleva -t de
+# red de seguridad, para que ffmpeg no pueda escribir un wav sin fin ni aunque mienta la cabecera.
+MAX_SEG = 15 * 60
 AQUI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(AQUI, "..", "upscale"))
 from util_audio import FS, leer_wav, escribir_wav, acantilado_hz, por_trozos, mezclar, mezcla_auto
@@ -41,6 +47,34 @@ def _log(cache, msg):
         with open(os.path.join(cache, "motor_log.txt"), "a", encoding="utf-8") as f:
             f.write(time.strftime("%Y-%m-%d %H:%M:%S  ") + msg + "\n")
     except OSError: pass
+
+def _ffprobe_de(ffmpeg):
+    """El ffprobe que acompana al ffmpeg (mismo directorio), o el del PATH, o None."""
+    exe = "ffprobe.exe" if os.name == "nt" else "ffprobe"
+    p = os.path.join(os.path.dirname(ffmpeg), exe)
+    if os.path.isfile(p): return p
+    return shutil.which("ffprobe")
+
+def _duracion(ffprobe, src):
+    """Duracion en segundos segun ffprobe, o None si no se pudo leer (archivo sospechoso)."""
+    try:
+        r = subprocess.run([ffprobe, "-v", "error", "-show_entries", "format=duration",
+                            "-of", "csv=p=0", src], capture_output=True, text=True,
+                           timeout=30, creationflags=NOWIN)
+        if r.returncode != 0: return None
+        return float(r.stdout.strip())
+    except Exception:
+        return None
+
+def _marca_original(listos, h, motivo):
+    """Deja la marca <hash>.orig: la rocola reproduce el ORIGINAL y no vuelve a pedir el trabajo.
+    (La misma marca que 'ya era de calidad completa'; aqui el motivo es que no conviene procesarla.)"""
+    dst = os.path.join(listos, h + ".orig")
+    try:
+        with open(dst + ".tmp", "w", encoding="utf-8") as f: f.write(motivo)
+        os.replace(dst + ".tmp", dst)
+    except OSError: pass
+    return dst
 
 def _dirs(cache):
     p = os.path.join(cache, "pendientes"); l = os.path.join(cache, "listos")
@@ -91,11 +125,23 @@ def procesar_uno(job_path, listos, proc, ffmpeg, seg=10.0):
     if ya:                                         # ya en cache: nada que hacer
         _quita(job_path); return ya
     src = job.get("src"); mez = job.get("mezcla", "auto")
+    cache = os.path.dirname(listos)
+    ffprobe = _ffprobe_de(ffmpeg)
+    if ffprobe:
+        dur = _duracion(ffprobe, src)
+        if dur is None or dur > MAX_SEG:
+            motivo = ("no se pudo leer la duracion (archivo sospechoso)" if dur is None
+                      else "dura %.0f min; el tope de la IA es %d" % (dur / 60.0, MAX_SEG // 60))
+            _log(cache, "SIN IA (queda el original): %s -> %s" % (os.path.basename(src or "?"), motivo))
+            dst = _marca_original(listos, h, motivo)
+            _quita(job_path)
+            return dst
     tmp = os.path.join(tmpdir, "ia_dec_%s.wav" % h)
     out = os.path.join(tmpdir, "ia_out_%s.wav" % h)
     try:
-        subprocess.run([ffmpeg, "-y", "-v", "error", "-i", src, "-ac", "2", "-ar", str(FS),
-                        "-sample_fmt", "s16", tmp], check=True, stdout=subprocess.DEVNULL,
+        subprocess.run([ffmpeg, "-y", "-v", "error", "-t", str(MAX_SEG + 30), "-i", src,
+                        "-ac", "2", "-ar", str(FS), "-sample_fmt", "s16", tmp],
+                       check=True, stdout=subprocess.DEVNULL,
                        stderr=subprocess.DEVNULL, creationflags=NOWIN)
         x, _ = leer_wav(tmp)
         cliff = acantilado_hz(x)
@@ -158,6 +204,13 @@ def _un_ciclo_log(pend, listos, proc, ffmpeg, tope_gb, cache, seg=10.0):
     return len(jobs)
 
 def main():
+    # El motor corre DEBAJO de todo: si Apollo exprime el CPU/GPU, la rocola y Windows respiran
+    # primero (el trabajo de IA solo tarda un poco mas; la maquina nunca se debe sentir tomada).
+    if os.name == "nt":
+        try:
+            import ctypes
+            ctypes.windll.kernel32.SetPriorityClass(ctypes.windll.kernel32.GetCurrentProcess(), 0x00004000)   # BELOW_NORMAL
+        except Exception: pass
     ap = argparse.ArgumentParser()
     ap.add_argument("--cache", default=os.path.join(AQUI, "cache"))
     ap.add_argument("--tope_gb", type=float, default=20.0)

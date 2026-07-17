@@ -11,6 +11,9 @@
 #  Uso:
 #    python3 entrenar_ia.py                        # entrena con audio SINTETICO (prueba de concepto)
 #    python3 entrenar_ia.py --musica /ruta/wavs    # entrena con TU musica (archivos .wav 44.1k)
+#      --clips N        cuantos trozos de 2s usar en total (defecto 400; para produccion 6000+)
+#      --por_archivo M  tope de trozos por cancion (defecto sin tope; 12 = mas VARIEDAD de canciones)
+#  Para preparar los wav desde tu biblioteca mp3 usa entrenar_con_mi_musica.bat (hace todo solo).
 #
 #  Salidas (en esta carpeta):
 #    rocola_ia.bin          -> copialo JUNTO AL Rocola.exe para activar la IA
@@ -108,7 +111,7 @@ def synth_clip(rng, secs=1.2):
     m = np.abs(x).max()
     return (x / m * 0.5) if m > 0 else x
 
-def load_wavs(folder, rng, max_clips=400):
+def load_wavs(folder, rng, max_clips=400, max_per_file=0):
     clips = []
     files = [f for f in sorted(os.listdir(folder)) if f.lower().endswith(".wav")]
     rng.shuffle(files)
@@ -122,9 +125,11 @@ def load_wavs(folder, rng, max_clips=400):
             raw = np.frombuffer(w.readframes(nfr), dtype=np.int16).astype(np.float64) / 32768.0
             w.close()
             mono = raw.reshape(-1, nch).mean(axis=1) if nch > 1 else raw
+            propios = 0
             for p in range(0, len(mono) - FS * 2, FS * 2):     # trozos de 2s
-                clips.append(mono[p:p + FS * 2])
+                clips.append(mono[p:p + FS * 2]); propios += 1
                 if len(clips) >= max_clips: return clips
+                if max_per_file and propios >= max_per_file: break   # variedad: mejor MAS canciones que mas trozos de una
         except Exception:
             continue
     return clips
@@ -192,8 +197,10 @@ def main():
     rng = np.random.default_rng(20260715)
     if "--musica" in sys.argv:
         folder = sys.argv[sys.argv.index("--musica") + 1]
+        nclips = int(sys.argv[sys.argv.index("--clips") + 1]) if "--clips" in sys.argv else 400
+        porarch = int(sys.argv[sys.argv.index("--por_archivo") + 1]) if "--por_archivo" in sys.argv else 0
         print("Cargando WAVs de:", folder)
-        clips = load_wavs(folder, rng)
+        clips = load_wavs(folder, rng, max_clips=nclips, max_per_file=porarch)
         if len(clips) < 20:
             print("Muy pocos WAV 44.1k/16-bit utilizables (%d). Convierte con ffmpeg y reintenta." % len(clips)); return 1
         print("  %d trozos de musica real" % len(clips))

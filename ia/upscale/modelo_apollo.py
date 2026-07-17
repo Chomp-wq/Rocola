@@ -53,6 +53,8 @@ def cargar():
     """Devuelve proc(x[n,ch] float64) -> y[n,ch] float64, con Apollo listo en la GPU."""
     sys.path.insert(0, _repo_apollo())
     import torch
+    try: torch.set_num_threads(2)   # convive con la rocola: que torch no acapare todos los nucleos del CPU
+    except Exception: pass
     import look2hear.models
     fuente = fuente_modelo()
     print("   modelo de IA:", fuente)

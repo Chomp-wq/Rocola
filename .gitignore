@@ -5,3 +5,4 @@ obj/
 .vs/
 packages/
 __pycache__/
+ia/entrenamiento_wavs/
