@@ -27,9 +27,10 @@ Si la rocola corre en un gabinete sin GPU, esto no aplica: ahi conviene el proce
 1. Instala la carpeta `upscale` una vez (su `1_instalar.bat` en OK). Deja las carpetas `ia`
    junto a la rocola (la rocola busca `ia\upscale\venv` e `ia\tiempo_real` a su lado o
    hasta 5 niveles arriba, igual que busca la carpeta `musica`).
-2. En la rocola: **Ctrl+F4** enciende/apaga la IA en vivo. Al encenderla, la rocola **arranca
-   el motor SOLA y OCULTO** (sin ventana negra que cuidar). Con `ia_vivo=1` en config, arranca
-   encendida. Al cerrar la rocola, el motor que ella lanzo se cierra tambien.
+2. En la rocola: **Ctrl+F3 -> DSEE ULTRA** enciende/apaga la IA en vivo. Al encenderla, la
+   rocola **arranca el motor SOLA y OCULTO** (sin ventana negra que cuidar; tampoco parpadea
+   ningun CMD al poner canciones). Con `ia_vivo=1` en config, arranca encendida. Al cerrar la
+   rocola, el motor que ella lanzo se cierra tambien.
 
 `iniciar_motor.bat` sigue existiendo por si quieres arrancar el motor a mano y VER sus mensajes
 (util para depurar la primera vez).
@@ -40,12 +41,16 @@ Si la rocola corre en un gabinete sin GPU, esto no aplica: ahi conviene el proce
   siempre hay algo sonando antes, para cuando le toca YA esta lista.
 - Al sonar: si la version IA esta lista, suena esa; si no, suena la ORIGINAL al instante (la
   rocola NUNCA se traba esperando) y queda lista para la proxima vez.
-- Todo se guarda en `ia_cache\listos`. La cache se limpia sola al pasar el tope (20 GB por
-  defecto, se quita lo menos usado).
+- Todo se guarda en `ia\tiempo_real\cache\listos` y TU CARPETA DE MUSICA NO CRECE NUNCA:
+  los originales no se tocan. En la cache, cada cancion mejorada es un **MP3 320** (pesa como
+  un mp3 normal, no como un WAV: caben ~5 veces mas canciones por GB); si una cancion ya era
+  de calidad completa solo queda una marca `.orig` de unos bytes (suena el original tal cual).
+- La cache se limpia sola al pasar el tope (20 GB por defecto ~= unas 1500 canciones; se quita
+  lo menos usado, y lo borrado simplemente se vuelve a procesar si algun dia se repite).
 
 ## Ajustes (en rocola_config.txt, junto a Rocola.exe)
 
-- `ia_vivo=1`      enciende la IA en vivo al arrancar (o usa Ctrl+F4).
+- `ia_vivo=1`      enciende la IA en vivo al arrancar (o el switch DSEE ULTRA en Ctrl+F3).
 - `ia_mezcla=auto` cuanta IA: auto (recomendado) o un numero 0..100.
 - `ia_cache=RUTA`  carpeta de cache (por defecto `ia_cache` junto a Rocola.exe; debe COINCIDIR
                    con la que le das al motor en iniciar_motor.bat).
@@ -60,7 +65,8 @@ El modelo se cambia igual que en offline (upscale\modelo.txt): el motor usa el m
    - Debe decir "Apollo LISTO". Si truena al cargar Apollo, el error sale ahi y en
      `cache\motor_log.txt`.
    - Pon una cancion en la rocola con DSEE ULTRA encendido: en el log debe aparecer
-     "procesada -> ...". Si aparece, en `cache\listos` ya hay un `.wav`.
+     "procesada -> ...". Si aparece, en `cache\listos` ya hay un `.mp3` (o una marca `.orig`
+     si esa cancion ya era de calidad completa y no necesitaba IA).
 3. En la rocola, la etiqueta "Reproduciendo" muestra:
    - `[DSEE]` = suena con el reconstructor espectral (respaldo instantaneo, 1a vez que suena
      esa cancion, o DSEE normal).

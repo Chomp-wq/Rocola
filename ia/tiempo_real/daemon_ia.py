@@ -2,13 +2,15 @@
 # ============================================================================================
 #  MOTOR DE IA EN TIEMPO REAL (rocola-hd): mantiene Apollo cargado en la GPU y procesa canciones
 #  BAJO DEMANDA. La rocola (C#) pide trabajos dejando un archivo .job; el motor los procesa y
-#  deja el resultado en cache/listos/<hash>.wav. La rocola reproduce ese wav si existe; si no,
+#  deja el resultado en cache/listos/<hash>.mp3. La rocola reproduce ese mp3 si existe; si no,
 #  reproduce el original (nunca se bloquea). Con cache: cada cancion se procesa UNA vez.
+#  La MUSICA ORIGINAL NUNCA SE TOCA: todo vive en la carpeta cache del motor, con tope de tamano.
 #
 #  Protocolo (carpeta, sin sockets ni dependencias raras -> robusto y facil de depurar):
 #    cache/pendientes/<hash>.job   (JSON: {"src": ruta, "mezcla": "auto"|"0".."100"})  <- lo deja la rocola
-#    cache/listos/<hash>.wav                                                            <- lo deja el motor
-#    cache/listos/<hash>.error                                                          <- si algo fallo
+#    cache/listos/<hash>.mp3       version mejorada (MP3 320: pesa ~5 veces menos que WAV) <- motor
+#    cache/listos/<hash>.orig      marca "ya era de calidad completa; usa el ORIGINAL"     <- motor
+#    cache/listos/<hash>.error                                                             <- si algo fallo
 #  El HASH lo calculan IGUAL la rocola y el motor: sha1( ruta_minusculas | tamano_bytes | mezcla )[:16].
 #  Usa el TAMANO del archivo (no la fecha) para que C# y Python coincidan exacto.
 #
@@ -21,6 +23,9 @@ import sys, os, json, time, glob, hashlib, tempfile, subprocess, argparse, shuti
 # nuestro registro real va aparte a cache/motor_log.txt.
 if sys.stdout is None: sys.stdout = open(os.devnull, "w")
 if sys.stderr is None: sys.stderr = open(os.devnull, "w")
+# ffmpeg es un programa de CONSOLA: lanzado desde pythonw (que no tiene consola) Windows le creaba
+# una ventana CMD nueva por cada cancion (el parpadeo molesto). CREATE_NO_WINDOW la suprime.
+NOWIN = getattr(subprocess, "CREATE_NO_WINDOW", 0)   # 0 fuera de Windows
 AQUI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(AQUI, "..", "upscale"))
 from util_audio import FS, leer_wav, escribir_wav, acantilado_hz, por_trozos, mezclar, mezcla_auto
@@ -42,8 +47,35 @@ def _dirs(cache):
     os.makedirs(p, exist_ok=True); os.makedirs(l, exist_ok=True)
     return p, l
 
+def _en_cache(listos, h):
+    """Lo que ya haya en cache para este hash: .mp3 (nuevo), .wav (cache vieja) o .orig (marca)."""
+    for ext in (".mp3", ".wav", ".orig"):
+        p = os.path.join(listos, h + ext)
+        if os.path.exists(p): return p
+    return None
+
+def _a_cache(listos, h, wav, ffmpeg):
+    """Guarda el resultado como MP3 320 kbps: a esa tasa el oido no lo distingue del WAV y pesa
+    ~5 veces menos (caben ~5x mas canciones en el mismo tope). Si el encode fallara (ffmpeg sin
+    libmp3lame, raro), cae a copiar el WAV tal cual. Aparicion atomica en ambos casos."""
+    dst = os.path.join(listos, h + ".mp3"); t = dst + ".t.mp3"
+    try:
+        subprocess.run([ffmpeg, "-y", "-v", "error", "-i", wav, "-codec:a", "libmp3lame",
+                        "-b:a", "320k", t], check=True, stdout=subprocess.DEVNULL,
+                       stderr=subprocess.DEVNULL, creationflags=NOWIN)
+        os.replace(t, dst)
+        return dst
+    except Exception:
+        try: os.remove(t)
+        except OSError: pass
+        dst = os.path.join(listos, h + ".wav")
+        shutil.copyfile(wav, dst + ".tmp"); os.replace(dst + ".tmp", dst)
+        return dst
+
 def procesar_uno(job_path, listos, proc, ffmpeg, seg=10.0):
-    """Procesa UN trabajo: decodifica, Apollo, mezcla, escribe cache/listos/<hash>.wav (atomico).
+    """Procesa UN trabajo. El resultado queda en cache/listos con el MISMO hash del .job:
+      <hash>.mp3   version mejorada (Apollo + mezcla), en MP3 320
+      <hash>.orig  marca de "esta cancion YA es de calidad completa": la rocola usa el ORIGINAL
     Los temporales van a cache/tmp (MISMO disco del release), nunca a C:\Temp."""
     tmpdir = os.path.join(os.path.dirname(listos), "tmp")
     try: os.makedirs(tmpdir, exist_ok=True)
@@ -55,47 +87,58 @@ def procesar_uno(job_path, listos, proc, ffmpeg, seg=10.0):
         except OSError: pass
         return None
     h = os.path.splitext(os.path.basename(job_path))[0]
-    dst = os.path.join(listos, h + ".wav")
-    if os.path.exists(dst):                        # ya en cache: nada que hacer
-        _quita(job_path); return dst
+    ya = _en_cache(listos, h)
+    if ya:                                         # ya en cache: nada que hacer
+        _quita(job_path); return ya
     src = job.get("src"); mez = job.get("mezcla", "auto")
+    tmp = os.path.join(tmpdir, "ia_dec_%s.wav" % h)
+    out = os.path.join(tmpdir, "ia_out_%s.wav" % h)
     try:
-        tmp = os.path.join(tmpdir, "ia_dec_%s.wav" % h)
         subprocess.run([ffmpeg, "-y", "-v", "error", "-i", src, "-ac", "2", "-ar", str(FS),
-                        "-sample_fmt", "s16", tmp], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        "-sample_fmt", "s16", tmp], check=True, stdout=subprocess.DEVNULL,
+                       stderr=subprocess.DEVNULL, creationflags=NOWIN)
         x, _ = leer_wav(tmp)
         cliff = acantilado_hz(x)
-        if cliff >= 18500:                         # ya buena: el "procesado" es el original (rapido)
-            escribir_wav(dst + ".tmp", x)
+        if cliff >= 18500:                         # ya buena: solo la MARCA (bytes, no megas)
+            dst = os.path.join(listos, h + ".orig")
+            with open(dst + ".tmp", "w") as f: f.write(str(int(cliff)))
+            os.replace(dst + ".tmp", dst)          # atomico: la rocola nunca ve archivos a medias
         else:
             y = por_trozos(x, proc, seg=seg)
             m = mezcla_auto(cliff) if mez == "auto" else max(0.0, min(1.0, float(mez) / 100.0))
-            escribir_wav(dst + ".tmp", mezclar(y, x, m))
-        os.replace(dst + ".tmp", dst)              # atomico: la rocola nunca ve un wav a medias
+            escribir_wav(out, mezclar(y, x, m))
+            dst = _a_cache(listos, h, out, ffmpeg)
         _quita(job_path)
-        try: os.remove(tmp)
-        except OSError: pass
         return dst
     except Exception as e:
         try: open(os.path.join(listos, h + ".error"), "w", encoding="utf-8").write(str(e))
         except OSError: pass
         _quita(job_path)
         return None
+    finally:
+        for basura in (tmp, out):
+            try: os.remove(basura)
+            except OSError: pass
 
 def _quita(p):
     try: os.remove(p)
     except OSError: pass
 
 def evictar(listos, tope_gb):
-    """Si la cache pasa del tope, borra los wav MENOS usados recientemente (por fecha de acceso)."""
+    """Si la cache pasa del tope, borra los archivos MENOS usados recientemente (por fecha de
+    acceso). Cubre .mp3 (cache nueva) y .wav (cache vieja); las marcas .orig pesan bytes."""
     tope = tope_gb * (1024 ** 3)
-    wavs = [os.path.join(listos, f) for f in os.listdir(listos) if f.endswith(".wav")]
-    total = sum(os.path.getsize(w) for w in wavs)
+    arch = [os.path.join(listos, f) for f in os.listdir(listos)
+            if f.endswith(".mp3") or f.endswith(".wav")]
+    total = 0
+    for a in arch:
+        try: total += os.path.getsize(a)
+        except OSError: pass
     if total <= tope: return
-    wavs.sort(key=lambda w: os.path.getatime(w))   # mas viejo (menos usado) primero
-    for w in wavs:
+    arch.sort(key=lambda a: os.path.getatime(a))   # mas viejo (menos usado) primero
+    for a in arch:
         if total <= tope: break
-        try: total -= os.path.getsize(w); os.remove(w)
+        try: total -= os.path.getsize(a); os.remove(a)
         except OSError: pass
 
 def un_ciclo(pend, listos, proc, ffmpeg, tope_gb, seg=10.0):

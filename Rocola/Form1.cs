@@ -3771,14 +3771,20 @@ namespace Rocola
             catch { return null; }
         }
 
-        // Ruta de la version IA ya lista para esta cancion, o null si aun no esta en cache.
-        private string IaEnhancedPath(string path)
+        // Ruta de la version IA ya lista para esta cancion; la ruta ORIGINAL (con yaBuena=true) si el
+        // motor ya la analizo y era de calidad completa (marca .orig: no gasta disco ni necesita IA);
+        // o null si aun no hay nada en cache.
+        private string IaEnhancedPath(string path, out bool yaBuena)
         {
+            yaBuena = false;
             try
             {
                 string h = IaHashFor(path, iaMezcla); if (h == null) return null;
-                string p = Path.Combine(IaCache(), "listos", h + ".wav");
-                return File.Exists(p) ? p : null;
+                string dir = Path.Combine(IaCache(), "listos");
+                string p = Path.Combine(dir, h + ".mp3"); if (File.Exists(p)) return p;   // cache nueva (MP3 320: ~5x mas canciones por GB)
+                p = Path.Combine(dir, h + ".wav"); if (File.Exists(p)) return p;          // cache vieja (WAV), sigue valiendo
+                if (File.Exists(Path.Combine(dir, h + ".orig"))) { yaBuena = true; return path; }
+                return null;
             }
             catch { return null; }
         }
@@ -3791,7 +3797,9 @@ namespace Rocola
                 if (string.IsNullOrEmpty(path)) return;
                 string h = IaHashFor(path, iaMezcla); if (h == null) return;
                 string pend = Path.Combine(IaCache(), "pendientes");
-                if (File.Exists(Path.Combine(IaCache(), "listos", h + ".wav"))) return;   // ya listo
+                string dirL = Path.Combine(IaCache(), "listos");                          // ya atendida (mejorada o marcada de calidad completa): no re-pedir
+                if (File.Exists(Path.Combine(dirL, h + ".mp3")) || File.Exists(Path.Combine(dirL, h + ".wav"))
+                    || File.Exists(Path.Combine(dirL, h + ".orig"))) return;
                 Directory.CreateDirectory(pend);
                 string job = Path.Combine(pend, h + ".job");
                 if (File.Exists(job)) return;
@@ -3875,9 +3883,10 @@ namespace Rocola
                 iaSpectralFallback = false;
                 if (iaVivo && t.Path != null)
                 {
-                    string enh = IaEnhancedPath(t.Path);
+                    bool yaBuena;
+                    string enh = IaEnhancedPath(t.Path, out yaBuena);
                     if (enh != null) iaSrc = enh; else { IaRequestJob(t.Path); iaSpectralFallback = sbrAllowed; }   // aun no lista -> DSEE espectral mientras
-                    iaNowEnhanced = (enh != null);
+                    iaNowEnhanced = (enh != null && !yaBuena);   // [IA] solo si de verdad suena la version mejorada (con .orig suena el original tal cual)
                 }
                 else iaNowEnhanced = false;
                 reader = OpenAudio(iaSrc);   // normal; si NAudio rechaza el MP3 (frecuencia mezclada, etc.) reintenta con el lector TOLERANTE
