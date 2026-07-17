@@ -16,7 +16,7 @@
 #
 #    python daemon_ia.py [--cache <carpeta>] [--tope_gb 20]
 # ============================================================================================
-import sys, os, json, time, glob, hashlib, tempfile, subprocess, argparse, shutil
+import sys, os, json, time, glob, hashlib, subprocess, argparse, shutil
 # Bajo pythonw.exe (la rocola lo lanza SIN consola) sys.stdout y sys.stderr son None: cualquier
 # print() nuestro o barra de progreso de una libreria (huggingface/tqdm) reventaria con
 # "'NoneType' object has no attribute 'write'". Los redirigimos a la nada para que nada truene;
@@ -44,7 +44,11 @@ def hash_trabajo(src, mezcla):
 
 def _log(cache, msg):
     try:
-        with open(os.path.join(cache, "motor_log.txt"), "a", encoding="utf-8") as f:
+        p = os.path.join(cache, "motor_log.txt")
+        try:
+            if os.path.getsize(p) > 512 * 1024: os.remove(p)   # tope ~512KB: la rocola corre meses; el log no crece sin fin
+        except OSError: pass
+        with open(p, "a", encoding="utf-8") as f:
             f.write(time.strftime("%Y-%m-%d %H:%M:%S  ") + msg + "\n")
     except OSError: pass
 
@@ -187,14 +191,6 @@ def evictar(listos, tope_gb):
         try: total -= os.path.getsize(a); os.remove(a)
         except OSError: pass
 
-def un_ciclo(pend, listos, proc, ffmpeg, tope_gb, seg=10.0):
-    jobs = sorted(glob.glob(os.path.join(pend, "*.job")), key=lambda p: os.path.getmtime(p))
-    n = 0
-    for j in jobs:
-        procesar_uno(j, listos, proc, ffmpeg, seg); n += 1
-    if n: evictar(listos, tope_gb)
-    return n
-
 def _un_ciclo_log(pend, listos, proc, ffmpeg, tope_gb, cache, seg=10.0):
     jobs = sorted(glob.glob(os.path.join(pend, "*.job")), key=lambda p: os.path.getmtime(p))
     for j in jobs:
@@ -248,6 +244,7 @@ def main():
         except KeyboardInterrupt:
             print("\nMotor detenido."); return 0
         except Exception as e:
+            _log(a.cache, "aviso del ciclo: " + repr(e))   # bajo pythonw print va a la nada; esto SI se ve
             print("aviso:", e); time.sleep(1.0)
 
 if __name__ == "__main__":

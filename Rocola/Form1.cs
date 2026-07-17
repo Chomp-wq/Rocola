@@ -3795,12 +3795,22 @@ namespace Rocola
             {
                 string h = IaHashFor(path, iaMezcla); if (h == null) return null;
                 string dir = Path.Combine(IaCache(), "listos");
-                string p = Path.Combine(dir, h + ".mp3"); if (File.Exists(p)) return p;   // cache nueva (MP3 320: ~5x mas canciones por GB)
-                p = Path.Combine(dir, h + ".wav"); if (File.Exists(p)) return p;          // cache vieja (WAV), sigue valiendo
+                string p = Path.Combine(dir, h + ".mp3"); if (File.Exists(p)) return IaTouch(p);   // cache nueva (MP3 320: ~5x mas canciones por GB)
+                p = Path.Combine(dir, h + ".wav"); if (File.Exists(p)) return IaTouch(p);          // cache vieja (WAV), sigue valiendo
                 if (File.Exists(Path.Combine(dir, h + ".orig"))) { yaBuena = true; return path; }
                 return null;
             }
             catch { return null; }
+        }
+
+        // Marca "recien usada" la version de cache que va a sonar. La limpieza del motor borra por fecha
+        // de ULTIMA LECTURA (lo menos escuchado primero), pero Windows suele tener apagada esa fecha en
+        // discos secundarios: sin este toque explicito, la limpieza degradaria a "borrar lo mas viejo
+        // aunque suene a diario" y esas canciones se reprocesarian una y otra vez.
+        private static string IaTouch(string p)
+        {
+            try { File.SetLastAccessTime(p, DateTime.Now); } catch { }
+            return p;
         }
 
         // Le pide al motor que procese esta cancion (deja un .job atomico). Barato e idempotente.
@@ -3903,7 +3913,19 @@ namespace Rocola
                     iaNowEnhanced = (enh != null && !yaBuena);   // [IA] solo si de verdad suena la version mejorada (con .orig suena el original tal cual)
                 }
                 else iaNowEnhanced = false;
-                reader = OpenAudio(iaSrc);   // normal; si NAudio rechaza el MP3 (frecuencia mezclada, etc.) reintenta con el lector TOLERANTE
+                // Si la version de la CACHE no abre (la limpieza la borro justo en este instante, o quedo
+                // un encode raro), NO se salta la cancion ni se anota el ORIGINAL como incompatible ni se
+                // devuelve el credito: el archivo malo se borra (el motor lo regenera) y suena el original.
+                try { reader = OpenAudio(iaSrc); }
+                catch (Exception cex)
+                {
+                    if (iaSrc == t.Path) throw;                    // fallo el original de verdad: al catch de abajo
+                    LogError("cache IA no abre (suena el original): " + Path.GetFileName(iaSrc), cex);
+                    try { File.Delete(iaSrc); } catch { }          // solo puede ser un archivo de la cache (regenerable)
+                    IaRequestJob(t.Path);                          // que el motor la vuelva a preparar
+                    iaSrc = t.Path; iaNowEnhanced = false; iaSpectralFallback = sbrAllowed;
+                    reader = OpenAudio(t.Path);
+                }
                 reader.Volume = FixedVolume;   // se queda en 1.0 (crudo): el nivelado se aplica en LevelTap, tras medir el volumen REAL
                 // NIVELADO: si esta cancion ya se oyo antes, se aplica la ganancia que la lleva al nivel comun; si es
                 // nueva, va a su volumen original y se APRENDE su sonoridad en esta pasada (para nivelarla la proxima vez).
