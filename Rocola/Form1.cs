@@ -2430,6 +2430,11 @@ namespace Rocola
         private void EnterAttract()
         {
             if (attractView == null || libBuilding) return;   // el worker esta armando 'albums': muestrearlo aqui seria una carrera (crash)
+            // FIX: si la atraccion entra con el INTERIOR DE UN DISCO abierto, la textura de UI seguia
+            // dibujando el interior encima del cielo de atraccion (la firma de UI mira el interior antes
+            // que la atraccion) -> pantalla revuelta. Ademas el disco del cliente anterior quedaria
+            // abierto al salir. Se cierra el interior ANTES de componer la atraccion, en ambos renders.
+            if (panelSongs != null && panelSongs.Visible) BackToAlbums();
             // muestrear portadas repartidas por toda la coleccion (variedad) para el cubo
             List<string> covers = new List<string>();
             int na = albums.Count;
