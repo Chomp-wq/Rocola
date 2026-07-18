@@ -4030,7 +4030,7 @@ namespace Rocola
                 wo.NumberOfBuffers = 5;     // 5 bloques de 200ms
                 output = wo;
                 output.PlaybackStopped += Output_PlaybackStopped;
-                output.Init(new SampleToWaveProvider16(tap));
+                output.Init(new DitherWaveProvider16(tap));   // 16 bits CON dither TPDF (menos aspereza en pasajes silenciosos)
                 output.Play();
                 progressTimer.Start();
             }
@@ -5369,6 +5369,45 @@ namespace Rocola
                     float sc = 1f / n;
                     for (int i = 0; i < n; i++) { re[i] *= sc; im[i] *= sc; }
                 }
+            }
+        }
+
+        // Convierte flotante -> 16 bits con DITHER TPDF. El truncado directo (SampleToWaveProvider16) mete
+        // distorsion de cuantizacion en pasajes MUY silenciosos (finales de cancion, colas de reverb): el
+        // ultimo bit "escalona" la senal y suena a aspereza. El dither triangular de +-1 LSB convierte ese
+        // error en un ruido de fondo parejo e inaudible (mucho mas natural, es lo que hace un CD bien
+        // masterizado). Redondea en vez de truncar. ~4 operaciones por muestra. (En HD, WASAPI sale en
+        // flotante puro y no pasa por aqui; esto ayuda a la salida WaveOut de 16 bits de XP y al respaldo.)
+        private sealed class DitherWaveProvider16 : NAudio.Wave.IWaveProvider
+        {
+            private readonly NAudio.Wave.ISampleProvider src;
+            private readonly NAudio.Wave.WaveFormat fmt;
+            private float[] fbuf;
+            private readonly Random rng = new Random();
+            public DitherWaveProvider16(NAudio.Wave.ISampleProvider s)
+            {
+                src = s;
+                fmt = new NAudio.Wave.WaveFormat(s.WaveFormat.SampleRate, 16, s.WaveFormat.Channels);
+            }
+            public NAudio.Wave.WaveFormat WaveFormat { get { return fmt; } }
+            public int Read(byte[] buffer, int offset, int count)
+            {
+                int need = count / 2;                                  // muestras de 16 bits que caben
+                if (fbuf == null || fbuf.Length < need) fbuf = new float[need];
+                int got = src.Read(fbuf, 0, need);
+                int bo = offset;
+                for (int i = 0; i < got; i++)
+                {
+                    // dos uniformes restados = distribucion TRIANGULAR en (-1..1) LSB: el dither correcto
+                    // para 16 bits (decorrelaciona el error, sin modular su volumen con la senal).
+                    double d = rng.NextDouble() - rng.NextDouble();
+                    float x = fbuf[i] * 32767f + (float)d;
+                    int q = (int)Math.Floor(x + 0.5f);                 // redondeo (no truncado)
+                    if (q > 32767) q = 32767; else if (q < -32768) q = -32768;
+                    buffer[bo++] = (byte)(q & 0xFF);
+                    buffer[bo++] = (byte)((q >> 8) & 0xFF);
+                }
+                return got * 2;
             }
         }
 
