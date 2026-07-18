@@ -139,6 +139,29 @@ namespace Rocola
             double a0 = 1.0 + al / A;
             return new float[] { (float)((1.0 + al * A) / a0), (float)(-2.0 * cw / a0), (float)((1.0 - al * A) / a0), (float)(-2.0 * cw / a0), (float)((1.0 - al / A) / a0) };
         }
+        // Biquads del K-weighting (BS.1770 / LUFS): un high-shelf que realza agudos (+4 dB) y un high-pass
+        // que quita sub-graves. Con ellos, la sonoridad se mide como la OYE el humano. RBJ, a0-normalizado.
+        internal static float[] EqShelfHi(float f0, int rate, float dB, float Q)
+        {
+            double w = 2.0 * Math.PI * f0 / Math.Max(8000, rate);
+            double A = Math.Pow(10.0, dB / 40.0), cw = Math.Cos(w), al = Math.Sin(w) / (2.0 * Q), tsa = 2.0 * Math.Sqrt(A) * al;
+            double a0 = (A + 1) - (A - 1) * cw + tsa;
+            return new float[] {
+                (float)(A * ((A + 1) + (A - 1) * cw + tsa) / a0),
+                (float)(-2.0 * A * ((A - 1) + (A + 1) * cw) / a0),
+                (float)(A * ((A + 1) + (A - 1) * cw - tsa) / a0),
+                (float)(2.0 * ((A - 1) - (A + 1) * cw) / a0),
+                (float)(((A + 1) - (A - 1) * cw - tsa) / a0) };
+        }
+        internal static float[] EqHighPass(float f0, int rate, float Q)
+        {
+            double w = 2.0 * Math.PI * f0 / Math.Max(8000, rate);
+            double cw = Math.Cos(w), al = Math.Sin(w) / (2.0 * Q), a0 = 1.0 + al;
+            return new float[] {
+                (float)(((1 + cw) / 2.0) / a0), (float)((-(1 + cw)) / a0), (float)(((1 + cw) / 2.0) / a0),
+                (float)((-2.0 * cw) / a0), (float)((1 - al) / a0) };
+        }
+        private float[] kwCoef1, kwCoef2; private float[] kwSt; private int kwRate = 0;   // K-weighting del nivelado (2 biquads/canal, 8 estados)
         private readonly Dictionary<string, float[]> eqCache = new Dictionary<string, float[]>(StringComparer.OrdinalIgnoreCase);   // ruta -> huella tonal (8 dB rel. a su media)
         private float[] eqAvg = null;              // curva PROMEDIO de la biblioteca (el objetivo); null hasta tener 10 canciones medidas
         private float eqAmount = 0f;               // fuerza del EQ automatico 0..1 (perilla en Ctrl+F3; "eq_auto=" en config); 0 = apagado
@@ -4011,6 +4034,7 @@ namespace Rocola
                 curSumSq = 0; curSamples = 0;
                 eqMeasPath = (eqAmount > 0.001f) ? t.Path : null;   // huella tonal: se aprende solo con el EQ automatico encendido
                 eqMeasSum = new double[8]; eqMeasN = 0; eqMeasRate = 0;
+                kwRate = 0;   // reinicia el estado del K-weighting: cada cancion mide desde cero (sin cola del filtro anterior)
                 // NIVEL 2 (reconstructor espectral): solo se INSERTA en maquinas que cumplen requisitos; con
                 // Active=false es un pase directo (costo ~cero). Ctrl+F3 lo alterna EN VIVO para comparar A/B.
                 NAudio.Wave.ISampleProvider chain = reader;
@@ -4224,29 +4248,56 @@ namespace Rocola
             // visualizador, no un ecualizador: basta que "se sienta" la separacion. El estado persiste entre bloques.
             const float A1 = 0.012f, A2 = 0.13f;
             float lp1 = fLp1, lp2 = fLp2;
-            double blockSumSq = 0;
             for (int c = 0; c < chunks; c++)              // el RMS se calcula FUERA del lock (no retiene a la UI)
             {
                 int start = offset + c * len;
                 int end = (c == chunks - 1) ? offset + count : start + len;
-                double sumRaw = 0, sumLo = 0, sumMid = 0, sumHi = 0;
+                double sumLo = 0, sumMid = 0, sumHi = 0;
                 for (int i = start; i < end; i++)
                 {
                     float v = buffer[i];
-                    sumRaw += v * v;
                     lp1 += (v - lp1) * A1;               // paso-bajo grave
                     lp2 += (v - lp2) * A2;               // paso-bajo medio
                     float lo = lp1, mid = lp2 - lp1, hi = v - lp2;
                     sumLo += lo * lo; sumMid += mid * mid; sumHi += hi * hi;
                 }
                 int n = Math.Max(1, end - start);
-                blockSumSq += sumRaw;
                 tLo[c] = (float)Math.Sqrt(sumLo / n);
                 tMid[c] = (float)Math.Sqrt(sumMid / n);
                 tHi[c] = (float)Math.Sqrt(sumHi / n);
             }
             fLp1 = lp1; fLp2 = lp2;   // persiste el estado de los filtros para el proximo bloque
-            if (curMeasurePath != null) { curSumSq += blockSumSq; curSamples += count; }   // NIVELADO: sonoridad integrada CRUDA (sin bandas)
+            // NIVELADO PERCEPTUAL (K-weighting, tipo LUFS/BS.1770): en vez del RMS crudo, mide la sonoridad
+            // PESADA por como la oye el humano (realza agudos ~+4 dB, quita sub-graves) via 2 biquads/canal.
+            // Asi una cancion con mucho bajo (que el RMS crudo sobre-estima) y una brillante quedan de verdad
+            // al mismo volumen PERCIBIDO. Solo durante el aprendizaje de esta cancion.
+            if (curMeasurePath != null)
+            {
+                if (kwRate != rate || kwCoef1 == null)
+                {
+                    kwRate = rate;
+                    kwCoef1 = EqShelfHi(1681.974f, rate, 3.99984f, 0.70717f);   // "head" shelf de BS.1770
+                    kwCoef2 = EqHighPass(38.1355f, rate, 0.50033f);             // RLB high-pass
+                    kwSt = new float[Math.Max(1, ch) * 8];
+                }
+                int ch3 = ch < 1 ? 1 : ch;
+                float[] st = kwSt, c1 = kwCoef1, c2 = kwCoef2;
+                double sumK = 0; long nK = 0;
+                for (int i = offset; i + ch3 <= offset + count; i += ch3)
+                {
+                    for (int c = 0; c < ch3; c++)
+                    {
+                        int b = c * 8; float x = buffer[i + c];
+                        float y1 = c1[0]*x + c1[1]*st[b] + c1[2]*st[b+1] - c1[3]*st[b+2] - c1[4]*st[b+3];
+                        st[b+1]=st[b]; st[b]=x; st[b+3]=st[b+2]; st[b+2]=y1;
+                        float y2 = c2[0]*y1 + c2[1]*st[b+4] + c2[2]*st[b+5] - c2[3]*st[b+6] - c2[4]*st[b+7];
+                        st[b+5]=st[b+4]; st[b+4]=y1; st[b+7]=st[b+6]; st[b+6]=y2;
+                        sumK += y2 * y2;
+                    }
+                    nK++;
+                }
+                curSumSq += sumK; curSamples += nK * ch3;   // energia K-pesada (misma escala que el RMS de antes)
+            }
             // EQ AUTOMATICO: huella tonal de la cancion (energia por banda via bandpass RBJ, mezcla MONO).
             // Solo durante el aprendizaje de esta cancion; ~70 operaciones por cuadro, costo despreciable.
             if (eqMeasPath != null)
