@@ -109,6 +109,36 @@ namespace Rocola
         private string curMeasurePath = null;                                                // cancion que se esta MIDIENDO ahora (null = no medir)
         private LevelTap curTap;                                                              // tap de la cancion actual (para cambiarle la ganancia en vivo desde Ctrl+F3)
         private double curSumSq = 0; private long curSamples = 0;                             // acumuladores del RMS integrado de la cancion actual (los llena el hilo de audio)
+        // ----- EQ AUTOMATICO (correctivo y suave): cada cancion aprende su HUELLA TONAL (8 bandas anchas,
+        // en dB relativos a su propia media) la primera vez que suena; desde la siguiente se corrige hacia
+        // el promedio de la biblioteca, con tope de +-4 dB por banda y una perilla de fuerza en Ctrl+F3.
+        // Corrige lo grosero (lodo en 200-400 Hz, canciones apagadas o chillonas) SIN uniformar el estilo. -----
+        // 8 bandas centradas (biquads RBJ, el estandar de los EQ graficos: se portan bien hasta Nyquist,
+        // donde los filtros simples de un polo se desmoronan). Medir usa BANDPASS de 0 dB con Q=2 (campana
+        // angosta = poco sangrado entre bandas); corregir usa PEAKING con Q=1.1 (campana musical, ancha).
+        internal static readonly float[] EqCentros = { 50f, 158f, 400f, 1000f, 2500f, 5600f, 10000f, 15800f };
+        internal static float[] EqBpf(float fc, int rate)
+        {
+            double w = 2.0 * Math.PI * fc / Math.Max(8000, rate);
+            if (w >= Math.PI * 0.95) return null;                       // el centro no cabe en este samplerate
+            double al = Math.Sin(w) / 4.0, cw = Math.Cos(w), a0 = 1.0 + al;   // Q = 2
+            return new float[] { (float)(al / a0), 0f, (float)(-al / a0), (float)(-2.0 * cw / a0), (float)((1.0 - al) / a0) };
+        }
+        internal static float[] EqPeak(float fc, int rate, float dB)
+        {
+            double w = 2.0 * Math.PI * fc / Math.Max(8000, rate);
+            if (w >= Math.PI * 0.95 || (dB > -0.1f && dB < 0.1f)) return null;   // sin correccion = ni se crea (identidad exacta)
+            double A = Math.Pow(10.0, dB / 40.0), al = Math.Sin(w) / 2.2, cw = Math.Cos(w);   // Q = 1.1
+            double a0 = 1.0 + al / A;
+            return new float[] { (float)((1.0 + al * A) / a0), (float)(-2.0 * cw / a0), (float)((1.0 - al * A) / a0), (float)(-2.0 * cw / a0), (float)((1.0 - al / A) / a0) };
+        }
+        private readonly Dictionary<string, float[]> eqCache = new Dictionary<string, float[]>(StringComparer.OrdinalIgnoreCase);   // ruta -> huella tonal (8 dB rel. a su media)
+        private float[] eqAvg = null;              // curva PROMEDIO de la biblioteca (el objetivo); null hasta tener 10 canciones medidas
+        private float eqAmount = 0f;               // fuerza del EQ automatico 0..1 (perilla en Ctrl+F3; "eq_auto=" en config); 0 = apagado
+        private string eqMeasPath = null;          // cancion cuya huella se esta midiendo (null = no medir)
+        private double[] eqMeasSum = new double[8]; private long eqMeasN = 0;   // energia acumulada por banda (hilo de audio)
+        private float[][] eqMeasCoef = null; private float[] eqMeasSt = null; private int eqMeasRate = 0;   // bandpass de la medicion (mezcla mono; 4 estados por banda)
+        private const long EqMinFrames = 882000;   // ~20 s de musica: con menos, la huella no es confiable
         // "SUBIR EL PISO": las canciones BAJITAS se SUBEN hacia un volumen objetivo; las que ya suenan FUERTE
         // NO se bajan (se prioriza subir las flojas, como pidio el operador). Ajustable desde la interfaz (Ctrl+F3).
         //   ganancia = (objetivo / rms) ^ fuerza , recortada a [1 , tope]   (fuerza 0..1; nunca por debajo de 1 = no baja)
@@ -367,6 +397,7 @@ namespace Rocola
             LoadConfigPrefs();   // preferencias: render GPU/CPU + carpetas de musica adicionales (Ctrl+F2)
             NeuralEnv.TryLoad(Path.Combine(Application.StartupPath, "rocola_ia.bin"));   // IA propia (si hay modelo entrenado junto al exe)
             LoadLoudCache();     // sonoridad medida por cancion (para nivelar el volumen de todas)
+            LoadEqCache();       // huella tonal medida por cancion (para el EQ automatico)
             LoadIncompatible();  // rutas ya anotadas como no reproducibles (para no repetirlas)
             LayoutControls();
 #if ROCOLA_GPU
@@ -483,6 +514,7 @@ namespace Rocola
                     else if (s.StartsWith("nivel_fuerza=")) { float v; if (float.TryParse(s.Substring(13).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) normStrength = Clampf(v, 0f, 1f); }
                     else if (s.StartsWith("realce=")) { float v; if (float.TryParse(s.Substring(7).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) excAmount = Clampf(v, 0f, 1f); }   // realce de agudos (exciter, tipo DSEE)
                     else if (s.StartsWith("subir_db=")) { float v; if (float.TryParse(s.Substring(9).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) masterDb = Clampf(v, 0f, 12f); }   // SUBIR TODO (dB extra general)
+                    else if (s.StartsWith("eq_auto=")) { float v; if (float.TryParse(s.Substring(8).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) eqAmount = Clampf(v / 100f, 0f, 1f); }   // EQ automatico (fuerza %)
                     else if (s.StartsWith("dsee=")) sbrOn = s.Substring(5).Trim() == "1";   // reconstruccion espectral (NIVEL 2)
                     else if (s.StartsWith("dsee_forzar=")) { if (s.Substring(12).Trim() == "1") { sbrForce = true; sbrAllowed = true; sbrReason = ""; } }   // salta la puerta de requisitos (pruebas)
                     else if (s.StartsWith("dir="))
@@ -509,6 +541,7 @@ namespace Rocola
                 sb.Append("nivel_fuerza=").Append(normStrength.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("realce=").Append(excAmount.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("subir_db=").Append(masterDb.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
+                sb.Append("eq_auto=").Append(((int)Math.Round(eqAmount * 100f)).ToString(System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("dsee=").Append(sbrOn ? "1" : "0").Append("\r\n");
                 if (sbrForce) sb.Append("dsee_forzar=1\r\n");   // conservar la bandera manual de pruebas (este saver reescribe el archivo completo)
                 for (int i = 0; i < extraMusicDirs.Count; i++) sb.Append("dir=").Append(extraMusicDirs[i]).Append("\r\n");
@@ -521,6 +554,117 @@ namespace Rocola
         // Una linea por cancion: "<rms>|<ruta>". El RMS integrado se mide al oirse la cancion y se guarda para que
         // la proxima vez suene al mismo nivel que las demas. Archivo chico (una linea por cancion oida).
         private string LoudFile() { return Path.Combine(Application.StartupPath, "rocola_volumen.txt"); }
+        private string EqFile() { return Path.Combine(Application.StartupPath, "rocola_eq.txt"); }
+
+        // Tabla de huellas tonales (d0;d1;...;d7|ruta). Perdida o rota no rompe nada: se re-aprende oyendo.
+        private void LoadEqCache()
+        {
+            try
+            {
+                string f = EqFile();
+                if (!File.Exists(f)) return;
+                foreach (string line in File.ReadAllLines(f))
+                {
+                    int bar = line.IndexOf('|');
+                    if (bar <= 0 || bar >= line.Length - 1) continue;
+                    string[] parts = line.Substring(0, bar).Split(';');
+                    if (parts.Length != 8) continue;
+                    float[] c = new float[8]; bool ok = true;
+                    for (int b = 0; b < 8; b++)
+                        if (!float.TryParse(parts[b], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out c[b])) { ok = false; break; }
+                    if (ok) eqCache[line.Substring(bar + 1)] = c;
+                }
+            }
+            catch { }
+            RecomputeEqAvg();
+        }
+
+        private readonly object eqSaveLock = new object();
+        private void SaveEqCache()
+        {
+            List<KeyValuePair<string, float[]>> snap;
+            try { snap = new List<KeyValuePair<string, float[]>>(eqCache); }   // copia rapida en el hilo de UI
+            catch { return; }
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate
+            {
+                try
+                {
+                    StringBuilder sb = new StringBuilder(snap.Count * 72 + 16);
+                    for (int i = 0; i < snap.Count; i++)
+                    {
+                        float[] c = snap[i].Value;
+                        for (int b = 0; b < 8; b++)
+                        { if (b > 0) sb.Append(';'); sb.Append(c[b].ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)); }
+                        sb.Append('|').Append(snap[i].Key).Append("\r\n");
+                    }
+                    lock (eqSaveLock) File.WriteAllText(EqFile(), sb.ToString());
+                }
+                catch { }
+            });
+        }
+
+        // El OBJETIVO del EQ automatico: la curva promedio de TODA la biblioteca medida (se auto-calibra;
+        // sin curvas magicas inventadas). Con menos de 10 canciones medidas aun no hay objetivo confiable.
+        private void RecomputeEqAvg()
+        {
+            if (eqCache.Count < 10) { eqAvg = null; return; }
+            float[] avg = new float[8];
+            foreach (KeyValuePair<string, float[]> kv in eqCache)
+                for (int b = 0; b < 8; b++) avg[b] += kv.Value[b];
+            for (int b = 0; b < 8; b++) avg[b] /= eqCache.Count;
+            eqAvg = avg;
+        }
+
+        // Correccion en dB por banda para una cancion (o null si apagado / aun sin huella / sin objetivo).
+        // Correccion = (objetivo - huella) con tope +-4 dB, escalada por la fuerza. Una banda casi MUDA
+        // (>25 dB bajo la referencia de su cancion) no se sube: seria inflar piso de ruido, no musica.
+        private float[] EqCorrFor(string path)
+        {
+            if (eqAmount <= 0.001f || path == null || eqAvg == null) return null;
+            float[] c;
+            if (!eqCache.TryGetValue(path, out c)) return null;
+            float[] dbs = new float[8]; bool any = false;
+            for (int b = 0; b < 8; b++)
+            {
+                float corr = 0f;
+                if (c[b] > -25f)
+                {
+                    corr = eqAvg[b] - c[b];
+                    if (corr > 4f) corr = 4f; else if (corr < -4f) corr = -4f;
+                    corr *= eqAmount;
+                }
+                dbs[b] = corr;
+                if (corr > 0.1f || corr < -0.1f) any = true;
+            }
+            return any ? dbs : null;
+        }
+
+        // Cierra la medicion de huella tonal de la cancion que acaba de sonar (audio ya detenido).
+        private void FinalizeEqMeasure()
+        {
+            string path = eqMeasPath; eqMeasPath = null;
+            double[] sums = eqMeasSum; long n = eqMeasN;
+            eqMeasSum = new double[8]; eqMeasN = 0;
+            if (path == null || n < EqMinFrames) return;
+            float[] curve = new float[8];
+            for (int b = 0; b < 8; b++) curve[b] = (float)(10.0 * Math.Log10(sums[b] / n + 1e-12));
+            // referencia = MEDIANA de las bandas del CUERPO (158 Hz - 5.6 kHz): invariante al volumen y
+            // ademas inmune a una banda desbocada (un lodo de +8 dB no arrastra la referencia consigo).
+            float[] cuerpo = { curve[1], curve[2], curve[3], curve[4], curve[5] };
+            Array.Sort(cuerpo);
+            float refDb = cuerpo[2];
+            for (int b = 0; b < 8; b++) curve[b] -= refDb;
+            float[] prev; bool had = eqCache.TryGetValue(path, out prev);
+            if (had)
+            {
+                float maxDelta = 0f;
+                for (int b = 0; b < 8; b++) { curve[b] = prev[b] * 0.5f + curve[b] * 0.5f; float d = Math.Abs(curve[b] - prev[b]); if (d > maxDelta) maxDelta = d; }
+                if (maxDelta < 0.2f) return;   // ya aprendida y estable: no reescribir el archivo (cero churn)
+            }
+            eqCache[path] = curve;
+            RecomputeEqAvg();
+            SaveEqCache();
+        }
 
         private void LoadLoudCache()
         {
@@ -584,7 +728,7 @@ namespace Rocola
         // Aplica el nivelado a la cancion que suena AHORA (para oir el cambio al instante mientras se ajusta en Ctrl+F3).
         private void ApplyNormNow()
         {
-            LevelTap t = curTap; if (t != null && nowPlaying != null && nowPlaying.Song != null) { t.Gain = NormGainFor(nowPlaying.Song.Path); t.Excite = excAmount; t.Master = MasterLin(); }
+            LevelTap t = curTap; if (t != null && nowPlaying != null && nowPlaying.Song != null) { t.Gain = NormGainFor(nowPlaying.Song.Path); t.Excite = excAmount; t.Master = MasterLin(); t.EqDb = EqCorrFor(nowPlaying.Song.Path); }
             SpectralTap sp = curSbr; if (sp != null) sp.Active = sbrOn;   // reconstruccion espectral: alterna EN VIVO (A/B desde Ctrl+F3)
         }
 
@@ -739,7 +883,7 @@ namespace Rocola
             bool wasMaint = maintMode;
             maintMode = true; maintUntil = DateTime.Now.AddMinutes(10);
             bool changed = false;
-            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkUp = masterDb; bool bkOn = normalizeOn, bkSbr = sbrOn;   // por si se Cancela
+            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkUp = masterDb, bkEq = eqAmount; bool bkOn = normalizeOn, bkSbr = sbrOn;   // por si se Cancela
             try
             {
                 Cursor.Show();
@@ -751,7 +895,7 @@ namespace Rocola
                     dlg.FormBorderStyle = FormBorderStyle.FixedDialog;
                     dlg.MaximizeBox = false; dlg.MinimizeBox = false; dlg.ShowInTaskbar = false; dlg.ShowIcon = false;
                     dlg.StartPosition = FormStartPosition.CenterParent;
-                    dlg.ClientSize = new Size(600, 568);
+                    dlg.ClientSize = new Size(600, 654);
                     dlg.BackColor = Color.FromArgb(14, 18, 42);
                     dlg.Font = fUi;
 
@@ -782,24 +926,29 @@ namespace Rocola
                     TrackBar tbExc = new TrackBar(); tbExc.SetBounds(12, 370, 576, 45); tbExc.Minimum = 0; tbExc.Maximum = 100; tbExc.TickFrequency = 10;
                     tbExc.BackColor = dlg.BackColor; tbExc.Value = (int)Math.Round(excAmount * 100f);
 
+                    // EQ AUTOMATICO: correccion tonal suave por cancion, hacia el promedio de la biblioteca.
+                    Label lEq = new Label(); lEq.SetBounds(16, 430, 568, 24); lEq.BackColor = Color.Transparent; lEq.ForeColor = Color.FromArgb(190, 160, 255);
+                    TrackBar tbEq = new TrackBar(); tbEq.SetBounds(12, 456, 576, 45); tbEq.Minimum = 0; tbEq.Maximum = 100; tbEq.TickFrequency = 10;
+                    tbEq.BackColor = dlg.BackColor; tbEq.Value = (int)Math.Round(eqAmount * 100f);
+
                     // NIVEL 2: reconstructor espectral (solo maquinas que cumplen requisitos; ver ProbeAudioTier)
                     CheckBox chkSbr = new CheckBox();
-                    chkSbr.SetBounds(16, 422, 568, 24); chkSbr.BackColor = Color.Transparent; chkSbr.ForeColor = Color.FromArgb(190, 225, 255);
+                    chkSbr.SetBounds(16, 508, 568, 24); chkSbr.BackColor = Color.Transparent; chkSbr.ForeColor = Color.FromArgb(190, 225, 255);
                     chkSbr.Text = "Reconstruir agudos perdidos (DSEE espectral)  -  EXPERIMENTAL";
                     chkSbr.Checked = sbrOn && sbrAllowed; chkSbr.Enabled = sbrAllowed;
-                    Label lSbrInfo = new Label(); lSbrInfo.SetBounds(35, 446, 549, 18); lSbrInfo.BackColor = Color.Transparent;
+                    Label lSbrInfo = new Label(); lSbrInfo.SetBounds(35, 532, 549, 18); lSbrInfo.BackColor = Color.Transparent;
                     lSbrInfo.ForeColor = sbrAllowed ? Color.FromArgb(150, 160, 190) : Color.FromArgb(200, 150, 120);
                     lSbrInfo.Text = sbrAllowed
                         ? (NeuralEnv.Loaded ? "Re-crea la banda que el codec corto, con IA PROPIA (rocola_ia.bin entrenada con tu musica)."
                                             : "Re-crea la banda que el codec corto (transposicion espectral). Alterna con musica sonando y compara.")
                         : "NO disponible en este equipo: " + sbrReason;
 
-                    Label hint = new Label(); hint.SetBounds(16, 470, 568, 40); hint.BackColor = Color.Transparent; hint.ForeColor = Color.FromArgb(160, 170, 200);
+                    Label hint = new Label(); hint.SetBounds(16, 556, 568, 40); hint.BackColor = Color.Transparent; hint.ForeColor = Color.FromArgb(160, 170, 200);
                     hint.Text = "Todo se oye al instante en la cancion actual y aplica a las siguientes. El realce recupera el 'aire' (agudos) que el MP3 recorta; cada cancion se mide la primera vez que suena.";
 
                     Button bReset = new Button(), bOk = new Button();
-                    bReset.Text = "Recomendado"; bReset.SetBounds(16, 520, 150, 38);
-                    bOk.Text = "Listo"; bOk.SetBounds(488, 520, 96, 38);
+                    bReset.Text = "Recomendado"; bReset.SetBounds(16, 606, 150, 38);
+                    bOk.Text = "Listo"; bOk.SetBounds(488, 606, 96, 38);
                     Button[] bs = { bReset, bOk };
                     for (int i = 0; i < bs.Length; i++) { bs[i].FlatStyle = FlatStyle.Flat; bs[i].FlatAppearance.BorderColor = Color.FromArgb(90, 110, 170); bs[i].BackColor = Color.FromArgb(34, 44, 86); bs[i].ForeColor = Color.White; }
 
@@ -809,6 +958,7 @@ namespace Rocola
                         lStr.Text = "Fuerza del nivelado:  " + tbStr.Value + "%   (cuanto se suben las bajitas; 0 = no nivelar)";
                         lExc.Text = "Realce de brillo (tipo DSEE):  " + tbExc.Value + "%   (el 'aire' que el MP3 apaga; 0 = sin realce)";
                         lUp.Text = "Subir TODO el volumen:  +" + tbUp.Value + " dB";
+                        lEq.Text = "EQ automatico:  " + tbEq.Value + "%   (corrige el balance de cada cancion hacia el sonido de tu biblioteca)";
                         bool en = chkOn.Checked;
                         tbTarget.Enabled = en; tbStr.Enabled = en;
                         lTarget.ForeColor = en ? Color.FromArgb(150, 240, 170) : Color.FromArgb(110, 118, 140);
@@ -821,14 +971,15 @@ namespace Rocola
                         normStrength = tbStr.Value / 100f;
                         excAmount = tbExc.Value / 100f;
                         masterDb = tbUp.Value;
+                        eqAmount = tbEq.Value / 100f;
                         sbrOn = chkSbr.Checked && sbrAllowed;
                         changed = true;
                         updateLabels();
                         ApplyNormNow();   // se oye el cambio al instante en la cancion que suena
                         UpdateNowPlayingUI();   // y el letrero MEJORADA aparece/desaparece al instante
                     };
-                    tbTarget.Scroll += apply; tbStr.Scroll += apply; tbExc.Scroll += apply; tbUp.Scroll += apply; chkOn.CheckedChanged += apply; chkSbr.CheckedChanged += apply;
-                    bReset.Click += delegate { chkOn.Checked = true; tbTarget.Value = TargetToPct(0.22f); tbStr.Value = 90; tbExc.Value = 35; tbUp.Value = 0; if (chkSbr.Enabled) chkSbr.Checked = false; apply(bReset, EventArgs.Empty); };   // recomendado: espectral apagado (es experimental)
+                    tbTarget.Scroll += apply; tbStr.Scroll += apply; tbExc.Scroll += apply; tbUp.Scroll += apply; tbEq.Scroll += apply; chkOn.CheckedChanged += apply; chkSbr.CheckedChanged += apply;
+                    bReset.Click += delegate { chkOn.Checked = true; tbTarget.Value = TargetToPct(0.22f); tbStr.Value = 90; tbExc.Value = 35; tbUp.Value = 0; tbEq.Value = 0; if (chkSbr.Enabled) chkSbr.Checked = false; apply(bReset, EventArgs.Empty); };   // recomendado: espectral apagado (es experimental)
                     bOk.Click += delegate { dlg.Close(); };
                     dlg.CancelButton = bOk;
 
@@ -837,6 +988,7 @@ namespace Rocola
                     dlg.Controls.Add(lStr); dlg.Controls.Add(tbStr);
                     dlg.Controls.Add(lUp); dlg.Controls.Add(tbUp);
                     dlg.Controls.Add(lExc); dlg.Controls.Add(tbExc);
+                    dlg.Controls.Add(lEq); dlg.Controls.Add(tbEq);
                     dlg.Controls.Add(chkSbr); dlg.Controls.Add(lSbrInfo);
                     dlg.Controls.Add(hint); dlg.Controls.Add(bReset); dlg.Controls.Add(bOk);
                     updateLabels();
@@ -844,7 +996,7 @@ namespace Rocola
                 }
                 if (changed) { SaveConfigPrefs(); ShowToast("Sonido actualizado", Color.FromArgb(40, 130, 90)); }
             }
-            catch { normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; masterDb = bkUp; sbrOn = bkSbr; }   // si algo truena, deja los valores como estaban
+            catch { normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; masterDb = bkUp; eqAmount = bkEq; sbrOn = bkSbr; }   // si algo truena, deja los valores como estaban
             finally { try { Cursor.Hide(); } catch { } maintMode = wasMaint; ForceFocus(); }
         }
 
@@ -3713,6 +3865,8 @@ namespace Rocola
                 // nueva, va a su volumen original y se APRENDE su sonoridad en esta pasada (para nivelarla la proxima vez).
                 curMeasurePath = normalizeOn ? t.Path : null;   // empieza a medir esta cancion
                 curSumSq = 0; curSamples = 0;
+                eqMeasPath = (eqAmount > 0.001f) ? t.Path : null;   // huella tonal: se aprende solo con el EQ automatico encendido
+                eqMeasSum = new double[8]; eqMeasN = 0; eqMeasRate = 0;
                 // NIVEL 2 (reconstructor espectral): solo se INSERTA en maquinas que cumplen requisitos; con
                 // Active=false es un pase directo (costo ~cero). Ctrl+F3 lo alterna EN VIVO para comparar A/B.
                 NAudio.Wave.ISampleProvider chain = reader;
@@ -3722,6 +3876,7 @@ namespace Rocola
                 tap.Gain = NormGainFor(t.Path);
                 tap.Excite = excAmount;   // realce de agudos (exciter, tipo DSEE): se aplica DESPUES de nivelar
                 tap.Master = MasterLin();  // SUBIR TODO: los dB extra de Ctrl+F3 (con rodilla suave anti-distorsion)
+                tap.EqDb = EqCorrFor(t.Path);      // EQ automatico: correccion aprendida (null la 1a vez que suena)
                 curTap = tap;   // referencia para ajustar la ganancia en vivo (Ctrl+F3)
                 // WaveOut con callback por VENTANA, no WaveOutEvent: el de eventos llama a
                 // WaitHandle.WaitOne(Int32), que NO existe en .NET 3.5 sin Service Pack 1
@@ -3899,6 +4054,7 @@ namespace Rocola
             if (reader != null) { try { reader.Dispose(); } catch { } reader = null; }
             curTap = null; curSbr = null;   // ya no hay taps actuales
             FinalizeLoudMeasure();   // guarda la sonoridad medida de la cancion que acaba de sonar (audio ya detenido: sin carrera)
+            FinalizeEqMeasure();     // y su huella tonal (mismo momento seguro)
             lock (levelLock) levelQ.Clear();   // sin cancion no hay trozos pendientes: el pulso cae a cero
             rmsLo = rmsMid = rmsHi = 0f; avgLo = avgMid = avgHi = 0f;
         }
@@ -3908,9 +4064,10 @@ namespace Rocola
         // El temporizador de UI los consume cuando les llega su momento -> el pulso va CON lo que se oye.
         // Buffers reusables del hilo de audio (4 trozos x 3 bandas). ThreadStatic: sin asignar por bloque.
         [ThreadStatic] private static float[] tmpLo; [ThreadStatic] private static float[] tmpMid; [ThreadStatic] private static float[] tmpHi;
-        public void ReportAudioBlock(float[] buffer, int offset, int count, int samplesPerSec)
+        public void ReportAudioBlock(float[] buffer, int offset, int count, int rate, int ch)
         {
             if (count <= 0) return;
+            int samplesPerSec = Math.Max(1, rate * ch);
             int now = Environment.TickCount;
             int chunks = 4; int len = count / chunks;
             if (len < 256) { chunks = 1; len = count; }   // bloque chico: un solo trozo
@@ -3945,6 +4102,34 @@ namespace Rocola
             }
             fLp1 = lp1; fLp2 = lp2;   // persiste el estado de los filtros para el proximo bloque
             if (curMeasurePath != null) { curSumSq += blockSumSq; curSamples += count; }   // NIVELADO: sonoridad integrada CRUDA (sin bandas)
+            // EQ AUTOMATICO: huella tonal de la cancion (energia por banda via bandpass RBJ, mezcla MONO).
+            // Solo durante el aprendizaje de esta cancion; ~70 operaciones por cuadro, costo despreciable.
+            if (eqMeasPath != null)
+            {
+                if (eqMeasRate != rate || eqMeasCoef == null)
+                {
+                    eqMeasRate = rate; eqMeasCoef = new float[8][]; eqMeasSt = new float[8 * 4];
+                    for (int b = 0; b < 8; b++) eqMeasCoef[b] = EqBpf(EqCentros[b], rate);
+                }
+                int ch2 = ch < 1 ? 1 : ch;
+                float[] st = eqMeasSt; double[] sums = eqMeasSum;
+                for (int i = offset; i + ch2 <= offset + count; i += ch2)
+                {
+                    float m = buffer[i];
+                    for (int c2 = 1; c2 < ch2; c2++) m += buffer[i + c2];
+                    m /= ch2;
+                    for (int b = 0; b < 8; b++)
+                    {
+                        float[] cf = eqMeasCoef[b]; if (cf == null) continue;
+                        int q = b * 4;
+                        float o = cf[0] * m + cf[1] * st[q] + cf[2] * st[q + 1] - cf[3] * st[q + 2] - cf[4] * st[q + 3];
+                        st[q + 1] = st[q]; st[q] = m;
+                        st[q + 3] = st[q + 2]; st[q + 2] = o;
+                        sums[b] += o * o;
+                    }
+                    eqMeasN++;
+                }
+            }
             lock (levelLock)
             {
                 for (int c = 0; c < chunks; c++)
@@ -5061,6 +5246,14 @@ namespace Rocola
             // de CPU en la rocola (nada de FFT). 0 = apagado (la pasada ni se ejecuta si tampoco hay nivelado).
             public float Excite = 0f;   // intensidad 0..1 (perilla en Ctrl+F3; ajustable en vivo)
             private float[] exLp;       // estado del filtro del exciter (uno por canal)
+            // EQ AUTOMATICO: correccion en dB por banda (8) o null = apagado. Se aplica con biquads
+            // PEAKING (RBJ) en cascada, SOLO en las bandas con correccion real (0 dB = identidad exacta,
+            // el biquad ni se crea). ~9 operaciones por muestra por banda activa (tipico: 2-4 bandas).
+            public volatile float[] EqDb;
+            private float[] eqDbUsed;   // referencia aplicada (los coeficientes se recalculan solo si cambia)
+            private float[][] eqCoef;   // 8 biquads (null = banda sin correccion)
+            private float[] eqSt;       // estados: canal * banda * 4
+            private int eqActivos;
             public LevelTap(NAudio.Wave.ISampleProvider s, Form1 o) { src = s; owner = o; }
             public NAudio.Wave.WaveFormat WaveFormat { get { return src.WaveFormat; } }
             public int Read(float[] buffer, int offset, int count)
@@ -5068,10 +5261,20 @@ namespace Rocola
                 int n = src.Read(buffer, offset, count);
                 if (n > 0 && owner != null)
                 {
-                    owner.ReportAudioBlock(buffer, offset, n, Math.Max(1, WaveFormat.SampleRate * WaveFormat.Channels));   // mide el nivel CRUDO (beat + sonoridad) ANTES de tocar nada
+                    owner.ReportAudioBlock(buffer, offset, n, WaveFormat.SampleRate, WaveFormat.Channels);   // mide el nivel CRUDO (beat + sonoridad + huella tonal) ANTES de tocar nada
                     float g = Gain * Master, ex = Excite;
-                    bool exOn = ex > 0.001f;
-                    if (g != 1f || exOn)   // nivelado + realce en UNA pasada, con recorte duro de picos al final
+                    float[] eqDb = EqDb;
+                    bool exOn = ex > 0.001f, eqOn = eqDb != null;
+                    if (eqOn && !ReferenceEquals(eqDb, eqDbUsed))
+                    {
+                        int ch0 = WaveFormat.Channels; if (ch0 < 1) ch0 = 1;
+                        eqCoef = new float[8][]; eqActivos = 0;
+                        for (int b = 0; b < 8; b++) { eqCoef[b] = Form1.EqPeak(Form1.EqCentros[b], WaveFormat.SampleRate, eqDb[b]); if (eqCoef[b] != null) eqActivos++; }
+                        eqSt = new float[ch0 * 32];
+                        eqDbUsed = eqDb;
+                    }
+                    if (eqOn && eqActivos == 0) eqOn = false;
+                    if (g != 1f || exOn || eqOn)   // nivelado + EQ + realce en UNA pasada, con recorte duro de picos al final
                     {
                         int ch = WaveFormat.Channels; if (ch < 1) ch = 1;
                         if (exOn && (exLp == null || exLp.Length < ch)) exLp = new float[ch];
@@ -5081,13 +5284,26 @@ namespace Rocola
                         for (int i = offset; i < end; i++)
                         {
                             float v = buffer[i] * g;
+                            if (eqOn)
+                            {
+                                int p0 = ci * 32;
+                                for (int b = 0; b < 8; b++)
+                                {
+                                    float[] cf = eqCoef[b]; if (cf == null) continue;
+                                    int q = p0 + b * 4;
+                                    float o = cf[0] * v + cf[1] * eqSt[q] + cf[2] * eqSt[q + 1] - cf[3] * eqSt[q + 2] - cf[4] * eqSt[q + 3];
+                                    eqSt[q + 1] = eqSt[q]; eqSt[q] = v;
+                                    eqSt[q + 3] = eqSt[q + 2]; eqSt[q + 2] = o;
+                                    v = o;
+                                }
+                            }
                             if (exOn)
                             {
                                 float lp = (exLp[ci] += (v - exLp[ci]) * A);
                                 float h = v - lp;                                   // solo la banda alta que sobrevivio
                                 v += (float)Math.Tanh(h * 2.5) * 0.4f * mix;        // saturacion suave = armonicos nuevos por encima (brillo/presencia)
-                                ci++; if (ci >= ch) ci = 0;
                             }
+                            if (exOn || eqOn) { ci++; if (ci >= ch) ci = 0; }
                             // RODILLA SUAVE desde 0.95: al subir todo el volumen, los picos se redondean con
                             // tanh en vez de recortarse en seco (el recorte duro queda solo como ultima garantia).
                             if (v > 0.95f) v = 0.95f + 0.05f * (float)Math.Tanh((v - 0.95f) * 20f);
