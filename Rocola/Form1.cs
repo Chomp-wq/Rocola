@@ -109,11 +109,11 @@ namespace Rocola
         private string curMeasurePath = null;                                                // cancion que se esta MIDIENDO ahora (null = no medir)
         private LevelTap curTap;                                                              // tap de la cancion actual (para cambiarle la ganancia en vivo desde Ctrl+F3)
         private double curSumSq = 0; private long curSamples = 0;                             // acumuladores del RMS integrado de la cancion actual (los llena el hilo de audio)
-        // CANCIONES OCULTAS (funcion de desarrollador): con el combo ROJO+ARRIBA+ABAJO mantenido 5 s sobre la
-        // cancion seleccionada del disco, esa cancion se OCULTA y deja de aparecer (en el disco y el buscador).
-        // Se guarda la RUTA en rocola_ocultas.txt (una por linea). Para restaurar, borra ese archivo o la linea.
-        private readonly HashSet<string> hiddenSongs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        private int hideHoldStart = 0;      // tick en que empezo el combo de ocultar (0 = no se esta manteniendo)
+        // BLACKLIST (funcion de desarrollador): con el combo ROJO+ARRIBA+ABAJO mantenido 5 s se VETA la cancion
+        // que SUENA en ese momento. Desaparece de las listas al instante (pero sigue sonando) y se apunta aqui;
+        // al ARRANCAR la rocola, todos los archivos de la blacklist se BORRAN del disco (rocola_blacklist.txt).
+        private readonly HashSet<string> blacklist = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        private int hideHoldStart = 0;      // tick en que empezo el combo de vetar (0 = no se esta manteniendo)
         private int hideHoldSecShown = -1;  // ultimo segundo mostrado en el aviso (para no repintar el aviso cada cuadro)
         // ----- EQ AUTOMATICO (correctivo y suave): cada cancion aprende su HUELLA TONAL (8 bandas anchas,
         // en dB relativos a su propia media) la primera vez que suena; desde la siguiente se corrige hacia
@@ -404,7 +404,8 @@ namespace Rocola
             NeuralEnv.TryLoad(Path.Combine(Application.StartupPath, "rocola_ia.bin"));   // IA propia (si hay modelo entrenado junto al exe)
             LoadLoudCache();     // sonoridad medida por cancion (para nivelar el volumen de todas)
             LoadEqCache();       // huella tonal medida por cancion (para el EQ automatico)
-            LoadHiddenSongs();   // canciones ocultas por el desarrollador (combo ROJO+ARRIBA+ABAJO 5 s)
+            LoadBlacklist();     // canciones vetadas (combo ROJO+ARRIBA+ABAJO 5 s)
+            PurgeBlacklist();    // ARRANQUE: borra del disco los archivos vetados en sesiones anteriores (ANTES de escanear)
             LoadIncompatible();  // rutas ya anotadas como no reproducibles (para no repetirlas)
             LayoutControls();
 #if ROCOLA_GPU
@@ -2410,7 +2411,7 @@ namespace Rocola
             }
             else
             {
-                for (int i = 0; i < a.Tracks.Count; i++) if (!IsHiddenTrack(a.Tracks[i])) songItems.Add(a.Tracks[i]);   // las ocultas no aparecen
+                for (int i = 0; i < a.Tracks.Count; i++) if (!IsBlacklisted(a.Tracks[i])) songItems.Add(a.Tracks[i]);   // las vetadas no aparecen
             }
             songSel = 0;
             FillSongPage();
@@ -2704,7 +2705,7 @@ namespace Rocola
                 List<SearchItem> matches = new List<SearchItem>();
                 for (int i = 0; i < source.Count; i++)
                 {
-                    if (source[i].Kind == 2 && IsHiddenTrack(source[i].TrackRef)) continue;   // cancion oculta: no aparece en el buscador
+                    if (source[i].Kind == 2 && IsBlacklisted(source[i].TrackRef)) continue;   // cancion vetada: no aparece en el buscador
                     int sc = Score(source[i].Key, q, spaceQ, toks);
                     if (sc > 0) { source[i].Score = sc; matches.Add(source[i]); }
                 }
@@ -2904,8 +2905,9 @@ namespace Rocola
                 // REGRESAR + IZQ/DER = saltar de letra (A,B,C...). Solo IZQ/DER = mover de disco.
                 if (IsLeft(kc)) { if (BackHeld()) ChangeLetter(-1); else MoveInPage(-1); return true; }
                 if (IsRight(kc)) { if (BackHeld()) ChangeLetter(1); else MoveInPage(1); return true; }
-                if (IsUp(kc)) { NextPage(); return true; }
-                if (IsDown(kc)) { PrevPage(); return true; }
+                // Con ROJO mantenido, arriba/abajo NO paginan: reservado para el combo de vetar (5 s).
+                if (IsUp(kc)) { if (!BackHeld()) NextPage(); return true; }
+                if (IsDown(kc)) { if (!BackHeld()) PrevPage(); return true; }
                 if (IsOK(kc)) { List<Album> l = CurrentList(); if (selAlbumIndex >= 0 && selAlbumIndex < l.Count) EnterAlbum(l[selAlbumIndex]); return true; }
                 if (IsBack(kc)) { return true; }
             }
@@ -3032,29 +3034,33 @@ namespace Rocola
             toastTimer.Stop(); toastTimer.Start();
         }
 
-        // ---------- CANCIONES OCULTAS (desarrollador) ----------
-        private string HiddenFile() { return Path.Combine(Application.StartupPath, "rocola_ocultas.txt"); }
+        // ---------- BLACKLIST (funcion de desarrollador) ----------
+        // Con el combo ROJO+ARRIBA+ABAJO mantenido 5 s se VETA la cancion que suena EN ESE MOMENTO: desaparece
+        // de las listas y del buscador al instante (pero SIGUE sonando), y se apunta en la blacklist. Al ARRANCAR
+        // la rocola, TODOS los archivos de la blacklist se BORRAN del disco (funcion destructiva del dueno).
+        private string BlacklistFile() { return Path.Combine(Application.StartupPath, "rocola_blacklist.txt"); }
+        private string BlacklistLogFile() { return Path.Combine(Application.StartupPath, "rocola_blacklist_log.txt"); }
 
-        private void LoadHiddenSongs()
+        private void LoadBlacklist()
         {
             try
             {
-                string f = HiddenFile();
+                string f = BlacklistFile();
                 if (!File.Exists(f)) return;
                 foreach (string line in File.ReadAllLines(f))
                 {
                     string ruta = line.Trim();
-                    if (ruta.Length > 0) hiddenSongs.Add(ruta);
+                    if (ruta.Length > 0) blacklist.Add(ruta);
                 }
             }
             catch { }
         }
 
-        private readonly object hiddenSaveLock = new object();
-        private void SaveHiddenSongs()
+        private readonly object blacklistSaveLock = new object();
+        private void SaveBlacklist()
         {
             List<string> snap;
-            try { snap = new List<string>(hiddenSongs); }
+            try { snap = new List<string>(blacklist); }
             catch { return; }
             System.Threading.ThreadPool.QueueUserWorkItem(delegate
             {
@@ -3062,46 +3068,95 @@ namespace Rocola
                 {
                     StringBuilder sb = new StringBuilder(snap.Count * 64 + 16);
                     for (int i = 0; i < snap.Count; i++) sb.Append(snap[i]).Append("\r\n");
-                    lock (hiddenSaveLock) File.WriteAllText(HiddenFile(), sb.ToString());
+                    lock (blacklistSaveLock) File.WriteAllText(BlacklistFile(), sb.ToString());
                 }
                 catch { }
             });
         }
 
-        private bool IsHiddenTrack(Track t) { return t != null && t.Path != null && hiddenSongs.Count > 0 && hiddenSongs.Contains(t.Path); }
+        private bool IsBlacklisted(Track t) { return t != null && t.Path != null && blacklist.Count > 0 && blacklist.Contains(t.Path); }
 
-        // Oculta la cancion seleccionada del disco: deja de aparecer aqui y en el buscador (desde ya).
-        private void HideSelectedSong()
+        private void PurgeLog(string msg)
         {
-            if (!panelSongs.Visible || songSel < 0 || songSel >= songItems.Count) return;
-            Track t = songItems[songSel] as Track;
-            if (t == null || t.Path == null) return;   // los videos no se ocultan
-            if (!hiddenSongs.Add(t.Path)) return;       // ya estaba oculta (no deberia pasar: no aparece)
-            SaveHiddenSongs();
-            songItems.RemoveAt(songSel);                // desaparece de la lista al instante
-            if (songSel >= songItems.Count) songSel = songItems.Count - 1;
-            if (songSel < 0) songSel = 0;
-            FillSongPage();
-            if (songList != null) songList.Invalidate();
-#if ROCOLA_GPU
-            uiOverlaySig = null;   // en modo GPU: rehacer la textura del interior (una fila menos)
-#endif
-            ShowToast("Cancion oculta:  " + t.ToString(), Color.FromArgb(120, 60, 55));
+            try
+            {
+                string f = BlacklistLogFile();
+                try { FileInfo fi = new FileInfo(f); if (fi.Exists && fi.Length > 262144) fi.Delete(); } catch { }
+                File.AppendAllText(f, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "  " + msg + "\r\n");
+            }
+            catch { }
         }
 
-        // Sondeo del combo de desarrollador ROJO+ARRIBA+ABAJO mantenido 5 s (medido por tiempo, no por tecla,
-        // para no interferir con el buscador ni la navegacion). Lo llama AnimTimer_Tick cada cuadro.
+        // ARRANQUE: borra del disco los archivos vetados en sesiones anteriores. Se llama ANTES de escanear la
+        // musica, para que ni siquiera se lean. SALVAGUARDAS: solo borra archivos que EXISTEN y cuya extension
+        // es de audio/video conocida (jamas tocaria un .exe/.sys aunque la lista se editara mal a mano); cada
+        // accion queda en rocola_blacklist_log.txt. Lo borrado (o ya inexistente) se quita de la lista; lo que
+        // falle (archivo en uso/permiso) se conserva para reintentar en el proximo arranque.
+        private void PurgeBlacklist()
+        {
+            if (blacklist.Count == 0) return;
+            List<string> quitar = new List<string>();
+            int borradas = 0;
+            foreach (string ruta in blacklist)
+            {
+                try
+                {
+                    if (!File.Exists(ruta)) { quitar.Add(ruta); continue; }
+                    string ext = Path.GetExtension(ruta).ToLowerInvariant();
+                    bool esMedio = Array.IndexOf(AudioExt, ext) >= 0 || Array.IndexOf(VideoExt, ext) >= 0;
+                    if (!esMedio) { PurgeLog("OMITIDA (no es audio/video): " + ruta); quitar.Add(ruta); continue; }
+                    File.Delete(ruta);
+                    PurgeLog("BORRADA: " + ruta);
+                    quitar.Add(ruta); borradas++;
+                }
+                catch (Exception ex) { PurgeLog("NO se pudo borrar (se reintenta): " + ruta + "  ->  " + ex.Message); }
+            }
+            for (int i = 0; i < quitar.Count; i++) blacklist.Remove(quitar[i]);
+            if (quitar.Count > 0) SaveBlacklist();
+            if (borradas > 0) PurgeLog("--- total borradas en este arranque: " + borradas + " ---");
+        }
+
+        // Veta la cancion que suena AHORA: se apunta en la blacklist (para borrarla al reiniciar) y desaparece
+        // de las listas y la cola YA, pero la reproduccion actual NO se corta (sigue sonando hasta que termine).
+        private void DislikePlaying()
+        {
+            if (nowPlaying == null || nowPlaying.IsVideo || nowPlaying.Song == null || nowPlaying.Song.Path == null) return;
+            Track t = nowPlaying.Song;
+            if (!blacklist.Add(t.Path)) return;   // ya estaba vetada
+            SaveBlacklist();
+            // desaparece de la lista del disco abierto si esta ahi (la reproduccion actual SIGUE)
+            for (int i = songItems.Count - 1; i >= 0; i--)
+            {
+                Track st = songItems[i] as Track;
+                if (st != null && st.Path == t.Path) { songItems.RemoveAt(i); if (songSel > i) songSel--; }
+            }
+            if (songSel >= songItems.Count) songSel = songItems.Count - 1;
+            if (songSel < 0) songSel = 0;
+            // fuera de la cola las apariciones futuras (vetada = no debe volver a sonar)
+            for (int i = queue.Count - 1; i >= 0; i--)
+                if (!queue[i].IsVideo && queue[i].Song != null && queue[i].Song.Path == t.Path) queue.RemoveAt(i);
+            FillSongPage();
+            if (songList != null) songList.Invalidate();
+            UpdateNowPlayingUI();   // refresca "siguiente"/"en cola"
+#if ROCOLA_GPU
+            uiOverlaySig = null;
+#endif
+            ShowToast("Cancion vetada:  " + t.ToString() + "   (se borra al reiniciar)", Color.FromArgb(150, 55, 50));
+        }
+
+        // Sondeo del combo de desarrollador ROJO+ARRIBA+ABAJO mantenido 5 s. Veta la cancion QUE SUENA (no la
+        // seleccionada). Se mide por tiempo (no por tecla) para no chocar con el buscador ni la navegacion.
         private void UpdateHideCombo()
         {
-            bool holding = panelSongs.Visible && songItems.Count > 0 && !searchOpen
-                           && songSel >= 0 && songSel < songItems.Count && (songItems[songSel] is Track)
+            bool holding = !searchOpen && !configMode
+                           && nowPlaying != null && !nowPlaying.IsVideo && nowPlaying.Song != null && nowPlaying.Song.Path != null
                            && BackHeld() && UpHeld() && DownHeld();
             if (!holding) { hideHoldStart = 0; hideHoldSecShown = -1; return; }
             if (hideHoldStart == 0) { hideHoldStart = Environment.TickCount; hideHoldSecShown = -1; }
             int elapsed = Environment.TickCount - hideHoldStart;
-            if (elapsed >= 5000) { HideSelectedSong(); hideHoldStart = 0; hideHoldSecShown = -1; return; }
+            if (elapsed >= 5000) { DislikePlaying(); hideHoldStart = 0; hideHoldSecShown = -1; return; }
             int remain = 5 - elapsed / 1000;
-            if (remain != hideHoldSecShown) { hideHoldSecShown = remain; ShowToast("Ocultar cancion... " + remain, Color.FromArgb(120, 60, 55)); }
+            if (remain != hideHoldSecShown) { hideHoldSecShown = remain; ShowToast("Vetar la cancion que suena... " + remain, Color.FromArgb(150, 55, 50)); }
         }
 
         private static GraphicsPath RoundRect(Rectangle r, int radius)
@@ -4785,7 +4840,7 @@ namespace Rocola
 
             DrainCoverTrash();   // libera carátulas expulsadas (seguro: no hay repintado en curso)
             CheckBusinessDayReset();   // al cruzar las 7 AM: reinicia el estado (nada de anoche cruza el corte del dia)
-            UpdateHideCombo();   // combo de desarrollador ROJO+ARRIBA+ABAJO 5 s -> oculta la cancion seleccionada
+            UpdateHideCombo();   // combo de desarrollador ROJO+ARRIBA+ABAJO 5 s -> veta la cancion que suena
 
             // BEAT: toma el RMS cuyo momento de OIRSE ya llego (medido ~0.85s antes, al llenar el colchon) y
             // detecta GOLPES contra un piso movil: el pulso visual cae encima del golpe que se esta oyendo,
