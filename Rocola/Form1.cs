@@ -106,6 +106,7 @@ namespace Rocola
         // aprende en esa pasada y ya queda pareja para siempre. Se puede apagar con normalizar=0 en rocola_config.txt.
         private bool normalizeOn = true;                                                     // nivelado activo (por defecto si)
         private bool trimSilence = true;                                                     // recortar el silencio inicial de cada cancion (arranque "punchy"); "recorte_silencio=" en config
+        private string backupDir = null;                                                     // 2o destino del respaldo (idealmente OTRO disco); "respaldo_dir=" en config
         private readonly Dictionary<string, float> loudCache = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);   // ruta -> RMS integrado medido
         private string curMeasurePath = null;                                                // cancion que se esta MIDIENDO ahora (null = no medir)
         private LevelTap curTap;                                                              // tap de la cancion actual (para cambiarle la ganancia en vivo desde Ctrl+F3)
@@ -431,6 +432,7 @@ namespace Rocola
             LoadBlacklist();     // canciones vetadas (combo ROJO+ARRIBA+ABAJO 5 s)
             PurgeBlacklist();    // ARRANQUE: borra del disco los archivos vetados en sesiones anteriores (ANTES de escanear)
             LoadIncompatible();  // rutas ya anotadas como no reproducibles (para no repetirlas)
+            BackupLearnedData(); // respalda lo aprendido de la sesion ANTERIOR antes de que esta lo modifique
             LayoutControls();
 #if ROCOLA_GPU
             if (gpuPrefOn) ApplyAlbumGpu(true, false, false);   // render por GPU por defecto (o preferencia guardada); silencioso si el device falla; no re-guarda
@@ -543,6 +545,7 @@ namespace Rocola
                     if (s.StartsWith("gpu=")) gpuPrefOn = s.Substring(4).Trim() != "0";
                     else if (s.StartsWith("normalizar=")) normalizeOn = s.Substring(11).Trim() != "0";   // nivelar volumen de las canciones (por defecto si)
                     else if (s.StartsWith("recorte_silencio=")) trimSilence = s.Substring(17).Trim() != "0";   // saltar aire muerto inicial (por defecto si)
+                    else if (s.StartsWith("respaldo_dir=")) { string d = s.Substring(13).Trim(); if (d.Length > 0) backupDir = d; }   // 2o destino del respaldo de datos aprendidos
                     else if (s.StartsWith("nivel_objetivo=")) { float v; if (float.TryParse(s.Substring(15).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) normTarget = Clampf(v, NormTargetMin, NormTargetMax); }
                     else if (s.StartsWith("nivel_fuerza=")) { float v; if (float.TryParse(s.Substring(13).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) normStrength = Clampf(v, 0f, 1f); }
                     else if (s.StartsWith("realce=")) { float v; if (float.TryParse(s.Substring(7).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) excAmount = Clampf(v, 0f, 1f); }   // realce de agudos (exciter, tipo DSEE)
@@ -571,6 +574,7 @@ namespace Rocola
                 sb.Append("gpu=").Append(gpuPrefOn ? "1" : "0").Append("\r\n");
                 sb.Append("normalizar=").Append(normalizeOn ? "1" : "0").Append("\r\n");
                 sb.Append("recorte_silencio=").Append(trimSilence ? "1" : "0").Append("\r\n");
+                if (!string.IsNullOrEmpty(backupDir)) sb.Append("respaldo_dir=").Append(backupDir).Append("\r\n");
                 sb.Append("nivel_objetivo=").Append(normTarget.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("nivel_fuerza=").Append(normStrength.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("realce=").Append(excAmount.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
@@ -3316,6 +3320,54 @@ namespace Rocola
             stateDay = BusinessDay(DateTime.Now);                                       // ociosa y dia nuevo -> reinicia UNA vez
             if (credits > 0) { credits = 0; UpdateCredits(); }                          // creditos que quedaron de anoche -> a cero
             try { File.Delete(StateFile()); } catch { }                                 // borra el estado guardado -> arranque limpio
+            BackupLearnedData();                                                        // cierre del dia: respalda lo aprendido (una vez al dia)
+        }
+
+        // ===================== RESPALDO DE DATOS APRENDIDOS =====================
+        // El disco puede morir (ya paso). La musica no se recupera, pero SI todo lo que la rocola aprendio:
+        // volumenes nivelados, huellas del EQ, blacklist, estadisticas de lo mas sonado, indice de biblioteca,
+        // config, mapa de botones y el modelo de IA. Se copia a respaldo\<fecha>\ (y a respaldo_dir= si se
+        // configuro, idealmente OTRO disco), guardando los 3 dias mas recientes. Son unos KB: barato y rapido.
+        private string BackupBaseDir() { return Path.Combine(Application.StartupPath, "respaldo"); }
+        private void BackupLearnedData()
+        {
+            string sp = Application.StartupPath, second = backupDir, baseDir = BackupBaseDir();
+            string[] files = {
+                LoudFile(), EqFile(), BlacklistFile(), LibStatsFile(), LibCacheFile(), ConfigFile, KeysFile(),
+                Path.Combine(sp, "rocola_ia.bin"), Path.Combine(sp, "rocola_incompatibles.txt")
+            };
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate   // fuera del hilo de la interfaz (no frena nada)
+            {
+                try
+                {
+                    string stamp = DateTime.Now.ToString("yyyy-MM-dd");
+                    BackupTo(Path.Combine(baseDir, stamp), files); PruneBackups(baseDir, 3);
+                    if (!string.IsNullOrEmpty(second))
+                    { try { BackupTo(Path.Combine(second, "respaldo_rocola", stamp), files); PruneBackups(Path.Combine(second, "respaldo_rocola"), 3); } catch { } }
+                }
+                catch { }
+            });
+        }
+        private static void BackupTo(string dir, string[] files)
+        {
+            Directory.CreateDirectory(dir);
+            for (int i = 0; i < files.Length; i++)
+                try { if (File.Exists(files[i])) File.Copy(files[i], Path.Combine(dir, Path.GetFileName(files[i])), true); }
+                catch { }
+        }
+        // Deja solo las 'keep' carpetas de respaldo mas recientes (por fecha de modificacion); borra el resto.
+        private static void PruneBackups(string baseDir, int keep)
+        {
+            try
+            {
+                DirectoryInfo bd = new DirectoryInfo(baseDir);
+                if (!bd.Exists) return;
+                DirectoryInfo[] dirs = bd.GetDirectories();
+                if (dirs.Length <= keep) return;
+                Array.Sort(dirs, delegate (DirectoryInfo a, DirectoryInfo b) { return b.LastWriteTime.CompareTo(a.LastWriteTime); });
+                for (int i = keep; i < dirs.Length; i++) { try { dirs[i].Delete(true); } catch { } }
+            }
+            catch { }
         }
 
         // Cuando se guardo el estado: la marca "ts=" (ticks); si falta (formato viejo), la fecha del archivo.
