@@ -112,12 +112,12 @@ namespace Rocola
         private string curMeasurePath = null;                                                // cancion que se esta MIDIENDO ahora (null = no medir)
         private LevelTap curTap;                                                              // tap de la cancion actual (para cambiarle la ganancia en vivo desde Ctrl+F3)
         private double curSumSq = 0; private long curSamples = 0;                             // acumuladores del RMS integrado de la cancion actual (los llena el hilo de audio)
-        // DISLIKES: el publico marca una cancion con el combo ROJO+VERDE+ABAJO. Se cuenta por cancion
-        // (ruta -> numero de dislikes); las canciones marcadas salen subrayadas en rojo en la lista del
-        // disco (con "en vivo/acustica" si aplica), y el disco con muchos dislikes brilla en rojo al
-        // seleccionarlo. Se guarda en rocola_dislikes.txt (mismo patron que el volumen: 2o plano, anti-churn).
-        private readonly Dictionary<string, int> dislikeCache = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        private const int DislikeAlbumThreshold = 3;   // total de dislikes en un disco para que su contorno brille rojo
+        // CANCIONES OCULTAS (funcion de desarrollador): con el combo ROJO+ARRIBA+ABAJO mantenido 5 s sobre la
+        // cancion seleccionada del disco, esa cancion se OCULTA y deja de aparecer (en el disco y el buscador).
+        // Se guarda la RUTA en rocola_ocultas.txt (una por linea). Para restaurar, borra ese archivo o la linea.
+        private readonly HashSet<string> hiddenSongs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        private int hideHoldStart = 0;      // tick en que empezo el combo de ocultar (0 = no se esta manteniendo)
+        private int hideHoldSecShown = -1;  // ultimo segundo mostrado en el aviso (para no repintar el aviso cada cuadro)
         // ----- EQ AUTOMATICO (correctivo y suave): cada cancion aprende su HUELLA TONAL (8 bandas anchas,
         // en dB relativos a su propia media) la primera vez que suena; desde la siguiente se corrige hacia
         // el promedio de la biblioteca, con tope de +-4 dB por banda y una perilla de fuerza en Ctrl+F3.
@@ -431,7 +431,7 @@ namespace Rocola
             if (iaVivo) IaEnsureMotor();   // IA en vivo encendida -> arranca el motor OCULTO (sin terminal que cuidar)
             LoadLoudCache();     // sonoridad medida por cancion (para nivelar el volumen de todas)
             LoadEqCache();       // huella tonal medida por cancion (para el EQ automatico)
-            LoadDislikeCache();  // dislikes del publico por cancion (combo ROJO+VERDE+ABAJO)
+            LoadHiddenSongs();   // canciones ocultas por el desarrollador (combo ROJO+ARRIBA+ABAJO 5 s)
             LoadIncompatible();  // rutas ya anotadas como no reproducibles (para no repetirlas)
             LayoutControls();
 #if ROCOLA_GPU
@@ -1361,7 +1361,6 @@ namespace Rocola
             albumView = new AlbumView();
             albumView.Sky = formStars;   // MISMO campo de estrellas que el fondo del form: la rejilla pinta su ventana (una sola pieza, sin costuras)
             albumView.GetCover = LoadCoverAsync;
-            albumView.IsAlbumDisliked = AlbumDisliked;   // contorno ROJO si el disco acumula muchos dislikes
             albumView.GetCoverByPath = LoadCoverByPath;
             albumView.OnActivate = delegate (int local)
             {
@@ -1385,7 +1384,6 @@ namespace Rocola
             songList.Font = Bold(13f);
             songList.RowH = 30;
             songList.GetCount = delegate { return songItems.Count; };
-            songList.GetDislikeTag = DislikeTag;   // subrayado rojo + "en vivo/acustica - N dislikes" en la lista
             songList.GetText = delegate (int i) { return (i >= 0 && i < songItems.Count) ? songItems[i].ToString() : ""; };
             songList.OnPick = delegate (int idx) { songSel = idx; FillSongPage(); UpdateTopSongVisuals(); };         // click simple
             songList.OnActivate = delegate (int idx) { songSel = idx; FillSongPage(); EnqueueSelectedSong(); };      // doble-click
@@ -2501,7 +2499,7 @@ namespace Rocola
             }
             else
             {
-                for (int i = 0; i < a.Tracks.Count; i++) songItems.Add(a.Tracks[i]);
+                for (int i = 0; i < a.Tracks.Count; i++) if (!IsHiddenTrack(a.Tracks[i])) songItems.Add(a.Tracks[i]);   // las ocultas no aparecen
             }
             songSel = 0;
             FillSongPage();
@@ -2795,6 +2793,7 @@ namespace Rocola
                 List<SearchItem> matches = new List<SearchItem>();
                 for (int i = 0; i < source.Count; i++)
                 {
+                    if (source[i].Kind == 2 && IsHiddenTrack(source[i].TrackRef)) continue;   // cancion oculta: no aparece en el buscador
                     int sc = Score(source[i].Key, q, spaceQ, toks);
                     if (sc > 0) { source[i].Score = sc; matches.Add(source[i]); }
                 }
@@ -2859,8 +2858,8 @@ namespace Rocola
         private bool IsSkip(Keys kc) { return kc == keySkip || (kc == Keys.ShiftKey && !IsConfiguredKey(Keys.ShiftKey)); }
         // ¿Esta presionado AHORA el boton REGRESAR (rocola) o Esc (teclado)?  (para los combos)
         private bool BackHeld() { return KeyHeld(keyBack) || (KeyHeld(Keys.Escape) && !IsConfiguredKey(Keys.Escape)); }
-        // Verde (PONER/Enter) y ABAJO mantenidos: el combo de DISLIKE es ROJO(Back)+VERDE(OK)+ABAJO.
-        private bool GreenHeld() { return KeyHeld(keyOK) || (KeyHeld(Keys.Enter) && !IsConfiguredKey(Keys.Enter)); }
+        // ARRIBA y ABAJO mantenidos: el combo de OCULTAR (desarrollador) es ROJO(Back)+ARRIBA+ABAJO por 5 s.
+        private bool UpHeld() { return KeyHeld(keyUp) || (KeyHeld(Keys.Up) && !IsConfiguredKey(Keys.Up)); }
         private bool DownHeld() { return KeyHeld(keyDown) || (KeyHeld(Keys.Down) && !IsConfiguredKey(Keys.Down)); }
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
@@ -2961,20 +2960,9 @@ namespace Rocola
                 return true;
             }
 
-            // DISLIKE: ROJO + VERDE + ABAJO sobre la cancion seleccionada del disco. Se atiende con verde
-            // como ultima tecla (rojo+abajo mantenidos) ANTES del buscador, para no abrirlo de paso.
-            if (IsOK(kc) && panelSongs.Visible && BackHeld() && DownHeld()) { DislikeSelectedSong(); return true; }
             // BUSCAR: manten REGRESAR y presiona PONER
             if (IsOK(kc) && BackHeld()) { ToggleSearch(); return true; }
 
-            // DISLIKE (abajo como ultima tecla): rojo+verde mantenidos. El verde+rojo pudo abrir el buscador
-            // de paso; se cierra. Solo aplica si hay disco abierto con una cancion seleccionada.
-            if (IsDown(kc) && panelSongs.Visible && BackHeld() && GreenHeld() && songItems.Count > 0)
-            {
-                if (searchOpen) CloseSearch();
-                DislikeSelectedSong();
-                return true;
-            }
             if (searchOpen)
             {
                 MarkSearchActivity();
@@ -2991,8 +2979,10 @@ namespace Rocola
             if (panelSongs.Visible)
             {
                 int rpc = SongRowsPerPage();   // misma cuenta que la paginacion: izq/der = pagina anterior/siguiente
-                if (IsUp(kc)) { MoveSong(-1); return true; }
-                if (IsDown(kc)) { MoveSong(1); return true; }
+                // Con ROJO mantenido, arriba/abajo NO navegan: queda reservado para el combo de ocultar
+                // (ROJO+ARRIBA+ABAJO 5 s), asi la lista no salta mientras se mantiene el combo.
+                if (IsUp(kc)) { if (!BackHeld()) MoveSong(-1); return true; }
+                if (IsDown(kc)) { if (!BackHeld()) MoveSong(1); return true; }
                 if (IsLeft(kc)) { MoveSong(-rpc); return true; }     // pagina anterior
                 if (IsRight(kc)) { MoveSong(rpc); return true; }      // pagina siguiente
                 if (IsOK(kc)) { EnqueueSelectedSong(); return true; }
@@ -3131,93 +3121,76 @@ namespace Rocola
             toastTimer.Stop(); toastTimer.Start();
         }
 
-        // ---------- DISLIKES ----------
-        private string DislikeFile() { return Path.Combine(Application.StartupPath, "rocola_dislikes.txt"); }
+        // ---------- CANCIONES OCULTAS (desarrollador) ----------
+        private string HiddenFile() { return Path.Combine(Application.StartupPath, "rocola_ocultas.txt"); }
 
-        private void LoadDislikeCache()
+        private void LoadHiddenSongs()
         {
             try
             {
-                string f = DislikeFile();
+                string f = HiddenFile();
                 if (!File.Exists(f)) return;
                 foreach (string line in File.ReadAllLines(f))
                 {
-                    int bar = line.IndexOf('|');
-                    if (bar <= 0 || bar >= line.Length - 1) continue;
-                    int c;
-                    if (int.TryParse(line.Substring(0, bar), out c) && c > 0)
-                        dislikeCache[line.Substring(bar + 1)] = c;
+                    string ruta = line.Trim();
+                    if (ruta.Length > 0) hiddenSongs.Add(ruta);
                 }
             }
             catch { }
         }
 
-        private readonly object dislikeSaveLock = new object();
-        private void SaveDislikeCache()
+        private readonly object hiddenSaveLock = new object();
+        private void SaveHiddenSongs()
         {
-            List<KeyValuePair<string, int>> snap;
-            try { snap = new List<KeyValuePair<string, int>>(dislikeCache); }
+            List<string> snap;
+            try { snap = new List<string>(hiddenSongs); }
             catch { return; }
             System.Threading.ThreadPool.QueueUserWorkItem(delegate
             {
                 try
                 {
-                    StringBuilder sb = new StringBuilder(snap.Count * 48 + 16);
-                    for (int i = 0; i < snap.Count; i++)
-                        if (snap[i].Value > 0) sb.Append(snap[i].Value).Append('|').Append(snap[i].Key).Append("\r\n");
-                    lock (dislikeSaveLock) File.WriteAllText(DislikeFile(), sb.ToString());
+                    StringBuilder sb = new StringBuilder(snap.Count * 64 + 16);
+                    for (int i = 0; i < snap.Count; i++) sb.Append(snap[i]).Append("\r\n");
+                    lock (hiddenSaveLock) File.WriteAllText(HiddenFile(), sb.ToString());
                 }
                 catch { }
             });
         }
 
-        private static string VersionKind(Track t)
-        {
-            if (t == null) return null;
-            string s = (t.ToString() + " " + (t.Title ?? "")).ToLowerInvariant();
-            if (s.Contains("en vivo") || s.Contains("en directo") || s.Contains("en concierto") || s.Contains("live")) return "en vivo";
-            if (s.Contains("acustic") || s.Contains("acoustic") || s.Contains("unplugged")) return "acustica";
-            return null;
-        }
+        private bool IsHiddenTrack(Track t) { return t != null && t.Path != null && hiddenSongs.Count > 0 && hiddenSongs.Contains(t.Path); }
 
-        private string DislikeTag(int idx)
-        {
-            if (idx < 0 || idx >= songItems.Count) return null;
-            Track t = songItems[idx] as Track;
-            if (t == null || t.Path == null) return null;
-            int c;
-            if (!dislikeCache.TryGetValue(t.Path, out c) || c <= 0) return null;
-            string cnt = c + (c == 1 ? " dislike" : " dislikes");
-            string kind = VersionKind(t);
-            return (kind != null) ? (kind + "  -  " + cnt) : cnt;
-        }
-
-        private bool AlbumDisliked(Album a)
-        {
-            if (a == null || a.Tracks == null || dislikeCache.Count == 0) return false;
-            int total = 0;
-            for (int i = 0; i < a.Tracks.Count; i++)
-            {
-                Track t = a.Tracks[i]; if (t == null || t.Path == null) continue;
-                int c; if (dislikeCache.TryGetValue(t.Path, out c)) { total += c; if (total >= DislikeAlbumThreshold) return true; }
-            }
-            return false;
-        }
-
-        private void DislikeSelectedSong()
+        // Oculta la cancion seleccionada del disco: deja de aparecer aqui y en el buscador (desde ya).
+        private void HideSelectedSong()
         {
             if (!panelSongs.Visible || songSel < 0 || songSel >= songItems.Count) return;
             Track t = songItems[songSel] as Track;
-            if (t == null || t.Path == null) return;   // los videos no se marcan
-            int c; dislikeCache.TryGetValue(t.Path, out c);
-            dislikeCache[t.Path] = c + 1;
-            SaveDislikeCache();
+            if (t == null || t.Path == null) return;   // los videos no se ocultan
+            if (!hiddenSongs.Add(t.Path)) return;       // ya estaba oculta (no deberia pasar: no aparece)
+            SaveHiddenSongs();
+            songItems.RemoveAt(songSel);                // desaparece de la lista al instante
+            if (songSel >= songItems.Count) songSel = songItems.Count - 1;
+            if (songSel < 0) songSel = 0;
+            FillSongPage();
             if (songList != null) songList.Invalidate();
 #if ROCOLA_GPU
-            uiOverlaySig = null;   // en modo GPU: rehacer la textura del interior (subrayado nuevo)
+            uiOverlaySig = null;   // en modo GPU: rehacer la textura del interior (una fila menos)
 #endif
-            helpBar.Flash(HelpBar.FEntrar); helpBar.Flash(HelpBar.FVolver);   // destello de los dos botones fisicos
-            ShowToast("Dislike a:  " + t.ToString() + "   (" + (c + 1) + ")", Color.FromArgb(170, 50, 45));
+            ShowToast("Cancion oculta:  " + t.ToString(), Color.FromArgb(120, 60, 55));
+        }
+
+        // Sondeo del combo de desarrollador ROJO+ARRIBA+ABAJO mantenido 5 s (medido por tiempo, no por tecla,
+        // para no interferir con el buscador ni la navegacion). Lo llama AnimTimer_Tick cada cuadro.
+        private void UpdateHideCombo()
+        {
+            bool holding = panelSongs.Visible && songItems.Count > 0 && !searchOpen
+                           && songSel >= 0 && songSel < songItems.Count && (songItems[songSel] is Track)
+                           && BackHeld() && UpHeld() && DownHeld();
+            if (!holding) { hideHoldStart = 0; hideHoldSecShown = -1; return; }
+            if (hideHoldStart == 0) { hideHoldStart = Environment.TickCount; hideHoldSecShown = -1; }
+            int elapsed = Environment.TickCount - hideHoldStart;
+            if (elapsed >= 5000) { HideSelectedSong(); hideHoldStart = 0; hideHoldSecShown = -1; return; }
+            int remain = 5 - elapsed / 1000;
+            if (remain != hideHoldSecShown) { hideHoldSecShown = remain; ShowToast("Ocultar cancion... " + remain, Color.FromArgb(120, 60, 55)); }
         }
 
         private static GraphicsPath RoundRect(Rectangle r, int radius)
@@ -5140,6 +5113,7 @@ namespace Rocola
 
             DrainCoverTrash();   // libera carátulas expulsadas (seguro: no hay repintado en curso)
             CheckBusinessDayReset();   // al cruzar las 7 AM: reinicia el estado (nada de anoche cruza el corte del dia)
+            UpdateHideCombo();   // combo de desarrollador ROJO+ARRIBA+ABAJO 5 s -> oculta la cancion seleccionada
             // VIGIA DEL MOTOR DE IA: si DSEE ULTRA esta activo y el motor no responde (recien arrancado, o se
             // cayo), lo (re)lanza OCULTO. Cada ~10s. Asi el motor va integrado con el release: nunca hay que
             // abrir un .bat a mano, y si el motor muere se revive solo.
@@ -6753,7 +6727,7 @@ namespace Rocola
 #if ROCOLA_GPU
             // La rejilla por GPU ya NO usa una textura a pantalla completa (cubeCache): el panel pide las celdas
             // con BuildGpuGrid y dibuja cada disco como su propio quad. cubeCache queda solo para el render por CPU.
-            public Bitmap ContourSpriteBmp { get { EnsureContourSprite(); return SelDislikedNow() ? contourSpriteRed : contourSprite; } }   // rojo si el disco tiene muchos dislikes; el panel GPU lo re-sube al cambiar la referencia
+            public Bitmap ContourSpriteBmp { get { EnsureContourSprite(); return contourSprite; } }   // sprite del resalte (lo hornea si falta: el panel GPU lo lee aunque el OnPaint por CPU este suprimido)
             public Rectangle ContourScreenRect()                     // donde va el contorno (celda seleccionada)
             {
                 if (contourSprite == null || Page == null || Selected < 0 || Selected >= Page.Count) return Rectangle.Empty;
@@ -6833,14 +6807,6 @@ namespace Rocola
 #endif
             private Pen cPenGlow, cPenMid, cPenLine;   // contorno del disco seleccionado (cacheadas; antes se creaban por cuadro)
             private Bitmap contourSprite; private Size contourSpriteSize = Size.Empty;   // contorno HORNEADO (3 trazos AA -> 1 copia); todas las casillas miden igual
-            private Bitmap contourSpriteRed;                                             // el mismo contorno pero ROJO, para discos con muchos dislikes
-            private Pen cPenGlowR, cPenMidR, cPenLineR;                                  // lapices del contorno rojo (cacheados)
-            public Func<Album, bool> IsAlbumDisliked;                                    // el form decide si el disco tiene muchos dislikes
-            private bool SelDislikedNow()
-            {
-                if (IsAlbumDisliked == null || Page == null || Selected < 0 || Selected >= Page.Count) return false;
-                return IsAlbumDisliked(Page[Selected]);
-            }
             private Font lblFont; private SolidBrush lblBrush; private StringFormat lblSF;       // recursos de etiquetas (reusables)
             private Bitmap blendBmp;   // para el fundido suave de portadas del cubo TOP
             public Starfield Sky;   // COMPARTIDO con el fondo del form: esta vista pinta su VENTANA del mismo campo (una sola pieza)
@@ -7199,28 +7165,15 @@ namespace Rocola
                     cPenMid = new Pen(Color.FromArgb(45, 255, 255, 255), 6f);     // resplandor medio
                     cPenLine = new Pen(Color.FromArgb(235, 255, 255, 255), 2.4f); // linea nitida
                 }
-                if (cPenGlowR == null)
-                {
-                    cPenGlowR = new Pen(Color.FromArgb(30, 255, 60, 55), 11f);    // resplandor rojo ancho
-                    cPenMidR = new Pen(Color.FromArgb(70, 255, 80, 70), 6f);      // resplandor rojo medio
-                    cPenLineR = new Pen(Color.FromArgb(240, 255, 90, 80), 2.4f);  // linea roja nitida
-                }
                 if (contourSprite != null) contourSprite.Dispose();
-                if (contourSpriteRed != null) contourSpriteRed.Dispose();
                 contourSprite = new Bitmap(need.Width, need.Height, PixelFormat.Format32bppPArgb);
-                contourSpriteRed = new Bitmap(need.Width, need.Height, PixelFormat.Format32bppPArgb);
+                using (Graphics cg = Graphics.FromImage(contourSprite))
                 using (GraphicsPath cp = RoundRect(new Rectangle(ContourMargin, ContourMargin, fr.Width, fr.Height), 10))
                 {
-                    using (Graphics cg = Graphics.FromImage(contourSprite))
-                    {
-                        cg.SmoothingMode = SmoothingMode.AntiAlias;
-                        cg.DrawPath(cPenGlow, cp); cg.DrawPath(cPenMid, cp); cg.DrawPath(cPenLine, cp);
-                    }
-                    using (Graphics cg = Graphics.FromImage(contourSpriteRed))
-                    {
-                        cg.SmoothingMode = SmoothingMode.AntiAlias;
-                        cg.DrawPath(cPenGlowR, cp); cg.DrawPath(cPenMidR, cp); cg.DrawPath(cPenLineR, cp);
-                    }
+                    cg.SmoothingMode = SmoothingMode.AntiAlias;
+                    cg.DrawPath(cPenGlow, cp);
+                    cg.DrawPath(cPenMid, cp);
+                    cg.DrawPath(cPenLine, cp);
                 }
                 contourSpriteSize = need;
             }
@@ -7265,8 +7218,7 @@ namespace Rocola
                         // Contorno blanco con resplandor del disco SELECCIONADO (ademas del giro), para ubicarlo facil.
                         Rectangle fr = area; fr.Inflate(4, 4);
                         EnsureContourSprite();   // sprite horneado (3 trazos AA -> 1 copia); solo se re-hornea al cambiar tamano
-                        Bitmap cs = SelDislikedNow() ? contourSpriteRed : contourSprite;   // ROJO si el disco tiene muchos dislikes
-                        if (cs != null) g.DrawImageUnscaled(cs, fr.X - ContourMargin, fr.Y - ContourMargin);
+                        if (contourSprite != null) g.DrawImageUnscaled(contourSprite, fr.X - ContourMargin, fr.Y - ContourMargin);
                         Cube.Draw(g, area, SelectedCover(), SelAngle);
                     }
                 }
@@ -7708,11 +7660,9 @@ namespace Rocola
             public Color Accent = DefaultAccent;   // color del genero (para el resaltado)
             public Action<int> OnActivate;      // doble-click sobre un item (encolar)
             public Action<int> OnPick;          // click simple: fija la seleccion
-            public Func<int, string> GetDislikeTag;   // "en vivo - 3 dislikes" o null; si no es null la fila va subrayada en rojo
 
             private SolidBrush hlB; private Pen hlP;
             private SolidBrush txtB; private StringFormat txtFmt; private SolidBrush bgB;
-            private Pen dislikePen; private SolidBrush dislikeB; private Font dislikeFont; private StringFormat dislikeFmt;
 
             public SongListView()
             {
@@ -7758,35 +7708,9 @@ namespace Rocola
                         hlP.Color = Color.FromArgb(180, Lighten(Accent, 0.45));
                         using (GraphicsPath gp = RoundedPath(hl, 9)) { g.FillPath(hlB, gp); g.DrawPath(hlP, gp); }
                     }
-                    string tag = (GetDislikeTag != null) ? GetDislikeTag(idx) : null;
-                    bool disliked = tag != null;
-                    // Con dislikes, la etiqueta ("en vivo/acustica - N") va a la DERECHA en rojo y el titulo se
-                    // encoge para no encimarse; ademas queda subrayado en rojo. Sin dislikes, todo como siempre.
-                    int tagW = 0;
-                    if (disliked)
-                    {
-                        if (dislikeFont == null)
-                        {
-                            dislikeFont = new Font(FontFamily.GenericSansSerif, 8.5f, FontStyle.Bold);
-                            dislikeB = new SolidBrush(Color.FromArgb(235, 90, 80));
-                            dislikePen = new Pen(Color.FromArgb(230, 220, 55, 50), 2f);
-                            dislikeFmt = new StringFormat(); dislikeFmt.FormatFlags = StringFormatFlags.NoWrap;
-                            dislikeFmt.Alignment = StringAlignment.Far; dislikeFmt.LineAlignment = StringAlignment.Center;
-                        }
-                        tagW = (int)Math.Ceiling(g.MeasureString(tag, dislikeFont).Width) + 6;
-                        if (tagW > w - 60) tagW = w - 60;
-                    }
-                    Rectangle tr = new Rectangle(r.X + 16, r.Y, r.Width - 22 - tagW, r.Height);
+                    Rectangle tr = new Rectangle(r.X + 16, r.Y, r.Width - 22, r.Height);
                     string text = (GetText != null) ? GetText(idx) : "";
-                    txtB.Color = disliked ? Color.FromArgb(255, 210, 200) : Color.White;   // titulo rojizo tenue si tiene dislikes
                     g.DrawString(text, Font, txtB, tr, txtFmt);   // GDI+: respeta la traslacion del Graphics (en el control es identidad; en la textura de UI lleva la lista a su sitio)
-                    if (disliked)
-                    {
-                        float tw2 = Math.Min(g.MeasureString(text, Font).Width, tr.Width);
-                        float uy = r.Y + RowH - 6;
-                        g.DrawLine(dislikePen, tr.X, uy, tr.X + tw2, uy);   // subrayado rojo bajo el titulo
-                        g.DrawString(tag, dislikeFont, dislikeB, new Rectangle(r.X + 16, r.Y, r.Width - 22, r.Height), dislikeFmt);
-                    }
                 }
             }
 
