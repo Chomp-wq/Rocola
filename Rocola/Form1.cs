@@ -105,6 +105,7 @@ namespace Rocola
         // demas. La PRIMERA vez que se oye una cancion nueva va a su volumen original (aun no hay medida): se
         // aprende en esa pasada y ya queda pareja para siempre. Se puede apagar con normalizar=0 en rocola_config.txt.
         private bool normalizeOn = true;                                                     // nivelado activo (por defecto si)
+        private bool trimSilence = true;                                                     // recortar el silencio inicial de cada cancion (arranque "punchy"); "recorte_silencio=" en config
         private readonly Dictionary<string, float> loudCache = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);   // ruta -> RMS integrado medido
         private string curMeasurePath = null;                                                // cancion que se esta MIDIENDO ahora (null = no medir)
         private LevelTap curTap;                                                              // tap de la cancion actual (para cambiarle la ganancia en vivo desde Ctrl+F3)
@@ -518,6 +519,7 @@ namespace Rocola
                     string s = line.Trim();
                     if (s.StartsWith("gpu=")) gpuPrefOn = s.Substring(4).Trim() != "0";
                     else if (s.StartsWith("normalizar=")) normalizeOn = s.Substring(11).Trim() != "0";   // nivelar volumen de las canciones (por defecto si)
+                    else if (s.StartsWith("recorte_silencio=")) trimSilence = s.Substring(17).Trim() != "0";   // saltar aire muerto inicial (por defecto si)
                     else if (s.StartsWith("nivel_objetivo=")) { float v; if (float.TryParse(s.Substring(15).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) normTarget = Clampf(v, NormTargetMin, NormTargetMax); }
                     else if (s.StartsWith("nivel_fuerza=")) { float v; if (float.TryParse(s.Substring(13).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) normStrength = Clampf(v, 0f, 1f); }
                     else if (s.StartsWith("realce=")) { float v; if (float.TryParse(s.Substring(7).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) excAmount = Clampf(v, 0f, 1f); }   // realce de agudos (exciter, tipo DSEE)
@@ -545,6 +547,7 @@ namespace Rocola
                 StringBuilder sb = new StringBuilder();
                 sb.Append("gpu=").Append(gpuPrefOn ? "1" : "0").Append("\r\n");
                 sb.Append("normalizar=").Append(normalizeOn ? "1" : "0").Append("\r\n");
+                sb.Append("recorte_silencio=").Append(trimSilence ? "1" : "0").Append("\r\n");
                 sb.Append("nivel_objetivo=").Append(normTarget.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("nivel_fuerza=").Append(normStrength.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("realce=").Append(excAmount.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
@@ -4011,7 +4014,8 @@ namespace Rocola
                 // NIVEL 2 (reconstructor espectral): solo se INSERTA en maquinas que cumplen requisitos; con
                 // Active=false es un pase directo (costo ~cero). Ctrl+F3 lo alterna EN VIVO para comparar A/B.
                 NAudio.Wave.ISampleProvider chain = reader;
-                if (sbrAllowed) { curSbr = new SpectralTap(reader); curSbr.Active = sbrOn; chain = curSbr; }
+                if (trimSilence) chain = new SilenceSkipProvider(reader, -55f, 5.0);   // salta el aire muerto inicial (arranque punchy)
+                if (sbrAllowed) { curSbr = new SpectralTap(chain); curSbr.Active = sbrOn; chain = curSbr; }
                 else curSbr = null;
                 LevelTap tap = new LevelTap(chain, this);
                 tap.Gain = NormGainFor(t.Path);
@@ -5408,6 +5412,48 @@ namespace Rocola
                     buffer[bo++] = (byte)((q >> 8) & 0xFF);
                 }
                 return got * 2;
+            }
+        }
+
+        // Salta el SILENCIO inicial de una cancion (aire muerto antes de que empiece la musica) para que
+        // arranque "punchy" al instante. Descarta muestras por debajo de un umbral MUY bajo (-55 dBFS, o sea
+        // inaudible: solo dead-air y piso de ruido) hasta la primera musica, con TOPE de segundos para no
+        // comerse un intro artistico. Va ANTES del nivelado/EQ, asi esos miden la musica y no el silencio.
+        private sealed class SilenceSkipProvider : NAudio.Wave.ISampleProvider
+        {
+            private readonly NAudio.Wave.ISampleProvider src;
+            private readonly float thresh;   // umbral lineal
+            private int budget;              // muestras maximas a descartar (tope de tiempo)
+            private bool skipping = true;
+            public SilenceSkipProvider(NAudio.Wave.ISampleProvider s, float thresholdDb, double maxSeconds)
+            {
+                src = s;
+                thresh = (float)Math.Pow(10.0, thresholdDb / 20.0);
+                int ch = Math.Max(1, s.WaveFormat.Channels);
+                budget = (int)(maxSeconds * s.WaveFormat.SampleRate) * ch;
+            }
+            public NAudio.Wave.WaveFormat WaveFormat { get { return src.WaveFormat; } }
+            public int Read(float[] buffer, int offset, int count)
+            {
+                if (!skipping) return src.Read(buffer, offset, count);
+                while (true)
+                {
+                    int n = src.Read(buffer, offset, count);
+                    if (n <= 0) { skipping = false; return n; }
+                    int firstLoud = n;                                     // por defecto: bloque entero silencioso
+                    for (int i = 0; i < n; i++)
+                        if (Math.Abs(buffer[offset + i]) >= thresh) { firstLoud = i; break; }
+                    if (firstLoud > budget) firstLoud = budget;            // nunca descartar mas que el tope
+                    budget -= firstLoud;
+                    if (firstLoud < n)                                     // hay musica (o se agoto el tope) en firstLoud
+                    {
+                        skipping = false;
+                        int keep = n - firstLoud;
+                        if (firstLoud > 0) Array.Copy(buffer, offset + firstLoud, buffer, offset, keep);
+                        return keep;
+                    }
+                    // bloque entero silencioso y dentro del tope: descartar y seguir leyendo
+                }
             }
         }
 
