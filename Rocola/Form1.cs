@@ -3221,9 +3221,10 @@ namespace Rocola
             }
             if (songSel >= songItems.Count) songSel = songItems.Count - 1;
             if (songSel < 0) songSel = 0;
-            // fuera de la cola las apariciones futuras (vetada = no debe volver a sonar)
-            for (int i = queue.Count - 1; i >= 0; i--)
-                if (!queue[i].IsVideo && queue[i].Song != null && queue[i].Song.Path == t.Path) queue.RemoveAt(i);
+            // La COLA NO se toca: si un cliente ya pago por esta cancion (una o varias veces), esos turnos se
+            // respetan y suenan esta sesion (quitarlos seria robarle lo que pago). El veto solo evita que se
+            // vuelva a encolar (ya no aparece en listas ni buscador) y la borra del disco al reiniciar; cualquier
+            // turno que sobreviva al reinicio apuntara a un archivo ya borrado y PlayTrack devuelve el credito.
             FillSongPage();
             if (songList != null) songList.Invalidate();
             UpdateNowPlayingUI();   // refresca "siguiente"/"en cola"
