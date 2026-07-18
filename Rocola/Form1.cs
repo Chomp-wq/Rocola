@@ -108,6 +108,8 @@ namespace Rocola
         // demas. La PRIMERA vez que se oye una cancion nueva va a su volumen original (aun no hay medida): se
         // aprende en esa pasada y ya queda pareja para siempre. Se puede apagar con normalizar=0 en rocola_config.txt.
         private bool normalizeOn = true;                                                     // nivelado activo (por defecto si)
+        private bool trimSilence = true;                                                     // recortar el silencio inicial de cada cancion (arranque "punchy"); "recorte_silencio=" en config
+        private string backupDir = null;                                                     // 2o destino del respaldo (idealmente OTRO disco); "respaldo_dir=" en config
         private readonly Dictionary<string, float> loudCache = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);   // ruta -> RMS integrado medido
         private string curMeasurePath = null;                                                // cancion que se esta MIDIENDO ahora (null = no medir)
         private LevelTap curTap;                                                              // tap de la cancion actual (para cambiarle la ganancia en vivo desde Ctrl+F3)
@@ -141,6 +143,29 @@ namespace Rocola
             double a0 = 1.0 + al / A;
             return new float[] { (float)((1.0 + al * A) / a0), (float)(-2.0 * cw / a0), (float)((1.0 - al * A) / a0), (float)(-2.0 * cw / a0), (float)((1.0 - al / A) / a0) };
         }
+        // Biquads del K-weighting (BS.1770 / LUFS): un high-shelf que realza agudos (+4 dB) y un high-pass
+        // que quita sub-graves. Con ellos, la sonoridad se mide como la OYE el humano. RBJ, a0-normalizado.
+        internal static float[] EqShelfHi(float f0, int rate, float dB, float Q)
+        {
+            double w = 2.0 * Math.PI * f0 / Math.Max(8000, rate);
+            double A = Math.Pow(10.0, dB / 40.0), cw = Math.Cos(w), al = Math.Sin(w) / (2.0 * Q), tsa = 2.0 * Math.Sqrt(A) * al;
+            double a0 = (A + 1) - (A - 1) * cw + tsa;
+            return new float[] {
+                (float)(A * ((A + 1) + (A - 1) * cw + tsa) / a0),
+                (float)(-2.0 * A * ((A - 1) + (A + 1) * cw) / a0),
+                (float)(A * ((A + 1) + (A - 1) * cw - tsa) / a0),
+                (float)(2.0 * ((A - 1) - (A + 1) * cw) / a0),
+                (float)(((A + 1) - (A - 1) * cw - tsa) / a0) };
+        }
+        internal static float[] EqHighPass(float f0, int rate, float Q)
+        {
+            double w = 2.0 * Math.PI * f0 / Math.Max(8000, rate);
+            double cw = Math.Cos(w), al = Math.Sin(w) / (2.0 * Q), a0 = 1.0 + al;
+            return new float[] {
+                (float)(((1 + cw) / 2.0) / a0), (float)((-(1 + cw)) / a0), (float)(((1 + cw) / 2.0) / a0),
+                (float)((-2.0 * cw) / a0), (float)((1 - al) / a0) };
+        }
+        private float[] kwCoef1, kwCoef2; private float[] kwSt; private int kwRate = 0;   // K-weighting del nivelado (2 biquads/canal, 8 estados)
         private readonly Dictionary<string, float[]> eqCache = new Dictionary<string, float[]>(StringComparer.OrdinalIgnoreCase);   // ruta -> huella tonal (8 dB rel. a su media)
         private float[] eqAvg = null;              // curva PROMEDIO de la biblioteca (el objetivo); null hasta tener 10 canciones medidas
         private float eqAmount = 0f;               // fuerza del EQ automatico 0..1 (perilla en Ctrl+F3; "eq_auto=" en config); 0 = apagado
@@ -434,6 +459,7 @@ namespace Rocola
             LoadBlacklist();     // canciones vetadas (combo ROJO+ARRIBA+ABAJO 5 s)
             PurgeBlacklist();    // ARRANQUE: borra del disco los archivos vetados en sesiones anteriores (ANTES de escanear)
             LoadIncompatible();  // rutas ya anotadas como no reproducibles (para no repetirlas)
+            BackupLearnedData(); // respalda lo aprendido de la sesion ANTERIOR antes de que esta lo modifique
             LayoutControls();
 #if ROCOLA_GPU
             if (gpuPrefOn) ApplyAlbumGpu(true, false, false);   // render por GPU por defecto (o preferencia guardada); silencioso si el device falla; no re-guarda
@@ -545,6 +571,8 @@ namespace Rocola
                     string s = line.Trim();
                     if (s.StartsWith("gpu=")) gpuPrefOn = s.Substring(4).Trim() != "0";
                     else if (s.StartsWith("normalizar=")) normalizeOn = s.Substring(11).Trim() != "0";   // nivelar volumen de las canciones (por defecto si)
+                    else if (s.StartsWith("recorte_silencio=")) trimSilence = s.Substring(17).Trim() != "0";   // saltar aire muerto inicial (por defecto si)
+                    else if (s.StartsWith("respaldo_dir=")) { string d = s.Substring(13).Trim(); if (d.Length > 0) backupDir = d; }   // 2o destino del respaldo de datos aprendidos
                     else if (s.StartsWith("nivel_objetivo=")) { float v; if (float.TryParse(s.Substring(15).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) normTarget = Clampf(v, NormTargetMin, NormTargetMax); }
                     else if (s.StartsWith("nivel_fuerza=")) { float v; if (float.TryParse(s.Substring(13).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) normStrength = Clampf(v, 0f, 1f); }
                     else if (s.StartsWith("realce=")) { float v; if (float.TryParse(s.Substring(7).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) excAmount = Clampf(v, 0f, 1f); }   // realce de agudos (exciter, tipo DSEE)
@@ -577,6 +605,8 @@ namespace Rocola
                 StringBuilder sb = new StringBuilder();
                 sb.Append("gpu=").Append(gpuPrefOn ? "1" : "0").Append("\r\n");
                 sb.Append("normalizar=").Append(normalizeOn ? "1" : "0").Append("\r\n");
+                sb.Append("recorte_silencio=").Append(trimSilence ? "1" : "0").Append("\r\n");
+                if (!string.IsNullOrEmpty(backupDir)) sb.Append("respaldo_dir=").Append(backupDir).Append("\r\n");
                 sb.Append("nivel_objetivo=").Append(normTarget.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("nivel_fuerza=").Append(normStrength.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("realce=").Append(excAmount.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
@@ -3380,6 +3410,54 @@ namespace Rocola
             stateDay = BusinessDay(DateTime.Now);                                       // ociosa y dia nuevo -> reinicia UNA vez
             if (credits > 0) { credits = 0; UpdateCredits(); }                          // creditos que quedaron de anoche -> a cero
             try { File.Delete(StateFile()); } catch { }                                 // borra el estado guardado -> arranque limpio
+            BackupLearnedData();                                                        // cierre del dia: respalda lo aprendido (una vez al dia)
+        }
+
+        // ===================== RESPALDO DE DATOS APRENDIDOS =====================
+        // El disco puede morir (ya paso). La musica no se recupera, pero SI todo lo que la rocola aprendio:
+        // volumenes nivelados, huellas del EQ, blacklist, estadisticas de lo mas sonado, indice de biblioteca,
+        // config, mapa de botones y el modelo de IA. Se copia a respaldo\<fecha>\ (y a respaldo_dir= si se
+        // configuro, idealmente OTRO disco), guardando los 3 dias mas recientes. Son unos KB: barato y rapido.
+        private string BackupBaseDir() { return Path.Combine(Application.StartupPath, "respaldo"); }
+        private void BackupLearnedData()
+        {
+            string sp = Application.StartupPath, second = backupDir, baseDir = BackupBaseDir();
+            string[] files = {
+                LoudFile(), EqFile(), BlacklistFile(), LibStatsFile(), LibCacheFile(), ConfigFile, KeysFile(),
+                Path.Combine(sp, "rocola_ia.bin"), Path.Combine(sp, "rocola_incompatibles.txt")
+            };
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate   // fuera del hilo de la interfaz (no frena nada)
+            {
+                try
+                {
+                    string stamp = DateTime.Now.ToString("yyyy-MM-dd");
+                    BackupTo(Path.Combine(baseDir, stamp), files); PruneBackups(baseDir, 3);
+                    if (!string.IsNullOrEmpty(second))
+                    { try { BackupTo(Path.Combine(second, "respaldo_rocola", stamp), files); PruneBackups(Path.Combine(second, "respaldo_rocola"), 3); } catch { } }
+                }
+                catch { }
+            });
+        }
+        private static void BackupTo(string dir, string[] files)
+        {
+            Directory.CreateDirectory(dir);
+            for (int i = 0; i < files.Length; i++)
+                try { if (File.Exists(files[i])) File.Copy(files[i], Path.Combine(dir, Path.GetFileName(files[i])), true); }
+                catch { }
+        }
+        // Deja solo las 'keep' carpetas de respaldo mas recientes (por fecha de modificacion); borra el resto.
+        private static void PruneBackups(string baseDir, int keep)
+        {
+            try
+            {
+                DirectoryInfo bd = new DirectoryInfo(baseDir);
+                if (!bd.Exists) return;
+                DirectoryInfo[] dirs = bd.GetDirectories();
+                if (dirs.Length <= keep) return;
+                Array.Sort(dirs, delegate (DirectoryInfo a, DirectoryInfo b) { return b.LastWriteTime.CompareTo(a.LastWriteTime); });
+                for (int i = keep; i < dirs.Length; i++) { try { dirs[i].Delete(true); } catch { } }
+            }
+            catch { }
         }
 
         // Cuando se guardo el estado: la marca "ts=" (ticks); si falta (formato viejo), la fecha del archivo.
@@ -4298,10 +4376,12 @@ namespace Rocola
                 curSumSq = 0; curSamples = 0;
                 eqMeasPath = (eqAmount > 0.001f) ? t.Path : null;   // huella tonal: se aprende solo con el EQ automatico encendido
                 eqMeasSum = new double[8]; eqMeasN = 0; eqMeasRate = 0;
+                kwRate = 0;   // reinicia el estado del K-weighting: cada cancion mide desde cero (sin cola del filtro anterior)
                 // NIVEL 2 (reconstructor espectral): solo se INSERTA en maquinas que cumplen requisitos; con
                 // Active=false es un pase directo (costo ~cero). Ctrl+F3 lo alterna EN VIVO para comparar A/B.
                 NAudio.Wave.ISampleProvider chain = reader;
-                if (sbrAllowed) { curSbr = new SpectralTap(reader, tierHd ? 4096 : 2048); curSbr.Active = sbrOn || iaSpectralFallback; chain = curSbr; }   // HD: ventana fina; respaldo espectral si ULTRA aun no tiene la version IA
+                if (trimSilence) chain = new SilenceSkipProvider(reader, -55f, 5.0);   // salta el aire muerto inicial (arranque punchy)
+                if (sbrAllowed) { curSbr = new SpectralTap(chain, tierHd ? 4096 : 2048); curSbr.Active = sbrOn || iaSpectralFallback; chain = curSbr; }   // HD: ventana fina; respaldo espectral si ULTRA aun no tiene la version IA
                 else curSbr = null;
                 LevelTap tap = new LevelTap(chain, this);
                 tap.Gain = NormGainFor(t.Path);
@@ -4343,7 +4423,7 @@ namespace Rocola
                     wo.NumberOfBuffers = 5;     // 5 bloques de 200ms
                     output = wo;
                     output.PlaybackStopped += Output_PlaybackStopped;
-                    output.Init(new SampleToWaveProvider16(tap));
+                    output.Init(new DitherWaveProvider16(tap));   // 16 bits CON dither TPDF (menos aspereza en pasajes silenciosos)
                 }
                 audioVisualDelayMs = isWasapi ? 240 : 850;   // el pulso visual se alinea al colchon REAL de la salida en uso
                 output.Play();
@@ -4537,29 +4617,56 @@ namespace Rocola
             // visualizador, no un ecualizador: basta que "se sienta" la separacion. El estado persiste entre bloques.
             const float A1 = 0.012f, A2 = 0.13f;
             float lp1 = fLp1, lp2 = fLp2;
-            double blockSumSq = 0;
             for (int c = 0; c < chunks; c++)              // el RMS se calcula FUERA del lock (no retiene a la UI)
             {
                 int start = offset + c * len;
                 int end = (c == chunks - 1) ? offset + count : start + len;
-                double sumRaw = 0, sumLo = 0, sumMid = 0, sumHi = 0;
+                double sumLo = 0, sumMid = 0, sumHi = 0;
                 for (int i = start; i < end; i++)
                 {
                     float v = buffer[i];
-                    sumRaw += v * v;
                     lp1 += (v - lp1) * A1;               // paso-bajo grave
                     lp2 += (v - lp2) * A2;               // paso-bajo medio
                     float lo = lp1, mid = lp2 - lp1, hi = v - lp2;
                     sumLo += lo * lo; sumMid += mid * mid; sumHi += hi * hi;
                 }
                 int n = Math.Max(1, end - start);
-                blockSumSq += sumRaw;
                 tLo[c] = (float)Math.Sqrt(sumLo / n);
                 tMid[c] = (float)Math.Sqrt(sumMid / n);
                 tHi[c] = (float)Math.Sqrt(sumHi / n);
             }
             fLp1 = lp1; fLp2 = lp2;   // persiste el estado de los filtros para el proximo bloque
-            if (curMeasurePath != null) { curSumSq += blockSumSq; curSamples += count; }   // NIVELADO: sonoridad integrada CRUDA (sin bandas)
+            // NIVELADO PERCEPTUAL (K-weighting, tipo LUFS/BS.1770): en vez del RMS crudo, mide la sonoridad
+            // PESADA por como la oye el humano (realza agudos ~+4 dB, quita sub-graves) via 2 biquads/canal.
+            // Asi una cancion con mucho bajo (que el RMS crudo sobre-estima) y una brillante quedan de verdad
+            // al mismo volumen PERCIBIDO. Solo durante el aprendizaje de esta cancion.
+            if (curMeasurePath != null)
+            {
+                if (kwRate != rate || kwCoef1 == null)
+                {
+                    kwRate = rate;
+                    kwCoef1 = EqShelfHi(1681.974f, rate, 3.99984f, 0.70717f);   // "head" shelf de BS.1770
+                    kwCoef2 = EqHighPass(38.1355f, rate, 0.50033f);             // RLB high-pass
+                    kwSt = new float[Math.Max(1, ch) * 8];
+                }
+                int ch3 = ch < 1 ? 1 : ch;
+                float[] st = kwSt, c1 = kwCoef1, c2 = kwCoef2;
+                double sumK = 0; long nK = 0;
+                for (int i = offset; i + ch3 <= offset + count; i += ch3)
+                {
+                    for (int c = 0; c < ch3; c++)
+                    {
+                        int b = c * 8; float x = buffer[i + c];
+                        float y1 = c1[0]*x + c1[1]*st[b] + c1[2]*st[b+1] - c1[3]*st[b+2] - c1[4]*st[b+3];
+                        st[b+1]=st[b]; st[b]=x; st[b+3]=st[b+2]; st[b+2]=y1;
+                        float y2 = c2[0]*y1 + c2[1]*st[b+4] + c2[2]*st[b+5] - c2[3]*st[b+6] - c2[4]*st[b+7];
+                        st[b+5]=st[b+4]; st[b+4]=y1; st[b+7]=st[b+6]; st[b+6]=y2;
+                        sumK += y2 * y2;
+                    }
+                    nK++;
+                }
+                curSumSq += sumK; curSamples += nK * ch3;   // energia K-pesada (misma escala que el RMS de antes)
+            }
             // EQ AUTOMATICO: huella tonal de la cancion (energia por banda via bandpass RBJ, mezcla MONO).
             // Solo durante el aprendizaje de esta cancion; ~70 operaciones por cuadro, costo despreciable.
             if (eqMeasPath != null)
@@ -5717,6 +5824,85 @@ namespace Rocola
                 {
                     float sc = 1f / n;
                     for (int i = 0; i < n; i++) { re[i] *= sc; im[i] *= sc; }
+                }
+            }
+        }
+
+        // Convierte flotante -> 16 bits con DITHER TPDF. El truncado directo (SampleToWaveProvider16) mete
+        // distorsion de cuantizacion en pasajes MUY silenciosos (finales de cancion, colas de reverb): el
+        // ultimo bit "escalona" la senal y suena a aspereza. El dither triangular de +-1 LSB convierte ese
+        // error en un ruido de fondo parejo e inaudible (mucho mas natural, es lo que hace un CD bien
+        // masterizado). Redondea en vez de truncar. ~4 operaciones por muestra. (En HD, WASAPI sale en
+        // flotante puro y no pasa por aqui; esto ayuda a la salida WaveOut de 16 bits de respaldo.)
+        private sealed class DitherWaveProvider16 : NAudio.Wave.IWaveProvider
+        {
+            private readonly NAudio.Wave.ISampleProvider src;
+            private readonly NAudio.Wave.WaveFormat fmt;
+            private float[] fbuf;
+            private readonly Random rng = new Random();
+            public DitherWaveProvider16(NAudio.Wave.ISampleProvider s)
+            {
+                src = s;
+                fmt = new NAudio.Wave.WaveFormat(s.WaveFormat.SampleRate, 16, s.WaveFormat.Channels);
+            }
+            public NAudio.Wave.WaveFormat WaveFormat { get { return fmt; } }
+            public int Read(byte[] buffer, int offset, int count)
+            {
+                int need = count / 2;                                  // muestras de 16 bits que caben
+                if (fbuf == null || fbuf.Length < need) fbuf = new float[need];
+                int got = src.Read(fbuf, 0, need);
+                int bo = offset;
+                for (int i = 0; i < got; i++)
+                {
+                    double d = rng.NextDouble() - rng.NextDouble();    // triangular en (-1..1) LSB
+                    float x = fbuf[i] * 32767f + (float)d;
+                    int q = (int)Math.Floor(x + 0.5f);                 // redondeo (no truncado)
+                    if (q > 32767) q = 32767; else if (q < -32768) q = -32768;
+                    buffer[bo++] = (byte)(q & 0xFF);
+                    buffer[bo++] = (byte)((q >> 8) & 0xFF);
+                }
+                return got * 2;
+            }
+        }
+
+        // Salta el SILENCIO inicial de una cancion (aire muerto antes de que empiece la musica) para que
+        // arranque "punchy" al instante. Descarta muestras por debajo de un umbral MUY bajo (-55 dBFS, o sea
+        // inaudible: solo dead-air y piso de ruido) hasta la primera musica, con TOPE de segundos para no
+        // comerse un intro artistico. Va ANTES del nivelado/EQ, asi esos miden la musica y no el silencio.
+        private sealed class SilenceSkipProvider : NAudio.Wave.ISampleProvider
+        {
+            private readonly NAudio.Wave.ISampleProvider src;
+            private readonly float thresh;   // umbral lineal
+            private int budget;              // muestras maximas a descartar (tope de tiempo)
+            private bool skipping = true;
+            public SilenceSkipProvider(NAudio.Wave.ISampleProvider s, float thresholdDb, double maxSeconds)
+            {
+                src = s;
+                thresh = (float)Math.Pow(10.0, thresholdDb / 20.0);
+                int ch = Math.Max(1, s.WaveFormat.Channels);
+                budget = (int)(maxSeconds * s.WaveFormat.SampleRate) * ch;
+            }
+            public NAudio.Wave.WaveFormat WaveFormat { get { return src.WaveFormat; } }
+            public int Read(float[] buffer, int offset, int count)
+            {
+                if (!skipping) return src.Read(buffer, offset, count);
+                while (true)
+                {
+                    int n = src.Read(buffer, offset, count);
+                    if (n <= 0) { skipping = false; return n; }
+                    int firstLoud = n;                                     // por defecto: bloque entero silencioso
+                    for (int i = 0; i < n; i++)
+                        if (Math.Abs(buffer[offset + i]) >= thresh) { firstLoud = i; break; }
+                    if (firstLoud > budget) firstLoud = budget;            // nunca descartar mas que el tope
+                    budget -= firstLoud;
+                    if (firstLoud < n)                                     // hay musica (o se agoto el tope) en firstLoud
+                    {
+                        skipping = false;
+                        int keep = n - firstLoud;
+                        if (firstLoud > 0) Array.Copy(buffer, offset + firstLoud, buffer, offset, keep);
+                        return keep;
+                    }
+                    // bloque entero silencioso y dentro del tope: descartar y seguir leyendo
                 }
             }
         }
