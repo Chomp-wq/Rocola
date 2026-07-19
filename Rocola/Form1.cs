@@ -1,4 +1,4 @@
-﻿// Rocola - version final (rocola fisica; botones configurables, sin lenguaje de teclado de PC)
+﻿// Rocola 2.5 - edicion HD (rocola fisica; botones configurables, sin lenguaje de teclado de PC)
 // RAMA rocola-hd: para rocolas POTENTES (Windows 7+, 4+ nucleos, .NET 4.8). Suma el NIVEL HD (se detecta
 // solo al arrancar): salida WASAPI FLOTANTE (float de punta a punta), STFT fino (4096) en el reconstructor
 // espectral, y el punto de enchufe para IA real (ver README, seccion "Rama rocola-hd").
