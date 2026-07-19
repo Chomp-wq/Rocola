@@ -1541,7 +1541,7 @@ namespace Rocola
                 // DEL HILO DE LA INTERFAZ al arrancar; aqui corre en el worker y el arranque no se congela.
                 tracks.AddRange(ctk);
                 cachedVideoPaths = cvd; cachedCovers = ccv;
-                BuildAlbums(); BuildVideoSection(); BuildSearchIndex();
+                BuildAlbums(roots); BuildVideoSection(roots); BuildSearchIndex();
                 e.Result = true;    // vino del cache
                 return;
             }
@@ -1554,7 +1554,7 @@ namespace Rocola
                 }
             tracks.AddRange(found);
             cachedVideoPaths = null; cachedCovers = null;
-            BuildAlbums(); BuildVideoSection(); BuildSearchIndex();   // tambien en segundo plano
+            BuildAlbums(roots); BuildVideoSection(roots); BuildSearchIndex();   // tambien en segundo plano
             e.Result = false;   // escaneo fresco
         }
 
@@ -1817,13 +1817,40 @@ namespace Rocola
             }
         }
 
-        private void BuildAlbums()
+        private static readonly char[] SepChars = { '\\', '/' };
+
+        // La carpeta del DISCO de una cancion: la subcarpeta de PRIMER nivel bajo su raiz de musica.
+        // Asi, si un disco tiene subcarpetas, TODA su musica (a cualquier profundidad) cae DENTRO del
+        // mismo disco en vez de aparecer como discos aparte. Si la cancion esta suelta en la raiz, el
+        // disco es la raiz misma. Si por lo que sea no cae bajo ninguna raiz, se usa su carpeta inmediata.
+        private static string AlbumFolderFor(string filePath, List<string> roots)
+        {
+            string dir = Path.GetDirectoryName(filePath);
+            if (string.IsNullOrEmpty(dir)) return "";
+            if (roots != null)
+                for (int r = 0; r < roots.Count; r++)
+                {
+                    string root = roots[r] == null ? "" : roots[r].TrimEnd('\\', '/');
+                    if (root.Length == 0) continue;
+                    if (string.Equals(dir, root, StringComparison.OrdinalIgnoreCase)) return dir;   // suelta en la raiz -> el disco ES la raiz
+                    if (dir.Length > root.Length + 1
+                        && dir.StartsWith(root, StringComparison.OrdinalIgnoreCase)
+                        && (dir[root.Length] == '\\' || dir[root.Length] == '/'))
+                    {
+                        int slash = dir.IndexOfAny(SepChars, root.Length + 1);   // fin de la subcarpeta de 1er nivel
+                        return (slash < 0) ? dir : dir.Substring(0, slash);      // raiz + 1a subcarpeta (lo mas profundo cae aqui)
+                    }
+                }
+            return dir;   // fuera de toda raiz conocida: como antes (carpeta inmediata)
+        }
+
+        private void BuildAlbums(List<string> roots)
         {
             Dictionary<string, Album> byFolder = new Dictionary<string, Album>(StringComparer.OrdinalIgnoreCase);
             for (int i = 0; i < tracks.Count; i++)
             {
                 Track t = tracks[i];
-                string folder = Path.GetDirectoryName(t.Path);
+                string folder = AlbumFolderFor(t.Path, roots);
                 if (folder == null) folder = "";
                 Album al;
                 if (!byFolder.TryGetValue(folder, out al)) { al = new Album(); al.Folder = folder; byFolder[folder] = al; }
@@ -1895,7 +1922,7 @@ namespace Rocola
             return (a.Name != null && a.Name.Length > 0) ? (a.Artist + " - " + a.Name) : a.Artist;
         }
 
-        private void BuildVideoSection()
+        private void BuildVideoSection(List<string> roots)
         {
             // carpeta -> album de audio existente
             Dictionary<string, Album> byFolder = new Dictionary<string, Album>(StringComparer.OrdinalIgnoreCase);
@@ -1908,7 +1935,7 @@ namespace Rocola
             foreach (string vf in vsrc)
             {
                 if (freshVids != null) freshVids.Add(vf);
-                string folder = Path.GetDirectoryName(vf); if (folder == null) folder = "";
+                string folder = AlbumFolderFor(vf, roots);
                 Album al;
                 if (byFolder.TryGetValue(folder, out al)) al.VideoFiles.Add(vf);
                 else if (videoOnly.TryGetValue(folder, out al)) al.VideoFiles.Add(vf);
