@@ -1,4 +1,4 @@
-﻿// Rocola - version final (rocola fisica; botones configurables, sin lenguaje de teclado de PC)
+﻿// Rocola 2.5 - edicion clasica XP (rocola fisica; botones configurables, sin lenguaje de teclado de PC)
 // Reemplaza TODO Form1.cs. Si tu proyecto NO se llama "Rocola", ajusta "namespace Rocola".
 //
 // BOTONES DE LA ROCOLA (configurables): la primera vez la rocola pide presionar cada boton

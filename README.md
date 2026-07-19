@@ -1,44 +1,67 @@
 # Rocola
 
-Rocola digital para Windows (WinForms + NAudio), pantalla completa, manejo por
-botonera/teclado, monedero con créditos, búsqueda con teclado en pantalla, sección
-de videos (Windows Media Player), portadas en cubos 3D, fondo estrellado por género,
-estadísticas ("Lo más sonado") y modo atracción.
+Rocola digital para Windows (WinForms + NAudio): pantalla completa, manejo por
+botonera/teclado físico (sin depender de un teclado de PC), monedero con créditos,
+búsqueda con teclado en pantalla, sección de videos (Windows Media Player), portadas
+en cubos 3D, fondo estrellado por género, estadísticas ("Lo más sonado" + TOP por
+artista) y modo atracción.
 
-## Proyecto
+**Versión 2.5.** Esta rama es la **edición clásica (XP)**: la rocola física original.
 
-Proyecto clásico de **.NET Framework 3.5** (Visual Studio). Abre `Rocola.slnx`
-y compila en Release. El resultado (`Rocola.exe` + `NAudio.dll`) se copia junto a
-la carpeta `musica` como siempre.
+## Ramas
 
-- Código: `Rocola/Form1.cs` (monolítico) + `Form1.Designer.cs` + `Program.cs`.
-- Dependencia: NAudio 1.9.0 (net35), referenciada vía `packages/`.
+- **Clásica (XP)** — *esta rama*, la de referencia: .NET Framework **3.5 sin SP1**,
+  Windows XP 32-bit, CPU modesto. Todo lo nuevo nace aquí y se prueba en el fierro real.
+- **`rocola-hd`** — para PC **potente** (Windows 7+/10, 4+ núcleos, 4+ GB): retargeteada
+  a **.NET Framework 4.8**, con salida WASAPI flotante, reconstructor espectral fino,
+  render por GPU (Direct3D 9) y **DSEE ULTRA** (IA Apollo con selector de GPU). Mismo
+  programa y misma lógica de audio; solo cambia lo que el fierro potente puede aprovechar.
 
-> `bin/`, `obj/`, `.vs/` y el resto del paquete NuGet no se versionan
-> (ver `.gitignore`); solo se incluye la DLL de NAudio que el `HintPath` necesita.
+## Qué hace (v2.5)
+
+**Operación (local):**
+- Se maneja con la botonera/teclado físico configurable; nada de "lenguaje de teclado de PC".
+- Monedero con créditos y cola de canciones pagadas.
+- Buscador con teclado en pantalla; sección de videos; portadas en cubos 3D girando.
+- "Lo más sonado" y TOP por artista; modo atracción cuando nadie la usa.
+- **Blindaje de kiosco**: una excepción no controlada se anota en `rocola_error.txt`
+  y la rocola **sigue corriendo** (ya no muere con el diálogo de error de .NET).
+
+**Sonido:**
+- **Nivelado perceptual** (tipo LUFS / BS.1770, con *K-weighting*): todas suenan parejo;
+  sube las bajitas y **no** baja las que ya suenan fuerte. Se auto-aprende por canción.
+- **Subir TODO el volumen**: dB extra generales con *rodilla suave* (fuerte sin distorsión áspera).
+- **EQ automático**: corrige el tono de cada canción hacia el promedio de la biblioteca.
+- **DSEE** (realce/reconstrucción de agudos): recrea el "aire" que el MP3 recorta.
+  Insignia **MEJORADA** (dorada, que brilla) cuando de verdad está mejorando la canción.
+- **Dither TPDF** al bajar a 16 bits (salida WaveOut de XP): sin ruido de truncado.
+- **Respaldo automático** de lo aprendido (volúmenes, EQ, estadísticas, blacklist, config)
+  a otra carpeta/disco; conserva los 3 respaldos más recientes.
+
+**Función de desarrollador (dueño):**
+- **Blacklist**: mantener **ROJO + ARRIBA + ABAJO** por 5 s veta la canción que **suena**.
+  Desaparece de las listas y del buscador al instante (pero **sigue sonando** hasta terminar) y
+  **respeta las copias ya pagadas en la cola**. Al reiniciar, esos archivos se **borran del disco**.
+
+## Compilar
+
+Proyecto clásico de **.NET Framework 3.5** (Visual Studio). Abre `Rocola.slnx` y compila en
+Release. El resultado (`Rocola.exe` + `NAudio.dll`) se copia junto a la carpeta `musica`, como siempre.
+
+- Código: `Rocola/Form1.cs` (monolítico) + `Form1.Designer.cs` + `Program.cs` + `D3D9Star.cs`.
+- Dependencia: **NAudio 1.9.0** (net35), referenciada vía `packages/`. Si Visual Studio marca
+  un error de NuGet, haz clic derecho en la solución → **Restore NuGet Packages**.
+
+> `bin/`, `obj/`, `.vs/` y el resto del paquete NuGet no se versionan (ver `.gitignore`);
+> solo se incluye la DLL de NAudio que el `HintPath` necesita.
 
 ## Optimizaciones aplicadas (sin cambiar aspecto ni comportamiento)
 
-1. **Estabilidad — `PlayTrack`**: si varias canciones seguidas no abren
-   (archivos movidos/corruptos), antes se apilaba `PlayTrack → PlayNext →
-   PlayTrack…` (posible *StackOverflow*). Ahora el `PlayNext` del `catch` va por
-   `BeginInvoke`, que desenreda la pila (igual que ya hacía el video).
-
-2. **Búsqueda — `Score` / `RecomputeResults`**: `" " + q` y `q.Split(' ')` se
-   calculaban dentro de `Score`, que corre por **cada** entrada del índice en
-   **cada** tecla. Ahora se calculan una sola vez por tecla y se pasan a `Score`
-   (el puntaje es idéntico). Con bibliotecas grandes elimina decenas de miles de
-   asignaciones de cadena por pulsación.
-
-3. **Render — `Cube.Draw`**: los tres arreglos de la proyección 3D (`ex`,
-   `depth`, `order`) se asignaban en cada llamada, y `Draw` se llama varias veces
-   por cuadro. Ahora se reutilizan vía `[ThreadStatic]`.
-
-### Pendiente (recomendado, no aplicado)
-
-- **Escaneo fresco recorre el disco 2–3 veces**: `SafeEnumerateAudio` camina todo
-  el árbol, `SafeEnumerateVideo` lo vuelve a caminar completo y `FindCover` hace un
-  `Directory.GetFiles` extra por carpeta. Un solo recorrido que clasifique
-  audio/video/portada por carpeta ~triplicaría la velocidad del primer escaneo (y
-  de cada F5) en HDD. Requiere tocar el escaneo y el caché de biblioteca, y probar
-  contra la biblioteca real para no cambiar qué portada/video se elige.
+1. **Estabilidad — `PlayTrack`**: si varias canciones seguidas no abren (archivos
+   movidos/corruptos), antes se apilaba `PlayTrack → PlayNext → PlayTrack…` (posible
+   *StackOverflow*). Ahora el `PlayNext` del `catch` va por `BeginInvoke`, que desenreda la pila.
+2. **Búsqueda — `Score` / `RecomputeResults`**: `" " + q` y `q.Split(' ')` se calculaban
+   dentro de `Score` (corre por **cada** entrada del índice en **cada** tecla). Ahora se calculan
+   una sola vez por pulsación (puntaje idéntico), evitando decenas de miles de asignaciones.
+3. **Render — `Cube.Draw`**: los tres arreglos de la proyección 3D (`ex`, `depth`, `order`)
+   se reutilizan vía `[ThreadStatic]` en vez de asignarse en cada llamada.
