@@ -37,7 +37,7 @@ artista) y modo atracción.
   Insignia **MEJORADA** (dorada, que brilla) cuando de verdad está mejorando la canción.
 - **Des-recorte (declipper)**: repara los picos aplastados "de fábrica" de archivos mal
   masterizados (reconstruye el pico redondo perdido; `declip=` en config).
-- **Fundido** suave de entrada/salida entre canciones (`fundido=` en config, 0-3 s).
+- **Fundido** suave de salida al terminar cada canción (`fundido=` en config, 0-3 s).
 - **Dither TPDF** al bajar a 16 bits (en la salida WaveOut de respaldo).
 - **Respaldo automático** de lo aprendido (volúmenes, EQ, estadísticas, config)
   a otra carpeta/disco; conserva los 3 respaldos más recientes.

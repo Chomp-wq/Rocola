@@ -179,7 +179,7 @@ namespace Rocola
         private float excAmount = 0.35f;
         private float masterDb = 0f;         // SUBIR TODO: dB extra para ABSOLUTAMENTE todas las canciones (0..12; barra en Ctrl+F3, "subir_db=" en config)
         private float MasterLin() { return (float)Math.Pow(10.0, masterDb / 20.0); }   // dB -> ganancia lineal
-        private float crossfadeSec = 0.5f;   // FUNDIDO entre canciones: segundos de rampa de entrada/salida ("fundido=" en config; 0 = corte seco)
+        private float crossfadeSec = 0.5f;   // FUNDIDO de salida entre canciones: segundos de rampa al terminar ("fundido=" en config; 0 = corte seco)
         private bool declipOn = true;        // DES-RECORTE (declipper): repara picos aplastados de origen en archivos mal masterizados ("declip=" en config)                                                      // intensidad del realce 0..1 (0 = apagado); 0.35 = sutil
         // ===== NIVELES DE MEJORA DE AUDIO segun la maquina (Ctrl+F3) =====
         // NIVEL 1: exciter (excAmount, arriba) - corre en CUALQUIER equipo (~1-2% de CPU).
@@ -5905,16 +5905,16 @@ namespace Rocola
             }
         }
 
-        // FUNDIDO de ENTRADA y SALIDA (fade suave por los bordes de cada cancion): sube de volumen suave al
-        // empezar y baja suave al terminar, en vez de arrancar/cortar en seco. NO solapa dos canciones (un
-        // crossfade con solape pediria rehacer el motor y arriesgar la fiabilidad del negocio); es un fundido
-        // por los extremos, que es lo que de verdad quita el "corte feo" entre temas. Va al FINAL de la cadena
+        // FUNDIDO de SALIDA (fade suave al TERMINAR cada cancion): baja el volumen suave en vez de cortar en
+        // seco, para que el paso al siguiente tema no sea un tajo. NO lleva fundido de ENTRADA a proposito:
+        // arrancar desde silencio se oia "bajo" al principio en la rocola. NO solapa dos canciones (un crossfade
+        // con solape pediria rehacer el motor y arriesgar la fiabilidad del negocio). Va al FINAL de la cadena
         // (tras el limitador); la medicion de volumen no se ve afectada (va antes, en LevelTap). Lineal = sin clics.
         private sealed class FadeProvider : NAudio.Wave.ISampleProvider
         {
             private readonly NAudio.Wave.ISampleProvider src;
             private readonly int ch;
-            private readonly long fadeFrames;    // frames de rampa (entrada = salida)
+            private readonly long fadeFrames;    // frames de rampa del fundido de salida
             private long totalFrames;            // frames totales (0 = desconocido o muy corta: sin fundido de salida)
             private long pos;                    // frames ya entregados
             public FadeProvider(NAudio.Wave.ISampleProvider s, long total, double fadeSec)
@@ -5935,7 +5935,6 @@ namespace Rocola
                 {
                     long p = pos + f;
                     float g = 1f;
-                    if (p < fadeFrames) g = (float)((double)p / fadeFrames);            // fundido de ENTRADA
                     if (totalFrames > 0)
                     {
                         long rem = totalFrames - p;                                     // frames que faltan para el final
