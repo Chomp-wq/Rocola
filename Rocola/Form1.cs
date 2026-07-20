@@ -182,6 +182,7 @@ namespace Rocola
         private float excAmount = 0.35f;                                                      // intensidad del realce 0..1 (0 = apagado); 0.35 = sutil
         private float masterDb = 0f;         // SUBIR TODO: dB extra para ABSOLUTAMENTE todas las canciones (0..12; barra en Ctrl+F3, "subir_db=" en config)
         private float MasterLin() { return (float)Math.Pow(10.0, masterDb / 20.0); }   // dB -> ganancia lineal
+        private float crossfadeSec = 0.5f;   // FUNDIDO entre canciones: segundos de rampa de entrada/salida ("fundido=" en config; 0 = corte seco)
         // ===== NIVELES DE MEJORA DE AUDIO segun la maquina (Ctrl+F3) =====
         // NIVEL 1: exciter (excAmount, arriba) - corre en CUALQUIER equipo (~1-2% de CPU).
         // NIVEL 2: reconstructor espectral (SpectralTap) - solo en maquinas que cumplen requisitos (ProbeAudioTier).
@@ -548,6 +549,7 @@ namespace Rocola
                     else if (s.StartsWith("nivel_fuerza=")) { float v; if (float.TryParse(s.Substring(13).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) normStrength = Clampf(v, 0f, 1f); }
                     else if (s.StartsWith("realce=")) { float v; if (float.TryParse(s.Substring(7).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) excAmount = Clampf(v, 0f, 1f); }   // realce de agudos (exciter, tipo DSEE)
                     else if (s.StartsWith("subir_db=")) { float v; if (float.TryParse(s.Substring(9).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) masterDb = Clampf(v, 0f, 12f); }   // SUBIR TODO (dB extra general)
+                    else if (s.StartsWith("fundido=")) { float v; if (float.TryParse(s.Substring(8).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) crossfadeSec = Clampf(v, 0f, 3f); }   // FUNDIDO entre canciones (segundos)
                     else if (s.StartsWith("eq_auto=")) { float v; if (float.TryParse(s.Substring(8).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) eqAmount = Clampf(v / 100f, 0f, 1f); }   // EQ automatico (fuerza %)
                     else if (s.StartsWith("dsee=")) sbrOn = s.Substring(5).Trim() == "1";   // reconstruccion espectral (NIVEL 2)
                     else if (s.StartsWith("dsee_forzar=")) { if (s.Substring(12).Trim() == "1") { sbrForce = true; sbrAllowed = true; sbrReason = ""; } }   // salta la puerta de requisitos (pruebas)
@@ -576,6 +578,7 @@ namespace Rocola
                 sb.Append("nivel_fuerza=").Append(normStrength.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("realce=").Append(excAmount.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("subir_db=").Append(masterDb.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
+                sb.Append("fundido=").Append(crossfadeSec.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("eq_auto=").Append(((int)Math.Round(eqAmount * 100f)).ToString(System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("dsee=").Append(sbrOn ? "1" : "0").Append("\r\n");
                 if (sbrForce) sb.Append("dsee_forzar=1\r\n");   // conservar la bandera manual de pruebas (este saver reescribe el archivo completo)
@@ -4133,7 +4136,13 @@ namespace Rocola
                 wo.NumberOfBuffers = 5;     // 5 bloques de 200ms
                 output = wo;
                 output.PlaybackStopped += Output_PlaybackStopped;
-                output.Init(new DitherWaveProvider16(new LookaheadLimiter(tap, 0.98f, 3.0)));   // 16 bits CON dither TPDF (menos aspereza en pasajes silenciosos)
+                NAudio.Wave.ISampleProvider outChain = new LookaheadLimiter(tap, 0.98f, 3.0);
+                if (crossfadeSec > 0.01f)
+                {
+                    long tf = 0; try { tf = (long)(reader.TotalTime.TotalSeconds * reader.WaveFormat.SampleRate); } catch { }
+                    outChain = new FadeProvider(outChain, tf, crossfadeSec);
+                }
+                output.Init(new DitherWaveProvider16(outChain));   // 16 bits CON dither TPDF (menos aspereza en pasajes silenciosos)
                 output.Play();
                 progressTimer.Start();
             }
@@ -5592,6 +5601,49 @@ namespace Rocola
                     dpos++; if (dpos >= look) dpos = 0;
                     if (primed < look) primed++;
                 }
+                return n;
+            }
+        }
+
+        // FUNDIDO de ENTRADA y SALIDA (fade suave por los bordes de cada cancion): sube de volumen suave al
+        // empezar y baja suave al terminar, en vez de arrancar/cortar en seco. NO solapa dos canciones (un
+        // crossfade con solape pediria rehacer el motor y arriesgar la fiabilidad del negocio); es un fundido
+        // por los extremos, que es lo que de verdad quita el "corte feo" entre temas. Va al FINAL de la cadena
+        // (tras el limitador); la medicion de volumen no se ve afectada (va antes, en LevelTap). Lineal = sin clics.
+        private sealed class FadeProvider : NAudio.Wave.ISampleProvider
+        {
+            private readonly NAudio.Wave.ISampleProvider src;
+            private readonly int ch;
+            private readonly long fadeFrames;    // frames de rampa (entrada = salida)
+            private long totalFrames;            // frames totales (0 = desconocido o muy corta: sin fundido de salida)
+            private long pos;                    // frames ya entregados
+            public FadeProvider(NAudio.Wave.ISampleProvider s, long total, double fadeSec)
+            {
+                src = s; ch = Math.Max(1, s.WaveFormat.Channels);
+                int rate = s.WaveFormat.SampleRate; if (rate < 8000) rate = 44100;
+                fadeFrames = (long)(fadeSec * rate); if (fadeFrames < 1) fadeFrames = 1;
+                totalFrames = total;
+                if (totalFrames > 0 && totalFrames < fadeFrames * 4) totalFrames = 0;   // cancion muy corta: sin fundido de salida
+            }
+            public NAudio.Wave.WaveFormat WaveFormat { get { return src.WaveFormat; } }
+            public int Read(float[] buffer, int offset, int count)
+            {
+                int n = src.Read(buffer, offset, count);
+                if (n <= 0) return n;
+                int frames = n / ch;
+                for (int f = 0; f < frames; f++)
+                {
+                    long p = pos + f;
+                    float g = 1f;
+                    if (p < fadeFrames) g = (float)((double)p / fadeFrames);            // fundido de ENTRADA
+                    if (totalFrames > 0)
+                    {
+                        long rem = totalFrames - p;                                     // frames que faltan para el final
+                        if (rem < fadeFrames) { float go = (rem <= 0) ? 0f : (float)((double)rem / fadeFrames); if (go < g) g = go; }   // fundido de SALIDA
+                    }
+                    if (g < 1f) { int bi = offset + f * ch; for (int c = 0; c < ch; c++) buffer[bi + c] *= g; }
+                }
+                pos += frames;
                 return n;
             }
         }
