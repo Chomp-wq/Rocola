@@ -30,10 +30,14 @@ artista) y modo atracción.
 **Sonido (idéntico en las dos ramas):**
 - **Nivelado perceptual** (tipo LUFS / BS.1770, con *K-weighting*): todas suenan parejo;
   sube las bajitas y **no** baja las que ya suenan fuerte. Se auto-aprende por canción.
-- **Subir TODO el volumen**: dB extra generales con *rodilla suave* (fuerte sin distorsión áspera).
+- **Subir TODO el volumen**: dB extra generales; el **limitador con pre-escucha** baja los picos
+  suave y ANTES de que lleguen (fuerte sin distorsión).
 - **EQ automático**: corrige el tono de cada canción hacia el promedio de la biblioteca.
 - **DSEE** (realce/reconstrucción de agudos): recrea el "aire" que el MP3 recorta.
   Insignia **MEJORADA** (dorada, que brilla) cuando de verdad está mejorando la canción.
+- **Des-recorte (declipper)**: repara los picos aplastados "de fábrica" de archivos mal
+  masterizados (reconstruye el pico redondo perdido; `declip=` en config).
+- **Fundido** suave de entrada/salida entre canciones (`fundido=` en config, 0-3 s).
 - **Dither TPDF** al bajar a 16 bits (en la salida WaveOut de respaldo).
 - **Respaldo automático** de lo aprendido (volúmenes, EQ, estadísticas, blacklist, config)
   a otra carpeta/disco; conserva los 3 respaldos más recientes.
@@ -63,8 +67,8 @@ Proyecto de **.NET Framework 4.8** (Visual Studio). Abre `Rocola.slnx` y compila
 El resultado (`Rocola.exe` + `NAudio.dll`) se copia junto a la carpeta `musica`, como siempre.
 
 - Código: `Rocola/Form1.cs` (monolítico) + `Form1.Designer.cs` + `Program.cs` + `D3D9Star.cs`.
-- Dependencia: **NAudio 1.9.0**, referenciada vía `packages/`. Si Visual Studio marca un error
-  de NuGet, haz clic derecho en la solución → **Restore NuGet Packages**.
+- Dependencia: **NAudio 1.9.0**: la DLL viene **incluida** en `packages/` y el proyecto la
+  referencia directo — compila **sin NuGet y sin internet** (ya no hay `packages.config`).
 - Herramientas de IA (opcionales, Python): `ia/` — entrenamiento (`entrenar_ia.py`,
   `entrenar_con_mi_musica.bat`), motor en tiempo real (`ia/tiempo_real/`) y upscale por lotes (`ia/upscale/`).
 
