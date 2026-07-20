@@ -175,8 +175,8 @@ namespace Rocola
         // "SUBIR EL PISO": las canciones BAJITAS se SUBEN hacia un volumen objetivo; las que ya suenan FUERTE
         // NO se bajan (se prioriza subir las flojas, como pidio el operador). Ajustable desde la interfaz (Ctrl+F3).
         //   ganancia = (objetivo / rms) ^ fuerza , recortada a [1 , tope]   (fuerza 0..1; nunca por debajo de 1 = no baja)
-        private float normTarget = 0.22f;                                                     // volumen OBJETIVO (RMS lineal) al que se suben las bajitas; mas alto = todo mas fuerte
-        private float normStrength = 0.90f;                                                   // FUERZA del nivelado 0..1 (cuanto se acerca al objetivo; 0 = no toca nada)
+        private float normTarget = 0.26f;                                                     // volumen OBJETIVO (RMS lineal) al que se suben las bajitas; mas alto = todo mas fuerte
+        private float normStrength = 1.0f;                                                    // FUERZA del nivelado 0..1 (cuanto se acerca al objetivo; 0 = no toca nada)
         // REALCE DE AGUDOS (estilo DSEE de Sony, en su version honesta): el MP3 recorta el "aire" (agudos
         // altos) y eso ya NO se puede recuperar; lo que SI se puede es re-inventarlo, que es lo que hacen el
         // propio DSEE y los EXCITERS ARMONICOS clasicos (las cajas Aphex/BBE de los equipos de bar): tomar la
@@ -184,7 +184,8 @@ namespace Rocola
         // mezclar una pizca de vuelta. Se aplica en LevelTap tras nivelar; perilla en Ctrl+F3; "realce=" en config.
         private float excAmount = 0.35f;
         private float masterDb = 0f;         // SUBIR TODO: dB extra para ABSOLUTAMENTE todas las canciones (0..12; barra en Ctrl+F3, "subir_db=" en config)
-        private float MasterLin() { return (float)Math.Pow(10.0, masterDb / 20.0); }   // dB -> ganancia lineal                                                      // intensidad del realce 0..1 (0 = apagado); 0.35 = sutil
+        private float MasterLin() { return (float)Math.Pow(10.0, masterDb / 20.0); }   // dB -> ganancia lineal
+        private float crossfadeSec = 0.5f;   // FUNDIDO entre canciones: segundos de rampa de entrada/salida ("fundido=" en config; 0 = corte seco)                                                      // intensidad del realce 0..1 (0 = apagado); 0.35 = sutil
         // ===== NIVELES DE MEJORA DE AUDIO segun la maquina (Ctrl+F3) =====
         // NIVEL 1: exciter (excAmount, arriba) - corre en CUALQUIER equipo (~1-2% de CPU).
         // NIVEL 2: reconstructor espectral (SpectralTap) - solo en maquinas que cumplen requisitos (ProbeAudioTier).
@@ -221,8 +222,8 @@ namespace Rocola
         private bool sbrForce = false;       // dsee_forzar=1 en config: salta la puerta (para pruebas)
         private string sbrReason = "";       // por que NO esta disponible (se muestra en Ctrl+F3)
         private SpectralTap curSbr;          // tap de la cancion actual (para alternar A/B en vivo)
-        private const float NormMaxBoost = 4.0f;                                              // tope de SUBIDA (~ +12 dB): evita amplificar al infinito una cancion casi muda
-        private const float NormTargetMin = 0.06f, NormTargetMax = 0.34f;                     // rango del volumen objetivo que ofrece la interfaz (de flojo a muy fuerte)
+        private const float NormMaxBoost = 5.62f;                                             // tope de SUBIDA (~ +15 dB): evita amplificar al infinito una cancion casi muda
+        private const float NormTargetMin = 0.06f, NormTargetMax = 0.40f;                     // rango del volumen objetivo que ofrece la interfaz (de flojo a muy fuerte)
         private const long NormMinSamples = 800000;                                           // ~9s en estereo 44.1k: minimo para aceptar una medida (si se salta antes, no se guarda)
         // ARCHIVOS INCOMPATIBLES: canciones que NO se pudieron reproducir ni con el lector tolerante (p.ej. MP3
         // demasiado dañados). Se anotan (una vez) en rocola_incompatibles.txt para poder repararlas/reconvertirlas.
@@ -575,6 +576,7 @@ namespace Rocola
                     else if (s.StartsWith("nivel_fuerza=")) { float v; if (float.TryParse(s.Substring(13).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) normStrength = Clampf(v, 0f, 1f); }
                     else if (s.StartsWith("realce=")) { float v; if (float.TryParse(s.Substring(7).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) excAmount = Clampf(v, 0f, 1f); }   // realce de agudos (exciter, tipo DSEE)
                     else if (s.StartsWith("subir_db=")) { float v; if (float.TryParse(s.Substring(9).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) masterDb = Clampf(v, 0f, 12f); }   // SUBIR TODO (dB extra general)
+                    else if (s.StartsWith("fundido=")) { float v; if (float.TryParse(s.Substring(8).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) crossfadeSec = Clampf(v, 0f, 3f); }   // FUNDIDO entre canciones (segundos)
                     else if (s.StartsWith("eq_auto=")) { float v; if (float.TryParse(s.Substring(8).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) eqAmount = Clampf(v / 100f, 0f, 1f); }   // EQ automatico (fuerza %)
                     else if (s.StartsWith("dsee=")) sbrOn = s.Substring(5).Trim() == "1";   // reconstruccion espectral (NIVEL 2)
                     else if (s.StartsWith("salida=")) { string v = s.Substring(7).Trim().ToLowerInvariant(); if (v == "auto" || v == "wasapi" || v == "waveout") outPref = v; }   // salida de audio (rama HD)
@@ -608,6 +610,7 @@ namespace Rocola
                 sb.Append("nivel_fuerza=").Append(normStrength.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("realce=").Append(excAmount.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("subir_db=").Append(masterDb.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
+                sb.Append("fundido=").Append(crossfadeSec.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("eq_auto=").Append(((int)Math.Round(eqAmount * 100f)).ToString(System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("dsee=").Append(sbrOn ? "1" : "0").Append("\r\n");
                 sb.Append("salida=").Append(outPref).Append("\r\n");
@@ -1100,7 +1103,7 @@ namespace Rocola
                         changed = true;
                         IaRestartMotor();   // el motor renace OCULTO con la GPU elegida (Apollo recarga en ella)
                     };
-                    bReset.Click += delegate { chkOn.Checked = true; tbTarget.Value = TargetToPct(0.22f); tbStr.Value = 90; tbExc.Value = 35; tbUp.Value = 0; tbEq.Value = 0; chkUltra.Checked = false; if (chkSbr.Enabled) chkSbr.Checked = false; chkIaAuto.Checked = true; apply(bReset, EventArgs.Empty); };
+                    bReset.Click += delegate { chkOn.Checked = true; tbTarget.Value = TargetToPct(0.26f); tbStr.Value = 100; tbExc.Value = 35; tbUp.Value = 0; tbEq.Value = 0; chkUltra.Checked = false; if (chkSbr.Enabled) chkSbr.Checked = false; chkIaAuto.Checked = true; apply(bReset, EventArgs.Empty); };
                     bOk.Click += delegate { dlg.Close(); };
                     dlg.CancelButton = bOk;
 
@@ -4412,6 +4415,12 @@ namespace Rocola
                 tap.Master = MasterLin();  // SUBIR TODO: los dB extra de Ctrl+F3 (con rodilla suave anti-distorsion)
                 tap.EqDb = EqCorrFor(t.Path);      // EQ automatico: correccion aprendida (null la 1a vez que suena)
                 curTap = tap;   // referencia para ajustar la ganancia en vivo (Ctrl+F3)
+                NAudio.Wave.ISampleProvider outChain = new LookaheadLimiter(tap, 0.98f, 3.0);   // limitador con pre-escucha (picos limpios)
+                if (crossfadeSec > 0.01f)
+                {
+                    long tf = 0; try { tf = (long)(reader.TotalTime.TotalSeconds * reader.WaveFormat.SampleRate); } catch { }
+                    outChain = new FadeProvider(outChain, tf, crossfadeSec);   // fundido suave de entrada/salida
+                }
                 // ===== SALIDA DE AUDIO (rama HD) =====
                 // WASAPI compartido con muestras FLOTANTES: float de punta a punta hasta el motor de audio
                 // moderno (sin bajar a 16 bits ni pasar por el mezclador clasico) y latencia menor. Si
@@ -4426,7 +4435,7 @@ namespace Rocola
                     try
                     {
                         wa = new NAudio.Wave.WasapiOut(NAudio.CoreAudioApi.AudioClientShareMode.Shared, 300);   // 300ms: colchon comodo con latencia baja
-                        wa.Init(new NAudio.Wave.SampleProviders.SampleToWaveProvider(tap));   // FLOAT de punta a punta (nada de 16 bits)
+                        wa.Init(new NAudio.Wave.SampleProviders.SampleToWaveProvider(outChain));   // FLOAT de punta a punta (nada de 16 bits)
                         wa.PlaybackStopped += Output_PlaybackStopped;
                         output = wa; isWasapi = true;
                     }
@@ -4446,7 +4455,7 @@ namespace Rocola
                     wo.NumberOfBuffers = 5;     // 5 bloques de 200ms
                     output = wo;
                     output.PlaybackStopped += Output_PlaybackStopped;
-                    output.Init(new DitherWaveProvider16(tap));   // 16 bits CON dither TPDF (menos aspereza en pasajes silenciosos)
+                    output.Init(new DitherWaveProvider16(outChain));   // 16 bits CON dither TPDF (menos aspereza en pasajes silenciosos)
                 }
                 audioVisualDelayMs = isWasapi ? 240 : 850;   // el pulso visual se alinea al colchon REAL de la salida en uso
                 output.Play();
@@ -5888,6 +5897,104 @@ namespace Rocola
             }
         }
 
+        // LIMITADOR CON PRE-ESCUCHA (lookahead): en vez de recortar el pico en seco (lo que mete distorsion
+        // aspera al subir el volumen), mira unos milisegundos HACIA ADELANTE y baja la ganancia SUAVE antes de
+        // que llegue el pico, recuperandola despacio. Asi se puede subir mucho el volumen y que suene fuerte pero
+        // LIMPIO. Aplica la MISMA ganancia a los dos canales (no mueve la imagen estereo). ~5 operaciones por
+        // muestra: barato hasta en la XP. Va al final de la cadena, tras el nivelado/realce.
+        private sealed class LookaheadLimiter : NAudio.Wave.ISampleProvider
+        {
+            private readonly NAudio.Wave.ISampleProvider src;
+            private readonly int ch;
+            private readonly float ceiling;    // techo (0..1): la senal nunca lo pasa
+            private readonly int look;         // frames de pre-escucha (retardo)
+            private readonly float[] delay;    // retardo circular: look frames * canales
+            private int dpos;                  // frame actual del circular
+            private int primed;                // frames ya cargados (durante el cebado sale silencio)
+            private float env = 1f;            // ganancia de reduccion actual (1 = sin reducir)
+            private readonly float atk, rel;   // bajada (rapida) y recuperacion (lenta)
+            public LookaheadLimiter(NAudio.Wave.ISampleProvider s, float ceilingLin, double lookMs)
+            {
+                src = s; ch = Math.Max(1, s.WaveFormat.Channels); ceiling = ceilingLin;
+                int rate = s.WaveFormat.SampleRate; if (rate < 8000) rate = 44100;
+                look = Math.Max(16, (int)(lookMs * 0.001 * rate));
+                delay = new float[look * ch];
+                atk = 1f - (float)Math.Exp(-3.0 / look);            // baja ~95% en el tiempo de pre-escucha
+                rel = 1f - (float)Math.Exp(-1.0 / (0.12 * rate));   // recupera en ~120 ms
+            }
+            public NAudio.Wave.WaveFormat WaveFormat { get { return src.WaveFormat; } }
+            public int Read(float[] buffer, int offset, int count)
+            {
+                int n = src.Read(buffer, offset, count);
+                if (n <= 0) return n;
+                int frames = n / ch;
+                for (int f = 0; f < frames; f++)
+                {
+                    int bi = offset + f * ch;
+                    float peak = 0f;
+                    for (int c = 0; c < ch; c++) { float a = buffer[bi + c]; if (a < 0f) a = -a; if (a > peak) peak = a; }
+                    float target = (peak > ceiling) ? (ceiling / peak) : 1f;
+                    env += (target < env ? atk : rel) * (target - env);   // ataca rapido, suelta lento
+                    int di = dpos * ch;
+                    for (int c = 0; c < ch; c++)
+                    {
+                        float outv = delay[di + c] * env;    // muestra de hace look frames, ya con la ganancia bajada
+                        delay[di + c] = buffer[bi + c];       // guarda la entrante
+                        if (primed < look) outv = 0f;         // cebado: los primeros look frames salen en silencio
+                        else if (outv > ceiling) outv = ceiling;    // red de seguridad si un transitorio se colo
+                        else if (outv < -ceiling) outv = -ceiling;
+                        buffer[bi + c] = outv;
+                    }
+                    dpos++; if (dpos >= look) dpos = 0;
+                    if (primed < look) primed++;
+                }
+                return n;
+            }
+        }
+
+        // FUNDIDO de ENTRADA y SALIDA (fade suave por los bordes de cada cancion): sube de volumen suave al
+        // empezar y baja suave al terminar, en vez de arrancar/cortar en seco. NO solapa dos canciones (un
+        // crossfade con solape pediria rehacer el motor y arriesgar la fiabilidad del negocio); es un fundido
+        // por los extremos, que es lo que de verdad quita el "corte feo" entre temas. Va al FINAL de la cadena
+        // (tras el limitador); la medicion de volumen no se ve afectada (va antes, en LevelTap). Lineal = sin clics.
+        private sealed class FadeProvider : NAudio.Wave.ISampleProvider
+        {
+            private readonly NAudio.Wave.ISampleProvider src;
+            private readonly int ch;
+            private readonly long fadeFrames;    // frames de rampa (entrada = salida)
+            private long totalFrames;            // frames totales (0 = desconocido o muy corta: sin fundido de salida)
+            private long pos;                    // frames ya entregados
+            public FadeProvider(NAudio.Wave.ISampleProvider s, long total, double fadeSec)
+            {
+                src = s; ch = Math.Max(1, s.WaveFormat.Channels);
+                int rate = s.WaveFormat.SampleRate; if (rate < 8000) rate = 44100;
+                fadeFrames = (long)(fadeSec * rate); if (fadeFrames < 1) fadeFrames = 1;
+                totalFrames = total;
+                if (totalFrames > 0 && totalFrames < fadeFrames * 4) totalFrames = 0;   // cancion muy corta: sin fundido de salida
+            }
+            public NAudio.Wave.WaveFormat WaveFormat { get { return src.WaveFormat; } }
+            public int Read(float[] buffer, int offset, int count)
+            {
+                int n = src.Read(buffer, offset, count);
+                if (n <= 0) return n;
+                int frames = n / ch;
+                for (int f = 0; f < frames; f++)
+                {
+                    long p = pos + f;
+                    float g = 1f;
+                    if (p < fadeFrames) g = (float)((double)p / fadeFrames);            // fundido de ENTRADA
+                    if (totalFrames > 0)
+                    {
+                        long rem = totalFrames - p;                                     // frames que faltan para el final
+                        if (rem < fadeFrames) { float go = (rem <= 0) ? 0f : (float)((double)rem / fadeFrames); if (go < g) g = go; }   // fundido de SALIDA
+                    }
+                    if (g < 1f) { int bi = offset + f * ch; for (int c = 0; c < ch; c++) buffer[bi + c] *= g; }
+                }
+                pos += frames;
+                return n;
+            }
+        }
+
         // ==========  RENDER DEL CUBO (compartido)  ==========
         // Toma el nivel de audio (RMS) del bloque recien leido SIN modificar el sonido: solo observa el
         // buffer que ya lleno el lector y lo reporta. Sirve para que las estrellas laten con la musica.
@@ -5932,7 +6039,7 @@ namespace Rocola
                         eqDbUsed = eqDb;
                     }
                     if (eqOn && eqActivos == 0) eqOn = false;
-                    if (g != 1f || exOn || eqOn)   // nivelado + EQ + realce en UNA pasada, con recorte duro de picos al final
+                    if (g != 1f || exOn || eqOn)   // nivelado + EQ + realce en UNA pasada (el limitador de la cadena controla los picos)
                     {
                         int ch = WaveFormat.Channels; if (ch < 1) ch = 1;
                         if (exOn && (exLp == null || exLp.Length < ch)) exLp = new float[ch];
@@ -5962,11 +6069,9 @@ namespace Rocola
                                 v += (float)Math.Tanh(h * 2.5) * 0.4f * mix;        // saturacion suave = armonicos nuevos por encima (brillo/presencia)
                             }
                             if (exOn || eqOn) { ci++; if (ci >= ch) ci = 0; }
-                            // RODILLA SUAVE desde 0.95: al subir todo el volumen, los picos se redondean con
-                            // tanh en vez de recortarse en seco (el recorte duro queda solo como ultima garantia).
-                            if (v > 0.95f) v = 0.95f + 0.05f * (float)Math.Tanh((v - 0.95f) * 20f);
-                            else if (v < -0.95f) v = -0.95f - 0.05f * (float)Math.Tanh((-v - 0.95f) * 20f);
-                            if (v > 1f) v = 1f; else if (v < -1f) v = -1f;
+                            // El control de picos ya NO se hace aqui (era una rodilla que distorsiona al empujar):
+                            // lo hace el LIMITADOR CON PRE-ESCUCHA al final de la cadena, que baja la ganancia suave
+                            // ANTES del pico. Aqui la senal sale CRUDA (puede pasar de 1.0; el limitador la controla).
                             buffer[i] = v;
                         }
                     }
