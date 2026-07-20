@@ -39,13 +39,8 @@ artista) y modo atracción.
   masterizados (reconstruye el pico redondo perdido; `declip=` en config).
 - **Fundido** suave de entrada/salida entre canciones (`fundido=` en config, 0-3 s).
 - **Dither TPDF** al bajar a 16 bits (salida WaveOut de XP): sin ruido de truncado.
-- **Respaldo automático** de lo aprendido (volúmenes, EQ, estadísticas, blacklist, config)
+- **Respaldo automático** de lo aprendido (volúmenes, EQ, estadísticas, config)
   a otra carpeta/disco; conserva los 3 respaldos más recientes.
-
-**Función de desarrollador (dueño):**
-- **Blacklist**: mantener **ROJO + ARRIBA + ABAJO** por 5 s veta la canción que **suena**.
-  Desaparece de las listas y del buscador al instante (pero **sigue sonando** hasta terminar) y
-  **respeta las copias ya pagadas en la cola**. Al reiniciar, esos archivos se **borran del disco**.
 
 ## Compilar
 
