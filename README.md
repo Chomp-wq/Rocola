@@ -30,10 +30,14 @@ artista) y modo atracción.
 **Sonido:**
 - **Nivelado perceptual** (tipo LUFS / BS.1770, con *K-weighting*): todas suenan parejo;
   sube las bajitas y **no** baja las que ya suenan fuerte. Se auto-aprende por canción.
-- **Subir TODO el volumen**: dB extra generales con *rodilla suave* (fuerte sin distorsión áspera).
+- **Subir TODO el volumen**: dB extra generales; el **limitador con pre-escucha** baja los picos
+  suave y ANTES de que lleguen (fuerte sin distorsión).
 - **EQ automático**: corrige el tono de cada canción hacia el promedio de la biblioteca.
 - **DSEE** (realce/reconstrucción de agudos): recrea el "aire" que el MP3 recorta.
   Insignia **MEJORADA** (dorada, que brilla) cuando de verdad está mejorando la canción.
+- **Des-recorte (declipper)**: repara los picos aplastados "de fábrica" de archivos mal
+  masterizados (reconstruye el pico redondo perdido; `declip=` en config).
+- **Fundido** suave de entrada/salida entre canciones (`fundido=` en config, 0-3 s).
 - **Dither TPDF** al bajar a 16 bits (salida WaveOut de XP): sin ruido de truncado.
 - **Respaldo automático** de lo aprendido (volúmenes, EQ, estadísticas, blacklist, config)
   a otra carpeta/disco; conserva los 3 respaldos más recientes.
@@ -49,8 +53,8 @@ Proyecto clásico de **.NET Framework 3.5** (Visual Studio). Abre `Rocola.slnx` 
 Release. El resultado (`Rocola.exe` + `NAudio.dll`) se copia junto a la carpeta `musica`, como siempre.
 
 - Código: `Rocola/Form1.cs` (monolítico) + `Form1.Designer.cs` + `Program.cs` + `D3D9Star.cs`.
-- Dependencia: **NAudio 1.9.0** (net35), referenciada vía `packages/`. Si Visual Studio marca
-  un error de NuGet, haz clic derecho en la solución → **Restore NuGet Packages**.
+- Dependencia: **NAudio 1.9.0** (net35): la DLL viene **incluida** en `packages/` y el proyecto
+  la referencia directo — compila **sin NuGet y sin internet** (ya no hay `packages.config`).
 
 > `bin/`, `obj/`, `.vs/` y el resto del paquete NuGet no se versionan (ver `.gitignore`);
 > solo se incluye la DLL de NAudio que el `HintPath` necesita.

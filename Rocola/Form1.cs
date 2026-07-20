@@ -183,6 +183,7 @@ namespace Rocola
         private float masterDb = 0f;         // SUBIR TODO: dB extra para ABSOLUTAMENTE todas las canciones (0..12; barra en Ctrl+F3, "subir_db=" en config)
         private float MasterLin() { return (float)Math.Pow(10.0, masterDb / 20.0); }   // dB -> ganancia lineal
         private float crossfadeSec = 0.5f;   // FUNDIDO entre canciones: segundos de rampa de entrada/salida ("fundido=" en config; 0 = corte seco)
+        private bool declipOn = true;        // DES-RECORTE (declipper): repara picos aplastados de origen en archivos mal masterizados ("declip=" en config)
         // ===== NIVELES DE MEJORA DE AUDIO segun la maquina (Ctrl+F3) =====
         // NIVEL 1: exciter (excAmount, arriba) - corre en CUALQUIER equipo (~1-2% de CPU).
         // NIVEL 2: reconstructor espectral (SpectralTap) - solo en maquinas que cumplen requisitos (ProbeAudioTier).
@@ -550,6 +551,7 @@ namespace Rocola
                     else if (s.StartsWith("realce=")) { float v; if (float.TryParse(s.Substring(7).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) excAmount = Clampf(v, 0f, 1f); }   // realce de agudos (exciter, tipo DSEE)
                     else if (s.StartsWith("subir_db=")) { float v; if (float.TryParse(s.Substring(9).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) masterDb = Clampf(v, 0f, 12f); }   // SUBIR TODO (dB extra general)
                     else if (s.StartsWith("fundido=")) { float v; if (float.TryParse(s.Substring(8).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) crossfadeSec = Clampf(v, 0f, 3f); }   // FUNDIDO entre canciones (segundos)
+                    else if (s.StartsWith("declip=")) declipOn = s.Substring(7).Trim() != "0";   // des-recorte de picos aplastados (por defecto si)
                     else if (s.StartsWith("eq_auto=")) { float v; if (float.TryParse(s.Substring(8).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) eqAmount = Clampf(v / 100f, 0f, 1f); }   // EQ automatico (fuerza %)
                     else if (s.StartsWith("dsee=")) sbrOn = s.Substring(5).Trim() == "1";   // reconstruccion espectral (NIVEL 2)
                     else if (s.StartsWith("dsee_forzar=")) { if (s.Substring(12).Trim() == "1") { sbrForce = true; sbrAllowed = true; sbrReason = ""; } }   // salta la puerta de requisitos (pruebas)
@@ -579,6 +581,7 @@ namespace Rocola
                 sb.Append("realce=").Append(excAmount.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("subir_db=").Append(masterDb.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("fundido=").Append(crossfadeSec.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
+                sb.Append("declip=").Append(declipOn ? "1" : "0").Append("\r\n");
                 sb.Append("eq_auto=").Append(((int)Math.Round(eqAmount * 100f)).ToString(System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("dsee=").Append(sbrOn ? "1" : "0").Append("\r\n");
                 if (sbrForce) sb.Append("dsee_forzar=1\r\n");   // conservar la bandera manual de pruebas (este saver reescribe el archivo completo)
@@ -4117,6 +4120,7 @@ namespace Rocola
                 // NIVEL 2 (reconstructor espectral): solo se INSERTA en maquinas que cumplen requisitos; con
                 // Active=false es un pase directo (costo ~cero). Ctrl+F3 lo alterna EN VIVO para comparar A/B.
                 NAudio.Wave.ISampleProvider chain = reader;
+                if (declipOn) chain = new DeclipProvider(chain);   // DES-RECORTE: repara picos aplastados de origen (antes de medir y de DSEE)
                 if (sbrAllowed) { curSbr = new SpectralTap(chain); curSbr.Active = sbrOn; chain = curSbr; }
                 else curSbr = null;
                 LevelTap tap = new LevelTap(chain, this);
@@ -5550,6 +5554,94 @@ namespace Rocola
             }
         }
 
+        // DES-RECORTE (declipper): muchos MP3 de la "guerra del volumen" vienen con los picos APLASTADOS
+        // de fabrica (el maestro se grabo recortado): se oye aspero en las partes fuertes. Esto detecta los
+        // "techos planos" (varias muestras seguidas pegadas al maximo digital) y RECONSTRUYE el pico redondo
+        // que deberia haber ahi, continuando la trayectoria de la onda (arco parabolico) hasta aterrizar en
+        // la salida del techo. Solo actua en recortes al TOPE digital (~0.985+), el caso tipico; el pico
+        // reconstruido puede pasar de 1.0 y eso esta bien: el limitador del final lo baja LIMPIO. Si la senal
+        // no viene recortada, pasa BIT-EXACTA (solo con ~1.5 ms de retardo). Por canal, sin tocar el estereo.
+        private sealed class DeclipProvider : NAudio.Wave.ISampleProvider
+        {
+            private const float Thresh = 0.985f;   // umbral del techo digital
+            private const int MinRun = 3;          // menos de 3 muestras al tope = pico sano (no se toca)
+            private const int MaxRun = 64;         // mas de ~1.5 ms plano = a proposito (sintetizador); no se toca
+            private const int D = MaxRun + 4;      // retardo: el techo entero cabe dentro antes de salir
+            private readonly NAudio.Wave.ISampleProvider src;
+            private readonly int ch;
+            private readonly float[] delay;        // circular: D cuadros * canales
+            private int dpos;                      // cuadro de escritura actual
+            private int primed;                    // cuadros cargados (mientras se llena sale silencio: ~1.5 ms una vez)
+            private readonly int[] runLen;         // por canal: muestras seguidas pegadas al techo
+            private readonly int[] runSign;        // por canal: signo del techo actual (+1/-1)
+            private readonly float[] preVal;       // por canal: la muestra justo ANTES del techo
+            private readonly float[] preSlope;     // por canal: pendiente de entrada al techo
+            private readonly float[] last1, last2; // por canal: las dos muestras anteriores (para la pendiente)
+            private readonly bool[] tooLong;       // por canal: el techo se paso de MaxRun (abandonar)
+            public DeclipProvider(NAudio.Wave.ISampleProvider s)
+            {
+                src = s; ch = Math.Max(1, s.WaveFormat.Channels);
+                delay = new float[D * ch];
+                runLen = new int[ch]; runSign = new int[ch]; preVal = new float[ch]; preSlope = new float[ch];
+                last1 = new float[ch]; last2 = new float[ch]; tooLong = new bool[ch];
+            }
+            public NAudio.Wave.WaveFormat WaveFormat { get { return src.WaveFormat; } }
+            private void Repair(int c, float landing)
+            {
+                int L = runLen[c];
+                if (L < MinRun || L > MaxRun || tooLong[c]) return;
+                // arco: p(i) = preVal + preSlope*i + a2*i^2, con p(L+1) = landing (aterriza en la salida del techo)
+                float lp1 = L + 1f;
+                float a2 = (landing - preVal[c] - preSlope[c] * lp1) / (lp1 * lp1);
+                int sgn = runSign[c];
+                for (int i = 1; i <= L; i++)
+                {
+                    int idx = dpos - L + (i - 1); if (idx < 0) idx += D;   // posicion del i-esimo cuadro del techo
+                    int q = idx * ch + c;
+                    float orig = delay[q];
+                    float p = preVal[c] + preSlope[c] * i + a2 * i * i;
+                    if (p > 4f) p = 4f; else if (p < -4f) p = -4f;         // tope de cordura del arco
+                    // nunca por DEBAJO del techo grabado: en el peor caso queda igual que venia (cero riesgo)
+                    if (sgn > 0) { if (p > orig) delay[q] = p; }
+                    else { if (p < orig) delay[q] = p; }
+                }
+            }
+            public int Read(float[] buffer, int offset, int count)
+            {
+                int n = src.Read(buffer, offset, count);
+                if (n <= 0) return n;
+                int frames = n / ch;
+                for (int f = 0; f < frames; f++)
+                {
+                    int bi = offset + f * ch, di = dpos * ch;
+                    for (int c = 0; c < ch; c++)
+                    {
+                        float x = buffer[bi + c];
+                        float ax = x < 0f ? -x : x;
+                        int sgn = x >= 0f ? 1 : -1;
+                        if (ax >= Thresh)
+                        {
+                            if (runLen[c] > 0 && sgn != runSign[c])   // salto de techo + a techo - (onda cuadrada): cerrar y abrir
+                            { Repair(c, x); runLen[c] = 0; tooLong[c] = false; }
+                            if (runLen[c] == 0)
+                            { runSign[c] = sgn; preVal[c] = last1[c]; preSlope[c] = last1[c] - last2[c]; }
+                            runLen[c]++;
+                            if (runLen[c] > MaxRun) tooLong[c] = true;
+                        }
+                        else if (runLen[c] > 0)
+                        { Repair(c, x); runLen[c] = 0; tooLong[c] = false; }
+                        last2[c] = last1[c]; last1[c] = x;
+                        float outv = delay[di + c];            // sale la muestra de hace D cuadros (ya reparada si toco)
+                        delay[di + c] = x;
+                        buffer[bi + c] = (primed < D) ? 0f : outv;
+                    }
+                    dpos++; if (dpos >= D) dpos = 0;
+                    if (primed < D) primed++;
+                }
+                return n;
+            }
+        }
+
         // LIMITADOR CON PRE-ESCUCHA (lookahead): en vez de recortar el pico en seco (lo que mete distorsion
         // aspera al subir el volumen), mira unos milisegundos HACIA ADELANTE y baja la ganancia SUAVE antes de
         // que llegue el pico, recuperandola despacio. Asi se puede subir mucho el volumen y que suene fuerte pero
@@ -6313,7 +6405,7 @@ namespace Rocola
             public double Angle = 0;
             public List<string> CycleCovers = new List<string>();
             public Func<string, Image> GetCoverByPath;
-            public int SongCount = 0;
+            public int SongCount { get; set; }   // propiedad (no campo): un campo de una clase por-referencia (Control) dispara la advertencia CS1690 al usarlo
 
             private SolidBrush sb;
             private Bitmap blendBmp;
