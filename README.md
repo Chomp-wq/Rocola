@@ -23,13 +23,20 @@ artista) y modo atracción.
 - Se maneja con la botonera/teclado físico configurable; nada de "lenguaje de teclado de PC".
 - Monedero con créditos y cola de canciones pagadas.
 - Buscador con teclado en pantalla; sección de videos; portadas en cubos 3D girando.
+- La lista de cada disco muestra la **duración** de cada canción.
 - "Lo más sonado" y TOP por artista; modo atracción cuando nadie la usa.
 - **Blindaje de kiosco**: una excepción no controlada se anota en `rocola_error.txt`
   y la rocola **sigue corriendo** (ya no muere con el diálogo de error de .NET).
 
 **Sonido:**
-- **Nivelado perceptual** (tipo LUFS / BS.1770, con *K-weighting*): todas suenan parejo;
-  sube las bajitas y **no** baja las que ya suenan fuerte. Se auto-aprende por canción.
+- **Nivelado perceptual por etapas** (tipo LUFS / BS.1770, con *K-weighting*): todas suenan
+  parejo; sube las bajitas y **no** baja las que ya suenan fuerte. Seis etapas según lo bajita
+  que venga la canción (**ULTRA BAJA / BAJA / MEDIA-BAJA / MEDIA / ALTA / MUY ALTA**), cada una
+  con su propio tope de subida (hasta **+20 dB** en las ultra bajas, apenas +4 en las muy altas),
+  interpolado entre etapas para que no haya saltos.
+- **Pre-análisis de la biblioteca**: en segundo plano (prioridad mínima, solo cuando la rocola
+  está en reposo) se mide el volumen y la **duración** de cada canción. Ya **no** hace falta que
+  una canción suene una o dos veces para quedar nivelada: llega ajustada desde la primera.
 - **Subir TODO el volumen**: dB extra generales; el **limitador con pre-escucha** baja los picos
   suave y ANTES de que lleguen (fuerte sin distorsión).
 - **EQ automático**: corrige el tono de cada canción hacia el promedio de la biblioteca.

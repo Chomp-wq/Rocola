@@ -107,6 +107,13 @@ namespace Rocola
         private bool normalizeOn = true;                                                     // nivelado activo (por defecto si)
         private string backupDir = null;                                                     // 2o destino del respaldo (idealmente OTRO disco); "respaldo_dir=" en config
         private readonly Dictionary<string, float> loudCache = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);   // ruta -> RMS integrado medido
+        // DURACION de cada cancion (segundos). La calcula el PRE-ANALISIS junto con la sonoridad y se guarda en
+        // el mismo archivo. Ademas de mostrarse en la lista, sirve de marca de "ya pre-analizada": esas canciones
+        // ya tienen una medida COMPLETA y fiable, asi que sonar la cancion no vuelve a tocar su volumen medido.
+        private readonly Dictionary<string, float> durCache = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);     // ruta -> duracion en segundos
+        private System.Threading.Thread preScanTh;      // hilo del pre-analisis (uno solo a la vez)
+        private volatile bool preScanStop = false;      // pedirle al pre-analisis que se detenga (al cerrar)
+        private volatile int preScanLeft = 0;           // canciones que le faltan por medir (0 = al dia)
         private string curMeasurePath = null;                                                // cancion que se esta MIDIENDO ahora (null = no medir)
         private LevelTap curTap;                                                              // tap de la cancion actual (para cambiarle la ganancia en vivo desde Ctrl+F3)
         private double curSumSq = 0; private long curSamples = 0;                             // acumuladores del RMS integrado de la cancion actual (los llena el hilo de audio)
@@ -192,7 +199,7 @@ namespace Rocola
         private bool sbrForce = false;       // dsee_forzar=1 en config: salta la puerta (para pruebas)
         private string sbrReason = "";       // por que NO esta disponible (se muestra en Ctrl+F3)
         private SpectralTap curSbr;          // tap de la cancion actual (para alternar A/B en vivo)
-        private const float NormMaxBoost = 5.62f;                                             // tope de SUBIDA (~ +15 dB): evita amplificar al infinito una cancion casi muda
+        private const float NormMaxBoost = 10.0f;                                             // techo ABSOLUTO de subida (+20 dB): evita amplificar al infinito una cancion casi muda (el tope real lo pone la etapa, ver TierMaxDb)
         private const float NormTargetMin = 0.06f, NormTargetMax = 0.40f;                     // rango del volumen objetivo que ofrece la interfaz (de flojo a muy fuerte)
         private const long NormMinSamples = 800000;                                           // ~9s en estereo 44.1k: minimo para aceptar una medida (si se salta antes, no se guarda)
         // ARCHIVOS INCOMPATIBLES: canciones que NO se pudieron reproducir ni con el lector tolerante (p.ej. MP3
@@ -710,9 +717,19 @@ namespace Rocola
                     int bar = line.IndexOf('|');
                     if (bar <= 0 || bar >= line.Length - 1) continue;
                     float rms;
-                    if (float.TryParse(line.Substring(0, bar), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out rms)
-                        && rms > 0.0001f)
-                        loudCache[line.Substring(bar + 1)] = rms;
+                    if (!float.TryParse(line.Substring(0, bar), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out rms)
+                        || rms <= 0.0001f) continue;
+                    // Formato NUEVO "rms|duracion|ruta" y el VIEJO "rms|ruta" (una ruta de Windows no puede llevar
+                    // '|', asi que distinguirlos es seguro): lo viejo se sigue leyendo tal cual, sin duracion.
+                    string rest = line.Substring(bar + 1);
+                    int bar2 = rest.IndexOf('|');
+                    float dur = 0f;
+                    if (bar2 > 0 && bar2 < rest.Length - 1
+                        && float.TryParse(rest.Substring(0, bar2), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out dur))
+                        rest = rest.Substring(bar2 + 1);
+                    else dur = 0f;
+                    loudCache[rest] = rms;
+                    if (dur > 0.01f) durCache[rest] = dur;
                 }
             }
             catch { }
@@ -726,7 +743,8 @@ namespace Rocola
         private void SaveLoudCache()
         {
             List<KeyValuePair<string, float>> snap;
-            try { snap = new List<KeyValuePair<string, float>>(loudCache); }   // copia (rapida) en el hilo de UI: la tabla solo se toca aqui
+            Dictionary<string, float> durSnap;
+            try { snap = new List<KeyValuePair<string, float>>(loudCache); durSnap = new Dictionary<string, float>(durCache, StringComparer.OrdinalIgnoreCase); }   // copia (rapida): las tablas solo se tocan aqui
             catch { return; }
             System.Threading.ThreadPool.QueueUserWorkItem(delegate
             {
@@ -734,11 +752,58 @@ namespace Rocola
                 {
                     StringBuilder sb = new StringBuilder(snap.Count * 48 + 16);
                     for (int i = 0; i < snap.Count; i++)
-                        sb.Append(snap[i].Value.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture)).Append('|').Append(snap[i].Key).Append("\r\n");
+                    {
+                        float du; if (!durSnap.TryGetValue(snap[i].Key, out du)) du = 0f;
+                        sb.Append(snap[i].Value.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture)).Append('|')
+                          .Append(du.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)).Append('|')
+                          .Append(snap[i].Key).Append("\r\n");
+                    }
                     lock (loudSaveLock) File.WriteAllText(LoudFile(), sb.ToString());   // el disco, fuera del hilo de la interfaz (no frena la musica)
                 }
                 catch { }
             });
+        }
+
+        // ESCALERA DE NIVELADO (etapas por que tan bajita viene la cancion). Antes habia UN solo tope de subida
+        // (+15 dB) para todas; ahora cada etapa tiene el SUYO: una cancion ULTRA BAJA puede subir mucho mas (+20 dB)
+        // para alcanzar al resto, mientras que una que ya viene FUERTE apenas se toca (no necesita ayuda y subirla
+        // solo gastaria margen). Umbrales en dBFS de la sonoridad medida (K-weighted), de mas bajita a mas fuerte.
+        private static readonly float[] TierDb = { -34f, -28f, -23f, -19f, -15f, -11f };        // puntos de la escalera (dBFS)
+        private static readonly float[] TierMaxDb = { 20f, 16f, 13f, 10f, 7f, 4f };             // tope de subida (dB) en cada punto
+        private static readonly string[] TierName = { "ULTRA BAJA", "BAJA", "MEDIA-BAJA", "MEDIA", "ALTA", "MUY ALTA" };
+        // Etapa (0..5) a la que pertenece una sonoridad lineal medida (solo para NOMBRARLA).
+        private static int LoudTier(float rms)
+        {
+            if (rms <= 0.0001f) return 0;   // practicamente muda: la etapa mas baja
+            float db = (float)(20.0 * Math.Log10(rms));
+            for (int i = 0; i < TierDb.Length - 1; i++) if (db <= TierDb[i]) return i;
+            return TierDb.Length - 1;   // por encima del ultimo punto = MUY ALTA
+        }
+        // Tope de subida (dB) para una sonoridad dada. Entre punto y punto de la escalera se INTERPOLA en vez
+        // de saltar de golpe: con topes en escalon, una cancion apenas mas fuerte que una frontera terminaba
+        // MAS BAJITA que una mas callada (un salto audible justo en la frontera). Interpolando, el resultado
+        // sube siempre de forma ordenada: mas fuerte de origen nunca acaba sonando mas bajo.
+        private static float TierCapDb(float rms)
+        {
+            if (rms <= 0.0001f) return TierMaxDb[0];
+            float db = (float)(20.0 * Math.Log10(rms));
+            if (db <= TierDb[0]) return TierMaxDb[0];
+            for (int i = 0; i < TierDb.Length - 1; i++)
+            {
+                if (db <= TierDb[i + 1])
+                {
+                    float f = (db - TierDb[i]) / (TierDb[i + 1] - TierDb[i]);
+                    return TierMaxDb[i] + f * (TierMaxDb[i + 1] - TierMaxDb[i]);
+                }
+            }
+            return TierMaxDb[TierMaxDb.Length - 1];
+        }
+        // Nombre de la etapa de una cancion ya medida ("" si aun no se ha medido).
+        private string LoudTierName(string path)
+        {
+            float rms;
+            if (path == null || !loudCache.TryGetValue(path, out rms) || rms <= 0.0001f) return "";
+            return TierName[LoudTier(rms)];
         }
 
         // Ganancia de nivelado para una cancion, segun su sonoridad medida (si ya se oyo alguna vez). 1 = sin cambio.
@@ -748,9 +813,11 @@ namespace Rocola
             float rms;
             if (!loudCache.TryGetValue(path, out rms) || rms <= 0.0001f) return 1f;   // aun no medida: va a su volumen original y se aprende en esta pasada
             // "Subir el piso": si la cancion suena mas BAJITO que el objetivo, se SUBE (segun la fuerza). Si ya suena
-            // igual o mas FUERTE que el objetivo, se deja igual (nunca se baja). Con tope de subida para no reventar.
+            // igual o mas FUERTE que el objetivo, se deja igual (nunca se baja). El tope de subida es el de SU ETAPA.
             float g = (float)Math.Pow(normTarget / rms, normStrength);
-            if (g < 1f) g = 1f; else if (g > NormMaxBoost) g = NormMaxBoost;
+            float cap = (float)Math.Pow(10.0, TierCapDb(rms) / 20.0);
+            if (cap > NormMaxBoost) cap = NormMaxBoost;   // NormMaxBoost sigue siendo el techo absoluto de seguridad
+            if (g < 1f) g = 1f; else if (g > cap) g = cap;
             return g;
         }
 
@@ -977,7 +1044,7 @@ namespace Rocola
                         : "NO disponible en este equipo: " + sbrReason;
 
                     Label hint = new Label(); hint.SetBounds(16, 556, 568, 40); hint.BackColor = Color.Transparent; hint.ForeColor = Color.FromArgb(160, 170, 200);
-                    hint.Text = "Todo se oye al instante y aplica a las siguientes. Cada cancion se mide la primera vez que suena.";
+                    // El texto lo rellena updateLabels (lleva el avance del pre-analisis y la etapa de la cancion).
 
                     Button bReset = new Button(), bOk = new Button();
                     bReset.Text = "Recomendado"; bReset.SetBounds(16, 606, 150, 38);
@@ -992,6 +1059,12 @@ namespace Rocola
                         lExc.Text = "Realce de brillo (tipo DSEE):  " + tbExc.Value + "%   (el 'aire' que el MP3 apaga; 0 = sin realce)";
                         lUp.Text = "Subir TODO el volumen:  +" + tbUp.Value + " dB";
                         lEq.Text = "EQ automatico:  " + tbEq.Value + "%   (equilibra el tono de cada cancion)";
+                        // PRE-ANALISIS + ETAPA: ya no hace falta que una cancion suene para quedar nivelada; aqui se
+                        // ve cuanto le falta a la biblioteca por medir y en que etapa de volumen cayo la que suena.
+                        string etapa = (nowPlaying != null && nowPlaying.Song != null) ? LoudTierName(nowPlaying.Song.Path) : "";
+                        hint.Text = "Todo se oye al instante. La biblioteca se mide sola: "
+                                  + (preScanLeft > 0 ? ("faltan " + preScanLeft + " canciones.") : "ya esta al dia.")
+                                  + (etapa.Length > 0 ? ("   Esta cancion: " + etapa + ".") : "");
                         bool en = chkOn.Checked;
                         tbTarget.Enabled = en; tbStr.Enabled = en;
                         lTarget.ForeColor = en ? Color.FromArgb(150, 240, 170) : Color.FromArgb(110, 118, 140);
@@ -1322,6 +1395,12 @@ namespace Rocola
             songList.RowH = 30;
             songList.GetCount = delegate { return songItems.Count; };
             songList.GetText = delegate (int i) { return (i >= 0 && i < songItems.Count) ? songItems[i].ToString() : ""; };
+            songList.GetRight = delegate (int i)   // duracion de la cancion (los videos no se pre-analizan)
+            {
+                if (i < 0 || i >= songItems.Count) return "";
+                Track tk = songItems[i] as Track;
+                return (tk != null) ? DurText(tk.Path) : "";
+            };
             songList.OnPick = delegate (int idx) { songSel = idx; FillSongPage(); UpdateTopSongVisuals(); };         // click simple
             songList.OnActivate = delegate (int idx) { songSel = idx; FillSongPage(); EnqueueSelectedSong(); };      // doble-click
 
@@ -1589,6 +1668,7 @@ namespace Rocola
             else lblStatus.Text = "";   // las instrucciones las muestra la barra de ayuda (formas/colores)
 
             StartThumbWarm();   // en segundo plano: construir las miniaturas que falten (1a vez tarda; luego todo vuela)
+            StartPreScan();     // en segundo plano: medir volumen y duracion de las canciones nuevas (nivelado desde la 1a vez)
 
             if (!fromCache) SaveLibraryCacheAsync();   // escaneo fresco: guardar la biblioteca para el proximo arranque
             cachedVideoPaths = null; cachedCovers = null; lastVideoPaths = null;
@@ -1602,6 +1682,147 @@ namespace Rocola
         // miniatura de TODAS las caratulas que falten. La primera sesion en una maquina tarda unos
         // minutos en completarse (y se PAUSA mientras alguien usa la rocola para no estorbar);
         // a partir de ahi, abrir cualquier pagina es practicamente instantaneo para siempre.
+        // ===================== PRE-ANALISIS DE LA BIBLIOTECA =====================
+        // Antes, una cancion NUEVA sonaba a su volumen original la primera vez (aun no habia medida) y solo
+        // quedaba nivelada a partir de la segunda. Con el pre-analisis eso se acabo: en segundo plano se MIDE
+        // toda la biblioteca (sonoridad K-weighted, la misma norma que usa el nivelado, + la DURACION), asi que
+        // cada cancion ya llega nivelada la PRIMERA vez que alguien la pone.
+        // Para que no le robe la maquina a la rocola: hilo de prioridad MINIMA, espera a que nadie este usando
+        // la rocola, cede el paso si hay video, y de cada cancion mide TRAMOS repartidos (no el archivo entero):
+        // ~60 s bien elegidos dan practicamente la misma sonoridad integrada que el tema completo, a una fraccion
+        // del costo. Lo medido se guarda en disco cada pocas canciones: se puede apagar la rocola sin perder nada.
+        private const double PreSegSec = 20.0;    // duracion de cada tramo analizado
+        private const int PreSegs = 3;            // cuantos tramos por cancion (repartidos por el tema)
+        private void StartPreScan()
+        {
+            preScanStop = false;
+            if (preScanTh != null && preScanTh.IsAlive) return;   // ya hay uno trabajando
+            List<string> pend = new List<string>();
+            for (int i = 0; i < tracks.Count; i++)
+            {
+                Track tk = tracks[i];
+                if (tk == null || tk.Path == null) continue;
+                if (durCache.ContainsKey(tk.Path)) continue;   // ya pre-analizada (la duracion es la marca)
+                pend.Add(tk.Path);
+            }
+            preScanLeft = pend.Count;
+            if (pend.Count == 0) return;
+            preScanTh = new System.Threading.Thread(delegate ()
+            {
+                int hechas = 0;
+                try
+                {
+                    System.Threading.Thread.Sleep(15000);   // dejar respirar el arranque (y al calentador de caratulas)
+                    for (int i = 0; i < pend.Count; i++)
+                    {
+                        if (preScanStop) break;
+                        // esperar a que la rocola este en reposo: si alguien la esta usando, o hay un video
+                        // (que lee del disco sin colchon), este hilo no toca nada.
+                        while (!preScanStop && (Environment.TickCount - lastInputTick < 8000 || videoOn))
+                            System.Threading.Thread.Sleep(500);
+                        if (preScanStop) break;
+                        string ruta = pend[i];
+                        float rms, dur;
+                        if (!MeasureFile(ruta, out rms, out dur)) { preScanLeft--; continue; }
+                        // publicar en el hilo de la interfaz (las tablas son suyas): sin carreras
+                        try
+                        {
+                            if (!IsHandleCreated || preScanStop) break;
+                            BeginInvoke((MethodInvoker)delegate
+                            {
+                                if (dur > 0.01f) durCache[ruta] = dur;
+                                if (rms > 0.0001f && !loudCache.ContainsKey(ruta)) loudCache[ruta] = rms;
+                                if (preScanLeft > 0) preScanLeft--;
+                                if (panelSongs != null && panelSongs.Visible && songList != null) songList.Invalidate();   // que aparezca la duracion recien sabida
+                            });
+                        }
+                        catch { break; }
+                        hechas++;
+                        if ((hechas % 25) == 0)
+                            try { if (IsHandleCreated) BeginInvoke((MethodInvoker)delegate { SaveLoudCache(); }); } catch { }
+                        System.Threading.Thread.Sleep(diskSlow ? 120 : 40);   // respiro (mas largo en disco duro)
+                    }
+                }
+                catch { }
+                finally
+                {
+                    try { if (IsHandleCreated && hechas > 0) BeginInvoke((MethodInvoker)delegate { SaveLoudCache(); }); } catch { }
+                }
+            });
+            preScanTh.IsBackground = true;
+            preScanTh.Priority = System.Threading.ThreadPriority.Lowest;
+            preScanTh.Start();
+        }
+
+        // Mide un archivo SIN reproducirlo: sonoridad K-weighted (BS.1770, igual que el nivelado en vivo) y duracion.
+        // Analiza PreSegs tramos repartidos por el tema (o el tema entero si es corto). Devuelve false si no se pudo.
+        private bool MeasureFile(string path, out float rms, out float durSec)
+        {
+            rms = 0f; durSec = 0f;
+            AudioFileReader rd = null;
+            try
+            {
+                rd = new AudioFileReader(path);
+                rd.Volume = 1.0f;
+                int rate = rd.WaveFormat.SampleRate; if (rate < 8000) rate = 44100;
+                int ch = rd.WaveFormat.Channels; if (ch < 1) ch = 1;
+                double total = rd.TotalTime.TotalSeconds;
+                if (total <= 0.05 || total > 36000) return false;   // vacio o absurdo (archivo roto)
+                durSec = (float)total;
+                float[] c1 = EqShelfHi(1681.974f, rate, 3.99984f, 0.70717f);   // mismas dos etapas del K-weighting
+                float[] c2 = EqHighPass(38.1355f, rate, 0.50033f);             // que usa el nivelado en vivo
+                float[] st = new float[ch * 8];
+                float[] buf = new float[4096 * ch];
+                double sumSq = 0; long nSamp = 0;
+                // tramos: si el tema es corto se analiza entero; si no, PreSegs ventanas repartidas evitando
+                // el arranque y el final (intros/silencios finales no representan la sonoridad del tema).
+                int segs = (total <= PreSegSec * PreSegs) ? 1 : PreSegs;
+                double segLen = (segs == 1) ? total : PreSegSec;
+                for (int s = 0; s < segs && !preScanStop; s++)
+                {
+                    if (segs > 1)
+                    {
+                        double span = total * 0.80;                       // zona util: del 10% al 90% del tema
+                        double pos = total * 0.10 + span * s / (double)segs;
+                        if (pos + segLen > total) pos = Math.Max(0, total - segLen);
+                        try { rd.CurrentTime = TimeSpan.FromSeconds(pos); } catch { }
+                    }
+                    long want = (long)(segLen * rate) * ch;
+                    long got = 0;
+                    while (got < want)
+                    {
+                        int want2 = (int)Math.Min(buf.Length, want - got);
+                        int n = rd.Read(buf, 0, want2);
+                        if (n <= 0) break;
+                        got += n;
+                        for (int i = 0; i + ch <= n; i += ch)
+                            for (int c = 0; c < ch; c++)
+                            {
+                                int b = c * 8; float x = buf[i + c];
+                                float y1 = c1[0]*x + c1[1]*st[b] + c1[2]*st[b+1] - c1[3]*st[b+2] - c1[4]*st[b+3];
+                                st[b+1]=st[b]; st[b]=x; st[b+3]=st[b+2]; st[b+2]=y1;
+                                float y2 = c2[0]*y1 + c2[1]*st[b+4] + c2[2]*st[b+5] - c2[3]*st[b+6] - c2[4]*st[b+7];
+                                st[b+5]=st[b+4]; st[b+4]=y1; st[b+7]=st[b+6]; st[b+6]=y2;
+                                sumSq += y2 * y2; nSamp++;
+                            }
+                    }
+                }
+                if (nSamp < 40000) return durSec > 0.01f;   // muy poco audio util: al menos queda la duracion
+                rms = (float)Math.Sqrt(sumSq / nSamp);
+                return true;
+            }
+            catch { return durSec > 0.01f; }
+            finally { if (rd != null) { try { rd.Dispose(); } catch { } } }
+        }
+
+        // Duracion "m:ss" de una cancion ya pre-analizada ("" si aun no se sabe).
+        private string DurText(string path)
+        {
+            float d;
+            if (path == null || !durCache.TryGetValue(path, out d) || d <= 0.01f) return "";
+            int tot = (int)(d + 0.5f);
+            return (tot / 60) + ":" + (tot % 60).ToString("00");
+        }
         private void StartThumbWarm()
         {
             warmGen++;
@@ -3974,7 +4195,7 @@ namespace Rocola
                 reader.Volume = FixedVolume;   // se queda en 1.0 (crudo): el nivelado se aplica en LevelTap, tras medir el volumen REAL
                 // NIVELADO: si esta cancion ya se oyo antes, se aplica la ganancia que la lleva al nivel comun; si es
                 // nueva, va a su volumen original y se APRENDE su sonoridad en esta pasada (para nivelarla la proxima vez).
-                curMeasurePath = normalizeOn ? t.Path : null;   // empieza a medir esta cancion
+                curMeasurePath = (normalizeOn && !durCache.ContainsKey(t.Path)) ? t.Path : null;   // ya pre-analizada = medida COMPLETA y fiable: no se vuelve a medir (y se ahorra el K-weighting)
                 curSumSq = 0; curSamples = 0;
                 eqMeasPath = (eqAmount > 0.001f) ? t.Path : null;   // huella tonal: se aprende solo con el EQ automatico encendido
                 eqMeasSum = new double[8]; eqMeasN = 0; eqMeasRate = 0;
@@ -4973,6 +5194,7 @@ namespace Rocola
 
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
+            preScanStop = true;   // que el pre-analisis suelte el archivo y termine
             DisposePlaybackNow();
             // APAGADO DELIBERADO vs APAGON. El boton de poder de la rocola esta configurado en Windows para APAGAR
             // -> al presionarlo, Windows avisa y ESTE evento se dispara (CloseReason.WindowsShutDown; tambien Alt+F4
@@ -7592,6 +7814,7 @@ namespace Rocola
         {
             public Func<int> GetCount;          // total de items (songItems.Count)
             public Func<int, string> GetText;   // texto del item i
+            public Func<int, string> GetRight;   // texto CORTO a la derecha del item i (la duracion); "" = nada
             public int PageStart = 0;           // primer item de la pagina visible
             public int Sel = 0;                 // seleccion GLOBAL (entre todas las paginas)
             public int RowH = 30;
@@ -7601,6 +7824,7 @@ namespace Rocola
 
             private SolidBrush hlB; private Pen hlP;
             private SolidBrush txtB; private StringFormat txtFmt; private SolidBrush bgB;
+            private SolidBrush durB; private StringFormat durFmt;   // duracion: gris suave, pegada a la derecha
 
             public SongListView()
             {
@@ -7646,7 +7870,25 @@ namespace Rocola
                         hlP.Color = Color.FromArgb(180, Lighten(Accent, 0.45));
                         using (GraphicsPath gp = RoundedPath(hl, 9)) { g.FillPath(hlB, gp); g.DrawPath(hlP, gp); }
                     }
-                    Rectangle tr = new Rectangle(r.X + 16, r.Y, r.Width - 22, r.Height);
+                    // DURACION a la derecha (m:ss). Se dibuja primero para saber cuanto ancho quitarle al
+                    // titulo: asi un nombre largo se corta con "..." ANTES de encimarse con la duracion.
+                    string dur = (GetRight != null) ? GetRight(idx) : "";
+                    int durW = 0;
+                    if (!string.IsNullOrEmpty(dur))
+                    {
+                        if (durB == null)
+                        {
+                            durB = new SolidBrush(Color.White);
+                            durFmt = new StringFormat();
+                            durFmt.FormatFlags = StringFormatFlags.NoWrap;
+                            durFmt.Alignment = StringAlignment.Far;
+                            durFmt.LineAlignment = StringAlignment.Center;
+                        }
+                        durW = 58;
+                        durB.Color = (idx == Sel) ? Color.FromArgb(235, 245, 255) : Color.FromArgb(175, 190, 215);
+                        g.DrawString(dur, Font, durB, new Rectangle(r.Right - durW - 14, r.Y, durW, r.Height), durFmt);
+                    }
+                    Rectangle tr = new Rectangle(r.X + 16, r.Y, r.Width - 22 - durW, r.Height);
                     string text = (GetText != null) ? GetText(idx) : "";
                     g.DrawString(text, Font, txtB, tr, txtFmt);   // GDI+: respeta la traslacion del Graphics (en el control es identidad; en la textura de UI lleva la lista a su sitio)
                 }
