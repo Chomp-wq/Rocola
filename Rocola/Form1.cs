@@ -1781,6 +1781,16 @@ namespace Rocola
         // la rocola, cede el paso si hay video, y de cada cancion mide TRAMOS repartidos (no el archivo entero):
         // ~60 s bien elegidos dan practicamente la misma sonoridad integrada que el tema completo, a una fraccion
         // del costo. Lo medido se guarda en disco cada pocas canciones: se puede apagar la rocola sin perder nada.
+        private bool eqDirty = false;             // hay huellas de EQ nuevas sin guardar (las escribe FlushEqIfDirty)
+        // Vuelca las huellas del EQ recien medidas. Se llama de tanto en tanto (no por cancion): recalcular el
+        // promedio de la biblioteca y reescribir el archivo en cada tema seria puro desgaste de disco.
+        private void FlushEqIfDirty()
+        {
+            if (!eqDirty) return;
+            eqDirty = false;
+            RecomputeEqAvg();
+            SaveEqCache();
+        }
         private const double PreSegSec = 20.0;    // duracion de cada tramo analizado
         private const int PreSegs = 3;            // cuantos tramos por cancion (repartidos por el tema)
         private void StartPreScan()
@@ -1812,8 +1822,8 @@ namespace Rocola
                             System.Threading.Thread.Sleep(500);
                         if (preScanStop) break;
                         string ruta = pend[i];
-                        float rms, dur;
-                        if (!MeasureFile(ruta, out rms, out dur)) { preScanLeft--; continue; }
+                        float rms, dur; float[] eqCurve;
+                        if (!MeasureFile(ruta, out rms, out dur, out eqCurve)) { preScanLeft--; continue; }
                         // publicar en el hilo de la interfaz (las tablas son suyas): sin carreras
                         try
                         {
@@ -1821,7 +1831,10 @@ namespace Rocola
                             BeginInvoke((MethodInvoker)delegate
                             {
                                 if (dur > 0.01f) durCache[ruta] = dur;
-                                if (rms > 0.0001f && !loudCache.ContainsKey(ruta)) loudCache[ruta] = rms;
+                                // SOBRESCRIBE lo que hubiera: la medida del pre-analisis es de la cancion COMPLETA,
+                                // asi que es mejor que lo aprendido a medias oyendola (que promediaba entre pasadas).
+                                if (rms > 0.0001f) loudCache[ruta] = rms;
+                                if (eqCurve != null) { eqCache[ruta] = eqCurve; eqDirty = true; }   // huella tonal del EQ automatico, ya lista
                                 if (preScanLeft > 0) preScanLeft--;
                                 if (panelSongs != null && panelSongs.Visible && songList != null) songList.Invalidate();   // que aparezca la duracion recien sabida
                             });
@@ -1829,14 +1842,14 @@ namespace Rocola
                         catch { break; }
                         hechas++;
                         if ((hechas % 25) == 0)
-                            try { if (IsHandleCreated) BeginInvoke((MethodInvoker)delegate { SaveLoudCache(); }); } catch { }
+                            try { if (IsHandleCreated) BeginInvoke((MethodInvoker)delegate { SaveLoudCache(); FlushEqIfDirty(); }); } catch { }
                         System.Threading.Thread.Sleep(diskSlow ? 120 : 40);   // respiro (mas largo en disco duro)
                     }
                 }
                 catch { }
                 finally
                 {
-                    try { if (IsHandleCreated && hechas > 0) BeginInvoke((MethodInvoker)delegate { SaveLoudCache(); }); } catch { }
+                    try { if (IsHandleCreated && hechas > 0) BeginInvoke((MethodInvoker)delegate { SaveLoudCache(); FlushEqIfDirty(); }); } catch { }
                 }
             });
             preScanTh.IsBackground = true;
@@ -1844,11 +1857,12 @@ namespace Rocola
             preScanTh.Start();
         }
 
-        // Mide un archivo SIN reproducirlo: sonoridad K-weighted (BS.1770, igual que el nivelado en vivo) y duracion.
-        // Analiza PreSegs tramos repartidos por el tema (o el tema entero si es corto). Devuelve false si no se pudo.
-        private bool MeasureFile(string path, out float rms, out float durSec)
+        // Mide un archivo SIN reproducirlo: sonoridad K-weighted (BS.1770, igual que el nivelado en vivo), duracion
+        // y la HUELLA TONAL del EQ automatico (8 bandas, mismo bandpass y misma referencia que al oirla). Analiza
+        // PreSegs tramos repartidos por el tema (o el tema entero si es corto). Devuelve false si no se pudo.
+        private bool MeasureFile(string path, out float rms, out float durSec, out float[] eqCurve)
         {
-            rms = 0f; durSec = 0f;
+            rms = 0f; durSec = 0f; eqCurve = null;
             AudioFileReader rd = null;
             try
             {
@@ -1864,6 +1878,9 @@ namespace Rocola
                 float[] st = new float[ch * 8];
                 float[] buf = new float[4096 * ch];
                 double sumSq = 0; long nSamp = 0;
+                float[][] bp = new float[8][]; float[] bpSt = new float[8 * 4];   // huella tonal: bandpass por banda
+                for (int b = 0; b < 8; b++) bp[b] = EqBpf(EqCentros[b], rate);
+                double[] bpSum = new double[8]; long bpN = 0;
                 // tramos: si el tema es corto se analiza entero; si no, PreSegs ventanas repartidas evitando
                 // el arranque y el final (intros/silencios finales no representan la sonoridad del tema).
                 int segs = (total <= PreSegSec * PreSegs) ? 1 : PreSegs;
@@ -1886,6 +1903,21 @@ namespace Rocola
                         if (n <= 0) break;
                         got += n;
                         for (int i = 0; i + ch <= n; i += ch)
+                        {
+                            // HUELLA TONAL (EQ automatico): igual que en vivo, sobre la mezcla MONO del cuadro.
+                            float m = buf[i];
+                            for (int mc = 1; mc < ch; mc++) m += buf[i + mc];   // mc: el nombre c2 ya es el coeficiente del K-weighting
+                            m /= ch;
+                            for (int b2 = 0; b2 < 8; b2++)
+                            {
+                                float[] cf = bp[b2]; if (cf == null) continue;
+                                int q = b2 * 4;
+                                float o = cf[0] * m + cf[1] * bpSt[q] + cf[2] * bpSt[q + 1] - cf[3] * bpSt[q + 2] - cf[4] * bpSt[q + 3];
+                                bpSt[q + 1] = bpSt[q]; bpSt[q] = m;
+                                bpSt[q + 3] = bpSt[q + 2]; bpSt[q + 2] = o;
+                                bpSum[b2] += o * o;
+                            }
+                            bpN++;
                             for (int c = 0; c < ch; c++)
                             {
                                 int b = c * 8; float x = buf[i + c];
@@ -1895,10 +1927,23 @@ namespace Rocola
                                 st[b+5]=st[b+4]; st[b+4]=y1; st[b+7]=st[b+6]; st[b+6]=y2;
                                 sumSq += y2 * y2; nSamp++;
                             }
+                        }
                     }
                 }
                 if (nSamp < 40000) return durSec > 0.01f;   // muy poco audio util: al menos queda la duracion
                 rms = (float)Math.Sqrt(sumSq / nSamp);
+                // Huella tonal en dB por banda, referida a la MEDIANA del cuerpo (158 Hz - 5.6 kHz): exactamente
+                // la misma cuenta que hace FinalizeEqMeasure al aprenderla oyendo la cancion.
+                if (bpN >= 40000)
+                {
+                    float[] curve = new float[8];
+                    for (int b = 0; b < 8; b++) curve[b] = (float)(10.0 * Math.Log10(bpSum[b] / bpN + 1e-12));
+                    float[] cuerpo = { curve[1], curve[2], curve[3], curve[4], curve[5] };
+                    Array.Sort(cuerpo);
+                    float refDb = cuerpo[2];
+                    for (int b = 0; b < 8; b++) curve[b] -= refDb;
+                    eqCurve = curve;
+                }
                 return true;
             }
             catch { return durSec > 0.01f; }
@@ -4488,7 +4533,7 @@ namespace Rocola
                 // nueva, va a su volumen original y se APRENDE su sonoridad en esta pasada (para nivelarla la proxima vez).
                 curMeasurePath = (normalizeOn && !durCache.ContainsKey(t.Path)) ? t.Path : null;   // ya pre-analizada = medida COMPLETA y fiable: no se vuelve a medir (y se ahorra el K-weighting)
                 curSumSq = 0; curSamples = 0;
-                eqMeasPath = (eqAmount > 0.001f) ? t.Path : null;   // huella tonal: se aprende solo con el EQ automatico encendido
+                eqMeasPath = (eqAmount > 0.001f && !durCache.ContainsKey(t.Path)) ? t.Path : null;   // huella tonal: solo si no la trae ya del pre-analisis (que la mide completa)
                 eqMeasSum = new double[8]; eqMeasN = 0; eqMeasRate = 0;
                 kwRate = 0;   // reinicia el estado del K-weighting: cada cancion mide desde cero (sin cola del filtro anterior)
                 // NIVEL 2 (reconstructor espectral): solo se INSERTA en maquinas que cumplen requisitos; con

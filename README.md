@@ -35,8 +35,9 @@ artista) y modo atracción.
   con su propio tope de subida (hasta **+20 dB** en las ultra bajas, apenas +4 en las muy altas),
   interpolado entre etapas para que no haya saltos.
 - **Pre-análisis de la biblioteca**: en segundo plano (prioridad mínima, solo cuando la rocola
-  está en reposo) se mide el volumen y la **duración** de cada canción. Ya **no** hace falta que
-  una canción suene una o dos veces para quedar nivelada: llega ajustada desde la primera.
+  está en reposo) se mide el volumen, la **duración** y la **huella tonal del EQ automático** de
+  cada canción. Ya **no** hace falta que una canción suene una o dos veces para quedar nivelada
+  ni ecualizada: llega ajustada desde la primera.
 - **Subir TODO el volumen**: dB extra generales; el **limitador con pre-escucha** baja los picos
   suave y ANTES de que lleguen (fuerte sin distorsión).
 - **EQ automático**: corrige el tono de cada canción hacia el promedio de la biblioteca.
