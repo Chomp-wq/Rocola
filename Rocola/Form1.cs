@@ -860,6 +860,18 @@ namespace Rocola
         }
 
         // Todas las raices de musica que EXISTEN ahora: la carpeta "musica" principal + las agregadas con Ctrl+F2.
+        // Una carpeta esta DENTRO de otra (o es la misma). Compara por tramos completos, asi "musica2" NO
+        // cuenta como dentro de "musica".
+        private static bool PathInside(string a, string b)
+        {
+            if (string.IsNullOrEmpty(a) || string.IsNullOrEmpty(b)) return false;
+            string x = a.TrimEnd('\\', '/'), y = b.TrimEnd('\\', '/');
+            if (string.Equals(x, y, StringComparison.OrdinalIgnoreCase)) return true;
+            return x.Length > y.Length + 1
+                && x.StartsWith(y, StringComparison.OrdinalIgnoreCase)
+                && (x[y.Length] == '\\' || x[y.Length] == '/');
+        }
+
         private List<string> AllMusicRoots()
         {
             List<string> roots = new List<string>();
@@ -867,8 +879,12 @@ namespace Rocola
             for (int i = 0; i < extraMusicDirs.Count; i++)
             {
                 string d = extraMusicDirs[i];
+                // Se descarta no solo la carpeta REPETIDA, sino la que ANIDA con otra ya incluida (una dentro
+                // de la otra, en cualquier sentido): si no, todo lo que compartieran se escanearia DOS veces y
+                // cada cancion saldria duplicada en las listas, el buscador y las estadisticas.
                 bool dup = false;
-                for (int j = 0; j < roots.Count; j++) if (string.Equals(roots[j], d, StringComparison.OrdinalIgnoreCase)) { dup = true; break; }
+                for (int j = 0; j < roots.Count && !dup; j++)
+                    if (PathInside(d, roots[j]) || PathInside(roots[j], d)) dup = true;
                 try { if (!dup && Directory.Exists(d)) roots.Add(d); } catch { }
             }
             return roots;
@@ -948,10 +964,12 @@ namespace Rocola
                             fb.ShowNewFolderButton = false;
                             if (fb.ShowDialog(dlg) != DialogResult.OK || string.IsNullOrEmpty(fb.SelectedPath)) return;
                             string p = fb.SelectedPath;
-                            bool dup = string.Equals(p, MusicFolder, StringComparison.OrdinalIgnoreCase);
+                            // Tambien se rechaza si ANIDA con una ya incluida (una dentro de otra): esa musica
+                            // se escanearia dos veces y saldria duplicada por todas partes.
+                            bool dup = PathInside(p, MusicFolder) || PathInside(MusicFolder, p);
                             for (int i = 0; i < extraMusicDirs.Count && !dup; i++)
-                                if (string.Equals(extraMusicDirs[i], p, StringComparison.OrdinalIgnoreCase)) dup = true;
-                            if (dup) { MessageBox.Show(dlg, "Esa carpeta ya esta incluida.", "Rocola"); return; }
+                                if (PathInside(p, extraMusicDirs[i]) || PathInside(extraMusicDirs[i], p)) dup = true;
+                            if (dup) { MessageBox.Show(dlg, "Esa carpeta ya esta incluida (o esta dentro de otra que ya lo esta).", "Rocola"); return; }
                             extraMusicDirs.Add(p); changed = true; refresh();
                         }
                     };
