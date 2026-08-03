@@ -75,3 +75,8 @@ Release. El resultado (`Rocola.exe` + `NAudio.dll`) se copia junto a la carpeta 
    una sola vez por pulsación (puntaje idéntico), evitando decenas de miles de asignaciones.
 3. **Render — `Cube.Draw`**: los tres arreglos de la proyección 3D (`ex`, `depth`, `order`)
    se reutilizan vía `[ThreadStatic]` en vez de asignarse en cada llamada.
+4. **Escaneo del disco en UNA pasada** (`ScanFolders`): antes se caminaba el árbol dos
+   veces (audio y video) y además se pedía la lista de cada carpeta otra vez para buscar
+   la portada — **tres lecturas por carpeta**. Ahora se camina una sola vez y de esa misma
+   lista salen las tres cosas. Verificado contra el método anterior: mismas canciones en el
+   mismo orden, mismos videos y **la misma portada elegida** en cada carpeta.
