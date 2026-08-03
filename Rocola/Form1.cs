@@ -2168,7 +2168,6 @@ namespace Rocola
                             for (int c = 0; c < ch; c++)
                             {
                                 int b = c * 8; float x = buf[i + c];
-
                                 float y1 = c1[0]*x + c1[1]*st[b] + c1[2]*st[b+1] - c1[3]*st[b+2] - c1[4]*st[b+3];
                                 st[b+1]=st[b]; st[b]=x; st[b+3]=st[b+2]; st[b+2]=y1;
                                 float y2 = c2[0]*y1 + c2[1]*st[b+4] + c2[2]*st[b+5] - c2[3]*st[b+6] - c2[4]*st[b+7];
