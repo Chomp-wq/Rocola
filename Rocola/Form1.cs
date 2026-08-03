@@ -1746,7 +1746,6 @@ namespace Rocola
             for (int i = 0; i < audio.Count; i++) found.Add(Track.FromFile(audio[i]));
             tracks.AddRange(found);
             cachedVideoPaths = vids; cachedCovers = covs;
-
             BuildAlbums(roots); BuildVideoSection(roots); BuildSearchIndex();   // tambien en segundo plano
             e.Result = false;   // escaneo fresco
         }
