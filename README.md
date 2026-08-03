@@ -45,7 +45,10 @@ artista) y modo atracción.
   Insignia **MEJORADA** (dorada, que brilla) cuando de verdad está mejorando la canción.
 - **Des-recorte (declipper)**: repara los picos aplastados "de fábrica" de archivos mal
   masterizados (reconstruye el pico redondo perdido; `declip=` en config).
-- **Fundido** suave de salida al terminar cada canción (`fundido=` en config, 0-3 s).
+- **Fundido** suave de salida al terminar cada canción **y cada video** (`fundido=` en config, 0-3 s).
+- **Volumen de los videos**: el video lo reproduce Windows Media Player, cuyo sonido **no pasa**
+  por la cadena de audio. Una perilla en Ctrl+F3 (`video_vol=` en config) empareja su volumen con
+  el de las canciones ya niveladas, y además sigue a "Subir TODO el volumen".
 - **Dither TPDF** al bajar a 16 bits (salida WaveOut de XP): sin ruido de truncado.
 - **Respaldo automático** de lo aprendido (volúmenes, EQ, estadísticas, config)
   a otra carpeta/disco; conserva los 3 respaldos más recientes.
