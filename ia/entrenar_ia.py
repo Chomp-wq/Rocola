@@ -11,6 +11,9 @@
 #  Uso:
 #    python3 entrenar_ia.py                        # entrena con audio SINTETICO (prueba de concepto)
 #    python3 entrenar_ia.py --musica /ruta/wavs    # entrena con TU musica (archivos .wav 44.1k)
+#    python3 entrenar_ia.py --datos rocola_ia_datos.bin --capas 28,96,96,12
+#        entrena con el material que la ROCOLA junto sola de toda su biblioteca. Ese archivo lo
+#        genera el pre-analisis (se copia en una USB); no hace falta mover el disco de la rocola.
 #      --clips N        cuantos trozos de 2s usar en total (defecto 400; para produccion 6000+)
 #      --por_archivo M  tope de trozos por cancion (defecto sin tope; 12 = mas VARIEDAD de canciones)
 #  Para preparar los wav desde tu biblioteca mp3 usa entrenar_con_mi_musica.bat (hace todo solo).
@@ -193,9 +196,38 @@ def export_ria1(model, path):
             f.write(W.astype(np.float32).tobytes())        # fila-mayor (out, in): igual que la rocola
             f.write(B.astype(np.float32).tobytes())
 
+def cargar_datos_rocola(ruta):
+    """Lee el material que la rocola junto sola (rocola_ia_datos.bin).
+
+    Formato: cabecera "RIAD" + version + n_entradas + n_salidas, y luego cada par como
+    28 float32 de entrada + 12 float32 de objetivo. Son los MISMOS numeros que la rocola
+    calcula al reproducir, asi que lo aprendido aqui le sirve tal cual alla.
+    """
+    with open(ruta, "rb") as f:
+        head = f.read(16)
+        if len(head) < 16 or head[:4] != b"RIAD":
+            raise SystemExit("No parece un archivo de la rocola: " + ruta)
+        ver, nin, nout = struct.unpack("<iii", head[4:16])
+        if ver != 1 or nin != 28 or nout != 12:
+            raise SystemExit("Version/tamanos no compatibles (ver=%d in=%d out=%d)" % (ver, nin, nout))
+        crudo = np.fromfile(f, dtype="<f4")
+    por = nin + nout
+    n = crudo.size // por
+    if n < 100:
+        raise SystemExit("Muy pocos ejemplos (%d). Deja que la rocola junte mas material." % n)
+    crudo = crudo[:n * por].reshape(n, por).astype(np.float64)
+    return crudo[:, :nin], crudo[:, nin:]
+
+
 def main():
     rng = np.random.default_rng(20260715)
-    if "--musica" in sys.argv:
+    if "--datos" in sys.argv:
+        ruta = sys.argv[sys.argv.index("--datos") + 1]
+        print("Leyendo el material que junto la rocola:", ruta)
+        X, Y = cargar_datos_rocola(ruta)
+        print("  %d ejemplos de %d entradas -> %d salidas" % (X.shape[0], X.shape[1], Y.shape[1]))
+        clips = None
+    elif "--musica" in sys.argv:
         folder = sys.argv[sys.argv.index("--musica") + 1]
         nclips = int(sys.argv[sys.argv.index("--clips") + 1]) if "--clips" in sys.argv else 400
         porarch = int(sys.argv[sys.argv.index("--por_archivo") + 1]) if "--por_archivo" in sys.argv else 0
@@ -207,9 +239,10 @@ def main():
     else:
         print("Generando audio SINTETICO variado (prueba de concepto; para produccion usa --musica)...")
         clips = [synth_clip(rng) for _ in range(320)]
-    print("Extrayendo pares (forma espectral -> envolvente real)...")
-    X, Y = build_dataset(clips, rng)
-    print("  %d ejemplos de %d entradas -> %d salidas" % (X.shape[0], X.shape[1], Y.shape[1]))
+    if clips is not None:
+        print("Extrayendo pares (forma espectral -> envolvente real)...")
+        X, Y = build_dataset(clips, rng)
+        print("  %d ejemplos de %d entradas -> %d salidas" % (X.shape[0], X.shape[1], Y.shape[1]))
     idx = rng.permutation(len(X)); X, Y = X[idx], Y[idx]
     nv = max(500, len(X) // 10)
     Xv, Yv, X, Y = X[:nv], Y[:nv], X[nv:], Y[nv:]
@@ -223,8 +256,16 @@ def main():
         ybase[:, j] = np.clip(-1.8 * np.log2(fmid / fc), -4.0, 0.5)
     mse_base = float(((ybase - Yv) ** 2).mean())
 
-    print("Entrenando el MLP 28->48->48->12 ...")
-    model = train(Mlp([28, 48, 48, 12], rng), X, Y, Xv, Yv)
+    capas = [28, 48, 48, 12]
+    if "--capas" in sys.argv:
+        capas = [int(v) for v in sys.argv[sys.argv.index("--capas") + 1].split(",")]
+    # La rocola solo acepta hasta 8 matrices de pesos y 512 neuronas por capa (ver NeuralEnv).
+    if capas[0] != 28 or capas[-1] != 12:
+        raise SystemExit("Las capas deben empezar en 28 y terminar en 12 (contrato de la rocola).")
+    if len(capas) - 1 > 8 or max(capas) > 512:
+        raise SystemExit("Demasiado grande para la rocola: maximo 8 capas de pesos y 512 neuronas.")
+    print("Entrenando el MLP %s ..." % "->".join(str(c) for c in capas))
+    model = train(Mlp(capas, rng), X, Y, Xv, Yv)
     mse_net = float(((model.predict(Xv) - Yv) ** 2).mean())
     print("RESULTADO  mse-valid: red = %.4f  |  curva fija = %.4f  (mejora %.1fx)" % (mse_net, mse_base, mse_base / max(mse_net, 1e-9)))
 

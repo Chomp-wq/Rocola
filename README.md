@@ -54,6 +54,26 @@ artista) y modo atracción.
 - **Respaldo automático** de lo aprendido (volúmenes, EQ, estadísticas, config)
   a otra carpeta/disco; conserva los 3 respaldos más recientes.
 
+### La IA aprende de TODA la biblioteca (sin mover el disco)
+
+Para enseñarle a la red hacen falta pares *"esto es lo que queda / estos eran los agudos reales"*.
+En un MP3 dañado los agudos reales **ya no existen**, así que solo sirven de maestras las canciones
+que **aún los conservan** (320 kbps, FLAC, WAV).
+
+Mientras el **pre-análisis** recorre la biblioteca en segundo plano, a esas canciones completas les
+corta el agudo **a propósito** (a 11, 13, 15, 16.5 y 18 kHz) y guarda el par en
+`rocola_ia_datos.bin`. Usa las **mismas funciones** que la reproducción, así que el material de
+entrenamiento coincide **exactamente** con lo que la red verá en vivo (verificado: diferencia 0.0000).
+
+Flujo completo:
+
+1. La rocola junta el material sola. El avance se ve en **Ctrl+F3** ("Material para la IA: N ejemplos").
+2. Copias `rocola_ia_datos.bin` a una **memoria USB** (el archivo es pequeño; no hay que mover el disco).
+3. En una PC potente: `python3 ia/entrenar_ia.py --datos rocola_ia_datos.bin --capas 28,96,96,12`
+4. Regresas el `rocola_ia.bin` nuevo junto al `Rocola.exe`.
+
+Se apaga con `ia_datos=0` en `rocola_config.txt`.
+
 ## Nivel HD (solo esta rama)
 
 - **Salida WASAPI flotante** (`salida=auto|wasapi|waveout` en `rocola_config.txt`): muestras

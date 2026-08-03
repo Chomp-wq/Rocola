@@ -184,11 +184,18 @@ namespace Rocola
         // propio DSEE y los EXCITERS ARMONICOS clasicos (las cajas Aphex/BBE de los equipos de bar): tomar la
         // banda alta que sobrevivio (~5.5 kHz+), saturarla SUAVE (eso genera armonicos nuevos mas arriba) y
         // mezclar una pizca de vuelta. Se aplica en LevelTap tras nivelar; perilla en Ctrl+F3; "realce=" en config.
-        private float excAmount = 0.35f;
+        private float excAmount = 0.35f;                                                      // intensidad del realce 0..1 (0 = apagado); 0.35 = sutil
         private float masterDb = 0f;         // SUBIR TODO: dB extra para ABSOLUTAMENTE todas las canciones (0..12; barra en Ctrl+F3, "subir_db=" en config)
         private float MasterLin() { return (float)Math.Pow(10.0, masterDb / 20.0); }   // dB -> ganancia lineal
         private float crossfadeSec = 0.5f;   // FUNDIDO de salida entre canciones: segundos de rampa al terminar ("fundido=" en config; 0 = corte seco)
-        private bool declipOn = true;        // DES-RECORTE (declipper): repara picos aplastados de origen en archivos mal masterizados ("declip=" en config)                                                      // intensidad del realce 0..1 (0 = apagado); 0.35 = sutil
+        private bool declipOn = true;        // DES-RECORTE (declipper): repara picos aplastados de origen en archivos mal masterizados ("declip=" en config)
+        // MATERIAL DE ENTRENAMIENTO PARA LA IA: mientras el pre-analisis recorre la biblioteca, las canciones
+        // que AUN conservan sus agudos (320k/FLAC/WAV) sirven de maestras: se les corta el agudo a proposito y
+        // se guarda "lo que queda / lo que habia". Ese archivo se lleva en una USB a una PC potente, se entrena
+        // alli con ia/entrenar_ia.py y se regresa el rocola_ia.bin nuevo. Asi la IA aprende de TODA la
+        // biblioteca sin tener que mover el disco de la rocola. "ia_datos=0" en config lo apaga.
+        private bool iaHarvestOn = true;
+        private volatile int iaPairsTotal = 0;          // pares ya guardados (solo para mostrar el avance)
         // ===== NIVELES DE MEJORA DE AUDIO segun la maquina (Ctrl+F3) =====
         // NIVEL 1: exciter (excAmount, arriba) - corre en CUALQUIER equipo (~1-2% de CPU).
         // NIVEL 2: reconstructor espectral (SpectralTap) - solo en maquinas que cumplen requisitos (ProbeAudioTier).
@@ -465,6 +472,7 @@ namespace Rocola
             if (iaVivo) IaEnsureMotor();   // IA en vivo encendida -> arranca el motor OCULTO (sin terminal que cuidar)
             LoadLoudCache();     // sonoridad medida por cancion (para nivelar el volumen de todas)
             LoadEqCache();       // huella tonal medida por cancion (para el EQ automatico)
+            IaCountPairs();      // cuanto material de entrenamiento de la IA llevamos juntado
             LoadIncompatible();  // rutas ya anotadas como no reproducibles (para no repetirlas)
             BackupLearnedData(); // respalda lo aprendido de la sesion ANTERIOR antes de que esta lo modifique
             LayoutControls();
@@ -585,6 +593,7 @@ namespace Rocola
                     else if (s.StartsWith("subir_db=")) { float v; if (float.TryParse(s.Substring(9).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) masterDb = Clampf(v, 0f, 12f); }   // SUBIR TODO (dB extra general)
                     else if (s.StartsWith("fundido=")) { float v; if (float.TryParse(s.Substring(8).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) crossfadeSec = Clampf(v, 0f, 3f); }   // FUNDIDO entre canciones (segundos)
                     else if (s.StartsWith("declip=")) declipOn = s.Substring(7).Trim() != "0";   // des-recorte de picos aplastados (por defecto si)
+                    else if (s.StartsWith("ia_datos=")) iaHarvestOn = s.Substring(9).Trim() != "0";   // juntar material para entrenar la IA
                     else if (s.StartsWith("video_vol=")) { int v; if (int.TryParse(s.Substring(10).Trim(), out v)) videoVol = v < 0 ? 0 : (v > 100 ? 100 : v); }   // volumen base de los videos
                     else if (s.StartsWith("eq_auto=")) { float v; if (float.TryParse(s.Substring(8).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) eqAmount = Clampf(v / 100f, 0f, 1f); }   // EQ automatico (fuerza %)
                     else if (s.StartsWith("dsee=")) sbrOn = s.Substring(5).Trim() == "1";   // reconstruccion espectral (NIVEL 2)
@@ -621,6 +630,7 @@ namespace Rocola
                 sb.Append("subir_db=").Append(masterDb.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("fundido=").Append(crossfadeSec.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("declip=").Append(declipOn ? "1" : "0").Append("\r\n");
+                sb.Append("ia_datos=").Append(iaHarvestOn ? "1" : "0").Append("\r\n");
                 sb.Append("video_vol=").Append(videoVol).Append("\r\n");
                 sb.Append("eq_auto=").Append(((int)Math.Round(eqAmount * 100f)).ToString(System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("dsee=").Append(sbrOn ? "1" : "0").Append("\r\n");
@@ -1162,6 +1172,7 @@ namespace Rocola
                         string etapa = (nowPlaying != null && nowPlaying.Song != null) ? LoudTierName(nowPlaying.Song.Path) : "";
                         hint.Text = "La biblioteca se mide sola: "
                                   + (preScanLeft > 0 ? ("faltan " + preScanLeft + " canciones.") : "ya esta al dia.")
+                                  + (iaHarvestOn ? ("   IA: " + iaPairsTotal.ToString("#,0") + " ejemplos.") : "")
                                   + (etapa.Length > 0 ? ("   Esta cancion: " + etapa + ".") : "")
                                   + "   DSEE ULTRA y DSEE normal no van juntos.";
                         bool en = chkOn.Checked;
@@ -1834,6 +1845,41 @@ namespace Rocola
             RecomputeEqAvg();
             SaveEqCache();
         }
+        // ---------- Archivo con el material de entrenamiento de la IA ----------
+        // Formato binario compacto (millones de pares caben sin problema): cabecera "RIAD" + version + tamaños,
+        // y luego cada par como 28 float de entrada + 12 float de objetivo. numpy lo lee de un tiron.
+        private const int IaFramesPerSong = 192;   // cuadros analizados por cancion (suficiente y barato)
+        private const int IaWarmFrames = 64;       // los primeros no se usan: el acantilado aun se esta midiendo
+        private static readonly float[] IaCutsHz = { 11000f, 13000f, 15000f, 16500f, 18000f };   // cortes simulados
+        private string IaDataFile() { return Path.Combine(Application.StartupPath, "rocola_ia_datos.bin"); }
+        private void IaCountPairs()
+        {
+            try
+            {
+                FileInfo fi = new FileInfo(IaDataFile());
+                iaPairsTotal = (fi.Exists && fi.Length > 16) ? (int)((fi.Length - 16) / 160) : 0;
+            }
+            catch { iaPairsTotal = 0; }
+        }
+        // Añade al archivo los pares de UNA cancion (solo se llama con canciones que si conservan sus agudos).
+        private void IaAppendPairs(List<float> pairs)
+        {
+            if (pairs == null || pairs.Count < 40) return;
+            try
+            {
+                string f = IaDataFile();
+                bool nuevo = !File.Exists(f) || new FileInfo(f).Length < 16;
+                using (FileStream fs = new FileStream(f, FileMode.Append, FileAccess.Write))
+                using (BinaryWriter bw = new BinaryWriter(fs))
+                {
+                    if (nuevo) { bw.Write((byte)'R'); bw.Write((byte)'I'); bw.Write((byte)'A'); bw.Write((byte)'D'); bw.Write(1); bw.Write(28); bw.Write(12); }
+                    for (int i = 0; i < pairs.Count; i++) bw.Write(pairs[i]);
+                }
+                iaPairsTotal += pairs.Count / 40;
+            }
+            catch { }
+        }
+
         private const double PreSegSec = 20.0;    // duracion de cada tramo analizado
         private const int PreSegs = 3;            // cuantos tramos por cancion (repartidos por el tema)
         private void StartPreScan()
@@ -1949,6 +1995,21 @@ namespace Rocola
                 float[][] bp = new float[8][]; float[] bpSt = new float[8 * 4];   // huella tonal: bandpass por banda
                 for (int b = 0; b < 8; b++) bp[b] = EqBpf(EqCentros[b], rate);
                 double[] bpSum = new double[8]; long bpN = 0;
+                // COSECHA PARA LA IA: se analiza el canal 0 con el MISMO motor del DSEE. Los pares se guardan
+                // en memoria y solo se escriben al final, si resulta que la cancion SI conserva sus agudos
+                // (una cancion dañada no puede enseñar nada: los agudos reales ya no estan en el archivo).
+                SpectralTap hv = null; float[] hvFrame = null, hvFeat = null, hvTgt = null;
+                int hvFill = 0, hvFrames = 0; List<float> hvPairs = null;
+                if (iaHarvestOn)
+                {
+                    try
+                    {
+                        hv = new SpectralTap(rate, 1);
+                        hvFrame = new float[hv.FrameLen]; hvFeat = new float[28]; hvTgt = new float[12];
+                        hvPairs = new List<float>(4096);
+                    }
+                    catch { hv = null; }
+                }
                 // tramos: si el tema es corto se analiza entero; si no, PreSegs ventanas repartidas evitando
                 // el arranque y el final (intros/silencios finales no representan la sonoridad del tema).
                 int segs = (total <= PreSegSec * PreSegs) ? 1 : PreSegs;
@@ -1986,9 +2047,32 @@ namespace Rocola
                                 bpSum[b2] += o * o;
                             }
                             bpN++;
+                            // canal 0 hacia el analizador de la IA (el DSEE tambien trabaja por canal)
+                            if (hv != null && hvFrames < IaFramesPerSong)
+                            {
+                                hvFrame[hvFill++] = buf[i];
+                                if (hvFill >= hvFrame.Length)
+                                {
+                                    hvFill = 0;
+                                    double en = 0; for (int q = 0; q < hvFrame.Length; q++) en += hvFrame[q] * hvFrame[q];
+                                    if (en / hvFrame.Length > 1e-8)   // saltar cuadros practicamente mudos
+                                    {
+                                        hv.AnalyzeFrame(hvFrame, 0);
+                                        hvFrames++;
+                                        if (hvFrames > IaWarmFrames)   // ya con el acantilado estabilizado
+                                            for (int q = 0; q < IaCutsHz.Length; q++)
+                                                if (hv.MakePair(IaCutsHz[q], hvFeat, hvTgt))
+                                                {
+                                                    for (int z = 0; z < 28; z++) hvPairs.Add(hvFeat[z]);
+                                                    for (int z = 0; z < 12; z++) hvPairs.Add(hvTgt[z]);
+                                                }
+                                    }
+                                }
+                            }
                             for (int c = 0; c < ch; c++)
                             {
                                 int b = c * 8; float x = buf[i + c];
+
                                 float y1 = c1[0]*x + c1[1]*st[b] + c1[2]*st[b+1] - c1[3]*st[b+2] - c1[4]*st[b+3];
                                 st[b+1]=st[b]; st[b]=x; st[b+3]=st[b+2]; st[b+2]=y1;
                                 float y2 = c2[0]*y1 + c2[1]*st[b+4] + c2[2]*st[b+5] - c2[3]*st[b+6] - c2[4]*st[b+7];
@@ -1998,6 +2082,9 @@ namespace Rocola
                         }
                     }
                 }
+                // Solo las canciones COMPLETAS (sin acantilado, el mismo umbral que usa el DSEE para no tocarlas)
+                // sirven de maestras: en las dañadas los agudos reales ya no existen y no hay nada que enseñar.
+                if (hv != null && hvPairs.Count >= 40 && hv.CutHz >= 19300f) IaAppendPairs(hvPairs);
                 if (nSamp < 40000) return durSec > 0.01f;   // muy poco audio util: al menos queda la duracion
                 rms = (float)Math.Sqrt(sumSq / nSamp);
                 // Huella tonal en dB por banda, referida a la MEDIANA del cuerpo (158 Hz - 5.6 kHz): exactamente
@@ -5856,14 +5943,8 @@ namespace Rocola
                 win = new float[Frame];
                 for (int i = 0; i < Frame; i++) win[i] = (float)Math.Sqrt(0.5 - 0.5 * Math.Cos(2.0 * Math.PI * i / Frame));   // raiz de Hann: analisis*sintesis = Hann, que al 50% suma EXACTO 1
                 bitrev = new int[Frame];
-                for (int i = 1, j = 0; i < Frame; i++)
-                {
-                    int bit = Frame >> 1;
-                    for (; (j & bit) != 0; bit >>= 1) j ^= bit;
-                    j |= bit; bitrev[i] = j;
-                }
                 twCos = new float[Frame / 2]; twSin = new float[Frame / 2];
-                for (int k = 0; k < Frame / 2; k++) { twCos[k] = (float)Math.Cos(2.0 * Math.PI * k / Frame); twSin[k] = (float)Math.Sin(2.0 * Math.PI * k / Frame); }
+                BuildFftTables();
                 inter = new float[Hop * ch];
                 outQ = new float[Frame * ch * 2];          // FIFO holgado (nunca acumula mas de Hop*ch)
             }
@@ -5916,6 +5997,76 @@ namespace Rocola
 
             // Procesa UNA ventana completa: FFT -> (detector + regeneracion) -> iFFT -> solape-y-suma.
             // Emite Hop muestras por canal al FIFO y desliza entrada/salida media ventana.
+            // Tablas de la FFT (inversion de bits y factores de giro). Las comparten el camino de
+            // reproduccion y el de solo analisis, para que ambos calculen EXACTAMENTE el mismo espectro.
+            private void BuildFftTables()
+            {
+                for (int i = 1, j = 0; i < Frame; i++)
+                {
+                    int bit = Frame >> 1;
+                    for (; (j & bit) != 0; bit >>= 1) j ^= bit;
+                    j |= bit; bitrev[i] = j;
+                }
+                for (int k = 0; k < Frame / 2; k++) { twCos[k] = (float)Math.Cos(2.0 * Math.PI * k / Frame); twSin[k] = (float)Math.Sin(2.0 * Math.PI * k / Frame); }
+            }
+
+            // ---------- COSECHA DE MATERIAL PARA LA IA ----------
+            // Para ENSEÑARLE a la red hacen falta pares "esto queda / estos eran los agudos reales". En un MP3
+            // dañado los agudos reales YA NO EXISTEN, asi que solo sirven las canciones que aun los conservan:
+            // a esas se les corta el agudo A PROPOSITO y se guarda lo que habia arriba. Todo esto usa las MISMAS
+            // funciones que la reproduccion (BuildIaFeatures, Hz, la FFT), asi que el material de entrenamiento
+            // coincide EXACTAMENTE con lo que la red vera en vivo: si no, lo aprendido no serviria de nada.
+            public SpectralTap(int rateHz, int channels)   // solo analisis: no reproduce, no lee de ninguna fuente
+            {
+                src = null; ch = channels < 1 ? 1 : channels; rate = rateHz < 8000 ? 44100 : rateHz;
+                binHz = (float)rate / Frame;
+                re = new float[Frame]; im = new float[Frame]; win = new float[Frame];
+                for (int i = 0; i < Frame; i++) win[i] = (float)Math.Sqrt(0.5 - 0.5 * Math.Cos(2.0 * Math.PI * i / Frame));
+                bitrev = new int[Frame]; twCos = new float[Frame / 2]; twSin = new float[Frame / 2];
+                BuildFftTables();
+            }
+            public int FrameLen { get { return Frame; } }
+            public float CutHz { get { return cutHz; } }   // acantilado detectado hasta ahora (0 = aun sin medir)
+
+            // Analiza UN cuadro (Frame muestras de UN canal) y actualiza el acantilado. Igual que en vivo.
+            public void AnalyzeFrame(float[] mono, int off)
+            {
+                for (int i = 0; i < Frame; i++) { re[i] = mono[off + i] * win[i]; im[i] = 0f; }
+                Fft(false);
+                DetectCliff();
+            }
+            // Con el cuadro ya analizado, arma un par de entrenamiento simulando un corte en cutHzSim:
+            // entrada = lo que la red veria (solo mira POR DEBAJO del corte) y objetivo = la energia REAL que
+            // hay ARRIBA, en la misma escala que la red debe predecir (log10 de la banda contra la costura).
+            public bool MakePair(float cutHzSim, float[] featOut, float[] tgtOut)
+            {
+                int ny = Frame / 2;
+                int cut = (int)(cutHzSim / binHz);
+                if (cut < 64) return false;
+                int topBin = Math.Min((int)(Math.Min(20500f, ny * binHz * 0.95f) / binHz), Math.Min(2 * cut - 2, ny - 4));
+                if (topBin <= cut + 4) return false;
+                if (!BuildIaFeatures(cut)) return false;
+                for (int i = 0; i < 28; i++) featOut[i] = iaIn[i];
+                float n2 = (float)Frame * (float)Frame;
+                int sa = Hz(cut * binHz * 0.92f); if (sa >= cut) sa = cut - 1;
+                double seamE = 0; for (int k = sa; k < cut; k++) seamE += re[k] * re[k] + im[k] * im[k];
+                seamE = seamE / ((cut - sa) * n2) + 1e-12;
+                float fc = cut * binHz, top = topBin * binHz;
+                for (int j = 0; j < 12; j++)
+                {
+                    int a = Hz(fc * (float)Math.Pow(top / fc, j / 12.0));
+                    int b = Hz(fc * (float)Math.Pow(top / fc, (j + 1) / 12.0));
+                    if (a < cut) a = cut; if (b > topBin) b = topBin;
+                    if (b <= a) return false;
+                    double realE = 0; for (int k = a; k < b; k++) realE += re[k] * re[k] + im[k] * im[k];
+                    realE = realE / ((b - a) * n2) + 1e-12;
+                    float y = (float)Math.Log10(realE / seamE);
+                    if (y > 0.1f) y = 0.1f; else if (y < -4f) y = -4f;   // mismos topes que aplica la reproduccion
+                    tgtOut[j] = y;
+                }
+                return true;
+            }
+
             private void ProcessFrame()
             {
                 for (int c = 0; c < ch; c++)
