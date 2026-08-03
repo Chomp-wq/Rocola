@@ -742,6 +742,10 @@ namespace Rocola
     // textura a pantalla completa por pagina). Bmp = disco estatico + etiqueta ya horneado (null si aun no listo).
     // Key = Folder (estable) para cachear su textura entre paginas; null = no cachear (discos TOP / sin carpeta).
     internal struct GpuGridCell { public string Key; public Bitmap Bmp; public int Slot; public float X, Y, W, H; }
+    // TRANSICION al entrar/salir de un disco: la portada se dibuja ENCIMA de todo, creciendo (o encogiendo)
+    // desde la celda hasta la pantalla y desvaneciendose. Es solo un quad texturizado mas: la portada ya es
+    // una textura, asi que el zoom son cuatro numeros y el desvanecido, el alfa del vertice.
+    internal struct GpuTrans { public bool Has; public Bitmap Bmp; public float X, Y, W, H; public float Alpha; }
     internal delegate int GpuGridFetch(GpuGridCell[] buf);   // llena buf con las celdas de la pagina actual; devuelve cuantas (<= buf.Length)
 
     // -------- Control D3D9 para usar el campo estrellado como FONDO de la vista de discos --------
@@ -766,6 +770,9 @@ namespace Rocola
         private readonly CellTex[] slotTex = new CellTex[MaxCells];   // celdas sin Folder (TOP): textura por slot, no se cachea entre paginas
         private readonly GpuGridCell[] gridBuf = new GpuGridCell[MaxCells];
         private readonly IntPtr[] gridTex = new IntPtr[MaxCells];     // textura resuelta por celda (subida ANTES de Begin, dibujada despues)
+        public Func<GpuTrans> GetTrans;                   // portada de la transicion entrar/salir de disco (null = sin animacion)
+        private IntPtr transTex; private Bitmap transLastBmp; private float transU = 1f, transV = 1f;
+        private readonly D3D9.Vtx[] transQuad = new D3D9.Vtx[6];
         private readonly float[] gridU = new float[MaxCells], gridV = new float[MaxCells];
         private int gridN, cellFrame;
         private readonly D3D9.Vtx[] cellQuad = new D3D9.Vtx[6];
@@ -850,6 +857,7 @@ namespace Rocola
             if (selTexB != IntPtr.Zero) { D3D9.Release(selTexB); selTexB = IntPtr.Zero; }
             if (relTex != IntPtr.Zero) { D3D9.Release(relTex); relTex = IntPtr.Zero; }
             if (miniTex != IntPtr.Zero) { D3D9.Release(miniTex); miniTex = IntPtr.Zero; }
+            if (transTex != IntPtr.Zero) { D3D9.Release(transTex); transTex = IntPtr.Zero; transLastBmp = null; }
             if (uiTex != IntPtr.Zero) { D3D9.Release(uiTex); uiTex = IntPtr.Zero; }
             if (uiBotTex != IntPtr.Zero) { D3D9.Release(uiBotTex); uiBotTex = IntPtr.Zero; }
             if (fpsTex != IntPtr.Zero) { D3D9.Release(fpsTex); fpsTex = IntPtr.Zero; }
@@ -988,6 +996,22 @@ namespace Rocola
             // Mini-cubo de la barra inferior (gira): cubo GPU, encima de la barra.
             if (cs.Mini.Has)
                 stars.DrawCube(miniTex, miniU, miniV, cs.Mini.X, cs.Mini.Y, cs.Mini.W, cs.Mini.H, cs.Mini.Angle, 1f, cs.Mini.Tilt);
+            // TRANSICION de disco (zoom + desvanecido) ENCIMA de todo: la portada crece desde su celda hasta
+            // la pantalla al entrar, y al reves al salir. Solo se dibuja mientras la animacion esta viva.
+            if (GetTrans != null)
+            {
+                GpuTrans tr = GetTrans();
+                if (tr.Has && tr.Bmp != null && tr.Alpha > 0.004f && tr.W > 1f && tr.H > 1f)
+                {
+                    EnsureCover(ref transTex, ref transLastBmp, ref transU, ref transV, tr.Bmp);
+                    if (transTex != IntPtr.Zero)
+                    {
+                        int al = (int)(tr.Alpha * 255f + 0.5f); if (al > 255) al = 255; else if (al < 0) al = 0;
+                        SetTexQuadA(transQuad, tr.X, tr.Y, tr.X + tr.W, tr.Y + tr.H, transU, transV, ((uint)al << 24) | 0x00FFFFFFu);
+                        stars.DrawQuad(transTex, transQuad);
+                    }
+                }
+            }
             // Contador de FPS (diagnostico) encima de todo, en su textura pequeña. Oculto por defecto (Ctrl+F1).
             if (ShowFps && fpsTex != IntPtr.Zero) { SetTexQuad(fpsQuad, Width - fpsTW - 10, 6, Width - 10, 6 + fpsTH, fpsU, fpsV); stars.DrawQuad(fpsTex, fpsQuad); }
             stars.End();
@@ -1108,6 +1132,13 @@ namespace Rocola
         {
             SetV(ref v[0], x0, y0, 0, 0); SetV(ref v[1], x1, y0, uMax, 0); SetV(ref v[2], x1, y1, uMax, vMax);
             SetV(ref v[3], x0, y0, 0, 0); SetV(ref v[4], x1, y1, uMax, vMax); SetV(ref v[5], x0, y1, 0, vMax);
+        }
+        // Igual que SetTexQuad pero con COLOR (el alfa del vertice modula la textura): asi el desvanecido
+        // de la transicion no cuesta nada, lo hace la GPU al mezclar.
+        private static void SetTexQuadA(D3D9.Vtx[] v, float x0, float y0, float x1, float y1, float uMax, float vMax, uint argb)
+        {
+            SetTexQuad(v, x0, y0, x1, y1, uMax, vMax);
+            for (int i = 0; i < 6; i++) v[i].Color = argb;
         }
         // -0.5 px: regla de D3D9 (el centro del pixel esta en x+0.5). Sin este ajuste, una textura mapeada
         // 1:1 (los cubos y sobre todo el TEXTO de las etiquetas) se muestrea entre texeles y se ve borrosa.

@@ -585,6 +585,19 @@ namespace Rocola
         // gpu=1/0 (render por GPU, Ctrl+F12) y dir=<ruta> (carpetas de musica ADICIONALES, Ctrl+F2; una por
         // linea, pueden estar en otros discos). Ambos savers escriben el archivo COMPLETO: nada se pisa.
         private bool gpuPrefOn = true;                                  // preferencia de render (GPU por defecto)
+        // ANIMACION al entrar/salir de un disco: la portada hace zoom y se desvanece. Es SOLO un dibujo ENCIMA:
+        // el cambio de pantalla sigue siendo instantaneo como siempre, asi que si la animacion se corta a media
+        // (alguien pulsa algo, entra el modo atraccion, arranca un video...) no queda ningun estado a medias.
+        // Necesita render por GPU: por CPU, escalar y mezclar una imagen grande por cuadro no da el ancho.
+#if ROCOLA_GPU
+        private const int TransMs = 260;
+        private int transMode = 0;        // 0 = nada, 1 = entrando al disco, 2 = saliendo
+        private int transTick = 0;        // TickCount del arranque
+        private float transT = 0f;        // avance 0..1
+        private RectangleF transFrom;     // rectangulo de origen (la celda del disco, o el cubo del buscador)
+        private Image transImg;           // portada que se anima
+#endif
+        private bool transAnimOn = true;  // "animacion=" en config
         private readonly List<string> extraMusicDirs = new List<string>();   // carpetas de musica extra (ademas de "musica")
 
         private void LoadConfigPrefs()
@@ -596,6 +609,7 @@ namespace Rocola
                 {
                     string s = line.Trim();
                     if (s.StartsWith("gpu=")) gpuPrefOn = s.Substring(4).Trim() != "0";
+                    else if (s.StartsWith("animacion=")) transAnimOn = s.Substring(10).Trim() != "0";   // zoom al entrar/salir de un disco
                     else if (s.StartsWith("normalizar=")) normalizeOn = s.Substring(11).Trim() != "0";   // nivelar volumen de las canciones (por defecto si)
                     else if (s.StartsWith("respaldo_dir=")) { string d = s.Substring(13).Trim(); if (d.Length > 0) backupDir = d; }   // 2o destino del respaldo de datos aprendidos
                     else if (s.StartsWith("nivel_objetivo=")) { float v; if (float.TryParse(s.Substring(15).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) normTarget = Clampf(v, NormTargetMin, NormTargetMax); }
@@ -633,6 +647,7 @@ namespace Rocola
             {
                 StringBuilder sb = new StringBuilder();
                 sb.Append("gpu=").Append(gpuPrefOn ? "1" : "0").Append("\r\n");
+                sb.Append("animacion=").Append(transAnimOn ? "1" : "0").Append("\r\n");
                 sb.Append("normalizar=").Append(normalizeOn ? "1" : "0").Append("\r\n");
                 if (!string.IsNullOrEmpty(backupDir)) sb.Append("respaldo_dir=").Append(backupDir).Append("\r\n");
                 sb.Append("nivel_objetivo=").Append(normTarget.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
@@ -2952,8 +2967,8 @@ namespace Rocola
         }
 
         // Libera las carátulas expulsadas. Se llama desde el temporizador (mismo hilo que el dibujo,
-        // asi que NUNCA hay un DrawImage en curso). No libera las que sigan en uso por el cubo del disco
-        // o el mini-cubo (esas las recoge el GC cuando dejen de usarse).
+        // asi que NUNCA hay un DrawImage en curso). No libera las que sigan en uso por el cubo del disco,
+        // el mini-cubo o la animacion de disco (esas las recoge el GC cuando dejen de usarse).
         private void DrainCoverTrash()
         {
             List<Image> dump = null;
@@ -2965,11 +2980,16 @@ namespace Rocola
             }
             Image pin1 = (miniCube != null) ? miniCube.Cover : null;
             Image pin2 = (cubeBox != null) ? cubeBox.Cover : null;
+#if ROCOLA_GPU
+            Image pin3 = transImg;   // la animacion de disco la esta dibujando AHORA: liberarla revienta el render
+#else
+            Image pin3 = null;
+#endif
             for (int i = 0; i < dump.Count; i++)
             {
                 Image im = dump[i];
                 if (im == null) continue;
-                if (im == pin1 || im == pin2) continue;   // sigue en uso: que lo recoja el GC luego
+                if (im == pin1 || im == pin2 || im == pin3) continue;   // sigue en uso: que lo recoja el GC luego
                 try { im.Dispose(); } catch { }
             }
         }
@@ -3045,6 +3065,12 @@ namespace Rocola
 
         private void EnterAlbum(Album a)
         {
+#if ROCOLA_GPU
+            // La animacion se arranca ANTES de cambiar de pantalla (para leer donde estaba el disco), pero el
+            // cambio en si sigue siendo instantaneo: lo que se anima es una portada dibujada ENCIMA.
+            RectangleF desde = searchOpen ? SearchCubeRect() : SelectedDiscRect();
+            StartDiscTrans(true, desde, (a != null) ? RequestCover(a, false, true) : null);
+#endif
             currentAlbum = a;
             browsingVideo = (currentLetter == VideoMark);
             bool showVideos = browsingVideo || (a != null && a.TopIsVideo);   // seccion VIDEOS o disco TOP de videos
@@ -3073,8 +3099,71 @@ namespace Rocola
 #endif
         }
 
+#if ROCOLA_GPU
+        // Arranca la animacion de disco. "entrando" = la portada crece desde su celda hasta la pantalla;
+        // al salir es al reves. Si falta cualquier cosa (sin GPU, sin portada, celda invisible) simplemente
+        // no se anima y todo queda como siempre: la animacion NUNCA es requisito para que la pantalla cambie.
+        private void StartDiscTrans(bool entrando, RectangleF from, Image cover)
+        {
+            transMode = 0; transImg = null;
+            if (!transAnimOn || cover == null) return;
+            if (gpuPanel == null || !gpuEnabled) return;   // por CPU no se anima (costaria mas de lo que luce)
+            if (from.Width < 8f || from.Height < 8f) return;
+            transFrom = from; transImg = cover;
+            transMode = entrando ? 1 : 2;
+            transTick = Environment.TickCount; transT = 0f;
+        }
+        private void AbortDiscTrans() { transMode = 0; transImg = null; }
+#endif
+
+#if ROCOLA_GPU
+        // Rectangulo del CUBO GRANDE del buscador, en coordenadas del formulario: al entrar a un disco desde
+        // el buscador, el zoom arranca de ahi en vez de la rejilla (que ni siquiera esta a la vista).
+        private RectangleF SearchCubeRect()
+        {
+            if (searchOverlay == null || !searchOverlay.Visible) return RectangleF.Empty;
+            Rectangle r = searchOverlay.CubeRect;
+            if (r.Width < 8 || r.Height < 8) return RectangleF.Empty;
+            return new RectangleF(searchOverlay.Left + r.X, searchOverlay.Top + r.Y, r.Width, r.Height);
+        }
+
+        // Rectangulo de la celda del disco seleccionado, en coordenadas del formulario (el panel GPU es
+        // pantalla completa). RectangleF.Empty si no hay celda visible.
+        private RectangleF SelectedDiscRect()
+        {
+            if (albumView == null || !albumView.Visible) return RectangleF.Empty;
+            Rectangle r = albumView.ContourScreenRect();
+            if (r.Width < 8 || r.Height < 8) return RectangleF.Empty;
+            return new RectangleF(albumView.Left + r.X, albumView.Top + r.Y, r.Width, r.Height);
+        }
+
+        // Estado de la animacion para el panel GPU: rectangulo interpolado y transparencia. El zoom va con
+        // suavizado (arranca y frena despacio) y el desvanecido entra en la SEGUNDA mitad, que es como lo
+        // pidio el operador: primero el acercamiento y despues el degradado.
+        private GpuTrans BuildTransState()
+        {
+            GpuTrans g = new GpuTrans();
+            if (transMode == 0 || transImg == null) return g;
+            float t = transT; if (t < 0f) t = 0f; else if (t > 1f) t = 1f;
+            float e = t * t * (3f - 2f * t);                       // suavizado
+            float lado = Math.Max(ClientSize.Width, ClientSize.Height) * 1.06f;
+            RectangleF big = new RectangleF((ClientSize.Width - lado) * 0.5f, (ClientSize.Height - lado) * 0.5f, lado, lado);
+            RectangleF a = (transMode == 1) ? transFrom : big;     // entrando: de la celda a la pantalla
+            RectangleF b = (transMode == 1) ? big : transFrom;     // saliendo: al reves
+            g.Has = true; g.Bmp = transImg as Bitmap;
+            if (g.Bmp == null) { g.Has = false; return g; }
+            g.X = a.X + (b.X - a.X) * e; g.Y = a.Y + (b.Y - a.Y) * e;
+            g.W = a.Width + (b.Width - a.Width) * e; g.H = a.Height + (b.Height - a.Height) * e;
+            g.Alpha = (t < 0.5f) ? 1f : (1f - (t - 0.5f) / 0.5f);   // opaca al acercarse, se degrada al final
+            return g;
+        }
+#endif
+
         private void BackToAlbums()
         {
+#if ROCOLA_GPU
+            Album saliendo = currentAlbum;   // para el zoom de vuelta (se lee mas abajo)
+#endif
             panelSongs.Visible = false;
             albumView.Visible = true;
             letterBar.Visible = true;
@@ -3082,6 +3171,8 @@ namespace Rocola
             this.Focus();
 #if ROCOLA_GPU
             if (gpuPanel != null && gpuEnabled) SyncGpuFullScreen();   // aplica el modo navegacion YA: no ver el interior detras un instante
+            // Ya con la rejilla puesta, la celda del disco existe otra vez: de ahi sale el zoom de vuelta.
+            StartDiscTrans(false, SelectedDiscRect(), (saliendo != null) ? RequestCover(saliendo, false, true) : null);
 #endif
         }
 
@@ -3183,6 +3274,9 @@ namespace Rocola
 
         private void EnterAttract()
         {
+#if ROCOLA_GPU
+            AbortDiscTrans();   // la animacion de disco no tiene sentido aqui (y el modo atraccion cambia todo)
+#endif
             if (attractView == null || libBuilding) return;   // el worker esta armando 'albums': muestrearlo aqui seria una carrera (crash)
             // FIX: si la atraccion entra con el INTERIOR DE UN DISCO abierto, la textura de UI seguia
             // dibujando el interior encima del cielo de atraccion (la firma de UI mira el interior antes
@@ -4434,6 +4528,9 @@ namespace Rocola
 
         private void StartVideoItem(string path)
         {
+#if ROCOLA_GPU
+            AbortDiscTrans();   // el video toma la pantalla: nada de portadas volando encima
+#endif
             try
             {
                 if (video == null)
@@ -5286,6 +5383,7 @@ namespace Rocola
                 gpuPanel = new GpuPanel();
                 gpuPanel.ShowFps = gpuShowFps;
                 gpuPanel.GetPulse = delegate { return audioLevel; };
+                gpuPanel.GetTrans = delegate { return BuildTransState(); };   // zoom al entrar/salir de un disco
                 gpuPanel.GetGrid = albumView.BuildGpuGrid;   // rejilla de discos: cada celda su propio quad con textura cacheada (hojear = elegir texturas + posiciones)
                 gpuPanel.GetContour = delegate { return albumView.ContourSpriteBmp; };          // resalte de seleccion
                 gpuPanel.GetContourRect = delegate {
@@ -5732,6 +5830,14 @@ namespace Rocola
             // se repinta SOLO en su casilla a velocidad plena. Esto recorta ~3x el costo fijo de CPU.
             bool fullFrame = (frameTick % 3) == 0;   // fondo completo 1 de cada 3 (~8fps): el fondo es estatico, repintarlo mas seguido solo gasta CPU (clave en el CPU lento de la rocola)
 
+#if ROCOLA_GPU
+            // Avance de la animacion de disco (si hay una viva). Es puro dibujo: cuando se acaba, se apaga sola.
+            if (transMode != 0)
+            {
+                transT = (Environment.TickCount - transTick) / (float)TransMs;
+                if (transT >= 1f) AbortDiscTrans();
+            }
+#endif
             DrainCoverTrash();   // libera carátulas expulsadas (seguro: no hay repintado en curso)
             CheckBusinessDayReset();   // al cruzar las 7 AM: reinicia el estado (nada de anoche cruza el corte del dia)
             // VIGIA DEL MOTOR DE IA: si DSEE ULTRA esta activo y el motor no responde (recien arrancado, o se
@@ -8691,6 +8797,7 @@ namespace Rocola
             public string ToastMsg = "";
             public Color ToastBack = Color.FromArgb(238, 40, 165, 90);
             private Rectangle cubeRect = Rectangle.Empty;
+            public Rectangle CubeRect { get { return cubeRect; } }   // de aqui sale el zoom al entrar a un disco desde el buscador
             public double PreviewAngle { get { return CubeAngle; } }   // angulo del cubo de vista previa (lo dibuja la GPU)
             // Calcula EN VIVO el cubo de vista previa (celda + par de portadas a fundir) para que la GPU lo
             // dibuje como geometria. Devuelve false si no hay cubo de vista previa visible ahora.

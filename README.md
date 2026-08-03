@@ -24,6 +24,12 @@ artista) y modo atracción.
 - Monedero con créditos y cola de canciones pagadas.
 - Buscador con teclado en pantalla; sección de videos; portadas en cubos 3D girando.
 - La lista de cada disco muestra la **duración** de cada canción.
+- **Animación al entrar/salir de un disco**: la portada hace *zoom* desde su casilla (o desde el
+  cubo grande, si entras desde el buscador) hasta llenar la pantalla y se desvanece; al salir, al
+  revés. Dura ~0.26 s y va **por GPU**, así que no le cuesta nada al CPU. Es solo un dibujo
+  **encima**: el cambio de pantalla sigue siendo instantáneo, y si algo la interrumpe (modo
+  atracción, un video, otra tecla) simplemente deja de dibujarse, nunca queda nada a medias.
+  Se apaga con `animacion=0` en `rocola_config.txt`.
 - "Lo más sonado" y TOP por artista; modo atracción cuando nadie la usa.
 - **Blindaje de kiosco**: una excepción no controlada se anota en `rocola_error.txt`
   y la rocola **sigue corriendo** (ya no muere con el diálogo de error de .NET).
