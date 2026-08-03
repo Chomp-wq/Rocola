@@ -117,6 +117,7 @@ namespace Rocola
         private System.Threading.Thread preScanTh;      // hilo del pre-analisis (uno solo a la vez)
         private volatile bool preScanStop = false;      // pedirle al pre-analisis que se detenga (al cerrar)
         private volatile int preScanLeft = 0;           // canciones que le faltan por medir (0 = al dia)
+        private volatile int preScanGen = 0;            // generacion: al re-escanear la biblioteca (F5) el hilo viejo caduca y arranca uno nuevo
         private string curMeasurePath = null;                                                // cancion que se esta MIDIENDO ahora (null = no medir)
         private LevelTap curTap;                                                              // tap de la cancion actual (para cambiarle la ganancia en vivo desde Ctrl+F3)
         private double curSumSq = 0; private long curSamples = 0;                             // acumuladores del RMS integrado de la cancion actual (los llena el hilo de audio)
@@ -1816,7 +1817,10 @@ namespace Rocola
         private void StartPreScan()
         {
             preScanStop = false;
-            if (preScanTh != null && preScanTh.IsAlive) return;   // ya hay uno trabajando
+            // Cada llamada (arranque o re-escaneo con F5) abre una GENERACION nueva: el hilo anterior se da
+            // por caducado en cuanto lo nota y sale solo. Antes se volvia con "ya hay uno trabajando", asi que
+            // la musica AGREGADA despues no se media hasta reiniciar la rocola.
+            int myGen = ++preScanGen;
             List<string> pend = new List<string>();
             for (int i = 0; i < tracks.Count; i++)
             {
@@ -1849,21 +1853,22 @@ namespace Rocola
                     System.Threading.Thread.Sleep(15000);   // dejar respirar el arranque (y al calentador de caratulas)
                     for (int i = 0; i < pend.Count; i++)
                     {
-                        if (preScanStop) break;
+                        if (preScanStop || myGen != preScanGen) break;
                         // esperar a que la rocola este en reposo: si alguien la esta usando, o hay un video
                         // (que lee del disco sin colchon), este hilo no toca nada.
-                        while (!preScanStop && (Environment.TickCount - lastInputTick < 8000 || videoOn))
+                        while (!preScanStop && myGen == preScanGen && (Environment.TickCount - lastInputTick < 8000 || videoOn))
                             System.Threading.Thread.Sleep(500);
-                        if (preScanStop) break;
+                        if (preScanStop || myGen != preScanGen) break;
                         string ruta = pend[i];
                         float rms, dur; float[] eqCurve;
                         if (!MeasureFile(ruta, out rms, out dur, out eqCurve)) { preScanLeft--; continue; }
                         // publicar en el hilo de la interfaz (las tablas son suyas): sin carreras
                         try
                         {
-                            if (!IsHandleCreated || preScanStop) break;
+                            if (!IsHandleCreated || preScanStop || myGen != preScanGen) break;
                             BeginInvoke((MethodInvoker)delegate
                             {
+                                if (myGen != preScanGen) return;   // llego de una generacion caducada: descartar
                                 if (dur > 0.01f) durCache[ruta] = dur;
                                 // SOBRESCRIBE lo que hubiera: la medida del pre-analisis es de la cancion COMPLETA,
                                 // asi que es mejor que lo aprendido a medias oyendola (que promediaba entre pasadas).
@@ -1877,7 +1882,11 @@ namespace Rocola
                         hechas++;
                         if ((hechas % 25) == 0)
                             try { if (IsHandleCreated) BeginInvoke((MethodInvoker)delegate { SaveLoudCache(); FlushEqIfDirty(); }); } catch { }
-                        System.Threading.Thread.Sleep(diskSlow ? 120 : 40);   // respiro (mas largo en disco duro)
+                        // Respiro entre archivos. Si hay algo SONANDO se descansa mucho mas: decodificar un MP3
+                        // cuesta CPU, y en la rocola (un solo nucleo modesto) competir con la reproduccion podria
+                        // provocar cortes. Con la rocola callada, a ritmo normal.
+                        bool sonando = (nowPlaying != null);
+                        System.Threading.Thread.Sleep(sonando ? (diskSlow ? 700 : 400) : (diskSlow ? 120 : 40));
                     }
                 }
                 catch { }
