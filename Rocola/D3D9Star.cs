@@ -746,6 +746,11 @@ namespace Rocola
     // desde la celda hasta la pantalla y desvaneciendose. Es solo un quad texturizado mas: la portada ya es
     // una textura, asi que el zoom son cuatro numeros y el desvanecido, el alfa del vertice.
     internal struct GpuTrans { public bool Has; public Bitmap Bmp; public float X, Y, W, H; public float Alpha; }
+    // VENTANA (el buscador) abriendo/cerrando, al estilo de una ventana de macOS: la ventana entera crece o
+    // se encoge desde SU CENTRO, sube/baja un poco y se funde. Bmp = null significa "anima la PROPIA textura
+    // de UI" (al abrir, esa textura YA es el buscador: no hay que copiar ni subir nada). HideUi = no dibujarla
+    // ademas a tamano normal. Al cerrar, la textura de UI ya es la de navegacion y se anima una instantanea.
+    internal struct GpuWin { public bool Has; public bool HideUi; public Bitmap Bmp; public float Scale, Dy, Alpha; }
     internal delegate int GpuGridFetch(GpuGridCell[] buf);   // llena buf con las celdas de la pagina actual; devuelve cuantas (<= buf.Length)
 
     // -------- Control D3D9 para usar el campo estrellado como FONDO de la vista de discos --------
@@ -773,6 +778,9 @@ namespace Rocola
         public Func<GpuTrans> GetTrans;                   // portada de la transicion entrar/salir de disco (null = sin animacion)
         private IntPtr transTex; private Bitmap transLastBmp; private float transU = 1f, transV = 1f;
         private readonly D3D9.Vtx[] transQuad = new D3D9.Vtx[6];
+        public Func<GpuWin> GetWin;                       // ventana del buscador abriendo/cerrando (null = sin animacion)
+        private IntPtr winTex; private Bitmap winLastBmp; private float winU = 1f, winV = 1f;
+        private readonly D3D9.Vtx[] winQuad = new D3D9.Vtx[6];
         private readonly float[] gridU = new float[MaxCells], gridV = new float[MaxCells];
         private int gridN, cellFrame;
         private readonly D3D9.Vtx[] cellQuad = new D3D9.Vtx[6];
@@ -858,6 +866,7 @@ namespace Rocola
             if (relTex != IntPtr.Zero) { D3D9.Release(relTex); relTex = IntPtr.Zero; }
             if (miniTex != IntPtr.Zero) { D3D9.Release(miniTex); miniTex = IntPtr.Zero; }
             if (transTex != IntPtr.Zero) { D3D9.Release(transTex); transTex = IntPtr.Zero; transLastBmp = null; }
+            if (winTex != IntPtr.Zero) { D3D9.Release(winTex); winTex = IntPtr.Zero; winLastBmp = null; }
             if (uiTex != IntPtr.Zero) { D3D9.Release(uiTex); uiTex = IntPtr.Zero; }
             if (uiBotTex != IntPtr.Zero) { D3D9.Release(uiBotTex); uiBotTex = IntPtr.Zero; }
             if (fpsTex != IntPtr.Zero) { D3D9.Release(fpsTex); fpsTex = IntPtr.Zero; }
@@ -985,7 +994,26 @@ namespace Rocola
             }
             // UI ENCIMA del fondo y los cubos: la textura principal anclada ARRIBA (a su tamano real: en
             // navegacion es solo la franja superior) y la franja de estado anclada ABAJO.
-            if (uiTex != IntPtr.Zero && uiBmpW > 0 && uiBmpH > 0) { SetTexQuad(uiQuad, 0, 0, uiBmpW, uiBmpH, uiU, uiV); stars.DrawQuad(uiTex, uiQuad); }
+            GpuWin gw = (GetWin != null) ? GetWin() : new GpuWin();
+            bool uiPropia = gw.Has && gw.Bmp == null;   // se anima la PROPIA textura de UI (abriendo el buscador)
+            if (uiTex != IntPtr.Zero && uiBmpW > 0 && uiBmpH > 0 && !(gw.Has && gw.HideUi))
+                { SetTexQuad(uiQuad, 0, 0, uiBmpW, uiBmpH, uiU, uiV); stars.DrawQuad(uiTex, uiQuad); }
+            // VENTANA del buscador abriendo/cerrando: el mismo quad de la UI, escalado desde su centro y fundido.
+            if (gw.Has && gw.Alpha > 0.004f && gw.Scale > 0.01f)
+            {
+                IntPtr wt; float wu, wv, bw, bh;
+                if (uiPropia) { wt = uiTex; wu = uiU; wv = uiV; bw = uiBmpW; bh = uiBmpH; }
+                else { EnsureCover(ref winTex, ref winLastBmp, ref winU, ref winV, gw.Bmp); wt = winTex; wu = winU; wv = winV; bw = gw.Bmp.Width; bh = gw.Bmp.Height; }
+                if (wt != IntPtr.Zero && bw > 1f && bh > 1f)
+                {
+                    float hw = bw * 0.5f, hh = bh * 0.5f;   // crece/encoge desde SU CENTRO (no desde una esquina)
+                    int wa = (int)(gw.Alpha * 255f + 0.5f); if (wa > 255) wa = 255; else if (wa < 0) wa = 0;
+                    SetTexQuadA(winQuad, hw - hw * gw.Scale, hh - hh * gw.Scale + gw.Dy,
+                                         hw + hw * gw.Scale, hh + hh * gw.Scale + gw.Dy,
+                                wu, wv, ((uint)wa << 24) | 0x00FFFFFFu);
+                    stars.DrawQuad(wt, winQuad);
+                }
+            }
             if (uiBotTex != IntPtr.Zero && uiBotW > 0 && uiBotH > 0) { SetTexQuad(uiBotQuad, 0, Height - uiBotH, uiBotW, Height, uiBotU, uiBotV); stars.DrawQuad(uiBotTex, uiBotQuad); }
             // DESTELLOS del boton pulsado (buscador): halos aditivos ENCIMA de la UI, animados por la GPU (sin re-subir textura).
             if (GetUiGlows != null)

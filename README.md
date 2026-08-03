@@ -24,12 +24,19 @@ artista) y modo atracción.
 - Monedero con créditos y cola de canciones pagadas.
 - Buscador con teclado en pantalla; sección de videos; portadas en cubos 3D girando.
 - La lista de cada disco muestra la **duración** de cada canción.
-- **Animación al entrar/salir de un disco**: la portada hace *zoom* desde su casilla (o desde el
-  cubo grande, si entras desde el buscador) hasta llenar la pantalla y se desvanece; al salir, al
-  revés. Dura ~0.26 s y va **por GPU**, así que no le cuesta nada al CPU. Es solo un dibujo
-  **encima**: el cambio de pantalla sigue siendo instantáneo, y si algo la interrumpe (modo
-  atracción, un video, otra tecla) simplemente deja de dibujarse, nunca queda nada a medias.
-  Se apaga con `animacion=0` en `rocola_config.txt`.
+- **Animaciones** (todas **por GPU**, así que no le cuestan nada al CPU; `animacion=0` las apaga):
+  - **Entrar/salir de un disco**: la portada hace *zoom* desde su casilla —o desde el cubo grande,
+    si entras desde el buscador— hasta llenar la pantalla y se desvanece; al salir, al revés (~0.26 s).
+  - **Modo atracción**: al entrar, la portada del disco elegido **vuela hasta el cubo gigante** y se
+    funde con él; al salir, el cubo gigante se encoge de vuelta hasta su casilla en la cuadrícula.
+  - **Buscador**: se abre y se cierra **como una ventana de macOS** — entra al 86 % de su tamaño y un
+    poco más abajo, y se *asienta* frenando suave mientras aparece; al cerrarse se encoge, se hunde
+    un poco y se va acelerando (~0.21 s).
+
+  Todas son solo un dibujo **encima**: el cambio de pantalla sigue siendo instantáneo, y si algo las
+  interrumpe (modo atracción, un video, otra tecla) simplemente dejan de dibujarse — nunca queda nada
+  a medias. El avance lo calcula el propio render (60 fps), no el temporizador de la interfaz, así que
+  se ven fluidas.
 - "Lo más sonado" y TOP por artista; modo atracción cuando nadie la usa.
 - **Blindaje de kiosco**: una excepción no controlada se anota en `rocola_error.txt`
   y la rocola **sigue corriendo** (ya no muere con el diálogo de error de .NET).
