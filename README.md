@@ -74,6 +74,22 @@ Flujo completo:
 
 Se apaga con `ia_datos=0` en `rocola_config.txt`.
 
+### Entrenamiento a fondo (mantenimiento)
+
+Botón **"ENTRENAMIENTO A FONDO"** en Ctrl+F3. Mientras está encendido, la rocola **se dedica por
+completo** a dejar todo calibrado:
+
+- Repasa **toda** la biblioteca (no solo lo que falta) y analiza cada canción **completa**, no por
+  muestras — la medida más exacta posible de volumen, EQ y material para la IA.
+- **No espera** a que la rocola esté en reposo ni descansa entre archivos, y el hilo sube a
+  prioridad normal.
+- Una **barra de avance** y el texto muestran cuántas canciones lleva y cuántos ejemplos de IA.
+- Sigue corriendo aunque cierres el panel; se detiene con el **mismo botón**.
+
+Cada canción aporta material para la IA **una sola vez** (`rocola_ia_hechas.txt`), así que repasar
+varias veces no sesga el entrenamiento. **No** se guarda en la configuración a propósito: si se va
+la luz, la rocola vuelve sola a su modo normal y nunca se queda a todo gas en horario de negocio.
+
 ## Nivel HD (solo esta rama)
 
 - **Salida WASAPI flotante** (`salida=auto|wasapi|waveout` en `rocola_config.txt`): muestras
