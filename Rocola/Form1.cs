@@ -115,6 +115,16 @@ namespace Rocola
         private volatile bool preScanStop = false;      // pedirle al pre-analisis que se detenga (al cerrar)
         private volatile int preScanLeft = 0;           // canciones que le faltan por medir (0 = al dia)
         private volatile int preScanGen = 0;            // generacion: al re-escanear la biblioteca (F5) el hilo viejo caduca y arranca uno nuevo
+        private volatile int preScanTotal = 0;          // cuantas canciones tiene la tanda en curso (para la barra de avance)
+        // ENTRENAMIENTO A FONDO (boton en Ctrl+F3, para cuando se hace mantenimiento): la rocola se dedica POR
+        // COMPLETO a medir. Repasa TODA la biblioteca (no solo lo que falta), analiza cada cancion ENTERA en vez
+        // de por muestras, y no espera a estar en reposo ni descansa entre archivos. Se apaga con el mismo boton.
+        // A proposito NO se guarda en la configuracion: si se va la luz, la rocola vuelve a su modo normal sola
+        // y nunca se queda a todo gas durante el horario del negocio por un olvido.
+        private volatile bool preScanTurbo = false;
+        // Canciones de las que YA se saco material para la IA. Sin esto, cada repaso a fondo volveria a meter
+        // ejemplos de las mismas canciones y el entrenamiento quedaria sesgado hacia ellas.
+        private readonly HashSet<string> iaDone = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private string curMeasurePath = null;                                                // cancion que se esta MIDIENDO ahora (null = no medir)
         private LevelTap curTap;                                                              // tap de la cancion actual (para cambiarle la ganancia en vivo desde Ctrl+F3)
         private double curSumSq = 0; private long curSamples = 0;                             // acumuladores del RMS integrado de la cancion actual (los llena el hilo de audio)
@@ -446,6 +456,7 @@ namespace Rocola
             LoadLoudCache();     // sonoridad medida por cancion (para nivelar el volumen de todas)
             LoadEqCache();       // huella tonal medida por cancion (para el EQ automatico)
             IaCountPairs();      // cuanto material de entrenamiento de la IA llevamos juntado
+            LoadIaDone();        // de que canciones ya se saco material (no repetirlas en los repasos a fondo)
             LoadIncompatible();  // rutas ya anotadas como no reproducibles (para no repetirlas)
             BackupLearnedData(); // respalda lo aprendido de la sesion ANTERIOR antes de que esta lo modifique
             LayoutControls();
@@ -1086,15 +1097,34 @@ namespace Rocola
                                             : "Re-crea la banda que el codec corto (transposicion espectral, experimental).")
                         : "NO disponible en este equipo: " + sbrReason;
 
-                    Label hint = new Label(); hint.SetBounds(16, 608, 568, 40); hint.BackColor = Color.Transparent; hint.ForeColor = Color.FromArgb(160, 170, 200);
+                    Label hint = new Label(); hint.SetBounds(16, 604, 568, 34); hint.BackColor = Color.Transparent; hint.ForeColor = Color.FromArgb(160, 170, 200);
+                    // ENTRENAMIENTO A FONDO: barra de avance de la tanda en curso (visible solo mientras corre).
+                    ProgressBar pbTrain = new ProgressBar();
+                    pbTrain.SetBounds(16, 638, 568, 14); pbTrain.Minimum = 0; pbTrain.Maximum = 1000; pbTrain.Visible = false;
                     // El texto lo rellena updateLabels (lleva el avance del pre-analisis y la etapa de la cancion).
 
-                    Button bReset = new Button(), bOk = new Button();
+                    Button bReset = new Button(), bOk = new Button(), bTrain = new Button();
                     bReset.Text = "Recomendado"; bReset.SetBounds(16, 658, 150, 38);
                     bOk.Text = "Listo"; bOk.SetBounds(488, 658, 96, 38);
-                    Button[] bs = { bReset, bOk };
+                    bTrain.SetBounds(180, 658, 292, 38);
+                    Button[] bs = { bReset, bOk, bTrain };
                     for (int i = 0; i < bs.Length; i++) { bs[i].FlatStyle = FlatStyle.Flat; bs[i].FlatAppearance.BorderColor = Color.FromArgb(90, 110, 170); bs[i].BackColor = Color.FromArgb(34, 44, 86); bs[i].ForeColor = Color.White; }
 
+                    // Pinta el estado del entrenamiento a fondo: texto del boton, barra y cuanto falta.
+                    Action pintaTrain = delegate
+                    {
+                        bool on = preScanTurbo;
+                        bTrain.Text = on ? "DETENER ENTRENAMIENTO" : "ENTRENAMIENTO A FONDO";
+                        bTrain.BackColor = on ? Color.FromArgb(150, 60, 45) : Color.FromArgb(34, 44, 86);
+                        int tot = preScanTotal, fal = preScanLeft;
+                        bool corriendo = on && tot > 0;
+                        pbTrain.Visible = corriendo;
+                        if (corriendo)
+                        {
+                            int hechas = tot - fal; if (hechas < 0) hechas = 0; if (hechas > tot) hechas = tot;
+                            pbTrain.Value = (int)((long)hechas * 1000 / Math.Max(1, tot));
+                        }
+                    };
                     Action updateLabels = delegate
                     {
                         lTarget.Text = "Volumen objetivo:  " + tbTarget.Value + "%   (mas alto = todo suena mas fuerte)";
@@ -1106,10 +1136,15 @@ namespace Rocola
                         // PRE-ANALISIS + ETAPA: ya no hace falta que una cancion suene para quedar nivelada; aqui se
                         // ve cuanto le falta a la biblioteca por medir y en que etapa de volumen cayo la que suena.
                         string etapa = (nowPlaying != null && nowPlaying.Song != null) ? LoudTierName(nowPlaying.Song.Path) : "";
-                        hint.Text = "La biblioteca se mide sola: "
-                                  + (preScanLeft > 0 ? ("faltan " + preScanLeft + " canciones.") : "ya esta al dia.")
-                                  + (iaHarvestOn ? ("   Material para la IA: " + iaPairsTotal.ToString("#,0") + " ejemplos.") : "")
-                                  + (etapa.Length > 0 ? ("   Esta cancion: " + etapa + ".") : "");
+                        int tTot = preScanTotal, tFal = preScanLeft;
+                        hint.Text = (preScanTurbo && tTot > 0)
+                            ? ("ENTRENANDO A FONDO: " + (tTot - tFal).ToString("#,0") + " de " + tTot.ToString("#,0")
+                               + " canciones (" + ((tTot - tFal) * 100 / Math.Max(1, tTot)) + "%).   IA: " + iaPairsTotal.ToString("#,0") + " ejemplos.")
+                            : ("La biblioteca se mide sola: "
+                               + (tFal > 0 ? ("faltan " + tFal.ToString("#,0") + " canciones.") : "ya esta al dia.")
+                               + (iaHarvestOn ? ("   Material para la IA: " + iaPairsTotal.ToString("#,0") + " ejemplos.") : "")
+                               + (etapa.Length > 0 ? ("   Esta cancion: " + etapa + ".") : ""));
+                        pintaTrain();
                         bool en = chkOn.Checked;
                         tbTarget.Enabled = en; tbStr.Enabled = en;
                         lTarget.ForeColor = en ? Color.FromArgb(150, 240, 170) : Color.FromArgb(110, 118, 140);
@@ -1144,9 +1179,28 @@ namespace Rocola
                     dlg.Controls.Add(lExc); dlg.Controls.Add(tbExc);
                     dlg.Controls.Add(lEq); dlg.Controls.Add(tbEq);
                     dlg.Controls.Add(chkSbr); dlg.Controls.Add(lSbrInfo);
-                    dlg.Controls.Add(hint); dlg.Controls.Add(bReset); dlg.Controls.Add(bOk);
+                    dlg.Controls.Add(hint); dlg.Controls.Add(pbTrain);
+                    dlg.Controls.Add(bReset); dlg.Controls.Add(bTrain); dlg.Controls.Add(bOk);
+                    // El boton enciende/apaga el modo a fondo. Al encenderlo se relanza el pre-analisis con TODA
+                    // la biblioteca; al apagarlo, la tanda en curso se corta y vuelve el ritmo normal (que seguira
+                    // solo con lo que falte). Lo medido hasta ese momento ya quedo guardado.
+                    bTrain.Click += delegate
+                    {
+                        preScanTurbo = !preScanTurbo;
+                        StartPreScan();
+                        if (!preScanTurbo) { preScanTotal = 0; }
+                        updateLabels();
+                        ShowToast(preScanTurbo ? "Entrenamiento a fondo: ENCENDIDO" : "Entrenamiento a fondo: detenido",
+                                  preScanTurbo ? Color.FromArgb(150, 60, 45) : Color.FromArgb(40, 130, 90));
+                    };
+                    // Refresco del avance mientras el dialogo esta abierto (el trabajo ocurre en otro hilo).
+                    System.Windows.Forms.Timer tTrain = new System.Windows.Forms.Timer();
+                    tTrain.Interval = 500;
+                    tTrain.Tick += delegate { updateLabels(); };
+                    tTrain.Start();
                     updateLabels();
                     dlg.ShowDialog(this);
+                    tTrain.Stop(); tTrain.Dispose();
                 }
                 if (changed) { SaveConfigPrefs(); ShowToast("Sonido actualizado", Color.FromArgb(40, 130, 90)); }
             }
@@ -1762,6 +1816,34 @@ namespace Rocola
         private const int IaWarmFrames = 64;       // los primeros no se usan: el acantilado aun se esta midiendo
         private static readonly float[] IaCutsHz = { 11000f, 13000f, 15000f, 16500f, 18000f };   // cortes simulados
         private string IaDataFile() { return Path.Combine(Application.StartupPath, "rocola_ia_datos.bin"); }
+        private string IaDoneFile() { return Path.Combine(Application.StartupPath, "rocola_ia_hechas.txt"); }
+        private void LoadIaDone()
+        {
+            try
+            {
+                string f = IaDoneFile();
+                if (!File.Exists(f)) return;
+                foreach (string line in File.ReadAllLines(f)) { string r = line.Trim(); if (r.Length > 0) iaDone.Add(r); }
+            }
+            catch { }
+        }
+        private readonly object iaDoneLock = new object();
+        private volatile bool iaDoneDirty = false;   // hay canciones nuevas cosechadas sin apuntar en disco
+        private void SaveIaDone()
+        {
+            List<string> snap;
+            try { snap = new List<string>(iaDone); } catch { return; }
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate
+            {
+                try
+                {
+                    StringBuilder sb = new StringBuilder(snap.Count * 64 + 16);
+                    for (int i = 0; i < snap.Count; i++) sb.Append(snap[i]).Append("\r\n");
+                    lock (iaDoneLock) File.WriteAllText(IaDoneFile(), sb.ToString());
+                }
+                catch { }
+            });
+        }
         private void IaCountPairs()
         {
             try
@@ -1799,33 +1881,37 @@ namespace Rocola
             // por caducado en cuanto lo nota y sale solo. Antes se volvia con "ya hay uno trabajando", asi que
             // la musica AGREGADA despues no se media hasta reiniciar la rocola.
             int myGen = ++preScanGen;
+            bool turbo = preScanTurbo;
             List<string> pend = new List<string>();
             for (int i = 0; i < tracks.Count; i++)
             {
                 Track tk = tracks[i];
                 if (tk == null || tk.Path == null) continue;
-                if (durCache.ContainsKey(tk.Path)) continue;   // ya pre-analizada (la duracion es la marca)
+                // En modo NORMAL se salta lo ya medido. En ENTRENAMIENTO A FONDO entra TODA la biblioteca:
+                // se vuelve a medir entera y por canciones COMPLETAS, que es mas exacto que el muestreo.
+                if (!turbo && durCache.ContainsKey(tk.Path)) continue;
                 pend.Add(tk.Path);
             }
-            preScanLeft = pend.Count;
+            preScanLeft = pend.Count; preScanTotal = pend.Count;
             if (pend.Count == 0) return;
             preScanTh = new System.Threading.Thread(delegate ()
             {
                 int hechas = 0;
                 try
                 {
-                    System.Threading.Thread.Sleep(15000);   // dejar respirar el arranque (y al calentador de caratulas)
+                    if (!turbo) System.Threading.Thread.Sleep(15000);   // dejar respirar el arranque (y al calentador de caratulas)
                     for (int i = 0; i < pend.Count; i++)
                     {
                         if (preScanStop || myGen != preScanGen) break;
-                        // esperar a que la rocola este en reposo: si alguien la esta usando, o hay un video
-                        // (que lee del disco sin colchon), este hilo no toca nada.
-                        while (!preScanStop && myGen == preScanGen && (Environment.TickCount - lastInputTick < 8000 || videoOn))
+                        // En modo normal se espera a que la rocola este en reposo (si alguien la usa, o hay un
+                        // video, este hilo no toca nada). En ENTRENAMIENTO A FONDO no espera a nadie: para eso
+                        // se enciende, para que la maquina se dedique por completo a dejar todo calibrado.
+                        while (!turbo && !preScanStop && myGen == preScanGen && (Environment.TickCount - lastInputTick < 8000 || videoOn))
                             System.Threading.Thread.Sleep(500);
                         if (preScanStop || myGen != preScanGen) break;
                         string ruta = pend[i];
                         float rms, dur; float[] eqCurve;
-                        if (!MeasureFile(ruta, out rms, out dur, out eqCurve)) { preScanLeft--; continue; }
+                        if (!MeasureFile(ruta, turbo, out rms, out dur, out eqCurve)) { preScanLeft--; continue; }
                         // publicar en el hilo de la interfaz (las tablas son suyas): sin carreras
                         try
                         {
@@ -1844,14 +1930,15 @@ namespace Rocola
                         }
                         catch { break; }
                         hechas++;
-                        if ((hechas % 25) == 0)
-                            try { if (IsHandleCreated) BeginInvoke((MethodInvoker)delegate { SaveLoudCache(); FlushEqIfDirty(); }); } catch { }
-                        // Respiro entre archivos. Con algo SONANDO se descansa mas (decodificar cuesta CPU y no
-                        // vale la pena arriesgar un corte en la musica), pero la espera se ajusta al equipo: con
-                        // UN SOLO nucleo el pre-analisis compite de verdad con la reproduccion y hay que frenarlo
-                        // fuerte; con dos o mas nucleos sobra maquina y puede avanzar bastante mas rapido.
+                        if ((hechas % (turbo ? 10 : 25)) == 0)
+                            try { if (IsHandleCreated) BeginInvoke((MethodInvoker)delegate { SaveLoudCache(); FlushEqIfDirty(); if (iaDoneDirty) { iaDoneDirty = false; SaveIaDone(); } }); } catch { }
+                        // Respiro entre archivos. En ENTRENAMIENTO A FONDO practicamente no hay: la maquina se
+                        // dedica a esto. En modo normal, con algo SONANDO se descansa mas (decodificar cuesta CPU
+                        // y no vale la pena arriesgar un corte), y la espera se ajusta al equipo: con UN SOLO
+                        // nucleo hay que frenar fuerte; con dos o mas sobra maquina y puede ir mas rapido.
                         int respiro;
-                        if (nowPlaying != null) respiro = (Environment.ProcessorCount >= 2) ? (diskSlow ? 220 : 120) : (diskSlow ? 700 : 400);
+                        if (turbo) respiro = 1;
+                        else if (nowPlaying != null) respiro = (Environment.ProcessorCount >= 2) ? (diskSlow ? 220 : 120) : (diskSlow ? 700 : 400);
                         else respiro = diskSlow ? 120 : 40;
                         System.Threading.Thread.Sleep(respiro);
                     }
@@ -1859,18 +1946,23 @@ namespace Rocola
                 catch { }
                 finally
                 {
-                    try { if (IsHandleCreated && hechas > 0) BeginInvoke((MethodInvoker)delegate { SaveLoudCache(); FlushEqIfDirty(); }); } catch { }
+                    try { if (IsHandleCreated && hechas > 0) BeginInvoke((MethodInvoker)delegate { SaveLoudCache(); FlushEqIfDirty(); if (iaDoneDirty) { iaDoneDirty = false; SaveIaDone(); } }); } catch { }
                 }
             });
             preScanTh.IsBackground = true;
-            preScanTh.Priority = System.Threading.ThreadPriority.Lowest;
+            // A fondo: prioridad normal (es LA tarea del momento). En automatico: la minima, para no quitarle
+            // nada a la musica ni a la pantalla.
+            preScanTh.Priority = turbo ? System.Threading.ThreadPriority.Normal : System.Threading.ThreadPriority.Lowest;
             preScanTh.Start();
         }
 
         // Mide un archivo SIN reproducirlo: sonoridad K-weighted (BS.1770, igual que el nivelado en vivo), duracion
         // y la HUELLA TONAL del EQ automatico (8 bandas, mismo bandpass y misma referencia que al oirla). Analiza
         // PreSegs tramos repartidos por el tema (o el tema entero si es corto). Devuelve false si no se pudo.
-        private bool MeasureFile(string path, out float rms, out float durSec, out float[] eqCurve)
+        // "aFondo" = modo ENTRENAMIENTO A FONDO: analiza la cancion COMPLETA en vez de por tramos (la medida
+        // mas exacta posible) y saca mucho mas material para la IA. En automatico se queda con el muestreo,
+        // que da practicamente la misma sonoridad a una fraccion del costo.
+        private bool MeasureFile(string path, bool aFondo, out float rms, out float durSec, out float[] eqCurve)
         {
             rms = 0f; durSec = 0f; eqCurve = null;
             AudioFileReader rd = null;
@@ -1896,7 +1988,10 @@ namespace Rocola
                 // (una cancion dañada no puede enseñar nada: los agudos reales ya no estan en el archivo).
                 SpectralTap hv = null; float[] hvFrame = null, hvFeat = null, hvTgt = null;
                 int hvFill = 0, hvFrames = 0; List<float> hvPairs = null;
-                if (iaHarvestOn)
+                // Una cancion aporta material UNA sola vez: en los repasos a fondo, volver a meter ejemplos de
+                // las mismas canciones solo sesgaria el entrenamiento hacia ellas.
+                bool yaCosechada; lock (iaDoneLock) yaCosechada = iaDone.Contains(path);
+                if (iaHarvestOn && !yaCosechada)
                 {
                     try
                     {
@@ -1908,7 +2003,8 @@ namespace Rocola
                 }
                 // tramos: si el tema es corto se analiza entero; si no, PreSegs ventanas repartidas evitando
                 // el arranque y el final (intros/silencios finales no representan la sonoridad del tema).
-                int segs = (total <= PreSegSec * PreSegs) ? 1 : PreSegs;
+                // A FONDO: un solo "tramo" que abarca la cancion entera. En automatico: PreSegs ventanas.
+                int segs = (aFondo || total <= PreSegSec * PreSegs) ? 1 : PreSegs;
                 double segLen = (segs == 1) ? total : PreSegSec;
                 for (int s = 0; s < segs && !preScanStop; s++)
                 {
@@ -1944,7 +2040,7 @@ namespace Rocola
                             }
                             bpN++;
                             // canal 0 hacia el analizador de la IA (el DSEE tambien trabaja por canal)
-                            if (hv != null && hvFrames < IaFramesPerSong)
+                            if (hv != null && hvFrames < (aFondo ? IaFramesPerSong * 12 : IaFramesPerSong))
                             {
                                 hvFrame[hvFill++] = buf[i];
                                 if (hvFill >= hvFrame.Length)
@@ -1979,7 +2075,12 @@ namespace Rocola
                 }
                 // Solo las canciones COMPLETAS (sin acantilado, el mismo umbral que usa el DSEE para no tocarlas)
                 // sirven de maestras: en las dañadas los agudos reales ya no existen y no hay nada que enseñar.
-                if (hv != null && hvPairs.Count >= 40 && hv.CutHz >= 19300f) IaAppendPairs(hvPairs);
+                if (hv != null && hvPairs.Count >= 40 && hv.CutHz >= 19300f)
+                {
+                    IaAppendPairs(hvPairs);
+                    lock (iaDoneLock) iaDone.Add(path);
+                    iaDoneDirty = true;
+                }
                 if (nSamp < 40000) return durSec > 0.01f;   // muy poco audio util: al menos queda la duracion
                 rms = (float)Math.Sqrt(sumSq / nSamp);
                 // Huella tonal en dB por banda, referida a la MEDIANA del cuerpo (158 Hz - 5.6 kHz): exactamente
