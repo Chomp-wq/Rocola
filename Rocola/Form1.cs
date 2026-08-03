@@ -412,6 +412,12 @@ namespace Rocola
         private VideoHost video;
         private System.Windows.Forms.Timer videoPoll;
         private bool videoOn = false;              // hay un video cargado/reproduciendose
+        // VOLUMEN DE LOS VIDEOS: el video lo reproduce Windows Media Player, cuyo sonido va DIRECTO a la
+        // tarjeta sin pasar por la cadena de audio de la rocola (nivelado, limitador, EQ...). Por eso los
+        // videos entraban a un volumen distinto al de las canciones ya niveladas. Esta perilla (Ctrl+F3) es
+        // la BASE con la que suenan; ademas se le aplican los dB de "Subir TODO" para que sigan al resto.
+        private int videoVol = 85;                 // 0..100, base del volumen de los videos ("video_vol=" en config)
+        private int videoVolSet = -1;              // ultimo volumen puesto al WMP (para no repetir llamadas COM en cada sondeo)
         private double videoLastPos = -1;          // ultima posicion del video (para detectar si NO avanza)
         private int videoProgressTick = 0;         // momento del ultimo avance real (vigia de video colgado)
         private bool videoNudged = false;          // ya se intento el empujon de rescate (play explicito)
@@ -578,6 +584,7 @@ namespace Rocola
                     else if (s.StartsWith("subir_db=")) { float v; if (float.TryParse(s.Substring(9).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) masterDb = Clampf(v, 0f, 12f); }   // SUBIR TODO (dB extra general)
                     else if (s.StartsWith("fundido=")) { float v; if (float.TryParse(s.Substring(8).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) crossfadeSec = Clampf(v, 0f, 3f); }   // FUNDIDO entre canciones (segundos)
                     else if (s.StartsWith("declip=")) declipOn = s.Substring(7).Trim() != "0";   // des-recorte de picos aplastados (por defecto si)
+                    else if (s.StartsWith("video_vol=")) { int v; if (int.TryParse(s.Substring(10).Trim(), out v)) videoVol = v < 0 ? 0 : (v > 100 ? 100 : v); }   // volumen base de los videos
                     else if (s.StartsWith("eq_auto=")) { float v; if (float.TryParse(s.Substring(8).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) eqAmount = Clampf(v / 100f, 0f, 1f); }   // EQ automatico (fuerza %)
                     else if (s.StartsWith("dsee=")) sbrOn = s.Substring(5).Trim() == "1";   // reconstruccion espectral (NIVEL 2)
                     else if (s.StartsWith("salida=")) { string v = s.Substring(7).Trim().ToLowerInvariant(); if (v == "auto" || v == "wasapi" || v == "waveout") outPref = v; }   // salida de audio (rama HD)
@@ -613,6 +620,7 @@ namespace Rocola
                 sb.Append("subir_db=").Append(masterDb.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("fundido=").Append(crossfadeSec.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("declip=").Append(declipOn ? "1" : "0").Append("\r\n");
+                sb.Append("video_vol=").Append(videoVol).Append("\r\n");
                 sb.Append("eq_auto=").Append(((int)Math.Round(eqAmount * 100f)).ToString(System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("dsee=").Append(sbrOn ? "1" : "0").Append("\r\n");
                 sb.Append("salida=").Append(outPref).Append("\r\n");
@@ -1020,7 +1028,7 @@ namespace Rocola
             bool wasMaint = maintMode;
             maintMode = true; maintUntil = DateTime.Now.AddMinutes(10);
             bool changed = false;
-            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkUp = masterDb, bkEq = eqAmount; bool bkOn = normalizeOn, bkSbr = sbrOn, bkIa = iaVivo; string bkIaMez = iaMezcla, bkIaGpu = iaGpu;   // por si se Cancela
+            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkUp = masterDb, bkEq = eqAmount; int bkVid = videoVol; bool bkOn = normalizeOn, bkSbr = sbrOn, bkIa = iaVivo; string bkIaMez = iaMezcla, bkIaGpu = iaGpu;   // por si se Cancela
             try
             {
                 Cursor.Show();
@@ -1032,7 +1040,7 @@ namespace Rocola
                     dlg.FormBorderStyle = FormBorderStyle.FixedDialog;
                     dlg.MaximizeBox = false; dlg.MinimizeBox = false; dlg.ShowInTaskbar = false; dlg.ShowIcon = false;
                     dlg.StartPosition = FormStartPosition.CenterParent;
-                    dlg.ClientSize = new Size(600, 836);
+                    dlg.ClientSize = new Size(600, 888);
                     dlg.BackColor = Color.FromArgb(14, 18, 42);
                     dlg.Font = fUi;
 
@@ -1059,21 +1067,27 @@ namespace Rocola
                     TrackBar tbUp = new TrackBar(); tbUp.SetBounds(268, 286, 316, 45); tbUp.Minimum = 0; tbUp.Maximum = 12; tbUp.TickFrequency = 1;
                     tbUp.BackColor = dlg.BackColor; tbUp.Value = (int)Math.Round(masterDb);
 
-                    Label lExc = new Label(); lExc.SetBounds(16, 344, 568, 24); lExc.BackColor = Color.Transparent; lExc.ForeColor = Color.FromArgb(255, 214, 140);
-                    TrackBar tbExc = new TrackBar(); tbExc.SetBounds(12, 370, 576, 45); tbExc.Minimum = 0; tbExc.Maximum = 100; tbExc.TickFrequency = 10;
+                    // VOLUMEN DE LOS VIDEOS: el WMP no pasa por la cadena de audio, asi que su volumen se
+                    // empareja aqui a mano (y de todos modos sigue a "Subir TODO").
+                    Label lVid = new Label(); lVid.SetBounds(16, 350, 250, 24); lVid.BackColor = Color.Transparent; lVid.ForeColor = Color.FromArgb(150, 225, 235);
+                    TrackBar tbVid = new TrackBar(); tbVid.SetBounds(268, 344, 316, 45); tbVid.Minimum = 0; tbVid.Maximum = 100; tbVid.TickFrequency = 10;
+                    tbVid.BackColor = dlg.BackColor; tbVid.Value = videoVol;
+
+                    Label lExc = new Label(); lExc.SetBounds(16, 396, 568, 24); lExc.BackColor = Color.Transparent; lExc.ForeColor = Color.FromArgb(255, 214, 140);
+                    TrackBar tbExc = new TrackBar(); tbExc.SetBounds(12, 422, 576, 45); tbExc.Minimum = 0; tbExc.Maximum = 100; tbExc.TickFrequency = 10;
                     tbExc.BackColor = dlg.BackColor; tbExc.Value = (int)Math.Round(excAmount * 100f);
 
                     // EQ AUTOMATICO: correccion tonal suave por cancion, hacia el promedio de la biblioteca.
-                    Label lEq = new Label(); lEq.SetBounds(16, 430, 568, 24); lEq.BackColor = Color.Transparent; lEq.ForeColor = Color.FromArgb(190, 160, 255);
-                    TrackBar tbEq = new TrackBar(); tbEq.SetBounds(12, 456, 576, 45); tbEq.Minimum = 0; tbEq.Maximum = 100; tbEq.TickFrequency = 10;
+                    Label lEq = new Label(); lEq.SetBounds(16, 482, 568, 24); lEq.BackColor = Color.Transparent; lEq.ForeColor = Color.FromArgb(190, 160, 255);
+                    TrackBar tbEq = new TrackBar(); tbEq.SetBounds(12, 508, 576, 45); tbEq.Minimum = 0; tbEq.Maximum = 100; tbEq.TickFrequency = 10;
                     tbEq.BackColor = dlg.BackColor; tbEq.Value = (int)Math.Round(eqAmount * 100f);
 
                     // NIVEL 2: reconstructor espectral (solo maquinas que cumplen requisitos; ver ProbeAudioTier)
                     CheckBox chkSbr = new CheckBox();
-                    chkSbr.SetBounds(16, 508, 568, 24); chkSbr.BackColor = Color.Transparent; chkSbr.ForeColor = Color.FromArgb(190, 225, 255);
+                    chkSbr.SetBounds(16, 560, 568, 24); chkSbr.BackColor = Color.Transparent; chkSbr.ForeColor = Color.FromArgb(190, 225, 255);
                     chkSbr.Text = "DSEE  (reconstruccion espectral de agudos)";
                     chkSbr.Checked = sbrOn && sbrAllowed;
-                    Label lSbrInfo = new Label(); lSbrInfo.SetBounds(35, 532, 549, 18); lSbrInfo.BackColor = Color.Transparent;
+                    Label lSbrInfo = new Label(); lSbrInfo.SetBounds(35, 584, 549, 18); lSbrInfo.BackColor = Color.Transparent;
                     lSbrInfo.ForeColor = Color.FromArgb(150, 160, 190);
                     lSbrInfo.Text = sbrAllowed
                         ? (NeuralEnv.Loaded ? "Reconstruye agudos dentro de la rocola, con IA propia (rocola_ia.bin)." : "Reconstruye agudos dentro de la rocola (ligero).")
@@ -1081,25 +1095,25 @@ namespace Rocola
 
                     // DSEE ULTRA = IA (Apollo por demanda). Al activarlo, el DSEE normal se pone en GRIS (no van juntos).
                     CheckBox chkUltra = new CheckBox();
-                    chkUltra.SetBounds(16, 560, 568, 24); chkUltra.BackColor = Color.Transparent; chkUltra.ForeColor = Color.FromArgb(255, 210, 130);
+                    chkUltra.SetBounds(16, 612, 568, 24); chkUltra.BackColor = Color.Transparent; chkUltra.ForeColor = Color.FromArgb(255, 210, 130);
                     chkUltra.Font = fBig; chkUltra.Text = "DSEE ULTRA  (IA - maxima calidad)"; chkUltra.Checked = iaVivo;
-                    Label lUltraInfo = new Label(); lUltraInfo.SetBounds(35, 586, 549, 18); lUltraInfo.BackColor = Color.Transparent; lUltraInfo.ForeColor = Color.FromArgb(180, 170, 150);
+                    Label lUltraInfo = new Label(); lUltraInfo.SetBounds(35, 638, 549, 18); lUltraInfo.BackColor = Color.Transparent; lUltraInfo.ForeColor = Color.FromArgb(180, 170, 150);
                     lUltraInfo.Text = "Restaura con IA (Apollo, usa la GPU). Lista tras oirla una vez.";
                     CheckBox chkIaAuto = new CheckBox();
-                    chkIaAuto.SetBounds(35, 608, 549, 22); chkIaAuto.BackColor = Color.Transparent; chkIaAuto.ForeColor = Color.White;
+                    chkIaAuto.SetBounds(35, 660, 549, 22); chkIaAuto.BackColor = Color.Transparent; chkIaAuto.ForeColor = Color.White;
                     chkIaAuto.Text = "IA automatica segun el dano (recomendado)";
                     int iaMixInit = 70; bool iaAutoInit = true;
                     if (iaMezcla != null && iaMezcla != "auto") { int tmp; if (int.TryParse(iaMezcla, out tmp)) { iaMixInit = tmp < 0 ? 0 : (tmp > 100 ? 100 : tmp); iaAutoInit = false; } }
                     chkIaAuto.Checked = iaAutoInit;
-                    Label lIaMix = new Label(); lIaMix.SetBounds(16, 634, 568, 22); lIaMix.BackColor = Color.Transparent; lIaMix.ForeColor = Color.FromArgb(255, 214, 140);
-                    TrackBar tbIaMix = new TrackBar(); tbIaMix.SetBounds(12, 656, 576, 45); tbIaMix.Minimum = 0; tbIaMix.Maximum = 100; tbIaMix.TickFrequency = 10;
+                    Label lIaMix = new Label(); lIaMix.SetBounds(16, 686, 568, 22); lIaMix.BackColor = Color.Transparent; lIaMix.ForeColor = Color.FromArgb(255, 214, 140);
+                    TrackBar tbIaMix = new TrackBar(); tbIaMix.SetBounds(12, 708, 576, 45); tbIaMix.Minimum = 0; tbIaMix.Maximum = 100; tbIaMix.TickFrequency = 10;
                     tbIaMix.BackColor = dlg.BackColor; tbIaMix.Value = iaMixInit;
 
                     // GPU QUE HACE LOS CALCULOS DE IA: la lista la escribe el motor (cache\gpus.txt) al arrancar,
                     // con los nombres reales que ve torch (el indice de la lista ES el indice CUDA).
-                    Label lGpu = new Label(); lGpu.SetBounds(35, 708, 235, 22); lGpu.BackColor = Color.Transparent; lGpu.ForeColor = Color.White;
+                    Label lGpu = new Label(); lGpu.SetBounds(35, 760, 235, 22); lGpu.BackColor = Color.Transparent; lGpu.ForeColor = Color.White;
                     lGpu.Text = "GPU para los calculos de IA:";
-                    ComboBox cbGpu = new ComboBox(); cbGpu.SetBounds(272, 704, 312, 26); cbGpu.DropDownStyle = ComboBoxStyle.DropDownList;
+                    ComboBox cbGpu = new ComboBox(); cbGpu.SetBounds(272, 756, 312, 26); cbGpu.DropDownStyle = ComboBoxStyle.DropDownList;
                     cbGpu.BackColor = Color.FromArgb(34, 44, 86); cbGpu.ForeColor = Color.White; cbGpu.FlatStyle = FlatStyle.Flat;
                     cbGpu.Items.Add("Automatica");
                     string[] gpus = IaGpuList();
@@ -1107,12 +1121,12 @@ namespace Rocola
                     int selGpu = 0; { int gn; if (iaGpu != "auto" && int.TryParse(iaGpu, out gn) && gn >= 0 && gn + 1 < cbGpu.Items.Count) selGpu = gn + 1; }
                     cbGpu.SelectedIndex = selGpu;   // antes de enganchar el evento: sin reinicios fantasma
 
-                    Label hint = new Label(); hint.SetBounds(16, 742, 568, 40); hint.BackColor = Color.Transparent; hint.ForeColor = Color.FromArgb(160, 170, 200);
+                    Label hint = new Label(); hint.SetBounds(16, 794, 568, 40); hint.BackColor = Color.Transparent; hint.ForeColor = Color.FromArgb(160, 170, 200);
                     hint.Text = "El nivelado y el realce se oyen al instante; DSEE / DSEE ULTRA aplican desde la SIGUIENTE cancion. DSEE ULTRA y DSEE normal no van juntos.";
 
                     Button bReset = new Button(), bOk = new Button();
-                    bReset.Text = "Recomendado"; bReset.SetBounds(16, 784, 150, 38);
-                    bOk.Text = "Listo"; bOk.SetBounds(488, 784, 96, 38);
+                    bReset.Text = "Recomendado"; bReset.SetBounds(16, 836, 150, 38);
+                    bOk.Text = "Listo"; bOk.SetBounds(488, 836, 96, 38);
                     Button[] bs = { bReset, bOk };
                     for (int i = 0; i < bs.Length; i++) { bs[i].FlatStyle = FlatStyle.Flat; bs[i].FlatAppearance.BorderColor = Color.FromArgb(90, 110, 170); bs[i].BackColor = Color.FromArgb(34, 44, 86); bs[i].ForeColor = Color.White; }
 
@@ -1122,6 +1136,7 @@ namespace Rocola
                         lStr.Text = "Fuerza del nivelado:  " + tbStr.Value + "%   (cuanto se suben las bajitas; 0 = no nivelar)";
                         lExc.Text = "Realce de brillo (tipo DSEE):  " + tbExc.Value + "%   (el 'aire' que el MP3 apaga; 0 = sin realce)";
                         lUp.Text = "Subir TODO el volumen:  +" + tbUp.Value + " dB";
+                        lVid.Text = "Volumen de los videos:  " + tbVid.Value + "%";
                         lEq.Text = "EQ automatico:  " + tbEq.Value + "%   (equilibra el tono de cada cancion)";
                         // PRE-ANALISIS + ETAPA: ya no hace falta que una cancion suene para quedar nivelada; aqui se
                         // ve cuanto le falta a la biblioteca por medir y en que etapa de volumen cayo la que suena.
@@ -1153,6 +1168,8 @@ namespace Rocola
                         normStrength = tbStr.Value / 100f;
                         excAmount = tbExc.Value / 100f;
                         masterDb = tbUp.Value;
+                        videoVol = tbVid.Value;
+                        if (videoOn && nowPlaying != null) SetVideoVolume(VideoVolumeFor(nowPlaying.VideoPath));   // el video que suena cambia YA
                         eqAmount = tbEq.Value / 100f;
                         bool ultra = chkUltra.Checked;
                         iaVivo = ultra;
@@ -1163,7 +1180,7 @@ namespace Rocola
                         ApplyNormNow();   // se oye el cambio al instante en la cancion que suena
                         UpdateNowPlayingUI();   // y el letrero MEJORADA se actualiza al instante (aparece/cambia de color)
                     };
-                    tbTarget.Scroll += apply; tbStr.Scroll += apply; tbExc.Scroll += apply; tbUp.Scroll += apply; tbEq.Scroll += apply; chkOn.CheckedChanged += apply; chkSbr.CheckedChanged += apply;
+                    tbTarget.Scroll += apply; tbStr.Scroll += apply; tbExc.Scroll += apply; tbUp.Scroll += apply; tbEq.Scroll += apply; tbVid.Scroll += apply; chkOn.CheckedChanged += apply; chkSbr.CheckedChanged += apply;
                     tbIaMix.Scroll += apply; chkIaAuto.CheckedChanged += apply;
                     chkUltra.CheckedChanged += delegate { if (chkUltra.Checked) { IaEnsureMotor(); IaRequestQueueJobs(); } apply(chkUltra, EventArgs.Empty); };   // al encender ULTRA: motor oculto + preparar cola
                     cbGpu.SelectedIndexChanged += delegate
@@ -1172,7 +1189,7 @@ namespace Rocola
                         changed = true;
                         IaRestartMotor();   // el motor renace OCULTO con la GPU elegida (Apollo recarga en ella)
                     };
-                    bReset.Click += delegate { chkOn.Checked = true; tbTarget.Value = TargetToPct(0.26f); tbStr.Value = 100; tbExc.Value = 35; tbUp.Value = 0; tbEq.Value = 0; chkUltra.Checked = false; if (chkSbr.Enabled) chkSbr.Checked = false; chkIaAuto.Checked = true; apply(bReset, EventArgs.Empty); };
+                    bReset.Click += delegate { chkOn.Checked = true; tbTarget.Value = TargetToPct(0.26f); tbStr.Value = 100; tbExc.Value = 35; tbUp.Value = 0; tbEq.Value = 0; tbVid.Value = 85; chkUltra.Checked = false; if (chkSbr.Enabled) chkSbr.Checked = false; chkIaAuto.Checked = true; apply(bReset, EventArgs.Empty); };
                     bOk.Click += delegate { dlg.Close(); };
                     dlg.CancelButton = bOk;
 
@@ -1180,6 +1197,7 @@ namespace Rocola
                     dlg.Controls.Add(lTarget); dlg.Controls.Add(tbTarget);
                     dlg.Controls.Add(lStr); dlg.Controls.Add(tbStr);
                     dlg.Controls.Add(lUp); dlg.Controls.Add(tbUp);
+                    dlg.Controls.Add(lVid); dlg.Controls.Add(tbVid);
                     dlg.Controls.Add(lExc); dlg.Controls.Add(tbExc);
                     dlg.Controls.Add(lEq); dlg.Controls.Add(tbEq);
                     dlg.Controls.Add(chkSbr); dlg.Controls.Add(lSbrInfo);
@@ -1192,7 +1210,7 @@ namespace Rocola
                 }
                 if (changed) { SaveConfigPrefs(); ShowToast("Sonido actualizado", Color.FromArgb(40, 130, 90)); }
             }
-            catch { normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; masterDb = bkUp; eqAmount = bkEq; sbrOn = bkSbr; iaVivo = bkIa; iaMezcla = bkIaMez; iaGpu = bkIaGpu; }   // si algo truena, deja los valores como estaban
+            catch { normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; masterDb = bkUp; eqAmount = bkEq; videoVol = bkVid; sbrOn = bkSbr; iaVivo = bkIa; iaMezcla = bkIaMez; iaGpu = bkIaGpu; }   // si algo truena, deja los valores como estaban
             finally { try { Cursor.Hide(); } catch { } maintMode = wasMaint; ForceFocus(); }
         }
 
@@ -1489,7 +1507,9 @@ namespace Rocola
             {
                 if (i < 0 || i >= songItems.Count) return "";
                 Track tk = songItems[i] as Track;
-                return (tk != null) ? DurText(tk.Path) : "";
+                if (tk != null) return DurText(tk.Path);
+                VideoItem vi = songItems[i] as VideoItem;   // los videos solo traen duracion donde se pueden medir (rama HD)
+                return (vi != null) ? DurText(vi.Path) : "";
             };
             songList.OnPick = delegate (int idx) { songSel = idx; FillSongPage(); UpdateTopSongVisuals(); };         // click simple
             songList.OnActivate = delegate (int idx) { songSel = idx; FillSongPage(); EnqueueSelectedSong(); };      // doble-click
@@ -1805,6 +1825,20 @@ namespace Rocola
                 if (durCache.ContainsKey(tk.Path)) continue;   // ya pre-analizada (la duracion es la marca)
                 pend.Add(tk.Path);
             }
+            // RAMA HD: aqui SI se puede decodificar el audio de un MP4/AVI/WMV (Media Foundation), asi que los
+            // videos tambien se miden y quedan nivelados solos, como las canciones. En la rama clasica (XP) esto
+            // no existe y los videos se emparejan solo con la perilla de Ctrl+F3.
+            if (videoAlbums != null)
+                for (int i = 0; i < videoAlbums.Count; i++)
+                {
+                    Album va = videoAlbums[i]; if (va == null) continue;
+                    for (int j = 0; j < va.VideoFiles.Count; j++)
+                    {
+                        string vp = va.VideoFiles[j];
+                        if (vp == null || durCache.ContainsKey(vp)) continue;
+                        pend.Add(vp);
+                    }
+                }
             preScanLeft = pend.Count;
             if (pend.Count == 0) return;
             preScanTh = new System.Threading.Thread(delegate ()
@@ -4161,6 +4195,40 @@ namespace Rocola
         }
 
         // Abre y reproduce un video en el reproductor de la derecha (lo llama PlayNext).
+        // Volumen (0..100) con el que debe sonar un video: la perilla base, mas los dB de "Subir TODO" (para
+        // que los videos sigan al resto), mas -si ese video ya fue medido- el nivelado que lo lleva al MISMO
+        // volumen objetivo de las canciones. En XP los videos no se pueden medir (no hay como decodificar su
+        // audio), asi que alli solo actuan la perilla y el "Subir TODO"; en la rama HD si se miden.
+        private int VideoVolumeFor(string path)
+        {
+            double g = MasterLin();
+            float rms;
+            if (normalizeOn && path != null && loudCache.TryGetValue(path, out rms) && rms > 0.0001f)
+            {
+                double lv = normTarget / rms;
+                if (lv < 0.15) lv = 0.15;        // no enterrar un video muy fuerte (max -16 dB)
+                else if (lv > 4.0) lv = 4.0;     // ni intentar rescatar uno mudo (el tope real lo pone el 100 del WMP)
+                g *= lv;
+            }
+            int v = (int)Math.Round(videoVol * g);
+            if (v < 0) v = 0; else if (v > 100) v = 100;   // el WMP no pasa de 100: un video muy bajito solo llega hasta ahi
+            return v;
+        }
+
+        // Pone el volumen en el WMP solo si CAMBIO (el sondeo corre varias veces por segundo durante el fundido).
+        private void SetVideoVolume(int v)
+        {
+            if (v == videoVolSet) return;
+            videoVolSet = v;
+            try
+            {
+                if (video == null) return;
+                object ocx = video.GetOcxObj(); if (ocx == null) return;
+                object settings = Get(ocx, "settings"); if (settings != null) Set(settings, "volume", v);
+            }
+            catch { }
+        }
+
         private void StartVideoItem(string path)
         {
             try
@@ -4180,13 +4248,17 @@ namespace Rocola
                 Set(ocx, "uiMode", "none");
                 Set(ocx, "stretchToFit", true);
                 object settings = Get(ocx, "settings");
-                if (settings != null) { Set(settings, "autoStart", true); Set(settings, "volume", 100); }
+                videoVolSet = -1;   // fuerza el primer envio del volumen a este WMP recien apuntado
+                int vol0 = VideoVolumeFor(path);
+                if (settings != null) { Set(settings, "autoStart", true); Set(settings, "volume", vol0); }
+                videoVolSet = vol0;
                 Set(ocx, "URL", path);   // con autoStart=true deberia arrancar solo
                 try { object c0 = Get(ocx, "controls"); if (c0 != null) Call(c0, "play"); } catch { }   // empujon explicito: autoStart no siempre engancha al instanciar el ActiveX
 
                 videoOn = true;
                 progress.Value = 0; lblTime.Text = "0:00 / 0:00";   // limpia el tiempo de la cancion anterior; VideoPoll lo llena con pos/dur del video
                 videoLastPos = -1; videoProgressTick = Environment.TickCount; videoNudged = false; videoMaxPos = 0;   // arrancar el vigia de avance
+                videoPoll.Interval = 400;   // sondeo normal (baja a 80 ms durante el fundido del final)
                 video.BringToFront();
                 videoPoll.Start();
             }
@@ -4255,6 +4327,24 @@ namespace Rocola
                 progress.Value = frac;
                 lblTime.Text = Fmt(TimeSpan.FromSeconds(pos)) + " / " + Fmt(TimeSpan.FromSeconds(dur));
             }
+
+            // FUNDIDO DE SALIDA del video: igual que las canciones, el final baja suave en vez de cortar en
+            // seco. El video se da por terminado en dur-0.6 (ver abajo), asi que la rampa se mide contra ESE
+            // final para que llegue a cero justo a tiempo. Durante el fundido se sondea mas seguido (80 ms)
+            // para que la bajada se oiga continua; al terminar vuelve al sondeo normal.
+            int volBase = VideoVolumeFor(nowPlaying != null ? nowPlaying.VideoPath : null);
+            if (crossfadeSec > 0.01f && dur > 0.5 && pos >= 0)
+            {
+                double restan = (dur - 0.6) - pos;
+                if (restan < crossfadeSec)
+                {
+                    double f = restan / crossfadeSec; if (f < 0) f = 0; else if (f > 1) f = 1;
+                    videoPoll.Interval = 80;
+                    SetVideoVolume((int)Math.Round(volBase * f));
+                }
+                else { videoPoll.Interval = 400; SetVideoVolume(volBase); }
+            }
+            else SetVideoVolume(volBase);
 
             // FIN NORMAL del video (sin reembolso, se reprodujo bien): MediaEnded (8); o la posicion
             // alcanzo la duracion (algunos archivos se congelan en el ultimo cuadro y NO reportan
