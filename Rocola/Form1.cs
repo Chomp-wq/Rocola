@@ -1733,15 +1733,20 @@ namespace Rocola
                 e.Result = true;    // vino del cache
                 return;
             }
+            // UN SOLO RECORRIDO del disco. Antes se caminaba el arbol DOS veces (una por el audio y otra
+            // por el video) y ademas se pedia la lista de cada carpeta OTRA vez para buscar la portada: tres
+            // lecturas de cada carpeta. Ahora se camina una sola vez y de esa misma lista salen las tres cosas.
+            // El resultado se deja en cachedVideoPaths/cachedCovers, que es EXACTAMENTE lo que ya recibe el
+            // camino del cache: de ahi en adelante todo sigue igual y sin volver a tocar el disco.
             List<Track> found = new List<Track>();
-            for (int r = 0; r < roots.Count; r++)
-                foreach (string file in SafeEnumerateAudio(roots[r]))
-                {
-                    found.Add(Track.FromFile(file));
-                    if (found.Count % 50 == 0) scanner.ReportProgress(0, found.Count);
-                }
+            List<string> audio = new List<string>();
+            List<string> vids = new List<string>();
+            Dictionary<string, string> covs = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            for (int r = 0; r < roots.Count; r++) ScanFolders(roots[r], audio, vids, covs);
+            for (int i = 0; i < audio.Count; i++) found.Add(Track.FromFile(audio[i]));
             tracks.AddRange(found);
-            cachedVideoPaths = null; cachedCovers = null;
+            cachedVideoPaths = vids; cachedCovers = covs;
+
             BuildAlbums(roots); BuildVideoSection(roots); BuildSearchIndex();   // tambien en segundo plano
             e.Result = false;   // escaneo fresco
         }
@@ -1882,11 +1887,14 @@ namespace Rocola
                         hechas++;
                         if ((hechas % 25) == 0)
                             try { if (IsHandleCreated) BeginInvoke((MethodInvoker)delegate { SaveLoudCache(); FlushEqIfDirty(); }); } catch { }
-                        // Respiro entre archivos. Si hay algo SONANDO se descansa mucho mas: decodificar un MP3
-                        // cuesta CPU, y en la rocola (un solo nucleo modesto) competir con la reproduccion podria
-                        // provocar cortes. Con la rocola callada, a ritmo normal.
-                        bool sonando = (nowPlaying != null);
-                        System.Threading.Thread.Sleep(sonando ? (diskSlow ? 700 : 400) : (diskSlow ? 120 : 40));
+                        // Respiro entre archivos. Con algo SONANDO se descansa mas (decodificar cuesta CPU y no
+                        // vale la pena arriesgar un corte en la musica), pero la espera se ajusta al equipo: con
+                        // UN SOLO nucleo el pre-analisis compite de verdad con la reproduccion y hay que frenarlo
+                        // fuerte; con dos o mas nucleos sobra maquina y puede avanzar bastante mas rapido.
+                        int respiro;
+                        if (nowPlaying != null) respiro = (Environment.ProcessorCount >= 2) ? (diskSlow ? 220 : 120) : (diskSlow ? 700 : 400);
+                        else respiro = diskSlow ? 120 : 40;
+                        System.Threading.Thread.Sleep(respiro);
                     }
                 }
                 catch { }
@@ -2063,15 +2071,13 @@ namespace Rocola
         private string LibCacheFile() { return Path.Combine(Application.StartupPath, "rocola_biblioteca.txt"); }
 
         // En arranque desde cache: portadas resueltas SIN tocar el disco.
+        // La portada de una carpeta: siempre sale del mapa que dejo el recorrido del disco (el escaneo fresco lo
+        // arma sobre la marcha y el arranque por cache lo trae del archivo), asi que aqui ya no se toca el disco.
         private string FindCoverCached(string folder)
         {
-            if (cachedCovers != null)
-            {
-                string cp;
-                if (cachedCovers.TryGetValue(folder, out cp)) return cp;
-                return null;
-            }
-            return FindCover(folder);
+            string cp;
+            if (cachedCovers != null && cachedCovers.TryGetValue(folder, out cp)) return cp;
+            return null;
         }
 
         // Firma de una raiz: fecha de modificacion + cantidad de subcarpetas (si cambia, hay que re-escanear).
@@ -2164,7 +2170,9 @@ namespace Rocola
             catch { }
         }
 
-        private static IEnumerable<string> SafeEnumerateAudio(string root)
+        // Camina el arbol UNA vez y clasifica lo que encuentra: audio, video y la portada de cada carpeta.
+        // Es el reemplazo de las dos caminatas separadas + el GetFiles extra que hacia FindCover por carpeta.
+        private void ScanFolders(string root, List<string> audio, List<string> video, Dictionary<string, string> covers)
         {
             Stack<string> dirs = new Stack<string>();
             dirs.Push(root);
@@ -2174,44 +2182,40 @@ namespace Rocola
                 string[] files = null;
                 try { files = Directory.GetFiles(dir); } catch { }
                 if (files != null)
-                    foreach (string f in files)
+                {
+                    for (int i = 0; i < files.Length; i++)
                     {
-                        string ext = Path.GetExtension(f).ToLowerInvariant();
-                        if (Array.IndexOf(AudioExt, ext) >= 0) yield return f;
+                        string ext = Path.GetExtension(files[i]).ToLowerInvariant();
+                        if (Array.IndexOf(AudioExt, ext) >= 0) audio.Add(files[i]);
+                        else if (Array.IndexOf(VideoExt, ext) >= 0) video.Add(files[i]);
                     }
+                    if (!covers.ContainsKey(dir))
+                    {
+                        string cv = CoverFromList(dir, files);
+                        if (cv != null) covers[dir] = cv;
+                    }
+                    if (audio.Count % 50 < files.Length) { try { scanner.ReportProgress(0, audio.Count); } catch { } }   // avance para la pantalla de arranque
+                }
                 string[] subs = null;
                 try { subs = Directory.GetDirectories(dir); } catch { }
                 if (subs != null) foreach (string d in subs) dirs.Push(d);
             }
         }
 
-        // Videos de TODAS las raices de musica (la principal + las de Ctrl+F2). Lo usa BuildVideoSection.
-        private IEnumerable<string> EnumerateVideoAllRoots()
+        // La portada de una carpeta a partir de la lista de archivos que YA se leyo. Mismo criterio de siempre:
+        // primero los nombres tipicos (en su orden de preferencia) y, si no hay ninguno, la primera imagen.
+        private static string CoverFromList(string folder, string[] files)
         {
-            List<string> roots = (scanRoots != null && scanRoots.Count > 0) ? scanRoots : AllMusicRoots();
-            for (int r = 0; r < roots.Count; r++)
-                foreach (string vf in SafeEnumerateVideo(roots[r])) yield return vf;
-        }
-
-        private static IEnumerable<string> SafeEnumerateVideo(string root)
-        {
-            Stack<string> dirs = new Stack<string>();
-            dirs.Push(root);
-            while (dirs.Count > 0)
+            for (int i = 0; i < CoverNames.Length; i++)
+                for (int j = 0; j < files.Length; j++)
+                    if (string.Equals(Path.GetFileName(files[j]), CoverNames[i], StringComparison.OrdinalIgnoreCase))
+                        return Path.Combine(folder, CoverNames[i]);
+            for (int i = 0; i < files.Length; i++)
             {
-                string dir = dirs.Pop();
-                string[] files = null;
-                try { files = Directory.GetFiles(dir); } catch { }
-                if (files != null)
-                    foreach (string f in files)
-                    {
-                        string ext = Path.GetExtension(f).ToLowerInvariant();
-                        if (Array.IndexOf(VideoExt, ext) >= 0) yield return f;
-                    }
-                string[] subs = null;
-                try { subs = Directory.GetDirectories(dir); } catch { }
-                if (subs != null) foreach (string d in subs) dirs.Push(d);
+                string ext = Path.GetExtension(files[i]).ToLowerInvariant();
+                if (Array.IndexOf(ImgExt, ext) >= 0) return files[i];
             }
+            return null;
         }
 
         private static readonly char[] SepChars = { '\\', '/' };
@@ -2326,12 +2330,11 @@ namespace Rocola
             for (int i = 0; i < albums.Count; i++) { albums[i].VideoFiles.Clear(); byFolder[albums[i].Folder] = albums[i]; }
 
             Dictionary<string, Album> videoOnly = new Dictionary<string, Album>(StringComparer.OrdinalIgnoreCase);
-            // fuente: cache de biblioteca (arranque rapido) o caminata fresca del disco (TODAS las raices)
-            List<string> freshVids = (cachedVideoPaths == null) ? new List<string>() : null;
-            IEnumerable<string> vsrc = (cachedVideoPaths != null) ? (IEnumerable<string>)cachedVideoPaths : EnumerateVideoAllRoots();
+            // Fuente unica: la lista de videos que ya viene lista (del cache al arrancar, o del recorrido del
+            // disco en un escaneo fresco). Antes aqui se volvia a caminar TODO el arbol solo por los videos.
+            List<string> vsrc = cachedVideoPaths ?? new List<string>();
             foreach (string vf in vsrc)
             {
-                if (freshVids != null) freshVids.Add(vf);
                 string folder = AlbumFolderFor(vf, roots);
                 Album al;
                 if (byFolder.TryGetValue(folder, out al)) al.VideoFiles.Add(vf);
@@ -2354,7 +2357,7 @@ namespace Rocola
             foreach (KeyValuePair<string, Album> kv in videoOnly) videoAlbums.Add(kv.Value);
             videoAlbums.Sort(delegate (Album a, Album b) { return string.Compare(a.Artist, b.Artist, StringComparison.OrdinalIgnoreCase); });
             for (int i = 0; i < videoAlbums.Count; i++) videoAlbums[i].VideoFiles.Sort(StringComparer.OrdinalIgnoreCase);
-            lastVideoPaths = (freshVids != null) ? freshVids : cachedVideoPaths;   // para guardar el cache
+            lastVideoPaths = cachedVideoPaths;   // para guardar el cache
         }
 
         private void BuildSearchIndex()
@@ -2409,19 +2412,6 @@ namespace Rocola
 
         private static readonly string[] CoverNames = { "portada.jpg", "portada.jpeg", "portada.png", "cover.jpg", "cover.png", "folder.jpg", "front.jpg" };
         private static readonly string[] ImgExt = { ".jpg", ".jpeg", ".png", ".bmp" };
-
-        private static string FindCover(string folder)
-        {
-            if (string.IsNullOrEmpty(folder)) return null;
-            try
-            {
-                for (int i = 0; i < CoverNames.Length; i++) { string p = Path.Combine(folder, CoverNames[i]); if (File.Exists(p)) return p; }
-                string[] files = Directory.GetFiles(folder);
-                for (int i = 0; i < files.Length; i++) { string ext = Path.GetExtension(files[i]).ToLowerInvariant(); if (Array.IndexOf(ImgExt, ext) >= 0) return files[i]; }
-            }
-            catch { }
-            return null;
-        }
 
         private List<Album> CurrentList()
         {
