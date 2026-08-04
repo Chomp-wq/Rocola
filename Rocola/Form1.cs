@@ -4823,7 +4823,6 @@ namespace Rocola
         {
 #if ROCOLA_GPU
             AbortDiscTrans(); AbortWinTrans();   // el video toma la pantalla: nada volando encima
-            GpuParkForVideo();                   // y le dejamos la tarjeta libre para que pinte por hardware
 #endif
             try
             {
@@ -4860,9 +4859,6 @@ namespace Rocola
             {
                 videoOn = false;
                 try { if (video != null) video.Visible = false; } catch { }
-#if ROCOLA_GPU
-                GpuUnparkAfterVideo();   // no arranco: la tarjeta vuelve a ser nuestra ya mismo
-#endif
                 RefundCredit();   // compensacion al cliente: el video no abrio
                 ShowToast("No se pudo abrir el video: credito devuelto", Color.FromArgb(200, 80, 70));
                 lblStatus.Text = "Video (WMP): " + ex.Message;
@@ -4892,9 +4888,6 @@ namespace Rocola
             catch { }
             videoOn = false;
             if (videoFull) ExitVideoFull();   // si estaba en pantalla completa, vuelve a la vista normal
-#if ROCOLA_GPU
-            GpuUnparkAfterVideo();   // se acabo el video: recuperamos el render por GPU
-#endif
         }
 
         private void VideoPoll_Tick(object sender, EventArgs e)
@@ -5663,59 +5656,6 @@ namespace Rocola
         // Ctrl+F12: alterna el render entre GPU (Direct3D 9, por defecto) y CPU, y GUARDA la preferencia.
         private void ToggleAlbumGpu() { ApplyAlbumGpu(!gpuEnabled, true, true); }
 
-        // ---- SOLTAR LA GPU MIENTRAS HAY VIDEO ----
-        // Windows Media Player pinta el video por hardware usando la superficie de video de la tarjeta. Con
-        // NUESTRO dispositivo Direct3D 9 vivo se la encuentra ocupada y se cae a pintar POR SOFTWARE: el video
-        // va a tirones y se come el CPU (justo lo que no sobra en la rocola). Y no hace falta tenerlo vivo: con
-        // un video en pantalla el panel GPU esta oculto y no dibuja nada, asi que solo estaba reservando memoria
-        // de video para nada. Se suelta al arrancar el video y se vuelve a crear al terminar (lo mismo que hace
-        // Ctrl+F12; tarda un parpadeo). La PREFERENCIA no se toca: esto es prestado, no un cambio del operador.
-        private bool gpuParked = false;      // soltado por un video (hay que devolverlo al terminar)
-        private int gpuRetryAt = 0;          // TickCount del proximo reintento (0 = ninguno)
-        private int gpuRetryLeft = 0;        // reintentos que quedan
-        private void GpuParkForVideo()
-        {
-            gpuRetryLeft = 0; gpuRetryAt = 0;
-            if (gpuParked || !gpuEnabled || gpuPanel == null) return;
-            gpuParked = true;
-            // Se suelta SOLO el dispositivo y sus texturas. "gpuEnabled" se queda en true A PROPOSITO: con un
-            // video en pantalla el panel esta oculto y no dibuja nada, asi que no hay nada que reemplazar. Si
-            // aqui se apagara el render por GPU, la rocola se pondria a repintar TODO por CPU detras del video
-            // (fondo estrellado incluido, 24 veces por segundo) y le robaria al video justo lo que le falta.
-            try { gpuPanel.Visible = false; gpuPanel.StopGpu(); } catch { }
-        }
-        private bool GpuRestart()   // vuelve a crear el dispositivo y sus texturas (el anterior ya no existe)
-        {
-            try
-            {
-                if (albumView != null) albumView.InvalidateCubeCache();
-                uiOverlaySig = null;
-                if (albumView != null) gpuPanel.AlbumRect = albumView.Bounds;
-                gpuPanel.Bounds = new Rectangle(0, 0, ClientSize.Width, ClientSize.Height);
-                return gpuPanel.StartGpu();
-            }
-            catch { return false; }
-        }
-        private void GpuUnparkAfterVideo()
-        {
-            if (!gpuParked) return;
-            gpuParked = false;
-            if (gpuPanel == null || !gpuEnabled) return;
-            if (GpuRestart()) { SyncGpuFullScreen(); return; }
-            // La tarjeta sigue ocupada (el reproductor aun no la ha soltado del todo): se reintenta un rato.
-            // Quedarse en CPU por un video seria peor que el problema que veniamos a arreglar.
-            gpuRetryLeft = 6; gpuRetryAt = Environment.TickCount + 1200;
-        }
-        private void GpuRetryTick()
-        {
-            if (gpuRetryLeft <= 0 || gpuParked || videoOn || videoFull || gpuPanel == null) return;
-            if (Environment.TickCount - gpuRetryAt < 0) return;
-            gpuRetryLeft--;
-            if (GpuRestart()) { gpuRetryLeft = 0; SyncGpuFullScreen(); return; }
-            if (gpuRetryLeft > 0) { gpuRetryAt = Environment.TickCount + 1200; return; }
-            ApplyAlbumGpu(false, true, false);   // no hubo manera: se pasa a CPU de verdad y se avisa
-        }
-
         // Aplica el modo de render. 'on' = destino (GPU/CPU); 'announceFail' = avisar si el dispositivo no inicia;
         // 'persist' = guardar la preferencia (solo cuando lo pide el usuario con Ctrl+F12, no en el arranque). El
         // panel GPU (Direct3D 9) cubre toda la ventana y compone: fondo estrellado + cubos + barras + mini-cubo.
@@ -5851,7 +5791,6 @@ namespace Rocola
         private void SyncGpuFullScreen()
         {
             if (gpuPanel == null || !gpuEnabled) return;
-            if (gpuParked) { if (gpuPanel.Visible) gpuPanel.Visible = false; return; }   // sin dispositivo (video en curso): no mostrarlo
             bool cfgOn = (lblConfig != null && lblConfig.Visible);
             bool notBlockedByVideoCfg = !videoOn && !videoFull && !cfgOn;
             bool noBlock = notBlockedByVideoCfg && !attractOn;
@@ -6193,7 +6132,6 @@ namespace Rocola
             // zoom es fluido aunque este temporizador vaya a 24. Aqui solo se apagan al cumplirse su tiempo.
             if (transMode != 0 && Environment.TickCount - transTick >= TransMs) AbortDiscTrans();
             if (winMode != 0 && Environment.TickCount - winTick >= WinMs) AbortWinTrans();
-            GpuRetryTick();   // si tras un video la tarjeta seguia ocupada, se vuelve a intentar
 #endif
             DrainCoverTrash();   // libera carátulas expulsadas (seguro: no hay repintado en curso)
             CheckBusinessDayReset();   // al cruzar las 7 AM: reinicia el estado (nada de anoche cruza el corte del dia)
