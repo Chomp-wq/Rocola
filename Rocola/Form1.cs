@@ -111,6 +111,17 @@ namespace Rocola
         // el mismo archivo. Ademas de mostrarse en la lista, sirve de marca de "ya pre-analizada": esas canciones
         // ya tienen una medida COMPLETA y fiable, asi que sonar la cancion no vuelve a tocar su volumen medido.
         private readonly Dictionary<string, float> durCache = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);     // ruta -> duracion en segundos
+        // DURACION RAPIDA. Sacar SOLO la duracion de un archivo cuesta ~600 veces menos que el analisis
+        // completo: es leer la cabecera, no descomprimir el audio. Antes la duracion venia "de regalo" con ese
+        // analisis pesado, asi que con cien mil canciones practicamente ninguna la mostraba (el analisis tarda
+        // dias). Ahora va en su PROPIA pasada, que barre la biblioteca entera en minutos. Cuando el analisis
+        // completo mide una cancion, SU duracion (del archivo entero) manda sobre esta.
+        private readonly Dictionary<string, float> durFast = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
+        private readonly List<string> durFastPend = new List<string>();   // lineas apuntadas y aun sin escribir
+        private readonly object durFastLock = new object();
+        private System.Threading.Thread durScanTh;
+        private volatile int durScanGen = 0;
+        private volatile int durScanLeft = 0;   // cuantas duraciones faltan (para el panel)
         private System.Threading.Thread preScanTh;      // hilo del pre-analisis (uno solo a la vez)
         private volatile bool preScanStop = false;      // pedirle al pre-analisis que se detenga (al cerrar)
         private volatile int preScanLeft = 0;           // canciones que le faltan por medir (0 = al dia)
@@ -465,6 +476,7 @@ namespace Rocola
             IaCountPairs();      // cuanto material de entrenamiento de la IA llevamos juntado
             LoadIaDone();        // de que canciones ya se saco material (no repetirlas en los repasos a fondo)
             LoadDeepDone();      // que canciones ya recibieron el repaso a fondo (para continuar donde iba)
+            LoadDurFast();       // duraciones ya barridas (para mostrarlas desde el primer momento)
             LoadIncompatible();  // rutas ya anotadas como no reproducibles (para no repetirlas)
             BackupLearnedData(); // respalda lo aprendido de la sesion ANTERIOR antes de que esta lo modifique
             LayoutControls();
@@ -1204,6 +1216,7 @@ namespace Rocola
                             : ("La biblioteca se mide sola: "
                                + (tFal > 0 ? ("faltan " + tFal.ToString("#,0") + " canciones.") : "ya esta al dia.")
                                + (iaHarvestOn ? ("   Material para la IA: " + IaInfoText() + ".") : "")
+                               + (durScanLeft > 0 ? ("   Duraciones: faltan " + durScanLeft.ToString("#,0") + ".") : "")
                                + (etapa.Length > 0 ? ("   Esta cancion: " + etapa + ".") : ""));
                         pintaTrain();
                         bool en = chkOn.Checked;
@@ -1850,6 +1863,7 @@ namespace Rocola
             else lblStatus.Text = "";   // las instrucciones las muestra la barra de ayuda (formas/colores)
 
             StartThumbWarm();   // en segundo plano: construir las miniaturas que falten (1a vez tarda; luego todo vuela)
+            StartDurScan();     // barrido RAPIDO: la duracion de toda la biblioteca en minutos (no espera al analisis pesado)
             StartPreScan();     // en segundo plano: medir volumen y duracion de las canciones nuevas (nivelado desde la 1a vez)
 
             if (!fromCache) SaveLibraryCacheAsync();   // escaneo fresco: guardar la biblioteca para el proximo arranque
@@ -2027,6 +2041,124 @@ namespace Rocola
                 iaPairsTotal += pairs.Count / 40;
             }
             catch { }
+        }
+
+        // ---- Duraciones rapidas: "segundos|ruta" por linea, escritas POR ANADIDO ----
+        private string DurFastFile() { return Path.Combine(Application.StartupPath, "rocola_duracion.txt"); }
+        private void LoadDurFast()
+        {
+            try
+            {
+                string f = DurFastFile();
+                if (!File.Exists(f)) return;
+                foreach (string line in File.ReadAllLines(f))
+                {
+                    int bar = line.IndexOf('|');
+                    if (bar <= 0 || bar >= line.Length - 1) continue;
+                    float d;
+                    if (!float.TryParse(line.Substring(0, bar), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out d) || d <= 0.01f) continue;
+                    durFast[Pool(line.Substring(bar + 1))] = d;
+                }
+            }
+            catch { }
+        }
+        private void SaveDurFast()
+        {
+            List<string> nuevas;
+            lock (durFastLock) { if (durFastPend.Count == 0) return; nuevas = new List<string>(durFastPend); durFastPend.Clear(); }
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate
+            {
+                try
+                {
+                    StringBuilder sb = new StringBuilder(nuevas.Count * 64 + 16);
+                    for (int i = 0; i < nuevas.Count; i++) sb.Append(nuevas[i]).Append("\r\n");
+                    lock (durFastLock) File.AppendAllText(DurFastFile(), sb.ToString());
+                }
+                catch { }
+            });
+        }
+
+        // Barrido RAPIDO de duraciones: abre cada archivo, lee cuanto dura y lo suelta. No descomprime nada.
+        // Se salta lo que ya tiene duracion (por esta via o por el analisis completo). Prioridad minima y un
+        // respiro por archivo para no quitarle disco a la musica; con video en pantalla se detiene del todo.
+        private void StartDurScan()
+        {
+            int myGen = ++durScanGen;
+            List<string> pend = new List<string>();
+            for (int i = 0; i < tracks.Count; i++)
+            {
+                Track tk = tracks[i];
+                if (tk == null || tk.Path == null) continue;
+                if (durCache.ContainsKey(tk.Path) || durFast.ContainsKey(tk.Path)) continue;
+                pend.Add(tk.Path);
+            }
+            durScanLeft = pend.Count;
+            if (pend.Count == 0) return;
+            Diag("duraciones: faltan " + pend.Count);
+            durScanTh = new System.Threading.Thread(delegate ()
+            {
+                List<string> lote = new List<string>(128);
+                List<float> lotd = new List<float>(128);
+                try
+                {
+                    System.Threading.Thread.Sleep(4000);   // deja respirar el arranque
+                    for (int i = 0; i < pend.Count; i++)
+                    {
+                        if (preScanStop || myGen != durScanGen) break;
+                        while (!preScanStop && myGen == durScanGen && videoOn) System.Threading.Thread.Sleep(500);
+                        if (preScanStop || myGen != durScanGen) break;
+                        string ruta = pend[i];
+                        float seg = 0f;
+                        try
+                        {
+                            using (AudioFileReader rd = new AudioFileReader(ruta))
+                            {
+                                double t = rd.TotalTime.TotalSeconds;
+                                if (t > 0.05 && t < 36000) seg = (float)t;
+                            }
+                        }
+                        catch { seg = 0f; }
+                        if (seg > 0.01f) { lote.Add(ruta); lotd.Add(seg); }
+                        bool ultimo = (i == pend.Count - 1);
+                        if (lote.Count >= 128 || (ultimo && lote.Count > 0))
+                        {
+                            string[] rr = lote.ToArray(); float[] dd = lotd.ToArray();
+                            lote.Clear(); lotd.Clear();
+                            try
+                            {
+                                if (!IsHandleCreated) break;
+                                BeginInvoke((MethodInvoker)delegate { PublicaDuraciones(myGen, rr, dd); });
+                            }
+                            catch { break; }
+                        }
+                        System.Threading.Thread.Sleep(diskSlow ? 12 : 2);
+                    }
+                }
+                catch { }
+            });
+            durScanTh.IsBackground = true;
+            durScanTh.Priority = System.Threading.ThreadPriority.Lowest;
+            durScanTh.Start();
+        }
+        // Corre en el hilo de la interfaz: las tablas son suyas.
+        private void PublicaDuraciones(int gen, string[] rutas, float[] segs)
+        {
+            if (gen != durScanGen) return;   // generacion caducada (hubo re-escaneo): descartar
+            for (int i = 0; i < rutas.Length; i++)
+            {
+                if (durFast.ContainsKey(rutas[i])) continue;
+                durFast[rutas[i]] = segs[i];
+                lock (durFastLock) durFastPend.Add(segs[i].ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) + "|" + rutas[i]);
+                if (durScanLeft > 0) durScanLeft--;
+            }
+            SaveDurFast();
+            if (panelSongs != null && panelSongs.Visible && songList != null)
+            {
+                songList.Invalidate();
+#if ROCOLA_GPU
+                uiOverlaySig = null;   // la lista va horneada en la textura de UI: hay que rehacerla para que se vean
+#endif
+            }
         }
 
         private const double PreSegSec = 20.0;    // duracion de cada tramo analizado
@@ -2298,7 +2430,10 @@ namespace Rocola
         private string DurText(string path)
         {
             float d;
-            if (path == null || !durCache.TryGetValue(path, out d) || d <= 0.01f) return "";
+            if (path == null) return "";
+            // Manda la del analisis completo (mide la cancion entera); si aun no la tiene, la del barrido rapido.
+            if (!durCache.TryGetValue(path, out d) || d <= 0.01f)
+                if (!durFast.TryGetValue(path, out d) || d <= 0.01f) return "";
             int tot = (int)(d + 0.5f);
             return (tot / 60) + ":" + (tot % 60).ToString("00");
         }
@@ -4137,7 +4272,8 @@ namespace Rocola
             string[] files = {
                 LoudFile(), EqFile(), LibStatsFile(), LibCacheFile(), ConfigFile, KeysFile(),
                 Path.Combine(sp, "rocola_ia.bin"), Path.Combine(sp, "rocola_incompatibles.txt"),
-                IaDoneFile(), DeepDoneFile()   // sin estas dos, un repaso a fondo empezaria de cero y la IA repetiria ejemplos
+                IaDoneFile(), DeepDoneFile(),  // sin estas dos, un repaso a fondo empezaria de cero y la IA repetiria ejemplos
+                DurFastFile()
             };
             System.Threading.ThreadPool.QueueUserWorkItem(delegate   // fuera del hilo de la interfaz (no frena nada)
             {
