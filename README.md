@@ -97,6 +97,11 @@ completo** a dejar todo calibrado:
 
 - Repasa **toda** la biblioteca (no solo lo que falta) y analiza cada canción **completa**, no por
   muestras — la medida más exacta posible de volumen, EQ y material para la IA.
+- **Se puede parar y seguir.** Apunta en `rocola_afondo.txt` cada canción que ya repasó, así que al
+  detenerlo y volverlo a encender —o si apagas la rocola, o se va la luz— **continúa donde iba**, no
+  vuelve a empezar por la primera. La barra también sigue desde donde estaba. Cuando ya no queda
+  nada, el panel lo dice: *"la biblioteca ya está repasada entera"*. La música que agregues después
+  entra sola en la cuenta.
 - **No espera** a que la rocola esté en reposo ni descansa entre archivos, y el hilo sube a
   prioridad normal.
 - Una **barra de avance** y el texto muestran cuántas canciones lleva y cuántos ejemplos de IA.
