@@ -63,6 +63,11 @@ artista) y modo atracción.
 - **Des-recorte (declipper)**: repara los picos aplastados "de fábrica" de archivos mal
   masterizados (reconstruye el pico redondo perdido; `declip=` en config).
 - **Fundido** suave de salida al terminar cada canción **y cada video** (`fundido=` en config, 0-3 s).
+- **Los videos van por hardware**: mientras hay un video en pantalla, la rocola **suelta la tarjeta
+  gráfica** (el panel 3D está oculto y no dibuja nada, así que solo la estaba ocupando). Sin esto,
+  Windows Media Player se encontraba la superficie de video tomada y **se caía a pintar por
+  software**: video a tirones y CPU al tope. Al terminar el video la recupera sola; si la tarjeta
+  aún está ocupada, reintenta unas cuantas veces antes de rendirse.
 - **Volumen de los videos**: el video lo reproduce Windows Media Player, cuyo sonido **no pasa**
   por la cadena de audio. Una perilla en Ctrl+F3 (`video_vol=` en config) empareja su volumen con
   el de las canciones, y además sigue a "Subir TODO el volumen". En esta rama, el pre-análisis
@@ -114,10 +119,14 @@ nivel* llegó cada canción (`rocola_ia_hechas.txt`), así que el repaso a fondo
 las que solo tienen el muestreo y les añade el resto — pero dentro del mismo nivel una canción
 aporta una sola vez, para no sesgar el entrenamiento hacia ella.
 
-El archivo de material tiene un **tope de 600 MB** (`ia_datos_mb=` en config; 0 lo quita). Sin tope,
-un repaso a fondo de una biblioteca grande dejaba un archivo de **decenas de gigas**: no cabe en una
-USB con formato FAT32 y ninguna PC normal puede cargarlo para entrenar. Y no hace falta: a la red le
-sirve la **variedad** (muchas canciones distintas), no el volumen.
+El archivo de material tiene un **tope de 24 GB** (`ia_datos_mb=` en config; 0 lo quita). Con eso
+cabe una biblioteca de ~20 000 canciones aptas cosechadas a fondo, y entra holgado en una memoria de
+64 GB. Ojo: la memoria tiene que estar en **exFAT o NTFS** — en FAT32 ningún archivo puede pasar de
+4 GB, y ahí habría que bajar el tope. En Ctrl+F3 se ve el tamaño actual y si llegó al tope.
+
+**El entrenador no necesita 24 GB de RAM**: se asoma al archivo desde el disco y toma una muestra
+repartida de punta a punta (uno de cada tantos ejemplos, así entran canciones de toda la biblioteca
+y no solo las primeras). Se ajusta con `--max-ejemplos N` (por defecto 4 millones; `0` = todos).
 
 El modo a fondo **no** se guarda en la configuración a propósito: si se va la luz, la rocola vuelve
 sola a su modo normal y nunca se queda a todo gas en horario de negocio.

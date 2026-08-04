@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # ============================================================================================
-#  ENTRENADOR DE LA IA PROPIA DE LA ROCOLA (rama rocola-hd)
+#  ENTRENADOR DE LA IA PROPIA DE LA ROCOLA
 # --------------------------------------------------------------------------------------------
 #  Entrena el MLP (28 -> 48 -> 48 -> 12, tanh) que predice la ENVOLVENTE de la banda de agudos
 #  que el codec corto, a partir de la forma del espectro que sobrevivio. El reconstructor
@@ -14,6 +14,8 @@
 #    python3 entrenar_ia.py --datos rocola_ia_datos.bin --capas 28,96,96,12
 #        entrena con el material que la ROCOLA junto sola de toda su biblioteca. Ese archivo lo
 #        genera el pre-analisis (se copia en una USB); no hace falta mover el disco de la rocola.
+#      --max-ejemplos N cuantos ejemplos usar como mucho (defecto 4 millones; 0 = todos). El archivo
+#                       puede pesar gigas: se toma una muestra REPARTIDA por todo el, sin cargarlo entero.
 #      --clips N        cuantos trozos de 2s usar en total (defecto 400; para produccion 6000+)
 #      --por_archivo M  tope de trozos por cancion (defecto sin tope; 12 = mas VARIEDAD de canciones)
 #  Para preparar los wav desde tu biblioteca mp3 usa entrenar_con_mi_musica.bat (hace todo solo).
@@ -196,12 +198,19 @@ def export_ria1(model, path):
             f.write(W.astype(np.float32).tobytes())        # fila-mayor (out, in): igual que la rocola
             f.write(B.astype(np.float32).tobytes())
 
-def cargar_datos_rocola(ruta):
+def cargar_datos_rocola(ruta, max_ejemplos=4000000):
     """Lee el material que la rocola junto sola (rocola_ia_datos.bin).
 
     Formato: cabecera "RIAD" + version + n_entradas + n_salidas, y luego cada par como
     28 float32 de entrada + 12 float32 de objetivo. Son los MISMOS numeros que la rocola
     calcula al reproducir, asi que lo aprendido aqui le sirve tal cual alla.
+
+    El archivo puede pesar MUCHOS gigas (la rocola lo deja crecer hasta su tope), y cargarlo
+    entero en memoria pediria mas RAM de la que tiene una PC normal. Asi que se abre "asomado"
+    al disco (memmap) y se toma una muestra REPARTIDA de punta a punta: uno de cada tantos
+    ejemplos. Como el archivo va en orden de cancion, repartir es justo lo que hace falta para
+    que entren canciones de toda la biblioteca y no solo las primeras. Con --max-ejemplos se
+    cambia cuantos se usan (0 = todos, solo si te sobra la RAM).
     """
     with open(ruta, "rb") as f:
         head = f.read(16)
@@ -210,12 +219,19 @@ def cargar_datos_rocola(ruta):
         ver, nin, nout = struct.unpack("<iii", head[4:16])
         if ver != 1 or nin != 28 or nout != 12:
             raise SystemExit("Version/tamanos no compatibles (ver=%d in=%d out=%d)" % (ver, nin, nout))
-        crudo = np.fromfile(f, dtype="<f4")
     por = nin + nout
-    n = crudo.size // por
+    cuerpo = os.path.getsize(ruta) - 16
+    n = cuerpo // (por * 4)
     if n < 100:
         raise SystemExit("Muy pocos ejemplos (%d). Deja que la rocola junte mas material." % n)
-    crudo = crudo[:n * por].reshape(n, por).astype(np.float64)
+    mm = np.memmap(ruta, dtype="<f4", mode="r", offset=16, shape=(n, por))
+    paso = 1
+    if max_ejemplos and n > max_ejemplos:
+        paso = int(np.ceil(n / float(max_ejemplos)))
+        print("  el archivo trae %s ejemplos (%.1f GB): se toma 1 de cada %d, repartidos de punta a punta"
+              % (format(n, ","), cuerpo / 1024.0 ** 3, paso))
+    crudo = np.array(mm[::paso], dtype=np.float64)
+    del mm
     return crudo[:, :nin], crudo[:, nin:]
 
 
@@ -223,8 +239,9 @@ def main():
     rng = np.random.default_rng(20260715)
     if "--datos" in sys.argv:
         ruta = sys.argv[sys.argv.index("--datos") + 1]
+        tope = int(sys.argv[sys.argv.index("--max-ejemplos") + 1]) if "--max-ejemplos" in sys.argv else 4000000
         print("Leyendo el material que junto la rocola:", ruta)
-        X, Y = cargar_datos_rocola(ruta)
+        X, Y = cargar_datos_rocola(ruta, tope)
         print("  %d ejemplos de %d entradas -> %d salidas" % (X.shape[0], X.shape[1], Y.shape[1]))
         clips = None
     elif "--musica" in sys.argv:
