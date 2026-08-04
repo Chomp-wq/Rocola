@@ -122,9 +122,11 @@ namespace Rocola
         // A proposito NO se guarda en la configuracion: si se va la luz, la rocola vuelve a su modo normal sola
         // y nunca se queda a todo gas durante el horario del negocio por un olvido.
         private volatile bool preScanTurbo = false;
-        // Canciones de las que YA se saco material para la IA. Sin esto, cada repaso a fondo volveria a meter
-        // ejemplos de las mismas canciones y el entrenamiento quedaria sesgado hacia ellas.
-        private readonly HashSet<string> iaDone = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        // De que canciones se saco material para la IA y HASTA QUE NIVEL: 1 = el muestreo del modo automatico
+        // (192 cuadros), 2 = el repaso A FONDO (12 veces mas). Se guarda el nivel, no un simple "ya esta",
+        // porque los dos modos ACUMULAN: lo que junto el modo automatico se queda, y el repaso a fondo le
+        // anade el resto. Dentro del MISMO nivel una cancion aporta una sola vez, para no sesgar hacia ella.
+        private readonly Dictionary<string, int> iaDone = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         // Canciones que YA recibieron el repaso A FONDO (cancion completa). Se guarda en disco para que el
         // entrenamiento a fondo CONTINUE donde iba al detenerlo y volverlo a encender, al cerrar la rocola o
         // si se va la luz. Sin esto, cada arranque volvia a empezar por la primera cancion de la biblioteca y
@@ -608,6 +610,7 @@ namespace Rocola
                     else if (s.StartsWith("subir_db=")) { float v; if (float.TryParse(s.Substring(9).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) masterDb = Clampf(v, 0f, 12f); }   // SUBIR TODO (dB extra general)
                     else if (s.StartsWith("fundido=")) { float v; if (float.TryParse(s.Substring(8).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) crossfadeSec = Clampf(v, 0f, 3f); }   // FUNDIDO entre canciones (segundos)
                     else if (s.StartsWith("declip=")) declipOn = s.Substring(7).Trim() != "0";   // des-recorte de picos aplastados (por defecto si)
+                    else if (s.StartsWith("ia_datos_mb=")) { int v; if (int.TryParse(s.Substring(12).Trim(), out v)) iaMaxBytes = (v <= 0) ? 0L : (long)v * 1024 * 1024; }   // tope del archivo de material
                     else if (s.StartsWith("ia_datos=")) iaHarvestOn = s.Substring(9).Trim() != "0";   // juntar material para entrenar la IA
                     else if (s.StartsWith("video_vol=")) { int v; if (int.TryParse(s.Substring(10).Trim(), out v)) videoVol = v < 0 ? 0 : (v > 100 ? 100 : v); }   // volumen base de los videos
                     else if (s.StartsWith("eq_auto=")) { float v; if (float.TryParse(s.Substring(8).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) eqAmount = Clampf(v / 100f, 0f, 1f); }   // EQ automatico (fuerza %)
@@ -642,6 +645,7 @@ namespace Rocola
                 sb.Append("fundido=").Append(crossfadeSec.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("declip=").Append(declipOn ? "1" : "0").Append("\r\n");
                 sb.Append("ia_datos=").Append(iaHarvestOn ? "1" : "0").Append("\r\n");
+                sb.Append("ia_datos_mb=").Append(iaMaxBytes <= 0 ? 0L : iaMaxBytes / (1024 * 1024)).Append("\r\n");
                 sb.Append("video_vol=").Append(videoVol).Append("\r\n");
                 sb.Append("eq_auto=").Append(((int)Math.Round(eqAmount * 100f)).ToString(System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("dsee=").Append(sbrOn ? "1" : "0").Append("\r\n");
@@ -674,7 +678,7 @@ namespace Rocola
                     float[] c = new float[8]; bool ok = true;
                     for (int b = 0; b < 8; b++)
                         if (!float.TryParse(parts[b], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out c[b])) { ok = false; break; }
-                    if (ok) eqCache[line.Substring(bar + 1)] = c;
+                    if (ok) eqCache[Pool(line.Substring(bar + 1))] = c;
                 }
             }
             catch { }
@@ -790,6 +794,7 @@ namespace Rocola
                         && float.TryParse(rest.Substring(0, bar2), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out dur))
                         rest = rest.Substring(bar2 + 1);
                     else dur = 0f;
+                    rest = Pool(rest);
                     loudCache[rest] = rms;
                     if (dur > 0.01f) durCache[rest] = dur;
                 }
@@ -1172,12 +1177,12 @@ namespace Rocola
                         hint.Text = (preScanTurbo && tTot > 0)
                             ? (tFal > 0
                                ? ("ENTRENANDO A FONDO: " + (tTot - tFal).ToString("#,0") + " de " + tTot.ToString("#,0")
-                                  + " canciones (" + ((tTot - tFal) * 100 / Math.Max(1, tTot)) + "%).   IA: " + iaPairsTotal.ToString("#,0") + " ejemplos.")
+                                  + " canciones (" + ((tTot - tFal) * 100 / Math.Max(1, tTot)) + "%).   IA: " + IaInfoText() + ".")
                                : ("A FONDO: la biblioteca ya esta repasada entera (" + tTot.ToString("#,0")
-                                  + " canciones).   IA: " + iaPairsTotal.ToString("#,0") + " ejemplos."))
+                                  + " canciones).   IA: " + IaInfoText() + "."))
                             : ("La biblioteca se mide sola: "
                                + (tFal > 0 ? ("faltan " + tFal.ToString("#,0") + " canciones.") : "ya esta al dia.")
-                               + (iaHarvestOn ? ("   Material para la IA: " + iaPairsTotal.ToString("#,0") + " ejemplos.") : "")
+                               + (iaHarvestOn ? ("   Material para la IA: " + IaInfoText() + ".") : "")
                                + (etapa.Length > 0 ? ("   Esta cancion: " + etapa + ".") : ""));
                         pintaTrain();
                         bool en = chkOn.Checked;
@@ -1848,33 +1853,79 @@ namespace Rocola
         // Formato binario compacto (millones de pares caben sin problema): cabecera "RIAD" + version + tamaños,
         // y luego cada par como 28 float de entrada + 12 float de objetivo. numpy lo lee de un tiron.
         private const int IaFramesPerSong = 192;   // cuadros analizados por cancion (suficiente y barato)
+        private const int IaDeepFrames = 384;      // A FONDO: cuadros APROVECHADOS, repartidos por TODA la cancion
         private const int IaWarmFrames = 64;       // los primeros no se usan: el acantilado aun se esta midiendo
+        // TOPE del archivo de material. Sin tope, un repaso a fondo de una biblioteca grande deja un archivo de
+        // DECENAS de gigas: no cabe en una USB con formato FAT32 (4 GB por archivo como maximo) y ninguna PC
+        // normal puede cargarlo para entrenar. Y no hace falta: la red tiene ~13 mil pesos, con unos pocos
+        // millones de ejemplos VARIADOS ya esta servida; mas ejemplos de lo mismo no la hacen mejor. Lo que la
+        // mejora es la VARIEDAD (muchas canciones distintas), no el volumen. Se cambia con ia_datos_mb= (0 = sin
+        // tope, por si algun dia hay con que entrenar algo mucho mayor).
+        private long iaMaxBytes = 600L * 1024 * 1024;
+        private bool IaBudgetFull() { return iaMaxBytes > 0 && (long)iaPairsTotal * 160L + 16L >= iaMaxBytes; }
+        private string IaInfoText()
+        {
+            long mb = ((long)iaPairsTotal * 160L + 16L) / (1024 * 1024);
+            return iaPairsTotal.ToString("#,0") + " ejemplos (" + mb.ToString("#,0") + " MB"
+                   + (IaBudgetFull() ? ", tope alcanzado" : "") + ")";
+        }
         private static readonly float[] IaCutsHz = { 11000f, 13000f, 15000f, 16500f, 18000f };   // cortes simulados
+        // Las mismas rutas viven en varias tablas (sonoridad, duracion, EQ, cosecha de IA, repaso a fondo) y en
+        // la propia lista de canciones. Con cien mil canciones eso eran CINCO copias del mismo texto, decenas de
+        // megas tirados en una maquina de 4 GB. Compartiendo UNA sola copia por ruta se juntan todas en una, y
+        // de paso las busquedas salen mas rapido (comparar dos iguales se resuelve por referencia).
+        private static string Pool(string s) { return (s == null || s.Length == 0) ? s : string.Intern(s); }
         private string IaDataFile() { return Path.Combine(Application.StartupPath, "rocola_ia_datos.bin"); }
         private string IaDoneFile() { return Path.Combine(Application.StartupPath, "rocola_ia_hechas.txt"); }
+        // Formato: "ruta" (nivel 1, el de siempre) o "2|ruta" (nivel 2). Una ruta de Windows no puede llevar
+        // "|", asi que distinguirlos es seguro y los archivos viejos se siguen leyendo tal cual. Si una cancion
+        // aparece dos veces (subio de nivel) manda el nivel MAS ALTO.
         private void LoadIaDone()
         {
             try
             {
                 string f = IaDoneFile();
                 if (!File.Exists(f)) return;
-                foreach (string line in File.ReadAllLines(f)) { string r = line.Trim(); if (r.Length > 0) iaDone.Add(r); }
+                foreach (string line in File.ReadAllLines(f))
+                {
+                    string r = line.Trim(); if (r.Length == 0) continue;
+                    int niv = 1;
+                    if (r.Length > 2 && r[1] == '|') { int d = r[0] - '0'; if (d >= 1 && d <= 9) { niv = d; r = r.Substring(2); } }
+                    r = Pool(r);
+                    int ant; if (iaDone.TryGetValue(r, out ant) && ant >= niv) continue;
+                    iaDone[r] = niv;
+                }
             }
             catch { }
         }
         private readonly object iaDoneLock = new object();
         private volatile bool iaDoneDirty = false;   // hay canciones nuevas cosechadas sin apuntar en disco
+        private readonly List<string> iaPend = new List<string>();   // lineas apuntadas y aun sin escribir
+        // Apunta que de esta cancion ya se cosecho hasta "nivel". false si ya estaba en ese nivel o mas.
+        private bool MarkIaDone(string path, int nivel)
+        {
+            lock (iaDoneLock)
+            {
+                int ant; if (iaDone.TryGetValue(path, out ant) && ant >= nivel) return false;
+                iaDone[path] = nivel;
+                iaPend.Add((nivel > 1 ? (nivel.ToString() + "|") : "") + path);
+            }
+            iaDoneDirty = true;
+            return true;
+        }
+        // Se ANADE al final en vez de reescribir el archivo entero. Con cien mil canciones, reescribirlo cada
+        // 10 canciones durante el repaso a fondo eran megas y megas al disco cada minuto, para nada.
         private void SaveIaDone()
         {
-            List<string> snap;
-            try { snap = new List<string>(iaDone); } catch { return; }
+            List<string> nuevas;
+            lock (iaDoneLock) { if (iaPend.Count == 0) return; nuevas = new List<string>(iaPend); iaPend.Clear(); }
             System.Threading.ThreadPool.QueueUserWorkItem(delegate
             {
                 try
                 {
-                    StringBuilder sb = new StringBuilder(snap.Count * 64 + 16);
-                    for (int i = 0; i < snap.Count; i++) sb.Append(snap[i]).Append("\r\n");
-                    lock (iaDoneLock) File.WriteAllText(IaDoneFile(), sb.ToString());
+                    StringBuilder sb = new StringBuilder(nuevas.Count * 64 + 16);
+                    for (int i = 0; i < nuevas.Count; i++) sb.Append(nuevas[i]).Append("\r\n");
+                    lock (iaDoneLock) File.AppendAllText(IaDoneFile(), sb.ToString());
                 }
                 catch { }
             });
@@ -1883,27 +1934,34 @@ namespace Rocola
         private string DeepDoneFile() { return Path.Combine(Application.StartupPath, "rocola_afondo.txt"); }
         private readonly object deepDoneLock = new object();
         private volatile bool deepDoneDirty = false;   // hay canciones repasadas sin apuntar en disco
+        private readonly List<string> deepPend = new List<string>();   // rutas apuntadas y aun sin escribir
         private void LoadDeepDone()
         {
             try
             {
                 string f = DeepDoneFile();
                 if (!File.Exists(f)) return;
-                foreach (string line in File.ReadAllLines(f)) { string r = line.Trim(); if (r.Length > 0) deepDone.Add(r); }
+                foreach (string line in File.ReadAllLines(f)) { string r = line.Trim(); if (r.Length > 0) deepDone.Add(Pool(r)); }
             }
             catch { }
         }
+        private void MarkDeepDone(string path)
+        {
+            lock (deepDoneLock) { if (!deepDone.Add(path)) return; deepPend.Add(path); }
+            deepDoneDirty = true;
+        }
+        // Igual que la lista de la IA: se ANADE al final, no se reescribe entera cada 10 canciones.
         private void SaveDeepDone()
         {
-            List<string> snap;
-            try { lock (deepDoneLock) snap = new List<string>(deepDone); } catch { return; }
+            List<string> nuevas;
+            lock (deepDoneLock) { if (deepPend.Count == 0) return; nuevas = new List<string>(deepPend); deepPend.Clear(); }
             System.Threading.ThreadPool.QueueUserWorkItem(delegate
             {
                 try
                 {
-                    StringBuilder sb = new StringBuilder(snap.Count * 64 + 16);
-                    for (int i = 0; i < snap.Count; i++) sb.Append(snap[i]).Append("\r\n");
-                    lock (deepDoneLock) File.WriteAllText(DeepDoneFile(), sb.ToString());
+                    StringBuilder sb = new StringBuilder(nuevas.Count * 64 + 16);
+                    for (int i = 0; i < nuevas.Count; i++) sb.Append(nuevas[i]).Append("\r\n");
+                    lock (deepDoneLock) File.AppendAllText(DeepDoneFile(), sb.ToString());
                 }
                 catch { }
             });
@@ -1960,6 +2018,15 @@ namespace Rocola
                 if (turbo) { bool ya; lock (deepDoneLock) ya = deepDone.Contains(tk.Path); if (ya) continue; }
                 pend.Add(tk.Path);
             }
+            // CADA cuanto se vuelcan las tablas a disco. Un volcado reescribe ENTERAS las tablas de sonoridad y
+            // de EQ: con cien mil canciones son ~17 MB por volcado. Hacerlo cada 10 canciones durante un repaso a
+            // fondo son CIENTOS de gigas escritos para nada, y eso desgasta el SSD. Asi que el intervalo crece con
+            // la biblioteca: en una chica se guarda tan seguido como siempre; en una grande, cada tanto (como mucho
+            // se pierde un rato de trabajo si se va la luz, y lo perdido solo se vuelve a medir).
+            int guardaCada = turbo ? 10 : 25;
+            int escala = loudCache.Count / 500;                        // se calcula aqui, en el hilo de la interfaz
+            if (escala > guardaCada) guardaCada = escala;              // (las tablas son suyas: leerlas desde el hilo de fondo seria una carrera)
+            if (guardaCada > 300) guardaCada = 300;
             preScanLeft = pend.Count;
             // La barra del entrenamiento a fondo se mide sobre TODA la biblioteca (no sobre la tanda que queda),
             // para que al reanudar siga desde donde iba en vez de volver a arrancar en cero.
@@ -2002,9 +2069,9 @@ namespace Rocola
                         catch { break; }
                         // Apuntada como repasada a fondo (despues de encargar la publicacion, no antes: si algo
                         // fallara al publicar no queremos darla por hecha sin haber guardado su medida).
-                        if (turbo) { lock (deepDoneLock) deepDone.Add(ruta); deepDoneDirty = true; }
+                        if (turbo) MarkDeepDone(ruta);
                         hechas++;
-                        if ((hechas % (turbo ? 10 : 25)) == 0)
+                        if ((hechas % guardaCada) == 0)
                             try { if (IsHandleCreated) BeginInvoke((MethodInvoker)delegate { SaveLoudCache(); FlushEqIfDirty(); if (iaDoneDirty) { iaDoneDirty = false; SaveIaDone(); } if (deepDoneDirty) { deepDoneDirty = false; SaveDeepDone(); } }); } catch { }
                         // Respiro entre archivos. En ENTRENAMIENTO A FONDO practicamente no hay: la maquina se
                         // dedica a esto. En modo normal, con algo SONANDO se descansa mas (decodificar cuesta CPU
@@ -2062,16 +2129,34 @@ namespace Rocola
                 // (una cancion dañada no puede enseñar nada: los agudos reales ya no estan en el archivo).
                 SpectralTap hv = null; float[] hvFrame = null, hvFeat = null, hvTgt = null;
                 int hvFill = 0, hvFrames = 0; List<float> hvPairs = null;
-                // Una cancion aporta material UNA sola vez: en los repasos a fondo, volver a meter ejemplos de
-                // las mismas canciones solo sesgaria el entrenamiento hacia ellas.
-                bool yaCosechada; lock (iaDoneLock) yaCosechada = iaDone.Contains(path);
-                if (iaHarvestOn && !yaCosechada)
+                int hvStride = 1, hvFrameMax = IaFramesPerSong;
+                // Los dos modos ACUMULAN. Antes bastaba con que el modo automatico hubiera tocado la cancion
+                // (192 cuadros) para que el repaso A FONDO ya no la mirara NUNCA, y se perdian para siempre los
+                // 12x cuadros que ese repaso saca de ella. Ahora se guarda el NIVEL cosechado: el repaso a fondo
+                // vuelve a entrar en las que solo tienen el muestreo y les anade el resto del material.
+                int nivelPrevio; lock (iaDoneLock) { if (!iaDone.TryGetValue(path, out nivelPrevio)) nivelPrevio = 0; }
+                int nivelAhora = aFondo ? 2 : 1;
+                if (iaHarvestOn && nivelPrevio < nivelAhora && !IaBudgetFull())
                 {
                     try
                     {
                         hv = new SpectralTap(rate, 1);
                         hvFrame = new float[hv.FrameLen]; hvFeat = new float[28]; hvTgt = new float[12];
                         hvPairs = new List<float>(4096);
+                        // A FONDO: antes se amontonaban cuadros SEGUIDOS desde el principio del tema (2304 de golpe,
+                        // que ni llegaban al primer minuto). Dos cuadros pegados de la misma cancion se parecen
+                        // tanto que apilarlos engorda el archivo sin ensenarle nada nuevo a la red. Ahora se toma
+                        // uno de cada tantos, REPARTIDOS por toda la cancion: menos bytes, mucha mas variedad, y
+                        // ademas encuentra los buenos tramos esten donde esten (no solo al principio).
+                        if (aFondo)
+                        {
+                            long framesTot = (long)(total * rate / Math.Max(1, hv.FrameLen));
+                            // El paso se REDONDEA HACIA ARRIBA a proposito: con la division a secas el ultimo
+                            // cuadro caia antes del final y se quedaba sin mirar el ultimo 15% de cada cancion.
+                            long paso = (framesTot - IaWarmFrames + IaDeepFrames - 1) / IaDeepFrames;
+                            hvStride = (paso > 1) ? (int)paso : 1;
+                            hvFrameMax = IaWarmFrames + hvStride * IaDeepFrames;
+                        }
                     }
                     catch { hv = null; }
                 }
@@ -2114,7 +2199,7 @@ namespace Rocola
                             }
                             bpN++;
                             // canal 0 hacia el analizador de la IA (el DSEE tambien trabaja por canal)
-                            if (hv != null && hvFrames < (aFondo ? IaFramesPerSong * 12 : IaFramesPerSong))
+                            if (hv != null && hvFrames < hvFrameMax)
                             {
                                 hvFrame[hvFill++] = buf[i];
                                 if (hvFill >= hvFrame.Length)
@@ -2125,7 +2210,7 @@ namespace Rocola
                                     {
                                         hv.AnalyzeFrame(hvFrame, 0);
                                         hvFrames++;
-                                        if (hvFrames > IaWarmFrames)   // ya con el acantilado estabilizado
+                                        if (hvFrames > IaWarmFrames && (hvStride == 1 || (hvFrames % hvStride) == 0))   // acantilado ya estabilizado; a fondo, repartido
                                             for (int q = 0; q < IaCutsHz.Length; q++)
                                                 if (hv.MakePair(IaCutsHz[q], hvFeat, hvTgt))
                                                 {
@@ -2152,8 +2237,7 @@ namespace Rocola
                 if (hv != null && hvPairs.Count >= 40 && hv.CutHz >= 19300f)
                 {
                     IaAppendPairs(hvPairs);
-                    lock (iaDoneLock) iaDone.Add(path);
-                    iaDoneDirty = true;
+                    MarkIaDone(path, nivelAhora);
                 }
                 if (nSamp < 40000) return durSec > 0.01f;   // muy poco audio util: al menos queda la duracion
                 rms = (float)Math.Sqrt(sumSq / nSamp);
@@ -4963,7 +5047,7 @@ namespace Rocola
                     int b = line.IndexOf("  |  ", a + 5);
                     string p = (b > a) ? line.Substring(a + 5, b - (a + 5)) : line.Substring(a + 5);
                     p = p.Trim();
-                    if (p.Length > 0) incompatibleLogged.Add(p);
+                    if (p.Length > 0) incompatibleLogged.Add(Pool(p));
                 }
             }
             catch { }
@@ -9339,7 +9423,7 @@ namespace Rocola
             public static Track FromFile(string path)
             {
                 Track t = new Track();
-                t.Path = path; t.Artist = ""; t.Title = ""; t.Album = ""; t.Genre = "";
+                t.Path = Pool(path); t.Artist = ""; t.Title = ""; t.Album = ""; t.Genre = "";
                 string name = System.IO.Path.GetFileNameWithoutExtension(path);
                 string fa, ft;
                 bool split = SplitArtist(name, out fa, out ft);

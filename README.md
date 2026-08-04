@@ -107,9 +107,19 @@ completo** a dejar todo calibrado:
 - Una **barra de avance** y el texto muestran cuántas canciones lleva y cuántos ejemplos de IA.
 - Sigue corriendo aunque cierres el panel; se detiene con el **mismo botón**.
 
-Cada canción aporta material para la IA **una sola vez** (`rocola_ia_hechas.txt`), así que repasar
-varias veces no sesga el entrenamiento. **No** se guarda en la configuración a propósito: si se va
-la luz, la rocola vuelve sola a su modo normal y nunca se queda a todo gas en horario de negocio.
+**Los dos modos se acumulan.** El modo automático saca un puñado de ejemplos por canción; el repaso
+a fondo la recorre **entera** y saca el triple, repartidos por todo el tema. Se apunta *hasta qué
+nivel* llegó cada canción (`rocola_ia_hechas.txt`), así que el repaso a fondo **vuelve a entrar** en
+las que solo tienen el muestreo y les añade el resto — pero dentro del mismo nivel una canción
+aporta una sola vez, para no sesgar el entrenamiento hacia ella.
+
+El archivo de material tiene un **tope de 600 MB** (`ia_datos_mb=` en config; 0 lo quita). Sin tope,
+un repaso a fondo de una biblioteca grande dejaba un archivo de **decenas de gigas**: no cabe en una
+USB con formato FAT32 y ninguna PC normal puede cargarlo para entrenar. Y no hace falta: a la red le
+sirve la **variedad** (muchas canciones distintas), no el volumen.
+
+El modo a fondo **no** se guarda en la configuración a propósito: si se va la luz, la rocola vuelve
+sola a su modo normal y nunca se queda a todo gas en horario de negocio.
 
 ## Compilar
 
