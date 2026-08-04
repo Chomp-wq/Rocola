@@ -1814,10 +1814,17 @@ namespace Rocola
 
             LayoutSongsPanel();
 #if ROCOLA_GPU
-            // Un reacomodo (video que entra o sale, cambio de tamano) mueve lo que la textura de UI tiene
-            // horneado: se rehace YA, en el mismo cuadro, para no ver la interfaz vieja ni un instante.
-            uiOverlaySig = null;
-            if (gpuPanel != null) gpuPanel.UiUrgent = true;
+            // Un reacomodo REAL (video que entra o sale, cambio de tamano) mueve lo que la textura de UI tiene
+            // horneado: se rehace YA, en el mismo cuadro. Pero LayoutControls tambien corre en CADA cambio de
+            // cancion (PlayNext) sin que nada se mueva: la HUELLA evita rehornear y resubir la textura en vano
+            // (un tropiezo de 10-20 ms por cancion en el CPU modesto, para nada).
+            int huella = (ClientSize.Width * 131072) + (ClientSize.Height * 4) + (videoOn ? 2 : 0) + (videoFull ? 1 : 0);
+            if (huella != layoutStamp)
+            {
+                layoutStamp = huella;
+                uiOverlaySig = null;
+                if (gpuPanel != null) gpuPanel.UiUrgent = true;
+            }
 #endif
         }
 
@@ -5685,6 +5692,7 @@ namespace Rocola
         private bool gpuShowFps;                          // mostrar el contador de FPS (diagnostico). Oculto por defecto; Ctrl+F1 lo alterna
         private bool gpuDiscTry = true;                   // interior de disco por GPU (por defecto). Ctrl+F11 lo alterna a CPU como valvula de escape
         private int gpuMode = -1;                          // modo GPU actual (nav/buscador/disco/atraccion); al cambiar se rehace la UI atomica
+        private int layoutStamp = -1;                      // huella del ultimo reacomodo: solo un cambio REAL rehace la textura de UI
         private Bitmap uiOverlay; private int uiOverlayVer; private string uiOverlaySig;   // textura de las barras (UI)
 
         // Ctrl+F12: alterna el render entre GPU (Direct3D 9, por defecto) y CPU, y GUARDA la preferencia.

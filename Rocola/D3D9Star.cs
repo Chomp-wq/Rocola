@@ -1002,7 +1002,9 @@ namespace Rocola
             if (ShowFps) EnsureFpsTex();   // crea/actualiza la textura del contador ANTES de Begin (solo si se pide, Ctrl+F1)
             stars.SetDim(Dim);             // atenuacion mientras se navega con musica (estrellas/brillos; el cielo queda igual)
             float pulse = ((GetPulse != null) ? GetPulse() : 0f) * Dim;   // el beat tambien baja mientras esta atenuado
-            if (!stars.Begin(Width, Height, pulse)) return;
+            // Dispositivo perdido (sesion bloqueada, cambio de pantalla...): sin este respiro, el bucle de
+            // Application.Idle reintentaria a TODA MAQUINA y clavaria un nucleo entero hasta recuperarlo.
+            if (!stars.Begin(Width, Height, pulse)) { System.Threading.Thread.Sleep(5); return; }
             // Rejilla de discos: un quad por celda (textura ya resuelta arriba). Las celdas aun sin textura (recien
             // horneadas o sin presupuesto de subida este cuadro) se saltan y aparecen en los cuadros siguientes.
             if (ShowAlbum)
