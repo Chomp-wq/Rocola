@@ -128,6 +128,11 @@ namespace Rocola
         // Canciones de las que YA se saco material para la IA. Sin esto, cada repaso a fondo volveria a meter
         // ejemplos de las mismas canciones y el entrenamiento quedaria sesgado hacia ellas.
         private readonly HashSet<string> iaDone = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        // Canciones que YA recibieron el repaso A FONDO (cancion completa). Se guarda en disco para que el
+        // entrenamiento a fondo CONTINUE donde iba al detenerlo y volverlo a encender, al cerrar la rocola o
+        // si se va la luz. Sin esto, cada arranque volvia a empezar por la primera cancion de la biblioteca y
+        // con una biblioteca grande el repaso no terminaba nunca.
+        private readonly HashSet<string> deepDone = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private string curMeasurePath = null;                                                // cancion que se esta MIDIENDO ahora (null = no medir)
         private LevelTap curTap;                                                              // tap de la cancion actual (para cambiarle la ganancia en vivo desde Ctrl+F3)
         private double curSumSq = 0; private long curSamples = 0;                             // acumuladores del RMS integrado de la cancion actual (los llena el hilo de audio)
@@ -484,6 +489,7 @@ namespace Rocola
             LoadEqCache();       // huella tonal medida por cancion (para el EQ automatico)
             IaCountPairs();      // cuanto material de entrenamiento de la IA llevamos juntado
             LoadIaDone();        // de que canciones ya se saco material (no repetirlas en los repasos a fondo)
+            LoadDeepDone();      // que canciones ya recibieron el repaso a fondo (para continuar donde iba)
             LoadIncompatible();  // rutas ya anotadas como no reproducibles (para no repetirlas)
             BackupLearnedData(); // respalda lo aprendido de la sesion ANTERIOR antes de que esta lo modifique
             LayoutControls();
@@ -1228,8 +1234,11 @@ namespace Rocola
                         string etapa = (nowPlaying != null && nowPlaying.Song != null) ? LoudTierName(nowPlaying.Song.Path) : "";
                         int tTot = preScanTotal, tFal = preScanLeft;
                         hint.Text = (preScanTurbo && tTot > 0)
-                            ? ("ENTRENANDO A FONDO: " + (tTot - tFal).ToString("#,0") + " de " + tTot.ToString("#,0")
-                               + " canciones (" + ((tTot - tFal) * 100 / Math.Max(1, tTot)) + "%).   IA: " + iaPairsTotal.ToString("#,0") + " ejemplos.")
+                            ? (tFal > 0
+                               ? ("ENTRENANDO A FONDO: " + (tTot - tFal).ToString("#,0") + " de " + tTot.ToString("#,0")
+                                  + " canciones (" + ((tTot - tFal) * 100 / Math.Max(1, tTot)) + "%).   IA: " + iaPairsTotal.ToString("#,0") + " ejemplos.")
+                               : ("A FONDO: la biblioteca ya esta repasada entera (" + tTot.ToString("#,0")
+                                  + " canciones).   IA: " + iaPairsTotal.ToString("#,0") + " ejemplos."))
                             : ("La biblioteca se mide sola: "
                                + (tFal > 0 ? ("faltan " + tFal.ToString("#,0") + " canciones.") : "ya esta al dia.")
                                + (iaHarvestOn ? ("   IA: " + iaPairsTotal.ToString("#,0") + " ejemplos.") : "")
@@ -1960,6 +1969,35 @@ namespace Rocola
                 catch { }
             });
         }
+        // ---- Canciones ya repasadas A FONDO (mismo formato que las de la IA: una ruta por linea) ----
+        private string DeepDoneFile() { return Path.Combine(Application.StartupPath, "rocola_afondo.txt"); }
+        private readonly object deepDoneLock = new object();
+        private volatile bool deepDoneDirty = false;   // hay canciones repasadas sin apuntar en disco
+        private void LoadDeepDone()
+        {
+            try
+            {
+                string f = DeepDoneFile();
+                if (!File.Exists(f)) return;
+                foreach (string line in File.ReadAllLines(f)) { string r = line.Trim(); if (r.Length > 0) deepDone.Add(r); }
+            }
+            catch { }
+        }
+        private void SaveDeepDone()
+        {
+            List<string> snap;
+            try { lock (deepDoneLock) snap = new List<string>(deepDone); } catch { return; }
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate
+            {
+                try
+                {
+                    StringBuilder sb = new StringBuilder(snap.Count * 64 + 16);
+                    for (int i = 0; i < snap.Count; i++) sb.Append(snap[i]).Append("\r\n");
+                    lock (deepDoneLock) File.WriteAllText(DeepDoneFile(), sb.ToString());
+                }
+                catch { }
+            });
+        }
         private void IaCountPairs()
         {
             try
@@ -1999,13 +2037,17 @@ namespace Rocola
             int myGen = ++preScanGen;
             bool turbo = preScanTurbo;
             List<string> pend = new List<string>();
+            int elegibles = 0;                 // canciones de la biblioteca que cuentan para la barra de avance
             for (int i = 0; i < tracks.Count; i++)
             {
                 Track tk = tracks[i];
                 if (tk == null || tk.Path == null) continue;
-                // En modo NORMAL se salta lo ya medido. En ENTRENAMIENTO A FONDO entra TODA la biblioteca:
-                // se vuelve a medir entera y por canciones COMPLETAS, que es mas exacto que el muestreo.
+                // En modo NORMAL se salta lo ya medido. En ENTRENAMIENTO A FONDO entra toda la biblioteca MENOS
+                // lo que ya recibio su repaso completo: asi, al detenerlo y volverlo a encender (o tras un apagon)
+                // CONTINUA donde iba en vez de empezar por la primera cancion otra vez.
+                elegibles++;
                 if (!turbo && durCache.ContainsKey(tk.Path)) continue;
+                if (turbo) { bool ya; lock (deepDoneLock) ya = deepDone.Contains(tk.Path); if (ya) continue; }
                 pend.Add(tk.Path);
             }
             // RAMA HD: aqui SI se puede decodificar el audio de un MP4/AVI/WMV (Media Foundation), asi que los
@@ -2018,11 +2060,17 @@ namespace Rocola
                     for (int j = 0; j < va.VideoFiles.Count; j++)
                     {
                         string vp = va.VideoFiles[j];
-                        if (vp == null || (!turbo && durCache.ContainsKey(vp))) continue;
+                        if (vp == null) continue;
+                        elegibles++;
+                        if (!turbo && durCache.ContainsKey(vp)) continue;
+                        if (turbo) { bool ya; lock (deepDoneLock) ya = deepDone.Contains(vp); if (ya) continue; }
                         pend.Add(vp);
                     }
                 }
-            preScanLeft = pend.Count; preScanTotal = pend.Count;
+            preScanLeft = pend.Count;
+            // La barra del entrenamiento a fondo se mide sobre TODA la biblioteca (no sobre la tanda que queda),
+            // para que al reanudar siga desde donde iba en vez de volver a arrancar en cero.
+            preScanTotal = turbo ? elegibles : pend.Count;
             if (pend.Count == 0) return;
             preScanTh = new System.Threading.Thread(delegate ()
             {
@@ -2059,9 +2107,12 @@ namespace Rocola
                             });
                         }
                         catch { break; }
+                        // Apuntada como repasada a fondo (despues de encargar la publicacion, no antes: si algo
+                        // fallara al publicar no queremos darla por hecha sin haber guardado su medida).
+                        if (turbo) { lock (deepDoneLock) deepDone.Add(ruta); deepDoneDirty = true; }
                         hechas++;
                         if ((hechas % (turbo ? 10 : 25)) == 0)
-                            try { if (IsHandleCreated) BeginInvoke((MethodInvoker)delegate { SaveLoudCache(); FlushEqIfDirty(); if (iaDoneDirty) { iaDoneDirty = false; SaveIaDone(); } }); } catch { }
+                            try { if (IsHandleCreated) BeginInvoke((MethodInvoker)delegate { SaveLoudCache(); FlushEqIfDirty(); if (iaDoneDirty) { iaDoneDirty = false; SaveIaDone(); } if (deepDoneDirty) { deepDoneDirty = false; SaveDeepDone(); } }); } catch { }
                         // Respiro entre archivos. Con algo SONANDO se descansa mas (decodificar cuesta CPU y no
                         // vale la pena arriesgar un corte en la musica), pero la espera se ajusta al equipo: con
                         // UN SOLO nucleo el pre-analisis compite de verdad con la reproduccion y hay que frenarlo
@@ -2076,7 +2127,7 @@ namespace Rocola
                 catch { }
                 finally
                 {
-                    try { if (IsHandleCreated && hechas > 0) BeginInvoke((MethodInvoker)delegate { SaveLoudCache(); FlushEqIfDirty(); if (iaDoneDirty) { iaDoneDirty = false; SaveIaDone(); } }); } catch { }
+                    try { if (IsHandleCreated && hechas > 0) BeginInvoke((MethodInvoker)delegate { SaveLoudCache(); FlushEqIfDirty(); if (iaDoneDirty) { iaDoneDirty = false; SaveIaDone(); } if (deepDoneDirty) { deepDoneDirty = false; SaveDeepDone(); } }); } catch { }
                 }
             });
             preScanTh.IsBackground = true;
@@ -4070,7 +4121,8 @@ namespace Rocola
             string sp = Application.StartupPath, second = backupDir, baseDir = BackupBaseDir();
             string[] files = {
                 LoudFile(), EqFile(), LibStatsFile(), LibCacheFile(), ConfigFile, KeysFile(),
-                Path.Combine(sp, "rocola_ia.bin"), Path.Combine(sp, "rocola_incompatibles.txt")
+                Path.Combine(sp, "rocola_ia.bin"), Path.Combine(sp, "rocola_incompatibles.txt"),
+                IaDoneFile(), DeepDoneFile()   // sin estas dos, un repaso a fondo empezaria de cero y la IA repetiria ejemplos
             };
             System.Threading.ThreadPool.QueueUserWorkItem(delegate   // fuera del hilo de la interfaz (no frena nada)
             {
