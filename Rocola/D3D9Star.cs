@@ -948,6 +948,14 @@ namespace Rocola
             EnsureCover(ref selTexB, ref selImgB, ref selUB, ref selVB, cs.Sel.CoverB);
             EnsureCover(ref relTex, ref relImg, ref relU, ref relV, cs.Relay.CoverA);
             EnsureCover(ref miniTex, ref miniImg, ref miniU, ref miniV, cs.Mini.CoverA);   // mini-cubo de la barra inferior
+            // ANIMACIONES: sus texturas TAMBIEN se aseguran AQUI, antes de Begin. Crear o bloquear una textura
+            // con la escena ya abierta no es valido en Direct3D 9: fallaba en silencio y la portada que viajaba
+            // entre cubos no llegaba a dibujarse NUNCA (la del buscador al abrir si, porque esa reusa la textura
+            // de la UI, que ya venia subida de antes). Aqui se resuelven; abajo solo se dibujan.
+            GpuTrans tr = (GetTrans != null) ? GetTrans() : new GpuTrans();
+            if (tr.Has && tr.Bmp != null) EnsureCover(ref transTex, ref transLastBmp, ref transU, ref transV, tr.Bmp);
+            GpuWin gw = (GetWin != null) ? GetWin() : new GpuWin();
+            if (gw.Has && gw.Bmp != null) EnsureCover(ref winTex, ref winLastBmp, ref winU, ref winV, gw.Bmp);
             // Barras (UI) a textura: se re-sube solo cuando cambia algun texto/estado (firma del form), limitada a
             // UNA por franja (heavyGapMs). UiUrgent: al CAMBIAR DE MODO (p.ej. cerrar el buscador) hay que rehacerla
             // en ESTE mismo cuadro, sin esperar franja: si no, se veria la rejilla por los huecos del teclado un instante.
@@ -1002,7 +1010,6 @@ namespace Rocola
             }
             // UI ENCIMA del fondo y los cubos: la textura principal anclada ARRIBA (a su tamano real: en
             // navegacion es solo la franja superior) y la franja de estado anclada ABAJO.
-            GpuWin gw = (GetWin != null) ? GetWin() : new GpuWin();
             bool uiPropia = gw.Has && gw.Bmp == null;   // se anima la PROPIA textura de UI (abriendo el buscador)
             if (uiTex != IntPtr.Zero && uiBmpW > 0 && uiBmpH > 0 && !(gw.Has && gw.HideUi))
                 { SetTexQuad(uiQuad, 0, 0, uiBmpW, uiBmpH, uiU, uiV); stars.DrawQuad(uiTex, uiQuad); }
@@ -1011,7 +1018,7 @@ namespace Rocola
             {
                 IntPtr wt; float wu, wv, bw, bh;
                 if (uiPropia) { wt = uiTex; wu = uiU; wv = uiV; bw = uiBmpW; bh = uiBmpH; }
-                else { EnsureCover(ref winTex, ref winLastBmp, ref winU, ref winV, gw.Bmp); wt = winTex; wu = winU; wv = winV; bw = gw.Bmp.Width; bh = gw.Bmp.Height; }
+                else { wt = winTex; wu = winU; wv = winV; bw = gw.Bmp.Width; bh = gw.Bmp.Height; }
                 if (wt != IntPtr.Zero && bw > 1f && bh > 1f)
                 {
                     float hw = bw * 0.5f, hh = bh * 0.5f;   // crece/encoge desde SU CENTRO (no desde una esquina)
@@ -1033,22 +1040,14 @@ namespace Rocola
             if (cs.Mini.Has)
                 stars.DrawCube(miniTex, miniU, miniV, cs.Mini.X, cs.Mini.Y, cs.Mini.W, cs.Mini.H, cs.Mini.Angle, 1f, cs.Mini.Tilt);
             // TRANSICION entre cubos (viaje + giro + bamboleo + destello) ENCIMA de todo. Solo mientras vive.
-            if (GetTrans != null)
+            if (tr.Has && tr.Bmp != null && transTex != IntPtr.Zero && tr.Alpha > 0.004f && tr.W > 1f && tr.H > 1f)
             {
-                GpuTrans tr = GetTrans();
-                if (tr.Has && tr.Bmp != null && tr.Alpha > 0.004f && tr.W > 1f && tr.H > 1f)
+                if (tr.Glow > 0.004f)   // DESTELLO detras: halo aditivo (el mismo camino que los brillos del buscador)
                 {
-                    EnsureCover(ref transTex, ref transLastBmp, ref transU, ref transV, tr.Bmp);
-                    if (transTex != IntPtr.Zero)
-                    {
-                        if (tr.Glow > 0.004f)   // DESTELLO detras: halo aditivo (el mismo camino que los brillos del buscador)
-                        {
-                            int ga = (int)(tr.Glow * tr.Alpha * 104f + 0.5f); if (ga > 255) ga = 255;
-                            if (ga > 0) stars.DrawGlow(tr.X + tr.W * 0.5f, tr.Y + tr.H * 0.5f, tr.W * 0.66f, ((uint)ga << 24) | 0x00FFE2A8u);
-                        }
-                        stars.DrawCube(transTex, transU, transV, tr.X, tr.Y, tr.W, tr.H, tr.Angle, tr.Alpha, tr.Tilt);
-                    }
+                    int ga = (int)(tr.Glow * tr.Alpha * 104f + 0.5f); if (ga > 255) ga = 255;
+                    if (ga > 0) stars.DrawGlow(tr.X + tr.W * 0.5f, tr.Y + tr.H * 0.5f, tr.W * 0.66f, ((uint)ga << 24) | 0x00FFE2A8u);
                 }
+                stars.DrawCube(transTex, transU, transV, tr.X, tr.Y, tr.W, tr.H, tr.Angle, tr.Alpha, tr.Tilt);
             }
             // Contador de FPS (diagnostico) encima de todo, en su textura pequeña. Oculto por defecto (Ctrl+F1).
             if (ShowFps && fpsTex != IntPtr.Zero) { SetTexQuad(fpsQuad, Width - fpsTW - 10, 6, Width - 10, 6 + fpsTH, fpsU, fpsV); stars.DrawQuad(fpsTex, fpsQuad); }

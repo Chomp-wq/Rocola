@@ -5334,27 +5334,42 @@ namespace Rocola
             gpuRetryLeft = 0; gpuRetryAt = 0;
             if (gpuParked || !gpuEnabled || gpuPanel == null) return;
             gpuParked = true;
-            ApplyAlbumGpu(false, false, false);   // suelta texturas y dispositivo; NO guarda la preferencia
+            // Se suelta SOLO el dispositivo y sus texturas. "gpuEnabled" se queda en true A PROPOSITO: con un
+            // video en pantalla el panel esta oculto y no dibuja nada, asi que no hay nada que reemplazar. Si
+            // aqui se apagara el render por GPU, la rocola se pondria a repintar TODO por CPU detras del video
+            // (fondo estrellado incluido, 24 veces por segundo) y le robaria al video justo lo que le falta.
+            try { gpuPanel.Visible = false; gpuPanel.StopGpu(); } catch { }
+        }
+        private bool GpuRestart()   // vuelve a crear el dispositivo y sus texturas (el anterior ya no existe)
+        {
+            try
+            {
+                if (albumView != null) albumView.InvalidateCubeCache();
+                uiOverlaySig = null;
+                if (albumView != null) gpuPanel.AlbumRect = albumView.Bounds;
+                gpuPanel.Bounds = new Rectangle(0, 0, ClientSize.Width, ClientSize.Height);
+                return gpuPanel.StartGpu();
+            }
+            catch { return false; }
         }
         private void GpuUnparkAfterVideo()
         {
             if (!gpuParked) return;
             gpuParked = false;
-            if (!gpuPrefOn || gpuPanel == null || gpuEnabled) return;
-            ApplyAlbumGpu(true, false, false);
-            // Si la tarjeta sigue ocupada (el reproductor aun no la ha soltado del todo) se reintenta un rato:
-            // quedarse en CPU por un video seria peor que el problema que veniamos a arreglar.
-            if (!gpuEnabled) { gpuRetryLeft = 6; gpuRetryAt = Environment.TickCount + 1200; }
-            else SyncGpuFullScreen();
+            if (gpuPanel == null || !gpuEnabled) return;
+            if (GpuRestart()) { SyncGpuFullScreen(); return; }
+            // La tarjeta sigue ocupada (el reproductor aun no la ha soltado del todo): se reintenta un rato.
+            // Quedarse en CPU por un video seria peor que el problema que veniamos a arreglar.
+            gpuRetryLeft = 6; gpuRetryAt = Environment.TickCount + 1200;
         }
         private void GpuRetryTick()
         {
-            if (gpuRetryLeft <= 0 || videoOn || videoFull || gpuEnabled || !gpuPrefOn) return;
+            if (gpuRetryLeft <= 0 || gpuParked || videoOn || videoFull || gpuPanel == null) return;
             if (Environment.TickCount - gpuRetryAt < 0) return;
             gpuRetryLeft--;
-            ApplyAlbumGpu(true, false, gpuRetryLeft == 0);   // en el ultimo intento, avisar si tampoco pudo
-            if (gpuEnabled) { gpuRetryLeft = 0; SyncGpuFullScreen(); }
-            else gpuRetryAt = Environment.TickCount + 1200;
+            if (GpuRestart()) { gpuRetryLeft = 0; SyncGpuFullScreen(); return; }
+            if (gpuRetryLeft > 0) { gpuRetryAt = Environment.TickCount + 1200; return; }
+            ApplyAlbumGpu(false, true, false);   // no hubo manera: se pasa a CPU de verdad y se avisa
         }
 
         // Aplica el modo de render. 'on' = destino (GPU/CPU); 'announceFail' = avisar si el dispositivo no inicia;
@@ -5492,6 +5507,7 @@ namespace Rocola
         private void SyncGpuFullScreen()
         {
             if (gpuPanel == null || !gpuEnabled) return;
+            if (gpuParked) { if (gpuPanel.Visible) gpuPanel.Visible = false; return; }   // sin dispositivo (video en curso): no mostrarlo
             bool cfgOn = (lblConfig != null && lblConfig.Visible);
             bool notBlockedByVideoCfg = !videoOn && !videoFull && !cfgOn;
             bool noBlock = notBlockedByVideoCfg && !attractOn;

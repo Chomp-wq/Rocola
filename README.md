@@ -66,8 +66,10 @@ artista) y modo atracción.
 - **Los videos van por hardware**: mientras hay un video en pantalla, la rocola **suelta la tarjeta
   gráfica** (el panel 3D está oculto y no dibuja nada, así que solo la estaba ocupando). Sin esto,
   Windows Media Player se encontraba la superficie de video tomada y **se caía a pintar por
-  software**: video a tirones y CPU al tope. Al terminar el video la recupera sola; si la tarjeta
-  aún está ocupada, reintenta unas cuantas veces antes de rendirse.
+  software**: video a tirones y CPU al tope. Suelta **solo el dispositivo**, no el modo de render:
+  así la rocola no se pone a repintarlo todo por CPU detrás del video, que sería robarle al video
+  justo lo que le falta. Al terminar lo recupera sola; si la tarjeta sigue ocupada reintenta unas
+  cuantas veces, y solo si no hay manera se pasa a CPU avisando.
 - **Volumen de los videos**: el video lo reproduce Windows Media Player, cuyo sonido **no pasa**
   por la cadena de audio. Una perilla en Ctrl+F3 (`video_vol=` en config) empareja su volumen con
   el de las canciones ya niveladas, y además sigue a "Subir TODO el volumen".
