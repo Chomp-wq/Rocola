@@ -831,6 +831,8 @@ namespace Rocola
         public Func<Bitmap> GetContour;                   // sprite del contorno de seleccion
         public Func<Rectangle> GetContourRect;            // donde va el contorno (celda seleccionada), en coords del panel
         public Func<GpuCubeState> GetCubeState;           // celdas/angulos/portadas de los cubos que giran (seleccionado + relevo)
+        public int ThrottleMs;                            // >0 = a lo mas un cuadro cada tantos ms (con video sonando: ~30 fps)
+        private int lastFrameMs;                          // TickCount del ultimo cuadro dibujado
         public uint SkyTop = 0xFF06081A, SkyMid = 0xFF101C3A, SkyBot = 0xFF1A2C5A;   // el form los setea por genero (3 paradas)
 
         // Bucle de render por Application.Idle (patron estandar para D3D en WinForms): dibuja tan rapido como
@@ -849,7 +851,19 @@ namespace Rocola
 
         private void OnIdle(object sender, EventArgs e)
         {
-            while (stars != null && stars.Ok && Visible && AppIdle()) RenderFrame();
+            // Con video sonando el panel se LIMITA (ThrottleMs ~33 = 30 fps): el resto del equipo es para el
+            // video. El sueno de 1 ms no atora nada: en cuanto llega un mensaje (tecla, timer), AppIdle lo ve
+            // y el bucle sale a atenderlo.
+            while (stars != null && stars.Ok && Visible && AppIdle())
+            {
+                int th = ThrottleMs;
+                if (th > 0)
+                {
+                    int since = Environment.TickCount - lastFrameMs;
+                    if (since >= 0 && since < th) { System.Threading.Thread.Sleep(1); continue; }
+                }
+                RenderFrame();
+            }
         }
 
         public bool StartGpu()
@@ -907,6 +921,7 @@ namespace Rocola
         private void RenderFrame()
         {
             if (stars == null || !stars.Ok) return;
+            lastFrameMs = Environment.TickCount;
             stars.SetSky(SkyTop, SkyMid, SkyBot);
             // TRABAJO PESADO acotado: rehacer las barras (UI, bitmap a pantalla completa) cuesta; se limita a UNA
             // por franja (heavyGapMs, que SE AUTOAJUSTA al coste real). La rejilla de discos ya NO es trabajo
