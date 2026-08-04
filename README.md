@@ -23,7 +23,10 @@ artista) y modo atracción.
 - Se maneja con la botonera/teclado físico configurable; nada de "lenguaje de teclado de PC".
 - Monedero con créditos y cola de canciones pagadas.
 - Buscador con teclado en pantalla; sección de videos; portadas en cubos 3D girando.
-- La lista de cada disco muestra la **duración** de cada canción.
+- La lista de cada disco muestra la **duración** de cada canción. Va en su **propia pasada rápida**:
+  sacar solo la duración cuesta ~600 veces menos que el análisis de volumen/EQ (es leer la cabecera,
+  no descomprimir el audio), así que la biblioteca entera queda con duración en minutos en vez de
+  esperar días al análisis pesado. Se guarda en `rocola_duracion.txt` y sobrevive a los reinicios.
 - **Animaciones** (todas **por GPU**, así que no le cuestan nada al CPU; `animacion=0` las apaga):
   - **La portada viaja entre cubos.** La rocola ya dibuja todo como cubos girando (la casilla de la
     cuadrícula, el cubo grande del disco, el cubo gigante de la atracción, el del buscador). La
