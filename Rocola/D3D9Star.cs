@@ -742,15 +742,24 @@ namespace Rocola
     // textura a pantalla completa por pagina). Bmp = disco estatico + etiqueta ya horneado (null si aun no listo).
     // Key = Folder (estable) para cachear su textura entre paginas; null = no cachear (discos TOP / sin carpeta).
     internal struct GpuGridCell { public string Key; public Bitmap Bmp; public int Slot; public float X, Y, W, H; }
-    // TRANSICION al entrar/salir de un disco: la portada se dibuja ENCIMA de todo, creciendo (o encogiendo)
-    // desde la celda hasta la pantalla y desvaneciendose. Es solo un quad texturizado mas: la portada ya es
-    // una textura, asi que el zoom son cuatro numeros y el desvanecido, el alfa del vertice.
-    internal struct GpuTrans { public bool Has; public Bitmap Bmp; public float X, Y, W, H; public float Alpha; }
+    // TRANSICION entre dos CUBOS de la rocola (celda de la rejilla, cubo grande del disco, cubo gigante de la
+    // atraccion, cubo del buscador): la portada viaja de uno al otro dibujada ENCIMA de todo, girando, con
+    // bamboleo y un destello detras, y se funde al llegar. Se dibuja con el MISMO DrawCube que los demas cubos,
+    // asi que aterriza calcada sobre el cubo de destino. X,Y,W,H = celda del cubo (igual que GpuCubeInfo).
+    internal struct GpuTrans
+    {
+        public bool Has; public Bitmap Bmp;
+        public float X, Y, W, H;   // celda donde va el cubo (coords de pantalla)
+        public float Alpha;        // 1 = opaca; baja al final para fundirse con el cubo de destino
+        public double Angle;       // giro (radianes)
+        public float Tilt;         // bamboleo del cubo entero (radianes)
+        public float Glow;         // 0..1 destello aditivo detras (0 = ninguno)
+    }
     // VENTANA (el buscador) abriendo/cerrando, al estilo de una ventana de macOS: la ventana entera crece o
     // se encoge desde SU CENTRO, sube/baja un poco y se funde. Bmp = null significa "anima la PROPIA textura
     // de UI" (al abrir, esa textura YA es el buscador: no hay que copiar ni subir nada). HideUi = no dibujarla
     // ademas a tamano normal. Al cerrar, la textura de UI ya es la de navegacion y se anima una instantanea.
-    internal struct GpuWin { public bool Has; public bool HideUi; public Bitmap Bmp; public float Scale, Dy, Alpha; }
+    internal struct GpuWin { public bool Has; public bool HideUi; public Bitmap Bmp; public float Scale, ScaleY, Dy, Alpha; }
     internal delegate int GpuGridFetch(GpuGridCell[] buf);   // llena buf con las celdas de la pagina actual; devuelve cuantas (<= buf.Length)
 
     // -------- Control D3D9 para usar el campo estrellado como FONDO de la vista de discos --------
@@ -777,7 +786,6 @@ namespace Rocola
         private readonly IntPtr[] gridTex = new IntPtr[MaxCells];     // textura resuelta por celda (subida ANTES de Begin, dibujada despues)
         public Func<GpuTrans> GetTrans;                   // portada de la transicion entrar/salir de disco (null = sin animacion)
         private IntPtr transTex; private Bitmap transLastBmp; private float transU = 1f, transV = 1f;
-        private readonly D3D9.Vtx[] transQuad = new D3D9.Vtx[6];
         public Func<GpuWin> GetWin;                       // ventana del buscador abriendo/cerrando (null = sin animacion)
         private IntPtr winTex; private Bitmap winLastBmp; private float winU = 1f, winV = 1f;
         private readonly D3D9.Vtx[] winQuad = new D3D9.Vtx[6];
@@ -1008,8 +1016,8 @@ namespace Rocola
                 {
                     float hw = bw * 0.5f, hh = bh * 0.5f;   // crece/encoge desde SU CENTRO (no desde una esquina)
                     int wa = (int)(gw.Alpha * 255f + 0.5f); if (wa > 255) wa = 255; else if (wa < 0) wa = 0;
-                    SetTexQuadA(winQuad, hw - hw * gw.Scale, hh - hh * gw.Scale + gw.Dy,
-                                         hw + hw * gw.Scale, hh + hh * gw.Scale + gw.Dy,
+                    SetTexQuadA(winQuad, hw - hw * gw.Scale, hh - hh * gw.ScaleY + gw.Dy,
+                                         hw + hw * gw.Scale, hh + hh * gw.ScaleY + gw.Dy,
                                 wu, wv, ((uint)wa << 24) | 0x00FFFFFFu);
                     stars.DrawQuad(wt, winQuad);
                 }
@@ -1024,8 +1032,7 @@ namespace Rocola
             // Mini-cubo de la barra inferior (gira): cubo GPU, encima de la barra.
             if (cs.Mini.Has)
                 stars.DrawCube(miniTex, miniU, miniV, cs.Mini.X, cs.Mini.Y, cs.Mini.W, cs.Mini.H, cs.Mini.Angle, 1f, cs.Mini.Tilt);
-            // TRANSICION de disco (zoom + desvanecido) ENCIMA de todo: la portada crece desde su celda hasta
-            // la pantalla al entrar, y al reves al salir. Solo se dibuja mientras la animacion esta viva.
+            // TRANSICION entre cubos (viaje + giro + bamboleo + destello) ENCIMA de todo. Solo mientras vive.
             if (GetTrans != null)
             {
                 GpuTrans tr = GetTrans();
@@ -1034,9 +1041,12 @@ namespace Rocola
                     EnsureCover(ref transTex, ref transLastBmp, ref transU, ref transV, tr.Bmp);
                     if (transTex != IntPtr.Zero)
                     {
-                        int al = (int)(tr.Alpha * 255f + 0.5f); if (al > 255) al = 255; else if (al < 0) al = 0;
-                        SetTexQuadA(transQuad, tr.X, tr.Y, tr.X + tr.W, tr.Y + tr.H, transU, transV, ((uint)al << 24) | 0x00FFFFFFu);
-                        stars.DrawQuad(transTex, transQuad);
+                        if (tr.Glow > 0.004f)   // DESTELLO detras: halo aditivo (el mismo camino que los brillos del buscador)
+                        {
+                            int ga = (int)(tr.Glow * tr.Alpha * 104f + 0.5f); if (ga > 255) ga = 255;
+                            if (ga > 0) stars.DrawGlow(tr.X + tr.W * 0.5f, tr.Y + tr.H * 0.5f, tr.W * 0.66f, ((uint)ga << 24) | 0x00FFE2A8u);
+                        }
+                        stars.DrawCube(transTex, transU, transV, tr.X, tr.Y, tr.W, tr.H, tr.Angle, tr.Alpha, tr.Tilt);
                     }
                 }
             }

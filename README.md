@@ -25,13 +25,17 @@ artista) y modo atracción.
 - Buscador con teclado en pantalla; sección de videos; portadas en cubos 3D girando.
 - La lista de cada disco muestra la **duración** de cada canción.
 - **Animaciones** (todas **por GPU**, así que no le cuestan nada al CPU; `animacion=0` las apaga):
-  - **Entrar/salir de un disco**: la portada hace *zoom* desde su casilla —o desde el cubo grande,
-    si entras desde el buscador— hasta llenar la pantalla y se desvanece; al salir, al revés (~0.26 s).
-  - **Modo atracción**: al entrar, la portada del disco elegido **vuela hasta el cubo gigante** y se
-    funde con él; al salir, el cubo gigante se encoge de vuelta hasta su casilla en la cuadrícula.
+  - **La portada viaja entre cubos.** La rocola ya dibuja todo como cubos girando (la casilla de la
+    cuadrícula, el cubo grande del disco, el cubo gigante de la atracción, el del buscador). La
+    portada **sale calcada sobre el cubo de origen** —misma casilla y mismo giro, no se nota el
+    relevo—, vuela girando un cuarto de vuelta, se ladea y se endereza, lleva un **destello** detrás,
+    y **aterriza calcada sobre el cubo de destino**, donde se funde con él. Cuatro recorridos, el
+    mismo código: cuadrícula→disco, disco→cuadrícula, cuadrícula→atracción y atracción→cuadrícula
+    (~0.26 s). Desde el buscador sale del cubo grande del resultado elegido.
   - **Buscador**: se abre y se cierra **como una ventana de macOS** — entra al 86 % de su tamaño y un
-    poco más abajo, y se *asienta* frenando suave mientras aparece; al cerrarse se encoge, se hunde
-    un poco y se va acelerando (~0.21 s).
+    poco más abajo, se pasa un ~4 % de su tamaño final y **rebota** hasta asentarse (rebota algo más
+    a lo ancho que a lo alto, así que se estira un instante: eso es lo que le da vida). Al cerrarse
+    toma **impulso** —crece un pelín— y luego se encoge, se hunde y se va acelerando (~0.21 s).
 
   Todas son solo un dibujo **encima**: el cambio de pantalla sigue siendo instantáneo, y si algo las
   interrumpe (modo atracción, un video, otra tecla) simplemente dejan de dibujarse — nunca queda nada
