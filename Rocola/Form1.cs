@@ -590,7 +590,24 @@ namespace Rocola
         private Bitmap winSnap;           // instantanea del buscador para animarlo AL CERRAR (al abrir se anima la textura de UI)
 #endif
         private bool transAnimOn = true;  // "animacion=" en config
+        private bool videoGpuOn = true;   // "video_gpu=" en config: interfaz por GPU tambien con video sonando
+        private bool diagOn = false;      // "diagnostico=" en config: apuntar eventos clave en rocola_diagnostico.txt
         private readonly List<string> extraMusicDirs = new List<string>();   // carpetas de musica extra (ademas de "musica")
+
+        // Bitacora de DIAGNOSTICO (diagnostico=1 en config): apunta los eventos clave (video, animaciones,
+        // cambios de render) con hora en rocola_diagnostico.txt junto al exe. Para cazar a distancia lo que
+        // pasa en el fierro real sin adivinar. Apagada no cuesta nada; el archivo se recorta solo a ~2 MB.
+        private void Diag(string msg)
+        {
+            if (!diagOn) return;
+            try
+            {
+                string f = Path.Combine(Application.StartupPath, "rocola_diagnostico.txt");
+                try { FileInfo fi = new FileInfo(f); if (fi.Exists && fi.Length > 2097152) fi.Delete(); } catch { }
+                File.AppendAllText(f, DateTime.Now.ToString("HH:mm:ss.fff") + "  " + msg + "\r\n");
+            }
+            catch { }
+        }
 
         private void LoadConfigPrefs()
         {
@@ -602,6 +619,8 @@ namespace Rocola
                     string s = line.Trim();
                     if (s.StartsWith("gpu=")) gpuPrefOn = s.Substring(4).Trim() != "0";
                     else if (s.StartsWith("animacion=")) transAnimOn = s.Substring(10).Trim() != "0";   // zoom al entrar/salir de un disco
+                    else if (s.StartsWith("video_gpu=")) videoGpuOn = s.Substring(10).Trim() != "0";   // interfaz por GPU aunque haya video
+                    else if (s.StartsWith("diagnostico=")) diagOn = s.Substring(12).Trim() != "0";   // bitacora en rocola_diagnostico.txt
                     else if (s.StartsWith("normalizar=")) normalizeOn = s.Substring(11).Trim() != "0";   // nivelar volumen de las canciones (por defecto si)
                     else if (s.StartsWith("respaldo_dir=")) { string d = s.Substring(13).Trim(); if (d.Length > 0) backupDir = d; }   // 2o destino del respaldo de datos aprendidos
                     else if (s.StartsWith("nivel_objetivo=")) { float v; if (float.TryParse(s.Substring(15).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) normTarget = Clampf(v, NormTargetMin, NormTargetMax); }
@@ -636,6 +655,8 @@ namespace Rocola
                 StringBuilder sb = new StringBuilder();
                 sb.Append("gpu=").Append(gpuPrefOn ? "1" : "0").Append("\r\n");
                 sb.Append("animacion=").Append(transAnimOn ? "1" : "0").Append("\r\n");
+                sb.Append("video_gpu=").Append(videoGpuOn ? "1" : "0").Append("\r\n");
+                sb.Append("diagnostico=").Append(diagOn ? "1" : "0").Append("\r\n");
                 sb.Append("normalizar=").Append(normalizeOn ? "1" : "0").Append("\r\n");
                 if (!string.IsNullOrEmpty(backupDir)) sb.Append("respaldo_dir=").Append(backupDir).Append("\r\n");
                 sb.Append("nivel_objetivo=").Append(normTarget.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
@@ -3154,9 +3175,12 @@ namespace Rocola
         private void StartDiscTrans(RectangleF from, RectangleF to, double ang0, double ang1, Image cover)
         {
             transMode = 0; transImg = null;
-            if (!transAnimOn || cover == null) return;
-            if (gpuPanel == null || !gpuEnabled) return;   // por CPU no se anima (costaria mas de lo que luce)
-            if (from.Width < 8f || from.Height < 8f || to.Width < 8f || to.Height < 8f) return;
+            if (!transAnimOn) return;
+            if (cover == null) { Diag("anim disco: SIN portada (aun no cargaba)"); return; }
+            if (gpuPanel == null || !gpuEnabled) { Diag("anim disco: render por CPU, no se anima"); return; }
+            if (from.Width < 8f || from.Height < 8f || to.Width < 8f || to.Height < 8f)
+            { Diag("anim disco: celda invisible " + (int)from.Width + "x" + (int)from.Height + " -> " + (int)to.Width + "x" + (int)to.Height); return; }
+            Diag("anim disco: arranca " + (int)from.Width + "x" + (int)from.Height + " -> " + (int)to.Width + "x" + (int)to.Height);
             transFrom = from; transTo = to; transImg = cover;
             transAng0 = ang0;
             // Un cubo de 4 caras iguales se ve EXACTAMENTE igual cada cuarto de vuelta, asi que basta con
@@ -3190,6 +3214,7 @@ namespace Rocola
             }
             winMode = abriendo ? 1 : 2;
             winTick = Environment.TickCount;
+            Diag(abriendo ? "anim buscador: abre" : "anim buscador: cierra");
         }
         private void AbortWinTrans()
         {
@@ -4746,6 +4771,7 @@ namespace Rocola
                 videoPoll.Interval = 400;   // sondeo normal (baja a 80 ms durante el fundido del final)
                 video.BringToFront();
                 videoPoll.Start();
+                Diag("video: inicia");
             }
             catch (Exception ex)
             {
@@ -4754,6 +4780,7 @@ namespace Rocola
                 RefundCredit();   // compensacion al cliente: el video no abrio
                 ShowToast("No se pudo abrir el video: credito devuelto", Color.FromArgb(200, 80, 70));
                 lblStatus.Text = "Video (WMP): " + ex.Message;
+                Diag("video: NO ABRIO - " + ex.Message);
                 // el video no arranco: pasar al siguiente sin trabar la cola (tras desenredar la pila de PlayNext)
                 try { if (this.IsHandleCreated) this.BeginInvoke((MethodInvoker)delegate { PlayNext(); }); } catch { }
             }
@@ -4779,6 +4806,7 @@ namespace Rocola
             }
             catch { }
             videoOn = false;
+            Diag("video: detenido");
             if (videoFull) ExitVideoFull();   // si estaba en pantalla completa, vuelve a la vista normal
         }
 
@@ -5357,8 +5385,8 @@ namespace Rocola
                 gpuPanel.Bounds = new Rectangle(0, 0, ClientSize.Width, ClientSize.Height);   // PANTALLA COMPLETA
                 gpuPanel.SkyTop = ToD3D(SkyColor(bgAccent)); gpuPanel.SkyMid = ToD3D(SkyColorMid(bgAccent)); gpuPanel.SkyBot = ToD3D(SkyColor2(bgAccent));
                 gpuPanel.Visible = true; gpuPanel.BringToFront();
-                if (gpuPanel.StartGpu()) { gpuEnabled = true; lblGpu.Visible = false; }
-                else { gpuPanel.Visible = false; if (announceFail) { lblGpu.Text = "GPU: fallo el dispositivo (sigue CPU)"; lblGpu.Visible = true; lblGpu.BringToFront(); } }
+                if (gpuPanel.StartGpu()) { gpuEnabled = true; lblGpu.Visible = false; KeepVideoOnTop(); }
+                else { gpuPanel.Visible = false; Diag("render: FALLO el dispositivo D3D9 (sigue CPU)"); if (announceFail) { lblGpu.Text = "GPU: fallo el dispositivo (sigue CPU)"; lblGpu.Visible = true; lblGpu.BringToFront(); } }
             }
             else if (!on && gpuEnabled)
             {
@@ -5444,11 +5472,24 @@ namespace Rocola
 
         // Muestra/oculta el panel GPU (a pantalla completa) segun el modo: en NAVEGACION y en el BUSCADOR
         // (ambos se componen por GPU). En disco/video/atraccion/config se oculta y deja ver los controles CPU.
+        // El cuadro del video (WMP) es una ventana HIJA hermana del panel GPU: si el panel acaba de
+        // mostrarse, su BringToFront lo dejo por delante y taparia el video. Esto lo regresa arriba.
+        private void KeepVideoOnTop() { try { if (videoOn && video != null && video.Visible) video.BringToFront(); } catch { } }
+
         private void SyncGpuFullScreen()
         {
             if (gpuPanel == null || !gpuEnabled) return;
             bool cfgOn = (lblConfig != null && lblConfig.Visible);
-            bool notBlockedByVideoCfg = !videoOn && !videoFull && !cfgOn;
+            // VIDEO con la interfaz por GPU (video_gpu=1, por defecto): un video en ventana YA NO manda todo
+            // a render por CPU. Antes videoOn apagaba nav/disco/atraccion y la pantalla ENTERA (fondo
+            // estrellado incluido) se repintaba por CPU mientras WMP decodificaba: en 2 nucleos ese era el
+            // "rendimiento raro" con video, y como las animaciones son SOLO por GPU, con video sonando no
+            // podian verse nunca (solo la del buscador, el unico modo que ya ignoraba el video). El cuadro
+            // del video queda ENCIMA del panel (KeepVideoOnTop) y Windows recorta el panel donde el video
+            // esta: no se pisan. Si en algun fierro se viera mal, video_gpu=0 vuelve al comportamiento de
+            // antes. El video a PANTALLA COMPLETA si sigue apagando el panel: ahi el es dueno de todo.
+            bool videoBlocks = videoOn && !videoGpuOn;
+            bool notBlockedByVideoCfg = !videoBlocks && !videoFull && !cfgOn;
             bool noBlock = notBlockedByVideoCfg && !attractOn;
             bool disc = panelSongs != null && panelSongs.Visible;
             bool nav = albumView.Visible && !searchOpen && !disc && noBlock;
@@ -5467,7 +5508,11 @@ namespace Rocola
             // (ShowAlbum, cubos): si no, se ve un instante el modo viejo detras del nuevo (p.ej. la rejilla de
             // discos por los huecos del teclado al cerrar el buscador). UiUrgent salta la limitacion de franja.
             int mode = search ? 2 : discGpu ? 3 : attract ? 4 : nav ? 1 : 0;
-            if (mode != gpuMode) { gpuMode = mode; uiOverlaySig = null; gpuPanel.UiUrgent = true; }
+            if (mode != gpuMode) { gpuMode = mode; uiOverlaySig = null; gpuPanel.UiUrgent = true; Diag("render: modo GPU " + mode + (videoOn ? " (video sonando)" : "")); }
+            // Mientras el video SE VE, el panel baja a ~30 cuadros por segundo: el resto del equipo es para
+            // el video (WMP decodifica por CPU en el fierro modesto). Sin video (o con el buscador abierto,
+            // que lo oculta) vuelve al maximo.
+            gpuPanel.ThrottleMs = (videoOn && video != null && video.Visible) ? 33 : 0;
             albumView.GpuCovered = (nav || search || discGpu || attract);   // panel GPU encima: albumView no repinta por CPU (evita rebuild invisible al paginar)
             if (nav || search || discGpu || attract)
             {
@@ -5475,7 +5520,7 @@ namespace Rocola
                     gpuPanel.Bounds = new Rectangle(0, 0, ClientSize.Width, ClientSize.Height);
                 gpuPanel.AlbumRect = albumView.Bounds;
                 gpuPanel.ShowAlbum = nav;   // solo en navegacion se dibuja la rejilla de cubos (buscador/disco/atraccion la cubren)
-                if (!gpuPanel.Visible) { gpuPanel.Visible = true; gpuPanel.BringToFront(); }
+                if (!gpuPanel.Visible) { gpuPanel.Visible = true; gpuPanel.BringToFront(); KeepVideoOnTop(); }
             }
             else if (gpuPanel.Visible) { gpuPanel.Visible = false; Invalidate(true); }   // disco(CPU)/video/etc: deja ver los controles normales
         }

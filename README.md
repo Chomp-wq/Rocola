@@ -63,6 +63,18 @@ artista) y modo atracción.
 - **Des-recorte (declipper)**: repara los picos aplastados "de fábrica" de archivos mal
   masterizados (reconstruye el pico redondo perdido; `declip=` en config).
 - **Fundido** suave de salida al terminar cada canción **y cada video** (`fundido=` en config, 0-3 s).
+- **La interfaz sigue por GPU con video sonando** (`video_gpu=` en config, encendido por defecto).
+  Antes, un video mandaba **toda** la pantalla a render por CPU (fondo estrellado incluido) mientras
+  WMP decodificaba el video — de ahí el rendimiento raro con videos, y por eso las animaciones (que
+  van por GPU) nunca podían verse con un video sonando: solo la del buscador, el único modo que ya
+  ignoraba el video. El cuadro del video va **encima** del panel y Windows recorta uno donde está el
+  otro. Con video visible, el panel baja solo a ~30 cuadros para dejarle la máquina al video. Si en
+  algún equipo se viera mal, `video_gpu=0` vuelve al comportamiento anterior. El video a **pantalla
+  completa** sí sigue apagando el panel.
+- **Bitácora de diagnóstico** (`diagnostico=1` en config): apunta con hora los eventos clave (inicio
+  y fin de video, animaciones que arrancan o el motivo por el que no, cambios de modo de render) en
+  `rocola_diagnostico.txt` junto al exe. Para cazar problemas del fierro real sin adivinar; apagada
+  no cuesta nada.
 - **Volumen de los videos**: el video lo reproduce Windows Media Player, cuyo sonido **no pasa**
   por la cadena de audio. Una perilla en Ctrl+F3 (`video_vol=` en config) empareja su volumen con
   el de las canciones ya niveladas, y además sigue a "Subir TODO el volumen".
