@@ -1813,6 +1813,12 @@ namespace Rocola
             }
 
             LayoutSongsPanel();
+#if ROCOLA_GPU
+            // Un reacomodo (video que entra o sale, cambio de tamano) mueve lo que la textura de UI tiene
+            // horneado: se rehace YA, en el mismo cuadro, para no ver la interfaz vieja ni un instante.
+            uiOverlaySig = null;
+            if (gpuPanel != null) gpuPanel.UiUrgent = true;
+#endif
         }
 
         private void LayoutSongsPanel()
@@ -6091,8 +6097,13 @@ namespace Rocola
                   // asi que su desvanecido no re-hornea ni re-sube la textura del teclado -> tecleo fluido con brillo suave.
                   // Tampoco la fase del teclado (carisima). En reposo la firma es constante -> 0 reconstrucciones.
             else if (panelSongs != null && panelSongs.Visible)   // INTERIOR DE DISCO: etiqueta, seleccion, pagina
+                // La GEOMETRIA entra en la firma: al arrancar o terminar un video, LayoutControls REACOMODA el
+                // interior (con video, la lista y el cubo se comprimen a la mitad izquierda). Sin la geometria,
+                // la firma no cambiaba y la textura quedaba horneada con las posiciones VIEJAS -la lista flotando
+                // donde ya no va- hasta salir y volver a entrar al disco. El cubo no lo sufria (es en vivo).
                 sb.Append("|D").Append(lblAlbum != null ? lblAlbum.Text : "").Append('|').Append(songSel).Append('|').Append(songItems.Count)
-                  .Append('|').Append(songList != null ? songList.PageStart : 0).Append('|').Append(bgAccent.ToArgb());
+                  .Append('|').Append(songList != null ? songList.PageStart : 0).Append('|').Append(bgAccent.ToArgb())
+                  .Append('|').Append(panelSongs.Left).Append(',').Append(panelSongs.Top).Append(',').Append(panelSongs.Width).Append(',').Append(panelSongs.Height);
             else if (attractOn)                        // MODO ATRACCION: solo la cantidad de canciones (el pulso del texto va como halo por quad)
                 sb.Append("|A").Append(attractView != null ? attractView.SongCount : 0);
             else if (letterBar != null)                // parte superior = navegacion (A-Z + encabezado)
