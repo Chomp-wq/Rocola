@@ -2119,15 +2119,19 @@ namespace Rocola
                         }
                         catch { seg = 0f; }
                         if (seg > 0.01f) { lote.Add(ruta); lotd.Add(seg); }
+                        // Publica el lote cada 128 archivos o al final, TAMBIEN si viene vacio: un archivo roto
+                        // no da duracion pero SI es avance; sin esto, el contador de "faltan" del panel se
+                        // quedaria clavado para siempre en el numero de archivos danados.
                         bool ultimo = (i == pend.Count - 1);
-                        if (lote.Count >= 128 || (ultimo && lote.Count > 0))
+                        if (lote.Count >= 128 || ultimo)
                         {
                             string[] rr = lote.ToArray(); float[] dd = lotd.ToArray();
                             lote.Clear(); lotd.Clear();
+                            int faltan = pend.Count - (i + 1);
                             try
                             {
                                 if (!IsHandleCreated) break;
-                                BeginInvoke((MethodInvoker)delegate { PublicaDuraciones(myGen, rr, dd); });
+                                BeginInvoke((MethodInvoker)delegate { PublicaDuraciones(myGen, rr, dd, faltan); });
                             }
                             catch { break; }
                         }
@@ -2140,8 +2144,9 @@ namespace Rocola
             durScanTh.Priority = System.Threading.ThreadPriority.Lowest;
             durScanTh.Start();
         }
-        // Corre en el hilo de la interfaz: las tablas son suyas.
-        private void PublicaDuraciones(int gen, string[] rutas, float[] segs)
+        // Corre en el hilo de la interfaz: las tablas son suyas. "faltan" es el avance ABSOLUTO que reporta el
+        // hilo (cuenta tambien los archivos rotos, que no traen duracion pero ya quedaron atras).
+        private void PublicaDuraciones(int gen, string[] rutas, float[] segs, int faltan)
         {
             if (gen != durScanGen) return;   // generacion caducada (hubo re-escaneo): descartar
             for (int i = 0; i < rutas.Length; i++)
@@ -2149,10 +2154,10 @@ namespace Rocola
                 if (durFast.ContainsKey(rutas[i])) continue;
                 durFast[rutas[i]] = segs[i];
                 lock (durFastLock) durFastPend.Add(segs[i].ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) + "|" + rutas[i]);
-                if (durScanLeft > 0) durScanLeft--;
             }
+            durScanLeft = faltan < 0 ? 0 : faltan;
             SaveDurFast();
-            if (panelSongs != null && panelSongs.Visible && songList != null)
+            if (rutas.Length > 0 && panelSongs != null && panelSongs.Visible && songList != null)
             {
                 songList.Invalidate();
 #if ROCOLA_GPU
