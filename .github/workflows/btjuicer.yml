@@ -1,0 +1,73 @@
+name: BT Juicer APK
+
+# Builds the app on GitHub's runners, which have the Android SDK, and publishes
+# the APK as a release asset. A release asset downloads with one tap from a
+# phone browser — build artifacts need a login and arrive zipped.
+on:
+  push:
+    branches: [claude/android-hires-audio-app-itzq86]
+    paths:
+      - 'btjuicer/**'
+      - '.github/workflows/btjuicer.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Cache de Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('btjuicer/gradle/libs.versions.toml', 'btjuicer/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-
+
+      - name: Compilar
+        working-directory: btjuicer
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Renombrar el APK
+        run: |
+          mkdir -p out
+          cp btjuicer/app/build/outputs/apk/debug/app-debug.apk out/BT-Juicer.apk
+
+      # Kept even when the release step is skipped, so a build can still be
+      # collected from the run page.
+      - name: Subir como artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: BT-Juicer-apk
+          path: out/BT-Juicer.apk
+          if-no-files-found: error
+
+      - name: Publicar release
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          TAG=btjuicer-latest
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --title "BT Juicer — última compilación" \
+              --notes "APK de depuración compilado automáticamente desde la rama de desarrollo. Descarga BT-Juicer.apk y ábrelo en el teléfono." \
+              --prerelease
+          fi
+          gh release upload "$TAG" out/BT-Juicer.apk --clobber
+          echo "APK: $(gh release view "$TAG" --json url --jq .url)"
