@@ -91,13 +91,47 @@ namespace Rocola
         private readonly object levelLock = new object();
         // 3 BANDAS (graves/medios/agudos) para que se SIENTA la separacion de beats: las estrellas GRANDES laten con
         // los graves (bombo), las medianas con medios/agudos. Cada trozo lleva el rms de las 3 bandas + su marca de tiempo.
-        private struct Lvl { public int At; public float Lo, Mid, Hi; public Lvl(int at, float lo, float mid, float hi) { At = at; Lo = lo; Mid = mid; Hi = hi; } }
+        private struct Lvl { public int At; public float Lo, Mid, Hi; public float[] Esp; public Lvl(int at, float lo, float mid, float hi, float[] esp) { At = at; Lo = lo; Mid = mid; Hi = hi; Esp = esp; } }
         private readonly Queue<Lvl> levelQ = new Queue<Lvl>();
         private int audioVisualDelayMs = 850;          // colchon REAL de la salida: ~850ms con WaveOut (5x200ms); ~240ms con WASAPI (300ms) - se fija al crear la salida
         private float fLp1, fLp2;                      // estado de los filtros paso-bajo (hilo de audio) que separan las bandas
         private float rmsLo, rmsMid, rmsHi;            // rms retrasado por banda (lo que se oye AHORA)
         private float avgLo, avgMid, avgHi;            // piso movil por banda (referencia del golpe)
         private float levLo, levMid, levHi;            // pulso (envolvente) por banda para los visuales
+        // ---------- AURORA DEL HORIZONTE (visualizador de espectro) ----------
+        // 8 bandas medidas EN VIVO con una escalera de paso-bajos de una via (el mismo truco barato que ya
+        // separaba graves/medios/agudos, extendido): banda[i] = lp[i] - lp[i-1]. Viajan por la MISMA cola
+        // retrasada que el pulso, asi que la aurora se mueve encima del sonido que se esta oyendo y no un
+        // segundo antes (el colchon de WaveOut es de ~0.85 s).
+        private const int SpecBands = 8;
+        // TRES polos por corte (18 dB/oct). Con UNO solo (6 dB/oct) las bandas se pisaban tanto que cualquier
+        // tono encendia media aurora: se veia un bulto subiendo y bajando en vez de un espectro con forma.
+        // Medido: con 1 polo, un tono de 240 Hz encendia las 8 bandas al maximo.
+        private const int SpecPolos = 3;
+        private static readonly float[] SpecCortes = { 60f, 150f, 350f, 800f, 1800f, 4000f, 9000f };   // 7 cortes = 8 bandas
+        // Compensacion de inclinacion: en musica real los agudos traen MUCHA menos energia que los graves. Sin
+        // esto la aurora seria una loma en la izquierda y nada mas. Son dB que se le suman a cada banda para que
+        // todas puedan lucir (es lo mismo que hace cualquier analizador decente).
+#if ROCOLA_GPU
+        // CALIBRADA con ruido rosa (energia pareja por octava, que es como se reparte la musica real) al MISMO
+        // volumen al que la rocola nivela todas las canciones. Los primeros 6 dB solo aplanan el banco; el resto
+        // es una subida suave hacia los agudos, porque la musica de verdad trae menos brillo que el ruido rosa.
+        // La version anterior (+20 dB arriba) convertia la fuga de los filtros en banda llena: la aurora salia
+        // como una pared plana en vez de tener forma.
+        private static readonly float[] SpecTilt = { 0f, 6f, 6f, 7f, 8f, 11f, 13f, 7f };
+        // Ventana util en dB. Ajustada: con una ventana ancha, la fuga que dejan los filtros (aunque sea 40 dB
+        // por debajo) se dibujaba como banda llena. La biblioteca ya viene NIVELADA, asi que la ventana puede
+        // ser fija y ajustada sin que las canciones bajitas se queden sin aurora.
+        private const float SpecPisoDb = -37f, SpecRangoDb = 34f;
+#endif
+        private float[] specLp;                        // estado de la escalera (hilo de audio)
+        private int specRate;                          // ritmo de muestreo con el que se calcularon los coeficientes
+        private float[] specCoef;                      // coeficiente por corte
+        private readonly float[] specNow = new float[SpecBands];   // rms por banda que YA toca oirse
+#if ROCOLA_GPU
+        private readonly float[] specVis = new float[SpecBands];   // lo que se dibuja: sube al instante, baja suave
+#endif
+        private float auroraAmount = 0.55f;            // "espectro=" en config (0 = apagada)
         private float audioLevel = 0f;                // nivel GLOBAL (max de las 3 bandas): deriva, GPU, buscador
         private int playFailStreak = 0;   // fallos seguidos al reproducir (para no ciclar si NAudio falla)
         // ---- NIVELADO DE VOLUMEN (que todas las canciones suenen PAREJO) ----
@@ -662,6 +696,7 @@ namespace Rocola
                     string s = line.Trim();
                     if (s.StartsWith("gpu=")) gpuPrefOn = s.Substring(4).Trim() != "0";
                     else if (s.StartsWith("animacion=")) transAnimOn = s.Substring(10).Trim() != "0";   // zoom al entrar/salir de un disco
+                    else if (s.StartsWith("espectro=")) { float v; if (float.TryParse(s.Substring(9).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) auroraAmount = Clampf(v / 100f, 0f, 1f); }   // aurora del horizonte (0 = apagada)
                     else if (s.StartsWith("video_gpu=")) videoGpuOn = s.Substring(10).Trim() != "0";   // interfaz por GPU aunque haya video
                     else if (s.StartsWith("diagnostico=")) diagOn = s.Substring(12).Trim() != "0";   // bitacora en rocola_diagnostico.txt
                     else if (s.StartsWith("normalizar=")) normalizeOn = s.Substring(11).Trim() != "0";   // nivelar volumen de las canciones (por defecto si)
@@ -704,6 +739,7 @@ namespace Rocola
                 StringBuilder sb = new StringBuilder();
                 sb.Append("gpu=").Append(gpuPrefOn ? "1" : "0").Append("\r\n");
                 sb.Append("animacion=").Append(transAnimOn ? "1" : "0").Append("\r\n");
+                sb.Append("espectro=").Append(Math.Round(auroraAmount * 100f)).Append("\r\n");
                 sb.Append("video_gpu=").Append(videoGpuOn ? "1" : "0").Append("\r\n");
                 sb.Append("diagnostico=").Append(diagOn ? "1" : "0").Append("\r\n");
                 sb.Append("normalizar=").Append(normalizeOn ? "1" : "0").Append("\r\n");
@@ -3564,6 +3600,51 @@ namespace Rocola
         // mas media vuelta; el bamboleo sube y baja (la portada se ladea al volar y llega derecha); el destello
         // acompana al vuelo; y el fundido entra al final, ya encima del cubo de destino, para que se relevan sin
         // costura. Es como lo pidio el operador: primero el acercamiento y despues el degradado.
+        // Convierte el rms de cada banda en la altura 0..1 que se dibuja.
+        // - En DECIBELIOS, no lineal: es como oye el oido, y ademas evita que el grave aplaste a todo lo demas.
+        // - Con INCLINACION (SpecTilt): en musica real los agudos traen mucha menos energia; sin compensarlos la
+        //   aurora seria una loma a la izquierda y nada mas.
+        // - La ventana de dB puede ser FIJA porque la biblioteca ya viene nivelada: una cancion bajita y una
+        //   fuerte llegan aqui al mismo volumen, asi que la aurora luce igual de viva en las dos.
+        // - Sube al instante y baja despacio: asi marca el golpe y no tiembla.
+        private void AvanzaAurora()
+        {
+            for (int b = 0; b < SpecBands; b++)
+            {
+                float rms = specNow[b];
+                float v = 0f;
+                if (rms > 1e-6f)
+                {
+                    float db = (float)(20.0 * Math.Log10(rms)) + SpecTilt[b];
+                    v = (db - SpecPisoDb) / SpecRangoDb;
+                    if (v < 0f) v = 0f; else if (v > 1f) v = 1f;
+                    v *= v * (3f - 2f * v);   // suavizado: aplana el ruido de fondo y realza los picos
+                }
+                float prev = specVis[b];
+                specVis[b] = (v > prev) ? v : prev + (v - prev) * 0.16f;   // instantaneo al subir, ~0.3 s al bajar
+            }
+        }
+
+        // Estado de la AURORA para el panel GPU. El horizonte se apoya justo encima de la franja de estado
+        // (BotStripTop), que es donde el cielo se acaba: la luz nace del borde de abajo, como el resplandor de
+        // una ciudad. Se apaga sola cuando no hay musica (las bandas caen a cero) y se atenua junto con el
+        // fondo mientras se navega, para que nunca le pelee a las portadas ni al texto.
+        private GpuAurora BuildAuroraState()
+        {
+            GpuAurora g = new GpuAurora();
+            if (auroraAmount <= 0.004f) return g;
+            float pico = 0f;
+            for (int b = 0; b < SpecBands; b++) if (specVis[b] > pico) pico = specVis[b];
+            if (pico <= 0.006f) return g;   // sin musica no se dibuja nada
+            int h = ClientSize.Height;
+            g.Has = true; g.B = specVis;
+            g.BaseY = BotStripTop(h) + 6f;
+            g.Alto = h * 0.30f * auroraAmount;
+            g.Rgb = (uint)(SkyColor2(bgAccent).ToArgb() & 0x00FFFFFF);   // el mismo color con que ya se tine el cielo
+            g.Dim = bgDim;
+            return g;
+        }
+
         private GpuTrans BuildTransState()
         {
             GpuTrans g = new GpuTrans();
@@ -5662,6 +5743,7 @@ namespace Rocola
         // El temporizador de UI los consume cuando les llega su momento -> el pulso va CON lo que se oye.
         // Buffers reusables del hilo de audio (4 trozos x 3 bandas). ThreadStatic: sin asignar por bloque.
         [ThreadStatic] private static float[] tmpLo; [ThreadStatic] private static float[] tmpMid; [ThreadStatic] private static float[] tmpHi;
+        [ThreadStatic] private static float[] tmpEsp;   // 4 trozos x 8 bandas
         public void ReportAudioBlock(float[] buffer, int offset, int count, int rate, int ch)
         {
             if (count <= 0) return;
@@ -5672,6 +5754,22 @@ namespace Rocola
             float[] tLo = tmpLo ?? (tmpLo = new float[4]);
             float[] tMid = tmpMid ?? (tmpMid = new float[4]);
             float[] tHi = tmpHi ?? (tmpHi = new float[4]);
+            float[] tEsp = tmpEsp ?? (tmpEsp = new float[4 * SpecBands]);
+            // ESCALERA del espectro: los coeficientes salen del ritmo REAL del stream entrelazado (rate * canales),
+            // igual que los dos paso-bajos de arriba. Se recalculan solo si cambia el formato.
+            if (specCoef == null || specRate != samplesPerSec)
+            {
+                specRate = samplesPerSec;
+                specCoef = new float[SpecCortes.Length];
+                for (int k = 0; k < SpecCortes.Length; k++)
+                {
+                    double a = 1.0 - Math.Exp(-2.0 * Math.PI * SpecCortes[k] / samplesPerSec);
+                    specCoef[k] = (float)(a < 0.0 ? 0.0 : (a > 1.0 ? 1.0 : a));
+                }
+                specLp = new float[SpecCortes.Length * SpecPolos];
+            }
+            float[] sc = specCoef, sl = specLp;
+            double[] sSum = new double[SpecBands];
             // Dos filtros paso-bajo de una via separan el audio en 3 bandas: grave = lp1, medio = lp2-lp1, agudo = x-lp2.
             // Los coeficientes marcan cortes aproximados (~150 Hz y ~2 kHz sobre el stream interleaved); es un
             // visualizador, no un ecualizador: basta que "se sienta" la separacion. El estado persiste entre bloques.
@@ -5682,6 +5780,7 @@ namespace Rocola
                 int start = offset + c * len;
                 int end = (c == chunks - 1) ? offset + count : start + len;
                 double sumLo = 0, sumMid = 0, sumHi = 0;
+                for (int b = 0; b < SpecBands; b++) sSum[b] = 0;
                 for (int i = start; i < end; i++)
                 {
                     float v = buffer[i];
@@ -5689,13 +5788,28 @@ namespace Rocola
                     lp2 += (v - lp2) * A2;               // paso-bajo medio
                     float lo = lp1, mid = lp2 - lp1, hi = v - lp2;
                     sumLo += lo * lo; sumMid += mid * mid; sumHi += hi * hi;
+                    // ESPECTRO: cada peldano de la escalera se queda con lo que el anterior dejo pasar,
+                    // asi que la resta de dos peldanos consecutivos ES la banda que hay entre sus cortes.
+                    float ant = 0f;
+                    for (int k = 0; k < 7; k++)
+                    {
+                        int q = k * SpecPolos;
+                        float x = v;
+                        for (int pp = 0; pp < SpecPolos; pp++) { sl[q + pp] += (x - sl[q + pp]) * sc[k]; x = sl[q + pp]; }
+                        float bnd = x - ant; ant = x;     // lo que este peldano deja pasar menos lo del anterior
+                        sSum[k] += bnd * bnd;
+                    }
+                    float top = v - ant;                 // lo que queda por encima del ultimo corte: el aire
+                    sSum[7] += top * top;
                 }
                 int n = Math.Max(1, end - start);
                 tLo[c] = (float)Math.Sqrt(sumLo / n);
                 tMid[c] = (float)Math.Sqrt(sumMid / n);
                 tHi[c] = (float)Math.Sqrt(sumHi / n);
+                for (int b = 0; b < SpecBands; b++) tEsp[c * SpecBands + b] = (float)Math.Sqrt(sSum[b] / n);
             }
             fLp1 = lp1; fLp2 = lp2;   // persiste el estado de los filtros para el proximo bloque
+            specLp = sl;
             // NIVELADO PERCEPTUAL (K-weighting, tipo LUFS/BS.1770): en vez del RMS crudo, mide la sonoridad
             // PESADA por como la oye el humano (realza agudos ~+4 dB, quita sub-graves) via 2 biquads/canal.
             // Asi una cancion con mucho bajo (que el RMS crudo sobre-estima) y una brillante quedan de verdad
@@ -5760,7 +5874,9 @@ namespace Rocola
                 for (int c = 0; c < chunks; c++)
                 {
                     int atMs = now + (int)((long)(c * len) * 1000 / Math.Max(1, samplesPerSec));   // desfase del trozo dentro del bloque
-                    levelQ.Enqueue(new Lvl(atMs, tLo[c], tMid[c], tHi[c]));
+                    float[] esp = new float[SpecBands];   // 48 bytes por trozo (~20/seg): nada para el recolector
+                    for (int b = 0; b < SpecBands; b++) esp[b] = tEsp[c * SpecBands + b];
+                    levelQ.Enqueue(new Lvl(atMs, tLo[c], tMid[c], tHi[c], esp));
                 }
                 while (levelQ.Count > 96) levelQ.Dequeue();   // acotado (~5s de historial maximo)
             }
@@ -5889,6 +6005,7 @@ namespace Rocola
                 gpuPanel = new GpuPanel();
                 gpuPanel.ShowFps = gpuShowFps;
                 gpuPanel.GetPulse = delegate { return audioLevel; };
+                gpuPanel.GetAurora = delegate { return BuildAuroraState(); };   // aurora del horizonte (espectro)
                 gpuPanel.GetTrans = delegate { return BuildTransState(); };   // zoom al entrar/salir de un disco
                 gpuPanel.GetWin = delegate { return BuildWinState(); };        // ventana del buscador abriendo/cerrando
                 gpuPanel.GetGrid = albumView.BuildGpuGrid;   // rejilla de discos: cada celda su propio quad con textura cacheada (hojear = elegir texturas + posiciones)
@@ -6382,8 +6499,11 @@ namespace Rocola
             int nowT = Environment.TickCount;
             lock (levelLock)
                 while (levelQ.Count > 0 && nowT - (levelQ.Peek().At + audioVisualDelayMs) >= 0)
-                { Lvl l = levelQ.Dequeue(); rmsLo = l.Lo; rmsMid = l.Mid; rmsHi = l.Hi; }
-            if (nowPlaying == null) { rmsLo = rmsMid = rmsHi = 0f; }
+                { Lvl l = levelQ.Dequeue(); rmsLo = l.Lo; rmsMid = l.Mid; rmsHi = l.Hi; if (l.Esp != null) Array.Copy(l.Esp, specNow, SpecBands); }
+            if (nowPlaying == null) { rmsLo = rmsMid = rmsHi = 0f; for (int b = 0; b < SpecBands; b++) specNow[b] = 0f; }
+#if ROCOLA_GPU
+            AvanzaAurora();   // la aurora la dibuja el panel GPU; por CPU ni se calcula
+#endif
             // Cada banda detecta su propio golpe contra su propio piso movil (ataque instantaneo, caida rapida). Asi
             // el bombo (graves) y los platillos/voz (agudos) laten por separado y se SIENTE la separacion de beats.
             levLo = BandBeat(rmsLo, ref avgLo, levLo);
