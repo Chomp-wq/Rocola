@@ -438,20 +438,37 @@ namespace Rocola
         // Un halo (glow radial ADITIVO) centrado en (cx,cy) de radio r, teñido/atenuado por 'argb'. Reusa la textura
         // de glow de las estrellas. Sirve para el DESTELLO del boton pulsado del buscador: lo anima la GPU (alfa que
         // baja) sin re-hornear ni re-subir la textura de UI -> el destello se desvanece suave y el tecleo va fluido.
-        private readonly D3D9.Vtx[] glowV = new D3D9.Vtx[6];
+        // Un halo es un circulo de luz que se apaga hacia afuera, y su textura vale CERO fuera de ese circulo.
+        // Dibujarlo en un cuadrado significa pintar cuatro esquinas que no aportan NADA (el 17% de los pixeles).
+        // Se dibuja entonces en un OCTAGONO: el mismo cuadrado con las esquinas cortadas justo donde la luz ya
+        // vale cero. El resultado en pantalla es identico al pixel, y se pinta 17% menos. El octagono cabe
+        // entero dentro del cuadrado, asi que las coordenadas de textura siguen dentro de 0..1.
+        private const int HaloVtx = 18;                 // 6 triangulos en abanico
+        private const float HaloC = 0.41421356f;        // tan(22.5): donde se corta cada esquina
+        private static readonly float[] HaloX = { 1f, HaloC, -HaloC, -1f, -1f, -HaloC, HaloC, 1f };
+        private static readonly float[] HaloY = { -HaloC, -1f, -1f, -HaloC, HaloC, 1f, 1f, HaloC };
+        private readonly D3D9.Vtx[] glowV = new D3D9.Vtx[HaloVtx];
         public void DrawGlow(float cx, float cy, float r, uint argb)
         {
             IntPtr t = uiGlowTex != IntPtr.Zero ? uiGlowTex : glowTex;
             if (!Ok || t == IntPtr.Zero || r < 1f) return;
             Halo(glowV, 0, cx, cy, r, argb);
-            gpu.DrawStars(glowV, 2, t);   // mismo camino aditivo que las estrellas (2 triangulos)
+            gpu.DrawStars(glowV, HaloVtx / 3, t);   // mismo camino aditivo que las estrellas
         }
-        // Escribe UN halo (2 triangulos) en el hueco i del arreglo que se le pase.
+        // Escribe UN halo (6 triangulos en abanico) a partir del hueco i del arreglo que se le pase.
         private static void Halo(D3D9.Vtx[] a, int i, float cx, float cy, float r, uint c)
         {
-            float x0 = cx - r, y0 = cy - r, x1 = cx + r, y1 = cy + r;
-            GV(a, i + 0, x0, y0, c, 0f, 0f); GV(a, i + 1, x1, y0, c, 1f, 0f); GV(a, i + 2, x0, y1, c, 0f, 1f);
-            GV(a, i + 3, x1, y0, c, 1f, 0f); GV(a, i + 4, x1, y1, c, 1f, 1f); GV(a, i + 5, x0, y1, c, 0f, 1f);
+            for (int k = 0; k < 6; k++)                  // abanico desde el vertice 0: (0,k+1,k+2)
+            {
+                Punto(a, i + k * 3 + 0, cx, cy, r, 0, c);
+                Punto(a, i + k * 3 + 1, cx, cy, r, k + 1, c);
+                Punto(a, i + k * 3 + 2, cx, cy, r, k + 2, c);
+            }
+        }
+        private static void Punto(D3D9.Vtx[] a, int i, float cx, float cy, float r, int k, uint c)
+        {
+            float dx = HaloX[k], dy = HaloY[k];
+            GV(a, i, cx + dx * r, cy + dy * r, c, 0.5f + 0.5f * dx, 0.5f + 0.5f * dy);
         }
         private static void GV(D3D9.Vtx[] a, int i, float x, float y, uint c, float u, float v)
         { a[i].X = x - 0.5f; a[i].Y = y - 0.5f; a[i].Z = 0f; a[i].Rhw = 1f; a[i].Color = c; a[i].U = u; a[i].V = v; }
@@ -464,19 +481,19 @@ namespace Rocola
         private int glowBatchN;
         public void GlowBatchBegin(int maxHalos)
         {
-            if (glowBatch == null || glowBatch.Length < maxHalos * 6) glowBatch = new D3D9.Vtx[maxHalos * 6];
+            if (glowBatch == null || glowBatch.Length < maxHalos * HaloVtx) glowBatch = new D3D9.Vtx[maxHalos * HaloVtx];
             glowBatchN = 0;
         }
         public void GlowBatchAdd(float cx, float cy, float r, uint argb)
         {
-            if (r < 1f || glowBatch == null || (glowBatchN + 1) * 6 > glowBatch.Length) return;
-            Halo(glowBatch, glowBatchN * 6, cx, cy, r, argb);
+            if (r < 1f || glowBatch == null || (glowBatchN + 1) * HaloVtx > glowBatch.Length) return;
+            Halo(glowBatch, glowBatchN * HaloVtx, cx, cy, r, argb);
             glowBatchN++;
         }
         public void GlowBatchEnd()
         {
             IntPtr t = uiGlowTex != IntPtr.Zero ? uiGlowTex : glowTex;
-            if (Ok && t != IntPtr.Zero && glowBatchN > 0) gpu.DrawStars(glowBatch, glowBatchN * 2, t);
+            if (Ok && t != IntPtr.Zero && glowBatchN > 0) gpu.DrawStars(glowBatch, glowBatchN * (HaloVtx / 3), t);
             glowBatchN = 0;
         }
 
