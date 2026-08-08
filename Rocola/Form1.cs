@@ -115,7 +115,7 @@ namespace Rocola
         // es una subida suave hacia los agudos, porque la musica de verdad trae menos brillo que el ruido rosa.
         // La version anterior (+20 dB arriba) convertia la fuga de los filtros en banda llena: la aurora salia
         // como una pared plana en vez de tener forma.
-        private static readonly float[] SpecTilt = { 0f, 6f, 6f, 7f, 8f, 11f, 13f, 7f };
+        private static readonly float[] SpecTilt = { 0f, 6f, 6f, 7f, 8f, 11f, 13f, 9.4f };
         // Ventana util en dB. Ajustada: con una ventana ancha, la fuga que dejan los filtros (aunque sea 40 dB
         // por debajo) se dibujaba como banda llena. La biblioteca ya viene NIVELADA, asi que la ventana puede
         // ser fija y ajustada sin que las canciones bajitas se queden sin aurora.
@@ -129,6 +129,13 @@ namespace Rocola
         private readonly float[] specVis = new float[SpecBands];   // lo que se dibuja: sube al instante, baja suave
 #endif
         private float auroraAmount = 0.55f;            // "espectro=" en config (0 = apagada)
+        // ¿Hace falta analizar el espectro? Es el 90% del coste del analisis de audio, asi que cuando nadie
+        // lo va a mirar (compilado sin GPU, o el usuario puso espectro=0) ni se calcula y el hilo de audio respira.
+#if ROCOLA_GPU
+        private bool EspectroActivo { get { return auroraAmount > 0.004f; } }
+#else
+        private bool EspectroActivo { get { return false; } }
+#endif
         private float audioLevel = 0f;                // nivel GLOBAL (max de las 3 bandas): deriva, GPU, buscador
         private int playFailStreak = 0;   // fallos seguidos al reproducir (para no ciclar si NAudio falla)
         // ---- NIVELADO DE VOLUMEN (que todas las canciones suenen PAREJO) ----
@@ -5396,6 +5403,7 @@ namespace Rocola
         // Buffers reusables del hilo de audio (4 trozos x 3 bandas). ThreadStatic: sin asignar por bloque.
         [ThreadStatic] private static float[] tmpLo; [ThreadStatic] private static float[] tmpMid; [ThreadStatic] private static float[] tmpHi;
         [ThreadStatic] private static float[] tmpEsp;   // 4 trozos x 8 bandas
+        [ThreadStatic] private static double[] tmpSum;  // sumas por banda: reusado (nada de asignar en el hilo de audio)
         public void ReportAudioBlock(float[] buffer, int offset, int count, int rate, int ch)
         {
             if (count <= 0) return;
@@ -5407,21 +5415,27 @@ namespace Rocola
             float[] tMid = tmpMid ?? (tmpMid = new float[4]);
             float[] tHi = tmpHi ?? (tmpHi = new float[4]);
             float[] tEsp = tmpEsp ?? (tmpEsp = new float[4 * SpecBands]);
-            // ESCALERA del espectro: los coeficientes salen del ritmo REAL del stream entrelazado (rate * canales),
-            // igual que los dos paso-bajos de arriba. Se recalculan solo si cambia el formato.
-            if (specCoef == null || specRate != samplesPerSec)
+            // ESCALERA del espectro: los coeficientes se calculan al ritmo de CUADROS (rate), porque la escalera
+            // trabaja sobre la mezcla mono de cada cuadro y no muestra por muestra del stream entrelazado. Asi los
+            // cortes caen en los mismos Hz de siempre pero con la MITAD de trabajo, y ademas la diferencia entre
+            // canales deja de colarse como falso "aire". Se recalculan solo si cambia el formato.
+            bool espectro = EspectroActivo;
+            if (espectro && (specCoef == null || specRate != rate))
             {
-                specRate = samplesPerSec;
+                specRate = rate;
                 specCoef = new float[SpecCortes.Length];
                 for (int k = 0; k < SpecCortes.Length; k++)
                 {
-                    double a = 1.0 - Math.Exp(-2.0 * Math.PI * SpecCortes[k] / samplesPerSec);
+                    double a = 1.0 - Math.Exp(-2.0 * Math.PI * SpecCortes[k] / Math.Max(1, rate));
                     specCoef[k] = (float)(a < 0.0 ? 0.0 : (a > 1.0 ? 1.0 : a));
                 }
                 specLp = new float[SpecCortes.Length * SpecPolos];
             }
             float[] sc = specCoef, sl = specLp;
-            double[] sSum = new double[SpecBands];
+            double[] sSum = tmpSum ?? (tmpSum = new double[SpecBands]);
+            int chEsp = ch < 1 ? 1 : ch;
+            float invCh = 1f / chEsp;
+            float fSum = 0f; int fCnt = 0;   // acumulador del cuadro en curso (sigue vivo entre trozos del bloque)
             // Dos filtros paso-bajo de una via separan el audio en 3 bandas: grave = lp1, medio = lp2-lp1, agudo = x-lp2.
             // Los coeficientes marcan cortes aproximados (~150 Hz y ~2 kHz sobre el stream interleaved); es un
             // visualizador, no un ecualizador: basta que "se sienta" la separacion. El estado persiste entre bloques.
@@ -5432,6 +5446,7 @@ namespace Rocola
                 int start = offset + c * len;
                 int end = (c == chunks - 1) ? offset + count : start + len;
                 double sumLo = 0, sumMid = 0, sumHi = 0;
+                int nEsp = 0;
                 for (int b = 0; b < SpecBands; b++) sSum[b] = 0;
                 for (int i = start; i < end; i++)
                 {
@@ -5440,25 +5455,30 @@ namespace Rocola
                     lp2 += (v - lp2) * A2;               // paso-bajo medio
                     float lo = lp1, mid = lp2 - lp1, hi = v - lp2;
                     sumLo += lo * lo; sumMid += mid * mid; sumHi += hi * hi;
+                    if (!espectro) continue;             // aurora apagada (o sin GPU): la escalera ni se toca
+                    fSum += v;                           // junta los canales del cuadro; la escalera corre UNA vez por cuadro
+                    if (++fCnt < chEsp) continue;
+                    float m = fSum * invCh; fSum = 0f; fCnt = 0;
                     // ESPECTRO: cada peldano de la escalera se queda con lo que el anterior dejo pasar,
                     // asi que la resta de dos peldanos consecutivos ES la banda que hay entre sus cortes.
                     float ant = 0f;
                     for (int k = 0; k < 7; k++)
                     {
                         int q = k * SpecPolos;
-                        float x = v;
+                        float x = m;
                         for (int pp = 0; pp < SpecPolos; pp++) { sl[q + pp] += (x - sl[q + pp]) * sc[k]; x = sl[q + pp]; }
                         float bnd = x - ant; ant = x;     // lo que este peldano deja pasar menos lo del anterior
                         sSum[k] += bnd * bnd;
                     }
-                    float top = v - ant;                 // lo que queda por encima del ultimo corte: el aire
+                    float top = m - ant;                 // lo que queda por encima del ultimo corte: el aire
                     sSum[7] += top * top;
+                    nEsp++;
                 }
-                int n = Math.Max(1, end - start);
+                int n = Math.Max(1, end - start), ne = Math.Max(1, nEsp);
                 tLo[c] = (float)Math.Sqrt(sumLo / n);
                 tMid[c] = (float)Math.Sqrt(sumMid / n);
                 tHi[c] = (float)Math.Sqrt(sumHi / n);
-                for (int b = 0; b < SpecBands; b++) tEsp[c * SpecBands + b] = (float)Math.Sqrt(sSum[b] / n);
+                for (int b = 0; b < SpecBands; b++) tEsp[c * SpecBands + b] = (float)Math.Sqrt(sSum[b] / ne);
             }
             fLp1 = lp1; fLp2 = lp2;   // persiste el estado de los filtros para el proximo bloque
             specLp = sl;
@@ -5526,8 +5546,12 @@ namespace Rocola
                 for (int c = 0; c < chunks; c++)
                 {
                     int atMs = now + (int)((long)(c * len) * 1000 / Math.Max(1, samplesPerSec));   // desfase del trozo dentro del bloque
-                    float[] esp = new float[SpecBands];   // 48 bytes por trozo (~20/seg): nada para el recolector
-                    for (int b = 0; b < SpecBands; b++) esp[b] = tEsp[c * SpecBands + b];
+                    float[] esp = null;
+                    if (espectro)
+                    {
+                        esp = new float[SpecBands];   // 48 bytes por trozo (~20/seg): nada para el recolector
+                        for (int b = 0; b < SpecBands; b++) esp[b] = tEsp[c * SpecBands + b];
+                    }
                     levelQ.Enqueue(new Lvl(atMs, tLo[c], tMid[c], tHi[c], esp));
                 }
                 while (levelQ.Count > 96) levelQ.Dequeue();   // acotado (~5s de historial maximo)
@@ -6142,7 +6166,7 @@ namespace Rocola
             // Con un VIDEO en pantalla el audio sale del reproductor de Windows y NO pasa por la cadena, asi que no
             // llegan bandas nuevas: sin esto la aurora se quedaria CONGELADA con la forma de la ultima cancion durante
             // todo el video. (El pulso no lo sufre: su detector de golpes se apaga solo contra su piso movil.)
-            if (videoOn) for (int b = 0; b < SpecBands; b++) specNow[b] = 0f;
+            if (videoOn || !EspectroActivo) for (int b = 0; b < SpecBands; b++) specNow[b] = 0f;
             AvanzaAurora();   // la aurora la dibuja el panel GPU; por CPU ni se calcula
 #endif
             // Cada banda detecta su propio golpe contra su propio piso movil (ataque instantaneo, caida rapida). Asi
