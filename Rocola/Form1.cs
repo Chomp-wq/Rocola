@@ -6139,6 +6139,10 @@ namespace Rocola
                 { Lvl l = levelQ.Dequeue(); rmsLo = l.Lo; rmsMid = l.Mid; rmsHi = l.Hi; if (l.Esp != null) Array.Copy(l.Esp, specNow, SpecBands); }
             if (nowPlaying == null) { rmsLo = rmsMid = rmsHi = 0f; for (int b = 0; b < SpecBands; b++) specNow[b] = 0f; }
 #if ROCOLA_GPU
+            // Con un VIDEO en pantalla el audio sale del reproductor de Windows y NO pasa por la cadena, asi que no
+            // llegan bandas nuevas: sin esto la aurora se quedaria CONGELADA con la forma de la ultima cancion durante
+            // todo el video. (El pulso no lo sufre: su detector de golpes se apaga solo contra su piso movil.)
+            if (videoOn) for (int b = 0; b < SpecBands; b++) specNow[b] = 0f;
             AvanzaAurora();   // la aurora la dibuja el panel GPU; por CPU ni se calcula
 #endif
             // Cada banda detecta su propio golpe contra su propio piso movil (ataque instantaneo, caida rapida). Asi
