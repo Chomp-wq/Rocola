@@ -44,6 +44,12 @@ artista) y modo atracción.
   interrumpe (modo atracción, un video, otra tecla) simplemente dejan de dibujarse — nunca queda nada
   a medias. El avance lo calcula el propio render (60 fps), no el temporizador de la interfaz, así que
   se ven fluidas.
+- **Aurora del horizonte** (`espectro=` en config, 0 la apaga): el visualizador de espectro, hecho como
+  parte del **cielo** y no como un aparato encima. Un resplandor suave en la franja baja cuya silueta
+  la dibujan **8 bandas** medidas en vivo, con el color del género. Va **detrás** de la cuadrícula y
+  se atenúa junto con el fondo, así que nunca le pelea a las portadas ni al texto; se apaga sola
+  cuando no hay música. Las bandas viajan por la **misma cola retrasada** que el pulso, así que la
+  aurora se mueve encima del sonido que se oye y no un segundo antes.
 - "Lo más sonado" y TOP por artista; modo atracción cuando nadie la usa.
 - **Blindaje de kiosco**: una excepción no controlada se anota en `rocola_error.txt`
   y la rocola **sigue corriendo** (ya no muere con el diálogo de error de .NET).

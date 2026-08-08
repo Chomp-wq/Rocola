@@ -760,6 +760,10 @@ namespace Rocola
     // de UI" (al abrir, esa textura YA es el buscador: no hay que copiar ni subir nada). HideUi = no dibujarla
     // ademas a tamano normal. Al cerrar, la textura de UI ya es la de navegacion y se anima una instantanea.
     internal struct GpuWin { public bool Has; public bool HideUi; public Bitmap Bmp; public float Scale, ScaleY, Dy, Alpha; }
+    // AURORA DEL HORIZONTE: el visualizador de espectro, dibujado como parte del CIELO y no como un aparato
+    // encima. B = 8 bandas ya suavizadas (0..1, de graves a agudos); se interpolan a lo ancho y se pintan con
+    // halos aditivos MUY solapados, que es lo que convierte ocho valores sueltos en una franja continua de luz.
+    internal struct GpuAurora { public bool Has; public float[] B; public float BaseY, Alto; public uint Rgb; public float Dim; }
     internal delegate int GpuGridFetch(GpuGridCell[] buf);   // llena buf con las celdas de la pagina actual; devuelve cuantas (<= buf.Length)
 
     // -------- Control D3D9 para usar el campo estrellado como FONDO de la vista de discos --------
@@ -786,6 +790,7 @@ namespace Rocola
         private readonly IntPtr[] gridTex = new IntPtr[MaxCells];     // textura resuelta por celda (subida ANTES de Begin, dibujada despues)
         public Func<GpuTrans> GetTrans;                   // portada de la transicion entrar/salir de disco (null = sin animacion)
         private IntPtr transTex; private Bitmap transLastBmp; private float transU = 1f, transV = 1f;
+        public Func<GpuAurora> GetAurora;                 // aurora del horizonte (espectro); null o Has=false = nada
         public Func<GpuWin> GetWin;                       // ventana del buscador abriendo/cerrando (null = sin animacion)
         private IntPtr winTex; private Bitmap winLastBmp; private float winU = 1f, winV = 1f;
         private readonly D3D9.Vtx[] winQuad = new D3D9.Vtx[6];
@@ -1005,6 +1010,9 @@ namespace Rocola
             // Dispositivo perdido (sesion bloqueada, cambio de pantalla...): sin este respiro, el bucle de
             // Application.Idle reintentaria a TODA MAQUINA y clavaria un nucleo entero hasta recuperarlo.
             if (!stars.Begin(Width, Height, pulse)) { System.Threading.Thread.Sleep(5); return; }
+            // AURORA: va pegada al cielo, ANTES de la rejilla y los cubos. Asi es fondo de verdad: la musica se
+            // ve respirar por detras y las portadas siguen siendo lo que manda en pantalla.
+            if (GetAurora != null) { GpuAurora au = GetAurora(); if (au.Has && au.B != null && au.B.Length >= 8) DrawAurora(au); }
             // Rejilla de discos: un quad por celda (textura ya resuelta arriba). Las celdas aun sin textura (recien
             // horneadas o sin presupuesto de subida este cuadro) se saltan y aparecen en los cuadros siguientes.
             if (ShowAlbum)
@@ -1197,6 +1205,40 @@ namespace Rocola
         // -0.5 px: regla de D3D9 (el centro del pixel esta en x+0.5). Sin este ajuste, una textura mapeada
         // 1:1 (los cubos y sobre todo el TEXTO de las etiquetas) se muestrea entre texeles y se ve borrosa.
         private static void SetV(ref D3D9.Vtx vx, float x, float y, float u, float vv) { vx.X = x - 0.5f; vx.Y = y - 0.5f; vx.Z = 0; vx.Rhw = 1; vx.Color = 0xFFFFFFFF; vx.U = u; vx.V = vv; }
+
+        // Convierte 8 bandas en una franja de luz continua. Dos pasadas: una BRUMA ancha y tenue que da el halo
+        // (como el resplandor de una ciudad en el horizonte) y encima la luz principal, mas ajustada. Cada punto
+        // es un halo aditivo, la misma tecnica de los destellos del buscador: sin bordes duros por diseno.
+        private void DrawAurora(GpuAurora au)
+        {
+            const int N = 40;                       // puntos a lo ancho; el radio los solapa de sobra
+            if (au.Alto < 2f || au.Dim <= 0.02f) return;
+            float paso = (float)Width / (N - 1);
+            for (int pasada = 0; pasada < 2; pasada++)
+            {
+                bool bruma = (pasada == 0);
+                for (int i = 0; i < N; i++)
+                {
+                    // posicion continua dentro de las 8 bandas + suavizado: sale una CURVA, no dientes de sierra
+                    float t = (float)i / (N - 1) * (au.B.Length - 1);
+                    int b0 = (int)t; if (b0 > au.B.Length - 2) b0 = au.B.Length - 2;
+                    float f = t - b0; f = f * f * (3f - 2f * f);
+                    float v = au.B[b0] + (au.B[b0 + 1] - au.B[b0]) * f;
+                    if (v <= 0.006f) continue;
+                    float h = v * au.Alto;
+                    float r = bruma ? (paso * 3.2f + h * 1.15f) : (paso * 1.5f + h * 0.5f);
+                    float cy = au.BaseY - h * (bruma ? 0.30f : 0.45f);
+                    float k = bruma ? 42f : 116f;
+                    int a = (int)(v * au.Dim * k + 0.5f);
+                    if (a < 2) continue; if (a > 255) a = 255;
+                    // los picos tiran a blanco: el color del genero se mantiene, pero la cresta brilla
+                    uint rr = (au.Rgb >> 16) & 0xFF, gg = (au.Rgb >> 8) & 0xFF, bb = au.Rgb & 0xFF;
+                    float w = v * 0.55f;
+                    rr = (uint)(rr + (255 - rr) * w); gg = (uint)(gg + (255 - gg) * w); bb = (uint)(bb + (255 - bb) * w);
+                    stars.DrawGlow(i * paso, cy, r, ((uint)a << 24) | (rr << 16) | (gg << 8) | bb);
+                }
+            }
+        }
 
         protected override void OnPaint(PaintEventArgs e) { RenderFrame(); }   // WM_PAINT -> dibuja por D3D9
         protected override void OnPaintBackground(PaintEventArgs e) { }        // no borra (D3D9 es dueño de los pixeles)
