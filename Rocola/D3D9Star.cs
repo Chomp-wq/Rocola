@@ -139,14 +139,36 @@ namespace Rocola
             return p;
         }
 
+        // ESTADO ACTUAL del dispositivo. Cambiar un estado en Direct3D 9 es una llamada al driver, y una pantalla
+        // de la rocola son decenas de dibujos SEGUIDOS con el mismo estado (toda la rejilla de discos se pinta
+        // igual: textura modulada + mezcla normal). Sin esto, cada quad repetia 9 cambios identicos. Anotando lo
+        // que ya esta puesto, solo se manda al driver lo que de verdad cambia.
+        private int stTss, stBlend;                  // 0 = sin fijar, 1 = diffuse / 2 = modulate ; 1 = sin mezcla, 2 = aditiva, 3 = normal
+        private IntPtr stTex = new IntPtr(-1);       // -1 = sin fijar (IntPtr.Zero SI es un valor valido: sin textura)
+
         private void InitStates()
         {
+            stTss = 0; stBlend = 0; stTex = new IntPtr(-1);   // tras crear o RESETEAR el dispositivo todo vuelve a su valor por defecto
             setRS(dev, D3D9.RS_ZENABLE, 0);
             setRS(dev, D3D9.RS_LIGHTING, 0);
             setRS(dev, D3D9.RS_CULLMODE, D3D9.CULL_NONE);
             setFVF(dev, D3D9.FVF);
             setSamp(dev, 0, D3D9.SAMP_MAGFILTER, D3D9.TEXF_LINEAR);
             setSamp(dev, 0, D3D9.SAMP_MINFILTER, D3D9.TEXF_LINEAR);
+        }
+
+        private void Tex(IntPtr t) { if (stTex != t) { setTex(dev, 0, t); stTex = t; } }
+        private void Blend(int modo)   // 1 = sin mezcla, 2 = aditiva (brillos), 3 = normal (encima)
+        {
+            if (stBlend == modo) return;
+            if (modo == 1) setRS(dev, D3D9.RS_ALPHABLENDENABLE, 0);
+            else
+            {
+                if (stBlend <= 1) setRS(dev, D3D9.RS_ALPHABLENDENABLE, 1);
+                setRS(dev, D3D9.RS_SRCBLEND, D3D9.BLEND_SRCALPHA);
+                setRS(dev, D3D9.RS_DESTBLEND, modo == 2 ? D3D9.BLEND_ONE : D3D9.BLEND_INVSRCALPHA);
+            }
+            stBlend = modo;
         }
 
         public IntPtr CreateTextureFromBitmap(Bitmap bmp)
@@ -178,6 +200,10 @@ namespace Rocola
                 if (tc == D3D9.E_DEVICENOTRESET) { if (reset(dev, ref pp) >= 0) { lost = false; InitStates(); } else return false; }
                 else return false;
             }
+            // La textura apuntada se olvida en CADA cuadro: entre cuadro y cuadro se recrean texturas (portadas,
+            // UI) y una nueva puede caer en la MISMA direccion que una recien liberada. Los otros estados son
+            // numeros, no punteros, asi que esos si se conservan. Cuesta un cambio de textura por cuadro.
+            stTex = new IntPtr(-1);
             clear(dev, 0, IntPtr.Zero, D3D9.CLEAR_TARGET, 0xFF05060F, 1f, 0);
             return begin(dev) >= 0;
         }
@@ -191,30 +217,31 @@ namespace Rocola
 
         private void TssDiffuse()   // usa el color del vertice (sin textura)
         {
+            if (stTss == 1) return;
             setTSS(dev, 0, D3D9.TSS_COLOROP, D3D9.TOP_SELECTARG1); setTSS(dev, 0, D3D9.TSS_COLORARG1, D3D9.TA_DIFFUSE);
             setTSS(dev, 0, D3D9.TSS_ALPHAOP, D3D9.TOP_SELECTARG1); setTSS(dev, 0, D3D9.TSS_ALPHAARG1, D3D9.TA_DIFFUSE);
+            stTss = 1;
         }
         private void TssModulate()  // textura * color del vertice
         {
+            if (stTss == 2) return;
             setTSS(dev, 0, D3D9.TSS_COLOROP, D3D9.TOP_MODULATE); setTSS(dev, 0, D3D9.TSS_COLORARG1, D3D9.TA_TEXTURE); setTSS(dev, 0, D3D9.TSS_COLORARG2, D3D9.TA_DIFFUSE);
             setTSS(dev, 0, D3D9.TSS_ALPHAOP, D3D9.TOP_MODULATE); setTSS(dev, 0, D3D9.TSS_ALPHAARG1, D3D9.TA_TEXTURE); setTSS(dev, 0, D3D9.TSS_ALPHAARG2, D3D9.TA_DIFFUSE);
+            stTss = 2;
         }
 
         // Cielo (color del vertice, sin mezcla) + estrellas (textura de glow, aditivo).
         // Cielo (color del vertice, sin mezcla). 2 quads apilados = degradado de 3 paradas (4 triangulos).
         public void DrawSky(D3D9.Vtx[] sky)
         {
-            setTex(dev, 0, IntPtr.Zero); TssDiffuse();
-            setRS(dev, D3D9.RS_ALPHABLENDENABLE, 0);
+            Tex(IntPtr.Zero); TssDiffuse(); Blend(1);
             Draw(sky, 4);
         }
         // Estrellas (textura de glow, aditivo). Se puede llamar 2 veces (patron anterior + nuevo) en el entrecruzado.
         public void DrawStars(D3D9.Vtx[] stars, int starTris, IntPtr glowTex)
         {
             if (dev == IntPtr.Zero || starTris <= 0 || glowTex == IntPtr.Zero) return;
-            setTex(dev, 0, glowTex); TssModulate();
-            setRS(dev, D3D9.RS_ALPHABLENDENABLE, 1);
-            setRS(dev, D3D9.RS_SRCBLEND, D3D9.BLEND_SRCALPHA); setRS(dev, D3D9.RS_DESTBLEND, D3D9.BLEND_ONE);
+            Tex(glowTex); TssModulate(); Blend(2);
             Draw(stars, starTris);
         }
 
@@ -222,9 +249,7 @@ namespace Rocola
         public void DrawShootStreaks(D3D9.Vtx[] v, int tris)
         {
             if (dev == IntPtr.Zero || tris <= 0) return;
-            setTex(dev, 0, IntPtr.Zero); TssDiffuse();
-            setRS(dev, D3D9.RS_ALPHABLENDENABLE, 1);
-            setRS(dev, D3D9.RS_SRCBLEND, D3D9.BLEND_SRCALPHA); setRS(dev, D3D9.RS_DESTBLEND, D3D9.BLEND_ONE);
+            Tex(IntPtr.Zero); TssDiffuse(); Blend(2);
             Draw(v, tris);
         }
 
@@ -232,9 +257,7 @@ namespace Rocola
         public void DrawTexQuad(IntPtr tex, D3D9.Vtx[] quad)
         {
             if (tex == IntPtr.Zero) return;
-            setTex(dev, 0, tex); TssModulate();
-            setRS(dev, D3D9.RS_ALPHABLENDENABLE, 1);
-            setRS(dev, D3D9.RS_SRCBLEND, D3D9.BLEND_SRCALPHA); setRS(dev, D3D9.RS_DESTBLEND, D3D9.BLEND_INVSRCALPHA);
+            Tex(tex); TssModulate(); Blend(3);
             Draw(quad, 2);
         }
 
@@ -260,9 +283,8 @@ namespace Rocola
                 for (int j = 0; j < 3 - i; j++)
                     if (cbz[cbo[j]] > cbz[cbo[j + 1]]) { int t = cbo[j]; cbo[j] = cbo[j + 1]; cbo[j + 1] = t; }
             bool textured = tex != IntPtr.Zero;
-            if (textured) { setTex(dev, 0, tex); TssModulate(); } else { setTex(dev, 0, IntPtr.Zero); TssDiffuse(); }
-            setRS(dev, D3D9.RS_ALPHABLENDENABLE, 1);
-            setRS(dev, D3D9.RS_SRCBLEND, D3D9.BLEND_SRCALPHA); setRS(dev, D3D9.RS_DESTBLEND, D3D9.BLEND_INVSRCALPHA);
+            if (textured) { Tex(tex); TssModulate(); } else { Tex(IntPtr.Zero); TssDiffuse(); }
+            Blend(3);
             uint av = (uint)(alpha * 255f + 0.5f); if (av > 255) av = 255;
             for (int oi = 0; oi < 4; oi++)
             {
@@ -1088,7 +1110,12 @@ namespace Rocola
             if (GetUiGlows != null)
             {
                 int ng = GetUiGlows(uiGlowBuf);
-                for (int i = 0; i < ng && i < uiGlowBuf.Length; i++) { UiGlow ug = uiGlowBuf[i]; stars.DrawGlow(ug.Cx, ug.Cy, ug.R, ug.Argb); }
+                if (ng > 0)
+                {
+                    stars.GlowBatchBegin(uiGlowBuf.Length);   // los destellos tambien salen de una sola llamada
+                    for (int i = 0; i < ng && i < uiGlowBuf.Length; i++) { UiGlow ug = uiGlowBuf[i]; stars.GlowBatchAdd(ug.Cx, ug.Cy, ug.R, ug.Argb); }
+                    stars.GlowBatchEnd();
+                }
             }
             // Mini-cubo de la barra inferior (gira): cubo GPU, encima de la barra.
             if (cs.Mini.Has)
