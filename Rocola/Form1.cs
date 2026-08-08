@@ -68,6 +68,12 @@ namespace Rocola
         private LetterBar letterBar;
         private AlbumView albumView;
         private Label lblHeader, lblStatus, lblNow, lblNext, lblCount, lblTime, lblAlbum, lblToast, lblCredits;
+        // Linea de ARRIBA de "Reproduciendo": vacia casi siempre. Cuando el titulo no cabe en una sola
+        // linea, la primera mitad se pinta aqui y el resto en lblNow (que sigue siendo la ULTIMA linea, la
+        // que lleva el letrero MEJORADA detras). El hueco esta reservado SIEMPRE, asi que el acomodo de la
+        // pantalla no se mueve nunca al cambiar de cancion: nada de rehornear la rejilla por un titulo largo.
+        private Label lblNowTop;
+        private string nowFullText = "Nada reproduciendose";   // el texto COMPLETO, antes de partirlo en lineas
         private HelpBar helpBar;
         private BgPanel panelSongs;
         private SongListView songList;
@@ -1739,8 +1745,13 @@ namespace Rocola
 
             lblNow = new Label(); TransLabel(lblNow, 13f); lblNow.Text = "Nada reproduciendose"; lblNow.AutoEllipsis = true;
             lblNow.ForeColor = Color.FromArgb(125, 235, 165);   // ESTETICA: verde "sonando" (se distingue de "siguiente")
+            lblNowTop = new Label(); TransLabel(lblNowTop, 13f); lblNowTop.Text = ""; lblNowTop.AutoEllipsis = true;
+            lblNowTop.ForeColor = lblNow.ForeColor;             // misma linea, mismo verde: se leen como un solo texto
+            lblNowTop.TextAlign = ContentAlignment.BottomLeft;  // pegada a la linea de abajo, no flotando
+            lblNow.UseMnemonic = false; lblNowTop.UseMnemonic = false;   // un "&" del titulo es un "&", no un subrayado
             lblNext = new Label(); TransLabel(lblNext, 11f); lblNext.Text = "Siguiente:  -"; lblNext.AutoEllipsis = true;
             lblNext.ForeColor = Color.FromArgb(150, 200, 255);  // ESTETICA: azul claro "siguiente"
+            lblNext.UseMnemonic = false;                        // igual que arriba: un "&" del titulo es un "&"
             lblCount = new Label(); TransLabel(lblCount, 11f); lblCount.TextAlign = ContentAlignment.MiddleLeft; lblCount.Text = "En cola:  0";
             lblCredits = new Label(); TransLabel(lblCredits, 14f); lblCredits.TextAlign = ContentAlignment.MiddleLeft; lblCredits.Text = "Inserta una moneda"; lblCredits.ForeColor = Color.FromArgb(255, 205, 90);
             lblMejorada = new Label(); TransLabel(lblMejorada, 10f); lblMejorada.Text = "MEJORADA";
@@ -1774,7 +1785,7 @@ namespace Rocola
             Controls.Add(lblStatus); Controls.Add(helpBar); Controls.Add(lblCredits);
             Controls.Add(letterBar); Controls.Add(lblHeader);
             Controls.Add(albumView); Controls.Add(panelSongs);
-            Controls.Add(lblNow); Controls.Add(lblMejorada); Controls.Add(lblNext); Controls.Add(lblCount); Controls.Add(progress); Controls.Add(lblTime);
+            Controls.Add(lblNowTop); Controls.Add(lblNow); Controls.Add(lblMejorada); Controls.Add(lblNext); Controls.Add(lblCount); Controls.Add(progress); Controls.Add(lblTime);
             Controls.Add(miniCube);
             Controls.Add(lblAttract);
             Controls.Add(lblToast);
@@ -1841,7 +1852,12 @@ namespace Rocola
             int progH = 16;                                  // barra mas delgada
             int progY = H - pad - progH;
             int nextY = progY - 26;
-            int nowY = nextY - 26;
+            int nowY = nextY - 26;                           // la ULTIMA linea de "Reproduciendo": donde estuvo siempre
+            // Se reserva UNA linea mas ARRIBA para los titulos largos. El hueco esta siempre, se use o no: asi el
+            // acomodo no cambia nunca al pasar de cancion (si cambiara, la rejilla de discos se re-hornearia entera
+            // cada vez que sonara un titulo largo). Con titulo corto el hueco queda vacio y todo se ve como antes.
+            int nowLineH = Math.Max(24, (lblNow != null ? lblNow.Font.Height : 22) + 2);
+            int nowTopY = nowY - nowLineH;
 
             // cluster derecho del fondo:  [cubo mini] [ Creditos (grande) / En cola ]   (ancho completo)
             int clusterTop = nowY;
@@ -1863,10 +1879,11 @@ namespace Rocola
             lblTime.SetBounds(pad + leftW - timeW, progY - 1, timeW, 24);
             lblNext.SetBounds(pad, nextY, leftW, 22);
             lblNow.SetBounds(pad, nowY, leftW, 24);
-            iaNowRowW = leftW; PositionMejorada();   // el letrero MEJORADA se acomoda tras el texto (y encoge lblNow si hace falta)
+            lblNowTop.SetBounds(pad, nowTopY, leftW, nowLineH);
+            iaNowRowW = leftW; PositionMejorada();   // parte el titulo en 1 o 2 lineas y acomoda el letrero MEJORADA tras la ultima
 
             int albumY = headerY + 44;
-            int albumBottom = nowY - 12;
+            int albumBottom = nowTopY - 12;   // la rejilla termina antes del hueco reservado para la 2a linea
             int albumH = Math.Max(120, albumBottom - albumY);
             albumView.SetBounds(pad, albumY, contentW, albumH);
             panelSongs.SetBounds(pad, albumY, contentW, albumH);
@@ -5919,9 +5936,9 @@ namespace Rocola
 
         private void UpdateNowPlayingUI()
         {
-            lblNow.Text = (nowPlaying != null) ? ("Reproduciendo:  " + nowPlaying.Display()) : "Nada reproduciendose";
+            nowFullText = (nowPlaying != null) ? ("Reproduciendo:  " + nowPlaying.Display()) : "Nada reproduciendose";
             iaBadgeKind = MejKind();   // dorado = version IA (Apollo); plateado = DSEE espectral reconstruyendo DE VERDAD
-            PositionMejorada();
+            PositionMejorada();   // parte el texto en 1 o 2 lineas y coloca el letrero
             lblNext.Text = (queue.Count > 0) ? "Siguiente:  " + queue[0].Display() : "Siguiente:  -";
             lblCount.Text = "En cola:  " + queue.Count;
             if (miniCube != null)
@@ -5947,21 +5964,52 @@ namespace Rocola
         // titulo es largo, lblNow se ENCOGE (elipsa antes) para que el letrero siempre quepa sin encimarse.
         private void PositionMejorada()
         {
-            if (lblMejorada == null || lblNow == null) return;
-            if (iaBadgeKind == 0 || nowPlaying == null)
+            if (lblMejorada == null || lblNow == null || lblNowTop == null) return;
+            bool on = (iaBadgeKind != 0 && nowPlaying != null);
+            int bw = 0;
+            if (on)
             {
-                if (lblMejorada.Visible) lblMejorada.Visible = false;
-                if (lblNow.Width != iaNowRowW) lblNow.Width = iaNowRowW;
-                return;
+                lblMejorada.ForeColor = (iaBadgeKind == 2) ? IaGoldBase : IaSilverBase;   // color base: el brillo lo anima el tick (CPU) o un halo que recorre (GPU)
+                bw = TextRenderer.MeasureText(lblMejorada.Text, lblMejorada.Font).Width + 4;
             }
-            lblMejorada.ForeColor = (iaBadgeKind == 2) ? IaGoldBase : IaSilverBase;   // color base: el brillo lo anima el tick (CPU) o un halo que recorre (GPU)
-            int bw = TextRenderer.MeasureText(lblMejorada.Text, lblMejorada.Font).Width + 4;
-            int nw = Math.Max(60, iaNowRowW - bw - 12);
-            if (lblNow.Width != nw) lblNow.Width = nw;
+            int anchoUlt = on ? Math.Max(60, iaNowRowW - bw - 12) : iaNowRowW;   // lo que le queda a la ultima linea
+            if (lblNow.Width != anchoUlt) lblNow.Width = anchoUlt;
+            if (lblNowTop.Width != iaNowRowW) lblNowTop.Width = iaNowRowW;       // la de arriba no comparte con nadie
+
+            string arriba, abajo;
+            PartirNow(nowFullText, lblNow.Font, iaNowRowW, anchoUlt, out arriba, out abajo);
+            if (lblNowTop.Text != arriba) lblNowTop.Text = arriba;
+            if (lblNow.Text != abajo) lblNow.Text = abajo;
+
+            if (!on) { if (lblMejorada.Visible) lblMejorada.Visible = false; return; }
             int tw = TextRenderer.MeasureText(lblNow.Text, lblNow.Font).Width;
-            if (tw > nw) tw = nw;
+            if (tw > anchoUlt) tw = anchoUlt;
             lblMejorada.SetBounds(lblNow.Left + tw + 10, lblNow.Top + 2, bw, 20);
             lblMejorada.Visible = true;
+        }
+
+        // Reparte el texto entre la linea de ARRIBA (ancho completo) y la de ABAJO (la que comparte fila con el
+        // letrero, asi que va mas estrecha). Si entra entero en la de abajo, la de arriba se queda vacia y se ve
+        // exactamente igual que siempre. Se corta por ESPACIO; si una sola palabra no cabe, se corta por letra
+        // antes que dejar el titulo mochado. Lo que aun sobre lo elipsa la propia etiqueta.
+        private static void PartirNow(string texto, Font f, int anchoArriba, int anchoAbajo, out string arriba, out string abajo)
+        {
+            arriba = ""; abajo = texto ?? "";
+            if (abajo.Length == 0 || anchoAbajo < 20) return;
+            if (TextRenderer.MeasureText(abajo, f).Width <= anchoAbajo) return;   // cabe de una: nada que partir
+            int tope = anchoArriba - 6;   // margen: la textura de la GPU dibuja con GDI+ y mide un pelo mas ancho
+            int corte = -1;
+            for (int i = 0; i < abajo.Length; i++)
+            {
+                if (abajo[i] != ' ') continue;
+                if (TextRenderer.MeasureText(abajo.Substring(0, i), f).Width > tope) break;
+                corte = i;   // el ultimo espacio que todavia cabe arriba
+            }
+            if (corte > 0) { arriba = abajo.Substring(0, corte); abajo = abajo.Substring(corte + 1); return; }
+            // ni un espacio util (un titulo de una sola palabra larguisima): se corta por letra
+            int n = 0;
+            while (n + 1 < abajo.Length && TextRenderer.MeasureText(abajo.Substring(0, n + 1), f).Width <= tope) n++;
+            if (n > 0 && n < abajo.Length) { arriba = abajo.Substring(0, n); abajo = abajo.Substring(n); }
         }
 
         // Anima el brillo del letrero MEJORADA. Sin panel GPU encima (gpuCovered=false) las letras RESPIRAN
@@ -6198,7 +6246,7 @@ namespace Rocola
         // Donde EMPIEZA la franja de estado de abajo (la que va en su propia textura chica).
         private int BotStripTop(int h)
         {
-            int t = (lblNow != null) ? lblNow.Top - 4 : h - 96;
+            int t = (lblNowTop != null) ? lblNowTop.Top - 4 : (lblNow != null ? lblNow.Top - 4 : h - 96);   // la franja arranca en la linea de ARRIBA
             if (t < h / 2) t = h / 2;
             if (t > h - 8) t = h - 8;
             return t;
@@ -6309,6 +6357,7 @@ namespace Rocola
                     g.SmoothingMode = SmoothingMode.AntiAlias;
                     g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;   // gris: ClearType deja flecos sobre transparente
                     g.TranslateTransform(0, -top);   // las etiquetas estan en coords del form; la tira empieza en 'top'
+                    DrawLabelOverlay(g, lblNowTop);   // 2a linea del titulo (vacia casi siempre: no dibuja nada)
                     DrawLabelOverlay(g, lblNow);
                     if (lblMejorada != null && lblMejorada.Visible) DrawLabelOverlay(g, lblMejorada);   // letrero MEJORADA (su brillo es un halo por quad, no rehace esta textura)
                     DrawLabelOverlay(g, lblNext);
@@ -6446,6 +6495,7 @@ namespace Rocola
             System.Text.StringBuilder sb = new System.Text.StringBuilder(128);
             sb.Append(ClientSize.Width).Append('x').Append(ClientSize.Height);
             if (attractOn) { sb.Append("|A"); return sb.ToString(); }   // en atraccion la franja va limpia (transparente)
+            if (lblNowTop != null) sb.Append('|').Append(lblNowTop.Text);
             if (lblNow != null) sb.Append('|').Append(lblNow.Text);
             if (lblMejorada != null && lblMejorada.Visible) sb.Append("|M").Append(iaBadgeKind).Append(',').Append(lblMejorada.Left).Append(',').Append(lblMejorada.ForeColor.ToArgb());
             if (lblNext != null) sb.Append('|').Append(lblNext.Text);
