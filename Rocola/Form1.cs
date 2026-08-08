@@ -261,6 +261,13 @@ namespace Rocola
         // del local NO pueden dar, generando sus armonicos. Ver DeepBassProvider.
         private float bassAmount = 0.30f;
         private DeepBassProvider curBass;   // el de la cancion que suena (para mover la perilla en vivo)
+        // AJUSTE POR CANCION. La perilla dice cuanto grave quiere el dueno del local; ESTE numero dice cuanto
+        // le toca a la cancion que suena. No todas necesitan lo mismo: una con mucho grave profundo pierde
+        // mucho en unas bocinas chicas y agradece la ayuda; una que ya viene cargada de bajo-medio no necesita
+        // nada y si le metes mas, se emborrona. Sale de la huella tonal que la rocola YA le mide a cada cancion
+        // (no hace falta medir nada nuevo). 1 = la perilla tal cual, que es lo que hacia antes con todas.
+        private float bassSongFactor = 1f;
+        private float BassAmountNow() { return Clampf(bassAmount * bassSongFactor, 0f, 1f); }
         private float masterDb = 0f;         // SUBIR TODO: dB extra para ABSOLUTAMENTE todas las canciones (0..12; barra en Ctrl+F3, "subir_db=" en config)
         private float MasterLin() { return (float)Math.Pow(10.0, masterDb / 20.0); }   // dB -> ganancia lineal
         private float crossfadeSec = 0.5f;   // FUNDIDO de salida entre canciones: segundos de rampa al terminar ("fundido=" en config; 0 = corte seco)
@@ -833,6 +840,23 @@ namespace Rocola
             return any ? dbs : null;
         }
 
+        // CUANTO bajo psicoacustico le toca a ESTA cancion (multiplica a la perilla). Sale de la misma huella
+        // tonal que ya se le mide a cada cancion: la banda de 50 Hz es el grave profundo que las bocinas del
+        // local no dan (lo que hay que rescatar) y la de 158 Hz es donde caen los armonicos que generamos (si
+        // ahi ya viene lleno, meter mas solo emborrona). Se compara contra el PROMEDIO de la biblioteca, asi
+        // que se calibra solo al gusto musical del local: la cancion promedio recibe exactamente lo que dice
+        // la perilla, la mas grave hasta un 55% mas y la que no lo necesita hasta un 55% menos.
+        // Sin huella todavia (cancion nueva) o con menos de 10 canciones medidas: 1, o sea como toda la vida.
+        private float BassFactorFor(string path)
+        {
+            if (path == null || eqAvg == null) return 1f;
+            float[] c;
+            if (!eqCache.TryGetValue(path, out c) || c == null || c.Length < 2) return 1f;
+            if (c[0] <= -25f || c[1] <= -25f) return 1f;   // banda sin contenido medible: no arriesgar
+            float rel = (c[0] - eqAvg[0]) - (c[1] - eqAvg[1]);   // dB de grave profundo DE MAS que la cancion tipica
+            return Clampf(1f + rel / 12f, 0.45f, 1.55f);
+        }
+
         // Cierra la medicion de huella tonal de la cancion que acaba de sonar (audio ya detenido).
         private void FinalizeEqMeasure()
         {
@@ -984,7 +1008,7 @@ namespace Rocola
         private void ApplyNormNow()
         {
             LevelTap t = curTap; if (t != null && nowPlaying != null && nowPlaying.Song != null) { t.Gain = NormGainFor(nowPlaying.Song.Path); t.Excite = excAmount; t.Master = MasterLin(); t.EqDb = EqCorrFor(nowPlaying.Song.Path); }
-            DeepBassProvider bp = curBass; if (bp != null) bp.Amount = bassAmount;   // bajo psicoacustico: al instante
+            DeepBassProvider bp = curBass; if (bp != null) bp.Amount = BassAmountNow();   // bajo psicoacustico: al instante, ya ajustado a la cancion
             SpectralTap sp = curSbr; if (sp != null) sp.Active = sbrOn;   // reconstruccion espectral: alterna EN VIVO (A/B desde Ctrl+F3)
         }
 
@@ -1263,7 +1287,11 @@ namespace Rocola
                         lUp.Text = "Subir TODO el volumen:  +" + tbUp.Value + " dB";
                         lVid.Text = "Volumen de los videos:  " + tbVid.Value + "%";
                         lEq.Text = "EQ automatico:  " + tbEq.Value + "%";
-                        lBass.Text = "Graves (bajo profundo):  " + tbBass.Value + "%";
+                        // Se ve la perilla Y lo que le toca a la cancion que suena: asi el ajuste automatico
+                        // no es magia invisible, se nota que esta trabajando.
+                        int bEfe = (int)Math.Round(tbBass.Value * bassSongFactor);
+                        lBass.Text = "Graves (bajo profundo):  " + tbBass.Value + "%"
+                                   + ((nowPlaying != null && bEfe != tbBass.Value) ? ("   (esta cancion: " + bEfe + "%)") : "");
                         // PRE-ANALISIS + ETAPA: ya no hace falta que una cancion suene para quedar nivelada; aqui se
                         // ve cuanto le falta a la biblioteca por medir y en que etapa de volumen cayo la que suena.
                         string etapa = (nowPlaying != null && nowPlaying.Song != null) ? LoudTierName(nowPlaying.Song.Path) : "";
@@ -5237,7 +5265,8 @@ namespace Rocola
                 output.PlaybackStopped += Output_PlaybackStopped;
                 // BAJO PSICOACUSTICO: despues de nivelar/ecualizar y ANTES del limitador, que es quien controla
                 // los picos que anaden los armonicos.
-                curBass = new DeepBassProvider(tap, bassAmount);
+                bassSongFactor = BassFactorFor(t.Path);   // cuanto le toca a ESTA cancion (1 = la perilla tal cual)
+                curBass = new DeepBassProvider(tap, BassAmountNow());
                 NAudio.Wave.ISampleProvider outChain = new LookaheadLimiter(curBass, 0.98f, 3.0);
                 if (crossfadeSec > 0.01f)
                 {
