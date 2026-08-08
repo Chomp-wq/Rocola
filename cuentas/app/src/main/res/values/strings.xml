@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Cuentas Tianguis</string>
+    <string name="titulo_semana">Semana</string>
+
+    <string name="dia_anterior">Día anterior</string>
+    <string name="dia_siguiente">Día siguiente</string>
+    <string name="hoy">HOY</string>
+
+    <string name="descripcion_hint">¿Qué se vendió? (ej. aretes de chaquira)</string>
+    <string name="cantidad_hint">Cant.</string>
+    <string name="precio_hint">Precio por pieza</string>
+    <string name="agregar">Agregar venta</string>
+    <string name="guardar">Guardar</string>
+    <string name="cancelar">Cancelar</string>
+    <string name="eliminar">Eliminar</string>
+
+    <string name="sin_ventas">Todavía no hay ventas anotadas.\nAnota la primera arriba.</string>
+    <string name="sin_ventas_semana">No hubo ventas en esta semana.</string>
+
+    <string name="total_dia">TOTAL DEL DÍA</string>
+    <string name="total_semana">TOTAL DE LA SEMANA</string>
+
+    <string name="menu_semana">Ver semana</string>
+    <string name="menu_compartir">Compartir</string>
+    <string name="menu_nombres">Nombres de artesanos</string>
+
+    <string name="compartir_titulo">¿Cómo quieres compartir?</string>
+    <string name="compartir_texto">Texto</string>
+    <string name="compartir_texto_desc">Se copia y se manda como mensaje</string>
+    <string name="compartir_imagen">Imagen (PNG)</string>
+    <string name="compartir_imagen_desc">Una foto de la cuenta, lista para WhatsApp</string>
+    <string name="compartir_pdf">PDF</string>
+    <string name="compartir_pdf_desc">Documento formal para imprimir o archivar</string>
+
+    <string name="editar_venta">Editar venta</string>
+    <string name="nueva_venta">Nueva venta</string>
+    <string name="semana_anterior">Semana anterior</string>
+    <string name="semana_siguiente">Semana siguiente</string>
+    <string name="esta_semana">ESTA SEMANA</string>
+</resources>

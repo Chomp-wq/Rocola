@@ -1,0 +1,33 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'mx.tianguis.cuentas'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'mx.tianguis.cuentas'
+        minSdk 21
+        targetSdk 34
+        versionCode 1
+        versionName '1.0'
+    }
+
+    buildTypes {
+        release {
+            // Sin ofuscación: la app es pequeña y así el APK se puede revisar.
+            minifyEnabled false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+}
+
+// A propósito no hay dependencias: todo (base de datos, PDF, imágenes y
+// compartir archivos) se resuelve con el framework de Android.
+dependencies {
+}

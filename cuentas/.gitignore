@@ -1,0 +1,13 @@
+# Resultados de la compilación
+build/
+.gradle/
+local.properties
+
+# La llave de firma NO se sube nunca al repositorio.
+*.jks
+*.keystore
+
+# Android Studio
+.idea/
+*.iml
+captures/

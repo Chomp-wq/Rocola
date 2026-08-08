@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="primario">#00695C</color>
+    <color name="primario_oscuro">#00382F</color>
+    <color name="primario_claro">#E0F2F1</color>
+    <color name="acento">#FF8F00</color>
+
+    <color name="artesano_a">#1565C0</color>
+    <color name="artesano_a_suave">#E3F0FC</color>
+    <color name="artesano_b">#AD1457</color>
+    <color name="artesano_b_suave">#FBE4EF</color>
+
+    <color name="fondo">#F2F4F5</color>
+    <color name="tarjeta">#FFFFFF</color>
+    <color name="linea">#DCE2E4</color>
+
+    <color name="texto">#17202A</color>
+    <color name="texto_suave">#5C6B73</color>
+    <color name="blanco">#FFFFFF</color>
+    <color name="peligro">#C62828</color>
+</resources>
