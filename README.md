@@ -61,6 +61,13 @@ artista) y modo atracción.
 - **Subir TODO el volumen**: dB extra generales; el **limitador con pre-escucha** baja los picos
   suave y ANTES de que lleguen (fuerte sin distorsión).
 - **EQ automático**: corrige el tono de cada canción hacia el promedio de la biblioteca.
+- **Bajo psicoacústico** (`bajo=` en config, perilla en Ctrl+F3): las bocinas de un local no bajan de
+  ~80 Hz, así que el grave profundo **no sale** por ellas. Subirlo con EQ no sirve — solo gasta
+  amplificador y hace toser al cono. En vez de eso se generan los **armónicos** de esa nota grave (el
+  doble y el triple de su frecuencia), que la bocina sí reproduce, y **el oído reconstruye solo la
+  nota que falta** (efecto de la *fundamental ausente*). El grave se toma de la mezcla mono y sale
+  centrado. Verificado: genera el 2º y 3er armónico, **no toca** la nota original ni la voz ni los
+  agudos (0.00 dB), en 0 % el audio sale idéntico bit a bit, y cuesta **0.17 % de un núcleo**.
 - **DSEE** (realce/reconstrucción de agudos): recrea el "aire" que el MP3 recorta.
   Insignia **MEJORADA** (dorada, que brilla) cuando de verdad está mejorando la canción.
 - **Des-recorte (declipper)**: repara los picos aplastados "de fábrica" de archivos mal
