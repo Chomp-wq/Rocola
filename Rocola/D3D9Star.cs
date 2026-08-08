@@ -139,14 +139,36 @@ namespace Rocola
             return p;
         }
 
+        // ESTADO ACTUAL del dispositivo. Cambiar un estado en Direct3D 9 es una llamada al driver, y una pantalla
+        // de la rocola son decenas de dibujos SEGUIDOS con el mismo estado (toda la rejilla de discos se pinta
+        // igual: textura modulada + mezcla normal). Sin esto, cada quad repetia 9 cambios identicos. Anotando lo
+        // que ya esta puesto, solo se manda al driver lo que de verdad cambia.
+        private int stTss, stBlend;                  // 0 = sin fijar, 1 = diffuse / 2 = modulate ; 1 = sin mezcla, 2 = aditiva, 3 = normal
+        private IntPtr stTex = new IntPtr(-1);       // -1 = sin fijar (IntPtr.Zero SI es un valor valido: sin textura)
+
         private void InitStates()
         {
+            stTss = 0; stBlend = 0; stTex = new IntPtr(-1);   // tras crear o RESETEAR el dispositivo todo vuelve a su valor por defecto
             setRS(dev, D3D9.RS_ZENABLE, 0);
             setRS(dev, D3D9.RS_LIGHTING, 0);
             setRS(dev, D3D9.RS_CULLMODE, D3D9.CULL_NONE);
             setFVF(dev, D3D9.FVF);
             setSamp(dev, 0, D3D9.SAMP_MAGFILTER, D3D9.TEXF_LINEAR);
             setSamp(dev, 0, D3D9.SAMP_MINFILTER, D3D9.TEXF_LINEAR);
+        }
+
+        private void Tex(IntPtr t) { if (stTex != t) { setTex(dev, 0, t); stTex = t; } }
+        private void Blend(int modo)   // 1 = sin mezcla, 2 = aditiva (brillos), 3 = normal (encima)
+        {
+            if (stBlend == modo) return;
+            if (modo == 1) setRS(dev, D3D9.RS_ALPHABLENDENABLE, 0);
+            else
+            {
+                if (stBlend <= 1) setRS(dev, D3D9.RS_ALPHABLENDENABLE, 1);
+                setRS(dev, D3D9.RS_SRCBLEND, D3D9.BLEND_SRCALPHA);
+                setRS(dev, D3D9.RS_DESTBLEND, modo == 2 ? D3D9.BLEND_ONE : D3D9.BLEND_INVSRCALPHA);
+            }
+            stBlend = modo;
         }
 
         public IntPtr CreateTextureFromBitmap(Bitmap bmp)
@@ -178,6 +200,10 @@ namespace Rocola
                 if (tc == D3D9.E_DEVICENOTRESET) { if (reset(dev, ref pp) >= 0) { lost = false; InitStates(); } else return false; }
                 else return false;
             }
+            // La textura apuntada se olvida en CADA cuadro: entre cuadro y cuadro se recrean texturas (portadas,
+            // UI) y una nueva puede caer en la MISMA direccion que una recien liberada. Los otros estados son
+            // numeros, no punteros, asi que esos si se conservan. Cuesta un cambio de textura por cuadro.
+            stTex = new IntPtr(-1);
             clear(dev, 0, IntPtr.Zero, D3D9.CLEAR_TARGET, 0xFF05060F, 1f, 0);
             return begin(dev) >= 0;
         }
@@ -191,30 +217,31 @@ namespace Rocola
 
         private void TssDiffuse()   // usa el color del vertice (sin textura)
         {
+            if (stTss == 1) return;
             setTSS(dev, 0, D3D9.TSS_COLOROP, D3D9.TOP_SELECTARG1); setTSS(dev, 0, D3D9.TSS_COLORARG1, D3D9.TA_DIFFUSE);
             setTSS(dev, 0, D3D9.TSS_ALPHAOP, D3D9.TOP_SELECTARG1); setTSS(dev, 0, D3D9.TSS_ALPHAARG1, D3D9.TA_DIFFUSE);
+            stTss = 1;
         }
         private void TssModulate()  // textura * color del vertice
         {
+            if (stTss == 2) return;
             setTSS(dev, 0, D3D9.TSS_COLOROP, D3D9.TOP_MODULATE); setTSS(dev, 0, D3D9.TSS_COLORARG1, D3D9.TA_TEXTURE); setTSS(dev, 0, D3D9.TSS_COLORARG2, D3D9.TA_DIFFUSE);
             setTSS(dev, 0, D3D9.TSS_ALPHAOP, D3D9.TOP_MODULATE); setTSS(dev, 0, D3D9.TSS_ALPHAARG1, D3D9.TA_TEXTURE); setTSS(dev, 0, D3D9.TSS_ALPHAARG2, D3D9.TA_DIFFUSE);
+            stTss = 2;
         }
 
         // Cielo (color del vertice, sin mezcla) + estrellas (textura de glow, aditivo).
         // Cielo (color del vertice, sin mezcla). 2 quads apilados = degradado de 3 paradas (4 triangulos).
         public void DrawSky(D3D9.Vtx[] sky)
         {
-            setTex(dev, 0, IntPtr.Zero); TssDiffuse();
-            setRS(dev, D3D9.RS_ALPHABLENDENABLE, 0);
+            Tex(IntPtr.Zero); TssDiffuse(); Blend(1);
             Draw(sky, 4);
         }
         // Estrellas (textura de glow, aditivo). Se puede llamar 2 veces (patron anterior + nuevo) en el entrecruzado.
         public void DrawStars(D3D9.Vtx[] stars, int starTris, IntPtr glowTex)
         {
             if (dev == IntPtr.Zero || starTris <= 0 || glowTex == IntPtr.Zero) return;
-            setTex(dev, 0, glowTex); TssModulate();
-            setRS(dev, D3D9.RS_ALPHABLENDENABLE, 1);
-            setRS(dev, D3D9.RS_SRCBLEND, D3D9.BLEND_SRCALPHA); setRS(dev, D3D9.RS_DESTBLEND, D3D9.BLEND_ONE);
+            Tex(glowTex); TssModulate(); Blend(2);
             Draw(stars, starTris);
         }
 
@@ -222,9 +249,7 @@ namespace Rocola
         public void DrawShootStreaks(D3D9.Vtx[] v, int tris)
         {
             if (dev == IntPtr.Zero || tris <= 0) return;
-            setTex(dev, 0, IntPtr.Zero); TssDiffuse();
-            setRS(dev, D3D9.RS_ALPHABLENDENABLE, 1);
-            setRS(dev, D3D9.RS_SRCBLEND, D3D9.BLEND_SRCALPHA); setRS(dev, D3D9.RS_DESTBLEND, D3D9.BLEND_ONE);
+            Tex(IntPtr.Zero); TssDiffuse(); Blend(2);
             Draw(v, tris);
         }
 
@@ -232,9 +257,7 @@ namespace Rocola
         public void DrawTexQuad(IntPtr tex, D3D9.Vtx[] quad)
         {
             if (tex == IntPtr.Zero) return;
-            setTex(dev, 0, tex); TssModulate();
-            setRS(dev, D3D9.RS_ALPHABLENDENABLE, 1);
-            setRS(dev, D3D9.RS_SRCBLEND, D3D9.BLEND_SRCALPHA); setRS(dev, D3D9.RS_DESTBLEND, D3D9.BLEND_INVSRCALPHA);
+            Tex(tex); TssModulate(); Blend(3);
             Draw(quad, 2);
         }
 
@@ -260,9 +283,8 @@ namespace Rocola
                 for (int j = 0; j < 3 - i; j++)
                     if (cbz[cbo[j]] > cbz[cbo[j + 1]]) { int t = cbo[j]; cbo[j] = cbo[j + 1]; cbo[j + 1] = t; }
             bool textured = tex != IntPtr.Zero;
-            if (textured) { setTex(dev, 0, tex); TssModulate(); } else { setTex(dev, 0, IntPtr.Zero); TssDiffuse(); }
-            setRS(dev, D3D9.RS_ALPHABLENDENABLE, 1);
-            setRS(dev, D3D9.RS_SRCBLEND, D3D9.BLEND_SRCALPHA); setRS(dev, D3D9.RS_DESTBLEND, D3D9.BLEND_INVSRCALPHA);
+            if (textured) { Tex(tex); TssModulate(); } else { Tex(IntPtr.Zero); TssDiffuse(); }
+            Blend(3);
             uint av = (uint)(alpha * 255f + 0.5f); if (av > 255) av = 255;
             for (int oi = 0; oi < 4; oi++)
             {
@@ -416,18 +438,64 @@ namespace Rocola
         // Un halo (glow radial ADITIVO) centrado en (cx,cy) de radio r, teñido/atenuado por 'argb'. Reusa la textura
         // de glow de las estrellas. Sirve para el DESTELLO del boton pulsado del buscador: lo anima la GPU (alfa que
         // baja) sin re-hornear ni re-subir la textura de UI -> el destello se desvanece suave y el tecleo va fluido.
-        private readonly D3D9.Vtx[] glowV = new D3D9.Vtx[6];
+        // Un halo es un circulo de luz que se apaga hacia afuera, y su textura vale CERO fuera de ese circulo.
+        // Dibujarlo en un cuadrado significa pintar cuatro esquinas que no aportan NADA (el 17% de los pixeles).
+        // Se dibuja entonces en un OCTAGONO: el mismo cuadrado con las esquinas cortadas justo donde la luz ya
+        // vale cero. El resultado en pantalla es identico al pixel, y se pinta 17% menos. El octagono cabe
+        // entero dentro del cuadrado, asi que las coordenadas de textura siguen dentro de 0..1.
+        private const int HaloVtx = 18;                 // 6 triangulos en abanico
+        private const float HaloC = 0.41421356f;        // tan(22.5): donde se corta cada esquina
+        private static readonly float[] HaloX = { 1f, HaloC, -HaloC, -1f, -1f, -HaloC, HaloC, 1f };
+        private static readonly float[] HaloY = { -HaloC, -1f, -1f, -HaloC, HaloC, 1f, 1f, HaloC };
+        private readonly D3D9.Vtx[] glowV = new D3D9.Vtx[HaloVtx];
         public void DrawGlow(float cx, float cy, float r, uint argb)
         {
             IntPtr t = uiGlowTex != IntPtr.Zero ? uiGlowTex : glowTex;
             if (!Ok || t == IntPtr.Zero || r < 1f) return;
-            float x0 = cx - r, y0 = cy - r, x1 = cx + r, y1 = cy + r;
-            GV(0, x0, y0, argb, 0f, 0f); GV(1, x1, y0, argb, 1f, 0f); GV(2, x0, y1, argb, 0f, 1f);
-            GV(3, x1, y0, argb, 1f, 0f); GV(4, x1, y1, argb, 1f, 1f); GV(5, x0, y1, argb, 0f, 1f);
-            gpu.DrawStars(glowV, 2, t);   // mismo camino aditivo que las estrellas (2 triangulos)
+            Halo(glowV, 0, cx, cy, r, argb);
+            gpu.DrawStars(glowV, HaloVtx / 3, t);   // mismo camino aditivo que las estrellas
         }
-        private void GV(int i, float x, float y, uint c, float u, float v)
-        { glowV[i].X = x - 0.5f; glowV[i].Y = y - 0.5f; glowV[i].Z = 0f; glowV[i].Rhw = 1f; glowV[i].Color = c; glowV[i].U = u; glowV[i].V = v; }
+        // Escribe UN halo (6 triangulos en abanico) a partir del hueco i del arreglo que se le pase.
+        private static void Halo(D3D9.Vtx[] a, int i, float cx, float cy, float r, uint c)
+        {
+            for (int k = 0; k < 6; k++)                  // abanico desde el vertice 0: (0,k+1,k+2)
+            {
+                Punto(a, i + k * 3 + 0, cx, cy, r, 0, c);
+                Punto(a, i + k * 3 + 1, cx, cy, r, k + 1, c);
+                Punto(a, i + k * 3 + 2, cx, cy, r, k + 2, c);
+            }
+        }
+        private static void Punto(D3D9.Vtx[] a, int i, float cx, float cy, float r, int k, uint c)
+        {
+            float dx = HaloX[k], dy = HaloY[k];
+            GV(a, i, cx + dx * r, cy + dy * r, c, 0.5f + 0.5f * dx, 0.5f + 0.5f * dy);
+        }
+        private static void GV(D3D9.Vtx[] a, int i, float x, float y, uint c, float u, float v)
+        { a[i].X = x - 0.5f; a[i].Y = y - 0.5f; a[i].Z = 0f; a[i].Rhw = 1f; a[i].Color = c; a[i].U = u; a[i].V = v; }
+
+        // MUCHOS halos de UNA sola llamada de dibujo. La aurora son decenas de puntos por cuadro y en Direct3D 9
+        // lo caro no es el relleno sino la LLAMADA: uno por uno serian decenas de DrawPrimitive, cada una con su
+        // cambio de textura y de estado de mezcla (~10 llamadas al driver por halo). Aqui se acumulan todos en el
+        // mismo arreglo y se mandan juntos: mismo dibujo exacto, una sola llamada.
+        private D3D9.Vtx[] glowBatch;
+        private int glowBatchN;
+        public void GlowBatchBegin(int maxHalos)
+        {
+            if (glowBatch == null || glowBatch.Length < maxHalos * HaloVtx) glowBatch = new D3D9.Vtx[maxHalos * HaloVtx];
+            glowBatchN = 0;
+        }
+        public void GlowBatchAdd(float cx, float cy, float r, uint argb)
+        {
+            if (r < 1f || glowBatch == null || (glowBatchN + 1) * HaloVtx > glowBatch.Length) return;
+            Halo(glowBatch, glowBatchN * HaloVtx, cx, cy, r, argb);
+            glowBatchN++;
+        }
+        public void GlowBatchEnd()
+        {
+            IntPtr t = uiGlowTex != IntPtr.Zero ? uiGlowTex : glowTex;
+            if (Ok && t != IntPtr.Zero && glowBatchN > 0) gpu.DrawStars(glowBatch, glowBatchN * (HaloVtx / 3), t);
+            glowBatchN = 0;
+        }
 
         public void Render(int w, int h, float pulse) { if (Begin(w, h, pulse)) End(); }   // solo cielo+estrellas (ventana de prueba)
 
@@ -1059,7 +1127,12 @@ namespace Rocola
             if (GetUiGlows != null)
             {
                 int ng = GetUiGlows(uiGlowBuf);
-                for (int i = 0; i < ng && i < uiGlowBuf.Length; i++) { UiGlow ug = uiGlowBuf[i]; stars.DrawGlow(ug.Cx, ug.Cy, ug.R, ug.Argb); }
+                if (ng > 0)
+                {
+                    stars.GlowBatchBegin(uiGlowBuf.Length);   // los destellos tambien salen de una sola llamada
+                    for (int i = 0; i < ng && i < uiGlowBuf.Length; i++) { UiGlow ug = uiGlowBuf[i]; stars.GlowBatchAdd(ug.Cx, ug.Cy, ug.R, ug.Argb); }
+                    stars.GlowBatchEnd();
+                }
             }
             // Mini-cubo de la barra inferior (gira): cubo GPU, encima de la barra.
             if (cs.Mini.Has)
@@ -1209,14 +1282,24 @@ namespace Rocola
         // Convierte 8 bandas en una franja de luz continua. Dos pasadas: una BRUMA ancha y tenue que da el halo
         // (como el resplandor de una ciudad en el horizonte) y encima la luz principal, mas ajustada. Cada punto
         // es un halo aditivo, la misma tecnica de los destellos del buscador: sin bordes duros por diseno.
+        //
+        // Los dos numeros de puntos son distintos a proposito. La luz lleva 40 porque es la que dibuja la FORMA
+        // (ahi si se nota el detalle). La bruma es un halo enorme y difuso donde cada mancha mide mas de tres
+        // separaciones: con 20 puntos se ve igual (medido: 6 de 255 de diferencia como maximo, invisible) y se
+        // pinta la MITAD de pixeles, que es lo caro de verdad en la maquina modesta. Como la luz se SUMA, la
+        // mitad de manchas necesita el doble de alfa para que la bruma quede con el mismo brillo de siempre.
+        private const int AurNBruma = 20, AurNLuz = 40;
         private void DrawAurora(GpuAurora au)
         {
-            const int N = 40;                       // puntos a lo ancho; el radio los solapa de sobra
             if (au.Alto < 2f || au.Dim <= 0.02f) return;
-            float paso = (float)Width / (N - 1);
+            float paso40 = (float)Width / (AurNLuz - 1);   // los radios van en pixeles, no dependen del numero de puntos
+            stars.GlowBatchBegin(AurNBruma + AurNLuz);      // todo el horizonte en UNA sola llamada de dibujo
             for (int pasada = 0; pasada < 2; pasada++)
             {
                 bool bruma = (pasada == 0);
+                int N = bruma ? AurNBruma : AurNLuz;
+                float paso = (float)Width / (N - 1);
+                float k = bruma ? 42f * (AurNLuz - 1) / (float)(AurNBruma - 1) : 116f;   // compensa la densidad
                 for (int i = 0; i < N; i++)
                 {
                     // posicion continua dentro de las 8 bandas + suavizado: sale una CURVA, no dientes de sierra
@@ -1226,18 +1309,18 @@ namespace Rocola
                     float v = au.B[b0] + (au.B[b0 + 1] - au.B[b0]) * f;
                     if (v <= 0.006f) continue;
                     float h = v * au.Alto;
-                    float r = bruma ? (paso * 3.2f + h * 1.15f) : (paso * 1.5f + h * 0.5f);
+                    float r = bruma ? (paso40 * 3.2f + h * 1.15f) : (paso40 * 1.5f + h * 0.5f);
                     float cy = au.BaseY - h * (bruma ? 0.30f : 0.45f);
-                    float k = bruma ? 42f : 116f;
                     int a = (int)(v * au.Dim * k + 0.5f);
                     if (a < 2) continue; if (a > 255) a = 255;
                     // los picos tiran a blanco: el color del genero se mantiene, pero la cresta brilla
                     uint rr = (au.Rgb >> 16) & 0xFF, gg = (au.Rgb >> 8) & 0xFF, bb = au.Rgb & 0xFF;
                     float w = v * 0.55f;
                     rr = (uint)(rr + (255 - rr) * w); gg = (uint)(gg + (255 - gg) * w); bb = (uint)(bb + (255 - bb) * w);
-                    stars.DrawGlow(i * paso, cy, r, ((uint)a << 24) | (rr << 16) | (gg << 8) | bb);
+                    stars.GlowBatchAdd(i * paso, cy, r, ((uint)a << 24) | (rr << 16) | (gg << 8) | bb);
                 }
             }
+            stars.GlowBatchEnd();
         }
 
         protected override void OnPaint(PaintEventArgs e) { RenderFrame(); }   // WM_PAINT -> dibuja por D3D9
