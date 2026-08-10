@@ -242,10 +242,17 @@ namespace Rocola
                 (float)((-2.0 * cw) / a0), (float)((1 - al) / a0) };
         }
         private float[] kwCoef1, kwCoef2; private float[] kwSt; private int kwRate = 0;   // K-weighting del nivelado (2 biquads/canal, 8 estados)
-        private readonly Dictionary<string, float[]> eqCache = new Dictionary<string, float[]>(StringComparer.OrdinalIgnoreCase);   // ruta -> huella tonal (8 dB rel. a su media)
+        // Huella tonal por cancion: 8 bandas en dB (relativas a la mediana de su cuerpo) + el CORTE en Hz donde
+        // el codec le talo los agudos (0 = todavia no se sabe). El corte es lo que distingue una cancion sana de
+        // una dañada, y decide dos cosas: si sirve para calcular el objetivo, y que bandas suyas tiene sentido
+        // corregir (una banda que el codec borro no se puede subir con EQ: ahi no hay musica que subir).
+        private const int EqLen = 9, EqCut = 8;
+        private readonly Dictionary<string, float[]> eqCache = new Dictionary<string, float[]>(StringComparer.OrdinalIgnoreCase);
         private float[] eqAvg = null;              // curva PROMEDIO de la biblioteca (el objetivo); null hasta tener 10 canciones medidas
         private float eqAmount = 0f;               // fuerza del EQ automatico 0..1 (perilla en Ctrl+F3; "eq_auto=" en config); 0 = apagado
+        private float[] eqNetIn, eqNetOut, eqMeta; // buffers del modelo del EQ (reusados: cero basura por cancion)
         private string eqMeasPath = null;          // cancion cuya huella se esta midiendo (null = no medir)
+        private float eqMeasCut = 0f;              // corte detectado en la cancion que suena (0 = aun no se sabe)
         private double[] eqMeasSum = new double[8]; private long eqMeasN = 0;   // energia acumulada por banda (hilo de audio)
         private float[][] eqMeasCoef = null; private float[] eqMeasSt = null; private int eqMeasRate = 0;   // bandpass de la medicion (mezcla mono; 4 estados por banda)
         private const long EqMinFrames = 882000;   // ~20 s de musica: con menos, la huella no es confiable
@@ -554,6 +561,7 @@ namespace Rocola
             LoadStats();   // estadisticas guardadas de sesiones anteriores (base de "Lo mas sonado")
             ProbeAudioTier();    // requisitos de maquina para el NIVEL 2 de audio (antes de leer dsee= de config)
             NeuralEnv.TryLoad(Path.Combine(Application.StartupPath, "rocola_ia.bin"));   // IA propia (si hay modelo entrenado junto al exe)
+            EqNet.TryLoad(Path.Combine(Application.StartupPath, "rocola_eq_ia.bin"));    // IA del EQ automatico (objetivo por cancion)
             LoadConfigPrefs();   // preferencias: render GPU/CPU + carpetas de musica adicionales (Ctrl+F2)
             if (iaVivo) IaEnsureMotor();   // IA en vivo encendida -> arranca el motor OCULTO (sin terminal que cuidar)
             LoadLoudCache();     // sonoridad medida por cancion (para nivelar el volumen de todas)
@@ -806,10 +814,11 @@ namespace Rocola
                     int bar = line.IndexOf('|');
                     if (bar <= 0 || bar >= line.Length - 1) continue;
                     string[] parts = line.Substring(0, bar).Split(';');
-                    if (parts.Length != 8) continue;
-                    float[] c = new float[8]; bool ok = true;
-                    for (int b = 0; b < 8; b++)
+                    if (parts.Length != 8 && parts.Length != EqLen) continue;   // 8 = formato viejo (sin corte)
+                    float[] c = new float[EqLen]; bool ok = true;
+                    for (int b = 0; b < parts.Length; b++)
                         if (!float.TryParse(parts[b], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out c[b])) { ok = false; break; }
+                    if (parts.Length == 8) c[EqCut] = 0f;   // huella vieja: corte desconocido, se sabra al re-analizarla
                     if (ok) eqCache[Pool(line.Substring(bar + 1))] = c;
                 }
             }
@@ -831,7 +840,7 @@ namespace Rocola
                     for (int i = 0; i < snap.Count; i++)
                     {
                         float[] c = snap[i].Value;
-                        for (int b = 0; b < 8; b++)
+                        for (int b = 0; b < EqLen; b++)
                         { if (b > 0) sb.Append(';'); sb.Append(c[b].ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)); }
                         sb.Append('|').Append(snap[i].Key).Append("\r\n");
                     }
@@ -841,16 +850,31 @@ namespace Rocola
             });
         }
 
-        // El OBJETIVO del EQ automatico: la curva promedio de TODA la biblioteca medida (se auto-calibra;
-        // sin curvas magicas inventadas). Con menos de 10 canciones medidas aun no hay objetivo confiable.
+        // El OBJETIVO del EQ automatico. Antes era el promedio de TODA la biblioteca, y ahi estaba el problema:
+        // si la mitad de tus canciones son MP3 flojos sin agudos, ese promedio viene apagado y el EQ estaba
+        // empujando a TODAS hacia esa mediocridad, incluso a las que llegaron completas. Ahora el objetivo se
+        // saca SOLO de las canciones sanas -las que conservan sus agudos, que es justo lo que el DSEE ya sabe
+        // detectar-, asi que el objetivo pasa de ser "el promedio de lo que tengo" a "como suena lo que esta
+        // bien grabado". Si no hay suficientes sanas (biblioteca entera de baja calidad) se usan todas, como antes.
+        private const float EqSanaHz = 19300f;   // mismo umbral con el que el DSEE da una cancion por completa
+        private int eqAvgSanas;                  // cuantas entraron en el promedio (se muestra en Ctrl+F3)
+        private bool eqAvgSoloSanas;
         private void RecomputeEqAvg()
         {
-            if (eqCache.Count < 10) { eqAvg = null; return; }
-            float[] avg = new float[8];
+            if (eqCache.Count < 10) { eqAvg = null; eqAvgSanas = 0; return; }
+            float[] avg = new float[8]; int n = 0;
             foreach (KeyValuePair<string, float[]> kv in eqCache)
-                for (int b = 0; b < 8; b++) avg[b] += kv.Value[b];
-            for (int b = 0; b < 8; b++) avg[b] /= eqCache.Count;
-            eqAvg = avg;
+                if (kv.Value[EqCut] >= EqSanaHz) { for (int b = 0; b < 8; b++) avg[b] += kv.Value[b]; n++; }
+            eqAvgSoloSanas = (n >= 10);
+            if (!eqAvgSoloSanas)   // aun no hay bastantes sanas medidas: se usa todo, como se hacia antes
+            {
+                for (int b = 0; b < 8; b++) avg[b] = 0f;
+                n = 0;
+                foreach (KeyValuePair<string, float[]> kv in eqCache) { for (int b = 0; b < 8; b++) avg[b] += kv.Value[b]; n++; }
+            }
+            if (n < 10) { eqAvg = null; eqAvgSanas = 0; return; }
+            for (int b = 0; b < 8; b++) avg[b] /= n;
+            eqAvg = avg; eqAvgSanas = n;
         }
 
         // Correccion en dB por banda para una cancion (o null si apagado / aun sin huella / sin objetivo).
@@ -861,13 +885,47 @@ namespace Rocola
             if (eqAmount <= 0.001f || path == null || eqAvg == null) return null;
             float[] c;
             if (!eqCache.TryGetValue(path, out c)) return null;
+            // Banda por ENCIMA del acantilado de esta cancion: NUNCA se corrige, y por dos razones distintas
+            // segun el caso. Con el DSEE apagado, ahi el codec no dejo musica: subirla seria subir ruido. Y con
+            // el DSEE encendido tampoco, porque la huella guardada describe el ARCHIVO (donde esa banda esta
+            // vacia) mientras que lo que suena YA lleva los agudos re-creados: corregir con un numero viejo
+            // seria empujar dos veces lo mismo.
+            float corte = c[EqCut];
+            // OBJETIVO POR CANCION. Para el cuerpo (158 Hz - 5.6 kHz) el objetivo sigue siendo el promedio de las
+            // canciones sanas: es el "sonido de la casa". Pero para el grave y los agudos, si hay modelo entrenado,
+            // el objetivo lo dice la IA mirando el cuerpo de ESTA cancion: cuanto grave y cuanto aire tendria una
+            // cancion bien grabada que sonara como esta. Asi una balada de piano y un corrido dejan de ser
+            // empujados hacia la misma curva. Sin modelo, todo sigue como antes (el promedio para las 8 bandas).
+            float[] meta = eqAvg;
+            if (EqNet.Loaded)
+            {
+                float[] ent = eqNetIn ?? (eqNetIn = new float[EqNetIn]);
+                float[] sal = eqNetOut ?? (eqNetOut = new float[EqNetOut]);
+                for (int i = 0; i < EqNetIn; i++) ent[i] = c[i + 1];   // el cuerpo: bandas 1..5
+                if (EqNet.Predict(ent, sal))
+                {
+                    float[] m = eqMeta ?? (eqMeta = new float[8]);
+                    for (int b = 0; b < 8; b++) m[b] = eqAvg[b];
+                    for (int i = 0; i < EqNetOut; i++)
+                    {
+                        float v = sal[i];
+                        // Cinturon de seguridad: por muy convencida que este la red, el objetivo no se aleja mas
+                        // de 6 dB del promedio de la biblioteca. Un modelo mal entrenado no puede desmadrar el EQ.
+                        float lim = eqAvg[EqNetSalida[i]];
+                        if (v > lim + 6f) v = lim + 6f; else if (v < lim - 6f) v = lim - 6f;
+                        m[EqNetSalida[i]] = v;
+                    }
+                    meta = m;
+                }
+            }
             float[] dbs = new float[8]; bool any = false;
             for (int b = 0; b < 8; b++)
             {
                 float corr = 0f;
+                if (corte > 100f && EqCentros[b] > corte) { dbs[b] = 0f; continue; }
                 if (c[b] > -25f)
                 {
-                    corr = eqAvg[b] - c[b];
+                    corr = meta[b] - c[b];
                     if (corr > 4f) corr = 4f; else if (corr < -4f) corr = -4f;
                     corr *= eqAmount;
                 }
@@ -901,7 +959,7 @@ namespace Rocola
             double[] sums = eqMeasSum; long n = eqMeasN;
             eqMeasSum = new double[8]; eqMeasN = 0;
             if (path == null || n < EqMinFrames) return;
-            float[] curve = new float[8];
+            float[] curve = new float[EqLen];
             for (int b = 0; b < 8; b++) curve[b] = (float)(10.0 * Math.Log10(sums[b] / n + 1e-12));
             // referencia = MEDIANA de las bandas del CUERPO (158 Hz - 5.6 kHz): invariante al volumen y
             // ademas inmune a una banda desbocada (un lodo de +8 dB no arrastra la referencia consigo).
@@ -914,8 +972,11 @@ namespace Rocola
             {
                 float maxDelta = 0f;
                 for (int b = 0; b < 8; b++) { curve[b] = prev[b] * 0.5f + curve[b] * 0.5f; float d = Math.Abs(curve[b] - prev[b]); if (d > maxDelta) maxDelta = d; }
-                if (maxDelta < 0.2f) return;   // ya aprendida y estable: no reescribir el archivo (cero churn)
+                if (maxDelta < 0.2f && prev[EqCut] > 0f) return;   // ya aprendida y estable: no reescribir el archivo (cero churn)
             }
+            // CORTE: lo mide el propio DSEE mientras la cancion suena, este encendido o no (el acantilado es del
+            // ARCHIVO, no del efecto). Si no lo supimos esta vez, se conserva el que ya estuviera guardado.
+            curve[EqCut] = (eqMeasCut > 0f) ? eqMeasCut : (had ? prev[EqCut] : 0f);
             eqCache[path] = curve;
             RecomputeEqAvg();
             SaveEqCache();
@@ -1353,7 +1414,12 @@ namespace Rocola
                         lExc.Text = "Realce de brillo (tipo DSEE):  " + tbExc.Value + "%   (el 'aire' que el MP3 apaga; 0 = sin realce)";
                         lUp.Text = "Subir TODO el volumen:  +" + tbUp.Value + " dB";
                         lVid.Text = "Volumen de los videos:  " + tbVid.Value + "%";
-                        lEq.Text = "EQ automatico:  " + tbEq.Value + "%";
+                        // Se ve de donde sale el objetivo del EQ: de las canciones SANAS o, si aun no hay
+                        // bastantes medidas, de todas (que es como funcionaba antes).
+                        lEq.Text = "EQ automatico:  " + tbEq.Value + "%"
+                                 + (eqAvgSanas > 0
+                                    ? ("   (objetivo: " + eqAvgSanas.ToString("#,0") + (eqAvgSoloSanas ? " canciones sanas)" : " canciones, aun sin sanas suficientes)"))
+                                    : "   (aun sin objetivo)");
                         // Se ve la perilla Y lo que le toca a la cancion que suena: asi el ajuste automatico
                         // no es magia invisible, se nota que esta trabajando.
                         int bEfe = (int)Math.Round(tbBass.Value * bassSongFactor);
@@ -2527,13 +2593,25 @@ namespace Rocola
                 SpectralTap hv = null; float[] hvFrame = null, hvFeat = null, hvTgt = null;
                 int hvFill = 0, hvFrames = 0; List<float> hvPairs = null;
                 int hvStride = 1, hvFrameMax = IaFramesPerSong;
+                // El ACANTILADO se mide SIEMPRE, cosechemos o no para la IA. Es el dato que dice si una cancion
+                // llego completa o el codec le talo los agudos, y de eso dependen dos cosas importantes: si sirve
+                // para fijar el objetivo del EQ automatico, y que bandas suyas tiene sentido corregir. Cuesta unas
+                // pocas decenas de FFT por cancion, nada al lado de descomprimirla entera.
+                bool soloCorte = false;
                 // Los dos modos ACUMULAN. Antes bastaba con que el modo automatico hubiera tocado la cancion
                 // (192 cuadros) para que el repaso A FONDO ya no la mirara NUNCA, y se perdian para siempre los
                 // 12x cuadros que ese repaso saca de ella. Ahora se guarda el NIVEL cosechado: el repaso a fondo
                 // vuelve a entrar en las que solo tienen el muestreo y les anade el resto del material.
                 int nivelPrevio; lock (iaDoneLock) { if (!iaDone.TryGetValue(path, out nivelPrevio)) nivelPrevio = 0; }
                 int nivelAhora = aFondo ? 2 : 1;
-                if (iaHarvestOn && nivelPrevio < nivelAhora && !IaBudgetFull())
+                bool cosechar = iaHarvestOn && nivelPrevio < nivelAhora && !IaBudgetFull();
+                if (!cosechar)
+                {
+                    // Solo hace falta el acantilado: se analizan unos pocos cuadros y se para (ni se guardan pares).
+                    try { hv = new SpectralTap(rate, 1); hvFrame = new float[hv.FrameLen]; soloCorte = true; hvFrameMax = IaWarmFrames + 24; }
+                    catch { hv = null; }
+                }
+                if (cosechar)
                 {
                     try
                     {
@@ -2607,7 +2685,8 @@ namespace Rocola
                                     {
                                         hv.AnalyzeFrame(hvFrame, 0);
                                         hvFrames++;
-                                        if (hvFrames > IaWarmFrames && (hvStride == 1 || (hvFrames % hvStride) == 0))   // acantilado ya estabilizado; a fondo, repartido
+                                        if (soloCorte) { }   // solo queriamos el acantilado: nada que emparejar
+                                        else if (hvFrames > IaWarmFrames && (hvStride == 1 || (hvFrames % hvStride) == 0))   // acantilado ya estabilizado; a fondo, repartido
                                             for (int q = 0; q < IaCutsHz.Length; q++)
                                                 if (hv.MakePair(IaCutsHz[q], hvFeat, hvTgt))
                                                 {
@@ -2631,18 +2710,20 @@ namespace Rocola
                 }
                 // Solo las canciones COMPLETAS (sin acantilado, el mismo umbral que usa el DSEE para no tocarlas)
                 // sirven de maestras: en las dañadas los agudos reales ya no existen y no hay nada que enseñar.
-                if (hv != null && hvPairs.Count >= 40 && hv.CutHz >= 19300f)
+                if (hv != null && !soloCorte && hvPairs.Count >= 40 && hv.CutHz >= EqSanaHz)
                 {
                     IaAppendPairs(hvPairs);
                     MarkIaDone(path, nivelAhora);
                 }
+                float corteHz = (hv != null) ? hv.CutHz : 0f;
                 if (nSamp < 40000) return durSec > 0.01f;   // muy poco audio util: al menos queda la duracion
                 rms = (float)Math.Sqrt(sumSq / nSamp);
                 // Huella tonal en dB por banda, referida a la MEDIANA del cuerpo (158 Hz - 5.6 kHz): exactamente
                 // la misma cuenta que hace FinalizeEqMeasure al aprenderla oyendo la cancion.
                 if (bpN >= 40000)
                 {
-                    float[] curve = new float[8];
+                    float[] curve = new float[EqLen];
+                    curve[EqCut] = corteHz;
                     for (int b = 0; b < 8; b++) curve[b] = (float)(10.0 * Math.Log10(bpSum[b] / bpN + 1e-12));
                     float[] cuerpo = { curve[1], curve[2], curve[3], curve[4], curve[5] };
                     Array.Sort(cuerpo);
@@ -5713,6 +5794,7 @@ namespace Rocola
                 curMeasurePath = (normalizeOn && !durCache.ContainsKey(t.Path)) ? t.Path : null;   // ya pre-analizada = medida COMPLETA y fiable: no se vuelve a medir (y se ahorra el K-weighting)
                 curSumSq = 0; curSamples = 0;
                 eqMeasPath = (eqAmount > 0.001f && !durCache.ContainsKey(t.Path)) ? t.Path : null;   // huella tonal: solo si no la trae ya del pre-analisis (que la mide completa)
+                eqMeasCut = 0f;   // el acantilado es de ESTA cancion: se vuelve a medir
                 eqMeasSum = new double[8]; eqMeasN = 0; eqMeasRate = 0;
                 kwRate = 0;   // reinicia el estado del K-weighting: cada cancion mide desde cero (sin cola del filtro anterior)
                 // NIVEL 2 (reconstructor espectral): solo se INSERTA en maquinas que cumplen requisitos; con
@@ -6961,14 +7043,27 @@ namespace Rocola
         // platillos recuperan su brillo real, pasajes oscuros se quedan oscuros. Pesos en rocola_ia.bin junto
         // al exe (formato RIA1); sin archivo, el reconstructor sigue con su curva fija (cero cambio). La
         // inferencia son ~4300 multiplicaciones por ventana (~23ms): costo despreciable hasta en un Atom.
-        private static class NeuralEnv
-        {
-            public static volatile bool Loaded;
-            private static float[][] W, B;            // pesos (fila-mayor) y sesgos por capa
-            private static int[] rOut, cIn;           // dimensiones por capa
-            private static float[] buf1, buf2;        // buffers de trabajo (sin asignar por ventana)
+        // Los dos modelos. El del DSEE re-crea la envolvente de los agudos (28 datos de la ventana -> 12 sub-bandas).
+        // El del EQ mira la parte del espectro que los codecs NO tocan (el cuerpo, 158 Hz - 5.6 kHz) y dice cuanto
+        // grave y cuanto aire tendria una cancion BIEN GRABADA con ese mismo cuerpo: 5 entradas -> 3 salidas.
+        private static readonly RedChica NeuralEnv = new RedChica(28, 12);
+        private static readonly RedChica EqNet = new RedChica(EqNetIn, EqNetOut);
+        private const int EqNetIn = 5, EqNetOut = 3;
+        private static readonly int[] EqNetSalida = { 0, 6, 7 };   // que bandas predice: 50 Hz, 10 kHz y 15.8 kHz
 
-            public static void TryLoad(string path)
+        // Red neuronal chica cargada de un archivo RIA1 (capas de pesos+sesgos, ocultas con tanh y la de salida
+        // lineal). La usan DOS cosas distintas, cada una con su modelo y su contrato de entradas/salidas: el DSEE
+        // para la envolvente de los agudos que re-crea, y el EQ automatico para su objetivo por cancion.
+        private sealed class RedChica
+        {
+            public volatile bool Loaded;
+            private float[][] W, B;            // pesos (fila-mayor) y sesgos por capa
+            private int[] rOut, cIn;           // dimensiones por capa
+            private float[] buf1, buf2;        // buffers de trabajo (sin asignar por ventana)
+            private readonly int nIn, nOut;    // contrato: cuantas entradas y cuantas salidas debe tener el modelo
+            public RedChica(int entradas, int salidas) { nIn = entradas; nOut = salidas; }
+
+            public void TryLoad(string path)
             {
                 try
                 {
@@ -6990,7 +7085,7 @@ namespace Rocola
                         for (int i = 0; i < r; i++) { b[L][i] = BitConverter.ToSingle(d, p); p += 4; }
                         ro[L] = r; ci[L] = c; if (r > maxDim) maxDim = r; if (c > maxDim) maxDim = c;
                     }
-                    if (ci[0] != 28 || ro[nl - 1] != 12) return;   // contrato de esta version (RIA1)
+                    if (ci[0] != nIn || ro[nl - 1] != nOut) return;   // el modelo no es para este uso
                     for (int L = 1; L < nl; L++) if (ci[L] != ro[L - 1]) return;
                     buf1 = new float[maxDim]; buf2 = new float[maxDim];
                     W = w; B = b; rOut = ro; cIn = ci;
@@ -7000,7 +7095,7 @@ namespace Rocola
             }
 
             // y = red(x). Capas ocultas con tanh; la de salida lineal. Devuelve false si no hay modelo.
-            public static bool Predict(float[] x, float[] y)
+            public bool Predict(float[] x, float[] y)
             {
                 float[][] w = W, b = B;
                 if (!Loaded || w == null) return false;
