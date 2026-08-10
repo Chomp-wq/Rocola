@@ -293,7 +293,7 @@ namespace Rocola
         private bool sbrForce = false;       // dsee_forzar=1 en config: salta la puerta (para pruebas)
         private string sbrReason = "";       // por que NO esta disponible (se muestra en Ctrl+F3)
         private SpectralTap curSbr;          // tap de la cancion actual (para alternar A/B en vivo)
-        private const float NormMaxBoost = 10.0f;                                             // techo ABSOLUTO de subida (+20 dB): evita amplificar al infinito una cancion casi muda (el tope real lo pone la etapa, ver TierMaxDb)
+        private const float NormMaxBoost = 16.0f;                                             // techo ABSOLUTO de subida (+24 dB): evita amplificar al infinito una cancion casi muda (el tope real lo pone la etapa, ver TierMaxDb)
         private const float NormTargetMin = 0.06f, NormTargetMax = 0.40f;                     // rango del volumen objetivo que ofrece la interfaz (de flojo a muy fuerte)
         private const long NormMinSamples = 800000;                                           // ~9s en estereo 44.1k: minimo para aceptar una medida (si se salta antes, no se guarda)
         // ARCHIVOS INCOMPATIBLES: canciones que NO se pudieron reproducir ni con el lector tolerante (p.ej. MP3
@@ -948,7 +948,10 @@ namespace Rocola
         // para alcanzar al resto, mientras que una que ya viene FUERTE apenas se toca (no necesita ayuda y subirla
         // solo gastaria margen). Umbrales en dBFS de la sonoridad medida (K-weighted), de mas bajita a mas fuerte.
         private static readonly float[] TierDb = { -34f, -28f, -23f, -19f, -15f, -11f };        // puntos de la escalera (dBFS)
-        private static readonly float[] TierMaxDb = { 20f, 16f, 13f, 10f, 7f, 4f };             // tope de subida (dB) en cada punto
+        // Tope de subida (dB) en cada punto. Las canciones BAJITAS se suben mas que antes (una grabacion vieja
+        // y floja se quedaba corta y se oia menos que el resto); de la mitad de la escalera para arriba casi no
+        // cambia nada, porque esas ya llegaban de sobra. Antes: 20/16/13/10/7/4.
+        private static readonly float[] TierMaxDb = { 24f, 19f, 14.5f, 10.8f, 7.4f, 4.3f };
         private static readonly string[] TierName = { "ULTRA BAJA", "BAJA", "MEDIA-BAJA", "MEDIA", "ALTA", "MUY ALTA" };
         // Etapa (0..5) a la que pertenece una sonoridad lineal medida (solo para NOMBRARLA).
         private static int LoudTier(float rms)
@@ -1193,74 +1196,74 @@ namespace Rocola
                     dlg.FormBorderStyle = FormBorderStyle.FixedDialog;
                     dlg.MaximizeBox = false; dlg.MinimizeBox = false; dlg.ShowInTaskbar = false; dlg.ShowIcon = false;
                     dlg.StartPosition = FormStartPosition.CenterParent;
-                    dlg.ClientSize = new Size(600, 718);
+                    dlg.ClientSize = new Size(940, 726);   // ancha de sobra: las etiquetas llevan texto largo (porcentaje + explicacion + ajuste de la cancion)
                     dlg.BackColor = Color.FromArgb(14, 18, 42);
                     dlg.Font = fUi;
 
                     Label info = new Label();
-                    info.SetBounds(16, 12, 568, 60); info.BackColor = Color.Transparent; info.ForeColor = Color.FromArgb(205, 214, 238);
+                    info.SetBounds(16, 12, 908, 44); info.BackColor = Color.Transparent; info.ForeColor = Color.FromArgb(205, 214, 238);
                     info.Text = "Empareja el volumen de las canciones. Las canciones BAJITAS se suben hacia el 'volumen objetivo'; las que ya suenan FUERTE no se bajan. Sube el objetivo si quieres que todo suene mas fuerte.";
 
                     CheckBox chkOn = new CheckBox();
-                    chkOn.SetBounds(16, 78, 568, 26); chkOn.BackColor = Color.Transparent; chkOn.ForeColor = Color.White;
+                    chkOn.SetBounds(16, 66, 908, 26); chkOn.BackColor = Color.Transparent; chkOn.ForeColor = Color.White;
                     chkOn.Font = fBig; chkOn.Text = "Nivelar el volumen (que todas suenen parejo)"; chkOn.Checked = normalizeOn;
 
-                    Label lTarget = new Label(); lTarget.SetBounds(16, 122, 568, 24); lTarget.BackColor = Color.Transparent; lTarget.ForeColor = Color.FromArgb(150, 240, 170);
-                    TrackBar tbTarget = new TrackBar(); tbTarget.SetBounds(12, 148, 576, 45); tbTarget.Minimum = 0; tbTarget.Maximum = 100; tbTarget.TickFrequency = 10;
+                    Label lTarget = new Label(); lTarget.SetBounds(16, 106, 908, 24); lTarget.BackColor = Color.Transparent; lTarget.ForeColor = Color.FromArgb(150, 240, 170);
+                    TrackBar tbTarget = new TrackBar(); tbTarget.SetBounds(12, 132, 916, 45); tbTarget.Minimum = 0; tbTarget.Maximum = 100; tbTarget.TickFrequency = 10;
                     tbTarget.BackColor = dlg.BackColor; tbTarget.Value = TargetToPct(normTarget);
 
-                    Label lStr = new Label(); lStr.SetBounds(16, 208, 568, 24); lStr.BackColor = Color.Transparent; lStr.ForeColor = Color.FromArgb(150, 200, 255);
-                    TrackBar tbStr = new TrackBar(); tbStr.SetBounds(12, 234, 576, 45); tbStr.Minimum = 0; tbStr.Maximum = 100; tbStr.TickFrequency = 10;
+                    Label lStr = new Label(); lStr.SetBounds(16, 188, 908, 24); lStr.BackColor = Color.Transparent; lStr.ForeColor = Color.FromArgb(150, 200, 255);
+                    TrackBar tbStr = new TrackBar(); tbStr.SetBounds(12, 214, 916, 45); tbStr.Minimum = 0; tbStr.Maximum = 100; tbStr.TickFrequency = 10;
                     tbStr.BackColor = dlg.BackColor; tbStr.Value = (int)Math.Round(normStrength * 100f);
 
                     // REALCE DE BRILLO (exciter, tipo DSEE): independiente del nivelado (0 = apagado).
                     // SUBIR TODO: dB extra para ABSOLUTAMENTE todas las canciones (ademas del nivelado, que solo
                     // sube a las bajitas). La rodilla suave del LevelTap redondea los picos: fuerte sin aspereza.
-                    Label lUp = new Label(); lUp.SetBounds(16, 292, 250, 24); lUp.BackColor = Color.Transparent; lUp.ForeColor = Color.FromArgb(255, 170, 150);
-                    TrackBar tbUp = new TrackBar(); tbUp.SetBounds(268, 286, 316, 45); tbUp.Minimum = 0; tbUp.Maximum = 12; tbUp.TickFrequency = 1;
+                    Label lUp = new Label(); lUp.SetBounds(16, 272, 470, 24); lUp.BackColor = Color.Transparent; lUp.ForeColor = Color.FromArgb(255, 170, 150);
+                    TrackBar tbUp = new TrackBar(); tbUp.SetBounds(492, 266, 436, 45); tbUp.Minimum = 0; tbUp.Maximum = 12; tbUp.TickFrequency = 1;
                     tbUp.BackColor = dlg.BackColor; tbUp.Value = (int)Math.Round(masterDb);
 
                     // VOLUMEN DE LOS VIDEOS: el WMP no pasa por la cadena de audio, asi que su volumen se
                     // empareja aqui a mano (y de todos modos sigue a "Subir TODO").
-                    Label lVid = new Label(); lVid.SetBounds(16, 350, 250, 24); lVid.BackColor = Color.Transparent; lVid.ForeColor = Color.FromArgb(150, 225, 235);
-                    TrackBar tbVid = new TrackBar(); tbVid.SetBounds(268, 344, 316, 45); tbVid.Minimum = 0; tbVid.Maximum = 100; tbVid.TickFrequency = 10;
+                    Label lVid = new Label(); lVid.SetBounds(16, 326, 470, 24); lVid.BackColor = Color.Transparent; lVid.ForeColor = Color.FromArgb(150, 225, 235);
+                    TrackBar tbVid = new TrackBar(); tbVid.SetBounds(492, 320, 436, 45); tbVid.Minimum = 0; tbVid.Maximum = 100; tbVid.TickFrequency = 10;
                     tbVid.BackColor = dlg.BackColor; tbVid.Value = videoVol;
 
-                    Label lExc = new Label(); lExc.SetBounds(16, 396, 568, 24); lExc.BackColor = Color.Transparent; lExc.ForeColor = Color.FromArgb(255, 214, 140);
-                    TrackBar tbExc = new TrackBar(); tbExc.SetBounds(12, 422, 576, 45); tbExc.Minimum = 0; tbExc.Maximum = 100; tbExc.TickFrequency = 10;
+                    Label lExc = new Label(); lExc.SetBounds(16, 378, 908, 24); lExc.BackColor = Color.Transparent; lExc.ForeColor = Color.FromArgb(255, 214, 140);
+                    TrackBar tbExc = new TrackBar(); tbExc.SetBounds(12, 404, 916, 45); tbExc.Minimum = 0; tbExc.Maximum = 100; tbExc.TickFrequency = 10;
                     tbExc.BackColor = dlg.BackColor; tbExc.Value = (int)Math.Round(excAmount * 100f);
 
                     // EQ AUTOMATICO: correccion tonal suave por cancion, hacia el promedio de la biblioteca.
-                    Label lEq = new Label(); lEq.SetBounds(16, 478, 250, 24); lEq.BackColor = Color.Transparent; lEq.ForeColor = Color.FromArgb(190, 160, 255);
-                    TrackBar tbEq = new TrackBar(); tbEq.SetBounds(268, 472, 316, 45); tbEq.Minimum = 0; tbEq.Maximum = 100; tbEq.TickFrequency = 10;
+                    Label lEq = new Label(); lEq.SetBounds(16, 462, 470, 24); lEq.BackColor = Color.Transparent; lEq.ForeColor = Color.FromArgb(190, 160, 255);
+                    TrackBar tbEq = new TrackBar(); tbEq.SetBounds(492, 456, 436, 45); tbEq.Minimum = 0; tbEq.Maximum = 100; tbEq.TickFrequency = 10;
                     // BAJO PSICOACUSTICO: la mitad que le faltaba a la cadena (arriba el realce de agudos, aqui el grave).
-                    Label lBass = new Label(); lBass.SetBounds(16, 526, 250, 24); lBass.BackColor = Color.Transparent; lBass.ForeColor = Color.FromArgb(255, 180, 120);
-                    TrackBar tbBass = new TrackBar(); tbBass.SetBounds(268, 520, 316, 45); tbBass.Minimum = 0; tbBass.Maximum = 100; tbBass.TickFrequency = 10;
+                    Label lBass = new Label(); lBass.SetBounds(16, 516, 470, 24); lBass.BackColor = Color.Transparent; lBass.ForeColor = Color.FromArgb(255, 180, 120);
+                    TrackBar tbBass = new TrackBar(); tbBass.SetBounds(492, 510, 436, 45); tbBass.Minimum = 0; tbBass.Maximum = 100; tbBass.TickFrequency = 10;
                     tbBass.Value = (int)Math.Round(bassAmount * 100f);
                     tbEq.BackColor = dlg.BackColor; tbEq.Value = (int)Math.Round(eqAmount * 100f);
 
                     // NIVEL 2: reconstructor espectral (solo maquinas que cumplen requisitos; ver ProbeAudioTier)
                     CheckBox chkSbr = new CheckBox();
-                    chkSbr.SetBounds(16, 572, 568, 24); chkSbr.BackColor = Color.Transparent; chkSbr.ForeColor = Color.FromArgb(190, 225, 255);
+                    chkSbr.SetBounds(16, 568, 908, 24); chkSbr.BackColor = Color.Transparent; chkSbr.ForeColor = Color.FromArgb(190, 225, 255);
                     chkSbr.Text = "Reconstruir agudos perdidos (DSEE espectral)  -  EXPERIMENTAL";
                     chkSbr.Checked = sbrOn && sbrAllowed; chkSbr.Enabled = sbrAllowed;
-                    Label lSbrInfo = new Label(); lSbrInfo.SetBounds(35, 596, 549, 18); lSbrInfo.BackColor = Color.Transparent;
+                    Label lSbrInfo = new Label(); lSbrInfo.SetBounds(35, 592, 889, 18); lSbrInfo.BackColor = Color.Transparent;
                     lSbrInfo.ForeColor = sbrAllowed ? Color.FromArgb(150, 160, 190) : Color.FromArgb(200, 150, 120);
                     lSbrInfo.Text = sbrAllowed
                         ? (NeuralEnv.Loaded ? "Re-crea agudos con IA PROPIA (rocola_ia.bin, entrenada con tu musica)."
                                             : "Re-crea la banda que el codec corto (transposicion espectral, experimental).")
                         : "NO disponible en este equipo: " + sbrReason;
 
-                    Label hint = new Label(); hint.SetBounds(16, 616, 568, 34); hint.BackColor = Color.Transparent; hint.ForeColor = Color.FromArgb(160, 170, 200);
+                    Label hint = new Label(); hint.SetBounds(16, 614, 908, 34); hint.BackColor = Color.Transparent; hint.ForeColor = Color.FromArgb(160, 170, 200);
                     // ENTRENAMIENTO A FONDO: barra de avance de la tanda en curso (visible solo mientras corre).
                     ProgressBar pbTrain = new ProgressBar();
-                    pbTrain.SetBounds(16, 650, 568, 14); pbTrain.Minimum = 0; pbTrain.Maximum = 1000; pbTrain.Visible = false;
+                    pbTrain.SetBounds(16, 652, 908, 14); pbTrain.Minimum = 0; pbTrain.Maximum = 1000; pbTrain.Visible = false;
                     // El texto lo rellena updateLabels (lleva el avance del pre-analisis y la etapa de la cancion).
 
                     Button bReset = new Button(), bOk = new Button(), bTrain = new Button();
-                    bReset.Text = "Recomendado"; bReset.SetBounds(16, 670, 150, 38);
-                    bOk.Text = "Listo"; bOk.SetBounds(488, 670, 96, 38);
-                    bTrain.SetBounds(180, 670, 292, 38);
+                    bReset.Text = "Recomendado"; bReset.SetBounds(16, 674, 170, 38);
+                    bOk.Text = "Listo"; bOk.SetBounds(812, 674, 112, 38);
+                    bTrain.SetBounds(200, 674, 596, 38);
                     Button[] bs = { bReset, bOk, bTrain };
                     for (int i = 0; i < bs.Length; i++) { bs[i].FlatStyle = FlatStyle.Flat; bs[i].FlatAppearance.BorderColor = Color.FromArgb(90, 110, 170); bs[i].BackColor = Color.FromArgb(34, 44, 86); bs[i].ForeColor = Color.White; }
 
@@ -3393,7 +3396,7 @@ namespace Rocola
 
         private void ChangeLetter(int dir)
         {
-            if (GotoLetter(dir, true)) { page = 0; selAlbumIndex = 0; RefreshAlbums(); }   // REGRESAR+izq/der: las letras CICLAN
+            if (GotoLetter(dir, true)) { page = 0; selAlbumIndex = 0; RefreshAlbums(); DeslizaPagina(dir); }   // REGRESAR+izq/der: las letras CICLAN
         }
 
         private void EnterAlbum(Album a)
@@ -3589,9 +3592,44 @@ namespace Rocola
             g.Has = true; g.B = specVis;
             g.BaseY = BotStripTop(h) + 6f;
             g.Alto = h * 0.30f * auroraAmount;
-            g.Rgb = (uint)(SkyColor2(bgAccent).ToArgb() & 0x00FFFFFF);   // el mismo color con que ya se tine el cielo
+            // DOS COLORES, no uno. Antes la aurora se pintaba con el MISMO color del cielo de abajo, asi que no
+            // se despegaba: en vez de una luz encima del horizonte se veia una mancha del mismo tono, plana.
+            // Ahora los graves salen en un tono y los agudos en otro girado en la rueda de color, y cada punto
+            // mezcla el suyo segun donde este: los colores se funden a lo largo del horizonte en vez de ser todos
+            // iguales. Los dos salen del color del genero, asi que sigue combinando con el cielo.
+            Color baseCol = SkyColor2(bgAccent);
+            g.Rgb = (uint)(GiraTono(baseCol, -28f, 1.00f).ToArgb() & 0x00FFFFFF);    // extremo GRAVE (izquierda)
+            g.Rgb2 = (uint)(GiraTono(baseCol, 70f, 0.90f).ToArgb() & 0x00FFFFFF);    // extremo AGUDO (derecha)
             g.Dim = bgDim;
             return g;
+        }
+
+        // Gira el TONO de un color (grados en la rueda de color) y le escala el brillo. Se usa una vez por cuadro
+        // para los dos extremos de la aurora, asi que el costo es nulo.
+        private static Color GiraTono(Color c, float grados, float brillo)
+        {
+            float r = c.R / 255f, g = c.G / 255f, b = c.B / 255f;
+            float mx = Math.Max(r, Math.Max(g, b)), mn = Math.Min(r, Math.Min(g, b));
+            float v = mx, d = mx - mn;
+            float sat = (mx <= 0.0001f) ? 0f : d / mx;
+            float hue = 0f;
+            if (d > 0.0001f)
+            {
+                if (mx == r) hue = 60f * (((g - b) / d) % 6f);
+                else if (mx == g) hue = 60f * ((b - r) / d + 2f);
+                else hue = 60f * ((r - g) / d + 4f);
+            }
+            hue += grados; while (hue < 0f) hue += 360f; while (hue >= 360f) hue -= 360f;
+            v *= brillo; if (v > 1f) v = 1f;
+            float cc = v * sat, x = cc * (1f - Math.Abs((hue / 60f) % 2f - 1f)), m = v - cc;
+            float rr, gg, bb;
+            if (hue < 60f) { rr = cc; gg = x; bb = 0f; }
+            else if (hue < 120f) { rr = x; gg = cc; bb = 0f; }
+            else if (hue < 180f) { rr = 0f; gg = cc; bb = x; }
+            else if (hue < 240f) { rr = 0f; gg = x; bb = cc; }
+            else if (hue < 300f) { rr = x; gg = 0f; bb = cc; }
+            else { rr = cc; gg = 0f; bb = x; }
+            return Color.FromArgb((int)((rr + m) * 255f + 0.5f), (int)((gg + m) * 255f + 0.5f), (int)((bb + m) * 255f + 0.5f));
         }
 
         private GpuTrans BuildTransState()
