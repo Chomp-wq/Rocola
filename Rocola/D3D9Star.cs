@@ -456,19 +456,22 @@ namespace Rocola
             gpu.DrawStars(glowV, HaloVtx / 3, t);   // mismo camino aditivo que las estrellas
         }
         // Escribe UN halo (6 triangulos en abanico) a partir del hueco i del arreglo que se le pase.
-        private static void Halo(D3D9.Vtx[] a, int i, float cx, float cy, float r, uint c)
+        private static void Halo(D3D9.Vtx[] a, int i, float cx, float cy, float r, uint c) { Halo(a, i, cx, cy, r, r, c); }
+        // Con radios distintos a lo ancho y a lo alto sale una ELIPSE. Una luz de horizonte tiene que ser ancha
+        // y baja: si se dibuja redonda, sube tanto como se extiende y acaba brillando a media pantalla.
+        private static void Halo(D3D9.Vtx[] a, int i, float cx, float cy, float rx, float ry, uint c)
         {
             for (int k = 0; k < 6; k++)                  // abanico desde el vertice 0: (0,k+1,k+2)
             {
-                Punto(a, i + k * 3 + 0, cx, cy, r, 0, c);
-                Punto(a, i + k * 3 + 1, cx, cy, r, k + 1, c);
-                Punto(a, i + k * 3 + 2, cx, cy, r, k + 2, c);
+                Punto(a, i + k * 3 + 0, cx, cy, rx, ry, 0, c);
+                Punto(a, i + k * 3 + 1, cx, cy, rx, ry, k + 1, c);
+                Punto(a, i + k * 3 + 2, cx, cy, rx, ry, k + 2, c);
             }
         }
-        private static void Punto(D3D9.Vtx[] a, int i, float cx, float cy, float r, int k, uint c)
+        private static void Punto(D3D9.Vtx[] a, int i, float cx, float cy, float rx, float ry, int k, uint c)
         {
             float dx = HaloX[k], dy = HaloY[k];
-            GV(a, i, cx + dx * r, cy + dy * r, c, 0.5f + 0.5f * dx, 0.5f + 0.5f * dy);
+            GV(a, i, cx + dx * rx, cy + dy * ry, c, 0.5f + 0.5f * dx, 0.5f + 0.5f * dy);
         }
         private static void GV(D3D9.Vtx[] a, int i, float x, float y, uint c, float u, float v)
         { a[i].X = x - 0.5f; a[i].Y = y - 0.5f; a[i].Z = 0f; a[i].Rhw = 1f; a[i].Color = c; a[i].U = u; a[i].V = v; }
@@ -484,10 +487,11 @@ namespace Rocola
             if (glowBatch == null || glowBatch.Length < maxHalos * HaloVtx) glowBatch = new D3D9.Vtx[maxHalos * HaloVtx];
             glowBatchN = 0;
         }
-        public void GlowBatchAdd(float cx, float cy, float r, uint argb)
+        public void GlowBatchAdd(float cx, float cy, float r, uint argb) { GlowBatchAdd(cx, cy, r, r, argb); }
+        public void GlowBatchAdd(float cx, float cy, float rx, float ry, uint argb)
         {
-            if (r < 1f || glowBatch == null || (glowBatchN + 1) * HaloVtx > glowBatch.Length) return;
-            Halo(glowBatch, glowBatchN * HaloVtx, cx, cy, r, argb);
+            if (rx < 1f || ry < 1f || glowBatch == null || (glowBatchN + 1) * HaloVtx > glowBatch.Length) return;
+            Halo(glowBatch, glowBatchN * HaloVtx, cx, cy, rx, ry, argb);
             glowBatchN++;
         }
         public void GlowBatchEnd()
@@ -1332,7 +1336,7 @@ namespace Rocola
         private const int AurNBruma = 20, AurNLuz = 40;
         // BRILLO. Bajado otra vez: la intensidad ya no se cuenta subiendo el brillo -eso quemaba el centro- sino
         // con el TONO (ver TonoPorNivel), asi que el brillo puede quedarse tranquilo y solo poner la presencia.
-        private const float AurBruma = 20f, AurLuz = 55f;
+        private const float AurBruma = 26f, AurLuz = 68f;   // la elipse concentra la luz en menos alto, asi que admite un poco mas
 
         // ESCALERA DE TONOS: aqui esta lo que cambia como se lee la aurora. La intensidad NO se dibuja subiendo
         // el brillo hacia el BLANCO -eso lava el color y quema el centro, que era el problema- sino recorriendo
@@ -1387,8 +1391,16 @@ namespace Rocola
                     float v = au.B[b0] + (au.B[b0 + 1] - au.B[b0]) * f;
                     if (v <= 0.006f) continue;
                     float h = v * au.Alto;
-                    float r = bruma ? (paso40 * 3.2f + h * 1.15f) : (paso40 * 1.5f + h * 0.5f);
-                    float cy = au.BaseY - h * (bruma ? 0.30f : 0.45f);
+                    // RADIO CONSTANTE. Antes el radio crecia con la altura de la banda, asi que cada punto
+                    // era de un tamano distinto y al sumarse quedaba GRUMOSO: manchones donde coincidian los
+                    // grandes y huecos donde no. Con todos del mismo tamano la suma sale pareja y lo unico que
+                    // cambia de banda a banda es el brillo y la altura del centro, que es lo que se quiere ver.
+                    float rx = bruma ? (paso40 * 3.4f) : (paso40 * 1.7f);
+                    // ANCHA Y BAJA. Un halo redondo sube tanto como se extiende y acaba brillando a media
+                    // pantalla; una luz de horizonte tiene que quedarse pegada abajo. De paso se pinta menos
+                    // de la mitad de pixeles que antes.
+                    float ry = rx * (bruma ? 0.46f : 0.40f);
+                    float cy = au.BaseY - h * (bruma ? 0.62f : 0.78f);   // la ALTURA es lo unico que cambia de banda a banda: ese es el dibujo
                     int a = (int)(v * au.Dim * k + 0.5f);
                     if (a < 2) continue; if (a > 255) a = 255;
                     // COLOR EN DOS PASOS:
@@ -1401,7 +1413,7 @@ namespace Rocola
                     uint r2 = (au.Rgb2 >> 16) & 0xFF, g2 = (au.Rgb2 >> 8) & 0xFF, b2 = au.Rgb2 & 0xFF;
                     float rr = r1 + (r2 - (float)r1) * fx, gg = g1 + (g2 - (float)g1) * fx, bb = b1 + (b2 - (float)b1) * fx;
                     TonoPorNivel(ref rr, ref gg, ref bb, v);
-                    stars.GlowBatchAdd(i * paso, cy, r, ((uint)a << 24) | ((uint)rr << 16) | ((uint)gg << 8) | (uint)bb);
+                    stars.GlowBatchAdd(i * paso, cy, rx, ry, ((uint)a << 24) | ((uint)rr << 16) | ((uint)gg << 8) | (uint)bb);
                 }
             }
             stars.GlowBatchEnd();

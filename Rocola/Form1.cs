@@ -133,6 +133,8 @@ namespace Rocola
         private readonly float[] specNow = new float[SpecBands];   // rms por banda que YA toca oirse
 #if ROCOLA_GPU
         private readonly float[] specVis = new float[SpecBands];   // lo que se dibuja: sube al instante, baja suave
+        private readonly float[] specPiso = new float[SpecBands];   // piso movil por banda (referencia del golpe)
+        private readonly float[] specGolpe = new float[SpecBands];  // cuanto sobresale cada banda AHORA sobre su piso
 #endif
         private float auroraAmount = 0.55f;            // "espectro=" en config (0 = apagada)
         // ¿Hace falta analizar el espectro? Es el 90% del coste del analisis de audio, asi que cuando nadie
@@ -3753,21 +3755,44 @@ namespace Rocola
         // - La ventana de dB puede ser FIJA porque la biblioteca ya viene nivelada: una cancion bajita y una
         //   fuerte llegan aqui al mismo volumen, asi que la aurora luce igual de viva en las dos.
         // - Sube al instante y baja despacio: asi marca el golpe y no tiembla.
+        // Por que casi no se movia: dibujaba el NIVEL de cada banda, y el nivel de una cancion es practicamente
+        // constante de principio a fin (para eso la rocola las nivela). O sea que el fondo se quedaba en la misma
+        // forma toda la cancion y no se distinguia de un fondo fijo. Las estrellas si se mueven porque no miran el
+        // nivel: miran cuanto SOBRESALE del momento anterior, que es lo que uno oye como ritmo.
+        //
+        // Ahora cada banda hace las dos cosas: un CUERPO estable (el nivel, para que la forma del fondo diga de que
+        // va la cancion) y encima un GOLPE que sube cuando esa banda pega por encima de su propio promedio. El
+        // golpe es la mitad de la altura, asi que el fondo respira de verdad con la musica sin volverse nervioso.
         private void AvanzaAurora()
         {
             for (int b = 0; b < SpecBands; b++)
             {
                 float rms = specNow[b];
-                float v = 0f;
+                float cuerpo = 0f;
                 if (rms > 1e-6f)
                 {
                     float db = (float)(20.0 * Math.Log10(rms)) + SpecTilt[b];
-                    v = (db - SpecPisoDb) / SpecRangoDb;
-                    if (v < 0f) v = 0f; else if (v > 1f) v = 1f;
-                    v *= v * (3f - 2f * v);   // suavizado: aplana el ruido de fondo y realza los picos
+                    cuerpo = (db - SpecPisoDb) / SpecRangoDb;
+                    if (cuerpo < 0f) cuerpo = 0f; else if (cuerpo > 1f) cuerpo = 1f;
+                    cuerpo *= cuerpo * (3f - 2f * cuerpo);   // suavizado: aplana el ruido de fondo y realza los picos
                 }
+                // PISO MOVIL de la banda (~0.9 s): lo que esta banda ha venido sonando ultimamente.
+                float piso = specPiso[b];
+                piso += (rms - piso) * 0.045f;
+                specPiso[b] = piso;
+                // GOLPE: cuanto sobresale AHORA por encima de ese piso. Ataque instantaneo, caida rapida.
+                float golpe = 0f;
+                if (rms > piso * 1.18f + 0.0008f)
+                {
+                    golpe = (rms - piso) * 9f;
+                    if (golpe > 1f) golpe = 1f;
+                }
+                float gp = specGolpe[b];
+                specGolpe[b] = (golpe > gp) ? golpe : gp * 0.80f;   // ~0.25 s de caida a 24 cuadros/s
+                float v = cuerpo * 0.55f + specGolpe[b] * cuerpo * 0.45f;   // el golpe solo luce donde ya hay banda
+                if (v > 1f) v = 1f;
                 float prev = specVis[b];
-                specVis[b] = (v > prev) ? v : prev + (v - prev) * 0.16f;   // instantaneo al subir, ~0.3 s al bajar
+                specVis[b] = (v > prev) ? v : prev + (v - prev) * 0.22f;   // sube al instante, baja en ~0.2 s
             }
         }
 
