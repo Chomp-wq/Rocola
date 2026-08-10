@@ -239,17 +239,21 @@ namespace Rocola
                 (float)((-2.0 * cw) / a0), (float)((1 - al) / a0) };
         }
         private float[] kwCoef1, kwCoef2; private float[] kwSt; private int kwRate = 0;   // K-weighting del nivelado (2 biquads/canal, 8 estados)
-        // Huella tonal por cancion: 8 bandas en dB (relativas a la mediana de su cuerpo) + el CORTE en Hz donde
-        // el codec le talo los agudos (0 = todavia no se sabe). El corte es lo que distingue una cancion sana de
-        // una dañada, y decide dos cosas: si sirve para calcular el objetivo, y que bandas suyas tiene sentido
-        // corregir (una banda que el codec borro no se puede subir con EQ: ahi no hay musica que subir).
-        private const int EqLen = 9, EqCut = 8;
+        // FICHA de cada cancion: 8 bandas de huella tonal en dB (relativas a la mediana de su cuerpo) y tres
+        // datos de CALIDAD que salen del mismo analisis y antes se tiraban:
+        //   [8] corte de ARRIBA (Hz): donde el codec le talo los agudos. Distingue una cancion sana de una
+        //       dañada; decide si sirve para fijar el objetivo del EQ y que bandas tiene sentido corregirle.
+        //   [9] RECORTE (0..1): que parte de la cancion viene con los picos aplastados desde la masterizacion.
+        //   [10] corte de ABAJO (Hz): donde empieza a haber grave de verdad. Una grabacion vieja cortada en
+        //       80 Hz necesita mas ayuda del bajo psicoacustico que una que baja a 30.
+        // 0 = todavia no se sabe. Ninguno cuesta un analisis aparte: salen del recorrido que ya se hacia.
+        private const int EqLen = 11, EqCut = 8, EqClip = 9, EqCutLo = 10;
         private readonly Dictionary<string, float[]> eqCache = new Dictionary<string, float[]>(StringComparer.OrdinalIgnoreCase);
         private float[] eqAvg = null;              // curva PROMEDIO de la biblioteca (el objetivo); null hasta tener 10 canciones medidas
         private float eqAmount = 0f;               // fuerza del EQ automatico 0..1 (perilla en Ctrl+F3; "eq_auto=" en config); 0 = apagado
         private float[] eqNetIn, eqNetOut, eqMeta; // buffers del modelo del EQ (reusados: cero basura por cancion)
         private string eqMeasPath = null;          // cancion cuya huella se esta midiendo (null = no medir)
-        private float eqMeasCut = 0f;              // corte detectado en la cancion que suena (0 = aun no se sabe)
+        private float eqMeasCut = 0f, eqMeasCutLo = 0f;   // cortes (arriba y abajo) de la cancion que suena (0 = aun no se sabe)
         private double[] eqMeasSum = new double[8]; private long eqMeasN = 0;   // energia acumulada por banda (hilo de audio)
         private float[][] eqMeasCoef = null; private float[] eqMeasSt = null; private int eqMeasRate = 0;   // bandpass de la medicion (mezcla mono; 4 estados por banda)
         private const long EqMinFrames = 882000;   // ~20 s de musica: con menos, la huella no es confiable
@@ -776,11 +780,11 @@ namespace Rocola
                     int bar = line.IndexOf('|');
                     if (bar <= 0 || bar >= line.Length - 1) continue;
                     string[] parts = line.Substring(0, bar).Split(';');
-                    if (parts.Length != 8 && parts.Length != EqLen) continue;   // 8 = formato viejo (sin corte)
+                    if (parts.Length < 8 || parts.Length > EqLen) continue;   // 8 y 9 son formatos viejos
                     float[] c = new float[EqLen]; bool ok = true;
                     for (int b = 0; b < parts.Length; b++)
                         if (!float.TryParse(parts[b], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out c[b])) { ok = false; break; }
-                    if (parts.Length == 8) c[EqCut] = 0f;   // huella vieja: corte desconocido, se sabra al re-analizarla
+                    for (int b = parts.Length; b < EqLen; b++) c[b] = 0f;   // ficha vieja: lo que falte queda "sin saber"
                     if (ok) eqCache[Pool(line.Substring(bar + 1))] = c;
                 }
             }
@@ -906,12 +910,99 @@ namespace Rocola
         // Sin huella todavia (cancion nueva) o con menos de 10 canciones medidas: 1, o sea como toda la vida.
         private float BassFactorFor(string path)
         {
-            if (path == null || eqAvg == null) return 1f;
+            float[] c = null;
+            if (path != null) eqCache.TryGetValue(path, out c);
+            float f = 1f;
+            if (c != null && c.Length >= EqLen && eqAvg != null && c[0] > -25f && c[1] > -25f)
+            {
+                float rel = (c[0] - eqAvg[0]) - (c[1] - eqAvg[1]);   // dB de grave profundo DE MAS que la cancion tipica
+                f = Clampf(1f + rel / 12f, 0.45f, 1.55f);
+            }
+            // Y ademas: si la GRABACION viene cortada por abajo (muchas viejas no tienen nada bajo 80 Hz), ese
+            // grave no esta en el archivo y ninguna bocina lo va a sacar. Ahi el bajo psicoacustico es lo unico
+            // que puede devolver la sensacion de fondo, asi que se le da mas. Una que baja a 30 Hz necesita menos.
+            if (c != null && c.Length >= EqLen && c[EqCutLo] > 10f)
+                f *= Clampf(0.90f + (c[EqCutLo] - 40f) / 110f, 0.90f, 1.35f);
+            return Clampf(f, 0.40f, 1.70f);
+        }
+
+        // CUANTO realce de brillo le toca a ESTA cancion. El EQ no puede devolver una banda que el codec borro
+        // -ahi no hay musica que subir-, pero el realce SI: fabrica armonicos a partir de lo que aun queda, asi
+        // que cae justo donde el EQ no llega. Por eso una cancion dañada recibe mas realce y una completa menos:
+        // esa ya trae su aire de verdad y no hace falta inventarselo.
+        private float ExciteFactorFor(string path)
+        {
             float[] c;
-            if (!eqCache.TryGetValue(path, out c) || c == null || c.Length < 2) return 1f;
-            if (c[0] <= -25f || c[1] <= -25f) return 1f;   // banda sin contenido medible: no arriesgar
-            float rel = (c[0] - eqAvg[0]) - (c[1] - eqAvg[1]);   // dB de grave profundo DE MAS que la cancion tipica
-            return Clampf(1f + rel / 12f, 0.45f, 1.55f);
+            if (path == null || !eqCache.TryGetValue(path, out c) || c == null || c.Length < EqLen) return 1f;
+            float corte = c[EqCut];
+            if (corte <= 100f) return 1f;   // aun sin medir: como siempre
+            return Clampf(1.45f - (corte - 15000f) / 6000f, 0.75f, 1.45f);
+        }
+        private float ExciteAmountFor(string path) { return Clampf(excAmount * ExciteFactorFor(path), 0f, 1f); }
+
+        // ¿Vale la pena poner el des-recorte en esta cancion? Solo si de verdad viene con picos aplastados. Una
+        // cancion aun sin medir se trata como sospechosa (mas vale ponerlo). El umbral es bajo a proposito: con
+        // una de cada diez mil muestras recortadas ya se oye la aspereza en un pasaje fuerte.
+        private bool DeclipVale(string path)
+        {
+            float[] c;
+            if (path == null || !eqCache.TryGetValue(path, out c) || c == null || c.Length < EqLen) return true;
+            if (c[EqCut] <= 100f) return true;   // ficha vieja o sin analizar: no se sabe, se pone
+            return c[EqClip] > 0.0001f;
+        }
+
+        // ---- CALIDAD DE LA BIBLIOTECA (lo que el analisis ya sabe y antes no se veia) ----
+        // Reparte las canciones medidas en tres cajones segun donde el codec les corto los agudos, y cuenta
+        // aparte las que vienen recortadas de masterizacion. Sirve para saber que vale la pena volver a
+        // conseguir en buena calidad.
+        private const float CalBuenaHz = 19300f, CalMediaHz = 16500f;
+        private void CalidadResumen(out int buenas, out int medias, out int pobres, out int recortadas, out int sinMedir)
+        {
+            buenas = medias = pobres = recortadas = sinMedir = 0;
+            foreach (KeyValuePair<string, float[]> kv in eqCache)
+            {
+                float[] c = kv.Value;
+                if (c == null || c.Length < EqLen || c[EqCut] <= 100f) { sinMedir++; continue; }
+                if (c[EqCut] >= CalBuenaHz) buenas++;
+                else if (c[EqCut] >= CalMediaHz) medias++;
+                else pobres++;
+                if (c[EqClip] > 0.001f) recortadas++;
+            }
+        }
+
+        // Escribe el informe: las peores primero, para ir directo a lo que conviene reemplazar.
+        private string CalidadFile() { return Path.Combine(Application.StartupPath, "rocola_calidad.txt"); }
+        private void EscribeInformeCalidad()
+        {
+            try
+            {
+                List<KeyValuePair<string, float[]>> lista = new List<KeyValuePair<string, float[]>>();
+                foreach (KeyValuePair<string, float[]> kv in eqCache)
+                    if (kv.Value != null && kv.Value.Length >= EqLen && kv.Value[EqCut] > 100f) lista.Add(kv);
+                if (lista.Count == 0) return;
+                lista.Sort(delegate (KeyValuePair<string, float[]> x, KeyValuePair<string, float[]> y)
+                { return x.Value[EqCut].CompareTo(y.Value[EqCut]); });
+                int buenas, medias, pobres, recortadas, sinMedir;
+                CalidadResumen(out buenas, out medias, out pobres, out recortadas, out sinMedir);
+                StringBuilder sb = new StringBuilder(lista.Count * 80 + 512);
+                sb.Append("CALIDAD DE LA BIBLIOTECA  -  ").Append(DateTime.Now.ToString("yyyy-MM-dd HH:mm")).Append("\r\n");
+                sb.Append("Las peores van primero: son las que mas conviene volver a conseguir en buena calidad.\r\n");
+                sb.Append("\r\n  COMPLETAS (WAV o 320k): ").Append(buenas.ToString("#,0"));
+                sb.Append("\r\n  ACEPTABLES (~192-256k): ").Append(medias.ToString("#,0"));
+                sb.Append("\r\n  POBRES (128k o menos):  ").Append(pobres.ToString("#,0"));
+                sb.Append("\r\n  Con picos recortados de origen: ").Append(recortadas.ToString("#,0"));
+                sb.Append("\r\n  Aun sin medir: ").Append(sinMedir.ToString("#,0"));
+                sb.Append("\r\n\r\ncorte   recorte  archivo\r\n");
+                for (int i = 0; i < lista.Count; i++)
+                {
+                    float[] c = lista[i].Value;
+                    sb.Append((c[EqCut] / 1000f).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)).Append(" kHz  ");
+                    sb.Append((c[EqClip] * 100f).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)).Append("%   ");
+                    sb.Append(lista[i].Key).Append("\r\n");
+                }
+                File.WriteAllText(CalidadFile(), sb.ToString());
+            }
+            catch { }
         }
 
         // Cierra la medicion de huella tonal de la cancion que acaba de sonar (audio ya detenido).
@@ -939,6 +1030,8 @@ namespace Rocola
             // CORTE: lo mide el propio DSEE mientras la cancion suena, este encendido o no (el acantilado es del
             // ARCHIVO, no del efecto). Si no lo supimos esta vez, se conserva el que ya estuviera guardado.
             curve[EqCut] = (eqMeasCut > 0f) ? eqMeasCut : (had ? prev[EqCut] : 0f);
+            curve[EqCutLo] = (eqMeasCutLo > 0f) ? eqMeasCutLo : (had ? prev[EqCutLo] : 0f);
+            curve[EqClip] = had ? prev[EqClip] : 0f;   // el recorte solo lo mide el pre-analisis (aqui ya viene reparado)
             eqCache[path] = curve;
             RecomputeEqAvg();
             SaveEqCache();
@@ -1070,7 +1163,7 @@ namespace Rocola
         // Aplica el nivelado a la cancion que suena AHORA (para oir el cambio al instante mientras se ajusta en Ctrl+F3).
         private void ApplyNormNow()
         {
-            LevelTap t = curTap; if (t != null && nowPlaying != null && nowPlaying.Song != null) { t.Gain = NormGainFor(nowPlaying.Song.Path); t.Excite = excAmount; t.Master = MasterLin(); t.EqDb = EqCorrFor(nowPlaying.Song.Path); }
+            LevelTap t = curTap; if (t != null && nowPlaying != null && nowPlaying.Song != null) { t.Gain = NormGainFor(nowPlaying.Song.Path); t.Excite = ExciteAmountFor(nowPlaying.Song.Path); t.Master = MasterLin(); t.EqDb = EqCorrFor(nowPlaying.Song.Path); }
             DeepBassProvider bp = curBass; if (bp != null) bp.Amount = BassAmountNow();   // bajo psicoacustico: al instante, ya ajustado a la cancion
             SpectralTap sp = curSbr; if (sp != null) sp.Active = sbrOn;   // reconstruccion espectral: alterna EN VIVO (A/B desde Ctrl+F3)
         }
@@ -1256,7 +1349,7 @@ namespace Rocola
                     dlg.FormBorderStyle = FormBorderStyle.FixedDialog;
                     dlg.MaximizeBox = false; dlg.MinimizeBox = false; dlg.ShowInTaskbar = false; dlg.ShowIcon = false;
                     dlg.StartPosition = FormStartPosition.CenterParent;
-                    dlg.ClientSize = new Size(940, 726);   // ancha de sobra: las etiquetas llevan texto largo (porcentaje + explicacion + ajuste de la cancion)
+                    dlg.ClientSize = new Size(940, 740);   // ancha de sobra: las etiquetas llevan texto largo (porcentaje + explicacion + ajuste de la cancion)
                     dlg.BackColor = Color.FromArgb(14, 18, 42);
                     dlg.Font = fUi;
 
@@ -1314,16 +1407,18 @@ namespace Rocola
                                             : "Re-crea la banda que el codec corto (transposicion espectral, experimental).")
                         : "NO disponible en este equipo: " + sbrReason;
 
-                    Label hint = new Label(); hint.SetBounds(16, 614, 908, 34); hint.BackColor = Color.Transparent; hint.ForeColor = Color.FromArgb(160, 170, 200);
+                    Label lCal = new Label(); lCal.SetBounds(16, 610, 908, 20); lCal.BackColor = Color.Transparent; lCal.ForeColor = Color.FromArgb(150, 205, 235);
+                    EscribeInformeCalidad();   // el detalle, cancion por cancion, queda en un archivo junto al programa
+                    Label hint = new Label(); hint.SetBounds(16, 632, 908, 34); hint.BackColor = Color.Transparent; hint.ForeColor = Color.FromArgb(160, 170, 200);
                     // ENTRENAMIENTO A FONDO: barra de avance de la tanda en curso (visible solo mientras corre).
                     ProgressBar pbTrain = new ProgressBar();
-                    pbTrain.SetBounds(16, 652, 908, 14); pbTrain.Minimum = 0; pbTrain.Maximum = 1000; pbTrain.Visible = false;
+                    pbTrain.SetBounds(16, 668, 908, 14); pbTrain.Minimum = 0; pbTrain.Maximum = 1000; pbTrain.Visible = false;
                     // El texto lo rellena updateLabels (lleva el avance del pre-analisis y la etapa de la cancion).
 
                     Button bReset = new Button(), bOk = new Button(), bTrain = new Button();
-                    bReset.Text = "Recomendado"; bReset.SetBounds(16, 674, 170, 38);
-                    bOk.Text = "Listo"; bOk.SetBounds(812, 674, 112, 38);
-                    bTrain.SetBounds(200, 674, 596, 38);
+                    bReset.Text = "Recomendado"; bReset.SetBounds(16, 688, 170, 38);
+                    bOk.Text = "Listo"; bOk.SetBounds(812, 688, 112, 38);
+                    bTrain.SetBounds(200, 688, 596, 38);
                     Button[] bs = { bReset, bOk, bTrain };
                     for (int i = 0; i < bs.Length; i++) { bs[i].FlatStyle = FlatStyle.Flat; bs[i].FlatAppearance.BorderColor = Color.FromArgb(90, 110, 170); bs[i].BackColor = Color.FromArgb(34, 44, 86); bs[i].ForeColor = Color.White; }
 
@@ -1375,6 +1470,17 @@ namespace Rocola
                                + (iaHarvestOn ? ("   Material para la IA: " + IaInfoText() + ".") : "")
                                + (durScanLeft > 0 ? ("   Duraciones: faltan " + durScanLeft.ToString("#,0") + ".") : "")
                                + (etapa.Length > 0 ? ("   Esta cancion: " + etapa + ".") : ""));
+                        // CALIDAD: lo que el analisis ya sabia y no se veia por ningun lado.
+                        {
+                            int cb, cm, cp, cr, cs2;
+                            CalidadResumen(out cb, out cm, out cp, out cr, out cs2);
+                            lCal.Text = (cb + cm + cp > 0)
+                                ? ("Calidad de la biblioteca:   " + cb.ToString("#,0") + " completas   |   "
+                                   + cm.ToString("#,0") + " aceptables   |   " + cp.ToString("#,0") + " pobres"
+                                   + (cr > 0 ? ("   |   " + cr.ToString("#,0") + " con picos recortados") : "")
+                                   + "        (detalle en rocola_calidad.txt)")
+                                : "Calidad de la biblioteca: aun sin medir (deja correr el pre-analisis).";
+                        }
                         pintaTrain();
                         bool en = chkOn.Checked;
                         tbTarget.Enabled = en; tbStr.Enabled = en;
@@ -1412,7 +1518,7 @@ namespace Rocola
                     dlg.Controls.Add(lEq); dlg.Controls.Add(tbEq);
                     dlg.Controls.Add(lBass); dlg.Controls.Add(tbBass);
                     dlg.Controls.Add(chkSbr); dlg.Controls.Add(lSbrInfo);
-                    dlg.Controls.Add(hint); dlg.Controls.Add(pbTrain);
+                    dlg.Controls.Add(lCal); dlg.Controls.Add(hint); dlg.Controls.Add(pbTrain);
                     dlg.Controls.Add(bReset); dlg.Controls.Add(bTrain); dlg.Controls.Add(bOk);
                     // El boton enciende/apaga el modo a fondo. Al encenderlo se relanza el pre-analisis con TODA
                     // la biblioteca; al apagarlo, la tanda en curso se corta y vuelve el ritmo normal (que seguira
@@ -2463,6 +2569,9 @@ namespace Rocola
                 float[] st = new float[ch * 8];
                 float[] buf = new float[4096 * ch];
                 double sumSq = 0; long nSamp = 0;
+                // RECORTE DE ORIGEN: muestras pegadas al techo digital en rachas de 3 o mas. No es distorsion
+                // que metamos nosotros: viene asi masterizada. Se cuenta aqui, en el recorrido que ya se hacia.
+                long clipN = 0; int[] clipRun = new int[ch];
                 float[][] bp = new float[8][]; float[] bpSt = new float[8 * 4];   // huella tonal: bandpass por banda
                 for (int b = 0; b < 8; b++) bp[b] = EqBpf(EqCentros[b], rate);
                 double[] bpSum = new double[8]; long bpN = 0;
@@ -2583,6 +2692,9 @@ namespace Rocola
                                 float y2 = c2[0]*y1 + c2[1]*st[b+4] + c2[2]*st[b+5] - c2[3]*st[b+6] - c2[4]*st[b+7];
                                 st[b+5]=st[b+4]; st[b+4]=y1; st[b+7]=st[b+6]; st[b+6]=y2;
                                 sumSq += y2 * y2; nSamp++;
+                                float ax = x < 0f ? -x : x;
+                                if (ax >= 0.985f) { clipRun[c]++; if (clipRun[c] == 3) clipN += 3; else if (clipRun[c] > 3) clipN++; }
+                                else clipRun[c] = 0;
                             }
                         }
                     }
@@ -2595,6 +2707,8 @@ namespace Rocola
                     MarkIaDone(path, nivelAhora);
                 }
                 float corteHz = (hv != null) ? hv.CutHz : 0f;
+                float corteLo = (hv != null) ? hv.CutLoHz : 0f;
+                float recorte = (nSamp > 0) ? (float)((double)clipN / nSamp) : 0f;
                 if (nSamp < 40000) return durSec > 0.01f;   // muy poco audio util: al menos queda la duracion
                 rms = (float)Math.Sqrt(sumSq / nSamp);
                 // Huella tonal en dB por banda, referida a la MEDIANA del cuerpo (158 Hz - 5.6 kHz): exactamente
@@ -2602,7 +2716,7 @@ namespace Rocola
                 if (bpN >= 40000)
                 {
                     float[] curve = new float[EqLen];
-                    curve[EqCut] = corteHz;
+                    curve[EqCut] = corteHz; curve[EqClip] = recorte; curve[EqCutLo] = corteLo;
                     for (int b = 0; b < 8; b++) curve[b] = (float)(10.0 * Math.Log10(bpSum[b] / bpN + 1e-12));
                     float[] cuerpo = { curve[1], curve[2], curve[3], curve[4], curve[5] };
                     Array.Sort(cuerpo);
@@ -5478,12 +5592,15 @@ namespace Rocola
                 // NIVEL 2 (reconstructor espectral): solo se INSERTA en maquinas que cumplen requisitos; con
                 // Active=false es un pase directo (costo ~cero). Ctrl+F3 lo alterna EN VIVO para comparar A/B.
                 NAudio.Wave.ISampleProvider chain = reader;
-                if (declipOn) chain = new DeclipProvider(chain);   // DES-RECORTE: repara picos aplastados de origen (antes de medir y de DSEE)
+                // DES-RECORTE: repara picos aplastados de origen (antes de medir y de DSEE). Ya sabemos, cancion
+                // por cancion, si de verdad viene recortada; en las que NO -que son la mayoria- ni se pone en la
+                // cadena: se ahorra su trabajo y su retardo de ~1.5 ms. Si aun no esta medida, se pone por si acaso.
+                if (declipOn && DeclipVale(t.Path)) chain = new DeclipProvider(chain);
                 if (sbrAllowed) { curSbr = new SpectralTap(chain); curSbr.Active = sbrOn; chain = curSbr; }
                 else curSbr = null;
                 LevelTap tap = new LevelTap(chain, this);
                 tap.Gain = NormGainFor(t.Path);
-                tap.Excite = excAmount;   // realce de agudos (exciter, tipo DSEE): se aplica DESPUES de nivelar
+                tap.Excite = ExciteAmountFor(t.Path);   // realce de agudos: mas a las dañadas, menos a las que ya traen su aire
                 tap.Master = MasterLin();  // SUBIR TODO: los dB extra de Ctrl+F3 (con rodilla suave anti-distorsion)
                 tap.EqDb = EqCorrFor(t.Path);      // EQ automatico: correccion aprendida (null la 1a vez que suena)
                 curTap = tap;   // referencia para ajustar la ganancia en vivo (Ctrl+F3)
@@ -6591,7 +6708,7 @@ namespace Rocola
             }
             if (letterBar.Visible) { letterBar.Phase = phase; if (!albumGpuBg) letterBar.Invalidate(); }   // 24fps (CPU); en GPU el pulso de la letra es un halo por quad (FillUiGlows): la textura NO se rehace
             TickMejorada(albumGpuBg);   // brillo del letrero MEJORADA (dorado, DSEE espectral)
-            { SpectralTap sp0 = curSbr; if (sp0 != null && sp0.CutHz > 0f) eqMeasCut = sp0.CutHz; }   // acantilado de la cancion que suena
+            { SpectralTap sp0 = curSbr; if (sp0 != null && sp0.CutHz > 0f) { eqMeasCut = sp0.CutHz; eqMeasCutLo = sp0.CutLoHz; } }   // acantilados de la cancion que suena
             if (albumView.Visible && !albumGpuBg) { albumView.Phase = phase; albumView.PulseLo = levLo; albumView.PulseMid = levMid; albumView.PulseHi = levHi; albumView.AnimTick(fullFrame || transitioning); }
 #if ROCOLA_GPU
             else if (albumView.Visible && albumGpuBg) { albumView.Phase = phase; albumView.StepSpinGpu(); }   // el giro avanza aunque el fondo+cubos los pinte la GPU (sin repintar por CPU)
@@ -6876,6 +6993,7 @@ namespace Rocola
             }
             public int FrameLen { get { return Frame; } }
             public float CutHz { get { return cutHz; } }   // acantilado detectado hasta ahora (0 = aun sin medir)
+            public float CutLoHz { get { return cutLoHz; } }   // por ABAJO: donde la grabacion deja de tener grave (0 = sin medir)
 
             // Analiza UN cuadro (Frame muestras de UN canal) y actualiza el acantilado. Igual que en vivo.
             public void AnalyzeFrame(float[] mono, int off)
@@ -6962,6 +7080,25 @@ namespace Rocola
                 }
                 if (found <= 0f) found = 9000f;                  // nada vivo arriba de 9k: el corte anda por ahi
                 cutHz = (cutHz <= 0f) ? found : (cutHz * 0.85f + found * 0.15f);
+                DetectCliffLow(refE);
+            }
+
+            // El acantilado de ABAJO. Muchas grabaciones viejas (y los vinilos pasados a digital) no tienen NADA
+            // por debajo de 60-80 Hz: ahi el grave profundo no esta en el archivo, no es que la bocina no lo de.
+            // Saber donde empieza a haber grave de verdad sirve para decidir cuanta ayuda necesita cada cancion.
+            private float cutLoHz;
+            private void DetectCliffLow(double refE)
+            {
+                float found = 0f;
+                for (float hz = 25f; hz <= 140f; hz += 5f)
+                {
+                    int a = Hz(hz), b = Hz(hz + 5f); if (b <= a) b = a + 1;
+                    double e = 0; for (int k = a; k < b; k++) e += re[k] * re[k] + im[k] * im[k];
+                    e /= (b - a);
+                    if (e > refE * 0.02) { found = hz; break; }   // aqui ya hay grave de verdad
+                }
+                if (found <= 0f) found = 140f;                   // nada vivo por debajo de 140: grabacion muy flaca
+                cutLoHz = (cutLoHz <= 0f) ? found : (cutLoHz * 0.85f + found * 0.15f);
             }
 
 
