@@ -831,7 +831,7 @@ namespace Rocola
     // AURORA DEL HORIZONTE: el visualizador de espectro, dibujado como parte del CIELO y no como un aparato
     // encima. B = 8 bandas ya suavizadas (0..1, de graves a agudos); se interpolan a lo ancho y se pintan con
     // halos aditivos MUY solapados, que es lo que convierte ocho valores sueltos en una franja continua de luz.
-    internal struct GpuAurora { public bool Has; public float[] B; public float BaseY, Alto; public uint Rgb; public float Dim; }
+    internal struct GpuAurora { public bool Has; public float[] B; public float BaseY, Alto; public uint Rgb, Rgb2; public float Dim; }   // Rgb = extremo grave, Rgb2 = extremo agudo
     // AVISO ("moneda insertada", "cancion agregada"...). Antes era una etiqueta de Windows puesta ENCIMA del
     // panel: cada vez que aparecia o se iba, Windows tenia que recortar el panel a su alrededor y repintar,
     // y ese era un tiron justo en el momento en que el cliente mete la moneda. Ahora es un cuadro mas de la
@@ -1330,6 +1330,9 @@ namespace Rocola
         // pinta la MITAD de pixeles, que es lo caro de verdad en la maquina modesta. Como la luz se SUMA, la
         // mitad de manchas necesita el doble de alfa para que la bruma quede con el mismo brillo de siempre.
         private const int AurNBruma = 20, AurNLuz = 40;
+        // BRILLO. Estaba demasiado fuerte: la aurora se comia la mitad de abajo de la pantalla y lavaba los
+        // colores. Bajado a ~dos tercios; sigue respirando con la musica pero deja ver el cielo por detras.
+        private const float AurBruma = 27f, AurLuz = 76f;
         private void DrawAurora(GpuAurora au)
         {
             if (au.Alto < 2f || au.Dim <= 0.02f) return;
@@ -1340,7 +1343,7 @@ namespace Rocola
                 bool bruma = (pasada == 0);
                 int N = bruma ? AurNBruma : AurNLuz;
                 float paso = (float)Width / (N - 1);
-                float k = bruma ? 42f * (AurNLuz - 1) / (float)(AurNBruma - 1) : 116f;   // compensa la densidad
+                float k = bruma ? AurBruma * (AurNLuz - 1) / (float)(AurNBruma - 1) : AurLuz;   // compensa la densidad
                 for (int i = 0; i < N; i++)
                 {
                     // posicion continua dentro de las 8 bandas + suavizado: sale una CURVA, no dientes de sierra
@@ -1354,11 +1357,16 @@ namespace Rocola
                     float cy = au.BaseY - h * (bruma ? 0.30f : 0.45f);
                     int a = (int)(v * au.Dim * k + 0.5f);
                     if (a < 2) continue; if (a > 255) a = 255;
-                    // los picos tiran a blanco: el color del genero se mantiene, pero la cresta brilla
-                    uint rr = (au.Rgb >> 16) & 0xFF, gg = (au.Rgb >> 8) & 0xFF, bb = au.Rgb & 0xFF;
-                    float w = v * 0.55f;
-                    rr = (uint)(rr + (255 - rr) * w); gg = (uint)(gg + (255 - gg) * w); bb = (uint)(bb + (255 - bb) * w);
-                    stars.GlowBatchAdd(i * paso, cy, r, ((uint)a << 24) | (rr << 16) | (gg << 8) | bb);
+                    // COLOR: se mezcla el del extremo grave con el del agudo segun donde caiga este punto, asi el
+                    // horizonte va cambiando de tono de un lado a otro y los colores se funden entre ellos en vez
+                    // de ser todos el mismo. Las crestas tiran un POCO a blanco (antes tanto que se lavaban).
+                    float fx = (float)i / (N - 1);
+                    uint r1 = (au.Rgb >> 16) & 0xFF, g1 = (au.Rgb >> 8) & 0xFF, b1 = au.Rgb & 0xFF;
+                    uint r2 = (au.Rgb2 >> 16) & 0xFF, g2 = (au.Rgb2 >> 8) & 0xFF, b2 = au.Rgb2 & 0xFF;
+                    float rr = r1 + (r2 - (float)r1) * fx, gg = g1 + (g2 - (float)g1) * fx, bb = b1 + (b2 - (float)b1) * fx;
+                    float w = v * v * 0.22f;   // solo las crestas de verdad se aclaran, y poco
+                    rr += (255f - rr) * w; gg += (255f - gg) * w; bb += (255f - bb) * w;
+                    stars.GlowBatchAdd(i * paso, cy, r, ((uint)a << 24) | ((uint)rr << 16) | ((uint)gg << 8) | (uint)bb);
                 }
             }
             stars.GlowBatchEnd();
