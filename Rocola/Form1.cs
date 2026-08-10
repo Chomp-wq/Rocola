@@ -3110,6 +3110,13 @@ namespace Rocola
                 for (int i = 0; i < pageList.Count; i++) RequestCover(pageList[i], false, true);   // fila ALTA, ya mismo
 
             albumView.Page = pageList;
+#if ROCOLA_GPU
+            // La pagina de AL LADO se va horneando mientras nadie toca nada (ver BakeAhead): al pasar de pagina
+            // las casillas ya estan listas y el deslizamiento se ve fluido LA PRIMERA VEZ, no solo al volver.
+            List<Album> siguiente = new List<Album>();
+            for (int i = start + PageSize; i < start + PageSize * 2 && i < list.Count; i++) siguiente.Add(list[i]);
+            albumView.SetAhead(siguiente);
+#endif
             albumView.Selected = selAlbumIndex - start;
             albumView.SelAngle = 0;
             albumView.CancelHandoff();   // cambio de pagina/letra: cancela cualquier giro de relevo en curso
@@ -3461,19 +3468,29 @@ namespace Rocola
         {
             int total = CurrentList().Count;
             int totalPages = Math.Max(1, (total + PageSize - 1) / PageSize);
-            if (page < totalPages - 1) { page++; selAlbumIndex = page * PageSize; RefreshAlbums(); }
-            else if (GotoLetter(1, true)) { page = 0; selAlbumIndex = 0; RefreshAlbums(); }   // ultima pagina de la ultima seccion: CICLA al inicio
+            if (page < totalPages - 1) { page++; selAlbumIndex = page * PageSize; RefreshAlbums(); DeslizaPagina(1); }
+            else if (GotoLetter(1, true)) { page = 0; selAlbumIndex = 0; RefreshAlbums(); DeslizaPagina(1); }   // ultima pagina de la ultima seccion: CICLA al inicio
         }
 
         private void PrevPage()
         {
-            if (page > 0) { page--; selAlbumIndex = page * PageSize; RefreshAlbums(); }
+            if (page > 0) { page--; selAlbumIndex = page * PageSize; RefreshAlbums(); DeslizaPagina(-1); }
             else if (GotoLetter(-1, true))   // primera pagina de la primera seccion: CICLA al final
             {
                 int total = CurrentList().Count;
                 int tp = Math.Max(1, (total + PageSize - 1) / PageSize);
-                page = tp - 1; selAlbumIndex = page * PageSize; RefreshAlbums();
+                page = tp - 1; selAlbumIndex = page * PageSize; RefreshAlbums(); DeslizaPagina(-1);
             }
+        }
+
+        // HOJEO: la pagina nueva entra deslizandose por el lado hacia el que vas. Solo por GPU: las casillas ya
+        // se dibujan cada cuadro, asi que moverlas no cuesta un dibujo mas. Por CPU no se hace (ahi cada cuadro
+        // es repintar de verdad, y eso si costaria).
+        private void DeslizaPagina(int dir)
+        {
+#if ROCOLA_GPU
+            if (gpuEnabled && albumView != null && albumView.Visible) albumView.StartSlide(dir, albumView.Width);
+#endif
         }
 
         // Salta a la letra DISPONIBLE siguiente/anterior. Con 'wrap', al pasar el extremo CICLA al otro
@@ -4389,15 +4406,114 @@ namespace Rocola
         private void ShowToast(string text, Color back)
         {
             toastKind = ToastKind.Other;   // por defecto NO acumulable; moneda/cancion lo re-marcan tras llamar
-            int tw = 380, th = 48;
+            int tw = ToastW, th = ToastH;
+#if ROCOLA_GPU
+            // Con el panel GPU el aviso es un cuadro mas de la GPU, no una etiqueta de Windows encima: entra
+            // deslizandose y se va desvaneciendo, y sobre todo NO obliga a Windows a recortar el panel y
+            // repintarlo (eso era un tiron justo al meter la moneda). Ver HorneaToast/BuildToastState.
+            if (gpuEnabled)
+            {
+                HorneaToast(text, back);
+                if (lblToast.Visible) lblToast.Visible = false;
+                toastTimer.Stop(); toastTimer.Start();   // el temporizador sigue mandando para el aviso del buscador
+                return;
+            }
+#endif
             lblToast.Text = text;
             lblToast.BackColor = back;
+            tw = AnchoToast(text, lblToast.Font);   // misma pastilla que por GPU: se ajusta al texto
             lblToast.SetBounds((ClientSize.Width - tw) / 2, 80, tw, th);
             try { using (GraphicsPath gp = RoundRect(new Rectangle(0, 0, tw, th), 16)) lblToast.Region = new Region(gp); } catch { }  // esquinas redondeadas SIEMPRE
             lblToast.Visible = true;
             lblToast.BringToFront();
             toastTimer.Stop(); toastTimer.Start();
         }
+
+        // El aviso se dibuja SIEMPRE en un bitmap de este tamano (por eso la textura se reusa y no cuesta nada),
+        // pero la pastilla de color se ajusta al texto y va centrada dentro. Antes era fija en 380 y los avisos
+        // largos ("No se pudo abrir el video: credito devuelto") salian cortados.
+        private const int ToastW = 620, ToastH = 48, ToastMinW = 260;
+        // Ancho de la pastilla para ESE texto (acotado): lo usan las dos formas de dibujarla, por GPU y por CPU,
+        // para que se vea igual en las dos.
+        internal static int AnchoToast(string text, Font font)
+        {
+            int w = TextRenderer.MeasureText(text, font).Width + 44;
+            return w < ToastMinW ? ToastMinW : (w > ToastW ? ToastW : w);
+        }
+#if ROCOLA_GPU
+        private Bitmap toastBmp; private int toastVer, toastTick = -1;
+        private const int ToastMs = 1300, ToastInMs = 190, ToastOutMs = 260;   // ToastMs = lo mismo que dura el temporizador
+
+        // Dibuja el aviso en su propio bitmap (se REUSA siempre el mismo: cero basura para el recolector) y le
+        // sube la version, que es lo que hace que la GPU vuelva a subirlo.
+        private void HorneaToast(string text, Color back)
+        {
+            if (toastBmp == null) toastBmp = new Bitmap(ToastW, ToastH, PixelFormat.Format32bppPArgb);
+            PintaToast(toastBmp, text, back, lblToast.Font);
+            toastVer++; toastTick = Environment.TickCount;
+        }
+
+        // El dibujo en si, aparte del estado: asi se puede ver y comprobar sin arrancar la rocola entera.
+        internal static void PintaToast(Bitmap bmp, string text, Color back, Font font)
+        {
+            using (Graphics g = Graphics.FromImage(bmp))
+            {
+                g.Clear(Color.Transparent);
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;   // gris: ClearType deja flecos sobre transparente
+                int tw = AnchoToast(text, font);   // el texto MANDA el ancho de la pastilla
+                int x0 = (ToastW - tw) / 2;
+                using (GraphicsPath gp = RoundRect(new Rectangle(x0, 0, tw, ToastH), 16))
+                {
+                    using (SolidBrush b = new SolidBrush(back)) g.FillPath(b, gp);
+                    using (Pen pe = new Pen(Color.FromArgb(70, 255, 255, 255), 1.5f)) g.DrawPath(pe, gp);   // filo claro: lo despega del fondo
+                }
+                using (SolidBrush b = new SolidBrush(Color.White))
+                using (StringFormat sf = new StringFormat())
+                {
+                    sf.Alignment = StringAlignment.Center; sf.LineAlignment = StringAlignment.Center;
+                    sf.FormatFlags = StringFormatFlags.NoWrap; sf.Trimming = StringTrimming.EllipsisCharacter;
+                    g.DrawString(text, font, b, new RectangleF(x0 + 10, 0, tw - 20, ToastH), sf);
+                }
+            }
+        }
+
+        // CURVA del aviso (funcion pura, para poder comprobarla): baja desde arriba mientras aparece, se queda
+        // quieto, y al final sube un poco mientras se desvanece.
+        internal static void CurvaToast(int dt, out float alpha, out float dy)
+        {
+            alpha = 1f; dy = 0f;
+            if (dt < 0 || dt >= ToastMs) { alpha = 0f; return; }
+            if (dt < ToastInMs)
+            {
+                float q = dt / (float)ToastInMs;
+                float e = 1f - (1f - q) * (1f - q) * (1f - q);   // frenado suave al llegar
+                alpha = e; dy = -30f * (1f - e);
+            }
+            else if (dt > ToastMs - ToastOutMs)
+            {
+                float q = (dt - (ToastMs - ToastOutMs)) / (float)ToastOutMs;
+                alpha = 1f - q; dy = -16f * q;
+            }
+        }
+
+        // Estado del aviso para la GPU: entra deslizandose desde arriba mientras aparece, se queda quieto, y
+        // al final sube un poco mientras se desvanece. El avance va con el reloj, asi que se ve fluido a los
+        // fps que de el equipo (no a los 24 del temporizador).
+        private GpuToast BuildToastState()
+        {
+            GpuToast t = new GpuToast();
+            if (toastTick < 0 || toastBmp == null) return t;
+            int dt = Environment.TickCount - toastTick;
+            if (dt < 0 || dt >= ToastMs) { toastTick = -1; return t; }
+            float a, dy; CurvaToast(dt, out a, out dy);
+            t.Has = true; t.Bmp = toastBmp; t.Ver = toastVer;
+            t.X = (ClientSize.Width - ToastW) * 0.5f;
+            t.Y = 80f + dy;
+            t.Alpha = a;
+            return t;
+        }
+#endif
 
         private static GraphicsPath RoundRect(Rectangle r, int radius)
         {
@@ -6107,6 +6223,7 @@ namespace Rocola
                 gpuPanel.ShowFps = gpuShowFps;
                 gpuPanel.GetPulse = delegate { return audioLevel; };
                 gpuPanel.GetAurora = delegate { return BuildAuroraState(); };   // aurora del horizonte (espectro)
+                gpuPanel.GetToast = delegate { return BuildToastState(); };     // aviso flotante (moneda, cancion agregada...)
                 gpuPanel.GetTrans = delegate { return BuildTransState(); };   // zoom al entrar/salir de un disco
                 gpuPanel.GetWin = delegate { return BuildWinState(); };        // ventana del buscador abriendo/cerrando
                 gpuPanel.GetGrid = albumView.BuildGpuGrid;   // rejilla de discos: cada celda su propio quad con textura cacheada (hojear = elegir texturas + posiciones)
@@ -6132,7 +6249,11 @@ namespace Rocola
                 gpuPanel.Bounds = new Rectangle(0, 0, ClientSize.Width, ClientSize.Height);   // PANTALLA COMPLETA
                 gpuPanel.SkyTop = ToD3D(SkyColor(bgAccent)); gpuPanel.SkyMid = ToD3D(SkyColorMid(bgAccent)); gpuPanel.SkyBot = ToD3D(SkyColor2(bgAccent));
                 gpuPanel.Visible = true; gpuPanel.BringToFront();
-                if (gpuPanel.StartGpu()) { gpuEnabled = true; lblGpu.Visible = false; KeepVideoOnTop(); }
+                if (gpuPanel.StartGpu())
+                {
+                    gpuEnabled = true; lblGpu.Visible = false; KeepVideoOnTop();
+                    gpuPanel.PrecalientaAnimaciones(ThumbPx, ToastW, ToastH);   // texturas de las animaciones creadas YA, no en la primera que se vea
+                }
                 else { gpuPanel.Visible = false; Diag("render: FALLO el dispositivo D3D9 (sigue CPU)"); if (announceFail) { lblGpu.Text = "GPU: fallo el dispositivo (sigue CPU)"; lblGpu.Visible = true; lblGpu.BringToFront(); } }
             }
             else if (!on && gpuEnabled)
@@ -6589,6 +6710,13 @@ namespace Rocola
             if (winMode != 0 && Environment.TickCount - winTick >= WinMs) AbortWinTrans();
 #endif
             DrainCoverTrash();   // libera carátulas expulsadas (seguro: no hay repintado en curso)
+#if ROCOLA_GPU
+            // Con la rocola quieta, se van horneando las casillas de la pagina de al lado: cuando alguien pase
+            // de pagina, ya estan listas y el deslizamiento sale fluido de una. Dos casillas por vuelta y con
+            // tope de 4 ms: si alguien esta usando la rocola en ese momento, no le quita nada.
+            if (gpuEnabled && albumView != null && albumView.Visible && !attractOn && !searchOpen && !videoOn
+                && transMode == 0 && winMode == 0 && !albumView.Sliding) albumView.BakeAhead();
+#endif
             CheckBusinessDayReset();   // al cruzar las 7 AM: reinicia el estado (nada de anoche cruza el corte del dia)
             // VIGIA DEL MOTOR DE IA: si DSEE ULTRA esta activo y el motor no responde (recien arrancado, o se
             // cayo), lo (re)lanza OCULTO. Cada ~10s. Asi el motor va integrado con el release: nunca hay que
@@ -8620,6 +8748,60 @@ namespace Rocola
             }
 
             private const int GridBakeBudget = 6;   // celdas NUEVAS horneadas por cuadro (barrer paginas nuevas sin bajar fps)
+            // HOJEO: la pagina nueva ENTRA deslizandose por el lado hacia el que vas. No cuesta un solo dibujo
+            // mas -las casillas ya se pintan cada cuadro-, solo cambian de sitio; por eso es practicamente gratis.
+            // El avance se calcula EN VIVO con el reloj (no con el temporizador de 24): se ve fluido a los fps
+            // que de el equipo, igual que las demas animaciones de la rocola.
+            public const int SlideMs = 230;
+            private int slideTick = -1; private float slideFrom;
+            public void StartSlide(int dir, int ancho)   // dir: +1 la nueva entra por la derecha, -1 por la izquierda
+            {
+                if (ancho < 8) { slideTick = -1; return; }
+                slideFrom = dir * (float)ancho; slideTick = Environment.TickCount;
+            }
+            public bool Sliding { get { return slideTick >= 0 && Environment.TickCount - slideTick < SlideMs; } }
+            // CURVA del hojeo (funcion pura, para poder comprobarla): devuelve cuanto FALTA por recorrer
+            // (1 = recien empieza, 0 = ya llego) y la opacidad de entrada.
+            internal static float CurvaHojeo(int dt, out float alpha)
+            {
+                alpha = 1f;
+                if (dt < 0 || dt >= SlideMs) return 0f;
+                float t = dt / (float)SlideMs;
+                float e = 1f - (1f - t) * (1f - t) * (1f - t);   // frenado suave al llegar (cubico)
+                alpha = t < 0.45f ? (t / 0.45f) : 1f;
+                return 1f - e;
+            }
+            // Devuelve el desplazamiento de este cuadro y, de paso, el desvanecido de entrada.
+            private float SlideNow(out float alpha)
+            {
+                alpha = 1f;
+                if (slideTick < 0) return 0f;
+                int dt = Environment.TickCount - slideTick;
+                if (dt < 0 || dt >= SlideMs) { slideTick = -1; return 0f; }
+                return slideFrom * CurvaHojeo(dt, out alpha);
+            }
+
+            // PRE-HORNEADO de la pagina de al lado: mientras nadie toca nada, se van dejando listas las casillas
+            // que se veran al pasar de pagina. Asi el hojeo se ve fluido LA PRIMERA VEZ y no solo al volver.
+            public List<Album> Ahead;
+            private int aheadPos;
+            public void SetAhead(List<Album> lista) { Ahead = lista; aheadPos = 0; }
+            public void BakeAhead()
+            {
+                if (Ahead == null || aheadPos >= Ahead.Count) return;
+                int w = Width, h = Height;
+                if (w < 8 || h < 8) return;
+                int cw = w / Cols, ch = h / Rows;
+                if (cw < 4 || ch < 4 || cellCacheW != w || cellCacheH != h) return;   // otro tamano: ya se rehorneara solo
+                int side, labelH, gap; CellMetrics(cw, ch, out side, out labelH, out gap);
+                int budget = 2;   // dos casillas por vuelta (~24 por segundo): invisible y en dos segundos hay pagina
+                int t0 = Environment.TickCount;
+                while (aheadPos < Ahead.Count && budget > 0 && Environment.TickCount - t0 < 4)
+                {
+                    Album a = Ahead[aheadPos++];
+                    PeekOrBakeCell(a, cw, side, labelH, gap, (GetCover != null) ? GetCover(a) : null, ref budget);
+                }
+            }
 
             // Llena 'buf' con las celdas (disco estatico + etiqueta) de la pagina actual, en coords de PANTALLA (el
             // panel GPU es a pantalla completa). Cada celda trae su bitmap ya horneado para que el panel lo suba como
@@ -8635,6 +8817,7 @@ namespace Rocola
                 if (cellCacheW != w || cellCacheH != h) { ClearCellCache(); cellCacheW = w; cellCacheH = h; }   // tamano nuevo: rehornear
                 else if (cellCache.Count > CellCacheCap) ClearCellCache();                                      // limite de memoria (raro)
                 int side, labelH, gap; CellMetrics(cw, ch, out side, out labelH, out gap);
+                float alpha; float dx = SlideNow(out alpha);   // hojeo: desplazamiento y desvanecido de ESTE cuadro
                 int ox = this.Left, oy = this.Top;   // coords de albumView -> pantalla (mismo criterio que los cubos que giran)
                 int budget = GridBakeBudget;
                 int bakeT0 = Environment.TickCount;   // tope de TIEMPO ademas del de cantidad: en el CPU lento de la
@@ -8646,7 +8829,8 @@ namespace Rocola
                     buf[n].Key = CellKey(a);
                     buf[n].Bmp = PeekOrBakeCell(a, cw, side, labelH, gap, (GetCover != null) ? GetCover(a) : null, ref budget);
                     buf[n].Slot = i;
-                    buf[n].X = ox + (i % Cols) * cw; buf[n].Y = oy + area.Y; buf[n].W = cw; buf[n].H = side + gap + labelH;
+                    buf[n].X = ox + (i % Cols) * cw + dx; buf[n].Y = oy + area.Y; buf[n].W = cw; buf[n].H = side + gap + labelH;
+                    buf[n].A = alpha;
                     n++;
                     if (budget < GridBakeBudget && budget > 0 && Environment.TickCount - bakeT0 >= 6) budget = 0;   // ~6ms horneando: el resto al proximo cuadro
                 }

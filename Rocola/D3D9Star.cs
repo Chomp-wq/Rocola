@@ -809,7 +809,7 @@ namespace Rocola
     // Una CELDA de la rejilla de discos para dibujarla como su PROPIO quad con textura (en vez de recomponer una
     // textura a pantalla completa por pagina). Bmp = disco estatico + etiqueta ya horneado (null si aun no listo).
     // Key = Folder (estable) para cachear su textura entre paginas; null = no cachear (discos TOP / sin carpeta).
-    internal struct GpuGridCell { public string Key; public Bitmap Bmp; public int Slot; public float X, Y, W, H; }
+    internal struct GpuGridCell { public string Key; public Bitmap Bmp; public int Slot; public float X, Y, W, H; public float A; }   // A = opacidad (1 = normal; <1 mientras la pagina entra)
     // TRANSICION entre dos CUBOS de la rocola (celda de la rejilla, cubo grande del disco, cubo gigante de la
     // atraccion, cubo del buscador): la portada viaja de uno al otro dibujada ENCIMA de todo, girando, con
     // bamboleo y un destello detras, y se funde al llegar. Se dibuja con el MISMO DrawCube que los demas cubos,
@@ -832,6 +832,12 @@ namespace Rocola
     // encima. B = 8 bandas ya suavizadas (0..1, de graves a agudos); se interpolan a lo ancho y se pintan con
     // halos aditivos MUY solapados, que es lo que convierte ocho valores sueltos en una franja continua de luz.
     internal struct GpuAurora { public bool Has; public float[] B; public float BaseY, Alto; public uint Rgb; public float Dim; }
+    // AVISO ("moneda insertada", "cancion agregada"...). Antes era una etiqueta de Windows puesta ENCIMA del
+    // panel: cada vez que aparecia o se iba, Windows tenia que recortar el panel a su alrededor y repintar,
+    // y ese era un tiron justo en el momento en que el cliente mete la moneda. Ahora es un cuadro mas de la
+    // GPU: entra deslizandose desde arriba y se va desvaneciendo, y no interrumpe nada. Ver = version del
+    // texto (cambia al escribir uno nuevo); asi la textura se re-sube SOLO cuando de verdad cambio.
+    internal struct GpuToast { public bool Has; public Bitmap Bmp; public int Ver; public float X, Y, Alpha; }
     internal delegate int GpuGridFetch(GpuGridCell[] buf);   // llena buf con las celdas de la pagina actual; devuelve cuantas (<= buf.Length)
 
     // -------- Control D3D9 para usar el campo estrellado como FONDO de la vista de discos --------
@@ -857,10 +863,13 @@ namespace Rocola
         private readonly GpuGridCell[] gridBuf = new GpuGridCell[MaxCells];
         private readonly IntPtr[] gridTex = new IntPtr[MaxCells];     // textura resuelta por celda (subida ANTES de Begin, dibujada despues)
         public Func<GpuTrans> GetTrans;                   // portada de la transicion entrar/salir de disco (null = sin animacion)
-        private IntPtr transTex; private Bitmap transLastBmp; private float transU = 1f, transV = 1f;
+        private IntPtr transTex; private Bitmap transLastBmp; private int transBw, transBh; private float transU = 1f, transV = 1f;
         public Func<GpuAurora> GetAurora;                 // aurora del horizonte (espectro); null o Has=false = nada
+        public Func<GpuToast> GetToast;                  // aviso flotante (moneda, cancion agregada...)
         public Func<GpuWin> GetWin;                       // ventana del buscador abriendo/cerrando (null = sin animacion)
-        private IntPtr winTex; private Bitmap winLastBmp; private float winU = 1f, winV = 1f;
+        private IntPtr winTex; private Bitmap winLastBmp; private int winBw, winBh; private float winU = 1f, winV = 1f;
+        private IntPtr toastTex; private int toastVer = -1, toastBw, toastBh; private float toastU = 1f, toastV = 1f;
+        private readonly D3D9.Vtx[] toastQuad = new D3D9.Vtx[6];
         private readonly D3D9.Vtx[] winQuad = new D3D9.Vtx[6];
         private readonly float[] gridU = new float[MaxCells], gridV = new float[MaxCells];
         private int gridN, cellFrame;
@@ -872,6 +881,7 @@ namespace Rocola
         private IntPtr selTexA, selTexB, relTex, miniTex;          // texturas de portada: seleccionada A, fundido B (TOP), relevo, mini-cubo
         private Bitmap selImgA, selImgB, relImg, miniImg;          // ultima portada subida en cada ranura (para re-subir solo al cambiar)
         private float selUA = 1f, selVA = 1f, selUB = 1f, selVB = 1f, relU = 1f, relV = 1f, miniU = 1f, miniV = 1f;
+        private int selBwA, selBhA, selBwB, selBhB, relBw, relBh, miniBw, miniBh;   // tamano ya subido en cada ranura (para reusar la textura)
         // Textura PRINCIPAL de la UI: su alto depende del modo (en navegacion es solo la franja superior,
         // ~7x mas barata de rehacer/subir que la pantalla completa). Se dibuja anclada ARRIBA, a su tamano real.
         private IntPtr uiTex; private int uiVer = -1; private float uiU = 1f, uiV = 1f; private int uiBmpW = -1, uiBmpH = -1;
@@ -962,10 +972,12 @@ namespace Rocola
             if (miniTex != IntPtr.Zero) { D3D9.Release(miniTex); miniTex = IntPtr.Zero; }
             if (transTex != IntPtr.Zero) { D3D9.Release(transTex); transTex = IntPtr.Zero; transLastBmp = null; }
             if (winTex != IntPtr.Zero) { D3D9.Release(winTex); winTex = IntPtr.Zero; winLastBmp = null; }
+            if (toastTex != IntPtr.Zero) { D3D9.Release(toastTex); toastTex = IntPtr.Zero; toastVer = -1; }
             if (uiTex != IntPtr.Zero) { D3D9.Release(uiTex); uiTex = IntPtr.Zero; }
             if (uiBotTex != IntPtr.Zero) { D3D9.Release(uiBotTex); uiBotTex = IntPtr.Zero; }
             if (fpsTex != IntPtr.Zero) { D3D9.Release(fpsTex); fpsTex = IntPtr.Zero; }
             lastContour = null; selImgA = selImgB = relImg = miniImg = null; uiVer = -1; uiBotVer = -1; fpsShown = int.MinValue;
+            selBwA = selBhA = selBwB = selBhB = relBw = relBh = miniBw = miniBh = transBw = transBh = winBw = winBh = 0;   // sin textura no hay tamano subido
             uiBmpW = uiBmpH = -1; uiBotW = uiBotH = -1;   // fuerza recrear las texturas reutilizables tras reiniciar el device
             if (stars != null) { stars.Dispose(); stars = null; }
         }
@@ -983,11 +995,21 @@ namespace Rocola
 
         // Sube la portada como textura SOLO si cambio respecto a la ranura (referencia distinta). Asi el
         // cubo girando no sube nada en la mayoria de cuadros: solo al navegar o al ciclar un disco TOP.
-        private void EnsureCover(ref IntPtr tex, ref Bitmap last, ref float u, ref float v, Bitmap cur)
+        // Sube la portada de una ANIMACION a su textura. Antes DESTRUIA la textura y CREABA una nueva cada vez
+        // que cambiaba la portada, y crear una textura es una peticion al driver que no siempre contesta rapido:
+        // ESE era el tiron de la primera vez que se veia cada animacion (y de cada cambio de portada despues).
+        // Ahora, si la portada nueva mide lo mismo que la anterior -que es SIEMPRE, todas se hornean del mismo
+        // tamano- se reaprovecha la textura y solo se re-copian los pixeles. La rejilla de discos ya lo hacia asi;
+        // las animaciones se habian quedado atras.
+        private void EnsureCover(ref IntPtr tex, ref Bitmap last, ref int bw, ref int bh, ref float u, ref float v, Bitmap cur)
         {
             if (ReferenceEquals(cur, last)) return;
-            if (tex != IntPtr.Zero) { D3D9.Release(tex); tex = IntPtr.Zero; }
-            if (cur != null) { float uu, vv; tex = stars.CreateOverlay(cur, out uu, out vv); u = uu; v = vv; }
+            if (cur == null)
+            {
+                if (tex != IntPtr.Zero) { D3D9.Release(tex); tex = IntPtr.Zero; }
+                bw = bh = 0; last = null; return;
+            }
+            tex = Upload(tex, ref bw, ref bh, cur, out u, out v);   // mismo tamano: reusa. Distinto: recrea (raro).
             last = cur;
         }
 
@@ -1032,18 +1054,21 @@ namespace Rocola
             // Cubos que GIRAN (seleccionado + relevo): suben la PORTADA como textura SOLO cuando cambia
             // (al navegar o al ciclar un disco TOP), no en cada cuadro. El giro luego es solo geometria.
             GpuCubeState cs = (GetCubeState != null) ? GetCubeState() : new GpuCubeState();
-            EnsureCover(ref selTexA, ref selImgA, ref selUA, ref selVA, cs.Sel.CoverA);
-            EnsureCover(ref selTexB, ref selImgB, ref selUB, ref selVB, cs.Sel.CoverB);
-            EnsureCover(ref relTex, ref relImg, ref relU, ref relV, cs.Relay.CoverA);
-            EnsureCover(ref miniTex, ref miniImg, ref miniU, ref miniV, cs.Mini.CoverA);   // mini-cubo de la barra inferior
+            EnsureCover(ref selTexA, ref selImgA, ref selBwA, ref selBhA, ref selUA, ref selVA, cs.Sel.CoverA);
+            EnsureCover(ref selTexB, ref selImgB, ref selBwB, ref selBhB, ref selUB, ref selVB, cs.Sel.CoverB);
+            EnsureCover(ref relTex, ref relImg, ref relBw, ref relBh, ref relU, ref relV, cs.Relay.CoverA);
+            EnsureCover(ref miniTex, ref miniImg, ref miniBw, ref miniBh, ref miniU, ref miniV, cs.Mini.CoverA);   // mini-cubo de la barra inferior
             // ANIMACIONES: sus texturas TAMBIEN se aseguran AQUI, antes de Begin. Crear o bloquear una textura
             // con la escena ya abierta no es valido en Direct3D 9: fallaba en silencio y la portada que viajaba
             // entre cubos no llegaba a dibujarse NUNCA (la del buscador al abrir si, porque esa reusa la textura
             // de la UI, que ya venia subida de antes). Aqui se resuelven; abajo solo se dibujan.
             GpuTrans tr = (GetTrans != null) ? GetTrans() : new GpuTrans();
-            if (tr.Has && tr.Bmp != null) EnsureCover(ref transTex, ref transLastBmp, ref transU, ref transV, tr.Bmp);
+            if (tr.Has && tr.Bmp != null) EnsureCover(ref transTex, ref transLastBmp, ref transBw, ref transBh, ref transU, ref transV, tr.Bmp);
             GpuWin gw = (GetWin != null) ? GetWin() : new GpuWin();
-            if (gw.Has && gw.Bmp != null) EnsureCover(ref winTex, ref winLastBmp, ref winU, ref winV, gw.Bmp);
+            if (gw.Has && gw.Bmp != null) EnsureCover(ref winTex, ref winLastBmp, ref winBw, ref winBh, ref winU, ref winV, gw.Bmp);
+            GpuToast tt = (GetToast != null) ? GetToast() : new GpuToast();
+            if (tt.Has && tt.Bmp != null && tt.Ver != toastVer)   // el bitmap se REUSA (mismo objeto), por eso manda la version
+            { toastTex = Upload(toastTex, ref toastBw, ref toastBh, tt.Bmp, out toastU, out toastV); toastVer = tt.Ver; }
             // Barras (UI) a textura: se re-sube solo cuando cambia algun texto/estado (firma del form), limitada a
             // UNA por franja (heavyGapMs). UiUrgent: al CAMBIAR DE MODO (p.ej. cerrar el buscador) hay que rehacerla
             // en ESTE mismo cuadro, sin esperar franja: si no, se veria la rejilla por los huecos del teclado un instante.
@@ -1086,7 +1111,15 @@ namespace Rocola
             if (ShowAlbum)
                 for (int i = 0; i < gridN; i++)
                     if (gridTex[i] != IntPtr.Zero)
-                    { GpuGridCell c = gridBuf[i]; SetTexQuad(cellQuad, c.X, c.Y, c.X + c.W, c.Y + c.H, gridU[i], gridV[i]); stars.DrawQuad(gridTex[i], cellQuad); }
+                    {
+                        GpuGridCell c = gridBuf[i];
+                        if (c.X + c.W <= 0f || c.X >= Width) continue;   // hojeando: la casilla ya salio de la pantalla, no se pinta
+                        int ca = (c.A >= 1f) ? 255 : (int)(c.A * 255f + 0.5f);
+                        if (ca <= 0) continue;
+                        if (ca >= 255) SetTexQuad(cellQuad, c.X, c.Y, c.X + c.W, c.Y + c.H, gridU[i], gridV[i]);
+                        else SetTexQuadA(cellQuad, c.X, c.Y, c.X + c.W, c.Y + c.H, gridU[i], gridV[i], ((uint)ca << 24) | 0x00FFFFFFu);
+                        stars.DrawQuad(gridTex[i], cellQuad);
+                    }
             if (ShowAlbum && contourTex != IntPtr.Zero && GetContourRect != null)
             {
                 Rectangle r = GetContourRect();
@@ -1146,6 +1179,14 @@ namespace Rocola
                     if (ga > 0) stars.DrawGlow(tr.X + tr.W * 0.5f, tr.Y + tr.H * 0.5f, tr.W * 0.66f, ((uint)ga << 24) | 0x00FFE2A8u);
                 }
                 stars.DrawCube(transTex, transU, transV, tr.X, tr.Y, tr.W, tr.H, tr.Angle, tr.Alpha, tr.Tilt);
+            }
+            // AVISO flotante (moneda, cancion agregada...) por ENCIMA de todo menos el contador de FPS.
+            if (tt.Has && toastTex != IntPtr.Zero && tt.Alpha > 0.004f && tt.Bmp != null)
+            {
+                int ta = (int)(tt.Alpha * 255f + 0.5f); if (ta > 255) ta = 255;
+                SetTexQuadA(toastQuad, tt.X, tt.Y, tt.X + tt.Bmp.Width, tt.Y + tt.Bmp.Height,
+                            toastU, toastV, ((uint)ta << 24) | 0x00FFFFFFu);
+                stars.DrawQuad(toastTex, toastQuad);
             }
             // Contador de FPS (diagnostico) encima de todo, en su textura pequeña. Oculto por defecto (Ctrl+F1).
             if (ShowFps && fpsTex != IntPtr.Zero) { SetTexQuad(fpsQuad, Width - fpsTW - 10, 6, Width - 10, 6 + fpsTH, fpsU, fpsV); stars.DrawQuad(fpsTex, fpsQuad); }
@@ -1321,6 +1362,27 @@ namespace Rocola
                 }
             }
             stars.GlowBatchEnd();
+        }
+
+        // PRE-CALENTADO. Crear una textura es una peticion al driver y no siempre contesta rapido: si la
+        // primera se pide justo cuando arranca una animacion, esa animacion se ve trabada. Aqui se crean de
+        // una vez, mientras la rocola esta arrancando y nadie mira, con el tamano en que SIEMPRE vienen las
+        // portadas y los avisos. De ahi en adelante todas se reaprovechan y ninguna animacion vuelve a pagar.
+        public void PrecalientaAnimaciones(int coverPx, int toastW, int toastH)
+        {
+            if (stars == null || !stars.Ok) return;
+            if (coverPx >= 8 && transTex == IntPtr.Zero)
+            {
+                using (Bitmap b = new Bitmap(coverPx, coverPx, PixelFormat.Format32bppArgb))
+                    transTex = Upload(transTex, ref transBw, ref transBh, b, out transU, out transV);
+                transLastBmp = null;   // no es una portada de verdad: la primera real se sube encima y la reusa
+            }
+            if (toastW >= 8 && toastH >= 8 && toastTex == IntPtr.Zero)
+            {
+                using (Bitmap b = new Bitmap(toastW, toastH, PixelFormat.Format32bppArgb))
+                    toastTex = Upload(toastTex, ref toastBw, ref toastBh, b, out toastU, out toastV);
+                toastVer = -1;
+            }
         }
 
         protected override void OnPaint(PaintEventArgs e) { RenderFrame(); }   // WM_PAINT -> dibuja por D3D9
