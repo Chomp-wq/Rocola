@@ -473,7 +473,7 @@ namespace Rocola
         private static void GV(D3D9.Vtx[] a, int i, float x, float y, uint c, float u, float v)
         { a[i].X = x - 0.5f; a[i].Y = y - 0.5f; a[i].Z = 0f; a[i].Rhw = 1f; a[i].Color = c; a[i].U = u; a[i].V = v; }
 
-        // MUCHOS halos de UNA sola llamada de dibujo. El fondo y los destellos son varios halos por cuadro, y en D3D9
+        // MUCHOS halos de UNA sola llamada de dibujo. La aurora son decenas de puntos por cuadro y en Direct3D 9
         // lo caro no es el relleno sino la LLAMADA: uno por uno serian decenas de DrawPrimitive, cada una con su
         // cambio de textura y de estado de mezcla (~10 llamadas al driver por halo). Aqui se acumulan todos en el
         // mismo arreglo y se mandan juntos: mismo dibujo exacto, una sola llamada.
@@ -831,9 +831,7 @@ namespace Rocola
     // AURORA DEL HORIZONTE: el visualizador de espectro, dibujado como parte del CIELO y no como un aparato
     // encima. B = 8 bandas ya suavizadas (0..1, de graves a agudos); se interpolan a lo ancho y se pintan con
     // halos aditivos MUY solapados, que es lo que convierte ocho valores sueltos en una franja continua de luz.
-    // FONDO REACTIVO: nubes de luz que cruzan el cielo despacio y se hinchan con la musica.
-    internal struct GpuNube { public float X, Y, R; public uint Rgb, Rgb2; public float A; }   // Rgb2 = tono del acompanante
-    internal struct GpuNebula { public bool Has; public GpuNube[] N; public int Count; }
+    internal struct GpuAurora { public bool Has; public float[] B; public float BaseY, Alto; public uint Rgb, Rgb2; public float Dim; }   // Rgb = extremo grave, Rgb2 = extremo agudo
     // AVISO ("moneda insertada", "cancion agregada"...). Antes era una etiqueta de Windows puesta ENCIMA del
     // panel: cada vez que aparecia o se iba, Windows tenia que recortar el panel a su alrededor y repintar,
     // y ese era un tiron justo en el momento en que el cliente mete la moneda. Ahora es un cuadro mas de la
@@ -866,7 +864,7 @@ namespace Rocola
         private readonly IntPtr[] gridTex = new IntPtr[MaxCells];     // textura resuelta por celda (subida ANTES de Begin, dibujada despues)
         public Func<GpuTrans> GetTrans;                   // portada de la transicion entrar/salir de disco (null = sin animacion)
         private IntPtr transTex; private Bitmap transLastBmp; private int transBw, transBh; private float transU = 1f, transV = 1f;
-        public Func<GpuNebula> GetNebula;                // nubes de luz a la deriva; null o Has=false = nada
+        public Func<GpuAurora> GetAurora;                 // aurora del horizonte (espectro); null o Has=false = nada
         public Func<GpuToast> GetToast;                  // aviso flotante (moneda, cancion agregada...)
         public Func<GpuWin> GetWin;                       // ventana del buscador abriendo/cerrando (null = sin animacion)
         private IntPtr winTex; private Bitmap winLastBmp; private int winBw, winBh; private float winU = 1f, winV = 1f;
@@ -1107,7 +1105,7 @@ namespace Rocola
             if (!stars.Begin(Width, Height, pulse)) { System.Threading.Thread.Sleep(5); return; }
             // AURORA: va pegada al cielo, ANTES de la rejilla y los cubos. Asi es fondo de verdad: la musica se
             // ve respirar por detras y las portadas siguen siendo lo que manda en pantalla.
-            if (GetNebula != null) { GpuNebula nb = GetNebula(); if (nb.Has && nb.N != null && nb.Count > 0) DrawNebula(nb); }
+            if (GetAurora != null) { GpuAurora au = GetAurora(); if (au.Has && au.B != null && au.B.Length >= 8) DrawAurora(au); }
             // Rejilla de discos: un quad por celda (textura ya resuelta arriba). Las celdas aun sin textura (recien
             // horneadas o sin presupuesto de subida este cuadro) se saltan y aparecen en los cuadros siguientes.
             if (ShowAlbum)
@@ -1322,32 +1320,89 @@ namespace Rocola
         // 1:1 (los cubos y sobre todo el TEXTO de las etiquetas) se muestrea entre texeles y se ve borrosa.
         private static void SetV(ref D3D9.Vtx vx, float x, float y, float u, float vv) { vx.X = x - 0.5f; vx.Y = y - 0.5f; vx.Z = 0; vx.Rhw = 1; vx.Color = 0xFFFFFFFF; vx.U = u; vx.V = vv; }
 
-        // Dibuja las nubes del fondo. Cada una son DOS halos: uno grande y otro mas chico pegado a un lado, de
-        // un tono ligeramente distinto. Es la diferencia entre una mancha redonda -que se ve como el foco de una
-        // linterna- y algo que parece una nube de verdad: al solaparse desiguales, el color no queda plano y el
-        // contorno deja de ser un circulo. Los dos halos se apagan hacia afuera por su propia textura, asi que no
-        // hay borde que delate el truco. Las ocho piezas van en el MISMO lote: un solo dibujo para todo el fondo.
+        // Convierte 8 bandas en una franja de luz continua. Dos pasadas: una BRUMA ancha y tenue que da el halo
+        // (como el resplandor de una ciudad en el horizonte) y encima la luz principal, mas ajustada. Cada punto
+        // es un halo aditivo, la misma tecnica de los destellos del buscador: sin bordes duros por diseno.
         //
-        // El alfa es contenido a proposito. Lo que hace bonito a esto no es el brillo -eso fue justo lo que fallo
-        // con el espectro del horizonte- sino que se MUEVAN despacio y respiren con la musica. Una nube suave que
-        // cruza el cielo se ve; una mancha fuerte que late en el sitio, molesta.
-        private const float NebAlfa = 135f;         // tope de opacidad del halo grande (0-255), con la musica a tope
-        private const float NebComp = 0.80f;        // ...y del acompanante, en proporcion al grande
-        private void DrawNebula(GpuNebula nb)
+        // Los dos numeros de puntos son distintos a proposito. La luz lleva 40 porque es la que dibuja la FORMA
+        // (ahi si se nota el detalle). La bruma es un halo enorme y difuso donde cada mancha mide mas de tres
+        // separaciones: con 20 puntos se ve igual (medido: 6 de 255 de diferencia como maximo, invisible) y se
+        // pinta la MITAD de pixeles, que es lo caro de verdad en la maquina modesta. Como la luz se SUMA, la
+        // mitad de manchas necesita el doble de alfa para que la bruma quede con el mismo brillo de siempre.
+        private const int AurNBruma = 20, AurNLuz = 40;
+        // BRILLO. Bajado otra vez: la intensidad ya no se cuenta subiendo el brillo -eso quemaba el centro- sino
+        // con el TONO (ver TonoPorNivel), asi que el brillo puede quedarse tranquilo y solo poner la presencia.
+        private const float AurBruma = 20f, AurLuz = 55f;
+
+        // ESCALERA DE TONOS: aqui esta lo que cambia como se lee la aurora. La intensidad NO se dibuja subiendo
+        // el brillo hacia el BLANCO -eso lava el color y quema el centro, que era el problema- sino recorriendo
+        // TONOS DE LA MISMA FAMILIA. Si el genero es morado: lo flojo sale morado oscuro y profundo, lo medio
+        // sale del morado del genero, y lo fuerte sale de un morado claro, casi lila. Nunca se sale de su color.
+        //
+        // La cuenta: al subir la intensidad sube el BRILLO del tono y baja su SATURACION, que es justo lo que
+        // distingue un tono oscuro de uno claro dentro de una misma familia. La saturacion nunca baja del 45%,
+        // que es el seguro para que jamas llegue a blanco.
+        private static void TonoPorNivel(ref float r, ref float g, ref float b, float v)
         {
-            int n = nb.Count; if (n > nb.N.Length) n = nb.N.Length;
-            stars.GlowBatchBegin(n * 2);
-            for (int i = 0; i < n; i++)
+            if (v < 0f) v = 0f; else if (v > 1f) v = 1f;
+            float mx = r; if (g > mx) mx = g; if (b > mx) mx = b;
+            if (mx < 1f) return;                                   // practicamente negro: nada que matizar
+            float mn = r; if (g < mn) mn = g; if (b < mn) mn = b;
+            float sat = (mx - mn) / mx;                            // 0 = gris, 1 = color puro
+            float val = mx * (0.42f + 0.58f * v);                  // hundido cuando esta flojo, claro cuando pega
+            if (val > 255f) val = 255f;
+            float satNueva = sat * (1f - 0.55f * v);               // al aclararse pierde saturacion, como un tono claro real
+            // Se reconstruye conservando el TONO: cada canal guarda su posicion relativa dentro de la saturacion,
+            // y esa posicion se vuelve a estirar contra la saturacion nueva.
+            float piso = 1f - sat;
+            float inv = (sat > 0.0001f) ? (1f / sat) : 0f;
+            float tr = (sat > 0.0001f) ? ((r / mx) - piso) * inv : 1f;
+            float tg = (sat > 0.0001f) ? ((g / mx) - piso) * inv : 1f;
+            float tb = (sat > 0.0001f) ? ((b / mx) - piso) * inv : 1f;
+            float pisoNuevo = 1f - satNueva;
+            r = val * (pisoNuevo + satNueva * tr);
+            g = val * (pisoNuevo + satNueva * tg);
+            b = val * (pisoNuevo + satNueva * tb);
+            if (r < 0f) r = 0f; else if (r > 255f) r = 255f;
+            if (g < 0f) g = 0f; else if (g > 255f) g = 255f;
+            if (b < 0f) b = 0f; else if (b > 255f) b = 255f;
+        }
+        private void DrawAurora(GpuAurora au)
+        {
+            if (au.Alto < 2f || au.Dim <= 0.02f) return;
+            float paso40 = (float)Width / (AurNLuz - 1);   // los radios van en pixeles, no dependen del numero de puntos
+            stars.GlowBatchBegin(AurNBruma + AurNLuz);      // todo el horizonte en UNA sola llamada de dibujo
+            for (int pasada = 0; pasada < 2; pasada++)
             {
-                GpuNube c = nb.N[i];
-                if (c.R < 8f || c.A <= 0.004f) continue;
-                if (c.X + c.R <= 0f || c.X - c.R >= Width || c.Y + c.R <= 0f || c.Y - c.R >= Height) continue;   // fuera de pantalla
-                int a = (int)(c.A * NebAlfa + 0.5f);
-                if (a < 2) continue; if (a > 255) a = 255;
-                stars.GlowBatchAdd(c.X, c.Y, c.R, ((uint)a << 24) | (c.Rgb & 0x00FFFFFFu));
-                int a2 = (int)(a * NebComp);
-                if (a2 >= 2) stars.GlowBatchAdd(c.X + c.R * 0.35f, c.Y - c.R * 0.22f, c.R * 0.55f,
-                                                ((uint)a2 << 24) | (c.Rgb2 & 0x00FFFFFFu));
+                bool bruma = (pasada == 0);
+                int N = bruma ? AurNBruma : AurNLuz;
+                float paso = (float)Width / (N - 1);
+                float k = bruma ? AurBruma * (AurNLuz - 1) / (float)(AurNBruma - 1) : AurLuz;   // compensa la densidad
+                for (int i = 0; i < N; i++)
+                {
+                    // posicion continua dentro de las 8 bandas + suavizado: sale una CURVA, no dientes de sierra
+                    float t = (float)i / (N - 1) * (au.B.Length - 1);
+                    int b0 = (int)t; if (b0 > au.B.Length - 2) b0 = au.B.Length - 2;
+                    float f = t - b0; f = f * f * (3f - 2f * f);
+                    float v = au.B[b0] + (au.B[b0 + 1] - au.B[b0]) * f;
+                    if (v <= 0.006f) continue;
+                    float h = v * au.Alto;
+                    float r = bruma ? (paso40 * 3.2f + h * 1.15f) : (paso40 * 1.5f + h * 0.5f);
+                    float cy = au.BaseY - h * (bruma ? 0.30f : 0.45f);
+                    int a = (int)(v * au.Dim * k + 0.5f);
+                    if (a < 2) continue; if (a > 255) a = 255;
+                    // COLOR EN DOS PASOS:
+                    //  1) a lo ANCHO se mezcla el tono del extremo grave con el del agudo. Ahora los dos estan
+                    //     mucho mas cerca en la rueda de color, asi que el cambio se funde en vez de partir el
+                    //     horizonte en dos luces distintas.
+                    //  2) segun la INTENSIDAD se elige un TONO de esa misma familia (ver TonoPorNivel).
+                    float fx = (float)i / (N - 1);
+                    uint r1 = (au.Rgb >> 16) & 0xFF, g1 = (au.Rgb >> 8) & 0xFF, b1 = au.Rgb & 0xFF;
+                    uint r2 = (au.Rgb2 >> 16) & 0xFF, g2 = (au.Rgb2 >> 8) & 0xFF, b2 = au.Rgb2 & 0xFF;
+                    float rr = r1 + (r2 - (float)r1) * fx, gg = g1 + (g2 - (float)g1) * fx, bb = b1 + (b2 - (float)b1) * fx;
+                    TonoPorNivel(ref rr, ref gg, ref bb, v);
+                    stars.GlowBatchAdd(i * paso, cy, r, ((uint)a << 24) | ((uint)rr << 16) | ((uint)gg << 8) | (uint)bb);
+                }
             }
             stars.GlowBatchEnd();
         }
