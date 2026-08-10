@@ -247,6 +247,7 @@ namespace Rocola
         private readonly Dictionary<string, float[]> eqCache = new Dictionary<string, float[]>(StringComparer.OrdinalIgnoreCase);
         private float[] eqAvg = null;              // curva PROMEDIO de la biblioteca (el objetivo); null hasta tener 10 canciones medidas
         private float eqAmount = 0f;               // fuerza del EQ automatico 0..1 (perilla en Ctrl+F3; "eq_auto=" en config); 0 = apagado
+        private float[] eqNetIn, eqNetOut, eqMeta; // buffers del modelo del EQ (reusados: cero basura por cancion)
         private string eqMeasPath = null;          // cancion cuya huella se esta midiendo (null = no medir)
         private float eqMeasCut = 0f;              // corte detectado en la cancion que suena (0 = aun no se sabe)
         private double[] eqMeasSum = new double[8]; private long eqMeasN = 0;   // energia acumulada por banda (hilo de audio)
@@ -852,6 +853,33 @@ namespace Rocola
             // vacia) mientras que lo que suena YA lleva los agudos re-creados: corregir con un numero viejo
             // seria empujar dos veces lo mismo.
             float corte = c[EqCut];
+            // OBJETIVO POR CANCION. Para el cuerpo (158 Hz - 5.6 kHz) el objetivo sigue siendo el promedio de las
+            // canciones sanas: es el "sonido de la casa". Pero para el grave y los agudos, si hay modelo entrenado,
+            // el objetivo lo dice la IA mirando el cuerpo de ESTA cancion: cuanto grave y cuanto aire tendria una
+            // cancion bien grabada que sonara como esta. Asi una balada de piano y un corrido dejan de ser
+            // empujados hacia la misma curva. Sin modelo, todo sigue como antes (el promedio para las 8 bandas).
+            float[] meta = eqAvg;
+            if (EqNet.Loaded)
+            {
+                float[] ent = eqNetIn ?? (eqNetIn = new float[EqNetIn]);
+                float[] sal = eqNetOut ?? (eqNetOut = new float[EqNetOut]);
+                for (int i = 0; i < EqNetIn; i++) ent[i] = c[i + 1];   // el cuerpo: bandas 1..5
+                if (EqNet.Predict(ent, sal))
+                {
+                    float[] m = eqMeta ?? (eqMeta = new float[8]);
+                    for (int b = 0; b < 8; b++) m[b] = eqAvg[b];
+                    for (int i = 0; i < EqNetOut; i++)
+                    {
+                        float v = sal[i];
+                        // Cinturon de seguridad: por muy convencida que este la red, el objetivo no se aleja mas
+                        // de 6 dB del promedio de la biblioteca. Un modelo mal entrenado no puede desmadrar el EQ.
+                        float lim = eqAvg[EqNetSalida[i]];
+                        if (v > lim + 6f) v = lim + 6f; else if (v < lim - 6f) v = lim - 6f;
+                        m[EqNetSalida[i]] = v;
+                    }
+                    meta = m;
+                }
+            }
             float[] dbs = new float[8]; bool any = false;
             for (int b = 0; b < 8; b++)
             {
@@ -859,7 +887,7 @@ namespace Rocola
                 if (corte > 100f && EqCentros[b] > corte) { dbs[b] = 0f; continue; }
                 if (c[b] > -25f)
                 {
-                    corr = eqAvg[b] - c[b];
+                    corr = meta[b] - c[b];
                     if (corr > 4f) corr = 4f; else if (corr < -4f) corr = -4f;
                     corr *= eqAmount;
                 }
@@ -6652,14 +6680,27 @@ namespace Rocola
         // (ProbeAudioTier). Active se alterna EN VIVO desde Ctrl+F3 para comparar A/B (al alternar hay un
         // microcorte de ~46ms: es el colchon del STFT llenandose; normal y esperado).
 
-        private static class NeuralEnv
-        {
-            public static volatile bool Loaded;
-            private static float[][] W, B;            // pesos (fila-mayor) y sesgos por capa
-            private static int[] rOut, cIn;           // dimensiones por capa
-            private static float[] buf1, buf2;        // buffers de trabajo (sin asignar por ventana)
+        // Red neuronal chica cargada de un archivo RIA1 (capas de pesos+sesgos, ocultas con tanh y la de salida
+        // lineal). La usan DOS cosas distintas, cada una con su modelo y su contrato de entradas/salidas: el DSEE
+        // para la envolvente de los agudos que re-crea, y el EQ automatico para su objetivo por cancion.
+        // Los dos modelos. El del DSEE re-crea la envolvente de los agudos (28 datos de la ventana -> 12 sub-bandas).
+        // El del EQ mira la parte del espectro que los codecs NO tocan (el cuerpo, 158 Hz - 5.6 kHz) y dice cuanto
+        // grave y cuanto aire tendria una cancion BIEN GRABADA con ese mismo cuerpo: 5 entradas -> 3 salidas.
+        private static readonly RedChica NeuralEnv = new RedChica(28, 12);
+        private static readonly RedChica EqNet = new RedChica(EqNetIn, EqNetOut);
+        private const int EqNetIn = 5, EqNetOut = 3;
+        private static readonly int[] EqNetSalida = { 0, 6, 7 };   // que bandas predice: 50 Hz, 10 kHz y 15.8 kHz
 
-            public static void TryLoad(string path)
+        private sealed class RedChica
+        {
+            public volatile bool Loaded;
+            private float[][] W, B;            // pesos (fila-mayor) y sesgos por capa
+            private int[] rOut, cIn;           // dimensiones por capa
+            private float[] buf1, buf2;        // buffers de trabajo (sin asignar por ventana)
+            private readonly int nIn, nOut;    // contrato: cuantas entradas y cuantas salidas debe tener el modelo
+            public RedChica(int entradas, int salidas) { nIn = entradas; nOut = salidas; }
+
+            public void TryLoad(string path)
             {
                 try
                 {
@@ -6681,7 +6722,7 @@ namespace Rocola
                         for (int i = 0; i < r; i++) { b[L][i] = BitConverter.ToSingle(d, p); p += 4; }
                         ro[L] = r; ci[L] = c; if (r > maxDim) maxDim = r; if (c > maxDim) maxDim = c;
                     }
-                    if (ci[0] != 28 || ro[nl - 1] != 12) return;   // contrato de esta version (RIA1)
+                    if (ci[0] != nIn || ro[nl - 1] != nOut) return;   // el modelo no es para este uso
                     for (int L = 1; L < nl; L++) if (ci[L] != ro[L - 1]) return;
                     buf1 = new float[maxDim]; buf2 = new float[maxDim];
                     W = w; B = b; rOut = ro; cIn = ci;
@@ -6691,7 +6732,7 @@ namespace Rocola
             }
 
             // y = red(x). Capas ocultas con tanh; la de salida lineal. Devuelve false si no hay modelo.
-            public static bool Predict(float[] x, float[] y)
+            public bool Predict(float[] x, float[] y)
             {
                 float[][] w = W, b = B;
                 if (!Loaded || w == null) return false;
