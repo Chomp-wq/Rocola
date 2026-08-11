@@ -1341,18 +1341,21 @@ namespace Rocola
         // fuerte y mas bajo cuando afloja, ocupando mas o menos pantalla.
         //
         // Se dibuja como una MALLA de columnas (dos triangulos por trozo) sin textura y con mezcla normal: el
-        // color va en los vertices y la tarjeta lo degrada sola. Abajo el relleno esta lleno y hacia arriba se
-        // va quedando transparente, asi que el borde de arriba es un desvanecido -no un corte- y lo que se ve
-        // crecer y encoger es la mancha de color entera. Sale mas barato que los halos (una sola llamada, sin
-        // textura y sin pintar el mismo pixel cinco veces).
-        private const int AurCols = 64;       // trozos a lo ancho (65 puntos): con menos, las crestas salen con esquinas
-        private const int AurFilas = 3;       // franjas apiladas a lo alto: aproximan la curva del desvanecido
+        // color va en los vertices y la tarjeta lo degrada sola. Sale mas barato que los halos (una sola
+        // llamada, sin textura y sin pintar el mismo pixel cinco veces).
+        //
+        // El relleno llega HASTA EL BORDE DE ABAJO de la pantalla, por detras de la franja de estado. Antes se
+        // paraba donde empieza esa franja y ahi se veia una raya: arriba el color y abajo el cielo pelado. Todo
+        // tiene que ser UNA sola pieza.
+        private const int AurCols = 80;       // trozos a lo ancho (81 puntos): con menos, las crestas salen con esquinas
+        private const int AurFilas = 4;       // franjas apiladas a lo alto: aproximan la curva del desvanecido
         private const float AurPiso = 0.20f;  // suelo: aunque la cancion afloje, abajo siempre queda color
-        private const float AurAlfaBase = 0.26f, AurAlfaPico = 0.50f;   // opacidad del borde de abajo (flojo -> fuerte)
+        private const float AurAlfaBase = 0.20f, AurAlfaPico = 0.40f;   // opacidad del relleno (flojo -> fuerte)
         // Ancho del LOBULO de cada banda, medido en bandas. Al ser MENOR que 1, el lobulo de una banda se
         // apaga ANTES de llegar al centro de su vecina: asi una banda fuerte no se traga a la de al lado y se
         // ven los ocho bultos separados por su valle. Esto es lo que hace que se distingan las frecuencias.
-        private const float AurLobulo = 0.88f;
+        // Cuanto mas chico, mas hondo el valle y mas se separan los bultos.
+        private const float AurLobulo = 0.72f;
         private D3D9.Vtx[] aurV;                           // vertices de la malla (se reusan, no se asigna por cuadro)
         private float[] aurH, aurA; private uint[] aurC;   // alto, opacidad y color de cada punto de la silueta
 
@@ -1419,6 +1422,17 @@ namespace Rocola
             return (float)Math.Sqrt(Math.Sqrt(suma));
         }
 
+        // DESVANECIDO a lo alto: cuanta opacidad le queda al color a la altura f (0 = abajo del todo, 1 = la
+        // punta). Es una S: el relleno tiene CUERPO en su mitad de abajo -por eso se le ve la forma- y a partir
+        // de ahi se apaga rapido hasta desaparecer, sin dejar borde. Antes caia como un cuadrado desde el
+        // primer pixel y el resultado era una neblina sin forma en la que no se distinguia ninguna banda.
+        internal static float AurBaja(float f)
+        {
+            if (f <= 0f) return 1f;
+            if (f >= 1f) return 0f;
+            return 1f - f * f * (3f - 2f * f);
+        }
+
         private static uint AurArgb(uint rgb, float a)
         {
             int v = (int)(a * 255f + 0.5f);
@@ -1428,14 +1442,52 @@ namespace Rocola
         private static void AurV3(D3D9.Vtx[] a, int i, float x, float y, uint c)
         { a[i].X = x - 0.5f; a[i].Y = y - 0.5f; a[i].Z = 0f; a[i].Rhw = 1f; a[i].Color = c; a[i].U = 0f; a[i].V = 0f; }
 
+        // Arma la malla entera y devuelve cuantos vertices escribio. Aparte para poder comprobarla sin tarjeta.
+        // 'alturaPanel' es el borde de abajo de la PANTALLA: el relleno baja hasta ahi (por detras de la franja
+        // de estado) para que no quede ninguna raya donde se acaba.
+        internal static int AurMalla(D3D9.Vtx[] v, float[] hCol, uint[] cCol, float[] aCol,
+                                     float ancho, float baseY, float alturaPanel)
+        {
+            int puntos = AurCols + 1;
+            if (v == null || hCol == null || cCol == null || aCol == null) return 0;
+            if (v.Length < (AurFilas + 1) * AurCols * 6) return 0;
+            if (hCol.Length < puntos || cCol.Length < puntos || aCol.Length < puntos) return 0;
+            float suelo = (alturaPanel > baseY) ? alturaPanel : baseY;   // el borde de abajo de la pantalla
+            float paso = ancho / AurCols;
+            int n = 0;
+            // j = -1 es la FALDA: del borde de abajo de la pantalla hasta donde nace la silueta, con la misma
+            // opacidad de abajo en los dos extremos (un bloque parejo). Es lo que quita la raya.
+            for (int j = -1; j < AurFilas; j++)
+            {
+                bool falda = (j < 0);
+                float f0 = falda ? 0f : (float)j / AurFilas;
+                float f1 = falda ? 0f : (float)(j + 1) / AurFilas;
+                float m0 = falda ? 1f : AurBaja(f0);
+                float m1 = falda ? 1f : AurBaja(f1);
+                for (int i = 0; i < AurCols; i++)
+                {
+                    float x0 = i * paso, x1 = x0 + paso;
+                    float hL = hCol[i], hR = hCol[i + 1];
+                    float yL0 = falda ? suelo : baseY - hL * f0, yL1 = baseY - hL * f1;
+                    float yR0 = falda ? suelo : baseY - hR * f0, yR1 = baseY - hR * f1;
+                    uint cL0 = AurArgb(cCol[i], aCol[i] * m0), cL1 = AurArgb(cCol[i], aCol[i] * m1);
+                    uint cR0 = AurArgb(cCol[i + 1], aCol[i + 1] * m0), cR1 = AurArgb(cCol[i + 1], aCol[i + 1] * m1);
+                    AurV3(v, n + 0, x0, yL1, cL1); AurV3(v, n + 1, x1, yR1, cR1); AurV3(v, n + 2, x0, yL0, cL0);
+                    AurV3(v, n + 3, x1, yR1, cR1); AurV3(v, n + 4, x1, yR0, cR0); AurV3(v, n + 5, x0, yL0, cL0);
+                    n += 6;
+                }
+            }
+            return n;
+        }
+
         private void DrawAurora(GpuAurora au)
         {
             if (au.Alto < 2f || au.Dim <= 0.02f) return;
             int puntos = AurCols + 1;
             if (aurH == null) { aurH = new float[puntos]; aurA = new float[puntos]; aurC = new uint[puntos]; }
-            int nv = AurCols * AurFilas * 6;
+            int nv = (AurFilas + 1) * AurCols * 6;
             if (aurV == null || aurV.Length < nv) aurV = new D3D9.Vtx[nv];
-            // 1) Cada punto de la silueta: hasta donde sube el color ahi, de que tono y con cuanta presencia.
+            // Cada punto de la silueta: hasta donde sube el color ahi, de que tono y con cuanta presencia.
             uint r1 = (au.Rgb >> 16) & 0xFF, g1 = (au.Rgb >> 8) & 0xFF, b1 = au.Rgb & 0xFF;
             uint r2 = (au.Rgb2 >> 16) & 0xFF, g2 = (au.Rgb2 >> 8) & 0xFF, b2 = au.Rgb2 & 0xFF;
             for (int i = 0; i < puntos; i++)
@@ -1454,28 +1506,8 @@ namespace Rocola
                 if (al < 0f) al = 0f; else if (al > 1f) al = 1f;
                 aurA[i] = al;
             }
-            // 2) La malla: por cada trozo a lo ancho, AurFilas cuadrangulos apilados. La opacidad cae como el
-            //    CUADRADO de la altura, asi el color se queda pegado abajo y arriba se funde con el cielo.
-            float paso = (float)Width / AurCols;
-            int n = 0;
-            for (int j = 0; j < AurFilas; j++)
-            {
-                float f0 = (float)j / AurFilas, f1 = (float)(j + 1) / AurFilas;
-                float m0 = (1f - f0) * (1f - f0), m1 = (1f - f1) * (1f - f1);
-                for (int i = 0; i < AurCols; i++)
-                {
-                    float x0 = i * paso, x1 = x0 + paso;
-                    float hL = aurH[i], hR = aurH[i + 1];
-                    float yL0 = au.BaseY - hL * f0, yL1 = au.BaseY - hL * f1;
-                    float yR0 = au.BaseY - hR * f0, yR1 = au.BaseY - hR * f1;
-                    uint cL0 = AurArgb(aurC[i], aurA[i] * m0), cL1 = AurArgb(aurC[i], aurA[i] * m1);
-                    uint cR0 = AurArgb(aurC[i + 1], aurA[i + 1] * m0), cR1 = AurArgb(aurC[i + 1], aurA[i + 1] * m1);
-                    AurV3(aurV, n + 0, x0, yL1, cL1); AurV3(aurV, n + 1, x1, yR1, cR1); AurV3(aurV, n + 2, x0, yL0, cL0);
-                    AurV3(aurV, n + 3, x1, yR1, cR1); AurV3(aurV, n + 4, x1, yR0, cR0); AurV3(aurV, n + 5, x0, yL0, cL0);
-                    n += 6;
-                }
-            }
-            stars.DrawMesh(aurV, n / 3);   // TODO el fondo reactivo en UNA sola llamada de dibujo
+            int n = AurMalla(aurV, aurH, aurC, aurA, Width, au.BaseY, Height);
+            if (n >= 3) stars.DrawMesh(aurV, n / 3);   // TODO el fondo reactivo en UNA sola llamada de dibujo
         }
 
         // PRE-CALENTADO. Crear una textura es una peticion al driver y no siempre contesta rapido: si la

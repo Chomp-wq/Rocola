@@ -6428,13 +6428,14 @@ namespace Rocola
                     g.SmoothingMode = SmoothingMode.AntiAlias;
                     g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;   // gris: ClearType deja flecos sobre transparente
                     g.TranslateTransform(0, -top);   // las etiquetas estan en coords del form; la tira empieza en 'top'
-                    DrawLabelOverlay(g, lblNowTop);   // 2a linea del titulo (vacia casi siempre: no dibuja nada)
-                    DrawLabelOverlay(g, lblNow);
-                    if (lblMejorada != null && lblMejorada.Visible) DrawLabelOverlay(g, lblMejorada);   // letrero MEJORADA (su brillo es un halo por quad, no rehace esta textura)
-                    DrawLabelOverlay(g, lblNext);
-                    DrawLabelOverlay(g, lblTime);
-                    DrawLabelOverlay(g, lblCredits);
-                    DrawLabelOverlay(g, lblCount);
+                    // TODOS con contorno oscuro: por detras de esta franja pasa el fondo reactivo (ver DrawLabelSombra).
+                    DrawLabelSombra(g, lblNowTop);   // 2a linea del titulo (vacia casi siempre: no dibuja nada)
+                    DrawLabelSombra(g, lblNow);
+                    if (lblMejorada != null && lblMejorada.Visible) DrawLabelSombra(g, lblMejorada);   // letrero MEJORADA (su brillo es un halo por quad, no rehace esta textura)
+                    DrawLabelSombra(g, lblNext);
+                    DrawLabelSombra(g, lblTime);
+                    DrawLabelSombra(g, lblCredits);
+                    DrawLabelSombra(g, lblCount);
                     DrawCtrlOverlay(g, progress);
                 }
             }
@@ -6595,11 +6596,12 @@ namespace Rocola
         // reconstruccion de la textura de UI (que ocurre ~13fps en navegacion por el brillo de la letra).
         [ThreadStatic] private static StringFormat lblSf;
         [ThreadStatic] private static SolidBrush lblBr;
-        private static void DrawLabelOverlay(Graphics g, Label l)
+        private static void DrawLabelOverlay(Graphics g, Label l) { DrawLabelOverlay(g, l, (l != null) ? l.ForeColor : Color.White); }
+        private static void DrawLabelOverlay(Graphics g, Label l, Color color)
         {
             if (l == null || string.IsNullOrEmpty(l.Text)) return;
             StringFormat sf = lblSf ?? (lblSf = new StringFormat());
-            SolidBrush b = lblBr ?? (lblBr = new SolidBrush(Color.White)); b.Color = l.ForeColor;
+            SolidBrush b = lblBr ?? (lblBr = new SolidBrush(Color.White)); b.Color = color;
             sf.FormatFlags = StringFormatFlags.NoWrap; sf.Trimming = StringTrimming.EllipsisCharacter;
             ContentAlignment a = l.TextAlign;
             if ((a & (ContentAlignment.TopLeft | ContentAlignment.MiddleLeft | ContentAlignment.BottomLeft)) != 0) sf.Alignment = StringAlignment.Near;
@@ -6609,6 +6611,27 @@ namespace Rocola
             else if ((a & (ContentAlignment.BottomLeft | ContentAlignment.BottomCenter | ContentAlignment.BottomRight)) != 0) sf.LineAlignment = StringAlignment.Far;
             else sf.LineAlignment = StringAlignment.Center;
             g.DrawString(l.Text, l.Font, b, (RectangleF)l.Bounds, sf);
+        }
+
+        // CONTORNO OSCURO detras del texto de la franja de abajo. Por ahi pasa ahora el fondo reactivo, que en
+        // un golpe fuerte se pone claro; sin esto, texto claro sobre color claro se pierde. Se dibuja el mismo
+        // texto en negro traslucido corrido un pixel a las cuatro diagonales: queda un contorno suave que no se
+        // lee como sombra pero despega las letras de CUALQUIER fondo, y asi el color puede seguir siendo una
+        // sola pieza hasta el borde de abajo sin tener que apagarlo bajo la franja. Se hornea junto con la
+        // textura de la franja -que solo se rehace cuando cambia un texto-, asi que no cuesta nada por cuadro.
+        private static readonly int[] SombraDx = { -1, 1, -1, 1 };
+        private static readonly int[] SombraDy = { -1, -1, 1, 1 };
+        private static readonly Color SombraCol = Color.FromArgb(105, 0, 0, 0);
+        private static void DrawLabelSombra(Graphics g, Label l)
+        {
+            if (l == null || string.IsNullOrEmpty(l.Text)) return;
+            for (int k = 0; k < SombraDx.Length; k++)
+            {
+                g.TranslateTransform(SombraDx[k], SombraDy[k]);
+                DrawLabelOverlay(g, l, SombraCol);
+                g.TranslateTransform(-SombraDx[k], -SombraDy[k]);
+            }
+            DrawLabelOverlay(g, l);
         }
 #endif
 
