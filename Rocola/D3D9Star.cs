@@ -1375,7 +1375,7 @@ namespace Rocola
         private const int AurCols = 144;      // trozos a lo ancho (145 puntos): hacen falta para las vetas finas
         private const int AurFilas = 6;       // franjas apiladas a lo alto: cuantas mas, mas suave el degradado
         private const float AurPiso = 0.20f;  // suelo: aunque la cancion afloje, la cortina no desaparece
-        private const float AurAlfaBase = 0.34f, AurAlfaPico = 0.52f;   // opacidad del relleno (flojo -> fuerte)
+        private const float AurAlfaBase = 0.38f, AurAlfaPico = 0.49f;   // opacidad del relleno (flojo -> fuerte)
         private const int AurSuelo = 4;       // franjas por DEBAJO del horizonte (el suelo)
         private const float AurHondo = 0.10f; // que tan hundido queda el tono al pie de la pantalla (0 = lo mas hondo)
         // Ancho del LOBULO de cada banda, medido en bandas. Al ser MENOR que 1, el lobulo de una banda se
@@ -1416,11 +1416,17 @@ namespace Rocola
         // Asi que no le hacen falta las 144 columnas de la cortina: con 36 (una de cada cuatro) sale igual y
         // se ahorran 3.240 vertices por cuadro, que en la maquina modesta es lo que hay que cuidar.
         private const int AurLineaCols = 36;
-        private const int AurBrilloVtx = (4 * AurCols + 5 * AurLineaCols) * 6;   // 4 franjas el contorno + 5 la raya
+        // El CONTORNO, al reves, va al DOBLE de puntos que la cortina y por una CURVA. El relleno se apaga
+        // hacia arriba y su borde no llega a verse, asi que da igual que lo una con rectas; pero el filo es
+        // una raya fina y ahi cualquier esquina canta -en una pantalla ancha, cada tramo mide 14 pixeles y
+        // las cimas salian en punta, como un triangulo-. Con el doble de puntos y pasando por una curva que
+        // toca los mismos (Catmull-Rom), las cimas salen redondas y los valles tambien.
+        private const int AurContCols = AurCols * 2;
+        private const int AurBrilloVtx = (4 * AurContCols + 5 * AurLineaCols) * 6;   // 4 franjas el contorno + 5 la raya
 
         private D3D9.Vtx[] aurV;                               // vertices de la malla (se reusan, no se asigna por cuadro)
         private D3D9.Vtx[] aurVb;                              // y los del brillo (el neon, que va sumado aparte)
-        private float[] aurH, aurA, aurR;                    // alto, opacidad y ondeo de cada columna
+        private float[] aurH, aurHs, aurA, aurR;             // alto (crudo y ya suavizado), opacidad y ondeo de cada columna
         private float[] aurNi, aurLi;                        // brillo del filo y de la linea, columna a columna
         private uint[] aurNc, aurLc;                         // y sus colores (el de la punta y el del pie)
         private uint[] aurCortina, aurSueloC;                // colores por franja: la cortina y el suelo
@@ -1508,14 +1514,63 @@ namespace Rocola
             return v;
         }
 
+        // SUAVIZADO DE LA SILUETA. Donde se cruzan dos bandas vecinas queda un valle estrecho -cuatro
+        // columnas- y el fondo de ese valle es una punta con el radio de una aguja: ocho pixeles. En el
+        // relleno no se veia, porque su borde se desvanece; el filo de neon lo dibuja, y ahi se ve como un
+        // diente de sierra. Por muchos puntos que se le echen encima, una punta de ocho pixeles se sigue
+        // viendo en punta: hay que redondear la forma, no dibujarla mas fino.
+        //
+        // Se le pasa una media pesada de cinco columnas (1-4-6-4-1). Las lomas y los valles se quedan donde
+        // estaban y casi con la misma hondura -son mucho mas anchos que la media-, pero ninguna punta queda
+        // ya con radio de aguja. Cuesta 145 sumas por cuadro.
+        internal static void AurSuaviza(float[] src, float[] dst)
+        {
+            int n = AurCols;
+            for (int i = 0; i <= n; i++)
+            {
+                int a = i - 2; if (a < 0) a = 0;
+                int b = i - 1; if (b < 0) b = 0;
+                int c = i + 1; if (c > n) c = n;
+                int d = i + 2; if (d > n) d = n;
+                dst[i] = (src[a] + 4f * src[b] + 6f * src[i] + 4f * src[c] + src[d]) * 0.0625f;
+            }
+        }
+        // LO QUE ONDULA LA ALTURA de la cortina. Antes era el mismo AurRayo que pone las vetas, y ahi
+        // estaba el problema: la veta fina va y viene casi dieciocho veces de lado a lado de la pantalla
+        // -un diente cada 39 pixeles- y, metida en la ALTURA, dejaba la silueta hecha un serrucho. Un
+        // diente asi tiene el radio de una aguja: por muchos puntos que se le echen encima, en el filo
+        // se ve como una sierra. Mientras el relleno se desvanecia arriba sin dejar borde no se notaba;
+        // con el filo de neon dibujando la silueta, se veia entero.
+        //
+        // Asi que la altura se queda solo con las ondas LARGAS, las que mecen la cortina de un lado a
+        // otro, y las vetas finas se quedan donde de verdad se ven: en el BRILLO (ver AurRayo). Que es
+        // ademas como es una aurora de verdad: el borde va limpio y lo que titila es la luz.
+        internal static float AurOndaAlto(float fx, float t)
+        {
+            double x = fx * 6.2831853;
+            float a = (float)Math.Sin(x * 3.7 + t * 0.55);    // el ondeo mediano
+            float b = (float)Math.Sin(x * 2.3 - t * 0.29);    // otro que no encaja con el anterior
+            float c = (float)Math.Sin(x * 1.3 + t * 0.13);    // el meneo lento de toda la cortina
+            float v = 1f + 0.11f * a + 0.08f * b + 0.09f * c;
+            if (v < 0.72f) v = 0.72f; else if (v > 1.28f) v = 1.28f;
+            return v;
+        }
         // DESVANECIDO a lo alto: cuanta opacidad le queda al color a la altura f (0 = donde nace, 1 = la
-        // punta). Es una S: la cortina tiene CUERPO en su mitad de abajo -por eso se le ve la forma- y a partir
-        // de ahi se apaga rapido hasta desaparecer, sin dejar borde.
+        // punta).
+        //
+        // Antes era una S que a media altura ya iba por la mitad y a tres cuartos no quedaba casi nada: la
+        // cortina tenia color pegado abajo y de ahi para arriba era una neblina. Con el filo de neon
+        // dibujando la silueta, ese hueco entre el filo y el color se notaba muchisimo -se veian las rayas
+        // y poco mas-, asi que ahora el color LLENA la cortina: a media altura conserva cuatro quintos y a
+        // tres cuartos, la mitad larga. El ultimo tramo si se apaga deprisa y llega a cero con la pendiente
+        // tambien a cero, para que el relleno muera sin dejar canto por debajo del filo.
         internal static float AurBaja(float f)
         {
             if (f <= 0f) return 1f;
             if (f >= 1f) return 0f;
-            return 1f - f * f * (3f - 2f * f);
+            float cuerpo = 1f - (float)Math.Pow(f, 2.2);      // el cuerpo, que ahora aguanta arriba
+            float f4 = f * f; f4 *= f4;
+            return cuerpo * (1f - f4 * f4);                   // y el remate: se acaba en la punta, sin canto
         }
 
         // Cuanto del ONDEO se deja ver a la altura f. En el horizonte, NADA (ahi va el texto de la franja y no
@@ -1685,6 +1740,28 @@ namespace Rocola
             return (r << 16) | (g << 8) | b;
         }
 
+        // ALTURA DE LA SILUETA EN MEDIO DE DOS PUNTOS, por una curva que pasa por todos ellos. Es la de
+        // siempre para esto (Catmull-Rom): mira tambien al punto de antes y al de despues, asi que en una
+        // cima no corta en recta sino que la redondea.
+        //
+        // En los DOS EXTREMOS de la pantalla no hay punto de antes ni de despues. Repetir el del borde
+        // -que es lo primero que uno hace- le miente a la curva diciendole que ahi la silueta se aplana, y
+        // el resultado era un codo justo en el borde izquierdo, el peor de toda la pantalla. Se prolonga la
+        // recta que traen los dos primeros (o los dos ultimos), que es como si la silueta siguiera igual.
+        internal static float AurCurvaH(float[] h, int i, float u)
+        {
+            if (u <= 0f) return h[i];
+            float p1 = h[i];
+            float p2 = h[i < AurCols ? i + 1 : AurCols];
+            float p0 = (i > 0) ? h[i - 1] : (2f * p1 - p2);
+            float p3 = (i + 2 <= AurCols) ? h[i + 2] : (2f * p2 - p1);
+            float c1 = p2 - p0;
+            float c2 = 2f * p0 - 5f * p1 + 4f * p2 - p3;
+            float c3 = 3f * p1 - 3f * p2 + p3 - p0;
+            float v = 0.5f * (2f * p1 + (c1 + (c2 + c3 * u) * u) * u);
+            return (v < 0f) ? 0f : v;
+        }
+
         // Una franja horizontal de la malla: dos alturas (la de arriba y la de abajo) por cada lado, con su
         // color y su brillo ya resueltos. Todo el neon se arma llamando a esto unas cuantas veces.
         private static int AurBanda(D3D9.Vtx[] v, int n, float x0, float x1,
@@ -1711,7 +1788,6 @@ namespace Rocola
             if (v.Length < AurBrilloVtx) return 0;
             if (hCol.Length < puntos || nCol.Length < puntos || gCol.Length < puntos) return 0;
             if (cNeon.Length < puntos || cLinea.Length < puntos) return 0;
-            float paso = ancho / AurCols;
             int n = 0;
             // ---- LA LINEA DEL HORIZONTE (primero: el contorno va encima) ----
             float lqA = AurLineaArriba * AurLineaQuiebre, lqB = AurLineaAbajo * AurLineaQuiebre;
@@ -1737,22 +1813,31 @@ namespace Rocola
                 n = AurBanda(v, n, x0, x1, yNb, yNb, yMb, yMb, nLc, nRc, mLb, mRb);
                 n = AurBanda(v, n, x0, x1, yMb, yMb, yFb, yFb, mLb, mRb, fL, fR);
             }
-            // ---- EL CONTORNO, siguiendo la silueta ----
+            // ---- EL CONTORNO, siguiendo la silueta por la curva (ver AurContCols) ----
             float qf = AurNeonFuera * AurNeonQuiebre;
-            for (int i = 0; i < AurCols; i++)
+            int sub = AurContCols / AurCols;
+            float pasoC = ancho / AurContCols;
+            float tL = baseY - hCol[0];
+            uint cIz = cNeon[0]; float aIz = nCol[0];
+            for (int q = 0; q < AurContCols; q++)
             {
-                float x0 = i * paso, x1 = x0 + paso;
-                float tL = baseY - hCol[i], tR = baseY - hCol[i + 1];   // la cresta de la cortina en cada lado
-                uint pL = cNeon[i], pR = cNeon[i + 1];
-                uint kL = AurNeon(pL, AurNeonBlanco), kR = AurNeon(pR, AurNeonBlanco);
-                float aL = nCol[i], aR = nCol[i + 1];
-                uint fL = AurArgb(pL, 0f), fR = AurArgb(pR, 0f);
-                uint mL = AurArgb(pL, aL * AurNeonHalo), mR = AurArgb(pR, aR * AurNeonHalo);
-                uint nL = AurArgb(kL, aL), nR = AurArgb(kR, aR);
+                int k = q + 1;
+                int i = k / sub; float u = (k - i * sub) / (float)sub;
+                if (i > AurCols) { i = AurCols; u = 0f; }
+                int i2 = (i < AurCols) ? i + 1 : AurCols;
+                float tR = baseY - AurCurvaH(hCol, i, u);              // la cresta al final de este tramo
+                uint cDe = (u <= 0f) ? cNeon[i] : AurLerpRgb(cNeon[i], cNeon[i2], u);
+                float aDe = nCol[i] + (nCol[i2] - nCol[i]) * u;
+                float x0 = q * pasoC, x1 = x0 + pasoC;
+                uint kL = AurNeon(cIz, AurNeonBlanco), kR = AurNeon(cDe, AurNeonBlanco);
+                uint fL = AurArgb(cIz, 0f), fR = AurArgb(cDe, 0f);
+                uint mL = AurArgb(cIz, aIz * AurNeonHalo), mR = AurArgb(cDe, aDe * AurNeonHalo);
+                uint nL = AurArgb(kL, aIz), nR = AurArgb(kR, aDe);
                 n = AurBanda(v, n, x0, x1, tL - AurNeonFuera, tR - AurNeonFuera, tL - qf, tR - qf, fL, fR, mL, mR);
                 n = AurBanda(v, n, x0, x1, tL - qf, tR - qf, tL - AurNeonNucleo, tR - AurNeonNucleo, mL, mR, nL, nR);
                 n = AurBanda(v, n, x0, x1, tL - AurNeonNucleo, tR - AurNeonNucleo, tL + AurNeonNucleo, tR + AurNeonNucleo, nL, nR, nL, nR);
                 n = AurBanda(v, n, x0, x1, tL + AurNeonNucleo, tR + AurNeonNucleo, tL + AurNeonDentro, tR + AurNeonDentro, nL, nR, fL, fR);
+                tL = tR; cIz = cDe; aIz = aDe;
             }
             return n;
         }
@@ -1763,7 +1848,7 @@ namespace Rocola
             int puntos = AurCols + 1;
             if (aurH == null)
             {
-                aurH = new float[puntos]; aurA = new float[puntos]; aurR = new float[puntos];
+                aurH = new float[puntos]; aurHs = new float[puntos]; aurA = new float[puntos]; aurR = new float[puntos];
                 aurNi = new float[puntos]; aurLi = new float[puntos];
                 aurNc = new uint[puntos]; aurLc = new uint[puntos];
                 aurCortina = new uint[(AurFilas + 1) * puntos]; aurSueloC = new uint[(AurSuelo + 1) * puntos];
@@ -1789,9 +1874,9 @@ namespace Rocola
                 float v = AurPerfil(au.B, fx);
                 if (v > 1f) v = 1f;
                 float alt = AurPiso + (1f - AurPiso) * v;
-                float rayo = AurRayo(fx, t);
+                float rayo = AurRayo(fx, t);                       // el titileo: solo brillo
                 aurR[i] = rayo;
-                aurH[i] = au.Alto * alt * rayo;   // la musica pone la forma; el ondeo, las vetas
+                aurH[i] = au.Alto * alt * AurOndaAlto(fx, t);      // la forma la pone la musica; el ondeo largo la mece
                 // COLOR de la columna, franja por franja. A lo ancho se funde el tono del extremo grave con el
                 // del agudo (estan a 32 grados: se mezclan sin ensuciarse) y, segun la INTENSIDAD, se elige un
                 // tono de esa misma familia (ver TonoPorNivel). El ondeo NO entra aqui: solo cambia el brillo,
@@ -1829,11 +1914,15 @@ namespace Rocola
                 if (li < 0f) li = 0f; else if (li > 1f) li = 1f;
                 aurLi[i] = li;
             }
-            int n = AurMalla(aurV, aurH, aurCortina, aurSueloC, aurA, aurR, Width, au.BaseY, Height);
+            // TRES pasadas, de ida y vuelta entre los dos arreglos: una sola no basta para el fondo de los
+            // valles, que es lo mas puntiagudo que hay en la silueta. Se dibuja el resultado -el mismo para el
+            // relleno y para el filo, o se despegarian.
+            AurSuaviza(aurH, aurHs); AurSuaviza(aurHs, aurH); AurSuaviza(aurH, aurHs);
+            int n = AurMalla(aurV, aurHs, aurCortina, aurSueloC, aurA, aurR, Width, au.BaseY, Height);
             if (n >= 3) stars.DrawMesh(aurV, n / 3);   // TODO el relleno en UNA sola llamada de dibujo
             // Y encima el BRILLO -el filo de neon y la linea del horizonte- en otra sola llamada, esta
             // sumando luz en vez de tapar. Dos llamadas de dibujo para toda la aurora.
-            int nb2 = AurBrillo(aurVb, aurH, aurNc, aurNi, aurLc, aurLi, Width, au.BaseY);
+            int nb2 = AurBrillo(aurVb, aurHs, aurNc, aurNi, aurLc, aurLi, Width, au.BaseY);
             if (nb2 >= 3) stars.DrawMeshAdd(aurVb, nb2 / 3);
         }
 

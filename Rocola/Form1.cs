@@ -1784,7 +1784,7 @@ namespace Rocola
                     dlg.FormBorderStyle = FormBorderStyle.FixedDialog;
                     dlg.MaximizeBox = false; dlg.MinimizeBox = false; dlg.ShowInTaskbar = false; dlg.ShowIcon = false;
                     dlg.StartPosition = FormStartPosition.CenterParent;
-                    dlg.ClientSize = new Size(960, 932);   // aqui hay pantalla de sobra: cabe la tarjeta de la IA en vivo
+                    dlg.ClientSize = new Size(960, 946);   // aqui hay pantalla de sobra: cabe la tarjeta de la IA en vivo
                     dlg.BackColor = Color.FromArgb(11, 14, 32);
                     dlg.Font = fSub;
 
@@ -1807,10 +1807,14 @@ namespace Rocola
                     lSub.ForeColor = cTenue; lSub.Font = fSub;
                     lSub.Text = "Todo lo que cambies aqui se oye al instante en la cancion que esta sonando.";
 
-                    Tarjeta tVol = new Tarjeta(); tVol.SetBounds(16, 70, 456, 388); tVol.Titulo = "VOLUMEN PAREJO"; tVol.Acento = cVol;
-                    Tarjeta tCal = new Tarjeta(); tCal.SetBounds(488, 70, 456, 388); tCal.Titulo = "CALIDAD DEL SONIDO"; tCal.Acento = cCal;
-                    Tarjeta tIa = new Tarjeta(); tIa.SetBounds(16, 468, 928, 232); tIa.Titulo = "IA EN VIVO  (DSEE ULTRA)"; tIa.Acento = cIa;
-                    Tarjeta tBib = new Tarjeta(); tBib.SetBounds(16, 710, 928, 154); tBib.Titulo = "TU BIBLIOTECA"; tBib.Acento = cBib;
+                    // Las explicaciones ocupan DOS renglones y su hueco tiene sitio para dos: antes media 28 px,
+                    // que con la letra de Windows se queda a un pelo justo de dos, y el segundo salia cortado
+                    // ("...NUNCA se" y ahi se acababa). Ahora 32, y ademas cada texto lleva escrito a mano donde
+                    // parte, para que no dependa de lo ancha que sea la letra en cada equipo.
+                    Tarjeta tVol = new Tarjeta(); tVol.SetBounds(16, 70, 456, 400); tVol.Titulo = "VOLUMEN PAREJO"; tVol.Acento = cVol;
+                    Tarjeta tCal = new Tarjeta(); tCal.SetBounds(488, 70, 456, 400); tCal.Titulo = "CALIDAD DEL SONIDO"; tCal.Acento = cCal;
+                    Tarjeta tIa = new Tarjeta(); tIa.SetBounds(16, 480, 928, 232); tIa.Titulo = "IA EN VIVO  (DSEE ULTRA)"; tIa.Acento = cIa;
+                    Tarjeta tBib = new Tarjeta(); tBib.SetBounds(16, 722, 928, 160); tBib.Titulo = "TU BIBLIOTECA"; tBib.Acento = cBib;
 
                     // --- Una FILA de ajuste: nombre arriba, valor a la derecha, explicacion debajo y la barra abajo ---
                     Label[] nom = new Label[7], val = new Label[7], des = new Label[7];
@@ -1830,9 +1834,9 @@ namespace Rocola
                         }
                         val[k] = new Label(); val[k].SetBounds(16 + anchoFila - 94, y - 2, 94, 20); val[k].BackColor = Color.Transparent;
                         val[k].ForeColor = ac; val[k].Font = fVal; val[k].TextAlign = ContentAlignment.TopRight;
-                        des[k] = new Label(); des[k].SetBounds(16, y + 20, anchoFila, 28); des[k].BackColor = Color.Transparent;
+                        des[k] = new Label(); des[k].SetBounds(16, y + 21, anchoFila, 32); des[k].BackColor = Color.Transparent;
                         des[k].ForeColor = cTenue; des[k].Font = fDes;
-                        bar[k] = new Deslizador(); bar[k].SetBounds(16, y + 50, anchoFila, 22);
+                        bar[k] = new Deslizador(); bar[k].SetBounds(16, y + 55, anchoFila, 22);
                         bar[k].Minimum = min; bar[k].Maximum = max; bar[k].Acento = ac;
                         card.Controls.Add(nom[k]); card.Controls.Add(val[k]); card.Controls.Add(des[k]); card.Controls.Add(bar[k]);
                     };
@@ -1843,9 +1847,9 @@ namespace Rocola
                     swOn.Text = "Nivelar el volumen de todas las canciones"; swOn.Acento = cVol; swOn.Checked = normalizeOn;
                     tVol.Controls.Add(swOn);
                     Fila(0, tVol, 76, "Volumen objetivo", cVol, 0, 100, false);
-                    Fila(1, tVol, 150, "Fuerza del nivelado", cFue, 0, 100, false);
-                    Fila(2, tVol, 224, "Subir TODO el volumen", cSub, 0, 12, false);
-                    Fila(3, tVol, 298, "Volumen de los videos", cVid, 0, 100, false);
+                    Fila(1, tVol, 156, "Fuerza del nivelado", cFue, 0, 100, false);
+                    Fila(2, tVol, 236, "Subir TODO el volumen", cSub, 0, 12, false);
+                    Fila(3, tVol, 316, "Volumen de los videos", cVid, 0, 100, false);
                     bar[0].Value = TargetToPct(normTarget);
                     bar[1].Value = (int)Math.Round(normStrength * 100f);
                     bar[2].Value = (int)Math.Round(masterDb);
@@ -1853,22 +1857,27 @@ namespace Rocola
 
                     // ---------------- CALIDAD DEL SONIDO ----------------
                     Fila(4, tCal, 44, "EQ automatico", cCal, 0, 100, true);
-                    Fila(5, tCal, 118, "Graves (bajo profundo)", cGra, 0, 100, true);
-                    Fila(6, tCal, 192, "Realce de brillo", cBri, 0, 100, false);
+                    Fila(5, tCal, 124, "Graves (bajo profundo)", cGra, 0, 100, true);
+                    Fila(6, tCal, 204, "Realce de brillo", cBri, 0, 100, false);
                     bar[4].Value = (int)Math.Round(eqAmount * 100f); au[4].Checked = eqAuto;
                     bar[5].Value = (int)Math.Round(bassAmount * 100f); au[5].Checked = bassAuto;
                     bar[6].Value = (int)Math.Round(excAmount * 100f);
 
                     Interruptor swSbr = new Interruptor();
-                    swSbr.SetBounds(16, 280, 424, 26); swSbr.ForeColor = cTexto; swSbr.Font = fNom;
-                    swSbr.Text = "Reconstruir agudos perdidos"; swSbr.Acento = Color.FromArgb(150, 205, 255);
+                    swSbr.SetBounds(16, 292, 424, 26); swSbr.ForeColor = cTexto; swSbr.Font = fNom;
+                    swSbr.Text = "DSEE"; swSbr.Acento = Color.FromArgb(150, 205, 255);
                     swSbr.Checked = sbrOn && sbrAllowed; swSbr.Enabled = sbrAllowed;
-                    Label lSbr = new Label(); lSbr.SetBounds(16, 308, 424, 44); lSbr.BackColor = Color.Transparent;
+                    Label lSbr = new Label(); lSbr.SetBounds(16, 322, 424, 68); lSbr.BackColor = Color.Transparent;
                     lSbr.ForeColor = sbrAllowed ? cTenue : Color.FromArgb(224, 158, 120); lSbr.Font = fDes;
+                    // El DSEE hace DOS cosas y conviene que se entienda cual es cual: una la hace SIEMPRE (medir
+                    // donde el archivo se queda sin agudos, que es de donde salen el EQ y los graves automaticos)
+                    // y la otra solo si se enciende (volver a crear esos agudos). El interruptor manda sobre la
+                    // segunda, no sobre la primera, y por eso la explicacion las separa.
                     lSbr.Text = sbrAllowed
-                        ? (NeuralEnv.Loaded
-                           ? "Ligero, dentro de la rocola, con la IA entrenada con tu propia musica. Se apaga solo si enciendes DSEE ULTRA."
-                           : "Ligero, dentro de la rocola. Se apaga solo si enciendes DSEE ULTRA.")
+                        ? ("Oye cada cancion y ve donde el MP3 le corto los agudos.\n"
+                           + "Eso lo mide SIEMPRE: de ahi sacan el EQ automatico y los\n"
+                           + "graves automaticos cuanto le falta a cada una.\n"
+                           + "Encendido, ademas los recrea. Se apaga con DSEE ULTRA.")
                         : "No disponible en este equipo: " + sbrReason;
                     tCal.Controls.Add(swSbr); tCal.Controls.Add(lSbr);
 
@@ -1891,10 +1900,10 @@ namespace Rocola
                     lMixN.ForeColor = cTexto; lMixN.Font = fNom; lMixN.Text = "Cuanta IA";
                     Label lMixV = new Label(); lMixV.SetBounds(346, 130, 94, 20); lMixV.BackColor = Color.Transparent;
                     lMixV.ForeColor = cIa; lMixV.Font = fVal; lMixV.TextAlign = ContentAlignment.TopRight;
-                    Label lMixD = new Label(); lMixD.SetBounds(16, 152, 424, 28); lMixD.BackColor = Color.Transparent;
+                    Label lMixD = new Label(); lMixD.SetBounds(16, 152, 424, 32); lMixD.BackColor = Color.Transparent;
                     lMixD.ForeColor = cTenue; lMixD.Font = fDes;
                     lMixD.Text = "Cuanto de lo restaurado se mezcla con el original.\nMenos IA = mas natural; mas IA = mas limpio.";
-                    Deslizador barMix = new Deslizador(); barMix.SetBounds(16, 182, 424, 22);
+                    Deslizador barMix = new Deslizador(); barMix.SetBounds(16, 186, 424, 22);
                     barMix.Minimum = 0; barMix.Maximum = 100; barMix.Acento = cIa; barMix.Value = iaMixInit;
                     Label lGpu = new Label(); lGpu.SetBounds(488, 132, 424, 18); lGpu.BackColor = Color.Transparent;
                     lGpu.ForeColor = cTexto; lGpu.Font = fNom; lGpu.Text = "Tarjeta grafica que hace los calculos";
@@ -1910,23 +1919,23 @@ namespace Rocola
                     tIa.Controls.Add(lGpu); tIa.Controls.Add(cbGpu);
 
                     // ---------------- TU BIBLIOTECA ----------------
-                    Label lCal = new Label(); lCal.SetBounds(16, 42, 896, 20); lCal.BackColor = Color.Transparent;
+                    Label lCal = new Label(); lCal.SetBounds(16, 40, 896, 20); lCal.BackColor = Color.Transparent;
                     lCal.ForeColor = Color.FromArgb(198, 214, 244); lCal.Font = fNom;
-                    Label hint = new Label(); hint.SetBounds(16, 64, 896, 34); hint.BackColor = Color.Transparent;
+                    Label hint = new Label(); hint.SetBounds(16, 62, 896, 48); hint.BackColor = Color.Transparent;   // TRES renglones
                     hint.ForeColor = cTenue; hint.Font = fDes;
                     BotonPlano bTrain = new BotonPlano();
-                    bTrain.SetBounds(16, 102, 300, 34); bTrain.Font = fBot;
-                    Label lPct = new Label(); lPct.SetBounds(332, 100, 580, 18); lPct.BackColor = Color.Transparent;
+                    bTrain.SetBounds(16, 114, 300, 34); bTrain.Font = fBot;
+                    Label lPct = new Label(); lPct.SetBounds(332, 112, 580, 18); lPct.BackColor = Color.Transparent;
                     lPct.ForeColor = cBib; lPct.Font = fDes; lPct.TextAlign = ContentAlignment.TopRight; lPct.Visible = false;
                     BarraAvance pbTrain = new BarraAvance();
-                    pbTrain.SetBounds(332, 122, 580, 8); pbTrain.Acento = cBib; pbTrain.Visible = false;
+                    pbTrain.SetBounds(332, 134, 580, 8); pbTrain.Acento = cBib; pbTrain.Visible = false;
                     tBib.Controls.Add(lCal); tBib.Controls.Add(hint); tBib.Controls.Add(bTrain); tBib.Controls.Add(lPct); tBib.Controls.Add(pbTrain);
                     EscribeInformeCalidad();   // el detalle, cancion por cancion, queda en un archivo junto al programa
 
                     // ---------------- PIE ----------------
-                    BotonPlano bReset = new BotonPlano(); bReset.SetBounds(16, 876, 220, 38); bReset.Font = fBot;
+                    BotonPlano bReset = new BotonPlano(); bReset.SetBounds(16, 894, 220, 38); bReset.Font = fBot;
                     bReset.Text = "Dejar como de fabrica";
-                    BotonPlano bOk = new BotonPlano(); bOk.SetBounds(804, 876, 140, 38); bOk.Font = fBot;
+                    BotonPlano bOk = new BotonPlano(); bOk.SetBounds(804, 894, 140, 38); bOk.Font = fBot;
                     bOk.Text = "Listo"; bOk.Relleno = Color.FromArgb(30, 96, 70); bOk.Borde = Color.FromArgb(72, 182, 132);
 
                     Action pintaTrain = delegate
@@ -1951,50 +1960,54 @@ namespace Rocola
                     {
                         // ---------- VOLUMEN ----------
                         val[0].Text = bar[0].Value + "%";
-                        des[0].Text = "Que tan fuerte queda el conjunto. Mas alto = todo suena mas fuerte.";
+                        des[0].Text = "Que tan fuerte queda el conjunto.\nMas alto = todas las canciones suenan mas fuerte.";
                         val[1].Text = bar[1].Value + "%";
-                        des[1].Text = "Cuanto se suben las canciones bajitas. Las que ya suenan fuerte NUNCA se bajan.";
+                        des[1].Text = "Cuanto se suben las canciones bajitas.\nLas que ya suenan fuerte NUNCA se bajan.";
                         val[2].Text = "+" + bar[2].Value + " dB";
-                        des[2].Text = "De mas para TODAS, ademas del nivelado. Para cuando el local queda corto.";
+                        des[2].Text = "De mas para TODAS, ademas del nivelado.\nPara cuando el local se queda corto de volumen.";
                         val[3].Text = bar[3].Value + "%";
-                        des[3].Text = "Los videos no pasan por la cadena de sonido: su volumen se empareja aqui.";
+                        des[3].Text = "Los videos no pasan por la cadena de sonido.\nSu volumen se empareja aqui a mano.";
                         // ---------- CALIDAD ---------- (en automatico se ensena lo que eligio el programa, no la barra)
                         int eqPct = (int)Math.Round((au[4].Checked ? EqFuerzaAuto() : bar[4].Value / 100f) * 100f);
                         val[4].Text = eqPct + "%";
                         des[4].Text = "Empareja el tono de cada cancion con el de tu biblioteca.\n"
                                     + (au[4].Checked
                                        ? (eqAvgSanas >= 10
-                                          ? ("Solo: sube la fuerza al medir mas canciones (van " + eqAvgSanas.ToString("#,0") + ").")
-                                          : "Solo: aun no hay bastantes canciones medidas; todavia no toca nada.")
+                                          ? ("Solo: mas fuerza cuantas mas canciones medidas (van " + eqAvgSanas.ToString("#,0") + ").")
+                                          : "Solo: aun no hay bastantes medidas; de momento no toca nada.")
                                        : "A mano: manda la barra.");
                         int bBase = (int)Math.Round((au[5].Checked ? bassAutoBase : bar[5].Value / 100f) * 100f);
                         int bEfe = (int)Math.Round(bBase * bassSongFactor);
                         val[5].Text = bBase + "%";
-                        des[5].Text = "Recupera el golpe de bajo que las bocinas no alcanzan a dar.\n"
-                                    + (au[5].Checked ? "Solo: a cada una se le da lo que le falta." : "A mano: manda la barra.")
+                        des[5].Text = "Devuelve el golpe de bajo que el archivo no trae.\n"
+                                    + (au[5].Checked ? "Solo: a cada cancion se le da lo que le falta." : "A mano: manda la barra.")
                                     + ((nowPlaying != null && bEfe != bBase) ? ("   Esta: " + bEfe + "%.") : "");
                         val[6].Text = bar[6].Value + "%";
-                        des[6].Text = "Devuelve el 'aire' que el MP3 apaga.\nSe le da mas a las canciones mas dañadas.";
+                        des[6].Text = "Devuelve el 'aire' que el MP3 apaga.\nSe le da mas a las canciones peor grabadas.";
                         // ---------- BIBLIOTECA ----------
                         {
                             int cb, cm, cp, cr, cs2;
                             CalidadResumen(out cb, out cm, out cp, out cr, out cs2);
                             lCal.Text = (cb + cm + cp > 0)
-                                ? ("Calidad:    " + cb.ToString("#,0") + " completas        " + cm.ToString("#,0") + " aceptables        "
-                                   + cp.ToString("#,0") + " pobres" + (cr > 0 ? ("        " + cr.ToString("#,0") + " con los picos recortados") : ""))
+                                ? ("Calidad:   " + cb.ToString("#,0") + " completas     " + cm.ToString("#,0") + " aceptables     "
+                                   + cp.ToString("#,0") + " pobres" + (cr > 0 ? ("     " + cr.ToString("#,0") + " con los picos recortados") : ""))
                                 : "Calidad: aun sin medir. Deja que el repaso vaya haciendo su trabajo.";
                         }
                         string etapa = (nowPlaying != null && nowPlaying.Song != null) ? LoudTierName(nowPlaying.Song.Path) : "";
                         int tTot = preScanTotal, tFal = preScanLeft;
+                        // TRES renglones, cada uno con lo suyo y con el corte escrito a mano: antes iba todo
+                        // seguido en dos y con la biblioteca grande el ultimo se salia del hueco y no se veia.
                         hint.Text = (preScanTurbo && tTot > 0)
-                            ? ((tFal > 0 ? "Repasando a fondo ahora mismo. " : "Repaso a fondo terminado: la biblioteca esta entera. ")
-                               + "Material para la IA: " + IaInfoText() + ".\nEl detalle, cancion por cancion, queda en rocola_calidad.txt junto al programa.")
+                            ? ((tFal > 0 ? "Repasando la biblioteca a fondo ahora mismo." : "Repaso a fondo terminado: la biblioteca esta entera.")
+                               + "\nMaterial para la IA: " + IaInfoText() + "."
+                               + (etapa.Length > 0 ? ("   La cancion que suena entra en la etapa " + etapa + ".") : "")
+                               + "\nEl detalle, cancion por cancion, queda en rocola_calidad.txt junto al programa.")
                             : ("La biblioteca se mide sola mientras la rocola trabaja: "
                                + (tFal > 0 ? ("faltan " + tFal.ToString("#,0") + " canciones.") : "ya esta al dia.")
-                               + (iaHarvestOn ? ("   Material para la IA: " + IaInfoText() + ".") : "")
                                + (durScanLeft > 0 ? ("   Duraciones: faltan " + durScanLeft.ToString("#,0") + ".") : "")
-                               + "\n" + (etapa.Length > 0 ? ("La cancion que suena entra en la etapa " + etapa + ".   ") : "")
-                               + "El detalle, cancion por cancion, queda en rocola_calidad.txt junto al programa.");
+                               + "\n" + (iaHarvestOn ? ("Material para la IA: " + IaInfoText() + ".   ") : "")
+                               + (etapa.Length > 0 ? ("La cancion que suena entra en la etapa " + etapa + ".") : "")
+                               + "\nEl detalle, cancion por cancion, queda en rocola_calidad.txt junto al programa.");
                         pintaTrain();
                         // ---------- IA EN VIVO ----------
                         bool ultra = swUltra.Checked;
