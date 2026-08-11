@@ -20,10 +20,25 @@ namespace Rocola
             { LogCrash("UnhandledException", e.ExceptionObject as Exception); };   // hilos de fondo: al menos queda el rastro
             Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
 
-            Application.EnableVisualStyles();
-            Application.SetCompatibleTextRenderingDefault(false);
-            Application.Run(new Form1());
+            // RELOJ FINO DE WINDOWS. Por defecto Windows solo despierta a los programas cada 15.6 ms: un
+            // Sleep(1) duerme 15.6, y un temporizador de 42 ms llega a los 46.8. Eso hacia que el limitador de
+            // cuadros del panel (un cuadro cada 33 ms con video a la vista) acabara dando uno cada 46.8, o sea
+            // 21 cuadros por segundo en vez de 30. Pidiendo 1 ms -que es lo que hace cualquier programa de
+            // video o de sonido, el propio Windows Media Player incluido- todo cae donde tiene que caer.
+            try { timeBeginPeriod(1); } catch { }
+            try
+            {
+                Application.EnableVisualStyles();
+                Application.SetCompatibleTextRenderingDefault(false);
+                Application.Run(new Form1());
+            }
+            finally { try { timeEndPeriod(1); } catch { } }
         }
+
+        [System.Runtime.InteropServices.DllImport("winmm.dll", EntryPoint = "timeBeginPeriod")]
+        private static extern uint timeBeginPeriod(uint ms);
+        [System.Runtime.InteropServices.DllImport("winmm.dll", EntryPoint = "timeEndPeriod")]
+        private static extern uint timeEndPeriod(uint ms);
 
         // Mismo archivo y tope (~256KB) que Form1.LogError, pero autonomo (aqui Form1 pudo no existir aun).
         private static void LogCrash(string context, Exception ex)

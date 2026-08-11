@@ -2830,6 +2830,23 @@ namespace Rocola
                 if (durCache.ContainsKey(tk.Path) || durFast.ContainsKey(tk.Path)) continue;
                 pend.Add(tk.Path);
             }
+            // Y LOS VIDEOS. No estaban: 'tracks' solo lleva canciones, los videos viven aparte (VideoFiles de
+            // cada disco), asi que nunca les tocaba y en la lista salian sin duracion. Van al final de la
+            // tanda, despues de la musica, porque medir un video cuesta bastante mas (ver MideDuracion).
+            int cuantasCanciones = pend.Count;
+            if (videoAlbums != null)
+                for (int i = 0; i < videoAlbums.Count; i++)
+                {
+                    Album va = videoAlbums[i];
+                    if (va == null || va.VideoFiles == null) continue;
+                    for (int j = 0; j < va.VideoFiles.Count; j++)
+                    {
+                        string vp = va.VideoFiles[j];
+                        if (vp == null || durCache.ContainsKey(vp) || durFast.ContainsKey(vp)) continue;
+                        if (!pend.Contains(vp)) pend.Add(vp);   // el mismo video puede estar en dos discos
+                    }
+                }
+            if (pend.Count > cuantasCanciones) Diag("duraciones: " + (pend.Count - cuantasCanciones) + " videos por medir");
             durScanLeft = pend.Count;
             if (pend.Count == 0) return;
             Diag("duraciones: faltan " + pend.Count);
@@ -2837,6 +2854,7 @@ namespace Rocola
             {
                 List<string> lote = new List<string>(128);
                 List<float> lotd = new List<float>(128);
+                object medidorVideo = null;   // el reproductor con el que se miden los videos (de este hilo)
                 try
                 {
                     System.Threading.Thread.Sleep(4000);   // deja respirar el arranque
@@ -2846,16 +2864,7 @@ namespace Rocola
                         while (!preScanStop && myGen == durScanGen && videoOn) System.Threading.Thread.Sleep(500);
                         if (preScanStop || myGen != durScanGen) break;
                         string ruta = pend[i];
-                        float seg = 0f;
-                        try
-                        {
-                            using (AudioFileReader rd = new AudioFileReader(ruta))
-                            {
-                                double t = rd.TotalTime.TotalSeconds;
-                                if (t > 0.05 && t < 36000) seg = (float)t;
-                            }
-                        }
-                        catch { seg = 0f; }
+                        float seg = EsVideo(ruta) ? MideDuracionVideo(ruta, ref medidorVideo) : MideDuracionAudio(ruta);
                         if (seg > 0.01f) { lote.Add(ruta); lotd.Add(seg); }
                         // Publica el lote cada 128 archivos o al final, TAMBIEN si viene vacio: un archivo roto
                         // no da duracion pero SI es avance; sin esto, el contador de "faltan" del panel se
@@ -2877,11 +2886,88 @@ namespace Rocola
                     }
                 }
                 catch { }
+                finally { SueltaMedidorVideo(ref medidorVideo); }   // el objeto COM se crea y se suelta en ESTE hilo, que es el STA
             });
             durScanTh.IsBackground = true;
             durScanTh.Priority = System.Threading.ThreadPriority.Lowest;
+            // El reproductor de Windows es un objeto COM y solo se deja usar desde un hilo STA. Sin esto, la
+            // duracion de los videos no se podria medir aqui.
+            try { durScanTh.SetApartmentState(System.Threading.ApartmentState.STA); } catch { }
             durScanTh.Start();
         }
+        private static bool EsVideo(string ruta)
+        {
+            if (ruta == null) return false;
+            string ext = null;
+            try { ext = Path.GetExtension(ruta).ToLowerInvariant(); } catch { }
+            return ext != null && Array.IndexOf(VideoExt, ext) >= 0;
+        }
+
+        // Cuanto dura un archivo de MUSICA: lo abre, lee la cabecera y lo suelta. No descomprime nada.
+        private static float MideDuracionAudio(string ruta)
+        {
+            try
+            {
+                using (AudioFileReader rd = new AudioFileReader(ruta))
+                {
+                    double t = rd.TotalTime.TotalSeconds;
+                    if (t > 0.05 && t < 36000) return (float)t;
+                }
+            }
+            catch { }
+            return 0f;
+        }
+
+        // Cuanto dura un VIDEO. NAudio no sabe abrir un mp4 ni un avi, asi que se le pregunta a quien SI sabe
+        // y ademas ya esta en la maquina: el reproductor de Windows, el mismo que la rocola usa para poner los
+        // videos. Se le pide un objeto SUELTO (no el de la pantalla, que estaria reproduciendo) y se le manda
+        // "abre este archivo y dime cuanto dura" -newMedia-, que lee la cabecera SIN reproducir nada.
+        //
+        // La duracion no siempre esta lista en el mismo instante: el reproductor la va rellenando mientras
+        // reconoce el archivo. Por eso se le da un momento, mirando de tanto en tanto, y si en tres segundos no
+        // contesta se deja pasar (ese video se queda sin duracion, como estaba antes, y no se cuelga nada).
+        // El medidor se crea UNA vez por tanda y lo lleva el propio hilo (por eso va por referencia y no en un
+        // campo): crearlo por archivo seria carisimo, y tenerlo en un campo compartido se cruzaria con la tanda
+        // siguiente si alguien vuelve a escanear la biblioteca mientras esta corre.
+        private float MideDuracionVideo(string ruta, ref object wmpMedidor)
+        {
+            try
+            {
+                if (wmpMedidor == null)
+                {
+                    Type t = Type.GetTypeFromProgID("WMPlayer.OCX.7");
+                    if (t == null) t = Type.GetTypeFromProgID("WMPlayer.OCX");
+                    if (t == null) return 0f;                       // sin reproductor de Windows: no se puede medir
+                    wmpMedidor = Activator.CreateInstance(t);
+                    try { Set(wmpMedidor, "uiMode", "none"); } catch { }
+                    try { object s2 = Get(wmpMedidor, "settings"); if (s2 != null) { Set(s2, "autoStart", false); Set(s2, "volume", 0); } } catch { }
+                }
+                object media = Call(wmpMedidor, "newMedia", ruta);
+                if (media == null) return 0f;
+                try
+                {
+                    for (int intento = 0; intento < 30; intento++)   // hasta ~3 s, mirando cada 100 ms
+                    {
+                        double d = 0;
+                        try { object o = Get(media, "duration"); if (o != null) d = Convert.ToDouble(o); } catch { }
+                        if (d > 0.05 && d < 36000) return (float)d;
+                        if (preScanStop) break;
+                        System.Threading.Thread.Sleep(100);
+                    }
+                }
+                finally { try { System.Runtime.InteropServices.Marshal.ReleaseComObject(media); } catch { } }
+            }
+            catch { }
+            return 0f;
+        }
+        private static void SueltaMedidorVideo(ref object wmpMedidor)
+        {
+            object w = wmpMedidor; wmpMedidor = null;
+            if (w == null) return;
+            try { Call(w, "close"); } catch { }
+            try { System.Runtime.InteropServices.Marshal.ReleaseComObject(w); } catch { }
+        }
+
         // Corre en el hilo de la interfaz: las tablas son suyas. "faltan" es el avance ABSOLUTO que reporta el
         // hilo (cuenta tambien los archivos rotos, que no traen duracion pero ya quedaron atras).
         private void PublicaDuraciones(int gen, string[] rutas, float[] segs, int faltan)
@@ -4300,10 +4386,12 @@ namespace Rocola
             g.Rgb2 = (uint)(GiraTono(baseCol, 22f, 0.98f).ToArgb() & 0x00FFFFFF);        // pie, extremo AGUDO (derecha)
             g.RgbA = (uint)(GiraTono(baseCol, gp - 12f, 0.98f).ToArgb() & 0x00FFFFFF);   // punta, extremo GRAVE
             g.Rgb2A = (uint)(GiraTono(baseCol, gp + 18f, 0.96f).ToArgb() & 0x00FFFFFF);  // punta, extremo AGUDO
-            // ATENUACION al navegar. El resto del fondo (estrellas, brillos) baja al 45% para no pelearle a
-            // las portadas, pero la aurora vive PEGADA ABAJO, donde no hay portadas: bajarla igual la borraba
-            // de la pantalla justo cuando mas se mira. Aqui se atenua apenas: al 89% en vez de al 45%.
-            g.Dim = (0.80f + 0.20f * bgDim) * auroraPres;   // la presencia hace el fundido de entrada y de salida
+            // ATENUACION al navegar (la misma idea que baja las estrellas al 45%: mientras alguien esta
+            // eligiendo cancion, el fondo se calma y cansa menos la vista). La aurora ya no se queda casi como
+            // estaba: baja al 65%. Antes no podia bajar porque estaba floja de por si y desaparecia; ahora sale
+            // bastante mas fuerte, asi que en reposo -que es cuando nadie mira de cerca- luce entera, y en
+            // cuanto alguien toca una tecla se serena hasta que vuelve a quedarse quieta.
+            g.Dim = (0.36f + 0.64f * bgDim) * auroraPres;   // la presencia hace el fundido de entrada y de salida
             return g;
         }
 
@@ -4316,7 +4404,7 @@ namespace Rocola
         {
             int mx = accent.R; if (accent.G > mx) mx = accent.G; if (accent.B > mx) mx = accent.B;
             if (mx < 10) return Color.FromArgb(255, 60, 120, 235);   // sin genero: el azul de siempre
-            return Color.FromArgb(255, accent.R * 235 / mx, accent.G * 235 / mx, accent.B * 235 / mx);
+            return Color.FromArgb(255, accent.R * 250 / mx, accent.G * 250 / mx, accent.B * 250 / mx);
         }
 
         // TONO de un color, en grados de la rueda (0 = rojo, 120 = verde, 240 = azul).
@@ -6810,7 +6898,12 @@ namespace Rocola
             // Mientras el video SE VE, el panel baja a ~30 cuadros por segundo: el resto del equipo es para
             // el video (WMP decodifica por CPU en el fierro modesto). Sin video (o con el buscador abierto,
             // que lo oculta) vuelve al maximo.
-            gpuPanel.ThrottleMs = (videoOn && video != null && video.Visible) ? 33 : 0;
+            // Con el video a la vista, el panel se limita a 30 cuadros por segundo para dejarle equipo al
+            // video... pero SOLO donde hace falta. En la maquina de dos nucleos, el decodificador del video y
+            // el dibujado se pelean por los mismos nucleos y limitar ayuda de verdad; con cuatro o mas, el
+            // video tiene los suyos y limitar el dibujado solo hace que se vea peor sin ganar nada. (Y el
+            // limitador ya no se come nueve cuadros por el reloj gordo de Windows: ver Program y OnIdle.)
+            gpuPanel.ThrottleMs = (videoOn && video != null && video.Visible && Environment.ProcessorCount < 4) ? 33 : 0;
             albumView.GpuCovered = (nav || search || discGpu || attract);   // panel GPU encima: albumView no repinta por CPU (evita rebuild invisible al paginar)
             if (nav || search || discGpu || attract)
             {
