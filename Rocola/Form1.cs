@@ -1461,6 +1461,271 @@ namespace Rocola
         // "fuerza" (cuanto se suben las bajitas) y "realce de brillo" (exciter tipo DSEE: re-crea el "aire" que el
         // MP3 recorta). Filosofia del nivelado: subir las flojas, NO bajar las que ya suenan fuerte. Todo se oye
         // al instante en la cancion actual y aplica a las siguientes.
+        // ======================= PIEZAS DE LA VENTANA DE SONIDO (Ctrl+F3) =======================
+        // Windows XP dibuja sus barras, casillas y botones como en 1995: cuadrados, grises y con el marco
+        // hundido. En una rocola que por fuera es un cielo estrellado eso desentona muchisimo, asi que estas
+        // piezas se pintan solas. Por dentro son controles normales de Windows (raton, teclado y foco funcionan
+        // igual); solo cambia el dibujo: esquinas redondeadas, un color de acento por ajuste y nada de marcos.
+
+        // La familia de letra de la interfaz: se prueban por orden y se usa la primera que exista. En Windows XP
+        // no hay Segoe UI, asi que ahi cae en Tahoma (la del sistema) y en equipos nuevos en Segoe UI.
+        private static FontFamily FamiliaUi()
+        {
+            string[] pref = { "Segoe UI", "Tahoma", "Verdana" };
+            for (int i = 0; i < pref.Length; i++)
+                try { return new FontFamily(pref[i]); } catch { }
+            return FontFamily.GenericSansSerif;
+        }
+
+        // Arma una fila de ajuste dentro de una tarjeta. Es un delegado propio porque en .NET 3.5 los Action
+        // de la biblioteca solo llegan a cuatro argumentos.
+        private delegate void FilaAjuste(int k, Tarjeta card, int y, string titulo, Color ac, int min, int max, bool conAuto);
+
+        // TARJETA: el recuadro redondeado que agrupa unos cuantos ajustes bajo un titulo.
+        private sealed class Tarjeta : Panel
+        {
+            public string Titulo = "";
+            public Color Acento = Color.FromArgb(120, 200, 255);
+            public Tarjeta()
+            {
+                SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+                BackColor = Color.Transparent;
+            }
+            protected override void OnPaint(PaintEventArgs e)
+            {
+                Graphics g = e.Graphics;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+                Rectangle r = new Rectangle(0, 0, Width - 1, Height - 1);
+                using (GraphicsPath pa = RoundedPath(r, 12))
+                using (SolidBrush b = new SolidBrush(Color.FromArgb(22, 28, 56)))
+                using (Pen pn = new Pen(Color.FromArgb(46, 58, 104)))
+                { g.FillPath(b, pa); g.DrawPath(pn, pa); }
+                if (!string.IsNullOrEmpty(Titulo))
+                {
+                    using (SolidBrush ac = new SolidBrush(Acento))
+                    using (GraphicsPath ba = RoundedPath(new Rectangle(16, 15, 4, 14), 2))
+                        g.FillPath(ac, ba);
+                    using (SolidBrush tb = new SolidBrush(Color.FromArgb(226, 234, 255)))
+                    using (Font f = new Font(Font.FontFamily, 10.5f, FontStyle.Bold))
+                        g.DrawString(Titulo, f, tb, 28, 12);
+                }
+            }
+        }
+
+        // DESLIZADOR: la barra de un ajuste. Riel redondeado, la parte ya recorrida en el color del ajuste y un
+        // tirador redondo. Responde al raton (arrastrar o pulsar en cualquier punto) y al teclado (flechas de
+        // una en una, AvPag/RePag de diez en diez, Inicio/Fin a los extremos).
+        private sealed class Deslizador : Control
+        {
+            public int Minimum = 0, Maximum = 100;
+            public Color Acento = Color.FromArgb(120, 200, 255);
+            public event EventHandler Scroll;
+            private int val;
+            private bool arrastra;
+            public Deslizador()
+            {
+                SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw | ControlStyles.Selectable | ControlStyles.SupportsTransparentBackColor, true);
+                BackColor = Color.Transparent;
+                TabStop = true;
+                Height = 22;
+                Cursor = Cursors.Hand;
+            }
+            public int Value
+            {
+                get { return val; }
+                set { int v = Acota(value); if (v != val) { val = v; Invalidate(); } }
+            }
+            private int Acota(int v) { return v < Minimum ? Minimum : (v > Maximum ? Maximum : v); }
+            private const int Radio = 9;
+            private int DeX(int x)
+            {
+                int w = Width - Radio * 2; if (w < 1) w = 1;
+                float f = (x - Radio) / (float)w;
+                if (f < 0f) f = 0f; else if (f > 1f) f = 1f;
+                return Minimum + (int)(f * (Maximum - Minimum) + 0.5f);
+            }
+            private void Pon(int v)
+            {
+                v = Acota(v);
+                if (v == val) return;
+                val = v; Invalidate();
+                if (Scroll != null) Scroll(this, EventArgs.Empty);
+            }
+            protected override void OnMouseDown(MouseEventArgs e)
+            { if (Enabled) { Focus(); arrastra = true; Pon(DeX(e.X)); } base.OnMouseDown(e); }
+            protected override void OnMouseMove(MouseEventArgs e)
+            { if (arrastra && Enabled) Pon(DeX(e.X)); base.OnMouseMove(e); }
+            protected override void OnMouseUp(MouseEventArgs e) { arrastra = false; base.OnMouseUp(e); }
+            protected override bool IsInputKey(Keys k)
+            {
+                if (k == Keys.Left || k == Keys.Right || k == Keys.Up || k == Keys.Down
+                 || k == Keys.PageUp || k == Keys.PageDown || k == Keys.Home || k == Keys.End) return true;
+                return base.IsInputKey(k);
+            }
+            protected override void OnKeyDown(KeyEventArgs e)
+            {
+                if (!Enabled) { base.OnKeyDown(e); return; }
+                int salto = ((Maximum - Minimum) >= 40) ? 10 : 2;
+                if (e.KeyCode == Keys.Left || e.KeyCode == Keys.Down) { Pon(val - 1); e.Handled = true; }
+                else if (e.KeyCode == Keys.Right || e.KeyCode == Keys.Up) { Pon(val + 1); e.Handled = true; }
+                else if (e.KeyCode == Keys.PageDown) { Pon(val - salto); e.Handled = true; }
+                else if (e.KeyCode == Keys.PageUp) { Pon(val + salto); e.Handled = true; }
+                else if (e.KeyCode == Keys.Home) { Pon(Minimum); e.Handled = true; }
+                else if (e.KeyCode == Keys.End) { Pon(Maximum); e.Handled = true; }
+                base.OnKeyDown(e);
+            }
+            protected override void OnGotFocus(EventArgs e) { Invalidate(); base.OnGotFocus(e); }
+            protected override void OnLostFocus(EventArgs e) { Invalidate(); base.OnLostFocus(e); }
+            protected override void OnEnabledChanged(EventArgs e) { Invalidate(); base.OnEnabledChanged(e); }
+            protected override void OnPaint(PaintEventArgs e)
+            {
+                Graphics g = e.Graphics;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                int cy = Height / 2, alto = 6;
+                Rectangle riel = new Rectangle(Radio, cy - alto / 2, Math.Max(1, Width - Radio * 2), alto);
+                float f = (Maximum > Minimum) ? (val - Minimum) / (float)(Maximum - Minimum) : 0f;
+                int cx = riel.X + (int)(riel.Width * f);
+                Color ac = Enabled ? Acento : Color.FromArgb(92, 100, 124);
+                using (GraphicsPath pa = RoundedPath(riel, alto / 2))
+                using (SolidBrush b = new SolidBrush(Color.FromArgb(38, 46, 82)))
+                    g.FillPath(b, pa);
+                if (cx > riel.X + 1)
+                    using (GraphicsPath pa = RoundedPath(new Rectangle(riel.X, riel.Y, cx - riel.X, riel.Height), alto / 2))
+                    using (SolidBrush b = new SolidBrush(ac))
+                        g.FillPath(b, pa);
+                if (Focused)   // aro exterior: se ve cual esta enfocado al moverse con el teclado
+                    using (Pen pn = new Pen(Color.FromArgb(130, ac.R, ac.G, ac.B), 2f))
+                        g.DrawEllipse(pn, cx - Radio - 2, cy - Radio - 2, (Radio + 2) * 2, (Radio + 2) * 2);
+                using (SolidBrush b = new SolidBrush(Enabled ? Color.FromArgb(238, 244, 255) : Color.FromArgb(130, 138, 160)))
+                    g.FillEllipse(b, cx - Radio, cy - Radio, Radio * 2, Radio * 2);
+                using (Pen pn = new Pen(ac, 2.2f))
+                    g.DrawEllipse(pn, cx - Radio + 1, cy - Radio + 1, Radio * 2 - 2, Radio * 2 - 2);
+            }
+        }
+
+        // INTERRUPTOR: la casilla de encender/apagar, con forma de pastilla. El texto va a su derecha y pulsar
+        // en cualquier parte (pastilla o texto) lo cambia.
+        private sealed class Interruptor : Control
+        {
+            public Color Acento = Color.FromArgb(110, 225, 160);
+            public event EventHandler CheckedChanged;
+            private bool marcado;
+            public Interruptor()
+            {
+                SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw | ControlStyles.Selectable | ControlStyles.SupportsTransparentBackColor, true);
+                BackColor = Color.Transparent;
+                TabStop = true;
+                Height = 26;
+                Cursor = Cursors.Hand;
+            }
+            public bool Checked
+            {
+                get { return marcado; }
+                set { if (marcado != value) { marcado = value; Invalidate(); if (CheckedChanged != null) CheckedChanged(this, EventArgs.Empty); } }
+            }
+            protected override void OnMouseDown(MouseEventArgs e) { if (Enabled) { Focus(); Checked = !Checked; } base.OnMouseDown(e); }
+            protected override bool IsInputKey(Keys k) { return (k == Keys.Space) || base.IsInputKey(k); }
+            protected override void OnKeyDown(KeyEventArgs e)
+            {
+                if (Enabled && (e.KeyCode == Keys.Space || e.KeyCode == Keys.Enter)) { Checked = !Checked; e.Handled = true; }
+                base.OnKeyDown(e);
+            }
+            protected override void OnGotFocus(EventArgs e) { Invalidate(); base.OnGotFocus(e); }
+            protected override void OnLostFocus(EventArgs e) { Invalidate(); base.OnLostFocus(e); }
+            protected override void OnEnabledChanged(EventArgs e) { Invalidate(); base.OnEnabledChanged(e); }
+            protected override void OnPaint(PaintEventArgs e)
+            {
+                Graphics g = e.Graphics;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+                int h = 20, w = 40, y = (Height - h) / 2;
+                Color ac = !Enabled ? Color.FromArgb(80, 88, 112) : (marcado ? Acento : Color.FromArgb(58, 68, 108));
+                using (GraphicsPath pa = RoundedPath(new Rectangle(0, y, w, h), h / 2))
+                using (SolidBrush b = new SolidBrush(ac))
+                    g.FillPath(b, pa);
+                if (Focused)
+                    using (Pen pn = new Pen(Color.FromArgb(150, 190, 210, 255)))
+                    using (GraphicsPath pa = RoundedPath(new Rectangle(0, y, w, h), h / 2))
+                        g.DrawPath(pn, pa);
+                int r = h - 6, kx = marcado ? (w - r - 3) : 3;
+                using (SolidBrush b = new SolidBrush(Enabled ? Color.FromArgb(244, 248, 255) : Color.FromArgb(150, 156, 176)))
+                    g.FillEllipse(b, kx, y + 3, r, r);
+                if (!string.IsNullOrEmpty(Text))
+                    using (SolidBrush tb = new SolidBrush(Enabled ? ForeColor : Color.FromArgb(110, 118, 142)))
+                        g.DrawString(Text, Font, tb, w + 10, (Height - Font.Height) / 2f - 1f);
+            }
+        }
+
+        // BOTON plano y redondeado, con su color de relleno. Los de Windows en XP salen grises con degradado.
+        private sealed class BotonPlano : Control
+        {
+            public Color Relleno = Color.FromArgb(40, 52, 98);
+            public Color Borde = Color.FromArgb(72, 90, 150);
+            private bool encima;
+            public BotonPlano()
+            {
+                SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw | ControlStyles.Selectable | ControlStyles.SupportsTransparentBackColor, true);
+                BackColor = Color.Transparent; TabStop = true; Height = 38; Cursor = Cursors.Hand;
+                ForeColor = Color.White;
+            }
+            protected override void OnMouseEnter(EventArgs e) { encima = true; Invalidate(); base.OnMouseEnter(e); }
+            protected override void OnMouseLeave(EventArgs e) { encima = false; Invalidate(); base.OnMouseLeave(e); }
+            protected override void OnMouseDown(MouseEventArgs e) { Focus(); base.OnMouseDown(e); }
+            protected override bool IsInputKey(Keys k) { return (k == Keys.Space) || base.IsInputKey(k); }
+            protected override void OnKeyDown(KeyEventArgs e)
+            {
+                if (e.KeyCode == Keys.Space || e.KeyCode == Keys.Enter) { OnClick(EventArgs.Empty); e.Handled = true; }
+                base.OnKeyDown(e);
+            }
+            protected override void OnGotFocus(EventArgs e) { Invalidate(); base.OnGotFocus(e); }
+            protected override void OnLostFocus(EventArgs e) { Invalidate(); base.OnLostFocus(e); }
+            protected override void OnPaint(PaintEventArgs e)
+            {
+                Graphics g = e.Graphics;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+                Rectangle r = new Rectangle(0, 0, Width - 1, Height - 1);
+                Color rel = encima ? Aclara(Relleno, 0.16f) : Relleno;
+                using (GraphicsPath pa = RoundedPath(r, 9))
+                using (SolidBrush b = new SolidBrush(rel))
+                using (Pen pn = new Pen(Focused ? Aclara(Borde, 0.35f) : Borde, Focused ? 2f : 1f))
+                { g.FillPath(b, pa); g.DrawPath(pn, pa); }
+                SizeF sz = g.MeasureString(Text, Font);
+                using (SolidBrush tb = new SolidBrush(ForeColor))
+                    g.DrawString(Text, Font, tb, (Width - sz.Width) / 2f, (Height - sz.Height) / 2f);
+            }
+            private static Color Aclara(Color c, float t)
+            { return Color.FromArgb(c.A, (int)(c.R + (255 - c.R) * t), (int)(c.G + (255 - c.G) * t), (int)(c.B + (255 - c.B) * t)); }
+        }
+
+        // BARRA DE AVANCE plana (la de Windows en XP es verde con rayas y no pega con nada).
+        private sealed class BarraAvance : Control
+        {
+            public float Valor;   // 0..1
+            public Color Acento = Color.FromArgb(255, 170, 90);
+            public BarraAvance()
+            {
+                SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw | ControlStyles.SupportsTransparentBackColor, true);
+                BackColor = Color.Transparent; Height = 8;
+            }
+            protected override void OnPaint(PaintEventArgs e)
+            {
+                Graphics g = e.Graphics;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                Rectangle r = new Rectangle(0, 0, Math.Max(1, Width), Math.Max(4, Height));
+                using (GraphicsPath pa = RoundedPath(r, Height / 2))
+                using (SolidBrush b = new SolidBrush(Color.FromArgb(38, 46, 82)))
+                    g.FillPath(b, pa);
+                float f = Valor; if (f < 0f) f = 0f; else if (f > 1f) f = 1f;
+                int w = (int)(r.Width * f);
+                if (w > 2)
+                    using (GraphicsPath pa = RoundedPath(new Rectangle(0, 0, w, r.Height), Height / 2))
+                    using (SolidBrush b = new SolidBrush(Acento))
+                        g.FillPath(b, pa);
+            }
+        }
+
         private void ShowVolumeManager()
         {
             if (searchOpen) CloseSearch();
@@ -1471,257 +1736,296 @@ namespace Rocola
             try
             {
                 Cursor.Show();
-                using (Font fUi = new Font(FontFamily.GenericSansSerif, 10f))
-                using (Font fBig = new Font(FontFamily.GenericSansSerif, 12f, FontStyle.Bold))
+                FontFamily ff = FamiliaUi();
+                using (Font fTit = new Font(ff, 15f, FontStyle.Bold))
+                using (Font fSub = new Font(ff, 9.5f))
+                using (Font fNom = new Font(ff, 10f, FontStyle.Bold))
+                using (Font fVal = new Font(ff, 11f, FontStyle.Bold))
+                using (Font fDes = new Font(ff, 8.5f))
+                using (Font fBot = new Font(ff, 10f, FontStyle.Bold))
+                using (Font fInt = new Font(ff, 9.5f, FontStyle.Bold))
                 using (Form dlg = new Form())
                 {
-                    dlg.Text = "Rocola - Sonido (volumen parejo y realce)";
+                    dlg.Text = "Rocola  -  Sonido";
                     dlg.FormBorderStyle = FormBorderStyle.FixedDialog;
                     dlg.MaximizeBox = false; dlg.MinimizeBox = false; dlg.ShowInTaskbar = false; dlg.ShowIcon = false;
                     dlg.StartPosition = FormStartPosition.CenterParent;
-                    dlg.ClientSize = new Size(940, 926);   // ancha de sobra: las etiquetas llevan texto largo (porcentaje + explicacion + ajuste de la cancion)
-                    dlg.BackColor = Color.FromArgb(14, 18, 42);
-                    dlg.Font = fUi;
+                    dlg.ClientSize = new Size(960, 932);   // aqui hay pantalla de sobra: cabe la tarjeta de la IA en vivo
+                    dlg.BackColor = Color.FromArgb(11, 14, 32);
+                    dlg.Font = fSub;
 
-                    Label info = new Label();
-                    info.SetBounds(16, 12, 908, 60); info.BackColor = Color.Transparent; info.ForeColor = Color.FromArgb(205, 214, 238);
-                    info.Text = "Empareja el volumen de las canciones. Las canciones BAJITAS se suben hacia el 'volumen objetivo'; las que ya suenan FUERTE no se bajan. Sube el objetivo si quieres que todo suene mas fuerte.";
+                    Color cVol = Color.FromArgb(120, 230, 165);      // un color de acento por bloque
+                    Color cFue = Color.FromArgb(140, 205, 255);
+                    Color cSub = Color.FromArgb(255, 160, 140);
+                    Color cVid = Color.FromArgb(140, 220, 232);
+                    Color cCal = Color.FromArgb(178, 152, 255);
+                    Color cGra = Color.FromArgb(255, 176, 122);
+                    Color cBri = Color.FromArgb(255, 214, 140);
+                    Color cBib = Color.FromArgb(255, 176, 102);
+                    Color cIa = Color.FromArgb(255, 210, 130);
+                    Color cTexto = Color.FromArgb(222, 230, 250);
+                    Color cTenue = Color.FromArgb(138, 149, 182);    // texto de las explicaciones
+                    Color cApagado = Color.FromArgb(96, 104, 128);
 
-                    CheckBox chkOn = new CheckBox();
-                    chkOn.SetBounds(16, 78, 908, 26); chkOn.BackColor = Color.Transparent; chkOn.ForeColor = Color.White;
-                    chkOn.Font = fBig; chkOn.Text = "Nivelar el volumen (que todas suenen parejo)"; chkOn.Checked = normalizeOn;
+                    Label lTit = new Label(); lTit.SetBounds(22, 12, 700, 28); lTit.BackColor = Color.Transparent;
+                    lTit.ForeColor = Color.FromArgb(232, 238, 255); lTit.Font = fTit; lTit.Text = "Sonido";
+                    Label lSub = new Label(); lSub.SetBounds(24, 44, 916, 18); lSub.BackColor = Color.Transparent;
+                    lSub.ForeColor = cTenue; lSub.Font = fSub;
+                    lSub.Text = "Todo lo que cambies aqui se oye al instante en la cancion que esta sonando.";
 
-                    Label lTarget = new Label(); lTarget.SetBounds(16, 122, 908, 24); lTarget.BackColor = Color.Transparent; lTarget.ForeColor = Color.FromArgb(150, 240, 170);
-                    TrackBar tbTarget = new TrackBar(); tbTarget.SetBounds(12, 148, 916, 45); tbTarget.Minimum = 0; tbTarget.Maximum = 100; tbTarget.TickFrequency = 10;
-                    tbTarget.BackColor = dlg.BackColor; tbTarget.Value = TargetToPct(normTarget);
+                    Tarjeta tVol = new Tarjeta(); tVol.SetBounds(16, 70, 456, 388); tVol.Titulo = "VOLUMEN PAREJO"; tVol.Acento = cVol;
+                    Tarjeta tCal = new Tarjeta(); tCal.SetBounds(488, 70, 456, 388); tCal.Titulo = "CALIDAD DEL SONIDO"; tCal.Acento = cCal;
+                    Tarjeta tIa = new Tarjeta(); tIa.SetBounds(16, 468, 928, 232); tIa.Titulo = "IA EN VIVO  (DSEE ULTRA)"; tIa.Acento = cIa;
+                    Tarjeta tBib = new Tarjeta(); tBib.SetBounds(16, 710, 928, 154); tBib.Titulo = "TU BIBLIOTECA"; tBib.Acento = cBib;
 
-                    Label lStr = new Label(); lStr.SetBounds(16, 208, 908, 24); lStr.BackColor = Color.Transparent; lStr.ForeColor = Color.FromArgb(150, 200, 255);
-                    TrackBar tbStr = new TrackBar(); tbStr.SetBounds(12, 234, 916, 45); tbStr.Minimum = 0; tbStr.Maximum = 100; tbStr.TickFrequency = 10;
-                    tbStr.BackColor = dlg.BackColor; tbStr.Value = (int)Math.Round(normStrength * 100f);
+                    // --- Una FILA de ajuste: nombre arriba, valor a la derecha, explicacion debajo y la barra abajo ---
+                    Label[] nom = new Label[7], val = new Label[7], des = new Label[7];
+                    Deslizador[] bar = new Deslizador[7];
+                    Interruptor[] au = new Interruptor[7];
+                    const int anchoFila = 424;
+                    FilaAjuste Fila = delegate (int k, Tarjeta card, int y, string titulo, Color ac, int min, int max, bool conAuto)
+                    {
+                        int wNom = conAuto ? (anchoFila - 210) : (anchoFila - 100);
+                        nom[k] = new Label(); nom[k].SetBounds(16, y, wNom, 18); nom[k].BackColor = Color.Transparent;
+                        nom[k].ForeColor = cTexto; nom[k].Font = fNom; nom[k].Text = titulo;
+                        if (conAuto)
+                        {
+                            au[k] = new Interruptor(); au[k].SetBounds(16 + wNom + 6, y - 2, 104, 22);
+                            au[k].ForeColor = cTenue; au[k].Font = fInt; au[k].Text = "Auto"; au[k].Acento = ac;
+                            card.Controls.Add(au[k]);
+                        }
+                        val[k] = new Label(); val[k].SetBounds(16 + anchoFila - 94, y - 2, 94, 20); val[k].BackColor = Color.Transparent;
+                        val[k].ForeColor = ac; val[k].Font = fVal; val[k].TextAlign = ContentAlignment.TopRight;
+                        des[k] = new Label(); des[k].SetBounds(16, y + 20, anchoFila, 28); des[k].BackColor = Color.Transparent;
+                        des[k].ForeColor = cTenue; des[k].Font = fDes;
+                        bar[k] = new Deslizador(); bar[k].SetBounds(16, y + 50, anchoFila, 22);
+                        bar[k].Minimum = min; bar[k].Maximum = max; bar[k].Acento = ac;
+                        card.Controls.Add(nom[k]); card.Controls.Add(val[k]); card.Controls.Add(des[k]); card.Controls.Add(bar[k]);
+                    };
 
-                    // REALCE DE BRILLO (exciter, tipo DSEE): independiente del nivelado (0 = apagado).
-                    // SUBIR TODO: dB extra para ABSOLUTAMENTE todas las canciones (ademas del nivelado, que solo
-                    // sube a las bajitas). La rodilla suave del LevelTap redondea los picos: fuerte sin aspereza.
-                    Label lUp = new Label(); lUp.SetBounds(16, 292, 470, 24); lUp.BackColor = Color.Transparent; lUp.ForeColor = Color.FromArgb(255, 170, 150);
-                    TrackBar tbUp = new TrackBar(); tbUp.SetBounds(492, 286, 436, 45); tbUp.Minimum = 0; tbUp.Maximum = 12; tbUp.TickFrequency = 1;
-                    tbUp.BackColor = dlg.BackColor; tbUp.Value = (int)Math.Round(masterDb);
+                    // ---------------- VOLUMEN PAREJO ----------------
+                    Interruptor swOn = new Interruptor();
+                    swOn.SetBounds(16, 40, 424, 26); swOn.ForeColor = cTexto; swOn.Font = fNom;
+                    swOn.Text = "Nivelar el volumen de todas las canciones"; swOn.Acento = cVol; swOn.Checked = normalizeOn;
+                    tVol.Controls.Add(swOn);
+                    Fila(0, tVol, 76, "Volumen objetivo", cVol, 0, 100, false);
+                    Fila(1, tVol, 150, "Fuerza del nivelado", cFue, 0, 100, false);
+                    Fila(2, tVol, 224, "Subir TODO el volumen", cSub, 0, 12, false);
+                    Fila(3, tVol, 298, "Volumen de los videos", cVid, 0, 100, false);
+                    bar[0].Value = TargetToPct(normTarget);
+                    bar[1].Value = (int)Math.Round(normStrength * 100f);
+                    bar[2].Value = (int)Math.Round(masterDb);
+                    bar[3].Value = videoVol;
 
-                    // VOLUMEN DE LOS VIDEOS: el WMP no pasa por la cadena de audio, asi que su volumen se
-                    // empareja aqui a mano (y de todos modos sigue a "Subir TODO").
-                    Label lVid = new Label(); lVid.SetBounds(16, 350, 470, 24); lVid.BackColor = Color.Transparent; lVid.ForeColor = Color.FromArgb(150, 225, 235);
-                    TrackBar tbVid = new TrackBar(); tbVid.SetBounds(492, 344, 436, 45); tbVid.Minimum = 0; tbVid.Maximum = 100; tbVid.TickFrequency = 10;
-                    tbVid.BackColor = dlg.BackColor; tbVid.Value = videoVol;
+                    // ---------------- CALIDAD DEL SONIDO ----------------
+                    Fila(4, tCal, 44, "EQ automatico", cCal, 0, 100, true);
+                    Fila(5, tCal, 118, "Graves (bajo profundo)", cGra, 0, 100, true);
+                    Fila(6, tCal, 192, "Realce de brillo", cBri, 0, 100, false);
+                    bar[4].Value = (int)Math.Round(eqAmount * 100f); au[4].Checked = eqAuto;
+                    bar[5].Value = (int)Math.Round(bassAmount * 100f); au[5].Checked = bassAuto;
+                    bar[6].Value = (int)Math.Round(excAmount * 100f);
 
-                    Label lExc = new Label(); lExc.SetBounds(16, 396, 908, 24); lExc.BackColor = Color.Transparent; lExc.ForeColor = Color.FromArgb(255, 214, 140);
-                    TrackBar tbExc = new TrackBar(); tbExc.SetBounds(12, 422, 916, 45); tbExc.Minimum = 0; tbExc.Maximum = 100; tbExc.TickFrequency = 10;
-                    tbExc.BackColor = dlg.BackColor; tbExc.Value = (int)Math.Round(excAmount * 100f);
+                    Interruptor swSbr = new Interruptor();
+                    swSbr.SetBounds(16, 280, 424, 26); swSbr.ForeColor = cTexto; swSbr.Font = fNom;
+                    swSbr.Text = "Reconstruir agudos perdidos"; swSbr.Acento = Color.FromArgb(150, 205, 255);
+                    swSbr.Checked = sbrOn && sbrAllowed; swSbr.Enabled = sbrAllowed;
+                    Label lSbr = new Label(); lSbr.SetBounds(16, 308, 424, 44); lSbr.BackColor = Color.Transparent;
+                    lSbr.ForeColor = sbrAllowed ? cTenue : Color.FromArgb(224, 158, 120); lSbr.Font = fDes;
+                    lSbr.Text = sbrAllowed
+                        ? (NeuralEnv.Loaded
+                           ? "Ligero, dentro de la rocola, con la IA entrenada con tu propia musica. Se apaga solo si enciendes DSEE ULTRA."
+                           : "Ligero, dentro de la rocola. Se apaga solo si enciendes DSEE ULTRA.")
+                        : "No disponible en este equipo: " + sbrReason;
+                    tCal.Controls.Add(swSbr); tCal.Controls.Add(lSbr);
 
-                    // EQ AUTOMATICO: correccion tonal suave por cancion, hacia el promedio de la biblioteca.
-                    // De fabrica va en AUTOMATICO: la fuerza la decide el programa (EqFuerzaAuto) y la perilla
-                    // queda apagada. Quien quiera mandar a mano, quita la casilla y la perilla vuelve a valer.
-                    Label lEq = new Label(); lEq.SetBounds(16, 478, 470, 24); lEq.BackColor = Color.Transparent; lEq.ForeColor = Color.FromArgb(190, 160, 255);
-                    CheckBox chkEqAuto = new CheckBox();
-                    chkEqAuto.SetBounds(492, 476, 148, 26); chkEqAuto.BackColor = Color.Transparent; chkEqAuto.ForeColor = Color.FromArgb(190, 160, 255);
-                    chkEqAuto.Text = "Automatico"; chkEqAuto.Checked = eqAuto;
-                    TrackBar tbEq = new TrackBar(); tbEq.SetBounds(646, 472, 282, 45); tbEq.Minimum = 0; tbEq.Maximum = 100; tbEq.TickFrequency = 10;
-                    // BAJO PSICOACUSTICO: la mitad que le faltaba a la cadena (arriba el realce de agudos, aqui el grave).
-                    Label lBass = new Label(); lBass.SetBounds(16, 526, 470, 24); lBass.BackColor = Color.Transparent; lBass.ForeColor = Color.FromArgb(255, 180, 120);
-                    CheckBox chkBassAuto = new CheckBox();
-                    chkBassAuto.SetBounds(492, 524, 148, 26); chkBassAuto.BackColor = Color.Transparent; chkBassAuto.ForeColor = Color.FromArgb(255, 180, 120);
-                    chkBassAuto.Text = "Automatico"; chkBassAuto.Checked = bassAuto;
-                    TrackBar tbBass = new TrackBar(); tbBass.SetBounds(646, 520, 282, 45); tbBass.Minimum = 0; tbBass.Maximum = 100; tbBass.TickFrequency = 10;
-                    tbBass.Value = (int)Math.Round(bassAmount * 100f);
-                    tbEq.BackColor = dlg.BackColor; tbEq.Value = (int)Math.Round(eqAmount * 100f);
-                    tbBass.BackColor = dlg.BackColor;
-
-                    // NIVEL 2: reconstructor espectral (solo maquinas que cumplen requisitos; ver ProbeAudioTier)
-                    CheckBox chkSbr = new CheckBox();
-                    chkSbr.SetBounds(16, 572, 908, 24); chkSbr.BackColor = Color.Transparent; chkSbr.ForeColor = Color.FromArgb(190, 225, 255);
-                    chkSbr.Text = "DSEE  (reconstruccion espectral de agudos)";
-                    chkSbr.Checked = sbrOn && sbrAllowed;
-                    Label lSbrInfo = new Label(); lSbrInfo.SetBounds(35, 596, 889, 18); lSbrInfo.BackColor = Color.Transparent;
-                    lSbrInfo.ForeColor = Color.FromArgb(150, 160, 190);
-                    lSbrInfo.Text = sbrAllowed
-                        ? (NeuralEnv.Loaded ? "Reconstruye agudos dentro de la rocola, con IA propia (rocola_ia.bin)." : "Reconstruye agudos dentro de la rocola (ligero).")
-                        : "NO disponible en este equipo: " + sbrReason;
-
-                    // DSEE ULTRA = IA (Apollo por demanda). Al activarlo, el DSEE normal se pone en GRIS (no van juntos).
-                    CheckBox chkUltra = new CheckBox();
-                    chkUltra.SetBounds(16, 620, 908, 24); chkUltra.BackColor = Color.Transparent; chkUltra.ForeColor = Color.FromArgb(255, 210, 130);
-                    chkUltra.Font = fBig; chkUltra.Text = "DSEE ULTRA  (IA - maxima calidad)"; chkUltra.Checked = iaVivo;
-                    Label lUltraInfo = new Label(); lUltraInfo.SetBounds(35, 646, 889, 18); lUltraInfo.BackColor = Color.Transparent; lUltraInfo.ForeColor = Color.FromArgb(180, 170, 150);
-                    lUltraInfo.Text = "Restaura con IA (Apollo, usa la GPU). Lista tras oirla una vez.";
-                    CheckBox chkIaAuto = new CheckBox();
-                    chkIaAuto.SetBounds(35, 668, 889, 22); chkIaAuto.BackColor = Color.Transparent; chkIaAuto.ForeColor = Color.White;
-                    chkIaAuto.Text = "IA automatica segun el dano (recomendado)";
+                    // ---------------- IA EN VIVO (DSEE ULTRA) ----------------
+                    // Es la restauracion GRANDE, la que corre en la tarjeta grafica con Apollo. No va junta con
+                    // el DSEE ligero de la tarjeta de al lado: al encender esta, aquella se apaga sola.
+                    Interruptor swUltra = new Interruptor();
+                    swUltra.SetBounds(16, 40, 480, 26); swUltra.ForeColor = cTexto; swUltra.Font = fNom;
+                    swUltra.Text = "DSEE ULTRA  -  restaurar con IA (maxima calidad)"; swUltra.Acento = cIa; swUltra.Checked = iaVivo;
+                    Label lUltra = new Label(); lUltra.SetBounds(16, 68, 896, 18); lUltra.BackColor = Color.Transparent;
+                    lUltra.ForeColor = cTenue; lUltra.Font = fDes;
+                    lUltra.Text = "Restaura la cancion entera con IA usando la tarjeta grafica. Queda lista despues de oirla una vez.";
+                    Interruptor swIaAuto = new Interruptor();
+                    swIaAuto.SetBounds(16, 96, 480, 26); swIaAuto.ForeColor = cTexto; swIaAuto.Font = fNom;
+                    swIaAuto.Text = "Decidir sola cuanta IA segun el dano"; swIaAuto.Acento = cIa;
                     int iaMixInit = 70; bool iaAutoInit = true;
                     if (iaMezcla != null && iaMezcla != "auto") { int tmp; if (int.TryParse(iaMezcla, out tmp)) { iaMixInit = tmp < 0 ? 0 : (tmp > 100 ? 100 : tmp); iaAutoInit = false; } }
-                    chkIaAuto.Checked = iaAutoInit;
-                    Label lIaMix = new Label(); lIaMix.SetBounds(16, 694, 908, 22); lIaMix.BackColor = Color.Transparent; lIaMix.ForeColor = Color.FromArgb(255, 214, 140);
-                    TrackBar tbIaMix = new TrackBar(); tbIaMix.SetBounds(12, 716, 916, 45); tbIaMix.Minimum = 0; tbIaMix.Maximum = 100; tbIaMix.TickFrequency = 10;
-                    tbIaMix.BackColor = dlg.BackColor; tbIaMix.Value = iaMixInit;
-
-                    // GPU QUE HACE LOS CALCULOS DE IA: la lista la escribe el motor (cache\gpus.txt) al arrancar,
-                    // con los nombres reales que ve torch (el indice de la lista ES el indice CUDA).
-                    Label lGpu = new Label(); lGpu.SetBounds(35, 768, 420, 22); lGpu.BackColor = Color.Transparent; lGpu.ForeColor = Color.White;
-                    lGpu.Text = "GPU para los calculos de IA:";
-                    ComboBox cbGpu = new ComboBox(); cbGpu.SetBounds(470, 764, 454, 26); cbGpu.DropDownStyle = ComboBoxStyle.DropDownList;
-                    cbGpu.BackColor = Color.FromArgb(34, 44, 86); cbGpu.ForeColor = Color.White; cbGpu.FlatStyle = FlatStyle.Flat;
+                    swIaAuto.Checked = iaAutoInit;
+                    Label lMixN = new Label(); lMixN.SetBounds(16, 132, 330, 18); lMixN.BackColor = Color.Transparent;
+                    lMixN.ForeColor = cTexto; lMixN.Font = fNom; lMixN.Text = "Cuanta IA";
+                    Label lMixV = new Label(); lMixV.SetBounds(346, 130, 94, 20); lMixV.BackColor = Color.Transparent;
+                    lMixV.ForeColor = cIa; lMixV.Font = fVal; lMixV.TextAlign = ContentAlignment.TopRight;
+                    Label lMixD = new Label(); lMixD.SetBounds(16, 152, 424, 28); lMixD.BackColor = Color.Transparent;
+                    lMixD.ForeColor = cTenue; lMixD.Font = fDes;
+                    lMixD.Text = "Cuanto de lo restaurado se mezcla con el original.\nMenos IA = mas natural; mas IA = mas limpio.";
+                    Deslizador barMix = new Deslizador(); barMix.SetBounds(16, 182, 424, 22);
+                    barMix.Minimum = 0; barMix.Maximum = 100; barMix.Acento = cIa; barMix.Value = iaMixInit;
+                    Label lGpu = new Label(); lGpu.SetBounds(488, 132, 424, 18); lGpu.BackColor = Color.Transparent;
+                    lGpu.ForeColor = cTexto; lGpu.Font = fNom; lGpu.Text = "Tarjeta grafica que hace los calculos";
+                    ComboBox cbGpu = new ComboBox(); cbGpu.SetBounds(488, 156, 424, 26); cbGpu.DropDownStyle = ComboBoxStyle.DropDownList;
+                    cbGpu.BackColor = Color.FromArgb(30, 38, 72); cbGpu.ForeColor = Color.White; cbGpu.FlatStyle = FlatStyle.Flat; cbGpu.Font = fSub;
                     cbGpu.Items.Add("Automatica");
                     string[] gpus = IaGpuList();
                     for (int gi = 0; gi < gpus.Length; gi++) cbGpu.Items.Add("GPU " + gi + " - " + gpus[gi]);
                     int selGpu = 0; { int gn; if (iaGpu != "auto" && int.TryParse(iaGpu, out gn) && gn >= 0 && gn + 1 < cbGpu.Items.Count) selGpu = gn + 1; }
                     cbGpu.SelectedIndex = selGpu;   // antes de enganchar el evento: sin reinicios fantasma
+                    tIa.Controls.Add(swUltra); tIa.Controls.Add(lUltra); tIa.Controls.Add(swIaAuto);
+                    tIa.Controls.Add(lMixN); tIa.Controls.Add(lMixV); tIa.Controls.Add(lMixD); tIa.Controls.Add(barMix);
+                    tIa.Controls.Add(lGpu); tIa.Controls.Add(cbGpu);
 
-                    Label lCal = new Label(); lCal.SetBounds(16, 794, 908, 20); lCal.BackColor = Color.Transparent; lCal.ForeColor = Color.FromArgb(150, 205, 235);
+                    // ---------------- TU BIBLIOTECA ----------------
+                    Label lCal = new Label(); lCal.SetBounds(16, 42, 896, 20); lCal.BackColor = Color.Transparent;
+                    lCal.ForeColor = Color.FromArgb(198, 214, 244); lCal.Font = fNom;
+                    Label hint = new Label(); hint.SetBounds(16, 64, 896, 34); hint.BackColor = Color.Transparent;
+                    hint.ForeColor = cTenue; hint.Font = fDes;
+                    BotonPlano bTrain = new BotonPlano();
+                    bTrain.SetBounds(16, 102, 300, 34); bTrain.Font = fBot;
+                    Label lPct = new Label(); lPct.SetBounds(332, 100, 580, 18); lPct.BackColor = Color.Transparent;
+                    lPct.ForeColor = cBib; lPct.Font = fDes; lPct.TextAlign = ContentAlignment.TopRight; lPct.Visible = false;
+                    BarraAvance pbTrain = new BarraAvance();
+                    pbTrain.SetBounds(332, 122, 580, 8); pbTrain.Acento = cBib; pbTrain.Visible = false;
+                    tBib.Controls.Add(lCal); tBib.Controls.Add(hint); tBib.Controls.Add(bTrain); tBib.Controls.Add(lPct); tBib.Controls.Add(pbTrain);
                     EscribeInformeCalidad();   // el detalle, cancion por cancion, queda en un archivo junto al programa
-                    Label hint = new Label(); hint.SetBounds(16, 816, 908, 34); hint.BackColor = Color.Transparent; hint.ForeColor = Color.FromArgb(160, 170, 200);
-                    // ENTRENAMIENTO A FONDO: barra de avance de la tanda en curso (visible solo mientras corre).
-                    ProgressBar pbTrain = new ProgressBar();
-                    pbTrain.SetBounds(16, 852, 908, 14); pbTrain.Minimum = 0; pbTrain.Maximum = 1000; pbTrain.Visible = false;
-                    hint.Text = "El nivelado y el realce se oyen al instante; DSEE / DSEE ULTRA aplican desde la SIGUIENTE cancion. DSEE ULTRA y DSEE normal no van juntos.";
 
-                    Button bReset = new Button(), bOk = new Button(), bTrain = new Button();
-                    bReset.Text = "Recomendado"; bReset.SetBounds(16, 874, 170, 38);
-                    bOk.Text = "Listo"; bOk.SetBounds(812, 874, 112, 38);
-                    bTrain.SetBounds(200, 874, 596, 38);
-                    Button[] bs = { bReset, bOk, bTrain };
-                    for (int i = 0; i < bs.Length; i++) { bs[i].FlatStyle = FlatStyle.Flat; bs[i].FlatAppearance.BorderColor = Color.FromArgb(90, 110, 170); bs[i].BackColor = Color.FromArgb(34, 44, 86); bs[i].ForeColor = Color.White; }
+                    // ---------------- PIE ----------------
+                    BotonPlano bReset = new BotonPlano(); bReset.SetBounds(16, 876, 220, 38); bReset.Font = fBot;
+                    bReset.Text = "Dejar como de fabrica";
+                    BotonPlano bOk = new BotonPlano(); bOk.SetBounds(804, 876, 140, 38); bOk.Font = fBot;
+                    bOk.Text = "Listo"; bOk.Relleno = Color.FromArgb(30, 96, 70); bOk.Borde = Color.FromArgb(72, 182, 132);
 
-                    // Pinta el estado del entrenamiento a fondo: texto del boton, barra y cuanto falta.
                     Action pintaTrain = delegate
                     {
                         bool on = preScanTurbo;
-                        bTrain.Text = on ? "DETENER ENTRENAMIENTO" : "ENTRENAMIENTO A FONDO";
-                        bTrain.BackColor = on ? Color.FromArgb(150, 60, 45) : Color.FromArgb(34, 44, 86);
+                        bTrain.Text = on ? "Detener el repaso a fondo" : "Repasar la biblioteca a fondo";
+                        bTrain.Relleno = on ? Color.FromArgb(126, 52, 42) : Color.FromArgb(40, 52, 98);
+                        bTrain.Borde = on ? Color.FromArgb(196, 96, 76) : Color.FromArgb(72, 90, 150);
+                        bTrain.Invalidate();
                         int tot = preScanTotal, fal = preScanLeft;
                         bool corriendo = on && tot > 0;
-                        pbTrain.Visible = corriendo;
+                        pbTrain.Visible = corriendo; lPct.Visible = corriendo;
                         if (corriendo)
                         {
                             int hechas = tot - fal; if (hechas < 0) hechas = 0; if (hechas > tot) hechas = tot;
-                            pbTrain.Value = (int)((long)hechas * 1000 / Math.Max(1, tot));
+                            pbTrain.Valor = hechas / (float)Math.Max(1, tot);
+                            pbTrain.Invalidate();
+                            lPct.Text = hechas.ToString("#,0") + " de " + tot.ToString("#,0") + " canciones   (" + (hechas * 100 / Math.Max(1, tot)) + "%)";
                         }
                     };
                     Action updateLabels = delegate
                     {
-                        lTarget.Text = "Volumen objetivo:  " + tbTarget.Value + "%   (mas alto = todo suena mas fuerte)";
-                        lStr.Text = "Fuerza del nivelado:  " + tbStr.Value + "%   (cuanto se suben las bajitas; 0 = no nivelar)";
-                        lExc.Text = "Realce de brillo (tipo DSEE):  " + tbExc.Value + "%   (el 'aire' que el MP3 apaga; 0 = sin realce)";
-                        lUp.Text = "Subir TODO el volumen:  +" + tbUp.Value + " dB";
-                        lVid.Text = "Volumen de los videos:  " + tbVid.Value + "%";
-                        // Se ve de donde sale el objetivo del EQ: de las canciones SANAS o, si aun no hay
-                        // bastantes medidas, de todas (que es como funcionaba antes).
-                        // Se ve de donde sale la fuerza y de donde sale el objetivo. En automatico se ensena lo
-                        // que el programa eligio, para que no parezca magia invisible.
-                        int eqPct = (int)Math.Round((chkEqAuto.Checked ? EqFuerzaAuto() : tbEq.Value / 100f) * 100f);
-                        lEq.Text = "EQ automatico:  " + eqPct + "%"
-                                 + (eqAvgSanas > 0
-                                    ? ("   (objetivo: " + eqAvgSanas.ToString("#,0") + (eqAvgSoloSanas ? " canciones sanas)" : " canciones, aun sin sanas)"))
-                                    : "   (aun sin objetivo)");
-                        // Igual con el bajo: de cuanto parte y cuanto le toca de verdad a la cancion que suena.
-                        int bBase = (int)Math.Round((chkBassAuto.Checked ? bassAutoBase : tbBass.Value / 100f) * 100f);
+                        // ---------- VOLUMEN ----------
+                        val[0].Text = bar[0].Value + "%";
+                        des[0].Text = "Que tan fuerte queda el conjunto. Mas alto = todo suena mas fuerte.";
+                        val[1].Text = bar[1].Value + "%";
+                        des[1].Text = "Cuanto se suben las canciones bajitas. Las que ya suenan fuerte NUNCA se bajan.";
+                        val[2].Text = "+" + bar[2].Value + " dB";
+                        des[2].Text = "De mas para TODAS, ademas del nivelado. Para cuando el local queda corto.";
+                        val[3].Text = bar[3].Value + "%";
+                        des[3].Text = "Los videos no pasan por la cadena de sonido: su volumen se empareja aqui.";
+                        // ---------- CALIDAD ---------- (en automatico se ensena lo que eligio el programa, no la barra)
+                        int eqPct = (int)Math.Round((au[4].Checked ? EqFuerzaAuto() : bar[4].Value / 100f) * 100f);
+                        val[4].Text = eqPct + "%";
+                        des[4].Text = "Empareja el tono de cada cancion con el de tu biblioteca.\n"
+                                    + (au[4].Checked
+                                       ? (eqAvgSanas >= 10
+                                          ? ("Solo: sube la fuerza al medir mas canciones (van " + eqAvgSanas.ToString("#,0") + ").")
+                                          : "Solo: aun no hay bastantes canciones medidas; todavia no toca nada.")
+                                       : "A mano: manda la barra.");
+                        int bBase = (int)Math.Round((au[5].Checked ? bassAutoBase : bar[5].Value / 100f) * 100f);
                         int bEfe = (int)Math.Round(bBase * bassSongFactor);
-                        lBass.Text = "Graves (bajo profundo):  " + bBase + "%"
-                                   + ((nowPlaying != null && bEfe != bBase) ? ("   (esta cancion: " + bEfe + "%)") : "");
-                        // PRE-ANALISIS + ETAPA: ya no hace falta que una cancion suene para quedar nivelada; aqui se
-                        // ve cuanto le falta a la biblioteca por medir y en que etapa de volumen cayo la que suena.
-                        string etapa = (nowPlaying != null && nowPlaying.Song != null) ? LoudTierName(nowPlaying.Song.Path) : "";
-                        int tTot = preScanTotal, tFal = preScanLeft;
-                        hint.Text = (preScanTurbo && tTot > 0)
-                            ? (tFal > 0
-                               ? ("ENTRENANDO A FONDO: " + (tTot - tFal).ToString("#,0") + " de " + tTot.ToString("#,0")
-                                  + " canciones (" + ((tTot - tFal) * 100 / Math.Max(1, tTot)) + "%).   IA: " + IaInfoText() + ".")
-                               : ("A FONDO: la biblioteca ya esta repasada entera (" + tTot.ToString("#,0")
-                                  + " canciones).   IA: " + IaInfoText() + "."))
-                            : ("La biblioteca se mide sola: "
-                               + (tFal > 0 ? ("faltan " + tFal.ToString("#,0") + " canciones.") : "ya esta al dia.")
-                               + (iaHarvestOn ? ("   IA: " + IaInfoText() + ".") : "")
-                               + (durScanLeft > 0 ? ("   Duraciones: faltan " + durScanLeft.ToString("#,0") + ".") : "")
-                               + (etapa.Length > 0 ? ("   Esta cancion: " + etapa + ".") : "")
-                               + "   DSEE ULTRA y DSEE normal no van juntos.");
-                        // CALIDAD: lo que el analisis ya sabia y no se veia por ningun lado.
+                        val[5].Text = bBase + "%";
+                        des[5].Text = "Recupera el golpe de bajo que las bocinas no alcanzan a dar.\n"
+                                    + (au[5].Checked ? "Solo: a cada una se le da lo que le falta." : "A mano: manda la barra.")
+                                    + ((nowPlaying != null && bEfe != bBase) ? ("   Esta: " + bEfe + "%.") : "");
+                        val[6].Text = bar[6].Value + "%";
+                        des[6].Text = "Devuelve el 'aire' que el MP3 apaga.\nSe le da mas a las canciones mas dañadas.";
+                        // ---------- BIBLIOTECA ----------
                         {
                             int cb, cm, cp, cr, cs2;
                             CalidadResumen(out cb, out cm, out cp, out cr, out cs2);
                             lCal.Text = (cb + cm + cp > 0)
-                                ? ("Calidad de la biblioteca:   " + cb.ToString("#,0") + " completas   |   "
-                                   + cm.ToString("#,0") + " aceptables   |   " + cp.ToString("#,0") + " pobres"
-                                   + (cr > 0 ? ("   |   " + cr.ToString("#,0") + " con picos recortados") : "")
-                                   + "        (detalle en rocola_calidad.txt)")
-                                : "Calidad de la biblioteca: aun sin medir (deja correr el pre-analisis).";
+                                ? ("Calidad:    " + cb.ToString("#,0") + " completas        " + cm.ToString("#,0") + " aceptables        "
+                                   + cp.ToString("#,0") + " pobres" + (cr > 0 ? ("        " + cr.ToString("#,0") + " con los picos recortados") : ""))
+                                : "Calidad: aun sin medir. Deja que el repaso vaya haciendo su trabajo.";
                         }
+                        string etapa = (nowPlaying != null && nowPlaying.Song != null) ? LoudTierName(nowPlaying.Song.Path) : "";
+                        int tTot = preScanTotal, tFal = preScanLeft;
+                        hint.Text = (preScanTurbo && tTot > 0)
+                            ? ((tFal > 0 ? "Repasando a fondo ahora mismo. " : "Repaso a fondo terminado: la biblioteca esta entera. ")
+                               + "Material para la IA: " + IaInfoText() + ".\nEl detalle, cancion por cancion, queda en rocola_calidad.txt junto al programa.")
+                            : ("La biblioteca se mide sola mientras la rocola trabaja: "
+                               + (tFal > 0 ? ("faltan " + tFal.ToString("#,0") + " canciones.") : "ya esta al dia.")
+                               + (iaHarvestOn ? ("   Material para la IA: " + IaInfoText() + ".") : "")
+                               + (durScanLeft > 0 ? ("   Duraciones: faltan " + durScanLeft.ToString("#,0") + ".") : "")
+                               + "\n" + (etapa.Length > 0 ? ("La cancion que suena entra en la etapa " + etapa + ".   ") : "")
+                               + "El detalle, cancion por cancion, queda en rocola_calidad.txt junto al programa.");
                         pintaTrain();
-                        bool en = chkOn.Checked;
-                        tbTarget.Enabled = en; tbStr.Enabled = en;
-                        lTarget.ForeColor = en ? Color.FromArgb(150, 240, 170) : Color.FromArgb(110, 118, 140);
-                        lStr.ForeColor = en ? Color.FromArgb(150, 200, 255) : Color.FromArgb(110, 118, 140);
-                        // En automatico la perilla no pinta nada: se apaga para que se vea que no hay que tocarla.
-                        tbEq.Enabled = !chkEqAuto.Checked;
-                        tbBass.Enabled = !chkBassAuto.Checked;
-                        bool ultra = chkUltra.Checked;
-                        chkSbr.Enabled = sbrAllowed && !ultra;                          // ULTRA activo -> DSEE normal en GRIS
-                        chkSbr.ForeColor = chkSbr.Enabled ? Color.FromArgb(190, 225, 255) : Color.FromArgb(110, 118, 140);
-                        lSbrInfo.ForeColor = chkSbr.Enabled ? Color.FromArgb(150, 160, 190) : Color.FromArgb(95, 100, 120);
-                        chkIaAuto.Enabled = ultra;
-                        tbIaMix.Enabled = ultra && !chkIaAuto.Checked;
-                        lIaMix.ForeColor = tbIaMix.Enabled ? Color.FromArgb(255, 214, 140) : Color.FromArgb(110, 118, 140);
-                        lUltraInfo.ForeColor = ultra ? Color.FromArgb(200, 190, 165) : Color.FromArgb(110, 118, 140);
+                        // ---------- IA EN VIVO ----------
+                        bool ultra = swUltra.Checked;
+                        swSbr.Enabled = sbrAllowed && !ultra;      // ULTRA encendido -> el DSEE ligero se apaga solo
+                        swIaAuto.Enabled = ultra;
+                        barMix.Enabled = ultra && !swIaAuto.Checked;
                         cbGpu.Enabled = ultra;
-                        lGpu.ForeColor = ultra ? Color.White : Color.FromArgb(110, 118, 140);
-                        lIaMix.Text = "Cuanta IA:  " + (chkIaAuto.Checked ? "automatica" : tbIaMix.Value + "%") + "   (mezcla con el original; menos IA = mas natural)";
+                        lMixV.Text = swIaAuto.Checked ? "sola" : (barMix.Value + "%");
+                        lUltra.ForeColor = ultra ? cTenue : cApagado;
+                        lMixN.ForeColor = lGpu.ForeColor = ultra ? cTexto : cApagado;
+                        lMixV.ForeColor = barMix.Enabled ? cIa : cApagado;
+                        lMixD.ForeColor = ultra ? cTenue : cApagado;
+                        // Lo que no manda nadie se apaga, para que se vea de un vistazo que no hay que tocarlo.
+                        bool en = swOn.Checked;
+                        bar[0].Enabled = en; bar[1].Enabled = en;
+                        nom[0].ForeColor = nom[1].ForeColor = en ? cTexto : cApagado;
+                        val[0].ForeColor = en ? cVol : cApagado;
+                        val[1].ForeColor = en ? cFue : cApagado;
+                        des[0].ForeColor = des[1].ForeColor = en ? cTenue : cApagado;
+                        bar[4].Enabled = !au[4].Checked;
+                        bar[5].Enabled = !au[5].Checked;
                     };
                     EventHandler apply = delegate
                     {
-                        normalizeOn = chkOn.Checked;
-                        normTarget = TargetFromPct(tbTarget.Value);
-                        normStrength = tbStr.Value / 100f;
-                        excAmount = tbExc.Value / 100f;
-                        masterDb = tbUp.Value;
-                        videoVol = tbVid.Value;
+                        normalizeOn = swOn.Checked;
+                        normTarget = TargetFromPct(bar[0].Value);
+                        normStrength = bar[1].Value / 100f;
+                        masterDb = bar[2].Value;
+                        videoVol = bar[3].Value;
                         if (videoOn && nowPlaying != null) SetVideoVolume(VideoVolumeFor(nowPlaying.VideoPath));   // el video que suena cambia YA
-                        eqAuto = chkEqAuto.Checked;
-                        bassAuto = chkBassAuto.Checked;
-                        eqAmount = tbEq.Value / 100f;
-                        bassAmount = tbBass.Value / 100f;
-                        bool ultra = chkUltra.Checked;
-                        iaVivo = ultra;
-                        iaMezcla = chkIaAuto.Checked ? "auto" : tbIaMix.Value.ToString();
-                        sbrOn = chkSbr.Checked && sbrAllowed && !ultra;                 // exclusion mutua: nunca ambos
+                        eqAuto = au[4].Checked; bassAuto = au[5].Checked;
+                        eqAmount = bar[4].Value / 100f;
+                        bassAmount = bar[5].Value / 100f;
+                        excAmount = bar[6].Value / 100f;
+                        bool ultra2 = swUltra.Checked;
+                        iaVivo = ultra2;
+                        iaMezcla = swIaAuto.Checked ? "auto" : barMix.Value.ToString();
+                        sbrOn = swSbr.Checked && sbrAllowed && !ultra2;   // exclusion mutua: nunca los dos a la vez
                         changed = true;
                         updateLabels();
                         ApplyNormNow();   // se oye el cambio al instante en la cancion que suena
-                        UpdateNowPlayingUI();   // y el letrero MEJORADA se actualiza al instante (aparece/cambia de color)
+                        UpdateNowPlayingUI();   // y el letrero MEJORADA aparece/desaparece al instante
                     };
-                    tbTarget.Scroll += apply; tbStr.Scroll += apply; tbExc.Scroll += apply; tbUp.Scroll += apply; tbEq.Scroll += apply; tbVid.Scroll += apply; tbBass.Scroll += apply; chkOn.CheckedChanged += apply; chkSbr.CheckedChanged += apply;
-                    chkEqAuto.CheckedChanged += apply; chkBassAuto.CheckedChanged += apply;
-                    tbIaMix.Scroll += apply; chkIaAuto.CheckedChanged += apply;
-                    chkUltra.CheckedChanged += delegate { if (chkUltra.Checked) { IaEnsureMotor(); IaRequestQueueJobs(); } apply(chkUltra, EventArgs.Empty); };   // al encender ULTRA: motor oculto + preparar cola
+                    for (int k = 0; k < bar.Length; k++) { bar[k].Scroll += apply; if (au[k] != null) au[k].CheckedChanged += apply; }
+                    swOn.CheckedChanged += apply; swSbr.CheckedChanged += apply;
+                    barMix.Scroll += apply; swIaAuto.CheckedChanged += apply;
+                    swUltra.CheckedChanged += delegate { if (swUltra.Checked) { IaEnsureMotor(); IaRequestQueueJobs(); } apply(swUltra, EventArgs.Empty); };   // al encender ULTRA: motor oculto + preparar cola
                     cbGpu.SelectedIndexChanged += delegate
                     {
                         iaGpu = (cbGpu.SelectedIndex <= 0) ? "auto" : (cbGpu.SelectedIndex - 1).ToString();
                         changed = true;
                         IaRestartMotor();   // el motor renace OCULTO con la GPU elegida (Apollo recarga en ella)
                     };
-                    bReset.Click += delegate { chkOn.Checked = true; tbTarget.Value = TargetToPct(0.26f); tbStr.Value = 100; tbExc.Value = 35; tbUp.Value = 0; tbEq.Value = 0; tbVid.Value = 85; tbBass.Value = 30; chkEqAuto.Checked = true; chkBassAuto.Checked = true; chkUltra.Checked = false; if (chkSbr.Enabled) chkSbr.Checked = false; chkIaAuto.Checked = true; apply(bReset, EventArgs.Empty); };
+                    bReset.Click += delegate
+                    {
+                        swOn.Checked = true;
+                        bar[0].Value = TargetToPct(0.26f); bar[1].Value = 100; bar[2].Value = 0; bar[3].Value = 85;
+                        bar[4].Value = 0; bar[5].Value = 30; bar[6].Value = 35;
+                        au[4].Checked = true; au[5].Checked = true;          // EQ y graves en automatico
+                        swUltra.Checked = false; swIaAuto.Checked = true;    // la IA en vivo, apagada
+                        if (swSbr.Enabled) swSbr.Checked = false;            // el espectral ligero, apagado
+                        apply(bReset, EventArgs.Empty);
+                    };
                     bOk.Click += delegate { dlg.Close(); };
-                    dlg.CancelButton = bOk;
-
-                    dlg.Controls.Add(info); dlg.Controls.Add(chkOn);
-                    dlg.Controls.Add(lTarget); dlg.Controls.Add(tbTarget);
-                    dlg.Controls.Add(lStr); dlg.Controls.Add(tbStr);
-                    dlg.Controls.Add(lUp); dlg.Controls.Add(tbUp);
-                    dlg.Controls.Add(lVid); dlg.Controls.Add(tbVid);
-                    dlg.Controls.Add(lExc); dlg.Controls.Add(tbExc);
-                    dlg.Controls.Add(lEq); dlg.Controls.Add(chkEqAuto); dlg.Controls.Add(tbEq);
-                    dlg.Controls.Add(lBass); dlg.Controls.Add(chkBassAuto); dlg.Controls.Add(tbBass);
-                    dlg.Controls.Add(chkSbr); dlg.Controls.Add(lSbrInfo);
-                    dlg.Controls.Add(chkUltra); dlg.Controls.Add(lUltraInfo);
-                    dlg.Controls.Add(chkIaAuto); dlg.Controls.Add(lIaMix); dlg.Controls.Add(tbIaMix);
-                    dlg.Controls.Add(lGpu); dlg.Controls.Add(cbGpu);
-                    dlg.Controls.Add(lCal); dlg.Controls.Add(hint); dlg.Controls.Add(pbTrain);
-                    dlg.Controls.Add(bReset); dlg.Controls.Add(bTrain); dlg.Controls.Add(bOk);
-                    // El boton enciende/apaga el modo a fondo. Al encenderlo se relanza el pre-analisis con TODA
+                    // El boton enciende/apaga el repaso a fondo. Al encenderlo se relanza el pre-analisis con TODA
                     // la biblioteca; al apagarlo, la tanda en curso se corta y vuelve el ritmo normal (que seguira
                     // solo con lo que falte). Lo medido hasta ese momento ya quedo guardado.
                     bTrain.Click += delegate
@@ -1730,9 +2034,17 @@ namespace Rocola
                         StartPreScan();
                         if (!preScanTurbo) { preScanTotal = 0; }
                         updateLabels();
-                        ShowToast(preScanTurbo ? "Entrenamiento a fondo: ENCENDIDO" : "Entrenamiento a fondo: detenido",
+                        ShowToast(preScanTurbo ? "Repaso a fondo: ENCENDIDO" : "Repaso a fondo: detenido",
                                   preScanTurbo ? Color.FromArgb(150, 60, 45) : Color.FromArgb(40, 130, 90));
                     };
+
+                    dlg.Controls.Add(lTit); dlg.Controls.Add(lSub);
+                    dlg.Controls.Add(tVol); dlg.Controls.Add(tCal); dlg.Controls.Add(tIa); dlg.Controls.Add(tBib);
+                    dlg.Controls.Add(bReset); dlg.Controls.Add(bOk);
+                    // Escape cierra, como toda la vida (los controles propios se comen las teclas, asi que la
+                    // ventana las mira antes con KeyPreview).
+                    dlg.KeyPreview = true;
+                    dlg.KeyDown += delegate (object so, KeyEventArgs ke) { if (ke.KeyCode == Keys.Escape) dlg.Close(); };
                     // Refresco del avance mientras el dialogo esta abierto (el trabajo ocurre en otro hilo).
                     System.Windows.Forms.Timer tTrain = new System.Windows.Forms.Timer();
                     tTrain.Interval = 500;
