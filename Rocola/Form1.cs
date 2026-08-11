@@ -3923,7 +3923,7 @@ namespace Rocola
             // fuerte se queda pegado abajo y lo de arriba ya casi no se ve. Eso es lo que hace que se note
             // crecer y encoger: con el ajuste de fabrica el color llega a casi el 40% de la pantalla en los
             // golpes y se encoge a menos de la decima parte cuando la cancion afloja.
-            g.Alto = h * 0.90f * auroraAmount;
+            g.Alto = h * 1.02f * auroraAmount;
             // COLOR. La intensidad ya NO se dibuja con blanco -eso quemaba el centro y lavaba todo-, sino con
             // TONOS DEL MISMO COLOR: si el genero es morado, lo flojo sale morado oscuro y profundo, lo medio
             // sale del morado del genero, y lo fuerte sale de un morado claro. Nunca se sale de su familia, asi
@@ -3943,8 +3943,8 @@ namespace Rocola
             g.Rgb2A = (uint)(GiraTono(baseCol, gp + 18f, 0.96f).ToArgb() & 0x00FFFFFF);  // punta, extremo AGUDO
             // ATENUACION al navegar. El resto del fondo (estrellas, brillos) baja al 45% para no pelearle a
             // las portadas, pero la aurora vive PEGADA ABAJO, donde no hay portadas: bajarla igual la borraba
-            // de la pantalla justo cuando mas se mira. Aqui se atenua mucho menos: al 79% en vez de al 45%.
-            g.Dim = 0.72f + 0.28f * bgDim;
+            // de la pantalla justo cuando mas se mira. Aqui se atenua apenas: al 89% en vez de al 45%.
+            g.Dim = 0.80f + 0.20f * bgDim;
             return g;
         }
 
