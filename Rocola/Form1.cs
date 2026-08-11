@@ -3904,7 +3904,7 @@ namespace Rocola
             // fuerte se queda pegado abajo y lo de arriba ya casi no se ve. Eso es lo que hace que se note
             // crecer y encoger: con el ajuste de fabrica el color llega a casi el 40% de la pantalla en los
             // golpes y se encoge a menos de la decima parte cuando la cancion afloja.
-            g.Alto = h * 0.72f * auroraAmount;
+            g.Alto = h * 0.90f * auroraAmount;
             // COLOR. La intensidad ya NO se dibuja con blanco -eso quemaba el centro y lavaba todo-, sino con
             // TONOS DEL MISMO COLOR: si el genero es morado, lo flojo sale morado oscuro y profundo, lo medio
             // sale del morado del genero, y lo fuerte sale de un morado claro. Nunca se sale de su familia, asi
@@ -3914,20 +3914,18 @@ namespace Rocola
             // A lo ancho el tono tambien cambia -graves de un lado, agudos del otro- pero MUCHO mas suave que
             // antes (32 grados en vez de 98): asi los colores se funden en vez de parecer dos luces distintas.
             //
-            // Y A LO ALTO cambia tambien: el PIE de la cortina lleva el color de la cancion y la PUNTA el
-            // mismo color girado 58 grados en la rueda, que es lo que hace una aurora de verdad (el verde de
-            // abajo se vuelve morado arriba). Como es el mismo color girado, nunca pelea con el genero, pero
-            // el giro tiene que ser GRANDE: si la punta se queda cerca del color del cielo, la cortina no se
-            // distingue del degradado del fondo y parece que no hay nada.
+            // Y A LO ALTO cambia tambien: el PIE de la cortina lleva el color de la cancion y la PUNTA tira
+            // hacia el violeta-rosa, que es lo que hace una aurora de verdad (ver GiroPunta).
             Color baseCol = ColorReactivo(bgAccent);
-            g.Rgb = (uint)(GiraTono(baseCol, -10f, 1.00f).ToArgb() & 0x00FFFFFF);    // pie, extremo GRAVE (izquierda)
-            g.Rgb2 = (uint)(GiraTono(baseCol, 22f, 0.98f).ToArgb() & 0x00FFFFFF);    // pie, extremo AGUDO (derecha)
-            g.RgbA = (uint)(GiraTono(baseCol, 48f, 0.98f).ToArgb() & 0x00FFFFFF);    // punta, extremo GRAVE
-            g.Rgb2A = (uint)(GiraTono(baseCol, 78f, 0.96f).ToArgb() & 0x00FFFFFF);   // punta, extremo AGUDO
+            float gp = GiroPunta(baseCol);
+            g.Rgb = (uint)(GiraTono(baseCol, -10f, 1.00f).ToArgb() & 0x00FFFFFF);        // pie, extremo GRAVE (izquierda)
+            g.Rgb2 = (uint)(GiraTono(baseCol, 22f, 0.98f).ToArgb() & 0x00FFFFFF);        // pie, extremo AGUDO (derecha)
+            g.RgbA = (uint)(GiraTono(baseCol, gp - 12f, 0.98f).ToArgb() & 0x00FFFFFF);   // punta, extremo GRAVE
+            g.Rgb2A = (uint)(GiraTono(baseCol, gp + 18f, 0.96f).ToArgb() & 0x00FFFFFF);  // punta, extremo AGUDO
             // ATENUACION al navegar. El resto del fondo (estrellas, brillos) baja al 45% para no pelearle a
             // las portadas, pero la aurora vive PEGADA ABAJO, donde no hay portadas: bajarla igual la borraba
             // de la pantalla justo cuando mas se mira. Aqui se atenua mucho menos: al 79% en vez de al 45%.
-            g.Dim = 0.62f + 0.38f * bgDim;
+            g.Dim = 0.72f + 0.28f * bgDim;
             return g;
         }
 
@@ -3941,6 +3939,38 @@ namespace Rocola
             int mx = accent.R; if (accent.G > mx) mx = accent.G; if (accent.B > mx) mx = accent.B;
             if (mx < 10) return Color.FromArgb(255, 60, 120, 235);   // sin genero: el azul de siempre
             return Color.FromArgb(255, accent.R * 235 / mx, accent.G * 235 / mx, accent.B * 235 / mx);
+        }
+
+        // TONO de un color, en grados de la rueda (0 = rojo, 120 = verde, 240 = azul).
+        private static float TonoDe(Color c)
+        {
+            float r = c.R / 255f, g = c.G / 255f, b = c.B / 255f;
+            float mx = Math.Max(r, Math.Max(g, b)), mn = Math.Min(r, Math.Min(g, b));
+            float d = mx - mn;
+            if (d < 0.0001f) return 0f;
+            float h;
+            if (mx == r) h = 60f * (((g - b) / d) % 6f);
+            else if (mx == g) h = 60f * ((b - r) / d + 2f);
+            else h = 60f * ((r - g) / d + 4f);
+            while (h < 0f) h += 360f; while (h >= 360f) h -= 360f;
+            return h;
+        }
+
+        // CUANTO se gira el color al subir por la cortina (grados). En las auroras de verdad la punta tira
+        // SIEMPRE hacia el violeta o el rosa, sea del color que sea el pie: el verde se vuelve magenta y el
+        // cian se vuelve violeta. Girar siempre los mismos grados no sirve, porque desde un naranja te lleva
+        // al verde pistacho y queda sucio. Aqui se gira hacia la zona violeta-rosa por el camino mas corto y
+        // a poco mas de medio camino, con un giro MINIMO para que el color viaje tambien cuando el genero ya
+        // es morado, y un TOPE para que nunca se vaya al otro lado de la rueda.
+        internal static float GiroPunta(Color c)
+        {
+            float d = 300f - TonoDe(c);
+            while (d > 180f) d -= 360f; while (d < -180f) d += 360f;
+            float g = d * 0.55f;
+            float mag = (g < 0f) ? -g : g;
+            if (mag < 35f) g = (g < 0f) ? -35f : 35f;
+            else if (mag > 75f) g = (g < 0f) ? -75f : 75f;
+            return g;
         }
 
         // Gira el TONO de un color (grados en la rueda de color) y le escala el brillo. Se usa una vez por cuadro
