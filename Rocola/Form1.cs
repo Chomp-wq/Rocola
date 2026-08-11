@@ -4036,14 +4036,19 @@ namespace Rocola
             // antes (32 grados en vez de 98): asi los colores se funden en vez de parecer dos luces distintas.
             //
             // Y A LO ALTO cambia tambien: el PIE de la cortina lleva el color de la cancion y la PUNTA el
-            // mismo color girado 42 grados en la rueda, que es lo que hace una aurora de verdad (el verde de
-            // abajo se vuelve morado arriba). Como es el mismo color girado, nunca pelea con el genero.
+            // mismo color girado 58 grados en la rueda, que es lo que hace una aurora de verdad (el verde de
+            // abajo se vuelve morado arriba). Como es el mismo color girado, nunca pelea con el genero, pero
+            // el giro tiene que ser GRANDE: si la punta se queda cerca del color del cielo, la cortina no se
+            // distingue del degradado del fondo y parece que no hay nada.
             Color baseCol = ColorReactivo(bgAccent);
             g.Rgb = (uint)(GiraTono(baseCol, -10f, 1.00f).ToArgb() & 0x00FFFFFF);    // pie, extremo GRAVE (izquierda)
             g.Rgb2 = (uint)(GiraTono(baseCol, 22f, 0.98f).ToArgb() & 0x00FFFFFF);    // pie, extremo AGUDO (derecha)
-            g.RgbA = (uint)(GiraTono(baseCol, 32f, 0.98f).ToArgb() & 0x00FFFFFF);    // punta, extremo GRAVE
-            g.Rgb2A = (uint)(GiraTono(baseCol, 64f, 0.96f).ToArgb() & 0x00FFFFFF);   // punta, extremo AGUDO
-            g.Dim = bgDim;
+            g.RgbA = (uint)(GiraTono(baseCol, 48f, 0.98f).ToArgb() & 0x00FFFFFF);    // punta, extremo GRAVE
+            g.Rgb2A = (uint)(GiraTono(baseCol, 78f, 0.96f).ToArgb() & 0x00FFFFFF);   // punta, extremo AGUDO
+            // ATENUACION al navegar. El resto del fondo (estrellas, brillos) baja al 45% para no pelearle a
+            // las portadas, pero la aurora vive PEGADA ABAJO, donde no hay portadas: bajarla igual la borraba
+            // de la pantalla justo cuando mas se mira. Aqui se atenua mucho menos: al 79% en vez de al 45%.
+            g.Dim = 0.62f + 0.38f * bgDim;
             return g;
         }
 
