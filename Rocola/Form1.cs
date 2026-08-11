@@ -3796,10 +3796,10 @@ namespace Rocola
             }
         }
 
-        // Estado de la AURORA para el panel GPU. El horizonte se apoya justo encima de la franja de estado
-        // (BotStripTop), que es donde el cielo se acaba: la luz nace del borde de abajo, como el resplandor de
-        // una ciudad. Se apaga sola cuando no hay musica (las bandas caen a cero) y se atenua junto con el
-        // fondo mientras se navega, para que nunca le pelee a las portadas ni al texto.
+        // Estado del FONDO REACTIVO para el panel GPU. El relleno de color se apoya justo encima de la franja
+        // de estado (BotStripTop), que es donde el cielo se acaba, y sube desde ahi. Se apaga solo cuando no
+        // hay musica (las bandas caen a cero) y se atenua junto con el fondo mientras se navega, para que
+        // nunca le pelee a las portadas ni al texto.
         private GpuAurora BuildAuroraState()
         {
             GpuAurora g = new GpuAurora();
@@ -3810,24 +3810,41 @@ namespace Rocola
             int h = ClientSize.Height;
             g.Has = true; g.B = specVis;
             g.BaseY = BotStripTop(h) + 6f;
-            g.Alto = h * 0.30f * auroraAmount;
+            // ALTO al que llega el color cuando una banda pega a tope. Ahora es un relleno que se desvanece
+            // hacia arriba (antes eran focos), asi que puede ocupar bastante mas pantalla sin molestar: lo
+            // fuerte se queda pegado abajo y lo de arriba ya casi no se ve. Eso es lo que hace que se note
+            // crecer y encoger: con el ajuste de fabrica el color llega a casi el 40% de la pantalla en los
+            // golpes y se encoge a menos de la decima parte cuando la cancion afloja.
+            g.Alto = h * 0.72f * auroraAmount;
             // COLOR. La intensidad ya NO se dibuja con blanco -eso quemaba el centro y lavaba todo-, sino con
             // TONOS DEL MISMO COLOR: si el genero es morado, lo flojo sale morado oscuro y profundo, lo medio
             // sale del morado del genero, y lo fuerte sale de un morado claro. Nunca se sale de su familia, asi
-            // que la aurora se lee como UN color con relieve en vez de como una mancha que se lava en el pico.
-            // La escalera va abajo, en ColorPorNivel (la calcula el panel para cada punto).
+            // que el fondo se lee como UN color con relieve en vez de como una mancha que se lava en el pico.
+            // La escalera va abajo, en TonoPorNivel (la calcula el panel para cada punto).
             //
             // A lo ancho el tono tambien cambia -graves de un lado, agudos del otro- pero MUCHO mas suave que
             // antes (32 grados en vez de 98): asi los colores se funden en vez de parecer dos luces distintas.
-            Color baseCol = SkyColor2(bgAccent);
+            Color baseCol = ColorReactivo(bgAccent);
             g.Rgb = (uint)(GiraTono(baseCol, -10f, 1.00f).ToArgb() & 0x00FFFFFF);    // extremo GRAVE (izquierda)
             g.Rgb2 = (uint)(GiraTono(baseCol, 22f, 0.98f).ToArgb() & 0x00FFFFFF);    // extremo AGUDO (derecha)
             g.Dim = bgDim;
             return g;
         }
 
+        // COLOR DE LA CANCION para el fondo reactivo. NO vale el color del cielo: el cielo de abajo ya es el
+        // color del genero apagado, asi que pintar encima el mismo color apagado no se ve. Aqui se toma el
+        // color del genero y se sube a su brillo pleno, conservando el tono. Sobre el cielo oscuro eso SI se
+        // ve: es el color de la cancion, no un aclarado del fondo. De ahi para abajo, la escalera de tonos
+        // (TonoPorNivel) lo lleva de un tono hondo cuando afloja a uno claro cuando pega.
+        private static Color ColorReactivo(Color accent)
+        {
+            int mx = accent.R; if (accent.G > mx) mx = accent.G; if (accent.B > mx) mx = accent.B;
+            if (mx < 10) return Color.FromArgb(255, 60, 120, 235);   // sin genero: el azul de siempre
+            return Color.FromArgb(255, accent.R * 235 / mx, accent.G * 235 / mx, accent.B * 235 / mx);
+        }
+
         // Gira el TONO de un color (grados en la rueda de color) y le escala el brillo. Se usa una vez por cuadro
-        // para los dos extremos de la aurora, asi que el costo es nulo.
+        // para los dos extremos del fondo reactivo, asi que el costo es nulo.
         private static Color GiraTono(Color c, float grados, float brillo)
         {
             float r = c.R / 255f, g = c.G / 255f, b = c.B / 255f;
@@ -8624,6 +8641,7 @@ namespace Rocola
             public Rectangle ContourScreenRect()                     // donde va el contorno (celda seleccionada)
             {
                 if (contourSprite == null || Page == null || Selected < 0 || Selected >= Page.Count) return Rectangle.Empty;
+                if (Sliding) return Rectangle.Empty;   // hojeando: nada seleccionado hasta que la pagina termine de entrar
                 int w = Width, h = Height; if (w < 8 || h < 8) return Rectangle.Empty;
                 int cw = w / Cols, ch = h / Rows; if (cw < 4 || ch < 4) return Rectangle.Empty;
                 Rectangle area, lbl; Geometry(w, h, Selected, out area, out lbl);
@@ -8648,6 +8666,11 @@ namespace Rocola
                 if (Page == null || w < 8 || h < 8) return st;
                 int cw = w / Cols, ch = h / Rows;
                 if (cw < 4 || ch < 4) return st;
+                // HOJEANDO: la rejilla entera se desliza, pero el cubo que gira y el resalte se dibujan en su
+                // sitio fijo. Si se pintaran, se verian clavados y girando mientras todo lo demas pasa de
+                // largo. Durante el deslizamiento no hay nada seleccionado; el cubo aparece -plano y quieto,
+                // porque el giro tampoco avanza (ver StepSpin)- justo cuando la pagina nueva termina de entrar.
+                if (Sliding) return st;
                 if (Selected >= 0 && Selected < Page.Count)
                 {
                     Rectangle a, l; Geometry(w, h, Selected, out a, out l);
@@ -8885,6 +8908,9 @@ namespace Rocola
             // Avanza el giro del cubo actual y el del cubo en relevo (lo llama el temporizador, 24fps).
             public void StepSpin()
             {
+#if ROCOLA_GPU
+                if (Sliding) return;   // pasando de pagina: no hay cubo a la vista, y asi el nuevo empieza plano
+#endif
                 SelAngle += 0.06 * spinDir;
                 if (prevIdx >= 0)
                 {

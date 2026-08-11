@@ -253,6 +253,16 @@ namespace Rocola
             Draw(v, tris);
         }
 
+        // Malla PLANA: triangulos SIN textura, color en los vertices y mezcla NORMAL (encima, no sumada).
+        // Es lo que pinta el fondo reactivo: un relleno de color que la tarjeta degrada sola entre vertice y
+        // vertice. Al no sumar luz nunca se lava hacia el blanco, que es lo que manchaba con los halos.
+        public void DrawMesh(D3D9.Vtx[] v, int tris)
+        {
+            if (dev == IntPtr.Zero || tris <= 0) return;
+            Tex(IntPtr.Zero); TssDiffuse(); Blend(3);
+            Draw(v, tris);
+        }
+
         // Un cuadro texturizado (2 triangulos) con mezcla NORMAL (encima): para los cubos, etiquetas, etc.
         public void DrawTexQuad(IntPtr tex, D3D9.Vtx[] quad)
         {
@@ -629,6 +639,7 @@ namespace Rocola
         }
         private static void VShoot(D3D9.Vtx[] v, int o, float x, float y, uint c) { v[o].X = x; v[o].Y = y; v[o].Z = 0f; v[o].Rhw = 1f; v[o].Color = c; v[o].U = 0f; v[o].V = 0f; }
         public void DrawQuad(IntPtr tex, D3D9.Vtx[] quad) { if (Ok) gpu.DrawTexQuad(tex, quad); }
+        public void DrawMesh(D3D9.Vtx[] v, int tris) { if (Ok) gpu.DrawMesh(v, tris); }   // malla plana (fondo reactivo)
         public void End() { if (Ok) gpu.EndFrame(); }
 
         public void Dispose()
@@ -1324,24 +1335,31 @@ namespace Rocola
         // 1:1 (los cubos y sobre todo el TEXTO de las etiquetas) se muestrea entre texeles y se ve borrosa.
         private static void SetV(ref D3D9.Vtx vx, float x, float y, float u, float vv) { vx.X = x - 0.5f; vx.Y = y - 0.5f; vx.Z = 0; vx.Rhw = 1; vx.Color = 0xFFFFFFFF; vx.U = u; vx.V = vv; }
 
-        // Convierte 8 bandas en una franja de luz continua. Dos pasadas: una BRUMA ancha y tenue que da el halo
-        // (como el resplandor de una ciudad en el horizonte) y encima la luz principal, mas ajustada. Cada punto
-        // es un halo aditivo, la misma tecnica de los destellos del buscador: sin bordes duros por diseno.
+        // FONDO REACTIVO. Antes eran manchas de luz SUMADAS encima del cielo: al pisarse unas con otras el
+        // centro se iba al blanco y quedaban los manchones. Ahora no se suma nada. La parte de ABAJO de la
+        // pantalla ES el color de la cancion: un relleno que sube y baja con la musica, mas alto cuando pega
+        // fuerte y mas bajo cuando afloja, ocupando mas o menos pantalla.
         //
-        // Los dos numeros de puntos son distintos a proposito. La luz lleva 40 porque es la que dibuja la FORMA
-        // (ahi si se nota el detalle). La bruma es un halo enorme y difuso donde cada mancha mide mas de tres
-        // separaciones: con 20 puntos se ve igual (medido: 6 de 255 de diferencia como maximo, invisible) y se
-        // pinta la MITAD de pixeles, que es lo caro de verdad en la maquina modesta. Como la luz se SUMA, la
-        // mitad de manchas necesita el doble de alfa para que la bruma quede con el mismo brillo de siempre.
-        private const int AurNBruma = 20, AurNLuz = 40;
-        // BRILLO. Bajado otra vez: la intensidad ya no se cuenta subiendo el brillo -eso quemaba el centro- sino
-        // con el TONO (ver TonoPorNivel), asi que el brillo puede quedarse tranquilo y solo poner la presencia.
-        private const float AurBruma = 26f, AurLuz = 68f;   // la elipse concentra la luz en menos alto, asi que admite un poco mas
+        // Se dibuja como una MALLA de columnas (dos triangulos por trozo) sin textura y con mezcla normal: el
+        // color va en los vertices y la tarjeta lo degrada sola. Abajo el relleno esta lleno y hacia arriba se
+        // va quedando transparente, asi que el borde de arriba es un desvanecido -no un corte- y lo que se ve
+        // crecer y encoger es la mancha de color entera. Sale mas barato que los halos (una sola llamada, sin
+        // textura y sin pintar el mismo pixel cinco veces).
+        private const int AurCols = 64;       // trozos a lo ancho (65 puntos): con menos, las crestas salen con esquinas
+        private const int AurFilas = 3;       // franjas apiladas a lo alto: aproximan la curva del desvanecido
+        private const float AurPiso = 0.20f;  // suelo: aunque la cancion afloje, abajo siempre queda color
+        private const float AurAlfaBase = 0.26f, AurAlfaPico = 0.50f;   // opacidad del borde de abajo (flojo -> fuerte)
+        // Ancho del LOBULO de cada banda, medido en bandas. Al ser MENOR que 1, el lobulo de una banda se
+        // apaga ANTES de llegar al centro de su vecina: asi una banda fuerte no se traga a la de al lado y se
+        // ven los ocho bultos separados por su valle. Esto es lo que hace que se distingan las frecuencias.
+        private const float AurLobulo = 0.88f;
+        private D3D9.Vtx[] aurV;                           // vertices de la malla (se reusan, no se asigna por cuadro)
+        private float[] aurH, aurA; private uint[] aurC;   // alto, opacidad y color de cada punto de la silueta
 
-        // ESCALERA DE TONOS: aqui esta lo que cambia como se lee la aurora. La intensidad NO se dibuja subiendo
-        // el brillo hacia el BLANCO -eso lava el color y quema el centro, que era el problema- sino recorriendo
-        // TONOS DE LA MISMA FAMILIA. Si el genero es morado: lo flojo sale morado oscuro y profundo, lo medio
-        // sale del morado del genero, y lo fuerte sale de un morado claro, casi lila. Nunca se sale de su color.
+        // ESCALERA DE TONOS: aqui esta lo que hace que se lea la intensidad. NO se dibuja subiendo el brillo
+        // hacia el BLANCO -eso lava el color y es lo que se veia feo- sino recorriendo TONOS DE LA MISMA
+        // FAMILIA. Si el genero es morado: lo flojo sale morado oscuro y profundo, lo medio sale del morado
+        // del genero, y lo fuerte sale de un morado claro, casi lila. Nunca se sale de su color.
         //
         // La cuenta: al subir la intensidad sube el BRILLO del tono y baja su SATURACION, que es justo lo que
         // distingue un tono oscuro de uno claro dentro de una misma familia. La saturacion nunca baja del 45%,
@@ -1355,7 +1373,7 @@ namespace Rocola
             float sat = (mx - mn) / mx;                            // 0 = gris, 1 = color puro
             float val = mx * (0.42f + 0.58f * v);                  // hundido cuando esta flojo, claro cuando pega
             if (val > 255f) val = 255f;
-            float satNueva = sat * (1f - 0.55f * v);               // al aclararse pierde saturacion, como un tono claro real
+            float satNueva = sat * (1f - 0.40f * v);               // al aclararse pierde saturacion, como un tono claro real
             // Se reconstruye conservando el TONO: cada canal guarda su posicion relativa dentro de la saturacion,
             // y esa posicion se vuelve a estirar contra la saturacion nueva.
             float piso = 1f - sat;
@@ -1371,52 +1389,93 @@ namespace Rocola
             if (g < 0f) g = 0f; else if (g > 255f) g = 255f;
             if (b < 0f) b = 0f; else if (b > 255f) b = 255f;
         }
+
+        // SILUETA. Devuelve, para una posicion de 0 (izquierda) a 1 (derecha) de la pantalla, que tan alto
+        // llega el color ahi. Cada banda pone un LOBULO redondeado centrado en su sitio -la primera pegada al
+        // borde izquierdo, la ultima al derecho- y se toma el MAS ALTO de los que alcanzan ese punto. Tomando
+        // el mas alto (en vez de sumarlos) cada banda conserva su propio bulto y entre bulto y bulto queda un
+        // valle: por eso se distinguen las frecuencias, en vez de salir una loma sin forma.
+        //
+        // El "mas alto" se toma SUAVE (la raiz cuarta de la suma de las cuartas potencias) y no a secas. El
+        // maximo a secas deja un PICO en el cruce de dos lobulos, y la malla, que une los puntos con rectas,
+        // corta ese pico y deja una esquina a la vista. Asi la silueta no tiene ni un solo pico: la banda que
+        // manda sigue mandando igual, pero el cruce con la vecina pasa redondo.
+        internal static float AurPerfil(float[] B, float fx)
+        {
+            int n = (B != null) ? B.Length : 0;
+            if (n < 2) return 0f;
+            float t = fx * (n - 1);
+            int b0 = (int)t - 1; if (b0 < 0) b0 = 0;
+            double suma = 0.0;
+            for (int b = b0; b < n && b <= b0 + 3; b++)
+            {
+                float d = t - b; if (d < 0f) d = -d;
+                d /= AurLobulo; if (d >= 1f) continue;
+                float k = 1f - d * d * (3f - 2f * d);   // 1 en el centro de la banda, 0 en su borde, sin picos
+                double v = B[b] * k; v *= v;            // al cuadrado
+                suma += v * v;                          // ...y otra vez: la cuarta potencia
+            }
+            if (suma <= 0.0) return 0f;
+            return (float)Math.Sqrt(Math.Sqrt(suma));
+        }
+
+        private static uint AurArgb(uint rgb, float a)
+        {
+            int v = (int)(a * 255f + 0.5f);
+            if (v < 0) v = 0; else if (v > 255) v = 255;
+            return ((uint)v << 24) | rgb;
+        }
+        private static void AurV3(D3D9.Vtx[] a, int i, float x, float y, uint c)
+        { a[i].X = x - 0.5f; a[i].Y = y - 0.5f; a[i].Z = 0f; a[i].Rhw = 1f; a[i].Color = c; a[i].U = 0f; a[i].V = 0f; }
+
         private void DrawAurora(GpuAurora au)
         {
             if (au.Alto < 2f || au.Dim <= 0.02f) return;
-            float paso40 = (float)Width / (AurNLuz - 1);   // los radios van en pixeles, no dependen del numero de puntos
-            stars.GlowBatchBegin(AurNBruma + AurNLuz);      // todo el horizonte en UNA sola llamada de dibujo
-            for (int pasada = 0; pasada < 2; pasada++)
+            int puntos = AurCols + 1;
+            if (aurH == null) { aurH = new float[puntos]; aurA = new float[puntos]; aurC = new uint[puntos]; }
+            int nv = AurCols * AurFilas * 6;
+            if (aurV == null || aurV.Length < nv) aurV = new D3D9.Vtx[nv];
+            // 1) Cada punto de la silueta: hasta donde sube el color ahi, de que tono y con cuanta presencia.
+            uint r1 = (au.Rgb >> 16) & 0xFF, g1 = (au.Rgb >> 8) & 0xFF, b1 = au.Rgb & 0xFF;
+            uint r2 = (au.Rgb2 >> 16) & 0xFF, g2 = (au.Rgb2 >> 8) & 0xFF, b2 = au.Rgb2 & 0xFF;
+            for (int i = 0; i < puntos; i++)
             {
-                bool bruma = (pasada == 0);
-                int N = bruma ? AurNBruma : AurNLuz;
-                float paso = (float)Width / (N - 1);
-                float k = bruma ? AurBruma * (AurNLuz - 1) / (float)(AurNBruma - 1) : AurLuz;   // compensa la densidad
-                for (int i = 0; i < N; i++)
+                float fx = (float)i / AurCols;
+                float v = AurPerfil(au.B, fx);
+                if (v > 1f) v = 1f;
+                aurH[i] = au.Alto * (AurPiso + (1f - AurPiso) * v);
+                // COLOR: a lo ancho se funde el tono del extremo grave con el del agudo (estan cerca en la
+                // rueda de color, asi que se mezclan en vez de partir la pantalla en dos luces distintas) y,
+                // segun la INTENSIDAD, se elige un tono de esa misma familia (ver TonoPorNivel).
+                float rr = r1 + (r2 - (float)r1) * fx, gg = g1 + (g2 - (float)g1) * fx, bb = b1 + (b2 - (float)b1) * fx;
+                TonoPorNivel(ref rr, ref gg, ref bb, v);
+                aurC[i] = ((uint)rr << 16) | ((uint)gg << 8) | (uint)bb;
+                float al = (AurAlfaBase + AurAlfaPico * v) * au.Dim;
+                if (al < 0f) al = 0f; else if (al > 1f) al = 1f;
+                aurA[i] = al;
+            }
+            // 2) La malla: por cada trozo a lo ancho, AurFilas cuadrangulos apilados. La opacidad cae como el
+            //    CUADRADO de la altura, asi el color se queda pegado abajo y arriba se funde con el cielo.
+            float paso = (float)Width / AurCols;
+            int n = 0;
+            for (int j = 0; j < AurFilas; j++)
+            {
+                float f0 = (float)j / AurFilas, f1 = (float)(j + 1) / AurFilas;
+                float m0 = (1f - f0) * (1f - f0), m1 = (1f - f1) * (1f - f1);
+                for (int i = 0; i < AurCols; i++)
                 {
-                    // posicion continua dentro de las 8 bandas + suavizado: sale una CURVA, no dientes de sierra
-                    float t = (float)i / (N - 1) * (au.B.Length - 1);
-                    int b0 = (int)t; if (b0 > au.B.Length - 2) b0 = au.B.Length - 2;
-                    float f = t - b0; f = f * f * (3f - 2f * f);
-                    float v = au.B[b0] + (au.B[b0 + 1] - au.B[b0]) * f;
-                    if (v <= 0.006f) continue;
-                    float h = v * au.Alto;
-                    // RADIO CONSTANTE. Antes el radio crecia con la altura de la banda, asi que cada punto
-                    // era de un tamano distinto y al sumarse quedaba GRUMOSO: manchones donde coincidian los
-                    // grandes y huecos donde no. Con todos del mismo tamano la suma sale pareja y lo unico que
-                    // cambia de banda a banda es el brillo y la altura del centro, que es lo que se quiere ver.
-                    float rx = bruma ? (paso40 * 3.4f) : (paso40 * 1.7f);
-                    // ANCHA Y BAJA. Un halo redondo sube tanto como se extiende y acaba brillando a media
-                    // pantalla; una luz de horizonte tiene que quedarse pegada abajo. De paso se pinta menos
-                    // de la mitad de pixeles que antes.
-                    float ry = rx * (bruma ? 0.46f : 0.40f);
-                    float cy = au.BaseY - h * (bruma ? 0.62f : 0.78f);   // la ALTURA es lo unico que cambia de banda a banda: ese es el dibujo
-                    int a = (int)(v * au.Dim * k + 0.5f);
-                    if (a < 2) continue; if (a > 255) a = 255;
-                    // COLOR EN DOS PASOS:
-                    //  1) a lo ANCHO se mezcla el tono del extremo grave con el del agudo. Ahora los dos estan
-                    //     mucho mas cerca en la rueda de color, asi que el cambio se funde en vez de partir el
-                    //     horizonte en dos luces distintas.
-                    //  2) segun la INTENSIDAD se elige un TONO de esa misma familia (ver TonoPorNivel).
-                    float fx = (float)i / (N - 1);
-                    uint r1 = (au.Rgb >> 16) & 0xFF, g1 = (au.Rgb >> 8) & 0xFF, b1 = au.Rgb & 0xFF;
-                    uint r2 = (au.Rgb2 >> 16) & 0xFF, g2 = (au.Rgb2 >> 8) & 0xFF, b2 = au.Rgb2 & 0xFF;
-                    float rr = r1 + (r2 - (float)r1) * fx, gg = g1 + (g2 - (float)g1) * fx, bb = b1 + (b2 - (float)b1) * fx;
-                    TonoPorNivel(ref rr, ref gg, ref bb, v);
-                    stars.GlowBatchAdd(i * paso, cy, rx, ry, ((uint)a << 24) | ((uint)rr << 16) | ((uint)gg << 8) | (uint)bb);
+                    float x0 = i * paso, x1 = x0 + paso;
+                    float hL = aurH[i], hR = aurH[i + 1];
+                    float yL0 = au.BaseY - hL * f0, yL1 = au.BaseY - hL * f1;
+                    float yR0 = au.BaseY - hR * f0, yR1 = au.BaseY - hR * f1;
+                    uint cL0 = AurArgb(aurC[i], aurA[i] * m0), cL1 = AurArgb(aurC[i], aurA[i] * m1);
+                    uint cR0 = AurArgb(aurC[i + 1], aurA[i + 1] * m0), cR1 = AurArgb(aurC[i + 1], aurA[i + 1] * m1);
+                    AurV3(aurV, n + 0, x0, yL1, cL1); AurV3(aurV, n + 1, x1, yR1, cR1); AurV3(aurV, n + 2, x0, yL0, cL0);
+                    AurV3(aurV, n + 3, x1, yR1, cR1); AurV3(aurV, n + 4, x1, yR0, cR0); AurV3(aurV, n + 5, x0, yL0, cL0);
+                    n += 6;
                 }
             }
-            stars.GlowBatchEnd();
+            stars.DrawMesh(aurV, n / 3);   // TODO el fondo reactivo en UNA sola llamada de dibujo
         }
 
         // PRE-CALENTADO. Crear una textura es una peticion al driver y no siempre contesta rapido: si la
