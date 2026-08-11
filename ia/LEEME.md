@@ -50,6 +50,29 @@ Para la meta de maxima calidad NO se procesa en la rocola: se mejora la bibliote
 offline, con Apollo (restauracion neuronal de musica) en un PC con GPU. El piloto A/B esta en
 `upscale/` (ver su LEEME.md). La IA de envolvente de esta carpeta sigue siendo util para lo que
 no se haya pre-procesado.
+## El EQ y el bajo van SOLOS (no hay perilla que ajustar)
+
+De fabrica, en Ctrl+F3, el "EQ automatico" y los "Graves (bajo profundo)" llevan puesta la casilla
+**Automatico**: las perillas quedan apagadas y lo decide el programa cancion por cancion, con lo que
+el analisis del DSEE ya midio de cada archivo.
+
+- **Fuerza del EQ**: sale de cuanto se puede FIAR uno del objetivo. Con menos de 10 canciones sanas
+  medidas no corrige nada; segun el pre-analisis avanza sube del 31% al 75% (85% con el modelo
+  `rocola_eq_ia.bin` cargado, porque entonces el objetivo es por cancion y no uno para todas). Nunca
+  llega al 100%: siempre deja un resto sin corregir para no aplanar el caracter de cada disco.
+- **Cancion rara**: si una se aleja muchisimo del resto de la biblioteca, casi seguro queria sonar
+  asi (un disco muy oscuro, una grabacion en vivo). A esas se les toca menos, hasta la mitad.
+- **Bajo profundo**: parte del 30% y lo ajusta el analisis. A una cancion con los picos recortados se
+  le baja al 23% (mas grave solo haria trabajar al limitador y emborrona); a una copia pobre, con los
+  agudos cortados, se le sube al 36% (esas suelen ir tambien flojas de abajo). Encima sigue actuando
+  el ajuste por huella tonal de siempre, asi que el margen real va de ~12% a ~55% segun la cancion.
+
+Se ve trabajando en la propia ventana: junto a cada casilla aparece el porcentaje que eligio el
+programa y, en los graves, tambien lo que le toca a la cancion que esta sonando.
+
+Quien prefiera mandar a mano solo tiene que quitar la casilla; la perilla vuelve a valer como siempre.
+En el archivo de configuracion son `eq_automatico=` y `bajo_automatico=` (1 = automatico).
+
 ## Modelo del EQ AUTOMATICO (`rocola_eq_ia.bin`)
 
 Es OTRA red, aparte de la del DSEE, y sirve para otra cosa.

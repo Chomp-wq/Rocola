@@ -846,7 +846,7 @@ namespace Rocola
     // AURORA DEL HORIZONTE: el visualizador de espectro, dibujado como parte del CIELO y no como un aparato
     // encima. B = 8 bandas ya suavizadas (0..1, de graves a agudos); se interpolan a lo ancho y se pintan con
     // halos aditivos MUY solapados, que es lo que convierte ocho valores sueltos en una franja continua de luz.
-    internal struct GpuAurora { public bool Has; public float[] B; public float BaseY, Alto; public uint Rgb, Rgb2; public float Dim; }   // Rgb = extremo grave, Rgb2 = extremo agudo
+    internal struct GpuAurora { public bool Has; public float[] B; public float BaseY, Alto; public uint Rgb, Rgb2, RgbA, Rgb2A; public float Dim; }   // Rgb/Rgb2 = pie de la cortina (grave/agudo), RgbA/Rgb2A = su punta
     // AVISO ("moneda insertada", "cancion agregada"...). Antes era una etiqueta de Windows puesta ENCIMA del
     // panel: cada vez que aparecia o se iba, Windows tenia que recortar el panel a su alrededor y repintar,
     // y ese era un tiron justo en el momento en que el cliente mete la moneda. Ahora es un cuadro mas de la
@@ -1335,29 +1335,34 @@ namespace Rocola
         // 1:1 (los cubos y sobre todo el TEXTO de las etiquetas) se muestrea entre texeles y se ve borrosa.
         private static void SetV(ref D3D9.Vtx vx, float x, float y, float u, float vv) { vx.X = x - 0.5f; vx.Y = y - 0.5f; vx.Z = 0; vx.Rhw = 1; vx.Color = 0xFFFFFFFF; vx.U = u; vx.V = vv; }
 
-        // FONDO REACTIVO. Antes eran manchas de luz SUMADAS encima del cielo: al pisarse unas con otras el
-        // centro se iba al blanco y quedaban los manchones. Ahora no se suma nada. La parte de ABAJO de la
-        // pantalla ES el color de la cancion: un relleno que sube y baja con la musica, mas alto cuando pega
-        // fuerte y mas bajo cuando afloja, ocupando mas o menos pantalla.
+        // FONDO REACTIVO: una AURORA BOREAL. Se dibuja como una malla de columnas (dos triangulos por trozo)
+        // sin textura y con mezcla normal: el color va en los vertices y la tarjeta lo degrada sola. Nada se
+        // suma, asi que nunca se lava hacia el blanco -eso era lo que manchaba con los halos- y todo cuesta
+        // UNA sola llamada de dibujo.
         //
-        // Se dibuja como una MALLA de columnas (dos triangulos por trozo) sin textura y con mezcla normal: el
-        // color va en los vertices y la tarjeta lo degrada sola. Sale mas barato que los halos (una sola
-        // llamada, sin textura y sin pintar el mismo pixel cinco veces).
-        //
-        // El relleno llega HASTA EL BORDE DE ABAJO de la pantalla, por detras de la franja de estado. Antes se
-        // paraba donde empieza esa franja y ahi se veia una raya: arriba el color y abajo el cielo pelado. Todo
-        // tiene que ser UNA sola pieza.
-        private const int AurCols = 80;       // trozos a lo ancho (81 puntos): con menos, las crestas salen con esquinas
+        // Lo que la hace parecer una aurora de verdad y no una barra de niveles:
+        //   1) CORTINAS. Encima de la forma que dictan las bandas va un ondeo de rayos verticales que se
+        //      desliza despacio (AurRayo). Es lo que da las vetas de luz de una aurora; no depende de la
+        //      musica, vive por su cuenta, y por eso el fondo respira aunque la cancion este tranquila.
+        //   2) DOS COLORES A LO ALTO. El pie de la cortina lleva el color de la cancion y la punta el mismo
+        //      color girado en la rueda hacia otro tono, como el verde que se vuelve morado en las de verdad.
+        //   3) HORIZONTE. Por debajo de donde nace la cortina el color se HUNDE -de tono y de presencia- hasta
+        //      fundirse con el cielo en el borde de la pantalla: es el suelo oscuro de las fotos de auroras y,
+        //      de paso, deja leerse el texto de la franja de estado. Es un degradado que muere en el mismo
+        //      color del cielo, asi que no hay ningun corte: todo sigue siendo una sola pieza.
+        private const int AurCols = 80;       // trozos a lo ancho (81 puntos): dan de sobra para los rayos
         private const int AurFilas = 4;       // franjas apiladas a lo alto: aproximan la curva del desvanecido
-        private const float AurPiso = 0.20f;  // suelo: aunque la cancion afloje, abajo siempre queda color
+        private const float AurPiso = 0.20f;  // suelo: aunque la cancion afloje, la cortina no desaparece
         private const float AurAlfaBase = 0.20f, AurAlfaPico = 0.40f;   // opacidad del relleno (flojo -> fuerte)
+        private const int AurSuelo = 3;       // franjas por DEBAJO del horizonte (el suelo)
+        private const float AurHondo = 0.14f; // que tan hundido queda el tono al pie de la pantalla (0 = lo mas hondo)
         // Ancho del LOBULO de cada banda, medido en bandas. Al ser MENOR que 1, el lobulo de una banda se
         // apaga ANTES de llegar al centro de su vecina: asi una banda fuerte no se traga a la de al lado y se
         // ven los ocho bultos separados por su valle. Esto es lo que hace que se distingan las frecuencias.
-        // Cuanto mas chico, mas hondo el valle y mas se separan los bultos.
         private const float AurLobulo = 0.72f;
-        private D3D9.Vtx[] aurV;                           // vertices de la malla (se reusan, no se asigna por cuadro)
-        private float[] aurH, aurA; private uint[] aurC;   // alto, opacidad y color de cada punto de la silueta
+        private D3D9.Vtx[] aurV;                               // vertices de la malla (se reusan, no se asigna por cuadro)
+        private float[] aurH, aurA; private uint[] aurLo, aurHi, aurSueloC;   // alto, opacidad, color del pie/punta y los tonos del suelo
+        private readonly int aurTick0 = Environment.TickCount;
 
         // ESCALERA DE TONOS: aqui esta lo que hace que se lea la intensidad. NO se dibuja subiendo el brillo
         // hacia el BLANCO -eso lava el color y es lo que se veia feo- sino recorriendo TONOS DE LA MISMA
@@ -1422,15 +1427,44 @@ namespace Rocola
             return (float)Math.Sqrt(Math.Sqrt(suma));
         }
 
-        // DESVANECIDO a lo alto: cuanta opacidad le queda al color a la altura f (0 = abajo del todo, 1 = la
-        // punta). Es una S: el relleno tiene CUERPO en su mitad de abajo -por eso se le ve la forma- y a partir
-        // de ahi se apaga rapido hasta desaparecer, sin dejar borde. Antes caia como un cuadrado desde el
-        // primer pixel y el resultado era una neblina sin forma en la que no se distinguia ninguna banda.
+        // CORTINAS. El multiplicador de altura de la columna que esta en fx (0..1) en el segundo t. Son tres
+        // ondas de periodos que no encajan entre si, cada una deslizandose a su ritmo: por eso el dibujo NUNCA
+        // se repite igual y no se ve un patron. Las de periodo corto hacen las vetas finas de luz y la larga
+        // mece la cortina entera de un lado a otro. Va acotado para que ninguna columna se dispare ni se apague.
+        internal static float AurRayo(float fx, float t)
+        {
+            double x = fx * 6.2831853;
+            float a = (float)Math.Sin(x * 9.3 - t * 0.31);    // vetas finas
+            float b = (float)Math.Sin(x * 3.7 + t * 0.55);    // ondas medianas
+            float c = (float)Math.Sin(x * 1.3 + t * 0.13);    // el meneo lento de toda la cortina
+            float v = 1f + 0.15f * a + 0.13f * b + 0.10f * c;
+            if (v < 0.62f) v = 0.62f; else if (v > 1.38f) v = 1.38f;
+            return v;
+        }
+
+        // DESVANECIDO a lo alto: cuanta opacidad le queda al color a la altura f (0 = donde nace, 1 = la
+        // punta). Es una S: la cortina tiene CUERPO en su mitad de abajo -por eso se le ve la forma- y a partir
+        // de ahi se apaga rapido hasta desaparecer, sin dejar borde.
         internal static float AurBaja(float f)
         {
             if (f <= 0f) return 1f;
             if (f >= 1f) return 0f;
             return 1f - f * f * (3f - 2f * f);
+        }
+
+        // EL SUELO, por debajo del horizonte (fs: 0 = el horizonte, 1 = el borde de abajo de la pantalla).
+        // El color se hunde a un tono profundo de la misma familia Y ademas pierde presencia, hasta quedarse
+        // exactamente en el cielo al llegar al borde. Asi el fondo no se corta en ningun sitio -abajo del todo
+        // simplemente ya es el cielo- y el texto de la franja de estado queda sobre oscuro, que es donde se lee.
+        internal static float AurSueloTono(float fs)
+        {
+            float k = 1f - fs; if (k < 0f) k = 0f; else if (k > 1f) k = 1f;
+            return AurHondo + (1f - AurHondo) * k * k;
+        }
+        internal static float AurSueloAlfa(float fs)
+        {
+            float k = 1f - fs; if (k < 0f) k = 0f; else if (k > 1f) k = 1f;
+            return k * k;
         }
 
         private static uint AurArgb(uint rgb, float a)
@@ -1439,39 +1473,65 @@ namespace Rocola
             if (v < 0) v = 0; else if (v > 255) v = 255;
             return ((uint)v << 24) | rgb;
         }
+        // Mezcla dos colores empaquetados (sin alfa) y le pega el alfa que se le pase.
+        private static uint AurMezcla(uint c0, uint c1, float f, float a)
+        {
+            if (f < 0f) f = 0f; else if (f > 1f) f = 1f;
+            uint r = (uint)(((c0 >> 16) & 0xFF) + (((int)((c1 >> 16) & 0xFF) - (int)((c0 >> 16) & 0xFF)) * f));
+            uint g = (uint)(((c0 >> 8) & 0xFF) + (((int)((c1 >> 8) & 0xFF) - (int)((c0 >> 8) & 0xFF)) * f));
+            uint b = (uint)((c0 & 0xFF) + (((int)(c1 & 0xFF) - (int)(c0 & 0xFF)) * f));
+            return AurArgb((r << 16) | (g << 8) | b, a);
+        }
         private static void AurV3(D3D9.Vtx[] a, int i, float x, float y, uint c)
         { a[i].X = x - 0.5f; a[i].Y = y - 0.5f; a[i].Z = 0f; a[i].Rhw = 1f; a[i].Color = c; a[i].U = 0f; a[i].V = 0f; }
 
-        // Arma la malla entera y devuelve cuantos vertices escribio. Aparte para poder comprobarla sin tarjeta.
-        // 'alturaPanel' es el borde de abajo de la PANTALLA: el relleno baja hasta ahi (por detras de la franja
-        // de estado) para que no quede ninguna raya donde se acaba.
-        internal static int AurMalla(D3D9.Vtx[] v, float[] hCol, uint[] cCol, float[] aCol,
+        // Arma la malla entera y devuelve cuantos vertices escribio. Aparte del dibujo para poder comprobarla
+        // sin tarjeta. 'alturaPanel' es el borde de abajo de la PANTALLA: el color baja hasta ahi (por detras
+        // de la franja de estado) hundiendose al tono profundo, para que no quede ninguna raya donde se acaba.
+        internal static int AurMalla(D3D9.Vtx[] v, float[] hCol, uint[] cLo, uint[] cHi, uint[] cSuelo, float[] aCol,
                                      float ancho, float baseY, float alturaPanel)
         {
             int puntos = AurCols + 1;
-            if (v == null || hCol == null || cCol == null || aCol == null) return 0;
-            if (v.Length < (AurFilas + 1) * AurCols * 6) return 0;
-            if (hCol.Length < puntos || cCol.Length < puntos || aCol.Length < puntos) return 0;
-            float suelo = (alturaPanel > baseY) ? alturaPanel : baseY;   // el borde de abajo de la pantalla
+            if (v == null || hCol == null || cLo == null || cHi == null || cSuelo == null || aCol == null) return 0;
+            if (v.Length < (AurFilas + AurSuelo) * AurCols * 6) return 0;
+            if (hCol.Length < puntos || cLo.Length < puntos || cHi.Length < puntos || aCol.Length < puntos) return 0;
+            if (cSuelo.Length < (AurSuelo + 1) * puntos) return 0;
+            float borde = (alturaPanel > baseY) ? alturaPanel : baseY;   // el borde de abajo de la pantalla
+            float hondo = borde - baseY;
             float paso = ancho / AurCols;
             int n = 0;
-            // j = -1 es la FALDA: del borde de abajo de la pantalla hasta donde nace la silueta, con la misma
-            // opacidad de abajo en los dos extremos (un bloque parejo). Es lo que quita la raya.
-            for (int j = -1; j < AurFilas; j++)
+            // Primero EL SUELO (del horizonte al borde de abajo) y luego la cortina. Las dos partes comparten
+            // el color y la opacidad exactos del horizonte, asi que ahi no hay ni un salto: es la misma pieza.
+            for (int j = 0; j < AurSuelo; j++)
             {
-                bool falda = (j < 0);
-                float f0 = falda ? 0f : (float)j / AurFilas;
-                float f1 = falda ? 0f : (float)(j + 1) / AurFilas;
-                float m0 = falda ? 1f : AurBaja(f0);
-                float m1 = falda ? 1f : AurBaja(f1);
+                float s0 = (float)j / AurSuelo, s1 = (float)(j + 1) / AurSuelo;
+                float m0 = AurSueloAlfa(s0), m1 = AurSueloAlfa(s1);
+                int k0 = j * puntos, k1 = (j + 1) * puntos;
+                float y0 = baseY + hondo * s0, y1 = baseY + hondo * s1;
+                for (int i = 0; i < AurCols; i++)
+                {
+                    float x0 = i * paso, x1 = x0 + paso;
+                    uint cL0 = AurArgb(cSuelo[k0 + i], aCol[i] * m0), cL1 = AurArgb(cSuelo[k1 + i], aCol[i] * m1);
+                    uint cR0 = AurArgb(cSuelo[k0 + i + 1], aCol[i + 1] * m0), cR1 = AurArgb(cSuelo[k1 + i + 1], aCol[i + 1] * m1);
+                    AurV3(v, n + 0, x0, y0, cL0); AurV3(v, n + 1, x1, y0, cR0); AurV3(v, n + 2, x0, y1, cL1);
+                    AurV3(v, n + 3, x1, y0, cR0); AurV3(v, n + 4, x1, y1, cR1); AurV3(v, n + 5, x0, y1, cL1);
+                    n += 6;
+                }
+            }
+            for (int j = 0; j < AurFilas; j++)
+            {
+                float f0 = (float)j / AurFilas, f1 = (float)(j + 1) / AurFilas;
+                float m0 = AurBaja(f0), m1 = AurBaja(f1);
                 for (int i = 0; i < AurCols; i++)
                 {
                     float x0 = i * paso, x1 = x0 + paso;
                     float hL = hCol[i], hR = hCol[i + 1];
-                    float yL0 = falda ? suelo : baseY - hL * f0, yL1 = baseY - hL * f1;
-                    float yR0 = falda ? suelo : baseY - hR * f0, yR1 = baseY - hR * f1;
-                    uint cL0 = AurArgb(cCol[i], aCol[i] * m0), cL1 = AurArgb(cCol[i], aCol[i] * m1);
-                    uint cR0 = AurArgb(cCol[i + 1], aCol[i + 1] * m0), cR1 = AurArgb(cCol[i + 1], aCol[i + 1] * m1);
+                    float yL0 = baseY - hL * f0, yL1 = baseY - hL * f1;
+                    float yR0 = baseY - hR * f0, yR1 = baseY - hR * f1;
+                    uint cL0 = AurMezcla(cLo[i], cHi[i], f0, aCol[i] * m0);
+                    uint cL1 = AurMezcla(cLo[i], cHi[i], f1, aCol[i] * m1);
+                    uint cR0 = AurMezcla(cLo[i + 1], cHi[i + 1], f0, aCol[i + 1] * m0);
+                    uint cR1 = AurMezcla(cLo[i + 1], cHi[i + 1], f1, aCol[i + 1] * m1);
                     AurV3(v, n + 0, x0, yL1, cL1); AurV3(v, n + 1, x1, yR1, cR1); AurV3(v, n + 2, x0, yL0, cL0);
                     AurV3(v, n + 3, x1, yR1, cR1); AurV3(v, n + 4, x1, yR0, cR0); AurV3(v, n + 5, x0, yL0, cL0);
                     n += 6;
@@ -1484,30 +1544,53 @@ namespace Rocola
         {
             if (au.Alto < 2f || au.Dim <= 0.02f) return;
             int puntos = AurCols + 1;
-            if (aurH == null) { aurH = new float[puntos]; aurA = new float[puntos]; aurC = new uint[puntos]; }
-            int nv = (AurFilas + 1) * AurCols * 6;
+            if (aurH == null)
+            {
+                aurH = new float[puntos]; aurA = new float[puntos];
+                aurLo = new uint[puntos]; aurHi = new uint[puntos]; aurSueloC = new uint[(AurSuelo + 1) * puntos];
+            }
+            int nv = (AurFilas + AurSuelo) * AurCols * 6;
             if (aurV == null || aurV.Length < nv) aurV = new D3D9.Vtx[nv];
-            // Cada punto de la silueta: hasta donde sube el color ahi, de que tono y con cuanta presencia.
+            float t = (Environment.TickCount - aurTick0) / 1000f;
+            // Cada columna: hasta donde sube, con cuanta presencia y sus tres tonos (punta, pie y suelo).
             uint r1 = (au.Rgb >> 16) & 0xFF, g1 = (au.Rgb >> 8) & 0xFF, b1 = au.Rgb & 0xFF;
             uint r2 = (au.Rgb2 >> 16) & 0xFF, g2 = (au.Rgb2 >> 8) & 0xFF, b2 = au.Rgb2 & 0xFF;
+            uint r3 = (au.RgbA >> 16) & 0xFF, g3 = (au.RgbA >> 8) & 0xFF, b3 = au.RgbA & 0xFF;
+            uint r4 = (au.Rgb2A >> 16) & 0xFF, g4 = (au.Rgb2A >> 8) & 0xFF, b4 = au.Rgb2A & 0xFF;
             for (int i = 0; i < puntos; i++)
             {
                 float fx = (float)i / AurCols;
                 float v = AurPerfil(au.B, fx);
                 if (v > 1f) v = 1f;
-                aurH[i] = au.Alto * (AurPiso + (1f - AurPiso) * v);
+                float alt = AurPiso + (1f - AurPiso) * v;
+                float rayo = AurRayo(fx, t);
+                aurH[i] = au.Alto * alt * rayo;   // la musica pone la forma; el ondeo, las vetas
                 // COLOR: a lo ancho se funde el tono del extremo grave con el del agudo (estan cerca en la
                 // rueda de color, asi que se mezclan en vez de partir la pantalla en dos luces distintas) y,
                 // segun la INTENSIDAD, se elige un tono de esa misma familia (ver TonoPorNivel).
                 float rr = r1 + (r2 - (float)r1) * fx, gg = g1 + (g2 - (float)g1) * fx, bb = b1 + (b2 - (float)b1) * fx;
-                TonoPorNivel(ref rr, ref gg, ref bb, v);
-                aurC[i] = ((uint)rr << 16) | ((uint)gg << 8) | (uint)bb;
+                float ra = r3 + (r4 - (float)r3) * fx, ga = g3 + (g4 - (float)g3) * fx, ba = b3 + (b4 - (float)b3) * fx;
+                float r0 = rr, g0 = gg, b0 = bb;
+                // El PIE va limpio, con la intensidad de la banda. La PUNTA lleva ademas el ondeo: como el
+                // color se degrada del pie a la punta, la veta de luz aparece poco a poco segun sube, que es
+                // como se ven las de verdad. Y de paso el horizonte queda intacto (ahi va el texto).
+                float vr = v * rayo; if (vr > 1f) vr = 1f;
+                TonoPorNivel(ref rr, ref gg, ref bb, v);               // pie de la cortina
+                TonoPorNivel(ref ra, ref ga, ref ba, vr);              // punta (el otro tono, con la veta)
+                aurLo[i] = ((uint)rr << 16) | ((uint)gg << 8) | (uint)bb;
+                aurHi[i] = ((uint)ra << 16) | ((uint)ga << 8) | (uint)ba;
+                for (int k = 0; k <= AurSuelo; k++)                   // el suelo: el mismo color, hundiendose
+                {
+                    float rd = r0, gd = g0, bd = b0;
+                    TonoPorNivel(ref rd, ref gd, ref bd, v * AurSueloTono((float)k / AurSuelo));
+                    aurSueloC[k * puntos + i] = ((uint)rd << 16) | ((uint)gd << 8) | (uint)bd;
+                }
                 float al = (AurAlfaBase + AurAlfaPico * v) * au.Dim;
                 if (al < 0f) al = 0f; else if (al > 1f) al = 1f;
                 aurA[i] = al;
             }
-            int n = AurMalla(aurV, aurH, aurC, aurA, Width, au.BaseY, Height);
-            if (n >= 3) stars.DrawMesh(aurV, n / 3);   // TODO el fondo reactivo en UNA sola llamada de dibujo
+            int n = AurMalla(aurV, aurH, aurLo, aurHi, aurSueloC, aurA, Width, au.BaseY, Height);
+            if (n >= 3) stars.DrawMesh(aurV, n / 3);   // TODA la aurora en UNA sola llamada de dibujo
         }
 
         // PRE-CALENTADO. Crear una textura es una peticion al driver y no siempre contesta rapido: si la
