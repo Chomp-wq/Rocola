@@ -950,7 +950,12 @@ namespace Rocola
         public Func<Rectangle> GetContourRect;            // donde va el contorno (celda seleccionada), en coords del panel
         public Func<GpuCubeState> GetCubeState;           // celdas/angulos/portadas de los cubos que giran (seleccionado + relevo)
         public int ThrottleMs;                            // >0 = a lo mas un cuadro cada tantos ms (con video sonando: ~30 fps)
-        private int lastFrameMs;                          // TickCount del ultimo cuadro dibujado
+        // RELOJ FINO para el limitador. Environment.TickCount avanza a SALTOS de 15.6 ms en Windows, asi
+        // que pidiendole "un cuadro cada 33 ms" solo podia contestar 46.8 (tres saltos): 21 cuadros por
+        // segundo en vez de 30, que es lo que se veia. Este reloj mide de verdad, en microsegundos.
+        private static readonly System.Diagnostics.Stopwatch reloj = System.Diagnostics.Stopwatch.StartNew();
+        private static double AhoraMs() { return reloj.Elapsed.TotalMilliseconds; }
+        private double lastFrameMs;                       // cuando se dibujo el ultimo cuadro (ms del reloj fino)
         public uint SkyTop = 0xFF06081A, SkyMid = 0xFF101C3A, SkyBot = 0xFF1A2C5A;   // el form los setea por genero (3 paradas)
 
         // Bucle de render por Application.Idle (patron estandar para D3D en WinForms): dibuja tan rapido como
@@ -970,16 +975,20 @@ namespace Rocola
 
         private void OnIdle(object sender, EventArgs e)
         {
-            // Con video sonando el panel se LIMITA (ThrottleMs ~33 = 30 fps): el resto del equipo es para el
-            // video. El sueno de 1 ms no atora nada: en cuanto llega un mensaje (tecla, timer), AppIdle lo ve
-            // y el bucle sale a atenderlo.
+            // Con video A LA VISTA el panel se puede LIMITAR (ThrottleMs ~33 = 30 fps) para dejarle equipo
+            // al video. Dormir 1 ms tampoco atora nada: en cuanto llega un mensaje (tecla, timer), AppIdle
+            // lo ve y el bucle sale a atenderlo.
+            //
+            // El limitador se mide con el RELOJ FINO. Con TickCount, que salta de 15.6 en 15.6 ms, pedir un
+            // cuadro cada 33 ms daba uno cada 46.8: 21 fps en vez de 30. Y dormir se hace por tramos cortos,
+            // volviendo a mirar el reloj cada vez, porque un Sleep(n) de Windows tampoco es exacto.
             while (stars != null && stars.Ok && Visible && AppIdle())
             {
                 int th = ThrottleMs;
                 if (th > 0)
                 {
-                    int since = Environment.TickCount - lastFrameMs;
-                    if (since >= 0 && since < th) { System.Threading.Thread.Sleep(1); continue; }
+                    double since = AhoraMs() - lastFrameMs;
+                    if (since >= 0 && since < th - 0.6) { System.Threading.Thread.Sleep(1); continue; }
                 }
                 RenderFrame();
             }
@@ -1052,7 +1061,7 @@ namespace Rocola
         private void RenderFrame()
         {
             if (stars == null || !stars.Ok) return;
-            lastFrameMs = Environment.TickCount;
+            lastFrameMs = AhoraMs();
             stars.SetSky(SkyTop, SkyMid, SkyBot);
             // TRABAJO PESADO acotado: rehacer las barras (UI, bitmap a pantalla completa) cuesta; se limita a UNA
             // por franja (heavyGapMs, que SE AUTOAJUSTA al coste real). La rejilla de discos ya NO es trabajo
@@ -1375,7 +1384,7 @@ namespace Rocola
         private const int AurCols = 144;      // trozos a lo ancho (145 puntos): hacen falta para las vetas finas
         private const int AurFilas = 6;       // franjas apiladas a lo alto: cuantas mas, mas suave el degradado
         private const float AurPiso = 0.20f;  // suelo: aunque la cancion afloje, la cortina no desaparece
-        private const float AurAlfaBase = 0.38f, AurAlfaPico = 0.49f;   // opacidad del relleno (flojo -> fuerte)
+        private const float AurAlfaBase = 0.46f, AurAlfaPico = 0.48f;   // opacidad del relleno (flojo -> fuerte)
         private const int AurSuelo = 4;       // franjas por DEBAJO del horizonte (el suelo)
         private const float AurHondo = 0.10f; // que tan hundido queda el tono al pie de la pantalla (0 = lo mas hondo)
         // Ancho del LOBULO de cada banda, medido en bandas. Al ser MENOR que 1, el lobulo de una banda se
@@ -1450,9 +1459,9 @@ namespace Rocola
             if (mx < 1f) return;                                   // practicamente negro: nada que matizar
             float mn = r; if (g < mn) mn = g; if (b < mn) mn = b;
             float sat = (mx - mn) / mx;                            // 0 = gris, 1 = color puro
-            float val = mx * (0.42f + 0.58f * v);                  // hundido cuando esta flojo, claro cuando pega
+            float val = mx * (0.50f + 0.50f * v);                  // hundido cuando esta flojo, claro cuando pega
             if (val > 255f) val = 255f;
-            float satNueva = sat * (1f - 0.20f * v);               // al aclararse pierde saturacion, como un tono claro real
+            float satNueva = sat * (1f - 0.09f * v);               // al aclararse pierde algo de saturacion, como un tono claro real
             // Se reconstruye conservando el TONO: cada canal guarda su posicion relativa dentro de la saturacion,
             // y esa posicion se vuelve a estirar contra la saturacion nueva.
             float piso = 1f - sat;
