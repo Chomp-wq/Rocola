@@ -1351,11 +1351,11 @@ namespace Rocola
         //      de paso, deja leerse el texto de la franja de estado. Es un degradado que muere en el mismo
         //      color del cielo, asi que no hay ningun corte: todo sigue siendo una sola pieza.
         private const int AurCols = 144;      // trozos a lo ancho (145 puntos): hacen falta para las vetas finas
-        private const int AurFilas = 4;       // franjas apiladas a lo alto: aproximan la curva del desvanecido
+        private const int AurFilas = 6;       // franjas apiladas a lo alto: cuantas mas, mas suave el degradado
         private const float AurPiso = 0.20f;  // suelo: aunque la cancion afloje, la cortina no desaparece
-        private const float AurAlfaBase = 0.20f, AurAlfaPico = 0.46f;   // opacidad del relleno (flojo -> fuerte)
-        private const int AurSuelo = 3;       // franjas por DEBAJO del horizonte (el suelo)
-        private const float AurHondo = 0.14f; // que tan hundido queda el tono al pie de la pantalla (0 = lo mas hondo)
+        private const float AurAlfaBase = 0.26f, AurAlfaPico = 0.58f;   // opacidad del relleno (flojo -> fuerte)
+        private const int AurSuelo = 4;       // franjas por DEBAJO del horizonte (el suelo)
+        private const float AurHondo = 0.10f; // que tan hundido queda el tono al pie de la pantalla (0 = lo mas hondo)
         // Ancho del LOBULO de cada banda, medido en bandas. Al ser MENOR que 1, el lobulo de una banda se
         // apaga ANTES de llegar al centro de su vecina: asi una banda fuerte no se traga a la de al lado y se
         // ven los ocho bultos separados por su valle. Esto es lo que hace que se distingan las frecuencias.
@@ -1381,7 +1381,7 @@ namespace Rocola
             float sat = (mx - mn) / mx;                            // 0 = gris, 1 = color puro
             float val = mx * (0.42f + 0.58f * v);                  // hundido cuando esta flojo, claro cuando pega
             if (val > 255f) val = 255f;
-            float satNueva = sat * (1f - 0.40f * v);               // al aclararse pierde saturacion, como un tono claro real
+            float satNueva = sat * (1f - 0.20f * v);               // al aclararse pierde saturacion, como un tono claro real
             // Se reconstruye conservando el TONO: cada canal guarda su posicion relativa dentro de la saturacion,
             // y esa posicion se vuelve a estirar contra la saturacion nueva.
             float piso = 1f - sat;
@@ -1438,8 +1438,8 @@ namespace Rocola
             float b = (float)Math.Sin(x * 9.3 - t * 0.31);    // vetas anchas
             float c = (float)Math.Sin(x * 3.7 + t * 0.55);    // ondas medianas
             float d = (float)Math.Sin(x * 1.3 + t * 0.13);    // el meneo lento de toda la cortina
-            float v = 1f + 0.11f * a + 0.13f * b + 0.11f * c + 0.09f * d;
-            if (v < 0.56f) v = 0.56f; else if (v > 1.44f) v = 1.44f;
+            float v = 1f + 0.09f * a + 0.11f * b + 0.09f * c + 0.07f * d;
+            if (v < 0.64f) v = 0.64f; else if (v > 1.36f) v = 1.36f;
             return v;
         }
 
@@ -1468,14 +1468,17 @@ namespace Rocola
         // El color se hunde a un tono profundo de la misma familia Y ademas pierde presencia, hasta quedarse
         // exactamente en el cielo al llegar al borde. Asi el fondo no se corta en ningun sitio -abajo del todo
         // simplemente ya es el cielo- y el texto de la franja de estado queda sobre oscuro, que es donde se lee.
+        // Las dos caen DEPRISA nada mas pasar el horizonte: asi la cortina puede ser mucho mas presente
+        // arriba sin comerse el texto de la franja, que empieza a solo 22 pixeles por debajo.
         internal static float AurSueloTono(float fs)
         {
             float k = 1f - fs; if (k < 0f) k = 0f; else if (k > 1f) k = 1f;
-            return AurHondo + (1f - AurHondo) * k * k;
+            return AurHondo + (1f - AurHondo) * k * k * k;
         }
         internal static float AurSueloAlfa(float fs)
         {
             float k = 1f - fs; if (k < 0f) k = 0f; else if (k > 1f) k = 1f;
+            k *= k;
             return k * k;
         }
 

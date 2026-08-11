@@ -836,7 +836,7 @@ namespace Rocola
                     for (int b = 0; b < parts.Length; b++)
                         if (!float.TryParse(parts[b], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out c[b])) { ok = false; break; }
                     for (int b = parts.Length; b < EqLen; b++) c[b] = 0f;   // ficha vieja: lo que falte queda "sin saber"
-                    if (ok) eqCache[Pool(line.Substring(bar + 1))] = c;
+                    if (ok) { eqCache[Pool(line.Substring(bar + 1))] = c; eqCacheVer++; }
                 }
             }
             catch { }
@@ -875,6 +875,7 @@ namespace Rocola
         // bien grabado". Si no hay suficientes sanas (biblioteca entera de baja calidad) se usan todas, como antes.
         private const float EqSanaHz = 19300f;   // mismo umbral con el que el DSEE da una cancion por completa
         private int eqAvgSanas;                  // cuantas entraron en el promedio (se muestra en Ctrl+F3)
+        private int eqCacheVer;                  // sube cada vez que cambia una huella: lo usan los recuentos cacheados
         private bool eqAvgSoloSanas;
         private void RecomputeEqAvg()
         {
@@ -1067,7 +1068,25 @@ namespace Rocola
         // aparte las que vienen recortadas de masterizacion. Sirve para saber que vale la pena volver a
         // conseguir en buena calidad.
         private const float CalBuenaHz = 19300f, CalMediaHz = 16500f;
+        // Se pide DOS VECES POR SEGUNDO mientras la ventana de ajustes esta abierta, y recorrer la biblioteca
+        // entera (decenas de miles de canciones) para volver a contar lo mismo es puro desperdicio: justo en ese
+        // rato la maquina suele estar ademas con el entrenamiento a fondo. Se guarda el recuento y solo se
+        // rehace cuando la huella de alguna cancion ha cambiado de verdad (ver eqCacheVer).
+        // Ademas de la version se guarda CUANTAS habia: asi el recuento tampoco se queda viejo si alguien
+        // cambiara la coleccion entera de golpe en vez de ir anadiendo huellas una a una.
+        private int calVer = -1, calCuantas = -1, calBuenas, calMedias, calPobres, calRecort, calSinMedir;
         private void CalidadResumen(out int buenas, out int medias, out int pobres, out int recortadas, out int sinMedir)
+        {
+            if (calVer == eqCacheVer && calCuantas == eqCache.Count)
+            {
+                buenas = calBuenas; medias = calMedias; pobres = calPobres; recortadas = calRecort; sinMedir = calSinMedir;
+                return;
+            }
+            CuentaCalidad(out buenas, out medias, out pobres, out recortadas, out sinMedir);
+            calVer = eqCacheVer; calCuantas = eqCache.Count;
+            calBuenas = buenas; calMedias = medias; calPobres = pobres; calRecort = recortadas; calSinMedir = sinMedir;
+        }
+        private void CuentaCalidad(out int buenas, out int medias, out int pobres, out int recortadas, out int sinMedir)
         {
             buenas = medias = pobres = recortadas = sinMedir = 0;
             foreach (KeyValuePair<string, float[]> kv in eqCache)
@@ -1143,7 +1162,7 @@ namespace Rocola
             curve[EqCut] = (eqMeasCut > 0f) ? eqMeasCut : (had ? prev[EqCut] : 0f);
             curve[EqCutLo] = (eqMeasCutLo > 0f) ? eqMeasCutLo : (had ? prev[EqCutLo] : 0f);
             curve[EqClip] = had ? prev[EqClip] : 0f;   // el recorte solo lo mide el pre-analisis (aqui ya viene reparado)
-            eqCache[path] = curve;
+            eqCache[path] = curve; eqCacheVer++;
             RecomputeEqAvg();
             SaveEqCache();
         }
@@ -2203,7 +2222,7 @@ namespace Rocola
             if (huella != layoutStamp)
             {
                 layoutStamp = huella;
-                uiOverlaySig = null;
+                uiOverlaySig = SigNada;
                 if (gpuPanel != null) gpuPanel.UiUrgent = true;
             }
 #endif
@@ -2632,7 +2651,7 @@ namespace Rocola
             {
                 songList.Invalidate();
 #if ROCOLA_GPU
-                uiOverlaySig = null;   // la lista va horneada en la textura de UI: hay que rehacerla para que se vean
+                uiOverlaySig = SigNada;   // la lista va horneada en la textura de UI: hay que rehacerla para que se vean
 #endif
             }
         }
@@ -2721,7 +2740,7 @@ namespace Rocola
                                 // SOBRESCRIBE lo que hubiera: la medida del pre-analisis es de la cancion COMPLETA,
                                 // asi que es mejor que lo aprendido a medias oyendola (que promediaba entre pasadas).
                                 if (rms > 0.0001f) loudCache[ruta] = rms;
-                                if (eqCurve != null) { eqCache[ruta] = eqCurve; eqDirty = true; }   // huella tonal del EQ automatico, ya lista
+                                if (eqCurve != null) { eqCache[ruta] = eqCurve; eqCacheVer++; eqDirty = true; }   // huella tonal del EQ automatico, ya lista
                                 if (preScanLeft > 0) preScanLeft--;
                                 if (panelSongs != null && panelSongs.Visible && songList != null) songList.Invalidate();   // que aparezca la duracion recien sabida
                             });
@@ -4025,7 +4044,7 @@ namespace Rocola
             // fuerte se queda pegado abajo y lo de arriba ya casi no se ve. Eso es lo que hace que se note
             // crecer y encoger: con el ajuste de fabrica el color llega a casi el 40% de la pantalla en los
             // golpes y se encoge a menos de la decima parte cuando la cancion afloja.
-            g.Alto = h * 0.72f * auroraAmount;
+            g.Alto = h * 0.90f * auroraAmount;
             // COLOR. La intensidad ya NO se dibuja con blanco -eso quemaba el centro y lavaba todo-, sino con
             // TONOS DEL MISMO COLOR: si el genero es morado, lo flojo sale morado oscuro y profundo, lo medio
             // sale del morado del genero, y lo fuerte sale de un morado claro. Nunca se sale de su familia, asi
@@ -4035,20 +4054,18 @@ namespace Rocola
             // A lo ancho el tono tambien cambia -graves de un lado, agudos del otro- pero MUCHO mas suave que
             // antes (32 grados en vez de 98): asi los colores se funden en vez de parecer dos luces distintas.
             //
-            // Y A LO ALTO cambia tambien: el PIE de la cortina lleva el color de la cancion y la PUNTA el
-            // mismo color girado 58 grados en la rueda, que es lo que hace una aurora de verdad (el verde de
-            // abajo se vuelve morado arriba). Como es el mismo color girado, nunca pelea con el genero, pero
-            // el giro tiene que ser GRANDE: si la punta se queda cerca del color del cielo, la cortina no se
-            // distingue del degradado del fondo y parece que no hay nada.
+            // Y A LO ALTO cambia tambien: el PIE de la cortina lleva el color de la cancion y la PUNTA tira
+            // hacia el violeta-rosa, que es lo que hace una aurora de verdad (ver GiroPunta).
             Color baseCol = ColorReactivo(bgAccent);
-            g.Rgb = (uint)(GiraTono(baseCol, -10f, 1.00f).ToArgb() & 0x00FFFFFF);    // pie, extremo GRAVE (izquierda)
-            g.Rgb2 = (uint)(GiraTono(baseCol, 22f, 0.98f).ToArgb() & 0x00FFFFFF);    // pie, extremo AGUDO (derecha)
-            g.RgbA = (uint)(GiraTono(baseCol, 48f, 0.98f).ToArgb() & 0x00FFFFFF);    // punta, extremo GRAVE
-            g.Rgb2A = (uint)(GiraTono(baseCol, 78f, 0.96f).ToArgb() & 0x00FFFFFF);   // punta, extremo AGUDO
+            float gp = GiroPunta(baseCol);
+            g.Rgb = (uint)(GiraTono(baseCol, -10f, 1.00f).ToArgb() & 0x00FFFFFF);        // pie, extremo GRAVE (izquierda)
+            g.Rgb2 = (uint)(GiraTono(baseCol, 22f, 0.98f).ToArgb() & 0x00FFFFFF);        // pie, extremo AGUDO (derecha)
+            g.RgbA = (uint)(GiraTono(baseCol, gp - 12f, 0.98f).ToArgb() & 0x00FFFFFF);   // punta, extremo GRAVE
+            g.Rgb2A = (uint)(GiraTono(baseCol, gp + 18f, 0.96f).ToArgb() & 0x00FFFFFF);  // punta, extremo AGUDO
             // ATENUACION al navegar. El resto del fondo (estrellas, brillos) baja al 45% para no pelearle a
             // las portadas, pero la aurora vive PEGADA ABAJO, donde no hay portadas: bajarla igual la borraba
             // de la pantalla justo cuando mas se mira. Aqui se atenua mucho menos: al 79% en vez de al 45%.
-            g.Dim = 0.62f + 0.38f * bgDim;
+            g.Dim = 0.72f + 0.28f * bgDim;
             return g;
         }
 
@@ -4062,6 +4079,38 @@ namespace Rocola
             int mx = accent.R; if (accent.G > mx) mx = accent.G; if (accent.B > mx) mx = accent.B;
             if (mx < 10) return Color.FromArgb(255, 60, 120, 235);   // sin genero: el azul de siempre
             return Color.FromArgb(255, accent.R * 235 / mx, accent.G * 235 / mx, accent.B * 235 / mx);
+        }
+
+        // TONO de un color, en grados de la rueda (0 = rojo, 120 = verde, 240 = azul).
+        private static float TonoDe(Color c)
+        {
+            float r = c.R / 255f, g = c.G / 255f, b = c.B / 255f;
+            float mx = Math.Max(r, Math.Max(g, b)), mn = Math.Min(r, Math.Min(g, b));
+            float d = mx - mn;
+            if (d < 0.0001f) return 0f;
+            float h;
+            if (mx == r) h = 60f * (((g - b) / d) % 6f);
+            else if (mx == g) h = 60f * ((b - r) / d + 2f);
+            else h = 60f * ((r - g) / d + 4f);
+            while (h < 0f) h += 360f; while (h >= 360f) h -= 360f;
+            return h;
+        }
+
+        // CUANTO se gira el color al subir por la cortina (grados). En las auroras de verdad la punta tira
+        // SIEMPRE hacia el violeta o el rosa, sea del color que sea el pie: el verde se vuelve magenta y el
+        // cian se vuelve violeta. Girar siempre los mismos grados no sirve, porque desde un naranja te lleva
+        // al verde pistacho y queda sucio. Aqui se gira hacia la zona violeta-rosa por el camino mas corto y
+        // a poco mas de medio camino, con un giro MINIMO para que el color viaje tambien cuando el genero ya
+        // es morado, y un TOPE para que nunca se vaya al otro lado de la rueda.
+        internal static float GiroPunta(Color c)
+        {
+            float d = 300f - TonoDe(c);
+            while (d > 180f) d -= 360f; while (d < -180f) d += 360f;
+            float g = d * 0.55f;
+            float mag = (g < 0f) ? -g : g;
+            if (mag < 35f) g = (g < 0f) ? -35f : 35f;
+            else if (mag > 75f) g = (g < 0f) ? -75f : 75f;
+            return g;
         }
 
         // Gira el TONO de un color (grados en la rueda de color) y le escala el brillo. Se usa una vez por cuadro
@@ -4302,7 +4351,7 @@ namespace Rocola
             {
                 // La atraccion se compone por GPU: el control CPU no se pinta (queda oculto detras del panel).
                 attractView.Visible = false;
-                uiOverlaySig = null;   // fuerza rehacer la textura de UI (textos de atraccion)
+                uiOverlaySig = SigNada;   // fuerza rehacer la textura de UI (textos de atraccion)
                 gpuPanel.Visible = true; gpuPanel.BringToFront();
                 SyncGpuFullScreen();   // aplica el modo atraccion YA (transicion atomica, como los demas modos)
                 // La portada del disco que estaba elegido VUELA hasta el cubo gigante de la atraccion y se funde
@@ -4332,7 +4381,7 @@ namespace Rocola
             attractOn = false;
             if (attractView != null) attractView.Visible = false;
 #if ROCOLA_GPU
-            uiOverlaySig = null;   // rehace la textura de UI de inmediato (deja los textos de atraccion por la barra normal)
+            uiOverlaySig = SigNada;   // rehace la textura de UI de inmediato (deja los textos de atraccion por la barra normal)
             if (gpuPanel != null && gpuEnabled)
             {
                 SyncGpuFullScreen();   // aplica el modo navegacion YA (sin un cuadro mezclado de por medio)
@@ -4596,7 +4645,7 @@ namespace Rocola
             if (keyData == (Keys.Control | Keys.F11))   // Ctrl+F11 = alterna el interior de disco entre GPU (por defecto) y CPU (valvula de escape)
             {
                 gpuDiscTry = !gpuDiscTry;
-                uiOverlaySig = null;   // fuerza rehacer la textura de UI
+                uiOverlaySig = SigNada;   // fuerza rehacer la textura de UI
                 if (lblStatus != null) lblStatus.Text = "Interior de disco por " + (gpuDiscTry ? "GPU" : "CPU");
                 SyncGpuFullScreen(); Invalidate(true);
                 return true;
@@ -6580,7 +6629,7 @@ namespace Rocola
         private bool gpuDiscTry = true;                   // interior de disco por GPU (por defecto). Ctrl+F11 lo alterna a CPU como valvula de escape
         private int gpuMode = -1;                          // modo GPU actual (nav/buscador/disco/atraccion); al cambiar se rehace la UI atomica
         private int layoutStamp = -1;                      // huella del ultimo reacomodo: solo un cambio REAL rehace la textura de UI
-        private Bitmap uiOverlay; private int uiOverlayVer; private string uiOverlaySig;   // textura de las barras (UI)
+        private Bitmap uiOverlay; private int uiOverlayVer; private long uiOverlaySig = SigNada;   // textura de las barras (UI)
 
         // Ctrl+F12: alterna el render entre GPU (Direct3D 9, por defecto) y CPU, y GUARDA la preferencia.
         private void ToggleAlbumGpu() { ApplyAlbumGpu(!gpuEnabled, true, true); }
@@ -6627,7 +6676,7 @@ namespace Rocola
             if (on && !gpuEnabled)
             {
                 albumView.InvalidateCubeCache();         // cubeCache fresco para subirlo a la GPU
-                uiOverlaySig = null;                     // fuerza reconstruir la textura de UI
+                uiOverlaySig = SigNada;                     // fuerza reconstruir la textura de UI
                 gpuPanel.AlbumRect = albumView.Bounds;
                 gpuPanel.Bounds = new Rectangle(0, 0, ClientSize.Width, ClientSize.Height);   // PANTALLA COMPLETA
                 gpuPanel.SkyTop = ToD3D(SkyColor(bgAccent)); gpuPanel.SkyMid = ToD3D(SkyColorMid(bgAccent)); gpuPanel.SkyBot = ToD3D(SkyColor2(bgAccent));
@@ -6759,7 +6808,7 @@ namespace Rocola
             // (ShowAlbum, cubos): si no, se ve un instante el modo viejo detras del nuevo (p.ej. la rejilla de
             // discos por los huecos del teclado al cerrar el buscador). UiUrgent salta la limitacion de franja.
             int mode = search ? 2 : discGpu ? 3 : attract ? 4 : nav ? 1 : 0;
-            if (mode != gpuMode) { gpuMode = mode; uiOverlaySig = null; gpuPanel.UiUrgent = true; Diag("render: modo GPU " + mode + (videoOn ? " (video sonando)" : "")); }
+            if (mode != gpuMode) { gpuMode = mode; uiOverlaySig = SigNada; gpuPanel.UiUrgent = true; Diag("render: modo GPU " + mode + (videoOn ? " (video sonando)" : "")); }
             // Mientras el video SE VE, el panel baja a ~30 cuadros por segundo: el resto del equipo es para
             // el video (WMP decodifica por CPU en el fierro modesto). Sin video (o con el buscador abierto,
             // que lo oculta) vuelve al maximo.
@@ -6805,7 +6854,7 @@ namespace Rocola
                 mainH += 6;
             }
             if (mainH > h) mainH = h; if (mainH < 8) mainH = 8;
-            string sig = UiSig();
+            long sig = UiSig();
             if (uiOverlay != null && uiOverlay.Width == w && uiOverlay.Height == mainH && sig == uiOverlaySig) return uiOverlayVer;
             if (uiOverlay == null || uiOverlay.Width != w || uiOverlay.Height != mainH)
             {
@@ -6868,14 +6917,14 @@ namespace Rocola
         // Reconstruye la textura de la FRANJA DE ESTADO de abajo (sonando/siguiente/tiempo/creditos/cola/
         // progreso) SOLO si cambio algo. Es una tira chica (~90px de alto): el tic del reloj y la barra de
         // progreso (~2 cambios/seg con musica) cuestan ~10x menos que rehacer la pantalla completa de antes.
-        private Bitmap uiBotOverlay; private int uiBotVer; private string uiBotLastSig;
+        private Bitmap uiBotOverlay; private int uiBotVer; private long uiBotLastSig = SigNada;
         private int EnsureUiBotOverlay()
         {
             int w = ClientSize.Width, h = ClientSize.Height;
             if (w < 8 || h < 8) return uiBotVer;
             int top = BotStripTop(h);
             int bh = h - top;
-            string sig = UiBotSig();
+            long sig = UiBotSig();
             if (uiBotOverlay != null && uiBotOverlay.Width == w && uiBotOverlay.Height == bh && sig == uiBotLastSig) return uiBotVer;
             if (uiBotOverlay == null || uiBotOverlay.Width != w || uiBotOverlay.Height != bh)
             {
@@ -6986,15 +7035,29 @@ namespace Rocola
             return n;
         }
 
-        private string UiSig()
+        // FIRMA de lo que hay que dibujar. Se compara CADA CUADRO para saber si hay que rehacer la textura,
+        // asi que no puede armar una cadena: eso eran dos StringBuilder y dos cadenas nuevas por cuadro (~70 KB
+        // por segundo de basura para el recolector, que es justo lo que provoca microtirones). Ahora se mezcla
+        // todo en un numero de 64 bits (FNV-1a), sin reservar ni un byte. Dos estados distintos podrian caer en
+        // el mismo numero, pero con 64 bits eso es 1 entre 18 trillones: y ni asi se rompe nada, solo tardaria
+        // un cambio de texto en verse hasta el siguiente cambio.
+        private const long SigNada = 0L;                     // valor imposible de la mezcla: fuerza rehacer
+        private const long SigBase = unchecked((long)1469598103934665603L);
+        private static long Mix(long h, int v) { unchecked { h ^= (uint)v; h *= 1099511628211L; } return h; }
+        private static long Mix(long h, long v) { return Mix(Mix(h, (int)v), (int)(v >> 32)); }
+        private static long Mix(long h, bool b) { return Mix(h, b ? 1 : 0); }
+        private static long Mix(long h, string t) { return Mix(h, t == null ? 0 : t.GetHashCode()); }
+        private long UiSig()
         {
-            System.Text.StringBuilder sb = new System.Text.StringBuilder(192);
-            sb.Append(ClientSize.Width).Append('x').Append(ClientSize.Height);
+            long sb = SigBase;
+            sb = Mix(sb, ClientSize.Width); sb = Mix(sb, ClientSize.Height);
             if (searchOpen && searchOverlay != null)   // parte superior = buscador
-                sb.Append("|S").Append(searchOverlay.Query).Append('|').Append(searchOverlay.SelRow).Append(',').Append(searchOverlay.SelCol)
-                  .Append('|').Append(searchOverlay.FocusResults).Append(searchOverlay.SelResult)
-                  .Append('|').Append(searchOverlay.Results == null ? 0 : searchOverlay.Results.Count)
-                  .Append('|').Append(searchOverlay.ToastOn).Append(searchOverlay.ToastMsg);
+            {
+                sb = Mix(sb, 'S'); sb = Mix(sb, searchOverlay.Query); sb = Mix(sb, searchOverlay.SelRow); sb = Mix(sb, searchOverlay.SelCol);
+                sb = Mix(sb, searchOverlay.FocusResults); sb = Mix(sb, searchOverlay.SelResult);
+                sb = Mix(sb, searchOverlay.Results == null ? 0 : searchOverlay.Results.Count);
+                sb = Mix(sb, searchOverlay.ToastOn); sb = Mix(sb, searchOverlay.ToastMsg);
+            }
                   // El DESTELLO del boton pulsado YA NO entra en la firma: lo dibuja la GPU como halo aparte (FillUiGlows),
                   // asi que su desvanecido no re-hornea ni re-sube la textura del teclado -> tecleo fluido con brillo suave.
                   // Tampoco la fase del teclado (carisima). En reposo la firma es constante -> 0 reconstrucciones.
@@ -7003,14 +7066,19 @@ namespace Rocola
                 // interior (con video, la lista y el cubo se comprimen a la mitad izquierda). Sin la geometria,
                 // la firma no cambiaba y la textura quedaba horneada con las posiciones VIEJAS -la lista flotando
                 // donde ya no va- hasta salir y volver a entrar al disco. El cubo no lo sufria (es en vivo).
-                sb.Append("|D").Append(lblAlbum != null ? lblAlbum.Text : "").Append('|').Append(songSel).Append('|').Append(songItems.Count)
-                  .Append('|').Append(songList != null ? songList.PageStart : 0).Append('|').Append(bgAccent.ToArgb())
-                  .Append('|').Append(panelSongs.Left).Append(',').Append(panelSongs.Top).Append(',').Append(panelSongs.Width).Append(',').Append(panelSongs.Height);
+            {
+                sb = Mix(sb, 'D'); sb = Mix(sb, lblAlbum != null ? lblAlbum.Text : ""); sb = Mix(sb, songSel); sb = Mix(sb, songItems.Count);
+                sb = Mix(sb, songList != null ? songList.PageStart : 0); sb = Mix(sb, bgAccent.ToArgb());
+                sb = Mix(sb, panelSongs.Left); sb = Mix(sb, panelSongs.Top); sb = Mix(sb, panelSongs.Width); sb = Mix(sb, panelSongs.Height);
+            }
             else if (attractOn)                        // MODO ATRACCION: solo la cantidad de canciones (el pulso del texto va como halo por quad)
-                sb.Append("|A").Append(attractView != null ? attractView.SongCount : 0);
+            { sb = Mix(sb, 'A'); sb = Mix(sb, attractView != null ? attractView.SongCount : 0); }
             else if (letterBar != null)                // parte superior = navegacion (A-Z + encabezado)
-                sb.Append("|N").Append(letterBar.Current).Append(letterBar.Letters).Append(letterBar.Available == null ? 0 : letterBar.Available.Count)
-                  .Append('|').Append(lblHeader != null ? lblHeader.Text : "").Append('|').Append(lblStatus != null ? lblStatus.Text : "");
+            {
+                sb = Mix(sb, 'N'); sb = Mix(sb, letterBar.Current); sb = Mix(sb, letterBar.Letters);
+                sb = Mix(sb, letterBar.Available == null ? 0 : letterBar.Available.Count);
+                sb = Mix(sb, lblHeader != null ? lblHeader.Text : ""); sb = Mix(sb, lblStatus != null ? lblStatus.Text : "");
+            }
             // NI la fase del pulso de la letra NI el destello del boton pulsado (FlashSig) entran ya en la firma:
             // ambos los dibuja la GPU como halos aparte (FillUiGlows). Antes obligaban a rehacer Y RE-SUBIR esta
             // textura ~13 veces/seg en navegacion (pulso) y ~10 veces por CADA tecla (destello): ESE era el
@@ -7018,25 +7086,25 @@ namespace Rocola
             // Las etiquetas de estado de abajo (sonando/tiempo/creditos/progreso) van en SU PROPIA textura chica
             // (UiBotSig/EnsureUiBotOverlay): el reloj de la cancion ya no rehace la pantalla completa 2 veces/seg.
             // El FPS tambien va en su propia textura (1/seg, diminuta).
-            return sb.ToString();
+            return (sb == SigNada) ? 1L : sb;   // que nunca coincida con "sin firma"
         }
 
         // Firma de la FRANJA DE ESTADO de abajo (sonando/siguiente/tiempo/creditos/cola/progreso): cambia ~2
         // veces/seg con musica sonando, pero su textura es una tira chica (~400KB vs ~4MB de pantalla completa).
-        private string UiBotSig()
+        private long UiBotSig()
         {
-            System.Text.StringBuilder sb = new System.Text.StringBuilder(128);
-            sb.Append(ClientSize.Width).Append('x').Append(ClientSize.Height);
-            if (attractOn) { sb.Append("|A"); return sb.ToString(); }   // en atraccion la franja va limpia (transparente)
-            if (lblNowTop != null) sb.Append('|').Append(lblNowTop.Text);
-            if (lblNow != null) sb.Append('|').Append(lblNow.Text);
-            if (lblMejorada != null && lblMejorada.Visible) sb.Append("|M").Append(iaBadgeKind).Append(',').Append(lblMejorada.Left).Append(',').Append(lblMejorada.ForeColor.ToArgb());
-            if (lblNext != null) sb.Append('|').Append(lblNext.Text);
-            if (lblTime != null) sb.Append('|').Append(lblTime.Text);
-            if (lblCredits != null) sb.Append('|').Append(lblCredits.Text);
-            if (lblCount != null) sb.Append('|').Append(lblCount.Text);
-            if (progress != null) sb.Append('|').Append((int)(progress.Value * 300)).Append(progress.Accent.ToArgb());
-            return sb.ToString();
+            long sb = SigBase;
+            sb = Mix(sb, ClientSize.Width); sb = Mix(sb, ClientSize.Height);
+            if (attractOn) return Mix(sb, 'A');   // en atraccion la franja va limpia (transparente)
+            if (lblNowTop != null) sb = Mix(sb, lblNowTop.Text);
+            if (lblNow != null) sb = Mix(sb, lblNow.Text);
+            if (lblMejorada != null && lblMejorada.Visible) { sb = Mix(sb, 'M'); sb = Mix(sb, iaBadgeKind); sb = Mix(sb, lblMejorada.Left); sb = Mix(sb, lblMejorada.ForeColor.ToArgb()); }
+            if (lblNext != null) sb = Mix(sb, lblNext.Text);
+            if (lblTime != null) sb = Mix(sb, lblTime.Text);
+            if (lblCredits != null) sb = Mix(sb, lblCredits.Text);
+            if (lblCount != null) sb = Mix(sb, lblCount.Text);
+            if (progress != null) { sb = Mix(sb, (int)(progress.Value * 300)); sb = Mix(sb, progress.Accent.ToArgb()); }
+            return (sb == SigNada) ? 1L : sb;   // que nunca coincida con "sin firma"
         }
 
         // Dibuja un control (HelpBar/LetterBar/ProgressView) en la textura de UI, en su posicion del form.
@@ -8062,6 +8130,21 @@ namespace Rocola
         }
 
         // ==========  RENDER DEL CUBO (compartido)  ==========
+        // TANGENTE HIPERBOLICA aproximada (Pade 3/2), para la saturacion suave del realce de agudos. La de la
+        // libreria matematica se llamaba UNA VEZ POR MUESTRA Y CANAL -88,200 veces por segundo- y era de lo mas
+        // caro que hacia la cadena de audio. Esta cuesta 5.6 veces menos (medido: del 0.23% de un nucleo al
+        // 0.04%) y dibuja la misma curva: se aparta como mucho 0.024, y como el realce entra al 7% en el peor
+        // caso, en la salida eso queda 56 dB por debajo de la senal. Inaudible.
+        // OJO: la red neuronal del DSEE usa la tangente DE VERDAD y ahi no se toca, porque el modelo se entreno
+        // con esa; ademas alli se llama unas 2,600 veces por segundo, o sea nada.
+        internal static float TanhRapida(float x)
+        {
+            if (x < -3f) return -1f;
+            if (x > 3f) return 1f;
+            float x2 = x * x;
+            return x * (27f + x2) / (27f + 9f * x2);
+        }
+
         // Toma el nivel de audio (RMS) del bloque recien leido SIN modificar el sonido: solo observa el
         // buffer que ya lleno el lector y lo reporta. Sirve para que las estrellas laten con la musica.
         // Como el colchon es de ~1s, el nivel va algo adelantado de lo que se oye (envolvente de energia).
@@ -9466,10 +9549,17 @@ namespace Rocola
             // Clave de cache de la celda: Folder (estable y unico) para discos normales. Para discos TOP ("Lo mas
             // sonado"), que reusan el mismo Folder sintetico pero cuya portada cambia al variar las reproducciones,
             // se le agrega la ruta de portada: asi se re-hornea cuando cambia (la etiqueta es fija). null = no cachea.
+            // Se pide para CADA casilla en CADA cuadro (el panel la usa de clave de su cache de texturas). En los
+            // discos normales es la carpeta tal cual, sin gasto; en los TOP habia que pegar carpeta+portada, y eso
+            // era una cadena nueva por casilla y por cuadro: en la pagina de LO MAS SONADO, seis por cuadro a 60
+            // cuadros por segundo. Ahora se arma UNA vez y se guarda en el propio disco.
             private static string CellKey(Album a)
             {
                 if (a == null || a.Folder == null) return null;
-                return a.IsTop ? (a.Folder + "|" + (a.CoverPath ?? "")) : a.Folder;
+                if (!a.IsTop) return a.Folder;
+                string cp = a.CoverPath ?? "";
+                if (a.KeyCache == null || a.KeyFrom != cp) { a.KeyFrom = cp; a.KeyCache = a.Folder + "|" + cp; }
+                return a.KeyCache;
             }
 
             // Hornea la celda de un disco (portada estatica en angulo 0 + etiqueta a 2 lineas) a un bitmap propio.
@@ -10873,6 +10963,7 @@ namespace Rocola
             public List<string> VideoFiles = new List<string>();
             public bool IsTop = false;             // disco virtual de "lo mas sonado" por genero
             public bool TopIsVideo = false;        // (TOP) este disco virtual contiene VIDEOS, no canciones
+            public string KeyCache, KeyFrom;       // clave de la casilla ya armada (ver CellKey): se pide en cada cuadro
             public List<string> CycleCovers;       // (TOP) caratulas distintas para ciclar en el cubo seleccionado
             public List<string> TrackCovers;       // (TOP) caratula de origen por cada cancion (alineado con Tracks)
             public List<string> TrackInfo;         // (TOP) "Artista - Album" de origen por cada cancion
