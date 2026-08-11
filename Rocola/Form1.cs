@@ -252,7 +252,13 @@ namespace Rocola
         private const int EqLen = 11, EqCut = 8, EqClip = 9, EqCutLo = 10;
         private readonly Dictionary<string, float[]> eqCache = new Dictionary<string, float[]>(StringComparer.OrdinalIgnoreCase);
         private float[] eqAvg = null;              // curva PROMEDIO de la biblioteca (el objetivo); null hasta tener 10 canciones medidas
-        private float eqAmount = 0f;               // fuerza del EQ automatico 0..1 (perilla en Ctrl+F3; "eq_auto=" en config); 0 = apagado
+        private float eqAmount = 0f;               // fuerza del EQ automatico 0..1 A MANO (perilla en Ctrl+F3; "eq_auto=" en config); 0 = apagado
+        // AUTOMATICO (de fabrica): no hay perilla que ajustar. La fuerza del EQ y la cantidad de bajo las
+        // decide el propio programa cancion por cancion, con lo que el analisis del DSEE ya midio de cada una
+        // (acantilado de agudos, recorte de picos, corte por abajo y huella tonal). Ver EqFuerzaAuto/BajoAuto.
+        private bool eqAuto = true;                // "eq_automatico=" en config
+        private bool bassAuto = true;              // "bajo_automatico=" en config
+        private float bassAutoBase = 0.30f;        // lo que el programa eligio para la cancion que suena
         private float[] eqNetIn, eqNetOut, eqMeta; // buffers del modelo del EQ (reusados: cero basura por cancion)
         private string eqMeasPath = null;          // cancion cuya huella se esta midiendo (null = no medir)
         private float eqMeasCut = 0f, eqMeasCutLo = 0f;   // cortes (arriba y abajo) de la cancion que suena (0 = aun no se sabe)
@@ -280,7 +286,8 @@ namespace Rocola
         // nada y si le metes mas, se emborrona. Sale de la huella tonal que la rocola YA le mide a cada cancion
         // (no hace falta medir nada nuevo). 1 = la perilla tal cual, que es lo que hacia antes con todas.
         private float bassSongFactor = 1f;
-        private float BassAmountNow() { return Clampf(bassAmount * bassSongFactor, 0f, 1f); }
+        private float BassBaseNow() { return bassAuto ? bassAutoBase : bassAmount; }
+        private float BassAmountNow() { return Clampf(BassBaseNow() * bassSongFactor, 0f, 1f); }
         private float masterDb = 0f;         // SUBIR TODO: dB extra para ABSOLUTAMENTE todas las canciones (0..12; barra en Ctrl+F3, "subir_db=" en config)
         private float MasterLin() { return (float)Math.Pow(10.0, masterDb / 20.0); }   // dB -> ganancia lineal
         private float crossfadeSec = 0.5f;   // FUNDIDO de salida entre canciones: segundos de rampa al terminar ("fundido=" en config; 0 = corte seco)
@@ -717,7 +724,9 @@ namespace Rocola
                     else if (s.StartsWith("ia_datos_mb=")) { int v; if (int.TryParse(s.Substring(12).Trim(), out v)) iaMaxBytes = (v <= 0) ? 0L : (long)v * 1024 * 1024; }   // tope del archivo de material
                     else if (s.StartsWith("ia_datos=")) iaHarvestOn = s.Substring(9).Trim() != "0";   // juntar material para entrenar la IA
                     else if (s.StartsWith("video_vol=")) { int v; if (int.TryParse(s.Substring(10).Trim(), out v)) videoVol = v < 0 ? 0 : (v > 100 ? 100 : v); }   // volumen base de los videos
-                    else if (s.StartsWith("eq_auto=")) { float v; if (float.TryParse(s.Substring(8).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) eqAmount = Clampf(v / 100f, 0f, 1f); }   // EQ automatico (fuerza %)
+                    else if (s.StartsWith("eq_auto=")) { float v; if (float.TryParse(s.Substring(8).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) eqAmount = Clampf(v / 100f, 0f, 1f); }   // EQ automatico (fuerza % a mano)
+                    else if (s.StartsWith("eq_automatico=")) eqAuto = s.Substring(14).Trim() != "0";     // la fuerza del EQ la decide el programa
+                    else if (s.StartsWith("bajo_automatico=")) bassAuto = s.Substring(16).Trim() != "0"; // y la cantidad de bajo tambien
                     else if (s.StartsWith("dsee=")) sbrOn = s.Substring(5).Trim() == "1";   // reconstruccion espectral (NIVEL 2)
                     else if (s.StartsWith("dsee_forzar=")) { if (s.Substring(12).Trim() == "1") { sbrForce = true; sbrAllowed = true; sbrReason = ""; } }   // salta la puerta de requisitos (pruebas)
                     else if (s.StartsWith("dir="))
@@ -756,6 +765,8 @@ namespace Rocola
                 sb.Append("ia_datos_mb=").Append(iaMaxBytes <= 0 ? 0L : iaMaxBytes / (1024 * 1024)).Append("\r\n");
                 sb.Append("video_vol=").Append(videoVol).Append("\r\n");
                 sb.Append("eq_auto=").Append(((int)Math.Round(eqAmount * 100f)).ToString(System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
+                sb.Append("eq_automatico=").Append(eqAuto ? "1" : "0").Append("\r\n");
+                sb.Append("bajo_automatico=").Append(bassAuto ? "1" : "0").Append("\r\n");
                 sb.Append("dsee=").Append(sbrOn ? "1" : "0").Append("\r\n");
                 if (sbrForce) sb.Append("dsee_forzar=1\r\n");   // conservar la bandera manual de pruebas (este saver reescribe el archivo completo)
                 for (int i = 0; i < extraMusicDirs.Count; i++) sb.Append("dir=").Append(extraMusicDirs[i]).Append("\r\n");
@@ -845,12 +856,56 @@ namespace Rocola
             eqAvg = avg; eqAvgSanas = n;
         }
 
+        // FUERZA del EQ cuando se deja en AUTOMATICO (de fabrica). No hay perilla que ajustar: la fuerza sale
+        // de cuanto se puede uno FIAR del objetivo, que es lo unico que de verdad deberia decidirla.
+        //   - Con pocas canciones medidas, el "sonido de la casa" todavia no significa nada: se corrige poco.
+        //   - Segun el pre-analisis va midiendo la biblioteca, el objetivo es cada vez mas fiable y se corrige
+        //     mas, hasta un tope que nunca llega al 100% (dejar un resto sin corregir conserva el caracter de
+        //     cada disco: la idea es emparejar, no aplanar).
+        //   - Con el modelo de IA entrenado el objetivo es POR CANCION en vez de uno para todas, asi que se
+        //     puede afinar un poco mas sin miedo.
+        // Menos de 10 canciones sanas medidas: cero. Ahi el EQ no toca nada, como si estuviera apagado.
+        private float EqFuerzaAuto()
+        {
+            if (eqAvg == null || eqAvgSanas < 10) return 0f;
+            float t = (eqAvgSanas - 10) / 50f;
+            if (t < 0f) t = 0f; else if (t > 1f) t = 1f;
+            float f = 0.35f + 0.50f * t;      // 35% con 10 canciones medidas -> 85% con 60 o mas
+            if (!EqNet.Loaded) f *= 0.88f;    // sin modelo el objetivo es el promedio de TODAS: mas prudente
+            return f;
+        }
+        // La huella tonal se mide siempre que haga falta para algo: en automatico hace falta SIEMPRE (de ella
+        // salen tambien el bajo, el realce y el informe de calidad), y a mano solo si el EQ esta subido.
+        private bool EqMideHuella { get { return eqAuto || eqAmount > 0.001f; } }
+
+        // CUANTO bajo profundo le toca de partida a ESTA cancion cuando el bajo se deja en AUTOMATICO. Sale de
+        // lo que el analisis del DSEE ya sabe del archivo, no de una perilla:
+        //   - Si viene RECORTADA (masterizada a tope), meterle mas grave solo hace trabajar al limitador y
+        //     emborrona: se le baja.
+        //   - Si el DSEE le esta RECONSTRUYENDO los agudos, es una copia vieja y pobre; esas casi siempre estan
+        //     tambien flojas de abajo y es justo donde el bajo psicoacustico mas se agradece: se le sube.
+        // Encima de esto sigue actuando BassFactorFor, que mira cuanto grave trae de verdad frente al resto de
+        // la biblioteca. Entre los dos, cada cancion recibe lo suyo sin que nadie toque nada.
+        private float BajoAuto(string path)
+        {
+            float bas = 0.30f;   // punto de partida: el mismo que traia la perilla de fabrica
+            float[] c = null;
+            if (path != null) eqCache.TryGetValue(path, out c);
+            if (c != null && c.Length >= EqLen)
+            {
+                if (c[EqClip] > 0.0015f) bas *= 0.75f;                          // picos aplastados: menos
+                if (c[EqCut] > 100f && c[EqCut] < 16000f) bas *= 1.20f;         // agudos cortados: copia pobre, mas
+            }
+            return Clampf(bas, 0f, 1f);
+        }
+
         // Correccion en dB por banda para una cancion (o null si apagado / aun sin huella / sin objetivo).
         // Correccion = (objetivo - huella) con tope +-4 dB, escalada por la fuerza. Una banda casi MUDA
         // (>25 dB bajo la referencia de su cancion) no se sube: seria inflar piso de ruido, no musica.
         private float[] EqCorrFor(string path)
         {
-            if (eqAmount <= 0.001f || path == null || eqAvg == null) return null;
+            float fuerza = eqAuto ? EqFuerzaAuto() : eqAmount;
+            if (fuerza <= 0.001f || path == null || eqAvg == null) return null;
             float[] c;
             if (!eqCache.TryGetValue(path, out c)) return null;
             // Banda por ENCIMA del acantilado de esta cancion: NUNCA se corrige, y por dos razones distintas
@@ -886,6 +941,22 @@ namespace Rocola
                     meta = m;
                 }
             }
+            // CANCION RARA. Si se aleja muchisimo del objetivo, casi seguro es que QUERIA sonar asi: un disco
+            // muy oscuro a proposito, una grabacion en vivo, una voz sola. Empujarla a la fuerza hacia el resto
+            // la estropea, asi que cuanto mas lejos esta de la biblioteca, con mas cuidado se le toca. Solo se
+            // hace en automatico: si alguien puso la perilla a mano, manda la perilla.
+            if (eqAuto)
+            {
+                float dif = 0f; int nb = 0;
+                for (int b = 0; b < 8; b++)
+                {
+                    if (corte > 100f && EqCentros[b] > corte) continue;
+                    if (c[b] <= -25f) continue;
+                    float d = meta[b] - c[b]; if (d < 0f) d = -d;
+                    dif += d; nb++;
+                }
+                if (nb > 0) fuerza *= Clampf(1.15f - (dif / nb) / 14f, 0.45f, 1f);
+            }
             float[] dbs = new float[8]; bool any = false;
             for (int b = 0; b < 8; b++)
             {
@@ -895,7 +966,7 @@ namespace Rocola
                 {
                     corr = meta[b] - c[b];
                     if (corr > 4f) corr = 4f; else if (corr < -4f) corr = -4f;
-                    corr *= eqAmount;
+                    corr *= fuerza;
                 }
                 dbs[b] = corr;
                 if (corr > 0.1f || corr < -0.1f) any = true;
@@ -1339,7 +1410,7 @@ namespace Rocola
             bool wasMaint = maintMode;
             maintMode = true; maintUntil = DateTime.Now.AddMinutes(10);
             bool changed = false;
-            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkUp = masterDb, bkEq = eqAmount; int bkVid = videoVol; bool bkOn = normalizeOn, bkSbr = sbrOn;   // por si se Cancela
+            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkUp = masterDb, bkEq = eqAmount, bkBass = bassAmount; int bkVid = videoVol; bool bkOn = normalizeOn, bkSbr = sbrOn, bkEqA = eqAuto, bkBassA = bassAuto;   // por si se Cancela
             try
             {
                 Cursor.Show();
@@ -1389,13 +1460,22 @@ namespace Rocola
                     tbExc.BackColor = dlg.BackColor; tbExc.Value = (int)Math.Round(excAmount * 100f);
 
                     // EQ AUTOMATICO: correccion tonal suave por cancion, hacia el promedio de la biblioteca.
+                    // De fabrica va en AUTOMATICO: la fuerza la decide el programa (EqFuerzaAuto) y la perilla
+                    // queda apagada. Quien quiera mandar a mano, quita la casilla y la perilla vuelve a valer.
                     Label lEq = new Label(); lEq.SetBounds(16, 462, 470, 24); lEq.BackColor = Color.Transparent; lEq.ForeColor = Color.FromArgb(190, 160, 255);
-                    TrackBar tbEq = new TrackBar(); tbEq.SetBounds(492, 456, 436, 45); tbEq.Minimum = 0; tbEq.Maximum = 100; tbEq.TickFrequency = 10;
+                    CheckBox chkEqAuto = new CheckBox();
+                    chkEqAuto.SetBounds(492, 460, 148, 26); chkEqAuto.BackColor = Color.Transparent; chkEqAuto.ForeColor = Color.FromArgb(190, 160, 255);
+                    chkEqAuto.Text = "Automatico"; chkEqAuto.Checked = eqAuto;
+                    TrackBar tbEq = new TrackBar(); tbEq.SetBounds(646, 456, 282, 45); tbEq.Minimum = 0; tbEq.Maximum = 100; tbEq.TickFrequency = 10;
                     // BAJO PSICOACUSTICO: la mitad que le faltaba a la cadena (arriba el realce de agudos, aqui el grave).
                     Label lBass = new Label(); lBass.SetBounds(16, 516, 470, 24); lBass.BackColor = Color.Transparent; lBass.ForeColor = Color.FromArgb(255, 180, 120);
-                    TrackBar tbBass = new TrackBar(); tbBass.SetBounds(492, 510, 436, 45); tbBass.Minimum = 0; tbBass.Maximum = 100; tbBass.TickFrequency = 10;
+                    CheckBox chkBassAuto = new CheckBox();
+                    chkBassAuto.SetBounds(492, 514, 148, 26); chkBassAuto.BackColor = Color.Transparent; chkBassAuto.ForeColor = Color.FromArgb(255, 180, 120);
+                    chkBassAuto.Text = "Automatico"; chkBassAuto.Checked = bassAuto;
+                    TrackBar tbBass = new TrackBar(); tbBass.SetBounds(646, 510, 282, 45); tbBass.Minimum = 0; tbBass.Maximum = 100; tbBass.TickFrequency = 10;
                     tbBass.Value = (int)Math.Round(bassAmount * 100f);
                     tbEq.BackColor = dlg.BackColor; tbEq.Value = (int)Math.Round(eqAmount * 100f);
+                    tbBass.BackColor = dlg.BackColor;
 
                     // NIVEL 2: reconstructor espectral (solo maquinas que cumplen requisitos; ver ProbeAudioTier)
                     CheckBox chkSbr = new CheckBox();
@@ -1448,15 +1528,18 @@ namespace Rocola
                         lVid.Text = "Volumen de los videos:  " + tbVid.Value + "%";
                         // Se ve de donde sale el objetivo del EQ: de las canciones SANAS o, si aun no hay
                         // bastantes medidas, de todas (que es como funcionaba antes).
-                        lEq.Text = "EQ automatico:  " + tbEq.Value + "%"
+                        // Se ve de donde sale la fuerza y de donde sale el objetivo. En automatico se ensena lo
+                        // que el programa eligio, para que no parezca magia invisible.
+                        int eqPct = (int)Math.Round((chkEqAuto.Checked ? EqFuerzaAuto() : tbEq.Value / 100f) * 100f);
+                        lEq.Text = "EQ automatico:  " + eqPct + "%"
                                  + (eqAvgSanas > 0
-                                    ? ("   (objetivo: " + eqAvgSanas.ToString("#,0") + (eqAvgSoloSanas ? " canciones sanas)" : " canciones, aun sin sanas suficientes)"))
+                                    ? ("   (objetivo: " + eqAvgSanas.ToString("#,0") + (eqAvgSoloSanas ? " canciones sanas)" : " canciones, aun sin sanas)"))
                                     : "   (aun sin objetivo)");
-                        // Se ve la perilla Y lo que le toca a la cancion que suena: asi el ajuste automatico
-                        // no es magia invisible, se nota que esta trabajando.
-                        int bEfe = (int)Math.Round(tbBass.Value * bassSongFactor);
-                        lBass.Text = "Graves (bajo profundo):  " + tbBass.Value + "%"
-                                   + ((nowPlaying != null && bEfe != tbBass.Value) ? ("   (esta cancion: " + bEfe + "%)") : "");
+                        // Igual con el bajo: de cuanto parte y cuanto le toca de verdad a la cancion que suena.
+                        int bBase = (int)Math.Round((chkBassAuto.Checked ? bassAutoBase : tbBass.Value / 100f) * 100f);
+                        int bEfe = (int)Math.Round(bBase * bassSongFactor);
+                        lBass.Text = "Graves (bajo profundo):  " + bBase + "%"
+                                   + ((nowPlaying != null && bEfe != bBase) ? ("   (esta cancion: " + bEfe + "%)") : "");
                         // PRE-ANALISIS + ETAPA: ya no hace falta que una cancion suene para quedar nivelada; aqui se
                         // ve cuanto le falta a la biblioteca por medir y en que etapa de volumen cayo la que suena.
                         string etapa = (nowPlaying != null && nowPlaying.Song != null) ? LoudTierName(nowPlaying.Song.Path) : "";
@@ -1488,6 +1571,9 @@ namespace Rocola
                         tbTarget.Enabled = en; tbStr.Enabled = en;
                         lTarget.ForeColor = en ? Color.FromArgb(150, 240, 170) : Color.FromArgb(110, 118, 140);
                         lStr.ForeColor = en ? Color.FromArgb(150, 200, 255) : Color.FromArgb(110, 118, 140);
+                        // En automatico la perilla no pinta nada: se apaga para que se vea que no hay que tocarla.
+                        tbEq.Enabled = !chkEqAuto.Checked;
+                        tbBass.Enabled = !chkBassAuto.Checked;
                     };
                     EventHandler apply = delegate
                     {
@@ -1498,6 +1584,8 @@ namespace Rocola
                         masterDb = tbUp.Value;
                         videoVol = tbVid.Value;
                         if (videoOn && nowPlaying != null) SetVideoVolume(VideoVolumeFor(nowPlaying.VideoPath));   // el video que suena cambia YA
+                        eqAuto = chkEqAuto.Checked;
+                        bassAuto = chkBassAuto.Checked;
                         eqAmount = tbEq.Value / 100f;
                         bassAmount = tbBass.Value / 100f;
                         sbrOn = chkSbr.Checked && sbrAllowed;
@@ -1507,7 +1595,8 @@ namespace Rocola
                         UpdateNowPlayingUI();   // y el letrero MEJORADA aparece/desaparece al instante
                     };
                     tbTarget.Scroll += apply; tbStr.Scroll += apply; tbExc.Scroll += apply; tbUp.Scroll += apply; tbEq.Scroll += apply; tbVid.Scroll += apply; tbBass.Scroll += apply; chkOn.CheckedChanged += apply; chkSbr.CheckedChanged += apply;
-                    bReset.Click += delegate { chkOn.Checked = true; tbTarget.Value = TargetToPct(0.26f); tbStr.Value = 100; tbExc.Value = 35; tbUp.Value = 0; tbEq.Value = 0; tbVid.Value = 85; tbBass.Value = 30; if (chkSbr.Enabled) chkSbr.Checked = false; apply(bReset, EventArgs.Empty); };   // recomendado: espectral apagado (es experimental)
+                    chkEqAuto.CheckedChanged += apply; chkBassAuto.CheckedChanged += apply;
+                    bReset.Click += delegate { chkOn.Checked = true; tbTarget.Value = TargetToPct(0.26f); tbStr.Value = 100; tbExc.Value = 35; tbUp.Value = 0; tbEq.Value = 0; tbVid.Value = 85; tbBass.Value = 30; chkEqAuto.Checked = true; chkBassAuto.Checked = true; if (chkSbr.Enabled) chkSbr.Checked = false; apply(bReset, EventArgs.Empty); };   // recomendado: EQ y bajo en automatico, espectral apagado (es experimental)
                     bOk.Click += delegate { dlg.Close(); };
                     dlg.CancelButton = bOk;
 
@@ -1517,8 +1606,8 @@ namespace Rocola
                     dlg.Controls.Add(lUp); dlg.Controls.Add(tbUp);
                     dlg.Controls.Add(lVid); dlg.Controls.Add(tbVid);
                     dlg.Controls.Add(lExc); dlg.Controls.Add(tbExc);
-                    dlg.Controls.Add(lEq); dlg.Controls.Add(tbEq);
-                    dlg.Controls.Add(lBass); dlg.Controls.Add(tbBass);
+                    dlg.Controls.Add(lEq); dlg.Controls.Add(chkEqAuto); dlg.Controls.Add(tbEq);
+                    dlg.Controls.Add(lBass); dlg.Controls.Add(chkBassAuto); dlg.Controls.Add(tbBass);
                     dlg.Controls.Add(chkSbr); dlg.Controls.Add(lSbrInfo);
                     dlg.Controls.Add(lCal); dlg.Controls.Add(hint); dlg.Controls.Add(pbTrain);
                     dlg.Controls.Add(bReset); dlg.Controls.Add(bTrain); dlg.Controls.Add(bOk);
@@ -1545,7 +1634,7 @@ namespace Rocola
                 }
                 if (changed) { SaveConfigPrefs(); ShowToast("Sonido actualizado", Color.FromArgb(40, 130, 90)); }
             }
-            catch { normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; masterDb = bkUp; eqAmount = bkEq; videoVol = bkVid; sbrOn = bkSbr; }   // si algo truena, deja los valores como estaban
+            catch { normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; masterDb = bkUp; eqAmount = bkEq; bassAmount = bkBass; videoVol = bkVid; sbrOn = bkSbr; eqAuto = bkEqA; bassAuto = bkBassA; }   // si algo truena, deja los valores como estaban
             finally { try { Cursor.Hide(); } catch { } maintMode = wasMaint; ForceFocus(); }
         }
 
@@ -3824,9 +3913,15 @@ namespace Rocola
             //
             // A lo ancho el tono tambien cambia -graves de un lado, agudos del otro- pero MUCHO mas suave que
             // antes (32 grados en vez de 98): asi los colores se funden en vez de parecer dos luces distintas.
+            //
+            // Y A LO ALTO cambia tambien: el PIE de la cortina lleva el color de la cancion y la PUNTA el
+            // mismo color girado 42 grados en la rueda, que es lo que hace una aurora de verdad (el verde de
+            // abajo se vuelve morado arriba). Como es el mismo color girado, nunca pelea con el genero.
             Color baseCol = ColorReactivo(bgAccent);
-            g.Rgb = (uint)(GiraTono(baseCol, -10f, 1.00f).ToArgb() & 0x00FFFFFF);    // extremo GRAVE (izquierda)
-            g.Rgb2 = (uint)(GiraTono(baseCol, 22f, 0.98f).ToArgb() & 0x00FFFFFF);    // extremo AGUDO (derecha)
+            g.Rgb = (uint)(GiraTono(baseCol, -10f, 1.00f).ToArgb() & 0x00FFFFFF);    // pie, extremo GRAVE (izquierda)
+            g.Rgb2 = (uint)(GiraTono(baseCol, 22f, 0.98f).ToArgb() & 0x00FFFFFF);    // pie, extremo AGUDO (derecha)
+            g.RgbA = (uint)(GiraTono(baseCol, 32f, 0.98f).ToArgb() & 0x00FFFFFF);    // punta, extremo GRAVE
+            g.Rgb2A = (uint)(GiraTono(baseCol, 64f, 0.96f).ToArgb() & 0x00FFFFFF);   // punta, extremo AGUDO
             g.Dim = bgDim;
             return g;
         }
@@ -5630,7 +5725,7 @@ namespace Rocola
                 // nueva, va a su volumen original y se APRENDE su sonoridad en esta pasada (para nivelarla la proxima vez).
                 curMeasurePath = (normalizeOn && !durCache.ContainsKey(t.Path)) ? t.Path : null;   // ya pre-analizada = medida COMPLETA y fiable: no se vuelve a medir (y se ahorra el K-weighting)
                 curSumSq = 0; curSamples = 0;
-                eqMeasPath = (eqAmount > 0.001f && !durCache.ContainsKey(t.Path)) ? t.Path : null;   // huella tonal: solo si no la trae ya del pre-analisis (que la mide completa)
+                eqMeasPath = (EqMideHuella && !durCache.ContainsKey(t.Path)) ? t.Path : null;   // huella tonal: solo si no la trae ya del pre-analisis (que la mide completa)
                 eqMeasCut = 0f;   // el acantilado es de ESTA cancion: se vuelve a medir
                 eqMeasSum = new double[8]; eqMeasN = 0; eqMeasRate = 0;
                 kwRate = 0;   // reinicia el estado del K-weighting: cada cancion mide desde cero (sin cola del filtro anterior)
@@ -5663,6 +5758,7 @@ namespace Rocola
                 // BAJO PSICOACUSTICO: despues de nivelar/ecualizar y ANTES del limitador, que es quien controla
                 // los picos que anaden los armonicos.
                 bassSongFactor = BassFactorFor(t.Path);   // cuanto le toca a ESTA cancion (1 = la perilla tal cual)
+                bassAutoBase = BajoAuto(t.Path);          // y de cuanto se parte, si el bajo va en automatico
                 curBass = new DeepBassProvider(tap, BassAmountNow());
                 NAudio.Wave.ISampleProvider outChain = new LookaheadLimiter(curBass, 0.98f, 3.0);
                 if (crossfadeSec > 0.01f)
@@ -6428,14 +6524,13 @@ namespace Rocola
                     g.SmoothingMode = SmoothingMode.AntiAlias;
                     g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;   // gris: ClearType deja flecos sobre transparente
                     g.TranslateTransform(0, -top);   // las etiquetas estan en coords del form; la tira empieza en 'top'
-                    // TODOS con contorno oscuro: por detras de esta franja pasa el fondo reactivo (ver DrawLabelSombra).
-                    DrawLabelSombra(g, lblNowTop);   // 2a linea del titulo (vacia casi siempre: no dibuja nada)
-                    DrawLabelSombra(g, lblNow);
-                    if (lblMejorada != null && lblMejorada.Visible) DrawLabelSombra(g, lblMejorada);   // letrero MEJORADA (su brillo es un halo por quad, no rehace esta textura)
-                    DrawLabelSombra(g, lblNext);
-                    DrawLabelSombra(g, lblTime);
-                    DrawLabelSombra(g, lblCredits);
-                    DrawLabelSombra(g, lblCount);
+                    DrawLabelOverlay(g, lblNowTop);   // 2a linea del titulo (vacia casi siempre: no dibuja nada)
+                    DrawLabelOverlay(g, lblNow);
+                    if (lblMejorada != null && lblMejorada.Visible) DrawLabelOverlay(g, lblMejorada);   // letrero MEJORADA (su brillo es un halo por quad, no rehace esta textura)
+                    DrawLabelOverlay(g, lblNext);
+                    DrawLabelOverlay(g, lblTime);
+                    DrawLabelOverlay(g, lblCredits);
+                    DrawLabelOverlay(g, lblCount);
                     DrawCtrlOverlay(g, progress);
                 }
             }
@@ -6613,26 +6708,6 @@ namespace Rocola
             g.DrawString(l.Text, l.Font, b, (RectangleF)l.Bounds, sf);
         }
 
-        // CONTORNO OSCURO detras del texto de la franja de abajo. Por ahi pasa ahora el fondo reactivo, que en
-        // un golpe fuerte se pone claro; sin esto, texto claro sobre color claro se pierde. Se dibuja el mismo
-        // texto en negro traslucido corrido un pixel a las cuatro diagonales: queda un contorno suave que no se
-        // lee como sombra pero despega las letras de CUALQUIER fondo, y asi el color puede seguir siendo una
-        // sola pieza hasta el borde de abajo sin tener que apagarlo bajo la franja. Se hornea junto con la
-        // textura de la franja -que solo se rehace cuando cambia un texto-, asi que no cuesta nada por cuadro.
-        private static readonly int[] SombraDx = { -1, 1, -1, 1 };
-        private static readonly int[] SombraDy = { -1, -1, 1, 1 };
-        private static readonly Color SombraCol = Color.FromArgb(105, 0, 0, 0);
-        private static void DrawLabelSombra(Graphics g, Label l)
-        {
-            if (l == null || string.IsNullOrEmpty(l.Text)) return;
-            for (int k = 0; k < SombraDx.Length; k++)
-            {
-                g.TranslateTransform(SombraDx[k], SombraDy[k]);
-                DrawLabelOverlay(g, l, SombraCol);
-                g.TranslateTransform(-SombraDx[k], -SombraDy[k]);
-            }
-            DrawLabelOverlay(g, l);
-        }
 #endif
 
         private void AnimTimer_Tick(object sender, EventArgs e)
