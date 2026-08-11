@@ -511,10 +511,18 @@ namespace Rocola
             glowBatchN = 0;
         }
 
-        public void Render(int w, int h, float pulse) { if (Begin(w, h, pulse)) End(); }   // solo cielo+estrellas (ventana de prueba)
+        public void Render(int w, int h, float pulse) { if (Begin(w, h, pulse, pulse)) End(); }   // solo cielo+estrellas (ventana de prueba)
 
-        // Inicia el cuadro: dibuja el cielo + estrellas. Luego se pueden apilar texturas con DrawQuad y cerrar con End.
-        public bool Begin(int w, int h, float pulse)
+        // Lo que se dibuja ENTRE el cielo y las estrellas (la aurora). Asi las estrellas quedan SIEMPRE encima:
+        // con la aurora tan presente como esta ahora, dibujarla despues las tapaba en media pantalla y parecia
+        // que el campo estrellado se hubiera apagado. Por detras de una aurora de verdad tambien se ven.
+        internal delegate void Dibuja();
+        public Dibuja TrasCielo;
+
+        // Inicia el cuadro: dibuja el cielo + estrellas. Luego se pueden apilar texturas con DrawQuad y cerrar
+        // con End. 'pulse' ya viene atenuado (es brillo); 'pulseCrudo' NO, porque la deriva del campo es
+        // MOVIMIENTO: atenuar la pantalla no puede congelarlo.
+        public bool Begin(int w, int h, float pulse, float pulseCrudo)
         {
             if (!Ok) return false;
             if (!gpu.BeginFrame()) return false;
@@ -526,7 +534,7 @@ namespace Rocola
             float ddt = (driftLastMs == 0) ? 0f : (nowMs - driftLastMs) / 1000f;
             driftLastMs = nowMs;
             if (ddt < 0f) ddt = 0f; else if (ddt > 0.1f) ddt = 0.1f;   // acota saltos (p.ej. tras un atasco)
-            float dTgt = (pulse > 0.02f) ? 1f : 0f;
+            float dTgt = (pulseCrudo > 0.02f) ? 1f : 0f;
             driftEnv += (dTgt - driftEnv) * (dTgt > driftEnv ? Math.Min(1f, ddt * 2.5f) : Math.Min(1f, ddt * 0.6f));   // ataque medio, caida lenta
             driftX += driftEnv * DriftVX * ddt; if (w > 0) driftX %= w;   // env>=0 -> solo crece; el modulo lo deja en [0,w)
             driftY += driftEnv * DriftVY * ddt; if (h > 0) driftY %= h;
@@ -554,6 +562,7 @@ namespace Rocola
             SetQuad(skyV, 0, 0, 0, w, midY, skyTop, skyTop, skyMid, skyMid);
             SetQuad(skyV, 6, 0, midY, w, h, skyMid, skyMid, skyBot, skyBot);
             gpu.DrawSky(skyV);
+            if (TrasCielo != null) TrasCielo();   // la aurora va aqui: entre el cielo y las estrellas
             if (transing && px != null)   // patron ANTERIOR desvaneciendose
             {
                 BuildStarVerts(starV2, px, py, pphase, pspeed, psize, pkind, pcol, pnStars, t, (1f - tr) * dim, pulse, driftX, driftY, w, h);
@@ -945,6 +954,7 @@ namespace Rocola
         {
             SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.Opaque, true);
             SetStyle(ControlStyles.OptimizedDoubleBuffer, false);   // D3D9 maneja sus pixeles: nada de doble-buffer GDI
+            trasCielo = delegate { if (auCuadro.Has) DrawAurora(auCuadro); };
         }
 
         private void OnIdle(object sender, EventArgs e)
@@ -1114,13 +1124,14 @@ namespace Rocola
             }
             if (ShowFps) EnsureFpsTex();   // crea/actualiza la textura del contador ANTES de Begin (solo si se pide, Ctrl+F1)
             stars.SetDim(Dim);             // atenuacion mientras se navega con musica (estrellas/brillos; el cielo queda igual)
-            float pulse = ((GetPulse != null) ? GetPulse() : 0f) * Dim;   // el beat tambien baja mientras esta atenuado
+            float pulseCrudo = (GetPulse != null) ? GetPulse() : 0f;
+            float pulse = pulseCrudo * Dim;   // el beat tambien baja mientras esta atenuado (la deriva NO: ver Begin)
+            // La aurora se dibuja DENTRO de Begin, justo despues del cielo y antes de las estrellas.
+            auCuadro = (GetAurora != null) ? GetAurora() : new GpuAurora();
+            stars.TrasCielo = (auCuadro.Has && auCuadro.B != null && auCuadro.B.Length >= 8) ? trasCielo : null;
             // Dispositivo perdido (sesion bloqueada, cambio de pantalla...): sin este respiro, el bucle de
             // Application.Idle reintentaria a TODA MAQUINA y clavaria un nucleo entero hasta recuperarlo.
-            if (!stars.Begin(Width, Height, pulse)) { System.Threading.Thread.Sleep(5); return; }
-            // AURORA: va pegada al cielo, ANTES de la rejilla y los cubos. Asi es fondo de verdad: la musica se
-            // ve respirar por detras y las portadas siguen siendo lo que manda en pantalla.
-            if (GetAurora != null) { GpuAurora au = GetAurora(); if (au.Has && au.B != null && au.B.Length >= 8) DrawAurora(au); }
+            if (!stars.Begin(Width, Height, pulse, pulseCrudo)) { System.Threading.Thread.Sleep(5); return; }
             // Rejilla de discos: un quad por celda (textura ya resuelta arriba). Las celdas aun sin textura (recien
             // horneadas o sin presupuesto de subida este cuadro) se saltan y aparecen en los cuadros siguientes.
             if (ShowAlbum)
@@ -1365,6 +1376,8 @@ namespace Rocola
         private uint[] aurCortina, aurSueloC;                // colores por franja: la cortina y el suelo
         private uint[] aurRampPie, aurRampAgu;               // el degradado pie->punta de cada extremo (una vez por cuadro)
         private readonly int aurTick0 = Environment.TickCount;
+        private GpuAurora auCuadro;                          // la aurora de ESTE cuadro (la pide el render y la dibuja TrasCielo)
+        private readonly GpuStarfield.Dibuja trasCielo;      // delegado creado UNA vez (nada de basura por cuadro)
 
         // ESCALERA DE TONOS: aqui esta lo que hace que se lea la intensidad. NO se dibuja subiendo el brillo
         // hacia el BLANCO -eso lava el color y es lo que se veia feo- sino recorriendo TONOS DE LA MISMA

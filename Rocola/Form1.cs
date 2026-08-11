@@ -137,6 +137,14 @@ namespace Rocola
         private readonly float[] specGolpe = new float[SpecBands];  // cuanto sobresale cada banda AHORA sobre su piso
 #endif
         private float auroraAmount = 0.55f;            // "espectro=" en config (0 = apagada)
+        // PRESENCIA de la aurora en pantalla, de 0 a 1. Antes se dibujaba o no se dibujaba segun si la banda
+        // mas alta pasaba de un pelo: en un pasaje bajito (una intro, un silencio, el final de un tema) las
+        // bandas caen a cero, la aurora DESAPARECIA de golpe y al volver la musica APARECIA de golpe. Eso era
+        // el parpadeo. Ahora hay un mando suave: entra en algo mas de un segundo y se va en unos tres, asi que
+        // ni aparece ni desaparece nunca de un cuadro para otro.
+#if ROCOLA_GPU
+        private float auroraPres;
+#endif
         // ¿Hace falta analizar el espectro? Es el 90% del coste del analisis de audio, asi que cuando nadie
         // lo va a mirar (compilado sin GPU, o el usuario puso espectro=0) ni se calcula y el hilo de audio respira.
 #if ROCOLA_GPU
@@ -1064,6 +1072,13 @@ namespace Rocola
 
         // Escribe el informe: las peores primero, para ir directo a lo que conviene reemplazar.
         private string CalidadFile() { return Path.Combine(Application.StartupPath, "rocola_calidad.txt"); }
+        // Abrir y cerrar la ventana varias veces seguidas encargaba varios informes a la vez y podian
+        // chocar escribiendo el MISMO archivo (y el informe se quedaba sin escribir). Uno por vez.
+        private static readonly object calSaveLock = new object();
+        // El informe se escribe al abrir Ctrl+F3. Con una biblioteca grande, ordenar decenas de miles de
+        // canciones y armar un archivo de varios megas es medio segundo de trabajo: hacerlo en el hilo de la
+        // interfaz CONGELA la pantalla justo al abrir la ventana. Aqui solo se saca la lista (una pasada barata)
+        // y el resto -ordenar, armar el texto y escribir el archivo- se hace en otro hilo.
         private void EscribeInformeCalidad()
         {
             try
@@ -1072,10 +1087,20 @@ namespace Rocola
                 foreach (KeyValuePair<string, float[]> kv in eqCache)
                     if (kv.Value != null && kv.Value.Length >= EqLen && kv.Value[EqCut] > 100f) lista.Add(kv);
                 if (lista.Count == 0) return;
-                lista.Sort(delegate (KeyValuePair<string, float[]> x, KeyValuePair<string, float[]> y)
-                { return x.Value[EqCut].CompareTo(y.Value[EqCut]); });
                 int buenas, medias, pobres, recortadas, sinMedir;
                 CalidadResumen(out buenas, out medias, out pobres, out recortadas, out sinMedir);
+                string destino = CalidadFile();
+                System.Threading.ThreadPool.QueueUserWorkItem(delegate { InformeCalidadFondo(lista, destino, buenas, medias, pobres, recortadas, sinMedir); });
+            }
+            catch { }
+        }
+        private static void InformeCalidadFondo(List<KeyValuePair<string, float[]>> lista, string destino,
+                                                int buenas, int medias, int pobres, int recortadas, int sinMedir)
+        {
+            try
+            {
+                lista.Sort(delegate (KeyValuePair<string, float[]> x, KeyValuePair<string, float[]> y)
+                { return x.Value[EqCut].CompareTo(y.Value[EqCut]); });
                 StringBuilder sb = new StringBuilder(lista.Count * 80 + 512);
                 sb.Append("CALIDAD DE LA BIBLIOTECA  -  ").Append(DateTime.Now.ToString("yyyy-MM-dd HH:mm")).Append("\r\n");
                 sb.Append("Las peores van primero: son las que mas conviene volver a conseguir en buena calidad.\r\n");
@@ -1092,7 +1117,7 @@ namespace Rocola
                     sb.Append((c[EqClip] * 100f).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)).Append("%   ");
                     sb.Append(lista[i].Key).Append("\r\n");
                 }
-                File.WriteAllText(CalidadFile(), sb.ToString());
+                lock (calSaveLock) File.WriteAllText(destino, sb.ToString());
             }
             catch { }
         }
@@ -1431,12 +1456,19 @@ namespace Rocola
 
         // La familia de letra de la interfaz: se prueban por orden y se usa la primera que exista. En Windows XP
         // no hay Segoe UI, asi que ahi cae en Tahoma (la del sistema) y en equipos nuevos en Segoe UI.
+        // Se busca UNA sola vez y se guarda. Antes se creaba una familia de letras nueva cada vez que se
+        // abria la ventana de sonido, y una familia es un recurso del sistema que hay que devolver: como no
+        // se devolvia, cada apertura dejaba uno colgado. Guardarla evita ademas la trampa contraria: la
+        // familia de reserva (GenericSansSerif) es de Windows y NO se debe devolver nunca.
+        private static FontFamily familiaUi;
         private static FontFamily FamiliaUi()
         {
+            if (familiaUi != null) return familiaUi;
             string[] pref = { "Segoe UI", "Tahoma", "Verdana" };
             for (int i = 0; i < pref.Length; i++)
-                try { return new FontFamily(pref[i]); } catch { }
-            return FontFamily.GenericSansSerif;
+                try { familiaUi = new FontFamily(pref[i]); return familiaUi; } catch { }
+            familiaUi = FontFamily.GenericSansSerif;
+            return familiaUi;
         }
 
         // Arma una fila de ajuste dentro de una tarjeta. Es un delegado propio porque en .NET 3.5 los Action
@@ -1448,6 +1480,8 @@ namespace Rocola
         {
             public string Titulo = "";
             public Color Acento = Color.FromArgb(120, 200, 255);
+            private Font fTitulo;
+            protected override void Dispose(bool d) { if (d && fTitulo != null) { fTitulo.Dispose(); fTitulo = null; } base.Dispose(d); }
             public Tarjeta()
             {
                 SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
@@ -1468,9 +1502,9 @@ namespace Rocola
                     using (SolidBrush ac = new SolidBrush(Acento))
                     using (GraphicsPath ba = RoundedPath(new Rectangle(16, 15, 4, 14), 2))
                         g.FillPath(ac, ba);
+                    if (fTitulo == null) fTitulo = new Font(Font.FontFamily, 10.5f, FontStyle.Bold);   // una vez, no en cada repintado
                     using (SolidBrush tb = new SolidBrush(Color.FromArgb(226, 234, 255)))
-                    using (Font f = new Font(Font.FontFamily, 10.5f, FontStyle.Bold))
-                        g.DrawString(Titulo, f, tb, 28, 12);
+                        g.DrawString(Titulo, fTitulo, tb, 28, 12);
                 }
             }
         }
@@ -2952,9 +2986,12 @@ namespace Rocola
                 }
             });
             preScanTh.IsBackground = true;
-            // A fondo: prioridad normal (es LA tarea del momento). En automatico: la minima, para no quitarle
-            // nada a la musica ni a la pantalla.
-            preScanTh.Priority = turbo ? System.Threading.ThreadPriority.Normal : System.Threading.ThreadPriority.Lowest;
+            // NUNCA por delante de la pantalla ni de la musica. A fondo iba en prioridad NORMAL, la misma que la
+            // interfaz: en la maquina de dos nucleos ese hilo -que decodifica canciones enteras sin parar- le
+            // quitaba el turno al dibujado, y el fondo estrellado se veia ir lento o a tirones. Por debajo de lo
+            // normal sigue quedandose con TODO el tiempo que la interfaz no usa (que es casi todo), pero en
+            // cuanto hay un cuadro que dibujar, manda el cuadro. En automatico, la minima de todas.
+            preScanTh.Priority = turbo ? System.Threading.ThreadPriority.BelowNormal : System.Threading.ThreadPriority.Lowest;
             preScanTh.Start();
         }
 
@@ -4205,6 +4242,12 @@ namespace Rocola
                 float prev = specVis[b];
                 specVis[b] = (v > prev) ? v : prev + (v - prev) * 0.22f;   // sube al instante, baja en ~0.2 s
             }
+            // Y la PRESENCIA: sube y baja despacio, para que la aurora no aparezca ni desaparezca de golpe.
+            float pico = 0f;
+            for (int b = 0; b < SpecBands; b++) if (specVis[b] > pico) pico = specVis[b];
+            float meta = (pico > 0.02f) ? 1f : 0f;
+            auroraPres += (meta - auroraPres) * (meta > auroraPres ? 0.075f : 0.014f);   // ~1.3 s para entrar, ~3 s para irse
+            if (auroraPres < 0.0025f) auroraPres = 0f; else if (auroraPres > 1f) auroraPres = 1f;
         }
 
         // Estado del FONDO REACTIVO para el panel GPU. El relleno de color se apoya justo encima de la franja
@@ -4215,9 +4258,7 @@ namespace Rocola
         {
             GpuAurora g = new GpuAurora();
             if (auroraAmount <= 0.004f) return g;
-            float pico = 0f;
-            for (int b = 0; b < SpecBands; b++) if (specVis[b] > pico) pico = specVis[b];
-            if (pico <= 0.006f) return g;   // sin musica no se dibuja nada
+            if (auroraPres <= 0.004f) return g;   // sin musica no se dibuja nada (la presencia ya llego a cero)
             int h = ClientSize.Height;
             g.Has = true; g.B = specVis;
             g.BaseY = BotStripTop(h) + 6f;
@@ -4247,7 +4288,7 @@ namespace Rocola
             // ATENUACION al navegar. El resto del fondo (estrellas, brillos) baja al 45% para no pelearle a
             // las portadas, pero la aurora vive PEGADA ABAJO, donde no hay portadas: bajarla igual la borraba
             // de la pantalla justo cuando mas se mira. Aqui se atenua apenas: al 89% en vez de al 45%.
-            g.Dim = 0.80f + 0.20f * bgDim;
+            g.Dim = (0.80f + 0.20f * bgDim) * auroraPres;   // la presencia hace el fundido de entrada y de salida
             return g;
         }
 
