@@ -263,6 +263,16 @@ namespace Rocola
             Draw(v, tris);
         }
 
+        // La misma malla plana pero SUMANDO luz en vez de tapar. Un filo encendido se lee como neon
+        // justamente por esto: lo que hay debajo se sigue viendo y encima se le suma el brillo, asi que
+        // el nucleo satura a claro y el resplandor de alrededor tine sin borrar. Tapando no hay neon.
+        public void DrawMeshAdd(D3D9.Vtx[] v, int tris)
+        {
+            if (dev == IntPtr.Zero || tris <= 0) return;
+            Tex(IntPtr.Zero); TssDiffuse(); Blend(2);
+            Draw(v, tris);
+        }
+
         // Un cuadro texturizado (2 triangulos) con mezcla NORMAL (encima): para los cubos, etiquetas, etc.
         public void DrawTexQuad(IntPtr tex, D3D9.Vtx[] quad)
         {
@@ -649,6 +659,7 @@ namespace Rocola
         private static void VShoot(D3D9.Vtx[] v, int o, float x, float y, uint c) { v[o].X = x; v[o].Y = y; v[o].Z = 0f; v[o].Rhw = 1f; v[o].Color = c; v[o].U = 0f; v[o].V = 0f; }
         public void DrawQuad(IntPtr tex, D3D9.Vtx[] quad) { if (Ok) gpu.DrawTexQuad(tex, quad); }
         public void DrawMesh(D3D9.Vtx[] v, int tris) { if (Ok) gpu.DrawMesh(v, tris); }   // malla plana (fondo reactivo)
+        public void DrawMeshAdd(D3D9.Vtx[] v, int tris) { if (Ok) gpu.DrawMeshAdd(v, tris); }   // malla plana SUMANDO luz (el neon)
         public void End() { if (Ok) gpu.EndFrame(); }
 
         public void Dispose()
@@ -1371,8 +1382,47 @@ namespace Rocola
         // apaga ANTES de llegar al centro de su vecina: asi una banda fuerte no se traga a la de al lado y se
         // ven los ocho bultos separados por su valle. Esto es lo que hace que se distingan las frecuencias.
         private const float AurLobulo = 0.72f;
+
+        // ---------------- EL FILO DE NEON ----------------
+        // El relleno se apaga hacia arriba sin dejar borde: la forma se intuye, pero no se ve DIBUJADA.
+        // Encima de esa silueta va ahora un filo encendido -un nucleo fino y clarisimo y un resplandor
+        // del mismo color a los dos lados- que se SUMA a lo que ya hay en vez de taparlo. Asi es como se
+        // lee un tubo de neon: el centro casi quema y el color se derrama alrededor.
+        private const float AurNeonNucleo = 1.6f;    // medio grosor del filo encendido, en pixeles
+        private const float AurNeonFuera = 15f;      // hasta donde llega el resplandor por ENCIMA de la silueta
+        private const float AurNeonDentro = 11f;     // y hacia dentro de la cortina
+        private const float AurNeonQuiebre = 0.36f;  // donde se parte el desvanecido de fuera (para que caiga en curva, no en linea)
+        private const float AurNeonBase = 0.30f, AurNeonPico = 0.52f;   // brillo del filo (la cancion floja -> el pico)
+        private const float AurNeonBlanco = 0.45f;   // cuanto se aclara el NUCLEO respecto a su color (0 = el mismo)
+        private const float AurNeonHalo = 0.34f;     // brillo del resplandor respecto al del nucleo
+
+        // ---------------- LA LINEA DEL HORIZONTE ----------------
+        // El filo sobre el que la aurora esta PARADA, de lado a lado de la pantalla: una raya fina y
+        // clarisima con su resplandor desvaneciendose, como el anillo que cruza el agujero negro.
+        //
+        // DONDE VA. El relleno nace en BaseY, que cae 2 pixeles DENTRO de la primera linea del titulo de
+        // la cancion (esa linea suele ir vacia, pero se usa cuando el titulo no cabe en una sola). Poner
+        // ahi la raya encendida seria ponerla encima de ese texto. Asi que la raya se levanta un poco
+        // (AurLineaAlza) y su resplandor hacia abajo se acaba JUSTO antes de donde el texto empieza.
+        // Los pixeles de relleno que quedan por debajo de la raya no sobran: hacen de brillo por dentro,
+        // que es justo como se ve la linea que cruza el agujero negro (luz por encima y por debajo).
+        private const float AurLineaNucleo = 1.4f;
+        private const float AurLineaAlza = 14f;
+        private const float AurLineaArriba = 34f, AurLineaAbajo = 11f;
+        private const float AurLineaQuiebre = 0.34f;
+        private const float AurLineaBase = 0.50f, AurLineaPico = 0.50f;
+        private const float AurLineaHalo = 0.30f;
+        // La raya es PLANA: su forma no cambia a lo ancho, solo su brillo, y eso va cambiando muy despacio.
+        // Asi que no le hacen falta las 144 columnas de la cortina: con 36 (una de cada cuatro) sale igual y
+        // se ahorran 3.240 vertices por cuadro, que en la maquina modesta es lo que hay que cuidar.
+        private const int AurLineaCols = 36;
+        private const int AurBrilloVtx = (4 * AurCols + 5 * AurLineaCols) * 6;   // 4 franjas el contorno + 5 la raya
+
         private D3D9.Vtx[] aurV;                               // vertices de la malla (se reusan, no se asigna por cuadro)
+        private D3D9.Vtx[] aurVb;                              // y los del brillo (el neon, que va sumado aparte)
         private float[] aurH, aurA, aurR;                    // alto, opacidad y ondeo de cada columna
+        private float[] aurNi, aurLi;                        // brillo del filo y de la linea, columna a columna
+        private uint[] aurNc, aurLc;                         // y sus colores (el de la punta y el del pie)
         private uint[] aurCortina, aurSueloC;                // colores por franja: la cortina y el suelo
         private uint[] aurRampPie, aurRampAgu;               // el degradado pie->punta de cada extremo (una vez por cuadro)
         private readonly int aurTick0 = Environment.TickCount;
@@ -1624,6 +1674,89 @@ namespace Rocola
             return n;
         }
 
+        // ACLARA un color hacia el blanco sin cambiarle el tono: k=0 lo deja igual, k=1 lo deja blanco. Es
+        // lo que hace que el NUCLEO del filo se lea como neon encendido y no como una raya de color mas.
+        private static uint AurNeon(uint rgb, float k)
+        {
+            if (k <= 0f) return rgb;
+            if (k > 1f) k = 1f;
+            uint r = (rgb >> 16) & 0xFF, g = (rgb >> 8) & 0xFF, b = rgb & 0xFF;
+            r = (uint)(r + (255f - r) * k); g = (uint)(g + (255f - g) * k); b = (uint)(b + (255f - b) * k);
+            return (r << 16) | (g << 8) | b;
+        }
+
+        // Una franja horizontal de la malla: dos alturas (la de arriba y la de abajo) por cada lado, con su
+        // color y su brillo ya resueltos. Todo el neon se arma llamando a esto unas cuantas veces.
+        private static int AurBanda(D3D9.Vtx[] v, int n, float x0, float x1,
+                                    float yL0, float yR0, float yL1, float yR1,
+                                    uint cL0, uint cR0, uint cL1, uint cR1)
+        {
+            AurV3(v, n + 0, x0, yL0, cL0); AurV3(v, n + 1, x1, yR0, cR0); AurV3(v, n + 2, x0, yL1, cL1);
+            AurV3(v, n + 3, x1, yR0, cR0); AurV3(v, n + 4, x1, yR1, cR1); AurV3(v, n + 5, x0, yL1, cL1);
+            return n + 6;
+        }
+
+        // EL BRILLO: el contorno de neon que sigue la silueta de la cortina y la linea encendida del
+        // horizonte sobre la que la aurora esta parada. Va en su propia malla porque se dibuja SUMANDO luz,
+        // no tapando (ver DrawMeshAdd). Aparte del dibujo, como AurMalla, para poder comprobarla sin tarjeta.
+        //   hCol  = altura de la cortina en cada punto (el filo la sigue)
+        //   cNeon = color del filo en cada punto (el de la PUNTA de esa columna)
+        //   nCol  = brillo del filo en cada punto (0..1)
+        //   cLinea/gCol = lo mismo para la linea del horizonte (color del PIE y su brillo)
+        internal static int AurBrillo(D3D9.Vtx[] v, float[] hCol, uint[] cNeon, float[] nCol,
+                                      uint[] cLinea, float[] gCol, float ancho, float baseY)
+        {
+            int puntos = AurCols + 1;
+            if (v == null || hCol == null || cNeon == null || nCol == null || cLinea == null || gCol == null) return 0;
+            if (v.Length < AurBrilloVtx) return 0;
+            if (hCol.Length < puntos || nCol.Length < puntos || gCol.Length < puntos) return 0;
+            if (cNeon.Length < puntos || cLinea.Length < puntos) return 0;
+            float paso = ancho / AurCols;
+            int n = 0;
+            // ---- LA LINEA DEL HORIZONTE (primero: el contorno va encima) ----
+            float lqA = AurLineaArriba * AurLineaQuiebre, lqB = AurLineaAbajo * AurLineaQuiebre;
+            float ejeY = baseY - AurLineaAlza;   // la raya va un poco por encima del pie (ver AurLineaAlza)
+            float yFa = ejeY - AurLineaArriba, yMa = ejeY - lqA, yNa = ejeY - AurLineaNucleo;
+            float yNb = ejeY + AurLineaNucleo, yMb = ejeY + lqB, yFb = ejeY + AurLineaAbajo;
+            int salto = AurCols / AurLineaCols;
+            float pasoL = ancho / AurLineaCols;
+            for (int i = 0; i < AurLineaCols; i++)
+            {
+                float x0 = i * pasoL, x1 = x0 + pasoL;
+                int j0 = i * salto, j1 = j0 + salto;
+                uint pL = cLinea[j0], pR = cLinea[j1];
+                uint kL = AurNeon(pL, AurNeonBlanco), kR = AurNeon(pR, AurNeonBlanco);
+                float aL = gCol[j0], aR = gCol[j1];
+                uint fL = AurArgb(pL, 0f), fR = AurArgb(pR, 0f);                       // el borde del resplandor: apagado
+                uint mLa = AurArgb(pL, aL * AurLineaHalo), mRa = AurArgb(pR, aR * AurLineaHalo);
+                uint nLc = AurArgb(kL, aL), nRc = AurArgb(kR, aR);                     // el nucleo, aclarado
+                n = AurBanda(v, n, x0, x1, yFa, yFa, yMa, yMa, fL, fR, mLa, mRa);
+                n = AurBanda(v, n, x0, x1, yMa, yMa, yNa, yNa, mLa, mRa, nLc, nRc);
+                uint mLb = AurArgb(pL, aL * AurLineaHalo), mRb = AurArgb(pR, aR * AurLineaHalo);
+                n = AurBanda(v, n, x0, x1, yNa, yNa, yNb, yNb, nLc, nRc, nLc, nRc);
+                n = AurBanda(v, n, x0, x1, yNb, yNb, yMb, yMb, nLc, nRc, mLb, mRb);
+                n = AurBanda(v, n, x0, x1, yMb, yMb, yFb, yFb, mLb, mRb, fL, fR);
+            }
+            // ---- EL CONTORNO, siguiendo la silueta ----
+            float qf = AurNeonFuera * AurNeonQuiebre;
+            for (int i = 0; i < AurCols; i++)
+            {
+                float x0 = i * paso, x1 = x0 + paso;
+                float tL = baseY - hCol[i], tR = baseY - hCol[i + 1];   // la cresta de la cortina en cada lado
+                uint pL = cNeon[i], pR = cNeon[i + 1];
+                uint kL = AurNeon(pL, AurNeonBlanco), kR = AurNeon(pR, AurNeonBlanco);
+                float aL = nCol[i], aR = nCol[i + 1];
+                uint fL = AurArgb(pL, 0f), fR = AurArgb(pR, 0f);
+                uint mL = AurArgb(pL, aL * AurNeonHalo), mR = AurArgb(pR, aR * AurNeonHalo);
+                uint nL = AurArgb(kL, aL), nR = AurArgb(kR, aR);
+                n = AurBanda(v, n, x0, x1, tL - AurNeonFuera, tR - AurNeonFuera, tL - qf, tR - qf, fL, fR, mL, mR);
+                n = AurBanda(v, n, x0, x1, tL - qf, tR - qf, tL - AurNeonNucleo, tR - AurNeonNucleo, mL, mR, nL, nR);
+                n = AurBanda(v, n, x0, x1, tL - AurNeonNucleo, tR - AurNeonNucleo, tL + AurNeonNucleo, tR + AurNeonNucleo, nL, nR, nL, nR);
+                n = AurBanda(v, n, x0, x1, tL + AurNeonNucleo, tR + AurNeonNucleo, tL + AurNeonDentro, tR + AurNeonDentro, nL, nR, fL, fR);
+            }
+            return n;
+        }
+
         private void DrawAurora(GpuAurora au)
         {
             if (au.Alto < 2f || au.Dim <= 0.02f) return;
@@ -1631,11 +1764,15 @@ namespace Rocola
             if (aurH == null)
             {
                 aurH = new float[puntos]; aurA = new float[puntos]; aurR = new float[puntos];
+                aurNi = new float[puntos]; aurLi = new float[puntos];
+                aurNc = new uint[puntos]; aurLc = new uint[puntos];
                 aurCortina = new uint[(AurFilas + 1) * puntos]; aurSueloC = new uint[(AurSuelo + 1) * puntos];
                 aurRampPie = new uint[AurFilas + 1]; aurRampAgu = new uint[AurFilas + 1];
             }
             int nv = (AurFilas + AurSuelo) * AurCols * 6;
             if (aurV == null || aurV.Length < nv) aurV = new D3D9.Vtx[nv];
+            int nb = AurBrilloVtx;
+            if (aurVb == null || aurVb.Length < nb) aurVb = new D3D9.Vtx[nb];
             float t = (Environment.TickCount - aurTick0) / 1000f;
             // DEGRADADO del pie a la punta, UNA vez por cuadro y para los dos extremos (grave y agudo). Se hace
             // girando el tono por el BORDE de la rueda (ver AurTonoMezcla): asi a media altura el color sigue
@@ -1666,6 +1803,9 @@ namespace Rocola
                     TonoPorNivel(ref rr, ref gg, ref bb, v);
                     aurCortina[k * puntos + i] = ((uint)rr << 16) | ((uint)gg << 8) | (uint)bb;
                 }
+                // EL FILO lleva el color de la PUNTA de su columna (el mismo de la cortina ahi arriba, no
+                // otro): asi el contorno es del color de la aurora, encendido, y no una raya postiza.
+                aurNc[i] = aurCortina[AurFilas * puntos + i];
                 uint cPie = AurLerpRgb(au.Rgb, au.Rgb2, fx);
                 float r0 = (cPie >> 16) & 0xFF, g0 = (cPie >> 8) & 0xFF, b0 = cPie & 0xFF;
                 for (int k = 0; k <= AurSuelo; k++)                   // el suelo: el mismo color, hundiendose
@@ -1677,9 +1817,24 @@ namespace Rocola
                 float al = (AurAlfaBase + AurAlfaPico * v) * au.Dim;
                 if (al < 0f) al = 0f; else if (al > 1f) al = 1f;
                 aurA[i] = al;
+                // Brillo del FILO: sube con la banda y ademas con el ondeo, para que la veta se vea
+                // recorriendo el contorno igual que recorre la cortina.
+                float ne = (AurNeonBase + AurNeonPico * v) * rayo * au.Dim;
+                if (ne < 0f) ne = 0f; else if (ne > 1f) ne = 1f;
+                aurNi[i] = ne;
+                // La LINEA del horizonte lleva el color del pie sin matizar (limpio de lado a lado) y su
+                // brillo late con la musica, pero nunca se apaga: es el suelo sobre el que todo se apoya.
+                aurLc[i] = cPie;
+                float li = (AurLineaBase + AurLineaPico * v) * au.Dim;
+                if (li < 0f) li = 0f; else if (li > 1f) li = 1f;
+                aurLi[i] = li;
             }
             int n = AurMalla(aurV, aurH, aurCortina, aurSueloC, aurA, aurR, Width, au.BaseY, Height);
-            if (n >= 3) stars.DrawMesh(aurV, n / 3);   // TODA la aurora en UNA sola llamada de dibujo
+            if (n >= 3) stars.DrawMesh(aurV, n / 3);   // TODO el relleno en UNA sola llamada de dibujo
+            // Y encima el BRILLO -el filo de neon y la linea del horizonte- en otra sola llamada, esta
+            // sumando luz en vez de tapar. Dos llamadas de dibujo para toda la aurora.
+            int nb2 = AurBrillo(aurVb, aurH, aurNc, aurNi, aurLc, aurLi, Width, au.BaseY);
+            if (nb2 >= 3) stars.DrawMeshAdd(aurVb, nb2 / 3);
         }
 
         // PRE-CALENTADO. Crear una textura es una peticion al driver y no siempre contesta rapido: si la
