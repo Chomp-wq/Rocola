@@ -1350,10 +1350,10 @@ namespace Rocola
         //      fundirse con el cielo en el borde de la pantalla: es el suelo oscuro de las fotos de auroras y,
         //      de paso, deja leerse el texto de la franja de estado. Es un degradado que muere en el mismo
         //      color del cielo, asi que no hay ningun corte: todo sigue siendo una sola pieza.
-        private const int AurCols = 80;       // trozos a lo ancho (81 puntos): dan de sobra para los rayos
+        private const int AurCols = 144;      // trozos a lo ancho (145 puntos): hacen falta para las vetas finas
         private const int AurFilas = 4;       // franjas apiladas a lo alto: aproximan la curva del desvanecido
         private const float AurPiso = 0.20f;  // suelo: aunque la cancion afloje, la cortina no desaparece
-        private const float AurAlfaBase = 0.20f, AurAlfaPico = 0.40f;   // opacidad del relleno (flojo -> fuerte)
+        private const float AurAlfaBase = 0.20f, AurAlfaPico = 0.46f;   // opacidad del relleno (flojo -> fuerte)
         private const int AurSuelo = 3;       // franjas por DEBAJO del horizonte (el suelo)
         private const float AurHondo = 0.14f; // que tan hundido queda el tono al pie de la pantalla (0 = lo mas hondo)
         // Ancho del LOBULO de cada banda, medido en bandas. Al ser MENOR que 1, el lobulo de una banda se
@@ -1361,7 +1361,7 @@ namespace Rocola
         // ven los ocho bultos separados por su valle. Esto es lo que hace que se distingan las frecuencias.
         private const float AurLobulo = 0.72f;
         private D3D9.Vtx[] aurV;                               // vertices de la malla (se reusan, no se asigna por cuadro)
-        private float[] aurH, aurA; private uint[] aurLo, aurHi, aurSueloC;   // alto, opacidad, color del pie/punta y los tonos del suelo
+        private float[] aurH, aurA, aurR; private uint[] aurLo, aurHi, aurSueloC;   // alto, opacidad, ondeo, color del pie/punta y tonos del suelo
         private readonly int aurTick0 = Environment.TickCount;
 
         // ESCALERA DE TONOS: aqui esta lo que hace que se lea la intensidad. NO se dibuja subiendo el brillo
@@ -1434,11 +1434,12 @@ namespace Rocola
         internal static float AurRayo(float fx, float t)
         {
             double x = fx * 6.2831853;
-            float a = (float)Math.Sin(x * 9.3 - t * 0.31);    // vetas finas
-            float b = (float)Math.Sin(x * 3.7 + t * 0.55);    // ondas medianas
-            float c = (float)Math.Sin(x * 1.3 + t * 0.13);    // el meneo lento de toda la cortina
-            float v = 1f + 0.15f * a + 0.13f * b + 0.10f * c;
-            if (v < 0.62f) v = 0.62f; else if (v > 1.38f) v = 1.38f;
+            float a = (float)Math.Sin(x * 17.9 + t * 0.44);   // vetas finas (las que dan el aire de cortina)
+            float b = (float)Math.Sin(x * 9.3 - t * 0.31);    // vetas anchas
+            float c = (float)Math.Sin(x * 3.7 + t * 0.55);    // ondas medianas
+            float d = (float)Math.Sin(x * 1.3 + t * 0.13);    // el meneo lento de toda la cortina
+            float v = 1f + 0.11f * a + 0.13f * b + 0.11f * c + 0.09f * d;
+            if (v < 0.56f) v = 0.56f; else if (v > 1.44f) v = 1.44f;
             return v;
         }
 
@@ -1450,6 +1451,17 @@ namespace Rocola
             if (f <= 0f) return 1f;
             if (f >= 1f) return 0f;
             return 1f - f * f * (3f - 2f * f);
+        }
+
+        // Cuanto del ONDEO se deja ver a la altura f. En el horizonte, NADA (ahi va el texto de la franja y no
+        // se le puede estar encendiendo y apagando el fondo debajo); de media cortina para arriba, TODO. Sin
+        // esto el ondeo solo movia la altura de la columna, y como el borde de arriba se desvanece sin filo, el
+        // ojo no lo veia: la aurora salia como una neblina lisa. La veta se ve porque cambia el BRILLO.
+        internal static float AurRampa(float f)
+        {
+            float r = f * 2f;
+            if (r < 0f) r = 0f; else if (r > 1f) r = 1f;
+            return r;
         }
 
         // EL SUELO, por debajo del horizonte (fs: 0 = el horizonte, 1 = el borde de abajo de la pantalla).
@@ -1488,11 +1500,11 @@ namespace Rocola
         // Arma la malla entera y devuelve cuantos vertices escribio. Aparte del dibujo para poder comprobarla
         // sin tarjeta. 'alturaPanel' es el borde de abajo de la PANTALLA: el color baja hasta ahi (por detras
         // de la franja de estado) hundiendose al tono profundo, para que no quede ninguna raya donde se acaba.
-        internal static int AurMalla(D3D9.Vtx[] v, float[] hCol, uint[] cLo, uint[] cHi, uint[] cSuelo, float[] aCol,
+        internal static int AurMalla(D3D9.Vtx[] v, float[] hCol, uint[] cLo, uint[] cHi, uint[] cSuelo, float[] aCol, float[] rCol,
                                      float ancho, float baseY, float alturaPanel)
         {
             int puntos = AurCols + 1;
-            if (v == null || hCol == null || cLo == null || cHi == null || cSuelo == null || aCol == null) return 0;
+            if (v == null || hCol == null || cLo == null || cHi == null || cSuelo == null || aCol == null || rCol == null) return 0;
             if (v.Length < (AurFilas + AurSuelo) * AurCols * 6) return 0;
             if (hCol.Length < puntos || cLo.Length < puntos || cHi.Length < puntos || aCol.Length < puntos) return 0;
             if (cSuelo.Length < (AurSuelo + 1) * puntos) return 0;
@@ -1522,16 +1534,20 @@ namespace Rocola
             {
                 float f0 = (float)j / AurFilas, f1 = (float)(j + 1) / AurFilas;
                 float m0 = AurBaja(f0), m1 = AurBaja(f1);
+                float g0 = AurRampa(f0), g1 = AurRampa(f1);   // cuanto ondeo se deja ver a esa altura
                 for (int i = 0; i < AurCols; i++)
                 {
                     float x0 = i * paso, x1 = x0 + paso;
                     float hL = hCol[i], hR = hCol[i + 1];
                     float yL0 = baseY - hL * f0, yL1 = baseY - hL * f1;
                     float yR0 = baseY - hR * f0, yR1 = baseY - hR * f1;
-                    uint cL0 = AurMezcla(cLo[i], cHi[i], f0, aCol[i] * m0);
-                    uint cL1 = AurMezcla(cLo[i], cHi[i], f1, aCol[i] * m1);
-                    uint cR0 = AurMezcla(cLo[i + 1], cHi[i + 1], f0, aCol[i + 1] * m0);
-                    uint cR1 = AurMezcla(cLo[i + 1], cHi[i + 1], f1, aCol[i + 1] * m1);
+                    // El ondeo tambien enciende y apaga la veta (no solo la estira): eso es lo que se VE.
+                    float wL0 = aCol[i] * m0 * (1f + (rCol[i] - 1f) * g0), wL1 = aCol[i] * m1 * (1f + (rCol[i] - 1f) * g1);
+                    float wR0 = aCol[i + 1] * m0 * (1f + (rCol[i + 1] - 1f) * g0), wR1 = aCol[i + 1] * m1 * (1f + (rCol[i + 1] - 1f) * g1);
+                    uint cL0 = AurMezcla(cLo[i], cHi[i], f0, wL0);
+                    uint cL1 = AurMezcla(cLo[i], cHi[i], f1, wL1);
+                    uint cR0 = AurMezcla(cLo[i + 1], cHi[i + 1], f0, wR0);
+                    uint cR1 = AurMezcla(cLo[i + 1], cHi[i + 1], f1, wR1);
                     AurV3(v, n + 0, x0, yL1, cL1); AurV3(v, n + 1, x1, yR1, cR1); AurV3(v, n + 2, x0, yL0, cL0);
                     AurV3(v, n + 3, x1, yR1, cR1); AurV3(v, n + 4, x1, yR0, cR0); AurV3(v, n + 5, x0, yL0, cL0);
                     n += 6;
@@ -1546,7 +1562,7 @@ namespace Rocola
             int puntos = AurCols + 1;
             if (aurH == null)
             {
-                aurH = new float[puntos]; aurA = new float[puntos];
+                aurH = new float[puntos]; aurA = new float[puntos]; aurR = new float[puntos];
                 aurLo = new uint[puntos]; aurHi = new uint[puntos]; aurSueloC = new uint[(AurSuelo + 1) * puntos];
             }
             int nv = (AurFilas + AurSuelo) * AurCols * 6;
@@ -1564,6 +1580,7 @@ namespace Rocola
                 if (v > 1f) v = 1f;
                 float alt = AurPiso + (1f - AurPiso) * v;
                 float rayo = AurRayo(fx, t);
+                aurR[i] = rayo;
                 aurH[i] = au.Alto * alt * rayo;   // la musica pone la forma; el ondeo, las vetas
                 // COLOR: a lo ancho se funde el tono del extremo grave con el del agudo (estan cerca en la
                 // rueda de color, asi que se mezclan en vez de partir la pantalla en dos luces distintas) y,
@@ -1589,7 +1606,7 @@ namespace Rocola
                 if (al < 0f) al = 0f; else if (al > 1f) al = 1f;
                 aurA[i] = al;
             }
-            int n = AurMalla(aurV, aurH, aurLo, aurHi, aurSueloC, aurA, Width, au.BaseY, Height);
+            int n = AurMalla(aurV, aurH, aurLo, aurHi, aurSueloC, aurA, aurR, Width, au.BaseY, Height);
             if (n >= 3) stars.DrawMesh(aurV, n / 3);   // TODA la aurora en UNA sola llamada de dibujo
         }
 
