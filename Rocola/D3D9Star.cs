@@ -409,7 +409,12 @@ namespace Rocola
         private float[] sx, sy, sphase, sspeed, ssize; private int[] skind; private uint[] scol; private int nStars;
         private D3D9.Vtx[] skyV = new D3D9.Vtx[12]; private D3D9.Vtx[] starV;   // cielo = 2 quads apilados (3 paradas de color)
         private uint skyTop = 0xFF06081A, skyMid = 0xFF101C3A, skyBot = 0xFF1A2C5A;
-        private readonly int startTick = Environment.TickCount;
+        // RELOJ DEL CAMPO DE ESTRELLAS. Igual que el de la aurora: en un bar la rocola no se apaga nunca, y
+        // "los segundos que llevo encendida" guardados en un float se quedan sin decimales a los pocos dias
+        // (el titileo empezaria a ir a saltos) y el reloj de Windows da la vuelta a los 24.8. Aqui el tiempo
+        // se lleva sumado en un double, que no se queda corto ni en anos, y el paso se saca por RESTA de
+        // TickCount, que sale bien aunque el reloj de la vuelta.
+        private double campoT; private int campoTickAnt; private bool campoRelojOk;
         private int seed0;                                   // semilla base (el patron de cada minuto = seed0 + minuto*paso)
         private int curMinute = int.MinValue;                // minuto del patron actual (cambia cada 60s)
         // ENTRECRUZADO del patron: al cambiar de minuto se conserva el patron anterior y se desvanece mientras
@@ -537,7 +542,14 @@ namespace Rocola
             if (!Ok) return false;
             if (!gpu.BeginFrame()) return false;
             int nowMs = Environment.TickCount;
-            float t = (nowMs - startTick) / 1000f;
+            if (campoRelojOk)
+            {
+                double dtc = (nowMs - campoTickAnt) / 1000.0;
+                if (!(dtc > 0.0)) dtc = 0.0; else if (dtc > 0.25) dtc = 0.25;   // acota atascos (y atrapa NaN)
+                campoT += dtc;
+            }
+            campoTickAnt = nowMs; campoRelojOk = true;
+            double t = campoT;
 
             // DERIVA DIAGONAL con la musica: al sonar (pulse>0) el campo entero se desliza LENTO abajo-derecha
             // y se envuelve por los bordes. Envolvente suave para arrancar/parar sin saltos. Coste ~nulo.
@@ -551,7 +563,7 @@ namespace Rocola
 
             // PATRON que cambia cada minuto, con ENTRECRUZADO: se conserva el patron anterior y se desvanece
             // mientras el nuevo aparece (el cielo nunca se queda sin estrellas). Por GPU re-sortear es barato.
-            int minute = (int)(t / 60f);
+            int minute = (int)(t / 60.0);
             if (minute != curMinute)
             {
                 if (curMinute != int.MinValue)
@@ -586,7 +598,7 @@ namespace Rocola
 
         // Construye los vertices de un campo de estrellas (titileo + latido) con un factor de brillo global
         // (para el entrecruzado del patron). Reutilizable por el patron actual y por el anterior.
-        private static void BuildStarVerts(D3D9.Vtx[] buf, float[] xs, float[] ys, float[] ph, float[] spd, float[] sz, int[] kd, uint[] col, int n, float t, float fade, float pulse, float dx, float dy, float w, float h)
+        private static void BuildStarVerts(D3D9.Vtx[] buf, float[] xs, float[] ys, float[] ph, float[] spd, float[] sz, int[] kd, uint[] col, int n, double t, float fade, float pulse, float dx, float dy, float w, float h)
         {
             int vi = 0;
             for (int i = 0; i < n; i++)
@@ -866,7 +878,7 @@ namespace Rocola
     // AURORA DEL HORIZONTE: el visualizador de espectro, dibujado como parte del CIELO y no como un aparato
     // encima. B = 8 bandas ya suavizadas (0..1, de graves a agudos); se interpolan a lo ancho y se pintan con
     // halos aditivos MUY solapados, que es lo que convierte ocho valores sueltos en una franja continua de luz.
-    internal struct GpuAurora { public bool Has; public float[] B; public float BaseY, Alto; public uint Rgb, Rgb2, RgbA, Rgb2A; public float Dim; }   // Rgb/Rgb2 = pie de la cortina (grave/agudo), RgbA/Rgb2A = su punta
+    internal struct GpuAurora { public bool Has; public float[] B; public float BaseY, Alto; public uint Rgb, Rgb2, RgbA, Rgb2A; public float Dim, Calma; }   // Rgb/Rgb2 = pie de la cortina (grave/agudo), RgbA/Rgb2A = su punta; Calma = cuanto hay de REPOSO (sin musica)
     // AVISO ("moneda insertada", "cancion agregada"...). Antes era una etiqueta de Windows puesta ENCIMA del
     // panel: cada vez que aparecia o se iba, Windows tenia que recortar el panel a su alrededor y repintar,
     // y ese era un tiron justo en el momento en que el cliente mete la moneda. Ahora es un cuadro mas de la
@@ -950,12 +962,12 @@ namespace Rocola
         public Func<Rectangle> GetContourRect;            // donde va el contorno (celda seleccionada), en coords del panel
         public Func<GpuCubeState> GetCubeState;           // celdas/angulos/portadas de los cubos que giran (seleccionado + relevo)
         public int ThrottleMs;                            // >0 = a lo mas un cuadro cada tantos ms (con video sonando: ~30 fps)
-        // RELOJ FINO para el limitador. Environment.TickCount avanza a SALTOS de 15.6 ms en Windows, asi
+        // RELOJ FINO para el limitador. Environment.TickCount avanza a SALTOS de ~15.6 ms en Windows, asi
         // que pidiendole "un cuadro cada 33 ms" solo podia contestar 46.8 (tres saltos): 21 cuadros por
         // segundo en vez de 30, que es lo que se veia. Este reloj mide de verdad, en microsegundos.
         private static readonly System.Diagnostics.Stopwatch reloj = System.Diagnostics.Stopwatch.StartNew();
         private static double AhoraMs() { return reloj.Elapsed.TotalMilliseconds; }
-        private double lastFrameMs;                       // cuando se dibujo el ultimo cuadro (ms del reloj fino)
+        private double proxCuadroMs;                      // cuando TOCA el proximo cuadro (ms del reloj fino)
         public uint SkyTop = 0xFF06081A, SkyMid = 0xFF101C3A, SkyBot = 0xFF1A2C5A;   // el form los setea por genero (3 paradas)
 
         // Bucle de render por Application.Idle (patron estandar para D3D en WinForms): dibuja tan rapido como
@@ -976,20 +988,28 @@ namespace Rocola
         private void OnIdle(object sender, EventArgs e)
         {
             // Con video A LA VISTA el panel se puede LIMITAR (ThrottleMs ~33 = 30 fps) para dejarle equipo
-            // al video. Dormir 1 ms tampoco atora nada: en cuanto llega un mensaje (tecla, timer), AppIdle
-            // lo ve y el bucle sale a atenderlo.
+            // al video. Dormir 1 ms no atora nada: en cuanto llega un mensaje (tecla, timer), AppIdle lo ve
+            // y el bucle sale a atenderlo.
             //
-            // El limitador se mide con el RELOJ FINO. Con TickCount, que salta de 15.6 en 15.6 ms, pedir un
-            // cuadro cada 33 ms daba uno cada 46.8: 21 fps en vez de 30. Y dormir se hace por tramos cortos,
-            // volviendo a mirar el reloj cada vez, porque un Sleep(n) de Windows tampoco es exacto.
+            // DOS COSAS, y las dos hacen falta:
+            //  - Se mide con el RELOJ FINO. Con TickCount, que salta de ~15.6 en ~15.6 ms, pedir un cuadro
+            //    cada 33 ms daba uno cada 46.8: 21 cuadros por segundo en vez de 30. Eso era el fallo.
+            //  - Y el proximo cuadro se agenda sobre el OBJETIVO anterior, no sobre el momento en que se
+            //    dibujo. Windows no despierta cuando se le pide, despierta cuando puede; agendando sobre el
+            //    objetivo, un cuadro que llega tarde NO arrastra su retraso al siguiente y el promedio sale
+            //    el que se pidio, aunque el sueno de 1 ms se pase. Si se acumula mas de una vuelta de
+            //    retraso -la maquina no da mas de si- se resincroniza en vez de intentar recuperarla.
             while (stars != null && stars.Ok && Visible && AppIdle())
             {
                 int th = ThrottleMs;
+                double ahora = AhoraMs();
                 if (th > 0)
                 {
-                    double since = AhoraMs() - lastFrameMs;
-                    if (since >= 0 && since < th - 0.6) { System.Threading.Thread.Sleep(1); continue; }
+                    if (ahora + 0.6 < proxCuadroMs) { System.Threading.Thread.Sleep(1); continue; }
+                    proxCuadroMs += th;
+                    if (proxCuadroMs < ahora) proxCuadroMs = ahora + th;
                 }
+                else proxCuadroMs = ahora;   // sin limitador: al dia, para que al encenderlo no dispare una rafaga
                 RenderFrame();
             }
         }
@@ -1061,7 +1081,6 @@ namespace Rocola
         private void RenderFrame()
         {
             if (stars == null || !stars.Ok) return;
-            lastFrameMs = AhoraMs();
             stars.SetSky(SkyTop, SkyMid, SkyBot);
             // TRABAJO PESADO acotado: rehacer las barras (UI, bitmap a pantalla completa) cuesta; se limita a UNA
             // por franja (heavyGapMs, que SE AUTOAJUSTA al coste real). La rejilla de discos ya NO es trabajo
@@ -1440,7 +1459,19 @@ namespace Rocola
         private uint[] aurNc, aurLc;                         // y sus colores (el de la punta y el del pie)
         private uint[] aurCortina, aurSueloC;                // colores por franja: la cortina y el suelo
         private uint[] aurRampPie, aurRampAgu;               // el degradado pie->punta de cada extremo (una vez por cuadro)
-        private readonly int aurTick0 = Environment.TickCount;
+        // RELOJ DE LA AURORA. Antes era "los segundos que llevo encendida", sacados de Environment.TickCount.
+        // En un bar la rocola no se apaga NUNCA, y eso trae dos problemas de los que solo se ven despues de
+        // semanas: a los 24 dias el reloj de Windows da la vuelta, y mucho antes -a los pocos dias- ese numero
+        // se hace tan grande que un float ya no puede guardar decimales y el tiempo empieza a avanzar A SALTOS
+        // de un cuarto de segundo: la aurora se veria ir a tirones sin motivo aparente.
+        //
+        // Aqui se lleva el tiempo a mano, sumando el paso de cada cuadro (la resta de TickCount da bien el paso
+        // aunque el reloj de la vuelta), y se le da la vuelta cada 628.3185 segundos. Ese numero no es
+        // cualquiera: es 2*pi/0.01, y TODAS las ondas del fondo giran a un multiplo exacto de 0.01, asi que al
+        // dar la vuelta cada una vuelve EXACTAMENTE a donde estaba. El salto no existe: es el mismo dibujo.
+        private const double AurVuelta = 628.3185307179586;   // 2*pi/0.01
+        private double aurT;                                  // segundos de animacion, ya dada la vuelta
+        private int aurTickAnt; private bool aurRelojOk;      // para medir el paso de cada cuadro
         private GpuAurora auCuadro;                          // la aurora de ESTE cuadro (la pide el render y la dibuja TrasCielo)
         private readonly GpuStarfield.Dibuja trasCielo;      // delegado creado UNA vez (nada de basura por cuadro)
 
@@ -1454,7 +1485,7 @@ namespace Rocola
         // que es el seguro para que jamas llegue a blanco.
         private static void TonoPorNivel(ref float r, ref float g, ref float b, float v)
         {
-            if (v < 0f) v = 0f; else if (v > 1f) v = 1f;
+            if (!(v > 0f)) v = 0f; else if (v > 1f) v = 1f;   // "no es mayor que 0" tambien atrapa NaN
             float mx = r; if (g > mx) mx = g; if (b > mx) mx = b;
             if (mx < 1f) return;                                   // practicamente negro: nada que matizar
             float mn = r; if (g < mn) mn = g; if (b < mn) mn = b;
@@ -1519,7 +1550,7 @@ namespace Rocola
             float c = (float)Math.Sin(x * 3.7 + t * 0.55);    // ondas medianas
             float d = (float)Math.Sin(x * 1.3 + t * 0.13);    // el meneo lento de toda la cortina
             float v = 1f + 0.09f * a + 0.11f * b + 0.09f * c + 0.07f * d;
-            if (v < 0.64f) v = 0.64f; else if (v > 1.36f) v = 1.36f;
+            if (!(v > 0.64f)) v = 0.64f; else if (v > 1.36f) v = 1.36f;   // el "no es mayor que" atrapa tambien NaN
             return v;
         }
 
@@ -1544,6 +1575,22 @@ namespace Rocola
                 dst[i] = (src[a] + 4f * src[b] + 6f * src[i] + 4f * src[c] + src[d]) * 0.0625f;
             }
         }
+        // LA FORMA EN REPOSO. Cuando no suena nada no hay bandas que seguir y la cortina se queda PLANA,
+        // y una raya recta no parece una aurora: parece una neblina. Esto le pone unas lomas anchas que se
+        // van corriendo muy despacio de un lado a otro -media vuelta tarda casi un minuto-, que es lo unico
+        // que se mueve con la rocola callada. Por eso va lenta: tiene que estar viva sin llamar la atencion.
+        //
+        // Se toma la MAS ALTA entre esto y lo que traen las bandas, no la suma: en cuanto vuelve la musica,
+        // la musica manda y esto desaparece por debajo sin que se note el relevo.
+        internal static float AurCalma(float fx, float t)
+        {
+            double x = fx * 6.2831853;
+            float a = (float)Math.Sin(x * 1.7 + t * 0.11);   // las lomas grandes
+            float b = (float)Math.Sin(x * 2.9 - t * 0.07);   // otras que no encajan con las primeras
+            float v = 0.30f + 0.13f * a + 0.09f * b;
+            if (!(v > 0.05f)) v = 0.05f; else if (v > 0.55f) v = 0.55f;   // acotada como las demas (y atrapa NaN)
+            return v;
+        }
         // LO QUE ONDULA LA ALTURA de la cortina. Antes era el mismo AurRayo que pone las vetas, y ahi
         // estaba el problema: la veta fina va y viene casi dieciocho veces de lado a lado de la pantalla
         // -un diente cada 39 pixeles- y, metida en la ALTURA, dejaba la silueta hecha un serrucho. Un
@@ -1561,7 +1608,7 @@ namespace Rocola
             float b = (float)Math.Sin(x * 2.3 - t * 0.29);    // otro que no encaja con el anterior
             float c = (float)Math.Sin(x * 1.3 + t * 0.13);    // el meneo lento de toda la cortina
             float v = 1f + 0.11f * a + 0.08f * b + 0.09f * c;
-            if (v < 0.72f) v = 0.72f; else if (v > 1.28f) v = 1.28f;
+            if (!(v > 0.72f)) v = 0.72f; else if (v > 1.28f) v = 1.28f;   // idem
             return v;
         }
         // DESVANECIDO a lo alto: cuanta opacidad le queda al color a la altura f (0 = donde nace, 1 = la
@@ -1575,7 +1622,7 @@ namespace Rocola
         // tambien a cero, para que el relleno muera sin dejar canto por debajo del filo.
         internal static float AurBaja(float f)
         {
-            if (f <= 0f) return 1f;
+            if (!(f > 0f)) return 1f;   // tambien atrapa NaN
             if (f >= 1f) return 0f;
             float cuerpo = 1f - (float)Math.Pow(f, 2.2);      // el cuerpo, que ahora aguanta arriba
             float f4 = f * f; f4 *= f4;
@@ -1589,7 +1636,7 @@ namespace Rocola
         internal static float AurRampa(float f)
         {
             float r = f * 2f;
-            if (r < 0f) r = 0f; else if (r > 1f) r = 1f;
+            if (!(r > 0f)) r = 0f; else if (r > 1f) r = 1f;
             return r;
         }
 
@@ -1601,12 +1648,12 @@ namespace Rocola
         // arriba sin comerse el texto de la franja, que empieza a solo 22 pixeles por debajo.
         internal static float AurSueloTono(float fs)
         {
-            float k = 1f - fs; if (k < 0f) k = 0f; else if (k > 1f) k = 1f;
+            float k = 1f - fs; if (!(k > 0f)) k = 0f; else if (k > 1f) k = 1f;
             return AurHondo + (1f - AurHondo) * k * k * k;
         }
         internal static float AurSueloAlfa(float fs)
         {
-            float k = 1f - fs; if (k < 0f) k = 0f; else if (k > 1f) k = 1f;
+            float k = 1f - fs; if (!(k > 0f)) k = 0f; else if (k > 1f) k = 1f;
             k *= k;
             return k * k;
         }
@@ -1759,7 +1806,7 @@ namespace Rocola
         // recta que traen los dos primeros (o los dos ultimos), que es como si la silueta siguiera igual.
         internal static float AurCurvaH(float[] h, int i, float u)
         {
-            if (u <= 0f) return h[i];
+            if (u <= 0f) return !(h[i] > 0f) ? 0f : h[i];   // en los puntos, la altura tal cual (nunca negativa)
             float p1 = h[i];
             float p2 = h[i < AurCols ? i + 1 : AurCols];
             float p0 = (i > 0) ? h[i - 1] : (2f * p1 - p2);
@@ -1768,7 +1815,7 @@ namespace Rocola
             float c2 = 2f * p0 - 5f * p1 + 4f * p2 - p3;
             float c3 = 3f * p1 - 3f * p2 + p3 - p0;
             float v = 0.5f * (2f * p1 + (c1 + (c2 + c3 * u) * u) * u);
-            return (v < 0f) ? 0f : v;
+            return !(v > 0f) ? 0f : v;   // tambien atrapa NaN
         }
 
         // Una franja horizontal de la malla: dos alturas (la de arriba y la de abajo) por cada lado, con su
@@ -1867,7 +1914,16 @@ namespace Rocola
             if (aurV == null || aurV.Length < nv) aurV = new D3D9.Vtx[nv];
             int nb = AurBrilloVtx;
             if (aurVb == null || aurVb.Length < nb) aurVb = new D3D9.Vtx[nb];
-            float t = (Environment.TickCount - aurTick0) / 1000f;
+            int tkAur = Environment.TickCount;
+            if (aurRelojOk)
+            {
+                double dt = (tkAur - aurTickAnt) / 1000.0;
+                if (!(dt > 0.0)) dt = 0.0; else if (dt > 0.25) dt = 0.25;   // acota atascos (y atrapa NaN)
+                aurT += dt;
+                if (aurT >= AurVuelta) aurT -= AurVuelta;
+            }
+            aurTickAnt = tkAur; aurRelojOk = true;
+            float t = (float)aurT;
             // DEGRADADO del pie a la punta, UNA vez por cuadro y para los dos extremos (grave y agudo). Se hace
             // girando el tono por el BORDE de la rueda (ver AurTonoMezcla): asi a media altura el color sigue
             // siendo un color y no una mezcla sucia, que es lo que deslucia el degradado.
@@ -1881,6 +1937,7 @@ namespace Rocola
             {
                 float fx = (float)i / AurCols;
                 float v = AurPerfil(au.B, fx);
+                if (au.Calma > 0f) { float vc = AurCalma(fx, t) * au.Calma; if (vc > v) v = vc; }   // en reposo manda la forma lenta
                 if (v > 1f) v = 1f;
                 float alt = AurPiso + (1f - AurPiso) * v;
                 float rayo = AurRayo(fx, t);                       // el titileo: solo brillo
