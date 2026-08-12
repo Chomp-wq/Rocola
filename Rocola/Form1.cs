@@ -2736,6 +2736,7 @@ namespace Rocola
             searchOverlay = new SearchOverlay();
             searchOverlay.Visible = false;
             searchOverlay.GetCover = LoadCover;
+            searchOverlay.GetCoverYa = PortadaEnMemoria;   // mientras se barren resultados, nada de encargos al disco
             // De que disco es cada resultado y de que genero. El genero lo va aprendiendo el paseo de fondo,
             // asi que puede llegar despues: por eso DatosVer, que hace que las tarjetas se rehagan al llegar.
             searchOverlay.GetDisco = delegate (SearchItem it)
@@ -4463,6 +4464,15 @@ namespace Rocola
         // al llegar se aplica sola (ApplyArrivedCover). Antes decodificaba AQUI MISMO, en el hilo de la
         // interfaz: en disco duro eso congelaba la pantalla al entrar a un disco, al cambiar de cancion
         // y al pintar el buscador (100-500ms por caratula). Ese era el grueso de los tirones.
+        // Devuelve la caratula SOLO si ya esta en memoria. No encarga nada al disco. La usa el buscador
+        // mientras el cliente barre resultados con la flecha (ver Portada en SearchOverlay).
+        private Image PortadaEnMemoria(Album a)
+        {
+            if (a == null || a.CoverPath == null) return null;
+            lock (coverLock) { Image c; if (coverCache.TryGetValue(a.CoverPath, out c)) return c; }
+            return null;
+        }
+
         private Image LoadCover(Album a)
         {
             if (a == null || a.CoverPath == null) return null;
@@ -12384,6 +12394,76 @@ namespace Rocola
             private Bitmap resCache; private string resCacheQuery = "\0"; private int resCacheW = -1, resCacheH = -1, resCacheAccent, resCacheDatos = -1;
             private SolidBrush marcaB;   // el resaltado de lo tecleado (reusable)
             private Point resCacheOrigin;
+            // HORNOS DE LA TARJETA DE RESULTADO. Todas las tarjetas miden lo mismo, asi que su fondo (rectangulo
+            // redondeado relleno + borde, con antialias) se dibuja UNA vez a un bitmap y luego cada tarjeta lo
+            // copia. Igual la pastilla del genero, de la que solo hay una docena distintas en toda la rocola.
+            // Antes se dibujaban a mano en las CUARENTA tarjetas cada vez que el cliente tecleaba una letra.
+            private Bitmap bmpTarj, bmpTarjSel;
+            private int hornoTarjW = -1, hornoTarjH = -1, hornoTarjAc;
+            private readonly Dictionary<string, Bitmap> hornoGen = new Dictionary<string, Bitmap>();
+            private void EnsureHornoTarjeta(int w, int h)
+            {
+                int ac = Accent.ToArgb();
+                if (bmpTarj != null && hornoTarjW == w && hornoTarjH == h && hornoTarjAc == ac) return;
+                if (bmpTarj != null) bmpTarj.Dispose();
+                if (bmpTarjSel != null) bmpTarjSel.Dispose();
+                bmpTarj = HorneaTarjeta(w, h, false);
+                bmpTarjSel = HorneaTarjeta(w, h, true);
+                hornoTarjW = w; hornoTarjH = h; hornoTarjAc = ac;
+            }
+            // El borde se traza CENTRADO en el contorno de la tarjeta: la mitad de fuera cae sobre el fondo.
+            // Por eso el bitmap lleva un margen de MargenTarj a cada lado y se pega desplazado: asi lo que
+            // sale en pantalla es identico al pixel a dibujarla a mano, que es lo que se hacia antes.
+            private const int MargenTarj = 3;
+            private Bitmap HorneaTarjeta(int w, int h, bool sel)
+            {
+                if (w < 2) w = 2; if (h < 2) h = 2;
+                Bitmap b = new Bitmap(w + 2 * MargenTarj, h + 2 * MargenTarj, PixelFormat.Format32bppPArgb);
+                using (Graphics g = Graphics.FromImage(b))
+                {
+                    g.SmoothingMode = SmoothingMode.AntiAlias;
+                    g.Clear(Color.Transparent);
+                    using (GraphicsPath gp = RoundedPath(new Rectangle(MargenTarj, MargenTarj, w, h), 8))
+                    {
+                        using (SolidBrush sb = new SolidBrush(sel ? Shade(Accent, 0.26) : Shade(Accent, 0.50))) g.FillPath(sb, gp);
+                        using (Pen pn = new Pen(Color.FromArgb(sel ? 215 : 100, 160, 200, 245), sel ? 2f : 1.1f)) g.DrawPath(pn, gp);
+                    }
+                }
+                return b;
+            }
+            private Bitmap HorneaGeneroRes(Graphics medidor, string etiqueta)
+            {
+                Bitmap b;   // el color sale del GENERO, no del color de la seccion: no caduca nunca
+                if (hornoGen.TryGetValue(etiqueta, out b)) return b;
+                Color c = ColorDeEtiqueta(etiqueta);
+                Size gs = TextRenderer.MeasureText(medidor, etiqueta, fResSub, new Size(9999, 99), TextFormatFlags.NoPadding);
+                int w = gs.Width + 14, h = 15;
+                if (w < 8) w = 8;
+                b = new Bitmap(w + 2 * MargenTarj, h + 2 * MargenTarj, PixelFormat.Format32bppPArgb);
+                using (Graphics g = Graphics.FromImage(b))
+                {
+                    g.SmoothingMode = SmoothingMode.AntiAlias;
+                    g.Clear(Color.Transparent);
+                    using (GraphicsPath gp = RoundedPath(new Rectangle(MargenTarj, MargenTarj, w, h), 7))
+                    {
+                        using (SolidBrush sb = new SolidBrush(Color.FromArgb(60, c))) g.FillPath(sb, gp);
+                        using (Pen pn = new Pen(Color.FromArgb(120, c), 1f)) g.DrawPath(pn, gp);
+                    }
+                }
+                hornoGen[etiqueta] = b;
+                return b;
+            }
+            // Los tres rotulos posibles (ARTISTA/ALBUM/CANCION) miden siempre lo mismo: se mide una vez.
+            private readonly int[] anchoRotulo = { -1, -1, -1 };
+            private int altoLetra = -1;   // alto de una letra en la fuente del nombre: es siempre el mismo
+            private int AnchoRotulo(Graphics g, int kind, string tag)
+            {
+                if (kind < 0 || kind > 2) return TextRenderer.MeasureText(g, tag, fResSub, new Size(9999, 99), TextFormatFlags.NoPadding).Width;
+                if (anchoRotulo[kind] < 0)
+                    anchoRotulo[kind] = TextRenderer.MeasureText(g, tag, fResSub, new Size(9999, 99), TextFormatFlags.NoPadding).Width;
+                return anchoRotulo[kind];
+            }
+
             private void EnsurePaintRes()
             {
                 if (fQuery != null) return;
@@ -12763,6 +12843,7 @@ namespace Rocola
                 // CACHE: cabecera + tarjetas SIN seleccion. Se rehace solo al cambiar la consulta/region/color;
                 // moverse por los resultados NO lo toca (solo copia el cache + la tarjeta seleccionada en vivo).
                 int accentArgb = Accent.ToArgb();
+                string qNorm = Normalize(Query ?? "");   // UNA vez por dibujado, no una por tarjeta
                 if (resCache == null || resCacheW != region.Width || resCacheH != region.Height || resCacheAccent != accentArgb || resCacheQuery != Query || resCacheDatos != DatosVer)
                 {
                     int rw = Math.Max(1, region.Width), rh = Math.Max(1, region.Height);
@@ -12782,7 +12863,7 @@ namespace Rocola
                             for (int i = 0; i < n; i++)
                             {
                                 Rectangle rr = Rectangle.Round(resultRects[i].Key); rr.Offset(-region.X, -region.Y);
-                                DrawOneResultCard(cg, i, rr, false);
+                                DrawOneResultCard(cg, i, rr, false, qNorm);
                             }
                     }
                     resCacheW = region.Width; resCacheH = region.Height; resCacheAccent = accentArgb; resCacheQuery = Query; resCacheOrigin = region.Location; resCacheDatos = DatosVer;
@@ -12792,19 +12873,18 @@ namespace Rocola
                 if (n > 0)
                 {
                     int selIdx = FocusResults ? SelResult : 0;
-                    if (selIdx >= 0 && selIdx < n) DrawOneResultCard(g, selIdx, Rectangle.Round(resultRects[selIdx].Key), true);
+                    if (selIdx >= 0 && selIdx < n) DrawOneResultCard(g, selIdx, Rectangle.Round(resultRects[selIdx].Key), true, qNorm);
                 }
             }
 
             // Dibuja UNA tarjeta de resultado en rr (ya en las coords donde toca: absolutas en vivo, relativas en el cache).
-            private void DrawOneResultCard(Graphics g, int i, Rectangle rr, bool sel)
+            // 'qn' es la consulta ya limpia de tildes. Antes se limpiaba DENTRO, o sea CUARENTA veces por cada
+            // tecla que pulsaba el cliente, para obtener siempre lo mismo. Ahora se limpia una vez y se pasa.
+            private void DrawOneResultCard(Graphics g, int i, Rectangle rr, bool sel, string qn)
             {
                 if (Results == null || i < 0 || i >= Results.Count) return;
-                using (GraphicsPath gp = RoundedPath(rr, 8))
-                {
-                    sbS.Color = sel ? Shade(Accent, 0.26) : Shade(Accent, 0.50); g.FillPath(sbS, gp);
-                    pnS.Color = Color.FromArgb(sel ? 215 : 100, 160, 200, 245); pnS.Width = sel ? 2f : 1.1f; g.DrawPath(pnS, gp);
-                }
+                EnsureHornoTarjeta(rr.Width, rr.Height);
+                g.DrawImageUnscaled(sel ? bmpTarjSel : bmpTarj, rr.X - MargenTarj, rr.Y - MargenTarj);
                 SearchItem it = Results[i];
                 string tag = (it.Kind == 0) ? "ARTISTA" : (it.Kind == 1) ? "ALBUM" : "CANCION";
                 Color tagc = (it.Kind == 0) ? Color.FromArgb(150, 215, 255) : (it.Kind == 1) ? Color.FromArgb(255, 210, 120) : Color.FromArgb(170, 245, 170);
@@ -12815,29 +12895,27 @@ namespace Rocola
                 string gen = (GetGenero != null) ? GetGenero(it) : "";
                 if (gen != null && gen.Length > 0)
                 {
-                    Color gc = ColorDeEtiqueta(gen);
-                    Size gs = TextRenderer.MeasureText(g, gen, fResSub, new Size(9999, 99), TextFormatFlags.NoPadding);
-                    int gw = gs.Width + 14, gh = 15;
-                    Rectangle gr = new Rectangle(derLim - gw, rr.Y + 3, gw, gh);
-                    if (gr.X > xIz + 40)
+                    Bitmap pg = HorneaGeneroRes(g, gen);
+                    int gw = pg.Width - 2 * MargenTarj, gh = pg.Height - 2 * MargenTarj;
+                    int gx = derLim - gw;
+                    if (gx > xIz + 40)
                     {
-                        using (GraphicsPath gp = RoundedPath(gr, 7))
-                        {
-                            sbS.Color = Color.FromArgb(60, gc); g.FillPath(sbS, gp);
-                            pnS.Color = Color.FromArgb(120, gc); pnS.Width = 1f; g.DrawPath(pnS, gp);
-                        }
-                        TextRenderer.DrawText(g, gen, fResSub, gr, Lighten(gc, 0.45),
+                        g.DrawImageUnscaled(pg, gx - MargenTarj, rr.Y + 3 - MargenTarj);   // el fondo, ya hecho
+                        TextRenderer.DrawText(g, gen, fResSub, new Rectangle(gx, rr.Y + 3, gw, gh), Lighten(ColorDeEtiqueta(gen), 0.45),
                                               TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
-                        derLim = gr.X - 8;
+                        derLim = gx - 8;
                     }
                 }
-                Size ts = TextRenderer.MeasureText(g, tag, fResSub, new Size(9999, 99), TextFormatFlags.NoPadding);
+                // El rotulo se MIDE una vez (los tres posibles miden siempre lo mismo) pero se DIBUJA aqui:
+                // el texto no se puede hornear aparte, porque el sistema lo mezcla con el color que tiene
+                // debajo y una letra dibujada sobre transparente y luego pegada sale mas fina.
+                int tw = AnchoRotulo(g, it.Kind, tag);
                 TextRenderer.DrawText(g, tag, fResSub, new Rectangle(xIz, rr.Y + 4, Math.Max(10, derLim - xIz), 13), tagc,
                                       TextFormatFlags.Left | TextFormatFlags.NoPadding);
                 string disco = (GetDisco != null) ? GetDisco(it) : "";
                 if (disco != null && disco.Length > 0)
                 {
-                    int dx = xIz + ts.Width + 8;
+                    int dx = xIz + tw + 8;
                     if (derLim - dx > 24)
                         TextRenderer.DrawText(g, "\u00b7  " + disco, fResSub, new Rectangle(dx, rr.Y + 4, derLim - dx, 13),
                                               Color.FromArgb(138, 150, 182),
@@ -12847,8 +12925,7 @@ namespace Rocola
                 // ---- RENGLON PRINCIPAL: el nombre, con LO TECLEADO encendido ----
                 Rectangle tr = new Rectangle(rr.X + 9, rr.Y + 16, rr.Width - 16, rr.Height - 18);
                 int mIni, mLar;
-                string qn = Normalize(Query ?? "");
-                if (qn.Length > 0 && BuscaTramo(it.Display, qn, out mIni, out mLar))
+                if (qn != null && qn.Length > 0 && BuscaTramo(it.Display, qn, out mIni, out mLar))
                 {
                     // Se mide con NoPadding y se dibuja con NoPadding: si no, medir y pintar no coinciden y el
                     // resaltado sale corrido.
@@ -12862,7 +12939,8 @@ namespace Rocola
                         marcaB.Color = Color.FromArgb(70, 255, 205, 90);
                         // El resaltado se ajusta al ALTO DE LA LETRA, no al de la caja: la caja es mas alta que
                         // el texto y la marca quedaba colgando por debajo.
-                        int hTxt = TextRenderer.MeasureText(g, "Xg", fRes, new Size(9999, 99), TextFormatFlags.NoPadding).Height;
+                        if (altoLetra < 0) altoLetra = TextRenderer.MeasureText(g, "Xg", fRes, new Size(9999, 99), TextFormatFlags.NoPadding).Height;
+                        int hTxt = altoLetra;
                         using (GraphicsPath gp = RoundedPath(new Rectangle(tr.X + wa - 2, tr.Y - 1, wc + 4, hTxt + 2), 4))
                             g.FillPath(marcaB, gp);
                         TextRenderer.DrawText(g, ante, fRes, new Rectangle(tr.X, tr.Y, tr.Width, tr.Height), Color.White, FL);
@@ -12882,10 +12960,10 @@ namespace Rocola
             private List<Image> EnsureArtistCovers(SearchItem it)
             {
                 artistCovers.Clear();
-                if (it.Albums != null && GetCover != null)
+                if (it.Albums != null)
                     for (int i = 0; i < it.Albums.Count; i++)
                     {
-                        Image im = GetCover(it.Albums[i]);
+                        Image im = Portada(it.Albums[i]);
                         if (im != null) artistCovers.Add(im);
                     }
                 return artistCovers;
@@ -12917,16 +12995,35 @@ namespace Rocola
 
             // Calcula la(s) portada(s) y la celda del cubo de vista previa (sin dibujarlo). ca/cb/f = par a
             // fundir (discos TOP/artista con varias portadas). Devuelve false si no hay nada que mostrar.
+            // BARRER RESULTADOS NO ENCARGA CARATULAS. Antes, cada resultado por el que el cliente pasaba de
+            // largo con la flecha encargaba SU caratula al disco: recorrer cuarenta resultados dejaba cuarenta
+            // imagenes grandes por descifrar, todas ellas de resultados que ya no estaba mirando. En el
+            // ordenador del bar, que tiene un solo nucleo, ese trabajo de fondo es justo lo que se siente como
+            // tirones AL MOVERSE. Mientras se mueve solo se usa lo que ya esta en memoria; en cuanto se para
+            // en un resultado (dos decimas), se encarga la suya.
+            private int selMomento = Environment.TickCount;
+            private int selAnterior = -1;
+            private const int EsperaPortadaMs = 200;
+            public Func<Album, Image> GetCoverYa;   // SOLO lo que ya esta en memoria; no encarga nada al disco
+            private Image Portada(Album a)
+            {
+                if (a == null) return null;
+                bool parado = (Environment.TickCount - selMomento) >= EsperaPortadaMs;
+                if (parado || GetCoverYa == null) return (GetCover != null) ? GetCover(a) : null;
+                return GetCoverYa(a);
+            }
+
             private bool ComputePreview(Rectangle region, out Image ca, out Image cb, out float f, out Rectangle area)
             {
                 ca = null; cb = null; f = 0f; area = Rectangle.Empty;
                 int n = (Results != null) ? Results.Count : 0;
+                if (SelResult != selAnterior) { selAnterior = SelResult; selMomento = Environment.TickCount; }
                 if (n == 0 || SelResult < 0 || SelResult >= n) { cubeRect = Rectangle.Empty; return false; }
                 SearchItem it = Results[SelResult];
                 if (it.Kind == 0)
                 {
                     List<Image> cov = EnsureArtistCovers(it);
-                    if (cov.Count == 0) ca = (GetCover != null && it.AlbumRef != null) ? GetCover(it.AlbumRef) : null;
+                    if (cov.Count == 0) ca = Portada(it.AlbumRef);
                     else if (cov.Count == 1) ca = cov[0];
                     else
                     {
@@ -12942,7 +13039,7 @@ namespace Rocola
                         ca = cov[idx]; cb = cov[(idx + 1) % m]; f = ff;
                     }
                 }
-                else ca = (GetCover != null && it.AlbumRef != null) ? GetCover(it.AlbumRef) : null;
+                else ca = Portada(it.AlbumRef);
 
                 int side = (int)(Math.Min(region.Width, region.Height) * 0.62);
                 if (side < 40) side = 40;
