@@ -6939,7 +6939,14 @@ namespace Rocola
                 // la musica aguanta CUALQUIER atoron (paginas, caratulas, GC, video) sin cortarse jamas.
                 // Rellenar 200ms de MP3 cuesta ~2-5ms de CPU: el colchon grande sale practicamente gratis.
                 wo.DesiredLatency = 1000;
-                wo.NumberOfBuffers = 5;     // 5 bloques de 200ms
+                // BLOQUES CORTOS. El audio se rellena DESDE EL HILO DE LA PANTALLA (arriba se explica por que),
+                // asi que cada vez que se vacia un bloque la interfaz se para en seco a descifrar MP3 y a pasarlo
+                // por toda la cadena de sonido. Con 5 bloques de 200 ms esa parada era larga y ocurria 5 veces por
+                // segundo: en el ordenador del bar se comia un cuadro entero cada vez, y eso es lo que se sentia
+                // como tirones MIENTRAS SUENA MUSICA (se nota sobre todo en el buscador, que es lo que mas dibuja).
+                // Con 20 bloques de 50 ms se hace el MISMO trabajo total, pero repartido en pausas cuatro veces
+                // mas cortas, que caben de sobra dentro de un cuadro. El colchon sigue siendo de 1 segundo.
+                wo.NumberOfBuffers = 20;    // 20 bloques de 50ms (mismo segundo de colchon, pausas 4 veces mas cortas)
                 output = wo;
                 output.PlaybackStopped += Output_PlaybackStopped;
                 // BAJO PSICOACUSTICO: despues de nivelar/ecualizar y ANTES del limitador, que es quien controla
@@ -8044,7 +8051,12 @@ namespace Rocola
                 searchOverlay.Phase = phase;
                 searchOverlay.AudioPulse = audioLevel;
                 searchOverlay.CubeAngle += 0.075;   // gira mas rapido
-                searchOverlay.Invalidate();         // repinta cada tick (24fps): fondo + cubo mas fluidos (no-op si el buscador va por GPU: el control esta oculto)
+                // El cuadro COMPLETO una de cada tres veces (~8/seg, el mismo criterio que el fondo del resto del
+                // programa); en los otros dos, solo lo que de verdad se mueve. Repintar la pantalla entera 24 veces
+                // por segundo era el gasto fijo mas grande de la rocola. (No-op si el buscador va por GPU: el
+                // control esta oculto y lo dibuja el panel.)
+                if (fullFrame) searchOverlay.Invalidate();
+                else searchOverlay.InvalidarVivo();
                 bool sGpu = false;
 #if ROCOLA_GPU
                 sGpu = (gpuPanel != null && gpuPanel.Visible);   // panel GPU encima: el mini-cubo lo dibuja la GPU (repintar el control seria invisible)
@@ -12137,6 +12149,35 @@ namespace Rocola
                 for (int i = 0; i < s.Length; i++)
                     row.Add(new SearchKey { Kind = KKind.Char, Ch = s[i], Label = s[i].ToString() });
                 rows.Add(row);
+            }
+
+            // REPINTADO PARCIAL. El buscador se repintaba ENTERO veinticuatro veces por segundo: a pantalla
+            // completa eso es rehacer el fondo estrellado -que late con la musica- mas dos copias grandes (el
+            // teclado y las tarjetas) en CADA cuadro. Casi nada de eso cambia de un cuadro al siguiente: lo unico
+            // que se mueve solo es el cubo que gira y el destello del boton recien pulsado. Esto repinta SOLO eso;
+            // el cuadro completo se pide una de cada tres veces. Al pulsar una tecla se sigue repintando entero,
+            // asi que la respuesta al cliente es la misma de siempre.
+            public void InvalidarVivo()
+            {
+                if (ToastOn) { Invalidate(); return; }   // el aviso flotante entra y sale: ahi si toca todo
+                int W = Width, H = Height;
+                if (W < 60 || H < 60) return;
+                int M = 30, kbW = (int)((W - 2 * M) * 0.52);
+                int der = Math.Min(W, M + kbW + 10);   // sin pasar a la mitad derecha: alli las tarjetas estan quietas
+                // Se marcan varios trozos SUELTOS, no uno grande que los englobe: Windows suma zonas, asi que
+                // aunque la tecla elegida este abajo del todo y las ayudas arriba, lo que se repinta de verdad
+                // son esos dos trocitos y no la franja entera que va de uno a otro.
+                // 1) la franja de las ayudas, con margen de sobra: el halo del destello se sale de la linea del texto
+                Invalidate(new Rectangle(0, Math.Max(0, M + 46), der, 112));
+                // 2) el cubo que gira, con su texto debajo
+                if (cubeRect.Width > 1 && cubeRect.Height > 1) Invalidate(Rectangle.Inflate(cubeRect, 26, 84));
+                // 3) con el teclado a la vista, la tecla ELEGIDA respira (su borde late al ritmo de la fase)
+                else if (SelRow >= 0 && SelRow < rows.Count && SelCol >= 0 && SelCol < rows[SelRow].Count)
+                {
+                    Rectangle kr = Rectangle.Round(rows[SelRow][SelCol].R);
+                    kr.Inflate(10, 10);
+                    Invalidate(kr);
+                }
             }
 
             public void SetQuery(string q) { Query = q; FocusResults = false; SelResult = 0; Invalidate(); }
