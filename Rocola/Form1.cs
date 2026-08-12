@@ -6966,8 +6966,17 @@ namespace Rocola
                     for (int k = 0; k < 7; k++)
                     {
                         int q = k * SpecPolos;
-                        float x = m;
-                        for (int pp = 0; pp < SpecPolos; pp++) { sl[q + pp] += (x - sl[q + pp]) * sc[k]; x = sl[q + pp]; }
+                        float x = m, ck = sc[k];
+                        // Cada polo se lleva a una local: antes se leia su casilla del array DOS veces por
+                        // vuelta (una para sumarle y otra para volver a leerla) y el coeficiente en cada
+                        // vuelta. Las cuentas son las mismas y en el mismo orden: el sonido no cambia ni un bit.
+                        for (int pp = 0; pp < SpecPolos; pp++)
+                        {
+                            float pv = sl[q + pp];
+                            pv += (x - pv) * ck;
+                            sl[q + pp] = pv;
+                            x = pv;
+                        }
                         float bnd = x - ant; ant = x;     // lo que este peldano deja pasar menos lo del anterior
                         sSum[k] += bnd * bnd;
                     }
@@ -10612,12 +10621,7 @@ namespace Rocola
             private bool HayCuenta(float slot, int h)
             {
                 if (Counts == null || slot < 21f || h < 34 || Letters == null) return false;
-                for (int i = 0; i < Letters.Length; i++)
-                {
-                    int n;
-                    if (Counts.TryGetValue(Letters[i], out n) && n > 0) return true;
-                }
-                return false;
+                return HayNumeros();
             }
             private float AltoCuenta(float slot, int h) { return HayCuenta(slot, h) ? h * 0.30f : 0f; }
 
@@ -10690,7 +10694,23 @@ namespace Rocola
             // Firma de los datos que se pintan en la tira: si cambia, hay que rehacerla. El rastreo de fondo
             // va aprendiendo generos y contando canciones, y la barra tiene que enterarse.
             public int DatosSig() { return FirmaDatos(); }
+
+            private Dictionary<char, int> fCnt; private Dictionary<char, Color> fTin;
+            private int fVal, fNCnt = -1, fNTin = -1; private bool fOk;
             private int FirmaDatos()
+            {
+                // Se recorrian 29 letras con dos busquedas de diccionario cada una, DOS veces por cuadro: al
+                // dibujar y al firmar la textura de la GPU. Y el resultado casi nunca cambia -solo cuando el
+                // paseo de fondo aprende algo-. Como Form1 REEMPLAZA los diccionarios enteros (nunca los toca
+                // por dentro), basta con mirar si siguen siendo los mismos objetos y del mismo tamano.
+                int nC = (Counts == null) ? -1 : Counts.Count, nT = (Tints == null) ? -1 : Tints.Count;
+                if (fOk && ReferenceEquals(fCnt, Counts) && ReferenceEquals(fTin, Tints) && fNCnt == nC && fNTin == nT)
+                    return fVal;
+                fVal = CalculaFirma();
+                fCnt = Counts; fTin = Tints; fNCnt = nC; fNTin = nT; fOk = true;
+                return fVal;
+            }
+            private int CalculaFirma()
             {
                 int f = 17;
                 for (int i = 0; i < Letters.Length; i++)
@@ -10702,6 +10722,25 @@ namespace Rocola
                     f = f * 31 + n; f = f * 31 + t;
                 }
                 return f;
+            }
+
+            // Lo mismo para "hay algun numero que ensenar": tambien recorria las 29 letras, y se pregunta
+            // varias veces por cuadro (al repartir el alto, al elegir los cuerpos y al situar los halos).
+            private bool hcVal; private bool hcOk;
+            private Dictionary<char, int> hcCnt; private int hcN = -1;
+            private bool HayNumeros()
+            {
+                int nC = (Counts == null) ? -1 : Counts.Count;
+                if (hcOk && ReferenceEquals(hcCnt, Counts) && hcN == nC) return hcVal;
+                bool r = false;
+                if (Counts != null && Letters != null)
+                    for (int i = 0; i < Letters.Length; i++)
+                    {
+                        int n;
+                        if (Counts.TryGetValue(Letters[i], out n) && n > 0) { r = true; break; }
+                    }
+                hcVal = r; hcCnt = Counts; hcN = nC; hcOk = true;
+                return r;
             }
 
             // ---------- EL RIEL DE VIDRIO ----------
