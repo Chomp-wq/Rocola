@@ -2329,18 +2329,18 @@ namespace Rocola
             panelSongs.Controls.Add(songList);
             panelSongs.Controls.Add(songPager);
 
-            lblNow = new Label(); TransLabel(lblNow, 13f); lblNow.Text = "Nada reproduciendose"; lblNow.AutoEllipsis = true;
+            lblNow = new Label(); TransLabel(lblNow, 16f); lblNow.Text = "Nada reproduciendose"; lblNow.AutoEllipsis = true;
             lblNow.ForeColor = Color.FromArgb(125, 235, 165);   // ESTETICA: verde "sonando" (se distingue de "siguiente")
-            lblNowTop = new Label(); TransLabel(lblNowTop, 13f); lblNowTop.Text = ""; lblNowTop.AutoEllipsis = true;
+            lblNowTop = new Label(); TransLabel(lblNowTop, 16f); lblNowTop.Text = ""; lblNowTop.AutoEllipsis = true;
             lblNowTop.ForeColor = lblNow.ForeColor;             // misma linea, mismo verde: se leen como un solo texto
             lblNowTop.TextAlign = ContentAlignment.BottomLeft;  // pegada a la linea de abajo, no flotando
             lblNow.UseMnemonic = false; lblNowTop.UseMnemonic = false;   // un "&" del titulo es un "&", no un subrayado
-            lblNext = new Label(); TransLabel(lblNext, 11f); lblNext.Text = "Siguiente:  -"; lblNext.AutoEllipsis = true;
+            lblNext = new Label(); TransLabel(lblNext, 13f); lblNext.Text = "Siguiente:  -"; lblNext.AutoEllipsis = true;
             lblNext.ForeColor = Color.FromArgb(150, 200, 255);  // ESTETICA: azul claro "siguiente"
             lblNext.UseMnemonic = false;                        // igual que arriba: un "&" del titulo es un "&"
-            lblCount = new Label(); TransLabel(lblCount, 11f); lblCount.TextAlign = ContentAlignment.MiddleLeft; lblCount.Text = "En cola:  0";
-            lblCredits = new Label(); TransLabel(lblCredits, 14f); lblCredits.TextAlign = ContentAlignment.MiddleLeft; lblCredits.Text = "Inserta una moneda"; lblCredits.ForeColor = Color.FromArgb(255, 205, 90);
-            lblMejorada = new Label(); TransLabel(lblMejorada, 10f); lblMejorada.Text = "MEJORADA"; lblMejorada.ForeColor = MejGoldBase;
+            lblCount = new Label(); TransLabel(lblCount, 13f); lblCount.TextAlign = ContentAlignment.MiddleLeft; lblCount.Text = "En cola:  0";
+            lblCredits = new Label(); TransLabel(lblCredits, 18f); lblCredits.TextAlign = ContentAlignment.MiddleLeft; lblCredits.Text = "Inserta una moneda"; lblCredits.ForeColor = Color.FromArgb(255, 205, 90);
+            lblMejorada = new Label(); TransLabel(lblMejorada, 12f); lblMejorada.Text = "MEJORADA"; lblMejorada.ForeColor = MejGoldBase;
             lblMejorada.TextAlign = ContentAlignment.MiddleLeft; lblMejorada.Visible = false;   // aparece solo si la cancion suena con DSEE (PositionMejorada)
 
             miniCube = new CubeBox();
@@ -2348,7 +2348,7 @@ namespace Rocola
             miniCube.Visible = false;
 
             progress = new ProgressView();
-            lblTime = new Label(); TransLabel(lblTime, 10.5f); lblTime.Text = "0:00 / 0:00";
+            lblTime = new Label(); TransLabel(lblTime, 13f); lblTime.Text = "0:00 / 0:00";
 
             lblToast = new Label();
             lblToast.TextAlign = ContentAlignment.MiddleCenter;
@@ -2434,37 +2434,42 @@ namespace Rocola
             int headerY = lettersY + lettersH + 10;
             lblHeader.SetBounds(pad, headerY + 3, Math.Max(50, contentW), 28);
 
-            int cubeSize = 64;
-            int progH = 16;                                  // barra mas delgada
+            // LA FRANJA DE ESTADO, en grande. Es lo que se lee DE LEJOS -de pie, a dos metros de la maquina-
+            // y estaba pensada para mirarla de cerca: letra chica, cubo de 64 y una barra de duracion de 16 px
+            // que casi no se veia. Todo sube alrededor de un cuarto. La franja crece unos 20 px de alto y la
+            // rejilla de discos los cede: la aurora, el horizonte y la textura de la franja se acomodan solos
+            // porque todos salen de BotStripTop.
+            int cubeSize = 84;
+            int progH = 22;                                  // barra de duracion mas gruesa: se ve de lejos
             int progY = H - pad - progH;
-            int nextY = progY - 26;
-            int nowY = nextY - 26;                           // la ULTIMA linea de "Reproduciendo": donde estuvo siempre
+            int nextY = progY - 30;
+            int nowY = nextY - 32;                           // la ULTIMA linea de "Reproduciendo"
             // Se reserva UNA linea mas ARRIBA para los titulos largos. El hueco esta siempre, se use o no: asi el
             // acomodo no cambia nunca al pasar de cancion (si cambiara, la rejilla de discos se re-hornearia entera
             // cada vez que sonara un titulo largo). Con titulo corto el hueco queda vacio y todo se ve como antes.
-            int nowLineH = Math.Max(24, (lblNow != null ? lblNow.Font.Height : 22) + 2);
+            int nowLineH = Math.Max(30, (lblNow != null ? lblNow.Font.Height : 28) + 2);
             int nowTopY = nowY - nowLineH;
 
             // cluster derecho del fondo:  [cubo mini] [ Creditos (grande) / En cola ]   (ancho completo)
             int clusterTop = nowY;
             int clusterBottom = progY + progH;
             int clusterH = clusterBottom - clusterTop;
-            int rightTextW = 200;
+            int rightTextW = 250;
             int rightTextX = W - pad - rightTextW;
-            int cubeX = rightTextX - 10 - cubeSize;
+            int cubeX = rightTextX - 12 - cubeSize;
             int cubeY = clusterTop + (clusterH - cubeSize) / 2; if (cubeY < clusterTop) cubeY = clusterTop;
             miniCube.SetBounds(cubeX, cubeY, cubeSize, cubeSize);
-            if (lblCredits != null) lblCredits.SetBounds(rightTextX, clusterTop + 2, rightTextW, 28);   // grande, arriba
-            lblCount.SetBounds(rightTextX, clusterTop + 34, rightTextW, 22);                            // chico, abajo
+            if (lblCredits != null) lblCredits.SetBounds(rightTextX, clusterTop + 2, rightTextW, 34);   // grande, arriba
+            lblCount.SetBounds(rightTextX, clusterTop + 40, rightTextW, 26);                            // chico, abajo
 
             // area izquierda (texto + barra de duracion) termina antes del cubo mini
             int leftRight = cubeX - 14;
             int leftW = Math.Max(120, leftRight - pad);
-            int timeW = 150;
-            progress.SetBounds(pad, progY, Math.Max(50, leftW - timeW - 10), progH);
-            lblTime.SetBounds(pad + leftW - timeW, progY - 1, timeW, 24);
-            lblNext.SetBounds(pad, nextY, leftW, 22);
-            lblNow.SetBounds(pad, nowY, leftW, 24);
+            int timeW = 180;
+            progress.SetBounds(pad, progY, Math.Max(50, leftW - timeW - 12), progH);
+            lblTime.SetBounds(pad + leftW - timeW, progY - 2, timeW, 26);
+            lblNext.SetBounds(pad, nextY, leftW, 26);
+            lblNow.SetBounds(pad, nowY, leftW, 30);
             lblNowTop.SetBounds(pad, nowTopY, leftW, nowLineH);
             mejRowW = leftW; PositionMejorada();   // parte el titulo en 1 o 2 lineas y acomoda el letrero MEJORADA tras la ultima
 
@@ -6685,7 +6690,7 @@ namespace Rocola
             if (!on) { if (lblMejorada.Visible) lblMejorada.Visible = false; return; }
             int tw = TextRenderer.MeasureText(lblNow.Text, lblNow.Font).Width;
             if (tw > anchoUlt) tw = anchoUlt;
-            lblMejorada.SetBounds(lblNow.Left + tw + 10, lblNow.Top + 2, bw, 20);
+            lblMejorada.SetBounds(lblNow.Left + tw + 12, lblNow.Top + 5, bw, 24);   // centrado en la fila, que ahora es mas alta
             lblMejorada.Visible = true;
         }
 
