@@ -2823,7 +2823,7 @@ namespace Rocola
             topDirty = true;   // OPTIMIZACION (TOP): la biblioteca se re-escaneo (nuevos Album/Track) -> reconstruir
             BuildTopDiscs();
             if (topDiscs != null && topDiscs.Count > 0) letterAvailable.Add(TopMark);   // hay estadisticas -> seccion "Lo mas sonado"
-            LeeTintes(tracks.Count);   // el color de cada letra, si ya se calculo para esta misma biblioteca
+            LeeTintes(FirmaBiblioteca());   // el color de cada letra, si ya se calculo para esta misma biblioteca
             RecalculaLetras();
 
             string order = "\u2605#ABCDEFGHIJKLMNOPQRSTUVWXYZ\u25BA";
@@ -3064,11 +3064,18 @@ namespace Rocola
         // la biblioteca, asi que se calcula una vez en segundo plano y se guarda.
         private string LetterTintFile() { return Path.Combine(Application.StartupPath, "rocola_letras.txt"); }
 
+        // Con que biblioteca se calcularon los colores. Si esto cambia, hay que volver a leer los generos.
+        private int FirmaBiblioteca() { return tracks.Count * 31 + albums.Count; }
+
         // Arma los dos diccionarios ENTEROS y se los entrega a la barra de una pieza. La barra los lee desde
         // el dibujado, asi que nunca puede pillar uno a medio llenar: o ve el de antes, o ve el nuevo.
         private void RecalculaLetras()
         {
             if (letterBar == null) return;
+            // Mientras se re-escanea, las listas son del worker y byLetter se esta REHACIENDO. Este aviso puede
+            // llegar justo entonces (lo manda el paseo de fondo por BeginInvoke), asi que aqui no se mira nada:
+            // al terminar el escaneo se recalcula de todos modos.
+            if (libBuilding) return;
             Dictionary<char, int> cuenta = new Dictionary<char, int>();
             foreach (KeyValuePair<char, List<Album>> kv in byLetter)
             {
@@ -3189,7 +3196,7 @@ namespace Rocola
             // paseo de fondo le lee el ID3 a cada uno DESPUES de las duraciones. Se leen con un Track SUELTO,
             // no con el de la biblioteca, para no tocar desde este hilo nada que la pantalla este usando.
             char[] gLet = null; string[] gRuta = null;
-            int firmaLet = tracks.Count;
+            int firmaLet = FirmaBiblioteca();
             if (tintesPend)
             {
                 List<char> cl = new List<char>(tracks.Count);
@@ -5847,7 +5854,7 @@ namespace Rocola
                 LoudFile(), EqFile(), LibStatsFile(), LibCacheFile(), ConfigFile, KeysFile(),
                 Path.Combine(sp, "rocola_ia.bin"), Path.Combine(sp, "rocola_incompatibles.txt"),
                 IaDoneFile(), DeepDoneFile(),  // sin estas dos, un repaso a fondo empezaria de cero y la IA repetiria ejemplos
-                DurFastFile()
+                DurFastFile(), LetterTintFile()   // sin este, la barra tendria que releer el ID3 de toda la biblioteca
             };
             System.Threading.ThreadPool.QueueUserWorkItem(delegate   // fuera del hilo de la interfaz (no frena nada)
             {
@@ -10732,7 +10739,15 @@ namespace Rocola
                 Color tono = TonoLetra(ch, avail);
                 b.Color = Color.FromArgb(avail ? 185 : 105,
                                          (tono.R * 3 + 90) / 4, (tono.G * 3 + 105) / 4, (tono.B * 3 + 150) / 4);
-                g.DrawString(cuantas.ToString(), fNum, b, new RectangleF(i * slot, h - bajo - 1f, slot, bajo), sfCen);
+                g.DrawString(TextoCuenta(cuantas), fNum, b, new RectangleF(i * slot, h - bajo - 1f, slot, bajo), sfCen);
+            }
+            // El hueco esta medido para CUATRO cifras. Una biblioteca con mas de 9999 canciones en una sola
+            // letra escribiria un numero mas largo del que cabe, asi que a partir de ahi se dice en miles.
+            private static string TextoCuenta(int n)
+            {
+                if (n < 10000) return n.ToString();
+                int miles = n / 1000;
+                return (miles > 999 ? 999 : miles) + "k";
             }
 
             protected override void OnPaint(PaintEventArgs e) { RenderContent(e.Graphics, false); }
@@ -10780,7 +10795,7 @@ namespace Rocola
             // quad (GetCurrentGlow/GetTopGlow) -> la textura de UI ya no se rehace ~13 veces/seg por esta barra.
             public void RenderContent(Graphics g, bool forGpu)
             {
-                int w = Width, h = Height, n = Letters.Length;
+                int w = Width, h = Height, n = (Letters == null) ? 0 : Letters.Length;
                 if (w < 4 || h < 4 || n == 0) return;
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 float slot = (float)w / n;
@@ -10818,9 +10833,11 @@ namespace Rocola
                     // va poniendo blanca conforme la capsula llega.
                     if (paso < 1f)
                     {
+                        // Se reusa la brocha de siempre: Grabada le pone el color que necesita, y mas abajo se
+                        // le vuelve a poner el suyo antes de usarla. Una brocha nueva por cuadro seria basura
+                        // para el recolector justo mientras algo se esta moviendo.
                         bool hayD = (Available == null) || Available.Contains(ch);
-                        using (SolidBrush tb2 = new SolidBrush(Color.White))
-                            Grabada(g, tb2, lbl, useF, slotRect, TonoLetra(ch, hayD), hayD);
+                        Grabada(g, whiteB, lbl, useF, slotRect, TonoLetra(ch, hayD), hayD);
                     }
                     RectangleF box = new RectangleF(xCap + 3.5f, 3.5f, slot - 7f, altoL - 7f);
                     if (pulsePath == null || box != pulseBox)   // misma casilla -> misma trayectoria
@@ -10925,6 +10942,7 @@ namespace Rocola
             {
                 this.SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.SupportsTransparentBackColor, true);
                 this.BackColor = Color.Transparent;
+                this.TabStop = false;   // aqui no se pincha nada: antes era una etiqueta, que nunca tomaba el foco
             }
 
             private void EnsureRes(int h)
@@ -10999,13 +11017,14 @@ namespace Rocola
                 x += ts.Width + h * 0.55f;
 
                 if (Total <= 1) return;   // una sola pagina: no hay nada que contar
+                int pag = Page; if (pag < 0) pag = 0; else if (pag >= Total) pag = Total - 1;
 
                 // Se mide TODO lo que falta antes de dibujar nada: la raya, los puntitos (si los hay) y el
                 // texto. Lo que no quepa, no se pone.
                 float r = Math.Max(2.2f, h * 0.115f), paso = r * 3.4f;
                 bool conPuntos = (Total <= 12);
                 float anchoPuntos = conPuntos ? (r + (Total - 1) * paso + r + h * 0.45f) : 0f;
-                string txt = "pagina " + (Page + 1) + " de " + Total;
+                string txt = "pagina " + (pag + 1) + " de " + Total;
                 float anchoTxt = g.MeasureString(txt, fPag).Width;
                 float tras = x + h * 0.5f;   // despues de la raya
 
@@ -11024,7 +11043,7 @@ namespace Rocola
                     for (int i = 0; i < Total; i++)
                     {
                         float cx = x + r + i * paso;
-                        bool esta = (i == Page);
+                        bool esta = (i == pag);
                         float rr = esta ? r * 1.35f : r;
                         if (esta)
                         {
