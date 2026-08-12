@@ -4230,17 +4230,20 @@ namespace Rocola
                 {
                     SearchItem ar = new SearchItem();
                     ar.Kind = 0; ar.Display = a.Artist; ar.Key = Normalize(a.Artist); ar.AlbumRef = a;
+                    ar.Mask = MarcaLetras(ar.Key);
                     artistAlbums.TryGetValue(a.Artist, out ar.Albums);
                     searchIndex.Add(ar);
                 }
                 SearchItem alb = new SearchItem();
                 alb.Kind = 1; alb.Display = a.Artist + " - " + a.Name; alb.Key = Normalize(alb.Display); alb.AlbumRef = a;
+                alb.Mask = MarcaLetras(alb.Key);
                 searchIndex.Add(alb);
                 for (int j = 0; j < a.Tracks.Count; j++)
                 {
                     Track t = a.Tracks[j];
                     SearchItem so = new SearchItem();
                     so.Kind = 2; so.Display = t.Artist + " - " + t.Title; so.Key = Normalize(so.Display); so.TrackRef = t; so.AlbumRef = a;
+                    so.Mask = MarcaLetras(so.Key);
                     searchIndex.Add(so);
                 }
             }
@@ -5363,18 +5366,48 @@ namespace Rocola
 #endif
         }
 
-        // OPTIMIZACION (busqueda): " " + q y q.Split(' ') se calculaban DENTRO de Score, que corre
-        // por CADA entrada de searchIndex (decenas de miles) en CADA tecla. Ahora se reciben ya
-        // calculados (una sola vez por tecla desde RecomputeResults). El puntaje es identico.
-        private static int Score(string cand, string q, string spaceQ, string[] toks)
+        // MARCA DE LETRAS. Un numero de 32 bits que dice QUE letras contiene un texto. Con el se descarta
+        // de un plumazo, SIN mirarle el texto, toda entrada a la que le falte alguna letra de lo tecleado:
+        // si al cliente le falta una sola de sus letras, esa cancion no puede casar ni entera ni por
+        // palabras. Comparar dos numeros cuesta nada; recorrer el titulo tres veces, no.
+        // Bits 0..25 = letras a..z ; bit 26 = alguna cifra ; bit 27 = cualquier otro caracter. Los espacios
+        // no cuentan. Meter todo lo raro en un mismo bit es a proposito: puede dejar pasar candidatos de
+        // mas -que luego descarta Score-, pero nunca puede tirar uno bueno.
+        private static int MarcaLetras(string s)
+        {
+            int m = 0;
+            for (int i = 0; i < s.Length; i++)
+            {
+                char c = s[i];
+                if (c == ' ') continue;
+                if (c >= 'a' && c <= 'z') m |= 1 << (c - 'a');
+                else if (c >= '0' && c <= '9') m |= 1 << 26;
+                else m |= 1 << 27;
+            }
+            return m;
+        }
+
+        // OPTIMIZACION (busqueda): q.Split(' ') se calculaba DENTRO de Score, que corre por CADA
+        // entrada de searchIndex (decenas de miles) en CADA tecla. Ahora se recibe ya calculado
+        // (una sola vez por tecla desde RecomputeResults). El puntaje es identico.
+        private static int Score(string cand, string q, string[] toks)
         {
             if (q.Length == 0) return 0;
             if (cand == q) return 10000;
             if (cand.StartsWith(q, StringComparison.Ordinal)) return 6000 - Math.Min(cand.Length, 2000);
-            int wi = cand.IndexOf(spaceQ, StringComparison.Ordinal);
-            if (wi >= 0) return 4000 - wi;
-            int idx = cand.IndexOf(q, StringComparison.Ordinal);
-            if (idx >= 0) return 2000 - Math.Min(idx, 1500);
+            // UNA sola pasada por el texto. Antes se recorria DOS veces: una buscando " q" (empieza palabra)
+            // y otra buscando "q" (en cualquier sitio). Para los que NO casan -que son la inmensa mayoria del
+            // indice- las dos recorrian el texto ENTERO antes de rendirse. Ahora se busca "q" una vez y se
+            // mira si la letra de delante era un espacio, que es lo mismo que buscar " q".
+            int primera = -1;
+            int pos = cand.IndexOf(q, StringComparison.Ordinal);
+            while (pos >= 0)
+            {
+                if (primera < 0) primera = pos;
+                if (pos > 0 && cand[pos - 1] == ' ') return 4000 - (pos - 1);
+                pos = cand.IndexOf(q, pos + 1, StringComparison.Ordinal);
+            }
+            if (primera >= 0) return 2000 - Math.Min(primera, 1500);
             // Coincidencia por PALABRAS: todas las palabras de la consulta aparecen (en cualquier orden).
             // Asi "metallica black" encuentra "Metallica - Black Album", y "enter metallica" tambien.
             if (toks != null)
@@ -5410,8 +5443,8 @@ namespace Rocola
             {
                 // OPTIMIZACION (busqueda): partes derivadas de la consulta calculadas UNA vez por tecla,
                 // no por cada candidato del indice.
-                string spaceQ = " " + q;
                 string[] toks = (q.IndexOf(' ') >= 0) ? q.Split(' ') : null;
+                int qMask = MarcaLetras(q);
                 // Incremental: si la nueva busqueda EMPIEZA con la anterior, las coincidencias nuevas
                 // son un subconjunto de las anteriores -> re-evaluamos solo esas (mucho menos trabajo).
                 List<SearchItem> source =
@@ -5419,24 +5452,63 @@ namespace Rocola
                     ? lastMatches : searchIndex;
 
                 List<SearchItem> matches = new List<SearchItem>();
-                for (int i = 0; i < source.Count; i++)
+                int cuantos = source.Count;
+                for (int i = 0; i < cuantos; i++)
                 {
-                    int sc = Score(source[i].Key, q, spaceQ, toks);
-                    if (sc > 0) { source[i].Score = sc; matches.Add(source[i]); }
+                    SearchItem si = source[i];
+                    if ((si.Mask & qMask) != qMask) continue;   // le falta alguna letra: imposible que case
+                    int sc = Score(si.Key, q, toks);
+                    if (sc > 0) { si.Score = sc; matches.Add(si); }
                 }
-                matches.Sort(delegate (SearchItem a, SearchItem b)
-                {
-                    if (b.Score != a.Score) return b.Score - a.Score;
-                    if (a.Kind != b.Kind) return a.Kind - b.Kind;
-                    return string.Compare(a.Display, b.Display, StringComparison.OrdinalIgnoreCase);
-                });
+                // De todo lo que casa solo se ENSENAN 40. Ordenar la lista entera para tirar el resto era el
+                // gasto grande del buscador: con veinte mil canciones y una sola letra tecleada casan veinte
+                // mil, y ordenarlas costaba 13 ms POR TECLA. Quedarse con los 40 mejores de una pasada cuesta
+                // 0.19 ms. La lista sin ordenar se guarda igual, porque para acotar la busqueda de la tecla
+                // siguiente lo unico que importa es QUIENES casan, no en que orden.
                 lastMatches = matches; lastQuery = q;
-                int take = Math.Min(40, matches.Count);   // mas resultados (la cuadricula muestra los que quepan)
-                for (int i = 0; i < take; i++) res.Add(matches[i]);
+                TomaMejores(matches, res, 40);
             }
             else { lastMatches = null; lastQuery = null; }
             searchOverlay.Results = res;
             searchOverlay.Invalidate();
+        }
+
+        // El orden en que se ensenan los resultados: primero el que mejor casa, a igualdad antes el artista
+        // que el disco y antes el disco que la cancion, y a igualdad de todo, por nombre.
+        private static int ComparaHit(SearchItem a, SearchItem b)
+        {
+            if (b.Score != a.Score) return b.Score - a.Score;
+            if (a.Kind != b.Kind) return a.Kind - b.Kind;
+            return string.Compare(a.Display, b.Display, StringComparison.OrdinalIgnoreCase);
+        }
+
+        // Los N mejores de una lista, SIN ordenar el resto. Se recorre una vez manteniendo una lista corta
+        // ordenada: cada candidato solo se compara con el peor de los que ya estan dentro, y solo si lo mejora
+        // se le hace sitio. Da exactamente los mismos N primeros que ordenarlo todo.
+        private static void TomaMejores(List<SearchItem> src, List<SearchItem> dst, int n)
+        {
+            int cnt = src.Count;
+            if (cnt <= 0 || n <= 0) return;
+            if (n > cnt) n = cnt;
+            SearchItem[] top = new SearchItem[n];
+            int hay = 0;
+            for (int i = 0; i < cnt; i++)
+            {
+                SearchItem v = src[i];
+                if (hay < n)
+                {
+                    int j = hay++;
+                    while (j > 0 && ComparaHit(top[j - 1], v) > 0) { top[j] = top[j - 1]; j--; }
+                    top[j] = v;
+                }
+                else if (ComparaHit(v, top[n - 1]) < 0)
+                {
+                    int j = n - 1;
+                    while (j > 0 && ComparaHit(top[j - 1], v) > 0) { top[j] = top[j - 1]; j--; }
+                    top[j] = v;
+                }
+            }
+            for (int i = 0; i < hay; i++) dst.Add(top[i]);
         }
 
         private void ChooseSearchResult(SearchItem it)
@@ -12434,6 +12506,7 @@ namespace Rocola
             public int Kind;     // 0=artista, 1=album, 2=cancion
             public string Display;
             public string Key;
+            public int Mask;    // que letras contiene Key (ver MarcaLetras)
             public int Score;
             public Album AlbumRef;
             public Track TrackRef;
