@@ -374,6 +374,7 @@ namespace Rocola
         // cambia. 'colaVer' sube en cada cambio y entra en la firma de la textura, para que la marca "EN COLA"
         // aparezca en cuanto pides la cancion y no la proxima vez que algo mas se mueva.
         private readonly Dictionary<string, int> colaPos = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        private int generoVer;   // sube cuando el paseo de fondo aprende generos (entra en la firma del interior del disco)
         private int colaVer;
         private void RefrescaCola()
         {
@@ -2665,6 +2666,20 @@ namespace Rocola
                 int pos;
                 return (k != null && colaPos.TryGetValue(k, out pos)) ? pos : 0;
             };
+            songList.GetGenero = delegate (int i)
+            {
+                if (i < 0 || i >= songItems.Count) return "";
+                // Si la cancion ya sono alguna vez se sabe SU genero exacto (el que traia el archivo).
+                Track tk = songItems[i] as Track;
+                string et;
+                if (tk != null && tk.Path != null && songGenre.TryGetValue(tk.Path, out et) && et.Length > 0) return et;
+                // Si no, el genero que MANDA en su disco. En los discos de LO MAS SONADO cada cancion viene
+                // de un disco distinto, asi que se mira el suyo y no el del monton.
+                Album org = currentAlbum;
+                if (currentAlbum != null && currentAlbum.IsTop && currentAlbum.TrackAlbums != null && i < currentAlbum.TrackAlbums.Count)
+                    org = currentAlbum.TrackAlbums[i];
+                return EtiquetaDisco(org);
+            };
             songList.GetCount = delegate { return songItems.Count; };
             songList.GetText = delegate (int i) { return (i >= 0 && i < songItems.Count) ? songItems[i].ToString() : ""; };
             songList.GetRight = delegate (int i)   // duracion de la cancion (los videos no se pre-analizan)
@@ -3299,6 +3314,10 @@ namespace Rocola
             letterBar.Tints = tinte;
             letterBar.Invalidate();
             if (searchOverlay != null) { searchOverlay.DatosVer++; if (searchOpen) searchOverlay.Invalidate(); }
+            // El genero de cada cancion tambien se ensena DENTRO del disco. Como se aprende en segundo plano,
+            // puede llegar con el disco ya abierto: sin esto, las pastillas no saldrian hasta salir y volver.
+            generoVer++;
+            if (songList != null && panelSongs != null && panelSongs.Visible) songList.Invalidate();
         }
 
         // Lee del disco el color de cada letra. Solo vale si se calculo con la MISMA biblioteca que hay ahora
@@ -4420,13 +4439,13 @@ namespace Rocola
                 for (int i = 0; i < pageList.Count; i++) RequestCover(pageList[i], false, true);   // fila ALTA, ya mismo
 
             albumView.Page = pageList;
-#if ROCOLA_GPU
             // La pagina de AL LADO se va horneando mientras nadie toca nada (ver BakeAhead): al pasar de pagina
             // las casillas ya estan listas y el deslizamiento se ve fluido LA PRIMERA VEZ, no solo al volver.
+            // Tambien en el ordenador del bar (sin tarjeta grafica), que es justo donde re-escalar 18 caratulas
+            // en el momento de pulsar mas se nota.
             List<Album> siguiente = new List<Album>();
             for (int i = start + PageSize; i < start + PageSize * 2 && i < list.Count; i++) siguiente.Add(list[i]);
             albumView.SetAhead(siguiente);
-#endif
             albumView.Selected = selAlbumIndex - start;
             albumView.SelAngle = 0;
             albumView.CancelHandoff();   // cambio de pagina/letra: cancela cualquier giro de relevo en curso
@@ -8187,6 +8206,7 @@ namespace Rocola
                 sb = Mix(sb, 'D'); sb = Mix(sb, lblAlbum != null ? lblAlbum.Text : ""); sb = Mix(sb, songSel); sb = Mix(sb, songItems.Count);
                 sb = Mix(sb, songList != null ? songList.PageStart : 0); sb = Mix(sb, bgAccent.ToArgb());
                 sb = Mix(sb, colaVer);   // sin esto, la marca "EN COLA" no saldria hasta que algo mas cambiara
+                sb = Mix(sb, generoVer);   // idem para las pastillas de genero, que se aprenden en segundo plano
                 sb = Mix(sb, panelSongs.Left); sb = Mix(sb, panelSongs.Top); sb = Mix(sb, panelSongs.Width); sb = Mix(sb, panelSongs.Height);
             }
             else if (attractOn)                        // MODO ATRACCION: solo la cantidad de canciones (el pulso del texto va como halo por quad)
@@ -8411,6 +8431,11 @@ namespace Rocola
 #if ROCOLA_GPU
             albumGpuBg = (gpuPanel != null && gpuPanel.Visible);   // el panel GPU (opaco, pantalla completa) tapa los controles CPU: repintarlos seria trabajo invisible que ademas corta el bucle de render GPU
 #endif
+            // (CPU) La pagina de AL LADO se hornea mientras nadie toca nada, igual que en la version con tarjeta
+            // grafica: al pulsar "siguiente" las casillas ya estan hechas y no hay que re-escalar 18 caratulas en
+            // ese instante. Con tope de dos por vuelta y 4 ms, asi que quien este usando la rocola no lo nota.
+            if (!albumGpuBg && albumView != null && albumView.Visible) albumView.BakeAhead();
+
             // (CPU) Anima el BRILLO del boton pulsado en la barra de ayuda: sin esto el destello se disparaba
             // pero nadie repintaba el control -> no se veia. Repinta mientras dura (~0.4s) y UNA vez mas al
             // expirar (para borrar el ultimo halo). En GPU lo dibuja el panel como halo aparte (FillUiGlows).
@@ -10335,10 +10360,12 @@ namespace Rocola
             // CACHE DE CELDAS: cada disco (portada estatica + etiqueta) se HORNEA a un bitmap UNA vez y luego se
             // COPIA (blit 1:1) en cubeCache al paginar. Antes cada pagina re-ESCALABA 18 portadas y re-MAQUETABA
             // 18 etiquetas (ajuste de linea) -> carisimo al paginar rapido. Ahora paginar es casi solo copias.
-            private sealed class CellSprite { public Bitmap Bmp; public bool HasCover; }
+            private sealed class CellSprite { public Bitmap Bmp; public bool HasCover; public int Uso; }
             private readonly Dictionary<string, CellSprite> cellCache = new Dictionary<string, CellSprite>();
             private int cellCacheW = -1, cellCacheH = -1;   // tamano con el que se horneo (si cambia, se limpia todo)
-            private const int CellCacheCap = 6 * PageSize;  // ~6 paginas de historial en memoria (acotado; hojear ida/vuelta cae dentro)
+            private int cellUso;                            // reloj de uso: sube cada vez que se toca una casilla
+            private const int CellCacheCap = 6 * PageSize;  // ~6 paginas de historial en memoria (acotado)
+            private const int CellCacheKeep = 4 * PageSize; // a cuantas se baja al podar (las 4 ultimas paginas vistas)
             private bool cubesPending;                       // (CPU) quedan celdas por hornear: se reparte en varios repintados (como en GPU) para no congelar en equipos lentos
             private const int CpuBakeBudget = 9;             // (CPU) celdas horneadas por repintado (media pagina): una pagina nueva se llena en 2 pasadas, sin congelon
 #if ROCOLA_GPU
@@ -10428,28 +10455,6 @@ namespace Rocola
                 return slideFrom * CurvaHojeo(dt, out alpha);
             }
 
-            // PRE-HORNEADO de la pagina de al lado: mientras nadie toca nada, se van dejando listas las casillas
-            // que se veran al pasar de pagina. Asi el hojeo se ve fluido LA PRIMERA VEZ y no solo al volver.
-            public List<Album> Ahead;
-            private int aheadPos;
-            public void SetAhead(List<Album> lista) { Ahead = lista; aheadPos = 0; }
-            public void BakeAhead()
-            {
-                if (Ahead == null || aheadPos >= Ahead.Count) return;
-                int w = Width, h = Height;
-                if (w < 8 || h < 8) return;
-                int cw = w / Cols, ch = h / Rows;
-                if (cw < 4 || ch < 4 || cellCacheW != w || cellCacheH != h) return;   // otro tamano: ya se rehorneara solo
-                int side, labelH, gap; CellMetrics(cw, ch, out side, out labelH, out gap);
-                int budget = 2;   // dos casillas por vuelta (~24 por segundo): invisible y en dos segundos hay pagina
-                int t0 = Environment.TickCount;
-                while (aheadPos < Ahead.Count && budget > 0 && Environment.TickCount - t0 < 4)
-                {
-                    Album a = Ahead[aheadPos++];
-                    PeekOrBakeCell(a, cw, side, labelH, gap, (GetCover != null) ? GetCover(a) : null, ref budget);
-                }
-            }
-
             // Llena 'buf' con las celdas (disco estatico + etiqueta) de la pagina actual, en coords de PANTALLA (el
             // panel GPU es a pantalla completa). Cada celda trae su bitmap ya horneado para que el panel lo suba como
             // su PROPIA textura (cacheada por Folder). Se llama cada cuadro: para celdas cacheadas es casi gratis; las
@@ -10462,7 +10467,7 @@ namespace Rocola
                 int cw = w / Cols, ch = h / Rows;
                 if (cw < 4 || ch < 4) return 0;
                 if (cellCacheW != w || cellCacheH != h) { ClearCellCache(); cellCacheW = w; cellCacheH = h; }   // tamano nuevo: rehornear
-                else if (cellCache.Count > CellCacheCap) ClearCellCache();                                      // limite de memoria (raro)
+                else if (cellCache.Count > CellCacheCap) PodaCeldas();                                           // lleno: fuera las mas viejas
                 int side, labelH, gap; CellMetrics(cw, ch, out side, out labelH, out gap);
                 float alpha; float dx = SlideNow(out alpha);   // hojeo: desplazamiento y desvanecido de ESTE cuadro
                 int ox = this.Left, oy = this.Top;   // coords de albumView -> pantalla (mismo criterio que los cubos que giran)
@@ -10484,6 +10489,30 @@ namespace Rocola
                 return n;
             }
 #endif
+
+            // PRE-HORNEADO de la pagina de al lado: mientras nadie toca nada, se van dejando listas las casillas
+            // que se veran al pasar de pagina. Asi el hojeo se ve fluido LA PRIMERA VEZ y no solo al volver.
+            // Vale para las DOS versiones: en la del bar (sin tarjeta grafica) es donde mas se agradece, porque
+            // ahi re-escalar 18 caratulas justo al pulsar es lo que se siente como un tiron.
+            public List<Album> Ahead;
+            private int aheadPos;
+            public void SetAhead(List<Album> lista) { Ahead = lista; aheadPos = 0; }
+            public void BakeAhead()
+            {
+                if (Ahead == null || aheadPos >= Ahead.Count) return;
+                int w = Width, h = Height;
+                if (w < 8 || h < 8) return;
+                int cw = w / Cols, ch = h / Rows;
+                if (cw < 4 || ch < 4 || cellCacheW != w || cellCacheH != h) return;   // otro tamano: ya se rehorneara solo
+                int side, labelH, gap; CellMetrics(cw, ch, out side, out labelH, out gap);
+                int budget = 2;   // dos casillas por vuelta (~24 por segundo): invisible y en dos segundos hay pagina
+                int t0 = Environment.TickCount;
+                while (aheadPos < Ahead.Count && budget > 0 && Environment.TickCount - t0 < 4)
+                {
+                    Album a = Ahead[aheadPos++];
+                    PeekOrBakeCell(a, cw, side, labelH, gap, (GetCover != null) ? GetCover(a) : null, ref budget);
+                }
+            }
             private Pen cPenGlow, cPenMid, cPenLine;   // contorno del disco seleccionado (cacheadas; antes se creaban por cuadro)
             private Bitmap contourSprite; private Size contourSpriteSize = Size.Empty;   // contorno HORNEADO (3 trazos AA -> 1 copia); todas las casillas miden igual
             private Font lblFont; private SolidBrush lblBrush; private StringFormat lblSF;       // recursos de etiquetas (reusables)
@@ -10726,12 +10755,12 @@ namespace Rocola
                 bool hasCover = (cover != null);
                 CellSprite cs = null;
                 if (key != null && cellCache.TryGetValue(key, out cs) && cs.Bmp != null && cs.HasCover == hasCover)
-                    return cs.Bmp;   // reutiliza (paginar = solo copiar)
+                { cs.Uso = ++cellUso; return cs.Bmp; }   // reutiliza (paginar = solo copiar)
                 Bitmap bmp = BakeCell(a, cw, side, labelH, gap, cover);
                 if (key != null)
                 {
                     if (cs != null && cs.Bmp != null && cs.Bmp != bmp) cs.Bmp.Dispose();   // reemplaza el placeholder por la version con portada
-                    cellCache[key] = new CellSprite { Bmp = bmp, HasCover = hasCover };
+                    cellCache[key] = new CellSprite { Bmp = bmp, HasCover = hasCover, Uso = ++cellUso };
                 }
                 return bmp;
             }
@@ -10746,16 +10775,44 @@ namespace Rocola
                 bool hasCover = (cover != null);
                 CellSprite cs = null;
                 if (key != null && cellCache.TryGetValue(key, out cs) && cs.Bmp != null && cs.HasCover == hasCover)
-                    return cs.Bmp;   // cacheada -> gratis
-                if (budget <= 0) return (cs != null) ? cs.Bmp : null;   // sin presupuesto: usa la vieja (placeholder) si hay; si no, se salta
+                { cs.Uso = ++cellUso; return cs.Bmp; }   // cacheada -> gratis
+                // sin presupuesto: usa la vieja (placeholder) si hay; si no, se salta. Cuenta como uso: se esta
+                // viendo AHORA MISMO, asi que la poda no puede llevarsela por delante.
+                if (budget <= 0) { if (cs != null) { cs.Uso = ++cellUso; return cs.Bmp; } return null; }
                 budget--;
                 Bitmap bmp = BakeCell(a, cw, side, labelH, gap, cover);
                 if (key != null)
                 {
                     if (cs != null && cs.Bmp != null && cs.Bmp != bmp) cs.Bmp.Dispose();
-                    cellCache[key] = new CellSprite { Bmp = bmp, HasCover = hasCover };
+                    cellCache[key] = new CellSprite { Bmp = bmp, HasCover = hasCover, Uso = ++cellUso };
                 }
                 return bmp;
+            }
+
+            // AL LLENARSE EL CAJON SE TIRABAN TODAS LAS CASILLAS. El que estaba hojeando perdia de golpe hasta
+            // las paginas que acababa de ver, y retroceder UNA sola pagina obligaba a re-escalar 18 caratulas y
+            // re-maquetar 18 nombres: un tiron cada seis paginas. Ahora se tiran solo las MAS VIEJAS y se quedan
+            // las ultimas vistas, que son justo a las que se vuelve.
+            private void PodaCeldas()
+            {
+                int sobran = cellCache.Count - CellCacheKeep;
+                if (sobran <= 0) return;
+                // El corte: por debajo de ese valor de uso se tira. Son ~100 numeros y esto pasa una vez cada
+                // varias paginas, asi que ordenarlos no cuesta nada al lado de hornear una sola casilla.
+                int[] usos = new int[cellCache.Count];
+                int k = 0;
+                foreach (CellSprite cs in cellCache.Values) usos[k++] = cs.Uso;
+                Array.Sort(usos);
+                int corte = usos[sobran];
+                List<string> fuera = new List<string>(sobran);
+                foreach (KeyValuePair<string, CellSprite> kv in cellCache)
+                    if (kv.Value.Uso < corte) fuera.Add(kv.Key);
+                for (int i = 0; i < fuera.Count; i++)
+                {
+                    CellSprite cs = cellCache[fuera[i]];
+                    if (cs.Bmp != null) cs.Bmp.Dispose();
+                    cellCache.Remove(fuera[i]);
+                }
             }
 
             private void ClearCellCache()
@@ -10774,7 +10831,7 @@ namespace Rocola
                     cubeCache = new Bitmap(w, h);
                 }
                 if (cellCacheW != w || cellCacheH != h) { ClearCellCache(); cellCacheW = w; cellCacheH = h; }   // tamano nuevo: las celdas horneadas ya no encajan
-                else if (cellCache.Count > CellCacheCap) ClearCellCache();                                     // limite de memoria (raro: solo tras paginar mucho)
+                else if (cellCache.Count > CellCacheCap) PodaCeldas();                                          // lleno: fuera las mas viejas (nunca la pagina que se ve)
                 int budget = CpuBakeBudget;   // HORNEADO REPARTIDO (como en GPU): a lo mas CpuBakeBudget celdas nuevas por repintado; el
                 cubesPending = false;         // resto queda para el proximo (OnPaint re-invalida). Evita el congelon de hornear 18 de golpe.
                 using (Graphics g = Graphics.FromImage(cubeCache))
@@ -11906,6 +11963,7 @@ namespace Rocola
             public Func<int, string> GetText;   // texto del item i
             public Func<int, string> GetRight;   // texto CORTO a la derecha del item i (la duracion); "" = nada
             public Func<int, int> GetQueuePos;   // 0 = no esta pedida; n = va en el puesto n de la cola
+            public Func<int, string> GetGenero;  // etiqueta de genero del item i ("" = aun no se sabe)
             public int PageStart = 0;           // primer item de la pagina visible
             public int Sel = 0;                 // seleccion GLOBAL (entre todas las paginas)
             public int RowH = 30;
@@ -12008,6 +12066,57 @@ namespace Rocola
                     int d = (v / div) % 10; div /= 10;
                     if (d >= 0 && d <= 9) g.DrawImageUnscaled(set[d], x + k * digW, y);
                 }
+            }
+
+            // PASTILLA DE GENERO ya dibujada. Se hornea UNA por etiqueta (son una docena en toda la rocola)
+            // y luego cada fila solo la copia. Dibujar por fila un rectangulo redondeado con borde mas su
+            // texto era justo lo que encarecia la lista, y la lista se repinta entera al moverse por ella.
+            private readonly Dictionary<string, Bitmap> hornoGen = new Dictionary<string, Bitmap>();
+            private float hornoGenCuerpo = -1f;
+            private Bitmap HorneaGenero(string etiqueta)
+            {
+                if (string.IsNullOrEmpty(etiqueta) || fCola == null) return null;
+                if (Math.Abs(hornoGenCuerpo - fCola.SizeInPoints) > 0.01f) { TiraHornoGen(); hornoGenCuerpo = fCola.SizeInPoints; }
+                Bitmap b;
+                if (hornoGen.TryGetValue(etiqueta, out b)) return b;
+                Color c = ColorDeEtiqueta(etiqueta);
+                int w, h;
+                using (Bitmap med = new Bitmap(4, 4))
+                using (Graphics mg = Graphics.FromImage(med))
+                {
+                    SizeF sz = mg.MeasureString(etiqueta, fCola, 999, StringFormat.GenericTypographic);
+                    w = (int)Math.Ceiling(sz.Width) + 16;
+                    h = (int)Math.Ceiling(sz.Height) + 5;
+                }
+                if (w < 8) w = 8; if (h < 8) h = 8;
+                b = new Bitmap(w, h, PixelFormat.Format32bppPArgb);
+                using (Graphics g = Graphics.FromImage(b))
+                {
+                    g.SmoothingMode = SmoothingMode.AntiAlias;
+                    g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
+                    g.Clear(Color.Transparent);
+                    // El MISMO aspecto que la pastilla de genero de los resultados del buscador: relleno muy
+                    // tenue del color del genero, borde fino y el texto en ese color aclarado.
+                    using (GraphicsPath gp = RoundedPath(new Rectangle(0, 0, w - 1, h - 1), Math.Min(7, (h - 1) / 2)))
+                    {
+                        using (SolidBrush sb = new SolidBrush(Color.FromArgb(60, c))) g.FillPath(sb, gp);
+                        using (Pen pn = new Pen(Color.FromArgb(120, c), 1f)) g.DrawPath(pn, gp);
+                    }
+                    using (StringFormat sf = new StringFormat())
+                    {
+                        sf.Alignment = StringAlignment.Center; sf.LineAlignment = StringAlignment.Center;
+                        sf.FormatFlags = StringFormatFlags.NoWrap;
+                        using (SolidBrush sb = new SolidBrush(Lighten(c, 0.45)))
+                            g.DrawString(etiqueta, fCola, sb, new RectangleF(0, 0, w, h), sf);
+                    }
+                }
+                hornoGen[etiqueta] = b;
+                return b;
+            }
+            private void TiraHornoGen()
+            {
+                foreach (Bitmap b in hornoGen.Values) if (b != null) b.Dispose();
+                hornoGen.Clear();
             }
 
             private void EnsureHorno(int lado, int pw, int ph)
@@ -12130,16 +12239,36 @@ namespace Rocola
                         durB.Color = (idx == Sel) ? Color.FromArgb(235, 245, 255) : Color.FromArgb(175, 190, 215);
                         g.DrawString(dur, Font, durB, new Rectangle(r.Right - durW - 14, r.Y, durW, r.Height), durFmt);
                     }
+                    // EL GENERO, en una pastillita, justo al lado de la duracion. Es el mismo genero y el
+                    // mismo color que ya salen en los resultados del buscador: la rocola habla siempre igual.
+                    int quitaGen = 0;
+                    string gen = (GetGenero != null) ? GetGenero(idx) : null;
+                    if (!string.IsNullOrEmpty(gen))
+                    {
+                        Bitmap pg = HorneaGenero(gen);
+                        // Solo si sobra sitio: en una pantalla estrecha manda el nombre de la cancion.
+                        if (pg != null && pg.Width + 18 <= (r.Width - (int)xTexto) / 2)
+                        {
+                            // Los 18 son los huecos de los dos lados: asi la pastilla nunca llega a rozar ni la
+                            // duracion (a su derecha) ni la marca de "ya pedida" ni el nombre (a su izquierda).
+                            quitaGen = pg.Width + 18;
+                            g.DrawImageUnscaled(pg, r.Right - 20 - durW - pg.Width, (int)(cy - pg.Height * 0.5f));
+                        }
+                    }
                     int quitaCola = 0;
                     if (enCola)
                     {
                         quitaCola = wCola + 12;
-                        RectangleF cr = new RectangleF(r.Right - 14 - durW - quitaCola, cy - hCola * 0.5f, wCola, hCola);
+                        RectangleF cr = new RectangleF(r.Right - 14 - durW - quitaGen - quitaCola, cy - hCola * 0.5f, wCola, hCola);
                         g.DrawImageUnscaled(bmpPastilla, (int)cr.X, (int)cr.Y);
                         colaB.Color = ColaVerde;
                         g.DrawString("EN COLA " + pos, fCola, colaB, cr, cenFmt);
                     }
-                    Rectangle tr = new Rectangle(r.X + (int)xTexto, r.Y, r.Width - (int)xTexto - 6 - durW - quitaCola, r.Height);
+                    // El nombre acaba SEIS PIXELES antes de lo primero que haya a su derecha. Antes se restaba
+                    // un margen distinto del que usa la marca de "ya pedida", y un nombre largo llegaba a
+                    // tocarla; ahora se calcula desde el mismo borde para los dos y siempre queda separacion.
+                    int derContenido = r.Right - 14 - durW - quitaGen - quitaCola;
+                    Rectangle tr = new Rectangle(r.X + (int)xTexto, r.Y, Math.Max(10, derContenido - 6 - r.X - (int)xTexto), r.Height);
                     string text = (GetText != null) ? GetText(idx) : "";
                     g.DrawString(text, Font, txtB, tr, txtFmt);   // GDI+: respeta la traslacion del Graphics (en el control es identidad; en la textura de UI lleva la lista a su sitio)
                 }
