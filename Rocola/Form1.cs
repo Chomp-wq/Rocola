@@ -732,6 +732,144 @@ namespace Rocola
         // Bitacora de DIAGNOSTICO (diagnostico=1 en config): apunta los eventos clave (video, animaciones,
         // cambios de render) con hora en rocola_diagnostico.txt junto al exe. Para cazar a distancia lo que
         // pasa en el fierro real sin adivinar. Apagada no cuesta nada; el archivo se recorta solo a ~2 MB.
+        // ==========  QUE HAY DESPUES DEL CABLE  ==========
+        //
+        // Todo lo que mide la rocola -el EQ automatico, los graves, el nivelado- es del ARCHIVO, y eso vale en
+        // cualquier equipo. Lo que la rocola NO puede saber por su cuenta es lo que pasa DESPUES de que el
+        // sonido sale: si Windows le esta metiendo sus propias "mejoras" (Loudness, Bass Boost, sonido
+        // envolvente virtual...), con que configuracion de bocinas cree que esta hablando, o si esta
+        // remezclando el estereo a 5.1. Dos ecualizadores peleandose es la receta para que el bajo profundo
+        // suene embarrado y el EQ automatico no acierte.
+        //
+        // Nada de esto se puede adivinar oyendo. Pero Windows SI lo tiene apuntado, y se puede leer. Aqui se
+        // lee y se cuenta en la ventana de sonido, en cristiano. No se toca nada: la rocola no va a cambiar la
+        // configuracion de Windows por su cuenta; avisa y ya.
+        //
+        // (Windows XP no guarda nada de esto: alli el panel de la tarjeta -Realtek y compania- es el unico
+        // sitio donde mirarlo, y se dice asi.)
+        internal struct SalidaWin
+        {
+            public string Nombre;
+            public int Hz, Bits, Canales;   // con lo que Windows MEZCLA todo antes de mandarlo a la tarjeta
+            public int Bocinas;             // configuracion de bocinas elegida en Windows (mascara de canales)
+            public int RangoCompleto;       // cuales de esas bocinas declaro el usuario "de rango completo"
+            public int Efectos;             // -1 = no se sabe, 0 = apagadas, 1 = encendidas
+        }
+
+        private const string MMDev = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\MMDevices\\Audio\\Render";
+        // Los nombres de las propiedades son GUIDs con un numero detras; son los de Windows, no inventados.
+        private const string PkNombre = "{b3f8fa53-0004-438e-9003-51a46e139bfc},6";   // nombre que se ve en el panel de sonido
+        private const string PkDesc   = "{a45c254e-df1c-4efd-8020-67d146a850e0},2";   // "Altavoces", por si no hay nombre
+        private const string PkFormato= "{f19f064d-082c-4e27-bc73-6882a1bb8e4c},0";   // con que mezcla Windows (WAVEFORMATEX)
+        private const string PkBocinas= "{1da5d803-d492-4edd-8c23-e0c0ffee7f0e},4";   // configuracion de bocinas elegida
+        private const string PkRango  = "{1da5d803-d492-4edd-8c23-e0c0ffee7f0e},3";   // cuales son de rango completo
+        private const string PkSinFx  = "{1da5d803-d492-4edd-8c23-e0c0ffee7f0e},5";   // 1 = "deshabilitar todas las mejoras"
+
+        // Las salidas de sonido ACTIVAS, con lo que Windows tenga apuntado de cada una. Lista vacia = no se pudo
+        // leer (Windows XP, o la clave no esta donde se espera): eso NO es un fallo, es que no hay dato.
+        private static List<SalidaWin> LeeSalidasWindows()
+        {
+            List<SalidaWin> r = new List<SalidaWin>();
+            try
+            {
+                using (Microsoft.Win32.RegistryKey raiz = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(MMDev))
+                {
+                    if (raiz == null) return r;
+                    foreach (string id in raiz.GetSubKeyNames())
+                    {
+                        try
+                        {
+                            using (Microsoft.Win32.RegistryKey ep = raiz.OpenSubKey(id))
+                            {
+                                if (ep == null) continue;
+                                object est = ep.GetValue("DeviceState");
+                                if (est is int && (int)est != 1) continue;   // 1 = activa (las desconectadas no cuentan)
+                                using (Microsoft.Win32.RegistryKey pr = ep.OpenSubKey("Properties"))
+                                {
+                                    if (pr == null) continue;
+                                    SalidaWin s2 = new SalidaWin();
+                                    s2.Nombre = (pr.GetValue(PkNombre) as string) ?? (pr.GetValue(PkDesc) as string) ?? "salida de sonido";
+                                    byte[] fmt = pr.GetValue(PkFormato) as byte[];
+                                    if (fmt != null && fmt.Length >= 16)
+                                    {
+                                        s2.Canales = BitConverter.ToUInt16(fmt, 2);
+                                        s2.Hz = (int)BitConverter.ToUInt32(fmt, 4);
+                                        s2.Bits = BitConverter.ToUInt16(fmt, 14);
+                                    }
+                                    object bo = pr.GetValue(PkBocinas); if (bo is int) s2.Bocinas = (int)bo;
+                                    object rc = pr.GetValue(PkRango);   if (rc is int) s2.RangoCompleto = (int)rc;
+                                    object fx = pr.GetValue(PkSinFx);
+                                    s2.Efectos = (fx is int) ? (((int)fx != 0) ? 0 : 1) : -1;   // el valor dice "deshabilitar", asi que va al reves
+                                    r.Add(s2);
+                                }
+                            }
+                        }
+                        catch { }
+                    }
+                }
+            }
+            catch { }
+            return r;
+        }
+
+        // Traduce una mascara de canales de Windows a algo que se entienda.
+        private static string NombreBocinas(int mascara)
+        {
+            if (mascara == 0) return "";
+            bool sub = (mascara & 0x8) != 0;                 // canal de graves (subwoofer)
+            int n = 0; for (int b = 0; b < 18; b++) if ((mascara & (1 << b)) != 0) n++;
+            string bas;
+            if (n <= 1) bas = "mono";
+            else if (n == 2) bas = "estereo";
+            else if (n == 4) bas = "cuadrafonico";
+            else if (n == 6) bas = "5.1";
+            else if (n == 8) bas = "7.1";
+            else bas = n + " canales";
+            return bas + (sub ? " (con subwoofer)" : "");
+        }
+
+        // La frase que se ensena en la ventana de sonido. Devuelve tambien si hay algo que ARREGLAR, para
+        // pintarla en ambar en vez de en gris.
+        private static string TextoSalida(out bool aviso)
+        {
+            aviso = false;
+            List<SalidaWin> ls;
+            try { ls = LeeSalidasWindows(); } catch { ls = new List<SalidaWin>(); }
+            if (ls.Count == 0)
+                return "Tu equipo: este Windows no guarda la configuracion de las bocinas donde se pueda leer.\n"
+                     + "Revisa el panel de tu tarjeta de sonido (Realtek y companía) y deja sus mejoras APAGADAS.";
+            // Si hay varias salidas activas se ensena la primera con mejoras encendidas (que es la que importa)
+            // y, si ninguna las tiene, la primera de todas.
+            SalidaWin s = ls[0];
+            for (int i = 0; i < ls.Count; i++) if (ls[i].Efectos == 1) { s = ls[i]; break; }
+            // DOS RENGLONES, y cada uno tiene que caber a lo ancho: el nombre del dispositivo lo pone el
+            // fabricante y puede ser larguisimo ("Altavoces (2- High Definition Audio Device)"), asi que se
+            // corta. Lo que se dice va de lo concreto a lo accionable.
+            string nom = s.Nombre ?? "";
+            if (nom.Length > 36) nom = nom.Substring(0, 34) + "..";
+            StringBuilder sb = new StringBuilder(240);
+            sb.Append("Tu equipo: ").Append(nom);
+            if (s.Hz > 0) sb.Append("  -  Windows mezcla a ").Append((s.Hz / 1000f).ToString("0.#")).Append(" kHz");
+            string bo = NombreBocinas(s.Bocinas);
+            if (bo.Length > 0) sb.Append(", bocinas en ").Append(bo);
+            if (s.Bocinas != 0 && s.RangoCompleto == 0) sb.Append(", sin graves propios");
+            sb.Append('.');
+            if (s.Efectos == 1)
+            {
+                aviso = true;
+                sb.Append("\nWindows tiene sus MEJORAS ENCENDIDAS: ecualizan encima de la rocola. Apagalas en Panel de sonido -> tu salida -> Mejoras.");
+            }
+            else if (s.Canales > 2)
+            {
+                aviso = true;
+                sb.Append("\nWindows reparte el estereo en ").Append(s.Canales).Append(" canales. Si tus bocinas son dos, ponlo en estereo: el reparto ensucia el bajo.");
+            }
+            else if (s.Efectos == 0) sb.Append("\nSin mejoras de Windows encima: la rocola tiene el sonido para ella sola, que es como debe ser.");
+            // Efectos == -1: Windows no lo tiene apuntado. No se afirma que este limpio, que seria mentir.
+            else sb.Append("\nWindows no dice si tiene mejoras puestas. Si algo suena raro, miralo en Panel de sonido -> tu salida -> Mejoras.");
+            return sb.ToString();
+        }
+
         private void Diag(string msg)
         {
             if (!diagOn) return;
@@ -1796,7 +1934,7 @@ namespace Rocola
                     dlg.FormBorderStyle = FormBorderStyle.FixedDialog;
                     dlg.MaximizeBox = false; dlg.MinimizeBox = false; dlg.ShowInTaskbar = false; dlg.ShowIcon = false;
                     dlg.StartPosition = FormStartPosition.CenterParent;
-                    dlg.ClientSize = new Size(960, 946);   // aqui hay pantalla de sobra: cabe la tarjeta de la IA en vivo
+                    dlg.ClientSize = new Size(960, 974);   // aqui hay pantalla de sobra: cabe la tarjeta de la IA en vivo
                     dlg.BackColor = Color.FromArgb(11, 14, 32);
                     dlg.Font = fSub;
 
@@ -1813,20 +1951,28 @@ namespace Rocola
                     Color cTenue = Color.FromArgb(138, 149, 182);    // texto de las explicaciones
                     Color cApagado = Color.FromArgb(96, 104, 128);
 
-                    Label lTit = new Label(); lTit.SetBounds(22, 12, 700, 28); lTit.BackColor = Color.Transparent;
+                    Label lTit = new Label(); lTit.SetBounds(22, 10, 700, 28); lTit.BackColor = Color.Transparent;
                     lTit.ForeColor = Color.FromArgb(232, 238, 255); lTit.Font = fTit; lTit.Text = "Sonido";
-                    Label lSub = new Label(); lSub.SetBounds(24, 44, 916, 18); lSub.BackColor = Color.Transparent;
+                    Label lSub = new Label(); lSub.SetBounds(24, 42, 916, 18); lSub.BackColor = Color.Transparent;
                     lSub.ForeColor = cTenue; lSub.Font = fSub;
                     lSub.Text = "Todo lo que cambies aqui se oye al instante en la cancion que esta sonando.";
+                    // QUE HAY DESPUES DEL CABLE. La rocola mide el ARCHIVO, y eso vale en cualquier equipo; lo
+                    // que no puede saber por su cuenta es si Windows le esta metiendo sus propias mejoras
+                    // encima. Se lee del registro de Windows y se dice aqui, en ambar si hay algo que arreglar.
+                    bool avisoSal; string txtSal;
+                    try { txtSal = TextoSalida(out avisoSal); } catch { txtSal = ""; avisoSal = false; }
+                    Label lSal = new Label(); lSal.SetBounds(24, 62, 916, 34); lSal.BackColor = Color.Transparent;
+                    lSal.ForeColor = avisoSal ? Color.FromArgb(255, 196, 96) : cTenue; lSal.Font = fDes;
+                    lSal.Text = txtSal;
 
                     // Las explicaciones ocupan DOS renglones y su hueco tiene sitio para dos: antes media 28 px,
                     // que con la letra de Windows se queda a un pelo justo de dos, y el segundo salia cortado
                     // ("...NUNCA se" y ahi se acababa). Ahora 32, y ademas cada texto lleva escrito a mano donde
                     // parte, para que no dependa de lo ancha que sea la letra en cada equipo.
-                    Tarjeta tVol = new Tarjeta(); tVol.SetBounds(16, 70, 456, 400); tVol.Titulo = "VOLUMEN PAREJO"; tVol.Acento = cVol;
-                    Tarjeta tCal = new Tarjeta(); tCal.SetBounds(488, 70, 456, 400); tCal.Titulo = "CALIDAD DEL SONIDO"; tCal.Acento = cCal;
-                    Tarjeta tIa = new Tarjeta(); tIa.SetBounds(16, 480, 928, 232); tIa.Titulo = "IA EN VIVO  (DSEE ULTRA)"; tIa.Acento = cIa;
-                    Tarjeta tBib = new Tarjeta(); tBib.SetBounds(16, 722, 928, 160); tBib.Titulo = "TU BIBLIOTECA"; tBib.Acento = cBib;
+                    Tarjeta tVol = new Tarjeta(); tVol.SetBounds(16, 100, 456, 398); tVol.Titulo = "VOLUMEN PAREJO"; tVol.Acento = cVol;
+                    Tarjeta tCal = new Tarjeta(); tCal.SetBounds(488, 100, 456, 398); tCal.Titulo = "CALIDAD DEL SONIDO"; tCal.Acento = cCal;
+                    Tarjeta tIa = new Tarjeta(); tIa.SetBounds(16, 508, 928, 232); tIa.Titulo = "IA EN VIVO  (DSEE ULTRA)"; tIa.Acento = cIa;
+                    Tarjeta tBib = new Tarjeta(); tBib.SetBounds(16, 750, 928, 160); tBib.Titulo = "TU BIBLIOTECA"; tBib.Acento = cBib;
 
                     // --- Una FILA de ajuste: nombre arriba, valor a la derecha, explicacion debajo y la barra abajo ---
                     Label[] nom = new Label[7], val = new Label[7], des = new Label[7];
@@ -1945,9 +2091,9 @@ namespace Rocola
                     EscribeInformeCalidad();   // el detalle, cancion por cancion, queda en un archivo junto al programa
 
                     // ---------------- PIE ----------------
-                    BotonPlano bReset = new BotonPlano(); bReset.SetBounds(16, 894, 220, 38); bReset.Font = fBot;
+                    BotonPlano bReset = new BotonPlano(); bReset.SetBounds(16, 922, 220, 38); bReset.Font = fBot;
                     bReset.Text = "Dejar como de fabrica";
-                    BotonPlano bOk = new BotonPlano(); bOk.SetBounds(804, 894, 140, 38); bOk.Font = fBot;
+                    BotonPlano bOk = new BotonPlano(); bOk.SetBounds(804, 922, 140, 38); bOk.Font = fBot;
                     bOk.Text = "Listo"; bOk.Relleno = Color.FromArgb(30, 96, 70); bOk.Borde = Color.FromArgb(72, 182, 132);
 
                     Action pintaTrain = delegate
@@ -2097,7 +2243,7 @@ namespace Rocola
                                   preScanTurbo ? Color.FromArgb(150, 60, 45) : Color.FromArgb(40, 130, 90));
                     };
 
-                    dlg.Controls.Add(lTit); dlg.Controls.Add(lSub);
+                    dlg.Controls.Add(lTit); dlg.Controls.Add(lSub); dlg.Controls.Add(lSal);
                     dlg.Controls.Add(tVol); dlg.Controls.Add(tCal); dlg.Controls.Add(tIa); dlg.Controls.Add(tBib);
                     dlg.Controls.Add(bReset); dlg.Controls.Add(bOk);
                     // Escape cierra, como toda la vida (los controles propios se comen las teclas, asi que la
