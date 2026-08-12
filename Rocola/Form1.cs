@@ -2713,12 +2713,16 @@ namespace Rocola
             int contentRight = videoOn ? (splitX - 12) : (W - pad);
             int contentW = Math.Max(220, contentRight - pad);
 
-            int topRight = W - pad;
+            // LA FILA DE ARRIBA, apretada. Las instrucciones ocupan 439 px de verdad y se les reservaban 580:
+            // 141 px de aire. Y el ENCABEZADO de la seccion tenia una fila entera para el solo, 44 px de alto en
+            // 1024x768. Los dos comparten ahora esta fila, y esos 44 px se los queda la rejilla de discos, que es
+            // lo que la gente mira. El encabezado se dibuja pegado a la derecha y se encoge solo si le aprietan.
+            int barraDer = videoOn ? contentRight : (W - pad);
             int helpX = pad;
-            int helpW = Math.Max(120, Math.Min(580, topRight - helpX));
+            int helpW = Math.Max(120, Math.Min(470, barraDer - helpX));
             if (helpBar != null) helpBar.SetBounds(helpX, 8, helpW, 34);
-            int statusX = helpX + helpW + 12;
-            lblStatus.SetBounds(statusX, 15, Math.Max(40, topRight - statusX), 22);
+            int headX = helpX + helpW + 12;
+            headerView.SetBounds(headX, 8, Math.Max(0, barraDer - headX), 34);
             if (lblConfig != null) lblConfig.SetBounds(0, 0, W, H);   // asistente de config: pantalla completa
 
             // LA BARRA DE LETRAS CRECE CON LA PANTALLA. Estaba clavada en 40 px de alto: en 1024x768 se ve
@@ -2730,16 +2734,12 @@ namespace Rocola
             // letra chiquita perdida dentro. Se le pide al alto que acompane al ancho de casilla para que la
             // casilla siga siendo una casilla. En 1024x768 las dos cuentas dan 40 o menos, asi que la maquina
             // del bar no cambia en nada.
-            int lettersY = 48;
+            int lettersY = 46;
             int lettersH = H * 40 / 768;
             int porCasilla = (contentW * 8) / (29 * 10);   // 0.80 del ancho de casilla
             if (porCasilla > lettersH) lettersH = porCasilla;
             if (lettersH < 40) lettersH = 40; else if (lettersH > 104) lettersH = 104;
             letterBar.SetBounds(pad, lettersY, contentW, lettersH);
-
-            int headerY = lettersY + lettersH + 10;
-            int headerH = Math.Max(28, lettersH * 7 / 10);   // con la barra de 40 sale 28, el de siempre
-            headerView.SetBounds(pad, headerY + 3, Math.Max(50, contentW), headerH);
 
             // LA FRANJA DE ESTADO, en grande. Es lo que se lee DE LEJOS -de pie, a dos metros de la maquina-
             // y estaba pensada para mirarla de cerca: letra chica, cubo de 64 y una barra de duracion de 16 px
@@ -2749,8 +2749,9 @@ namespace Rocola
             int cubeSize = 84;
             int progH = 22;                                  // barra de duracion mas gruesa: se ve de lejos
             int progY = H - pad - progH;
-            int nextY = progY - 30;
-            int nowY = nextY - 32;                           // la ULTIMA linea de "Reproduciendo"
+            // "Siguiente" tenia su propio renglon y casi siempre dice cuatro palabras o un guion. Se sube a la
+            // fila de la barra de duracion, detras del reloj, y su renglon -30 px- se lo queda la rejilla.
+            int nowY = progY - 34;                           // la ULTIMA linea de "Reproduciendo"
             // Se reserva UNA linea mas ARRIBA para los titulos largos. El hueco esta siempre, se use o no: asi el
             // acomodo no cambia nunca al pasar de cancion (si cambiara, la rejilla de discos se re-hornearia entera
             // cada vez que sonara un titulo largo). Con titulo corto el hueco queda vacio y todo se ve como antes.
@@ -2772,15 +2773,23 @@ namespace Rocola
             // area izquierda (texto + barra de duracion) termina antes del cubo mini
             int leftRight = cubeX - 14;
             int leftW = Math.Max(120, leftRight - pad);
-            int timeW = 180;
-            progress.SetBounds(pad, progY, Math.Max(50, leftW - timeW - 12), progH);
-            lblTime.SetBounds(pad + leftW - timeW, progY - 2, timeW, 26);
-            lblNext.SetBounds(pad, nextY, leftW, 26);
+            // La fila de abajo:  [ barra de duracion ] [ 3:05 / 4:36 ] [ Siguiente: ... ]
+            int timeW = 150;
+            int nextW = Math.Max(90, (leftW * 4) / 10);
+            int progW = Math.Max(50, leftW - timeW - nextW - 24);
+            progress.SetBounds(pad, progY, progW, progH);
+            lblTime.SetBounds(pad + progW + 12, progY - 2, timeW, 26);
+            lblNext.SetBounds(pad + progW + 12 + timeW + 12, progY - 2, nextW, 26);
             lblNow.SetBounds(pad, nowY, leftW, 30);
             lblNowTop.SetBounds(pad, nowTopY, leftW, nowLineH);
             iaNowRowW = leftW; PositionMejorada();   // parte el titulo en 1 o 2 lineas y acomoda el letrero MEJORADA tras la ultima
 
-            int albumY = headerY + 3 + headerH + 13;
+            int albumY = lettersY + lettersH + 10;
+            // EL AVISO DE ESTADO ya no ocupa sitio propio en la fila de arriba: durante el uso normal esta
+            // VACIO (solo habla al escanear o si algo falla), y le estabamos guardando 200 px al lado de las
+            // instrucciones para nada. Ahora se pone encima del borde de la rejilla, que esta justo vacia en
+            // los unicos momentos en que el aviso tiene algo que decir.
+            lblStatus.SetBounds(pad, albumY + 4, Math.Max(120, contentW), 22);
             int albumBottom = nowTopY - 12;   // la rejilla termina antes del hueco reservado para la 2a linea
             int albumH = Math.Max(120, albumBottom - albumY);
             albumView.SetBounds(pad, albumY, contentW, albumH);
@@ -7737,7 +7746,7 @@ namespace Rocola
                 if (helpBar != null && helpBar.Bottom > mainH) mainH = helpBar.Bottom;
                 if (letterBar != null && letterBar.Visible && letterBar.Bottom > mainH) mainH = letterBar.Bottom;
                 if (headerView != null && headerView.Bottom > mainH) mainH = headerView.Bottom;
-                if (lblStatus != null && lblStatus.Bottom > mainH) mainH = lblStatus.Bottom;
+                if (lblStatus != null && lblStatus.Text != null && lblStatus.Text.Length > 0 && lblStatus.Bottom > mainH) mainH = lblStatus.Bottom;
                 mainH += 6;
             }
             if (mainH > h) mainH = h; if (mainH < 8) mainH = 8;
@@ -11354,7 +11363,27 @@ namespace Rocola
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 EnsureRes(h);
                 Color ac = Claro(Accent);
-                float x = 0f;
+
+                // SE MIDE TODO ANTES DE PINTAR NADA. Este encabezado comparte fila con las instrucciones, asi
+                // que el sitio que le toca cambia con la pantalla. Se prueba con todo puesto; si no cabe, lo
+                // primero que se cae es el texto "pagina X de Y" -y no los puntitos-, porque los puntitos dicen
+                // lo mismo de un vistazo y ocupan menos. Y lo que quepa se pega a la DERECHA, para que no quede
+                // colgando en medio de un hueco.
+                float pw0 = Math.Max(3f, h * 0.13f);
+                float anchoNombre = pw0 + h * 0.32f + g.MeasureString(Section ?? "", fSec).Width + 4f;
+                int pag0 = Page; if (pag0 < 0) pag0 = 0; else if (Total > 0 && pag0 >= Total) pag0 = Total - 1;
+                float r0 = Math.Max(2.2f, h * 0.115f), paso0 = r0 * 3.4f;
+                float anchoPuntos0 = (Total > 1 && Total <= 12) ? (h * 0.5f + r0 + (Total - 1) * paso0 + r0) : 0f;
+                string txt0 = "pagina " + (pag0 + 1) + " de " + Total;
+                float anchoTxt0 = (Total > 1) ? (h * 0.45f + g.MeasureString(txt0, fPag).Width + 8f) : 0f;
+                bool conPuntos0 = anchoPuntos0 > 0f, conTxt0 = anchoTxt0 > 0f;
+                if (anchoNombre + anchoPuntos0 + anchoTxt0 > w) conTxt0 = false;                       // primero se cae el texto
+                if (conPuntos0 && anchoNombre + anchoPuntos0 > w) { conPuntos0 = false; conTxt0 = anchoTxt0 > 0f; }
+                if (conTxt0 && anchoNombre + (conPuntos0 ? anchoPuntos0 : 0f) + anchoTxt0 > w) conTxt0 = false;
+                float total0 = anchoNombre + (conPuntos0 ? anchoPuntos0 : 0f) + (conTxt0 ? anchoTxt0 : 0f);
+                // Pegado a la derecha, con 2 px de aire: medir un texto y dibujarlo no dan exactamente lo mismo
+                // -el dibujo se pasa como un pixel- y sin ese aire la ultima letra se salia de la caja.
+                float x = (total0 + 2f < w) ? (w - total0 - 2f) : 0f;
 
                 // Una pastilla del color de la seccion delante del nombre: ata el encabezado con la letra que
                 // esta encendida arriba, para que se vea que hablan de lo mismo.
@@ -11369,7 +11398,7 @@ namespace Rocola
                 // medias" ni se sale por la derecha.
                 string sec = Section ?? "";
                 Font fUsar = fSec; Font fApreta = null;
-                float tope = w - x;
+                float tope = Math.Max(10f, w - x);
                 SizeF ts = g.MeasureString(sec, fUsar);
                 if (ts.Width > tope)
                 {
@@ -11389,26 +11418,16 @@ namespace Rocola
                 brocha.Color = ac;
                 g.DrawString(sec, fUsar, brocha, new RectangleF(x, 0, tope, h), sfIzq);
                 if (fApreta != null) fApreta.Dispose();
-                x += ts.Width + h * 0.55f;
+                x += ts.Width;
 
-                if (Total <= 1) return;   // una sola pagina: no hay nada que contar
-                int pag = Page; if (pag < 0) pag = 0; else if (pag >= Total) pag = Total - 1;
-
-                // Se mide TODO lo que falta antes de dibujar nada: la raya, los puntitos (si los hay) y el
-                // texto. Lo que no quepa, no se pone.
-                float r = Math.Max(2.2f, h * 0.115f), paso = r * 3.4f;
-                bool conPuntos = (Total <= 12);
-                float anchoPuntos = conPuntos ? (r + (Total - 1) * paso + r + h * 0.45f) : 0f;
-                string txt = "pagina " + (pag + 1) + " de " + Total;
-                float anchoTxt = g.MeasureString(txt, fPag).Width;
-                float tras = x + h * 0.5f;   // despues de la raya
-
-                if (tras + anchoPuntos + anchoTxt > w) { conPuntos = false; anchoPuntos = 0f; }
-                if (tras + anchoTxt > w) return;   // no cabe ni el texto: se queda solo el nombre
+                if (Total <= 1 || (!conPuntos0 && !conTxt0)) return;   // una sola pagina, o no cabe nada mas
+                int pag = pag0;
+                float r = r0, paso = paso0;
+                bool conPuntos = conPuntos0;
 
                 using (Pen sep = new Pen(Color.FromArgb(70, 150, 175, 225)))
                     g.DrawLine(sep, x, h * 0.26f, x, h * 0.74f);
-                x = tras;
+                x += h * 0.5f;
 
                 // LOS PUNTITOS. Con muchas paginas no caben ni se contarian de un vistazo, asi que a partir de
                 // doce se dice con numeros y ya.
@@ -11431,11 +11450,13 @@ namespace Rocola
                             using (Pen p2 = new Pen(Color.FromArgb(120, 150, 168, 205), Math.Max(1f, r * 0.5f)))
                                 g.DrawEllipse(p2, cx - rr * 0.75f, cy - rr * 0.75f, rr * 1.5f, rr * 1.5f);
                     }
-                    x += anchoPuntos;
+                    x += r + (Total - 1) * paso + r;
                 }
 
+                if (!conTxt0) return;
+                x += h * 0.45f;
                 brocha.Color = Color.FromArgb(150, 160, 190);
-                g.DrawString(txt, fPag, brocha, new RectangleF(x, 0, w - x, h), sfIzq);
+                g.DrawString(txt0, fPag, brocha, new RectangleF(x, 0, Math.Max(10f, w - x - 2f), h), sfIzq);
             }
 
             private static GraphicsPath Redondo(RectangleF r, float radio)
