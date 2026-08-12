@@ -142,8 +142,17 @@ namespace Rocola
         // bandas caen a cero, la aurora DESAPARECIA de golpe y al volver la musica APARECIA de golpe. Eso era
         // el parpadeo. Ahora hay un mando suave: entra en algo mas de un segundo y se va en unos tres, asi que
         // ni aparece ni desaparece nunca de un cuadro para otro.
+        //
+        // Y NUNCA LLEGA A CERO. Sin musica la aurora no se apaga: se queda EN REPOSO, baja y tenue, con su
+        // ondeo lento (el mismo AurOndaAlto de siempre, que es lo unico que la mueve cuando no hay bandas que
+        // seguir) y respirando muy despacio, una vuelta cada medio minuto. Asi el cielo nunca se queda vacio:
+        // ni en silencio, ni con un video puesto, ni en el modo atraccion.
+        private const float AurReposo = 0.44f;       // cuanta aurora queda cuando no suena nada
+        private const float AurReposoOnda = 0.20f;   // cuanto respira ese reposo (+-20%)
+        private const float AurReposoPaso = 0.0088f; // radianes por vuelta de reloj: una respiracion cada ~30 s
 #if ROCOLA_GPU
         private float auroraPres;
+        private float auroraFase;                    // fase de esa respiracion (se lleva a mano: no depende del reloj del sistema)
 #endif
         // ¿Hace falta analizar el espectro? Es el 90% del coste del analisis de audio, asi que cuando nadie
         // lo va a mirar (compilado sin GPU, o el usuario puso espectro=0) ni se calcula y el hilo de audio respira.
@@ -748,7 +757,10 @@ namespace Rocola
             if (!sbrAllowed) sbrOn = false;   // la maquina no cumple los requisitos del NIVEL 2: apagado si o si
         }
 
-        private static float Clampf(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
+        // Ojo con el orden: se pregunta "NO es mayor que lo" en vez de "es menor que lo". Con NaN las dos
+        // comparaciones normales dan false y el NaN salia tal cual por el otro lado; asi cae en lo, que es lo
+        // seguro. Lo mismo abajo en la tangente y en la escalera de tonos.
+        private static float Clampf(float v, float lo, float hi) { return !(v > lo) ? lo : (v > hi ? hi : v); }
 
         private void SaveConfigPrefs()
         {
@@ -2952,6 +2964,11 @@ namespace Rocola
                         try { object o = Get(media, "duration"); if (o != null) d = Convert.ToDouble(o); } catch { }
                         if (d > 0.05 && d < 36000) return (float)d;
                         if (preScanStop) break;
+                        // El reproductor puede tardar en rellenar la duracion, y cuando lo hace avisa por la
+                        // cola de mensajes de ESTE hilo. Si nadie la vacia, el aviso no llega nunca y todos los
+                        // videos se irian por el tope de tres segundos sin duracion. Este hilo no tiene ventanas
+                        // propias, asi que vaciarla aqui no puede repintar ni disparar nada de la rocola.
+                        try { Application.DoEvents(); } catch { }
                         System.Threading.Thread.Sleep(100);
                     }
                 }
@@ -4344,22 +4361,29 @@ namespace Rocola
                 specVis[b] = (v > prev) ? v : prev + (v - prev) * 0.22f;   // sube al instante, baja en ~0.2 s
             }
             // Y la PRESENCIA: sube y baja despacio, para que la aurora no aparezca ni desaparezca de golpe.
+            // Sin musica NO cae a cero: cae al REPOSO, que ademas respira (ver AurReposo).
+            auroraFase += AurReposoPaso;
+            if (auroraFase > 6.2831853f) auroraFase -= 6.2831853f;
             float pico = 0f;
             for (int b = 0; b < SpecBands; b++) if (specVis[b] > pico) pico = specVis[b];
-            float meta = (pico > 0.02f) ? 1f : 0f;
-            auroraPres += (meta - auroraPres) * (meta > auroraPres ? 0.075f : 0.014f);   // ~1.3 s para entrar, ~3 s para irse
-            if (auroraPres < 0.0025f) auroraPres = 0f; else if (auroraPres > 1f) auroraPres = 1f;
+            bool hayMusica = pico > 0.02f;
+            // Con musica sube DEPRISA (~1.3 s) hasta arriba; sin ella baja DESPACIO (~3 s) hasta el reposo, y
+            // ahi se queda respirando a ese mismo ritmo lento, que es lo que la deja viva sin llamar la
+            // atencion. La respiracion NO usa el ritmo rapido: si no, subiria a tirones y bajaria suave.
+            float meta = hayMusica ? 1f : (AurReposo * (1f + AurReposoOnda * (float)Math.Sin(auroraFase)));
+            auroraPres += (meta - auroraPres) * (hayMusica ? 0.075f : 0.014f);
+            if (auroraPres < 0f) auroraPres = 0f; else if (auroraPres > 1f) auroraPres = 1f;
         }
 
         // Estado del FONDO REACTIVO para el panel GPU. El relleno de color se apoya justo encima de la franja
-        // de estado (BotStripTop), que es donde el cielo se acaba, y sube desde ahi. Se apaga solo cuando no
-        // hay musica (las bandas caen a cero) y se atenua junto con el fondo mientras se navega, para que
-        // nunca le pelee a las portadas ni al texto.
+        // de estado (BotStripTop), que es donde el cielo se acaba, y sube desde ahi. Nunca se apaga -sin
+        // musica se queda en reposo, ver AurReposo- y se atenua junto con el fondo mientras se navega, para
+        // que nunca le pelee a las portadas ni al texto.
         private GpuAurora BuildAuroraState()
         {
             GpuAurora g = new GpuAurora();
             if (auroraAmount <= 0.004f) return g;
-            if (auroraPres <= 0.004f) return g;   // sin musica no se dibuja nada (la presencia ya llego a cero)
+            if (auroraPres <= 0.004f) return g;   // solo al arrancar, mientras la presencia sube desde cero
             int h = ClientSize.Height;
             g.Has = true; g.B = specVis;
             g.BaseY = BotStripTop(h) + 6f;
@@ -4392,6 +4416,14 @@ namespace Rocola
             // bastante mas fuerte, asi que en reposo -que es cuando nadie mira de cerca- luce entera, y en
             // cuanto alguien toca una tecla se serena hasta que vuelve a quedarse quieta.
             g.Dim = (0.36f + 0.64f * bgDim) * auroraPres;   // la presencia hace el fundido de entrada y de salida
+            // CUANTO HAY DE REPOSO en lo que se ve: 0 con la cancion sonando, 1 con la rocola callada. Es lo
+            // que le dice al panel si tiene que dibujar la forma lenta (AurCalma) en vez de las bandas. Va
+            // pegado a la presencia, asi que el relevo entre una y otra es el mismo fundido suave de siempre.
+            // La cuenta se mide contra el punto MAS ALTO de la respiracion: asi, en todo el rato que la
+            // rocola esta callada, el reposo vale 1 entero y su forma no cambia de tamano al respirar (lo que
+            // respira es el brillo, que es la presencia). Con musica cae a cero solo.
+            float cal = (1f - auroraPres) / (1f - AurReposo * (1f + AurReposoOnda));
+            g.Calma = (cal < 0f) ? 0f : (cal > 1f ? 1f : cal);
             return g;
         }
 
@@ -6922,6 +6954,7 @@ namespace Rocola
             int t = (lblNowTop != null) ? lblNowTop.Top - 4 : (lblNow != null ? lblNow.Top - 4 : h - 96);   // la franja arranca en la linea de ARRIBA
             if (t < h / 2) t = h / 2;
             if (t > h - 8) t = h - 8;
+            if (t < 0) t = 0;   // pantalla de alto ridiculo (arrancando, o minimizada): nunca por delante del borde
             return t;
         }
 
@@ -8210,7 +8243,7 @@ namespace Rocola
         // con esa; ademas alli se llama unas 2,600 veces por segundo, o sea nada.
         internal static float TanhRapida(float x)
         {
-            if (x < -3f) return -1f;
+            if (!(x > -3f)) return -1f;   // atrapa tambien NaN: ninguna comparacion con NaN es cierta
             if (x > 3f) return 1f;
             float x2 = x * x;
             return x * (27f + x2) / (27f + 9f * x2);
@@ -8246,6 +8279,15 @@ namespace Rocola
                 int n = src.Read(buffer, offset, count);
                 if (n > 0 && owner != null)
                 {
+                    // RED DE SEGURIDAD, y no es teorica: en una biblioteca con miles de archivos pobres o
+                    // recortados, uno dañado puede decodificar a NaN o a infinito. Eso no seria "un ruido y
+                    // ya": se queda PEGADO. Casi todo lo que viene despues arrastra un estado -el piso movil
+                    // del detector de golpes, la ganancia del limitador, la sonoridad que se esta midiendo de
+                    // la cancion, el promedio del EQ- y en cuanto entra un NaN esas cuentas ya no vuelven a
+                    // valer: el limitador se quedaria mudo el resto de la noche. Aqui se corta de raiz, ANTES
+                    // de medir nada. Es UNA comparacion por muestra, y de paso atrapa los valores absurdos
+                    // (un archivo roto que devuelve 1e30) que reventarian el nivelado.
+                    { int fin0 = offset + n; for (int i = offset; i < fin0; i++) { float x0 = buffer[i]; if (!(x0 >= -4f && x0 <= 4f)) buffer[i] = 0f; } }
                     owner.ReportAudioBlock(buffer, offset, n, WaveFormat.SampleRate, WaveFormat.Channels);   // mide el nivel CRUDO (beat + sonoridad + huella tonal) ANTES de tocar nada
                     float g = Gain * Master, ex = Excite;
                     float[] eqDb = EqDb;
