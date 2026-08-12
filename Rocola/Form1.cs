@@ -67,7 +67,8 @@ namespace Rocola
         // ---- Controles ----
         private LetterBar letterBar;
         private AlbumView albumView;
-        private Label lblHeader, lblStatus, lblNow, lblNext, lblCount, lblTime, lblAlbum, lblToast, lblCredits;
+        private Label lblStatus, lblNow, lblNext, lblCount, lblTime, lblAlbum, lblToast, lblCredits;
+        private HeaderView headerView;   // nombre de la seccion + en que pagina estas
         // Linea de ARRIBA de "Reproduciendo": vacia casi siempre. Cuando el titulo no cabe en una sola
         // linea, la primera mitad se pinta aqui y el resto en lblNow (que sigue siendo la ULTIMA linea, la
         // que lleva el letrero MEJORADA detras). El hueco esta reservado SIEMPRE, asi que el acomodo de la
@@ -2573,7 +2574,7 @@ namespace Rocola
                 RefreshAlbums(); this.Focus();
             };
 
-            lblHeader = new Label(); TransLabel(lblHeader, 12.5f);
+            headerView = new HeaderView();
 
             albumView = new AlbumView();
             albumView.Sky = formStars;   // MISMO campo de estrellas que el fondo del form: la rejilla pinta su ventana (una sola pieza, sin costuras)
@@ -2661,7 +2662,7 @@ namespace Rocola
             attractView.GetCoverByPath = LoadCoverByPath;
 
             Controls.Add(lblStatus); Controls.Add(helpBar); Controls.Add(lblCredits);
-            Controls.Add(letterBar); Controls.Add(lblHeader);
+            Controls.Add(letterBar); Controls.Add(headerView);
             Controls.Add(albumView); Controls.Add(panelSongs);
             Controls.Add(lblNowTop); Controls.Add(lblNow); Controls.Add(lblMejorada); Controls.Add(lblNext); Controls.Add(lblCount); Controls.Add(progress); Controls.Add(lblTime);
             Controls.Add(miniCube);
@@ -2720,11 +2721,25 @@ namespace Rocola
             lblStatus.SetBounds(statusX, 15, Math.Max(40, topRight - statusX), 22);
             if (lblConfig != null) lblConfig.SetBounds(0, 0, W, H);   // asistente de config: pantalla completa
 
-            int lettersY = 48, lettersH = 40;
+            // LA BARRA DE LETRAS CRECE CON LA PANTALLA. Estaba clavada en 40 px de alto: en 1024x768 se ve
+            // bien, pero en una pantalla ancha cada casilla pasa de 100 px y la letra seguia siendo la misma
+            // pizca perdida en medio de tanto hueco. Con 768 de alto la cuenta da 40 exactos, asi que en la
+            // maquina del bar no cambia absolutamente nada.
+            // ...y tambien con lo ANCHA que le queda cada casilla. En una pantalla ultra ancha las 29 casillas
+            // se reparten mas de 3000 px: quedan de 117 de ancho por 40 de alto, una ranura achatada con una
+            // letra chiquita perdida dentro. Se le pide al alto que acompane al ancho de casilla para que la
+            // casilla siga siendo una casilla. En 1024x768 las dos cuentas dan 40 o menos, asi que la maquina
+            // del bar no cambia en nada.
+            int lettersY = 48;
+            int lettersH = H * 40 / 768;
+            int porCasilla = (contentW * 8) / (29 * 10);   // 0.80 del ancho de casilla
+            if (porCasilla > lettersH) lettersH = porCasilla;
+            if (lettersH < 40) lettersH = 40; else if (lettersH > 104) lettersH = 104;
             letterBar.SetBounds(pad, lettersY, contentW, lettersH);
 
             int headerY = lettersY + lettersH + 10;
-            lblHeader.SetBounds(pad, headerY + 3, Math.Max(50, contentW), 28);
+            int headerH = Math.Max(28, lettersH * 7 / 10);   // con la barra de 40 sale 28, el de siempre
+            headerView.SetBounds(pad, headerY + 3, Math.Max(50, contentW), headerH);
 
             // LA FRANJA DE ESTADO, en grande. Es lo que se lee DE LEJOS -de pie, a dos metros de la maquina-
             // y estaba pensada para mirarla de cerca: letra chica, cubo de 64 y una barra de duracion de 16 px
@@ -2765,7 +2780,7 @@ namespace Rocola
             lblNowTop.SetBounds(pad, nowTopY, leftW, nowLineH);
             iaNowRowW = leftW; PositionMejorada();   // parte el titulo en 1 o 2 lineas y acomoda el letrero MEJORADA tras la ultima
 
-            int albumY = headerY + 44;
+            int albumY = headerY + 3 + headerH + 13;
             int albumBottom = nowTopY - 12;   // la rejilla termina antes del hueco reservado para la 2a linea
             int albumH = Math.Max(120, albumBottom - albumY);
             albumView.SetBounds(pad, albumY, contentW, albumH);
@@ -2813,6 +2828,17 @@ namespace Rocola
         }
 
         private void Letter_Refresh() { letterBar.Current = currentLetter; letterBar.Invalidate(); }
+
+        // El color de la seccion: dorado para lo mas sonado, el azul de los videos para los videos y, para una
+        // letra, el color del genero que manda dentro de ella -el MISMO que luce arriba en la barra-.
+        private Color AcentoSeccion()
+        {
+            if (currentLetter == TopMark) return Color.FromArgb(255, 205, 90);
+            if (currentLetter == VideoMark) return Color.FromArgb(140, 220, 232);
+            string et;
+            if (letterTag != null && letterTag.TryGetValue(currentLetter, out et)) return ColorDeEtiqueta(et);
+            return DefaultAccent;
+        }
 
         private static readonly string[] AudioExt = { ".mp3", ".wav" };
         private static readonly string[] VideoExt = { ".mp4", ".avi", ".wmv", ".mpg", ".mpeg", ".mov", ".mkv", ".flv", ".m4v", ".vob", ".divx", ".3gp", ".asf" };
@@ -2895,7 +2921,7 @@ namespace Rocola
             topDirty = true;   // OPTIMIZACION (TOP): la biblioteca se re-escaneo (nuevos Album/Track) -> reconstruir
             BuildTopDiscs();
             if (topDiscs != null && topDiscs.Count > 0) letterAvailable.Add(TopMark);   // hay estadisticas -> seccion "Lo mas sonado"
-            LeeTintes(tracks.Count);   // el color de cada letra, si ya se calculo para esta misma biblioteca
+            LeeTintes(FirmaBiblioteca());   // el color de cada letra, si ya se calculo para esta misma biblioteca
             RecalculaLetras();
 
             string order = "\u2605#ABCDEFGHIJKLMNOPQRSTUVWXYZ\u25BA";
@@ -3136,11 +3162,18 @@ namespace Rocola
         // la biblioteca, asi que se calcula una vez en segundo plano y se guarda.
         private string LetterTintFile() { return Path.Combine(Application.StartupPath, "rocola_letras.txt"); }
 
+        // Con que biblioteca se calcularon los colores. Si esto cambia, hay que volver a leer los generos.
+        private int FirmaBiblioteca() { return tracks.Count * 31 + albums.Count; }
+
         // Arma los dos diccionarios ENTEROS y se los entrega a la barra de una pieza. La barra los lee desde
         // el dibujado, asi que nunca puede pillar uno a medio llenar: o ve el de antes, o ve el nuevo.
         private void RecalculaLetras()
         {
             if (letterBar == null) return;
+            // Mientras se re-escanea, las listas son del worker y byLetter se esta REHACIENDO. Este aviso puede
+            // llegar justo entonces (lo manda el paseo de fondo por BeginInvoke), asi que aqui no se mira nada:
+            // al terminar el escaneo se recalcula de todos modos.
+            if (libBuilding) return;
             Dictionary<char, int> cuenta = new Dictionary<char, int>();
             foreach (KeyValuePair<char, List<Album>> kv in byLetter)
             {
@@ -3261,7 +3294,7 @@ namespace Rocola
             // paseo de fondo le lee el ID3 a cada uno DESPUES de las duraciones. Se leen con un Track SUELTO,
             // no con el de la biblioteca, para no tocar desde este hilo nada que la pantalla este usando.
             char[] gLet = null; string[] gRuta = null;
-            int firmaLet = tracks.Count;
+            int firmaLet = FirmaBiblioteca();
             if (tintesPend)
             {
                 List<char> cl = new List<char>(tracks.Count);
@@ -4255,8 +4288,10 @@ namespace Rocola
             albumView.CancelHandoff();   // cambio de pagina/letra: cancela cualquier giro de relevo en curso
             albumView.Invalidate();
 
-            string secName = (currentLetter == VideoMark) ? "VIDEOS" : (currentLetter == TopMark) ? "LO MAS SONADO" : ("Letra " + currentLetter);
-            lblHeader.Text = secName + "    -    pagina " + (page + 1) + " de " + totalPages;
+            headerView.Section = (currentLetter == VideoMark) ? "VIDEOS" : (currentLetter == TopMark) ? "LO MAS SONADO" : ("LETRA " + currentLetter);
+            headerView.Page = page; headerView.Total = totalPages;
+            headerView.Accent = AcentoSeccion();
+            headerView.Invalidate();
             Letter_Refresh();
         }
 
@@ -4679,7 +4714,7 @@ namespace Rocola
             cubeBox.Angle = 0;
             albumView.Visible = false;
             letterBar.Visible = false;
-            lblHeader.Visible = false;
+            headerView.Visible = false;
             panelSongs.Visible = true;
             this.Focus();
 #if ROCOLA_GPU
@@ -5057,7 +5092,7 @@ namespace Rocola
             panelSongs.Visible = false;
             albumView.Visible = true;
             letterBar.Visible = true;
-            lblHeader.Visible = true;
+            headerView.Visible = true;
             this.Focus();
 #if ROCOLA_GPU
             if (gpuPanel != null && gpuEnabled) SyncGpuFullScreen();   // aplica el modo navegacion YA: no ver el interior detras un instante
@@ -5935,7 +5970,7 @@ namespace Rocola
                 LoudFile(), EqFile(), LibStatsFile(), LibCacheFile(), ConfigFile, KeysFile(),
                 Path.Combine(sp, "rocola_ia.bin"), Path.Combine(sp, "rocola_incompatibles.txt"),
                 IaDoneFile(), DeepDoneFile(),  // sin estas dos, un repaso a fondo empezaria de cero y la IA repetiria ejemplos
-                DurFastFile()
+                DurFastFile(), LetterTintFile()   // sin este, la barra tendria que releer el ID3 de toda la biblioteca
             };
             System.Threading.ThreadPool.QueueUserWorkItem(delegate   // fuera del hilo de la interfaz (no frena nada)
             {
@@ -7701,7 +7736,7 @@ namespace Rocola
                 mainH = 60;   // navegacion: hasta el fondo del encabezado/letras/instrucciones
                 if (helpBar != null && helpBar.Bottom > mainH) mainH = helpBar.Bottom;
                 if (letterBar != null && letterBar.Visible && letterBar.Bottom > mainH) mainH = letterBar.Bottom;
-                if (lblHeader != null && lblHeader.Bottom > mainH) mainH = lblHeader.Bottom;
+                if (headerView != null && headerView.Bottom > mainH) mainH = headerView.Bottom;
                 if (lblStatus != null && lblStatus.Bottom > mainH) mainH = lblStatus.Bottom;
                 mainH += 6;
             }
@@ -7755,7 +7790,7 @@ namespace Rocola
                 {
                     DrawCtrlOverlay(g, helpBar);
                     DrawCtrlOverlay(g, letterBar);
-                    DrawLabelOverlay(g, lblHeader);
+                    DrawCtrlOverlay(g, headerView);
                     DrawLabelOverlay(g, lblStatus);
                 }
                 // Las etiquetas de estado de abajo YA NO van aqui: tienen su propia textura chica
@@ -7929,7 +7964,18 @@ namespace Rocola
             {
                 sb = Mix(sb, 'N'); sb = Mix(sb, letterBar.Current); sb = Mix(sb, letterBar.Letters);
                 sb = Mix(sb, letterBar.Available == null ? 0 : letterBar.Available.Count);
-                sb = Mix(sb, lblHeader != null ? lblHeader.Text : ""); sb = Mix(sb, lblStatus != null ? lblStatus.Text : "");
+                // Los NUMEROS y los COLORES de las letras los va aprendiendo el paseo de fondo, y el
+                // DESLIZAMIENTO al cambiar de letra se mueve solo. Sin esto, en modo GPU la textura no se
+                // rehacia: los numeros no aparecian hasta cambiar de letra y el deslizamiento no se veia.
+                sb = Mix(sb, letterBar.DatosSig());
+                if (letterBar.AnimViva) sb = Mix(sb, (int)(letterBar.AnimPaso * 64f));
+                if (headerView != null)
+                {
+                    Color acCab = headerView.Accent;   // a una local: es un tipo por valor dentro de un Control
+                    sb = Mix(sb, headerView.Section); sb = Mix(sb, headerView.Page);
+                    sb = Mix(sb, headerView.Total); sb = Mix(sb, acCab.ToArgb());
+                }
+                sb = Mix(sb, lblStatus != null ? lblStatus.Text : "");
             }
             // NI la fase del pulso de la letra NI el destello del boton pulsado (FlashSig) entran ya en la firma:
             // ambos los dibuja la GPU como halos aparte (FillUiGlows). Antes obligaban a rehacer Y RE-SUBIR esta
@@ -7967,10 +8013,11 @@ namespace Rocola
             g.TranslateTransform(c.Left, c.Top);
             HelpBar hb = c as HelpBar;
             if (hb != null) hb.RenderContent(g, true);   // forGpu: sus pulsos van como halos por quad, no en la textura
+            else { HeaderView hv = c as HeaderView; if (hv != null) hv.RenderContent(g);
             else { LetterBar lb = c as LetterBar; if (lb != null) lb.RenderContent(g, true);
             else { ProgressView pv = c as ProgressView; if (pv != null) pv.RenderContent(g);
             else { SongListView sl = c as SongListView; if (sl != null) sl.RenderContent(g);
-            else { SongPagerBar sp = c as SongPagerBar; if (sp != null) sp.RenderContent(g); } } } }
+            else { SongPagerBar sp = c as SongPagerBar; if (sp != null) sp.RenderContent(g); } } } } }
             g.Restore(st);
         }
 
@@ -10801,11 +10848,50 @@ namespace Rocola
             private SolidBrush goldBrush; private Pen goldPen; private SolidBrush goldTextBrush;
             private Bitmap stripCache; private int scW = -1, scH = -1; private char scCur = '\0';
             private string scLetters; private int scAvailN = -2; private int scDatos = 0;     // firma de la tira cacheada
-            private Font fMain, fVideo, fTop, fNum; private float fontSlot = -1f;   // cuerpos elegidos, y para que hueco
+            private Font fMain, fVideo, fTop, fNum;
+            private float fontSlot = -1f, fontAlto = -1f;   // cuerpos elegidos, y para que hueco de ancho y alto
             private string lblVideo = "VIDEO";                          // palabra, o simbolo si no cabe
             private StringFormat sfCen; private SolidBrush whiteB;
             public string Letters = "\u2605#ABCDEFGHIJKLMNOPQRSTUVWXYZ\u25BA";
-            public char Current = '#';
+            // AL CAMBIAR DE LETRA la capsula se DESLIZA de la casilla que dejas a la que eliges, en vez de
+            // aparecer de golpe al otro lado de la barra. Dura poco y frena al llegar: eso es lo que hace que
+            // se lea como un movimiento y no como un parpadeo.
+            private const int AnimMs = 190;
+            private char cur = '#', animDesde = '\0';
+            private readonly System.Diagnostics.Stopwatch animReloj = new System.Diagnostics.Stopwatch();
+            public char Current
+            {
+                get { return cur; }
+                set
+                {
+                    if (value == cur) return;
+                    // Solo se desliza si las dos casillas existen; si no, cambio seco (que es lo que habia).
+                    if (Letters != null && Letters.IndexOf(cur) >= 0 && Letters.IndexOf(value) >= 0)
+                    { animDesde = cur; animReloj.Reset(); animReloj.Start(); }
+                    cur = value;
+                }
+            }
+            // 0 = acaba de salir, 1 = ya llego. Fuera de la animacion vale 1.
+            public float AnimPaso
+            {
+                get
+                {
+                    if (!animReloj.IsRunning) return 1f;
+                    double ms = animReloj.Elapsed.TotalMilliseconds;
+                    if (ms >= AnimMs) { animReloj.Stop(); return 1f; }
+                    float t = (float)(ms / AnimMs);
+                    float q = 1f - t;
+                    return 1f - q * q * q;   // frena al llegar
+                }
+            }
+            // Ojo: NO vale con preguntarle al cronometro si anda, porque quien lo para es la lectura de
+            // AnimPaso. Si nadie la ha leido todavia, el cronometro sigue andando aunque el tiempo ya haya
+            // pasado, y entonces "hay animacion" mentiria (y en modo GPU obligaria a rehacer la textura para
+            // siempre). Se mira el tiempo, que es la verdad.
+            public bool AnimViva
+            {
+                get { return animReloj.IsRunning && animReloj.Elapsed.TotalMilliseconds < AnimMs; }
+            }
             public double Phase = 0;
             public HashSet<char> Available;
             // Cuantas canciones hay detras de cada letra, y de que color es el genero que MANDA en ella. Form1
@@ -10825,10 +10911,14 @@ namespace Rocola
             {
                 int n = Letters.Length;
                 if (n == 0 || Width <= 0) { base.OnMouseClick(e); return; }
-                int slot = Width / n;
-                if (slot <= 0) { base.OnMouseClick(e); return; }
-                int i = e.X / slot;
-                if (i >= 0 && i < n && OnPick != null) OnPick(Letters[i]);
+                // CON DECIMALES, igual que se DIBUJA. Con division entera la casilla en la que crees pinchar y
+                // la que la barra dibuja se iban separando hacia la derecha -en 1024 casi un tercio de casilla
+                // al final, y con un video al lado MAS DE UNA CASILLA ENTERA-: pinchabas una letra y te llevaba
+                // a la de al lado.
+                float slot = (float)Width / n;
+                int i = (int)(e.X / slot);
+                if (i < 0) i = 0; else if (i >= n) i = n - 1;
+                if (OnPick != null) OnPick(Letters[i]);
                 base.OnMouseClick(e);
             }
 
@@ -10844,10 +10934,21 @@ namespace Rocola
             }
 
             // ---------- REPARTO DE ALTO ----------
-            // Debajo de cada letra va su numero de canciones, pero solo si hay sitio: con un video puesto al
-            // lado la barra se queda a la mitad de ancho y ahi no cabria ni el numero ni se leeria.
-            private bool HayCuenta(float slot, int h) { return Counts != null && slot >= 21f && h >= 34; }
-            private float AltoCuenta(float slot, int h) { return HayCuenta(slot, h) ? 12f : 0f; }
+            // Debajo de cada letra va su numero de canciones, pero solo si hay sitio (con un video al lado la
+            // barra se queda a la mitad de ancho y ahi no se leeria) Y solo si de verdad hay algun numero que
+            // ensenar: reservarle el renglon a un numero que nunca llega deja las letras subidas, pegadas al
+            // techo de la barra y con un hueco vacio debajo.
+            private bool HayCuenta(float slot, int h)
+            {
+                if (Counts == null || slot < 21f || h < 34 || Letters == null) return false;
+                for (int i = 0; i < Letters.Length; i++)
+                {
+                    int n;
+                    if (Counts.TryGetValue(Letters[i], out n) && n > 0) return true;
+                }
+                return false;
+            }
+            private float AltoCuenta(float slot, int h) { return HayCuenta(slot, h) ? h * 0.30f : 0f; }
 
             // EL CUERPO DE LETRA SE ELIGE SEGUN EL HUECO QUE HAY. "VIDEO" mide 36 px y la casilla 34 con la
             // pantalla entera; y con un video puesto al lado la barra se encoge a la mitad, asi que no cabe.
@@ -10856,15 +10957,21 @@ namespace Rocola
             // grande con el que QUEPA, y como el formato ya no deja partir renglon, no puede volver a pasar.
             private void AjustaFuentes(Graphics g, float slot, int h)
             {
-                if (fMain != null && Math.Abs(fontSlot - slot) < 0.5f) return;
+                float altoL = h - AltoCuenta(slot, h);
+                if (fMain != null && Math.Abs(fontSlot - slot) < 0.5f && Math.Abs(fontAlto - altoL) < 0.5f) return;
                 if (fMain != null) fMain.Dispose();
                 if (fVideo != null) fVideo.Dispose();
                 if (fTop != null) fTop.Dispose();
                 if (fNum != null) { fNum.Dispose(); fNum = null; }
                 float hueco = slot - 2f;
-                fMain = MayorQueQuepa(g, "W", 10.5f, hueco);
-                fTop = MayorQueQuepa(g, "\u2605", 11.5f, hueco);
-                Font fPal = MayorQueQuepa(g, "VIDEO", 7.5f, hueco);
+                // EL CUERPO SALE DEL ALTO DE LA BARRA, no de un numero fijo. Con 40 px de barra da los 10.5
+                // puntos de siempre, asi que en 1024x768 no cambia nada; pero en una pantalla ancha, donde la
+                // barra crece, las letras crecen con ella en vez de quedarse chiquitas y perdidas en medio de
+                // una casilla de 100 pixeles.
+                float cuerpo = altoL * 0.375f;
+                fMain = CuerpoQueQuepa(g, "W", hueco, cuerpo);
+                fTop = CuerpoQueQuepa(g, "\u2605", hueco, cuerpo * 1.10f);
+                Font fPal = CuerpoQueQuepa(g, "VIDEO", hueco, cuerpo * 0.72f);
                 if (g.MeasureString("VIDEO", fPal).Width <= hueco)
                 {
                     lblVideo = "VIDEO"; fVideo = fPal;
@@ -10875,15 +10982,16 @@ namespace Rocola
                     // letra, se lee igual de lejos y dice lo mismo.
                     fPal.Dispose();
                     lblVideo = "\u25BA";
-                    fVideo = MayorQueQuepa(g, "\u25BA", 10.5f, hueco);
+                    fVideo = CuerpoQueQuepa(g, "\u25BA", hueco, cuerpo);
                 }
-                if (HayCuenta(slot, h)) fNum = MayorQueQuepa(g, "8888", 6.5f, hueco);
-                fontSlot = slot;
+                if (AltoCuenta(slot, h) > 0f) fNum = CuerpoQueQuepa(g, "8888", hueco, cuerpo * 0.62f);
+                fontSlot = slot; fontAlto = altoL;
             }
-            // El cuerpo mas grande, empezando por el de siempre y bajando de medio en medio, con el que
-            // 'muestra' quepa en 'hueco'. Nunca baja de 5 puntos: por debajo no se leeria de todos modos.
-            private Font MayorQueQuepa(Graphics g, string muestra, float cuerpo, float hueco)
+            // El cuerpo pedido, encogido de medio en medio lo justo para que 'muestra' quepa a lo ancho de su
+            // casilla. Nunca baja de 5 puntos: por debajo no se leeria de todos modos.
+            private Font CuerpoQueQuepa(Graphics g, string muestra, float hueco, float cuerpo)
             {
+                if (!(cuerpo > 5f)) cuerpo = 5f;
                 for (; ; )
                 {
                     Font f = new Font(this.Font.FontFamily, cuerpo, FontStyle.Bold);
@@ -10910,6 +11018,7 @@ namespace Rocola
 
             // Firma de los datos que se pintan en la tira: si cambia, hay que rehacerla. El rastreo de fondo
             // va aprendiendo generos y contando canciones, y la barra tiene que enterarse.
+            public int DatosSig() { return FirmaDatos(); }
             private int FirmaDatos()
             {
                 int f = 17;
@@ -11005,7 +11114,15 @@ namespace Rocola
                 Color tono = TonoLetra(ch, avail);
                 b.Color = Color.FromArgb(avail ? 185 : 105,
                                          (tono.R * 3 + 90) / 4, (tono.G * 3 + 105) / 4, (tono.B * 3 + 150) / 4);
-                g.DrawString(cuantas.ToString(), fNum, b, new RectangleF(i * slot, h - bajo - 1f, slot, bajo), sfCen);
+                g.DrawString(TextoCuenta(cuantas), fNum, b, new RectangleF(i * slot, h - bajo - 1f, slot, bajo), sfCen);
+            }
+            // El hueco esta medido para CUATRO cifras. Una biblioteca con mas de 9999 canciones en una sola
+            // letra escribiria un numero mas largo del que cabe, asi que a partir de ahi se dice en miles.
+            private static string TextoCuenta(int n)
+            {
+                if (n < 10000) return n.ToString();
+                int miles = n / 1000;
+                return (miles > 999 ? 999 : miles) + "k";
             }
 
             protected override void OnPaint(PaintEventArgs e) { RenderContent(e.Graphics, false); }
@@ -11019,7 +11136,7 @@ namespace Rocola
                 int i = Letters.IndexOf(Current); if (i < 0) return false;
                 float slot = (float)Width / n;
                 float altoL = Height - AltoCuenta(slot, Height);
-                cx = i * slot + slot / 2f; cy = altoL / 2f;
+                cx = XCapsula(i, slot) + slot / 2f; cy = altoL / 2f;   // mientras se desliza, el halo va con ella
                 r = Math.Max(slot, altoL) * 0.75f;
                 return true;
             }
@@ -11036,13 +11153,24 @@ namespace Rocola
                 r = Math.Max(slot, altoL) * 0.75f;
                 return true;
             }
+            // La X de la casilla elegida AHORA MISMO: mientras dura el deslizamiento va entre la casilla que
+            // se deja y la que se elige; el resto del tiempo es la de destino y punto.
+            private float XCapsula(int iDestino, float slot)
+            {
+                float paso = AnimPaso;
+                if (paso >= 1f) return iDestino * slot;
+                int iDe = (Letters != null) ? Letters.IndexOf(animDesde) : -1;
+                if (iDe < 0) return iDestino * slot;
+                return (iDe + (iDestino - iDe) * paso) * slot;
+            }
+
             public void RenderContent(Graphics g) { RenderContent(g, false); }
             // Dibuja la barra de letras en cualquier Graphics (el control, o la textura de UI del modo GPU).
             // forGpu=true: brillos FIJOS (mitad del pulso) en la textura; el pulso vivo lo ponen los halos por
             // quad (GetCurrentGlow/GetTopGlow) -> la textura de UI ya no se rehace ~13 veces/seg por esta barra.
             public void RenderContent(Graphics g, bool forGpu)
             {
-                int w = Width, h = Height, n = Letters.Length;
+                int w = Width, h = Height, n = (Letters == null) ? 0 : Letters.Length;
                 if (w < 4 || h < 4 || n == 0) return;
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 float slot = (float)w / n;
@@ -11073,8 +11201,20 @@ namespace Rocola
                     bool isVideo = (ch == VideoMark);
                     string lbl = isVideo ? lblVideo : ch.ToString();
                     Font useF = isVideo ? fVideo : fMain;
+                    float paso = AnimPaso, xCap = XCapsula(i, slot);
                     RectangleF slotRect = new RectangleF(i * slot, 0, slot, altoL);
-                    RectangleF box = new RectangleF(i * slot + 3.5f, 3.5f, slot - 7f, altoL - 7f);
+                    // Mientras la capsula viaja, la letra de destino no puede quedarse en blanco: la tira
+                    // cacheada la deja fuera (es la elegida), asi que aqui se dibuja con su color normal y se
+                    // va poniendo blanca conforme la capsula llega.
+                    if (paso < 1f)
+                    {
+                        // Se reusa la brocha de siempre: Grabada le pone el color que necesita, y mas abajo se
+                        // le vuelve a poner el suyo antes de usarla. Una brocha nueva por cuadro seria basura
+                        // para el recolector justo mientras algo se esta moviendo.
+                        bool hayD = (Available == null) || Available.Contains(ch);
+                        Grabada(g, whiteB, lbl, useF, slotRect, TonoLetra(ch, hayD), hayD);
+                    }
+                    RectangleF box = new RectangleF(xCap + 3.5f, 3.5f, slot - 7f, altoL - 7f);
                     if (pulsePath == null || box != pulseBox)   // misma casilla -> misma trayectoria
                     {
                         if (pulsePath != null) pulsePath.Dispose();
@@ -11096,6 +11236,7 @@ namespace Rocola
                     g.DrawPath(pulsePen, pulsePath);
                     pulsePen.Color = Color.FromArgb(215 + (int)(pulse * 40), 225, 242, 255); pulsePen.Width = 1.1f;
                     g.DrawPath(pulsePen, pulsePath);
+                    whiteB.Color = (paso >= 1f) ? Color.White : Color.FromArgb((int)(255 * paso), 255, 255, 255);
                     g.DrawString(lbl, useF, whiteB, slotRect, sfCen);
                     break;
                 }
@@ -11112,7 +11253,7 @@ namespace Rocola
                     if (topSel)
                     {
                         // SELECCIONADA: capsula dorada, del mismo corte que la de neon de las letras.
-                        RectangleF gbx = new RectangleF(gsl.X + 3.5f, 3.5f, gsl.Width - 7f, altoL - 7f);
+                        RectangleF gbx = new RectangleF(XCapsula(topI, slot) + 3.5f, 3.5f, gsl.Width - 7f, altoL - 7f);
                         int ga = 80 + (int)(gpu * 150);
                         if (goldPath == null || gbx != goldBox) { if (goldPath != null) goldPath.Dispose(); goldPath = RoundRectF(gbx, 9); goldBox = gbx; }
                         if (goldBrush == null) goldBrush = new SolidBrush(Color.Black);
@@ -11146,6 +11287,161 @@ namespace Rocola
             {
                 GraphicsPath p = new GraphicsPath();
                 float d = radius * 2;
+                if (d > r.Height) d = r.Height;
+                if (d > r.Width) d = r.Width;
+                if (d < 2) d = 2;
+                p.AddArc(r.X, r.Y, d, d, 180, 90);
+                p.AddArc(r.Right - d, r.Y, d, d, 270, 90);
+                p.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
+                p.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
+                p.CloseFigure();
+                return p;
+            }
+        }
+
+        // ==========  ENCABEZADO DE LA SECCION  ==========
+        // Antes era una etiqueta de texto plano: "LO MAS SONADO    -    pagina 1 de 3". Ahora el nombre de la
+        // seccion va en SU color -el mismo que la letra luce en la barra de arriba- y las paginas se ven de un
+        // vistazo como puntitos: cuantas hay y en cual estas se sabe sin leer, que es lo que le sirve a alguien
+        // que esta de pie delante de la maquina.
+        private class HeaderView : Control
+        {
+            public string Section = "";
+            public int Page = 0, Total = 1;
+            public Color Accent = DefaultAccent;
+
+            private Font fSec, fPag; private float fontAlto = -1f;
+            private SolidBrush brocha; private StringFormat sfIzq;
+
+            public HeaderView()
+            {
+                this.SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.SupportsTransparentBackColor, true);
+                this.BackColor = Color.Transparent;
+                this.TabStop = false;   // aqui no se pincha nada: antes era una etiqueta, que nunca tomaba el foco
+            }
+
+            private void EnsureRes(int h)
+            {
+                if (brocha == null) brocha = new SolidBrush(Color.White);
+                if (sfIzq == null)
+                {
+                    sfIzq = new StringFormat();
+                    sfIzq.Alignment = StringAlignment.Near; sfIzq.LineAlignment = StringAlignment.Center;
+                    sfIzq.FormatFlags = StringFormatFlags.NoWrap;
+                }
+                if (fSec != null && Math.Abs(fontAlto - h) < 0.5f) return;
+                if (fSec != null) fSec.Dispose();
+                if (fPag != null) fPag.Dispose();
+                // Los cuerpos salen del alto del propio encabezado: con 28 px dan los 12.5 puntos de siempre.
+                fSec = new Font(this.Font.FontFamily, h * 0.446f, FontStyle.Bold);
+                fPag = new Font(this.Font.FontFamily, h * 0.303f, FontStyle.Bold);
+                fontAlto = h;
+            }
+
+            // El color del acento, subido hacia el blanco lo justo para que un genero oscuro se siga leyendo.
+            private static Color Claro(Color c)
+            {
+                return Color.FromArgb(255, c.R + (int)((255 - c.R) * 0.40f),
+                                           c.G + (int)((255 - c.G) * 0.40f),
+                                           c.B + (int)((255 - c.B) * 0.40f));
+            }
+
+            protected override void OnPaint(PaintEventArgs e) { RenderContent(e.Graphics); }
+            public void RenderContent(Graphics g)
+            {
+                int w = Width, h = Height;
+                if (w < 8 || h < 8) return;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                EnsureRes(h);
+                Color ac = Claro(Accent);
+                float x = 0f;
+
+                // Una pastilla del color de la seccion delante del nombre: ata el encabezado con la letra que
+                // esta encendida arriba, para que se vea que hablan de lo mismo.
+                float pw = Math.Max(3f, h * 0.13f), ph = h * 0.58f;
+                using (SolidBrush pb = new SolidBrush(Color.FromArgb(230, ac)))
+                using (GraphicsPath pp = Redondo(new RectangleF(x, (h - ph) / 2f, pw, ph), pw / 2f))
+                    g.FillPath(pb, pp);
+                x += pw + h * 0.32f;
+
+                // EL NOMBRE MANDA, pero no puede comerse la fila entera: si no cabe con el cuerpo elegido, se
+                // encoge hasta caber. Y lo que venga detras solo se dibuja SI CABE ENTERO; nada se dibuja "a
+                // medias" ni se sale por la derecha.
+                string sec = Section ?? "";
+                Font fUsar = fSec; Font fApreta = null;
+                float tope = w - x;
+                SizeF ts = g.MeasureString(sec, fUsar);
+                if (ts.Width > tope)
+                {
+                    float cuerpo = fSec.SizeInPoints;
+                    while (cuerpo > 6f)
+                    {
+                        cuerpo -= 0.5f;
+                        if (fApreta != null) fApreta.Dispose();
+                        fApreta = new Font(this.Font.FontFamily, cuerpo, FontStyle.Bold);
+                        ts = g.MeasureString(sec, fApreta);
+                        if (ts.Width <= tope) break;
+                    }
+                    if (fApreta != null) fUsar = fApreta;
+                }
+                brocha.Color = Color.FromArgb(160, 0, 0, 0);
+                g.DrawString(sec, fUsar, brocha, new RectangleF(x, 1.4f, tope, h), sfIzq);
+                brocha.Color = ac;
+                g.DrawString(sec, fUsar, brocha, new RectangleF(x, 0, tope, h), sfIzq);
+                if (fApreta != null) fApreta.Dispose();
+                x += ts.Width + h * 0.55f;
+
+                if (Total <= 1) return;   // una sola pagina: no hay nada que contar
+                int pag = Page; if (pag < 0) pag = 0; else if (pag >= Total) pag = Total - 1;
+
+                // Se mide TODO lo que falta antes de dibujar nada: la raya, los puntitos (si los hay) y el
+                // texto. Lo que no quepa, no se pone.
+                float r = Math.Max(2.2f, h * 0.115f), paso = r * 3.4f;
+                bool conPuntos = (Total <= 12);
+                float anchoPuntos = conPuntos ? (r + (Total - 1) * paso + r + h * 0.45f) : 0f;
+                string txt = "pagina " + (pag + 1) + " de " + Total;
+                float anchoTxt = g.MeasureString(txt, fPag).Width;
+                float tras = x + h * 0.5f;   // despues de la raya
+
+                if (tras + anchoPuntos + anchoTxt > w) { conPuntos = false; anchoPuntos = 0f; }
+                if (tras + anchoTxt > w) return;   // no cabe ni el texto: se queda solo el nombre
+
+                using (Pen sep = new Pen(Color.FromArgb(70, 150, 175, 225)))
+                    g.DrawLine(sep, x, h * 0.26f, x, h * 0.74f);
+                x = tras;
+
+                // LOS PUNTITOS. Con muchas paginas no caben ni se contarian de un vistazo, asi que a partir de
+                // doce se dice con numeros y ya.
+                if (conPuntos)
+                {
+                    float cy = h / 2f;
+                    for (int i = 0; i < Total; i++)
+                    {
+                        float cx = x + r + i * paso;
+                        bool esta = (i == pag);
+                        float rr = esta ? r * 1.35f : r;
+                        if (esta)
+                        {
+                            using (SolidBrush halo = new SolidBrush(Color.FromArgb(60, ac)))
+                                g.FillEllipse(halo, cx - rr * 2.1f, cy - rr * 2.1f, rr * 4.2f, rr * 4.2f);
+                            using (SolidBrush b2 = new SolidBrush(ac))
+                                g.FillEllipse(b2, cx - rr, cy - rr, rr * 2f, rr * 2f);
+                        }
+                        else
+                            using (Pen p2 = new Pen(Color.FromArgb(120, 150, 168, 205), Math.Max(1f, r * 0.5f)))
+                                g.DrawEllipse(p2, cx - rr * 0.75f, cy - rr * 0.75f, rr * 1.5f, rr * 1.5f);
+                    }
+                    x += anchoPuntos;
+                }
+
+                brocha.Color = Color.FromArgb(150, 160, 190);
+                g.DrawString(txt, fPag, brocha, new RectangleF(x, 0, w - x, h), sfIzq);
+            }
+
+            private static GraphicsPath Redondo(RectangleF r, float radio)
+            {
+                GraphicsPath p = new GraphicsPath();
+                float d = radio * 2;
                 if (d > r.Height) d = r.Height;
                 if (d > r.Width) d = r.Width;
                 if (d < 2) d = 2;
