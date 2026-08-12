@@ -10579,7 +10579,9 @@ namespace Rocola
             private SolidBrush goldBrush; private Pen goldPen; private SolidBrush goldTextBrush;
             private Bitmap stripCache; private int scW = -1, scH = -1; private char scCur = '\0';
             private string scLetters; private int scAvailN = -2;                              // firma de la tira cacheada
-            private Font fMain, fVideo; private StringFormat sfCen; private SolidBrush whiteB; // recursos fijos
+            private Font fMain, fVideo; private float fontSlot = -1f;   // cuerpos elegidos, y para que hueco
+            private string lblTop = "TOP", lblVideo = "VIDEO";          // palabra, o simbolo si no cabe
+            private StringFormat sfCen; private SolidBrush whiteB;
             public string Letters = "\u2605#ABCDEFGHIJKLMNOPQRSTUVWXYZ\u25BA";
             public char Current = '#';
             public double Phase = 0;
@@ -10605,13 +10607,54 @@ namespace Rocola
 
             private void EnsureRes()
             {
-                if (fMain == null) fMain = new Font(this.Font.FontFamily, 10.5f, FontStyle.Bold);
-                if (fVideo == null) fVideo = new Font(this.Font.FontFamily, 7.5f, FontStyle.Bold);
                 if (whiteB == null) whiteB = new SolidBrush(Color.White);
                 if (sfCen == null)
                 {
                     sfCen = new StringFormat();
                     sfCen.Alignment = StringAlignment.Center; sfCen.LineAlignment = StringAlignment.Center;
+                    sfCen.FormatFlags = StringFormatFlags.NoWrap;   // una etiqueta JAMAS se parte en renglones
+                }
+            }
+
+            // EL CUERPO DE LETRA SE ELIGE SEGUN EL HUECO QUE HAY. "VIDEO" mide 36 px y la casilla 34 con la
+            // pantalla entera; y con un video puesto al lado la barra se encoge a la mitad, asi que ni "VIDEO"
+            // ni "TOP" caben. Antes se dibujaban con un cuerpo fijo dentro de su casilla y GDI+ los partia en
+            // varios renglones, que ademas no cabian de alto: se veia "VI / D / EO" recortado. Ahora se busca
+            // el cuerpo mas grande con el que QUEPAN, y como el formato ya no deja partir renglon, no puede
+            // volver a pasar en ningun ancho ni con ninguna letra de Windows.
+            private void AjustaFuentes(Graphics g, float slot)
+            {
+                if (fMain != null && Math.Abs(fontSlot - slot) < 0.5f) return;
+                if (fMain != null) fMain.Dispose();
+                if (fVideo != null) fVideo.Dispose();
+                float hueco = slot - 2f;
+                fMain = MayorQueQuepa(g, "W", 10.5f, hueco);
+                Font fPal = MayorQueQuepa(g, "VIDEO", 7.5f, hueco);
+                if (g.MeasureString("VIDEO", fPal).Width <= hueco)
+                {
+                    lblTop = "TOP"; lblVideo = "VIDEO"; fVideo = fPal;
+                }
+                else
+                {
+                    // Ni bajando el cuerpo cabe la palabra: pasa con un video puesto al lado, que deja la barra
+                    // a la mitad de ancho. Ahi se pone el SIMBOLO, que ocupa lo mismo que una letra, se lee
+                    // igual de lejos y dice lo mismo: la estrella son las mas pedidas y el triangulo, los videos.
+                    fPal.Dispose();
+                    lblTop = "\u2605"; lblVideo = "\u25BA";
+                    fVideo = MayorQueQuepa(g, "\u25BA", 10.5f, hueco);
+                }
+                fontSlot = slot;
+            }
+            // El cuerpo mas grande, empezando por el de siempre y bajando de medio en medio, con el que
+            // 'muestra' quepa en 'hueco'. Nunca baja de 5 puntos: por debajo no se leeria de todos modos.
+            private Font MayorQueQuepa(Graphics g, string muestra, float cuerpo, float hueco)
+            {
+                for (; ; )
+                {
+                    Font f = new Font(this.Font.FontFamily, cuerpo, FontStyle.Bold);
+                    if (cuerpo <= 5f || g.MeasureString(muestra, f).Width <= hueco) return f;
+                    f.Dispose();
+                    cuerpo -= 0.5f;
                 }
             }
 
@@ -10635,7 +10678,7 @@ namespace Rocola
                         if (ch == '\u2605' && Available != null && Available.Contains(ch)) continue;   // TOP disponible: va dorado en vivo
                         bool isVideo = (ch == '\u25BA');
                         bool isTop = (ch == '\u2605');
-                        string lbl = isVideo ? "VIDEO" : isTop ? "TOP" : ch.ToString();
+                        string lbl = isVideo ? lblVideo : isTop ? lblTop : ch.ToString();
                         Font useF = (isVideo || isTop) ? fVideo : fMain;
                         RectangleF slotRect = new RectangleF(i * slot, 0, slot, h);
                         bool avail = (Available == null) || Available.Contains(ch);
@@ -10683,6 +10726,7 @@ namespace Rocola
                 float slot = (float)w / n;
                 double pulse = forGpu ? 0.45 : 0.5 + 0.5 * Math.Sin(Phase * 2.2);
                 EnsureRes();
+                AjustaFuentes(g, slot);
 
                 // TIRA CACHEADA: las ~28 letras solo se redibujan al cambiar letra/tamano/disponibles.
                 // Por cuadro: copiar la tira + la letra ACTUAL con su resplandor (antes: ~28 textos/cuadro).
@@ -10700,7 +10744,7 @@ namespace Rocola
                     if (ch != Current || ch == '\u2605') continue;   // TOP lo dibuja el bloque dorado
                     bool isVideo = (ch == '\u25BA');
                     bool isTop = (ch == '\u2605');
-                    string lbl = isVideo ? "VIDEO" : isTop ? "TOP" : ch.ToString();
+                    string lbl = isVideo ? lblVideo : isTop ? lblTop : ch.ToString();
                     Font useF = (isVideo || isTop) ? fVideo : fMain;
                     RectangleF slotRect = new RectangleF(i * slot, 0, slot, h);
                     int pad = 3;
@@ -10743,7 +10787,7 @@ namespace Rocola
                         g.FillPath(goldBrush, goldPath);
                         g.DrawPath(goldPen, goldPath);
                         goldTextBrush.Color = Color.White;
-                        g.DrawString("TOP", fVideo, goldTextBrush, gsl, sfCen);
+                        g.DrawString(lblTop, fVideo, goldTextBrush, gsl, sfCen);
                     }
                     else
                     {
@@ -10751,13 +10795,13 @@ namespace Rocola
                         // halo dorado tenue (4 pasadas desplazadas) + texto dorado pulsante encima.
                         int hAlpha = 35 + (int)(gpu * 55);
                         goldTextBrush.Color = Color.FromArgb(hAlpha, 255, 205, 90);
-                        g.DrawString("TOP", fVideo, goldTextBrush, new RectangleF(gsl.X - 1, gsl.Y, gsl.Width, gsl.Height), sfCen);
-                        g.DrawString("TOP", fVideo, goldTextBrush, new RectangleF(gsl.X + 1, gsl.Y, gsl.Width, gsl.Height), sfCen);
-                        g.DrawString("TOP", fVideo, goldTextBrush, new RectangleF(gsl.X, gsl.Y - 1, gsl.Width, gsl.Height), sfCen);
-                        g.DrawString("TOP", fVideo, goldTextBrush, new RectangleF(gsl.X, gsl.Y + 1, gsl.Width, gsl.Height), sfCen);
+                        g.DrawString(lblTop, fVideo, goldTextBrush, new RectangleF(gsl.X - 1, gsl.Y, gsl.Width, gsl.Height), sfCen);
+                        g.DrawString(lblTop, fVideo, goldTextBrush, new RectangleF(gsl.X + 1, gsl.Y, gsl.Width, gsl.Height), sfCen);
+                        g.DrawString(lblTop, fVideo, goldTextBrush, new RectangleF(gsl.X, gsl.Y - 1, gsl.Width, gsl.Height), sfCen);
+                        g.DrawString(lblTop, fVideo, goldTextBrush, new RectangleF(gsl.X, gsl.Y + 1, gsl.Width, gsl.Height), sfCen);
                         int gb = 60 + (int)(gpu * 70); if (gb > 255) gb = 255;
                         goldTextBrush.Color = Color.FromArgb(255, 255, 210, gb);   // dorado pulsante brillante
-                        g.DrawString("TOP", fVideo, goldTextBrush, gsl, sfCen);
+                        g.DrawString(lblTop, fVideo, goldTextBrush, gsl, sfCen);
                     }
                 }
             }
