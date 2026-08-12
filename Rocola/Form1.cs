@@ -459,6 +459,11 @@ namespace Rocola
         private const int ThumbPx = 256;         // resolucion de miniaturas (256 sobra a 1024x768; 384 gastaba 2x memoria sin verse mejor en la rocola)
         private const int CoverCacheMax = 220;   // ~ 256x256 x 220 ~ 56 MB (igual que la version fluida): cache amplia -> hojear no re-decodifica portadas (menos CPU al navegar)
         private readonly HashSet<char> letterAvailable = new HashSet<char>();
+        // EL COLOR DE CADA LETRA: el genero que MANDA dentro de ella. Sale de leer el ID3 de toda la
+        // biblioteca, asi que se guarda en disco junto al numero de canciones con el que se calculo: mientras
+        // la biblioteca no cambie, el proximo arranque ya lo tiene y no hay que volver a pasear los archivos.
+        private Dictionary<char, string> letterTag = new Dictionary<char, string>();
+        private bool tintesPend;   // hay que (re)calcularlo: la biblioteca cambio o nunca se calculo
         private readonly List<SearchItem> searchIndex = new List<SearchItem>();
         private volatile bool libBuilding = false;   // el worker esta armando albums/byLetter/searchIndex: la UI no debe leerlos
         private char currentLetter = '#';
@@ -2444,6 +2449,49 @@ namespace Rocola
             return "Otros";
         }
 
+        // El color de una etiqueta canonica de GenreLabel. Hace falta porque el color de cada letra de la barra
+        // se guarda entre arranques y lo que se guarda es la ETIQUETA, no el genero crudo del ID3; y darle la
+        // etiqueta a GenreToColor no vale, porque "Clasica" no contiene "classic" ni "Gotico" contiene "goth".
+        // Que estos colores sigan siendo los MISMOS que los de GenreToColor lo vigila la bateria de la barra.
+        private static Color ColorDeEtiqueta(string etiqueta)
+        {
+            switch (etiqueta)
+            {
+                case "K-Pop": return Color.FromArgb(149, 86, 220);
+                case "Metal": return Color.FromArgb(205, 45, 55);
+                case "Punk": return Color.FromArgb(232, 80, 58);
+                case "Gotico": return Color.FromArgb(112, 58, 150);
+                case "Industrial": return Color.FromArgb(150, 60, 70);
+                case "Reggaeton": return Color.FromArgb(150, 70, 210);
+                case "Hip-Hop": return Color.FromArgb(135, 60, 205);
+                case "Tropical": return Color.FromArgb(235, 95, 35);
+                case "Regional": return Color.FromArgb(225, 120, 30);
+                case "Bolero": return Color.FromArgb(195, 95, 70);
+                case "Flamenco": return Color.FromArgb(210, 110, 55);
+                case "Latino": return Color.FromArgb(225, 130, 40);
+                case "Reggae": return Color.FromArgb(40, 175, 85);
+                case "DnB": return Color.FromArgb(20, 155, 160);
+                case "Electronica": return Color.FromArgb(30, 175, 195);
+                case "Chill": return Color.FromArgb(70, 165, 175);
+                case "Jazz": return Color.FromArgb(215, 165, 45);
+                case "Soul": return Color.FromArgb(205, 145, 50);
+                case "Cristiana": return Color.FromArgb(210, 180, 75);
+                case "Clasica": return Color.FromArgb(95, 95, 205);
+                case "Soundtrack": return Color.FromArgb(110, 120, 190);
+                case "Country": return Color.FromArgb(170, 130, 55);
+                case "Folk": return Color.FromArgb(150, 140, 70);
+                case "Disco": return Color.FromArgb(212, 70, 160);
+                case "Oldies": return Color.FromArgb(192, 120, 90);
+                case "World": return Color.FromArgb(180, 110, 60);
+                case "Vocal": return Color.FromArgb(180, 150, 120);
+                case "Hablado": return Color.FromArgb(120, 130, 150);
+                case "Infantil": return Color.FromArgb(235, 180, 60);
+                case "Pop": return Color.FromArgb(215, 60, 140);
+                case "Rock": return Color.FromArgb(215, 90, 40);
+                default: return DefaultAccent;
+            }
+        }
+
         private static Color GenreToColor(string genre)
         {
             if (string.IsNullOrEmpty(genre)) return DefaultAccent;
@@ -2847,6 +2895,8 @@ namespace Rocola
             topDirty = true;   // OPTIMIZACION (TOP): la biblioteca se re-escaneo (nuevos Album/Track) -> reconstruir
             BuildTopDiscs();
             if (topDiscs != null && topDiscs.Count > 0) letterAvailable.Add(TopMark);   // hay estadisticas -> seccion "Lo mas sonado"
+            LeeTintes(tracks.Count);   // el color de cada letra, si ya se calculo para esta misma biblioteca
+            RecalculaLetras();
 
             string order = "\u2605#ABCDEFGHIJKLMNOPQRSTUVWXYZ\u25BA";
             currentLetter = '#';
@@ -3080,6 +3130,103 @@ namespace Rocola
         // Barrido RAPIDO de duraciones: abre cada archivo, lee cuanto dura y lo suelta. No descomprime nada.
         // Se salta lo que ya tiene duracion (por esta via o por el analisis completo). Prioridad minima y un
         // respiro por archivo para no quitarle disco a la musica; con video en pantalla se detiene del todo.
+        // ==========  LO QUE ENSENA LA BARRA DE LETRAS  ==========
+        // Debajo de cada letra va cuantas canciones hay detras, y la letra se pinta del color del genero que
+        // MANDA dentro de ella. Lo primero es gratis (ya esta contado); lo segundo cuesta leer el ID3 de toda
+        // la biblioteca, asi que se calcula una vez en segundo plano y se guarda.
+        private string LetterTintFile() { return Path.Combine(Application.StartupPath, "rocola_letras.txt"); }
+
+        // Arma los dos diccionarios ENTEROS y se los entrega a la barra de una pieza. La barra los lee desde
+        // el dibujado, asi que nunca puede pillar uno a medio llenar: o ve el de antes, o ve el nuevo.
+        private void RecalculaLetras()
+        {
+            if (letterBar == null) return;
+            Dictionary<char, int> cuenta = new Dictionary<char, int>();
+            foreach (KeyValuePair<char, List<Album>> kv in byLetter)
+            {
+                List<Album> la = kv.Value;
+                if (la == null) continue;
+                int n = 0;
+                for (int i = 0; i < la.Count; i++) if (la[i] != null && la[i].Tracks != null) n += la[i].Tracks.Count;
+                if (n > 0) cuenta[kv.Key] = n;
+            }
+            if (videoAlbums != null && videoAlbums.Count > 0)
+            {
+                // El mismo video puede estar en dos discos: se cuenta una sola vez.
+                HashSet<string> vistos = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                for (int i = 0; i < videoAlbums.Count; i++)
+                {
+                    Album va = videoAlbums[i];
+                    if (va == null || va.VideoFiles == null) continue;
+                    for (int j = 0; j < va.VideoFiles.Count; j++) if (va.VideoFiles[j] != null) vistos.Add(va.VideoFiles[j]);
+                }
+                if (vistos.Count > 0) cuenta[VideoMark] = vistos.Count;
+            }
+            if (topDiscs != null && topDiscs.Count > 0)
+            {
+                int nt = 0;
+                for (int i = 0; i < topDiscs.Count; i++) if (topDiscs[i] != null && topDiscs[i].Tracks != null) nt += topDiscs[i].Tracks.Count;
+                if (nt > 0) cuenta[TopMark] = nt;
+            }
+            Dictionary<char, Color> tinte = new Dictionary<char, Color>();
+            foreach (KeyValuePair<char, string> kv in letterTag) tinte[kv.Key] = ColorDeEtiqueta(kv.Value);
+            letterBar.Counts = cuenta;
+            letterBar.Tints = tinte;
+            letterBar.Invalidate();
+        }
+
+        // Lee del disco el color de cada letra. Solo vale si se calculo con la MISMA biblioteca que hay ahora
+        // (se compara el numero de canciones); si no, se descarta y se vuelve a calcular en segundo plano.
+        private void LeeTintes(int firmaAhora)
+        {
+            letterTag.Clear();
+            tintesPend = true;
+            try
+            {
+                string f = LetterTintFile();
+                if (!File.Exists(f)) return;
+                string[] L = File.ReadAllLines(f);
+                if (L.Length < 2 || L[0] != "ROCOLA-LETRAS v1") return;
+                int firma;
+                if (!L[1].StartsWith("n=") || !int.TryParse(L[1].Substring(2), out firma)) return;
+                if (firma != firmaAhora) return;   // la biblioteca cambio: hay que recalcular
+                for (int i = 2; i < L.Length; i++)
+                {
+                    string ln = L[i]; int b = ln.IndexOf('|');
+                    if (b != 1 || ln.Length < 3) continue;
+                    letterTag[ln[0]] = ln.Substring(b + 1);
+                }
+                tintesPend = false;
+            }
+            catch { letterTag.Clear(); tintesPend = true; }
+        }
+
+        private void GuardaTintes(int firma)
+        {
+            Dictionary<char, string> copia = new Dictionary<char, string>(letterTag);
+            string ruta = LetterTintFile();
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate (object st)
+            {
+                try
+                {
+                    StringBuilder sb = new StringBuilder(256);
+                    sb.Append("ROCOLA-LETRAS v1\r\n").Append("n=").Append(firma).Append("\r\n");
+                    foreach (KeyValuePair<char, string> kv in copia) sb.Append(kv.Key).Append('|').Append(kv.Value).Append("\r\n");
+                    File.WriteAllText(ruta, sb.ToString());
+                }
+                catch { }
+            });
+        }
+
+        // Lo que va encontrando el paseo de fondo: por cada letra, la etiqueta de genero que mas se repite.
+        private void PublicaTintes(int gen, char[] letras, string[] etiquetas, bool ultimo, int firma)
+        {
+            if (gen != durScanGen) return;
+            for (int i = 0; i < letras.Length && i < etiquetas.Length; i++) letterTag[letras[i]] = etiquetas[i];
+            if (ultimo) { tintesPend = false; GuardaTintes(firma); }
+            RecalculaLetras();
+        }
+
         private void StartDurScan()
         {
             int myGen = ++durScanGen;
@@ -3109,8 +3256,33 @@ namespace Rocola
                 }
             if (pend.Count > cuantasCanciones) Diag("duraciones: " + (pend.Count - cuantasCanciones) + " videos por medir");
             durScanLeft = pend.Count;
-            if (pend.Count == 0) return;
-            Diag("duraciones: faltan " + pend.Count);
+
+            // EL COLOR DE LAS LETRAS. Si hay que calcularlo, se prepara aqui la lista de (letra, archivo) y el
+            // paseo de fondo le lee el ID3 a cada uno DESPUES de las duraciones. Se leen con un Track SUELTO,
+            // no con el de la biblioteca, para no tocar desde este hilo nada que la pantalla este usando.
+            char[] gLet = null; string[] gRuta = null;
+            int firmaLet = tracks.Count;
+            if (tintesPend)
+            {
+                List<char> cl = new List<char>(tracks.Count);
+                List<string> rl = new List<string>(tracks.Count);
+                foreach (KeyValuePair<char, List<Album>> kv in byLetter)
+                {
+                    List<Album> la = kv.Value; if (la == null) continue;
+                    for (int i = 0; i < la.Count; i++)
+                    {
+                        if (la[i] == null || la[i].Tracks == null) continue;
+                        List<Track> tt = la[i].Tracks;
+                        for (int j = 0; j < tt.Count; j++)
+                            if (tt[j] != null && tt[j].Path != null) { cl.Add(kv.Key); rl.Add(tt[j].Path); }
+                    }
+                }
+                if (cl.Count > 0) { gLet = cl.ToArray(); gRuta = rl.ToArray(); }
+            }
+
+            if (pend.Count == 0 && gLet == null) return;
+            if (pend.Count > 0) Diag("duraciones: faltan " + pend.Count);
+            if (gLet != null) Diag("generos: " + gLet.Length + " por leer (color de las letras)");
             durScanTh = new System.Threading.Thread(delegate ()
             {
                 List<string> lote = new List<string>(128);
@@ -3144,6 +3316,56 @@ namespace Rocola
                             catch { break; }
                         }
                         System.Threading.Thread.Sleep(diskSlow ? 12 : 2);
+                    }
+
+                    // --- Y AHORA LOS GENEROS, que son los que dan color a cada letra de la barra de arriba ---
+                    // Va detras de las duraciones a proposito: la duracion se ve en la lista y el color es
+                    // adorno, asi que lo util llega primero. Se publica cada 256 archivos, y por eso la barra
+                    // se va tinendo poco a poco en vez de cambiar de golpe al final.
+                    if (gLet != null)
+                    {
+                        Dictionary<char, Dictionary<string, int>> votos = new Dictionary<char, Dictionary<string, int>>();
+                        for (int i = 0; i < gLet.Length; i++)
+                        {
+                            if (preScanStop || myGen != durScanGen) break;
+                            while (!preScanStop && myGen == durScanGen && videoOn) System.Threading.Thread.Sleep(500);
+                            if (preScanStop || myGen != durScanGen) break;
+                            string et = "Otros";
+                            try
+                            {
+                                Track suelto = Track.FromFile(gRuta[i]);
+                                suelto.EnsureTags();
+                                if (!string.IsNullOrEmpty(suelto.Genre)) et = GenreLabel(suelto.Genre);
+                            }
+                            catch { }
+                            Dictionary<string, int> v;
+                            if (!votos.TryGetValue(gLet[i], out v)) { v = new Dictionary<string, int>(); votos[gLet[i]] = v; }
+                            int ya; v.TryGetValue(et, out ya); v[et] = ya + 1;
+
+                            bool finGen = (i == gLet.Length - 1);
+                            if ((i & 255) == 255 || finGen)
+                            {
+                                // El genero que MANDA en cada letra hasta ahora. "Otros" no gana nunca: una
+                                // letra cuyas canciones no traen genero se queda con su blanco de siempre, que
+                                // es mas honesto que pintarla del color de "no se sabe".
+                                List<char> kl = new List<char>(); List<string> vl = new List<string>();
+                                foreach (KeyValuePair<char, Dictionary<string, int>> kv in votos)
+                                {
+                                    string mejor = null; int mejorN = 0;
+                                    foreach (KeyValuePair<string, int> vv in kv.Value)
+                                        if (vv.Key != "Otros" && vv.Value > mejorN) { mejorN = vv.Value; mejor = vv.Key; }
+                                    if (mejor != null) { kl.Add(kv.Key); vl.Add(mejor); }
+                                }
+                                char[] ka = kl.ToArray(); string[] va = vl.ToArray(); bool ult = finGen;
+                                try
+                                {
+                                    if (!IsHandleCreated) break;
+                                    BeginInvoke((MethodInvoker)delegate { PublicaTintes(myGen, ka, va, ult, firmaLet); });
+                                }
+                                catch { break; }
+                            }
+                            System.Threading.Thread.Sleep(diskSlow ? 8 : 1);
+                        }
                     }
                 }
                 catch { }
@@ -5854,7 +6076,7 @@ namespace Rocola
                 string ar = it.Song.Artist;
                 if (!string.IsNullOrEmpty(ar)) { int a; artistCounts.TryGetValue(ar, out a); artistCounts[ar] = a + 1; }
                 // primera cancion contada -> habilitar la seccion "Lo mas sonado" en la barra de letras
-                if (letterAvailable != null && !letterAvailable.Contains(TopMark)) { letterAvailable.Add(TopMark); if (letterBar != null) letterBar.Invalidate(); }
+                if (letterAvailable != null && !letterAvailable.Contains(TopMark)) { letterAvailable.Add(TopMark); RecalculaLetras(); }
             }
             statsDirty = true;
             topDirty = true;   // OPTIMIZACION (TOP): cambiaron counts/genero/artista -> reconstruir al entrar a TOP
@@ -10578,14 +10800,19 @@ namespace Rocola
             private GraphicsPath goldPath; private RectangleF goldBox = RectangleF.Empty;    // marcador TOP dorado
             private SolidBrush goldBrush; private Pen goldPen; private SolidBrush goldTextBrush;
             private Bitmap stripCache; private int scW = -1, scH = -1; private char scCur = '\0';
-            private string scLetters; private int scAvailN = -2;                              // firma de la tira cacheada
-            private Font fMain, fVideo; private float fontSlot = -1f;   // cuerpos elegidos, y para que hueco
-            private string lblTop = "TOP", lblVideo = "VIDEO";          // palabra, o simbolo si no cabe
+            private string scLetters; private int scAvailN = -2; private int scDatos = 0;     // firma de la tira cacheada
+            private Font fMain, fVideo, fTop, fNum; private float fontSlot = -1f;   // cuerpos elegidos, y para que hueco
+            private string lblVideo = "VIDEO";                          // palabra, o simbolo si no cabe
             private StringFormat sfCen; private SolidBrush whiteB;
             public string Letters = "\u2605#ABCDEFGHIJKLMNOPQRSTUVWXYZ\u25BA";
             public char Current = '#';
             public double Phase = 0;
             public HashSet<char> Available;
+            // Cuantas canciones hay detras de cada letra, y de que color es el genero que MANDA en ella. Form1
+            // los REEMPLAZA enteros cuando el rastreo de fondo aprende mas generos (nunca los toca por dentro),
+            // asi que aqui se pueden leer sin candado: o se ve el diccionario viejo o se ve el nuevo, entero.
+            public Dictionary<char, int> Counts;
+            public Dictionary<char, Color> Tints;
             public Action<char> OnPick;
 
             public LetterBar()
@@ -10616,33 +10843,41 @@ namespace Rocola
                 }
             }
 
+            // ---------- REPARTO DE ALTO ----------
+            // Debajo de cada letra va su numero de canciones, pero solo si hay sitio: con un video puesto al
+            // lado la barra se queda a la mitad de ancho y ahi no cabria ni el numero ni se leeria.
+            private bool HayCuenta(float slot, int h) { return Counts != null && slot >= 21f && h >= 34; }
+            private float AltoCuenta(float slot, int h) { return HayCuenta(slot, h) ? 12f : 0f; }
+
             // EL CUERPO DE LETRA SE ELIGE SEGUN EL HUECO QUE HAY. "VIDEO" mide 36 px y la casilla 34 con la
-            // pantalla entera; y con un video puesto al lado la barra se encoge a la mitad, asi que ni "VIDEO"
-            // ni "TOP" caben. Antes se dibujaban con un cuerpo fijo dentro de su casilla y GDI+ los partia en
-            // varios renglones, que ademas no cabian de alto: se veia "VI / D / EO" recortado. Ahora se busca
-            // el cuerpo mas grande con el que QUEPAN, y como el formato ya no deja partir renglon, no puede
-            // volver a pasar en ningun ancho ni con ninguna letra de Windows.
-            private void AjustaFuentes(Graphics g, float slot)
+            // pantalla entera; y con un video puesto al lado la barra se encoge a la mitad, asi que no cabe.
+            // Antes se dibujaba con un cuerpo fijo dentro de su casilla y GDI+ lo partia en varios renglones,
+            // que ademas no cabian de alto: se veia "VI / D / EO" recortado. Ahora se busca el cuerpo mas
+            // grande con el que QUEPA, y como el formato ya no deja partir renglon, no puede volver a pasar.
+            private void AjustaFuentes(Graphics g, float slot, int h)
             {
                 if (fMain != null && Math.Abs(fontSlot - slot) < 0.5f) return;
                 if (fMain != null) fMain.Dispose();
                 if (fVideo != null) fVideo.Dispose();
+                if (fTop != null) fTop.Dispose();
+                if (fNum != null) { fNum.Dispose(); fNum = null; }
                 float hueco = slot - 2f;
                 fMain = MayorQueQuepa(g, "W", 10.5f, hueco);
+                fTop = MayorQueQuepa(g, "\u2605", 11.5f, hueco);
                 Font fPal = MayorQueQuepa(g, "VIDEO", 7.5f, hueco);
                 if (g.MeasureString("VIDEO", fPal).Width <= hueco)
                 {
-                    lblTop = "TOP"; lblVideo = "VIDEO"; fVideo = fPal;
+                    lblVideo = "VIDEO"; fVideo = fPal;
                 }
                 else
                 {
-                    // Ni bajando el cuerpo cabe la palabra: pasa con un video puesto al lado, que deja la barra
-                    // a la mitad de ancho. Ahi se pone el SIMBOLO, que ocupa lo mismo que una letra, se lee
-                    // igual de lejos y dice lo mismo: la estrella son las mas pedidas y el triangulo, los videos.
+                    // Ni bajando el cuerpo cabe la palabra: ahi se pone el SIMBOLO, que ocupa lo mismo que una
+                    // letra, se lee igual de lejos y dice lo mismo.
                     fPal.Dispose();
-                    lblTop = "\u2605"; lblVideo = "\u25BA";
+                    lblVideo = "\u25BA";
                     fVideo = MayorQueQuepa(g, "\u25BA", 10.5f, hueco);
                 }
+                if (HayCuenta(slot, h)) fNum = MayorQueQuepa(g, "8888", 6.5f, hueco);
                 fontSlot = slot;
             }
             // El cuerpo mas grande, empezando por el de siempre y bajando de medio en medio, con el que
@@ -10658,7 +10893,71 @@ namespace Rocola
                 }
             }
 
-            // Dibuja TODAS las letras (menos la actual, que pulsa en vivo) en una tira reusable.
+            // ---------- COLOR DE CADA LETRA ----------
+            // El del genero que manda dentro de ella, pero SUBIDO hacia el blanco: el color puro de un genero
+            // oscuro (el metal es rojo sangre, el gotico morado profundo) no se leeria en una franja de 40
+            // pixeles vista de pie a dos metros. Asi conserva la familia y se sigue leyendo de lejos.
+            private Color TonoLetra(char ch, bool hay)
+            {
+                if (!hay) return Color.FromArgb(104, 114, 144);          // sin canciones: apagada, como siempre
+                Color g;
+                if (Tints == null || !Tints.TryGetValue(ch, out g)) return Color.FromArgb(232, 238, 250);
+                return Color.FromArgb(255,
+                    g.R + (int)((255 - g.R) * 0.45f),
+                    g.G + (int)((255 - g.G) * 0.45f),
+                    g.B + (int)((255 - g.B) * 0.45f));
+            }
+
+            // Firma de los datos que se pintan en la tira: si cambia, hay que rehacerla. El rastreo de fondo
+            // va aprendiendo generos y contando canciones, y la barra tiene que enterarse.
+            private int FirmaDatos()
+            {
+                int f = 17;
+                for (int i = 0; i < Letters.Length; i++)
+                {
+                    char c = Letters[i];
+                    int n = 0; if (Counts != null) Counts.TryGetValue(c, out n);
+                    int t = 0; Color col;
+                    if (Tints != null && Tints.TryGetValue(c, out col)) t = col.ToArgb();
+                    f = f * 31 + n; f = f * 31 + t;
+                }
+                return f;
+            }
+
+            // ---------- EL RIEL DE VIDRIO ----------
+            // La fila se apoya en un riel oscuro con un brillo arriba: deja de flotar sobre el fondo y se lee
+            // como una pieza de la maquina, no como texto suelto encima del cielo.
+            private void Riel(Graphics g, int w, int h)
+            {
+                RectangleF r = new RectangleF(0, 1, w - 1, h - 2);
+                using (GraphicsPath p = RoundRectF(r, 12))
+                {
+                    using (LinearGradientBrush lb = new LinearGradientBrush(
+                               new RectangleF(r.X, r.Y, r.Width, r.Height + 1),
+                               Color.FromArgb(96, 34, 46, 88), Color.FromArgb(64, 14, 20, 46), 90f))
+                        g.FillPath(lb, p);
+                    using (Pen bo = new Pen(Color.FromArgb(58, 140, 180, 255), 1f)) g.DrawPath(bo, p);
+                }
+                float hb = h * 0.32f;
+                using (GraphicsPath p2 = RoundRectF(new RectangleF(3, 2.5f, w - 7, hb), 7))
+                using (LinearGradientBrush hl = new LinearGradientBrush(new RectangleF(3, 2.5f, w - 7, hb + 1),
+                           Color.FromArgb(34, 190, 215, 255), Color.FromArgb(0, 190, 215, 255), 90f))
+                    g.FillPath(hl, p2);
+            }
+
+            // Una letra con RELIEVE: sombra debajo y filo claro arriba, como grabada en cristal.
+            private void Grabada(Graphics g, SolidBrush b, string txt, Font f, RectangleF r, Color tono, bool hay)
+            {
+                b.Color = Color.FromArgb(hay ? 150 : 70, 0, 0, 0);
+                g.DrawString(txt, f, b, new RectangleF(r.X, r.Y + 1.4f, r.Width, r.Height), sfCen);
+                b.Color = hay ? Color.FromArgb(66, 190, 215, 255) : Color.FromArgb(26, 150, 170, 210);
+                g.DrawString(txt, f, b, new RectangleF(r.X, r.Y - 1.1f, r.Width, r.Height), sfCen);
+                b.Color = tono;
+                g.DrawString(txt, f, b, r, sfCen);
+            }
+
+            // Dibuja el riel y TODAS las letras (menos la actual y la estrella, que van en vivo) en una tira
+            // reusable. Solo se rehace al cambiar de letra, de tamano, de disponibles o de datos.
             private void RebuildStrip(int w, int h, int n, float slot)
             {
                 if (stripCache == null || stripCache.Width != w || stripCache.Height != h)
@@ -10666,26 +10965,47 @@ namespace Rocola
                     if (stripCache != null) stripCache.Dispose();
                     stripCache = new Bitmap(w, h, PixelFormat.Format32bppPArgb);
                 }
+                float bajo = AltoCuenta(slot, h);
+                float altoL = h - bajo;
                 using (Graphics g = Graphics.FromImage(stripCache))
                 using (SolidBrush tb = new SolidBrush(Color.White))
                 {
                     g.Clear(Color.Transparent);
                     g.SmoothingMode = SmoothingMode.AntiAlias;
+                    Riel(g, w, h);
+                    // Una raya finisima entre casilla y casilla: ORDENA la fila sin llamar la atencion.
+                    using (Pen sep = new Pen(Color.FromArgb(24, 150, 175, 225)))
+                        for (int i = 1; i < n; i++)
+                            g.DrawLine(sep, i * slot, 10, i * slot, h - 10);
                     for (int i = 0; i < n; i++)
                     {
                         char ch = Letters[i];
-                        if (ch == Current) continue;
-                        if (ch == '\u2605' && Available != null && Available.Contains(ch)) continue;   // TOP disponible: va dorado en vivo
-                        bool isVideo = (ch == '\u25BA');
-                        bool isTop = (ch == '\u2605');
-                        string lbl = isVideo ? lblVideo : isTop ? lblTop : ch.ToString();
-                        Font useF = (isVideo || isTop) ? fVideo : fMain;
-                        RectangleF slotRect = new RectangleF(i * slot, 0, slot, h);
+                        bool isTop = (ch == TopMark);
                         bool avail = (Available == null) || Available.Contains(ch);
-                        tb.Color = avail ? Color.FromArgb(225, 232, 245) : Color.FromArgb(110, 120, 150);
-                        g.DrawString(lbl, useF, tb, slotRect, sfCen);
+                        RectangleF rL = new RectangleF(i * slot, 0, slot, altoL);
+                        if (ch != Current && !(isTop && avail))   // la actual y la estrella encendida van en vivo
+                        {
+                            bool isVideo = (ch == VideoMark);
+                            string lbl = isVideo ? lblVideo : isTop ? "\u2605" : ch.ToString();
+                            Font useF = isTop ? fTop : (isVideo ? fVideo : fMain);
+                            Color tono = isTop ? Color.FromArgb(122, 116, 96) : TonoLetra(ch, avail);
+                            Grabada(g, tb, lbl, useF, rL, tono, avail);
+                        }
+                        if (bajo > 0f && fNum != null) Cuenta(g, tb, ch, i, slot, h, bajo, avail);
                     }
                 }
+            }
+
+            // El numero de canciones que hay detras de una letra, debajo de ella y en su mismo color pero mas
+            // apagado: el cliente ve de un vistazo donde esta lo gordo y deja de entrar a letras casi vacias.
+            private void Cuenta(Graphics g, SolidBrush b, char ch, int i, float slot, int h, float bajo, bool avail)
+            {
+                int cuantas = 0;
+                if (Counts == null || !Counts.TryGetValue(ch, out cuantas) || cuantas <= 0) return;
+                Color tono = TonoLetra(ch, avail);
+                b.Color = Color.FromArgb(avail ? 185 : 105,
+                                         (tono.R * 3 + 90) / 4, (tono.G * 3 + 105) / 4, (tono.B * 3 + 150) / 4);
+                g.DrawString(cuantas.ToString(), fNum, b, new RectangleF(i * slot, h - bajo - 1f, slot, bajo), sfCen);
             }
 
             protected override void OnPaint(PaintEventArgs e) { RenderContent(e.Graphics, false); }
@@ -10695,11 +11015,12 @@ namespace Rocola
             {
                 cx = cy = r = 0f;
                 int n = Letters.Length; if (n == 0 || Width < 4 || Height < 4) return false;
-                if (Current == '\u2605') return false;
+                if (Current == TopMark) return false;
                 int i = Letters.IndexOf(Current); if (i < 0) return false;
                 float slot = (float)Width / n;
-                cx = i * slot + slot / 2f; cy = Height / 2f;
-                r = Math.Max(slot, Height) * 0.75f;
+                float altoL = Height - AltoCuenta(slot, Height);
+                cx = i * slot + slot / 2f; cy = altoL / 2f;
+                r = Math.Max(slot, altoL) * 0.75f;
                 return true;
             }
             // Casilla del marcador TOP (para su dorado pulsante por GPU); false si TOP no esta disponible.
@@ -10707,11 +11028,12 @@ namespace Rocola
             {
                 cx = cy = r = 0f;
                 int n = Letters.Length; if (n == 0 || Width < 4 || Height < 4) return false;
-                if (Available == null || !Available.Contains('\u2605')) return false;
-                int i = Letters.IndexOf('\u2605'); if (i < 0) return false;
+                if (Available == null || !Available.Contains(TopMark)) return false;
+                int i = Letters.IndexOf(TopMark); if (i < 0) return false;
                 float slot = (float)Width / n;
-                cx = i * slot + slot / 2f; cy = Height / 2f;
-                r = Math.Max(slot, Height) * 0.75f;
+                float altoL = Height - AltoCuenta(slot, Height);
+                cx = i * slot + slot / 2f; cy = altoL / 2f;
+                r = Math.Max(slot, altoL) * 0.75f;
                 return true;
             }
             public void RenderContent(Graphics g) { RenderContent(g, false); }
@@ -10726,82 +11048,96 @@ namespace Rocola
                 float slot = (float)w / n;
                 double pulse = forGpu ? 0.45 : 0.5 + 0.5 * Math.Sin(Phase * 2.2);
                 EnsureRes();
-                AjustaFuentes(g, slot);
+                AjustaFuentes(g, slot, h);
+                float bajo = AltoCuenta(slot, h);
+                float altoL = h - bajo;
 
-                // TIRA CACHEADA: las ~28 letras solo se redibujan al cambiar letra/tamano/disponibles.
-                // Por cuadro: copiar la tira + la letra ACTUAL con su resplandor (antes: ~28 textos/cuadro).
+                // TIRA CACHEADA: el riel y las ~28 letras solo se redibujan al cambiar letra/tamano/datos.
+                // Por cuadro: copiar la tira + la letra ACTUAL con su capsula + la estrella (antes: ~28 textos).
                 int availN = (Available == null) ? -1 : Available.Count;
-                if (stripCache == null || scW != w || scH != h || scCur != Current || scLetters != Letters || scAvailN != availN)
+                int datos = FirmaDatos();
+                if (stripCache == null || scW != w || scH != h || scCur != Current || scLetters != Letters
+                    || scAvailN != availN || scDatos != datos)
                 {
                     RebuildStrip(w, h, n, slot);
-                    scW = w; scH = h; scCur = Current; scLetters = Letters; scAvailN = availN;
+                    scW = w; scH = h; scCur = Current; scLetters = Letters; scAvailN = availN; scDatos = datos;
                 }
                 g.DrawImageUnscaled(stripCache, 0, 0);
 
+                // LA CASILLA ELEGIDA: una capsula de NEON, del mismo material que la aurora del fondo -halo por
+                // fuera, contorno encendido y el centro casi vacio- en vez de una caja azul plana.
                 for (int i = 0; i < n; i++)
                 {
                     char ch = Letters[i];
-                    if (ch != Current || ch == '\u2605') continue;   // TOP lo dibuja el bloque dorado
-                    bool isVideo = (ch == '\u25BA');
-                    bool isTop = (ch == '\u2605');
-                    string lbl = isVideo ? lblVideo : isTop ? lblTop : ch.ToString();
-                    Font useF = (isVideo || isTop) ? fVideo : fMain;
-                    RectangleF slotRect = new RectangleF(i * slot, 0, slot, h);
-                    int pad = 3;
-                    RectangleF box = new RectangleF(slotRect.X + pad, pad, slotRect.Width - 2 * pad, h - 2 * pad);
-                    int glowA = 70 + (int)(pulse * 110);
+                    if (ch != Current || ch == TopMark) continue;   // TOP lo dibuja el bloque dorado
+                    bool isVideo = (ch == VideoMark);
+                    string lbl = isVideo ? lblVideo : ch.ToString();
+                    Font useF = isVideo ? fVideo : fMain;
+                    RectangleF slotRect = new RectangleF(i * slot, 0, slot, altoL);
+                    RectangleF box = new RectangleF(i * slot + 3.5f, 3.5f, slot - 7f, altoL - 7f);
                     if (pulsePath == null || box != pulseBox)   // misma casilla -> misma trayectoria
                     {
                         if (pulsePath != null) pulsePath.Dispose();
-                        pulsePath = RoundRectF(box, 8);
+                        pulsePath = RoundRectF(box, 9);
                         pulseBox = box;
                     }
                     if (pulseBrush == null) pulseBrush = new SolidBrush(Color.Black);
-                    if (pulsePen == null) pulsePen = new Pen(Color.FromArgb(220, 150, 205, 255), 2f);
-                    pulseBrush.Color = Color.FromArgb(glowA, 90, 170, 255);
+                    if (pulsePen == null) pulsePen = new Pen(Color.Black, 2.6f);
+                    pulsePen.LineJoin = LineJoin.Round;
+                    for (int k = 5; k >= 1; k--)   // el halo: pasadas cada vez mas anchas y mas tenues
+                    {
+                        pulsePen.Color = Color.FromArgb(9 + (int)(pulse * 7 * (6 - k)), 120, 190, 255);
+                        pulsePen.Width = k * 2.4f;
+                        g.DrawPath(pulsePen, pulsePath);
+                    }
+                    pulseBrush.Color = Color.FromArgb(26 + (int)(pulse * 30), 70, 150, 240);
                     g.FillPath(pulseBrush, pulsePath);
+                    pulsePen.Color = Color.FromArgb(120 + (int)(pulse * 70), 130, 200, 255); pulsePen.Width = 2.6f;
+                    g.DrawPath(pulsePen, pulsePath);
+                    pulsePen.Color = Color.FromArgb(215 + (int)(pulse * 40), 225, 242, 255); pulsePen.Width = 1.1f;
                     g.DrawPath(pulsePen, pulsePath);
                     g.DrawString(lbl, useF, whiteB, slotRect, sfCen);
                     break;
                 }
 
-                // Marcador TOP: SIEMPRE dorado pulsante para llamar la atencion del cliente (solo si hay
-                // algo dentro). Se dibuja en vivo este o no seleccionado.
-                int topI = Letters.IndexOf('\u2605');
-                if (topI >= 0 && Available != null && Available.Contains('\u2605'))
+                // LA ESTRELLITA DORADA de "lo mas sonado": siempre pulsando para llamar la atencion del
+                // cliente (solo si hay algo dentro). Se dibuja en vivo este o no seleccionada.
+                int topI = Letters.IndexOf(TopMark);
+                if (topI >= 0 && Available != null && Available.Contains(TopMark))
                 {
-                    RectangleF gsl = new RectangleF(topI * slot, 0, slot, h);
+                    RectangleF gsl = new RectangleF(topI * slot, 0, slot, altoL);
                     double gpu = forGpu ? 0.5 : 0.5 + 0.5 * Math.Sin(Phase * 2.6);   // GPU: brillo FIJO en la textura (el pulso dorado lo pone el halo por quad, GetTopGlow)
-                    bool topSel = (Current == '\u2605');
+                    bool topSel = (Current == TopMark);
                     if (goldTextBrush == null) goldTextBrush = new SolidBrush(Color.Black);
                     if (topSel)
                     {
-                        // SELECCIONADO: caja dorada (mismo concepto que la seleccion azul de las letras)
-                        RectangleF gbx = new RectangleF(gsl.X + 3, 3, gsl.Width - 6, h - 6);
+                        // SELECCIONADA: capsula dorada, del mismo corte que la de neon de las letras.
+                        RectangleF gbx = new RectangleF(gsl.X + 3.5f, 3.5f, gsl.Width - 7f, altoL - 7f);
                         int ga = 80 + (int)(gpu * 150);
-                        if (goldPath == null || gbx != goldBox) { if (goldPath != null) goldPath.Dispose(); goldPath = RoundRectF(gbx, 8); goldBox = gbx; }
+                        if (goldPath == null || gbx != goldBox) { if (goldPath != null) goldPath.Dispose(); goldPath = RoundRectF(gbx, 9); goldBox = gbx; }
                         if (goldBrush == null) goldBrush = new SolidBrush(Color.Black);
                         if (goldPen == null) goldPen = new Pen(Color.Black, 2.2f);
+                        goldPen.LineJoin = LineJoin.Round;
                         goldBrush.Color = Color.FromArgb(ga, 255, 200, 40);
-                        goldPen.Color = Color.FromArgb(235, 255, 228, 130);
+                        goldPen.Color = Color.FromArgb(235, 255, 228, 130); goldPen.Width = 2.2f;
                         g.FillPath(goldBrush, goldPath);
                         g.DrawPath(goldPen, goldPath);
                         goldTextBrush.Color = Color.White;
-                        g.DrawString(lblTop, fVideo, goldTextBrush, gsl, sfCen);
+                        g.DrawString("\u2605", fTop, goldTextBrush, gsl, sfCen);
                     }
                     else
                     {
-                        // NO seleccionado: BRILLAN solo las letras (sin caja, para no confundir con seleccion).
-                        // halo dorado tenue (4 pasadas desplazadas) + texto dorado pulsante encima.
+                        // NO seleccionada: brilla SOLO la estrella (sin caja, para no confundir con seleccion).
+                        // halo dorado tenue (4 pasadas desplazadas) + la estrella dorada pulsante encima.
                         int hAlpha = 35 + (int)(gpu * 55);
                         goldTextBrush.Color = Color.FromArgb(hAlpha, 255, 205, 90);
-                        g.DrawString(lblTop, fVideo, goldTextBrush, new RectangleF(gsl.X - 1, gsl.Y, gsl.Width, gsl.Height), sfCen);
-                        g.DrawString(lblTop, fVideo, goldTextBrush, new RectangleF(gsl.X + 1, gsl.Y, gsl.Width, gsl.Height), sfCen);
-                        g.DrawString(lblTop, fVideo, goldTextBrush, new RectangleF(gsl.X, gsl.Y - 1, gsl.Width, gsl.Height), sfCen);
-                        g.DrawString(lblTop, fVideo, goldTextBrush, new RectangleF(gsl.X, gsl.Y + 1, gsl.Width, gsl.Height), sfCen);
+                        g.DrawString("\u2605", fTop, goldTextBrush, new RectangleF(gsl.X - 1, gsl.Y, gsl.Width, gsl.Height), sfCen);
+                        g.DrawString("\u2605", fTop, goldTextBrush, new RectangleF(gsl.X + 1, gsl.Y, gsl.Width, gsl.Height), sfCen);
+                        g.DrawString("\u2605", fTop, goldTextBrush, new RectangleF(gsl.X, gsl.Y - 1, gsl.Width, gsl.Height), sfCen);
+                        g.DrawString("\u2605", fTop, goldTextBrush, new RectangleF(gsl.X, gsl.Y + 1, gsl.Width, gsl.Height), sfCen);
                         int gb = 60 + (int)(gpu * 70); if (gb > 255) gb = 255;
                         goldTextBrush.Color = Color.FromArgb(255, 255, 210, gb);   // dorado pulsante brillante
-                        g.DrawString(lblTop, fVideo, goldTextBrush, gsl, sfCen);
+                        g.DrawString("\u2605", fTop, goldTextBrush, gsl, sfCen);
                     }
                 }
             }
