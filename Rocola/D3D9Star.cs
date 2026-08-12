@@ -1747,14 +1747,17 @@ namespace Rocola
                 float m0 = AurSueloAlfa(s0), m1 = AurSueloAlfa(s1);
                 int k0 = j * puntos, k1 = (j + 1) * puntos;
                 float y0 = baseY + hondo * s0, y1 = baseY + hondo * s1;
+                // El borde DERECHO de una celda es el IZQUIERDO de la de al lado: mismo color, misma opacidad,
+                // misma cuenta. Se arrastra en vez de calcularlo dos veces.
+                uint cL0 = AurArgb(cSuelo[k0], aCol[0] * m0), cL1 = AurArgb(cSuelo[k1], aCol[0] * m1);
                 for (int i = 0; i < AurCols; i++)
                 {
                     float x0 = i * paso, x1 = x0 + paso;
-                    uint cL0 = AurArgb(cSuelo[k0 + i], aCol[i] * m0), cL1 = AurArgb(cSuelo[k1 + i], aCol[i] * m1);
                     uint cR0 = AurArgb(cSuelo[k0 + i + 1], aCol[i + 1] * m0), cR1 = AurArgb(cSuelo[k1 + i + 1], aCol[i + 1] * m1);
                     AurV3(v, n + 0, x0, y0, cL0); AurV3(v, n + 1, x1, y0, cR0); AurV3(v, n + 2, x0, y1, cL1);
                     AurV3(v, n + 3, x1, y0, cR0); AurV3(v, n + 4, x1, y1, cR1); AurV3(v, n + 5, x0, y1, cL1);
                     n += 6;
+                    cL0 = cR0; cL1 = cR1;
                 }
             }
             for (int j = 0; j < AurFilas; j++)
@@ -1763,23 +1766,25 @@ namespace Rocola
                 float m0 = AurBaja(f0), m1 = AurBaja(f1);
                 float g0 = AurRampa(f0), g1 = AurRampa(f1);   // cuanto ondeo se deja ver a esa altura
                 int k0 = j * puntos, k1 = (j + 1) * puntos;
+                // Lo mismo que en el suelo: el lado derecho de una celda es el izquierdo de la siguiente, y eso
+                // son dos alturas, dos pesos y dos colores por celda que se estaban calculando dos veces. El
+                // ondeo enciende y apaga el BRILLO de la veta, pero NO le cambia el color: asi todas las
+                // cortinas llevan el mismo degradado y los picos se ven parejos entre si.
+                float yL0 = baseY - hCol[0] * f0, yL1 = baseY - hCol[0] * f1;
+                float wL0 = aCol[0] * m0 * (1f + (rCol[0] - 1f) * g0), wL1 = aCol[0] * m1 * (1f + (rCol[0] - 1f) * g1);
+                uint cL0 = AurArgb(cCortina[k0], wL0), cL1 = AurArgb(cCortina[k1], wL1);
                 for (int i = 0; i < AurCols; i++)
                 {
                     float x0 = i * paso, x1 = x0 + paso;
-                    float hL = hCol[i], hR = hCol[i + 1];
-                    float yL0 = baseY - hL * f0, yL1 = baseY - hL * f1;
+                    float hR = hCol[i + 1];
                     float yR0 = baseY - hR * f0, yR1 = baseY - hR * f1;
-                    // El ondeo enciende y apaga el BRILLO de la veta, pero NO le cambia el color: asi todas las
-                    // cortinas llevan el mismo degradado y los picos se ven parejos entre si.
-                    float wL0 = aCol[i] * m0 * (1f + (rCol[i] - 1f) * g0), wL1 = aCol[i] * m1 * (1f + (rCol[i] - 1f) * g1);
                     float wR0 = aCol[i + 1] * m0 * (1f + (rCol[i + 1] - 1f) * g0), wR1 = aCol[i + 1] * m1 * (1f + (rCol[i + 1] - 1f) * g1);
-                    uint cL0 = AurArgb(cCortina[k0 + i], wL0);
-                    uint cL1 = AurArgb(cCortina[k1 + i], wL1);
                     uint cR0 = AurArgb(cCortina[k0 + i + 1], wR0);
                     uint cR1 = AurArgb(cCortina[k1 + i + 1], wR1);
                     AurV3(v, n + 0, x0, yL1, cL1); AurV3(v, n + 1, x1, yR1, cR1); AurV3(v, n + 2, x0, yL0, cL0);
                     AurV3(v, n + 3, x1, yR1, cR1); AurV3(v, n + 4, x1, yR0, cR0); AurV3(v, n + 5, x0, yL0, cL0);
                     n += 6;
+                    yL0 = yR0; yL1 = yR1; cL0 = cR0; cL1 = cR1;
                 }
             }
             return n;
@@ -1852,22 +1857,31 @@ namespace Rocola
             float yNb = ejeY + AurLineaNucleo, yMb = ejeY + lqB, yFb = ejeY + AurLineaAbajo;
             int salto = AurCols / AurLineaCols;
             float pasoL = ancho / AurLineaCols;
+            // El borde DERECHO de un tramo es exactamente el IZQUIERDO del siguiente: mismo color y misma
+            // opacidad. Se arrastran en vez de volver a calcularlos -eran cuatro cuentas de bits por tramo
+            // hechas dos veces- y de paso desaparece el par mLb/mRb, que era literalmente mLa/mRa otra vez.
+            uint pL = cLinea[0];
+            uint kL = AurNeon(pL, AurNeonBlanco);
+            float aL = gCol[0];
+            uint fL = AurArgb(pL, 0f);                                                 // el borde del resplandor: apagado
+            uint mL = AurArgb(pL, aL * AurLineaHalo);
+            uint nLc = AurArgb(kL, aL);                                                // el nucleo, aclarado
             for (int i = 0; i < AurLineaCols; i++)
             {
                 float x0 = i * pasoL, x1 = x0 + pasoL;
-                int j0 = i * salto, j1 = j0 + salto;
-                uint pL = cLinea[j0], pR = cLinea[j1];
-                uint kL = AurNeon(pL, AurNeonBlanco), kR = AurNeon(pR, AurNeonBlanco);
-                float aL = gCol[j0], aR = gCol[j1];
-                uint fL = AurArgb(pL, 0f), fR = AurArgb(pR, 0f);                       // el borde del resplandor: apagado
-                uint mLa = AurArgb(pL, aL * AurLineaHalo), mRa = AurArgb(pR, aR * AurLineaHalo);
-                uint nLc = AurArgb(kL, aL), nRc = AurArgb(kR, aR);                     // el nucleo, aclarado
-                n = AurBanda(v, n, x0, x1, yFa, yFa, yMa, yMa, fL, fR, mLa, mRa);
-                n = AurBanda(v, n, x0, x1, yMa, yMa, yNa, yNa, mLa, mRa, nLc, nRc);
-                uint mLb = AurArgb(pL, aL * AurLineaHalo), mRb = AurArgb(pR, aR * AurLineaHalo);
+                int j1 = (i + 1) * salto;
+                uint pR = cLinea[j1];
+                uint kR = AurNeon(pR, AurNeonBlanco);
+                float aR = gCol[j1];
+                uint fR = AurArgb(pR, 0f);
+                uint mR = AurArgb(pR, aR * AurLineaHalo);
+                uint nRc = AurArgb(kR, aR);
+                n = AurBanda(v, n, x0, x1, yFa, yFa, yMa, yMa, fL, fR, mL, mR);
+                n = AurBanda(v, n, x0, x1, yMa, yMa, yNa, yNa, mL, mR, nLc, nRc);
                 n = AurBanda(v, n, x0, x1, yNa, yNa, yNb, yNb, nLc, nRc, nLc, nRc);
-                n = AurBanda(v, n, x0, x1, yNb, yNb, yMb, yMb, nLc, nRc, mLb, mRb);
-                n = AurBanda(v, n, x0, x1, yMb, yMb, yFb, yFb, mLb, mRb, fL, fR);
+                n = AurBanda(v, n, x0, x1, yNb, yNb, yMb, yMb, nLc, nRc, mL, mR);
+                n = AurBanda(v, n, x0, x1, yMb, yMb, yFb, yFb, mL, mR, fL, fR);
+                fL = fR; mL = mR; nLc = nRc;
             }
             // ---- EL CONTORNO, siguiendo la silueta por la curva (ver AurContCols) ----
             float qf = AurNeonFuera * AurNeonQuiebre;
@@ -1875,6 +1889,13 @@ namespace Rocola
             float pasoC = ancho / AurContCols;
             float tL = baseY - hCol[0];
             uint cIz = cNeon[0]; float aIz = nCol[0];
+            // Igual que en la raya: el extremo derecho de una columna ES el izquierdo de la siguiente. Antes se
+            // recalculaban los cuatro colores en cada vuelta -288 vueltas por cuadro, cuatro cuentas de bits
+            // cada una, todas repetidas-; ahora se arrastran.
+            uint kIz = AurNeon(cIz, AurNeonBlanco);
+            uint cfL = AurArgb(cIz, 0f);
+            uint cmL = AurArgb(cIz, aIz * AurNeonHalo);
+            uint cnL = AurArgb(kIz, aIz);
             for (int q = 0; q < AurContCols; q++)
             {
                 int k = q + 1;
@@ -1885,15 +1906,16 @@ namespace Rocola
                 uint cDe = (u <= 0f) ? cNeon[i] : AurLerpRgb(cNeon[i], cNeon[i2], u);
                 float aDe = nCol[i] + (nCol[i2] - nCol[i]) * u;
                 float x0 = q * pasoC, x1 = x0 + pasoC;
-                uint kL = AurNeon(cIz, AurNeonBlanco), kR = AurNeon(cDe, AurNeonBlanco);
-                uint fL = AurArgb(cIz, 0f), fR = AurArgb(cDe, 0f);
-                uint mL = AurArgb(cIz, aIz * AurNeonHalo), mR = AurArgb(cDe, aDe * AurNeonHalo);
-                uint nL = AurArgb(kL, aIz), nR = AurArgb(kR, aDe);
-                n = AurBanda(v, n, x0, x1, tL - AurNeonFuera, tR - AurNeonFuera, tL - qf, tR - qf, fL, fR, mL, mR);
-                n = AurBanda(v, n, x0, x1, tL - qf, tR - qf, tL - AurNeonNucleo, tR - AurNeonNucleo, mL, mR, nL, nR);
-                n = AurBanda(v, n, x0, x1, tL - AurNeonNucleo, tR - AurNeonNucleo, tL + AurNeonNucleo, tR + AurNeonNucleo, nL, nR, nL, nR);
-                n = AurBanda(v, n, x0, x1, tL + AurNeonNucleo, tR + AurNeonNucleo, tL + AurNeonDentro, tR + AurNeonDentro, nL, nR, fL, fR);
-                tL = tR; cIz = cDe; aIz = aDe;
+                uint kR = AurNeon(cDe, AurNeonBlanco);
+                uint cfR = AurArgb(cDe, 0f);
+                uint cmR = AurArgb(cDe, aDe * AurNeonHalo);
+                uint cnR = AurArgb(kR, aDe);
+                n = AurBanda(v, n, x0, x1, tL - AurNeonFuera, tR - AurNeonFuera, tL - qf, tR - qf, cfL, cfR, cmL, cmR);
+                n = AurBanda(v, n, x0, x1, tL - qf, tR - qf, tL - AurNeonNucleo, tR - AurNeonNucleo, cmL, cmR, cnL, cnR);
+                n = AurBanda(v, n, x0, x1, tL - AurNeonNucleo, tR - AurNeonNucleo, tL + AurNeonNucleo, tR + AurNeonNucleo, cnL, cnR, cnL, cnR);
+                n = AurBanda(v, n, x0, x1, tL + AurNeonNucleo, tR + AurNeonNucleo, tL + AurNeonDentro, tR + AurNeonDentro, cnL, cnR, cfL, cfR);
+                tL = tR; aIz = aDe;
+                cfL = cfR; cmL = cmR; cnL = cnR;
             }
             return n;
         }

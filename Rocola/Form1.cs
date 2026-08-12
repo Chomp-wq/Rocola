@@ -67,14 +67,16 @@ namespace Rocola
         // ---- Controles ----
         private LetterBar letterBar;
         private AlbumView albumView;
-        private Label lblStatus, lblNow, lblNext, lblCount, lblTime, lblAlbum, lblToast, lblCredits;
+        private Label lblStatus, lblNow, lblNext, lblTime, lblAlbum, lblToast;
+        private PastillaView pastCred, pastCola;   // creditos y cola, en capsula
         private HeaderView headerView;   // nombre de la seccion + en que pagina estas
         // Linea de ARRIBA de "Reproduciendo": vacia casi siempre. Cuando el titulo no cabe en una sola
         // linea, la primera mitad se pinta aqui y el resto en lblNow (que sigue siendo la ULTIMA linea, la
         // que lleva el letrero MEJORADA detras). El hueco esta reservado SIEMPRE, asi que el acomodo de la
         // pantalla no se mueve nunca al cambiar de cancion: nada de rehornear la rejilla por un titulo largo.
         private Label lblNowTop;
-        private string nowFullText = "Nada reproduciendose";   // el texto COMPLETO, antes de partirlo en lineas
+        private string nowFullText = "Nada reproduciendose";   // el TITULO de lo que suena
+        private string nowArtista = "";                        // y de quien es
         private HelpBar helpBar;
         private BgPanel panelSongs;
         private SongListView songList;
@@ -2622,17 +2624,21 @@ namespace Rocola
             panelSongs.Controls.Add(songList);
             panelSongs.Controls.Add(songPager);
 
-            lblNow = new Label(); TransLabel(lblNow, 16f); lblNow.Text = "Nada reproduciendose"; lblNow.AutoEllipsis = true;
-            lblNow.ForeColor = Color.FromArgb(125, 235, 165);   // ESTETICA: verde "sonando" (se distingue de "siguiente")
-            lblNowTop = new Label(); TransLabel(lblNowTop, 16f); lblNowTop.Text = ""; lblNowTop.AutoEllipsis = true;
-            lblNowTop.ForeColor = lblNow.ForeColor;             // misma linea, mismo verde: se leen como un solo texto
-            lblNowTop.TextAlign = ContentAlignment.BottomLeft;  // pegada a la linea de abajo, no flotando
+            // TARJETA DE LO QUE SUENA: lblNowTop lleva el TITULO (grande, blanco) y lblNow el ARTISTA (mas
+            // chico, verde). Antes las dos eran la misma frase partida por ancho; ahora cada una dice una cosa.
+            lblNow = new Label(); TransLabel(lblNow, 11.5f); lblNow.Text = ""; lblNow.AutoEllipsis = true;
+            lblNow.ForeColor = Color.FromArgb(120, 230, 165);   // ESTETICA: verde "sonando" (se distingue de "siguiente")
+            lblNowTop = new Label(); TransLabel(lblNowTop, 15f); lblNowTop.Text = "Nada reproduciendose"; lblNowTop.AutoEllipsis = true;
+            lblNowTop.ForeColor = Color.FromArgb(236, 242, 255);   // el titulo, en blanco: es lo que se lee primero
+            lblNowTop.TextAlign = ContentAlignment.MiddleLeft;
             lblNow.UseMnemonic = false; lblNowTop.UseMnemonic = false;   // un "&" del titulo es un "&", no un subrayado
-            lblNext = new Label(); TransLabel(lblNext, 13f); lblNext.Text = "Siguiente:  -"; lblNext.AutoEllipsis = true;
-            lblNext.ForeColor = Color.FromArgb(150, 200, 255);  // ESTETICA: azul claro "siguiente"
+            lblNext = new Label(); TransLabel(lblNext, 10.5f); lblNext.Text = "Sigue:  -"; lblNext.AutoEllipsis = true;
+            lblNext.ForeColor = Color.FromArgb(150, 165, 200);
             lblNext.UseMnemonic = false;                        // igual que arriba: un "&" del titulo es un "&"
-            lblCount = new Label(); TransLabel(lblCount, 13f); lblCount.TextAlign = ContentAlignment.MiddleLeft; lblCount.Text = "En cola:  0";
-            lblCredits = new Label(); TransLabel(lblCredits, 18f); lblCredits.TextAlign = ContentAlignment.MiddleLeft; lblCredits.Text = "Inserta una moneda"; lblCredits.ForeColor = Color.FromArgb(255, 205, 90);
+            pastCola = new PastillaView(); pastCola.Etiqueta = "En cola"; pastCola.Valor = "0";
+            pastCola.Acento = Color.FromArgb(140, 205, 255);
+            pastCred = new PastillaView(); pastCred.Etiqueta = "Inserta una moneda"; pastCred.Valor = "";
+            pastCred.Acento = Color.FromArgb(255, 205, 90);
             lblMejorada = new Label(); TransLabel(lblMejorada, 12f); lblMejorada.Text = "MEJORADA";
             lblMejorada.TextAlign = ContentAlignment.MiddleLeft; lblMejorada.Visible = false;   // aparece solo si la cancion suena mejorada (PositionMejorada)
 
@@ -2661,10 +2667,10 @@ namespace Rocola
             attractView.Visible = false;
             attractView.GetCoverByPath = LoadCoverByPath;
 
-            Controls.Add(lblStatus); Controls.Add(helpBar); Controls.Add(lblCredits);
+            Controls.Add(lblStatus); Controls.Add(helpBar); Controls.Add(pastCred);
             Controls.Add(letterBar); Controls.Add(headerView);
             Controls.Add(albumView); Controls.Add(panelSongs);
-            Controls.Add(lblNowTop); Controls.Add(lblNow); Controls.Add(lblMejorada); Controls.Add(lblNext); Controls.Add(lblCount); Controls.Add(progress); Controls.Add(lblTime);
+            Controls.Add(lblNowTop); Controls.Add(lblNow); Controls.Add(lblMejorada); Controls.Add(lblNext); Controls.Add(pastCola); Controls.Add(progress); Controls.Add(lblTime);
             Controls.Add(miniCube);
             Controls.Add(lblAttract);
             Controls.Add(lblToast);
@@ -2746,43 +2752,46 @@ namespace Rocola
             // que casi no se veia. Todo sube alrededor de un cuarto. La franja crece unos 20 px de alto y la
             // rejilla de discos los cede: la aurora, el horizonte y la textura de la franja se acomodan solos
             // porque todos salen de BotStripTop.
-            int cubeSize = 84;
-            int progH = 22;                                  // barra de duracion mas gruesa: se ve de lejos
-            int progY = H - pad - progH;
-            // "Siguiente" tenia su propio renglon y casi siempre dice cuatro palabras o un guion. Se sube a la
-            // fila de la barra de duracion, detras del reloj, y su renglon -30 px- se lo queda la rejilla.
-            int nowY = progY - 34;                           // la ULTIMA linea de "Reproduciendo"
-            // Se reserva UNA linea mas ARRIBA para los titulos largos. El hueco esta siempre, se use o no: asi el
-            // acomodo no cambia nunca al pasar de cancion (si cambiara, la rejilla de discos se re-hornearia entera
-            // cada vez que sonara un titulo largo). Con titulo corto el hueco queda vacio y todo se ve como antes.
-            int nowLineH = Math.Max(30, (lblNow != null ? lblNow.Font.Height : 28) + 2);
-            int nowTopY = nowY - nowLineH;
+            // ==========  LA TARJETA DE LO QUE SUENA  ==========
+            // La portada manda a la izquierda y a su lado, en renglones: el titulo, el artista, lo que sigue y
+            // la barra de duracion con el reloj. A la derecha, creditos y cola en capsulas. Ocupa 96 px de alto
+            // -18 menos que los cuatro renglones sueltos de antes- y esos 18 se los queda la rejilla de discos.
+            // Los cuatro renglones de la tarjeta, medidos con la letra que toque y sin un pixel de sobra:
+            // titulo, artista, lo que sigue, y la barra de duracion. La portada mide lo mismo que los cuatro
+            // juntos, asi que la tarjeta es un bloque cuadrado a la izquierda y texto a la derecha.
+            int hTit = Math.Max(24, (lblNowTop != null ? lblNowTop.Font.Height : 24) + 1);
+            int hArt = Math.Max(18, (lblNow != null ? lblNow.Font.Height : 18) + 1);
+            int hSig = Math.Max(17, (lblNext != null ? lblNext.Font.Height : 17) + 1);
+            int progH = 12;
+            int tarjetaH = hTit + hArt + hSig + 4 + progH + 2;
+            int tarjetaY = H - pad - tarjetaH;
+            int cubeSize = tarjetaH;
+            int nowTopY = tarjetaY;                  // el titulo manda donde arranca la franja (ver BotStripTop)
+            miniCube.SetBounds(pad, tarjetaY, cubeSize, cubeSize);
 
-            // cluster derecho del fondo:  [cubo mini] [ Creditos (grande) / En cola ]   (ancho completo)
-            int clusterTop = nowY;
-            int clusterBottom = progY + progH;
-            int clusterH = clusterBottom - clusterTop;
-            int rightTextW = 250;
-            int rightTextX = W - pad - rightTextW;
-            int cubeX = rightTextX - 12 - cubeSize;
-            int cubeY = clusterTop + (clusterH - cubeSize) / 2; if (cubeY < clusterTop) cubeY = clusterTop;
-            miniCube.SetBounds(cubeX, cubeY, cubeSize, cubeSize);
-            if (lblCredits != null) lblCredits.SetBounds(rightTextX, clusterTop + 2, rightTextW, 34);   // grande, arriba
-            lblCount.SetBounds(rightTextX, clusterTop + 40, rightTextW, 26);                            // chico, abajo
+            // Las capsulas, arriba a la derecha. Se miden por su contenido: "Inserta una moneda" es mucho mas
+            // ancha que "Creditos 3", y una capsula a medias se veria mal.
+            int pastH = 26;
+            int wCred = PastillaView.Ancho(pastCred.Etiqueta, pastCred.Valor, pastH, this.Font.FontFamily);
+            int wCola = PastillaView.Ancho(pastCola.Etiqueta, pastCola.Valor, pastH, this.Font.FontFamily);
+            int pastY = tarjetaY;
+            pastCred.SetBounds(W - pad - wCred, pastY, wCred, pastH);
+            pastCola.SetBounds(W - pad - wCred - 10 - wCola, pastY, wCola, pastH);
 
-            // area izquierda (texto + barra de duracion) termina antes del cubo mini
-            int leftRight = cubeX - 14;
-            int leftW = Math.Max(120, leftRight - pad);
-            // La fila de abajo:  [ barra de duracion ] [ 3:05 / 4:36 ] [ Siguiente: ... ]
-            int timeW = 150;
-            int nextW = Math.Max(90, (leftW * 4) / 10);
-            int progW = Math.Max(50, leftW - timeW - nextW - 24);
-            progress.SetBounds(pad, progY, progW, progH);
-            lblTime.SetBounds(pad + progW + 12, progY - 2, timeW, 26);
-            lblNext.SetBounds(pad + progW + 12 + timeW + 12, progY - 2, nextW, 26);
-            lblNow.SetBounds(pad, nowY, leftW, 30);
-            lblNowTop.SetBounds(pad, nowTopY, leftW, nowLineH);
-            iaNowRowW = leftW; PositionMejorada();   // parte el titulo en 1 o 2 lineas y acomoda el letrero MEJORADA tras la ultima
+            int txtX = pad + cubeSize + 14;
+            int derPast = W - pad - wCred - wCola - 24;             // hasta donde puede llegar el titulo
+            int txtW = Math.Max(120, derPast - txtX);
+            lblNowTop.SetBounds(txtX, tarjetaY, txtW, hTit);                  // el TITULO
+            lblNow.SetBounds(txtX, tarjetaY + hTit, txtW, hArt);              // el ARTISTA
+
+            int timeW = 130;
+            int anchoDer = W - pad - txtX;
+            int progW = Math.Max(50, anchoDer - timeW - 12);
+            lblNext.SetBounds(txtX, tarjetaY + hTit + hArt, progW, hSig);     // lo que SIGUE
+            int filaY = tarjetaY + hTit + hArt + hSig + 4;                    // y al pie, la barra con el reloj
+            progress.SetBounds(txtX, filaY, progW, progH);
+            lblTime.SetBounds(txtX + progW + 12, filaY - (24 - progH) / 2, timeW, 24);
+            iaNowRowW = txtW; PositionMejorada();   // acomoda el letrero MEJORADA tras el artista
 
             int albumY = lettersY + lettersH + 10;
             // EL AVISO DE ESTADO ya no ocupa sitio propio en la fila de arriba: durante el uso normal esta
@@ -6479,10 +6488,11 @@ namespace Rocola
 
         private void UpdateCredits()
         {
-            if (lblCredits == null) return;
-            if (credits <= 0) { lblCredits.Text = "Inserta una moneda"; lblCredits.ForeColor = Color.FromArgb(255, 205, 90); }
-            else { lblCredits.Text = "Creditos:  " + credits; lblCredits.ForeColor = Color.FromArgb(120, 240, 140); }
-            lblCredits.Invalidate();
+            if (pastCred == null) return;
+            if (credits <= 0) { pastCred.Etiqueta = "Inserta una moneda"; pastCred.Valor = ""; pastCred.Acento = Color.FromArgb(255, 205, 90); }
+            else { pastCred.Etiqueta = "Creditos"; pastCred.Valor = credits.ToString(); pastCred.Acento = Color.FromArgb(120, 240, 140); }
+            pastCred.Invalidate();
+            pastCred.Invalidate();
         }
 
         // Reproduce el siguiente elemento (cancion o video). Tambien sirve para SALTAR el actual.
@@ -7297,8 +7307,17 @@ namespace Rocola
                     for (int k = 0; k < 7; k++)
                     {
                         int q = k * SpecPolos;
-                        float x = m;
-                        for (int pp = 0; pp < SpecPolos; pp++) { sl[q + pp] += (x - sl[q + pp]) * sc[k]; x = sl[q + pp]; }
+                        float x = m, ck = sc[k];
+                        // Cada polo se lleva a una local: antes se leia su casilla del array DOS veces por
+                        // vuelta (una para sumarle y otra para volver a leerla) y el coeficiente en cada
+                        // vuelta. Las cuentas son las mismas y en el mismo orden: el sonido no cambia ni un bit.
+                        for (int pp = 0; pp < SpecPolos; pp++)
+                        {
+                            float pv = sl[q + pp];
+                            pv += (x - pv) * ck;
+                            sl[q + pp] = pv;
+                            x = pv;
+                        }
                         float bnd = x - ant; ant = x;     // lo que este peldano deja pasar menos lo del anterior
                         sSum[k] += bnd * bnd;
                     }
@@ -7403,11 +7422,17 @@ namespace Rocola
 
         private void UpdateNowPlayingUI()
         {
-            nowFullText = (nowPlaying != null) ? ("Reproduciendo:  " + nowPlaying.Display()) : "Nada reproduciendose";
+            if (nowPlaying != null)
+            {
+                string tit, art;
+                nowPlaying.TituloArtista(out tit, out art);
+                nowFullText = tit; nowArtista = art;
+            }
+            else { nowFullText = "Nada reproduciendose"; nowArtista = ""; }
             iaBadgeKind = MejKind();   // dorado = version IA (Apollo); plateado = DSEE espectral reconstruyendo DE VERDAD
-            PositionMejorada();   // parte el texto en 1 o 2 lineas y coloca el letrero
-            lblNext.Text = (queue.Count > 0) ? "Siguiente:  " + queue[0].Display() : "Siguiente:  -";
-            lblCount.Text = "En cola:  " + queue.Count;
+            PositionMejorada();   // pone titulo y artista y coloca el letrero MEJORADA
+            lblNext.Text = (queue.Count > 0) ? "Sigue:  " + queue[0].Display() : "Sigue:  -";
+            pastCola.Valor = queue.Count.ToString(); pastCola.Invalidate();
             if (miniCube != null)
             {
                 if (nowPlaying != null) { miniCube.Cover = LoadCover(nowPlaying.Disc); miniCube.Visible = true; }
@@ -7439,19 +7464,19 @@ namespace Rocola
                 lblMejorada.ForeColor = (iaBadgeKind == 2) ? IaGoldBase : IaSilverBase;   // color base: el brillo lo anima el tick (CPU) o un halo que recorre (GPU)
                 bw = TextRenderer.MeasureText(lblMejorada.Text, lblMejorada.Font).Width + 4;
             }
-            int anchoUlt = on ? Math.Max(60, iaNowRowW - bw - 12) : iaNowRowW;   // lo que le queda a la ultima linea
-            if (lblNow.Width != anchoUlt) lblNow.Width = anchoUlt;
-            if (lblNowTop.Width != iaNowRowW) lblNowTop.Width = iaNowRowW;       // la de arriba no comparte con nadie
+            // El titulo va arriba y el artista debajo; el letrero se pone detras del ARTISTA, que es el renglon
+            // corto, para no comerle sitio al titulo.
+            if (lblNowTop.Text != nowFullText) lblNowTop.Text = nowFullText;
+            if (lblNow.Text != nowArtista) lblNow.Text = nowArtista;
+            if (lblNowTop.Width != iaNowRowW) lblNowTop.Width = iaNowRowW;
 
-            string arriba, abajo;
-            PartirNow(nowFullText, lblNow.Font, iaNowRowW, anchoUlt, out arriba, out abajo);
-            if (lblNowTop.Text != arriba) lblNowTop.Text = arriba;
-            if (lblNow.Text != abajo) lblNow.Text = abajo;
+            int anchoArt = on ? Math.Max(60, iaNowRowW - bw - 12) : iaNowRowW;
+            if (lblNow.Width != anchoArt) lblNow.Width = anchoArt;
 
             if (!on) { if (lblMejorada.Visible) lblMejorada.Visible = false; return; }
             int tw = TextRenderer.MeasureText(lblNow.Text, lblNow.Font).Width;
-            if (tw > anchoUlt) tw = anchoUlt;
-            lblMejorada.SetBounds(lblNow.Left + tw + 12, lblNow.Top + 5, bw, 24);   // centrado en la fila, que ahora es mas alta
+            if (tw > anchoArt) tw = anchoArt;
+            lblMejorada.SetBounds(lblNow.Left + tw + 12, lblNow.Top, bw, 22);
             lblMejorada.Visible = true;
         }
 
@@ -7723,7 +7748,7 @@ namespace Rocola
         // Donde EMPIEZA la franja de estado de abajo (la que va en su propia textura chica).
         private int BotStripTop(int h)
         {
-            int t = (lblNowTop != null) ? lblNowTop.Top - 4 : (lblNow != null ? lblNow.Top - 4 : h - 96);   // la franja arranca en la linea de ARRIBA
+            int t = (lblNowTop != null) ? lblNowTop.Top - 10 : (lblNow != null ? lblNow.Top - 10 : h - 104);   // la franja arranca justo encima de la tarjeta
             if (t < h / 2) t = h / 2;
             if (t > h - 8) t = h - 8;
             if (t < 0) t = 0;   // pantalla de alto ridiculo (arrancando, o minimizada): nunca por delante del borde
@@ -7840,8 +7865,8 @@ namespace Rocola
                     if (lblMejorada != null && lblMejorada.Visible) DrawLabelOverlay(g, lblMejorada);   // letrero MEJORADA (su brillo es un halo por quad, no rehace esta textura)
                     DrawLabelOverlay(g, lblNext);
                     DrawLabelOverlay(g, lblTime);
-                    DrawLabelOverlay(g, lblCredits);
-                    DrawLabelOverlay(g, lblCount);
+                    DrawCtrlOverlay(g, pastCred);
+                    DrawCtrlOverlay(g, pastCola);
                     DrawCtrlOverlay(g, progress);
                 }
             }
@@ -8008,8 +8033,8 @@ namespace Rocola
             if (lblMejorada != null && lblMejorada.Visible) { sb = Mix(sb, 'M'); sb = Mix(sb, iaBadgeKind); sb = Mix(sb, lblMejorada.Left); sb = Mix(sb, lblMejorada.ForeColor.ToArgb()); }
             if (lblNext != null) sb = Mix(sb, lblNext.Text);
             if (lblTime != null) sb = Mix(sb, lblTime.Text);
-            if (lblCredits != null) sb = Mix(sb, lblCredits.Text);
-            if (lblCount != null) sb = Mix(sb, lblCount.Text);
+            if (pastCred != null) { Color ac = pastCred.Acento; sb = Mix(sb, pastCred.Etiqueta); sb = Mix(sb, pastCred.Valor); sb = Mix(sb, ac.ToArgb()); sb = Mix(sb, pastCred.Left); }
+            if (pastCola != null) { sb = Mix(sb, pastCola.Valor); sb = Mix(sb, pastCola.Left); }
             if (progress != null) { sb = Mix(sb, (int)(progress.Value * 300)); sb = Mix(sb, progress.Accent.ToArgb()); }
             return (sb == SigNada) ? 1L : sb;   // que nunca coincida con "sin firma"
         }
@@ -8024,9 +8049,10 @@ namespace Rocola
             if (hb != null) hb.RenderContent(g, true);   // forGpu: sus pulsos van como halos por quad, no en la textura
             else { HeaderView hv = c as HeaderView; if (hv != null) hv.RenderContent(g);
             else { LetterBar lb = c as LetterBar; if (lb != null) lb.RenderContent(g, true);
+            else { PastillaView pa = c as PastillaView; if (pa != null) pa.RenderContent(g);
             else { ProgressView pv = c as ProgressView; if (pv != null) pv.RenderContent(g);
             else { SongListView sl = c as SongListView; if (sl != null) sl.RenderContent(g);
-            else { SongPagerBar sp = c as SongPagerBar; if (sp != null) sp.RenderContent(g); } } } } }
+            else { SongPagerBar sp = c as SongPagerBar; if (sp != null) sp.RenderContent(g); } } } } } }
             g.Restore(st);
         }
 
@@ -10742,6 +10768,24 @@ namespace Rocola
                 }
                 return (Song != null) ? (Song.Artist + " - " + Song.Title) : "";
             }
+
+            // Lo mismo, pero PARTIDO: arriba lo que suena y debajo de quien es. La franja de abajo los pone en
+            // dos renglones distintos, con distinto tamano y distinto color, asi que no vale con una sola
+            // cadena "Artista - Titulo" cortada por el guion (hay titulos con guiones).
+            public void TituloArtista(out string titulo, out string artista)
+            {
+                if (IsVideo)
+                {
+                    string disc = (Disc != null && !string.IsNullOrEmpty(Disc.Artist)) ? Disc.Artist : "";
+                    string file = "";
+                    try { file = System.IO.Path.GetFileNameWithoutExtension(VideoPath); } catch { }
+                    titulo = (file.Length > 0) ? file : disc;
+                    artista = "\u25BA Video" + ((disc.Length > 0 && file.Length > 0) ? ("  -  " + disc) : "");
+                    return;
+                }
+                titulo = (Song != null && !string.IsNullOrEmpty(Song.Title)) ? Song.Title : "";
+                artista = (Song != null && !string.IsNullOrEmpty(Song.Artist)) ? Song.Artist : "";
+            }
         }
 
         // Un archivo de video dentro de un disco; en la lista se ve solo el nombre sin extension
@@ -10950,12 +10994,7 @@ namespace Rocola
             private bool HayCuenta(float slot, int h)
             {
                 if (Counts == null || slot < 21f || h < 34 || Letters == null) return false;
-                for (int i = 0; i < Letters.Length; i++)
-                {
-                    int n;
-                    if (Counts.TryGetValue(Letters[i], out n) && n > 0) return true;
-                }
-                return false;
+                return HayNumeros();
             }
             private float AltoCuenta(float slot, int h) { return HayCuenta(slot, h) ? h * 0.30f : 0f; }
 
@@ -11028,7 +11067,23 @@ namespace Rocola
             // Firma de los datos que se pintan en la tira: si cambia, hay que rehacerla. El rastreo de fondo
             // va aprendiendo generos y contando canciones, y la barra tiene que enterarse.
             public int DatosSig() { return FirmaDatos(); }
+
+            private Dictionary<char, int> fCnt; private Dictionary<char, Color> fTin;
+            private int fVal, fNCnt = -1, fNTin = -1; private bool fOk;
             private int FirmaDatos()
+            {
+                // Se recorrian 29 letras con dos busquedas de diccionario cada una, DOS veces por cuadro: al
+                // dibujar y al firmar la textura de la GPU. Y el resultado casi nunca cambia -solo cuando el
+                // paseo de fondo aprende algo-. Como Form1 REEMPLAZA los diccionarios enteros (nunca los toca
+                // por dentro), basta con mirar si siguen siendo los mismos objetos y del mismo tamano.
+                int nC = (Counts == null) ? -1 : Counts.Count, nT = (Tints == null) ? -1 : Tints.Count;
+                if (fOk && ReferenceEquals(fCnt, Counts) && ReferenceEquals(fTin, Tints) && fNCnt == nC && fNTin == nT)
+                    return fVal;
+                fVal = CalculaFirma();
+                fCnt = Counts; fTin = Tints; fNCnt = nC; fNTin = nT; fOk = true;
+                return fVal;
+            }
+            private int CalculaFirma()
             {
                 int f = 17;
                 for (int i = 0; i < Letters.Length; i++)
@@ -11040,6 +11095,25 @@ namespace Rocola
                     f = f * 31 + n; f = f * 31 + t;
                 }
                 return f;
+            }
+
+            // Lo mismo para "hay algun numero que ensenar": tambien recorria las 29 letras, y se pregunta
+            // varias veces por cuadro (al repartir el alto, al elegir los cuerpos y al situar los halos).
+            private bool hcVal; private bool hcOk;
+            private Dictionary<char, int> hcCnt; private int hcN = -1;
+            private bool HayNumeros()
+            {
+                int nC = (Counts == null) ? -1 : Counts.Count;
+                if (hcOk && ReferenceEquals(hcCnt, Counts) && hcN == nC) return hcVal;
+                bool r = false;
+                if (Counts != null && Letters != null)
+                    for (int i = 0; i < Letters.Length; i++)
+                    {
+                        int n;
+                        if (Counts.TryGetValue(Letters[i], out n) && n > 0) { r = true; break; }
+                    }
+                hcVal = r; hcCnt = Counts; hcN = nC; hcOk = true;
+                return r;
             }
 
             // ---------- EL RIEL DE VIDRIO ----------
@@ -11460,6 +11534,100 @@ namespace Rocola
             }
 
             private static GraphicsPath Redondo(RectangleF r, float radio)
+            {
+                GraphicsPath p = new GraphicsPath();
+                float d = radio * 2;
+                if (d > r.Height) d = r.Height;
+                if (d > r.Width) d = r.Width;
+                if (d < 2) d = 2;
+                p.AddArc(r.X, r.Y, d, d, 180, 90);
+                p.AddArc(r.Right - d, r.Y, d, d, 270, 90);
+                p.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
+                p.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
+                p.CloseFigure();
+                return p;
+            }
+        }
+
+        // ==========  PASTILLA (creditos, cola)  ==========
+        // Un dato suelto dentro de una capsula: la etiqueta en gris y el numero en el color que le toca. Antes
+        // eran dos textos sueltos apilados en una esquina; en una capsula se leen como una UNIDAD y de lejos se
+        // distingue el numero, que es lo unico que el cliente necesita ver.
+        private class PastillaView : Control
+        {
+            public string Etiqueta = "", Valor = "";
+            public Color Acento = DefaultAccent;
+
+            private Font fEtq, fVal; private float fontAlto = -1f;
+            private SolidBrush brocha; private StringFormat sfCen;
+
+            public PastillaView()
+            {
+                this.SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.SupportsTransparentBackColor, true);
+                this.BackColor = Color.Transparent;
+                this.TabStop = false;
+            }
+
+            // Lo que mide de ancho una pastilla con ese contenido y ese alto. Lo usa el acomodo, que necesita
+            // saberlo ANTES de dibujar nada (y por eso mide con TextRenderer, sin Graphics).
+            public static int Ancho(string etiq, string valor, int alto, FontFamily fam)
+            {
+                using (Font fe = new Font(fam, alto * 0.34f, FontStyle.Bold))
+                using (Font fv = new Font(fam, alto * 0.52f, FontStyle.Bold))
+                {
+                    int w = TextRenderer.MeasureText(etiq ?? "", fe).Width;
+                    if (!string.IsNullOrEmpty(valor)) w += TextRenderer.MeasureText(valor, fv).Width + (int)(alto * 0.22f);
+                    return w + (int)(alto * 0.9f);
+                }
+            }
+
+            private void EnsureRes(int h)
+            {
+                if (brocha == null) brocha = new SolidBrush(Color.White);
+                if (sfCen == null)
+                {
+                    sfCen = new StringFormat();
+                    sfCen.Alignment = StringAlignment.Center; sfCen.LineAlignment = StringAlignment.Center;
+                    sfCen.FormatFlags = StringFormatFlags.NoWrap;
+                }
+                if (fEtq != null && Math.Abs(fontAlto - h) < 0.5f) return;
+                if (fEtq != null) fEtq.Dispose();
+                if (fVal != null) fVal.Dispose();
+                fEtq = new Font(this.Font.FontFamily, h * 0.34f, FontStyle.Bold);
+                fVal = new Font(this.Font.FontFamily, h * 0.52f, FontStyle.Bold);
+                fontAlto = h;
+            }
+
+            protected override void OnPaint(PaintEventArgs e) { RenderContent(e.Graphics); }
+            public void RenderContent(Graphics g)
+            {
+                int w = Width, h = Height;
+                if (w < 8 || h < 8) return;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                EnsureRes(h);
+                using (GraphicsPath p = RoundRectF(new RectangleF(0.5f, 0.5f, w - 1, h - 1), h / 2f))
+                {
+                    using (SolidBrush b = new SolidBrush(Color.FromArgb(52, Acento))) g.FillPath(b, p);
+                    using (Pen pe = new Pen(Color.FromArgb(95, Acento), 1f)) g.DrawPath(pe, p);
+                }
+                // El contenido va CENTRADO: al acomodo se le puede dar un pelo mas de ancho del justo y sigue
+                // viendose bien, en vez de quedar pegado a un lado.
+                string et = Etiqueta ?? "", va = Valor ?? "";
+                float we = g.MeasureString(et, fEtq).Width;
+                float wv = (va.Length > 0) ? g.MeasureString(va, fVal).Width : 0f;
+                float hueco = (va.Length > 0) ? h * 0.18f : 0f;
+                float x = (w - (we + wv + hueco)) / 2f;
+                if (x < h * 0.25f) x = h * 0.25f;
+                brocha.Color = Color.FromArgb(215, 205, 214, 238);
+                g.DrawString(et, fEtq, brocha, new RectangleF(x, 0, we + 6, h), sfCen);
+                if (va.Length > 0)
+                {
+                    brocha.Color = Acento;
+                    g.DrawString(va, fVal, brocha, new RectangleF(x + we + hueco, 0, wv + 6, h), sfCen);
+                }
+            }
+
+            private static GraphicsPath RoundRectF(RectangleF r, float radio)
             {
                 GraphicsPath p = new GraphicsPath();
                 float d = radio * 2;
