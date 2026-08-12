@@ -369,6 +369,24 @@ namespace Rocola
         private List<object> songItems = new List<object>();   // TODAS las canciones/videos del disco abierto
         private int songSel = 0;                               // seleccion global (entre todas las paginas)
         private readonly List<PlayItem> queue = new List<PlayItem>();
+        // DONDE VA CADA CANCION PEDIDA. Se consulta una vez por fila al dibujar la lista de un disco, asi que
+        // no puede ser un recorrido de la cola: es un indice ruta -> puesto que se rehace SOLO cuando la cola
+        // cambia. 'colaVer' sube en cada cambio y entra en la firma de la textura, para que la marca "EN COLA"
+        // aparezca en cuanto pides la cancion y no la proxima vez que algo mas se mueva.
+        private readonly Dictionary<string, int> colaPos = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        private int colaVer;
+        private void RefrescaCola()
+        {
+            colaPos.Clear();
+            for (int i = 0; i < queue.Count; i++)
+            {
+                PlayItem it = queue[i];
+                if (it == null) continue;
+                string k = it.PathKey();
+                if (k.Length > 0 && !colaPos.ContainsKey(k)) colaPos[k] = i + 1;   // el primero manda
+            }
+            colaVer++;
+        }
         private PlayItem nowPlaying;
 
         // ---- Estadisticas (base de "Lo mas sonado") ----
@@ -466,6 +484,10 @@ namespace Rocola
         // biblioteca, asi que se guarda en disco junto al numero de canciones con el que se calculo: mientras
         // la biblioteca no cambie, el proximo arranque ya lo tiene y no hay que volver a pasear los archivos.
         private Dictionary<char, string> letterTag = new Dictionary<char, string>();
+        // Y el que manda en cada DISCO. Sale del MISMO paseo de fondo que el de las letras -no cuesta ni un
+        // archivo mas- y es lo que le pone color a los resultados del buscador. Por carpeta, que es lo unico
+        // que identifica a un disco sin ambiguedad.
+        private Dictionary<string, string> discTag = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         private bool tintesPend;   // hay que (re)calcularlo: la biblioteca cambio o nunca se calculo
         private readonly List<SearchItem> searchIndex = new List<SearchItem>();
         private volatile bool libBuilding = false;   // el worker esta armando albums/byLetter/searchIndex: la UI no debe leerlos
@@ -2398,6 +2420,37 @@ namespace Rocola
             return sb.ToString();
         }
 
+        // DONDE CAE lo tecleado dentro de un texto, ignorando mayusculas y acentos, pero devolviendo la
+        // posicion en el texto ORIGINAL. Normalizar el texto entero y buscar ahi NO vale: al quitar los acentos
+        // las posiciones se corren y el resaltado caeria una letra mas alla de donde debe.
+        private static bool BuscaTramo(string texto, string qNorm, out int ini, out int largo)
+        {
+            ini = 0; largo = 0;
+            if (string.IsNullOrEmpty(texto) || string.IsNullOrEmpty(qNorm)) return false;
+            string formd = texto.ToLowerInvariant().Normalize(NormalizationForm.FormD);
+            StringBuilder sb = new StringBuilder(formd.Length);
+            int[] mapa = new int[formd.Length];
+            // El mapa dice, por cada letra ya limpia, de que letra del texto original salio. Se avanza sobre la
+            // forma descompuesta y se cuenta cuantos caracteres ORIGINALES se llevan consumidos.
+            // Al descomponer, cada letra del original se abre en UNA base y cero o mas tildes. Las tildes son
+            // de la base anterior, asi que solo las bases gastan un caracter del original.
+            int orig = -1, j = 0;
+            for (int i = 0; i < formd.Length; i++)
+            {
+                if (CharUnicodeInfo.GetUnicodeCategory(formd[i]) == UnicodeCategory.NonSpacingMark) continue;
+                orig++;
+                mapa[j] = orig; sb.Append(formd[i]); j++;
+            }
+            string limpio = sb.ToString();
+            int k = limpio.IndexOf(qNorm, StringComparison.Ordinal);
+            if (k < 0 || k >= j) return false;
+            ini = mapa[k];
+            int fin = (k + qNorm.Length < j) ? mapa[k + qNorm.Length] : texto.Length;
+            largo = fin - ini;
+            if (largo <= 0 || ini + largo > texto.Length) return false;
+            return true;
+        }
+
         private static bool Has(string s, params string[] keys)
         {
             for (int i = 0; i < keys.Length; i++) if (s.Contains(keys[i])) return true;
@@ -2603,6 +2656,15 @@ namespace Rocola
             songList.BackColor = Shade(DefaultAccent, 0.76);
             songList.Font = Bold(13f);
             songList.RowH = 30;
+            songList.GetQueuePos = delegate (int i)
+            {
+                if (i < 0 || i >= songItems.Count || colaPos.Count == 0) return 0;
+                Track tk = songItems[i] as Track;
+                string k = (tk != null) ? tk.Path : null;
+                if (k == null) { VideoItem vi = songItems[i] as VideoItem; if (vi != null) k = vi.Path; }
+                int pos;
+                return (k != null && colaPos.TryGetValue(k, out pos)) ? pos : 0;
+            };
             songList.GetCount = delegate { return songItems.Count; };
             songList.GetText = delegate (int i) { return (i >= 0 && i < songItems.Count) ? songItems[i].ToString() : ""; };
             songList.GetRight = delegate (int i)   // duracion de la cancion (los videos no se pre-analizan)
@@ -2659,6 +2721,18 @@ namespace Rocola
             searchOverlay = new SearchOverlay();
             searchOverlay.Visible = false;
             searchOverlay.GetCover = LoadCover;
+            // De que disco es cada resultado y de que genero. El genero lo va aprendiendo el paseo de fondo,
+            // asi que puede llegar despues: por eso DatosVer, que hace que las tarjetas se rehagan al llegar.
+            searchOverlay.GetDisco = delegate (SearchItem it)
+            {
+                if (it == null || it.AlbumRef == null) return "";
+                if (it.Kind == 1) return "";                  // la tarjeta YA es el disco: no repetirlo
+                return it.AlbumRef.Name ?? "";
+            };
+            searchOverlay.GetGenero = delegate (SearchItem it)
+            {
+                return (it != null) ? EtiquetaDisco(it.AlbumRef) : "";
+            };
             searchOverlay.OnQueryChanged = RecomputeResults;
             searchOverlay.OnChoose = ChooseSearchResult;
             searchOverlay.OnClose = CloseSearch;
@@ -3224,45 +3298,59 @@ namespace Rocola
             letterBar.Counts = cuenta;
             letterBar.Tints = tinte;
             letterBar.Invalidate();
+            if (searchOverlay != null) { searchOverlay.DatosVer++; if (searchOpen) searchOverlay.Invalidate(); }
         }
 
         // Lee del disco el color de cada letra. Solo vale si se calculo con la MISMA biblioteca que hay ahora
         // (se compara el numero de canciones); si no, se descarta y se vuelve a calcular en segundo plano.
         private void LeeTintes(int firmaAhora)
         {
-            letterTag.Clear();
+            letterTag.Clear(); discTag.Clear();
             tintesPend = true;
             try
             {
                 string f = LetterTintFile();
                 if (!File.Exists(f)) return;
                 string[] L = File.ReadAllLines(f);
-                if (L.Length < 2 || L[0] != "ROCOLA-LETRAS v1") return;
+                // v1 solo tenia letras; v2 lleva ademas el genero de cada disco. Un archivo v1 se descarta y se
+                // vuelve a calcular: es un paseo de fondo, no una perdida.
+                if (L.Length < 2 || L[0] != "ROCOLA-LETRAS v2") return;
                 int firma;
                 if (!L[1].StartsWith("n=") || !int.TryParse(L[1].Substring(2), out firma)) return;
                 if (firma != firmaAhora) return;   // la biblioteca cambio: hay que recalcular
                 for (int i = 2; i < L.Length; i++)
                 {
-                    string ln = L[i]; int b = ln.IndexOf('|');
-                    if (b != 1 || ln.Length < 3) continue;
-                    letterTag[ln[0]] = ln.Substring(b + 1);
+                    string ln = L[i];
+                    if (ln.Length < 5) continue;
+                    if (ln[0] == 'L' && ln[1] == '|' && ln[3] == '|') letterTag[ln[2]] = ln.Substring(4);
+                    else if (ln[0] == 'D' && ln[1] == '|')
+                    {
+                        int b = ln.LastIndexOf('|');
+                        if (b > 2) discTag[ln.Substring(2, b - 2)] = ln.Substring(b + 1);
+                    }
                 }
                 tintesPend = false;
             }
-            catch { letterTag.Clear(); tintesPend = true; }
+            catch { letterTag.Clear(); discTag.Clear(); tintesPend = true; }
         }
 
         private void GuardaTintes(int firma)
         {
             Dictionary<char, string> copia = new Dictionary<char, string>(letterTag);
+            Dictionary<string, string> copiaD = new Dictionary<string, string>(discTag, StringComparer.OrdinalIgnoreCase);
             string ruta = LetterTintFile();
             System.Threading.ThreadPool.QueueUserWorkItem(delegate (object st)
             {
                 try
                 {
-                    StringBuilder sb = new StringBuilder(256);
-                    sb.Append("ROCOLA-LETRAS v1\r\n").Append("n=").Append(firma).Append("\r\n");
-                    foreach (KeyValuePair<char, string> kv in copia) sb.Append(kv.Key).Append('|').Append(kv.Value).Append("\r\n");
+                    StringBuilder sb = new StringBuilder(64 + copiaD.Count * 64);
+                    sb.Append("ROCOLA-LETRAS v2\r\n").Append("n=").Append(firma).Append("\r\n");
+                    foreach (KeyValuePair<char, string> kv in copia)
+                        sb.Append("L|").Append(kv.Key).Append('|').Append(kv.Value).Append("\r\n");
+                    // La carpeta puede llevar barras y espacios, pero NO un salto de linea: se parte por el
+                    // ULTIMO separador, asi que una carpeta con "|" dentro tampoco rompe nada.
+                    foreach (KeyValuePair<string, string> kv in copiaD)
+                        sb.Append("D|").Append(kv.Key).Append('|').Append(kv.Value).Append("\r\n");
                     File.WriteAllText(ruta, sb.ToString());
                 }
                 catch { }
@@ -3270,12 +3358,27 @@ namespace Rocola
         }
 
         // Lo que va encontrando el paseo de fondo: por cada letra, la etiqueta de genero que mas se repite.
-        private void PublicaTintes(int gen, char[] letras, string[] etiquetas, bool ultimo, int firma)
+        private void PublicaTintes(int gen, char[] letras, string[] etiquetas, string[] discos, string[] etDiscos, bool ultimo, int firma)
         {
             if (gen != durScanGen) return;
             for (int i = 0; i < letras.Length && i < etiquetas.Length; i++) letterTag[letras[i]] = etiquetas[i];
+            for (int i = 0; i < discos.Length && i < etDiscos.Length; i++) discTag[discos[i]] = etDiscos[i];
             if (ultimo) { tintesPend = false; GuardaTintes(firma); }
             RecalculaLetras();
+        }
+
+        // El color de un disco: el genero que manda dentro de el. Si aun no se sabe, el de siempre.
+        private Color ColorDisco(Album a)
+        {
+            string et;
+            if (a != null && a.Folder != null && discTag.TryGetValue(a.Folder, out et)) return ColorDeEtiqueta(et);
+            return DefaultAccent;
+        }
+        private string EtiquetaDisco(Album a)
+        {
+            string et;
+            if (a != null && a.Folder != null && discTag.TryGetValue(a.Folder, out et)) return et;
+            return "";
         }
 
         private void StartDurScan()
@@ -3311,12 +3414,13 @@ namespace Rocola
             // EL COLOR DE LAS LETRAS. Si hay que calcularlo, se prepara aqui la lista de (letra, archivo) y el
             // paseo de fondo le lee el ID3 a cada uno DESPUES de las duraciones. Se leen con un Track SUELTO,
             // no con el de la biblioteca, para no tocar desde este hilo nada que la pantalla este usando.
-            char[] gLet = null; string[] gRuta = null;
+            char[] gLet = null; string[] gRuta = null; string[] gDisco = null;
             int firmaLet = FirmaBiblioteca();
             if (tintesPend)
             {
                 List<char> cl = new List<char>(tracks.Count);
                 List<string> rl = new List<string>(tracks.Count);
+                List<string> dl = new List<string>(tracks.Count);
                 foreach (KeyValuePair<char, List<Album>> kv in byLetter)
                 {
                     List<Album> la = kv.Value; if (la == null) continue;
@@ -3324,11 +3428,12 @@ namespace Rocola
                     {
                         if (la[i] == null || la[i].Tracks == null) continue;
                         List<Track> tt = la[i].Tracks;
+                        string carp = la[i].Folder ?? "";
                         for (int j = 0; j < tt.Count; j++)
-                            if (tt[j] != null && tt[j].Path != null) { cl.Add(kv.Key); rl.Add(tt[j].Path); }
+                            if (tt[j] != null && tt[j].Path != null) { cl.Add(kv.Key); rl.Add(tt[j].Path); dl.Add(carp); }
                     }
                 }
-                if (cl.Count > 0) { gLet = cl.ToArray(); gRuta = rl.ToArray(); }
+                if (cl.Count > 0) { gLet = cl.ToArray(); gRuta = rl.ToArray(); gDisco = dl.ToArray(); }
             }
 
             if (pend.Count == 0 && gLet == null) return;
@@ -3376,6 +3481,7 @@ namespace Rocola
                     if (gLet != null)
                     {
                         Dictionary<char, Dictionary<string, int>> votos = new Dictionary<char, Dictionary<string, int>>();
+                        Dictionary<string, Dictionary<string, int>> votosD = new Dictionary<string, Dictionary<string, int>>(StringComparer.OrdinalIgnoreCase);
                         for (int i = 0; i < gLet.Length; i++)
                         {
                             if (preScanStop || myGen != durScanGen) break;
@@ -3392,6 +3498,13 @@ namespace Rocola
                             Dictionary<string, int> v;
                             if (!votos.TryGetValue(gLet[i], out v)) { v = new Dictionary<string, int>(); votos[gLet[i]] = v; }
                             int ya; v.TryGetValue(et, out ya); v[et] = ya + 1;
+                            string carp = gDisco[i];
+                            if (carp.Length > 0)
+                            {
+                                Dictionary<string, int> vd;
+                                if (!votosD.TryGetValue(carp, out vd)) { vd = new Dictionary<string, int>(); votosD[carp] = vd; }
+                                int yd; vd.TryGetValue(et, out yd); vd[et] = yd + 1;
+                            }
 
                             bool finGen = (i == gLet.Length - 1);
                             if ((i & 255) == 255 || finGen)
@@ -3407,11 +3520,21 @@ namespace Rocola
                                         if (vv.Key != "Otros" && vv.Value > mejorN) { mejorN = vv.Value; mejor = vv.Key; }
                                     if (mejor != null) { kl.Add(kv.Key); vl.Add(mejor); }
                                 }
+                                // Lo mismo para los discos, que es lo que le da color a los resultados del buscador.
+                                List<string> dk = new List<string>(); List<string> dv = new List<string>();
+                                foreach (KeyValuePair<string, Dictionary<string, int>> kv in votosD)
+                                {
+                                    string mejor = null; int mejorN = 0;
+                                    foreach (KeyValuePair<string, int> vv in kv.Value)
+                                        if (vv.Key != "Otros" && vv.Value > mejorN) { mejorN = vv.Value; mejor = vv.Key; }
+                                    if (mejor != null) { dk.Add(kv.Key); dv.Add(mejor); }
+                                }
                                 char[] ka = kl.ToArray(); string[] va = vl.ToArray(); bool ult = finGen;
+                                string[] dka = dk.ToArray(); string[] dva = dv.ToArray();
                                 try
                                 {
                                     if (!IsHandleCreated) break;
-                                    BeginInvoke((MethodInvoker)delegate { PublicaTintes(myGen, ka, va, ult, firmaLet); });
+                                    BeginInvoke((MethodInvoker)delegate { PublicaTintes(myGen, ka, va, dka, dva, ult, firmaLet); });
                                 }
                                 catch { break; }
                             }
@@ -5866,7 +5989,7 @@ namespace Rocola
             // no repetir lo mismo dos veces seguidas (lo ultimo en sonar/encolar)
             PlayItem last = (queue.Count > 0) ? queue[queue.Count - 1] : nowPlaying;
             if (last != null && string.Equals(last.PathKey(), it.PathKey(), StringComparison.OrdinalIgnoreCase)) return AddResult.Repeat;
-            queue.Add(it);
+            queue.Add(it); RefrescaCola();
             if (iaVivo && !it.IsVideo && it.Song != null) IaRequestJob(it.Song.Path);   // IA EN VIVO: prepara desde que se encola (lista para cuando le toque)
             RecordPlay(it);                                              // estadisticas: cuenta lo pedido
             credits--;                                                   // cada cosa cuesta 1 credito
@@ -6094,10 +6217,11 @@ namespace Rocola
                 if (cr <= 0 && playing == null && q.Count == 0) return;   // estado vacio: arranque limpio
                 credits = Math.Max(0, cr);
                 UpdateCredits();
-                queue.AddRange(q);
+                queue.AddRange(q); RefrescaCola();
                 if (playing != null)
                 {
                     queue.Insert(0, playing);   // lo que estaba sonando vuelve a entrar y arranca DESDE EL PRINCIPIO
+                    RefrescaCola();
                     PlayNext();
                     ShowToast("Reanudando la musica");
                 }
@@ -6513,7 +6637,7 @@ namespace Rocola
             }
 
             nowPlaying = queue[0];
-            queue.RemoveAt(0);
+            queue.RemoveAt(0); RefrescaCola();
             SaveState();   // estado vivo: cambio lo que suena / la cola (para reanudar tras un corte de luz)
 
             if (nowPlaying.IsVideo)
@@ -7990,6 +8114,7 @@ namespace Rocola
             {
                 sb = Mix(sb, 'D'); sb = Mix(sb, lblAlbum != null ? lblAlbum.Text : ""); sb = Mix(sb, songSel); sb = Mix(sb, songItems.Count);
                 sb = Mix(sb, songList != null ? songList.PageStart : 0); sb = Mix(sb, bgAccent.ToArgb());
+                sb = Mix(sb, colaVer);   // sin esto, la marca "EN COLA" no saldria hasta que algo mas cambiara
                 sb = Mix(sb, panelSongs.Left); sb = Mix(sb, panelSongs.Top); sb = Mix(sb, panelSongs.Width); sb = Mix(sb, panelSongs.Height);
             }
             else if (attractOn)                        // MODO ATRACCION: solo la cantidad de canciones (el pulso del texto va como halo por quad)
@@ -11708,6 +11833,7 @@ namespace Rocola
             public Func<int> GetCount;          // total de items (songItems.Count)
             public Func<int, string> GetText;   // texto del item i
             public Func<int, string> GetRight;   // texto CORTO a la derecha del item i (la duracion); "" = nada
+            public Func<int, int> GetQueuePos;   // 0 = no esta pedida; n = va en el puesto n de la cola
             public int PageStart = 0;           // primer item de la pagina visible
             public int Sel = 0;                 // seleccion GLOBAL (entre todas las paginas)
             public int RowH = 30;
@@ -11718,6 +11844,129 @@ namespace Rocola
             private SolidBrush hlB; private Pen hlP;
             private SolidBrush txtB; private StringFormat txtFmt; private SolidBrush bgB;
             private SolidBrush durB; private StringFormat durFmt;   // duracion: gris suave, pegada a la derecha
+            // El circulito del numero de pista y la marca de "ya pedida". Todo cacheado: la lista se redibuja
+            // entera cada vez que cambia algo, y crear una brocha por fila seria basura por gusto.
+            private SolidBrush colaB;
+            private Font fNum, fCola; private float fontFuente = -1f;
+            private StringFormat cenFmt;
+            // EL CIRCULITO Y LA PASTILLA, HORNEADOS. Dibujar dos elipses suavizadas por fila costaba 80 us por
+            // fila -mas que todo el resto de la fila junta- y la pastilla otros 55. Como son SIEMPRE la misma
+            // figura, se pintan una vez a un mapa de bits y despues cada fila solo las copia. Lo unico que se
+            // sigue dibujando por fila es el numero, que si cambia.
+            private Bitmap bmpCirc, bmpCircCola, bmpPastilla;
+            private Bitmap[] bmpDig, bmpDigCola;   // las diez cifras, tambien horneadas
+            private int hornoLado = -1, hornoPastW = -1, hornoPastH = -1, digW, digH;
+            private float hornoCuerpo = -1f;
+            private static Bitmap HorneaCirculo(int lado, Color c, bool fuerte)
+            {
+                if (lado < 3) lado = 3;
+                Bitmap b = new Bitmap(lado, lado, PixelFormat.Format32bppPArgb);
+                using (Graphics g = Graphics.FromImage(b))
+                {
+                    g.SmoothingMode = SmoothingMode.AntiAlias;
+                    g.Clear(Color.Transparent);
+                    RectangleF r = new RectangleF(0.6f, 0.6f, lado - 1.7f, lado - 1.7f);
+                    using (SolidBrush sb = new SolidBrush(Color.FromArgb(fuerte ? 70 : 34, c))) g.FillEllipse(sb, r);
+                    using (Pen p = new Pen(Color.FromArgb(fuerte ? 150 : 60, c), 1f)) g.DrawEllipse(p, r);
+                }
+                return b;
+            }
+            private static Bitmap HorneaPastilla(int w, int h, Color c)
+            {
+                if (w < 4) w = 4;
+                if (h < 4) h = 4;
+                Bitmap b = new Bitmap(w, h, PixelFormat.Format32bppPArgb);
+                using (Graphics g = Graphics.FromImage(b))
+                {
+                    g.SmoothingMode = SmoothingMode.AntiAlias;
+                    g.Clear(Color.Transparent);
+                    using (GraphicsPath gp = RoundedPath(new Rectangle(0, 0, w - 1, h - 1), h / 2))
+                    {
+                        using (SolidBrush sb = new SolidBrush(Color.FromArgb(52, c))) g.FillPath(sb, gp);
+                        using (Pen p = new Pen(Color.FromArgb(110, c), 1f)) g.DrawPath(p, gp);
+                    }
+                }
+                return b;
+            }
+            // Las diez cifras, de un ancho comun para que los numeros queden alineados entre filas.
+            private void HorneaCifras(Font f, Color c, out Bitmap[] destino, out int w, out int h)
+            {
+                w = 6; h = 8;
+                using (Bitmap med = new Bitmap(4, 4))
+                using (Graphics g = Graphics.FromImage(med))
+                    for (int d = 0; d < 10; d++)
+                    {
+                        SizeF sz = g.MeasureString(((char)('0' + d)).ToString(), f, 999, StringFormat.GenericTypographic);
+                        if (sz.Width > w) w = (int)Math.Ceiling(sz.Width);
+                        if (sz.Height > h) h = (int)Math.Ceiling(sz.Height);
+                    }
+                w += 2; h += 2;
+                destino = new Bitmap[10];
+                using (StringFormat sf = new StringFormat())
+                {
+                    sf.Alignment = StringAlignment.Center; sf.LineAlignment = StringAlignment.Center;
+                    sf.FormatFlags = StringFormatFlags.NoWrap;
+                    using (SolidBrush sb = new SolidBrush(c))
+                        for (int d = 0; d < 10; d++)
+                        {
+                            Bitmap b = new Bitmap(w, h, PixelFormat.Format32bppPArgb);
+                            using (Graphics g = Graphics.FromImage(b))
+                            {
+                                g.SmoothingMode = SmoothingMode.AntiAlias;
+                                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
+                                g.Clear(Color.Transparent);
+                                g.DrawString(((char)('0' + d)).ToString(), f, sb, new RectangleF(0, 0, w, h), sf);
+                            }
+                            destino[d] = b;
+                        }
+                }
+            }
+            // Pinta un numero copiando sus cifras ya horneadas, centrado en 'cx'.
+            private void PintaNumero(Graphics g, int v, float cx, float cy, bool enCola)
+            {
+                Bitmap[] set = enCola ? bmpDigCola : bmpDig;
+                if (set == null) return;
+                if (v < 0) v = 0;
+                int cifras = (v < 10) ? 1 : (v < 100) ? 2 : (v < 1000) ? 3 : 4;
+                int x = (int)(cx - cifras * digW * 0.5f), y = (int)(cy - digH * 0.5f);
+                int div = 1;
+                for (int k = 1; k < cifras; k++) div *= 10;
+                for (int k = 0; k < cifras; k++)
+                {
+                    int d = (v / div) % 10; div /= 10;
+                    if (d >= 0 && d <= 9) g.DrawImageUnscaled(set[d], x + k * digW, y);
+                }
+            }
+
+            private void EnsureHorno(int lado, int pw, int ph)
+            {
+                if (bmpDig == null || Math.Abs(hornoCuerpo - fNum.SizeInPoints) > 0.01f)
+                {
+                    if (bmpDig != null) for (int i = 0; i < bmpDig.Length; i++) if (bmpDig[i] != null) bmpDig[i].Dispose();
+                    if (bmpDigCola != null) for (int i = 0; i < bmpDigCola.Length; i++) if (bmpDigCola[i] != null) bmpDigCola[i].Dispose();
+                    int w1, h1, w2, h2;
+                    HorneaCifras(fNum, Color.FromArgb(178, 190, 218), out bmpDig, out w1, out h1);
+                    HorneaCifras(fNum, ColaVerde, out bmpDigCola, out w2, out h2);
+                    digW = Math.Max(w1, w2); digH = Math.Max(h1, h2);
+                    hornoCuerpo = fNum.SizeInPoints;
+                }
+                if (bmpCirc == null || hornoLado != lado)
+                {
+                    if (bmpCirc != null) bmpCirc.Dispose();
+                    if (bmpCircCola != null) bmpCircCola.Dispose();
+                    bmpCirc = HorneaCirculo(lado, NumGris, false);
+                    bmpCircCola = HorneaCirculo(lado, ColaVerde, true);
+                    hornoLado = lado;
+                }
+                if (bmpPastilla == null || hornoPastW != pw || hornoPastH != ph)
+                {
+                    if (bmpPastilla != null) bmpPastilla.Dispose();
+                    bmpPastilla = HorneaPastilla(pw, ph, ColaVerde);
+                    hornoPastW = pw; hornoPastH = ph;
+                }
+            }
+            private static readonly Color ColaVerde = Color.FromArgb(120, 230, 165);
+            private static readonly Color NumGris = Color.FromArgb(150, 170, 220);
 
             public SongListView()
             {
@@ -11749,8 +11998,29 @@ namespace Rocola
                     txtFmt.LineAlignment = StringAlignment.Center;
                 }
                 if (bgB == null) bgB = new SolidBrush(BackColor); else bgB.Color = BackColor;
+                if (colaB == null)
+                {
+                    colaB = new SolidBrush(Color.Black);
+                    cenFmt = new StringFormat();
+                    cenFmt.Alignment = StringAlignment.Center; cenFmt.LineAlignment = StringAlignment.Center;
+                    cenFmt.FormatFlags = StringFormatFlags.NoWrap;
+                }
+                float cuerpo = Font.SizeInPoints;
+                if (fNum == null || Math.Abs(fontFuente - cuerpo) > 0.01f)
+                {
+                    if (fNum != null) fNum.Dispose();
+                    if (fCola != null) fCola.Dispose();
+                    fNum = new Font(Font.FontFamily, cuerpo * 0.78f, FontStyle.Bold);
+                    fCola = new Font(Font.FontFamily, cuerpo * 0.72f, FontStyle.Bold);
+                    fontFuente = cuerpo;
+                }
                 g.FillRectangle(bgB, 0, 0, w, h);
                 g.SmoothingMode = SmoothingMode.AntiAlias;
+                float rad = Math.Min(11f, RowH * 0.34f);        // el circulito del numero
+                float xTexto = 16 + rad * 2 + 10;
+                int wCola = (int)(rad * 7.4f);                  // la marca "EN COLA n"
+                int hCola = (int)(rad * 1.64f);
+                EnsureHorno((int)(rad * 2), wCola, hCola);
                 for (int row = 0; row < rpp; row++)
                 {
                     int idx = PageStart + row;
@@ -11763,6 +12033,13 @@ namespace Rocola
                         hlP.Color = Color.FromArgb(180, Lighten(Accent, 0.45));
                         using (GraphicsPath gp = RoundedPath(hl, 9)) { g.FillPath(hlB, gp); g.DrawPath(hlP, gp); }
                     }
+                    // EL NUMERO DE PISTA en un circulito, y en VERDE si esa cancion ya esta pedida. Antes no
+                    // habia forma de saber que ya la habias puesto: la volvias a pedir y gastabas otro credito.
+                    int pos = (GetQueuePos != null) ? GetQueuePos(idx) : 0;
+                    bool enCola = pos > 0;
+                    float cy = r.Y + RowH * 0.5f;
+                    g.DrawImageUnscaled(enCola ? bmpCircCola : bmpCirc, 16, (int)(cy - rad));
+                    PintaNumero(g, idx + 1, 16 + rad, cy, enCola);
                     // DURACION a la derecha (m:ss). Se dibuja primero para saber cuanto ancho quitarle al
                     // titulo: asi un nombre largo se corta con "..." ANTES de encimarse con la duracion.
                     string dur = (GetRight != null) ? GetRight(idx) : "";
@@ -11781,7 +12058,16 @@ namespace Rocola
                         durB.Color = (idx == Sel) ? Color.FromArgb(235, 245, 255) : Color.FromArgb(175, 190, 215);
                         g.DrawString(dur, Font, durB, new Rectangle(r.Right - durW - 14, r.Y, durW, r.Height), durFmt);
                     }
-                    Rectangle tr = new Rectangle(r.X + 16, r.Y, r.Width - 22 - durW, r.Height);
+                    int quitaCola = 0;
+                    if (enCola)
+                    {
+                        quitaCola = wCola + 12;
+                        RectangleF cr = new RectangleF(r.Right - 14 - durW - quitaCola, cy - hCola * 0.5f, wCola, hCola);
+                        g.DrawImageUnscaled(bmpPastilla, (int)cr.X, (int)cr.Y);
+                        colaB.Color = ColaVerde;
+                        g.DrawString("EN COLA " + pos, fCola, colaB, cr, cenFmt);
+                    }
+                    Rectangle tr = new Rectangle(r.X + (int)xTexto, r.Y, r.Width - (int)xTexto - 6 - durW - quitaCola, r.Height);
                     string text = (GetText != null) ? GetText(idx) : "";
                     g.DrawString(text, Font, txtB, tr, txtFmt);   // GDI+: respeta la traslacion del Graphics (en el control es identidad; en la textura de UI lleva la lista a su sitio)
                 }
@@ -11818,6 +12104,12 @@ namespace Rocola
         {
             public string Query = "";
             public List<SearchItem> Results = new List<SearchItem>();
+            // De que disco es y de que genero cada resultado. Los pone Form1 (el genero lo aprende el paseo de
+            // fondo). 'DatosVer' sube cuando eso cambia y entra en la firma del cache de las tarjetas: sin el,
+            // los colores que llegan tarde no se verian hasta teclear otra cosa.
+            public Func<SearchItem, string> GetDisco;
+            public Func<SearchItem, string> GetGenero;
+            public int DatosVer;
             public int SelRow = 1;
             public int SelCol = 0;
             public bool FocusResults = false;
@@ -11888,7 +12180,8 @@ namespace Rocola
             // CACHE de la lista de resultados (mismo motivo que el teclado): ~40 tarjetas con degradado, contorno
             // y 2 textos cada una. Los resultados dependen SOLO de la consulta, asi que se cachean por Query y
             // solo se pinta EN VIVO la tarjeta seleccionada. Moverse por teclas/resultados deja de dar tirones.
-            private Bitmap resCache; private string resCacheQuery = "\0"; private int resCacheW = -1, resCacheH = -1, resCacheAccent;
+            private Bitmap resCache; private string resCacheQuery = "\0"; private int resCacheW = -1, resCacheH = -1, resCacheAccent, resCacheDatos = -1;
+            private SolidBrush marcaB;   // el resaltado de lo tecleado (reusable)
             private Point resCacheOrigin;
             private void EnsurePaintRes()
             {
@@ -12269,7 +12562,7 @@ namespace Rocola
                 // CACHE: cabecera + tarjetas SIN seleccion. Se rehace solo al cambiar la consulta/region/color;
                 // moverse por los resultados NO lo toca (solo copia el cache + la tarjeta seleccionada en vivo).
                 int accentArgb = Accent.ToArgb();
-                if (resCache == null || resCacheW != region.Width || resCacheH != region.Height || resCacheAccent != accentArgb || resCacheQuery != Query)
+                if (resCache == null || resCacheW != region.Width || resCacheH != region.Height || resCacheAccent != accentArgb || resCacheQuery != Query || resCacheDatos != DatosVer)
                 {
                     int rw = Math.Max(1, region.Width), rh = Math.Max(1, region.Height);
                     if (resCache == null || resCache.Width != rw || resCache.Height != rh)   // REUSA el bitmap si el tamano no cambio
@@ -12291,7 +12584,7 @@ namespace Rocola
                                 DrawOneResultCard(cg, i, rr, false);
                             }
                     }
-                    resCacheW = region.Width; resCacheH = region.Height; resCacheAccent = accentArgb; resCacheQuery = Query; resCacheOrigin = region.Location;
+                    resCacheW = region.Width; resCacheH = region.Height; resCacheAccent = accentArgb; resCacheQuery = Query; resCacheOrigin = region.Location; resCacheDatos = DatosVer;
                 }
                 g.DrawImageUnscaled(resCache, resCacheOrigin.X, resCacheOrigin.Y);
                 // Tarjeta seleccionada EN VIVO encima: su relleno es opaco y tapa la version sin seleccion del cache.
@@ -12314,8 +12607,72 @@ namespace Rocola
                 SearchItem it = Results[i];
                 string tag = (it.Kind == 0) ? "ARTISTA" : (it.Kind == 1) ? "ALBUM" : "CANCION";
                 Color tagc = (it.Kind == 0) ? Color.FromArgb(150, 215, 255) : (it.Kind == 1) ? Color.FromArgb(255, 210, 120) : Color.FromArgb(170, 245, 170);
-                TextRenderer.DrawText(g, tag, fResSub, new Rectangle(rr.X + 9, rr.Y + 4, rr.Width - 14, 13), tagc, TextFormatFlags.Left);
-                TextRenderer.DrawText(g, it.Display, fRes, new Rectangle(rr.X + 9, rr.Y + 16, rr.Width - 16, rr.Height - 18), Color.White, TextFormatFlags.Left | TextFormatFlags.EndEllipsis);
+
+                // ---- RENGLON DE ARRIBA: que es, de que disco, y de que genero ----
+                // La pastilla del genero va pegada a la derecha; lo que quede es para el tipo y el disco.
+                int xIz = rr.X + 9, derLim = rr.Right - 9;
+                string gen = (GetGenero != null) ? GetGenero(it) : "";
+                if (gen != null && gen.Length > 0)
+                {
+                    Color gc = ColorDeEtiqueta(gen);
+                    Size gs = TextRenderer.MeasureText(g, gen, fResSub, new Size(9999, 99), TextFormatFlags.NoPadding);
+                    int gw = gs.Width + 14, gh = 15;
+                    Rectangle gr = new Rectangle(derLim - gw, rr.Y + 3, gw, gh);
+                    if (gr.X > xIz + 40)
+                    {
+                        using (GraphicsPath gp = RoundedPath(gr, 7))
+                        {
+                            sbS.Color = Color.FromArgb(60, gc); g.FillPath(sbS, gp);
+                            pnS.Color = Color.FromArgb(120, gc); pnS.Width = 1f; g.DrawPath(pnS, gp);
+                        }
+                        TextRenderer.DrawText(g, gen, fResSub, gr, Lighten(gc, 0.45),
+                                              TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+                        derLim = gr.X - 8;
+                    }
+                }
+                Size ts = TextRenderer.MeasureText(g, tag, fResSub, new Size(9999, 99), TextFormatFlags.NoPadding);
+                TextRenderer.DrawText(g, tag, fResSub, new Rectangle(xIz, rr.Y + 4, Math.Max(10, derLim - xIz), 13), tagc,
+                                      TextFormatFlags.Left | TextFormatFlags.NoPadding);
+                string disco = (GetDisco != null) ? GetDisco(it) : "";
+                if (disco != null && disco.Length > 0)
+                {
+                    int dx = xIz + ts.Width + 8;
+                    if (derLim - dx > 24)
+                        TextRenderer.DrawText(g, "\u00b7  " + disco, fResSub, new Rectangle(dx, rr.Y + 4, derLim - dx, 13),
+                                              Color.FromArgb(138, 150, 182),
+                                              TextFormatFlags.Left | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
+                }
+
+                // ---- RENGLON PRINCIPAL: el nombre, con LO TECLEADO encendido ----
+                Rectangle tr = new Rectangle(rr.X + 9, rr.Y + 16, rr.Width - 16, rr.Height - 18);
+                int mIni, mLar;
+                string qn = Normalize(Query ?? "");
+                if (qn.Length > 0 && BuscaTramo(it.Display, qn, out mIni, out mLar))
+                {
+                    // Se mide con NoPadding y se dibuja con NoPadding: si no, medir y pintar no coinciden y el
+                    // resaltado sale corrido.
+                    const TextFormatFlags FL = TextFormatFlags.Left | TextFormatFlags.NoPadding | TextFormatFlags.NoClipping;
+                    string ante = it.Display.Substring(0, mIni), coincide = it.Display.Substring(mIni, mLar);
+                    int wa = TextRenderer.MeasureText(g, ante, fRes, new Size(9999, 99), TextFormatFlags.NoPadding).Width;
+                    int wc = TextRenderer.MeasureText(g, coincide, fRes, new Size(9999, 99), TextFormatFlags.NoPadding).Width;
+                    if (wa + wc <= tr.Width)   // si el tramo no se ve entero, mejor no resaltar nada
+                    {
+                        if (marcaB == null) marcaB = new SolidBrush(Color.Black);
+                        marcaB.Color = Color.FromArgb(70, 255, 205, 90);
+                        // El resaltado se ajusta al ALTO DE LA LETRA, no al de la caja: la caja es mas alta que
+                        // el texto y la marca quedaba colgando por debajo.
+                        int hTxt = TextRenderer.MeasureText(g, "Xg", fRes, new Size(9999, 99), TextFormatFlags.NoPadding).Height;
+                        using (GraphicsPath gp = RoundedPath(new Rectangle(tr.X + wa - 2, tr.Y - 1, wc + 4, hTxt + 2), 4))
+                            g.FillPath(marcaB, gp);
+                        TextRenderer.DrawText(g, ante, fRes, new Rectangle(tr.X, tr.Y, tr.Width, tr.Height), Color.White, FL);
+                        TextRenderer.DrawText(g, coincide, fRes, new Rectangle(tr.X + wa, tr.Y, tr.Width - wa, tr.Height), Color.FromArgb(255, 214, 120), FL);
+                        TextRenderer.DrawText(g, it.Display.Substring(mIni + mLar), fRes,
+                                              new Rectangle(tr.X + wa + wc, tr.Y, Math.Max(4, tr.Width - wa - wc), tr.Height),
+                                              Color.White, TextFormatFlags.Left | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
+                        return;
+                    }
+                }
+                TextRenderer.DrawText(g, it.Display, fRes, tr, Color.White, TextFormatFlags.Left | TextFormatFlags.EndEllipsis);
             }
 
             // Cachea las caratulas (ya redimensionadas) de todos los discos del artista
