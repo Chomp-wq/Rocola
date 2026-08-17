@@ -1464,13 +1464,30 @@ namespace Rocola
         // -ahi no hay musica que subir-, pero el realce SI: fabrica armonicos a partir de lo que aun queda, asi
         // que cae justo donde el EQ no llega. Por eso una cancion dañada recibe mas realce y una completa menos:
         // esa ya trae su aire de verdad y no hace falta inventarselo.
+        // Lo que recibe una cancion que ya trae todo su aire (el suelo de la escala de aqui abajo).
+        private const float ExciteCompleta = 0.75f;
         private float ExciteFactorFor(string path)
         {
             float[] c;
             if (path == null || !eqCache.TryGetValue(path, out c) || c == null || c.Length < EqLen) return 1f;
             float corte = c[EqCut];
             if (corte <= 100f) return 1f;   // aun sin medir: como siempre
-            return Clampf(1.45f - (corte - 15000f) / 6000f, 0.75f, 1.45f);
+            float f = Clampf(1.45f - (corte - 15000f) / 6000f, ExciteCompleta, 1.45f);
+            // ...PERO SI EL RECONSTRUCTOR ESPECTRAL ESTA ENCENDIDO, esos agudos ya se los devolvio EL.
+            //
+            // Estas dos cosas estaban decidiendo por separado y las dos miraban el MISMO dato: el realce le
+            // daba mas a la cancion dañada justamente por estar dañada, y el reconstructor le re-creaba la
+            // banda justamente por lo mismo. En la cadena el realce va DESPUES, asi que acababa echandole
+            // brillo encima a unos agudos que ya no faltaban: empujar dos veces lo mismo, y el exceso de
+            // realce suena aspero (por eso su mezcla esta topada). El EQ automatico ya evita este choque
+            // -esta explicado ahi mismo, unas lineas mas arriba-; el realce era el unico que no se enteraba.
+            //
+            // Se le quita la MITAD del extra, no todo: el reconstructor devuelve la ENVOLVENTE de los agudos
+            // transponiendo lo que sobrevivio una octava mas abajo, que no es el detalle original, asi que
+            // algo de realce encima sigue teniendo sentido. Y con el reconstructor apagado no cambia nada.
+            if (sbrOn && sbrAllowed && corte < EqSanaHz)
+                f = ExciteCompleta + (f - ExciteCompleta) * 0.5f;
+            return f;
         }
         private float ExciteAmountFor(string path) { return Clampf(excAmount * ExciteFactorFor(path), 0f, 1f); }
 
@@ -9418,8 +9435,10 @@ namespace Rocola
             private bool wasActive;                        // para reiniciar el colchon al alternar (A/B)
             private readonly float[][] inBuf, outAcc;      // por canal: ventana de entrada y acumulador de solape
             private int fill;                              // muestras acumuladas (por canal) en inBuf
-            private readonly float[] re, im, win;          // espectro de trabajo y ventana raiz-de-Hann
-            private readonly int[] bitrev; private readonly float[] twCos, twSin;   // tablas de la FFT
+            private float[] re, im;                        // espectro de trabajo (se INTERCAMBIA con el del otro canal del par)
+            private float[] reB, imB;                      // espectro del segundo canal del par (solo si hay 2 o mas)
+            private readonly float[] win;                  // ventana raiz-de-Hann
+            private readonly int[] bitrev; private readonly float[] twCos, twSin, twSinNeg;   // tablas de la FFT (el seno tambien cambiado de signo: ver Fft)
             private readonly float[] inter;                // buffer intercalado para leer del origen
             private readonly float[] outQ; private int qHead, qLen;   // FIFO de salida (intercalado)
             private float cutHz;                           // acantilado suavizado (0 = aun sin medir)
@@ -9443,10 +9462,11 @@ namespace Rocola
                 inBuf = new float[ch][]; outAcc = new float[ch][];
                 for (int c = 0; c < ch; c++) { inBuf[c] = new float[Frame]; outAcc[c] = new float[Frame]; }
                 re = new float[Frame]; im = new float[Frame];
+                if (ch >= 2) { reB = new float[Frame]; imB = new float[Frame]; }   // los canales se procesan de dos en dos (ver ProcessFrame)
                 win = new float[Frame];
                 for (int i = 0; i < Frame; i++) win[i] = (float)Math.Sqrt(0.5 - 0.5 * Math.Cos(2.0 * Math.PI * i / Frame));   // raiz de Hann: analisis*sintesis = Hann, que al 50% suma EXACTO 1
                 bitrev = new int[Frame];
-                twCos = new float[Frame / 2]; twSin = new float[Frame / 2];
+                twCos = new float[Frame / 2]; twSin = new float[Frame / 2]; twSinNeg = new float[Frame / 2];
                 BuildFftTables();
                 inter = new float[Hop * ch];
                 outQ = new float[Frame * ch * 2];          // FIFO holgado (nunca acumula mas de Hop*ch)
@@ -9470,8 +9490,16 @@ namespace Rocola
                 {
                     if (qLen > 0)                                    // hay salida lista: entregarla
                     {
+                        // De golpe, no muestra a muestra. Esto corre por CADA muestra que sale del
+                        // reconstructor (88.200 por segundo en estereo) y antes llevaba una comprobacion de
+                        // vuelta al principio del circular en cada una. Como mucho son dos copias en bloque:
+                        // hasta el final del circular y, si daba la vuelta, lo que quede desde el principio.
                         int take = Math.Min(qLen, count - written);
-                        for (int i = 0; i < take; i++) { buffer[offset + written + i] = outQ[qHead]; qHead++; if (qHead >= outQ.Length) qHead = 0; }
+                        int hasta = outQ.Length - qHead;
+                        int t1 = (take < hasta) ? take : hasta;
+                        Array.Copy(outQ, qHead, buffer, offset + written, t1);
+                        if (t1 < take) Array.Copy(outQ, 0, buffer, offset + written + t1, take - t1);
+                        qHead += take; if (qHead >= outQ.Length) qHead -= outQ.Length;
                         qLen -= take; written += take;
                         continue;
                     }
@@ -9490,8 +9518,15 @@ namespace Rocola
                         continue;
                     }
                     int frames = got / ch;
-                    for (int f = 0; f < frames; f++)
-                        for (int c = 0; c < ch; c++) inBuf[c][fill + f] = inter[f * ch + c];
+                    if (ch == 2)
+                    {   // el caso normal, con los dos arrays sacados FUERA del bucle (dentro, cada muestra
+                        // volvia a buscar inBuf[c] en la tabla de arrays y a comprobar sus limites)
+                        float[] b0 = inBuf[0], b1 = inBuf[1];
+                        for (int f = 0, k = 0; f < frames; f++, k += 2) { b0[fill + f] = inter[k]; b1[fill + f] = inter[k + 1]; }
+                    }
+                    else
+                        for (int f = 0; f < frames; f++)
+                            for (int c = 0; c < ch; c++) inBuf[c][fill + f] = inter[f * ch + c];
                     fill += frames;
                     if (fill >= Frame) ProcessFrame();
                 }
@@ -9510,7 +9545,12 @@ namespace Rocola
                     for (; (j & bit) != 0; bit >>= 1) j ^= bit;
                     j |= bit; bitrev[i] = j;
                 }
-                for (int k = 0; k < Frame / 2; k++) { twCos[k] = (float)Math.Cos(2.0 * Math.PI * k / Frame); twSin[k] = (float)Math.Sin(2.0 * Math.PI * k / Frame); }
+                for (int k = 0; k < Frame / 2; k++)
+                {
+                    twCos[k] = (float)Math.Cos(2.0 * Math.PI * k / Frame);
+                    twSin[k] = (float)Math.Sin(2.0 * Math.PI * k / Frame);
+                    twSinNeg[k] = -twSin[k];   // la ida usa el seno cambiado de signo y la vuelta el normal
+                }
             }
 
             // ---------- COSECHA DE MATERIAL PARA LA IA ----------
@@ -9532,7 +9572,7 @@ namespace Rocola
                 binHz = (float)rate / Frame;
                 re = new float[Frame]; im = new float[Frame]; win = new float[Frame];
                 for (int i = 0; i < Frame; i++) win[i] = (float)Math.Sqrt(0.5 - 0.5 * Math.Cos(2.0 * Math.PI * i / Frame));
-                bitrev = new int[Frame]; twCos = new float[Frame / 2]; twSin = new float[Frame / 2];
+                bitrev = new int[Frame]; twCos = new float[Frame / 2]; twSin = new float[Frame / 2]; twSinNeg = new float[Frame / 2];
                 BuildFftTables();
             }
             public int FrameLen { get { return Frame; } }
@@ -9578,17 +9618,48 @@ namespace Rocola
                 return true;
             }
 
+            // DOS CANALES POR EL PRECIO DE UNA FFT.
+            //
+            // Esto era, con diferencia, lo mas caro de toda la cadena de sonido: cuatro FFT de 2048 puntos por
+            // ventana en estereo (ida y vuelta, por canal), el 73% del coste del audio... y todo ello en el
+            // MISMO hilo que dibuja la pantalla, o sea tiempo robado a los cuadros.
+            //
+            // El truco es viejo y exacto: la musica es una senal REAL, asi que su espectro es simetrico y media
+            // FFT compleja se estaba desperdiciando. Metiendo el canal izquierdo en la parte real y el derecho
+            // en la imaginaria, UNA sola FFT trae los dos espectros mezclados, y se desenredan con esa misma
+            // simetria (ver SeparaCanales). A la vuelta igual: se juntan los dos espectros ya arreglados en uno
+            // solo y una sola FFT inversa devuelve los dos canales, uno en la parte real y otro en la imaginaria.
+            //
+            // Cuatro FFT pasan a ser DOS. No es una aproximacion ni un atajo: da lo mismo que antes salvo el
+            // ultimo pelo de redondeo de los flotantes (~1e-7, unas mil veces por debajo del ultimo bit de 16).
+            // Con un numero impar de canales, el que sobra va por el camino de siempre.
             private void ProcessFrame()
             {
-                for (int c = 0; c < ch; c++)
+                int cn = 0;
+                for (; cn + 1 < ch; cn += 2)
                 {
-                    float[] xin = inBuf[c];
+                    float[] x0 = inBuf[cn], x1 = inBuf[cn + 1];
+                    for (int i = 0; i < Frame; i++) { float w = win[i]; re[i] = x0[i] * w; im[i] = x1[i] * w; }
+                    Fft(false);
+                    SeparaCanales();             // re/im = espectro del canal par ; reB/imB = el del impar
+                    if (cn == 0) DetectCliff();  // el acantilado es del ARCHIVO: se mide en el canal 0 y aplica a todos
+                    Regenerate();                // canal par
+                    Intercambia(); Regenerate(); Intercambia();   // canal impar (Regenerate trabaja sobre re/im)
+                    // se vuelven a juntar: parte real = canal par, parte imaginaria = canal impar
+                    for (int i = 0; i < Frame; i++) { float t = re[i] - imB[i]; im[i] = im[i] + reB[i]; re[i] = t; }
+                    Fft(true);
+                    float[] a0 = outAcc[cn], a1 = outAcc[cn + 1];
+                    for (int i = 0; i < Frame; i++) { float w = win[i]; a0[i] += re[i] * w; a1[i] += im[i] * w; }
+                }
+                for (; cn < ch; cn++)            // canal suelto (mono, o un numero impar de canales)
+                {
+                    float[] xin = inBuf[cn];
                     for (int i = 0; i < Frame; i++) { re[i] = xin[i] * win[i]; im[i] = 0f; }
                     Fft(false);
-                    if (c == 0) DetectCliff();   // el acantilado es del ARCHIVO: se mide en el canal 0 y aplica a todos
+                    if (cn == 0) DetectCliff();
                     Regenerate();
                     Fft(true);
-                    float[] acc = outAcc[c];
+                    float[] acc = outAcc[cn];
                     for (int i = 0; i < Frame; i++) acc[i] += re[i] * win[i];
                 }
                 for (int f = 0; f < Hop; f++)      // la primera mitad ya recibio sus DOS solapes: lista para salir
@@ -9601,6 +9672,32 @@ namespace Rocola
                 }
                 fill = Frame - Hop;
             }
+
+            // Desenreda los dos espectros que vienen dentro de una sola FFT. Se apoya en que el espectro de una
+            // senal real es simetrico: la mitad de arriba es el reflejo de la de abajo. Cada pareja de bins
+            // (k y su reflejo N-k) se lee ENTERA antes de escribir nada, porque las cuatro salidas se calculan
+            // con esos mismos dos numeros y se escriben justo encima.
+            private void SeparaCanales()
+            {
+                int n = Frame, h = n >> 1;
+                float[] r0 = re, i0 = im, r1 = reB, i1 = imB;
+                r1[0] = i0[0]; i1[0] = 0f; i0[0] = 0f;       // el bin 0 y el del medio son su propio reflejo
+                r1[h] = i0[h]; i1[h] = 0f; i0[h] = 0f;
+                for (int k = 1; k < h; k++)
+                {
+                    int m = n - k;
+                    float ar = r0[k], ai = i0[k], br = r0[m], bi = i0[m];
+                    float pr = (ar + br) * 0.5f, pi = (ai - bi) * 0.5f;   // canal par
+                    float qr = (ai + bi) * 0.5f, qi = (br - ar) * 0.5f;   // canal impar
+                    r0[k] = pr; i0[k] = pi; r0[m] = pr; i0[m] = -pi;
+                    r1[k] = qr; i1[k] = qi; r1[m] = qr; i1[m] = -qi;
+                }
+            }
+
+            // Pone el espectro del otro canal del par en re/im (y viceversa). Son cuatro asignaciones de
+            // referencia: asi Regenerate -y todo lo que cuelga de el- trabaja sobre el canal que toca sin
+            // enterarse de nada ni copiar un solo numero.
+            private void Intercambia() { float[] tr = re, ti = im; re = reB; im = imB; reB = tr; imB = ti; }
 
             private int Hz(float hz) { int b = (int)(hz / binHz); int ny = Frame / 2; return b < 1 ? 1 : (b > ny - 1 ? ny - 1 : b); }
 
@@ -9747,14 +9844,24 @@ namespace Rocola
             }
 
             // FFT radix-2 iterativa en sitio (tablas precalculadas). inverse=true incluye la escala 1/N.
+            //
+            // Es lo mas caro del reconstructor, y el bucle de mas adentro se recorre unas once mil veces por
+            // cada FFT. Dos detalles que ahi dentro cuestan:
+            //   - el signo del seno depende de si es ida o vuelta, y se estaba decidiendo EN CADA VUELTA del
+            //     bucle. Ahora hay una segunda tabla con el seno ya cambiado de signo y se elige UNA vez.
+            //   - los arreglos se leian del objeto en cada acceso. Sacados a variables locales, el traductor
+            //     puede dejarlos en registros y ademas se ahorra comprobar sus limites tantas veces.
             private void Fft(bool inverse)
             {
                 int n = Frame;
+                float[] r = re, m = im;
+                int[] br = bitrev;
                 for (int i = 0; i < n; i++)
                 {
-                    int j = bitrev[i];
-                    if (j > i) { float t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t; }
+                    int j = br[i];
+                    if (j > i) { float t = r[i]; r[i] = r[j]; r[j] = t; t = m[i]; m[i] = m[j]; m[j] = t; }
                 }
+                float[] tc = twCos, ts = inverse ? twSin : twSinNeg;
                 for (int size = 2; size <= n; size <<= 1)
                 {
                     int half = size >> 1, tstep = n / size;
@@ -9763,19 +9870,20 @@ namespace Rocola
                         int k = 0;
                         for (int j = i; j < i + half; j++, k += tstep)
                         {
-                            float wr = twCos[k], wi = inverse ? twSin[k] : -twSin[k];
+                            float wr = tc[k], wi = ts[k];
                             int b = j + half;
-                            float tr = re[b] * wr - im[b] * wi;
-                            float ti = re[b] * wi + im[b] * wr;
-                            re[b] = re[j] - tr; im[b] = im[j] - ti;
-                            re[j] += tr; im[j] += ti;
+                            float rb = r[b], mb = m[b];
+                            float tr = rb * wr - mb * wi;
+                            float ti = rb * wi + mb * wr;
+                            r[b] = r[j] - tr; m[b] = m[j] - ti;
+                            r[j] += tr; m[j] += ti;
                         }
                     }
                 }
                 if (inverse)
                 {
                     float sc = 1f / n;
-                    for (int i = 0; i < n; i++) { re[i] *= sc; im[i] *= sc; }
+                    for (int i = 0; i < n; i++) { r[i] *= sc; m[i] *= sc; }
                 }
             }
         }
@@ -10066,16 +10174,15 @@ namespace Rocola
                 int n = src.Read(buffer, offset, count);
                 if (n <= 0) return n;
                 int frames = n / ch;
+                // Fuera de los ultimos segundos no hay nada que hacer, y eso es TODA la cancion menos el final.
+                // Antes se recorria muestra a muestra igualmente para acabar multiplicando por uno.
+                if (totalFrames <= 0 || pos + frames <= totalFrames - fadeFrames) { pos += frames; return n; }
                 for (int f = 0; f < frames; f++)
                 {
-                    long p = pos + f;
-                    float g = 1f;
-                    if (totalFrames > 0)
-                    {
-                        long rem = totalFrames - p;                                     // frames que faltan para el final
-                        if (rem < fadeFrames) { float go = (rem <= 0) ? 0f : (float)((double)rem / fadeFrames); if (go < g) g = go; }   // fundido de SALIDA
-                    }
-                    if (g < 1f) { int bi = offset + f * ch; for (int c = 0; c < ch; c++) buffer[bi + c] *= g; }
+                    long rem = totalFrames - (pos + f);                                 // frames que faltan para el final
+                    if (rem >= fadeFrames) continue;
+                    float g = (rem <= 0) ? 0f : (float)((double)rem / fadeFrames);      // fundido de SALIDA
+                    int bi = offset + f * ch; for (int c = 0; c < ch; c++) buffer[bi + c] *= g;
                 }
                 pos += frames;
                 return n;
@@ -10177,7 +10284,7 @@ namespace Rocola
                             {
                                 float lp = (exLp[ci] += (v - exLp[ci]) * A);
                                 float h = v - lp;                                   // solo la banda alta que sobrevivio
-                                v += (float)Math.Tanh(h * 2.5) * 0.4f * mix;        // saturacion suave = armonicos nuevos por encima (brillo/presencia)
+                                v += Form1.TanhRapida(h * 2.5f) * 0.4f * mix;      // saturacion suave = armonicos nuevos por encima (brillo/presencia)
                             }
                             if (exOn || eqOn) { ci++; if (ci >= ch) ci = 0; }
                             // El control de picos ya NO se hace aqui (era una rodilla que distorsiona al empujar):
