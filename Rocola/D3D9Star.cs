@@ -125,6 +125,39 @@ namespace Rocola
             InitStates();
         }
 
+        public int BufAncho { get { return (int)pp.BackBufferWidth; } }
+        public int BufAlto { get { return (int)pp.BackBufferHeight; } }
+
+        // REHACE EL BUFFER DE DIBUJO al tamano nuevo de la ventana.
+        //
+        // Sin esto, al cambiar la resolucion de Windows con la rocola ABIERTA el buffer se quedaba del
+        // tamano VIEJO. Dos consecuencias, y las dos se veian:
+        //   - Cada cuadro habia que ESTIRARLO del tamano viejo al de la ventana, que es el camino lento del
+        //     driver: de ahi los tirones al hojear y el congelon al dejar pulsado el boton de pagina.
+        //   - Y todo lo que caia fuera del tamano viejo se RECORTABA, asi que a resoluciones altas se perdian
+        //     trozos de la pantalla por la derecha y por abajo.
+        // Arrancando ya en esa resolucion no pasaba nada, porque entonces el buffer se creaba del tamano bueno.
+        //
+        // Las texturas viven en el monton MANEJADO (POOL_MANAGED): sobreviven al reseteo solas, no hay que
+        // volver a subir ni una. Lo que SI se pierde son los estados del dispositivo, y por eso se rehacen.
+        public bool Redimensiona(int w, int h)
+        {
+            if (dev == IntPtr.Zero || w < 8 || h < 8) return false;
+            if (pp.BackBufferWidth == (uint)w && pp.BackBufferHeight == (uint)h) return true;
+            uint aw = pp.BackBufferWidth, ah = pp.BackBufferHeight;
+            pp.BackBufferWidth = (uint)w; pp.BackBufferHeight = (uint)h;
+            if (reset(dev, ref pp) < 0)
+            {
+                // No se pudo ahora (p.ej. el dispositivo esta perdido en ese instante): se deja apuntado el
+                // tamano nuevo y se reintenta en el proximo cuadro, por el mismo camino que la perdida.
+                pp.BackBufferWidth = aw; pp.BackBufferHeight = ah;
+                lost = true;
+                return false;
+            }
+            InitStates();
+            return true;
+        }
+
         private static D3D9.PresentParams MakePP(IntPtr hwnd, int w, int h)
         {
             D3D9.PresentParams p = new D3D9.PresentParams();
@@ -453,6 +486,18 @@ namespace Rocola
             using (Bitmap tex = BakeStarTexture(64)) glowTex = gpu.CreateTextureFromBitmap(tex);
             using (Bitmap g2 = BakeRadialGlow(64)) uiGlowTex = gpu.CreateTextureFromBitmap(g2);   // glow LISO (sin chispa) para el destello del boton
             BuildStars(w, h, seed);
+        }
+
+        // Ajusta el dispositivo al tamano nuevo de la ventana y REHACE el campo de estrellas, que vive en
+        // pixeles: sin rehacerlo se quedaria encogido en una esquina de la pantalla nueva.
+        public void Redimensiona(int w, int h)
+        {
+            if (!Ok || w < 8 || h < 8) return;
+            if (gpu.BufAncho == w && gpu.BufAlto == h) return;
+            gpu.Redimensiona(w, h);
+            int minuto = (curMinute != int.MinValue) ? curMinute : 0;
+            BuildStars(w, h, unchecked(seed0 + minuto * 40503));
+            transing = false; px = null;   // el entrecruzado en curso era del tamano viejo: se corta
         }
 
         public void SetSky(uint top, uint mid, uint bot) { skyTop = top; skyMid = mid; skyBot = bot; }
@@ -1125,6 +1170,10 @@ namespace Rocola
         private void RenderFrame()
         {
             if (stars == null || !stars.Ok) return;
+            // Si la ventana cambio de tamano (resolucion de Windows, o el panel), el buffer de dibujo tiene
+            // que cambiar con ella. Se hace AQUI, antes de abrir el cuadro: resetear el dispositivo con la
+            // escena ya abierta no es valido en Direct3D 9.
+            stars.Redimensiona(Width, Height);
             stars.SetSky(SkyTop, SkyMid, SkyBot);
             // TRABAJO PESADO acotado: rehacer las barras (UI, bitmap a pantalla completa) cuesta; se limita a UNA
             // por franja (heavyGapMs, que SE AUTOAJUSTA al coste real). La rejilla de discos ya NO es trabajo
