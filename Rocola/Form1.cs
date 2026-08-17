@@ -352,6 +352,9 @@ namespace Rocola
         // no puede ser un recorrido de la cola: es un indice ruta -> puesto que se rehace SOLO cuando la cola
         // cambia. 'colaVer' sube en cada cambio y entra en la firma de la textura, para que la marca "EN COLA"
         // aparezca en cuanto pides la cancion y no la proxima vez que algo mas se mueva.
+        // La que SUENA AHORA entra aqui tambien, con puesto -1: ya no esta en la cola (se saca al empezar a
+        // sonar), asi que sin esto era la unica cancion del disco SIN ninguna marca, y es justo la que mas
+        // hace falta marcar -si al cliente se le olvido que la acaba de poner, se gasta otro credito en ella-.
         private readonly Dictionary<string, int> colaPos = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         private int generoVer;   // sube cuando el paseo de fondo aprende generos (entra en la firma del interior del disco)
         private int colaVer;
@@ -364,6 +367,13 @@ namespace Rocola
                 if (it == null) continue;
                 string k = it.PathKey();
                 if (k.Length > 0 && !colaPos.ContainsKey(k)) colaPos[k] = i + 1;   // el primero manda
+            }
+            // Y la que suena. Si ademas esta pedida otra vez, manda el puesto en la cola: eso es lo que le
+            // dice al cliente que ya la va a volver a oir y que no hace falta pagarla una tercera vez.
+            if (nowPlaying != null)
+            {
+                string kn = nowPlaying.PathKey();
+                if (kn.Length > 0 && !colaPos.ContainsKey(kn)) colaPos[kn] = -1;
             }
             colaVer++;
         }
@@ -416,6 +426,49 @@ namespace Rocola
         // antes, para los casos en que aquello no pudiera medir.
         private static int diskProbeN = 0, diskProbeMs = 0;
         private static volatile bool diskSlow = true;    // arranca en modo DISCO DURO (seguro); si las mediciones dicen SSD, se suelta
+        private static volatile bool medidoLento = true; // lo que dijo la MEDIDA (se conserva aunque se fuerce a mano)
+        private static volatile int perfilDisco = 0;     // 0 = automatico (medir), 1 = forzar SSD, 2 = forzar disco duro ("disco=" en config)
+        private static int coverAbiertos = 2;            // turnos de disco ya concedidos (el semaforo solo puede CRECER)
+        // UNA ROCOLA PUEDE TENER LAS DOS COSAS, y es de lo mas normal: el programa y las miniaturas en el SSD
+        // del sistema y la musica en un disco duro grande colgado detras, o la musica repartida entre los dos
+        // (ver "dir=" en el config). Un solo veredicto para todo se equivoca en media biblioteca, asi que se
+        // guarda uno POR UNIDAD (C:\, D:\...) y cada archivo se trata como merece el disco donde ESTA. Lo que
+        // no se puede repartir -cuantas caratulas se leen a la vez- se decide por donde este LA MAYORIA.
+        private static readonly Dictionary<string, bool> discoLento = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        private static readonly object discoLock = new object();
+        private static string UnidadDe(string ruta)
+        {
+            if (string.IsNullOrEmpty(ruta)) return "";
+            try { string r = Path.GetPathRoot(ruta); return r ?? ""; }
+            catch { return ""; }
+        }
+        // Si ESTE archivo esta en un disco con cabezal. Elegido a mano manda; si no, el de su unidad; y si de
+        // esa unidad no se sabe nada, el veredicto general.
+        private static bool DiscoLento(string ruta)
+        {
+            int pf = perfilDisco;
+            if (pf == 1) return false;
+            if (pf == 2) return true;
+            string u = UnidadDe(ruta);
+            if (u.Length > 0) { bool v; lock (discoLock) { if (discoLento.TryGetValue(u, out v)) return v; } }
+            return diskSlow;
+        }
+        // Deja el veredicto general y los carriles como toque: lo medido, o lo que se haya elegido a mano.
+        private static void AplicaPerfilDisco()
+        {
+            int pf = perfilDisco;
+            bool lento = (pf == 1) ? false : (pf == 2) ? true : medidoLento;
+            diskSlow = lento;
+            int carriles = 1;
+            if (!lento) { carriles = Environment.ProcessorCount; if (carriles > 4) carriles = 4; else if (carriles < 2) carriles = 2; }
+            // El semaforo solo puede CRECER (quitarle turnos concedidos mientras se usan no es seguro). No pasa
+            // nada: quien de verdad limita cuantas bombas hay a la vez es coverCarriles, y ese si baja.
+            lock (discoLock)
+            {
+                if (carriles > coverAbiertos) { try { coverSem.Release(carriles - coverAbiertos); coverAbiertos = carriles; } catch { } }
+            }
+            coverCarriles = carriles;
+        }
         private static void DiskProbe(int ms)
         {
             if (diskProbeN >= 16) return;
@@ -424,8 +477,8 @@ namespace Rocola
             {
                 // Camino de RESPALDO: normalmente el perfil ya lo decidio PerfilaDisco al arrancar, antes de la
                 // primera pagina. Esto solo entra si aquello no pudo medir (biblioteca vacia, permisos raros).
-                diskSlow = (diskProbeMs / 16) > 6;
-                if (!diskSlow && coverCarriles < 2) coverCarriles = 2;
+                medidoLento = (diskProbeMs / 16) > 6;
+                AplicaPerfilDisco();
             }
         }
 
@@ -442,17 +495,23 @@ namespace Rocola
         // y eso son milisegundos, y en un SSD no hay cabezal que mover. Y se decide por la MEDIANA -el valor de
         // en medio-, que no se deja arrastrar por una lectura desafortunada como si hacia el promedio.
         private static bool perfilHecho = false;
+        private const int MuestrasDisco = 15;    // lecturas salteadas del perfilado (repartidas por la biblioteca)
+        private const int UmbralDiscoMs = 3;     // mas de esto de mediana = hay un cabezal moviendose
+        private static string perfilTexto = "";  // lo medido, en palabras (se ensena en Ctrl+F3)
         private void PerfilaDisco(List<Track> lista)
         {
             if (perfilHecho || lista == null || lista.Count == 0) return;
             perfilHecho = true;
             try
             {
-                List<int> ms = new List<int>(9);
+                // Las medidas se van APARTANDO POR UNIDAD: si la musica esta repartida entre un SSD y un disco
+                // duro, cada uno saca su propio veredicto en vez de salir todo del promedio de los dos.
+                Dictionary<string, List<int>> porUnidad = new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
                 byte[] buf = new byte[4096];
                 Random rnd = new Random(unchecked(Environment.TickCount * 397));
-                int paso = lista.Count / 9; if (paso < 1) paso = 1;
-                for (int i = 0; i < lista.Count && ms.Count < 9; i += paso)
+                int paso = lista.Count / MuestrasDisco; if (paso < 1) paso = 1;
+                int hechas = 0;
+                for (int i = 0; i < lista.Count && hechas < MuestrasDisco; i += paso)
                 {
                     Track t = lista[i];
                     if (t == null || t.Path == null) continue;
@@ -466,26 +525,40 @@ namespace Rocola
                             fs.Read(buf, 0, buf.Length);
                         }
                         sw.Stop();
-                        ms.Add((int)sw.ElapsedMilliseconds);
+                        string u = UnidadDe(t.Path);
+                        List<int> l;
+                        if (!porUnidad.TryGetValue(u, out l)) { l = new List<int>(8); porUnidad[u] = l; }
+                        l.Add((int)sw.ElapsedMilliseconds);
+                        hechas++;
                     }
                     catch { }
                 }
-                if (ms.Count < 5) { perfilHecho = false; return; }   // no se pudo medir: sigue el respaldo de arriba
-                ms.Sort();
-                int mediana = ms[ms.Count / 2];
-                bool lento = mediana > 3;
-                diskSlow = lento;
-                diskProbeN = 16;   // ya esta decidido: el perfilado de oido no tiene nada que corregir
-                int carriles = 1;
-                if (!lento)
+                if (hechas < 5) { perfilHecho = false; return; }   // no se pudo medir: sigue el respaldo de arriba
+                // Cada unidad, por su MEDIANA. Y el veredicto general, el de la unidad donde cayeron mas
+                // muestras: ahi es donde esta la mayoria de la musica.
+                string mandaU = null; int mandaN = 0; bool mandaLento = true;
+                StringBuilder det = new StringBuilder();
+                lock (discoLock)
                 {
-                    carriles = Environment.ProcessorCount;
-                    if (carriles > 4) carriles = 4; else if (carriles < 2) carriles = 2;
-                    if (carriles > 2) try { coverSem.Release(carriles - 2); } catch { }
+                    foreach (KeyValuePair<string, List<int>> kv in porUnidad)
+                    {
+                        List<int> l = kv.Value;
+                        if (l.Count < 3) continue;   // con una o dos medidas no se decide nada de esa unidad
+                        l.Sort();
+                        bool lentoU = l[l.Count / 2] > UmbralDiscoMs;
+                        discoLento[kv.Key] = lentoU;
+                        if (det.Length > 0) det.Append(", ");
+                        det.Append(kv.Key).Append(' ').Append(lentoU ? "disco duro" : "SSD").Append(" (").Append(l[l.Count / 2]).Append(" ms)");
+                        if (l.Count > mandaN) { mandaN = l.Count; mandaU = kv.Key; mandaLento = lentoU; }
+                    }
                 }
-                coverCarriles = carriles;
-                Diag("disco: mediana de " + ms.Count + " lecturas salteadas = " + mediana + " ms -> "
-                     + (lento ? "disco duro" : "SSD") + ", " + carriles + " carril(es)");
+                if (mandaU == null) { perfilHecho = false; return; }
+                medidoLento = mandaLento;
+                diskProbeN = 16;   // ya esta decidido: el perfilado de oido no tiene nada que corregir
+                AplicaPerfilDisco();
+                perfilTexto = det.ToString();
+                Diag("disco: " + det + "  -> manda " + mandaU + ", " + coverCarriles + " carril(es)"
+                     + (perfilDisco != 0 ? "  (forzado a mano: " + (perfilDisco == 1 ? "SSD" : "disco duro") + ")" : ""));
             }
             catch { }
         }
@@ -569,6 +642,14 @@ namespace Rocola
         private float bgDim = 1f;
         private float bgDimPrev = 1f;              // valor del cuadro anterior: si cambia, se repinta TAMBIEN el fondo del form (franjas) para que atenue en sincronia con la rejilla
         private const float BgDimLevel = 0.45f;   // brillo del starfield mientras se navega (1 = normal)
+        // LA AURORA SE CALMA MAS QUE LAS ESTRELLAS. Es lo mas grande y lo que mas se mueve de toda la pantalla,
+        // asi que mientras alguien esta intentando LEER una lista de canciones es justo lo que mas estorba -mas
+        // todavia a las horas en que un cliente ya lleva unas cuantas encima-. Las estrellas bajan al 45%; la
+        // aurora bajaba solo al 65%, que casi no se notaba. Ahora baja al 35% Y ademas se DIFUMINA: su filo de
+        // neon y la raya del horizonte, que es lo afilado y lo que tira de la vista, se van casi del todo y
+        // queda una mancha de color suave. En reposo vuelve entera, con el mismo fundido de siempre.
+        private const float AurNavLevel = 0.35f;    // cuanto queda del relleno mientras se navega
+        private const float AurNavFilo = 0.22f;     // y cuanto queda del filo de neon (mucho menos: eso es difuminar)
         private const int BgDimIdleSecs = 10;     // segundos sin botones para volver al brillo normal
 #if ROCOLA_GPU
         private GpuPanel gpuPanel;   // fondo de discos por GPU (experimental, Ctrl+F12)
@@ -607,6 +688,12 @@ namespace Rocola
         private AttractView attractView;    // modo atraccion (reposo): fondo estrellado + cubo gigante
         private bool attractOn = false;
         private const int AttractIdleSecs = 40;   // reposo antes de entrar al modo atraccion
+        // SALIR SOLO DEL INTERIOR DE UN DISCO. Alguien abre un disco, se distrae -le hablan, se va a bailar,
+        // se acaba su turno- y la rocola se queda con SU disco abierto. El siguiente que llega no ve la pared
+        // de discos, ve una lista de canciones suelta y no sabe ni donde esta ni como volver. A los 30 segundos
+        // sin tocar NADA vuelve sola a la pared. Cada tecla reinicia la cuenta, asi que a quien esta eligiendo
+        // de verdad no lo echa nunca. Y va por delante del modo atraccion (40 s), que es el paso siguiente.
+        private const int DiscoIdleSecs = 30;
         private static readonly string[] ConfigSteps = new string[] {
             "ARRIBA   (subir / pagina anterior)",
             "ABAJO   (bajar / pagina siguiente)",
@@ -974,6 +1061,11 @@ namespace Rocola
                     else if (s.StartsWith("animacion=")) transAnimOn = s.Substring(10).Trim() != "0";   // zoom al entrar/salir de un disco
                     else if (s.StartsWith("espectro=")) { float v; if (float.TryParse(s.Substring(9).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) auroraAmount = Clampf(v / 100f, 0f, 1f); }   // aurora del horizonte (0 = apagada)
                     else if (s.StartsWith("tope_fps=")) { int v; if (int.TryParse(s.Substring(9).Trim(), out v)) fpsTope = (v < 0) ? 0 : v; }   // cuadros/s del fondo (0 = automatico, segun la pantalla)
+                    else if (s.StartsWith("disco="))   // tipo de disco: auto (medir), ssd o hdd (Ctrl+F3)
+                    {
+                        string d = s.Substring(6).Trim().ToLowerInvariant();
+                        perfilDisco = (d == "ssd") ? 1 : (d == "hdd" || d == "duro") ? 2 : 0;
+                    }
                     else if (s.StartsWith("video_gpu=")) videoGpuOn = s.Substring(10).Trim() != "0";   // interfaz por GPU aunque haya video
                     else if (s.StartsWith("diagnostico=")) diagOn = s.Substring(12).Trim() != "0";   // bitacora en rocola_diagnostico.txt
                     else if (s.StartsWith("normalizar=")) normalizeOn = s.Substring(11).Trim() != "0";   // nivelar volumen de las canciones (por defecto si)
@@ -1018,6 +1110,7 @@ namespace Rocola
                 sb.Append("animacion=").Append(transAnimOn ? "1" : "0").Append("\r\n");
                 sb.Append("espectro=").Append(Math.Round(auroraAmount * 100f)).Append("\r\n");
                 sb.Append("tope_fps=").Append(fpsTope).Append("\r\n");
+                sb.Append("disco=").Append(perfilDisco == 1 ? "ssd" : perfilDisco == 2 ? "hdd" : "auto").Append("\r\n");
                 sb.Append("video_gpu=").Append(videoGpuOn ? "1" : "0").Append("\r\n");
                 sb.Append("diagnostico=").Append(diagOn ? "1" : "0").Append("\r\n");
                 sb.Append("normalizar=").Append(normalizeOn ? "1" : "0").Append("\r\n");
@@ -1988,7 +2081,7 @@ namespace Rocola
             bool wasMaint = maintMode;
             maintMode = true; maintUntil = DateTime.Now.AddMinutes(10);
             bool changed = false;
-            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkUp = masterDb, bkEq = eqAmount, bkBass = bassAmount; int bkVid = videoVol; bool bkOn = normalizeOn, bkSbr = sbrOn, bkEqA = eqAuto, bkBassA = bassAuto;   // por si se Cancela
+            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkUp = masterDb, bkEq = eqAmount, bkBass = bassAmount; int bkVid = videoVol, bkDsk = perfilDisco; bool bkOn = normalizeOn, bkSbr = sbrOn, bkEqA = eqAuto, bkBassA = bassAuto;   // por si se Cancela
             try
             {
                 Cursor.Show();
@@ -2125,6 +2218,49 @@ namespace Rocola
                     tBib.Controls.Add(lCal); tBib.Controls.Add(hint); tBib.Controls.Add(bTrain); tBib.Controls.Add(lPct); tBib.Controls.Add(pbTrain);
                     EscribeInformeCalidad();   // el detalle, cancion por cancion, queda en un archivo junto al programa
 
+                    // ---------------- TIPO DE DISCO ----------------
+                    // La rocola trabaja MUY distinto segun donde este la musica: un disco duro tiene un cabezal
+                    // que hay que mover, asi que se le pide de uno en uno y se le deja respirar; un SSD no tiene
+                    // nada que mover y rinde mas cuantas mas cosas se le pidan a la vez. Normalmente lo mide
+                    // sola al arrancar y acierta. Esto esta aqui por si el operador quiere fijarlo -por ejemplo
+                    // con la musica en un disco de red, donde medir no dice gran cosa-.
+                    Color cDsk = Color.FromArgb(150, 205, 255);
+                    Label lDskT = new Label(); lDskT.SetBounds(252, 678, 150, 18); lDskT.BackColor = Color.Transparent;
+                    lDskT.ForeColor = cTexto; lDskT.Font = fNom; lDskT.Text = "Tipo de disco";
+                    BotonPlano bDskA = new BotonPlano(); bDskA.SetBounds(408, 676, 122, 34); bDskA.Font = fBot; bDskA.Text = "Automatico";
+                    BotonPlano bDskS = new BotonPlano(); bDskS.SetBounds(538, 676, 104, 34); bDskS.Font = fBot; bDskS.Text = "SSD";
+                    BotonPlano bDskH = new BotonPlano(); bDskH.SetBounds(650, 676, 142, 34); bDskH.Font = fBot; bDskH.Text = "Disco duro";
+                    Label lDskS = new Label(); lDskS.SetBounds(252, 712, 540, 18); lDskS.BackColor = Color.Transparent;
+                    lDskS.ForeColor = cTenue; lDskS.Font = fDes;
+                    Action pintaDsk = delegate
+                    {
+                        BotonPlano[] bb = { bDskA, bDskS, bDskH };
+                        for (int k = 0; k < 3; k++)
+                        {
+                            bool act = (perfilDisco == k);
+                            bb[k].Relleno = act ? Color.FromArgb(28, 62, 104) : Color.FromArgb(28, 34, 62);
+                            bb[k].Borde = act ? cDsk : Color.FromArgb(60, 72, 118);
+                            bb[k].ForeColor = act ? Color.FromArgb(226, 240, 255) : cApagado;
+                            bb[k].Invalidate();
+                        }
+                        string med = string.IsNullOrEmpty(perfilTexto) ? "aun sin medir" : perfilTexto;
+                        // Con la musica repartida entre varios discos, aqui salen los dos: cada archivo se
+                        // trata como merece el suyo, no todos por el mismo rasero.
+                        lDskS.Text = (perfilDisco == 0)
+                            ? ("Lo mide sola y se adapta a cada unidad.   Medido: " + med)
+                            : ("Fijado a mano: " + (perfilDisco == 1 ? "SSD" : "disco duro") + ".   Medido: " + med);
+                    };
+                    EventHandler ponDsk = delegate (object so, EventArgs ea)
+                    {
+                        int q = (so == bDskS) ? 1 : (so == bDskH) ? 2 : 0;
+                        if (q == perfilDisco) return;
+                        perfilDisco = q; AplicaPerfilDisco(); changed = true;
+                        lock (discoLock) discoLento.Clear();   // el forzado manda sobre lo medido de cada unidad
+                        pintaDsk();
+                    };
+                    bDskA.Click += ponDsk; bDskS.Click += ponDsk; bDskH.Click += ponDsk;
+                    pintaDsk();
+
                     // ---------------- PIE ----------------
                     BotonPlano bReset = new BotonPlano(); bReset.SetBounds(16, 680, 220, 38); bReset.Font = fBot;
                     bReset.Text = "Dejar como de fabrica";
@@ -2239,6 +2375,8 @@ namespace Rocola
                         bar[4].Value = 0; bar[5].Value = 30; bar[6].Value = 35;
                         au[4].Checked = true; au[5].Checked = true;          // EQ y graves en automatico
                         if (swSbr.Enabled) swSbr.Checked = false;            // el espectral apagado: es experimental
+                        if (perfilDisco != 0)                                // el tipo de disco, otra vez a medirlo sola
+                        { perfilDisco = 0; lock (discoLock) discoLento.Clear(); AplicaPerfilDisco(); pintaDsk(); }
                         apply(bReset, EventArgs.Empty);
                     };
                     bOk.Click += delegate { dlg.Close(); };
@@ -2257,6 +2395,7 @@ namespace Rocola
 
                     dlg.Controls.Add(lTit); dlg.Controls.Add(lSub); dlg.Controls.Add(lSal);
                     dlg.Controls.Add(tVol); dlg.Controls.Add(tCal); dlg.Controls.Add(tBib);
+                    dlg.Controls.Add(lDskT); dlg.Controls.Add(bDskA); dlg.Controls.Add(bDskS); dlg.Controls.Add(bDskH); dlg.Controls.Add(lDskS);
                     dlg.Controls.Add(bReset); dlg.Controls.Add(bOk);
                     // Escape cierra, como toda la vida (los controles propios se comen las teclas, asi que la
                     // ventana las mira antes con KeyPreview).
@@ -2273,7 +2412,7 @@ namespace Rocola
                 }
                 if (changed) { SaveConfigPrefs(); ShowToast("Sonido actualizado", Color.FromArgb(40, 130, 90)); }
             }
-            catch { normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; masterDb = bkUp; eqAmount = bkEq; bassAmount = bkBass; videoVol = bkVid; sbrOn = bkSbr; eqAuto = bkEqA; bassAuto = bkBassA; }   // si algo truena, deja los valores como estaban
+            catch { normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; masterDb = bkUp; eqAmount = bkEq; bassAmount = bkBass; videoVol = bkVid; sbrOn = bkSbr; eqAuto = bkEqA; bassAuto = bkBassA; perfilDisco = bkDsk; AplicaPerfilDisco(); }   // si algo truena, deja los valores como estaban
             finally { try { Cursor.Hide(); } catch { } maintMode = wasMaint; ForceFocus(); }
         }
 
@@ -2462,7 +2601,7 @@ namespace Rocola
             if (Has(g, "hip", "rap", "trap")) return "Hip-Hop";
             if (Has(g, "salsa", "mereng", "bachata", "tropical")) return "Tropical";
             if (Has(g, "cumbia", "banda", "norte", "ranch", "mariach", "regional", "tejano", "grupera", "corrido", "duranguense", "sonidero")) return "Regional";
-            if (Has(g, "bolero", "tango", "ranchera")) return "Bolero";
+            if (Has(g, "bolero", "tango", "ranchera", "balada", "romantic", "romant")) return "Bolero";
             if (Has(g, "flamenco", "rumba", "copla")) return "Flamenco";
             if (Has(g, "latin", "latino", "espan")) return "Latino";
             if (Has(g, "reggae", "ska", "dub")) return "Reggae";
@@ -2650,16 +2789,12 @@ namespace Rocola
             songList.GetGenero = delegate (int i)
             {
                 if (i < 0 || i >= songItems.Count) return "";
-                // Si la cancion ya sono alguna vez se sabe SU genero exacto (el que traia el archivo).
-                Track tk = songItems[i] as Track;
-                string et;
-                if (tk != null && tk.Path != null && songGenre.TryGetValue(tk.Path, out et) && et.Length > 0) return et;
-                // Si no, el genero que MANDA en su disco. En los discos de LO MAS SONADO cada cancion viene
-                // de un disco distinto, asi que se mira el suyo y no el del monton.
+                // En los discos de LO MAS SONADO cada cancion viene de un disco distinto, asi que se mira el
+                // suyo y no el del monton. Lo demas lo resuelve la cascada (ver GeneroDeCancion).
                 Album org = currentAlbum;
                 if (currentAlbum != null && currentAlbum.IsTop && currentAlbum.TrackAlbums != null && i < currentAlbum.TrackAlbums.Count)
                     org = currentAlbum.TrackAlbums[i];
-                return EtiquetaDisco(org);
+                return GeneroDeCancion(songItems[i] as Track, org);
             };
             songList.GetCount = delegate { return songItems.Count; };
             songList.GetText = delegate (int i) { return (i >= 0 && i < songItems.Count) ? songItems[i].ToString() : ""; };
@@ -2730,7 +2865,9 @@ namespace Rocola
             };
             searchOverlay.GetGenero = delegate (SearchItem it)
             {
-                return (it != null) ? EtiquetaDisco(it.AlbumRef) : "";
+                // La misma respuesta que dentro del disco: si es una cancion se le pregunta por ella; si es un
+                // disco o un artista, por el disco. Antes el buscador y el interior podian decir cosas distintas.
+                return (it != null) ? GeneroDeCancion(it.TrackRef, it.AlbumRef) : "";
             };
             searchOverlay.OnQueryChanged = RecomputeResults;
             searchOverlay.OnChoose = ChooseSearchResult;
@@ -3015,6 +3152,8 @@ namespace Rocola
             BuildTopDiscs();
             if (topDiscs != null && topDiscs.Count > 0) letterAvailable.Add(TopMark);   // hay estadisticas -> seccion "Lo mas sonado"
             LeeTintes(FirmaBiblioteca());   // el color de cada letra, si ya se calculo para esta misma biblioteca
+            RecalculaGenerosArtista();      // y de esos generos de disco salen los del artista, sin leer nada mas
+            nombreTag.Clear();              // biblioteca nueva: lo adivinado por el nombre se vuelve a mirar
             RecalculaLetras();
 
             string order = "\u2605#ABCDEFGHIJKLMNOPQRSTUVWXYZ\u25BA";
@@ -3368,6 +3507,7 @@ namespace Rocola
             if (gen != durScanGen) return;
             for (int i = 0; i < letras.Length && i < etiquetas.Length; i++) letterTag[letras[i]] = etiquetas[i];
             for (int i = 0; i < discos.Length && i < etDiscos.Length; i++) discTag[discos[i]] = etDiscos[i];
+            RecalculaGenerosArtista();   // con los generos de disco nuevos, los del artista cambian
             if (ultimo) { tintesPend = false; GuardaTintes(firma); }
             RecalculaLetras();
         }
@@ -3384,6 +3524,138 @@ namespace Rocola
             string et;
             if (a != null && a.Folder != null && discTag.TryGetValue(a.Folder, out et)) return et;
             return "";
+        }
+
+        // ===================== DE QUE GENERO ES UNA CANCION =====================
+        // Muchisimos MP3 vienen SIN etiqueta de genero. Antes, a esas canciones se les ensenaba el genero que
+        // MANDA en su disco y, en cuanto sonaban, la pastilla cambiaba a "Otros": la lista decia una cosa y el
+        // reproductor otra. Eso es lo que se veia en un disco de Black Eyed Peas -todas marcadas "Pop" y al
+        // ponerlas, nada-.
+        //
+        // Ahora hay UNA sola respuesta, la misma en la lista del disco, en el buscador y al sonar, y se busca
+        // en este orden, de lo mas seguro a lo mas adivinado:
+        //
+        //   1. LA ETIQUETA DE LA PROPIA CANCION. Si la trae, no hay nada que adivinar.
+        //   2. EL DISCO. El genero que mas se repite entre las canciones del disco que SI la traen. Es la
+        //      mejor pista que queda: las canciones de un mismo disco son del mismo genero casi siempre.
+        //   3. EL ARTISTA. Si NINGUNA cancion del disco trae etiqueta pero otro disco del mismo artista si,
+        //      ese vale. Sale GRATIS: se cuenta sobre los generos de disco que la rocola ya sabe, sin abrir
+        //      ni un archivo mas ni guardar nada nuevo.
+        //   4. EL NOMBRE. En una rocola de bar media biblioteca esta en carpetas que ya lo dicen: "Cumbias
+        //      Mix", "Banda 2020", "Salsa Clasica", "Baladas Romanticas". Se leen el nombre del disco, su
+        //      carpeta y la carpeta de encima. Es un recorrido de texto corto, hecho UNA vez por disco y
+        //      guardado, asi que no vuelve a costar.
+        //
+        // Y si despues de los cuatro no hay nada, NO SE INVENTA: no sale pastilla. Mejor sin etiqueta que con
+        // una etiqueta falsa.
+        private readonly Dictionary<string, string> artistTag = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, string> nombreTag = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);   // carpeta -> lo que dice su NOMBRE (ya resuelto)
+
+        private string GeneroDeCancion(Track tk, Album org)
+        {
+            string et;
+            if (tk != null && tk.Path != null && songGenre.TryGetValue(tk.Path, out et) && et.Length > 0) return et;   // 1
+            if (tk != null && !string.IsNullOrEmpty(tk.Genre)) { et = GenreLabel(tk.Genre); if (et != "Otros") return et; }
+            if (org == null) return "";
+            if (org.Folder != null && discTag.TryGetValue(org.Folder, out et) && et.Length > 0) return et;              // 2
+            if (!string.IsNullOrEmpty(org.Artist) && artistTag.TryGetValue(org.Artist, out et) && et.Length > 0) return et;   // 3
+            return GeneroPorNombre(org);                                                                                // 4
+        }
+
+        // Que genero se repite mas entre los DISCOS de cada artista. Se rehace cuando llegan votos nuevos del
+        // paseo de fondo; cada disco pesa lo que canciones tiene, para que un disco suelto de dos temas no le
+        // gane a uno de veinte.
+        private void RecalculaGenerosArtista()
+        {
+            artistTag.Clear();
+            if (libBuilding || discTag.Count == 0 || albums == null) return;   // 'albums' es del worker mientras se re-escanea
+            Dictionary<string, Dictionary<string, int>> votos = new Dictionary<string, Dictionary<string, int>>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < albums.Count; i++)
+            {
+                Album a = albums[i];
+                if (a == null || a.Folder == null || string.IsNullOrEmpty(a.Artist)) continue;
+                string et;
+                if (!discTag.TryGetValue(a.Folder, out et) || string.IsNullOrEmpty(et)) continue;
+                int peso = (a.Tracks != null && a.Tracks.Count > 0) ? a.Tracks.Count : 1;
+                Dictionary<string, int> vv;
+                if (!votos.TryGetValue(a.Artist, out vv)) { vv = new Dictionary<string, int>(); votos[a.Artist] = vv; }
+                int ya; vv.TryGetValue(et, out ya); vv[et] = ya + peso;
+            }
+            foreach (KeyValuePair<string, Dictionary<string, int>> kv in votos)
+            {
+                string mejor = null; int mejorN = 0;
+                foreach (KeyValuePair<string, int> vv in kv.Value) if (vv.Value > mejorN) { mejorN = vv.Value; mejor = vv.Key; }
+                if (mejor != null) artistTag[kv.Key] = mejor;
+            }
+        }
+
+        // Palabras que dentro de un NOMBRE de carpeta o de disco casi solo pueden querer decir el genero. Se
+        // comparan como PALABRA ENTERA a proposito: sin eso "Metallica" saldria de Metal, "Discoteca" de Disco
+        // y "Poporopo" de Pop. Y quien traduce cada palabra a su etiqueta es GenreLabel, el mismo de siempre:
+        // asi no hay dos listas de generos que se puedan desparejar (lo vigila la bateria 'genero').
+        private static readonly string[] NombrePal = {
+            "cumbia", "cumbias", "salsa", "salsas", "bachata", "bachatas", "merengue", "merengues",
+            "reggaeton", "reguetón", "reggaetón", "banda", "bandas", "nortena", "nortenas", "norteña", "norteñas",
+            "corrido", "corridos", "ranchera", "rancheras", "mariachi", "mariachis", "grupera", "gruperas",
+            "duranguense", "sonidero", "sonideros", "tejano", "tejanas", "regional", "tropical", "tropicales",
+            "balada", "baladas", "romantica", "romanticas", "romántica", "románticas", "bolero", "boleros",
+            "tango", "tangos", "flamenco", "rumba", "rumbas", "reggae", "ska",
+            "rock", "pop", "metal", "punk", "rap", "trap", "hip-hop", "hiphop", "jazz", "blues", "funk", "soul",
+            "disco", "tecno", "techno", "trance", "electronica", "electrónica", "dance",
+            "clasica", "clásica", "classical", "instrumental", "infantil", "infantiles", "gospel", "country",
+            "chill", "oldies", "soundtrack"
+        };
+
+        private string GeneroPorNombre(Album a)
+        {
+            if (a == null || a.Folder == null) return "";
+            string ya;
+            if (nombreTag.TryGetValue(a.Folder, out ya)) return ya;
+            string et = "";
+            try
+            {
+                // El nombre del disco, su carpeta y la de encima ("...\Cumbias\Los Angeles Azules"). Nada mas
+                // arriba: subiendo se llega a carpetas del sistema que no dicen nada de la musica.
+                string carp = Path.GetFileName(a.Folder.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+                string padre = "";
+                try { DirectoryInfo di = Directory.GetParent(a.Folder); if (di != null) padre = di.Name; }
+                catch { }
+                et = EnNombre(a.Name);
+                if (et.Length == 0) et = EnNombre(carp);
+                if (et.Length == 0) et = EnNombre(padre);
+            }
+            catch { }
+            nombreTag[a.Folder] = et;
+            return et;
+        }
+
+        private static string EnNombre(string texto)
+        {
+            if (string.IsNullOrEmpty(texto)) return "";
+            string t = texto.ToLowerInvariant();
+            for (int i = 0; i < NombrePal.Length; i++)
+            {
+                if (!PalabraEntera(t, NombrePal[i])) continue;
+                string et = GenreLabel(NombrePal[i]);
+                if (!string.IsNullOrEmpty(et) && et != "Otros") return et;
+            }
+            return "";
+        }
+
+        // "cumbia" dentro de "Cumbia Mix" SI; dentro de "Sacumbiado" NO. Se comprueba que a los dos lados NO
+        // haya letra ni numero (o sea: espacio, guion, punto, barra, parentesis... o el principio/final).
+        private static bool PalabraEntera(string t, string pal)
+        {
+            int p = t.IndexOf(pal, StringComparison.Ordinal);
+            while (p >= 0)
+            {
+                bool izq = (p == 0) || !char.IsLetterOrDigit(t[p - 1]);
+                int f = p + pal.Length;
+                bool der = (f >= t.Length) || !char.IsLetterOrDigit(t[f]);
+                if (izq && der) return true;
+                p = t.IndexOf(pal, p + 1, StringComparison.Ordinal);
+            }
+            return false;
         }
 
         // Lo que le falta a UN archivo: su duracion, sus votos de genero, o las dos cosas. Sirve para
@@ -3603,7 +3875,10 @@ namespace Rocola
                         // su turno, que para eso este hilo va ademas en la prioridad mas baja- y el repaso
                         // termina en una fraccion del tiempo. Si hubo que leer el archivo entero, se respira
                         // igual: eso si le cuesta al disco, tenga cabezal o no.
-                        if (diskSlow) System.Threading.Thread.Sleep(caro ? 12 : 4);
+                        // Y el respiro va por el disco donde este ESTE archivo, no por un veredicto general:
+                        // con la musica repartida entre un SSD y un disco duro, cada archivo se trata como
+                        // merece el suyo (ver DiscoLento).
+                        if (DiscoLento(v.Ruta)) System.Threading.Thread.Sleep(caro ? 12 : 4);
                         else if (caro || (i & 31) == 31) System.Threading.Thread.Sleep(1);
                     }
                 }
@@ -4183,14 +4458,15 @@ namespace Rocola
                     // asi que se le piden 256 KB de una y la cancion queda en memoria en un pestaneo.
                     // Y en los dos casos se avisa a Windows de que esto se va a leer DE PRINCIPIO A FIN
                     // (SequentialScan): con eso adelanta la lectura por su cuenta en vez de ir trozo a trozo.
-                    int trozo = diskSlow ? (64 * 1024) : (256 * 1024);
+                    bool lentoAqui = DiscoLento(ruta);
+                    int trozo = lentoAqui ? (64 * 1024) : (256 * 1024);
                     byte[] buf = new byte[trozo];
                     using (FileStream fs = new FileStream(ruta, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, trozo, FileOptions.SequentialScan))
                     {
                         while (fs.Read(buf, 0, buf.Length) > 0)
                         {
                             if (mio != warmSongGen) return;
-                            System.Threading.Thread.Sleep(diskSlow ? 8 : 1);
+                            System.Threading.Thread.Sleep(lentoAqui ? 8 : 1);
                         }
                     }
                 }
@@ -5321,7 +5597,12 @@ namespace Rocola
             // estaba: baja al 65%. Antes no podia bajar porque estaba floja de por si y desaparecia; ahora sale
             // bastante mas fuerte, asi que en reposo -que es cuando nadie mira de cerca- luce entera, y en
             // cuanto alguien toca una tecla se serena hasta que vuelve a quedarse quieta.
-            g.Dim = (0.36f + 0.64f * bgDim) * auroraPres;   // la presencia hace el fundido de entrada y de salida
+            // 'quieto' va de 0 (alguien esta tocando botones) a 1 (nadie toca nada), siguiendo la misma
+            // transicion suave que ya anima bgDim, asi que la aurora se calma y vuelve sin ningun salto.
+            float quieto = (bgDim - BgDimLevel) / (1f - BgDimLevel);
+            quieto = Clampf(quieto, 0f, 1f);
+            g.Dim = (AurNavLevel + (1f - AurNavLevel) * quieto) * auroraPres;   // la presencia hace el fundido de entrada y de salida
+            g.DimFilo = AurNavFilo + (1f - AurNavFilo) * quieto;
             // CUANTO HAY DE REPOSO en lo que se ve: 0 con la cancion sonando, 1 con la rocola callada. Es lo
             // que le dice al panel si tiene que dibujar la forma lenta (AurCalma) en vez de las bandas. Va
             // pegado a la presencia, asi que el relevo entre una y otra es el mismo fundido suave de siempre.
@@ -6938,6 +7219,7 @@ namespace Rocola
             if (queue.Count == 0)
             {
                 nowPlaying = null;
+                RefrescaCola();   // que se borre la marca de "SONANDO" de la lista del disco
                 progress.Value = 0; lblTime.Text = "0:00 / 0:00";
                 ApplyGenreBackground(null);
                 LayoutControls(); this.Invalidate();
@@ -6947,7 +7229,7 @@ namespace Rocola
             }
 
             nowPlaying = queue[0];
-            queue.RemoveAt(0); RefrescaCola();
+            queue.RemoveAt(0); RefrescaCola();   // (nowPlaying ya esta puesto: la marca de "SONANDO" sale en la misma pasada)
             SaveState();   // estado vivo: cambio lo que suena / la cola (para reanudar tras un corte de luz)
 
             if (nowPlaying.IsVideo)
@@ -6958,7 +7240,11 @@ namespace Rocola
             else
             {
                 nowPlaying.Song.EnsureTags();         // lee ID3 ahora (genero -> color de fondo)
-                if (nowPlaying.Song.Path != null) { songGenre[nowPlaying.Song.Path] = GenreLabel(nowPlaying.Song.Genre); statsDirty = true; topDirty = true; }   // captura genero para los discos TOP
+                // Se apunta SOLO si el archivo trae etiqueta de verdad. Antes se apuntaba siempre, y en una
+                // cancion sin etiqueta eso guardaba "Otros" y PISABA lo que la cascada habia deducido: la
+                // pastilla decia "Pop" en la lista y al ponerla cambiaba a "Otros". Ese era el fallo.
+                if (nowPlaying.Song.Path != null && !string.IsNullOrEmpty(nowPlaying.Song.Genre))
+                { songGenre[nowPlaying.Song.Path] = GenreLabel(nowPlaying.Song.Genre); statsDirty = true; topDirty = true; }   // captura genero para los discos TOP
                 ApplyGenreBackground(nowPlaying.Song);
                 PlayTrack(nowPlaying.Song);
             }
@@ -7427,6 +7713,7 @@ namespace Rocola
                     // Algo de fondo esta mal (NAudio o formato). Dejamos de saltar para no ciclar.
                     DisposePlaybackNow();
                     nowPlaying = null;
+                    RefrescaCola();   // idem: sin cancion no hay marca de "SONANDO"
                     lblStatus.Text = "No se pudo reproducir. Detalle en rocola_error.txt (junto al programa)";
                     UpdateNowPlayingUI();
                     return;
@@ -8390,6 +8677,16 @@ namespace Rocola
                 TickMejorada(sGpu);   // la franja de estado sigue visible bajo el buscador: el letrero sigue brillando
                 return;
             }
+
+            // Y lo mismo para el INTERIOR DE UN DISCO: a los 30 s sin tocar nada, de vuelta a la pared de
+            // discos (ver DiscoIdleSecs). Con un video puesto no: ahi el disco abierto es lo de menos y el
+            // video manda. Ni con el asistente de botones a la vista.
+            // Ni con el asistente de botones a la vista, ni en MANTENIMIENTO: mientras el operador tiene
+            // abierta una ventana de ajustes, sacarle el disco de debajo seria de lo mas molesto.
+            if (panelSongs != null && panelSongs.Visible && !videoOn && !searchOpen && !maintMode
+                && (lblConfig == null || !lblConfig.Visible)
+                && (DateTime.Now - lastInput).TotalSeconds >= DiscoIdleSecs)
+            { BackToAlbums(); return; }
 
             // VIDEO A PANTALLA COMPLETA tras inactividad (para apreciarlo mejor)
             if (videoOn && !videoFull && (DateTime.Now - lastInput).TotalSeconds > 8) EnterVideoFull();
@@ -11957,8 +12254,8 @@ namespace Rocola
             // fila -mas que todo el resto de la fila junta- y la pastilla otros 55. Como son SIEMPRE la misma
             // figura, se pintan una vez a un mapa de bits y despues cada fila solo las copia. Lo unico que se
             // sigue dibujando por fila es el numero, que si cambia.
-            private Bitmap bmpCirc, bmpCircCola, bmpPastilla;
-            private Bitmap[] bmpDig, bmpDigCola;   // las diez cifras, tambien horneadas
+            private Bitmap bmpCirc, bmpCircCola, bmpCircSon, bmpPastilla, bmpPastillaSon;
+            private Bitmap[] bmpDig, bmpDigCola, bmpDigSon;   // las diez cifras, tambien horneadas
             private int hornoLado = -1, hornoPastW = -1, hornoPastH = -1, digW, digH;
             private float hornoCuerpo = -1f;
             private static Bitmap HorneaCirculo(int lado, Color c, bool fuerte)
@@ -12026,9 +12323,10 @@ namespace Rocola
                 }
             }
             // Pinta un numero copiando sus cifras ya horneadas, centrado en 'cx'.
-            private void PintaNumero(Graphics g, int v, float cx, float cy, bool enCola)
+            // marca: 0 = normal, 1 = pedida (verde), 2 = sonando ahora (ambar)
+            private void PintaNumero(Graphics g, int v, float cx, float cy, int marca)
             {
-                Bitmap[] set = enCola ? bmpDigCola : bmpDig;
+                Bitmap[] set = (marca == 2) ? bmpDigSon : (marca == 1) ? bmpDigCola : bmpDig;
                 if (set == null) return;
                 if (v < 0) v = 0;
                 int cifras = (v < 10) ? 1 : (v < 100) ? 2 : (v < 1000) ? 3 : 4;
@@ -12099,28 +12397,38 @@ namespace Rocola
                 {
                     if (bmpDig != null) for (int i = 0; i < bmpDig.Length; i++) if (bmpDig[i] != null) bmpDig[i].Dispose();
                     if (bmpDigCola != null) for (int i = 0; i < bmpDigCola.Length; i++) if (bmpDigCola[i] != null) bmpDigCola[i].Dispose();
-                    int w1, h1, w2, h2;
+                    if (bmpDigSon != null) for (int i = 0; i < bmpDigSon.Length; i++) if (bmpDigSon[i] != null) bmpDigSon[i].Dispose();
+                    int w1, h1, w2, h2, w3, h3;
                     HorneaCifras(fNum, Color.FromArgb(178, 190, 218), out bmpDig, out w1, out h1);
                     HorneaCifras(fNum, ColaVerde, out bmpDigCola, out w2, out h2);
-                    digW = Math.Max(w1, w2); digH = Math.Max(h1, h2);
+                    HorneaCifras(fNum, SonAmbar, out bmpDigSon, out w3, out h3);
+                    digW = Math.Max(w1, Math.Max(w2, w3)); digH = Math.Max(h1, Math.Max(h2, h3));
                     hornoCuerpo = fNum.SizeInPoints;
                 }
                 if (bmpCirc == null || hornoLado != lado)
                 {
                     if (bmpCirc != null) bmpCirc.Dispose();
                     if (bmpCircCola != null) bmpCircCola.Dispose();
+                    if (bmpCircSon != null) bmpCircSon.Dispose();
                     bmpCirc = HorneaCirculo(lado, NumGris, false);
                     bmpCircCola = HorneaCirculo(lado, ColaVerde, true);
+                    bmpCircSon = HorneaCirculo(lado, SonAmbar, true);
                     hornoLado = lado;
                 }
                 if (bmpPastilla == null || hornoPastW != pw || hornoPastH != ph)
                 {
                     if (bmpPastilla != null) bmpPastilla.Dispose();
+                    if (bmpPastillaSon != null) bmpPastillaSon.Dispose();
                     bmpPastilla = HorneaPastilla(pw, ph, ColaVerde);
+                    bmpPastillaSon = HorneaPastilla(pw, ph, SonAmbar);
                     hornoPastW = pw; hornoPastH = ph;
                 }
             }
             private static readonly Color ColaVerde = Color.FromArgb(120, 230, 165);
+            // AMBAR para la que suena AHORA. Deliberadamente de otra familia de color que el verde de "ya
+            // pedida": de un vistazo, y a la distancia a la que se mira una rocola, tienen que distinguirse
+            // sin leer. Verde = la vas a oir; ambar = la estas oyendo.
+            private static readonly Color SonAmbar = Color.FromArgb(255, 198, 104);
             private static readonly Color NumGris = Color.FromArgb(150, 170, 220);
 
             public SongListView()
@@ -12190,11 +12498,13 @@ namespace Rocola
                     }
                     // EL NUMERO DE PISTA en un circulito, y en VERDE si esa cancion ya esta pedida. Antes no
                     // habia forma de saber que ya la habias puesto: la volvias a pedir y gastabas otro credito.
+                    // (y en AMBAR si es la que esta sonando en este momento: ver colaPos, puesto -1)
                     int pos = (GetQueuePos != null) ? GetQueuePos(idx) : 0;
-                    bool enCola = pos > 0;
+                    int marca = (pos > 0) ? 1 : (pos < 0) ? 2 : 0;
+                    bool conMarca = marca != 0;
                     float cy = r.Y + RowH * 0.5f;
-                    g.DrawImageUnscaled(enCola ? bmpCircCola : bmpCirc, 16, (int)(cy - rad));
-                    PintaNumero(g, idx + 1, 16 + rad, cy, enCola);
+                    g.DrawImageUnscaled((marca == 2) ? bmpCircSon : (marca == 1) ? bmpCircCola : bmpCirc, 16, (int)(cy - rad));
+                    PintaNumero(g, idx + 1, 16 + rad, cy, marca);
                     // DURACION a la derecha (m:ss). Se dibuja primero para saber cuanto ancho quitarle al
                     // titulo: asi un nombre largo se corta con "..." ANTES de encimarse con la duracion.
                     string dur = (GetRight != null) ? GetRight(idx) : "";
@@ -12230,13 +12540,15 @@ namespace Rocola
                         }
                     }
                     int quitaCola = 0;
-                    if (enCola)
+                    if (conMarca)
                     {
                         quitaCola = wCola + 12;
                         RectangleF cr = new RectangleF(r.Right - 14 - durW - quitaGen - quitaCola, cy - hCola * 0.5f, wCola, hCola);
-                        g.DrawImageUnscaled(bmpPastilla, (int)cr.X, (int)cr.Y);
-                        colaB.Color = ColaVerde;
-                        g.DrawString("EN COLA " + pos, fCola, colaB, cr, cenFmt);
+                        g.DrawImageUnscaled((marca == 2) ? bmpPastillaSon : bmpPastilla, (int)cr.X, (int)cr.Y);
+                        colaB.Color = (marca == 2) ? SonAmbar : ColaVerde;
+                        // El triangulito de "play" delante deja claro cual es, incluso de lejos y aunque no se
+                        // llegue a leer la palabra.
+                        g.DrawString((marca == 2) ? "\u25B6 SONANDO" : ("EN COLA " + pos), fCola, colaB, cr, cenFmt);
                     }
                     // El nombre acaba SEIS PIXELES antes de lo primero que haya a su derecha. Antes se restaba
                     // un margen distinto del que usa la marca de "ya pedida", y un nombre largo llegaba a

@@ -880,7 +880,9 @@ namespace Rocola
     // AURORA DEL HORIZONTE: el visualizador de espectro, dibujado como parte del CIELO y no como un aparato
     // encima. B = 8 bandas ya suavizadas (0..1, de graves a agudos); se interpolan a lo ancho y se pintan con
     // halos aditivos MUY solapados, que es lo que convierte ocho valores sueltos en una franja continua de luz.
-    internal struct GpuAurora { public bool Has; public float[] B; public float BaseY, Alto; public uint Rgb, Rgb2, RgbA, Rgb2A; public float Dim, Calma; }   // Rgb/Rgb2 = pie de la cortina (grave/agudo), RgbA/Rgb2A = su punta; Calma = cuanto hay de REPOSO (sin musica)
+    // DimFilo atenua SOLO lo afilado -el filo de neon y la raya del horizonte-, aparte del relleno. Bajarlo
+    // deja la aurora como una mancha de color suave, sin lineas duras: eso es lo que se lee como "difuminada".
+    internal struct GpuAurora { public bool Has; public float[] B; public float BaseY, Alto; public uint Rgb, Rgb2, RgbA, Rgb2A; public float Dim, DimFilo, Calma; }   // Rgb/Rgb2 = pie de la cortina (grave/agudo), RgbA/Rgb2A = su punta; Calma = cuanto hay de REPOSO (sin musica)
     // AVISO ("moneda insertada", "cancion agregada"...). Antes era una etiqueta de Windows puesta ENCIMA del
     // panel: cada vez que aparecia o se iba, Windows tenia que recortar el panel a su alrededor y repintar,
     // y ese era un tiron justo en el momento en que el cliente mete la moneda. Ahora es un cuadro mas de la
@@ -2035,13 +2037,13 @@ namespace Rocola
                 aurA[i] = al;
                 // Brillo del FILO: sube con la banda y ademas con el ondeo, para que la veta se vea
                 // recorriendo el contorno igual que recorre la cortina.
-                float ne = (AurNeonBase + AurNeonPico * v) * rayo * au.Dim;
+                float ne = (AurNeonBase + AurNeonPico * v) * rayo * au.Dim * au.DimFilo;
                 if (ne < 0f) ne = 0f; else if (ne > 1f) ne = 1f;
                 aurNi[i] = ne;
                 // La LINEA del horizonte lleva el color del pie sin matizar (limpio de lado a lado) y su
                 // brillo late con la musica, pero nunca se apaga: es el suelo sobre el que todo se apoya.
                 aurLc[i] = cPie;
-                float li = (AurLineaBase + AurLineaPico * v) * au.Dim;
+                float li = (AurLineaBase + AurLineaPico * v) * au.Dim * au.DimFilo;
                 if (li < 0f) li = 0f; else if (li > 1f) li = 1f;
                 aurLi[i] = li;
             }
