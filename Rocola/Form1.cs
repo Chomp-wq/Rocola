@@ -3401,6 +3401,10 @@ namespace Rocola
             return "";
         }
 
+        // Lo que le falta a UN archivo: su duracion, sus votos de genero, o las dos cosas. Sirve para
+        // visitarlo una sola vez en vez de dos (ver StartDurScan).
+        private sealed class Visita { public string Ruta; public bool Dur; public List<int> Gen; }
+
         private void StartDurScan()
         {
             int myGen = ++durScanGen;
@@ -3459,75 +3463,117 @@ namespace Rocola
             if (pend.Count == 0 && gLet == null) return;
             if (pend.Count > 0) Diag("duraciones: faltan " + pend.Count);
             if (gLet != null) Diag("generos: " + gLet.Length + " por leer (color de las letras)");
+            // UNA SOLA PASADA POR EL DISCO. Antes se recorria la biblioteca DOS veces: primero todas las
+            // duraciones y despues todos los generos, abriendo cada archivo dos veces y en dos momentos
+            // distintos, asi que el cabezal del disco hacia el viaje completo dos veces. Ahora se arma una
+            // lista con lo que le falta a cada archivo y se visita UNA sola vez. Y se recorre ORDENADA POR
+            // RUTA, que en un disco duro es la diferencia entre avanzar en linea recta y dar saltos: los
+            // archivos de una misma carpeta estan juntos en el plato.
+            Dictionary<string, Visita> mapa = new Dictionary<string, Visita>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < pend.Count; i++)
+            {
+                Visita v;
+                if (!mapa.TryGetValue(pend[i], out v)) { v = new Visita(); v.Ruta = pend[i]; mapa[pend[i]] = v; }
+                v.Dur = true;
+            }
+            if (gLet != null)
+                for (int i = 0; i < gLet.Length; i++)
+                {
+                    Visita v;
+                    if (!mapa.TryGetValue(gRuta[i], out v)) { v = new Visita(); v.Ruta = gRuta[i]; mapa[gRuta[i]] = v; }
+                    if (v.Gen == null) v.Gen = new List<int>(1);
+                    v.Gen.Add(i);   // el mismo archivo puede votar por varias letras: se lee UNA vez y vota todas
+                }
+            List<Visita> visitas = new List<Visita>(mapa.Count);
+            foreach (Visita v in mapa.Values) visitas.Add(v);
+            visitas.Sort(delegate (Visita a, Visita b) { return string.CompareOrdinal(a.Ruta, b.Ruta); });
+            // El total de duraciones se cuenta sobre las VISITAS, no sobre la lista de entrada: si un mismo
+            // archivo estaba dos veces (el mismo video en dos discos, por ejemplo) se visita una sola, y si
+            // aqui se pusiera el numero de entradas el contador de "faltan" no llegaria nunca a cero.
+            int durTotal = 0;
+            for (int i = 0; i < visitas.Count; i++) if (visitas[i].Dur) durTotal++;
+            int genTotal = (gLet != null) ? gLet.Length : 0;
+
             durScanTh = new System.Threading.Thread(delegate ()
             {
                 List<string> lote = new List<string>(128);
                 List<float> lotd = new List<float>(128);
                 object medidorVideo = null;   // el reproductor con el que se miden los videos (de este hilo)
+                Dictionary<char, Dictionary<string, int>> votos = new Dictionary<char, Dictionary<string, int>>();
+                Dictionary<string, Dictionary<string, int>> votosD = new Dictionary<string, Dictionary<string, int>>(StringComparer.OrdinalIgnoreCase);
+                int durHechas = 0, genHechas = 0;
                 try
                 {
                     System.Threading.Thread.Sleep(4000);   // deja respirar el arranque
-                    for (int i = 0; i < pend.Count; i++)
+                    for (int i = 0; i < visitas.Count; i++)
                     {
                         if (preScanStop || myGen != durScanGen) break;
                         while (!preScanStop && myGen == durScanGen && videoOn) System.Threading.Thread.Sleep(500);
                         if (preScanStop || myGen != durScanGen) break;
-                        string ruta = pend[i];
-                        float seg = EsVideo(ruta) ? MideDuracionVideo(ruta, ref medidorVideo) : MideDuracionAudio(ruta);
-                        if (seg > 0.01f) { lote.Add(ruta); lotd.Add(seg); }
-                        // Publica el lote cada 128 archivos o al final, TAMBIEN si viene vacio: un archivo roto
-                        // no da duracion pero SI es avance; sin esto, el contador de "faltan" del panel se
-                        // quedaria clavado para siempre en el numero de archivos danados.
-                        bool ultimo = (i == pend.Count - 1);
-                        if (lote.Count >= 128 || ultimo)
-                        {
-                            string[] rr = lote.ToArray(); float[] dd = lotd.ToArray();
-                            lote.Clear(); lotd.Clear();
-                            int faltan = pend.Count - (i + 1);
-                            try
-                            {
-                                if (!IsHandleCreated) break;
-                                BeginInvoke((MethodInvoker)delegate { PublicaDuraciones(myGen, rr, dd, faltan); });
-                            }
-                            catch { break; }
-                        }
-                        System.Threading.Thread.Sleep(diskSlow ? 12 : 2);
-                    }
+                        Visita v = visitas[i];
+                        bool caro = false;   // hubo que leer el archivo entero (el respaldo), no solo la cabecera
 
-                    // --- Y AHORA LOS GENEROS, que son los que dan color a cada letra de la barra de arriba ---
-                    // Va detras de las duraciones a proposito: la duracion se ve en la lista y el color es
-                    // adorno, asi que lo util llega primero. Se publica cada 256 archivos, y por eso la barra
-                    // se va tinendo poco a poco en vez de cambiar de golpe al final.
-                    if (gLet != null)
-                    {
-                        Dictionary<char, Dictionary<string, int>> votos = new Dictionary<char, Dictionary<string, int>>();
-                        Dictionary<string, Dictionary<string, int>> votosD = new Dictionary<string, Dictionary<string, int>>(StringComparer.OrdinalIgnoreCase);
-                        for (int i = 0; i < gLet.Length; i++)
+                        // ---- LA DURACION ----
+                        if (v.Dur)
                         {
-                            if (preScanStop || myGen != durScanGen) break;
-                            while (!preScanStop && myGen == durScanGen && videoOn) System.Threading.Thread.Sleep(500);
-                            if (preScanStop || myGen != durScanGen) break;
+                            float seg;
+                            if (EsVideo(v.Ruta)) { seg = MideDuracionVideo(v.Ruta, ref medidorVideo); caro = true; }
+                            else
+                            {
+                                seg = DuracionPorCabecera(v.Ruta);            // unos kilobytes
+                                if (seg <= 0.01f) { seg = MideDuracionAudio(v.Ruta); caro = true; }   // respaldo: el archivo entero
+                            }
+                            if (seg > 0.01f) { lote.Add(v.Ruta); lotd.Add(seg); }
+                            durHechas++;
+                            // Se publica cada 128 archivos o al terminar, TAMBIEN si el lote viene vacio: un
+                            // archivo roto no da duracion pero SI es avance; sin esto, el contador de "faltan"
+                            // se quedaria clavado para siempre en el numero de archivos danados.
+                            if (lote.Count >= 128 || durHechas >= durTotal)
+                            {
+                                string[] rr = lote.ToArray(); float[] dd = lotd.ToArray();
+                                lote.Clear(); lotd.Clear();
+                                int faltan = durTotal - durHechas;
+                                try
+                                {
+                                    if (!IsHandleCreated) break;
+                                    BeginInvoke((MethodInvoker)delegate { PublicaDuraciones(myGen, rr, dd, faltan); });
+                                }
+                                catch { break; }
+                            }
+                        }
+
+                        // ---- EL GENERO, que es lo que da color a cada letra de la barra de arriba ----
+                        // Se lee la etiqueta UNA vez por archivo, aunque vote por varias letras. Con un Track
+                        // SUELTO, no con el de la biblioteca, para no tocar desde este hilo nada que la pantalla
+                        // este usando.
+                        if (v.Gen != null)
+                        {
                             string et = "Otros";
                             try
                             {
-                                Track suelto = Track.FromFile(gRuta[i]);
-                                suelto.EnsureTags();
-                                if (!string.IsNullOrEmpty(suelto.Genre)) et = GenreLabel(suelto.Genre);
+                                string gg = Track.SoloGenero(v.Ruta);   // como mucho 32 KB, no la etiqueta entera
+                                if (gg.Length > 0) et = GenreLabel(gg);
                             }
                             catch { }
-                            Dictionary<string, int> v;
-                            if (!votos.TryGetValue(gLet[i], out v)) { v = new Dictionary<string, int>(); votos[gLet[i]] = v; }
-                            int ya; v.TryGetValue(et, out ya); v[et] = ya + 1;
-                            string carp = gDisco[i];
-                            if (carp.Length > 0)
+                            for (int k = 0; k < v.Gen.Count; k++)
                             {
-                                Dictionary<string, int> vd;
-                                if (!votosD.TryGetValue(carp, out vd)) { vd = new Dictionary<string, int>(); votosD[carp] = vd; }
-                                int yd; vd.TryGetValue(et, out yd); vd[et] = yd + 1;
+                                int gi = v.Gen[k];
+                                Dictionary<string, int> vv2;
+                                if (!votos.TryGetValue(gLet[gi], out vv2)) { vv2 = new Dictionary<string, int>(); votos[gLet[gi]] = vv2; }
+                                int ya; vv2.TryGetValue(et, out ya); vv2[et] = ya + 1;
+                                string carp = gDisco[gi];
+                                if (carp.Length > 0)
+                                {
+                                    Dictionary<string, int> vd;
+                                    if (!votosD.TryGetValue(carp, out vd)) { vd = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase); votosD[carp] = vd; }
+                                    int yd; vd.TryGetValue(et, out yd); vd[et] = yd + 1;
+                                }
+                                genHechas++;
                             }
-
-                            bool finGen = (i == gLet.Length - 1);
-                            if ((i & 255) == 255 || finGen)
+                            // Se publica cada 256 votos, y por eso la barra se va tinendo poco a poco en vez de
+                            // cambiar de golpe al final.
+                            bool finGen = (genHechas >= genTotal);
+                            if ((genHechas & 255) < v.Gen.Count || finGen)
                             {
                                 // El genero que MANDA en cada letra hasta ahora. "Otros" no gana nunca: una
                                 // letra cuyas canciones no traen genero se queda con su blanco de siempre, que
@@ -3558,8 +3604,13 @@ namespace Rocola
                                 }
                                 catch { break; }
                             }
-                            System.Threading.Thread.Sleep(diskSlow ? 8 : 1);
                         }
+
+                        // EL RESPIRO va con el trabajo que se acaba de hacer. Leer una cabecera son unos
+                        // kilobytes: con 4 ms de pausa el disco queda MUCHO mas libre que antes con 12, porque
+                        // antes cada archivo se leia entero. Si hubo que leerlo entero (el respaldo, o un
+                        // video), se respira lo de siempre.
+                        System.Threading.Thread.Sleep(diskSlow ? (caro ? 12 : 4) : 1);
                     }
                 }
                 catch { }
@@ -3581,8 +3632,127 @@ namespace Rocola
         }
 
         // Cuanto dura un archivo de MUSICA: lo abre, lee la cabecera y lo suelta. No descomprime nada.
+        // CUANTO DURA UN MP3 SIN LEERLO ENTERO.
+        //
+        // Preguntarle la duracion a NAudio obliga a recorrer el archivo COMPLETO: va frame a frame, de
+        // principio a fin, armando su indice. Para saber cuanto dura una cancion de 5 MB hay que leer los 5 MB.
+        // Con veinte mil canciones eso son CIEN GIGAS de lectura, y en un disco duro mecanico es media hora de
+        // cabezal trabajando: por eso el pre-analisis tardaba tanto y por eso molestaba mientras suena musica.
+        //
+        // Pero la duracion viene escrita en la CABECERA. Casi todos los MP3 traen una etiqueta Xing/Info (o
+        // VBRI) con el numero EXACTO de frames, y los de tasa fija se resuelven con una division. En los dos
+        // casos basta leer los primeros kilobytes. Si el archivo no trae ninguna de las dos cosas -o algo no
+        // cuadra- se devuelve 0 y quien llama recurre al metodo lento de siempre: nunca se pierde una duracion.
+        private static readonly int[] BrMpeg1 = { 0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0 };
+        private static readonly int[] BrMpeg2 = { 0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, 0 };
+        private static readonly int[] SrMpeg1 = { 44100, 48000, 32000, 0 };
+        private static readonly int[] SrMpeg2 = { 22050, 24000, 16000, 0 };
+        private static readonly int[] SrMpeg25 = { 11025, 12000, 8000, 0 };
+        private static float DuracionPorCabecera(string ruta)
+        {
+            try
+            {
+                if (Path.GetExtension(ruta).ToLowerInvariant() != ".mp3") return 0f;   // solo MP3; el resto, por el camino lento
+                using (FileStream fs = new FileStream(ruta, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 4096))
+                {
+                    long largo = fs.Length;
+                    if (largo < 256) return 0f;
+                    byte[] cab = new byte[10];
+                    if (fs.Read(cab, 0, 10) != 10) return 0f;
+                    // 1) LA ETIQUETA DE TEXTO del principio (ID3v2), que puede llevar dentro la caratula y
+                    //    medir cientos de kilobytes. Su tamano viene en la propia cabecera: se salta de golpe.
+                    long ini = 0;
+                    if (cab[0] == (byte)'I' && cab[1] == (byte)'D' && cab[2] == (byte)'3')
+                    {
+                        // El tamano va en 4 bytes de 7 bits (el bit alto de cada uno no cuenta).
+                        int tam = ((cab[6] & 0x7F) << 21) + ((cab[7] & 0x7F) << 14)
+                                + ((cab[8] & 0x7F) << 7) + (cab[9] & 0x7F);
+                        ini = 10 + tam;
+                        if ((cab[5] & 0x10) != 0) ini += 10;   // con pie de etiqueta, diez bytes mas
+                        if (ini <= 0 || ini >= largo) return 0f;
+                    }
+                    // 2) EL PRIMER FRAME. Se leen unos kilobytes desde ahi y se busca la marca de sincronismo.
+                    //    Se tolera basura por delante (hay archivos con relleno entre la etiqueta y el audio).
+                    fs.Position = ini;
+                    byte[] buf = new byte[8192];
+                    int n = fs.Read(buf, 0, buf.Length);
+                    if (n < 64) return 0f;
+                    for (int i = 0; i + 4 <= n; i++)
+                    {
+                        if (buf[i] != 0xFF || (buf[i + 1] & 0xE0) != 0xE0) continue;
+                        int verBits = (buf[i + 1] >> 3) & 3;      // 3=MPEG1  2=MPEG2  0=MPEG2.5  (1 no existe)
+                        int capa = (buf[i + 1] >> 1) & 3;         // 1 = capa III
+                        if (verBits == 1 || capa != 1) continue;
+                        int iBr = (buf[i + 2] >> 4) & 15, iSr = (buf[i + 2] >> 2) & 3;
+                        int pad = (buf[i + 2] >> 1) & 1, modo = (buf[i + 3] >> 6) & 3;
+                        bool mpeg1 = (verBits == 3);
+                        int br = (mpeg1 ? BrMpeg1[iBr] : BrMpeg2[iBr]) * 1000;
+                        int sr = mpeg1 ? SrMpeg1[iSr] : (verBits == 2 ? SrMpeg2[iSr] : SrMpeg25[iSr]);
+                        if (br <= 0 || sr <= 0) continue;          // valores reservados: no era un frame
+                        int porFrame = mpeg1 ? 1152 : 576;         // muestras que trae cada frame
+                        bool mono = (modo == 3);
+                        // 3) LA CUENTA EXACTA DE FRAMES, si el archivo la trae. Va justo detras de la
+                        //    informacion lateral del primer frame, cuyo tamano depende de version y canales.
+                        int lado = mpeg1 ? (mono ? 17 : 32) : (mono ? 9 : 17);
+                        int xi = i + 4 + lado;
+                        if (xi + 12 <= n)
+                        {
+                            bool xing = (buf[xi] == (byte)'X' && buf[xi + 1] == (byte)'i' && buf[xi + 2] == (byte)'n' && buf[xi + 3] == (byte)'g')
+                                     || (buf[xi] == (byte)'I' && buf[xi + 1] == (byte)'n' && buf[xi + 2] == (byte)'f' && buf[xi + 3] == (byte)'o');
+                            if (xing && (buf[xi + 7] & 1) != 0)
+                            {
+                                long frames = ((long)buf[xi + 8] << 24) + ((long)buf[xi + 9] << 16) + ((long)buf[xi + 10] << 8) + buf[xi + 11];
+                                if (frames > 0)
+                                {
+                                    double seg = (double)frames * porFrame / sr;
+                                    if (seg > 0.05 && seg < 36000) return (float)seg;
+                                }
+                            }
+                        }
+                        int vi = i + 4 + 32;   // VBRI (Fraunhofer) va siempre a 32 bytes del frame
+                        if (vi + 18 <= n && buf[vi] == (byte)'V' && buf[vi + 1] == (byte)'B' && buf[vi + 2] == (byte)'R' && buf[vi + 3] == (byte)'I')
+                        {
+                            long frames = ((long)buf[vi + 14] << 24) + ((long)buf[vi + 15] << 16) + ((long)buf[vi + 16] << 8) + buf[vi + 17];
+                            if (frames > 0)
+                            {
+                                double seg = (double)frames * porFrame / sr;
+                                if (seg > 0.05 && seg < 36000) return (float)seg;
+                            }
+                        }
+                        // 4) SIN ETIQUETA: si el archivo es de tasa FIJA la cuenta es una division. Se comprueba
+                        //    que el frame siguiente cae donde debe y trae la misma tasa; si no, puede ser de tasa
+                        //    variable sin etiqueta y ahi no se puede adivinar: que lo mida el camino lento.
+                        int tamFrame = (mpeg1 ? 144 : 72) * br / sr + pad;
+                        if (tamFrame < 24) continue;
+                        int sig = i + tamFrame;
+                        if (sig + 4 > n) return 0f;
+                        if (buf[sig] != 0xFF || (buf[sig + 1] & 0xE0) != 0xE0) return 0f;
+                        if (((buf[sig + 2] >> 4) & 15) != iBr) return 0f;   // otra tasa -> variable sin etiqueta
+                        long fin = largo;
+                        // La etiqueta de texto del FINAL (ID3v1) son 128 bytes que no son audio.
+                        if (largo > 128 + ini)
+                        {
+                            fs.Position = largo - 128;
+                            byte[] tres = new byte[3];
+                            if (fs.Read(tres, 0, 3) == 3 && tres[0] == (byte)'T' && tres[1] == (byte)'A' && tres[2] == (byte)'G') fin = largo - 128;
+                        }
+                        long audio = fin - (ini + i);
+                        if (audio <= 0) return 0f;
+                        double s2 = (double)audio * 8.0 / br;
+                        if (s2 > 0.05 && s2 < 36000) return (float)s2;
+                        return 0f;
+                    }
+                }
+            }
+            catch { }
+            return 0f;
+        }
+
         private static float MideDuracionAudio(string ruta)
         {
+            // Primero por la cabecera (unos kilobytes). Solo si eso no da nada se lee el archivo entero.
+            float rapida = DuracionPorCabecera(ruta);
+            if (rapida > 0.01f) return rapida;
             try
             {
                 using (AudioFileReader rd = new AudioFileReader(ruta))
@@ -3991,6 +4161,62 @@ namespace Rocola
             int tot = (int)(d + 0.5f);
             return (tot / 60) + ":" + (tot % 60).ToString("00");
         }
+        // PRECALENTAR LA SIGUIENTE CANCION.
+        //
+        // Al arrancar una cancion, NAudio se recorre el MP3 COMPLETO para armar su indice de trozos (lo
+        // necesita para poder moverse por la cancion y para saber cuanto dura), y eso pasa en el hilo de la
+        // pantalla. En un disco duro mecanico, un archivo de 10 MB son unas decimas de segundo con la rocola
+        // clavada, justo en el momento del cambio de cancion.
+        //
+        // Aqui se lee ese archivo ANTES, en segundo plano y sin ninguna prisa, para que cuando le toque ya
+        // este en la memoria de Windows y abrirlo sea instantaneo. No se guarda nada: solo se pasa por
+        // encima para que el sistema lo cachee. Va a 64 KB por vez con una pausa entre trozos (una cancion
+        // de 10 MB se calienta en algo mas de un segundo, y quedan minutos por delante), cede el disco si
+        // hay caratulas en camino o un video sonando, y se cancela sola si la cola cambia.
+        private volatile int warmSongGen = 0;
+        private string warmSongPath;
+        private void PrecalientaSiguiente()
+        {
+            string ruta = null;
+            for (int i = 0; i < queue.Count; i++)
+            {
+                PlayItem it = queue[i];
+                if (it != null && !it.IsVideo && it.Song != null && it.Song.Path != null) { ruta = it.Song.Path; break; }
+            }
+            if (ruta == null) return;
+            if (string.Equals(ruta, warmSongPath, StringComparison.OrdinalIgnoreCase)) return;   // ya calentada o calentandose
+            warmSongPath = ruta;
+            int mio = ++warmSongGen;
+            System.Threading.Thread t = new System.Threading.Thread(delegate ()
+            {
+                try
+                {
+                    System.Threading.Thread.Sleep(1500);   // que la cancion que acaba de empezar tenga el disco
+                    if (mio != warmSongGen) return;
+                    while (true)   // caratulas del primer plano o un video: el disco es para ellos
+                    {
+                        int busy; lock (coverLock) { busy = coverLoading.Count + coverQHi.Count + coverQLo.Count; }
+                        if (busy == 0 && !videoOn) break;
+                        System.Threading.Thread.Sleep(300);
+                        if (mio != warmSongGen) return;
+                    }
+                    byte[] buf = new byte[64 * 1024];
+                    using (FileStream fs = new FileStream(ruta, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 64 * 1024))
+                    {
+                        while (fs.Read(buf, 0, buf.Length) > 0)
+                        {
+                            if (mio != warmSongGen) return;
+                            System.Threading.Thread.Sleep(diskSlow ? 8 : 2);
+                        }
+                    }
+                }
+                catch { }
+            });
+            t.IsBackground = true;
+            t.Priority = System.Threading.ThreadPriority.Lowest;
+            t.Start();
+        }
+
         private void StartThumbWarm()
         {
             warmGen++;
@@ -6090,7 +6316,7 @@ namespace Rocola
             // no repetir lo mismo dos veces seguidas (lo ultimo en sonar/encolar)
             PlayItem last = (queue.Count > 0) ? queue[queue.Count - 1] : nowPlaying;
             if (last != null && string.Equals(last.PathKey(), it.PathKey(), StringComparison.OrdinalIgnoreCase)) return AddResult.Repeat;
-            queue.Add(it); RefrescaCola();
+            queue.Add(it); RefrescaCola(); PrecalientaSiguiente();
             if (iaVivo && !it.IsVideo && it.Song != null) IaRequestJob(it.Song.Path);   // IA EN VIVO: prepara desde que se encola (lista para cuando le toque)
             RecordPlay(it);                                              // estadisticas: cuenta lo pedido
             credits--;                                                   // cada cosa cuesta 1 credito
@@ -6318,7 +6544,7 @@ namespace Rocola
                 if (cr <= 0 && playing == null && q.Count == 0) return;   // estado vacio: arranque limpio
                 credits = Math.Max(0, cr);
                 UpdateCredits();
-                queue.AddRange(q); RefrescaCola();
+                queue.AddRange(q); RefrescaCola(); PrecalientaSiguiente();
                 if (playing != null)
                 {
                     queue.Insert(0, playing);   // lo que estaba sonando vuelve a entrar y arranca DESDE EL PRINCIPIO
@@ -7303,6 +7529,7 @@ namespace Rocola
                 audioVisualDelayMs = isWasapi ? 240 : 850;   // el pulso visual se alinea al colchon REAL de la salida en uso
                 output.Play();
                 progressTimer.Start();
+                PrecalientaSiguiente();   // la que viene detras, leida en segundo plano (ver arriba)
             }
             catch (Exception ex)
             {
@@ -13251,6 +13478,64 @@ namespace Rocola
                     if (SplitArtist(leaf, out da, out dn)) t.Artist = da; else t.Artist = leaf;
                 }
                 return t;
+            }
+
+            // EL GENERO A SOLAS, LEYENDO LO MENOS POSIBLE.
+            //
+            // La etiqueta de texto de un MP3 puede llevar la CARATULA dentro y medir megas. Leerla entera para
+            // sacar UNA palabra es tirar el disco a la basura, y el paseo de fondo hacia eso con TODAS las
+            // canciones de la biblioteca: con veinte mil archivos son gigas de lectura inutil.
+            //
+            // La etiqueta va por MARCOS, y cada marco dice de antemano cuanto mide. Aqui se leen solo las diez
+            // letras de cabecera de cada marco y se SALTAN los que no interesan -la caratula, sobre todo- sin
+            // llegar a leerlos. De un archivo con caratula de 300 KB se leen unos cientos de bytes. Si la
+            // etiqueta larga no trae genero, se prueba la corta del final (128 bytes); y si tampoco, se queda
+            // sin genero, que es decoracion, en vez de leerse el archivo entero.
+            public static string SoloGenero(string path)
+            {
+                Track t = new Track();
+                t.Path = path; t.Artist = ""; t.Title = ""; t.Album = ""; t.Genre = "";
+                try
+                {
+                    if (System.IO.Path.GetExtension(path).ToLowerInvariant() != ".mp3") return "";
+                    using (FileStream fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 4096))
+                    {
+                        byte[] cab = new byte[10];
+                        if (fs.Read(cab, 0, 10) == 10 && cab[0] == (byte)'I' && cab[1] == (byte)'D' && cab[2] == (byte)'3'
+                            && cab[3] >= 3)   // las etiquetas muy viejas (2.2) tienen otra forma: se cae a la corta
+                        {
+                            int major = cab[3];
+                            long size = ((cab[6] & 0x7f) << 21) + ((cab[7] & 0x7f) << 14) + ((cab[8] & 0x7f) << 7) + (cab[9] & 0x7f);
+                            long fin = 10 + size;
+                            byte[] fh = new byte[10];
+                            while (fs.Position + 10 <= fin)
+                            {
+                                if (fs.Read(fh, 0, 10) != 10) break;
+                                if (fh[0] == 0) break;   // relleno: se acabaron los marcos
+                                int fsz;
+                                if (major >= 4) fsz = ((fh[4] & 0x7f) << 21) + ((fh[5] & 0x7f) << 14) + ((fh[6] & 0x7f) << 7) + (fh[7] & 0x7f);
+                                else fsz = (fh[4] << 24) + (fh[5] << 16) + (fh[6] << 8) + fh[7];
+                                if (fsz <= 0 || fs.Position + fsz > fin) break;
+                                bool esGenero = (fh[0] == (byte)'T' && fh[1] == (byte)'C' && fh[2] == (byte)'O' && fh[3] == (byte)'N');
+                                if (esGenero && fsz <= 4096)
+                                {
+                                    // Se le pasa el marco entero (cabecera incluida) al mismo lector de siempre,
+                                    // asi el genero se interpreta exactamente igual que cuando se lee todo.
+                                    byte[] uno = new byte[10 + fsz];
+                                    Array.Copy(fh, 0, uno, 0, 10);
+                                    int leidos = 0, r;
+                                    while (leidos < fsz && (r = fs.Read(uno, 10 + leidos, fsz - leidos)) > 0) leidos += r;
+                                    ParseId3v2(uno, 10 + leidos, major, t);
+                                    if (!string.IsNullOrEmpty(t.Genre)) break;
+                                }
+                                else fs.Position += fsz;   // la caratula y lo demas: ni se tocan
+                            }
+                        }
+                    }
+                }
+                catch { }
+                if (string.IsNullOrEmpty(t.Genre)) { try { ReadId3v1(path, t); } catch { } }
+                return t.Genre ?? "";
             }
 
             // Lee el ID3 bajo demanda (una sola vez), sobre todo para el GENERO (color de fondo).
