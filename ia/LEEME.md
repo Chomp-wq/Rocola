@@ -1,5 +1,44 @@
 # IA propia de la rocola (modelo entrenado por el dueno con su biblioteca)
 
+## LO CORTO: que archivos me llevo de la rocola y que hago con ellos
+
+Junto a `Rocola.exe` hay dos archivos, y son los UNICOS que hacen falta para entrenar:
+
+| Archivo | Que entrena | Tamano tipico |
+|---|---|---|
+| `rocola_ia_datos.bin` | el **reconstructor de agudos** del DSEE (`rocola_ia.bin`) | de cientos de MB a varios GB |
+| `rocola_eq.txt` | el **objetivo del EQ automatico** (`rocola_eq_ia.bin`) | unos pocos MB |
+
+No hace falta llevarse la musica, ni el disco de la rocola, ni ningun otro archivo.
+
+Con los dos en una USB, en la PC donde entrenas: **arrastralos sobre `ia\entrenar_dsee.bat`**.
+Hace todo solo y deja los modelos en `ia\entrenado\`. Esos dos son los que se copian de
+vuelta junto a `Rocola.exe`. Se puede arrastrar uno solo (entrena esa mitad y avisa de lo
+que falto) o la carpeta entera donde esten (los busca dentro).
+
+Lo unico que necesita la PC es **Python + numpy** (`pip install numpy`).
+
+### Que NO se entrena, y por que
+
+El resto de lo automatico no es una red: son medidas que la rocola ya lleva sola y reglas
+sobre esas medidas. No hay nada que entrenar ni ningun archivo que traer.
+
+- **Volumen parejo** (`rocola_volumen.txt`): se mide cancion por cancion en el pre-analisis.
+- **Fuerza del EQ automatico** y **cantidad de graves**: salen de cuanto se puede fiar uno de
+  lo medido (ver mas abajo). Suben solas segun avanza el pre-analisis.
+- **Des-recorte, realce de agudos y fundido**: ajustes fijos, no aprendidos.
+- **El acantilado** (donde el MP3 talo los agudos): lo detecta el propio DSEE al vuelo.
+
+### De donde sale el material y como hacer que crezca mas rapido
+
+`rocola_ia_datos.bin` lo va juntando la rocola sola mientras esta encendida y nadie la usa
+(pre-analisis). Cada cancion se mira varias veces, y cada vez se toman cuadros de un sitio
+distinto, asi que el archivo sigue creciendo aunque ya haya pasado por toda la biblioteca.
+
+Si tienes prisa: en Ctrl+F3, **REPASO A FONDO**. Se dedica a esto sin esperar a que la rocola
+este en reposo y saca de cada cancion unas ocho veces mas material. Dejalo una noche.
+
+
 - `rocola_ia.bin` es la red de envolvente espectral ENTRENADA CON LA MUSICA DEL LOCAL
   (misma red y formato RIA1 que en la rama rocola-hd; paridad C#<->numpy verificada: 2e-6).
 - Para activarla: copia `rocola_ia.bin` JUNTO a `Rocola.exe` y reinicia. En Ctrl+F3, la nota

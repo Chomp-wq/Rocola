@@ -765,6 +765,7 @@ namespace Rocola
             ProbeAudioTier();    // requisitos de maquina para el NIVEL 2 de audio (antes de leer dsee= de config)
             LoadConfigPrefs();   // preferencias: render GPU/CPU + carpetas de musica adicionales (Ctrl+F2)
             NeuralEnv.TryLoad(Path.Combine(Application.StartupPath, "rocola_ia.bin"));   // IA propia (si hay modelo entrenado junto al exe)
+            EqNet.TryLoad(Path.Combine(Application.StartupPath, "rocola_eq_ia.bin"));    // IA del EQ automatico (objetivo por cancion)
             LoadLoudCache();     // sonoridad medida por cancion (para nivelar el volumen de todas)
             LoadEqCache();       // huella tonal medida por cancion (para el EQ automatico)
             IaCountPairs();      // cuanto material de entrenamiento de la IA llevamos juntado
@@ -3211,7 +3212,21 @@ namespace Rocola
         // ---------- Archivo con el material de entrenamiento de la IA ----------
         // Formato binario compacto (millones de pares caben sin problema): cabecera "RIAD" + version + tamaños,
         // y luego cada par como 28 float de entrada + 12 float de objetivo. numpy lo lee de un tiron.
-        private const int IaFramesPerSong = 192;   // cuadros analizados por cancion (suficiente y barato)
+        private const int IaFramesPerSong = 192;   // cuadros COSECHADOS por cancion y pasada (repartidos por lo descomprimido)
+        private const int IaPasadasMax = 8;        // pasadas del modo pasivo por cancion (cada una, cuadros distintos)
+        // Traduccion entre el NIVEL apuntado en rocola_ia_hechas.txt y cuantas pasadas pasivas lleva la cancion:
+        //   nivel 0 = ninguna;  1 = una;  2 = repasada A FONDO (ya dio todo lo suyo);  3..9 = 2..8 pasadas.
+        // Los archivos viejos se siguen leyendo tal cual: en ellos solo hay niveles 1 y 2, con el mismo
+        // significado que aqui.
+        private static int IaPasadasDe(int nivel)
+        { return (nivel <= 0) ? 0 : (nivel == 1) ? 1 : (nivel == 2) ? int.MaxValue : (nivel - 1); }
+        private static int IaNivelDePasada(int pasadas)
+        { return (pasadas <= 0) ? 1 : (pasadas + 2); }
+        // CUANTO VALE cada nivel. No es su numero: el 2 -repasada A FONDO- es el TOPE, porque de esa
+        // cancion ya no queda nada por sacar, aunque antes hubiera acumulado varias pasadas del pasivo
+        // (que llevan numeros mas altos). Con esto el apunte sigue siendo de una sola direccion: una
+        // cancion nunca baja de nivel, asi que no se puede volver a cosechar lo que ya se cosecho.
+        private static int IaRango(int nivel) { return (nivel == 2) ? 100 : nivel; }
         private const int IaDeepFrames = 1536;     // A FONDO: cuadros APROVECHADOS, repartidos por TODA la cancion
         private const int IaWarmFrames = 64;       // los primeros no se usan: el acantilado aun se esta midiendo
         // TOPE del archivo de material. Existe para que el archivo siga siendo MANEJABLE: hay que poder copiarlo
@@ -3237,9 +3252,8 @@ namespace Rocola
         private static string Pool(string s) { return (s == null || s.Length == 0) ? s : string.Intern(s); }
         private string IaDataFile() { return Path.Combine(Application.StartupPath, "rocola_ia_datos.bin"); }
         private string IaDoneFile() { return Path.Combine(Application.StartupPath, "rocola_ia_hechas.txt"); }
-        // Formato: "ruta" (nivel 1, el de siempre) o "2|ruta" (nivel 2). Una ruta de Windows no puede llevar
-        // "|", asi que distinguirlos es seguro y los archivos viejos se siguen leyendo tal cual. Si una cancion
-        // aparece dos veces (subio de nivel) manda el nivel MAS ALTO.
+        // Formato: "ruta" (nivel 1, el de siempre) o "N|ruta" (nivel N). Una ruta de Windows no puede llevar
+        // "|", asi que distinguirlos es seguro y los archivos viejos se siguen leyendo tal cual.
         private void LoadIaDone()
         {
             try
@@ -3251,8 +3265,12 @@ namespace Rocola
                     string r = line.Trim(); if (r.Length == 0) continue;
                     int niv = 1;
                     if (r.Length > 2 && r[1] == '|') { int d = r[0] - '0'; if (d >= 1 && d <= 9) { niv = d; r = r.Substring(2); } }
+                    // Si una cancion aparece dos veces manda la de MAS VALOR (ver IaRango): normalmente es
+                    // la ultima, porque el archivo se escribe anadiendo al final, pero lo que decide es el
+                    // valor y no la posicion. Asi un archivo escrito a medias o desordenado no puede hacer
+                    // que se vuelva a cosechar algo ya cosechado.
                     r = Pool(r);
-                    int ant; if (iaDone.TryGetValue(r, out ant) && ant >= niv) continue;
+                    int ant; if (iaDone.TryGetValue(r, out ant) && IaRango(ant) >= IaRango(niv)) continue;
                     iaDone[r] = niv;
                 }
             }
@@ -3266,7 +3284,7 @@ namespace Rocola
         {
             lock (iaDoneLock)
             {
-                int ant; if (iaDone.TryGetValue(path, out ant) && ant >= nivel) return false;
+                int ant; if (iaDone.TryGetValue(path, out ant) && IaRango(ant) >= IaRango(nivel)) return false;
                 iaDone[path] = nivel;
                 iaPend.Add((nivel > 1 ? (nivel.ToString() + "|") : "") + path);
             }
@@ -4255,24 +4273,48 @@ namespace Rocola
                 // en memoria y solo se escriben al final, si resulta que la cancion SI conserva sus agudos
                 // (una cancion dañada no puede enseñar nada: los agudos reales ya no estan en el archivo).
                 SpectralTap hv = null; float[] hvFrame = null, hvFeat = null, hvTgt = null;
-                int hvFill = 0, hvFrames = 0; List<float> hvPairs = null;
-                int hvStride = 1, hvFrameMax = IaFramesPerSong;
+                int hvFill = 0; List<float> hvPairs = null;
+                long hvVistos = 0, hvVistosMax = IaFramesPerSong;   // cuadros con sonido que han pasado / hasta donde mirar
+                int hvStride = 1, hvFase = 0;
                 // El ACANTILADO se mide SIEMPRE, cosechemos o no para la IA. Es el dato que dice si una cancion
                 // llego completa o el codec le talo los agudos, y de eso dependen dos cosas importantes: si sirve
                 // para fijar el objetivo del EQ automatico, y que bandas suyas tiene sentido corregir. Cuesta unas
                 // pocas decenas de FFT por cancion, nada al lado de descomprimirla entera.
                 bool soloCorte = false;
-                // Los dos modos ACUMULAN. Antes bastaba con que el modo automatico hubiera tocado la cancion
-                // (192 cuadros) para que el repaso A FONDO ya no la mirara NUNCA, y se perdian para siempre los
-                // 12x cuadros que ese repaso saca de ella. Ahora se guarda el NIVEL cosechado: el repaso a fondo
-                // vuelve a entrar en las que solo tienen el muestreo y les anade el resto del material.
+                // tramos: si el tema es corto se analiza entero; si no, PreSegs ventanas repartidas evitando
+                // el arranque y el final (intros/silencios finales no representan la sonoridad del tema).
+                // A FONDO: un solo "tramo" que abarca la cancion entera. En automatico: PreSegs ventanas.
+                // (Se decide AQUI, antes de la cosecha, porque de cuanto audio se va a descomprimir depende
+                // cada cuantos cuadros conviene tomar uno.)
+                int segs = (aFondo || total <= PreSegSec * PreSegs) ? 1 : PreSegs;
+                double segLen = (segs == 1) ? total : PreSegSec;
+                int cuadroLen = 2048;   // el de SpectralTap; se confirma al crearlo
+                long framesTot = (long)(segs * segLen * rate / cuadroLen);
+                int diana = aFondo ? IaDeepFrames : IaFramesPerSong;
+                // El paso se REDONDEA HACIA ARRIBA a proposito: con la division a secas el ultimo cuadro caia
+                // antes del final y se quedaba sin mirar el ultimo 15% de cada cancion.
+                long pasoIa = (framesTot - IaWarmFrames + diana - 1) / Math.Max(1, diana);
+                int strideIa = (pasoIa > 1) ? (int)pasoIa : 1;
+                // ----- CUANTAS VECES SE MIRA CADA CANCION -----
+                // Niveles apuntados en rocola_ia_hechas.txt: 0 = nunca; 1 = una pasada del modo PASIVO;
+                // 2 = repasada A FONDO (esa ya dio todo lo que tenia); 3..9 = 2..8 pasadas del pasivo.
+                //
+                // Antes, en cuanto una cancion llegaba al nivel 1 el modo pasivo NO volvia a mirarla nunca. Con
+                // la biblioteca entera en nivel 1 el archivo de material dejaba de crecer y ahi se quedaba para
+                // siempre: por eso despues de dias encendida seguia en los mismos gigas. Ahora cada pasada mira
+                // cuadros DISTINTOS de la misma cancion (ver hvFase), asi que el material sigue creciendo sin
+                // que el repaso cueste ni un milisegundo mas por cancion. Se para cuando las fases se agotan
+                // (pasado 'strideIa' ya se habrian repetido cuadros, que es engordar el archivo por gusto).
                 int nivelPrevio; lock (iaDoneLock) { if (!iaDone.TryGetValue(path, out nivelPrevio)) nivelPrevio = 0; }
-                int nivelAhora = aFondo ? 2 : 1;
-                bool cosechar = iaHarvestOn && nivelPrevio < nivelAhora && !IaBudgetFull();
+                int pasadas = IaPasadasDe(nivelPrevio);
+                int nivelAhora; bool cosechar;
+                if (aFondo) { nivelAhora = 2; cosechar = (nivelPrevio != 2); }
+                else { nivelAhora = IaNivelDePasada(pasadas); cosechar = pasadas < Math.Min(IaPasadasMax, strideIa); }
+                cosechar = cosechar && iaHarvestOn && !IaBudgetFull();
                 if (!cosechar)
                 {
                     // Solo hace falta el acantilado: se analizan unos pocos cuadros y se para (ni se guardan pares).
-                    try { hv = new SpectralTap(rate, 1); hvFrame = new float[hv.FrameLen]; soloCorte = true; hvFrameMax = IaWarmFrames + 24; }
+                    try { hv = new SpectralTap(rate, 1); hvFrame = new float[hv.FrameLen]; soloCorte = true; hvVistosMax = IaWarmFrames + 24; }
                     catch { hv = null; }
                 }
                 if (cosechar)
@@ -4282,28 +4324,24 @@ namespace Rocola
                         hv = new SpectralTap(rate, 1);
                         hvFrame = new float[hv.FrameLen]; hvFeat = new float[28]; hvTgt = new float[12];
                         hvPairs = new List<float>(4096);
-                        // A FONDO: antes se amontonaban cuadros SEGUIDOS desde el principio del tema (2304 de golpe,
-                        // que ni llegaban al primer minuto). Dos cuadros pegados de la misma cancion se parecen
-                        // tanto que apilarlos engorda el archivo sin ensenarle nada nuevo a la red. Ahora se toma
-                        // uno de cada tantos, REPARTIDOS por toda la cancion: menos bytes, mucha mas variedad, y
-                        // ademas encuentra los buenos tramos esten donde esten (no solo al principio).
-                        if (aFondo)
+                        // Los cuadros se toman REPARTIDOS por todo lo que se va a descomprimir, no seguidos
+                        // desde el principio. Antes el modo pasivo cosechaba los 192 PRIMEROS: eso son 8,9
+                        // segundos, siempre del mismo sitio de cada cancion, o sea que la red solo llegaba a
+                        // ver esa rebanada de toda la biblioteca. Y dos cuadros pegados se parecen tanto que
+                        // apilarlos engorda el archivo sin ensenar nada nuevo.
+                        if (hv.FrameLen != cuadroLen)   // por si el cuadro cambiara: se rehace la cuenta
                         {
-                            long framesTot = (long)(total * rate / Math.Max(1, hv.FrameLen));
-                            // El paso se REDONDEA HACIA ARRIBA a proposito: con la division a secas el ultimo
-                            // cuadro caia antes del final y se quedaba sin mirar el ultimo 15% de cada cancion.
-                            long paso = (framesTot - IaWarmFrames + IaDeepFrames - 1) / IaDeepFrames;
-                            hvStride = (paso > 1) ? (int)paso : 1;
-                            hvFrameMax = IaWarmFrames + hvStride * IaDeepFrames;
+                            cuadroLen = hv.FrameLen;
+                            framesTot = (long)(segs * segLen * rate / cuadroLen);
+                            pasoIa = (framesTot - IaWarmFrames + diana - 1) / Math.Max(1, diana);
+                            strideIa = (pasoIa > 1) ? (int)pasoIa : 1;
                         }
+                        hvStride = strideIa;
+                        hvFase = (hvStride > 1) ? (pasadas % hvStride) : 0;   // cada pasada, cuadros distintos
+                        hvVistosMax = IaWarmFrames + (long)hvStride * diana;
                     }
                     catch { hv = null; }
                 }
-                // tramos: si el tema es corto se analiza entero; si no, PreSegs ventanas repartidas evitando
-                // el arranque y el final (intros/silencios finales no representan la sonoridad del tema).
-                // A FONDO: un solo "tramo" que abarca la cancion entera. En automatico: PreSegs ventanas.
-                int segs = (aFondo || total <= PreSegSec * PreSegs) ? 1 : PreSegs;
-                double segLen = (segs == 1) ? total : PreSegSec;
                 for (int s = 0; s < segs && !preScanStop; s++)
                 {
                     if (segs > 1)
@@ -4338,7 +4376,7 @@ namespace Rocola
                             }
                             bpN++;
                             // canal 0 hacia el analizador de la IA (el DSEE tambien trabaja por canal)
-                            if (hv != null && hvFrames < hvFrameMax)
+                            if (hv != null && hvVistos < hvVistosMax)
                             {
                                 hvFrame[hvFill++] = buf[i];
                                 if (hvFill >= hvFrame.Length)
@@ -4347,16 +4385,25 @@ namespace Rocola
                                     double en = 0; for (int q = 0; q < hvFrame.Length; q++) en += hvFrame[q] * hvFrame[q];
                                     if (en / hvFrame.Length > 1e-8)   // saltar cuadros practicamente mudos
                                     {
-                                        hv.AnalyzeFrame(hvFrame, 0);
-                                        hvFrames++;
-                                        if (soloCorte) { }   // solo queriamos el acantilado: nada que emparejar
-                                        else if (hvFrames > IaWarmFrames && (hvStride == 1 || (hvFrames % hvStride) == 0))   // acantilado ya estabilizado; a fondo, repartido
-                                            for (int q = 0; q < IaCutsHz.Length; q++)
-                                                if (hv.MakePair(IaCutsHz[q], hvFeat, hvTgt))
-                                                {
-                                                    for (int z = 0; z < 28; z++) hvPairs.Add(hvFeat[z]);
-                                                    for (int z = 0; z < 12; z++) hvPairs.Add(hvTgt[z]);
-                                                }
+                                        hvVistos++;
+                                        // SOLO se le hace la FFT a los cuadros que van a servir. Antes se
+                                        // analizaban TODOS los que pasaban hasta el tope y despues se tiraba
+                                        // el trabajo de los que no tocaban: en el repaso a fondo eso eran mas
+                                        // de tres cuartas partes de las FFT hechas para nada. Los primeros si
+                                        // van seguidos: el acantilado necesita unos cuantos para asentarse.
+                                        bool sirve = (hvVistos <= IaWarmFrames) || hvStride == 1
+                                                     || (((hvVistos + hvFase) % hvStride) == 0);
+                                        if (sirve)
+                                        {
+                                            hv.AnalyzeFrame(hvFrame, 0);
+                                            if (!soloCorte && hvVistos > IaWarmFrames)   // acantilado ya estabilizado
+                                                for (int q = 0; q < IaCutsHz.Length; q++)
+                                                    if (hv.MakePair(IaCutsHz[q], hvFeat, hvTgt))
+                                                    {
+                                                        for (int z = 0; z < 28; z++) hvPairs.Add(hvFeat[z]);
+                                                        for (int z = 0; z < 12; z++) hvPairs.Add(hvTgt[z]);
+                                                    }
+                                        }
                                     }
                                 }
                             }
@@ -6722,7 +6769,8 @@ namespace Rocola
             string sp = Application.StartupPath, second = backupDir, baseDir = BackupBaseDir();
             string[] files = {
                 LoudFile(), EqFile(), LibStatsFile(), LibCacheFile(), ConfigFile, KeysFile(),
-                Path.Combine(sp, "rocola_ia.bin"), Path.Combine(sp, "rocola_incompatibles.txt"),
+                Path.Combine(sp, "rocola_ia.bin"), Path.Combine(sp, "rocola_eq_ia.bin"),
+                Path.Combine(sp, "rocola_incompatibles.txt"),
                 IaDoneFile(), DeepDoneFile(),  // sin estas dos, un repaso a fondo empezaria de cero y la IA repetiria ejemplos
                 DurFastFile(), LetterTintFile()   // sin este, la barra tendria que releer el ID3 de toda la biblioteca
             };
