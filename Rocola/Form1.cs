@@ -1166,6 +1166,26 @@ namespace Rocola
             float w = g.MeasureString(t, f, int.MaxValue, SfMedir).Width;
             return (int)Math.Ceiling(w + f.SizeInPoints * 0.34f);
         }
+        // ...Y EL FORMATO CON EL QUE SE DIBUJA, que es la otra mitad de la misma regla.
+        //
+        // El formato normal de GDI+ (new StringFormat()) viene con RECORTE POR CARACTERES: si el texto no cabe
+        // entero en su caja, le quita la ultima letra y lo dibuja mas corto, sin avisar de nada. Y lo hace
+        // incluso dandole la caja EXACTA que acaba de medirse: basta con que el dibujo pida un pixel mas que
+        // la medida. De ahi salia "LO MAS SONAD" en vez de "LO MAS SONADO".
+        //
+        // Este formato no recorta NUNCA y deja que un glifo asome del rectangulo. Asi, si la medida se queda
+        // corta por un pixel, el texto se sale un pixel -que no se ve- en vez de perder una letra -que si se
+        // ve-. Y se le quita el limite de linea, que si no una caja mas baja que la letra no pinta NADA.
+        private static StringFormat CreaSfDibuja(StringAlignment horiz)
+        {
+            StringFormat sf = new StringFormat(StringFormat.GenericTypographic);
+            sf.Alignment = horiz; sf.LineAlignment = StringAlignment.Center;
+            sf.FormatFlags |= StringFormatFlags.NoWrap;
+            sf.FormatFlags &= ~StringFormatFlags.LineLimit;
+            sf.Trimming = StringTrimming.None;
+            return sf;
+        }
+
         // La misma medida cuando aun no hay un Graphics a mano (acomodo de controles).
         private static int AnchoTexto(string t, Font f)
         {
@@ -12486,12 +12506,7 @@ namespace Rocola
             private void EnsureRes(int h)
             {
                 if (brocha == null) brocha = new SolidBrush(Color.White);
-                if (sfIzq == null)
-                {
-                    sfIzq = new StringFormat();
-                    sfIzq.Alignment = StringAlignment.Near; sfIzq.LineAlignment = StringAlignment.Center;
-                    sfIzq.FormatFlags = StringFormatFlags.NoWrap;
-                }
+                if (sfIzq == null) sfIzq = CreaSfDibuja(StringAlignment.Near);
                 if (fSec != null && Math.Abs(fontAlto - h) < 0.5f) return;
                 if (fSec != null) fSec.Dispose();
                 if (fPag != null) fPag.Dispose();
@@ -12519,22 +12534,55 @@ namespace Rocola
                 Color ac = Claro(Accent);
 
                 // SE MIDE TODO ANTES DE PINTAR NADA. Este encabezado comparte fila con las instrucciones, asi
-                // que el sitio que le toca cambia con la pantalla. Se prueba con todo puesto; si no cabe, lo
-                // primero que se cae es el texto "pagina X de Y" -y no los puntitos-, porque los puntitos dicen
-                // lo mismo de un vistazo y ocupan menos. Y lo que quepa se pega a la DERECHA, para que no quede
-                // colgando en medio de un hueco.
+                // que el sitio que le toca cambia con la pantalla. Y lo que quepa se pega a la DERECHA, para
+                // que no quede colgando en medio de un hueco.
                 float pw0 = Math.Max(3f, h * 0.13f);
                 float anchoNombre = pw0 + h * 0.32f + AnchoTexto(g, Section, fSec) + 4f;
                 int pag0 = Page; if (pag0 < 0) pag0 = 0; else if (Total > 0 && pag0 >= Total) pag0 = Total - 1;
+
+                // LA RAYITA SEPARADORA se dibuja SIEMPRE que detras del nombre venga algo, lleve puntitos o no.
+                // Su ancho estaba metido DENTRO de la cuenta de los puntitos, asi que en una letra con mas de
+                // doce paginas -que no lleva puntitos- el reparto se quedaba corto justo por ella y el
+                // "pagina X de Y" se caia entero... teniendo 150 px de sitio libre al lado. Eso era lo de
+                // "LETRA B" sin numero de paginas, y por eso las letras con pocas paginas si se veian bien.
+                // Ahora va por su cuenta y se cuenta siempre.
+                float anchoSep = h * 0.5f;
+
                 float r0 = Math.Max(2.2f, h * 0.115f), paso0 = r0 * 3.4f;
-                float anchoPuntos0 = (Total > 1 && Total <= 12) ? (h * 0.5f + r0 + (Total - 1) * paso0 + r0) : 0f;
-                string txt0 = "pagina " + (pag0 + 1) + " de " + Total;
-                float anchoTxt0 = (Total > 1) ? (h * 0.45f + AnchoTexto(g, txt0, fPag) + 8f) : 0f;
-                bool conPuntos0 = anchoPuntos0 > 0f, conTxt0 = anchoTxt0 > 0f;
-                if (anchoNombre + anchoPuntos0 + anchoTxt0 > w) conTxt0 = false;                       // primero se cae el texto
-                if (conPuntos0 && anchoNombre + anchoPuntos0 > w) { conPuntos0 = false; conTxt0 = anchoTxt0 > 0f; }
-                if (conTxt0 && anchoNombre + (conPuntos0 ? anchoPuntos0 : 0f) + anchoTxt0 > w) conTxt0 = false;
-                float total0 = anchoNombre + (conPuntos0 ? anchoPuntos0 : 0f) + (conTxt0 ? anchoTxt0 : 0f);
+                // El punto de la pagina en la que estas lleva un halo alrededor, bastante mas ancho que el
+                // punto. Se reservaba el punto pelado, asi que estando en la ultima pagina el halo se salia por
+                // el borde y se veia cortado. Se reserva el halo.
+                float halo0 = r0 * 1.35f * 2.1f;
+                float anchoPuntos0 = (Total > 1 && Total <= 12) ? (halo0 + (Total - 1) * paso0 + halo0) : 0f;
+
+                // EL NUMERO DE PAGINA SIEMPRE SE DICE. Antes era todo o nada: si "pagina 3 de 18" no cabia
+                // entero no se dibujaba nada, y el cliente se quedaba sin saber cuantas paginas hay -que es
+                // justo el dato que necesita para decidir si sigue pasando-. Ahora, si no cabe la frase larga,
+                // se prueba una mas corta, y luego la mas corta de todas.
+                string[] formas = new string[] { "pagina " + (pag0 + 1) + " de " + Total,
+                                                 (pag0 + 1) + " de " + Total,
+                                                 (pag0 + 1) + "/" + Total };
+                float[] anchoForma = new float[formas.Length];
+                for (int i = 0; i < formas.Length; i++) anchoForma[i] = h * 0.45f + AnchoTexto(g, formas[i], fPag) + 8f;
+
+                // Se prueba con los puntitos puestos y, si aun asi no entra ninguna forma, se quitan: los
+                // puntitos dicen en que pagina estas de un vistazo, pero el numero es el UNICO que dice cuantas
+                // hay en total, asi que si hay que elegir gana el numero.
+                bool conPuntos0 = anchoPuntos0 > 0f;
+                int forma = -1;
+                if (Total > 1)
+                    for (int intento = 0; intento < 2 && forma < 0; intento++)
+                    {
+                        if (intento == 1) { if (!conPuntos0) break; conPuntos0 = false; }
+                        float libre = w - anchoNombre - anchoSep - (conPuntos0 ? anchoPuntos0 : 0f);
+                        for (int i = 0; i < formas.Length; i++)
+                            if (anchoForma[i] <= libre) { forma = i; break; }
+                    }
+                if (conPuntos0 && anchoNombre + anchoSep + anchoPuntos0 > w) conPuntos0 = false;
+                string txt0 = (forma >= 0) ? formas[forma] : "";
+                bool algoDetras = conPuntos0 || forma >= 0;
+                float total0 = anchoNombre + (algoDetras ? anchoSep : 0f)
+                             + (conPuntos0 ? anchoPuntos0 : 0f) + ((forma >= 0) ? anchoForma[forma] : 0f);
                 // Pegado a la derecha, con 2 px de aire: medir un texto y dibujarlo no dan exactamente lo mismo
                 // -el dibujo se pasa como un pixel- y sin ese aire la ultima letra se salia de la caja.
                 float x = (total0 + 2f < w) ? (w - total0 - 2f) : 0f;
@@ -12574,14 +12622,14 @@ namespace Rocola
                 if (fApreta != null) fApreta.Dispose();
                 x += anchoSec;
 
-                if (Total <= 1 || (!conPuntos0 && !conTxt0)) return;   // una sola pagina, o no cabe nada mas
+                if (!algoDetras) return;   // una sola pagina, o no cabe nada mas
                 int pag = pag0;
                 float r = r0, paso = paso0;
                 bool conPuntos = conPuntos0;
 
                 using (Pen sep = new Pen(Color.FromArgb(70, 150, 175, 225)))
                     g.DrawLine(sep, x, h * 0.26f, x, h * 0.74f);
-                x += h * 0.5f;
+                x += anchoSep;
 
                 // LOS PUNTITOS. Con muchas paginas no caben ni se contarian de un vistazo, asi que a partir de
                 // doce se dice con numeros y ya.
@@ -12590,7 +12638,7 @@ namespace Rocola
                     float cy = h / 2f;
                     for (int i = 0; i < Total; i++)
                     {
-                        float cx = x + r + i * paso;
+                        float cx = x + halo0 + i * paso;
                         bool esta = (i == pag);
                         float rr = esta ? r * 1.35f : r;
                         if (esta)
@@ -12604,17 +12652,19 @@ namespace Rocola
                             using (Pen p2 = new Pen(Color.FromArgb(120, 150, 168, 205), Math.Max(1f, r * 0.5f)))
                                 g.DrawEllipse(p2, cx - rr * 0.75f, cy - rr * 0.75f, rr * 1.5f, rr * 1.5f);
                     }
-                    x += r + (Total - 1) * paso + r;
+                    x += halo0 + (Total - 1) * paso + halo0;
                 }
 
-                if (!conTxt0) return;
+                if (forma < 0) return;
                 x += h * 0.45f;
-                // Si a estas alturas ya no cabe ENTERO, no se dibuja. Antes se pintaba en el hueco que
-                // quedara y se recortaba solo: de ahi salia "pagina 3 de 1", con la ultima cifra comida, que
-                // ademas dice algo FALSO. Mejor no decir el numero que decirlo mal.
-                if (AnchoTexto(g, txt0, fPag) > w - x - 2f) return;
+                // Ultima comprobacion con el ancho que de verdad ocupo el nombre (si hubo que encogerlo sobra
+                // sitio, y si el reparto se quedo corto por un pelo se acorta la frase antes que callarse). Solo
+                // se calla si no cabe ni "3/18": entonces si, mejor nada que un numero a medias -"pagina 3 de 1"
+                // con la ultima cifra comida ademas dice algo FALSO-.
+                while (AnchoTexto(g, txt0, fPag) > w - x && forma < formas.Length - 1) txt0 = formas[++forma];
+                if (AnchoTexto(g, txt0, fPag) > w - x) return;
                 brocha.Color = Color.FromArgb(150, 160, 190);
-                g.DrawString(txt0, fPag, brocha, new RectangleF(x, 0, Math.Max(10f, w - x - 2f), h), sfIzq);
+                g.DrawString(txt0, fPag, brocha, new RectangleF(x, 0, Math.Max(10f, w - x), h), sfIzq);
             }
 
             private static GraphicsPath Redondo(RectangleF r, float radio)
@@ -12672,12 +12722,7 @@ namespace Rocola
             private void EnsureRes(int h)
             {
                 if (brocha == null) brocha = new SolidBrush(Color.White);
-                if (sfCen == null)
-                {
-                    sfCen = new StringFormat();
-                    sfCen.Alignment = StringAlignment.Center; sfCen.LineAlignment = StringAlignment.Center;
-                    sfCen.FormatFlags = StringFormatFlags.NoWrap;
-                }
+                if (sfCen == null) sfCen = CreaSfDibuja(StringAlignment.Center);
                 if (fEtq != null && Math.Abs(fontAlto - h) < 0.5f) return;
                 if (fEtq != null) fEtq.Dispose();
                 if (fVal != null) fVal.Dispose();
@@ -13158,9 +13203,7 @@ namespace Rocola
                 if (colaB == null)
                 {
                     colaB = new SolidBrush(Color.Black);
-                    cenFmt = new StringFormat();
-                    cenFmt.Alignment = StringAlignment.Center; cenFmt.LineAlignment = StringAlignment.Center;
-                    cenFmt.FormatFlags = StringFormatFlags.NoWrap;
+                    cenFmt = CreaSfDibuja(StringAlignment.Center);
                 }
                 float cuerpo = Font.SizeInPoints;
                 if (fNum == null || Math.Abs(fontFuente - cuerpo) > 0.01f)
