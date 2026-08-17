@@ -401,6 +401,10 @@ namespace Rocola
                 if (kn.Length > 0 && !colaPos.ContainsKey(kn)) colaPos[kn] = -1;
             }
             colaVer++;
+            // Y la lista del disco tiene que volver a hornearse: sus marcas (verde y ambar) van DENTRO del
+            // mapa de bits horneado, asi que sin este aviso la cancion recien pedida seguiria saliendo sin
+            // marca hasta que algo mas obligara a rehacerla.
+            RefrescaLista();
         }
         private PlayItem nowPlaying;
 
@@ -3538,7 +3542,7 @@ namespace Rocola
             // El genero de cada cancion tambien se ensena DENTRO del disco. Como se aprende en segundo plano,
             // puede llegar con el disco ya abierto: sin esto, las pastillas no saldrian hasta salir y volver.
             generoVer++;
-            if (songList != null && panelSongs != null && panelSongs.Visible) songList.Invalidate();
+            if (panelSongs != null && panelSongs.Visible) RefrescaLista();
         }
 
         // Lee del disco el color de cada letra. Solo vale si se calculo con la MISMA biblioteca que hay ahora
@@ -4200,7 +4204,7 @@ namespace Rocola
             SaveDurFast();
             if (rutas.Length > 0 && panelSongs != null && panelSongs.Visible && songList != null)
             {
-                songList.Invalidate();
+                RefrescaLista();
 #if ROCOLA_GPU
                 uiOverlaySig = SigNada;   // la lista va horneada en la textura de UI: hay que rehacerla para que se vean
 #endif
@@ -4293,7 +4297,7 @@ namespace Rocola
                                 if (rms > 0.0001f) loudCache[ruta] = rms;
                                 if (eqCurve != null) { eqCache[ruta] = eqCurve; eqCacheVer++; eqDirty = true; }   // huella tonal del EQ automatico, ya lista
                                 if (preScanLeft > 0) preScanLeft--;
-                                if (panelSongs != null && panelSongs.Visible && songList != null) songList.Invalidate();   // que aparezca la duracion recien sabida
+                                if (panelSongs != null && panelSongs.Visible) RefrescaLista();   // que aparezca la duracion recien sabida
                             });
                         }
                         catch { break; }
@@ -5480,6 +5484,8 @@ namespace Rocola
                 for (int i = 0; i < a.Tracks.Count; i++) songItems.Add(a.Tracks[i]);
             }
             songSel = 0;
+            songList.OlvidaPagina();   // disco nuevo: se llega a su pagina 1, no se hojea desde el disco anterior
+            if (songPager != null) songPager.PonSinAnimar(0);
             FillSongPage();
             cubeBox.Cover = LoadCover(a);
             UpdateTopSongVisuals();   // disco TOP: portada/etiqueta de la cancion seleccionada
@@ -5929,6 +5935,16 @@ namespace Rocola
         }
 
         // Apunta la lista a la PAGINA donde cae la seleccion (songSel) y actualiza la barra de paginas.
+        // El CONTENIDO de la lista cambio (llego un genero, una duracion, se movio la cola...). La lista se
+        // dibuja horneada, asi que ademas de repintar hay que avisar de que lo horneado ya no vale. Todos los
+        // sitios que tocan el contenido pasan por aqui: asi no se puede olvidar ninguno (lo vigila la bateria).
+        private void RefrescaLista()
+        {
+            if (songList == null) return;
+            songList.Datos++;
+            songList.Invalidate();
+        }
+
         private void FillSongPage()
         {
             if (songItems.Count == 0)
@@ -5942,7 +5958,13 @@ namespace Rocola
             int rpp = SongRowsPerPage();
             int pages = (songItems.Count + rpp - 1) / rpp;
             int pg = songSel / rpp;
-            songList.PageStart = pg * rpp; songList.Sel = songSel; songList.Accent = bgAccent;
+            // HOJEO ANIMADO: si la pagina cambia y el disco tiene mas de una, la que dejas sale por un lado y
+            // la que eliges entra por el otro. Se avisa ANTES de mover PageStart, que es cuando lo horneado
+            // todavia es la pagina que se va.
+            int arranque = pg * rpp;
+            if (pages > 1 && songList.PageStart != arranque && panelSongs != null && panelSongs.Visible)
+                songList.StartSlide(arranque > songList.PageStart ? 1 : -1);
+            songList.PageStart = arranque; songList.Sel = songSel; songList.Accent = bgAccent;
             songList.Invalidate();
             if (songPager != null)
             {
@@ -7622,7 +7644,7 @@ namespace Rocola
             if (songPager != null) { songPager.BackColor = panel; songPager.Invalidate(); }
             cubeBox.BackColor = Color.Transparent;
             songList.BackColor = list; songList.Accent = acc;
-            songList.Invalidate();
+            RefrescaLista();
         }
 
         // ===== Puente con el motor de IA en vivo (carpeta compartida, mismo hash que daemon_ia.py) =====
@@ -8838,6 +8860,10 @@ namespace Rocola
                 sb = Mix(sb, colaVer);   // sin esto, la marca "EN COLA" no saldria hasta que algo mas cambiara
                 sb = Mix(sb, generoVer);   // idem para las pastillas de genero, que se aprenden en segundo plano
                 sb = Mix(sb, panelSongs.Left); sb = Mix(sb, panelSongs.Top); sb = Mix(sb, panelSongs.Width); sb = Mix(sb, panelSongs.Height);
+                // Mientras la pagina se desliza, la firma tiene que cambiar en cada cuadro o la textura no se
+                // rehace y la animacion no se veria mover (igual que la capsula de la barra de letras).
+                if (songList != null && songList.Sliding) sb = Mix(sb, (int)(songList.SlidePaso * 128f));
+                if (songPager != null && songPager.Animando) sb = Mix(sb, (int)(songPager.Paso * 128f));
             }
             else if (attractOn)                        // MODO ATRACCION: solo la cantidad de canciones (el pulso del texto va como halo por quad)
             { sb = Mix(sb, 'A'); sb = Mix(sb, attractView != null ? attractView.SongCount : 0); }
@@ -9080,6 +9106,13 @@ namespace Rocola
             // grafica: al pulsar "siguiente" las casillas ya estan hechas y no hay que re-escalar 18 caratulas en
             // ese instante. Con tope de dos por vuelta y 4 ms, asi que quien este usando la rocola no lo nota.
             if (!albumGpuBg && albumView != null && albumView.Visible) albumView.BakeAhead();
+            // HOJEO dentro de un disco: sin tarjeta grafica la lista y su letrero se repintan solos hasta que
+            // llegan. (Con tarjeta no hace falta: el hojeo entra en la firma de la textura y se rehace sola.)
+            if (!albumGpuBg && panelSongs != null && panelSongs.Visible)
+            {
+                if (songList != null && songList.Sliding) songList.Invalidate();
+                if (songPager != null && songPager.Animando) songPager.Invalidate();
+            }
 
             // (CPU) Anima el BRILLO del boton pulsado en la barra de ayuda: sin esto el destello se disparaba
             // pero nadie repintaba el control -> no se veia. Repinta mientras dura (~0.4s) y UNA vez mas al
@@ -11741,9 +11774,44 @@ namespace Rocola
         //   [<] pagina 1        Pagina 2 de 3        pagina 3 [>]
         private class SongPagerBar : Control
         {
-            public int Page = 0;    // pagina actual (desde 0)
+            private int pagina = 0; // pagina actual (desde 0)
             public int Pages = 1;   // total de paginas
             private Font pgFont;    // fuente cacheada (esta barra se redibuja al paginar / con el brillo)
+
+            // "Pagina 2 de 5" cambiaba de golpe mientras la lista de debajo se deslizaba, y las dos cosas
+            // contaban lo mismo yendo cada una por su lado. Ahora el letrero acompana a la lista: el numero
+            // viejo se va hacia el mismo lado y el nuevo entra detras, con la MISMA curva y la misma duracion.
+            private int animTick = -1; private int pagAnt = 0; private float animDir;
+            public int Page
+            {
+                get { return pagina; }
+                set
+                {
+                    if (value == pagina) return;
+                    animDir = (value > pagina) ? 1f : -1f;
+                    pagAnt = pagina; pagina = value; animTick = Environment.TickCount;
+                }
+            }
+            public bool Animando { get { return animTick >= 0 && Environment.TickCount - animTick < SongListView.SlideMs; } }
+            public float Paso
+            {
+                get
+                {
+                    if (animTick < 0) return 1f;
+                    int dt = Environment.TickCount - animTick;
+                    return (dt >= SongListView.SlideMs) ? 1f : (dt / (float)SongListView.SlideMs);
+                }
+            }
+            // Cuanto falta por recorrer, con la curva de la lista. Cero = ya llego.
+            private float FaltaAhora()
+            {
+                if (animTick < 0) return 0f;
+                int dt = Environment.TickCount - animTick;
+                if (dt < 0 || dt >= SongListView.SlideMs) { animTick = -1; return 0f; }
+                return SongListView.CurvaLista(dt);
+            }
+            // Al abrir un disco el letrero se pone donde toque, sin viaje.
+            public void PonSinAnimar(int p) { pagina = p; animTick = -1; }
 
             public SongPagerBar()
             {
@@ -11767,10 +11835,24 @@ namespace Rocola
                 if (pgFont == null) pgFont = new Font(FontFamily.GenericSansSerif, 9.5f, FontStyle.Bold);
                 Font f = pgFont;
                 {
-                    // Centro: Pagina X de Y
-                    string c = "Pagina " + (Page + 1) + " de " + Pages;
+                    // Centro: Pagina X de Y. Mientras se hojea, el numero viejo sale y el nuevo entra; el
+                    // viaje es corto (un tercio del ancho) porque lo que tiene que leerse es el numero, no
+                    // el movimiento. Las flechas de los lados NO viajan: son botones y deben quedarse quietas.
+                    float falta = FaltaAhora();
+                    string c = "Pagina " + (pagina + 1) + " de " + Pages;
                     SizeF cs = g.MeasureString(c, f);
-                    g.DrawString(c, f, CB(txt), (w - cs.Width) / 2f, cy - cs.Height / 2f);
+                    float viaje = w / 3f;
+                    if (falta > 0.001f)
+                    {
+                        string cAnt = "Pagina " + (pagAnt + 1) + " de " + Pages;
+                        SizeF as_ = g.MeasureString(cAnt, f);
+                        int aAnt = (int)(255f * falta); if (aAnt > 255) aAnt = 255; else if (aAnt < 0) aAnt = 0;
+                        g.DrawString(cAnt, f, CB(Color.FromArgb(aAnt, txt)),
+                                     (w - as_.Width) / 2f - animDir * viaje * (1f - falta), cy - as_.Height / 2f);
+                    }
+                    int aNue = (int)(255f * (1f - falta)); if (aNue > 255) aNue = 255; else if (aNue < 0) aNue = 0;
+                    g.DrawString(c, f, CB(Color.FromArgb(aNue, txt)),
+                                 (w - cs.Width) / 2f + animDir * viaje * falta, cy - cs.Height / 2f);
 
                     // Izquierda: [<] pagina anterior (solo si existe)
                     if (Page > 0)
@@ -12611,6 +12693,7 @@ namespace Rocola
             public Func<int, string> GetGenero;  // etiqueta de genero del item i ("" = aun no se sabe)
             public int PageStart = 0;           // primer item de la pagina visible
             public int Sel = 0;                 // seleccion GLOBAL (entre todas las paginas)
+            public int Datos = 0;               // sube cuando cambia el CONTENIDO (cola, generos, duraciones): obliga a rehornear
             public int RowH = 30;
             public Color Accent = DefaultAccent;   // color del genero (para el resaltado)
             public Action<int> OnActivate;      // doble-click sobre un item (encolar)
@@ -12811,6 +12894,114 @@ namespace Rocola
                 BackColor = Shade(DefaultAccent, 0.76);
             }
 
+            // ================= HOJEAR DENTRO DE UN DISCO =================
+            // Un disco con mas de una pagina cambiaba de pagina DE GOLPE: catorce canciones se convertian en
+            // otras catorce sin que nada dijera hacia donde te habias movido, y era facil perderse. Ahora la
+            // pagina que dejas SALE por un lado y la que eliges ENTRA por el otro, con el mismo frenado suave
+            // y la misma duracion que ya usa la pared de discos: la rocola se mueve toda igual.
+            //
+            // Y se puede hacer sin que cueste nada porque las dos paginas van HORNEADAS: dibujar una cuesta
+            // 1,8 ms y durante la animacion hacen falta las dos en cada cuadro (3,7 ms, que en el equipo de
+            // XP serian bastantes mas y romperian el movimiento). Horneadas, cada cuadro son dos copias.
+            public const int SlideMs = 230;
+            private int slideTick = -1; private float slideDesde;
+            private Bitmap hornoPag, hornoAnt;          // la pagina de ahora y la que se esta yendo
+            private long hornoSig = long.MinValue;      // que hay horneado (pagina, seleccion, tamano, datos...)
+            private int hornoAncho = -1, hornoAlto = -1;
+
+            // dir: +1 la nueva entra por la DERECHA (vas hacia delante), -1 por la izquierda.
+            public void StartSlide(int dir)
+            {
+                int w = ClientSize.Width;
+                if (w < 8 || hornoPag == null) { slideTick = -1; return; }   // sin nada horneado no hay de donde salir
+                // Los dos mapas de bits se INTERCAMBIAN, no se tiran: uno pasa a ser la pagina que se va y en
+                // el otro se dibuja encima la que entra. Tirarlos obligaria a reservar dos megas en cada
+                // cambio de pagina, y hojeando deprisa eso son recogidas de basura -o sea, tirones- justo
+                // mientras la animacion esta corriendo.
+                Bitmap t = hornoAnt; hornoAnt = hornoPag; hornoPag = t;
+                hornoSig = long.MinValue;
+                slideDesde = dir * (float)w; slideTick = Environment.TickCount;
+            }
+            public bool Sliding { get { return slideTick >= 0 && Environment.TickCount - slideTick < SlideMs; } }
+            // Olvida lo horneado y corta cualquier hojeo en curso. Se llama al ABRIR un disco: si no, venir de
+            // la pagina 3 de otro disco haria "hojear" hasta la 1 del nuevo, que no significa nada.
+            public void OlvidaPagina()
+            {
+                slideTick = -1;
+                if (hornoAnt != null) { hornoAnt.Dispose(); hornoAnt = null; }
+                if (hornoPag != null) { hornoPag.Dispose(); hornoPag = null; }
+                hornoSig = long.MinValue; hornoAncho = hornoAlto = -1;
+            }
+            // Cuanto lleva hecha la animacion (0..1). Entra en la firma de la textura de UI del modo GPU: sin
+            // eso la textura no se rehace y la animacion no se veria mover.
+            public float SlidePaso
+            {
+                get
+                {
+                    if (slideTick < 0) return 1f;
+                    int dt = Environment.TickCount - slideTick;
+                    return (dt >= SlideMs) ? 1f : (dt / (float)SlideMs);
+                }
+            }
+            // CURVA del hojeo (la misma que la pared de discos, para que las dos se muevan igual): devuelve
+            // cuanto FALTA por recorrer, de 1 (recien empieza) a 0 (ya llego).
+            internal static float CurvaLista(int dt)
+            {
+                if (dt < 0 || dt >= SlideMs) return 0f;
+                float t = dt / (float)SlideMs;
+                return (1f - t) * (1f - t) * (1f - t);   // frenado suave al llegar (cubico)
+            }
+            private float DesplazaAhora()
+            {
+                if (slideTick < 0) return 0f;
+                int dt = Environment.TickCount - slideTick;
+                if (dt < 0 || dt >= SlideMs) { slideTick = -1; return 0f; }   // el mapa de la pagina vieja se GUARDA: es el otro lado del intercambio
+                return slideDesde * CurvaLista(dt);
+            }
+
+            // Lo que identifica al mapa de bits horneado. Si algo de esto cambia, hay que volver a dibujarlo.
+            private long FirmaPagina(int w, int h)
+            {
+                long k = 17;
+                k = k * 31 + PageStart; k = k * 31 + Sel; k = k * 31 + Datos;
+                k = k * 31 + w; k = k * 31 + h; k = k * 31 + RowH;
+                k = k * 31 + Accent.ToArgb(); k = k * 31 + BackColor.ToArgb();
+                k = k * 31 + (int)(Font.SizeInPoints * 64f);
+                k = k * 31 + ((GetCount != null) ? GetCount() : 0);
+                return k;
+            }
+
+            // Asegura que 'hornoPag' es la pagina de ahora, dibujada tal cual. El fondo del horneado es OPACO
+            // -el mismo relleno que pinta la lista- asi que copiarlo despues da EXACTAMENTE los mismos pixeles
+            // que dibujarlo directo. (Hornear sobre transparente NO valdria: el texto suavizado sale mas fino.)
+            private void AseguraHorneada(int w, int h)
+            {
+                long sig = FirmaPagina(w, h);
+                if (hornoPag != null && hornoSig == sig && hornoAncho == w && hornoAlto == h) return;
+                if (hornoPag == null || hornoAncho != w || hornoAlto != h)
+                {
+                    if (hornoPag != null) hornoPag.Dispose();
+                    if (hornoAnt != null && (hornoAncho != w || hornoAlto != h)) { hornoAnt.Dispose(); hornoAnt = null; slideTick = -1; }
+                    hornoPag = new Bitmap(w, h, PixelFormat.Format32bppPArgb);
+                    hornoAncho = w; hornoAlto = h;
+                }
+                using (Graphics gb = Graphics.FromImage(hornoPag)) PintaPagina(gb, PageStart);
+                hornoSig = sig;
+            }
+
+            // Lo que ve el cliente: la pagina horneada, y mientras se hojea, las DOS deslizandose.
+            public void RenderContent(Graphics g)
+            {
+                int w = ClientSize.Width, h = ClientSize.Height;
+                if (w < 4 || h < 4) return;
+                AseguraHorneada(w, h);
+                float dx = DesplazaAhora();
+                if (dx == 0f || hornoAnt == null) { g.DrawImageUnscaled(hornoPag, 0, 0); return; }
+                // La que SE VA sale por el lado contrario al que entra la nueva.
+                g.DrawImageUnscaled(hornoAnt, (int)(dx - slideDesde), 0);
+                g.DrawImageUnscaled(hornoPag, (int)dx, 0);
+            }
+
             public int RowsPerPage { get { int ih = Math.Max(1, RowH); return Math.Max(1, ClientSize.Height / ih); } }
 
             protected override void OnPaintBackground(PaintEventArgs e) { /* todo en OnPaint */ }
@@ -12818,7 +13009,11 @@ namespace Rocola
 
             // Dibuja la pagina visible en cualquier Graphics (el control, o la textura de UI del modo GPU).
             // El fondo es OPACO (como el ListBox): la lista tapa el starfield donde esta (igual que en CPU).
-            public void RenderContent(Graphics g)
+            // Dibuja UNA pagina entera (la que empiece en 'arranque'). Antes esto era RenderContent tal cual;
+            // se separo para poder HORNEARLA a un mapa de bits y despues solo copiarla: dibujar una pagina
+            // cuesta 1,8 ms -son catorce filas con su texto, su numero, su genero y su duracion- y al hojear
+            // hacen falta DOS a la vez, en cada cuadro de la animacion. Horneada, cada cuadro es una copia.
+            private void PintaPagina(Graphics g, int arranque)
             {
                 int w = ClientSize.Width, h = ClientSize.Height;
                 if (w < 4 || h < 4) return;
@@ -12860,7 +13055,7 @@ namespace Rocola
                 EnsureHorno((int)(rad * 2), wCola, hCola);
                 for (int row = 0; row < rpp; row++)
                 {
-                    int idx = PageStart + row;
+                    int idx = arranque + row;
                     if (idx >= n) break;
                     Rectangle r = new Rectangle(0, row * RowH, w, RowH);
                     if (idx == Sel)
