@@ -9072,7 +9072,7 @@ namespace Rocola
             private float[] re, im;                        // espectro de trabajo (se INTERCAMBIA con el del otro canal del par)
             private float[] reB, imB;                      // espectro del segundo canal del par (solo si hay 2 o mas)
             private readonly float[] win;                  // ventana raiz-de-Hann
-            private readonly int[] bitrev; private readonly float[] twCos, twSin;   // tablas de la FFT
+            private readonly int[] bitrev; private readonly float[] twCos, twSin, twSinNeg;   // tablas de la FFT (el seno tambien cambiado de signo: ver Fft)
             private readonly float[] inter;                // buffer intercalado para leer del origen
             private readonly float[] outQ; private int qHead, qLen;   // FIFO de salida (intercalado)
             private float cutHz;                           // acantilado suavizado (0 = aun sin medir)
@@ -9099,7 +9099,7 @@ namespace Rocola
                 win = new float[Frame];
                 for (int i = 0; i < Frame; i++) win[i] = (float)Math.Sqrt(0.5 - 0.5 * Math.Cos(2.0 * Math.PI * i / Frame));   // raiz de Hann: analisis*sintesis = Hann, que al 50% suma EXACTO 1
                 bitrev = new int[Frame];
-                twCos = new float[Frame / 2]; twSin = new float[Frame / 2];
+                twCos = new float[Frame / 2]; twSin = new float[Frame / 2]; twSinNeg = new float[Frame / 2];
                 BuildFftTables();
                 inter = new float[Hop * ch];
                 outQ = new float[Frame * ch * 2];          // FIFO holgado (nunca acumula mas de Hop*ch)
@@ -9115,7 +9115,12 @@ namespace Rocola
                     for (; (j & bit) != 0; bit >>= 1) j ^= bit;
                     j |= bit; bitrev[i] = j;
                 }
-                for (int k = 0; k < Frame / 2; k++) { twCos[k] = (float)Math.Cos(2.0 * Math.PI * k / Frame); twSin[k] = (float)Math.Sin(2.0 * Math.PI * k / Frame); }
+                for (int k = 0; k < Frame / 2; k++)
+                {
+                    twCos[k] = (float)Math.Cos(2.0 * Math.PI * k / Frame);
+                    twSin[k] = (float)Math.Sin(2.0 * Math.PI * k / Frame);
+                    twSinNeg[k] = -twSin[k];   // la ida usa el seno cambiado de signo y la vuelta el normal
+                }
             }
 
             public NAudio.Wave.WaveFormat WaveFormat { get { return src.WaveFormat; } }
@@ -9193,7 +9198,7 @@ namespace Rocola
                 binHz = (float)rate / Frame;
                 re = new float[Frame]; im = new float[Frame]; win = new float[Frame];
                 for (int i = 0; i < Frame; i++) win[i] = (float)Math.Sqrt(0.5 - 0.5 * Math.Cos(2.0 * Math.PI * i / Frame));
-                bitrev = new int[Frame]; twCos = new float[Frame / 2]; twSin = new float[Frame / 2];
+                bitrev = new int[Frame]; twCos = new float[Frame / 2]; twSin = new float[Frame / 2]; twSinNeg = new float[Frame / 2];
                 BuildFftTables();
             }
             public int FrameLen { get { return Frame; } }
@@ -9457,14 +9462,24 @@ namespace Rocola
             }
 
             // FFT radix-2 iterativa en sitio (tablas precalculadas). inverse=true incluye la escala 1/N.
+            //
+            // Es lo mas caro del reconstructor, y el bucle de mas adentro se recorre unas once mil veces por
+            // cada FFT. Dos detalles que ahi dentro cuestan:
+            //   - el signo del seno depende de si es ida o vuelta, y se estaba decidiendo EN CADA VUELTA del
+            //     bucle. Ahora hay una segunda tabla con el seno ya cambiado de signo y se elige UNA vez.
+            //   - los arreglos se leian del objeto en cada acceso. Sacados a variables locales, el traductor
+            //     puede dejarlos en registros y ademas se ahorra comprobar sus limites tantas veces.
             private void Fft(bool inverse)
             {
                 int n = Frame;
+                float[] r = re, m = im;
+                int[] br = bitrev;
                 for (int i = 0; i < n; i++)
                 {
-                    int j = bitrev[i];
-                    if (j > i) { float t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t; }
+                    int j = br[i];
+                    if (j > i) { float t = r[i]; r[i] = r[j]; r[j] = t; t = m[i]; m[i] = m[j]; m[j] = t; }
                 }
+                float[] tc = twCos, ts = inverse ? twSin : twSinNeg;
                 for (int size = 2; size <= n; size <<= 1)
                 {
                     int half = size >> 1, tstep = n / size;
@@ -9473,19 +9488,20 @@ namespace Rocola
                         int k = 0;
                         for (int j = i; j < i + half; j++, k += tstep)
                         {
-                            float wr = twCos[k], wi = inverse ? twSin[k] : -twSin[k];
+                            float wr = tc[k], wi = ts[k];
                             int b = j + half;
-                            float tr = re[b] * wr - im[b] * wi;
-                            float ti = re[b] * wi + im[b] * wr;
-                            re[b] = re[j] - tr; im[b] = im[j] - ti;
-                            re[j] += tr; im[j] += ti;
+                            float rb = r[b], mb = m[b];
+                            float tr = rb * wr - mb * wi;
+                            float ti = rb * wi + mb * wr;
+                            r[b] = r[j] - tr; m[b] = m[j] - ti;
+                            r[j] += tr; m[j] += ti;
                         }
                     }
                 }
                 if (inverse)
                 {
                     float sc = 1f / n;
-                    for (int i = 0; i < n; i++) { re[i] *= sc; im[i] *= sc; }
+                    for (int i = 0; i < n; i++) { r[i] *= sc; m[i] *= sc; }
                 }
             }
         }
