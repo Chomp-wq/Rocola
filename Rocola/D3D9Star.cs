@@ -411,10 +411,11 @@ namespace Rocola
         private uint skyTop = 0xFF06081A, skyMid = 0xFF101C3A, skyBot = 0xFF1A2C5A;
         // RELOJ DEL CAMPO DE ESTRELLAS. Igual que el de la aurora: en un bar la rocola no se apaga nunca, y
         // "los segundos que llevo encendida" guardados en un float se quedan sin decimales a los pocos dias
-        // (el titileo empezaria a ir a saltos) y el reloj de Windows da la vuelta a los 24.8. Aqui el tiempo
-        // se lleva sumado en un double, que no se queda corto ni en anos, y el paso se saca por RESTA de
-        // TickCount, que sale bien aunque el reloj de la vuelta.
-        private double campoT; private int campoTickAnt; private bool campoRelojOk;
+        // (el titileo empezaria a ir a saltos). Aqui el tiempo se lleva sumado en un double, que no se queda
+        // corto ni en anos, y el paso de cada cuadro se saca por RESTA del RELOJ FINO (ver GpuPanel.AhoraMs):
+        // el reloj de Windows solo contesta de 15.6 en 15.6 ms, y con el tope de cuadros puesto -un cuadro cada
+        // ~15 ms- el titileo avanzaria a tirones, un cuadro si y el siguiente no.
+        private double campoT; private double campoFinoAnt; private bool campoRelojOk;
         private int seed0;                                   // semilla base (el patron de cada minuto = seed0 + minuto*paso)
         private int curMinute = int.MinValue;                // minuto del patron actual (cambia cada 60s)
         // ENTRECRUZADO del patron: al cambiar de minuto se conserva el patron anterior y se desvanece mientras
@@ -428,13 +429,13 @@ namespace Rocola
         private struct Shoot { public bool On; public float X, Y, VX, VY, Life, MaxLife, Wdt, Tail; public uint Col; }
         private readonly Shoot[] shoots = new Shoot[2];
         private D3D9.Vtx[] shootV = new D3D9.Vtx[2 * 12];    // 2 fugaces x (estela 6 + cabeza 6) vertices
-        private int nextShoot, lastShootTick;
+        private int nextShoot; private double shootFinoAnt;   // la CITA de la proxima fugaz en ms de Windows (son segundos); su avance, con el reloj fino
         private readonly Random srnd = new Random();
         private static readonly uint[] shootPal = { 0x00FFFFFF, 0x00FFFFFF, 0x00CFE6FF, 0x00FFE6A0, 0x00A0FFE0, 0x00FFC0E0 };   // blanco (x2), azul, dorado, aqua, rosa
         // DERIVA con la musica: al sonar, el campo entero se desliza LENTO en diagonal (abajo-derecha, como las
         // fugaces) y se envuelve por los bordes (bucle infinito). Es baratisimo: solo un desplazamiento + modulo
         // por estrella dentro del bucle que ya existe; ni asignaciones ni draws extra.
-        private int driftLastMs;                             // ultimo Begin (ms) para medir dt de la deriva
+        private double driftFinoAnt;                         // ultimo Begin (reloj fino) para medir dt de la deriva
         private float driftEnv;                              // envolvente 0..1: sube al sonar, baja al parar (arranque/paro suave)
         private float driftX, driftY;                        // desplazamiento acumulado (px), envuelto con w/h
         private const float DriftVX = 18f, DriftVY = 9f;     // px/seg (derecha, abajo): lento, diagonal suave 2:1
@@ -541,20 +542,21 @@ namespace Rocola
         {
             if (!Ok) return false;
             if (!gpu.BeginFrame()) return false;
-            int nowMs = Environment.TickCount;
+            int nowMs = Environment.TickCount;      // para las esperas LARGAS (entrecruzado de patron, proxima fugaz)
+            double finoMs = GpuPanel.AhoraMs();     // y el reloj FINO para el paso de cada cuadro (ver mas abajo)
             if (campoRelojOk)
             {
-                double dtc = (nowMs - campoTickAnt) / 1000.0;
+                double dtc = (finoMs - campoFinoAnt) / 1000.0;
                 if (!(dtc > 0.0)) dtc = 0.0; else if (dtc > 0.25) dtc = 0.25;   // acota atascos (y atrapa NaN)
                 campoT += dtc;
             }
-            campoTickAnt = nowMs; campoRelojOk = true;
+            campoFinoAnt = finoMs; campoRelojOk = true;
             double t = campoT;
 
             // DERIVA DIAGONAL con la musica: al sonar (pulse>0) el campo entero se desliza LENTO abajo-derecha
             // y se envuelve por los bordes. Envolvente suave para arrancar/parar sin saltos. Coste ~nulo.
-            float ddt = (driftLastMs == 0) ? 0f : (nowMs - driftLastMs) / 1000f;
-            driftLastMs = nowMs;
+            float ddt = (driftFinoAnt <= 0.0) ? 0f : (float)((finoMs - driftFinoAnt) / 1000.0);
+            driftFinoAnt = finoMs;
             if (ddt < 0f) ddt = 0f; else if (ddt > 0.1f) ddt = 0.1f;   // acota saltos (p.ej. tras un atasco)
             float dTgt = (pulseCrudo > 0.02f) ? 1f : 0f;
             driftEnv += (dTgt - driftEnv) * (dTgt > driftEnv ? Math.Min(1f, ddt * 2.5f) : Math.Min(1f, ddt * 0.6f));   // ataque medio, caida lenta
@@ -592,7 +594,7 @@ namespace Rocola
             }
             BuildStarVerts(starV, sx, sy, sphase, sspeed, ssize, skind, scol, nStars, t, (transing ? tr : 1f) * dim, pulse, driftX, driftY, w, h);   // patron ACTUAL (x atenuacion al navegar)
             gpu.DrawStars(starV, nStars * 2, glowTex);
-            UpdateAndDrawShoots(w, h, nowMs);
+            UpdateAndDrawShoots(w, h, nowMs, finoMs);
             return true;
         }
 
@@ -617,12 +619,12 @@ namespace Rocola
 
         // Estrellas FUGACES: una cada 7-16s, desde arriba-izquierda hacia abajo-derecha, con estela que se
         // apaga. Igual logica que el render por CPU (DrawShoots), pero dibujada como cuadrangulos aditivos.
-        private void UpdateAndDrawShoots(int w, int h, int nowMs)
+        private void UpdateAndDrawShoots(int w, int h, int nowMs, double finoMs)
         {
-            if (lastShootTick == 0) { lastShootTick = nowMs; nextShoot = nowMs + 4000 + srnd.Next(8000); return; }   // 1er cuadro: agenda la 1a, sin saltos
-            float dt = (nowMs - lastShootTick) / 1000f;
+            if (shootFinoAnt <= 0.0) { shootFinoAnt = finoMs; nextShoot = nowMs + 4000 + srnd.Next(8000); return; }   // 1er cuadro: agenda la 1a, sin saltos
+            float dt = (float)((finoMs - shootFinoAnt) / 1000.0);
             if (dt < 0f) dt = 0f; if (dt > 0.12f) dt = 0.12f;   // acota saltos
-            lastShootTick = nowMs;
+            shootFinoAnt = finoMs;
 
             if (nowMs - nextShoot >= 0)   // RESTA, no >=: sobrevive el desbordamiento de TickCount (~25 dias encendida)
             {
@@ -962,11 +964,53 @@ namespace Rocola
         public Func<Rectangle> GetContourRect;            // donde va el contorno (celda seleccionada), en coords del panel
         public Func<GpuCubeState> GetCubeState;           // celdas/angulos/portadas de los cubos que giran (seleccionado + relevo)
         public int ThrottleMs;                            // >0 = a lo mas un cuadro cada tantos ms (con video sonando: ~30 fps)
+        // TOPE DE CUADROS POR SEGUNDO. Sin tope, este bucle dibujaba TAN RAPIDO COMO PUDIERA: en un equipo con
+        // tarjeta decente eso son mil y pico cuadros por segundo... de los que la pantalla solo ENSEÑA sesenta.
+        // Los otros mil se calculaban y se tiraban a la basura, y mientras se tiraban un nucleo entero se
+        // quedaba clavado al 100%: sin aire para el sonido, para el buscador ni para los repasos de fondo. De
+        // ahi los tirones. Y de ahi tambien lo que se veia raro al medirlo: al encender mas efectos BAJABAN los
+        // cuadros por segundo y la GRAFICA no subia su uso, porque la grafica nunca fue el cuello -iba sobrada,
+        // esperando- y el que se ahogaba era el procesador armando cuadros que nadie iba a ver nunca.
+        //
+        // Ahora se dibuja un 10% POR ENCIMA de lo que refresca la pantalla. Ese 10% de mas no es capricho: si se
+        // pidiera justo lo mismo que refresca, de vez en cuando un cuadro llegaria un pelo tarde y ese barrido
+        // de pantalla tendria que repetir el anterior (un salto que SE VE). Con un poco de sobra, cada barrido
+        // tiene siempre un cuadro nuevo esperando. Se ve exactamente igual que antes y sobra procesador.
+        public int TopeFps;                               // 0 = automatico (segun la pantalla); >0 = lo manda el config
+        private int topeMs = -1;                          // ms minimos entre cuadros, ya resueltos (-1 = aun sin resolver)
+        private const int VREFRESH = 116;                 // GetDeviceCaps: veces por segundo que refresca la pantalla
+        [DllImport("user32.dll")] private static extern IntPtr GetDC(IntPtr hWnd);
+        [DllImport("user32.dll")] private static extern int ReleaseDC(IntPtr hWnd, IntPtr hdc);
+        [DllImport("gdi32.dll")] private static extern int GetDeviceCaps(IntPtr hdc, int index);
+
+        // Cada cuantos ms toca un cuadro, como poco. Windows contesta 0 o 1 al preguntarle el refresco cuando
+        // no lo sabe (pantalla vieja, escritorio remoto, maquina virtual): ahi se toman 60, que es lo de siempre.
+        private int TopeMs()
+        {
+            if (topeMs >= 0) return topeMs;
+            int fps = TopeFps;
+            if (fps <= 0)
+            {
+                int hz = 0;
+                try
+                {
+                    IntPtr dc = GetDC(IntPtr.Zero);
+                    if (dc != IntPtr.Zero) { hz = GetDeviceCaps(dc, VREFRESH); ReleaseDC(IntPtr.Zero, dc); }
+                }
+                catch { }
+                if (hz < 24 || hz > 400) hz = 60;
+                fps = hz + hz / 10;   // el 10% de sobra
+            }
+            if (fps < 24) fps = 24; else if (fps > 480) fps = 480;
+            topeMs = 1000 / fps; if (topeMs < 1) topeMs = 1;
+            return topeMs;
+        }
+        public int TopeFpsReal { get { int m = TopeMs(); return (m > 0) ? 1000 / m : 0; } }   // lo que quedo, para el contador
         // RELOJ FINO para el limitador. Environment.TickCount avanza a SALTOS de ~15.6 ms en Windows, asi
         // que pidiendole "un cuadro cada 33 ms" solo podia contestar 46.8 (tres saltos): 21 cuadros por
         // segundo en vez de 30, que es lo que se veia. Este reloj mide de verdad, en microsegundos.
         private static readonly System.Diagnostics.Stopwatch reloj = System.Diagnostics.Stopwatch.StartNew();
-        private static double AhoraMs() { return reloj.Elapsed.TotalMilliseconds; }
+        internal static double AhoraMs() { return reloj.Elapsed.TotalMilliseconds; }
         private double proxCuadroMs;                      // cuando TOCA el proximo cuadro (ms del reloj fino)
         public uint SkyTop = 0xFF06081A, SkyMid = 0xFF101C3A, SkyBot = 0xFF1A2C5A;   // el form los setea por genero (3 paradas)
 
@@ -987,9 +1031,10 @@ namespace Rocola
 
         private void OnIdle(object sender, EventArgs e)
         {
-            // Con video A LA VISTA el panel se puede LIMITAR (ThrottleMs ~33 = 30 fps) para dejarle equipo
-            // al video. Dormir 1 ms no atora nada: en cuanto llega un mensaje (tecla, timer), AppIdle lo ve
-            // y el bucle sale a atenderlo.
+            // SIEMPRE hay tope (ver TopeMs): lo que refresca la pantalla y un poco mas. Con video A LA VISTA
+            // el panel se puede limitar TODAVIA MAS (ThrottleMs ~33 = 30 fps) para dejarle equipo al video.
+            // Dormir 1 ms no atora nada: en cuanto llega un mensaje (tecla, timer), AppIdle lo ve y el bucle
+            // sale a atenderlo -o sea que una tecla se sigue notando en el milisegundo siguiente, igual que antes-.
             //
             // DOS COSAS, y las dos hacen falta:
             //  - Se mide con el RELOJ FINO. Con TickCount, que salta de ~15.6 en ~15.6 ms, pedir un cuadro
@@ -1001,15 +1046,12 @@ namespace Rocola
             //    retraso -la maquina no da mas de si- se resincroniza en vez de intentar recuperarla.
             while (stars != null && stars.Ok && Visible && AppIdle())
             {
-                int th = ThrottleMs;
+                int th = TopeMs();                        // el tope de la pantalla
+                if (ThrottleMs > th) th = ThrottleMs;      // con video a la vista se pide ir MAS lento todavia
                 double ahora = AhoraMs();
-                if (th > 0)
-                {
-                    if (ahora + 0.6 < proxCuadroMs) { System.Threading.Thread.Sleep(1); continue; }
-                    proxCuadroMs += th;
-                    if (proxCuadroMs < ahora) proxCuadroMs = ahora + th;
-                }
-                else proxCuadroMs = ahora;   // sin limitador: al dia, para que al encenderlo no dispare una rafaga
+                if (ahora + 0.6 < proxCuadroMs) { System.Threading.Thread.Sleep(1); continue; }
+                proxCuadroMs += th;
+                if (proxCuadroMs < ahora) proxCuadroMs = ahora + th;
                 RenderFrame();
             }
         }
@@ -1326,7 +1368,7 @@ namespace Rocola
         {
             if (fpsTex != IntPtr.Zero && fpsShown == Fps) return;
             fpsShown = Fps;
-            fpsTW = 190; fpsTH = 26;
+            fpsTW = 300; fpsTH = 26;
             using (Bitmap bmp = new Bitmap(fpsTW, fpsTH, System.Drawing.Imaging.PixelFormat.Format32bppPArgb))
             {
                 using (Graphics g = Graphics.FromImage(bmp))
@@ -1337,7 +1379,7 @@ namespace Rocola
                     g.Clear(Color.Transparent);
                     g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
                     g.FillRectangle(bg, 0, 0, fpsTW, fpsTH);
-                    g.DrawString("GPU D3D9: " + Fps + " FPS", f, yb, 6, 4);
+                    g.DrawString("GPU D3D9: " + Fps + " FPS  (tope " + TopeFpsReal + ")", f, yb, 6, 4);
                 }
                 if (fpsTex != IntPtr.Zero) { D3D9.Release(fpsTex); fpsTex = IntPtr.Zero; }
                 fpsTex = stars.CreateOverlay(bmp, out fpsU, out fpsV);
@@ -1471,7 +1513,7 @@ namespace Rocola
         // dar la vuelta cada una vuelve EXACTAMENTE a donde estaba. El salto no existe: es el mismo dibujo.
         private const double AurVuelta = 628.3185307179586;   // 2*pi/0.01
         private double aurT;                                  // segundos de animacion, ya dada la vuelta
-        private int aurTickAnt; private bool aurRelojOk;      // para medir el paso de cada cuadro
+        private double aurFinoAnt; private bool aurRelojOk;   // para medir el paso de cada cuadro (reloj FINO: ver AhoraMs)
         private GpuAurora auCuadro;                          // la aurora de ESTE cuadro (la pide el render y la dibuja TrasCielo)
         private readonly GpuStarfield.Dibuja trasCielo;      // delegado creado UNA vez (nada de basura por cuadro)
 
@@ -1936,15 +1978,16 @@ namespace Rocola
             if (aurV == null || aurV.Length < nv) aurV = new D3D9.Vtx[nv];
             int nb = AurBrilloVtx;
             if (aurVb == null || aurVb.Length < nb) aurVb = new D3D9.Vtx[nb];
-            int tkAur = Environment.TickCount;
+            double tkAur = AhoraMs();   // reloj FINO: con el tope puesto, cada cuadro dura ~15 ms y el reloj de
+                                        // Windows -que salta de 15.6 en 15.6- haria avanzar la aurora a tirones
             if (aurRelojOk)
             {
-                double dt = (tkAur - aurTickAnt) / 1000.0;
+                double dt = (tkAur - aurFinoAnt) / 1000.0;
                 if (!(dt > 0.0)) dt = 0.0; else if (dt > 0.25) dt = 0.25;   // acota atascos (y atrapa NaN)
                 aurT += dt;
                 if (aurT >= AurVuelta) aurT -= AurVuelta;
             }
-            aurTickAnt = tkAur; aurRelojOk = true;
+            aurFinoAnt = tkAur; aurRelojOk = true;
             float t = (float)aurT;
             // DEGRADADO del pie a la punta, UNA vez por cuadro y para los dos extremos (grave y agudo). Se hace
             // girando el tono por el BORDE de la rueda (ver AurTonoMezcla): asi a media altura el color sigue

@@ -143,6 +143,10 @@ namespace Rocola
         private readonly float[] specGolpe = new float[SpecBands];  // cuanto sobresale cada banda AHORA sobre su piso
 #endif
         private float auroraAmount = 0.55f;            // "espectro=" en config (0 = apagada)
+        // TOPE DE CUADROS POR SEGUNDO del fondo con tarjeta grafica ("tope_fps=" en config). En 0 -lo normal-
+        // lo decide el propio panel: lo que refresque la pantalla y un poco mas (ver GpuPanel.TopeMs). Se deja
+        // a mano por si alguna pantalla contesta un refresco raro y hay que fijarlo.
+        private int fpsTope = 0;
         // PRESENCIA de la aurora en pantalla, de 0 a 1. Antes se dibujaba o no se dibujaba segun si la banda
         // mas alta pasaba de un pelo: en un pasaje bajito (una intro, un silencio, el final de un tema) las
         // bandas caen a cero, la aurora DESAPARECIA de golpe y al volver la musica APARECIA de golpe. Eso era
@@ -420,14 +424,21 @@ namespace Rocola
         private volatile int coverGen = 0;     // sube al cambiar de pagina; descarta cargas de paginas viejas
         private bool coversOnHold = false;     // true mientras se hojea rapido: NO se piden caratulas
         private System.Windows.Forms.Timer coverSettleTimer;   // espera ~0.25s a que el usuario se detenga
-        // DOS decodificaciones a la vez (una por nucleo): con SSD el cuello es el CPU, no el disco.
-        // La interfaz no sufre (sus repintados son ligeros y por celda) y la musica esta blindada por su
-        // colchon de 1 segundo. Resultado: una pagina con miniaturas listas carga en ~70-120ms.
-        private static readonly System.Threading.Semaphore coverSem = new System.Threading.Semaphore(2, 2);
+        // CARRILES DE DISCO. Varias decodificaciones a la vez: con SSD el cuello es el CPU, no el disco. La
+        // interfaz no sufre (sus repintados son ligeros y por celda) y la musica esta blindada por su colchon
+        // de 1 segundo. Resultado: una pagina con miniaturas listas carga en ~70-120 ms. Un disco duro tiene UN cabezal: pedirle dos cosas a la vez lo obliga a ir y venir
+        // y las dos tardan mas, asi que se le pide en fila de uno. Un SSD es justo lo contrario: no tiene nada
+        // que mover y RINDE MAS cuantas mas peticiones tenga en la mano a la vez, porque las reparte entre sus
+        // propios canales internos. De ahi que al detectar SSD se abran varios carriles -uno por nucleo, hasta
+        // cuatro- en vez de los dos de antes. El turno arranca en dos y se AMPLIA cuando el perfil dice SSD.
+        private static readonly System.Threading.Semaphore coverSem = new System.Threading.Semaphore(2, 8);
+        private static volatile int coverCarriles = 1;   // bombas de caratula a la vez (1 = disco duro, como arranca)
         // ----- PERFIL DE DISCO AUTOMATICO -----
-        // Mide las primeras 16 lecturas de miniaturas y decide solo: SSD (lecturas ~0-2ms) -> 2 carriles
-        // y prelectura amplia; HDD (>6ms promedio, por el cabezal) -> 1 carril y prelectura corta. Asi
-        // la MISMA version queda optima en cualquier rocola, tenga el disco que tenga.
+        // La MISMA version queda optima en cualquier rocola, tenga el disco que tenga: SSD -> varios carriles,
+        // prelectura amplia y sin respiros; disco duro -> un carril, prelectura corta y respiros largos, que es
+        // lo que un cabezal necesita. Quien lo decide es PerfilaDisco, al arrancar (unas lineas mas abajo). Lo
+        // de aqui es el RESPALDO: cronometrar las 16 primeras lecturas de miniaturas, que es como se decidia
+        // antes, para los casos en que aquello no pudiera medir.
         private static int diskProbeN = 0, diskProbeMs = 0;
         private static volatile bool diskSlow = true;    // arranca en modo DISCO DURO (seguro); si las mediciones dicen SSD, se suelta
         private static void DiskProbe(int ms)
@@ -435,7 +446,73 @@ namespace Rocola
             if (diskProbeN >= 16) return;
             System.Threading.Interlocked.Add(ref diskProbeMs, ms);
             if (System.Threading.Interlocked.Increment(ref diskProbeN) == 16)
+            {
+                // Camino de RESPALDO: normalmente el perfil ya lo decidio PerfilaDisco al arrancar, antes de la
+                // primera pagina. Esto solo entra si aquello no pudo medir (biblioteca vacia, permisos raros).
                 diskSlow = (diskProbeMs / 16) > 6;
+                if (!diskSlow && coverCarriles < 2) coverCarriles = 2;
+            }
+        }
+
+        // ----- PERFIL DE DISCO, DECIDIDO AL ARRANCAR -----
+        // Antes se decidia con las 16 PRIMERAS miniaturas que se leyeran, o sea DESPUES de la primera pagina:
+        // hasta ese momento una rocola con SSD trabajaba en modo disco duro -un carril, prelectura corta,
+        // respiros largos- justo en el rato en que mas se nota. Y se decidia por PROMEDIO: una sola lectura
+        // desafortunada (un antivirus pasando, una carpeta fria) levantaba el promedio y dejaba la rocola en
+        // modo lento el resto de la noche.
+        //
+        // Ahora se mide a proposito, aqui, con la biblioteca ya en la mano y todavia en segundo plano: unas
+        // lecturitas de 4 KB en sitios SALTEADOS de canciones repartidas por toda la biblioteca. Eso es
+        // exactamente lo que separa a un disco duro de un SSD: saltar a otro sitio obliga al cabezal a moverse
+        // y eso son milisegundos, y en un SSD no hay cabezal que mover. Y se decide por la MEDIANA -el valor de
+        // en medio-, que no se deja arrastrar por una lectura desafortunada como si hacia el promedio.
+        private static bool perfilHecho = false;
+        private void PerfilaDisco(List<Track> lista)
+        {
+            if (perfilHecho || lista == null || lista.Count == 0) return;
+            perfilHecho = true;
+            try
+            {
+                List<int> ms = new List<int>(9);
+                byte[] buf = new byte[4096];
+                Random rnd = new Random(unchecked(Environment.TickCount * 397));
+                int paso = lista.Count / 9; if (paso < 1) paso = 1;
+                for (int i = 0; i < lista.Count && ms.Count < 9; i += paso)
+                {
+                    Track t = lista[i];
+                    if (t == null || t.Path == null) continue;
+                    try
+                    {
+                        System.Diagnostics.Stopwatch sw = System.Diagnostics.Stopwatch.StartNew();
+                        using (FileStream fs = new FileStream(t.Path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 4096))
+                        {
+                            long largo = fs.Length;
+                            if (largo > 8192) fs.Position = (long)(rnd.NextDouble() * (largo - 4096));   // a un sitio SALTEADO
+                            fs.Read(buf, 0, buf.Length);
+                        }
+                        sw.Stop();
+                        ms.Add((int)sw.ElapsedMilliseconds);
+                    }
+                    catch { }
+                }
+                if (ms.Count < 5) { perfilHecho = false; return; }   // no se pudo medir: sigue el respaldo de arriba
+                ms.Sort();
+                int mediana = ms[ms.Count / 2];
+                bool lento = mediana > 3;
+                diskSlow = lento;
+                diskProbeN = 16;   // ya esta decidido: el perfilado de oido no tiene nada que corregir
+                int carriles = 1;
+                if (!lento)
+                {
+                    carriles = Environment.ProcessorCount;
+                    if (carriles > 4) carriles = 4; else if (carriles < 2) carriles = 2;
+                    if (carriles > 2) try { coverSem.Release(carriles - 2); } catch { }
+                }
+                coverCarriles = carriles;
+                Diag("disco: mediana de " + ms.Count + " lecturas salteadas = " + mediana + " ms -> "
+                     + (lento ? "disco duro" : "SSD") + ", " + carriles + " carril(es)");
+            }
+            catch { }
         }
         [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
         private struct MemStatusEx { public uint Length, MemoryLoad; public ulong TotalPhys, AvailPhys, TotalPageFile, AvailPageFile, TotalVirtual, AvailVirtual, AvailExtendedVirtual; }
@@ -924,6 +1001,7 @@ namespace Rocola
                     if (s.StartsWith("gpu=")) gpuPrefOn = s.Substring(4).Trim() != "0";
                     else if (s.StartsWith("animacion=")) transAnimOn = s.Substring(10).Trim() != "0";   // zoom al entrar/salir de un disco
                     else if (s.StartsWith("espectro=")) { float v; if (float.TryParse(s.Substring(9).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) auroraAmount = Clampf(v / 100f, 0f, 1f); }   // aurora del horizonte (0 = apagada)
+                    else if (s.StartsWith("tope_fps=")) { int v; if (int.TryParse(s.Substring(9).Trim(), out v)) fpsTope = (v < 0) ? 0 : v; }   // cuadros/s del fondo (0 = automatico, segun la pantalla)
                     else if (s.StartsWith("video_gpu=")) videoGpuOn = s.Substring(10).Trim() != "0";   // interfaz por GPU aunque haya video
                     else if (s.StartsWith("diagnostico=")) diagOn = s.Substring(12).Trim() != "0";   // bitacora en rocola_diagnostico.txt
                     else if (s.StartsWith("normalizar=")) normalizeOn = s.Substring(11).Trim() != "0";   // nivelar volumen de las canciones (por defecto si)
@@ -972,6 +1050,7 @@ namespace Rocola
                 sb.Append("gpu=").Append(gpuPrefOn ? "1" : "0").Append("\r\n");
                 sb.Append("animacion=").Append(transAnimOn ? "1" : "0").Append("\r\n");
                 sb.Append("espectro=").Append(Math.Round(auroraAmount * 100f)).Append("\r\n");
+                sb.Append("tope_fps=").Append(fpsTope).Append("\r\n");
                 sb.Append("video_gpu=").Append(videoGpuOn ? "1" : "0").Append("\r\n");
                 sb.Append("diagnostico=").Append(diagOn ? "1" : "0").Append("\r\n");
                 sb.Append("normalizar=").Append(normalizeOn ? "1" : "0").Append("\r\n");
@@ -2989,6 +3068,7 @@ namespace Rocola
                 // ARMADO EN SEGUNDO PLANO: ordenar e indexar las 118 mil canciones tomaba 1-3 segundos
                 // DEL HILO DE LA INTERFAZ al arrancar; aqui corre en el worker y el arranque no se congela.
                 tracks.AddRange(ctk);
+                PerfilaDisco(tracks);   // disco duro o SSD, decidido ANTES de la primera pagina de caratulas
                 cachedVideoPaths = cvd; cachedCovers = ccv;
                 BuildAlbums(roots); BuildVideoSection(roots); BuildSearchIndex();
                 e.Result = true;    // vino del cache
@@ -3006,6 +3086,7 @@ namespace Rocola
             for (int r = 0; r < roots.Count; r++) ScanFolders(roots[r], audio, vids, covs);
             for (int i = 0; i < audio.Count; i++) found.Add(Track.FromFile(audio[i]));
             tracks.AddRange(found);
+            PerfilaDisco(tracks);   // idem por el camino del escaneo fresco
             cachedVideoPaths = vids; cachedCovers = covs;
             BuildAlbums(roots); BuildVideoSection(roots); BuildSearchIndex();   // tambien en segundo plano
             e.Result = false;   // escaneo fresco
@@ -3610,7 +3691,16 @@ namespace Rocola
                         // kilobytes: con 4 ms de pausa el disco queda MUCHO mas libre que antes con 12, porque
                         // antes cada archivo se leia entero. Si hubo que leerlo entero (el respaldo, o un
                         // video), se respira lo de siempre.
-                        System.Threading.Thread.Sleep(diskSlow ? (caro ? 12 : 4) : 1);
+                        //
+                        // Y EN SSD el respiro se JUNTA. Dormir 1 ms por archivo parece nada, pero en una
+                        // biblioteca de cien mil canciones son casi dos minutos de puro dormir, y un SSD no
+                        // necesita que se le deje descansar entre lectura y lectura: no hay cabezal que se
+                        // recaliente. Se respira una vez cada 32 archivos -lo justo para que la interfaz tenga
+                        // su turno, que para eso este hilo va ademas en la prioridad mas baja- y el repaso
+                        // termina en una fraccion del tiempo. Si hubo que leer el archivo entero, se respira
+                        // igual: eso si le cuesta al disco, tenga cabezal o no.
+                        if (diskSlow) System.Threading.Thread.Sleep(caro ? 12 : 4);
+                        else if (caro || (i & 31) == 31) System.Threading.Thread.Sleep(1);
                     }
                 }
                 catch { }
@@ -4200,13 +4290,20 @@ namespace Rocola
                         System.Threading.Thread.Sleep(300);
                         if (mio != warmSongGen) return;
                     }
-                    byte[] buf = new byte[64 * 1024];
-                    using (FileStream fs = new FileStream(ruta, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 64 * 1024))
+                    // TROZOS segun el disco. Un disco duro se lee a trozos chicos y con pausa entre trozo y
+                    // trozo, para no dejar al cabezal ocupado si de pronto hace falta para otra cosa. Un SSD
+                    // rinde al contrario: cuanto mas grande el trozo, menos veces se le molesta y antes acaba,
+                    // asi que se le piden 256 KB de una y la cancion queda en memoria en un pestaneo.
+                    // Y en los dos casos se avisa a Windows de que esto se va a leer DE PRINCIPIO A FIN
+                    // (SequentialScan): con eso adelanta la lectura por su cuenta en vez de ir trozo a trozo.
+                    int trozo = diskSlow ? (64 * 1024) : (256 * 1024);
+                    byte[] buf = new byte[trozo];
+                    using (FileStream fs = new FileStream(ruta, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, trozo, FileOptions.SequentialScan))
                     {
                         while (fs.Read(buf, 0, buf.Length) > 0)
                         {
                             if (mio != warmSongGen) return;
-                            System.Threading.Thread.Sleep(diskSlow ? 8 : 2);
+                            System.Threading.Thread.Sleep(diskSlow ? 8 : 1);
                         }
                     }
                 }
@@ -4261,7 +4358,7 @@ namespace Rocola
                         }
                         catch { }
                         finally { coverSem.Release(); }
-                        System.Threading.Thread.Sleep(diskSlow ? 150 : 60);   // respiro mas largo en disco duro
+                        System.Threading.Thread.Sleep(diskSlow ? 150 : 20);   // respiro largo en disco duro; en SSD el freno era el respiro, no el disco
                     }
                 }
                 catch { }
@@ -4793,7 +4890,7 @@ namespace Rocola
                 coverLoading.Add(key);
                 CoverJob j = new CoverJob(); j.Key = key; j.Gen = coverGen;
                 if (highPriority) coverQHi.Add(j); else coverQLo.Add(j);
-                if (coverPumpCount < (diskSlow ? 1 : 2))
+                if (coverPumpCount < coverCarriles)
                 {
                     coverPumpCount++;
                     System.Threading.Thread t = new System.Threading.Thread(CoverPump);
@@ -4817,7 +4914,7 @@ namespace Rocola
                 coverLoading.Add(key);
                 CoverJob j = new CoverJob(); j.Key = key; j.Gen = coverGen;
                 if (highPriority) coverQHi.Add(j); else coverQLo.Add(j);
-                if (coverPumpCount < (diskSlow ? 1 : 2))   // SSD: un carril por nucleo; HDD: carril unico (cabezal)
+                if (coverPumpCount < coverCarriles)   // SSD: un carril por nucleo (hasta 4); HDD: carril unico (cabezal)
                 {
                     coverPumpCount++;
                     System.Threading.Thread t = new System.Threading.Thread(CoverPump);
@@ -8028,6 +8125,7 @@ namespace Rocola
             {
                 gpuPanel = new GpuPanel();
                 gpuPanel.ShowFps = gpuShowFps;
+                gpuPanel.TopeFps = fpsTope;   // 0 = que lo decida el panel por el refresco de la pantalla
                 gpuPanel.GetPulse = delegate { return audioLevel; };
                 gpuPanel.GetAurora = delegate { return BuildAuroraState(); };   // aurora del horizonte (espectro)
                 gpuPanel.GetToast = delegate { return BuildToastState(); };     // aviso flotante (moneda, cancion agregada...)
