@@ -381,6 +381,10 @@ namespace Rocola
         // sonar), asi que sin esto era la unica cancion del disco SIN ninguna marca, y es justo la que mas
         // hace falta marcar -si al cliente se le olvido que la acaba de poner, se gasta otro credito en ella-.
         private readonly Dictionary<string, int> colaPos = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        // Y APARTE, cual esta sonando. Suelto y no dentro de colaPos porque una cancion puede estar sonando
+        // Y ademas pedida otra vez: son dos cosas distintas y el cliente necesita ver las dos -que la esta
+        // oyendo, y que ya la va a volver a oir-. Metidas en el mismo dato, una tapaba a la otra.
+        private string sonandoKey = "";
         private int generoVer;   // sube cuando el paseo de fondo aprende generos (entra en la firma del interior del disco)
         private int colaVer;
         private void RefrescaCola()
@@ -393,13 +397,9 @@ namespace Rocola
                 string k = it.PathKey();
                 if (k.Length > 0 && !colaPos.ContainsKey(k)) colaPos[k] = i + 1;   // el primero manda
             }
-            // Y la que suena. Si ademas esta pedida otra vez, manda el puesto en la cola: eso es lo que le
-            // dice al cliente que ya la va a volver a oir y que no hace falta pagarla una tercera vez.
-            if (nowPlaying != null)
-            {
-                string kn = nowPlaying.PathKey();
-                if (kn.Length > 0 && !colaPos.ContainsKey(kn)) colaPos[kn] = -1;
-            }
+            // Y aparte, cual esta sonando. Aparte y no aqui dentro porque las dos cosas pueden ser verdad a
+            // la vez -la que suena puede estar pedida otra vez- y el cliente necesita ver LAS DOS marcas.
+            sonandoKey = (nowPlaying != null) ? nowPlaying.PathKey() : "";
             colaVer++;
             // Y la lista del disco tiene que volver a hornearse: sus marcas (verde y ambar) van DENTRO del
             // mapa de bits horneado, asi que sin este aviso la cancion recien pedida seguiria saliendo sin
@@ -1137,6 +1137,43 @@ namespace Rocola
         // comparaciones normales dan false y el NaN salia tal cual por el otro lado; asi cae en lo, que es lo
         // seguro. Lo mismo abajo en la tangente y en la escalera de tonos.
         private static float Clampf(float v, float lo, float hi) { return !(v > lo) ? lo : (v > hi ? hi : v); }
+
+        // ANCHO DE UN TEXTO, MEDIDO COMO SE VA A DIBUJAR.
+        //
+        // De aqui salian varios letreros cortados: "LETRA B" con la B a medias, "pagina 3 de 12" que se
+        // quedaba en "de 1", "Inserta una moneda" comida por la derecha. Todos por lo mismo: la caja se medía
+        // con UNA cosa y el texto se pintaba con OTRA, y GDI+ no da el mismo ancho segun con que formato se
+        // le pregunte (ni el mismo que TextRenderer, que es GDI y otro motor distinto). Con la letra chica la
+        // diferencia son un par de pixeles y no se nota; en una pantalla grande, con la letra grande, la
+        // diferencia crece con el cuerpo y se come la ultima palabra.
+        //
+        // Aqui se mide SIEMPRE con el mismo formato con el que se dibuja, sin ancho maximo (para que no
+        // parta ni recorte al medir), y se redondea HACIA ARRIBA: una caja un pixel de mas no se ve; uno de
+        // menos, si.
+        private static readonly StringFormat SfMedir = CreaSfMedir();
+        private static StringFormat CreaSfMedir()
+        {
+            StringFormat sf = new StringFormat(StringFormat.GenericTypographic);
+            sf.FormatFlags |= StringFormatFlags.NoWrap | StringFormatFlags.MeasureTrailingSpaces;
+            return sf;
+        }
+        private static int AnchoTexto(Graphics g, string t, Font f)
+        {
+            if (g == null || f == null || string.IsNullOrEmpty(t)) return 0;
+            // El formato tipografico mide el texto DESNUDO; DrawString con un formato normal le pone un poco
+            // de aire a los lados. Ese aire se suma aqui (es proporcional al cuerpo) para que la caja calculada
+            // aguante lo que de verdad se pinta.
+            float w = g.MeasureString(t, f, int.MaxValue, SfMedir).Width;
+            return (int)Math.Ceiling(w + f.SizeInPoints * 0.34f);
+        }
+        // La misma medida cuando aun no hay un Graphics a mano (acomodo de controles).
+        private static int AnchoTexto(string t, Font f)
+        {
+            if (string.IsNullOrEmpty(t) || f == null) return 0;
+            using (Bitmap b = new Bitmap(1, 1))
+            using (Graphics g = Graphics.FromImage(b))
+                return AnchoTexto(g, t, f);
+        }
 
         private void SaveConfigPrefs()
         {
@@ -2879,6 +2916,14 @@ namespace Rocola
             songList.BackColor = Shade(DefaultAccent, 0.76);
             songList.Font = Bold(13f);
             songList.RowH = 30;
+            songList.GetSonando = delegate (int i)
+            {
+                if (sonandoKey.Length == 0 || i < 0 || i >= songItems.Count) return false;
+                Track tk = songItems[i] as Track;
+                string k = (tk != null) ? tk.Path : null;
+                if (k == null) { VideoItem vi = songItems[i] as VideoItem; if (vi != null) k = vi.Path; }
+                return k != null && string.Equals(k, sonandoKey, StringComparison.OrdinalIgnoreCase);
+            };
             songList.GetQueuePos = delegate (int i)
             {
                 if (i < 0 || i >= songItems.Count || colaPos.Count == 0) return 0;
@@ -12479,12 +12524,12 @@ namespace Rocola
                 // lo mismo de un vistazo y ocupan menos. Y lo que quepa se pega a la DERECHA, para que no quede
                 // colgando en medio de un hueco.
                 float pw0 = Math.Max(3f, h * 0.13f);
-                float anchoNombre = pw0 + h * 0.32f + g.MeasureString(Section ?? "", fSec).Width + 4f;
+                float anchoNombre = pw0 + h * 0.32f + AnchoTexto(g, Section, fSec) + 4f;
                 int pag0 = Page; if (pag0 < 0) pag0 = 0; else if (Total > 0 && pag0 >= Total) pag0 = Total - 1;
                 float r0 = Math.Max(2.2f, h * 0.115f), paso0 = r0 * 3.4f;
                 float anchoPuntos0 = (Total > 1 && Total <= 12) ? (h * 0.5f + r0 + (Total - 1) * paso0 + r0) : 0f;
                 string txt0 = "pagina " + (pag0 + 1) + " de " + Total;
-                float anchoTxt0 = (Total > 1) ? (h * 0.45f + g.MeasureString(txt0, fPag).Width + 8f) : 0f;
+                float anchoTxt0 = (Total > 1) ? (h * 0.45f + AnchoTexto(g, txt0, fPag) + 8f) : 0f;
                 bool conPuntos0 = anchoPuntos0 > 0f, conTxt0 = anchoTxt0 > 0f;
                 if (anchoNombre + anchoPuntos0 + anchoTxt0 > w) conTxt0 = false;                       // primero se cae el texto
                 if (conPuntos0 && anchoNombre + anchoPuntos0 > w) { conPuntos0 = false; conTxt0 = anchoTxt0 > 0f; }
@@ -12508,8 +12553,8 @@ namespace Rocola
                 string sec = Section ?? "";
                 Font fUsar = fSec; Font fApreta = null;
                 float tope = Math.Max(10f, w - x);
-                SizeF ts = g.MeasureString(sec, fUsar);
-                if (ts.Width > tope)
+                float anchoSec = AnchoTexto(g, sec, fUsar);
+                if (anchoSec > tope)
                 {
                     float cuerpo = fSec.SizeInPoints;
                     while (cuerpo > 6f)
@@ -12517,8 +12562,8 @@ namespace Rocola
                         cuerpo -= 0.5f;
                         if (fApreta != null) fApreta.Dispose();
                         fApreta = new Font(this.Font.FontFamily, cuerpo, FontStyle.Bold);
-                        ts = g.MeasureString(sec, fApreta);
-                        if (ts.Width <= tope) break;
+                        anchoSec = AnchoTexto(g, sec, fApreta);
+                        if (anchoSec <= tope) break;
                     }
                     if (fApreta != null) fUsar = fApreta;
                 }
@@ -12527,7 +12572,7 @@ namespace Rocola
                 brocha.Color = ac;
                 g.DrawString(sec, fUsar, brocha, new RectangleF(x, 0, tope, h), sfIzq);
                 if (fApreta != null) fApreta.Dispose();
-                x += ts.Width;
+                x += anchoSec;
 
                 if (Total <= 1 || (!conPuntos0 && !conTxt0)) return;   // una sola pagina, o no cabe nada mas
                 int pag = pag0;
@@ -12564,6 +12609,10 @@ namespace Rocola
 
                 if (!conTxt0) return;
                 x += h * 0.45f;
+                // Si a estas alturas ya no cabe ENTERO, no se dibuja. Antes se pintaba en el hueco que
+                // quedara y se recortaba solo: de ahi salia "pagina 3 de 1", con la ultima cifra comida, que
+                // ademas dice algo FALSO. Mejor no decir el numero que decirlo mal.
+                if (AnchoTexto(g, txt0, fPag) > w - x - 2f) return;
                 brocha.Color = Color.FromArgb(150, 160, 190);
                 g.DrawString(txt0, fPag, brocha, new RectangleF(x, 0, Math.Max(10f, w - x - 2f), h), sfIzq);
             }
@@ -12607,11 +12656,15 @@ namespace Rocola
             // saberlo ANTES de dibujar nada (y por eso mide con TextRenderer, sin Graphics).
             public static int Ancho(string etiq, string valor, int alto, FontFamily fam)
             {
+                // Se mide con GDI+, que es con lo que RenderContent la PINTA. Antes se media con TextRenderer,
+                // que es GDI: otro motor, otros anchos. En la pantalla del bar la diferencia eran dos pixeles y
+                // pasaba desapercibida; en una pantalla grande crecia con el cuerpo de la letra y se comia el
+                // final de "Inserta una moneda".
                 using (Font fe = new Font(fam, alto * 0.34f, FontStyle.Bold))
                 using (Font fv = new Font(fam, alto * 0.52f, FontStyle.Bold))
                 {
-                    int w = TextRenderer.MeasureText(etiq ?? "", fe).Width;
-                    if (!string.IsNullOrEmpty(valor)) w += TextRenderer.MeasureText(valor, fv).Width + (int)(alto * 0.22f);
+                    int w = AnchoTexto(etiq, fe);
+                    if (!string.IsNullOrEmpty(valor)) w += AnchoTexto(valor, fv) + (int)(alto * 0.22f);
                     return w + (int)(alto * 0.9f);
                 }
             }
@@ -12744,6 +12797,10 @@ namespace Rocola
             public Func<int, string> GetText;   // texto del item i
             public Func<int, string> GetRight;   // texto CORTO a la derecha del item i (la duracion); "" = nada
             public Func<int, int> GetQueuePos;   // 0 = no esta pedida; n = va en el puesto n de la cola
+            // SEPARADO de la cola a proposito: una cancion puede estar SONANDO y ADEMAS estar pedida otra
+            // vez, y el cliente necesita las dos cosas -que la esta oyendo, y que ya la va a volver a oir-.
+            // Con un solo dato una marca tapaba a la otra.
+            public Func<int, bool> GetSonando;
             public Func<int, string> GetGenero;  // etiqueta de genero del item i ("" = aun no se sabe)
             public int PageStart = 0;           // primer item de la pagina visible
             public int Sel = 0;                 // seleccion GLOBAL (entre todas las paginas)
@@ -12765,9 +12822,30 @@ namespace Rocola
             // fila -mas que todo el resto de la fila junta- y la pastilla otros 55. Como son SIEMPRE la misma
             // figura, se pintan una vez a un mapa de bits y despues cada fila solo las copia. Lo unico que se
             // sigue dibujando por fila es el numero, que si cambia.
-            private Bitmap bmpCirc, bmpCircCola, bmpCircSon, bmpPastilla, bmpPastillaSon;
+            private Bitmap bmpCirc, bmpCircCola, bmpCircSon;
+            // Las pastillas se hornean POR ANCHO: cada texto mide lo suyo ("SONANDO" no mide lo mismo que
+            // "EN COLA 12"), y con un ancho fijo el texto se salia -de ahi que se leyera "SONAND"-.
+            private readonly Dictionary<int, Bitmap> hornoPastV = new Dictionary<int, Bitmap>();
+            private readonly Dictionary<int, Bitmap> hornoPastA = new Dictionary<int, Bitmap>();
+            private int hornoPastAlto = -1;
+            private Bitmap Pastilla(bool ambar, int w, int h)
+            {
+                if (h != hornoPastAlto) { TiraPastillas(); hornoPastAlto = h; }
+                Dictionary<int, Bitmap> horno = ambar ? hornoPastA : hornoPastV;
+                Bitmap b;
+                if (horno.TryGetValue(w, out b) && b != null) return b;
+                b = HorneaPastilla(w, h, ambar ? SonAmbar : ColaVerde);
+                horno[w] = b;
+                return b;
+            }
+            private void TiraPastillas()
+            {
+                foreach (Bitmap b in hornoPastV.Values) if (b != null) b.Dispose();
+                foreach (Bitmap b in hornoPastA.Values) if (b != null) b.Dispose();
+                hornoPastV.Clear(); hornoPastA.Clear();
+            }
             private Bitmap[] bmpDig, bmpDigCola, bmpDigSon;   // las diez cifras, tambien horneadas
-            private int hornoLado = -1, hornoPastW = -1, hornoPastH = -1, digW, digH;
+            private int hornoLado = -1, digW, digH;
             private float hornoCuerpo = -1f;
             private static Bitmap HorneaCirculo(int lado, Color c, bool fuerte)
             {
@@ -12902,7 +12980,7 @@ namespace Rocola
                 hornoGen.Clear();
             }
 
-            private void EnsureHorno(int lado, int pw, int ph)
+            private void EnsureHorno(int lado, int ph)
             {
                 if (bmpDig == null || Math.Abs(hornoCuerpo - fNum.SizeInPoints) > 0.01f)
                 {
@@ -12926,14 +13004,7 @@ namespace Rocola
                     bmpCircSon = HorneaCirculo(lado, SonAmbar, true);
                     hornoLado = lado;
                 }
-                if (bmpPastilla == null || hornoPastW != pw || hornoPastH != ph)
-                {
-                    if (bmpPastilla != null) bmpPastilla.Dispose();
-                    if (bmpPastillaSon != null) bmpPastillaSon.Dispose();
-                    bmpPastilla = HorneaPastilla(pw, ph, ColaVerde);
-                    bmpPastillaSon = HorneaPastilla(pw, ph, SonAmbar);
-                    hornoPastW = pw; hornoPastH = ph;
-                }
+                if (hornoPastAlto != ph) { TiraPastillas(); hornoPastAlto = ph; }   // otro alto de fila: se rehornean
             }
             private static readonly Color ColaVerde = Color.FromArgb(120, 230, 165);
             // AMBAR para la que suena AHORA. Deliberadamente de otra familia de color que el verde de "ya
@@ -13104,9 +13175,12 @@ namespace Rocola
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 float rad = Math.Min(11f, RowH * 0.34f);        // el circulito del numero
                 float xTexto = 16 + rad * 2 + 10;
-                int wCola = (int)(rad * 7.4f);                  // la marca "EN COLA n"
-                int hCola = (int)(rad * 1.64f);
-                EnsureHorno((int)(rad * 2), wCola, hCola);
+                // ALTO de las marcas. Sale del circulito del numero, pero ese va TOPADO (rad no pasa de 11)
+                // para que en una fila alta no quede un circulo gigante... y la letra si crece con la fila. En
+                // una pantalla grande eso dejaba el texto MAS ALTO que su propia pastilla, asomando por arriba
+                // y por abajo. Asi que la pastilla crece tambien si hace falta para envolver a su letra.
+                int hCola = Math.Max((int)(rad * 1.64f), fCola.Height + 4);
+                EnsureHorno((int)(rad * 2), hCola);
                 for (int row = 0; row < rpp; row++)
                 {
                     int idx = arranque + row;
@@ -13121,10 +13195,11 @@ namespace Rocola
                     }
                     // EL NUMERO DE PISTA en un circulito, y en VERDE si esa cancion ya esta pedida. Antes no
                     // habia forma de saber que ya la habias puesto: la volvias a pedir y gastabas otro credito.
-                    // (y en AMBAR si es la que esta sonando en este momento: ver colaPos, puesto -1)
+                    // (y en AMBAR si es la que esta sonando en este momento)
                     int pos = (GetQueuePos != null) ? GetQueuePos(idx) : 0;
-                    int marca = (pos > 0) ? 1 : (pos < 0) ? 2 : 0;
-                    bool conMarca = marca != 0;
+                    bool suena = (GetSonando != null) && GetSonando(idx);
+                    bool enCola = pos > 0;
+                    int marca = suena ? 2 : (enCola ? 1 : 0);   // el circulito manda lo mas urgente: que SUENA
                     float cy = r.Y + RowH * 0.5f;
                     g.DrawImageUnscaled((marca == 2) ? bmpCircSon : (marca == 1) ? bmpCircCola : bmpCirc, 16, (int)(cy - rad));
                     PintaNumero(g, idx + 1, 16 + rad, cy, marca);
@@ -13162,17 +13237,36 @@ namespace Rocola
                             g.DrawImageUnscaled(pg, r.Right - 20 - durW - pg.Width, (int)(cy - pg.Height * 0.5f));
                         }
                     }
+                    // LAS DOS MARCAS CONVIVEN. Una cancion puede estar sonando Y estar pedida otra vez, y el
+                    // cliente necesita saber las dos cosas: que la esta oyendo, y que ya la va a volver a oir.
+                    // Antes la de la cola tapaba a la de sonando y parecia que no estaba sonando.
+                    // Cada pastilla se mide POR SU TEXTO: con un ancho fijo, "SONANDO" no cabia y salia
+                    // "SONAND". El triangulito de play delante deja claro cual es incluso sin leer la palabra.
                     int quitaCola = 0;
-                    if (conMarca)
+                    float xMarca = r.Right - 14 - durW - quitaGen;
+                    if (enCola)
                     {
-                        quitaCola = wCola + 12;
-                        RectangleF cr = new RectangleF(r.Right - 14 - durW - quitaGen - quitaCola, cy - hCola * 0.5f, wCola, hCola);
-                        g.DrawImageUnscaled((marca == 2) ? bmpPastillaSon : bmpPastilla, (int)cr.X, (int)cr.Y);
-                        colaB.Color = (marca == 2) ? SonAmbar : ColaVerde;
-                        // El triangulito de "play" delante deja claro cual es, incluso de lejos y aunque no se
-                        // llegue a leer la palabra.
-                        g.DrawString((marca == 2) ? "\u25B6 SONANDO" : ("EN COLA " + pos), fCola, colaB, cr, cenFmt);
+                        string t = "EN COLA " + pos;
+                        int wp = AnchoTexto(g, t, fCola) + hCola;
+                        xMarca -= wp;
+                        RectangleF cr = new RectangleF(xMarca, cy - hCola * 0.5f, wp, hCola);
+                        g.DrawImageUnscaled(Pastilla(false, wp, hCola), (int)cr.X, (int)cr.Y);
+                        colaB.Color = ColaVerde;
+                        g.DrawString(t, fCola, colaB, cr, cenFmt);
+                        xMarca -= 8; quitaCola += wp + 8;
                     }
+                    if (suena)
+                    {
+                        const string t = "\u25B6 SONANDO";
+                        int wp = AnchoTexto(g, t, fCola) + hCola;
+                        xMarca -= wp;
+                        RectangleF cr = new RectangleF(xMarca, cy - hCola * 0.5f, wp, hCola);
+                        g.DrawImageUnscaled(Pastilla(true, wp, hCola), (int)cr.X, (int)cr.Y);
+                        colaB.Color = SonAmbar;
+                        g.DrawString(t, fCola, colaB, cr, cenFmt);
+                        quitaCola += wp + 8;
+                    }
+                    if (quitaCola > 0) quitaCola += 4;   // un pelo de aire antes del nombre
                     // El nombre acaba SEIS PIXELES antes de lo primero que haya a su derecha. Antes se restaba
                     // un margen distinto del que usa la marca de "ya pedida", y un nombre largo llegaba a
                     // tocarla; ahora se calcula desde el mismo borde para los dos y siempre queda separacion.
