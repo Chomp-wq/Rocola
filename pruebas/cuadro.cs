@@ -1,145 +1,177 @@
 using System;
+using System.Collections;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
+using System.Drawing.Imaging;
 using System.Reflection;
-using System.Runtime.InteropServices;
-using System.Runtime.Serialization;
+using System.Windows.Forms;
 
-// EN QUE SE LE VA EL TIEMPO A CADA CUADRO DEL FONDO.
+// DE QUE SE COMPONE UN CUADRO DE PANTALLA, Y CUANTO CUESTA CUANDO NO HA CAMBIADO NADA.
 //
-// El usuario dice: "cuando baja los fps, la grafica NO sube su uso". Eso significa que la tarjeta esta
-// esperando y el que va ahogado es el procesador. La tarjeta solo dibuja lo que se le entrega ya masticado:
-// esta version le entrega TODOS los triangulos recalculados desde cero en cada cuadro, hechos por el
-// procesador uno a uno. Aqui se mide cuanto cuesta ese masticado, parte por parte, para saber donde esta
-// el tiempo de verdad antes de tocar nada.
+// La rocola redibuja 24 veces por segundo. La mayor parte del tiempo NO ha cambiado nada: nadie ha pulsado
+// un boton, la pagina es la misma, el mismo disco sigue seleccionado. Si en ese caso -que es casi todo el
+// tiempo- se sigue rehaciendo trabajo, es gasto puro.
 //
-// Se compila DENTRO del programa (-main) para poder llamar a las funciones de dentro sin intermediarios: si
-// se llamaran por reflexion en un bucle caliente, la medida seria de la reflexion y no del dibujo.
-namespace Rocola
+// Aqui se pinta cada pieza de la pantalla muchas veces SIN cambiar nada entre una y otra, y se mira lo que
+// cuesta. Lo que salga caro sin haber cambiado nada es candidato a guardarse hecho.
+class Cuadro
 {
-    static class Cuadro
+    static Type TF;
+    static Type Nes(string n) { return TF.GetNestedType(n, BindingFlags.NonPublic | BindingFlags.Public); }
+    static void Pon(Type t, object o, string campo, object v)
     {
-        // MINIMO de varias tandas: la maquina esta compartida, asi que la media miente (recoge los ratos en
-        // que otro proceso robo el nucleo) y el minimo es lo que de verdad cuesta el trabajo.
-        const int TANDAS = 7;
+        FieldInfo f = t.GetField(campo, BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+        if (f != null) f.SetValue(o, v);
+    }
 
-        static double Mide(int reps, Action f)
+    static double Mide(int veces, Action a)
+    {
+        a(); a();
+        double mejor = double.MaxValue;
+        for (int t = 0; t < 7; t++)
         {
-            f(); f();                                    // calentar (traducir a maquina)
-            double mejor = double.MaxValue;
-            for (int b = 0; b < TANDAS; b++)
+            Stopwatch sw = Stopwatch.StartNew();
+            for (int i = 0; i < veces; i++) a();
+            sw.Stop();
+            double ms = sw.Elapsed.TotalMilliseconds / veces;
+            if (ms < mejor) mejor = ms;
+        }
+        return mejor;
+    }
+
+    static Image portada;
+    static Image Tapa<T>(T a) { return portada; }
+
+    static int Main(string[] argv)
+    {
+        string exe = (argv.Length > 0) ? argv[0] : "rocola.exe";
+        Assembly asm = Assembly.LoadFrom(exe);
+        TF = asm.GetType("Rocola.Form1", true);
+
+        int W = 1024, H = 768;
+        Bitmap lienzo = new Bitmap(W, H, PixelFormat.Format32bppPArgb);
+        Graphics gg = Graphics.FromImage(lienzo);
+        object[] arg = new object[] { gg };
+        double total = 0;
+
+        Console.WriteLine("\n  UN CUADRO A " + W + "x" + H + ", SIN QUE HAYA CAMBIADO NADA");
+        Console.WriteLine("  (a 24 cuadros por segundo, un cuadro dura 41.7 ms)\n");
+        Console.WriteLine("  {0,-34} {1,12}  {2,10}", "pieza", "por cuadro", "por segundo");
+        Console.WriteLine("  " + new string('-', 60));
+
+        // ---------- la pared de discos ----------
+        Type TAV = Nes("AlbumView"), TAlb = Nes("Album");
+        if (TAV != null && TAlb != null)
+        {
+            portada = new Bitmap(500, 500, PixelFormat.Format32bppPArgb);
+            using (Graphics pg = Graphics.FromImage(portada))
             {
-                Stopwatch sw = Stopwatch.StartNew();
-                for (int i = 0; i < reps; i++) f();
-                sw.Stop();
-                double ms = sw.Elapsed.TotalMilliseconds / reps;
-                if (ms < mejor) mejor = ms;
+                pg.Clear(Color.FromArgb(255, 30, 40, 90));
+                for (int i = 0; i < 60; i++) pg.FillEllipse(new SolidBrush(Color.FromArgb(90, 200, 120 + i, 255 - i)), i * 8, i * 7, 70, 70);
             }
-            return mejor;
-        }
-
-        delegate void BSV(D3D9.Vtx[] buf, float[] xs, float[] ys, float[] ph, float[] spd, float[] sz,
-                          int[] kd, uint[] col, int n, double t, float fade, float pulse, float dx, float dy, float w, float h);
-
-        static void Main()
-        {
-            const int W = 1024, H = 768;      // la pantalla del bar
-            Console.WriteLine("\n  DONDE SE LE VA EL TIEMPO A UN CUADRO DEL FONDO  (" + W + "x" + H + ")\n");
-
-            // ---------- 1) EL CAMPO DE ESTRELLAS ----------
-            // Se rearma entero cada cuadro: un cuadrangulo por estrella, con su seno de titileo.
-            int nStars = Math.Max(60, W * H / 6500); if (nStars > 260) nStars = 260;
-            MethodInfo miB = typeof(GpuStarfield).GetMethod("BuildStarVerts", BindingFlags.Static | BindingFlags.NonPublic);
-            BSV bsv = (BSV)Delegate.CreateDelegate(typeof(BSV), miB);
-            float[] sx = new float[nStars], sy = new float[nStars], sph = new float[nStars], ssp = new float[nStars], ssz = new float[nStars];
-            int[] skd = new int[nStars]; uint[] scol = new uint[nStars];
-            Random rnd = new Random(1234);
-            for (int i = 0; i < nStars; i++)
+            Control av = (Control)Activator.CreateInstance(TAV, true);
+            av.SetBounds(0, 0, W, 460);
+            av.Font = new Font(FontFamily.GenericSansSerif, 10f, FontStyle.Bold);
+            Type tFunc = typeof(Func<,>).MakeGenericType(TAlb, typeof(Image));
+            TAV.GetField("GetCover").SetValue(av, Delegate.CreateDelegate(tFunc,
+                typeof(Cuadro).GetMethod("Tapa", BindingFlags.Static | BindingFlags.NonPublic).MakeGenericMethod(TAlb)));
+            IList pag = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(TAlb));
+            for (int i = 0; i < 18; i++)
             {
-                sx[i] = (float)(rnd.NextDouble() * W); sy[i] = (float)(rnd.NextDouble() * H);
-                sph[i] = (float)(rnd.NextDouble() * 6.28); ssp[i] = 0.5f + (float)rnd.NextDouble();
-                ssz[i] = 1f + (float)rnd.NextDouble() * 3f; skd[i] = rnd.Next(3); scol[i] = 0x00FFFFFF;
+                object a = Activator.CreateInstance(TAlb, true);
+                TAlb.GetField("Folder").SetValue(a, @"C:\Musica\Disco" + i);
+                TAlb.GetField("Name").SetValue(a, "Disco numero " + i + " con nombre largo");
+                TAlb.GetField("Artist").SetValue(a, "Artista " + i);
+                TAlb.GetField("Letter").SetValue(a, 'A');
+                TAlb.GetField("CoverPath").SetValue(a, @"C:\Musica\Disco" + i + @"\cover.jpg");
+                pag.Add(a);
             }
-            D3D9.Vtx[] starV = new D3D9.Vtx[nStars * 6];
-            double tEstrellas = Mide(300, delegate { bsv(starV, sx, sy, sph, ssp, ssz, skd, scol, nStars, 12.5, 1f, 0.5f, 3f, 2f, W, H); });
-
-            // ---------- 2) LA AURORA ----------
-            // Se llama al MISMO metodo que usa el programa. La tarjeta no existe en esta maquina, asi que se
-            // le pone un campo de estrellas "apagado" (Ok=false): las llamadas de dibujo no hacen nada y lo
-            // que queda medido es EXACTAMENTE el trabajo del procesador armando la malla.
-            GpuPanel pan = new GpuPanel();
-            pan.SetBounds(0, 0, W, H);
-            object apagado = FormatterServices.GetUninitializedObject(typeof(GpuStarfield));   // sin tarjeta: Ok=false
-            typeof(GpuPanel).GetField("stars", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(pan, apagado);
-            MethodInfo miAur = typeof(GpuPanel).GetMethod("DrawAurora", BindingFlags.Instance | BindingFlags.NonPublic);
-
-            GpuAurora au = new GpuAurora();
-            au.Has = true;
-            au.B = new float[64];
-            for (int i = 0; i < au.B.Length; i++) au.B[i] = 0.25f + 0.7f * (float)Math.Abs(Math.Sin(i * 0.31));
-            au.BaseY = H - 96f; au.Alto = H * 0.40f;
-            au.Rgb = 0x7A3CC8; au.Rgb2 = 0x3C6AC8; au.RgbA = 0xC85AA0; au.Rgb2A = 0x8A5AC8;
-            au.Dim = 1f; au.Calma = 0f;
-            object[] arg = new object[] { au };
-            miAur.Invoke(pan, arg); miAur.Invoke(pan, arg);           // calentar + reservar sus arreglos
-            double tAurora = Mide(120, delegate { miAur.Invoke(pan, arg); });
-
-            // Y las dos partes de la aurora por separado, para saber cual pesa.
-            FieldInfo fHs = typeof(GpuPanel).GetField("aurHs", BindingFlags.Instance | BindingFlags.NonPublic);
-            float[] hs = (float[])fHs.GetValue(pan);
-            uint[] cort = (uint[])typeof(GpuPanel).GetField("aurCortina", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(pan);
-            uint[] suelo = (uint[])typeof(GpuPanel).GetField("aurSueloC", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(pan);
-            float[] aA = (float[])typeof(GpuPanel).GetField("aurA", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(pan);
-            float[] aR = (float[])typeof(GpuPanel).GetField("aurR", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(pan);
-            uint[] nc = (uint[])typeof(GpuPanel).GetField("aurNc", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(pan);
-            float[] ni = (float[])typeof(GpuPanel).GetField("aurNi", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(pan);
-            uint[] lc = (uint[])typeof(GpuPanel).GetField("aurLc", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(pan);
-            float[] li = (float[])typeof(GpuPanel).GetField("aurLi", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(pan);
-            D3D9.Vtx[] aurV = (D3D9.Vtx[])typeof(GpuPanel).GetField("aurV", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(pan);
-            D3D9.Vtx[] aurVb = (D3D9.Vtx[])typeof(GpuPanel).GetField("aurVb", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(pan);
-            int nMalla = 0, nBrillo = 0;
-            double tMalla = Mide(300, delegate { nMalla = GpuPanel.AurMalla(aurV, hs, cort, suelo, aA, aR, W, au.BaseY, H); });
-            double tBrillo = Mide(300, delegate { nBrillo = GpuPanel.AurBrillo(aurVb, hs, nc, ni, lc, li, W, au.BaseY); });
-            float[] tmp = new float[hs.Length];
-            double tSuav = Mide(2000, delegate { GpuPanel.AurSuaviza(hs, tmp); });
-
-            // ---------- 3) CLAVAR LOS ARREGLOS PARA ENTREGARLOS ----------
-            // Cada llamada de dibujo "clava" (pinned) su arreglo para pasarle la direccion al driver. Clavar
-            // impide al recolector de basura mover ese trozo de memoria mientras dure la llamada.
-            double tClavar = Mide(20000, delegate
-            {
-                GCHandle gh = GCHandle.Alloc(aurV, GCHandleType.Pinned);
-                gh.Free();
-            });
-
-            int vAur = nMalla + nBrillo, vEst = nStars * 6;
-            int vTot = vAur + vEst + 12;
-            Console.WriteLine("     parte                                   ms/cuadro   vertices");
-            Console.WriteLine("     " + new string('-', 62));
-            Console.WriteLine(F("campo de estrellas (rearmado entero)", tEstrellas, vEst));
-            Console.WriteLine(F("aurora COMPLETA (lo que hace el programa)", tAurora, vAur));
-            Console.WriteLine(F("   de eso: la malla de relleno", tMalla, nMalla));
-            Console.WriteLine(F("   de eso: el filo de neon + horizonte", tBrillo, nBrillo));
-            Console.WriteLine(F("   de eso: los tres suavizados", tSuav * 3, 0));
-            Console.WriteLine(F("   de eso: el resto (colores columna a columna)", tAurora - tMalla - tBrillo - tSuav * 3, 0));
-            Console.WriteLine(F("clavar un arreglo para entregarlo (x1)", tClavar, 0));
-            Console.WriteLine("     " + new string('-', 62));
-            double total = tEstrellas + tAurora;
-            Console.WriteLine(F("SUMA del masticado por cuadro", total, vTot));
-            Console.WriteLine();
-            Console.WriteLine("     bytes de vertices entregados por cuadro: " + (vTot * D3D9.VtxSize / 1024) + " KB");
-            Console.WriteLine("     a 60 cuadros/seg eso es " + (vTot * D3D9.VtxSize * 60 / 1024 / 1024) + " MB/seg copiados por el driver");
-            Console.WriteLine();
-            Console.WriteLine("     techo de cuadros/seg que deja este masticado (un solo nucleo): "
-                              + (total > 0.001 ? (1000.0 / total).ToString("0") : "-"));
-            Console.WriteLine("     lo que se come de un cuadro de 16.7 ms (60 fps): " + (total / 16.7 * 100).ToString("0.0") + " %");
-            Console.WriteLine();
-            return;
+            TAV.GetField("Page").SetValue(av, pag);
+            MethodInfo mReb = TAV.GetMethod("RebuildCubes", BindingFlags.Instance | BindingFlags.NonPublic);
+            FieldInfo fPend = TAV.GetField("cubesPending", BindingFlags.Instance | BindingFlags.NonPublic);
+            object[] wh = new object[] { W, 460 };
+            int v = 0; do { mReb.Invoke(av, wh); v++; } while (fPend != null && (bool)fPend.GetValue(av) && v < 40);
+            double ms = Mide(300, delegate { mReb.Invoke(av, wh); });
+            Console.WriteLine("  {0,-34} {1,9:0.000} ms  {2,7:0.0} ms", "pared de discos (misma pagina)", ms, ms * 24);
+            total += ms;
         }
 
-        static string F(string q, double ms, int verts)
+        // ---------- la barra del abecedario ----------
+        Type TLet = Nes("LetterBar");
+        if (TLet != null)
         {
-            return string.Format("     {0,-44} {1,7:0.000}   {2}", q, ms, verts > 0 ? verts.ToString() : "");
+            Control let = (Control)Activator.CreateInstance(TLet, true);
+            let.Font = new Font(FontFamily.GenericSansSerif, 9f);
+            let.SetBounds(0, 0, W, 40);
+            MethodInfo m = TLet.GetMethod("RenderContent", new Type[] { typeof(Graphics) });
+            if (m != null)
+            {
+                try
+                {
+                    double ms = Mide(300, delegate { m.Invoke(let, arg); });
+                    Console.WriteLine("  {0,-34} {1,9:0.000} ms  {2,7:0.0} ms", "barra del abecedario", ms, ms * 24);
+                    total += ms;
+                }
+                catch (Exception ex) { Console.WriteLine("  barra del abecedario: no se pudo medir (" + (ex.InnerException != null ? ex.InnerException.Message : ex.Message) + ")"); }
+            }
         }
+
+        // ---------- el encabezado ----------
+        Type TCab = Nes("HeaderView");
+        if (TCab != null)
+        {
+            Control cab = (Control)Activator.CreateInstance(TCab, true);
+            cab.Font = new Font(FontFamily.GenericSansSerif, 9f);
+            cab.SetBounds(0, 0, 520, 34);
+            TCab.GetField("Section").SetValue(cab, "LETRA B");
+            TCab.GetField("Page").SetValue(cab, 2);
+            TCab.GetField("Total").SetValue(cab, 9);
+            MethodInfo m = TCab.GetMethod("RenderContent", new Type[] { typeof(Graphics) });
+            double ms = Mide(600, delegate { m.Invoke(cab, arg); });
+            Console.WriteLine("  {0,-34} {1,9:0.000} ms  {2,7:0.0} ms", "encabezado de seccion", ms, ms * 24);
+            total += ms;
+        }
+
+        // ---------- la pastilla de creditos ----------
+        Type TPas = Nes("PastillaView");
+        if (TPas != null)
+        {
+            Control pas = (Control)Activator.CreateInstance(TPas, true);
+            pas.Font = new Font(FontFamily.GenericSansSerif, 9f);
+            pas.SetBounds(0, 0, 220, 40);
+            TPas.GetField("Etiqueta").SetValue(pas, "CREDITOS");
+            TPas.GetField("Valor").SetValue(pas, "3");
+            MethodInfo m = TPas.GetMethod("RenderContent", new Type[] { typeof(Graphics) });
+            double ms = Mide(600, delegate { m.Invoke(pas, arg); });
+            Console.WriteLine("  {0,-34} {1,9:0.000} ms  {2,7:0.0} ms", "pastilla de creditos", ms, ms * 24);
+            total += ms;
+        }
+
+        // ---------- la lista de canciones de un disco ----------
+        Type TLis = Nes("SongListView");
+        if (TLis != null)
+        {
+            Control lis = (Control)Activator.CreateInstance(TLis, true);
+            lis.Font = new Font(FontFamily.GenericSansSerif, 11f);
+            lis.SetBounds(0, 0, 900, 420);
+            Pon(TLis, lis, "GetCount", (Func<int>)delegate { return 24; });
+            Pon(TLis, lis, "GetText", (Func<int, string>)delegate (int i) { return "Cancion numero " + i + " de un disco"; });
+            MethodInfo m = TLis.GetMethod("RenderContent", new Type[] { typeof(Graphics) });
+            try
+            {
+                double ms = Mide(200, delegate { m.Invoke(lis, arg); });
+                Console.WriteLine("  {0,-34} {1,9:0.000} ms  {2,7:0.0} ms", "lista de canciones (en un disco)", ms, ms * 24);
+            }
+            catch (Exception ex) { Console.WriteLine("  lista de canciones: no se pudo medir (" + (ex.InnerException != null ? ex.InnerException.Message : ex.Message) + ")"); }
+        }
+
+        Console.WriteLine("  " + new string('-', 60));
+        Console.WriteLine("  {0,-34} {1,9:0.000} ms  {2,7:0.0} ms   ({3:0.0}% del tiempo)",
+                          "la pared de discos + las barras", total, total * 24, total * 24 / 10.0);
+        Console.WriteLine();
+        Console.WriteLine("  (la lista de canciones va aparte: solo se ve DENTRO de un disco, no a la vez que la pared)");
+        gg.Dispose(); lienzo.Dispose();
+        return 0;
     }
 }

@@ -18,6 +18,9 @@ using System.Windows.Forms;
 // escalon -si lo hay- dice exactamente cuanto historial merece la pena pagar.
 class Historial
 {
+    static int fallos = 0;
+    static void Check(bool ok, string q) { Console.WriteLine((ok ? "  OK   " : "  FALLO") + "  " + q); if (!ok) fallos++; }
+
     static Type TF, TAV, TAlb;
     static Image portada;
     static Image Tapa<T>(T a) { return portada; }
@@ -187,7 +190,30 @@ class Historial
             fPag.SetValue(null, pagAntes); fMb.SetValue(null, -1);
         }
 
-        Console.WriteLine("\n  4) LO QUE COSTARIA GUARDAR MAS HISTORIAL\n");
+        Console.WriteLine("\n  4) EL CAJON SE PORTA BIEN\n");
+        // Lo que hay que exigirle: que respete su tope (si no, la memoria crece sin freno con el uso), que
+        // guarde de verdad las doce paginas que se eligieron, y que volver a una que sigue dentro sea
+        // muchisimo mas barato que volver a una que ya salio -que es TODO el motivo de que exista-.
+        Control a3 = NuevaRejilla(W, H);
+        for (int p = 0; p < 60; p++) PonPagina(a3, mRebuild, fPend, fPage, tLista, p, W, H);
+        int lleno = (fCache != null) ? ((ICollection)fCache.GetValue(a3)).Count : -1;
+        int topeReal = (fCap != null) ? (int)fCap.GetValue(a3) : -1;
+        Console.WriteLine("     tras 60 paginas: " + lleno + " casillas en el cajon, con tope " + topeReal);
+        Check(lleno <= topeReal + PAGESIZE, "el cajon respeta su tope por muchas paginas que pasen");
+        Check(topeReal >= 6 * PAGESIZE, "y nunca guarda menos historial que antes (seis paginas)");
+
+        // dentro contra fuera, con el cebado bien hecho
+        int cebaR = topeReal / PAGESIZE + 4;
+        for (int q = 60 - cebaR; q < 60; q++) PonPagina(a3, mRebuild, fPend, fPage, tLista, q, W, H);
+        double dentro = PonPagina(a3, mRebuild, fPend, fPage, tLista, 59 - 2, W, H);
+        for (int q = 60 - cebaR; q < 60; q++) PonPagina(a3, mRebuild, fPend, fPage, tLista, q, W, H);
+        double fuera = PonPagina(a3, mRebuild, fPend, fPage, tLista, 0, W, H);
+        Console.WriteLine("     volver a una que sigue dentro: " + dentro.ToString("0.00")
+                          + " ms    a una que ya salio: " + fuera.ToString("0.00") + " ms");
+        Check(dentro * 2.5 < fuera, "volver a una pagina guardada es MUCHO mas barato que rehacerla");
+        a3.Dispose();
+
+        Console.WriteLine("\n  5) LO QUE OCUPA\n");
         // El tamano de una casilla sale de la propia rejilla: ancho/6 por alto/3, en color de 4 bytes.
         long porCasilla = (long)(W / COLS) * (H / ROWS) * 4;
         Console.WriteLine("     una casilla a este tamano: " + (porCasilla / 1024) + " KB   ->  una pagina de 18: "
@@ -197,6 +223,7 @@ class Historial
         foreach (int pg in new int[] { 6, 12, 25, 50, 100 })
             Console.WriteLine("     {0,10}  {1,9:0} MB {2}", pg, porCasilla * PAGESIZE * pg / 1024.0 / 1024.0,
                               pg == (tope > 0 ? tope / PAGESIZE : 6) ? "  <- lo de ahora" : "");
-        return 0;
+        Console.WriteLine(fallos == 0 ? "\nTODO BIEN" : "\nFALLOS: " + fallos);
+        return fallos;
     }
 }
