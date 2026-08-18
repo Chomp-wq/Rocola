@@ -1658,7 +1658,7 @@ namespace Rocola
                     if (bar <= 0 || bar >= line.Length - 1) continue;
                     float rms;
                     if (!float.TryParse(line.Substring(0, bar), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out rms)
-                        || rms <= 0.0001f) continue;
+                        || rms <= 0f) continue;   // el silencio apuntado (LoudMudo) TIENE que sobrevivir al reinicio
                     // Formato NUEVO "rms|duracion|ruta" y el VIEJO "rms|ruta" (una ruta de Windows no puede llevar
                     // '|', asi que distinguirlos es seguro): lo viejo se sigue leyendo tal cual, sin duracion.
                     string rest = line.Substring(bar + 1);
@@ -2354,7 +2354,12 @@ namespace Rocola
                     lPct.ForeColor = cBib; lPct.Font = fDes; lPct.TextAlign = ContentAlignment.TopRight; lPct.Visible = false;
                     BarraAvance pbTrain = new BarraAvance();
                     pbTrain.SetBounds(332, 134, 580, 8); pbTrain.Acento = cBib; pbTrain.Visible = false;
-                    tBib.Controls.Add(lCal); tBib.Controls.Add(hint); tBib.Controls.Add(bTrain); tBib.Controls.Add(lPct); tBib.Controls.Add(pbTrain);
+                    // LIMPIEZA DE VIDEOS MUDOS. Comparte fila con el repaso a fondo, a la derecha del todo; la
+                    // barra de avance del repaso se queda con lo de en medio.
+                    BotonPlano bMudos = new BotonPlano();
+                    bMudos.SetBounds(652, 114, 260, 34); bMudos.Font = fBot;
+                    lPct.SetBounds(332, 112, 306, 18); pbTrain.SetBounds(332, 134, 306, 8);
+                    tBib.Controls.Add(lCal); tBib.Controls.Add(hint); tBib.Controls.Add(bTrain); tBib.Controls.Add(lPct); tBib.Controls.Add(pbTrain); tBib.Controls.Add(bMudos);
                     EscribeInformeCalidad();   // el detalle, cancion por cancion, queda en un archivo junto al programa
 
                     // ---------------- TIPO DE DISCO ----------------
@@ -2405,6 +2410,19 @@ namespace Rocola
                     bReset.Text = "Dejar como de fabrica";
                     BotonPlano bOk = new BotonPlano(); bOk.SetBounds(804, 680, 140, 38); bOk.Font = fBot;
                     bOk.Text = "Listo"; bOk.Relleno = Color.FromArgb(30, 96, 70); bOk.Borde = Color.FromArgb(72, 182, 132);
+
+                    Action pintaMudos = delegate
+                    {
+                        List<float> dbm;
+                        int nm = VideosMudos(out dbm).Count;
+                        bMudos.Text = (nm > 0) ? ("Videos que no suenan: " + nm) : "No hay videos mudos";
+                        bMudos.Enabled = nm > 0;
+                        bMudos.Relleno = (nm > 0) ? Color.FromArgb(88, 40, 36) : Color.FromArgb(28, 34, 62);
+                        bMudos.Borde = (nm > 0) ? Color.FromArgb(180, 92, 76) : Color.FromArgb(60, 72, 118);
+                        bMudos.ForeColor = (nm > 0) ? Color.FromArgb(240, 214, 206) : cApagado;
+                        bMudos.Invalidate();
+                    };
+                    bMudos.Click += delegate { ShowLimpiezaVideos(); pintaMudos(); };
 
                     Action pintaTrain = delegate
                     {
@@ -2489,6 +2507,7 @@ namespace Rocola
                                + (etapa.Length > 0 ? ("La cancion que suena entra en la etapa " + etapa + ".") : "")
                                + "\nEl detalle, cancion por cancion, queda en rocola_calidad.txt junto al programa.");
                         pintaTrain();
+                        pintaMudos();
                         // Lo que no manda nadie se apaga, para que se vea de un vistazo que no hay que tocarlo.
                         bool en = swOn.Checked;
                         bar[0].Enabled = en; bar[1].Enabled = en;
@@ -2744,26 +2763,32 @@ namespace Rocola
         {
             if (string.IsNullOrEmpty(genre)) return "Otros";
             string g = genre.ToLowerInvariant();
+            // KARAOKE manda sobre todo lo demas: una cumbia de karaoke es karaoke, no cumbia. Y NAVIDAD va
+            // detras por lo mismo (una "cumbia navidena" se guarda por navidad, que es cuando se pone).
+            if (Has(g, "karaoke")) return "Karaoke";
+            if (Has(g, "navidad", "navide", "villancico", "christmas", "xmas")) return "Navidad";
             if (Has(g, "k-pop", "kpop", "j-pop", "jpop", "anime", "idol")) return "K-Pop";
             if (Has(g, "metal", "thrash", "death", "heavy", "hardcore", "grindcore")) return "Metal";
             if (Has(g, "punk")) return "Punk";
-            if (Has(g, "gothic", "goth", "darkwave")) return "Gotico";
+            if (Has(g, "gothic", "goth", "gotic", "g\u00f3tic", "darkwave")) return "Gotico";
             if (Has(g, "industrial")) return "Industrial";
-            if (Has(g, "reggaeton", "reggaet", "perreo")) return "Reggaeton";
+            if (Has(g, "reggaeton", "reggaet", "reguet", "perreo", "dembow")) return "Reggaeton";
             if (Has(g, "hip", "rap", "trap")) return "Hip-Hop";
-            if (Has(g, "salsa", "mereng", "bachata", "tropical")) return "Tropical";
-            if (Has(g, "cumbia", "banda", "norte", "ranch", "mariach", "regional", "tejano", "grupera", "corrido", "duranguense", "sonidero")) return "Regional";
-            if (Has(g, "bolero", "tango", "ranchera", "balada", "romantic", "romant")) return "Bolero";
+            if (Has(g, "salsa", "mereng", "bachata", "tropical", "vallenato", "guarach", "mambo", "chachacha",
+                       "cha cha", "danzon", "danz\u00f3n", "guaguanco", "timba", "marimba", "son cubano")) return "Tropical";
+            if (Has(g, "cumbia", "banda", "norte", "ranch", "mariach", "regional", "tejan", "grupe", "corrido",
+                       "duranguense", "sonidero", "quebradita", "sierre", "huapango", "huasteco", "zapateado")) return "Regional";
+            if (Has(g, "bolero", "tango", "ranchera", "balada", "romantic", "romant", "rom\u00e1nt", "vals", "serenata")) return "Bolero";
             if (Has(g, "flamenco", "rumba", "copla")) return "Flamenco";
-            if (Has(g, "latin", "latino", "espan")) return "Latino";
+            if (Has(g, "latin", "latino", "espan", "samba", "sertanejo", "pagode", "forro")) return "Latino";
             if (Has(g, "reggae", "ska", "dub")) return "Reggae";
-            if (Has(g, "drum", "bass", "jungle", "breakbeat", "garage")) return "DnB";
-            if (Has(g, "electro", "techno", "house", "trance", "edm", "synth", "dance", "club", "dubstep", "rave", "hardstyle")) return "Electronica";
+            if (Has(g, "drum", "bass", "dnb", "d&b", "jungle", "breakbeat", "garage")) return "DnB";
+            if (Has(g, "electro", "electr\u00f3n", "techno", "tecno", "house", "trance", "edm", "synth", "dance", "club", "dubstep", "rave", "hardstyle", "tribal")) return "Electronica";
             if (Has(g, "ambient", "chill", "lo-fi", "lofi", "downtempo", "new age", "meditat")) return "Chill";
-            if (Has(g, "jazz", "swing", "bebop")) return "Jazz";
+            if (Has(g, "jazz", "swing", "bebop", "bossa")) return "Jazz";
             if (Has(g, "blues", "soul", "funk", "r&b", "rhythm", "motown")) return "Soul";
-            if (Has(g, "gospel", "christian", "worship", "cristiana")) return "Cristiana";
-            if (Has(g, "classic", "orchestr", "piano", "opera", "symphon", "baroque", "instrumental")) return "Clasica";
+            if (Has(g, "gospel", "christian", "worship", "cristian", "alabanza")) return "Cristiana";
+            if (Has(g, "classic", "clasic", "cl\u00e1sic", "orchestr", "orquest", "piano", "opera", "\u00f3pera", "symphon", "baroque", "instrumental")) return "Clasica";
             if (Has(g, "soundtrack", "score", "cinematic", "banda sonora")) return "Soundtrack";
             if (Has(g, "country", "bluegrass", "americana")) return "Country";
             if (Has(g, "folk", "acoustic", "celt")) return "Folk";
@@ -2771,94 +2796,68 @@ namespace Rocola
             if (Has(g, "oldies", "50s", "60s", "doo")) return "Oldies";
             if (Has(g, "world", "ethnic", "african", "arab", "india", "asian")) return "World";
             if (Has(g, "vocal", "capella", "capela")) return "Vocal";
-            if (Has(g, "comedy", "spoken", "podcast")) return "Hablado";
+            if (Has(g, "comedy", "spoken", "podcast", "hablado", "narracion", "narraci\u00f3n", "audiolibro")) return "Hablado";
             if (Has(g, "child", "kids", "infantil")) return "Infantil";
             if (Has(g, "pop")) return "Pop";
             if (Has(g, "rock", "grunge", "alternative", "indie")) return "Rock";
             return "Otros";
         }
 
-        // El color de una etiqueta canonica de GenreLabel. Hace falta porque el color de cada letra de la barra
-        // se guarda entre arranques y lo que se guarda es la ETIQUETA, no el genero crudo del ID3; y darle la
-        // etiqueta a GenreToColor no vale, porque "Clasica" no contiene "classic" ni "Gotico" contiene "goth".
-        // Que estos colores sigan siendo los MISMOS que los de GenreToColor lo vigila la bateria de la barra.
+        // EL COLOR DE CADA GENERO. Esta es LA tabla: no hay otra (GenreToColor pregunta aqui).
+        //
+        // Cada genero se queda en la familia de color que le toca -lo regional en naranjas, lo electronico en
+        // turquesas, lo clasico en azules- pero repartidos DENTRO de la familia para que no se confundan entre
+        // si. Antes habia parejas que eran el mismo color: Regional 225,120,30 y Latino 225,130,40 no se
+        // distinguian de ninguna manera, ni Reggaeton de Hip-Hop. Medido con la distancia "redmean" (la que se
+        // parece a lo que ve el ojo, no la de RGB a secas), la pareja mas parecida pasa de 25 a 53, y eso con
+        // dos generos MAS en la tabla.
         private static Color ColorDeEtiqueta(string etiqueta)
         {
             switch (etiqueta)
             {
-                case "K-Pop": return Color.FromArgb(149, 86, 220);
-                case "Metal": return Color.FromArgb(205, 45, 55);
-                case "Punk": return Color.FromArgb(232, 80, 58);
-                case "Gotico": return Color.FromArgb(112, 58, 150);
-                case "Industrial": return Color.FromArgb(150, 60, 70);
-                case "Reggaeton": return Color.FromArgb(150, 70, 210);
-                case "Hip-Hop": return Color.FromArgb(135, 60, 205);
-                case "Tropical": return Color.FromArgb(235, 95, 35);
-                case "Regional": return Color.FromArgb(225, 120, 30);
-                case "Bolero": return Color.FromArgb(195, 95, 70);
-                case "Flamenco": return Color.FromArgb(210, 110, 55);
-                case "Latino": return Color.FromArgb(225, 130, 40);
-                case "Reggae": return Color.FromArgb(40, 175, 85);
-                case "DnB": return Color.FromArgb(20, 155, 160);
-                case "Electronica": return Color.FromArgb(30, 175, 195);
-                case "Chill": return Color.FromArgb(70, 165, 175);
-                case "Jazz": return Color.FromArgb(215, 165, 45);
-                case "Soul": return Color.FromArgb(205, 145, 50);
-                case "Cristiana": return Color.FromArgb(210, 180, 75);
-                case "Clasica": return Color.FromArgb(95, 95, 205);
-                case "Soundtrack": return Color.FromArgb(110, 120, 190);
-                case "Country": return Color.FromArgb(170, 130, 55);
-                case "Folk": return Color.FromArgb(150, 140, 70);
-                case "Disco": return Color.FromArgb(212, 70, 160);
-                case "Oldies": return Color.FromArgb(192, 120, 90);
-                case "World": return Color.FromArgb(180, 110, 60);
-                case "Vocal": return Color.FromArgb(180, 150, 120);
-                case "Hablado": return Color.FromArgb(120, 130, 150);
-                case "Infantil": return Color.FromArgb(235, 180, 60);
-                case "Pop": return Color.FromArgb(215, 60, 140);
-                case "Rock": return Color.FromArgb(215, 90, 40);
+                case "Karaoke": return Color.FromArgb(70, 150, 245); // azul de escenario
+                case "Navidad": return Color.FromArgb(125, 200, 70); // verde pino claro
+                case "K-Pop": return Color.FromArgb(175, 100, 235); // lila claro
+                case "Metal": return Color.FromArgb(215, 40, 45); // rojo sangre
+                case "Punk": return Color.FromArgb(245, 85, 30); // naranja encendido
+                case "Gotico": return Color.FromArgb(100, 55, 150); // violeta oscuro
+                case "Industrial": return Color.FromArgb(145, 65, 80); // granate apagado
+                case "Reggaeton": return Color.FromArgb(195, 60, 190); // magenta
+                case "Hip-Hop": return Color.FromArgb(125, 70, 215); // violeta azulado
+                case "Tropical": return Color.FromArgb(255, 130, 40); // naranja mango
+                case "Regional": return Color.FromArgb(215, 120, 25); // naranja tierra
+                case "Bolero": return Color.FromArgb(175, 80, 85); // vino rosado
+                case "Flamenco": return Color.FromArgb(200, 130, 80); // arena tostada
+                case "Latino": return Color.FromArgb(190, 85, 45); // terracota
+                case "Reggae": return Color.FromArgb(40, 175, 85); // verde bandera
+                case "DnB": return Color.FromArgb(15, 145, 150); // turquesa oscuro
+                case "Electronica": return Color.FromArgb(35, 195, 210); // cian brillante
+                case "Chill": return Color.FromArgb(95, 175, 165); // verde agua
+                case "Jazz": return Color.FromArgb(225, 160, 40); // ambar
+                case "Soul": return Color.FromArgb(185, 130, 45); // mostaza
+                case "Cristiana": return Color.FromArgb(205, 195, 100); // oro palido
+                case "Clasica": return Color.FromArgb(90, 100, 215); // azul indigo
+                case "Soundtrack": return Color.FromArgb(110, 125, 200); // azul acero
+                case "Country": return Color.FromArgb(140, 120, 85); // caqui
+                case "Folk": return Color.FromArgb(120, 150, 90); // verde oliva
+                case "Disco": return Color.FromArgb(225, 75, 175); // rosa neon
+                case "Oldies": return Color.FromArgb(170, 115, 105); // rosa palo
+                case "World": return Color.FromArgb(160, 95, 45); // marron
+                case "Vocal": return Color.FromArgb(200, 175, 150); // crema
+                case "Hablado": return Color.FromArgb(135, 140, 140); // gris
+                case "Infantil": return Color.FromArgb(255, 190, 55); // amarillo vivo
+                case "Pop": return Color.FromArgb(235, 55, 110); // rosa fuerte
+                case "Rock": return Color.FromArgb(225, 95, 75); // coral
                 default: return DefaultAccent;
             }
         }
 
-        private static Color GenreToColor(string genre)
-        {
-            if (string.IsNullOrEmpty(genre)) return DefaultAccent;
-            string g = genre.ToLowerInvariant();
-            // K-pop / J-pop / anime -> morado
-            if (Has(g, "k-pop", "kpop", "j-pop", "jpop", "anime", "idol")) return Color.FromArgb(149, 86, 220);
-            if (Has(g, "metal", "thrash", "death", "heavy", "hardcore", "grindcore")) return Color.FromArgb(205, 45, 55);
-            if (Has(g, "punk")) return Color.FromArgb(232, 80, 58);
-            if (Has(g, "gothic", "goth", "darkwave")) return Color.FromArgb(112, 58, 150);
-            if (Has(g, "industrial")) return Color.FromArgb(150, 60, 70);
-            if (Has(g, "reggaeton", "reggaet", "perreo")) return Color.FromArgb(150, 70, 210);
-            if (Has(g, "hip", "rap", "trap")) return Color.FromArgb(135, 60, 205);
-            if (Has(g, "salsa", "mereng", "bachata", "tropical")) return Color.FromArgb(235, 95, 35);
-            if (Has(g, "cumbia", "banda", "norte", "ranch", "mariach", "regional", "tejano", "grupera", "corrido", "duranguense", "sonidero")) return Color.FromArgb(225, 120, 30);
-            if (Has(g, "bolero", "tango", "ranchera")) return Color.FromArgb(195, 95, 70);
-            if (Has(g, "flamenco", "rumba", "copla")) return Color.FromArgb(210, 110, 55);
-            if (Has(g, "latin", "latino", "espan")) return Color.FromArgb(225, 130, 40);
-            if (Has(g, "reggae", "ska", "dub")) return Color.FromArgb(40, 175, 85);
-            if (Has(g, "drum", "bass", "jungle", "breakbeat", "garage")) return Color.FromArgb(20, 155, 160);
-            if (Has(g, "electro", "techno", "house", "trance", "edm", "synth", "dance", "club", "dubstep", "rave", "hardstyle")) return Color.FromArgb(30, 175, 195);
-            if (Has(g, "ambient", "chill", "lo-fi", "lofi", "downtempo", "new age", "meditat")) return Color.FromArgb(70, 165, 175);
-            if (Has(g, "jazz", "swing", "bebop")) return Color.FromArgb(215, 165, 45);
-            if (Has(g, "blues", "soul", "funk", "r&b", "rhythm", "motown")) return Color.FromArgb(205, 145, 50);
-            if (Has(g, "gospel", "christian", "worship", "cristiana")) return Color.FromArgb(210, 180, 75);
-            if (Has(g, "classic", "orchestr", "piano", "opera", "symphon", "baroque", "instrumental")) return Color.FromArgb(95, 95, 205);
-            if (Has(g, "soundtrack", "score", "cinematic", "banda sonora")) return Color.FromArgb(110, 120, 190);
-            if (Has(g, "country", "bluegrass", "americana")) return Color.FromArgb(170, 130, 55);
-            if (Has(g, "folk", "acoustic", "celt")) return Color.FromArgb(150, 140, 70);
-            if (Has(g, "disco")) return Color.FromArgb(212, 70, 160);
-            if (Has(g, "oldies", "50s", "60s", "doo")) return Color.FromArgb(192, 120, 90);
-            if (Has(g, "world", "ethnic", "african", "arab", "india", "asian")) return Color.FromArgb(180, 110, 60);
-            if (Has(g, "vocal", "capella", "capela")) return Color.FromArgb(180, 150, 120);
-            if (Has(g, "comedy", "spoken", "podcast")) return Color.FromArgb(120, 130, 150);
-            if (Has(g, "child", "kids", "infantil")) return Color.FromArgb(235, 180, 60);
-            if (Has(g, "pop")) return Color.FromArgb(215, 60, 140);
-            if (Has(g, "rock", "grunge", "alternative", "indie")) return Color.FromArgb(215, 90, 40);
-            return DefaultAccent;
-        }
+        // EL COLOR DE UN GENERO CRUDO (el que trae el ID3). Antes esto era una segunda lista de palabras,
+        // copia de la de GenreLabel, y las dos ya se habian desparejado: una cancion marcada "Balada" salia
+        // con el color del Bolero en un sitio y con el azul de por defecto en otro. Ahora se traduce a
+        // etiqueta y se le pide su color, asi que hay UN SOLO sitio donde vive el color de cada genero y no
+        // se pueden volver a desparejar.
+        private static Color GenreToColor(string genre) { return ColorDeEtiqueta(GenreLabel(genre)); }
 
         private Font Bold(float size) { return new Font(this.Font.FontFamily, size, FontStyle.Bold); }
 
@@ -3810,7 +3809,13 @@ namespace Rocola
             "rock", "pop", "metal", "punk", "rap", "trap", "hip-hop", "hiphop", "jazz", "blues", "funk", "soul",
             "disco", "tecno", "techno", "trance", "electronica", "electrónica", "dance",
             "clasica", "clásica", "classical", "instrumental", "infantil", "infantiles", "gospel", "country",
-            "chill", "oldies", "soundtrack"
+            "chill", "oldies", "soundtrack",
+            // Lo que se ve de verdad en las carpetas de una rocola de bar y no estaba: sin esto, una carpeta
+            // llamada "Karaokes" o "Vallenatos" se quedaba sin genero y por tanto sin color.
+            "karaoke", "karaokes", "navidad", "navidenas", "navideñas", "villancicos",
+            "vallenato", "vallenatos", "quebradita", "quebraditas", "huapango", "huapangos",
+            "sierreno", "sierreño", "zapateado", "guaracha", "guarachas", "mambo", "mambos",
+            "danzon", "danzón", "marimba", "grupero", "gruperos", "samba", "sambas", "bossa"
         };
 
         private string GeneroPorNombre(Album a)
@@ -4435,7 +4440,7 @@ namespace Rocola
                                 if (dur > 0.01f) durCache[ruta] = dur;
                                 // SOBRESCRIBE lo que hubiera: la medida del pre-analisis es de la cancion COMPLETA,
                                 // asi que es mejor que lo aprendido a medias oyendola (que promediaba entre pasadas).
-                                if (rms > 0.0001f) loudCache[ruta] = rms;
+                                if (rms > 0f) loudCache[ruta] = rms;   // incluido el silencio (ver LoudMudo)
                                 if (eqCurve != null) { eqCache[ruta] = eqCurve; eqCacheVer++; eqDirty = true; }   // huella tonal del EQ automatico, ya lista
                                 if (preScanLeft > 0) preScanLeft--;
                                 if (panelSongs != null && panelSongs.Visible) RefrescaLista();   // que aparezca la duracion recien sabida
@@ -4674,6 +4679,12 @@ namespace Rocola
                 float recorte = (nSamp > 0) ? (float)((double)clipN / nSamp) : 0f;
                 if (nSamp < 40000) return durSec > 0.01f;   // muy poco audio util: al menos queda la duracion
                 rms = (float)Math.Sqrt(sumSq / nSamp);
+                // SILENCIO DE VERDAD. Un archivo sin nada de sonido da cero, y con cero no se guardaba: se
+                // quedaba como "sin medir", se volvia a medir en cada arranque para siempre, y no aparecia
+                // nunca en la limpieza de videos mudos. Se le pone un valor minusculo -por debajo del umbral
+                // con el que TODO el programa decide "esto no tiene medida util", asi que nadie va a intentar
+                // subirlo cien mil veces- para que quede APUNTADO como medido y callado.
+                if (rms < LoudMudo) rms = LoudMudo;
                 // Huella tonal en dB por banda, referida a la MEDIANA del cuerpo (158 Hz - 5.6 kHz): exactamente
                 // la misma cuenta que hace FinalizeEqMeasure al aprenderla oyendo la cancion.
                 if (bpN >= 40000 && !esVideo)
@@ -7660,6 +7671,218 @@ namespace Rocola
                 }
             }
             return n;
+        }
+
+        // LA VENTANA DE LIMPIEZA. Ensena la lista ENTERA -ruta y cuanto le falta a cada uno para sonar como
+        // el resto- y no borra nada hasta que se pulsa el boton rojo. Es la unica parte de la rocola que
+        // toca los archivos del cliente, asi que se hace a la vista y con red: van a la PAPELERA, y ademas
+        // queda apuntado en rocola_borrados.txt que se fue y con que medida.
+        private void ShowLimpiezaVideos()
+        {
+            List<float> db;
+            List<string> mudos = VideosMudos(out db);
+            FontFamily ff = FamiliaUi();
+            using (Font fTit = new Font(ff, 13f, FontStyle.Bold))
+            using (Font fDes = new Font(ff, 9f))
+            using (Font fLis = new Font(ff, 9f))
+            using (Font fBot = new Font(ff, 10f, FontStyle.Bold))
+            using (Form dlg = new Form())
+            {
+                dlg.Text = "Rocola  -  Videos que no suenan";
+                dlg.FormBorderStyle = FormBorderStyle.FixedDialog;
+                dlg.MaximizeBox = false; dlg.MinimizeBox = false; dlg.ShowInTaskbar = false; dlg.ShowIcon = false;
+                dlg.StartPosition = FormStartPosition.CenterParent;
+                dlg.ClientSize = new Size(820, 520);
+                dlg.BackColor = Color.FromArgb(11, 14, 32);
+
+                Label lTit = new Label(); lTit.SetBounds(20, 16, 780, 26); lTit.BackColor = Color.Transparent;
+                lTit.ForeColor = Color.FromArgb(232, 240, 255); lTit.Font = fTit;
+                lTit.Text = (mudos.Count == 0) ? "No hay videos mudos" : (mudos.Count + " videos que practicamente no suenan");
+
+                Label lDes = new Label(); lDes.SetBounds(20, 46, 780, 54); lDes.BackColor = Color.Transparent;
+                lDes.ForeColor = Color.FromArgb(150, 162, 196); lDes.Font = fDes;
+                lDes.Text = (mudos.Count == 0)
+                    ? "Todos los videos MEDIDOS suenan. Los que aun no se han medido no se cuentan aqui:\ndeja que el repaso de la biblioteca vaya haciendo su trabajo."
+                    : ("Estan mas de 30 dB por debajo del volumen de las canciones: puesto en la rocola, el cliente no oiria nada.\n"
+                       + "Solo salen los que YA se midieron. Se van a la PAPELERA de Windows, asi que si alguno resulta que si\n"
+                       + "sonaba, se saca de ahi. Queda apuntado en rocola_borrados.txt, junto al programa.");
+
+                ListBox lst = new ListBox();
+                lst.SetBounds(20, 106, 780, 340);
+                lst.BackColor = Color.FromArgb(16, 20, 44);
+                lst.ForeColor = Color.FromArgb(214, 224, 246);
+                lst.BorderStyle = BorderStyle.None;
+                lst.Font = fLis;
+                lst.SelectionMode = SelectionMode.None;
+                lst.IntegralHeight = false;
+                for (int i = 0; i < mudos.Count; i++)
+                    lst.Items.Add(db[i].ToString("0", CultureInfo.InvariantCulture).PadLeft(4) + " dB    " + mudos[i]);
+
+                BotonPlano bNo = new BotonPlano(); bNo.SetBounds(20, 462, 200, 40); bNo.Font = fBot;
+                bNo.Text = "Dejarlos como estan";
+                BotonPlano bSi = new BotonPlano(); bSi.SetBounds(560, 462, 240, 40); bSi.Font = fBot;
+                bSi.Text = "Mandar los " + mudos.Count + " a la papelera";
+                bSi.Relleno = Color.FromArgb(112, 40, 34); bSi.Borde = Color.FromArgb(196, 92, 76);
+                bSi.Visible = mudos.Count > 0;
+
+                bNo.Click += delegate { dlg.Close(); };
+                bSi.Click += delegate
+                {
+                    bSi.Enabled = false; bSi.Text = "Borrando..."; bSi.Invalidate(); Application.DoEvents();
+                    int n = BorraVideosMudos(mudos, db);
+                    dlg.Close();
+                    ShowToast(n > 0 ? (n + " videos a la papelera") : "No se pudo borrar (Windows dijo que no)",
+                              n > 0 ? Color.FromArgb(40, 130, 90) : Color.FromArgb(150, 60, 45));
+                };
+                dlg.Controls.Add(lTit); dlg.Controls.Add(lDes); dlg.Controls.Add(lst);
+                dlg.Controls.Add(bNo); dlg.Controls.Add(bSi);
+                dlg.ShowDialog(this);
+            }
+        }
+
+        // Los manda a la papelera, los quita de la biblioteca y deja constancia. Devuelve cuantos se fueron.
+        private int BorraVideosMudos(List<string> mudos, List<float> db)
+        {
+            if (mudos == null || mudos.Count == 0) return 0;
+            if (!ALaPapelera(mudos)) return 0;   // Windows no pudo: no se toca nada mas, la biblioteca queda igual
+            // Se apunta lo que DE VERDAD se fue, comprobandolo archivo por archivo: Windows puede negarse con
+            // alguno -en uso, sin permiso, en un disco de red sin papelera- y el apunte tiene que decir la
+            // verdad, no lo que se pidio. Que no se pueda escribir no impide la limpieza.
+            try
+            {
+                StringBuilder sb = new StringBuilder();
+                string cuando = DateTime.Now.ToString("yyyy-MM-dd HH:mm");
+                for (int i = 0; i < mudos.Count; i++)
+                {
+                    if (mudos[i] == null || File.Exists(mudos[i])) continue;
+                    sb.Append(cuando).Append("  a la papelera  ")
+                      .Append(((i < db.Count) ? db[i] : 0f).ToString("0", CultureInfo.InvariantCulture)).Append(" dB  ")
+                      .Append(mudos[i]).Append("\r\n");
+                }
+                if (sb.Length > 0) File.AppendAllText(Path.Combine(Application.StartupPath, "rocola_borrados.txt"), sb.ToString());
+            }
+            catch { }
+            int n = QuitaDeLaBiblioteca(mudos);
+            SaveLoudCache();
+            videoBaseFirma = -1;    // el volumen base automatico se decide con los que QUEDAN
+            RecalculaLetras();
+            RefreshAlbums();
+            return n;
+        }
+
+        // Saca de la biblioteca los archivos que YA NO ESTAN en el disco, sin tener que re-escanear: de sus
+        // discos, de la tabla de medidas y de las de duracion. Los discos que se queden sin un solo video
+        // dejan de ser seccion de video, y si no queda ninguno, la casilla VIDEO se va de la barra.
+        //
+        // Se comprueba archivo por archivo que de verdad no este: si Windows dijo que si pero el archivo
+        // sigue ahi -estaba en uso, sin permiso, en un disco de red sin papelera-, ese se queda como estaba.
+        // Mejor que la biblioteca diga la verdad a que se pierda un video que si existe.
+        private int QuitaDeLaBiblioteca(List<string> rutas)
+        {
+            if (rutas == null || rutas.Count == 0) return 0;
+            HashSet<string> fuera = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            int n = 0;
+            for (int i = 0; i < rutas.Count; i++)
+            {
+                if (rutas[i] == null || File.Exists(rutas[i])) continue;
+                fuera.Add(rutas[i]); n++;
+                loudCache.Remove(rutas[i]); durCache.Remove(rutas[i]); durFast.Remove(rutas[i]);
+            }
+            if (n == 0) return 0;
+            if (videoAlbums != null)
+            {
+                for (int i = 0; i < videoAlbums.Count; i++)
+                {
+                    Album va = videoAlbums[i];
+                    if (va == null || va.VideoFiles == null) continue;
+                    for (int j = va.VideoFiles.Count - 1; j >= 0; j--)
+                        if (va.VideoFiles[j] != null && fuera.Contains(va.VideoFiles[j])) va.VideoFiles.RemoveAt(j);
+                }
+                for (int i = videoAlbums.Count - 1; i >= 0; i--)
+                    if (videoAlbums[i] == null || videoAlbums[i].VideoFiles == null || videoAlbums[i].VideoFiles.Count == 0)
+                        videoAlbums.RemoveAt(i);
+            }
+            if (cachedVideoPaths != null) cachedVideoPaths.RemoveAll(delegate (string v) { return v != null && fuera.Contains(v); });
+            if (letterAvailable != null && (videoAlbums == null || videoAlbums.Count == 0)) letterAvailable.Remove(VideoMark);
+            return n;
+        }
+
+        // ==========  LIMPIEZA: LOS VIDEOS QUE NO SUENAN  ==========
+        //
+        // En una biblioteca que lleva anos armandose acaban colandose videos con la pista de sonido rota,
+        // muda o grabada tan bajo que no se oye nada. En la rocola son una loteria mala: el cliente paga, sale
+        // el video y no suena. Aqui se localizan -de los que YA estan medidos; a uno sin medir no se le toca-
+        // y se pueden mandar a la papelera.
+        //
+        // El corte son 30 dB por debajo del volumen objetivo de las canciones. No es "un poco bajo": es que
+        // con el resto de la rocola a volumen normal, eso es un susurro que no se oye desde la barra.
+        private const float LoudMudo = 0.00001f;   // marca de "medido y en silencio" (se guarda y se relee tal cual)
+        private const float VideoMudoDb = -30f;    // a partir de aqui, para el local, no suena
+
+        // Los videos medidos que practicamente no suenan, del mas callado al menos. En 'db' queda lo que le
+        // falta a cada uno para llegar al volumen de las canciones (negativo).
+        private List<string> VideosMudos(out List<float> db)
+        {
+            List<string> lista = new List<string>();
+            db = new List<float>();
+            if (videoAlbums == null || normTarget <= 0.0001f) return lista;
+            float corte = (float)(normTarget * Math.Pow(10.0, VideoMudoDb / 20.0));
+            List<KeyValuePair<string, float>> hall = new List<KeyValuePair<string, float>>();
+            HashSet<string> vistos = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < videoAlbums.Count; i++)
+            {
+                Album va = videoAlbums[i];
+                if (va == null || va.VideoFiles == null) continue;
+                for (int j = 0; j < va.VideoFiles.Count; j++)
+                {
+                    string vp = va.VideoFiles[j]; float rms;
+                    if (vp == null || !vistos.Add(vp)) continue;
+                    if (!loudCache.TryGetValue(vp, out rms)) continue;   // SIN MEDIR: ese no se toca, faltaria mas
+                    if (rms > corte) continue;
+                    hall.Add(new KeyValuePair<string, float>(vp, rms));
+                }
+            }
+            hall.Sort(delegate (KeyValuePair<string, float> a, KeyValuePair<string, float> b) { return a.Value.CompareTo(b.Value); });
+            for (int i = 0; i < hall.Count; i++)
+            {
+                lista.Add(hall[i].Key);
+                db.Add((float)(20.0 * Math.Log10(Math.Max(hall[i].Value, 1e-9f) / normTarget)));
+            }
+            return lista;
+        }
+
+        // A LA PAPELERA, no al vacio. Es la misma operacion que hace el explorador de Windows al pulsar
+        // Suprimir: si alguno resulta que si sonaba, se saca de la papelera y no ha pasado nada. Se mandan
+        // TODOS de una sola llamada (la lista va con un cero entre archivo y archivo, y dos al final, que es
+        // como la pide Windows). Devuelve true solo si Windows dijo que salio bien; si algo falla, no se
+        // borra nada y el que llama lo cuenta.
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential, CharSet = System.Runtime.InteropServices.CharSet.Auto)]
+        private struct SHFILEOPSTRUCT
+        {
+            public IntPtr hwnd;
+            public int wFunc;
+            [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPTStr)] public string pFrom;
+            [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPTStr)] public string pTo;
+            public short fFlags;
+            [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)] public bool fAnyOperationsAborted;
+            public IntPtr hNameMappings;
+            [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPTStr)] public string lpszProgressTitle;
+        }
+        [System.Runtime.InteropServices.DllImport("shell32.dll", CharSet = System.Runtime.InteropServices.CharSet.Auto)]
+        private static extern int SHFileOperation(ref SHFILEOPSTRUCT op);
+
+        private static bool ALaPapelera(List<string> rutas)
+        {
+            if (rutas == null || rutas.Count == 0) return true;
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < rutas.Count; i++) { sb.Append(rutas[i]); sb.Append('\0'); }
+            sb.Append('\0');
+            SHFILEOPSTRUCT op = new SHFILEOPSTRUCT();
+            op.wFunc = 3;                    // FO_DELETE
+            op.pFrom = sb.ToString();
+            op.fFlags = 0x0454;              // A LA PAPELERA (0x40) + sin preguntar (0x10) + sin ventanas (0x4 y 0x400)
+            try { return SHFileOperation(ref op) == 0 && !op.fAnyOperationsAborted; }
+            catch { return false; }
         }
 
         // Abre y reproduce un video en el reproductor de la derecha (lo llama PlayNext).
