@@ -3296,7 +3296,7 @@ namespace Rocola
             nombreTag.Clear();              // biblioteca nueva: lo adivinado por el nombre se vuelve a mirar
             RecalculaLetras();
 
-            string order = "\u2605#ABCDEFGHIJKLMNOPQRSTUVWXYZ\u25BA";
+            string order = LetrasOrden;
             currentLetter = '#';
             // default: primera letra REAL disponible (NO arrancar en una seccion especial)
             bool gotReal = false;
@@ -3556,6 +3556,21 @@ namespace Rocola
 
         // Arma los dos diccionarios ENTEROS y se los entrega a la barra de una pieza. La barra los lee desde
         // el dibujado, asi que nunca puede pillar uno a medio llenar: o ve el de antes, o ve el nuevo.
+        // El orden de siempre, pero solo con las que tienen algo detras. Si no hubiera ninguna -biblioteca
+        // vacia o a medio leer- se deja "#": la barra nunca se queda sin una sola casilla, que la dejaria sin
+        // ancho por casilla y sin nada donde estar parado.
+        private const string LetrasOrden = "\u2605#ABCDEFGHIJKLMNOPQRSTUVWXYZ\u25BA";
+        private string LetrasVisibles()
+        {
+            StringBuilder sb = new StringBuilder(LetrasOrden.Length);
+            for (int i = 0; i < LetrasOrden.Length; i++)
+            {
+                char c = LetrasOrden[i];
+                if (letterAvailable == null || letterAvailable.Contains(c)) sb.Append(c);
+            }
+            return (sb.Length > 0) ? sb.ToString() : "#";
+        }
+
         private void RecalculaLetras()
         {
             if (letterBar == null) return;
@@ -3594,6 +3609,12 @@ namespace Rocola
             foreach (KeyValuePair<char, string> kv in letterTag) tinte[kv.Key] = ColorDeEtiqueta(kv.Value);
             letterBar.Counts = cuenta;
             letterBar.Tints = tinte;
+            // LAS LETRAS VACIAS NI SE DIBUJAN. Antes salian las 29 casillas siempre y las que no tenian nada
+            // se pintaban apagadas: ocupaban su sitio para no decir nada. Ahora la barra solo lleva las que
+            // tienen contenido, asi que las que quedan se reparten TODO el ancho: la casilla de cada una es
+            // mas grande -mas facil de atinar con el dedo- y, cuando la barra va estrecha (con un video puesto
+            // al lado), la letra misma tambien crece, porque ahi el cuerpo lo limitaba el ancho de la casilla.
+            letterBar.Letters = LetrasVisibles();
             letterBar.Invalidate();
             if (searchOverlay != null) { searchOverlay.DatosVer++; if (searchOpen) searchOverlay.Invalidate(); }
             // El genero de cada cancion tambien se ensena DENTRO del disco. Como se aprende en segundo plano,
@@ -5510,7 +5531,7 @@ namespace Rocola
         // lado (VIDEO -> TOP/#/A... y viceversa): el abecedario es una rueda, nunca se atasca.
         private bool GotoLetter(int dir, bool wrap)
         {
-            string order = "\u2605#ABCDEFGHIJKLMNOPQRSTUVWXYZ\u25BA";
+            string order = LetrasOrden;
             int n = order.Length;
             int idx = order.IndexOf(currentLetter);
             if (idx < 0) idx = 0;
