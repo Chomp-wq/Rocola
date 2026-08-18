@@ -1,0 +1,76 @@
+# Las pruebas de la rocola
+
+Cada archivo `.cs` de esta carpeta es una **batería**: un programa suelto que carga el
+ejecutable de la rocola y le mira las tripas por dentro. No son pruebas de las que solo
+comprueban que una función devuelve 2+2=4; miden lo que cuesta algo **de verdad**, cuentan
+los píxeles de lo que se pinta, o leen el código ya compilado para comprobar que una función
+sigue enchufada donde debe.
+
+Cada una escribe líneas `OK` y `FALLO` y devuelve cuántos fallos hubo.
+
+## Cómo se corren
+
+```sh
+sh pruebas/todo.sh              # la suite entera (compila la rocola sola y arranca)
+sh pruebas/todo.sh disco ssd    # solo esas dos
+sh pruebas/todo.sh --lista      # cuáles hay
+```
+
+No hay que preparar nada. El lanzador detecta si la rama es la de Windows XP (.NET 3.5) o la
+de tarjeta gráfica (.NET 4.8), compila los dos perfiles —con y sin GPU— y corre todo. Hace
+falta `mcs` (Mono), `xvfb-run` y `python3`.
+
+## Qué vigila cada una
+
+**Sonido**
+
+| batería | qué comprueba |
+|---|---|
+| `dsee` | el reconstructor de agudos: que no se cuele un canal en el otro al meter los dos en una FFT, que apagado sea bit a bit idéntico, que una canción completa salga intacta, y que el realce no empuje dos veces lo mismo |
+| `atoron` | lo que la pantalla se queda parada cada vez que hay que dar de comer al sonido |
+| `nivel`, `bajo`, `bajoauto` | nivelado de volumen y bajo psicoacústico |
+| `eqauto`, `eqia`, `calidad` | el EQ automático y su objetivo por canción |
+| `duracion`, `titulo`, `etiqueta`, `genero` | lo que se lee de cada archivo |
+
+**Pantalla**
+
+| batería | qué comprueba |
+|---|---|
+| `letrero` | que ningún texto salga cortado ni se calle teniendo sitio |
+| `hojea`, `pagina` | pasar de página: que lo horneado no se quede viejo y que ninguna página cueste el triple |
+| `busca`, `buscaigual`, `busmov`, `parcial` | el buscador: que rinda y que se vea igual que antes |
+| `abc`, `neon`, `espacio`, `barrido2` | la barra de letras y los efectos |
+| `sala` | dentro de un disco: las marcas de "sonando" y "en cola" |
+| `fondo`, `anim`, `presencia`, `barrido`, `tope`, `calma` | la aurora y el fondo reactivo (sólo con tarjeta gráfica) |
+
+**Recursos**
+
+| batería | qué comprueba |
+|---|---|
+| `sobras` | que un cuadro en reposo no reserve ni un byte de memoria |
+| `gasto` | que la caché de carátulas no crezca, que lo expulsado se libere de verdad, y lo que ocupa una biblioteca de 50.000 canciones |
+| `resol` | que cambiar la resolución con la rocola abierta no la deje lenta |
+| `disco`, `ssd` | disco duro contra SSD |
+| `cosecha` | que el entrenamiento pasivo siga juntando material |
+
+**Herramientas de medida** (no son pruebas de pasa/falla; se corren a mano)
+
+| archivo | para qué |
+|---|---|
+| `dseeperf.cs` | dónde se va el tiempo dentro del reconstructor de agudos, por partes |
+| `modelo.cs` | lo que costaría un modelo de IA más grande, tamaño por tamaño |
+| `memoria.cs` | dónde se va la memoria con una biblioteca grande |
+| `capacidad.py` | si un modelo de IA más grande predice mejor (entrena varios tamaños sobre los mismos datos) |
+| `genmodelos.py` | genera modelos de varios tamaños para medirlos |
+
+Los `diag*.cs` y `comp*.cs` son diagnósticos de un rato concreto: se dejan porque explican
+cómo se cazó un fallo, pero no forman parte de la suite.
+
+## Añadir una batería nueva
+
+1. Escribe `mibateria.cs` con un `Main` que reciba la ruta del ejecutable como primer argumento.
+2. Que imprima `  OK  ` / `  FALLO  ` por cada cosa que compruebe y devuelva el número de fallos.
+3. Añade su nombre a la lista `CPU=` (o `GPU=`) de `todo.sh`.
+
+**La regla que se sigue aquí:** antes de arreglar algo, la batería tiene que **fallar** con el
+código de antes. Una prueba que pasa en las dos versiones no vigila nada.
