@@ -32,24 +32,31 @@ if [ "$1" = "--lista" ]; then
   exit 0
 fi
 
-# --- Que version de .NET pide esta rama. La de XP compila con -sdk:2; la de tarjeta grafica usa
-#     cosas de .NET 4 y ahi falla, asi que se prueba y se cae al otro. ---
+# --- Que version de .NET pide esta rama. Lo manda la RAMA, no el compilador: el codigo de la rama
+#     de tarjeta grafica tambien compila con -sdk:2, asi que probar y ver si cuela elegiria mal y
+#     estariamos midiendo un ejecutable que no es el que se instala. Si la rama no se reconoce
+#     -por ejemplo en una copia suelta sin historial-, se prueba .NET 3.5 y se cae al 4.8. ---
+RAMA="$(git -C "$RAIZ" rev-parse --abbrev-ref HEAD 2>/dev/null)"
+case "$RAMA" in
+  rocola-hd) SDK=4; ORDEN="4" ;;      # la del equipo con tarjeta grafica: .NET 4.8
+  ?*)        SDK=2; ORDEN="2" ;;      # la de Windows XP: .NET 3.5
+  *)         SDK=2; ORDEN="2 4" ;;    # sin rama conocida: se prueban los dos
+esac
 echo "  compilando la rocola..."
-SDK=2
-if ! mcs -sdk:2 -langversion:5 -warn:4 -target:winexe -out:rocola_cpu.exe \
-     -r:System.Windows.Forms.dll -r:System.Drawing.dll -r:"$NAUDIO" $FUENTES > /tmp/c_rocola.txt 2>&1; then
-  SDK=4
-  if ! mcs -sdk:4 -langversion:5 -warn:4 -target:winexe -out:rocola_cpu.exe \
+hecho=0
+for k in $ORDEN; do
+  if mcs -sdk:$k -langversion:5 -warn:4 -target:winexe -out:rocola_cpu.exe \
        -r:System.Windows.Forms.dll -r:System.Drawing.dll -r:"$NAUDIO" $FUENTES > /tmp/c_rocola.txt 2>&1; then
-    echo "  LA ROCOLA NO COMPILA:"; tail -12 /tmp/c_rocola.txt; exit 1
+    SDK=$k; hecho=1; break
   fi
-fi
+done
+if [ $hecho -eq 0 ]; then echo "  LA ROCOLA NO COMPILA:"; tail -12 /tmp/c_rocola.txt; exit 1; fi
 if [ -s /tmp/c_rocola.txt ]; then echo "  (avisos al compilar)"; cat /tmp/c_rocola.txt; fi
 if ! mcs -sdk:$SDK -langversion:5 -warn:4 -target:winexe -out:rocola_gpu.exe -d:ROCOLA_GPU \
      -r:System.Windows.Forms.dll -r:System.Drawing.dll -r:"$NAUDIO" $FUENTES > /tmp/c_rocola_gpu.txt 2>&1; then
   echo "  EL PERFIL CON TARJETA GRAFICA NO COMPILA:"; tail -12 /tmp/c_rocola_gpu.txt; exit 1
 fi
-echo "  rocola compilada (.NET $([ $SDK = 2 ] && echo 3.5 || echo 4.8), los dos perfiles, 0 avisos)"
+echo "  rocola compilada (rama ${RAMA:-desconocida}, .NET $([ $SDK = 2 ] && echo 3.5 || echo 4.8), los dos perfiles, 0 avisos)"
 echo
 
 # --- Si se pidieron baterias sueltas, se reparten segun a que perfil van ---

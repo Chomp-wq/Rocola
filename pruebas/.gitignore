@@ -7,3 +7,7 @@ mp3s/
 wav/
 src_*/
 modelo_*.bin
+# lo que escriben las propias baterias al correr
+rocola_*.txt
+rocola_*.bin
+_tmp_ref*/

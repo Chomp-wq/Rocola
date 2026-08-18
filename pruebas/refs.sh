@@ -17,7 +17,7 @@ case "$RAMA" in
   *)         ANTES_BUSQUEDA=7f5b443; ANTES_DIBUJO=705c5d3; ANTERIOR=dc4a42d; SDK="-sdk:2 -langversion:5";   FUENTES="Rocola/Form1.cs Rocola/Form1.Designer.cs Rocola/Program.cs Rocola/D3D9Star.cs" ;;
 esac
 saca() {   # $1 = commit   $2 = salida
-  tmp="$D/../src_$2"
+  tmp="$D/_tmp_ref_$2"
   rm -rf "$tmp"; mkdir -p "$tmp"
   for f in $FUENTES; do
     n="$(basename "$f")"
@@ -30,3 +30,4 @@ saca() {   # $1 = commit   $2 = salida
 saca "$ANTES_BUSQUEDA" rocola_ref.exe
 saca "$ANTES_DIBUJO"   rocola_prev.exe
 saca "$ANTERIOR"       rocola_ant.exe
+rm -rf "$D"/_tmp_ref_*   # las copias del codigo viejo ya no hacen falta
