@@ -32,6 +32,7 @@ falta `mcs` (Mono), `xvfb-run` y `python3`.
 | `limite` | que el limitador BAJE la ganancia en vez de recortar: distorsión de un tono fuerte y aplanado de la punta en un golpe seco |
 | `eqauto`, `eqia`, `calidad` | el EQ automático y su objetivo por canción |
 | `duracion`, `titulo`, `etiqueta`, `genero` | lo que se lee de cada archivo |
+| `videos` | que los videos entren en el repaso que los mide, y que suenen todos parejo: el reproductor de Windows sólo sabe BAJAR, así que se comprueba con qué volumen quedaría cada uno y cuánta diferencia queda entre el que más suena y el que menos |
 
 **Pantalla**
 
@@ -41,6 +42,8 @@ falta `mcs` (Mono), `xvfb-run` y `python3`.
 | `hojea`, `pagina` | pasar de página: que lo horneado no se quede viejo y que ninguna página cueste el triple |
 | `busca`, `buscaigual`, `busmov`, `parcial` | el buscador: que rinda y que se vea igual que antes |
 | `abc`, `neon`, `espacio`, `barrido2` | la barra de letras y los efectos |
+| `vacias` | que las letras sin discos detrás no se dibujen, y que las que quedan salgan más grandes |
+| `franja` | la franja de abajo: que al sonar una canción se vea de qué género es, y que los créditos y la cola se lean de lejos |
 | `estrellas` | que el fondo tenga las cuatro siluetas de estrella, que el color fuerte se lo queden las grandes y que dibujarlo no cueste más |
 | `sala` | dentro de un disco: las marcas de "sonando" y "en cola" |
 | `fondo`, `anim`, `presencia`, `barrido`, `tope`, `calma` | la aurora y el fondo reactivo (sólo con tarjeta gráfica) |
@@ -65,6 +68,7 @@ falta `mcs` (Mono), `xvfb-run` y `python3`.
 | `memoria.cs` | dónde se va la memoria con una biblioteca grande |
 | `cuadro.cs` | de qué se compone un cuadro de pantalla cuando no ha cambiado nada |
 | `vercielo.cs` | saca una imagen del cielo estrellado para poder mirarlo |
+| `pantalla.cs` | dibuja la pantalla entera (1024x768) en un PNG, con los controles de verdad, para mirarla |
 | `cachemem.cs` | lo que cuesta rehacer una carátula que se salió de la caché, y lo que costaría una caché mayor |
 | `capacidad.py` | si un modelo de IA más grande predice mejor (entrena varios tamaños sobre los mismos datos) |
 | `genmodelos.py` | genera modelos de varios tamaños para medirlos |

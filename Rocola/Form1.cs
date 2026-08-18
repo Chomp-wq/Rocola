@@ -66,6 +66,7 @@ namespace Rocola
         private AlbumView albumView;
         private Label lblStatus, lblNow, lblNext, lblTime, lblAlbum, lblToast;
         private PastillaView pastCred, pastCola;   // creditos y cola, en capsula
+        private GeneroView pastGenero;             // de que genero es lo que suena, detras del artista
         private HeaderView headerView;   // nombre de la seccion + en que pagina estas
         // Linea de ARRIBA de "Reproduciendo": vacia casi siempre. Cuando el titulo no cabe en una sola
         // linea, la primera mitad se pinta aqui y el resto en lblNow (que sigue siendo la ULTIMA linea, la
@@ -2524,7 +2525,7 @@ namespace Rocola
                         swOn.Checked = true;
                         bar[0].Value = TargetToPct(0.26f); bar[1].Value = 100; bar[2].Value = 0; bar[3].Value = 85;
                         bar[4].Value = 0; bar[5].Value = 30; bar[6].Value = 35;
-                        au[4].Checked = true; au[5].Checked = true;          // EQ y graves en automatico
+                        au[3].Checked = true; au[4].Checked = true; au[5].Checked = true;   // videos, EQ y graves en automatico
                         if (swSbr.Enabled) swSbr.Checked = false;            // el espectral apagado: es experimental
                         if (perfilDisco != 0)                                // el tipo de disco, otra vez a medirlo sola
                         { perfilDisco = 0; lock (discoLock) discoLento.Clear(); AplicaPerfilDisco(); pintaDsk(); }
@@ -2993,6 +2994,7 @@ namespace Rocola
             pastCola.Acento = Color.FromArgb(140, 205, 255);
             pastCred = new PastillaView(); pastCred.Etiqueta = "Inserta una moneda"; pastCred.Valor = "";
             pastCred.Acento = Color.FromArgb(255, 205, 90);
+            pastGenero = new GeneroView(); pastGenero.Font = new Font(this.Font.FontFamily, 10f, FontStyle.Bold); pastGenero.Visible = false;
             lblMejorada = new Label(); TransLabel(lblMejorada, 12f); lblMejorada.Text = "MEJORADA"; lblMejorada.ForeColor = MejGoldBase;
             lblMejorada.TextAlign = ContentAlignment.MiddleLeft; lblMejorada.Visible = false;   // aparece solo si la cancion suena con DSEE (PositionMejorada)
 
@@ -3036,7 +3038,7 @@ namespace Rocola
             attractView.Visible = false;
             attractView.GetCoverByPath = LoadCoverByPath;
 
-            Controls.Add(lblStatus); Controls.Add(helpBar); Controls.Add(pastCred);
+            Controls.Add(lblStatus); Controls.Add(helpBar); Controls.Add(pastCred); Controls.Add(pastGenero);
             Controls.Add(letterBar); Controls.Add(headerView);
             Controls.Add(albumView); Controls.Add(panelSongs);
             Controls.Add(lblNowTop); Controls.Add(lblNow); Controls.Add(lblMejorada); Controls.Add(lblNext); Controls.Add(pastCola); Controls.Add(progress); Controls.Add(lblTime);
@@ -3140,7 +3142,7 @@ namespace Rocola
 
             // Las capsulas, arriba a la derecha. Se miden por su contenido: "Inserta una moneda" es mucho mas
             // ancha que "Creditos 3", y una capsula a medias se veria mal.
-            int pastH = 26;
+            int pastH = AltoPastilla(tarjetaH);
             int wCred = PastillaView.Ancho(pastCred.Etiqueta, pastCred.Valor, pastH, this.Font.FontFamily);
             int wCola = PastillaView.Ancho(pastCola.Etiqueta, pastCola.Valor, pastH, this.Font.FontFamily);
             int pastY = tarjetaY;
@@ -3590,6 +3592,13 @@ namespace Rocola
             return (sb.Length > 0) ? sb.ToString() : "#";
         }
 
+        // LO ALTA QUE ES LA CAPSULA DE CREDITOS / EN COLA, que es lo mismo que decir LO GRANDE QUE SALE SU
+        // LETRA: la capsula se dibuja con cuerpos de 0.34 y 0.52 de su alto. Estaba clavada en 26 px, o sea
+        // que los creditos y la cola salian en letra mas chica que todo lo demas de la franja... siendo lo
+        // que el cliente tiene que poder leer de lejos, desde la barra del local. Ahora sale del alto de la
+        // tarjeta de lo que suena, asi que acompana al resto: en 1024x768 pasa de 26 a 35 px.
+        private static int AltoPastilla(int tarjetaH) { return Math.Max(26, (int)(tarjetaH * 0.44f)); }
+
         private void RecalculaLetras()
         {
             if (letterBar == null) return;
@@ -3639,6 +3648,7 @@ namespace Rocola
             // El genero de cada cancion tambien se ensena DENTRO del disco. Como se aprende en segundo plano,
             // puede llegar con el disco ya abierto: sin esto, las pastillas no saldrian hasta salir y volver.
             generoVer++;
+            ActualizaGenero();   // el genero de lo que suena tambien se aprende de fondo: que aparezca sin esperar
             if (panelSongs != null && panelSongs.Visible) RefrescaLista();
         }
 
@@ -8302,6 +8312,7 @@ namespace Rocola
                 nowFullText = tit; nowArtista = art;
             }
             else { nowFullText = "Nada reproduciendose"; nowArtista = ""; }
+            ActualizaGenero();    // la pastilla del genero, antes de acomodar: manda en el ancho del artista
             PositionMejorada();   // pone titulo y artista y coloca el letrero MEJORADA
             lblNext.Text = (queue.Count > 0) ? "Sigue:  " + queue[0].Display() : "Sigue:  -";
             pastCola.Valor = queue.Count.ToString(); pastCola.Invalidate();
@@ -8337,14 +8348,42 @@ namespace Rocola
 
             bool on = MejActivo();
             int bw = on ? TextRenderer.MeasureText(lblMejorada.Text, lblMejorada.Font).Width + 4 : 0;
-            int anchoArt = on ? Math.Max(60, mejRowW - bw - 12) : mejRowW;
+            // LA PASTILLA DEL GENERO va en este mismo renglon, entre el artista y el letrero MEJORADA: es de
+            // la cancion, igual que el artista, y en el renglon de arriba -el titulo- no cabria sin comerle
+            // sitio a lo unico que de verdad hay que leer entero.
+            int gw = (pastGenero != null) ? pastGenero.AnchoQuePide() : 0;
+            int anchoArt = mejRowW - (on ? bw + 12 : 0) - (gw > 0 ? gw + 12 : 0);
+            if (anchoArt < 60) anchoArt = 60;
             if (lblNow.Width != anchoArt) lblNow.Width = anchoArt;
 
-            if (!on) { if (lblMejorada.Visible) lblMejorada.Visible = false; return; }
             int tw = TextRenderer.MeasureText(lblNow.Text, lblNow.Font).Width;
             if (tw > anchoArt) tw = anchoArt;
-            lblMejorada.SetBounds(lblNow.Left + tw + 12, lblNow.Top, bw, 22);
+            int x = lblNow.Left + tw + 12;
+            if (gw > 0)
+            {
+                int gh = Math.Min(pastGenero.AltoQuePide(), lblNow.Height);
+                pastGenero.SetBounds(x, lblNow.Top + (lblNow.Height - gh) / 2, gw, gh);
+                if (!pastGenero.Visible) pastGenero.Visible = true;
+                x += gw + 12;
+            }
+            else if (pastGenero != null && pastGenero.Visible) pastGenero.Visible = false;
+
+            if (!on) { if (lblMejorada.Visible) lblMejorada.Visible = false; return; }
+            lblMejorada.SetBounds(x, lblNow.Top, bw, 22);
             lblMejorada.Visible = true;
+        }
+
+        // DE QUE ES LO QUE SUENA. La misma respuesta que dentro del disco y que en el buscador (GeneroDeCancion),
+        // asi que las tres dicen lo mismo. Un VIDEO no lleva: no hay de donde sacarla. Si no se sabe, no sale
+        // pastilla -mejor sin etiqueta que con una inventada-.
+        private void ActualizaGenero()
+        {
+            if (pastGenero == null) return;
+            string et = (nowPlaying != null && !nowPlaying.IsVideo) ? GeneroDeCancion(nowPlaying.Song, nowPlaying.Disc) : "";
+            if (et == pastGenero.Texto) return;
+            pastGenero.Texto = et;
+            pastGenero.Tinte = (et.Length > 0) ? ColorDeEtiqueta(et) : DefaultAccent;
+            PositionMejorada();   // el ancho del artista depende de si hay pastilla y de lo que mida
         }
 
         // Reparte el texto entre la linea de ARRIBA (ancho completo) y la de ABAJO (la que comparte fila con el
@@ -8725,6 +8764,7 @@ namespace Rocola
                     DrawLabelOverlay(g, lblNowTop);   // 2a linea del titulo (vacia casi siempre: no dibuja nada)
                     DrawLabelOverlay(g, lblNow);
                     if (lblMejorada != null && lblMejorada.Visible) DrawLabelOverlay(g, lblMejorada);   // letrero MEJORADA (su brillo es un halo por quad, no rehace esta textura)
+                    if (pastGenero != null && pastGenero.Visible) DrawCtrlOverlay(g, pastGenero);
                     DrawLabelOverlay(g, lblNext);
                     DrawLabelOverlay(g, lblTime);
                     DrawCtrlOverlay(g, pastCred);
@@ -8897,6 +8937,7 @@ namespace Rocola
             if (lblNowTop != null) sb = Mix(sb, lblNowTop.Text);
             if (lblNow != null) sb = Mix(sb, lblNow.Text);
             if (lblMejorada != null && lblMejorada.Visible) { sb = Mix(sb, 'M'); sb = Mix(sb, lblMejorada.Left); sb = Mix(sb, lblMejorada.ForeColor.ToArgb()); }
+            if (pastGenero != null && pastGenero.Visible) { Color tg = pastGenero.Tinte; sb = Mix(sb, pastGenero.Texto); sb = Mix(sb, tg.ToArgb()); sb = Mix(sb, pastGenero.Left); }
             if (lblNext != null) sb = Mix(sb, lblNext.Text);
             if (lblTime != null) sb = Mix(sb, lblTime.Text);
             if (pastCred != null) { Color ac = pastCred.Acento; sb = Mix(sb, pastCred.Etiqueta); sb = Mix(sb, pastCred.Valor); sb = Mix(sb, ac.ToArgb()); sb = Mix(sb, pastCred.Left); }
@@ -8917,8 +8958,9 @@ namespace Rocola
             else { LetterBar lb = c as LetterBar; if (lb != null) lb.RenderContent(g, true);
             else { PastillaView pa = c as PastillaView; if (pa != null) pa.RenderContent(g);
             else { ProgressView pv = c as ProgressView; if (pv != null) pv.RenderContent(g);
+            else { GeneroView gv = c as GeneroView; if (gv != null) gv.RenderContent(g);
             else { SongListView sl = c as SongListView; if (sl != null) sl.RenderContent(g);
-            else { SongPagerBar sp = c as SongPagerBar; if (sp != null) sp.RenderContent(g); } } } } } }
+            else { SongPagerBar sp = c as SongPagerBar; if (sp != null) sp.RenderContent(g); } } } } } } }
             g.Restore(st);
         }
 
@@ -12835,6 +12877,61 @@ namespace Rocola
                 p.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
                 p.CloseFigure();
                 return p;
+            }
+        }
+
+        // ==========  PASTILLA DE GENERO  ==========
+        // La misma que sale en la lista de un disco y en los resultados del buscador -relleno muy tenue del
+        // color del genero, borde fino y el texto en ese color aclarado-, pero como control suelto, para
+        // ponerla en la franja de abajo: asi, al sonar una cancion, tambien se ve DE QUE ES.
+        //
+        // Se mide sola: le da su ancho y su alto al acomodo, que es quien la coloca detras del artista.
+        private class GeneroView : Control
+        {
+            private string texto = "";
+            public string Texto
+            {
+                get { return texto; }
+                set { string v = value ?? ""; if (v != texto) { texto = v; medido = false; Invalidate(); } }
+            }
+            public Color Tinte = DefaultAccent;
+
+            private bool medido; private int anchoPide, altoPide;
+            private SolidBrush brocha; private StringFormat sfCen;
+
+            public GeneroView()
+            {
+                this.SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.SupportsTransparentBackColor, true);
+                this.BackColor = Color.Transparent;
+                this.TabStop = false;
+            }
+            protected override void OnFontChanged(EventArgs e) { base.OnFontChanged(e); medido = false; }
+
+            private void Mide()
+            {
+                if (medido) return;
+                anchoPide = (texto.Length > 0) ? AnchoTexto(texto, this.Font) + 20 : 0;
+                altoPide = this.Font.Height + 6;
+                medido = true;
+            }
+            public int AnchoQuePide() { Mide(); return anchoPide; }
+            public int AltoQuePide() { Mide(); return altoPide; }
+
+            protected override void OnPaint(PaintEventArgs e) { RenderContent(e.Graphics); }
+            public void RenderContent(Graphics g)
+            {
+                int w = Width, h = Height;
+                if (w < 6 || h < 6 || texto.Length == 0) return;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                if (brocha == null) brocha = new SolidBrush(Color.White);
+                if (sfCen == null) sfCen = CreaSfDibuja(StringAlignment.Center);
+                using (GraphicsPath p = RoundedPath(new Rectangle(0, 0, w - 1, h - 1), Math.Min(7, (h - 1) / 2)))
+                {
+                    using (SolidBrush b = new SolidBrush(Color.FromArgb(60, Tinte))) g.FillPath(b, p);
+                    using (Pen pe = new Pen(Color.FromArgb(120, Tinte), 1f)) g.DrawPath(pe, p);
+                }
+                brocha.Color = Lighten(Tinte, 0.45);
+                g.DrawString(texto, this.Font, brocha, new RectangleF(0, 0, w, h), sfCen);
             }
         }
 
