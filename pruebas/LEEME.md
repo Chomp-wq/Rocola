@@ -49,6 +49,7 @@ falta `mcs` (Mono), `xvfb-run` y `python3`.
 |---|---|
 | `sobras` | que un cuadro en reposo no reserve ni un byte de memoria |
 | `gasto` | que la caché de carátulas no crezca, que lo expulsado se libere de verdad, y lo que ocupa una biblioteca de 50.000 canciones |
+| `historial` | cuántas páginas de la pared de discos se guardan, que el cajón respete su tope, y que volver a una guardada sea mucho más barato |
 | `resol` | que cambiar la resolución con la rocola abierta no la deje lenta |
 | `disco`, `ssd` | disco duro contra SSD |
 | `cosecha` | que el entrenamiento pasivo siga juntando material |
@@ -60,6 +61,7 @@ falta `mcs` (Mono), `xvfb-run` y `python3`.
 | `dseeperf.cs` | dónde se va el tiempo dentro del reconstructor de agudos, por partes |
 | `modelo.cs` | lo que costaría un modelo de IA más grande, tamaño por tamaño |
 | `memoria.cs` | dónde se va la memoria con una biblioteca grande |
+| `cuadro.cs` | de qué se compone un cuadro de pantalla cuando no ha cambiado nada |
 | `cachemem.cs` | lo que cuesta rehacer una carátula que se salió de la caché, y lo que costaría una caché mayor |
 | `capacidad.py` | si un modelo de IA más grande predice mejor (entrena varios tamaños sobre los mismos datos) |
 | `genmodelos.py` | genera modelos de varios tamaños para medirlos |
