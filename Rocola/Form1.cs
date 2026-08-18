@@ -10806,11 +10806,12 @@ namespace Rocola
             public bool QuietBands = false;   // true = menos estrellas en las franjas de arriba (abecedario) y abajo (barra de estado)
             public float Dim = 1f;        // atenuacion del starfield (1 = normal; ~0.45 mientras se navega con musica). Solo estrellas/brillos, no el cielo
 
-            // Forma: 0 destello (cuatro puntas), 1 cruz (brazos rectos finos), 2 rafaga (ocho rayos), 3 punto.
-            // Son las MISMAS cuatro que dibuja la version con tarjeta grafica, para que el cielo se vea igual
-            // por los dos caminos.
-            internal const int FormaDestello = 0, FormaRafaga = 1, FormaPunto = 2;
-            private struct Star { public float X, Y; public int Size, Kind; public byte R, G, B; public float Tint, Off, Spd; public byte Band, Forma; }   // Band: 0=graves,1=medios,2=agudos (a que frecuencia late)
+            // QUE SE DIBUJA. Solo hay dos cosas en el cielo, las mismas por CPU y por tarjeta grafica para
+            // que se vea igual por los dos caminos: la ESTRELLA de cinco puntas -las medianas y las grandes-
+            // y el PUNTO redondo del polvo del fondo, que mide dos o tres pixeles y ahi una silueta no seria
+            // una silueta, seria una mancha con pelusa. Quien es quien lo dice 'Kind', que ya lo decia.
+            internal const int FormaEstrella = 0, FormaPunto = 1;
+            private struct Star { public float X, Y; public int Size, Kind; public byte R, G, B; public float Tint, Off, Spd; public byte Band; }   // Band: 0=graves,1=medios,2=agudos (a que frecuencia late)
             private struct Shoot { public bool On; public float X, Y, VX, VY; public float Life, MaxLife; }
             private Star[] stars;
             private int sw = -1, sh = -1;
@@ -10831,7 +10832,7 @@ namespace Rocola
                 Color.FromArgb(225, 165, 255)         // 7 violeta/rosa
             };
             private static readonly object glowLock = new object();
-            private readonly PointF[] spk = new PointF[8];   // ESTETICA: buffer reusable del sparkle (sin asignar por estrella)
+            private readonly PointF[] spk = new PointF[10];   // ESTETICA: buffer reusable de la estrella (sin asignar por estrella)
             private Shoot[] shoots = new Shoot[2];
             private int nextShoot = 0, lastTick = 0;
             // TITILEO por CUADROS HORNEADOS: K capas con el MISMO patron de estrellas a distinto brillo.
@@ -10952,58 +10953,38 @@ namespace Rocola
                 return bmp;
             }
 
-            // Dibuja una estrella de 4 puntas como UNA SOLA pieza (sparkle/destello), en vez de un cuadrito
-            // con dos palos. Usa un buffer reusable; el llamador debe tener SmoothingMode.AntiAlias activo.
-            private void DrawSparkle(Graphics g, Brush b, int px, int py, int R)
+            // LA ESTRELLA DE CINCO PUNTAS de toda la vida, con la punta hacia arriba. Es la silueta que
+            // TODO el mundo dibuja cuando le dicen "una estrella", y es la que pega con el resto de la
+            // rocola; las de antes -un destello de cuatro puntas y una rafaga de ocho rayos- se leian mas
+            // como chispas o copos de nieve que como estrellas.
+            //
+            // Los diez vertices salen de dos tablas ya calculadas: aqui solo hay una multiplicacion y una
+            // suma por vertice, ni un seno ni un coseno. Se dibujan muchas estrellas en cada cuadro.
+            private const float EstrellaDentro = 0.45f;   // radio interior: mas alto = brazos mas gordos
+            private static readonly float[] EstUx = new float[10], EstUy = new float[10];
+            static Starfield()
+            {
+                for (int k = 0; k < 10; k++)
+                {
+                    double ang = -Math.PI / 2.0 + k * Math.PI / 5.0;   // arranca ARRIBA y va alternando punta/valle
+                    float rad = ((k & 1) == 0) ? 1f : EstrellaDentro;
+                    EstUx[k] = (float)Math.Cos(ang) * rad;
+                    EstUy[k] = (float)Math.Sin(ang) * rad;
+                }
+            }
+            private void DrawEstrella(Graphics g, Brush b, int px, int py, int R)
             {
                 if (R < 2) R = 2;
-                float r = R * 0.20f; if (r < 1f) r = 1f;   // radio interior: puntas finas pero unidas al centro
-                spk[0] = new PointF(px, py - R);
-                spk[1] = new PointF(px + r, py - r);
-                spk[2] = new PointF(px + R, py);
-                spk[3] = new PointF(px + r, py + r);
-                spk[4] = new PointF(px, py + R);
-                spk[5] = new PointF(px - r, py + r);
-                spk[6] = new PointF(px - R, py);
-                spk[7] = new PointF(px - r, py - r);
+                for (int k = 0; k < 10; k++) spk[k] = new PointF(px + R * EstUx[k], py + R * EstUy[k]);
                 g.FillPolygon(b, spk);
             }
 
-            // RAFAGA: ocho rayos cortos saliendo de un nucleo. Los de las diagonales salen mas cortos, que es
-            // lo que hace que se lea como un estallido y no como una rueda.
-            private readonly PointF[] ray = new PointF[3];
-            private void DrawRafaga(Graphics g, Brush b, int px, int py, int R)
-            {
-                if (R < 3) R = 3;
-                float dentro = R * 0.30f, gr = R * 0.11f; if (gr < 0.8f) gr = 0.8f;
-                for (int k = 0; k < 8; k++)
-                {
-                    double ang = k * Math.PI / 4.0;
-                    float largo = (k % 2 == 0) ? R : R * 0.68f;
-                    float ux = (float)Math.Cos(ang), uy = (float)Math.Sin(ang);
-                    float nx = -uy * gr, ny = ux * gr;
-                    ray[0] = new PointF(px + ux * dentro + nx, py + uy * dentro + ny);
-                    ray[1] = new PointF(px + ux * largo, py + uy * largo);
-                    ray[2] = new PointF(px + ux * dentro - nx, py + uy * dentro - ny);
-                    g.FillPolygon(b, ray);
-                }
-                float nn = R * 0.24f; if (nn < 1.4f) nn = 1.4f;
-                g.FillEllipse(b, px - nn * 0.5f, py - nn * 0.5f, nn, nn);
-            }
-
-            // Dibuja la estrella con la silueta que le toque.
-            private void DrawForma(Graphics g, Brush b, int forma, int px, int py, int R)
-            {
-                if (forma == FormaRafaga) DrawRafaga(g, b, px, py, R);
-                else DrawSparkle(g, b, px, py, R);
-            }
-            // CUANTO HALO lleva cada silueta. El destello aguanta el suyo entero -es una mancha de luz con
-            // puntas-; la rafaga lleva algo menos, porque sus ocho rayos ya llenan bastante y con el halo
-            // entero se le empastan.
-            private static float HaloDe(int forma)
-            {
-                return (forma == FormaRafaga) ? 0.78f : 1f;
-            }
+            // CUANTO HALO lleva cada estrella, y no es el mismo para todas. Las GRANDES son las
+            // protagonistas del cielo y con el halo generoso se leen como luces de verdad en vez de como
+            // pegatinas; a las MEDIANAS ese mismo halo se les come las puntas y quedan de bola borrosa, asi
+            // que llevan bastante menos y se mantienen limpias. (El polvo del fondo no lleva: va como punto
+            // redondo y punto.) Los dos numeros salieron de dibujar el cielo y mirarlo.
+            private static float HaloDe(int kind) { return (kind == 2) ? 1.15f : 0.85f; }
 
             private void Ensure(int w, int h)
             {
@@ -11077,15 +11058,15 @@ namespace Rocola
                     // A QUE FRECUENCIA late cada estrella (para SENTIR la separacion): las GRANDES con los graves
                     // (bombo), las medianas repartidas entre medios y agudos. Los puntos no laten (no reaccionan).
                     s.Band = (s.Kind == 2) ? (byte)0 : (byte)(1 + r.Next(2));
-                    // QUE FORMA le toca. Habia una tercera silueta, una cruz de brazos finos, que se llevaba
-                    // mas de la mitad de las medianas: en pantalla se leia como un monton de signos de MAS
-                    // repartidos por el cielo, y quedaba fea. Fuera. Quedan las dos que si tienen caracter, y
-                    // la rafaga -la de los ocho rayos, la mas trabajada- se queda con buena parte de las dos
-                    // tallas en vez de ser la rareza que casi no salia. El polvo sigue en puntos redondos.
-                    int ff = r.Next(100);
-                    s.Forma = (s.Kind == 2) ? (byte)((ff < 45) ? FormaDestello : FormaRafaga)
-                            : (s.Kind == 1) ? (byte)((ff < 55) ? FormaDestello : FormaRafaga)
-                            : (byte)FormaPunto;
+                    // QUE FORMA le toca. Ya no hay reparto de siluetas: TODAS las que se ven son la estrella
+                    // de cinco puntas. Hubo tres siluetas distintas -un destello de cuatro puntas, una cruz
+                    // de brazos finos y una rafaga de ocho rayos- y ninguna acababa de pegar: la cruz se leia
+                    // como un signo de MAS y las otras dos como chispas o copos, no como estrellas. La
+                    // variedad la ponen el TAMANO y el COLOR, que es de donde tiene que venir.
+                    //
+                    // El polvo del fondo se queda en puntos redondos a proposito: son dos o tres pixeles, y
+                    // ahi una estrella de cinco puntas no es una estrella, es una mancha con pelusa.
+
                     if (Varied)
                     {
                         Color c = pal[r.Next(pal.Length)]; s.R = c.R; s.G = c.G; s.B = c.B; s.Tint = 0f;   // atraccion: multicolor
@@ -11183,10 +11164,10 @@ namespace Rocola
                     // solo en medianas/grandes; los puntos van como punto redondo fijo, sin glow.
                     if (reactive)
                     {
-                        int gd = (int)((s.Size * 3 + 6 + (int)(pulse * 10)) * gfade * HaloDe(s.Forma));   // el beat agranda el glow; el fundido lo encoge; la silueta lo templa
+                        int gd = (int)((s.Size * 3 + 6 + (int)(pulse * 10)) * gfade * HaloDe(s.Kind));   // el beat agranda el glow y el fundido lo encoge
                         Bitmap gb = GlowFor(cr, cg, cb);
                         if (gb != null && gd > 0) g.DrawImage(gb, new Rectangle(px - gd / 2, py - gd / 2, gd, gd));
-                        DrawForma(g, sb, s.Forma, px, py, (s.Kind == 2 ? s.Size + 6 : s.Size + 2) + armUp);
+                        DrawEstrella(g, sb, px, py, (s.Kind == 2 ? s.Size + 6 : s.Size + 2) + armUp);
                     }
                     else { float ds = s.Size < 2 ? 2 : s.Size; g.FillEllipse(sb, px - ds / 2f, py - ds / 2f, ds, ds); }
                 }
@@ -11375,7 +11356,7 @@ namespace Rocola
                         b.Color = Color.FromArgb(a, cr2, cg2, cb2);
                         if (s.Kind != 0)
                         {
-                            int gd = (int)((s.Size * 3 + 6) * HaloDe(s.Forma));
+                            int gd = (int)((s.Size * 3 + 6) * HaloDe(s.Kind));
                             Bitmap gb = GlowFor(cr2, cg2, cb2);   // glow del MISMO COLOR (sprite pre-horneado)
                             if (gb != null)
                             {
@@ -11388,7 +11369,7 @@ namespace Rocola
                                     lg.DrawImage(gb, gr, 0, 0, gb.Width, gb.Height, GraphicsUnit.Pixel, ia);
                                 }
                             }
-                            DrawForma(lg, b, s.Forma, px, py, s.Kind == 2 ? s.Size + 6 : s.Size + 2);
+                            DrawEstrella(lg, b, px, py, s.Kind == 2 ? s.Size + 6 : s.Size + 2);
                         }
                         else { float ds = s.Size < 2 ? 2 : s.Size; lg.FillEllipse(b, px - ds / 2f, py - ds / 2f, ds, ds); }
                     }
