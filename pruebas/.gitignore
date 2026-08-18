@@ -1,0 +1,9 @@
+# Todo lo que el lanzador genera solo: no se guarda en el repositorio.
+*.exe
+*.dll
+*.png
+*.csv
+mp3s/
+wav/
+src_*/
+modelo_*.bin
