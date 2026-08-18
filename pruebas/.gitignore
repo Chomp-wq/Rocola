@@ -10,4 +10,6 @@ modelo_*.bin
 # lo que escriben las propias baterias al correr
 rocola_*.txt
 rocola_*.bin
+# volcados que deja mono si se cae por falta de memoria en la maquina de pruebas
+mono_crash.*.json
 _tmp_ref*/
