@@ -2354,12 +2354,7 @@ namespace Rocola
                     lPct.ForeColor = cBib; lPct.Font = fDes; lPct.TextAlign = ContentAlignment.TopRight; lPct.Visible = false;
                     BarraAvance pbTrain = new BarraAvance();
                     pbTrain.SetBounds(332, 134, 580, 8); pbTrain.Acento = cBib; pbTrain.Visible = false;
-                    // LIMPIEZA DE VIDEOS MUDOS. Comparte fila con el repaso a fondo, a la derecha del todo; la
-                    // barra de avance del repaso se queda con lo de en medio.
-                    BotonPlano bMudos = new BotonPlano();
-                    bMudos.SetBounds(652, 114, 260, 34); bMudos.Font = fBot;
-                    lPct.SetBounds(332, 112, 306, 18); pbTrain.SetBounds(332, 134, 306, 8);
-                    tBib.Controls.Add(lCal); tBib.Controls.Add(hint); tBib.Controls.Add(bTrain); tBib.Controls.Add(lPct); tBib.Controls.Add(pbTrain); tBib.Controls.Add(bMudos);
+                    tBib.Controls.Add(lCal); tBib.Controls.Add(hint); tBib.Controls.Add(bTrain); tBib.Controls.Add(lPct); tBib.Controls.Add(pbTrain);
                     EscribeInformeCalidad();   // el detalle, cancion por cancion, queda en un archivo junto al programa
 
                     // ---------------- TIPO DE DISCO ----------------
@@ -2410,19 +2405,6 @@ namespace Rocola
                     bReset.Text = "Dejar como de fabrica";
                     BotonPlano bOk = new BotonPlano(); bOk.SetBounds(804, 680, 140, 38); bOk.Font = fBot;
                     bOk.Text = "Listo"; bOk.Relleno = Color.FromArgb(30, 96, 70); bOk.Borde = Color.FromArgb(72, 182, 132);
-
-                    Action pintaMudos = delegate
-                    {
-                        List<float> dbm;
-                        int nm = VideosMudos(out dbm).Count;
-                        bMudos.Text = (nm > 0) ? ("Videos que no suenan: " + nm) : "No hay videos mudos";
-                        bMudos.Enabled = nm > 0;
-                        bMudos.Relleno = (nm > 0) ? Color.FromArgb(88, 40, 36) : Color.FromArgb(28, 34, 62);
-                        bMudos.Borde = (nm > 0) ? Color.FromArgb(180, 92, 76) : Color.FromArgb(60, 72, 118);
-                        bMudos.ForeColor = (nm > 0) ? Color.FromArgb(240, 214, 206) : cApagado;
-                        bMudos.Invalidate();
-                    };
-                    bMudos.Click += delegate { ShowLimpiezaVideos(); pintaMudos(); };
 
                     Action pintaTrain = delegate
                     {
@@ -2507,7 +2489,6 @@ namespace Rocola
                                + (etapa.Length > 0 ? ("La cancion que suena entra en la etapa " + etapa + ".") : "")
                                + "\nEl detalle, cancion por cancion, queda en rocola_calidad.txt junto al programa.");
                         pintaTrain();
-                        pintaMudos();
                         // Lo que no manda nadie se apaga, para que se vea de un vistazo que no hay que tocarlo.
                         bool en = swOn.Checked;
                         bar[0].Enabled = en; bar[1].Enabled = en;
@@ -7673,217 +7654,12 @@ namespace Rocola
             return n;
         }
 
-        // LA VENTANA DE LIMPIEZA. Ensena la lista ENTERA -ruta y cuanto le falta a cada uno para sonar como
-        // el resto- y no borra nada hasta que se pulsa el boton rojo. Es la unica parte de la rocola que
-        // toca los archivos del cliente, asi que se hace a la vista y con red: van a la PAPELERA, y ademas
-        // queda apuntado en rocola_borrados.txt que se fue y con que medida.
-        private void ShowLimpiezaVideos()
-        {
-            List<float> db;
-            List<string> mudos = VideosMudos(out db);
-            FontFamily ff = FamiliaUi();
-            using (Font fTit = new Font(ff, 13f, FontStyle.Bold))
-            using (Font fDes = new Font(ff, 9f))
-            using (Font fLis = new Font(ff, 9f))
-            using (Font fBot = new Font(ff, 10f, FontStyle.Bold))
-            using (Form dlg = new Form())
-            {
-                dlg.Text = "Rocola  -  Videos que no suenan";
-                dlg.FormBorderStyle = FormBorderStyle.FixedDialog;
-                dlg.MaximizeBox = false; dlg.MinimizeBox = false; dlg.ShowInTaskbar = false; dlg.ShowIcon = false;
-                dlg.StartPosition = FormStartPosition.CenterParent;
-                dlg.ClientSize = new Size(820, 520);
-                dlg.BackColor = Color.FromArgb(11, 14, 32);
-
-                Label lTit = new Label(); lTit.SetBounds(20, 16, 780, 26); lTit.BackColor = Color.Transparent;
-                lTit.ForeColor = Color.FromArgb(232, 240, 255); lTit.Font = fTit;
-                lTit.Text = (mudos.Count == 0) ? "No hay videos mudos" : (mudos.Count + " videos que practicamente no suenan");
-
-                Label lDes = new Label(); lDes.SetBounds(20, 46, 780, 54); lDes.BackColor = Color.Transparent;
-                lDes.ForeColor = Color.FromArgb(150, 162, 196); lDes.Font = fDes;
-                lDes.Text = (mudos.Count == 0)
-                    ? "Todos los videos MEDIDOS suenan. Los que aun no se han medido no se cuentan aqui:\ndeja que el repaso de la biblioteca vaya haciendo su trabajo."
-                    : ("Estan mas de 30 dB por debajo del volumen de las canciones: puesto en la rocola, el cliente no oiria nada.\n"
-                       + "Solo salen los que YA se midieron. Se van a la PAPELERA de Windows, asi que si alguno resulta que si\n"
-                       + "sonaba, se saca de ahi. Queda apuntado en rocola_borrados.txt, junto al programa.");
-
-                ListBox lst = new ListBox();
-                lst.SetBounds(20, 106, 780, 340);
-                lst.BackColor = Color.FromArgb(16, 20, 44);
-                lst.ForeColor = Color.FromArgb(214, 224, 246);
-                lst.BorderStyle = BorderStyle.None;
-                lst.Font = fLis;
-                lst.SelectionMode = SelectionMode.None;
-                lst.IntegralHeight = false;
-                for (int i = 0; i < mudos.Count; i++)
-                    lst.Items.Add(db[i].ToString("0", CultureInfo.InvariantCulture).PadLeft(4) + " dB    " + mudos[i]);
-
-                BotonPlano bNo = new BotonPlano(); bNo.SetBounds(20, 462, 200, 40); bNo.Font = fBot;
-                bNo.Text = "Dejarlos como estan";
-                BotonPlano bSi = new BotonPlano(); bSi.SetBounds(560, 462, 240, 40); bSi.Font = fBot;
-                bSi.Text = "Mandar los " + mudos.Count + " a la papelera";
-                bSi.Relleno = Color.FromArgb(112, 40, 34); bSi.Borde = Color.FromArgb(196, 92, 76);
-                bSi.Visible = mudos.Count > 0;
-
-                bNo.Click += delegate { dlg.Close(); };
-                bSi.Click += delegate
-                {
-                    bSi.Enabled = false; bSi.Text = "Borrando..."; bSi.Invalidate(); Application.DoEvents();
-                    int n = BorraVideosMudos(mudos, db);
-                    dlg.Close();
-                    ShowToast(n > 0 ? (n + " videos a la papelera") : "No se pudo borrar (Windows dijo que no)",
-                              n > 0 ? Color.FromArgb(40, 130, 90) : Color.FromArgb(150, 60, 45));
-                };
-                dlg.Controls.Add(lTit); dlg.Controls.Add(lDes); dlg.Controls.Add(lst);
-                dlg.Controls.Add(bNo); dlg.Controls.Add(bSi);
-                dlg.ShowDialog(this);
-            }
-        }
-
-        // Los manda a la papelera, los quita de la biblioteca y deja constancia. Devuelve cuantos se fueron.
-        private int BorraVideosMudos(List<string> mudos, List<float> db)
-        {
-            if (mudos == null || mudos.Count == 0) return 0;
-            if (!ALaPapelera(mudos)) return 0;   // Windows no pudo: no se toca nada mas, la biblioteca queda igual
-            // Se apunta lo que DE VERDAD se fue, comprobandolo archivo por archivo: Windows puede negarse con
-            // alguno -en uso, sin permiso, en un disco de red sin papelera- y el apunte tiene que decir la
-            // verdad, no lo que se pidio. Que no se pueda escribir no impide la limpieza.
-            try
-            {
-                StringBuilder sb = new StringBuilder();
-                string cuando = DateTime.Now.ToString("yyyy-MM-dd HH:mm");
-                for (int i = 0; i < mudos.Count; i++)
-                {
-                    if (mudos[i] == null || File.Exists(mudos[i])) continue;
-                    sb.Append(cuando).Append("  a la papelera  ")
-                      .Append(((i < db.Count) ? db[i] : 0f).ToString("0", CultureInfo.InvariantCulture)).Append(" dB  ")
-                      .Append(mudos[i]).Append("\r\n");
-                }
-                if (sb.Length > 0) File.AppendAllText(Path.Combine(Application.StartupPath, "rocola_borrados.txt"), sb.ToString());
-            }
-            catch { }
-            int n = QuitaDeLaBiblioteca(mudos);
-            SaveLoudCache();
-            videoBaseFirma = -1;    // el volumen base automatico se decide con los que QUEDAN
-            RecalculaLetras();
-            RefreshAlbums();
-            return n;
-        }
-
-        // Saca de la biblioteca los archivos que YA NO ESTAN en el disco, sin tener que re-escanear: de sus
-        // discos, de la tabla de medidas y de las de duracion. Los discos que se queden sin un solo video
-        // dejan de ser seccion de video, y si no queda ninguno, la casilla VIDEO se va de la barra.
-        //
-        // Se comprueba archivo por archivo que de verdad no este: si Windows dijo que si pero el archivo
-        // sigue ahi -estaba en uso, sin permiso, en un disco de red sin papelera-, ese se queda como estaba.
-        // Mejor que la biblioteca diga la verdad a que se pierda un video que si existe.
-        private int QuitaDeLaBiblioteca(List<string> rutas)
-        {
-            if (rutas == null || rutas.Count == 0) return 0;
-            HashSet<string> fuera = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            int n = 0;
-            for (int i = 0; i < rutas.Count; i++)
-            {
-                if (rutas[i] == null || File.Exists(rutas[i])) continue;
-                fuera.Add(rutas[i]); n++;
-                loudCache.Remove(rutas[i]); durCache.Remove(rutas[i]); durFast.Remove(rutas[i]);
-            }
-            if (n == 0) return 0;
-            if (videoAlbums != null)
-            {
-                for (int i = 0; i < videoAlbums.Count; i++)
-                {
-                    Album va = videoAlbums[i];
-                    if (va == null || va.VideoFiles == null) continue;
-                    for (int j = va.VideoFiles.Count - 1; j >= 0; j--)
-                        if (va.VideoFiles[j] != null && fuera.Contains(va.VideoFiles[j])) va.VideoFiles.RemoveAt(j);
-                }
-                for (int i = videoAlbums.Count - 1; i >= 0; i--)
-                    if (videoAlbums[i] == null || videoAlbums[i].VideoFiles == null || videoAlbums[i].VideoFiles.Count == 0)
-                        videoAlbums.RemoveAt(i);
-            }
-            if (cachedVideoPaths != null) cachedVideoPaths.RemoveAll(delegate (string v) { return v != null && fuera.Contains(v); });
-            if (letterAvailable != null && (videoAlbums == null || videoAlbums.Count == 0)) letterAvailable.Remove(VideoMark);
-            return n;
-        }
-
-        // ==========  LIMPIEZA: LOS VIDEOS QUE NO SUENAN  ==========
-        //
-        // En una biblioteca que lleva anos armandose acaban colandose videos con la pista de sonido rota,
-        // muda o grabada tan bajo que no se oye nada. En la rocola son una loteria mala: el cliente paga, sale
-        // el video y no suena. Aqui se localizan -de los que YA estan medidos; a uno sin medir no se le toca-
-        // y se pueden mandar a la papelera.
-        //
-        // El corte son 30 dB por debajo del volumen objetivo de las canciones. No es "un poco bajo": es que
-        // con el resto de la rocola a volumen normal, eso es un susurro que no se oye desde la barra.
-        private const float LoudMudo = 0.00001f;   // marca de "medido y en silencio" (se guarda y se relee tal cual)
-        private const float VideoMudoDb = -30f;    // a partir de aqui, para el local, no suena
-
-        // Los videos medidos que practicamente no suenan, del mas callado al menos. En 'db' queda lo que le
-        // falta a cada uno para llegar al volumen de las canciones (negativo).
-        private List<string> VideosMudos(out List<float> db)
-        {
-            List<string> lista = new List<string>();
-            db = new List<float>();
-            if (videoAlbums == null || normTarget <= 0.0001f) return lista;
-            float corte = (float)(normTarget * Math.Pow(10.0, VideoMudoDb / 20.0));
-            List<KeyValuePair<string, float>> hall = new List<KeyValuePair<string, float>>();
-            HashSet<string> vistos = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            for (int i = 0; i < videoAlbums.Count; i++)
-            {
-                Album va = videoAlbums[i];
-                if (va == null || va.VideoFiles == null) continue;
-                for (int j = 0; j < va.VideoFiles.Count; j++)
-                {
-                    string vp = va.VideoFiles[j]; float rms;
-                    if (vp == null || !vistos.Add(vp)) continue;
-                    if (!loudCache.TryGetValue(vp, out rms)) continue;   // SIN MEDIR: ese no se toca, faltaria mas
-                    if (rms > corte) continue;
-                    hall.Add(new KeyValuePair<string, float>(vp, rms));
-                }
-            }
-            hall.Sort(delegate (KeyValuePair<string, float> a, KeyValuePair<string, float> b) { return a.Value.CompareTo(b.Value); });
-            for (int i = 0; i < hall.Count; i++)
-            {
-                lista.Add(hall[i].Key);
-                db.Add((float)(20.0 * Math.Log10(Math.Max(hall[i].Value, 1e-9f) / normTarget)));
-            }
-            return lista;
-        }
-
-        // A LA PAPELERA, no al vacio. Es la misma operacion que hace el explorador de Windows al pulsar
-        // Suprimir: si alguno resulta que si sonaba, se saca de la papelera y no ha pasado nada. Se mandan
-        // TODOS de una sola llamada (la lista va con un cero entre archivo y archivo, y dos al final, que es
-        // como la pide Windows). Devuelve true solo si Windows dijo que salio bien; si algo falla, no se
-        // borra nada y el que llama lo cuenta.
-        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential, CharSet = System.Runtime.InteropServices.CharSet.Auto)]
-        private struct SHFILEOPSTRUCT
-        {
-            public IntPtr hwnd;
-            public int wFunc;
-            [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPTStr)] public string pFrom;
-            [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPTStr)] public string pTo;
-            public short fFlags;
-            [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)] public bool fAnyOperationsAborted;
-            public IntPtr hNameMappings;
-            [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPTStr)] public string lpszProgressTitle;
-        }
-        [System.Runtime.InteropServices.DllImport("shell32.dll", CharSet = System.Runtime.InteropServices.CharSet.Auto)]
-        private static extern int SHFileOperation(ref SHFILEOPSTRUCT op);
-
-        private static bool ALaPapelera(List<string> rutas)
-        {
-            if (rutas == null || rutas.Count == 0) return true;
-            StringBuilder sb = new StringBuilder();
-            for (int i = 0; i < rutas.Count; i++) { sb.Append(rutas[i]); sb.Append('\0'); }
-            sb.Append('\0');
-            SHFILEOPSTRUCT op = new SHFILEOPSTRUCT();
-            op.wFunc = 3;                    // FO_DELETE
-            op.pFrom = sb.ToString();
-            op.fFlags = 0x0454;              // A LA PAPELERA (0x40) + sin preguntar (0x10) + sin ventanas (0x4 y 0x400)
-            try { return SHFileOperation(ref op) == 0 && !op.fAnyOperationsAborted; }
-            catch { return false; }
-        }
+        // LA MARCA DE "MEDIDO Y EN SILENCIO". Un archivo sin nada de sonido da cero al medirlo, y con cero
+        // el pre-analisis no lo guardaba: se quedaba como "sin medir" y se volvia a medir en cada arranque,
+        // para siempre. Se le pone este valor minusculo -por debajo del umbral con el que TODO el programa
+        // decide "esto no tiene medida util", asi que nadie va a intentar subirlo cien mil veces- para que
+        // quede apuntado como lo que es.
+        private const float LoudMudo = 0.00001f;   // se guarda y se relee tal cual
 
         // Abre y reproduce un video en el reproductor de la derecha (lo llama PlayNext).
         // Volumen (0..100) con el que debe sonar un video: el base -la perilla, o lo que eligio el programa-,

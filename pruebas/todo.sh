@@ -23,14 +23,14 @@ FUENTES="$RAIZ/Rocola/Form1.cs $RAIZ/Rocola/Form1.Designer.cs $RAIZ/Rocola/Progr
 
 # Las que miran cosas que solo existen con tarjeta grafica (la aurora, el barrido de luz) van
 # contra el perfil de GPU; las demas contra el normal.
-CPU="ajustes bajo eqauto bajoauto calidad eqia nivel titulo duracion prueba prueba2 prueba3 prueba4 neon fps abc barrido2 espacio busca buscaigual genero pagina busmov parcial disco ssd etiqueta sala hojea cosecha resol letrero dsee sobras gasto historial estrellas limite vacias videos franja colores mudos"
+CPU="ajustes bajo eqauto bajoauto calidad eqia nivel titulo duracion prueba prueba2 prueba3 prueba4 neon fps abc barrido2 espacio busca buscaigual genero pagina busmov parcial disco ssd etiqueta sala hojea cosecha resol letrero dsee sobras gasto historial estrellas limite vacias videos franja colores"
 GPU="fondo anim presencia barrido tope calma"
 
-if [ "$1" = "--lista" ]; then
-  echo "  sin tarjeta grafica: $CPU"
-  echo "  con tarjeta grafica: $GPU"
-  exit 0
-fi
+# Y las que miran algo que SOLO EXISTE en la rama de tarjeta grafica. La limpieza de videos que no
+# suenan es una de esas: para saber si un video suena hay que descomprimir su sonido, y eso alli lo
+# hace Media Foundation, que llego con Windows Vista. En la rama de XP no hay con que, asi que ni
+# existe la funcion ni se prueba.
+SOLO_HD="mudos"
 
 # --- Que version de .NET pide esta rama. Lo manda la RAMA, no el compilador: el codigo de la rama
 #     de tarjeta grafica tambien compila con -sdk:2, asi que probar y ver si cuela elegiria mal y
@@ -38,10 +38,16 @@ fi
 #     -por ejemplo en una copia suelta sin historial-, se prueba .NET 3.5 y se cae al 4.8. ---
 RAMA="$(git -C "$RAIZ" rev-parse --abbrev-ref HEAD 2>/dev/null)"
 case "$RAMA" in
-  rocola-hd) SDK=4; ORDEN="4" ;;      # la del equipo con tarjeta grafica: .NET 4.8
+  rocola-hd) SDK=4; ORDEN="4"; CPU="$CPU $SOLO_HD" ;;   # la del equipo con tarjeta grafica: .NET 4.8
   ?*)        SDK=2; ORDEN="2" ;;      # la de Windows XP: .NET 3.5
   *)         SDK=2; ORDEN="2 4" ;;    # sin rama conocida: se prueban los dos
 esac
+
+if [ "$1" = "--lista" ]; then
+  echo "  sin tarjeta grafica: $CPU"
+  echo "  con tarjeta grafica: $GPU"
+  exit 0
+fi
 echo "  compilando la rocola..."
 hecho=0
 for k in $ORDEN; do
