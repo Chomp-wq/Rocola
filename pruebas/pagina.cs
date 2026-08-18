@@ -15,6 +15,7 @@ using System.Windows.Forms;
 class Pagina
 {
     static Type TF, TAV, TAlb;
+    static FieldInfo fCacheG;   // el cajon de casillas horneadas, para saber CUALES hubo que rehacer
     static int fallos = 0;
     static void Check(bool ok, string q) { Console.WriteLine((ok ? "  OK   " : "  FALLO") + "  " + q); if (!ok) fallos++; }
 
@@ -68,6 +69,7 @@ class Pagina
         if (mRebuild == null) return 1;
         FieldInfo fPend = TAV.GetField("cubesPending", BindingFlags.Instance | BindingFlags.NonPublic);
         FieldInfo fCache = TAV.GetField("cellCache", BindingFlags.Instance | BindingFlags.NonPublic);
+        fCacheG = fCache;
 
         avG = av; fPageG = fPage; tListAlbG = tListAlb; mRebuildG = mRebuild; fPendG = fPend; discosG = discos;
 
@@ -115,17 +117,30 @@ class Pagina
         }
         // LO QUE DE VERDAD HACE EL CLIENTE: avanza y se vuelve. La pagina que acaba de dejar TIENE que
         // salir al momento; si el cajon de casillas se vacia de golpe, una de cada seis veces no sale.
+        //
+        // COMO SE SABE si hubo que rehacerla: se miran las CLAVES del cajon antes y despues. Si al volver
+        // aparece alguna casilla nueva, es que la de esa pagina ya no estaba y hubo que hornearla otra vez.
+        // Antes esto se adivinaba por el reloj -"si tardo mas de 1 ms es que la rehizo"-, y eso es una
+        // mentira en cuanto la maquina esta ocupada: salian 1.04, 1.15 y 1.20 ms sin haber rehecho nada y la
+        // bateria daba un fallo que no existia. El tiempo se sigue ensenando, pero ya no decide.
         Console.WriteLine("\n  AVANZAR UNA PAGINA Y VOLVER A LA ANTERIOR, TREINTA VECES\n");
         double peorVuelta = 0; int peorVueltaP = -1, lentas = 0;
         for (int p = 1; p < NPAG; p++)
         {
             PonPagina(p, W, H);                    // avanza
+            HashSet<string> antes = ClavesCajon();
             double t = PonPagina(p - 1, W, H);     // y se vuelve: esa pagina se acaba de ver
+            int rehechas = 0;
+            foreach (string k in ClavesCajon()) if (!antes.Contains(k)) rehechas++;
             if (t > peorVuelta) { peorVuelta = t; peorVueltaP = p; }
-            if (t > 1.0) { lentas++; Console.WriteLine(string.Format("     volver a la pagina {0,3}: {1,7:0.00} ms   <<< HUBO QUE REHACERLA", p, t)); }
+            if (rehechas > 0)
+            {
+                lentas++;
+                Console.WriteLine(string.Format("     volver a la pagina {0,3}: {1,7:0.00} ms   <<< HUBO QUE REHACER {2} CASILLAS", p, t, rehechas));
+            }
         }
-        Console.WriteLine("     veces que volver atras NO fue instantaneo: " + lentas + " de " + (NPAG - 1));
-        Console.WriteLine("     la peor: " + peorVuelta.ToString("0.00") + " ms (volviendo a la pagina " + peorVueltaP + ")");
+        Console.WriteLine("     veces que volver atras hubo que rehacer casillas: " + lentas + " de " + (NPAG - 1));
+        Console.WriteLine("     la vuelta mas lenta: " + peorVuelta.ToString("0.00") + " ms (pagina " + peorVueltaP + ")");
         // Se admite UNA: la primerisima pagina se horneo al principio de la prueba y para cuando se vuelve a
         // ella ya han pasado treinta paginas, asi que es justo que se haya soltado.
         Check(lentas <= 1, "volver a la pagina que se acaba de dejar sale al momento (antes fallaba 1 de cada 6 veces)");
@@ -155,6 +170,17 @@ class Pagina
         while (fPendG != null && (bool)fPendG.GetValue(avG) && vueltas < 40);
         sw.Stop();
         return sw.Elapsed.TotalMilliseconds;
+    }
+
+    // Las claves de las casillas que el cajon tiene horneadas ahora mismo.
+    static HashSet<string> ClavesCajon()
+    {
+        HashSet<string> h = new HashSet<string>();
+        if (fCacheG == null) return h;
+        IDictionary d = fCacheG.GetValue(avG) as IDictionary;
+        if (d == null) return h;
+        foreach (object k in d.Keys) h.Add(Convert.ToString(k));
+        return h;
     }
 
     // Delegado Func<Album,Image> construido a mano porque Album es un tipo privado del programa.
