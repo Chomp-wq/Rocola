@@ -69,6 +69,7 @@ namespace Rocola
         private AlbumView albumView;
         private Label lblStatus, lblNow, lblNext, lblTime, lblAlbum, lblToast;
         private PastillaView pastCred, pastCola;   // creditos y cola, en capsula
+        private GeneroView pastGenero;             // de que genero es lo que suena, detras del artista
         private HeaderView headerView;   // nombre de la seccion + en que pagina estas
         // Linea de ARRIBA de "Reproduciendo": vacia casi siempre. Cuando el titulo no cabe en una sola
         // linea, la primera mitad se pinta aqui y el resto en lblNow (que sigue siendo la ULTIMA linea, la
@@ -801,6 +802,10 @@ namespace Rocola
         // la BASE con la que suenan; ademas se le aplican los dB de "Subir TODO" para que sigan al resto.
         private int videoVol = 85;                 // 0..100, base del volumen de los videos ("video_vol=" en config)
         private int videoVolSet = -1;              // ultimo volumen puesto al WMP (para no repetir llamadas COM en cada sondeo)
+        private bool videoAuto = true;             // "video_automatico=": el volumen base de los videos lo elige el programa
+        private int videoBaseAuto = -1;            // lo que eligio (-1 = aun sin calcular)
+        private int videoBaseFirma = -1;           // con que datos lo calculo (para rehacerlo cuando cambien)
+        private volatile bool videoSinMedir;       // este equipo no sabe descomprimir el sonido de los videos
         private double videoLastPos = -1;          // ultima posicion del video (para detectar si NO avanza)
         private int videoProgressTick = 0;         // momento del ultimo avance real (vigia de video colgado)
         private bool videoNudged = false;          // ya se intento el empujon de rescate (play explicito)
@@ -1165,6 +1170,7 @@ namespace Rocola
                     else if (s.StartsWith("ia_datos_mb=")) { int v; if (int.TryParse(s.Substring(12).Trim(), out v)) iaMaxBytes = (v <= 0) ? 0L : (long)v * 1024 * 1024; }   // tope del archivo de material
                     else if (s.StartsWith("ia_datos=")) iaHarvestOn = s.Substring(9).Trim() != "0";   // juntar material para entrenar la IA
                     else if (s.StartsWith("video_vol=")) { int v; if (int.TryParse(s.Substring(10).Trim(), out v)) videoVol = v < 0 ? 0 : (v > 100 ? 100 : v); }   // volumen base de los videos
+                    else if (s.StartsWith("video_automatico=")) videoAuto = s.Substring(17).Trim() != "0";   // ese volumen base lo elige el programa
                     else if (s.StartsWith("eq_auto=")) { float v; if (float.TryParse(s.Substring(8).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) eqAmount = Clampf(v / 100f, 0f, 1f); }   // EQ automatico (fuerza % a mano)
                     else if (s.StartsWith("eq_automatico=")) eqAuto = s.Substring(14).Trim() != "0";     // la fuerza del EQ la decide el programa
                     else if (s.StartsWith("bajo_automatico=")) bassAuto = s.Substring(16).Trim() != "0"; // y la cantidad de bajo tambien
@@ -1272,6 +1278,7 @@ namespace Rocola
                 sb.Append("ia_datos=").Append(iaHarvestOn ? "1" : "0").Append("\r\n");
                 sb.Append("ia_datos_mb=").Append(iaMaxBytes <= 0 ? 0L : iaMaxBytes / (1024 * 1024)).Append("\r\n");
                 sb.Append("video_vol=").Append(videoVol).Append("\r\n");
+                sb.Append("video_automatico=").Append(videoAuto ? "1" : "0").Append("\r\n");
                 sb.Append("eq_auto=").Append(((int)Math.Round(eqAmount * 100f)).ToString(System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("eq_automatico=").Append(eqAuto ? "1" : "0").Append("\r\n");
                 sb.Append("bajo_automatico=").Append(bassAuto ? "1" : "0").Append("\r\n");
@@ -2250,7 +2257,7 @@ namespace Rocola
             bool wasMaint = maintMode;
             maintMode = true; maintUntil = DateTime.Now.AddMinutes(10);
             bool changed = false;
-            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkUp = masterDb, bkEq = eqAmount, bkBass = bassAmount; int bkVid = videoVol, bkDsk = perfilDisco; bool bkOn = normalizeOn, bkSbr = sbrOn, bkIa = iaVivo, bkEqA = eqAuto, bkBassA = bassAuto; string bkIaMez = iaMezcla, bkIaGpu = iaGpu;   // por si se Cancela
+            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkUp = masterDb, bkEq = eqAmount, bkBass = bassAmount; int bkVid = videoVol, bkDsk = perfilDisco; bool bkOn = normalizeOn, bkSbr = sbrOn, bkIa = iaVivo, bkEqA = eqAuto, bkBassA = bassAuto, bkVidA = videoAuto; string bkIaMez = iaMezcla, bkIaGpu = iaGpu;   // por si se Cancela
             try
             {
                 Cursor.Show();
@@ -2341,11 +2348,11 @@ namespace Rocola
                     Fila(0, tVol, 76, "Volumen objetivo", cVol, 0, 100, false);
                     Fila(1, tVol, 156, "Fuerza del nivelado", cFue, 0, 100, false);
                     Fila(2, tVol, 236, "Subir TODO el volumen", cSub, 0, 12, false);
-                    Fila(3, tVol, 316, "Volumen de los videos", cVid, 0, 100, false);
+                    Fila(3, tVol, 316, "Volumen de los videos", cVid, 0, 100, true);
                     bar[0].Value = TargetToPct(normTarget);
                     bar[1].Value = (int)Math.Round(normStrength * 100f);
                     bar[2].Value = (int)Math.Round(masterDb);
-                    bar[3].Value = videoVol;
+                    bar[3].Value = videoVol; au[3].Checked = videoAuto;
 
                     // ---------------- CALIDAD DEL SONIDO ----------------
                     Fila(4, tCal, 44, "EQ automatico", cCal, 0, 100, true);
@@ -2488,7 +2495,7 @@ namespace Rocola
                             int hechas = tot - fal; if (hechas < 0) hechas = 0; if (hechas > tot) hechas = tot;
                             pbTrain.Valor = hechas / (float)Math.Max(1, tot);
                             pbTrain.Invalidate();
-                            lPct.Text = hechas.ToString("#,0") + " de " + tot.ToString("#,0") + " canciones   (" + (hechas * 100 / Math.Max(1, tot)) + "%)";
+                            lPct.Text = hechas.ToString("#,0") + " de " + tot.ToString("#,0") + " archivos   (" + (hechas * 100 / Math.Max(1, tot)) + "%)";
                         }
                     };
                     Action updateLabels = delegate
@@ -2500,8 +2507,20 @@ namespace Rocola
                         des[1].Text = "Cuanto se suben las canciones bajitas.\nLas que ya suenan fuerte NUNCA se bajan.";
                         val[2].Text = "+" + bar[2].Value + " dB";
                         des[2].Text = "De mas para TODAS, ademas del nivelado.\nPara cuando el local se queda corto de volumen.";
-                        val[3].Text = bar[3].Value + "%";
-                        des[3].Text = "Los videos no pasan por la cadena de sonido.\nSu volumen se empareja aqui a mano.";
+                        // Los videos no pasan por la cadena de sonido: los pone el reproductor de Windows, que solo
+                        // sabe BAJAR desde lo que el archivo trae. Por eso en automatico el programa elige el
+                        // base mirando lo que miden todos: lo pone donde los flojos todavia alcanzan a los
+                        // fuertes, que es la unica manera de que suenen todos igual.
+                        int vMed = VideosMedidos();
+                        val[3].Text = (au[3].Checked ? VideoBase() : bar[3].Value) + "%";
+                        des[3].Text = "Los videos no pasan por la cadena de sonido: los pone Windows.\n"
+                                    + (au[3].Checked
+                                       ? (videoSinMedir
+                                          ? "Solo: este equipo no puede medirlos; de momento manda la barra."
+                                          : (vMed >= 8
+                                             ? ("Solo: bajado hasta donde alcanzan los flojos (" + vMed.ToString("#,0") + " medidos).")
+                                             : "Solo: aun no hay bastantes medidos; de momento manda la barra."))
+                                       : "A mano: manda la barra, sin emparejar nada.");
                         // ---------- CALIDAD ---------- (en automatico se ensena lo que eligio el programa, no la barra)
                         int eqPct = (int)Math.Round((au[4].Checked ? EqFuerzaAuto() : bar[4].Value / 100f) * 100f);
                         val[4].Text = eqPct + "%";
@@ -2538,7 +2557,7 @@ namespace Rocola
                                + (etapa.Length > 0 ? ("   La cancion que suena entra en la etapa " + etapa + ".") : "")
                                + "\nEl detalle, cancion por cancion, queda en rocola_calidad.txt junto al programa.")
                             : ("La biblioteca se mide sola mientras la rocola trabaja: "
-                               + (tFal > 0 ? ("faltan " + tFal.ToString("#,0") + " canciones.") : "ya esta al dia.")
+                               + (tFal > 0 ? ("faltan " + tFal.ToString("#,0") + " archivos.") : "ya esta al dia.")
                                + (durScanLeft > 0 ? ("   Duraciones: faltan " + durScanLeft.ToString("#,0") + ".") : "")
                                + "\n" + (iaHarvestOn ? ("Material para la IA: " + IaInfoText() + ".   ") : "")
                                + (etapa.Length > 0 ? ("La cancion que suena entra en la etapa " + etapa + ".") : "")
@@ -2562,6 +2581,7 @@ namespace Rocola
                         val[0].ForeColor = en ? cVol : cApagado;
                         val[1].ForeColor = en ? cFue : cApagado;
                         des[0].ForeColor = des[1].ForeColor = en ? cTenue : cApagado;
+                        bar[3].Enabled = !au[3].Checked;
                         bar[4].Enabled = !au[4].Checked;
                         bar[5].Enabled = !au[5].Checked;
                     };
@@ -2571,7 +2591,7 @@ namespace Rocola
                         normTarget = TargetFromPct(bar[0].Value);
                         normStrength = bar[1].Value / 100f;
                         masterDb = bar[2].Value;
-                        videoVol = bar[3].Value;
+                        videoVol = bar[3].Value; videoAuto = au[3].Checked;
                         if (videoOn && nowPlaying != null) SetVideoVolume(VideoVolumeFor(nowPlaying.VideoPath));   // el video que suena cambia YA
                         eqAuto = au[4].Checked; bassAuto = au[5].Checked;
                         eqAmount = bar[4].Value / 100f;
@@ -2601,7 +2621,7 @@ namespace Rocola
                         swOn.Checked = true;
                         bar[0].Value = TargetToPct(0.26f); bar[1].Value = 100; bar[2].Value = 0; bar[3].Value = 85;
                         bar[4].Value = 0; bar[5].Value = 30; bar[6].Value = 35;
-                        au[4].Checked = true; au[5].Checked = true;          // EQ y graves en automatico
+                        au[3].Checked = true; au[4].Checked = true; au[5].Checked = true;   // videos, EQ y graves en automatico
                         swUltra.Checked = false; swIaAuto.Checked = true;    // la IA en vivo, apagada
                         if (swSbr.Enabled) swSbr.Checked = false;            // el espectral ligero, apagado
                         if (perfilDisco != 0)                                // el tipo de disco, otra vez a medirlo sola
@@ -2641,7 +2661,7 @@ namespace Rocola
                 }
                 if (changed) { SaveConfigPrefs(); ShowToast("Sonido actualizado", Color.FromArgb(40, 130, 90)); }
             }
-            catch { normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; masterDb = bkUp; eqAmount = bkEq; bassAmount = bkBass; videoVol = bkVid; sbrOn = bkSbr; iaVivo = bkIa; eqAuto = bkEqA; bassAuto = bkBassA; iaMezcla = bkIaMez; iaGpu = bkIaGpu; perfilDisco = bkDsk; AplicaPerfilDisco(); }   // si algo truena, deja los valores como estaban
+            catch { normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; masterDb = bkUp; eqAmount = bkEq; bassAmount = bkBass; videoVol = bkVid; videoAuto = bkVidA; sbrOn = bkSbr; iaVivo = bkIa; eqAuto = bkEqA; bassAuto = bkBassA; iaMezcla = bkIaMez; iaGpu = bkIaGpu; perfilDisco = bkDsk; AplicaPerfilDisco(); }   // si algo truena, deja los valores como estaban
             finally { try { Cursor.Hide(); } catch { } maintMode = wasMaint; ForceFocus(); }
         }
 
@@ -3069,6 +3089,7 @@ namespace Rocola
             pastCola.Acento = Color.FromArgb(140, 205, 255);
             pastCred = new PastillaView(); pastCred.Etiqueta = "Inserta una moneda"; pastCred.Valor = "";
             pastCred.Acento = Color.FromArgb(255, 205, 90);
+            pastGenero = new GeneroView(); pastGenero.Font = new Font(this.Font.FontFamily, 10f, FontStyle.Bold); pastGenero.Visible = false;
             lblMejorada = new Label(); TransLabel(lblMejorada, 12f); lblMejorada.Text = "MEJORADA";
             lblMejorada.TextAlign = ContentAlignment.MiddleLeft; lblMejorada.Visible = false;   // aparece solo si la cancion suena mejorada (PositionMejorada)
 
@@ -3112,7 +3133,7 @@ namespace Rocola
             attractView.Visible = false;
             attractView.GetCoverByPath = LoadCoverByPath;
 
-            Controls.Add(lblStatus); Controls.Add(helpBar); Controls.Add(pastCred);
+            Controls.Add(lblStatus); Controls.Add(helpBar); Controls.Add(pastCred); Controls.Add(pastGenero);
             Controls.Add(letterBar); Controls.Add(headerView);
             Controls.Add(albumView); Controls.Add(panelSongs);
             Controls.Add(lblNowTop); Controls.Add(lblNow); Controls.Add(lblMejorada); Controls.Add(lblNext); Controls.Add(pastCola); Controls.Add(progress); Controls.Add(lblTime);
@@ -3216,7 +3237,7 @@ namespace Rocola
 
             // Las capsulas, arriba a la derecha. Se miden por su contenido: "Inserta una moneda" es mucho mas
             // ancha que "Creditos 3", y una capsula a medias se veria mal.
-            int pastH = 26;
+            int pastH = AltoPastilla(tarjetaH);
             int wCred = PastillaView.Ancho(pastCred.Etiqueta, pastCred.Valor, pastH, this.Font.FontFamily);
             int wCola = PastillaView.Ancho(pastCola.Etiqueta, pastCola.Valor, pastH, this.Font.FontFamily);
             int pastY = tarjetaY;
@@ -3391,7 +3412,7 @@ namespace Rocola
             nombreTag.Clear();              // biblioteca nueva: lo adivinado por el nombre se vuelve a mirar
             RecalculaLetras();
 
-            string order = "\u2605#ABCDEFGHIJKLMNOPQRSTUVWXYZ\u25BA";
+            string order = LetrasOrden;
             currentLetter = '#';
             // default: primera letra REAL disponible (NO arrancar en una seccion especial)
             bool gotReal = false;
@@ -3651,6 +3672,28 @@ namespace Rocola
 
         // Arma los dos diccionarios ENTEROS y se los entrega a la barra de una pieza. La barra los lee desde
         // el dibujado, asi que nunca puede pillar uno a medio llenar: o ve el de antes, o ve el nuevo.
+        // El orden de siempre, pero solo con las que tienen algo detras. Si no hubiera ninguna -biblioteca
+        // vacia o a medio leer- se deja "#": la barra nunca se queda sin una sola casilla, que la dejaria sin
+        // ancho por casilla y sin nada donde estar parado.
+        private const string LetrasOrden = "\u2605#ABCDEFGHIJKLMNOPQRSTUVWXYZ\u25BA";
+        private string LetrasVisibles()
+        {
+            StringBuilder sb = new StringBuilder(LetrasOrden.Length);
+            for (int i = 0; i < LetrasOrden.Length; i++)
+            {
+                char c = LetrasOrden[i];
+                if (letterAvailable == null || letterAvailable.Contains(c)) sb.Append(c);
+            }
+            return (sb.Length > 0) ? sb.ToString() : "#";
+        }
+
+        // LO ALTA QUE ES LA CAPSULA DE CREDITOS / EN COLA, que es lo mismo que decir LO GRANDE QUE SALE SU
+        // LETRA: la capsula se dibuja con cuerpos de 0.34 y 0.52 de su alto. Estaba clavada en 26 px, o sea
+        // que los creditos y la cola salian en letra mas chica que todo lo demas de la franja... siendo lo
+        // que el cliente tiene que poder leer de lejos, desde la barra del local. Ahora sale del alto de la
+        // tarjeta de lo que suena, asi que acompana al resto: en 1024x768 pasa de 26 a 35 px.
+        private static int AltoPastilla(int tarjetaH) { return Math.Max(26, (int)(tarjetaH * 0.44f)); }
+
         private void RecalculaLetras()
         {
             if (letterBar == null) return;
@@ -3689,11 +3732,18 @@ namespace Rocola
             foreach (KeyValuePair<char, string> kv in letterTag) tinte[kv.Key] = ColorDeEtiqueta(kv.Value);
             letterBar.Counts = cuenta;
             letterBar.Tints = tinte;
+            // LAS LETRAS VACIAS NI SE DIBUJAN. Antes salian las 29 casillas siempre y las que no tenian nada
+            // se pintaban apagadas: ocupaban su sitio para no decir nada. Ahora la barra solo lleva las que
+            // tienen contenido, asi que las que quedan se reparten TODO el ancho: la casilla de cada una es
+            // mas grande -mas facil de atinar con el dedo- y, cuando la barra va estrecha (con un video puesto
+            // al lado), la letra misma tambien crece, porque ahi el cuerpo lo limitaba el ancho de la casilla.
+            letterBar.Letters = LetrasVisibles();
             letterBar.Invalidate();
             if (searchOverlay != null) { searchOverlay.DatosVer++; if (searchOpen) searchOverlay.Invalidate(); }
             // El genero de cada cancion tambien se ensena DENTRO del disco. Como se aprende en segundo plano,
             // puede llegar con el disco ya abierto: sin esto, las pastillas no saldrian hasta salir y volver.
             generoVer++;
+            ActualizaGenero();   // el genero de lo que suena tambien se aprende de fondo: que aparezca sin esperar
             if (panelSongs != null && panelSongs.Visible) RefrescaLista();
         }
 
@@ -4365,16 +4415,12 @@ namespace Rocola
 
         private const double PreSegSec = 20.0;    // duracion de cada tramo analizado
         private const int PreSegs = 3;            // cuantos tramos por cancion (repartidos por el tema)
-        private void StartPreScan()
+        // QUE HAY QUE MEDIR. Devuelve la tanda -las canciones y los videos que aun no tienen medida- y, por
+        // "elegibles", cuantos archivos de la biblioteca cuentan para la barra de avance del repaso a fondo.
+        private List<string> TandaPorMedir(bool turbo, out int elegibles)
         {
-            preScanStop = false;
-            // Cada llamada (arranque o re-escaneo con F5) abre una GENERACION nueva: el hilo anterior se da
-            // por caducado en cuanto lo nota y sale solo. Antes se volvia con "ya hay uno trabajando", asi que
-            // la musica AGREGADA despues no se media hasta reiniciar la rocola.
-            int myGen = ++preScanGen;
-            bool turbo = preScanTurbo;
             List<string> pend = new List<string>();
-            int elegibles = 0;                 // canciones de la biblioteca que cuentan para la barra de avance
+            elegibles = 0;
             for (int i = 0; i < tracks.Count; i++)
             {
                 Track tk = tracks[i];
@@ -4387,23 +4433,46 @@ namespace Rocola
                 if (turbo) { bool ya; lock (deepDoneLock) ya = deepDone.Contains(tk.Path); if (ya) continue; }
                 pend.Add(tk.Path);
             }
-            // RAMA HD: aqui SI se puede decodificar el audio de un MP4/AVI/WMV (Media Foundation), asi que los
-            // videos tambien se miden y quedan nivelados solos, como las canciones. En la rama clasica (XP) esto
-            // no existe y los videos se emparejan solo con la perilla de Ctrl+F3.
+            // Y LOS VIDEOS. No estaban: 'tracks' solo lleva canciones, los videos viven aparte (VideoFiles de
+            // cada disco). Sin medirlos, el nivelado de los videos no tenia NADA con que trabajar y cada uno
+            // sonaba con el volumen que trajera de fabrica: unos bien, otros tan bajos que casi no se oian.
+            // Van al final de la tanda, despues de la musica, que es lo que mas se usa.
+            //
+            // Windows XP no puede hacerlo: el sonido de un mp4 lo descomprime Media Foundation, que llego con
+            // Vista. Alli los primeros videos fallan al abrirse y el hilo del repaso deja de intentarlo.
+            int cuantosVideos = 0;
             if (videoAlbums != null)
+            {
+                HashSet<string> vistos = new HashSet<string>(StringComparer.OrdinalIgnoreCase);   // el mismo video puede estar en dos discos
                 for (int i = 0; i < videoAlbums.Count; i++)
                 {
-                    Album va = videoAlbums[i]; if (va == null) continue;
+                    Album va = videoAlbums[i];
+                    if (va == null || va.VideoFiles == null) continue;
                     for (int j = 0; j < va.VideoFiles.Count; j++)
                     {
                         string vp = va.VideoFiles[j];
-                        if (vp == null) continue;
-                        elegibles++;
-                        if (!turbo && durCache.ContainsKey(vp)) continue;
+                        if (vp == null || !vistos.Add(vp)) continue;
+                        if (!turbo && loudCache.ContainsKey(vp)) continue;
                         if (turbo) { bool ya; lock (deepDoneLock) ya = deepDone.Contains(vp); if (ya) continue; }
-                        pend.Add(vp);
+                        pend.Add(vp); cuantosVideos++;
                     }
                 }
+                elegibles += vistos.Count;
+            }
+            if (cuantosVideos > 0) Diag("nivelado: " + cuantosVideos + " videos por medir");
+            return pend;
+        }
+
+        private void StartPreScan()
+        {
+            preScanStop = false;
+            // Cada llamada (arranque o re-escaneo con F5) abre una GENERACION nueva: el hilo anterior se da
+            // por caducado en cuanto lo nota y sale solo. Antes se volvia con "ya hay uno trabajando", asi que
+            // la musica AGREGADA despues no se media hasta reiniciar la rocola.
+            int myGen = ++preScanGen;
+            bool turbo = preScanTurbo;
+            int elegibles;
+            List<string> pend = TandaPorMedir(turbo, out elegibles);
             // CADA cuanto se vuelcan las tablas a disco. Un volcado reescribe ENTERAS las tablas de sonoridad y
             // de EQ: con cien mil canciones son ~17 MB por volcado. Hacerlo cada 10 canciones durante un repaso a
             // fondo son CIENTOS de gigas escritos para nada, y eso desgasta el SSD. Asi que el intervalo crece con
@@ -4421,6 +4490,7 @@ namespace Rocola
             preScanTh = new System.Threading.Thread(delegate ()
             {
                 int hechas = 0;
+                int vidBien = 0, vidMal = 0;   // videos medidos / videos que ni se pudieron abrir
                 try
                 {
                     if (!turbo) System.Threading.Thread.Sleep(15000);   // dejar respirar el arranque (y al calentador de caratulas)
@@ -4434,8 +4504,22 @@ namespace Rocola
                             System.Threading.Thread.Sleep(500);
                         if (preScanStop || myGen != preScanGen) break;
                         string ruta = pend[i];
+                        // Si este equipo ya demostro que no sabe descomprimir el sonido de un video, los demas
+                        // ni se intentan: seria fallar mil veces seguidas y dejar el contador de "faltan"
+                        // clavado para siempre en el numero de videos.
+                        bool esVid = EsVideo(ruta);
+                        if (esVid && videoSinMedir) { preScanLeft--; continue; }
                         float rms, dur; float[] eqCurve;
-                        if (!MeasureFile(ruta, turbo, out rms, out dur, out eqCurve)) { preScanLeft--; continue; }
+                        if (!MeasureFile(ruta, turbo, out rms, out dur, out eqCurve))
+                        {
+                            preScanLeft--;
+                            // Tres videos seguidos sin poder abrirse y ninguno bueno todavia: no son archivos
+                            // rotos, es que aqui no hay con que descomprimirlos.
+                            if (esVid && vidBien == 0 && ++vidMal >= 3)
+                            { videoSinMedir = true; Diag("nivelado: este equipo no puede medir los videos (no hay Media Foundation)"); }
+                            continue;
+                        }
+                        if (esVid) vidBien++;
                         // publicar en el hilo de la interfaz (las tablas son suyas): sin carreras
                         try
                         {
@@ -4495,6 +4579,10 @@ namespace Rocola
         private bool MeasureFile(string path, bool aFondo, out float rms, out float durSec, out float[] eqCurve)
         {
             rms = 0f; durSec = 0f; eqCurve = null;
+            // De un VIDEO solo interesa CUANTO SUENA. Su sonido lo saca el reproductor de Windows, no
+            // nosotros: no pasa por el ecualizador ni por el DSEE ni por los graves. Medirle la huella tonal
+            // o cosechar cuadros para la IA seria trabajo y disco gastados en algo que nunca se usaria.
+            bool esVideo = EsVideo(path);
             AudioFileReader rd = null;
             try
             {
@@ -4514,7 +4602,7 @@ namespace Rocola
                 // que metamos nosotros: viene asi masterizada. Se cuenta aqui, en el recorrido que ya se hacia.
                 long clipN = 0; int[] clipRun = new int[ch];
                 float[][] bp = new float[8][]; float[] bpSt = new float[8 * 4];   // huella tonal: bandpass por banda
-                for (int b = 0; b < 8; b++) bp[b] = EqBpf(EqCentros[b], rate);
+                if (!esVideo) for (int b = 0; b < 8; b++) bp[b] = EqBpf(EqCentros[b], rate);   // (de un video no se saca huella: se quedan en nulo y el filtro se salta)
                 double[] bpSum = new double[8]; long bpN = 0;
                 // COSECHA PARA LA IA: se analiza el canal 0 con el MISMO motor del DSEE. Los pares se guardan
                 // en memoria y solo se escriben al final, si resulta que la cancion SI conserva sus agudos
@@ -4557,8 +4645,8 @@ namespace Rocola
                 int nivelAhora; bool cosechar;
                 if (aFondo) { nivelAhora = 2; cosechar = (nivelPrevio != 2); }
                 else { nivelAhora = IaNivelDePasada(pasadas); cosechar = pasadas < Math.Min(IaPasadasMax, strideIa); }
-                cosechar = cosechar && iaHarvestOn && !IaBudgetFull();
-                if (!cosechar)
+                cosechar = cosechar && iaHarvestOn && !IaBudgetFull() && !esVideo;
+                if (!cosechar && !esVideo)
                 {
                     // Solo hace falta el acantilado: se analizan unos pocos cuadros y se para (ni se guardan pares).
                     try { hv = new SpectralTap(rate, 1); hvFrame = new float[hv.FrameLen]; soloCorte = true; hvVistosMax = IaWarmFrames + 24; }
@@ -4683,7 +4771,7 @@ namespace Rocola
                 rms = (float)Math.Sqrt(sumSq / nSamp);
                 // Huella tonal en dB por banda, referida a la MEDIANA del cuerpo (158 Hz - 5.6 kHz): exactamente
                 // la misma cuenta que hace FinalizeEqMeasure al aprenderla oyendo la cancion.
-                if (bpN >= 40000)
+                if (bpN >= 40000 && !esVideo)
                 {
                     float[] curve = new float[EqLen];
                     curve[EqCut] = corteHz; curve[EqClip] = recorte; curve[EqCutLo] = corteLo;
@@ -5622,7 +5710,7 @@ namespace Rocola
         // lado (VIDEO -> TOP/#/A... y viceversa): el abecedario es una rueda, nunca se atasca.
         private bool GotoLetter(int dir, bool wrap)
         {
-            string order = "\u2605#ABCDEFGHIJKLMNOPQRSTUVWXYZ\u25BA";
+            string order = LetrasOrden;
             int n = order.Length;
             int idx = order.IndexOf(currentLetter);
             if (idx < 0) idx = 0;
@@ -7604,25 +7692,96 @@ namespace Rocola
             this.Invalidate();
         }
 
+        // EL VOLUMEN BASE DE LOS VIDEOS, ELEGIDO SOLO.
+        //
+        // El reproductor de Windows solo sabe BAJAR: su volumen va de 0 a 100 y el 100 es el archivo tal cual.
+        // No hay forma de sacarle mas de lo que el video trae grabado. Asi que la unica manera de que todos
+        // suenen IGUAL es bajar los fuertes hasta donde llegan los flojos, y para eso hace falta dejar hueco:
+        // con el base en 85, un video solo puede subir un 18% -1.4 dB- antes de toparse con el 100, y uno
+        // grabado 10 dB por debajo se queda tan bajo como estaba, que es justo lo que se oye en la rocola.
+        //
+        // Aqui se miran TODOS los videos ya medidos y se elige el base MAS ALTO con el que todavia alcanzan
+        // casi todos. Se da por perdido el 15% mas flojo -por tres videos rarisimos no vale la pena bajar la
+        // biblioteca entera- y nunca se baja del 40 (8 dB), que es lo mas que tiene sentido alejar los videos
+        // de las canciones. Si aun no hay medidas (o el equipo no puede medir), manda la perilla y ya.
+        private const float VideoAutoFuera = 0.15f;   // fraccion de videos que se da por perdida
+        private const int VideoBaseMin = 40;          // -8 dB: lo mas que se acepta bajar el conjunto
+        private int VideoBase()
+        {
+            if (!videoAuto || !normalizeOn) return videoVol;   // sin nivelado no hay nada que emparejar: manda la perilla
+            int firma = loudCache.Count * 31 + videoVol;
+            firma = firma * 31 + (int)(normTarget * 100000f);
+            if (firma == videoBaseFirma && videoBaseAuto >= 0) return videoBaseAuto;
+            videoBaseFirma = firma;
+            List<float> nec = new List<float>();
+            if (videoAlbums != null && normTarget > 0.0001f)
+            {
+                HashSet<string> vistos = new HashSet<string>(StringComparer.OrdinalIgnoreCase);   // el mismo video puede estar en dos discos
+                for (int i = 0; i < videoAlbums.Count; i++)
+                {
+                    Album va = videoAlbums[i];
+                    if (va == null || va.VideoFiles == null) continue;
+                    for (int j = 0; j < va.VideoFiles.Count; j++)
+                    {
+                        string vp = va.VideoFiles[j]; float rms;
+                        if (vp == null || !vistos.Add(vp)) continue;
+                        if (!loudCache.TryGetValue(vp, out rms) || rms <= 0.0001f) continue;
+                        float b = 100f * rms / normTarget;   // el base mas alto con el que ESTE video llega al objetivo
+                        nec.Add((b > 100f) ? 100f : b);
+                    }
+                }
+            }
+            if (nec.Count < 8) { videoBaseAuto = videoVol; return videoBaseAuto; }   // sin medidas suficientes: la perilla
+            nec.Sort();
+            int v = (int)Math.Round(nec[(int)(nec.Count * VideoAutoFuera)]);
+            if (v < VideoBaseMin) v = VideoBaseMin; else if (v > 100) v = 100;
+            videoBaseAuto = v;
+            return v;
+        }
+        // Cuantos videos llevan medida (para poder decirlo en los ajustes).
+        private int VideosMedidos()
+        {
+            int n = 0;
+            if (videoAlbums == null) return 0;
+            HashSet<string> vistos = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < videoAlbums.Count; i++)
+            {
+                Album va = videoAlbums[i];
+                if (va == null || va.VideoFiles == null) continue;
+                for (int j = 0; j < va.VideoFiles.Count; j++)
+                {
+                    string vp = va.VideoFiles[j]; float rms;
+                    if (vp == null || !vistos.Add(vp)) continue;
+                    if (loudCache.TryGetValue(vp, out rms) && rms > 0.0001f) n++;
+                }
+            }
+            return n;
+        }
+
         // Abre y reproduce un video en el reproductor de la derecha (lo llama PlayNext).
-        // Volumen (0..100) con el que debe sonar un video: la perilla base, mas los dB de "Subir TODO" (para
-        // que los videos sigan al resto), mas -si ese video ya fue medido- el nivelado que lo lleva al MISMO
-        // volumen objetivo de las canciones. En XP los videos no se pueden medir (no hay como decodificar su
-        // audio), asi que alli solo actuan la perilla y el "Subir TODO"; en la rama HD si se miden.
+        // Volumen (0..100) con el que debe sonar un video: el base -la perilla, o lo que eligio el programa-,
+        // mas los dB de "Subir TODO" (para que los videos sigan al resto), mas -si ese video ya fue medido-
+        // el nivelado que lo lleva al MISMO volumen objetivo de las canciones.
         private int VideoVolumeFor(string path)
         {
-            double g = MasterLin();
+            double v = VideoBase();
             float rms;
             if (normalizeOn && path != null && loudCache.TryGetValue(path, out rms) && rms > 0.0001f)
             {
+                // NIVELADO. Este video esta medido, asi que se le pone el volumen justo para que suene como
+                // los demas. Aqui "Subir TODO" NO entra, a proposito: el reproductor de Windows no pasa de
+                // 100, o sea que ese de mas no lo puede dar, y lo unico que consigue es empujar los videos
+                // contra el techo y deshacer el emparejado que se acaba de hacer. Con +6 dB de master, todos
+                // los videos con algo de cuerpo se pegaban al 100 y volvian a sonar distinto entre si.
                 double lv = normTarget / rms;
                 if (lv < 0.15) lv = 0.15;        // no enterrar un video muy fuerte (max -16 dB)
                 else if (lv > 4.0) lv = 4.0;     // ni intentar rescatar uno mudo (el tope real lo pone el 100 del WMP)
-                g *= lv;
+                v *= lv;
             }
-            int v = (int)Math.Round(videoVol * g);
-            if (v < 0) v = 0; else if (v > 100) v = 100;   // el WMP no pasa de 100: un video muy bajito solo llega hasta ahi
-            return v;
+            else v *= MasterLin();   // sin medida no hay nada que emparejar: que al menos siga a "Subir TODO"
+            int r = (int)Math.Round(v);
+            if (r < 0) r = 0; else if (r > 100) r = 100;   // el WMP no pasa de 100: un video muy bajito solo llega hasta ahi
+            return r;
         }
 
         // Pone el volumen en el WMP solo si CAMBIO (el sondeo corre varias veces por segundo durante el fundido).
@@ -8478,6 +8637,7 @@ namespace Rocola
             }
             else { nowFullText = "Nada reproduciendose"; nowArtista = ""; }
             iaBadgeKind = MejKind();   // dorado = version IA (Apollo); plateado = DSEE espectral reconstruyendo DE VERDAD
+            ActualizaGenero();    // la pastilla del genero, antes de acomodar: manda en el ancho del artista
             PositionMejorada();   // pone titulo y artista y coloca el letrero MEJORADA
             lblNext.Text = (queue.Count > 0) ? "Sigue:  " + queue[0].Display() : "Sigue:  -";
             pastCola.Valor = queue.Count.ToString(); pastCola.Invalidate();
@@ -8518,14 +8678,42 @@ namespace Rocola
             if (lblNow.Text != nowArtista) lblNow.Text = nowArtista;
             if (lblNowTop.Width != iaNowRowW) lblNowTop.Width = iaNowRowW;
 
-            int anchoArt = on ? Math.Max(60, iaNowRowW - bw - 12) : iaNowRowW;
+            // LA PASTILLA DEL GENERO va en este mismo renglon, entre el artista y el letrero: es de la
+            // cancion, igual que el artista, y en el renglon de arriba -el titulo- no cabria sin comerle
+            // sitio a lo unico que de verdad hay que leer entero.
+            int gw = (pastGenero != null) ? pastGenero.AnchoQuePide() : 0;
+            int anchoArt = iaNowRowW - (on ? bw + 12 : 0) - (gw > 0 ? gw + 12 : 0);
+            if (anchoArt < 60) anchoArt = 60;
             if (lblNow.Width != anchoArt) lblNow.Width = anchoArt;
 
-            if (!on) { if (lblMejorada.Visible) lblMejorada.Visible = false; return; }
             int tw = TextRenderer.MeasureText(lblNow.Text, lblNow.Font).Width;
             if (tw > anchoArt) tw = anchoArt;
-            lblMejorada.SetBounds(lblNow.Left + tw + 12, lblNow.Top, bw, 22);
+            int x = lblNow.Left + tw + 12;
+            if (gw > 0)
+            {
+                int gh = Math.Min(pastGenero.AltoQuePide(), lblNow.Height);
+                pastGenero.SetBounds(x, lblNow.Top + (lblNow.Height - gh) / 2, gw, gh);
+                if (!pastGenero.Visible) pastGenero.Visible = true;
+                x += gw + 12;
+            }
+            else if (pastGenero != null && pastGenero.Visible) pastGenero.Visible = false;
+
+            if (!on) { if (lblMejorada.Visible) lblMejorada.Visible = false; return; }
+            lblMejorada.SetBounds(x, lblNow.Top, bw, 22);
             lblMejorada.Visible = true;
+        }
+
+        // DE QUE ES LO QUE SUENA. La misma respuesta que dentro del disco y que en el buscador (GeneroDeCancion),
+        // asi que las tres dicen lo mismo. Un VIDEO no lleva: no hay de donde sacarla. Si no se sabe, no sale
+        // pastilla -mejor sin etiqueta que con una inventada-.
+        private void ActualizaGenero()
+        {
+            if (pastGenero == null) return;
+            string et = (nowPlaying != null && !nowPlaying.IsVideo) ? GeneroDeCancion(nowPlaying.Song, nowPlaying.Disc) : "";
+            if (et == pastGenero.Texto) return;
+            pastGenero.Texto = et;
+            pastGenero.Tinte = (et.Length > 0) ? ColorDeEtiqueta(et) : DefaultAccent;
+            PositionMejorada();   // el ancho del artista depende de si hay pastilla y de lo que mida
         }
 
         // Reparte el texto entre la linea de ARRIBA (ancho completo) y la de ABAJO (la que comparte fila con el
@@ -8912,6 +9100,7 @@ namespace Rocola
                     DrawLabelOverlay(g, lblNowTop);   // 2a linea del titulo (vacia casi siempre: no dibuja nada)
                     DrawLabelOverlay(g, lblNow);
                     if (lblMejorada != null && lblMejorada.Visible) DrawLabelOverlay(g, lblMejorada);   // letrero MEJORADA (su brillo es un halo por quad, no rehace esta textura)
+                    if (pastGenero != null && pastGenero.Visible) DrawCtrlOverlay(g, pastGenero);
                     DrawLabelOverlay(g, lblNext);
                     DrawLabelOverlay(g, lblTime);
                     DrawCtrlOverlay(g, pastCred);
@@ -9086,6 +9275,7 @@ namespace Rocola
             if (lblNowTop != null) sb = Mix(sb, lblNowTop.Text);
             if (lblNow != null) sb = Mix(sb, lblNow.Text);
             if (lblMejorada != null && lblMejorada.Visible) { sb = Mix(sb, 'M'); sb = Mix(sb, iaBadgeKind); sb = Mix(sb, lblMejorada.Left); sb = Mix(sb, lblMejorada.ForeColor.ToArgb()); }
+            if (pastGenero != null && pastGenero.Visible) { Color tg = pastGenero.Tinte; sb = Mix(sb, pastGenero.Texto); sb = Mix(sb, tg.ToArgb()); sb = Mix(sb, pastGenero.Left); }
             if (lblNext != null) sb = Mix(sb, lblNext.Text);
             if (lblTime != null) sb = Mix(sb, lblTime.Text);
             if (pastCred != null) { Color ac = pastCred.Acento; sb = Mix(sb, pastCred.Etiqueta); sb = Mix(sb, pastCred.Valor); sb = Mix(sb, ac.ToArgb()); sb = Mix(sb, pastCred.Left); }
@@ -9106,8 +9296,9 @@ namespace Rocola
             else { LetterBar lb = c as LetterBar; if (lb != null) lb.RenderContent(g, true);
             else { PastillaView pa = c as PastillaView; if (pa != null) pa.RenderContent(g);
             else { ProgressView pv = c as ProgressView; if (pv != null) pv.RenderContent(g);
+            else { GeneroView gv = c as GeneroView; if (gv != null) gv.RenderContent(g);
             else { SongListView sl = c as SongListView; if (sl != null) sl.RenderContent(g);
-            else { SongPagerBar sp = c as SongPagerBar; if (sp != null) sp.RenderContent(g); } } } } } }
+            else { SongPagerBar sp = c as SongPagerBar; if (sp != null) sp.RenderContent(g); } } } } } } }
             g.Restore(st);
         }
 
@@ -13049,6 +13240,61 @@ namespace Rocola
                 p.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
                 p.CloseFigure();
                 return p;
+            }
+        }
+
+        // ==========  PASTILLA DE GENERO  ==========
+        // La misma que sale en la lista de un disco y en los resultados del buscador -relleno muy tenue del
+        // color del genero, borde fino y el texto en ese color aclarado-, pero como control suelto, para
+        // ponerla en la franja de abajo: asi, al sonar una cancion, tambien se ve DE QUE ES.
+        //
+        // Se mide sola: le da su ancho y su alto al acomodo, que es quien la coloca detras del artista.
+        private class GeneroView : Control
+        {
+            private string texto = "";
+            public string Texto
+            {
+                get { return texto; }
+                set { string v = value ?? ""; if (v != texto) { texto = v; medido = false; Invalidate(); } }
+            }
+            public Color Tinte = DefaultAccent;
+
+            private bool medido; private int anchoPide, altoPide;
+            private SolidBrush brocha; private StringFormat sfCen;
+
+            public GeneroView()
+            {
+                this.SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.SupportsTransparentBackColor, true);
+                this.BackColor = Color.Transparent;
+                this.TabStop = false;
+            }
+            protected override void OnFontChanged(EventArgs e) { base.OnFontChanged(e); medido = false; }
+
+            private void Mide()
+            {
+                if (medido) return;
+                anchoPide = (texto.Length > 0) ? AnchoTexto(texto, this.Font) + 20 : 0;
+                altoPide = this.Font.Height + 6;
+                medido = true;
+            }
+            public int AnchoQuePide() { Mide(); return anchoPide; }
+            public int AltoQuePide() { Mide(); return altoPide; }
+
+            protected override void OnPaint(PaintEventArgs e) { RenderContent(e.Graphics); }
+            public void RenderContent(Graphics g)
+            {
+                int w = Width, h = Height;
+                if (w < 6 || h < 6 || texto.Length == 0) return;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                if (brocha == null) brocha = new SolidBrush(Color.White);
+                if (sfCen == null) sfCen = CreaSfDibuja(StringAlignment.Center);
+                using (GraphicsPath p = RoundedPath(new Rectangle(0, 0, w - 1, h - 1), Math.Min(7, (h - 1) / 2)))
+                {
+                    using (SolidBrush b = new SolidBrush(Color.FromArgb(60, Tinte))) g.FillPath(b, p);
+                    using (Pen pe = new Pen(Color.FromArgb(120, Tinte), 1f)) g.DrawPath(pe, p);
+                }
+                brocha.Color = Lighten(Tinte, 0.45);
+                g.DrawString(texto, this.Font, brocha, new RectangleF(0, 0, w, h), sfCen);
             }
         }
 

@@ -81,6 +81,20 @@ class Sobras
         long bPas = PorVuelta(400, delegate { mPas.Invoke(pas, arg); });
         Console.WriteLine("     pastilla de creditos         " + bPas + " bytes");
 
+        // ---------- la pastilla del genero de lo que suena ----------
+        Type TGen = Nes("GeneroView");
+        long bGen = -1;
+        if (TGen != null)
+        {
+            Control gen = (Control)Activator.CreateInstance(TGen, true);
+            gen.Font = new Font(FontFamily.GenericSansSerif, 10f, FontStyle.Bold);
+            gen.SetBounds(0, 0, 84, 21);
+            TGen.GetProperty("Texto").SetValue(gen, "Cumbia", null);
+            MethodInfo mGen = TGen.GetMethod("RenderContent", new Type[] { typeof(Graphics) });
+            bGen = PorVuelta(400, delegate { mGen.Invoke(gen, arg); });
+            Console.WriteLine("     pastilla del genero          " + bGen + " bytes");
+        }
+
         // ---------- la barra del abecedario ----------
         Type TLet = Nes("LetterBar");
         long bLet = -1;
@@ -128,6 +142,7 @@ class Sobras
         Console.WriteLine();
         Check(bCab <= 64, "el encabezado no deja sobras en cada cuadro");
         Check(bPas <= 64, "la pastilla de creditos no deja sobras en cada cuadro");
+        if (bGen >= 0) Check(bGen <= 64, "la pastilla del genero no deja sobras en cada cuadro");
         if (bLet >= 0) Check(bLet <= 256, "la barra del abecedario no deja sobras en cada cuadro");
         if (bLis >= 0) Check(bLis <= 4096, "la lista de canciones no deja sobras de mas en cada cuadro");
 
