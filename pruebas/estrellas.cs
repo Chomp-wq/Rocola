@@ -6,12 +6,15 @@ using System.Reflection;
 
 // LAS ESTRELLAS DEL FONDO: QUE HAYA VARIEDAD, Y QUE NO CUESTE MAS.
 //
-// El cielo tenia una sola silueta -un destello de cuatro puntas- y por eso se veia siempre igual. Ahora hay
-// tres: destello, rafaga y punto. Hubo una cuarta, una cruz de brazos finos, que se llevaba mas de la mitad
-// de las estrellas medianas: en pantalla se leia como un monton de signos de MAS repartidos por el cielo y
-// quedaba fea, asi que se quito. Aqui se comprueba que salen las tres, que la CRUZ no ha vuelto, que el
-// reparto es el pensado (el polvo se queda en puntos palidos y el color fuerte se lo quedan las pocas
-// grandes, para que el fondo no se vuelva un confeti) y que dibujarlas no cuesta mas que antes.
+// LA ESTRELLA DEL CIELO ES LA DE CINCO PUNTAS, la que dibuja todo el mundo cuando le dicen "una estrella".
+// Se probaron otras siluetas -un destello de cuatro puntas, una cruz de brazos finos, una rafaga de ocho
+// rayos- y ninguna pegaba con la rocola: la cruz se leia como un monton de signos de MAS repartidos por el
+// cielo, y las otras dos como chispas o copos de nieve. La variedad la ponen el TAMANO y el COLOR.
+//
+// Aqui no se mira ningun campo por dentro -eso se podria cambiar y la bateria seguiria pasando-: se DIBUJA
+// una estrella y se le CUENTAN LAS PUNTAS mirando los pixeles. Ademas se comprueba que el polvo del fondo
+// se queda en puntos palidos, que el color fuerte se lo quedan las pocas grandes (para que el cielo no se
+// vuelva un confeti) y que dibujarlas no cuesta mas que antes.
 class Estrellas
 {
     static int fallos = 0;
@@ -41,7 +44,52 @@ class Estrellas
         Check(TS != null, "el campo de estrellas esta donde tiene que estar");
         if (TS == null) return 1;
 
-        Console.WriteLine("\n  1) SALEN LAS TRES SILUETAS (Y LA CRUZ NO VUELVE)\n");
+        Console.WriteLine("\n  1) LA SILUETA ES UNA ESTRELLA DE CINCO PUNTAS\n");
+
+        // Se dibuja UNA estrella grande sobre negro y se le cuentan las puntas: se recorre un circulo
+        // alrededor del centro y se cuentan los tramos con tinta. Una estrella de cinco puntas da cinco.
+        MethodInfo mEstrella = TS.GetMethod("DrawEstrella", BindingFlags.Instance | BindingFlags.NonPublic);
+        Check(mEstrella != null, "la rocola sabe dibujar la estrella");
+        if (mEstrella != null)
+        {
+            object dib = Activator.CreateInstance(TS, true);
+            const int LADO = 200, CEN = LADO / 2, RAD = 70;
+            using (Bitmap b1 = new Bitmap(LADO, LADO, PixelFormat.Format32bppArgb))
+            {
+                using (Graphics g1 = Graphics.FromImage(b1))
+                using (SolidBrush br = new SolidBrush(Color.White))
+                {
+                    g1.Clear(Color.Black);
+                    g1.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                    mEstrella.Invoke(dib, new object[] { g1, br, CEN, CEN, RAD });
+                }
+                b1.Save("estrella.png", ImageFormat.Png);
+                // El circulo se mira a 0.80 del radio: por ahi pasan solo los brazos, no el cuerpo central.
+                int puntas = 0; bool dentro = false; bool primero = false;
+                for (int i = 0; i <= 720; i++)
+                {
+                    double ang = -Math.PI / 2 + i * Math.PI / 360.0;
+                    int x = CEN + (int)(Math.Cos(ang) * RAD * 0.80), y = CEN + (int)(Math.Sin(ang) * RAD * 0.80);
+                    bool hay = (x >= 0 && y >= 0 && x < LADO && y < LADO && b1.GetPixel(x, y).R > 128);
+                    if (i == 0) primero = hay;
+                    if (hay && !dentro) puntas++;
+                    dentro = hay;
+                }
+                if (primero && dentro) puntas--;   // el brazo de arriba se contaria dos veces al cerrar la vuelta
+                Console.WriteLine("     brazos contados alrededor de la estrella: " + puntas);
+                Check(puntas == 5, "la estrella tiene CINCO puntas (cuenta " + puntas + ")");
+                // Y mira hacia ARRIBA, como la de toda la vida: justo encima del centro tiene que haber tinta.
+                Check(b1.GetPixel(CEN, CEN - (int)(RAD * 0.80)).R > 128, "y con una punta hacia arriba");
+                Console.WriteLine("     (dibujada en pruebas/estrella.png, por si se quiere mirar)");
+            }
+        }
+
+        // Las siluetas viejas no vuelven: se probaron y no pegaban.
+        Check(TS.GetMethod("DrawCruz", BindingFlags.Instance | BindingFlags.NonPublic) == null
+              && TS.GetMethod("DrawRafaga", BindingFlags.Instance | BindingFlags.NonPublic) == null
+              && TS.GetMethod("DrawSparkle", BindingFlags.Instance | BindingFlags.NonPublic) == null,
+              "las siluetas viejas -cruz, rafaga y destello de cuatro puntas- no han vuelto");
+
         object sf = Activator.CreateInstance(TS, true);
         FieldInfo fDens = TS.GetField("Density", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
         if (fDens != null) fDens.SetValue(sf, 1f);
@@ -52,53 +100,27 @@ class Estrellas
         mEnsure.Invoke(sf, new object[] { 1280, 800 });
         Array estrellas = (Array)fStars.GetValue(sf);
         Type TStar = estrellas.GetType().GetElementType();
-        FieldInfo fForma = TStar.GetField("Forma", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
         FieldInfo fKind = TStar.GetField("Kind", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
         FieldInfo fR = TStar.GetField("R", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
         FieldInfo fG = TStar.GetField("G", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
         FieldInfo fB = TStar.GetField("B", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-        Check(fForma != null, "cada estrella lleva apuntada su silueta");
-        if (fForma == null) return 1;
 
-        int[] cuenta = new int[8];   // de sobra: si volviera a haber mas siluetas, se cuentan igual
-        int grandesColor = 0, grandes = 0, polvoColor = 0, polvo = 0;
+        int grandesColor = 0, grandes = 0, polvoColor = 0, polvo = 0, medianas = 0;
         for (int i = 0; i < estrellas.Length; i++)
         {
-            object s = estrellas.GetValue(i);
-            int f = Convert.ToInt32(fForma.GetValue(s));
-            if (f >= 0 && f < cuenta.Length) cuenta[f]++;
-            int k = Convert.ToInt32(fKind.GetValue(s));
-            int r = Convert.ToInt32(fR.GetValue(s)), g = Convert.ToInt32(fG.GetValue(s)), b = Convert.ToInt32(fB.GetValue(s));
-            int max = Math.Max(r, Math.Max(g, b)), min = Math.Min(r, Math.Min(g, b));
+            object st = estrellas.GetValue(i);
+            int k = Convert.ToInt32(fKind.GetValue(st));
+            int r = Convert.ToInt32(fR.GetValue(st)), g = Convert.ToInt32(fG.GetValue(st)), bb = Convert.ToInt32(fB.GetValue(st));
+            int max = Math.Max(r, Math.Max(g, bb)), min = Math.Min(r, Math.Min(g, bb));
             bool conColor = (max - min) > 60;   // se aparta bastante del blanco
             if (k == 2) { grandes++; if (conColor) grandesColor++; }
+            if (k == 1) medianas++;
             if (k == 0) { polvo++; if (conColor) polvoColor++; }
         }
-        // Los numeros salen del propio ejecutable, no de una lista escrita aqui: si algun dia se anade o se
-        // quita una silueta, esta bateria lo ensena en vez de mentir con los nombres viejos.
-        Type TSF = TS;
-        int DESTELLO = Convert.ToInt32(TSF.GetField("FormaDestello", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic).GetValue(null));
-        int RAFAGA = Convert.ToInt32(TSF.GetField("FormaRafaga", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic).GetValue(null));
-        int PUNTO = Convert.ToInt32(TSF.GetField("FormaPunto", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic).GetValue(null));
-        string[] nom = new string[cuenta.Length];
-        for (int i = 0; i < nom.Length; i++) nom[i] = "silueta " + i;
-        nom[DESTELLO] = "destello"; nom[RAFAGA] = "rafaga"; nom[PUNTO] = "punto";
-        for (int i = 0; i < cuenta.Length; i++)
-            if (cuenta[i] > 0)
-                Console.WriteLine("     " + nom[i].PadRight(10) + cuenta[i].ToString().PadLeft(4) + "  ("
-                                  + (100.0 * cuenta[i] / estrellas.Length).ToString("0") + "%)");
-        Check(cuenta[DESTELLO] > 0 && cuenta[RAFAGA] > 0 && cuenta[PUNTO] > 0, "aparecen las TRES siluetas, no una sola");
-        Check(cuenta[PUNTO] > estrellas.Length / 2, "la mayoria siguen siendo puntos: el polvo de estrellas no se vuelve confeti");
-        // LA CRUZ NO VUELVE. Se quito porque quedaba fea, y una silueta fea se cuela sola en cuanto alguien
-        // toque el reparto: aqui se vigila que no exista ni como constante ni dibujada.
-        Check(TSF.GetField("FormaCruz", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic) == null
-              && TSF.GetMethod("DrawCruz", BindingFlags.Instance | BindingFlags.NonPublic) == null,
-              "la cruz de dos palos no ha vuelto");
-        // Y la rafaga -la silueta trabajada, la de los ocho rayos- tiene que salir DE VERDAD, no ser una
-        // rareza que aparece una vez cada pantalla.
-        int conForma = cuenta[DESTELLO] + cuenta[RAFAGA];
-        Console.WriteLine("     de las que llevan silueta, la rafaga es el " + (100 * cuenta[RAFAGA] / Math.Max(1, conForma)) + "%");
-        Check(cuenta[RAFAGA] * 100 >= conForma * 35, "la rafaga es al menos un tercio de las estrellas con silueta");
+        Console.WriteLine("     de " + estrellas.Length + " estrellas: " + grandes + " grandes, " + medianas
+                          + " medianas y " + polvo + " de polvo");
+        Check(grandes > 0 && medianas > 0, "hay estrellas de las dos tallas que llevan silueta");
+        Check(polvo > estrellas.Length / 2, "la mayoria siguen siendo polvo: el cielo no se vuelve confeti");
 
         Console.WriteLine("\n  2) EL COLOR FUERTE SE LO QUEDAN LAS GRANDES\n");
         Console.WriteLine("     grandes con color: " + grandesColor + " de " + grandes

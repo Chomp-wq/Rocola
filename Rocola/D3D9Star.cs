@@ -661,7 +661,7 @@ namespace Rocola
                 if (kd[i] != 0 && pulse > 0.02f) s += pulse * (kd[i] == 2 ? 9f : 5f);   // latido: medianas/grandes crecen con la musica
                 float x = xs[i] + dx; if (x >= w) x -= w;   // deriva + envuelve (xs,dx en [0,w) -> x en [0,2w) -> 1 resta basta)
                 float y = ys[i] + dy; if (y >= h) y -= h;
-                int f = (fm != null) ? fm[i] : FormaDestello;
+                int f = (fm != null) ? fm[i] : FormaEstrella;
                 SetQuadUV(buf, vi, x - s, y - s, x + s, y + s, c, AtlasU0[f], AtlasV0[f], AtlasU1[f], AtlasV1[f]);
                 vi += 6;
             }
@@ -777,13 +777,11 @@ namespace Rocola
                 int kk = rnd.Next(100);
                 skind[i] = (kk < 7) ? 2 : (kk < 26) ? 1 : 0;   // MENOS grandes: 7% grandes (antes 12%), 19% medianas, resto puntos
                 ssize[i] = (skind[i] == 2) ? (10 + rnd.Next(5)) : (skind[i] == 1) ? (6 + rnd.Next(4)) : (3 + rnd.Next(3));   // mas chicas (antes 16-27 las grandes)
-                // QUE FORMA le toca. Las grandes se reparten entre el destello de cuatro puntas y la rafaga
-                // -las dos siluetas con caracter-; las medianas llevan sobre todo la cruz, que es mas
-                // delicada y no compite con las grandes; y el polvo se queda en puntos.
-                int ff = rnd.Next(100);
-                sforma[i] = (skind[i] == 2) ? ((ff < 45) ? FormaDestello : FormaRafaga)
-                          : (skind[i] == 1) ? ((ff < 55) ? FormaDestello : FormaRafaga)
-                          : FormaPunto;
+                // QUE SE DIBUJA: la estrella de cinco puntas para las medianas y las grandes, y el punto
+                // redondo para el polvo del fondo. Hubo un reparto de siluetas -destello de cuatro puntas,
+                // cruz de brazos finos, rafaga de ocho rayos- y ninguna acababa de pegar con la rocola: la
+                // variedad la ponen el tamano y el color, que es de donde tiene que venir.
+                sforma[i] = (skind[i] == 0) ? FormaPunto : FormaEstrella;
                 scol[i] = (skind[i] == 2) ? palViva[rnd.Next(palViva.Length)]
                         : (skind[i] == 1) ? ((rnd.Next(100) < 32) ? palViva[rnd.Next(palViva.Length)] : palPolvo[rnd.Next(palPolvo.Length)])
                         : palPolvo[rnd.Next(palPolvo.Length)];
@@ -824,8 +822,8 @@ namespace Rocola
         // coordenadas de textura. Eso importa: si cada forma fuera su propia textura habria que cambiar de
         // textura entre grupos y el campo entero dejaria de dibujarse de una sola llamada. Asi sigue
         // costando exactamente lo mismo que antes: una llamada para todas las estrellas.
-        internal const int FormaDestello = 0, FormaRafaga = 1, FormaPunto = 2;
-        internal const int NFormas = 3;   // el atlas sigue siendo de 2x2: la cuarta casilla se queda vacia
+        internal const int FormaEstrella = 0, FormaPunto = 1;
+        internal const int NFormas = 2;   // el atlas sigue siendo de 2x2: abajo se queda vacio
 
         // Coordenadas del trozo de cada forma dentro del atlas, ya metidas medio texel hacia dentro para que
         // el filtrado no traiga pixeles de la casilla de al lado.
@@ -857,7 +855,7 @@ namespace Rocola
                     // El halo de fondo. Cada forma lleva el suyo: el punto uno apretado y brillante (es polvo
                     // de estrellas, tiene que leerse aunque mida tres pixeles) y las figuras uno mas suave,
                     // porque su silueta ya se ve sola y un halo fuerte la emborronaria.
-                    int centro = (forma == FormaPunto) ? 200 : (forma == FormaDestello) ? 170 : 120;
+                    int centro = (forma == FormaPunto) ? 200 : 145;
                     using (GraphicsPath gp = new GraphicsPath())
                     {
                         gp.AddEllipse(ox, oy, celda, celda);
@@ -872,32 +870,20 @@ namespace Rocola
                     float c = celda / 2f, cx2 = ox + c, cy2 = oy + c;
                     using (SolidBrush b = new SolidBrush(Color.White))
                     {
-                        if (forma == FormaDestello)
+                        if (forma == FormaEstrella)
                         {
-                            // El destello de siempre: cuatro puntas con los lados hundidos.
-                            float R = celda * 0.42f, r = R * 0.22f;
-                            g.FillPolygon(b, new PointF[] {
-                                new PointF(cx2, cy2 - R), new PointF(cx2 + r, cy2 - r), new PointF(cx2 + R, cy2), new PointF(cx2 + r, cy2 + r),
-                                new PointF(cx2, cy2 + R), new PointF(cx2 - r, cy2 + r), new PointF(cx2 - R, cy2), new PointF(cx2 - r, cy2 - r) });
-                        }
-                        else if (forma == FormaRafaga)
-                        {
-                            // Rafaga: ocho rayos cortos saliendo del centro, con un nucleo chico. Los rayos
-                            // en diagonal salen mas cortos, que es lo que hace que se lea como un estallido
-                            // y no como una rueda.
-                            for (int k = 0; k < 8; k++)
+                            // LA ESTRELLA DE CINCO PUNTAS, con la punta hacia arriba: exactamente la misma
+                            // que dibuja la version por CPU (mismo radio interior), para que el cielo se vea
+                            // igual se juegue por donde se juegue.
+                            float R = celda * 0.46f, dentro = R * 0.45f;
+                            PointF[] pts = new PointF[10];
+                            for (int k = 0; k < 10; k++)
                             {
-                                double ang = k * Math.PI / 4.0;
-                                float largo = (k % 2 == 0) ? celda * 0.44f : celda * 0.30f;
-                                float dentro = celda * 0.13f, gr = celda * 0.045f;
-                                float ux = (float)Math.Cos(ang), uy = (float)Math.Sin(ang);
-                                float nx = -uy * gr, ny = ux * gr;
-                                g.FillPolygon(b, new PointF[] {
-                                    new PointF(cx2 + ux * dentro + nx, cy2 + uy * dentro + ny),
-                                    new PointF(cx2 + ux * largo, cy2 + uy * largo),
-                                    new PointF(cx2 + ux * dentro - nx, cy2 + uy * dentro - ny) });
+                                double ang = -Math.PI / 2.0 + k * Math.PI / 5.0;
+                                float rad = ((k & 1) == 0) ? R : dentro;
+                                pts[k] = new PointF(cx2 + (float)Math.Cos(ang) * rad, cy2 + (float)Math.Sin(ang) * rad);
                             }
-                            g.FillEllipse(b, cx2 - celda * 0.055f, cy2 - celda * 0.055f, celda * 0.11f, celda * 0.11f);
+                            g.FillPolygon(b, pts);
                         }
                         else
                         {
