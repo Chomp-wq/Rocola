@@ -775,6 +775,10 @@ namespace Rocola
         // la BASE con la que suenan; ademas se le aplican los dB de "Subir TODO" para que sigan al resto.
         private int videoVol = 85;                 // 0..100, base del volumen de los videos ("video_vol=" en config)
         private int videoVolSet = -1;              // ultimo volumen puesto al WMP (para no repetir llamadas COM en cada sondeo)
+        private bool videoAuto = true;             // "video_automatico=": el volumen base de los videos lo elige el programa
+        private int videoBaseAuto = -1;            // lo que eligio (-1 = aun sin calcular)
+        private int videoBaseFirma = -1;           // con que datos lo calculo (para rehacerlo cuando cambien)
+        private volatile bool videoSinMedir;       // este equipo no sabe descomprimir el sonido de los videos
         private double videoLastPos = -1;          // ultima posicion del video (para detectar si NO avanza)
         private int videoProgressTick = 0;         // momento del ultimo avance real (vigia de video colgado)
         private bool videoNudged = false;          // ya se intento el empujon de rescate (play explicito)
@@ -1138,6 +1142,7 @@ namespace Rocola
                     else if (s.StartsWith("ia_datos_mb=")) { int v; if (int.TryParse(s.Substring(12).Trim(), out v)) iaMaxBytes = (v <= 0) ? 0L : (long)v * 1024 * 1024; }   // tope del archivo de material
                     else if (s.StartsWith("ia_datos=")) iaHarvestOn = s.Substring(9).Trim() != "0";   // juntar material para entrenar la IA
                     else if (s.StartsWith("video_vol=")) { int v; if (int.TryParse(s.Substring(10).Trim(), out v)) videoVol = v < 0 ? 0 : (v > 100 ? 100 : v); }   // volumen base de los videos
+                    else if (s.StartsWith("video_automatico=")) videoAuto = s.Substring(17).Trim() != "0";   // ese volumen base lo elige el programa
                     else if (s.StartsWith("eq_auto=")) { float v; if (float.TryParse(s.Substring(8).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) eqAmount = Clampf(v / 100f, 0f, 1f); }   // EQ automatico (fuerza % a mano)
                     else if (s.StartsWith("eq_automatico=")) eqAuto = s.Substring(14).Trim() != "0";     // la fuerza del EQ la decide el programa
                     else if (s.StartsWith("bajo_automatico=")) bassAuto = s.Substring(16).Trim() != "0"; // y la cantidad de bajo tambien
@@ -1240,6 +1245,7 @@ namespace Rocola
                 sb.Append("ia_datos=").Append(iaHarvestOn ? "1" : "0").Append("\r\n");
                 sb.Append("ia_datos_mb=").Append(iaMaxBytes <= 0 ? 0L : iaMaxBytes / (1024 * 1024)).Append("\r\n");
                 sb.Append("video_vol=").Append(videoVol).Append("\r\n");
+                sb.Append("video_automatico=").Append(videoAuto ? "1" : "0").Append("\r\n");
                 sb.Append("eq_auto=").Append(((int)Math.Round(eqAmount * 100f)).ToString(System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("eq_automatico=").Append(eqAuto ? "1" : "0").Append("\r\n");
                 sb.Append("bajo_automatico=").Append(bassAuto ? "1" : "0").Append("\r\n");
@@ -2213,7 +2219,7 @@ namespace Rocola
             bool wasMaint = maintMode;
             maintMode = true; maintUntil = DateTime.Now.AddMinutes(10);
             bool changed = false;
-            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkUp = masterDb, bkEq = eqAmount, bkBass = bassAmount; int bkVid = videoVol, bkDsk = perfilDisco; bool bkOn = normalizeOn, bkSbr = sbrOn, bkEqA = eqAuto, bkBassA = bassAuto;   // por si se Cancela
+            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkUp = masterDb, bkEq = eqAmount, bkBass = bassAmount; int bkVid = videoVol, bkDsk = perfilDisco; bool bkOn = normalizeOn, bkSbr = sbrOn, bkEqA = eqAuto, bkBassA = bassAuto, bkVidA = videoAuto;   // por si se Cancela
             try
             {
                 Cursor.Show();
@@ -2302,11 +2308,11 @@ namespace Rocola
                     Fila(0, tVol, 76, "Volumen objetivo", cVol, 0, 100, false);
                     Fila(1, tVol, 156, "Fuerza del nivelado", cFue, 0, 100, false);
                     Fila(2, tVol, 236, "Subir TODO el volumen", cSub, 0, 12, false);
-                    Fila(3, tVol, 316, "Volumen de los videos", cVid, 0, 100, false);
+                    Fila(3, tVol, 316, "Volumen de los videos", cVid, 0, 100, true);
                     bar[0].Value = TargetToPct(normTarget);
                     bar[1].Value = (int)Math.Round(normStrength * 100f);
                     bar[2].Value = (int)Math.Round(masterDb);
-                    bar[3].Value = videoVol;
+                    bar[3].Value = videoVol; au[3].Checked = videoAuto;
 
                     // ---------------- CALIDAD DEL SONIDO ----------------
                     Fila(4, tCal, 44, "EQ automatico", cCal, 0, 100, true);
@@ -2414,7 +2420,7 @@ namespace Rocola
                             int hechas = tot - fal; if (hechas < 0) hechas = 0; if (hechas > tot) hechas = tot;
                             pbTrain.Valor = hechas / (float)Math.Max(1, tot);
                             pbTrain.Invalidate();
-                            lPct.Text = hechas.ToString("#,0") + " de " + tot.ToString("#,0") + " canciones   (" + (hechas * 100 / Math.Max(1, tot)) + "%)";
+                            lPct.Text = hechas.ToString("#,0") + " de " + tot.ToString("#,0") + " archivos   (" + (hechas * 100 / Math.Max(1, tot)) + "%)";
                         }
                     };
                     Action updateLabels = delegate
@@ -2426,8 +2432,20 @@ namespace Rocola
                         des[1].Text = "Cuanto se suben las canciones bajitas.\nLas que ya suenan fuerte NUNCA se bajan.";
                         val[2].Text = "+" + bar[2].Value + " dB";
                         des[2].Text = "De mas para TODAS, ademas del nivelado.\nPara cuando el local se queda corto de volumen.";
-                        val[3].Text = bar[3].Value + "%";
-                        des[3].Text = "Los videos no pasan por la cadena de sonido.\nSu volumen se empareja aqui a mano.";
+                        // Los videos no pasan por la cadena de sonido: los pone el reproductor de Windows, que solo
+                        // sabe BAJAR desde lo que el archivo trae. Por eso en automatico el programa elige el
+                        // base mirando lo que miden todos: lo pone donde los flojos todavia alcanzan a los
+                        // fuertes, que es la unica manera de que suenen todos igual.
+                        int vMed = VideosMedidos();
+                        val[3].Text = (au[3].Checked ? VideoBase() : bar[3].Value) + "%";
+                        des[3].Text = "Los videos no pasan por la cadena de sonido: los pone Windows.\n"
+                                    + (au[3].Checked
+                                       ? (videoSinMedir
+                                          ? "Solo: este equipo no puede medirlos; de momento manda la barra."
+                                          : (vMed >= 8
+                                             ? ("Solo: bajado hasta donde alcanzan los flojos (" + vMed.ToString("#,0") + " medidos).")
+                                             : "Solo: aun no hay bastantes medidos; de momento manda la barra."))
+                                       : "A mano: manda la barra, sin emparejar nada.");
                         // ---------- CALIDAD ---------- (en automatico se ensena lo que eligio el programa, no la barra)
                         int eqPct = (int)Math.Round((au[4].Checked ? EqFuerzaAuto() : bar[4].Value / 100f) * 100f);
                         val[4].Text = eqPct + "%";
@@ -2464,7 +2482,7 @@ namespace Rocola
                                + (etapa.Length > 0 ? ("   La cancion que suena entra en la etapa " + etapa + ".") : "")
                                + "\nEl detalle, cancion por cancion, queda en rocola_calidad.txt junto al programa.")
                             : ("La biblioteca se mide sola mientras la rocola trabaja: "
-                               + (tFal > 0 ? ("faltan " + tFal.ToString("#,0") + " canciones.") : "ya esta al dia.")
+                               + (tFal > 0 ? ("faltan " + tFal.ToString("#,0") + " archivos.") : "ya esta al dia.")
                                + (durScanLeft > 0 ? ("   Duraciones: faltan " + durScanLeft.ToString("#,0") + ".") : "")
                                + "\n" + (iaHarvestOn ? ("Material para la IA: " + IaInfoText() + ".   ") : "")
                                + (etapa.Length > 0 ? ("La cancion que suena entra en la etapa " + etapa + ".") : "")
@@ -2477,6 +2495,7 @@ namespace Rocola
                         val[0].ForeColor = en ? cVol : cApagado;
                         val[1].ForeColor = en ? cFue : cApagado;
                         des[0].ForeColor = des[1].ForeColor = en ? cTenue : cApagado;
+                        bar[3].Enabled = !au[3].Checked;
                         bar[4].Enabled = !au[4].Checked;
                         bar[5].Enabled = !au[5].Checked;
                     };
@@ -2486,7 +2505,7 @@ namespace Rocola
                         normTarget = TargetFromPct(bar[0].Value);
                         normStrength = bar[1].Value / 100f;
                         masterDb = bar[2].Value;
-                        videoVol = bar[3].Value;
+                        videoVol = bar[3].Value; videoAuto = au[3].Checked;
                         if (videoOn && nowPlaying != null) SetVideoVolume(VideoVolumeFor(nowPlaying.VideoPath));   // el video que suena cambia YA
                         eqAuto = au[4].Checked; bassAuto = au[5].Checked;
                         eqAmount = bar[4].Value / 100f;
@@ -2544,7 +2563,7 @@ namespace Rocola
                 }
                 if (changed) { SaveConfigPrefs(); ShowToast("Sonido actualizado", Color.FromArgb(40, 130, 90)); }
             }
-            catch { normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; masterDb = bkUp; eqAmount = bkEq; bassAmount = bkBass; videoVol = bkVid; sbrOn = bkSbr; eqAuto = bkEqA; bassAuto = bkBassA; perfilDisco = bkDsk; AplicaPerfilDisco(); }   // si algo truena, deja los valores como estaban
+            catch { normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; masterDb = bkUp; eqAmount = bkEq; bassAmount = bkBass; videoVol = bkVid; videoAuto = bkVidA; sbrOn = bkSbr; eqAuto = bkEqA; bassAuto = bkBassA; perfilDisco = bkDsk; AplicaPerfilDisco(); }   // si algo truena, deja los valores como estaban
             finally { try { Cursor.Hide(); } catch { } maintMode = wasMaint; ForceFocus(); }
         }
 
@@ -4291,16 +4310,12 @@ namespace Rocola
 
         private const double PreSegSec = 20.0;    // duracion de cada tramo analizado
         private const int PreSegs = 3;            // cuantos tramos por cancion (repartidos por el tema)
-        private void StartPreScan()
+        // QUE HAY QUE MEDIR. Devuelve la tanda -las canciones y los videos que aun no tienen medida- y, por
+        // "elegibles", cuantos archivos de la biblioteca cuentan para la barra de avance del repaso a fondo.
+        private List<string> TandaPorMedir(bool turbo, out int elegibles)
         {
-            preScanStop = false;
-            // Cada llamada (arranque o re-escaneo con F5) abre una GENERACION nueva: el hilo anterior se da
-            // por caducado en cuanto lo nota y sale solo. Antes se volvia con "ya hay uno trabajando", asi que
-            // la musica AGREGADA despues no se media hasta reiniciar la rocola.
-            int myGen = ++preScanGen;
-            bool turbo = preScanTurbo;
             List<string> pend = new List<string>();
-            int elegibles = 0;                 // canciones de la biblioteca que cuentan para la barra de avance
+            elegibles = 0;
             for (int i = 0; i < tracks.Count; i++)
             {
                 Track tk = tracks[i];
@@ -4313,6 +4328,46 @@ namespace Rocola
                 if (turbo) { bool ya; lock (deepDoneLock) ya = deepDone.Contains(tk.Path); if (ya) continue; }
                 pend.Add(tk.Path);
             }
+            // Y LOS VIDEOS. No estaban: 'tracks' solo lleva canciones, los videos viven aparte (VideoFiles de
+            // cada disco). Sin medirlos, el nivelado de los videos no tenia NADA con que trabajar y cada uno
+            // sonaba con el volumen que trajera de fabrica: unos bien, otros tan bajos que casi no se oian.
+            // Van al final de la tanda, despues de la musica, que es lo que mas se usa.
+            //
+            // Windows XP no puede hacerlo: el sonido de un mp4 lo descomprime Media Foundation, que llego con
+            // Vista. Alli los primeros videos fallan al abrirse y el hilo del repaso deja de intentarlo.
+            int cuantosVideos = 0;
+            if (videoAlbums != null)
+            {
+                HashSet<string> vistos = new HashSet<string>(StringComparer.OrdinalIgnoreCase);   // el mismo video puede estar en dos discos
+                for (int i = 0; i < videoAlbums.Count; i++)
+                {
+                    Album va = videoAlbums[i];
+                    if (va == null || va.VideoFiles == null) continue;
+                    for (int j = 0; j < va.VideoFiles.Count; j++)
+                    {
+                        string vp = va.VideoFiles[j];
+                        if (vp == null || !vistos.Add(vp)) continue;
+                        if (!turbo && loudCache.ContainsKey(vp)) continue;
+                        if (turbo) { bool ya; lock (deepDoneLock) ya = deepDone.Contains(vp); if (ya) continue; }
+                        pend.Add(vp); cuantosVideos++;
+                    }
+                }
+                elegibles += vistos.Count;
+            }
+            if (cuantosVideos > 0) Diag("nivelado: " + cuantosVideos + " videos por medir");
+            return pend;
+        }
+
+        private void StartPreScan()
+        {
+            preScanStop = false;
+            // Cada llamada (arranque o re-escaneo con F5) abre una GENERACION nueva: el hilo anterior se da
+            // por caducado en cuanto lo nota y sale solo. Antes se volvia con "ya hay uno trabajando", asi que
+            // la musica AGREGADA despues no se media hasta reiniciar la rocola.
+            int myGen = ++preScanGen;
+            bool turbo = preScanTurbo;
+            int elegibles;
+            List<string> pend = TandaPorMedir(turbo, out elegibles);
             // CADA cuanto se vuelcan las tablas a disco. Un volcado reescribe ENTERAS las tablas de sonoridad y
             // de EQ: con cien mil canciones son ~17 MB por volcado. Hacerlo cada 10 canciones durante un repaso a
             // fondo son CIENTOS de gigas escritos para nada, y eso desgasta el SSD. Asi que el intervalo crece con
@@ -4330,6 +4385,7 @@ namespace Rocola
             preScanTh = new System.Threading.Thread(delegate ()
             {
                 int hechas = 0;
+                int vidBien = 0, vidMal = 0;   // videos medidos / videos que ni se pudieron abrir
                 try
                 {
                     if (!turbo) System.Threading.Thread.Sleep(15000);   // dejar respirar el arranque (y al calentador de caratulas)
@@ -4343,8 +4399,22 @@ namespace Rocola
                             System.Threading.Thread.Sleep(500);
                         if (preScanStop || myGen != preScanGen) break;
                         string ruta = pend[i];
+                        // Si este equipo ya demostro que no sabe descomprimir el sonido de un video, los demas
+                        // ni se intentan: seria fallar mil veces seguidas y dejar el contador de "faltan"
+                        // clavado para siempre en el numero de videos.
+                        bool esVid = EsVideo(ruta);
+                        if (esVid && videoSinMedir) { preScanLeft--; continue; }
                         float rms, dur; float[] eqCurve;
-                        if (!MeasureFile(ruta, turbo, out rms, out dur, out eqCurve)) { preScanLeft--; continue; }
+                        if (!MeasureFile(ruta, turbo, out rms, out dur, out eqCurve))
+                        {
+                            preScanLeft--;
+                            // Tres videos seguidos sin poder abrirse y ninguno bueno todavia: no son archivos
+                            // rotos, es que aqui no hay con que descomprimirlos.
+                            if (esVid && vidBien == 0 && ++vidMal >= 3)
+                            { videoSinMedir = true; Diag("nivelado: este equipo no puede medir los videos (no hay Media Foundation)"); }
+                            continue;
+                        }
+                        if (esVid) vidBien++;
                         // publicar en el hilo de la interfaz (las tablas son suyas): sin carreras
                         try
                         {
@@ -4404,6 +4474,10 @@ namespace Rocola
         private bool MeasureFile(string path, bool aFondo, out float rms, out float durSec, out float[] eqCurve)
         {
             rms = 0f; durSec = 0f; eqCurve = null;
+            // De un VIDEO solo interesa CUANTO SUENA. Su sonido lo saca el reproductor de Windows, no
+            // nosotros: no pasa por el ecualizador ni por el DSEE ni por los graves. Medirle la huella tonal
+            // o cosechar cuadros para la IA seria trabajo y disco gastados en algo que nunca se usaria.
+            bool esVideo = EsVideo(path);
             AudioFileReader rd = null;
             try
             {
@@ -4423,7 +4497,7 @@ namespace Rocola
                 // que metamos nosotros: viene asi masterizada. Se cuenta aqui, en el recorrido que ya se hacia.
                 long clipN = 0; int[] clipRun = new int[ch];
                 float[][] bp = new float[8][]; float[] bpSt = new float[8 * 4];   // huella tonal: bandpass por banda
-                for (int b = 0; b < 8; b++) bp[b] = EqBpf(EqCentros[b], rate);
+                if (!esVideo) for (int b = 0; b < 8; b++) bp[b] = EqBpf(EqCentros[b], rate);   // (de un video no se saca huella: se quedan en nulo y el filtro se salta)
                 double[] bpSum = new double[8]; long bpN = 0;
                 // COSECHA PARA LA IA: se analiza el canal 0 con el MISMO motor del DSEE. Los pares se guardan
                 // en memoria y solo se escriben al final, si resulta que la cancion SI conserva sus agudos
@@ -4466,8 +4540,8 @@ namespace Rocola
                 int nivelAhora; bool cosechar;
                 if (aFondo) { nivelAhora = 2; cosechar = (nivelPrevio != 2); }
                 else { nivelAhora = IaNivelDePasada(pasadas); cosechar = pasadas < Math.Min(IaPasadasMax, strideIa); }
-                cosechar = cosechar && iaHarvestOn && !IaBudgetFull();
-                if (!cosechar)
+                cosechar = cosechar && iaHarvestOn && !IaBudgetFull() && !esVideo;
+                if (!cosechar && !esVideo)
                 {
                     // Solo hace falta el acantilado: se analizan unos pocos cuadros y se para (ni se guardan pares).
                     try { hv = new SpectralTap(rate, 1); hvFrame = new float[hv.FrameLen]; soloCorte = true; hvVistosMax = IaWarmFrames + 24; }
@@ -4592,7 +4666,7 @@ namespace Rocola
                 rms = (float)Math.Sqrt(sumSq / nSamp);
                 // Huella tonal en dB por banda, referida a la MEDIANA del cuerpo (158 Hz - 5.6 kHz): exactamente
                 // la misma cuenta que hace FinalizeEqMeasure al aprenderla oyendo la cancion.
-                if (bpN >= 40000)
+                if (bpN >= 40000 && !esVideo)
                 {
                     float[] curve = new float[EqLen];
                     curve[EqCut] = corteHz; curve[EqClip] = recorte; curve[EqCutLo] = corteLo;
@@ -7512,25 +7586,96 @@ namespace Rocola
             this.Invalidate();
         }
 
+        // EL VOLUMEN BASE DE LOS VIDEOS, ELEGIDO SOLO.
+        //
+        // El reproductor de Windows solo sabe BAJAR: su volumen va de 0 a 100 y el 100 es el archivo tal cual.
+        // No hay forma de sacarle mas de lo que el video trae grabado. Asi que la unica manera de que todos
+        // suenen IGUAL es bajar los fuertes hasta donde llegan los flojos, y para eso hace falta dejar hueco:
+        // con el base en 85, un video solo puede subir un 18% -1.4 dB- antes de toparse con el 100, y uno
+        // grabado 10 dB por debajo se queda tan bajo como estaba, que es justo lo que se oye en la rocola.
+        //
+        // Aqui se miran TODOS los videos ya medidos y se elige el base MAS ALTO con el que todavia alcanzan
+        // casi todos. Se da por perdido el 15% mas flojo -por tres videos rarisimos no vale la pena bajar la
+        // biblioteca entera- y nunca se baja del 40 (8 dB), que es lo mas que tiene sentido alejar los videos
+        // de las canciones. Si aun no hay medidas (o el equipo no puede medir), manda la perilla y ya.
+        private const float VideoAutoFuera = 0.15f;   // fraccion de videos que se da por perdida
+        private const int VideoBaseMin = 40;          // -8 dB: lo mas que se acepta bajar el conjunto
+        private int VideoBase()
+        {
+            if (!videoAuto || !normalizeOn) return videoVol;   // sin nivelado no hay nada que emparejar: manda la perilla
+            int firma = loudCache.Count * 31 + videoVol;
+            firma = firma * 31 + (int)(normTarget * 100000f);
+            if (firma == videoBaseFirma && videoBaseAuto >= 0) return videoBaseAuto;
+            videoBaseFirma = firma;
+            List<float> nec = new List<float>();
+            if (videoAlbums != null && normTarget > 0.0001f)
+            {
+                HashSet<string> vistos = new HashSet<string>(StringComparer.OrdinalIgnoreCase);   // el mismo video puede estar en dos discos
+                for (int i = 0; i < videoAlbums.Count; i++)
+                {
+                    Album va = videoAlbums[i];
+                    if (va == null || va.VideoFiles == null) continue;
+                    for (int j = 0; j < va.VideoFiles.Count; j++)
+                    {
+                        string vp = va.VideoFiles[j]; float rms;
+                        if (vp == null || !vistos.Add(vp)) continue;
+                        if (!loudCache.TryGetValue(vp, out rms) || rms <= 0.0001f) continue;
+                        float b = 100f * rms / normTarget;   // el base mas alto con el que ESTE video llega al objetivo
+                        nec.Add((b > 100f) ? 100f : b);
+                    }
+                }
+            }
+            if (nec.Count < 8) { videoBaseAuto = videoVol; return videoBaseAuto; }   // sin medidas suficientes: la perilla
+            nec.Sort();
+            int v = (int)Math.Round(nec[(int)(nec.Count * VideoAutoFuera)]);
+            if (v < VideoBaseMin) v = VideoBaseMin; else if (v > 100) v = 100;
+            videoBaseAuto = v;
+            return v;
+        }
+        // Cuantos videos llevan medida (para poder decirlo en los ajustes).
+        private int VideosMedidos()
+        {
+            int n = 0;
+            if (videoAlbums == null) return 0;
+            HashSet<string> vistos = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < videoAlbums.Count; i++)
+            {
+                Album va = videoAlbums[i];
+                if (va == null || va.VideoFiles == null) continue;
+                for (int j = 0; j < va.VideoFiles.Count; j++)
+                {
+                    string vp = va.VideoFiles[j]; float rms;
+                    if (vp == null || !vistos.Add(vp)) continue;
+                    if (loudCache.TryGetValue(vp, out rms) && rms > 0.0001f) n++;
+                }
+            }
+            return n;
+        }
+
         // Abre y reproduce un video en el reproductor de la derecha (lo llama PlayNext).
-        // Volumen (0..100) con el que debe sonar un video: la perilla base, mas los dB de "Subir TODO" (para
-        // que los videos sigan al resto), mas -si ese video ya fue medido- el nivelado que lo lleva al MISMO
-        // volumen objetivo de las canciones. En XP los videos no se pueden medir (no hay como decodificar su
-        // audio), asi que alli solo actuan la perilla y el "Subir TODO"; en la rama HD si se miden.
+        // Volumen (0..100) con el que debe sonar un video: el base -la perilla, o lo que eligio el programa-,
+        // mas los dB de "Subir TODO" (para que los videos sigan al resto), mas -si ese video ya fue medido-
+        // el nivelado que lo lleva al MISMO volumen objetivo de las canciones.
         private int VideoVolumeFor(string path)
         {
-            double g = MasterLin();
+            double v = VideoBase();
             float rms;
             if (normalizeOn && path != null && loudCache.TryGetValue(path, out rms) && rms > 0.0001f)
             {
+                // NIVELADO. Este video esta medido, asi que se le pone el volumen justo para que suene como
+                // los demas. Aqui "Subir TODO" NO entra, a proposito: el reproductor de Windows no pasa de
+                // 100, o sea que ese de mas no lo puede dar, y lo unico que consigue es empujar los videos
+                // contra el techo y deshacer el emparejado que se acaba de hacer. Con +6 dB de master, todos
+                // los videos con algo de cuerpo se pegaban al 100 y volvian a sonar distinto entre si.
                 double lv = normTarget / rms;
                 if (lv < 0.15) lv = 0.15;        // no enterrar un video muy fuerte (max -16 dB)
                 else if (lv > 4.0) lv = 4.0;     // ni intentar rescatar uno mudo (el tope real lo pone el 100 del WMP)
-                g *= lv;
+                v *= lv;
             }
-            int v = (int)Math.Round(videoVol * g);
-            if (v < 0) v = 0; else if (v > 100) v = 100;   // el WMP no pasa de 100: un video muy bajito solo llega hasta ahi
-            return v;
+            else v *= MasterLin();   // sin medida no hay nada que emparejar: que al menos siga a "Subir TODO"
+            int r = (int)Math.Round(v);
+            if (r < 0) r = 0; else if (r > 100) r = 100;   // el WMP no pasa de 100: un video muy bajito solo llega hasta ahi
+            return r;
         }
 
         // Pone el volumen en el WMP solo si CAMBIO (el sondeo corre varias veces por segundo durante el fundido).
