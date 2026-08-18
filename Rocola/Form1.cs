@@ -570,6 +570,59 @@ namespace Rocola
         private struct MemStatusEx { public uint Length, MemoryLoad; public ulong TotalPhys, AvailPhys, TotalPageFile, AvailPageFile, TotalVirtual, AvailVirtual, AvailExtendedVirtual; }
         [System.Runtime.InteropServices.DllImport("kernel32.dll")] private static extern bool GlobalMemoryStatusEx(ref MemStatusEx b);
 
+        // CUANTA MEMORIA SE LE DEJA AL CAJON DE CASILLAS HORNEADAS.
+        //
+        // Cada disco de la pared se hornea UNA vez -su caratula ya escalada y su nombre ya maquetado- y a
+        // partir de ahi pasar de pagina es solo copiar. Volver a una pagina que ya se salio del cajon cuesta
+        // ocho veces mas (2 ms contra 0.24 medidos), y ademas sus caratulas ya no estan en memoria, asi que
+        // hay que ir a buscarlas al disco: en un disco duro eso son 18 saltos de cabezal y se VE, porque las
+        // caratulas van apareciendo de a poco en vez de estar ya puestas.
+        //
+        // DOCE PAGINAS, y no mas, porque esta MEDIDO (bateria 'historial', hojeando 140 paginas y volviendo):
+        //
+        //     historial      hojear adelante     volver 40 atras
+        //      5 paginas          2.38 ms            2.16 ms      <- como estaba
+        //     12 paginas          2.25 ms            2.15 ms      <- GRATIS: hojear no se entera
+        //     24 paginas          2.44 ms            2.31 ms
+        //     48 paginas          2.69 ms            0.43 ms      <- ya cabe volver 40 atras, +13% al hojear
+        //     88 paginas          5.98 ms            0.40 ms      <- hojear cuesta el DOBLE Y MEDIO
+        //
+        // Volver a una pagina que sigue en el cajon cuesta 0.25 ms; una que ya salio, 2.1 ms -y da igual si
+        // salio hace seis paginas o hace ciento treinta: el escalon es plano-.
+        //
+        // Doce es el cajon MAS GRANDE que no se nota al hojear hacia delante, que es lo que se hace todo el
+        // rato. De ahi para arriba se empieza a pagar el caso comun: hay mas que podar, y liberar un mapa de
+        // bits cuesta. Guardar cien paginas -que suena bien- deja el hojeo en menos de la mitad de rapido
+        // para arreglar un caso, volver cuarenta paginas atras de golpe, que casi nadie hace.
+        //
+        // El TECHO va aparte y en memoria, porque una casilla mide lo que le toque en pantalla: a 1024x768
+        // son 101 KB y a 1920x1080 mas del triple. Asi doce paginas nunca se convierten en un disparate.
+        // No es 'const' a proposito: asi la bateria 'historial' puede barrer el valor y volver a medir la
+        // tabla de aqui arriba cuando cambie la maquina o el tamano de las casillas.
+        private static int CeldasHistorialPaginas = 12;
+        private static int cacheCeldasMb = -1;
+        internal static int CacheCeldasMb()
+        {
+            if (cacheCeldasMb >= 0) return cacheCeldasMb;
+            ulong ramMb = 0;
+            try
+            {
+                MemStatusEx ms = new MemStatusEx();
+                ms.Length = (uint)System.Runtime.InteropServices.Marshal.SizeOf(typeof(MemStatusEx));
+                if (GlobalMemoryStatusEx(ref ms)) ramMb = ms.TotalPhys / (1024UL * 1024UL);
+            }
+            catch { }
+            // En 32 bits el programa no pasa de ~2 GB por mucha RAM que haya, asi que el techo se queda
+            // MUY por debajo aunque la maquina tenga de sobra. Si no se sabe cuanta hay, se es prudente.
+            int mb;
+            if (ramMb == 0) mb = 48;
+            else if (ramMb < 1200) mb = 32;        // maquina justa
+            else mb = 64;                          // la del bar (4 GB): 64 MB de un techo de 2 GB
+            if (IntPtr.Size >= 8) mb = 192;        // en 64 bits no hay techo de 2 GB que valga
+            cacheCeldasMb = mb;
+            return mb;
+        }
+
         // Mide la maquina UNA vez (al arrancar) y decide si el NIVEL 2 (reconstructor espectral) se ofrece.
         // Regla: 2+ nucleos O un nucleo rapido (>=2200 MHz), y >=900 MB de RAM. El STFT en si usa poca RAM;
         // la puerta protege a los equipos que ya andan justos. Si la RAM no se pudo medir, no se bloquea por
@@ -10888,8 +10941,24 @@ namespace Rocola
             private readonly Dictionary<string, CellSprite> cellCache = new Dictionary<string, CellSprite>();
             private int cellCacheW = -1, cellCacheH = -1;   // tamano con el que se horneo (si cambia, se limpia todo)
             private int cellUso;                            // reloj de uso: sube cada vez que se toca una casilla
-            private const int CellCacheCap = 6 * PageSize;  // ~6 paginas de historial en memoria (acotado)
-            private const int CellCacheKeep = 4 * PageSize; // a cuantas se baja al podar (las 4 ultimas paginas vistas)
+            // CUANTAS CASILLAS CABEN EN EL CAJON: las doce paginas de historial que se midieron como el punto
+            // dulce (ver CeldasHistorialPaginas), salvo que a este tamano de pantalla no quepan en el techo de
+            // memoria. El suelo son las seis de siempre.
+            private int capCeldas = 6 * PageSize;
+            private int keepCeldas = 4 * PageSize;   // a cuantas se baja al podar
+            private void RecalculaCajon(int w, int h)
+            {
+                long porCasilla = (long)Math.Max(1, w / Cols) * Math.Max(1, h / Rows) * 4L;
+                long techo = ((long)CacheCeldasMb() * 1024L * 1024L) / Math.Max(porCasilla, 1L);
+                long cabe = CeldasHistorialPaginas * PageSize;
+                if (cabe > techo) cabe = techo;
+                if (cabe < 6 * PageSize) cabe = 6 * PageSize;   // nunca menos historial que antes
+                capCeldas = (int)cabe;
+                // Al podar se baja un octavo (y al menos dos paginas): asi la poda no salta en cada pagina.
+                int baja = capCeldas / 8; if (baja < 2 * PageSize) baja = 2 * PageSize;
+                keepCeldas = capCeldas - baja;
+                if (keepCeldas < 4 * PageSize) keepCeldas = 4 * PageSize;
+            }
             private bool cubesPending;                       // (CPU) quedan celdas por hornear: se reparte en varios repintados (como en GPU) para no congelar en equipos lentos
             private const int CpuBakeBudget = 9;             // (CPU) celdas horneadas por repintado (media pagina): una pagina nueva se llena en 2 pasadas, sin congelon
 #if ROCOLA_GPU
@@ -10990,8 +11059,8 @@ namespace Rocola
                 if (w < 8 || h < 8) return 0;
                 int cw = w / Cols, ch = h / Rows;
                 if (cw < 4 || ch < 4) return 0;
-                if (cellCacheW != w || cellCacheH != h) { ClearCellCache(); cellCacheW = w; cellCacheH = h; }   // tamano nuevo: rehornear
-                else if (cellCache.Count > CellCacheCap) PodaCeldas();                                           // lleno: fuera las mas viejas
+                if (cellCacheW != w || cellCacheH != h) { ClearCellCache(); cellCacheW = w; cellCacheH = h; RecalculaCajon(w, h); }   // tamano nuevo: rehornear (y el cajon cambia de tope: la casilla mide otra cosa)
+                else if (cellCache.Count > capCeldas) PodaCeldas();                                              // lleno: fuera las mas viejas
                 int side, labelH, gap; CellMetrics(cw, ch, out side, out labelH, out gap);
                 float alpha; float dx = SlideNow(out alpha);   // hojeo: desplazamiento y desvanecido de ESTE cuadro
                 int ox = this.Left, oy = this.Top;   // coords de albumView -> pantalla (mismo criterio que los cubos que giran)
@@ -11319,7 +11388,7 @@ namespace Rocola
             // las ultimas vistas, que son justo a las que se vuelve.
             private void PodaCeldas()
             {
-                int sobran = cellCache.Count - CellCacheKeep;
+                int sobran = cellCache.Count - keepCeldas;
                 if (sobran <= 0) return;
                 // El corte: por debajo de ese valor de uso se tira. Son ~100 numeros y esto pasa una vez cada
                 // varias paginas, asi que ordenarlos no cuesta nada al lado de hornear una sola casilla.
@@ -11354,8 +11423,8 @@ namespace Rocola
                     if (cubeCache != null) cubeCache.Dispose();
                     cubeCache = new Bitmap(w, h);
                 }
-                if (cellCacheW != w || cellCacheH != h) { ClearCellCache(); cellCacheW = w; cellCacheH = h; }   // tamano nuevo: las celdas horneadas ya no encajan
-                else if (cellCache.Count > CellCacheCap) PodaCeldas();                                          // lleno: fuera las mas viejas (nunca la pagina que se ve)
+                if (cellCacheW != w || cellCacheH != h) { ClearCellCache(); cellCacheW = w; cellCacheH = h; RecalculaCajon(w, h); }   // tamano nuevo: las celdas horneadas ya no encajan (y el cajon cambia de tope)
+                else if (cellCache.Count > capCeldas) PodaCeldas();                                             // lleno: fuera las mas viejas (nunca la pagina que se ve)
                 int budget = CpuBakeBudget;   // HORNEADO REPARTIDO (como en GPU): a lo mas CpuBakeBudget celdas nuevas por repintado; el
                 cubesPending = false;         // resto queda para el proximo (OnPaint re-invalida). Evita el congelon de hornear 18 de golpe.
                 using (Graphics g = Graphics.FromImage(cubeCache))

@@ -61,6 +61,7 @@ falta `mcs` (Mono), `xvfb-run` y `python3`.
 | `modelo.cs` | lo que costaría un modelo de IA más grande, tamaño por tamaño |
 | `memoria.cs` | dónde se va la memoria con una biblioteca grande |
 | `cachemem.cs` | lo que cuesta rehacer una carátula que se salió de la caché, y lo que costaría una caché mayor |
+| `historial.cs` | cuántas páginas de la pared de discos compensa guardar en memoria (hojea 140 y vuelve) |
 | `capacidad.py` | si un modelo de IA más grande predice mejor (entrena varios tamaños sobre los mismos datos) |
 | `genmodelos.py` | genera modelos de varios tamaños para medirlos |
 
