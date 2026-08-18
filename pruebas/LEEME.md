@@ -32,6 +32,8 @@ falta `mcs` (Mono), `xvfb-run` y `python3`.
 | `limite` | que el limitador BAJE la ganancia en vez de recortar: distorsión de un tono fuerte y aplanado de la punta en un golpe seco |
 | `eqauto`, `eqia`, `calidad` | el EQ automático y su objetivo por canción |
 | `duracion`, `titulo`, `etiqueta`, `genero` | lo que se lee de cada archivo |
+| `colores` | que ningún género musical se quede sin color: los que trae un ID3 y los que se leen del nombre de la carpeta, en español y con acentos; que el color sea el mismo se pregunte por donde se pregunte; y que no haya dos que no se puedan distinguir |
+| `mudos` | la limpieza de videos que no suenan. Lo que vigila no es que borre, es que NO BORRE DE MÁS: uno sin medir no puede aparecer nunca, y si Windows no puede mandarlos a la papelera la biblioteca se queda exactamente como estaba |
 | `videos` | que los videos entren en el repaso que los mide, y que suenen todos parejo: el reproductor de Windows sólo sabe BAJAR, así que se comprueba con qué volumen quedaría cada uno y cuánta diferencia queda entre el que más suena y el que menos |
 
 **Pantalla**
