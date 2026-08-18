@@ -781,8 +781,8 @@ namespace Rocola
                 // -las dos siluetas con caracter-; las medianas llevan sobre todo la cruz, que es mas
                 // delicada y no compite con las grandes; y el polvo se queda en puntos.
                 int ff = rnd.Next(100);
-                sforma[i] = (skind[i] == 2) ? ((ff < 62) ? FormaDestello : FormaRafaga)
-                          : (skind[i] == 1) ? ((ff < 58) ? FormaCruz : (ff < 88) ? FormaDestello : FormaRafaga)
+                sforma[i] = (skind[i] == 2) ? ((ff < 45) ? FormaDestello : FormaRafaga)
+                          : (skind[i] == 1) ? ((ff < 55) ? FormaDestello : FormaRafaga)
                           : FormaPunto;
                 scol[i] = (skind[i] == 2) ? palViva[rnd.Next(palViva.Length)]
                         : (skind[i] == 1) ? ((rnd.Next(100) < 32) ? palViva[rnd.Next(palViva.Length)] : palPolvo[rnd.Next(palPolvo.Length)])
@@ -824,8 +824,8 @@ namespace Rocola
         // coordenadas de textura. Eso importa: si cada forma fuera su propia textura habria que cambiar de
         // textura entre grupos y el campo entero dejaria de dibujarse de una sola llamada. Asi sigue
         // costando exactamente lo mismo que antes: una llamada para todas las estrellas.
-        internal const int FormaDestello = 0, FormaCruz = 1, FormaRafaga = 2, FormaPunto = 3;
-        internal const int NFormas = 4;
+        internal const int FormaDestello = 0, FormaRafaga = 1, FormaPunto = 2;
+        internal const int NFormas = 3;   // el atlas sigue siendo de 2x2: la cuarta casilla se queda vacia
 
         // Coordenadas del trozo de cada forma dentro del atlas, ya metidas medio texel hacia dentro para que
         // el filtrado no traiga pixeles de la casilla de al lado.
@@ -857,9 +857,7 @@ namespace Rocola
                     // El halo de fondo. Cada forma lleva el suyo: el punto uno apretado y brillante (es polvo
                     // de estrellas, tiene que leerse aunque mida tres pixeles) y las figuras uno mas suave,
                     // porque su silueta ya se ve sola y un halo fuerte la emborronaria.
-                    // La cruz casi no lleva halo: su gracia es la linea fina, y con halo grande queda una
-                    // bola con una cruz estampada encima en vez de una chispa.
-                    int centro = (forma == FormaPunto) ? 200 : (forma == FormaDestello) ? 170 : (forma == FormaRafaga) ? 120 : 78;
+                    int centro = (forma == FormaPunto) ? 200 : (forma == FormaDestello) ? 170 : 120;
                     using (GraphicsPath gp = new GraphicsPath())
                     {
                         gp.AddEllipse(ox, oy, celda, celda);
@@ -881,16 +879,6 @@ namespace Rocola
                             g.FillPolygon(b, new PointF[] {
                                 new PointF(cx2, cy2 - R), new PointF(cx2 + r, cy2 - r), new PointF(cx2 + R, cy2), new PointF(cx2 + r, cy2 + r),
                                 new PointF(cx2, cy2 + R), new PointF(cx2 - r, cy2 + r), new PointF(cx2 - R, cy2), new PointF(cx2 - r, cy2 - r) });
-                        }
-                        else if (forma == FormaCruz)
-                        {
-                            // Cruz de brazos rectos y finos: la silueta mas delicada, para las medianas.
-                            float R = celda * 0.47f, gr = celda * 0.030f;   // FINOS y largos: con brazos gordos parece un signo de mas
-                            g.FillPolygon(b, new PointF[] {
-                                new PointF(cx2 - gr, cy2 - R), new PointF(cx2 + gr, cy2 - R), new PointF(cx2 + gr, cy2 - gr),
-                                new PointF(cx2 + R, cy2 - gr), new PointF(cx2 + R, cy2 + gr), new PointF(cx2 + gr, cy2 + gr),
-                                new PointF(cx2 + gr, cy2 + R), new PointF(cx2 - gr, cy2 + R), new PointF(cx2 - gr, cy2 + gr),
-                                new PointF(cx2 - R, cy2 + gr), new PointF(cx2 - R, cy2 - gr), new PointF(cx2 - gr, cy2 - gr) });
                         }
                         else if (forma == FormaRafaga)
                         {

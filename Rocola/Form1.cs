@@ -2730,13 +2730,21 @@ namespace Rocola
             return false;
         }
 
-        // Color por ARTISTA (excepciones) y luego por genero.
-        private static Color ColorForTrack(Track t)
+        // EL COLOR DE LO QUE SUENA: excepciones por artista (BTS = morado) y, si no, el genero.
+        //
+        // Aqui estaba el fallo del fondo. Esto miraba SOLO la etiqueta de genero del archivo (su ID3), y
+        // muchisimos MP3 no traen ninguna. Entonces devolvia el azul de "no se de que es esto" aunque la
+        // rocola SI supiera el genero por otro lado: la pastilla decia "Tropical", sacado del disco, del
+        // artista o del nombre de la carpeta, y el fondo se quedaba azul. Ahora se pregunta por la misma
+        // cascada que responde en la lista, en el buscador y en la franja de abajo, asi que las cuatro dicen
+        // lo mismo. Deja de ser estatico porque esa cascada necesita lo que la rocola ha ido aprendiendo.
+        private Color ColorDeLoQueSuena(Track t, Album org)
         {
             if (t == null) return DefaultAccent;
             string a = (t.Artist != null) ? t.Artist.ToLowerInvariant() : "";
             if (a.Contains("bts") || a.Contains("bangtan")) return Color.FromArgb(149, 86, 220);   // morado (peticion)
-            return GenreToColor(t.Genre);
+            string et = GeneroDeCancion(t, org);
+            return (et.Length > 0) ? ColorDeEtiqueta(et) : DefaultAccent;
         }
 
         // Etiqueta canonica del genero para agrupar los discos TOP (mismas familias que GenreToColor).
@@ -7523,7 +7531,7 @@ namespace Rocola
                 nowPlaying = null;
                 RefrescaCola();   // que se borre la marca de "SONANDO" de la lista del disco
                 progress.Value = 0; lblTime.Text = "0:00 / 0:00";
-                ApplyGenreBackground(null);
+                ApplyGenreBackground(null, null);
                 LayoutControls(); this.Invalidate();
                 UpdateNowPlayingUI();
                 SaveState();   // estado vivo: ya no suena nada (los creditos que queden se conservan)
@@ -7547,7 +7555,7 @@ namespace Rocola
                 // pastilla decia "Pop" en la lista y al ponerla cambiaba a "Otros". Ese era el fallo.
                 if (nowPlaying.Song.Path != null && !string.IsNullOrEmpty(nowPlaying.Song.Genre))
                 { songGenre[nowPlaying.Song.Path] = GenreLabel(nowPlaying.Song.Genre); statsDirty = true; topDirty = true; }   // captura genero para los discos TOP
-                ApplyGenreBackground(nowPlaying.Song);
+                ApplyGenreBackground(nowPlaying.Song, nowPlaying.Disc);
                 PlayTrack(nowPlaying.Song);
             }
             LayoutControls(); this.Invalidate();
@@ -7878,9 +7886,9 @@ namespace Rocola
             return o.GetType().InvokeMember(method, BindingFlags.InvokeMethod, null, o, args);
         }
 
-        private void ApplyGenreBackground(Track t)
+        private void ApplyGenreBackground(Track t, Album org)
         {
-            Color acc = ColorForTrack(t);   // excepcion por artista (BTS=morado) y luego genero
+            Color acc = ColorDeLoQueSuena(t, org);   // excepcion por artista (BTS=morado) y luego genero
             bgAccentTarget = acc;
             Color panel = Shade(acc, 0.70);
             Color list = Shade(acc, 0.76);
@@ -8383,6 +8391,13 @@ namespace Rocola
             pastGenero.Texto = et;
             pastGenero.Tinte = (et.Length > 0) ? ColorDeEtiqueta(et) : DefaultAccent;
             PositionMejorada();   // el ancho del artista depende de si hay pastilla y de lo que mida
+            // El genero se aprende en segundo plano, asi que puede llegar con la cancion ya sonando. El fondo
+            // va del mismo color, asi que se entera aqui en vez de esperar a la siguiente.
+            if (nowPlaying != null && !nowPlaying.IsVideo && panelSongs != null)
+            {
+                Color acc = ColorDeLoQueSuena(nowPlaying.Song, nowPlaying.Disc);
+                if (acc.ToArgb() != bgAccentTarget.ToArgb()) ApplyGenreBackground(nowPlaying.Song, nowPlaying.Disc);
+            }
         }
 
         // Reparte el texto entre la linea de ARRIBA (ancho completo) y la de ABAJO (la que comparte fila con el
@@ -10207,7 +10222,7 @@ namespace Rocola
             // Forma: 0 destello (cuatro puntas), 1 cruz (brazos rectos finos), 2 rafaga (ocho rayos), 3 punto.
             // Son las MISMAS cuatro que dibuja la version con tarjeta grafica, para que el cielo se vea igual
             // por los dos caminos.
-            internal const int FormaDestello = 0, FormaCruz = 1, FormaRafaga = 2, FormaPunto = 3;
+            internal const int FormaDestello = 0, FormaRafaga = 1, FormaPunto = 2;
             private struct Star { public float X, Y; public int Size, Kind; public byte R, G, B; public float Tint, Off, Spd; public byte Band, Forma; }   // Band: 0=graves,1=medios,2=agudos (a que frecuencia late)
             private struct Shoot { public bool On; public float X, Y, VX, VY; public float Life, MaxLife; }
             private Star[] stars;
@@ -10367,21 +10382,6 @@ namespace Rocola
                 g.FillPolygon(b, spk);
             }
 
-            // CRUZ de brazos rectos y finos. Es la silueta mas delicada de las cuatro: se la quedan sobre todo
-            // las medianas, para que no compitan con los destellos grandes.
-            private readonly PointF[] crz = new PointF[12];
-            private void DrawCruz(Graphics g, Brush b, int px, int py, int R)
-            {
-                if (R < 2) R = 2;
-                R = (int)(R * 1.28f);                              // los brazos rectos "leen" mas cortos que los flameados del destello
-                float gr = R * 0.075f; if (gr < 0.75f) gr = 0.75f;   // FINOS: con brazos gordos parece un signo de mas, no una chispa
-                crz[0] = new PointF(px - gr, py - R); crz[1] = new PointF(px + gr, py - R); crz[2] = new PointF(px + gr, py - gr);
-                crz[3] = new PointF(px + R, py - gr); crz[4] = new PointF(px + R, py + gr); crz[5] = new PointF(px + gr, py + gr);
-                crz[6] = new PointF(px + gr, py + R); crz[7] = new PointF(px - gr, py + R); crz[8] = new PointF(px - gr, py + gr);
-                crz[9] = new PointF(px - R, py + gr); crz[10] = new PointF(px - R, py - gr); crz[11] = new PointF(px - gr, py - gr);
-                g.FillPolygon(b, crz);
-            }
-
             // RAFAGA: ocho rayos cortos saliendo de un nucleo. Los de las diagonales salen mas cortos, que es
             // lo que hace que se lea como un estallido y no como una rueda.
             private readonly PointF[] ray = new PointF[3];
@@ -10407,16 +10407,15 @@ namespace Rocola
             // Dibuja la estrella con la silueta que le toque.
             private void DrawForma(Graphics g, Brush b, int forma, int px, int py, int R)
             {
-                if (forma == FormaCruz) DrawCruz(g, b, px, py, R);
-                else if (forma == FormaRafaga) DrawRafaga(g, b, px, py, R);
+                if (forma == FormaRafaga) DrawRafaga(g, b, px, py, R);
                 else DrawSparkle(g, b, px, py, R);
             }
             // CUANTO HALO lleva cada silueta. El destello aguanta el suyo entero -es una mancha de luz con
-            // puntas-, pero la cruz vive de su linea fina: con el halo grande deja de leerse como una cruz y
-            // queda una bola con una cruz estampada encima. La rafaga, un termino medio.
+            // puntas-; la rafaga lleva algo menos, porque sus ocho rayos ya llenan bastante y con el halo
+            // entero se le empastan.
             private static float HaloDe(int forma)
             {
-                return (forma == FormaCruz) ? 0.45f : (forma == FormaRafaga) ? 0.78f : 1f;
+                return (forma == FormaRafaga) ? 0.78f : 1f;
             }
 
             private void Ensure(int w, int h)
@@ -10491,12 +10490,14 @@ namespace Rocola
                     // A QUE FRECUENCIA late cada estrella (para SENTIR la separacion): las GRANDES con los graves
                     // (bombo), las medianas repartidas entre medios y agudos. Los puntos no laten (no reaccionan).
                     s.Band = (s.Kind == 2) ? (byte)0 : (byte)(1 + r.Next(2));
-                    // QUE FORMA le toca. Las grandes se reparten entre el destello de cuatro puntas y la
-                    // rafaga -las dos siluetas con caracter-; las medianas llevan sobre todo la cruz, mas
-                    // delicada, que no compite con las grandes; y el polvo se queda en puntos redondos.
+                    // QUE FORMA le toca. Habia una tercera silueta, una cruz de brazos finos, que se llevaba
+                    // mas de la mitad de las medianas: en pantalla se leia como un monton de signos de MAS
+                    // repartidos por el cielo, y quedaba fea. Fuera. Quedan las dos que si tienen caracter, y
+                    // la rafaga -la de los ocho rayos, la mas trabajada- se queda con buena parte de las dos
+                    // tallas en vez de ser la rareza que casi no salia. El polvo sigue en puntos redondos.
                     int ff = r.Next(100);
-                    s.Forma = (s.Kind == 2) ? (byte)((ff < 62) ? FormaDestello : FormaRafaga)
-                            : (s.Kind == 1) ? (byte)((ff < 58) ? FormaCruz : (ff < 88) ? FormaDestello : FormaRafaga)
+                    s.Forma = (s.Kind == 2) ? (byte)((ff < 45) ? FormaDestello : FormaRafaga)
+                            : (s.Kind == 1) ? (byte)((ff < 55) ? FormaDestello : FormaRafaga)
                             : (byte)FormaPunto;
                     if (Varied)
                     {

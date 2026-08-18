@@ -7,8 +7,10 @@ using System.Reflection;
 // LAS ESTRELLAS DEL FONDO: QUE HAYA VARIEDAD, Y QUE NO CUESTE MAS.
 //
 // El cielo tenia una sola silueta -un destello de cuatro puntas- y por eso se veia siempre igual. Ahora hay
-// cuatro: destello, cruz, rafaga y punto. Aqui se comprueba que de verdad salen las cuatro, que el reparto
-// es el pensado (el polvo de estrellas se queda en puntos palidos y el color fuerte se lo quedan las pocas
+// tres: destello, rafaga y punto. Hubo una cuarta, una cruz de brazos finos, que se llevaba mas de la mitad
+// de las estrellas medianas: en pantalla se leia como un monton de signos de MAS repartidos por el cielo y
+// quedaba fea, asi que se quito. Aqui se comprueba que salen las tres, que la CRUZ no ha vuelto, que el
+// reparto es el pensado (el polvo se queda en puntos palidos y el color fuerte se lo quedan las pocas
 // grandes, para que el fondo no se vuelva un confeti) y que dibujarlas no cuesta mas que antes.
 class Estrellas
 {
@@ -39,7 +41,7 @@ class Estrellas
         Check(TS != null, "el campo de estrellas esta donde tiene que estar");
         if (TS == null) return 1;
 
-        Console.WriteLine("\n  1) SALEN LAS CUATRO SILUETAS\n");
+        Console.WriteLine("\n  1) SALEN LAS TRES SILUETAS (Y LA CRUZ NO VUELVE)\n");
         object sf = Activator.CreateInstance(TS, true);
         FieldInfo fDens = TS.GetField("Density", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
         if (fDens != null) fDens.SetValue(sf, 1f);
@@ -58,13 +60,13 @@ class Estrellas
         Check(fForma != null, "cada estrella lleva apuntada su silueta");
         if (fForma == null) return 1;
 
-        int[] cuenta = new int[4];
+        int[] cuenta = new int[8];   // de sobra: si volviera a haber mas siluetas, se cuentan igual
         int grandesColor = 0, grandes = 0, polvoColor = 0, polvo = 0;
         for (int i = 0; i < estrellas.Length; i++)
         {
             object s = estrellas.GetValue(i);
             int f = Convert.ToInt32(fForma.GetValue(s));
-            if (f >= 0 && f < 4) cuenta[f]++;
+            if (f >= 0 && f < cuenta.Length) cuenta[f]++;
             int k = Convert.ToInt32(fKind.GetValue(s));
             int r = Convert.ToInt32(fR.GetValue(s)), g = Convert.ToInt32(fG.GetValue(s)), b = Convert.ToInt32(fB.GetValue(s));
             int max = Math.Max(r, Math.Max(g, b)), min = Math.Min(r, Math.Min(g, b));
@@ -72,13 +74,31 @@ class Estrellas
             if (k == 2) { grandes++; if (conColor) grandesColor++; }
             if (k == 0) { polvo++; if (conColor) polvoColor++; }
         }
-        string[] nom = { "destello", "cruz", "rafaga", "punto" };
-        for (int i = 0; i < 4; i++)
-            Console.WriteLine("     " + nom[i].PadRight(10) + cuenta[i].ToString().PadLeft(4) + "  ("
-                              + (100.0 * cuenta[i] / estrellas.Length).ToString("0") + "%)");
-        Check(cuenta[0] > 0 && cuenta[1] > 0 && cuenta[2] > 0 && cuenta[3] > 0, "aparecen las CUATRO siluetas, no una sola");
-        Check(cuenta[3] > estrellas.Length / 2, "la mayoria siguen siendo puntos: el polvo de estrellas no se vuelve confeti");
-        Check(cuenta[1] > 0 && cuenta[2] > 0, "hay cruces y rafagas, que son las siluetas nuevas");
+        // Los numeros salen del propio ejecutable, no de una lista escrita aqui: si algun dia se anade o se
+        // quita una silueta, esta bateria lo ensena en vez de mentir con los nombres viejos.
+        Type TSF = TS;
+        int DESTELLO = Convert.ToInt32(TSF.GetField("FormaDestello", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic).GetValue(null));
+        int RAFAGA = Convert.ToInt32(TSF.GetField("FormaRafaga", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic).GetValue(null));
+        int PUNTO = Convert.ToInt32(TSF.GetField("FormaPunto", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic).GetValue(null));
+        string[] nom = new string[cuenta.Length];
+        for (int i = 0; i < nom.Length; i++) nom[i] = "silueta " + i;
+        nom[DESTELLO] = "destello"; nom[RAFAGA] = "rafaga"; nom[PUNTO] = "punto";
+        for (int i = 0; i < cuenta.Length; i++)
+            if (cuenta[i] > 0)
+                Console.WriteLine("     " + nom[i].PadRight(10) + cuenta[i].ToString().PadLeft(4) + "  ("
+                                  + (100.0 * cuenta[i] / estrellas.Length).ToString("0") + "%)");
+        Check(cuenta[DESTELLO] > 0 && cuenta[RAFAGA] > 0 && cuenta[PUNTO] > 0, "aparecen las TRES siluetas, no una sola");
+        Check(cuenta[PUNTO] > estrellas.Length / 2, "la mayoria siguen siendo puntos: el polvo de estrellas no se vuelve confeti");
+        // LA CRUZ NO VUELVE. Se quito porque quedaba fea, y una silueta fea se cuela sola en cuanto alguien
+        // toque el reparto: aqui se vigila que no exista ni como constante ni dibujada.
+        Check(TSF.GetField("FormaCruz", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic) == null
+              && TSF.GetMethod("DrawCruz", BindingFlags.Instance | BindingFlags.NonPublic) == null,
+              "la cruz de dos palos no ha vuelto");
+        // Y la rafaga -la silueta trabajada, la de los ocho rayos- tiene que salir DE VERDAD, no ser una
+        // rareza que aparece una vez cada pantalla.
+        int conForma = cuenta[DESTELLO] + cuenta[RAFAGA];
+        Console.WriteLine("     de las que llevan silueta, la rafaga es el " + (100 * cuenta[RAFAGA] / Math.Max(1, conForma)) + "%");
+        Check(cuenta[RAFAGA] * 100 >= conForma * 35, "la rafaga es al menos un tercio de las estrellas con silueta");
 
         Console.WriteLine("\n  2) EL COLOR FUERTE SE LO QUEDAN LAS GRANDES\n");
         Console.WriteLine("     grandes con color: " + grandesColor + " de " + grandes

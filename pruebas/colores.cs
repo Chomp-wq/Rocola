@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Reflection;
+using System.Runtime.Serialization;
 
 // EL COLOR DE CADA GENERO.
 //
@@ -20,6 +21,9 @@ using System.Reflection;
 //      del disco y con el azul de por defecto en la barra de letras.
 //   4) Que dos generos no compartan un color que no se pueda distinguir. Se mide con la distancia "redmean",
 //      que se parece a lo que ve el ojo bastante mas que restar los tres numeros del RGB.
+//   5) Que el FONDO de la pantalla se pinte del mismo color que dice la pastilla. Este fallo se veia: sonaba
+//      una cumbia de la Sonora Santanera, la pastilla decia "Tropical" y el cielo seguia azul, porque el
+//      fondo miraba SOLO la etiqueta del archivo y ese MP3 no traia ninguna.
 class Colores
 {
     static int fallos = 0;
@@ -144,6 +148,52 @@ class Colores
         int usanDefecto = 0;
         foreach (string e in ets) if (Color1(e).ToArgb() == porDefecto.ToArgb()) usanDefecto++;
         Check(usanDefecto == 0, "el azul de \"no se de que es\" no se lo queda ningun genero");
+
+        // ---------- 5) EL FONDO VA DEL COLOR QUE DICE LA PASTILLA ----------
+        // Una cancion SIN etiqueta de genero en el archivo, de un disco que la rocola ya sabe que es
+        // Tropical. La pastilla dice "Tropical" -lo saca del disco- y el fondo tiene que decir lo mismo.
+        Console.WriteLine();
+        MethodInfo mFondo = TF.GetMethod("ColorDeLoQueSuena", BindingFlags.Instance | BindingFlags.NonPublic);
+        if (mFondo == null)
+        {
+            Check(false, "el fondo se pinta del color que dice la pastilla (lo saca solo de la etiqueta del archivo)");
+        }
+        else
+        {
+            Type TTrk = TF.GetNestedType("Track", BindingFlags.NonPublic | BindingFlags.Public);
+            Type TAlb = TF.GetNestedType("Album", BindingFlags.NonPublic | BindingFlags.Public);
+            object rocola = FormatterServices.GetUninitializedObject(TF);
+            foreach (string c in new string[] { "songGenre", "discTag", "artistTag", "nombreTag" })
+                TF.GetField(c, BindingFlags.Instance | BindingFlags.NonPublic).SetValue(
+                    rocola, Activator.CreateInstance(typeof(Dictionary<string, string>), new object[] { StringComparer.OrdinalIgnoreCase }));
+
+            object tk = Activator.CreateInstance(TTrk, true);
+            TTrk.GetField("Path").SetValue(tk, @"C:\Musica\Grabaciones\Uno\05 La Boa.mp3");
+            TTrk.GetField("Artist").SetValue(tk, "Sonora Santanera");
+            // El archivo NO trae genero: eso es lo normal en media biblioteca.
+            TTrk.GetField("Genre").SetValue(tk, "");
+            object alb = Activator.CreateInstance(TAlb, true);
+            TAlb.GetField("Folder").SetValue(alb, @"C:\Musica\Grabaciones\Uno");
+            TAlb.GetField("Artist").SetValue(alb, "Sonora Santanera");
+            // ...pero la rocola YA aprendio de que va el disco (paso 2 de la cascada).
+            ((IDictionary<string, string>)TF.GetField("discTag", BindingFlags.Instance | BindingFlags.NonPublic)
+                .GetValue(rocola))[@"C:\Musica\Grabaciones\Uno"] = "Tropical";
+
+            Color fondo = (Color)mFondo.Invoke(rocola, new object[] { tk, alb });
+            Color pastilla = Color1("Tropical");
+            Console.WriteLine("  suena una cancion sin etiqueta, de un disco que la rocola sabe que es Tropical");
+            Console.WriteLine("     la pastilla dice:  " + pastilla.R + "," + pastilla.G + "," + pastilla.B);
+            Console.WriteLine("     el fondo se pone:  " + fondo.R + "," + fondo.G + "," + fondo.B
+                              + (fondo.ToArgb() == porDefecto.ToArgb() ? "   (el azul de \"no se de que es\")" : ""));
+            Check(fondo.ToArgb() == pastilla.ToArgb(), "el fondo va del color que dice la pastilla, no del azul de por defecto");
+
+            // Y sin nada que deducir, el azul de siempre.
+            object tk2 = Activator.CreateInstance(TTrk, true);
+            TTrk.GetField("Path").SetValue(tk2, @"C:\Musica\Otra\x.mp3");
+            TTrk.GetField("Genre").SetValue(tk2, "");
+            Check(((Color)mFondo.Invoke(rocola, new object[] { tk2, null })).ToArgb() == porDefecto.ToArgb(),
+                  "y si no hay de donde sacarlo, se queda el azul de siempre");
+        }
 
         Console.WriteLine();
         Console.WriteLine(fallos == 0 ? "  TODO BIEN" : ("  FALLOS: " + fallos));
