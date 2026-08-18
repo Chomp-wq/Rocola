@@ -60,6 +60,7 @@ falta `mcs` (Mono), `xvfb-run` y `python3`.
 | `dseeperf.cs` | dónde se va el tiempo dentro del reconstructor de agudos, por partes |
 | `modelo.cs` | lo que costaría un modelo de IA más grande, tamaño por tamaño |
 | `memoria.cs` | dónde se va la memoria con una biblioteca grande |
+| `cachemem.cs` | lo que cuesta rehacer una carátula que se salió de la caché, y lo que costaría una caché mayor |
 | `capacidad.py` | si un modelo de IA más grande predice mejor (entrena varios tamaños sobre los mismos datos) |
 | `genmodelos.py` | genera modelos de varios tamaños para medirlos |
 
