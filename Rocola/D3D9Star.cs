@@ -439,7 +439,7 @@ namespace Rocola
     internal sealed class GpuStarfield
     {
         private D3D9Device gpu; private IntPtr glowTex; private IntPtr uiGlowTex;   // glow de estrella (con chispa) / glow radial LISO para el destello de UI
-        private float[] sx, sy, sphase, sspeed, ssize; private int[] skind; private uint[] scol; private int nStars;
+        private float[] sx, sy, sphase, sspeed, ssize; private int[] skind, sforma; private uint[] scol; private int nStars;
         private D3D9.Vtx[] skyV = new D3D9.Vtx[12]; private D3D9.Vtx[] starV;   // cielo = 2 quads apilados (3 paradas de color)
         private uint skyTop = 0xFF06081A, skyMid = 0xFF101C3A, skyBot = 0xFF1A2C5A;
         // RELOJ DEL CAMPO DE ESTRELLAS. Igual que el de la aurora: en un bar la rocola no se apaga nunca, y
@@ -453,7 +453,7 @@ namespace Rocola
         private int curMinute = int.MinValue;                // minuto del patron actual (cambia cada 60s)
         // ENTRECRUZADO del patron: al cambiar de minuto se conserva el patron anterior y se desvanece mientras
         // el nuevo aparece, en vez de atenuar TODO el cielo. Asi el fondo nunca se queda sin estrellas.
-        private float[] px, py, pphase, pspeed, psize; private int[] pkind; private uint[] pcol; private int pnStars;
+        private float[] px, py, pphase, pspeed, psize; private int[] pkind, pforma; private uint[] pcol; private int pnStars;
         private D3D9.Vtx[] starV2;                            // vertices del patron ANTERIOR durante el entrecruzado
         private int transStart; private bool transing;
         private const int TransMs = 1300;                    // duracion del entrecruzado
@@ -521,7 +521,11 @@ namespace Rocola
         private readonly D3D9.Vtx[] glowV = new D3D9.Vtx[HaloVtx];
         public void DrawGlow(float cx, float cy, float r, uint argb)
         {
-            IntPtr t = uiGlowTex != IntPtr.Zero ? uiGlowTex : glowTex;
+            // El halo de la interfaz tiene su propia textura LISA. Antes, si esa no se creaba, se caia a la de
+            // las estrellas; ahora esa es un ATLAS de cuatro formas y caer ahi pintaria un cuarto de atlas con
+            // tres siluetas dentro. Si no hay textura lisa, no se dibuja el halo y ya: se pierde un adorno, no
+            // se ensucia la pantalla. (Las dos se crean con el mismo codigo seguido: si una sale, la otra sale.)
+            IntPtr t = uiGlowTex;
             if (!Ok || t == IntPtr.Zero || r < 1f) return;
             Halo(glowV, 0, cx, cy, r, argb);
             gpu.DrawStars(glowV, HaloVtx / 3, t);   // mismo camino aditivo que las estrellas
@@ -567,7 +571,7 @@ namespace Rocola
         }
         public void GlowBatchEnd()
         {
-            IntPtr t = uiGlowTex != IntPtr.Zero ? uiGlowTex : glowTex;
+            IntPtr t = uiGlowTex;   // ver DrawGlow: sin textura lisa no se dibuja halo (no se cae al atlas)
             if (Ok && t != IntPtr.Zero && glowBatchN > 0) gpu.DrawStars(glowBatch, glowBatchN * (HaloVtx / 3), t);
             glowBatchN = 0;
         }
@@ -615,7 +619,7 @@ namespace Rocola
             {
                 if (curMinute != int.MinValue)
                 {
-                    px = sx; py = sy; pphase = sphase; pspeed = sspeed; psize = ssize; pkind = skind; pcol = scol; pnStars = nStars;   // guarda el actual como ANTERIOR
+                    px = sx; py = sy; pphase = sphase; pspeed = sspeed; psize = ssize; pkind = skind; pforma = sforma; pcol = scol; pnStars = nStars;   // guarda el actual como ANTERIOR
                     BuildStars(w, h, unchecked(seed0 + minute * 40503));     // construye el NUEVO (asigna arreglos nuevos; no pisa los anteriores)
                     if (starV2 == null || starV2.Length < pnStars * 6) starV2 = new D3D9.Vtx[pnStars * 6];
                     transing = true; transStart = nowMs;
@@ -634,10 +638,10 @@ namespace Rocola
             if (TrasCielo != null) TrasCielo();   // la aurora va aqui: entre el cielo y las estrellas
             if (transing && px != null)   // patron ANTERIOR desvaneciendose
             {
-                BuildStarVerts(starV2, px, py, pphase, pspeed, psize, pkind, pcol, pnStars, t, (1f - tr) * dim, pulse, driftX, driftY, w, h);
+                BuildStarVerts(starV2, px, py, pphase, pspeed, psize, pkind, pforma, pcol, pnStars, t, (1f - tr) * dim, pulse, driftX, driftY, w, h);
                 gpu.DrawStars(starV2, pnStars * 2, glowTex);
             }
-            BuildStarVerts(starV, sx, sy, sphase, sspeed, ssize, skind, scol, nStars, t, (transing ? tr : 1f) * dim, pulse, driftX, driftY, w, h);   // patron ACTUAL (x atenuacion al navegar)
+            BuildStarVerts(starV, sx, sy, sphase, sspeed, ssize, skind, sforma, scol, nStars, t, (transing ? tr : 1f) * dim, pulse, driftX, driftY, w, h);   // patron ACTUAL (x atenuacion al navegar)
             gpu.DrawStars(starV, nStars * 2, glowTex);
             UpdateAndDrawShoots(w, h, nowMs, finoMs);
             return true;
@@ -645,7 +649,7 @@ namespace Rocola
 
         // Construye los vertices de un campo de estrellas (titileo + latido) con un factor de brillo global
         // (para el entrecruzado del patron). Reutilizable por el patron actual y por el anterior.
-        private static void BuildStarVerts(D3D9.Vtx[] buf, float[] xs, float[] ys, float[] ph, float[] spd, float[] sz, int[] kd, uint[] col, int n, double t, float fade, float pulse, float dx, float dy, float w, float h)
+        private static void BuildStarVerts(D3D9.Vtx[] buf, float[] xs, float[] ys, float[] ph, float[] spd, float[] sz, int[] kd, int[] fm, uint[] col, int n, double t, float fade, float pulse, float dx, float dy, float w, float h)
         {
             int vi = 0;
             for (int i = 0; i < n; i++)
@@ -657,7 +661,8 @@ namespace Rocola
                 if (kd[i] != 0 && pulse > 0.02f) s += pulse * (kd[i] == 2 ? 9f : 5f);   // latido: medianas/grandes crecen con la musica
                 float x = xs[i] + dx; if (x >= w) x -= w;   // deriva + envuelve (xs,dx en [0,w) -> x en [0,2w) -> 1 resta basta)
                 float y = ys[i] + dy; if (y >= h) y -= h;
-                SetQuad(buf, vi, x - s, y - s, x + s, y + s, c, c, c, c);
+                int f = (fm != null) ? fm[i] : FormaDestello;
+                SetQuadUV(buf, vi, x - s, y - s, x + s, y + s, c, AtlasU0[f], AtlasV0[f], AtlasU1[f], AtlasV1[f]);
                 vi += 6;
             }
         }
@@ -734,8 +739,22 @@ namespace Rocola
             nStars = Math.Max(60, w * h / 6500);
             if (nStars > 260) nStars = 260;
             sx = new float[nStars]; sy = new float[nStars]; sphase = new float[nStars];
-            sspeed = new float[nStars]; ssize = new float[nStars]; skind = new int[nStars]; scol = new uint[nStars];
-            uint[] pal = { 0xFFFFFFFF, 0xFFFFFFFF, 0xFFB4CDFF, 0xFFCDA5FF, 0xFFFFAAE6, 0xFFFFDC8C, 0xFF96FFE1 };
+            sspeed = new float[nStars]; ssize = new float[nStars]; skind = new int[nStars]; sforma = new int[nStars]; scol = new uint[nStars];
+            // DOS PALETAS, y esto es a proposito. El polvo de estrellas -que son las tres cuartas partes- se
+            // queda casi blanco: si se le da color a todo, el cielo se vuelve un confeti y estorba para leer
+            // los discos, que es a lo que se viene. El color fuerte se lo quedan las POCAS grandes, que es
+            // donde se nota y donde queda bonito.
+            uint[] palPolvo = { 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFDCE6FF, 0xFFE6DCFF, 0xFFFFF0DC };
+            uint[] palViva  = { 0xFFFFC814,   // dorado
+                                0xFFFFA032,   // ambar
+                                0xFF64A0F0,   // azul aciano
+                                0xFF4678D2,   // azul hondo
+                                0xFFFF64A0,   // rosa
+                                0xFFFFA0C8,   // rosa claro
+                                0xFF9678F0,   // violeta
+                                0xFFC8B4FF,   // lila
+                                0xFF78F0D2,   // menta
+                                0xFFFFFFFF }; // y blanca, que tambien tiene que haber
             float minD2 = 30f * 30f;   // separacion minima entre estrellas: evita que se amontonen
             for (int i = 0; i < nStars; i++)
             {
@@ -758,7 +777,16 @@ namespace Rocola
                 int kk = rnd.Next(100);
                 skind[i] = (kk < 7) ? 2 : (kk < 26) ? 1 : 0;   // MENOS grandes: 7% grandes (antes 12%), 19% medianas, resto puntos
                 ssize[i] = (skind[i] == 2) ? (10 + rnd.Next(5)) : (skind[i] == 1) ? (6 + rnd.Next(4)) : (3 + rnd.Next(3));   // mas chicas (antes 16-27 las grandes)
-                scol[i] = pal[rnd.Next(pal.Length)];
+                // QUE FORMA le toca. Las grandes se reparten entre el destello de cuatro puntas y la rafaga
+                // -las dos siluetas con caracter-; las medianas llevan sobre todo la cruz, que es mas
+                // delicada y no compite con las grandes; y el polvo se queda en puntos.
+                int ff = rnd.Next(100);
+                sforma[i] = (skind[i] == 2) ? ((ff < 62) ? FormaDestello : FormaRafaga)
+                          : (skind[i] == 1) ? ((ff < 58) ? FormaCruz : (ff < 88) ? FormaDestello : FormaRafaga)
+                          : FormaPunto;
+                scol[i] = (skind[i] == 2) ? palViva[rnd.Next(palViva.Length)]
+                        : (skind[i] == 1) ? ((rnd.Next(100) < 32) ? palViva[rnd.Next(palViva.Length)] : palPolvo[rnd.Next(palPolvo.Length)])
+                        : palPolvo[rnd.Next(palPolvo.Length)];
             }
             starV = new D3D9.Vtx[nStars * 6];
         }
@@ -787,30 +815,109 @@ namespace Rocola
             return bmp;
         }
 
-        private static Bitmap BakeStarTexture(int size)
+        // LAS CUATRO FORMAS DE ESTRELLA, EN UNA SOLA TEXTURA.
+        //
+        // Antes todas las estrellas eran la misma figura -un destello de cuatro puntas- y solo cambiaban de
+        // tamano y de color, asi que el cielo se veia siempre igual. Ahora hay cuatro siluetas distintas.
+        //
+        // Van las cuatro en UNA textura (un atlas de 2x2) y cada estrella escoge su trozo con las
+        // coordenadas de textura. Eso importa: si cada forma fuera su propia textura habria que cambiar de
+        // textura entre grupos y el campo entero dejaria de dibujarse de una sola llamada. Asi sigue
+        // costando exactamente lo mismo que antes: una llamada para todas las estrellas.
+        internal const int FormaDestello = 0, FormaCruz = 1, FormaRafaga = 2, FormaPunto = 3;
+        internal const int NFormas = 4;
+
+        // Coordenadas del trozo de cada forma dentro del atlas, ya metidas medio texel hacia dentro para que
+        // el filtrado no traiga pixeles de la casilla de al lado.
+        private static readonly float[] AtlasU0 = new float[NFormas], AtlasV0 = new float[NFormas],
+                                        AtlasU1 = new float[NFormas], AtlasV1 = new float[NFormas];
+        static GpuStarfield() { CalculaAtlas(64); }   // por si alguien pide vertices antes de hornear la textura
+        private static void CalculaAtlas(int celda)
         {
-            Bitmap bmp = new Bitmap(size, size, PixelFormat.Format32bppArgb);
+            float lado = celda * 2f, medio = 0.5f / lado;
+            for (int i = 0; i < NFormas; i++)
+            {
+                float cx = (i % 2) * 0.5f, cy = (i / 2) * 0.5f;
+                AtlasU0[i] = cx + medio; AtlasV0[i] = cy + medio;
+                AtlasU1[i] = cx + 0.5f - medio; AtlasV1[i] = cy + 0.5f - medio;
+            }
+        }
+
+        private static Bitmap BakeStarTexture(int celda)
+        {
+            CalculaAtlas(celda);
+            Bitmap bmp = new Bitmap(celda * 2, celda * 2, PixelFormat.Format32bppArgb);
             using (Graphics g = Graphics.FromImage(bmp))
             {
                 g.Clear(Color.Transparent);
                 g.SmoothingMode = SmoothingMode.AntiAlias;
-                using (GraphicsPath gp = new GraphicsPath())
+                for (int forma = 0; forma < NFormas; forma++)
                 {
-                    gp.AddEllipse(0, 0, size, size);
-                    using (PathGradientBrush pgb = new PathGradientBrush(gp))
+                    int ox = (forma % 2) * celda, oy = (forma / 2) * celda;
+                    // El halo de fondo. Cada forma lleva el suyo: el punto uno apretado y brillante (es polvo
+                    // de estrellas, tiene que leerse aunque mida tres pixeles) y las figuras uno mas suave,
+                    // porque su silueta ya se ve sola y un halo fuerte la emborronaria.
+                    // La cruz casi no lleva halo: su gracia es la linea fina, y con halo grande queda una
+                    // bola con una cruz estampada encima en vez de una chispa.
+                    int centro = (forma == FormaPunto) ? 200 : (forma == FormaDestello) ? 170 : (forma == FormaRafaga) ? 120 : 78;
+                    using (GraphicsPath gp = new GraphicsPath())
                     {
-                        pgb.CenterPoint = new PointF(size / 2f, size / 2f);
-                        pgb.CenterColor = Color.FromArgb(170, 255, 255, 255);
-                        pgb.SurroundColors = new Color[] { Color.FromArgb(0, 255, 255, 255) };
-                        g.FillEllipse(pgb, 0, 0, size, size);
+                        gp.AddEllipse(ox, oy, celda, celda);
+                        using (PathGradientBrush pgb = new PathGradientBrush(gp))
+                        {
+                            pgb.CenterPoint = new PointF(ox + celda / 2f, oy + celda / 2f);
+                            pgb.CenterColor = Color.FromArgb(centro, 255, 255, 255);
+                            pgb.SurroundColors = new Color[] { Color.FromArgb(0, 255, 255, 255) };
+                            g.FillEllipse(pgb, ox, oy, celda, celda);
+                        }
+                    }
+                    float c = celda / 2f, cx2 = ox + c, cy2 = oy + c;
+                    using (SolidBrush b = new SolidBrush(Color.White))
+                    {
+                        if (forma == FormaDestello)
+                        {
+                            // El destello de siempre: cuatro puntas con los lados hundidos.
+                            float R = celda * 0.42f, r = R * 0.22f;
+                            g.FillPolygon(b, new PointF[] {
+                                new PointF(cx2, cy2 - R), new PointF(cx2 + r, cy2 - r), new PointF(cx2 + R, cy2), new PointF(cx2 + r, cy2 + r),
+                                new PointF(cx2, cy2 + R), new PointF(cx2 - r, cy2 + r), new PointF(cx2 - R, cy2), new PointF(cx2 - r, cy2 - r) });
+                        }
+                        else if (forma == FormaCruz)
+                        {
+                            // Cruz de brazos rectos y finos: la silueta mas delicada, para las medianas.
+                            float R = celda * 0.47f, gr = celda * 0.030f;   // FINOS y largos: con brazos gordos parece un signo de mas
+                            g.FillPolygon(b, new PointF[] {
+                                new PointF(cx2 - gr, cy2 - R), new PointF(cx2 + gr, cy2 - R), new PointF(cx2 + gr, cy2 - gr),
+                                new PointF(cx2 + R, cy2 - gr), new PointF(cx2 + R, cy2 + gr), new PointF(cx2 + gr, cy2 + gr),
+                                new PointF(cx2 + gr, cy2 + R), new PointF(cx2 - gr, cy2 + R), new PointF(cx2 - gr, cy2 + gr),
+                                new PointF(cx2 - R, cy2 + gr), new PointF(cx2 - R, cy2 - gr), new PointF(cx2 - gr, cy2 - gr) });
+                        }
+                        else if (forma == FormaRafaga)
+                        {
+                            // Rafaga: ocho rayos cortos saliendo del centro, con un nucleo chico. Los rayos
+                            // en diagonal salen mas cortos, que es lo que hace que se lea como un estallido
+                            // y no como una rueda.
+                            for (int k = 0; k < 8; k++)
+                            {
+                                double ang = k * Math.PI / 4.0;
+                                float largo = (k % 2 == 0) ? celda * 0.44f : celda * 0.30f;
+                                float dentro = celda * 0.13f, gr = celda * 0.045f;
+                                float ux = (float)Math.Cos(ang), uy = (float)Math.Sin(ang);
+                                float nx = -uy * gr, ny = ux * gr;
+                                g.FillPolygon(b, new PointF[] {
+                                    new PointF(cx2 + ux * dentro + nx, cy2 + uy * dentro + ny),
+                                    new PointF(cx2 + ux * largo, cy2 + uy * largo),
+                                    new PointF(cx2 + ux * dentro - nx, cy2 + uy * dentro - ny) });
+                            }
+                            g.FillEllipse(b, cx2 - celda * 0.055f, cy2 - celda * 0.055f, celda * 0.11f, celda * 0.11f);
+                        }
+                        else
+                        {
+                            // Punto: solo un nucleo redondo. El halo de arriba hace el resto.
+                            g.FillEllipse(b, cx2 - celda * 0.085f, cy2 - celda * 0.085f, celda * 0.17f, celda * 0.17f);
+                        }
                     }
                 }
-                float c = size / 2f, R = size * 0.42f, r = R * 0.22f;
-                PointF[] spk = {
-                    new PointF(c, c - R), new PointF(c + r, c - r), new PointF(c + R, c), new PointF(c + r, c + r),
-                    new PointF(c, c + R), new PointF(c - r, c + r), new PointF(c - R, c), new PointF(c - r, c - r)
-                };
-                using (SolidBrush b = new SolidBrush(Color.FromArgb(255, 255, 255, 255))) g.FillPolygon(b, spk);
             }
             return bmp;
         }
@@ -819,6 +926,14 @@ namespace Rocola
         {
             V(ref v[o + 0], x0, y0, cTL, 0, 0); V(ref v[o + 1], x1, y0, cTR, 1, 0); V(ref v[o + 2], x1, y1, cBR, 1, 1);
             V(ref v[o + 3], x0, y0, cTL, 0, 0); V(ref v[o + 4], x1, y1, cBR, 1, 1); V(ref v[o + 5], x0, y1, cBL, 0, 1);
+        }
+        // El mismo quad pero escogiendo QUE TROZO de la textura se usa: asi las cuatro formas de estrella
+        // salen de una sola textura y de una sola llamada de dibujo.
+        private static void SetQuadUV(D3D9.Vtx[] v, int o, float x0, float y0, float x1, float y1, uint c,
+                                     float u0, float v0, float u1, float v1)
+        {
+            V(ref v[o + 0], x0, y0, c, u0, v0); V(ref v[o + 1], x1, y0, c, u1, v0); V(ref v[o + 2], x1, y1, c, u1, v1);
+            V(ref v[o + 3], x0, y0, c, u0, v0); V(ref v[o + 4], x1, y1, c, u1, v1); V(ref v[o + 5], x0, y1, c, u0, v1);
         }
         private static void V(ref D3D9.Vtx v, float x, float y, uint c, float u, float vv) { v.X = x; v.Y = y; v.Z = 0f; v.Rhw = 1f; v.Color = c; v.U = u; v.V = vv; }
     }
