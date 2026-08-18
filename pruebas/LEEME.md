@@ -29,6 +29,7 @@ falta `mcs` (Mono), `xvfb-run` y `python3`.
 | `dsee` | el reconstructor de agudos: que no se cuele un canal en el otro al meter los dos en una FFT, que apagado sea bit a bit idéntico, que una canción completa salga intacta, y que el realce no empuje dos veces lo mismo |
 | `atoron` | lo que la pantalla se queda parada cada vez que hay que dar de comer al sonido |
 | `nivel`, `bajo`, `bajoauto` | nivelado de volumen y bajo psicoacústico |
+| `limite` | que el limitador BAJE la ganancia en vez de recortar: distorsión de un tono fuerte y aplanado de la punta en un golpe seco |
 | `eqauto`, `eqia`, `calidad` | el EQ automático y su objetivo por canción |
 | `duracion`, `titulo`, `etiqueta`, `genero` | lo que se lee de cada archivo |
 
@@ -40,6 +41,7 @@ falta `mcs` (Mono), `xvfb-run` y `python3`.
 | `hojea`, `pagina` | pasar de página: que lo horneado no se quede viejo y que ninguna página cueste el triple |
 | `busca`, `buscaigual`, `busmov`, `parcial` | el buscador: que rinda y que se vea igual que antes |
 | `abc`, `neon`, `espacio`, `barrido2` | la barra de letras y los efectos |
+| `estrellas` | que el fondo tenga las cuatro siluetas de estrella, que el color fuerte se lo queden las grandes y que dibujarlo no cueste más |
 | `sala` | dentro de un disco: las marcas de "sonando" y "en cola" |
 | `fondo`, `anim`, `presencia`, `barrido`, `tope`, `calma` | la aurora y el fondo reactivo (sólo con tarjeta gráfica) |
 
@@ -62,6 +64,7 @@ falta `mcs` (Mono), `xvfb-run` y `python3`.
 | `modelo.cs` | lo que costaría un modelo de IA más grande, tamaño por tamaño |
 | `memoria.cs` | dónde se va la memoria con una biblioteca grande |
 | `cuadro.cs` | de qué se compone un cuadro de pantalla cuando no ha cambiado nada |
+| `vercielo.cs` | saca una imagen del cielo estrellado para poder mirarlo |
 | `cachemem.cs` | lo que cuesta rehacer una carátula que se salió de la caché, y lo que costaría una caché mayor |
 | `capacidad.py` | si un modelo de IA más grande predice mejor (entrena varios tamaños sobre los mismos datos) |
 | `genmodelos.py` | genera modelos de varios tamaños para medirlos |
