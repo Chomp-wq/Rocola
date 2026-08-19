@@ -10,15 +10,21 @@ using System.Reflection;
 //
 // Una estrella de verdad no tiene forma: es un PUNTO de luz. Se probaron siluetas dibujadas -un destello de
 // cuatro puntas, una cruz, una rafaga de ocho rayos, la estrella de cinco puntas- y ninguna parecia el cielo:
-// parecian pegatinas. Ahora cada estrella es un halo suave con un nucleo diminuto y muy brillante, y solo un
-// punado -las mas fuertes- llevan las cuatro rayitas cruzadas que hace el diafragma de una camara.
+// parecian pegatinas. Ahora cada estrella es un halo con un nucleo diminuto y muy brillante, mas las cuatro
+// rayitas cruzadas que hace el diafragma de una camara.
+//
+// LA REGLA QUE MANDA: una bola redonda solo pasa por estrella si es DIMINUTA. Durante un tiempo las rayitas
+// las llevaban solo diez o doce y las otras ciento y pico se quedaban de disco borroso con un punto dentro:
+// se veian como puntos gordos amontonados, no como un cielo. Ahora o eres polvo de UN pixel, o llevas
+// silueta. Y las rayitas van escaladas -la mediana las lleva cortas y tenues, la grande largas y marcadas-,
+// que es lo que evita que sesenta estrellas con cruz parezcan purpurina.
 //
 // Lo que se comprueba aqui, que es lo que puede romperse sin que nadie lo note:
 //
 //   1) Que el cielo tenga MUCHAS estrellas y casi todas debiles, agrupadas en vez de espolvoreadas con
-//      regularidad, y con las rayitas en muy pocas.
-//   2) Que el color siga siendo de estrella (de azul-blanco a naranja) y que el fuerte se lo queden las
-//      grandes, para que el fondo no se vuelva confeti.
+//      regularidad, y que ninguna de las que se ven sea una bola redonda.
+//   2) Que el color siga siendo de estrella (de azul-blanco a naranja) y que la inmensa mayoria del cielo
+//      sea casi blanco, para que el fondo no se vuelva confeti.
 //   3) Y sobre todo: QUE NO CUESTE MAS. El polvo -tres cuartas partes del cielo- se hornea UNA vez en el
 //      bitmap del cielo y no ocho veces en las capas de titileo. Por eso se puede tener el doble de
 //      estrellas y que hornear siga costando menos que antes.
@@ -40,6 +46,15 @@ class Estrellas
             if (ms < mejor) mejor = ms;
         }
         return mejor;
+    }
+
+    // Cuanto se parecen entre si los trozos del cielo: la variacion entre casillas dividida por lo que se
+    // espera de media en cada una. Un reparto al azar da 1; con grumos sube.
+    static double Grumo(int[] celdas, int total)
+    {
+        double media = (double)total / celdas.Length, v = 0;
+        for (int i = 0; i < celdas.Length; i++) { double d = celdas[i] - media; v += d * d; }
+        return (v / celdas.Length) / media;
     }
 
     static int Main(string[] argv)
@@ -76,6 +91,7 @@ class Estrellas
         FieldInfo fKind = TStar.GetField("Kind", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
         FieldInfo fBri = TStar.GetField("Bri", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
         FieldInfo fRay = TStar.GetField("Rayos", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        FieldInfo fSize = TStar.GetField("Size", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
         FieldInfo fX = TStar.GetField("X", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
         FieldInfo fY = TStar.GetField("Y", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
         FieldInfo fR = TStar.GetField("R", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
@@ -110,32 +126,70 @@ class Estrellas
         Check(estrellas.Length >= 400, "hay MUCHAS estrellas, no un punado (" + estrellas.Length + ")");
         Check(polvo * 2 > estrellas.Length, "la mayoria son polvo del fondo (" + polvo + " de " + estrellas.Length + ")");
         Check(debiles * 2 > estrellas.Length, "y la mayoria son debiles: " + debiles + " por debajo de la mitad de brillo");
-        Check(rayos > 0 && rayos <= 16, "las rayitas las llevan MUY pocas (" + rayos + "), no ciento y pico");
+        // NADA QUE SE VEA PUEDE SER UNA BOLA REDONDA. Esta es la regla que sustituye a la de antes ("las
+        // rayitas solo para diez o doce"). Con aquella, las ochenta y pico medianas se quedaban de disco
+        // borroso con un punto dentro: puntos gordos, que es justo lo que se veia mal. Una bola redonda solo
+        // pasa por estrella si es DIMINUTA; en cuanto se le nota el tamano tiene que tener silueta.
+        int redondasGordas = 0, polvoGordo = 0;
+        for (int i = 0; i < estrellas.Length; i++)
+        {
+            object st = estrellas.GetValue(i);
+            int k = Convert.ToInt32(fKind.GetValue(st));
+            int tam = Convert.ToInt32(fSize.GetValue(st));
+            if (k != 0 && !(bool)fRay.GetValue(st)) redondasGordas++;
+            if (k == 0 && tam > 1) polvoGordo++;
+        }
+        Check(redondasGordas == 0, "ninguna estrella que se vea es una bola redonda (" + redondasGordas + " lo son)");
+        Check(polvoGordo == 0, "y lo unico redondo que queda -el polvo- mide UN pixel (" + polvoGordo + " miden mas)");
+        // Y el freno de siempre: si las que llevan silueta pasaran de ser una minoria, el cielo dejaria de
+        // ser un cielo y pareceria purpurina. Con el reparto de ahora salen alrededor del 13%.
+        Check(rayos * 5 < estrellas.Length, "las que llevan silueta siguen siendo una minoria ("
+              + rayos + " de " + estrellas.Length + ")");
         Check(verdes == 0, "ninguna estrella es verde ni violeta: el color va de azul-blanco a naranja");
 
-        // AGRUPADAS, no espolvoreadas con regularidad. Se mide con la distancia de cada estrella a su vecina
-        // mas cercana: repartidas al azar da una media conocida, y agrupadas da bastante menos.
-        double suma = 0;
+        // AGRUPADAS, no espolvoreadas con regularidad: un cielo de verdad tiene grumos, parejas y zonas
+        // enteras vacias.
+        //
+        // Antes esto se medía con la distancia media de cada estrella a su vecina mas cercana, y esa medida
+        // NO SERVIA: daba 0.926 del valor al azar contra un umbral de 0.92, o sea que pasaba por un pelo y
+        // por suerte. La razon es que esa distancia la mandan las parejas casuales, que las hay tanto en un
+        // cielo agrupado como en uno repartido al azar, y el agrupamiento apenas la mueve.
+        //
+        // Lo que si distingue las dos cosas es cuanto se PARECEN ENTRE SI los trozos del cielo. Se parte en
+        // una rejilla y se compara lo llena que esta cada casilla: si el reparto fuera al azar, la variacion
+        // entre casillas seria mas o menos igual a la media (eso es lo que hace un reparto al azar puro, y
+        // sale 1); si hay grumos, unas casillas se llenan y otras se vacian y el numero sube claramente.
+        int CX = 10, CY = 8;
+        int[] celdas = new int[CX * CY];
         for (int i = 0; i < xs.Length; i++)
         {
-            double mejor = double.MaxValue;
-            for (int j = 0; j < xs.Length; j++)
-            {
-                if (i == j) continue;
-                double dx = xs[i] - xs[j], dy = ys[i] - ys[j], d = dx * dx + dy * dy;
-                if (d < mejor) mejor = d;
-            }
-            suma += Math.Sqrt(mejor);
+            int cx = (int)(xs[i] * CX); if (cx < 0) cx = 0; if (cx >= CX) cx = CX - 1;
+            int cy = (int)(ys[i] * CY); if (cy < 0) cy = 0; if (cy >= CY) cy = CY - 1;
+            celdas[cy * CX + cx]++;
         }
-        double media = suma / xs.Length;
-        double alAzar = 0.5 / Math.Sqrt(xs.Length);   // lo que daria un reparto al azar en un cuadrado de lado 1
-        Console.WriteLine("     vecina mas cercana: " + media.ToString("0.0000") + "   (al azar seria " + alAzar.ToString("0.0000") + ")");
-        Check(media < alAzar * 0.92, "las estrellas se AGRUPAN, no van espolvoreadas parejo");
+        double grumo = Grumo(celdas, xs.Length);   // 1 = al azar; mas de 1 = agrupado
+        // Y para no fiarse de que el "1" del reparto al azar sea el que dice la teoria, se mide de verdad:
+        // se tiran las MISMAS estrellas al azar sobre la misma rejilla y se saca el mismo numero.
+        int[] control = new int[CX * CY];
+        Random rc = new Random(1234);
+        for (int i = 0; i < xs.Length; i++) control[rc.Next(CY) * CX + rc.Next(CX)]++;
+        double grumoAzar = Grumo(control, xs.Length);
+        Console.WriteLine("     grumos: " + grumo.ToString("0.00") + "   (las mismas estrellas tiradas al azar dan "
+                          + grumoAzar.ToString("0.00") + ")");
+        Check(grumo > grumoAzar * 1.6, "las estrellas se AGRUPAN, no van espolvoreadas parejo");
 
-        Console.WriteLine("\n  2) EL COLOR FUERTE SE LO QUEDAN LAS GRANDES\n");
-        Console.WriteLine("     grandes con color: " + grandesColor + " de " + grandes
-                          + "     polvo con color: " + polvoColor + " de " + polvo);
-        Check(grandes > 0 && grandesColor * 3 > grandes, "un tercio largo de las grandes llevan color de verdad");
+        Console.WriteLine("\n  2) UN CIELO CASI BLANCO, CON UNAS POCAS DE COLOR\n");
+        Console.WriteLine("     con color de verdad:  " + grandesColor + " de " + grandes + " grandes,  "
+                          + polvoColor + " de " + polvo + " de polvo");
+        // Aqui habia antes un "el color fuerte se lo quedan las grandes" que NUNCA fue verdad: el color se
+        // sortea igual para todas, sin mirar el tamano, asi que las grandes y el polvo salen al mismo
+        // porcentaje (32% y 30% en la ultima medida). Pasaba por suerte, porque grandes hay veinticinco y con
+        // tan pocas el porcentaje baila. Lo que el codigo SI garantiza es la paleta por temperatura: la
+        // inmensa mayoria del cielo casi blanco y solo una minoria tirando a azul o naranja. Eso se mide
+        // sobre el cielo entero, donde hay bastantes para que el numero no baile.
+        int conColorTot = grandesColor + polvoColor;
+        Check(conColorTot * 5 < estrellas.Length * 2, "la mayoria del cielo es casi blanco: solo "
+              + conColorTot + " de " + estrellas.Length + " llevan color de verdad");
         Check(polvo > 0 && polvoColor * 2 < polvo, "y menos de la mitad del polvo: el fondo no se ensucia");
 
         Console.WriteLine("\n  3) Y NO CUESTA MAS QUE ANTES\n");
