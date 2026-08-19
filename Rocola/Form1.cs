@@ -10106,7 +10106,22 @@ namespace Rocola
                 buscaView.Phase = phase; buscaView.Abierto = searchOpen;
                 if (!albumGpuBg) buscaView.Invalidate();   // en GPU el latido es un halo aparte: la textura no se rehace
             }
-            if (letterBar.Visible) { letterBar.Phase = phase; if (!albumGpuBg) letterBar.Invalidate(); }   // 24fps (CPU); en GPU el pulso de la letra es un halo por quad (FillUiGlows): la textura NO se rehace
+            if (letterBar.Visible)
+            {
+                letterBar.Phase = phase;
+                // Solo se repintan los dos trozos que laten, no la barra entera (ver ZonasLatido). En GPU no
+                // se repinta nada: el pulso de la letra es un halo por quad (FillUiGlows).
+                if (!albumGpuBg)
+                {
+                    Rectangle zl1, zl2;
+                    if (letterBar.ZonasLatido(out zl1, out zl2))
+                    {
+                        if (zl1.Width > 0) letterBar.Invalidate(zl1);
+                        if (zl2.Width > 0) letterBar.Invalidate(zl2);
+                    }
+                    else letterBar.Invalidate();
+                }
+            }
             TickMejorada(albumGpuBg);   // brillo del letrero MEJORADA (plateado=DSEE, dorado=IA)
             if (albumView.Visible && !albumGpuBg) { albumView.Phase = phase; albumView.PulseLo = levLo; albumView.PulseMid = levMid; albumView.PulseHi = levHi; albumView.AnimTick(fullFrame || transitioning); }
 #if ROCOLA_GPU
@@ -11825,19 +11840,48 @@ namespace Rocola
                 int sy = (int)((offY - (int)driftY) % FH); if (sy < 0) sy += FH;
                 int w1 = FW - sx; if (w1 > w) w1 = w;
                 int h1 = FH - sy; if (h1 > h) h1 = h;
-                bool atenuada = Dim < 0.985f;
-                if (atenuada) EnsureDimIA();   // copia con ALFA (atenuado): solo mientras se navega con musica
-                Trozo(g, sl, 0, 0, w1, h1, sx, sy, atenuada);
-                if (w1 < w) Trozo(g, sl, w1, 0, w - w1, h1, 0, sy, atenuada);
-                if (h1 < h) Trozo(g, sl, 0, h1, w1, h - h1, sx, 0, atenuada);
-                if (w1 < w && h1 < h) Trozo(g, sl, w1, h1, w - w1, h - h1, 0, 0, atenuada);
+                if (Dim < 0.985f) sl = CapaAtenuada(sl);   // atenuado mientras se navega con musica: ver abajo
+                Trozo(g, sl, 0, 0, w1, h1, sx, sy);
+                if (w1 < w) Trozo(g, sl, w1, 0, w - w1, h1, 0, sy);
+                if (h1 < h) Trozo(g, sl, 0, h1, w1, h - h1, sx, 0);
+                if (w1 < w && h1 < h) Trozo(g, sl, w1, h1, w - w1, h - h1, 0, 0);
             }
-            private void Trozo(Graphics g, Bitmap sl, int dx, int dy, int dw, int dh, int sx, int sy, bool atenuada)
+            private void Trozo(Graphics g, Bitmap sl, int dx, int dy, int dw, int dh, int sx, int sy)
             {
                 if (dw < 1 || dh < 1) return;
-                Rectangle dest = new Rectangle(dx, dy, dw, dh);
-                if (atenuada) g.DrawImage(sl, dest, sx, sy, dw, dh, GraphicsUnit.Pixel, dimIA);
-                else g.DrawImage(sl, dest, sx, sy, dw, dh, GraphicsUnit.Pixel);
+                g.DrawImage(sl, new Rectangle(dx, dy, dw, dh), sx, sy, dw, dh, GraphicsUnit.Pixel);
+            }
+
+            // LA COPIA ATENUADA, HORNEADA APARTE.
+            //
+            // Mientras alguien esta eligiendo cancion con musica sonando, el fondo se atenua para que no le
+            // pelee a las portadas. Atenuar AL PEGAR obliga a la libreria de dibujo a pasar por CADA pixel
+            // aplicando una matriz de color, y eso cuesta VEINTE VECES lo que copiar la capa tal cual: 5.24 ms
+            // contra 0.27 en 1024x768. O sea que la rocola se ponia veinte veces mas pesada justo en el momento
+            // en que tiene que ir mas suelta, y en la maquina del bar eso es medio nucleo tirado.
+            //
+            // La capa de titileo solo cambia cinco veces por segundo y la atenuacion se queda quieta en cuanto
+            // termina de bajar, asi que la copia atenuada se hornea UNA vez y se reusa en los cuadros que vienen
+            // detras. Se ve exactamente igual: es la misma cuenta, hecha una vez en vez de veinticuatro.
+            private Bitmap capaAtenuada; private Bitmap capaAtenuadaDe; private int capaAtenuadaKey = -1;
+            private Bitmap CapaAtenuada(Bitmap sl)
+            {
+                int key = (int)(Dim * 50f);   // mismos escalones que la matriz: no se rehace por un pelo de nada
+                if (capaAtenuada != null && capaAtenuadaDe == sl && capaAtenuadaKey == key
+                    && capaAtenuada.Width == sl.Width && capaAtenuada.Height == sl.Height) return capaAtenuada;
+                if (capaAtenuada == null || capaAtenuada.Width != sl.Width || capaAtenuada.Height != sl.Height)
+                {
+                    if (capaAtenuada != null) capaAtenuada.Dispose();
+                    capaAtenuada = new Bitmap(sl.Width, sl.Height, PixelFormat.Format32bppPArgb);
+                }
+                EnsureDimIA();
+                using (Graphics cg = Graphics.FromImage(capaAtenuada))
+                {
+                    cg.CompositingMode = CompositingMode.SourceCopy;   // copia exacta, sin mezclar con lo que hubiera
+                    cg.DrawImage(sl, new Rectangle(0, 0, sl.Width, sl.Height), 0, 0, sl.Width, sl.Height, GraphicsUnit.Pixel, dimIA);
+                }
+                capaAtenuadaDe = sl; capaAtenuadaKey = key;
+                return capaAtenuada;
             }
 
             // Atributos de imagen con el alfa de la atenuacion (cacheados; la matriz se rehace solo si Dim cambio de escalon)
@@ -11850,10 +11894,6 @@ namespace Rocola
                 ColorMatrix cm = new ColorMatrix(); cm.Matrix33 = Dim;
                 dimIA.SetColorMatrix(cm, ColorMatrixFlag.Default, ColorAdjustType.Bitmap);
                 dimIAKey = key;
-            }
-            private void BlitLayerDim(Graphics g, Bitmap sl, int x, int y, int w, int h)
-            {
-                g.DrawImage(sl, new Rectangle(x, y, w, h), 0, 0, w, h, GraphicsUnit.Pixel, dimIA);
             }
 
             // Indice del cuadro de titileo segun el reloj (rota ~5 veces/seg). Los armonicos son ENTEROS, asi
@@ -11924,6 +11964,8 @@ namespace Rocola
                 Ensure(FW, FH);
                 if (layers != null && lw == FW && lh == FH && lBucket == sBucket) return;
                 if (layers != null) { for (int k = 0; k < layers.Length; k++) if (layers[k] != null) layers[k].Dispose(); }
+                if (capaAtenuada != null) { capaAtenuada.Dispose(); capaAtenuada = null; }   // apuntaba a una capa que ya no existe
+                capaAtenuadaDe = null; capaAtenuadaKey = -1;
                 layers = new Bitmap[TwK];
                 lw = FW; lh = FH; lBucket = sBucket;
                 EnsureGlow();
@@ -13645,6 +13687,33 @@ namespace Rocola
                 r = Math.Max(slot, altoL) * 0.75f;
                 return true;
             }
+            // QUE TROZOS DE LA BARRA CAMBIAN DE UN CUADRO A OTRO.
+            //
+            // Solo dos laten: la casilla elegida y la estrellita de LO MAS SONADO. Las otras veintiocho letras
+            // viven en una tira ya horneada que no se mueve. Repintar la barra ENTERA por esos dos latidos
+            // costaba el triple de lo necesario -0.35 ms contra 0.11 en una barra de 1024 px- y eso son
+            // veinticuatro veces por segundo, todo el rato que la rocola esta encendida.
+            //
+            // Devuelve false cuando hay que repintarla entera: mientras la capsula viaja de una letra a otra
+            // cambia media barra, y ahi no hay atajo que valga.
+            public bool ZonasLatido(out Rectangle uno, out Rectangle dos)
+            {
+                uno = Rectangle.Empty; dos = Rectangle.Empty;
+                if (Width < 8 || Height < 8) return false;
+                if (AnimViva) return false;
+                float cx, cy, r;
+                if (GetCurrentGlow(out cx, out cy, out r)) uno = CajaLatido(cx, r);
+                if (GetTopGlow(out cx, out cy, out r)) dos = CajaLatido(cx, r);
+                return uno.Width > 0 || dos.Width > 0;
+            }
+            private Rectangle CajaLatido(float cx, float r)
+            {
+                int x = (int)(cx - r) - 2, an = (int)(r * 2) + 5;   // con aire: el halo se sale de la casilla
+                if (x < 0) { an += x; x = 0; }
+                if (x + an > Width) an = Width - x;
+                return (an < 1) ? Rectangle.Empty : new Rectangle(x, 0, an, Height);
+            }
+
             // La X de la casilla elegida AHORA MISMO: mientras dura el deslizamiento va entre la casilla que
             // se deja y la que se elige; el resto del tiempo es la de destino y punto.
             private float XCapsula(int iDestino, float slot)
