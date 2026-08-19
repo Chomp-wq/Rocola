@@ -21,9 +21,12 @@ esa leccion a las demas.
 DE DONDE SALEN LOS DATOS
 ------------------------
 De "rocola_eq.txt", que la rocola escribe sola mientras pre-analiza la biblioteca. Cada linea es
-    b0;b1;b2;b3;b4;b5;b6;b7;corteHz|ruta
-con las 8 bandas en dB (relativas a la mediana de su cuerpo) y el corte donde el codec talo los
-agudos. No hay que cosechar nada aparte: ese archivo ya existe.
+    b0;b1;b2;b3;b4;b5;b6;b7;corteHz;recorte;corteGrave|ruta
+con las 8 bandas en dB (relativas a la mediana de su cuerpo) y despues los datos de calidad. Esa
+ficha ha ido CRECIENDO con las versiones -al principio eran solo las 8 bandas, luego se le anadio
+el corte de agudos, luego el recorte y el corte de abajo- y siempre anadiendo AL FINAL. Por eso
+aqui se leen los 8 primeros y, si esta, el 9o; lo que venga detras se ignora sin quejarse, y un
+archivo de cualquier version de la rocola se puede leer. No hay que cosechar nada aparte.
 
 EL MODELO NO SE GUARDA SI NO SIRVE
 ----------------------------------
@@ -50,7 +53,9 @@ SALIDAS    = [0, 6, 7]              # 50 Hz, 10 kHz, 15.8 kHz
 SANA_HZ    = 19300.0                # mismo umbral con el que la rocola da una cancion por completa
 
 def leer_huellas(ruta):
-    """Devuelve (curvas Nx8, cortes N). Acepta el formato viejo de 8 valores (corte desconocido)."""
+    """Devuelve (curvas Nx8, cortes N). Vale para el archivo de cualquier version de la rocola: se piden
+    los 8 primeros numeros y se coge el 9o si esta (corte 0 = esa version no lo apuntaba). Lo que venga
+    detras -recorte, corte de graves, o lo que se anada manana- se ignora sin dar la linea por mala."""
     curvas, cortes = [], []
     malas = 0
     with open(ruta, "r", encoding="utf-8", errors="replace") as f:
@@ -59,10 +64,10 @@ def leer_huellas(ruta):
             if bar <= 0:
                 continue
             partes = linea[:bar].split(";")
-            if len(partes) not in (N_BANDAS, N_BANDAS + 1):
+            if len(partes) < N_BANDAS:
                 malas += 1; continue
             try:
-                v = [float(x) for x in partes]
+                v = [float(x) for x in partes[:IDX_CORTE + 1]]
             except ValueError:
                 malas += 1; continue
             curvas.append(v[:N_BANDAS])
@@ -144,14 +149,38 @@ def main():
     if len(curvas) == 0:
         print("El archivo no tiene huellas legibles."); return 1
     sanas = cortes >= SANA_HZ
+    medido = cortes > 0                      # canciones cuyo corte de agudos SI se sabe
     print("  %d canciones en total, %d sanas (con sus agudos completos)" % (len(curvas), int(sanas.sum())))
-    if sanas.sum() < 200:
-        print("\nHacen falta al menos 200 canciones SANAS para entrenar algo de fiar; hay %d." % int(sanas.sum()))
-        print("Deja correr el pre-analisis (o el ENTRENAMIENTO A FONDO) mas tiempo y vuelve a intentar.")
-        print("Si tu biblioteca entera es de baja calidad, el EQ seguira con el promedio: tampoco pasa nada.")
-        return 1
 
-    D = curvas[sanas]
+    # DE QUE CANCIONES SE APRENDE. Lo ideal es aprender solo de las sanas: en las danadas los agudos ya
+    # no existen y ensenarian a la red el dano del codec en vez de como suena una grabacion buena. Pero
+    # si no hay bastantes, plantarse seria tirar meses de pre-analisis: se entrena con TODAS, que es
+    # exactamente lo que la rocola hace con su promedio cuando no tiene bastantes sanas medidas. Y quien
+    # decide de verdad si el modelo vale es la prueba del final, no esto.
+    if sanas.sum() >= 200:
+        usa = sanas
+        print("  se aprende SOLO de las sanas: la red vera como suena lo que esta bien grabado")
+    else:
+        usa = np.ones(len(curvas), dtype=bool)
+        print()
+        if medido.sum() == 0:
+            print("  ESTE ARCHIVO NO TRAE EL DATO DEL CORTE DE AGUDOS.")
+            print("  Lo escribio una VERSION VIEJA de la rocola, que todavia no lo apuntaba, asi que no hay")
+            print("  forma de saber cuales de tus canciones conservan sus agudos. Copia otra vez rocola_eq.txt")
+            print("  de junto a Rocola.exe -el de ahora si lo trae- y vuelve a entrenar: el modelo saldra")
+            print("  mejor, porque aprendera solo de tus grabaciones completas.")
+        else:
+            print("  Solo hay %d canciones sanas de %d (para aprender solo de ellas harian falta 200)."
+                  % (int(sanas.sum()), len(curvas)))
+            c = cortes[medido]
+            print("  El corte de agudos mas alto que hay es %.1f kHz y la mitad de la biblioteca esta por"
+                  % (c.max() / 1000.0))
+            print("  debajo de %.1f kHz: es una biblioteca de copias comprimidas." % (np.median(c) / 1000.0))
+        print()
+        print("  Se entrena con TODAS las canciones, igual que hace la rocola con su promedio. Si aun asi")
+        print("  la red no le gana al promedio, no se guarda nada y la rocola sigue como esta.")
+
+    D = curvas[usa]
     X = D[:, ENTRADAS]
     Y = D[:, SALIDAS]
 
@@ -169,7 +198,16 @@ def main():
     modelo = entrenar(modelo, Xn[tr], Y[tr], Xn[va], Y[va], a.epocas)
 
     # ---- la prueba que decide: ¿le gana al promedio de siempre? ----
-    base = Y[tr].mean(axis=0)                       # lo que hace la rocola hoy: una sola curva para todos
+    # El promedio contra el que hay que ganar es EL QUE USA LA ROCOLA, no uno comodo: la rocola saca su
+    # objetivo de las canciones sanas si tiene al menos diez medidas, y si no, de todas. Compararse
+    # contra el de todas teniendo sanas seria hacerse trampas al solitario.
+    if sanas.sum() >= 10:
+        base = curvas[sanas][:, SALIDAS].mean(axis=0)
+        de_donde = "el promedio de tus %d canciones sanas" % int(sanas.sum())
+    else:
+        base = Y[tr].mean(axis=0)
+        de_donde = "el promedio de toda tu biblioteca"
+    print("\n  Se compara contra %s, que es lo que la rocola usa hoy." % de_donde)
     err_base = np.sqrt(((Y[va] - base) ** 2).mean(axis=0))
     err_red  = np.sqrt(((Y[va] - modelo.predict(Xn[va])) ** 2).mean(axis=0))
     nombres = ["grave 50 Hz", "brillo 10 kHz", "aire 15.8 kHz"]

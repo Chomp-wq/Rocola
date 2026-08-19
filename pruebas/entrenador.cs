@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Reflection;
 using System.Text;
 
 // EL ARCHIVO CON EL QUE SE ENTRENA EL DSEE TIENE QUE ARRANCAR.
@@ -25,7 +26,7 @@ class Entrenador
     static int fallos = 0;
     static void Check(bool ok, string q) { Console.WriteLine((ok ? "  OK   " : "  FALLO") + "  " + q); if (!ok) fallos++; }
 
-    static int Main()
+    static int Main(string[] argv)
     {
         string bat = Path.Combine("..", Path.Combine("ia", "entrenar_dsee.bat"));
         string py = Path.Combine("..", Path.Combine("ia", "entrenar_dsee.py"));
@@ -162,9 +163,127 @@ class Entrenador
 
         try { Directory.Delete(raiz, true); } catch { }
         try { File.Delete(tmpPy); } catch { }
+
+        // ---------------------------------------------------------------------------------
+        Console.WriteLine("\n  6) EL ENTRENADOR DEL EQ ENTIENDE EL ARCHIVO QUE LA ROCOLA ESCRIBE HOY\n");
+        // La rocola apunta la huella tonal de cada cancion en rocola_eq.txt. Esa ficha fue creciendo con el
+        // tiempo -primero ocho numeros, luego el corte de los agudos, luego el recorte y el corte de abajo- y
+        // el entrenador del EQ se quedo entendiendo solo la version de hace dos cambios. Con el archivo de HOY
+        // decia "no tiene huellas legibles" y no entrenaba nada. Y con uno viejo, que no trae el dato del
+        // corte, decia "0 canciones sanas" y se plantaba igual. En los dos casos, meses de pre-analisis a la
+        // basura y ningun modelo, sin que el mensaje diera una pista de por donde iban los tiros.
+        string exe = (argv.Length > 0) ? argv[0] : "rocola.exe";
+        int cuantos = 11, dondeCorte = 8; float sanaHz = 19300f;
+        try
+        {
+            Type TF = Assembly.LoadFrom(exe).GetType("Rocola.Form1", true);
+            BindingFlags SN = BindingFlags.Static | BindingFlags.NonPublic;
+            cuantos = (int)TF.GetField("EqLen", SN).GetRawConstantValue();
+            dondeCorte = (int)TF.GetField("EqCut", SN).GetRawConstantValue();
+            sanaHz = (float)TF.GetField("EqSanaHz", SN).GetRawConstantValue();
+        }
+        catch (Exception ex) { Console.WriteLine("     (no se pudo mirar el ejecutable: " + ex.Message + ")"); }
+        Console.WriteLine("     la rocola escribe " + cuantos + " numeros por cancion, y el corte va en el "
+                          + (dondeCorte + 1) + "o");
+
+        // El archivo de HOY, tal cual lo escribe la rocola, con una de cada tres canciones sana.
+        string eqHoy = Path.Combine(Path.GetTempPath(), "rocola_eq_hoy.txt");
+        int cuantasCanciones = 1200;
+        int sanasPuestas = EscribeHuellas(eqHoy, cuantasCanciones, cuantos, dondeCorte, sanaHz, true);
+        string salHoy = CorreEq(eqHoy);
+        int total, sanas;
+        LeeCuenta(salHoy, out total, out sanas);
+        Console.WriteLine("     con el archivo de hoy lee " + total + " canciones de " + cuantasCanciones + " y ve " + sanas + " sanas");
+        Check(total == cuantasCanciones, "lee TODAS las canciones del archivo que la rocola escribe hoy");
+        Check(sanas == sanasPuestas, "y reconoce cuales conservan sus agudos (" + sanasPuestas + ")");
+        Check(salHoy.IndexOf("ilegibles", StringComparison.Ordinal) < 0, "y no da por ilegible ni una sola linea");
+
+        // Y el de una rocola VIEJA, que no trae el dato del corte: no puede saber cuales estan sanas, pero
+        // eso no es motivo para tirar meses de trabajo. Se entrena con todas, que es exactamente lo que la
+        // rocola hace con su promedio cuando no tiene bastantes sanas medidas.
+        string eqViejo = Path.Combine(Path.GetTempPath(), "rocola_eq_viejo.txt");
+        EscribeHuellas(eqViejo, cuantasCanciones, 8, dondeCorte, sanaHz, false);
+        string salViejo = CorreEq(eqViejo);
+        LeeCuenta(salViejo, out total, out sanas);
+        Console.WriteLine("     con uno de una rocola vieja lee " + total + " canciones y ve " + sanas + " sanas");
+        Check(total == cuantasCanciones, "lee tambien los archivos de las versiones de antes");
+        Check(salViejo.IndexOf("Hacen falta al menos", StringComparison.Ordinal) < 0,
+              "y no se planta por no poder saber cuales estan sanas");
+        Check(salViejo.IndexOf("MEJORA GLOBAL", StringComparison.Ordinal) >= 0,
+              "entrena con todas y dice si le gana al promedio (que es lo que decide si guarda o no)");
+        Check(salViejo.IndexOf("copia otra vez", StringComparison.OrdinalIgnoreCase) >= 0
+              || salViejo.IndexOf("version vieja", StringComparison.OrdinalIgnoreCase) >= 0,
+              "y avisa de que ese archivo es de una version vieja, para que traiga uno nuevo");
+
+        try { File.Delete(eqHoy); } catch { }
+        try { File.Delete(eqViejo); } catch { }
+
         Console.WriteLine();
         Console.WriteLine(fallos == 0 ? "  TODO BIEN" : ("  FALLOS: " + fallos));
         return fallos;
+    }
+
+    // Escribe un rocola_eq.txt con 'cuantos' numeros por linea, como lo escribiria la rocola.
+    // Devuelve cuantas canciones quedaron SANAS (con sus agudos completos).
+    static int EscribeHuellas(string ruta, int lineas, int cuantos, int dondeCorte, float sanaHz, bool conCorte)
+    {
+        Random r = new Random(11);
+        int sanas = 0;
+        StringBuilder sb = new StringBuilder(lineas * 90);
+        for (int i = 0; i < lineas; i++)
+        {
+            bool sana = conCorte && (i % 3 == 0);
+            if (sana) sanas++;
+            for (int b = 0; b < cuantos; b++)
+            {
+                if (b > 0) sb.Append(';');
+                double v;
+                if (b < 8) v = Math.Round(-12.0 + r.NextDouble() * 18.0, 2);
+                else if (b == dondeCorte) v = sana ? (sanaHz + 700.0) : (14000.0 + r.NextDouble() * 4000.0);
+                else v = Math.Round(r.NextDouble() * 60.0, 2);
+                sb.Append(v.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture));
+            }
+            sb.Append("|C:\\Musica\\Disco ").Append(i % 40).Append("\\cancion").Append(i).Append(".mp3\r\n");
+        }
+        File.WriteAllText(ruta, sb.ToString());
+        return sanas;
+    }
+
+    static string CorreEq(string datos)
+    {
+        string py = Path.GetFullPath(Path.Combine("..", Path.Combine("ia", "entrenar_eq.py")));
+        string fuera = Path.Combine(Path.GetTempPath(), "rocola_eq_ia_prueba.bin");
+        try { File.Delete(fuera); } catch { }
+        try
+        {
+            ProcessStartInfo psi = new ProcessStartInfo("python3",
+                "\"" + py + "\" --datos \"" + datos + "\" --salida \"" + fuera + "\" --epocas 6");
+            psi.UseShellExecute = false; psi.RedirectStandardOutput = true; psi.RedirectStandardError = true;
+            using (Process pr = Process.Start(psi))
+            {
+                string s = pr.StandardOutput.ReadToEnd() + pr.StandardError.ReadToEnd();
+                pr.WaitForExit();
+                return s;
+            }
+        }
+        catch (Exception ex) { return "no se pudo lanzar python3: " + ex.Message; }
+        finally { try { File.Delete(fuera); } catch { } }
+    }
+
+    // De la linea "  N canciones en total, M sanas (...)" saca los dos numeros.
+    static void LeeCuenta(string salida, out int total, out int sanas)
+    {
+        total = -1; sanas = -1;
+        foreach (string l in salida.Replace("\r", "").Split('\n'))
+        {
+            int i = l.IndexOf(" canciones en total,", StringComparison.Ordinal);
+            if (i < 0) continue;
+            int.TryParse(l.Substring(0, i).Trim(), out total);
+            string resto = l.Substring(i + " canciones en total,".Length).Trim();
+            int j = resto.IndexOf(' ');
+            if (j > 0) int.TryParse(resto.Substring(0, j), out sanas);
+            return;
+        }
     }
 
     static int Num(string salida, string clave)
