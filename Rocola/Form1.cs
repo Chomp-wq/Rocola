@@ -10589,34 +10589,54 @@ namespace Rocola
                 };
 
                 stars = new Star[n];
-                // DONDE SE PONEN. Antes habia una separacion minima obligatoria de 20 px y hasta doce intentos
-                // buscando hueco: por eso el cielo salia espolvoreado con una regularidad de papel pintado. Un
-                // cielo de verdad tiene grumos, parejas y zonas enteras vacias. Ahora la mayoria caen alrededor
-                // de unos pocos centros y el resto sueltas, y se acabo la busqueda de hueco (que ademas era lo
-                // mas caro de armar el patron: hasta doce intentos por estrella recorriendo las ya puestas).
-                // Mas centros y mas anchos, y menos estrellas atadas a ellos: con siete grumos estrechos y
-                // el 68% dentro, las que se ven acababan amontonadas en cuatro manchas y el resto del cielo
-                // vacio. Repartido asi el cielo respira y siguen notandose los grumos.
-                int nc = 8 + r.Next(4);
+                // DONDE SE PONEN.
+                //
+                // Un cielo de verdad no esta espolvoreado con regularidad de papel pintado: tiene grumos,
+                // parejas y zonas mas vacias. Por eso una parte cae alrededor de unos pocos centros y el
+                // resto suelta por cualquier sitio. Pero eso tenia DOS fallos, y los dos se veian, sobre
+                // todo en pantalla ancha:
+                //
+                // 1) LAS HILERAS DE LOS BORDES. La que caia fuera de la pantalla se PEGABA al borde en vez
+                //    de volver a tirarse. Como los grumos son campanas, muchas caian fuera... y acababan
+                //    todas en la misma linea: medido, el 15% del cielo formaba cuatro hileras pegadas a los
+                //    cantos. Ahora la que cae fuera se vuelve a tirar, y si tras varios intentos sigue
+                //    fuera se pone suelta en cualquier sitio.
+                //
+                // 2) LOS GRUMOS ESTIRADOS. El tamano del grumo iba en fraccion de la pantalla, asi que en
+                //    una pantalla ancha salia estirado a lo ancho: en 2560x1080 el cielo se repartia el
+                //    doble de ancho que de alto, o sea bandas horizontales en vez de grumos. Ahora el radio
+                //    se mide en PIXELES y el grumo sale redondo se ponga la pantalla como se ponga.
+                //
+                // Y ademas hay menos estrellas atadas a los grumos que antes, para que el cielo quede
+                // repartido de forma pareja y los grumos se noten sin amontonar.
+                int nc = 10 + r.Next(5);
                 float[] ccx = new float[nc], ccy = new float[nc], ccr = new float[nc];
                 for (int c = 0; c < nc; c++)
                 {
-                    ccx[c] = (float)r.NextDouble(); ccy[c] = (float)r.NextDouble();
-                    ccr[c] = 0.07f + (float)r.NextDouble() * 0.17f;
+                    // Los centros no se pegan al canto: un grumo con el centro en el borde deja media
+                    // campana fuera y vuelve a amontonar todo en esa orilla.
+                    ccx[c] = 0.10f + (float)r.NextDouble() * 0.80f;
+                    ccy[c] = 0.10f + (float)r.NextDouble() * 0.80f;
+                    ccr[c] = h * (0.10f + (float)r.NextDouble() * 0.14f);   // RADIO EN PIXELES
                 }
                 int grandes = 0;
                 for (int i = 0; i < n; i++)
                 {
                     Star s = new Star();
-                    if (r.Next(100) < 62)
+                    float px = 0f, py = 0f;
+                    for (int intento = 0; ; intento++)
                     {
-                        int c = r.Next(nc);
-                        s.X = ccx[c] + Gauss(r) * ccr[c];
-                        s.Y = ccy[c] + Gauss(r) * ccr[c] * 0.7f;
+                        if (intento < 6 && r.Next(100) < 25)
+                        {
+                            int c = r.Next(nc);
+                            // El mismo radio en pixeles en los dos ejes -> el grumo sale redondo.
+                            px = ccx[c] + Gauss(r) * ccr[c] / w;
+                            py = ccy[c] + Gauss(r) * ccr[c] / h;
+                        }
+                        else { px = (float)r.NextDouble(); py = (float)r.NextDouble(); }
+                        if (px >= 0.004f && px <= 0.996f && py >= 0.004f && py <= 0.996f) break;
                     }
-                    else { s.X = (float)r.NextDouble(); s.Y = (float)r.NextDouble(); }
-                    if (s.X < 0.008f) s.X = 0.008f; if (s.X > 0.992f) s.X = 0.992f;
-                    if (s.Y < 0.008f) s.Y = 0.008f; if (s.Y > 0.992f) s.Y = 0.992f;
+                    s.X = px; s.Y = py;
 
                     // LO BRILLANTE QUE ES, con una curva bien inclinada: casi todas debilisimas, unas pocas
                     // fuertes. De aqui salen el tamano, el brillo y a que grupo va (polvo / mediana / grande).

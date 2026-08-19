@@ -760,29 +760,39 @@ namespace Rocola
                                0xFFFFF4EA, 0xFFFFEDCD,   // 6-7  blanco-amarillo (como el Sol)
                                0xFFFFDAA5, 0xFFFFC78E,   // 8-9  naranjas
                                0xFFFFB280 };             // 10   naranja hondo
-            // DONDE SE PONEN. Antes habia una separacion minima obligatoria de 30 px y hasta diez intentos
-            // buscando hueco: por eso el cielo salia espolvoreado con una regularidad de papel pintado. Un
-            // cielo de verdad tiene grumos, parejas y zonas enteras vacias.
-            // Mas centros y mas anchos, y menos estrellas atadas a ellos: con siete grumos estrechos y el
-            // 68% dentro, las que se ven acababan amontonadas en cuatro manchas y el resto del cielo vacio.
-            int nc = 8 + rnd.Next(4);
+            // DONDE SE PONEN. La MISMA receta que por CPU, para que el cielo se vea igual se juegue por
+            // donde se juegue. Un cielo de verdad tiene grumos, parejas y zonas mas vacias, asi que una
+            // CUARTA PARTE cae alrededor de unos centros y el resto suelta por cualquier sitio. Dos cosas
+            // estaban mal y las dos se veian, sobre todo en pantalla ancha:
+            //
+            // 1) LAS HILERAS DE LOS BORDES. La que caia fuera de la pantalla se PEGABA al borde en vez de
+            //    volver a tirarse. Como los grumos son campanas, muchas caian fuera... y acababan todas en
+            //    la misma linea: medido, el 15% del cielo formaba cuatro hileras pegadas a los cantos.
+            // 2) LOS GRUMOS ESTIRADOS. Salian mas anchos que altos (el 0.7 de la altura), o sea bandas
+            //    horizontales en vez de grumos. Ahora el radio es el mismo en los dos ejes.
+            int nc = 10 + rnd.Next(5);
             float[] ccx = new float[nc], ccy = new float[nc], ccr = new float[nc];
             for (int c = 0; c < nc; c++)
             {
-                ccx[c] = (float)rnd.NextDouble() * w; ccy[c] = (float)rnd.NextDouble() * h;
-                ccr[c] = h * (0.07f + (float)rnd.NextDouble() * 0.17f);
+                // Los centros no se pegan al canto: uno con el centro en el borde deja media campana fuera
+                // y vuelve a amontonar todo en esa orilla.
+                ccx[c] = w * (0.10f + (float)rnd.NextDouble() * 0.80f);
+                ccy[c] = h * (0.10f + (float)rnd.NextDouble() * 0.80f);
+                ccr[c] = h * (0.10f + (float)rnd.NextDouble() * 0.14f);
             }
             for (int i = 0; i < nStars; i++)
             {
                 float bx, by;
-                if (rnd.Next(100) < 62)
+                for (int intento = 0; ; intento++)
                 {
-                    int c = rnd.Next(nc);
-                    bx = ccx[c] + Gauss(rnd) * ccr[c]; by = ccy[c] + Gauss(rnd) * ccr[c] * 0.7f;
+                    if (intento < 6 && rnd.Next(100) < 25)
+                    {
+                        int c = rnd.Next(nc);
+                        bx = ccx[c] + Gauss(rnd) * ccr[c]; by = ccy[c] + Gauss(rnd) * ccr[c];
+                    }
+                    else { bx = (float)(rnd.NextDouble() * w); by = (float)(rnd.NextDouble() * h); }
+                    if (bx >= 2f && bx <= w - 2f && by >= 2f && by <= h - 2f) break;
                 }
-                else { bx = (float)(rnd.NextDouble() * w); by = (float)(rnd.NextDouble() * h); }
-                if (bx < 2f) bx = 2f; if (bx > w - 2f) bx = w - 2f;
-                if (by < 2f) by = 2f; if (by > h - 2f) by = h - 2f;
                 sx[i] = bx; sy[i] = by;
                 sphase[i] = (float)(rnd.NextDouble() * Math.PI * 2);
                 sspeed[i] = 0.6f + (float)rnd.NextDouble() * 1.8f;

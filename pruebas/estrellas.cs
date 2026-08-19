@@ -21,8 +21,9 @@ using System.Reflection;
 //
 // Lo que se comprueba aqui, que es lo que puede romperse sin que nadie lo note:
 //
-//   1) Que el cielo tenga MUCHAS estrellas y casi todas debiles, agrupadas en vez de espolvoreadas con
-//      regularidad, y que ninguna de las que se ven sea una bola redonda.
+//   1) Que el cielo tenga MUCHAS estrellas y casi todas debiles, REPARTIDAS POR IGUAL por todo el fondo
+//      -sin hileras pegadas a los bordes y sin amontonarse en manchas, tambien en pantalla ancha-, y que
+//      ninguna de las que se ven sea una bola redonda.
 //   2) Que el color siga siendo de estrella (de azul-blanco a naranja) y que la inmensa mayoria del cielo
 //      sea casi blanco, para que el fondo no se vuelva confeti.
 //   3) Y sobre todo: QUE NO CUESTE MAS. El polvo -tres cuartas partes del cielo- se hornea UNA vez en el
@@ -147,36 +148,63 @@ class Estrellas
               + rayos + " de " + estrellas.Length + ")");
         Check(verdes == 0, "ninguna estrella es verde ni violeta: el color va de azul-blanco a naranja");
 
-        // AGRUPADAS, no espolvoreadas con regularidad: un cielo de verdad tiene grumos, parejas y zonas
-        // enteras vacias.
+        // REPARTIDAS POR IGUAL POR TODO EL FONDO, Y SIN HILERAS EN LOS BORDES.
         //
-        // Antes esto se medía con la distancia media de cada estrella a su vecina mas cercana, y esa medida
-        // NO SERVIA: daba 0.926 del valor al azar contra un umbral de 0.92, o sea que pasaba por un pelo y
-        // por suerte. La razon es que esa distancia la mandan las parejas casuales, que las hay tanto en un
-        // cielo agrupado como en uno repartido al azar, y el agrupamiento apenas la mueve.
+        // Aqui habia antes lo contrario: se exigia que las estrellas SE AGRUPARAN. Y agrupadas estaban, pero
+        // demasiado y por el motivo equivocado. Dos cosas iban mal y las dos se veian:
         //
-        // Lo que si distingue las dos cosas es cuanto se PARECEN ENTRE SI los trozos del cielo. Se parte en
-        // una rejilla y se compara lo llena que esta cada casilla: si el reparto fuera al azar, la variacion
-        // entre casillas seria mas o menos igual a la media (eso es lo que hace un reparto al azar puro, y
-        // sale 1); si hay grumos, unas casillas se llenan y otras se vacian y el numero sube claramente.
-        int CX = 10, CY = 8;
-        int[] celdas = new int[CX * CY];
-        for (int i = 0; i < xs.Length; i++)
+        //   - La estrella que caia FUERA de la pantalla se pegaba al borde en vez de volver a tirarse. Como
+        //     los grumos son campanas, muchas caian fuera, y acababan TODAS en la misma linea: el 15% del
+        //     cielo formaba cuatro hileras pegadas a los cantos.
+        //   - El tamano del grumo iba en fraccion de la pantalla, asi que en una pantalla ancha salia
+        //     estirado a lo ancho: bandas horizontales en vez de grumos.
+        //
+        // Por eso ahora se mide EN VARIAS FORMAS DE PANTALLA, incluida una ancha: los dos fallos se disparan
+        // justo ahi. Se comprueban dos cosas por cada una:
+        //
+        //   1) Cuantas acaban en la orilla. Si el reparto es parejo tienen que ser las que toquen por area
+        //      -la franja del 1% de cada lado es el 4% de la pantalla-, ni una mas.
+        //   2) Cuanto se parecen entre si los trozos del cielo: se parte en una rejilla y se compara lo
+        //      llena que esta cada casilla. Un reparto al azar da 1. Muy por encima significa amontonadas;
+        //      muy por debajo significa espolvoreadas con regularidad de papel pintado, que tampoco vale.
+        Console.WriteLine();
+        Console.WriteLine("     {0,-12} {1,8} {2,10} {3,10}", "pantalla", "estrel.", "en orilla", "grumos");
+        int[,] formas = { { 1024, 768 }, { 1920, 1080 }, { 2560, 1080 } };
+        int malOrilla = 0, malGrumo = 0;
+        double grumoAzar = 0;
+        for (int f = 0; f < formas.GetLength(0); f++)
         {
-            int cx = (int)(xs[i] * CX); if (cx < 0) cx = 0; if (cx >= CX) cx = CX - 1;
-            int cy = (int)(ys[i] * CY); if (cy < 0) cy = 0; if (cy >= CY) cy = CY - 1;
-            celdas[cy * CX + cx]++;
+            int fw = formas[f, 0], fh = formas[f, 1];
+            mEnsure.Invoke(sf, new object[] { fw, fh });
+            Array es2 = (Array)fStars.GetValue(sf);
+            int n2 = es2.Length, orilla = 0;
+            int CX = 16, CY = 10;
+            int[] celdas = new int[CX * CY];
+            for (int i = 0; i < n2; i++)
+            {
+                object st = es2.GetValue(i);
+                float x = Convert.ToSingle(fX.GetValue(st)), y = Convert.ToSingle(fY.GetValue(st));
+                if (x <= 0.01f || x >= 0.99f || y <= 0.01f || y >= 0.99f) orilla++;
+                int cx = (int)(x * CX); if (cx < 0) cx = 0; if (cx >= CX) cx = CX - 1;
+                int cy = (int)(y * CY); if (cy < 0) cy = 0; if (cy >= CY) cy = CY - 1;
+                celdas[cy * CX + cx]++;
+            }
+            double grumo = Grumo(celdas, n2);
+            // Para no fiarse de que el "1" del reparto al azar sea el que dice la teoria, se mide de verdad:
+            // se tiran las MISMAS estrellas al azar sobre la misma rejilla y se saca el mismo numero.
+            int[] control = new int[CX * CY];
+            Random rc = new Random(1234);
+            for (int i = 0; i < n2; i++) control[rc.Next(CY) * CX + rc.Next(CX)]++;
+            grumoAzar = Grumo(control, n2);
+            Console.WriteLine("     {0,-12} {1,8} {2,10} {3,10}", fw + "x" + fh, n2,
+                              (100.0 * orilla / n2).ToString("0.0") + "%", grumo.ToString("0.00"));
+            if (orilla * 100 > n2 * 5) malOrilla++;                 // mas del 5%: hay hilera pegada al canto
+            if (grumo > 2.0 || grumo < 0.5) malGrumo++;             // ni amontonadas ni papel pintado
         }
-        double grumo = Grumo(celdas, xs.Length);   // 1 = al azar; mas de 1 = agrupado
-        // Y para no fiarse de que el "1" del reparto al azar sea el que dice la teoria, se mide de verdad:
-        // se tiran las MISMAS estrellas al azar sobre la misma rejilla y se saca el mismo numero.
-        int[] control = new int[CX * CY];
-        Random rc = new Random(1234);
-        for (int i = 0; i < xs.Length; i++) control[rc.Next(CY) * CX + rc.Next(CX)]++;
-        double grumoAzar = Grumo(control, xs.Length);
-        Console.WriteLine("     grumos: " + grumo.ToString("0.00") + "   (las mismas estrellas tiradas al azar dan "
-                          + grumoAzar.ToString("0.00") + ")");
-        Check(grumo > grumoAzar * 1.6, "las estrellas se AGRUPAN, no van espolvoreadas parejo");
+        Console.WriteLine("     (las mismas estrellas tiradas al azar dan " + grumoAzar.ToString("0.00") + " de grumos)");
+        Check(malOrilla == 0, "no se amontonan en los bordes: en la orilla hay las que tocan por area, no mas");
+        Check(malGrumo == 0, "y quedan repartidas por igual: ni amontonadas ni con regularidad de papel pintado");
+        mEnsure.Invoke(sf, new object[] { 1280, 800 });   // se deja como estaba para lo que viene despues
 
         Console.WriteLine("\n  2) UN CIELO CASI BLANCO, CON UNAS POCAS DE COLOR\n");
         Console.WriteLine("     con color de verdad:  " + grandesColor + " de " + grandes + " grandes,  "
