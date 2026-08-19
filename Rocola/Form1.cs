@@ -4515,6 +4515,59 @@ namespace Rocola
             return 0f;
         }
 
+        // ABRIR UN MP3 SIN DEJAR NADA COLGANDO.
+        //
+        // NAudio arma el descompresor de MP3 -que por dentro es un "stream" de ACM, del sistema- y JUSTO
+        // DESPUES reserva su buffer y termina de prepararse. Si algo falla en ese hueco -una cabecera rota, un
+        // tamano absurdo, y de esos hay unos cuantos en cualquier biblioteca grande- suelta el error y cierra
+        // el archivo, pero NO cierra el descompresor: se queda tirado. Un rato despues el recolector de basura
+        // lo cierra por su cuenta, Windows contesta que ese descompresor ya no vale, y NAudio lanza la queja
+        // desde el hilo del recolector, donde NADIE la puede recoger: la rocola se cierra entera, a media
+        // cancion. Eso es lo que quedaba apuntado en el archivo de errores como "InvalidParameter calling
+        // acmStreamClose", y por eso salia dos veces en diez dias y siempre de madrugada: es cuando el repaso
+        // de la biblioteca abre miles de archivos, alguno de ellos roto.
+        //
+        // NAudio deja un gancho para armar el descompresor uno mismo. Se usa para apuntar CUAL creo: si la
+        // apertura falla, lo cerramos NOSOTROS ahi mismo y no queda nada pendiente para el recolector.
+        private static Mp3FileReader AbreMp3(string ruta)
+        {
+            NAudio.Wave.IMp3FrameDecompressor hecho = null;
+            Mp3FileReader.FrameDecompressorBuilder armador = delegate(NAudio.Wave.WaveFormat wf)
+            { hecho = Mp3FileReader.CreateAcmFrameDecompressor(wf); return hecho; };
+            try { return new Mp3FileReader(ruta, armador); }
+            catch { if (hecho != null) { try { hecho.Dispose(); } catch { } } throw; }
+        }
+
+        // Lector para MEDIR una cancion (no para que suene). Los MP3 van por el camino de arriba, que no deja
+        // descompresores tirados; el resto de formatos, por donde siempre. Es EL MISMO montaje que usa NAudio
+        // por dentro (el lector mas un canal de muestras), asi que lo medido no cambia ni en un bit.
+        private sealed class LectorMedida : IDisposable
+        {
+            private readonly Mp3FileReader mp3;
+            private readonly SampleChannel canal;
+            private readonly AudioFileReader otro;
+            public LectorMedida(string ruta)
+            {
+                if (ruta != null && ruta.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase))
+                {
+                    Mp3FileReader r = AbreMp3(ruta);
+                    try { canal = new SampleChannel(r, false); mp3 = r; r = null; }
+                    finally { if (r != null) { try { r.Dispose(); } catch { } } }   // el canal fallo: el lector no se queda tirado
+                }
+                else otro = new AudioFileReader(ruta);
+            }
+            public NAudio.Wave.WaveFormat WaveFormat { get { return (mp3 != null) ? canal.WaveFormat : otro.WaveFormat; } }
+            public TimeSpan TotalTime { get { return (mp3 != null) ? mp3.TotalTime : otro.TotalTime; } }
+            public TimeSpan CurrentTime { set { if (mp3 != null) mp3.CurrentTime = value; else otro.CurrentTime = value; } }
+            public float Volume { set { if (mp3 != null) canal.Volume = value; else otro.Volume = value; } }
+            public int Read(float[] b, int o, int c) { return (mp3 != null) ? canal.Read(b, o, c) : otro.Read(b, o, c); }
+            public void Dispose()
+            {
+                if (mp3 != null) { try { mp3.Dispose(); } catch { } }
+                if (otro != null) { try { otro.Dispose(); } catch { } }
+            }
+        }
+
         private static float MideDuracionAudio(string ruta)
         {
             // Primero por la cabecera (unos kilobytes). Solo si eso no da nada se lee el archivo entero.
@@ -4522,7 +4575,7 @@ namespace Rocola
             if (rapida > 0.01f) return rapida;
             try
             {
-                using (AudioFileReader rd = new AudioFileReader(ruta))
+                using (LectorMedida rd = new LectorMedida(ruta))
                 {
                     double t = rd.TotalTime.TotalSeconds;
                     if (t > 0.05 && t < 36000) return (float)t;
@@ -4810,10 +4863,10 @@ namespace Rocola
             // nosotros: no pasa por el ecualizador ni por el DSEE ni por los graves. Medirle la huella tonal
             // o cosechar cuadros para la IA seria trabajo y disco gastados en algo que nunca se usaria.
             bool esVideo = EsVideo(path);
-            AudioFileReader rd = null;
+            LectorMedida rd = null;
             try
             {
-                rd = new AudioFileReader(path);
+                rd = new LectorMedida(path);
                 rd.Volume = 1.0f;
                 int rate = rd.WaveFormat.SampleRate; if (rate < 8000) rate = 44100;
                 int ch = rd.WaveFormat.Channels; if (ch < 1) ch = 1;
@@ -10289,11 +10342,22 @@ namespace Rocola
                         // reconstructor (88.200 por segundo en estereo) y antes llevaba una comprobacion de
                         // vuelta al principio del circular en cada una. Como mucho son dos copias en bloque:
                         // hasta el final del circular y, si daba la vuelta, lo que quede desde el principio.
+                        // A MANO, NO CON Array.Copy, Y NO ES CAPRICHO. Lo que llega aqui como float[] es
+                        // EL MISMO OBJETO que NAudio le entrega al reproductor como byte[]: su WaveBuffer
+                        // solapa las dos vistas en la misma memoria a proposito. Escribir muestra a muestra
+                        // funciona -para numeros no se comprueba el tipo-, pero Array.Copy SI lo comprueba,
+                        // ve un byte[] donde le dicen float[] y lanza un error que MATA la cancion. Eso era
+                        // lo que cortaba la musica al encender el DSEE.
                         int take = Math.Min(qLen, count - written);
                         int hasta = outQ.Length - qHead;
                         int t1 = (take < hasta) ? take : hasta;
-                        Array.Copy(outQ, qHead, buffer, offset + written, t1);
-                        if (t1 < take) Array.Copy(outQ, 0, buffer, offset + written + t1, take - t1);
+                        int dst = offset + written;
+                        for (int k = 0; k < t1; k++) buffer[dst + k] = outQ[qHead + k];
+                        if (t1 < take)
+                        {
+                            int dst2 = dst + t1, resto = take - t1;
+                            for (int k = 0; k < resto; k++) buffer[dst2 + k] = outQ[k];
+                        }
                         qHead += take; if (qHead >= outQ.Length) qHead -= outQ.Length;
                         qLen -= take; written += take;
                         continue;
