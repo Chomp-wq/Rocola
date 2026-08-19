@@ -71,6 +71,7 @@ falta `mcs` (Mono), `xvfb-run` y `python3`.
 | `cuadro.cs` | de qué se compone un cuadro de pantalla cuando no ha cambiado nada |
 | `vercielo.cs` | saca una imagen del cielo estrellado para poder mirarlo |
 | `pantalla.cs` | dibuja la pantalla entera (1024x768) en un PNG, con los controles de verdad, para mirarla |
+| `cielos.cs` | cuaderno de bocetos del fondo: dibuja nueve cielos -el de hoy y cada idea por separado- para poder elegir mirándolos, en `pruebas/cielos/` |
 | `cachemem.cs` | lo que cuesta rehacer una carátula que se salió de la caché, y lo que costaría una caché mayor |
 | `capacidad.py` | si un modelo de IA más grande predice mejor (entrena varios tamaños sobre los mismos datos) |
 | `genmodelos.py` | genera modelos de varios tamaños para medirlos |
