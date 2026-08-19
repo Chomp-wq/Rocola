@@ -141,8 +141,9 @@ class VistaF3
         tBib.Controls.Add(Lab(16, 40, 896, 20, "Calidad:   3,914 completas     1,022 aceptables     286 pobres     141 con los picos recortados", fNom, Color.FromArgb(198,214,244), ContentAlignment.TopLeft));
         tBib.Controls.Add(Lab(16, 62, 896, 48, "Repasando la biblioteca a fondo ahora mismo.\nMaterial para la IA: 2,684,155 ejemplos (409 MB).   La cancion que suena entra en la etapa MEDIA.\nEl detalle, cancion por cancion, queda en rocola_calidad.txt junto al programa.", fDes, cTenue, ContentAlignment.TopLeft));
         tBib.Controls.Add(Boton(16, 114, 300, "Detener el repaso a fondo", Color.FromArgb(126,52,42), Color.FromArgb(196,96,76), fBot));
-        tBib.Controls.Add(Lab(332, 112, 580, 18, "31,204 de 52,842 canciones   (59%)", fDes, cBib, ContentAlignment.TopRight));
-        tBib.Controls.Add(Barra(332, 134, 580, 0.59f, cBib));
+        tBib.Controls.Add(Inter(332, 118, 286, "Juntar material para la IA", cBib, true, fNom, cTexto, true));
+        tBib.Controls.Add(Lab(630, 112, 282, 18, "31,204 de 52,842 canciones   (59%)", fDes, cBib, ContentAlignment.TopRight));
+        tBib.Controls.Add(Barra(630, 134, 282, 0.59f, cBib));
 
         dlg.Controls.Add(tVol); dlg.Controls.Add(tCal); dlg.Controls.Add(tBib);
         dlg.Controls.Add(Boton(16, 652, 220, "Dejar como de fabrica", Color.FromArgb(40,52,98), Color.FromArgb(72,90,150), fBot));

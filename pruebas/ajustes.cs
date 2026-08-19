@@ -171,11 +171,12 @@ class Ajustes
           "Calidad:   52,842 completas     52,842 aceptables     52,842 pobres     52,842 con los picos recortados", fNom, 10f, false);
         C("estado", bx + 16, by + 62, 896, 48,
           "La biblioteca se mide sola mientras la rocola trabaja: faltan 52,842 canciones.   Duraciones: faltan 52,842.\n"
-          + "Material para la IA: 3,171,340 ejemplos (483 MB).   La cancion que suena entra en la etapa MEDIA.\n"
+          + "Material para la IA: apagado (lo demas se sigue midiendo igual).   La cancion que suena entra en la etapa MEDIA.\n"
           + "El detalle, cancion por cancion, queda en rocola_calidad.txt junto al programa.", fDes, 8.5f, true);
         C("boton.repaso", bx + 16, by + 114, 300, 34, "Repasar la biblioteca a fondo", fBot, 10f, false);
-        C("avance.texto", bx + 332, by + 112, 580, 18, "52,842 de 52,842 canciones   (100%)", fDes, 8.5f, false);
-        C("avance.barra", bx + 332, by + 134, 580, 8, "", null, 0f, false);
+        CSw("ia.juntar", bx + 332, by + 118, 286, 26, "Juntar material para la IA", fNom, 10f);
+        C("avance.texto", bx + 630, by + 112, 282, 18, "52,842 de 52,842 canciones   (100%)", fDes, 8.5f, false);
+        C("avance.barra", bx + 630, by + 134, 282, 8, "", null, 0f, false);
 
         // ---- pie ----
         C("boton.fabrica", 16, hd ? 922 : 680, 220, 38, "Dejar como de fabrica", fBot, 10f, false);

@@ -2308,7 +2308,7 @@ namespace Rocola
             bool wasMaint = maintMode;
             maintMode = true; maintUntil = DateTime.Now.AddMinutes(10);
             bool changed = false;
-            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkUp = masterDb, bkEq = eqAmount, bkBass = bassAmount; int bkVid = videoVol, bkDsk = perfilDisco; bool bkOn = normalizeOn, bkSbr = sbrOn, bkEqA = eqAuto, bkBassA = bassAuto, bkVidA = videoAuto;   // por si se Cancela
+            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkUp = masterDb, bkEq = eqAmount, bkBass = bassAmount; int bkVid = videoVol, bkDsk = perfilDisco; bool bkOn = normalizeOn, bkSbr = sbrOn, bkEqA = eqAuto, bkBassA = bassAuto, bkVidA = videoAuto, bkIaDat = iaHarvestOn;   // por si se Cancela
             try
             {
                 Cursor.Show();
@@ -2438,11 +2438,21 @@ namespace Rocola
                     hint.ForeColor = cTenue; hint.Font = fDes;
                     BotonPlano bTrain = new BotonPlano();
                     bTrain.SetBounds(16, 114, 300, 34); bTrain.Font = fBot;
-                    Label lPct = new Label(); lPct.SetBounds(332, 112, 580, 18); lPct.BackColor = Color.Transparent;
+                    Label lPct = new Label(); lPct.SetBounds(630, 112, 282, 18); lPct.BackColor = Color.Transparent;
                     lPct.ForeColor = cBib; lPct.Font = fDes; lPct.TextAlign = ContentAlignment.TopRight; lPct.Visible = false;
                     BarraAvance pbTrain = new BarraAvance();
-                    pbTrain.SetBounds(332, 134, 580, 8); pbTrain.Acento = cBib; pbTrain.Visible = false;
-                    tBib.Controls.Add(lCal); tBib.Controls.Add(hint); tBib.Controls.Add(bTrain); tBib.Controls.Add(lPct); tBib.Controls.Add(pbTrain);
+                    pbTrain.SetBounds(630, 134, 282, 8); pbTrain.Acento = cBib; pbTrain.Visible = false;
+                    // JUNTAR MATERIAL PARA LA IA: se puede apagar. Es lo unico de aqui que ESCRIBE UN ARCHIVO
+                    // GORDO en el disco de la rocola -llega a 24 GB- y hay locales donde eso no interesa: un
+                    // disco justo de espacio, o simplemente que el dueno no quiere juntar nada. Apagarlo NO
+                    // toca ninguna otra cosa: la rocola sigue midiendo el volumen de cada cancion, aprendiendo
+                    // el EQ y los graves de la biblioteca, buscando donde el MP3 corto los agudos y repasando
+                    // a fondo igual que antes. Lo unico que deja de hacer es GUARDAR ejemplos para entrenar.
+                    Interruptor swIa = new Interruptor();
+                    swIa.SetBounds(332, 118, 286, 26); swIa.ForeColor = cTexto; swIa.Font = fNom;
+                    swIa.Text = "Juntar material para la IA"; swIa.Acento = cBib; swIa.Checked = iaHarvestOn;
+                    tBib.Controls.Add(lCal); tBib.Controls.Add(hint); tBib.Controls.Add(bTrain);
+                    tBib.Controls.Add(swIa); tBib.Controls.Add(lPct); tBib.Controls.Add(pbTrain);
                     EscribeInformeCalidad();   // el detalle, cancion por cancion, queda en un archivo junto al programa
 
                     // ---------------- TIPO DE DISCO ----------------
@@ -2565,15 +2575,21 @@ namespace Rocola
                         int tTot = preScanTotal, tFal = preScanLeft;
                         // TRES renglones, cada uno con lo suyo y con el corte escrito a mano: antes iba todo
                         // seguido en dos y con la biblioteca grande el ultimo se salia del hueco y no se veia.
+                        // El renglon del material se dice SIEMPRE, tambien apagado: si desaparecia no habia
+                        // forma de saber si se estaba juntando o no. Y apagado se aclara que lo demas sigue,
+                        // que es justo la duda que le entra a cualquiera al ver un interruptor de IA.
+                        string iaTxt = iaHarvestOn
+                            ? ("Material para la IA: " + IaInfoText() + ".   ")
+                            : "Material para la IA: apagado (lo demas se sigue midiendo igual).   ";
                         hint.Text = (preScanTurbo && tTot > 0)
                             ? ((tFal > 0 ? "Repasando la biblioteca a fondo ahora mismo." : "Repaso a fondo terminado: la biblioteca esta entera.")
-                               + "\nMaterial para la IA: " + IaInfoText() + "."
-                               + (etapa.Length > 0 ? ("   La cancion que suena entra en la etapa " + etapa + ".") : "")
+                               + "\n" + iaTxt
+                               + (etapa.Length > 0 ? ("La cancion que suena entra en la etapa " + etapa + ".") : "")
                                + "\nEl detalle, cancion por cancion, queda en rocola_calidad.txt junto al programa.")
                             : ("La biblioteca se mide sola mientras la rocola trabaja: "
                                + (tFal > 0 ? ("faltan " + tFal.ToString("#,0") + " archivos.") : "ya esta al dia.")
                                + (durScanLeft > 0 ? ("   Duraciones: faltan " + durScanLeft.ToString("#,0") + ".") : "")
-                               + "\n" + (iaHarvestOn ? ("Material para la IA: " + IaInfoText() + ".   ") : "")
+                               + "\n" + iaTxt
                                + (etapa.Length > 0 ? ("La cancion que suena entra en la etapa " + etapa + ".") : "")
                                + "\nEl detalle, cancion por cancion, queda en rocola_calidad.txt junto al programa.");
                         pintaTrain();
@@ -2601,13 +2617,14 @@ namespace Rocola
                         bassAmount = bar[5].Value / 100f;
                         excAmount = bar[6].Value / 100f;
                         sbrOn = swSbr.Checked && sbrAllowed;
+                        iaHarvestOn = swIa.Checked;
                         changed = true;
                         updateLabels();
                         ApplyNormNow();   // se oye el cambio al instante en la cancion que suena
                         UpdateNowPlayingUI();   // y el letrero MEJORADA aparece/desaparece al instante
                     };
                     for (int k = 0; k < bar.Length; k++) { bar[k].Scroll += apply; if (au[k] != null) au[k].CheckedChanged += apply; }
-                    swOn.CheckedChanged += apply; swSbr.CheckedChanged += apply;
+                    swOn.CheckedChanged += apply; swSbr.CheckedChanged += apply; swIa.CheckedChanged += apply;
                     bReset.Click += delegate
                     {
                         swOn.Checked = true;
@@ -2615,6 +2632,7 @@ namespace Rocola
                         bar[4].Value = 0; bar[5].Value = 30; bar[6].Value = 35;
                         au[3].Checked = true; au[4].Checked = true; au[5].Checked = true;   // videos, EQ y graves en automatico
                         if (swSbr.Enabled) swSbr.Checked = false;            // el espectral apagado: es experimental
+                        swIa.Checked = true;                                 // juntar material para la IA: encendido de fabrica
                         if (perfilDisco != 0)                                // el tipo de disco, otra vez a medirlo sola
                         { perfilDisco = 0; lock (discoLock) discoLento.Clear(); AplicaPerfilDisco(); pintaDsk(); }
                         apply(bReset, EventArgs.Empty);
@@ -2652,7 +2670,7 @@ namespace Rocola
                 }
                 if (changed) { SaveConfigPrefs(); ShowToast("Sonido actualizado", Color.FromArgb(40, 130, 90)); }
             }
-            catch { normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; masterDb = bkUp; eqAmount = bkEq; bassAmount = bkBass; videoVol = bkVid; videoAuto = bkVidA; sbrOn = bkSbr; eqAuto = bkEqA; bassAuto = bkBassA; perfilDisco = bkDsk; AplicaPerfilDisco(); }   // si algo truena, deja los valores como estaban
+            catch { normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; masterDb = bkUp; eqAmount = bkEq; bassAmount = bkBass; videoVol = bkVid; videoAuto = bkVidA; sbrOn = bkSbr; eqAuto = bkEqA; bassAuto = bkBassA; perfilDisco = bkDsk; iaHarvestOn = bkIaDat; AplicaPerfilDisco(); }   // si algo truena, deja los valores como estaban
             finally { try { Cursor.Hide(); } catch { } maintMode = wasMaint; ForceFocus(); }
         }
 
