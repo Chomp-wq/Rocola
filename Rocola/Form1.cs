@@ -776,8 +776,6 @@ namespace Rocola
         private readonly Keys[] configCap = new Keys[8];
         private Label lblConfig;            // pantalla del asistente de configuracion
         private BuscaView buscaView;        // casilla de BUSCAR (arriba en medio, con los dos botones dibujados)
-        private GuiaView guiaView;          // la frase que aparece sola cuando el cliente duda
-        private const int GuiaDudaMs = 3500;   // lo que se espera antes de dar por hecho que esta dudando
         private AttractView attractView;    // modo atraccion (reposo): fondo estrellado + cubo gigante
         private bool attractOn = false;
         private const int AttractIdleSecs = 40;   // reposo antes de entrar al modo atraccion
@@ -3145,8 +3143,6 @@ namespace Rocola
             lblStatus = new Label(); TransLabel(lblStatus, 9.5f); lblStatus.Text = "Cargando musica...";
             buscaView = new BuscaView();   // la casilla de BUSCAR, en medio de la fila de arriba
             Controls.Add(buscaView);
-            guiaView = new GuiaView();     // la frase que aparece sola cuando el cliente duda
-            Controls.Add(guiaView);
             helpBar = new HelpBar();   // instrucciones con formas/colores (sin nombres de teclas)
 
             lblAttract = new Label();
@@ -3385,7 +3381,6 @@ namespace Rocola
             int headX = (buscaView != null && buscaView.Visible) ? (busX + busW + 12) : (helpX + helpW + 12);
             headerView.SetBounds(headX, 8, Math.Max(0, barraDer - headX), filaH);
             if (lblConfig != null) lblConfig.SetBounds(0, 0, W, H);   // asistente de config: pantalla completa
-            LayoutGuia();
 
             // LA BARRA DE LETRAS CRECE CON LA PANTALLA. Estaba clavada en 40 px de alto: en 1024x768 se ve
             // bien, pero en una pantalla ancha cada casilla pasa de 100 px y la letra seguia siendo la misma
@@ -9290,47 +9285,6 @@ namespace Rocola
             // principio, asi que el estado solo se escribe en eventos -> cero escrituras periodicas a disco)
         }
 
-        // LA FRASE QUE TOCA AHORA MISMO. Una sola, la del siguiente paso, nunca dos. El orden importa: lo
-        // primero de todo es la moneda, porque sin credito no se puede hacer NADA y es el paso donde mas
-        // gente se atasca (no hay forma de adivinar que hay que pagar antes de escoger).
-        private string GuiaTexto(out int boton)
-        {
-            boton = 0;
-            if (credits <= 0) { boton = 2; return "Mete una moneda para poner tu cancion"; }
-            if (searchOpen)
-            {
-                if (searchOverlay != null && searchOverlay.FocusResults) { boton = 1; return "Aprieta el VERDE para poner esta cancion"; }
-                boton = 1; return "Escribe el nombre y aprieta el VERDE";
-            }
-            if (panelSongs != null && panelSongs.Visible) { boton = 1; return "Aprieta el VERDE para poner esta cancion"; }
-            boton = 1; return "Muevete hasta un disco y aprieta el VERDE";
-        }
-
-        // ¿TOCA ENSENAR LA GUIA AHORA MISMO? Solo si alguien esta delante y lleva un rato sin apretar nada.
-        // Ni en reposo (no hay nadie), ni con video a pantalla completa, ni mientras carga la biblioteca, ni
-        // con los ajustes abiertos: en ninguno de esos casos hay un siguiente paso que decir.
-        private bool GuiaToca()
-        {
-            if (attractOn || videoFull || libBuilding) return false;
-            if (lblConfig != null && lblConfig.Visible) return false;
-            return (Environment.TickCount - lastInputTick) >= GuiaDudaMs;
-        }
-
-        // Decide si la guia se ve y que dice. Se llama en cada latido de la animacion.
-        private void TickGuia()
-        {
-            if (guiaView == null) return;
-            if (!GuiaToca()) { guiaView.Visible = false; return; }
-
-            int boton; string txt = GuiaTexto(out boton);
-            if (guiaView.Texto != txt || guiaView.Boton != boton || !guiaView.Visible)
-            {
-                guiaView.Texto = txt; guiaView.Boton = boton;
-                guiaView.Visible = true;
-                LayoutGuia();
-                guiaView.Invalidate();
-            }
-        }
         // DONDE VA LA CASILLA DE BUSCAR en la fila de arriba: en el MEDIO DE LA PANTALLA, que es donde el
         // ojo la busca. Si centrada pisaria las instrucciones se corre a la derecha lo justo, y si aun asi no
         // cabe antes del encabezado se pega al final del hueco. 'minX' es donde acaban las instrucciones y
@@ -9344,23 +9298,9 @@ namespace Rocola
             return x;
         }
 
-        // La guia va abajo, centrada, justo encima de la franja de lo que suena: es donde ya esta mirando el
-        // cliente (ahi se lee lo que suena) y no tapa la pared de discos.
-        private void LayoutGuia() { LayoutGuia(ClientSize.Width, ClientSize.Height); }
-        private void LayoutGuia(int W, int H)
-        {
-            if (guiaView == null || !guiaView.Visible) return;
-            int alto = H * 40 / 768; if (alto < 34) alto = 34; else if (alto > 66) alto = 66;
-            int an = GuiaView.Ancho(guiaView.Texto, guiaView.Boton, alto, FontFamily.GenericSansSerif);
-            // Si la frase no cabe entera, MEJOR NO SACARLA: una frase cortada a la mitad no ayuda a nadie y
-            // encima tapa. La rocola del bar va a 1024x768, donde cabe de sobra.
-            if (an < 60 || an > W - 40) { guiaView.Visible = false; return; }
-            guiaView.SetBounds((W - an) / 2, Math.Max(0, BotStripTop(H) - alto - 12), an, alto);
-            guiaView.BringToFront();
-        }
-
-        // Donde arranca la franja de abajo. No depende de la tarjeta grafica -es acomodo normal- y la guia
-        // la necesita en los dos perfiles, asi que vive aqui fuera.
+#if ROCOLA_GPU
+        // Donde arranca la franja de abajo. Solo lo usa el dibujado por tarjeta grafica: es donde se acaba
+        // el cielo y donde empieza la tira de lo que suena.
         private int BotStripTop(int h)
         {
             int t = (lblNowTop != null) ? lblNowTop.Top - 10 : (lblNow != null ? lblNow.Top - 10 : h - 104);   // la franja arranca justo encima de la tarjeta
@@ -9370,7 +9310,6 @@ namespace Rocola
             return t;
         }
 
-#if ROCOLA_GPU
         private static uint ToD3D(Color c) { return 0xFF000000u | ((uint)c.R << 16) | ((uint)c.G << 8) | (uint)c.B; }
 
         private bool gpuEnabled;                          // render por GPU activo. Por defecto SI (se guarda al alternar con Ctrl+F12)
@@ -9671,11 +9610,6 @@ namespace Rocola
             int w = ClientSize.Width, h = ClientSize.Height;
             if (w < 8 || h < 8) return uiBotVer;
             int top = BotStripTop(h);
-            // La guia va JUSTO ENCIMA de la franja: en vez de meterla en la textura grande de la pantalla
-            // -que en navegacion solo llega hasta las letras, y agrandarla hasta abajo costaria varios MB
-            // por cada rehecha-, la tira de abajo se estira un poco hacia arriba para llevarla. La tarjeta
-            // la pega pegada al borde de abajo con SU alto, asi que crecer hacia arriba sale gratis.
-            if (guiaView != null && guiaView.Visible && guiaView.Top - 6 < top) { top = guiaView.Top - 6; if (top < 0) top = 0; }
             int bh = h - top;
             long sig = UiBotSig();
             if (uiBotOverlay != null && uiBotOverlay.Width == w && uiBotOverlay.Height == bh && sig == uiBotLastSig) return uiBotVer;
@@ -9692,7 +9626,6 @@ namespace Rocola
                     g.SmoothingMode = SmoothingMode.AntiAlias;
                     g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;   // gris: ClearType deja flecos sobre transparente
                     g.TranslateTransform(0, -top);   // las etiquetas estan en coords del form; la tira empieza en 'top'
-                    if (guiaView != null && guiaView.Visible) DrawCtrlOverlay(g, guiaView);   // la frase del que duda, encima de la franja
                     DrawLabelOverlay(g, lblNowTop);   // 2a linea del titulo (vacia casi siempre: no dibuja nada)
                     DrawLabelOverlay(g, lblNow);
                     if (lblMejorada != null && lblMejorada.Visible) DrawLabelOverlay(g, lblMejorada);   // letrero MEJORADA (su brillo es un halo por quad, no rehace esta textura)
@@ -9882,10 +9815,6 @@ namespace Rocola
             long sb = SigBase;
             sb = Mix(sb, ClientSize.Width); sb = Mix(sb, ClientSize.Height);
             if (attractOn) return Mix(sb, 'A');   // en atraccion la franja va limpia (transparente)
-            // La guia entra entera (que dice, que boton dibuja y donde esta): aparece y desaparece sola, y
-            // si no estuviera aqui la textura no se rehacia y no se veria nunca con tarjeta grafica.
-            if (guiaView != null && guiaView.Visible)
-            { sb = Mix(sb, 'G'); sb = Mix(sb, guiaView.Texto); sb = Mix(sb, guiaView.Boton); sb = Mix(sb, guiaView.Left); sb = Mix(sb, guiaView.Top); sb = Mix(sb, guiaView.Width); sb = Mix(sb, guiaView.Height); }
             if (lblNowTop != null) sb = Mix(sb, lblNowTop.Text);
             if (lblNow != null) sb = Mix(sb, lblNow.Text);
             if (lblMejorada != null && lblMejorada.Visible) { sb = Mix(sb, 'M'); sb = Mix(sb, iaBadgeKind); sb = Mix(sb, lblMejorada.Left); sb = Mix(sb, lblMejorada.ForeColor.ToArgb()); }
@@ -9913,8 +9842,7 @@ namespace Rocola
             else { GeneroView gv = c as GeneroView; if (gv != null) gv.RenderContent(g);
             else { SongListView sl = c as SongListView; if (sl != null) sl.RenderContent(g);
             else { SongPagerBar sp = c as SongPagerBar; if (sp != null) sp.RenderContent(g);
-            else { BuscaView bv = c as BuscaView; if (bv != null) bv.RenderContent(g, true);
-            else { GuiaView gu = c as GuiaView; if (gu != null) gu.RenderContent(g, true); } } } } } } } } }
+            else { BuscaView bv = c as BuscaView; if (bv != null) bv.RenderContent(g, true); } } } } } } } }
             g.Restore(st);
         }
 
@@ -10114,7 +10042,6 @@ namespace Rocola
                 if ((hfs != 0 || helpFlashPrev != 0) && helpBar.Visible && !albumGpuBg) helpBar.Invalidate();
                 helpFlashPrev = hfs;
             }
-            TickGuia();
             if (buscaView != null && buscaView.Visible)
             {
                 buscaView.Phase = phase; buscaView.Abierto = searchOpen;
@@ -13979,86 +13906,6 @@ namespace Rocola
         // Un dato suelto dentro de una capsula: la etiqueta en gris y el numero en el color que le toca. Antes
         // eran dos textos sueltos apilados en una esquina; en una capsula se leen como una UNIDAD y de lejos se
         // distingue el numero, que es lo unico que el cliente necesita ver.
-        // ==========  LA GUIA QUE APARECE SOLA  ==========
-        //
-        // El problema de verdad de una rocola en un bar no es que falten instrucciones: es que NADIE LAS
-        // LEE. Estan arriba, en chiquito, en una fila de simbolos, y el cliente que llega de noche, con
-        // prisa y con los amigos mirando, no se pone a estudiarlas. Se queda parado, no sabe que apretar, y
-        // se va sin poner su cancion. Eso es dinero que no entra.
-        //
-        // Asi que en vez de explicar, esto ESPERA A QUE DUDE. Si pasan unos segundos sin que apriete nada,
-        // aparece abajo UNA sola frase grande con lo unico que tiene que hacer AHORA MISMO -no un manual,
-        // una frase- y al lado el boton que tiene que apretar, dibujado. En cuanto aprieta cualquier cosa,
-        // desaparece.
-        //
-        // Al que ya sabe usarla no le estorba jamas, porque el que sabe no duda: aprieta.
-        private class GuiaView : Control
-        {
-            public string Texto = "";
-            public int Boton = 0;        // 0 = ninguno, 1 = verde (poner), 2 = moneda
-            private Font fTxt; private float fAlto = -1f;
-
-            public GuiaView()
-            {
-                this.SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.SupportsTransparentBackColor, true);
-                this.BackColor = Color.Transparent;
-                this.TabStop = false;
-                this.Visible = false;
-            }
-
-            // Lo que mide con ese texto y ese alto (el acomodo la centra).
-            public static int Ancho(string texto, int boton, int alto, FontFamily fam)
-            {
-                if (texto == null || texto.Length == 0) return 0;
-                using (Font f = new Font(fam, Math.Max(9f, alto * 0.40f), FontStyle.Bold))
-                {
-                    Size sz = TextRenderer.MeasureText(texto, f, new Size(9999, 99), TextFormatFlags.NoPadding);
-                    int d = (int)(alto * 0.52f); if (d < 14) d = 14; if (d > 34) d = 34;
-                    return sz.Width + (boton != 0 ? d + 12 : 0) + 34;
-                }
-            }
-
-            protected override void OnPaint(PaintEventArgs e)
-            {
-                e.Graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
-                RenderContent(e.Graphics, false);
-            }
-            public void RenderContent(Graphics g) { RenderContent(g, false); }
-            public void RenderContent(Graphics g, bool forGpu)
-            {
-                int w = Width, h = Height;
-                if (w < 40 || h < 14 || Texto == null || Texto.Length == 0) return;
-                g.SmoothingMode = SmoothingMode.AntiAlias;
-                if (fTxt == null || fAlto != h)
-                { if (fTxt != null) fTxt.Dispose(); fTxt = new Font(FontFamily.GenericSansSerif, Math.Max(9f, h * 0.40f), FontStyle.Bold); fAlto = h; }
-
-                Rectangle r = new Rectangle(0, 0, w - 1, h - 1);
-                using (GraphicsPath gp = RoundedPath(r, Math.Min(16, h / 2)))
-                {
-                    using (SolidBrush sb = new SolidBrush(Color.FromArgb(190, 16, 22, 44))) g.FillPath(sb, gp);
-                    using (Pen pn = new Pen(Color.FromArgb(150, 255, 214, 110), 2f)) g.DrawPath(pn, gp);
-                }
-                int cy = h / 2, d = (int)(h * 0.52f); if (d < 14) d = 14; if (d > 34) d = 34;
-                Size ts = TextRenderer.MeasureText(g, Texto, fTxt, new Size(9999, 99), TextFormatFlags.NoPadding);
-                int total = ts.Width + (Boton != 0 ? d + 12 : 0);
-                int x = (w - total) / 2;
-                TextRenderer.DrawText(g, Texto, fTxt, new Rectangle(x, 0, ts.Width + 2, h),
-                                      Color.FromArgb(255, 245, 210), TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
-                if (Boton == 1) CtrlDot(g, x + ts.Width + 12, cy, d, Color.FromArgb(72, 212, 112));   // el VERDE
-                else if (Boton == 2) Moneda(g, x + ts.Width + 12, cy, d);
-            }
-
-            // Una moneda, para el que no sabe ni por donde empezar.
-            private static void Moneda(Graphics g, float x, int cy, int d)
-            {
-                Color oro = Color.FromArgb(255, 205, 90);
-                using (SolidBrush sb = new SolidBrush(Color.FromArgb(210, oro))) g.FillEllipse(sb, x, cy - d / 2f, d, d);
-                using (Pen pn = new Pen(Color.FromArgb(255, 150, 110, 30), Math.Max(1.5f, d * 0.09f))) g.DrawEllipse(pn, x, cy - d / 2f, d, d);
-                using (Pen pn = new Pen(Color.FromArgb(180, 120, 85, 20), Math.Max(1.5f, d * 0.10f)))
-                    g.DrawLine(pn, x + d * 0.5f, cy - d * 0.22f, x + d * 0.5f, cy + d * 0.22f);
-            }
-        }
-
         // ==========  LA CASILLA DE BUSCAR  ==========
         //
         // Antes, para buscar por nombre habia que apretar ROJO y VERDE A LA VEZ. Nadie lo descubria: no

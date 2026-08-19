@@ -243,24 +243,6 @@ class Pantalla
             g.Restore(st);
         }
 
-        // ---------- la guia, la frase que sale sola cuando el cliente se queda parado ----------
-        // Se dibuja SIEMPRE en esta foto (en la rocola de verdad solo sale tras unos segundos sin tocar
-        // nada): esta foto es justo para ver como queda con todo lo demas.
-        Type TGui = Nes("GuiaView");
-        if (TGui != null)
-        {
-            int altoG = H * 40 / 768; if (altoG < 34) altoG = 34; else if (altoG > 66) altoG = 66;
-            string frase = "Muevete hasta un disco y aprieta el VERDE";
-            int anG = (int)TGui.GetMethod("Ancho", BindingFlags.Static | BindingFlags.Public).Invoke(
-                          null, new object[] { frase, 1, altoG, fam });
-            Control gui = (Control)Activator.CreateInstance(TGui, true);
-            gui.Font = new Font(fam, 9f, FontStyle.Bold);
-            Pon(TGui, gui, "Texto", frase); Pon(TGui, gui, "Boton", 1);
-            gui.SetBounds((W - anG) / 2, tarjetaY - 10 - altoG - 12, anG, altoG);
-            MethodInfo mg = TGui.GetMethod("RenderContent", new Type[] { typeof(Graphics), typeof(bool) });
-            if (mg != null) Dibuja(g, gui, mg, new object[] { false });
-        }
-
         Console.WriteLine("  capsulas: " + pastH + " px de alto   tarjeta de abajo: " + tarjetaH + " px");
         Console.WriteLine("  barra del abecedario: " + lettersH + " px de alto, " + contentW + " px de ancho");
         g.Dispose();

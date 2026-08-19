@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Reflection;
-using System.Runtime.Serialization;
 using System.Windows.Forms;
 
 // EL QUE NO SABE USAR LA ROCOLA TAMBIEN TIENE QUE PODER PONER SU CANCION.
@@ -20,15 +19,13 @@ using System.Windows.Forms;
 //      desde la mesa, y con los dos botones que hay que apretar DIBUJADOS al lado: el rojo, un mas, y la
 //      flecha de arriba. Y el combo es ROJO + ARRIBA, que no choca con nada.
 //
-//   2) El que se queda parado sin saber que hacer no tenia a quien preguntar. Ahora, si pasan unos segundos
-//      sin que apriete nada, aparece abajo UNA frase -una, la del siguiente paso- con el boton que tiene
-//      que apretar dibujado al lado. En cuanto aprieta cualquier cosa, desaparece. Al que ya sabe usarla no
-//      le estorba nunca, porque el que sabe no duda: aprieta.
+//   2) Y dentro del buscador pasaba lo mismo con dos atajos: para SALIR habia que apretar rojo y verde -el
+//      verde, que es el de PONER, asi que el que queria irse ponia una cancion sin querer- y el rojo
+//      borraba una letra sin que nada lo dijera. Ahora los dos estan dibujados donde se usan.
 //
-// Aqui se comprueban las dos cosas: que la casilla existe, se ve, va en medio y ensena los dos botones de
-// verdad; que el combo es ROJO+ARRIBA y ya NO ROJO+VERDE; que dentro del buscador estan los avisos nuevos
-// (cerrar con los mismos dos botones, y el rojo dibujado en la tecla de BORRAR, que hace lo mismo); y que
-// la guia dice lo que toca en cada momento, aparece sola al dudar y se quita al primer boton.
+// Aqui se comprueba que la casilla existe, se ve, va en medio y ensena los dos botones de verdad; que el
+// combo es ROJO+ARRIBA y ya NO ROJO+VERDE; y que dentro del buscador estan los avisos nuevos: cerrar con
+// los mismos dos botones, y el rojo dibujado en la tecla de BORRAR, que hace lo mismo.
 class Entrar
 {
     static int fallos = 0;
@@ -38,8 +35,6 @@ class Entrar
     static Type Nes(string n) { return TF.GetNestedType(n, BindingFlags.NonPublic | BindingFlags.Public); }
     static FieldInfo Campo(string n) { return TF.GetField(n, BindingFlags.Instance | BindingFlags.NonPublic); }
     static MethodInfo Met(string n) { return TF.GetMethod(n, BindingFlags.Instance | BindingFlags.NonPublic); }
-    static object F;
-    static void Set(string n, object v) { Campo(n).SetValue(F, v); }
 
     // ---- lectura del ejecutable ya compilado: que llamadas hace un metodo, en orden ----
     static int LargoOperando(int op)
@@ -280,169 +275,18 @@ class Entrar
         }
 
         // =========================================================================================
-        Console.WriteLine("\n  7) LA GUIA APARECE SOLA CUANDO EL CLIENTE SE QUEDA PARADO\n");
-        Type TGui = Nes("GuiaView");
-        Check(TGui != null, "hay una frase de ayuda que aparece sola");
-        MethodInfo mToca = Met("GuiaToca"), mTexto = Met("GuiaTexto"), mTick = Met("TickGuia");
-        Check(mToca != null && mTexto != null && mTick != null, "y la rocola decide sola cuando sale y que dice");
-        if (TGui == null || mToca == null || mTexto == null || mTick == null) { Console.WriteLine("\n  FALLOS: " + fallos); return fallos; }
-
-        F = FormatterServices.GetUninitializedObject(TF);
-        int duda = (int)TF.GetField("GuiaDudaMs", BindingFlags.Static | BindingFlags.NonPublic).GetRawConstantValue();
-        Console.WriteLine("     se espera " + duda + " ms sin apretar nada antes de dar por hecho que esta dudando");
-        Check(duda >= 2000 && duda <= 8000, "espera unos segundos: ni salta encima del que sabe ni llega tarde");
-
-        Set("lastInputTick", Environment.TickCount);
-        Check(!(bool)mToca.Invoke(F, null), "recien apretado un boton NO sale (al que sabe no le estorba)");
-        Set("lastInputTick", Environment.TickCount - (duda - 400));
-        Check(!(bool)mToca.Invoke(F, null), "casi al limite todavia no sale");
-        Set("lastInputTick", Environment.TickCount - (duda + 500));
-        Check((bool)mToca.Invoke(F, null), "y pasados los segundos sin tocar nada, aparece");
-
-        Set("attractOn", true); Check(!(bool)mToca.Invoke(F, null), "en reposo NO sale: no hay nadie delante"); Set("attractOn", false);
-        Set("videoFull", true); Check(!(bool)mToca.Invoke(F, null), "con un video a pantalla completa tampoco: se estaria mirando el video"); Set("videoFull", false);
-        Set("libBuilding", true); Check(!(bool)mToca.Invoke(F, null), "ni mientras carga la biblioteca: aun no hay nada que elegir"); Set("libBuilding", false);
-        Label cfg = new Label(); Set("lblConfig", cfg);
-        Check(!(bool)mToca.Invoke(F, null), "ni con los ajustes abiertos (ahi esta el encargado, no un cliente)");
-        cfg.Visible = false; Set("lblConfig", null);
-        Check((bool)mToca.Invoke(F, null), "y fuera de esos casos, sale");
-
-        // =========================================================================================
-        Console.WriteLine("\n  8) Y DICE EL SIGUIENTE PASO, UNO SOLO, EL DE AHORA MISMO\n");
-        object so = Activator.CreateInstance(TSO, true);
-        object psongs = Activator.CreateInstance(Nes("BgPanel"), true);
-        ((Control)psongs).Visible = false;
-        Set("searchOverlay", so); Set("panelSongs", psongs); Set("searchOpen", false);
-
-        Set("credits", 0);
-        object[] a1 = new object[1];
-        string t1 = (string)mTexto.Invoke(F, a1);
-        Console.WriteLine("     sin creditos:            \"" + t1 + "\"  (+ boton " + a1[0] + ")");
-        Check((int)a1[0] == 2, "sin creditos lo primero es la MONEDA, dibujada: sin pagar no se puede hacer nada");
-        Check(t1.IndexOf("moneda", StringComparison.OrdinalIgnoreCase) >= 0, "y lo dice con esa palabra");
-
-        // Aunque este en el buscador: si no hay credito, lo que toca sigue siendo la moneda.
-        Set("searchOpen", true);
-        object[] a0 = new object[1]; mTexto.Invoke(F, a0);
-        Check((int)a0[0] == 2, "y manda sobre todo lo demas: dentro del buscador y sin credito, sigue siendo la moneda");
-
-        Set("credits", 3);
-        object[] a2 = new object[1];
-        string t2 = (string)mTexto.Invoke(F, a2);
-        Console.WriteLine("     escribiendo el nombre:   \"" + t2 + "\"  (+ boton " + a2[0] + ")");
-        Check((int)a2[0] == 1 && t2.IndexOf("Escribe", StringComparison.OrdinalIgnoreCase) >= 0, "en el buscador dice que escriba y apriete el VERDE");
-
-        TSO.GetField("FocusResults").SetValue(so, true);
-        object[] a3 = new object[1];
-        string t3 = (string)mTexto.Invoke(F, a3);
-        Console.WriteLine("     ya sobre un resultado:   \"" + t3 + "\"  (+ boton " + a3[0] + ")");
-        Check((int)a3[0] == 1 && t3.IndexOf("poner", StringComparison.OrdinalIgnoreCase) >= 0, "y ya sobre una cancion, que apriete el VERDE para ponerla");
-
-        Set("searchOpen", false);
-        object[] a4 = new object[1];
-        string t4 = (string)mTexto.Invoke(F, a4);
-        Console.WriteLine("     en la pared de discos:   \"" + t4 + "\"  (+ boton " + a4[0] + ")");
-        Check((int)a4[0] == 1 && t4.IndexOf("disco", StringComparison.OrdinalIgnoreCase) >= 0, "en la pared de discos, que se mueva hasta uno y apriete el VERDE");
-
-        ((Control)psongs).Visible = true;
-        object[] a5 = new object[1];
-        string t5 = (string)mTexto.Invoke(F, a5);
-        Console.WriteLine("     dentro de un disco:      \"" + t5 + "\"  (+ boton " + a5[0] + ")");
-        Check((int)a5[0] == 1 && t5.IndexOf("poner", StringComparison.OrdinalIgnoreCase) >= 0, "y dentro de un disco, que apriete el VERDE para poner la cancion");
-        ((Control)psongs).Visible = false;
-
-        // Una frase, no un manual: cortas y con un solo boton dibujado.
-        string[] todas = { t1, t2, t3, t4, t5 };
-        int larga = 0; foreach (string t in todas) if (t.Length > larga) larga = t.Length;
-        Console.WriteLine("     la mas larga tiene " + larga + " letras");
-        Check(larga <= 46, "son frases de una linea, no un manual de instrucciones");
-
-        // =========================================================================================
-        Console.WriteLine("\n  9) SALE ABAJO EN MEDIO, SIN TAPAR LOS DISCOS, Y SE QUITA AL PRIMER BOTON\n");
-        object gv = Activator.CreateInstance(TGui, true);
-        ((Control)gv).Font = new Font(Fam(), 9f, FontStyle.Bold);
-        Set("guiaView", gv);
-        Label lnow = new Label(); lnow.SetBounds(0, 690, 400, 24); Set("lblNow", lnow); Set("lblNowTop", null);
-        Set("credits", 3); Set("lastInputTick", Environment.TickCount - (duda + 500));
-        MethodInfo mLay = TF.GetMethod("LayoutGuia", BindingFlags.Instance | BindingFlags.NonPublic,
-                                       null, new Type[] { typeof(int), typeof(int) }, null);
-        Check(mLay != null, "la guia se coloca sola en la pantalla");
-
-        TGui.GetField("Texto").SetValue(gv, "");
-        mTick.Invoke(F, null);
-        string dice = (string)TGui.GetField("Texto").GetValue(gv);
-        Check(dice != null && dice.Length > 0, "tras unos segundos parado, la rocola saca su frase: \"" + dice + "\"");
-        Check((int)TGui.GetField("Boton").GetValue(gv) == 1, "con el boton que hay que apretar, dibujado al lado");
-
-        if (mLay != null)
-        {
-            foreach (int[] pant in new int[][] { new int[] { 1024, 768 }, new int[] { 1920, 1080 }, new int[] { 3440, 1440 } })
-            {
-                ((Control)gv).Visible = true;
-                lnow.SetBounds(0, pant[1] - 78, 400, 24);
-                mLay.Invoke(F, new object[] { pant[0], pant[1] });
-                Control c = (Control)gv;
-                int desvio = Math.Abs((c.Left + c.Width / 2) - pant[0] / 2);
-                int franja = pant[1] - 88;
-                Console.WriteLine("     " + pant[0] + "x" + pant[1] + " -> " + c.Width + "x" + c.Height
-                                  + " a " + desvio + " px del centro, y acaba " + (franja - c.Bottom) + " px por encima de la franja");
-                Check(desvio <= 2, "en " + pant[0] + "x" + pant[1] + " sale centrada");
-                Check(c.Bottom <= franja, "y por encima de la franja de lo que suena, sin taparla");
-                Check(c.Height >= 30 && c.Height * 6 < pant[1], "de un tamano que se lee sin comerse la pantalla");
-                Check(c.Width * 10 < pant[0] * 9, "y sin ocupar la pantalla de lado a lado");
-            }
-            // Pantalla donde la frase no cabe entera: antes de sacarla cortada, no la saca.
-            ((Control)gv).Visible = true;
-            mLay.Invoke(F, new object[] { 400, 400 });
-            Check(!((Control)gv).Visible, "y donde la frase no cabe entera, prefiere no sacarla a sacarla cortada");
-        }
-
-        // Al primer boton, fuera.
-        ((Control)gv).Visible = true;
-        Set("lastInputTick", Environment.TickCount);
-        mTick.Invoke(F, null);
-        Check(!((Control)gv).Visible, "y en cuanto el cliente aprieta cualquier boton, desaparece");
-
-        // Que se dibuje: no basta con existir.
-        MethodInfo mGuiRender = TGui.GetMethod("RenderContent", new Type[] { typeof(Graphics), typeof(bool) });
-        TGui.GetField("Texto").SetValue(gv, "Mete una moneda para poner tu cancion");
-        TGui.GetField("Boton").SetValue(gv, 2);
-        int anG = (int)TGui.GetMethod("Ancho", BindingFlags.Static | BindingFlags.Public).Invoke(
-                      null, new object[] { "Mete una moneda para poner tu cancion", 2, 40, Fam() });
-        Bitmap bg = Pinta(TGui, gv, anG, 40, mGuiRender);
-        bg.Save("guia_frase.png", ImageFormat.Png);
-        Check(Claros(bg, 0, anG) > 100, "la frase se lee (letra clara y grande sobre fondo oscuro)");
-        int oro = 0;
-        for (int y = 0; y < bg.Height; y++) for (int x = anG / 2; x < anG; x++)
-        { Color c = bg.GetPixel(x, y); if (c.R > 170 && c.G > 120 && c.G < 215 && c.B < 130) oro++; }
-        Console.WriteLine("     la moneda dibujada ocupa " + oro + " px dorados");
-        Check(oro > 60, "y la MONEDA va dibujada al lado: se entiende sin saber leer");
-
-        // =========================================================================================
-        Console.WriteLine("\n  10) CON TARJETA GRAFICA TAMBIEN SE VE\n");
-        MethodInfo mSig = Met("UiBotSig");
+        Console.WriteLine("\n  7) CON TARJETA GRAFICA TAMBIEN SE VE\n");
+        MethodInfo mSig = Met("UiSig");
         if (mSig == null) Console.WriteLine("     (este ejecutable es el de sin tarjeta grafica: esta parte no aplica)");
         else
         {
-            // La pantalla por tarjeta solo se rehace cuando su "firma" cambia. Si la guia no entrara en la
-            // firma, apareceria en la version normal y NO en la de tarjeta grafica: se veria en las pruebas
-            // y no en el bar.
-            Set("attractOn", false);
-            ((Control)gv).Visible = false;
-            long sinGuia = (long)mSig.Invoke(F, null);
-            ((Control)gv).Visible = true;
-            ((Control)gv).SetBounds(100, 600, 400, 40);
-            TGui.GetField("Texto").SetValue(gv, "Mete una moneda para poner tu cancion");
-            long conGuia = (long)mSig.Invoke(F, null);
-            TGui.GetField("Texto").SetValue(gv, "Muevete hasta un disco y aprieta el VERDE");
-            long otraFrase = (long)mSig.Invoke(F, null);
-            Console.WriteLine("     firma sin guia: " + sinGuia + "     con guia: " + conGuia + "     con otra frase: " + otraFrase);
-            Check(sinGuia != conGuia, "al aparecer la guia, la pantalla por tarjeta se entera y se rehace");
-            Check(conGuia != otraFrase, "y al cambiar la frase, tambien");
-            List<string> pTira = Pasos(Met("EnsureUiBotOverlay"));
-            Check(Indice(pTira, "$guiaView") >= 0, "la tira de abajo la lleva dibujada de verdad");
-            List<string> pSig = Pasos(Met("UiSig"));
-            Check(Indice(pSig, "$buscaView") >= 0, "y la casilla de BUSCAR tambien entra en la pantalla por tarjeta");
+            // Con tarjeta grafica la pantalla se hornea en una textura y solo se rehace cuando su "firma"
+            // cambia. Si la casilla no entrara en la firma, apareceria en la version normal y NO en la de
+            // tarjeta grafica: se veria en las pruebas y no en el bar.
+            List<string> pSig = Pasos(mSig);
+            Check(Indice(pSig, "$buscaView") >= 0, "la casilla de BUSCAR entra en la firma de la pantalla por tarjeta");
+            List<string> pTex = Pasos(Met("EnsureUiOverlay"));
+            Check(Indice(pTex, "$buscaView") >= 0, "y se dibuja de verdad en ella");
         }
 
         Console.WriteLine();
