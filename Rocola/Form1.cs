@@ -749,6 +749,9 @@ namespace Rocola
         private int configStep = 0;
         private readonly Keys[] configCap = new Keys[8];
         private Label lblConfig;            // pantalla del asistente de configuracion
+        private BuscaView buscaView;        // casilla de BUSCAR (arriba en medio, con los dos botones dibujados)
+        private GuiaView guiaView;          // la frase que aparece sola cuando el cliente duda
+        private const int GuiaDudaMs = 3500;   // lo que se espera antes de dar por hecho que esta dudando
         private AttractView attractView;    // modo atraccion (reposo): fondo estrellado + cubo gigante
         private bool attractOn = false;
         private const int AttractIdleSecs = 40;   // reposo antes de entrar al modo atraccion
@@ -3004,6 +3007,10 @@ namespace Rocola
             this.WindowState = FormWindowState.Maximized;    // borde nulo + maximizado = cubre toda la pantalla
 
             lblStatus = new Label(); TransLabel(lblStatus, 9.5f); lblStatus.Text = "Cargando musica...";
+            buscaView = new BuscaView();   // la casilla de BUSCAR, en medio de la fila de arriba
+            Controls.Add(buscaView);
+            guiaView = new GuiaView();     // la frase que aparece sola cuando el cliente duda
+            Controls.Add(guiaView);
             helpBar = new HelpBar();   // instrucciones con formas/colores (sin nombres de teclas)
 
             lblAttract = new Label();
@@ -3203,6 +3210,7 @@ namespace Rocola
                 video.BringToFront();
                 lblAttract.BringToFront();
                 if (helpBar != null) helpBar.Visible = false;
+                if (buscaView != null) buscaView.Visible = false;
                 return;   // lo demas queda detras del video; se reacomoda al salir
             }
             if (helpBar != null) helpBar.Visible = true;
@@ -3220,11 +3228,30 @@ namespace Rocola
             // lo que la gente mira. El encabezado se dibuja pegado a la derecha y se encoge solo si le aprietan.
             int barraDer = videoOn ? contentRight : (W - pad);
             int helpX = pad;
-            int helpW = Math.Max(120, Math.Min(470, barraDer - helpX));
-            if (helpBar != null) helpBar.SetBounds(helpX, 8, helpW, 34);
-            int headX = helpX + helpW + 12;
-            headerView.SetBounds(headX, 8, Math.Max(0, barraDer - headX), 34);
+            // La fila de arriba crece con la pantalla, como la de las letras: en una pantalla grande, una
+            // fila clavada en 34 px deja la casilla de BUSCAR pequenita justo donde tiene que verse de lejos.
+            // Con 768 de alto la cuenta da 34 exactos, asi que en la maquina del bar no cambia nada.
+            // La fila va mas alta que antes (34 -> 44) porque la casilla de BUSCAR tiene que verse desde
+            // lejos, de pie y de noche: es lo que decide si el cliente que no sabe usarla acaba poniendo su
+            // cancion o se va. Los 10 px salen de la rejilla de discos, que tiene de sobra.
+            int filaH = H * 44 / 768; if (filaH < 44) filaH = 44; else if (filaH > 76) filaH = 76;
+            int helpW = Math.Max(120, Math.Min(HelpBar.Ancho(filaH), barraDer - helpX));
+            if (helpBar != null) helpBar.SetBounds(helpX, 8, helpW, filaH);
+            // LA CASILLA DE BUSCAR, EN MEDIO. Va centrada respecto a la pantalla entera -no respecto al
+            // hueco que queda- porque el sitio donde el ojo la busca es el centro de arriba. Si no cabe sin
+            // pisar las instrucciones, se corre a la derecha lo justo.
+            int busX = helpX + helpW + 12, busW = 0;
+            if (buscaView != null)
+            {
+                busW = Math.Min(BuscaView.Ancho(filaH), Math.Max(0, barraDer - busX));
+                busX = SitioBusca(W, busW, busX, barraDer);
+                buscaView.SetBounds(busX, 8, busW, filaH);
+                buscaView.Visible = (busW >= 120 && !videoOn);
+            }
+            int headX = (buscaView != null && buscaView.Visible) ? (busX + busW + 12) : (helpX + helpW + 12);
+            headerView.SetBounds(headX, 8, Math.Max(0, barraDer - headX), filaH);
             if (lblConfig != null) lblConfig.SetBounds(0, 0, W, H);   // asistente de config: pantalla completa
+            LayoutGuia();
 
             // LA BARRA DE LETRAS CRECE CON LA PANTALLA. Estaba clavada en 40 px de alto: en 1024x768 se ve
             // bien, pero en una pantalla ancha cada casilla pasa de 100 px y la letra seguia siendo la misma
@@ -3235,7 +3262,7 @@ namespace Rocola
             // letra chiquita perdida dentro. Se le pide al alto que acompane al ancho de casilla para que la
             // casilla siga siendo una casilla. En 1024x768 las dos cuentas dan 40 o menos, asi que la maquina
             // del bar no cambia en nada.
-            int lettersY = 46;
+            int lettersY = 8 + filaH + 4;
             int lettersH = H * 40 / 768;
             int porCasilla = (contentW * 8) / (29 * 10);   // 0.80 del ancho de casilla
             if (porCasilla > lettersH) lettersH = porCasilla;
@@ -6768,15 +6795,14 @@ namespace Rocola
             // Mover: arriba/abajo ROJO, izq/der AMARILLO (como las flechas de la cruceta). Guia visual.
             if (searchOpen && searchOverlay != null)   // barra del buscador (Mover / Poner-Elegir / Cerrar)
             {
-                if (IsOK(kc) && BackHeld()) searchOverlay.FlashClose();
+                if (IsUp(kc) && BackHeld()) searchOverlay.FlashClose();
                 else if (IsOK(kc)) searchOverlay.FlashOK();
                 else if (IsUp(kc) || IsDown(kc)) searchOverlay.FlashMove(true);
                 else if (IsLeft(kc) || IsRight(kc)) searchOverlay.FlashMove(false);
             }
             else if (helpBar != null && !attractOn)    // barra de navegacion / interior de disco
             {
-                if (IsOK(kc) && BackHeld()) { helpBar.Flash(HelpBar.FBuscar); helpBar.Flash(HelpBar.FEntrar); helpBar.Flash(HelpBar.FVolver); }   // combo: brillan el par Buscar Y los dos botones fisicos (verde + rojo) a la vez
-                else if (IsOK(kc)) helpBar.Flash(HelpBar.FEntrar);
+                if (IsOK(kc)) helpBar.Flash(HelpBar.FEntrar);
                 else if (IsBack(kc)) helpBar.Flash(HelpBar.FVolver);
                 else if (IsUp(kc) || IsDown(kc)) helpBar.FlashMove(true);
                 else if (IsLeft(kc) || IsRight(kc)) helpBar.FlashMove(false);
@@ -6826,8 +6852,10 @@ namespace Rocola
                 return true;
             }
 
-            // BUSCAR: manten REGRESAR y presiona PONER
-            if (IsOK(kc) && BackHeld()) { ToggleSearch(); return true; }
+            // ABRIR / CERRAR EL BUSCADOR: ROJO + ARRIBA. Antes era ROJO + VERDE y nadie lo encontraba,
+            // porque no habia forma de saber que era un combo. Ahora los dos botones estan DIBUJADOS en la
+            // casilla de BUSCAR que parpadea arriba en medio, asi que no hay nada que adivinar.
+            if (IsUp(kc) && BackHeld()) { ToggleSearch(); return true; }
 
             if (searchOpen)
             {
@@ -8682,6 +8710,86 @@ namespace Rocola
             // principio, asi que el estado solo se escribe en eventos -> cero escrituras periodicas a disco)
         }
 
+        // LA FRASE QUE TOCA AHORA MISMO. Una sola, la del siguiente paso, nunca dos. El orden importa: lo
+        // primero de todo es la moneda, porque sin credito no se puede hacer NADA y es el paso donde mas
+        // gente se atasca (no hay forma de adivinar que hay que pagar antes de escoger).
+        private string GuiaTexto(out int boton)
+        {
+            boton = 0;
+            if (credits <= 0) { boton = 2; return "Mete una moneda para poner tu cancion"; }
+            if (searchOpen)
+            {
+                if (searchOverlay != null && searchOverlay.FocusResults) { boton = 1; return "Aprieta el VERDE para poner esta cancion"; }
+                boton = 1; return "Escribe el nombre y aprieta el VERDE";
+            }
+            if (panelSongs != null && panelSongs.Visible) { boton = 1; return "Aprieta el VERDE para poner esta cancion"; }
+            boton = 1; return "Muevete hasta un disco y aprieta el VERDE";
+        }
+
+        // ¿TOCA ENSENAR LA GUIA AHORA MISMO? Solo si alguien esta delante y lleva un rato sin apretar nada.
+        // Ni en reposo (no hay nadie), ni con video a pantalla completa, ni mientras carga la biblioteca, ni
+        // con los ajustes abiertos: en ninguno de esos casos hay un siguiente paso que decir.
+        private bool GuiaToca()
+        {
+            if (attractOn || videoFull || libBuilding) return false;
+            if (lblConfig != null && lblConfig.Visible) return false;
+            return (Environment.TickCount - lastInputTick) >= GuiaDudaMs;
+        }
+
+        // Decide si la guia se ve y que dice. Se llama en cada latido de la animacion.
+        private void TickGuia()
+        {
+            if (guiaView == null) return;
+            if (!GuiaToca()) { guiaView.Visible = false; return; }
+
+            int boton; string txt = GuiaTexto(out boton);
+            if (guiaView.Texto != txt || guiaView.Boton != boton || !guiaView.Visible)
+            {
+                guiaView.Texto = txt; guiaView.Boton = boton;
+                guiaView.Visible = true;
+                LayoutGuia();
+                guiaView.Invalidate();
+            }
+        }
+        // DONDE VA LA CASILLA DE BUSCAR en la fila de arriba: en el MEDIO DE LA PANTALLA, que es donde el
+        // ojo la busca. Si centrada pisaria las instrucciones se corre a la derecha lo justo, y si aun asi no
+        // cabe antes del encabezado se pega al final del hueco. 'minX' es donde acaban las instrucciones y
+        // 'derecha' donde acaba la barra.
+        private static int SitioBusca(int W, int busW, int minX, int derecha)
+        {
+            int x = minX;
+            int centrado = (W - busW) / 2;
+            if (centrado > x) x = centrado;
+            if (x + busW > derecha) { x = derecha - busW; if (x < minX) x = minX; }
+            return x;
+        }
+
+        // La guia va abajo, centrada, justo encima de la franja de lo que suena: es donde ya esta mirando el
+        // cliente (ahi se lee lo que suena) y no tapa la pared de discos.
+        private void LayoutGuia() { LayoutGuia(ClientSize.Width, ClientSize.Height); }
+        private void LayoutGuia(int W, int H)
+        {
+            if (guiaView == null || !guiaView.Visible) return;
+            int alto = H * 40 / 768; if (alto < 34) alto = 34; else if (alto > 66) alto = 66;
+            int an = GuiaView.Ancho(guiaView.Texto, guiaView.Boton, alto, FontFamily.GenericSansSerif);
+            // Si la frase no cabe entera, MEJOR NO SACARLA: una frase cortada a la mitad no ayuda a nadie y
+            // encima tapa. La rocola del bar va a 1024x768, donde cabe de sobra.
+            if (an < 60 || an > W - 40) { guiaView.Visible = false; return; }
+            guiaView.SetBounds((W - an) / 2, Math.Max(0, BotStripTop(H) - alto - 12), an, alto);
+            guiaView.BringToFront();
+        }
+
+        // Donde arranca la franja de abajo. No depende de la tarjeta grafica -es acomodo normal- y la guia
+        // la necesita en los dos perfiles, asi que vive aqui fuera.
+        private int BotStripTop(int h)
+        {
+            int t = (lblNowTop != null) ? lblNowTop.Top - 10 : (lblNow != null ? lblNow.Top - 10 : h - 104);   // la franja arranca justo encima de la tarjeta
+            if (t < h / 2) t = h / 2;
+            if (t > h - 8) t = h - 8;
+            if (t < 0) t = 0;   // pantalla de alto ridiculo (arrancando, o minimizada): nunca por delante del borde
+            return t;
+        }
+
 #if ROCOLA_GPU
         private static uint ToD3D(Color c) { return 0xFF000000u | ((uint)c.R << 16) | ((uint)c.G << 8) | (uint)c.B; }
 
@@ -8893,15 +9001,6 @@ namespace Rocola
         }
 
         // Donde EMPIEZA la franja de estado de abajo (la que va en su propia textura chica).
-        private int BotStripTop(int h)
-        {
-            int t = (lblNowTop != null) ? lblNowTop.Top - 10 : (lblNow != null ? lblNow.Top - 10 : h - 104);   // la franja arranca justo encima de la tarjeta
-            if (t < h / 2) t = h / 2;
-            if (t > h - 8) t = h - 8;
-            if (t < 0) t = 0;   // pantalla de alto ridiculo (arrancando, o minimizada): nunca por delante del borde
-            return t;
-        }
-
         // Reconstruye la textura PRINCIPAL de la UI SOLO si cambio algo (firma). Devuelve la version.
         // La textura mide LO QUE EL MODO NECESITA, no la pantalla completa: en NAVEGACION solo la franja superior
         // (instrucciones + letras + encabezado, ~140px) -> rehacerla y subirla al paginar cuesta ~7x menos que
@@ -8970,6 +9069,7 @@ namespace Rocola
                 else
                 {
                     DrawCtrlOverlay(g, helpBar);
+                    DrawCtrlOverlay(g, buscaView);
                     DrawCtrlOverlay(g, letterBar);
                     DrawCtrlOverlay(g, headerView);
                     DrawLabelOverlay(g, lblStatus);
@@ -8991,6 +9091,11 @@ namespace Rocola
             int w = ClientSize.Width, h = ClientSize.Height;
             if (w < 8 || h < 8) return uiBotVer;
             int top = BotStripTop(h);
+            // La guia va JUSTO ENCIMA de la franja: en vez de meterla en la textura grande de la pantalla
+            // -que en navegacion solo llega hasta las letras, y agrandarla hasta abajo costaria varios MB
+            // por cada rehecha-, la tira de abajo se estira un poco hacia arriba para llevarla. La tarjeta
+            // la pega pegada al borde de abajo con SU alto, asi que crecer hacia arriba sale gratis.
+            if (guiaView != null && guiaView.Visible && guiaView.Top - 6 < top) { top = guiaView.Top - 6; if (top < 0) top = 0; }
             int bh = h - top;
             long sig = UiBotSig();
             if (uiBotOverlay != null && uiBotOverlay.Width == w && uiBotOverlay.Height == bh && sig == uiBotLastSig) return uiBotVer;
@@ -9007,6 +9112,7 @@ namespace Rocola
                     g.SmoothingMode = SmoothingMode.AntiAlias;
                     g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;   // gris: ClearType deja flecos sobre transparente
                     g.TranslateTransform(0, -top);   // las etiquetas estan en coords del form; la tira empieza en 'top'
+                    if (guiaView != null && guiaView.Visible) DrawCtrlOverlay(g, guiaView);   // la frase del que duda, encima de la franja
                     DrawLabelOverlay(g, lblNowTop);   // 2a linea del titulo (vacia casi siempre: no dibuja nada)
                     DrawLabelOverlay(g, lblNow);
                     if (lblMejorada != null && lblMejorada.Visible) DrawLabelOverlay(g, lblMejorada);   // letrero MEJORADA (su brillo es un halo por quad, no rehace esta textura)
@@ -9061,6 +9167,16 @@ namespace Rocola
                         float cx, cy, r; int argb;
                         if (helpBar.GetFlashGlow(k, out cx, out cy, out r, out argb))
                         { buf[n].Cx = hx + cx; buf[n].Cy = hy + cy; buf[n].R = r; buf[n].Argb = (uint)argb; n++; }
+                    }
+                }
+                if (buscaView != null && buscaView.Visible && n < buf.Length)
+                {
+                    float bcx, bcy, br;
+                    if (buscaView.GetLatido(out bcx, out bcy, out br))
+                    {
+                        double p = 0.5 + 0.5 * Math.Sin(phase * 2.4);   // el mismo ritmo que por CPU
+                        buf[n].Cx = buscaView.Left + bcx; buf[n].Cy = buscaView.Top + bcy; buf[n].R = br;
+                        buf[n].Argb = (uint)Color.FromArgb((int)(30 + 70 * p), 90, 190, 255).ToArgb(); n++;
                     }
                 }
                 if (letterBar != null && letterBar.Visible)
@@ -9154,6 +9270,10 @@ namespace Rocola
                 // DESLIZAMIENTO al cambiar de letra se mueve solo. Sin esto, en modo GPU la textura no se
                 // rehacia: los numeros no aparecian hasta cambiar de letra y el deslizamiento no se veia.
                 sb = Mix(sb, letterBar.DatosSig());
+                // La casilla de BUSCAR entra por si esta abierta o cerrada, NO por su parpadeo: el parpadeo
+                // lo pone la tarjeta como halo aparte, y meterlo aqui obligaria a rehacer la textura entera
+                // veinticuatro veces por segundo.
+                if (buscaView != null) { sb = Mix(sb, buscaView.Visible); sb = Mix(sb, buscaView.Abierto); }
                 if (letterBar.AnimViva) sb = Mix(sb, (int)(letterBar.AnimPaso * 64f));
                 if (headerView != null)
                 {
@@ -9180,6 +9300,10 @@ namespace Rocola
             long sb = SigBase;
             sb = Mix(sb, ClientSize.Width); sb = Mix(sb, ClientSize.Height);
             if (attractOn) return Mix(sb, 'A');   // en atraccion la franja va limpia (transparente)
+            // La guia entra entera (que dice, que boton dibuja y donde esta): aparece y desaparece sola, y
+            // si no estuviera aqui la textura no se rehacia y no se veria nunca con tarjeta grafica.
+            if (guiaView != null && guiaView.Visible)
+            { sb = Mix(sb, 'G'); sb = Mix(sb, guiaView.Texto); sb = Mix(sb, guiaView.Boton); sb = Mix(sb, guiaView.Left); sb = Mix(sb, guiaView.Top); sb = Mix(sb, guiaView.Width); sb = Mix(sb, guiaView.Height); }
             if (lblNowTop != null) sb = Mix(sb, lblNowTop.Text);
             if (lblNow != null) sb = Mix(sb, lblNow.Text);
             if (lblMejorada != null && lblMejorada.Visible) { sb = Mix(sb, 'M'); sb = Mix(sb, lblMejorada.Left); sb = Mix(sb, lblMejorada.ForeColor.ToArgb()); }
@@ -9206,7 +9330,9 @@ namespace Rocola
             else { ProgressView pv = c as ProgressView; if (pv != null) pv.RenderContent(g);
             else { GeneroView gv = c as GeneroView; if (gv != null) gv.RenderContent(g);
             else { SongListView sl = c as SongListView; if (sl != null) sl.RenderContent(g);
-            else { SongPagerBar sp = c as SongPagerBar; if (sp != null) sp.RenderContent(g); } } } } } } }
+            else { SongPagerBar sp = c as SongPagerBar; if (sp != null) sp.RenderContent(g);
+            else { BuscaView bv = c as BuscaView; if (bv != null) bv.RenderContent(g, true);
+            else { GuiaView gu = c as GuiaView; if (gu != null) gu.RenderContent(g, true); } } } } } } } } }
             g.Restore(st);
         }
 
@@ -9401,6 +9527,12 @@ namespace Rocola
                 int hfs = helpBar.FlashSig();
                 if ((hfs != 0 || helpFlashPrev != 0) && helpBar.Visible && !albumGpuBg) helpBar.Invalidate();
                 helpFlashPrev = hfs;
+            }
+            TickGuia();
+            if (buscaView != null && buscaView.Visible)
+            {
+                buscaView.Phase = phase; buscaView.Abierto = searchOpen;
+                if (!albumGpuBg) buscaView.Invalidate();   // en GPU el latido es un halo aparte: la textura no se rehace
             }
             if (letterBar.Visible) { letterBar.Phase = phase; if (!albumGpuBg) letterBar.Invalidate(); }   // 24fps (CPU); en GPU el pulso de la letra es un halo por quad (FillUiGlows): la textura NO se rehace
             TickMejorada(albumGpuBg);   // brillo del letrero MEJORADA (dorado, DSEE espectral)
@@ -11554,7 +11686,9 @@ namespace Rocola
         // Barra de ayuda: instrucciones con FORMAS y COLORES de los botones fisicos. Sin nombres de teclas.
         private class HelpBar : Control
         {
-            public const int FBuscar = 0, FMover = 1, FEntrar = 2, FVolver = 3;   // simbolo a resaltar
+            // BUSCAR ya no esta aqui: tiene su propia casilla grande y parpadeante en medio de la fila, con
+            // los dos botones dibujados. Aqui se quedan los tres que se usan a cada rato.
+            public const int FMover = 0, FEntrar = 1, FVolver = 2;   // simbolo a resaltar
             private static readonly Color RedC = Color.FromArgb(228, 72, 72), GreenC = Color.FromArgb(72, 212, 112), YellowC = Color.FromArgb(242, 206, 72);
             private readonly InstrFlash flash = new InstrFlash();
 
@@ -11574,12 +11708,12 @@ namespace Rocola
             // Centro/radio de los 4 halos (Buscar/Mover/Entrar/Volver), guardados al maquetar. En GPU el destello
             // NO se hornea en la textura: lo dibuja la GPU como quad (GetFlashGlow) -> pulsar un boton (p.ej. al
             // PAGINAR rapido) ya no re-hornea ni re-sube la textura de UI ~10 veces por tecla.
-            private readonly float[] fgX = new float[4], fgY = new float[4], fgW = new float[4];
+            private readonly float[] fgX = new float[3], fgY = new float[3], fgW = new float[3];
             private void StoreGlow(int k, float leftX, float cy, float symW) { fgX[k] = leftX + symW / 2f; fgY[k] = cy; fgW[k] = symW * 0.9f + 6f; }
             public bool GetFlashGlow(int k, out float cx, out float cy, out float r, out int argb)
             {
                 cx = cy = r = 0f; argb = 0;
-                if (k < 0 || k > 3) return false;
+                if (k < 0 || k > 2) return false;
                 float lvl = flash.Level(k);
                 if (lvl <= 0.02f) return false;
                 cx = fgX[k]; cy = fgY[k]; r = fgW[k];
@@ -11587,6 +11721,28 @@ namespace Rocola
                 argb = Color.FromArgb((int)(lvl * 215f), c.R, c.G, c.B).ToArgb();   // alfa = brillo del destello; rgb = su color
                 return true;
             }
+            // LO QUE MIDE DE VERDAD. El acomodo le reservaba 400 px a ojo, y como sobraban, la casilla de
+            // BUSCAR quedaba corrida a la derecha en vez de en el centro de la pantalla. Se mide una sola vez
+            // por alto de fila (la letra es fija) y se guarda: esto se llama al acomodar, no al dibujar.
+            private static int anchoAlto = -1, anchoCache = -1;
+            public static int Ancho(int alto)
+            {
+                if (anchoAlto == alto) return anchoCache;
+                int d = Math.Min(20, alto - 8); if (d < 12) d = 12;
+                float gap = 7, grp = 20, x = 2;
+                using (Font f = new Font(FontFamily.GenericSansSerif, 9.5f, FontStyle.Bold))
+                using (Bitmap b = new Bitmap(1, 1))
+                using (Graphics g = Graphics.FromImage(b))
+                {
+                    x += d + 4;                                                       // la cruceta
+                    x += gap + g.MeasureString("Mover", f).Width + grp;
+                    x += d + gap + g.MeasureString("Entrar / Poner", f).Width + grp;
+                    x += d + gap + g.MeasureString("Volver", f).Width;
+                }
+                anchoAlto = alto; anchoCache = (int)x + 8;   // un pelin de aire al final
+                return anchoCache;
+            }
+
             public void RenderContent(Graphics g) { RenderContent(g, false); }
             // Dibuja la leyenda en un Graphics cualquiera (el control, o la textura de UI del modo GPU). El
             // llamador fija el TextRenderingHint: ClearType para pantalla; AntiAlias (gris) para la textura
@@ -11602,10 +11758,6 @@ namespace Rocola
                 if (hbFont == null) hbFont = new Font(FontFamily.GenericSansSerif, 9.5f, FontStyle.Bold);
                 Font f = hbFont;
                 float x = 2;
-                StoreGlow(FBuscar, x, cy, d * 2 + 4);
-                if (!forGpu) GlowAround(g, x, cy, d * 2 + 4, flash.Level(FBuscar), flash.Col(FBuscar));   // BUSCAR = 2 puntos
-                x = CtrlDot(g, x, cy, d, RedC) + 4; x = CtrlDot(g, x, cy, d, GreenC);
-                x = CtrlTxt(g, f, "Buscar", x + gap, cy, txt) + grp;
                 StoreGlow(FMover, x, cy, d + 4);
                 if (!forGpu) GlowAround(g, x, cy, d + 4, flash.Level(FMover), flash.Col(FMover));        // MOVER = cruceta (color segun direccion)
                 x = CtrlPad(g, x, cy, d + 4);
@@ -13220,6 +13372,193 @@ namespace Rocola
         // Un dato suelto dentro de una capsula: la etiqueta en gris y el numero en el color que le toca. Antes
         // eran dos textos sueltos apilados en una esquina; en una capsula se leen como una UNIDAD y de lejos se
         // distingue el numero, que es lo unico que el cliente necesita ver.
+        // ==========  LA GUIA QUE APARECE SOLA  ==========
+        //
+        // El problema de verdad de una rocola en un bar no es que falten instrucciones: es que NADIE LAS
+        // LEE. Estan arriba, en chiquito, en una fila de simbolos, y el cliente que llega de noche, con
+        // prisa y con los amigos mirando, no se pone a estudiarlas. Se queda parado, no sabe que apretar, y
+        // se va sin poner su cancion. Eso es dinero que no entra.
+        //
+        // Asi que en vez de explicar, esto ESPERA A QUE DUDE. Si pasan unos segundos sin que apriete nada,
+        // aparece abajo UNA sola frase grande con lo unico que tiene que hacer AHORA MISMO -no un manual,
+        // una frase- y al lado el boton que tiene que apretar, dibujado. En cuanto aprieta cualquier cosa,
+        // desaparece.
+        //
+        // Al que ya sabe usarla no le estorba jamas, porque el que sabe no duda: aprieta.
+        private class GuiaView : Control
+        {
+            public string Texto = "";
+            public int Boton = 0;        // 0 = ninguno, 1 = verde (poner), 2 = moneda
+            private Font fTxt; private float fAlto = -1f;
+
+            public GuiaView()
+            {
+                this.SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.SupportsTransparentBackColor, true);
+                this.BackColor = Color.Transparent;
+                this.TabStop = false;
+                this.Visible = false;
+            }
+
+            // Lo que mide con ese texto y ese alto (el acomodo la centra).
+            public static int Ancho(string texto, int boton, int alto, FontFamily fam)
+            {
+                if (texto == null || texto.Length == 0) return 0;
+                using (Font f = new Font(fam, Math.Max(9f, alto * 0.40f), FontStyle.Bold))
+                {
+                    Size sz = TextRenderer.MeasureText(texto, f, new Size(9999, 99), TextFormatFlags.NoPadding);
+                    int d = (int)(alto * 0.52f); if (d < 14) d = 14; if (d > 34) d = 34;
+                    return sz.Width + (boton != 0 ? d + 12 : 0) + 34;
+                }
+            }
+
+            protected override void OnPaint(PaintEventArgs e)
+            {
+                e.Graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+                RenderContent(e.Graphics, false);
+            }
+            public void RenderContent(Graphics g) { RenderContent(g, false); }
+            public void RenderContent(Graphics g, bool forGpu)
+            {
+                int w = Width, h = Height;
+                if (w < 40 || h < 14 || Texto == null || Texto.Length == 0) return;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                if (fTxt == null || fAlto != h)
+                { if (fTxt != null) fTxt.Dispose(); fTxt = new Font(FontFamily.GenericSansSerif, Math.Max(9f, h * 0.40f), FontStyle.Bold); fAlto = h; }
+
+                Rectangle r = new Rectangle(0, 0, w - 1, h - 1);
+                using (GraphicsPath gp = RoundedPath(r, Math.Min(16, h / 2)))
+                {
+                    using (SolidBrush sb = new SolidBrush(Color.FromArgb(190, 16, 22, 44))) g.FillPath(sb, gp);
+                    using (Pen pn = new Pen(Color.FromArgb(150, 255, 214, 110), 2f)) g.DrawPath(pn, gp);
+                }
+                int cy = h / 2, d = (int)(h * 0.52f); if (d < 14) d = 14; if (d > 34) d = 34;
+                Size ts = TextRenderer.MeasureText(g, Texto, fTxt, new Size(9999, 99), TextFormatFlags.NoPadding);
+                int total = ts.Width + (Boton != 0 ? d + 12 : 0);
+                int x = (w - total) / 2;
+                TextRenderer.DrawText(g, Texto, fTxt, new Rectangle(x, 0, ts.Width + 2, h),
+                                      Color.FromArgb(255, 245, 210), TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+                if (Boton == 1) CtrlDot(g, x + ts.Width + 12, cy, d, Color.FromArgb(72, 212, 112));   // el VERDE
+                else if (Boton == 2) Moneda(g, x + ts.Width + 12, cy, d);
+            }
+
+            // Una moneda, para el que no sabe ni por donde empezar.
+            private static void Moneda(Graphics g, float x, int cy, int d)
+            {
+                Color oro = Color.FromArgb(255, 205, 90);
+                using (SolidBrush sb = new SolidBrush(Color.FromArgb(210, oro))) g.FillEllipse(sb, x, cy - d / 2f, d, d);
+                using (Pen pn = new Pen(Color.FromArgb(255, 150, 110, 30), Math.Max(1.5f, d * 0.09f))) g.DrawEllipse(pn, x, cy - d / 2f, d, d);
+                using (Pen pn = new Pen(Color.FromArgb(180, 120, 85, 20), Math.Max(1.5f, d * 0.10f)))
+                    g.DrawLine(pn, x + d * 0.5f, cy - d * 0.22f, x + d * 0.5f, cy + d * 0.22f);
+            }
+        }
+
+        // ==========  LA CASILLA DE BUSCAR  ==========
+        //
+        // Antes, para buscar por nombre habia que apretar ROJO y VERDE A LA VEZ. Nadie lo descubria: no
+        // estaba escrito en ninguna parte que fuera un combo, y el cliente que llega por primera vez -de
+        // noche, con prisa y con los amigos mirando- no se pone a probar parejas de botones. O sea que la
+        // forma MAS RAPIDA de poner una cancion -saber el nombre y escribirlo- era la unica que nadie usaba.
+        //
+        // Ahora hay una casilla grande en medio de la parte de arriba, con una lupa, que PARPADEA en azul
+        // para que se vea desde lejos, y AL LADO estan dibujados los dos botones que hay que apretar: el
+        // rojo, un mas, y la flecha de arriba. No hay nada que leer ni que adivinar: se ve que son dos y
+        // se ve cuales son.
+        private class BuscaView : Control
+        {
+            public bool Abierto = false;      // con el buscador abierto la casilla se queda encendida fija
+            public double Phase = 0;          // para el parpadeo
+            private Font fTxt; private float fAlto = -1f;
+
+            public BuscaView()
+            {
+                this.SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.SupportsTransparentBackColor, true);
+                this.BackColor = Color.Transparent;
+                this.TabStop = false;
+            }
+
+            // Lo que mide de ancho con ese alto. El acomodo necesita saberlo ANTES de dibujar nada.
+            public static int Ancho(int alto)
+            {
+                int d = Sim(alto);
+                // lupa + hueco + "BUSCAR" + hueco + rojo + mas + flecha, con aire a los lados
+                return (int)(d * 1.15f) + 8 + (int)(alto * 2.05f) + 12 + d + 10 + d + 8 + (int)(d * 0.9f) + 22;
+            }
+            private static int Sim(int alto) { int d = (int)(alto * 0.52f); if (d < 12) d = 12; if (d > 30) d = 30; return d; }
+
+            protected override void OnPaint(PaintEventArgs e)
+            {
+                e.Graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+                RenderContent(e.Graphics);
+            }
+
+            public void RenderContent(Graphics g) { RenderContent(g, false); }
+            // forGpu=true: se dibuja a brillo FIJO. El parpadeo lo pone la tarjeta grafica como un halo
+            // aparte (FillUiGlows); si parpadeara aqui, habria que rehacer y volver a subir la textura de la
+            // interfaz entera veinticuatro veces por segundo, que es justo lo que no se puede hacer.
+            public void RenderContent(Graphics g, bool forGpu)
+            {
+                int w = Width, h = Height;
+                if (w < 30 || h < 12) return;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                if (fTxt == null || fAlto != h)
+                { if (fTxt != null) fTxt.Dispose(); fTxt = new Font(FontFamily.GenericSansSerif, Math.Max(8f, h * 0.30f), FontStyle.Bold); fAlto = h; }
+
+                // EL PARPADEO. Con el buscador cerrado late para llamar la atencion; con el buscador abierto
+                // se queda fija y encendida, porque ya cumplio su trabajo y parpadeando distraeria.
+                double lat = (Abierto || forGpu) ? 1.0 : (0.45 + 0.55 * (0.5 + 0.5 * Math.Sin(Phase * 2.4)));
+                Color azul = Color.FromArgb(90, 190, 255);
+                Rectangle r = new Rectangle(0, 0, w - 1, h - 1);
+                using (GraphicsPath gp = RoundedPath(r, Math.Min(14, h / 2)))
+                {
+                    using (SolidBrush sb = new SolidBrush(Color.FromArgb((int)(28 + 58 * lat), azul))) g.FillPath(sb, gp);
+                    using (Pen pn = new Pen(Color.FromArgb((int)(110 + 145 * lat), azul), 2f)) g.DrawPath(pn, gp);
+                }
+
+                int cy = h / 2, d = Sim(h);
+                float x = 11;
+                Color tinta = Color.FromArgb((int)(170 + 85 * lat), 235, 245, 255);
+                x = Lupa(g, x, cy, (int)(d * 1.15f), tinta);
+                x = CtrlTxt(g, fTxt, "BUSCAR", x + 8, cy, tinta) + 12;
+                // Y los dos botones que hay que apretar, dibujados tal cual son.
+                x = CtrlDot(g, x, cy, d, Color.FromArgb(228, 72, 72)) + 4;
+                x = CtrlTxt(g, fTxt, "+", x, cy, tinta) + 6;
+                Flecha(g, x, cy, (int)(d * 0.9f), Color.FromArgb(228, 72, 72));
+            }
+
+            // Donde va el halo del parpadeo cuando lo dibuja la tarjeta grafica (coordenadas dentro del control).
+            public bool GetLatido(out float cx, out float cy, out float r)
+            {
+                cx = Width / 2f; cy = Height / 2f; r = Width * 0.55f;
+                return !Abierto && Width > 30 && Height > 12;
+            }
+
+            // La lupa: un aro y su mango.
+            private static float Lupa(Graphics g, float x, int cy, int d, Color c)
+            {
+                float aro = d * 0.72f;
+                using (Pen pn = new Pen(c, Math.Max(2f, d * 0.13f)))
+                {
+                    g.DrawEllipse(pn, x, cy - aro / 2f, aro, aro);
+                    float m = aro * 0.72f;
+                    g.DrawLine(pn, x + aro * 0.85f, cy + aro * 0.35f, x + aro * 0.85f + m * 0.5f, cy + aro * 0.35f + m * 0.5f);
+                }
+                return x + d;
+            }
+
+            // La flecha de ARRIBA, en una tecla redondeada: se lee como un boton, no como un adorno.
+            private static void Flecha(Graphics g, float x, int cy, int d, Color c)
+            {
+                Rectangle k = new Rectangle((int)x, cy - d / 2, d, d);
+                using (GraphicsPath gp = RoundedPath(k, Math.Max(3, d / 4)))
+                {
+                    using (SolidBrush sb = new SolidBrush(Color.FromArgb(70, c))) g.FillPath(sb, gp);
+                    using (Pen pn = new Pen(Color.FromArgb(215, c), 1.6f)) g.DrawPath(pn, gp);
+                }
+                float cx = x + d / 2f, t = d * 0.30f, an = d * 0.24f;
+                CtrlTri(g, c, new PointF(cx, cy - t), new PointF(cx - an, cy + t * 0.62f), new PointF(cx + an, cy + t * 0.62f));
+            }
+        }
+
         private class PastillaView : Control
         {
             public string Etiqueta = "", Valor = "";
@@ -13995,6 +14334,21 @@ namespace Rocola
             // se hornea en la textura: lo dibuja la GPU como quad (GetHintGlow) para que el desvanecido no re-suba la textura.
             private readonly float[] hgCx = new float[3], hgCy = new float[3], hgR = new float[3];
             private void StoreHintGlow(int k, float leftX, float cy, float symW) { hgCx[k] = leftX + symW / 2f; hgCy[k] = cy; hgR[k] = symW * 0.9f + 6f; }
+            // La flecha de ARRIBA en una tecla redondeada, igual que en la casilla de BUSCAR de la fila de
+            // arriba: el cliente ve el MISMO dibujo antes de entrar y dentro, asi que no tiene que aprender
+            // dos cosas.
+            private static float FlechaArriba(Graphics g, float x, int cy, int d, Color c)
+            {
+                Rectangle k = new Rectangle((int)x, cy - d / 2, d, d);
+                using (GraphicsPath gp = RoundedPath(k, Math.Max(3, d / 4)))
+                {
+                    using (SolidBrush sb = new SolidBrush(Color.FromArgb(70, c))) g.FillPath(sb, gp);
+                    using (Pen pn = new Pen(Color.FromArgb(215, c), 1.6f)) g.DrawPath(pn, gp);
+                }
+                float cx = x + d / 2f, t = d * 0.30f, an = d * 0.24f;
+                CtrlTri(g, c, new PointF(cx, cy - t), new PointF(cx - an, cy + t * 0.62f), new PointF(cx + an, cy + t * 0.62f));
+                return x + d;
+            }
             public bool GetHintGlow(int k, out float cx, out float cy, out float r, out int argb)
             {
                 cx = cy = r = 0f; argb = 0;
@@ -14360,9 +14714,14 @@ namespace Rocola
                         if (!forGpu) GlowAround(g, hx, hcy, hd, hintFlash.Level(SPoner), hintFlash.Col(SPoner));        // PONER/ELEGIR = punto verde
                         hx = CtrlDot(g, hx, hcy, hd, SGreen);
                         hx = CtrlTxt(g, hf, "Poner / Elegir", hx + hgap, hcy, htx) + hgrp;
+                        // CERRAR = los MISMOS dos botones con los que se abrio (rojo + arriba). Antes era
+                        // rojo + verde, que ademas chocaba con el verde de "poner": el cliente que queria
+                        // salir apretaba el verde y ponia una cancion sin querer.
                         StoreHintGlow(SCerrar, hx, hcy, hd * 2 + 3);
-                        if (!forGpu) GlowAround(g, hx, hcy, hd * 2 + 3, hintFlash.Level(SCerrar), hintFlash.Col(SCerrar));   // CERRAR = 2 puntos
-                        hx = CtrlDot(g, hx, hcy, hd, SRed) + 3; hx = CtrlDot(g, hx, hcy, hd, SGreen);
+                        if (!forGpu) GlowAround(g, hx, hcy, hd * 2 + 3, hintFlash.Level(SCerrar), hintFlash.Col(SCerrar));   // CERRAR = rojo + arriba
+                        hx = CtrlDot(g, hx, hcy, hd, SRed) + 3;
+                        hx = CtrlTxt(g, hf, "+", hx, hcy, htx) + 3;
+                        hx = FlechaArriba(g, hx, hcy, hd, SRed);
                         hx = CtrlTxt(g, hf, "Cerrar", hx + hgap, hcy, htx);
                     }
                 }
@@ -14514,6 +14873,21 @@ namespace Rocola
                     }
                 }
                 Font use = (k.Kind == KKind.Char) ? fChar : fSp;
+                // EN LA TECLA DE BORRAR, EL BOTON ROJO AL LADO. El rojo borra una letra sin tener que ir
+                // hasta esta tecla, pero eso no lo sabe nadie: es un atajo invisible. Dibujando el boton
+                // DENTRO de la tecla que hace lo mismo, el cliente lo entiende sin que nadie se lo diga, y
+                // de paso deja de pasearse por el teclado para borrar una letra mal puesta.
+                // El boton va DEBAJO de la palabra, no al lado: "BORRAR" ya llena la tecla de lado a lado, y
+                // la tecla es alta de sobra. Asi el boton sale grande -que es lo que hay que ver desde la
+                // silla- sin apretujar nada.
+                if (k.Kind == KKind.Back && kr.Width > 70 && kr.Height > 56)
+                {
+                    int d = kr.Height / 4; if (d > 34) d = 34;
+                    TextRenderer.DrawText(g, k.Label, use, new Rectangle(kr.X, kr.Y, kr.Width, kr.Height - d - 6),
+                                          Color.White, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+                    CtrlDot(g, kr.X + (kr.Width - d) / 2f, kr.Bottom - 8 - d / 2, d, Color.FromArgb(228, 72, 72));
+                    return;
+                }
                 TextRenderer.DrawText(g, k.Label, use, kr, Color.White, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
             }
 

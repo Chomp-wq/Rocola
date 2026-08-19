@@ -108,6 +108,33 @@ class BusMov
         return b;
     }
 
+    // La tira del aviso de arriba (Mover / Poner / Cerrar), con un poco de aire: son las mismas medidas
+    // que usa el buscador al dibujarla.
+    static Rectangle ZonaAviso(int w)
+    {
+        const int M = 30;
+        return new Rectangle(M - 4, M + 72 - 4, w - 2 * M + 8, 26 + 8);
+    }
+    // Y la tecla de BORRAR, preguntandosela al propio buscador (nada de medidas a mano: si el teclado se
+    // reacomoda, esto sigue apuntando a la tecla correcta).
+    static Rectangle ZonaBorrar(Control so, Type tso)
+    {
+        FieldInfo fRows = tso.GetField("rows", BindingFlags.Instance | BindingFlags.NonPublic);
+        if (fRows == null) return Rectangle.Empty;
+        IEnumerable filas = (IEnumerable)fRows.GetValue(so);
+        foreach (object fila in filas)
+            foreach (object k in (IEnumerable)fila)
+            {
+                Type tk = k.GetType();
+                object kind = tk.GetField("Kind").GetValue(k);
+                if (kind.ToString() != "Back") continue;
+                RectangleF r = (RectangleF)tk.GetField("R").GetValue(k);
+                Rectangle rr = Rectangle.Round(r); rr.Inflate(3, 3);
+                return rr;
+            }
+        return Rectangle.Empty;
+    }
+
     static int Main()
     {
         Assembly aV = Assembly.LoadFrom("rocola_prev.exe");   // como estaba antes de acelerar el dibujo
@@ -138,10 +165,19 @@ class BusMov
                     hayEnMemoria = true;                     // "ya esta en memoria": los dos ven la misma caratula
                     // Se compara el dibujo SIN el fondo estrellado: ese fondo se siembra al azar en cada
                     // arranque, asi que dos programas distintos nunca lo tienen igual y no se puede comparar.
-                    // Todo lo que se ha tocado (tarjetas, pastillas, rotulos, teclado) SI entra aqui.
+                    // Todo lo que se acelero (tarjetas, pastillas, rotulos, teclado) SI entra aqui.
                     using (Bitmap bv = Pinta(sv, tv, w, h, true))
                     using (Bitmap bn = Pinta(sn, tn, w, h, true))
                     {
+                        // DOS SITIOS QUEDAN FUERA, y no por comodidad: son los dos unicos que se redibujaron
+                        // A PROPOSITO despues, para que el cliente que no sabe usar la rocola pueda salir del
+                        // buscador y borrar una letra. El aviso de arriba dice "Cerrar" con el ROJO y la
+                        // FLECHA ARRIBA (antes rojo y verde, y el verde es PONER: el que queria salir ponia
+                        // una cancion sin querer), y la tecla de BORRAR lleva dibujado debajo el boton ROJO,
+                        // que hace lo mismo. Esos dos se ven DISTINTOS a proposito; todo lo demas -que es lo
+                        // que esta bateria vigila- tiene que seguir igual al pixel.
+                        Rectangle aviso = ZonaAviso(w);
+                        Rectangle borrar = ZonaBorrar(sn, tn);
                         // Un pixel "distinto" solo cuenta si se mueve MAS DE UN NIVEL de 255. Dibujar el
                         // fondo de la tarjeta aparte y pegarlo mezcla el color en dos pasos en vez de uno, y
                         // eso deja diferencias de redondeo de una unidad en el borde suavizado. Un nivel de
@@ -150,6 +186,7 @@ class BusMov
                         for (int y = 0; y < h; y++)
                             for (int x = 0; x < w; x++)
                             {
+                                if (aviso.Contains(x, y) || borrar.Contains(x, y)) continue;
                                 Color ca = bv.GetPixel(x, y), cb = bn.GetPixel(x, y);
                                 if (ca.ToArgb() == cb.ToArgb()) continue;
                                 tocados++;
