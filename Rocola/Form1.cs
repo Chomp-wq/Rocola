@@ -2601,7 +2601,7 @@ namespace Rocola
             if (gpuPanel != null && gpuPanel.Visible) return;   // el panel GPU (pantalla completa) ya cubre todo; no gastes CPU pintando el cielo detras
 #endif
             formStars.SkyOffsetX = 0; formStars.SkyOffsetY = 0; formStars.SkyFullW = w; formStars.SkyFullH = h;
-            formStars.SkyMid = SkyColorMid(bgAccent);
+            formStars.SkyMid = SkyColorMid(bgAccent); formStars.Acento = bgAccent;
             formStars.Dim = bgDim;   // atenua TAMBIEN las franjas de arriba/abajo en sincronia con la rejilla (una sola pieza)
             formStars.DrawCached(g, w, h, SkyColor(bgAccent), SkyColor2(bgAccent));   // cielo en degradado CONTINUO; etiquetas y mini-cubo transparentes encima
         }
@@ -2615,6 +2615,14 @@ namespace Rocola
 
         // Cielo del fondo: casi negro con un toque del color del genero (arranca oscuro como el modo
         // atraccion, pero cambia de tinte segun lo que suena).
+        // EL COLOR DE LAS NEBULOSAS: el del genero llevado a medias con un violeta azulado. El del genero a
+        // secas es demasiado terroso para una nebulosa; mezclado, se sigue notando de que color va la cancion
+        // pero parece cielo. La misma cuenta que hace la version por CPU.
+        private static Color ColorNebulosa(Color accent)
+        {
+            return Color.FromArgb(255, (accent.R + 140) / 2, (accent.G + 120) / 2, (accent.B + 255) / 2);
+        }
+
         private static Color SkyColor(Color accent)
         {
             // ARRIBA del cielo: casi negro (apenas un dejo del genero). Se oscurece hacia el cenit.
@@ -8509,7 +8517,7 @@ namespace Rocola
                 uiOverlaySig = SigNada;                     // fuerza reconstruir la textura de UI
                 gpuPanel.AlbumRect = albumView.Bounds;
                 gpuPanel.Bounds = new Rectangle(0, 0, ClientSize.Width, ClientSize.Height);   // PANTALLA COMPLETA
-                gpuPanel.SkyTop = ToD3D(SkyColor(bgAccent)); gpuPanel.SkyMid = ToD3D(SkyColorMid(bgAccent)); gpuPanel.SkyBot = ToD3D(SkyColor2(bgAccent));
+                gpuPanel.SkyTop = ToD3D(SkyColor(bgAccent)); gpuPanel.SkyMid = ToD3D(SkyColorMid(bgAccent)); gpuPanel.SkyBot = ToD3D(SkyColor2(bgAccent)); gpuPanel.NebColor = ToD3D(ColorNebulosa(bgAccent));
                 gpuPanel.Visible = true; gpuPanel.BringToFront();
                 if (gpuPanel.StartGpu())
                 {
@@ -9082,7 +9090,7 @@ namespace Rocola
                 if (attractOn)   // atraccion: cielo nocturno fijo (sin musica, no sigue al genero)
                 { gpuPanel.SkyTop = 0xFF06081Au; gpuPanel.SkyMid = 0xFF0C0E28u; gpuPanel.SkyBot = 0xFF12143Au; }
                 else
-                { gpuPanel.SkyTop = ToD3D(SkyColor(bgAccent)); gpuPanel.SkyMid = ToD3D(SkyColorMid(bgAccent)); gpuPanel.SkyBot = ToD3D(SkyColor2(bgAccent)); }   // el degradado sigue al genero
+                { gpuPanel.SkyTop = ToD3D(SkyColor(bgAccent)); gpuPanel.SkyMid = ToD3D(SkyColorMid(bgAccent)); gpuPanel.SkyBot = ToD3D(SkyColor2(bgAccent)); gpuPanel.NebColor = ToD3D(ColorNebulosa(bgAccent)); }   // el degradado sigue al genero
             }
 #endif
             if (progress != null) progress.Accent = bgAccent;   // ESTETICA: la barra de progreso sigue el color del genero
@@ -10224,7 +10232,11 @@ namespace Rocola
             // y el PUNTO redondo del polvo del fondo, que mide dos o tres pixeles y ahi una silueta no seria
             // una silueta, seria una mancha con pelusa. Quien es quien lo dice 'Kind', que ya lo decia.
             internal const int FormaEstrella = 0, FormaPunto = 1;
-            private struct Star { public float X, Y; public int Size, Kind; public byte R, G, B; public float Tint, Off, Spd; public byte Band; }   // Band: 0=graves,1=medios,2=agudos (a que frecuencia late)
+            // Bri: lo brillante que es, de 0 a 255, en una escala CONTINUA. Antes solo habia tres escalones
+            // -grande, mediana, polvo- y por eso el cielo se veia hecho de tres cosas repetidas; un cielo de
+            // verdad tiene un punado de estrellas fuertes y cientos que apenas se adivinan.
+            // Rayos: si lleva las cuatro rayitas cruzadas. Las llevan MUY pocas (ver Ensure).
+            private struct Star { public float X, Y; public int Size, Kind; public byte R, G, B, Bri; public bool Rayos; public float Tint, Off, Spd; public byte Band; }   // Band: 0=graves,1=medios,2=agudos
             private struct Shoot { public bool On; public float X, Y, VX, VY; public float Life, MaxLife; }
             private Star[] stars;
             private int sw = -1, sh = -1;
@@ -10245,7 +10257,7 @@ namespace Rocola
                 Color.FromArgb(225, 165, 255)         // 7 violeta/rosa
             };
             private static readonly object glowLock = new object();
-            private readonly PointF[] spk = new PointF[10];   // ESTETICA: buffer reusable de la estrella (sin asignar por estrella)
+            private readonly PointF[] spk = new PointF[4];   // buffer reusable de las rayitas (sin asignar por estrella)
             private Shoot[] shoots = new Shoot[2];
             private int nextShoot = 0, lastTick = 0;
             // TITILEO por CUADROS HORNEADOS: K capas con el MISMO patron de estrellas a distinto brillo.
@@ -10271,6 +10283,7 @@ namespace Rocola
             private int FullW(int w) { return SkyFullW > w ? SkyFullW : w; }   // ancho de pantalla completa (>= la ventana); si no se fijo, la ventana ES la pantalla
             private int FullH(int h) { return SkyFullH > h ? SkyFullH : h; }
             public Color SkyMid = Color.Empty;                            // color INTERMEDIO (azul noche); si Empty -> 2 paradas (punto medio)
+            public Color Acento = Color.Empty;                            // el color del GENERO que suena: es con el que se tinen las nebulosas
             private LinearGradientBrush skyBrush;                         // pincel de cielo en DEGRADADO (cacheado, ligado al genero)
             private int gbW = -1, gbOff = -99999, gbFull = -1, gbTop = 0, gbMid = 0, gbBot = 0;
             private Bitmap skyCache;                                       // RENDIMIENTO: cielo (degradado) HORNEADO a bitmap; se copia por cuadro en vez de rellenar el degradado cada vez
@@ -10366,30 +10379,36 @@ namespace Rocola
                 return bmp;
             }
 
-            // LA ESTRELLA DE CINCO PUNTAS de toda la vida, con la punta hacia arriba. Es la silueta que
-            // TODO el mundo dibuja cuando le dicen "una estrella", y es la que pega con el resto de la
-            // rocola; las de antes -un destello de cuatro puntas y una rafaga de ocho rayos- se leian mas
-            // como chispas o copos de nieve que como estrellas.
+            // LAS CUATRO RAYITAS CRUZADAS de las estrellas mas brillantes. No las hace la estrella: las hace
+            // el diafragma de la camara, y son justo lo que hace que una foto del cielo parezca una foto.
             //
-            // Los diez vertices salen de dos tablas ya calculadas: aqui solo hay una multiplicacion y una
-            // suma por vertice, ni un seno ni un coseno. Se dibujan muchas estrellas en cada cuadro.
-            private const float EstrellaDentro = 0.45f;   // radio interior: mas alto = brazos mas gordos
-            private static readonly float[] EstUx = new float[10], EstUy = new float[10];
-            static Starfield()
+            // Las lleva un punado y nada mas -las que marca Ensure-, porque repartidas por todas el cielo
+            // parece purpurina. Tres rombos encajados de menos a mas cortos y mas opacos: sale una raya que
+            // se afila hacia fuera sin tener que degradar nada.
+            private void DrawRayos(Graphics g, SolidBrush b, float px, float py, float R, Color col, float brillo)
             {
-                for (int k = 0; k < 10; k++)
+                float largo = R * 4.2f, ancho = R * 0.22f;
+                for (int paso = 0; paso < 3; paso++)
                 {
-                    double ang = -Math.PI / 2.0 + k * Math.PI / 5.0;   // arranca ARRIBA y va alternando punta/valle
-                    float rad = ((k & 1) == 0) ? 1f : EstrellaDentro;
-                    EstUx[k] = (float)Math.Cos(ang) * rad;
-                    EstUy[k] = (float)Math.Sin(ang) * rad;
+                    float L = largo * (1f - paso * 0.30f), A = ancho * (1f + paso * 1.1f);
+                    int alfa = (int)((34 + paso * 26) * brillo); if (alfa > 120) alfa = 120; if (alfa < 1) continue;
+                    b.Color = Color.FromArgb(alfa, col);
+                    spk[0] = new PointF(px - L, py); spk[1] = new PointF(px, py - A); spk[2] = new PointF(px + L, py); spk[3] = new PointF(px, py + A);
+                    g.FillPolygon(b, spk);
+                    spk[0] = new PointF(px, py - L); spk[1] = new PointF(px + A, py); spk[2] = new PointF(px, py + L); spk[3] = new PointF(px - A, py);
+                    g.FillPolygon(b, spk);
                 }
             }
-            private void DrawEstrella(Graphics g, Brush b, int px, int py, int R)
+            // El NUCLEO: chiquito y tirando a blanco. Es lo que hace que una estrella "queme" en vez de
+            // parecer una pelusa: el color vive en el halo, y el centro casi siempre se ve blanco.
+            private void DrawNucleo(Graphics g, SolidBrush b, float px, float py, float R, int cr, int cg, int cb, int a)
             {
-                if (R < 2) R = 2;
-                for (int k = 0; k < 10; k++) spk[k] = new PointF(px + R * EstUx[k], py + R * EstUy[k]);
-                g.FillPolygon(b, spk);
+                int nr = cr + 70; if (nr > 255) nr = 255;
+                int ng = cg + 70; if (ng > 255) ng = 255;
+                int nb = cb + 70; if (nb > 255) nb = 255;
+                b.Color = Color.FromArgb(a, nr, ng, nb);
+                float d = R * 1.1f; if (d < 1.2f) d = 1.2f;
+                g.FillEllipse(b, px - d * 0.5f, py - d * 0.5f, d, d);
             }
 
             // CUANTO HALO lleva cada estrella, y no es el mismo para todas. Las GRANDES son las
@@ -10405,110 +10424,102 @@ namespace Rocola
                 if (stars != null && sw == w && sh == h && sBucket == bucket) return;
                 sw = w; sh = h; sBucket = bucket;
                 Random r = new Random((20260620 + bucket * 40503) & 0x7FFFFFFF);   // seed FIJO (bucket=0): el patron ya no rota por minuto (regenerarlo daba un tiron periodico)
-                int n = (int)(((double)(w * h) / 6500) * Density);   // MAS estrellas (densidad por area), escalada por Density
-                int lo = (int)(90 * Density); if (lo < 20) lo = 20;
-                // Tope de estrellas: este campo ahora cubre la PANTALLA COMPLETA (fondo + rejilla + interior de disco,
-                // todo una sola pieza), asi que el tope sube para que no se vea disperso en monitores grandes. En la
-                // rocola (1024x768) el conteo por area (~121) queda MUY por debajo del tope, asi que no cambia nada alli.
-                if (n < lo) n = lo; if (n > 340) n = 340;
-                Color[] pal = {
-                    Color.White, Color.White, Color.White,                                     // blancas (peso, salen mas)
-                    Color.FromArgb(170, 205, 255), Color.FromArgb(120, 170, 255),               // azul claro / azul
-                    Color.FromArgb(205, 165, 255), Color.FromArgb(255, 170, 230),               // violeta / rosa
-                    Color.FromArgb(255, 220, 140), Color.FromArgb(255, 165, 120),               // dorado / naranja
-                    Color.FromArgb(150, 255, 225), Color.FromArgb(255, 150, 150)                // verde-agua / rojo suave
+                // CUANTAS. Cuatro veces mas que antes, y casi todas diminutas: un cielo de verdad tiene un
+                // punado de estrellas fuertes y cientos que apenas se adivinan, y eso es lo que da sensacion
+                // de fondo. No cuesta lo que parece: el POLVO -tres cuartas partes- se hornea UNA vez en el
+                // cielo y no entra en las ocho capas de titileo (ver BakeStarFrame), asi que lo que se hornea
+                // ocho veces sigue siendo mas o menos lo mismo que antes.
+                int n = (int)(((double)(w * h) / 1700) * Density);
+                int lo = (int)(300 * Density); if (lo < 60) lo = 60;
+                if (n < lo) n = lo; if (n > 1400) n = 1400;
+
+                // DE QUE COLOR ES UNA ESTRELLA. Las de verdad van de blanco-azulado a blanco, amarillo y
+                // naranja: no hay estrellas verdes ni violetas, y la inmensa mayoria de las que se ven son
+                // casi blancas. Con la paleta de rotulador de antes el cielo parecia confeti.
+                Color[] palTemp = {
+                    Color.FromArgb(155, 176, 255), Color.FromArgb(170, 191, 255),   // 0-1  azul-blanco (las mas calientes)
+                    Color.FromArgb(202, 215, 255), Color.FromArgb(228, 235, 255),   // 2-3  blanco-azul
+                    Color.FromArgb(248, 247, 255), Color.FromArgb(255, 255, 250),   // 4-5  blancas
+                    Color.FromArgb(255, 244, 234), Color.FromArgb(255, 237, 205),   // 6-7  blanco-amarillo (como el Sol)
+                    Color.FromArgb(255, 218, 165), Color.FromArgb(255, 199, 142),   // 8-9  naranjas
+                    Color.FromArgb(255, 178, 128)                                    // 10   naranja hondo
                 };
-                // DOS PALETAS, y esto es a proposito (mismas que la version con tarjeta grafica). El polvo de
-                // estrellas -tres cuartas partes del cielo- se queda casi blanco: dandole color a todo, el
-                // fondo se vuelve un confeti y estorba para leer los discos, que es a lo que se viene. El
-                // color fuerte se lo quedan las POCAS grandes, que es donde se nota y donde queda bonito.
-                Color[] palPolvo = {
-                    Color.White, Color.White, Color.White,
-                    Color.FromArgb(220, 230, 255), Color.FromArgb(230, 220, 255), Color.FromArgb(255, 240, 220)
-                };
-                Color[] palViva = {
-                    Color.FromArgb(255, 200, 20), Color.FromArgb(255, 160, 50),                 // dorado / ambar
-                    Color.FromArgb(100, 160, 240), Color.FromArgb(70, 120, 210),                // azul aciano / azul hondo
-                    Color.FromArgb(255, 100, 160), Color.FromArgb(255, 160, 200),               // rosa / rosa claro
-                    Color.FromArgb(150, 120, 240), Color.FromArgb(200, 180, 255),               // violeta / lila
-                    Color.FromArgb(120, 240, 210), Color.White                                  // menta, y blanca
-                };
+
                 stars = new Star[n];
-                // ESTETICA: insetar las posiciones para que ninguna estrella (los brazos del destello + su
-                // glow) quede CORTADA en el borde del bitmap. El margen cubre el alcance del destello grande.
-                float mfx = 22f / w; if (mfx > 0.2f) mfx = 0.2f;
-                float mfy = 22f / h; if (mfy > 0.2f) mfy = 0.2f;
-                float minD2 = 20f * 20f;   // ESTETICA: separacion minima (px) para que NO se encimen unas con otras
+                // DONDE SE PONEN. Antes habia una separacion minima obligatoria de 20 px y hasta doce intentos
+                // buscando hueco: por eso el cielo salia espolvoreado con una regularidad de papel pintado. Un
+                // cielo de verdad tiene grumos, parejas y zonas enteras vacias. Ahora la mayoria caen alrededor
+                // de unos pocos centros y el resto sueltas, y se acabo la busqueda de hueco (que ademas era lo
+                // mas caro de armar el patron: hasta doce intentos por estrella recorriendo las ya puestas).
+                int nc = 7 + r.Next(4);
+                float[] ccx = new float[nc], ccy = new float[nc], ccr = new float[nc];
+                for (int c = 0; c < nc; c++)
+                {
+                    ccx[c] = (float)r.NextDouble(); ccy[c] = (float)r.NextDouble();
+                    ccr[c] = 0.06f + (float)r.NextDouble() * 0.13f;
+                }
+                int grandes = 0;
                 for (int i = 0; i < n; i++)
                 {
                     Star s = new Star();
-                    // Posicion con SEPARACION MINIMA: hasta 12 intentos buscando un hueco lejos de las ya puestas.
-                    float sx = mfx, sy = mfy;
-                    for (int attempt = 0; attempt < 12; attempt++)
+                    if (r.Next(100) < 68)
                     {
-                        sx = mfx + (float)r.NextDouble() * (1f - 2f * mfx);
-                        float yy = (float)r.NextDouble();
-                        if (QuietBands)   // adelgaza SUAVE hacia los bordes (abecedario arriba, estado abajo) sin cortar de golpe
-                        {
-                            float keep = 1f;
-                            if (yy < 0.12f) keep = yy / 0.12f;             // 0 en el borde de arriba -> densidad plena al llegar a los cubos
-                            else if (yy > 0.91f) keep = (1f - yy) / 0.09f; // densidad plena al salir de los cubos -> 0 en el borde de abajo
-                            if (keep < 1f && (float)r.NextDouble() > keep) yy = 0.12f + (float)r.NextDouble() * 0.79f;   // reubica al centro
-                        }
-                        sy = mfy + yy * (1f - 2f * mfy);   // inset vertical (mismo motivo que el horizontal)
-                        bool clear = true;
-                        for (int j = 0; j < i; j++)
-                        {
-                            float dxp = (sx - stars[j].X) * w, dyp = (sy - stars[j].Y) * h;
-                            if (dxp * dxp + dyp * dyp < minD2) { clear = false; break; }
-                        }
-                        if (clear) break;   // hueco libre encontrado
+                        int c = r.Next(nc);
+                        s.X = ccx[c] + Gauss(r) * ccr[c];
+                        s.Y = ccy[c] + Gauss(r) * ccr[c] * 0.7f;
                     }
-                    s.X = sx; s.Y = sy;
-                    int kk = r.Next(100);
-                    s.Kind = (kk < 12) ? 2 : (kk < 34) ? 1 : 0;                       // 12% destello GRANDE, 22% destello chico, resto punto
-                    s.Size = (s.Kind == 2) ? (6 + r.Next(5)) : (s.Kind == 1) ? (3 + r.Next(4)) : (2 + r.Next(3));   // destellos GRANDES 6-10, chicos 3-6, puntos 2-4
-                    // A QUE FRECUENCIA late cada estrella (para SENTIR la separacion): las GRANDES con los graves
-                    // (bombo), las medianas repartidas entre medios y agudos. Los puntos no laten (no reaccionan).
-                    s.Band = (s.Kind == 2) ? (byte)0 : (byte)(1 + r.Next(2));
-                    // QUE FORMA le toca. Ya no hay reparto de siluetas: TODAS las que se ven son la estrella
-                    // de cinco puntas. Hubo tres siluetas distintas -un destello de cuatro puntas, una cruz
-                    // de brazos finos y una rafaga de ocho rayos- y ninguna acababa de pegar: la cruz se leia
-                    // como un signo de MAS y las otras dos como chispas o copos, no como estrellas. La
-                    // variedad la ponen el TAMANO y el COLOR, que es de donde tiene que venir.
-                    //
-                    // El polvo del fondo se queda en puntos redondos a proposito: son dos o tres pixeles, y
-                    // ahi una estrella de cinco puntas no es una estrella, es una mancha con pelusa.
+                    else { s.X = (float)r.NextDouble(); s.Y = (float)r.NextDouble(); }
+                    if (s.X < 0.008f) s.X = 0.008f; if (s.X > 0.992f) s.X = 0.992f;
+                    if (s.Y < 0.008f) s.Y = 0.008f; if (s.Y > 0.992f) s.Y = 0.992f;
 
-                    if (Varied)
-                    {
-                        Color c = pal[r.Next(pal.Length)]; s.R = c.R; s.G = c.G; s.B = c.B; s.Tint = 0f;   // atraccion: multicolor
-                    }
-                    else if (s.Kind == 2)
-                    {
-                        Color c = palViva[r.Next(palViva.Length)];   // las grandes: color de verdad
-                        s.R = c.R; s.G = c.G; s.B = c.B; s.Tint = 0f;
-                    }
-                    else if (s.Kind == 1)
-                    {
-                        int pick = r.Next(100);
-                        if (pick < 32) { Color c = palViva[r.Next(palViva.Length)]; s.R = c.R; s.G = c.G; s.B = c.B; s.Tint = 0f; }
-                        else if (pick < 62) { s.R = 255; s.G = 255; s.B = 255; s.Tint = 0.45f + (float)r.NextDouble() * 0.55f; }   // tenida hacia el genero
-                        else { Color c = palPolvo[r.Next(palPolvo.Length)]; s.R = c.R; s.G = c.G; s.B = c.B; s.Tint = 0f; }
-                    }
-                    else
-                    {
-                        int pick = r.Next(100);
-                        if (pick < 55) { s.R = 255; s.G = 255; s.B = 255; s.Tint = 0f; }                                       // blanca
-                        else if (pick < 78) { s.R = 255; s.G = 255; s.B = 255; s.Tint = 0.45f + (float)r.NextDouble() * 0.55f; }   // tenida hacia el genero
-                        else { Color c = palPolvo[r.Next(palPolvo.Length)]; s.R = c.R; s.G = c.G; s.B = c.B; s.Tint = 0f; }
-                    }
+                    // LO BRILLANTE QUE ES, con una curva bien inclinada: casi todas debilisimas, unas pocas
+                    // fuertes. De aqui salen el tamano, el brillo y a que grupo va (polvo / mediana / grande).
+                    double m = Math.Pow(r.NextDouble(), 4.6);
+                    s.Kind = (m > 0.80) ? 2 : (m > 0.34) ? 1 : 0;
+                    s.Size = (s.Kind == 2) ? (5 + (int)(m * 4)) : (s.Kind == 1) ? (3 + (int)(m * 3)) : (1 + (int)(m * 2));
+                    // El suelo del brillo no puede ser tan bajo: con 0.16 la mitad del cielo quedaba en alfa
+                    // 40 sobre un punto de un pixel, o sea invisible, y el cielo se veia mas vacio que antes
+                    // teniendo el doble de estrellas.
+                    float bri = (float)(0.26 + m * 0.74);
+                    s.Bri = (byte)(bri * 255f);
+                    if (s.Kind == 2) grandes++;
+                    // A QUE FRECUENCIA late: las grandes con los graves (bombo), las medianas entre medios y
+                    // agudos. El polvo no late (ni reacciona ni titila: vive horneado en el cielo).
+                    s.Band = (s.Kind == 2) ? (byte)0 : (byte)(1 + r.Next(2));
+
+                    // El color por temperatura, con la curva de siempre: casi todas blancas. Y una parte del
+                    // polvo se tine hacia el genero que suena, que es lo que ata el cielo con la musica.
+                    int q = r.Next(100);
+                    int idx = (q < 14) ? r.Next(2) : (q < 34) ? 2 + r.Next(2) : (q < 68) ? 4 + r.Next(2)
+                            : (q < 88) ? 6 + r.Next(2) : (q < 97) ? 8 + r.Next(2) : 10;
+                    Color ct = palTemp[idx];
+                    s.R = ct.R; s.G = ct.G; s.B = ct.B; s.Tint = 0f;
+                    if (!Varied && s.Kind == 0 && r.Next(100) < 22)
+                    { s.R = 255; s.G = 255; s.B = 255; s.Tint = 0.45f + (float)r.NextDouble() * 0.55f; }
+
                     s.Off = (float)(r.NextDouble() * Math.PI * 2);
                     s.Spd = 0.6f + (float)r.NextDouble() * 1.6f;   // titileo LENTO
                     stars[i] = s;
                 }
+                // LAS RAYITAS, a las mas grandes de todas y a nadie mas. En una foto del cielo tampoco las
+                // llevan mas de diez o doce; repartidas por umbral acababan llevandolas ciento y pico y el
+                // cielo parecia purpurina. Se busca el corte por conteo, sin ordenar nada.
+                int quiero = 6 + (int)(n / 260); if (quiero > 14) quiero = 14;
+                for (int corte = 255; corte > 200 && quiero > 0; corte -= 2)
+                {
+                    for (int i = 0; i < n && quiero > 0; i++)
+                        if (stars[i].Kind == 2 && !stars[i].Rayos && stars[i].Bri >= corte) { stars[i].Rayos = true; quiero--; }
+                }
                 if (sb == null) sb = new SolidBrush(Color.White);
                 if (sp == null) sp = new Pen(Color.White, 2.2f);
+            }
+
+            // Un numero al azar con forma de campana (Box-Muller): sirve para que las estrellas caigan
+            // ALREDEDOR de un centro, apinandose cerca y ralas lejos, que es como se agrupan de verdad.
+            private static float Gauss(Random r)
+            {
+                double u1 = 1.0 - r.NextDouble(), u2 = r.NextDouble();
+                return (float)(Math.Sqrt(-2.0 * Math.Log(u1)) * Math.Cos(2.0 * Math.PI * u2));
             }
 
             // Patron FIJO (sin fundido): el campo de estrellas ya no cambia cada minuto. Antes el fundido +
@@ -10566,23 +10577,24 @@ namespace Rocola
                     Star s = stars[i];
                     bool reactive = (s.Kind != 0);   // BEAT (audio) + glow SOLO en medianas (1) y grandes (2); los puntos NO
                     double tw = (0.70 + 0.42 * (0.5 + 0.5 * Math.Sin(phase * s.Spd + s.Off)) + (reactive ? boost : 0.0)) * fade;
-                    int a = (int)(tw * 255); if (a > 255) a = 255; if (a < 0) a = 0;
+                    int a = (int)(tw * s.Bri); if (a > 255) a = 255; if (a < 0) a = 0;
                     int cr, cg, cb;
                     if (s.Tint > 0f) { cr = (int)(255 + (tint.R - 255) * s.Tint); cg = (int)(255 + (tint.G - 255) * s.Tint); cb = (int)(255 + (tint.B - 255) * s.Tint); }
                     else { cr = s.R; cg = s.G; cb = s.B; }
                     int px = (int)(s.X * w) + dx; if (px >= w) px -= w;   // + deriva con la musica (envuelve)
                     int py = (int)(s.Y * h) + dy; if (py >= h) py -= h;
-                    sb.Color = Color.FromArgb(a, cr, cg, cb);
-                    // GLOW del MISMO COLOR detras del nucleo + estrella de 4 puntas. El beat agranda glow y puntas
-                    // solo en medianas/grandes; los puntos van como punto redondo fijo, sin glow.
+                    // UN PUNTO DE LUZ: halo del mismo color detras y un nucleo chiquito tirando a blanco. El
+                    // beat agranda el halo solo en medianas/grandes; el polvo va como punto fijo, sin halo.
+                    float bri = s.Bri / 255f;
                     if (reactive)
                     {
                         int gd = (int)((s.Size * 3 + 6 + (int)(pulse * 10)) * gfade * HaloDe(s.Kind));   // el beat agranda el glow y el fundido lo encoge
                         Bitmap gb = GlowFor(cr, cg, cb);
                         if (gb != null && gd > 0) g.DrawImage(gb, new Rectangle(px - gd / 2, py - gd / 2, gd, gd));
-                        DrawEstrella(g, sb, px, py, (s.Kind == 2 ? s.Size + 6 : s.Size + 2) + armUp);
+                        if (s.Rayos) DrawRayos(g, sb, px, py, s.Size + armUp, Color.FromArgb(cr, cg, cb), bri * (float)tw);
+                        DrawNucleo(g, sb, px, py, s.Size, cr, cg, cb, a);
                     }
-                    else { float ds = s.Size < 2 ? 2 : s.Size; g.FillEllipse(sb, px - ds / 2f, py - ds / 2f, ds, ds); }
+                    else { sb.Color = Color.FromArgb(a, cr, cg, cb); float ds = s.Size < 1 ? 1 : s.Size; g.FillEllipse(sb, px - ds / 2f, py - ds / 2f, ds, ds); }
                 }
                 if (shooting) DrawShoots(g, w, h);
             }
@@ -10591,9 +10603,120 @@ namespace Rocola
             public void DrawCached(Graphics g, int w, int h, Color skyTop, Color skyBottom)
             {
                 if (w < 4 || h < 4) return;
+                EnsureLayers(w, h);          // arma el patron de estrellas: el cielo necesita el polvo ya repartido
                 EnsureSkyCache(w, h, skyTop, skyBottom);
-                EnsureLayers(w, h);
                 BlitSkyAndStars(g, w, h);
+            }
+
+            // LA NEBLINA DE LA VIA LACTEA Y LAS NEBULOSAS.
+            //
+            // Son manchas grandes y muy suaves, o sea justo lo que se puede dibujar CHIQUITO y estirar sin
+            // que se note: se hornean a un CUARTO de tamano (en 1024x768, 256x192 = 190 KB cada una) y se
+            // estiran al copiarlas. Dibujarlas a tamano real serian trescientas manchas de gradiente radial
+            // en cada cambio de cancion; asi son doscientas manchas UNA vez, al arrancar, y luego una copia.
+            private Bitmap hazeMask, nebMask;
+            private int nblW = -1, nblH = -1;
+            private void EnsureNieblas(int FW, int FH)
+            {
+                int mw = FW / 4, mh = FH / 4;
+                if (mw < 8) mw = 8; if (mh < 8) mh = 8;
+                if (hazeMask != null && nblW == mw && nblH == mh) return;
+                if (hazeMask != null) { hazeMask.Dispose(); hazeMask = null; }
+                if (nebMask != null) { nebMask.Dispose(); nebMask = null; }
+                nblW = mw; nblH = mh;
+                Random r = new Random(20260620);   // fijo: la misma via lactea siempre, no una distinta por arranque
+
+                hazeMask = new Bitmap(mw, mh, PixelFormat.Format32bppArgb);
+                using (Graphics g = Graphics.FromImage(hazeMask))
+                {
+                    g.SmoothingMode = SmoothingMode.AntiAlias;
+                    g.Clear(Color.Transparent);
+                    // La banda cruza en diagonal, de abajo-izquierda a arriba-derecha, y se hace de muchas
+                    // manchas tenues encimadas: asi tiene grumos y bordes irregulares en vez de ser una franja.
+                    float x0 = -mw * 0.08f, y0 = mh * 0.86f, x1 = mw * 1.08f, y1 = mh * 0.06f;
+                    for (int i = 0; i < 240; i++)
+                    {
+                        float t = (float)r.NextDouble();
+                        float ancho = mh * (0.075f + 0.045f * (float)Math.Sin(t * 3.1));
+                        float x = x0 + (x1 - x0) * t + Gauss(r) * ancho * 0.55f;
+                        float y = y0 + (y1 - y0) * t + Gauss(r) * ancho;
+                        // Y SE APAGA HACIA ABAJO. Abajo del todo el cielo lleva el resplandor del horizonte,
+                        // y una neblina blanca encima de el no se lee como via lactea: se lee como una mancha
+                        // gris. Ademas es lo que pasa de verdad, que las luces del pueblo se la comen.
+                        float fy = 1f - y / mh; if (fy < 0f) fy = 0f; if (fy > 1f) fy = 1f;
+                        int al = (int)(6f * (0.10f + 0.90f * fy * fy)); if (al < 1) continue;
+                        Mancha(g, x, y, mh * (0.05f + (float)r.NextDouble() * 0.10f), Color.FromArgb(214, 226, 255), al);
+                    }
+                    // Y las VETAS DE POLVO que la cruzan: en el cielo de verdad son nubes que tapan lo de
+                    // detras, y son las que hacen que la via lactea se lea como algo con volumen.
+                    for (int i = 0; i < 24; i++)
+                    {
+                        float t = (float)r.NextDouble();
+                        float x = x0 + (x1 - x0) * t + Gauss(r) * mh * 0.05f;
+                        float y = y0 + (y1 - y0) * t + Gauss(r) * mh * 0.055f;
+                        Mancha(g, x, y, mh * (0.04f + (float)r.NextDouble() * 0.085f), Color.FromArgb(8, 10, 26), 34);
+                    }
+                }
+
+                nebMask = new Bitmap(mw, mh, PixelFormat.Format32bppArgb);
+                using (Graphics g = Graphics.FromImage(nebMask))
+                {
+                    g.SmoothingMode = SmoothingMode.AntiAlias;
+                    g.Clear(Color.Transparent);
+                    // Van en la MITAD DE ARRIBA del cielo a proposito: abajo el degradado ya lleva el
+                    // resplandor del genero, y una nebulosa del mismo color encima de el no se lee como una
+                    // nebulosa, se lee como suciedad.
+                    for (int k = 0; k < 3; k++)
+                    {
+                        float cx = mw * (0.14f + (float)r.NextDouble() * 0.72f);
+                        float cy = mh * (0.10f + (float)r.NextDouble() * 0.42f);
+                        for (int i = 0; i < 20; i++)
+                            Mancha(g, cx + Gauss(r) * mw * 0.075f, cy + Gauss(r) * mh * 0.08f,
+                                   mh * (0.07f + (float)r.NextDouble() * 0.14f), Color.White, 4);
+                        Mancha(g, cx, cy, mh * 0.07f, Color.White, 7);   // el corazon, un pelin mas encendido
+                    }
+                }
+            }
+
+            // Una mancha de luz redonda que se desvanece hacia fuera: la pieza con la que estan hechas la
+            // neblina y las nebulosas.
+            private static void Mancha(Graphics g, float cx, float cy, float rad, Color c, int alfaCentro)
+            {
+                if (rad < 1f) rad = 1f;
+                using (GraphicsPath gp = new GraphicsPath())
+                {
+                    gp.AddEllipse(cx - rad, cy - rad, rad * 2, rad * 2);
+                    using (PathGradientBrush pgb = new PathGradientBrush(gp))
+                    {
+                        pgb.CenterPoint = new PointF(cx, cy);
+                        pgb.CenterColor = Color.FromArgb(alfaCentro, c);
+                        pgb.SurroundColors = new Color[] { Color.FromArgb(0, c) };
+                        g.FillEllipse(pgb, cx - rad, cy - rad, rad * 2, rad * 2);
+                    }
+                }
+            }
+
+            // EL POLVO DE ESTRELLAS, horneado en el cielo. Son tres cuartas partes del cielo y aqui se pintan
+            // UNA vez -no ocho, como las que titilan-. Van sin suavizado y como rectangulitos de uno o dos
+            // pixeles: es lo que es una estrella lejana, y ademas es lo mas barato que se puede dibujar.
+            private void PintaPolvo(Graphics sg, int FW, int FH, Color tinte)
+            {
+                if (stars == null) return;
+                SmoothingMode osm = sg.SmoothingMode;
+                sg.SmoothingMode = SmoothingMode.None;
+                using (SolidBrush b = new SolidBrush(Color.White))
+                    for (int i = 0; i < stars.Length; i++)
+                    {
+                        Star s = stars[i];
+                        if (s.Kind != 0) continue;
+                        int cr, cg, cb;
+                        if (s.Tint > 0f) { cr = (int)(255 + (tinte.R - 255) * s.Tint); cg = (int)(255 + (tinte.G - 255) * s.Tint); cb = (int)(255 + (tinte.B - 255) * s.Tint); }
+                        else { cr = s.R; cg = s.G; cb = s.B; }
+                        b.Color = Color.FromArgb(s.Bri, cr, cg, cb);
+                        int d = s.Size < 1 ? 1 : (s.Size > 2 ? 2 : s.Size);
+                        sg.FillRectangle(b, (int)(s.X * FW) - d / 2, (int)(s.Y * FH) - d / 2, d, d);
+                    }
+                sg.SmoothingMode = osm;
             }
 
             // Hornea el cielo (degradado) al tamano de la PANTALLA COMPLETA (FullW x FullH) y lo reutiliza. Cada
@@ -10606,7 +10729,9 @@ namespace Rocola
                 Color mid = (SkyMid.A == 0)
                     ? Color.FromArgb(255, (top.R + bottom.R) / 2, (top.G + bottom.G) / 2, (top.B + bottom.B) / 2)   // sin mid: punto medio
                     : SkyMid;
-                int t = top.ToArgb(), m = mid.ToArgb(), b = bottom.ToArgb();
+                // El acento entra en la firma: si no, al cambiar de genero el cielo no se re-hornearia y las
+                // nebulosas se quedarian del color de la cancion anterior.
+                int t = top.ToArgb(), m = mid.ToArgb(), b = bottom.ToArgb() ^ (Acento.A == 0 ? 0 : Acento.ToArgb() * 31);
                 if (skyCache != null && scW == FW && scH == FH && fscTop == t && fscMid == m && fscBot == b) return;
                 if (skyCache == null || scW != FW || scH != FH)
                 {
@@ -10614,13 +10739,42 @@ namespace Rocola
                     skyCache = new Bitmap(FW, FH, PixelFormat.Format32bppPArgb);
                     scW = FW; scH = FH;
                 }
-                using (LinearGradientBrush lgb = new LinearGradientBrush(new Rectangle(0, 0, FW, FH + 1), top, bottom, LinearGradientMode.Vertical))
+                EnsureNieblas(FW, FH);
+                using (Graphics sg = Graphics.FromImage(skyCache))
                 {
-                    ColorBlend cb = new ColorBlend(3);
-                    cb.Colors = new Color[] { top, mid, bottom };          // negro arriba -> azul noche en medio -> resplandor/genero abajo
-                    cb.Positions = new float[] { 0f, 0.42f, 1f };          // negro SOLO en el cenit; el azul domina casi toda la pantalla
-                    lgb.InterpolationColors = cb;
-                    using (Graphics sg = Graphics.FromImage(skyCache)) sg.FillRectangle(lgb, 0, 0, FW, FH);
+                    using (LinearGradientBrush lgb = new LinearGradientBrush(new Rectangle(0, 0, FW, FH + 1), top, bottom, LinearGradientMode.Vertical))
+                    {
+                        ColorBlend cb = new ColorBlend(3);
+                        cb.Colors = new Color[] { top, mid, bottom };          // negro arriba -> azul noche en medio -> resplandor/genero abajo
+                        cb.Positions = new float[] { 0f, 0.42f, 1f };          // negro SOLO en el cenit; el azul domina casi toda la pantalla
+                        lgb.InterpolationColors = cb;
+                        sg.FillRectangle(lgb, 0, 0, FW, FH);
+                    }
+                    sg.InterpolationMode = InterpolationMode.Bilinear;
+                    // LAS NEBULOSAS, del color de lo que suena. Su dibujo esta horneado en blanco a un cuarto
+                    // de tamano y aqui solo se estira y se tine con una matriz de color: al cambiar de cancion
+                    // esto es UNA copia, no volver a dibujar ochenta manchas.
+                    if (nebMask != null)
+                    {
+                        // Con el color del GENERO, no con el suelo del degradado: ese es un marron oscuro ya
+                        // mezclado con el cielo, y tenir con el solo ensuciaba.
+                        // Y el color se lleva a medias con un violeta azulado. El del genero a secas es
+                        // demasiado terroso para una nebulosa; mezclado, se sigue notando de que color va la
+                        // cancion pero parece cielo.
+                        Color a0 = (Acento.A == 0) ? bottom : Acento;
+                        Color acc = Color.FromArgb((a0.R + 140) / 2, (a0.G + 120) / 2, (a0.B + 255) / 2);
+                        using (ImageAttributes ia = new ImageAttributes())
+                        {
+                            ColorMatrix cm = new ColorMatrix();
+                            cm.Matrix00 = acc.R / 255f; cm.Matrix11 = acc.G / 255f; cm.Matrix22 = acc.B / 255f;
+                            ia.SetColorMatrix(cm);
+                            sg.DrawImage(nebMask, new Rectangle(0, 0, FW, FH), 0, 0, nebMask.Width, nebMask.Height, GraphicsUnit.Pixel, ia);
+                        }
+                    }
+                    // LA VIA LACTEA: la banda de neblina, tambien horneada a un cuarto y estirada. Va del
+                    // mismo blanco azulado siempre, que es de lo que esta hecha de verdad.
+                    if (hazeMask != null) sg.DrawImage(hazeMask, new Rectangle(0, 0, FW, FH));
+                    PintaPolvo(sg, FW, FH, mid);
                 }
                 fscTop = t; fscMid = m; fscBot = b;
             }
@@ -10690,8 +10844,8 @@ namespace Rocola
             public void DrawReactive(Graphics g, int w, int h, Color skyTop, Color skyBottom, float pLo, float pMid, float pHi)
             {
                 if (w < 4 || h < 4) return;
+                EnsureLayers(w, h);          // arma el patron de estrellas: el cielo necesita el polvo ya repartido
                 EnsureSkyCache(w, h, skyTop, skyBottom);
-                EnsureLayers(w, h);
                 RectangleF clip = g.ClipBounds;
                 bool full = (clip.Width >= w - 1 && clip.Height >= h - 1);   // repintado COMPLETO (no la casilla del cubo)
                 BlitSkyAndStars(g, w, h, full);
@@ -10759,32 +10913,33 @@ namespace Rocola
                     for (int i = 0; i < stars.Length; i++)
                     {
                         Star s = stars[i];
+                        // EL POLVO NO ENTRA AQUI. Son tres cuartas partes del cielo y viven horneadas UNA vez
+                        // en el bitmap del cielo (ver PintaPolvo), no ocho veces en las capas de titileo. Por
+                        // eso se puede cuadruplicar el numero de estrellas sin que hornear cueste mas: lo que
+                        // se hornea ocho veces sigue siendo el mismo punado de siempre.
+                        if (s.Kind == 0) continue;
                         int harm = 1 + (i % 2);   // armonico ENTERO (1 o 2: bien muestreado con TwK=8) -> el set cicla exacto
                         double tw = 0.62 + 0.38 * (0.5 + 0.5 * Math.Sin(ph * harm + s.Off));   // titileo 0.62..1.00
-                        int a = (int)(tw * 255); if (a > 255) a = 255; if (a < 0) a = 0;
+                        int a = (int)(tw * s.Bri); if (a > 255) a = 255; if (a < 0) a = 0;
                         int px = (int)(s.X * w), py = (int)(s.Y * h);
                         int cr2, cg2, cb2;
                         if (s.Tint > 0f) { cr2 = 255; cg2 = 255; cb2 = 255; }   // tenidas -> blancas
                         else { cr2 = s.R; cg2 = s.G; cb2 = s.B; }
-                        b.Color = Color.FromArgb(a, cr2, cg2, cb2);
-                        if (s.Kind != 0)
+                        int gd = (int)((s.Size * 3 + 6) * HaloDe(s.Kind));
+                        Bitmap gb = GlowFor(cr2, cg2, cb2);   // glow del MISMO COLOR (sprite pre-horneado)
+                        if (gb != null)
                         {
-                            int gd = (int)((s.Size * 3 + 6) * HaloDe(s.Kind));
-                            Bitmap gb = GlowFor(cr2, cg2, cb2);   // glow del MISMO COLOR (sprite pre-horneado)
-                            if (gb != null)
+                            Rectangle gr = new Rectangle(px - gd / 2, py - gd / 2, gd, gd);
+                            if (a >= 250) lg.DrawImage(gb, gr);
+                            else using (ImageAttributes ia = new ImageAttributes())   // el glow tambien titila (matriz solo al hornear)
                             {
-                                Rectangle gr = new Rectangle(px - gd / 2, py - gd / 2, gd, gd);
-                                if (a >= 250) lg.DrawImage(gb, gr);
-                                else using (ImageAttributes ia = new ImageAttributes())   // el glow tambien titila (matriz solo al hornear)
-                                {
-                                    ColorMatrix cm = new ColorMatrix(); cm.Matrix33 = (float)tw;
-                                    ia.SetColorMatrix(cm);
-                                    lg.DrawImage(gb, gr, 0, 0, gb.Width, gb.Height, GraphicsUnit.Pixel, ia);
-                                }
+                                ColorMatrix cm = new ColorMatrix(); cm.Matrix33 = (float)tw;
+                                ia.SetColorMatrix(cm);
+                                lg.DrawImage(gb, gr, 0, 0, gb.Width, gb.Height, GraphicsUnit.Pixel, ia);
                             }
-                            DrawEstrella(lg, b, px, py, s.Kind == 2 ? s.Size + 6 : s.Size + 2);
                         }
-                        else { float ds = s.Size < 2 ? 2 : s.Size; lg.FillEllipse(b, px - ds / 2f, py - ds / 2f, ds, ds); }
+                        if (s.Rayos) DrawRayos(lg, b, px, py, s.Size, Color.FromArgb(cr2, cg2, cb2), (s.Bri / 255f) * (float)tw);
+                        DrawNucleo(lg, b, px, py, s.Size, cr2, cg2, cb2, a);
                     }
                 }
                 return bmp;
@@ -11198,7 +11353,7 @@ namespace Rocola
                 Sky.SkyOffsetX = this.Left; Sky.SkyOffsetY = this.Top;
                 Sky.SkyFullW = (this.Parent != null) ? this.Parent.ClientSize.Width : w;
                 Sky.SkyFullH = (this.Parent != null) ? this.Parent.ClientSize.Height : h;
-                Sky.SkyMid = SkyColorMid(Accent);
+                Sky.SkyMid = SkyColorMid(Accent); Sky.Acento = Accent;
                 Sky.Dim = BgDim;   // en sincronia con la rejilla y las franjas (una sola pieza)
                 Sky.DrawCached(g, w, h, SkyColor(Accent), SkyColor2(Accent));   // cielo en degradado CONTINUO; un cubo transparente girando encima
             }
@@ -11829,7 +11984,7 @@ namespace Rocola
                     Sky.SkyOffsetX = this.Left; Sky.SkyOffsetY = this.Top;   // VENTANA del campo COMPARTIDO de pantalla completa (una sola pieza con las franjas)
                     Sky.SkyFullW = (this.Parent != null) ? this.Parent.ClientSize.Width : w;
                     Sky.SkyFullH = (this.Parent != null) ? this.Parent.ClientSize.Height : h;
-                    Sky.SkyMid = SkyColorMid(BgAccent);
+                    Sky.SkyMid = SkyColorMid(BgAccent); Sky.Acento = BgAccent;
                     Sky.Dim = BgDim;   // atenuado mientras se navega con musica (vuelve solo tras 10s sin botones)
                     Sky.DrawReactive(g, w, h, SkyColor(BgAccent), SkyColor2(BgAccent), PulseLo, PulseMid, PulseHi);   // fondo titilante + LATIDO por banda (grandes=graves, medianas=medios/agudos)
                 }
@@ -13824,7 +13979,7 @@ namespace Rocola
 
                 if (!forGpu)
                 {
-                    stars.SkyOffsetY = this.Top; stars.SkyFullH = (this.Parent != null) ? this.Parent.ClientSize.Height : H; stars.SkyMid = SkyColorMid(Accent);
+                    stars.SkyOffsetY = this.Top; stars.SkyFullH = (this.Parent != null) ? this.Parent.ClientSize.Height : H; stars.SkyMid = SkyColorMid(Accent); stars.Acento = Accent;
                     stars.Dim = BgDim;   // atenuado mientras se navega con musica
                     stars.Draw(g, W, H, SkyColor(Accent), SkyColor2(Accent), Accent, Phase, true, AudioPulse);   // mismo fondo en degradado CONTINUO que el resto + late con la musica
                 }
