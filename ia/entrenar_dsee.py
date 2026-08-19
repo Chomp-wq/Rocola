@@ -79,26 +79,46 @@ def mira_que_es(ruta):
     return "otro"
 
 
+# Musica y video: NUNCA son material de entrenamiento. Se saltan sin abrirlos siquiera, porque si se
+# arrastra la carpeta de la rocola entera, dentro esta la biblioteca: abrir decenas de miles de canciones
+# una por una para mirarles los primeros bytes tiene al disco moliendo un buen rato y parece que se colgo.
+MUSICA = (".mp3", ".wav", ".flac", ".ogg", ".m4a", ".aac", ".wma", ".opus",
+          ".mp4", ".avi", ".mkv", ".wmv", ".mov", ".mpg", ".mpeg", ".vob", ".flv",
+          ".jpg", ".jpeg", ".png", ".bmp", ".gif", ".webp")
+
+HONDO = 1   # cuantos niveles se baja dentro de una carpeta arrastrada
+
+
 def junta(paths):
-    """Clasifica todo lo que se arrastro. Si es una carpeta, mira dentro (y un nivel mas)."""
+    """Clasifica todo lo que se arrastro. Si es una carpeta, mira dentro (y un nivel mas, no la biblioteca
+    entera: bajar sin freno significaba recorrer disco por disco toda la musica)."""
     datos_dsee, datos_eq, otros = [], [], []
-    pendientes = list(paths)
+    pendientes = [(p, 0) for p in paths]
     vistos = set()
+    saltados = 0
     while pendientes:
-        p = os.path.abspath(pendientes.pop(0))
+        crudo, hondo = pendientes.pop(0)
+        p = os.path.abspath(crudo)
         if p in vistos:
             continue
         vistos.add(p)
         if os.path.isdir(p):
+            if hondo > HONDO:
+                continue
             try:
                 for n in sorted(os.listdir(p)):
                     h = os.path.join(p, n)
-                    if os.path.isfile(h) or os.path.isdir(h):
-                        pendientes.append(h)
+                    if os.path.isdir(h):
+                        pendientes.append((h, hondo + 1))
+                    elif os.path.isfile(h):
+                        pendientes.append((h, hondo))
             except Exception:
                 pass
             continue
         if not os.path.isfile(p):
+            continue
+        if p.lower().endswith(MUSICA):
+            saltados += 1
             continue
         que = mira_que_es(p)
         if que == "datos_dsee":
@@ -107,7 +127,7 @@ def junta(paths):
             datos_eq.append(p)
         else:
             otros.append((p, que))
-    return datos_dsee, datos_eq, otros
+    return datos_dsee, datos_eq, otros, saltados
 
 
 def tam(ruta):
@@ -213,19 +233,25 @@ def main(argv):
         raya("  Si solo traes uno, se entrena solo esa mitad y se avisa de lo que falto.")
         return 1
 
-    datos_dsee, datos_eq, otros = junta(argv)
-
     raya("  LO QUE ME TRAJISTE")
     raya("  " + "-" * 70)
+    for a in argv:
+        raya("   arrastrado:     " + a + ("" if os.path.exists(a) else "   [X] NO EXISTE"))
+    raya()
+    datos_dsee, datos_eq, otros, saltados = junta(argv)
+    if saltados:
+        raya("   (me salte %s archivos de musica, video o imagen: esos nunca son material)" % format(saltados, ","))
     for p in datos_dsee:
         raya("   [reconstructor] %-34s %10s   %s ejemplos"
              % (os.path.basename(p), tam(p), format(cuantos_ejemplos(p), ",")))
     for p in datos_eq:
         raya("   [EQ automatico] %-34s %10s   %s canciones medidas"
              % (os.path.basename(p), tam(p), format(cuantas_canciones(p), ",")))
-    for p, que in otros:
+    for p, que in otros[:12]:
         pista = "ya es un modelo entrenado, no material" if que == "modelo" else "no me sirve para entrenar"
         raya("   [ni idea]       %-34s %10s   (%s)" % (os.path.basename(p), tam(p), pista))
+    if len(otros) > 12:
+        raya("   [ni idea]       ...y %s archivos mas que tampoco sirven" % format(len(otros) - 12, ","))
     if not datos_dsee and not datos_eq:
         raya()
         raya("[X] Ninguno de esos archivos es material de entrenamiento.")
