@@ -159,6 +159,16 @@ class Corta
         }
     }
 
+    // El reconstructor se arma distinto en cada rama: la de tarjeta grafica le deja elegir el tamano de
+    // ventana (usa 4096 para afinar mas) y la modesta no. Se prueban las dos formas.
+    static object CreaTap(Type TSp, ISampleProvider fuente)
+    {
+        BindingFlags bf = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
+        try { return Activator.CreateInstance(TSp, bf, null, new object[] { fuente, 2048 }, null); }
+        catch { }
+        return Activator.CreateInstance(TSp, bf, null, new object[] { fuente }, null);
+    }
+
     static int Main(string[] argv)
     {
         string exe = (argv.Length > 0) ? argv[0] : "rocola.exe";
@@ -184,8 +194,7 @@ class Corta
         Check(((Array)(object)disfrazado).GetType() != typeof(float[]),
               "la prueba usa el MISMO buffer disfrazado que usa NAudio (si no, no probaria nada)");
 
-        object tap = Activator.CreateInstance(TSp, BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public,
-                                              null, new object[] { new Onda(RATE, CH), 2048 }, null);
+        object tap = CreaTap(TSp, new Onda(RATE, CH));
         fAct.SetValue(tap, true);
         string quePaso = null;
         int leidas = 0;
@@ -207,8 +216,7 @@ class Corta
         Check(haySonido, "y lo que deja en el buffer es sonido de verdad, no silencio");
 
         // Lo mismo con un buffer NORMAL: las dos formas tienen que dar exactamente lo mismo.
-        object tap2 = Activator.CreateInstance(TSp, BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public,
-                                               null, new object[] { new Onda(RATE, CH), 2048 }, null);
+        object tap2 = CreaTap(TSp, new Onda(RATE, CH));
         fAct.SetValue(tap2, true);
         float[] normal = new float[MUESTRAS];
         for (int v = 0; v < 12; v++) ((ISampleProvider)tap2).Read(normal, 0, MUESTRAS);
