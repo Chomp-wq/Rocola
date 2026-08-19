@@ -65,18 +65,36 @@ class Pantalla
             g.FillRectangle(lb, 0, 0, W, H);
 
         // ---------- la fila de arriba: instrucciones + encabezado ----------
-        Type THelp = Nes("HelpBar"), TCab = Nes("HeaderView");
-        int helpW = Math.Max(120, Math.Min(470, (W - pad) - pad));
+        // La fila de arriba: instrucciones a la izquierda, la casilla de BUSCAR en medio y el encabezado a
+        // la derecha. Las mismas cuentas que LayoutControls.
+        Type THelp = Nes("HelpBar"), TCab = Nes("HeaderView"), TBus = Nes("BuscaView");
+        int filaH = H * 44 / 768; if (filaH < 44) filaH = 44; else if (filaH > 76) filaH = 76;
+        int helpW = Math.Max(120, Math.Min(400, (W - pad) - pad));
         if (THelp != null)
         {
+            MethodInfo mAnchoAy = THelp.GetMethod("Ancho", BindingFlags.Static | BindingFlags.Public);
+            if (mAnchoAy != null) helpW = Math.Max(120, Math.Min((int)mAnchoAy.Invoke(null, new object[] { filaH }), (W - pad) - pad));
             Control hb = (Control)Activator.CreateInstance(THelp, true);
-            hb.Font = new Font(fam, 9f); hb.SetBounds(pad, 8, helpW, 34);
+            hb.Font = new Font(fam, 9f); hb.SetBounds(pad, 8, helpW, filaH);
             MethodInfo m = THelp.GetMethod("RenderContent", new Type[] { typeof(Graphics), typeof(bool) });
             if (m != null) Dibuja(g, hb, m, new object[] { false });
         }
+        int busX = pad + helpW + 12, busW = 0;
+        if (TBus != null)
+        {
+            MethodInfo mAnchoBus = TBus.GetMethod("Ancho", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+            busW = Math.Min((int)mAnchoBus.Invoke(null, new object[] { filaH }), Math.Max(0, (W - pad) - busX));
+            int centrado = (W - busW) / 2;
+            if (centrado > busX) busX = centrado;
+            if (busX + busW > W - pad) busX = Math.Max(pad + helpW + 12, W - pad - busW);
+            Control bv = (Control)Activator.CreateInstance(TBus, true);
+            bv.Font = new Font(fam, 9f); bv.SetBounds(busX, 8, busW, filaH);
+            MethodInfo m = TBus.GetMethod("RenderContent", new Type[] { typeof(Graphics), typeof(bool) });
+            if (m != null) Dibuja(g, bv, m, new object[] { false });
+        }
         if (TCab != null)
         {
-            int headX = pad + helpW + 12;
+            int headX = busX + busW + 12;
             Control cab = (Control)Activator.CreateInstance(TCab, true);
             cab.Font = new Font(fam, 9f); cab.SetBounds(headX, 8, Math.Max(0, (W - pad) - headX), 34);
             Pon(TCab, cab, "Section", "LETRA M"); Pon(TCab, cab, "Page", 2); Pon(TCab, cab, "Total", 9);
@@ -85,7 +103,7 @@ class Pantalla
 
         // ---------- la barra del abecedario (con la biblioteca a medias: solo las que tienen discos) ----------
         Type TLet = Nes("LetterBar");
-        int lettersY = 46, lettersH = H * 40 / 768;
+        int lettersY = 8 + filaH + 4, lettersH = H * 40 / 768;
         int porCasilla = (contentW * 8) / (29 * 10);
         if (porCasilla > lettersH) lettersH = porCasilla;
         if (lettersH < 40) lettersH = 40; else if (lettersH > 104) lettersH = 104;
@@ -223,6 +241,24 @@ class Pantalla
                 try { mPaint.Invoke(av, new object[] { pe }); }
                 catch (Exception ex) { Console.WriteLine("  (pared de discos: " + (ex.InnerException != null ? ex.InnerException.Message : ex.Message) + ")"); }
             g.Restore(st);
+        }
+
+        // ---------- la guia, la frase que sale sola cuando el cliente se queda parado ----------
+        // Se dibuja SIEMPRE en esta foto (en la rocola de verdad solo sale tras unos segundos sin tocar
+        // nada): esta foto es justo para ver como queda con todo lo demas.
+        Type TGui = Nes("GuiaView");
+        if (TGui != null)
+        {
+            int altoG = H * 40 / 768; if (altoG < 34) altoG = 34; else if (altoG > 66) altoG = 66;
+            string frase = "Muevete hasta un disco y aprieta el VERDE";
+            int anG = (int)TGui.GetMethod("Ancho", BindingFlags.Static | BindingFlags.Public).Invoke(
+                          null, new object[] { frase, 1, altoG, fam });
+            Control gui = (Control)Activator.CreateInstance(TGui, true);
+            gui.Font = new Font(fam, 9f, FontStyle.Bold);
+            Pon(TGui, gui, "Texto", frase); Pon(TGui, gui, "Boton", 1);
+            gui.SetBounds((W - anG) / 2, tarjetaY - 10 - altoG - 12, anG, altoG);
+            MethodInfo mg = TGui.GetMethod("RenderContent", new Type[] { typeof(Graphics), typeof(bool) });
+            if (mg != null) Dibuja(g, gui, mg, new object[] { false });
         }
 
         Console.WriteLine("  capsulas: " + pastH + " px de alto   tarjeta de abajo: " + tarjetaH + " px");
