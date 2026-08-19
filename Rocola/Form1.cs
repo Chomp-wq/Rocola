@@ -2677,9 +2677,33 @@ namespace Rocola
         private static Color LerpColor(Color a, Color b, double t)
         {
             if (t < 0) t = 0; if (t > 1) t = 1;
-            return Color.FromArgb(
-                (int)(a.A + (b.A - a.A) * t), (int)(a.R + (b.R - a.R) * t),
-                (int)(a.G + (b.G - a.G) * t), (int)(a.B + (b.B - a.B) * t));
+            return Color.FromArgb(Hacia(a.A, b.A, t), Hacia(a.R, b.R, t), Hacia(a.G, b.G, t), Hacia(a.B, b.B, t));
+        }
+
+        // UN PASO DE UN COLOR HACIA OTRO, QUE DE VERDAD LLEGA.
+        //
+        // Esto se usa para deslizar el color del fondo de una cancion a la siguiente: en cada cuadro se
+        // acerca un 16% a su destino. Con la cuenta de antes -que tiraba los decimales- un canal que tenia
+        // que SUBIR se quedaba clavado: subir el 16% de una diferencia de seis son 0.96, y al tirar los
+        // decimales eso es cero. O sea que el color no llegaba NUNCA a su destino, se quedaba a seis.
+        //
+        // Y eso no era solo un color un pelin distinto. El programa se pregunta "sigue cambiando el color?"
+        // comparando el actual con el destino, y la respuesta pasaba a ser QUE SI PARA SIEMPRE. Con esa
+        // respuesta, la rocola repinta el fondo entero, la rejilla de discos y el interior del disco en CADA
+        // cuadro en vez de en uno de cada tres. O sea que despues de la primera cancion se quedaba, de por
+        // vida, haciendo el triple de trabajo del previsto, y cuanto mas grande la pantalla peor.
+        //
+        // Ahora el paso es de un punto como minimo y nunca se pasa de largo, asi que el deslizamiento acaba
+        // -en unos veinticinco cuadros, un segundo- y el programa vuelve a su ritmo normal.
+        private static int Hacia(int de, int a, double t)
+        {
+            int d = a - de;
+            if (d == 0) return de;
+            int abs = (d > 0) ? d : -d;
+            int paso = (int)(abs * t + 0.5);
+            if (paso < 1) paso = 1;
+            if (paso > abs) paso = abs;
+            return de + ((d > 0) ? paso : -paso);
         }
 
         private static GraphicsPath RoundedPath(Rectangle r, int radius)
@@ -10859,16 +10883,36 @@ namespace Rocola
             // fondo copia solo su ventana (en BlitSkyAndStars, con offset), asi el degradado es CONTINUO entre las
             // secciones sin costuras. Copiar un bitmap es mas barato que rellenar un degradado de 3 paradas por
             // cuadro (clave en alta resolucion). Se re-hornea solo al cambiar tamano de pantalla o colores (genero).
+            private int saltados;   // cuantos cuadros seguidos se ha dejado el cielo como estaba (ver abajo)
             private void EnsureSkyCache(int w, int h, Color top, Color bottom)
             {
                 int FW = FullW(w), FH = FullH(h);
                 Color mid = (SkyMid.A == 0)
                     ? Color.FromArgb(255, (top.R + bottom.R) / 2, (top.G + bottom.G) / 2, (top.B + bottom.B) / 2)   // sin mid: punto medio
                     : SkyMid;
+                Color acento = Acento;
                 // El acento entra en la firma: si no, al cambiar de genero el cielo no se re-hornearia y las
                 // nebulosas se quedarian del color de la cancion anterior.
-                int t = top.ToArgb(), m = mid.ToArgb(), b = bottom.ToArgb() ^ (Acento.A == 0 ? 0 : Acento.ToArgb() * 31);
-                if (skyCache != null && scW == FW && scH == FH && fscTop == t && fscMid == m && fscBot == b) return;
+                int t = top.ToArgb(), m = mid.ToArgb(), b = bottom.ToArgb() ^ (acento.A == 0 ? 0 : acento.ToArgb() * 31);
+                if (skyCache != null && scW == FW && scH == FH && fscTop == t && fscMid == m && fscBot == b) { saltados = 0; return; }
+                // EL CIELO NO SE REHORNEA EN CADA CUADRO DEL DESLIZAMIENTO.
+                //
+                // Al cambiar de cancion, el color del genero se desliza del anterior al nuevo en unos
+                // veinticinco cuadros. Cada uno es un color distinto, y con un color distinto habia que
+                // rehornear el cielo ENTERO -el degradado a pantalla completa, la via lactea y las nebulosas
+                // estiradas desde su dibujo pequeno, y el polvo-. Eso son 6 ms a 1024x768, 16 a 1920x1080 y
+                // 27 a 2560x1440... por cuadro. En pantalla grande, cada cambio de cancion pedia casi medio
+                // segundo de trabajo de mas justo cuando la rocola tiene que arrancar la cancion siguiente.
+                //
+                // Se rehornea uno de cada cuatro. Durante ese segundo el FONDO se desliza a saltitos de
+                // cuatro cuadros -en un degradado liso y oscuro no se nota- y todo lo demas (pastillas,
+                // bordes, letreros) sigue deslizandose cuadro a cuadro. Y lo importante: NO se redondea
+                // ningun color. En cuanto el deslizamiento para, el siguiente horneado es con el color
+                // EXACTO, asi que el cielo acaba siendo exactamente el que le toca a esa cancion.
+                // (Se probo redondear el color a escalones en vez de esto: se veia. El degradado lleva
+                // colores muy oscuros y ahi un escalon de nada es un cambio grande en proporcion.)
+                if (skyCache != null && scW == FW && scH == FH && saltados < 3) { saltados++; return; }
+                saltados = 0;
                 if (skyCache == null || scW != FW || scH != FH)
                 {
                     if (skyCache != null) skyCache.Dispose();
@@ -10897,7 +10941,7 @@ namespace Rocola
                         // Y el color se lleva a medias con un violeta azulado. El del genero a secas es
                         // demasiado terroso para una nebulosa; mezclado, se sigue notando de que color va la
                         // cancion pero parece cielo.
-                        Color a0 = (Acento.A == 0) ? bottom : Acento;
+                        Color a0 = (acento.A == 0) ? bottom : acento;
                         Color acc = Color.FromArgb((a0.R + 140) / 2, (a0.G + 120) / 2, (a0.B + 255) / 2);
                         using (ImageAttributes ia = new ImageAttributes())
                         {
