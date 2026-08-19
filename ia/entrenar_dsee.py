@@ -289,9 +289,9 @@ def main(argv):
         n = cuantas_canciones(mayor)
         if n < 200:
             raya()
-            raya("  [!] Solo hay %s canciones medidas. El entrenador del EQ pide al menos 200 SANAS" % format(n, ","))
-            raya("      (con sus agudos completos) y probablemente te dira que no. No pasa nada: la rocola")
-            raya("      sigue usando el promedio de la biblioteca, como siempre.")
+            raya("  [!] Solo hay %s canciones medidas. Se entrena igual, pero con tan poco la red no suele" % format(n, ","))
+            raya("      ganarle al promedio y lo mas probable es que decida no guardar nada. No pasa nada:")
+            raya("      la rocola sigue usando el promedio de la biblioteca, como siempre.")
         guarda_copia("rocola_eq_ia.bin")
         cod = corre(["entrenar_eq.py", "--datos", mayor, "--salida", "rocola_eq_ia.bin"],
                     "PASO 2: el objetivo del EQ automatico (rocola_eq_ia.bin)")

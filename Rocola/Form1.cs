@@ -8869,7 +8869,7 @@ namespace Rocola
             }
         }
 
-        // Abre el audio. Camino NORMAL: AudioFileReader (rapido, para el 99.99% de los archivos). Si NAudio lo
+        // Abre el audio. Camino NORMAL: FileAudioSource (rapido, para el 99.99% de los archivos). Si NAudio lo
         // rechaza (tipico: MP3 que CAMBIA de frecuencia a mitad -> "Got a frame at sample rate ..."), reintenta con
         // un lector TOLERANTE que reconstruye el MP3 dejando solo los frames de la frecuencia dominante. Si tampoco
         // asi, relanza el error original (el llamador lo anota y salta). El reintento NUNCA afecta a los archivos
@@ -10184,17 +10184,42 @@ namespace Rocola
             TimeSpan TotalTime { get; }
         }
 
-        // Camino NORMAL: envoltura fina sobre AudioFileReader (float + volumen + tiempos en un solo objeto).
+        // Camino NORMAL para la cancion que suena: float + volumen + tiempos en un solo objeto.
+        //
+        // Los MP3 van aparte, por el mismo camino que usa el repaso de la biblioteca (AbreMp3). El lector de
+        // NAudio tiene ahi una trampa por partida doble: arma el descompresor de MP3 y despues sigue
+        // preparandose, y si algo falla en ese hueco -una cabecera rota, y de esas hay unas cuantas en
+        // cualquier biblioteca grande- no cierra ni el descompresor ni el archivo. Lo que queda tirado lo
+        // acaba cerrando el recolector de basura, Windows contesta que ya no vale, y la queja sale por un
+        // hilo donde NADIE la puede recoger: se cierra la rocola entera. Por aqui se abren menos archivos que
+        // en el repaso, pero se abren TODOS los que alguien pide en el bar. Es el mismo montaje que hace
+        // NAudio por dentro (el lector mas un canal de muestras), asi que no cambia ni una muestra.
         private sealed class FileAudioSource : IAudioSource
         {
+            private readonly Mp3FileReader mp3;
+            private readonly SampleChannel canal;
             private readonly AudioFileReader r;
-            public FileAudioSource(string path) { r = new AudioFileReader(path); }
-            public NAudio.Wave.WaveFormat WaveFormat { get { return r.WaveFormat; } }
-            public int Read(float[] buffer, int offset, int count) { return r.Read(buffer, offset, count); }
-            public float Volume { set { r.Volume = value; } }
-            public TimeSpan CurrentTime { get { return r.CurrentTime; } }
-            public TimeSpan TotalTime { get { return r.TotalTime; } }
-            public void Dispose() { r.Dispose(); }
+            public FileAudioSource(string path)
+            {
+                if (path != null && path.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase))
+                {
+                    Mp3FileReader m = AbreMp3(path);
+                    try { canal = new SampleChannel(m, false); mp3 = m; m = null; }
+                    finally { if (m != null) { try { m.Dispose(); } catch { } } }   // el canal fallo: el lector no se queda tirado
+                }
+                else r = new AudioFileReader(path);
+            }
+            public NAudio.Wave.WaveFormat WaveFormat { get { return (mp3 != null) ? canal.WaveFormat : r.WaveFormat; } }
+            public int Read(float[] buffer, int offset, int count)
+            { return (mp3 != null) ? canal.Read(buffer, offset, count) : r.Read(buffer, offset, count); }
+            public float Volume { set { if (mp3 != null) canal.Volume = value; else r.Volume = value; } }
+            public TimeSpan CurrentTime { get { return (mp3 != null) ? mp3.CurrentTime : r.CurrentTime; } }
+            public TimeSpan TotalTime { get { return (mp3 != null) ? mp3.TotalTime : r.TotalTime; } }
+            public void Dispose()
+            {
+                if (mp3 != null) { try { mp3.Dispose(); } catch { } }
+                if (r != null) { try { r.Dispose(); } catch { } }
+            }
         }
 
         // Camino TOLERANTE: reproduce un MP3 ya reconstruido a una sola frecuencia (stream en memoria). Mp3FileReader
