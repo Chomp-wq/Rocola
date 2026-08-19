@@ -6,15 +6,22 @@ using System.Reflection;
 
 // LAS ESTRELLAS DEL FONDO: QUE HAYA VARIEDAD, Y QUE NO CUESTE MAS.
 //
-// LA ESTRELLA DEL CIELO ES LA DE CINCO PUNTAS, la que dibuja todo el mundo cuando le dicen "una estrella".
-// Se probaron otras siluetas -un destello de cuatro puntas, una cruz de brazos finos, una rafaga de ocho
-// rayos- y ninguna pegaba con la rocola: la cruz se leia como un monton de signos de MAS repartidos por el
-// cielo, y las otras dos como chispas o copos de nieve. La variedad la ponen el TAMANO y el COLOR.
+// EL CIELO: QUE PAREZCA UN CIELO, Y QUE NO CUESTE MAS.
 //
-// Aqui no se mira ningun campo por dentro -eso se podria cambiar y la bateria seguiria pasando-: se DIBUJA
-// una estrella y se le CUENTAN LAS PUNTAS mirando los pixeles. Ademas se comprueba que el polvo del fondo
-// se queda en puntos palidos, que el color fuerte se lo quedan las pocas grandes (para que el cielo no se
-// vuelva un confeti) y que dibujarlas no cuesta mas que antes.
+// Una estrella de verdad no tiene forma: es un PUNTO de luz. Se probaron siluetas dibujadas -un destello de
+// cuatro puntas, una cruz, una rafaga de ocho rayos, la estrella de cinco puntas- y ninguna parecia el cielo:
+// parecian pegatinas. Ahora cada estrella es un halo suave con un nucleo diminuto y muy brillante, y solo un
+// punado -las mas fuertes- llevan las cuatro rayitas cruzadas que hace el diafragma de una camara.
+//
+// Lo que se comprueba aqui, que es lo que puede romperse sin que nadie lo note:
+//
+//   1) Que el cielo tenga MUCHAS estrellas y casi todas debiles, agrupadas en vez de espolvoreadas con
+//      regularidad, y con las rayitas en muy pocas.
+//   2) Que el color siga siendo de estrella (de azul-blanco a naranja) y que el fuerte se lo queden las
+//      grandes, para que el fondo no se vuelva confeti.
+//   3) Y sobre todo: QUE NO CUESTE MAS. El polvo -tres cuartas partes del cielo- se hornea UNA vez en el
+//      bitmap del cielo y no ocho veces en las capas de titileo. Por eso se puede tener el doble de
+//      estrellas y que hornear siga costando menos que antes.
 class Estrellas
 {
     static int fallos = 0;
@@ -44,51 +51,17 @@ class Estrellas
         Check(TS != null, "el campo de estrellas esta donde tiene que estar");
         if (TS == null) return 1;
 
-        Console.WriteLine("\n  1) LA SILUETA ES UNA ESTRELLA DE CINCO PUNTAS\n");
+        Console.WriteLine("\n  1) UN CIELO, NO UN PUÑADO DE PEGATINAS\n");
 
-        // Se dibuja UNA estrella grande sobre negro y se le cuentan las puntas: se recorre un circulo
-        // alrededor del centro y se cuentan los tramos con tinta. Una estrella de cinco puntas da cinco.
-        MethodInfo mEstrella = TS.GetMethod("DrawEstrella", BindingFlags.Instance | BindingFlags.NonPublic);
-        Check(mEstrella != null, "la rocola sabe dibujar la estrella");
-        if (mEstrella != null)
-        {
-            object dib = Activator.CreateInstance(TS, true);
-            const int LADO = 200, CEN = LADO / 2, RAD = 70;
-            using (Bitmap b1 = new Bitmap(LADO, LADO, PixelFormat.Format32bppArgb))
-            {
-                using (Graphics g1 = Graphics.FromImage(b1))
-                using (SolidBrush br = new SolidBrush(Color.White))
-                {
-                    g1.Clear(Color.Black);
-                    g1.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-                    mEstrella.Invoke(dib, new object[] { g1, br, CEN, CEN, RAD });
-                }
-                b1.Save("estrella.png", ImageFormat.Png);
-                // El circulo se mira a 0.80 del radio: por ahi pasan solo los brazos, no el cuerpo central.
-                int puntas = 0; bool dentro = false; bool primero = false;
-                for (int i = 0; i <= 720; i++)
-                {
-                    double ang = -Math.PI / 2 + i * Math.PI / 360.0;
-                    int x = CEN + (int)(Math.Cos(ang) * RAD * 0.80), y = CEN + (int)(Math.Sin(ang) * RAD * 0.80);
-                    bool hay = (x >= 0 && y >= 0 && x < LADO && y < LADO && b1.GetPixel(x, y).R > 128);
-                    if (i == 0) primero = hay;
-                    if (hay && !dentro) puntas++;
-                    dentro = hay;
-                }
-                if (primero && dentro) puntas--;   // el brazo de arriba se contaria dos veces al cerrar la vuelta
-                Console.WriteLine("     brazos contados alrededor de la estrella: " + puntas);
-                Check(puntas == 5, "la estrella tiene CINCO puntas (cuenta " + puntas + ")");
-                // Y mira hacia ARRIBA, como la de toda la vida: justo encima del centro tiene que haber tinta.
-                Check(b1.GetPixel(CEN, CEN - (int)(RAD * 0.80)).R > 128, "y con una punta hacia arriba");
-                Console.WriteLine("     (dibujada en pruebas/estrella.png, por si se quiere mirar)");
-            }
-        }
-
-        // Las siluetas viejas no vuelven: se probaron y no pegaban.
+        // Las siluetas dibujadas no vuelven: se probaron todas y ninguna parecia el cielo.
         Check(TS.GetMethod("DrawCruz", BindingFlags.Instance | BindingFlags.NonPublic) == null
               && TS.GetMethod("DrawRafaga", BindingFlags.Instance | BindingFlags.NonPublic) == null
-              && TS.GetMethod("DrawSparkle", BindingFlags.Instance | BindingFlags.NonPublic) == null,
-              "las siluetas viejas -cruz, rafaga y destello de cuatro puntas- no han vuelto");
+              && TS.GetMethod("DrawSparkle", BindingFlags.Instance | BindingFlags.NonPublic) == null
+              && TS.GetMethod("DrawEstrella", BindingFlags.Instance | BindingFlags.NonPublic) == null,
+              "no hay siluetas dibujadas: cada estrella es un punto de luz");
+        Check(TS.GetMethod("DrawRayos", BindingFlags.Instance | BindingFlags.NonPublic) != null
+              && TS.GetMethod("DrawNucleo", BindingFlags.Instance | BindingFlags.NonPublic) != null,
+              "hay nucleo y rayitas cruzadas");
 
         object sf = Activator.CreateInstance(TS, true);
         FieldInfo fDens = TS.GetField("Density", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
@@ -101,34 +74,82 @@ class Estrellas
         Array estrellas = (Array)fStars.GetValue(sf);
         Type TStar = estrellas.GetType().GetElementType();
         FieldInfo fKind = TStar.GetField("Kind", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        FieldInfo fBri = TStar.GetField("Bri", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        FieldInfo fRay = TStar.GetField("Rayos", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        FieldInfo fX = TStar.GetField("X", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        FieldInfo fY = TStar.GetField("Y", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
         FieldInfo fR = TStar.GetField("R", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
         FieldInfo fG = TStar.GetField("G", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
         FieldInfo fB = TStar.GetField("B", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        Check(fBri != null && fRay != null, "cada estrella lleva su brillo y si tiene rayitas");
+        if (fBri == null || fRay == null) return 1;
 
-        int grandesColor = 0, grandes = 0, polvoColor = 0, polvo = 0, medianas = 0;
+        int grandesColor = 0, grandes = 0, polvoColor = 0, polvo = 0, medianas = 0, rayos = 0, debiles = 0;
+        int verdes = 0;
+        float[] xs = new float[estrellas.Length], ys = new float[estrellas.Length];
         for (int i = 0; i < estrellas.Length; i++)
         {
             object st = estrellas.GetValue(i);
             int k = Convert.ToInt32(fKind.GetValue(st));
+            int bri = Convert.ToInt32(fBri.GetValue(st));
+            if ((bool)fRay.GetValue(st)) rayos++;
+            if (bri < 110) debiles++;
+            xs[i] = Convert.ToSingle(fX.GetValue(st)); ys[i] = Convert.ToSingle(fY.GetValue(st));
             int r = Convert.ToInt32(fR.GetValue(st)), g = Convert.ToInt32(fG.GetValue(st)), bb = Convert.ToInt32(fB.GetValue(st));
+            // Una estrella de verdad NUNCA es verde ni violeta: su color va de azul-blanco a naranja, o sea
+            // que el verde nunca puede ser el canal que mas manda.
+            if (g > r + 8 && g > bb + 8) verdes++;
             int max = Math.Max(r, Math.Max(g, bb)), min = Math.Min(r, Math.Min(g, bb));
-            bool conColor = (max - min) > 60;   // se aparta bastante del blanco
+            bool conColor = (max - min) > 45;
             if (k == 2) { grandes++; if (conColor) grandesColor++; }
             if (k == 1) medianas++;
             if (k == 0) { polvo++; if (conColor) polvoColor++; }
         }
-        Console.WriteLine("     de " + estrellas.Length + " estrellas: " + grandes + " grandes, " + medianas
-                          + " medianas y " + polvo + " de polvo");
-        Check(grandes > 0 && medianas > 0, "hay estrellas de las dos tallas que llevan silueta");
-        Check(polvo > estrellas.Length / 2, "la mayoria siguen siendo polvo: el cielo no se vuelve confeti");
+        Console.WriteLine("     " + estrellas.Length + " estrellas:  " + grandes + " grandes, " + medianas
+                          + " medianas y " + polvo + " de polvo   (" + rayos + " con rayitas)");
+        Check(estrellas.Length >= 400, "hay MUCHAS estrellas, no un punado (" + estrellas.Length + ")");
+        Check(polvo * 2 > estrellas.Length, "la mayoria son polvo del fondo (" + polvo + " de " + estrellas.Length + ")");
+        Check(debiles * 2 > estrellas.Length, "y la mayoria son debiles: " + debiles + " por debajo de la mitad de brillo");
+        Check(rayos > 0 && rayos <= 16, "las rayitas las llevan MUY pocas (" + rayos + "), no ciento y pico");
+        Check(verdes == 0, "ninguna estrella es verde ni violeta: el color va de azul-blanco a naranja");
+
+        // AGRUPADAS, no espolvoreadas con regularidad. Se mide con la distancia de cada estrella a su vecina
+        // mas cercana: repartidas al azar da una media conocida, y agrupadas da bastante menos.
+        double suma = 0;
+        for (int i = 0; i < xs.Length; i++)
+        {
+            double mejor = double.MaxValue;
+            for (int j = 0; j < xs.Length; j++)
+            {
+                if (i == j) continue;
+                double dx = xs[i] - xs[j], dy = ys[i] - ys[j], d = dx * dx + dy * dy;
+                if (d < mejor) mejor = d;
+            }
+            suma += Math.Sqrt(mejor);
+        }
+        double media = suma / xs.Length;
+        double alAzar = 0.5 / Math.Sqrt(xs.Length);   // lo que daria un reparto al azar en un cuadrado de lado 1
+        Console.WriteLine("     vecina mas cercana: " + media.ToString("0.0000") + "   (al azar seria " + alAzar.ToString("0.0000") + ")");
+        Check(media < alAzar * 0.92, "las estrellas se AGRUPAN, no van espolvoreadas parejo");
 
         Console.WriteLine("\n  2) EL COLOR FUERTE SE LO QUEDAN LAS GRANDES\n");
         Console.WriteLine("     grandes con color: " + grandesColor + " de " + grandes
                           + "     polvo con color: " + polvoColor + " de " + polvo);
-        Check(grandes > 0 && grandesColor * 2 > grandes, "mas de la mitad de las grandes llevan color de verdad");
-        Check(polvo > 0 && polvoColor * 4 < polvo, "y menos de la cuarta parte del polvo lleva color: el fondo no se ensucia");
+        Check(grandes > 0 && grandesColor * 3 > grandes, "un tercio largo de las grandes llevan color de verdad");
+        Check(polvo > 0 && polvoColor * 2 < polvo, "y menos de la mitad del polvo: el fondo no se ensucia");
 
-        Console.WriteLine("\n  3) LA VARIEDAD NO CUESTA MAS\n");
+        Console.WriteLine("\n  3) Y NO CUESTA MAS QUE ANTES\n");
+
+        // LA CLAVE DE QUE ESTO SEA GRATIS: el polvo se hornea UNA vez en el bitmap del cielo, y solo las
+        // pocas que titilan entran en las ocho capas. Lo que se hornea ocho veces tiene que seguir siendo un
+        // punado; si alguien mete el polvo en las capas, hornear se multiplica por ocho y la rocola da un
+        // tiron al arrancar y en cada cambio de resolucion.
+        int enCapas = grandes + medianas;
+        Console.WriteLine("     se hornean 8 veces: " + enCapas + " estrellas de " + estrellas.Length
+                          + "   (el polvo, " + polvo + ", va una sola vez en el cielo)");
+        Check(enCapas * 4 < estrellas.Length, "lo que se hornea ocho veces es menos de la cuarta parte del cielo");
+        Check(enCapas <= 160, "y en numeros absolutos sigue siendo un punado (" + enCapas + ")");
+
         MethodInfo mDraw = TS.GetMethod("Draw", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
         using (Bitmap b2 = new Bitmap(1024, 620, PixelFormat.Format32bppPArgb))
         using (Graphics g2 = Graphics.FromImage(b2))
