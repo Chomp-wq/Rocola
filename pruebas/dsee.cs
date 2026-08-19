@@ -1,4 +1,6 @@
 using System;
+using System.IO;
+using System.Globalization;
 using System.Diagnostics;
 using System.Reflection;
 using NAudio.Wave;
@@ -346,6 +348,51 @@ class Dsee
             Type TRed = TF.GetNestedType("RedChica", BindingFlags.NonPublic | BindingFlags.Public);
             MethodInfo mPred = (TRed != null) ? TRed.GetMethod("Predict") : null;
             Check(mPred != null && Llama(mPred, "Tanh"), "la red neuronal, en cambio, sigue con la tangente exacta (se entreno con ella)");
+        }
+
+        // ============================================================================================
+        Console.WriteLine("\n  10) EL MODELO QUE SE ENTREGA CON LA ROCOLA SIRVE\n");
+        // El modelo se entrena FUERA, en otra PC, y vuelve como un archivo suelto. Si viniera de otro
+        // entrenamiento, a medias, o con otra forma, la rocola simplemente no lo cargaria y seguiria con su
+        // curva fija: no se rompe nada, pero el dueno se queda sin lo que estuvo horas entrenando y sin saber
+        // por que. Al entrenar sale ademas un archivo de vectores de prueba -entradas y las salidas que dio el
+        // entrenador-, asi que aqui se pasan por la red DE LA ROCOLA y se comprueba que dan lo mismo. Eso
+        // valida las dos cosas a la vez: que el modelo esta entero y que la rocola lo calcula igual que Python.
+        {
+            string mod = Path.Combine("..", Path.Combine("ia", "rocola_ia.bin"));
+            string vec = Path.Combine("..", Path.Combine("ia", "ia_vectores_prueba.txt"));
+            Check(File.Exists(mod), "se entrega un modelo entrenado junto a la rocola");
+            Check(File.Exists(vec), "y los vectores de prueba con los que comprobarlo");
+            Type TRed2 = TF.GetNestedType("RedChica", BindingFlags.NonPublic | BindingFlags.Public);
+            if (File.Exists(mod) && File.Exists(vec) && TRed2 != null)
+            {
+                object red = Activator.CreateInstance(TRed2, BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public,
+                                                      null, new object[] { 28, 12 }, null);
+                TRed2.GetMethod("TryLoad").Invoke(red, new object[] { Path.GetFullPath(mod) });
+                bool cargo = (bool)TRed2.GetField("Loaded").GetValue(red);
+                Check(cargo, "la rocola lo carga (si no, se quedaria con su curva fija y nadie se enteraria)");
+                if (cargo)
+                {
+                    MethodInfo mP = TRed2.GetMethod("Predict");
+                    int n = 0; double peorVec = 0;
+                    foreach (string linea in File.ReadAllLines(vec))
+                    {
+                        int bar = linea.IndexOf('|'); if (bar <= 0) continue;
+                        string[] ent = linea.Substring(0, bar).Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                        string[] sal = linea.Substring(bar + 1).Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                        if (ent.Length != 28 || sal.Length != 12) continue;
+                        float[] x = new float[28], y = new float[12];
+                        for (int i = 0; i < 28; i++) x[i] = float.Parse(ent[i], CultureInfo.InvariantCulture);
+                        mP.Invoke(red, new object[] { x, y });
+                        for (int i = 0; i < 12; i++)
+                        { double d = Math.Abs(y[i] - double.Parse(sal[i], CultureInfo.InvariantCulture)); if (d > peorVec) peorVec = d; }
+                        n++;
+                    }
+                    Console.WriteLine("     " + n + " vectores de prueba; la mayor diferencia con lo que dijo el entrenador: " + peorVec.ToString("0.0000000"));
+                    Check(n >= 8, "hay vectores de prueba suficientes para fiarse");
+                    Check(peorVec < 0.001, "y la rocola calcula lo MISMO que el entrenador: el modelo llego entero");
+                }
+            }
         }
 
         Console.WriteLine(fallos == 0 ? "\nTODO BIEN" : "\nFALLOS: " + fallos);
