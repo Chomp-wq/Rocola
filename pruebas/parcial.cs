@@ -70,13 +70,11 @@ class Parcial
     {
         Assembly asm = Assembly.LoadFrom("rocola.exe");
         TF = asm.GetType("Rocola.Form1", true);
-        Type TStar = null;
         foreach (Type t in TF.GetNestedTypes(BindingFlags.NonPublic | BindingFlags.Public))
         {
             if (t.Name == "SearchOverlay") TSO = t;
             if (t.Name == "SearchItem") TItem = t;
             if (t.Name == "Album") TAlb = t;
-            if (t.Name == "Starfield") TStar = t;
         }
         Check(TSO != null, "el buscador esta donde tiene que estar");
         Check(TSO != null && TSO.GetMethod("InvalidarVivo", BindingFlags.Instance | BindingFlags.Public) != null,
@@ -92,8 +90,12 @@ class Parcial
 
         int[,] tam = { { 1024, 768 }, { 1366, 768 }, { 1920, 1080 }, { 800, 600 } };
         MethodInfo mR = TSO.GetMethod("RenderContent", new Type[] { typeof(Graphics), typeof(Rectangle), typeof(bool) });
-        FieldInfo fStars = TSO.GetField("stars", BindingFlags.Instance | BindingFlags.NonPublic);
-        FieldInfo fLast = (TStar != null) ? TStar.GetField("lastBuild", BindingFlags.Instance | BindingFlags.NonPublic) : null;
+        // EL CIELO SE DEJA FUERA A PROPOSITO. El buscador ya no se arma su propio cielo: usa el COMPARTIDO
+        // con el resto del programa (el campo Sky), y si no se le da ninguno simplemente no lo pinta. Eso es
+        // justo lo que hace falta aqui: los dos cuadros arrancan del mismo fondo liso y lo unico que puede
+        // cambiar entre ellos es lo que se anima por delante, que es lo que se quiere medir.
+        // Antes se conseguia lo mismo congelando el cielo a mano; ahora sale gratis y ademas sin depender de
+        // en que milisegundo caiga el titileo, que era una fuente de fallos falsos esperando a pasar.
 
         Console.WriteLine("\n  1) TODO LO QUE SE MUEVE CAE DENTRO DE LA ZONA QUE SE REPINTA\n");
         int fuera = 0, casos = 0; string peor = null; int peorN = 0;
@@ -134,16 +136,16 @@ class Parcial
                     Type tf2 = typeof(Func<,>).MakeGenericType(TItem, typeof(string));
                     fg.SetValue(so, Delegate.CreateDelegate(tf2, typeof(Parcial).GetMethod("Gen", BindingFlags.Static | BindingFlags.NonPublic).MakeGenericMethod(TItem)));
                 }
-                FieldInfo fPhase = TSO.GetField("Phase"), fAng = TSO.GetField("CubeAngle"), fPulse = TSO.GetField("AudioPulse");
+                FieldInfo fPhase = TSO.GetField("Phase"), fAng = TSO.GetField("CubeAngle");
+                FieldInfo fLo = TSO.GetField("PulseLo"), fMid = TSO.GetField("PulseMid"), fHi = TSO.GetField("PulseHi");
                 // Se dispara el destello del boton, que es lo otro que se anima.
                 MethodInfo mFlash = TSO.GetMethod("FlashMove", BindingFlags.Instance | BindingFlags.Public);
 
                 Rectangle todo = new Rectangle(0, 0, w, h);
-                object[] ar = new object[] { so, todo, false };
                 Bitmap a1 = new Bitmap(w, h, PixelFormat.Format32bppArgb);
                 Bitmap a2 = new Bitmap(w, h, PixelFormat.Format32bppArgb);
                 double ph = 1.0;
-                fPulse.SetValue(so, 0.6f);
+                if (fLo != null) { fLo.SetValue(so, 0.6f); fMid.SetValue(so, 0.6f); fHi.SetValue(so, 0.6f); }
                 if (mFlash != null) mFlash.Invoke(so, new object[] { true });
 
                 // Primer cuadro (el fondo se construye aqui). A partir de ahora NO se deja rehacer el fondo,
@@ -161,11 +163,6 @@ class Parcial
                 {
                     g.SmoothingMode = SmoothingMode.AntiAlias;
                     g.Clear(Color.FromArgb(255, 8, 12, 36));
-                    // El fondo se CONGELA a proposito: en un cuadro parcial de verdad el programa no lo rehace
-                    // nunca (se limita a copiar el que ya tenia). Sin esto, el titileo de las estrellas ensuciaria
-                    // la comparacion con pixeles sueltos por toda la pantalla que no son culpa de nada.
-                    object stf = fStars.GetValue(so);
-                    if (stf != null && fLast != null) fLast.SetValue(stf, Environment.TickCount);
                     ph += 0.045; fPhase.SetValue(so, ph);
                     fAng.SetValue(so, (double)fAng.GetValue(so) + 0.075);
                     mR.Invoke(so, new object[] { g, todo, false });
