@@ -9406,6 +9406,12 @@ namespace Rocola
             levLo = BandBeat(rmsLo, ref avgLo, levLo);
             levMid = BandBeat(rmsMid, ref avgMid, levMid);
             levHi = BandBeat(rmsHi, ref avgHi, levHi);
+            // LA DERIVA DEL CAMPO DE ESTRELLAS, UNA VEZ POR LATIDO Y CON EL RELOJ EN LA MANO. Va aqui y no en
+            // el dibujado porque el dibujado no ocurre a un ritmo parejo -depende de lo que toque rehacer en
+            // cada momento- y el fondo tiene que deslizarse liso, no a tirones. El campo es UNO solo y lo
+            // comparten el fondo, la pared de discos, el interior y el buscador: una sola cuenta los mueve a
+            // todos a la vez y sin costuras.
+            formStars.AvanzaDeriva(Math.Max(levLo, Math.Max(levMid, levHi)));
 #if ROCOLA_GPU
             audioLevel = Math.Max(levLo, Math.Max(levMid, levHi));   // nivel GLOBAL para la tarjeta grafica: el mas fuerte de las 3
 #endif
@@ -10662,9 +10668,10 @@ namespace Rocola
             private int driftLastMs; private float driftEnv, driftX, driftY;
             private const float DriftVX = 18f, DriftVY = 9f;             // px/seg (derecha, abajo): lento, diagonal 2:1 (como GPU)
 
-            // Avanza la deriva segun el tiempo real, con envolvente suave (arranca/para sin saltos). Se llama SOLO
-            // en repintados completos para que las casillas parciales (el cubo que gira) cuadren con el fondo.
-            private void UpdateDrift(int w, int h, float pulse)
+            // Avanza la deriva segun el RELOJ. Se llama UNA vez por latido de la animacion, desde el form, y no
+            // desde el dibujado: si se avanzara al dibujar, la deriva iria al ritmo al que toque rehacer las
+            // cosas -que no es constante- y el fondo se veria a tirones aunque la cuenta fuera correcta.
+            public void AvanzaDeriva(float pulse)
             {
                 int now = Environment.TickCount;
                 float dt = (driftLastMs == 0) ? 0f : (now - driftLastMs) / 1000f;
@@ -10672,9 +10679,11 @@ namespace Rocola
                 if (dt < 0f) dt = 0f; else if (dt > 0.2f) dt = 0.2f;   // acota saltos (tras un hueco largo, p.ej. saliendo de GPU)
                 float tgt = (pulse > 0.02f) ? 1f : 0f;
                 driftEnv += (tgt - driftEnv) * (tgt > driftEnv ? Math.Min(1f, dt * 2.5f) : Math.Min(1f, dt * 0.6f));   // ataque medio, caida lenta
+                int w = (lw > 0) ? lw : 0, h = (lh > 0) ? lh : 0;
                 driftX += driftEnv * DriftVX * dt; if (w > 0) driftX %= w;   // env>=0 -> solo crece; modulo -> [0,w)
                 driftY += driftEnv * DriftVY * dt; if (h > 0) driftY %= h;
             }
+            private void UpdateDrift(int w, int h, float pulse) { AvanzaDeriva(pulse); }
 
             // Pincel de cielo en degradado vertical CONTINUO: el degradado abarca TODA la pantalla (SkyFullH)
             // y se desplaza segun donde esta este fondo (SkyOffsetY), para que las secciones no se noten
@@ -11106,29 +11115,6 @@ namespace Rocola
                 }
             }
 
-            // EL POLVO DE ESTRELLAS, horneado en el cielo. Son tres cuartas partes del cielo y aqui se pintan
-            // UNA vez -no ocho, como las que titilan-. Van sin suavizado y como rectangulitos de uno o dos
-            // pixeles: es lo que es una estrella lejana, y ademas es lo mas barato que se puede dibujar.
-            private void PintaPolvo(Graphics sg, int FW, int FH, Color tinte)
-            {
-                if (stars == null) return;
-                SmoothingMode osm = sg.SmoothingMode;
-                sg.SmoothingMode = SmoothingMode.None;
-                using (SolidBrush b = new SolidBrush(Color.White))
-                    for (int i = 0; i < stars.Length; i++)
-                    {
-                        Star s = stars[i];
-                        if (s.Kind != 0) continue;
-                        int cr, cg, cb;
-                        if (s.Tint > 0f) { cr = (int)(255 + (tinte.R - 255) * s.Tint); cg = (int)(255 + (tinte.G - 255) * s.Tint); cb = (int)(255 + (tinte.B - 255) * s.Tint); }
-                        else { cr = s.R; cg = s.G; cb = s.B; }
-                        b.Color = Color.FromArgb(s.Bri, cr, cg, cb);
-                        int d = s.Size < 1 ? 1 : (s.Size > 2 ? 2 : s.Size);
-                        sg.FillRectangle(b, (int)(s.X * FW) - d / 2, (int)(s.Y * FH) - d / 2, d, d);
-                    }
-                sg.SmoothingMode = osm;
-            }
-
             // Hornea el cielo (degradado) al tamano de la PANTALLA COMPLETA (FullW x FullH) y lo reutiliza. Cada
             // fondo copia solo su ventana (en BlitSkyAndStars, con offset), asi el degradado es CONTINUO entre las
             // secciones sin costuras. Copiar un bitmap es mas barato que rellenar un degradado de 3 paradas por
@@ -11204,7 +11190,9 @@ namespace Rocola
                     // LA VIA LACTEA: la banda de neblina, tambien horneada a un cuarto y estirada. Va del
                     // mismo blanco azulado siempre, que es de lo que esta hecha de verdad.
                     if (hazeMask != null) sg.DrawImage(hazeMask, new Rectangle(0, 0, FW, FH));
-                    PintaPolvo(sg, FW, FH, mid);
+                    // EL POLVO YA NO VA AQUI: ver BakeStarFrame. Horneado en el cielo se quedaba clavado
+                    // mientras el resto del campo se desliza, y eso -mas de la mitad de las estrellas quietas
+                    // y el resto moviendose- se ve peor que si no se moviera nada.
                 }
                 fscTop = t; fscMid = m; fscBot = b;
             }
@@ -11227,16 +11215,40 @@ namespace Rocola
                 g.CompositingMode = CompositingMode.SourceOver;   // estrellas con transparencia encima
                 if (advance || shownLayer < 0 || layers == null || shownLayer >= layers.Length) shownLayer = CurrentStarLayerIndex();
                 Bitmap sl = (layers != null && shownLayer >= 0 && shownLayer < layers.Length) ? layers[shownLayer] : null;
-                if (sl != null)
-                {
-                    if (Dim < 0.985f)
-                    {
-                        EnsureDimIA();   // copia con ALFA (atenuado): solo mientras se navega con musica
-                        BlitLayerDim(g, sl, -offX, -offY, sl.Width, sl.Height);
-                    }
-                    else g.DrawImageUnscaled(sl, -offX, -offY);
-                }
+                if (sl != null) BlitEstrellas(g, sl, w, h, offX, offY);
                 g.CompositingMode = ocm;
+            }
+
+            // LAS ESTRELLAS, CORRIDAS POR LA DERIVA Y ENVOLVIENDO POR LOS BORDES.
+            //
+            // El campo de estrellas esta horneado al tamano de la pantalla completa y cada vista copia SU ventana.
+            // Al sonar musica el campo entero se desliza despacio en diagonal, asi que la ventana que hay que
+            // copiar se corre con el; cuando esa ventana se sale por un borde, lo que falta se toma del otro
+            // lado, que es lo que hace que el campo parezca infinito y no tenga principio ni final.
+            //
+            // Se copian los MISMOS pixeles que antes -como mucho en cuatro trozos en vez de uno, y solo cuando
+            // la ventana cae justo encima de la costura-, asi que no cuesta mas que antes.
+            private void BlitEstrellas(Graphics g, Bitmap sl, int w, int h, int offX, int offY)
+            {
+                int FW = sl.Width, FH = sl.Height;
+                if (FW < 1 || FH < 1) return;
+                int sx = (int)((offX - (int)driftX) % FW); if (sx < 0) sx += FW;
+                int sy = (int)((offY - (int)driftY) % FH); if (sy < 0) sy += FH;
+                int w1 = FW - sx; if (w1 > w) w1 = w;
+                int h1 = FH - sy; if (h1 > h) h1 = h;
+                bool atenuada = Dim < 0.985f;
+                if (atenuada) EnsureDimIA();   // copia con ALFA (atenuado): solo mientras se navega con musica
+                Trozo(g, sl, 0, 0, w1, h1, sx, sy, atenuada);
+                if (w1 < w) Trozo(g, sl, w1, 0, w - w1, h1, 0, sy, atenuada);
+                if (h1 < h) Trozo(g, sl, 0, h1, w1, h - h1, sx, 0, atenuada);
+                if (w1 < w && h1 < h) Trozo(g, sl, w1, h1, w - w1, h - h1, 0, 0, atenuada);
+            }
+            private void Trozo(Graphics g, Bitmap sl, int dx, int dy, int dw, int dh, int sx, int sy, bool atenuada)
+            {
+                if (dw < 1 || dh < 1) return;
+                Rectangle dest = new Rectangle(dx, dy, dw, dh);
+                if (atenuada) g.DrawImage(sl, dest, sx, sy, dw, dh, GraphicsUnit.Pixel, dimIA);
+                else g.DrawImage(sl, dest, sx, sy, dw, dh, GraphicsUnit.Pixel);
             }
 
             // Atributos de imagen con el alfa de la atenuacion (cacheados; la matriz se rehace solo si Dim cambio de escalon)
@@ -11302,7 +11314,8 @@ namespace Rocola
                     float pulse = (s.Band == 0) ? pLo : (s.Band == 1) ? pMid : pHi;   // el pulso de SU frecuencia
                     if (pulse <= 0.02f) continue;   // su banda no suena ahora: sin halo (asi se nota la separacion)
                     int gd = s.Size * 2 + 4 + (int)(pulse * 16f);   // el halo crece con el golpe de su banda
-                    int px = (int)(s.X * FW) - offX, py = (int)(s.Y * FH) - offY;
+                    int px = (int)(s.X * FW) + (int)driftX - offX; if (px >= FW) px -= FW;   // la estrella se movio: su halo con ella
+                    int py = (int)(s.Y * FH) + (int)driftY - offY; if (py >= FH) py -= FH;
                     if (px + gd < 0 || px - gd > w || py + gd < 0 || py - gd > h) continue;   // fuera de la ventana: se salta
                     int cr, cg, cb;
                     if (s.Tint > 0f) { cr = 255; cg = 255; cb = 255; } else { cr = s.R; cg = s.G; cb = s.B; }
@@ -11343,11 +11356,24 @@ namespace Rocola
                     for (int i = 0; i < stars.Length; i++)
                     {
                         Star s = stars[i];
-                        // EL POLVO NO ENTRA AQUI. Son tres cuartas partes del cielo y viven horneadas UNA vez
-                        // en el bitmap del cielo (ver PintaPolvo), no ocho veces en las capas de titileo. Por
-                        // eso se puede cuadruplicar el numero de estrellas sin que hornear cueste mas: lo que
-                        // se hornea ocho veces sigue siendo el mismo punado de siempre.
-                        if (s.Kind == 0) continue;
+                        // EL POLVO SI ENTRA AQUI, y antes no. Vivia horneado en el bitmap del cielo -una sola
+                        // vez en vez de ocho- pero el cielo no se desliza: se queda pegado a la pantalla. Con la
+                        // deriva andando, eso dejaba mas de la mitad de las estrellas clavadas mientras el resto
+                        // se movia. Aqui se hornea con las demas y el campo entero se desliza como una pieza.
+                        // No cuesta nada en marcha: son rectangulitos de un pixel y solo se hornean al arrancar
+                        // o al cambiar de tamano de pantalla, no por cuadro.
+                        if (s.Kind == 0)
+                        {
+                            SmoothingMode osm2 = lg.SmoothingMode;
+                            lg.SmoothingMode = SmoothingMode.None;   // una estrella lejana es un pixel, no una manchita suavizada
+                            int cr0, cg0, cb0;
+                            if (s.Tint > 0f) { cr0 = 255; cg0 = 255; cb0 = 255; } else { cr0 = s.R; cg0 = s.G; cb0 = s.B; }
+                            b.Color = Color.FromArgb(s.Bri, cr0, cg0, cb0);
+                            int d0 = s.Size < 1 ? 1 : (s.Size > 2 ? 2 : s.Size);
+                            lg.FillRectangle(b, (int)(s.X * w) - d0 / 2, (int)(s.Y * h) - d0 / 2, d0, d0);
+                            lg.SmoothingMode = osm2;
+                            continue;
+                        }
                         int harm = 1 + (i % 2);   // armonico ENTERO (1 o 2: bien muestreado con TwK=8) -> el set cicla exacto
                         double tw = 0.62 + 0.38 * (0.5 + 0.5 * Math.Sin(ph * harm + s.Off));   // titileo 0.62..1.00
                         int a = (int)(tw * s.Bri); if (a > 255) a = 255; if (a < 0) a = 0;
