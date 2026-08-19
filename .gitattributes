@@ -1,0 +1,7 @@
+# Los archivos .bat los lee cmd.exe de Windows buscando las etiquetas (:fin, :prueba...) por posicion
+# dentro del archivo. Guardados con saltos de linea de Unix, cmd no las encuentra, aborta el archivo a
+# media ejecucion y la ventana se cierra sin decir nada. Se marcan como binarios PARA QUE NADIE LOS
+# CONVIERTA: asi los bytes que se guardan aqui son exactamente los que llegan a la PC de Windows, tanto
+# al clonar como al bajar el zip.
+*.bat -text
+*.cmd -text
