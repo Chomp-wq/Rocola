@@ -763,17 +763,19 @@ namespace Rocola
             // DONDE SE PONEN. Antes habia una separacion minima obligatoria de 30 px y hasta diez intentos
             // buscando hueco: por eso el cielo salia espolvoreado con una regularidad de papel pintado. Un
             // cielo de verdad tiene grumos, parejas y zonas enteras vacias.
-            int nc = 7 + rnd.Next(4);
+            // Mas centros y mas anchos, y menos estrellas atadas a ellos: con siete grumos estrechos y el
+            // 68% dentro, las que se ven acababan amontonadas en cuatro manchas y el resto del cielo vacio.
+            int nc = 8 + rnd.Next(4);
             float[] ccx = new float[nc], ccy = new float[nc], ccr = new float[nc];
             for (int c = 0; c < nc; c++)
             {
                 ccx[c] = (float)rnd.NextDouble() * w; ccy[c] = (float)rnd.NextDouble() * h;
-                ccr[c] = h * (0.06f + (float)rnd.NextDouble() * 0.13f);
+                ccr[c] = h * (0.07f + (float)rnd.NextDouble() * 0.17f);
             }
             for (int i = 0; i < nStars; i++)
             {
                 float bx, by;
-                if (rnd.Next(100) < 68)
+                if (rnd.Next(100) < 62)
                 {
                     int c = rnd.Next(nc);
                     bx = ccx[c] + Gauss(rnd) * ccr[c]; by = ccy[c] + Gauss(rnd) * ccr[c] * 0.7f;
@@ -787,9 +789,24 @@ namespace Rocola
                 // Lo brillante que es, con una curva bien inclinada: casi todas debilisimas, unas pocas
                 // fuertes. De aqui salen el tamano, el color y a que grupo va.
                 double m = Math.Pow(rnd.NextDouble(), 4.6);
-                skind[i] = (m > 0.80) ? 2 : (m > 0.34) ? 1 : 0;
-                ssize[i] = (skind[i] == 2) ? (float)(11 + m * 7) : (skind[i] == 1) ? (float)(6 + m * 6) : (float)(3 + m * 3);
-                sforma[i] = (skind[i] == 0) ? FormaPunto : FormaEstrella;
+                // DE QUE GRUPO ES. El corte de las medianas sube de 0.34 a 0.55: antes una de cada seis era
+                // "mediana" -unas noventa en pantalla- y eran justo las que se veian como pompas. Ahora son
+                // la mitad, y las que dejan de serlo pasan a ser polvo, que es como se ve de verdad la
+                // inmensa mayoria del cielo. (El mismo corte que por CPU.)
+                skind[i] = (m > 0.80) ? 2 : (m > 0.55) ? 1 : 0;
+                // Y el POLVO encoge de golpe: medía tres o cuatro de medio lado, o sea seis a nueve pixeles
+                // en pantalla, y con su halo salia una pompa. Un punto de luz sin forma solo pasa por
+                // estrella si es diminuto; de ahi para arriba tiene que tener silueta. Por CPU el polvo es
+                // un pixel clavado, asi que aqui se queda en dos o tres.
+                // Los tamanos salen de igualar el cielo por CPU midiendo los dos dibujados: alli la grande
+                // ocupa unos 34 px de halo con las puntas llegando a otros tantos -unos 67 px de punta a
+                // punta- y la mediana unos 18. Como aqui el cromo entero cabe en el cuadrangulo y este mide
+                // el doble de ssize, salen estos numeros. Antes la grande media 34 px en total: la mitad de
+                // lo que mide por CPU, y por eso los dos cielos no se parecian.
+                ssize[i] = (skind[i] == 2) ? (float)(20 + m * 14) : (skind[i] == 1) ? (float)(8 + m * 2) : (float)(1.0 + m * 1.2);
+                // TODA la que se vea lleva rayitas: la grande las largas y la mediana las cortas y tenues
+                // (son dos casillas distintas del atlas, asi que sigue costando UNA sola llamada de dibujo).
+                sforma[i] = (skind[i] == 0) ? FormaPunto : (skind[i] == 2) ? FormaRayos : FormaEstrella;
                 int q = rnd.Next(100);
                 int idx = (q < 14) ? rnd.Next(2) : (q < 34) ? 2 + rnd.Next(2) : (q < 68) ? 4 + rnd.Next(2)
                         : (q < 88) ? 6 + rnd.Next(2) : (q < 97) ? 8 + rnd.Next(2) : 10;
@@ -799,13 +816,6 @@ namespace Rocola
                 uint al = (uint)(255.0 * (0.26 + m * 0.74)); if (al > 255) al = 255;
                 scol[i] = (al << 24) | (col & 0x00FFFFFFu);
             }
-            // LAS RAYITAS, a las mas brillantes de todas y a nadie mas. En una foto del cielo tampoco las
-            // llevan mas de diez o doce; repartidas por umbral acababan llevandolas ciento y pico y el cielo
-            // parecia purpurina.
-            int quiero = 6 + nStars / 260; if (quiero > 14) quiero = 14;
-            for (float corte = 17.4f; corte > 14f && quiero > 0; corte -= 0.15f)
-                for (int i = 0; i < nStars && quiero > 0; i++)
-                    if (skind[i] == 2 && sforma[i] == FormaEstrella && ssize[i] >= corte) { sforma[i] = FormaRayos; quiero--; }
             starV = new D3D9.Vtx[nStars * 6];
         }
 
@@ -953,16 +963,24 @@ namespace Rocola
                     // porque su silueta ya se ve sola y un halo fuerte la emborronaria.
                     // El halo de fondo, que en un punto de luz es CASI TODO lo que se ve: el nucleo es
                     // diminuto y lo que da la sensacion de estrella es el resplandor de alrededor.
-                    int centro = (forma == FormaPunto) ? 210 : (forma == FormaRayos) ? 150 : 130;
+                    // CUANTO SITIO DE LA CASILLA OCUPA EL HALO, y es lo que decidia si la estrella se veia
+                    // como estrella o como pompa. Antes el halo llenaba la casilla ENTERA y las rayitas solo
+                    // llegaban a 0.46 de ella: o sea que las puntas ni asomaban del borron y todas las
+                    // estrellas salian redondas. Ahora el halo es un nucleo apretado y las rayitas salen muy
+                    // por fuera, que es exactamente lo que hace el cielo por CPU (halo de 34 px con puntas de
+                    // 34 px en la grande). El polvo si llena su casilla: ahi el halo ES la estrella.
+                    int centro = (forma == FormaPunto) ? 210 : (forma == FormaRayos) ? 190 : 150;
+                    float halo = (forma == FormaPunto) ? 1.00f : (forma == FormaRayos) ? 0.52f : 0.34f;
+                    float hd = celda * halo, hx = ox + (celda - hd) * 0.5f, hy = oy + (celda - hd) * 0.5f;
                     using (GraphicsPath gp = new GraphicsPath())
                     {
-                        gp.AddEllipse(ox, oy, celda, celda);
+                        gp.AddEllipse(hx, hy, hd, hd);
                         using (PathGradientBrush pgb = new PathGradientBrush(gp))
                         {
                             pgb.CenterPoint = new PointF(ox + celda / 2f, oy + celda / 2f);
                             pgb.CenterColor = Color.FromArgb(centro, 255, 255, 255);
                             pgb.SurroundColors = new Color[] { Color.FromArgb(0, 255, 255, 255) };
-                            g.FillEllipse(pgb, ox, oy, celda, celda);
+                            g.FillEllipse(pgb, hx, hy, hd, hd);
                         }
                     }
                     float c = celda / 2f, cx2 = ox + c, cy2 = oy + c;
@@ -971,25 +989,28 @@ namespace Rocola
                         if (forma == FormaEstrella || forma == FormaRayos)
                         {
                             // UN PUNTO DE LUZ, que es lo que es una estrella: un nucleo diminuto y muy
-                            // brillante. El resplandor ya lo puso el halo de arriba. Igual que por CPU.
-                            if (forma == FormaRayos)
+                            // brillante, el resplandor que ya puso el halo de arriba, y las cuatro rayitas
+                            // cruzadas. Las rayitas no las hace la estrella: las hace el diafragma de la
+                            // camara, y son justo lo que hace que una foto del cielo parezca una foto.
+                            //
+                            // Las lleva TODA la que se ve, pero la mediana las lleva mas cortas y bastante
+                            // mas tenues que la grande: esa diferencia es la que evita el efecto purpurina,
+                            // porque si todas las llevaran igual de marcadas serian sesenta chispas y no un
+                            // cielo. (Los mismos numeros que DrawRayos por CPU.)
+                            bool grande = (forma == FormaRayos);
+                            float largo = celda * (grande ? 0.47f : 0.40f), ancho = celda * 0.030f;
+                            int tope = grande ? 120 : 62;
+                            for (int paso = 0; paso < 3; paso++)
                             {
-                                // Y las cuatro rayitas cruzadas, que solo llevan las mas brillantes. No las
-                                // hace la estrella: las hace el diafragma de la camara, y son justo lo que
-                                // hace que una foto del cielo parezca una foto.
-                                float largo = celda * 0.46f, ancho = celda * 0.024f;
-                                for (int paso = 0; paso < 3; paso++)
+                                float L = largo * (1f - paso * 0.30f), A = ancho * (1f + paso * 1.1f);
+                                int alfa = Math.Min(tope, 34 + paso * 26);
+                                using (SolidBrush rb = new SolidBrush(Color.FromArgb(alfa, 255, 255, 255)))
                                 {
-                                    float L = largo * (1f - paso * 0.30f), A = ancho * (1f + paso * 1.1f);
-                                    using (SolidBrush rb = new SolidBrush(Color.FromArgb(Math.Min(120, 34 + paso * 26), 255, 255, 255)))
-                                    {
-                                        rb.Color = Color.FromArgb(Math.Min(120, 34 + paso * 26), 255, 255, 255);
-                                        g.FillPolygon(rb, new PointF[] { new PointF(cx2 - L, cy2), new PointF(cx2, cy2 - A), new PointF(cx2 + L, cy2), new PointF(cx2, cy2 + A) });
-                                        g.FillPolygon(rb, new PointF[] { new PointF(cx2, cy2 - L), new PointF(cx2 + A, cy2), new PointF(cx2, cy2 + L), new PointF(cx2 - A, cy2) });
-                                    }
+                                    g.FillPolygon(rb, new PointF[] { new PointF(cx2 - L, cy2), new PointF(cx2, cy2 - A), new PointF(cx2 + L, cy2), new PointF(cx2, cy2 + A) });
+                                    g.FillPolygon(rb, new PointF[] { new PointF(cx2, cy2 - L), new PointF(cx2 + A, cy2), new PointF(cx2, cy2 + L), new PointF(cx2 - A, cy2) });
                                 }
                             }
-                            float nn = celda * 0.10f;
+                            float nn = celda * (grande ? 0.075f : 0.055f);
                             g.FillEllipse(b, cx2 - nn, cy2 - nn, nn * 2, nn * 2);
                         }
                         else

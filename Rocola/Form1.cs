@@ -11080,13 +11080,18 @@ namespace Rocola
             // Las lleva un punado y nada mas -las que marca Ensure-, porque repartidas por todas el cielo
             // parece purpurina. Tres rombos encajados de menos a mas cortos y mas opacos: sale una raya que
             // se afila hacia fuera sin tener que degradar nada.
-            private void DrawRayos(Graphics g, SolidBrush b, float px, float py, float R, Color col, float brillo)
+            private void DrawRayos(Graphics g, SolidBrush b, float px, float py, float R, Color col, float brillo, int kind)
             {
-                float largo = R * 4.2f, ancho = R * 0.22f;
+                // La MEDIANA lleva las rayitas mas cortas y bastante mas tenues que la grande. Esa diferencia
+                // es la que evita el efecto purpurina: si todas las llevaran igual de marcadas, sesenta
+                // estrellas con cruz serian sesenta chispas y no un cielo. Asi la mediana se lee como una
+                // estrella pequena de verdad y la grande sigue mandando en la escena.
+                float largo = R * ((kind == 2) ? 4.2f : 3.0f), ancho = R * 0.22f;
+                int tope = (kind == 2) ? 120 : 62;
                 for (int paso = 0; paso < 3; paso++)
                 {
                     float L = largo * (1f - paso * 0.30f), A = ancho * (1f + paso * 1.1f);
-                    int alfa = (int)((34 + paso * 26) * brillo); if (alfa > 120) alfa = 120; if (alfa < 1) continue;
+                    int alfa = (int)((34 + paso * 26) * brillo); if (alfa > tope) alfa = tope; if (alfa < 1) continue;
                     b.Color = Color.FromArgb(alfa, col);
                     spk[0] = new PointF(px - L, py); spk[1] = new PointF(px, py - A); spk[2] = new PointF(px + L, py); spk[3] = new PointF(px, py + A);
                     g.FillPolygon(b, spk);
@@ -11108,10 +11113,11 @@ namespace Rocola
 
             // CUANTO HALO lleva cada estrella, y no es el mismo para todas. Las GRANDES son las
             // protagonistas del cielo y con el halo generoso se leen como luces de verdad en vez de como
-            // pegatinas; a las MEDIANAS ese mismo halo se les come las puntas y quedan de bola borrosa, asi
-            // que llevan bastante menos y se mantienen limpias. (El polvo del fondo no lleva: va como punto
-            // redondo y punto.) Los dos numeros salieron de dibujar el cielo y mirarlo.
-            private static float HaloDe(int kind) { return (kind == 2) ? 1.15f : 0.85f; }
+            // pegatinas. A las MEDIANAS ese mismo halo las convertia en pompas: un disco borroso de quince
+            // pixeles con un punto blanco dentro, que es justo lo que se veia mal. Ahora lo llevan apretado,
+            // y lo que las hace estrella son sus rayitas, no el borron. (El polvo del fondo no lleva halo:
+            // va como punto de un pixel y punto.) Los numeros salieron de dibujar el cielo y mirarlo.
+            private static float HaloDe(int kind) { return (kind == 2) ? 1.15f : 0.60f; }
 
             private void Ensure(int w, int h)
             {
@@ -11146,18 +11152,21 @@ namespace Rocola
                 // cielo de verdad tiene grumos, parejas y zonas enteras vacias. Ahora la mayoria caen alrededor
                 // de unos pocos centros y el resto sueltas, y se acabo la busqueda de hueco (que ademas era lo
                 // mas caro de armar el patron: hasta doce intentos por estrella recorriendo las ya puestas).
-                int nc = 7 + r.Next(4);
+                // Mas centros y mas anchos, y menos estrellas atadas a ellos: con siete grumos estrechos y
+                // el 68% dentro, las que se ven acababan amontonadas en cuatro manchas y el resto del cielo
+                // vacio. Repartido asi el cielo respira y siguen notandose los grumos.
+                int nc = 8 + r.Next(4);
                 float[] ccx = new float[nc], ccy = new float[nc], ccr = new float[nc];
                 for (int c = 0; c < nc; c++)
                 {
                     ccx[c] = (float)r.NextDouble(); ccy[c] = (float)r.NextDouble();
-                    ccr[c] = 0.06f + (float)r.NextDouble() * 0.13f;
+                    ccr[c] = 0.07f + (float)r.NextDouble() * 0.17f;
                 }
                 int grandes = 0;
                 for (int i = 0; i < n; i++)
                 {
                     Star s = new Star();
-                    if (r.Next(100) < 68)
+                    if (r.Next(100) < 62)
                     {
                         int c = r.Next(nc);
                         s.X = ccx[c] + Gauss(r) * ccr[c];
@@ -11170,8 +11179,19 @@ namespace Rocola
                     // LO BRILLANTE QUE ES, con una curva bien inclinada: casi todas debilisimas, unas pocas
                     // fuertes. De aqui salen el tamano, el brillo y a que grupo va (polvo / mediana / grande).
                     double m = Math.Pow(r.NextDouble(), 4.6);
-                    s.Kind = (m > 0.80) ? 2 : (m > 0.34) ? 1 : 0;
-                    s.Size = (s.Kind == 2) ? (5 + (int)(m * 4)) : (s.Kind == 1) ? (3 + (int)(m * 3)) : (1 + (int)(m * 2));
+                    // DE QUE GRUPO ES. El corte de las medianas sube de 0.34 a 0.55: antes una de cada seis
+                    // estrellas era "mediana" -unas noventa en pantalla- y eran justo las que se veian como
+                    // pompas. Ahora son la mitad, y las que dejan de serlo pasan a ser polvo de un pixel,
+                    // que es como se ve de verdad la inmensa mayoria del cielo.
+                    s.Kind = (m > 0.80) ? 2 : (m > 0.55) ? 1 : 0;
+                    // Y la mediana ademas ENCOGE (era 4-5, ahora 3): lo que la hace estrella son sus
+                    // rayitas, no su bulto. El polvo se queda en un pixel clavado.
+                    s.Size = (s.Kind == 2) ? (5 + (int)(m * 4)) : (s.Kind == 1) ? 3 : 1;
+                    // TODA la que se vea lleva rayitas. Antes las llevaban diez o doce y las otras noventa se
+                    // quedaban de bola redonda: una bola redonda solo pasa por estrella si es diminuta, y
+                    // esas no lo eran. Con las rayitas escaladas por tamano (ver DrawRayos) el cielo entero
+                    // se lee como estrellas en vez de como puntos gordos.
+                    s.Rayos = (s.Kind != 0);
                     // El suelo del brillo no puede ser tan bajo: con 0.16 la mitad del cielo quedaba en alfa
                     // 40 sobre un punto de un pixel, o sea invisible, y el cielo se veia mas vacio que antes
                     // teniendo el doble de estrellas.
@@ -11195,15 +11215,6 @@ namespace Rocola
                     s.Off = (float)(r.NextDouble() * Math.PI * 2);
                     s.Spd = 0.6f + (float)r.NextDouble() * 1.6f;   // titileo LENTO
                     stars[i] = s;
-                }
-                // LAS RAYITAS, a las mas grandes de todas y a nadie mas. En una foto del cielo tampoco las
-                // llevan mas de diez o doce; repartidas por umbral acababan llevandolas ciento y pico y el
-                // cielo parecia purpurina. Se busca el corte por conteo, sin ordenar nada.
-                int quiero = 6 + (int)(n / 260); if (quiero > 14) quiero = 14;
-                for (int corte = 255; corte > 200 && quiero > 0; corte -= 2)
-                {
-                    for (int i = 0; i < n && quiero > 0; i++)
-                        if (stars[i].Kind == 2 && !stars[i].Rayos && stars[i].Bri >= corte) { stars[i].Rayos = true; quiero--; }
                 }
                 if (sb == null) sb = new SolidBrush(Color.White);
                 if (sp == null) sp = new Pen(Color.White, 2.2f);
@@ -11286,7 +11297,7 @@ namespace Rocola
                         int gd = (int)((s.Size * 3 + 6 + (int)(pulse * 10)) * gfade * HaloDe(s.Kind));   // el beat agranda el glow y el fundido lo encoge
                         Bitmap gb = GlowFor(cr, cg, cb);
                         if (gb != null && gd > 0) g.DrawImage(gb, new Rectangle(px - gd / 2, py - gd / 2, gd, gd));
-                        if (s.Rayos) DrawRayos(g, sb, px, py, s.Size + armUp, Color.FromArgb(cr, cg, cb), bri * (float)tw);
+                        if (s.Rayos) DrawRayos(g, sb, px, py, s.Size + armUp, Color.FromArgb(cr, cg, cb), bri * (float)tw, s.Kind);
                         DrawNucleo(g, sb, px, py, s.Size, cr, cg, cb, a);
                     }
                     else { sb.Color = Color.FromArgb(a, cr, cg, cb); float ds = s.Size < 1 ? 1 : s.Size; g.FillEllipse(sb, px - ds / 2f, py - ds / 2f, ds, ds); }
@@ -11633,7 +11644,7 @@ namespace Rocola
                                 lg.DrawImage(gb, gr, 0, 0, gb.Width, gb.Height, GraphicsUnit.Pixel, ia);
                             }
                         }
-                        if (s.Rayos) DrawRayos(lg, b, px, py, s.Size, Color.FromArgb(cr2, cg2, cb2), (s.Bri / 255f) * (float)tw);
+                        if (s.Rayos) DrawRayos(lg, b, px, py, s.Size, Color.FromArgb(cr2, cg2, cb2), (s.Bri / 255f) * (float)tw, s.Kind);
                         DrawNucleo(lg, b, px, py, s.Size, cr2, cg2, cb2, a);
                     }
                 }
