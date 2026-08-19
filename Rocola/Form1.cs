@@ -2345,7 +2345,7 @@ namespace Rocola
             bool wasMaint = maintMode;
             maintMode = true; maintUntil = DateTime.Now.AddMinutes(10);
             bool changed = false;
-            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkUp = masterDb, bkEq = eqAmount, bkBass = bassAmount; int bkVid = videoVol, bkDsk = perfilDisco; bool bkOn = normalizeOn, bkSbr = sbrOn, bkIa = iaVivo, bkEqA = eqAuto, bkBassA = bassAuto, bkVidA = videoAuto; string bkIaMez = iaMezcla, bkIaGpu = iaGpu;   // por si se Cancela
+            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkUp = masterDb, bkEq = eqAmount, bkBass = bassAmount; int bkVid = videoVol, bkDsk = perfilDisco; bool bkOn = normalizeOn, bkSbr = sbrOn, bkIa = iaVivo, bkEqA = eqAuto, bkBassA = bassAuto, bkVidA = videoAuto, bkIaDat = iaHarvestOn; string bkIaMez = iaMezcla, bkIaGpu = iaGpu;   // por si se Cancela
             try
             {
                 Cursor.Show();
@@ -2363,7 +2363,7 @@ namespace Rocola
                     dlg.FormBorderStyle = FormBorderStyle.FixedDialog;
                     dlg.MaximizeBox = false; dlg.MinimizeBox = false; dlg.ShowInTaskbar = false; dlg.ShowIcon = false;
                     dlg.StartPosition = FormStartPosition.CenterParent;
-                    dlg.ClientSize = new Size(960, 974);   // aqui hay pantalla de sobra: cabe la tarjeta de la IA en vivo
+                    dlg.ClientSize = new Size(960, 1008);   // aqui hay pantalla de sobra: cabe la tarjeta de la IA en vivo
                     dlg.BackColor = Color.FromArgb(11, 14, 32);
                     dlg.Font = fSub;
 
@@ -2401,7 +2401,7 @@ namespace Rocola
                     Tarjeta tVol = new Tarjeta(); tVol.SetBounds(16, 100, 456, 398); tVol.Titulo = "VOLUMEN PAREJO"; tVol.Acento = cVol;
                     Tarjeta tCal = new Tarjeta(); tCal.SetBounds(488, 100, 456, 398); tCal.Titulo = "CALIDAD DEL SONIDO"; tCal.Acento = cCal;
                     Tarjeta tIa = new Tarjeta(); tIa.SetBounds(16, 508, 928, 232); tIa.Titulo = "IA EN VIVO  (DSEE ULTRA)"; tIa.Acento = cIa;
-                    Tarjeta tBib = new Tarjeta(); tBib.SetBounds(16, 750, 928, 160); tBib.Titulo = "TU BIBLIOTECA"; tBib.Acento = cBib;
+                    Tarjeta tBib = new Tarjeta(); tBib.SetBounds(16, 750, 928, 194); tBib.Titulo = "TU BIBLIOTECA"; tBib.Acento = cBib;
 
                     // --- Una FILA de ajuste: nombre arriba, valor a la derecha, explicacion debajo y la barra abajo ---
                     Label[] nom = new Label[7], val = new Label[7], des = new Label[7];
@@ -2521,7 +2521,19 @@ namespace Rocola
                     BotonPlano bMudos = new BotonPlano();
                     bMudos.SetBounds(652, 114, 260, 34); bMudos.Font = fBot;
                     lPct.SetBounds(332, 112, 306, 18); pbTrain.SetBounds(332, 134, 306, 8);
+                    // JUNTAR MATERIAL PARA LA IA: se puede apagar. Es lo unico de aqui que ESCRIBE UN ARCHIVO
+                    // GORDO en el disco de la rocola -llega a 24 GB- y hay locales donde eso no interesa: un
+                    // disco justo de espacio, o simplemente que el dueno no quiere juntar nada. Apagarlo NO
+                    // toca ninguna otra cosa: la rocola sigue midiendo el volumen de cada cancion, aprendiendo
+                    // el EQ y los graves de la biblioteca, buscando donde el MP3 corto los agudos y repasando
+                    // a fondo igual que antes. Lo unico que deja de hacer es GUARDAR ejemplos para entrenar.
+                    // Va en su propio renglon porque el de arriba ya lo llenan el repaso a fondo, su avance y
+                    // la limpieza de videos mudos.
+                    Interruptor swIa = new Interruptor();
+                    swIa.SetBounds(16, 156, 286, 26); swIa.ForeColor = cTexto; swIa.Font = fNom;
+                    swIa.Text = "Juntar material para la IA"; swIa.Acento = cBib; swIa.Checked = iaHarvestOn;
                     tBib.Controls.Add(lCal); tBib.Controls.Add(hint); tBib.Controls.Add(bTrain); tBib.Controls.Add(lPct); tBib.Controls.Add(pbTrain); tBib.Controls.Add(bMudos);
+                    tBib.Controls.Add(swIa);
                     EscribeInformeCalidad();   // el detalle, cancion por cancion, queda en un archivo junto al programa
 
                     // ---------------- TIPO DE DISCO ----------------
@@ -2531,12 +2543,12 @@ namespace Rocola
                     // sola al arrancar y acierta. Esto esta aqui por si el operador quiere fijarlo -por ejemplo
                     // con la musica en un disco de red, donde medir no dice gran cosa-.
                     Color cDsk = Color.FromArgb(150, 205, 255);
-                    Label lDskT = new Label(); lDskT.SetBounds(252, 920, 150, 18); lDskT.BackColor = Color.Transparent;
+                    Label lDskT = new Label(); lDskT.SetBounds(252, 954, 150, 18); lDskT.BackColor = Color.Transparent;
                     lDskT.ForeColor = cTexto; lDskT.Font = fNom; lDskT.Text = "Tipo de disco";
-                    BotonPlano bDskA = new BotonPlano(); bDskA.SetBounds(408, 918, 122, 34); bDskA.Font = fBot; bDskA.Text = "Automatico";
-                    BotonPlano bDskS = new BotonPlano(); bDskS.SetBounds(538, 918, 104, 34); bDskS.Font = fBot; bDskS.Text = "SSD";
-                    BotonPlano bDskH = new BotonPlano(); bDskH.SetBounds(650, 918, 142, 34); bDskH.Font = fBot; bDskH.Text = "Disco duro";
-                    Label lDskS = new Label(); lDskS.SetBounds(252, 954, 540, 18); lDskS.BackColor = Color.Transparent;
+                    BotonPlano bDskA = new BotonPlano(); bDskA.SetBounds(408, 952, 122, 34); bDskA.Font = fBot; bDskA.Text = "Automatico";
+                    BotonPlano bDskS = new BotonPlano(); bDskS.SetBounds(538, 952, 104, 34); bDskS.Font = fBot; bDskS.Text = "SSD";
+                    BotonPlano bDskH = new BotonPlano(); bDskH.SetBounds(650, 952, 142, 34); bDskH.Font = fBot; bDskH.Text = "Disco duro";
+                    Label lDskS = new Label(); lDskS.SetBounds(252, 988, 540, 18); lDskS.BackColor = Color.Transparent;
                     lDskS.ForeColor = cTenue; lDskS.Font = fDes;
                     Action pintaDsk = delegate
                     {
@@ -2568,9 +2580,9 @@ namespace Rocola
                     pintaDsk();
 
                     // ---------------- PIE ----------------
-                    BotonPlano bReset = new BotonPlano(); bReset.SetBounds(16, 922, 220, 38); bReset.Font = fBot;
+                    BotonPlano bReset = new BotonPlano(); bReset.SetBounds(16, 956, 220, 38); bReset.Font = fBot;
                     bReset.Text = "Dejar como de fabrica";
-                    BotonPlano bOk = new BotonPlano(); bOk.SetBounds(804, 922, 140, 38); bOk.Font = fBot;
+                    BotonPlano bOk = new BotonPlano(); bOk.SetBounds(804, 956, 140, 38); bOk.Font = fBot;
                     bOk.Text = "Listo"; bOk.Relleno = Color.FromArgb(30, 96, 70); bOk.Borde = Color.FromArgb(72, 182, 132);
 
                     Action pintaMudos = delegate
@@ -2657,15 +2669,21 @@ namespace Rocola
                         int tTot = preScanTotal, tFal = preScanLeft;
                         // TRES renglones, cada uno con lo suyo y con el corte escrito a mano: antes iba todo
                         // seguido en dos y con la biblioteca grande el ultimo se salia del hueco y no se veia.
+                        // El renglon del material se dice SIEMPRE, tambien apagado: si desaparecia no habia
+                        // forma de saber si se estaba juntando o no. Y apagado se aclara que lo demas sigue,
+                        // que es justo la duda que le entra a cualquiera al ver un interruptor de IA.
+                        string iaTxt = iaHarvestOn
+                            ? ("Material para la IA: " + IaInfoText() + ".   ")
+                            : "Material para la IA: apagado (lo demas se sigue midiendo igual).   ";
                         hint.Text = (preScanTurbo && tTot > 0)
                             ? ((tFal > 0 ? "Repasando la biblioteca a fondo ahora mismo." : "Repaso a fondo terminado: la biblioteca esta entera.")
-                               + "\nMaterial para la IA: " + IaInfoText() + "."
-                               + (etapa.Length > 0 ? ("   La cancion que suena entra en la etapa " + etapa + ".") : "")
+                               + "\n" + iaTxt
+                               + (etapa.Length > 0 ? ("La cancion que suena entra en la etapa " + etapa + ".") : "")
                                + "\nEl detalle, cancion por cancion, queda en rocola_calidad.txt junto al programa.")
                             : ("La biblioteca se mide sola mientras la rocola trabaja: "
                                + (tFal > 0 ? ("faltan " + tFal.ToString("#,0") + " archivos.") : "ya esta al dia.")
                                + (durScanLeft > 0 ? ("   Duraciones: faltan " + durScanLeft.ToString("#,0") + ".") : "")
-                               + "\n" + (iaHarvestOn ? ("Material para la IA: " + IaInfoText() + ".   ") : "")
+                               + "\n" + iaTxt
                                + (etapa.Length > 0 ? ("La cancion que suena entra en la etapa " + etapa + ".") : "")
                                + "\nEl detalle, cancion por cancion, queda en rocola_calidad.txt junto al programa.");
                         pintaTrain();
@@ -2708,13 +2726,14 @@ namespace Rocola
                         iaVivo = ultra2;
                         iaMezcla = swIaAuto.Checked ? "auto" : barMix.Value.ToString();
                         sbrOn = swSbr.Checked && sbrAllowed && !ultra2;   // exclusion mutua: nunca los dos a la vez
+                        iaHarvestOn = swIa.Checked;
                         changed = true;
                         updateLabels();
                         ApplyNormNow();   // se oye el cambio al instante en la cancion que suena
                         UpdateNowPlayingUI();   // y el letrero MEJORADA aparece/desaparece al instante
                     };
                     for (int k = 0; k < bar.Length; k++) { bar[k].Scroll += apply; if (au[k] != null) au[k].CheckedChanged += apply; }
-                    swOn.CheckedChanged += apply; swSbr.CheckedChanged += apply;
+                    swOn.CheckedChanged += apply; swSbr.CheckedChanged += apply; swIa.CheckedChanged += apply;
                     barMix.Scroll += apply; swIaAuto.CheckedChanged += apply;
                     swUltra.CheckedChanged += delegate { if (swUltra.Checked) { IaEnsureMotor(); IaRequestQueueJobs(); } apply(swUltra, EventArgs.Empty); };   // al encender ULTRA: motor oculto + preparar cola
                     cbGpu.SelectedIndexChanged += delegate
@@ -2731,6 +2750,7 @@ namespace Rocola
                         au[3].Checked = true; au[4].Checked = true; au[5].Checked = true;   // videos, EQ y graves en automatico
                         swUltra.Checked = false; swIaAuto.Checked = true;    // la IA en vivo, apagada
                         if (swSbr.Enabled) swSbr.Checked = false;            // el espectral ligero, apagado
+                        swIa.Checked = true;                                 // juntar material para la IA: encendido de fabrica
                         if (perfilDisco != 0)                                // el tipo de disco, otra vez a medirlo sola
                         { perfilDisco = 0; lock (discoLock) discoLento.Clear(); AplicaPerfilDisco(); pintaDsk(); }
                         apply(bReset, EventArgs.Empty);
@@ -2768,7 +2788,7 @@ namespace Rocola
                 }
                 if (changed) { SaveConfigPrefs(); ShowToast("Sonido actualizado", Color.FromArgb(40, 130, 90)); }
             }
-            catch { normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; masterDb = bkUp; eqAmount = bkEq; bassAmount = bkBass; videoVol = bkVid; videoAuto = bkVidA; sbrOn = bkSbr; iaVivo = bkIa; eqAuto = bkEqA; bassAuto = bkBassA; iaMezcla = bkIaMez; iaGpu = bkIaGpu; perfilDisco = bkDsk; AplicaPerfilDisco(); }   // si algo truena, deja los valores como estaban
+            catch { normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; masterDb = bkUp; eqAmount = bkEq; bassAmount = bkBass; videoVol = bkVid; videoAuto = bkVidA; sbrOn = bkSbr; iaVivo = bkIa; eqAuto = bkEqA; bassAuto = bkBassA; iaMezcla = bkIaMez; iaGpu = bkIaGpu; perfilDisco = bkDsk; iaHarvestOn = bkIaDat; AplicaPerfilDisco(); }   // si algo truena, deja los valores como estaban
             finally { try { Cursor.Hide(); } catch { } maintMode = wasMaint; ForceFocus(); }
         }
 
