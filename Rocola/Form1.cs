@@ -199,9 +199,13 @@ namespace Rocola
         private System.Threading.Thread durScanTh;
         private volatile int durScanGen = 0;
         private volatile int durScanLeft = 0;   // cuantas duraciones faltan (para el panel)
-        private System.Threading.Thread preScanTh;      // hilo del pre-analisis (uno solo a la vez)
+        private System.Threading.Thread[] preScanTh;    // hilos del pre-analisis (ver CarrilesRepaso)
         private volatile bool preScanStop = false;      // pedirle al pre-analisis que se detenga (al cerrar)
-        private volatile int preScanLeft = 0;           // canciones que le faltan por medir (0 = al dia)
+        // Lo que falta por medir. Lo bajan VARIOS carriles del repaso y tambien el hilo de la interfaz al
+        // publicar cada medida, asi que se toca siempre con Interlocked (que ademas hace de barrera: por eso
+        // no hace falta 'volatile', que encima no se puede combinar con Interlocked sin que el compilador
+        // avise). Quien lo LEE es la barra de avance, y ahi un valor con unas milesimas de retraso da igual.
+        private int preScanLeft = 0;                    // archivos que le faltan por medir (0 = al dia)
         private volatile int preScanGen = 0;            // generacion: al re-escanear la biblioteca (F5) el hilo viejo caduca y arranca uno nuevo
         private volatile int preScanTotal = 0;          // cuantas canciones tiene la tanda en curso (para la barra de avance)
         // ENTRENAMIENTO A FONDO (boton en Ctrl+F3, para cuando se hace mantenimiento): la rocola se dedica POR
@@ -2807,13 +2811,31 @@ namespace Rocola
             return p;
         }
 
+        // ATAJO (rendimiento): casi todos los titulos son letras inglesas, numeros y signos corrientes.
+        // Para esos, descomponer el texto en letra+tilde y preguntar por la categoria Unicode de cada
+        // caracter es trabajo tirado: por debajo de 128 no hay NINGUN caracter que sea marca de acento, y
+        // bajar a minusculas ahi es exactamente pasar la A-Z a la a-z. Asi que primero se mira si el texto
+        // es de esos -una pasada, sin reservar memoria- y si lo es se baja a minusculas a mano; y si encima
+        // ya venia en minusculas se devuelve el mismo texto, sin copiar nada.
+        // El texto con acentos, enes o alfabetos raros sigue por el camino largo de siempre, igual que antes.
+        // Armar el indice del buscador de una biblioteca de 120 mil canciones baja de 362 a 173 ms por esto.
         private static string Normalize(string s)
         {
             if (string.IsNullOrEmpty(s)) return "";
+            int n = s.Length, i = 0;
+            bool hayMayus = false;
+            for (; i < n; i++) { char c = s[i]; if (c >= (char)128) break; if (c >= 'A' && c <= 'Z') hayMayus = true; }
+            if (i == n)
+            {
+                if (!hayMayus) return s;
+                char[] b = new char[n];
+                for (int k = 0; k < n; k++) { char c = s[k]; b[k] = (c >= 'A' && c <= 'Z') ? (char)(c + 32) : c; }
+                return new string(b);
+            }
             string formd = s.ToLowerInvariant().Normalize(NormalizationForm.FormD);
             StringBuilder sb = new StringBuilder(formd.Length);
-            for (int i = 0; i < formd.Length; i++)
-                if (CharUnicodeInfo.GetUnicodeCategory(formd[i]) != UnicodeCategory.NonSpacingMark) sb.Append(formd[i]);
+            for (int k = 0; k < formd.Length; k++)
+                if (CharUnicodeInfo.GetUnicodeCategory(formd[k]) != UnicodeCategory.NonSpacingMark) sb.Append(formd[k]);
             return sb.ToString();
         }
 
@@ -3620,9 +3642,14 @@ namespace Rocola
             catch { iaPairsTotal = 0; }
         }
         // Añade al archivo los pares de UNA cancion (solo se llama con canciones que si conservan sus agudos).
+        // Con el repaso a fondo en varios hilos, esto lo llaman VARIOS a la vez: dos anadidos solapados
+        // dejarian el archivo de material entrelazado y por tanto inservible. El candado cuesta nada al lado
+        // de descomprimir una cancion, que es lo que hace el hilo justo antes de llegar aqui.
+        private readonly object iaFileLock = new object();
         private void IaAppendPairs(List<float> pairs)
         {
             if (pairs == null || pairs.Count < 40) return;
+            lock (iaFileLock)
             try
             {
                 string f = IaDataFile();
@@ -4508,15 +4535,40 @@ namespace Rocola
             // para que al reanudar siga desde donde iba en vez de volver a arrancar en cero.
             preScanTotal = turbo ? elegibles : pend.Count;
             if (pend.Count == 0) return;
-            preScanTh = new System.Threading.Thread(delegate ()
+            // CUANTOS CARRILES. El repaso A FONDO es el trabajo mas largo que hace la rocola -descomprime la
+            // biblioteca entera- y hasta ahora lo hacia UN solo hilo: en un equipo de ocho o dieciseis nucleos
+            // eso es dejar quieto el 90% de la maquina durante horas.
+            //
+            // Se reparte solo cuando de verdad conviene, con la misma regla que ya usan las caratulas:
+            //   - SOLO a fondo. El repaso normal esta pensado para no notarse y se queda en un carril.
+            //   - SOLO en SSD. En un disco duro no manda el procesador, manda el cabezal: varios hilos
+            //     pidiendo canciones a la vez lo ponen a saltar y sale mas lento, no mas rapido.
+            //   - Siempre dejando un nucleo libre para la pantalla y la musica, y como mucho cuatro: mas
+            //     carriles ya no ganan nada y calientan la maquina del bar para nada.
+            // En la rocola de dos nucleos esto da 1, o sea exactamente lo de siempre.
+            int carriles = 1;
+            if (turbo && !diskSlow && Environment.ProcessorCount >= 4)
             {
-                int hechas = 0;
-                int vidBien = 0, vidMal = 0;   // videos medidos / videos que ni se pudieron abrir
+                carriles = Environment.ProcessorCount - 1;
+                if (carriles > 4) carriles = 4;
+            }
+            int siguiente = -1;      // de aqui saca cada carril la siguiente cancion (reparto por demanda: las
+            int hechasTot = 0;       // canciones no duran lo mismo, y asi ninguno se queda esperando al otro)
+            int vidBien = 0, vidMal = 0;
+            int vivos = carriles;
+            Diag("repaso: " + pend.Count + " archivos en " + carriles + " carril(es)");
+            preScanTh = new System.Threading.Thread[carriles];
+            for (int carril = 0; carril < carriles; carril++)
+            preScanTh[carril] = new System.Threading.Thread(delegate ()
+            {
+                bool ultimo = false;
                 try
                 {
                     if (!turbo) System.Threading.Thread.Sleep(15000);   // dejar respirar el arranque (y al calentador de caratulas)
-                    for (int i = 0; i < pend.Count; i++)
+                    for (; ; )
                     {
+                        int i = System.Threading.Interlocked.Increment(ref siguiente);
+                        if (i >= pend.Count) break;
                         if (preScanStop || myGen != preScanGen) break;
                         // En modo normal se espera a que la rocola este en reposo (si alguien la usa, o hay un
                         // video, este hilo no toca nada). En ENTRENAMIENTO A FONDO no espera a nadie: para eso
@@ -4529,18 +4581,18 @@ namespace Rocola
                         // ni se intentan: seria fallar mil veces seguidas y dejar el contador de "faltan"
                         // clavado para siempre en el numero de videos.
                         bool esVid = EsVideo(ruta);
-                        if (esVid && videoSinMedir) { preScanLeft--; continue; }
+                        if (esVid && videoSinMedir) { System.Threading.Interlocked.Decrement(ref preScanLeft); continue; }
                         float rms, dur; float[] eqCurve;
                         if (!MeasureFile(ruta, turbo, out rms, out dur, out eqCurve))
                         {
-                            preScanLeft--;
+                            System.Threading.Interlocked.Decrement(ref preScanLeft);
                             // Tres videos seguidos sin poder abrirse y ninguno bueno todavia: no son archivos
                             // rotos, es que aqui no hay con que descomprimirlos.
-                            if (esVid && vidBien == 0 && ++vidMal >= 3)
+                            if (esVid && vidBien == 0 && System.Threading.Interlocked.Increment(ref vidMal) >= 3)
                             { videoSinMedir = true; Diag("nivelado: este equipo no puede medir los videos (no hay Media Foundation)"); }
                             continue;
                         }
-                        if (esVid) vidBien++;
+                        if (esVid) System.Threading.Interlocked.Increment(ref vidBien);
                         // publicar en el hilo de la interfaz (las tablas son suyas): sin carreras
                         try
                         {
@@ -4553,7 +4605,7 @@ namespace Rocola
                                 // asi que es mejor que lo aprendido a medias oyendola (que promediaba entre pasadas).
                                 if (rms > 0f) loudCache[ruta] = rms;   // incluido el silencio (ver LoudMudo)
                                 if (eqCurve != null) { eqCache[ruta] = eqCurve; eqCacheVer++; eqDirty = true; }   // huella tonal del EQ automatico, ya lista
-                                if (preScanLeft > 0) preScanLeft--;
+                                if (preScanLeft > 0) System.Threading.Interlocked.Decrement(ref preScanLeft);
                                 if (panelSongs != null && panelSongs.Visible) RefrescaLista();   // que aparezca la duracion recien sabida
                             });
                         }
@@ -4561,7 +4613,7 @@ namespace Rocola
                         // Apuntada como repasada a fondo (despues de encargar la publicacion, no antes: si algo
                         // fallara al publicar no queremos darla por hecha sin haber guardado su medida).
                         if (turbo) MarkDeepDone(ruta);
-                        hechas++;
+                        int hechas = System.Threading.Interlocked.Increment(ref hechasTot);
                         if ((hechas % guardaCada) == 0)
                             try { if (IsHandleCreated) BeginInvoke((MethodInvoker)delegate { SaveLoudCache(); FlushEqIfDirty(); if (iaDoneDirty) { iaDoneDirty = false; SaveIaDone(); } if (deepDoneDirty) { deepDoneDirty = false; SaveDeepDone(); } }); } catch { }
                         // Respiro entre archivos. Con algo SONANDO se descansa mas (decodificar cuesta CPU y no
@@ -4578,17 +4630,23 @@ namespace Rocola
                 catch { }
                 finally
                 {
-                    try { if (IsHandleCreated && hechas > 0) BeginInvoke((MethodInvoker)delegate { SaveLoudCache(); FlushEqIfDirty(); if (iaDoneDirty) { iaDoneDirty = false; SaveIaDone(); } if (deepDoneDirty) { deepDoneDirty = false; SaveDeepDone(); } }); } catch { }
+                    // El volcado final lo hace el ULTIMO carril que termina, no todos: si no, con cuatro
+                    // carriles se reescribirian las tablas enteras cuatro veces seguidas para nada.
+                    ultimo = System.Threading.Interlocked.Decrement(ref vivos) == 0;
+                    try { if (ultimo && IsHandleCreated && hechasTot > 0) BeginInvoke((MethodInvoker)delegate { SaveLoudCache(); FlushEqIfDirty(); if (iaDoneDirty) { iaDoneDirty = false; SaveIaDone(); } if (deepDoneDirty) { deepDoneDirty = false; SaveDeepDone(); } }); } catch { }
                 }
             });
-            preScanTh.IsBackground = true;
+            for (int carril = 0; carril < carriles; carril++)
+            {
+                preScanTh[carril].IsBackground = true;
             // NUNCA por delante de la pantalla ni de la musica. A fondo iba en prioridad NORMAL, la misma que la
             // interfaz: en la maquina de dos nucleos ese hilo -que decodifica canciones enteras sin parar- le
             // quitaba el turno al dibujado, y el fondo estrellado se veia ir lento o a tirones. Por debajo de lo
             // normal sigue quedandose con TODO el tiempo que la interfaz no usa (que es casi todo), pero en
             // cuanto hay un cuadro que dibujar, manda el cuadro. En automatico, la minima de todas.
-            preScanTh.Priority = turbo ? System.Threading.ThreadPriority.BelowNormal : System.Threading.ThreadPriority.Lowest;
-            preScanTh.Start();
+                preScanTh[carril].Priority = turbo ? System.Threading.ThreadPriority.BelowNormal : System.Threading.ThreadPriority.Lowest;
+                preScanTh[carril].Start();
+            }
         }
 
         // Mide un archivo SIN reproducirlo: sonoridad K-weighted (BS.1770, igual que el nivelado en vivo), duracion
@@ -5261,23 +5319,73 @@ namespace Rocola
                 if (!string.IsNullOrEmpty(a.Artist) && artistSeen.Add(a.Artist))
                 {
                     SearchItem ar = new SearchItem();
-                    ar.Kind = 0; ar.Display = a.Artist; ar.Key = Normalize(a.Artist); ar.AlbumRef = a;
-                    ar.Mask = MarcaLetras(ar.Key);
+                    ar.Kind = 0; ar.Display = a.Artist; ar.AlbumRef = a;
                     artistAlbums.TryGetValue(a.Artist, out ar.Albums);
                     searchIndex.Add(ar);
                 }
                 SearchItem alb = new SearchItem();
-                alb.Kind = 1; alb.Display = a.Artist + " - " + a.Name; alb.Key = Normalize(alb.Display); alb.AlbumRef = a;
-                alb.Mask = MarcaLetras(alb.Key);
+                alb.Kind = 1; alb.Display = a.Artist + " - " + a.Name; alb.AlbumRef = a;
                 searchIndex.Add(alb);
                 for (int j = 0; j < a.Tracks.Count; j++)
                 {
                     Track t = a.Tracks[j];
                     SearchItem so = new SearchItem();
-                    so.Kind = 2; so.Display = t.Artist + " - " + t.Title; so.Key = Normalize(so.Display); so.TrackRef = t; so.AlbumRef = a;
-                    so.Mask = MarcaLetras(so.Key);
+                    so.Kind = 2; so.Display = t.Artist + " - " + t.Title; so.TrackRef = t; so.AlbumRef = a;
                     searchIndex.Add(so);
                 }
+            }
+            // La parte cara -limpiar acentos y sacar la marca de letras- es la misma cuenta repetida una vez
+            // por entrada, y cada entrada solo depende de su propio texto: se puede repartir. Va aparte del
+            // bucle de arriba a proposito, para que el indice quede armado y en orden ANTES de repartir.
+            ClavesDelIndice();
+        }
+
+        // LAS CLAVES DEL BUSCADOR, REPARTIDAS ENTRE LOS NUCLEOS.
+        //
+        // Cada entrada mira solo su propio texto y escribe solo dentro de si misma, asi que no hay nada
+        // compartido que proteger: ni candados ni esperas. Se reparte por TRAMOS y no de una en una porque
+        // el trabajo de cada entrada es minusculo y ponerse de acuerdo costaria mas que hacerlo.
+        //
+        // Aqui si se usan todos los nucleos, al reves que en el repaso de la biblioteca: aquello dura horas
+        // y convive con la musica sonando, y esto dura decimas de segundo mientras la rocola todavia esta
+        // cargando, sin nada a lo que estorbar. Por debajo de 8000 entradas ni se reparte: arrancar los
+        // hilos costaria mas que el trabajo.
+        //
+        // Al volver de los Join ya no queda nadie tocando el indice, y ademas Join deja a la vista de este
+        // hilo todo lo que escribieron los otros: de aqui en adelante el indice se lee como siempre.
+        private void ClavesDelIndice()
+        {
+            int n = searchIndex.Count;
+            int hilos = 1;
+            if (n >= 8000)
+            {
+                hilos = Environment.ProcessorCount;
+                if (hilos > 4) hilos = 4;
+                if (hilos < 1) hilos = 1;
+            }
+            if (hilos <= 1) { TramoDeClaves(0, n); return; }
+
+            int trozo = (n + hilos - 1) / hilos;
+            System.Threading.Thread[] th = new System.Threading.Thread[hilos - 1];
+            for (int k = 1; k < hilos; k++)
+            {
+                int desde = k * trozo;
+                int hasta = Math.Min(n, desde + trozo);
+                th[k - 1] = new System.Threading.Thread(delegate () { TramoDeClaves(desde, hasta); });
+                th[k - 1].IsBackground = true;
+                th[k - 1].Start();
+            }
+            TramoDeClaves(0, Math.Min(n, trozo));   // el hilo que reparte tambien lleva su tramo
+            for (int k = 0; k < th.Length; k++) th[k].Join();
+        }
+
+        private void TramoDeClaves(int desde, int hasta)
+        {
+            for (int i = desde; i < hasta; i++)
+            {
+                SearchItem si = searchIndex[i];
+                si.Key = Normalize(si.Display);
+                si.Mask = MarcaLetras(si.Key);
             }
         }
 
