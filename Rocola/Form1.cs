@@ -169,7 +169,9 @@ namespace Rocola
 #else
         private bool EspectroActivo { get { return false; } }
 #endif
-        private float audioLevel = 0f;                // nivel GLOBAL (max de las 3 bandas): deriva, GPU, buscador
+#if ROCOLA_GPU
+        private float audioLevel = 0f;                // nivel GLOBAL (max de las 3 bandas): lo pide la tarjeta grafica
+#endif
         private int playFailStreak = 0;   // fallos seguidos al reproducir (para no ciclar si NAudio falla)
         // ---- NIVELADO DE VOLUMEN (que todas las canciones suenen PAREJO) ----
         // Cada cancion viene masterizada a distinto volumen. Aqui se mide la sonoridad (RMS integrado) de cada
@@ -3031,6 +3033,7 @@ namespace Rocola
             lblToast.Visible = false;
 
             searchOverlay = new SearchOverlay();
+            searchOverlay.Sky = formStars;   // MISMO campo de estrellas que el resto: una sola pieza, sin costuras ni memoria doble
             searchOverlay.Visible = false;
             searchOverlay.GetCover = LoadCover;
             searchOverlay.GetCoverYa = PortadaEnMemoria;   // mientras se barren resultados, nada de encargos al disco
@@ -9165,7 +9168,9 @@ namespace Rocola
             levLo = BandBeat(rmsLo, ref avgLo, levLo);
             levMid = BandBeat(rmsMid, ref avgMid, levMid);
             levHi = BandBeat(rmsHi, ref avgHi, levHi);
-            audioLevel = Math.Max(levLo, Math.Max(levMid, levHi));   // nivel GLOBAL (deriva/GPU/buscador): el mas fuerte de las 3
+#if ROCOLA_GPU
+            audioLevel = Math.Max(levLo, Math.Max(levMid, levHi));   // nivel GLOBAL para la tarjeta grafica: el mas fuerte de las 3
+#endif
 
             // ATENUACION del starfield mientras se navega con musica sonando (ver BgDimLevel); transicion suave.
             float dimTgt = (nowPlaying != null && !attractOn && (DateTime.Now - lastInput).TotalSeconds < BgDimIdleSecs) ? BgDimLevel : 1f;
@@ -9208,7 +9213,7 @@ namespace Rocola
                 if ((DateTime.Now - searchLastActivity).TotalSeconds >= 60) { CloseSearch(); return; }   // 1 min sin actividad
                 searchOverlay.Accent = bgAccent;
                 searchOverlay.Phase = phase;
-                searchOverlay.AudioPulse = audioLevel;
+                searchOverlay.PulseLo = levLo; searchOverlay.PulseMid = levMid; searchOverlay.PulseHi = levHi;   // cada estrella late con SU banda
                 searchOverlay.CubeAngle += 0.075;   // gira mas rapido
                 // El cuadro COMPLETO una de cada tres veces (~8/seg, el mismo criterio que el fondo del resto del
                 // programa); en los otros dos, solo lo que de verdad se mueve. Repintar la pantalla entera 24 veces
@@ -13803,8 +13808,12 @@ namespace Rocola
             }
             private readonly List<Image> artistCovers = new List<Image>();
             private Bitmap blendBmp;
-            private Starfield stars = new Starfield();   // fondo estrellado reactivo al genero
-            public float AudioPulse = 0f;   // 0..1 nivel de audio
+            // COMPARTIDO con el fondo del form, igual que la rejilla de discos y el interior del disco: este
+            // control pinta su VENTANA del mismo campo. Antes el buscador era el UNICO que se armaba su propio
+            // campo de estrellas, y eso costaba doble: por un lado otro juego de bitmaps de pantalla completa
+            // en memoria, por otro que su cielo era OTRO -las estrellas saltaban al abrir el buscador-.
+            public Starfield Sky;
+            public float PulseLo = 0f, PulseMid = 0f, PulseHi = 0f;   // pulso 0..1 por banda (graves/medios/agudos)
             public float BgDim = 1f;        // atenuacion del starfield mientras se navega con musica (el form la anima)
             // Brillo de la barra de instrucciones del buscador (Mover / Poner-Elegir / Cerrar) al pulsar.
             public const int SMover = 0, SPoner = 1, SCerrar = 2;
@@ -13994,7 +14003,41 @@ namespace Rocola
             public void SetQuery(string q) { Query = q; FocusResults = false; SelResult = 0; Invalidate(); }
             public void TypeChar(char c) { Query += c; Changed(); }
             public void Backspace() { if (Query.Length > 0) Query = Query.Substring(0, Query.Length - 1); Changed(); }
-            private void Changed() { FocusResults = false; SelResult = 0; if (OnQueryChanged != null) OnQueryChanged(Query); Invalidate(); }
+            // AL TECLEAR NO CAMBIA MEDIA PANTALLA. Escribir una letra toca la caja de lo escrito y las
+            // tarjetas de la derecha, y nada mas: el teclado se queda exactamente igual, tecla por tecla.
+            // Marcando solo esas dos zonas, lo que hay que volver a copiar debajo -el cielo- se reduce a la
+            // mitad, y el teclado horneado no se copia en absoluto. A 1920x1080 eso es lo que se notaba al
+            // escribir rapido.
+            //
+            // La UNICA vez que el lado del teclado si cambia es cuando se venia de estar en los resultados:
+            // alli habia un cubo girando en su sitio y ahora vuelven las teclas. Ese caso pide todo.
+            private void Changed()
+            {
+                bool veniaDeResultados = FocusResults;
+                FocusResults = false; SelResult = 0;
+                if (OnQueryChanged != null) OnQueryChanged(Query);
+                Rectangle arriba, derecha;
+                if (veniaDeResultados || ToastOn || !ZonasAlEscribir(out arriba, out derecha)) { Invalidate(); return; }
+                // Dos trozos SUELTOS, no uno que los englobe: Windows suma zonas y repinta solo estas dos.
+                Invalidate(arriba); Invalidate(derecha);
+            }
+
+            // LAS DOS ZONAS QUE CAMBIAN AL ESCRIBIR UNA LETRA: la caja de lo escrito con su barra de ayudas,
+            // y la columna de resultados. En medio queda el teclado, que no cambia.
+            // Va en un metodo aparte para que la prueba pueda pedir ESTAS zonas y no una copia de la cuenta:
+            // si fueran dos copias, cambiar una y olvidar la otra dejaria medio buscador congelado sin que la
+            // prueba se enterara, que es exactamente el fallo que esta vigilando.
+            public bool ZonasAlEscribir(out Rectangle arriba, out Rectangle derecha)
+            {
+                arriba = Rectangle.Empty; derecha = Rectangle.Empty;
+                int W = Width, H = Height;
+                if (W < 60 || H < 60) return false;
+                int M = 30, kbW = (int)((W - 2 * M) * 0.52);
+                arriba = new Rectangle(0, 0, W, M + 70 + 28);
+                int rx = Math.Max(0, M + kbW + 10);
+                derecha = new Rectangle(rx, 0, Math.Max(1, W - rx), H);
+                return true;
+            }
 
             public void MoveSel(int dx, int dy)
             {
@@ -14098,9 +14141,22 @@ namespace Rocola
 
                 if (!forGpu)
                 {
-                    stars.SkyOffsetY = this.Top; stars.SkyFullH = (this.Parent != null) ? this.Parent.ClientSize.Height : H; stars.SkyMid = SkyColorMid(Accent); stars.Acento = Accent;
-                    stars.Dim = BgDim;   // atenuado mientras se navega con musica
-                    stars.Draw(g, W, H, SkyColor(Accent), SkyColor2(Accent), Accent, Phase, true, AudioPulse);   // mismo fondo en degradado CONTINUO que el resto + late con la musica
+                    // EL CIELO, POR EL CAMINO RAPIDO. El buscador era el unico sitio que lo redibujaba entero
+                    // -las seiscientas estrellas, una a una, con su halo- en cada repintado. A 1920x1080 eso
+                    // costaba 8.2 ms POR CUADRO, y como al teclear se repinta todo, cada letra costaba 20 ms:
+                    // de ahi el bajon de imagenes por segundo al escribir, peor cuanto mas grande la pantalla.
+                    // Ahora hace lo mismo que la rejilla de discos: copia el cielo ya horneado y las estrellas
+                    // ya horneadas (dos copias), y encima le pone EN VIVO solo lo que de verdad se mueve, que
+                    // es el latido de las medianas/grandes y las fugaces. Se ve igual y cuesta una decima parte.
+                    if (Sky != null)
+                    {
+                        Sky.SkyOffsetX = this.Left; Sky.SkyOffsetY = this.Top;
+                        Sky.SkyFullW = (this.Parent != null) ? this.Parent.ClientSize.Width : W;
+                        Sky.SkyFullH = (this.Parent != null) ? this.Parent.ClientSize.Height : H;
+                        Sky.SkyMid = SkyColorMid(Accent); Sky.Acento = Accent;
+                        Sky.Dim = BgDim;   // atenuado mientras se navega con musica
+                        Sky.DrawReactive(g, W, H, SkyColor(Accent), SkyColor2(Accent), PulseLo, PulseMid, PulseHi);
+                    }
                 }
 
                 int M = 30;
