@@ -10665,7 +10665,7 @@ namespace Rocola
                 RectangleF clip = g.ClipBounds;
                 bool partial = !needNew && (clip.Width < w - 1 || clip.Height < h - 1);
                 bool rebuild = needNew
-                    || (!partial && (cSky != skyTop.ToArgb() || cSky2 != skyBottom.ToArgb() || cTint != tint.ToArgb() || dt >= 40 || dt < 0));   // ~24fps
+                    || (!partial && (cSky != skyTop.ToArgb() || cSky2 != skyBottom.ToArgb() || cTint != tint.ToArgb() || dt >= RefrescoMs || dt < 0));
                 if (rebuild)
                 {
                     if (needNew)
@@ -10675,14 +10675,27 @@ namespace Rocola
                         cw = w; ch = h;
                     }
                     using (Graphics cg = Graphics.FromImage(cache))
-                        RenderInto(cg, w, h, skyTop, skyBottom, tint, phase, shooting, pulse);
+                        RenderInto(cg, w, h, skyTop, skyBottom, tint, phase, pulse);
                     cSky = skyTop.ToArgb(); cSky2 = skyBottom.ToArgb(); cTint = tint.ToArgb(); lastBuild = now;
                 }
                 g.DrawImageUnscaled(cache, 0, 0);
+                // LAS FUGACES VAN AQUI, EN VIVO, no dentro de lo que se hornea. Una fugaz cruza la pantalla en
+                // un segundo: si viajara dentro del horneado avanzaria a saltos, uno por cada vez que se rehace
+                // el cielo. Fuera, va fluida aunque el cielo se rehaga de tarde en tarde, que es justo lo que
+                // permite rehacerlo de tarde en tarde. (Es la misma division que usa DrawReactive.)
+                if (shooting) DrawShoots(g, w, h);
             }
 
+            // CADA CUANTO SE REHACE EL CIELO cuando se dibuja en vivo (o sea, en la pantalla de atraccion:
+            // el resto del programa copia capas ya horneadas). Rehacerlo es dibujar las seiscientas estrellas
+            // una a una, y a 24 veces por segundo eso era la mayor parte del gasto de la pantalla que MAS
+            // tiempo pasa encendida en un bar: la de reposo. Lo unico que se pierde rehaciendolo menos a
+            // menudo es que las estrellas titilan mas despacio, y 200 ms es exactamente el ritmo al que
+            // titilan en todo el resto del programa (ver CurrentStarLayerIndex), asi que ademas va parejo.
+            public int RefrescoMs = 40;
+
             // Dibuja un cuadro completo del starfield (cielo + estrellas + fugaces) sobre el bitmap cache.
-            private void RenderInto(Graphics g, int w, int h, Color skyTop, Color skyBottom, Color tint, double phase, bool shooting, float pulse)
+            private void RenderInto(Graphics g, int w, int h, Color skyTop, Color skyBottom, Color tint, double phase, float pulse)
             {
                 EnsureSkyBrush(w, h, skyTop, skyBottom);
                 g.FillRectangle(skyBrush, 0, 0, w, h);
@@ -10720,7 +10733,6 @@ namespace Rocola
                     }
                     else { sb.Color = Color.FromArgb(a, cr, cg, cb); float ds = s.Size < 1 ? 1 : s.Size; g.FillEllipse(sb, px - ds / 2f, py - ds / 2f, ds, ds); }
                 }
-                if (shooting) DrawShoots(g, w, h);
             }
 
             // Fondo del formulario (franjas): cielo cacheado + estrellas TITILANTES por cuadros horneados.
@@ -11130,6 +11142,10 @@ namespace Rocola
             public AttractView()
             {
                 attractStars.Varied = true;   // estrellas multicolor en el modo atraccion
+                // El cubo gigante gira a 24 por segundo, pero las estrellas no tienen por que: titilan al
+                // mismo ritmo que en el resto del programa. Rehacer el cielo entero 24 veces por segundo era
+                // el grueso del gasto de esta pantalla, y es la que mas horas pasa encendida.
+                attractStars.RefrescoMs = 200;
                 SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
             }
 
