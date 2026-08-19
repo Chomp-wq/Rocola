@@ -1347,6 +1347,24 @@ namespace Rocola
             return null;
         }
 
+        // BORRAR UN GUARDADO ES BORRARLO ENTERO. Como cada guardado deja una copia al lado, borrar solo el
+        // archivo bueno no borra nada: la lectura de arriba encuentra la copia y lo resucita. Paso de verdad
+        // con el archivo de estado, donde "que no exista" es la senal de que la rocola se cerro a proposito:
+        // se borraba el bueno, sobrevivia la copia, y al dia siguiente reaparecian los creditos y la cola.
+        //
+        // El ORDEN importa. Primero la copia y el de paso, y el bueno al final: si se fuera la luz a mitad de
+        // esto, lo que queda es el archivo bueno -o sea, se reanuda, que es lo que hace la rocola ante un
+        // apagon de toda la vida-, nunca una copia suelta capaz de resucitar sola.
+        private static void BorraSeguro(string ruta)
+        {
+            lock (CandadoDe(ruta))
+            {
+                try { File.Delete(ruta + ".bak"); } catch { }
+                try { File.Delete(ruta + ".tmp"); } catch { }
+                try { File.Delete(ruta); } catch { }
+            }
+        }
+
         private string LoudFile() { return Path.Combine(Application.StartupPath, "rocola_volumen.txt"); }
         private string EqFile() { return Path.Combine(Application.StartupPath, "rocola_eq.txt"); }
 
@@ -7310,7 +7328,7 @@ namespace Rocola
             if ((DateTime.Now - lastInput).TotalMinutes < DayResetIdleMins) return;     // botones recientes: EN USO -> se aplaza
             stateDay = BusinessDay(DateTime.Now);                                       // ociosa y dia nuevo -> reinicia UNA vez
             if (credits > 0) { credits = 0; UpdateCredits(); }                          // creditos que quedaron de anoche -> a cero
-            try { File.Delete(StateFile()); } catch { }                                 // borra el estado guardado -> arranque limpio
+            BorraSeguro(StateFile());                                                   // borra el estado guardado (y su copia) -> arranque limpio
             BackupLearnedData();                                                        // cierre del dia: respalda lo aprendido (una vez al dia)
         }
 
@@ -7395,7 +7413,7 @@ namespace Rocola
                 // sesion, p.ej. un parpadeo de luz justo al dar las 7 mientras te desvelas), se reanuda igual.
                 DateTime saved = SavedStateTime(L, f);
                 if (BusinessDay(DateTime.Now) != BusinessDay(saved) && (DateTime.Now - saved).TotalMinutes > StateRecentMins)
-                { try { File.Delete(f); } catch { } return; }
+                { BorraSeguro(f); return; }
                 // mapas ruta -> cancion/disco para reconstruir los elementos (solo lo que SIGA existiendo)
                 Dictionary<string, Track> byPath = new Dictionary<string, Track>(StringComparer.OrdinalIgnoreCase);
                 Dictionary<string, Album> discByPath = new Dictionary<string, Album>(StringComparer.OrdinalIgnoreCase);
@@ -9582,7 +9600,7 @@ namespace Rocola
             // la corriente de golpe y no corre NADA de esto: el archivo SOBREVIVE y, al volver la luz, la rocola
             // REANUDA (creditos + cola). Es decir, la sola presencia del archivo al arrancar delata que fue apagon.
             if (e.CloseReason == CloseReason.WindowsShutDown || e.CloseReason == CloseReason.UserClosing)
-                try { File.Delete(StateFile()); } catch { }
+                BorraSeguro(StateFile());
             base.OnFormClosing(e);
         }
 
@@ -12763,7 +12781,7 @@ namespace Rocola
             private SolidBrush goldBrush; private Pen goldPen; private SolidBrush goldTextBrush;
             private Bitmap stripCache; private int scW = -1, scH = -1; private char scCur = '\0';
             private string scLetters; private int scAvailN = -2; private int scDatos = 0;     // firma de la tira cacheada
-            private Font fMain, fVideo, fTop, fNum;
+            private Font fMain, fVideo, fNum;
             private float fontSlot = -1f, fontAlto = -1f;   // cuerpos elegidos, y para que hueco de ancho y alto
             private string lblVideo = "VIDEO";                          // palabra, o simbolo si no cabe
             private StringFormat sfCen; private SolidBrush whiteB;
@@ -12871,7 +12889,6 @@ namespace Rocola
                 if (fMain != null && Math.Abs(fontSlot - slot) < 0.5f && Math.Abs(fontAlto - altoL) < 0.5f) return;
                 if (fMain != null) fMain.Dispose();
                 if (fVideo != null) fVideo.Dispose();
-                if (fTop != null) fTop.Dispose();
                 if (fNum != null) { fNum.Dispose(); fNum = null; }
                 float hueco = slot - 2f;
                 // EL CUERPO SALE DEL ALTO DE LA BARRA, no de un numero fijo. Con 40 px de barra da los 10.5
@@ -12880,7 +12897,11 @@ namespace Rocola
                 // una casilla de 100 pixeles.
                 float cuerpo = altoL * 0.375f;
                 fMain = CuerpoQueQuepa(g, "W", hueco, cuerpo);
-                fTop = CuerpoQueQuepa(g, "\u2605", hueco, cuerpo * 1.10f);
+                // La estrella no lleva cuerpo de letra: se dibuja, y su tamano sale de la casilla. Sale del
+                // ALTO -como el de las letras- y se recorta si la casilla es tan estrecha que no cabria.
+                radioEstrella = altoL * 0.25f;
+                if (radioEstrella > hueco * 0.50f) radioEstrella = hueco * 0.50f;
+                if (radioEstrella < 2f) radioEstrella = 2f;
                 Font fPal = CuerpoQueQuepa(g, "VIDEO", hueco, cuerpo * 0.72f);
                 if (g.MeasureString("VIDEO", fPal).Width <= hueco)
                 {
@@ -12999,6 +13020,55 @@ namespace Rocola
                     g.FillPath(hl, p2);
             }
 
+            // LA ESTRELLA DE "LO MAS SONADO" SE DIBUJA, NO SE ESCRIBE.
+            //
+            // Antes se escribia, como se escribe una A: se le pedia a la letra de Windows el simbolo "estrella
+            // negra". Y en Windows XP eso no funciona. La rocola pide Segoe UI, que en XP no existe, Windows le
+            // da Tahoma, y Tahoma de XP trae el juego de simbolos WGL4, donde la estrella NO esta. Cuando a
+            // Windows le piden un simbolo que no tiene, pinta un rectangulo vacio: eso era lo que se veia en la
+            // rocola del bar, un rectangulo en el sitio de la estrella. En la otra maquina si se veia bien, que
+            // es por lo que no se noto.
+            //
+            // Dibujada con lineas se ve igual en cualquier maquina, no depende de las letras que tenga Windows
+            // instaladas, y ademas cuesta menos que escribir texto.
+            private static readonly PointF[] estrellaUnidad = FormaEstrella();
+            private readonly PointF[] estrellaPts = new PointF[10];   // se rellena y se reusa: cero basura por cuadro
+            private float radioEstrella = 6f;
+            private static PointF[] FormaEstrella()
+            {
+                // Cinco puntas: se va alternando el radio de fuera y el de dentro cada 36 grados. La proporcion
+                // 0.382 es la de siempre, la misma que usan las estrellas de las letras de Windows.
+                PointF[] p = new PointF[10];
+                const double dentro = 0.382;
+                for (int i = 0; i < 10; i++)
+                {
+                    double a = (-90 + i * 36) * Math.PI / 180.0;
+                    double r = ((i & 1) == 0) ? 1.0 : dentro;
+                    // El 0.09549 baja la estrella para que quede centrada POR SU DIBUJO: la punta de arriba
+                    // llega mas lejos que las dos patas de abajo, asi que sin esto se veria alta.
+                    p[i] = new PointF((float)(Math.Cos(a) * r), (float)(Math.Sin(a) * r + 0.09549));
+                }
+                return p;
+            }
+            // Rellena la estrella centrada en 'r' y corrida (dx,dy). Es el reemplazo exacto del texto de antes.
+            private void Estrella(Graphics g, Brush b, RectangleF r, float dx, float dy)
+            {
+                float cx = r.X + r.Width * 0.5f + dx, cy = r.Y + r.Height * 0.5f + dy, ra = radioEstrella;
+                for (int i = 0; i < 10; i++)
+                    estrellaPts[i] = new PointF(cx + estrellaUnidad[i].X * ra, cy + estrellaUnidad[i].Y * ra);
+                g.FillPolygon(b, estrellaPts);
+            }
+            // La estrella con el mismo RELIEVE que las letras: sombra debajo y filo claro arriba.
+            private void EstrellaGrabada(Graphics g, SolidBrush b, RectangleF r, Color tono, bool hay)
+            {
+                b.Color = Color.FromArgb(hay ? 150 : 70, 0, 0, 0);
+                Estrella(g, b, r, 0f, 1.4f);
+                b.Color = hay ? Color.FromArgb(66, 190, 215, 255) : Color.FromArgb(26, 150, 170, 210);
+                Estrella(g, b, r, 0f, -1.1f);
+                b.Color = tono;
+                Estrella(g, b, r, 0f, 0f);
+            }
+
             // Una letra con RELIEVE: sombra debajo y filo claro arriba, como grabada en cristal.
             private void Grabada(Graphics g, SolidBrush b, string txt, Font f, RectangleF r, Color tono, bool hay)
             {
@@ -13040,10 +13110,9 @@ namespace Rocola
                         if (ch != Current && !(isTop && avail))   // la actual y la estrella encendida van en vivo
                         {
                             bool isVideo = (ch == VideoMark);
-                            string lbl = isVideo ? lblVideo : isTop ? "\u2605" : ch.ToString();
-                            Font useF = isTop ? fTop : (isVideo ? fVideo : fMain);
-                            Color tono = isTop ? Color.FromArgb(122, 116, 96) : TonoLetra(ch, avail);
-                            Grabada(g, tb, lbl, useF, rL, tono, avail);
+                            if (isTop) EstrellaGrabada(g, tb, rL, Color.FromArgb(122, 116, 96), avail);
+                            else Grabada(g, tb, isVideo ? lblVideo : ch.ToString(), isVideo ? fVideo : fMain,
+                                         rL, TonoLetra(ch, avail), avail);
                         }
                         if (bajo > 0f && fNum != null) Cuenta(g, tb, ch, i, slot, h, bajo, avail);
                     }
@@ -13236,7 +13305,7 @@ namespace Rocola
                         g.FillPath(goldBrush, goldPath);
                         g.DrawPath(goldPen, goldPath);
                         goldTextBrush.Color = Color.White;
-                        g.DrawString("\u2605", fTop, goldTextBrush, gsl, sfCen);
+                        Estrella(g, goldTextBrush, gsl, 0f, 0f);
                     }
                     else
                     {
@@ -13244,13 +13313,13 @@ namespace Rocola
                         // halo dorado tenue (4 pasadas desplazadas) + la estrella dorada pulsante encima.
                         int hAlpha = 35 + (int)(gpu * 55);
                         goldTextBrush.Color = Color.FromArgb(hAlpha, 255, 205, 90);
-                        g.DrawString("\u2605", fTop, goldTextBrush, new RectangleF(gsl.X - 1, gsl.Y, gsl.Width, gsl.Height), sfCen);
-                        g.DrawString("\u2605", fTop, goldTextBrush, new RectangleF(gsl.X + 1, gsl.Y, gsl.Width, gsl.Height), sfCen);
-                        g.DrawString("\u2605", fTop, goldTextBrush, new RectangleF(gsl.X, gsl.Y - 1, gsl.Width, gsl.Height), sfCen);
-                        g.DrawString("\u2605", fTop, goldTextBrush, new RectangleF(gsl.X, gsl.Y + 1, gsl.Width, gsl.Height), sfCen);
+                        Estrella(g, goldTextBrush, gsl, -1f, 0f);
+                        Estrella(g, goldTextBrush, gsl, 1f, 0f);
+                        Estrella(g, goldTextBrush, gsl, 0f, -1f);
+                        Estrella(g, goldTextBrush, gsl, 0f, 1f);
                         int gb = 60 + (int)(gpu * 70); if (gb > 255) gb = 255;
                         goldTextBrush.Color = Color.FromArgb(255, 255, 210, gb);   // dorado pulsante brillante
-                        g.DrawString("\u2605", fTop, goldTextBrush, gsl, sfCen);
+                        Estrella(g, goldTextBrush, gsl, 0f, 0f);
                     }
                 }
             }
@@ -14251,7 +14320,9 @@ namespace Rocola
                     }
                     if (suena)
                     {
-                        const string t = "\u25B6 SONANDO";
+                        // U+25BA y no U+25B6: son dos triangulitos casi identicos, pero el otro no esta en el
+                        // juego de simbolos que trae Windows XP y alli saldria un rectangulo vacio.
+                        const string t = "\u25BA SONANDO";
                         int wp = AnchoTexto(g, t, fCola) + hCola;
                         xMarca -= wp;
                         RectangleF cr = new RectangleF(xMarca, cy - hCola * 0.5f, wp, hCola);

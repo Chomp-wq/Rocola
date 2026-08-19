@@ -38,6 +38,56 @@ class Apagon
         Directory.CreateDirectory(Dir());
     }
 
+    // ---- lectura del ejecutable ya compilado: que llama un metodo ----
+    // El recorrido tiene que saber cuanto ocupa CADA instruccion; si se salta una se desincroniza y a
+    // partir de ahi lee basura, y una prueba que lee basura dice que todo esta bien.
+    static int LargoOperando(int op)
+    {
+        if (op >= 0x2B && op <= 0x37) return 1;          // saltos cortos
+        if (op >= 0x38 && op <= 0x44) return 4;          // saltos largos
+        switch (op)
+        {
+            case 0x0E: case 0x10: case 0x11: case 0x12: case 0x13:
+            case 0x1F: case 0xDE: return 1;
+            case 0x20: case 0x22: case 0x27: case 0x28: case 0x6F: case 0x70: case 0x71:
+            case 0x72: case 0x73: case 0x74: case 0x75: case 0x79:
+            case 0x7B: case 0x7C: case 0x7D: case 0x7E: case 0x7F: case 0x80:
+            case 0x81: case 0x8C: case 0x8D: case 0x8F: case 0xA3: case 0xA4:
+            case 0xA5: case 0xC2: case 0xC6: case 0xD0: case 0x29: return 4;
+            case 0x21: case 0x23: return 8;
+            default: return 0;
+        }
+    }
+    static int Largo2(int op2)
+    {
+        switch (op2)
+        {
+            case 0x06: case 0x07: case 0x15: case 0x16: case 0x1C: return 4;
+            case 0x09: case 0x0A: case 0x0B: case 0x0C: case 0x0D: case 0x0E: return 2;
+            case 0x12: case 0x19: return 1;
+            default: return 0;
+        }
+    }
+    static List<string> Llamadas(MethodBase m)
+    {
+        List<string> r = new List<string>();
+        MethodBody b = null; try { b = m.GetMethodBody(); } catch { }
+        if (b == null) return r;
+        byte[] il = null; try { il = b.GetILAsByteArray(); } catch { }
+        if (il == null) return r;
+        Module mod = m.Module; int i = 0;
+        while (i < il.Length)
+        {
+            int op = il[i];
+            if (op == 0xFE) { if (i + 1 >= il.Length) break; i += 2 + Largo2(il[i + 1]); continue; }
+            if (op == 0x45) { int n = BitConverter.ToInt32(il, i + 1); i += 1 + 4 + 4 * n; continue; }
+            if ((op == 0x28 || op == 0x6F) && i + 4 < il.Length)          // call / callvirt
+            { try { r.Add(mod.ResolveMethod(BitConverter.ToInt32(il, i + 1)).Name); } catch { } }
+            i += 1 + LargoOperando(op);
+        }
+        return r;
+    }
+
     static int Main(string[] argv)
     {
         string exe = (argv.Length > 0) ? argv[0] : "rocola.exe";
@@ -159,6 +209,48 @@ class Apagon
         Check(cual >= 0, "lo que queda en el disco es UNO de los textos entero, no un revoltijo");
         string[] sobras = Directory.GetFiles(Dir(), "*.tmp");
         Check(sobras.Length == 0, "y no quedan archivos de paso tirados (" + sobras.Length + ")");
+
+        // ---------- 6) AL CERRAR A PROPOSITO NO QUEDA NADA QUE REANUDAR ----------
+        // La rocola distingue un APAGON de un cierre A PROPOSITO por una sola cosa: si al arrancar el
+        // archivo de estado esta ahi, fue apagon y hay que devolverle al cliente sus creditos y su cola;
+        // si no esta, es que se cerro aposta -Alt+F4 o el boton de poder- y el dia arranca limpio.
+        //
+        // Guardar de forma segura deja SIEMPRE una copia al lado, y eso rompio la senal: los sitios que
+        // descartan el estado borraban solo el archivo bueno y la copia se quedaba. Al arrancar, la
+        // rocola tira de la copia -que es justo para lo que esta- y resucita todo. O sea que cerrar la
+        // rocola ya no limpiaba nada: al dia siguiente aparecian los creditos de anoche y la cola se
+        // ponia a sonar sola.
+        Console.WriteLine("\n  6) AL CERRAR A PROPOSITO NO QUEDA NADA QUE REANUDAR\n");
+        MethodInfo mBorra = TF.GetMethod("BorraSeguro", SN);
+        Check(mBorra != null, "hay una forma de borrar un guardado que se lleva tambien su copia");
+        if (mBorra != null)
+        {
+            Limpia();
+            string re = Path.Combine(Dir(), "estado.txt");
+            mEsc.Invoke(null, new object[] { re, "ROCOLA-ESTADO v1\r\ncreditos=9\r\n" });
+            mEsc.Invoke(null, new object[] { re, "ROCOLA-ESTADO v1\r\ncreditos=4\r\n" });
+            Check(File.Exists(re + ".bak"), "guardando dos veces queda una copia al lado (de eso iba todo esto)");
+            mBorra.Invoke(null, new object[] { re });
+            string[] queda = (string[])mLee.Invoke(null, new object[] { re });
+            Console.WriteLine("     despues de borrar el estado se puede leer de vuelta: "
+                              + ((queda == null) ? "nada" : (queda.Length + " lineas")));
+            Check(queda == null, "y despues de borrarlo NO queda nada que leer: manana arranca limpia");
+            Check(!File.Exists(re) && !File.Exists(re + ".bak") && !File.Exists(re + ".tmp"),
+                  "ni el archivo, ni la copia, ni el de paso");
+        }
+
+        // Y los tres sitios por los que se descarta el estado tienen que borrarlo asi. Da igual por cual
+        // se llegue -el cierre a proposito, el dia nuevo a las 7, o encontrarse un estado de otro dia-:
+        // si uno solo se quedara borrando a mano, la copia volveria a resucitarlo.
+        string[] sitios = { "OnFormClosing", "CheckBusinessDayReset", "RestoreState" };
+        string[] cuando = { "al cerrar a proposito", "al empezar el dia a las 7", "con un estado de otro dia" };
+        for (int i = 0; i < sitios.Length; i++)
+        {
+            MethodInfo m = TF.GetMethod(sitios[i], IN);
+            List<string> hace = (m == null) ? new List<string>() : Llamadas(m);
+            Check(m != null && hace.Contains("BorraSeguro"), cuando[i] + " se borra el estado con la copia y todo");
+            Check(m != null && !hace.Contains("Delete"), "   ...y ya no se borra a mano por su cuenta");
+        }
 
         Limpia();
         Console.WriteLine();
