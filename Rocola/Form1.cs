@@ -1259,7 +1259,7 @@ namespace Rocola
                 sb.Append("dsee=").Append(sbrOn ? "1" : "0").Append("\r\n");
                 if (sbrForce) sb.Append("dsee_forzar=1\r\n");   // conservar la bandera manual de pruebas (este saver reescribe el archivo completo)
                 for (int i = 0; i < extraMusicDirs.Count; i++) sb.Append("dir=").Append(extraMusicDirs[i]).Append("\r\n");
-                File.WriteAllText(ConfigFile, sb.ToString());
+                EscribeSeguro(ConfigFile, sb.ToString());
             }
             catch { }
         }
@@ -1267,6 +1267,85 @@ namespace Rocola
         // ===================== NIVELADO DE VOLUMEN (rocola_volumen.txt) =====================
         // Una linea por cancion: "<rms>|<ruta>". El RMS integrado se mide al oirse la cancion y se guarda para que
         // la proxima vez suene al mismo nivel que las demas. Archivo chico (una linea por cancion oida).
+        // ================== GUARDAR SIN PERDER NADA SI SE VA LA LUZ ==================
+        //
+        // Todo lo que la rocola guarda -los creditos y la cola, el volumen medido de cada cancion, lo mas
+        // sonado, los ajustes, las teclas, la biblioteca- se escribia con "abre el archivo, VACIALO entero y
+        // vuelve a llenarlo". Entre el vaciado y el llenado el archivo esta vacio; y ademas Windows no baja
+        // lo escrito al disco al momento, se lo guarda en memoria y lo escribe cuando le viene bien, que
+        // pueden ser segundos. Si en ese rato se va la luz -y en un bar se va-, el archivo se queda vacio o
+        // a medias, y lo que habia dentro ya no vuelve.
+        //
+        // Lo mas feo es que el archivo de CREDITOS Y COLA existe justamente para sobrevivir a un corte de
+        // luz. Y al arrancar con ese archivo roto la rocola no se queja: se queda tan tranquila con cero
+        // creditos y sin cola. O sea que el dinero del cliente desaparece sin que nadie sepa por que.
+        // Detras van tambien horas de trabajo: el volumen medido de toda la biblioteca se mide una vez y
+        // tarda horas; perder ese archivo es volver a empezar.
+        //
+        // Ahora se escribe en un archivo APARTE, se obliga a Windows a bajarlo al disco de verdad, y solo
+        // entonces se pone en el sitio del bueno de un tiron. Pase lo que pase, en el disco queda siempre un
+        // archivo COMPLETO: el nuevo si dio tiempo, y el de antes si no. Y el de antes se conserva como
+        // copia (.bak) por si el bueno se estropeara por cualquier otro motivo.
+        [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool FlushFileBuffers(IntPtr hFile);
+
+        // UN CANDADO POR ARCHIVO. Dos hilos guardando EL MISMO archivo a la vez se pisarian el archivo de
+        // paso y dejarian el bueno hecho un lio. Pasaba de verdad con las estadisticas, que tienen dos
+        // escritores: uno de fondo cada tanto y otro al cerrar la rocola. El candado va AQUI DENTRO y no en
+        // cada sitio que guarda, para que no dependa de que alguien se acuerde de ponerlo. Es POR ARCHIVO,
+        // asi que guardar el volumen de la biblioteca -que es grande- no hace esperar a los creditos.
+        private static readonly Dictionary<string, object> candados = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+        private static object CandadoDe(string ruta)
+        {
+            lock (candados)
+            {
+                object c;
+                if (!candados.TryGetValue(ruta, out c)) { c = new object(); candados[ruta] = c; }
+                return c;
+            }
+        }
+
+        private static void EscribeSeguro(string ruta, string texto)
+        {
+            lock (CandadoDe(ruta)) EscribeSeguroYa(ruta, texto);
+        }
+
+        private static void EscribeSeguroYa(string ruta, string texto)
+        {
+            string tmp = ruta + ".tmp", bak = ruta + ".bak";
+            // MISMOS BYTES que antes: UTF-8 sin marca al principio, que es lo que escribia File.WriteAllText.
+            // Si cambiara, todo lo guardado hasta hoy dejaria de leerse igual.
+            byte[] datos = new UTF8Encoding(false).GetBytes(texto);
+            using (FileStream fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None))
+            {
+                fs.Write(datos, 0, datos.Length);
+                fs.Flush();
+                // Flush solo deja lo escrito en la memoria de Windows. Esto lo baja al disco de verdad, que
+                // es lo unico que sobrevive a un corte de luz. Si el sistema no tiene esta llamada (o no es
+                // Windows), se sigue adelante: se pierde la garantia dura, no el resto.
+                try { FlushFileBuffers(fs.SafeFileHandle.DangerousGetHandle()); } catch { }
+            }
+            if (File.Exists(ruta))
+            {
+                // Replace cambia el archivo de un tiron y deja el anterior como copia. En memorias USB
+                // (FAT32) no existe, asi que ahi se hace a mano.
+                try { File.Replace(tmp, ruta, bak, true); return; }
+                catch { }
+                try { if (File.Exists(bak)) File.Delete(bak); } catch { }
+                try { File.Move(ruta, bak); } catch { try { File.Delete(ruta); } catch { } }
+            }
+            File.Move(tmp, ruta);
+        }
+
+        // Lee un archivo guardado con EscribeSeguro. Si el bueno falta o quedo vacio -un corte de luz de los
+        // de antes, o un disco con problemas- se lee la copia. Devuelve null si no hay nada que leer.
+        private static string[] LeeLineasSeguro(string ruta)
+        {
+            try { if (File.Exists(ruta)) { string[] L = File.ReadAllLines(ruta); if (L.Length > 0) return L; } } catch { }
+            try { if (File.Exists(ruta + ".bak")) { string[] L = File.ReadAllLines(ruta + ".bak"); if (L.Length > 0) return L; } } catch { }
+            return null;
+        }
+
         private string LoudFile() { return Path.Combine(Application.StartupPath, "rocola_volumen.txt"); }
         private string EqFile() { return Path.Combine(Application.StartupPath, "rocola_eq.txt"); }
 
@@ -1312,7 +1391,7 @@ namespace Rocola
                         { if (b > 0) sb.Append(';'); sb.Append(c[b].ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)); }
                         sb.Append('|').Append(snap[i].Key).Append("\r\n");
                     }
-                    lock (eqSaveLock) File.WriteAllText(EqFile(), sb.ToString());
+                    lock (eqSaveLock) EscribeSeguro(EqFile(), sb.ToString());
                 }
                 catch { }
             });
@@ -1615,7 +1694,7 @@ namespace Rocola
                     sb.Append((c[EqClip] * 100f).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)).Append("%   ");
                     sb.Append(lista[i].Key).Append("\r\n");
                 }
-                lock (calSaveLock) File.WriteAllText(destino, sb.ToString());
+                lock (calSaveLock) EscribeSeguro(destino, sb.ToString());
             }
             catch { }
         }
@@ -1705,7 +1784,7 @@ namespace Rocola
                           .Append(du.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)).Append('|')
                           .Append(snap[i].Key).Append("\r\n");
                     }
-                    lock (loudSaveLock) File.WriteAllText(LoudFile(), sb.ToString());   // el disco, fuera del hilo de la interfaz (no frena la musica)
+                    lock (loudSaveLock) EscribeSeguro(LoudFile(), sb.ToString());   // el disco, fuera del hilo de la interfaz (no frena la musica)
                 }
                 catch { }
             });
@@ -3752,7 +3831,7 @@ namespace Rocola
                     // ULTIMO separador, asi que una carpeta con "|" dentro tampoco rompe nada.
                     foreach (KeyValuePair<string, string> kv in copiaD)
                         sb.Append("D|").Append(kv.Key).Append('|').Append(kv.Value).Append("\r\n");
-                    File.WriteAllText(ruta, sb.ToString());
+                    EscribeSeguro(ruta, sb.ToString());
                 }
                 catch { }
             });
@@ -5014,7 +5093,7 @@ namespace Rocola
                         for (int i = 0; i < vp.Count; i++) sb.Append(vp[i]).Append("\r\n");
                         sb.Append("C").Append(cv.Count).Append("\r\n");
                         foreach (KeyValuePair<string, string> kv in cv) sb.Append(kv.Key).Append('|').Append(kv.Value).Append("\r\n");
-                        File.WriteAllText(LibCacheFile(), sb.ToString());
+                        EscribeSeguro(LibCacheFile(), sb.ToString());
                     }
                     catch { }
                 });
@@ -6840,7 +6919,7 @@ namespace Rocola
                 sb.Append("regresar=").Append((int)keyBack).Append("\r\n");
                 sb.Append("moneda=").Append((int)keyCoin).Append("\r\n");
                 sb.Append("saltar=").Append((int)keySkip).Append("\r\n");
-                File.WriteAllText(KeysFile(), sb.ToString());
+                EscribeSeguro(KeysFile(), sb.ToString());
             }
             catch { }
         }
@@ -7121,7 +7200,7 @@ namespace Rocola
                     sb.Append("sonando=").Append(nowPlaying.IsVideo ? 'V' : 'S').Append('|').Append(nowPlaying.PathKey()).Append("\r\n");
                 for (int i = 0; i < queue.Count; i++)
                     sb.Append("cola=").Append(queue[i].IsVideo ? 'V' : 'S').Append('|').Append(queue[i].PathKey()).Append("\r\n");
-                File.WriteAllText(StateFile(), sb.ToString());   // archivo diminuto (<1KB): escritura sincrona sin costo notable
+                EscribeSeguro(StateFile(), sb.ToString());   // archivo diminuto (<1KB): escritura sincrona sin costo notable
             }
             catch { }
         }
@@ -7208,9 +7287,15 @@ namespace Rocola
             try
             {
                 string f = StateFile();
-                if (!File.Exists(f)) return;
-                string[] L = File.ReadAllLines(f);
-                if (L.Length < 1 || L[0] != "ROCOLA-ESTADO v1") return;
+                // Si el archivo bueno falta o quedo vacio -un corte de luz de los de antes- se lee la copia:
+                // se pierde como mucho lo ultimo que se hizo, no el dinero entero del cliente.
+                string[] L = LeeLineasSeguro(f);
+                if (L == null || L.Length < 1) return;
+                if (L[0] != "ROCOLA-ESTADO v1")
+                {
+                    try { if (File.Exists(f + ".bak")) L = File.ReadAllLines(f + ".bak"); } catch { }
+                    if (L == null || L.Length < 1 || L[0] != "ROCOLA-ESTADO v1") return;
+                }
                 // El estado solo vale DENTRO del mismo dia del negocio (corte a las 7 AM): lo de anoche, visto ya en
                 // la manana, se descarta (arranque limpio). PERO si se guardo hace poquito (corte breve en plena
                 // sesion, p.ej. un parpadeo de luz justo al dar las 7 mientras te desvelas), se reanuda igual.
@@ -7363,10 +7448,14 @@ namespace Rocola
             PruneStats();   // acotar antes de escribir
             string text;
             try { text = BuildStatsText(); } catch { return; }   // se arma en el hilo de la interfaz (sin acceso cruzado a los diccionarios)
+            // Este archivo tiene DOS escritores -uno de fondo cada tanto y otro sincrono al cerrar- y si se
+            // pisaban se llevaban por delante "LO MAS SONADO" entero. El candado por archivo esta dentro de
+            // EscribeSeguro, asi que aqui ya no hace falta acordarse de nada.
             if (async)
-                System.Threading.ThreadPool.QueueUserWorkItem(delegate (object st) { try { File.WriteAllText(LibStatsFile(), text); } catch { } });
+                System.Threading.ThreadPool.QueueUserWorkItem(delegate (object st)
+                { try { EscribeSeguro(LibStatsFile(), text); } catch { } });
             else
-                try { File.WriteAllText(LibStatsFile(), text); } catch { }   // al cerrar: sincrono (el proceso podria salir antes de un hilo de fondo)
+                try { EscribeSeguro(LibStatsFile(), text); } catch { }   // al cerrar: sincrono (el proceso podria salir antes de un hilo de fondo)
         }
 
         private string BuildStatsText()
