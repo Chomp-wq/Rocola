@@ -38,56 +38,6 @@ class Apagon
         Directory.CreateDirectory(Dir());
     }
 
-    // ---- lectura del ejecutable ya compilado: que llama un metodo ----
-    // El recorrido tiene que saber cuanto ocupa CADA instruccion; si se salta una se desincroniza y a
-    // partir de ahi lee basura, y una prueba que lee basura dice que todo esta bien.
-    static int LargoOperando(int op)
-    {
-        if (op >= 0x2B && op <= 0x37) return 1;          // saltos cortos
-        if (op >= 0x38 && op <= 0x44) return 4;          // saltos largos
-        switch (op)
-        {
-            case 0x0E: case 0x10: case 0x11: case 0x12: case 0x13:
-            case 0x1F: case 0xDE: return 1;
-            case 0x20: case 0x22: case 0x27: case 0x28: case 0x6F: case 0x70: case 0x71:
-            case 0x72: case 0x73: case 0x74: case 0x75: case 0x79:
-            case 0x7B: case 0x7C: case 0x7D: case 0x7E: case 0x7F: case 0x80:
-            case 0x81: case 0x8C: case 0x8D: case 0x8F: case 0xA3: case 0xA4:
-            case 0xA5: case 0xC2: case 0xC6: case 0xD0: case 0x29: return 4;
-            case 0x21: case 0x23: return 8;
-            default: return 0;
-        }
-    }
-    static int Largo2(int op2)
-    {
-        switch (op2)
-        {
-            case 0x06: case 0x07: case 0x15: case 0x16: case 0x1C: return 4;
-            case 0x09: case 0x0A: case 0x0B: case 0x0C: case 0x0D: case 0x0E: return 2;
-            case 0x12: case 0x19: return 1;
-            default: return 0;
-        }
-    }
-    static List<string> Llamadas(MethodBase m)
-    {
-        List<string> r = new List<string>();
-        MethodBody b = null; try { b = m.GetMethodBody(); } catch { }
-        if (b == null) return r;
-        byte[] il = null; try { il = b.GetILAsByteArray(); } catch { }
-        if (il == null) return r;
-        Module mod = m.Module; int i = 0;
-        while (i < il.Length)
-        {
-            int op = il[i];
-            if (op == 0xFE) { if (i + 1 >= il.Length) break; i += 2 + Largo2(il[i + 1]); continue; }
-            if (op == 0x45) { int n = BitConverter.ToInt32(il, i + 1); i += 1 + 4 + 4 * n; continue; }
-            if ((op == 0x28 || op == 0x6F) && i + 4 < il.Length)          // call / callvirt
-            { try { r.Add(mod.ResolveMethod(BitConverter.ToInt32(il, i + 1)).Name); } catch { } }
-            i += 1 + LargoOperando(op);
-        }
-        return r;
-    }
-
     static int Main(string[] argv)
     {
         string exe = (argv.Length > 0) ? argv[0] : "rocola.exe";
@@ -247,7 +197,7 @@ class Apagon
         for (int i = 0; i < sitios.Length; i++)
         {
             MethodInfo m = TF.GetMethod(sitios[i], IN);
-            List<string> hace = (m == null) ? new List<string>() : Llamadas(m);
+            List<string> hace = (m == null) ? new List<string>() : Codigo.Nombres(m);
             Check(m != null && hace.Contains("BorraSeguro"), cuando[i] + " se borra el estado con la copia y todo");
             Check(m != null && !hace.Contains("Delete"), "   ...y ya no se borra a mano por su cuenta");
         }

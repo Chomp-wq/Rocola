@@ -36,58 +36,7 @@ class Entrar
     static FieldInfo Campo(string n) { return TF.GetField(n, BindingFlags.Instance | BindingFlags.NonPublic); }
     static MethodInfo Met(string n) { return TF.GetMethod(n, BindingFlags.Instance | BindingFlags.NonPublic); }
 
-    // ---- lectura del ejecutable ya compilado: que llamadas hace un metodo, en orden ----
-    static int LargoOperando(int op)
-    {
-        if (op >= 0x2B && op <= 0x37) return 1;          // saltos cortos
-        if (op >= 0x38 && op <= 0x44) return 4;          // saltos largos
-        switch (op)
-        {
-            case 0x0E: case 0x10: case 0x11: case 0x12: case 0x13:
-            case 0x1F: case 0xDE: return 1;
-            case 0x20: case 0x22: case 0x27: case 0x28: case 0x6F: case 0x70: case 0x71:
-            case 0x72: case 0x73: case 0x74: case 0x75: case 0x79:
-            case 0x7B: case 0x7C: case 0x7D: case 0x7E: case 0x7F: case 0x80:
-            case 0x81: case 0x8C: case 0x8D: case 0x8F: case 0xA3: case 0xA4:
-            case 0xA5: case 0xC2: case 0xC6: case 0xD0: case 0x29: return 4;
-            case 0x21: case 0x23: return 8;
-            default: return 0;
-        }
-    }
-    // Las instrucciones de dos bytes (las que empiezan por 0xFE) tambien llevan operando: sin esto el
-    // recorrido se desincroniza a la primera y a partir de ahi lee basura.
-    static int Largo2(int op2)
-    {
-        switch (op2)
-        {
-            case 0x06: case 0x07: case 0x15: case 0x16: case 0x1C: return 4;
-            case 0x09: case 0x0A: case 0x0B: case 0x0C: case 0x0D: case 0x0E: return 2;
-            case 0x12: case 0x19: return 1;
-            default: return 0;
-        }
-    }
-    // Los nombres, en orden, de todo lo que el metodo llama o lee. Sirve para preguntarle al ejecutable
-    // "¿que miras justo antes de abrir el buscador?" sin tener que apretar botones de verdad.
-    static List<string> Pasos(MethodBase m)
-    {
-        List<string> r = new List<string>();
-        MethodBody b = m.GetMethodBody(); if (b == null) return r;
-        byte[] il = b.GetILAsByteArray(); if (il == null) return r;
-        Module mod = m.Module; int i = 0;
-        while (i < il.Length)
-        {
-            int op = il[i];
-            if (op == 0xFE) { if (i + 1 >= il.Length) break; i += 2 + Largo2(il[i + 1]); continue; }
-            if (op == 0x45) { int n = BitConverter.ToInt32(il, i + 1); i += 1 + 4 + 4 * n; continue; }
-            int len = LargoOperando(op);
-            if ((op == 0x28 || op == 0x6F) && i + 4 < il.Length)          // call / callvirt
-            { try { r.Add(mod.ResolveMethod(BitConverter.ToInt32(il, i + 1)).Name); } catch { } }
-            else if ((op == 0x7B || op == 0x7E) && i + 4 < il.Length)     // ldfld / ldsfld
-            { try { r.Add("$" + mod.ResolveField(BitConverter.ToInt32(il, i + 1)).Name); } catch { } }
-            i += 1 + len;
-        }
-        return r;
-    }
+    // Lo que un metodo llama o lee, en orden, para poder preguntar "¿que mira justo antes de esto?".
     static int Indice(List<string> l, string q) { for (int i = 0; i < l.Count; i++) if (l[i] == q) return i; return -1; }
     // ¿Sale 'que' entre las N cosas que se miran justo antes de 'donde'? (o sea: ¿es su condicion?)
     static bool JustoAntes(List<string> l, string donde, string que, int cuantos)
@@ -243,7 +192,7 @@ class Entrar
         // =========================================================================================
         Console.WriteLine("\n  5) EL COMBO ES ROJO + ARRIBA, Y YA NO ROJO + VERDE\n");
         MethodInfo mCmd = TF.GetMethod("ProcessCmdKey", BindingFlags.Instance | BindingFlags.NonPublic);
-        List<string> pasos = Pasos(mCmd);
+        List<string> pasos = Codigo.Repasa(mCmd);
         Check(Indice(pasos, "ToggleSearch") >= 0, "al apretar los dos botones se abre/cierra el buscador");
         Check(JustoAntes(pasos, "ToggleSearch", "IsUp", 6), "y los dos botones son el ROJO y el de ARRIBA");
         Check(JustoAntes(pasos, "ToggleSearch", "BackHeld", 6), "con el ROJO MANTENIDO (por eso no se abre solo al moverse)");
@@ -260,9 +209,9 @@ class Entrar
         Type TSO = Nes("SearchOverlay");
         MethodInfo mFlecha = TSO.GetMethod("FlechaArriba", BindingFlags.Static | BindingFlags.NonPublic);
         Check(mFlecha != null, "el aviso de CERRAR dibuja la flecha de arriba");
-        List<string> pRender = Pasos(TSO.GetMethod("RenderContent", new Type[] { typeof(Graphics), typeof(Rectangle), typeof(bool) }));
+        List<string> pRender = Codigo.Repasa(TSO.GetMethod("RenderContent", new Type[] { typeof(Graphics), typeof(Rectangle), typeof(bool) }));
         Check(Indice(pRender, "FlechaArriba") >= 0, "y esa flecha se dibuja de verdad al pintar el buscador");
-        List<string> pCmd = Pasos(mCmd);
+        List<string> pCmd = Codigo.Repasa(mCmd);
         Check(JustoAntes(pCmd, "FlashClose", "IsUp", 6), "al apretarlos, el aviso de CERRAR se enciende (asi el cliente ve que acerto)");
 
         // El boton rojo DENTRO de la tecla de BORRAR: el rojo borra letras, pero eso era un atajo invisible.
@@ -270,7 +219,7 @@ class Entrar
         Check(mTecla != null, "las teclas del buscador se dibujan una a una");
         if (mTecla != null)
         {
-            List<string> pk = Pasos(mTecla);
+            List<string> pk = Codigo.Repasa(mTecla);
             Check(Indice(pk, "CtrlDot") >= 0, "y en la de BORRAR va dibujado el boton ROJO, que hace lo mismo");
         }
 
@@ -283,9 +232,9 @@ class Entrar
             // Con tarjeta grafica la pantalla se hornea en una textura y solo se rehace cuando su "firma"
             // cambia. Si la casilla no entrara en la firma, apareceria en la version normal y NO en la de
             // tarjeta grafica: se veria en las pruebas y no en el bar.
-            List<string> pSig = Pasos(mSig);
+            List<string> pSig = Codigo.Repasa(mSig);
             Check(Indice(pSig, "$buscaView") >= 0, "la casilla de BUSCAR entra en la firma de la pantalla por tarjeta");
-            List<string> pTex = Pasos(Met("EnsureUiOverlay"));
+            List<string> pTex = Codigo.Repasa(Met("EnsureUiOverlay"));
             Check(Indice(pTex, "$buscaView") >= 0, "y se dibuja de verdad en ella");
         }
 

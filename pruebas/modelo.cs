@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.IO;
 using System.Reflection;
 using NAudio.Wave;
 
@@ -11,7 +12,10 @@ using NAudio.Wave;
 //   1) la red sola, por tamaño;
 //   2) el reconstructor ENTERO con ese modelo puesto de verdad, que es lo que se paga en la rocola.
 //
-// El tiempo de una red depende solo de su FORMA, no de sus numeros, asi que se usan pesos al azar.
+// El tiempo de una red depende solo de su FORMA, no de sus numeros, asi que se usan pesos al azar. Los
+// modelos de cada tamano LOS FABRICA ESTA MISMA HERRAMIENTA antes de medir: no hay que entrenar nada ni
+// traerse ningun archivo. (Antes no los fabricaba, se limitaba a intentar abrir unos archivos que no
+// existian, y contestaba "la rocola RECHAZA este modelo" en todos. No rechazaba nada: no habia nada.)
 class FuenteM : ISampleProvider
 {
     private readonly float[] d; private readonly WaveFormat wf; private int pos;
@@ -88,10 +92,32 @@ class Modelo
         TRed = TF.GetNestedType("RedChica", BindingFlags.NonPublic | BindingFlags.Public);
         if (TSbr == null || TRed == null) { Console.WriteLine("no encuentro el reconstructor o la red"); return 1; }
 
+        // Las formas a medir. La primera no es una red: es la curva fija de siempre, para tener con que
+        // comparar. El resto se fabrican aqui mismo.
         string[] nom = { "(sin modelo)", "lineal", "chico", "actual", "doble", "cuadru", "grande", "enorme", "tope" };
-        string[] forma = { "curva fija de -9 dB/oct", "28->12", "28->16->12", "28->48->48->12", "28->96->96->12",
-                           "28->192->192->12", "28->256->256->256->12", "28->384->384->384->12", "28->512->512->512->12" };
-        int[] pesos = { 0, 348, 668, 4332, 13260, 44940, 142092, 311436, 546316 };
+        int[][] capas = {
+            null,
+            new int[] { 28, 12 },
+            new int[] { 28, 16, 12 },
+            new int[] { 28, 48, 48, 12 },
+            new int[] { 28, 96, 96, 12 },
+            new int[] { 28, 192, 192, 12 },
+            new int[] { 28, 256, 256, 256, 12 },
+            new int[] { 28, 384, 384, 384, 12 },
+            new int[] { 28, 512, 512, 512, 12 },
+        };
+        string[] forma = new string[capas.Length];
+        int[] pesos = new int[capas.Length];
+        forma[0] = "curva fija de -9 dB/oct";
+        string donde = Path.Combine(Path.GetTempPath(), "rocola_modelos");
+        try { if (Directory.Exists(donde)) Directory.Delete(donde, true); } catch { }
+        Directory.CreateDirectory(donde);
+        for (int k = 1; k < capas.Length; k++)
+        {
+            forma[k] = Forma(capas[k]);
+            pesos[k] = Pesos(capas[k]);
+            Fabrica(Ruta(donde, nom[k]), capas[k]);
+        }
 
         const double porSegundo = 86.14;   // 43 ventanas por segundo x 2 canales
 
@@ -106,7 +132,7 @@ class Modelo
         {
             object red = Activator.CreateInstance(TRed, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
                                                   null, new object[] { 28, 12 }, null);
-            TRed.GetMethod("TryLoad").Invoke(red, new object[] { "modelo_" + nom[k] + ".bin" });
+            TRed.GetMethod("TryLoad").Invoke(red, new object[] { Ruta(donde, nom[k]) });
             if (!(bool)TRed.GetField("Loaded").GetValue(red)) { Console.WriteLine("  {0,-24}   (la rocola RECHAZA este modelo)", forma[k]); continue; }
             Func<float[], float[], bool> pred = (Func<float[], float[], bool>)
                 Delegate.CreateDelegate(typeof(Func<float[], float[], bool>), red, TRed.GetMethod("Predict"));
@@ -139,7 +165,7 @@ class Modelo
             if (k == 0) fLoaded.SetValue(red, false);          // sin modelo: la curva clasica
             else
             {
-                mTryLoad.Invoke(red, new object[] { "modelo_" + nom[k] + ".bin" });
+                mTryLoad.Invoke(red, new object[] { Ruta(donde, nom[k]) });
                 if (!(bool)fLoaded.GetValue(red)) { Console.WriteLine("  {0,-24}   (la rocola RECHAZA este modelo)", forma[k]); continue; }
             }
             ISampleProvider fu = new FuenteM(datos, FS, CH);
@@ -153,6 +179,48 @@ class Modelo
         }
         Console.WriteLine("\n     (\"en el bar\" = la estimacion de siempre: unas cuatro veces mas lento que esta maquina.");
         Console.WriteLine("      Todo esto corre en el hilo que dibuja; un cuadro a 24 por segundo dura 41.7 ms.)\n");
+        try { Directory.Delete(donde, true); } catch { }
         return 0;
+    }
+
+    // ---------- los modelos de mentira, uno por forma ----------
+
+    static string Ruta(string donde, string nombre) { return Path.Combine(donde, "modelo_" + nombre + ".bin"); }
+    static string Forma(int[] c)
+    {
+        string s = "";
+        for (int i = 0; i < c.Length; i++) s += (i > 0 ? "->" : "") + c[i];
+        return s;
+    }
+    // Cuantos numeros lleva dentro. Sale de la forma, no de una tabla escrita a mano: una tabla se despega
+    // de la realidad en cuanto alguien cambia una capa y nadie se entera.
+    static int Pesos(int[] c)
+    {
+        int n = 0;
+        for (int L = 0; L + 1 < c.Length; L++) n += c[L + 1] * c[L] + c[L + 1];
+        return n;
+    }
+    // El mismo formato que la rocola sabe leer: "RIA1", cuantas capas, y por capa cuantas salidas, cuantas
+    // entradas, los pesos (fila a fila) y los sesgos. Los numeros son al azar y da igual: lo que se mide es
+    // cuanto TARDA, y eso depende del tamano, no de los valores.
+    static void Fabrica(string ruta, int[] c)
+    {
+        Random r = new Random(1234 + c.Length * 7 + c[1]);
+        using (FileStream fs = new FileStream(ruta, FileMode.Create, FileAccess.Write))
+        using (BinaryWriter w = new BinaryWriter(fs))
+        {
+            w.Write(new byte[] { (byte)'R', (byte)'I', (byte)'A', (byte)'1' });
+            w.Write(c.Length - 1);
+            for (int L = 0; L + 1 < c.Length; L++)
+            {
+                int salidas = c[L + 1], entradas = c[L];
+                w.Write(salidas); w.Write(entradas);
+                // Pesos chicos, del orden de los de una red entrenada de verdad: asi la tangente no se
+                // satura y el tiempo medido es el de siempre, no el de un caso raro.
+                double esc = 1.0 / Math.Sqrt(entradas);
+                for (int i = 0; i < salidas * entradas; i++) w.Write((float)((r.NextDouble() * 2 - 1) * esc));
+                for (int i = 0; i < salidas; i++) w.Write((float)((r.NextDouble() * 2 - 1) * 0.05));
+            }
+        }
     }
 }

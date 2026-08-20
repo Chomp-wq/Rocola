@@ -88,48 +88,6 @@ class Presencia
     // ---------------- lectura del propio ejecutable: ORDEN de dibujado ----------------
     // Recorre el codigo compilado de GpuStarfield.Begin y anota, en orden, a que se llama. Asi se comprueba
     // de verdad -no de palabra- que la aurora se pinta despues del cielo y ANTES de las estrellas.
-    // Tamaño del operando de cada instruccion de un byte (lo justo para poder saltar de una a la siguiente).
-    static int LargoOperando(int op)
-    {
-        if (op == 0x45)  return -1;                                   // switch: se trata aparte abajo
-        if (op >= 0x2B && op <= 0x37) return 1;                       // saltos cortos
-        if (op >= 0x38 && op <= 0x44) return 4;                       // saltos largos
-        switch (op)
-        {
-            case 0x0E: case 0x10: case 0x11: case 0x12: case 0x13:    // ldarg.s / starg.s / ldloc.s...
-            case 0x1F: case 0xDE: return 1;
-            case 0x20: case 0x22: case 0x27: case 0x28: case 0x6F:
-            case 0x72: case 0x73: case 0x74: case 0x75: case 0x79:
-            case 0x7B: case 0x7C: case 0x7D: case 0x7E: case 0x7F: case 0x80:
-            case 0x81: case 0x8C: case 0x8D: case 0x8F: case 0xA3: case 0xA4:
-            case 0xA5: case 0xC2: case 0xC6: case 0xD0: case 0x29: return 4;
-            case 0x21: case 0x23: return 8;
-            default: return 0;
-        }
-    }
-    // switch lleva un contador y tantos destinos como diga: hay que saltarlos todos o se pierde el hilo.
-    static List<string> LlamadasSeguro(MethodInfo m)
-    {
-        List<string> r = new List<string>();
-        MethodBody b = m.GetMethodBody(); if (b == null) return r;
-        byte[] il = b.GetILAsByteArray(); if (il == null) return r;
-        Module mod = m.Module;
-        int i = 0;
-        while (i < il.Length)
-        {
-            int op = il[i];
-            if (op == 0xFE) { i += 2; continue; }
-            if (op == 0x45) { int n = BitConverter.ToInt32(il, i + 1); i += 1 + 4 + 4 * n; continue; }
-            int len = LargoOperando(op);
-            if ((op == 0x28 || op == 0x6F) && i + 4 < il.Length)
-            {
-                int tok = BitConverter.ToInt32(il, i + 1);
-                try { MethodBase mb = mod.ResolveMethod(tok); r.Add(mb.DeclaringType.Name + "." + mb.Name); } catch { }
-            }
-            i += 1 + len;
-        }
-        return r;
-    }
     static int Pos(List<string> l, string q) { for (int i = 0; i < l.Count; i++) if (l[i] == q) return i; return -1; }
 
     static int Main()
@@ -249,7 +207,7 @@ class Presencia
 
             if (beg != null)
             {
-                List<string> l = LlamadasSeguro(beg);
+                List<string> l = Codigo.Llamadas(beg);
                 int pCielo = Pos(l, "D3D9Star.DrawSky"); if (pCielo < 0) foreach (string s in l) if (s.EndsWith(".DrawSky")) { pCielo = Pos(l, s); break; }
                 int pAur = -1, pEstr = -1;
                 for (int i = 0; i < l.Count; i++)

@@ -187,19 +187,8 @@ class Ligera
 
         // Y que la rocola lo use de verdad; si no, todo lo de arriba estaria bien y no serviria de nada.
         bool laUsa = false;
-        foreach (MethodInfo m in TF.GetMethods(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.DeclaredOnly))
-        {
-            MethodBody cu = null; try { cu = m.GetMethodBody(); } catch { }
-            if (cu == null) continue;
-            byte[] il = null; try { il = cu.GetILAsByteArray(); } catch { }
-            if (il == null) continue;
-            for (int i = 0; i + 4 < il.Length; i++)
-                if (il[i] == 0x6F || il[i] == 0x28)
-                {
-                    try { if (m.Module.ResolveMethod(BitConverter.ToInt32(il, i + 1)).Name == "ZonasLatido") laUsa = true; }
-                    catch { }
-                }
-        }
+        foreach (MethodBase m in Codigo.TodosLosMetodos(TF))
+            if (Codigo.Llama(m, "ZonasLatido")) laUsa = true;
         Check(laUsa, "y la rocola pide esos trozos al repintar, no repinta la barra entera");
 
         Console.WriteLine();

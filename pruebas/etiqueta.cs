@@ -199,24 +199,8 @@ class Etiqueta
         int usos = 0;
         foreach (Type t in asm.GetTypes())
             foreach (MethodInfo m in t.GetMethods(BindingFlags.Instance | BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.DeclaredOnly))
-            {
-                MethodBody b2 = null;
-                try { b2 = m.GetMethodBody(); } catch { }
-                if (b2 == null) continue;
-                byte[] il;
-                try { il = b2.GetILAsByteArray(); } catch { continue; }
-                if (il == null) continue;
-                for (int i = 0; i + 4 < il.Length; i++)
-                    if (il[i] == 0x28 || il[i] == 0x6F)
-                    {
-                        try
-                        {
-                            MethodBase mb = t.Module.ResolveMethod(BitConverter.ToInt32(il, i + 1));
-                            if (mb != null && mb.Name == "GeneroDeCancion") usos++;
-                        }
-                        catch { }
-                    }
-            }
+                foreach (string q in Codigo.Nombres(m))
+                    if (q == "GeneroDeCancion") usos++;
         Console.WriteLine("     sitios que preguntan por la cascada: " + usos);
         Check(usos >= 2, "la lista del disco y el buscador preguntan a la MISMA funcion (por eso ya no se contradicen)");
 

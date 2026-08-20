@@ -32,34 +32,6 @@ class IaDatos
     static object Get(string n) { return Campo(n).GetValue(F); }
     static object Llama(string n) { return TF.GetMethod(n, BindingFlags.Instance | BindingFlags.NonPublic).Invoke(F, null); }
 
-    // ---------- lectura del ejecutable ya compilado ----------
-    // Largo del operando de cada instruccion. Si esto no esta bien, el recorrido se desincroniza y a partir
-    // de ahi se lee basura: da por bueno lo que no esta y no ve lo que si.
-    static int Largo1(int op)
-    {
-        if (op >= 0x2B && op <= 0x37) return 1;          // saltos cortos
-        if (op >= 0x38 && op <= 0x44) return 4;          // saltos largos
-        switch (op)
-        {
-            case 0x0E: case 0x10: case 0x11: case 0x12: case 0x13: case 0x1F: case 0xDE: return 1;
-            case 0x20: case 0x22: case 0x27: case 0x28: case 0x29: case 0x6F: case 0x70: case 0x71:
-            case 0x72: case 0x73: case 0x74: case 0x75: case 0x79: case 0x7B: case 0x7C: case 0x7D:
-            case 0x7E: case 0x7F: case 0x80: case 0x81: case 0x8C: case 0x8D: case 0x8F: case 0xA3:
-            case 0xA4: case 0xA5: case 0xC2: case 0xC6: case 0xD0: return 4;
-            case 0x21: case 0x23: return 8;
-            default: return 0;
-        }
-    }
-    static int Largo2(int op2)   // instrucciones de dos bytes (las que empiezan por 0xFE)
-    {
-        switch (op2)
-        {
-            case 0x06: case 0x07: case 0x15: case 0x16: case 0x1C: return 4;
-            case 0x09: case 0x0A: case 0x0B: case 0x0C: case 0x0D: case 0x0E: return 2;
-            case 0x12: case 0x19: return 1;
-            default: return 0;
-        }
-    }
     // Quien LEE y quien ESCRIBE un campo, en todo el programa (tambien dentro de las funciones sueltas que
     // el compilador saca a clases escondidas).
     static void Quien(Type t, string campo, Dictionary<string, int[]> salida)
@@ -69,23 +41,8 @@ class IaDatos
         todos.AddRange(t.GetMethods(bf)); todos.AddRange(t.GetConstructors(bf));
         foreach (MethodBase m in todos)
         {
-            MethodBody b = null; try { b = m.GetMethodBody(); } catch { }
-            if (b == null) continue;
-            byte[] il = null; try { il = b.GetILAsByteArray(); } catch { }
-            if (il == null) continue;
-            int lee = 0, esc = 0, i = 0;
-            while (i < il.Length)
-            {
-                int op = il[i];
-                if (op == 0xFE) { if (i + 1 >= il.Length) break; i += 2 + Largo2(il[i + 1]); continue; }
-                if (op == 0x45) { int n = BitConverter.ToInt32(il, i + 1); i += 1 + 4 + 4 * n; continue; }   // switch
-                int len = Largo1(op);
-                if ((op == 0x7B || op == 0x7E || op == 0x7C || op == 0x7F) && i + 4 < il.Length)
-                { try { if (m.Module.ResolveField(BitConverter.ToInt32(il, i + 1)).Name == campo) lee++; } catch { } }
-                else if ((op == 0x7D || op == 0x80) && i + 4 < il.Length)
-                { try { if (m.Module.ResolveField(BitConverter.ToInt32(il, i + 1)).Name == campo) esc++; } catch { } }
-                i += 1 + len;
-            }
+            int lee, esc;
+            Codigo.UsosDeCampo(m, campo, out lee, out esc);
             if (lee > 0 || esc > 0) salida[t.Name + "." + m.Name] = new int[] { lee, esc };
         }
         foreach (Type n in t.GetNestedTypes(BindingFlags.Public | BindingFlags.NonPublic)) Quien(n, campo, salida);

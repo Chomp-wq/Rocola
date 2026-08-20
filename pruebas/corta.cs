@@ -34,107 +34,24 @@ class Corta
     static Type TF;
     static Type Nes(string n) { return TF.GetNestedType(n, BindingFlags.NonPublic | BindingFlags.Public); }
 
-    // ---- lectura del ejecutable ya compilado ----
-    static int Largo1(int op)
-    {
-        if (op >= 0x2B && op <= 0x37) return 1;
-        if (op >= 0x38 && op <= 0x44) return 4;
-        switch (op)
-        {
-            case 0x0E: case 0x10: case 0x11: case 0x12: case 0x13: case 0x1F: case 0xDE: return 1;
-            case 0x20: case 0x22: case 0x27: case 0x28: case 0x29: case 0x6F: case 0x70: case 0x71:
-            case 0x72: case 0x73: case 0x74: case 0x75: case 0x79: case 0x7B: case 0x7C: case 0x7D:
-            case 0x7E: case 0x7F: case 0x80: case 0x81: case 0x8C: case 0x8D: case 0x8F: case 0xA3:
-            case 0xA4: case 0xA5: case 0xC2: case 0xC6: case 0xD0: return 4;
-            case 0x21: case 0x23: return 8;
-            default: return 0;
-        }
-    }
-    static int Largo2(int op2)
-    {
-        switch (op2)
-        {
-            case 0x06: case 0x07: case 0x15: case 0x16: case 0x1C: return 4;
-            case 0x09: case 0x0A: case 0x0B: case 0x0C: case 0x0D: case 0x0E: return 2;
-            case 0x12: case 0x19: return 1;
-            default: return 0;
-        }
-    }
-    // Todo lo que llama un metodo, con el nombre del tipo delante ("Array.Copy", "Mp3FileReader..ctor").
-    static List<string> Llamadas(MethodBase m)
-    {
-        List<string> r = new List<string>();
-        MethodBody b = null; try { b = m.GetMethodBody(); } catch { }
-        if (b == null) return r;
-        byte[] il = null; try { il = b.GetILAsByteArray(); } catch { }
-        if (il == null) return r;
-        Module mod = m.Module; int i = 0;
-        while (i < il.Length)
-        {
-            int op = il[i];
-            if (op == 0xFE) { if (i + 1 >= il.Length) break; i += 2 + Largo2(il[i + 1]); continue; }
-            if (op == 0x45) { int n = BitConverter.ToInt32(il, i + 1); i += 1 + 4 + 4 * n; continue; }
-            int len = Largo1(op);
-            if ((op == 0x28 || op == 0x6F || op == 0x73) && i + 4 < il.Length)
-            {
-                try
-                {
-                    MethodBase mb = mod.ResolveMethod(BitConverter.ToInt32(il, i + 1));
-                    r.Add((mb.DeclaringType != null ? mb.DeclaringType.Name : "?") + "." + mb.Name);
-                }
-                catch { }
-            }
-            i += 1 + len;
-        }
-        return r;
-    }
-    static bool Llama(List<string> l, string q) { foreach (string s in l) if (s == q) return true; return false; }
-
-    // Lo que llama un metodo MAS lo que llaman las funciones sueltas que el compilador le saca a metodos
-    // aparte con el nombre entre picos (<AbreMp3>m__0). Sin esto, un delegado esconde lo que hace dentro.
-    static List<string> LlamadasConAyudantes(string metodo)
-    {
-        List<string> r = new List<string>();
-        BindingFlags bf = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
-        List<Type> tipos = new List<Type>(); tipos.Add(TF);
-        tipos.AddRange(TF.GetNestedTypes(BindingFlags.Public | BindingFlags.NonPublic));
-        foreach (Type t in tipos)
-            foreach (MethodInfo m in t.GetMethods(bf))
-                if (m.Name == metodo || m.Name.IndexOf("<" + metodo + ">", StringComparison.Ordinal) >= 0
-                    || t.Name.IndexOf("<" + metodo + ">", StringComparison.Ordinal) >= 0)
-                    r.AddRange(Llamadas(m));
-        return r;
-    }
-
     // ¿Copia en bloque SOBRE EL BUFFER QUE LE DAN? Se mira si justo antes de la llamada se carga el primer
     // argumento (ldarg.1, que es el buffer). Vaciar o copiar arrays PROPIOS dentro de un Read esta bien; lo
     // que no vale es tocar en bloque el que llega de fuera, porque ese miente sobre lo que es.
     static bool CopiaEnBloqueSobreElBuffer(MethodBase m)
     {
-        MethodBody b = null; try { b = m.GetMethodBody(); } catch { }
-        if (b == null) return false;
-        byte[] il = null; try { il = b.GetILAsByteArray(); } catch { }
-        if (il == null) return false;
-        Module mod = m.Module; int i = 0; int desdeArg = 99;
-        while (i < il.Length)
+        Module mod = m.Module; int desdeArg = 99;
+        foreach (Codigo.Paso p in Codigo.Pasos(m))
         {
-            int op = il[i];
-            if (op == 0x03) desdeArg = 0;            // ldarg.1 = el buffer
-            else if (desdeArg < 99) desdeArg++;
-            if (op == 0xFE) { if (i + 1 >= il.Length) break; i += 2 + Largo2(il[i + 1]); continue; }
-            if (op == 0x45) { int n = BitConverter.ToInt32(il, i + 1); i += 1 + 4 + 4 * n; continue; }
-            int len = Largo1(op);
-            if ((op == 0x28 || op == 0x6F) && i + 4 < il.Length && desdeArg <= 6)
+            if (p.Op2 < 0 && p.Op == 0x03) { desdeArg = 0; continue; }   // ldarg.1 = el buffer que llega de fuera
+            if (desdeArg < 99) desdeArg++;
+            if (p.Op2 >= 0 || (p.Op != 0x28 && p.Op != 0x6F) || desdeArg > 6) continue;
+            try
             {
-                try
-                {
-                    MethodBase mb = mod.ResolveMethod(BitConverter.ToInt32(il, i + 1));
-                    string q = (mb.DeclaringType != null ? mb.DeclaringType.Name : "?") + "." + mb.Name;
-                    if (q == "Array.Copy" || q == "Buffer.BlockCopy" || q == "Array.Clear") return true;
-                }
-                catch { }
+                MethodBase mb = mod.ResolveMethod(p.Numero);
+                string q = (mb.DeclaringType != null ? mb.DeclaringType.Name : "?") + "." + mb.Name;
+                if (q == "Array.Copy" || q == "Buffer.BlockCopy" || q == "Array.Clear") return true;
             }
-            i += 1 + len;
+            catch { }
         }
         return false;
     }
@@ -248,10 +165,10 @@ class Corta
         Check(mAbre != null, "los MP3 se abren por un camino propio, no directamente con NAudio");
         if (mAbre != null)
         {
-            List<string> l = LlamadasConAyudantes("AbreMp3");
-            Check(Llama(l, "Mp3FileReader.CreateAcmFrameDecompressor"),
+            List<string> l = Codigo.ConAyudantes(TF, "AbreMp3");
+            Check(Codigo.Llama(l, "Mp3FileReader.CreateAcmFrameDecompressor"),
                   "se le dice a NAudio que arme el descompresor con nuestro gancho, para saber cual creo");
-            Check(Llama(l, "IMp3FrameDecompressor.Dispose") || Llama(l, "IDisposable.Dispose"),
+            Check(Codigo.Llama(l, "IMp3FrameDecompressor.Dispose") || Codigo.Llama(l, "IDisposable.Dispose"),
                   "y si la apertura falla, se cierra AHI MISMO (antes se quedaba para el recolector, y eso cerraba la rocola)");
         }
         Type TLm = Nes("LectorMedida");
@@ -259,9 +176,9 @@ class Corta
         MethodInfo mMed = TF.GetMethod("MeasureFile", BindingFlags.Instance | BindingFlags.NonPublic);
         if (mMed != null && TLm != null)
         {
-            List<string> l = Llamadas(mMed);
-            Check(Llama(l, "LectorMedida..ctor"), "al medir una cancion se abre con el lector que no deja fugas");
-            Check(!Llama(l, "AudioFileReader..ctor"), "y ya no directamente con el de NAudio, que si las dejaba");
+            List<string> l = Codigo.Llamadas(mMed);
+            Check(Codigo.Llama(l, "LectorMedida..ctor"), "al medir una cancion se abre con el lector que no deja fugas");
+            Check(!Codigo.Llama(l, "AudioFileReader..ctor"), "y ya no directamente con el de NAudio, que si las dejaba");
         }
 
         // =========================================================================================
@@ -308,10 +225,10 @@ class Corta
         {
             List<string> l = new List<string>();
             foreach (ConstructorInfo c in TFas.GetConstructors(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
-                l.AddRange(Llamadas(c));
-            Check(Llama(l, "Form1.AbreMp3"),
+                l.AddRange(Codigo.Llamadas(c));
+            Check(Codigo.Llama(l, "Form1.AbreMp3"),
                   "los MP3 que suenan se abren por el camino que no deja descompresores tirados");
-            Check(Llama(l, "Mp3FileReader.Dispose") || Llama(l, "IDisposable.Dispose") || Llama(l, "Stream.Dispose"),
+            Check(Codigo.Llama(l, "Mp3FileReader.Dispose") || Codigo.Llama(l, "IDisposable.Dispose") || Codigo.Llama(l, "Stream.Dispose"),
                   "y si lo de despues falla, el lector se cierra ahi mismo en vez de esperar al recolector");
         }
 

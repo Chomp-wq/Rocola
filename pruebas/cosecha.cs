@@ -163,26 +163,12 @@ class Cosecha
         // Estaba documentado y habia entrenador, pero en esta rama NADIE lo cargaba: el archivo junto al
         // exe no servia de nada y el EQ automatico se quedaba siempre con el promedio de la biblioteca.
         int cargas = 0; bool eqIa = false;
-        foreach (MethodInfo m in TF.GetMethods(BindingFlags.Instance | BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.DeclaredOnly))
-        {
-            MethodBody b = null;
-            try { b = m.GetMethodBody(); } catch { }
-            if (b == null) continue;
-            byte[] il;
-            try { il = b.GetILAsByteArray(); } catch { continue; }
-            if (il == null) continue;
-            for (int i = 0; i + 4 < il.Length; i++)
+        foreach (MethodBase m in Codigo.TodosLosMetodos(TF))
+            foreach (string lit in Codigo.Textos(m))
             {
-                if (il[i] != 0x72) continue;   // ldstr
-                try
-                {
-                    string lit = m.Module.ResolveString(BitConverter.ToInt32(il, i + 1));
-                    if (lit == "rocola_ia.bin") cargas++;
-                    if (lit == "rocola_eq_ia.bin") eqIa = true;
-                }
-                catch { }
+                if (lit == "rocola_ia.bin") cargas++;
+                if (lit == "rocola_eq_ia.bin") eqIa = true;
             }
-        }
         Console.WriteLine("     modelo del DSEE (rocola_ia.bin) nombrado en el programa: " + (cargas > 0 ? "si" : "NO"));
         Console.WriteLine("     modelo del EQ automatico (rocola_eq_ia.bin):             " + (eqIa ? "si" : "NO"));
         Check(cargas > 0, "el modelo del DSEE se carga si esta junto al exe");

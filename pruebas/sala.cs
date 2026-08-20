@@ -24,24 +24,6 @@ class Sala
 
     static Type TF, TLista, TPlay, TTrack;
 
-    static List<string> Llamadas(MethodBase m)
-    {
-        List<string> r = new List<string>();
-        MethodBody b = null;
-        try { b = m.GetMethodBody(); } catch { }
-        if (b == null) return r;
-        byte[] il;
-        try { il = b.GetILAsByteArray(); } catch { return r; }
-        if (il == null) return r;
-        for (int i = 0; i + 4 < il.Length; i++)
-            if (il[i] == 0x28 || il[i] == 0x6F)
-            {
-                try { MethodBase mb = m.Module.ResolveMethod(BitConverter.ToInt32(il, i + 1)); if (mb != null) r.Add(mb.Name); }
-                catch { }
-            }
-        return r;
-    }
-    static bool Llama(MethodBase m, string q) { foreach (string s in Llamadas(m)) if (s == q) return true; return false; }
 
     static int Main(string[] argv)
     {
@@ -109,7 +91,7 @@ class Sala
         Check(((IDictionary)fCola.GetValue(F)).Count == 0 && ((string)fSon.GetValue(F)).Length == 0,
               "sin nada sonando ni pedido, no queda ninguna marca colgada");
         MethodInfo mNext = TF.GetMethod("PlayNext", BindingFlags.Instance | BindingFlags.NonPublic);
-        Check(mNext != null && Llama(mNext, "RefrescaCola"),
+        Check(mNext != null && Codigo.Llama(mNext, "RefrescaCola"),
               "y al acabarse la cola se rehacen las marcas (si no, la de \"SONANDO\" se quedaria puesta)");
 
         Console.WriteLine("\n  2) Y SE VE: CUATRO ESTADOS DISTINTOS, DE UN VISTAZO\n");
@@ -244,7 +226,7 @@ class Sala
         Check(secs == 30, "son 30 segundos, como se pidio");
         Check(secs < atr, "y va POR DELANTE del modo atraccion: primero vuelve a la pared, luego entra la atraccion");
         MethodInfo mTick = TF.GetMethod("AnimTimer_Tick", BindingFlags.Instance | BindingFlags.NonPublic);
-        Check(mTick != null && Llama(mTick, "BackToAlbums"),
+        Check(mTick != null && Codigo.Llama(mTick, "BackToAlbums"),
               "y quien lo hace es el temporizador de siempre (no hace falta ningun hilo nuevo)");
 
         Console.WriteLine(fallos == 0 ? "\nTODO BIEN" : "\nFALLOS: " + fallos);

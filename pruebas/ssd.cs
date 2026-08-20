@@ -27,32 +27,6 @@ class Ssd
     static object Est(string n) { return TF.GetField(n, BindingFlags.Static | BindingFlags.NonPublic).GetValue(null); }
     static void PonEst(string n, object v) { TF.GetField(n, BindingFlags.Static | BindingFlags.NonPublic).SetValue(null, v); }
 
-    static List<string> Llamadas(MethodBase m)
-    {
-        List<string> r = new List<string>();
-        MethodBody b = m.GetMethodBody(); if (b == null) return r;
-        byte[] il = b.GetILAsByteArray(); Module mod = m.Module;
-        for (int i = 0; i < il.Length; i++)
-        {
-            byte op = il[i];
-            if (op == 0x28 || op == 0x6F || op == 0x73)
-            {
-                if (i + 4 >= il.Length) break;
-                try { MethodBase mb = mod.ResolveMethod(BitConverter.ToInt32(il, i + 1)); if (mb != null) r.Add((mb.DeclaringType != null ? mb.DeclaringType.Name + "." : "") + mb.Name); }
-                catch { }
-                i += 4;
-            }
-            else if (op == 0xFE) i++;
-            else if (op == 0x20 || op == 0x22) i += 4;
-            else if (op == 0x21 || op == 0x23) i += 8;
-            else if (op == 0x1F || op == 0x2B || (op >= 0x2C && op <= 0x37) || op == 0x0E || op == 0x10 || op == 0x11 || op == 0x12 || op == 0x13) i += 1;
-            else if ((op >= 0x38 && op <= 0x44) || op == 0x27 || op == 0x6A || (op >= 0x70 && op <= 0x72) || (op >= 0x74 && op <= 0x81)
-                     || (op >= 0x8C && op <= 0x8D) || op == 0x8F || op == 0xA3 || op == 0xA4 || op == 0xA5
-                     || op == 0xC2 || op == 0xC6) i += 4;
-        }
-        return r;
-    }
-    static bool Llama(List<string> l, string q) { foreach (string s in l) if (s == q) return true; return false; }
 
     // Una lista de Track (tipo privado del programa) con las rutas que se le pasen.
     static object ListaTracks(string[] rutas)
@@ -91,13 +65,13 @@ class Ssd
         if (mPerfil == null) return 1;
 
         Console.WriteLine("\n  1) EL PERFIL SE DECIDE POR LA MEDIANA, NO POR EL PROMEDIO\n");
-        List<string> l = Llamadas(mPerfil);
-        Check(Llama(l, "List`1.Sort"), "ordena las medidas y toma la de EN MEDIO (mediana): una lectura desafortunada no arrastra la decision");
-        Check(Llama(l, "Stopwatch.get_ElapsedMilliseconds") && Llama(l, "Stream.Read"), "y cronometra una lectura de verdad, no una cuenta de mentira");
+        List<string> l = Codigo.Llamadas(mPerfil);
+        Check(Codigo.Llama(l, "List`1.Sort"), "ordena las medidas y toma la de EN MEDIO (mediana): una lectura desafortunada no arrastra la decision");
+        Check(Codigo.Llama(l, "Stopwatch.get_ElapsedMilliseconds") && Codigo.Llama(l, "Stream.Read"), "y cronometra una lectura de verdad, no una cuenta de mentira");
 
         Console.WriteLine("\n  2) SE DECIDE ANTES DE LA PRIMERA PAGINA DE CARATULAS\n");
         MethodInfo mWork = TF.GetMethod("Scanner_DoWork", BindingFlags.Instance | BindingFlags.NonPublic);
-        Check(mWork != null && Llama(Llamadas(mWork), "Form1.PerfilaDisco"),
+        Check(mWork != null && Codigo.Llama(mWork, "Form1.PerfilaDisco"),
               "se perfila dentro del armado de la biblioteca (en segundo plano), no despues de leer 16 miniaturas");
         MethodInfo mDec = TF.GetMethod("DecodeCover", BindingFlags.Static | BindingFlags.NonPublic);
         Check(mDec != null, "y el perfilado 'de oido' sigue ahi como respaldo, por si no se pudo medir");
@@ -181,7 +155,7 @@ class Ssd
         MethodInfo mUnidad = TF.GetMethod("UnidadDe", BindingFlags.Static | BindingFlags.NonPublic);
         Check(mLento != null && mUnidad != null, "cada archivo se puede preguntar por SU disco, no solo por el general");
         if (mLento == null || mUnidad == null) return 1;
-        Check(Llama(Llamadas(mPerfil), "Form1.UnidadDe"), "y el perfilado aparta las medidas por unidad (no las mete todas en el mismo saco)");
+        Check(Codigo.Llama(mPerfil, "Form1.UnidadDe"), "y el perfilado aparta las medidas por unidad (no las mete todas en el mismo saco)");
         Func<string, bool> Lento = delegate (string ru) { return (bool)mLento.Invoke(null, new object[] { ru }); };
         string unid = (string)mUnidad.Invoke(null, new object[] { rutas[0] });
         Console.WriteLine("     la unidad de " + rutas[0] + " es \"" + unid + "\"");
@@ -221,7 +195,7 @@ class Ssd
         int preguntan = 0;
         foreach (Type t in asm.GetTypes())
             foreach (MethodInfo m in t.GetMethods(BindingFlags.Instance | BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.DeclaredOnly))
-                if (Llama(Llamadas(m), "Form1.DiscoLento")) preguntan++;
+                if (Codigo.Llama(m, "Form1.DiscoLento")) preguntan++;
         Console.WriteLine("     sitios que preguntan por el disco de ESE archivo: " + preguntan);
         Check(preguntan >= 2, "el repaso de cabeceras y la prelectura preguntan por el disco donde esta cada archivo, no por un veredicto unico");
 
