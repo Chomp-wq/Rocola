@@ -145,19 +145,8 @@ class Deriva
         Console.WriteLine("\n  3) Y LA ROCOLA LA AVANZA UNA VEZ POR LATIDO\n");
         // Si nadie la llamara, todo lo de arriba estaria bien y el fondo seguiria clavado.
         bool laLlama = false;
-        foreach (MethodInfo m in TF.GetMethods(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.DeclaredOnly))
-        {
-            MethodBody cuerpo = null; try { cuerpo = m.GetMethodBody(); } catch { }
-            if (cuerpo == null) continue;
-            byte[] il = null; try { il = cuerpo.GetILAsByteArray(); } catch { }
-            if (il == null) continue;
-            for (int i = 0; i + 4 < il.Length; i++)
-                if (il[i] == 0x6F || il[i] == 0x28)
-                {
-                    try { if (m.Module.ResolveMethod(BitConverter.ToInt32(il, i + 1)).Name == "AvanzaDeriva") laLlama = true; }
-                    catch { }
-                }
-        }
+        foreach (MethodBase m in Codigo.TodosLosMetodos(TF))
+            if (Codigo.Llama(m, "AvanzaDeriva")) laLlama = true;
         Check(laLlama, "la rocola avanza la deriva desde su latido de animacion, no desde el dibujado");
 
         Console.WriteLine();

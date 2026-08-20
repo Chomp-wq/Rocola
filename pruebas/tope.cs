@@ -25,42 +25,6 @@ class Tope
     static object Priv(object o, string n)
     { return o.GetType().GetField(n, BindingFlags.Instance | BindingFlags.NonPublic).GetValue(o); }
 
-    // Las llamadas que hace un metodo, leidas de su codigo compilado (mismo truco que la bateria de fps).
-    static List<string> Llamadas(MethodBase m)
-    {
-        List<string> r = new List<string>();
-        MethodBody b = m.GetMethodBody(); if (b == null) return r;
-        byte[] il = b.GetILAsByteArray(); Module mod = m.Module;
-        for (int i = 0; i < il.Length; i++)
-        {
-            byte op = il[i];
-            if (op == 0x28 || op == 0x6F || op == 0x73)          // call / callvirt / newobj
-            {
-                if (i + 4 >= il.Length) break;
-                int tok = BitConverter.ToInt32(il, i + 1);
-                try
-                {
-                    MethodBase mb = mod.ResolveMethod(tok);
-                    if (mb != null) r.Add((mb.DeclaringType != null ? mb.DeclaringType.Name + "." : "") + mb.Name);
-                }
-                catch { }
-                i += 4;
-            }
-            else if (op == 0xFE) i++;
-            else if (op == 0x20 || op == 0x22) i += 4;
-            else if (op == 0x21 || op == 0x23) i += 8;
-            else if (op == 0x1F || op == 0x2B || (op >= 0x2C && op <= 0x37) || op == 0x0E || op == 0x10 || op == 0x11 || op == 0x12 || op == 0x13) i += 1;
-            else if ((op >= 0x38 && op <= 0x45) || op == 0x27 || op == 0x6A || (op >= 0x70 && op <= 0x72) || (op >= 0x74 && op <= 0x81)
-                     || (op >= 0x8C && op <= 0x8D) || op == 0x8F || op == 0xA3 || op == 0xA4 || op == 0xA5
-                     || op == 0xC2 || op == 0xC6 || op == 0x7B || op == 0x7C || op == 0x7D || op == 0x7E || op == 0x7F || op == 0x80) i += 4;
-            else if (op == 0x45)
-            {
-                int n = BitConverter.ToInt32(il, i + 1); i += 4 + 4 * n;
-            }
-        }
-        return r;
-    }
-    static bool Llama(List<string> l, string q) { foreach (string s in l) if (s == q) return true; return false; }
 
     // Los cuadros por segundo que da el limitador tal como esta escrito, con un reloj de paso 'pasoReloj', un
     // sueño que dura 'pasoSueno' y cuadros que cuestan 'costeCuadro' ms. Devuelve tambien que parte del tiempo
@@ -126,10 +90,10 @@ class Tope
         Check(idle != null, "el bucle de dibujado esta donde tiene que estar");
         if (idle != null)
         {
-            List<string> l = Llamadas(idle);
-            Check(Llama(l, "GpuPanel.TopeMs"), "el bucle le pregunta el tope antes de cada cuadro");
-            Check(Llama(l, "GpuPanel.AhoraMs"), "y sigue midiendo con el reloj fino, no con el gordo de Windows");
-            Check(Llama(l, "Thread.Sleep"), "y cuando no le toca cuadro, DUERME (deja el nucleo libre)");
+            List<string> l = Codigo.Llamadas(idle);
+            Check(Codigo.Llama(l, "GpuPanel.TopeMs"), "el bucle le pregunta el tope antes de cada cuadro");
+            Check(Codigo.Llama(l, "GpuPanel.AhoraMs"), "y sigue midiendo con el reloj fino, no con el gordo de Windows");
+            Check(Codigo.Llama(l, "Thread.Sleep"), "y cuando no le toca cuadro, DUERME (deja el nucleo libre)");
         }
 
         Console.WriteLine("\n  3) CON EL TOPE, EL PROCESADOR QUEDA CASI LIBRE\n");
@@ -216,8 +180,8 @@ class Tope
         MethodInfo mBeg = TS.GetMethod("Begin", BindingFlags.Instance | BindingFlags.Public);
         if (mBeg != null)
         {
-            List<string> l = Llamadas(mBeg);
-            Check(Llama(l, "GpuPanel.AhoraMs"), "el campo de estrellas tambien mide su paso con el reloj fino");
+            List<string> l = Codigo.Llamadas(mBeg);
+            Check(Codigo.Llama(l, "GpuPanel.AhoraMs"), "el campo de estrellas tambien mide su paso con el reloj fino");
         }
         MethodInfo mSh = TS.GetMethod("UpdateAndDrawShoots", BindingFlags.Instance | BindingFlags.NonPublic);
         Check(mSh != null && mSh.GetParameters().Length == 4, "y las estrellas fugaces reciben tambien la hora fina");

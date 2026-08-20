@@ -236,18 +236,7 @@ class Hojea
             MethodInfo mRef = TF2.GetMethod("RefrescaLista", BindingFlags.Instance | BindingFlags.NonPublic);
             Check(mRef != null, "hay un solo sitio que dice \"el contenido de la lista cambio\"");
             MethodInfo mCola = TF2.GetMethod("RefrescaCola", BindingFlags.Instance | BindingFlags.NonPublic);
-            bool avisa = false;
-            if (mCola != null)
-            {
-                MethodBody b = mCola.GetMethodBody();
-                byte[] il = b.GetILAsByteArray();
-                for (int i = 0; i + 4 < il.Length; i++)
-                    if (il[i] == 0x28 || il[i] == 0x6F)
-                    {
-                        try { MethodBase mb = mCola.Module.ResolveMethod(BitConverter.ToInt32(il, i + 1)); if (mb != null && mb.Name == "RefrescaLista") avisa = true; }
-                        catch { }
-                    }
-            }
+            bool avisa = (mCola != null) && Codigo.Llama(mCola, "RefrescaLista");
             Check(avisa, "y mover la cola avisa (si no, pedir una cancion no le sacaria la marca hasta mucho despues)");
         }
 

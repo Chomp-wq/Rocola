@@ -23,7 +23,7 @@ FUENTES="$RAIZ/Rocola/Form1.cs $RAIZ/Rocola/Form1.Designer.cs $RAIZ/Rocola/Progr
 
 # Las que miran cosas que solo existen con tarjeta grafica (la aurora, el barrido de luz) van
 # contra el perfil de GPU; las demas contra el normal.
-CPU="ajustes bajo eqauto bajoauto calidad eqia nivel titulo duracion prueba prueba2 prueba3 prueba4 neon fps abc barrido2 espacio busca buscaigual genero pagina busmov parcial disco ssd etiqueta sala hojea cosecha resol letrero dsee sobras gasto historial estrellas limite vacias videos franja colores carriles indice escribe reposo cambio apagon unasola entrar iadatos entrenador corta deriva ligera simbolos"
+CPU="ajustes bajo eqauto bajoauto calidad eqia nivel titulo duracion prueba prueba2 prueba3 prueba4 neon fps abc barrido2 espacio busca buscaigual genero pagina busmov parcial disco ssd etiqueta sala hojea cosecha resol letrero dsee sobras gasto historial estrellas limite vacias videos franja colores carriles indice escribe reposo cambio apagon unasola entrar iadatos entrenador corta deriva ligera simbolos leer"
 # 'entrar' sale en las dos: casi todo lo que mira es comun, pero la parte de que la guia se vea CON
 # tarjeta grafica solo existe en ese perfil (si no, aparecia en las pruebas y no en el bar).
 GPU="fondo anim presencia barrido tope calma entrar"
@@ -76,11 +76,16 @@ if [ $# -gt 0 ]; then
   CPU="$nc"; GPU="$ng"
 fi
 
+# El lector del programa ya compilado vive aparte y se compila JUNTO a cada bateria: antes cada una tenia
+# su propia copia del recorrido y solo cuatro de quince estaban completas. Un solo sitio que arreglar.
+COMUN=""
+[ -f leercodigo.cs ] && COMUN="leercodigo.cs"
+
 mal=0
 corre() {
   for t in $1; do
     [ -f "$t.cs" ] || { echo "  ---          $t   (no existe)"; continue; }
-    if ! mcs -sdk:4 -warn:4 -out:$t.exe -r:System.Windows.Forms.dll -r:System.Drawing.dll -r:"$NAUDIO" $t.cs > /tmp/c_$t.txt 2>&1; then
+    if ! mcs -sdk:4 -warn:4 -out:$t.exe -r:System.Windows.Forms.dll -r:System.Drawing.dll -r:"$NAUDIO" $t.cs $COMUN > /tmp/c_$t.txt 2>&1; then
       echo "  COMPILA MAL  $t"; tail -3 /tmp/c_$t.txt; mal=$((mal+1)); continue
     fi
     xvfb-run -a mono $t.exe > /tmp/r_$t.txt 2>&1

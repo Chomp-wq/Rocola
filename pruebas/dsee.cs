@@ -143,24 +143,6 @@ class Dsee
 
     // Que metodos llama otro metodo, leyendo su codigo compilado. Sirve para comprobar que una funcion
     // sigue ENCHUFADA donde debe: un ayudante puede existir, estar documentado y no llamarlo nadie.
-    static System.Collections.Generic.List<string> Llamadas(MethodBase m)
-    {
-        System.Collections.Generic.List<string> r = new System.Collections.Generic.List<string>();
-        MethodBody b = null;
-        try { b = m.GetMethodBody(); } catch { }
-        if (b == null) return r;
-        byte[] il;
-        try { il = b.GetILAsByteArray(); } catch { return r; }
-        if (il == null) return r;
-        for (int i = 0; i + 4 < il.Length; i++)
-            if (il[i] == 0x28 || il[i] == 0x6F)
-            {
-                try { MethodBase mb = m.Module.ResolveMethod(BitConverter.ToInt32(il, i + 1)); if (mb != null) r.Add(mb.Name); }
-                catch { }
-            }
-        return r;
-    }
-    static bool Llama(MethodBase m, string q) { foreach (string s in Llamadas(m)) if (s == q) return true; return false; }
 
     static int Main(string[] argv)
     {
@@ -341,13 +323,13 @@ class Dsee
 
             Type TLvl = TF.GetNestedType("LevelTap", BindingFlags.NonPublic | BindingFlags.Public);
             MethodInfo mRead = (TLvl != null) ? TLvl.GetMethod("Read") : null;
-            Check(mRead != null && Llama(mRead, "TanhRapida"), "el realce de agudos LA LLAMA de verdad");
-            Check(mRead != null && !Llama(mRead, "Tanh"), "y ya no llama a la de la libreria");
+            Check(mRead != null && Codigo.Llama(mRead, "TanhRapida"), "el realce de agudos LA LLAMA de verdad");
+            Check(mRead != null && !Codigo.Llama(mRead, "Tanh"), "y ya no llama a la de la libreria");
 
             // La red neuronal SI debe seguir con la de verdad: se entreno con ella.
             Type TRed = TF.GetNestedType("RedChica", BindingFlags.NonPublic | BindingFlags.Public);
             MethodInfo mPred = (TRed != null) ? TRed.GetMethod("Predict") : null;
-            Check(mPred != null && Llama(mPred, "Tanh"), "la red neuronal, en cambio, sigue con la tangente exacta (se entreno con ella)");
+            Check(mPred != null && Codigo.Llama(mPred, "Tanh"), "la red neuronal, en cambio, sigue con la tangente exacta (se entreno con ella)");
         }
 
         // ============================================================================================

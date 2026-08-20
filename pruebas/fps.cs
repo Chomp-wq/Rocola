@@ -47,46 +47,6 @@ class Fps
     }
 
     // Recorre el codigo compilado de un metodo y anota a que llama (igual que en presencia.cs).
-    static int LargoOperando(int op)
-    {
-        if (op == 0x45) return -1;
-        if (op >= 0x2B && op <= 0x37) return 1;
-        if (op >= 0x38 && op <= 0x44) return 4;
-        switch (op)
-        {
-            case 0x0E: case 0x10: case 0x11: case 0x12: case 0x13:
-            case 0x1F: case 0xDE: return 1;
-            case 0x20: case 0x22: case 0x27: case 0x28: case 0x6F:
-            case 0x72: case 0x73: case 0x74: case 0x75: case 0x79:
-            case 0x7B: case 0x7C: case 0x7D: case 0x7E: case 0x7F: case 0x80:
-            case 0x81: case 0x8C: case 0x8D: case 0x8F: case 0xA3: case 0xA4:
-            case 0xA5: case 0xC2: case 0xC6: case 0xD0: case 0x29: return 4;
-            case 0x21: case 0x23: return 8;
-            default: return 0;
-        }
-    }
-    static List<string> Llamadas(MethodBase m)
-    {
-        List<string> r = new List<string>();
-        MethodBody b = m.GetMethodBody(); if (b == null) return r;
-        byte[] il = b.GetILAsByteArray(); if (il == null) return r;
-        Module mod = m.Module; int i = 0;
-        while (i < il.Length)
-        {
-            int op = il[i];
-            if (op == 0xFE) { i += 2; continue; }
-            if (op == 0x45) { int n = BitConverter.ToInt32(il, i + 1); i += 1 + 4 + 4 * n; continue; }
-            int len = LargoOperando(op);
-            if ((op == 0x28 || op == 0x6F) && i + 4 < il.Length)
-            {
-                int tok = BitConverter.ToInt32(il, i + 1);
-                try { MethodBase mb = mod.ResolveMethod(tok); r.Add(mb.DeclaringType.Name + "." + mb.Name); } catch { }
-            }
-            i += 1 + len;
-        }
-        return r;
-    }
-    static bool Llama(List<string> l, string q) { foreach (string s in l) if (s == q) return true; return false; }
 
     static int Main()
     {
@@ -125,9 +85,9 @@ class Fps
         Check(idle != null, "el bucle de dibujado esta donde tiene que estar");
         if (idle != null)
         {
-            List<string> l = Llamadas(idle);
-            Check(Llama(l, "GpuPanel.AhoraMs"), "el limitador pregunta la hora al reloj fino");
-            Check(!Llama(l, "Environment.get_TickCount"), "y ya NO al reloj gordo de Windows, que era el del fallo");
+            List<string> l = Codigo.Llamadas(idle);
+            Check(Codigo.Llama(l, "GpuPanel.AhoraMs"), "el limitador pregunta la hora al reloj fino");
+            Check(!Codigo.Llama(l, "Environment.get_TickCount"), "y ya NO al reloj gordo de Windows, que era el del fallo");
         }
 
         Console.WriteLine("\n  3) EL RELOJ DE 1 ms SE PIDE UNA SOLA VEZ, Y SE DEVUELVE\n");
@@ -158,8 +118,8 @@ class Fps
         Check(sync != null, "la regla del limitador esta en el sitio de siempre");
         if (sync != null)
         {
-            List<string> l = Llamadas(sync);
-            Check(Llama(l, "Environment.get_ProcessorCount"), "y mira cuantos nucleos tiene la maquina antes de limitar");
+            List<string> l = Codigo.Llamadas(sync);
+            Check(Codigo.Llama(l, "Environment.get_ProcessorCount"), "y mira cuantos nucleos tiene la maquina antes de limitar");
         }
         Console.WriteLine("     esta maquina tiene " + Environment.ProcessorCount + " nucleos: "
                           + (Environment.ProcessorCount < 4 ? "con video se limitaria a 30 cuadros/s" : "con video NO se limita"));
