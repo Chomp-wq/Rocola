@@ -255,6 +255,67 @@ segundo, así que el trabajo total sólo sube 12/11 = 9%—. O sea que la ventan
 doble en frecuencia y sale casi gratis**. Por eso se deja que la rocola elija, y existe
 `dsee_ventana=` para fijarlo en el bar sin recompilar. Lo vigila la batería `ventana`.
 
+### En la máquina del bar: se enciende y aparece la rocola
+
+Todo lo de esta sección está en **[`puppy/`](puppy/LEEME.md)**: un `.sfs` con Mono, libgdiplus y la
+rocola dentro, que Puppy carga al arrancar, y arranque directo a la rocola **sin escritorio**.
+Preparándolo salieron cuatro cosas que estaban mal y que en el bar se habrían notado:
+
+**1. Sin escritorio, la rocola no llenaba la pantalla.** Se ponía a pantalla completa pidiendo
+"maximizado", y quien maximiza es el **gestor de ventanas** — el programa que pone los bordes y el
+botón de cerrar. En Windows siempre hay uno; arrancando directo a la rocola **no hay ninguno**, y
+nadie atendía la petición. Medido en una pantalla de 1280×1024: la ventana salía de 1099×779, o sea
+que **cubría el 65% y el resto era marco negro**. Ahora la rocola se pone ella misma del tamaño de la
+pantalla: **99.8%**. Lo vigila la batería `arranca`.
+
+**2. `salida=hw:0` no funcionaba, y la rocola misma lo recomendaba.** Cuando detecta un servidor de
+sonido en medio (PipeWire, PulseAudio), avisa en Ctrl+F3: *"Pon salida=hw:0 para hablarle DIRECTO a la
+tarjeta"*. Pero el lector de la configuración tiraba ese renglón: sólo aceptaba `auto`, `wasapi` y
+`waveout`, que son de la rama de Windows. Además lo pasaba a minúsculas, lo que rompe nombres como
+`hw:CARD=Generic` (en ALSA las mayúsculas cuentan). Arreglado y con batería propia (`salida`).
+
+**3. Todo lo que la rocola guarda iba junto al programa.** Dentro de un `.sfs` eso es **solo lectura**:
+Puppy deja escribir por encima, pero lo escrito se queda en memoria y **no baja al disco hasta que
+Puppy guarda**, así que un apagón se llevaría los créditos y la cola — justo lo que el guardado seguro
+existe para evitar. Ahora hay un solo sitio donde se decide: la variable `ROCOLA_DATOS` si está puesta,
+y si no la carpeta del programa, **como siempre** (en Windows no cambia nada). Las carpetas de música
+de más (Ctrl+F2, renglones `dir=`) siguen funcionando igual; lo comprueba la batería `datos`.
+
+**4. Sin gestor de ventanas no había forma de cerrar la rocola.** En Windows la cierra Alt+F4, que lo
+manda el gestor de ventanas. Sin él no había ninguna tecla, y para meter música habría que reiniciar.
+Ahora se sale con **Ctrl+Alt+Q tres veces seguidas** — las dos primeras sólo avisan en pantalla, así
+que si se pulsa sin querer se ve venir. Cierra por el camino de siempre, o sea que **borra el estado
+guardado** y mañana arranca limpia; sólo un apagón deja el archivo, y por eso al volver la luz reanuda.
+
+### De arrancar la rocola a que suene, medido
+
+`pruebas/arranque.exe` monta una biblioteca de prueba, le deja el archivo de estado que dejaría un
+apagón (con una canción sonando), enciende la rocola y mide **cuándo llega la primera muestra a la
+tarjeta** — no cuándo lo dice la pantalla, sino cuándo sale el sonido. Con 720 canciones:
+
+| | se ve la pantalla | suena la primera canción |
+|---|---|---|
+| **primer arranque** (hay que leer el disco entero) | 3.43 s | **2.88 s** |
+| **todos los demás días** (el índice ya está hecho) | 0.95 s | **0.30 s** |
+
+Guardar el índice de la biblioteca ahorra **2.57 s** en cada arranque. A esto hay que sumarle lo que
+tarde Puppy en encender, que no depende de la rocola: el arranque lo apunta solo en
+`rocola_arranques.txt`. Y ojo: aquí la música son archivos chicos en memoria; en el bar son miles de
+MP3 en un disco que gira, y la primera lectura cuesta mucho más — por eso conviene correrlo allí.
+
+### ¿Esta máquina sirve?
+
+La rocola le pide al sistema cinco bibliotecas (`libasound`, `libX11`, `libXrandr`, `libGL`, `libc`)
+más Mono y `libgdiplus`. Si falta una, se muere al arrancar y sólo se ve la pantalla en negro.
+`pruebas/bibliotecas.exe` saca la lista **del propio programa compilado** —no de una lista escrita a
+mano, que se quedaría vieja— e intenta cargar cada una:
+
+```
+mono pruebas/bibliotecas.exe Rocola.exe
+```
+
+Se puede copiar sola a la máquina de Puppy y en diez segundos dice si esa máquina sirve.
+
 ### Compilar y correr en Linux
 
 ```

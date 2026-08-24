@@ -867,8 +867,8 @@ namespace Rocola
             base.OnShown(e);
             LoadStats();   // estadisticas guardadas de sesiones anteriores (base de "Lo mas sonado")
             ProbeAudioTier();    // requisitos de maquina para el NIVEL 2 de audio (antes de leer dsee= de config)
-            NeuralEnv.TryLoad(Path.Combine(Application.StartupPath, "rocola_ia.bin"));   // IA propia (si hay modelo entrenado junto al exe)
-            EqNet.TryLoad(Path.Combine(Application.StartupPath, "rocola_eq_ia.bin"));    // IA del EQ automatico (objetivo por cancion)
+            NeuralEnv.TryLoad(RutaLectura("rocola_ia.bin"));   // IA propia (el modelo entrenado: en la carpeta de datos, o el de fabrica)
+            EqNet.TryLoad(RutaLectura("rocola_eq_ia.bin"));    // IA del EQ automatico (objetivo por cancion)
             LoadConfigPrefs();   // preferencias: render GPU/CPU + carpetas de musica adicionales (Ctrl+F2)
             if (iaVivo) IaEnsureMotor();   // IA en vivo encendida -> arranca el motor OCULTO (sin terminal que cuidar)
             LoadLoudCache();     // sonoridad medida por cancion (para nivelar el volumen de todas)
@@ -879,6 +879,7 @@ namespace Rocola
             LoadDurFast();       // duraciones ya barridas (para mostrarlas desde el primer momento)
             LoadIncompatible();  // rutas ya anotadas como no reproducibles (para no repetirlas)
             BackupLearnedData(); // respalda lo aprendido de la sesion ANTERIOR antes de que esta lo modifique
+            AjustaAPantallaCompleta();   // sin gestor de ventanas, "maximizado" no lo hace nadie (ver el metodo)
             LayoutControls();
 #if ROCOLA_GPU
             if (gpuPrefOn) ApplyAlbumGpu(true, false, false);   // render por GPU por defecto (o preferencia guardada); silencioso si el device falla; no re-guarda
@@ -925,6 +926,34 @@ namespace Rocola
             catch { }
         }
 
+        // QUE LLENE LA PANTALLA, HAYA QUIEN HAYA DEBAJO.
+        //
+        // La rocola se pone a pantalla completa pidiendo "maximizado". Pero quien maximiza no es el
+        // programa: es el GESTOR DE VENTANAS, el que pone los bordes y el boton de cerrar. En Windows
+        // siempre hay uno. En la maquina del bar la rocola arranca SOLA, sin escritorio detras, y ahi no
+        // hay ninguno: nadie atiende la peticion y la rocola se queda del tamano con el que nacio -1100x780-
+        // en medio de la pantalla, con un marco negro alrededor. Medido en una pantalla de 1280x1024:
+        // cubria el 65% y el otro 35% era negro.
+        //
+        // Asi que ademas de pedirlo, se pone ella misma del tamano de la pantalla. Es una linea y quita
+        // toda la dependencia: con gestor de ventanas o sin el, sale igual.
+        private void AjustaAPantallaCompleta()
+        {
+            try
+            {
+                Rectangle p = Screen.PrimaryScreen.Bounds;
+                if (p.Width < 320 || p.Height < 240) return;              // pantalla absurda: no se toca nada
+                if (this.Bounds == p) return;
+                // El tamano minimo estorbaria si la pantalla fuera mas chica que el (una pantalla de 800x600
+                // con un minimo de 820x600): se aparta un momento y se vuelve a poner.
+                Size min = this.MinimumSize;
+                this.MinimumSize = Size.Empty;
+                this.Bounds = p;
+                this.MinimumSize = new Size(Math.Min(min.Width, p.Width), Math.Min(min.Height, p.Height));
+            }
+            catch { }
+        }
+
         private void FocusTimer_Tick(object sender, EventArgs e)
         {
             if (maintMode && DateTime.Now > maintUntil) { maintMode = false; ShowToast("Vigia de pantalla reactivado"); }
@@ -942,7 +971,68 @@ namespace Rocola
             if (!char.IsControl(c)) { searchOverlay.TypeChar(c); MarkSearchActivity(); e.Handled = true; }
         }
 
-        private string ConfigFile { get { return Path.Combine(Application.StartupPath, "rocola_config.txt"); } }
+        // ================== DONDE VIVE LO QUE LA ROCOLA GUARDA ==================
+        //
+        // La rocola escribe una veintena de archivos: los creditos y la cola -para sobrevivir a un apagon-,
+        // el volumen medido de cada cancion, la huella del EQ, lo mas sonado, el indice de la biblioteca,
+        // los ajustes y el mapa de botones. Hasta ahora iban todos a la carpeta del PROGRAMA.
+        //
+        // En Windows eso esta bien: el programa vive en una carpeta normal donde se puede escribir. Pero en
+        // la maquina del bar la rocola va dentro de un ".sfs" de Puppy, que es un archivo de SOLO LECTURA
+        // que se carga al arrancar. Puppy deja escribir "por encima", pero lo escrito se queda en la memoria
+        // o en el archivo de guardado y NO BAJA AL DISCO hasta que Puppy guarda. O sea que un apagon se
+        // llevaria los creditos y la cola: justo lo que el guardado seguro de aqui abajo existe para evitar.
+        //
+        // Asi que hay UN solo sitio donde se decide: la variable de entorno ROCOLA_DATOS si esta puesta y
+        // apunta a algo donde se pueda escribir, y si no la carpeta del programa, como siempre. En Windows,
+        // donde nadie la pone, no cambia absolutamente nada. En Puppy el arranque la apunta a una carpeta
+        // del disco, fuera del .sfs, y ahi el fsync que la rocola ya hace llega al disco de verdad.
+        //
+        // Se calcula UNA vez: si cambiara a media sesion, la mitad de los archivos acabarian en un sitio y
+        // la otra mitad en otro.
+        private static string carpetaDatos;
+        internal static string CarpetaDatos
+        {
+            get
+            {
+                if (carpetaDatos != null) return carpetaDatos;
+                string d = null;
+                try { d = Environment.GetEnvironmentVariable("ROCOLA_DATOS"); } catch { }
+                if (!string.IsNullOrEmpty(d))
+                {
+                    d = d.Trim();
+                    try
+                    {
+                        if (!Directory.Exists(d)) Directory.CreateDirectory(d);
+                        // Se comprueba que de verdad se puede escribir ANTES de fiarse: si el disco de la
+                        // musica no estuviera montado todavia, la ruta existiria vacia y la rocola escribiria
+                        // en un sitio que va a desaparecer. Mejor volver a la carpeta del programa.
+                        string prueba = Path.Combine(d, "rocola_escribible.tmp");
+                        File.WriteAllText(prueba, "ok");
+                        File.Delete(prueba);
+                        carpetaDatos = d;
+                        return carpetaDatos;
+                    }
+                    catch { }
+                }
+                carpetaDatos = Application.StartupPath;
+                return carpetaDatos;
+            }
+        }
+        private static string RutaDatos(string nombre) { return Path.Combine(CarpetaDatos, nombre); }
+
+        // Un archivo que la rocola LEE pero no escribe -los modelos de IA entrenados- se busca primero en la
+        // carpeta de datos y luego junto al programa. Asi el modelo que viene de fabrica funciona sin tocar
+        // nada, y si se entrena uno nuevo basta con dejarlo en la carpeta de datos: dentro del .sfs, que es
+        // de solo lectura, no se podria.
+        private static string RutaLectura(string nombre)
+        {
+            string a = RutaDatos(nombre);
+            try { if (File.Exists(a)) return a; } catch { }
+            return Path.Combine(Application.StartupPath, nombre);
+        }
+
+        private string ConfigFile { get { return RutaDatos("rocola_config.txt"); } }
 
         // ===================== PREFERENCIAS (rocola_config.txt) =====================
         // gpu=1/0 (render por GPU, Ctrl+F12) y dir=<ruta> (carpetas de musica ADICIONALES, Ctrl+F2; una por
@@ -1051,7 +1141,7 @@ namespace Rocola
             if (!diagOn) return;
             try
             {
-                string f = Path.Combine(Application.StartupPath, "rocola_diagnostico.txt");
+                string f = RutaDatos("rocola_diagnostico.txt");
                 try { FileInfo fi = new FileInfo(f); if (fi.Exists && fi.Length > 2097152) fi.Delete(); } catch { }
                 File.AppendAllText(f, DateTime.Now.ToString("HH:mm:ss.fff") + "  " + msg + "\r\n");
             }
@@ -1094,7 +1184,18 @@ namespace Rocola
                     else if (s.StartsWith("eq_automatico=")) eqAuto = s.Substring(14).Trim() != "0";     // la fuerza del EQ la decide el programa
                     else if (s.StartsWith("bajo_automatico=")) bassAuto = s.Substring(16).Trim() != "0"; // y la cantidad de bajo tambien
                     else if (s.StartsWith("dsee=")) sbrOn = s.Substring(5).Trim() == "1";   // reconstruccion espectral (NIVEL 2)
-                    else if (s.StartsWith("salida=")) { string v = s.Substring(7).Trim().ToLowerInvariant(); if (v == "auto" || v == "wasapi" || v == "waveout") outPref = v; }   // salida de audio (rama HD)
+                    // "salida=" elige POR QUE TARJETA suena. Se acepta cualquier nombre de ALSA -"hw:0",
+                    // "plughw:1", "hw:CARD=Generic"- y se guarda TAL CUAL, sin pasarlo a minusculas: en ALSA
+                    // las mayusculas cuentan y "hw:card=generic" no existe. Antes solo se aceptaban las tres
+                    // palabras de la rocola de Windows y todo lo demas se tiraba, asi que el consejo que la
+                    // propia rocola da en Ctrl+F3 -"pon salida=hw:0"- no se podia seguir.
+                    else if (s.StartsWith("salida="))
+                    {
+                        string v = s.Substring(7).Trim();
+                        string vb = v.ToLowerInvariant();
+                        if (vb == "auto" || vb == "wasapi" || vb == "waveout") outPref = vb;   // las de Windows: siguen queriendo decir "la del sistema"
+                        else if (v.Length > 0) outPref = v;                                    // un nombre de tarjeta de ALSA
+                    }
                     // "ia_vivo=" se lee y se IGNORA a proposito: en Linux el DSEE ULTRA no existe (mira el
                     // comentario de iaVivo). Se guarda el texto tal cual vino para devolverlo al archivo sin
                     // tocarlo, y asi una configuracion que va y viene entre esta rocola y la de Windows no
@@ -1114,6 +1215,21 @@ namespace Rocola
             }
             catch { }
             if (!sbrAllowed) sbrOn = false;   // la maquina no cumple los requisitos del NIVEL 2: apagado si o si
+        }
+
+        // POR QUE TARJETA SUENA. El UNICO sitio donde se decide, para que no haya dos cuentas distintas.
+        //
+        // "default" es la que use el sistema. Las tres palabras de la rocola de Windows -auto, wasapi,
+        // waveout- eligian MOTOR de sonido, y en Linux solo hay uno (ALSA), asi que aqui quieren decir
+        // "la del sistema": una configuracion traida de aquella rocola vale tal cual. Cualquier otra cosa
+        // es un nombre de tarjeta de ALSA y se pasa entero.
+        private string TarjetaDeSonido()
+        {
+            string v = outPref;
+            if (v == null || v.Length == 0) return "default";
+            string vb = v.ToLowerInvariant();
+            if (vb == "auto" || vb == "wasapi" || vb == "waveout") return "default";
+            return v;
         }
 
         // Ojo con el orden: se pregunta "NO es mayor que lo" en vez de "es menor que lo". Con NaN las dos
@@ -1316,9 +1432,9 @@ namespace Rocola
             }
         }
 
-        private string LoudFile() { return Path.Combine(Application.StartupPath, "rocola_volumen.txt"); }
+        private string LoudFile() { return RutaDatos("rocola_volumen.txt"); }
 
-        private string EqFile() { return Path.Combine(Application.StartupPath, "rocola_eq.txt"); }
+        private string EqFile() { return RutaDatos("rocola_eq.txt"); }
 
         // Tabla de huellas tonales (d0;d1;...;d7|ruta). Perdida o rota no rompe nada: se re-aprende oyendo.
         private void LoadEqCache()
@@ -1619,7 +1735,7 @@ namespace Rocola
         }
 
         // Escribe el informe: las peores primero, para ir directo a lo que conviene reemplazar.
-        private string CalidadFile() { return Path.Combine(Application.StartupPath, "rocola_calidad.txt"); }
+        private string CalidadFile() { return RutaDatos("rocola_calidad.txt"); }
         // Abrir y cerrar la ventana varias veces seguidas encargaba varios informes a la vez y podian
         // chocar escribiendo el MISMO archivo (y el informe se quedaba sin escribir). Uno por vez.
         private static readonly object calSaveLock = new object();
@@ -2728,15 +2844,17 @@ namespace Rocola
             finally { try { Cursor.Hide(); } catch { } maintMode = wasMaint; ForceFocus(); }
         }
 
-        // Busca automaticamente una carpeta llamada "musica" junto al programa o hasta 3 niveles arriba
-        // (ej.: nueva\Release\Rocola.exe  +  nueva\musica). No requiere elegir carpeta.
+        // Busca automaticamente una carpeta llamada "musica" junto a los datos o hasta 3 niveles arriba
+        // (ej.: nueva\Release\Rocola.exe  +  nueva\musica). No requiere elegir carpeta. Las carpetas de
+        // musica de MAS -las que se agregan con Ctrl+F2- no pasan por aqui: esas guardan la ruta completa en
+        // renglones "dir=" del archivo de ajustes y siguen valiendo esten donde esten (ver AllMusicRoots).
         private string MusicFolder
         {
             get
             {
                 try
                 {
-                    string dir = Application.StartupPath;
+                    string dir = CarpetaDatos;
                     for (int i = 0; i < 4 && dir != null; i++)
                     {
                         string cand = Path.Combine(dir, "musica");
@@ -2746,7 +2864,7 @@ namespace Rocola
                     }
                 }
                 catch { }
-                return Path.Combine(Application.StartupPath, "musica");   // por defecto, junto al exe
+                return RutaDatos("musica");   // por defecto, junto a los datos
             }
         }
 
@@ -3673,8 +3791,8 @@ namespace Rocola
         // megas tirados en una maquina de 4 GB. Compartiendo UNA sola copia por ruta se juntan todas en una, y
         // de paso las busquedas salen mas rapido (comparar dos iguales se resuelve por referencia).
         private static string Pool(string s) { return (s == null || s.Length == 0) ? s : string.Intern(s); }
-        private string IaDataFile() { return Path.Combine(Application.StartupPath, "rocola_ia_datos.bin"); }
-        private string IaDoneFile() { return Path.Combine(Application.StartupPath, "rocola_ia_hechas.txt"); }
+        private string IaDataFile() { return RutaDatos("rocola_ia_datos.bin"); }
+        private string IaDoneFile() { return RutaDatos("rocola_ia_hechas.txt"); }
         // Formato: "ruta" (nivel 1, el de siempre) o "N|ruta" (nivel N). Una ruta de Windows no puede llevar
         // "|", asi que distinguirlos es seguro y los archivos viejos se siguen leyendo tal cual.
         private void LoadIaDone()
@@ -3732,7 +3850,7 @@ namespace Rocola
             });
         }
         // ---- Canciones ya repasadas A FONDO (mismo formato que las de la IA: una ruta por linea) ----
-        private string DeepDoneFile() { return Path.Combine(Application.StartupPath, "rocola_afondo.txt"); }
+        private string DeepDoneFile() { return RutaDatos("rocola_afondo.txt"); }
         private readonly object deepDoneLock = new object();
         private volatile bool deepDoneDirty = false;   // hay canciones repasadas sin apuntar en disco
         private readonly List<string> deepPend = new List<string>();   // rutas apuntadas y aun sin escribir
@@ -3801,7 +3919,7 @@ namespace Rocola
         }
 
         // ---- Duraciones rapidas: "segundos|ruta" por linea, escritas POR ANADIDO ----
-        private string DurFastFile() { return Path.Combine(Application.StartupPath, "rocola_duracion.txt"); }
+        private string DurFastFile() { return RutaDatos("rocola_duracion.txt"); }
         private void LoadDurFast()
         {
             try
@@ -3842,7 +3960,7 @@ namespace Rocola
         // Debajo de cada letra va cuantas canciones hay detras, y la letra se pinta del color del genero que
         // MANDA dentro de ella. Lo primero es gratis (ya esta contado); lo segundo cuesta leer el ID3 de toda
         // la biblioteca, asi que se calcula una vez en segundo plano y se guarda.
-        private string LetterTintFile() { return Path.Combine(Application.StartupPath, "rocola_letras.txt"); }
+        private string LetterTintFile() { return RutaDatos("rocola_letras.txt"); }
 
         // Con que biblioteca se calcularon los colores. Si esto cambia, hay que volver a leer los generos.
         private int FirmaBiblioteca() { return tracks.Count * 31 + albums.Count; }
@@ -5184,7 +5302,7 @@ namespace Rocola
         // portada por cada disco: en disco duro, minutos. Aqui se guarda el resultado en un archivo y
         // los siguientes arranques lo leen en segundos. Se invalida solo si la carpeta de musica cambio
         // (cantidad de carpetas o fecha de la raiz). F5 siempre fuerza un re-escaneo completo.
-        private string LibCacheFile() { return Path.Combine(Application.StartupPath, "rocola_biblioteca.txt"); }
+        private string LibCacheFile() { return RutaDatos("rocola_biblioteca.txt"); }
 
         // En arranque desde cache: portadas resueltas SIN tocar el disco.
         // La portada de una carpeta: siempre sale del mapa que dejo el recorrido del disco (el escaneo fresco lo
@@ -6913,12 +7031,57 @@ namespace Rocola
         // ¿Esta presionado AHORA el boton REGRESAR (rocola) o Esc (teclado)?  (para los combos)
         private bool BackHeld() { return KeyHeld(keyBack) || (KeyHeld(Keys.Escape) && !IsConfiguredKey(Keys.Escape)); }
 
+        // ================== SALIR DE LA ROCOLA (Ctrl+Alt+Q, tres veces) ==================
+        //
+        // En Windows la rocola se cierra con Alt+F4, y quien manda ese Alt+F4 es el gestor de ventanas -el
+        // programa que pone los bordes y el boton de cerrar-. En la maquina del bar la rocola arranca sola,
+        // sin escritorio detras, y ahi NO HAY NINGUNO: no habia ninguna tecla que la cerrara, y para meter
+        // musica nueva habria que reiniciar la maquina.
+        //
+        // TRES VECES y no una: en un bar la rocola esta al alcance de cualquiera, y una sola combinacion se
+        // aprieta sin querer o por curiosear. Tres seguidas dentro de unos segundos no le pasan a nadie por
+        // accidente, y las dos primeras solo avisan en pantalla, asi que el que lo hizo sin querer ve lo que
+        // esta a punto de pasar y para. Si se tarda, la cuenta vuelve a empezar: dos de anoche no suman con
+        // una de hoy.
+        //
+        // Devuelve 0 si esa tecla no es la de salir, o 1, 2 o 3 = cuantas van. Quien llama ensena el aviso
+        // y, al llegar a 3, cierra. Va aparte para poder probarlo sin tener que simular teclados.
+        private const int SalirVeces = 3;                 // cuantas veces hay que pulsarlo
+        private const double SalirSegundos = 3.0;         // y dentro de cuanto, entre una y otra
+        private int salirCuenta = 0;
+        private DateTime salirUltima = DateTime.MinValue;
+
+        private int PidenSalir(Keys keyData)
+        {
+            if (keyData != (Keys.Control | Keys.Alt | Keys.Q)) return 0;
+            DateTime ahora = DateTime.Now;
+            if ((ahora - salirUltima).TotalSeconds > SalirSegundos) salirCuenta = 0;   // se tardo: vuelta a empezar
+            salirUltima = ahora;
+            salirCuenta++;
+            if (salirCuenta > SalirVeces) salirCuenta = SalirVeces;
+            return salirCuenta;
+        }
+
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
             // AQUI se apunta que la tecla esta abajo, y no en el evento de siempre, porque este metodo se
             // queda con muchas teclas y no las deja pasar: si se apuntara mas adelante, la de REGRESAR
             // -que es justo la que se mantiene para abrir el buscador- no llegaria a apuntarse nunca.
             ApuntaTecla(keyData, true);
+
+            // SALIR (Ctrl+Alt+Q x3). Va lo primero para que ninguna pantalla se quede con la tecla: es la
+            // unica forma de cerrar la rocola cuando no hay escritorio detras, y tiene que funcionar
+            // siempre, este donde este el cliente. Cierra con Close(), que es el camino de siempre: cerrar
+            // A PROPOSITO borra el estado guardado y manana la rocola arranca limpia (solo un apagon -que
+            // no corre nada- deja el archivo, y por eso al volver la luz reanuda creditos y cola).
+            int vanSalir = PidenSalir(keyData);
+            if (vanSalir > 0)
+            {
+                if (vanSalir >= SalirVeces) { Close(); return true; }
+                ShowToast("Salir de la rocola: " + vanSalir + " de " + SalirVeces, Color.FromArgb(200, 130, 35));
+                return true;
+            }
+
             lastInput = DateTime.Now;   // cualquier tecla reinicia la inactividad
             lastInputTick = Environment.TickCount;   // el precalentador de miniaturas pausa si hay actividad
             if (attractOn)
@@ -7059,7 +7222,7 @@ namespace Rocola
         }
 
         // =================== ASISTENTE DE CONFIGURACION DE BOTONES ===================
-        private string KeysFile() { return Path.Combine(Application.StartupPath, "rocola_teclas.txt"); }
+        private string KeysFile() { return RutaDatos("rocola_teclas.txt"); }
 
         // Carga el mapeo de botones. Devuelve true solo si estan los 8 completos.
         private bool LoadKeys()
@@ -7366,7 +7529,7 @@ namespace Rocola
         // (boton de poder -> Windows apaga, u Alt+F4) borra el archivo en OnFormClosing; (2) al cruzar las 7 AM
         // estando ociosa (CheckBusinessDayReset); (3) al restaurar, si el estado ya cruzo las 7 AM y no es reciente.
         // Un apagon no dispara nada de esto -> el archivo sobrevive y la rocola reanuda.
-        private string StateFile() { return Path.Combine(Application.StartupPath, "rocola_estado.txt"); }
+        private string StateFile() { return RutaDatos("rocola_estado.txt"); }
         private bool stateRestored = false;   // la restauracion corre UNA vez (al primer armado de biblioteca)
 
         // El estado de recuperacion pertenece a UN "dia del negocio", que ARRANCA a las 7 AM (hora del sistema): a
@@ -7416,13 +7579,13 @@ namespace Rocola
         // volumenes nivelados, huellas del EQ, estadisticas de lo mas sonado, indice de biblioteca,
         // config, mapa de botones y el modelo de IA. Se copia a respaldo\<fecha>\ (y a respaldo_dir= si se
         // configuro, idealmente OTRO disco), guardando los 3 dias mas recientes. Son unos KB: barato y rapido.
-        private string BackupBaseDir() { return Path.Combine(Application.StartupPath, "respaldo"); }
+        private string BackupBaseDir() { return RutaDatos("respaldo"); }
         private void BackupLearnedData()
         {
-            string sp = Application.StartupPath, second = backupDir, baseDir = BackupBaseDir();
+            string sp = CarpetaDatos, second = backupDir, baseDir = BackupBaseDir();
             string[] files = {
                 LoudFile(), EqFile(), LibStatsFile(), LibCacheFile(), ConfigFile, KeysFile(),
-                Path.Combine(sp, "rocola_ia.bin"), Path.Combine(sp, "rocola_eq_ia.bin"),
+                RutaLectura("rocola_ia.bin"), RutaLectura("rocola_eq_ia.bin"),
                 Path.Combine(sp, "rocola_incompatibles.txt"),
                 IaDoneFile(), DeepDoneFile(),  // sin estas dos, un repaso a fondo empezaria de cero y la IA repetiria ejemplos
                 DurFastFile(), LetterTintFile()   // sin este, la barra tendria que releer el ID3 de toda la biblioteca
@@ -7551,7 +7714,7 @@ namespace Rocola
         }
 
         // ===================== MOTOR DE ESTADISTICAS =====================
-        private string LibStatsFile() { return Path.Combine(Application.StartupPath, "rocola_stats.txt"); }
+        private string LibStatsFile() { return RutaDatos("rocola_stats.txt"); }
 
         // Registra una reproduccion pedida (algo que entro a la cola con exito).
         private void RecordPlay(PlayItem it)
@@ -8171,7 +8334,7 @@ namespace Rocola
                       .Append(((i < db.Count) ? db[i] : 0f).ToString("0", CultureInfo.InvariantCulture)).Append(" dB  ")
                       .Append(mudos[i]).Append("\r\n");
                 }
-                if (sb.Length > 0) File.AppendAllText(Path.Combine(Application.StartupPath, "rocola_borrados.txt"), sb.ToString());
+                if (sb.Length > 0) File.AppendAllText(RutaDatos("rocola_borrados.txt"), sb.ToString());
             }
             catch { }
             int n = QuitaDeLaBiblioteca(mudos);
@@ -8510,7 +8673,7 @@ namespace Rocola
             if (!string.IsNullOrEmpty(iaCacheDir)) return iaCacheDir;
             string py, dm;
             if (IaFindEngine(out py, out dm)) return Path.Combine(Path.GetDirectoryName(dm), "cache");
-            return Path.Combine(Application.StartupPath, "ia_cache");
+            return RutaDatos("ia_cache");
         }
 
         // Hash IDENTICO al de daemon_ia.py: sha1( ruta_absoluta_minusculas | tamano_bytes | mezcla )[:16].
@@ -8751,9 +8914,7 @@ namespace Rocola
                 // 'salida=' en la configuracion ya no elige motor: elige TARJETA. "default" es la que use el
                 // sistema; con varias tarjetas se puede poner "hw:1" o "plughw:1" para mandar la musica por
                 // la que va al amplificador y no por la del monitor.
-                string tarjeta = (outPref == "auto" || outPref == "wasapi" || outPref == "waveout" || outPref.Length == 0)
-                                 ? "default" : outPref;
-                SalidaAlsa alsa = new SalidaAlsa(300, tarjeta);
+                SalidaAlsa alsa = new SalidaAlsa(300, TarjetaDeSonido());
                 alsa.PlaybackStopped += Output_PlaybackStopped;
                 alsa.Init(new DitherWaveProvider16(outChain));   // 16 bits CON dither TPDF (menos aspereza en pasajes silenciosos)
                 output = alsa;
@@ -8846,7 +9007,7 @@ namespace Rocola
                 if (string.IsNullOrEmpty(path) || !incompatibleLogged.Add(path)) return;   // ya anotada
                 string reason = (ex != null) ? ex.Message : "desconocido";
                 if (reason.Length > 160) reason = reason.Substring(0, 160);
-                File.AppendAllText(Path.Combine(Application.StartupPath, "rocola_incompatibles.txt"),
+                File.AppendAllText(RutaDatos("rocola_incompatibles.txt"),
                     DateTime.Now.ToString("yyyy-MM-dd HH:mm") + "  |  " + path + "  |  " + reason + "\r\n");
             }
             catch { }
@@ -8857,7 +9018,7 @@ namespace Rocola
         {
             try
             {
-                string f = Path.Combine(Application.StartupPath, "rocola_incompatibles.txt");
+                string f = RutaDatos("rocola_incompatibles.txt");
                 if (!File.Exists(f)) return;
                 foreach (string line in File.ReadAllLines(f))
                 {
@@ -8878,7 +9039,7 @@ namespace Rocola
         {
             try
             {
-                string f = Path.Combine(Application.StartupPath, "rocola_error.txt");
+                string f = RutaDatos("rocola_error.txt");
                 string msg = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "  [" + context + "]\r\n"
                            + (ex != null ? ex.ToString() : "(sin excepcion)") + "\r\n\r\n";
                 try { FileInfo fi = new FileInfo(f); if (fi.Exists && fi.Length > 262144) fi.Delete(); } catch { }   // tope ~256KB

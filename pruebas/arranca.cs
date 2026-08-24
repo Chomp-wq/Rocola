@@ -136,9 +136,22 @@ class Arranca
             foreach (string l in sal.Replace("\r", "").Split('\n')) if (l.Trim().Length > 0) Console.WriteLine("       " + l);
         }
         Check(viva, "la rocola arranca y sigue en pie");
-        Console.WriteLine("     la ventana mide " + ven.Width + "x" + ven.Height
-                          + " y esta pintada al " + (pintado * 100).ToString("0") + "%");
-        Check(ven.Width >= 640 && ven.Height >= 400, "y se dibuja: la ventana esta ahi y ocupa la pantalla");
+        Console.WriteLine("     la pantalla mide " + pant.Width + "x" + pant.Height
+                          + " y la ventana " + ven.Width + "x" + ven.Height
+                          + ", pintada al " + (pintado * 100).ToString("0") + "%");
+        Check(ven.Width >= 640 && ven.Height >= 400, "y se dibuja: la ventana esta ahi");
+
+        // Y LLENA LA PANTALLA. La rocola se pone a pantalla completa pidiendo "maximizado", y quien
+        // maximiza es el GESTOR DE VENTANAS -el programa que pone los bordes y el boton de cerrar-. En
+        // Windows siempre hay uno. Pero en la maquina del bar la rocola arranca sola, sin escritorio, y
+        // ahi NO HAY NINGUNO: nadie atiende la peticion y la rocola sale en un recuadro con marco negro
+        // alrededor. Aqui se corre igual que alli -pantalla pelada, sin gestor de ventanas-, asi que si
+        // pasara en el bar, pasa aqui.
+        //
+        // Se pide el 99% y no el 100% por si el sistema de ventanas reserva un pixel en algun borde.
+        double cubre = (double)ven.Width * ven.Height / ((double)pant.Width * pant.Height);
+        Console.WriteLine("     cubre el " + (cubre * 100).ToString("0.0") + "% de la pantalla");
+        Check(cubre >= 0.99, "y LLENA LA PANTALLA, sin depender de que haya un gestor de ventanas");
 
         string errores = Path.Combine(dir, "rocola_errores.txt");
         bool hayErrores = File.Exists(errores) && new FileInfo(errores).Length > 0;
