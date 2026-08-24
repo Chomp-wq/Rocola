@@ -51,6 +51,9 @@ class Arranca
         // Los botones ya configurados: si no, la rocola arranca con el asistente y no se ve la pantalla.
         File.WriteAllText(Path.Combine(dir, "rocola_teclas.txt"),
             "arriba=38\r\nabajo=40\r\nizquierda=37\r\nderecha=39\r\nponer=13\r\nregresar=8\r\nmoneda=32\r\nsaltar=9\r\n");
+        // Y la bitacora encendida: es la unica forma de saber si el fondo por tarjeta grafica arranco DE
+        // VERDAD o se cayo al de procesador sin decir nada (la pantalla se parece bastante en los dos).
+        File.WriteAllText(Path.Combine(dir, "rocola_config.txt"), "diagnostico=1\r\n");
         return dir;
     }
 
@@ -142,6 +145,31 @@ class Arranca
         if (hayErrores)
             foreach (string l in File.ReadAllLines(errores)) { Console.WriteLine("       " + l); break; }
         Check(!hayErrores, "y no apunta ni un error al arrancar");
+
+        // =========================================================================================
+        // Si este ejecutable trae el fondo por tarjeta grafica -o sea, el perfil con -d:ROCOLA_GPU-, tiene
+        // que haberlo ENCENDIDO. Si el dispositivo fallara, la rocola se cae al fondo por procesador sin
+        // decir nada y la pantalla se parece lo bastante como para que no se note: sin esto, la bateria
+        // daria por bueno un fondo por tarjeta que no existe.
+        bool traeTarjeta = false;
+        try { traeTarjeta = System.Reflection.Assembly.LoadFrom(exe).GetType("Rocola.GpuStarfield", false) != null; } catch { }
+        if (traeTarjeta)
+        {
+            Console.WriteLine("\n  1b) Y EL FONDO POR TARJETA GRAFICA SE ENCIENDE DE VERDAD\n");
+            string bitacora = Path.Combine(dir, "rocola_diagnostico.txt");
+            string log = File.Exists(bitacora) ? File.ReadAllText(bitacora) : "";
+            int i0 = log.IndexOf("render: por tarjeta grafica, ENCENDIDO", StringComparison.Ordinal);
+            if (i0 >= 0)
+            {
+                int i1 = log.IndexOf('\n', i0);
+                Console.WriteLine("     " + log.Substring(i0, (i1 < 0 ? log.Length : i1) - i0).Trim());
+            }
+            else if (log.IndexOf("render: FALLO", StringComparison.Ordinal) >= 0)
+                Console.WriteLine("     la rocola apunto que el dispositivo FALLO y siguio por procesador");
+            else
+                Console.WriteLine("     la bitacora no dice nada del render (" + log.Length + " bytes)");
+            Check(i0 >= 0, "la rocola encendio el fondo por tarjeta grafica, no se cayo al de procesador");
+        }
 
         // =========================================================================================
         Console.WriteLine("\n  2) Y NO QUEDA NI UN HUECO NEGRO\n");

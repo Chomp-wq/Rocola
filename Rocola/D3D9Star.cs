@@ -1,10 +1,22 @@
 // ====================================================================================================
-//  RENDER POR GPU (Direct3D 9), por interop a d3d9.dll (sin SlimDX). Cielo + estrellas con glow/destello.
+//  RENDER POR GPU: EL DIBUJO. Cielo + estrellas con glow/destello, cubos y buscador.
 // ----------------------------------------------------------------------------------------------------
-//  - D3D9 / D3D9Device : interop crudo y un dispositivo que dibuja sky + estrellas texturizadas.
-//  - GpuStarfield      : campo estrellado reusable (titileo + latido), teñible por genero.
+//  - GpuStarfield      : campo estrellado reusable (titileo + latido), tenible por genero.
 //  - GpuTestWindow     : ventana de prueba (F12) que lo muestra con FPS.
-//  - GpuPanel          : control D3D9 para usar el campo estrellado COMO FONDO de la vista de discos.
+//  - GpuPanel          : control que usa el campo estrellado COMO FONDO de la vista de discos.
+//
+//  AQUI NO HAY NADA DE UNA TARJETA CONCRETA. Todo esto habla con un D3D9Device -que dibuja triangulos
+//  con su color y su textura- y con D3D9.Release -que suelta una textura-, y nada mas. Quien pone ese
+//  dispositivo depende del sistema, y es lo unico que cambia entre uno y otro:
+//
+//      Windows  ->  Rocola/D3D9Device.cs   (Direct3D 9, por interop a d3d9.dll, sin SlimDX)
+//      Linux    ->  Rocola/GLDevice.cs     (OpenGL de compatibilidad, por GLX)
+//
+//  Se compila UNO de los dos, nunca los dos. El nombre "D3D9Device" se queda como esta a proposito:
+//  asi este archivo -que son dos mil lineas de dibujo, y son las que de verdad importan- es EL MISMO
+//  en las tres ramas, y lo que se traduce al pasar de un sistema a otro son las cuatrocientas lineas
+//  del dispositivo y nada mas.
+//
 //  Todo dentro de #if ROCOLA_GPU. Con el simbolo apagado, el archivo compila vacio.
 // ====================================================================================================
 #if ROCOLA_GPU
@@ -18,421 +30,17 @@ using System.Windows.Forms;
 
 namespace Rocola
 {
-    // -------- Interop crudo con Direct3D 9 (sin SlimDX) --------
-    internal static class D3D9
+    // EL VERTICE, que es el idioma comun entre este archivo y el dispositivo que toque.
+    //
+    // Cuatro numeros de sitio (X,Y ya en pixeles de la pantalla; Z y Rhw no se usan y van en 0 y 1), un
+    // color de 32 bits y un par de coordenadas de textura. Es la forma mas vieja y mas simple que hay, y
+    // por eso vale igual en Direct3D 9 y en OpenGL sin programas de sombreado.
+    internal static partial class D3D9
     {
-        [DllImport("d3d9.dll")] public static extern IntPtr Direct3DCreate9(uint sdkVersion);
-        // Copia bloque a bloque entre punteros sin pasar por un arreglo administrado (mitad de copias que Marshal.Copy).
-        [DllImport("kernel32.dll", EntryPoint = "RtlMoveMemory")] public static extern void CopyMemory(IntPtr dst, IntPtr src, UIntPtr len);
-
-        [StructLayout(LayoutKind.Sequential)]
-        public struct PresentParams
-        {
-            public uint BackBufferWidth, BackBufferHeight, BackBufferFormat, BackBufferCount;
-            public uint MultiSampleType, MultiSampleQuality, SwapEffect;
-            public IntPtr DeviceWindow;
-            public int Windowed, EnableAutoDepthStencil;
-            public uint AutoDepthStencilFormat, Flags, FullScreenRefreshRateInHz, PresentationInterval;
-        }
-
-        [StructLayout(LayoutKind.Sequential)]
-        public struct LockedRect { public int Pitch; public IntPtr Bits; }
-
         [StructLayout(LayoutKind.Sequential)]
         public struct Vtx { public float X, Y, Z, Rhw; public uint Color; public float U, V; }
         public const uint FVF = 0x004 | 0x040 | 0x100;   // XYZRHW | DIFFUSE | TEX1
         public const int VtxSize = 28;
-
-        public const uint DEVTYPE_HAL = 1;
-        public const uint CREATE_HARDWARE_VP = 0x40, CREATE_SOFTWARE_VP = 0x20, CREATE_FPU_PRESERVE = 0x2;
-        public const uint FMT_UNKNOWN = 0, FMT_A8R8G8B8 = 21;
-        public const uint POOL_MANAGED = 1;
-        public const uint SWAPEFFECT_DISCARD = 1;
-        public const uint CLEAR_TARGET = 1;
-        public const uint PT_TRIANGLELIST = 4;
-        public const uint RS_ZENABLE = 7, RS_CULLMODE = 22, RS_LIGHTING = 137;
-        public const uint RS_ALPHABLENDENABLE = 27, RS_SRCBLEND = 19, RS_DESTBLEND = 20;
-        public const uint BLEND_ONE = 2, BLEND_SRCALPHA = 5, BLEND_INVSRCALPHA = 6;
-        public const uint CULL_NONE = 1;
-        public const uint TSS_COLOROP = 1, TSS_COLORARG1 = 2, TSS_COLORARG2 = 3, TSS_ALPHAOP = 4, TSS_ALPHAARG1 = 5, TSS_ALPHAARG2 = 6;
-        public const uint TOP_SELECTARG1 = 2, TOP_MODULATE = 4, TA_DIFFUSE = 0, TA_TEXTURE = 2;
-        public const uint SAMP_MAGFILTER = 5, SAMP_MINFILTER = 6, TEXF_LINEAR = 2;
-        public const int E_DEVICELOST = unchecked((int)0x88760868);
-        public const int E_DEVICENOTRESET = unchecked((int)0x88760869);
-
-        [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int CreateDeviceDel(IntPtr self, uint adapter, uint devType, IntPtr hwnd, uint behaviorFlags, ref PresentParams pp, out IntPtr device);
-        [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int HrSelf(IntPtr self);
-        [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate uint UintSelf(IntPtr self);
-        [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int ResetDel(IntPtr self, ref PresentParams pp);
-        [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int PresentDel(IntPtr self, IntPtr a, IntPtr b, IntPtr c, IntPtr d);
-        [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int ClearDel(IntPtr self, uint count, IntPtr rects, uint flags, uint color, float z, uint stencil);
-        [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int SetU2Del(IntPtr self, uint a, uint b);
-        [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int SetU1Del(IntPtr self, uint a);
-        [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int SetU3Del(IntPtr self, uint a, uint b, uint c);
-        [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int SetTexDel(IntPtr self, uint stage, IntPtr tex);
-        [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int DrawUpDel(IntPtr self, uint primType, uint primCount, IntPtr data, uint stride);
-        [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int CreateTexDel(IntPtr self, uint w, uint h, uint levels, uint usage, uint format, uint pool, out IntPtr tex, IntPtr shared);
-        [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int LockRectDel(IntPtr self, uint level, out LockedRect lr, IntPtr rect, uint flags);
-        [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int UnlockRectDel(IntPtr self, uint level);
-
-        public static T Fn<T>(IntPtr punk, int slot) where T : class
-        {
-            IntPtr vtbl = Marshal.ReadIntPtr(punk);
-            IntPtr fn = Marshal.ReadIntPtr(vtbl, slot * IntPtr.Size);
-            return (T)(object)Marshal.GetDelegateForFunctionPointer(fn, typeof(T));
-        }
-        public static void Release(IntPtr punk) { try { Fn<UintSelf>(punk, 2)(punk); } catch { } }
-    }
-
-    // -------- Dispositivo D3D9 sobre una ventana --------
-    internal sealed class D3D9Device
-    {
-        private IntPtr d3d, dev;
-        private D3D9.PresentParams pp;
-        private bool lost;
-
-        private D3D9.PresentDel present; private D3D9.ClearDel clear; private D3D9.HrSelf begin, end;
-        private D3D9.SetU2Del setRS; private D3D9.SetU1Del setFVF; private D3D9.SetU3Del setTSS, setSamp;
-        private D3D9.SetTexDel setTex; private D3D9.DrawUpDel drawUp; private D3D9.HrSelf testCoop;
-        private D3D9.ResetDel reset; private D3D9.CreateTexDel createTex;
-
-        public bool Ok { get { return dev != IntPtr.Zero; } }
-
-        public D3D9Device(IntPtr hwnd, int w, int h)
-        {
-            d3d = D3D9.Direct3DCreate9(32);
-            if (d3d == IntPtr.Zero) return;
-            pp = MakePP(hwnd, w, h);
-            D3D9.CreateDeviceDel create = D3D9.Fn<D3D9.CreateDeviceDel>(d3d, 16);
-            IntPtr dv;
-            int hr = create(d3d, 0, D3D9.DEVTYPE_HAL, hwnd, D3D9.CREATE_HARDWARE_VP | D3D9.CREATE_FPU_PRESERVE, ref pp, out dv);
-            if (hr < 0) hr = create(d3d, 0, D3D9.DEVTYPE_HAL, hwnd, D3D9.CREATE_SOFTWARE_VP | D3D9.CREATE_FPU_PRESERVE, ref pp, out dv);
-            if (hr < 0) { D3D9.Release(d3d); d3d = IntPtr.Zero; return; }
-            dev = dv;
-            present = D3D9.Fn<D3D9.PresentDel>(dev, 17);
-            clear = D3D9.Fn<D3D9.ClearDel>(dev, 43);
-            begin = D3D9.Fn<D3D9.HrSelf>(dev, 41);
-            end = D3D9.Fn<D3D9.HrSelf>(dev, 42);
-            setRS = D3D9.Fn<D3D9.SetU2Del>(dev, 57);
-            setFVF = D3D9.Fn<D3D9.SetU1Del>(dev, 89);
-            setTSS = D3D9.Fn<D3D9.SetU3Del>(dev, 67);
-            setSamp = D3D9.Fn<D3D9.SetU3Del>(dev, 69);
-            setTex = D3D9.Fn<D3D9.SetTexDel>(dev, 65);
-            drawUp = D3D9.Fn<D3D9.DrawUpDel>(dev, 83);
-            testCoop = D3D9.Fn<D3D9.HrSelf>(dev, 3);
-            reset = D3D9.Fn<D3D9.ResetDel>(dev, 16);
-            createTex = D3D9.Fn<D3D9.CreateTexDel>(dev, 23);
-            InitStates();
-        }
-
-        public int BufAncho { get { return (int)pp.BackBufferWidth; } }
-        public int BufAlto { get { return (int)pp.BackBufferHeight; } }
-
-        // REHACE EL BUFFER DE DIBUJO al tamano nuevo de la ventana.
-        //
-        // Sin esto, al cambiar la resolucion de Windows con la rocola ABIERTA el buffer se quedaba del
-        // tamano VIEJO. Dos consecuencias, y las dos se veian:
-        //   - Cada cuadro habia que ESTIRARLO del tamano viejo al de la ventana, que es el camino lento del
-        //     driver: de ahi los tirones al hojear y el congelon al dejar pulsado el boton de pagina.
-        //   - Y todo lo que caia fuera del tamano viejo se RECORTABA, asi que a resoluciones altas se perdian
-        //     trozos de la pantalla por la derecha y por abajo.
-        // Arrancando ya en esa resolucion no pasaba nada, porque entonces el buffer se creaba del tamano bueno.
-        //
-        // Las texturas viven en el monton MANEJADO (POOL_MANAGED): sobreviven al reseteo solas, no hay que
-        // volver a subir ni una. Lo que SI se pierde son los estados del dispositivo, y por eso se rehacen.
-        public bool Redimensiona(int w, int h)
-        {
-            if (dev == IntPtr.Zero || w < 8 || h < 8) return false;
-            if (pp.BackBufferWidth == (uint)w && pp.BackBufferHeight == (uint)h) return true;
-            uint aw = pp.BackBufferWidth, ah = pp.BackBufferHeight;
-            pp.BackBufferWidth = (uint)w; pp.BackBufferHeight = (uint)h;
-            if (reset(dev, ref pp) < 0)
-            {
-                // No se pudo ahora (p.ej. el dispositivo esta perdido en ese instante): se deja apuntado el
-                // tamano nuevo y se reintenta en el proximo cuadro, por el mismo camino que la perdida.
-                pp.BackBufferWidth = aw; pp.BackBufferHeight = ah;
-                lost = true;
-                return false;
-            }
-            InitStates();
-            return true;
-        }
-
-        private static D3D9.PresentParams MakePP(IntPtr hwnd, int w, int h)
-        {
-            D3D9.PresentParams p = new D3D9.PresentParams();
-            p.BackBufferWidth = (uint)Math.Max(1, w);
-            p.BackBufferHeight = (uint)Math.Max(1, h);
-            p.BackBufferFormat = D3D9.FMT_UNKNOWN;
-            p.BackBufferCount = 1;
-            p.SwapEffect = D3D9.SWAPEFFECT_DISCARD;
-            p.DeviceWindow = hwnd;
-            p.Windowed = 1;
-            p.PresentationInterval = 0;
-            return p;
-        }
-
-        // ESTADO ACTUAL del dispositivo. Cambiar un estado en Direct3D 9 es una llamada al driver, y una pantalla
-        // de la rocola son decenas de dibujos SEGUIDOS con el mismo estado (toda la rejilla de discos se pinta
-        // igual: textura modulada + mezcla normal). Sin esto, cada quad repetia 9 cambios identicos. Anotando lo
-        // que ya esta puesto, solo se manda al driver lo que de verdad cambia.
-        private int stTss, stBlend;                  // 0 = sin fijar, 1 = diffuse / 2 = modulate ; 1 = sin mezcla, 2 = aditiva, 3 = normal
-        private IntPtr stTex = new IntPtr(-1);       // -1 = sin fijar (IntPtr.Zero SI es un valor valido: sin textura)
-
-        private void InitStates()
-        {
-            stTss = 0; stBlend = 0; stTex = new IntPtr(-1);   // tras crear o RESETEAR el dispositivo todo vuelve a su valor por defecto
-            setRS(dev, D3D9.RS_ZENABLE, 0);
-            setRS(dev, D3D9.RS_LIGHTING, 0);
-            setRS(dev, D3D9.RS_CULLMODE, D3D9.CULL_NONE);
-            setFVF(dev, D3D9.FVF);
-            setSamp(dev, 0, D3D9.SAMP_MAGFILTER, D3D9.TEXF_LINEAR);
-            setSamp(dev, 0, D3D9.SAMP_MINFILTER, D3D9.TEXF_LINEAR);
-        }
-
-        private void Tex(IntPtr t) { if (stTex != t) { setTex(dev, 0, t); stTex = t; } }
-        private void Blend(int modo)   // 1 = sin mezcla, 2 = aditiva (brillos), 3 = normal (encima)
-        {
-            if (stBlend == modo) return;
-            if (modo == 1) setRS(dev, D3D9.RS_ALPHABLENDENABLE, 0);
-            else
-            {
-                if (stBlend <= 1) setRS(dev, D3D9.RS_ALPHABLENDENABLE, 1);
-                setRS(dev, D3D9.RS_SRCBLEND, D3D9.BLEND_SRCALPHA);
-                setRS(dev, D3D9.RS_DESTBLEND, modo == 2 ? D3D9.BLEND_ONE : D3D9.BLEND_INVSRCALPHA);
-            }
-            stBlend = modo;
-        }
-
-        public IntPtr CreateTextureFromBitmap(Bitmap bmp)
-        {
-            if (dev == IntPtr.Zero) return IntPtr.Zero;
-            int w = bmp.Width, h = bmp.Height;
-            IntPtr tex;
-            if (createTex(dev, (uint)w, (uint)h, 1, 0, D3D9.FMT_A8R8G8B8, D3D9.POOL_MANAGED, out tex, IntPtr.Zero) < 0) return IntPtr.Zero;
-            D3D9.LockRectDel lockR = D3D9.Fn<D3D9.LockRectDel>(tex, 19);
-            D3D9.UnlockRectDel unlockR = D3D9.Fn<D3D9.UnlockRectDel>(tex, 20);
-            D3D9.LockedRect lr;
-            if (lockR(tex, 0, out lr, IntPtr.Zero, 0) < 0) return tex;
-            BitmapData bd = bmp.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
-            int rowBytes = w * 4;
-            for (int y = 0; y < h; y++)
-                D3D9.CopyMemory(new IntPtr(lr.Bits.ToInt64() + (long)y * lr.Pitch), new IntPtr(bd.Scan0.ToInt64() + (long)y * bd.Stride), (UIntPtr)(uint)rowBytes);
-            bmp.UnlockBits(bd);
-            unlockR(tex, 0);
-            return tex;
-        }
-
-        // Inicia el cuadro (maneja perdida de dispositivo). Devuelve true si se puede dibujar.
-        public bool BeginFrame()
-        {
-            if (dev == IntPtr.Zero) return false;
-            if (lost)
-            {
-                int tc = testCoop(dev);
-                if (tc == D3D9.E_DEVICENOTRESET) { if (reset(dev, ref pp) >= 0) { lost = false; InitStates(); } else return false; }
-                else return false;
-            }
-            // La textura apuntada se olvida en CADA cuadro: entre cuadro y cuadro se recrean texturas (portadas,
-            // UI) y una nueva puede caer en la MISMA direccion que una recien liberada. Los otros estados son
-            // numeros, no punteros, asi que esos si se conservan. Cuesta un cambio de textura por cuadro.
-            stTex = new IntPtr(-1);
-            clear(dev, 0, IntPtr.Zero, D3D9.CLEAR_TARGET, 0xFF05060F, 1f, 0);
-            return begin(dev) >= 0;
-        }
-
-        public void EndFrame()
-        {
-            end(dev);
-            int hr = present(dev, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
-            if (hr == D3D9.E_DEVICELOST) lost = true;
-        }
-
-        private void TssDiffuse()   // usa el color del vertice (sin textura)
-        {
-            if (stTss == 1) return;
-            setTSS(dev, 0, D3D9.TSS_COLOROP, D3D9.TOP_SELECTARG1); setTSS(dev, 0, D3D9.TSS_COLORARG1, D3D9.TA_DIFFUSE);
-            setTSS(dev, 0, D3D9.TSS_ALPHAOP, D3D9.TOP_SELECTARG1); setTSS(dev, 0, D3D9.TSS_ALPHAARG1, D3D9.TA_DIFFUSE);
-            stTss = 1;
-        }
-        private void TssModulate()  // textura * color del vertice
-        {
-            if (stTss == 2) return;
-            setTSS(dev, 0, D3D9.TSS_COLOROP, D3D9.TOP_MODULATE); setTSS(dev, 0, D3D9.TSS_COLORARG1, D3D9.TA_TEXTURE); setTSS(dev, 0, D3D9.TSS_COLORARG2, D3D9.TA_DIFFUSE);
-            setTSS(dev, 0, D3D9.TSS_ALPHAOP, D3D9.TOP_MODULATE); setTSS(dev, 0, D3D9.TSS_ALPHAARG1, D3D9.TA_TEXTURE); setTSS(dev, 0, D3D9.TSS_ALPHAARG2, D3D9.TA_DIFFUSE);
-            stTss = 2;
-        }
-
-        // Cielo (color del vertice, sin mezcla) + estrellas (textura de glow, aditivo).
-        // Cielo (color del vertice, sin mezcla). 2 quads apilados = degradado de 3 paradas (4 triangulos).
-        public void DrawSky(D3D9.Vtx[] sky)
-        {
-            Tex(IntPtr.Zero); TssDiffuse(); Blend(1);
-            Draw(sky, 4);
-        }
-        // Estrellas (textura de glow, aditivo). Se puede llamar 2 veces (patron anterior + nuevo) en el entrecruzado.
-        public void DrawStars(D3D9.Vtx[] stars, int starTris, IntPtr glowTex)
-        {
-            if (dev == IntPtr.Zero || starTris <= 0 || glowTex == IntPtr.Zero) return;
-            Tex(glowTex); TssModulate(); Blend(2);
-            Draw(stars, starTris);
-        }
-
-        // Estelas de estrellas fugaces: cuadrangulos BLANCOS con mezcla ADITIVA y SIN textura (color del vertice).
-        public void DrawShootStreaks(D3D9.Vtx[] v, int tris)
-        {
-            if (dev == IntPtr.Zero || tris <= 0) return;
-            Tex(IntPtr.Zero); TssDiffuse(); Blend(2);
-            Draw(v, tris);
-        }
-
-        // Malla PLANA: triangulos SIN textura, color en los vertices y mezcla NORMAL (encima, no sumada).
-        // Es lo que pinta el fondo reactivo: un relleno de color que la tarjeta degrada sola entre vertice y
-        // vertice. Al no sumar luz nunca se lava hacia el blanco, que es lo que manchaba con los halos.
-        public void DrawMesh(D3D9.Vtx[] v, int tris)
-        {
-            if (dev == IntPtr.Zero || tris <= 0) return;
-            Tex(IntPtr.Zero); TssDiffuse(); Blend(3);
-            Draw(v, tris);
-        }
-
-        // La misma malla plana pero SUMANDO luz en vez de tapar. Un filo encendido se lee como neon
-        // justamente por esto: lo que hay debajo se sigue viendo y encima se le suma el brillo, asi que
-        // el nucleo satura a claro y el resplandor de alrededor tine sin borrar. Tapando no hay neon.
-        public void DrawMeshAdd(D3D9.Vtx[] v, int tris)
-        {
-            if (dev == IntPtr.Zero || tris <= 0) return;
-            Tex(IntPtr.Zero); TssDiffuse(); Blend(2);
-            Draw(v, tris);
-        }
-
-        // Un cuadro texturizado (2 triangulos) con mezcla NORMAL (encima): para los cubos, etiquetas, etc.
-        public void DrawTexQuad(IntPtr tex, D3D9.Vtx[] quad)
-        {
-            if (tex == IntPtr.Zero) return;
-            Tex(tex); TssModulate(); Blend(3);
-            Draw(quad, 2);
-        }
-
-        // Buffers reutilizables del cubo (evita asignar por cuadro). Solo se usan desde el hilo de render.
-        private readonly D3D9.Vtx[] cubeFaceV = new D3D9.Vtx[6];
-        private readonly double[] cbx = new double[4];
-        private readonly double[] cbz = new double[4];
-        private readonly int[] cbo = new int[4];
-
-        // Dibuja un cubo GIRANDO (mismo aspecto que Cube.Draw del render por CPU) directo en GPU desde la
-        // textura de la portada: el giro es solo geometria (4 caras como cuadrangulos, ordenadas por
-        // profundidad y oscurecidas igual). Si tex es nulo usa un relleno azulado (portada aun cargando).
-        // alpha < 1 permite FUNDIR una portada sobre otra (discos TOP) en dos pasadas.
-        public void DrawCube(IntPtr tex, float uMax, float vMax, float ax, float ay, float aw, float ah, double angle, float alpha, double tilt)
-        {
-            if (dev == IntPtr.Zero || alpha <= 0.001f || aw < 1f || ah < 1f) return;
-            double cx = ax + aw / 2.0; float y0 = ay; float Hh = ah; double R = aw / 2.0; double DEG = Math.PI / 180.0;
-            double cyc = y0 + Hh / 2.0, ct = Math.Cos(tilt), stt = Math.Sin(tilt);   // bamboleo: rota el cubo entero alrededor de su centro (igual que RotateTransform en CPU)
-            for (int k = 0; k < 4; k++) cbx[k] = cx + R * Math.Cos(angle + 45 * DEG + k * 90 * DEG);
-            for (int k = 0; k < 4; k++) cbz[k] = Math.Sin(angle + 90 * DEG + k * 90 * DEG);
-            cbo[0] = 0; cbo[1] = 1; cbo[2] = 2; cbo[3] = 3;
-            for (int i = 0; i < 4; i++)                          // ordena las caras de atras hacia adelante
-                for (int j = 0; j < 3 - i; j++)
-                    if (cbz[cbo[j]] > cbz[cbo[j + 1]]) { int t = cbo[j]; cbo[j] = cbo[j + 1]; cbo[j + 1] = t; }
-            bool textured = tex != IntPtr.Zero;
-            if (textured) { Tex(tex); TssModulate(); } else { Tex(IntPtr.Zero); TssDiffuse(); }
-            Blend(3);
-            uint av = (uint)(alpha * 255f + 0.5f); if (av > 255) av = 255;
-            for (int oi = 0; oi < 4; oi++)
-            {
-                int k = cbo[oi];
-                if (cbz[k] <= 0.0) continue;                     // cara trasera: no se ve
-                float left = (float)Math.Round(Math.Min(cbx[k], cbx[(k + 1) % 4]));
-                float right = (float)Math.Round(Math.Max(cbx[k], cbx[(k + 1) % 4]));
-                if (right - left < 1f) continue;
-                int darken = (int)((1.0 - cbz[k]) * 130); if (darken < 0) darken = 0; if (darken > 255) darken = 255;
-                uint g = (uint)(255 - darken);
-                uint col = textured
-                    ? (av << 24) | (g << 16) | (g << 8) | g                                   // textura * gris (oscurecido por profundidad)
-                    : (av << 24) | ((60u * g / 255u) << 16) | ((70u * g / 255u) << 8) | (110u * g / 255u);  // relleno azulado (sin portada)
-                CubeFace(cubeFaceV, left, y0, right, y0 + Hh, cx, cyc, ct, stt, uMax, vMax, col);
-                Draw(cubeFaceV, 2);
-            }
-        }
-        // Construye la cara (2 triangulos) con sus 4 esquinas ROTADAS el bamboleo alrededor de (cx,cy).
-        private static void CubeFace(D3D9.Vtx[] v, float x0, float y0, float x1, float y1,
-            double cx, double cy, double ct, double st, float uM, float vM, uint c)
-        {
-            float tlx, tly, trx, tryy, brx, bry, blx, bly;
-            RotP(x0, y0, cx, cy, ct, st, out tlx, out tly); RotP(x1, y0, cx, cy, ct, st, out trx, out tryy);
-            RotP(x1, y1, cx, cy, ct, st, out brx, out bry); RotP(x0, y1, cx, cy, ct, st, out blx, out bly);
-            CFV(ref v[0], tlx, tly, c, 0, 0); CFV(ref v[1], trx, tryy, c, uM, 0); CFV(ref v[2], brx, bry, c, uM, vM);
-            CFV(ref v[3], tlx, tly, c, 0, 0); CFV(ref v[4], brx, bry, c, uM, vM); CFV(ref v[5], blx, bly, c, 0, vM);
-        }
-        private static void RotP(float x, float y, double cx, double cy, double ct, double st, out float ox, out float oy)
-        {
-            double dx = x - cx, dy = y - cy;
-            ox = (float)(cx + dx * ct - dy * st); oy = (float)(cy + dx * st + dy * ct);
-        }
-        private static void CFV(ref D3D9.Vtx v, float x, float y, uint c, float u, float vv) { v.X = x - 0.5f; v.Y = y - 0.5f; v.Z = 0f; v.Rhw = 1f; v.Color = c; v.U = u; v.V = vv; }
-
-        private static int Pow2(int n) { int p = 1; while (p < n) p <<= 1; return p; }
-
-        // Crea una textura de tamano POTENCIA DE DOS (compatible con GPU vieja) y sube el bitmap en su
-        // esquina superior izquierda. Devuelve las coordenadas de textura maximas usadas (uMax, vMax).
-        public IntPtr CreateTexturePow2(Bitmap bmp, out float uMax, out float vMax)
-        {
-            uMax = 1f; vMax = 1f;
-            if (dev == IntPtr.Zero) return IntPtr.Zero;
-            int w = bmp.Width, h = bmp.Height, tw = Pow2(w), th = Pow2(h);
-            IntPtr tex;
-            if (createTex(dev, (uint)tw, (uint)th, 1, 0, D3D9.FMT_A8R8G8B8, D3D9.POOL_MANAGED, out tex, IntPtr.Zero) < 0) return IntPtr.Zero;
-            D3D9.LockRectDel lockR = D3D9.Fn<D3D9.LockRectDel>(tex, 19);
-            D3D9.UnlockRectDel unlockR = D3D9.Fn<D3D9.UnlockRectDel>(tex, 20);
-            D3D9.LockedRect lr;
-            if (lockR(tex, 0, out lr, IntPtr.Zero, 0) >= 0)
-            {
-                BitmapData bd = bmp.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
-                int rowBytes = w * 4;
-                for (int y = 0; y < h; y++)
-                    D3D9.CopyMemory(new IntPtr(lr.Bits.ToInt64() + (long)y * lr.Pitch), new IntPtr(bd.Scan0.ToInt64() + (long)y * bd.Stride), (UIntPtr)(uint)rowBytes);
-                bmp.UnlockBits(bd);
-                unlockR(tex, 0);
-            }
-            uMax = (float)w / tw; vMax = (float)h / th;
-            return tex;
-        }
-
-        // Re-sube el contenido a una textura pow2 YA existente (mismo tamano de bitmap) en vez de crear una
-        // nueva: evita el churn de crear/destruir una textura a pantalla completa en cada reconstruccion de UI.
-        // El llamador garantiza el mismo tamano. Devuelve false si no pudo bloquearla (entonces se recrea).
-        public bool UpdateTexturePow2(IntPtr tex, Bitmap bmp, out float uMax, out float vMax)
-        {
-            uMax = 1f; vMax = 1f;
-            if (dev == IntPtr.Zero || tex == IntPtr.Zero) return false;
-            int w = bmp.Width, h = bmp.Height, tw = Pow2(w), th = Pow2(h);
-            D3D9.LockRectDel lockR = D3D9.Fn<D3D9.LockRectDel>(tex, 19);
-            D3D9.UnlockRectDel unlockR = D3D9.Fn<D3D9.UnlockRectDel>(tex, 20);
-            D3D9.LockedRect lr;
-            if (lockR(tex, 0, out lr, IntPtr.Zero, 0) < 0) return false;
-            BitmapData bd = bmp.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
-            int rowBytes = w * 4;
-            for (int y = 0; y < h; y++)
-                D3D9.CopyMemory(new IntPtr(lr.Bits.ToInt64() + (long)y * lr.Pitch), new IntPtr(bd.Scan0.ToInt64() + (long)y * bd.Stride), (UIntPtr)(uint)rowBytes);
-            bmp.UnlockBits(bd);
-            unlockR(tex, 0);
-            uMax = (float)w / tw; vMax = (float)h / th;
-            return true;
-        }
-
-        private void Draw(D3D9.Vtx[] verts, int tris)
-        {
-            GCHandle gh = GCHandle.Alloc(verts, GCHandleType.Pinned);
-            try { drawUp(dev, D3D9.PT_TRIANGLELIST, (uint)tris, gh.AddrOfPinnedObject(), D3D9.VtxSize); }
-            finally { gh.Free(); }
-        }
-
-        public void Dispose()
-        {
-            if (dev != IntPtr.Zero) { D3D9.Release(dev); dev = IntPtr.Zero; }
-            if (d3d != IntPtr.Zero) { D3D9.Release(d3d); d3d = IntPtr.Zero; }
-        }
     }
 
     // -------- Campo estrellado reusable (titileo + latido), teñible por genero --------
@@ -474,6 +82,7 @@ namespace Rocola
         private const float DriftVX = 18f, DriftVY = 9f;     // px/seg (derecha, abajo): lento, diagonal suave 2:1
 
         public bool Ok { get { return gpu != null && gpu.Ok; } }
+        public string Quien { get { return (gpu != null) ? gpu.Quien : ""; } }   // quien dibuja, para el diagnostico
         public int Count { get { return nStars; } }
         private float dim = 1f;   // atenuacion del campo (estrellas + fugaces) mientras se navega con musica
         public void SetDim(float d) { dim = d < 0f ? 0f : (d > 1f ? 1f : d); }
@@ -503,8 +112,62 @@ namespace Rocola
         public void SetSky(uint top, uint mid, uint bot) { skyTop = top; skyMid = mid; skyBot = bot; }
         public IntPtr CreateOverlay(Bitmap bmp, out float uMax, out float vMax) { return gpu.CreateTexturePow2(bmp, out uMax, out vMax); }
         public bool UpdateOverlay(IntPtr tex, Bitmap bmp, out float uMax, out float vMax) { return gpu.UpdateTexturePow2(tex, bmp, out uMax, out vMax); }
-        public void DrawCube(IntPtr tex, float uMax, float vMax, float x, float y, float w, float h, double angle, float alpha, double tilt)
-        { if (Ok) gpu.DrawCube(tex, uMax, vMax, x, y, w, h, angle, alpha, tilt); }
+        // Buffers reutilizables del cubo (evita asignar por cuadro). Solo se usan desde el hilo de render.
+        private readonly D3D9.Vtx[] cubeFaceV = new D3D9.Vtx[6];
+        private readonly double[] cbx = new double[4];
+        private readonly double[] cbz = new double[4];
+        private readonly int[] cbo = new int[4];
+
+        // EL CUBO GIRANDO. Es GEOMETRIA, no cosa de la tarjeta: por eso vive aqui y no en el dispositivo,
+        // y por eso vale igual con Direct3D que con OpenGL. Mismo aspecto que Cube.Draw del render por
+        // procesador -el giro son 4 caras como cuadrangulos, ordenadas por profundidad y oscurecidas
+        // igual-. Si tex es nulo usa un relleno azulado (portada aun cargando). alpha < 1 permite FUNDIR
+        // una portada sobre otra (discos TOP) en dos pasadas.
+        public void DrawCube(IntPtr tex, float uMax, float vMax, float ax, float ay, float aw, float ah, double angle, float alpha, double tilt)
+        {
+            if (!Ok || alpha <= 0.001f || aw < 1f || ah < 1f) return;
+            double cx = ax + aw / 2.0; float y0 = ay; float Hh = ah; double R = aw / 2.0; double DEG = Math.PI / 180.0;
+            double cyc = y0 + Hh / 2.0, ct = Math.Cos(tilt), stt = Math.Sin(tilt);   // bamboleo: rota el cubo entero alrededor de su centro (igual que RotateTransform en CPU)
+            for (int k = 0; k < 4; k++) cbx[k] = cx + R * Math.Cos(angle + 45 * DEG + k * 90 * DEG);
+            for (int k = 0; k < 4; k++) cbz[k] = Math.Sin(angle + 90 * DEG + k * 90 * DEG);
+            cbo[0] = 0; cbo[1] = 1; cbo[2] = 2; cbo[3] = 3;
+            for (int i = 0; i < 4; i++)                          // ordena las caras de atras hacia adelante
+                for (int j = 0; j < 3 - i; j++)
+                    if (cbz[cbo[j]] > cbz[cbo[j + 1]]) { int t = cbo[j]; cbo[j] = cbo[j + 1]; cbo[j + 1] = t; }
+            bool textured = tex != IntPtr.Zero;
+            uint av = (uint)(alpha * 255f + 0.5f); if (av > 255) av = 255;
+            for (int oi = 0; oi < 4; oi++)
+            {
+                int k = cbo[oi];
+                if (cbz[k] <= 0.0) continue;                     // cara trasera: no se ve
+                float left = (float)Math.Round(Math.Min(cbx[k], cbx[(k + 1) % 4]));
+                float right = (float)Math.Round(Math.Max(cbx[k], cbx[(k + 1) % 4]));
+                if (right - left < 1f) continue;
+                int darken = (int)((1.0 - cbz[k]) * 130); if (darken < 0) darken = 0; if (darken > 255) darken = 255;
+                uint g = (uint)(255 - darken);
+                uint col = textured
+                    ? (av << 24) | (g << 16) | (g << 8) | g                                   // textura * gris (oscurecido por profundidad)
+                    : (av << 24) | ((60u * g / 255u) << 16) | ((70u * g / 255u) << 8) | (110u * g / 255u);  // relleno azulado (sin portada)
+                CubeFace(cubeFaceV, left, y0, right, y0 + Hh, cx, cyc, ct, stt, uMax, vMax, col);
+                gpu.DrawQuads(tex, cubeFaceV, 2);
+            }
+        }
+        // Construye la cara (2 triangulos) con sus 4 esquinas ROTADAS el bamboleo alrededor de (cx,cy).
+        private static void CubeFace(D3D9.Vtx[] v, float x0, float y0, float x1, float y1,
+            double cx, double cy, double ct, double st, float uM, float vM, uint c)
+        {
+            float tlx, tly, trx, tryy, brx, bry, blx, bly;
+            RotP(x0, y0, cx, cy, ct, st, out tlx, out tly); RotP(x1, y0, cx, cy, ct, st, out trx, out tryy);
+            RotP(x1, y1, cx, cy, ct, st, out brx, out bry); RotP(x0, y1, cx, cy, ct, st, out blx, out bly);
+            CFV(ref v[0], tlx, tly, c, 0, 0); CFV(ref v[1], trx, tryy, c, uM, 0); CFV(ref v[2], brx, bry, c, uM, vM);
+            CFV(ref v[3], tlx, tly, c, 0, 0); CFV(ref v[4], brx, bry, c, uM, vM); CFV(ref v[5], blx, bly, c, 0, vM);
+        }
+        private static void RotP(float x, float y, double cx, double cy, double ct, double st, out float ox, out float oy)
+        {
+            double dx = x - cx, dy = y - cy;
+            ox = (float)(cx + dx * ct - dy * st); oy = (float)(cy + dx * st + dy * ct);
+        }
+        private static void CFV(ref D3D9.Vtx v, float x, float y, uint c, float u, float vv) { v.X = x - 0.5f; v.Y = y - 0.5f; v.Z = 0f; v.Rhw = 1f; v.Color = c; v.U = u; v.V = vv; }
 
         // Un halo (glow radial ADITIVO) centrado en (cx,cy) de radio r, teñido/atenuado por 'argb'. Reusa la textura
         // de glow de las estrellas. Sirve para el DESTELLO del boton pulsado del buscador: lo anima la GPU (alfa que
@@ -1252,13 +915,10 @@ namespace Rocola
         // tiene siempre un cuadro nuevo esperando. Se ve exactamente igual que antes y sobra procesador.
         public int TopeFps;                               // 0 = automatico (segun la pantalla); >0 = lo manda el config
         private int topeMs = -1;                          // ms minimos entre cuadros, ya resueltos (-1 = aun sin resolver)
-        private const int VREFRESH = 116;                 // GetDeviceCaps: veces por segundo que refresca la pantalla
-        [DllImport("user32.dll")] private static extern IntPtr GetDC(IntPtr hWnd);
-        [DllImport("user32.dll")] private static extern int ReleaseDC(IntPtr hWnd, IntPtr hdc);
-        [DllImport("gdi32.dll")] private static extern int GetDeviceCaps(IntPtr hdc, int index);
 
-        // Cada cuantos ms toca un cuadro, como poco. Windows contesta 0 o 1 al preguntarle el refresco cuando
-        // no lo sabe (pantalla vieja, escritorio remoto, maquina virtual): ahi se toman 60, que es lo de siempre.
+        // Cada cuantos ms toca un cuadro, como poco. Cuando no se sabe cuanto refresca la pantalla (pantalla
+        // vieja, escritorio remoto, maquina virtual) se toman 60, que es lo de siempre. Preguntarlo depende
+        // del sistema y por eso lo contesta Sistema, igual que la memoria o los MHz.
         private int TopeMs()
         {
             if (topeMs >= 0) return topeMs;
@@ -1266,11 +926,7 @@ namespace Rocola
             if (fps <= 0)
             {
                 int hz = 0;
-                try
-                {
-                    IntPtr dc = GetDC(IntPtr.Zero);
-                    if (dc != IntPtr.Zero) { hz = GetDeviceCaps(dc, VREFRESH); ReleaseDC(IntPtr.Zero, dc); }
-                }
+                try { hz = Sistema.RefrescoPantallaHz(); }
                 catch { }
                 if (hz < 24 || hz > 400) hz = 60;
                 fps = hz + hz / 10;   // el 10% de sobra
@@ -1288,13 +944,11 @@ namespace Rocola
         private double proxCuadroMs;                      // cuando TOCA el proximo cuadro (ms del reloj fino)
         public uint SkyTop = 0xFF06081A, SkyMid = 0xFF101C3A, SkyBot = 0xFF1A2C5A;   // el form los setea por genero (3 paradas)
 
-        // Bucle de render por Application.Idle (patron estandar para D3D en WinForms): dibuja tan rapido como
-        // permita el vsync (60 FPS) mientras no haya mensajes pendientes; al llegar un mensaje (tecla, timer)
-        // sale, lo procesa y vuelve. El Timer de WinForms era impreciso (se quedaba en ~40 fps).
-        [StructLayout(LayoutKind.Sequential)]
-        private struct NativeMessage { public IntPtr Hwnd; public uint Msg; public IntPtr W; public IntPtr L; public uint Time; public Point Pt; }
-        [DllImport("user32.dll")] private static extern int PeekMessage(out NativeMessage msg, IntPtr hWnd, uint min, uint max, uint remove);
-        private static bool AppIdle() { NativeMessage m; return PeekMessage(out m, IntPtr.Zero, 0, 0, 0) == 0; }   // 0 = PM_NOREMOVE
+        // Bucle de render por Application.Idle (el patron de siempre para dibujar por tarjeta en WinForms):
+        // dibuja tan rapido como deje el tope mientras no haya nada que atender; al llegar algo (tecla,
+        // temporizador) sale, lo atiende y vuelve. El Timer de WinForms era impreciso (se quedaba en ~40 fps).
+        // Preguntar si hay algo esperando depende del sistema, asi que lo contesta Sistema.
+        private static bool AppIdle() { return Sistema.SinNadaQueAtender(); }
 
         public GpuPanel()
         {
@@ -1341,6 +995,8 @@ namespace Rocola
             if (!idleHooked) { Application.Idle += OnIdle; idleHooked = true; }
             return true;
         }
+
+        public string Quien { get { return (stars != null) ? stars.Quien : ""; } }   // quien dibuja, para el diagnostico
 
         public void StopGpu()
         {

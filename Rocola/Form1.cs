@@ -9352,6 +9352,7 @@ namespace Rocola
                 if (gpuPanel.StartGpu())
                 {
                     gpuEnabled = true; lblGpu.Visible = false; KeepVideoOnTop();
+                    Diag("render: por tarjeta grafica, ENCENDIDO  (" + gpuPanel.Quien + ")");   // asi la bitacora dice si de verdad dibuja la tarjeta
                     gpuPanel.PrecalientaAnimaciones(ThumbPx, ToastW, ToastH);   // texturas de las animaciones creadas YA, no en la primera que se vea
                 }
                 else { gpuPanel.Visible = false; Diag("render: FALLO el dispositivo D3D9 (sigue CPU)"); if (announceFail) { lblGpu.Text = "GPU: fallo el dispositivo (sigue CPU)"; lblGpu.Visible = true; lblGpu.BringToFront(); } }

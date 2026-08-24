@@ -189,6 +189,53 @@ a la HD de Windows, y por qué:
   la papelera es una carpeta `papelera/`, y bajar lo escrito al disco es `fsync`.
 - **Ventana de ajustes más baja** (960×766 en vez de 960×1008): al irse la tarjeta del ULTRA, la
   ventana de Ctrl+F3 **cabe en una pantalla de 768 de alto**, que antes no cabía.
+- **El fondo por tarjeta gráfica, en OpenGL** (`Rocola/GLDevice.cs`): ver abajo.
+
+### El fondo por tarjeta gráfica: traducido, no reescrito
+
+El dibujado de la rocola —estrellas, aurora, cubos de portadas, buscador— **no usa programas de
+sombreado**: son vértices ya puestos en píxeles de la pantalla, cada uno con su color y su textura.
+Esa es la forma más vieja de dibujar que hay y existe igual en Direct3D 9 y en OpenGL, así que se
+traduce casi instrucción por instrucción en vez de reescribirse.
+
+Para que eso fuera cierto **de verdad**, el archivo del dibujo se partió en dos:
+
+| archivo | qué es | cuántas líneas |
+|---------|--------|----------------|
+| `Rocola/D3D9Star.cs`  | **el dibujo** (estrellas, aurora, cubos, buscador). No sabe de tarjetas. | ~2 080 |
+| `Rocola/D3D9Device.cs`| el dispositivo de **Windows** (Direct3D 9). | ~390 |
+| `Rocola/GLDevice.cs`  | el dispositivo de **Linux** (OpenGL por GLX). | ~505 |
+
+Se compila **uno** de los dos dispositivos, nunca los dos. Las dos mil líneas que de verdad importan
+son las mismas en las tres ramas; lo que se traduce al cambiar de sistema son las cuatrocientas del
+dispositivo. Por eso el nombre `D3D9Device` se queda como está en las dos: así `Form1.cs` y el
+dibujo no se enteran de en qué sistema están.
+
+**Lo que se comprueba** (batería `gl`, sobre una ventana de verdad con OpenGL encendido):
+
+- que el color **no sale con el rojo y el azul cambiados** —el error más fácil de cometer al pasar
+  el color de Direct3D a OpenGL, y que no rompe nada visiblemente: sólo hace el cielo rojizo—;
+- que la pantalla **no sale de cabeza** (en OpenGL el (0,0) está abajo; en el dibujado, arriba);
+- que una textura a tamaño natural **cae píxel con píxel**. Direct3D pone los vértices medio píxel
+  corridos y el dibujado lo compensa restando 0.5; aquí eso se corrige moviendo la *cámara*, no los
+  vértices. Con un tablero de cuadros de un píxel: **3 600 de 3 600 píxeles limpios**. Quitando la
+  corrección: 0 de 3 600.
+- que **sumar luz suma y tapar tapa** (si no, las estrellas y la aurora no brillarían).
+
+Y la batería `arranca` enciende la rocola de verdad con el fondo por tarjeta y **exige que la
+tarjeta se encienda**: si el dispositivo fallara, la rocola se cae al fondo por procesador sin decir
+nada y la pantalla se parece lo bastante como para que no se note.
+
+**¿Gana la tarjeta?** Eso hay que medirlo **en la máquina de la rocola**, y para eso está
+`pruebas/cuadros.exe`:
+
+```
+mono pruebas/cuadros.exe pruebas/rocola_gpu.exe 1024 768 4
+```
+
+Pide 60 cuadros por segundo a los dos y dice cuánto tiempo de máquina se lleva cada uno —que es el
+tiempo que la rocola **no** tiene para el sonido—. Si quien dibuja se llama `llvmpipe`, en esa
+máquina **no hay tarjeta gráfica** y el número no contesta la pregunta; la herramienta lo avisa.
 
 ### El tamaño de ventana del DSEE, medido
 

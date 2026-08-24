@@ -21,14 +21,19 @@ RAIZ="$(cd .. && pwd)"
 NAUDIO="$RAIZ/packages/NAudio.1.9.0/lib/net35/NAudio.dll"
 # En Linux el MP3 no lo descomprime el sistema: lo hace NLayer, que va en el mismo lenguaje que la rocola.
 NLAYER="$RAIZ/packages/NLayer.1.12.0/lib/net35/NLayer.dll"
-FUENTES="$RAIZ/Rocola/Form1.cs $RAIZ/Rocola/Form1.Designer.cs $RAIZ/Rocola/Program.cs $RAIZ/Rocola/D3D9Star.cs $RAIZ/Rocola/LinuxAudio.cs $RAIZ/Rocola/LinuxSistema.cs $RAIZ/Rocola/LinuxPintura.cs"
+# El dibujo por tarjeta grafica va en dos archivos: D3D9Star.cs es el dibujo (igual en las tres ramas) y
+# el dispositivo es el que cambia de sistema. Aqui va el de OpenGL; el de Direct3D (D3D9Device.cs) esta en
+# el arbol para las ramas de Windows y NO se compila.
+FUENTES="$RAIZ/Rocola/Form1.cs $RAIZ/Rocola/Form1.Designer.cs $RAIZ/Rocola/Program.cs $RAIZ/Rocola/D3D9Star.cs $RAIZ/Rocola/GLDevice.cs $RAIZ/Rocola/LinuxAudio.cs $RAIZ/Rocola/LinuxSistema.cs $RAIZ/Rocola/LinuxPintura.cs"
 
 # Las que miran cosas que solo existen con tarjeta grafica (la aurora, el barrido de luz) van
 # contra el perfil de GPU; las demas contra el normal.
 CPU="ajustes bajo eqauto bajoauto calidad eqia nivel titulo duracion prueba prueba2 prueba3 prueba4 neon fps abc barrido2 espacio busca buscaigual genero pagina busmov parcial disco ssd etiqueta sala hojea cosecha resol letrero dsee ventana sobras gasto historial estrellas limite vacias videos franja colores carriles indice escribe reposo cambio apagon unasola entrar iadatos entrenador corta deriva ligera simbolos leer opengl sonido arranca"
 # 'entrar' sale en las dos: casi todo lo que mira es comun, pero la parte de que la guia se vea CON
 # tarjeta grafica solo existe en ese perfil (si no, aparecia en las pruebas y no en el bar).
-GPU="fondo anim presencia barrido tope calma entrar"
+# 'arranca' sale en las dos: enciende la rocola de verdad, y hay que ver que enciende y se dibuja entera
+# TAMBIEN con el fondo por tarjeta grafica, que en esa version dibuja la pantalla casi completa.
+GPU="fondo anim presencia barrido tope calma entrar gl arranca"
 
 # Y las que miran algo que SOLO EXISTE en la rama de tarjeta grafica. La limpieza de videos que no
 # suenan es una de esas: para saber si un video suena hay que descomprimir su sonido, y eso alli lo
