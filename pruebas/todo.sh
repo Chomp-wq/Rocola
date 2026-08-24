@@ -19,11 +19,13 @@
 cd "$(dirname "$0")" || exit 1
 RAIZ="$(cd .. && pwd)"
 NAUDIO="$RAIZ/packages/NAudio.1.9.0/lib/net35/NAudio.dll"
-FUENTES="$RAIZ/Rocola/Form1.cs $RAIZ/Rocola/Form1.Designer.cs $RAIZ/Rocola/Program.cs $RAIZ/Rocola/D3D9Star.cs"
+# En Linux el MP3 no lo descomprime el sistema: lo hace NLayer, que va en el mismo lenguaje que la rocola.
+NLAYER="$RAIZ/packages/NLayer.1.12.0/lib/net35/NLayer.dll"
+FUENTES="$RAIZ/Rocola/Form1.cs $RAIZ/Rocola/Form1.Designer.cs $RAIZ/Rocola/Program.cs $RAIZ/Rocola/D3D9Star.cs $RAIZ/Rocola/LinuxAudio.cs"
 
 # Las que miran cosas que solo existen con tarjeta grafica (la aurora, el barrido de luz) van
 # contra el perfil de GPU; las demas contra el normal.
-CPU="ajustes bajo eqauto bajoauto calidad eqia nivel titulo duracion prueba prueba2 prueba3 prueba4 neon fps abc barrido2 espacio busca buscaigual genero pagina busmov parcial disco ssd etiqueta sala hojea cosecha resol letrero dsee sobras gasto historial estrellas limite vacias videos franja colores carriles indice escribe reposo cambio apagon unasola entrar iadatos entrenador corta deriva ligera simbolos leer opengl"
+CPU="ajustes bajo eqauto bajoauto calidad eqia nivel titulo duracion prueba prueba2 prueba3 prueba4 neon fps abc barrido2 espacio busca buscaigual genero pagina busmov parcial disco ssd etiqueta sala hojea cosecha resol letrero dsee sobras gasto historial estrellas limite vacias videos franja colores carriles indice escribe reposo cambio apagon unasola entrar iadatos entrenador corta deriva ligera simbolos leer opengl sonido"
 # 'entrar' sale en las dos: casi todo lo que mira es comun, pero la parte de que la guia se vea CON
 # tarjeta grafica solo existe en ese perfil (si no, aparecia en las pruebas y no en el bar).
 GPU="fondo anim presencia barrido tope calma entrar"
@@ -55,14 +57,14 @@ echo "  compilando la rocola..."
 hecho=0
 for k in $ORDEN; do
   if mcs -sdk:$k -langversion:5 -warn:4 -target:winexe -out:rocola_cpu.exe \
-       -r:System.Windows.Forms.dll -r:System.Drawing.dll -r:"$NAUDIO" $FUENTES > /tmp/c_rocola.txt 2>&1; then
+       -r:System.Windows.Forms.dll -r:System.Drawing.dll -r:"$NAUDIO" -r:"$NLAYER" $FUENTES > /tmp/c_rocola.txt 2>&1; then
     SDK=$k; hecho=1; break
   fi
 done
 if [ $hecho -eq 0 ]; then echo "  LA ROCOLA NO COMPILA:"; tail -12 /tmp/c_rocola.txt; exit 1; fi
 if [ -s /tmp/c_rocola.txt ]; then echo "  (avisos al compilar)"; cat /tmp/c_rocola.txt; fi
 if ! mcs -sdk:$SDK -langversion:5 -warn:4 -target:winexe -out:rocola_gpu.exe -d:ROCOLA_GPU \
-     -r:System.Windows.Forms.dll -r:System.Drawing.dll -r:"$NAUDIO" $FUENTES > /tmp/c_rocola_gpu.txt 2>&1; then
+     -r:System.Windows.Forms.dll -r:System.Drawing.dll -r:"$NAUDIO" -r:"$NLAYER" $FUENTES > /tmp/c_rocola_gpu.txt 2>&1; then
   echo "  EL PERFIL CON TARJETA GRAFICA NO COMPILA:"; tail -12 /tmp/c_rocola_gpu.txt; exit 1
 fi
 echo "  rocola compilada (rama ${RAMA:-desconocida}, .NET $([ $SDK = 2 ] && echo 3.5 || echo 4.8), los dos perfiles, 0 avisos)"
@@ -86,7 +88,7 @@ mal=0
 corre() {
   for t in $1; do
     [ -f "$t.cs" ] || { echo "  ---          $t   (no existe)"; continue; }
-    if ! mcs -sdk:4 -warn:4 -out:$t.exe -r:System.Windows.Forms.dll -r:System.Drawing.dll -r:"$NAUDIO" $t.cs $COMUN > /tmp/c_$t.txt 2>&1; then
+    if ! mcs -sdk:4 -warn:4 -out:$t.exe -r:System.Windows.Forms.dll -r:System.Drawing.dll -r:"$NAUDIO" -r:"$NLAYER" $t.cs $COMUN > /tmp/c_$t.txt 2>&1; then
       echo "  COMPILA MAL  $t"; tail -3 /tmp/c_$t.txt; mal=$((mal+1)); continue
     fi
     xvfb-run -a mono $t.exe > /tmp/r_$t.txt 2>&1
@@ -106,6 +108,7 @@ corre() {
 # Mono busca NAudio AL LADO del programa que lo usa, asi que se trae aqui desde packages/.
 # (No se guarda en el repo: es el mismo archivo que ya vive en packages/.)
 cp -f "$NAUDIO" ./NAudio.dll 2>/dev/null || true
+cp -f "$NLAYER" ./NLayer.dll 2>/dev/null || true
 
 # --- Material de apoyo: se genera solo si falta (nada de esto se guarda en el repo) ---
 # mp3 de prueba (los usan 'disco' y 'etiqueta')

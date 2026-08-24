@@ -160,34 +160,14 @@ class Corta
               + (culpables.Count > 0 ? ("   [" + string.Join(", ", culpables.ToArray()) + "]") : ""));
 
         // =========================================================================================
-        Console.WriteLine("\n  3) UN MP3 QUE NO SE PUEDE ABRIR NO DEJA NADA TIRADO\n");
-        MethodInfo mAbre = TF.GetMethod("AbreMp3", BindingFlags.Static | BindingFlags.NonPublic);
-        Check(mAbre != null, "los MP3 se abren por un camino propio, no directamente con NAudio");
-        if (mAbre != null)
-        {
-            List<string> l = Codigo.ConAyudantes(TF, "AbreMp3");
-            Check(Codigo.Llama(l, "Mp3FileReader.CreateAcmFrameDecompressor"),
-                  "se le dice a NAudio que arme el descompresor con nuestro gancho, para saber cual creo");
-            Check(Codigo.Llama(l, "IMp3FrameDecompressor.Dispose") || Codigo.Llama(l, "IDisposable.Dispose"),
-                  "y si la apertura falla, se cierra AHI MISMO (antes se quedaba para el recolector, y eso cerraba la rocola)");
-        }
-        Type TLm = Nes("LectorMedida");
-        Check(TLm != null, "y el repaso de la biblioteca usa ese camino");
-        MethodInfo mMed = TF.GetMethod("MeasureFile", BindingFlags.Instance | BindingFlags.NonPublic);
-        if (mMed != null && TLm != null)
-        {
-            List<string> l = Codigo.Llamadas(mMed);
-            Check(Codigo.Llama(l, "LectorMedida..ctor"), "al medir una cancion se abre con el lector que no deja fugas");
-            Check(!Codigo.Llama(l, "AudioFileReader..ctor"), "y ya no directamente con el de NAudio, que si las dejaba");
-        }
-
-        // =========================================================================================
-        Console.WriteLine("\n  4) Y MEDIR SIGUE DANDO EXACTAMENTE LO MISMO\n");
+        Console.WriteLine("\n  3) Y MEDIR SIGUE DANDO EXACTAMENTE LO MISMO\n");
         // El lector nuevo es el MISMO montaje que hace NAudio por dentro. Se comprueba contra el de NAudio,
         // con un archivo de verdad, muestra por muestra.
         string[] wavs = Directory.Exists("wav") ? Directory.GetFiles("wav", "*.wav") : new string[0];
         Array.Sort(wavs);
-        Check(wavs.Length > 0, "hay canciones de prueba con las que comparar");
+        Type TLm = Nes("LectorMedida");
+        Check(TLm != null, "esta el lector con el que la rocola mide las canciones");
+        Check(wavs.Length > 0, "y hay canciones de prueba con las que comparar");
         if (wavs.Length > 0 && TLm != null)
         {
             string w = wavs[0];
@@ -209,53 +189,6 @@ class Corta
                               + rate1 + " Hz, " + t1.TotalSeconds.ToString("0.00") + "s   |   diferencias: " + dif);
             Check(rate1 == rate2 && t1 == t2, "el lector nuevo da la misma frecuencia y la misma duracion");
             Check(n1 == n2 && dif == 0, "y exactamente las mismas muestras: no cambia lo que se mide");
-        }
-
-        // =========================================================================================
-        Console.WriteLine("\n  5) Y LA CANCION QUE SUENA SE ABRE POR EL MISMO CAMINO\n");
-        // El repaso de la biblioteca ya no dejaba descompresores tirados, pero la cancion que SUENA seguia
-        // abriendose con el lector de NAudio de siempre, que tiene la misma trampa por partida doble: NAudio
-        // arma el descompresor de MP3 y despues sigue preparandose; si algo falla en ese hueco -una cabecera
-        // rota- no cierra ni el descompresor ni el archivo. Se abren menos archivos por aqui que en el
-        // repaso, pero se abren TODOS los que alguien pide en el bar, y cuando esto revienta se lleva la
-        // rocola entera por delante desde un hilo donde nadie puede recogerlo.
-        Type TFas = Nes("FileAudioSource");
-        Check(TFas != null, "esta el lector con el que suena la musica");
-        if (TFas != null)
-        {
-            List<string> l = new List<string>();
-            foreach (ConstructorInfo c in TFas.GetConstructors(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
-                l.AddRange(Codigo.Llamadas(c));
-            Check(Codigo.Llama(l, "Form1.AbreMp3"),
-                  "los MP3 que suenan se abren por el camino que no deja descompresores tirados");
-            Check(Codigo.Llama(l, "Mp3FileReader.Dispose") || Codigo.Llama(l, "IDisposable.Dispose") || Codigo.Llama(l, "Stream.Dispose"),
-                  "y si lo de despues falla, el lector se cierra ahi mismo en vez de esperar al recolector");
-        }
-
-        // Y lo que se oye no cambia: para todo lo que no es MP3 el camino sigue siendo el de siempre, y se
-        // comprueba muestra a muestra contra NAudio.
-        if (wavs.Length > 0 && TFas != null)
-        {
-            string w = wavs[0];
-            object fs = Activator.CreateInstance(TFas, BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public,
-                                                 null, new object[] { w }, null);
-            float[] mias = new float[16384], suyas = new float[16384];
-            int n1, n2; TimeSpan t1, t2; int rate1, rate2;
-            try
-            {
-                rate1 = ((WaveFormat)TFas.GetProperty("WaveFormat").GetValue(fs, null)).SampleRate;
-                t1 = (TimeSpan)TFas.GetProperty("TotalTime").GetValue(fs, null);
-                TFas.GetProperty("Volume").SetValue(fs, 1f, null);
-                n1 = (int)TFas.GetMethod("Read").Invoke(fs, new object[] { mias, 0, mias.Length });
-            }
-            finally { ((IDisposable)fs).Dispose(); }
-            using (AudioFileReader afr = new AudioFileReader(w))
-            { rate2 = afr.WaveFormat.SampleRate; t2 = afr.TotalTime; afr.Volume = 1f; n2 = afr.Read(suyas, 0, suyas.Length); }
-            int dif = 0; for (int i = 0; i < mias.Length; i++) if (mias[i] != suyas[i]) dif++;
-            Console.WriteLine("     " + Path.GetFileNameWithoutExtension(w) + ": " + n1 + " muestras, "
-                              + rate1 + " Hz, " + t1.TotalSeconds.ToString("0.00") + "s   |   diferencias: " + dif);
-            Check(rate1 == rate2 && t1 == t2 && n1 == n2 && dif == 0,
-                  "y lo que suena es exactamente lo mismo que antes: ni una muestra de diferencia");
         }
 
         Console.WriteLine();

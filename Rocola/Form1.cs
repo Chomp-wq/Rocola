@@ -4545,40 +4545,29 @@ namespace Rocola
         // acmStreamClose", y por eso salia dos veces en diez dias y siempre de madrugada: es cuando el repaso
         // de la biblioteca abre miles de archivos, alguno de ellos roto.
         //
-        // NAudio deja un gancho para armar el descompresor uno mismo. Se usa para apuntar CUAL creo: si la
-        // apertura falla, lo cerramos NOSOTROS ahi mismo y no queda nada pendiente para el recolector.
-        private static Mp3FileReader AbreMp3(string ruta)
-        {
-            NAudio.Wave.IMp3FrameDecompressor hecho = null;
-            Mp3FileReader.FrameDecompressorBuilder armador = delegate(NAudio.Wave.WaveFormat wf)
-            { hecho = Mp3FileReader.CreateAcmFrameDecompressor(wf); return hecho; };
-            try { return new Mp3FileReader(ruta, armador); }
-            catch { if (hecho != null) { try { hecho.Dispose(); } catch { } } throw; }
-        }
-
-        // Lector para MEDIR una cancion (no para que suene). Los MP3 van por el camino de arriba, que no deja
-        // descompresores tirados; el resto de formatos, por donde siempre. Es EL MISMO montaje que usa NAudio
-        // por dentro (el lector mas un canal de muestras), asi que lo medido no cambia ni en un bit.
+        // Lector para MEDIR una cancion (no para que suene). Los MP3 los descomprime NLayer, en el mismo
+        // lenguaje que la rocola y sin pedirle nada al sistema; el WAV, por donde siempre.
         private sealed class LectorMedida : IDisposable
         {
-            private readonly Mp3FileReader mp3;
-            private readonly SampleChannel canal;
+            private readonly Mp3Linux mp3;
             private readonly AudioFileReader otro;
+            private float vol = 1f;
             public LectorMedida(string ruta)
             {
-                if (ruta != null && ruta.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase))
-                {
-                    Mp3FileReader r = AbreMp3(ruta);
-                    try { canal = new SampleChannel(r, false); mp3 = r; r = null; }
-                    finally { if (r != null) { try { r.Dispose(); } catch { } } }   // el canal fallo: el lector no se queda tirado
-                }
+                if (ruta != null && ruta.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase)) mp3 = new Mp3Linux(ruta);
                 else otro = new AudioFileReader(ruta);
             }
-            public NAudio.Wave.WaveFormat WaveFormat { get { return (mp3 != null) ? canal.WaveFormat : otro.WaveFormat; } }
+            public NAudio.Wave.WaveFormat WaveFormat { get { return (mp3 != null) ? mp3.WaveFormat : otro.WaveFormat; } }
             public TimeSpan TotalTime { get { return (mp3 != null) ? mp3.TotalTime : otro.TotalTime; } }
             public TimeSpan CurrentTime { set { if (mp3 != null) mp3.CurrentTime = value; else otro.CurrentTime = value; } }
-            public float Volume { set { if (mp3 != null) canal.Volume = value; else otro.Volume = value; } }
-            public int Read(float[] b, int o, int c) { return (mp3 != null) ? canal.Read(b, o, c) : otro.Read(b, o, c); }
+            public float Volume { set { if (mp3 != null) vol = value; else otro.Volume = value; } }
+            public int Read(float[] b, int o, int c)
+            {
+                if (mp3 == null) return otro.Read(b, o, c);
+                int n = mp3.Read(b, o, c);
+                if (vol < 0.999f || vol > 1.001f) for (int i = 0; i < n; i++) b[o + i] *= vol;
+                return n;
+            }
             public void Dispose()
             {
                 if (mp3 != null) { try { mp3.Dispose(); } catch { } }
@@ -8805,51 +8794,22 @@ namespace Rocola
                     long tf = 0; try { tf = (long)(reader.TotalTime.TotalSeconds * reader.WaveFormat.SampleRate); } catch { }
                     outChain = new FadeProvider(outChain, tf, crossfadeSec);   // fundido suave de entrada/salida
                 }
-                // ===== SALIDA DE AUDIO (rama HD) =====
-                // WASAPI compartido con muestras FLOTANTES: float de punta a punta hasta el motor de audio
-                // moderno (sin bajar a 16 bits ni pasar por el mezclador clasico) y latencia menor. Si
-                // CUALQUIER paso falla (driver raro, formato, Windows viejo), cae SOLO al WaveOut clasico
-                // de siempre. salida= en config: auto (WASAPI si la maquina es HD) | wasapi | waveout.
-                bool wantWasapi = outPref == "wasapi" || (outPref != "waveout" && tierHd);
-                bool isWasapi = false;
-                output = null;
-                if (wantWasapi && Environment.OSVersion.Version.Major >= 6)
-                {
-                    NAudio.Wave.WasapiOut wa = null;
-                    try
-                    {
-                        wa = new NAudio.Wave.WasapiOut(NAudio.CoreAudioApi.AudioClientShareMode.Shared, 300);   // 300ms: colchon comodo con latencia baja
-                        wa.Init(new NAudio.Wave.SampleProviders.SampleToWaveProvider(outChain));   // FLOAT de punta a punta (nada de 16 bits)
-                        wa.PlaybackStopped += Output_PlaybackStopped;
-                        output = wa; isWasapi = true;
-                    }
-                    catch (Exception wex)
-                    {
-                        LogError("WasapiOut (cayendo a WaveOut)", wex);
-                        if (wa != null) { try { wa.Dispose(); } catch { } }
-                        output = null;
-                    }
-                }
-                if (output == null)
-                {
-                    // Camino CLASICO: WaveOut con callback por ventana y 1 SEGUNDO de colchon (aguanta
-                    // cualquier atoron). Rellenar 200ms de MP3 cuesta ~2-5ms de CPU: el colchon sale gratis.
-                    WaveOut wo = new WaveOut();
-                    wo.DesiredLatency = 1000;
-                    // BLOQUES CORTOS. Por este camino el audio se rellena DESDE EL HILO DE LA PANTALLA,
-                    // asi que cada vez que se vacia un bloque la interfaz se para en seco a descifrar MP3 y a
-                    // pasarlo por toda la cadena de sonido. Con 5 bloques de 200 ms esa parada era larga y
-                    // ocurria 5 veces por segundo: en una maquina justa se comia un cuadro entero cada vez, y
-                    // eso se sentia como tirones MIENTRAS SUENA MUSICA (sobre todo en el buscador, que es lo
-                    // que mas dibuja). Con 20 bloques de 50 ms se hace el MISMO trabajo total, pero repartido
-                    // en pausas cuatro veces mas cortas, que caben de sobra dentro de un cuadro. El colchon
-                    // sigue siendo de 1 segundo. (Por WASAPI esto no aplica: alli rellena su propio hilo.)
-                    wo.NumberOfBuffers = 20;    // 20 bloques de 50ms (mismo segundo de colchon, pausas 4 veces mas cortas)
-                    output = wo;
-                    output.PlaybackStopped += Output_PlaybackStopped;
-                    output.Init(new DitherWaveProvider16(outChain));   // 16 bits CON dither TPDF (menos aspereza en pasajes silenciosos)
-                }
-                audioVisualDelayMs = isWasapi ? 240 : 850;   // el pulso visual se alinea al colchon REAL de la salida en uso
+                // ===== SALIDA DE AUDIO (rama de Linux) =====
+                // En Windows habia que elegir entre dos motores de sonido segun la version. En Linux hay uno
+                // solo y esta siempre: ALSA. Se le entregan 16 bits, que es lo que sale de la cadena con el
+                // dither puesto, y el colchon se pide de 300 ms: bastante para que no se corte si la maquina
+                // se distrae, y poco para que la imagen no se separe del sonido.
+                //
+                // 'salida=' en la configuracion ya no elige motor: elige TARJETA. "default" es la que use el
+                // sistema; con varias tarjetas se puede poner "hw:1" o "plughw:1" para mandar la musica por
+                // la que va al amplificador y no por la del monitor.
+                string tarjeta = (outPref == "auto" || outPref == "wasapi" || outPref == "waveout" || outPref.Length == 0)
+                                 ? "default" : outPref;
+                SalidaAlsa alsa = new SalidaAlsa(300, tarjeta);
+                alsa.PlaybackStopped += Output_PlaybackStopped;
+                alsa.Init(new DitherWaveProvider16(outChain));   // 16 bits CON dither TPDF (menos aspereza en pasajes silenciosos)
+                output = alsa;
+                audioVisualDelayMs = alsa.RetardoMs;   // el pulso visual se alinea al colchon REAL que dio la tarjeta
                 output.Play();
                 progressTimer.Start();
                 PrecalientaSiguiente();   // la que viene detras, leida en segundo plano (ver arriba)
@@ -10185,34 +10145,26 @@ namespace Rocola
         }
 
         // Camino NORMAL para la cancion que suena: float + volumen + tiempos en un solo objeto.
-        //
-        // Los MP3 van aparte, por el mismo camino que usa el repaso de la biblioteca (AbreMp3). El lector de
-        // NAudio tiene ahi una trampa por partida doble: arma el descompresor de MP3 y despues sigue
-        // preparandose, y si algo falla en ese hueco -una cabecera rota, y de esas hay unas cuantas en
-        // cualquier biblioteca grande- no cierra ni el descompresor ni el archivo. Lo que queda tirado lo
-        // acaba cerrando el recolector de basura, Windows contesta que ya no vale, y la queja sale por un
-        // hilo donde NADIE la puede recoger: se cierra la rocola entera. Por aqui se abren menos archivos que
-        // en el repaso, pero se abren TODOS los que alguien pide en el bar. Es el mismo montaje que hace
-        // NAudio por dentro (el lector mas un canal de muestras), asi que no cambia ni una muestra.
+        // Los MP3 los descomprime NLayer y el WAV va por donde siempre.
         private sealed class FileAudioSource : IAudioSource
         {
-            private readonly Mp3FileReader mp3;
-            private readonly SampleChannel canal;
+            private readonly Mp3Linux mp3;
             private readonly AudioFileReader r;
+            private float vol = 1f;
             public FileAudioSource(string path)
             {
-                if (path != null && path.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase))
-                {
-                    Mp3FileReader m = AbreMp3(path);
-                    try { canal = new SampleChannel(m, false); mp3 = m; m = null; }
-                    finally { if (m != null) { try { m.Dispose(); } catch { } } }   // el canal fallo: el lector no se queda tirado
-                }
+                if (path != null && path.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase)) mp3 = new Mp3Linux(path);
                 else r = new AudioFileReader(path);
             }
-            public NAudio.Wave.WaveFormat WaveFormat { get { return (mp3 != null) ? canal.WaveFormat : r.WaveFormat; } }
+            public NAudio.Wave.WaveFormat WaveFormat { get { return (mp3 != null) ? mp3.WaveFormat : r.WaveFormat; } }
             public int Read(float[] buffer, int offset, int count)
-            { return (mp3 != null) ? canal.Read(buffer, offset, count) : r.Read(buffer, offset, count); }
-            public float Volume { set { if (mp3 != null) canal.Volume = value; else r.Volume = value; } }
+            {
+                if (mp3 == null) return r.Read(buffer, offset, count);
+                int n = mp3.Read(buffer, offset, count);
+                if (vol < 0.999f || vol > 1.001f) for (int i = 0; i < n; i++) buffer[offset + i] *= vol;
+                return n;
+            }
+            public float Volume { set { if (mp3 != null) vol = value; else r.Volume = value; } }
             public TimeSpan CurrentTime { get { return (mp3 != null) ? mp3.CurrentTime : r.CurrentTime; } }
             public TimeSpan TotalTime { get { return (mp3 != null) ? mp3.TotalTime : r.TotalTime; } }
             public void Dispose()
@@ -10222,22 +10174,25 @@ namespace Rocola
             }
         }
 
-        // Camino TOLERANTE: reproduce un MP3 ya reconstruido a una sola frecuencia (stream en memoria). Mp3FileReader
-        // decodifica (float via SampleChannel, que ademas da el volumen); el tiempo actual/total sale del Mp3FileReader.
+        // Camino TOLERANTE: reproduce un MP3 ya reconstruido a una sola frecuencia (stream en memoria).
         private sealed class TolerantMp3Source : IAudioSource
         {
             private readonly MemoryStream ms;
-            private readonly Mp3FileReader mp3;
-            private readonly SampleChannel sample;
+            private readonly Mp3Linux mp3;
+            private float vol = 1f;
             public TolerantMp3Source(MemoryStream cleanMp3)
             {
                 ms = cleanMp3;
-                mp3 = new Mp3FileReader(ms);
-                sample = new SampleChannel(mp3, false);
+                mp3 = new Mp3Linux(ms);
             }
-            public NAudio.Wave.WaveFormat WaveFormat { get { return sample.WaveFormat; } }
-            public int Read(float[] buffer, int offset, int count) { return sample.Read(buffer, offset, count); }
-            public float Volume { set { sample.Volume = value; } }
+            public NAudio.Wave.WaveFormat WaveFormat { get { return mp3.WaveFormat; } }
+            public int Read(float[] buffer, int offset, int count)
+            {
+                int n = mp3.Read(buffer, offset, count);
+                if (vol < 0.999f || vol > 1.001f) for (int i = 0; i < n; i++) buffer[offset + i] *= vol;
+                return n;
+            }
+            public float Volume { set { vol = value; } }
             public TimeSpan CurrentTime { get { return mp3.CurrentTime; } }
             public TimeSpan TotalTime { get { return mp3.TotalTime; } }
             public void Dispose() { try { mp3.Dispose(); } catch { } try { ms.Dispose(); } catch { } }
