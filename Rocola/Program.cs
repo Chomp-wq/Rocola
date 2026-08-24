@@ -23,8 +23,10 @@ namespace Rocola
         // trae la vieja al frente y se va sin hacer nada.
         private static System.Threading.Mutex unica;
 
-        // El nombre de la senal sale de DONDE esta instalada la rocola, no es fijo: asi dos instalaciones
-        // distintas en el mismo equipo -por ejemplo una de pruebas- no se estorban. Se calcula a mano (FNV)
+        // El nombre de la senal sale de DONDE ESTAN LOS DATOS, no es fijo: asi dos instalaciones distintas
+        // en el mismo equipo -por ejemplo una de pruebas- no se estorban. Y son los datos y no el programa
+        // porque lo que de verdad se pisaria son los archivos: dos rocolas escribiendo la misma carpeta de
+        // datos se pisan aunque el programa este en dos sitios distintos. Se calcula a mano (FNV)
         // y no con GetHashCode porque ese puede cambiar entre versiones de .NET y de un arranque a otro, y
         // aqui hace falta que dos arranques distintos saquen EL MISMO nombre.
         internal static string ClaveInstancia(string carpeta)
@@ -61,7 +63,7 @@ namespace Rocola
         static void Main()
         {
             bool primera;
-            unica = new System.Threading.Mutex(true, ClaveInstancia(Application.StartupPath), out primera);
+            unica = new System.Threading.Mutex(true, ClaveInstancia(Form1.CarpetaDatos), out primera);
             if (!primera) { AlFrenteLaQueYaCorre(); return; }   // ya hay una rocola corriendo: esta se va
 
             // BLINDAJE DE KIOSCO: una excepcion no controlada en el hilo de la interfaz mostraba el dialogo
@@ -89,7 +91,7 @@ namespace Rocola
         {
             try
             {
-                string f = System.IO.Path.Combine(Application.StartupPath, "rocola_error.txt");
+                string f = System.IO.Path.Combine(Form1.CarpetaDatos, "rocola_error.txt");
                 try { System.IO.FileInfo fi = new System.IO.FileInfo(f); if (fi.Exists && fi.Length > 262144) fi.Delete(); } catch { }
                 System.IO.File.AppendAllText(f,
                     DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "  [" + context + "]\r\n"
