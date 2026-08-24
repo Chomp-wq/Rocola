@@ -84,34 +84,31 @@ class Duracion
         Call("PublicaDuraciones", 3, rutas.ToArray(), segs.ToArray(), 0);
         Check(((Dictionary<string,float>)Fld("durFast")).Count == 0, "un lote de una generacion vieja se descarta");
 
-        // --- 6) LOS VIDEOS. Antes no se median: la tanda se armaba solo con 'tracks', que son canciones, y
-        // los videos viven aparte (en VideoFiles de cada disco), asi que en la lista salian sin duracion.
-        Console.WriteLine("\n  LOS VIDEOS\n");
+        // --- 6) LOS VIDEOS: EN LINUX, NINGUNO, Y A PROPOSITO.
+        //
+        // La seccion de VIDEOS se apoyaba en el reproductor de Windows, que aqui no existe. En vez de dejar
+        // un camino a medias -que se vieran en la lista y al ponerlos no sonara nada-, en esta rama la lista
+        // de extensiones de video se deja VACIA. Con eso la rocola entera se comporta como una biblioteca
+        // sin un solo video: el explorador no clasifica nada como video, la casilla de VIDEO no aparece en
+        // la barra de letras, y nadie intenta medirlos ni reproducirlos.
+        //
+        // Aqui se comprueba justamente eso: que NINGUN archivo cuela como video. Cuando se rehaga la
+        // seccion con otro reproductor, esta prueba tendra que volver a ser la de antes.
+        Console.WriteLine("\n  LOS VIDEOS (apagados en Linux)\n");
         MethodInfo ESVID = TF.GetMethod("EsVideo", BindingFlags.Static|BindingFlags.NonPublic);
-        Check(ESVID != null, "la rocola sabe distinguir un video de una cancion por su extension");
+        Check(ESVID != null, "la rocola sigue sabiendo preguntar si algo es un video");
         if (ESVID != null)
         {
             string[] vids = { "a.mp4", "b.AVI", "c.wmv", "d.mkv", "e.mpg", "f.vob", "g.flv", "h.m4v" };
             string[] noVids = { "x.mp3", "y.flac", "z.wav", "w.ogg", "v.m4a" };
-            bool todos = true, ninguno = true;
-            foreach (string v in vids) if (!(bool)ESVID.Invoke(null, new object[]{ v })) todos = false;
-            foreach (string v in noVids) if ((bool)ESVID.Invoke(null, new object[]{ v })) ninguno = false;
-            Check(todos, "reconoce los " + vids.Length + " formatos de video (mp4, avi, wmv, mkv, mpg, vob, flv, m4v)");
-            Check(ninguno, "y no confunde una cancion con un video");
+            bool ningunVideo = true, ningunaCancion = true;
+            foreach (string v in vids) if ((bool)ESVID.Invoke(null, new object[]{ v })) ningunVideo = false;
+            foreach (string v in noVids) if ((bool)ESVID.Invoke(null, new object[]{ v })) ningunaCancion = false;
+            Check(ningunVideo, "y contesta que NO a los " + vids.Length + " formatos de video: aqui no hay videos");
+            Check(ningunaCancion, "y tampoco confunde una cancion con un video");
             Check(!(bool)ESVID.Invoke(null, new object[]{ (string)null }), "un archivo sin nombre no truena");
         }
-        // Un video con duracion ya medida se ve en la lista igual que una cancion. Aqui se publica a mano lo
-        // que el hilo mediria con el reproductor de Windows (que en esta maquina no existe).
         object F4 = FormatterServices.GetUninitializedObject(TF); F = F4; Limpia();
-        string vid = Path.Combine(Path.GetDirectoryName(wavs[0]), "concierto.mp4");
-        Call("PublicaDuraciones", 0, new string[]{ vid }, new float[]{ 273f }, 0);
-        Console.WriteLine("        " + Path.GetFileName(vid) + " -> " + Call("DurText", vid));
-        Check((string)Call("DurText", vid) == "4:33", "un video medido se ve en la lista igual que una cancion (4:33)");
-        Check(ESVID != null && (bool)ESVID.Invoke(null, new object[]{ vid }), "y se mide por el camino de los videos, no por el de NAudio");
-        // Y el medidor tiene que existir, con su parametro por referencia (lo lleva el hilo, no un campo)
-        MethodInfo MV = TF.GetMethod("MideDuracionVideo", BindingFlags.Instance|BindingFlags.NonPublic);
-        Check(MV != null && MV.GetParameters().Length == 2 && MV.GetParameters()[1].ParameterType.IsByRef,
-              "el reproductor con el que se miden lo lleva el propio hilo: dos tandas a la vez no se cruzan");
         MethodInfo MA = TF.GetMethod("MideDuracionAudio", BindingFlags.Static|BindingFlags.NonPublic);
         Check(MA != null && Math.Abs((float)MA.Invoke(null, new object[]{ wavs[0] }) - 180f) < 0.5f,
               "y las canciones se siguen midiendo como siempre (180 s)");

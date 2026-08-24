@@ -29,38 +29,41 @@ using NAudio.Wave.SampleProviders;
 
 namespace Rocola
 {
-    public partial class Form1 : Form
+    public partial class Form1 : Form, IFondoPintable
     {
         private const float FixedVolume = 1.0f;
         private const int Cols = 6;
         private const int Rows = 3;
         private const int PageSize = Cols * Rows;
 
-        [System.Runtime.InteropServices.DllImport("user32.dll")]
-        private static extern short GetKeyState(int nVirtKey);
-        [System.Runtime.InteropServices.DllImport("user32.dll")]
-        private static extern IntPtr GetForegroundWindow();
-        [System.Runtime.InteropServices.DllImport("user32.dll")]
-        private static extern bool SetForegroundWindow(IntPtr hWnd);
-        [System.Runtime.InteropServices.DllImport("user32.dll")]
-        private static extern uint GetWindowThreadProcessId(IntPtr hWnd, IntPtr procId);
-        [System.Runtime.InteropServices.DllImport("kernel32.dll")]
-        private static extern uint GetCurrentThreadId();
-        [System.Runtime.InteropServices.DllImport("user32.dll")]
-        private static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
-        [System.Runtime.InteropServices.DllImport("user32.dll")]
-        private static extern IntPtr SetFocus(IntPtr hWnd);
-        [System.Runtime.InteropServices.DllImport("user32.dll")]
-        private static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, UIntPtr dwExtraInfo);
-        private const uint MOUSEEVENTF_LEFTDOWN = 0x02, MOUSEEVENTF_LEFTUP = 0x04;
-        // ¿esta presionada AHORA esta tecla? (para los combos: REGRESAR + otra)
-        private static bool KeyHeld(Keys k) { return (GetKeyState((int)(k & Keys.KeyCode)) & 0x8000) != 0; }
-
-        // Sube la resolucion del reloj del sistema a 1ms para que el temporizador de animacion
-        // dispare parejo (en XP, sin esto, un intervalo de ~33ms se "redondea" y la animacion se entrecorta).
-        [System.Runtime.InteropServices.DllImport("winmm.dll")] private static extern uint timeBeginPeriod(uint p);
-        [System.Runtime.InteropServices.DllImport("winmm.dll")] private static extern uint timeEndPeriod(uint p);
-        private bool timerResRaised = false;
+        // ¿ESTA APRETADA AHORA ESTA TECLA? Hace falta para los combos: REGRESAR MANTENIDO y otra tecla es
+        // lo que abre el buscador. En Windows se le preguntaba al sistema; en Linux no hay a quien
+        // preguntarle, asi que la rocola lleva la cuenta ella misma.
+        //
+        // La tecla se apunta al BAJAR en ProcessCmdKey, que ve TODAS las bajadas -incluidas las que el
+        // propio ProcessCmdKey se queda y no deja pasar-, y se borra al SUBIR desde WndProc, que es donde
+        // llega el aviso de soltar. Y al perder el foco se olvida de todo: si una tecla se suelta con la
+        // ventana en segundo plano el aviso no llega, y sin esto se quedaria "apretada" para siempre.
+        private readonly System.Collections.Generic.Dictionary<Keys, bool> teclasAbajo = new System.Collections.Generic.Dictionary<Keys, bool>();
+        private bool KeyHeld(Keys k)
+        {
+            lock (teclasAbajo) { bool v; return teclasAbajo.TryGetValue(k & Keys.KeyCode, out v) && v; }
+        }
+        private void ApuntaTecla(Keys k, bool abajo)
+        {
+            lock (teclasAbajo) teclasAbajo[k & Keys.KeyCode] = abajo;
+        }
+        protected override void WndProc(ref Message m)
+        {
+            const int WM_KEYUP = 0x0101, WM_SYSKEYUP = 0x0105;
+            if (m.Msg == WM_KEYUP || m.Msg == WM_SYSKEYUP) ApuntaTecla((Keys)m.WParam.ToInt32(), false);
+            base.WndProc(ref m);
+        }
+        protected override void OnDeactivate(EventArgs e)
+        {
+            lock (teclasAbajo) teclasAbajo.Clear();   // fuera de foco no llegan las soltadas: se olvida todo
+            base.OnDeactivate(e);
+        }
 
         private static readonly Color DefaultAccent = Color.FromArgb(45, 95, 205);
 
@@ -598,9 +601,6 @@ namespace Rocola
             }
             catch { }
         }
-        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
-        private struct MemStatusEx { public uint Length, MemoryLoad; public ulong TotalPhys, AvailPhys, TotalPageFile, AvailPageFile, TotalVirtual, AvailVirtual, AvailExtendedVirtual; }
-        [System.Runtime.InteropServices.DllImport("kernel32.dll")] private static extern bool GlobalMemoryStatusEx(ref MemStatusEx b);
 
         // CUANTA MEMORIA SE LE DEJA AL CAJON DE CASILLAS HORNEADAS.
         //
@@ -637,13 +637,7 @@ namespace Rocola
         {
             if (cacheCeldasMb >= 0) return cacheCeldasMb;
             ulong ramMb = 0;
-            try
-            {
-                MemStatusEx ms = new MemStatusEx();
-                ms.Length = (uint)System.Runtime.InteropServices.Marshal.SizeOf(typeof(MemStatusEx));
-                if (GlobalMemoryStatusEx(ref ms)) ramMb = ms.TotalPhys / (1024UL * 1024UL);
-            }
-            catch { }
+            try { ramMb = Sistema.MemoriaTotalMb(); } catch { }
             // En 32 bits el programa no pasa de ~2 GB por mucha RAM que haya, asi que el techo se queda
             // MUY por debajo aunque la maquina tenga de sobra. Si no se sabe cuanta hay, se es prudente.
             int mb;
@@ -663,23 +657,14 @@ namespace Rocola
         {
             int cores = 1, mhz = 0; ulong ramMb = 0;
             try { cores = Environment.ProcessorCount; } catch { }
-            try
-            {
-                using (Microsoft.Win32.RegistryKey k = Microsoft.Win32.Registry.LocalMachine.OpenSubKey("HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0"))
-                { object v = (k != null) ? k.GetValue("~MHz") : null; if (v != null) mhz = Convert.ToInt32(v); }
-            }
-            catch { }
-            try
-            {
-                MemStatusEx ms = new MemStatusEx();
-                ms.Length = (uint)System.Runtime.InteropServices.Marshal.SizeOf(typeof(MemStatusEx));
-                if (GlobalMemoryStatusEx(ref ms)) ramMb = ms.TotalPhys / (1024UL * 1024UL);
-            }
-            catch { }
+            try { mhz = Sistema.MhzDelProcesador(); } catch { }
+            try { ramMb = Sistema.MemoriaTotalMb(); } catch { }
             bool cpuOk = (cores >= 2) || (mhz >= 2200);
             bool ramOk = (ramMb == 0) || (ramMb >= 900);
             sbrAllowed = cpuOk && ramOk;
-            tierHd = (cores >= 4) && (ramMb == 0 || ramMb >= 3500) && (Environment.OSVersion.Version.Major >= 6);   // NIVEL HD: potente + Windows moderno
+            // NIVEL HD: potente. En Windows se pedia ademas Vista o mas nuevo, porque el motor de sonido
+            // moderno no existe en XP; aqui no aplica, la salida es la misma en cualquier Linux.
+            tierHd = (cores >= 4) && (ramMb == 0 || ramMb >= 3500);
             if (!sbrAllowed)
                 sbrReason = "CPU de " + cores + " nucleo(s) a " + mhz + " MHz" + (ramOk ? "" : (", RAM de " + ramMb + " MB"))
                           + "  (pide 2 nucleos o 2200 MHz, y 900 MB)";
@@ -826,7 +811,6 @@ namespace Rocola
             this.DoubleBuffered = true;
             formStars.Density = 1f;      // MISMA densidad que albumView: el borde entre secciones deja de notarse
             formStars.QuietBands = true;   // y ademas evitar acumularlas en el abecedario (arriba) y la barra de estado (abajo)
-            try { if (timeBeginPeriod(1) == 0) timerResRaised = true; } catch { }   // reloj a 1ms -> animacion pareja
             try { int wt, ct; System.Threading.ThreadPool.GetMinThreads(out wt, out ct); System.Threading.ThreadPool.SetMinThreads(Math.Max(wt, 3), ct); } catch { }  // arranque de cargas mas agil
             this.KeyPreview = true;                 // el formulario ve KeyPress aunque otro control tenga el foco
             this.KeyPress += Form_KeyPress;         // admite TODO caracter en el buscador (ñ, acentos, comillas...)
@@ -843,7 +827,6 @@ namespace Rocola
         protected override void OnFormClosed(FormClosedEventArgs e)
         {
             try { if (statsDirty) { statsDirty = false; SaveStats(false); } } catch { }   // guardar estadisticas pendientes
-            try { if (timerResRaised) { timeEndPeriod(1); timerResRaised = false; } } catch { }
             base.OnFormClosed(e);
         }
 
@@ -902,43 +885,13 @@ namespace Rocola
         }
 
         // Trae la rocola al frente y le da el foco del teclado (robusto para el autoarranque).
-        // Windows NIEGA el foco pedido por codigo desde una app de fondo (por eso "solo con mouse
-        // funcionaba": el clic fisico si otorga el foco). Hacemos dos cosas:
-        //  1) Truco AttachThreadInput: nos "pegamos" al hilo que tiene el foco para poder tomarlo.
-        //  2) Si Windows aun se niega, generamos un CLIC DE MOUSE SINTETICO (mouse_event, no
-        //     necesita mouse fisico) en la esquina inferior de NUESTRA ventana (zona sin botones):
-        //     para Windows es identico a un clic real, y el foco se otorga siempre.
+        // QUE LA ROCOLA NO PIERDA EL TECLADO. En Windows habia que pelearse con el sistema -que niega el
+        // foco pedido por codigo- hasta el punto de fabricar un clic de raton. En Linux no hace falta nada
+        // de eso: se pide el foco y ya. Y en la maquina del bar la rocola es lo unico que corre, asi que
+        // esto casi nunca tiene trabajo que hacer.
         private void ForceFocus()
         {
-            try
-            {
-                if (GetForegroundWindow() == this.Handle) { this.Focus(); return; }
-
-                IntPtr fg = GetForegroundWindow();
-                uint fgT = (fg != IntPtr.Zero) ? GetWindowThreadProcessId(fg, IntPtr.Zero) : 0;
-                uint myT = GetCurrentThreadId();
-                bool attached = false;
-                if (fgT != 0 && fgT != myT) { try { attached = AttachThreadInput(myT, fgT, true); } catch { } }
-
-                this.TopMost = true;
-                SetForegroundWindow(this.Handle);
-                this.Activate();
-                this.BringToFront();
-                this.TopMost = false;
-                SetFocus(this.Handle);
-                this.Focus();
-
-                if (attached) { try { AttachThreadInput(myT, fgT, false); } catch { } }
-
-                // ¿Windows se siguio negando? Clic sintetico (lo mismo que hace un mouse real).
-                if (GetForegroundWindow() != this.Handle)
-                {
-                    Rectangle sb = Screen.PrimaryScreen.Bounds;
-                    Cursor.Position = new Point(sb.Right - 2, sb.Bottom - 2);   // esquina: solo etiquetas, nada que activar
-                    mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, UIntPtr.Zero);
-                    mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, UIntPtr.Zero);
-                }
-            }
+            try { this.Activate(); this.BringToFront(); this.Focus(); }
             catch { }
         }
 
@@ -946,7 +899,7 @@ namespace Rocola
         {
             if (maintMode && DateTime.Now > maintUntil) { maintMode = false; ShowToast("Vigia de pantalla reactivado"); }
             if (maintMode) return;                       // pausa de mantenimiento (F10)
-            if (GetForegroundWindow() != this.Handle) ForceFocus();
+            if (!this.ContainsFocus) ForceFocus();
         }
 
         // Entrada de texto del buscador: cualquier caracter imprimible (incluye Ñ, acentos, comillas) y Borrar.
@@ -1029,108 +982,37 @@ namespace Rocola
         private const string PkRango  = "{1da5d803-d492-4edd-8c23-e0c0ffee7f0e},3";   // cuales son de rango completo
         private const string PkSinFx  = "{1da5d803-d492-4edd-8c23-e0c0ffee7f0e},5";   // 1 = "deshabilitar todas las mejoras"
 
-        // Las salidas de sonido ACTIVAS, con lo que Windows tenga apuntado de cada una. Lista vacia = no se pudo
-        // leer (Windows XP, o la clave no esta donde se espera): eso NO es un fallo, es que no hay dato.
-        private static List<SalidaWin> LeeSalidasWindows()
-        {
-            List<SalidaWin> r = new List<SalidaWin>();
-            try
-            {
-                using (Microsoft.Win32.RegistryKey raiz = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(MMDev))
-                {
-                    if (raiz == null) return r;
-                    foreach (string id in raiz.GetSubKeyNames())
-                    {
-                        try
-                        {
-                            using (Microsoft.Win32.RegistryKey ep = raiz.OpenSubKey(id))
-                            {
-                                if (ep == null) continue;
-                                object est = ep.GetValue("DeviceState");
-                                if (est is int && (int)est != 1) continue;   // 1 = activa (las desconectadas no cuentan)
-                                using (Microsoft.Win32.RegistryKey pr = ep.OpenSubKey("Properties"))
-                                {
-                                    if (pr == null) continue;
-                                    SalidaWin s2 = new SalidaWin();
-                                    s2.Nombre = (pr.GetValue(PkNombre) as string) ?? (pr.GetValue(PkDesc) as string) ?? "salida de sonido";
-                                    byte[] fmt = pr.GetValue(PkFormato) as byte[];
-                                    if (fmt != null && fmt.Length >= 16)
-                                    {
-                                        s2.Canales = BitConverter.ToUInt16(fmt, 2);
-                                        s2.Hz = (int)BitConverter.ToUInt32(fmt, 4);
-                                        s2.Bits = BitConverter.ToUInt16(fmt, 14);
-                                    }
-                                    object bo = pr.GetValue(PkBocinas); if (bo is int) s2.Bocinas = (int)bo;
-                                    object rc = pr.GetValue(PkRango);   if (rc is int) s2.RangoCompleto = (int)rc;
-                                    object fx = pr.GetValue(PkSinFx);
-                                    s2.Efectos = (fx is int) ? (((int)fx != 0) ? 0 : 1) : -1;   // el valor dice "deshabilitar", asi que va al reves
-                                    r.Add(s2);
-                                }
-                            }
-                        }
-                        catch { }
-                    }
-                }
-            }
-            catch { }
-            return r;
-        }
-
-        // Traduce una mascara de canales de Windows a algo que se entienda.
-        private static string NombreBocinas(int mascara)
-        {
-            if (mascara == 0) return "";
-            bool sub = (mascara & 0x8) != 0;                 // canal de graves (subwoofer)
-            int n = 0; for (int b = 0; b < 18; b++) if ((mascara & (1 << b)) != 0) n++;
-            string bas;
-            if (n <= 1) bas = "mono";
-            else if (n == 2) bas = "estereo";
-            else if (n == 4) bas = "cuadrafonico";
-            else if (n == 6) bas = "5.1";
-            else if (n == 8) bas = "7.1";
-            else bas = n + " canales";
-            return bas + (sub ? " (con subwoofer)" : "");
-        }
-
         // La frase que se ensena en la ventana de sonido. Devuelve tambien si hay algo que ARREGLAR, para
         // pintarla en ambar en vez de en gris.
         private static string TextoSalida(out bool aviso)
         {
             aviso = false;
-            List<SalidaWin> ls;
-            try { ls = LeeSalidasWindows(); } catch { ls = new List<SalidaWin>(); }
-            if (ls.Count == 0)
-                return "Tu equipo: este Windows no guarda la configuracion de las bocinas donde se pueda leer.\n"
-                     + "Revisa el panel de tu tarjeta de sonido (Realtek y companía) y deja sus mejoras APAGADAS.";
-            // Si hay varias salidas activas se ensena la primera con mejoras encendidas (que es la que importa)
-            // y, si ninguna las tiene, la primera de todas.
-            SalidaWin s = ls[0];
-            for (int i = 0; i < ls.Count; i++) if (ls[i].Efectos == 1) { s = ls[i]; break; }
-            // DOS RENGLONES, y cada uno tiene que caber a lo ancho: el nombre del dispositivo lo pone el
-            // fabricante y puede ser larguisimo ("Altavoces (2- High Definition Audio Device)"), asi que se
-            // corta. Lo que se dice va de lo concreto a lo accionable.
-            string nom = s.Nombre ?? "";
-            if (nom.Length > 36) nom = nom.Substring(0, 34) + "..";
+            List<string> tarjetas;
+            try { tarjetas = Sistema.TarjetasDeSonido(); } catch { tarjetas = new List<string>(); }
+            string servidor;
+            try { servidor = Sistema.ServidorDeSonido(); } catch { servidor = ""; }
+
             StringBuilder sb = new StringBuilder(240);
-            sb.Append("Tu equipo: ").Append(nom);
-            if (s.Hz > 0) sb.Append("  -  Windows mezcla a ").Append((s.Hz / 1000f).ToString("0.#")).Append(" kHz");
-            string bo = NombreBocinas(s.Bocinas);
-            if (bo.Length > 0) sb.Append(", bocinas en ").Append(bo);
-            if (s.Bocinas != 0 && s.RangoCompleto == 0) sb.Append(", sin graves propios");
-            sb.Append('.');
-            if (s.Efectos == 1)
+            if (tarjetas.Count == 0)
+                sb.Append("Tu equipo: no se encontro ninguna tarjeta de sonido.");
+            else
             {
-                aviso = true;
-                sb.Append("\nWindows tiene sus MEJORAS ENCENDIDAS: ecualizan encima de la rocola. Apagalas en Panel de sonido -> tu salida -> Mejoras.");
+                string nom = tarjetas[0];
+                if (nom.Length > 46) nom = nom.Substring(0, 44) + "..";
+                sb.Append("Tu equipo: ").Append(nom);
+                if (tarjetas.Count > 1) sb.Append("  (y ").Append(tarjetas.Count - 1).Append(" mas)");
+                sb.Append('.');
             }
-            else if (s.Canales > 2)
+            if (servidor.Length > 0)
             {
+                // Un servidor de sonido se pone ENTRE los programas y la tarjeta para que varios puedan sonar
+                // a la vez. Una rocola no necesita eso -es lo unico que suena- y a cambio anade retraso,
+                // trabajo y una cosa mas que puede fallar de madrugada. Se avisa y se dice como saltarselo.
                 aviso = true;
-                sb.Append("\nWindows reparte el estereo en ").Append(s.Canales).Append(" canales. Si tus bocinas son dos, ponlo en estereo: el reparto ensucia el bajo.");
+                sb.Append('\n').Append("Hay ").Append(servidor).Append(" metido entre la rocola y la tarjeta: anade retraso y trabajo de mas. ");
+                sb.Append("Pon salida=hw:0 en los ajustes para hablarle DIRECTO a la tarjeta.");
             }
-            else if (s.Efectos == 0) sb.Append("\nSin mejoras de Windows encima: la rocola tiene el sonido para ella sola, que es como debe ser.");
-            // Efectos == -1: Windows no lo tiene apuntado. No se afirma que este limpio, que seria mentir.
-            else sb.Append("\nWindows no dice si tiene mejoras puestas. Si algo suena raro, miralo en Panel de sonido -> tu salida -> Mejoras.");
+            else sb.Append('\n').Append("La rocola le habla DIRECTO a la tarjeta: nada se mete en medio a ecualizar ni a remuestrear, que es como debe ser.");
             return sb.ToString();
         }
 
@@ -1323,8 +1205,6 @@ namespace Rocola
         // entonces se pone en el sitio del bueno de un tiron. Pase lo que pase, en el disco queda siempre un
         // archivo COMPLETO: el nuevo si dio tiempo, y el de antes si no. Y el de antes se conserva como
         // copia (.bak) por si el bueno se estropeara por cualquier otro motivo.
-        [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
-        private static extern bool FlushFileBuffers(IntPtr hFile);
 
         // UN CANDADO POR ARCHIVO. Dos hilos guardando EL MISMO archivo a la vez se pisarian el archivo de
         // paso y dejarian el bueno hecho un lio. Pasaba de verdad con las estadisticas, que tienen dos
@@ -1357,10 +1237,9 @@ namespace Rocola
             {
                 fs.Write(datos, 0, datos.Length);
                 fs.Flush();
-                // Flush solo deja lo escrito en la memoria de Windows. Esto lo baja al disco de verdad, que
-                // es lo unico que sobrevive a un corte de luz. Si el sistema no tiene esta llamada (o no es
-                // Windows), se sigue adelante: se pierde la garantia dura, no el resto.
-                try { FlushFileBuffers(fs.SafeFileHandle.DangerousGetHandle()); } catch { }
+                // Flush solo deja lo escrito en la memoria del sistema. Esto lo baja al disco de verdad, que
+                // es lo unico que sobrevive a un corte de luz.
+                try { Sistema.BajaAlDisco(fs); } catch { }
             }
             if (File.Exists(ruta))
             {
@@ -2832,6 +2711,10 @@ namespace Rocola
 
         protected override void OnResize(EventArgs e) { base.OnResize(e); LayoutControls(); Invalidate(); }
 
+        // Las etiquetas transparentes le piden a la ventana que les pinte su trozo de cielo (ver
+        // Rocola/LinuxPintura.cs): en Linux el fondo transparente no lo pinta el sistema.
+        void IFondoPintable.PintaFondoEn(PaintEventArgs e) { OnPaintBackground(e); }
+
         protected override void OnPaintBackground(PaintEventArgs e)
         {
             Graphics g = e.Graphics;
@@ -3158,7 +3041,7 @@ namespace Rocola
             this.FormBorderStyle = FormBorderStyle.None;     // PANTALLA COMPLETA al iniciar (sin barra de titulo)
             this.WindowState = FormWindowState.Maximized;    // borde nulo + maximizado = cubre toda la pantalla
 
-            lblStatus = new Label(); TransLabel(lblStatus, 9.5f); lblStatus.Text = "Cargando musica...";
+            lblStatus = new EtiquetaClara(); TransLabel(lblStatus, 9.5f); lblStatus.Text = "Cargando musica...";
             buscaView = new BuscaView();   // la casilla de BUSCAR, en medio de la fila de arriba
             Controls.Add(buscaView);
             helpBar = new HelpBar();   // instrucciones con formas/colores (sin nombres de teclas)
@@ -3200,7 +3083,7 @@ namespace Rocola
             panelSongs.BackColor = Shade(DefaultAccent, 0.70);
             panelSongs.Visible = false;
 
-            lblAlbum = new Label(); lblAlbum.BackColor = Color.Transparent; lblAlbum.ForeColor = Color.White; lblAlbum.Font = Bold(16f);
+            lblAlbum = new EtiquetaClara(); lblAlbum.BackColor = Color.Transparent; lblAlbum.ForeColor = Color.White; lblAlbum.Font = Bold(16f);
 
             cubeBox = new CubeBox();
             cubeBox.BackColor = Color.Transparent;
@@ -3259,13 +3142,13 @@ namespace Rocola
 
             // TARJETA DE LO QUE SUENA: lblNowTop lleva el TITULO (grande, blanco) y lblNow el ARTISTA (mas
             // chico, verde). Antes las dos eran la misma frase partida por ancho; ahora cada una dice una cosa.
-            lblNow = new Label(); TransLabel(lblNow, 11.5f); lblNow.Text = ""; lblNow.AutoEllipsis = true;
+            lblNow = new EtiquetaClara(); TransLabel(lblNow, 11.5f); lblNow.Text = ""; lblNow.AutoEllipsis = true;
             lblNow.ForeColor = Color.FromArgb(120, 230, 165);   // ESTETICA: verde "sonando" (se distingue de "siguiente")
             lblNowTop = new Label(); TransLabel(lblNowTop, 15f); lblNowTop.Text = "Nada reproduciendose"; lblNowTop.AutoEllipsis = true;
             lblNowTop.ForeColor = Color.FromArgb(236, 242, 255);   // el titulo, en blanco: es lo que se lee primero
             lblNowTop.TextAlign = ContentAlignment.MiddleLeft;
             lblNow.UseMnemonic = false; lblNowTop.UseMnemonic = false;   // un "&" del titulo es un "&", no un subrayado
-            lblNext = new Label(); TransLabel(lblNext, 10.5f); lblNext.Text = "Sigue:  -"; lblNext.AutoEllipsis = true;
+            lblNext = new EtiquetaClara(); TransLabel(lblNext, 10.5f); lblNext.Text = "Sigue:  -"; lblNext.AutoEllipsis = true;
             lblNext.ForeColor = Color.FromArgb(150, 165, 200);
             lblNext.UseMnemonic = false;                        // igual que arriba: un "&" del titulo es un "&"
             pastCola = new PastillaView(); pastCola.Etiqueta = "En cola"; pastCola.Valor = "0";
@@ -3281,9 +3164,9 @@ namespace Rocola
             miniCube.Visible = false;
 
             progress = new ProgressView();
-            lblTime = new Label(); TransLabel(lblTime, 13f); lblTime.Text = "0:00 / 0:00";
+            lblTime = new EtiquetaClara(); TransLabel(lblTime, 13f); lblTime.Text = "0:00 / 0:00";
 
-            lblToast = new Label();
+            lblToast = new EtiquetaClara();
             lblToast.TextAlign = ContentAlignment.MiddleCenter;
             lblToast.BackColor = Color.FromArgb(40, 165, 90);
             lblToast.ForeColor = Color.White;
@@ -3528,7 +3411,14 @@ namespace Rocola
         }
 
         private static readonly string[] AudioExt = { ".mp3", ".wav" };
-        private static readonly string[] VideoExt = { ".mp4", ".avi", ".wmv", ".mpg", ".mpeg", ".mov", ".mkv", ".flv", ".m4v", ".vob", ".divx", ".3gp", ".asf" };
+        // VIDEOS: APAGADOS EN LINUX, a proposito.
+        //
+        // La seccion de VIDEOS se apoyaba en el reproductor de Windows, que aqui no existe. Rehacerla con
+        // otro reproductor es un trabajo aparte y se hara despues; mientras tanto se deja la lista de
+        // extensiones VACIA, y con eso la rocola entera se comporta como una biblioteca sin un solo video:
+        // el explorador no clasifica nada como video, la casilla de VIDEO no aparece en la barra de letras,
+        // y nadie intenta medirlos ni reproducirlos. No hay ningun camino a medias.
+        private static readonly string[] VideoExt = { };
 
         private void LoadMusicFolder()
         {
@@ -6946,6 +6836,10 @@ namespace Rocola
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
+            // AQUI se apunta que la tecla esta abajo, y no en el evento de siempre, porque este metodo se
+            // queda con muchas teclas y no las deja pasar: si se apuntara mas adelante, la de REGRESAR
+            // -que es justo la que se mantiene para abrir el buscador- no llegaria a apuntarse nunca.
+            ApuntaTecla(keyData, true);
             lastInput = DateTime.Now;   // cualquier tecla reinicia la inactividad
             lastInputTick = Environment.TickCount;   // el precalentador de miniaturas pausa si hay actividad
             if (attractOn)
@@ -8295,34 +8189,9 @@ namespace Rocola
         // TODOS de una sola llamada (la lista va con un cero entre archivo y archivo, y dos al final, que es
         // como la pide Windows). Devuelve true solo si Windows dijo que salio bien; si algo falla, no se
         // borra nada y el que llama lo cuenta.
-        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential, CharSet = System.Runtime.InteropServices.CharSet.Auto)]
-        private struct SHFILEOPSTRUCT
-        {
-            public IntPtr hwnd;
-            public int wFunc;
-            [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPTStr)] public string pFrom;
-            [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPTStr)] public string pTo;
-            public short fFlags;
-            [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)] public bool fAnyOperationsAborted;
-            public IntPtr hNameMappings;
-            [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPTStr)] public string lpszProgressTitle;
-        }
-        [System.Runtime.InteropServices.DllImport("shell32.dll", CharSet = System.Runtime.InteropServices.CharSet.Auto)]
-        private static extern int SHFileOperation(ref SHFILEOPSTRUCT op);
-
-        private static bool ALaPapelera(List<string> rutas)
-        {
-            if (rutas == null || rutas.Count == 0) return true;
-            StringBuilder sb = new StringBuilder();
-            for (int i = 0; i < rutas.Count; i++) { sb.Append(rutas[i]); sb.Append('\0'); }
-            sb.Append('\0');
-            SHFILEOPSTRUCT op = new SHFILEOPSTRUCT();
-            op.wFunc = 3;                    // FO_DELETE
-            op.pFrom = sb.ToString();
-            op.fFlags = 0x0454;              // A LA PAPELERA (0x40) + sin preguntar (0x10) + sin ventanas (0x4 y 0x400)
-            try { return SHFileOperation(ref op) == 0 && !op.fAnyOperationsAborted; }
-            catch { return false; }
-        }
+        // A LA PAPELERA. En Windows se le pedia al explorador; aqui se apartan a una carpeta 'papelera'
+        // al lado de la rocola. Nada se borra: se aparta, y el dueno vacia esa carpeta cuando quiera.
+        private static bool ALaPapelera(List<string> rutas) { return Sistema.ALaPapelera(rutas); }
 
         // Abre y reproduce un video en el reproductor de la derecha (lo llama PlayNext).
         // Volumen (0..100) con el que debe sonar un video: el base -la perilla, o lo que eligio el programa-,

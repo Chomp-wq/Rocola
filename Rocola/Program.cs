@@ -35,9 +35,6 @@ namespace Rocola
             return "Rocola_" + h.ToString("X8");
         }
 
-        [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr h);
-        [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr h, int cmd);
-
         private static void AlFrenteLaQueYaCorre()
         {
             try
@@ -46,8 +43,9 @@ namespace Rocola
                 foreach (System.Diagnostics.Process p in System.Diagnostics.Process.GetProcessesByName(yo.ProcessName))
                 {
                     if (p.Id == yo.Id || p.MainWindowHandle == IntPtr.Zero) continue;
-                    ShowWindow(p.MainWindowHandle, 9);   // 9 = restaurar si estaba minimizada
-                    SetForegroundWindow(p.MainWindowHandle);
+                    // En Windows habia que traerla al frente con dos llamadas del sistema. En Linux de eso
+                    // se encarga el gestor de ventanas; aqui basta con no arrancar una segunda rocola, que
+                    // es lo que de verdad importa (dos sonando a la vez, y los creditos por separado).
                     break;
                 }
             }
