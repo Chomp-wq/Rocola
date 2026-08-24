@@ -15,10 +15,31 @@ using System.Windows.Forms;
 
 namespace Rocola
 {
-    // La ventana que sabe pintar su propio fondo se ofrece a pintarselo a sus hijos.
+    // La ventana que sabe pintar su cielo se ofrece a pintarle a un hijo EL TROZO que le toca. Se le dice
+    // en que punto del cielo empieza ese trozo y de que tamano es; el campo de estrellas ya sabe recortar
+    // asi -es lo mismo que hacen la pared de discos y la barra de letras, que tambien son ventanas al
+    // MISMO cielo de pantalla completa-, y por eso las estrellas caen donde deben y no hay costura.
     internal interface IFondoPintable
     {
-        void PintaFondoEn(PaintEventArgs e);
+        void PintaCieloEn(System.Drawing.Graphics g, int offX, int offY, int an, int al);
+    }
+
+    // EL AYUDANTE: pinta detras de un control el trozo de cielo que le toca. Lo usan tanto las etiquetas
+    // como los controles propios que se apoyaban en la transparencia (la barra de ayuda, el letrero de la
+    // seccion...). No cuesta caro: el cielo de la ventana ya esta horneado en un mapa de bits, asi que esto
+    // es copiar pixeles y no volver a calcularlo.
+    internal static class Fondo
+    {
+        public static void PintaDetras(Control c, PaintEventArgs e)
+        {
+            if (c == null || e == null || c.Width < 1 || c.Height < 1) return;
+            Control p = c.Parent;
+            int x = c.Left, y = c.Top;
+            while (p != null && !(p is IFondoPintable)) { x += p.Left; y += p.Top; p = p.Parent; }
+            IFondoPintable f = p as IFondoPintable;
+            if (f == null) return;
+            try { f.PintaCieloEn(e.Graphics, x, y, c.Width, c.Height); } catch { }
+        }
     }
 
     internal class EtiquetaClara : Label
@@ -30,20 +51,7 @@ namespace Rocola
             BackColor = System.Drawing.Color.Transparent;
         }
 
-        protected override void OnPaintBackground(PaintEventArgs e)
-        {
-            // Se busca hacia arriba la primera ventana que sepa pintar su fondo. Si no hay ninguna -no
-            // deberia pasar-, se deja el comportamiento de siempre en vez de dibujar cualquier cosa.
-            Control c = Parent;
-            int x = Left, y = Top;
-            while (c != null && !(c is IFondoPintable)) { x += c.Left; y += c.Top; c = c.Parent; }
-            IFondoPintable f = c as IFondoPintable;
-            if (f == null) { base.OnPaintBackground(e); return; }
-            System.Drawing.Drawing2D.GraphicsState st = e.Graphics.Save();
-            try { e.Graphics.TranslateTransform(-x, -y); f.PintaFondoEn(e); }
-            catch { }
-            finally { e.Graphics.Restore(st); }
-        }
+        protected override void OnPaintBackground(PaintEventArgs e) { Fondo.PintaDetras(this, e); }
 
         protected override void OnPaint(PaintEventArgs e)
         {

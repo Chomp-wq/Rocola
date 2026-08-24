@@ -2709,24 +2709,38 @@ namespace Rocola
             }
         }
 
-        protected override void OnResize(EventArgs e) { base.OnResize(e); LayoutControls(); Invalidate(); }
+        // Cuantos repintados de la ventana entera quedan pendientes (ver el final de LayoutControls).
+        private int repintaPendientes = 0;
 
-        // Las etiquetas transparentes le piden a la ventana que les pinte su trozo de cielo (ver
-        // Rocola/LinuxPintura.cs): en Linux el fondo transparente no lo pinta el sistema.
-        void IFondoPintable.PintaFondoEn(PaintEventArgs e) { OnPaintBackground(e); }
+        protected override void OnResize(EventArgs e) { base.OnResize(e); LayoutControls(); }
+
+        // EL CIELO DE LA VENTANA, O UN TROZO DE EL.
+        //
+        // La ventana entera y cada control transparente piden lo mismo con distinto recorte: se dice en que
+        // punto del cielo empieza el trozo y de que tamano es. El campo de estrellas ya sabe recortar asi
+        // -es lo mismo que hacen la pared de discos y la barra de letras-, y por eso las estrellas caen
+        // donde deben y no se nota ninguna costura.
+        //
+        // Hace falta porque en Linux el fondo "transparente" de un control no lo pinta el sistema: lo pinta
+        // de NEGRO (ver Rocola/LinuxPintura.cs).
+        void IFondoPintable.PintaCieloEn(Graphics g, int offX, int offY, int an, int al)
+        {
+            if (an < 2 || al < 2) return;
+#if ROCOLA_GPU
+            if (gpuPanel != null && gpuPanel.Visible) return;   // el panel GPU (pantalla completa) ya cubre todo
+#endif
+            formStars.SkyOffsetX = offX; formStars.SkyOffsetY = offY;
+            formStars.SkyFullW = ClientSize.Width; formStars.SkyFullH = ClientSize.Height;
+            formStars.SkyMid = SkyColorMid(bgAccent); formStars.Acento = bgAccent;
+            formStars.Dim = bgDim;   // atenua TAMBIEN las franjas de arriba/abajo en sincronia con la rejilla (una sola pieza)
+            formStars.DrawCached(g, an, al, SkyColor(bgAccent), SkyColor2(bgAccent));
+        }
 
         protected override void OnPaintBackground(PaintEventArgs e)
         {
-            Graphics g = e.Graphics;
             int w = ClientSize.Width, h = ClientSize.Height;
             if (w < 2 || h < 2) { base.OnPaintBackground(e); return; }
-#if ROCOLA_GPU
-            if (gpuPanel != null && gpuPanel.Visible) return;   // el panel GPU (pantalla completa) ya cubre todo; no gastes CPU pintando el cielo detras
-#endif
-            formStars.SkyOffsetX = 0; formStars.SkyOffsetY = 0; formStars.SkyFullW = w; formStars.SkyFullH = h;
-            formStars.SkyMid = SkyColorMid(bgAccent); formStars.Acento = bgAccent;
-            formStars.Dim = bgDim;   // atenua TAMBIEN las franjas de arriba/abajo en sincronia con la rejilla (una sola pieza)
-            formStars.DrawCached(g, w, h, SkyColor(bgAccent), SkyColor2(bgAccent));   // cielo en degradado CONTINUO; etiquetas y mini-cubo transparentes encima
+            ((IFondoPintable)this).PintaCieloEn(e.Graphics, 0, 0, w, h);   // cielo en degradado CONTINUO
         }
 
         private static Color Shade(Color c, double towardBlack)
@@ -3381,6 +3395,30 @@ namespace Rocola
                 if (gpuPanel != null) gpuPanel.UiUrgent = true;
             }
 #endif
+
+            // EL FONDO SE REPINTA AL ACOMODAR, y por eso no antes ni despues.
+            //
+            // Al acomodar, los controles CAMBIAN DE SITIO Y DE TAMANO: la barra de ayuda mide lo que midan
+            // sus palabras, la casilla de BUSCAR se centra respecto a la pantalla, y el letrero de la
+            // seccion se queda con lo que sobra. El trozo de ventana que un control deja libre al moverse
+            // conserva lo que hubiera pintado ahi, y eso, en Linux, es el negro con el que el sistema
+            // rellena los fondos transparentes: quedaban dos franjas negras arriba que ya no se repintaban
+            // nunca, porque esos controles no se vuelven a dibujar solos.
+            //
+            // Acomodar pasa al arrancar, al cambiar de tamano y al entrar o salir del modo video: un punado
+            // de veces en toda la noche. Repintar el fondo entero ahi no cuesta nada; hacerlo en cada cuadro
+            // -que tambien lo arregla- serian veinticuatro cielos por segundo tirados a la basura.
+            // HAY QUE PEDIRLO VARIAS VECES, y no una sola. Los controles que se pintan una vez y ya -la barra
+            // de ayuda y el letrero de la seccion, que no cambian nunca- se dibujaban ANTES de que la ventana
+            // estuviera de verdad en la pantalla: ese dibujo se perdia, y como nadie les volvia a pedir que se
+            // pintaran, en su sitio quedaban dos franjas negras para siempre.
+            //
+            // Se apunta que hacen falta unos cuantos repintados y el latido de la animacion los va gastando.
+            // Son media docena de cuadros al arrancar y al cambiar de tamano, no en cada cuadro: repintar el
+            // cielo entero veinticuatro veces por segundo tambien lo arreglaria, y seria tirar una maquina
+            // modesta a la basura para nada.
+            repintaPendientes = 6;
+            Invalidate(true);
         }
 
         private void LayoutSongsPanel()
@@ -9772,6 +9810,8 @@ namespace Rocola
 
         private void AnimTimer_Tick(object sender, EventArgs e)
         {
+            // Los repintados pendientes de despues de acomodar (ver el final de LayoutControls).
+            if (repintaPendientes > 0) { repintaPendientes--; Invalidate(true); }
             phase += 0.045;
             frameTick++;
             // OPTIMIZACION CLAVE: los brillos del fondo se mueven MENOS DE MEDIO PIXEL por cuadro, asi
@@ -12227,7 +12267,7 @@ namespace Rocola
 
             public HelpBar()
             {
-                SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint | ControlStyles.SupportsTransparentBackColor, true);
+                SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint | ControlStyles.SupportsTransparentBackColor | ControlStyles.Opaque, true);
                 BackColor = Color.Transparent;
             }
 
@@ -12237,7 +12277,16 @@ namespace Rocola
             public int FlashSig() { return flash.Sig(); }
             private Font hbFont;   // fuente cacheada: la barra se redibuja ~13fps (glow) -> no crear una por cuadro
 
-            protected override void OnPaint(PaintEventArgs e) { e.Graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit; RenderContent(e.Graphics, false); }
+            // En Linux el fondo transparente no lo pinta el sistema: hay que pintarlo. Se pinta AQUI, en el
+            // dibujado, y no en el fondo, porque a un control que se pinta entero el mismo Mono ya no le
+            // llama al fondo. Y no va dentro de RenderContent porque ese tambien se usa para hornear la
+            // textura de la interfaz en el modo con tarjeta grafica, y alli el cielo NO va detras.
+            protected override void OnPaint(PaintEventArgs e)
+            {
+                Fondo.PintaDetras(this, e);
+                e.Graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+                RenderContent(e.Graphics, false);
+            }
             // Centro/radio de los 4 halos (Buscar/Mover/Entrar/Volver), guardados al maquetar. En GPU el destello
             // NO se hornea en la textura: lo dibuja la GPU como quad (GetFlashGlow) -> pulsar un boton (p.ej. al
             // PAGINAR rapido) ya no re-hornea ni re-sube la textura de UI ~10 veces por tecla.
@@ -13794,7 +13843,7 @@ namespace Rocola
 
             public HeaderView()
             {
-                this.SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.SupportsTransparentBackColor, true);
+                this.SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.SupportsTransparentBackColor | ControlStyles.Opaque, true);
                 this.BackColor = Color.Transparent;
                 this.TabStop = false;   // aqui no se pincha nada: antes era una etiqueta, que nunca tomaba el foco
             }
@@ -13820,7 +13869,7 @@ namespace Rocola
                                            c.B + (int)((255 - c.B) * 0.40f));
             }
 
-            protected override void OnPaint(PaintEventArgs e) { RenderContent(e.Graphics); }
+            protected override void OnPaint(PaintEventArgs e) { Fondo.PintaDetras(this, e); RenderContent(e.Graphics); }
             public void RenderContent(Graphics g)
             {
                 int w = Width, h = Height;
