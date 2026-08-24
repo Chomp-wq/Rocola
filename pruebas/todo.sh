@@ -58,6 +58,31 @@ if [ "$1" = "--lista" ]; then
   echo "  con tarjeta grafica: $GPU"
   exit 0
 fi
+# --- EL ARCHIVO DEL DIBUJO ES EL MISMO QUE EN LA OTRA RAMA DE TARJETA GRAFICA ---
+#
+# D3D9Star.cs (el dibujo) y D3D9Device.cs (el dispositivo de Direct3D) son identicos byte por byte en
+# la rama de Windows potente y en la de Linux, a proposito: asi un cambio en el fondo de estrellas se
+# hace UNA vez y se lleva de una copia. Esa propiedad es facil de perder sin darse cuenta -basta con
+# tocar uno y olvidar el otro-, asi que se comprueba en cada tanda. La cabecera del archivo lo promete
+# y aqui se cumple; un comentario que miente es peor que no tenerlo.
+#
+# Si la otra rama no esta a mano (una copia suelta, sin historial) no se dice nada y se sigue.
+case "$RAMA" in
+  rocola-hd)    OTRA="rocola-linux" ;;
+  rocola-linux) OTRA="rocola-hd" ;;
+  *)            OTRA="" ;;
+esac
+if [ -n "$OTRA" ] && git -C "$RAIZ" rev-parse --verify -q "$OTRA" > /dev/null 2>&1; then
+  dif=0
+  for f in D3D9Star.cs D3D9Device.cs; do
+    if ! git -C "$RAIZ" show "$OTRA:Rocola/$f" 2>/dev/null | diff -q - "$RAIZ/Rocola/$f" > /dev/null 2>&1; then
+      echo "  OJO: Rocola/$f NO es igual que en la rama $OTRA (tienen que ser identicos)"
+      dif=$((dif+1))
+    fi
+  done
+  [ $dif -eq 0 ] && echo "  el dibujo por tarjeta grafica es identico al de la rama $OTRA"
+fi
+
 echo "  compilando la rocola..."
 hecho=0
 for k in $ORDEN; do

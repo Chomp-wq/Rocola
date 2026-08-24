@@ -13,9 +13,13 @@
 //      Linux    ->  Rocola/GLDevice.cs     (OpenGL de compatibilidad, por GLX)
 //
 //  Se compila UNO de los dos, nunca los dos. El nombre "D3D9Device" se queda como esta a proposito:
-//  asi este archivo -que son dos mil lineas de dibujo, y son las que de verdad importan- es EL MISMO
-//  en las tres ramas, y lo que se traduce al pasar de un sistema a otro son las cuatrocientas lineas
-//  del dispositivo y nada mas.
+//  asi este archivo -que son dos mil lineas de dibujo, y son las que de verdad importan- es EL MISMO,
+//  byte por byte, en la rama de Windows potente (rocola-hd) y en la de Linux (rocola-linux). Un cambio
+//  en el fondo de estrellas se hace UNA vez y se lleva de una copia; lo que se traduce al pasar de un
+//  sistema a otro son las cuatrocientas lineas del dispositivo y nada mas.
+//
+//  (En la rama de Windows XP esto sigue en UN solo archivo, con el dispositivo dentro. Es a proposito:
+//  esa es la rocola que esta en el bar, dibuja con el mismo Direct3D 9, y no habia motivo para tocarla.)
 //
 //  Todo dentro de #if ROCOLA_GPU. Con el simbolo apagado, el archivo compila vacio.
 // ====================================================================================================
