@@ -1,23 +1,31 @@
 # Rocola
 
-Rocola digital para Windows (WinForms + NAudio): pantalla completa, manejo por
-botonera/teclado físico (sin depender de un teclado de PC), monedero con créditos,
-búsqueda con teclado en pantalla, sección de videos (Windows Media Player), portadas
-en cubos 3D, fondo estrellado por género, estadísticas ("Lo más sonado" + TOP por
-artista) y modo atracción.
+Rocola digital (WinForms + NAudio): pantalla completa, manejo por botonera/teclado
+físico (sin depender de un teclado de PC), monedero con créditos, búsqueda con teclado
+en pantalla, portadas en cubos 3D, fondo estrellado por género, estadísticas
+("Lo más sonado" + TOP por artista) y modo atracción.
 
-**Versión 2.5.** Esta rama es la **edición HD** (`rocola-hd`), para PC potente.
+**Versión 2.5.** Esta rama es la **edición de Linux** (`rocola-linux`), sacada de la HD:
+mismo programa y **misma lógica de audio**, corriendo **nativo en Linux** sobre Mono, sin
+capas de traducción. Destino: **BookwormPup64 (Puppy)** en una máquina modesta.
 
 ## Ramas
 
 - **Clásica (XP)** — la rocola física original y rama de referencia: .NET Framework
   **3.5 sin SP1**, Windows XP 32-bit, CPU modesto. Todo lo nuevo nace ahí y se prueba
   en el fierro real.
-- **`rocola-hd`** — *esta rama*, para PC **potente** (Windows 7+/10, 4+ núcleos, 4+ GB):
+- **`rocola-hd`** — para PC **potente** con Windows (7+/10, 4+ núcleos, 4+ GB):
   retargeteada a **.NET Framework 4.8**. Mismo programa y **misma lógica de audio** que la
   clásica, más el **NIVEL HD** que la máquina activa sola al arrancar (`ProbeAudioTier`).
+- **`rocola-linux`** — *esta rama*, sacada de la HD. Corre **nativa en Linux**: la ventana es
+  una ventana X11 de verdad, el sonido sale **directo a ALSA** y el MP3 lo descomprime la propia
+  rocola (NLayer, en el mismo lenguaje). Sin Wine y sin emulación. Ver **[Rama de Linux](#rama-de-linux)**.
 
 ## Qué hace (v2.5)
+
+> En esta rama **no hay sección de videos** ni **DSEE ULTRA**: los párrafos de más abajo que hablan
+> de videos, de Windows Media Player o del ULTRA describen la rama de Windows y **no aplican aquí**.
+> El porqué está en [Rama de Linux](#rama-de-linux).
 
 **Operación (local):**
 - Se maneja con la botonera/teclado físico configurable; nada de "lenguaje de teclado de PC".
@@ -154,28 +162,78 @@ y no solo las primeras). Se ajusta con `--max-ejemplos N` (por defecto 4 millone
 El modo a fondo **no** se guarda en la configuración a propósito: si se va la luz, la rocola vuelve
 sola a su modo normal y nunca se queda a todo gas en horario de negocio.
 
-## Nivel HD (solo esta rama)
+## Rama de Linux
 
-- **Salida WASAPI flotante** (`salida=auto|wasapi|waveout` en `rocola_config.txt`): muestras
-  *float* de punta a punta hasta el motor de audio moderno, sin bajar a 16 bits ni pasar por
-  el mezclador clásico, y con menos latencia (el pulso visual se re-alinea solo). Si algo falla,
-  cae automáticamente al **WaveOut** clásico.
-- **Reconstructor espectral fino**: el DSEE espectral usa **STFT de 4096** (bins más finos =
-  detección del corte y costura más limpias) en vez de 2048.
-- **DSEE ULTRA — IA propia (Apollo)**: por demanda, con **selector de GPU** en Ctrl+F3. La red
-  incluida (`rocola_ia.bin`) predice la **envolvente** de los agudos perdidos y el reconstructor
-  la usa en vez de su curva fija. Reentrenable con tu propia música (`--musica`; ver `ia/LEEME.md`),
-  con paridad python↔C# verificada. Regla de la casa: **no se embarca nada llamado "IA" que no lo sea.**
-- **Render por GPU (Direct3D 9)**: estrellas, cubos 3D y buscador acelerados; con caída a GDI si no hay GPU.
+Esta rama sale de la HD y corre **nativa**: nada de Wine ni de emulación. Lo que cambia respecto
+a la HD de Windows, y por qué:
+
+- **Sonido directo a ALSA** (`Rocola/LinuxAudio.cs`). No hay WASAPI en Linux, así que la salida
+  habla con la tarjeta por ALSA sin intermediarios. `salida=` acepta además el nombre de un
+  dispositivo ALSA (`salida=hw:0`), que es lo que conviene si en la máquina hay un servidor de
+  sonido (PipeWire, PulseAudio, JACK) metido en medio: la rocola lo detecta y lo avisa en Ctrl+F3.
+  El colchón real que da la tarjeta se consulta y con él se re-alinea solo el pulso visual.
+- **El MP3 lo descomprime la rocola** (NLayer, incluido en `packages/`). En Windows lo hacía el
+  sistema; aquí no hay a quién pedírselo, así que va dentro y en el mismo lenguaje.
+- **Sin sección de videos.** En Windows la ponía Media Foundation. En Linux eso no existe y hacer
+  media sección era peor que no hacerla, así que **no hay videos** en esta rama.
+- **Sin DSEE ULTRA.** El ULTRA restaura la canción entera con IA lanzando un programa de Python
+  **aparte que trabaja en la tarjeta gráfica**, y su lanzador busca `pythonw.exe`, que es de
+  Windows. En esta máquina no hay ni una cosa ni la otra: el interruptor prometía y no cumplía,
+  así que se quitó de Ctrl+F3. **El DSEE normal —el que reconstruye los agudos con cuentas, dentro
+  de la propia rocola— no se toca**, que es el que se usa aquí.
+- **Reconstructor espectral fino**: el DSEE normal usa **STFT de 4096** (bins más finos =
+  detección del corte y costura más limpias) en vez de 2048, cuando la máquina da para ello.
+  Se puede fijar a mano con **`dsee_ventana=2048`** o **`dsee_ventana=4096`** en `rocola_config.txt`
+  (ver abajo).
+- **Cosas del sistema, en su sitio** (`Rocola/LinuxSistema.cs`): memoria y MHz se leen de `/proc`,
+  la papelera es una carpeta `papelera/`, y bajar lo escrito al disco es `fsync`.
+- **Ventana de ajustes más baja** (960×766 en vez de 960×1008): al irse la tarjeta del ULTRA, la
+  ventana de Ctrl+F3 **cabe en una pantalla de 768 de alto**, que antes no cabía.
+
+### El tamaño de ventana del DSEE, medido
+
+El DSEE normal trabaja por trozos ("ventanas") de 2048 o 4096 muestras y hasta ahora lo decidía
+sola la rocola: 4096 si el equipo tiene 4 núcleos y 3.5 GB, 2048 si no. **El equipo del bar cae
+justo en ese borde**, así que convenía medir en vez de suponer. Con `pruebas/dseeperf.exe`, en un
+equipo de 4 núcleos, lo que cuesta procesar **un segundo de música**:
+
+| ventana | coste por segundo de música | de un núcleo |
+|---------|-----------------------------|--------------|
+| 2048    | 8.76 ms                     | 0.88 % |
+| 4096    | 9.42 ms                     | 0.94 % |
+
+Son **0.66 ms más por segundo**: siete centésimas del uno por ciento de un núcleo. Y no es
+casualidad —al doblar la ventana cada FFT cuesta poco más del doble, pero caben la mitad por
+segundo, así que el trabajo total sólo sube 12/11 = 9%—. O sea que la ventana grande **afina el
+doble en frecuencia y sale casi gratis**. Por eso se deja que la rocola elija, y existe
+`dsee_ventana=` para fijarlo en el bar sin recompilar. Lo vigila la batería `ventana`.
+
+### Compilar y correr en Linux
+
+```
+mcs -sdk:4 -warn:4 -target:winexe -out:Rocola.exe \
+    -r:System.Windows.Forms.dll -r:System.Drawing.dll \
+    -r:packages/NAudio.1.9.0/lib/net35/NAudio.dll \
+    -r:packages/NLayer.1.12.0/lib/net35/NLayer.dll \
+    Rocola/Form1.cs Rocola/Form1.Designer.cs Rocola/Program.cs Rocola/D3D9Star.cs \
+    Rocola/LinuxAudio.cs Rocola/LinuxSistema.cs Rocola/LinuxPintura.cs
+mono Rocola.exe
+```
+
+Hace falta **Mono** y **libgdiplus** (el dibujo de WinForms). La tanda de pruebas entera se corre
+igual que siempre: `sh pruebas/todo.sh`.
 
 ## Compilar
 
-Proyecto de **.NET Framework 4.8** (Visual Studio). Abre `Rocola.slnx` y compila en Release.
-El resultado (`Rocola.exe` + `NAudio.dll`) se copia junto a la carpeta `musica`, como siempre.
+En Linux se compila con **Mono**, con la línea de [Compilar y correr en Linux](#compilar-y-correr-en-linux).
+En Windows sigue siendo un proyecto de **.NET Framework 4.8** (Visual Studio): abre `Rocola.slnx` y
+compila en Release. El resultado (`Rocola.exe` + `NAudio.dll` + `NLayer.dll`) se copia junto a la
+carpeta `musica`, como siempre.
 
-- Código: `Rocola/Form1.cs` (monolítico) + `Form1.Designer.cs` + `Program.cs` + `D3D9Star.cs`.
-- Dependencia: **NAudio 1.9.0**: la DLL viene **incluida** en `packages/` y el proyecto la
-  referencia directo — compila **sin NuGet y sin internet** (ya no hay `packages.config`).
+- Código: `Rocola/Form1.cs` (monolítico) + `Form1.Designer.cs` + `Program.cs` + `D3D9Star.cs`,
+  y en esta rama además `LinuxAudio.cs`, `LinuxSistema.cs` y `LinuxPintura.cs`.
+- Dependencias: **NAudio 1.9.0** y **NLayer 1.12.0**: las DLL vienen **incluidas** en `packages/` y
+  el proyecto las referencia directo — compila **sin NuGet y sin internet** (ya no hay `packages.config`).
 - Herramientas de IA (opcionales, Python): `ia/` — entrenamiento (`entrenar_ia.py`,
   `entrenar_con_mi_musica.bat`), motor en tiempo real (`ia/tiempo_real/`) y upscale por lotes (`ia/upscale/`).
 

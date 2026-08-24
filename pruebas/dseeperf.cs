@@ -21,6 +21,10 @@ class DseePerf
 {
     const int FS = 44100, CH = 2;
     static Type TF, TSbr;
+    // El tamano de ventana con el que se arma el reconstructor. La rocola usa 2048 o 4096 y hay que poder
+    // medir los dos, que es justo la pregunta: 4096 afina mas, pero cuesta mas, y ese coste se paga en el
+    // hilo que dibuja. Se pasa como segundo argumento:  mono dseeperf.exe rocola.exe 4096
+    static int ventana = 2048;
 
     static object Crea(Type t, params object[] args)
     {
@@ -39,7 +43,7 @@ class DseePerf
             for (int i = args.Length; i < ps.Length; i++)
             {
                 if (ps[i].ParameterType != typeof(int)) { encaja = false; break; }
-                full[i] = 2048;
+                full[i] = ventana;
             }
             if (!encaja) continue;
             try { return ci.Invoke(full); }
@@ -93,13 +97,14 @@ class DseePerf
     static int Main(string[] argv)
     {
         string exe = (argv.Length > 0) ? argv[0] : "rocola.exe";
+        if (argv.Length > 1) int.TryParse(argv[1], out ventana);
         Assembly asm = Assembly.LoadFrom(exe);
         TF = asm.GetType("Rocola.Form1", true);
         TSbr = TF.GetNestedType("SpectralTap", BindingFlags.NonPublic | BindingFlags.Public);
         if (TSbr == null) { Console.WriteLine("no encuentro SpectralTap"); return 1; }
 
         float[] datos = Musica(4);
-        Console.WriteLine("\n=== EL RECONSTRUCTOR DE AGUDOS, POR PARTES ===");
+        Console.WriteLine("\n=== EL RECONSTRUCTOR DE AGUDOS, POR PARTES  (ventana pedida: " + ventana + ") ===");
         Console.WriteLine("    (estereo a 44100; \"por segundo de musica\" = lo que cuesta procesar 1 s de audio)\n");
 
         // ---------- 1) la cadena completa del tap, encendido y apagado ----------

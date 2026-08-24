@@ -349,12 +349,42 @@ namespace Rocola
         // NIVEL 3 (IA real): el punto de enchufe es OTRO tap en la cadena de PlayTrack, gateado por tierHd
         // (+ ONNX Runtime x64). Sin un modelo digno de produccion NO se embarca nada llamado "IA" (README).
         private bool tierHd = false;
+        // TAMANO DE VENTANA DEL RECONSTRUCTOR DE AGUDOS (el DSEE normal). 0 = que lo decida la rocola.
+        // El DSEE trabaja por trozos de 2048 o 4096 muestras. Medido en un equipo de 4 nucleos con
+        // pruebas/dseeperf.exe: procesar UN segundo de musica cuesta 8.76 ms con ventana de 2048 y
+        // 9.42 ms con 4096. Son 0.66 ms mas por segundo -siete centesimas del uno por ciento de un
+        // nucleo-, o sea practicamente lo mismo. Y no es casualidad: al doblar la ventana cada FFT
+        // cuesta poco mas del doble, pero caben la mitad por segundo, asi que el trabajo total solo
+        // sube 12/11 = 9%. La ventana grande afina el doble en frecuencia y deja la costura mas
+        // limpia, y sale casi gratis. El equipo del bar cae JUSTO en el borde de la regla automatica
+        // (4 nucleos, 3.5 GB), asi que este renglon existe para poder fijarlo alli sin recompilar:
+        // dsee_ventana=2048 o dsee_ventana=4096 en rocola_config.txt.
+        private int dseeVentana = 0;
+        // El UNICO sitio donde se decide ese tamano. Esta aparte a proposito: si la cuenta estuviera
+        // escrita en el sitio donde se arma el reconstructor, cambiarla luego seria cambiarla en un
+        // sitio y olvidarla en otro.
+        private int VentanaDsee()
+        {
+            if (dseeVentana >= 4096) return 4096;
+            if (dseeVentana >= 2048) return 2048;
+            return tierHd ? 4096 : 2048;   // 0 (o un valor que no sirve): decide la maquina
+        }
         // ===== IA EN VIVO (Apollo por demanda, rama HD) =====
         // Un motor externo (ia/tiempo_real/daemon_ia.py) mantiene Apollo en la GPU y procesa las canciones
         // que se ENCOLAN, dejando el resultado en una cache compartida. La rocola: al encolar pide el trabajo;
         // al sonar, si la version IA ya esta lista la reproduce, si no reproduce la ORIGINAL al instante (nunca
         // se bloquea). El switch DSEE ULTRA (Ctrl+F3) la enciende/apaga. Requiere GPU en la maquina de la rocola.
+        // EL DSEE ULTRA NO EXISTE EN LINUX, y por eso esto se queda en false para siempre.
+        //
+        // El ULTRA restaura la cancion entera con IA, y para eso lanza un programa de Python APARTE que
+        // trabaja en la tarjeta grafica. Ese lanzador busca pythonw.exe, que es de Windows, y ademas pide
+        // una tarjeta que en la maquina de esta rocola no esta. Antes, quien lo encendia en Ctrl+F3 no
+        // encontraba motor y no pasaba NADA, en silencio: un interruptor que promete y no cumple.
+        //
+        // El DSEE NORMAL -el que reconstruye los agudos con cuentas, dentro de la propia rocola- sigue
+        // igual que siempre y es el que se usa aqui.
         private bool iaVivo = false;
+        private string iaVivoAjeno = "0";   // el "ia_vivo=" del archivo, guardado tal cual para devolverlo intacto
         private bool iaNowEnhanced = false;      // la cancion actual suena con la version IA (Apollo) de la cache -> letrero MEJORADA dorado
         private bool iaSpectralFallback = false; // ULTRA activo pero la version IA aun no esta lista -> DSEE espectral MIENTRAS (1a vez) -> letrero plateado
         private Label lblMejorada;               // letrero "MEJORADA" junto a "Reproduciendo": plateado = DSEE espectral, dorado = version IA (Apollo)
@@ -1065,11 +1095,16 @@ namespace Rocola
                     else if (s.StartsWith("bajo_automatico=")) bassAuto = s.Substring(16).Trim() != "0"; // y la cantidad de bajo tambien
                     else if (s.StartsWith("dsee=")) sbrOn = s.Substring(5).Trim() == "1";   // reconstruccion espectral (NIVEL 2)
                     else if (s.StartsWith("salida=")) { string v = s.Substring(7).Trim().ToLowerInvariant(); if (v == "auto" || v == "wasapi" || v == "waveout") outPref = v; }   // salida de audio (rama HD)
-                    else if (s.StartsWith("ia_vivo=")) iaVivo = s.Substring(8).Trim() == "1";           // Apollo en vivo (Ctrl+F4)
+                    // "ia_vivo=" se lee y se IGNORA a proposito: en Linux el DSEE ULTRA no existe (mira el
+                    // comentario de iaVivo). Se guarda el texto tal cual vino para devolverlo al archivo sin
+                    // tocarlo, y asi una configuracion que va y viene entre esta rocola y la de Windows no
+                    // pierde por el camino algo que aqui no se usa pero alli si.
+                    else if (s.StartsWith("ia_vivo=")) iaVivoAjeno = s.Substring(8).Trim();
                     else if (s.StartsWith("ia_mezcla=")) iaMezcla = s.Substring(10).Trim();             // cuanta IA en vivo
                     else if (s.StartsWith("ia_gpu=")) { string g = s.Substring(7).Trim(); int gn; iaGpu = (g == "auto" || int.TryParse(g, out gn)) ? g : "auto"; }   // GPU de la IA (saneado)
                     else if (s.StartsWith("ia_cache=")) { string d = s.Substring(9).Trim(); if (d.Length > 0) iaCacheDir = d; }
                     else if (s.StartsWith("dsee_forzar=")) { if (s.Substring(12).Trim() == "1") { sbrForce = true; sbrAllowed = true; sbrReason = ""; } }   // salta la puerta de requisitos (pruebas)
+                    else if (s.StartsWith("dsee_ventana=")) { int v; dseeVentana = (int.TryParse(s.Substring(13).Trim(), out v) && (v == 2048 || v == 4096)) ? v : 0; }   // tamano de ventana del DSEE a mano (0 = automatico)
                     else if (s.StartsWith("dir="))
                     {
                         string d = s.Substring(4).Trim();
@@ -1173,10 +1208,11 @@ namespace Rocola
                 sb.Append("bajo_automatico=").Append(bassAuto ? "1" : "0").Append("\r\n");
                 sb.Append("dsee=").Append(sbrOn ? "1" : "0").Append("\r\n");
                 sb.Append("salida=").Append(outPref).Append("\r\n");
-                sb.Append("ia_vivo=").Append(iaVivo ? "1" : "0").Append("\r\n");
+                sb.Append("ia_vivo=").Append(iaVivoAjeno).Append("\r\n");   // tal cual vino: aqui no se usa (ver iaVivo)
                 sb.Append("ia_mezcla=").Append(iaMezcla).Append("\r\n");
                 sb.Append("ia_gpu=").Append(iaGpu).Append("\r\n");
                 if (sbrForce) sb.Append("dsee_forzar=1\r\n");   // conservar la bandera manual de pruebas (este saver reescribe el archivo completo)
+                if (dseeVentana > 0) sb.Append("dsee_ventana=").Append(dseeVentana).Append("\r\n");   // y el tamano de ventana puesto a mano, por lo mismo
                 for (int i = 0; i < extraMusicDirs.Count; i++) sb.Append("dir=").Append(extraMusicDirs[i]).Append("\r\n");
                 EscribeSeguro(ConfigFile, sb.ToString());
             }
@@ -2258,7 +2294,7 @@ namespace Rocola
                     dlg.FormBorderStyle = FormBorderStyle.FixedDialog;
                     dlg.MaximizeBox = false; dlg.MinimizeBox = false; dlg.ShowInTaskbar = false; dlg.ShowIcon = false;
                     dlg.StartPosition = FormStartPosition.CenterParent;
-                    dlg.ClientSize = new Size(960, 1008);   // aqui hay pantalla de sobra: cabe la tarjeta de la IA en vivo
+                    dlg.ClientSize = new Size(960, 766);   // sin la tarjeta del ULTRA cabe en una pantalla de 768
                     dlg.BackColor = Color.FromArgb(11, 14, 32);
                     dlg.Font = fSub;
 
@@ -2295,8 +2331,13 @@ namespace Rocola
                     // parte, para que no dependa de lo ancha que sea la letra en cada equipo.
                     Tarjeta tVol = new Tarjeta(); tVol.SetBounds(16, 100, 456, 398); tVol.Titulo = "VOLUMEN PAREJO"; tVol.Acento = cVol;
                     Tarjeta tCal = new Tarjeta(); tCal.SetBounds(488, 100, 456, 398); tCal.Titulo = "CALIDAD DEL SONIDO"; tCal.Acento = cCal;
+                    // La tarjeta del DSEE ULTRA se arma pero NO SE ENSENA: en Linux ese modo no existe (mira
+                    // el comentario de iaVivo). Se sigue armando para no tocar el resto de la ventana, y la
+                    // ventana entera se hace 242 px mas baja, con lo que ademas pasa a caber en una pantalla
+                    // de 768 de alto, que antes no cabia.
                     Tarjeta tIa = new Tarjeta(); tIa.SetBounds(16, 508, 928, 232); tIa.Titulo = "IA EN VIVO  (DSEE ULTRA)"; tIa.Acento = cIa;
-                    Tarjeta tBib = new Tarjeta(); tBib.SetBounds(16, 750, 928, 194); tBib.Titulo = "TU BIBLIOTECA"; tBib.Acento = cBib;
+                    tIa.Visible = false;
+                    Tarjeta tBib = new Tarjeta(); tBib.SetBounds(16, 508, 928, 194); tBib.Titulo = "TU BIBLIOTECA"; tBib.Acento = cBib;
 
                     // --- Una FILA de ajuste: nombre arriba, valor a la derecha, explicacion debajo y la barra abajo ---
                     Label[] nom = new Label[7], val = new Label[7], des = new Label[7];
@@ -2438,12 +2479,12 @@ namespace Rocola
                     // sola al arrancar y acierta. Esto esta aqui por si el operador quiere fijarlo -por ejemplo
                     // con la musica en un disco de red, donde medir no dice gran cosa-.
                     Color cDsk = Color.FromArgb(150, 205, 255);
-                    Label lDskT = new Label(); lDskT.SetBounds(252, 954, 150, 18); lDskT.BackColor = Color.Transparent;
+                    Label lDskT = new Label(); lDskT.SetBounds(252, 712, 150, 18); lDskT.BackColor = Color.Transparent;
                     lDskT.ForeColor = cTexto; lDskT.Font = fNom; lDskT.Text = "Tipo de disco";
-                    BotonPlano bDskA = new BotonPlano(); bDskA.SetBounds(408, 952, 122, 34); bDskA.Font = fBot; bDskA.Text = "Automatico";
-                    BotonPlano bDskS = new BotonPlano(); bDskS.SetBounds(538, 952, 104, 34); bDskS.Font = fBot; bDskS.Text = "SSD";
-                    BotonPlano bDskH = new BotonPlano(); bDskH.SetBounds(650, 952, 142, 34); bDskH.Font = fBot; bDskH.Text = "Disco duro";
-                    Label lDskS = new Label(); lDskS.SetBounds(252, 988, 540, 18); lDskS.BackColor = Color.Transparent;
+                    BotonPlano bDskA = new BotonPlano(); bDskA.SetBounds(408, 710, 122, 34); bDskA.Font = fBot; bDskA.Text = "Automatico";
+                    BotonPlano bDskS = new BotonPlano(); bDskS.SetBounds(538, 710, 104, 34); bDskS.Font = fBot; bDskS.Text = "SSD";
+                    BotonPlano bDskH = new BotonPlano(); bDskH.SetBounds(650, 710, 142, 34); bDskH.Font = fBot; bDskH.Text = "Disco duro";
+                    Label lDskS = new Label(); lDskS.SetBounds(252, 746, 540, 18); lDskS.BackColor = Color.Transparent;
                     lDskS.ForeColor = cTenue; lDskS.Font = fDes;
                     Action pintaDsk = delegate
                     {
@@ -2475,9 +2516,9 @@ namespace Rocola
                     pintaDsk();
 
                     // ---------------- PIE ----------------
-                    BotonPlano bReset = new BotonPlano(); bReset.SetBounds(16, 956, 220, 38); bReset.Font = fBot;
+                    BotonPlano bReset = new BotonPlano(); bReset.SetBounds(16, 714, 220, 38); bReset.Font = fBot;
                     bReset.Text = "Dejar como de fabrica";
-                    BotonPlano bOk = new BotonPlano(); bOk.SetBounds(804, 956, 140, 38); bOk.Font = fBot;
+                    BotonPlano bOk = new BotonPlano(); bOk.SetBounds(804, 714, 140, 38); bOk.Font = fBot;
                     bOk.Text = "Listo"; bOk.Relleno = Color.FromArgb(30, 96, 70); bOk.Borde = Color.FromArgb(72, 182, 132);
 
                     Action pintaMudos = delegate
@@ -2618,7 +2659,7 @@ namespace Rocola
                         bassAmount = bar[5].Value / 100f;
                         excAmount = bar[6].Value / 100f;
                         bool ultra2 = swUltra.Checked;
-                        iaVivo = ultra2;
+                        iaVivo = false;   // el DSEE ULTRA no existe en Linux: nunca se enciende
                         iaMezcla = swIaAuto.Checked ? "auto" : barMix.Value.ToString();
                         sbrOn = swSbr.Checked && sbrAllowed && !ultra2;   // exclusion mutua: nunca los dos a la vez
                         iaHarvestOn = swIa.Checked;
@@ -8682,7 +8723,7 @@ namespace Rocola
                 // por cancion, si de verdad viene recortada; en las que NO -que son la mayoria- ni se pone en la
                 // cadena: se ahorra su trabajo y su retardo de ~1.5 ms. Si aun no esta medida, se pone por si acaso.
                 if (declipOn && DeclipVale(t.Path)) chain = new DeclipProvider(chain);
-                if (sbrAllowed) { curSbr = new SpectralTap(chain, tierHd ? 4096 : 2048); curSbr.Active = sbrOn || iaSpectralFallback; chain = curSbr; }   // HD: ventana fina; respaldo espectral si ULTRA aun no tiene la version IA
+                if (sbrAllowed) { curSbr = new SpectralTap(chain, VentanaDsee()); curSbr.Active = sbrOn || iaSpectralFallback; chain = curSbr; }   // HD: ventana fina; respaldo espectral si ULTRA aun no tiene la version IA
                 else curSbr = null;
                 LevelTap tap = new LevelTap(chain, this);
                 tap.Gain = NormGainFor(t.Path);
