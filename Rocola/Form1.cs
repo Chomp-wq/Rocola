@@ -11370,7 +11370,30 @@ namespace Rocola
         {
             public bool Varied = false;   // true = colores variados (atraccion); false = blanco->tinte (genero)
             public float Density = 1f;    // multiplicador de cantidad de estrellas (el fondo del form usa menos)
-            public bool QuietBands = false;   // true = menos estrellas en las franjas de arriba (abecedario) y abajo (barra de estado)
+            // MENOS ESTRELLAS DETRAS DE LAS LETRAS.
+            //
+            // La rocola tiene dos franjas de texto que no se mueven: el abecedario de arriba y la barra de
+            // estado de abajo. El cielo pasa por detras de las dos, y una estrella justo detras de una letra
+            // le quita contraste: se lee peor de lejos, que es como se lee en un bar.
+            //
+            // Con esto encendido, una estrella que caiga en una de esas dos franjas se vuelve a tirar: casi
+            // siempre acaba en otro sitio, y las pocas que insisten se quedan. Asi las franjas quedan mas
+            // despejadas SIN quedarse vacias -un hueco negro se notaria mas que las estrellas- y sin perder
+            // ni una del cielo: se mueven, no se pierden.
+            //
+            // EL AZAR DE VOLVER A TIRAR VA APARTE, y esto importa mas de lo que parece. Si se tirara del
+            // mismo azar que todo lo demas, cada tiro de mas correria la fila entera y saldria OTRO cielo
+            // distinto: otras estrellas, otros brillos, otros colores. Con un azar propio, el cielo es
+            // exactamente el mismo con esto encendido o apagado, y lo unico que cambia es DONDE caen las
+            // pocas que estorbaban. Se vio en la bateria: al hacerlo mal, el cielo perdia 13 de 56.
+            public bool QuietBands = false;
+            // Que parte de la pantalla ocupan esas franjas. Son de sobra a proposito: cubren el texto y un
+            // poco mas, para que ninguna estrella quede pegada al filo de una letra.
+            private const float FranjaArriba = 0.13f, FranjaAbajo = 0.88f;
+            // Cuantas veces se vuelve a tirar. Con una sola, de cada cuatro estrellas que caian detras de
+            // las letras se queda una: bastantes menos, pero no cero.
+            private const int TirosFranja = 1;
+            private static bool EnFranja(float y) { return y < FranjaArriba || y > FranjaAbajo; }
             public float Dim = 1f;        // atenuacion del starfield (1 = normal; ~0.45 mientras se navega con musica). Solo estrellas/brillos, no el cielo
 
             // QUE SE DIBUJA. Solo hay dos cosas en el cielo, las mismas por CPU y por tarjeta grafica para
@@ -11579,6 +11602,7 @@ namespace Rocola
                 if (stars != null && sw == w && sh == h && sBucket == bucket) return;
                 sw = w; sh = h; sBucket = bucket;
                 Random r = new Random((20260620 + bucket * 40503) & 0x7FFFFFFF);   // seed FIJO (bucket=0): el patron ya no rota por minuto (regenerarlo daba un tiron periodico)
+                Random rFranja = new Random(0x5A5A3C3C);   // azar APARTE, solo para apartar estrellas de las franjas de texto (ver QuietBands)
                 // CUANTAS. Cuatro veces mas que antes, y casi todas diminutas: un cielo de verdad tiene un
                 // punado de estrellas fuertes y cientos que apenas se adivinan, y eso es lo que da sensacion
                 // de fondo. No cuesta lo que parece: el POLVO -tres cuartas partes- se hornea UNA vez en el
@@ -11647,6 +11671,18 @@ namespace Rocola
                         }
                         else { px = (float)r.NextDouble(); py = (float)r.NextDouble(); }
                         if (px >= 0.004f && px <= 0.996f && py >= 0.004f && py <= 0.996f) break;
+                    }
+                    // Si cayo detras de una de las dos franjas de texto, se vuelve a tirar CON EL AZAR DE AL
+                    // LADO, que no corre la fila del azar principal (ver QuietBands).
+                    if (QuietBands && EnFranja(py))
+                    {
+                        for (int t = 0; t < TirosFranja; t++)
+                        {
+                            float nx = (float)rFranja.NextDouble(), ny = (float)rFranja.NextDouble();
+                            if (nx < 0.004f || nx > 0.996f || ny < 0.004f || ny > 0.996f) continue;
+                            px = nx; py = ny;
+                            if (!EnFranja(py)) break;
+                        }
                     }
                     s.X = px; s.Y = py;
 
