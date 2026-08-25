@@ -76,12 +76,26 @@ class Pared
         Check(mTope != null && fTope != null, "la rocola decide cuantas portadas se guarda segun la maquina");
         if (mTope == null || fTope == null) { Console.WriteLine("\n  " + Math.Max(1, fallos) + " FALLO(S)\n"); return Math.Max(1, fallos); }
 
+        // LA REGLA VIVE APARTE DE LA MEDIDA, y es lo que hace que esto se pueda comprobar en cualquier
+        // maquina: a la regla se le puede DECIR cuanta memoria hay. Sin eso, la version de Windows -que le
+        // pide la memoria a Windows y aqui contesta cero- solo se podria probar en un Windows de verdad,
+        // que es justo donde no hay pruebas corriendo.
+        MethodInfo mRegla = TF.GetMethod("TopeDePortadasPara", BindingFlags.Static | BindingFlags.NonPublic);
+        Check(mRegla != null, "la regla se puede preguntar dandole una cantidad de memoria (asi se prueba sin la maquina)");
+
         Console.WriteLine("\n  1) EL CAJON SE AJUSTA A LA MAQUINA, NO ES UN NUMERO PUESTO A MANO\n");
         // Que de verdad MIRE la maquina. Un numero fijo disfrazado de funcion pasaria la prueba de abajo
         // en esta maquina y dejaria a la de XP tomando 266 MB de su unico giga.
-        List<string> loQueHace = Codigo.Llamadas(mTope);
-        Check(Codigo.Llama(loQueHace, "MemoriaTotalMb"), "pregunta cuanta memoria tiene la maquina");
-        Check(Codigo.Llama(loQueHace, "get_Size"), "y si el programa es de 32 o de 64 bits (en 32 no se pasa de ~2 GB por mucha RAM que haya)");
+        //
+        // Cada version pregunta la memoria a su manera: la de Linux se la pide al sistema por su cuenta y
+        // la de Windows usa la funcion de Windows. Vale cualquiera de las dos; lo que NO vale es no
+        // preguntar.
+        List<string> loQueMide = Codigo.Llamadas(mTope);
+        Check(Codigo.Llama(loQueMide, "MemoriaTotalMb") || Codigo.Llama(loQueMide, "GlobalMemoryStatusEx"),
+              "pregunta cuanta memoria tiene la maquina");
+        if (mRegla != null)
+            Check(Codigo.Llama(mRegla, "get_Size"),
+                  "y la regla mira si el programa es de 32 o de 64 bits (en 32 no se pasa de ~2 GB por mucha RAM que haya)");
 
         ulong ram = RamQueVeLaRocola(asm);
         int tope = (int)mTope.Invoke(null, null);
@@ -89,15 +103,30 @@ class Pared
                           + ", y el programa es de " + (IntPtr.Size * 8) + " bits");
         Console.WriteLine("     le da " + tope + " portadas  (" + ((long)tope * 273 / 1024) + " MB medidos)");
 
-        // Las dos unicas respuestas sanas, y la regla que las separa. Escrito asi vale en las tres
-        // versiones: la de XP -32 bits, 1 GB- tiene que quedarse en 220 pase lo que pase.
         Check(tope == 220 || tope == 1000, "el numero es uno de los dos previstos, no cualquier cosa");
-        Check(IntPtr.Size >= 8 || tope == 220, "en 32 bits se queda en 220 (ahi el programa no pasa de ~2 GB por mucha RAM que haya)");
         Check(tope != 1000 || (IntPtr.Size >= 8 && ram >= 3500), "solo da las mil cuando de verdad hay 64 bits y 3.5 GB o mas");
-        if (IntPtr.Size >= 8 && ram >= 3500)
-            Check(tope == 1000, "y en una maquina asi, se las da");
-        else
-            Console.WriteLine("     (aqui no se puede comprobar el caso de la maquina grande: la rocola no ve esa RAM)");
+
+        if (mRegla != null)
+        {
+            Console.WriteLine();
+            Console.WriteLine("     si la maquina tuviera...        le tocarian");
+            ulong[] casos = { 0UL, 1024UL, 2048UL, 3500UL, 4096UL, 8192UL };
+            for (int i = 0; i < casos.Length; i++)
+            {
+                int r = (int)mRegla.Invoke(null, new object[] { casos[i] });
+                Console.WriteLine("       " + (casos[i] == 0 ? "(no se puede medir)" : casos[i] + " MB").PadRight(24) + r + " portadas");
+            }
+            int en1g = (int)mRegla.Invoke(null, new object[] { 1024UL });
+            int en2g = (int)mRegla.Invoke(null, new object[] { 2048UL });
+            int en4g = (int)mRegla.Invoke(null, new object[] { 4096UL });
+            int sinSaber = (int)mRegla.Invoke(null, new object[] { 0UL });
+            Console.WriteLine();
+            Check(en1g == 220, "la rocola de XP (1 GB) se queda exactamente como estaba: 220");
+            Check(en2g == 220, "y una de 2 GB tambien: 266 MB de dos gigas serian demasiados");
+            Check(sinSaber == 220, "y si no se puede medir la memoria, se es prudente: 220");
+            if (IntPtr.Size >= 8) Check(en4g == 1000, "en una de 4 GB y 64 bits, las mil: la pared entera en memoria");
+            else Check(en4g == 220, "compilada de 32 bits, ni con 4 GB pasa de 220 (el programa no llega a usarlos)");
+        }
 
         Console.WriteLine("\n  2) HOJEAR LA PARED ENTERA Y VOLVER\n");
         FieldInfo fCache = TF.GetField("coverCache", BindingFlags.Instance | BindingFlags.NonPublic);
@@ -113,8 +142,10 @@ class Pared
         Console.WriteLine();
         Console.WriteLine("     cajon    ida (paginas 1->" + Paginas + ")   vuelta (" + Paginas + "->1)");
 
+        // Los dos cajones previstos, siempre: asi la comparacion vale igual aunque ESTA maquina no vea su
+        // memoria (que es lo que le pasa aqui a la version de Windows).
         int idaChico = 0, vueltaChico = 0, idaGrande = 0, vueltaGrande = 0;
-        int[] topes = { 220, tope };
+        int[] topes = { 220, 1000 };
         for (int t = 0; t < topes.Length; t++)
         {
             F = FormatterServices.GetUninitializedObject(TF);
@@ -136,16 +167,8 @@ class Pared
         Console.WriteLine();
         Check(idaChico == Paginas * PorPagina && idaGrande == Paginas * PorPagina,
               "la ida cuesta lo mismo en los dos: la primera vez hay que leerlas todas, no hay magia");
-        if (tope > 220)
-        {
-            Check(vueltaChico > 0, "con el cajon de 220 (la rocola de XP), volver sobre lo andado vuelve al disco " + vueltaChico + " veces");
-            Check(vueltaGrande == 0, "con el cajon de " + tope + " (la del bar), volver NO toca el disco ni una vez");
-        }
-        else
-        {
-            Console.WriteLine("     (esta maquina es de las chicas: le toca el cajon de 220 y no hay dos casos que comparar)");
-            Check(vueltaChico == vueltaGrande, "el cajon chico se comporta igual pidiendolo de las dos formas");
-        }
+        Check(vueltaChico > 0, "con el cajon de 220 (la rocola de XP), volver sobre lo andado vuelve al disco " + vueltaChico + " veces");
+        Check(vueltaGrande == 0, "con el de 1000 (la maquina grande), volver NO toca el disco ni una vez");
 
         Console.WriteLine(fallos == 0 ? "\n  TODO BIEN\n" : "\n  " + fallos + " FALLO(S)\n");
         return fallos;

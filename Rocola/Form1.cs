@@ -735,16 +735,22 @@ namespace Rocola
         // En 32 bits el programa no pasa de ~2 GB por mucha RAM que tenga la maquina, asi que ahi se queda
         // como estaba; y si no se pudo medir la RAM, tampoco se arriesga. Ojo: si la biblioteca tiene menos
         // discos que el tope, el cajon simplemente no se llena y esto no cuesta nada.
+        // La REGLA va aparte de la MEDIDA a proposito: asi las pruebas pueden preguntarle "¿y con cuatro
+        // gigas?" sin tener que fabricar una maquina de cuatro gigas. Sin esto, la version de Windows solo
+        // se podria comprobar en un Windows de verdad, que es justo donde no hay pruebas corriendo, y las
+        // tres versiones tienen que llevar la misma regla.
+        private static int TopeDePortadasPara(ulong ramMb)
+        {
+            return (IntPtr.Size >= 8 && ramMb >= 3500) ? 1000 : 220;
+        }
         private static int topePortadas = -1;
         internal static int TopeDePortadas()
         {
             if (topePortadas >= 0) return topePortadas;
             ulong ramMb = 0;
             try { ramMb = Sistema.MemoriaTotalMb(); } catch { }
-            int n = 220;
-            if (IntPtr.Size >= 8 && ramMb >= 3500) n = 1000;
-            topePortadas = n;
-            return n;
+            topePortadas = TopeDePortadasPara(ramMb);
+            return topePortadas;
         }
         private readonly HashSet<char> letterAvailable = new HashSet<char>();
         // EL COLOR DE CADA LETRA: el genero que MANDA dentro de ella. Sale de leer el ID3 de toda la
