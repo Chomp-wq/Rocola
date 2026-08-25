@@ -61,6 +61,13 @@ namespace Rocola
         [DllImport("libGL.so.1")] public static extern IntPtr glXGetCurrentContext();
         [DllImport("libGL.so.1")] public static extern void glXSwapBuffers(IntPtr dpy, IntPtr ventana);
         [DllImport("libGL.so.1")] public static extern IntPtr glGetString(uint nombre);
+        [DllImport("libGL.so.1")] public static extern IntPtr glXQueryExtensionsString(IntPtr dpy, int pantalla);
+        [DllImport("libGL.so.1")] public static extern IntPtr glXGetProcAddress(string nombre);
+
+        // Las tres formas que hay de pedir "espera a la pantalla antes de ensenar el cuadro". Cada
+        // fabricante puso la suya en su dia; hoy conviven, y hay que probar la que tenga cada maquina.
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)] public delegate void SwapIntervalEXT(IntPtr dpy, IntPtr ventana, int intervalo);
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)] public delegate int SwapIntervalInt(int intervalo);
 
         [DllImport("libGL.so.1")] public static extern void glClearColor(float r, float g, float b, float a);
         [DllImport("libGL.so.1")] public static extern void glClear(uint mask);
@@ -90,6 +97,9 @@ namespace Rocola
 
         public const int GLX_RGBA = 4, GLX_DOUBLEBUFFER = 5, GLX_RED_SIZE = 8, GLX_GREEN_SIZE = 9,
                          GLX_BLUE_SIZE = 10, GLX_ALPHA_SIZE = 11, GLX_DEPTH_SIZE = 12;
+        // Suavizado de bordes: cuantas muestras por pixel se le piden a la tarjeta.
+        public const int GLX_SAMPLE_BUFFERS = 100000, GLX_SAMPLES = 100001;
+        public const uint GL_MULTISAMPLE = 0x809D;
 
         public const uint GL_COLOR_BUFFER_BIT = 0x4000;
         public const uint GL_RENDERER = 0x1F01, GL_VERSION = 0x1F02, GL_VENDOR = 0x1F00;
@@ -103,6 +113,7 @@ namespace Rocola
         public const uint GL_TEXTURE_WRAP_S = 0x2802, GL_TEXTURE_WRAP_T = 0x2803;
         public const uint GL_LINEAR = 0x2601, GL_CLAMP_TO_EDGE = 0x812F;
         public const uint GL_RGBA = 0x1908, GL_BGRA = 0x80E1, GL_UNSIGNED_BYTE = 0x1401, GL_FLOAT = 0x1406;
+        public const uint GL_SRGB8_ALPHA8 = 0x8C43, GL_FRAMEBUFFER_SRGB = 0x8DB9;
         public const uint GL_UNPACK_ALIGNMENT = 0x0CF5, GL_UNPACK_ROW_LENGTH = 0x0CF2;
         public const uint GL_VERTEX_ARRAY = 0x8074, GL_COLOR_ARRAY = 0x8076, GL_TEXTURE_COORD_ARRAY = 0x8078;
         public const uint GL_NO_ERROR = 0;
@@ -166,6 +177,51 @@ namespace Rocola
     {
         private IntPtr dpy, win, ctx;
         private int anchoBuf, altoBuf;
+        private int suavizado;             // muestras por pixel del suavizado de bordes (0 = sin el)
+        public int Suavizado { get { return suavizado; } }
+
+        // ================== MEZCLA DE LUZ CORRECTA ==================
+        //
+        // Los numeros que guardan los colores no van en linea recta con la cantidad de luz. Estan
+        // "curvados" a proposito: como el ojo distingue mucho mejor entre dos oscuros que entre dos
+        // claros, los 256 escalones se reparten dando mas a la zona oscura. Eso esta bien para GUARDAR
+        // un color, pero es una trampa para SUMARLO.
+        //
+        // Y la rocola suma mucha luz: cada estrella pone su halo encima del cielo, la aurora pone el
+        // suyo encima, las estelas de las fugaces tambien. Sumando los numeros curvados, dos luces
+        // debiles dan mas de lo que darian de verdad y el centro de un halo se quema a blanco de golpe.
+        // Por eso los resplandores se ven "de plastico": no es el color elegido, es la cuenta.
+        //
+        // Hacerlo bien son tres piezas:
+        //   1. las texturas se suben diciendole a la tarjeta que estan curvadas (GL_SRGB8_ALPHA8), y
+        //      ella las endereza al leerlas;
+        //   2. el color de cada vertice se endereza aqui antes de dibujar;
+        //   3. se le pide a la tarjeta que vuelva a curvar al escribir en la pantalla
+        //      (GL_FRAMEBUFFER_SRGB), que es donde tiene que estar curvado otra vez.
+        // Entre 2 y 3, la suma ocurre con numeros que SI van en linea recta con la luz.
+        //
+        // ESTO CAMBIA COMO SE VE LA ROCOLA, y hay mucho ajustado encima, asi que viene apagado de
+        // fabrica y se enciende con "luz_real=1" en la configuracion.
+        //
+        // El color enderezado va en COMA FLOTANTE y no en un byte otra vez. Si se guardara en 8 bits, un
+        // azul oscuro de valor 20 se convertiria en 1 y medio: el cielo de la rocola -que es casi todo
+        // tonos oscuros- quedaria a franjas. En coma flotante no se pierde nada.
+        public static bool LuzReal;
+        private bool luzReal;              // lo que se decidio al crear ESTE dispositivo
+        public bool ConLuzReal { get { return luzReal; } }
+        private float[] aLineal;           // los 256 valores posibles, ya enderezados
+        private float[] colorLineal;       // los colores del cuadro que se esta dibujando
+
+        private static float[] TablaLineal()
+        {
+            float[] t = new float[256];
+            for (int i = 0; i < 256; i++)
+            {
+                double c = i / 255.0;
+                t[i] = (float)((c <= 0.04045) ? (c / 12.92) : Math.Pow((c + 0.055) / 1.055, 2.4));
+            }
+            return t;
+        }
         private bool colorBgra = true;     // la tarjeta acepta el color tal cual viene (ver Draw)
         private byte[] colorAux;           // y si no lo acepta, aqui se le da la vuelta
 
@@ -174,12 +230,32 @@ namespace Rocola
         public D3D9Device(IntPtr hwnd, int w, int h)
         {
             if (!D3D9.VentanaX11(hwnd, out dpy, out win)) { dpy = IntPtr.Zero; win = IntPtr.Zero; return; }
+
+            // SUAVIZADO DE BORDES. Un borde inclinado -la esquina de un cubo que gira, el marco del
+            // buscador- cae entre dos columnas de pixeles, y sin suavizado cada pixel es o de dentro o de
+            // fuera: queda una escalera. Pidiendole a la tarjeta que mire varias veces dentro de cada
+            // pixel y promedie, el borde sale limpio. En una tarjeta de verdad cuesta casi nada porque lo
+            // hace ella; si no puede, se pide menos, y si tampoco, se sigue sin suavizado como hasta ahora.
+            //
             // Sin buffer de profundidad: el dibujado es plano, todo va en el orden en que se pide.
-            int[] att = { D3D9.GLX_RGBA, D3D9.GLX_DOUBLEBUFFER,
-                          D3D9.GLX_RED_SIZE, 8, D3D9.GLX_GREEN_SIZE, 8, D3D9.GLX_BLUE_SIZE, 8,
-                          D3D9.GLX_DEPTH_SIZE, 0, 0 };
-            IntPtr vi;
-            try { vi = D3D9.glXChooseVisual(dpy, D3D9.XDefaultScreen(dpy), att); }
+            int pantalla = D3D9.XDefaultScreen(dpy);
+            IntPtr vi = IntPtr.Zero;
+            try
+            {
+                foreach (int muestras in new int[] { 4, 2, 0 })
+                {
+                    int[] att = (muestras > 0)
+                        ? new int[] { D3D9.GLX_RGBA, D3D9.GLX_DOUBLEBUFFER,
+                                      D3D9.GLX_RED_SIZE, 8, D3D9.GLX_GREEN_SIZE, 8, D3D9.GLX_BLUE_SIZE, 8,
+                                      D3D9.GLX_DEPTH_SIZE, 0,
+                                      D3D9.GLX_SAMPLE_BUFFERS, 1, D3D9.GLX_SAMPLES, muestras, 0 }
+                        : new int[] { D3D9.GLX_RGBA, D3D9.GLX_DOUBLEBUFFER,
+                                      D3D9.GLX_RED_SIZE, 8, D3D9.GLX_GREEN_SIZE, 8, D3D9.GLX_BLUE_SIZE, 8,
+                                      D3D9.GLX_DEPTH_SIZE, 0, 0 };
+                    vi = D3D9.glXChooseVisual(dpy, pantalla, att);
+                    if (vi != IntPtr.Zero) { suavizado = muestras; break; }
+                }
+            }
             catch { dpy = IntPtr.Zero; win = IntPtr.Zero; return; }   // ni siquiera hay OpenGL en esta maquina
             if (vi == IntPtr.Zero) { dpy = IntPtr.Zero; win = IntPtr.Zero; return; }
             IntPtr c = D3D9.glXCreateContext(dpy, vi, IntPtr.Zero, true);   // true = directo, sin pasar por el servidor
@@ -190,15 +266,75 @@ namespace Rocola
             }
             ctx = c;
             anchoBuf = Math.Max(1, w); altoBuf = Math.Max(1, h);
+            luzReal = LuzReal;
+            if (luzReal)
+            {
+                aLineal = TablaLineal();
+                try { D3D9.glEnable(D3D9.GL_FRAMEBUFFER_SRGB); } catch { luzReal = false; }
+            }
+            SincronizaConLaPantalla();
             InitStates();
             Proyeccion();
+        }
+
+        // ESPERAR A LA PANTALLA ANTES DE ENSENAR EL CUADRO.
+        //
+        // Sin esto la rocola entrega el cuadro nuevo en cuanto lo termina, sin mirar por donde va la
+        // pantalla dibujando. Como la pantalla va pintando de arriba abajo, si el cuadro llega a la
+        // mitad, la parte de arriba queda del cuadro viejo y la de abajo del nuevo: se ve un corte
+        // horizontal que viaja, y con el campo de estrellas desplazandose se nota. Se llama desgarro.
+        //
+        // Pidiendo que espere, el cuadro se ensena entero de golpe y el corte desaparece. Y ademas SOBRA
+        // procesador, porque la rocola deja de dibujar cuadros que nadie iba a ver.
+        //
+        // No todas las maquinas lo ofrecen -en una que dibuja por software, como la de las pruebas, no
+        // existe- asi que se comprueba antes y, si no esta, se sigue como hasta ahora.
+        private bool sincronizada;
+        public bool Sincronizada { get { return sincronizada; } }
+
+        private void SincronizaConLaPantalla()
+        {
+            try
+            {
+                IntPtr pe = D3D9.glXQueryExtensionsString(dpy, D3D9.XDefaultScreen(dpy));
+                string ext = (pe == IntPtr.Zero) ? "" : Marshal.PtrToStringAnsi(pe);
+                if (ext.IndexOf("GLX_EXT_swap_control", StringComparison.Ordinal) >= 0)
+                {
+                    IntPtr f = D3D9.glXGetProcAddress("glXSwapIntervalEXT");
+                    if (f != IntPtr.Zero)
+                    {
+                        ((D3D9.SwapIntervalEXT)Marshal.GetDelegateForFunctionPointer(f, typeof(D3D9.SwapIntervalEXT)))(dpy, win, 1);
+                        sincronizada = true; return;
+                    }
+                }
+                foreach (string cual in new string[] { "GLX_MESA_swap_control", "GLX_SGI_swap_control" })
+                {
+                    if (ext.IndexOf(cual, StringComparison.Ordinal) < 0) continue;
+                    string nombre = (cual[4] == 'M') ? "glXSwapIntervalMESA" : "glXSwapIntervalSGI";
+                    IntPtr f = D3D9.glXGetProcAddress(nombre);
+                    if (f == IntPtr.Zero) continue;
+                    ((D3D9.SwapIntervalInt)Marshal.GetDelegateForFunctionPointer(f, typeof(D3D9.SwapIntervalInt)))(1);
+                    sincronizada = true; return;
+                }
+            }
+            catch { }
         }
 
         public int BufAncho { get { return anchoBuf; } }
         public int BufAlto { get { return altoBuf; } }
 
         // La descripcion de la tarjeta, para el diagnostico y para las pruebas.
-        public string Quien { get { return Actual() ? (D3D9.Texto(D3D9.GL_RENDERER) + "  |  " + D3D9.Texto(D3D9.GL_VERSION)) : ""; } }
+        public string Quien
+        {
+            get
+            {
+                if (!Actual()) return "";
+                return D3D9.Texto(D3D9.GL_RENDERER) + "  |  " + D3D9.Texto(D3D9.GL_VERSION)
+                     + (suavizado > 0 ? "  |  bordes suavizados x" + suavizado : "  |  sin suavizado de bordes")
+                     + (sincronizada ? "  |  sincronizada con la pantalla" : "  |  sin sincronizar")
+                     + (luzReal ? "  |  mezcla de luz correcta" : "");
+            }
+        }
 
         // REHACE EL BUFFER DE DIBUJO al tamano nuevo de la ventana.
         //
@@ -255,6 +391,7 @@ namespace Rocola
             D3D9.glDisable(D3D9.GL_LIGHTING);
             D3D9.glDisable(D3D9.GL_CULL_FACE);
             D3D9.glDisable(D3D9.GL_TEXTURE_2D);
+            if (suavizado > 0) D3D9.glEnable(D3D9.GL_MULTISAMPLE);   // el borde limpio (ver el constructor)
             D3D9.glPixelStorei(D3D9.GL_UNPACK_ALIGNMENT, 4);   // las filas del bitmap vienen de 4 en 4 bytes
         }
 
@@ -298,6 +435,10 @@ namespace Rocola
         // subia en Windows.
         private static int Pow2(int n) { int p = 1; while (p < n) p <<= 1; return p; }
 
+        // Como se le dice a la tarjeta que guarde la textura: curvada (y que ella la enderece al leerla)
+        // o tal cual. Ver el bloque de la mezcla de luz.
+        private int FormatoInterno() { return luzReal ? (int)D3D9.GL_SRGB8_ALPHA8 : (int)D3D9.GL_RGBA; }
+
         private uint NuevaTextura()
         {
             uint[] t = new uint[1];
@@ -330,7 +471,7 @@ namespace Rocola
             int w = bmp.Width, h = bmp.Height, tw = Pow2(w), th = Pow2(h);
             uint t = NuevaTextura();
             if (t == 0) return IntPtr.Zero;
-            D3D9.glTexImage2D(D3D9.GL_TEXTURE_2D, 0, (int)D3D9.GL_RGBA, tw, th, 0, D3D9.GL_BGRA, D3D9.GL_UNSIGNED_BYTE, IntPtr.Zero);
+            D3D9.glTexImage2D(D3D9.GL_TEXTURE_2D, 0, FormatoInterno(), tw, th, 0, D3D9.GL_BGRA, D3D9.GL_UNSIGNED_BYTE, IntPtr.Zero);
             Sube(bmp, w, h, false);
             uMax = (float)w / tw; vMax = (float)h / th;
             return new IntPtr(t);
@@ -363,7 +504,7 @@ namespace Rocola
             try
             {
                 D3D9.glPixelStorei(D3D9.GL_UNPACK_ROW_LENGTH, bd.Stride / 4);
-                if (entera) D3D9.glTexImage2D(D3D9.GL_TEXTURE_2D, 0, (int)D3D9.GL_RGBA, w, h, 0, D3D9.GL_BGRA, D3D9.GL_UNSIGNED_BYTE, bd.Scan0);
+                if (entera) D3D9.glTexImage2D(D3D9.GL_TEXTURE_2D, 0, FormatoInterno(), w, h, 0, D3D9.GL_BGRA, D3D9.GL_UNSIGNED_BYTE, bd.Scan0);
                 else D3D9.glTexSubImage2D(D3D9.GL_TEXTURE_2D, 0, 0, 0, w, h, D3D9.GL_BGRA, D3D9.GL_UNSIGNED_BYTE, bd.Scan0);
                 D3D9.glPixelStorei(D3D9.GL_UNPACK_ROW_LENGTH, 0);
             }
@@ -461,6 +602,33 @@ namespace Rocola
                 D3D9.glEnableClientState(D3D9.GL_TEXTURE_COORD_ARRAY);
                 D3D9.glVertexPointer(2, D3D9.GL_FLOAT, D3D9.VtxSize, b);
                 D3D9.glTexCoordPointer(2, D3D9.GL_FLOAT, D3D9.VtxSize, new IntPtr(b.ToInt64() + 20));
+
+                // CON LA MEZCLA DE LUZ CORRECTA el color de cada vertice se endereza antes de dibujar
+                // (ver el bloque de arriba). Va en coma flotante a proposito: en 8 bits, los tonos
+                // oscuros -que son casi todo el cielo de la rocola- se aplastarian y saldrian a franjas.
+                // La opacidad NO se toca: no es color, es cuanto tapa, y eso ya va en linea recta.
+                if (luzReal)
+                {
+                    if (colorLineal == null || colorLineal.Length < n * 4) colorLineal = new float[n * 4];
+                    for (int i = 0; i < n; i++)
+                    {
+                        uint c = verts[i].Color;
+                        int o = i * 4;
+                        colorLineal[o + 0] = aLineal[(int)((c >> 16) & 0xFF)];   // rojo
+                        colorLineal[o + 1] = aLineal[(int)((c >> 8) & 0xFF)];    // verde
+                        colorLineal[o + 2] = aLineal[(int)(c & 0xFF)];           // azul
+                        colorLineal[o + 3] = ((c >> 24) & 0xFF) * (1f / 255f);   // opacidad, tal cual
+                    }
+                    GCHandle gl2 = GCHandle.Alloc(colorLineal, GCHandleType.Pinned);
+                    try
+                    {
+                        D3D9.glColorPointer(4, D3D9.GL_FLOAT, 0, gl2.AddrOfPinnedObject());
+                        D3D9.glDrawArrays(D3D9.GL_TRIANGLES, 0, n);
+                    }
+                    finally { gl2.Free(); }
+                    return;
+                }
+
                 if (colorBgra)
                 {
                     D3D9.glGetError();                                    // se limpia lo que hubiera de antes

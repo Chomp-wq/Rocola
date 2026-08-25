@@ -33,7 +33,7 @@ CPU="ajustes bajo eqauto bajoauto calidad eqia nivel titulo duracion prueba prue
 # tarjeta grafica solo existe en ese perfil (si no, aparecia en las pruebas y no en el bar).
 # 'arranca' sale en las dos: enciende la rocola de verdad, y hay que ver que enciende y se dibuja entera
 # TAMBIEN con el fondo por tarjeta grafica, que en esa version dibuja la pantalla casi completa.
-GPU="fondo anim presencia barrido tope calma entrar gl arranca bibliotecas"
+GPU="fondo anim presencia barrido tope calma entrar gl luz arranca bibliotecas"
 
 # Y las que miran algo que SOLO EXISTE en la rama de tarjeta grafica. La limpieza de videos que no
 # suenan es una de esas: para saber si un video suena hay que descomprimir su sonido, y eso alli lo

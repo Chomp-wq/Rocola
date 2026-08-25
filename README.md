@@ -287,6 +287,58 @@ Ahora se sale con **Ctrl+Alt+Q tres veces seguidas** — las dos primeras sólo 
 que si se pulsa sin querer se ve venir. Cierra por el camino de siempre, o sea que **borra el estado
 guardado** y mañana arranca limpia; sólo un apagón deja el archivo, y por eso al volver la luz reanuda.
 
+### Lo que Linux permite y Windows no permitía
+
+Todo esto vive en `Rocola/LinuxAudio.cs` y `Rocola/GLDevice.cs` — los dos archivos que sólo existen
+en esta rama — así que no toca Windows ni rompe la igualdad byte a byte de `D3D9Star.cs`.
+
+**Que la música no se corte.** El hilo del sonido pedía prioridad con las palabras de Windows
+(`ThreadPriority.AboveNormal`), que en Linux se traduce a `nice` y para sonido no sirve: el
+planificador puede dejarlo esperando mientras el dibujado o el disco trabajan, y ese turno perdido se
+oye. Ahora pide **`SCHED_FIFO`** — "a este hilo se le atiende antes que a los demás" — con prioridad
+moderada (10 de 99): el hilo se pasa la vida dormido esperando a la tarjeta, así que no puede acaparar
+la máquina. Normalmente hace falta permiso especial; **en Puppy la rocola corre como root**, así que
+se puede. Comprobado preguntándole al sistema: contesta `normal, prioridad 0` antes y
+`tiempo real (FIFO), prioridad 10` después.
+
+**Y si se corta, que se sepa.** Cuando la tarjeta se queda sin muestras la rocola se recupera y sigue
+—eso ya estaba— pero **nadie lo contaba**: podía llevar meses cortándose en el bar sin dejar rastro.
+Ahora se cuentan, con la hora del último, y se ven en Ctrl+F3 junto con si el sistema concedió la
+prioridad de tiempo real o no.
+
+**Más bits a la tarjeta.** La salida mandaba siempre 16 bits, y para eso hay que añadir un ruido
+diminuto a propósito —el dither— que tapa la aspereza del redondeo. Casi cualquier tarjeta de los
+últimos veinte años acepta 24 o 32, y ahí ese ruido sobra. Ahora la salida recibe la cadena **tal como
+viaja por dentro** (coma flotante), negocia el mejor formato que la tarjeta acepte y convierte ella,
+con dither **sólo** si acaba en 16. `pruebas/formatos.exe` dice qué acepta la tarjeta de una máquina.
+
+**El fondo, con lo que la tarjeta puede dar.** `GLDevice.cs` pide ahora suavizado de bordes (4
+muestras, y si no 2, y si no ninguna) y **esperar a la pantalla** antes de enseñar el cuadro, que quita
+el desgarro y ahorra procesador. Las dos se comprueban antes de usarlas y se repliegan sin romperse; la
+rocola **dice en Ctrl+F3 lo que consiguió de verdad**, y hay una batería que verifica que no miente.
+
+### La mezcla de luz correcta (`luz_real=1`, apagada de fábrica)
+
+Los números que guardan un color no van en línea recta con la cantidad de luz: están curvados a
+propósito, porque el ojo distingue mejor entre dos oscuros que entre dos claros. Está bien para
+**guardar** un color y es una trampa para **sumarlo** — y la rocola suma mucha luz: cada estrella pone
+su halo sobre el cielo, la aurora el suyo, las fugaces el suyo.
+
+Con `luz_real=1` las texturas se suben como sRGB, el color de cada vértice se endereza (**en coma
+flotante**, no en 8 bits: los tonos oscuros son casi todo el cielo y se quedarían a franjas) y la
+tarjeta vuelve a curvar al escribir. Medido:
+
+| | como está hoy | con la mezcla correcta |
+|---|---|---|
+| resplandor por cada unidad de núcleo | 6.6 | **12.0** |
+| píxeles en blanco puro (pantalla real) | 248 | **82** |
+| coste | — | **+2.07 % de un núcleo** |
+
+El halo **se abre en vez de quemarse en un punto**, y —al revés de lo que uno esperaría— en la
+pantalla de verdad se queman **menos** píxeles, no más: al sumar bien, la luz de cada estrella se
+reparte por su halo en vez de amontonarse en el núcleo. El coste está medido con OpenGL por software;
+en una tarjeta de verdad será menor, porque la mitad de ese trabajo se la queda ella.
+
 ### De arrancar la rocola a que suene, medido
 
 `pruebas/arranque.exe` monta una biblioteca de prueba, le deja el archivo de estado que dejaría un

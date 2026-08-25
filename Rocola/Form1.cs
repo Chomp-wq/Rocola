@@ -1231,6 +1231,12 @@ namespace Rocola
                     else if (s.StartsWith("ia_cache=")) { string d = s.Substring(9).Trim(); if (d.Length > 0) iaCacheDir = d; }
                     else if (s.StartsWith("dsee_forzar=")) { if (s.Substring(12).Trim() == "1") { sbrForce = true; sbrAllowed = true; sbrReason = ""; } }   // salta la puerta de requisitos (pruebas)
                     else if (s.StartsWith("dsee_ventana=")) { int v; dseeVentana = (int.TryParse(s.Substring(13).Trim(), out v) && (v == 2048 || v == 4096)) ? v : 0; }   // tamano de ventana del DSEE a mano (0 = automatico)
+#if ROCOLA_GPU
+                    // "luz_real=1": los halos y la aurora suman luz como suma la luz de verdad, en vez de
+                    // como se suman los numeros con que se guarda un color. CAMBIA COMO SE VE la rocola,
+                    // asi que viene apagado (ver el comentario largo en Rocola/GLDevice.cs).
+                    else if (s.StartsWith("luz_real=")) D3D9Device.LuzReal = s.Substring(9).Trim() == "1";
+#endif
                     else if (s.StartsWith("dir="))
                     {
                         string d = s.Substring(4).Trim();
