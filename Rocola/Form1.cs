@@ -1104,7 +1104,9 @@ namespace Rocola
 
         // La frase que se ensena en la ventana de sonido. Devuelve tambien si hay algo que ARREGLAR, para
         // pintarla en ambar en vez de en gris.
-        private static string TextoSalida(out bool aviso)
+        // Lo que se ensena arriba del todo en Ctrl+F3 sobre el sonido: por donde sale, si hay algo metido
+        // en medio, y COMO LE ESTA YENDO -si la musica se ha cortado alguna vez desde que se encendio-.
+        private string TextoSalida(out bool aviso)
         {
             aviso = false;
             List<string> tarjetas;
@@ -1133,6 +1135,29 @@ namespace Rocola
                 sb.Append("Pon salida=hw:0 en los ajustes para hablarle DIRECTO a la tarjeta.");
             }
             else sb.Append('\n').Append("La rocola le habla DIRECTO a la tarjeta: nada se mete en medio a ecualizar ni a remuestrear, que es como debe ser.");
+
+            // COMO LE ESTA YENDO. Un tropiezo es un instante en que la tarjeta se quedo sin musica y se
+            // oyo un chasquido o un silencio. La rocola se recupera sola, asi que sin este renglon nadie
+            // se enteraria nunca de que estan pasando. Cero es la respuesta que se quiere ver.
+            SalidaAlsa sal = output as SalidaAlsa;
+            if (sal != null)
+            {
+                sb.Append('\n');
+                int t = sal.Tropiezos;
+                if (t == 0) sb.Append("La musica no se ha cortado ni una vez desde que se encendio.");
+                else
+                {
+                    aviso = true;
+                    sb.Append("La musica se ha cortado ").Append(t).Append(t == 1 ? " vez" : " veces")
+                      .Append(" desde que se encendio (la ultima a las ").Append(sal.UltimoTropiezo.ToString("HH:mm"))
+                      .Append("). Si son muchas, la maquina va justa.");
+                }
+                sb.Append("  Se le mandan ").Append(sal.BitsALaTarjeta).Append(" bits.");
+                sb.Append(SalidaAlsa.EnTiempoReal
+                          ? "  El sonido va con prioridad de tiempo real."
+                          : "  OJO: el sistema no dio prioridad de tiempo real al sonido.");
+                if (!SalidaAlsa.EnTiempoReal) aviso = true;
+            }
             return sb.ToString();
         }
 
@@ -8916,7 +8941,11 @@ namespace Rocola
                 // la que va al amplificador y no por la del monitor.
                 SalidaAlsa alsa = new SalidaAlsa(300, TarjetaDeSonido());
                 alsa.PlaybackStopped += Output_PlaybackStopped;
-                alsa.Init(new DitherWaveProvider16(outChain));   // 16 bits CON dither TPDF (menos aspereza en pasajes silenciosos)
+                // Se le entrega la cadena TAL COMO VIAJA por dentro de la rocola, en coma flotante, y es la
+                // salida la que negocia con la tarjeta cuantos bits acepta (32, 24 o 16) y hace ella la
+                // conversion. Antes se recortaba a 16 bits aqui, con dither, y esa decision ya no habia
+                // forma de deshacerla aunque la tarjeta diera para mas.
+                alsa.Init(outChain);
                 output = alsa;
                 audioVisualDelayMs = alsa.RetardoMs;   // el pulso visual se alinea al colchon REAL que dio la tarjeta
                 output.Play();
@@ -10875,48 +10904,6 @@ namespace Rocola
                     float sc = 1f / n;
                     for (int i = 0; i < n; i++) { r[i] *= sc; m[i] *= sc; }
                 }
-            }
-        }
-
-        // Convierte flotante -> 16 bits con DITHER TPDF. El truncado directo (SampleToWaveProvider16) mete
-        // distorsion de cuantizacion en pasajes MUY silenciosos (finales de cancion, colas de reverb): el
-        // ultimo bit "escalona" la senal y suena a aspereza. El dither triangular de +-1 LSB convierte ese
-        // error en un ruido de fondo parejo e inaudible (mucho mas natural, es lo que hace un CD bien
-        // masterizado). Redondea en vez de truncar. ~4 operaciones por muestra. (En HD, WASAPI sale en
-        // flotante puro y no pasa por aqui; esto ayuda a la salida WaveOut de 16 bits de respaldo.)
-        private sealed class DitherWaveProvider16 : NAudio.Wave.IWaveProvider
-        {
-            private readonly NAudio.Wave.ISampleProvider src;
-            private readonly NAudio.Wave.WaveFormat fmt;
-            private float[] fbuf;
-            private uint rs;   // estado xorshift para el dither (mas barato que System.Random)
-            public DitherWaveProvider16(NAudio.Wave.ISampleProvider s)
-            {
-                src = s;
-                fmt = new NAudio.Wave.WaveFormat(s.WaveFormat.SampleRate, 16, s.WaveFormat.Channels);
-                rs = (uint)Environment.TickCount | 1u;   // semilla != 0 (xorshift no arranca en 0)
-            }
-            // Un uniforme [0,1) barato (xorshift32). Dos restados = dither TRIANGULAR (TPDF), estadisticamente
-            // identico a Random.NextDouble (media 0, varianza 1/6, rango +/-1) pero ~1.5x mas rapido: y esto
-            // corre en CADA muestra de 16 bits, SIEMPRE, en el fierro modesto de la rocola.
-            private float NextUni() { rs ^= rs << 13; rs ^= rs >> 17; rs ^= rs << 5; return (rs >> 8) * (1f / 16777216f); }
-            public NAudio.Wave.WaveFormat WaveFormat { get { return fmt; } }
-            public int Read(byte[] buffer, int offset, int count)
-            {
-                int need = count / 2;                                  // muestras de 16 bits que caben
-                if (fbuf == null || fbuf.Length < need) fbuf = new float[need];
-                int got = src.Read(fbuf, 0, need);
-                int bo = offset;
-                for (int i = 0; i < got; i++)
-                {
-                    float d = NextUni() - NextUni();    // triangular en (-1..1) LSB
-                    float x = fbuf[i] * 32767f + d;
-                    int q = (int)Math.Floor(x + 0.5f);                 // redondeo (no truncado)
-                    if (q > 32767) q = 32767; else if (q < -32768) q = -32768;
-                    buffer[bo++] = (byte)(q & 0xFF);
-                    buffer[bo++] = (byte)((q >> 8) & 0xFF);
-                }
-                return got * 2;
             }
         }
 

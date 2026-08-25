@@ -162,7 +162,11 @@ class Sonido
         Exception malo = null;
         try
         {
-            TSal.GetMethod("Init").Invoke(salida, new object[] { tono });
+            // La salida tiene DOS formas de prepararse: con muestras ya hechas de 16 bits (esta) y con la
+            // cadena en coma flotante, donde ella misma negocia cuantos bits acepta la tarjeta. Aqui se
+            // prueba la de 16 bits, que es la que deja comprobar byte por byte contra lo que se calculo.
+            // La otra tiene su propia bateria ('bits').
+            TSal.GetMethod("Init", new Type[] { typeof(IWaveProvider) }).Invoke(salida, new object[] { tono });
             TSal.GetMethod("Play").Invoke(salida, null);
             for (int i = 0; i < 200 && !aviso; i++) Thread.Sleep(25);
         }
@@ -177,6 +181,9 @@ class Sonido
         byte[] entregado = tono.LoQueEntregue;
         byte[] llegado = File.Exists(crudo) ? File.ReadAllBytes(crudo) : new byte[0];
         Console.WriteLine("     la rocola calculo " + entregado.Length + " bytes y a la tarjeta llegaron " + llegado.Length);
+        // Si no sono nada, los dos numeros son cero y las dos comprobaciones de abajo pasarian sin haber
+        // probado nada. Se exige que haya sonado de verdad: medio segundo son 88200 bytes.
+        Check(entregado.Length > 80000, "sono de verdad (si no, lo de abajo no probaria nada)");
         Check(llegado.Length == entregado.Length, "llega TODO lo que se calculo: ni una muestra de menos ni de mas");
         int dif = 0;
         for (int i = 0; i < Math.Min(llegado.Length, entregado.Length); i++) if (llegado[i] != entregado[i]) dif++;
