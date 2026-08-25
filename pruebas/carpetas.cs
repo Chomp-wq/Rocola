@@ -120,12 +120,14 @@ class Carpetas
             // nombres, el propio sistema dice de que tipo es cada sitio montado (tercera columna de
             // /proc/mounts). OJO: la raiz de Puppy es de tipo "aufs", que SI es un sitio de verdad; por eso
             // la lista es de tipos concretos y nunca al reves.
+            // Cada sistema lo sabe a su manera -Linux dice de que TIPO es cada sitio montado; Windows va por
+            // el nombre de las cuatro carpetas de siempre-, asi que la rocola lo pregunta en un solo sitio y
+            // esta prueba comprueba las dos formas, cada una donde aplica.
+            MethodInfo mEsSistema = TF.GetMethod("EsCarpetaDelSistema", BindingFlags.Static | BindingFlags.NonPublic);
+            Check(mEsSistema != null, "la rocola sabe que carpetas son del sistema y no hay que mirar");
             Type TS = asm.GetType("Rocola.Sistema");
             MethodInfo mMentiraDe = (TS != null) ? TS.GetMethod("SistemasDeMentira", new Type[] { typeof(string) }) : null;
             MethodInfo mEsSistemaTabla = (TS != null) ? TS.GetMethod("EsCarpetaDelSistema", new Type[] { typeof(string), typeof(List<string>) }) : null;
-            MethodInfo mEsSistema = (TS != null) ? TS.GetMethod("EsCarpetaDelSistema", new Type[] { typeof(string) }) : null;
-            Check(mMentiraDe != null && mEsSistemaTabla != null && mEsSistema != null,
-                  "la rocola sabe cuales de los sitios montados son inventos del sistema (y se le puede preguntar con una tabla)");
             if (mMentiraDe != null && mEsSistemaTabla != null)
             {
                 string tabla =
@@ -145,12 +147,20 @@ class Carpetas
                 Check(!EsSis("/mnt/home/rocola/musica"), "  ni la carpeta de la rocola");
                 Check(!EsSis("/"), "  ni la raiz de Puppy, que es de tipo 'aufs' y ahi vive todo");
             }
+            else
+            {
+                // La rocola de Windows. Aqui no hay tabla que preguntar: son las carpetas de siempre.
+                Console.WriteLine("     esta rocola es de Windows: se va por el nombre de las carpetas de siempre");
+                Check(mEsSistema != null && (bool)mEsSistema.Invoke(null, new object[] { @"C:\Windows" }), "  la carpeta de Windows es del sistema");
+                Check(mEsSistema != null && (bool)mEsSistema.Invoke(null, new object[] { @"C:\Program Files" }), "  la de los programas tambien");
+                Check(mEsSistema != null && (bool)mEsSistema.Invoke(null, new object[] { @"D:\$Recycle.Bin" }), "  y la papelera");
+                Check(mEsSistema != null && !(bool)mEsSistema.Invoke(null, new object[] { @"D:\Musica\Disco 1" }), "  y una carpeta de musica NO");
+            }
             if (mEsSistema != null)
             {
-                Console.WriteLine("     y con los sitios de verdad de esta maquina:");
-                Console.WriteLine("       /proc  -> " + ((bool)mEsSistema.Invoke(null, new object[] { "/proc/1" }) ? "del sistema" : "disco"));
-                Check((bool)mEsSistema.Invoke(null, new object[] { "/proc/1" }), "  /proc se reconoce como del sistema en esta maquina");
-                Check(!(bool)mEsSistema.Invoke(null, new object[] { casa }), "  y la carpeta de la prueba, no");
+                Console.WriteLine("     y con las carpetas de verdad de esta maquina:");
+                Check(!(bool)mEsSistema.Invoke(null, new object[] { casa }), "  la carpeta de la prueba no es del sistema");
+                Check(!(bool)mEsSistema.Invoke(null, new object[] { Path.Combine(casa, "musica") }), "  ni la carpeta de musica");
             }
 
             Console.WriteLine("\n  5) Y NO SE QUEDA DANDO VUELTAS EN LOS ATAJOS\n");

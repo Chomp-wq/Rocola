@@ -5601,11 +5601,24 @@ namespace Rocola
                 if (subs != null)
                     foreach (string d in subs)
                     {
-                        if (EsAtajo(d)) continue;                        // ver EsAtajo: si no, no se sale nunca
-                        if (Sistema.EsCarpetaDelSistema(d)) continue;    // /proc, /sys, /dev...: no son discos
+                        if (EsAtajo(d)) continue;                   // ver EsAtajo: si no, no se sale nunca
+                        if (EsCarpetaDelSistema(d)) continue;       // /proc, /sys, /dev...: no son discos
                         dirs.Push(d);
                     }
             }
+        }
+
+        // CARPETAS DONDE NO PUEDE HABER MUSICA. Si se le dice a la rocola "la musica esta en este disco
+        // entero", el recorrido se mete en sitios que no son discos y donde no hay ni puede haber una
+        // cancion. Medido apuntando a la raiz de esta maquina: de 40.000 carpetas miradas, /sys sola eran
+        // 16.719, /usr 11.067 y /opt 8.103.
+        //
+        // QUIEN LO SABE ES EL SISTEMA, cada uno a su manera, asi que lo contesta Sistema: aqui no hay que
+        // adivinar nombres porque Linux dice de que TIPO es cada sitio montado (ver LinuxSistema.cs); en
+        // Windows si va por nombre, que son cuatro y bien conocidos.
+        private static bool EsCarpetaDelSistema(string dir)
+        {
+            return Sistema.EsCarpetaDelSistema(dir);
         }
 
         // UNA CARPETA QUE EN REALIDAD ES UN ATAJO A OTRO SITIO. No se sigue, y no es capricho: en un disco de
