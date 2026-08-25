@@ -11,9 +11,11 @@ using System.Reflection;
 // CARO, asi que la primera vez se guarda una miniatura ya escalada y a partir de ahi se lee esa. Medido
 // aqui abajo: la primera vez cuesta unas diez veces mas que las siguientes.
 //
-// El problema era DONDE se guardaban: en la carpeta temporal del sistema. Y en la rocola del bar, que
-// corre Puppy Linux, esa carpeta ESTA EN LA MEMORIA: se borra al apagar la maquina. O sea que la promesa
-// del codigo -"la primera vez tarda; luego todo vuela"- alli era "la primera vez TODOS LOS DIAS".
+// El problema era DONDE se guardaban: en la carpeta temporal del sistema, que es tirable por definicion.
+// Windows la limpia cada tanto, y en la rocola del bar -que corre Puppy Linux- es peor todavia: alli esa
+// carpeta ESTA EN LA MEMORIA y se borra al apagar la maquina. O sea que la promesa del codigo -"la primera
+// vez tarda; luego todo vuela"- se rompia sola cada cierto tiempo, y en Puppy era "la primera vez TODOS
+// LOS DIAS".
 //
 // Peor: el precalentador que va construyendo las que faltan duerme entre portada y portada y se para en
 // cuanto alguien toca un boton. Con unos cientos de discos tarda minutos, y si cada noche empieza de cero
@@ -70,11 +72,12 @@ class Miniaturas
             Console.WriteLine("       " + ruta);
             Check(ruta != null && ruta.StartsWith(donde, StringComparison.Ordinal),
                   "las miniaturas van a la carpeta de datos (un disco de verdad), no a la temporal");
-            // La carpeta temporal es justo lo que Puppy tiene en la memoria y borra al apagar.
+            // La carpeta temporal es la que Windows limpia cada tanto y la que Puppy tiene en la memoria
+            // y borra al apagar: en los dos casos, el sitio donde esto no puede estar.
             string temporal = Path.GetTempPath().TrimEnd('/', '\\');
             bool enLaTemporal = ruta != null && Path.GetFullPath(ruta).StartsWith(temporal + Path.DirectorySeparatorChar, StringComparison.Ordinal)
                                 && !ruta.StartsWith(donde, StringComparison.Ordinal);
-            Check(!enLaTemporal, "y NO cuelgan de la carpeta temporal del sistema, que al apagar se pierde");
+            Check(!enLaTemporal, "y NO cuelgan de la carpeta temporal del sistema, que es de usar y tirar");
 
             Console.WriteLine("\n  2) Y PARA QUE SIRVE QUE SOBREVIVAN\n");
             string portada = Path.Combine(donde, "portada.jpg");

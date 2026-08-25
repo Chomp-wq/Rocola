@@ -740,6 +740,7 @@ namespace Rocola
         // En 32 bits el programa no pasa de ~2 GB por mucha RAM que tenga la maquina, asi que ahi se queda
         // como estaba; y si no se pudo medir la RAM, tampoco se arriesga. Ojo: si la biblioteca tiene menos
         // discos que el tope, el cajon simplemente no se llena y esto no cuesta nada.
+        //
         // La REGLA va aparte de la MEDIDA a proposito: asi las pruebas pueden preguntarle "¿y con cuatro
         // gigas?" sin tener que fabricar una maquina de cuatro gigas. Sin esto, la version de Windows solo
         // se podria comprobar en un Windows de verdad, que es justo donde no hay pruebas corriendo.
@@ -762,6 +763,7 @@ namespace Rocola
             topePortadas = TopeDePortadasPara(ramMb);
             return topePortadas;
         }
+
         private readonly HashSet<char> letterAvailable = new HashSet<char>();
         // EL COLOR DE CADA LETRA: el genero que MANDA dentro de ella. Sale de leer el ID3 de toda la
         // biblioteca, asi que se guarda en disco junto al numero de canciones con el que se calculo: mientras
