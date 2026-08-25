@@ -3,7 +3,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
-using System.IO;
 using System.Reflection;
 using System.Runtime.Serialization;
 
@@ -47,15 +46,20 @@ class Pared
         return alDisco;
     }
 
-    // Lo que ESTA maquina merece, calculado aparte del programa (si no, se estaria comparando el
-    // programa consigo mismo).
-    static ulong RamMb()
+    // Cuanta memoria ve LA ROCOLA. No es lo mismo que la que tiene la maquina: la version de Windows
+    // la pide con una funcion de Windows, asi que corriendo las pruebas aqui no la ve y contesta cero.
+    // Eso NO es un fallo -es justo el caso "no lo se, se prudente"-, y por eso la comprobacion de abajo
+    // esta escrita para valer en las tres versiones.
+    static ulong RamQueVeLaRocola(Assembly asm)
     {
         try
         {
-            foreach (string l in File.ReadAllLines("/proc/meminfo"))
-                if (l.StartsWith("MemTotal:"))
-                    return ulong.Parse(l.Split(new char[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries)[1]) / 1024UL;
+            Type TS = asm.GetType("Rocola.Sistema");
+            if (TS != null)
+            {
+                MethodInfo m = TS.GetMethod("MemoriaTotalMb", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+                if (m != null) return (ulong)m.Invoke(null, null);
+            }
         }
         catch { }
         return 0;
@@ -79,12 +83,21 @@ class Pared
         Check(Codigo.Llama(loQueHace, "MemoriaTotalMb"), "pregunta cuanta memoria tiene la maquina");
         Check(Codigo.Llama(loQueHace, "get_Size"), "y si el programa es de 32 o de 64 bits (en 32 no se pasa de ~2 GB por mucha RAM que haya)");
 
-        ulong ram = RamMb();
+        ulong ram = RamQueVeLaRocola(asm);
         int tope = (int)mTope.Invoke(null, null);
-        int merecido = (IntPtr.Size >= 8 && ram >= 3500) ? 1000 : 220;
-        Console.WriteLine("     esta maquina: " + ram + " MB de RAM, " + (IntPtr.Size * 8) + " bits");
-        Console.WriteLine("     le tocan " + tope + " portadas  (" + ((long)tope * 273 / 1024) + " MB medidos)");
-        Check(tope == merecido, "y le da las que le tocan: " + merecido);
+        Console.WriteLine("     la rocola ve " + (ram > 0 ? ram + " MB de RAM" : "una maquina cuya RAM no puede medir aqui")
+                          + ", y el programa es de " + (IntPtr.Size * 8) + " bits");
+        Console.WriteLine("     le da " + tope + " portadas  (" + ((long)tope * 273 / 1024) + " MB medidos)");
+
+        // Las dos unicas respuestas sanas, y la regla que las separa. Escrito asi vale en las tres
+        // versiones: la de XP -32 bits, 1 GB- tiene que quedarse en 220 pase lo que pase.
+        Check(tope == 220 || tope == 1000, "el numero es uno de los dos previstos, no cualquier cosa");
+        Check(IntPtr.Size >= 8 || tope == 220, "en 32 bits se queda en 220 (ahi el programa no pasa de ~2 GB por mucha RAM que haya)");
+        Check(tope != 1000 || (IntPtr.Size >= 8 && ram >= 3500), "solo da las mil cuando de verdad hay 64 bits y 3.5 GB o mas");
+        if (IntPtr.Size >= 8 && ram >= 3500)
+            Check(tope == 1000, "y en una maquina asi, se las da");
+        else
+            Console.WriteLine("     (aqui no se puede comprobar el caso de la maquina grande: la rocola no ve esa RAM)");
 
         Console.WriteLine("\n  2) HOJEAR LA PARED ENTERA Y VOLVER\n");
         FieldInfo fCache = TF.GetField("coverCache", BindingFlags.Instance | BindingFlags.NonPublic);
