@@ -500,16 +500,19 @@ namespace Rocola
         private static int coverAbiertos = 2;            // turnos de disco ya concedidos (el semaforo solo puede CRECER)
         // UNA ROCOLA PUEDE TENER LAS DOS COSAS, y es de lo mas normal: el programa y las miniaturas en el SSD
         // del sistema y la musica en un disco duro grande colgado detras, o la musica repartida entre los dos
-        // (ver "dir=" en el config). Un solo veredicto para todo se equivoca en media biblioteca, asi que se
-        // guarda uno POR UNIDAD (C:\, D:\...) y cada archivo se trata como merece el disco donde ESTA. Lo que
-        // no se puede repartir -cuantas caratulas se leen a la vez- se decide por donde este LA MAYORIA.
+        // (ver "dir=" en el config, y Ctrl+F2). Un solo veredicto para todo se equivoca en media biblioteca,
+        // asi que se guarda uno POR UNIDAD y cada archivo se trata como merece el disco donde ESTA. Lo que no
+        // se puede repartir -cuantas caratulas se leen a la vez- se decide por donde este LA MAYORIA.
         private static readonly Dictionary<string, bool> discoLento = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
         private static readonly object discoLock = new object();
+        // QUE ES UNA "UNIDAD" DEPENDE DEL SISTEMA, asi que lo contesta Sistema. En Windows es la letra
+        // (C:\, D:\...), que es lo que da Path.GetPathRoot. En Linux NO HAY LETRAS: lo que separa un disco
+        // de otro es donde esta montado (/mnt/sda1, /mnt/sdb1...), y a Path.GetPathRoot se le puede
+        // preguntar por lo que sea que siempre contesta "/" -o sea que aqui todo esto no hacia nada y habia
+        // un solo veredicto para la musica, las miniaturas y el programa-.
         private static string UnidadDe(string ruta)
         {
-            if (string.IsNullOrEmpty(ruta)) return "";
-            try { string r = Path.GetPathRoot(ruta); return r ?? ""; }
-            catch { return ""; }
+            return Sistema.UnidadDe(ruta);
         }
         // Si ESTE archivo esta en un disco con cabezal. Elegido a mano manda; si no, el de su unidad; y si de
         // esa unidad no se sabe nada, el veredicto general.
@@ -564,7 +567,18 @@ namespace Rocola
         // y eso son milisegundos, y en un SSD no hay cabezal que mover. Y se decide por la MEDIANA -el valor de
         // en medio-, que no se deja arrastrar por una lectura desafortunada como si hacia el promedio.
         private static bool perfilHecho = false;
-        private const int MuestrasDisco = 15;    // lecturas salteadas del perfilado (repartidas por la biblioteca)
+        // LAS LECTURAS SE REPARTEN POR DISCO, NO POR IGUAL.
+        //
+        // Antes se tomaban quince repartidas por toda la biblioteca, y hacen falta TRES de un disco para que
+        // se decida algo de el. O sea que un disco con menos del 20% de la musica se quedaba sin veredicto
+        // propio y caia en el general: justo el caso "le agregue un disco chico con lo nuevo". Ahora se mira
+        // primero que discos hay y se le toman unas cuantas a CADA uno.
+        //
+        // Saber de que disco es una cancion es barato -la tabla de montajes esta guardada-, pero no gratis,
+        // asi que no se preguntan las cien mil: se miran hasta dos mil repartidas por toda la biblioteca, que
+        // encuentran cualquier disco que tenga al menos una cancion de cada cuatrocientas.
+        private const int MuestrasPorDisco = 5;  // lecturas salteadas de CADA disco
+        private const int SondeosUnidad = 2000;  // canciones que se miran para saber que discos hay
         private const int UmbralDiscoMs = 3;     // mas de esto de mediana = hay un cabezal moviendose
         private static string perfilTexto = "";  // lo medido, en palabras (se ensena en Ctrl+F3)
         private void PerfilaDisco(List<Track> lista)
@@ -573,34 +587,52 @@ namespace Rocola
             perfilHecho = true;
             try
             {
-                // Las medidas se van APARTANDO POR UNIDAD: si la musica esta repartida entre un SSD y un disco
-                // duro, cada uno saca su propio veredicto en vez de salir todo del promedio de los dos.
-                Dictionary<string, List<int>> porUnidad = new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
-                byte[] buf = new byte[4096];
-                Random rnd = new Random(unchecked(Environment.TickCount * 397));
-                int paso = lista.Count / MuestrasDisco; if (paso < 1) paso = 1;
-                int hechas = 0;
-                for (int i = 0; i < lista.Count && hechas < MuestrasDisco; i += paso)
+                // PRIMERO, QUE DISCOS HAY. Se miran canciones repartidas por toda la biblioteca y se apartan
+                // por disco, para poder tomarle lecturas a cada uno (ver el comentario de SondeosUnidad).
+                Dictionary<string, List<Track>> candidatas = new Dictionary<string, List<Track>>(StringComparer.OrdinalIgnoreCase);
+                int pasoU = lista.Count / SondeosUnidad; if (pasoU < 1) pasoU = 1;
+                for (int i = 0; i < lista.Count; i += pasoU)
                 {
                     Track t = lista[i];
                     if (t == null || t.Path == null) continue;
-                    try
+                    string u = UnidadDe(t.Path);
+                    List<Track> c;
+                    if (!candidatas.TryGetValue(u, out c)) { c = new List<Track>(32); candidatas[u] = c; }
+                    c.Add(t);
+                }
+
+                // Y AHORA, UNAS LECTURAS DE CADA UNO. Se van apartando por disco: si la musica esta repartida
+                // entre un SSD y un disco duro, cada uno saca su propio veredicto en vez de salir todo del
+                // promedio de los dos.
+                Dictionary<string, List<int>> porUnidad = new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
+                byte[] buf = new byte[4096];
+                Random rnd = new Random(unchecked(Environment.TickCount * 397));
+                int hechas = 0;
+                foreach (KeyValuePair<string, List<Track>> kv in candidatas)
+                {
+                    List<Track> c = kv.Value;
+                    int paso = c.Count / MuestrasPorDisco; if (paso < 1) paso = 1;
+                    int deEste = 0;
+                    for (int i = 0; i < c.Count && deEste < MuestrasPorDisco; i += paso)
                     {
-                        System.Diagnostics.Stopwatch sw = System.Diagnostics.Stopwatch.StartNew();
-                        using (FileStream fs = new FileStream(t.Path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 4096))
+                        Track t = c[i];
+                        try
                         {
-                            long largo = fs.Length;
-                            if (largo > 8192) fs.Position = (long)(rnd.NextDouble() * (largo - 4096));   // a un sitio SALTEADO
-                            fs.Read(buf, 0, buf.Length);
+                            System.Diagnostics.Stopwatch sw = System.Diagnostics.Stopwatch.StartNew();
+                            using (FileStream fs = new FileStream(t.Path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 4096))
+                            {
+                                long largo = fs.Length;
+                                if (largo > 8192) fs.Position = (long)(rnd.NextDouble() * (largo - 4096));   // a un sitio SALTEADO
+                                fs.Read(buf, 0, buf.Length);
+                            }
+                            sw.Stop();
+                            List<int> l;
+                            if (!porUnidad.TryGetValue(kv.Key, out l)) { l = new List<int>(8); porUnidad[kv.Key] = l; }
+                            l.Add((int)sw.ElapsedMilliseconds);
+                            deEste++; hechas++;
                         }
-                        sw.Stop();
-                        string u = UnidadDe(t.Path);
-                        List<int> l;
-                        if (!porUnidad.TryGetValue(u, out l)) { l = new List<int>(8); porUnidad[u] = l; }
-                        l.Add((int)sw.ElapsedMilliseconds);
-                        hechas++;
+                        catch { }
                     }
-                    catch { }
                 }
                 if (hechas < 5) { perfilHecho = false; return; }   // no se pudo medir: sigue el respaldo de arriba
                 // Cada unidad, por su MEDIANA. Y el veredicto general, el de la unidad donde cayeron mas
@@ -3700,6 +3732,19 @@ namespace Rocola
 
         private void LoadMusicFolder()
         {
+            // A MIRAR LOS DISCOS OTRA VEZ. Por aqui pasan los tres caminos que rearman la biblioteca: el
+            // arranque, F5 y agregar una carpeta con Ctrl+F2. Los dos ultimos son, en la practica, "acabo de
+            // conectar un disco con musica"... y hasta ahora el disco nuevo NO se medía: el perfilado se
+            // hacia una sola vez en toda la sesion, asi que la musica nueva aparecia pero se trataba con el
+            // veredicto del disco viejo hasta reiniciar la rocola.
+            //
+            // Se sueltan las tres cosas: que discos hay conectados, los veredictos de antes -puede que alguno
+            // de esos discos ya no este- y el aviso de "esto ya se midio". Cuesta quince lecturas de 4 KB en
+            // segundo plano, o sea nada.
+            perfilHecho = false;
+            lock (discoLock) discoLento.Clear();
+            Sistema.OlvidaLasUnidades();
+
             List<string> roots = AllMusicRoots();   // carpeta "musica" principal + las agregadas con Ctrl+F2 (otros discos)
             if (roots.Count > 0) StartScan(roots);
             else lblStatus.Text = "No encontre una carpeta 'musica' junto al programa. Crea una carpeta llamada musica al lado del .exe (o agrega una con Ctrl+F2).";

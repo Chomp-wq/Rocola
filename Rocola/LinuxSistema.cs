@@ -3,7 +3,8 @@
 // ----------------------------------------------------------------------------------------------------
 //  Son cosas sueltas, ninguna del corazon del programa: cuanta memoria hay, a que velocidad va el
 //  procesador, obligar a que un archivo guardado baje al disco de verdad, mandar algo a la papelera,
-//  cuantas veces por segundo refresca la pantalla y si hay algo esperando a que lo atiendan.
+//  cuantas veces por segundo refresca la pantalla, si hay algo esperando a que lo atiendan, y en que
+//  disco de los conectados esta un archivo.
 //  En Windows se piden a la API del sistema; aqui se leen de donde Linux las publica, que es en archivos
 //  de texto de /proc y /sys. Sin capas de traduccion de por medio: son los mismos archivos que lee
 //  cualquier programa de Linux.
@@ -290,6 +291,126 @@ namespace Rocola
                 return XPending(pantallaX11) == 0;
             }
             catch { return true; }
+        }
+
+        // ---------- en QUE DISCO esta un archivo ----------
+        //
+        // La rocola se adapta al disco que tenga: en uno con cabezal pide las cosas en fila de uno y les
+        // deja respiros, y en un SSD al contrario. Y como una rocola puede tener LOS DOS -el programa en el
+        // del sistema y la musica en otro colgado detras, o repartida entre varios-, el veredicto se guarda
+        // por unidad y cada archivo se trata como merece el disco donde ESTA.
+        //
+        // En Windows la unidad es la letra, y Path.GetPathRoot la da: C:\, D:\... AQUI NO HAY LETRAS, y a
+        // Path.GetPathRoot en Linux se le puede preguntar por lo que sea que siempre contesta "/". O sea que
+        // en la rocola del bar habia UN SOLO VEREDICTO para todo -la musica, las miniaturas y el programa en
+        // el mismo saco-, y si la musica estaba repartida entre un disco rapido y uno lento, media biblioteca
+        // se trataba mal.
+        //
+        // Lo que en Linux separa un disco de otro es DONDE ESTA MONTADO: /mnt/sda1, /mnt/sdb1... y eso lo
+        // publica el sistema en /proc/mounts, un archivo de texto con una linea por disco:
+        //
+        //     /dev/sdb1 /mnt/sdb1 vfat rw,relatime 0 0
+        //      ^que es   ^donde esta
+        //
+        // El disco de un archivo es el montaje MAS HONDO que sea carpeta suya. Hace falta el mas hondo
+        // porque se puede montar un disco dentro de otro: con /mnt/sdb1 y /mnt/sdb1/extra, un archivo de
+        // "extra" es del segundo, no del primero.
+        private static List<string> montajes;
+        private static readonly object montajesLock = new object();
+
+        // La TABLA, tal como la escribe el sistema, convertida en la lista de sitios montados y ordenada del
+        // mas hondo al menos hondo (asi el primero que encaje es el bueno). Va aparte de leer el archivo a
+        // proposito: asi las pruebas pueden darle una tabla inventada y comprobar la regla sin necesitar
+        // discos de verdad.
+        public static List<string> MontajesDe(string texto)
+        {
+            List<string> r = new List<string>();
+            if (texto == null) return r;
+            string[] lineas = texto.Replace("\r", "").Split('\n');
+            for (int i = 0; i < lineas.Length; i++)
+            {
+                string[] c = lineas[i].Split(' ');
+                if (c.Length < 2 || c[1].Length == 0) continue;
+                string mp = Desescapa(c[1]);
+                if (mp.Length > 0 && !r.Contains(mp)) r.Add(mp);
+            }
+            r.Sort(delegate (string a, string b) { return b.Length.CompareTo(a.Length); });
+            return r;
+        }
+
+        // /proc/mounts no escribe los espacios tal cual: un disco llamado "Musica Vieja" sale como
+        // "Musica\040Vieja". Lo mismo con el tabulador (\011), el salto de linea (\012) y la barra (\134).
+        // Sin deshacer esto, el disco de nombre con espacio no se reconoceria nunca.
+        private static string Desescapa(string s)
+        {
+            if (s.IndexOf('\\') < 0) return s;
+            System.Text.StringBuilder sb = new System.Text.StringBuilder(s.Length);
+            for (int i = 0; i < s.Length; i++)
+            {
+                if (s[i] == '\\' && i + 3 < s.Length)
+                {
+                    int v = 0; bool ok = true;
+                    for (int k = 1; k <= 3; k++)
+                    {
+                        char c = s[i + k];
+                        if (c < '0' || c > '7') { ok = false; break; }
+                        v = v * 8 + (c - '0');
+                    }
+                    if (ok) { sb.Append((char)v); i += 3; continue; }
+                }
+                sb.Append(s[i]);
+            }
+            return sb.ToString();
+        }
+
+        // LA REGLA: en cual de esos sitios cae esta ruta. Se compara por CARPETAS, no por letras, para que
+        // /mnt/sdb11 no se tome por /mnt/sdb1.
+        public static string UnidadDe(string ruta, List<string> tabla)
+        {
+            if (string.IsNullOrEmpty(ruta)) return "";
+            string full = ruta;
+            // Lo normal es que ya venga entera; solo se arma si viene relativa (que cuesta, y esto se
+            // pregunta por cada portada y cada cancion).
+            if (full[0] != '/') { try { full = Path.GetFullPath(full); } catch { return ""; } }
+            if (tabla != null)
+            {
+                for (int i = 0; i < tabla.Count; i++)
+                {
+                    string m = tabla[i];
+                    if (m.Length == 0 || m == "/") continue;
+                    if (full.Length == m.Length && string.CompareOrdinal(full, m) == 0) return m;
+                    if (full.Length > m.Length && full[m.Length] == '/' && string.CompareOrdinal(full, 0, m, 0, m.Length) == 0) return m;
+                }
+            }
+            return "/";
+        }
+
+        // Y lo de verdad, con la tabla de esta maquina. Se lee UNA vez y se guarda: esto se pregunta por
+        // cada portada y cada cancion, y abrir un archivo en cada consulta no tendria ningun sentido.
+        public static string UnidadDe(string ruta)
+        {
+            List<string> t = montajes;
+            if (t == null)
+            {
+                lock (montajesLock)
+                {
+                    if (montajes == null)
+                    {
+                        string texto = null;
+                        try { texto = File.ReadAllText("/proc/mounts"); } catch { }
+                        montajes = MontajesDe(texto);
+                    }
+                    t = montajes;
+                }
+            }
+            return UnidadDe(ruta, t);
+        }
+
+        // Tira lo guardado para que la proxima consulta vuelva a mirar que discos hay. Se llama al rearmar
+        // la biblioteca: es cuando alguien acaba de conectar un disco con musica nueva.
+        public static void OlvidaLasUnidades()
+        {
+            lock (montajesLock) { montajes = null; }
         }
     }
 }

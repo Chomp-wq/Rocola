@@ -17,6 +17,7 @@ using System.Runtime.Serialization;
 //      rocola con SSD arrancaba siempre en modo lento) y por MEDIANA, no por promedio (una sola lectura
 //      desafortunada dejaba la rocola en modo lento toda la noche)
 //   2) que con SSD se abren varios carriles y se dejan de repartir respiros que solo hacen perder tiempo
+//   3) que el reparto POR DISCO funciona de verdad en Linux, que es donde estaba roto
 class Ssd
 {
     static int fallos = 0;
@@ -147,30 +148,127 @@ class Ssd
         Console.WriteLine(string.Format("     prelectura de una cancion de 5 MB: antes {0:0} ms de respiros, ahora {1:0} ms", antesW, ahoraW));
         Check(ahoraW * 3 < antesW, "y la cancion siguiente queda en memoria mucho antes");
 
-        Console.WriteLine("\n  5) CUANDO SE USAN LOS DOS DISCOS A LA VEZ\n");
-        // Es de lo mas normal: el programa y las miniaturas en el SSD del sistema y la musica en un disco
-        // duro grande colgado detras, o la musica repartida entre los dos ("dir=" en el config). Un solo
+        Console.WriteLine("\n  5) QUE ES UN \"DISCO\" EN LINUX\n");
+        // Es de lo mas normal tener dos: el programa y las miniaturas en el disco del sistema y la musica
+        // en otro colgado detras, o repartida entre varios ("dir=" en el config, y Ctrl+F2). Un solo
         // veredicto para todo se equivoca en media biblioteca, asi que se guarda uno POR UNIDAD.
+        //
+        // Y AQUI ESTABA EL FALLO. En Windows la unidad es la letra -C:\, D:\- y Path.GetPathRoot la da. En
+        // Linux NO HAY LETRAS: lo que separa un disco de otro es DONDE ESTA MONTADO (/mnt/sda1, /mnt/sdb1),
+        // y a eso Path.GetPathRoot contesta "/" para absolutamente todo. O sea que en la rocola del bar la
+        // musica, las miniaturas y el programa caian en el mismo saco.
+        //
+        // Peor: esta seccion pasaba EN VERDE sin probar nada. Comprobaba lo de "una unidad desconocida cae
+        // en el veredicto general" con una ruta de Windows ("Z:\otro\disco"), y esa cadena en Linux no
+        // tiene raiz, asi que salia por una rama distinta de la que se pretendia comprobar.
         MethodInfo mLento = TF.GetMethod("DiscoLento", BindingFlags.Static | BindingFlags.NonPublic);
         MethodInfo mUnidad = TF.GetMethod("UnidadDe", BindingFlags.Static | BindingFlags.NonPublic);
         Check(mLento != null && mUnidad != null, "cada archivo se puede preguntar por SU disco, no solo por el general");
-        if (mLento == null || mUnidad == null) return 1;
+        if (mLento == null || mUnidad == null) return Math.Max(1, fallos);
         Check(Codigo.Llama(mPerfil, "Form1.UnidadDe"), "y el perfilado aparta las medidas por unidad (no las mete todas en el mismo saco)");
+
+        Type TS = asm.GetType("Rocola.Sistema");
+        MethodInfo mMontajes = (TS != null) ? TS.GetMethod("MontajesDe", new Type[] { typeof(string) }) : null;
+        MethodInfo mUnidadTabla = (TS != null) ? TS.GetMethod("UnidadDe", new Type[] { typeof(string), typeof(List<string>) }) : null;
+        MethodInfo mOlvida = (TS != null) ? TS.GetMethod("OlvidaLasUnidades", new Type[0]) : null;
+        Check(mMontajes != null && mUnidadTabla != null && mOlvida != null,
+              "la rocola sabe leer los discos montados, y la regla se puede preguntar dandole una tabla (asi se prueba sin discos)");
+
+        if (mUnidadTabla != null && mMontajes != null)
+        {
+            // UNA MAQUINA DE PUPPY DE MENTIRA, pero con la tabla escrita como la escribe el sistema de
+            // verdad: un disco dentro de otro (para ver que gana el mas hondo) y uno con un espacio en el
+            // nombre, que /proc/mounts no escribe tal cual sino como "\040".
+            string tabla =
+                "/dev/sda1 / ext4 rw,relatime 0 0\n" +
+                "tmpfs /tmp tmpfs rw 0 0\n" +
+                "/dev/sdb1 /mnt/sdb1 vfat rw 0 0\n" +
+                "/dev/sdc1 /mnt/sdb1/extra ext4 rw 0 0\n" +
+                "/dev/sdd1 /mnt/Musica\\040Vieja vfat rw 0 0\n";
+            List<string> montajes = (List<string>)mMontajes.Invoke(null, new object[] { tabla });
+            Console.WriteLine("     discos de la maquina de mentira: " + string.Join(", ", montajes.ToArray()));
+            Func<string, string> Unid = delegate (string ru) { return (string)mUnidadTabla.Invoke(null, new object[] { ru, montajes }); };
+
+            string[][] casos = new string[][] {
+                new string[] { "/mnt/sdb1/musica/Disco 1/x.mp3", "/mnt/sdb1" },
+                new string[] { "/mnt/sdb1/extra/y.mp3",          "/mnt/sdb1/extra" },
+                new string[] { "/mnt/Musica Vieja/z.mp3",        "/mnt/Musica Vieja" },
+                new string[] { "/mnt/sdb1",                      "/mnt/sdb1" },
+                new string[] { "/tmp/rocola_miniaturas/a.jpg",   "/tmp" },
+                new string[] { "/home/rocola/w.mp3",             "/" },
+            };
+            Console.WriteLine();
+            for (int i = 0; i < casos.Length; i++)
+            {
+                string dio = Unid(casos[i][0]);
+                Console.WriteLine("       " + casos[i][0].PadRight(32) + " -> " + dio);
+                Check(dio == casos[i][1], "  cae en " + casos[i][1]);
+            }
+            Console.WriteLine();
+            Check(Unid("/mnt/sdb1/extra/y.mp3") != Unid("/mnt/sdb1/musica/Disco 1/x.mp3"),
+                  "un disco montado DENTRO de otro no se confunde con el de fuera");
+            Check(Unid("/mnt/sdb11/x.mp3") == "/",
+                  "y /mnt/sdb11 no se toma por /mnt/sdb1 (se compara por carpetas, no por letras)");
+        }
+
+        Console.WriteLine("\n  6) Y CON LOS DISCOS DE VERDAD DE ESTA MAQUINA\n");
+        // Lo de arriba prueba la regla; esto prueba que ademas se lee bien la tabla de verdad. Se busca un
+        // disco montado que no sea la raiz -en el bar seria el de la musica- y se comprueba que un archivo
+        // suyo se reporta como ESE disco. Antes salia "/" para todos, que es el fallo.
+        Func<string, string> UnidReal = delegate (string ru) { return (string)mUnidad.Invoke(null, new object[] { ru }); };
+        // Se busca un sitio montado aparte donde ADEMAS se pueda escribir: hace falta para esto y para lo
+        // del disco chico de mas abajo. Los de pega del sistema (/proc, /sys, /dev y sus cosas) no cuentan,
+        // que no son discos de nadie.
+        string otroDisco = null, dirChico = null;
+        try
+        {
+            foreach (string li in File.ReadAllLines("/proc/mounts"))
+            {
+                string[] c = li.Split(' ');
+                if (c.Length < 2) continue;
+                string mp = c[1];
+                if (mp == "/" || mp == "/dev" || mp.IndexOf("\\") >= 0) continue;
+                if (mp.StartsWith("/proc") || mp.StartsWith("/sys") || mp.StartsWith("/dev/pts")) continue;
+                if (!Directory.Exists(mp)) continue;
+                try
+                {
+                    string d2 = Path.Combine(mp, "ssdprueba_chico");
+                    Directory.CreateDirectory(d2);
+                    otroDisco = mp; dirChico = d2;
+                    break;
+                }
+                catch { }
+            }
+        }
+        catch { }
+        if (otroDisco == null) Console.WriteLine("     (esta maquina no tiene un segundo disco donde escribir: no hay dos que separar)");
+        else
+        {
+            string dio = UnidReal(Path.Combine(otroDisco, "musica", "x.mp3"));
+            Console.WriteLine("     un archivo de " + otroDisco + " se reporta como \"" + dio + "\"");
+            Check(dio == otroDisco, "un archivo de otro disco montado se reconoce como suyo, no como \"/\"");
+            Check(UnidReal("/x.mp3") != dio, "y uno de la raiz no se confunde con el");
+        }
+
+        Console.WriteLine("\n  7) EL VEREDICTO DE CADA DISCO MANDA SOBRE EL GENERAL\n");
         Func<string, bool> Lento = delegate (string ru) { return (bool)mLento.Invoke(null, new object[] { ru }); };
         string unid = (string)mUnidad.Invoke(null, new object[] { rutas[0] });
-        Console.WriteLine("     la unidad de " + rutas[0] + " es \"" + unid + "\"");
+        Console.WriteLine("     el disco de " + rutas[0] + " es \"" + unid + "\"");
         IDictionary mapa = (IDictionary)TF.GetField("discoLento", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
 
         Reinicia();
         PonEst("perfilDisco", 0);
         PonEst("diskSlow", true);            // el veredicto GENERAL dice disco duro...
-        mapa.Clear(); mapa[unid] = false;    // ...pero de ESTA unidad se midio que es SSD
-        Check(!Lento(rutas[0]), "manda lo medido de SU unidad, no el veredicto general");
-        Check(Lento(@"Z:\otro\disco\x.mp3"), "y un archivo de una unidad de la que no se sabe nada cae en el veredicto general");
-        mapa[unid] = true; PonEst("diskSlow", false);
-        Check(Lento(rutas[0]), "y al reves igual: unidad lenta dentro de una rocola rapida");
+        mapa.Clear(); mapa[unid] = false;    // ...pero de ESTE disco se midio que es SSD
+        Check(!Lento(rutas[0]), "manda lo medido de SU disco, no el veredicto general");
+        // Un disco del que no se sabe nada. Se usa una clave que NINGUNA ruta puede dar, para que esto
+        // pruebe lo que dice en cualquier maquina y no por casualidad.
+        mapa.Clear(); mapa["/un-disco-que-no-esta-conectado"] = false;
+        Check(Lento(rutas[0]), "y un archivo de un disco del que no se sabe nada cae en el veredicto general");
+        mapa.Clear(); mapa[unid] = true; PonEst("diskSlow", false);
+        Check(Lento(rutas[0]), "y al reves igual: disco lento dentro de una rocola rapida");
 
-        Console.WriteLine("\n  6) Y SE PUEDE FIJAR A MANO (Ctrl+F3)\n");
+        Console.WriteLine("\n  8) Y SE PUEDE FIJAR A MANO (Ctrl+F3)\n");
         PonEst("perfilDisco", 1);            // forzar SSD
         Check(!Lento(rutas[0]), "elegir SSD a mano manda sobre lo medido de cada unidad");
         PonEst("perfilDisco", 2);            // forzar disco duro
@@ -189,7 +287,7 @@ class Ssd
         }
         PonEst("perfilDisco", 0); mapa.Clear();
 
-        Console.WriteLine("\n  7) LOS RESPIROS VAN POR EL DISCO DE CADA ARCHIVO\n");
+        Console.WriteLine("\n  9) LOS RESPIROS VAN POR EL DISCO DE CADA ARCHIVO\n");
         // El repaso de cabeceras y la prelectura de la cancion siguiente van dentro de metodos anonimos (los
         // hilos de fondo), asi que se busca por todo el programa quien pregunta por el disco de cada archivo.
         int preguntan = 0;
@@ -198,6 +296,60 @@ class Ssd
                 if (Codigo.Llama(m, "Form1.DiscoLento")) preguntan++;
         Console.WriteLine("     sitios que preguntan por el disco de ESE archivo: " + preguntan);
         Check(preguntan >= 2, "el repaso de cabeceras y la prelectura preguntan por el disco donde esta cada archivo, no por un veredicto unico");
+
+        Console.WriteLine("\n 10) ENCHUFAR UN DISCO Y DAR F5 VUELVE A MIRARLO\n");
+        // El reparto se medía UNA sola vez en toda la sesion. O sea que conectar un disco y pedir un
+        // re-escaneo -F5, o agregar la carpeta con Ctrl+F2- traia la musica nueva pero NO medía el disco
+        // nuevo: se quedaba con el veredicto general hasta reiniciar la rocola. Los tres caminos que
+        // rearman la biblioteca pasan por LoadMusicFolder, asi que ahi es donde tiene que soltarse todo.
+        MethodInfo mLoad = TF.GetMethod("LoadMusicFolder", BindingFlags.Instance | BindingFlags.NonPublic);
+        Check(mLoad != null, "hay un solo sitio por donde se rearma la biblioteca");
+        if (mLoad != null)
+        {
+            int lee, escribe;
+            Codigo.UsosDeCampo(mLoad, "perfilHecho", out lee, out escribe);
+            Check(escribe > 0, "al rearmar la biblioteca se vuelve a medir el tipo de disco");
+            Check(Codigo.Llama(mLoad, "Sistema.OlvidaLasUnidades"), "y se vuelve a mirar QUE discos hay conectados");
+            Check(Codigo.Llama(mLoad, "Dictionary`2.Clear"), "y se tiran los veredictos viejos (puede que ese disco ya no este)");
+        }
+
+        Console.WriteLine("\n 11) UN DISCO CHICO TAMBIEN SACA SU VEREDICTO\n");
+        // El perfilado tomaba 15 lecturas repartidas por IGUAL por toda la biblioteca, y hacen falta 3 de
+        // un disco para decidir algo de el. O sea que un disco con menos del 20% de la musica -justo el
+        // caso "le agregue un disco chico con lo nuevo"- se quedaba sin veredicto propio. Ahora las
+        // lecturas se reparten POR DISCO.
+        if (dirChico != null)
+        {
+            try { using (FileStream fs = new FileStream(Path.Combine(dirChico, "p.mp3"), FileMode.Create)) fs.Write(relleno, 0, relleno.Length); }
+            catch { dirChico = null; }
+        }
+        if (dirChico == null) Console.WriteLine("     (no hay un segundo disco donde escribir: no se puede montar el caso)");
+        else
+        {
+            // 60 canciones en un disco y 6 en el otro: el chico es el 9% de la biblioteca, la mitad de lo
+            // que hacia falta antes para que se le mirara siquiera.
+            List<string> mezcla = new List<string>();
+            for (int i = 0; i < 60; i++) mezcla.Add(rutas[i % rutas.Length]);
+            string chico = Path.Combine(dirChico, "p.mp3");
+            for (int i = 0; i < 6; i++) mezcla.Add(chico);
+            Console.WriteLine("     biblioteca de prueba: 60 canciones en " + unid + " y 6 en " + UnidReal(chico) + "  (el chico es el 9%)");
+
+            Reinicia();
+            PonEst("perfilDisco", 0);
+            mapa.Clear();
+            mPerfil.Invoke(F, new object[] { ListaTracks(mezcla.ToArray()) });
+            List<string> salieron = new List<string>();
+            foreach (DictionaryEntry de in mapa) salieron.Add((string)de.Key);
+            salieron.Sort();
+            Console.WriteLine("     discos con veredicto propio: " + (salieron.Count == 0 ? "(ninguno)" : string.Join(", ", salieron.ToArray())));
+            // Y lo que se lee en Ctrl+F3, que antes decia "/" y no informaba de nada.
+            Console.WriteLine("     lo que dira Ctrl+F3:  " + (string)Est("perfilTexto"));
+            Check(salieron.Count >= 2, "los dos discos sacan su propio veredicto, no solo el que tiene la mayoria");
+            Check(UnidReal(chico) != unid && mapa.Contains(UnidReal(chico)),
+                  "y el chico, con el 9% de la musica, sale APARTE del grande (no metido en su saco)");
+            mapa.Clear(); PonEst("perfilDisco", 0);
+            try { Directory.Delete(dirChico, true); } catch { }
+        }
 
         try { Directory.Delete(dir, true); } catch { }
         Console.WriteLine(fallos == 0 ? "\nTODO BIEN" : "\nFALLOS: " + fallos);
