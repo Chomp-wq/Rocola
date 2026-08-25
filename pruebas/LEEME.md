@@ -57,6 +57,7 @@ falta `mcs` (Mono), `xvfb-run` y `python3`.
 | `sobras` | que un cuadro en reposo no reserve ni un byte de memoria |
 | `gasto` | que la caché de carátulas no crezca, que lo expulsado se libere de verdad, y lo que ocupa una biblioteca de 50.000 canciones |
 | `historial` | cuántas páginas de la pared de discos se guardan, que el cajón respete su tope, y que volver a una guardada sea mucho más barato |
+| `carpetas` | que se le pueda decir "la música está en ESTE disco": que el disco entero se pueda elegir, que mande la carpeta de fuera, y que el barrido no se quede dando vueltas en los atajos ni entre en las carpetas del sistema |
 | `miniaturas` | que las miniaturas de las portadas se guarden en el disco y no en la carpeta temporal (que en Puppy está en la memoria y se borra al apagar), y que el barrido no toque las recientes |
 | `pared` | que el cajón de portadas se ajuste a la máquina, y que con el grande se pueda hojear la pared entera y volver **sin tocar el disco ni una vez** |
 | `resol` | que cambiar la resolución con la rocola abierta no la deje lenta |
