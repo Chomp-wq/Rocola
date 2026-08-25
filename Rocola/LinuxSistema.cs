@@ -316,6 +316,7 @@ namespace Rocola
         // porque se puede montar un disco dentro de otro: con /mnt/sdb1 y /mnt/sdb1/extra, un archivo de
         // "extra" es del segundo, no del primero.
         private static List<string> montajes;
+        private static List<string> sitiosDeMentira;
         private static readonly object montajesLock = new object();
 
         // La TABLA, tal como la escribe el sistema, convertida en la lista de sitios montados y ordenada del
@@ -389,28 +390,91 @@ namespace Rocola
         // cada portada y cada cancion, y abrir un archivo en cada consulta no tendria ningun sentido.
         public static string UnidadDe(string ruta)
         {
-            List<string> t = montajes;
-            if (t == null)
+            LeeLaTabla();
+            return UnidadDe(ruta, montajes);
+        }
+
+        private static void LeeLaTabla()
+        {
+            if (montajes != null) return;
+            lock (montajesLock)
             {
-                lock (montajesLock)
-                {
-                    if (montajes == null)
-                    {
-                        string texto = null;
-                        try { texto = File.ReadAllText("/proc/mounts"); } catch { }
-                        montajes = MontajesDe(texto);
-                    }
-                    t = montajes;
-                }
+                if (montajes != null) return;
+                string texto = null;
+                try { texto = File.ReadAllText("/proc/mounts"); } catch { }
+                sitiosDeMentira = SistemasDeMentira(texto);
+                montajes = MontajesDe(texto);   // ultimo: es el que hace de "ya esta leido"
             }
-            return UnidadDe(ruta, t);
+        }
+
+        // ---------- carpetas donde NO puede haber musica ----------
+        //
+        // Si a la rocola se le dice "la musica esta en este disco entero", el recorrido se mete en /proc,
+        // /sys, /dev y compania, que no son discos: son inventos del nucleo para publicar cosas, y ahi no
+        // hay ni puede haber una cancion. Medido apuntando a la raiz de esta maquina: de 40.000 carpetas
+        // miradas, /sys sola eran 16.719. O sea que se puede quitar la mayor parte del trabajo sin perder
+        // ni un archivo de musica.
+        //
+        // No hay que adivinar nombres: el propio sistema dice de que tipo es cada sitio montado, en la
+        // tercera columna de /proc/mounts.
+        //
+        //     proc /proc proc rw,relatime 0 0
+        //           ^donde ^de que tipo
+        //
+        // OJO, ESTO ES UNA LISTA DE TIPOS CONCRETOS Y NUNCA AL REVES. La raiz de Puppy es de tipo "aufs" y
+        // ahi vive absolutamente todo; dar por malo lo que no se reconozca dejaria a la rocola sin mirar
+        // nada. Si aparece un tipo nuevo que no esta en la lista, lo peor que pasa es que se mire una
+        // carpeta de mas.
+        private static readonly string[] TiposDeMentira = {
+            "proc", "sysfs", "devtmpfs", "devpts", "tmpfs", "ramfs", "cgroup", "cgroup2",
+            "securityfs", "debugfs", "tracefs", "pstore", "bpf", "configfs", "fusectl",
+            "mqueue", "hugetlbfs", "binfmt_misc", "efivarfs", "autofs", "nsfs", "selinuxfs", "rpc_pipefs"
+        };
+
+        // De la tabla del sistema, los sitios montados que NO son un disco. Aparte de leer el archivo, para
+        // poder darle una tabla inventada desde las pruebas.
+        public static List<string> SistemasDeMentira(string texto)
+        {
+            List<string> r = new List<string>();
+            if (texto == null) return r;
+            string[] lineas = texto.Replace("\r", "").Split('\n');
+            for (int i = 0; i < lineas.Length; i++)
+            {
+                string[] c = lineas[i].Split(' ');
+                if (c.Length < 3 || c[1].Length == 0) continue;
+                bool mentira = false;
+                for (int k = 0; k < TiposDeMentira.Length && !mentira; k++)
+                    if (string.CompareOrdinal(c[2], TiposDeMentira[k]) == 0) mentira = true;
+                if (!mentira) continue;
+                string mp = Desescapa(c[1]);
+                if (mp.Length > 0 && !r.Contains(mp)) r.Add(mp);
+            }
+            r.Sort(delegate (string a, string b) { return b.Length.CompareTo(a.Length); });
+            return r;
+        }
+
+        // ¿Esta ruta cae en uno de esos sitios? Es la MISMA cuenta que "en que disco esta", pero mirando solo
+        // los sitios de mentira, asi que se reaprovecha tal cual. La raiz nunca cuenta: si en alguna maquina
+        // la propia raiz fuera de uno de esos tipos -un arranque entero en memoria-, dar por mala la raiz
+        // seria dejar a la rocola sin mirar absolutamente nada.
+        public static bool EsCarpetaDelSistema(string ruta, List<string> deMentira)
+        {
+            if (deMentira == null || deMentira.Count == 0) return false;
+            string u = UnidadDe(ruta, deMentira);
+            return u.Length > 0 && u != "/";
+        }
+
+        public static bool EsCarpetaDelSistema(string ruta)
+        {
+            LeeLaTabla();
+            return EsCarpetaDelSistema(ruta, sitiosDeMentira);
         }
 
         // Tira lo guardado para que la proxima consulta vuelva a mirar que discos hay. Se llama al rearmar
         // la biblioteca: es cuando alguien acaba de conectar un disco con musica nueva.
         public static void OlvidaLasUnidades()
         {
-            lock (montajesLock) { montajes = null; }
+            lock (montajesLock) { montajes = null; sitiosDeMentira = null; }
         }
     }
 }

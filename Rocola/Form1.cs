@@ -2090,20 +2090,64 @@ namespace Rocola
 
         private List<string> AllMusicRoots()
         {
-            List<string> roots = new List<string>();
-            try { if (Directory.Exists(MusicFolder)) roots.Add(MusicFolder); } catch { }
+            // Primero, todas las que EXISTEN ahora mismo. Las que no existen -un disco desconectado- no se
+            // tiran de la configuracion: siguen guardadas y vuelven solas cuando el disco reaparezca.
+            List<string> cand = new List<string>();
+            try { if (Directory.Exists(MusicFolder)) cand.Add(MusicFolder); } catch { }
             for (int i = 0; i < extraMusicDirs.Count; i++)
             {
-                string d = extraMusicDirs[i];
-                // Se descarta no solo la carpeta REPETIDA, sino la que ANIDA con otra ya incluida (una dentro
-                // de la otra, en cualquier sentido): si no, todo lo que compartieran se escanearia DOS veces y
-                // cada cancion saldria duplicada en las listas, el buscador y las estadisticas.
-                bool dup = false;
-                for (int j = 0; j < roots.Count && !dup; j++)
-                    if (PathInside(d, roots[j]) || PathInside(roots[j], d)) dup = true;
-                try { if (!dup && Directory.Exists(d)) roots.Add(d); } catch { }
+                try { if (Directory.Exists(extraMusicDirs[i])) cand.Add(extraMusicDirs[i]); } catch { }
+            }
+            // Y ahora se sueltan las que estan DENTRO de otra. Mirar las dos escanearia lo mismo dos veces y
+            // cada cancion saldria duplicada en las listas, el buscador y las estadisticas.
+            //
+            // LA QUE SE SUELTA ES LA DE DENTRO, no la de fuera. Antes era al reves -se quedaba la primera de
+            // la lista, que es siempre "musica"-, y eso hacia inutil lo mas normal de todo: decirle a la
+            // rocola "la musica esta en ESTE disco". El disco contiene a "musica", asi que el disco entero se
+            // soltaba y se seguia mirando solo la carpetita de siempre. Mirar la de fuera ya cubre a la de
+            // dentro; al reves no.
+            List<string> roots = new List<string>();
+            for (int i = 0; i < cand.Count; i++)
+            {
+                bool dentroDeOtra = false;
+                for (int j = 0; j < cand.Count && !dentroDeOtra; j++)
+                {
+                    if (j == i) continue;
+                    // Si son la MISMA carpeta, cada una esta "dentro" de la otra: se queda la primera.
+                    if (PathInside(cand[i], cand[j]) && (!PathInside(cand[j], cand[i]) || j < i)) dentroDeOtra = true;
+                }
+                if (!dentroDeOtra) roots.Add(cand[i]);
             }
             return roots;
+        }
+
+        // POR QUE UNA CARPETA NO SE PUEDE AGREGAR, en palabras -o nada, si se puede-.
+        //
+        // Esto vivia dentro del boton "Agregar carpeta..." de la ventana, donde ninguna prueba lo alcanzaba,
+        // y tenia dos fallos que juntos impedian lo mas normal: elegir el disco entero.
+        //
+        //   - Se comparaba contra la carpeta "musica" del programa EXISTIERA O NO. Y el disco donde esta el
+        //     programa siempre la contiene, asi que elegir el disco entero contestaba siempre "esa carpeta ya
+        //     esta incluida"... hasta cuando esa carpeta no existia y no se estaba escaneando nada.
+        //   - Y se rechazaba tambien cuando la carpeta nueva CONTENIA a una que ya estaba, que es justo el
+        //     caso bueno: ahi lo que toca es quedarse con la de fuera (ver AllMusicRoots).
+        //
+        // Lo que si se sigue rechazando es lo que de verdad duplicaria musica: la misma carpeta otra vez, o
+        // una metida DENTRO de otra que ya esta.
+        private string PorQueNoSePuedeAgregar(string p)
+        {
+            if (string.IsNullOrEmpty(p)) return "Esa carpeta no vale.";
+            try { if (!Directory.Exists(p)) return "Esa carpeta no existe (o el disco no esta conectado)."; }
+            catch { return "No se puede leer esa carpeta."; }
+            List<string> yaEstan = AllMusicRoots();
+            for (int i = 0; i < yaEstan.Count; i++)
+            {
+                if (!PathInside(p, yaEstan[i])) continue;
+                return PathInside(yaEstan[i], p)
+                     ? "Esa carpeta ya esta incluida."
+                     : "Esa carpeta ya esta dentro de \"" + yaEstan[i] + "\", que ya esta incluida.";
+            }
+            return null;
         }
 
         // Ctrl+F2: GESTOR VISUAL de carpetas de musica. Lista la principal ("musica", fija) y las ADICIONALES
@@ -2115,6 +2159,7 @@ namespace Rocola
             if (searchOpen) CloseSearch();
             bool wasMaint = maintMode;
             maintMode = true; maintUntil = DateTime.Now.AddMinutes(10);   // pausa el vigia de foco: el dialogo modal necesita quedarse al frente
+            gestorAbierto = true;   // mientras este abierto, que no se pida abrirlo otra vez (ver PideElegirMusica)
             bool changed = false;
             try
             {
@@ -2180,12 +2225,8 @@ namespace Rocola
                             fb.ShowNewFolderButton = false;
                             if (fb.ShowDialog(dlg) != DialogResult.OK || string.IsNullOrEmpty(fb.SelectedPath)) return;
                             string p = fb.SelectedPath;
-                            // Tambien se rechaza si ANIDA con una ya incluida (una dentro de otra): esa musica
-                            // se escanearia dos veces y saldria duplicada por todas partes.
-                            bool dup = PathInside(p, MusicFolder) || PathInside(MusicFolder, p);
-                            for (int i = 0; i < extraMusicDirs.Count && !dup; i++)
-                                if (PathInside(p, extraMusicDirs[i]) || PathInside(extraMusicDirs[i], p)) dup = true;
-                            if (dup) { MessageBox.Show(dlg, "Esa carpeta ya esta incluida (o esta dentro de otra que ya lo esta).", "Rocola"); return; }
+                            string no = PorQueNoSePuedeAgregar(p);
+                            if (no != null) { MessageBox.Show(dlg, no, "Rocola"); return; }
                             extraMusicDirs.Add(p); changed = true; refresh();
                         }
                     };
@@ -2213,7 +2254,9 @@ namespace Rocola
                 }
             }
             catch { }
-            finally { try { Cursor.Hide(); } catch { } maintMode = wasMaint; ForceFocus(); }
+            // OJO CON EL ORDEN: el "changed" de arriba vuelve a cargar la musica, y eso puede volver a pedir
+            // esta misma ventana. Se suelta la marca DESPUES, cuando ya no hay nada en curso.
+            finally { gestorAbierto = false; try { Cursor.Hide(); } catch { } maintMode = wasMaint; ForceFocus(); }
         }
 
         // Ctrl+F3: ajuste VISUAL del sonido. Tres perillas: "volumen objetivo" (que tan fuerte quedan todas),
@@ -3747,7 +3790,32 @@ namespace Rocola
 
             List<string> roots = AllMusicRoots();   // carpeta "musica" principal + las agregadas con Ctrl+F2 (otros discos)
             if (roots.Count > 0) StartScan(roots);
-            else lblStatus.Text = "No encontre una carpeta 'musica' junto al programa. Crea una carpeta llamada musica al lado del .exe (o agrega una con Ctrl+F2).";
+            else
+            {
+                lblStatus.Text = "No encontre musica. Conecta el disco donde este y eligelo en la ventana que se abre.";
+                PideElegirMusica();
+            }
+        }
+
+        // SIN MUSICA, LA VENTANA DE CARPETAS SE ABRE SOLA.
+        //
+        // Antes solo se escribia un letrero abajo diciendo "crea una carpeta musica al lado del .exe (o
+        // agrega una con Ctrl+F2)". En la maquina del bar eso no sirve de nada: no hay ningun ".exe" a la
+        // vista y hay que SABERSE una combinacion de teclas para poder hacer algo. Poner la musica es
+        // mantenimiento -y ahi hay teclado y raton-, pero no puede hacer falta adivinar nada para llegar.
+        //
+        // EL SEGURO CONTRA EL BUCLE. La ventana, al cerrarse, vuelve a cargar la musica; si sigue sin haber,
+        // esto se llamaria otra vez y se abriria sola para siempre, sin poder salir. Asi que se abre UNA vez
+        // por sesion: si se cierra sin arreglar nada, se queda cerrada. Al proximo arranque vuelve a salir.
+        private bool gestorAbierto = false;    // la ventana esta abierta AHORA
+        private bool gestorOfrecido = false;   // ya se abrio sola una vez en esta sesion
+        private void PideElegirMusica()
+        {
+            if (gestorAbierto || gestorOfrecido) return;
+            gestorOfrecido = true;
+            // Despues de que la pantalla este pintada: si no, la ventana saldria encima de una rocola a
+            // medio dibujar.
+            try { this.BeginInvoke(new MethodInvoker(ShowMusicDirManager)); } catch { }
         }
 
         private List<string> scanRoots;   // raices del escaneo en curso/vigente (las usa el worker; solo se asignan aqui)
@@ -5530,8 +5598,35 @@ namespace Rocola
                 }
                 string[] subs = null;
                 try { subs = Directory.GetDirectories(dir); } catch { }
-                if (subs != null) foreach (string d in subs) dirs.Push(d);
+                if (subs != null)
+                    foreach (string d in subs)
+                    {
+                        if (EsAtajo(d)) continue;                        // ver EsAtajo: si no, no se sale nunca
+                        if (Sistema.EsCarpetaDelSistema(d)) continue;    // /proc, /sys, /dev...: no son discos
+                        dirs.Push(d);
+                    }
             }
+        }
+
+        // UNA CARPETA QUE EN REALIDAD ES UN ATAJO A OTRO SITIO. No se sigue, y no es capricho: en un disco de
+        // verdad los hay que dan vueltas -"/usr/bin/X11" apunta a si mismo, "/proc/<numero>/root" lleva de
+        // vuelta a la raiz- y el recorrido no sale de ahi JAMAS. Medido antes de esto, apuntando al disco
+        // entero: 40.000 carpetas y 401.023 archivos en 19 segundos sin terminar; y en la prueba con dos
+        // atajos, 77.741 canciones encontradas donde solo habia dos. Es lo mismo que hace cualquier buscador
+        // de archivos del sistema.
+        //
+        // La carpeta que se ELIGIO si se mira aunque sea un atajo -si la eligieron, la quieren-: esto solo
+        // decide si se BAJA a los atajos que haya dentro.
+        //
+        // Y NO SE PIERDE NADA POR EL CAMINO, esta comprobado archivo por archivo: barriendo el disco entero
+        // de esta maquina, antes salian 1.657 rutas y ahora 1.582, pero los NOMBRES distintos son 102 en los
+        // dos casos. Los 75 de diferencia eran el mismo archivo contado dos veces -"/lib" es un atajo a
+        // "/usr/lib", asi que todo lo de dentro salia por partida doble-, que es exactamente la duplicacion
+        // que todo esto existe para evitar.
+        private static bool EsAtajo(string dir)
+        {
+            try { return (new DirectoryInfo(dir).Attributes & FileAttributes.ReparsePoint) != 0; }
+            catch { return false; }
         }
 
         // La portada de una carpeta a partir de la lista de archivos que YA se leyo. Mismo criterio de siempre:
