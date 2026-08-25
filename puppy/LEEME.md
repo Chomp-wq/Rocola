@@ -11,7 +11,7 @@ Hace falta **BookwormPup64** ya instalado (una instalación "frugal" normal, la 
 
 | | qué es | dónde va |
 |---|---|---|
-| **`rocola.sfs`** | Mono, libgdiplus y la rocola | Puppy lo abre al arrancar. **Solo lectura**: nadie lo puede tocar ni romper. |
+| **`rocola.sfs`** | Mono, libgdiplus, **mpv y ffmpeg** (los vídeos) y la rocola | Puppy lo abre al arrancar. **Solo lectura**: nadie lo puede tocar ni romper. |
 | **La carpeta de datos** | la música, los créditos, la cola, los volúmenes medidos, lo más sonado | Una carpeta normal del disco (`/mnt/home/rocola`). |
 
 **Por qué separado.** Un `.sfs` no se puede escribir. Puppy deja escribir "por encima", pero lo
@@ -25,7 +25,8 @@ verdad y un apagón no se lleva nada: al volver la luz, sigue donde iba.
 
 ### 1. Preparar el `.sfs` (en la máquina de Puppy)
 
-Primero, instala en Puppy **Mono** y **libgdiplus** (Menú → Setup → Puppy Package Manager). Después:
+Primero, instala en Puppy **Mono**, **libgdiplus** y —si quieres vídeos— **mpv** y **ffmpeg**
+(Menú → Setup → Puppy Package Manager). Después:
 
 ```
 sh hacer_sfs.sh
@@ -68,6 +69,11 @@ cierra y aparece el escritorio de Puppy.
 
 **Meter música:** se copia a `/mnt/home/rocola/musica`, un disco por carpeta. Para música que esté en
 **otro disco**, se añade desde dentro de la rocola con **Ctrl+F2** (y ahí se queda, aunque se apague).
+
+**Meter vídeos:** igual que la música, en una carpeta suya dentro de `musica`. La rocola les mide el
+volumen sola y los deja al mismo nivel que las canciones, así que un vídeo no revienta después de una
+canción ni se queda en un susurro. Si en la máquina faltan mpv o ffmpeg, **no hay sección de vídeos**
+y la rocola funciona igual — nunca una sección que al pulsarla no hace nada.
 
 **Deshacer el arranque directo:** `sh instalar.sh --quitar`. No borra ni la música ni nada de lo
 aprendido.

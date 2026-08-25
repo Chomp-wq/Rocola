@@ -12,7 +12,9 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Windows.Forms;
 
 namespace Rocola
 {
@@ -157,6 +159,48 @@ namespace Rocola
             }
             catch { }
             return "";
+        }
+
+        // ---------- la ventana de X11 que hay debajo de un control ----------
+        // LA VENTANA DE X11 QUE HAY DEBAJO DE UN CONTROL DE LA ROCOLA.
+        //
+        // Ni OpenGL ni mpv se cuelgan de un control: los dos se cuelgan de una ventana del sistema de
+        // ventanas (X11). Mono no
+        // cuenta por ninguna via oficial cual es la ventana de X11 de un control, pero por dentro guarda
+        // esa correspondencia y se le puede preguntar. Mono ya no cambia -esta congelado-, asi que esto
+        // no se va a mover bajo los pies. Es lo mismo que comprueba la bateria 'opengl'.
+        public static bool VentanaX11(IntPtr handle, out IntPtr dpy, out IntPtr win)
+        {
+            dpy = IntPtr.Zero; win = IntPtr.Zero;
+            try
+            {
+                Assembly swf = typeof(Control).Assembly;
+                Type tx = swf.GetType("System.Windows.Forms.XplatUIX11");
+                if (tx == null) return false;                  // no estamos en Linux
+                BindingFlags est = BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
+                PropertyInfo prop = tx.GetProperty("DisplayHandle", est);
+                if (prop != null) { try { dpy = (IntPtr)prop.GetValue(null, null); } catch { } }
+                if (dpy == IntPtr.Zero)
+                {
+                    FieldInfo f = tx.GetField("DisplayHandle", est);
+                    if (f != null) { try { dpy = (IntPtr)f.GetValue(null); } catch { } }
+                }
+                Type th = swf.GetType("System.Windows.Forms.Hwnd");
+                if (th == null) return false;
+                MethodInfo m = th.GetMethod("ObjectFromHandle", est);
+                if (m == null) return false;
+                object h = null;
+                try { h = m.Invoke(null, new object[] { handle }); } catch { }
+                if (h == null) return false;
+                foreach (string n in new string[] { "client_window", "whole_window" })
+                {
+                    FieldInfo f = th.GetField(n, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                    if (f == null) continue;
+                    try { IntPtr v = (IntPtr)f.GetValue(h); if (v != IntPtr.Zero) { win = v; break; } } catch { }
+                }
+            }
+            catch { }
+            return dpy != IntPtr.Zero && win != IntPtr.Zero;
         }
 
         // ---------- cuantas veces por segundo refresca la pantalla ----------

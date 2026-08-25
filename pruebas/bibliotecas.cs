@@ -175,8 +175,36 @@ class Bibliotecas
         }
         Check(faltan.Count == 0, "todas las bibliotecas que la rocola necesita estan en esta maquina");
 
+        Console.WriteLine("\n  3) Y LOS PROGRAMAS DE LOS VIDEOS  (sin ellos hay rocola, pero sin videos)\n");
+        // Estos dos NO son obligatorios: si faltan, la rocola no ensena la seccion de videos y funciona
+        // igual. Pero mas vale saberlo aqui que descubrirlo en el bar cuando alguien pida un video.
+        int faltanVideo = 0;
+        foreach (string prog in new string[] { "mpv", "ffmpeg", "ffprobe" })
+        {
+            bool hay = Programa(prog);
+            Console.WriteLine("       " + (hay ? "si" : "no") + " " + prog + (hay ? "" : "   (sin el, no hay videos)"));
+            if (!hay) faltanVideo++;
+        }
+        if (faltanVideo == 0) Console.WriteLine("     -> esta maquina puede con los videos.");
+        else Console.WriteLine("     -> esta maquina NO pone videos. La rocola funciona igual, sin esa seccion.");
+
         Console.WriteLine(fallos == 0 ? "\n  TODO BIEN\n" : "\n  " + fallos + " FALLO(S)\n");
         return fallos;
+    }
+
+    // ¿Esta ese programa en la maquina? Se le pregunta la version, que es lo que hace cualquiera.
+    static bool Programa(string nombre)
+    {
+        try
+        {
+            System.Diagnostics.ProcessStartInfo psi = new System.Diagnostics.ProcessStartInfo(nombre, "--version");
+            psi.UseShellExecute = false; psi.RedirectStandardOutput = true; psi.RedirectStandardError = true;
+            System.Diagnostics.Process p = System.Diagnostics.Process.Start(psi);
+            p.StandardOutput.ReadToEnd(); p.StandardError.ReadToEnd();
+            p.WaitForExit(4000);
+            return true;
+        }
+        catch { return false; }
     }
 
     static List<string> Todas(List<string> pide)

@@ -23,9 +23,9 @@ capas de traducción. Destino: **BookwormPup64 (Puppy)** en una máquina modesta
 
 ## Qué hace (v2.5)
 
-> En esta rama **no hay sección de videos** ni **DSEE ULTRA**: los párrafos de más abajo que hablan
-> de videos, de Windows Media Player o del ULTRA describen la rama de Windows y **no aplican aquí**.
-> El porqué está en [Rama de Linux](#rama-de-linux).
+> En esta rama **no hay DSEE ULTRA**, y los vídeos los pone **mpv** en vez de Windows Media Player:
+> los párrafos de más abajo que hablan de WMP o del ULTRA describen la rama de Windows. El porqué
+> está en [Rama de Linux](#rama-de-linux).
 
 **Operación (local):**
 - Se maneja con la botonera/teclado físico configurable; nada de "lenguaje de teclado de PC".
@@ -174,8 +174,12 @@ a la HD de Windows, y por qué:
   El colchón real que da la tarjeta se consulta y con él se re-alinea solo el pulso visual.
 - **El MP3 lo descomprime la rocola** (NLayer, incluido en `packages/`). En Windows lo hacía el
   sistema; aquí no hay a quién pedírselo, así que va dentro y en el mismo lenguaje.
-- **Sin sección de videos.** En Windows la ponía Media Foundation. En Linux eso no existe y hacer
-  media sección era peor que no hacerla, así que **no hay videos** en esta rama.
+- **Los vídeos, con mpv** (`Rocola/LinuxVideo.cs`). En Windows los ponía Media Player, que viene con
+  el sistema; en Linux los pone **mpv**, que va dentro del `.sfs` junto a la rocola y dibuja **dentro
+  de la ventana** de ésta. Y el **nivelador de volumen de los vídeos funciona igual que en la rama
+  HD**: `ffmpeg` saca el sonido de dentro del vídeo, la rocola lo mide como mide una canción y le pone
+  el volumen que le toca. Si faltan mpv o ffmpeg, **no hay sección de vídeos** y la rocola funciona
+  igual: nunca una sección que al pulsarla no hace nada.
 - **Sin DSEE ULTRA.** El ULTRA restaura la canción entera con IA lanzando un programa de Python
   **aparte que trabaja en la tarjeta gráfica**, y su lanzador busca `pythonw.exe`, que es de
   Windows. En esta máquina no hay ni una cosa ni la otra: el interruptor prometía y no cumplía,
@@ -358,7 +362,8 @@ MP3 en un disco que gira, y la primera lectura cuesta mucho más — por eso con
 ### ¿Esta máquina sirve?
 
 La rocola le pide al sistema cinco bibliotecas (`libasound`, `libX11`, `libXrandr`, `libGL`, `libc`)
-más Mono y `libgdiplus`. Si falta una, se muere al arrancar y sólo se ve la pantalla en negro.
+más Mono y `libgdiplus`. Si falta una, se muere al arrancar y sólo se ve la pantalla en negro. Y
+además mira **mpv** y **ffmpeg**, que no son obligatorios: sin ellos hay rocola, pero sin vídeos.
 `pruebas/bibliotecas.exe` saca la lista **del propio programa compilado** —no de una lista escrita a
 mano, que se quedaría vieja— e intenta cargar cada una:
 

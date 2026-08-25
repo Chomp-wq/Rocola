@@ -823,7 +823,7 @@ namespace Rocola
         // videos entraban a un volumen distinto al de las canciones ya niveladas. Esta perilla (Ctrl+F3) es
         // la BASE con la que suenan; ademas se le aplican los dB de "Subir TODO" para que sigan al resto.
         private int videoVol = 85;                 // 0..100, base del volumen de los videos ("video_vol=" en config)
-        private int videoVolSet = -1;              // ultimo volumen puesto al WMP (para no repetir llamadas COM en cada sondeo)
+        private int videoVolSet = -1;              // ultimo volumen puesto al reproductor (para no repetirselo en cada sondeo)
         private bool videoAuto = true;             // "video_automatico=": el volumen base de los videos lo elige el programa
         private int videoBaseAuto = -1;            // lo que eligio (-1 = aun sin calcular)
         private int videoBaseFirma = -1;           // con que datos lo calculo (para rehacerlo cuando cambien)
@@ -3646,7 +3646,12 @@ namespace Rocola
         // extensiones VACIA, y con eso la rocola entera se comporta como una biblioteca sin un solo video:
         // el explorador no clasifica nada como video, la casilla de VIDEO no aparece en la barra de letras,
         // y nadie intenta medirlos ni reproducirlos. No hay ningun camino a medias.
-        private static readonly string[] VideoExt = { };
+        // LAS EXTENSIONES DE VIDEO. Estan vacias si en esta maquina no hay con que reproducirlos: sin
+        // reproductor, un archivo de video encontrado seria una entrada en el menu que al pulsarla no hace
+        // nada, y eso es peor que no tener videos. Se mira UNA vez al arrancar (ver Video.HayReproductor).
+        private static readonly string[] VideoExtTodas = { ".mp4", ".avi", ".wmv", ".mpg", ".mpeg", ".mov", ".mkv", ".flv", ".m4v", ".vob", ".divx", ".3gp", ".asf" };
+        private static readonly string[] SinVideos = { };
+        private static string[] VideoExt { get { return Video.HayReproductor ? VideoExtTodas : SinVideos; } }
 
         private void LoadMusicFolder()
         {
@@ -4517,7 +4522,7 @@ namespace Rocola
                     }
                 }
                 catch { }
-                finally { SueltaMedidorVideo(ref medidorVideo); }   // el objeto COM se crea y se suelta en ESTE hilo, que es el STA
+                finally { medidorVideo = null; }   // en Windows aqui habia que soltar un objeto de Media Player; ffprobe no deja nada colgando
             });
             durScanTh.IsBackground = true;
             durScanTh.Priority = System.Threading.ThreadPriority.Lowest;
@@ -4723,46 +4728,13 @@ namespace Rocola
         // siguiente si alguien vuelve a escanear la biblioteca mientras esta corre.
         private float MideDuracionVideo(string ruta, ref object wmpMedidor)
         {
-            try
-            {
-                if (wmpMedidor == null)
-                {
-                    Type t = Type.GetTypeFromProgID("WMPlayer.OCX.7");
-                    if (t == null) t = Type.GetTypeFromProgID("WMPlayer.OCX");
-                    if (t == null) return 0f;                       // sin reproductor de Windows: no se puede medir
-                    wmpMedidor = Activator.CreateInstance(t);
-                    try { Set(wmpMedidor, "uiMode", "none"); } catch { }
-                    try { object s2 = Get(wmpMedidor, "settings"); if (s2 != null) { Set(s2, "autoStart", false); Set(s2, "volume", 0); } } catch { }
-                }
-                object media = Call(wmpMedidor, "newMedia", ruta);
-                if (media == null) return 0f;
-                try
-                {
-                    for (int intento = 0; intento < 30; intento++)   // hasta ~3 s, mirando cada 100 ms
-                    {
-                        double d = 0;
-                        try { object o = Get(media, "duration"); if (o != null) d = Convert.ToDouble(o); } catch { }
-                        if (d > 0.05 && d < 36000) return (float)d;
-                        if (preScanStop) break;
-                        // El reproductor puede tardar en rellenar la duracion, y cuando lo hace avisa por la
-                        // cola de mensajes de ESTE hilo. Si nadie la vacia, el aviso no llega nunca y todos los
-                        // videos se irian por el tope de tres segundos sin duracion. Este hilo no tiene ventanas
-                        // propias, asi que vaciarla aqui no puede repintar ni disparar nada de la rocola.
-                        try { Application.DoEvents(); } catch { }
-                        System.Threading.Thread.Sleep(100);
-                    }
-                }
-                finally { try { System.Runtime.InteropServices.Marshal.ReleaseComObject(media); } catch { } }
-            }
-            catch { }
-            return 0f;
-        }
-        private static void SueltaMedidorVideo(ref object wmpMedidor)
-        {
-            object w = wmpMedidor; wmpMedidor = null;
-            if (w == null) return;
-            try { Call(w, "close"); } catch { }
-            try { System.Runtime.InteropServices.Marshal.ReleaseComObject(w); } catch { }
+            // CUANTO DURA UN VIDEO. En Windows habia que abrirlo con Media Player y esperar a que
+            // contestara -de ahi el objeto que se va pasando entre archivos, que era carisimo de crear-.
+            // En Linux lo dice ffprobe, que ya viene con ffmpeg y contesta al momento leyendo solo la
+            // cabecera, sin descomprimir un solo cuadro. El parametro se queda por no cambiar a quien
+            // llama, pero aqui no hace falta guardar nada entre un archivo y el siguiente.
+            try { return (float)Video.Duracion(ruta); }
+            catch { return 0f; }
         }
 
         // Corre en el hilo de la interfaz: las tablas son suyas. "faltan" es el avance ABSOLUTO que reporta el
@@ -4812,7 +4784,7 @@ namespace Rocola
             // sonaba con el volumen que trajera de fabrica: unos bien, otros tan bajos que casi no se oian.
             // Van al final de la tanda, despues de la musica, que es lo que mas se usa.
             //
-            // Windows XP no puede hacerlo: el sonido de un mp4 lo descomprime Media Foundation, que llego con
+            // Windows XP no puede hacerlo: alli el sonido de un mp4 lo descomprime Media Foundation, que llego con
             // Vista. Alli los primeros videos fallan al abrirse y el hilo del repaso deja de intentarlo.
             int cuantosVideos = 0;
             if (videoAlbums != null)
@@ -4915,7 +4887,7 @@ namespace Rocola
                             // Tres videos seguidos sin poder abrirse y ninguno bueno todavia: no son archivos
                             // rotos, es que aqui no hay con que descomprimirlos.
                             if (esVid && vidBien == 0 && System.Threading.Interlocked.Increment(ref vidMal) >= 3)
-                            { videoSinMedir = true; Diag("nivelado: este equipo no puede medir los videos (no hay Media Foundation)"); }
+                            { videoSinMedir = true; Diag("nivelado: este equipo no puede medir los videos (falta ffmpeg)"); }
                             continue;
                         }
                         if (esVid) System.Threading.Interlocked.Increment(ref vidBien);
@@ -8483,25 +8455,24 @@ namespace Rocola
                 // los videos con algo de cuerpo se pegaban al 100 y volvian a sonar distinto entre si.
                 double lv = normTarget / rms;
                 if (lv < 0.15) lv = 0.15;        // no enterrar un video muy fuerte (max -16 dB)
-                else if (lv > 4.0) lv = 4.0;     // ni intentar rescatar uno mudo (el tope real lo pone el 100 del WMP)
+                else if (lv > 4.0) lv = 4.0;     // ni intentar rescatar uno mudo (el tope real lo pone el 100 del reproductor)
                 v *= lv;
             }
             else v *= MasterLin();   // sin medida no hay nada que emparejar: que al menos siga a "Subir TODO"
             int r = (int)Math.Round(v);
-            if (r < 0) r = 0; else if (r > 100) r = 100;   // el WMP no pasa de 100: un video muy bajito solo llega hasta ahi
+            if (r < 0) r = 0; else if (r > 100) r = 100;   // el reproductor no pasa de 100: un video muy bajito solo llega hasta ahi
             return r;
         }
 
-        // Pone el volumen en el WMP solo si CAMBIO (el sondeo corre varias veces por segundo durante el fundido).
+        // Pone el volumen en el reproductor solo si CAMBIO (el sondeo corre varias veces por segundo durante el fundido).
         private void SetVideoVolume(int v)
         {
             if (v == videoVolSet) return;
             videoVolSet = v;
             try
             {
-                if (video == null) return;
-                object ocx = video.GetOcxObj(); if (ocx == null) return;
-                object settings = Get(ocx, "settings"); if (settings != null) Set(settings, "volume", v);
+                if (mpv == null || !mpv.Ok) return;
+                mpv.Volumen = v;
             }
             catch { }
         }
@@ -8516,24 +8487,26 @@ namespace Rocola
                 if (video == null)
                 {
                     video = new VideoHost();
-                    video.TabStop = false;
                     Controls.Add(video);
-                    IntPtr forceHandle = video.Handle;   // fuerza la creacion del control ActiveX
+                    IntPtr forceHandle = video.Handle;   // que exista ya la ventana: es la que se le da a mpv
                 }
                 video.Visible = !searchOpen;   // si el buscador esta abierto, el cuadro queda oculto (el audio sigue)
+                video.BringToFront();
 
-                object ocx = video.GetOcxObj();
-                if (ocx == null) throw new Exception("control WMP nulo");
+                if (mpv == null || !mpv.Ok)
+                {
+                    if (mpv != null) { try { mpv.Dispose(); } catch { } mpv = null; }
+                    IntPtr dpy, win;
+                    if (!Sistema.VentanaX11(video.Handle, out dpy, out win)) throw new Exception("no se pudo sacar la ventana del cuadro de video");
+                    mpv = new ReproductorMpv(win);
+                    if (!mpv.Ok) throw new Exception("no arranco mpv");
+                }
 
-                Set(ocx, "uiMode", "none");
-                Set(ocx, "stretchToFit", true);
-                object settings = Get(ocx, "settings");
-                videoVolSet = -1;   // fuerza el primer envio del volumen a este WMP recien apuntado
+                videoVolSet = -1;   // fuerza el primer envio del volumen
                 int vol0 = VideoVolumeFor(path);
-                if (settings != null) { Set(settings, "autoStart", true); Set(settings, "volume", vol0); }
+                mpv.Volumen = vol0;
                 videoVolSet = vol0;
-                Set(ocx, "URL", path);   // con autoStart=true deberia arrancar solo
-                try { object c0 = Get(ocx, "controls"); if (c0 != null) Call(c0, "play"); } catch { }   // empujon explicito: autoStart no siempre engancha al instanciar el ActiveX
+                mpv.Abre(path);
 
                 videoOn = true;
                 progress.Value = 0; lblTime.Text = "0:00 / 0:00";   // limpia el tiempo de la cancion anterior; VideoPoll lo llena con pos/dur del video
@@ -8549,7 +8522,7 @@ namespace Rocola
                 try { if (video != null) video.Visible = false; } catch { }
                 RefundCredit();   // compensacion al cliente: el video no abrio
                 ShowToast("No se pudo abrir el video: credito devuelto", Color.FromArgb(200, 80, 70));
-                lblStatus.Text = "Video (WMP): " + ex.Message;
+                lblStatus.Text = "Video: " + ex.Message;
                 Diag("video: NO ABRIO - " + ex.Message);
                 // el video no arranco: pasar al siguiente sin trabar la cola (tras desenredar la pila de PlayNext)
                 try { if (this.IsHandleCreated) this.BeginInvoke((MethodInvoker)delegate { PlayNext(); }); } catch { }
@@ -8561,20 +8534,9 @@ namespace Rocola
         {
             videoPoll.Stop();
             try { if (video != null) video.Visible = false; } catch { }   // ocultar PRIMERO (aunque el OCX truene al detener)
-            try
-            {
-                if (video != null)
-                {
-                    object ocx = video.GetOcxObj();
-                    if (ocx != null)
-                    {
-                        object controls = Get(ocx, "controls");
-                        if (controls != null) Call(controls, "stop");
-                        Set(ocx, "URL", "");
-                    }
-                }
-            }
-            catch { }
+            // Se le dice a mpv que pare, pero NO se le mata: arrancarlo cuesta medio segundo y entre un
+            // video y el siguiente eso se veria como un parpadeo negro. Se queda esperando el siguiente.
+            try { if (mpv != null && mpv.Ok) mpv.Para(); } catch { }
             videoOn = false;
             Diag("video: detenido");
             if (videoFull) ExitVideoFull();   // si estaba en pantalla completa, vuelve a la vista normal
@@ -8587,16 +8549,15 @@ namespace Rocola
             int st = -1; double pos = -1, dur = -1;
             try
             {
-                object ocx = video.GetOcxObj();
-                if (ocx != null)
+                if (mpv != null && mpv.Ok)
                 {
-                    object ps = Get(ocx, "playState");
-                    if (ps != null) st = Convert.ToInt32(ps);
-                    object controls = Get(ocx, "controls");
-                    if (controls != null) { object cp = Get(controls, "currentPosition"); if (cp != null) pos = Convert.ToDouble(cp); }
-                    object media = Get(ocx, "currentMedia");
-                    if (media != null) { object d = Get(media, "duration"); if (d != null) dur = Convert.ToDouble(d); }
+                    pos = mpv.Posicion;
+                    dur = mpv.Duracion;
+                    // El numero del estado venia de Media Player; aqui solo hacen falta dos casos, y se
+                    // traducen a los mismos numeros para no tocar el resto: 8 = se acabo, 3 = sonando.
+                    st = mpv.Termino ? 8 : 3;
                 }
+                else if (mpv != null && mpv.Muerto) st = 8;   // mpv se murio: se da por terminado y sigue la cola
             }
             catch { }
 
@@ -8654,7 +8615,7 @@ namespace Rocola
                 // 6s sin avanzar: un EMPUJON de rescate (play explicito) por si fue una traba transitoria
                 // (no el codec). Si el archivo es reproducible pero se atoro, esto suele revivirlo.
                 videoNudged = true;
-                try { object oc = video.GetOcxObj(); if (oc != null) { object c = Get(oc, "controls"); if (c != null) Call(c, "play"); } } catch { }
+                try { if (mpv != null && mpv.Ok && nowPlaying != null && nowPlaying.IsVideo) mpv.Abre(nowPlaying.VideoPath); } catch { }
             }
             else if (now - videoProgressTick > 12000)
             {
@@ -8666,21 +8627,6 @@ namespace Rocola
                 ShowToast("Video no disponible: credito devuelto", Color.FromArgb(200, 130, 35));
                 PlayNext();
             }
-        }
-
-        // Late-binding por reflexion: le hablamos al control WMP sin referencias COM ni 'dynamic'
-        // (asi funciona igual en .NET 6 y en .NET 3.5/4.0 de XP).
-        private static object Get(object o, string prop)
-        {
-            return o.GetType().InvokeMember(prop, BindingFlags.GetProperty, null, o, null);
-        }
-        private static void Set(object o, string prop, object val)
-        {
-            o.GetType().InvokeMember(prop, BindingFlags.SetProperty, null, o, new object[] { val });
-        }
-        private static object Call(object o, string method, params object[] args)
-        {
-            return o.GetType().InvokeMember(method, BindingFlags.InvokeMethod, null, o, args);
         }
 
         private void ApplyGenreBackground(Track t, Album org)
@@ -9637,7 +9583,7 @@ namespace Rocola
 
         // Muestra/oculta el panel GPU (a pantalla completa) segun el modo: en NAVEGACION y en el BUSCADOR
         // (ambos se componen por GPU). En disco/video/atraccion/config se oculta y deja ver los controles CPU.
-        // El cuadro del video (WMP) es una ventana HIJA hermana del panel GPU: si el panel acaba de
+        // El cuadro del video es una ventana HIJA hermana del panel GPU: si el panel acaba de
         // mostrarse, su BringToFront lo dejo por delante y taparia el video. Esto lo regresa arriba.
         private void KeepVideoOnTop() { try { if (videoOn && video != null && video.Visible) video.BringToFront(); } catch { } }
 
@@ -9647,7 +9593,7 @@ namespace Rocola
             bool cfgOn = (lblConfig != null && lblConfig.Visible);
             // VIDEO con la interfaz por GPU (video_gpu=1, por defecto): un video en ventana YA NO manda todo
             // a render por CPU. Antes videoOn apagaba nav/disco/atraccion y la pantalla ENTERA (fondo
-            // estrellado incluido) se repintaba por CPU mientras WMP decodificaba: en 2 nucleos ese era el
+            // estrellado incluido) se repintaba por CPU mientras el reproductor decodificaba: en 2 nucleos ese era el
             // "rendimiento raro" con video, y como las animaciones son SOLO por GPU, con video sonando no
             // podian verse nunca (solo la del buscador, el unico modo que ya ignoraba el video). El cuadro
             // del video queda ENCIMA del panel (KeepVideoOnTop) y Windows recorta el panel donde el video
@@ -9675,7 +9621,7 @@ namespace Rocola
             int mode = search ? 2 : discGpu ? 3 : attract ? 4 : nav ? 1 : 0;
             if (mode != gpuMode) { gpuMode = mode; uiOverlaySig = SigNada; gpuPanel.UiUrgent = true; Diag("render: modo GPU " + mode + (videoOn ? " (video sonando)" : "")); }
             // Mientras el video SE VE, el panel baja a ~30 cuadros por segundo: el resto del equipo es para
-            // el video (WMP decodifica por CPU en el fierro modesto). Sin video (o con el buscador abierto,
+            // el video (que en el fierro modesto decodifica por CPU). Sin video (o con el buscador abierto,
             // que lo oculta) vuelve al maximo.
             // Con el video a la vista, el panel se limita a 30 cuadros por segundo para dejarle equipo al
             // video... pero SOLO donde hace falta. En la maquina de dos nucleos, el decodificador del video y
@@ -10297,26 +10243,29 @@ namespace Rocola
         {
             private readonly Mp3Linux mp3;
             private readonly AudioFileReader r;
+            private readonly SonidoDeVideo vid;   // el sonido de dentro de un video (lo saca ffmpeg)
             private float vol = 1f;
             public FileAudioSource(string path)
             {
                 if (path != null && path.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase)) mp3 = new Mp3Linux(path);
+                else if (EsVideo(path)) vid = new SonidoDeVideo(path);   // para MEDIRLO: al reproducir, el sonido lo saca mpv
                 else r = new AudioFileReader(path);
             }
-            public NAudio.Wave.WaveFormat WaveFormat { get { return (mp3 != null) ? mp3.WaveFormat : r.WaveFormat; } }
+            public NAudio.Wave.WaveFormat WaveFormat { get { return (mp3 != null) ? mp3.WaveFormat : (vid != null ? vid.WaveFormat : r.WaveFormat); } }
             public int Read(float[] buffer, int offset, int count)
             {
-                if (mp3 == null) return r.Read(buffer, offset, count);
-                int n = mp3.Read(buffer, offset, count);
+                if (r != null) return r.Read(buffer, offset, count);
+                int n = (mp3 != null) ? mp3.Read(buffer, offset, count) : vid.Read(buffer, offset, count);
                 if (vol < 0.999f || vol > 1.001f) for (int i = 0; i < n; i++) buffer[offset + i] *= vol;
                 return n;
             }
-            public float Volume { set { if (mp3 != null) vol = value; else r.Volume = value; } }
-            public TimeSpan CurrentTime { get { return (mp3 != null) ? mp3.CurrentTime : r.CurrentTime; } }
-            public TimeSpan TotalTime { get { return (mp3 != null) ? mp3.TotalTime : r.TotalTime; } }
+            public float Volume { set { if (r != null) r.Volume = value; else vol = value; } }
+            public TimeSpan CurrentTime { get { return (mp3 != null) ? mp3.CurrentTime : (vid != null ? vid.CurrentTime : r.CurrentTime); } }
+            public TimeSpan TotalTime { get { return (mp3 != null) ? mp3.TotalTime : (vid != null ? vid.TotalTime : r.TotalTime); } }
             public void Dispose()
             {
                 if (mp3 != null) { try { mp3.Dispose(); } catch { } }
+                if (vid != null) { try { vid.Dispose(); } catch { } }
                 if (r != null) { try { r.Dispose(); } catch { } }
             }
         }
@@ -13282,13 +13231,30 @@ namespace Rocola
             }
         }
 
-        // ==========  VIDEO: host del control ActiveX de Windows Media Player  ==========
-        // (CLSID del OCX de wmp.dll)
-        private class VideoHost : AxHost
+        // ==========  VIDEO: el cuadro donde dibuja mpv  ==========
+        //
+        // En Windows aqui habia un control de Media Player metido dentro de la ventana. En Linux no hay
+        // nada equivalente que venga con el sistema, asi que el video lo pone mpv -que va dentro del
+        // .sfs, junto a la rocola- dibujando DENTRO de este cuadro.
+        //
+        // El cuadro en si no dibuja nada: solo existe para tener un trozo de ventana que darle a mpv.
+        // Se pinta de negro por si acaso, para que mientras el video carga no se vea lo que hubiera
+        // debajo. Y NO se pinta el cielo detras: aqui va a haber un video encima tapandolo todo.
+        private class VideoHost : Control
         {
-            public VideoHost() : base("6bf52a52-394a-11d3-b153-00c04f79faa6") { }
-            public object GetOcxObj() { return this.GetOcx(); }
+            public VideoHost()
+            {
+                SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.Opaque, true);
+                BackColor = Color.Black;
+                TabStop = false;
+            }
+            protected override void OnPaint(PaintEventArgs e) { e.Graphics.Clear(Color.Black); }
+            protected override void OnPaintBackground(PaintEventArgs e) { }
         }
+
+        // Quien reproduce de verdad. Se crea con el primer video y se queda: arrancar mpv cuesta medio
+        // segundo, y hacerlo en cada video se veria como un parpadeo negro entre uno y otro.
+        private ReproductorMpv mpv;
 
         // Un elemento de la cola: una cancion O un video. Disc = disco para el cubo de abajo.
         private class PlayItem

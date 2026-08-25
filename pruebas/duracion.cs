@@ -101,10 +101,26 @@ class Duracion
         {
             string[] vids = { "a.mp4", "b.AVI", "c.wmv", "d.mkv", "e.mpg", "f.vob", "g.flv", "h.m4v" };
             string[] noVids = { "x.mp3", "y.flac", "z.wav", "w.ogg", "v.m4a" };
-            bool ningunVideo = true, ningunaCancion = true;
-            foreach (string v in vids) if ((bool)ESVID.Invoke(null, new object[]{ v })) ningunVideo = false;
+            int siVideo = 0; bool ningunaCancion = true;
+            foreach (string v in vids) if ((bool)ESVID.Invoke(null, new object[]{ v })) siVideo++;
             foreach (string v in noVids) if ((bool)ESVID.Invoke(null, new object[]{ v })) ningunaCancion = false;
-            Check(ningunVideo, "y contesta que NO a los " + vids.Length + " formatos de video: aqui no hay videos");
+
+            // LOS VIDEOS DEPENDEN DE QUE HAYA CON QUE PONERLOS. En Linux los reproduce mpv, que va dentro
+            // del .sfs junto a la rocola. Si no esta, la rocola no reconoce NINGUN formato de video a
+            // proposito: una seccion de videos que al pulsarla no hace nada es peor que no tenerla. Asi
+            // que aqui la respuesta correcta depende de la maquina, y se comprueba contra lo que hay.
+            bool hayReproductor = false;
+            try
+            {
+                Type TV = asm.GetType("Rocola.Video", false);
+                if (TV != null) hayReproductor = (bool)TV.GetProperty("HayReproductor").GetValue(null, null);
+            }
+            catch { }
+            Console.WriteLine("     de " + vids.Length + " formatos de video reconoce " + siVideo
+                              + "   (reproductor en esta maquina: " + (hayReproductor ? "si" : "no") + ")");
+            Check(hayReproductor ? siVideo == vids.Length : siVideo == 0,
+                  hayReproductor ? "reconoce los formatos de video, que es lo que toca habiendo con que ponerlos"
+                                 : "no reconoce ningun formato de video: sin reproductor, mejor no ensenar la seccion");
             Check(ningunaCancion, "y tampoco confunde una cancion con un video");
             Check(!(bool)ESVID.Invoke(null, new object[]{ (string)null }), "un archivo sin nombre no truena");
         }

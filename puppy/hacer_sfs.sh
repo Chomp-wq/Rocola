@@ -8,6 +8,8 @@
 #
 #      Mono          el motor que hace correr la rocola
 #      libgdiplus    quien dibuja las letras y las fotos (y lo que ella necesita)
+#      mpv           quien reproduce los videos, dentro de la ventana de la rocola
+#      ffmpeg        quien saca el sonido de un video para poder nivelarlo
 #      la rocola     el programa, sus dos bibliotecas y el modelo de IA
 #
 #  Lo que NO va dentro: la musica y todo lo que la rocola guarda. Eso va en una carpeta del disco,
@@ -36,6 +38,14 @@ echo
 # ---------- 1) que este todo lo que hay que meter dentro ----------
 command -v mksquashfs >/dev/null 2>&1 || muere "falta mksquashfs (en Puppy: instala squashfs-tools)"
 command -v mono       >/dev/null 2>&1 || muere "falta Mono. Instalalo en Puppy y vuelve a correr esto."
+
+# mpv y ffmpeg NO son obligatorios: sin ellos la rocola funciona igual, solo que sin seccion de videos.
+# Se avisa para que sea una decision y no una sorpresa al llegar al bar.
+HAY_VIDEO=1
+for v in mpv ffmpeg ffprobe; do
+  command -v "$v" >/dev/null 2>&1 || { HAY_VIDEO=0; di "OJO: falta $v"; }
+done
+[ $HAY_VIDEO -eq 1 ] || di "     -> el .sfs saldra SIN VIDEOS. Instala mpv y ffmpeg si los quieres."
 
 MONO_BIN="$(command -v mono)"
 MONO_PREFIJO="$(cd "$(dirname "$MONO_BIN")/.." && pwd)"
@@ -104,6 +114,22 @@ ldd "$GDI" 2>/dev/null | sed -n 's/.* => \(\/[^ ]*\) .*/\1/p' | while read -r li
   [ -f "$lib" ] && cp -a "$lib" "$TMP/usr/lib/" 2>/dev/null || true
 done
 
+if [ $HAY_VIDEO -eq 1 ]; then
+  di "copiando mpv y ffmpeg (los videos)..."
+  for v in mpv ffmpeg ffprobe; do
+    ruta="$(command -v "$v")"
+    cp -a "$ruta" "$TMP/usr/bin/"
+    # Y lo que cada uno arrastra. Igual que con libgdiplus: no se tocan las del nucleo del sistema,
+    # que cambiarlas es justo lo que hace que un programa traido de otra distribucion no arranque.
+    ldd "$ruta" 2>/dev/null | sed -n 's/.* => \(\/[^ ]*\) .*/\1/p' | while read -r lib; do
+      case "$(basename "$lib")" in
+        libc.so.*|libm.so.*|libpthread.so.*|libdl.so.*|librt.so.*|ld-linux*|libgcc_s.so.*) continue ;;
+      esac
+      [ -f "$lib" ] && cp -a "$lib" "$TMP/usr/lib/" 2>/dev/null || true
+    done
+  done
+fi
+
 di "copiando la rocola..."
 cp -a "$EXE" "$TMP/opt/rocola/Rocola.exe"
 for d in "$(dirname "$EXE")"/*.dll; do [ -f "$d" ] && cp -a "$d" "$TMP/opt/rocola/"; done
@@ -123,6 +149,8 @@ rm -rf "$TMP"
 TAM="$(du -h "$SALIDA" | cut -f1)"
 echo
 echo "  LISTO:  $SALIDA   ($TAM)"
+echo
+[ $HAY_VIDEO -eq 1 ] && echo "  (con videos: mpv y ffmpeg van dentro)" || echo "  (SIN videos: faltaban mpv o ffmpeg)"
 echo
 echo "  Ahora, en Puppy:"
 echo "    1. Copia $SALIDA junto a los archivos de arranque de Puppy."
