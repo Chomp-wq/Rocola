@@ -602,6 +602,18 @@ namespace Rocola
         // bits cuesta. Guardar cien paginas -que suena bien- deja el hojeo en menos de la mitad de rapido
         // para arreglar un caso, volver cuarenta paginas atras de golpe, que casi nadie hace.
         //
+        // SE VOLVIO A MEDIR al agrandar el cajon de PORTADAS a mil (ver TopeDePortadas), por si aquello
+        // movia este numero. NO lo mueve, y el motivo es que son dos cosas independientes: esta tabla mide
+        // lo que cuesta HORNEAR una casilla, no lo que cuesta ir al disco a por su portada. Tres tandas
+        // seguidas dan la misma forma que el dia que se eligio el doce: 48 paginas cuestan un 12% mas al
+        // hojear hacia delante y 88 un 61%, a cambio de abaratar volver muy atras, que casi nadie hace.
+        // Se queda en doce.
+        //
+        // El TECHO va aparte y en memoria, porque una casilla mide lo que le toque en pantalla: a 1024x768
+        // son 101 KB y a 1920x1080 mas del triple. Asi doce paginas nunca se convierten en un disparate.
+        // No es 'const' a proposito: asi la bateria 'historial' puede barrer el valor y volver a medir la
+        // tabla de aqui arriba cuando cambie la maquina o el tamano de las casillas.
+        //
         // El TECHO va aparte y en memoria, porque una casilla mide lo que le toque en pantalla: a 1024x768
         // son 101 KB y a 1920x1080 mas del triple. Asi doce paginas nunca se convierten en un disparate.
         // No es 'const' a proposito: asi la bateria 'historial' puede barrer el valor y volver a medir la
@@ -667,7 +679,50 @@ namespace Rocola
         private string lastPageSig = null;
         private readonly object coverLock = new object();
         private const int ThumbPx = 256;         // resolucion de miniaturas (256 sobra a 1024x768; 384 gastaba 2x memoria sin verse mejor en la rocola)
-        private const int CoverCacheMax = 220;   // ~ 256x256 x 220 ~ 56 MB (igual que la version fluida): cache amplia -> hojear no re-decodifica portadas (menos CPU al navegar)
+        // CUANTAS PORTADAS SE GUARDAN EN MEMORIA.
+        //
+        // Cada portada se decodifica UNA vez y se queda en un cajon; mientras siga ahi, hojear no toca el
+        // disco para nada. Cuando el cajon se llena salen las mas viejas, y volver a verlas cuesta leer su
+        // miniatura otra vez -1.5 ms medidos en una maquina rapida; en una modesta, mas-.
+        //
+        // Las 220 de siempre se eligieron para la rocola de Windows XP, que tiene 1 GB. Un equipo moderno
+        // tiene 4 GB y es de 64 bits, y ahi cabe LA PARED ENTERA: con mil portadas dentro, hojear deja de
+        // tocar el disco del todo.
+        //
+        // Lo que ocupan esta MEDIDO, no calculado: los mapas de bits viven fuera del recolector, asi que
+        // hay que mirar la memoria de verdad del proceso.
+        //
+        //       220 portadas ->  67 MB     <- lo de siempre
+        //       600 portadas -> 162 MB
+        //      1000 portadas -> 266 MB     <- el equipo potente, de sus 4 GB
+        //
+        // En 32 bits el programa no pasa de ~2 GB por mucha RAM que tenga la maquina, asi que ahi se queda
+        // como estaba; y si no se pudo medir la RAM, tampoco se arriesga. Ojo: si la biblioteca tiene menos
+        // discos que el tope, el cajon simplemente no se llena y esto no cuesta nada.
+        //
+        // La REGLA va aparte de la MEDIDA a proposito: asi las pruebas pueden preguntarle "¿y con cuatro
+        // gigas?" sin tener que fabricar una maquina de cuatro gigas. Sin esto, la version de Windows solo
+        // se podria comprobar en un Windows de verdad, que es justo donde no hay pruebas corriendo.
+        private static int TopeDePortadasPara(ulong ramMb)
+        {
+            return (IntPtr.Size >= 8 && ramMb >= 3500) ? 1000 : 220;
+        }
+        private static int topePortadas = -1;
+        internal static int TopeDePortadas()
+        {
+            if (topePortadas >= 0) return topePortadas;
+            ulong ramMb = 0;
+            try
+            {
+                MemStatusEx ms = new MemStatusEx();
+                ms.Length = (uint)System.Runtime.InteropServices.Marshal.SizeOf(typeof(MemStatusEx));
+                if (GlobalMemoryStatusEx(ref ms)) ramMb = ms.TotalPhys / (1024UL * 1024UL);
+            }
+            catch { }
+            topePortadas = TopeDePortadasPara(ramMb);
+            return topePortadas;
+        }
+
         private readonly HashSet<char> letterAvailable = new HashSet<char>();
         // EL COLOR DE CADA LETRA: el genero que MANDA dentro de ella. Sale de leer el ID3 de toda la
         // biblioteca, asi que se guarda en disco junto al numero de canciones con el que se calculo: mientras
@@ -5121,6 +5176,11 @@ namespace Rocola
                 try
                 {
                     System.Threading.Thread.Sleep(12000);   // dejar respirar el arranque
+                    // Antes de ponerse a construir, barrer lo antiguo (solo si la carpeta se hizo grande;
+                    // ver BarreMiniaturas). Va aqui y no en el arranque para no gastar ni un milisegundo
+                    // del rato en que la rocola esta apareciendo.
+                    int barridas = BarreMiniaturas();
+                    if (barridas > 0) Diag("miniaturas: barridas " + barridas + " de mas de " + MiniaturasDiasMax + " dias");
                     for (int i = 0; i < snap.Count; i++)
                     {
                         if (myGen != warmGen) return;   // recargaron la musica: este hilo ya caduco
@@ -5810,16 +5870,72 @@ namespace Rocola
         private static string thumbDir;
         private static ImageCodecInfo jpegEnc;
 
-        private static string ThumbCachePath(string coverPath)
+        // DONDE VIVEN LAS MINIATURAS. Iban a la carpeta TEMPORAL del sistema, y eso las condenaba: es una
+        // carpeta que por definicion se puede tirar, y Windows la limpia cada tanto -en la rocola de Linux
+        // es peor todavia, porque alli esta EN LA MEMORIA y se borra al apagar-. O sea que la promesa de
+        // aqui arriba -"la 1a vez tarda; luego todo vuela"- se rompia sola cada cierto tiempo y habia que
+        // volver a decodificar la portada grande de cada disco. Medido: 16 ms la primera vez contra 1.5 ms
+        // con la miniatura hecha, once veces mas.
+        //
+        // Ahora van con todo lo demas que la rocola guarda, en la carpeta de datos.
+        private static string CarpetaMiniaturas()
         {
             if (thumbDir == null)
             {
-                string d = Path.Combine(Path.GetTempPath(), "rocola_thumbs");
+                string d = RutaDatos("rocola_miniaturas");
                 try { if (!Directory.Exists(d)) Directory.CreateDirectory(d); } catch { }
                 thumbDir = d;
             }
+            return thumbDir;
+        }
+
+        private static string ThumbCachePath(string coverPath)
+        {
             ulong h = Fnv64(coverPath.ToLowerInvariant());
-            return Path.Combine(thumbDir, h.ToString("x16") + "_" + ThumbPx + ".jpg");
+            return Path.Combine(CarpetaMiniaturas(), h.ToString("x16") + "_" + ThumbPx + ".jpg");
+        }
+
+        // EL BARRIDO. Al salir de la carpeta temporal ya nadie las borra nunca, asi que hay que barrer.
+        // Pero NO por "esto ya no esta en la biblioteca": la rocola admite varios discos de musica, y
+        // desconectar uno un fin de semana no puede costar reconstruir todas sus portadas. Se barre por
+        // EDAD, y solo si la carpeta se ha hecho grande de verdad.
+        //
+        // El tope es holgado a proposito: una miniatura ocupa unos 23 KB, asi que 200 MB son casi nueve
+        // mil discos. En una rocola normal esto no se dispara JAMAS; esta para que la carpeta no pueda
+        // crecer sin final en una maquina que lleve anos cambiando de musica.
+        //
+        // La fecha que se mira es la de cuando se HIZO la miniatura, no la de cuando se uso: apuntar cada
+        // uso seria escribir en el disco una vez por portada leida, que es justo lo que todo esto existe
+        // para evitar. Como mucho se borra una que seguia en uso, y la proxima vez que se vea ese disco se
+        // rehace sola: una portada, 16 ms, y ya esta otra vez.
+        private const int MiniaturasTopeMb = 200;    // por debajo de esto no se barre nada
+        private const int MiniaturasDiasMax = 365;   // y por encima, solo lo que lleve un ano sin rehacerse
+        private static int BarreMiniaturas()
+        {
+            try
+            {
+                string d = CarpetaMiniaturas();
+                if (d == null || !Directory.Exists(d)) return 0;
+                string[] files = Directory.GetFiles(d, "*.jpg");
+                long total = 0;
+                List<string> viejas = new List<string>();
+                DateTime corte = DateTime.UtcNow.AddDays(-MiniaturasDiasMax);
+                for (int i = 0; i < files.Length; i++)
+                {
+                    try
+                    {
+                        FileInfo fi = new FileInfo(files[i]);
+                        total += fi.Length;
+                        if (fi.LastWriteTimeUtc < corte) viejas.Add(files[i]);
+                    }
+                    catch { }
+                }
+                if (total <= (long)MiniaturasTopeMb * 1024L * 1024L) return 0;
+                int fuera = 0;
+                for (int i = 0; i < viejas.Count; i++) { try { File.Delete(viejas[i]); fuera++; } catch { } }
+                return fuera;
+            }
+            catch { return 0; }
         }
 
         private static ulong Fnv64(string s)
@@ -5912,7 +6028,7 @@ namespace Rocola
             if (coverCache.ContainsKey(key)) { coverCache[key] = img; return; }
             coverCache[key] = img;
             coverOrder.Enqueue(key);
-            while (coverOrder.Count > CoverCacheMax)
+            while (coverOrder.Count > TopeDePortadas())
             {
                 string old = coverOrder.Dequeue();
                 Image oldImg;

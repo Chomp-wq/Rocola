@@ -5,3 +5,5 @@ obj/
 .vs/
 packages/
 __pycache__/
+# la bitacora que deja el guion de entrenar: es de cada maquina, no del programa
+ia/entrenar_log.txt
