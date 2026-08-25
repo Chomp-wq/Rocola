@@ -12,12 +12,18 @@ Hace falta **BookwormPup64** ya instalado (una instalación "frugal" normal, la 
 | | qué es | dónde va |
 |---|---|---|
 | **`rocola.sfs`** | Mono, libgdiplus, **mpv y ffmpeg** (los vídeos) y la rocola | Puppy lo abre al arrancar. **Solo lectura**: nadie lo puede tocar ni romper. |
-| **La carpeta de datos** | la música, los créditos, la cola, los volúmenes medidos, lo más sonado | Una carpeta normal del disco (`/mnt/home/rocola`). |
+| **La carpeta de datos** | la música, los créditos, la cola, los volúmenes medidos, lo más sonado y **las miniaturas de las portadas** | Una carpeta normal del disco (`/mnt/home/rocola`). |
 
 **Por qué separado.** Un `.sfs` no se puede escribir. Puppy deja escribir "por encima", pero lo
 escrito se queda en la memoria y **no baja al disco hasta que Puppy guarda** — así que un apagón se
 llevaría los créditos y la cola de la noche. Con la carpeta aparte, la rocola escribe en el disco de
 verdad y un apagón no se lleva nada: al volver la luz, sigue donde iba.
+
+**Y por eso están ahí las miniaturas de las portadas.** Cada disco de la pared tiene su portada, y
+decodificar el JPG grande cuesta unas **once veces más** que leer una miniatura ya hecha (16 ms
+contra 1.5 ms, medido). Antes se guardaban en la carpeta temporal del sistema, que en Puppy **está en
+la memoria y se borra al apagar**: o sea que cada mañana había que rehacerlas todas. Ahora van al
+disco con el resto, se hacen una vez y ya está para siempre.
 
 ---
 
@@ -34,6 +40,11 @@ sh hacer_sfs.sh
 
 Antes de empaquetar nada comprueba que a la máquina no le falte nada, y si falta algo **se planta y
 lo dice** en vez de dejar un `.sfs` que no funciona.
+
+De paso deja el programa **ya traducido** a lenguaje de máquina, para que no haya que traducirlo en
+cada arranque: son unos 46 ms menos hasta que suena la primera canción (un 12%, medido). Si esa parte
+no se pudiera hacer, lo dice y sigue: el `.sfs` sale igual y la rocola funciona lo mismo, arrancando
+un pelín más lenta.
 
 > Tiene que hacerse **en la máquina de Puppy**, no en otra. No es capricho: los programas de Linux se
 > compilan contra las bibliotecas del sistema donde se hicieron, y uno traído de otra distribución no

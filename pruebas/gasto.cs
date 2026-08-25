@@ -12,9 +12,11 @@ using System.Runtime.Serialization;
 // tope por programa. Un mapa de bits que se olvide de liberar no se nota en una hora... y a los tres dias
 // tumba la rocola.
 //
-// Lo mas grande que la rocola tiene en memoria es la cache de caratulas: 220 miniaturas de 256x256, unos
-// 55 MB. Aqui se le hacen pasar MILES por delante -que es lo que ocurre navegando una biblioteca grande- y
-// se comprueba que ni se acumulan ni se quedan sin liberar.
+// Lo mas grande que la rocola tiene en memoria es la cache de caratulas. Cuantas caben ya no es un numero
+// fijo: lo decide la maquina (220 en la de XP, 1000 en la del bar, que tiene 4 GB y es de 64 bits), asi que
+// esta bateria se lo PREGUNTA al programa en vez de darlo por sabido. Aqui se le hacen pasar MILES por
+// delante -que es lo que ocurre navegando una biblioteca grande- y se comprueba que ni se acumulan ni se
+// quedan sin liberar.
 class Gasto
 {
     static int fallos = 0;
@@ -40,12 +42,15 @@ class Gasto
         FieldInfo fLock = TF.GetField("coverLock", BindingFlags.Instance | BindingFlags.NonPublic);
         MethodInfo mPut = TF.GetMethod("CachePut", BindingFlags.Instance | BindingFlags.NonPublic);
         MethodInfo mDrain = TF.GetMethod("DrainCoverTrash", BindingFlags.Instance | BindingFlags.NonPublic);
-        FieldInfo fMax = TF.GetField("CoverCacheMax", BindingFlags.Static | BindingFlags.NonPublic);
+        MethodInfo mMax = TF.GetMethod("TopeDePortadas", BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
         Check(fCache != null && fOrder != null && fTrash != null && mPut != null && mDrain != null,
               "la cache de caratulas y su papelera estan donde tienen que estar");
-        if (mPut == null || mDrain == null) return 1;
+        // Si esto no estuviera, la bateria mediria contra un tope inventado y diria que todo va bien
+        // midiendo otra cosa. Mejor que se caiga aqui.
+        Check(mMax != null, "la rocola dice cuantas caratulas se guarda segun la maquina");
+        if (mPut == null || mDrain == null || mMax == null) return Math.Max(1, fallos);
 
-        int tope = (fMax != null) ? (int)fMax.GetValue(null) : 220;
+        int tope = (int)mMax.Invoke(null, null);
         fCache.SetValue(F, Activator.CreateInstance(fCache.FieldType));
         fOrder.SetValue(F, Activator.CreateInstance(fOrder.FieldType));
         fTrash.SetValue(F, Activator.CreateInstance(fTrash.FieldType));
@@ -55,7 +60,7 @@ class Gasto
         System.Collections.ICollection trash = (System.Collections.ICollection)fTrash.GetValue(F);
 
         Console.WriteLine("\n  1) LA CACHE NO CRECE POR MUCHAS QUE PASEN\n");
-        Console.WriteLine("     tope de la cache: " + tope + " caratulas de 256x256 (" + MB((long)tope * 256 * 256 * 4) + ")");
+        Console.WriteLine("     tope de la cache en ESTA maquina: " + tope + " caratulas de 256x256 (" + MB((long)tope * 256 * 256 * 4) + ")");
 
         // Se hacen pasar MILES: es lo que ocurre paseando por una biblioteca grande, donde cada pagina trae
         // 18 caratulas nuevas y las viejas se van cayendo por el otro lado.

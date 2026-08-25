@@ -12,6 +12,8 @@
 #      ffmpeg        quien saca el sonido de un video para poder nivelarlo
 #      la rocola     el programa, sus dos bibliotecas y el modelo de IA
 #
+#  Y de paso deja el programa YA TRADUCIDO a lenguaje de maquina, para que arranque antes (mas abajo).
+#
 #  Lo que NO va dentro: la musica y todo lo que la rocola guarda. Eso va en una carpeta del disco,
 #  porque esto es de solo lectura y porque un apagon tiene que encontrar los creditos en el disco.
 #
@@ -138,6 +140,66 @@ for m in rocola_ia.bin rocola_eq_ia.bin; do
 done
 cp -a "$AQUI/arranca_rocola.sh" "$TMP/opt/rocola/"
 chmod +x "$TMP/opt/rocola/arranca_rocola.sh"
+
+# ---------- 3b) dejar el programa YA TRADUCIDO (arranca antes) ----------
+#
+#  Mono traduce el programa a lenguaje de maquina EN CADA ARRANQUE. Se puede dejar traducido de
+#  antemano, y en Puppy encaja perfecto: el archivo traducido viaja dentro del .sfs, o sea en la
+#  memoria. Medido con pruebas/arranque.exe -de arrancar a que la primera muestra llegue a la tarjeta
+#  de sonido, seis arranques, la mediana-: 370 ms -> 324 ms, un 12% menos, por 1.4 MB de paquete.
+#
+#  Si algo de esto fallara NO se cae el guion: el .sfs sale igual, solo que sin traducir, y la rocola
+#  funciona exactamente igual arrancando un pelin mas lenta. Es una mejora, no un requisito.
+echo
+di "dejando el programa ya traducido..."
+if mono --aot "$TMP/opt/rocola/Rocola.exe" > /dev/null 2>&1 && [ -f "$TMP/opt/rocola/Rocola.exe.so" ]; then
+  di "  la rocola:  hecho  ($(du -h "$TMP/opt/rocola/Rocola.exe.so" | cut -f1))"
+else
+  rm -f "$TMP/opt/rocola/Rocola.exe.so"
+  di "  la rocola:  no se pudo (hace falta el ensamblador del sistema). El .sfs sale igual, sin esto."
+fi
+
+#  Y EL CORAZON DE .NET, que es donde de verdad esta el grueso. Medido con el registro de Mono: al
+#  arrancar la rocola salen 2074 metodos ya traducidos, y SOLO 147 son codigo nuestro; los otros 1927
+#  vienen del 'mscorlib'. Muchas distribuciones ya lo traen traducido de fabrica, y entonces viaja
+#  dentro del .sfs con el resto de Mono y no hay nada que hacer. Si NO viene, esos 1927 metodos se
+#  traducirian en cada arranque y aqui se gana bastante mas que con el programa. Cuesta unos 17 MB de
+#  paquete y cuatro segundos de este guion.
+#
+#  Se escribe con "outfile=" DENTRO del arbol que se va a comprimir, a proposito: Mono no deja
+#  traducir una COPIA de su mscorlib -exige el mismo que el tiene cargado-, y tocar el del sistema
+#  seria dejar la maquina distinta de como estaba solo por armar un paquete.
+YA_TRADUCIDO=""
+for c in "$MONO_PREFIJO"/lib/mono/*/mscorlib.dll.so "$MONO_PREFIJO"/lib/mono/aot-cache/*/mscorlib.dll.so; do
+  [ -f "$c" ] && { YA_TRADUCIDO="$c"; break; }
+done
+if [ -n "$YA_TRADUCIDO" ]; then
+  di "  .NET:       ya venia traducido de fabrica, viaja dentro del .sfs tal cual"
+else
+  # CUAL ES EL mscorlib DE VERDAD. Junto a Mono hay una docena de carpetas con un archivo llamado
+  # igual (2.0-api, 4.5-api, 4.8-api...), pero esas son de MENTIRA: solo dicen que funciones existen,
+  # para que el compilador pueda comprobar el codigo. La de verdad -la que Mono carga al arrancar- es
+  # una sola, y traducir cualquiera de las otras no serviria de nada.
+  #
+  # En vez de adivinar cual es, se PRUEBA: Mono se niega en redondo a traducir un mscorlib que no sea
+  # el suyo ("doesn't match original file name"), asi que se le ofrecen los candidatos y el que cuele
+  # es el bueno. Se descartan de entrada los "-api", que nunca lo son, y se prueba de la version mas
+  # nueva a la mas vieja.
+  di "  .NET:       no venia traducido; traduciendolo (tarda unos segundos)..."
+  hecho_nucleo=0
+  for c in $(ls -d "$MONO_PREFIJO"/lib/mono/*/mscorlib.dll 2>/dev/null | grep -v -- "-api/" | sort -Vr); do
+    VER="$(basename "$(dirname "$c")")"
+    mkdir -p "$TMP/usr/lib/mono/$VER"
+    if mono --aot=outfile="$TMP/usr/lib/mono/$VER/mscorlib.dll.so" "$c" > /dev/null 2>&1 \
+       && [ -f "$TMP/usr/lib/mono/$VER/mscorlib.dll.so" ]; then
+      di "              hecho: $VER  ($(du -h "$TMP/usr/lib/mono/$VER/mscorlib.dll.so" | cut -f1))"
+      hecho_nucleo=1
+      break
+    fi
+    rm -f "$TMP/usr/lib/mono/$VER/mscorlib.dll.so"
+  done
+  [ $hecho_nucleo -eq 1 ] || di "              no se pudo. El .sfs sale igual, sin esto."
+fi
 
 # ---------- 4) a comprimir ----------
 echo

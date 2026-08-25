@@ -97,6 +97,12 @@ class Carpeta
         Console.WriteLine("\n  5) Y NADIE SE SALTA EL CAMINO  (esto es lo que de verdad importa)\n");
         // Se recorre el programa entero buscando sitios que nombren un archivo de la rocola. Cada uno
         // tiene que pasar por la carpeta de datos y NO preguntar por la del programa.
+        //
+        // NI POR LA CARPETA TEMPORAL DEL SISTEMA, que es el otro atajo y el que mas caro salio: las
+        // miniaturas de las portadas se guardaban ahi, y en la rocola del bar -Puppy Linux- la carpeta
+        // temporal esta EN LA MEMORIA y se borra al apagar. O sea que cada noche habia que volver a
+        // decodificar la portada de cada disco. Un archivo de la rocola no es tirable por definicion:
+        // si lo fuera, no valdria la pena escribirlo.
         List<string> malos = new List<string>();
         int mirados = 0;
         foreach (MethodBase m in Codigo.TodosLosMetodos(TF))
@@ -110,17 +116,17 @@ class Carpeta
             foreach (string t in Codigo.Textos(m)) if (EsCosaDeLaRocola(t)) { nombraArchivo = true; break; }
             if (!nombraArchivo) continue;
             mirados++;
-            if (Codigo.Llama(m, "get_StartupPath"))
+            if (Codigo.Llama(m, "get_StartupPath") || Codigo.Llama(m, "GetTempPath"))
                 malos.Add(m.DeclaringType.Name + "." + comoSeLlama);
         }
         Console.WriteLine("     sitios que nombran un archivo de la rocola: " + mirados);
         Check(mirados >= 10, "se encontraron los sitios (si no, esta prueba no probaria nada)");
         if (malos.Count > 0)
         {
-            Console.WriteLine("     SE SALTAN EL CAMINO Y ESCRIBEN JUNTO AL PROGRAMA:");
+            Console.WriteLine("     SE SALTAN EL CAMINO (escriben junto al programa o en la carpeta temporal):");
             foreach (string s in malos) Console.WriteLine("       " + s);
         }
-        Check(malos.Count == 0, "ninguno arma su ruta con la carpeta del programa por su cuenta");
+        Check(malos.Count == 0, "ninguno arma su ruta con la carpeta del programa ni con la temporal por su cuenta");
 
         Environment.SetEnvironmentVariable("ROCOLA_DATOS", null);
         Console.WriteLine(fallos == 0 ? "\n  TODO BIEN\n" : "\n  " + fallos + " FALLO(S)\n");
