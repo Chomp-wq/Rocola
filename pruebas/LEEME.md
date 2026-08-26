@@ -63,6 +63,7 @@ falta `mcs` (Mono), `xvfb-run` y `python3`.
 | `miniaturas` | que las miniaturas de las portadas se guarden en el disco y no en la carpeta temporal (que el sistema limpia cada tanto), y que el barrido no toque las recientes |
 | `pared` | que el cajón de portadas se ajuste a la máquina, y que con el grande se pueda hojear la pared entera y volver **sin tocar el disco ni una vez** |
 | `resol` | que cambiar la resolución con la rocola abierta no la deje lenta |
+| `primera` | que las animaciones vayan fluidas **desde la primera vez**: mide cada pantalla —el primer cuadro contra uno normal—, comprueba que la rocola precalienta sola en segundo plano las que al encender no se ven, que no calienta lo que se midió y no gana nada, y que precalentar no cambia ni un píxel |
 | `disco`, `ssd` | disco duro contra SSD |
 | `cosecha` | que el entrenamiento pasivo siga juntando material |
 | `proyecto` | que el archivo con el que compila Visual Studio (`Rocola.csproj`) liste **exactamente** los mismos archivos y bibliotecas que compila la tanda, y que ninguno se quede fuera sin que nadie diga por qué |
