@@ -843,6 +843,11 @@ namespace Rocola
         private DateTime searchLastActivity = DateTime.Now;   // para auto-cerrar el buscador tras 1 min
         private string lastQuery = null;                      // busqueda incremental
         private List<SearchItem> lastMatches = null;          // coincidencias previas (para acotar el re-escaneo)
+        // Lo que casa con cada letra SUELTA, ya puntuado. Ver RecomputeResults: la primera letra es la unica
+        // que obliga a puntuar el indice entero, y para una letra el resultado no cambia mientras no cambie
+        // la musica. Se vacia al rearmar la biblioteca.
+        private sealed class BolsaLetra { public List<SearchItem> Lista; public int[] Puntos; }
+        private readonly Dictionary<char, BolsaLetra> bolsaLetra = new Dictionary<char, BolsaLetra>();
         private int credits = 0;                              // creditos disponibles (cada cosa cuesta 1)
         private const int CreditsPerCoin = 4;                 // monedas -> creditos
         // ACUMULACION de avisos: si repites la MISMA accion rapido (mientras su aviso sigue visible), el aviso
@@ -3848,6 +3853,7 @@ namespace Rocola
             libBuilding = true;   // desde aqui y hasta Completed, las listas son del worker
             if (searchOpen) CloseSearch();            // un re-escaneo invalida lo que el buscador muestra
             lastQuery = null; lastMatches = null;     // ...y su cache incremental (evita resultados huerfanos)
+            bolsaLetra.Clear();                       // y lo guardado de cada letra suelta: apunta a fichas que ya no valen
             tracks.Clear(); albums.Clear(); byLetter.Clear(); letterAvailable.Clear(); searchIndex.Clear();
             BackToAlbums();
             scanRoots = roots;
@@ -7204,14 +7210,42 @@ namespace Rocola
                     (lastQuery != null && lastQuery.Length > 0 && lastMatches != null && q.StartsWith(lastQuery, StringComparison.Ordinal))
                     ? lastMatches : searchIndex;
 
-                List<SearchItem> matches = new List<SearchItem>();
-                int cuantos = source.Count;
-                for (int i = 0; i < cuantos; i++)
+                // LA PRIMERA LETRA ES LA CARA. Con una sola letra tecleada, la marca de letras no descarta a
+                // nadie -casi todas las canciones tienen una "a"- asi que hay que puntuar el indice ENTERO:
+                // 2.38 ms de 20.000 entradas, contra 0.07 ms cuando ya hay tres letras. Y es la que mas se
+                // nota, porque es la que abre cada busqueda.
+                //
+                // Como para una letra suelta el resultado es SIEMPRE el mismo mientras no cambie la musica, se
+                // guarda: la primera vez que alguien teclea una "a" cuesta lo de siempre, y todas las demas
+                // veces de la noche sale de memoria. Se guardan tambien los puntos, porque el orden depende de
+                // ellos y cada busqueda los pisa.
+                //
+                // Cabe de sobra: la bolsa de la letra mas repetida son unas 16.000 fichas apuntadas, 130 KB.
+                List<SearchItem> matches = null;
+                BolsaLetra bolsa = null;
+                if (q.Length == 1 && bolsaLetra.TryGetValue(q[0], out bolsa) && bolsa != null)
                 {
-                    SearchItem si = source[i];
-                    if ((si.Mask & qMask) != qMask) continue;   // le falta alguna letra: imposible que case
-                    int sc = Score(si.Key, q, toks);
-                    if (sc > 0) { si.Score = sc; matches.Add(si); }
+                    matches = bolsa.Lista;
+                    for (int i = 0; i < matches.Count; i++) matches[i].Score = bolsa.Puntos[i];   // los puntos, que otra busqueda los piso
+                }
+                else
+                {
+                    matches = new List<SearchItem>();
+                    int cuantos = source.Count;
+                    for (int i = 0; i < cuantos; i++)
+                    {
+                        SearchItem si = source[i];
+                        if ((si.Mask & qMask) != qMask) continue;   // le falta alguna letra: imposible que case
+                        int sc = Score(si.Key, q, toks);
+                        if (sc > 0) { si.Score = sc; matches.Add(si); }
+                    }
+                    if (q.Length == 1)
+                    {
+                        BolsaLetra nb = new BolsaLetra();
+                        nb.Lista = matches; nb.Puntos = new int[matches.Count];
+                        for (int i = 0; i < matches.Count; i++) nb.Puntos[i] = matches[i].Score;
+                        bolsaLetra[q[0]] = nb;
+                    }
                 }
                 // De todo lo que casa solo se ENSENAN 40. Ordenar la lista entera para tirar el resto era el
                 // gasto grande del buscador: con veinte mil canciones y una sola letra tecleada casan veinte
