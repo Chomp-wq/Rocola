@@ -104,21 +104,19 @@ class BusMov
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.Clear(Color.FromArgb(255, 8, 12, 36));
             mR.Invoke(so, new object[] { g, new Rectangle(0, 0, w, h), forGpu });
-            // LAS PIEZAS VIVAS. Con tarjeta grafica, la tarjeta y la tecla ELEGIDAS ya no van horneadas dentro
-            // de la imagen de pantalla completa: salen aparte, en su propia imagen chica, para que moverse
-            // entre casillas no obligue a rehacerla y re-subirla entera. Aqui se pegan, que es lo que hace la
-            // tarjeta grafica, para poder seguir comparando la pantalla ENTERA contra el programa de antes.
+            // LA PIEZA VIVA. Con tarjeta grafica, la TECLA elegida ya no va horneada dentro de la imagen de
+            // pantalla completa: sale aparte, en su propia imagen chica, para que moverse por el teclado no
+            // obligue a rehacerla y re-subirla entera. Aqui se pega, que es lo que hace la tarjeta grafica,
+            // para poder seguir comparando la pantalla ENTERA contra el programa de antes.
             //
-            // El programa viejo no tiene esta API, asi que alli esto no hace nada: ya las lleva dentro.
+            // El programa viejo no tiene esta API, asi que alli esto no hace nada: ya la lleva dentro.
             MethodInfo mViva = tso.GetMethod("PiezaViva");
             MethodInfo mDib = tso.GetMethod("DibujaPiezaViva");
-            if (forGpu && mViva != null && mDib != null)
-                for (int c = 0; c <= 1; c++)
-                {
-                    object[] ar = new object[] { c, Rectangle.Empty };
-                    if (!(bool)mViva.Invoke(so, ar)) continue;
-                    mDib.Invoke(so, new object[] { g, c });
-                }
+            if (forGpu && mViva != null && mDib != null && mDib.GetParameters().Length == 4)
+            {
+                object[] ar = new object[] { 0, Rectangle.Empty };
+                if ((bool)mViva.Invoke(so, ar)) mDib.Invoke(so, new object[] { g, 0, 0, 0 });
+            }
         }
         return b;
     }
