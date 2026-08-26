@@ -2154,7 +2154,20 @@ namespace Rocola
         // (pueden estar en otros discos, SSD/HDD); permite AGREGAR y QUITAR. Los cambios se guardan al cerrar
         // y disparan UN solo re-escaneo. Es una herramienta de mantenimiento (requiere teclado/mouse): el
         // cursor se muestra solo mientras el gestor esta abierto y el vigia de foco queda en pausa.
-        private void ShowMusicDirManager()
+        // EL RENGLON DE CADA CARPETA EN LA LISTA.
+        //
+        // El aviso de que una carpeta NO ESTA va DELANTE, no detras. Las rutas son largas -en la maquina del
+        // bar, muy largas- y la lista las corta por la derecha, asi que un aviso puesto al final se queda
+        // fuera de la pantalla justo cuando mas falta hace. Se vio en una foto de la ventana abriendose sola
+        // por falta de musica: se leia la ruta entera y el "(NO EXISTE)" no aparecia por ningun lado.
+        private static string RenglonDeCarpeta(string ruta, bool principal, bool existe)
+        {
+            string aviso = existe ? "" : (principal ? "(NO EXISTE)  " : "(no disponible)  ");
+            return aviso + ruta + (principal ? "   [principal - fija]" : "");
+        }
+
+        private void ShowMusicDirManager() { ShowMusicDirManager(false); }
+        private void ShowMusicDirManager(bool porFaltaDeMusica)
         {
             if (searchOpen) CloseSearch();
             bool wasMaint = maintMode;
@@ -2179,7 +2192,12 @@ namespace Rocola
                     info.SetBounds(14, 10, 612, 42);
                     info.BackColor = Color.Transparent;
                     info.ForeColor = Color.FromArgb(205, 214, 238);
-                    info.Text = "La carpeta 'musica' (junto al programa) siempre se incluye. Aqui puedes agregar o quitar carpetas ADICIONALES, incluso de otros discos (SSD/HDD).";
+                    // Cuando se abre SOLA es porque no hay ni una cancion, y quien esta delante tiene que
+                    // saber por que le salio esta ventana y que se espera de el. Abierta a mano (Ctrl+F2) el
+                    // texto de siempre.
+                    info.Text = porFaltaDeMusica
+                        ? "NO ENCONTRE MUSICA. Pulsa \"Agregar carpeta...\" y elige donde esta: puede ser una carpeta, o el disco entero. Si la musica esta en un disco aparte, conectalo antes."
+                        : "La carpeta 'musica' (junto al programa) siempre se incluye. Aqui puedes agregar o quitar carpetas ADICIONALES, incluso de otros discos (SSD/HDD).";
 
                     ListBox list = new ListBox();
                     list.SetBounds(14, 58, 612, 230);
@@ -2187,6 +2205,7 @@ namespace Rocola
                     list.ForeColor = Color.White;
                     list.BorderStyle = BorderStyle.FixedSingle;
                     list.IntegralHeight = false;
+                    list.HorizontalScrollbar = true;   // las rutas son largas: que se puedan leer enteras
 
                     Button bAdd = new Button(), bDel = new Button(), bOk = new Button();
                     bAdd.Text = "Agregar carpeta..."; bAdd.SetBounds(14, 300, 180, 36);
@@ -2208,11 +2227,11 @@ namespace Rocola
                         list.Items.Clear();
                         string main = MusicFolder;
                         bool mainOk = false; try { mainOk = Directory.Exists(main); } catch { }
-                        list.Items.Add(main + "   [principal - fija]" + (mainOk ? "" : "   (NO EXISTE)"));
+                        list.Items.Add(RenglonDeCarpeta(main, true, mainOk));
                         for (int i = 0; i < extraMusicDirs.Count; i++)
                         {
                             bool ok = false; try { ok = Directory.Exists(extraMusicDirs[i]); } catch { }
-                            list.Items.Add(extraMusicDirs[i] + (ok ? "" : "   (no disponible)"));
+                            list.Items.Add(RenglonDeCarpeta(extraMusicDirs[i], false, ok));
                         }
                         bDel.Enabled = extraMusicDirs.Count > 0;
                     };
@@ -3809,13 +3828,14 @@ namespace Rocola
         // por sesion: si se cierra sin arreglar nada, se queda cerrada. Al proximo arranque vuelve a salir.
         private bool gestorAbierto = false;    // la ventana esta abierta AHORA
         private bool gestorOfrecido = false;   // ya se abrio sola una vez en esta sesion
+        private void AbrePorFaltaDeMusica() { ShowMusicDirManager(true); }
         private void PideElegirMusica()
         {
             if (gestorAbierto || gestorOfrecido) return;
             gestorOfrecido = true;
             // Despues de que la pantalla este pintada: si no, la ventana saldria encima de una rocola a
             // medio dibujar.
-            try { this.BeginInvoke(new MethodInvoker(ShowMusicDirManager)); } catch { }
+            try { this.BeginInvoke(new MethodInvoker(AbrePorFaltaDeMusica)); } catch { }
         }
 
         private List<string> scanRoots;   // raices del escaneo en curso/vigente (las usa el worker; solo se asignan aqui)

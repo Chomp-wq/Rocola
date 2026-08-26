@@ -390,20 +390,34 @@ namespace Rocola
         // cada portada y cada cancion, y abrir un archivo en cada consulta no tendria ningun sentido.
         public static string UnidadDe(string ruta)
         {
-            LeeLaTabla();
-            return UnidadDe(ruta, montajes);
+            List<string> puntos, mentira;
+            LaTabla(out puntos, out mentira);
+            return UnidadDe(ruta, puntos);
         }
 
-        private static void LeeLaTabla()
+        // La tabla, leyendola la primera vez que haga falta.
+        //
+        // DEVUELVE LAS DOS LISTAS en vez de dejar que quien pregunta vuelva a mirar los campos, y eso no es
+        // manía: entre "asegurate de que esta leida" y "leela" cabe un OlvidaLasUnidades de otro hilo -que
+        // es exactamente lo que pasa al rearmar la biblioteca, mientras el barrido y las portadas siguen
+        // preguntando desde los suyos-. Cuando caia justo ahi, la respuesta salia vacia: el disco
+        // equivocado, y /proc dado por bueno para ir a buscar musica. Medido con el fallo puesto: 23 discos
+        // equivocados y 29 "/proc no es del sistema" en dos segundos y medio.
+        //
+        // Se entra al cerrojo siempre, tambien cuando ya esta leida. Cuesta unas decenas de nanosegundos y
+        // esto se pregunta una vez por carpeta: ni se nota (medido, no se mueve ni una decima).
+        private static void LaTabla(out List<string> puntos, out List<string> mentira)
         {
-            if (montajes != null) return;
             lock (montajesLock)
             {
-                if (montajes != null) return;
-                string texto = null;
-                try { texto = File.ReadAllText("/proc/mounts"); } catch { }
-                sitiosDeMentira = SistemasDeMentira(texto);
-                montajes = MontajesDe(texto);   // ultimo: es el que hace de "ya esta leido"
+                if (montajes == null)
+                {
+                    string texto = null;
+                    try { texto = File.ReadAllText("/proc/mounts"); } catch { }
+                    sitiosDeMentira = SistemasDeMentira(texto);
+                    montajes = MontajesDe(texto);
+                }
+                puntos = montajes; mentira = sitiosDeMentira;
             }
         }
 
@@ -466,8 +480,9 @@ namespace Rocola
 
         public static bool EsCarpetaDelSistema(string ruta)
         {
-            LeeLaTabla();
-            return EsCarpetaDelSistema(ruta, sitiosDeMentira);
+            List<string> puntos, mentira;
+            LaTabla(out puntos, out mentira);
+            return EsCarpetaDelSistema(ruta, mentira);
         }
 
         // Tira lo guardado para que la proxima consulta vuelva a mirar que discos hay. Se llama al rearmar
