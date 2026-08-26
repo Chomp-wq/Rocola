@@ -27,6 +27,7 @@ falta `mcs` (Mono), `xvfb-run` y `python3`.
 | batería | qué comprueba |
 |---|---|
 | `dsee` | el reconstructor de agudos: que no se cuele un canal en el otro al meter los dos en una FFT, que apagado sea bit a bit idéntico, que una canción completa salga intacta, y que el realce no empuje dos veces lo mismo |
+| `respaldo` | *(ramas con DSEE ULTRA)* que con ULTRA encendido el DSEE normal SI atienda a las canciones que Apollo aún no ha hecho: que salga su letrero plateado, que el realce no empuje dos veces, y que encender ULTRA no te borre para siempre el interruptor del DSEE |
 | `atoron` | lo que la pantalla se queda parada cada vez que hay que dar de comer al sonido |
 | `nivel`, `bajo`, `bajoauto` | nivelado de volumen y bajo psicoacústico |
 | `limite` | que el limitador BAJE la ganancia en vez de recortar: distorsión de un tono fuerte y aplanado de la punta en un golpe seco |
