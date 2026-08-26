@@ -1213,6 +1213,16 @@ namespace Rocola
         // reloj (~2 cambios/seg con musica) ya no rehace ni re-sube la textura principal. Anclada ABAJO.
         private IntPtr uiBotTex; private int uiBotVer = -1; private float uiBotU = 1f, uiBotV = 1f; private int uiBotW = -1, uiBotH = -1;
         private readonly D3D9.Vtx[] uiBotQuad = new D3D9.Vtx[6];
+        // LAS PIEZAS VIVAS: trozos chicos que van ENCIMA de la textura de UI y cambian por su cuenta (hoy, la
+        // tarjeta y la tecla elegidas del buscador). Antes iban horneados dentro de la textura grande, asi que
+        // mover el recuadro obligaba a rehacerla y re-subirla entera -7 MB a 1080p por pulsacion-. Cada pieza
+        // tiene su textura chica y solo se re-sube cuando de verdad cambia.
+        private const int MaxPiezas = 4;
+        private readonly IntPtr[] piezaTex = new IntPtr[MaxPiezas];
+        private readonly int[] piezaVer = new int[MaxPiezas];
+        private readonly int[] piezaW = new int[MaxPiezas], piezaH = new int[MaxPiezas];
+        private readonly float[] piezaU = new float[MaxPiezas], piezaV = new float[MaxPiezas];
+        private readonly D3D9.Vtx[] piezaQuad = new D3D9.Vtx[6];
         public Func<Bitmap> GetUiBot;                     // bitmap de la franja de estado (lo provee el form)
         public Func<int> GetUiBotVersion;                 // cambia cuando algo de la franja cambia (re-subir textura)
         // Contador de FPS (diagnostico) en su PROPIA textura pequeña: si fuera parte de la textura de UI
@@ -1234,6 +1244,10 @@ namespace Rocola
         public float Dim = 1f;                            // atenuacion del starfield mientras se navega con musica (el form la anima; 1 = normal)
         public Func<float> GetPulse;                      // el form provee el nivel de audio (0..1)
         public GpuGridFetch GetGrid;                      // el form llena el buffer con las celdas de la pagina actual (rejilla por quads)
+        public int PiezasN;                               // cuantas piezas vivas hay ahora (0 = ninguna)
+        public Func<int, Bitmap> GetPieza;                // la imagen chica de cada pieza viva
+        public Func<int, Rectangle> GetPiezaRect;         // donde va, en coords de pantalla
+        public Func<int, int> GetPiezaVersion;            // sube cuando su imagen cambia (la prepara por dentro)
         public Func<Bitmap> GetContour;                   // sprite del contorno de seleccion
         public Func<Rectangle> GetContourRect;            // donde va el contorno (celda seleccionada), en coords del panel
         public Func<GpuCubeState> GetCubeState;           // celdas/angulos/portadas de los cubos que giran (seleccionado + relevo)
@@ -1358,6 +1372,11 @@ namespace Rocola
             if (hazTex != IntPtr.Zero) { D3D9.Release(hazTex); hazTex = IntPtr.Zero; }
             if (nebTex != IntPtr.Zero) { D3D9.Release(nebTex); nebTex = IntPtr.Zero; }
             if (uiBotTex != IntPtr.Zero) { D3D9.Release(uiBotTex); uiBotTex = IntPtr.Zero; }
+            for (int i = 0; i < MaxPiezas; i++)
+            {
+                if (piezaTex[i] != IntPtr.Zero) { D3D9.Release(piezaTex[i]); piezaTex[i] = IntPtr.Zero; }
+                piezaVer[i] = -1; piezaW[i] = piezaH[i] = -1;
+            }
             if (fpsTex != IntPtr.Zero) { D3D9.Release(fpsTex); fpsTex = IntPtr.Zero; }
             lastContour = null; selImgA = selImgB = relImg = miniImg = null; uiVer = -1; uiBotVer = -1; fpsShown = int.MinValue;
             selBwA = selBhA = selBwB = selBhB = relBw = relBh = miniBw = miniBh = transBw = transBh = winBw = winBh = 0;   // sin textura no hay tamano subido
@@ -1483,6 +1502,18 @@ namespace Rocola
                     uiBotVer = bv;
                 }
             }
+            // Las piezas vivas. Se preguntan SIEMPRE (no solo cuando toca trabajo pesado): son diminutas, y
+            // son justo lo que tiene que responder al instante cuando alguien se mueve entre casillas.
+            if (GetPiezaVersion != null && GetPieza != null)
+                for (int i = 0; i < PiezasN && i < MaxPiezas; i++)
+                {
+                    int pv = GetPiezaVersion(i);   // prepara la imagen por dentro
+                    if (pv == piezaVer[i]) continue;
+                    Bitmap pb = GetPieza(i);
+                    if (pb != null) piezaTex[i] = Upload(piezaTex[i], ref piezaW[i], ref piezaH[i], pb, out piezaU[i], out piezaV[i]);
+                    else if (piezaTex[i] != IntPtr.Zero) { D3D9.Release(piezaTex[i]); piezaTex[i] = IntPtr.Zero; piezaW[i] = piezaH[i] = -1; }
+                    piezaVer[i] = pv;
+                }
             EnsureNieblas();               // la via lactea y las nebulosas (una vez por tamano de pantalla)
             if (ShowFps) EnsureFpsTex();   // crea/actualiza la textura del contador ANTES de Begin (solo si se pide, Ctrl+F1)
             stars.SetDim(Dim);             // atenuacion mientras se navega con musica (estrellas/brillos; el cielo queda igual)
@@ -1529,6 +1560,18 @@ namespace Rocola
             bool uiPropia = gw.Has && gw.Bmp == null;   // se anima la PROPIA textura de UI (abriendo el buscador)
             if (uiTex != IntPtr.Zero && uiBmpW > 0 && uiBmpH > 0 && !(gw.Has && gw.HideUi))
                 { SetTexQuad(uiQuad, 0, 0, uiBmpW, uiBmpH, uiU, uiV); stars.DrawQuad(uiTex, uiQuad); }
+            // Y ENCIMA las piezas vivas (la tarjeta y la tecla elegidas). Van despues de la textura de UI a
+            // proposito: en ella estan las versiones SIN elegir, y estas las tapan. Se rellenan opacas, asi que
+            // el resultado es identico a tenerlas horneadas dentro (comprobado pixel a pixel: pruebas/mover.cs).
+            if (GetPiezaRect != null && !(gw.Has && gw.HideUi))
+                for (int i = 0; i < PiezasN && i < MaxPiezas; i++)
+                {
+                    if (piezaTex[i] == IntPtr.Zero) continue;
+                    Rectangle pr = GetPiezaRect(i);
+                    if (pr.Width < 1 || pr.Height < 1) continue;
+                    SetTexQuad(piezaQuad, pr.X, pr.Y, pr.X + pr.Width, pr.Y + pr.Height, piezaU[i], piezaV[i]);
+                    stars.DrawQuad(piezaTex[i], piezaQuad);
+                }
             // VENTANA del buscador abriendo/cerrando: el mismo quad de la UI, escalado desde su centro y fundido.
             if (gw.Has && gw.Alpha > 0.004f && gw.Scale > 0.01f)
             {

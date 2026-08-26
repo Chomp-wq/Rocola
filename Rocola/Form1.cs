@@ -9240,6 +9240,12 @@ namespace Rocola
                 gpuPanel.GetUiBot = delegate { return uiBotOverlay; };              // franja de ESTADO de abajo (textura chica aparte: el reloj no rehace la principal)
                 gpuPanel.GetUiBotVersion = delegate { return EnsureUiBotOverlay(); };
                 gpuPanel.GetUiGlows = FillUiGlows;                                   // halos animados (destello de boton, pulso de letra, TOP, atraccion): quads GPU, sin re-subir textura
+                // Las piezas vivas del buscador (tarjeta y tecla elegidas): imagenes chicas aparte, encima de
+                // la grande. Sin esto, mover el recuadro re-subia la pantalla completa (ver EnsureUiPieza).
+                gpuPanel.PiezasN = NumPiezas;
+                gpuPanel.GetPieza = delegate(int i) { return uiPieza[i]; };
+                gpuPanel.GetPiezaRect = delegate(int i) { return uiPiezaRect[i]; };
+                gpuPanel.GetPiezaVersion = delegate(int i) { return EnsureUiPieza(i); };
                 Controls.Add(gpuPanel);
             }
             if (on && !gpuEnabled)
@@ -9261,6 +9267,7 @@ namespace Rocola
             {
                 gpuEnabled = false;
                 gpuPanel.StopGpu(); gpuPanel.Visible = false;
+                SueltaPiezas();     // las piezas vivas del buscador solo existen para la tarjeta grafica
                 if (albumView != null) albumView.GpuCovered = false;   // vuelve a pintar la rejilla por CPU (ya no hay panel encima)
                 if (lblGpu != null) lblGpu.Visible = false;
                 Invalidate(true);   // repinta la UI normal (CPU) que estaba tapada por el panel
@@ -9521,6 +9528,80 @@ namespace Rocola
             return uiBotVer;
         }
 
+        // ---------- LAS PIEZAS VIVAS DEL BUSCADOR ----------
+        //
+        // La tarjeta elegida y la tecla elegida, cada una en SU PROPIA imagen chica y con su sitio. Antes iban
+        // horneadas dentro de la imagen de pantalla completa, asi que mover el recuadro obligaba a rehacerla y
+        // re-subirla entera: 7 MB por pulsacion a 1080p (ver UiSig). Ahora es lo mismo que ya se hacia con la
+        // franja de estado de abajo: una imagen chica aparte, que se rehace solo cuando cambia de verdad.
+        //
+        // Una tarjeta mide unos 432x38 -66 KB- y una tecla mucho menos. Moverse pasa de empujar siete megas a
+        // empujar sesenta y seis kilos.
+        private const int NumPiezas = 2;
+        private readonly Bitmap[] uiPieza = new Bitmap[NumPiezas];
+        private readonly Rectangle[] uiPiezaRect = new Rectangle[NumPiezas];
+        private readonly long[] uiPiezaSig = new long[NumPiezas];
+        private readonly int[] uiPiezaVer = new int[NumPiezas];
+
+        private void SueltaPiezas()
+        {
+            for (int i = 0; i < NumPiezas; i++)
+            {
+                if (uiPieza[i] != null) { uiPieza[i].Dispose(); uiPieza[i] = null; }
+                uiPiezaRect[i] = Rectangle.Empty; uiPiezaSig[i] = SigNada; uiPiezaVer[i]++;
+            }
+        }
+
+        // Prepara la pieza 'cual' y devuelve su version (sube cuando la imagen cambia). Con el buscador
+        // cerrado no hay piezas: se sueltan y se contesta que no hay nada que dibujar.
+        private int EnsureUiPieza(int cual)
+        {
+            if (cual < 0 || cual >= NumPiezas) return 0;
+            if (!searchOpen || searchOverlay == null)
+            {
+                if (uiPieza[cual] != null) { uiPieza[cual].Dispose(); uiPieza[cual] = null; uiPiezaRect[cual] = Rectangle.Empty; uiPiezaVer[cual]++; uiPiezaSig[cual] = SigNada; }
+                return uiPiezaVer[cual];
+            }
+            Rectangle donde;
+            if (!searchOverlay.PiezaViva(cual, out donde) || donde.Width < 1 || donde.Height < 1)
+            {
+                if (uiPieza[cual] != null) { uiPieza[cual].Dispose(); uiPieza[cual] = null; uiPiezaRect[cual] = Rectangle.Empty; uiPiezaVer[cual]++; uiPiezaSig[cual] = SigNada; }
+                return uiPiezaVer[cual];
+            }
+            long sig = SigBase;
+            sig = Mix(sig, cual); sig = Mix(sig, donde.X); sig = Mix(sig, donde.Y);
+            sig = Mix(sig, donde.Width); sig = Mix(sig, donde.Height);
+            sig = Mix(sig, searchOverlay.SelResult); sig = Mix(sig, searchOverlay.SelRow);
+            sig = Mix(sig, searchOverlay.SelCol); sig = Mix(sig, searchOverlay.FocusResults);
+            Color acPieza = searchOverlay.Accent;   // a una local: es un tipo por valor dentro de un Control
+            sig = Mix(sig, searchOverlay.Query); sig = Mix(sig, acPieza.ToArgb());
+            sig = Mix(sig, searchOverlay.DatosVer);
+            if (sig == SigNada) sig = 1L;
+
+            // El sitio se guarda SIEMPRE (aunque la imagen no cambie): al desplazarse la lista, la misma
+            // tarjeta puede tener que dibujarse unos pixeles mas alla.
+            Rectangle enPantalla = donde;
+            enPantalla.Offset(searchOverlay.Left, searchOverlay.Top);
+            uiPiezaRect[cual] = enPantalla;
+            if (uiPieza[cual] != null && uiPieza[cual].Width == donde.Width && uiPieza[cual].Height == donde.Height && sig == uiPiezaSig[cual])
+                return uiPiezaVer[cual];
+            if (uiPieza[cual] == null || uiPieza[cual].Width != donde.Width || uiPieza[cual].Height != donde.Height)
+            {
+                if (uiPieza[cual] != null) uiPieza[cual].Dispose();
+                uiPieza[cual] = new Bitmap(donde.Width, donde.Height, PixelFormat.Format32bppPArgb);
+            }
+            using (Graphics g = Graphics.FromImage(uiPieza[cual]))
+            {
+                g.Clear(Color.Transparent);
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;   // igual que la imagen grande
+                g.TranslateTransform(-donde.X, -donde.Y);   // la pieza se dibuja en coords del buscador
+                searchOverlay.DibujaPiezaViva(g, cual);
+            }
+            uiPiezaSig[cual] = sig; uiPiezaVer[cual]++;
+            return uiPiezaVer[cual];
+        }
+
         // Llena el buffer con los HALOS ANIMADOS de la UI, en coords de pantalla. La GPU los dibuja como quads
         // aditivos: TODA animacion continua (destello del boton pulsado, pulso de la letra actual, dorado del TOP,
         // respiro del texto de atraccion) vive AQUI y no en la textura de UI -> la textura solo se rehace cuando
@@ -9629,10 +9710,17 @@ namespace Rocola
             sb = Mix(sb, ClientSize.Width); sb = Mix(sb, ClientSize.Height);
             if (searchOpen && searchOverlay != null)   // parte superior = buscador
             {
-                sb = Mix(sb, 'S'); sb = Mix(sb, searchOverlay.Query); sb = Mix(sb, searchOverlay.SelRow); sb = Mix(sb, searchOverlay.SelCol);
-                sb = Mix(sb, searchOverlay.FocusResults); sb = Mix(sb, searchOverlay.SelResult);
+                sb = Mix(sb, 'S'); sb = Mix(sb, searchOverlay.Query);
                 sb = Mix(sb, searchOverlay.Results == null ? 0 : searchOverlay.Results.Count);
                 sb = Mix(sb, searchOverlay.ToastOn); sb = Mix(sb, searchOverlay.ToastMsg);
+                // LA CASILLA ELEGIDA YA NO ENTRA AQUI (ni la del teclado ni la de los resultados). Entraba, y
+                // eso significaba que pulsar una flecha -que solo cambia QUE tarjeta lleva el recuadro-
+                // obligaba a rehacer y RE-SUBIR la pantalla completa: 5.91 ms por pulsacion a 1080p, el 35% de
+                // un cuadro, y las flechas ni siquiera frenaban la auto-repeticion. Era lo que hundia los
+                // cuadros por segundo al moverse, incluso en una maquina potente, y peor cuanto mas grande la
+                // pantalla. Ahora la tarjeta y la tecla elegidas salen como PIEZAS VIVAS aparte, en su propia
+                // imagen chica (ver SearchOverlay.PiezaViva y EnsureUiPieza), exactamente igual que ya se
+                // hacia con el destello de los botones y con la franja de estado de abajo.
             }
                   // El DESTELLO del boton pulsado YA NO entra en la firma: lo dibuja la GPU como halo aparte (FillUiGlows),
                   // asi que su desvanecido no re-hornea ni re-sube la textura del teclado -> tecleo fluido con brillo suave.
@@ -15182,10 +15270,71 @@ namespace Rocola
 
             // Dibuja el buscador en cualquier Graphics. forGpu=true: NO pinta el starfield ni el cubo de vista
             // previa (los pone la GPU: starfield de fondo + cubo como geometria); aqui solo la UI (transparente).
+            // LAS PIEZAS QUE CAMBIAN AL MOVERSE: la tarjeta elegida y la tecla elegida.
+            //
+            // Las dos se dibujan EN VIVO encima de sus caches, y eso ya estaba bien. El problema era que iban
+            // DENTRO de la imagen de pantalla completa, y la casilla elegida entraba en la firma de esa imagen:
+            // pulsar una flecha obligaba a REHACERLA Y RE-SUBIRLA entera a la tarjeta grafica. Medido: 5.91 ms
+            // por pulsacion a 1080p, el 35% de un cuadro; y como las flechas no frenaban la auto-repeticion,
+            // mantener una pulsada eran ~30 de esas por segundo. ESO era lo que hundia los cuadros por segundo
+            // al moverse, hasta en una maquina potente: el gasto no es pintar -de eso la tarjeta va sobrada-
+            // sino rehacer la imagen en el procesador y empujar siete megas por el bus.
+            //
+            // Ahora salen APARTE, cada una en su propia imagen chica, igual que la franja de estado de abajo
+            // (ver EnsureUiBotOverlay). Moverse ya no toca la imagen grande.
+            //
+            // Que sale IGUAL esta comprobado pixel a pixel, y no es suerte: las dos se rellenan OPACAS, asi
+            // que tapan entero su hueco y no hay borde suavizado que se mezcle dos veces (ver pruebas/mover.cs
+            // y pruebas/aspecto.cs).
+            public const int PiezaTarjeta = 0, PiezaTecla = 1;
+            private bool paraGpu;   // dibujando para la imagen de pantalla completa: las piezas vivas van aparte
+
+            // Donde va cada pieza, en coords del buscador. false = ahora no hay ninguna que dibujar.
+            public bool PiezaViva(int cual, out Rectangle donde)
+            {
+                donde = Rectangle.Empty;
+                if (cual == PiezaTarjeta)
+                {
+                    int n = (Results != null) ? Math.Min(Results.Count, resultRects.Count) : 0;
+                    if (n <= 0) return false;
+                    int selIdx = FocusResults ? SelResult : 0;
+                    if (selIdx < 0 || selIdx >= n) return false;
+                    donde = Rectangle.Inflate(Rectangle.Round(resultRects[selIdx].Key), MargenTarj, MargenTarj);
+                    return donde.Width > 0 && donde.Height > 0;
+                }
+                if (cual == PiezaTecla)
+                {
+                    if (SelRow < 0 || SelRow >= rows.Count || SelCol < 0 || SelCol >= rows[SelRow].Count) return false;
+                    donde = Rectangle.Inflate(Rectangle.Round(rows[SelRow][SelCol].R), 2, 2);
+                    return donde.Width > 0 && donde.Height > 0;
+                }
+                return false;
+            }
+
+            // Y la dibuja, en coords del buscador (quien la pide ya traslado el Graphics a su sitio).
+            public void DibujaPiezaViva(Graphics g, int cual)
+            {
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                if (cual == PiezaTarjeta)
+                {
+                    int n = (Results != null) ? Math.Min(Results.Count, resultRects.Count) : 0;
+                    if (n <= 0) return;
+                    int selIdx = FocusResults ? SelResult : 0;
+                    if (selIdx < 0 || selIdx >= n) return;
+                    DrawOneResultCard(g, selIdx, Rectangle.Round(resultRects[selIdx].Key), true, Normalize(Query ?? ""));
+                }
+                else if (cual == PiezaTecla)
+                {
+                    if (SelRow < 0 || SelRow >= rows.Count || SelCol < 0 || SelCol >= rows[SelRow].Count) return;
+                    DrawOneKey(g, SelRow, SelCol, true, 0, 0);
+                }
+            }
+
             public void RenderContent(Graphics g, Rectangle clip, bool forGpu)
             {
                 int W = Width, H = Height;
                 if (W < 60 || H < 60) return;
+                paraGpu = forGpu;
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 if (forGpu) clip = new Rectangle(0, 0, W, H);
 
@@ -15370,7 +15519,8 @@ namespace Rocola
                 }
                 g.DrawImageUnscaled(kbCache, kbCacheOrigin.X, kbCacheOrigin.Y);
                 // Tecla seleccionada EN VIVO encima: su relleno es opaco y tapa la version sin seleccion del cache.
-                if (SelRow >= 0 && SelRow < rows.Count && SelCol >= 0 && SelCol < rows[SelRow].Count)
+                // Con tarjeta grafica NO se dibuja aqui: sale como PIEZA VIVA aparte (ver PiezaViva).
+                if (!paraGpu && SelRow >= 0 && SelRow < rows.Count && SelCol >= 0 && SelCol < rows[SelRow].Count)
                     DrawOneKey(g, SelRow, SelCol, true, 0, 0);
             }
 
@@ -15475,7 +15625,8 @@ namespace Rocola
                 }
                 g.DrawImageUnscaled(resCache, resCacheOrigin.X, resCacheOrigin.Y);
                 // Tarjeta seleccionada EN VIVO encima: su relleno es opaco y tapa la version sin seleccion del cache.
-                if (n > 0)
+                // Con tarjeta grafica NO se dibuja aqui: sale como PIEZA VIVA aparte (ver PiezaViva).
+                if (!paraGpu && n > 0)
                 {
                     int selIdx = FocusResults ? SelResult : 0;
                     if (selIdx >= 0 && selIdx < n) DrawOneResultCard(g, selIdx, Rectangle.Round(resultRects[selIdx].Key), true, qNorm);
