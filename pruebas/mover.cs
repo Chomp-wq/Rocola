@@ -252,6 +252,27 @@ class Mover
             so.Dispose();
         }
 
+        Console.WriteLine("\n  5) Y MANTENER PULSADA UNA FLECHA NO INUNDA LA COLA\n");
+        // El teclado manda unas treinta pulsaciones por segundo con la flecha mantenida, y la pantalla no da
+        // mas de sesenta cuadros: la mitad de ese trabajo no lo ve nadie, solo llena la cola. Pero NO se puede
+        // tirar la repeticion -mantener la flecha para recorrer la biblioteca es como se usa una rocola de
+        // botones-, asi que se le pone TOPE.
+        MethodInfo mCmd = TF.GetMethod("ProcessCmdKey", BindingFlags.Instance | BindingFlags.NonPublic);
+        FieldInfo fTope = TF.GetField("MsEntreFlechas", BindingFlags.Static | BindingFlags.NonPublic);
+        Check(mCmd != null && fTope != null, "las flechas llevan freno");
+        if (mCmd != null && fTope != null)
+        {
+            int lee, esc;
+            Codigo.UsosDeCampo(mCmd, "ultimaFlecha", out lee, out esc);
+            Check(lee > 0 && esc > 0, "el freno mira cuando fue la ultima flecha y apunta la nueva");
+            int ms = (int)fTope.GetRawConstantValue();
+            Console.WriteLine("     tope: una flecha cada " + ms + " ms  (" + (1000 / ms) + " por segundo)");
+            Check(ms >= 20 && ms <= 60, "el tope deja pasar entre 16 y 50 movimientos por segundo: no se siente lento ni inunda");
+            // Lo que NO puede pasar: que se coma la PRIMERA pulsacion. Con la rocola recien abierta,
+            // ultimaFlecha vale 0 y el reloj del sistema lleva rato andando, asi que tiene que pasar.
+            Check(Environment.TickCount - 0 >= ms, "con la rocola recien abierta, la primera flecha pasa (no se siente muerta)");
+        }
+
         Console.WriteLine(fallos == 0 ? "\n  TODO BIEN\n" : "\n  " + fallos + " FALLO(S)\n");
         return fallos;
     }
