@@ -10154,7 +10154,8 @@ namespace Rocola
             sig = Mix(sig, donde.Width); sig = Mix(sig, donde.Height);
             sig = Mix(sig, searchOverlay.SelResult); sig = Mix(sig, searchOverlay.SelRow);
             sig = Mix(sig, searchOverlay.SelCol); sig = Mix(sig, searchOverlay.FocusResults);
-            sig = Mix(sig, searchOverlay.Query); sig = Mix(sig, searchOverlay.Accent.ToArgb());
+            Color acPieza = searchOverlay.Accent;   // a una local: es un tipo por valor dentro de un Control
+            sig = Mix(sig, searchOverlay.Query); sig = Mix(sig, acPieza.ToArgb());
             sig = Mix(sig, searchOverlay.DatosVer);
             if (sig == SigNada) sig = 1L;
 
