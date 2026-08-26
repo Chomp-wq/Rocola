@@ -10136,14 +10136,15 @@ namespace Rocola
 
         // ---------- LAS PIEZAS VIVAS DEL BUSCADOR ----------
         //
-        // La tarjeta elegida y la tecla elegida, cada una en SU PROPIA imagen chica y con su sitio. Antes iban
-        // horneadas dentro de la imagen de pantalla completa, asi que mover el recuadro obligaba a rehacerla y
-        // re-subirla entera: 7 MB por pulsacion a 1080p (ver UiSig). Ahora es lo mismo que ya se hacia con la
-        // franja de estado de abajo: una imagen chica aparte, que se rehace solo cuando cambia de verdad.
+        // La tecla elegida, en SU PROPIA imagen chica y con su sitio. Antes iba horneada dentro de la imagen
+        // de pantalla completa, asi que mover el recuadro obligaba a rehacerla y re-subirla entera: 7 MB por
+        // pulsacion a 1080p (ver UiSig). Ahora es lo mismo que ya se hacia con la franja de estado de abajo:
+        // una imagen chica aparte, que se rehace solo cuando cambia de verdad. Una tecla son unos 38 KB.
         //
-        // Una tarjeta mide unos 432x38 -66 KB- y una tecla mucho menos. Moverse pasa de empujar siete megas a
-        // empujar sesenta y seis kilos.
-        private const int NumPiezas = 2;
+        // SOLO LA TECLA, y no la tarjeta de los resultados. Al principio eran las dos y estaba mal: moverse
+        // por los resultados cambia ademas el cubo de la portada y el texto de debajo, que si van dentro de
+        // la imagen grande. Sacarlo de la firma dejaba el cubo y el texto viejos, y el teclado sin volver.
+        private const int NumPiezas = 1;
         private readonly Bitmap[] uiPieza = new Bitmap[NumPiezas];
         private readonly Rectangle[] uiPiezaRect = new Rectangle[NumPiezas];
         private readonly long[] uiPiezaSig = new long[NumPiezas];
@@ -10201,8 +10202,13 @@ namespace Rocola
                 g.Clear(Color.Transparent);
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;   // igual que la imagen grande
-                g.TranslateTransform(-donde.X, -donde.Y);   // la pieza se dibuja en coords del buscador
-                searchOverlay.DibujaPiezaViva(g, cual);
+                // SE LE PASA EL DESPLAZAMIENTO; NO SE MUEVE EL LIENZO. La primera version movia el lienzo
+                // (TranslateTransform) y en Mono se veia perfecto... pero en Windows el texto de la tecla lo
+                // dibuja el SISTEMA (TextRenderer), y ese trabaja en pixeles de verdad: no hace caso a las
+                // trasformaciones. La letra se iba fuera de la imagen chica y en el bar la tecla elegida
+                // salia como un rectangulo rosa VACIO. Con el desplazamiento por delante cae donde debe en
+                // los dos sitios.
+                searchOverlay.DibujaPiezaViva(g, cual, -donde.X, -donde.Y);
             }
             uiPiezaSig[cual] = sig; uiPiezaVer[cual]++;
             return uiPiezaVer[cual];
@@ -10321,14 +10327,20 @@ namespace Rocola
                 sb = Mix(sb, 'S'); sb = Mix(sb, searchOverlay.Query);
                 sb = Mix(sb, searchOverlay.Results == null ? 0 : searchOverlay.Results.Count);
                 sb = Mix(sb, searchOverlay.ToastOn); sb = Mix(sb, searchOverlay.ToastMsg);
-                // LA CASILLA ELEGIDA YA NO ENTRA AQUI (ni la del teclado ni la de los resultados). Entraba, y
-                // eso significaba que pulsar una flecha -que solo cambia QUE tarjeta lleva el recuadro-
-                // obligaba a rehacer y RE-SUBIR la pantalla completa: 5.91 ms por pulsacion a 1080p, el 35% de
-                // un cuadro, y las flechas ni siquiera frenaban la auto-repeticion. Era lo que hundia los
-                // cuadros por segundo al moverse, incluso en una maquina potente, y peor cuanto mas grande la
-                // pantalla. Ahora la tarjeta y la tecla elegidas salen como PIEZAS VIVAS aparte, en su propia
-                // imagen chica (ver SearchOverlay.PiezaViva y EnsureUiPieza), exactamente igual que ya se
-                // hacia con el destello de los botones y con la franja de estado de abajo.
+                // LA TECLA ELEGIDA YA NO ENTRA AQUI. Entraba, y eso significaba que pulsar una flecha -que
+                // solo cambia QUE tecla lleva el recuadro- obligaba a rehacer y RE-SUBIR la pantalla completa:
+                // 5.91 ms por pulsacion a 1080p, el 35% de un cuadro. Ahora la tecla elegida sale como PIEZA
+                // VIVA aparte, en su propia imagen chica (ver SearchOverlay.PiezaViva y EnsureUiPieza),
+                // exactamente igual que ya se hacia con el destello de los botones y la franja de abajo.
+                //
+                // PERO ESTAS DOS SI TIENEN QUE ESTAR, y sacarlas fue un error que se vio en el bar:
+                //   FocusResults cambia MEDIA PANTALLA -donde estaba el teclado se pone el cubo de la
+                //     portada-. Sin el, al volver de los resultados al teclado la imagen no se rehacia y EL
+                //     TECLADO NO VOLVIA A APARECER hasta cerrar y abrir el buscador.
+                //   SelResult, con el cubo delante, cambia que disco se ensena y el texto de debajo.
+                // Moverse por los RESULTADOS, por tanto, sigue rehaciendo la pantalla; moverse por las TECLAS
+                // -que es lo que se hace al teclear- ya no.
+                sb = Mix(sb, searchOverlay.FocusResults); sb = Mix(sb, searchOverlay.SelResult);
             }
                   // El DESTELLO del boton pulsado YA NO entra en la firma: lo dibuja la GPU como halo aparte (FillUiGlows),
                   // asi que su desvanecido no re-hornea ni re-sube la textura del teclado -> tecleo fluido con brillo suave.
@@ -15887,64 +15899,53 @@ namespace Rocola
 
             // Dibuja el buscador en cualquier Graphics. forGpu=true: NO pinta el starfield ni el cubo de vista
             // previa (los pone la GPU: starfield de fondo + cubo como geometria); aqui solo la UI (transparente).
-            // LAS PIEZAS QUE CAMBIAN AL MOVERSE: la tarjeta elegida y la tecla elegida.
+            // LA PIEZA QUE CAMBIA AL MOVERSE: la tecla elegida.
             //
-            // Las dos se dibujan EN VIVO encima de sus caches, y eso ya estaba bien. El problema era que iban
-            // DENTRO de la imagen de pantalla completa, y la casilla elegida entraba en la firma de esa imagen:
+            // Se dibuja EN VIVO encima del teclado cacheado, y eso ya estaba bien. El problema era que iba
+            // DENTRO de la imagen de pantalla completa, y la tecla elegida entraba en la firma de esa imagen:
             // pulsar una flecha obligaba a REHACERLA Y RE-SUBIRLA entera a la tarjeta grafica. Medido: 5.91 ms
             // por pulsacion a 1080p, el 35% de un cuadro; y como las flechas no frenaban la auto-repeticion,
             // mantener una pulsada eran ~30 de esas por segundo. ESO era lo que hundia los cuadros por segundo
-            // al moverse, hasta en una maquina potente: el gasto no es pintar -de eso la tarjeta va sobrada-
+            // al teclear, hasta en una maquina potente: el gasto no es pintar -de eso la tarjeta va sobrada-
             // sino rehacer la imagen en el procesador y empujar siete megas por el bus.
             //
-            // Ahora salen APARTE, cada una en su propia imagen chica, igual que la franja de estado de abajo
-            // (ver EnsureUiBotOverlay). Moverse ya no toca la imagen grande.
+            // Ahora sale APARTE, en su propia imagen chica, igual que la franja de estado de abajo (ver
+            // EnsureUiBotOverlay). Moverse por el teclado ya no toca la imagen grande.
             //
-            // Que sale IGUAL esta comprobado pixel a pixel, y no es suerte: las dos se rellenan OPACAS, asi
-            // que tapan entero su hueco y no hay borde suavizado que se mezcle dos veces (ver pruebas/mover.cs
-            // y pruebas/aspecto.cs).
-            public const int PiezaTarjeta = 0, PiezaTecla = 1;
-            private bool paraGpu;   // dibujando para la imagen de pantalla completa: las piezas vivas van aparte
+            // SOLO LA TECLA. La tarjeta elegida de los resultados se probo tambien y se quito: moverse por
+            // los resultados cambia ademas el cubo de la portada y el texto de debajo, que van dentro de la
+            // imagen grande, asi que esa mitad hay que rehacerla igual.
+            //
+            // Que sale IGUAL esta comprobado pixel a pixel, y no es suerte: la pieza se rellena OPACA, asi que
+            // tapa entero su hueco y no hay borde suavizado que se mezcle dos veces (ver pruebas/mover.cs).
+            public const int PiezaTecla = 0;
+            private bool paraGpu;   // dibujando para la imagen de pantalla completa: la tecla elegida va aparte
 
-            // Donde va cada pieza, en coords del buscador. false = ahora no hay ninguna que dibujar.
+            // Donde va la pieza, en coords del buscador. false = ahora no hay ninguna que dibujar.
+            //
+            // Con los RESULTADOS enfocados no hay: ahi el teclado ni se dibuja -en su hueco va el cubo de la
+            // portada- y sus teclas ni siquiera tienen sitio asignado. Devolver una igual dejaba una tecla
+            // suelta flotando encima del cubo, que es justo lo que se veia en el bar.
             public bool PiezaViva(int cual, out Rectangle donde)
             {
                 donde = Rectangle.Empty;
-                if (cual == PiezaTarjeta)
-                {
-                    int n = (Results != null) ? Math.Min(Results.Count, resultRects.Count) : 0;
-                    if (n <= 0) return false;
-                    int selIdx = FocusResults ? SelResult : 0;
-                    if (selIdx < 0 || selIdx >= n) return false;
-                    donde = Rectangle.Inflate(Rectangle.Round(resultRects[selIdx].Key), MargenTarj, MargenTarj);
-                    return donde.Width > 0 && donde.Height > 0;
-                }
-                if (cual == PiezaTecla)
-                {
-                    if (SelRow < 0 || SelRow >= rows.Count || SelCol < 0 || SelCol >= rows[SelRow].Count) return false;
-                    donde = Rectangle.Inflate(Rectangle.Round(rows[SelRow][SelCol].R), 2, 2);
-                    return donde.Width > 0 && donde.Height > 0;
-                }
-                return false;
+                if (cual != PiezaTecla || FocusResults) return false;
+                if (SelRow < 0 || SelRow >= rows.Count || SelCol < 0 || SelCol >= rows[SelRow].Count) return false;
+                Rectangle kr = Rectangle.Round(rows[SelRow][SelCol].R);
+                if (kr.Width < 2 || kr.Height < 2) return false;   // el teclado aun no se ha repartido
+                donde = Rectangle.Inflate(kr, 2, 2);
+                return true;
             }
 
-            // Y la dibuja, en coords del buscador (quien la pide ya traslado el Graphics a su sitio).
-            public void DibujaPiezaViva(Graphics g, int cual)
+            // Y la dibuja. El desplazamiento va POR PARAMETRO y no moviendo el lienzo: el texto lo pinta el
+            // sistema (TextRenderer) en pixeles de verdad y no hace caso a las trasformaciones, asi que
+            // moviendo el lienzo la letra se iba fuera de la imagen chica (ver EnsureUiPieza).
+            public void DibujaPiezaViva(Graphics g, int cual, int dx, int dy)
             {
+                if (cual != PiezaTecla || FocusResults) return;
+                if (SelRow < 0 || SelRow >= rows.Count || SelCol < 0 || SelCol >= rows[SelRow].Count) return;
                 g.SmoothingMode = SmoothingMode.AntiAlias;
-                if (cual == PiezaTarjeta)
-                {
-                    int n = (Results != null) ? Math.Min(Results.Count, resultRects.Count) : 0;
-                    if (n <= 0) return;
-                    int selIdx = FocusResults ? SelResult : 0;
-                    if (selIdx < 0 || selIdx >= n) return;
-                    DrawOneResultCard(g, selIdx, Rectangle.Round(resultRects[selIdx].Key), true, Normalize(Query ?? ""));
-                }
-                else if (cual == PiezaTecla)
-                {
-                    if (SelRow < 0 || SelRow >= rows.Count || SelCol < 0 || SelCol >= rows[SelRow].Count) return;
-                    DrawOneKey(g, SelRow, SelCol, true, 0, 0);
-                }
+                DrawOneKey(g, SelRow, SelCol, true, dx, dy);
             }
 
             public void RenderContent(Graphics g, Rectangle clip, bool forGpu)
@@ -16242,8 +16243,7 @@ namespace Rocola
                 }
                 g.DrawImageUnscaled(resCache, resCacheOrigin.X, resCacheOrigin.Y);
                 // Tarjeta seleccionada EN VIVO encima: su relleno es opaco y tapa la version sin seleccion del cache.
-                // Con tarjeta grafica NO se dibuja aqui: sale como PIEZA VIVA aparte (ver PiezaViva).
-                if (!paraGpu && n > 0)
+                if (n > 0)
                 {
                     int selIdx = FocusResults ? SelResult : 0;
                     if (selIdx >= 0 && selIdx < n) DrawOneResultCard(g, selIdx, Rectangle.Round(resultRects[selIdx].Key), true, qNorm);
