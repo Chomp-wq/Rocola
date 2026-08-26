@@ -62,12 +62,20 @@ for k in $ORDEN; do
   fi
 done
 if [ $hecho -eq 0 ]; then echo "  LA ROCOLA NO COMPILA:"; tail -12 /tmp/c_rocola.txt; exit 1; fi
-if [ -s /tmp/c_rocola.txt ]; then echo "  (avisos al compilar)"; cat /tmp/c_rocola.txt; fi
 if ! mcs -sdk:$SDK -langversion:5 -warn:4 -target:winexe -out:rocola_gpu.exe -d:ROCOLA_GPU \
      -r:System.Windows.Forms.dll -r:System.Drawing.dll -r:"$NAUDIO" $FUENTES > /tmp/c_rocola_gpu.txt 2>&1; then
   echo "  EL PERFIL CON TARJETA GRAFICA NO COMPILA:"; tail -12 /tmp/c_rocola_gpu.txt; exit 1
 fi
-echo "  rocola compilada (rama ${RAMA:-desconocida}, .NET $([ $SDK = 2 ] && echo 3.5 || echo 4.8), los dos perfiles, 0 avisos)"
+# --- LOS AVISOS SE CUENTAN, Y DE LOS DOS PERFILES ---
+# Aqui la rocola se compila a CERO avisos. Antes esta linea decia "0 avisos" siempre, mirara o no: los del
+# perfil con tarjeta grafica ni se leian, y por ahi se colo uno sin que nadie se enterara. Ahora se cuentan
+# de verdad y, si hay alguno, se ensena cual y donde.
+avisos=$(cat /tmp/c_rocola.txt /tmp/c_rocola_gpu.txt 2>/dev/null | grep -c 'warning CS')
+if [ "${avisos:-0}" -ne 0 ]; then
+  echo "  OJO: $avisos AVISO(S) al compilar la rocola (aqui se compila a cero):"
+  grep -h 'warning CS' /tmp/c_rocola.txt /tmp/c_rocola_gpu.txt | sed 's/^/    /'
+fi
+echo "  rocola compilada (rama ${RAMA:-desconocida}, .NET $([ $SDK = 2 ] && echo 3.5 || echo 4.8), los dos perfiles, ${avisos:-0} avisos)"
 echo
 
 # --- Si se pidieron baterias sueltas, se reparten segun a que perfil van ---
