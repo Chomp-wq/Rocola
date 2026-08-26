@@ -98,6 +98,43 @@ class Escribe
         return mejor;
     }
 
+    static double Ronda(int veces, Action a)
+    {
+        Stopwatch sw = Stopwatch.StartNew();
+        for (int i = 0; i < veces; i++) a();
+        sw.Stop();
+        return sw.Elapsed.TotalMilliseconds / veces;
+    }
+
+    static double Mediana(List<double> v) { v.Sort(); return v[v.Count / 2]; }
+
+    // LAS TRES MEDIDAS, PEGADAS.
+    //
+    // Lo que se comprueba abajo no es un tiempo suelto: es la RAZON entre lo que cuesta el fondo del buscador
+    // y lo que costaba dibujarlo estrella por estrella. Y el coste del fondo ni siquiera se puede medir
+    // suelto: se saca restando "pintar el buscador con fondo" menos "pintarlo sin fondo".
+    //
+    // Esta maquina esta compartida, asi que cada medida sube y baja segun quien mas este trabajando. Tomando
+    // cada trozo por su cuenta -y encima con estimadores distintos, el minimo para uno y la mediana para
+    // otro- pasaba lo que tenia que pasar: la prueba fallaba sola con la maquina cargada, dando 3.99 ms donde
+    // en calma daba 1.82. Una prueba que falla sin que nadie haya roto nada acaba ignorandose, que es peor
+    // que no tenerla.
+    //
+    // Aqui las tres medidas se toman PEGADAS dentro de la misma tanda y la razon se calcula tanda a tanda: lo
+    // que se lleve la carga se lo lleva de las tres por igual y se va en la division. De las nueve tandas se
+    // toma la de en medio.
+    static void MideElFondo(Action conFondo, Action sinFondo, Action enVivo, out double tFondo, out double tVivo, out double razon)
+    {
+        conFondo(); sinFondo(); enVivo();
+        List<double> lf = new List<double>(), lv = new List<double>(), lr = new List<double>();
+        for (int t = 0; t < 9; t++)
+        {
+            double a = Ronda(10, conFondo), b = Ronda(10, sinFondo), c = Ronda(4, enVivo);
+            lf.Add(a - b); lv.Add(c); lr.Add((a - b) / Math.Max(c, 0.000001));
+        }
+        tFondo = Mediana(lf); tVivo = Mediana(lv); razon = Mediana(lr);
+    }
+
     static int Main(string[] argv)
     {
         string exe = (argv.Length > 0) ? argv[0] : "rocola.exe";
@@ -162,14 +199,16 @@ class Escribe
         {
             object[] argCpu = new object[] { g, todo, false };
             object[] argGpu = new object[] { g, todo, true };
-            double tConFondo = Mide(10, delegate { mR.Invoke(so, argCpu); });
-            double tSinFondo = Mide(10, delegate { mR.Invoke(so, argGpu); });
-            double tFondo = tConFondo - tSinFondo;
             object[] argVivo = new object[] { g, W, H, arriba, abajo, Color.White, 0.0, false, 0f };
-            double tVivo = Mide(4, delegate { if (fLast != null) fLast.SetValue(cielo, 0); mVivo.Invoke(cielo, argVivo); });
+            double tFondo, tVivo, razon;
+            MideElFondo(delegate { mR.Invoke(so, argCpu); },
+                        delegate { mR.Invoke(so, argGpu); },
+                        delegate { if (fLast != null) fLast.SetValue(cielo, 0); mVivo.Invoke(cielo, argVivo); },
+                        out tFondo, out tVivo, out razon);
             Console.WriteLine("     el fondo del buscador ....... " + tFondo.ToString("0.00") + " ms");
             Console.WriteLine("     dibujarlo en vivo, como antes " + tVivo.ToString("0.00") + " ms");
-            Check(tVivo > 0.05 && tFondo < tVivo * 0.45,
+            Console.WriteLine("     o sea, cuesta el ............ " + (razon * 100).ToString("0") + "% de lo de antes");
+            Check(tVivo > 0.05 && razon < 0.45,
                   "pintar el fondo del buscador cuesta menos de la mitad que redibujarlo estrella por estrella");
         }
 
