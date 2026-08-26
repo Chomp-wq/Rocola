@@ -673,6 +673,8 @@ namespace Rocola
 
         private volatile int warmGen = 0;          // generacion del precalentador (se reinicia al recargar musica)
         private volatile int lastInputTick = 0;    // ultimo boton presionado (el precalentador pausa si hay gente)
+        private int ultimaFlecha = 0;              // cuando se acepto la ultima flecha (freno de la auto-repeticion)
+        private const int MsEntreFlechas = 40;     // 25 movimientos por segundo: mas de lo que la pantalla ensena
         private List<string> cachedVideoPaths;            // rutas de video del cache de biblioteca (arranque rapido)
         private List<string> lastVideoPaths;              // rutas de video del ultimo armado (para guardar el cache)
         private Dictionary<string, string> cachedCovers;  // carpeta -> portada, del cache de biblioteca
@@ -7311,6 +7313,29 @@ namespace Rocola
             // porque no habia forma de saber que era un combo. Ahora los dos botones estan DIBUJADOS en la
             // casilla de BUSCAR que parpadea arriba en medio, asi que no hay nada que adivinar.
             if (IsUp(kc) && BackHeld()) { ToggleSearch(); return true; }
+
+            // FRENO DE LA AUTO-REPETICION DE LAS FLECHAS.
+            //
+            // Manteniendo pulsada una flecha, el teclado manda unas treinta pulsaciones por segundo. Cada una
+            // mueve la seleccion y encarga un repintado... y la pantalla no da mas de sesenta cuadros por
+            // segundo, asi que la mitad de ese trabajo no lo llega a ver nadie: solo sirve para llenar la cola
+            // y que la rocola se sienta pastosa. Es el mismo problema que ya se filtra en el boton de la
+            // moneda y en el de saltar.
+            //
+            // Pero aqui NO se puede tirar la repeticion como alli: mantener pulsada una flecha para recorrer
+            // la biblioteca es como se usa una rocola de botones, y quitarlo seria peor que el problema. Lo
+            // que se hace es ponerle TOPE: como mucho un movimiento cada 40 ms, que son veinticinco por
+            // segundo -mas rapido de lo que la pantalla puede ensenar-. La primera pulsacion siempre pasa,
+            // asi que pulsar suelto se siente exactamente igual que antes.
+            //
+            // Va por TIEMPO y no por el bit de "esto es una repeticion" a proposito: ese bit es cosa de
+            // Windows, y esta rocola tambien corre en Linux, donde puede no venir.
+            if (IsLeft(kc) || IsRight(kc) || IsUp(kc) || IsDown(kc))
+            {
+                int ahora = Environment.TickCount;
+                if (ahora - ultimaFlecha < MsEntreFlechas) return true;   // demasiado seguidas: esta se descarta
+                ultimaFlecha = ahora;
+            }
 
             if (searchOpen)
             {
