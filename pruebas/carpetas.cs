@@ -28,6 +28,11 @@ class Carpetas
     static int fallos = 0;
     static void Check(bool ok, string q) { Console.WriteLine((ok ? "  OK   " : "  FALLO") + "  " + q); if (!ok) fallos++; }
 
+    // Los contadores del apriete de la seccion 7. Van aqui y no dentro del metodo porque los hilos que los
+    // suben con Interlocked necesitan un campo, no una variable local.
+    static int malDisco = 0, malSistema = 0, preguntas = 0;
+    static volatile bool sigue = true;
+
     static Type TF;
     static object F;
     static object Campo(string n) { return TF.GetField(n, BindingFlags.Instance | BindingFlags.NonPublic).GetValue(F); }
@@ -220,6 +225,76 @@ class Carpetas
                     Check((bool)fOfrecido.GetValue(F), "sin musica y sin ventana abierta, se pide");
                     mPide.Invoke(F, null);
                     Check((bool)fOfrecido.GetValue(F), "y si ya se pidio una vez, no se insiste: se cierra una vez y se cierra");
+                }
+            }
+
+            // Y QUE SE VEA LO QUE IMPORTA. Las rutas son largas y la lista las corta por la derecha, asi
+            // que el aviso de "esta carpeta no esta" tiene que ir DELANTE de la ruta o se queda fuera de la
+            // pantalla justo cuando mas falta hace. Se vio en una foto de la ventana abierta sola: se leia
+            // la ruta entera y el "(NO EXISTE)" no aparecia por ningun lado.
+            MethodInfo mRenglon = TF.GetMethod("RenglonDeCarpeta", BindingFlags.Static | BindingFlags.NonPublic);
+            Check(mRenglon != null, "el renglon de cada carpeta se arma en un sitio que se puede comprobar");
+            if (mRenglon != null)
+            {
+                string larga = "/mnt/disco-de-la-musica-del-bar/Musica/Coleccion completa 2026";
+                string falta = (string)mRenglon.Invoke(null, new object[] { larga, true, false });
+                string esta = (string)mRenglon.Invoke(null, new object[] { larga, true, true });
+                string extraFalta = (string)mRenglon.Invoke(null, new object[] { larga, false, false });
+                Console.WriteLine("     con la carpeta puesta:   " + esta);
+                Console.WriteLine("     sin ella:                " + falta);
+                Check(falta.StartsWith("(NO EXISTE)"), "el aviso de que la carpeta principal no esta va DELANTE, donde se ve");
+                Check(extraFalta.StartsWith("(no disponible)"), "y el de un disco desconectado tambien");
+                Check(!esta.StartsWith("("), "y cuando la carpeta si esta, no se avisa de nada");
+                Check(esta.IndexOf(larga, StringComparison.Ordinal) >= 0 && falta.IndexOf(larga, StringComparison.Ordinal) >= 0,
+                      "y en los dos casos se sigue viendo de que carpeta se habla");
+            }
+
+            Console.WriteLine("\n  7) Y LA TABLA DE DISCOS NO SE VACIA EN LAS NARICES DE QUIEN PREGUNTA\n");
+            // La tabla de discos se lee una vez y se guarda, y se TIRA al rearmar la biblioteca (F5, agregar
+            // una carpeta) para volver a mirar que discos hay conectados. Pero eso pasa en el hilo de la
+            // pantalla, mientras el barrido y las portadas siguen preguntando desde otros hilos. Si la tabla
+            // se vacia justo entre "asegurate de que esta leida" y "leela", la respuesta sale vacia: se
+            // contesta el disco equivocado y, peor, que /proc NO es del sistema... o sea que el barrido se
+            // mete ahi a buscar musica, que es justo lo que la seccion 4 existe para evitar.
+            //
+            // Y esto NO era teoria: con el fallo, en cuatro segundos salian 40 discos equivocados y 27 veces
+            // "/proc no es del sistema". Aqui se aprieta a proposito y se exige CERO.
+            MethodInfo mOlvida = (TS != null) ? TS.GetMethod("OlvidaLasUnidades", new Type[0]) : null;
+            MethodInfo mUnidadReal = (TS != null) ? TS.GetMethod("UnidadDe", new Type[] { typeof(string) }) : null;
+            if (mOlvida == null || mUnidadReal == null || mEsSistema == null)
+                Console.WriteLine("     (esta rocola no guarda tabla de discos: no hay nada que apretar)");
+            else
+            {
+                string quePregunto = "/proc/1/algo";
+                string discoBueno = (string)mUnidadReal.Invoke(null, new object[] { quePregunto });
+                bool sistemaBueno = (bool)mEsSistema.Invoke(null, new object[] { quePregunto });
+                Console.WriteLine("     con la tabla quieta: " + quePregunto + " esta en \"" + discoBueno
+                                  + "\" y es del sistema: " + (sistemaBueno ? "si" : "no"));
+                if (!sistemaBueno || discoBueno == "/")
+                    Console.WriteLine("     (esta maquina no tiene /proc montado aparte: no se puede apretar)");
+                else
+                {
+                    malDisco = 0; malSistema = 0; preguntas = 0; sigue = true;
+                    List<Thread> hs = new List<Thread>();
+                    for (int i = 0; i < 3; i++) hs.Add(new Thread(delegate ()
+                    {
+                        while (sigue)
+                        {
+                            Interlocked.Increment(ref preguntas);
+                            if ((string)mUnidadReal.Invoke(null, new object[] { quePregunto }) != discoBueno) Interlocked.Increment(ref malDisco);
+                            if (!(bool)mEsSistema.Invoke(null, new object[] { quePregunto })) Interlocked.Increment(ref malSistema);
+                        }
+                    }));
+                    hs.Add(new Thread(delegate () { while (sigue) mOlvida.Invoke(null, null); }));
+                    for (int i = 0; i < hs.Count; i++) { hs[i].IsBackground = true; hs[i].Start(); }
+                    Thread.Sleep(2500);
+                    sigue = false;
+                    for (int i = 0; i < hs.Count; i++) hs[i].Join(3000);
+                    Console.WriteLine("     mientras otro hilo tira la tabla (lo que hace F5): " + preguntas.ToString("#,0") + " preguntas");
+                    Console.WriteLine("       contesto el disco equivocado: " + malDisco);
+                    Console.WriteLine("       dijo que /proc NO es del sistema: " + malSistema + "   (ahi es donde el barrido se metia)");
+                    Check(malDisco == 0, "en que disco esta algo se contesta siempre igual, se este rearmando la biblioteca o no");
+                    Check(malSistema == 0, "y /proc sigue siendo del sistema aunque la tabla se este releyendo");
                 }
             }
         }
