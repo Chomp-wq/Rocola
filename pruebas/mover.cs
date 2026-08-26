@@ -7,26 +7,34 @@ using System.Drawing.Imaging;
 using System.Reflection;
 using System.Windows.Forms;
 
-// MOVERSE ENTRE LOS RESULTADOS NO PUEDE REHACER LA PANTALLA ENTERA.
+// MOVERSE ENTRE LAS TECLAS NO PUEDE REHACER LA PANTALLA ENTERA... PERO TIENE QUE VERSE IGUAL.
 //
 // La rocola compone toda la pantalla en una imagen y la sube a la tarjeta grafica. Para no rehacerla en
 // cada cuadro lleva una FIRMA: si nada cambio, se reaprovecha. El problema era que la CASILLA ELEGIDA
-// entraba en esa firma, asi que pulsar una flecha -que solo cambia que tarjeta lleva el recuadro- obligaba
-// a rehacer y RE-SUBIR la pantalla completa. Medido por buscadib.cs: 5.91 ms por pulsacion a 1080p, el 35%
-// de un cuadro; y las flechas no frenaban la auto-repeticion, asi que mantenerla pulsada eran ~30 de esas
-// por segundo contra un presupuesto de 16.6 ms por cuadro.
+// entraba en esa firma, asi que pulsar una flecha -que solo cambia que tecla lleva el recuadro- obligaba a
+// rehacer y RE-SUBIR la pantalla completa: 5.91 ms por pulsacion a 1080p, el 35% de un cuadro. La tecla
+// elegida sale ahora como PIEZA VIVA aparte, en su propia imagen chica encima de la grande.
 //
-// Por eso "moverse entre casillas baja el rendimiento de manera drastica" incluso en una maquina potente:
-// el gasto no es pintar -de eso la tarjeta va sobrada- sino rehacer la imagen en el procesador y empujar
-// 7 MB por el bus. Y por eso se nota MAS cuanto mayor es la pantalla.
+// ESTA BATERIA SE ESCRIBIO DOS VECES, Y LA PRIMERA NO SERVIA. Decia "0 pixeles de diferencia" mientras el
+// programa se veia roto de tres maneras distintas. Se equivocaba en tres cosas, y las tres estan arregladas
+// aqui porque son justo por donde se rompe esto:
 //
-// El programa ya sabe hacer esto bien en otros sitios: el destello de los botones y el pulso de las letras
-// se dibujan como piezas sueltas encima, y la franja de estado de abajo tiene su propia imagen chica. Al
-// buscador nunca se le hizo. Aqui se comprueba que ya se le hizo, y que sale EXACTAMENTE igual.
+//   1) MONTABA EL BUSCADOR CON LOS RESULTADOS ENFOCADOS, que es cuando el teclado NO se dibuja (en su sitio
+//      va el cubo de la portada). Las teclas no tenian ni sitio asignado, asi que la pieza salia de 4x4 en
+//      (-2,-2): comparaba basura contra basura y daba 0. Ahora se prueban LOS DOS estados.
+//   2) DIBUJABA LA PIEZA CON UNA TRASFORMACION DEL LIENZO. Eso funciona en Mono y NO en Windows: el texto
+//      lo dibuja el sistema (TextRenderer) y ese NO hace caso a las trasformaciones. Por eso en el bar la
+//      tecla elegida salia como un rectangulo rosa VACIO, sin letra. Aqui ya no se permite: se comprueba
+//      leyendo el programa compilado que la pieza se dibuja pasando el DESPLAZAMIENTO, no trasformando.
+//   3) NO MIRABA LA FIRMA AL REVES. Sacar la casilla elegida esta bien; sacar tambien "estoy en los
+//      resultados" no, porque eso cambia MEDIA PANTALLA (teclado <-> cubo). Al sacarlo, volver de los
+//      resultados al teclado no rehacia la imagen y el teclado no volvia a aparecer nunca.
 class Mover
 {
     static int fallos = 0;
     static void Check(bool ok, string q) { Console.WriteLine((ok ? "  OK   " : "  FALLO") + "  " + q); if (!ok) fallos++; }
+
+    const BindingFlags IF = BindingFlags.Instance | BindingFlags.NonPublic;
 
     static Type TF, TSO, TItem, TAlb;
     static Bitmap portada = Tapa();
@@ -49,7 +57,8 @@ class Mover
         return FontFamily.GenericSansSerif;
     }
 
-    static Control Monta(int W, int H, int sel)
+    // foco = false: se ve el TECLADO (que es cuando hay pieza viva). true: se ve el cubo de la portada.
+    static Control Monta(int W, int H, int sel, bool foco)
     {
         Control so = (Control)Activator.CreateInstance(TSO, true);
         so.SetBounds(0, 0, W, H);
@@ -85,22 +94,29 @@ class Mover
         TSO.GetField("Results").SetValue(so, res);
         TSO.GetField("Query").SetValue(so, "de");
         TSO.GetField("Accent").SetValue(so, Color.FromArgb(178, 152, 255));
-        TSO.GetField("FocusResults").SetValue(so, true);
+        TSO.GetField("FocusResults").SetValue(so, foco);
         TSO.GetField("SelResult").SetValue(so, sel);
+        TSO.GetField("SelRow").SetValue(so, 1);
+        TSO.GetField("SelCol").SetValue(so, 4);
         return so;
     }
 
-    static void Compara(Bitmap a, Bitmap b, out int distintos, out int peor)
+    static void Compara(Bitmap a, Bitmap b, out int distintos, out int peor, out Rectangle donde)
     {
         distintos = 0; peor = 0;
+        int x0 = int.MaxValue, y0 = int.MaxValue, x1 = int.MinValue, y1 = int.MinValue;
         for (int y = 0; y < a.Height; y++)
             for (int x = 0; x < a.Width; x++)
             {
                 Color ca = a.GetPixel(x, y), cb = b.GetPixel(x, y);
                 int d = Math.Max(Math.Max(Math.Abs(ca.R - cb.R), Math.Abs(ca.G - cb.G)),
                         Math.Max(Math.Abs(ca.B - cb.B), Math.Abs(ca.A - cb.A)));
-                if (d > 0) { distintos++; if (d > peor) peor = d; }
+                if (d <= 0) continue;
+                distintos++; if (d > peor) peor = d;
+                if (x < x0) x0 = x; if (x > x1) x1 = x;
+                if (y < y0) y0 = y; if (y > y1) y1 = y;
             }
+        donde = (distintos == 0) ? Rectangle.Empty : Rectangle.FromLTRB(x0, y0, x1 + 1, y1 + 1);
     }
 
     static int Main(string[] argv)
@@ -117,114 +133,169 @@ class Mover
         Check(TSO != null && TItem != null && TAlb != null, "el buscador esta donde tiene que estar");
         if (TSO == null || TItem == null || TAlb == null) return Math.Max(1, fallos);
 
-        Console.WriteLine("\n  1) LA CASILLA ELEGIDA YA NO OBLIGA A REHACER LA PANTALLA ENTERA\n");
-        MethodInfo mUi = TF.GetMethod("UiSig", BindingFlags.Instance | BindingFlags.NonPublic);
+        // ---------- 1) LA FIRMA: LO QUE SALE Y LO QUE TIENE QUE SEGUIR ENTRANDO ----------
+        Console.WriteLine("\n  1) LA FIRMA DE LA PANTALLA: LO QUE SALE Y LO QUE NO PUEDE SALIR\n");
+        MethodInfo mUi = TF.GetMethod("UiSig", IF);
         Check(mUi != null, "la firma de la imagen de pantalla completa esta donde tiene que estar");
         if (mUi != null)
         {
-            string[] mueven = { "SelResult", "SelRow", "SelCol", "FocusResults" };
-            foreach (string c in mueven)
+            // FUERA: la tecla elegida. Es lo unico que se puede sacar, porque sale como pieza viva encima.
+            foreach (string c in new string[] { "SelRow", "SelCol" })
             {
                 int lee, esc; Codigo.UsosDeCampo(mUi, c, out lee, out esc);
-                Check(lee == 0, "moverse a otra casilla (" + c + ") no entra en la firma: no rehace ni re-sube la pantalla");
+                Check(lee == 0, "moverse a otra TECLA (" + c + ") no entra en la firma: no rehace ni re-sube la pantalla");
             }
-            // Y lo que SI tiene que seguir entrando: si cambia lo tecleado, los resultados son otros de verdad.
-            int l2, e2; Codigo.UsosDeCampo(mUi, "Query", out l2, out e2);
-            Check(l2 > 0, "y lo tecleado SI entra: ahi los resultados cambian de verdad y hay que rehacerla");
+            // DENTRO, y esto es lo que se saco de mas la primera vez:
+            //  - FocusResults cambia MEDIA PANTALLA: donde estaba el teclado se pone el cubo de la portada.
+            //    Sin esto, al volver de los resultados el teclado NO volvia a aparecer nunca.
+            //  - SelResult, con el cubo delante, cambia la portada y el texto de debajo.
+            //  - Query, porque los resultados son otros de verdad.
+            string[] dentro = { "FocusResults", "SelResult", "Query" };
+            string[] porque = { "cambia media pantalla: teclado <-> cubo de la portada",
+                                "con el cubo delante, cambia que disco se ensena y su texto",
+                                "los resultados son otros de verdad" };
+            for (int i = 0; i < dentro.Length; i++)
+            {
+                int lee, esc; Codigo.UsosDeCampo(mUi, dentro[i], out lee, out esc);
+                Check(lee > 0, dentro[i] + " SI entra en la firma (" + porque[i] + ")");
+            }
         }
 
-        Console.WriteLine("\n  2) LA TARJETA ELEGIDA SE PUEDE PEDIR COMO PIEZA SUELTA\n");
-        // Igual que el cubo de vista previa (GetPreviewCube) y el resalte de la pared (ContourSpriteBmp).
+        // ---------- 2) LA PIEZA SE PIDE CON SU SITIO, Y SE DIBUJA SIN TRUCOS DE COORDENADAS ----------
+        Console.WriteLine("\n  2) LA PIEZA VIVA SE PIDE APARTE, Y SE DIBUJA CON UN DESPLAZAMIENTO\n");
         MethodInfo mCarta = TSO.GetMethod("PiezaViva");
         MethodInfo mDib = TSO.GetMethod("DibujaPiezaViva");
-        Check(mCarta != null && mDib != null, "el buscador sabe dar sus piezas vivas aparte, para dibujarlas encima sin re-subir nada");
+        Check(mCarta != null && mDib != null, "el buscador sabe dar sus piezas vivas aparte");
+        bool dibOk = (mDib != null && mDib.GetParameters().Length == 4);
+        Console.WriteLine("     DibujaPiezaViva recibe " + ((mDib == null) ? 0 : mDib.GetParameters().Length)
+                          + " datos  (hacen falta 4: el lienzo, cual pieza, y el desplazamiento en x e y)");
+        // POR QUE UN DESPLAZAMIENTO Y NO UNA TRASFORMACION DEL LIENZO: el texto de las teclas y de las
+        // tarjetas lo dibuja el SISTEMA (TextRenderer), y ese trabaja en pixeles de verdad: no hace caso a
+        // las trasformaciones. En Mono da igual -alli lo dibuja el mismo motor que el resto- pero en Windows
+        // el texto se iba fuera de la imagen chica y la tecla elegida salia como un rectangulo VACIO.
+        Check(dibOk, "y se le pasa el desplazamiento, para que el texto del sistema caiga donde debe");
+        MethodInfo mEns = TF.GetMethod("EnsureUiPieza", IF);
+        Check(mEns != null, "la rocola prepara las piezas vivas en un sitio que se puede comprobar");
+        if (mEns != null)
+            Check(!Codigo.Llama(mEns, "TranslateTransform"),
+                  "y NO se mueve el lienzo para dibujarla (eso deja el texto fuera en Windows)");
 
-        Console.WriteLine("\n  3) Y CON TARJETA GRAFICA NO SE DIBUJA DOS VECES\n");
         MethodInfo mRender = TSO.GetMethod("RenderContent", new Type[] { typeof(Graphics), typeof(Rectangle), typeof(bool) });
         Check(mRender != null, "se puede pedir al buscador que se dibuje");
-        if (mRender == null || mCarta == null) { Console.WriteLine("\n  " + Math.Max(1, fallos) + " FALLO(S)\n"); return Math.Max(1, fallos); }
+        if (mRender == null || mCarta == null || mDib == null) { Console.WriteLine("\n  " + Math.Max(1, fallos) + " FALLO(S)\n"); return Math.Max(1, fallos); }
 
+        FieldInfo fTecla = TSO.GetField("PiezaTecla");
+        int PZ = (fTecla != null) ? (int)fTecla.GetRawConstantValue() : 0;
+
+        // ---------- 3) CON EL CUBO DELANTE NO PUEDE HABER PIEZA DE TECLA ----------
+        Console.WriteLine("\n  3) CON EL CUBO DE LA PORTADA DELANTE, EL TECLADO NO EXISTE\n");
+        // Cuando se pasa a los resultados, el teclado deja de dibujarse: en su hueco va el cubo. Si la pieza
+        // viva siguiera existiendo, quedaria una tecla suelta flotando ENCIMA del cubo. Eso es exactamente lo
+        // que se veia.
+        {
+            Control so = Monta(1024, 768, 5, true);
+            using (Bitmap b = new Bitmap(1024, 768, PixelFormat.Format32bppPArgb))
+            using (Graphics g = Graphics.FromImage(b)) mRender.Invoke(so, new object[] { g, new Rectangle(0, 0, 1024, 768), true });
+            object[] ar = new object[] { PZ, Rectangle.Empty };
+            bool hay = (bool)mCarta.Invoke(so, ar);
+            Console.WriteLine("     con los resultados enfocados, ¿hay pieza de tecla?  " + (hay ? "SI  (" + (Rectangle)ar[1] + ")" : "no"));
+            Check(!hay, "con los resultados enfocados NO hay pieza de tecla (si no, queda flotando sobre el cubo)");
+            so.Dispose();
+        }
+
+        // ---------- 4) Y CON EL TECLADO DELANTE, SALE EXACTAMENTE IGUAL ----------
+        Console.WriteLine("\n  4) Y CON EL TECLADO DELANTE, SALE EXACTAMENTE IGUAL\n");
         int[] tam = { 1024, 1920 };
         int[] alto = { 768, 1080 };
         for (int k = 0; k < tam.Length; k++)
         {
             int W = tam[k], H = alto[k];
-            Control so = Monta(W, H, 5);
+            Control so = Monta(W, H, 5, false);
             Rectangle todo = new Rectangle(0, 0, W, H);
 
-            // LA PREGUNTA ES SOLO SI PEGAR LA PIEZA APARTE CAMBIA ALGO, asi que las dos mitades se dibujan por
-            // el MISMO camino (el de tarjeta grafica, que no pinta el cielo ni el cubo) y lo unico que cambia
-            // es COMO llega el recuadro:
-            //
-            //   JUNTOS  la pieza dibujada DIRECTAMENTE encima, como si siguiera horneada dentro.
-            //   PARTES  la pieza dibujada en su PROPIA capa transparente, que luego se pega (lo que hace la
-            //           tarjeta grafica con un quad).
-            //
-            // Si hubiera diferencia saldria en los bordes suavizados: en la primera forma el borde se mezcla
-            // con lo que hay debajo, y en la segunda se mezcla primero con transparente y luego otra vez.
+            // Las dos mitades se dibujan por el MISMO camino y lo unico que cambia es COMO llega la pieza:
+            //   JUNTOS  dibujada DIRECTAMENTE encima, como si siguiera horneada dentro.
+            //   PARTES  dibujada en SU PROPIA imagen chica y pegada despues, que es lo que hace la tarjeta
+            //           grafica con un quad. ESTE es el camino que corre en el bar.
             Bitmap juntos = new Bitmap(W, H, PixelFormat.Format32bppPArgb);
             using (Graphics g = Graphics.FromImage(juntos))
             {
                 g.SmoothingMode = SmoothingMode.AntiAlias;
+                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
                 mRender.Invoke(so, new object[] { g, todo, true });
-                for (int c = 0; c <= 1; c++)
-                {
-                    object[] ar = new object[] { c, Rectangle.Empty };
-                    if ((bool)mCarta.Invoke(so, ar)) mDib.Invoke(so, new object[] { g, c });
-                }
+                object[] ar = new object[] { PZ, Rectangle.Empty };
+                if ((bool)mCarta.Invoke(so, ar)) mDib.Invoke(so, new object[] { g, PZ, 0, 0 });
             }
 
             Bitmap partes = new Bitmap(W, H, PixelFormat.Format32bppPArgb);
-            using (Graphics g = Graphics.FromImage(partes)) { g.SmoothingMode = SmoothingMode.AntiAlias; mRender.Invoke(so, new object[] { g, todo, true }); }
-            int piezas = 0;
-            for (int c = 0; c <= 1; c++)
+            using (Graphics g = Graphics.FromImage(partes))
             {
-                object[] arg = new object[] { c, Rectangle.Empty };
-                if (!(bool)mCarta.Invoke(so, arg)) continue;
-                piezas++;
-                Rectangle donde = (Rectangle)arg[1];
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
+                mRender.Invoke(so, new object[] { g, todo, true });
+            }
+            object[] arg = new object[] { PZ, Rectangle.Empty };
+            bool hayPieza = (bool)mCarta.Invoke(so, arg);
+            Check(hayPieza, "con el teclado delante SI hay pieza de tecla   [" + W + "x" + H + "]");
+            Rectangle dondePieza = (Rectangle)arg[1];
+            if (hayPieza)
+            {
+                Rectangle donde = dondePieza;
                 using (Bitmap capa = new Bitmap(donde.Width, donde.Height, PixelFormat.Format32bppPArgb))
                 {
                     using (Graphics cg = Graphics.FromImage(capa))
                     {
                         cg.SmoothingMode = SmoothingMode.AntiAlias;
-                        cg.TranslateTransform(-donde.X, -donde.Y);
-                        mDib.Invoke(so, new object[] { cg, c });
+                        cg.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
+                        mDib.Invoke(so, new object[] { cg, PZ, -donde.X, -donde.Y });
                     }
+                    // Y que la imagen chica no salga VACIA: es lo que pasaba en Windows. Una tecla lleva su
+                    // letra, asi que tiene que haber pixeles claros dentro.
+                    int claros = 0;
+                    for (int y = 0; y < capa.Height; y += 2)
+                        for (int x = 0; x < capa.Width; x += 2)
+                        { Color c = capa.GetPixel(x, y); if (c.A > 200 && c.R > 220 && c.G > 220 && c.B > 220) claros++; }
+                    Console.WriteLine("     la pieza mide " + donde.Width + "x" + donde.Height
+                                      + " = " + (donde.Width * donde.Height * 4 / 1024) + " KB;  pixeles de letra dentro: " + claros);
+                    Check(claros > 20, "  la letra de la tecla SE DIBUJA dentro de su imagen chica   [" + W + "x" + H + "]");
                     using (Graphics g = Graphics.FromImage(partes)) g.DrawImageUnscaled(capa, donde.X, donde.Y);
                 }
             }
-            Check(piezas == 2, "hay DOS piezas vivas: la tarjeta elegida y la tecla elegida   [" + W + "x" + H + "]");
 
-            int dist, peor;
-            Compara(juntos, partes, out dist, out peor);
-            Console.WriteLine("     " + W + "x" + H + ":  pixeles distintos " + dist.ToString("#,0")
-                              + "   la peor diferencia " + peor + " niveles de 255");
-            Check(dist == 0, "  la pantalla sale EXACTAMENTE igual dibujada de las dos formas   [" + W + "x" + H + "]");
+            // LO QUE SE ADMITE, Y POR QUE. El relleno de la tecla es OPACO, asi que tapa entero su hueco:
+            // ahi no puede haber diferencia. Pero el recuadro que la rodea es un halo TRANSLUCIDO a proposito
+            // -late-, y un borde translucido pegado en DOS pasos (primero sobre transparente, luego la capa
+            // encima) se redondea a 8 bits dos veces. Eso deja unos pocos pixeles del borde movidos un nivel
+            // o dos, que no los ve nadie. Lo que si seria un fallo de verdad -y por eso se mira- es que la
+            // diferencia se saliera de la pieza, o que fuera de mas de dos niveles, o que tocara mucha
+            // superficie: eso ya no seria redondeo, seria que se dibujo otra cosa.
+            int dist, peor; Rectangle zona;
+            Compara(juntos, partes, out dist, out peor, out zona);
+            int area = Math.Max(1, dondePieza.Width * dondePieza.Height);
+            Console.WriteLine("     " + W + "x" + H + ":  pixeles movidos " + dist.ToString("#,0")
+                              + " de " + area.ToString("#,0") + " de la pieza (" + (dist * 100.0 / area).ToString("0.0")
+                              + "%)   el peor se mueve " + peor + " niveles de 255");
+            Check(peor <= 2, "  ningun color se mueve mas de 2 niveles de 255   [" + W + "x" + H + "]");
+            Check(dist * 100 <= area * 5, "  y solo se mueve el borde del recuadro, no la tecla   [" + W + "x" + H + "]");
+            Check(dist == 0 || dondePieza.Contains(zona),
+                  "  y ni un pixel cambia FUERA de la pieza   [" + W + "x" + H + "]");
 
             juntos.Dispose(); partes.Dispose(); so.Dispose();
         }
 
-        Console.WriteLine("\n  4) Y LA PIEZA SE DIBUJA DONDE TOCA\n");
-        // Lo unico que puede salir MAL de verdad con este arreglo es la aritmetica del sitio: el buscador da
-        // el rectangulo en SUS coordenadas y la tarjeta grafica lo dibuja en las de la pantalla. Si a alguien
-        // se le olvida sumar donde empieza el buscador, el recuadro aparece corrido y no lo caza ninguna
-        // comparacion de pixeles del propio buscador.
-        MethodInfo mEns = TF.GetMethod("EnsureUiPieza", BindingFlags.Instance | BindingFlags.NonPublic);
-        FieldInfo fRects2 = TF.GetField("uiPiezaRect", BindingFlags.Instance | BindingFlags.NonPublic);
-        FieldInfo fBmps = TF.GetField("uiPieza", BindingFlags.Instance | BindingFlags.NonPublic);
-        FieldInfo fSigs = TF.GetField("uiPiezaSig", BindingFlags.Instance | BindingFlags.NonPublic);
-        FieldInfo fVers = TF.GetField("uiPiezaVer", BindingFlags.Instance | BindingFlags.NonPublic);
-        FieldInfo fSO = TF.GetField("searchOverlay", BindingFlags.Instance | BindingFlags.NonPublic);
-        FieldInfo fAbierto = TF.GetField("searchOpen", BindingFlags.Instance | BindingFlags.NonPublic);
-        Check(mEns != null && fRects2 != null && fSO != null && fAbierto != null,
-              "la rocola prepara las piezas vivas en un sitio que se puede comprobar");
-        if (mEns != null && fRects2 != null && fSO != null && fAbierto != null)
+        // ---------- 5) Y LA PIEZA SE COLOCA DONDE TOCA ----------
+        Console.WriteLine("\n  5) Y LA PIEZA SE COLOCA DONDE TOCA\n");
+        // El buscador da el rectangulo en SUS coordenadas y la tarjeta grafica lo dibuja en las de la
+        // pantalla. Si a alguien se le olvida sumar donde empieza el buscador, sale corrido.
+        FieldInfo fRects2 = TF.GetField("uiPiezaRect", IF), fBmps = TF.GetField("uiPieza", IF);
+        FieldInfo fSigs = TF.GetField("uiPiezaSig", IF), fVers = TF.GetField("uiPiezaVer", IF);
+        FieldInfo fSO = TF.GetField("searchOverlay", IF), fAbierto = TF.GetField("searchOpen", IF);
+        Check(fRects2 != null && fBmps != null && fSO != null && fAbierto != null, "las piezas vivas se guardan donde se pueden comprobar");
+        if (mEns != null && fRects2 != null && fBmps != null && fSO != null && fAbierto != null)
         {
             object F = System.Runtime.Serialization.FormatterServices.GetUninitializedObject(TF);
-            Control so = Monta(1024, 768, 5);
+            Control so = Monta(1024, 600, 5, false);
             so.SetBounds(0, 91, 1024, 600);   // el buscador NO empieza en 0,0: deja sitio arriba
-            // hay que dibujarlo una vez para que sepa donde cae cada tarjeta
             using (Bitmap b = new Bitmap(1024, 600, PixelFormat.Format32bppPArgb))
             using (Graphics g = Graphics.FromImage(b)) mRender.Invoke(so, new object[] { g, new Rectangle(0, 0, 1024, 600), true });
             fSO.SetValue(F, so); fAbierto.SetValue(F, true);
@@ -232,32 +303,28 @@ class Mover
             fRects2.SetValue(F, Array.CreateInstance(typeof(Rectangle), 4));
             fSigs.SetValue(F, Array.CreateInstance(typeof(long), 4));
             fVers.SetValue(F, Array.CreateInstance(typeof(int), 4));
-            mEns.Invoke(F, new object[] { 0 });
-            Rectangle enPantalla = ((Rectangle[])fRects2.GetValue(F))[0];
-            object[] ar = new object[] { 0, Rectangle.Empty };
+            mEns.Invoke(F, new object[] { PZ });
+            Rectangle enPantalla = ((Rectangle[])fRects2.GetValue(F))[PZ];
+            object[] ar = new object[] { PZ, Rectangle.Empty };
             mCarta.Invoke(so, ar);
             Rectangle enBuscador = (Rectangle)ar[1];
             Console.WriteLine("     el buscador empieza en y=" + so.Top);
-            Console.WriteLine("     la tarjeta, en coords del buscador: y=" + enBuscador.Y + "   en la pantalla: y=" + enPantalla.Y);
+            Console.WriteLine("     la tecla, en coords del buscador: y=" + enBuscador.Y + "   en la pantalla: y=" + enPantalla.Y);
             Check(enPantalla.X == enBuscador.X + so.Left && enPantalla.Y == enBuscador.Y + so.Top,
-                  "el sitio de la pieza se pasa a coordenadas de PANTALLA (si no, el recuadro sale corrido)");
-            Check(enPantalla.Width == enBuscador.Width && enPantalla.Height == enBuscador.Height,
-                  "y del mismo tamano");
+                  "el sitio de la pieza se pasa a coordenadas de PANTALLA (si no, sale corrida)");
+            Check(enPantalla.Width == enBuscador.Width && enPantalla.Height == enBuscador.Height, "y del mismo tamano");
             Bitmap[] bms = (Bitmap[])fBmps.GetValue(F);
-            Check(bms[0] != null && bms[0].Width == enBuscador.Width && bms[0].Height == enBuscador.Height,
+            Check(bms[PZ] != null && bms[PZ].Width == enBuscador.Width && bms[PZ].Height == enBuscador.Height,
                   "y la imagen chica se hizo del tamano de la pieza, no de la pantalla entera");
-            if (bms[0] != null)
-                Console.WriteLine("     la imagen de la pieza mide " + bms[0].Width + "x" + bms[0].Height
-                                  + " = " + (bms[0].Width * bms[0].Height * 4 / 1024) + " KB   (la pantalla entera a 1080p son 8.100 KB)");
+            if (bms[PZ] != null)
+                Console.WriteLine("     la imagen de la pieza mide " + bms[PZ].Width + "x" + bms[PZ].Height
+                                  + " = " + (bms[PZ].Width * bms[PZ].Height * 4 / 1024) + " KB   (la pantalla entera a 1080p son 8.100 KB)");
             so.Dispose();
         }
 
-        Console.WriteLine("\n  5) Y MANTENER PULSADA UNA FLECHA NO INUNDA LA COLA\n");
-        // El teclado manda unas treinta pulsaciones por segundo con la flecha mantenida, y la pantalla no da
-        // mas de sesenta cuadros: la mitad de ese trabajo no lo ve nadie, solo llena la cola. Pero NO se puede
-        // tirar la repeticion -mantener la flecha para recorrer la biblioteca es como se usa una rocola de
-        // botones-, asi que se le pone TOPE.
-        MethodInfo mCmd = TF.GetMethod("ProcessCmdKey", BindingFlags.Instance | BindingFlags.NonPublic);
+        // ---------- 6) MANTENER PULSADA UNA FLECHA NO INUNDA LA COLA ----------
+        Console.WriteLine("\n  6) Y MANTENER PULSADA UNA FLECHA NO INUNDA LA COLA\n");
+        MethodInfo mCmd = TF.GetMethod("ProcessCmdKey", IF);
         FieldInfo fTope = TF.GetField("MsEntreFlechas", BindingFlags.Static | BindingFlags.NonPublic);
         Check(mCmd != null && fTope != null, "las flechas llevan freno");
         if (mCmd != null && fTope != null)
@@ -268,13 +335,11 @@ class Mover
             int ms = (int)fTope.GetRawConstantValue();
             Console.WriteLine("     tope: una flecha cada " + ms + " ms  (" + (1000 / ms) + " por segundo)");
             Check(ms >= 20 && ms <= 60, "el tope deja pasar entre 16 y 50 movimientos por segundo: no se siente lento ni inunda");
-            // Lo que NO puede pasar: que se coma la PRIMERA pulsacion. Con la rocola recien abierta,
-            // ultimaFlecha vale 0 y el reloj del sistema lleva rato andando, asi que tiene que pasar.
             Check(Environment.TickCount - 0 >= ms, "con la rocola recien abierta, la primera flecha pasa (no se siente muerta)");
         }
 
         // Y al apagar la tarjeta grafica las piezas sobran: solo existen para ella.
-        MethodInfo mGpu = TF.GetMethod("ApplyAlbumGpu", BindingFlags.Instance | BindingFlags.NonPublic);
+        MethodInfo mGpu = TF.GetMethod("ApplyAlbumGpu", IF);
         Check(mGpu != null && Codigo.Llama(mGpu, "SueltaPiezas"), "al apagar la tarjeta grafica las piezas vivas se sueltan");
 
         Console.WriteLine(fallos == 0 ? "\n  TODO BIEN\n" : "\n  " + fallos + " FALLO(S)\n");

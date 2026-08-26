@@ -43,7 +43,7 @@ falta `mcs` (Mono), `xvfb-run` y `python3`.
 | `letrero` | que ningún texto salga cortado ni se calle teniendo sitio |
 | `hojea`, `pagina` | pasar de página: que lo horneado no se quede viejo y que ninguna página cueste el triple |
 | `busca`, `buscaigual`, `busmov`, `parcial` | el buscador: que rinda y que se vea igual que antes |
-| `mover` | que moverse entre las casillas del buscador NO rehaga ni vuelva a subir la pantalla entera a la tarjeta gráfica: el recuadro elegido va como pieza suelta, sale **0 píxeles** distinto, y mantener pulsada una flecha tiene tope |
+| `mover` | que moverse entre las **teclas** del buscador NO rehaga ni vuelva a subir la pantalla entera: la tecla elegida va como pieza suelta con su letra dentro, sin mover el lienzo (eso la dejaba vacía en Windows), y no existe cuando el teclado no se ve. Y lo que SÍ tiene que seguir rehaciendo la pantalla: pasar a los resultados y moverse por ellos. Mantener pulsada una flecha tiene tope |
 | `bolsa` | la primera letra tecleada, que es la única cara: que guardarla dé **exactamente** la misma lista y en el mismo orden, que se vacíe al recargar la música, y cuánto ahorra de verdad |
 | `abc`, `neon`, `espacio`, `barrido2` | la barra de letras y los efectos |
 | `vacias` | que las letras sin discos detrás no se dibujen, y que las que quedan salgan más grandes |
