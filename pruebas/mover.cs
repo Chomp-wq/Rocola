@@ -273,6 +273,10 @@ class Mover
             Check(Environment.TickCount - 0 >= ms, "con la rocola recien abierta, la primera flecha pasa (no se siente muerta)");
         }
 
+        // Y al apagar la tarjeta grafica las piezas sobran: solo existen para ella.
+        MethodInfo mGpu = TF.GetMethod("ApplyAlbumGpu", BindingFlags.Instance | BindingFlags.NonPublic);
+        Check(mGpu != null && Codigo.Llama(mGpu, "SueltaPiezas"), "al apagar la tarjeta grafica las piezas vivas se sueltan");
+
         Console.WriteLine(fallos == 0 ? "\n  TODO BIEN\n" : "\n  " + fallos + " FALLO(S)\n");
         return fallos;
     }

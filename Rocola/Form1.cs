@@ -9849,6 +9849,7 @@ namespace Rocola
             {
                 gpuEnabled = false;
                 gpuPanel.StopGpu(); gpuPanel.Visible = false;
+                SueltaPiezas();     // las piezas vivas del buscador solo existen para la tarjeta grafica
                 if (albumView != null) albumView.GpuCovered = false;   // vuelve a pintar la rejilla por CPU (ya no hay panel encima)
                 if (lblGpu != null) lblGpu.Visible = false;
                 Invalidate(true);   // repinta la UI normal (CPU) que estaba tapada por el panel
