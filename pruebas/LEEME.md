@@ -65,6 +65,7 @@ falta `mcs` (Mono), `xvfb-run` y `python3`.
 | `resol` | que cambiar la resolución con la rocola abierta no la deje lenta |
 | `disco`, `ssd` | disco duro contra SSD |
 | `cosecha` | que el entrenamiento pasivo siga juntando material |
+| `proyecto` | que el archivo con el que compila Visual Studio (`Rocola.csproj`) liste **exactamente** los mismos archivos y bibliotecas que compila la tanda, y que ninguno se quede fuera sin que nadie diga por qué |
 
 **Herramientas de medida** (no son pruebas de pasa/falla; se corren a mano)
 
