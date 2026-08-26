@@ -3069,7 +3069,7 @@ namespace Rocola
         // Cuantos repintados de la ventana entera quedan pendientes (ver el final de LayoutControls).
         private int repintaPendientes = 0;
 
-        protected override void OnResize(EventArgs e) { base.OnResize(e); LayoutControls(); }
+        protected override void OnResize(EventArgs e) { base.OnResize(e); LayoutControls(); VuelveAPrecalentar(); }
 
         // EL CIELO DE LA VENTANA, O UN TROZO DE EL.
         //
@@ -10456,6 +10456,92 @@ namespace Rocola
 
 #endif
 
+        // ---------- PRECALENTADO: QUE LA PRIMERA VEZ VAYA COMO LAS DEMAS ----------
+        //
+        // Casi todo lo que la rocola dibuja se HORNEA la primera vez que hace falta -el teclado del buscador
+        // son 40 teclas con su degradado, su contorno y su letra; la lista de un disco se guarda hecha para
+        // poder deslizarla- y eso cae DENTRO del primer cuadro: el cliente pulsa, la rocola se para a hornear
+        // y el movimiento arranca a tirones. De la segunda vez en adelante va fino.
+        //
+        // Medido con pruebas/primera.cs en el servidor (en la rocola del bar hay que multiplicar por 4 o 5):
+        //
+        //     el buscador al abrirse .... 20.8 ms la 1a vez contra 1.9 ms despues
+        //     la lista de un disco ......  3.6 ms  ...  contra 0.2 ms
+        //     el encabezado y la pastilla de creditos: 0.02 y 0.06 ms de mas. NO se precalientan, no ganan nada.
+        //
+        // AQUI SOLO VAN LAS PANTALLAS QUE AL ENCENDER NO SE VEN. La pared de discos y la barra de letras
+        // tambien cuestan su primera vez, pero es que ELLAS SON la pantalla de arranque: ese cuadro se paga
+        // igual, adelantarlo no adelanta nada. El buscador, la lista de un disco y la pantalla de reposo
+        // aparecen despues, y ahi si se gana entero.
+        //
+        // Y se calienta DIBUJANDO de verdad, una vez, en un mapa de bits de usar y tirar. Se podria llamar a
+        // mano a cada Ensure*/Hornea*, pero esa lista se queda vieja en cuanto alguien anada un dibujo nuevo;
+        // dibujando se pasa por el MISMO camino que el dibujo de verdad y se calienta lo que ese camino
+        // calienta, hoy y dentro de un ano.
+        private int precalPaso = 0;             // que pieza toca (-1 = ya esta todo caliente)
+        private int precalReintentos = 0;       // si una pieza aun no tiene tamano, se reintenta un rato
+        private const int PrecalQuieta = 400;   // ms sin tocar nada para ponerse a calentar
+
+        // UNA pieza por latido, y solo con la rocola quieta: igual que el horneado de la pagina de al lado
+        // (BakeAhead) y que el precalentador de portadas. Asi la rocola enciende igual de rapido que siempre
+        // y en unos segundos esta todo caliente, sin quitarle la maquina a nadie.
+        private void PrecalientaUnPoco()
+        {
+            if (precalPaso < 0) return;
+            if (Environment.TickCount - lastInputTick < PrecalQuieta) return;   // hay alguien usandola: ahora no
+            bool hecho = false;
+            try
+            {
+                switch (precalPaso)
+                {
+                    case 0:
+                        hecho = EnSeco(searchOverlay, delegate (Graphics g)
+                        { searchOverlay.RenderContent(g, new Rectangle(0, 0, searchOverlay.Width, searchOverlay.Height), false); });
+                        break;
+                    case 1:
+                        hecho = EnSeco(songList, delegate (Graphics g) { songList.RenderContent(g); });
+                        break;
+                    case 2:
+                        // La pantalla de reposo no tiene RenderContent aparte: se le pide su propio dibujado,
+                        // que es lo mismo que hace la pantalla cuando le toca pintarse.
+                        hecho = EnSeco(attractView, delegate (Graphics g)
+                        {
+                            using (PaintEventArgs pe = new PaintEventArgs(g, new Rectangle(0, 0, attractView.Width, attractView.Height)))
+                                InvokePaint(attractView, pe);
+                        });
+                        break;
+                    default:
+                        precalPaso = -1; Diag("precalentado: las pantallas que no se ven al encender, ya horneadas");
+                        return;
+                }
+            }
+            catch { hecho = true; }   // precalentar es un lujo: si una pieza no se deja dibujar aun, se pasa a la siguiente
+            if (hecho || ++precalReintentos > 60) { precalPaso++; precalReintentos = 0; }
+        }
+
+        // Dibuja un control una vez en un mapa de bits de usar y tirar. Nada de esto se ve: lo unico que hace
+        // es que lo que ese dibujo hornea quede hecho. false = todavia no tiene tamano, se reintenta luego.
+        private bool EnSeco(Control c, Action<Graphics> dibuja)
+        {
+            if (c == null || c.Width < 8 || c.Height < 8) return false;
+            using (Bitmap b = new Bitmap(c.Width, c.Height, PixelFormat.Format32bppPArgb))
+            using (Graphics g = Graphics.FromImage(b))
+            {
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
+                dibuja(g);
+            }
+            return true;
+        }
+
+        // Al cambiar la RESOLUCION lo horneado deja de servir -esta hecho al tamano de antes- y hay que
+        // volver a calentar; si no, la primera vez despues del cambio vuelve a trabarse.
+        //
+        // Con el color de acento NO se hace, a proposito: el acento cambia con cada cancion (es el color del
+        // genero), asi que volver a calentar en cada cambio seria estar horneando toda la noche para ahorrar
+        // una vez. Ahi se deja que se rehornee solo cuando de verdad se dibuje.
+        private void VuelveAPrecalentar() { precalPaso = 0; precalReintentos = 0; }
+
         private void AnimTimer_Tick(object sender, EventArgs e)
         {
             // Los repintados pendientes de despues de acomodar (ver el final de LayoutControls).
@@ -10482,6 +10568,7 @@ namespace Rocola
             if (gpuEnabled && albumView != null && albumView.Visible && !attractOn && !searchOpen && !videoOn
                 && transMode == 0 && winMode == 0 && !albumView.Sliding) albumView.BakeAhead();
 #endif
+            PrecalientaUnPoco();   // y las pantallas que al encender no se ven, horneadas antes de que hagan falta
             CheckBusinessDayReset();   // al cruzar las 7 AM: reinicia el estado (nada de anoche cruza el corte del dia)
             // VIGIA DEL MOTOR DE IA: si DSEE ULTRA esta activo y el motor no responde (recien arrancado, o se
             // cayo), lo (re)lanza OCULTO. Cada ~10s. Asi el motor va integrado con el release: nunca hay que
