@@ -1788,7 +1788,7 @@ namespace Rocola
             // Se le quita la MITAD del extra, no todo: el reconstructor devuelve la ENVOLVENTE de los agudos
             // transponiendo lo que sobrevivio una octava mas abajo, que no es el detalle original, asi que
             // algo de realce encima sigue teniendo sentido. Y con el reconstructor apagado no cambia nada.
-            if (sbrOn && sbrAllowed && corte < EqSanaHz)
+            if (DseeActivo() && corte < EqSanaHz)
                 f = ExciteCompleta + (f - ExciteCompleta) * 0.5f;
             return f;
         }
@@ -2049,12 +2049,33 @@ namespace Rocola
         private int TargetToPct(float t) { int p = (int)Math.Round((t - NormTargetMin) / (NormTargetMax - NormTargetMin) * 100f); return p < 0 ? 0 : (p > 100 ? 100 : p); }
         private float TargetFromPct(int p) { return NormTargetMin + (p / 100f) * (NormTargetMax - NormTargetMin); }
 
+        // ¿EL RECONSTRUCTOR ESTA CORRIENDO EN LA CANCION QUE SUENA?
+        //
+        // Son DOS preguntas distintas y antes las contestaba una sola variable, sbrOn, con tres consecuencias
+        // malas: encender ULTRA apagaba la preferencia del usuario -y la guardaba apagada, asi que no volvia
+        // nunca-, tocar el interruptor a mitad de cancion dejaba el reconstructor mudo hasta la siguiente, y
+        // el realce de brillo acababa empujando dos veces lo mismo. Ahora cada una tiene su sitio:
+        //
+        //   sbrOn         lo que el usuario eligio en la ventana de sonido. No lo pisa nadie.
+        //   DseeActivo()  si de verdad va a reconstruir AHORA.
+        //
+        // Con ULTRA apagado manda el interruptor. Con ULTRA encendido manda el respaldo, que se enciende en
+        // las canciones que no suenan por la version de Apollo: sobre ESA no se vuelve a empujar, que ya trae
+        // sus agudos puestos.
+        private bool DseeActivo() { return sbrAllowed && (iaVivo ? iaSpectralFallback : sbrOn); }
+
+        // Vuelve a decidir si la cancion que suena necesita el respaldo espectral. Se llama al empezar la
+        // cancion Y cada vez que se toca algo en la ventana de sonido, para que encender o apagar ULTRA se
+        // OIGA en la que esta sonando y no haya que esperar a la siguiente.
+        private void RevisaRespaldoDsee() { iaSpectralFallback = iaVivo && sbrAllowed && !iaNowEnhanced; }
+
         // Aplica el nivelado a la cancion que suena AHORA (para oir el cambio al instante mientras se ajusta en Ctrl+F3).
         private void ApplyNormNow()
         {
+            RevisaRespaldoDsee();   // ULTRA puede acabar de encenderse o apagarse: la cancion que suena se entera YA
             LevelTap t = curTap; if (t != null && nowPlaying != null && nowPlaying.Song != null) { t.Gain = NormGainFor(nowPlaying.Song.Path); t.Excite = ExciteAmountFor(nowPlaying.Song.Path); t.Master = MasterLin(); t.EqDb = EqCorrFor(nowPlaying.Song.Path); }
             DeepBassProvider bp = curBass; if (bp != null) bp.Amount = BassAmountNow();   // bajo psicoacustico: al instante, ya ajustado a la cancion
-            SpectralTap sp = curSbr; if (sp != null) sp.Active = sbrOn || iaSpectralFallback;   // reconstruccion espectral: alterna EN VIVO (Ctrl+F3) SIN matar el respaldo de ULTRA
+            SpectralTap sp = curSbr; if (sp != null) sp.Active = DseeActivo();   // reconstruccion espectral: alterna EN VIVO SIN matar el respaldo de ULTRA
         }
 
         // Cierra la medida de la cancion que acaba de sonar: calcula su RMS integrado y lo guarda (si se oyo lo
@@ -2682,7 +2703,7 @@ namespace Rocola
                         ? ("Oye cada cancion y ve donde el MP3 le corto los agudos.\n"
                            + "Eso lo mide SIEMPRE: de ahi sacan el EQ automatico y los\n"
                            + "graves automaticos cuanto le falta a cada una.\n"
-                           + "Encendido, ademas los recrea. Se apaga con DSEE ULTRA.")
+                           + "Encendido, ademas los recrea. Con DSEE ULTRA manda ese.")
                         : "No disponible en este equipo: " + sbrReason;
                     tCal.Controls.Add(swSbr); tCal.Controls.Add(lSbr);
 
@@ -2943,7 +2964,7 @@ namespace Rocola
                         bool ultra2 = swUltra.Checked;
                         iaVivo = ultra2;
                         iaMezcla = swIaAuto.Checked ? "auto" : barMix.Value.ToString();
-                        sbrOn = swSbr.Checked && sbrAllowed && !ultra2;   // exclusion mutua: nunca los dos a la vez
+                        sbrOn = swSbr.Checked && sbrAllowed;   // SOLO la preferencia: encender ULTRA ya no te la borra
                         iaHarvestOn = swIa.Checked;
                         changed = true;
                         updateLabels();
@@ -9193,15 +9214,18 @@ namespace Rocola
             try
             {
                 string iaSrc = t.Path;   // IA EN VIVO: si ya hay version mejorada en cache, suena ESA; si no, la original (y se pide para la proxima)
-                iaSpectralFallback = false;
+                iaNowEnhanced = false;
                 if (iaVivo && t.Path != null)
                 {
                     bool yaBuena;
                     string enh = IaEnhancedPath(t.Path, out yaBuena);
-                    if (enh != null) iaSrc = enh; else { IaRequestJob(t.Path); iaSpectralFallback = sbrAllowed; }   // aun no lista -> DSEE espectral mientras
+                    if (enh != null) iaSrc = enh; else IaRequestJob(t.Path);   // aun no lista: suena la original y se pide para la proxima
                     iaNowEnhanced = (enh != null && !yaBuena);   // [IA] solo si de verdad suena la version mejorada (con .orig suena el original tal cual)
                 }
-                else iaNowEnhanced = false;
+                // Y con ULTRA encendido, todo lo que NO suene por la version de Apollo lo atiende el DSEE
+                // normal mientras tanto. Las marcadas .orig incluidas: ahi suena el original, y si le falta
+                // banda el reconstructor la recrea; si no le falta, es un pase directo que no cuesta nada.
+                RevisaRespaldoDsee();
                 // Si la version de la CACHE no abre (la limpieza la borro justo en este instante, o quedo
                 // un encode raro), NO se salta la cancion ni se anota el ORIGINAL como incompatible ni se
                 // devuelve el credito: el archivo malo se borra (el motor lo regenera) y suena el original.
@@ -9212,7 +9236,7 @@ namespace Rocola
                     LogError("cache IA no abre (suena el original): " + Path.GetFileName(iaSrc), cex);
                     try { File.Delete(iaSrc); } catch { }          // solo puede ser un archivo de la cache (regenerable)
                     IaRequestJob(t.Path);                          // que el motor la vuelva a preparar
-                    iaSrc = t.Path; iaNowEnhanced = false; iaSpectralFallback = sbrAllowed;
+                    iaSrc = t.Path; iaNowEnhanced = false; RevisaRespaldoDsee();
                     reader = OpenAudio(t.Path);
                 }
                 reader.Volume = FixedVolume;   // se queda en 1.0 (crudo): el nivelado se aplica en LevelTap, tras medir el volumen REAL
@@ -9231,7 +9255,7 @@ namespace Rocola
                 // por cancion, si de verdad viene recortada; en las que NO -que son la mayoria- ni se pone en la
                 // cadena: se ahorra su trabajo y su retardo de ~1.5 ms. Si aun no esta medida, se pone por si acaso.
                 if (declipOn && DeclipVale(t.Path)) chain = new DeclipProvider(chain);
-                if (sbrAllowed) { curSbr = new SpectralTap(chain, VentanaDsee()); curSbr.Active = sbrOn || iaSpectralFallback; chain = curSbr; }   // HD: ventana fina; respaldo espectral si ULTRA aun no tiene la version IA
+                if (sbrAllowed) { curSbr = new SpectralTap(chain, VentanaDsee()); curSbr.Active = DseeActivo(); chain = curSbr; }   // HD: ventana fina; respaldo espectral si ULTRA aun no tiene la version IA
                 else curSbr = null;
                 LevelTap tap = new LevelTap(chain, this);
                 tap.Gain = NormGainFor(t.Path);
@@ -9679,7 +9703,7 @@ namespace Rocola
             if (nowPlaying == null || nowPlaying.IsVideo) return 0;
             if (iaNowEnhanced) return 2;
             SpectralTap sp = curSbr;
-            return ((sbrOn || iaSpectralFallback) && sp != null && sp.Mejorando) ? 1 : 0;
+            return (DseeActivo() && sp != null && sp.Mejorando) ? 1 : 0;
         }
 
         // Coloca el letrero "MEJORADA" justo despues del texto de "Reproduciendo" (misma fila). Si el
