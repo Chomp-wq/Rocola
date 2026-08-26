@@ -7212,15 +7212,15 @@ namespace Rocola
 
                 // LA PRIMERA LETRA ES LA CARA. Con una sola letra tecleada, la marca de letras no descarta a
                 // nadie -casi todas las canciones tienen una "a"- asi que hay que puntuar el indice ENTERO:
-                // 2.38 ms de 20.000 entradas, contra 0.07 ms cuando ya hay tres letras. Y es la que mas se
+                // 3.2 ms de 20.000 entradas, contra 0.07 ms cuando ya hay tres letras. Y es la que mas se
                 // nota, porque es la que abre cada busqueda.
                 //
                 // Como para una letra suelta el resultado es SIEMPRE el mismo mientras no cambie la musica, se
                 // guarda: la primera vez que alguien teclea una "a" cuesta lo de siempre, y todas las demas
-                // veces de la noche sale de memoria. Se guardan tambien los puntos, porque el orden depende de
-                // ellos y cada busqueda los pisa.
+                // veces de la noche sale de memoria (medido: 10 veces menos, ver pruebas/bolsa.cs). Se guardan
+                // tambien los puntos, porque el orden depende de ellos y cada busqueda los pisa.
                 //
-                // Cabe de sobra: la bolsa de la letra mas repetida son unas 16.000 fichas apuntadas, 130 KB.
+                // Cabe de sobra: con 8.000 canciones, la bolsa de la letra que mas casa son 96 KB.
                 List<SearchItem> matches = null;
                 BolsaLetra bolsa = null;
                 if (q.Length == 1 && bolsaLetra.TryGetValue(q[0], out bolsa) && bolsa != null)
@@ -10303,7 +10303,7 @@ namespace Rocola
                 // un cuadro, y las flechas ni siquiera frenaban la auto-repeticion. Era lo que hundia los
                 // cuadros por segundo al moverse, incluso en una maquina potente, y peor cuanto mas grande la
                 // pantalla. Ahora la tarjeta y la tecla elegidas salen como PIEZAS VIVAS aparte, en su propia
-                // imagen chica (ver SearchOverlay.PiezaViva y EnsureUiPiezas), exactamente igual que ya se
+                // imagen chica (ver SearchOverlay.PiezaViva y EnsureUiPieza), exactamente igual que ya se
                 // hacia con el destello de los botones y con la franja de estado de abajo.
             }
                   // El DESTELLO del boton pulsado YA NO entra en la firma: lo dibuja la GPU como halo aparte (FillUiGlows),
