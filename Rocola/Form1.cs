@@ -6378,7 +6378,14 @@ namespace Rocola
         private void SetSelectedLocal(int local, int dir)
         {
             albumView.MoveSelectionTo(local, dir);   // mueve con efecto de relevo (el anterior gira y se apaga)
-            albumView.Invalidate();
+            // Y SE REPINTA SOLO LO QUE CAMBIA: las dos casillas, no la pared entera. Medido con
+            // pruebas/usando.cs a 1280x1024: 1.75 ms la pared entera contra 0.28 ms las dos casillas, o sea
+            // que se repintaba el 92% de la pantalla para nada. Con el freno de flechas son hasta 25
+            // pulsaciones por segundo, y ese trabajo se lo estaba quitando al sonido.
+            //
+            // El cambio de PAGINA y el de LETRA siguen repintando todo, que ahi si cambian las 18 casillas.
+            Rectangle r = albumView.RectSeleccion();
+            if (r.Width > 0 && r.Height > 0) albumView.Invalidate(r); else albumView.Invalidate();
         }
 
         private int PageDiscCount()
@@ -12656,7 +12663,12 @@ namespace Rocola
                 bool full = (clip.Width >= w - 1 && clip.Height >= h - 1);   // repintado COMPLETO (no la casilla del cubo)
                 BlitSkyAndStars(g, w, h, full);
                 float pMax = Math.Max(pLo, Math.Max(pMid, pHi));
-                if (full && pMax * Dim > 0.04f) DrawBeatFlare(g, w, h, pLo * Dim, pMid * Dim, pHi * Dim);   // latido por banda (atenuado al navegar)
+                // EL LATIDO, TAMBIEN EN LOS REPINTADOS PARCIALES. Antes solo se dibujaba en los completos, y
+                // eso significaba que el trozo repintado -la casilla del cubo que gira, y ahora la casilla que
+                // se elige- se quedaba SIN los halos de las estrellas hasta el siguiente cuadro completo: los
+                // halos parpadeaban ahi dentro. Cuesta casi nada porque DrawBeatFlare descarta de un vistazo
+                // las estrellas que caen fuera del recorte, y en un repintado parcial son casi todas.
+                if (pMax * Dim > 0.04f) DrawBeatFlare(g, w, h, pLo * Dim, pMid * Dim, pHi * Dim);   // latido por banda (atenuado al navegar)
                 if (full) DrawShoots(g, w, h);
             }
 
@@ -12671,6 +12683,9 @@ namespace Rocola
             {
                 if (stars == null) return;
                 int FW = FullW(w), FH = FullH(h), offX = SkyOffsetX, offY = SkyOffsetY;
+                // Se mira contra el RECORTE, no contra la ventana entera: en un repintado parcial eso descarta
+                // casi las seiscientas estrellas con una resta, sin llegar a dibujar nada.
+                RectangleF rec = g.ClipBounds;
                 for (int i = 0; i < stars.Length; i++)
                 {
                     Star s = stars[i];
@@ -12680,7 +12695,7 @@ namespace Rocola
                     int gd = s.Size * 2 + 4 + (int)(pulse * 16f);   // el halo crece con el golpe de su banda
                     int px = (int)(s.X * FW) + (int)driftX - offX; if (px >= FW) px -= FW;   // la estrella se movio: su halo con ella
                     int py = (int)(s.Y * FH) + (int)driftY - offY; if (py >= FH) py -= FH;
-                    if (px + gd < 0 || px - gd > w || py + gd < 0 || py - gd > h) continue;   // fuera de la ventana: se salta
+                    if (px + gd < rec.Left || px - gd > rec.Right || py + gd < rec.Top || py - gd > rec.Bottom) continue;   // fuera del recorte: se salta
                     int cr, cg, cb;
                     if (s.Tint > 0f) { cr = 255; cg = 255; cb = 255; } else { cr = s.R; cg = s.G; cb = s.B; }
                     Bitmap gb = GlowFor(cr, cg, cb);
@@ -13483,6 +13498,34 @@ namespace Rocola
                 if (fullFrame) { Invalidate(); return; }
                 if (d2 != Rectangle.Empty) d = (d == Rectangle.Empty) ? d2 : Rectangle.Union(d, d2);
                 if (d != Rectangle.Empty) Invalidate(d);
+            }
+
+            // QUE TROZO DE LA PARED CAMBIA AL MOVER LA SELECCION: la casilla que se deja y la que se elige,
+            // CON SUS LETREROS.
+            //
+            // Es el hermano de SpinRect, y la diferencia importa: SpinRect es para el GIRO del cubo, que no
+            // toca el letrero, asi que solo mete la portada. Al MOVERSE si cambia el letrero -el del disco
+            // elegido se ve distinto-, y si se dejara fuera se quedaria el letrero viejo en pantalla.
+            //
+            // Antes, moverse repintaba la pared ENTERA -el cielo estrellado y las 18 casillas- cuando solo
+            // cambian dos: 1.75 ms por pulsacion a 1280x1024, el 92% de la pantalla para nada, y con el freno
+            // de flechas hasta 25 veces por segundo, justo mientras la maquina esta descomprimiendo el audio.
+            public Rectangle RectSeleccion()
+            {
+                if (Page == null || Page.Count == 0) return Rectangle.Empty;
+                int w = Width, h = Height; if (w < 8 || h < 8) return Rectangle.Empty;
+                Rectangle r = UneCasilla(Rectangle.Empty, w, h, Selected);
+                return UneCasilla(r, w, h, prevIdx);   // la que se acaba de dejar (sigue girando y apagandose)
+            }
+
+            private Rectangle UneCasilla(Rectangle r, int w, int h, int i)
+            {
+                if (i < 0 || i >= Page.Count) return r;
+                Rectangle area, lbl;
+                Geometry(w, h, i, out area, out lbl);
+                area.Inflate(16, 16);                  // el contorno blanco brillante se sale de la portada
+                Rectangle u = Rectangle.Union(area, lbl);
+                return (r == Rectangle.Empty) ? u : Rectangle.Union(r, u);
             }
 
             // Rectangulo que abarca el cubo seleccionado (girando) y el cubo en relevo, con margen

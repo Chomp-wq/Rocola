@@ -97,6 +97,41 @@ class Cuadro
             total += ms;
         }
 
+        // ---------- EL CIELO DE FONDO ----------
+        // Falta en la cuenta de arriba y NO es poco: el fondo estrellado se dibuja debajo de todo, en cada
+        // repintado del form y de la pared. Es lo primero que hay que mirar en una maquina de gama baja.
+        Type TStar = Nes("Starfield");
+        object cielo = null;
+        if (TStar != null)
+        {
+            cielo = Activator.CreateInstance(TStar, true);
+            MethodInfo mCache = TStar.GetMethod("DrawCached", BindingFlags.Instance | BindingFlags.Public);
+            MethodInfo mReact = TStar.GetMethod("DrawReactive", BindingFlags.Instance | BindingFlags.Public);
+            Color arriba = Color.FromArgb(255, 10, 12, 30), abajo = Color.FromArgb(255, 26, 20, 54);
+            if (mCache != null)
+            {
+                object[] a = new object[] { gg, W, H, arriba, abajo };
+                try
+                {
+                    double ms = Mide(120, delegate { mCache.Invoke(cielo, a); });
+                    Console.WriteLine("  {0,-34} {1,9:0.000} ms  {2,7:0.0} ms", "el cielo copiado (fondo del form)", ms, ms * 24);
+                    total += ms;
+                }
+                catch (Exception ex) { Console.WriteLine("  el cielo copiado: no se pudo medir (" + (ex.InnerException != null ? ex.InnerException.Message : ex.Message) + ")"); }
+            }
+            if (mReact != null)
+            {
+                object[] a = new object[] { gg, W, H, arriba, abajo, 0.3f, 0.2f, 0.1f };
+                try
+                {
+                    double ms = Mide(60, delegate { mReact.Invoke(cielo, a); });
+                    Console.WriteLine("  {0,-34} {1,9:0.000} ms  {2,7:0.0} ms", "el cielo con latido (la pared)", ms, ms * 24);
+                    total += ms;
+                }
+                catch (Exception ex) { Console.WriteLine("  el cielo con latido: no se pudo medir (" + (ex.InnerException != null ? ex.InnerException.Message : ex.Message) + ")"); }
+            }
+        }
+
         // ---------- la barra del abecedario ----------
         Type TLet = Nes("LetterBar");
         if (TLet != null)
