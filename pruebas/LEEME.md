@@ -62,6 +62,7 @@ falta `mcs` (Mono), `xvfb-run` y `python3`.
 | `carpetas` | que se le pueda decir "la música está en ESTE disco": que el disco entero se pueda elegir, que mande la carpeta de fuera, y que el barrido no se quede dando vueltas en los atajos ni entre en las carpetas del sistema |
 | `miniaturas` | que las miniaturas de las portadas se guarden en el disco y no en la carpeta temporal (que el sistema limpia cada tanto), y que el barrido no toque las recientes |
 | `pared` | que el cajón de portadas se ajuste a la máquina, y que con el grande se pueda hojear la pared entera y volver **sin tocar el disco ni una vez** |
+| `usando` | la rocola **con música sonando y alguien pulsando flechas**, que es el momento que aprieta: que mover la selección repinte sólo las dos casillas que cambian y no la pared entera, que salga **idéntico** píxel a píxel, y que un cuadro navegando no deje sobras para el recolector |
 | `resol` | que cambiar la resolución con la rocola abierta no la deje lenta |
 | `primera` | que las animaciones vayan fluidas **desde la primera vez**: mide cada pantalla —el primer cuadro contra uno normal—, comprueba que la rocola precalienta sola en segundo plano las que al encender no se ven, que no calienta lo que se midió y no gana nada, y que precalentar no cambia ni un píxel |
 | `disco`, `ssd` | disco duro contra SSD |
@@ -75,7 +76,7 @@ falta `mcs` (Mono), `xvfb-run` y `python3`.
 | `dseeperf.cs` | dónde se va el tiempo dentro del reconstructor de agudos, por partes |
 | `modelo.cs` | lo que costaría un modelo de IA más grande, tamaño por tamaño |
 | `memoria.cs` | dónde se va la memoria con una biblioteca grande |
-| `cuadro.cs` | de qué se compone un cuadro de pantalla cuando no ha cambiado nada |
+| `cuadro.cs` | de qué se compone un cuadro de pantalla cuando no ha cambiado nada (el cielo incluido, que es la pieza más cara) |
 | `vercielo.cs` | saca una imagen del cielo estrellado para poder mirarlo |
 | `pantalla.cs` | dibuja la pantalla entera (1024x768) en un PNG, con los controles de verdad, para mirarla |
 | `cielos.cs` | cuaderno de bocetos del fondo: dibuja nueve cielos -el de hoy y cada idea por separado- para poder elegir mirándolos, en `pruebas/cielos/` |
