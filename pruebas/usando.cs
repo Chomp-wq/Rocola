@@ -295,6 +295,56 @@ class Usando
             }
         }
 
+        // ---------- 5) Y DENTRO DE UN DISCO, ¿PASA LO MISMO? ----------
+        Console.WriteLine("\n  5) Y MOVERSE DENTRO DE UN DISCO\n");
+        // La lista de canciones tambien repinta entera al mover la seleccion (Form1: songList.Invalidate()).
+        // Aqui se mira si eso cuesta lo bastante como para valer la pena tocarlo, o si ya va fina: la lista
+        // pinta una pagina YA HORNEADA y encima solo el renglon elegido, asi que puede que no haya nada que
+        // ganar. Si no lo hay, se dice y no se toca: cada arreglo es codigo que puede romperse.
+        {
+            Type TLis = Nes("SongListView");
+            MethodInfo mPaint = (TLis != null) ? TLis.GetMethod("OnPaint", IF) : null;
+            FieldInfo fRowH = (TLis != null) ? TLis.GetField("RowH") : null;
+            if (mPaint == null || fRowH == null) Console.WriteLine("     (no se pudo medir la lista de un disco)");
+            else
+            {
+                int W = 980, H = 532;
+                Control lis = (Control)Activator.CreateInstance(TLis, true);
+                lis.SetBounds(0, 0, W, H);
+                lis.Font = new Font(FontFamily.GenericSansSerif, 11f, FontStyle.Bold);
+                fRowH.SetValue(lis, 38);
+                TLis.GetField("Accent").SetValue(lis, Color.FromArgb(150, 110, 220));
+                TLis.GetField("GetCount").SetValue(lis, new Func<int>(delegate { return 60; }));
+                TLis.GetField("GetText").SetValue(lis, new Func<int, string>(delegate (int i) { return "Cancion numero " + (i + 1) + " con un titulo largo"; }));
+                TLis.GetField("GetRight").SetValue(lis, new Func<int, string>(delegate (int i) { return "3:4" + (i % 10); }));
+                TLis.GetField("GetQueuePos").SetValue(lis, new Func<int, int>(delegate (int i) { return (i % 7 == 0) ? 1 : 0; }));
+                TLis.GetField("GetGenero").SetValue(lis, new Func<int, string>(delegate (int i) { return (i % 3 == 0) ? "Regional" : "Pop"; }));
+                FieldInfo fSel = TLis.GetField("Sel");
+                using (Bitmap b = new Bitmap(W, H, PixelFormat.Format32bppPArgb))
+                using (Graphics g = Graphics.FromImage(b))
+                {
+                    int sel = 3;
+                    Action<Rectangle> pinta = delegate (Rectangle rec)
+                    {
+                        g.ResetClip();
+                        if (rec.Width > 0 && rec.Height > 0) g.SetClip(rec);
+                        Rectangle cl = Rectangle.Round(g.ClipBounds);
+                        using (PaintEventArgs pe = new PaintEventArgs(g, cl)) mPaint.Invoke(lis, new object[] { pe });
+                    };
+                    pinta(Rectangle.Empty); pinta(Rectangle.Empty);
+                    double entera = Mide(40, delegate { sel = (sel == 3) ? 4 : 3; fSel.SetValue(lis, sel); pinta(Rectangle.Empty); });
+                    Rectangle dos = new Rectangle(0, 0, W, 38 * 3);   // dos renglones y su margen
+                    double parcial = Mide(40, delegate { sel = (sel == 3) ? 4 : 3; fSel.SetValue(lis, sel); pinta(dos); });
+                    Console.WriteLine("     la lista entera ................. " + entera.ToString("0.00") + " ms");
+                    Console.WriteLine("     solo dos renglones .............. " + parcial.ToString("0.00") + " ms");
+                    double gana = entera / Math.Max(0.0001, parcial);
+                    Console.WriteLine("     " + ((gana >= 2.0)
+                        ? ("PAGA tocarlo: se gana x" + gana.ToString("0.0"))
+                        : ("NO paga tocarlo: solo se ganaria x" + gana.ToString("0.0") + ", y la lista ya pinta una pagina horneada")));
+                }
+            }
+        }
+
         Console.WriteLine(fallos == 0 ? "\n  TODO BIEN\n" : "\n  " + fallos + " FALLO(S)\n");
         return fallos;
     }
