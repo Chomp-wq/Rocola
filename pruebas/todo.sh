@@ -24,11 +24,11 @@ NLAYER="$RAIZ/packages/NLayer.1.12.0/lib/net35/NLayer.dll"
 # El dibujo por tarjeta grafica va en dos archivos: D3D9Star.cs es el dibujo (igual en las tres ramas) y
 # el dispositivo es el que cambia de sistema. Aqui va el de OpenGL; el de Direct3D (D3D9Device.cs) esta en
 # el arbol para las ramas de Windows y NO se compila.
-FUENTES="$RAIZ/Rocola/Form1.cs $RAIZ/Rocola/Form1.Designer.cs $RAIZ/Rocola/Program.cs $RAIZ/Rocola/D3D9Star.cs $RAIZ/Rocola/GLDevice.cs $RAIZ/Rocola/LinuxAudio.cs $RAIZ/Rocola/LinuxSistema.cs $RAIZ/Rocola/LinuxPintura.cs $RAIZ/Rocola/LinuxVideo.cs"
+FUENTES="$RAIZ/Rocola/Form1.cs $RAIZ/Rocola/Form1.Designer.cs $RAIZ/Rocola/Program.cs $RAIZ/Rocola/D3D9Star.cs $RAIZ/Rocola/Rendimiento.cs $RAIZ/Rocola/GLDevice.cs $RAIZ/Rocola/LinuxAudio.cs $RAIZ/Rocola/LinuxSistema.cs $RAIZ/Rocola/LinuxPintura.cs $RAIZ/Rocola/LinuxVideo.cs"
 
 # Las que miran cosas que solo existen con tarjeta grafica (la aurora, el barrido de luz) van
 # contra el perfil de GPU; las demas contra el normal.
-CPU="ajustes bajo eqauto bajoauto calidad eqia nivel titulo duracion prueba prueba2 prueba3 prueba4 neon fps abc barrido2 espacio busca buscaigual bolsa genero pagina busmov parcial disco ssd etiqueta sala hojea cosecha resol letrero dsee respaldo ventana salida salir datos carpeta carpetas miniaturas pared tiemporeal bits franjas ciclo videosonido videos2 sobras gasto historial estrellas limite vacias videos franja colores carriles indice proyecto primera gasta usando escribe reposo cambio apagon unasola entrar iadatos entrenador corta deriva ligera simbolos leer opengl sonido arranca"
+CPU="ajustes bajo eqauto bajoauto calidad eqia nivel titulo duracion prueba prueba2 prueba3 prueba4 neon fps abc barrido2 espacio busca buscaigual bolsa genero pagina busmov parcial disco ssd etiqueta sala hojea cosecha resol letrero dsee respaldo ventana salida salir datos carpeta carpetas miniaturas pared tiemporeal bits franjas ciclo videosonido videos2 sobras gasto historial estrellas limite vacias videos franja colores carriles indice proyecto primera gasta usando banco escribe reposo cambio apagon unasola entrar iadatos entrenador corta deriva ligera simbolos leer opengl sonido arranca"
 # 'entrar' sale en las dos: casi todo lo que mira es comun, pero la parte de que la guia se vea CON
 # tarjeta grafica solo existe en ese perfil (si no, aparecia en las pruebas y no en el bar).
 # 'arranca' sale en las dos: enciende la rocola de verdad, y hay que ver que enciende y se dibuja entera

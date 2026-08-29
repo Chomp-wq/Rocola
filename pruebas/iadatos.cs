@@ -48,7 +48,10 @@ class IaDatos
         foreach (Type n in t.GetNestedTypes(BindingFlags.Public | BindingFlags.NonPublic)) Quien(n, campo, salida);
     }
     // Las funciones sueltas de una ventana las saca el compilador a una clase escondida con nombre raro
-    // (<ShowVolumeManager>c__AnonStorey...). Para saber de quien son basta con mirar el nombre.
+    // (<VentanaAjustes>c__AnonStorey...). Para saber de quien son basta con mirar el nombre.
+    // OJO CON EL NOMBRE: el cuerpo de la ventana de Ctrl+F3 se llama VentanaAjustes desde que la ventana
+    // tiene dos pestanas -ShowVolumeManager quedo fuera, solo para poder reabrirla despues de medir-. Esta
+    // bateria se puso roja al renombrarla, que es justo lo que tenia que pasar.
     static bool EsDe(string quien, string metodo)
     {
         return quien.EndsWith("." + metodo, StringComparison.Ordinal)
@@ -93,7 +96,7 @@ class IaDatos
         Quien(TF, "iaHarvestOn", quien);
         int escribeVentana = 0, leeVentana = 0;
         foreach (KeyValuePair<string, int[]> kv in quien)
-            if (EsDe(kv.Key, "ShowVolumeManager")) { leeVentana += kv.Value[0]; escribeVentana += kv.Value[1]; }
+            if (EsDe(kv.Key, "VentanaAjustes")) { leeVentana += kv.Value[0]; escribeVentana += kv.Value[1]; }
         Check(escribeVentana > 0,
               "la ventana de sonido puede APAGARLO (antes solo se podia escribiendo a mano en un archivo)");
         Check(leeVentana > 0, "y lo lee para dejar el interruptor puesto como esta ahora mismo");
@@ -222,7 +225,7 @@ class IaDatos
         {
             string q = kv.Key;
             Console.WriteLine("        " + q.PadRight(52) + " lee " + kv.Value[0] + ", escribe " + kv.Value[1]);
-            bool permitido = EsDe(q, "ShowVolumeManager")            // el interruptor y su letrero
+            bool permitido = EsDe(q, "VentanaAjustes")               // el interruptor y su letrero
                           || q == "Form1.LoadConfigPrefs"            // leerlo de la configuracion al arrancar
                           || q == "Form1.SaveConfigPrefs"            // y guardarlo al cambiarlo
                           || q == "Form1.MeasureFile"                // EL UNICO sitio que decide si se guarda material

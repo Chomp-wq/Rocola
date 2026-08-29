@@ -91,6 +91,30 @@ namespace Rocola
         private float dim = 1f;   // atenuacion del campo (estrellas + fugaces) mientras se navega con musica
         public void SetDim(float d) { dim = d < 0f ? 0f : (d > 1f ? 1f : d); }
 
+        // ===================== LAS PERILLAS DEL CIELO (Ctrl+F3 -> Imagen y rendimiento) =====================
+        // Tres cosas del cielo se pueden bajar o apagar cuando un equipo no da para todo. Estan juntas y aqui
+        // arriba a proposito: repartidas por el archivo, nadie sabria de un vistazo que se puede quitar.
+        //
+        //   densidad  cuantas estrellas hay, de 0.1 a 1 (1 = las de siempre)
+        //   fugaces   las estrellas fugaces que cruzan cada 7-16 segundos
+        //   relevo    el cambio de patron cada minuto, que durante segundo y pico dibuja DOS campos a la vez
+        //
+        // Con las tres de fabrica (1, si, si) el cielo sale EXACTAMENTE como salia antes de que existieran:
+        // ninguna cuenta cambia. Solo al bajarlas se nota, que es de lo que se trata.
+        private float densidad = 1f; private bool fugaces = true, relevo = true;
+        public void SetEfectos(float dens, bool fug, bool rel, int w, int h)
+        {
+            if (dens < 0.1f) dens = 0.1f; else if (dens > 1f) dens = 1f;
+            fugaces = fug; relevo = rel;
+            if (Math.Abs(dens - densidad) < 0.001f) return;   // lo de siempre: esto se llama en CADA cuadro
+            densidad = dens;
+            if (!Ok || w < 8 || h < 8) return;
+            // Cambiar cuantas estrellas hay obliga a rehacer el campo: viven en arreglos de ese tamano.
+            int minuto = (curMinute != int.MinValue) ? curMinute : 0;
+            BuildStars(w, h, unchecked(seed0 + minuto * 40503));
+            transing = false; px = null;   // el entrecruzado en curso era del campo viejo: se corta
+        }
+
         public GpuStarfield(IntPtr hwnd, int w, int h, int seed)
         {
             gpu = new D3D9Device(hwnd, w, h);
@@ -284,7 +308,9 @@ namespace Rocola
             int minute = (int)(t / 60.0);
             if (minute != curMinute)
             {
-                if (curMinute != int.MinValue)
+                // PERILLA DE Ctrl+F3: sin relevo el cielo se queda con el patron que tiene. Se ahorra rehacer
+                // las estrellas Y, sobre todo, el segundo y pico en que se dibujan DOS campos a la vez.
+                if (curMinute != int.MinValue && relevo)
                 {
                     px = sx; py = sy; pphase = sphase; pspeed = sspeed; psize = ssize; pkind = skind; pforma = sforma; pcol = scol; pnStars = nStars;   // guarda el actual como ANTERIOR
                     BuildStars(w, h, unchecked(seed0 + minute * 40503));     // construye el NUEVO (asigna arreglos nuevos; no pisa los anteriores)
@@ -338,6 +364,10 @@ namespace Rocola
         // apaga. Igual logica que el render por CPU (DrawShoots), pero dibujada como cuadrangulos aditivos.
         private void UpdateAndDrawShoots(int w, int h, int nowMs, double finoMs)
         {
+            // PERILLA DE Ctrl+F3. Se sale ANTES de tocar el reloj a proposito: al volver a encenderlas, el
+            // primer cuadro las agenda de nuevo desde cero en vez de creerse que han pasado diez minutos y
+            // soltar las dos de golpe.
+            if (!fugaces) { shootFinoAnt = 0.0; for (int i = 0; i < shoots.Length; i++) shoots[i].On = false; return; }
             if (shootFinoAnt <= 0.0) { shootFinoAnt = finoMs; nextShoot = nowMs + 4000 + srnd.Next(8000); return; }   // 1er cuadro: agenda la 1a, sin saltos
             float dt = (float)((finoMs - shootFinoAnt) / 1000.0);
             if (dt < 0f) dt = 0f; if (dt > 0.12f) dt = 0.12f;   // acota saltos
@@ -415,6 +445,9 @@ namespace Rocola
             // estrellas fuertes y cientos que apenas se adivinan, y eso es lo que da sensacion de fondo.
             nStars = Math.Max(200, w * h / 1700);
             if (nStars > 1400) nStars = 1400;
+            // Y la perilla de Ctrl+F3 lo recorta. El suelo de 200 se recorta CON ella: dejarlo fijo haria
+            // que pedir "un cielo al 20%" en una pantalla pequena no quitara ni una estrella.
+            if (densidad < 0.999f) { nStars = (int)(nStars * densidad); if (nStars < 24) nStars = 24; }
             sx = new float[nStars]; sy = new float[nStars]; sphase = new float[nStars];
             sspeed = new float[nStars]; ssize = new float[nStars]; skind = new int[nStars]; sforma = new int[nStars]; scol = new uint[nStars];
             // DE QUE COLOR ES UNA ESTRELLA. Las de verdad van de blanco-azulado a blanco, amarillo y naranja:
@@ -908,6 +941,30 @@ namespace Rocola
         private readonly UiGlow[] uiGlowBuf = new UiGlow[10];   // 4 destellos de botones + 2 de letras + 2 del letrero MEJORADA, con holgura
         public int Fps;                                   // cuadros por segundo (diagnostico)
         public bool ShowFps;                              // dibujar el contador de FPS (oculto por defecto; el form lo alterna con Ctrl+F1)
+
+        // ================= LAS PERILLAS DE LOS EFECTOS (Ctrl+F3 -> Imagen y rendimiento) =================
+        // Cuatro cosas que se pueden bajar o apagar cuando un equipo no da para todo. El form las pone y este
+        // panel se las pasa al cielo en cada cuadro. De fabrica estan todas puestas y el dibujo sale
+        // exactamente igual que antes de que existieran.
+        public bool Nieblas = true;                       // las nebulosas y la neblina de color del fondo
+        public bool Fugaces = true;                       // las estrellas fugaces
+        public bool RelevoPatron = true;                  // el cambio de patron cada minuto (dibuja DOS campos a la vez)
+        public float Estrellas = 1f;                      // cuantas estrellas, de 0.1 a 1 (1 = las de siempre)
+
+        // ================= LO QUE CUESTA ARMAR UN CUADRO, APARTE DE ESPERAR AL MONITOR =================
+        // El contador de arriba (Fps) NO dice si a un equipo le sobra. El bucle se sincroniza con el refresco
+        // de la pantalla, asi que en un equipo sobrado marca 60 tanto si el cuadro costo 2 ms como si costo
+        // 15: lo unico que cambia es cuanto se espera en Present. Por eso se cronometra APARTE el TRABAJO -de
+        // empezar el cuadro hasta justo ANTES de stars.End(), que es donde se espera al monitor-. Los dos
+        // numeros juntos distinguen "va a 30 porque el monitor va a 30" de "va a 30 porque no da para mas",
+        // que es lo unico que decide si hay que apagar algo.
+        //
+        // Es un promedio EXACTO (suma / cuadros) desde la ultima puesta a cero, no una media que arrastra:
+        // asi el medidor pide cero, espera un segundo y lee lo de ese segundo, sin restos del anterior.
+        private double msTrabSuma; private int msTrabN;
+        public double MsTrabajo { get { return (msTrabN > 0) ? (msTrabSuma / msTrabN) : 0.0; } }
+        public int CuadrosMedidos { get { return msTrabN; } }
+        public void ReiniciaMedida() { msTrabSuma = 0.0; msTrabN = 0; Fps = 0; frames = 0; fpsTick = Environment.TickCount; }
         public float Dim = 1f;                            // atenuacion del starfield mientras se navega con musica (el form la anima; 1 = normal)
         public Func<float> GetPulse;                      // el form provee el nivel de audio (0..1)
         public GpuGridFetch GetGrid;                      // el form llena el buffer con las celdas de la pagina actual (rejilla por quads)
@@ -954,6 +1011,7 @@ namespace Rocola
             return topeMs;
         }
         public int TopeFpsReal { get { int m = TopeMs(); return (m > 0) ? 1000 / m : 0; } }   // lo que quedo, para el contador
+        public void OlvidaTope() { topeMs = -1; }   // el tope se resuelve una vez y se guarda: al cambiarlo a mano hay que volver a resolverlo
         // RELOJ FINO para el limitador. Environment.TickCount avanza a SALTOS de ~15.6 ms en Windows, asi
         // que pidiendole "un cuadro cada 33 ms" solo podia contestar 46.8 (tres saltos): 21 cuadros por
         // segundo en vez de 30, que es lo que se veia. Este reloj mide de verdad, en microsegundos.
@@ -1078,6 +1136,8 @@ namespace Rocola
         private void RenderFrame()
         {
             if (stars == null || !stars.Ok) return;
+            double msTrab0 = AhoraMs();   // arranca el cronometro del TRABAJO de este cuadro (ver MsTrabajo)
+            stars.SetEfectos(Estrellas, Fugaces, RelevoPatron, Width, Height);   // las perillas de Ctrl+F3
             // Si la ventana cambio de tamano (resolucion de Windows, o el panel), el buffer de dibujo tiene
             // que cambiar con ella. Se hace AQUI, antes de abrir el cuadro: resetear el dispositivo con la
             // escena ya abierta no es valido en Direct3D 9.
@@ -1283,6 +1343,9 @@ namespace Rocola
             }
             // Contador de FPS (diagnostico) encima de todo, en su textura pequeña. Oculto por defecto (Ctrl+F1).
             if (ShowFps && fpsTex != IntPtr.Zero) { SetTexQuad(fpsQuad, Width - fpsTW - 10, 6, Width - 10, 6 + fpsTH, fpsU, fpsV); stars.DrawQuad(fpsTex, fpsQuad); }
+            // El cronometro se para AQUI, justo antes de End: dentro de End esta Present, que es donde se
+            // espera al monitor. Un cuadro que se pasa media vuelta esperando no costo media vuelta.
+            msTrabSuma += AhoraMs() - msTrab0; msTrabN++;
             stars.End();
             frames++;
             if (Environment.TickCount - fpsTick >= 1000) { Fps = frames; frames = 0; fpsTick = Environment.TickCount; }
@@ -1528,6 +1591,7 @@ namespace Rocola
 
         private void DibujaNieblas()
         {
+            if (!Nieblas) return;   // perilla de Ctrl+F3
             if (hazTex == IntPtr.Zero && nebTex == IntPtr.Zero) return;
             if (nebTex != IntPtr.Zero)
             {
@@ -2105,6 +2169,12 @@ namespace Rocola
         }
 
         protected override void OnPaint(PaintEventArgs e) { RenderFrame(); }   // WM_PAINT -> dibuja por D3D9
+
+        // UN CUADRO, PEDIDO A MANO. Lo usa el medidor de Ctrl+F3: medir ocurre dentro de una pulsacion, o sea
+        // con el bucle de mensajes parado, asi que esperar a que el bucle de siempre (Application.Idle) dibuje
+        // seria esperar sentado. Es el MISMO cuadro que dibuja la rocola encendida, por el mismo camino: si
+        // aqui se midiera otra cosa, la medida no valdria para nada.
+        public void DibujaUnCuadro() { RenderFrame(); }
         protected override void OnPaintBackground(PaintEventArgs e) { }        // no borra (D3D9 es dueño de los pixeles)
 
         protected override void Dispose(bool disposing)

@@ -30,13 +30,19 @@ class Ajustes
 
     class Caja
     {
-        public string Nombre, Texto; public Rectangle R; public Font F; public float Pt; public bool Envuelve; public int Extra;
-        public Caja(string n, int x, int y, int w, int h, string t, Font f, float pt, bool env, int extra)
-        { Nombre = n; R = new Rectangle(x, y, w, h); Texto = t; F = f; Pt = pt; Envuelve = env; Extra = extra; }
+        public string Nombre, Texto; public Rectangle R; public Font F; public float Pt; public bool Envuelve; public int Extra; public int Pag;
+        public Caja(string n, int x, int y, int w, int h, string t, Font f, float pt, bool env, int extra, int pag)
+        { Nombre = n; R = new Rectangle(x, y, w, h); Texto = t; F = f; Pt = pt; Envuelve = env; Extra = extra; Pag = pag; }
     }
     static List<Caja> cajas = new List<Caja>();
-    static void C(string n, int x, int y, int w, int h, string t, Font f, float pt, bool env) { cajas.Add(new Caja(n, x, y, w, h, t, f, pt, env, 0)); }
-    static void CSw(string n, int x, int y, int w, int h, string t, Font f, float pt) { cajas.Add(new Caja(n, x, y, w, h, t, f, pt, false, 50)); }   // los interruptores llevan la pastilla delante
+    // DE QUE PAGINA SE ESTA HABLANDO. La ventana tiene dos pestanas -Sonido e Imagen- y las dos ocupan el
+    // MISMO sitio: solo se ve una cada vez. Sin esto, cada control de Imagen saldria "montado encima" de uno
+    // de Sonido y la comprobacion de choques no valdria para nada. La pagina 2 es el marco (titulo, pestanas
+    // y el boton de Listo), que se ve en las dos y por tanto choca con las dos.
+    static int pagActual = 0;
+    static void C(string n, int x, int y, int w, int h, string t, Font f, float pt, bool env) { cajas.Add(new Caja(n, x, y, w, h, t, f, pt, env, 0, pagActual)); }
+    static void CSw(string n, int x, int y, int w, int h, string t, Font f, float pt) { cajas.Add(new Caja(n, x, y, w, h, t, f, pt, false, 50, pagActual)); }   // los interruptores llevan la pastilla delante
+    static bool MismaPagina(Caja a, Caja b) { return a.Pag == b.Pag || a.Pag == 2 || b.Pag == 2; }
 
     static Font ff(float t, FontStyle s)
     {
@@ -68,7 +74,8 @@ class Ajustes
         int pa = a.IndexOf('.'), pb = b.IndexOf('.');
         if (pa <= 0 || pb <= 0) return false;
         string ra = a.Substring(0, pa);
-        return ra == b.Substring(0, pb) && ra == "salida";
+        if (ra != b.Substring(0, pb)) return false;
+        return ra == "salida" || ra == "veredicto" || ra == "propuesta";
     }
 
     const int anchoFila = 424;
@@ -100,7 +107,14 @@ class Ajustes
         Console.WriteLine(hd ? "\n  (ejecutable de la rama HD: lleva ademas la tarjeta de la IA en vivo)" : "\n  (ejecutable de la rama modesta)");
         int W = 960, H = hd ? 1008 : 732;
 
-        C("titulo", 22, 10, 700, 28, "Sonido", fTit, 15f, false);
+        pagActual = 2;   // el marco: se ve en las dos pestanas
+        // El titulo encogio de 700 a 600 para dejarle sitio a las pestanas. No mueve nada: el texto mas
+        // largo que lleva es "Imagen y rendimiento", que ni de lejos llega a 600.
+        C("titulo", 22, 10, 600, 28, "Imagen y rendimiento", fTit, 15f, false);
+        C("pestana.sonido", 640, 8, 148, 30, "Sonido", fBot, 10f, false);
+        C("pestana.imagen", 796, 8, 148, 30, "Imagen", fBot, 10f, false);
+        C("boton.listo", 804, hd ? 956 : 680, 140, 38, "Listo", fBot, 10f, false);
+        pagActual = 0;   // de aqui en adelante, la pagina de Sonido
         C("subtitulo", 24, 42, 916, 18, "Todo lo que cambies aqui se oye al instante en la cancion que esta sonando.", fSub, 9.5f, false);
         // La linea que dice que hay DESPUES del cable. Son DOS renglones y el texto se arma sobre la marcha,
         // asi que no vale con probar UNA frase: se prueban las CUATRO que el programa puede llegar a escribir,
@@ -193,7 +207,76 @@ class Ajustes
 
         // ---- pie ----
         C("boton.fabrica", 16, hd ? 956 : 680, 220, 38, "Dejar como de fabrica", fBot, 10f, false);
-        C("boton.listo", 804, hd ? 956 : 680, 140, 38, "Listo", fBot, 10f, false);
+
+        // ============================ LA PAGINA DE IMAGEN Y RENDIMIENTO ============================
+        // Vive en un Panel que empieza en y=96, asi que aqui todo va en coordenadas de la VENTANA: las del
+        // panel mas 96. Es la misma comprobacion de siempre -que quepa con la letra del PEOR caso, no con la
+        // de esta maquina-, y aqui hace mas falta que en ninguna parte porque es texto nuevo y largo.
+        pagActual = 1;
+        const int PY = 96;
+        // ---- tarjeta ESTE EQUIPO (16,100,456,398) ----
+        C("medir.boton", 32, PY + 48, 424, 38, "Medir este equipo", fBot, 10f, false);
+        C("medir.tarda", 32, PY + 92, 424, 32,
+          "Tarda unos diez segundos y veras pasar las cuatro pantallas:\nes que las esta midiendo de verdad, una por una.", fDes, 8.5f, true);
+        C("medir.cabecera", 32, PY + 130, 424, 18, "PANTALLA                              TRABAJO      CUADROS/S", fDes, 8.5f, false);
+        for (int i = 0; i < 4; i++)
+            C("medir.fila" + i, 32, PY + 152 + i * 24, 424, 20, "Pantalla de atraccion         999.9 ms        999", fDes, 8.5f, false);
+        // El veredicto se arma sobre la marcha: se prueban las CUATRO frases que puede llegar a escribir, y
+        // comparten sitio a proposito (solo se ve una cada vez).
+        C("veredicto.v1", 32, PY + 250, 424, 148,
+          "Aun sin medir.\n\nPulsa el boton de arriba y la rocola se medira sola en este equipo: pondra sus cuatro"
+          + " pantallas, le pedira cuadros a la tarjeta grafica y cronometrara lo que cuesta armar cada uno.\n\n"
+          + "Hasta entonces aqui no hay ningun numero, porque ninguno seria de verdad.", fDes, 8.5f, true);
+        C("veredicto.v2", 32, PY + 250, 424, 148,
+          "Esta rocola NO esta dibujando con la tarjeta grafica.\n\nPor ese camino el techo son 24 cuadros por"
+          + " segundo, y no por falta de equipo: esta puesto asi a proposito para gastar poco. Los 30 no se"
+          + " alcanzan ahi por mucho que se apaguen efectos.\n\nLa perilla que importa en este equipo es"
+          + " encender la tarjeta grafica.", fDes, 8.5f, true);
+        C("veredicto.v3", 32, PY + 250, 424, 148,
+          "La que peor va es \"Pantalla de atraccion\": 999 cuadros por segundo (999.9 ms de trabajo por cuadro)."
+          + "\n\nPasa de los 30 de sobra. No hace falta apagar nada.\n\nEl techo de esta pantalla son 999 cuadros"
+          + " por segundo: por encima de eso no se dibuja, porque no se veria.", fDes, 8.5f, true);
+        C("veredicto.v4", 32, PY + 250, 424, 148,
+          "La que peor va es \"Pantalla de atraccion\": 999 cuadros por segundo (999.9 ms de trabajo por cuadro)."
+          + "\n\nNo llega a los 30. A la derecha esta lo que cuesta cada efecto en ESTE equipo, medido apagandolo"
+          + " y volviendo a medir.\n\nEl techo de esta pantalla son 999 cuadros por segundo: por encima de eso no"
+          + " se dibuja, porque no se veria.", fDes, 8.5f, true);
+
+        // ---- tarjeta EFECTOS: la sub-ventana de al lado (488,100,456,398) ----
+        string[] efeNom = { "Nieblas y nebulosas", "Patron nuevo cada minuto", "Estrellas fugaces",
+                            "Aurora del horizonte", "Cielo con todas las estrellas" };
+        string[] efePierde = {
+            "El fondo queda de cielo liso, sin las manchas de color del genero.",
+            "El cielo se queda con las mismas estrellas en vez de renovarlas.",
+            "Deja de cruzar una estrella fugaz cada 7-16 segundos.",
+            "Se apaga el color que sube del suelo siguiendo a la musica.",
+            "Apagado, el cielo se queda con la MITAD de estrellas.\nEs lo que mas se nota de esta lista, y lo que mas ahorra." };
+        for (int i = 0; i < 5; i++)
+        {
+            int y = PY + 44 + i * 68;
+            CSw("efecto" + i + ".nombre", 504, y, 300, 26, efeNom[i], fNom, 10f);
+            C("efecto" + i + ".coste", 810, y + 2, 118, 20, "sin medir", fVal, 11f, false);
+            C("efecto" + i + ".pierde", 504, y + 28, 424, 32, efePierde[i], fDes, 8.5f, true);
+        }
+
+        // ---- tarjeta LA PROPUESTA (16,508,928,160) ----
+        C("propuesta.v1", 32, PY + 452, 896, 72,
+          "Sin medir todavia. La propuesta sale de lo que se mida en ESTE equipo, no de una lista de equipos"
+          + " buenos y malos escrita a mano.", fDes, 8.5f, true);
+        C("propuesta.v2", 32, PY + 452, 896, 72,
+          "\"Pantalla de atraccion\" va a 999 cuadros por segundo. Apagando nieblas y nebulosas, cambio de patron"
+          + " cada minuto, estrellas fugaces, aurora del horizonte y cielo con todas las estrellas se pondria en"
+          + " 999.  AUN ASI NO LLEGA A 30: este equipo no da para mas ni apagandolo todo, y es mejor decirlo que"
+          + " fingir que se arreglo.", fDes, 8.5f, true);
+        C("propuesta.v3", 32, PY + 452, 896, 72,
+          "No llega a los 30 y NO hay nada que apagar que lo arregle: ninguno de los efectos cuesta lo suficiente"
+          + " como para notarse. El cuello esta en otro sitio, no en los adornos del cielo.", fDes, 8.5f, true);
+        C("propuesta.aplicar", 32, PY + 528, 300, 34, "Aplicar lo recomendado", fBot, 10f, false);
+        C("propuesta.nota", 348, PY + 530, 580, 36,
+          "Nada se mueve hasta que pulses aqui. El orden lo manda lo medido:\n"
+          + "primero lo que mas ahorra, y para en cuanto pasa. Nada de apagar de mas.", fDes, 8.5f, true);
+        C("imagen.fabrica", 16, PY + 584, 300, 38, "Graficos como de fabrica", fBot, 10f, false);
+        pagActual = 0;
 
         // ---------- que todo quepa, contando RENGLONES ----------
         Console.WriteLine("\n    hueco                      renglones   caben   ancho pedido / hay");
@@ -221,6 +304,7 @@ class Ajustes
         for (int i = 0; i < cajas.Count && choque == null; i++)
             for (int j = i + 1; j < cajas.Count && choque == null; j++)
             {
+                if (!MismaPagina(cajas[i], cajas[j])) continue;   // dos pestanas: solo se ve una cada vez
                 if (Variantes(cajas[i].Nombre, cajas[j].Nombre)) continue;
                 if (cajas[i].R.IntersectsWith(cajas[j].R)) choque = cajas[i].Nombre + " se monta con " + cajas[j].Nombre;
             }
