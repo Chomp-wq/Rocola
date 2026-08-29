@@ -145,6 +145,15 @@ namespace Rocola
         // lo decide el propio panel: lo que refresque la pantalla y un poco mas (ver GpuPanel.TopeMs). Se deja
         // a mano por si alguna pantalla contesta un refresco raro y hay que fijarlo.
         private int fpsTope = 0;
+        // ================ LOS EFECTOS QUE SE PUEDEN BAJAR (Ctrl+F3 -> Imagen y rendimiento) ================
+        // Cuatro cosas del cielo que cuestan y se pueden quitar cuando un equipo no da para todo. De fabrica
+        // estan todas puestas y la rocola se ve EXACTAMENTE como se veia antes de que existieran: solo al
+        // bajarlas cambia algo. Las decide el operador, o se las propone el medidor de la misma ventana con
+        // lo que haya MEDIDO en ese equipo -nunca con una tabla de "equipos buenos y malos" escrita a mano-.
+        private float estrellasDens = 1f;   // "estrellas=" en config: cuantas estrellas, de 10 a 100 (%)
+        private bool fugacesOn = true;      // "fugaces=" : las estrellas fugaces que cruzan cada 7-16 s
+        private bool nieblasOn = true;      // "nieblas=" : las nebulosas y la neblina de color del fondo
+        private bool relevoOn = true;       // "patron="  : el cambio de patron cada minuto (dibuja DOS campos a la vez)
         // PRESENCIA de la aurora en pantalla, de 0 a 1. Antes se dibujaba o no se dibujaba segun si la banda
         // mas alta pasaba de un pelo: en un pasaje bajito (una intro, un silencio, el final de un tema) las
         // bandas caen a cero, la aurora DESAPARECIA de golpe y al volver la musica APARECIA de golpe. Eso era
@@ -1253,6 +1262,10 @@ namespace Rocola
                     else if (s.StartsWith("animacion=")) transAnimOn = s.Substring(10).Trim() != "0";   // zoom al entrar/salir de un disco
                     else if (s.StartsWith("espectro=")) { float v; if (float.TryParse(s.Substring(9).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) auroraAmount = Clampf(v / 100f, 0f, 1f); }   // aurora del horizonte (0 = apagada)
                     else if (s.StartsWith("tope_fps=")) { int v; if (int.TryParse(s.Substring(9).Trim(), out v)) fpsTope = (v < 0) ? 0 : v; }   // cuadros/s del fondo (0 = automatico, segun la pantalla)
+                    else if (s.StartsWith("estrellas=")) { int v; if (int.TryParse(s.Substring(10).Trim(), out v)) estrellasDens = Clampf(v / 100f, 0.1f, 1f); }   // cuantas estrellas (%)
+                    else if (s.StartsWith("fugaces=")) fugacesOn = s.Substring(8).Trim() != "0";     // estrellas fugaces
+                    else if (s.StartsWith("nieblas=")) nieblasOn = s.Substring(8).Trim() != "0";     // nebulosas y neblina de color
+                    else if (s.StartsWith("patron=")) relevoOn = s.Substring(7).Trim() != "0";       // relevo de patron cada minuto
                     else if (s.StartsWith("disco="))   // tipo de disco: auto (medir), ssd o hdd (Ctrl+F3)
                     {
                         string d = s.Substring(6).Trim().ToLowerInvariant();
@@ -1360,6 +1373,10 @@ namespace Rocola
                 sb.Append("animacion=").Append(transAnimOn ? "1" : "0").Append("\r\n");
                 sb.Append("espectro=").Append(Math.Round(auroraAmount * 100f)).Append("\r\n");
                 sb.Append("tope_fps=").Append(fpsTope).Append("\r\n");
+                sb.Append("estrellas=").Append((int)Math.Round(estrellasDens * 100f)).Append("\r\n");
+                sb.Append("fugaces=").Append(fugacesOn ? "1" : "0").Append("\r\n");
+                sb.Append("nieblas=").Append(nieblasOn ? "1" : "0").Append("\r\n");
+                sb.Append("patron=").Append(relevoOn ? "1" : "0").Append("\r\n");
                 sb.Append("disco=").Append(perfilDisco == 1 ? "ssd" : perfilDisco == 2 ? "hdd" : "auto").Append("\r\n");
                 sb.Append("video_gpu=").Append(videoGpuOn ? "1" : "0").Append("\r\n");
                 sb.Append("diagnostico=").Append(diagOn ? "1" : "0").Append("\r\n");
@@ -2504,7 +2521,24 @@ namespace Rocola
             }
         }
 
+        // La ventana de ajustes SE REABRE SOLA una vez: al pulsar "Medir este equipo" hay que cerrarla -medir
+        // necesita la pantalla libre y la rocola quieta, y con la ventana encima ni se veria ni se mediria lo
+        // mismo-, y en cuanto acaba vuelve con los numeros puestos, ya en la pestana de Imagen. Por eso el
+        // cuerpo de siempre esta en VentanaAjustes y aqui solo hay la vuelta de mas.
         private void ShowVolumeManager()
+        {
+            while (true)
+            {
+                VentanaAjustes();
+                if (!f3Medir) break;
+                f3Medir = false;
+                MideRendimiento();
+                f3Pagina = 1;
+            }
+            f3Pagina = 0;   // la proxima vez que se abra con Ctrl+F3, en Sonido
+        }
+
+        private void VentanaAjustes()
         {
             if (searchOpen) CloseSearch();
             bool wasMaint = maintMode;
@@ -2544,8 +2578,15 @@ namespace Rocola
                     Color cTenue = Color.FromArgb(138, 149, 182);    // texto de las explicaciones
                     Color cApagado = Color.FromArgb(96, 104, 128);
 
-                    Label lTit = new Label(); lTit.SetBounds(22, 10, 700, 28); lTit.BackColor = Color.Transparent;
+                    Label lTit = new Label(); lTit.SetBounds(22, 10, 600, 28); lTit.BackColor = Color.Transparent;
                     lTit.ForeColor = Color.FromArgb(232, 238, 255); lTit.Font = fTit; lTit.Text = "Sonido";
+                    // LAS DOS PESTANAS VAN AQUI, EN EL RENGLON DEL TITULO, y no en una fila propia: esta ventana
+                    // mide 960x732 a proposito -con su barra de titulo cabe justo en una pantalla de 1024x768- y
+                    // esta ocupada del primer pixel al ultimo. Una fila de pestanas de 34 px de alto habria
+                    // obligado a encoger algo de lo que ya funciona. Aqui no cuestan NADA de alto y la pagina de
+                    // Sonido se queda exactamente donde estaba.
+                    BotonPlano bPagS = new BotonPlano(); bPagS.SetBounds(640, 8, 148, 30); bPagS.Font = fBot; bPagS.Text = "Sonido";
+                    BotonPlano bPagI = new BotonPlano(); bPagI.SetBounds(796, 8, 148, 30); bPagI.Font = fBot; bPagI.Text = "Imagen";
                     Label lSub = new Label(); lSub.SetBounds(24, 42, 916, 18); lSub.BackColor = Color.Transparent;
                     lSub.ForeColor = cTenue; lSub.Font = fSub;
                     lSub.Text = "Todo lo que cambies aqui se oye al instante en la cancion que esta sonando.";
@@ -2853,10 +2894,35 @@ namespace Rocola
                                   preScanTurbo ? Color.FromArgb(150, 60, 45) : Color.FromArgb(40, 130, 90));
                     };
 
-                    dlg.Controls.Add(lTit); dlg.Controls.Add(lSub); dlg.Controls.Add(lSal);
+                    // LA PAGINA DE IMAGEN Y RENDIMIENTO: el medidor de este equipo y, al lado, los efectos con
+                    // su coste medido. Vive entera dentro de un Panel, asi cambiar de pestana es una linea y la
+                    // pagina de Sonido ni se entera.
+                    Panel pImg = PaginaImagen(fNom, fVal, fDes, fBot, cTexto, cTenue, cApagado);
+                    Control[] pagSonido = { lSub, lSal, tVol, tCal, tBib, lDskT, bDskA, bDskS, bDskH, lDskS, bReset };
+                    Action pintaPag = delegate
+                    {
+                        bool img = (f3Pagina == 1);
+                        for (int k = 0; k < pagSonido.Length; k++) pagSonido[k].Visible = !img;
+                        pImg.Visible = img;
+                        lTit.Text = img ? "Imagen y rendimiento" : "Sonido";
+                        BotonPlano[] pb = { bPagS, bPagI };
+                        for (int k = 0; k < 2; k++)
+                        {
+                            bool act = (k == 1) == img;
+                            pb[k].Relleno = act ? Color.FromArgb(28, 62, 104) : Color.FromArgb(28, 34, 62);
+                            pb[k].Borde = act ? Color.FromArgb(150, 205, 255) : Color.FromArgb(60, 72, 118);
+                            pb[k].ForeColor = act ? Color.FromArgb(226, 240, 255) : cApagado;
+                            pb[k].Invalidate();
+                        }
+                    };
+                    bPagS.Click += delegate { f3Pagina = 0; pintaPag(); };
+                    bPagI.Click += delegate { f3Pagina = 1; pintaPag(); };
+
+                    dlg.Controls.Add(lTit); dlg.Controls.Add(bPagS); dlg.Controls.Add(bPagI); dlg.Controls.Add(lSub); dlg.Controls.Add(lSal);
                     dlg.Controls.Add(tVol); dlg.Controls.Add(tCal); dlg.Controls.Add(tBib);
                     dlg.Controls.Add(lDskT); dlg.Controls.Add(bDskA); dlg.Controls.Add(bDskS); dlg.Controls.Add(bDskH); dlg.Controls.Add(lDskS);
-                    dlg.Controls.Add(bReset); dlg.Controls.Add(bOk);
+                    dlg.Controls.Add(bReset); dlg.Controls.Add(bOk); dlg.Controls.Add(pImg);
+                    pintaPag();
                     // Escape cierra, como toda la vida (los controles propios se comen las teclas, asi que la
                     // ventana las mira antes con KeyPreview).
                     dlg.KeyPreview = true;
@@ -2870,7 +2936,8 @@ namespace Rocola
                     dlg.ShowDialog(this);
                     tTrain.Stop(); tTrain.Dispose();
                 }
-                if (changed) { SaveConfigPrefs(); ShowToast("Sonido actualizado", Color.FromArgb(40, 130, 90)); }
+                if (changed || f3CambioGraf) { SaveConfigPrefs(); ShowToast(changed ? "Sonido actualizado" : "Imagen actualizada", Color.FromArgb(40, 130, 90)); }
+                f3CambioGraf = false;
             }
             catch { normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; masterDb = bkUp; eqAmount = bkEq; bassAmount = bkBass; videoVol = bkVid; videoAuto = bkVidA; sbrOn = bkSbr; eqAuto = bkEqA; bassAuto = bkBassA; perfilDisco = bkDsk; iaHarvestOn = bkIaDat; AplicaPerfilDisco(); }   // si algo truena, deja los valores como estaban
             finally { try { Cursor.Hide(); } catch { } maintMode = wasMaint; ForceFocus(); }
@@ -9288,6 +9355,7 @@ namespace Rocola
                 gpuPanel = new GpuPanel();
                 gpuPanel.ShowFps = gpuShowFps;
                 gpuPanel.TopeFps = fpsTope;   // 0 = que lo decida el panel por el refresco de la pantalla
+                AplicaEfectosGpu();           // y las perillas de los efectos (Ctrl+F3 -> Imagen y rendimiento)
                 gpuPanel.GetPulse = delegate { return audioLevel; };
                 gpuPanel.GetAurora = delegate { return BuildAuroraState(); };   // aurora del horizonte (espectro)
                 gpuPanel.GetToast = delegate { return BuildToastState(); };     // aviso flotante (moneda, cancion agregada...)
