@@ -55,6 +55,7 @@
     </Compile>
     <Compile Include="Program.cs" />
     <Compile Include="D3D9Star.cs" />
+    <Compile Include="Rendimiento.cs" />
     <Compile Include="D3D9Device.cs" />
     <Compile Include="WinSistema.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
