@@ -150,10 +150,15 @@ namespace Rocola
         // estan todas puestas y la rocola se ve EXACTAMENTE como se veia antes de que existieran: solo al
         // bajarlas cambia algo. Las decide el operador, o se las propone el medidor de la misma ventana con
         // lo que haya MEDIDO en ese equipo -nunca con una tabla de "equipos buenos y malos" escrita a mano-.
+        // Van por NIVEL -alto, medio o bajo-, no por si/no. Entre "nieblas si" y "nieblas no" hay sitio para
+        // "menos nieblas", y ese sitio es media rocola que no hay que afear para ganar los mismos cuadros.
+        // Con todo en ALTO (lo de fabrica) la rocola se ve EXACTAMENTE igual que antes de que esto existiera.
+        internal const int NivAlto = 2, NivMedio = 1, NivBajo = 0;
         private float estrellasDens = 1f;   // "estrellas=" en config: cuantas estrellas, de 10 a 100 (%)
-        private bool fugacesOn = true;      // "fugaces=" : las estrellas fugaces que cruzan cada 7-16 s
-        private bool nieblasOn = true;      // "nieblas=" : las nebulosas y la neblina de color del fondo
-        private bool relevoOn = true;       // "patron="  : el cambio de patron cada minuto (dibuja DOS campos a la vez)
+        private int fugacesNiv = NivAlto;   // "fugaces=" : 2 dos cada 7-16 s;  1 una cada 15-30 s;  0 ninguna
+        private int nieblasNiv = NivAlto;   // "nieblas=" : 2 nebulosa + velo;  1 solo la nebulosa;  0 nada
+        private int relevoNiv = NivAlto;    // "patron="  : 2 patron nuevo cada minuto;  1 cada tres;  0 nunca
+        private int animNiv = NivAlto;      // "animacion=": el zoom al entrar/salir de un disco (ver TransMs)
         // PRESENCIA de la aurora en pantalla, de 0 a 1. Antes se dibujaba o no se dibujaba segun si la banda
         // mas alta pasaba de un pelo: en un pasaje bajito (una intro, un silencio, el final de un tema) las
         // bandas caen a cero, la aurora DESAPARECIA de golpe y al volver la musica APARECIA de golpe. Eso era
@@ -1076,7 +1081,11 @@ namespace Rocola
         // El AVANCE lo calcula el render (60 fps por Application.Idle), no el temporizador de 42 ms: asi el
         // zoom se ve fluido de verdad. El temporizador solo APAGA la animacion al cumplirse el tiempo.
 #if ROCOLA_GPU
-        private const int TransMs = 260;  // portada entrando/saliendo de un disco (o de la atraccion)
+        // CUANTO DURA el vuelo de la portada al entrar/salir de un disco. Deja de ser fijo: en MEDIO dura
+        // 160 ms -sigue siendo un vuelo, pero se ve menos rato y por tanto se dibuja menos- y en BAJO no hay
+        // animacion (transAnimOn en falso, ver mas abajo). Los 260 de siempre son el ALTO.
+        private const int TransMsAlto = 260, TransMsMedio = 160;
+        private int TransMs { get { return (animNiv >= NivAlto) ? TransMsAlto : TransMsMedio; } }
         private const int WinMs = 210;    // ventana del buscador abriendo/cerrando (mas corta: tipo macOS)
         private const float TransHold = 0.58f;   // hasta aqui la portada va opaca; despues se funde con el cubo de destino
         private int transMode = 0;        // 0 = nada, 1 = animacion de portada viva
@@ -1092,7 +1101,9 @@ namespace Rocola
         private int winTick = 0;
         private Bitmap winSnap;           // instantanea del buscador para animarlo AL CERRAR (al abrir se anima la textura de UI)
 #endif
-        private bool transAnimOn = true;  // "animacion=" en config
+        // El zoom al entrar/salir de un disco: hay o no hay. Ya no es un campo aparte que haya que
+        // mantener a mano en dos sitios: SALE del nivel, y asi no se pueden contradecir nunca.
+        private bool transAnimOn { get { return animNiv > NivBajo; } }
         private bool videoGpuOn = true;   // "video_gpu=" en config: interfaz por GPU tambien con video sonando
         private bool diagOn = false;      // "diagnostico=" en config: apuntar eventos clave en rocola_diagnostico.txt
         private readonly List<string> extraMusicDirs = new List<string>();   // carpetas de musica extra (ademas de "musica")
@@ -1259,13 +1270,13 @@ namespace Rocola
                 {
                     string s = line.Trim();
                     if (s.StartsWith("gpu=")) gpuPrefOn = s.Substring(4).Trim() != "0";
-                    else if (s.StartsWith("animacion=")) transAnimOn = s.Substring(10).Trim() != "0";   // zoom al entrar/salir de un disco
+                    else if (s.StartsWith("animacion=")) animNiv = NivelDe(s.Substring(10));   // zoom al entrar/salir de un disco
                     else if (s.StartsWith("espectro=")) { float v; if (float.TryParse(s.Substring(9).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) auroraAmount = Clampf(v / 100f, 0f, 1f); }   // aurora del horizonte (0 = apagada)
                     else if (s.StartsWith("tope_fps=")) { int v; if (int.TryParse(s.Substring(9).Trim(), out v)) fpsTope = (v < 0) ? 0 : v; }   // cuadros/s del fondo (0 = automatico, segun la pantalla)
                     else if (s.StartsWith("estrellas=")) { int v; if (int.TryParse(s.Substring(10).Trim(), out v)) estrellasDens = Clampf(v / 100f, 0.1f, 1f); }   // cuantas estrellas (%)
-                    else if (s.StartsWith("fugaces=")) fugacesOn = s.Substring(8).Trim() != "0";     // estrellas fugaces
-                    else if (s.StartsWith("nieblas=")) nieblasOn = s.Substring(8).Trim() != "0";     // nebulosas y neblina de color
-                    else if (s.StartsWith("patron=")) relevoOn = s.Substring(7).Trim() != "0";       // relevo de patron cada minuto
+                    else if (s.StartsWith("fugaces=")) fugacesNiv = NivelDe(s.Substring(8));     // estrellas fugaces
+                    else if (s.StartsWith("nieblas=")) nieblasNiv = NivelDe(s.Substring(8));     // nebulosas y neblina de color
+                    else if (s.StartsWith("patron=")) relevoNiv = NivelDe(s.Substring(7));       // relevo de patron cada minuto
                     else if (s.StartsWith("disco="))   // tipo de disco: auto (medir), ssd o hdd (Ctrl+F3)
                     {
                         string d = s.Substring(6).Trim().ToLowerInvariant();
@@ -1364,19 +1375,38 @@ namespace Rocola
                 return AnchoTexto(g, t, f);
         }
 
+        // NIVEL <-> PALABRA. En el archivo de configuracion los niveles se escriben "alto", "medio" y "bajo"
+        // y no 2, 1 y 0: ese archivo se abre con el bloc de notas en el bar, y "nieblas=medio" se entiende sin
+        // tener que descifrar nada.
+        //
+        // Y lo que NO se entienda cae en ALTO, que es como estaba la rocola antes de que esto existiera. Eso
+        // cubre el "1" que escribio la version de ayer y cualquier cosa rara: nunca se le baja la calidad a
+        // nadie por un archivo que no se supo leer.
+        private static int NivelDe(string s)
+        {
+            string t = (s == null) ? "" : s.Trim().ToLowerInvariant();
+            if (t == "bajo" || t == "0") return NivBajo;
+            if (t == "medio") return NivMedio;
+            return NivAlto;
+        }
+        private static string TextoNivel(int n)
+        {
+            return (n <= NivBajo) ? "bajo" : (n == NivMedio) ? "medio" : "alto";
+        }
+
         private void SaveConfigPrefs()
         {
             try
             {
                 StringBuilder sb = new StringBuilder();
                 sb.Append("gpu=").Append(gpuPrefOn ? "1" : "0").Append("\r\n");
-                sb.Append("animacion=").Append(transAnimOn ? "1" : "0").Append("\r\n");
+                sb.Append("animacion=").Append(TextoNivel(animNiv)).Append("\r\n");
                 sb.Append("espectro=").Append(Math.Round(auroraAmount * 100f)).Append("\r\n");
                 sb.Append("tope_fps=").Append(fpsTope).Append("\r\n");
                 sb.Append("estrellas=").Append((int)Math.Round(estrellasDens * 100f)).Append("\r\n");
-                sb.Append("fugaces=").Append(fugacesOn ? "1" : "0").Append("\r\n");
-                sb.Append("nieblas=").Append(nieblasOn ? "1" : "0").Append("\r\n");
-                sb.Append("patron=").Append(relevoOn ? "1" : "0").Append("\r\n");
+                sb.Append("fugaces=").Append(TextoNivel(fugacesNiv)).Append("\r\n");
+                sb.Append("nieblas=").Append(TextoNivel(nieblasNiv)).Append("\r\n");
+                sb.Append("patron=").Append(TextoNivel(relevoNiv)).Append("\r\n");
                 sb.Append("disco=").Append(perfilDisco == 1 ? "ssd" : perfilDisco == 2 ? "hdd" : "auto").Append("\r\n");
                 sb.Append("video_gpu=").Append(videoGpuOn ? "1" : "0").Append("\r\n");
                 sb.Append("diagnostico=").Append(diagOn ? "1" : "0").Append("\r\n");

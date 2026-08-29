@@ -4,19 +4,26 @@
 // ------------------------------------------------------------------------------------------------
 //  La rocola sabia lo que cuesta cada trozo de su dibujo -eso lo miden las baterias de pruebas/-,
 //  pero no sabia decirle a nadie como le va al equipo donde esta puesta. Aqui se enciende, se pulsa
-//  un boton y contesta con numeros de ESE equipo: "la atraccion va a 21 cuadros por segundo;
-//  apagando las nieblas se pone en 34".
+//  un boton y contesta con numeros de ESE equipo.
 //
-//  TRES COSAS QUE MANDAN SOBRE TODO LO DEMAS:
+//  CUATRO COSAS QUE MANDAN SOBRE TODO LO DEMAS:
 //
 //  1) SE MIDE, NO SE ADIVINA. Nada de una tabla de "equipos buenos y malos" escrita a mano. Se pone
 //     cada pantalla de verdad, se le piden cuadros de verdad por el camino de verdad, y se cronometra.
-//     Lo que sale es lo que hay.
 //
-//  2) SE PROPONE, NO SE APLICA. Medir no toca ni un ajuste. La propuesta sale escrita, con sus
+//  2) SE MIDE EN MOVIMIENTO Y CON MUSICA. Una pantalla quieta y en silencio no es la rocola: es otra
+//     maquina. Aqui se pasa de pagina a lo bestia, se cambia de letra -que ademas lee del disco-, se
+//     escribe en el buscador y se entra y sale de discos, todo con una cancion puesta.
+//
+//     Y LA MUSICA NO ES UN EXTRA. Esta escrito en PlayTrack: "El audio se rellena DESDE EL HILO DE LA
+//     PANTALLA (...) cada vez que se vacia un bloque la interfaz se para en seco a descifrar MP3 y a
+//     pasarlo por toda la cadena de sonido". O sea que pelea por el MISMO hilo que el dibujo, veinte
+//     veces por segundo. Medir sin ella es medir una maquina que no existe.
+//
+//  3) SE PROPONE, NO SE APLICA. Medir no toca ni un ajuste. La propuesta sale escrita, con sus
 //     numeros, y no se mueve nada hasta que se pulsa "Aplicar lo recomendado".
 //
-//  3) CUANDO NO LLEGA, SE DICE. Hay equipos que no dan 30 cuadros por segundo ni con todo apagado.
+//  4) CUANDO NO LLEGA, SE DICE. Hay equipos que no dan 30 cuadros por segundo ni con todo en bajo.
 //     Ahi lo suyo es decirlo, no fingir que se arreglo.
 // ================================================================================================
 using System;
@@ -33,44 +40,55 @@ namespace Rocola
         // porque una medida oscila: dejarlo clavado en la raya haria que la misma maquina saliera "bien"
         // una vez y "mal" la siguiente sin haber cambiado nada.
         private const int MetaFps = 33;
-        // POR DEBAJO DE ESTO, UN EFECTO NO CUESTA NADA. Dos medidas del MISMO dibujo en la misma maquina
-        // no dan el mismo numero: entre pasadas se mueven unas decimas. Un efecto cuyo "ahorro" cabe en
-        // ese temblor no ha demostrado costar nada, y apagarlo seria afear la rocola a cambio de ruido.
+        // POR DEBAJO DE ESTO, UN ESCALON NO AHORRA NADA. Dos medidas del MISMO dibujo en la misma maquina
+        // no dan el mismo numero: entre pasadas se mueven unas decimas. Un escalon cuyo "ahorro" cabe en
+        // ese temblor no ha demostrado nada, y bajarlo seria afear la rocola a cambio de ruido.
         // (Es la regla de siempre; en pruebas/buscacosto.cs esta escrita como "Se midio, y NO PAGA".)
         private const double RuidoMs = 0.20;
 
         // ---------------------------------------------------------------------------------------------
-        //  QUE APAGAR, Y CUANDO PARAR
+        //  QUE BAJAR DE NIVEL, Y CUANDO PARAR
         // ---------------------------------------------------------------------------------------------
         //  Esta funcion es la que decide, y esta aparte del resto A PROPOSITO: no toca pantalla, no toca
-        //  ajustes y no sabe que es una estrella. Recibe numeros -lo que cuesta un cuadro del peor
-        //  escenario y lo que se ahorra apagando cada efecto- y devuelve a cuales apagar. Asi se puede
-        //  comprobar de verdad (pruebas/banco.cs le da costes de mentira y mira si decide bien), que con
-        //  algo que solo se pudiera probar delante de una tarjeta grafica no habria manera.
+        //  ajustes y no sabe que es una estrella. Recibe numeros -lo que ahorra cada escalon de cada
+        //  efecto y lo que cuesta un cuadro del peor escenario- y devuelve en que NIVEL queda cada uno.
+        //  Asi se puede comprobar de verdad (pruebas/banco.cs le da costes de mentira y mira si decide
+        //  bien), que con algo que solo se pudiera probar delante de una tarjeta grafica no habria manera.
         //
-        //  El orden lo manda el NUMERO: primero el que mas ahorra. Y para en cuanto la cuenta pasa de la
-        //  meta, porque apagar de mas es tan malo como no apagar: deja la rocola fea sin motivo.
+        //  DOS REGLAS, Y LAS DOS IMPORTAN:
+        //   - El orden lo manda el NUMERO: en cada vuelta se da el escalon que mas ahorra de los que
+        //     quedan disponibles.
+        //   - NO SE SALTA EL ESCALON DE EN MEDIO. Aunque el segundo escalon de una cosa ahorrase muchisimo,
+        //     para llegar a el hay que dar antes el primero. Ir de alto a bajo de una es afear la rocola el
+        //     doble de lo que hacia falta.
+        //
+        //  Y se para en cuanto la cuenta pasa de la meta: bajar de mas es tan malo como no bajar.
         // ---------------------------------------------------------------------------------------------
-        private static int[] ProponeApagados(double[] msAhorro, double msPeor, int meta, out double msFinal)
+        private static int[] ProponeEscalones(double[] aMedio, double[] aBajo, double msPeor, int meta, out double msFinal)
         {
             msFinal = msPeor;
-            List<int> apaga = new List<int>();
-            if (msAhorro == null || msAhorro.Length == 0 || meta <= 0) return apaga.ToArray();
-
-            // Los que cuestan algo de verdad, del que mas ahorra al que menos.
-            List<int> orden = new List<int>();
-            for (int i = 0; i < msAhorro.Length; i++) if (msAhorro[i] > RuidoMs) orden.Add(i);
-            double[] ah = msAhorro;
-            orden.Sort(delegate (int a, int b) { return ah[b].CompareTo(ah[a]); });
+            int n = (aMedio == null) ? 0 : aMedio.Length;
+            int[] niv = new int[n];
+            for (int i = 0; i < n; i++) niv[i] = NivAlto;
+            if (n == 0 || aBajo == null || aBajo.Length < n || meta <= 0) return niv;
 
             double objetivo = 1000.0 / meta;   // los ms por cuadro que hacen falta para llegar a la meta
-            for (int k = 0; k < orden.Count && msFinal > objetivo; k++)
+            while (msFinal > objetivo)
             {
-                apaga.Add(orden[k]);
-                msFinal -= ah[orden[k]];
+                // El escalon DISPONIBLE que mas ahorra. Disponible = el siguiente de esa cosa, nunca el de
+                // mas abajo saltandose el de en medio.
+                int mejor = -1; double mejorAhorro = RuidoMs;
+                for (int i = 0; i < n; i++)
+                {
+                    double a = (niv[i] == NivAlto) ? aMedio[i] : (niv[i] == NivMedio) ? aBajo[i] : 0.0;
+                    if (a > mejorAhorro) { mejor = i; mejorAhorro = a; }
+                }
+                if (mejor < 0) break;   // no queda ni un escalon que de verdad ahorre algo
+                niv[mejor]--;
+                msFinal -= mejorAhorro;
             }
             if (msFinal < 0.05) msFinal = 0.05;   // un cuadro no cuesta cero: no dividir por nada
-            return apaga.ToArray();
+            return niv;
         }
 
         // Los cuadros por segundo que dan esos ms de trabajo, sin pasarse del techo de la pantalla.
@@ -87,64 +105,90 @@ namespace Rocola
         // ---------------------------------------------------------------------------------------------
         //  EL CATALOGO DE EFECTOS
         // ---------------------------------------------------------------------------------------------
-        //  Lo que se puede bajar, con su nombre en cristiano, lo que se pierde al quitarlo, y -cuando ya
-        //  se midio- lo que cuesta EN ESTE EQUIPO. Antes de medir el coste sale "sin medir": nunca un
-        //  numero inventado.
+        //  Seis cosas, cada una con sus tres niveles y con lo que se ve en cada uno dicho en cristiano.
+        //  Cuando ya se midio, cada escalon lleva ademas lo que ahorra EN ESTE EQUIPO; antes de medir
+        //  sale "sin medir", nunca un numero inventado.
         // ---------------------------------------------------------------------------------------------
         private sealed class EfectoGrafico
         {
-            public string Clave;      // como se llama en el archivo de configuracion
-            public string Nombre;     // como se llama en la pantalla
-            public string Pierde;     // que se deja de ver al apagarlo
-            public double MsAhorro;   // lo que ahorra apagarlo, MEDIDO en este equipo
+            public string Clave;        // como se llama en el archivo de configuracion
+            public string Nombre;       // como se llama en la pantalla
+            public string[] Pierde;     // que se ve en cada nivel: [0] bajo, [1] medio, [2] alto
+            public double AhorroMedio;  // lo que ahorra bajar de alto a medio, MEDIDO
+            public double AhorroBajo;   // y lo que ahorra bajar de medio a bajo
             public bool Medido;
-            public bool Puesto;       // como esta ahora
         }
 
         private EfectoGrafico[] efectos;
         private EfectoGrafico[] Efectos()
         {
             if (efectos != null) return efectos;
-            efectos = new EfectoGrafico[4];
+            efectos = new EfectoGrafico[6];
             efectos[0] = NuevoEfecto("nieblas", "Nieblas y nebulosas",
-                                     "El fondo queda de cielo liso, sin las manchas de color del genero.");
-            efectos[1] = NuevoEfecto("patron", "Patron nuevo cada minuto",
-                                     "El cielo se queda con las mismas estrellas en vez de renovarlas.");
-            efectos[2] = NuevoEfecto("fugaces", "Estrellas fugaces",
-                                     "Deja de cruzar una estrella fugaz cada 7-16 segundos.");
-            efectos[3] = NuevoEfecto("espectro", "Aurora del horizonte",
-                                     "Se apaga el color que sube del suelo siguiendo a la musica.");
+                "Cielo liso: sin las manchas de color del genero.",
+                "Se queda la nebulosa de color y se va el velo de encima.",
+                "Nebulosa de color y velo, las dos capas.");
+            efectos[1] = NuevoEfecto("estrellas", "Cuantas estrellas",
+                "Un tercio de las estrellas: el cielo se ve bastante mas vacio.",
+                "Seis de cada diez. De lejos casi no se distingue.",
+                "Todas.");
+            efectos[2] = NuevoEfecto("espectro", "Aurora del horizonte",
+                "Apagada: el suelo deja de teñirse con la musica.",
+                "A media altura: se sigue viendo latir, mas discreta.",
+                "Sube hasta media pantalla en los golpes fuertes.");
+            efectos[3] = NuevoEfecto("patron", "Patron nuevo de estrellas",
+                "Nunca: el cielo se queda con las estrellas que tiene.",
+                "Cada tres minutos en vez de cada uno.",
+                "Cada minuto, con las dos constelaciones cruzandose.");
+            efectos[4] = NuevoEfecto("fugaces", "Estrellas fugaces",
+                "Ninguna.",
+                "Una cada 15-30 segundos, en vez de dos cada 7-16.",
+                "Hasta dos a la vez, cada 7-16 segundos.");
+            efectos[5] = NuevoEfecto("animacion", "Zoom al entrar a un disco",
+                "Sin animacion: el disco se abre de golpe.",
+                "El vuelo dura 160 ms en vez de 260.",
+                "El vuelo completo, 260 ms.");
             return efectos;
         }
-        private static EfectoGrafico NuevoEfecto(string clave, string nombre, string pierde)
+        private static EfectoGrafico NuevoEfecto(string clave, string nombre, string bajo, string medio, string alto)
         {
             EfectoGrafico e = new EfectoGrafico();
-            e.Clave = clave; e.Nombre = nombre; e.Pierde = pierde; e.Puesto = true; e.Medido = false;
+            e.Clave = clave; e.Nombre = nombre; e.Medido = false;
+            e.AhorroMedio = 0.0; e.AhorroBajo = 0.0;
+            e.Pierde = new string[] { bajo, medio, alto };
             return e;
         }
 
-        // Enciende o apaga un efecto por su clave (lo usan el medidor y la pantalla).
-        private void PonEfecto(string clave, bool on)
+        // Pone un efecto en un nivel (lo usan el medidor, los botones y el mando general).
+        private void PonNivel(string clave, int niv)
         {
+            if (niv < NivBajo) niv = NivBajo; else if (niv > NivAlto) niv = NivAlto;
             switch (clave)
             {
-                case "nieblas": nieblasOn = on; break;
-                case "patron": relevoOn = on; break;
-                case "fugaces": fugacesOn = on; break;
-                case "espectro": auroraAmount = on ? 0.55f : 0f; break;
+                case "nieblas": nieblasNiv = niv; break;
+                case "patron": relevoNiv = niv; break;
+                case "fugaces": fugacesNiv = niv; break;
+                case "estrellas": estrellasDens = (niv == NivAlto) ? 1f : (niv == NivMedio) ? 0.6f : 0.3f; break;
+                case "espectro": auroraAmount = (niv == NivAlto) ? 0.55f : (niv == NivMedio) ? 0.30f : 0f; break;
+                case "animacion": animNiv = niv; break;   // transAnimOn sale solo del nivel
             }
             AplicaEfectosGpu();
         }
-        private bool LeeEfecto(string clave)
+        private int LeeNivel(string clave)
         {
             switch (clave)
             {
-                case "nieblas": return nieblasOn;
-                case "patron": return relevoOn;
-                case "fugaces": return fugacesOn;
-                case "espectro": return auroraAmount > 0.004f;
+                case "nieblas": return nieblasNiv;
+                case "patron": return relevoNiv;
+                case "fugaces": return fugacesNiv;
+                case "animacion": return animNiv;
+                // Estos dos se guardan como porcentaje -ya lo eran antes de que existieran los niveles- y el
+                // nivel sale de ahi. El corte va a media escala, para que un valor puesto a mano en el archivo
+                // de configuracion caiga en el escalon al que de verdad se parece.
+                case "estrellas": return (estrellasDens > 0.8f) ? NivAlto : (estrellasDens > 0.45f) ? NivMedio : NivBajo;
+                case "espectro": return (auroraAmount > 0.43f) ? NivAlto : (auroraAmount > 0.004f) ? NivMedio : NivBajo;
             }
-            return true;
+            return NivAlto;
         }
 
         // Lleva las perillas al panel de la tarjeta grafica. Se llama al montarlo y cada vez que cambian.
@@ -152,9 +196,9 @@ namespace Rocola
         {
 #if ROCOLA_GPU
             if (gpuPanel == null) return;
-            gpuPanel.Nieblas = nieblasOn;
-            gpuPanel.Fugaces = fugacesOn;
-            gpuPanel.RelevoPatron = relevoOn;
+            gpuPanel.Nieblas = nieblasNiv;
+            gpuPanel.Fugaces = fugacesNiv;
+            gpuPanel.RelevoPatron = relevoNiv;
             gpuPanel.Estrellas = estrellasDens;
             gpuPanel.TopeFps = fpsTope;
             gpuPanel.OlvidaTope();   // el tope se resuelve una vez y se guarda: al cambiarlo hay que re-resolverlo
@@ -168,74 +212,149 @@ namespace Rocola
         {
             public string Nombre;
             public double MsTrabajo;   // lo que cuesta ARMAR un cuadro (sin la espera del monitor)
-            public int Fps;            // los cuadros por segundo que salen de ahi, con el techo de la pantalla
+            public int Fps;            // los cuadros por segundo ENTREGADOS de verdad, con todo compitiendo
         }
         private List<EscenaMedida> bancoEscenas;   // null = aun sin medir
         private string bancoPeor = "";             // el escenario que peor salio
         private double bancoMsPeor;
         private int bancoFpsPeor;
         private int bancoTope;                     // el techo de la pantalla en este equipo
-        private string[] bancoPropuesta;           // claves a apagar (vacio = no hace falta tocar nada)
+        private int[] bancoPropuesta;              // el nivel propuesto para cada efecto (null = sin medir)
         private int bancoFpsPropuesta;             // donde quedaria
         private bool bancoConGpu;                  // si al medir la rocola dibujaba con tarjeta grafica
+        private bool bancoConMusica;               // si se pudo medir con una cancion puesta
+
+        // Las cinco pantallas donde la rocola pasa su vida. Ya no son fotos fijas: cada una lleva dentro lo
+        // que de verdad hace la gente en ella.
+        private const int EscPagina = 0, EscLetra = 1, EscBuscador = 2, EscDisco = 3, EscAtraccion = 4;
+        private static readonly string[] NombreEscena = {
+            "Pasando de pagina", "Cambiando de letra", "Escribiendo en el buscador",
+            "Entrando a discos", "Pantalla de atraccion" };
+        private const int MsPorEscena = 2000;    // lo que dura la medida de cada pantalla
+        private const int MsPorEscalon = 1200;   // ... y la de cada escalon de efecto (la pantalla ya esta puesta)
+        private const int MsCalentando = 350;    // los primeros no cuentan: una pantalla nueva sube texturas
 
 #if ROCOLA_GPU
-        // CUANTOS CUADROS SE PIDEN POR MEDIDA. Cuarenta cuadros son dos tercios de segundo en una pantalla
-        // de 60: suficiente para que el promedio se asiente y poco para que la rocola no parezca colgada.
-        private const int CuadrosPorMedida = 40;
-        private const int CuadrosCalentando = 8;   // los primeros no cuentan: el primer cuadro de una pantalla nueva sube texturas
+        private int pasoEsc;                       // por donde va la pantalla que se mide (que letra, que pagina...)
+        private int bancoPeorId;                   // cual de las cinco salio peor (se marca en la tabla)
+        private bool bancoPuseYoLaCancion;         // si la cancion la puso el medidor: entonces es suya para pararla
+        // Cada cuanto se da un paso de la pantalla. El de pagina va a 180 ms A PROPOSITO: la animacion de
+        // pasar dura 230, asi que se la interrumpe a si misma, que es exactamente lo que pasa cuando alguien
+        // machaca el boton. Lo demas va al ritmo al que lo haria una persona con prisa.
+        private static readonly int[] PasoEscenaMs = { 180, 420, 150, 380, 0 };
 
-        // UN PULSO DE MUSICA DE MENTIRA, y bien fuerte. Asi el medidor da lo mismo con la rocola callada
-        // que en plena noche de sabado -se puede repetir-, y ademas mide el caso PEOR: el latido a tope,
-        // que es cuando mas cosas se dibujan.
+        // UN PULSO DE MUSICA DE MENTIRA, para cuando NO se pudo poner ninguna cancion. Con musica de verdad
+        // esto no se llama: los niveles salen de la cancion, que es lo suyo.
         private void PulsoDeMentira()
         {
             audioLevel = 0.85f;
             levLo = 0.90f; levMid = 0.72f; levHi = 0.80f;
-            rmsLo = 0.30f; rmsMid = 0.22f; rmsHi = 0.18f;
             for (int b = 0; b < SpecBands; b++)
                 specVis[b] = 0.55f + 0.40f * (float)Math.Sin(b * 0.7 + phase);
             auroraPres = 1f;
         }
 
-        // MIDE UNA PANTALLA. Los cuadros los pide ESTA funcion, no el bucle de siempre: medir ocurre dentro
-        // de una pulsacion, o sea con el bucle de mensajes parado, asi que esperar a que dibuje solo seria
-        // esperar sentado. Cada llamada a DibujaUnCuadro es un cuadro del camino de verdad, el mismo que
-        // dibuja la rocola encendida.
-        //
-        // Y el reloj de las animaciones se adelanta A SU RITMO (uno cada 42 ms de reloj de pared, los de
-        // siempre), no una vez por cuadro: si se llamara en cada cuadro, la rocola creeria que va al doble
-        // de velocidad y rehariamos la textura de la interfaz el doble de veces que en la vida real. El
-        // numero saldria peor de lo que es.
-        private EscenaMedida MideEscena(string nombre)
+        // UN PASO de la pantalla que se esta midiendo: lo que haria la persona que la esta usando.
+        private void PasoDeEscena(int escena)
         {
-            EscenaMedida m = new EscenaMedida();
-            m.Nombre = nombre; m.MsTrabajo = 0.0; m.Fps = 0;
-            if (gpuPanel == null || !gpuPanel.Visible) return m;
+            try
+            {
+                pasoEsc++;
+                switch (escena)
+                {
+                    case EscPagina: if ((pasoEsc & 3) < 2) NextPage(); else PrevPage(); break;
+                    case EscLetra: ChangeLetter(((pasoEsc & 7) < 4) ? 1 : -1); break;
+                    case EscBuscador:
+                        // Escribe una palabra y la borra, sin parar. Cada letra rehace la lista de resultados
+                        // Y vuelve a subir la textura de la pantalla ENTERA a la tarjeta: es lo mas caro que
+                        // hace la rocola, y por eso esta aqui.
+                        if (searchOverlay == null) break;
+                        int k = pasoEsc % 16;
+                        if (k < 8) searchOverlay.TypeChar("SABADO"[k % 6]);
+                        else searchOverlay.Backspace();
+                        break;
+                    case EscDisco:
+                        if (panelSongs != null && panelSongs.Visible) BackToAlbums();
+                        else
+                        {
+                            List<Album> lista = CurrentList();
+                            if (lista != null && lista.Count > 0)
+                            {
+                                int gi = selAlbumIndex; if (gi < 0 || gi >= lista.Count) gi = 0;
+                                EnterAlbum(lista[gi]);
+                            }
+                        }
+                        break;
+                }
+            }
+            catch { }
+        }
 
-            int ultTick = Environment.TickCount - 42;
-            for (int i = 0; i < CuadrosCalentando + CuadrosPorMedida; i++)
+        // EL BUCLE. Pide los cuadros el mismo -medir ocurre dentro de una pulsacion, o sea con el bucle de
+        // mensajes parado, asi que esperar a que dibuje solo seria esperar sentado- y ADEMAS deja correr los
+        // mensajes entre uno y otro. Las dos cosas hacen falta, y la segunda es la que hace que esto valga:
+        // de ese bucle de mensajes come el audio, y si no corre, la cancion se queda sin colchon y su trabajo
+        // -que es el que de verdad compite con el dibujo, en el mismo hilo- NO ENTRARIA EN LA CUENTA. El
+        // numero saldria bueno y falso.
+        //
+        // El reloj de las animaciones se adelanta A SU RITMO (uno cada 42 ms de reloj de pared, los de
+        // siempre) y con el temporizador de verdad PARADO: si se dispararan los dos, la rocola creeria que va
+        // al doble de velocidad y rehariamos la textura de la interfaz el doble de veces que en la vida real.
+        private void CorreEscena(int escena, int ms, out int cuadros, out int msReales)
+        {
+            cuadros = 0; msReales = 1;
+            if (gpuPanel == null || !gpuPanel.Visible) return;
+            int t0 = Environment.TickCount, ultTick = t0 - 42, ultPaso = t0;
+            int paso = PasoEscenaMs[escena];
+            bool contando = false;
+            int tCuenta = t0;
+            while (true)
             {
                 int ahora = Environment.TickCount;
+                int va = ahora - t0;
+                if (va >= MsCalentando + ms) break;
+                if (!contando && va >= MsCalentando)
+                {
+                    contando = true; tCuenta = ahora; cuadros = 0;
+                    gpuPanel.ReiniciaMedida();   // lo de calentar no cuenta
+                }
                 if (ahora - ultTick >= 42) { ultTick = ahora; try { AnimTimer_Tick(null, EventArgs.Empty); } catch { } }
-                PulsoDeMentira();   // DESPUES del tick: el tick lo pone a cero cuando no suena nada
-                if (i == CuadrosCalentando) gpuPanel.ReiniciaMedida();   // los de calentar no cuentan
+                if (paso > 0 && ahora - ultPaso >= paso) { ultPaso = ahora; PasoDeEscena(escena); }
+                if (!bancoConMusica) PulsoDeMentira();   // sin cancion, un latido de mentira; con ella, el suyo
                 gpuPanel.DibujaUnCuadro();
+                if (contando) cuadros++;
+                Application.DoEvents();   // de aqui come el audio: sin esto la musica no entraria en la cuenta
             }
-            m.MsTrabajo = gpuPanel.MsTrabajo;
-            m.Fps = FpsDe(m.MsTrabajo, bancoTope);
-            return m;
+            msReales = Environment.TickCount - tCuenta;
+            if (msReales < 1) msReales = 1;
         }
-#endif
 
-#if !ROCOLA_GPU
-        // Sin tarjeta grafica no hay nada que cronometrar: esta pantalla no se dibuja por ese camino. Se
-        // devuelven los campos a cero -y se ASIGNAN, para que el compilador no avise de campos que nadie
-        // escribe- y la pagina ya dice, en su sitio, por que aqui no hay numeros.
-        private EscenaMedida MideEscena(string nombre)
+        private EscenaMedida MideEscena(int escena)
         {
             EscenaMedida m = new EscenaMedida();
-            m.Nombre = nombre; m.MsTrabajo = 0.0; m.Fps = 0;
+            m.Nombre = NombreEscena[escena]; m.MsTrabajo = 0.0; m.Fps = 0;
+            return MideEscena(escena, MsPorEscena, m);
+        }
+        private EscenaMedida MideEscena(int escena, int ms, EscenaMedida m)
+        {
+            if (gpuPanel == null || !gpuPanel.Visible) return m;
+            int cuadros, msReales;
+            CorreEscena(escena, ms, out cuadros, out msReales);
+            m.MsTrabajo = gpuPanel.MsTrabajo;
+            // LOS CUADROS SON LOS ENTREGADOS DE VERDAD, contados con el reloj de pared: con la musica
+            // peleando por el mismo hilo, este numero es lo que se siente. El de arriba (ms de trabajo) dice
+            // otra cosa distinta y igual de util: cuanto margen queda por debajo del techo de la pantalla.
+            m.Fps = (int)(cuadros * 1000L / msReales);
+            return m;
+        }
+#else
+        // Sin tarjeta grafica no hay nada que cronometrar: estas pantallas no se dibujan por ese camino. Se
+        // devuelven los campos a cero -y se ASIGNAN, para que el compilador no avise de campos que nadie
+        // escribe- y la pagina ya dice, en su sitio, por que aqui no hay numeros.
+        private EscenaMedida MideEscena(int escena)
+        {
+            EscenaMedida m = new EscenaMedida();
+            m.Nombre = NombreEscena[escena]; m.MsTrabajo = 0.0; m.Fps = 0;
             return m;
         }
 #endif
@@ -243,8 +362,8 @@ namespace Rocola
         // ---------------------------------------------------------------------------------------------
         //  EL MEDIDOR
         // ---------------------------------------------------------------------------------------------
-        //  Pone las cuatro pantallas donde la rocola pasa su vida, mide cada una, se queda con la peor, y
-        //  mide lo que ahorra apagar cada efecto CONTRA ESA. Al acabar deja la rocola donde estaba.
+        //  Pone una cancion, recorre las cinco pantallas EN MOVIMIENTO, se queda con la peor, y mide lo que
+        //  ahorra cada escalon de cada efecto contra esa. Al acabar deja la rocola donde estaba.
         //
         //  NO GUARDA NADA Y NO APLICA NADA: solo rellena lo medido y la propuesta. (La bateria lo vigila:
         //  si algun dia esta funcion llamara a SaveConfigPrefs, se pondria roja.)
@@ -253,10 +372,11 @@ namespace Rocola
         {
             // Todo a cero primero: volver a medir no puede dejar ni un numero de la vez anterior asomando.
             bancoEscenas = new List<EscenaMedida>();
-            bancoPropuesta = new string[0];
-            bancoConGpu = false;
+            bancoPropuesta = null;
+            bancoConGpu = false; bancoConMusica = false;
             bancoPeor = ""; bancoMsPeor = 0.0; bancoFpsPeor = 0; bancoTope = 0; bancoFpsPropuesta = 0;
 #if ROCOLA_GPU
+            bancoPeorId = 0; bancoPuseYoLaCancion = false;
             if (gpuPanel == null || !gpuEnabled || !gpuPanel.Visible) return;
             bancoConGpu = true;
             bancoTope = gpuPanel.TopeFpsReal;
@@ -264,119 +384,132 @@ namespace Rocola
             // COMO ESTABA TODO, para dejarlo igual pase lo que pase.
             bool bkBuscador = searchOpen, bkAtraccion = attractOn;
             bool bkDisco = (panelSongs != null && panelSongs.Visible);
-            bool bkNie = nieblasOn, bkPat = relevoOn, bkFug = fugacesOn;
-            float bkAur = auroraAmount;
+            char bkLetra = currentLetter; int bkPag = page, bkSel = selAlbumIndex;
             EfectoGrafico[] ef = Efectos();
+            int[] bkNiv = new int[ef.Length];
+            for (int i = 0; i < ef.Length; i++) bkNiv[i] = LeeNivel(ef[i].Clave);
+            animTimer.Stop();   // durante la medida el reloj de animaciones lo lleva CorreEscena, a mano
             try
             {
-                // Se mide desde la pared de discos: es el punto del que se puede ir a todas las demas.
+                // ---- LA MUSICA ----
+                // Si ya hay algo sonando se usa ESO: es la carga de verdad y ademas es la cancion de un
+                // cliente que la pago, asi que ni se para ni se le toca el volumen. Solo si no hay nada se
+                // pone una, y MUDA: con el volumen a cero hace exactamente el mismo trabajo -descomprimir el
+                // MP3, el DSEE, el nivelado, los graves, el limitador- porque todo eso pasa antes de llegar a
+                // la bocina. Se mide igual de duro y no se le suelta medio minuto de ruido al local.
+                if (nowPlaying != null && output != null) bancoConMusica = true;
+                else if (tracks.Count > 0)
+                {
+                    try
+                    {
+                        PlayTrack(tracks[new Random().Next(tracks.Count)]);
+                        if (output != null) { output.Volume = 0f; bancoConMusica = true; bancoPuseYoLaCancion = true; }
+                    }
+                    catch { bancoConMusica = false; }
+                }
+
+                // ---- LAS CINCO PANTALLAS ----
                 if (bkBuscador) CloseSearch();
                 if (bkAtraccion) ExitAttract();
                 if (panelSongs != null && panelSongs.Visible) BackToAlbums();
 
-                bancoEscenas.Add(MideEscena("Pared de discos"));
-
-                List<Album> lista = CurrentList();
-                if (lista != null && lista.Count > 0)
-                {
-                    int gi = selAlbumIndex; if (gi < 0 || gi >= lista.Count) gi = 0;
-                    EnterAlbum(lista[gi]);
-                    bancoEscenas.Add(MideEscena("Dentro de un disco"));
-                    BackToAlbums();
-                }
+                bancoEscenas.Add(MideEscena(EscPagina));
+                bancoEscenas.Add(MideEscena(EscLetra));
 
                 OpenSearch();
-                bancoEscenas.Add(MideEscena("Buscador"));
+                bancoEscenas.Add(MideEscena(EscBuscador));
                 CloseSearch();
 
+                bancoEscenas.Add(MideEscena(EscDisco));
+                if (panelSongs != null && panelSongs.Visible) BackToAlbums();
+
                 EnterAttract();
-                bancoEscenas.Add(MideEscena("Pantalla de atraccion"));
+                bancoEscenas.Add(MideEscena(EscAtraccion));
                 ExitAttract();
 
-                // EL PEOR MANDA: de nada sirve que tres pantallas vayan sobradas si la cuarta se arrastra.
-                EscenaMedida peor = null;
-                foreach (EscenaMedida m in bancoEscenas)
-                    if (m.MsTrabajo > 0.0 && (peor == null || m.MsTrabajo > peor.MsTrabajo)) peor = m;
+                // EL PEOR MANDA: de nada sirve que cuatro pantallas vayan sobradas si la quinta se arrastra.
+                EscenaMedida peor = null; int peorId = 0;
+                for (int i = 0; i < bancoEscenas.Count; i++)
+                    if (bancoEscenas[i].MsTrabajo > 0.0 && (peor == null || bancoEscenas[i].MsTrabajo > peor.MsTrabajo))
+                    { peor = bancoEscenas[i]; peorId = i; }
                 if (peor == null) return;
-                bancoPeor = peor.Nombre; bancoMsPeor = peor.MsTrabajo; bancoFpsPeor = peor.Fps;
+                bancoPeor = peor.Nombre; bancoPeorId = peorId; bancoMsPeor = peor.MsTrabajo; bancoFpsPeor = peor.Fps;
 
-                // LO QUE CUESTA CADA EFECTO, contra ESA pantalla y no contra una cualquiera: un efecto puede
-                // costar mucho donde se ve y nada donde no. Se apaga, se vuelve a medir, y la resta es su
-                // coste. Se mide con TODO lo demas puesto, que es como se usa.
-                PonEscena(peor.Nombre);
+                // ---- LO QUE AHORRA CADA ESCALON ----
+                // Contra ESA pantalla y no contra una cualquiera: un efecto puede costar mucho donde se ve y
+                // nada donde no. De cada efecto se mide su nivel MEDIO y su nivel BAJO, con todo lo demas
+                // como estaba, y las restas dan lo que ahorra cada escalon por separado.
+                PonEscena(peorId);
                 for (int i = 0; i < ef.Length; i++)
                 {
-                    bool antes = LeeEfecto(ef[i].Clave);
-                    if (!antes) { ef[i].MsAhorro = 0.0; ef[i].Medido = true; continue; }   // ya estaba apagado: no ahorra nada mas
-                    PonEfecto(ef[i].Clave, false);
-                    EscenaMedida sin = MideEscena(peor.Nombre);
-                    PonEfecto(ef[i].Clave, true);
-                    double ahorro = peor.MsTrabajo - sin.MsTrabajo;
-                    ef[i].MsAhorro = (ahorro > 0.0) ? ahorro : 0.0;
-                    ef[i].Medido = true;
+                    int antes = LeeNivel(ef[i].Clave);
+                    ef[i].AhorroMedio = 0.0; ef[i].AhorroBajo = 0.0; ef[i].Medido = true;
+                    if (antes <= NivBajo) continue;   // ya estaba abajo del todo: no hay escalon que dar
+                    double conMedio = bancoMsPeor, conBajo = bancoMsPeor;
+                    PonNivel(ef[i].Clave, NivMedio);
+                    conMedio = MideEscena(peorId, MsPorEscalon, new EscenaMedida()).MsTrabajo;
+                    PonNivel(ef[i].Clave, NivBajo);
+                    conBajo = MideEscena(peorId, MsPorEscalon, new EscenaMedida()).MsTrabajo;
+                    PonNivel(ef[i].Clave, antes);
+                    double a1 = bancoMsPeor - conMedio, a2 = conMedio - conBajo;
+                    ef[i].AhorroMedio = (a1 > 0.0) ? a1 : 0.0;
+                    ef[i].AhorroBajo = (a2 > 0.0) ? a2 : 0.0;
                 }
-                QuitaEscena(peor.Nombre);
+                QuitaEscena(peorId);
 
-                // Y LA PROPUESTA. Sale de lo medido y de nada mas.
-                double[] ah = new double[ef.Length];
-                for (int i = 0; i < ef.Length; i++) ah[i] = ef[i].MsAhorro;
+                // ---- Y LA PROPUESTA. Sale de lo medido y de nada mas. ----
+                double[] am = new double[ef.Length], ab = new double[ef.Length];
+                for (int i = 0; i < ef.Length; i++) { am[i] = ef[i].AhorroMedio; ab[i] = ef[i].AhorroBajo; }
                 double msFinal;
-                int[] cuales = ProponeApagados(ah, bancoMsPeor, MetaFps, out msFinal);
-                string[] claves = new string[cuales.Length];
-                for (int i = 0; i < cuales.Length; i++) claves[i] = ef[cuales[i]].Clave;
-                bancoPropuesta = claves;
+                bancoPropuesta = ProponeEscalones(am, ab, bancoMsPeor, MetaFps, out msFinal);
                 bancoFpsPropuesta = FpsDe(msFinal, bancoTope);
             }
             catch { }
             finally
             {
                 // La rocola vuelve donde estaba, truene lo que truene por el camino.
-                nieblasOn = bkNie; relevoOn = bkPat; fugacesOn = bkFug; auroraAmount = bkAur;
-                AplicaEfectosGpu();
+                for (int i = 0; i < ef.Length; i++) PonNivel(ef[i].Clave, bkNiv[i]);
                 try
                 {
+                    // SOLO SE PARA LA QUE PUSO EL MEDIDOR. Si ya sonaba algo, es de alguien que lo pago.
+                    if (bancoPuseYoLaCancion) DisposePlaybackNow();
                     if (searchOpen && !bkBuscador) CloseSearch();
-                    if (attractOn && !bkAtraccion) ExitAttract();
                     if (panelSongs != null && panelSongs.Visible && !bkDisco) BackToAlbums();
+                    if (attractOn && !bkAtraccion) ExitAttract();
+                    currentLetter = bkLetra; page = bkPag; selAlbumIndex = bkSel;
+                    RefreshAlbums();
                     if (bkAtraccion && !attractOn) EnterAttract();
                     else if (bkBuscador && !searchOpen) OpenSearch();
                 }
                 catch { }
+                animTimer.Start();
             }
 #endif
         }
 
 #if ROCOLA_GPU
         // Deja puesta la pantalla que toca medir (y la quita despues). Sale aparte porque el coste de cada
-        // efecto se mide varias veces sobre la MISMA pantalla.
-        private void PonEscena(string nombre)
+        // escalon se mide varias veces sobre la MISMA pantalla.
+        private void PonEscena(int escena)
         {
-            if (nombre == "Buscador") OpenSearch();
-            else if (nombre == "Pantalla de atraccion") EnterAttract();
-            else if (nombre == "Dentro de un disco")
-            {
-                List<Album> lista = CurrentList();
-                if (lista != null && lista.Count > 0)
-                {
-                    int gi = selAlbumIndex; if (gi < 0 || gi >= lista.Count) gi = 0;
-                    EnterAlbum(lista[gi]);
-                }
-            }
+            pasoEsc = 0;
+            if (escena == EscBuscador) OpenSearch();
+            else if (escena == EscAtraccion) EnterAttract();
         }
-        private void QuitaEscena(string nombre)
+        private void QuitaEscena(int escena)
         {
-            if (nombre == "Buscador") { if (searchOpen) CloseSearch(); }
-            else if (nombre == "Pantalla de atraccion") { if (attractOn) ExitAttract(); }
-            else if (nombre == "Dentro de un disco") { if (panelSongs != null && panelSongs.Visible) BackToAlbums(); }
+            if (escena == EscBuscador) { if (searchOpen) CloseSearch(); }
+            else if (escena == EscAtraccion) { if (attractOn) ExitAttract(); }
+            else if (panelSongs != null && panelSongs.Visible) BackToAlbums();
         }
 #endif
 
         // =============================================================================================
         //  LA PAGINA "IMAGEN Y RENDIMIENTO"
         // =============================================================================================
-        //  Dos tarjetas, una al lado de la otra, como pediste: a la izquierda el boton de medir con lo que
-        //  salio, y a la derecha la sub-ventana de los efectos, cada uno con SU coste medido en este equipo.
-        //  Debajo, la propuesta y el boton de aplicarla -que hasta que no se pulsa no mueve nada-.
+        //  A la izquierda, el medidor con lo que salio y debajo la propuesta. A la derecha, de arriba
+        //  abajo, la sub-ventana de los efectos: primero el mando general -Bajo, Medio, Alto de golpe- y
+        //  luego cada cosa con sus tres posiciones y SU coste medido en este equipo.
         //
         //  Va toda dentro de un Panel para que cambiar de pestana sea una linea (ensenarlo o esconderlo) y
         //  la pagina de Sonido no se entere: se queda exactamente donde estaba, hasta el ultimo pixel.
@@ -384,7 +517,17 @@ namespace Rocola
         private bool f3Medir;          // se pulso "Medir este equipo": la ventana se cierra, mide, y vuelve
         private int f3Pagina;          // 0 = Sonido, 1 = Imagen (al volver de medir se abre en Imagen)
         private bool f3CambioGraf;     // se toco algo de graficos (para guardar al cerrar)
-        private float auroraPrev = 0.55f;   // lo que valia la aurora antes de apagarla, para devolverla igual
+
+        // Cual de las cinco pantallas salio peor: es la que manda sobre todo lo demas, y en la tabla se
+        // senala para que se vea de un vistazo de donde salen los numeros de abajo.
+        private bool EsLaPeor(int i)
+        {
+#if ROCOLA_GPU
+            return bancoEscenas != null && i == bancoPeorId;
+#else
+            return false;
+#endif
+        }
 
         private Panel PaginaImagen(Font fNom, Font fVal, Font fDes, Font fBot,
                                    Color cTexto, Color cTenue, Color cApagado)
@@ -394,186 +537,218 @@ namespace Rocola
             Color cProp = Color.FromArgb(255, 176, 102);
             Color cBien = Color.FromArgb(120, 230, 165);
             Color cMal = Color.FromArgb(255, 170, 110);
+            Color cOn = Color.FromArgb(28, 62, 104), cOff = Color.FromArgb(28, 34, 62);
+            Color cBordeOn = Color.FromArgb(150, 205, 255), cBordeOff = Color.FromArgb(60, 72, 118);
 
             Panel pg = new Panel();
             pg.SetBounds(0, 96, 960, 636);
             pg.BackColor = Color.FromArgb(11, 14, 32);
 
-            Tarjeta tMide = new Tarjeta(); tMide.SetBounds(16, 4, 456, 398); tMide.Titulo = "ESTE EQUIPO"; tMide.Acento = cMide;
-            Tarjeta tEfe = new Tarjeta(); tEfe.SetBounds(488, 4, 456, 398); tEfe.Titulo = "EFECTOS"; tEfe.Acento = cEfe;
-            Tarjeta tProp = new Tarjeta(); tProp.SetBounds(16, 412, 928, 160); tProp.Titulo = "LA PROPUESTA"; tProp.Acento = cProp;
+            Tarjeta tMide = new Tarjeta(); tMide.SetBounds(16, 4, 456, 400); tMide.Titulo = "ESTE EQUIPO"; tMide.Acento = cMide;
+            Tarjeta tProp = new Tarjeta(); tProp.SetBounds(16, 412, 456, 160); tProp.Titulo = "LA PROPUESTA"; tProp.Acento = cProp;
+            Tarjeta tEfe = new Tarjeta(); tEfe.SetBounds(488, 4, 456, 568); tEfe.Titulo = "EFECTOS"; tEfe.Acento = cEfe;
 
             // ---------------- ESTE EQUIPO ----------------
             BotonPlano bMedir = new BotonPlano();
-            bMedir.SetBounds(16, 44, 424, 38); bMedir.Font = fBot; bMedir.Text = "Medir este equipo";
-            bMedir.Relleno = Color.FromArgb(28, 62, 104); bMedir.Borde = cMide;
-            Label lTarda = new Label(); lTarda.SetBounds(16, 88, 424, 32); lTarda.BackColor = Color.Transparent;
+            bMedir.SetBounds(16, 40, 424, 36); bMedir.Font = fBot; bMedir.Text = "Medir este equipo";
+            bMedir.Relleno = cOn; bMedir.Borde = cMide;
+            Label lTarda = new Label(); lTarda.SetBounds(16, 82, 424, 32); lTarda.BackColor = Color.Transparent;
             lTarda.ForeColor = cTenue; lTarda.Font = fDes;
-            lTarda.Text = "Tarda unos diez segundos y veras pasar las cuatro pantallas:\nes que las esta midiendo de verdad, una por una.";
-
-            Label lCab = new Label(); lCab.SetBounds(16, 126, 424, 18); lCab.BackColor = Color.Transparent;
-            lCab.ForeColor = cApagado; lCab.Font = fDes; lCab.Text = "PANTALLA                              TRABAJO      CUADROS/S";
-            Label[] lFila = new Label[4];
-            for (int i = 0; i < 4; i++)
+            lTarda.Text = "Tarda medio minuto. Pone una cancion muda y usa la rocola sola:\npasa de pagina, cambia de letra, escribe y entra en discos.";
+            Label lCab = new Label(); lCab.SetBounds(16, 120, 424, 16); lCab.BackColor = Color.Transparent;
+            lCab.ForeColor = cApagado; lCab.Font = fDes; lCab.Text = "PANTALLA                          TRABAJO   CUADROS/S";
+            Label[] lFila = new Label[5];
+            for (int i = 0; i < 5; i++)
             {
-                lFila[i] = new Label(); lFila[i].SetBounds(16, 148 + i * 24, 424, 20);
+                lFila[i] = new Label(); lFila[i].SetBounds(16, 140 + i * 22, 424, 20);
                 lFila[i].BackColor = Color.Transparent; lFila[i].ForeColor = cTexto; lFila[i].Font = fDes;
                 tMide.Controls.Add(lFila[i]);
             }
-            Label lVer = new Label(); lVer.SetBounds(16, 246, 424, 148); lVer.BackColor = Color.Transparent;
+            Label lTecho = new Label(); lTecho.SetBounds(16, 252, 424, 16); lTecho.BackColor = Color.Transparent;
+            lTecho.ForeColor = cApagado; lTecho.Font = fDes;
+            Label lSinMus = new Label(); lSinMus.SetBounds(16, 272, 424, 32); lSinMus.BackColor = Color.Transparent;
+            lSinMus.ForeColor = Color.FromArgb(255, 196, 96); lSinMus.Font = fDes;
+            Label lVer = new Label(); lVer.SetBounds(16, 308, 424, 80); lVer.BackColor = Color.Transparent;
             lVer.ForeColor = cTenue; lVer.Font = fDes;
-            tMide.Controls.Add(bMedir); tMide.Controls.Add(lTarda); tMide.Controls.Add(lCab); tMide.Controls.Add(lVer);
-
-            // ---------------- EFECTOS (la sub-ventana de al lado) ----------------
-            EfectoGrafico[] ef = Efectos();
-            Interruptor[] sw = new Interruptor[ef.Length + 1];
-            Label[] lCost = new Label[ef.Length + 1];
-            Label[] lPier = new Label[ef.Length + 1];
-            string[] claveFila = new string[ef.Length + 1];
-            for (int i = 0; i < ef.Length; i++) claveFila[i] = ef[i].Clave;
-            claveFila[ef.Length] = "estrellas";
-
-            for (int i = 0; i < claveFila.Length; i++)
-            {
-                int y = 40 + i * 68;
-                sw[i] = new Interruptor(); sw[i].SetBounds(16, y, 300, 26);
-                sw[i].ForeColor = cTexto; sw[i].Font = fNom; sw[i].Acento = cEfe;
-                lCost[i] = new Label(); lCost[i].SetBounds(322, y + 2, 118, 20); lCost[i].BackColor = Color.Transparent;
-                lCost[i].ForeColor = cEfe; lCost[i].Font = fVal; lCost[i].TextAlign = ContentAlignment.TopRight;
-                lPier[i] = new Label(); lPier[i].SetBounds(16, y + 28, 424, 32); lPier[i].BackColor = Color.Transparent;
-                lPier[i].ForeColor = cTenue; lPier[i].Font = fDes;
-                tEfe.Controls.Add(sw[i]); tEfe.Controls.Add(lCost[i]); tEfe.Controls.Add(lPier[i]);
-            }
-            sw[ef.Length].Text = "Cielo con todas las estrellas";
-            lPier[ef.Length].Text = "Apagado, el cielo se queda con la MITAD de estrellas.\nEs lo que mas se nota de esta lista, y lo que mas ahorra.";
-            for (int i = 0; i < ef.Length; i++) { sw[i].Text = ef[i].Nombre; lPier[i].Text = ef[i].Pierde; }
+            tMide.Controls.Add(bMedir); tMide.Controls.Add(lTarda); tMide.Controls.Add(lCab);
+            tMide.Controls.Add(lTecho); tMide.Controls.Add(lSinMus); tMide.Controls.Add(lVer);
 
             // ---------------- LA PROPUESTA ----------------
-            Label lProp = new Label(); lProp.SetBounds(16, 40, 896, 72); lProp.BackColor = Color.Transparent;
+            Label lProp = new Label(); lProp.SetBounds(16, 36, 424, 68); lProp.BackColor = Color.Transparent;
             lProp.ForeColor = cTenue; lProp.Font = fDes;
             BotonPlano bApli = new BotonPlano();
-            bApli.SetBounds(16, 116, 300, 34); bApli.Font = fBot; bApli.Text = "Aplicar lo recomendado";
-            Label lApliDes = new Label(); lApliDes.SetBounds(332, 118, 580, 36); lApliDes.BackColor = Color.Transparent;
-            lApliDes.ForeColor = cTenue; lApliDes.Font = fDes;
-            lApliDes.Text = "Nada se mueve hasta que pulses aqui. El orden lo manda lo medido:\n"
-                          + "primero lo que mas ahorra, y para en cuanto pasa. Nada de apagar de mas.";
-            tProp.Controls.Add(lProp); tProp.Controls.Add(bApli); tProp.Controls.Add(lApliDes);
+            bApli.SetBounds(16, 112, 424, 34); bApli.Font = fBot; bApli.Text = "Aplicar lo recomendado";
+            tProp.Controls.Add(lProp); tProp.Controls.Add(bApli);
+
+            // ---------------- EFECTOS: el mando general y las seis filas ----------------
+            EfectoGrafico[] ef = Efectos();
+            Label lGen = new Label(); lGen.SetBounds(16, 38, 424, 16); lGen.BackColor = Color.Transparent;
+            lGen.ForeColor = cApagado; lGen.Font = fDes;
+            BotonPlano[] bGen = new BotonPlano[3];
+            string[] nomNivel = { "Bajo", "Medio", "Alto" };
+            for (int k = 0; k < 3; k++)
+            {
+                bGen[k] = new BotonPlano(); bGen[k].SetBounds(16 + k * 144, 58, 136, 28);
+                bGen[k].Font = fBot; bGen[k].Text = nomNivel[k];
+                tEfe.Controls.Add(bGen[k]);
+            }
+            Label[] lNom = new Label[ef.Length], lCost = new Label[ef.Length];
+            BotonPlano[][] bNiv = new BotonPlano[ef.Length][];
+            for (int i = 0; i < ef.Length; i++)
+            {
+                int y = 100 + i * 68;
+                lNom[i] = new Label(); lNom[i].SetBounds(16, y, 424, 18); lNom[i].BackColor = Color.Transparent;
+                lNom[i].ForeColor = cTexto; lNom[i].Font = fNom; lNom[i].Text = ef[i].Nombre;
+                lCost[i] = new Label(); lCost[i].SetBounds(322, y + 24, 118, 18); lCost[i].BackColor = Color.Transparent;
+                lCost[i].ForeColor = cApagado; lCost[i].Font = fDes; lCost[i].TextAlign = ContentAlignment.TopRight;
+                bNiv[i] = new BotonPlano[3];
+                for (int k = 0; k < 3; k++)
+                {
+                    bNiv[i][k] = new BotonPlano(); bNiv[i][k].SetBounds(16 + k * 102, y + 22, 96, 26);
+                    bNiv[i][k].Font = fBot; bNiv[i][k].Text = nomNivel[k];
+                    tEfe.Controls.Add(bNiv[i][k]);
+                }
+                tEfe.Controls.Add(lNom[i]); tEfe.Controls.Add(lCost[i]);
+            }
+            Label lPierde = new Label(); lPierde.SetBounds(16, 492, 424, 64); lPierde.BackColor = Color.Transparent;
+            lPierde.ForeColor = cTenue; lPierde.Font = fDes;
+            tEfe.Controls.Add(lGen); tEfe.Controls.Add(lPierde);
 
             BotonPlano bResetG = new BotonPlano();
             bResetG.SetBounds(16, 584, 300, 38); bResetG.Font = fBot; bResetG.Text = "Graficos como de fabrica";
 
+            int ultimoTocado = 0;
+
             // ---------------- LO QUE SE ENSENA, SEGUN LO QUE HAYA ----------------
             Action pinta = delegate
             {
-                for (int i = 0; i < claveFila.Length; i++)
+                // Los tres botones de cada fila, y el mando general si TODAS estan en el mismo nivel.
+                int comun = -2;
+                for (int i = 0; i < ef.Length; i++)
                 {
-                    bool puesto = (claveFila[i] == "estrellas") ? (estrellasDens > 0.75f) : LeeEfecto(claveFila[i]);
-                    sw[i].Checked = puesto;
+                    int niv = LeeNivel(ef[i].Clave);
+                    if (comun == -2) comun = niv; else if (comun != niv) comun = -1;
+                    for (int k = 0; k < 3; k++)
+                    {
+                        bool act = (k == niv);
+                        bNiv[i][k].Relleno = act ? cOn : cOff;
+                        bNiv[i][k].Borde = act ? cBordeOn : cBordeOff;
+                        bNiv[i][k].ForeColor = act ? Color.FromArgb(226, 240, 255) : cApagado;
+                        bNiv[i][k].Invalidate();
+                    }
+                    // El coste: lo que ahorra bajar UN escalon desde donde esta ahora. Puesto asi y no como
+                    // "lo que cuesta el efecto entero" porque es la pregunta que uno se hace mirando el boton:
+                    // si bajo esto un punto, cuanto gano.
                     string coste = "sin medir";
                     Color cc = cApagado;
-                    if (i < ef.Length && ef[i].Medido)
+                    if (ef[i].Medido)
                     {
-                        if (ef[i].MsAhorro > RuidoMs) { coste = ef[i].MsAhorro.ToString("0.0") + " ms"; cc = cEfe; }
-                        else { coste = "no cuesta"; cc = cApagado; }
+                        double a = (niv == NivAlto) ? ef[i].AhorroMedio : (niv == NivMedio) ? ef[i].AhorroBajo : 0.0;
+                        if (niv == NivBajo) { coste = "ya esta abajo"; cc = cApagado; }
+                        else if (a > RuidoMs) { coste = "-" + a.ToString("0.0") + " ms"; cc = cEfe; }
+                        else { coste = "no se nota"; cc = cApagado; }
                     }
-                    else if (claveFila[i] == "estrellas" && bancoEscenas != null) { coste = "a mano"; cc = cApagado; }
                     lCost[i].Text = coste; lCost[i].ForeColor = cc;
                 }
+                for (int k = 0; k < 3; k++)
+                {
+                    bool act = (k == comun);
+                    bGen[k].Relleno = act ? cOn : cOff;
+                    bGen[k].Borde = act ? cBordeOn : cBordeOff;
+                    bGen[k].ForeColor = act ? Color.FromArgb(226, 240, 255) : cApagado;
+                    bGen[k].Invalidate();
+                }
+                lGen.Text = "Todo de golpe:" + ((comun < 0) ? "        (ahora esta a medida)" : "");
+                int nv = LeeNivel(ef[ultimoTocado].Clave);
+                lPierde.Text = ef[ultimoTocado].Nombre + " en " + nomNivel[nv].ToLower() + ":\n" + ef[ultimoTocado].Pierde[nv];
 
-                // La tabla de lo medido
+                // ---- La tabla de lo medido ----
                 for (int i = 0; i < lFila.Length; i++) lFila[i].Text = "";
                 if (bancoEscenas == null)
                 {
-                    lCab.Visible = false;
-                    lVer.Text = "Aun sin medir.\n\nPulsa el boton de arriba y la rocola se medira sola en este equipo:"
-                              + " pondra sus cuatro pantallas, le pedira cuadros a la tarjeta grafica y cronometrara"
-                              + " lo que cuesta armar cada uno.\n\nHasta entonces aqui no hay ningun numero, porque"
-                              + " ninguno seria de verdad.";
+                    lCab.Visible = false; lTecho.Text = ""; lSinMus.Text = "";
                     lVer.ForeColor = cTenue;
+                    lVer.Text = "Aun sin medir.\n\nAqui no hay ningun numero porque ninguno seria de verdad:"
+                              + " los de este equipo salen de medirlo.";
                     lProp.Text = "Sin medir todavia. La propuesta sale de lo que se mida en ESTE equipo, no de una"
                                + " lista de equipos buenos y malos escrita a mano.";
-                    bApli.Enabled = false;
-                    bApli.Relleno = Color.FromArgb(28, 34, 62); bApli.Borde = Color.FromArgb(60, 72, 118);
-                    bApli.ForeColor = cApagado;
+                    bApli.Enabled = false; bApli.Relleno = cOff; bApli.Borde = cBordeOff; bApli.ForeColor = cApagado;
                     return;
                 }
                 lCab.Visible = true;
-                int n = 0;
-                foreach (EscenaMedida m in bancoEscenas)
+                for (int i = 0; i < bancoEscenas.Count && i < lFila.Length; i++)
                 {
-                    if (n >= lFila.Length) break;
+                    EscenaMedida m = bancoEscenas[i];
                     string nom = m.Nombre;
-                    while (nom.Length < 26) nom += " ";
-                    lFila[n].Text = nom + "  " + m.MsTrabajo.ToString("0.0") + " ms" + (m.MsTrabajo < 10 ? "  " : " ")
-                                  + "       " + m.Fps;
-                    lFila[n].ForeColor = (m.Fps >= MetaFps) ? cBien : cMal;
-                    if (m.Nombre == bancoPeor) lFila[n].Font = fNom;
-                    n++;
+                    while (nom.Length < 28) nom += " ";
+                    lFila[i].Text = nom + m.MsTrabajo.ToString("0.0") + " ms" + (m.MsTrabajo < 10 ? "  " : " ") + "     " + m.Fps
+                                  + (EsLaPeor(i) ? "   <-- la que manda" : "");
+                    lFila[i].ForeColor = (m.Fps >= MetaFps) ? cBien : cMal;
                 }
 
+                lTecho.Text = "El techo de esta pantalla son " + bancoTope + " cuadros por segundo.";
+                lSinMus.Text = bancoConMusica ? "" :
+                      "OJO: no se pudo poner ninguna cancion y se midio en\n"
+                    + "silencio. De verdad saldra peor de lo que dice aqui.";
                 if (!bancoConGpu)
                 {
+                    lTecho.Text = "";
                     lVer.ForeColor = cMal;
-                    lVer.Text = "Esta rocola NO esta dibujando con la tarjeta grafica.\n\nPor ese camino el techo son 24"
-                              + " cuadros por segundo, y no por falta de equipo: esta puesto asi a proposito para gastar"
-                              + " poco. Los 30 no se alcanzan ahi por mucho que se apaguen efectos.\n\nLa perilla que"
-                              + " importa en este equipo es encender la tarjeta grafica.";
-                    lProp.Text = "Sin tarjeta grafica no hay nada que proponer aqui: apagar efectos no sube un techo que"
+                    lVer.Text = "Esta rocola NO esta dibujando con la tarjeta grafica.\n\nPor ese camino el techo son"
+                              + " 24 cuadros por segundo, puesto asi a proposito para gastar poco. La perilla que"
+                              + " importa aqui es encender la tarjeta.";
+                    lProp.Text = "Sin tarjeta grafica no hay nada que proponer aqui: bajar efectos no sube un techo que"
                                + " no es de la tarjeta.";
-                    bApli.Enabled = false;
-                    bApli.Relleno = Color.FromArgb(28, 34, 62); bApli.Borde = Color.FromArgb(60, 72, 118);
-                    bApli.ForeColor = cApagado;
+                    bApli.Enabled = false; bApli.Relleno = cOff; bApli.Borde = cBordeOff; bApli.ForeColor = cApagado;
                     return;
                 }
 
                 string peor = "La que peor va es \"" + bancoPeor + "\": " + bancoFpsPeor + " cuadros por segundo"
                             + " (" + bancoMsPeor.ToString("0.0") + " ms de trabajo por cuadro).";
-                string techo = "\n\nEl techo de esta pantalla son " + bancoTope + " cuadros por segundo: por encima de"
-                             + " eso no se dibuja, porque no se veria.";
                 if (bancoFpsPeor >= MetaFps)
                 {
                     lVer.ForeColor = cBien;
-                    lVer.Text = peor + "\n\nPasa de los 30 de sobra. No hace falta apagar nada." + techo;
+                    lVer.Text = peor + "\n\nPasa de los 30 de sobra. No hace falta bajar nada.";
                     lProp.Text = "Nada que cambiar: la pantalla que peor va ya da " + bancoFpsPeor + " cuadros por"
                                + " segundo, por encima de los 30 que se pedian.";
-                    bApli.Enabled = false;
-                    bApli.Relleno = Color.FromArgb(28, 34, 62); bApli.Borde = Color.FromArgb(60, 72, 118);
-                    bApli.ForeColor = cApagado;
+                    bApli.Enabled = false; bApli.Relleno = cOff; bApli.Borde = cBordeOff; bApli.ForeColor = cApagado;
                     return;
                 }
 
                 lVer.ForeColor = cMal;
-                lVer.Text = peor + "\n\nNo llega a los 30. A la derecha esta lo que cuesta cada efecto en ESTE equipo,"
-                          + " medido apagandolo y volviendo a medir." + techo;
+                lVer.Text = peor + "\n\nNo llega a los 30. Al lado de cada cosa, a la derecha, esta lo que se gana"
+                          + " bajandola un escalon en ESTE equipo.";
 
-                if (bancoPropuesta == null || bancoPropuesta.Length == 0)
+                // Que escalones propone, dicho en palabras. Se nombran los DOS primeros y del resto se dice
+                // cuantos son: nombrarlos todos son seis nombres largos y el hueco no da para tanto.
+                string cuales = ""; int cuantos = 0, nombrados = 0;
+                if (bancoPropuesta != null)
+                    for (int i = 0; i < ef.Length && i < bancoPropuesta.Length; i++)
+                    {
+                        if (bancoPropuesta[i] >= NivAlto) continue;
+                        cuantos++;
+                        if (nombrados < 2)
+                        {
+                            cuales += (cuales.Length == 0 ? "" : ", ") + ef[i].Nombre.ToLower() + " a " + nomNivel[bancoPropuesta[i]].ToLower();
+                            nombrados++;
+                        }
+                    }
+                if (cuantos > nombrados) cuales += " y " + (cuantos - nombrados) + " mas";
+                if (cuantos == 0)
                 {
-                    lProp.Text = "No llega a los 30 y NO hay nada que apagar que lo arregle: ninguno de los efectos"
+                    lProp.Text = "No llega a los 30 y NO hay nada que bajar que lo arregle: ninguno de los efectos"
                                + " cuesta lo suficiente como para notarse. El cuello esta en otro sitio, no en los"
                                + " adornos del cielo.";
-                    bApli.Enabled = false;
-                    bApli.Relleno = Color.FromArgb(28, 34, 62); bApli.Borde = Color.FromArgb(60, 72, 118);
-                    bApli.ForeColor = cApagado;
+                    bApli.Enabled = false; bApli.Relleno = cOff; bApli.Borde = cBordeOff; bApli.ForeColor = cApagado;
                     return;
                 }
-
-                string cuales = "";
-                for (int i = 0; i < bancoPropuesta.Length; i++)
-                {
-                    string nom = bancoPropuesta[i];
-                    for (int k = 0; k < ef.Length; k++) if (ef[k].Clave == bancoPropuesta[i]) nom = ef[k].Nombre.ToLower();
-                    cuales += (i == 0 ? "" : (i == bancoPropuesta.Length - 1 ? " y " : ", ")) + nom;
-                }
                 bool llega = bancoFpsPropuesta >= MetaFps;
-                lProp.Text = "\"" + bancoPeor + "\" va a " + bancoFpsPeor + " cuadros por segundo. Apagando " + cuales
-                           + " se pondria en " + bancoFpsPropuesta + "."
-                           + (llega ? "  Con eso pasa de los 30."
-                                    : "  AUN ASI NO LLEGA A 30: este equipo no da para mas ni apagandolo todo, y es"
-                                    + " mejor decirlo que fingir que se arreglo.")
-                           ;
-                bApli.Enabled = true;
-                bApli.Relleno = Color.FromArgb(30, 96, 70); bApli.Borde = Color.FromArgb(72, 182, 132);
-                bApli.ForeColor = Color.White;
+                // Corto a proposito: el hueco da para cuatro renglones y el "como" ya esta dicho arriba.
+                lProp.Text = "Bajar " + cuales + " deja \"" + bancoPeor + "\" en " + bancoFpsPropuesta + "."
+                           + (llega ? "  Con eso pasa de los 30." : "  AUN ASI NO LLEGA A 30: este equipo no da"
+                                    + " para mas ni bajandolo todo.");
+                bApli.Enabled = true; bApli.Relleno = Color.FromArgb(30, 96, 70);
+                bApli.Borde = Color.FromArgb(72, 182, 132); bApli.ForeColor = Color.White;
             };
 
             // ---------------- LO QUE HACEN LOS BOTONES ----------------
@@ -583,48 +758,42 @@ namespace Rocola
                 Form f = pg.FindForm();
                 if (f != null) f.Close();   // la ventana se cierra, se mide con la pantalla libre, y vuelve sola
             };
-            EventHandler alTocar = delegate (object so, EventArgs ea)
+            EventHandler alNivel = delegate (object so, EventArgs ea)
             {
-                for (int i = 0; i < claveFila.Length; i++)
-                {
-                    if (so != sw[i]) continue;
-                    if (claveFila[i] == "estrellas") { estrellasDens = sw[i].Checked ? 1f : 0.5f; AplicaEfectosGpu(); }
-                    else if (claveFila[i] == "espectro")
-                    {
-                        if (sw[i].Checked) auroraAmount = (auroraPrev > 0.004f) ? auroraPrev : 0.55f;
-                        else { if (auroraAmount > 0.004f) auroraPrev = auroraAmount; auroraAmount = 0f; }
-                        AplicaEfectosGpu();
-                    }
-                    else PonEfecto(claveFila[i], sw[i].Checked);
-                }
+                for (int i = 0; i < ef.Length; i++)
+                    for (int k = 0; k < 3; k++)
+                        if (so == bNiv[i][k]) { PonNivel(ef[i].Clave, k); ultimoTocado = i; }
                 f3CambioGraf = true;
                 pinta();
             };
-            for (int i = 0; i < sw.Length; i++) sw[i].CheckedChanged += alTocar;
+            for (int i = 0; i < ef.Length; i++)
+                for (int k = 0; k < 3; k++) bNiv[i][k].Click += alNivel;
+            EventHandler alGeneral = delegate (object so, EventArgs ea)
+            {
+                for (int k = 0; k < 3; k++)
+                    if (so == bGen[k]) foreach (EfectoGrafico e in ef) PonNivel(e.Clave, k);
+                f3CambioGraf = true;
+                pinta();
+            };
+            for (int k = 0; k < 3; k++) bGen[k].Click += alGeneral;
 
             bApli.Click += delegate
             {
                 if (bancoPropuesta == null) return;
-                foreach (string c in bancoPropuesta)
-                {
-                    if (c == "estrellas") { estrellasDens = 0.5f; AplicaEfectosGpu(); }
-                    else if (c == "espectro") { if (auroraAmount > 0.004f) auroraPrev = auroraAmount; auroraAmount = 0f; AplicaEfectosGpu(); }
-                    else PonEfecto(c, false);
-                }
+                for (int i = 0; i < ef.Length && i < bancoPropuesta.Length; i++) PonNivel(ef[i].Clave, bancoPropuesta[i]);
                 f3CambioGraf = true;
                 pinta();
                 ShowToast("Graficos ajustados a este equipo", Color.FromArgb(40, 130, 90));
             };
             bResetG.Click += delegate
             {
-                nieblasOn = true; relevoOn = true; fugacesOn = true;
-                estrellasDens = 1f; auroraAmount = 0.55f; auroraPrev = 0.55f; fpsTope = 0;
-                AplicaEfectosGpu();
+                foreach (EfectoGrafico e in ef) PonNivel(e.Clave, NivAlto);
+                fpsTope = 0; AplicaEfectosGpu();
                 f3CambioGraf = true;
                 pinta();
             };
 
-            pg.Controls.Add(tMide); pg.Controls.Add(tEfe); pg.Controls.Add(tProp); pg.Controls.Add(bResetG);
+            pg.Controls.Add(tMide); pg.Controls.Add(tProp); pg.Controls.Add(tEfe); pg.Controls.Add(bResetG);
             pinta();
             return pg;
         }

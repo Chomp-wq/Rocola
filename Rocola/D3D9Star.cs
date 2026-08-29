@@ -479,17 +479,21 @@ namespace Rocola
         public void SetDim(float d) { dim = d < 0f ? 0f : (d > 1f ? 1f : d); }
 
         // ===================== LAS PERILLAS DEL CIELO (Ctrl+F3 -> Imagen y rendimiento) =====================
-        // Tres cosas del cielo se pueden bajar o apagar cuando un equipo no da para todo. Estan juntas y aqui
-        // arriba a proposito: repartidas por el archivo, nadie sabria de un vistazo que se puede quitar.
+        // Tres cosas del cielo se pueden bajar cuando un equipo no da para todo. Estan juntas y aqui arriba a
+        // proposito: repartidas por el archivo, nadie sabria de un vistazo que se puede aflojar.
+        //
+        // Y van por NIVEL, no por si/no: entre "fugaces si" y "fugaces no" hay sitio para "menos fugaces", y
+        // eso es media rocola que no hay que afear para ganar los mismos cuadros.
         //
         //   densidad  cuantas estrellas hay, de 0.1 a 1 (1 = las de siempre)
-        //   fugaces   las estrellas fugaces que cruzan cada 7-16 segundos
-        //   relevo    el cambio de patron cada minuto, que durante segundo y pico dibuja DOS campos a la vez
+        //   fugaces   2 = dos a la vez cada 7-16 s;  1 = una cada 15-30 s;  0 = ninguna
+        //   relevo    2 = patron nuevo cada minuto;  1 = cada tres minutos;  0 = nunca
         //
-        // Con las tres de fabrica (1, si, si) el cielo sale EXACTAMENTE como salia antes de que existieran:
+        // Con las tres en alto (1, 2, 2) el cielo sale EXACTAMENTE como salia antes de que existieran:
         // ninguna cuenta cambia. Solo al bajarlas se nota, que es de lo que se trata.
-        private float densidad = 1f; private bool fugaces = true, relevo = true;
-        public void SetEfectos(float dens, bool fug, bool rel, int w, int h)
+        internal const int Alto = 2, Medio = 1, Bajo = 0;
+        private float densidad = 1f; private int fugaces = Alto, relevo = Alto;
+        public void SetEfectos(float dens, int fug, int rel, int w, int h)
         {
             if (dens < 0.1f) dens = 0.1f; else if (dens > 1f) dens = 1f;
             fugaces = fug; relevo = rel;
@@ -638,12 +642,14 @@ namespace Rocola
 
             // PATRON que cambia cada minuto, con ENTRECRUZADO: se conserva el patron anterior y se desvanece
             // mientras el nuevo aparece (el cielo nunca se queda sin estrellas). Por GPU re-sortear es barato.
-            int minute = (int)(t / 60.0);
+            // PERILLA DE Ctrl+F3: cada cuanto se renueva el patron de estrellas. Lo caro no es sortearlas, es
+            // el segundo y pico de entrecruzado en que se dibujan DOS campos a la vez; espaciarlo a tres
+            // minutos deja ese gasto en la tercera parte sin que el cielo se quede clavado para siempre.
+            double cadaSeg = (relevo == Alto) ? 60.0 : 180.0;
+            int minute = (relevo == Bajo) ? curMinute : (int)(t / cadaSeg);
             if (minute != curMinute)
             {
-                // PERILLA DE Ctrl+F3: sin relevo el cielo se queda con el patron que tiene. Se ahorra rehacer
-                // las estrellas Y, sobre todo, el segundo y pico en que se dibujan DOS campos a la vez.
-                if (curMinute != int.MinValue && relevo)
+                if (curMinute != int.MinValue)
                 {
                     px = sx; py = sy; pphase = sphase; pspeed = sspeed; psize = ssize; pkind = skind; pforma = sforma; pcol = scol; pnStars = nStars;   // guarda el actual como ANTERIOR
                     BuildStars(w, h, unchecked(seed0 + minute * 40503));     // construye el NUEVO (asigna arreglos nuevos; no pisa los anteriores)
@@ -700,7 +706,11 @@ namespace Rocola
             // PERILLA DE Ctrl+F3. Se sale ANTES de tocar el reloj a proposito: al volver a encenderlas, el
             // primer cuadro las agenda de nuevo desde cero en vez de creerse que han pasado diez minutos y
             // soltar las dos de golpe.
-            if (!fugaces) { shootFinoAnt = 0.0; for (int i = 0; i < shoots.Length; i++) shoots[i].On = false; return; }
+            if (fugaces == Bajo) { shootFinoAnt = 0.0; for (int i = 0; i < shoots.Length; i++) shoots[i].On = false; return; }
+            // En MEDIO va una sola a la vez (la segunda ranura no se usa) y con el doble de espera entre una
+            // y otra: sigue habiendo fugaces -que es lo que le da vida al cielo- pero cuestan la mitad.
+            int ranuras = (fugaces == Alto) ? shoots.Length : 1;
+            int esperaBase = (fugaces == Alto) ? 7000 : 15000, esperaAzar = (fugaces == Alto) ? 9000 : 15000;
             if (shootFinoAnt <= 0.0) { shootFinoAnt = finoMs; nextShoot = nowMs + 4000 + srnd.Next(8000); return; }   // 1er cuadro: agenda la 1a, sin saltos
             float dt = (float)((finoMs - shootFinoAnt) / 1000.0);
             if (dt < 0f) dt = 0f; if (dt > 0.12f) dt = 0.12f;   // acota saltos
@@ -708,8 +718,8 @@ namespace Rocola
 
             if (nowMs - nextShoot >= 0)   // RESTA, no >=: sobrevive el desbordamiento de TickCount (~25 dias encendida)
             {
-                nextShoot = nowMs + 7000 + srnd.Next(9000);   // una cada 7-16s
-                for (int i = 0; i < shoots.Length; i++)
+                nextShoot = nowMs + esperaBase + srnd.Next(esperaAzar);   // alto: una cada 7-16s; medio: cada 15-30s
+                for (int i = 0; i < ranuras; i++)
                     if (!shoots[i].On)
                     {
                         shoots[i].On = true;
@@ -1279,9 +1289,10 @@ namespace Rocola
         // Cuatro cosas que se pueden bajar o apagar cuando un equipo no da para todo. El form las pone y este
         // panel se las pasa al cielo en cada cuadro. De fabrica estan todas puestas y el dibujo sale
         // exactamente igual que antes de que existieran.
-        public bool Nieblas = true;                       // las nebulosas y la neblina de color del fondo
-        public bool Fugaces = true;                       // las estrellas fugaces
-        public bool RelevoPatron = true;                  // el cambio de patron cada minuto (dibuja DOS campos a la vez)
+        // Van por NIVEL (2 alto, 1 medio, 0 bajo), no por si/no: un si/no no sabe decir "menos nieblas".
+        public int Nieblas = GpuStarfield.Alto;           // 2 = nebulosa + velo;  1 = solo la nebulosa;  0 = nada
+        public int Fugaces = GpuStarfield.Alto;           // 2 = dos cada 7-16 s;  1 = una cada 15-30 s;  0 = ninguna
+        public int RelevoPatron = GpuStarfield.Alto;      // 2 = patron nuevo cada minuto;  1 = cada tres;  0 = nunca
         public float Estrellas = 1f;                      // cuantas estrellas, de 0.1 a 1 (1 = las de siempre)
 
         // ================= LO QUE CUESTA ARMAR UN CUADRO, APARTE DE ESPERAR AL MONITOR =================
@@ -1929,9 +1940,13 @@ namespace Rocola
             using (Bitmap nb = GpuStarfield.BakeNebulosas(mw, mh)) nebTex = Upload(nebTex, ref nebTW, ref nebTH, nb, out nebU, out nebV);
         }
 
+        // Aqui hay DOS capas a pantalla completa, y ahi esta el escalon de en medio: la nebulosa lleva el
+        // color del genero -es la que se ve y la que ata el fondo con la cancion- y la neblina es un velo
+        // encima que casi no se nota por si solo. En MEDIO se queda la nebulosa y se va el velo: la mitad de
+        // pantalla pintada, y de lejos el fondo sigue siendo el mismo.
         private void DibujaNieblas()
         {
-            if (!Nieblas) return;   // perilla de Ctrl+F3
+            if (Nieblas == GpuStarfield.Bajo) return;   // perilla de Ctrl+F3
             if (hazTex == IntPtr.Zero && nebTex == IntPtr.Zero) return;
             if (nebTex != IntPtr.Zero)
             {
@@ -1940,7 +1955,7 @@ namespace Rocola
                 SetTexQuadA(nieblaQuad, 0, 0, Width, Height, nebU, nebV, NebColor);
                 stars.DrawQuad(nebTex, nieblaQuad);
             }
-            if (hazTex != IntPtr.Zero)
+            if (hazTex != IntPtr.Zero && Nieblas == GpuStarfield.Alto)
             {
                 SetTexQuad(nieblaQuad, 0, 0, Width, Height, hazU, hazV);
                 stars.DrawQuad(hazTex, nieblaQuad);
