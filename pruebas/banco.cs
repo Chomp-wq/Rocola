@@ -29,6 +29,21 @@ using System.Reflection;
 //
 //  6) QUE LAS PERILLAS CORTEN DE VERDAD. De nada sirve una casilla "nieblas" si el dibujo de las nieblas no
 //     la mira. Se lee el codigo ya compilado y se comprueba que cada perilla se consulta donde toca.
+//
+//  7) QUE BAJE POR ESCALONES Y NO SE SALTE EL DE EN MEDIO. Cada efecto tiene tres niveles -alto, medio y
+//     bajo-, o sea DOS escalones. Ir de alto a bajo de una es afear la rocola el doble de lo que hacia
+//     falta: si con el escalon de en medio ya se llegaba, ahi habia que pararse.
+//
+//  8) QUE LA MUSICA ENTRE EN LA CUENTA. Y esta es la que de verdad decide si el medidor sirve. El audio de
+//     esta rocola se rellena DESDE EL HILO DE LA PANTALLA (esta escrito en PlayTrack): cada bloque que se
+//     vacia, la interfaz se para en seco a descifrar MP3 y a pasarlo por toda la cadena de sonido. O sea
+//     que la musica no es un ruido de fondo que se suma: PELEA POR EL MISMO HILO, veinte veces por segundo.
+//     Y el medidor pide los cuadros el mismo, en un bucle: si ese bucle no deja correr el bucle de mensajes,
+//     el audio se queda sin colchon y su trabajo NO ENTRA EN LA CUENTA. El numero saldria bueno y falso.
+//     Aqui se comprueba que el bucle los deja correr, que para el temporizador de animacion mientras mide
+//     (si no, se dispararia dos veces por cuadro y el numero saldria peor de lo que es), y que la cancion
+//     que se para al acabar es SOLO la que puso el medidor: la que ya estuviera sonando es de un cliente
+//     que la pago.
 class Banco
 {
     static int fallos = 0;
@@ -63,6 +78,20 @@ class Banco
         return r;
     }
 
+    // Un campo que lleva TRES niveles no puede ser un bool: un si/no no sabe decir "menos nieblas".
+    static bool EsNivel(Type t, string n)
+    {
+        if (t == null) return false;
+        FieldInfo f = t.GetField(n, TODO);
+        if (f != null) return f.FieldType != typeof(bool);
+        PropertyInfo pr = t.GetProperty(n, TODO);
+        return pr != null && pr.PropertyType != typeof(bool);
+    }
+
+    static bool Todos(int[] v, int q) { foreach (int x in v) if (x != q) return false; return true; }
+    static bool Existe(int[] v, int q) { foreach (int x in v) if (x == q) return true; return false; }
+    static int Suma(int[] v) { int s = 0; foreach (int x in v) s += x; return s; }
+
     static bool Campo(Type t, string n)
     {
         if (t == null) return false;
@@ -70,12 +99,14 @@ class Banco
         return t.GetProperty(n, TODO) != null;
     }
 
-    // Llama a ProponeApagados por reflexion y devuelve los indices que propone apagar.
-    static int[] Propone(MethodInfo mp, double[] ahorro, double msPeor, int meta, out double msFinal)
+    // Llama a ProponeEscalones por reflexion. Devuelve el NIVEL en que queda cada efecto: 2 alto, 1 medio,
+    // 0 bajo. Se prueba asi -dandole costes de mentira- para que la decision se pueda comprobar SIN tarjeta
+    // grafica: si solo se pudiera probar delante de una, no se probaria nunca.
+    static int[] Escalones(MethodInfo mp, double[] aMedio, double[] aBajo, double msPeor, int meta, out double msFinal)
     {
-        object[] arg = { ahorro, msPeor, meta, null };
+        object[] arg = { aMedio, aBajo, msPeor, meta, null };
         int[] r = (int[])mp.Invoke(null, arg);
-        msFinal = (double)arg[3];
+        msFinal = (double)arg[4];
         return r;
     }
 
@@ -93,9 +124,9 @@ class Banco
         Console.WriteLine("\n  1) LAS PIEZAS QUE HACEN FALTA\n");
 
         MethodInfo mide = Met(TF, "MideRendimiento");
-        MethodInfo prop = Met(TF, "ProponeApagados");
+        MethodInfo prop = Met(TF, "ProponeEscalones");
         Check(mide != null, "hay un medidor de este equipo (MideRendimiento)");
-        Check(prop != null, "y decide que apagar con lo medido (ProponeApagados)");
+        Check(prop != null, "y decide que nivel poner con lo medido (ProponeEscalones)");
         Check(Met(TF, "PaginaImagen") != null, "la pagina 'Imagen y rendimiento' se arma en su funcion");
 
         // Las cuatro perillas nuevas, en el panel de la tarjeta grafica.
@@ -105,12 +136,16 @@ class Banco
             Check(Campo(TPanel, "Nieblas"), "el panel tiene perilla de nieblas");
             Check(Campo(TPanel, "Estrellas"), "el panel tiene perilla de cantidad de estrellas");
             Check(Campo(TPanel, "RelevoPatron"), "el panel tiene perilla del relevo de patron");
+            // Y ya no son de si/no: llevan TRES niveles. Un bool no puede decir "menos nieblas".
+            Check(EsNivel(TPanel, "Nieblas"), "las nieblas van por nivel, no por si/no");
+            Check(EsNivel(TPanel, "Fugaces"), "las fugaces van por nivel");
+            Check(EsNivel(TPanel, "RelevoPatron"), "el relevo de patron va por nivel");
             Check(Campo(TPanel, "MsTrabajo"), "el panel cronometra el TRABAJO de un cuadro (sin la espera del monitor)");
         }
         else Console.WriteLine("  ---   sin panel de tarjeta grafica en este ejecutable (perfil sin GPU)");
 
-        Console.WriteLine("\n  2) LAS CUATRO PERILLAS SE GUARDAN Y SE RELEEN\n");
-        string[] claves = { "estrellas=", "fugaces=", "nieblas=", "patron=" };
+        Console.WriteLine("\n  2) LAS PERILLAS SE GUARDAN Y SE RELEEN\n");
+        string[] claves = { "estrellas=", "fugaces=", "nieblas=", "patron=", "espectro=", "animacion=" };
         MethodInfo lee = Met(TF, "LoadConfigPrefs"), esc = Met(TF, "SaveConfigPrefs");
         List<string> tLee = (lee != null) ? Codigo.Textos(lee) : new List<string>();
         List<string> tEsc = (esc != null) ? Codigo.Textos(esc) : new List<string>();
@@ -119,6 +154,15 @@ class Banco
             Check(tLee.Contains(k), "el archivo de configuracion se LEE con " + k);
             Check(tEsc.Contains(k), "y se GUARDA con " + k);
         }
+        // Y los tres niveles se escriben con PALABRAS, no con numeros: el archivo de configuracion se abre
+        // con el bloc de notas en el bar, y "nieblas=medio" se entiende sin tener que descifrar nada.
+        // (Las palabras viven en el par que traduce nivel <-> texto, que es donde tienen que estar: una sola
+        // pareja de funciones, y no repartidas por cada clave.)
+        List<string> tNiv = new List<string>();
+        tNiv.AddRange(Codigo.Textos(Met(TF, "TextoNivel")));
+        tNiv.AddRange(Codigo.Textos(Met(TF, "NivelDe")));
+        foreach (string w in new string[] { "alto", "medio", "bajo" })
+            Check(tNiv.Contains(w), "los niveles se escriben con la palabra \"" + w + "\"");
 
         Console.WriteLine("\n  3) QUE LAS PERILLAS CORTEN DE VERDAD\n");
         if (TPanel != null)
@@ -167,54 +211,82 @@ class Banco
             Check(!Codigo.Llama(lla, "ApplyAlbumGpu"), "medir NO reinicia la tarjeta grafica");
         }
 
-        Console.WriteLine("\n  5) EL VEREDICTO SALE DE LO MEDIDO\n");
+        Console.WriteLine("\n  5) LA MUSICA ENTRA EN LA CUENTA\n");
+        // Sin esto el medidor mide una maquina que no existe: una donde nadie esta descomprimiendo un MP3.
+        if (mide != null)
+        {
+            List<string> lla = Codigo.ConAyudantes(TF, "MideRendimiento");
+            List<string> lb = Codigo.ConAyudantes(TF, "MideEscena");
+            lb.AddRange(Codigo.ConAyudantes(TF, "CorreEscena"));   // el bucle de verdad vive aqui
+            lb.AddRange(lla);
+            Check(Codigo.Llama(lb, "DoEvents"),
+                  "el bucle del medidor DEJA CORRER los mensajes (de ahi come el audio; sin eso la musica no cuenta)");
+            Check(Codigo.Llama(lla, "PlayTrack"), "el medidor pone una cancion para medir con carga de verdad");
+            Check(Codigo.Llama(lla, "DisposePlaybackNow"), "y la para al acabar");
+            // SOLO LA SUYA. Si ya habia algo sonando, es de un cliente que lo pago: se usa esa carga y no se
+            // toca. Que la regla este escrita en un campo -y que el final lo LEA- es lo que evita que un dia
+            // alguien corte la cancion de alguien por medir.
+            int leeMus, escMus;
+            Codigo.UsosDeCampo(mide, "bancoPuseYoLaCancion", out leeMus, out escMus);
+            Check(escMus > 0 && leeMus > 0, "se apunta si la cancion la puso el medidor, y al acabar se mira antes de pararla");
+            // Y el temporizador de animacion se para: si no, se dispara ademas del que llama el medidor y la
+            // rocola creeria que va al doble de velocidad -mas trabajo del real, numero peor del real-.
+            Check(Codigo.Llama(lla, "Stop") && Codigo.Llama(lla, "Start"),
+                  "para el temporizador de animacion mientras mide, y lo vuelve a arrancar");
+        }
+
+        Console.WriteLine("\n  6) BAJA POR ESCALONES, Y NO SE SALTA EL DE EN MEDIO\n");
         if (prop == null)
         {
-            Check(false, "sin ProponeApagados no se puede comprobar como decide");
+            Check(false, "sin ProponeEscalones no se puede comprobar como decide");
             Console.WriteLine("\n  " + (fallos == 0 ? "TODO BIEN" : fallos + " FALLO(S)"));
             return fallos;
         }
 
+        // Cuatro efectos. De cada uno, lo que ahorra su PRIMER escalon (alto->medio) y lo que ahorra el
+        // SEGUNDO (medio->bajo). El 3 no cuesta nada: no se puede tocar nunca.
+        //   efecto:        0     1     2     3
+        double[] aMedio = { 1.0,  6.0,  3.0,  0.05 };
+        double[] aBajo  = { 1.0,  2.0,  1.5,  0.05 };
         double fin;
-        // Cuatro efectos: uno caro, dos medianos y uno que practicamente no cuesta nada.
-        //   indice:      0      1      2      3
-        //   ahorro ms:  1.0    6.0    3.0    0.05
-        double[] ah = { 1.0, 6.0, 3.0, 0.05 };
+        int[] niv;
 
-        // (a) YA PASA LA META: no hay nada que apagar. 20 ms por cuadro son 50 por segundo.
-        int[] r = Propone(prop, ah, 20.0, 30, out fin);
-        Check(r.Length == 0, "si ya pasa de la meta, no propone apagar nada");
+        // (a) YA PASA LA META: todo se queda en alto (2). 20 ms por cuadro son 50 por segundo.
+        niv = Escalones(prop, aMedio, aBajo, 20.0, 30, out fin);
+        Check(Todos(niv, 2), "si ya pasa de la meta, no baja nada de nivel");
 
-        // (b) NO PASA: 50 ms por cuadro son 20 por segundo. La meta de 30 pide bajar a 33.3 ms.
-        //     Con quitar el mas caro (6 ms) no basta (44), ni con el segundo (41)... hay que llegar a 33.3.
-        r = Propone(prop, ah, 50.0, 30, out fin);
-        Check(r.Length > 0, "si no llega, propone apagar algo");
-        // EL ORDEN LO MANDA EL NUMERO: primero el que mas ahorra (indice 1, 6 ms), luego el 2 (3 ms).
-        Check(r.Length >= 2 && r[0] == 1 && r[1] == 2, "apaga en orden de coste medido: primero el que mas ahorra");
-        Check(!Array.Exists(r, delegate (int i) { return i == 3; }), "el efecto que no cuesta nada NO se propone nunca");
-
-        // (c) PARA EN CUANTO PASA: no apaga de mas. Con 40 ms por cuadro (25 por segundo) basta quitar el
-        //     mas caro para bajar a 34 ms (29.4)... no llega; con el segundo, 31 ms (32.2) ya pasa. Dos.
-        r = Propone(prop, ah, 40.0, 30, out fin);
-        Check(r.Length == 2, "para en cuanto pasa la meta: no apaga de mas (esperaba 2, dio " + r.Length + ")");
+        // (b) NO PASA, y con UN escalon basta. 40 ms son 25 por segundo; la meta de 30 pide 33.3 ms.
+        //     El escalon que mas ahorra es el primero del efecto 1 (6 ms): 40 - 6 = 34, aun no. Luego el
+        //     primero del 2 (3 ms): 31, ya pasa. Dos escalones, los dos PRIMEROS: nadie llega a bajo.
+        niv = Escalones(prop, aMedio, aBajo, 40.0, 30, out fin);
+        Check(niv[1] == 1 && niv[2] == 1, "baja de nivel los dos que mas ahorran");
+        Check(niv[0] == 2 && niv[3] == 2, "y deja en alto los que no hizo falta tocar");
+        Check(!Existe(niv, 0), "NADIE se salta el escalon de en medio para irse a bajo");
         Check(fin <= 1000.0 / 30, "y la cuenta que devuelve pasa de verdad la meta (" + fin.ToString("0.0") + " ms)");
 
-        // (d) NI APAGANDO TODO LLEGA: lo tiene que DECIR, no fingir. Un cuadro de 200 ms son 5 por segundo;
-        //     apagando los tres que cuestan algo se queda en 190. Devuelve los tres y la cuenta real.
-        r = Propone(prop, ah, 200.0, 30, out fin);
-        Check(r.Length == 3, "cuando no alcanza, propone TODO lo que cuesta algo (dio " + r.Length + ")");
-        Check(fin > 1000.0 / 30, "y no miente: la cuenta que devuelve sigue sin llegar (" + fin.ToString("0.0") + " ms)");
+        // (c) EL EFECTO QUE NO CUESTA NADA NO SE TOCA JAMAS, ni cuando hace falta bajarlo todo.
+        niv = Escalones(prop, aMedio, aBajo, 200.0, 30, out fin);
+        Check(niv[3] == 2, "el efecto que no se nota se queda en alto aunque falte rendimiento");
+        Check(niv[0] == 0 && niv[1] == 0 && niv[2] == 0, "y los que si cuestan se bajan del todo");
+        Check(fin > 1000.0 / 30, "y no miente: la cuenta sigue sin llegar (" + fin.ToString("0.0") + " ms)");
 
-        // (e) DECIDE DISTINTO CON NUMEROS DISTINTOS. Si los costes se dan la vuelta, el orden se da la vuelta:
-        //     esto es lo que separa medir de tener una tabla escrita a mano.
+        // (d) EL SEGUNDO ESCALON SOLO DESPUES DEL PRIMERO. Aqui el segundo escalon del efecto 0 ahorra
+        //     muchisimo (9 ms) y el primero casi nada (0.3). Aun asi hay que dar el primero antes: no se
+        //     puede saltar de alto a bajo. Si alguien "optimizara" eso, este numero lo delata.
+        double[] mA = { 0.3, 1.0, 0.0, 0.0 };
+        double[] mB = { 9.0, 1.0, 0.0, 0.0 };
+        niv = Escalones(prop, mA, mB, 40.0, 30, out fin);
+        Check(niv[0] <= 1, "para llegar al segundo escalon pasa por el primero");
+
+        // (e) DECIDE DISTINTO CON NUMEROS DISTINTOS: mide, no tiene una tabla escrita a mano.
         double[] alReves = { 6.0, 1.0, 3.0, 0.05 };
-        r = Propone(prop, alReves, 40.0, 30, out fin);
-        Check(r.Length >= 1 && r[0] == 0, "con otros costes decide otra cosa: mide, no adivina");
+        niv = Escalones(prop, alReves, aBajo, 40.0, 30, out fin);
+        Check(niv[0] == 1, "con otros costes baja otras cosas");
 
-        // (f) LA META MANDA. Pedirle 60 en vez de 30 tiene que apagar mas cosas.
-        int[] r30 = Propone(prop, ah, 40.0, 30, out fin);
-        int[] r60 = Propone(prop, ah, 40.0, 60, out fin);
-        Check(r60.Length >= r30.Length, "pedir mas cuadros por segundo apaga mas cosas");
+        // (f) LA META MANDA: pedir 60 baja mas cosas que pedir 30.
+        int[] n30 = Escalones(prop, aMedio, aBajo, 40.0, 30, out fin);
+        int[] n60 = Escalones(prop, aMedio, aBajo, 40.0, 60, out fin);
+        Check(Suma(n60) <= Suma(n30), "pedir mas cuadros por segundo baja mas cosas");
 
         Console.WriteLine("\n  " + (fallos == 0 ? "TODO BIEN" : fallos + " FALLO(S)"));
         return fallos;

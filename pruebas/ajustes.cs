@@ -75,7 +75,7 @@ class Ajustes
         if (pa <= 0 || pb <= 0) return false;
         string ra = a.Substring(0, pa);
         if (ra != b.Substring(0, pb)) return false;
-        return ra == "salida" || ra == "veredicto" || ra == "propuesta";
+        return ra == "salida" || ra == "veredicto" || ra == "propuesta" || ra == "pierde";
     }
 
     const int anchoFila = 424;
@@ -214,67 +214,78 @@ class Ajustes
         // de esta maquina-, y aqui hace mas falta que en ninguna parte porque es texto nuevo y largo.
         pagActual = 1;
         const int PY = 96;
-        // ---- tarjeta ESTE EQUIPO (16,100,456,398) ----
-        C("medir.boton", 32, PY + 48, 424, 38, "Medir este equipo", fBot, 10f, false);
-        C("medir.tarda", 32, PY + 92, 424, 32,
-          "Tarda unos diez segundos y veras pasar las cuatro pantallas:\nes que las esta midiendo de verdad, una por una.", fDes, 8.5f, true);
-        C("medir.cabecera", 32, PY + 130, 424, 18, "PANTALLA                              TRABAJO      CUADROS/S", fDes, 8.5f, false);
-        for (int i = 0; i < 4; i++)
-            C("medir.fila" + i, 32, PY + 152 + i * 24, 424, 20, "Pantalla de atraccion         999.9 ms        999", fDes, 8.5f, false);
+        // ---- tarjeta ESTE EQUIPO (16,100,456,400) ----
+        C("medir.boton", 32, PY + 44, 424, 36, "Medir este equipo", fBot, 10f, false);
+        C("medir.tarda", 32, PY + 86, 424, 32,
+          "Tarda medio minuto. Pone una cancion muda y usa la rocola sola:\npasa de pagina, cambia de letra, escribe y entra en discos.", fDes, 8.5f, true);
+        C("medir.cabecera", 32, PY + 124, 424, 16, "PANTALLA                          TRABAJO   CUADROS/S", fDes, 8.5f, false);
+        for (int i = 0; i < 5; i++)
+            C("medir.fila" + i, 32, PY + 144 + i * 22, 424, 20,
+              "Escribiendo en el buscador  999.9 ms      999   <-- la que manda", fDes, 8.5f, false);
+        // El techo de la pantalla y el aviso de "sin musica" van en SU renglon, no dentro del veredicto:
+        // metidos ahi lo hacian crecer a trece renglones y no cabia. Cada cosa en su sitio.
+        C("medir.techo", 32, PY + 252, 424, 16, "El techo de esta pantalla son 999 cuadros por segundo.", fDes, 8.5f, false);
+        C("medir.sinmusica", 32, PY + 272, 424, 32,
+          "OJO: no se pudo poner ninguna cancion y se midio en\n"
+          + "silencio. De verdad saldra peor de lo que dice aqui.", fDes, 8.5f, true);
         // El veredicto se arma sobre la marcha: se prueban las CUATRO frases que puede llegar a escribir, y
         // comparten sitio a proposito (solo se ve una cada vez).
-        C("veredicto.v1", 32, PY + 250, 424, 148,
-          "Aun sin medir.\n\nPulsa el boton de arriba y la rocola se medira sola en este equipo: pondra sus cuatro"
-          + " pantallas, le pedira cuadros a la tarjeta grafica y cronometrara lo que cuesta armar cada uno.\n\n"
-          + "Hasta entonces aqui no hay ningun numero, porque ninguno seria de verdad.", fDes, 8.5f, true);
-        C("veredicto.v2", 32, PY + 250, 424, 148,
+        string peorTxt = "La que peor va es \"Escribiendo en el buscador\": 999 cuadros por segundo (999.9 ms de"
+                       + " trabajo por cuadro).";
+        C("veredicto.v1", 32, PY + 308, 424, 80,
+          "Aun sin medir.\n\nAqui no hay ningun numero porque ninguno seria de verdad: los de este equipo salen"
+          + " de medirlo.", fDes, 8.5f, true);
+        C("veredicto.v2", 32, PY + 308, 424, 80,
           "Esta rocola NO esta dibujando con la tarjeta grafica.\n\nPor ese camino el techo son 24 cuadros por"
-          + " segundo, y no por falta de equipo: esta puesto asi a proposito para gastar poco. Los 30 no se"
-          + " alcanzan ahi por mucho que se apaguen efectos.\n\nLa perilla que importa en este equipo es"
-          + " encender la tarjeta grafica.", fDes, 8.5f, true);
-        C("veredicto.v3", 32, PY + 250, 424, 148,
-          "La que peor va es \"Pantalla de atraccion\": 999 cuadros por segundo (999.9 ms de trabajo por cuadro)."
-          + "\n\nPasa de los 30 de sobra. No hace falta apagar nada.\n\nEl techo de esta pantalla son 999 cuadros"
-          + " por segundo: por encima de eso no se dibuja, porque no se veria.", fDes, 8.5f, true);
-        C("veredicto.v4", 32, PY + 250, 424, 148,
-          "La que peor va es \"Pantalla de atraccion\": 999 cuadros por segundo (999.9 ms de trabajo por cuadro)."
-          + "\n\nNo llega a los 30. A la derecha esta lo que cuesta cada efecto en ESTE equipo, medido apagandolo"
-          + " y volviendo a medir.\n\nEl techo de esta pantalla son 999 cuadros por segundo: por encima de eso no"
-          + " se dibuja, porque no se veria.", fDes, 8.5f, true);
+          + " segundo, puesto asi a proposito para gastar poco. La perilla que importa aqui es encender la"
+          + " tarjeta.", fDes, 8.5f, true);
+        C("veredicto.v3", 32, PY + 308, 424, 80,
+          peorTxt + "\n\nPasa de los 30 de sobra. No hace falta bajar nada.", fDes, 8.5f, true);
+        C("veredicto.v4", 32, PY + 308, 424, 80,
+          peorTxt + "\n\nNo llega a los 30. Al lado de cada cosa, a la derecha, esta lo que se gana bajandola un"
+          + " escalon en ESTE equipo.", fDes, 8.5f, true);
 
-        // ---- tarjeta EFECTOS: la sub-ventana de al lado (488,100,456,398) ----
-        string[] efeNom = { "Nieblas y nebulosas", "Patron nuevo cada minuto", "Estrellas fugaces",
-                            "Aurora del horizonte", "Cielo con todas las estrellas" };
-        string[] efePierde = {
-            "El fondo queda de cielo liso, sin las manchas de color del genero.",
-            "El cielo se queda con las mismas estrellas en vez de renovarlas.",
-            "Deja de cruzar una estrella fugaz cada 7-16 segundos.",
-            "Se apaga el color que sube del suelo siguiendo a la musica.",
-            "Apagado, el cielo se queda con la MITAD de estrellas.\nEs lo que mas se nota de esta lista, y lo que mas ahorra." };
-        for (int i = 0; i < 5; i++)
-        {
-            int y = PY + 44 + i * 68;
-            CSw("efecto" + i + ".nombre", 504, y, 300, 26, efeNom[i], fNom, 10f);
-            C("efecto" + i + ".coste", 810, y + 2, 118, 20, "sin medir", fVal, 11f, false);
-            C("efecto" + i + ".pierde", 504, y + 28, 424, 32, efePierde[i], fDes, 8.5f, true);
-        }
-
-        // ---- tarjeta LA PROPUESTA (16,508,928,160) ----
-        C("propuesta.v1", 32, PY + 452, 896, 72,
+        // ---- tarjeta LA PROPUESTA (16,508,456,160) ----
+        C("propuesta.v1", 32, PY + 448, 424, 68,
           "Sin medir todavia. La propuesta sale de lo que se mida en ESTE equipo, no de una lista de equipos"
           + " buenos y malos escrita a mano.", fDes, 8.5f, true);
-        C("propuesta.v2", 32, PY + 452, 896, 72,
-          "\"Pantalla de atraccion\" va a 999 cuadros por segundo. Apagando nieblas y nebulosas, cambio de patron"
-          + " cada minuto, estrellas fugaces, aurora del horizonte y cielo con todas las estrellas se pondria en"
-          + " 999.  AUN ASI NO LLEGA A 30: este equipo no da para mas ni apagandolo todo, y es mejor decirlo que"
-          + " fingir que se arreglo.", fDes, 8.5f, true);
-        C("propuesta.v3", 32, PY + 452, 896, 72,
-          "No llega a los 30 y NO hay nada que apagar que lo arregle: ninguno de los efectos cuesta lo suficiente"
-          + " como para notarse. El cuello esta en otro sitio, no en los adornos del cielo.", fDes, 8.5f, true);
-        C("propuesta.aplicar", 32, PY + 528, 300, 34, "Aplicar lo recomendado", fBot, 10f, false);
-        C("propuesta.nota", 348, PY + 530, 580, 36,
-          "Nada se mueve hasta que pulses aqui. El orden lo manda lo medido:\n"
-          + "primero lo que mas ahorra, y para en cuanto pasa. Nada de apagar de mas.", fDes, 8.5f, true);
+        C("propuesta.v2", 32, PY + 448, 424, 68,
+          "Bajar patron nuevo de estrellas a bajo, zoom al entrar a un disco a medio y 4 mas deja"
+          + " \"Escribiendo en el buscador\" en 999.  AUN ASI NO LLEGA A 30: este equipo no da para mas ni"
+          + " bajandolo todo.", fDes, 8.5f, true);
+        C("propuesta.v3", 32, PY + 448, 424, 68,
+          "No llega a los 30 y NO hay nada que bajar que lo arregle: ninguno de los efectos cuesta lo"
+          + " suficiente como para notarse. El cuello esta en otro sitio, no en los adornos del cielo.",
+          fDes, 8.5f, true);
+        C("propuesta.aplicar", 32, PY + 524, 424, 34, "Aplicar lo recomendado", fBot, 10f, false);
+
+        // ---- tarjeta EFECTOS: la sub-ventana de al lado (488,100,456,568) ----
+        C("efectos.general", 504, PY + 42, 424, 16, "Todo de golpe:        (ahora esta a medida)", fDes, 8.5f, false);
+        string[] nomNivel = { "Bajo", "Medio", "Alto" };
+        for (int k = 0; k < 3; k++)
+            C("general." + nomNivel[k], 504 + k * 144, PY + 62, 136, 28, nomNivel[k], fBot, 10f, false);
+        string[] efeNom = { "Nieblas y nebulosas", "Cuantas estrellas", "Aurora del horizonte",
+                            "Patron nuevo de estrellas", "Estrellas fugaces", "Zoom al entrar a un disco" };
+        for (int i = 0; i < 6; i++)
+        {
+            int y = PY + 104 + i * 68;
+            C("efecto" + i + ".nombre", 504, y, 424, 18, efeNom[i], fNom, 10f, false);
+            for (int k = 0; k < 3; k++)
+                C("efecto" + i + ".n" + k, 504 + k * 102, y + 22, 96, 26, nomNivel[k], fBot, 10f, false);
+            C("efecto" + i + ".coste", 810, y + 24, 118, 18, "ya esta abajo", fDes, 8.5f, false);
+        }
+        // El renglon que explica que se pierde con el nivel que acabas de tocar: se prueban los seis textos
+        // mas largos, que comparten sitio (solo se ve uno cada vez).
+        string[] efePierde = {
+            "Se queda la nebulosa de color y se va el velo de encima.",
+            "Un tercio de las estrellas: el cielo se ve bastante mas vacio.",
+            "A media altura: se sigue viendo latir, mas discreta.",
+            "Cada minuto, con las dos constelaciones cruzandose.",
+            "Una cada 15-30 segundos, en vez de dos cada 7-16.",
+            "Sin animacion: el disco se abre de golpe." };
+        for (int i = 0; i < 6; i++)
+            C("pierde.v" + i, 504, PY + 496, 424, 64, efeNom[i] + " en medio:\n" + efePierde[i], fDes, 8.5f, true);
+
         C("imagen.fabrica", 16, PY + 584, 300, 38, "Graficos como de fabrica", fBot, 10f, false);
         pagActual = 0;
 
