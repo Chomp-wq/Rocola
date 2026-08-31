@@ -240,7 +240,38 @@ class Paginar
         Check(!ReferenceEquals(sinTapa, parada), "y en cuanto para, se rehace con su portada y a resolucion entera");
         Check(parada != null && parada.Width > cw * 0.9, "a resolucion entera de verdad (" + (parada == null ? 0 : parada.Width) + " px)");
 
+        Console.WriteLine("\n  5c) Y SE PUEDE APAGAR, DESHACIENDO LAS DOS COSAS\n");
+        // El interruptor de Ctrl+F3 (pestana Imagen). Lo que vigila esta parte es que apagarlo deshaga LAS
+        // DOS cosas y no solo una: un interruptor que dejara a medias -por ejemplo bajando la resolucion
+        // igualmente- seria peor que no tenerlo, porque el operador lo apagaria creyendo que vuelve a lo de
+        // antes y no volveria del todo.
+        FieldInfo fLigero = TAV.GetField("HojeoLigero", PUB);
+        Check(fLigero != null, "la pared tiene el interruptor del hojeo ligero (HojeoLigero)");
+        if (fLigero != null)
+        {
+            Check((bool)fLigero.GetValue(av), "y viene encendido de fabrica");
+            fLigero.SetValue(av, false);
+            mReset.Invoke(av, null);
+            fSlideTick.SetValue(av, -1);
+            hayPortada = false;
+            mSlide.Invoke(av, new object[] { 1, W });
+            for (int k = 0; k < 5; k++) mGrid.Invoke(av, new object[] { buf });
+            Bitmap apagSin = (Bitmap)fBmp.GetValue(buf.GetValue(0));
+            Check(apagSin != null && apagSin.Width > cw * 0.9,
+                  "apagado, deslizando la casilla va a resolucion ENTERA (" + (apagSin == null ? 0 : apagSin.Width) + " px)");
+            hayPortada = true;   // llega la portada, y la pagina sigue moviendose
+            for (int k = 0; k < 3; k++) mGrid.Invoke(av, new object[] { buf });
+            Bitmap apagCon = (Bitmap)fBmp.GetValue(buf.GetValue(0));
+            Check(!ReferenceEquals(apagSin, apagCon),
+                  "y apagado SI se rehace al llegar la portada, aunque se este moviendo: las dos cosas deshechas");
+            fLigero.SetValue(av, true);
+        }
+
         Console.WriteLine("\n  6) NUNCA UN HUECO\n");
+        // Con la pagina quieta un rato, que es lo que pasa de verdad: mientras nadie toca nada, BakeAhead va
+        // dejando horneadas las casillas de la pagina de al lado. Ese es el estado desde el que se hojea.
+        fSlideTick.SetValue(av, -1);
+        for (int k = 0; k < 5; k++) mGrid.Invoke(av, new object[] { buf });
         // Si no queda presupuesto y no hay casilla de esta resolucion, se echa mano de la OTRA antes que
         // dejar el sitio vacio: la tarjeta la estira y se ve un pelo blanda un cuadro, que es infinitamente
         // mejor que un agujero en la pared.

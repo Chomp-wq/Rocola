@@ -195,6 +195,9 @@ namespace Rocola
         private void AplicaEfectosGpu()
         {
 #if ROCOLA_GPU
+            // Este va ANTES del corte de abajo: la pared de discos existe aunque el panel de la tarjeta no,
+            // y es la pared la que decide como hornea sus casillas.
+            if (albumView != null) albumView.HojeoLigero = hojeoLigero;   // aligerar mientras se pasa de pagina
             if (gpuPanel == null) return;
             gpuPanel.Nieblas = nieblasNiv;
             gpuPanel.Fugaces = fugacesNiv;
@@ -596,7 +599,10 @@ namespace Rocola
             BotonPlano[][] bNiv = new BotonPlano[ef.Length][];
             for (int i = 0; i < ef.Length; i++)
             {
-                int y = 100 + i * 68;
+                // Paso de 62 y no de 68: el contenido de una fila mide 48, asi que quedan 14 px entre una y
+                // otra en vez de 20 -se sigue leyendo igual de suelto- y con lo que se ahorra cabe abajo el
+                // interruptor del hojeo ligero, que es la unica cosa de esta tarjeta que no tenia mando.
+                int y = 100 + i * 62;
                 lNom[i] = new Label(); lNom[i].SetBounds(16, y, 424, 18); lNom[i].BackColor = Color.Transparent;
                 lNom[i].ForeColor = cTexto; lNom[i].Font = fNom; lNom[i].Text = ef[i].Nombre;
                 lCost[i] = new Label(); lCost[i].SetBounds(322, y + 24, 118, 18); lCost[i].BackColor = Color.Transparent;
@@ -610,9 +616,18 @@ namespace Rocola
                 }
                 tEfe.Controls.Add(lNom[i]); tEfe.Controls.Add(lCost[i]);
             }
-            Label lPierde = new Label(); lPierde.SetBounds(16, 492, 424, 64); lPierde.BackColor = Color.Transparent;
+            // ALIGERAR EL HOJEO. Va aparte de las seis de arriba, y con interruptor de si/no en vez de tres
+            // niveles, porque es otra cosa: las seis se bajan para ganar rendimiento A CAMBIO de que se vea
+            // menos bonito, y por eso el medidor las puede proponer. Esta no se ve -solo ocurre mientras la
+            // pagina esta en movimiento- y apagarla solo CUESTA rendimiento. Esta aqui para poder deshacerla,
+            // no para regatearla.
+            Interruptor swHojeo = new Interruptor();
+            swHojeo.SetBounds(16, 466, 424, 26); swHojeo.ForeColor = cTexto; swHojeo.Font = fNom;
+            swHojeo.Text = "Aligerar mientras se pasa de pagina"; swHojeo.Acento = cEfe;
+            swHojeo.Checked = hojeoLigero;
+            Label lPierde = new Label(); lPierde.SetBounds(16, 498, 424, 64); lPierde.BackColor = Color.Transparent;
             lPierde.ForeColor = cTenue; lPierde.Font = fDes;
-            tEfe.Controls.Add(lGen); tEfe.Controls.Add(lPierde);
+            tEfe.Controls.Add(lGen); tEfe.Controls.Add(swHojeo); tEfe.Controls.Add(lPierde);
 
             BotonPlano bResetG = new BotonPlano();
             bResetG.SetBounds(16, 584, 300, 38); bResetG.Font = fBot; bResetG.Text = "Graficos como de fabrica";
@@ -776,6 +791,12 @@ namespace Rocola
                 pinta();
             };
             for (int k = 0; k < 3; k++) bGen[k].Click += alGeneral;
+            swHojeo.CheckedChanged += delegate
+            {
+                hojeoLigero = swHojeo.Checked;
+                AplicaEfectosGpu();
+                f3CambioGraf = true;
+            };
 
             bApli.Click += delegate
             {
@@ -788,7 +809,9 @@ namespace Rocola
             bResetG.Click += delegate
             {
                 foreach (EfectoGrafico e in ef) PonNivel(e.Clave, NivAlto);
-                fpsTope = 0; AplicaEfectosGpu();
+                fpsTope = 0;
+                hojeoLigero = true; swHojeo.Checked = true;   // de fabrica viene encendido: no se ve y paga
+                AplicaEfectosGpu();
                 f3CambioGraf = true;
                 pinta();
             };
