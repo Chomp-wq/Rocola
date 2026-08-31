@@ -2671,7 +2671,7 @@ namespace Rocola
             bool wasMaint = maintMode;
             maintMode = true; maintUntil = DateTime.Now.AddMinutes(10);
             bool changed = false;
-            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkUp = masterDb, bkEq = eqAmount, bkBass = bassAmount; int bkVid = videoVol, bkDsk = perfilDisco; bool bkOn = normalizeOn, bkSbr = sbrOn, bkEqA = eqAuto, bkBassA = bassAuto, bkVidA = videoAuto, bkIaDat = iaHarvestOn;   // por si se Cancela
+            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkUp = masterDb, bkEq = eqAmount, bkBass = bassAmount; int bkVid = videoVol, bkDsk = perfilDisco; bool bkNoche = nocheOn, bkOn = normalizeOn, bkSbr = sbrOn, bkEqA = eqAuto, bkBassA = bassAuto, bkVidA = videoAuto, bkIaDat = iaHarvestOn;   // por si se Cancela
             try
             {
                 Cursor.Show();
@@ -2714,9 +2714,26 @@ namespace Rocola
                     // Sonido se queda exactamente donde estaba.
                     BotonPlano bPagS = new BotonPlano(); bPagS.SetBounds(640, 8, 148, 30); bPagS.Font = fBot; bPagS.Text = "Sonido";
                     BotonPlano bPagI = new BotonPlano(); bPagI.SetBounds(796, 8, 148, 30); bPagI.Font = fBot; bPagI.Text = "Imagen";
-                    Label lSub = new Label(); lSub.SetBounds(24, 42, 916, 18); lSub.BackColor = Color.Transparent;
+                    // El subtitulo ya no ocupa el renglon entero: se queda con su mitad izquierda (su texto
+                    // gasta 545 px medidos) y la derecha es del interruptor de aqui abajo. Antes reclamaba los
+                    // 916 aunque no los usara, y asi los dos decian ser dueños del mismo sitio.
+                    Label lSub = new Label(); lSub.SetBounds(24, 42, 590, 18); lSub.BackColor = Color.Transparent;
                     lSub.ForeColor = cTenue; lSub.Font = fSub;
                     lSub.Text = "Todo lo que cambies aqui se oye al instante en la cancion que esta sonando.";
+                    // MODO NOCHE. Va AQUI, en el renglon del subtitulo, y no dentro de una tarjeta: esta
+                    // ventana mide 960x732 a proposito -con su barra de titulo cabe justo en 1024x768- y las
+                    // tres tarjetas estan llenas hasta el ultimo pixel. Este renglon, en cambio, tiene 371 px
+                    // libres MEDIDOS (el subtitulo gasta 545 de 916), asi que el interruptor entra sin mover
+                    // ni un pixel de nada de lo que ya funciona.
+                    //
+                    // Y ademas es su sitio: no es una de las cuatro perillas de nivelado, es una regla que
+                    // vale para toda la ventana -musica y videos por igual-, y por eso queda fuera y arriba.
+                    // La hora sale de la configuracion, no escrita a mano: si el operador cambia noche_desde=
+                    // en el archivo, el letrero lo dice.
+                    Interruptor swNoche = new Interruptor();
+                    swNoche.SetBounds(624, 40, 316, 22); swNoche.ForeColor = cTenue; swNoche.Font = fInt;
+                    swNoche.Text = "Bajar el volumen de " + nocheDesde + " a " + nocheHasta + " h";
+                    swNoche.Acento = Color.FromArgb(150, 205, 255); swNoche.Checked = nocheOn;
                     // QUE HAY DESPUES DEL CABLE. La rocola mide el ARCHIVO, y eso vale en cualquier equipo; lo
                     // que no puede saber por su cuenta es si Windows le esta metiendo sus propias mejoras
                     // encima. Se lee del registro de Windows y se dice aqui, en ambar si hay algo que arreglar.
@@ -2987,6 +3004,7 @@ namespace Rocola
                         bassAmount = bar[5].Value / 100f;
                         excAmount = bar[6].Value / 100f;
                         sbrOn = swSbr.Checked && sbrAllowed;
+                        nocheOn = swNoche.Checked;   // al apagarlo de madrugada, la rampa lo devuelve solo (AvanzaModoNoche)
                         iaHarvestOn = swIa.Checked;
                         changed = true;
                         updateLabels();
@@ -2995,6 +3013,7 @@ namespace Rocola
                     };
                     for (int k = 0; k < bar.Length; k++) { bar[k].Scroll += apply; if (au[k] != null) au[k].CheckedChanged += apply; }
                     swOn.CheckedChanged += apply; swSbr.CheckedChanged += apply; swIa.CheckedChanged += apply;
+                    swNoche.CheckedChanged += apply;
                     bReset.Click += delegate
                     {
                         swOn.Checked = true;
@@ -3003,6 +3022,7 @@ namespace Rocola
                         au[3].Checked = true; au[4].Checked = true; au[5].Checked = true;   // videos, EQ y graves en automatico
                         if (swSbr.Enabled) swSbr.Checked = false;            // el espectral apagado: es experimental
                         swIa.Checked = true;                                 // juntar material para la IA: encendido de fabrica
+                        swNoche.Checked = true;                              // y bajar el volumen de madrugada, tambien
                         if (perfilDisco != 0)                                // el tipo de disco, otra vez a medirlo sola
                         { perfilDisco = 0; lock (discoLock) discoLento.Clear(); AplicaPerfilDisco(); pintaDsk(); }
                         apply(bReset, EventArgs.Empty);
@@ -3045,7 +3065,7 @@ namespace Rocola
                     bPagS.Click += delegate { f3Pagina = 0; pintaPag(); };
                     bPagI.Click += delegate { f3Pagina = 1; pintaPag(); };
 
-                    dlg.Controls.Add(lTit); dlg.Controls.Add(bPagS); dlg.Controls.Add(bPagI); dlg.Controls.Add(lSub); dlg.Controls.Add(lSal);
+                    dlg.Controls.Add(lTit); dlg.Controls.Add(bPagS); dlg.Controls.Add(bPagI); dlg.Controls.Add(lSub); dlg.Controls.Add(swNoche); dlg.Controls.Add(lSal);
                     dlg.Controls.Add(tVol); dlg.Controls.Add(tCal); dlg.Controls.Add(tBib);
                     dlg.Controls.Add(lDskT); dlg.Controls.Add(bDskA); dlg.Controls.Add(bDskS); dlg.Controls.Add(bDskH); dlg.Controls.Add(lDskS);
                     dlg.Controls.Add(bReset); dlg.Controls.Add(bOk); dlg.Controls.Add(pImg);
@@ -3066,7 +3086,7 @@ namespace Rocola
                 if (changed || f3CambioGraf) { SaveConfigPrefs(); ShowToast(changed ? "Sonido actualizado" : "Imagen actualizada", Color.FromArgb(40, 130, 90)); }
                 f3CambioGraf = false;
             }
-            catch { normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; masterDb = bkUp; eqAmount = bkEq; bassAmount = bkBass; videoVol = bkVid; videoAuto = bkVidA; sbrOn = bkSbr; eqAuto = bkEqA; bassAuto = bkBassA; perfilDisco = bkDsk; iaHarvestOn = bkIaDat; AplicaPerfilDisco(); }   // si algo truena, deja los valores como estaban
+            catch { nocheOn = bkNoche; normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; masterDb = bkUp; eqAmount = bkEq; bassAmount = bkBass; videoVol = bkVid; videoAuto = bkVidA; sbrOn = bkSbr; eqAuto = bkEqA; bassAuto = bkBassA; perfilDisco = bkDsk; iaHarvestOn = bkIaDat; AplicaPerfilDisco(); }   // si algo truena, deja los valores como estaban
             finally { try { Cursor.Hide(); } catch { } maintMode = wasMaint; ForceFocus(); }
         }
 
