@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Runtime.Serialization;
 
 // EL MEDIDOR DE ESTE EQUIPO (Ctrl+F3 -> Imagen y rendimiento).
 //
@@ -91,6 +92,16 @@ class Banco
     static bool Todos(int[] v, int q) { foreach (int x in v) if (x != q) return false; return true; }
     static bool Existe(int[] v, int q) { foreach (int x in v) if (x == q) return true; return false; }
     static int Suma(int[] v) { int s = 0; foreach (int x in v) s += x; return s; }
+
+    // Si el zoom esta encendido en este ejemplar, mirandolo como lo mira el programa. Vale igual si es
+    // una propiedad calculada o un campo guardado: lo que se comprueba es el resultado, no la forma.
+    static bool Zoom(object f)
+    {
+        PropertyInfo p = TF.GetProperty("transAnimOn", TODO);
+        if (p != null) return (bool)p.GetValue(f, null);
+        FieldInfo c = TF.GetField("transAnimOn", TODO);
+        return c != null && (bool)c.GetValue(f);
+    }
 
     static bool Campo(Type t, string n)
     {
@@ -185,6 +196,21 @@ class Banco
                 Check(l > 0, "el relevo de patron mira su perilla");
             }
             else Check(false, "no se encontro el campo de estrellas de la tarjeta grafica");
+        }
+
+        // EL ZOOM AL ENTRAR A UN DISCO ES LA PERILLA MAS FACIL DE DEJAR COLGADA, porque hay dos maneras de
+        // apagarlo -el nivel y un si/no- y si son dos cosas distintas se contradicen. Aqui se pone el nivel
+        // a mano y se mira si el zoom se entera: si "animacion" en bajo no lo apaga, la casilla de la
+        // ventana miente y el operador la apaga sin que cambie nada.
+        FieldInfo fAnim = TF.GetField("animNiv", TODO);
+        Check(fAnim != null, "el nivel de la animacion es un campo que se puede mirar (animNiv)");
+        if (fAnim != null)
+        {
+            object f1 = FormatterServices.GetUninitializedObject(TF);
+            fAnim.SetValue(f1, 2);  bool enAlto = Zoom(f1);
+            fAnim.SetValue(f1, 0);  bool enBajo = Zoom(f1);
+            Check(enAlto, "en alto, el zoom al entrar a un disco esta encendido");
+            Check(!enBajo, "y poniendo 'animacion' en bajo se apaga DE VERDAD (no solo se acorta)");
         }
 
         Console.WriteLine("\n  3b) LA PESTANA NUEVA NO SE LLEVO POR DELANTE LA DE SONIDO\n");

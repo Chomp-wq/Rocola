@@ -3,6 +3,15 @@
 Esto deja la máquina del bar así: **se enciende y aparece la rocola**. Sin escritorio, sin iconos,
 sin barra de tareas, sin que nadie toque nada.
 
+> **Para instalar la rocola sin complicarse hay ahora un solo paso: `sh linux/instalar.sh`**
+> (ver `linux/LEEME.md`). Sirve para Puppy y para Pop!_OS, instala solo lo que falte y deja el modo
+> bar puesto si se le pide.
+>
+> **Esto de aquí sigue siendo la vía del equipo del bar**, y no sobra: el `.sfs` va de **sólo
+> lectura**, así que nadie puede romper la instalación sin querer, y además deja el programa ya
+> traducido a lenguaje de máquina (46 ms menos hasta la primera canción). Si la máquina es la del
+> local, esta página es la buena.
+
 Hace falta **BookwormPup64** ya instalado (una instalación "frugal" normal, la que hace Puppy sola).
 
 ---

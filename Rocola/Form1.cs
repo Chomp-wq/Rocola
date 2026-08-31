@@ -1256,7 +1256,9 @@ namespace Rocola
         private int winTick = 0;
         private Bitmap winSnap;           // instantanea del buscador para animarlo AL CERRAR (al abrir se anima la textura de UI)
 #endif
-        private bool transAnimOn = true;  // "animacion=" en config
+        // El zoom al entrar/salir de un disco: hay o no hay. Ya no es un campo aparte que haya que
+        // mantener a mano en dos sitios: SALE del nivel, y asi no se pueden contradecir nunca.
+        private bool transAnimOn { get { return animNiv > NivBajo; } }
         private bool videoGpuOn = true;   // "video_gpu=" en config: interfaz por GPU tambien con video sonando
         private bool diagOn = false;      // "diagnostico=" en config: apuntar eventos clave en rocola_diagnostico.txt
         private readonly List<string> extraMusicDirs = new List<string>();   // carpetas de musica extra (ademas de "musica")
@@ -1377,7 +1379,7 @@ namespace Rocola
                 {
                     string s = line.Trim();
                     if (s.StartsWith("gpu=")) gpuPrefOn = s.Substring(4).Trim() != "0";
-                    else if (s.StartsWith("animacion=")) { animNiv = NivelDe(s.Substring(10)); transAnimOn = animNiv > NivBajo; }   // zoom al entrar/salir de un disco
+                    else if (s.StartsWith("animacion=")) animNiv = NivelDe(s.Substring(10));   // zoom al entrar/salir de un disco
                     else if (s.StartsWith("espectro=")) { float v; if (float.TryParse(s.Substring(9).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) auroraAmount = Clampf(v / 100f, 0f, 1f); }   // aurora del horizonte (0 = apagada)
                     else if (s.StartsWith("tope_fps=")) { int v; if (int.TryParse(s.Substring(9).Trim(), out v)) fpsTope = (v < 0) ? 0 : v; }   // cuadros/s del fondo (0 = automatico, segun la pantalla)
                     else if (s.StartsWith("estrellas=")) { int v; if (int.TryParse(s.Substring(10).Trim(), out v)) estrellasDens = Clampf(v / 100f, 0.1f, 1f); }   // cuantas estrellas (%)
