@@ -13466,7 +13466,14 @@ namespace Rocola
             // CACHE DE CELDAS: cada disco (portada estatica + etiqueta) se HORNEA a un bitmap UNA vez y luego se
             // COPIA (blit 1:1) en cubeCache al paginar. Antes cada pagina re-ESCALABA 18 portadas y re-MAQUETABA
             // 18 etiquetas (ajuste de linea) -> carisimo al paginar rapido. Ahora paginar es casi solo copias.
-            private sealed class CellSprite { public Bitmap Bmp; public bool HasCover; public int Uso; }
+            // Nace: cuando se horneo. Hace falta para saber si una casilla chica es de ESTE deslizamiento o
+            // quedo de uno de hace rato (ver PeekOrBakeCell).
+            private sealed class CellSprite { public Bitmap Bmp; public bool HasCover; public int Uso; public int Nace; }
+            // CUANTO SE ENCOGE la casilla mientras la pagina se desliza. A la mitad de lado son la CUARTA
+            // PARTE de pixeles, y por tanto la cuarta parte de bytes subidos a la tarjeta grafica: ahi es
+            // donde de verdad se atasca el hojeo rapido. El DIBUJO no era el problema y se midio -las 18
+            // casillas enteras cuestan 2.9 ms a 1280x1024, y a la mitad 1.7-; lo caro es la subida.
+            private const float CeldaChica = 0.5f;
             private readonly Dictionary<string, CellSprite> cellCache = new Dictionary<string, CellSprite>();
             private int cellCacheW = -1, cellCacheH = -1;   // tamano con el que se horneo (si cambia, se limpia todo)
             private int cellUso;                            // reloj de uso: sube cada vez que se toca una casilla
@@ -13591,6 +13598,11 @@ namespace Rocola
                 if (cellCacheW != w || cellCacheH != h) { ClearCellCache(); cellCacheW = w; cellCacheH = h; RecalculaCajon(w, h); }   // tamano nuevo: rehornear (y el cajon cambia de tope: la casilla mide otra cosa)
                 else if (cellCache.Count > capCeldas) PodaCeldas();                                              // lleno: fuera las mas viejas
                 int side, labelH, gap; CellMetrics(cw, ch, out side, out labelH, out gap);
+                // MIENTRAS LA PAGINA SE MUEVE, LAS CASILLAS VAN A MEDIA RESOLUCION. Ocupan el mismo hueco en
+                // pantalla -la tarjeta las estira- pero pesan la cuarta parte al subirlas, que es lo que se
+                // atasca hojeando rapido. Va antes de SlideNow porque SlideNow apaga el deslizamiento al
+                // acabarse, y esta pagina todavia es de las que se estaban moviendo.
+                bool chica = Sliding;
                 float alpha; float dx = SlideNow(out alpha);   // hojeo: desplazamiento y desvanecido de ESTE cuadro
                 int ox = this.Left, oy = this.Top;   // coords de albumView -> pantalla (mismo criterio que los cubos que giran)
                 int budget = GridBakeBudget;
@@ -13601,7 +13613,7 @@ namespace Rocola
                     Rectangle area, lbl; Geometry(w, h, i, out area, out lbl);
                     Album a = Page[i];
                     buf[n].Key = CellKey(a);
-                    buf[n].Bmp = PeekOrBakeCell(a, cw, side, labelH, gap, (GetCover != null) ? GetCover(a) : null, ref budget);
+                    buf[n].Bmp = PeekOrBakeCell(a, cw, side, labelH, gap, (GetCover != null) ? GetCover(a) : null, ref budget, chica);
                     buf[n].Slot = i;
                     buf[n].X = ox + (i % Cols) * cw + dx; buf[n].Y = oy + area.Y; buf[n].W = cw; buf[n].H = side + gap + labelH;
                     buf[n].A = alpha;
@@ -13883,11 +13895,28 @@ namespace Rocola
 
             // Hornea la celda de un disco (portada estatica en angulo 0 + etiqueta a 2 lineas) a un bitmap propio.
             private Bitmap BakeCell(Album a, int cw, int side, int labelH, int gap, Image cover)
+            { return BakeCell(a, cw, side, labelH, gap, cover, 1f); }
+
+            // 'esc' encoge la casilla, para el hojeo (ver CeldaChica).
+            //
+            // SE ENCOGE EL DIBUJO, NO LAS MEDIDAS, y esto no es un capricho: la letra del rotulo tiene tamano
+            // FIJO -no sale de 'labelH', ver EnsureLabelRes-, asi que pasando las medidas partidas por dos el
+            // disco menguaria pero el nombre seguiria igual de grande: enorme para su hueco, y cortado.
+            // Encogiendo el pincel sale la MISMA casilla, igual de proporcionada, solo que con menos pixeles.
+            private Bitmap BakeCell(Album a, int cw, int side, int labelH, int gap, Image cover, float esc)
             {
-                Bitmap bmp = new Bitmap(cw, side + gap + labelH, PixelFormat.Format32bppPArgb);
+                int bw = cw, bh = side + gap + labelH;
+                bool encoge = (esc > 0f && esc < 0.999f);
+                if (encoge)
+                {
+                    bw = (int)(cw * esc); if (bw < 1) bw = 1;
+                    bh = (int)((side + gap + labelH) * esc); if (bh < 1) bh = 1;
+                }
+                Bitmap bmp = new Bitmap(bw, bh, PixelFormat.Format32bppPArgb);
                 using (Graphics g = Graphics.FromImage(bmp))
                 {
                     g.Clear(Color.Transparent);
+                    if (encoge) g.ScaleTransform(esc, esc);
                     g.InterpolationMode = InterpolationMode.Bilinear;   // mas rapido que bicubico (CPU vieja); las portadas ya son de buena resolucion
                     g.SmoothingMode = SmoothingMode.AntiAlias;
                     Cube.Draw(g, new Rectangle((cw - side) / 2, 0, side, side), cover, 0.0);   // disco centrado (mismo x que Geometry)
@@ -13919,22 +13948,58 @@ namespace Rocola
             // no esta cacheada y no queda presupuesto, devuelve la version vieja (placeholder) si la hay, o null (el
             // panel la salta y aparece en el siguiente cuadro). Asi un barrido de paginas NUEVAS no hornea 18 celdas
             // de golpe -> los fps no bajan. Comparte cellCache con GetOrBakeCell (mismas claves).
+            // Cuando empezo el deslizamiento de pagina que hay en curso, o -1 si no hay ninguno. Sin tarjeta
+            // grafica las paginas no se deslizan -no existe ese camino-, asi que ahi siempre es -1.
+#if ROCOLA_GPU
+            private int TickHojeo { get { return slideTick; } }
+#else
+            private int TickHojeo { get { return -1; } }
+#endif
+
             private Bitmap PeekOrBakeCell(Album a, int cw, int side, int labelH, int gap, Image cover, ref int budget)
+            { return PeekOrBakeCell(a, cw, side, labelH, gap, cover, ref budget, false); }
+
+            // 'chica' = la pagina se esta deslizando, asi que la casilla va a media resolucion. Se guarda con
+            // su propia clave para que la entera siga ahi: al parar hay que volver a ella.
+            private Bitmap PeekOrBakeCell(Album a, int cw, int side, int labelH, int gap, Image cover, ref int budget, bool chica)
             {
                 string key = CellKey(a);
                 bool hasCover = (cover != null);
+                string k = (key == null) ? null : (chica ? key + "#c" : key);
                 CellSprite cs = null;
-                if (key != null && cellCache.TryGetValue(key, out cs) && cs.Bmp != null && cs.HasCover == hasCover)
+                if (k != null) cellCache.TryGetValue(k, out cs);
+                // MIENTRAS LA PAGINA SE MUEVE NO SE REHACE UNA CASILLA PORQUE HAYA LLEGADO SU PORTADA.
+                //
+                // Normalmente, en cuanto la portada aparece, la casilla se vuelve a hornear Y a subir entera a
+                // la tarjeta para cambiar el disco vacio por el de verdad. Pero pasando paginas rapido las
+                // portadas no estan listas NUNCA, asi que el momento mas apretado era justo el que hacia el
+                // doble de trabajo. Se aplaza a que la pagina pare: un cuarto de segundo despues, y sin nadie
+                // mirando el detalle de una casilla que va volando.
+                //
+                // Solo se aplaza lo horneado EN ESTE deslizamiento, y para eso esta 'Nace': una casilla chica
+                // que quedo de un hojeo de hace un rato SI se rehace, porque si no una pagina ya visitada se
+                // veria con los discos vacios para siempre.
+                bool recien = chica && cs != null && TickHojeo >= 0 && cs.Nace - TickHojeo >= 0;
+                if (cs != null && cs.Bmp != null && (cs.HasCover == hasCover || recien))
                 { cs.Uso = ++cellUso; return cs.Bmp; }   // cacheada -> gratis
-                // sin presupuesto: usa la vieja (placeholder) si hay; si no, se salta. Cuenta como uso: se esta
-                // viendo AHORA MISMO, asi que la poda no puede llevarsela por delante.
-                if (budget <= 0) { if (cs != null) { cs.Uso = ++cellUso; return cs.Bmp; } return null; }
+                // sin presupuesto: usa la vieja (placeholder) si hay. Cuenta como uso: se esta viendo AHORA
+                // MISMO, asi que la poda no puede llevarsela por delante.
+                if (budget <= 0)
+                {
+                    if (cs != null && cs.Bmp != null) { cs.Uso = ++cellUso; return cs.Bmp; }
+                    // Y ANTES QUE DEJAR UN HUECO, la de la OTRA resolucion: la tarjeta la estira y se ve un
+                    // pelo blanda un cuadro, que es infinitamente mejor que un agujero en la pared.
+                    CellSprite otra;
+                    if (key != null && cellCache.TryGetValue(chica ? key : key + "#c", out otra) && otra.Bmp != null)
+                    { otra.Uso = ++cellUso; return otra.Bmp; }
+                    return null;
+                }
                 budget--;
-                Bitmap bmp = BakeCell(a, cw, side, labelH, gap, cover);
-                if (key != null)
+                Bitmap bmp = BakeCell(a, cw, side, labelH, gap, cover, chica ? CeldaChica : 1f);
+                if (k != null)
                 {
                     if (cs != null && cs.Bmp != null && cs.Bmp != bmp) cs.Bmp.Dispose();
-                    cellCache[key] = new CellSprite { Bmp = bmp, HasCover = hasCover, Uso = ++cellUso };
+                    cellCache[k] = new CellSprite { Bmp = bmp, HasCover = hasCover, Uso = ++cellUso, Nace = Environment.TickCount };
                 }
                 return bmp;
             }
