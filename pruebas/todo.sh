@@ -35,7 +35,7 @@ CPU="ajustes bajo eqauto bajoauto calidad eqia nivel titulo duracion prueba prue
 # existe la funcion que pone la cancion ni el bucle que la deja respirar.
 # 'arranca' sale en las dos: enciende la rocola de verdad, y hay que ver que enciende y se dibuja entera
 # TAMBIEN con el fondo por tarjeta grafica, que en esa version dibuja la pantalla casi completa.
-GPU="fondo anim presencia barrido tope calma entrar gl luz mover arranca bibliotecas banco"
+GPU="fondo anim presencia barrido tope calma entrar gl luz mover arranca bibliotecas banco paginar"
 
 # Y las que miran algo que SOLO EXISTE en la rama de tarjeta grafica. La limpieza de videos que no
 # suenan es una de esas: para saber si un video suena hay que descomprimir su sonido, y eso alli lo
