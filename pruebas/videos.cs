@@ -90,6 +90,12 @@ class Videos
         Type TTrk = TF.GetNestedType("Track", BindingFlags.NonPublic | BindingFlags.Public);
 
         rocola = FormatterServices.GetUninitializedObject(TF);
+        // EL MODO NOCHE, APAGADO MIENTRAS SE MIDE ESTO. Esta bateria mide el EMPAREJADO de los videos, y de
+        // 11pm a 7am la rocola les baja 4 dB a todos por igual. Sin apagarlo, la misma prueba saldria bien de
+        // dia y con otros numeros de madrugada: una prueba que depende de la hora a la que la corras no vale
+        // para nada. (El modo noche tiene su propia bateria, 'noche'.)
+        FieldInfo fNoche = TF.GetField("nocheOn", BindingFlags.Static | BindingFlags.NonPublic);
+        if (fNoche != null) fNoche.SetValue(null, false);
 
         const int N = 61;
         float objetivo = 0.26f;                       // el volumen objetivo de fabrica de las canciones
