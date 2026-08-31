@@ -159,6 +159,10 @@ namespace Rocola
         private int nieblasNiv = NivAlto;   // "nieblas=" : 2 nebulosa + velo;  1 solo la nebulosa;  0 nada
         private int relevoNiv = NivAlto;    // "patron="  : 2 patron nuevo cada minuto;  1 cada tres;  0 nunca
         private int animNiv = NivAlto;      // "animacion=": el zoom al entrar/salir de un disco (ver TransMs)
+        // ALIGERAR EL HOJEO ("hojeo_ligero="). Mientras la pagina se desliza, las casillas van a media
+        // resolucion -la cuarta parte de bytes a la tarjeta- y no se rehacen porque llegue su portada.
+        // Encendido de fabrica: no se ve, porque solo pasa mientras la pagina esta en movimiento.
+        private bool hojeoLigero = true;
         // PRESENCIA de la aurora en pantalla, de 0 a 1. Antes se dibujaba o no se dibujaba segun si la banda
         // mas alta pasaba de un pelo: en un pasaje bajito (una intro, un silencio, el final de un tema) las
         // bandas caen a cero, la aurora DESAPARECIA de golpe y al volver la musica APARECIA de golpe. Eso era
@@ -1366,6 +1370,7 @@ namespace Rocola
                     else if (s.StartsWith("fugaces=")) fugacesNiv = NivelDe(s.Substring(8));     // estrellas fugaces
                     else if (s.StartsWith("nieblas=")) nieblasNiv = NivelDe(s.Substring(8));     // nebulosas y neblina de color
                     else if (s.StartsWith("patron=")) relevoNiv = NivelDe(s.Substring(7));       // relevo de patron cada minuto
+                    else if (s.StartsWith("hojeo_ligero=")) hojeoLigero = s.Substring(13).Trim() != "0";   // aligerar mientras se pasa de pagina
                     else if (s.StartsWith("disco="))   // tipo de disco: auto (medir), ssd o hdd (Ctrl+F3)
                     {
                         string d = s.Substring(6).Trim().ToLowerInvariant();
@@ -1500,6 +1505,7 @@ namespace Rocola
                 sb.Append("fugaces=").Append(TextoNivel(fugacesNiv)).Append("\r\n");
                 sb.Append("nieblas=").Append(TextoNivel(nieblasNiv)).Append("\r\n");
                 sb.Append("patron=").Append(TextoNivel(relevoNiv)).Append("\r\n");
+                sb.Append("hojeo_ligero=").Append(hojeoLigero ? "1" : "0").Append("\r\n");
                 sb.Append("disco=").Append(perfilDisco == 1 ? "ssd" : perfilDisco == 2 ? "hdd" : "auto").Append("\r\n");
                 sb.Append("video_gpu=").Append(videoGpuOn ? "1" : "0").Append("\r\n");
                 sb.Append("diagnostico=").Append(diagOn ? "1" : "0").Append("\r\n");
@@ -12843,6 +12849,11 @@ namespace Rocola
             // donde de verdad se atasca el hojeo rapido. El DIBUJO no era el problema y se midio -las 18
             // casillas enteras cuestan 2.9 ms a 1280x1024, y a la mitad 1.7-; lo caro es la subida.
             private const float CeldaChica = 0.5f;
+            // EL INTERRUPTOR DE TODO ESTO (Ctrl+F3 -> Imagen). Manda sobre las DOS cosas a la vez -la media
+            // resolucion y el aplazar el re-horneado- porque las dos son lo mismo visto de dos maneras:
+            // aligerar el momento en que la pagina se mueve. Apagado, la pared se dibuja pasando paginas
+            // exactamente como antes de que esto existiera. Lo pone el formulario, como Page o Sky.
+            public bool HojeoLigero = true;
             private readonly Dictionary<string, CellSprite> cellCache = new Dictionary<string, CellSprite>();
             private int cellCacheW = -1, cellCacheH = -1;   // tamano con el que se horneo (si cambia, se limpia todo)
             private int cellUso;                            // reloj de uso: sube cada vez que se toca una casilla
@@ -12971,7 +12982,7 @@ namespace Rocola
                 // pantalla -la tarjeta las estira- pero pesan la cuarta parte al subirlas, que es lo que se
                 // atasca hojeando rapido. Va antes de SlideNow porque SlideNow apaga el deslizamiento al
                 // acabarse, y esta pagina todavia es de las que se estaban moviendo.
-                bool chica = Sliding;
+                bool chica = Sliding && HojeoLigero;
                 float alpha; float dx = SlideNow(out alpha);   // hojeo: desplazamiento y desvanecido de ESTE cuadro
                 int ox = this.Left, oy = this.Top;   // coords de albumView -> pantalla (mismo criterio que los cubos que giran)
                 int budget = GridBakeBudget;
@@ -13348,7 +13359,7 @@ namespace Rocola
                 // Solo se aplaza lo horneado EN ESTE deslizamiento, y para eso esta 'Nace': una casilla chica
                 // que quedo de un hojeo de hace un rato SI se rehace, porque si no una pagina ya visitada se
                 // veria con los discos vacios para siempre.
-                bool recien = chica && cs != null && TickHojeo >= 0 && cs.Nace - TickHojeo >= 0;
+                bool recien = chica && HojeoLigero && cs != null && TickHojeo >= 0 && cs.Nace - TickHojeo >= 0;
                 if (cs != null && cs.Bmp != null && (cs.HasCover == hasCover || recien))
                 { cs.Uso = ++cellUso; return cs.Bmp; }   // cacheada -> gratis
                 // sin presupuesto: usa la vieja (placeholder) si hay. Cuenta como uso: se esta viendo AHORA

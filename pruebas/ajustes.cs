@@ -259,7 +259,7 @@ class Ajustes
                             "Patron nuevo de estrellas", "Estrellas fugaces", "Zoom al entrar a un disco" };
         for (int i = 0; i < 6; i++)
         {
-            int y = PY + 104 + i * 68;
+            int y = PY + 104 + i * 62;   // el paso se apreto para hacerle sitio al interruptor de abajo
             C("efecto" + i + ".nombre", 504, y, 424, 18, efeNom[i], fNom, 10f, false);
             for (int k = 0; k < 3; k++)
                 C("efecto" + i + ".n" + k, 504 + k * 102, y + 22, 96, 26, nomNivel[k], fBot, 10f, false);
@@ -274,8 +274,12 @@ class Ajustes
             "Cada minuto, con las dos constelaciones cruzandose.",
             "Una cada 15-30 segundos, en vez de dos cada 7-16.",
             "Sin animacion: el disco se abre de golpe." };
+        // El interruptor del hojeo ligero, debajo de las seis filas. Va de si/no y no de tres niveles: no se
+        // baja para ganar rendimiento a cambio de fealdad, se apaga para deshacerlo. Su texto se explica solo,
+        // asi que no lleva renglon aparte -y por eso tiene que caber ENTERO en su hueco-.
+        CSw("hojeo.ligero", 504, PY + 470, 424, 26, "Aligerar mientras se pasa de pagina", fNom, 10f);
         for (int i = 0; i < 6; i++)
-            C("pierde.v" + i, 504, PY + 496, 424, 64, efeNom[i] + " en medio:\n" + efePierde[i], fDes, 8.5f, true);
+            C("pierde.v" + i, 504, PY + 502, 424, 64, efeNom[i] + " en medio:\n" + efePierde[i], fDes, 8.5f, true);
 
         C("imagen.fabrica", 16, PY + 584, 300, 38, "Graficos como de fabrica", fBot, 10f, false);
         pagActual = 0;
