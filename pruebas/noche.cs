@@ -120,6 +120,23 @@ class Noche
         MethodInfo apply = Met("ApplyNormNow");
         Check(apply != null && Codigo.Llama(apply, "FactorNoche"), "y el ajuste en vivo, para que se oiga bajar sin cambiar de cancion");
 
+        Console.WriteLine("\n  5b) EL INTERRUPTOR DE LA VENTANA DE SONIDO\n");
+        // De nada sirve una casilla si no la mira nadie: el operador la apaga, no cambia nada, y deja de
+        // fiarse del resto de la ventana. Se comprueba que la ventana de Ctrl+F3 LEE el ajuste -para que la
+        // casilla salga como esta ahora- y lo ESCRIBE -para que apagarla sirva de algo-.
+        int leeV, escV;
+        UsosConAyudantes("VentanaAjustes", "nocheOn", out leeV, out escV);
+        Check(leeV > 0, "la ventana de sonido LEE el modo noche (la casilla sale como esta ahora)");
+        Check(escV > 0, "y lo ESCRIBE: la casilla sirve de algo");
+        List<string> tv = new List<string>();
+        foreach (Type t in new List<Type>(TF.GetNestedTypes(BindingFlags.Public | BindingFlags.NonPublic)).ToArray())
+            foreach (MethodInfo m in t.GetMethods(TODO | BindingFlags.DeclaredOnly))
+                if (t.Name.IndexOf("<VentanaAjustes>", StringComparison.Ordinal) >= 0) tv.AddRange(Codigo.Textos(m));
+        foreach (MethodInfo m in TF.GetMethods(TODO | BindingFlags.DeclaredOnly))
+            if (m.Name == "VentanaAjustes" || m.Name.IndexOf("<VentanaAjustes>", StringComparison.Ordinal) >= 0)
+                tv.AddRange(Codigo.Textos(m));
+        Check(tv.Contains("Bajar el volumen de "), "y el letrero dice de que hora a que hora, sacado de la configuracion");
+
         Console.WriteLine("\n  6) LA RAMPA\n");
         if (rampa == null)
         {
@@ -174,6 +191,26 @@ class Noche
 
         Console.WriteLine("\n  " + (fallos == 0 ? "TODO BIEN" : fallos + " FALLO(S)"));
         return fallos;
+    }
+
+    // Cuantas veces LEE y ESCRIBE un campo una funcion Y las funciones sueltas que el compilador le saca
+    // aparte con el nombre entre picos (<VentanaAjustes>c__AnonStorey...). Sin esto, lo que hace un boton
+    // -que vive dentro de un delegado- se daria por no hecho.
+    static void UsosConAyudantes(string metodo, string campo, out int lee, out int escribe)
+    {
+        lee = 0; escribe = 0;
+        string picos = "<" + metodo + ">";
+        List<Type> tipos = new List<Type>();
+        tipos.Add(TF);
+        tipos.AddRange(TF.GetNestedTypes(BindingFlags.Public | BindingFlags.NonPublic));
+        foreach (Type t in tipos)
+            foreach (MethodInfo m in t.GetMethods(TODO | BindingFlags.DeclaredOnly))
+                if (m.Name == metodo || m.Name.IndexOf(picos, StringComparison.Ordinal) >= 0
+                    || t.Name.IndexOf(picos, StringComparison.Ordinal) >= 0)
+                {
+                    int l, e; Codigo.UsosDeCampo(m, campo, out l, out e);
+                    lee += l; escribe += e;
+                }
     }
 
     // Llama a la rampa 'vueltas' veces, cada una avanzando 'ms' milisegundos.
