@@ -28,7 +28,7 @@ CPU="ajustes bajo eqauto bajoauto calidad eqia nivel titulo duracion prueba prue
 # tarjeta grafica solo existe en ese perfil (si no, aparecia en las pruebas y no en el bar).
 # 'banco' va aqui porque el medidor de Ctrl+F3 mide el camino de la tarjeta grafica: sin ese perfil ni
 # existe la funcion que pone la cancion ni el bucle que la deja respirar.
-GPU="fondo anim presencia barrido tope calma entrar mover banco"
+GPU="fondo anim presencia barrido tope calma entrar mover banco paginar"
 
 # Y las que miran algo que SOLO EXISTE en la rama de tarjeta grafica. La limpieza de videos que no
 # suenan es una de esas: para saber si un video suena hay que descomprimir su sonido, y eso alli lo
