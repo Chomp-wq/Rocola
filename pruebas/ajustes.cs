@@ -115,11 +115,15 @@ class Ajustes
         C("pestana.imagen", 796, 8, 148, 30, "Imagen", fBot, 10f, false);
         C("boton.listo", 804, hd ? 956 : 680, 140, 38, "Listo", fBot, 10f, false);
         pagActual = 0;   // de aqui en adelante, la pagina de Sonido
-        C("subtitulo", 24, 42, 590, 18, "Todo lo que cambies aqui se oye al instante en la cancion que esta sonando.", fSub, 9.5f, false);
+        C("subtitulo", 24, 42, 344, 18, "Lo que cambies se oye al instante.", fSub, 9.5f, false);
         // EL MODO NOCHE va en el hueco que queda a la derecha del subtitulo: es el unico sitio de esta
         // ventana donde cabia sin mover nada (el subtitulo gasta 545 de sus 916 px). Se mide con las horas
         // mas largas que pueden salir -dos digitos cada una- porque el letrero las saca de la configuracion.
         CSw("noche", 624, 40, 316, 22, "Bajar el volumen de 23 a 7 h", fInt, 9.5f);
+        // LOS SONIDOS DE LA ROCOLA comparten ese mismo renglon, en medio. Es el tercer inquilino de una
+        // fila donde ya hubo un choque una vez -el subtitulo reclamaba los 916 px aunque usara 545-, asi
+        // que aqui se declara con sus medidas de verdad y que el reparto lo compruebe la maquina.
+        CSw("efectos", 380, 40, 234, 22, "Sonidos de la rocola", fInt, 9.5f);
         // La linea que dice que hay DESPUES del cable. Son DOS renglones y el texto se arma sobre la marcha,
         // asi que no vale con probar UNA frase: se prueban las CUATRO que el programa puede llegar a escribir,
         // cada una con el primer renglon en su peor caso (nombre de equipo del largo maximo que deja el corte,
