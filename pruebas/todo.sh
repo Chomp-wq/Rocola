@@ -24,11 +24,15 @@ NLAYER="$RAIZ/packages/NLayer.1.12.0/lib/net35/NLayer.dll"
 # El dibujo por tarjeta grafica va en dos archivos: D3D9Star.cs es el dibujo (igual en las tres ramas) y
 # el dispositivo es el que cambia de sistema. Aqui va el de OpenGL; el de Direct3D (D3D9Device.cs) esta en
 # el arbol para las ramas de Windows y NO se compila.
-FUENTES="$RAIZ/Rocola/Form1.cs $RAIZ/Rocola/Form1.Designer.cs $RAIZ/Rocola/Program.cs $RAIZ/Rocola/D3D9Star.cs $RAIZ/Rocola/Rendimiento.cs $RAIZ/Rocola/GLDevice.cs $RAIZ/Rocola/LinuxAudio.cs $RAIZ/Rocola/LinuxSistema.cs $RAIZ/Rocola/LinuxPintura.cs $RAIZ/Rocola/LinuxVideo.cs"
+FUENTES="$RAIZ/Rocola/Form1.cs $RAIZ/Rocola/Form1.Designer.cs $RAIZ/Rocola/Program.cs $RAIZ/Rocola/D3D9Star.cs $RAIZ/Rocola/Rendimiento.cs $RAIZ/Rocola/Efectos.cs $RAIZ/Rocola/GLDevice.cs $RAIZ/Rocola/LinuxAudio.cs $RAIZ/Rocola/LinuxSistema.cs $RAIZ/Rocola/LinuxPintura.cs $RAIZ/Rocola/LinuxVideo.cs"
 
 # Las que miran cosas que solo existen con tarjeta grafica (la aurora, el barrido de luz) van
 # contra el perfil de GPU; las demas contra el normal.
-CPU="ajustes bajo eqauto bajoauto calidad eqia nivel titulo duracion prueba prueba2 prueba3 prueba4 neon fps abc barrido2 espacio busca buscaigual bolsa genero pagina busmov parcial disco ssd etiqueta sala hojea cosecha resol letrero dsee noche respaldo ventana salida salir datos carpeta carpetas miniaturas pared tiemporeal bits franjas ciclo videosonido videos2 sobras gasto historial estrellas limite vacias videos franja colores carriles indice proyecto primera gasta usando escribe reposo cambio apagon unasola entrar iadatos entrenador corta deriva ligera simbolos leer opengl sonido arranca instala"
+CPU="ajustes bajo eqauto bajoauto calidad eqia nivel titulo duracion prueba prueba2 prueba3 prueba4 neon fps abc barrido2 espacio busca buscaigual bolsa genero pagina busmov parcial disco ssd etiqueta sala hojea cosecha resol letrero dsee noche respaldo ventana salida salir datos carpeta carpetas miniaturas pared tiemporeal bits franjas ciclo videosonido videos2 sobras gasto historial estrellas limite vacias videos franja colores carriles indice proyecto primera gasta usando escribe reposo cambio apagon unasola entrar iadatos entrenador corta deriva ligera simbolos leer opengl sonido arranca instala efectos"
+# 'ceremonia' SI va contra el perfil de tarjeta grafica: la portada que vuela a la cola reusa la
+# animacion del disco que se abre, y esa solo existe alli (sin tarjeta, VuelaALaCola se queda vacia).
+# 'efectos' tampoco necesita tarjeta grafica: le pide a la rocola cada sonido, lo recibe como una tira
+# de numeros y le mide la forma. Un sonido se puede probar sin bocinas.
 # 'instala' no mira el ejecutable: corre linux/instalar.sh en su modo --probar, que dice lo que haria
 # sin tocar un archivo, y le finge una BookwormPup para poder comprobar el camino de Puppy sin tener una
 # delante. Va en esta lista porque le da igual el perfil.
@@ -38,7 +42,7 @@ CPU="ajustes bajo eqauto bajoauto calidad eqia nivel titulo duracion prueba prue
 # existe la funcion que pone la cancion ni el bucle que la deja respirar.
 # 'arranca' sale en las dos: enciende la rocola de verdad, y hay que ver que enciende y se dibuja entera
 # TAMBIEN con el fondo por tarjeta grafica, que en esa version dibuja la pantalla casi completa.
-GPU="fondo anim presencia barrido tope calma entrar gl luz mover arranca bibliotecas banco paginar"
+GPU="fondo anim presencia barrido tope calma entrar gl luz mover arranca bibliotecas banco paginar ceremonia"
 
 # Y las que miran algo que SOLO EXISTE en la rama de tarjeta grafica. La limpieza de videos que no
 # suenan es una de esas: para saber si un video suena hay que descomprimir su sonido, y eso alli lo
