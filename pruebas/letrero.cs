@@ -292,7 +292,7 @@ class Letrero
         int apretadas = 0;
         foreach (int alto in new int[] { 26, 34, 40, 48, 60, 76 })
         {
-            int anc = (int)mAncho.Invoke(null, new object[] { "Inserta una moneda", "", alto, FontFamily.GenericSansSerif });
+            int anc = (int)mAncho.Invoke(null, new object[] { "Inserta una moneda", "", alto, FontFamily.GenericSansSerif, false });
             Control p2 = (Control)Activator.CreateInstance(TPast, true);
             p2.Font = new Font(FontFamily.GenericSansSerif, 9f, FontStyle.Regular);
             p2.SetBounds(0, 0, anc, alto);
