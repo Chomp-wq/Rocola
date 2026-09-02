@@ -251,9 +251,7 @@ static class Codigo
         if (raiz == null) return r;
         BindingFlags bf = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public
                         | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
-        List<Type> tipos = new List<Type>();
-        tipos.Add(raiz);
-        tipos.AddRange(raiz.GetNestedTypes(BindingFlags.Public | BindingFlags.NonPublic));
+        List<Type> tipos = ConLosDeDentro(raiz);
         string picos = "<" + metodo + ">";
         foreach (Type t in tipos)
             foreach (MethodInfo m in t.GetMethods(bf))
@@ -270,14 +268,33 @@ static class Codigo
         if (raiz == null) return r;
         BindingFlags bf = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public
                         | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
-        List<Type> tipos = new List<Type>();
-        tipos.Add(raiz);
-        tipos.AddRange(raiz.GetNestedTypes(BindingFlags.Public | BindingFlags.NonPublic));
+        List<Type> tipos = ConLosDeDentro(raiz);
         foreach (Type t in tipos)
         {
             foreach (MethodInfo m in t.GetMethods(bf)) r.Add(m);
             foreach (ConstructorInfo c in t.GetConstructors(bf)) r.Add(c);
         }
         return r;
+    }
+
+    // Un tipo y TODOS los que lleva dentro, por hondo que esten.
+    //
+    // Antes se miraba un solo nivel, y eso dejaba fuera lo que mas importa mirar: cuando un delegado lleva
+    // otro delegado dentro -por ejemplo un hilo que al terminar le encarga algo al hilo de la pantalla-, el
+    // compilador mete la clase del de dentro DENTRO de la del de fuera. Con un solo nivel, todo lo que hace
+    // ese trozo era invisible desde las pruebas: no aparecia ni una llamada, y una bateria que preguntara
+    // por el se lo tragaba diciendo que no habia nada.
+    public static List<Type> ConLosDeDentro(Type raiz)
+    {
+        List<Type> r = new List<Type>();
+        if (raiz == null) return r;
+        Mete(raiz, r);
+        return r;
+    }
+    private static void Mete(Type t, List<Type> r)
+    {
+        if (t == null || r.Contains(t)) return;
+        r.Add(t);
+        foreach (Type h in t.GetNestedTypes(BindingFlags.Public | BindingFlags.NonPublic)) Mete(h, r);
     }
 }
