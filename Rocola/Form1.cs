@@ -5583,12 +5583,16 @@ namespace Rocola
         // uno SIEMPRE, en cualquier maquina. Si eso fallara, la rocola se pondria lenta justo cuando hay
         // gente delante, y eso seria peor que no haber tocado nada. Pura a proposito, para poder darle los
         // cuatro casos a mano.
-        internal static int CarrilesPara(bool turbo, bool sola, bool discoLento, int nucleos)
+        internal static int CarrilesPara(bool turbo, bool sola, bool discoLento, int nucleos, bool minisPorHacer)
         {
             // Disco lento: aqui no manda el procesador, manda el cabezal. Varios hilos pidiendo canciones a
             // la vez lo ponen a saltar y sale mas lento, no mas rapido.
             if (discoLento) return 1;
             if (!turbo && !sola) return 1;      // hay alguien: ni uno mas
+            // Y MIENTRAS QUEDEN MINIATURAS, ellas primero. Las dos cosas se sueltan cuando la rocola esta
+            // sola, y sueltas a la vez en una maquina de dos nucleos se pelean por el disco y salen las dos
+            // peor. La miniatura es lo que SE VE en la pared; el pre-analisis no se ve hasta que suena.
+            if (minisPorHacer) return 1;
             if (nucleos < 4) return 1;          // en la de dos nucleos del bar no hay nada que repartir
             int c = nucleos - 1;                // siempre un nucleo libre para la pantalla y la musica
             if (c > 4) c = 4;                   // y de ahi no se pasa: mas no gana y calienta la maquina
@@ -5604,7 +5608,7 @@ namespace Rocola
         private void RevisaCarriles()
         {
             if (preScanCarriles <= 0) return;   // no hay pre-analisis corriendo
-            if (CarrilesPara(preScanTurbo, RocolaSola(), diskSlow, Environment.ProcessorCount) == preScanCarriles) return;
+            if (CarrilesPara(preScanTurbo, RocolaSola(), diskSlow, Environment.ProcessorCount, minisPendientes > 0) == preScanCarriles) return;
             StartPreScan(false);
         }
 
@@ -5649,7 +5653,7 @@ namespace Rocola
             // hay nadie eligiendo ni nada a lo que fallarle. La cuenta esta aparte y se prueba con casos a
             // mano, porque lo que de verdad importa de ella es que con alguien delante devuelva uno.
             bool aSolas = RocolaSola();
-            int carriles = CarrilesPara(turbo, aSolas, diskSlow, Environment.ProcessorCount);
+            int carriles = CarrilesPara(turbo, aSolas, diskSlow, Environment.ProcessorCount, minisPendientes > 0);
             preScanCarriles = carriles;
             int siguiente = -1;      // de aqui saca cada carril la siguiente cancion (reparto por demanda: las
             int hechasTot = 0;       // canciones no duran lo mismo, y asi ninguno se queda esperando al otro)
@@ -6153,6 +6157,11 @@ namespace Rocola
             t.Start();
         }
 
+        // CUANTAS MINIATURAS FALTAN POR HACER. Lo mantiene el calentador y lo consulta el pre-analisis
+        // para apartarse: las miniaturas son lo que SE VE en la pared, asi que van primero. En la maquina
+        // de dos nucleos del bar, sueltos los dos a la vez se pelean por el disco y salen los dos peor.
+        private volatile int minisPendientes;
+
         private void StartThumbWarm()
         {
             warmGen++;
@@ -6168,14 +6177,33 @@ namespace Rocola
                     // del rato en que la rocola esta apareciendo.
                     int barridas = BarreMiniaturas();
                     if (barridas > 0) Diag("miniaturas: barridas " + barridas + " de mas de " + MiniaturasDiasMax + " dias");
+                    // CUANTAS FALTAN, antes de empezar. Es una pasada de File.Exists por disco -barata al
+                    // lado de los 72 ms que cuesta hacer una- y con ella el pre-analisis sabe si tiene que
+                    // apartarse: mientras queden miniaturas, mandan ellas, que son lo que se ve.
+                    int faltan = 0;
+                    for (int i = 0; i < snap.Count; i++)
+                    {
+                        Album a0 = snap[i];
+                        if (a0 == null || a0.CoverPath == null) continue;
+                        try { if (!File.Exists(ThumbCachePath(a0.CoverPath))) faltan++; } catch { }
+                    }
+                    minisPendientes = faltan;
+                    if (faltan > 0) Diag("miniaturas: faltan " + faltan + " por hacer");
                     for (int i = 0; i < snap.Count; i++)
                     {
                         if (myGen != warmGen) return;   // recargaron la musica: este hilo ya caduco
                         Album a = snap[i];
                         if (a == null || a.CoverPath == null) continue;
                         try { if (File.Exists(ThumbCachePath(a.CoverPath))) continue; } catch { continue; }
-                        // si alguien uso la rocola hace poco, esperar (no robarle CPU ni DISCO a la interfaz)
-                        while (Environment.TickCount - lastInputTick < 8000)
+                        // Si alguien uso la rocola hace poco, esperar (no robarle CPU ni DISCO a la interfaz).
+                        //
+                        // SALVO QUE ESTE SOLA. Hacer la miniatura de un disco cuesta 72 ms la primera vez
+                        // contra 0.90 leyendola ya hecha -ochenta veces-, y con tres mil discos son tres
+                        // minutos y medio de trabajo UNA vez en la vida de la rocola. Pero esperando ocho
+                        // segundos sin botones antes de cada una, en un bar con gente eso no acaba nunca:
+                        // semanas para tres minutos y medio, y mientras tanto la pared enseña las portadas
+                        // llegando tarde. En atraccion, sin musica y sin video no hay a quien estorbar.
+                        while (!RocolaSola() && Environment.TickCount - lastInputTick < 8000)
                         {
                             System.Threading.Thread.Sleep(400);
                             if (myGen != warmGen) return;
@@ -6202,8 +6230,12 @@ namespace Rocola
                         }
                         catch { }
                         finally { coverSem.Release(); }
-                        System.Threading.Thread.Sleep(diskSlow ? 150 : 20);   // respiro largo en disco duro; en SSD el freno era el respiro, no el disco
+                        if (minisPendientes > 0) minisPendientes--;
+                        // Respiro largo en disco duro; en SSD el freno era el respiro, no el disco. Y sola no
+                        // hay de quien descansar.
+                        if (!RocolaSola()) System.Threading.Thread.Sleep(diskSlow ? 150 : 20);
                     }
+                    minisPendientes = 0;   // se acabo la vuelta: ya no falta ninguna
                 }
                 catch { }
             });

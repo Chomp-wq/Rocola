@@ -43,9 +43,12 @@ class Sola
         foreach (MethodInfo m in TF.GetMethods(TODO | BindingFlags.DeclaredOnly)) if (m.Name == n) return m;
         return null;
     }
+    // El quinto dato -si quedan miniaturas de portada por hacer- llego con la bateria 'duerme': mientras
+    // queden, mandan ellas y el pre-analisis se queda en un carril. Aqui se le dice que NO quedan, que es
+    // el caso que esta bateria mira; el otro lo comprueba 'duerme'.
     static int Carriles(bool turbo, bool sola, bool discoLento, int nucleos)
     {
-        return Convert.ToInt32(mCarriles.Invoke(null, new object[] { turbo, sola, discoLento, nucleos }));
+        return Convert.ToInt32(mCarriles.Invoke(null, new object[] { turbo, sola, discoLento, nucleos, false }));
     }
 
     static int Main(string[] argv)
