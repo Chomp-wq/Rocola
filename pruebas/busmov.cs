@@ -66,6 +66,13 @@ class BusMov
         }
         tso.GetField("Results").SetValue(so, res);
         tso.GetField("Query").SetValue(so, consulta);
+        // Y LO TECLEADO. Ahora son dos cosas: 'Query' es la consulta que estan enseñando los resultados y
+        // 'Escrito' lo que la persona lleva escrito en la caja, que se ve al instante mientras la otra se
+        // posa. Aqui se comparan pantallas EN REPOSO -nadie esta tecleando-, asi que las dos valen lo
+        // mismo. Sin esto, la caja del programa nuevo saldria vacia y "no se veria igual que antes" por un
+        // motivo que no tiene nada que ver con lo que esta prueba vigila.
+        FieldInfo fEscrito = tso.GetField("Escrito");
+        if (fEscrito != null) fEscrito.SetValue(so, consulta);
         tso.GetField("Accent").SetValue(so, Color.FromArgb(178, 152, 255));
         tso.GetField("FocusResults").SetValue(so, true);
         fSel = tso.GetField("SelResult");
@@ -104,19 +111,22 @@ class BusMov
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.Clear(Color.FromArgb(255, 8, 12, 36));
             mR.Invoke(so, new object[] { g, new Rectangle(0, 0, w, h), forGpu });
-            // LA PIEZA VIVA. Con tarjeta grafica, la TECLA elegida ya no va horneada dentro de la imagen de
-            // pantalla completa: sale aparte, en su propia imagen chica, para que moverse por el teclado no
-            // obligue a rehacerla y re-subirla entera. Aqui se pega, que es lo que hace la tarjeta grafica,
-            // para poder seguir comparando la pantalla ENTERA contra el programa de antes.
+            // LAS PIEZAS VIVAS. Con tarjeta grafica, lo que cambia a cada momento ya no va horneado dentro
+            // de la imagen de pantalla completa: sale aparte, en imagenes chicas. Primero fue la TECLA
+            // elegida -para que moverse por el teclado no rehiciera la pantalla entera- y despues la CAJA DE
+            // LO ESCRITO, para que teclear tampoco. Aqui se pegan encima, que es lo que hace la tarjeta
+            // grafica, y asi se puede seguir comparando la pantalla ENTERA contra el programa de antes.
             //
-            // El programa viejo no tiene esta API, asi que alli esto no hace nada: ya la lleva dentro.
+            // Se recorren TODAS y no una a mano: el dia que salga una tercera, esta comparacion la incluye
+            // sola en vez de decir que la pantalla cambio. A las que no existen, PiezaViva contesta que no.
             MethodInfo mViva = tso.GetMethod("PiezaViva");
             MethodInfo mDib = tso.GetMethod("DibujaPiezaViva");
             if (forGpu && mViva != null && mDib != null && mDib.GetParameters().Length == 4)
-            {
-                object[] ar = new object[] { 0, Rectangle.Empty };
-                if ((bool)mViva.Invoke(so, ar)) mDib.Invoke(so, new object[] { g, 0, 0, 0 });
-            }
+                for (int cual = 0; cual < 8; cual++)
+                {
+                    object[] ar = new object[] { cual, Rectangle.Empty };
+                    if ((bool)mViva.Invoke(so, ar)) mDib.Invoke(so, new object[] { g, cual, 0, 0 });
+                }
         }
         return b;
     }

@@ -1106,6 +1106,10 @@ namespace Rocola
             needConfig = !LoadKeys();   // si no hay botones guardados, lanzamos el asistente al mostrarse
             progressTimer = new System.Windows.Forms.Timer(); progressTimer.Interval = 500; progressTimer.Tick += ProgressTimer_Tick;
             coverSettleTimer = new System.Windows.Forms.Timer(); coverSettleTimer.Interval = 120; coverSettleTimer.Tick += CoverSettle_Tick;   // 0.12s: con SSD, casi inmediato pero sigue filtrando el hojeo
+            // El mismo patron que el de arriba, para las letras del buscador: se espera a que la persona
+            // pare de teclear antes de mover los resultados (ver PosarMs).
+            posaTimer = new System.Windows.Forms.Timer(); posaTimer.Interval = PosarMs;
+            posaTimer.Tick += delegate (object s2, EventArgs e2) { posaTimer.Stop(); if (searchOverlay != null) searchOverlay.PosaConsulta(); };
             animTimer = new System.Windows.Forms.Timer(); animTimer.Interval = 42; animTimer.Tick += AnimTimer_Tick; animTimer.Start();   // ~24fps (giros y pulsos); el fondo completo va 1 de cada 3 cuadros
             toastTimer = new System.Windows.Forms.Timer(); toastTimer.Interval = 1300; toastTimer.Tick += delegate (object s, EventArgs e) { toastTimer.Stop(); lblToast.Visible = false; if (searchOverlay != null) { searchOverlay.ToastOn = false; searchOverlay.Invalidate(); } };
             videoPoll = new System.Windows.Forms.Timer(); videoPoll.Interval = 400; videoPoll.Tick += VideoPoll_Tick;
@@ -4033,6 +4037,7 @@ namespace Rocola
                 return (it != null) ? GeneroDeCancion(it.TrackRef, it.AlbumRef) : "";
             };
             searchOverlay.OnQueryChanged = RecomputeResults;
+            searchOverlay.OnTecleo = AlTeclearBusqueda;
             searchOverlay.OnChoose = ChooseSearchResult;
             searchOverlay.OnClose = CloseSearch;
 
@@ -7847,6 +7852,36 @@ namespace Rocola
 
         private void MarkSearchActivity() { searchLastActivity = DateTime.Now; }
 
+        // ---------- CUANDO SE POSA LA CONSULTA ----------
+        //
+        // Mientras las letras estan entrando nadie esta leyendo los resultados, asi que moverlos en cada
+        // una es trabajo tirado: 2.80 ms de rehacer y subir la pantalla completa a 1920, mas 3.07 ms de
+        // rehornear las 40 tarjetas, POR LETRA. Se espera a que la persona pare.
+        //
+        // 220 ms. Se probaron 150 y se quedaba corto: a cinco letras por segundo -que es teclear normal en
+        // un teclado de verdad- cada letra caia fuera de la espera y no se ahorraba nada. Con 220 entran los
+        // dos ritmos rapidos y sigue siendo menos de lo que se tarda en leer una palabra. Y en la rocola del
+        // bar, donde las letras se eligen con las flechas y tardan casi un segundo, esto no cambia nada: se
+        // posa en cada letra, como siempre.
+        internal const int PosarMs = 220;
+        private int tecleoUltimo;                       // cuando entro la ultima letra
+        private System.Windows.Forms.Timer posaTimer;
+
+        // ¿Se posa YA, o se espera a que pare? Tras un rato sin teclear -abrir el buscador y escribir la
+        // primera letra- se posa en el acto: si esa primera tardara, se notaria y pareceria que la rocola
+        // no hace caso. Pura, para poder darle casos a mano.
+        internal static bool PosarYa(int msDesdeLaUltimaTecla) { return msDesdeLaUltimaTecla >= PosarMs; }
+
+        private void AlTeclearBusqueda()
+        {
+            int ahora = Environment.TickCount;
+            bool ya = PosarYa(ahora - tecleoUltimo);
+            tecleoUltimo = ahora;
+            if (posaTimer != null) posaTimer.Stop();
+            if (ya) { if (searchOverlay != null) searchOverlay.PosaConsulta(); return; }
+            if (posaTimer != null) posaTimer.Start();
+        }
+
         // El buscador NO cubre la franja de estado de abajo (cancion, progreso, creditos, cola): se
         // recorta su alto justo encima. La barra de estado va de (H - pad - 68) hacia abajo (ver
         // LayoutControls); aqui dejamos esa franja libre.
@@ -7894,6 +7929,7 @@ namespace Rocola
 #if ROCOLA_GPU
             StartWinTrans(false);   // copia el buscador AHORA (en el proximo cuadro la textura de UI ya sera la rejilla)
 #endif
+            if (posaTimer != null) posaTimer.Stop();   // el buscador se va: no queda consulta que posar
             searchOpen = false;
             searchOverlay.Visible = false;
             if (videoOn && video != null) { video.Visible = true; video.BringToFront(); }
@@ -11031,7 +11067,7 @@ namespace Rocola
         // SOLO LA TECLA, y no la tarjeta de los resultados. Al principio eran las dos y estaba mal: moverse
         // por los resultados cambia ademas el cubo de la portada y el texto de debajo, que si van dentro de
         // la imagen grande. Sacarlo de la firma dejaba el cubo y el texto viejos, y el teclado sin volver.
-        private const int NumPiezas = 1;
+        internal const int NumPiezas = 2;
         private readonly Bitmap[] uiPieza = new Bitmap[NumPiezas];
         private readonly Rectangle[] uiPiezaRect = new Rectangle[NumPiezas];
         private readonly long[] uiPiezaSig = new long[NumPiezas];
@@ -11070,6 +11106,9 @@ namespace Rocola
             Color acPieza = searchOverlay.Accent;   // a una local: es un tipo por valor dentro de un Control
             sig = Mix(sig, searchOverlay.Query); sig = Mix(sig, acPieza.ToArgb());
             sig = Mix(sig, searchOverlay.DatosVer);
+            // Solo la caja de lo escrito mira LO TECLEADO. Metiendolo en la firma de todas, la tecla
+            // elegida se reharia en cada letra sin que hubiera cambiado nada de ella.
+            if (cual == SearchOverlay.PiezaEscrito) sig = Mix(sig, searchOverlay.Escrito);
             if (sig == SigNada) sig = 1L;
 
             // El sitio se guarda SIEMPRE (aunque la imagen no cambie): al desplazarse la lista, la misma
@@ -17137,9 +17176,40 @@ namespace Rocola
                 }
             }
 
-            public void SetQuery(string q) { Query = q; FocusResults = false; SelResult = 0; Invalidate(); }
-            public void TypeChar(char c) { Query += c; Changed(); }
-            public void Backspace() { if (Query.Length > 0) Query = Query.Substring(0, Query.Length - 1); Changed(); }
+            // LO TECLEADO Y LO QUE MANDA EN LOS RESULTADOS SON DOS COSAS.
+            //
+            // Antes eran la misma, y por eso cada letra rehacia y subia la textura de pantalla completa:
+            // 2.80 ms por pulsacion a 1920 -7.3 MB- mas 3.07 ms de rehornear las 40 tarjetas. Quien teclea
+            // suelta cinco o diez letras por segundo, asi que eso pasaba diez veces en un segundo, en la
+            // escena que el medidor señala como la peor.
+            //
+            // Mientras las letras estan entrando NADIE esta leyendo los resultados; lo que si tiene que
+            // verse al instante es lo que se escribe. Asi que 'Escrito' se apunta letra a letra y va en su
+            // propia imagen chica (ver PiezaEscrito), y 'Query' -la que manda en los resultados y en la
+            // firma de la pantalla completa- se POSA cuando la persona para de teclear. Las consultas
+            // intermedias, que nadie llega a leer, ni se buscan ni se hornean.
+            public string Escrito = "";
+            public void SetQuery(string q) { Query = q; Escrito = q; FocusResults = false; SelResult = 0; Invalidate(); }
+            public void TypeChar(char c) { Escrito += c; Tecleo(); }
+            public void Backspace() { if (Escrito.Length > 0) Escrito = Escrito.Substring(0, Escrito.Length - 1); Tecleo(); }
+
+            // Una letra entra: se ve al momento, y nada mas. La caja de lo escrito es una imagen chica
+            // aparte, asi que repintarla no arrastra ni el cielo ni el teclado.
+            public Action OnTecleo;
+            private void Tecleo()
+            {
+                if (OnTecleo != null) OnTecleo();
+                Rectangle arriba, derecha;
+                if (ToastOn || !ZonasAlEscribir(out arriba, out derecha)) Invalidate(); else Invalidate(arriba);
+            }
+
+            // Y aqui es donde los resultados se enteran. Lo llama el formulario cuando la persona para.
+            public void PosaConsulta()
+            {
+                if (Query == Escrito) return;   // ya estaban enseñando esto: no hay nada que rehacer
+                Query = Escrito;
+                Changed();
+            }
             // AL TECLEAR NO CAMBIA MEDIA PANTALLA. Escribir una letra toca la caja de lo escrito y las
             // tarjetas de la derecha, y nada mas: el teclado se queda exactamente igual, tecla por tecla.
             // Marcando solo esas dos zonas, lo que hay que volver a copiar debajo -el cielo- se reduce a la
@@ -17148,6 +17218,8 @@ namespace Rocola
             //
             // La UNICA vez que el lado del teclado si cambia es cuando se venia de estar en los resultados:
             // alli habia un cubo girando en su sitio y ahora vuelven las teclas. Ese caso pide todo.
+            // Los resultados pasan a otra consulta. Cuesta: rehornear las 40 tarjetas son 3.07 ms. Por eso
+            // esto ya NO se llama en cada letra, sino cuando la consulta se posa.
             private void Changed()
             {
                 bool veniaDeResultados = FocusResults;
@@ -17289,6 +17361,10 @@ namespace Rocola
             // Que sale IGUAL esta comprobado pixel a pixel, y no es suerte: la pieza se rellena OPACA, asi que
             // tapa entero su hueco y no hay borde suavizado que se mezcle dos veces (ver pruebas/mover.cs).
             public const int PiezaTecla = 0;
+            // Y la caja de lo escrito, que es la que cambia en CADA letra. Antes iba dentro de la imagen de
+            // pantalla completa y por eso teclear costaba 2.80 ms por pulsacion a 1920 (7.3 MB); aqui es una
+            // tira de unos cientos de KB.
+            public const int PiezaEscrito = 1;
             private bool paraGpu;   // dibujando para la imagen de pantalla completa: la tecla elegida va aparte
 
             // Donde va la pieza, en coords del buscador. false = ahora no hay ninguna que dibujar.
@@ -17299,6 +17375,15 @@ namespace Rocola
             public bool PiezaViva(int cual, out Rectangle donde)
             {
                 donde = Rectangle.Empty;
+                if (cual == PiezaEscrito)
+                {
+                    // La caja de lo escrito se ve SIEMPRE que el buscador esta abierto, tambien con el foco
+                    // en los resultados: es donde se lee lo que se busco.
+                    Rectangle cj = CajaEscrito();
+                    if (cj.Width < 8 || cj.Height < 8) return false;
+                    donde = Rectangle.Inflate(cj, 2, 2);
+                    return true;
+                }
                 if (cual != PiezaTecla || FocusResults) return false;
                 if (SelRow < 0 || SelRow >= rows.Count || SelCol < 0 || SelCol >= rows[SelRow].Count) return false;
                 Rectangle kr = Rectangle.Round(rows[SelRow][SelCol].R);
@@ -17312,10 +17397,39 @@ namespace Rocola
             // moviendo el lienzo la letra se iba fuera de la imagen chica (ver EnsureUiPieza).
             public void DibujaPiezaViva(Graphics g, int cual, int dx, int dy)
             {
+                if (cual == PiezaEscrito)
+                {
+                    g.SmoothingMode = SmoothingMode.AntiAlias;
+                    DibujaCajaEscrito(g, dx, dy, true);
+                    return;
+                }
                 if (cual != PiezaTecla || FocusResults) return;
                 if (SelRow < 0 || SelRow >= rows.Count || SelCol < 0 || SelCol >= rows[SelRow].Count) return;
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 DrawOneKey(g, SelRow, SelCol, true, dx, dy);
+            }
+
+            // LA CAJA DONDE SE ESCRIBE. Su sitio lo saben los dos caminos: el dibujado normal y la imagen
+            // chica que la lleva cuando hay tarjeta grafica.
+            public Rectangle CajaEscrito() { int M = 30; return new Rectangle(M, M, Width - 2 * M, 70); }
+
+            // Y como se dibuja. El desplazamiento va POR PARAMETRO y no moviendo el lienzo, por lo mismo que
+            // en DibujaPiezaViva: el texto lo pinta el sistema en pixeles de verdad y no hace caso a las
+            // trasformaciones.
+            private void DibujaCajaEscrito(Graphics g, int dx, int dy, bool sinParpadeo)
+            {
+                Rectangle qb = CajaEscrito(); qb.Offset(dx, dy);
+                EnsurePaintRes();
+                using (GraphicsPath gp = RoundedPath(qb, 16))
+                {
+                    sbS.Color = Shade(Accent, 0.42); g.FillPath(sbS, gp);
+                    pnS.Color = Lighten(Accent, 0.35); pnS.Width = 2f; g.DrawPath(pnS, gp);
+                }
+                // Con tarjeta grafica el cursor NO parpadea (fijo): parpadear obligaria a rehacer esta imagen
+                // una vez por segundo aunque nadie estuviera escribiendo.
+                bool caretOn = sinParpadeo || Math.Sin(Phase * 3.0) > 0;
+                string shown = "Buscar:  " + Escrito + (caretOn ? "|" : "");
+                TextRenderer.DrawText(g, shown, fQuery, new Rectangle(qb.X + 18, qb.Y, qb.Width - 30, qb.Height), Color.White, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
             }
 
             public void RenderContent(Graphics g, Rectangle clip, bool forGpu)
@@ -17346,22 +17460,16 @@ namespace Rocola
                     }
                 }
 
-                int M = 30;
-                Rectangle qb = new Rectangle(M, M, W - 2 * M, 70);
-                Rectangle hintRect = new Rectangle(M, M + 72, W - 2 * M, 26);
+                int M = 30;   // el mismo margen que usa CajaEscrito: de aqui cuelga todo el reparto de abajo
+                Rectangle qb = CajaEscrito();
+                Rectangle hintRect = new Rectangle(qb.X, qb.Bottom + 2, qb.Width, 26);
                 if (qb.IntersectsWith(clip) || hintRect.IntersectsWith(clip))
                 {
                     EnsurePaintRes();
-                    using (GraphicsPath gp = RoundedPath(qb, 16))
-                    {
-                        sbS.Color = Shade(Accent, 0.42); g.FillPath(sbS, gp);
-                        pnS.Color = Lighten(Accent, 0.35); pnS.Width = 2f; g.DrawPath(pnS, gp);
-                    }
-                    // En GPU el cursor NO parpadea (fijo): parpadear obligaria a rehacer la textura del teclado
-                    // (40 teclas) ~1/seg, carisimo. Fijo => el buscador en reposo no reconstruye nada -> pleno FPS.
-                    bool caretOn = forGpu || Math.Sin(Phase * 3.0) > 0;
-                    string shown = "Buscar:  " + Query + (caretOn ? "|" : "");
-                    TextRenderer.DrawText(g, shown, fQuery, new Rectangle(qb.X + 18, qb.Y, qb.Width - 30, qb.Height), Color.White, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+                    // CON TARJETA GRAFICA la caja de lo escrito NO se dibuja aqui: va en su propia imagen
+                    // chica (PiezaEscrito), que es lo que hace que teclear no rehaga los siete megas de la
+                    // pantalla completa en cada letra. Sin tarjeta se dibuja aqui, como siempre.
+                    if (!forGpu) DibujaCajaEscrito(g, 0, 0, false);
                     {
                         Font hf = fHint;
                         int hcy = hintRect.Y + hintRect.Height / 2;
