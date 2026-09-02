@@ -230,6 +230,11 @@ class Presencia
         // Antes caia a cero y el cielo se quedaba vacio (en silencio, con un video puesto o en el modo
         // atraccion). Ahora se queda baja y tenue, y ademas RESPIRA muy despacio para que se vea viva.
         float reposo = Cte("AurReposo"), onda = Cte("AurReposoOnda"), paso = Cte("AurReposoPaso");
+        // NADIE ESTA TOCANDO LA ROCOLA. Hace falta decirlo porque la respiracion de la aurora tiene freno:
+        // mientras alguien la usa se para, para no marear al que esta eligiendo cancion. Aqui se prueba el
+        // caso contrario -la rocola sola- y mas abajo, que con alguien delante de verdad se para.
+        FieldInfo fQui = TF.GetField("quietud", BindingFlags.Instance | BindingFlags.NonPublic);
+        if (fQui != null) fQui.SetValue(F, 1f);
         Callate();
         Avanza(3000);                                   // dos minutos largos de silencio
         float rMin = 9f, rMax = -9f, saltoRep = 0f; float ant2 = Pres();
@@ -247,6 +252,24 @@ class Presencia
         Check(rMin > 0.20f, "NO se apaga: siempre queda aurora en pantalla, aunque no suene nada");
         Check(rMax < 0.65f, "pero se queda claramente por debajo de lo que sale con musica: es un reposo, no lo mismo");
         Check(rMax - rMin > 0.05f, "y RESPIRA: no es una imagen fija pegada al fondo");
+
+        // Y CON ALGUIEN USANDO LA ROCOLA, SE PARA. Una pantalla enorme moviendose despacio delante del que
+        // esta eligiendo cancion no es bonita, es mareante. Se para quitandole el aire, no en seco: la
+        // presencia se queda quieta en un valor, no clavada en el que le tocara al cortar.
+        if (fQui != null)
+        {
+            fQui.SetValue(F, 0f);
+            for (int i = 0; i < (int)(20f / Cuadro); i++) AVZ.Invoke(F, null);   // que se asiente
+            float qMin = 9f, qMax = -9f;
+            for (int i = 0; i < (int)(70f / Cuadro); i++)
+            {
+                AVZ.Invoke(F, null);
+                float p = Pres();
+                if (p < qMin) qMin = p; if (p > qMax) qMax = p;
+            }
+            Console.WriteLine(string.Format("     con alguien usandola, la aurora se queda en el {0:0.0}% y ahi se queda", qMin * 100));
+            Check(qMax - qMin < 0.01f, "con alguien usando la rocola la aurora DEJA de respirar");
+        }
         Console.WriteLine(string.Format("     una respiracion entera dura {0:0} s y el mayor cambio de un cuadro al siguiente es {1:0.000}%",
                                         6.2831853f/paso*Cuadro, saltoRep*100));
         Check(6.2831853f/paso*Cuadro > 20f, "cada respiracion dura mas de veinte segundos: es una animacion CALMADA");
