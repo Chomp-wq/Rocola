@@ -5477,6 +5477,24 @@ namespace Rocola
             for (int i = 0; i < n; i++) pend[i] = ruta[idx[i]];
         }
 
+        // APUNTAR LO QUE SE ACABA DE MEDIR. UN SOLO SITIO, y por eso vive aqui suelto: lo llaman el
+        // pre-analisis y el calentador de la siguiente cancion. Con dos sitios que escriban las mismas tres
+        // tablas, el dia que alguien arregle uno se olvidara del otro.
+        //
+        // SOBRESCRIBE lo que hubiera: estas medidas son de la cancion COMPLETA, asi que son mejores que lo
+        // aprendido a medias oyendola (que promediaba entre pasadas).
+        //
+        // Las tablas son del hilo de la pantalla y no llevan candado -a proposito, para no pagarlo en cada
+        // consulta-, asi que quien llame a esto tiene que estar EN ese hilo.
+        private void PublicaMedida(string ruta, float rms, float dur, float[] eqCurve)
+        {
+            if (ruta == null) return;
+            if (dur > 0.01f) durCache[ruta] = dur;
+            if (rms > 0f) loudCache[ruta] = rms;   // incluido el silencio (ver LoudMudo)
+            if (eqCurve != null) { eqCache[ruta] = eqCurve; eqCacheVer++; eqDirty = true; }   // huella tonal del EQ automatico
+            if (panelSongs != null && panelSongs.Visible) RefrescaLista();   // que aparezca la duracion recien sabida
+        }
+
         private List<string> TandaPorMedir(bool turbo, out int elegibles)
         {
             List<string> pend = new List<string>();
@@ -5639,13 +5657,8 @@ namespace Rocola
                             BeginInvoke((MethodInvoker)delegate
                             {
                                 if (myGen != preScanGen) return;   // llego de una generacion caducada: descartar
-                                if (dur > 0.01f) durCache[ruta] = dur;
-                                // SOBRESCRIBE lo que hubiera: la medida del pre-analisis es de la cancion COMPLETA,
-                                // asi que es mejor que lo aprendido a medias oyendola (que promediaba entre pasadas).
-                                if (rms > 0f) loudCache[ruta] = rms;   // incluido el silencio (ver LoudMudo)
-                                if (eqCurve != null) { eqCache[ruta] = eqCurve; eqCacheVer++; eqDirty = true; }   // huella tonal del EQ automatico, ya lista
+                                PublicaMedida(ruta, rms, dur, eqCurve);
                                 if (preScanLeft > 0) System.Threading.Interlocked.Decrement(ref preScanLeft);
-                                if (panelSongs != null && panelSongs.Visible) RefrescaLista();   // que aparezca la duracion recien sabida
                             });
                         }
                         catch { break; }
@@ -6022,6 +6035,11 @@ namespace Rocola
             if (string.Equals(ruta, warmSongPath, StringComparison.OrdinalIgnoreCase)) return;   // ya calentada o calentandose
             warmSongPath = ruta;
             int mio = ++warmSongGen;
+            // ¿YA ESTA MEDIDA? Se pregunta AQUI, que es el hilo de la pantalla y por tanto el dueño de las
+            // tablas: no llevan candado -a proposito, para no pagarlo en cada consulta-, y el pre-analisis
+            // escribe en ellas desde otro lado. Preguntarlo desde el hilo del calentador podria reventar
+            // justo en el momento en que el otro esta metiendo una fila.
+            bool yaMedida = durCache.ContainsKey(ruta);
             System.Threading.Thread t = new System.Threading.Thread(delegate ()
             {
                 try
@@ -6052,6 +6070,36 @@ namespace Rocola
                             System.Threading.Thread.Sleep(lentoAqui ? 8 : 1);
                         }
                     }
+
+                    // Y YA QUE ESTA LEIDA, SE MIDE.
+                    //
+                    // Medir una cancion cuesta dos cosas: leerla del disco y descomprimirla. La lectura
+                    // acaba de pagarse aqui arriba, y hasta ahora se tiraba entera. Descomprimir lo que ya
+                    // esta en la memoria del sistema cuesta 550 ms por minuto de cancion -medido-, unos 2.2
+                    // segundos en una de cuatro minutos, y este hilo va en la prioridad mas baja que hay y
+                    // tiene por delante los minutos que la cancion pase en la cola.
+                    //
+                    // A cambio, cuando le toque sonar ya viene nivelada de volumen A LA PRIMERA -antes solo
+                    // a la segunda, porque la sonoridad se aprendia oyendola-, con su duracion apuntada y
+                    // con el turno pudiendo decir los minutos que faltan.
+                    if (yaMedida || mio != warmSongGen) return;
+                    while (true)   // otra vez: si entro un video o hay caratulas en camino, primero ellos
+                    {
+                        int ocupado; lock (coverLock) { ocupado = coverLoading.Count + coverQHi.Count + coverQLo.Count; }
+                        if (ocupado == 0 && !videoOn) break;
+                        System.Threading.Thread.Sleep(300);
+                        if (mio != warmSongGen) return;
+                    }
+                    float wrms, wdur; float[] weq;
+                    if (!MeasureFile(ruta, false, out wrms, out wdur, out weq)) return;
+                    if (mio != warmSongGen) return;
+                    // Las tablas son del hilo de la pantalla: se le encarga a el que las escriba.
+                    try
+                    {
+                        if (IsHandleCreated)
+                            BeginInvoke((MethodInvoker)delegate { PublicaMedida(ruta, wrms, wdur, weq); });
+                    }
+                    catch { }
                 }
                 catch { }
             });
