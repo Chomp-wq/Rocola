@@ -474,6 +474,7 @@ namespace Rocola
         private readonly Dictionary<string, bool> colaDiscos = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
         private static bool marcaColaOn = true;   // "marca_cola=" en config
         private static bool colaPortadasOn = true;   // "cola_portadas=" en config
+        private static bool relevoOn = true;         // "relevo=" en config
         // Y APARTE, cual esta sonando. Suelto y no dentro de colaPos porque una cancion puede estar sonando
         // Y ademas pedida otra vez: son dos cosas distintas y el cliente necesita ver las dos -que la esta
         // oyendo, y que ya la va a volver a oir-. Metidas en el mismo dato, una tapaba a la otra.
@@ -905,6 +906,66 @@ namespace Rocola
         private const float AurNavLevel = 0.35f;    // cuanto queda del relleno mientras se navega
         private const float AurNavFilo = 0.22f;     // y cuanto queda del filo de neon (mucho menos: eso es difuminar)
         private const int BgDimIdleSecs = 10;     // segundos sin botones para volver al brillo normal
+
+        // ---------- LA PARED QUE RESPIRA, Y SU FRENO ----------
+        //
+        // La pared de discos sube y baja de brillo muy despacio, una respiracion cada medio minuto. Es lo
+        // que hace que una pantalla quieta parezca encendida en vez de colgada.
+        //
+        // Y TIENE FRENO: mientras alguien esta usando la rocola, NO respira. Una pantalla enorme moviendose
+        // despacio delante de quien esta eligiendo cancion no es bonita, es mareante.
+        //
+        // PERO FRENAR NO ES PARARSE EN SECO. Cortando de golpe, la pared se quedaria clavada en el brillo
+        // que le tocara en ese instante -a veces mas oscura, a veces mas clara de lo normal- y asi hasta
+        // que alguien vuelva a soltar el boton, que es justo lo que se queria evitar. Lo que se le quita es
+        // el AIRE: la fuerza baja a cero mientras el ciclo sigue corriendo por dentro, y entonces la pared
+        // acaba SIEMPRE en su brillo de siempre, se toque el boton en el punto del ciclo que se toque.
+        private const float RespiraTope = 0.06f;     // por mucho que pida el archivo, nunca mas de un 6%
+        private const float RespiraDef = 0.025f;     // de fabrica, un 2.5%
+        private const float RespiraPaso = 0.00873f;  // radianes por cuadro: a 24 cuadros/s, una vuelta cada ~30 s
+        private static bool respiraOn = true;        // "respira=" en config
+        private static float respiraFuerza = RespiraDef;   // "respira_fuerza=" en config, en por ciento
+        private float quietud = 0f;                  // 0 = alguien esta tocando AHORA; 1 = hace rato que nadie
+        private float respiraFase = 0f;
+        private float bgDimResp = 1f;                // la atenuacion CON la respiracion puesta (lo que se pinta)
+
+        // El brillo ahora mismo: 1 es el de siempre. Es la forma de la respiracion y nada mas, sin tope
+        // propio: la comparten la pared y la aurora del horizonte, que respira desde antes y con bastante
+        // mas fuerza (AurReposoOnda), y meterle aqui el tope de la pared le recortaria la suya sin que
+        // nadie lo hubiera pedido. Quien acota es FuerzaRespira, que es el UNICO sitio por donde se le
+        // pone fuerza a la pared.
+        //
+        // Lo que si esta garantizado aqui es el freno: con quietud 0 devuelve 1 EXACTO, sea cual sea el
+        // punto del ciclo. Por eso la pared nunca se queda clavada a media respiracion.
+        internal static float Respiracion(float fuerza, float quietud, float fase)
+        {
+            if (!(fuerza > 0f) || !(quietud > 0f)) return 1f;
+            if (quietud > 1f) quietud = 1f;
+            return 1f + fuerza * quietud * (float)Math.Sin(fase);
+        }
+
+        // A donde va la quietud en el cuadro siguiente. Baja DEPRISA -en cuanto alguien toca un boton, la
+        // pared se para en menos de medio segundo- y sube DESPACIO: parar tiene que notarse poco, y volver
+        // a arrancar, nada. Y llega a CERO exacto, no a un pelin de movimiento que no se acaba nunca.
+        internal static float PasoQuietud(float quietud, bool tocando)
+        {
+            float meta = tocando ? 0f : 1f;
+            float q = quietud + (meta - quietud) * (tocando ? 0.30f : 0.05f);
+            if (Math.Abs(q - meta) < 0.005f) q = meta;
+            return q;
+        }
+
+        // Lo que se le deja respirar, leido del archivo de configuracion (en por ciento). Acotado: la pared
+        // de un bar es enorme y de noche; un 20% ahi no es vistoso, es mareante. Y una linea sin sentido no
+        // apaga la pared: se queda como de fabrica.
+        internal static float FuerzaRespira(string txt)
+        {
+            float v;
+            if (txt == null) return RespiraDef;
+            if (!float.TryParse(txt.Trim(), System.Globalization.NumberStyles.Float,
+                                System.Globalization.CultureInfo.InvariantCulture, out v)) return RespiraDef;
+            return Clampf(v / 100f, 0f, RespiraTope);
+        }
 #if ROCOLA_GPU
         private GpuPanel gpuPanel;   // fondo de discos por GPU (experimental, Ctrl+F12)
         private Label lblGpu;        // etiqueta de estado/FPS del modo GPU (esquina)
@@ -1417,6 +1478,9 @@ namespace Rocola
                     else if (s.StartsWith("marca_cola=")) marcaColaOn = s.Substring(11).Trim() != "0";   // el palomito de "ya la pusiste"
                     else if (s.StartsWith("fondo_portada=")) fondoPortadaOn = s.Substring(14).Trim() != "0";   // el fondo toma el tono de la portada
                     else if (s.StartsWith("cola_portadas=")) colaPortadasOn = s.Substring(14).Trim() != "0";   // las portaditas en la capsula de la cola
+                    else if (s.StartsWith("relevo=")) relevoOn = s.Substring(7).Trim() != "0";   // la media vuelta del cubito al cambiar de cancion
+                    else if (s.StartsWith("respira=")) respiraOn = s.Substring(8).Trim() != "0";   // la pared que respira cuando nadie la usa
+                    else if (s.StartsWith("respira_fuerza=")) respiraFuerza = FuerzaRespira(s.Substring(15));
                     else if (s.StartsWith("noche_desde=")) { int v; if (int.TryParse(s.Substring(12).Trim(), out v) && v >= 0 && v <= 23) nocheDesde = v; }
                     else if (s.StartsWith("noche_hasta=")) { int v; if (int.TryParse(s.Substring(12).Trim(), out v) && v >= 0 && v <= 23) nocheHasta = v; }
                     else if (s.StartsWith("noche_db=")) { float v; if (float.TryParse(s.Substring(9).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) nocheDb = Clampf(v, -24f, 0f); }   // cuanto baja (negativo)
@@ -1552,6 +1616,9 @@ namespace Rocola
                 sb.Append("marca_cola=").Append(marcaColaOn ? "1" : "0").Append("\r\n");
                 sb.Append("fondo_portada=").Append(fondoPortadaOn ? "1" : "0").Append("\r\n");
                 sb.Append("cola_portadas=").Append(colaPortadasOn ? "1" : "0").Append("\r\n");
+                sb.Append("relevo=").Append(relevoOn ? "1" : "0").Append("\r\n");
+                sb.Append("respira=").Append(respiraOn ? "1" : "0").Append("\r\n");
+                sb.Append("respira_fuerza=").Append((respiraFuerza * 100f).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("noche_desde=").Append(nocheDesde).Append("\r\n");
                 sb.Append("noche_hasta=").Append(nocheHasta).Append("\r\n");
                 sb.Append("noche_db=").Append(nocheDb.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
@@ -3168,7 +3235,7 @@ namespace Rocola
 #endif
             formStars.SkyOffsetX = 0; formStars.SkyOffsetY = 0; formStars.SkyFullW = w; formStars.SkyFullH = h;
             formStars.SkyMid = SkyColorMid(bgAccent); formStars.Acento = bgAccent;
-            formStars.Dim = bgDim;   // atenua TAMBIEN las franjas de arriba/abajo en sincronia con la rejilla (una sola pieza)
+            formStars.Dim = bgDimResp;   // atenua TAMBIEN las franjas de arriba/abajo en sincronia con la rejilla (una sola pieza), respiracion incluida
             formStars.DrawCached(g, w, h, SkyColor(bgAccent), SkyColor2(bgAccent));   // cielo en degradado CONTINUO; etiquetas y mini-cubo transparentes encima
         }
 
@@ -7039,7 +7106,10 @@ namespace Rocola
             // Con musica sube DEPRISA (~1.3 s) hasta arriba; sin ella baja DESPACIO (~3 s) hasta el reposo, y
             // ahi se queda respirando a ese mismo ritmo lento, que es lo que la deja viva sin llamar la
             // atencion. La respiracion NO usa el ritmo rapido: si no, subiria a tirones y bajaria suave.
-            float meta = hayMusica ? 1f : (AurReposo * (1f + AurReposoOnda * (float)Math.Sin(auroraFase)));
+            // Y LA AURORA FRENA IGUAL. Respira desde antes que la pared, pero hasta ahora no se paraba con
+            // nadie: seguia moviendose delante del que estaba eligiendo cancion. Es la misma queja, asi que
+            // pasa por la misma cuenta, con la misma quietud y el mismo tope.
+            float meta = hayMusica ? 1f : (AurReposo * Respiracion(AurReposoOnda, quietud, auroraFase));
             auroraPres += (meta - auroraPres) * (hayMusica ? 0.075f : 0.014f);
             if (auroraPres < 0f) auroraPres = 0f; else if (auroraPres > 1f) auroraPres = 1f;
         }
@@ -9613,7 +9683,18 @@ namespace Rocola
             pastCola.Invalidate();
             if (miniCube != null)
             {
-                if (nowPlaying != null) { miniCube.Cover = LoadCover(nowPlaying.Disc); miniCube.Visible = true; }
+                if (nowPlaying != null)
+                {
+                    Image nueva = LoadCover(nowPlaying.Disc);
+                    // EL RELEVO: si ya habia un cubo puesto con otra portada, no se cambia de golpe; el
+                    // cubo da media vuelta y la nueva aparece en el camino. La primera cancion de la
+                    // noche, y la portada que llega tarde a la que YA suena, entran sin giro: ahi no hay
+                    // relevo de nada que enseñar.
+                    if (relevoOn && miniCube.Visible && miniCube.Cover != null && nueva != null && !object.ReferenceEquals(nueva, miniCube.Cover))
+                        miniCube.Relevo(nueva);
+                    else if (!miniCube.Girando) miniCube.Cover = nueva;
+                    miniCube.Visible = true;
+                }
                 else { miniCube.Cover = null; miniCube.Visible = false; }
                 miniCube.Invalidate();
             }
@@ -10579,15 +10660,27 @@ namespace Rocola
             float dimTgt = (nowPlaying != null && !attractOn && (DateTime.Now - lastInput).TotalSeconds < BgDimIdleSecs) ? BgDimLevel : 1f;
             bgDim += (dimTgt - bgDim) * 0.12f;
             if (Math.Abs(bgDim - dimTgt) < 0.01f) bgDim = dimTgt;
-            albumView.BgDim = bgDim;
-            if (panelSongs != null) panelSongs.BgDim = bgDim;   // el interior del disco comparte el mismo campo: atenua igual
-            if (searchOverlay != null) searchOverlay.BgDim = bgDim;
+            // LA RESPIRACION va APARTE de bgDim y no dentro, a proposito: bgDim es de quien sale la cuenta
+            // de 'quieto' que calma la aurora, y metiendosela dentro se armaria una pescadilla que se muerde
+            // la cola. Aqui se multiplican al final, para pintar.
+            quietud = PasoQuietud(quietud, (DateTime.Now - lastInput).TotalSeconds < BgDimIdleSecs);
+            respiraFase += RespiraPaso;
+            if (respiraFase > 6.2831853f) respiraFase -= 6.2831853f;
+            bgDimResp = bgDim * (respiraOn ? Respiracion(respiraFuerza, quietud, respiraFase) : 1f);
+            albumView.BgDim = bgDimResp;
+            if (panelSongs != null) panelSongs.BgDim = bgDimResp;   // el interior del disco comparte el mismo campo: atenua igual
+            if (searchOverlay != null) searchOverlay.BgDim = bgDimResp;
             // Mientras la atenuacion CAMBIA, repinta el fondo del form (franjas de arriba/abajo) para que atenuen
             // junto con la rejilla: el campo es UNA SOLA PIEZA (si no, se veria una banda mas clara arriba/abajo).
-            if (Math.Abs(bgDim - bgDimPrev) > 0.0015f) this.Invalidate();
-            bgDimPrev = bgDim;
+            //
+            // Y el umbral hace aqui un segundo trabajo que importa en la maquina del bar: la respiracion mueve
+            // el brillo tan despacio que la mayoria de los cuadros no lo cambian lo bastante para verse, y esos
+            // no obligan a repintar nada. Medido con el 2.5% de fabrica: 61 repintados en las 720 vueltas de
+            // reloj que dura un ciclo, uno de cada once.
+            if (Math.Abs(bgDimResp - bgDimPrev) > 0.0015f) this.Invalidate();
+            bgDimPrev = bgDimResp;
 #if ROCOLA_GPU
-            if (gpuPanel != null) gpuPanel.Dim = bgDim;
+            if (gpuPanel != null) gpuPanel.Dim = bgDimResp;
 #endif
 
             bool transitioning = (bgAccent.R != bgAccentTarget.R || bgAccent.G != bgAccentTarget.G || bgAccent.B != bgAccentTarget.B);
@@ -10628,7 +10721,7 @@ namespace Rocola
 #if ROCOLA_GPU
                 sGpu = (gpuPanel != null && gpuPanel.Visible);   // panel GPU encima: el mini-cubo lo dibuja la GPU (repintar el control seria invisible)
 #endif
-                if (miniCube.Visible) { miniCube.Phase = phase; miniCube.Angle += 0.06; if (!sGpu) miniCube.Invalidate(); }   // el angulo avanza siempre (la GPU lo lee)
+                if (miniCube.Visible) { miniCube.Phase = phase; miniCube.Avanza(0.06); if (!sGpu || miniCube.Girando) miniCube.Invalidate(); }   // el angulo avanza siempre (la GPU lo lee)
                 TickMejorada(sGpu);   // la franja de estado sigue visible bajo el buscador: el letrero sigue brillando
                 return;
             }
@@ -10730,7 +10823,7 @@ namespace Rocola
                 cubeBox.Phase = phase; cubeBox.Angle += 0.06;   // el angulo/bamboleo avanzan SIEMPRE (la GPU los lee via BuildGpuCubeState)
                 if (!albumGpuBg) cubeBox.Invalidate();          // el cubo grande por CPU solo se repinta si se ve
             }
-            if (miniCube.Visible) { miniCube.Phase = phase; miniCube.Angle += 0.06; if (!albumGpuBg) miniCube.Invalidate(); }   // idem mini-cubo (en GPU lo dibuja el panel)
+            if (miniCube.Visible) { miniCube.Phase = phase; miniCube.Avanza(0.06); if (!albumGpuBg || miniCube.Girando) miniCube.Invalidate(); }   // idem mini-cubo (en GPU lo dibuja el panel)
         }
 
         private static string Fmt(TimeSpan t) { return ((int)t.TotalMinutes) + ":" + t.Seconds.ToString("00"); }
@@ -13979,6 +14072,51 @@ namespace Rocola
             public Image Cover;
             public double Angle;
             public double Phase;
+
+            // ---------- EL RELEVO ----------
+            // Al entrar la siguiente cancion, la portada del cubito de abajo se cambiaba DE GOLPE: un
+            // cuadro con una y el siguiente con otra. A dos metros, de noche y con los amigos hablando,
+            // eso no es un cambio: es que de pronto hay otra cosa ahi y nadie sabe desde cuando.
+            //
+            // Ahora el cubo da MEDIA VUELTA y la portada nueva aparece en el camino. Y el momento del
+            // cambio no es uno cualquiera: a la mitad el cubo lleva 90 grados girados, y como las cuatro
+            // caras llevan la misma imagen, 90 grados dejan el cubo con EXACTAMENTE la misma silueta que
+            // al empezar. Asi el cambio no puede dar un salto de forma -solo cambia la imagen-, y cambia
+            // justo en el punto mas rapido del giro, que es cuando menos se le mira la cara.
+            //
+            // Y con tarjeta grafica sale gratis: el panel ya lee Angle y Cover en cada cuadro, asi que
+            // no hay ni una linea de dibujo nueva.
+            private const int RelMs = 420;
+            private int relTick;          // 0 = no hay relevo en marcha
+            private Image relNueva;       // la portada que entra
+            private double relGirado;     // cuanto lleva puesto de la media vuelta
+
+            public void Relevo(Image nueva)
+            {
+                if (relTick != 0 && object.ReferenceEquals(relNueva, nueva)) return;   // esa ya viene en camino
+                relNueva = nueva;
+                relGirado = 0;
+                relTick = Environment.TickCount; if (relTick == 0) relTick = 1;
+            }
+            public bool Girando { get { return relTick != 0; } }
+
+            // Avanza el giro. Sin relevo, el paso de siempre. Con relevo, ademas, la media vuelta.
+            // El giro lo lleva el cubo y no el reloj de la pantalla: si no, habria que repetir la cuenta
+            // de la media vuelta en los dos sitios desde donde se le da cuerda.
+            public void Avanza(double paso)
+            {
+                Angle += paso;
+                if (relTick == 0) return;
+                int dt = Environment.TickCount - relTick;
+                if (dt < 0) dt = 0;
+                double u = (dt >= RelMs) ? 1.0 : (dt / (double)RelMs);
+                double e = u * u * (3.0 - 2.0 * u);        // arranca y frena suave; a la mitad es donde mas corre
+                double meta = Math.PI * e;
+                Angle += meta - relGirado;                 // lo que falte para ir por donde toca
+                relGirado = meta;
+                if (relNueva != null && e >= 0.5) { Cover = relNueva; relNueva = null; }
+                if (u >= 1.0) relTick = 0;
+            }
 
             public CubeBox()
             {
