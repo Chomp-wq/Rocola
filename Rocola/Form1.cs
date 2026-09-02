@@ -5568,7 +5568,48 @@ namespace Rocola
             return pend;
         }
 
-        private void StartPreScan()
+        // ¿ESTA SOLA LA ROCOLA? En modo atraccion (a los 40 s sin que nadie toque un boton), sin nada
+        // sonando y sin ningun video puesto. Es el rato en que no hay nadie eligiendo, no hay pared de
+        // discos que dibujar -solo el cubo gigante- y no hay musica a la que no se le pueda fallar.
+        private bool RocolaSola() { return attractOn && nowPlaying == null && !videoOn; }
+
+        // CUANTOS CARRILES LE TOCAN AL PRE-ANALISIS.
+        //
+        // Antes usaba UNO siempre, salvo en el repaso a fondo que se enciende a mano: en una maquina de
+        // ocho nucleos, un nucleo de ocho, tambien a las cuatro de la manana con el bar cerrado. Ahora
+        // tambien se sueltan cuando la rocola esta SOLA.
+        //
+        // Lo que mas importa de esta cuenta no es que suelte, es QUE FRENE: con alguien usandola devuelve
+        // uno SIEMPRE, en cualquier maquina. Si eso fallara, la rocola se pondria lenta justo cuando hay
+        // gente delante, y eso seria peor que no haber tocado nada. Pura a proposito, para poder darle los
+        // cuatro casos a mano.
+        internal static int CarrilesPara(bool turbo, bool sola, bool discoLento, int nucleos)
+        {
+            // Disco lento: aqui no manda el procesador, manda el cabezal. Varios hilos pidiendo canciones a
+            // la vez lo ponen a saltar y sale mas lento, no mas rapido.
+            if (discoLento) return 1;
+            if (!turbo && !sola) return 1;      // hay alguien: ni uno mas
+            if (nucleos < 4) return 1;          // en la de dos nucleos del bar no hay nada que repartir
+            int c = nucleos - 1;                // siempre un nucleo libre para la pantalla y la musica
+            if (c > 4) c = 4;                   // y de ahi no se pasa: mas no gana y calienta la maquina
+            return c;
+        }
+
+        // Con cuantos carriles esta corriendo AHORA (0 = no hay nadie corriendo).
+        private int preScanCarriles;
+
+        // Al entrar y al salir de la atraccion: si ahora tocan otros carriles, se vuelve a empezar. Y si
+        // tocan los mismos NO SE TOCA NADA: sin esto, cualquiera que pase por delante cada 40 segundos
+        // reiniciaria el pre-analisis dos veces por paseo y no avanzaria nunca.
+        private void RevisaCarriles()
+        {
+            if (preScanCarriles <= 0) return;   // no hay pre-analisis corriendo
+            if (CarrilesPara(preScanTurbo, RocolaSola(), diskSlow, Environment.ProcessorCount) == preScanCarriles) return;
+            StartPreScan(false);
+        }
+
+        private void StartPreScan() { StartPreScan(true); }
+        private void StartPreScan(bool respiroDeArranque)
         {
             preScanStop = false;
             // Cada llamada (arranque o re-escaneo con F5) abre una GENERACION nueva: el hilo anterior se da
@@ -5603,12 +5644,13 @@ namespace Rocola
             //   - Siempre dejando un nucleo libre para la pantalla y la musica, y como mucho cuatro: mas
             //     carriles ya no ganan nada y calientan la maquina del bar para nada.
             // En la rocola de dos nucleos esto da 1, o sea exactamente lo de siempre.
-            int carriles = 1;
-            if (turbo && !diskSlow && Environment.ProcessorCount >= 4)
-            {
-                carriles = Environment.ProcessorCount - 1;
-                if (carriles > 4) carriles = 4;
-            }
+            //
+            // Y ADEMAS cuando la rocola esta SOLA (ver RocolaSola): en atraccion, sin musica y sin video no
+            // hay nadie eligiendo ni nada a lo que fallarle. La cuenta esta aparte y se prueba con casos a
+            // mano, porque lo que de verdad importa de ella es que con alguien delante devuelva uno.
+            bool aSolas = RocolaSola();
+            int carriles = CarrilesPara(turbo, aSolas, diskSlow, Environment.ProcessorCount);
+            preScanCarriles = carriles;
             int siguiente = -1;      // de aqui saca cada carril la siguiente cancion (reparto por demanda: las
             int hechasTot = 0;       // canciones no duran lo mismo, y asi ninguno se queda esperando al otro)
             int vidBien = 0, vidMal = 0;
@@ -5621,7 +5663,10 @@ namespace Rocola
                 bool ultimo = false;
                 try
                 {
-                    if (!turbo) System.Threading.Thread.Sleep(15000);   // dejar respirar el arranque (y al calentador de caratulas)
+                    // El respiro del arranque se paga UNA vez, no en cada revision de carriles: entrar y
+                    // salir de la atraccion no es encender la rocola, y esperar 15 s cada vez se comeria
+                    // justo el rato que se queria aprovechar.
+                    if (!turbo && respiroDeArranque) System.Threading.Thread.Sleep(15000);   // dejar respirar el arranque (y al calentador de caratulas)
                     for (; ; )
                     {
                         int i = System.Threading.Interlocked.Increment(ref siguiente);
@@ -5673,7 +5718,7 @@ namespace Rocola
                         // UN SOLO nucleo el pre-analisis compite de verdad con la reproduccion y hay que frenarlo
                         // fuerte; con dos o mas nucleos sobra maquina y puede avanzar bastante mas rapido.
                         int respiro;
-                        if (turbo) respiro = 1;
+                        if (turbo || RocolaSola()) respiro = 1;   // sola no hay de quien descansar
                         else if (nowPlaying != null) respiro = (Environment.ProcessorCount >= 2) ? (diskSlow ? 220 : 120) : (diskSlow ? 700 : 400);
                         else respiro = diskSlow ? 120 : 40;
                         System.Threading.Thread.Sleep(respiro);
@@ -7688,6 +7733,9 @@ namespace Rocola
 
         private void EnterAttract()
         {
+            // La rocola se queda sola: si ahora le tocan mas carriles para medir la biblioteca, se los toma.
+            // Va lo PRIMERO, antes de armar la pantalla de atraccion, para no perder ese rato.
+            RevisaCarriles();
 #if ROCOLA_GPU
             AbortDiscTrans(); AbortWinTrans();   // lo que hubiera volando ya no aplica: la atraccion cambia toda la pantalla
 #endif
@@ -7741,6 +7789,9 @@ namespace Rocola
 
         private void ExitAttract()
         {
+            // Y AQUI ES DONDE FRENA, que es lo que de verdad importa: alguien acaba de tocar un boton y el
+            // pre-analisis vuelve a su unico carril antes de que se note nada en la pantalla.
+            RevisaCarriles();
 #if ROCOLA_GPU
             Image portadaAtraccion = null;   // la que muestra el cubo gigante AHORA: hay que leerla ANTES de apagar la atraccion
             double angAtraccion = 0;
