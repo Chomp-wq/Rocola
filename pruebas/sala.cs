@@ -50,6 +50,12 @@ class Sala
               "la cola y la que suena se guardan POR SEPARADO (si compartieran dato, una taparia a la otra)");
         if (mRef == null || fSon == null) return 1;
         fCola.SetValue(F, Activator.CreateInstance(typeof(Dictionary<string, int>), new object[] { StringComparer.OrdinalIgnoreCase }));
+        // El Form1 se fabrica a mano y sin constructor, asi que los campos que se rellenan solos al
+        // nacer llegan vacios: hay que ponerlos aqui uno por uno. 'colaDiscos' -de que DISCOS hay algo
+        // pedido, para el palomito de la pared- es uno de ellos.
+        FieldInfo fDiscos = TF.GetField("colaDiscos", BindingFlags.Instance | BindingFlags.NonPublic);
+        if (fDiscos != null)
+            fDiscos.SetValue(F, Activator.CreateInstance(typeof(Dictionary<string, bool>), new object[] { StringComparer.OrdinalIgnoreCase }));
         fQueue.SetValue(F, Activator.CreateInstance(typeof(List<>).MakeGenericType(TPlay)));
         fSon.SetValue(F, "");
         TF.GetField("colaVer", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(F, 0);
