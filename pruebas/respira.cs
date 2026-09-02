@@ -99,7 +99,9 @@ class Respira
         Check(Fuerza("hola") > 0f, "y una linea sin sentido no apaga la pared: se queda como de fabrica");
         // Y NO HAY OTRA PUERTA. La cuenta de la respiracion no lleva tope propio -la comparte con la
         // aurora, que respira con mucha mas fuerza desde antes y no hay que recortarsela-, asi que la
-        // garantia tiene que ser que a la pared no se le pueda poner fuerza por ningun otro lado.
+        // garantia tiene que ser que TODO el que le ponga fuerza a la pared pase por donde se acota.
+        // No importa cuantos sitios sean -los hay: el archivo de configuracion y los botones de la
+        // pestaña de Detalles-, importa que ninguno se salte el tope.
         int sitios = 0; bool porAhi = true;
         foreach (MethodBase m in Codigo.TodosLosMetodos(TF))
         {
@@ -108,8 +110,9 @@ class Respira
             Codigo.UsosDeCampo(m, "respiraFuerza", out lee, out esc);
             if (esc > 0) { sitios++; if (!Codigo.Llama(m, "FuerzaRespira")) porAhi = false; }
         }
-        Console.WriteLine("     a la pared se le pone fuerza en " + sitios + " sitio(s)");
-        Check(sitios == 1 && porAhi, "y solo se le pone fuerza por ese sitio, que es el que acota");
+        Console.WriteLine("     a la pared se le pone fuerza desde " + sitios + " sitio(s)");
+        Check(sitios > 0, "hay por donde ponerle fuerza a la pared");
+        Check(porAhi, "y TODOS pasan por la funcion que acota: ninguno se salta el tope");
 
         Console.WriteLine("\n  5) FRENA DEPRISA, VUELVE DESPACIO\n");
         // A 24 cuadros por segundo.

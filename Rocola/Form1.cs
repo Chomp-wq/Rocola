@@ -530,6 +530,7 @@ namespace Rocola
         private readonly Dictionary<string, int> colaPos = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         // De que DISCOS hay algo pedido (o sonando), por carpeta. Lo usa la marca de la pared.
         private readonly Dictionary<string, bool> colaDiscos = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        private static bool turnoOn = true;       // "turno=" en config
         private static bool marcaColaOn = true;   // "marca_cola=" en config
         private static bool colaPortadasOn = true;   // "cola_portadas=" en config
         private static bool relevoOn = true;         // "relevo=" en config
@@ -1491,6 +1492,7 @@ namespace Rocola
                     else if (s.StartsWith("realce=")) { float v; if (float.TryParse(s.Substring(7).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) excAmount = Clampf(v, 0f, 1f); }   // realce de agudos (exciter, tipo DSEE)
                     else if (s.StartsWith("bajo=")) { float v; if (float.TryParse(s.Substring(5).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) bassAmount = Clampf(v, 0f, 1f); }   // bajo psicoacustico (armonicos del grave)
                     else if (s.StartsWith("noche=")) nocheOn = s.Substring(6).Trim() != "0";   // modo noche (baja el volumen de madrugada)
+                    else if (s.StartsWith("turno=")) turnoOn = s.Substring(6).Trim() != "0";   // el letrero de cuando suena tu cancion
                     else if (s.StartsWith("marca_cola=")) marcaColaOn = s.Substring(11).Trim() != "0";   // el palomito de "ya la pusiste"
                     else if (s.StartsWith("fondo_portada=")) fondoPortadaOn = s.Substring(14).Trim() != "0";   // el fondo toma el tono de la portada
                     else if (s.StartsWith("cola_portadas=")) colaPortadasOn = s.Substring(14).Trim() != "0";   // las portaditas en la capsula de la cola
@@ -1671,6 +1673,7 @@ namespace Rocola
                 sb.Append("bajo=").Append(bassAmount.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("subir_db=").Append(masterDb.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("noche=").Append(nocheOn ? "1" : "0").Append("\r\n");
+                sb.Append("turno=").Append(turnoOn ? "1" : "0").Append("\r\n");
                 sb.Append("marca_cola=").Append(marcaColaOn ? "1" : "0").Append("\r\n");
                 sb.Append("fondo_portada=").Append(fondoPortadaOn ? "1" : "0").Append("\r\n");
                 sb.Append("cola_portadas=").Append(colaPortadasOn ? "1" : "0").Append("\r\n");
@@ -2894,7 +2897,9 @@ namespace Rocola
                     Color cTenue = Color.FromArgb(138, 149, 182);    // texto de las explicaciones
                     Color cApagado = Color.FromArgb(96, 104, 128);
 
-                    Label lTit = new Label(); lTit.SetBounds(22, 10, 600, 28); lTit.BackColor = Color.Transparent;
+                    // El titulo encoge de 600 a 450 para dejarle sitio a la tercera pestaña. No mueve nada:
+                    // el texto mas largo que lleva es "Imagen y rendimiento", que ni de lejos llega a 450.
+                    Label lTit = new Label(); lTit.SetBounds(22, 10, 450, 28); lTit.BackColor = Color.Transparent;
                     lTit.ForeColor = Color.FromArgb(232, 238, 255); lTit.Font = fTit; lTit.Text = "Sonido";
                     // LAS DOS PESTANAS VAN AQUI, EN EL RENGLON DEL TITULO, y no en una fila propia: esta ventana
                     // mide 960x732 a proposito -con su barra de titulo cabe justo en una pantalla de 1024x768- y
@@ -2903,6 +2908,11 @@ namespace Rocola
                     // Sonido se queda exactamente donde estaba.
                     BotonPlano bPagS = new BotonPlano(); bPagS.SetBounds(640, 8, 148, 30); bPagS.Font = fBot; bPagS.Text = "Sonido";
                     BotonPlano bPagI = new BotonPlano(); bPagI.SetBounds(796, 8, 148, 30); bPagI.Font = fBot; bPagI.Text = "Imagen";
+                    // Y LA TERCERA: los detalles que dan vida. No caben en Imagen -la tarjeta EFECTOS mide
+                    // 568 px y su contenido llega al 562, medido- y ademas no son lo mismo: las de alli se
+                    // bajan para ganar rendimiento a cambio de que se vea menos bonito, y el medidor las
+                    // puede proponer. Estas no cuestan nada que se note: se encienden y se dejan.
+                    BotonPlano bPagD = new BotonPlano(); bPagD.SetBounds(484, 8, 148, 30); bPagD.Font = fBot; bPagD.Text = "Detalles";
                     // El subtitulo ya no ocupa el renglon entero: se queda con su mitad izquierda (su texto
                     // gasta 545 px medidos) y la derecha es del interruptor de aqui abajo. Antes reclamaba los
                     // 916 aunque no los usara, y asi los dos decian ser dueños del mismo sitio.
@@ -3322,22 +3332,26 @@ namespace Rocola
                     // su coste medido. Vive entera dentro de un Panel, asi cambiar de pestana es una linea y la
                     // pagina de Sonido ni se entera: se queda exactamente donde estaba, hasta el ultimo pixel.
                     Panel pImg = PaginaImagen(fNom, fVal, fDes, fBot, cTexto, cTenue, cApagado);
+                    Panel pDet = PaginaDetalles(fNom, fDes, fBot, cTexto, cTenue, cApagado);
+                    string[] nomPag = { "Sonido", "Imagen y rendimiento", "Detalles que dan vida" };
                     Action pintaPag = delegate
                     {
-                        bool img = (f3Pagina == 1);
+                        if (f3Pagina < 0 || f3Pagina > 2) f3Pagina = 0;
                         // Se ensena o se esconde TODO lo que hay en la ventana menos el marco (titulo,
-                        // pestanas y el boton de Listo, que se ven en las dos) y la propia pagina de Imagen.
+                        // pestanas y el boton de Listo, que se ven en las tres) y las paginas propias.
                         // Se hace asi y no con una lista de nombres a proposito: una lista se olvida de una
                         // tarjeta al agregarla -y en la rama del equipo potente hay una mas- y esa tarjeta se
                         // quedaria colgada encima de la pagina nueva.
                         foreach (Control cc in dlg.Controls)
-                            if (cc != lTit && cc != bPagS && cc != bPagI && cc != bOk && cc != pImg) cc.Visible = !img;
-                        pImg.Visible = img;
-                        lTit.Text = img ? "Imagen y rendimiento" : "Sonido";
-                        BotonPlano[] pb = { bPagS, bPagI };
-                        for (int k = 0; k < 2; k++)
+                            if (cc != lTit && cc != bPagS && cc != bPagI && cc != bPagD && cc != bOk && cc != pImg && cc != pDet)
+                                cc.Visible = (f3Pagina == 0);
+                        pImg.Visible = (f3Pagina == 1);
+                        pDet.Visible = (f3Pagina == 2);
+                        lTit.Text = nomPag[f3Pagina];
+                        BotonPlano[] pb = { bPagS, bPagI, bPagD };
+                        for (int k = 0; k < pb.Length; k++)
                         {
-                            bool act = (k == 1) == img;
+                            bool act = (k == f3Pagina);
                             pb[k].Relleno = act ? Color.FromArgb(28, 62, 104) : Color.FromArgb(28, 34, 62);
                             pb[k].Borde = act ? Color.FromArgb(150, 205, 255) : Color.FromArgb(60, 72, 118);
                             pb[k].ForeColor = act ? Color.FromArgb(226, 240, 255) : cApagado;
@@ -3346,11 +3360,12 @@ namespace Rocola
                     };
                     bPagS.Click += delegate { f3Pagina = 0; pintaPag(); };
                     bPagI.Click += delegate { f3Pagina = 1; pintaPag(); };
+                    bPagD.Click += delegate { f3Pagina = 2; pintaPag(); };
 
-                    dlg.Controls.Add(lTit); dlg.Controls.Add(bPagS); dlg.Controls.Add(bPagI); dlg.Controls.Add(lSub); dlg.Controls.Add(swNoche); dlg.Controls.Add(lSal);
+                    dlg.Controls.Add(lTit); dlg.Controls.Add(bPagS); dlg.Controls.Add(bPagI); dlg.Controls.Add(bPagD); dlg.Controls.Add(lSub); dlg.Controls.Add(swNoche); dlg.Controls.Add(lSal);
                     dlg.Controls.Add(tVol); dlg.Controls.Add(tCal); dlg.Controls.Add(tIa); dlg.Controls.Add(tBib);
                     dlg.Controls.Add(lDskT); dlg.Controls.Add(bDskA); dlg.Controls.Add(bDskS); dlg.Controls.Add(bDskH); dlg.Controls.Add(lDskS);
-                    dlg.Controls.Add(bReset); dlg.Controls.Add(bOk); dlg.Controls.Add(pImg);
+                    dlg.Controls.Add(bReset); dlg.Controls.Add(bOk); dlg.Controls.Add(pImg); dlg.Controls.Add(pDet);
                     pintaPag();
                     // Escape cierra, como toda la vida (los controles propios se comen las teclas, asi que la
                     // ventana las mira antes con KeyPreview).
@@ -5994,7 +6009,10 @@ namespace Rocola
         // Y como se dice. Sin tiempo fiable se dice SOLO el puesto: sigue sirviendo y no miente.
         internal static string TextoTurno(int puesto, double segundos)
         {
-            if (puesto <= 0) return "";
+            // Apagado desde Ctrl+F3 devuelve texto vacio, y con eso el aviso vuelve solo al "Cancion
+            // agregada" de siempre: el interruptor vive AQUI, en el unico sitio que escribe el letrero,
+            // y no repartido por los dos sitios que lo piden.
+            if (!turnoOn || puesto <= 0) return "";
             string donde = (puesto == 1) ? "Tu cancion es la siguiente" : ("Tu cancion es la " + puesto + "a");
             if (segundos < 0) return donde;
             if (segundos < 60) return donde + " - en menos de 1 min";
