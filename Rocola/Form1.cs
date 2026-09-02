@@ -528,6 +528,9 @@ namespace Rocola
         // sonar), asi que sin esto era la unica cancion del disco SIN ninguna marca, y es justo la que mas
         // hace falta marcar -si al cliente se le olvido que la acaba de poner, se gasta otro credito en ella-.
         private readonly Dictionary<string, int> colaPos = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        // De que DISCOS hay algo pedido (o sonando), por carpeta. Lo usa la marca de la pared.
+        private readonly Dictionary<string, bool> colaDiscos = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        private static bool marcaColaOn = true;   // "marca_cola=" en config
         // Y APARTE, cual esta sonando. Suelto y no dentro de colaPos porque una cancion puede estar sonando
         // Y ademas pedida otra vez: son dos cosas distintas y el cliente necesita ver las dos -que la esta
         // oyendo, y que ya la va a volver a oir-. Metidas en el mismo dato, una tapaba a la otra.
@@ -537,12 +540,20 @@ namespace Rocola
         private void RefrescaCola()
         {
             colaPos.Clear();
+            // Y APARTE, DE QUE DISCOS. Un cliente recorre la pared, pide tres canciones y a los cinco
+            // minutos ya no se acuerda de cuales: vuelve a pedir la misma. Con una marca en la esquina
+            // del disco no hace falta acordarse. Se guarda por carpeta y no por el objeto del disco,
+            // porque un re-escaneo de la biblioteca fabrica objetos nuevos para los mismos discos.
+            colaDiscos.Clear();
+            if (nowPlaying != null && nowPlaying.Disc != null && nowPlaying.Disc.Folder != null)
+                colaDiscos[nowPlaying.Disc.Folder] = true;   // la que suena tambien: sigue siendo "ya la pusiste"
             for (int i = 0; i < queue.Count; i++)
             {
                 PlayItem it = queue[i];
                 if (it == null) continue;
                 string k = it.PathKey();
                 if (k.Length > 0 && !colaPos.ContainsKey(k)) colaPos[k] = i + 1;   // el primero manda
+                if (it.Disc != null && it.Disc.Folder != null) colaDiscos[it.Disc.Folder] = true;
             }
             // Y aparte, cual esta sonando. Aparte y no aqui dentro porque las dos cosas pueden ser verdad a
             // la vez -la que suena puede estar pedida otra vez- y el cliente necesita ver LAS DOS marcas.
@@ -553,6 +564,8 @@ namespace Rocola
             // marca hasta que algo mas obligara a rehacerla.
             RefrescaLista();
         }
+        private int turnoPuesto;      // que puesto ocupo la ultima cancion pedida (0 = no se sabe)
+        private double turnoSegs;     // y cuanto falta para que suene (-1 = no se puede saber)
         private PlayItem nowPlaying;
 
         // ---- Estadisticas (base de "Lo mas sonado") ----
@@ -1401,6 +1414,7 @@ namespace Rocola
                     else if (s.StartsWith("realce=")) { float v; if (float.TryParse(s.Substring(7).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) excAmount = Clampf(v, 0f, 1f); }   // realce de agudos (exciter, tipo DSEE)
                     else if (s.StartsWith("bajo=")) { float v; if (float.TryParse(s.Substring(5).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) bassAmount = Clampf(v, 0f, 1f); }   // bajo psicoacustico (armonicos del grave)
                     else if (s.StartsWith("noche=")) nocheOn = s.Substring(6).Trim() != "0";   // modo noche (baja el volumen de madrugada)
+                    else if (s.StartsWith("marca_cola=")) marcaColaOn = s.Substring(11).Trim() != "0";   // el palomito de "ya la pusiste"
                     else if (s.StartsWith("noche_desde=")) { int v; if (int.TryParse(s.Substring(12).Trim(), out v) && v >= 0 && v <= 23) nocheDesde = v; }
                     else if (s.StartsWith("noche_hasta=")) { int v; if (int.TryParse(s.Substring(12).Trim(), out v) && v >= 0 && v <= 23) nocheHasta = v; }
                     else if (s.StartsWith("noche_db=")) { float v; if (float.TryParse(s.Substring(9).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) nocheDb = Clampf(v, -24f, 0f); }   // cuanto baja (negativo)
@@ -1575,6 +1589,7 @@ namespace Rocola
                 sb.Append("bajo=").Append(bassAmount.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("subir_db=").Append(masterDb.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("noche=").Append(nocheOn ? "1" : "0").Append("\r\n");
+                sb.Append("marca_cola=").Append(marcaColaOn ? "1" : "0").Append("\r\n");
                 sb.Append("noche_desde=").Append(nocheDesde).Append("\r\n");
                 sb.Append("noche_hasta=").Append(nocheHasta).Append("\r\n");
                 sb.Append("noche_db=").Append(nocheDb.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
@@ -3669,6 +3684,13 @@ namespace Rocola
             albumView = new AlbumView();
             albumView.Sky = formStars;   // MISMO campo de estrellas que el fondo del form: la rejilla pinta su ventana (una sola pieza, sin costuras)
             albumView.GetCover = LoadCoverAsync;
+            // LA MARCA DE "YA LA PUSISTE". La pared no guarda la cola: pregunta. Asi no hay dos listas
+            // que puedan decir cosas distintas, y apagar la marca es dejar de contestar.
+            albumView.EnCola = delegate (Album a)
+            {
+                if (!marcaColaOn || a == null || a.Folder == null || colaDiscos.Count == 0) return false;
+                return colaDiscos.ContainsKey(a.Folder);
+            };
             albumView.GetCoverByPath = LoadCoverByPath;
             albumView.OnActivate = delegate (int local)
             {
@@ -5606,16 +5628,86 @@ namespace Rocola
             finally { if (rd != null) { try { rd.Dispose(); } catch { } } }
         }
 
+        // CUANTO DURA UNA CANCION, Y EL UNICO SITIO QUE LO SABE.
+        //
+        // Manda la del analisis completo (que midio la cancion entera); si aun no la tiene, la del
+        // barrido rapido. Devuelve 0 cuando no se sabe, y eso NO es lo mismo que cero segundos: quien
+        // pregunta tiene que mirarlo y callarse en vez de inventar.
+        //
+        // Y aqui NO se le pregunta al archivo. El descompresor no sabe cuanto dura un MP3 hasta
+        // recorrerlo entero cuando no trae cabecera Xing -medido: 3.87 ms de procesador en una cancion
+        // de 4 minutos, mas la lectura de sus 9 MB del disco-. Multiplicado por toda la cola, y justo
+        // en el instante en que alguien acaba de pulsar un boton. La duracion ya esta apuntada.
+        private float SegundosDe(string path)
+        {
+            float d;
+            if (path == null) return 0f;
+            if (durCache.TryGetValue(path, out d) && d > 0.01f) return d;
+            if (durFast.TryGetValue(path, out d) && d > 0.01f) return d;
+            return 0f;
+        }
+
         // Duracion "m:ss" de una cancion ya pre-analizada ("" si aun no se sabe).
         private string DurText(string path)
         {
-            float d;
-            if (path == null) return "";
-            // Manda la del analisis completo (mide la cancion entera); si aun no la tiene, la del barrido rapido.
-            if (!durCache.TryGetValue(path, out d) || d <= 0.01f)
-                if (!durFast.TryGetValue(path, out d) || d <= 0.01f) return "";
+            float d = SegundosDe(path);
+            if (d <= 0f) return "";
             int tot = (int)(d + 0.5f);
             return (tot / 60) + ":" + (tot % 60).ToString("00");
+        }
+
+        // ============================== TU TURNO EN LA COLA ==============================
+        //
+        // La pastilla dice cuantas canciones van pedidas. Eso es un dato del LOCAL: al que acaba de
+        // meter su moneda no le sirve saber que hay cuatro, le sirve saber CUAL ES LA SUYA y cuanto
+        // falta. Y no es un detalle bonito: es la causa de que la gente vuelva a picarle al boton -a
+        // veces gastando otro credito- creyendo que la maquina no le hizo caso.
+        //
+        // La cuenta va APARTE, en dos funciones puras que reciben numeros y devuelven un numero. Asi se
+        // les pueden dar casos a mano y comprobar que contestan bien (pruebas/turno.cs), que con esto
+        // metido dentro de la pantalla no se podria. Es la misma idea que ProponeEscalones en el medidor.
+
+        // Los segundos que faltan para que empiece TU cancion, o -1 si NO SE PUEDE SABER.
+        //
+        // Basta con que de UNA de las que van por delante no se sepa la duracion -recien copiada al
+        // disco, aun sin analizar- para que la cuenta entera deje de valer. Y entonces hay que decirlo,
+        // no redondear: un "en ~11 min" que luego son veinte es peor que no decir nada, porque la
+        // proxima vez ya nadie se lo cree.
+        internal static double EsperaSegundos(double[] antesQueLaTuya, double restanDeLaQueSuena)
+        {
+            if (restanDeLaQueSuena < 0) return -1;
+            double s = restanDeLaQueSuena;
+            if (antesQueLaTuya != null)
+                for (int i = 0; i < antesQueLaTuya.Length; i++)
+                {
+                    if (!(antesQueLaTuya[i] > 0)) return -1;
+                    s += antesQueLaTuya[i];
+                }
+            return s;
+        }
+
+        // Y como se dice. Sin tiempo fiable se dice SOLO el puesto: sigue sirviendo y no miente.
+        internal static string TextoTurno(int puesto, double segundos)
+        {
+            if (puesto <= 0) return "";
+            string donde = (puesto == 1) ? "Tu cancion es la siguiente" : ("Tu cancion es la " + puesto + "a");
+            if (segundos < 0) return donde;
+            if (segundos < 60) return donde + " - en menos de 1 min";
+            return donde + " - en ~" + (int)((segundos + 30) / 60) + " min";
+        }
+
+        // Lo que le queda a la que suena. Con un VIDEO se devuelve "no se sabe": el video no lo lleva la
+        // cadena de la rocola sino el reproductor de fuera, asi que por donde va no se puede preguntar
+        // sin adivinar, y adivinar aqui es justo lo que no se quiere.
+        private double RestanDeLaQueSuena()
+        {
+            if (nowPlaying == null) return 0;
+            if (nowPlaying.IsVideo) return -1;
+            double tot = SegundosDe(nowPlaying.PathKey());
+            if (tot <= 0) return -1;
+            double va = 0; try { if (reader != null) va = reader.CurrentTime.TotalSeconds; } catch { }
+            double q = tot - va;
+            return (q > 0) ? q : 0;
         }
         // PRECALENTAR LA SIGUIENTE CANCION.
         //
@@ -8093,6 +8185,12 @@ namespace Rocola
             PlayItem last = (queue.Count > 0) ? queue[queue.Count - 1] : nowPlaying;
             if (last != null && string.Equals(last.PathKey(), it.PathKey(), StringComparison.OrdinalIgnoreCase)) return AddResult.Repeat;
             queue.Add(it); RefrescaCola(); PrecalientaSiguiente();
+            // EL TURNO SE APUNTA AQUI Y NO EN EL AVISO, a proposito: aqui la cola esta como quedo justo
+            // al meterla, y unas lineas mas abajo PlayNext puede sacar la primera y correrlo todo.
+            turnoPuesto = queue.Count;
+            double[] antes = new double[queue.Count - 1];
+            for (int i = 0; i < queue.Count - 1; i++) antes[i] = SegundosDe(queue[i].PathKey());
+            turnoSegs = EsperaSegundos(antes, RestanDeLaQueSuena());
             VuelaALaCola(it.Disc);   // se VE: la portada sale de la pared y aterriza en la pastilla de la cola
             if (iaVivo && !it.IsVideo && it.Song != null) IaRequestJob(it.Song.Path);   // IA EN VIVO: prepara desde que se encola (lista para cuando le toque)
             RecordPlay(it);                                              // estadisticas: cuenta lo pedido
@@ -8118,7 +8216,11 @@ namespace Rocola
         private void ShowSongAddedToast(bool search)
         {
             songTotal = SameToastActive(ToastKind.Song) ? songTotal + 1 : 1;
-            string msg = songTotal > 1 ? "Cancion agregada  X" + songTotal : "Cancion agregada";
+            // EL TURNO SUSTITUYE AL "X2". Antes, al pedir varias seguidas, el aviso contaba cuantas
+            // llevabas; el turno dice algo mejor y lo dice solo, porque el puesto de la ultima YA sube
+            // con cada una. Y si no se supiera el puesto -no deberia pasar- se vuelve al de siempre.
+            string msg = TextoTurno(turnoPuesto, turnoSegs);
+            if (msg.Length == 0) msg = songTotal > 1 ? "Cancion agregada  X" + songTotal : "Cancion agregada";
             if (search) ShowSearchToast(msg, true); else ShowToast(msg);
             MarkToast(ToastKind.Song);
         }
@@ -8128,7 +8230,11 @@ namespace Rocola
             if (string.IsNullOrEmpty(path)) return;
             PlayItem it = new PlayItem(); it.IsVideo = true; it.VideoPath = path; it.Disc = disc;
             AddResult r = AddItem(it);
-            if (r == AddResult.Added) ShowToast("Video agregado a la cola");
+            if (r == AddResult.Added)
+            {   // el video tambien dice su turno: para quien lo pidio es exactamente lo mismo
+                string mv = TextoTurno(turnoPuesto, turnoSegs);
+                ShowToast(mv.Length > 0 ? mv : "Video agregado a la cola");
+            }
             else if (r == AddResult.NoCredit) ShowToast("Inserta una moneda", Color.FromArgb(200, 130, 35));
             else ShowToast("Ese video ya va seguido", Color.FromArgb(200, 130, 35));
         }
@@ -13868,6 +13974,8 @@ namespace Rocola
             // FIJO -no sale de 'labelH', ver EnsureLabelRes-, asi que pasando las medidas partidas por dos el
             // disco menguaria pero el nombre seguiria igual de grande: enorme para su hueco, y cortado.
             // Encogiendo el pincel sale la MISMA casilla, igual de proporcionada, solo que con menos pixeles.
+            public Func<Album, bool> EnCola;   // ¿este disco tiene algo pedido? (lo contesta el form)
+
             private Bitmap BakeCell(Album a, int cw, int side, int labelH, int gap, Image cover, float esc)
             {
                 int bw = cw, bh = side + gap + labelH;
@@ -13884,11 +13992,34 @@ namespace Rocola
                     if (encoge) g.ScaleTransform(esc, esc);
                     g.InterpolationMode = InterpolationMode.Bilinear;   // mas rapido que bicubico (CPU vieja); las portadas ya son de buena resolucion
                     g.SmoothingMode = SmoothingMode.AntiAlias;
-                    Cube.Draw(g, new Rectangle((cw - side) / 2, 0, side, side), cover, 0.0);   // disco centrado (mismo x que Geometry)
+                    Rectangle rDisco = new Rectangle((cw - side) / 2, 0, side, side);
+                    Cube.Draw(g, rDisco, cover, 0.0);   // disco centrado (mismo x que Geometry)
+                    if (EnCola != null && EnCola(a)) Palomito(g, rDisco);
                     EnsureLabelRes();
                     g.DrawString(AlbumLabel(a), lblFont, lblBrush, new Rectangle(2, side + gap, cw - 4, labelH), lblSF);   // etiqueta pegada al disco
                 }
                 return bmp;
+            }
+
+            // EL PALOMITO DE "YA LA PUSISTE". Va en la esquina de arriba a la derecha del disco, que es la
+            // unica de las cuatro que no pisa ni la etiqueta ni el recuadro de seleccion. Verde, el mismo
+            // de la cola, para que se lea sin explicarlo: verde = tuya, ya va.
+            private static void Palomito(Graphics g, Rectangle disco)
+            {
+                float d = disco.Width * 0.26f; if (d < 13f) d = 13f;
+                float x = disco.Right - d * 0.92f, y = disco.Top - d * 0.08f;
+                using (SolidBrush b = new SolidBrush(Color.FromArgb(236, 120, 230, 165)))
+                    g.FillEllipse(b, x, y, d, d);
+                using (Pen aro = new Pen(Color.FromArgb(150, 10, 40, 26), Math.Max(1f, d * 0.07f)))
+                    g.DrawEllipse(aro, x, y, d, d);
+                using (Pen p = new Pen(Color.FromArgb(255, 10, 44, 28), Math.Max(1.6f, d * 0.15f)))
+                {
+                    p.StartCap = LineCap.Round; p.EndCap = LineCap.Round; p.LineJoin = LineJoin.Round;
+                    g.DrawLines(p, new PointF[] {
+                        new PointF(x + d * 0.27f, y + d * 0.52f),
+                        new PointF(x + d * 0.44f, y + d * 0.70f),
+                        new PointF(x + d * 0.75f, y + d * 0.32f) });
+                }
             }
 
             // Devuelve el bitmap horneado de la celda del album; lo re-hornea si falta o si cambio el estado de
@@ -13896,6 +14027,10 @@ namespace Rocola
             private Bitmap GetOrBakeCell(Album a, int cw, int side, int labelH, int gap, Image cover)
             {
                 string key = CellKey(a);
+                // LA MARCA ENTRA EN LA LLAVE, y por eso no hace falta avisar a nadie de nada: al pedir una
+                // cancion, la llave de ese disco cambia, la casilla no esta en la caja y se hornea con su
+                // palomito. Y la version sin marca se queda guardada para cuando la cancion ya sono.
+                if (key != null && EnCola != null && EnCola(a)) key += "#q";
                 bool hasCover = (cover != null);
                 CellSprite cs = null;
                 if (key != null && cellCache.TryGetValue(key, out cs) && cs.Bmp != null && cs.HasCover == hasCover)
@@ -13929,6 +14064,7 @@ namespace Rocola
             private Bitmap PeekOrBakeCell(Album a, int cw, int side, int labelH, int gap, Image cover, ref int budget, bool chica)
             {
                 string key = CellKey(a);
+                if (key != null && EnCola != null && EnCola(a)) key += "#q";   // ver GetOrBakeCell
                 bool hasCover = (cover != null);
                 string k = (key == null) ? null : (chica ? key + "#c" : key);
                 CellSprite cs = null;

@@ -53,6 +53,27 @@ class Ceremonia
         foreach (MethodInfo m in t.GetMethods(TODO | BindingFlags.DeclaredOnly)) if (m.Name == n) return m;
         return null;
     }
+    // TODAS las versiones de un metodo con ese nombre. Varias de estas funciones tienen dos -una corta
+    // que solo llama a la larga-, y mirar solo la primera es mirar la que no hace nada.
+    static List<MethodBase> Todas(Type t, string n)
+    {
+        List<MethodBase> r = new List<MethodBase>();
+        if (t == null) return r;
+        foreach (MethodInfo m in t.GetMethods(TODO | BindingFlags.DeclaredOnly)) if (m.Name == n) r.Add(m);
+        return r;
+    }
+    static bool AlgunaLlama(Type t, string n, string que)
+    {
+        foreach (MethodBase m in Todas(t, n)) if (Codigo.Llama(m, que)) return true;
+        return false;
+    }
+    static bool AlgunaNombra(Type t, string n, string texto)
+    {
+        foreach (MethodBase m in Todas(t, n))
+            foreach (string x in Codigo.Textos(m)) if (x == texto) return true;
+        return false;
+    }
+
     static bool Tiene(Type t, string n)
     {
         if (t == null) return false;
@@ -124,7 +145,36 @@ class Ceremonia
             Check(miraNivel, "y hereda el interruptor de 'animacion': en bajo, no vuela nada");
         }
 
-        Console.WriteLine("\n  4) Y NO QUEDA NI RASTRO DE LOS SONIDOS\n");
+        Console.WriteLine("\n  4) LA MARCA DE \"YA LA PUSISTE\"\n");
+        // Un cliente recorre la pared, pide tres canciones y a los cinco minutos ya no se acuerda de
+        // cuales: vuelve a pedir la misma. Un palomito en la esquina lo resuelve sin una palabra.
+        Type TAlb = null;
+        foreach (Type t in asm.GetTypes())
+            foreach (Type x in t.GetNestedTypes(BindingFlags.Public | BindingFlags.NonPublic))
+                if (x.Name == "AlbumView") TAlb = x;
+        Check(TAlb != null && Tiene(TAlb, "EnCola"), "la pared puede preguntar si un disco tiene algo pedido");
+        MethodBase refresca = Met(TF, "RefrescaCola");
+        if (refresca != null)
+        {
+            int lee, esc;
+            Codigo.UsosDeCampo(refresca, "colaDiscos", out lee, out esc);
+            Check(lee > 0 || esc > 0, "y la rocola apunta DE QUE DISCOS hay algo pedido al refrescar la cola");
+        }
+        if (TAlb != null)
+        {
+            Check(Met(TAlb, "Palomito") != null, "hay un palomito que dibujar");
+            Check(AlgunaLlama(TAlb, "BakeCell", "Palomito"), "y se hornea DENTRO de la casilla, no encima");
+            // LA MARCA TIENE QUE ENTRAR EN LA LLAVE DE LA CACHE. Si no, al pedir una cancion la casilla
+            // ya horneada se seguiria usando tal cual y el palomito no saldria hasta que algo mas
+            // obligara a rehacerla. Son DOS cajas -la del camino normal y la del de tarjeta grafica- y
+            // las dos tienen que llevarlo, que si no una pagina se veria marcada y la otra no.
+            string[] cajas = { "GetOrBakeCell", "PeekOrBakeCell" };
+            for (int i = 0; i < cajas.Length; i++)
+                Check(AlgunaNombra(TAlb, cajas[i], "#q"),
+                      "la marca entra en la llave de la caja de casillas (" + cajas[i] + ")");
+        }
+
+        Console.WriteLine("\n  5) Y NO QUEDA NI RASTRO DE LOS SONIDOS\n");
         // Se probaron y no pagaron (ver arriba). Que no vuelvan a colarse a medias: ni la pieza que los
         // fabricaba, ni la que los mezclaba, ni el sitio por donde se disparaban.
         bool rastro = false;
