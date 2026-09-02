@@ -110,9 +110,12 @@ class Ajustes
         pagActual = 2;   // el marco: se ve en las dos pestanas
         // El titulo encogio de 700 a 600 para dejarle sitio a las pestanas. No mueve nada: el texto mas
         // largo que lleva es "Imagen y rendimiento", que ni de lejos llega a 600.
-        C("titulo", 22, 10, 600, 28, "Imagen y rendimiento", fTit, 15f, false);
+        // Y de 600 a 450 al entrar la tercera pestaña. Sigue sin mover nada: el texto mas largo que lleva
+        // es "Detalles que dan vida", que ni de lejos llega a 450.
+        C("titulo", 22, 10, 450, 28, "Detalles que dan vida", fTit, 15f, false);
         C("pestana.sonido", 640, 8, 148, 30, "Sonido", fBot, 10f, false);
         C("pestana.imagen", 796, 8, 148, 30, "Imagen", fBot, 10f, false);
+        C("pestana.detalles", 484, 8, 148, 30, "Detalles", fBot, 10f, false);
         C("boton.listo", 804, hd ? 922 : 680, 140, 38, "Listo", fBot, 10f, false);
         pagActual = 0;   // de aqui en adelante, la pagina de Sonido
         C("subtitulo", 24, 42, 590, 18, "Todo lo que cambies aqui se oye al instante en la cancion que esta sonando.", fSub, 9.5f, false);
@@ -282,6 +285,47 @@ class Ajustes
             C("pierde.v" + i, 504, PY + 502, 424, 64, efeNom[i] + " en medio:\n" + efePierde[i], fDes, 8.5f, true);
 
         C("imagen.fabrica", 16, PY + 584, 300, 38, "Graficos como de fabrica", fBot, 10f, false);
+
+        // ================= LA PAGINA DE DETALLES (la tercera pestaña) =================
+        // Los seis adornos, con su interruptor y la linea que dice QUE SE VE si se enciende. Estan aqui y no
+        // en Imagen porque alli no cabian -medido: la tarjeta EFECTOS llega al 562 de sus 568- y porque no
+        // son lo mismo: las de alli se bajan para ganar rendimiento a cambio de fealdad, estas son gusto.
+        pagActual = 3;
+        // ---- tarjeta LO QUE SE VE (16,100,456,424): cinco interruptores con su explicacion ----
+        string[] detNom = {
+            "Decir cuando suena tu cancion",
+            "Marcar los discos que ya pediste",
+            "Que el fondo tome el color de la portada",
+            "Ensenar las portadas de la cola",
+            "Media vuelta al cambiar de cancion" };
+        string[] detExp = {
+            "Al pedir una cancion, el aviso dice que puesto ocupa y cuantos\nminutos faltan, en vez de solo \"Cancion agregada\".",
+            "Un palomito verde en la esquina de los discos de los que ya hay\nalgo pedido o sonando, para no volver a pedir lo mismo.",
+            "Del disco se toma SOLO de que color es. Lo oscuro y lo vivo lo\nsigue mandando el genero: ninguna portada estropea la pantalla.",
+            "En la capsula de \"En cola\", las caratulas de las tres proximas.\nSi hay mas de tres, la ultima lleva un \"+2\".",
+            "El cubito de la barra de abajo gira media vuelta y la portada\nnueva aparece en el camino, en vez de cambiar de golpe." };
+        for (int i = 0; i < detNom.Length; i++)
+        {
+            CSw("detalle.sw" + i, 32, PY + 44 + i * 72, 424, 26, detNom[i], fNom, 10f);
+            C("detalle.exp" + i, 32, PY + 74 + i * 72, 424, 32, detExp[i], fDes, 8.5f, true);
+        }
+        // ---- tarjeta LA PARED QUE RESPIRA (488,100,456,424) ----
+        CSw("respira.sw", 504, PY + 44, 424, 26, "Que la pared respire cuando nadie la usa", fNom, 10f);
+        C("respira.que", 504, PY + 74, 424, 48,
+          "La pared de discos sube y baja de brillo muy despacio, una\nrespiracion cada medio minuto. Es lo que hace que una pantalla\nquieta parezca encendida en vez de colgada.", fDes, 8.5f, true);
+        C("respira.cuanto", 504, PY + 132, 424, 16, "Cuanto respira:", fDes, 8.5f, false);
+        string[] detFza = { "Apenas", "Normal", "Se nota" };
+        for (int k = 0; k < 3; k++)
+            C("respira.fza" + k, 504 + k * 140, PY + 152, 132, 28, detFza[k], fBot, 10f, false);
+        C("respira.freno", 504, PY + 194, 424, 118,
+          "EL FRENO. En cuanto alguien toca un boton la pared deja de\nrespirar, y vuelve sola unos segundos despues de que la dejen\n"
+          + "en paz. Una pantalla grande moviendose delante de quien esta\neligiendo cancion marea.\n\n"
+          + "Y no se para en seco -asi se quedaria clavada mas oscura o mas\nclara-: se le quita el aire, y acaba en su brillo de siempre.", fDes, 8.5f, true);
+        C("detalles.pie", 16, PY + 444, 928, 48,
+          "Nada de esto le quita ni le pone rendimiento a la rocola: no son las perillas de la pestaña de Imagen,\n"
+          + "que ahi si se cambia trabajo por bonito. Estas son de gusto, y apagarlas no gana nada mas que quitarlas\n"
+          + "de la vista. Todo lo que se toque aqui se guarda al cerrar la ventana.", fDes, 8.5f, true);
+        C("detalles.fabrica", 16, PY + 508, 300, 38, "Detalles como de fabrica", fBot, 10f, false);
         pagActual = 0;
 
         // ---------- que todo quepa, contando RENGLONES ----------
