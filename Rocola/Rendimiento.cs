@@ -532,6 +532,179 @@ namespace Rocola
 #endif
         }
 
+        // ============================ LA PAGINA DE DETALLES ============================
+        //
+        // Los seis adornos que la rocola fue juntando -el turno, el palomito, el fondo con el tono de la
+        // portada, las portaditas de la cola, el relevo del cubito y la pared que respira- solo se podian
+        // apagar escribiendo a mano en el archivo de configuracion. Para quien no toca archivos de texto,
+        // eso es lo mismo que no poder apagarlos.
+        //
+        // Y no cabian en la pagina de Imagen: la tarjeta EFECTOS mide 568 px y su contenido llega al 562, y
+        // las dos columnas acaban en 572 de 636. Estan llenas, medido. Asi que van en pestaña propia, que
+        // ademas es su sitio: las de Imagen se BAJAN para ganar rendimiento a cambio de que se vea menos
+        // bonito, y por eso el medidor las puede proponer. Estas no cuestan nada que se note; son gusto.
+        //
+        // Cada una lleva escrito QUE SE VE si se enciende, no como esta hecha por dentro. Quien abre esta
+        // ventana quiere saber que va a cambiar en la pantalla del bar.
+        private Panel PaginaDetalles(Font fNom, Font fDes, Font fBot,
+                                     Color cTexto, Color cTenue, Color cApagado)
+        {
+            Color cVida = Color.FromArgb(150, 220, 180);
+            Color cResp = Color.FromArgb(140, 205, 255);
+            Color cOn = Color.FromArgb(28, 62, 104), cOff = Color.FromArgb(28, 34, 62);
+            Color cBordeOn = Color.FromArgb(150, 205, 255), cBordeOff = Color.FromArgb(60, 72, 118);
+
+            Panel pg = new Panel();
+            pg.SetBounds(0, 96, 960, 636);
+            pg.BackColor = Color.FromArgb(11, 14, 32);
+
+            Tarjeta tVida = new Tarjeta(); tVida.SetBounds(16, 4, 456, 424); tVida.Titulo = "LO QUE SE VE"; tVida.Acento = cVida;
+            Tarjeta tResp = new Tarjeta(); tResp.SetBounds(488, 4, 456, 424); tResp.Titulo = "LA PARED QUE RESPIRA"; tResp.Acento = cResp;
+
+            // ---------------- LO QUE SE VE: cinco interruptores con su explicacion ----------------
+            string[] nombre = {
+                "Decir cuando suena tu cancion",
+                "Marcar los discos que ya pediste",
+                "Que el fondo tome el color de la portada",
+                "Ensenar las portadas de la cola",
+                "Media vuelta al cambiar de cancion",
+            };
+            string[] explica = {
+                "Al pedir una cancion, el aviso dice que puesto ocupa y cuantos\nminutos faltan, en vez de solo \"Cancion agregada\".",
+                "Un palomito verde en la esquina de los discos de los que ya hay\nalgo pedido o sonando, para no volver a pedir lo mismo.",
+                "Del disco se toma SOLO de que color es. Lo oscuro y lo vivo lo\nsigue mandando el genero: ninguna portada estropea la pantalla.",
+                "En la capsula de \"En cola\", las caratulas de las tres proximas.\nSi hay mas de tres, la ultima lleva un \"+2\".",
+                "El cubito de la barra de abajo gira media vuelta y la portada\nnueva aparece en el camino, en vez de cambiar de golpe.",
+            };
+            Interruptor[] sw = new Interruptor[nombre.Length];
+            for (int i = 0; i < nombre.Length; i++)
+            {
+                int y = 40 + i * 72;
+                sw[i] = new Interruptor();
+                sw[i].SetBounds(16, y, 424, 26); sw[i].ForeColor = cTexto; sw[i].Font = fNom;
+                sw[i].Text = nombre[i]; sw[i].Acento = cVida;
+                Label le = new Label(); le.SetBounds(16, y + 30, 424, 32); le.BackColor = Color.Transparent;
+                le.ForeColor = cTenue; le.Font = fDes; le.Text = explica[i];
+                tVida.Controls.Add(sw[i]); tVida.Controls.Add(le);
+            }
+            sw[0].Checked = turnoOn;
+            sw[1].Checked = marcaColaOn;
+            sw[2].Checked = fondoPortadaOn;
+            sw[3].Checked = colaPortadasOn;
+            sw[4].Checked = relevoOn;
+
+            // ---------------- LA PARED QUE RESPIRA ----------------
+            Interruptor swResp = new Interruptor();
+            swResp.SetBounds(16, 40, 424, 26); swResp.ForeColor = cTexto; swResp.Font = fNom;
+            swResp.Text = "Que la pared respire cuando nadie la usa"; swResp.Acento = cResp;
+            swResp.Checked = respiraOn;
+            Label lResp = new Label(); lResp.SetBounds(16, 70, 424, 48); lResp.BackColor = Color.Transparent;
+            lResp.ForeColor = cTenue; lResp.Font = fDes;
+            lResp.Text = "La pared de discos sube y baja de brillo muy despacio, una\n"
+                       + "respiracion cada medio minuto. Es lo que hace que una pantalla\n"
+                       + "quieta parezca encendida en vez de colgada.";
+
+            Label lCuanto = new Label(); lCuanto.SetBounds(16, 128, 424, 16); lCuanto.BackColor = Color.Transparent;
+            lCuanto.ForeColor = cApagado; lCuanto.Font = fDes; lCuanto.Text = "Cuanto respira:";
+            string[] nomFza = { "Apenas", "Normal", "Se nota" };
+            string[] valFza = { "1.2", "2.5", "4.5" };
+            BotonPlano[] bFza = new BotonPlano[3];
+            for (int k = 0; k < 3; k++)
+            {
+                bFza[k] = new BotonPlano(); bFza[k].SetBounds(16 + k * 140, 148, 132, 28);
+                bFza[k].Font = fBot; bFza[k].Text = nomFza[k];
+                tResp.Controls.Add(bFza[k]);
+            }
+
+            Label lFreno = new Label(); lFreno.SetBounds(16, 190, 424, 118); lFreno.BackColor = Color.Transparent;
+            lFreno.ForeColor = cTenue; lFreno.Font = fDes;
+            lFreno.Text = "EL FRENO. En cuanto alguien toca un boton la pared deja de\n"
+                        + "respirar, y vuelve sola unos segundos despues de que la dejen\n"
+                        + "en paz. Una pantalla grande moviendose delante de quien esta\n"
+                        + "eligiendo cancion marea.\n\n"
+                        + "Y no se para en seco -asi se quedaria clavada mas oscura o mas\n"
+                        + "clara-: se le quita el aire, y acaba en su brillo de siempre.";
+
+            tResp.Controls.Add(swResp); tResp.Controls.Add(lResp); tResp.Controls.Add(lCuanto); tResp.Controls.Add(lFreno);
+
+            Label lPie = new Label(); lPie.SetBounds(16, 444, 928, 48); lPie.BackColor = Color.Transparent;
+            lPie.ForeColor = cApagado; lPie.Font = fDes;
+            lPie.Text = "Nada de esto le quita ni le pone rendimiento a la rocola: no son las perillas de la pestaña de Imagen,\n"
+                      + "que ahi si se cambia trabajo por bonito. Estas son de gusto, y apagarlas no gana nada mas que quitarlas\n"
+                      + "de la vista. Todo lo que se toque aqui se guarda al cerrar la ventana.";
+
+            BotonPlano bResetD = new BotonPlano();
+            bResetD.SetBounds(16, 508, 300, 38); bResetD.Font = fBot; bResetD.Text = "Detalles como de fabrica";
+
+            // ---------------- LO QUE SE ENSENA ----------------
+            Action pinta = delegate
+            {
+                int cual = 1;
+                if (respiraFuerza < 0.018f) cual = 0; else if (respiraFuerza > 0.035f) cual = 2;
+                for (int k = 0; k < 3; k++)
+                {
+                    bool act = (k == cual) && respiraOn;
+                    bFza[k].Enabled = respiraOn;
+                    bFza[k].Relleno = act ? cOn : cOff;
+                    bFza[k].Borde = act ? cBordeOn : cBordeOff;
+                    bFza[k].ForeColor = act ? Color.FromArgb(226, 240, 255) : cApagado;
+                    bFza[k].Invalidate();
+                }
+                lCuanto.ForeColor = respiraOn ? cTenue : cApagado;
+                lFreno.ForeColor = respiraOn ? cTenue : cApagado;
+            };
+
+            sw[0].CheckedChanged += delegate { turnoOn = sw[0].Checked; f3CambioGraf = true; };
+            // La marca va DENTRO del mapa de bits horneado de cada casilla y su clave lleva el "#q", asi que
+            // al apagarla la clave cambia sola y las casillas se rehacen: basta con pedir un repintado.
+            sw[1].CheckedChanged += delegate { marcaColaOn = sw[1].Checked; f3CambioGraf = true; if (albumView != null) albumView.Invalidate(); };
+            sw[2].CheckedChanged += delegate
+            {
+                fondoPortadaOn = sw[2].Checked;
+                f3CambioGraf = true;
+                // Se ve YA, sin esperar a la siguiente cancion: el fondo viaja hasta el color nuevo con el
+                // mismo fundido lento de siempre.
+                if (nowPlaying != null && !nowPlaying.IsVideo) ApplyGenreBackground(nowPlaying.Song, nowPlaying.Disc);
+            };
+            sw[3].CheckedChanged += delegate
+            {
+                colaPortadasOn = sw[3].Checked;
+                f3CambioGraf = true;
+                // La capsula cambia de ANCHO al llevar o no portaditas, asi que hay que reacomodar la fila.
+                if (pastCola != null) { pastCola.ConPortadas = colaPortadasOn; LlenaPortaditas(); pastCola.Invalidate(); }
+                LayoutControls();
+            };
+            sw[4].CheckedChanged += delegate { relevoOn = sw[4].Checked; f3CambioGraf = true; };
+            swResp.CheckedChanged += delegate { respiraOn = swResp.Checked; f3CambioGraf = true; pinta(); };
+            for (int k = 0; k < 3; k++)
+            {
+                int mio = k;
+                bFza[k].Click += delegate
+                {
+                    // SIEMPRE por FuerzaRespira, que es la que acota: es el unico numero de esta pagina, y
+                    // uno grande ahi marea a todo el bar.
+                    respiraFuerza = FuerzaRespira(valFza[mio]);
+                    f3CambioGraf = true;
+                    pinta();
+                };
+            }
+            bResetD.Click += delegate
+            {
+                turnoOn = true; marcaColaOn = true; fondoPortadaOn = true; colaPortadasOn = true;
+                relevoOn = true; respiraOn = true;
+                respiraFuerza = FuerzaRespira("2.5");
+                sw[0].Checked = true; sw[1].Checked = true; sw[2].Checked = true; sw[3].Checked = true; sw[4].Checked = true;
+                swResp.Checked = true;
+                f3CambioGraf = true;
+                pinta();
+                ShowToast("Detalles como de fabrica", Color.FromArgb(40, 130, 90));
+            };
+
+            pg.Controls.Add(tVida); pg.Controls.Add(tResp); pg.Controls.Add(lPie); pg.Controls.Add(bResetD);
+            pinta();
+            return pg;
+        }
+
         private Panel PaginaImagen(Font fNom, Font fVal, Font fDes, Font fBot,
                                    Color cTexto, Color cTenue, Color cApagado)
         {
