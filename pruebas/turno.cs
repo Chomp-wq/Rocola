@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 
 // "TU CANCION ES LA 3a, EN ~11 MINUTOS".
@@ -115,7 +116,37 @@ class Turno
         // por toda la cola, justo cuando alguien acaba de pulsar un boton.
         Check(!Codigo.Llama(segs, "get_TotalTime"), "y NUNCA se le pregunta al archivo (recorreria el MP3 entero)");
 
-        Console.WriteLine("\n  6) Y EL AVISO LO USA\n");
+        Console.WriteLine("\n  6) Y AL PONER LA CANCION, TAMPOCO SE LE PREGUNTA AL ARCHIVO\n");
+        // Al arrancar cada cancion la rocola necesita saber cuanto dura, para armar el fundido de salida.
+        // Se lo preguntaba AL ARCHIVO, y muchos MP3 no lo traen escrito: contestar obliga a recorrerlo
+        // entero -3.87 ms y nueve megas de disco en una cancion de cuatro minutos-, y eso pasa en el hilo
+        // de la pantalla, en el instante exacto en que el cliente acaba de soltar el boton. Y la duracion
+        // ya esta apuntada desde el pre-analisis: se pregunta ahi.
+        MethodBase pone = Met("PlayTrack");
+        Check(pone != null, "hay un sitio por donde arranca una cancion (PlayTrack)");
+        if (pone != null)
+        {
+            Check(Codigo.Llama(pone, "SegundosDe"), "al arrancar una cancion, la duracion sale de lo ya apuntado");
+            // El camino largo TIENE que seguir estando: una cancion recien copiada al disco aun no esta
+            // medida y de algun lado hay que sacar su duracion. Lo que se comprueba es el ORDEN: que se
+            // pregunte a lo apuntado ANTES que al archivo, para que el archivo sea el ultimo recurso y no
+            // el primero.
+            List<string> pasos = Codigo.Llamadas(pone);
+            int iApunte = -1, iArchivo = -1;
+            for (int i = 0; i < pasos.Count; i++)
+            {
+                string q = pasos[i];
+                int pt = q.LastIndexOf('.');
+                if (pt >= 0) q = q.Substring(pt + 1);
+                if (iApunte < 0 && q == "SegundosDe") iApunte = i;
+                if (iArchivo < 0 && q == "get_TotalTime") iArchivo = i;
+            }
+            Check(iArchivo >= 0, "y sigue habiendo camino largo para una cancion que aun no se ha medido");
+            Check(iApunte >= 0 && (iArchivo < 0 || iApunte < iArchivo),
+                  "pero primero se pregunta a lo apuntado, y al archivo solo si eso no sabe");
+        }
+
+        Console.WriteLine("\n  7) Y EL AVISO LO USA\n");
         MethodBase aviso = Met("ShowSongAddedToast");
         Check(aviso != null, "hay un aviso de cancion agregada");
         if (aviso != null)

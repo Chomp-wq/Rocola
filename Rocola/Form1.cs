@@ -5419,6 +5419,49 @@ namespace Rocola
         private const int PreSegs = 3;            // cuantos tramos por cancion (repartidos por el tema)
         // QUE HAY QUE MEDIR. Devuelve la tanda -las canciones y los videos que aun no tienen medida- y, por
         // "elegibles", cuantos archivos de la biblioteca cuentan para la barra de avance del repaso a fondo.
+        // EN QUE ORDEN CONVIENE MEDIR.
+        //
+        // Medir una cancion cuesta descomprimirla entera: 550 ms por minuto de cancion, unos 2.2 segundos
+        // por cada una de cuatro minutos. Una biblioteca de 3000 son casi dos horas de trabajo, y en la
+        // maquina del bar bastante mas. Recorrerla EN EL ORDEN EN QUE ESTA significa pasar noches midiendo
+        // discos que nadie ha puesto nunca mientras las cinco que suenan cada viernes siguen sin nivelar y
+        // sin poder decir los minutos que faltan.
+        //
+        // El trabajo total es el mismo. Lo que cambia es CUANDO llega el beneficio: primero lo que esta
+        // pedido ahora mismo, luego lo mas sonado, luego lo mas reciente, y al final lo demas.
+        //
+        // Y EL ULTIMO DESEMPATE ES EL SITIO QUE OCUPABA, que no es un detalle: en .NET 3.5 List.Sort no es
+        // estable, asi que sin el, dos canciones con los mismos numeros saldrian hoy en un orden y manana
+        // en otro y el pre-analisis empezaria cada vez por un sitio distinto, en vez de continuar por
+        // donde iba. Pura a proposito: recibe las listas, asi se le pueden dar casos a mano.
+        internal static void OrdenaPorUso(List<string> pend, Dictionary<string, int> veces,
+                                          Dictionary<string, long> recientes, HashSet<string> enCola)
+        {
+            if (pend == null || pend.Count < 2) return;
+            int n = pend.Count;
+            string[] ruta = pend.ToArray();
+            int[] idx = new int[n];
+            int[] cola = new int[n];
+            int[] vez = new int[n];
+            long[] rec = new long[n];
+            for (int i = 0; i < n; i++)
+            {
+                idx[i] = i;
+                string k = ruta[i];
+                cola[i] = (enCola != null && k != null && enCola.Contains(k)) ? 0 : 1;
+                int v = 0; if (veces != null && k != null) veces.TryGetValue(k, out v); vez[i] = v;
+                long r = 0; if (recientes != null && k != null) recientes.TryGetValue(k, out r); rec[i] = r;
+            }
+            Array.Sort(idx, delegate (int a, int b)
+            {
+                if (cola[a] != cola[b]) return cola[a] - cola[b];          // lo pedido ahora mismo, primero
+                if (vez[a] != vez[b]) return (vez[b] > vez[a]) ? 1 : -1;   // luego lo mas sonado
+                if (rec[a] != rec[b]) return (rec[b] > rec[a]) ? 1 : -1;   // empatadas, la que sono hace menos
+                return a - b;                                             // y si todo empata, como estaba
+            });
+            for (int i = 0; i < n; i++) pend[i] = ruta[idx[i]];
+        }
+
         private List<string> TandaPorMedir(bool turbo, out int elegibles)
         {
             List<string> pend = new List<string>();
@@ -5462,6 +5505,33 @@ namespace Rocola
                 elegibles += vistos.Count;
             }
             if (cuantosVideos > 0) Diag("nivelado: " + cuantosVideos + " videos por medir");
+
+            // Y AHORA EL ORDEN, que es donde esta la ganancia (ver OrdenaPorUso). La rocola ya sabe lo que
+            // se pone en este bar: lo lleva apuntado para la lista de "Lo mas sonado". Aqui se le pregunta.
+            //
+            // Las tablas se miran SOLO por las canciones de esta tanda y no al reves: con cien mil canciones
+            // apuntadas, copiar las tablas enteras para ordenar unos cuantos miles seria trabajo de mas.
+            HashSet<string> enCola = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < queue.Count; i++)
+            {
+                PlayItem it = queue[i];
+                if (it == null) continue;
+                string k = it.PathKey();
+                if (k.Length > 0) enCola.Add(k);
+            }
+            Dictionary<string, int> veces = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            Dictionary<string, long> recientes = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < pend.Count; i++)
+            {
+                string k = pend[i];
+                if (k == null || veces.ContainsKey(k)) continue;
+                int v; long q;
+                // Las canciones van en una tabla y los videos en otra, pero aqui vienen revueltos en la
+                // misma tanda: se pregunta en las dos.
+                if (songCounts.TryGetValue(k, out v) || videoCounts.TryGetValue(k, out v)) veces[k] = v;
+                if (songSeq.TryGetValue(k, out q) || videoSeq.TryGetValue(k, out q)) recientes[k] = q;
+            }
+            OrdenaPorUso(pend, veces, recientes, enCola);
             return pend;
         }
 
@@ -9858,7 +9928,20 @@ namespace Rocola
                 NAudio.Wave.ISampleProvider outChain = new LookaheadLimiter(curBass, 0.98f, 3.0);   // limitador con pre-escucha (picos limpios)
                 if (crossfadeSec > 0.01f)
                 {
-                    long tf = 0; try { tf = (long)(reader.TotalTime.TotalSeconds * reader.WaveFormat.SampleRate); } catch { }
+                    // CUANTO DURA. Se pregunta primero a lo que el pre-analisis dejo apuntado, que es de
+                    // donde lo saca tambien el turno de la cola. Preguntarselo AL ARCHIVO obliga a
+                    // recorrerlo entero cuando no trae la cuenta escrita, que es lo normal: 3.87 ms y
+                    // nueve megas de disco en una cancion de cuatro minutos, y aqui eso caeria en el hilo
+                    // de la pantalla, en el instante en que el cliente acaba de soltar el boton. El camino
+                    // largo se deja solo para las canciones de las que aun no se sabe nada.
+                    long tf = 0;
+                    try
+                    {
+                        int hz = reader.WaveFormat.SampleRate;
+                        float yaSe = SegundosDe(t.Path);
+                        tf = (yaSe > 0.01f) ? (long)(yaSe * hz) : (long)(reader.TotalTime.TotalSeconds * hz);
+                    }
+                    catch { }
                     outChain = new FadeProvider(outChain, tf, crossfadeSec);   // fundido suave de entrada/salida
                 }
                 // ===== SALIDA DE AUDIO (rama HD) =====

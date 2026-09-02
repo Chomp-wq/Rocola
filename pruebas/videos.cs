@@ -46,6 +46,16 @@ class Videos
     {
         return TF.GetMethod(n, BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
     }
+    // Le pone a la rocola de mentira una tabla vacia, si ese campo existe y esta sin nada.
+    static void PonSiFalta(string campo, Type tipo, bool sinMayusculas)
+    {
+        FieldInfo f = Campo(campo);
+        if (f == null || tipo == null || f.GetValue(rocola) != null) return;
+        object v = sinMayusculas
+            ? Activator.CreateInstance(tipo, new object[] { StringComparer.OrdinalIgnoreCase })
+            : Activator.CreateInstance(tipo);
+        f.SetValue(rocola, v);
+    }
 
     // EL CASO FEO A PROPOSITO: 24 dB repartidos parejo, o sea tantos videos casi mudos como buenos. Una
     // biblioteca de verdad no es asi (esa se prueba mas abajo), pero conviene saber que pasa en lo peor.
@@ -96,6 +106,17 @@ class Videos
         // para nada. (El modo noche tiene su propia bateria, 'noche'.)
         FieldInfo fNoche = TF.GetField("nocheOn", BindingFlags.Static | BindingFlags.NonPublic);
         if (fNoche != null) fNoche.SetValue(null, false);
+
+        // LAS TABLAS QUE LA ROCOLA SE ARMA AL NACER. Esta rocola de mentira se fabrica SIN pasar por su
+        // constructor -es la unica forma de armarle una biblioteca a mano-, asi que todo lo que se crea
+        // alli le sale vacio. La tanda por medir sale ORDENADA por lo que la gente pone (ver la bateria
+        // 'orden'), y para eso mira la cola y las cuentas de lo mas sonado: si vienen nulas, revienta.
+        // Se le ponen vacias, que es exactamente lo que tendria una rocola recien instalada.
+        PonSiFalta("queue", typeof(List<>).MakeGenericType(TF.GetNestedType("PlayItem", BindingFlags.NonPublic | BindingFlags.Public)), false);
+        PonSiFalta("songCounts", typeof(Dictionary<string, int>), true);
+        PonSiFalta("videoCounts", typeof(Dictionary<string, int>), true);
+        PonSiFalta("songSeq", typeof(Dictionary<string, long>), true);
+        PonSiFalta("videoSeq", typeof(Dictionary<string, long>), true);
 
         const int N = 61;
         float objetivo = 0.26f;                       // el volumen objetivo de fabrica de las canciones
