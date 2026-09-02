@@ -65,7 +65,7 @@ class Franja
     static Bitmap DibujaCapsula(Type TPas, string etiq, string valor, int alto, FontFamily fam)
     {
         MethodInfo mAncho = TPas.GetMethod("Ancho", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
-        int w = (int)mAncho.Invoke(null, new object[] { etiq, valor, alto, fam });
+        int w = (int)mAncho.Invoke(null, new object[] { etiq, valor, alto, fam, false });
         Control c = (Control)Activator.CreateInstance(TPas, true);
         c.Font = new Font(fam, 9f);
         c.SetBounds(0, 0, w, alto);
@@ -205,8 +205,10 @@ class Franja
 
         // Y que siga cabiendo: las dos capsulas no pueden comerse el sitio del titulo.
         MethodInfo mAncho = TPas.GetMethod("Ancho", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
-        int wCred = (int)mAncho.Invoke(null, new object[] { "Inserta una moneda", "", altoNuevo, fam });
-        int wCola = (int)mAncho.Invoke(null, new object[] { "En cola", "12", altoNuevo, fam });
+        int wCred = (int)mAncho.Invoke(null, new object[] { "Inserta una moneda", "", altoNuevo, fam, false });
+        // La de la cola SI lleva portaditas, y por eso se mide con ellas: es su ancho de verdad,
+        // el que le quita sitio al titulo.
+        int wCola = (int)mAncho.Invoke(null, new object[] { "En cola", "12", altoNuevo, fam, true });
         int txtX = 16 + tarjetaH + 14;                      // caratula + hueco
         int paraTitulo = 1024 - 16 - wCred - wCola - 24 - txtX;
         Console.WriteLine("  a 1024 px de ancho: \"Inserta una moneda\" " + wCred + " px + \"En cola 12\" " + wCola

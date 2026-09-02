@@ -473,6 +473,7 @@ namespace Rocola
         // De que DISCOS hay algo pedido (o sonando), por carpeta. Lo usa la marca de la pared.
         private readonly Dictionary<string, bool> colaDiscos = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
         private static bool marcaColaOn = true;   // "marca_cola=" en config
+        private static bool colaPortadasOn = true;   // "cola_portadas=" en config
         // Y APARTE, cual esta sonando. Suelto y no dentro de colaPos porque una cancion puede estar sonando
         // Y ademas pedida otra vez: son dos cosas distintas y el cliente necesita ver las dos -que la esta
         // oyendo, y que ya la va a volver a oir-. Metidas en el mismo dato, una tapaba a la otra.
@@ -506,6 +507,18 @@ namespace Rocola
             // marca hasta que algo mas obligara a rehacerla.
             RefrescaLista();
         }
+        // LAS TRES PRIMERAS DE LA COLA, para la capsula. Se piden con LoadCover, que devuelve lo que ya
+        // esta en memoria y encarga al disco lo que no; cuando lo que faltaba llegue, ApplyArrivedCover
+        // vuelve a pasar por aqui y la portadita aparece sola.
+        private void LlenaPortaditas()
+        {
+            if (pastCola == null || !pastCola.ConPortadas) return;
+            if (pastCola.Portadas == null) pastCola.Portadas = new Image[3];
+            for (int i = 0; i < pastCola.Portadas.Length; i++)
+                pastCola.Portadas[i] = (i < queue.Count && queue[i] != null) ? LoadCover(queue[i].Disc) : null;
+            pastCola.Mas = (queue.Count > pastCola.Portadas.Length) ? queue.Count - pastCola.Portadas.Length : 0;
+        }
+
         private int turnoPuesto;      // que puesto ocupo la ultima cancion pedida (0 = no se sabe)
         private double turnoSegs;     // y cuanto falta para que suene (-1 = no se puede saber)
         private PlayItem nowPlaying;
@@ -1011,6 +1024,9 @@ namespace Rocola
             LoadStats();   // estadisticas guardadas de sesiones anteriores (base de "Lo mas sonado")
             ProbeAudioTier();    // requisitos de maquina para el NIVEL 2 de audio (antes de leer dsee= de config)
             LoadConfigPrefs();   // preferencias: render GPU/CPU + carpetas de musica adicionales (Ctrl+F2)
+            // AQUI y no en BuildUi: la pantalla se arma antes de leer la configuracion, asi que alla
+            // "cola_portadas=0" todavia no se sabe. Y manda en el ANCHO de la capsula, que se mide luego.
+            if (pastCola != null) pastCola.ConPortadas = colaPortadasOn;
             NeuralEnv.TryLoad(RutaLectura("rocola_ia.bin"));   // IA propia (el modelo entrenado: en la carpeta de datos, o el de fabrica)
             EqNet.TryLoad(RutaLectura("rocola_eq_ia.bin"));    // IA del EQ automatico (objetivo por cancion)
             LoadLoudCache();     // sonoridad medida por cancion (para nivelar el volumen de todas)
@@ -1399,6 +1415,8 @@ namespace Rocola
                     else if (s.StartsWith("bajo=")) { float v; if (float.TryParse(s.Substring(5).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) bassAmount = Clampf(v, 0f, 1f); }   // bajo psicoacustico (armonicos del grave)
                     else if (s.StartsWith("noche=")) nocheOn = s.Substring(6).Trim() != "0";   // modo noche (baja el volumen de madrugada)
                     else if (s.StartsWith("marca_cola=")) marcaColaOn = s.Substring(11).Trim() != "0";   // el palomito de "ya la pusiste"
+                    else if (s.StartsWith("fondo_portada=")) fondoPortadaOn = s.Substring(14).Trim() != "0";   // el fondo toma el tono de la portada
+                    else if (s.StartsWith("cola_portadas=")) colaPortadasOn = s.Substring(14).Trim() != "0";   // las portaditas en la capsula de la cola
                     else if (s.StartsWith("noche_desde=")) { int v; if (int.TryParse(s.Substring(12).Trim(), out v) && v >= 0 && v <= 23) nocheDesde = v; }
                     else if (s.StartsWith("noche_hasta=")) { int v; if (int.TryParse(s.Substring(12).Trim(), out v) && v >= 0 && v <= 23) nocheHasta = v; }
                     else if (s.StartsWith("noche_db=")) { float v; if (float.TryParse(s.Substring(9).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) nocheDb = Clampf(v, -24f, 0f); }   // cuanto baja (negativo)
@@ -1532,6 +1550,8 @@ namespace Rocola
                 sb.Append("subir_db=").Append(masterDb.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("noche=").Append(nocheOn ? "1" : "0").Append("\r\n");
                 sb.Append("marca_cola=").Append(marcaColaOn ? "1" : "0").Append("\r\n");
+                sb.Append("fondo_portada=").Append(fondoPortadaOn ? "1" : "0").Append("\r\n");
+                sb.Append("cola_portadas=").Append(colaPortadasOn ? "1" : "0").Append("\r\n");
                 sb.Append("noche_desde=").Append(nocheDesde).Append("\r\n");
                 sb.Append("noche_hasta=").Append(nocheHasta).Append("\r\n");
                 sb.Append("noche_db=").Append(nocheDb.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
@@ -3338,9 +3358,157 @@ namespace Rocola
         {
             if (t == null) return DefaultAccent;
             string a = (t.Artist != null) ? t.Artist.ToLowerInvariant() : "";
-            if (a.Contains("bts") || a.Contains("bangtan")) return Color.FromArgb(149, 86, 220);   // morado (peticion)
+            // El morado de BTS es una PETICION del bar, no una deduccion: se queda como esta y no se le
+            // gira el tono. Lo pidieron morado, sale morado, tenga la portada el color que tenga.
+            if (a.Contains("bts") || a.Contains("bangtan")) return Color.FromArgb(149, 86, 220);
             string et = GeneroDeCancion(t, org);
-            return (et.Length > 0) ? ColorDeEtiqueta(et) : DefaultAccent;
+            Color gen = (et.Length > 0) ? ColorDeEtiqueta(et) : DefaultAccent;
+            // Y encima, EL TONO DE LA PORTADA. Dos cumbias seguidas pintaban exactamente la misma
+            // pantalla naranja aunque una fuera un disco rojo y la otra uno verde.
+            return TinteConPortada(gen, ColorDePortadaDe(org));
+        }
+
+        // ---------- EL COLOR QUE LE PONE LA PORTADA AL FONDO ----------
+        //
+        // LA PORTADA ELIGE EL TONO. LA ROCOLA MANDA EN TODO LO DEMAS.
+        //
+        // De la portada se toma SOLO de que color es -rojo, azul, verde-. Lo oscuro y lo vivo que sale a
+        // la pantalla lo sigue decidiendo el genero, con el mismo brillo y la misma viveza que ya tenia.
+        // Asi NINGUNA portada puede estropear la pantalla: ni una casi blanca lavandola, ni una negra
+        // apagandola, ni una de neon quemandola. No hay topes de seguridad que ajustar ni recortes que
+        // se puedan quedar cortos: sale de como esta hecho, porque el brillo y la viveza NO SE TOCAN.
+        //
+        // Y el resto de la pantalla no se entera de nada: el genero sigue mandando en la etiqueta de la
+        // pastilla (que usa ColorDeEtiqueta directo), asi que la palabra "Tropical" conserva su color.
+        internal static Color TinteConPortada(Color genero, Color portada)
+        {
+            if (portada.A == 0) return genero;                     // la portada no sabe de que color es
+            int mx = Math.Max(genero.R, Math.Max(genero.G, genero.B));
+            int mn = Math.Min(genero.R, Math.Min(genero.G, genero.B));
+            if (mx - mn < 2) return genero;                        // un gris no tiene tono que girar
+            return GiraTono(genero, TonoDe(portada) - TonoDe(genero), 1f);
+        }
+
+        // TONO de un color, en grados de la rueda (0 = rojo, 120 = verde, 240 = azul).
+        private static float TonoDe(Color c)
+        {
+            float r = c.R / 255f, g = c.G / 255f, b = c.B / 255f;
+            float mx = Math.Max(r, Math.Max(g, b)), mn = Math.Min(r, Math.Min(g, b));
+            float d = mx - mn;
+            if (d < 0.0001f) return 0f;
+            float h;
+            if (mx == r) h = 60f * (((g - b) / d) % 6f);
+            else if (mx == g) h = 60f * ((b - r) / d + 2f);
+            else h = 60f * ((r - g) / d + 4f);
+            while (h < 0f) h += 360f; while (h >= 360f) h -= 360f;
+            return h;
+        }
+
+        // Gira el TONO de un color (grados en la rueda de color) y le escala el brillo, dejando la VIVEZA
+        // como estaba. Vive AQUI FUERA, y no dentro del trozo de tarjeta grafica donde estaba, porque
+        // ahora tambien la usa el fondo que toma el tono de la portada, y eso pasa con tarjeta y sin ella.
+        private static Color GiraTono(Color c, float grados, float brillo)
+        {
+            float r = c.R / 255f, g = c.G / 255f, b = c.B / 255f;
+            float mx = Math.Max(r, Math.Max(g, b)), mn = Math.Min(r, Math.Min(g, b));
+            float v = mx, d = mx - mn;
+            float sat = (mx <= 0.0001f) ? 0f : d / mx;
+            float hue = 0f;
+            if (d > 0.0001f)
+            {
+                if (mx == r) hue = 60f * (((g - b) / d) % 6f);
+                else if (mx == g) hue = 60f * ((b - r) / d + 2f);
+                else hue = 60f * ((r - g) / d + 4f);
+            }
+            hue += grados; while (hue < 0f) hue += 360f; while (hue >= 360f) hue -= 360f;
+            v *= brillo; if (v > 1f) v = 1f;
+            float cc = v * sat, x = cc * (1f - Math.Abs((hue / 60f) % 2f - 1f)), m = v - cc;
+            float rr, gg, bb;
+            if (hue < 60f) { rr = cc; gg = x; bb = 0f; }
+            else if (hue < 120f) { rr = x; gg = cc; bb = 0f; }
+            else if (hue < 180f) { rr = 0f; gg = cc; bb = x; }
+            else if (hue < 240f) { rr = 0f; gg = x; bb = cc; }
+            else if (hue < 300f) { rr = x; gg = 0f; bb = cc; }
+            else { rr = cc; gg = 0f; bb = x; }
+            return Color.FromArgb((int)((rr + m) * 255f + 0.5f), (int)((gg + m) * 255f + 0.5f), (int)((bb + m) * 255f + 0.5f));
+        }
+
+        private const int MuestraLado = 32;          // como mucho, 32x32 puntos de la portada
+        private const float TonoMinViveza = 0.22f;   // por debajo de esto es un gris, no un color
+        private const float TonoMinBrillo = 0.14f;   // y por debajo de esto es negro
+        private const float TonoMinAcuerdo = 0.35f;  // cuanto tienen que coincidir los colores para que uno mande
+
+        // DE QUE COLOR ES UNA PORTADA. Devuelve un color del que solo importa el TONO; si la portada no
+        // tiene ninguno -blanco y negro, o un revoltijo donde no manda nadie- devuelve A=0, "no se sabe",
+        // y entonces manda el genero como hasta ahora.
+        //
+        // Se muestrea con paso fijo: como mucho 32x32 puntos, sea la portada de 300 pixeles de lado o de
+        // 1400. Asi lo que cuesta NO depende del tamaño de la imagen, que es lo que haria que un disco con
+        // una portada enorme trabara la rocola justo al empezar la cancion.
+        //
+        // Y se descarta lo que no es color: los puntos casi grises y los casi negros. Casi todas las
+        // portadas traen marco oscuro y letras blancas, y contandolos el promedio se iria siempre al gris.
+        //
+        // El promedio de tonos se hace con seno y coseno, no sumando grados: el rojo esta en 0 y en 360 a
+        // la vez, asi que sumando, dos rojos darian verde.
+        private static Color ColorDePortada(Bitmap b)
+        {
+            if (b == null) return Color.FromArgb(0, 0, 0, 0);
+            int w = b.Width, h = b.Height;
+            if (w < 2 || h < 2) return Color.FromArgb(0, 0, 0, 0);
+            int px = (w + MuestraLado - 1) / MuestraLado; if (px < 1) px = 1;
+            int py = (h + MuestraLado - 1) / MuestraLado; if (py < 1) py = 1;
+            double sx = 0, sy = 0, peso = 0;
+            for (int y = py / 2; y < h; y += py)
+                for (int x = px / 2; x < w; x += px)
+                {
+                    Color c;
+                    try { c = b.GetPixel(x, y); } catch { return Color.FromArgb(0, 0, 0, 0); }
+                    float r = c.R / 255f, g = c.G / 255f, bl = c.B / 255f;
+                    float mx = Math.Max(r, Math.Max(g, bl)), mn = Math.Min(r, Math.Min(g, bl));
+                    if (mx < TonoMinBrillo) continue;              // negro: no dice de que color es el disco
+                    float d = mx - mn, sat = d / mx;
+                    if (sat < TonoMinViveza) continue;             // gris: tampoco
+                    float hue;
+                    if (mx == r) hue = 60f * (((g - bl) / d) % 6f);
+                    else if (mx == g) hue = 60f * ((bl - r) / d + 2f);
+                    else hue = 60f * ((r - g) / d + 4f);
+                    // Pesa lo VIVO y lo CLARO: un rojo encendido manda mas que un beige que apenas pasa el
+                    // corte. Si no, el fondo de una portada casi apagada decidiria por encima de su dibujo.
+                    double pes = sat * mx;
+                    double rad = hue * Math.PI / 180.0;
+                    sx += Math.Cos(rad) * pes; sy += Math.Sin(rad) * pes; peso += pes;
+                }
+            if (peso <= 0.0001) return Color.FromArgb(0, 0, 0, 0);
+            // Y SI LOS COLORES NO SE PONEN DE ACUERDO tampoco se sabe. Una portada con de todo -media roja
+            // y media verde- daria un promedio que apunta a cualquier lado y no se parece a ninguna de las
+            // dos. Cuando eso pasa, mejor callarse y dejar mandar al genero.
+            double acuerdo = Math.Sqrt(sx * sx + sy * sy) / peso;
+            if (acuerdo < TonoMinAcuerdo) return Color.FromArgb(0, 0, 0, 0);
+            double ang = Math.Atan2(sy, sx) * 180.0 / Math.PI; if (ang < 0) ang += 360.0;
+            return GiraTono(Color.FromArgb(255, 0, 0), (float)ang, 1f);   // un color cualquiera con ESE tono
+        }
+
+        // El color de la portada de un disco, APUNTADO. Recorrer un mapa de bits cuesta, y esto se pregunta
+        // cada vez que empieza una cancion; por disco solo hace falta hacerlo una vez.
+        //
+        // Si la portada aun no esta cargada NO se apunta nada: se vuelve a preguntar cuando llegue (lo hace
+        // el aviso de portada cargada, que ya existia para el cubito de abajo).
+        private readonly Dictionary<string, Color> colorPortada = new Dictionary<string, Color>(StringComparer.OrdinalIgnoreCase);
+        private static bool fondoPortadaOn = true;   // "fondo_portada=" en config
+        private static readonly Color SinColor = Color.FromArgb(0, 0, 0, 0);
+        private Color ColorDePortadaDe(Album a)
+        {
+            if (!fondoPortadaOn || a == null) return SinColor;
+            string k = a.CoverPath;
+            if (string.IsNullOrEmpty(k)) return SinColor;
+            Color c;
+            if (colorPortada.TryGetValue(k, out c)) return c;
+            Bitmap b = LoadCover(a) as Bitmap;
+            if (b == null) return SinColor;
+            c = ColorDePortada(b);
+            colorPortada[k] = c;
+            return c;
         }
 
         // Etiqueta canonica del genero para agrupar los discos TOP (mismas familias que GenreToColor).
@@ -3756,8 +3924,8 @@ namespace Rocola
             // Las capsulas, arriba a la derecha. Se miden por su contenido: "Inserta una moneda" es mucho mas
             // ancha que "Creditos 3", y una capsula a medias se veria mal.
             int pastH = AltoPastilla(tarjetaH);
-            int wCred = PastillaView.Ancho(pastCred.Etiqueta, pastCred.Valor, pastH, this.Font.FontFamily);
-            int wCola = PastillaView.Ancho(pastCola.Etiqueta, pastCola.Valor, pastH, this.Font.FontFamily);
+            int wCred = PastillaView.Ancho(pastCred.Etiqueta, pastCred.Valor, pastH, this.Font.FontFamily, false);
+            int wCola = PastillaView.Ancho(pastCola.Etiqueta, pastCola.Valor, pastH, this.Font.FontFamily, pastCola.ConPortadas);
             int pastY = tarjetaY;
             pastCred.SetBounds(W - pad - wCred, pastY, wCred, pastH);
             pastCola.SetBounds(W - pad - wCred - 10 - wCola, pastY, wCola, pastH);
@@ -6230,8 +6398,21 @@ namespace Rocola
                     { cubeBox.Cover = LoadCover(currentAlbum); cubeBox.Invalidate(); }
                 }
                 if (miniCube != null && miniCube.Visible && nowPlaying != null && nowPlaying.Disc != null && nowPlaying.Disc.CoverPath == key)
-                { miniCube.Cover = LoadCover(nowPlaying.Disc); miniCube.Invalidate(); }
+                {
+                    miniCube.Cover = LoadCover(nowPlaying.Disc); miniCube.Invalidate();
+                    // Y EL FONDO. La portada de la que suena puede llegar DESPUES de que empiece la
+                    // cancion -se decodifica en otro hilo-, y entonces el color se calculo sin ella.
+                    // Aqui ya esta: se vuelve a preguntar, y si ahora dice otra cosa, el fondo viaja
+                    // hasta el color nuevo con el mismo fundido lento de siempre (bgAccentTarget).
+                    if (fondoPortadaOn && !nowPlaying.IsVideo)
+                    {
+                        Color acc = ColorDeLoQueSuena(nowPlaying.Song, nowPlaying.Disc);
+                        if (acc.ToArgb() != bgAccentTarget.ToArgb()) ApplyGenreBackground(nowPlaying.Song, nowPlaying.Disc);
+                    }
+                }
                 if (searchOpen && searchOverlay != null) searchOverlay.Invalidate();
+                // Y las portaditas de la cola: la que faltaba puede ser esta.
+                if (pastCola != null && pastCola.ConPortadas) { LlenaPortaditas(); pastCola.Invalidate(); }
             }
             catch { }
         }
@@ -6932,20 +7113,6 @@ namespace Rocola
             return Color.FromArgb(255, accent.R * 250 / mx, accent.G * 250 / mx, accent.B * 250 / mx);
         }
 
-        // TONO de un color, en grados de la rueda (0 = rojo, 120 = verde, 240 = azul).
-        private static float TonoDe(Color c)
-        {
-            float r = c.R / 255f, g = c.G / 255f, b = c.B / 255f;
-            float mx = Math.Max(r, Math.Max(g, b)), mn = Math.Min(r, Math.Min(g, b));
-            float d = mx - mn;
-            if (d < 0.0001f) return 0f;
-            float h;
-            if (mx == r) h = 60f * (((g - b) / d) % 6f);
-            else if (mx == g) h = 60f * ((b - r) / d + 2f);
-            else h = 60f * ((r - g) / d + 4f);
-            while (h < 0f) h += 360f; while (h >= 360f) h -= 360f;
-            return h;
-        }
 
         // CUANTO se gira el color al subir por la cortina (grados). En las auroras de verdad la punta tira
         // SIEMPRE hacia el violeta o el rosa, sea del color que sea el pie: el verde se vuelve magenta y el
@@ -6962,34 +7129,6 @@ namespace Rocola
             if (mag < 35f) g = (g < 0f) ? -35f : 35f;
             else if (mag > 75f) g = (g < 0f) ? -75f : 75f;
             return g;
-        }
-
-        // Gira el TONO de un color (grados en la rueda de color) y le escala el brillo. Se usa una vez por cuadro
-        // para los dos extremos del fondo reactivo, asi que el costo es nulo.
-        private static Color GiraTono(Color c, float grados, float brillo)
-        {
-            float r = c.R / 255f, g = c.G / 255f, b = c.B / 255f;
-            float mx = Math.Max(r, Math.Max(g, b)), mn = Math.Min(r, Math.Min(g, b));
-            float v = mx, d = mx - mn;
-            float sat = (mx <= 0.0001f) ? 0f : d / mx;
-            float hue = 0f;
-            if (d > 0.0001f)
-            {
-                if (mx == r) hue = 60f * (((g - b) / d) % 6f);
-                else if (mx == g) hue = 60f * ((b - r) / d + 2f);
-                else hue = 60f * ((r - g) / d + 4f);
-            }
-            hue += grados; while (hue < 0f) hue += 360f; while (hue >= 360f) hue -= 360f;
-            v *= brillo; if (v > 1f) v = 1f;
-            float cc = v * sat, x = cc * (1f - Math.Abs((hue / 60f) % 2f - 1f)), m = v - cc;
-            float rr, gg, bb;
-            if (hue < 60f) { rr = cc; gg = x; bb = 0f; }
-            else if (hue < 120f) { rr = x; gg = cc; bb = 0f; }
-            else if (hue < 180f) { rr = 0f; gg = cc; bb = x; }
-            else if (hue < 240f) { rr = 0f; gg = x; bb = cc; }
-            else if (hue < 300f) { rr = x; gg = 0f; bb = cc; }
-            else { rr = cc; gg = 0f; bb = x; }
-            return Color.FromArgb((int)((rr + m) * 255f + 0.5f), (int)((gg + m) * 255f + 0.5f), (int)((bb + m) * 255f + 0.5f));
         }
 
         private GpuTrans BuildTransState()
@@ -9469,7 +9608,9 @@ namespace Rocola
             ActualizaGenero();    // la pastilla del genero, antes de acomodar: manda en el ancho del artista
             PositionMejorada();   // pone titulo y artista y coloca el letrero MEJORADA
             lblNext.Text = (queue.Count > 0) ? "Sigue:  " + queue[0].Display() : "Sigue:  -";
-            pastCola.Valor = queue.Count.ToString(); pastCola.Invalidate();
+            pastCola.Valor = queue.Count.ToString();
+            LlenaPortaditas();
+            pastCola.Invalidate();
             if (miniCube != null)
             {
                 if (nowPlaying != null) { miniCube.Cover = LoadCover(nowPlaying.Disc); miniCube.Visible = true; }
@@ -10233,7 +10374,15 @@ namespace Rocola
             if (lblNext != null) sb = Mix(sb, lblNext.Text);
             if (lblTime != null) sb = Mix(sb, lblTime.Text);
             if (pastCred != null) { Color ac = pastCred.Acento; sb = Mix(sb, pastCred.Etiqueta); sb = Mix(sb, pastCred.Valor); sb = Mix(sb, ac.ToArgb()); sb = Mix(sb, pastCred.Left); sb = Mix(sb, pastCred.Paso); }
-            if (pastCola != null) { sb = Mix(sb, pastCola.Valor); sb = Mix(sb, pastCola.Left); }
+            if (pastCola != null)
+            {
+                sb = Mix(sb, pastCola.Valor); sb = Mix(sb, pastCola.Left); sb = Mix(sb, pastCola.Mas);
+                // Y CUALES son. Sin esto, con tarjeta grafica una portadita que llega tarde -se decodifica
+                // en otro hilo- no se veria aparecer: la firma no cambiaria y la textura no se reharia.
+                if (pastCola.Portadas != null)
+                    for (int i = 0; i < pastCola.Portadas.Length; i++)
+                        sb = Mix(sb, (pastCola.Portadas[i] != null) ? 1 : 0);
+            }
             if (progress != null) { sb = Mix(sb, (int)(progress.Value * 300)); sb = Mix(sb, progress.Accent.ToArgb()); }
             return (sb == SigNada) ? 1L : sb;   // que nunca coincida con "sin firma"
         }
@@ -14850,7 +14999,16 @@ namespace Rocola
             public string Etiqueta = "", Valor = "";
             public Color Acento = DefaultAccent;
 
-            private Font fEtq, fVal; private float fontAlto = -1f;
+            // ---------- LAS PORTADITAS DE LA COLA ----------
+            // "En cola  3" es un dato del local: dice CUANTAS hay. Tres portaditas dicen lo mismo y
+            // ademas CUALES son, que es lo que el cliente quiere saber para no volver a pedir la que
+            // ya pidio. Se ven las tres primeras; si hay mas, la tercera lleva un "+2" en la esquina.
+            public bool ConPortadas;      // esta capsula lleva hueco para portaditas (la de la cola si, la de la moneda no)
+            public Image[] Portadas;      // las tres primeras de la cola (huecos vacios donde no haya)
+            public int Mas;               // cuantas quedan detras de las tres
+            private const int Huecos = 3;
+
+            private Font fEtq, fVal, fMas; private float fontAlto = -1f;
             private SolidBrush brocha; private StringFormat sfCen;
 
             // ---------- LA CEREMONIA DE LA MONEDA ----------
@@ -14901,7 +15059,13 @@ namespace Rocola
 
             // Lo que mide de ancho una pastilla con ese contenido y ese alto. Lo usa el acomodo, que necesita
             // saberlo ANTES de dibujar nada (y por eso mide con TextRenderer, sin Graphics).
-            public static int Ancho(string etiq, string valor, int alto, FontFamily fam)
+            //
+            // 'conPortadas' dice si ESTA capsula lleva portaditas, y no CUANTAS lleva ahora mismo, a
+            // proposito. El ancho de la capsula de la cola manda hasta donde puede llegar el TITULO de la
+            // cancion (derPast, en el acomodo); si dependiera de la cola, el titulo se repartiria de otra
+            // manera en dos lineas cada vez que alguien pide algo, y el nombre de la que suena bailaria
+            // solo, sin que nadie lo hubiera tocado. Se mide siempre el hueco de las tres, llenas o vacias.
+            public static int Ancho(string etiq, string valor, int alto, FontFamily fam, bool conPortadas)
             {
                 // Se mide con GDI+, que es con lo que RenderContent la PINTA. Antes se media con TextRenderer,
                 // que es GDI: otro motor, otros anchos. En la pantalla del bar la diferencia eran dos pixeles y
@@ -14912,8 +15076,15 @@ namespace Rocola
                 {
                     int w = AnchoTexto(etiq, fe);
                     if (!string.IsNullOrEmpty(valor)) w += AnchoTexto(valor, fv) + (int)(alto * 0.22f);
+                    if (conPortadas) w += AnchoPortaditas(alto);
                     return w + (int)(alto * 0.9f);
                 }
+            }
+            // El hueco de las tres portaditas: el suyo propio, lo que las separa y lo que las separa del numero.
+            private static int LadoPortadita(int alto) { return (int)(alto * 0.52f); }
+            private static int AnchoPortaditas(int alto)
+            {
+                return Huecos * LadoPortadita(alto) + (Huecos - 1) * (int)(alto * 0.09f) + (int)(alto * 0.20f);
             }
 
             private void EnsureRes(int h)
@@ -14923,8 +15094,10 @@ namespace Rocola
                 if (fEtq != null && Math.Abs(fontAlto - h) < 0.5f) return;
                 if (fEtq != null) fEtq.Dispose();
                 if (fVal != null) fVal.Dispose();
+                if (fMas != null) fMas.Dispose();
                 fEtq = new Font(this.Font.FontFamily, h * 0.34f, FontStyle.Bold);
                 fVal = new Font(this.Font.FontFamily, h * 0.52f, FontStyle.Bold);
+                fMas = new Font(this.Font.FontFamily, LadoPortadita(h) * 0.34f, FontStyle.Bold);
                 fontAlto = h;
             }
 
@@ -14970,7 +15143,8 @@ namespace Rocola
                 float we = g.MeasureString(et, fEtq).Width;
                 float wv = (va.Length > 0) ? g.MeasureString(va, fVal).Width : 0f;
                 float hueco = (va.Length > 0) ? h * 0.18f : 0f;
-                float x = (w - (we + wv + hueco)) / 2f;
+                float wPort = ConPortadas ? AnchoPortaditas(h) : 0f;
+                float x = (w - (we + wv + hueco + wPort)) / 2f;
                 if (x < h * 0.25f) x = h * 0.25f;
                 brocha.Color = Color.FromArgb(215, 205, 214, 238);
                 g.DrawString(et, fEtq, brocha, new RectangleF(x, 0, we + 6, h), sfCen);
@@ -14995,6 +15169,53 @@ namespace Rocola
                 {
                     brocha.Color = Acento;
                     g.DrawString(va, fVal, brocha, new RectangleF(xv, 0, wv + 6, h), sfCen);
+                }
+
+                // LAS PORTADITAS DE LA COLA, detras del numero. Los huecos vacios se insinuan apenas: dicen
+                // "aqui van las que pidas" sin pelearle la vista a nada.
+                if (ConPortadas)
+                {
+                    int lado = LadoPortadita(h);
+                    int sep = (int)(h * 0.09f);
+                    float py = (h - lado) / 2f;
+                    float px0 = xv + wv + h * 0.20f;
+                    InterpolationMode antes = g.InterpolationMode;
+                    g.InterpolationMode = InterpolationMode.HighQualityBilinear;   // achicar una portada a 20 px sin que salga a granos
+                    for (int i = 0; i < Huecos; i++)
+                    {
+                        RectangleF rq = new RectangleF(px0 + i * (lado + sep), py, lado, lado);
+                        Image im = (Portadas != null && i < Portadas.Length) ? Portadas[i] : null;
+                        using (GraphicsPath ph = RoundRectF(rq, lado * 0.22f))
+                        {
+                            if (im != null)
+                            {
+                                System.Drawing.Drawing2D.GraphicsState sp = g.Save();
+                                g.SetClip(ph, CombineMode.Intersect);
+                                g.DrawImage(im, rq);
+                                g.Restore(sp);
+                                using (Pen pe = new Pen(Color.FromArgb(120, 235, 240, 255), 1f)) g.DrawPath(pe, ph);
+                            }
+                            else using (Pen pe = new Pen(Color.FromArgb(52, Acento), 1f)) g.DrawPath(pe, ph);
+                        }
+                    }
+                    g.InterpolationMode = antes;
+                    // Y SI HAY MAS DE TRES, cuantas quedan detras. Sin esto, una cola de nueve se veria
+                    // igual que una de tres y el numero de al lado parecerian dos cosas que no cuadran.
+                    if (Mas > 0)
+                    {
+                        RectangleF ru = new RectangleF(px0 + (Huecos - 1) * (lado + sep), py, lado, lado);
+                        float hb = lado * 0.46f;
+                        using (GraphicsPath ph = RoundRectF(ru, lado * 0.22f))
+                        {
+                            System.Drawing.Drawing2D.GraphicsState sp = g.Save();
+                            g.SetClip(ph, CombineMode.Intersect);
+                            using (SolidBrush b3 = new SolidBrush(Color.FromArgb(205, 8, 11, 28)))
+                                g.FillRectangle(b3, ru.X, ru.Bottom - hb, ru.Width, hb);
+                            brocha.Color = Color.FromArgb(238, 232, 240, 255);
+                            g.DrawString("+" + Mas, fMas, brocha, new RectangleF(ru.X, ru.Bottom - hb, ru.Width, hb), sfCen);
+                            g.Restore(sp);
+                        }
+                    }
                 }
 
                 // LA MONEDA. Entra por arriba, gira -se aplasta a lo ancho, que es como se ve girar una
