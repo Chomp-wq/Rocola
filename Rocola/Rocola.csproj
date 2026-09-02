@@ -59,7 +59,6 @@
     <Compile Include="Program.cs" />
     <Compile Include="D3D9Star.cs" />
     <Compile Include="Rendimiento.cs" />
-    <Compile Include="Efectos.cs" />
     <Compile Include="GLDevice.cs" />
     <Compile Include="LinuxAudio.cs" />
     <Compile Include="LinuxSistema.cs" />
