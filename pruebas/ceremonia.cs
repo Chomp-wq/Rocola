@@ -9,30 +9,36 @@ using System.Reflection;
 // de texto. Las dos cosas son informacion CORRECTA y las dos son invisibles a dos metros: el numero es
 // chico y el letrero hay que leerlo.
 //
-// Lo que se agrega no es adorno. Es lo mismo dicho de una forma que se entiende SIN LEER:
+// SE PROBO CON SONIDOS Y NO PAGO. Hubo una version con seis efectos -moneda, golpe al entrar a la cola,
+// aviso de sin creditos, brazo mecanico, aguja de vinilo y un tic al moverse-. En el bar, el de la
+// moneda gustaba, pero LOS DEMAS QUEDABAN TAPADOS POR LA MUSICA: suenan mientras hay cancion, mezclados
+// debajo de ella, y no se oyen. Un sonido que no se oye no es una funcion, es codigo que mantener, asi
+// que se quitaron todos. Queda apuntado aqui para que a nadie se le ocurra volver a intentarlo sin
+// saber que ya se intento.
 //
-//   LA MONEDA. Cae girando hasta el contador, el numero rueda y la pastilla destella. Es el instante en
-//   que el dinero se vuelve musica, y hasta ahora no se veia ni se oia.
+// LO QUE SI PAGO, y es lo que esta bateria vigila, es decir lo mismo POR LOS OJOS:
+//
+//   LA MONEDA. Cae girando hasta el contador, el numero rueda como un odometro y la pastilla destella.
+//   Es el instante en que el dinero se vuelve musica, y antes no se veia.
 //
 //   LA PORTADA QUE VUELA. Al poner una cancion, su portada sale de la pared y aterriza en la pastilla de
 //   la cola, que da un brinco. Sin una sola palabra, el cliente ve QUE paso y DONDE quedo su cancion.
-//   Y no se escribe una animacion nueva: la rocola YA tiene una que lleva una portada de un rectangulo a
-//   otro girando -la del disco que se abre-, asi que esto es un segundo uso de esa misma pieza. Eso
+//   Y no se escribio una animacion nueva: la rocola YA tiene una que lleva una portada de un rectangulo
+//   a otro girando -la del disco que se abre-, asi que esto es un segundo uso de esa misma pieza. Eso
 //   ademas la hace nacer apagable: obedece al interruptor de "animacion" que ya existia.
 //
-//   EL AVISO DE SIN CREDITOS. La pastilla se sacude y suena el "no". Hoy solo salia un letrero que dice
-//   "Inserta una moneda", y a las dos de la manana nadie lee letreros: el cliente sigue picandole al
-//   boton creyendo que la maquina esta descompuesta.
+//   EL AVISO DE SIN CREDITOS. La pastilla se sacude. Hoy solo salia un letrero que dice "Inserta una
+//   moneda", y a las dos de la manana nadie lee letreros: el cliente sigue picandole al boton creyendo
+//   que la maquina esta descompuesta. Un movimiento si se ve.
 //
-// LO QUE ESTA BATERIA VIGILA, que es donde esto se rompe sin que nadie lo note:
+// LO QUE VIGILA, que es donde esto se rompe sin que nadie lo note:
 //
-//   1) QUE CADA MOMENTO DISPARE LO SUYO. Un sonido enchufado en el sitio equivocado -o desenchufado por
-//      un arreglo de otra cosa- no da error: simplemente deja de sonar, y nadie se entera hasta que
-//      alguien lo echa de menos en el bar.
+//   1) QUE CADA MOMENTO DISPARE LO SUYO. Una animacion desenchufada por un arreglo de otra cosa no da
+//      error: simplemente deja de verse, y nadie se entera hasta que alguien la echa de menos.
 //
-//   2) QUE TODO SE PUEDA APAGAR, Y QUE APAGADO SEA APAGADO. Los sonidos con "efectos=" y el vuelo de la
-//      portada con "animacion=", el mismo interruptor que ya apagaba el zoom del disco. Un ajuste que
-//      no apaga de verdad es peor que no tenerlo.
+//   2) QUE SE PUEDA APAGAR, Y QUE APAGADO SEA APAGADO. El vuelo de la portada obedece a "animacion", el
+//      mismo interruptor que ya apagaba el zoom del disco. Un ajuste que no apaga de verdad es peor que
+//      no tenerlo.
 class Ceremonia
 {
     static int fallos = 0;
@@ -65,27 +71,10 @@ class Ceremonia
         }
         if (TF == null) { Console.WriteLine("  FALLO  no se encontro Form1"); return 1; }
 
-        Console.WriteLine("\n  1) CADA MOMENTO SUENA\n");
         MethodBase moneda = Met(TF, "AddCoin"), poner = Met(TF, "AddItem");
+
+        Console.WriteLine("\n  1) LA MONEDA SE VE CAER\n");
         Check(moneda != null, "hay un sitio por donde entra la moneda (AddCoin)");
-        Check(poner != null, "y otro por donde entra una cancion a la cola (AddItem)");
-        if (moneda != null) Check(Codigo.Llama(moneda, "SuenaEfecto"), "meter una moneda SUENA");
-        if (poner != null) Check(Codigo.Llama(poner, "SuenaEfecto"), "poner una cancion SUENA (y quedarse sin creditos, tambien)");
-
-        // Un solo sitio por donde salen todos: si cada momento se buscara la vida por su cuenta, apagar
-        // los efectos habria que acordarse de hacerlo en seis lugares.
-        MethodBase suena = Met(TF, "SuenaEfecto");
-        Check(suena != null, "todos salen por el MISMO sitio (SuenaEfecto)");
-        if (suena != null)
-        {
-            int lee, esc;
-            Codigo.UsosDeCampo(suena, "efectosOn", out lee, out esc);
-            Check(lee > 0, "y ese sitio mira el interruptor: apagados, no suena ni uno");
-            Codigo.UsosDeCampo(suena, "efectosTic", out lee, out esc);
-            Check(lee > 0, "y mira aparte el del tic, que va apagado de fabrica");
-        }
-
-        Console.WriteLine("\n  2) LA MONEDA SE VE CAER\n");
         Check(TPast != null, "existe la pastilla del contador (PastillaView)");
         Check(TPast != null && Met(TPast, "Moneda") != null, "la pastilla sabe hacer caer una moneda");
         Check(TPast != null && Met(TPast, "Aviso") != null, "y sabe sacudirse cuando no hay creditos");
@@ -95,10 +84,20 @@ class Ceremonia
         // EL NUMERO RUEDA. Sin esto la moneda cae, la pastilla destella... y el numero cambia de golpe
         // como siempre, que es justo lo que se venia a arreglar.
         if (TPast != null)
-        {
             Check(Tiene(TPast, "rodDe") && Tiene(TPast, "rodTick"),
                   "el numero de creditos RUEDA de uno a otro, no salta");
-        }
+
+        // Y LA CAPSULA SE TIENE QUE REPINTAR MIENTRAS DURA. Con tarjeta grafica el control no se repinta
+        // -lo dibuja la textura de la interfaz-, asi que lo que tiene que cambiar es la FIRMA de esa
+        // textura. Sin eso, la moneda caeria congelada dentro de una imagen que no se rehace.
+        MethodBase firma = Met(TF, "UiBotSig");
+        if (firma != null && TPast != null)
+            Check(Codigo.Llama(firma, "get_Paso"),
+                  "y la imagen de la interfaz se rehace mientras cae (si no, se veria congelada)");
+
+        Console.WriteLine("\n  2) SIN CREDITOS, LA PASTILLA SE SACUDE\n");
+        Check(poner != null, "hay un sitio por donde entra una cancion a la cola (AddItem)");
+        if (poner != null) Check(Codigo.Llama(poner, "Aviso"), "quedarse sin creditos SE VE, no solo se escribe");
 
         Console.WriteLine("\n  3) LA PORTADA VUELA A LA COLA\n");
         MethodBase vuela = Met(TF, "VuelaALaCola");
@@ -125,23 +124,19 @@ class Ceremonia
             Check(miraNivel, "y hereda el interruptor de 'animacion': en bajo, no vuela nada");
         }
 
-        Console.WriteLine("\n  4) LO QUE SE APAGA, SE APAGA\n");
-        MethodBase lee2 = Met(TF, "LoadConfigPrefs");
-        MethodBase esc2 = Met(TF, "SaveConfigPrefs");
-        string[] claves = { "efectos=", "efectos_vol=", "efectos_tic=" };
-        List<string> tLee = (lee2 != null) ? Codigo.Textos(lee2) : new List<string>();
-        List<string> tEsc = (esc2 != null) ? Codigo.Textos(esc2) : new List<string>();
-        foreach (string k in claves)
+        Console.WriteLine("\n  4) Y NO QUEDA NI RASTRO DE LOS SONIDOS\n");
+        // Se probaron y no pagaron (ver arriba). Que no vuelvan a colarse a medias: ni la pieza que los
+        // fabricaba, ni la que los mezclaba, ni el sitio por donde se disparaban.
+        bool rastro = false;
+        foreach (Type t in asm.GetTypes())
         {
-            Check(tLee.Contains(k), "el archivo de configuracion se LEE con " + k);
-            Check(tEsc.Contains(k), "y se GUARDA con " + k);
+            if (t.Name == "Efectos" || t.Name == "MezclaEfectos" || t.Name == "Efecto") rastro = true;
+            foreach (Type x in t.GetNestedTypes(BindingFlags.Public | BindingFlags.NonPublic))
+                if (x.Name == "Efectos" || x.Name == "MezclaEfectos" || x.Name == "Efecto") rastro = true;
         }
-
-        // Y EL VOLUMEN DE LOS EFECTOS BAJA CON EL MODO NOCHE. Si no, a las tres de la manana la rocola
-        // baja 4 dB y la moneda se queda igual: seria lo mas fuerte que suena en el local.
-        MethodBase vol = Met(TF, "EfectoVolLin");
-        Check(vol != null, "los efectos tienen su propio volumen");
-        if (vol != null) Check(Codigo.Llama(vol, "FactorNoche"), "y de madrugada bajan con la musica");
+        Check(!rastro, "no quedo el motor de sonidos a medias");
+        Check(Met(TF, "SuenaEfecto") == null, "ni el sitio por donde se disparaban");
+        Check(Met(TF, "EfectoVolLin") == null, "ni su volumen");
 
         Console.WriteLine("\n  " + (fallos == 0 ? "TODO BIEN" : fallos + " FALLO(S)"));
         return fallos;

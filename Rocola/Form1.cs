@@ -429,98 +429,8 @@ namespace Rocola
             float antes = nocheFactor;
             nocheFactor = AvanzaRampa(nocheFactor, meta, dt);
             // Y se empuja a la cancion que YA esta sonando: si no, la baja no se oiria hasta la siguiente.
-            if (nocheFactor != antes)
-            {
-                LevelTap t = curTap; if (t != null) t.Master = MasterLin() * FactorNoche();
-                MezclaEfectos e = curEfectos; if (e != null) e.Volumen = EfectoVolLin();   // los efectos bajan con ella
-            }
+            if (nocheFactor != antes) { LevelTap t = curTap; if (t != null) t.Master = MasterLin() * FactorNoche(); }
         }
-        // ============================== LOS SONIDOS DE LA ROCOLA ==============================
-        // La rocola no emitia NI UNO: se metia una moneda y no se oia nada. Los efectos se fabrican con
-        // cuentas (ver Efectos.cs) y se MEZCLAN dentro de la cadena de la cancion que este sonando,
-        // agachandola un poco; si no hay musica, abren una salida propia y corta.
-        private static bool efectosOn = true;      // "efectos=" en config
-        private static int efectosVol = 70;        // "efectos_vol=" (0..100)
-        private static bool efectosTic = false;    // "efectos_tic=": el tic de moverse, APAGADO de fabrica
-        private MezclaEfectos curEfectos;          // la mezcla de la cancion que suena (null = no hay musica)
-        private IWavePlayer efectoSalida;          // la salida corta de cuando no hay ninguna cancion
-        private MezclaEfectos efectoSolo;
-        private int efectoSoloTick;
-
-        // EL VOLUMEN DE LOS EFECTOS SIGUE AL MODO NOCHE. A las tres de la manana la rocola baja 4 dB; si
-        // la moneda no bajara con ella, de madrugada seria lo mas fuerte que suena en el local.
-        private float EfectoVolLin() { return (efectosVol / 100f) * FactorNoche(); }
-
-        // EL UNICO SITIO POR DONDE SUENA UN EFECTO.
-        //
-        // Con musica, se mezcla en SU cadena: asi el limitador que ya esta vigila la suma de cancion y
-        // efecto, que es exactamente su trabajo. Sin musica no hay cadena donde meterlo, y ese es el caso
-        // que mas importa de todos -el bar callado, alguien se acerca y mete una moneda-, asi que ahi se
-        // abre una salida propia. Si algo falla al abrirla, el efecto SE SALTA EN SILENCIO: un efecto no
-        // vale ni un error en pantalla ni medio segundo de rocola parada.
-        private void SuenaEfecto(Efecto cual)
-        {
-            if (!efectosOn) return;
-            if (cual == Efecto.Tic && !efectosTic) return;
-            float v = EfectoVolLin();
-            if (v <= 0.001f) return;
-            MezclaEfectos m = curEfectos;
-            if (m != null) { m.Volumen = v; m.Dispara(cual); return; }
-            SuenaEfectoSolo(cual, v);
-        }
-
-        // Silencio del que colgar un efecto cuando no hay ninguna cancion puesta.
-        private sealed class Silencio : NAudio.Wave.ISampleProvider
-        {
-            private readonly NAudio.Wave.WaveFormat wf;
-            public Silencio(int frec, int canales) { wf = NAudio.Wave.WaveFormat.CreateIeeeFloatWaveFormat(frec, canales); }
-            public NAudio.Wave.WaveFormat WaveFormat { get { return wf; } }
-            // A MANO Y NO CON Array.Clear, y no es capricho: el buffer que llega dice ser float[] pero por
-            // dentro es el MISMO objeto que NAudio le pasa a la tarjeta como byte[] (su WaveBuffer solapa
-            // las dos vistas en la misma memoria). Escribir muestra a muestra funciona; cualquier
-            // operacion en bloque comprueba el tipo, ve un byte[] donde le dicen float[], y lanza. Y
-            // lanzar aqui mata el hilo del sonido: la cancion se corta en seco. Ya paso en el bar cinco
-            // veces en una tarde, y por eso la bateria 'corta' lo vigila.
-            public int Read(float[] b, int off, int n) { for (int i = 0; i < n; i++) b[off + i] = 0f; return n; }
-        }
-
-        private void SuenaEfectoSolo(Efecto cual, float vol)
-        {
-            try
-            {
-                if (efectoSalida == null)
-                {
-                    MezclaEfectos mz = new MezclaEfectos(new Silencio(44100, 2));
-                    // Colchon CORTO (150 ms, no el segundo de la musica): un efecto que llega tarde no es
-                    // un efecto. Aqui no hay nada que descomprimir, asi que no hace falta mas colchon.
-                    WaveOut wo = new WaveOut();
-                    wo.DesiredLatency = 150; wo.NumberOfBuffers = 4;
-                    wo.Init(new DitherWaveProvider16(mz));
-                    wo.Play();
-                    efectoSalida = wo; efectoSolo = mz;
-                }
-                efectoSolo.Volumen = vol;
-                efectoSolo.Dispara(cual);
-                efectoSoloTick = Environment.TickCount;
-            }
-            catch { CierraEfectoSolo(); }   // no se pudo: ni un ruido ni un error
-        }
-
-        // La salida corta se cierra sola a los 3 segundos de no sonar nada. Con eso, cuatro monedas
-        // seguidas no abren y cierran la salida cuatro veces.
-        private void RevisaEfectoSolo()
-        {
-            if (efectoSalida == null) return;
-            if (efectoSolo != null && efectoSolo.Sonando) { efectoSoloTick = Environment.TickCount; return; }
-            if (Environment.TickCount - efectoSoloTick < 3000) return;
-            CierraEfectoSolo();
-        }
-        private void CierraEfectoSolo()
-        {
-            IWavePlayer s = efectoSalida; efectoSalida = null; efectoSolo = null;
-            if (s != null) { try { s.Stop(); } catch { } try { s.Dispose(); } catch { } }
-        }
-
         private float crossfadeSec = 0.5f;   // FUNDIDO de salida entre canciones: segundos de rampa al terminar ("fundido=" en config; 0 = corte seco)
         private bool declipOn = true;        // DES-RECORTE (declipper): repara picos aplastados de origen en archivos mal masterizados ("declip=" en config)
         // MATERIAL DE ENTRENAMIENTO PARA LA IA: mientras el pre-analisis recorre la biblioteca, las canciones
@@ -1517,9 +1427,6 @@ namespace Rocola
                     else if (s.StartsWith("realce=")) { float v; if (float.TryParse(s.Substring(7).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) excAmount = Clampf(v, 0f, 1f); }   // realce de agudos (exciter, tipo DSEE)
                     else if (s.StartsWith("bajo=")) { float v; if (float.TryParse(s.Substring(5).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) bassAmount = Clampf(v, 0f, 1f); }   // bajo psicoacustico (armonicos del grave)
                     else if (s.StartsWith("noche=")) nocheOn = s.Substring(6).Trim() != "0";   // modo noche (baja el volumen de madrugada)
-                    else if (s.StartsWith("efectos_vol=")) { int v; if (int.TryParse(s.Substring(12).Trim(), out v)) efectosVol = (v < 0) ? 0 : (v > 100 ? 100 : v); }
-                    else if (s.StartsWith("efectos_tic=")) efectosTic = s.Substring(12).Trim() == "1";   // el tic de moverse: apagado de fabrica
-                    else if (s.StartsWith("efectos=")) efectosOn = s.Substring(8).Trim() != "0";   // los sonidos de la propia rocola
                     else if (s.StartsWith("noche_desde=")) { int v; if (int.TryParse(s.Substring(12).Trim(), out v) && v >= 0 && v <= 23) nocheDesde = v; }
                     else if (s.StartsWith("noche_hasta=")) { int v; if (int.TryParse(s.Substring(12).Trim(), out v) && v >= 0 && v <= 23) nocheHasta = v; }
                     else if (s.StartsWith("noche_db=")) { float v; if (float.TryParse(s.Substring(9).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) nocheDb = Clampf(v, -24f, 0f); }   // cuanto baja (negativo)
@@ -1658,9 +1565,6 @@ namespace Rocola
                 sb.Append("bajo=").Append(bassAmount.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("subir_db=").Append(masterDb.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("noche=").Append(nocheOn ? "1" : "0").Append("\r\n");
-                sb.Append("efectos=").Append(efectosOn ? "1" : "0").Append("\r\n");
-                sb.Append("efectos_vol=").Append(efectosVol).Append("\r\n");
-                sb.Append("efectos_tic=").Append(efectosTic ? "1" : "0").Append("\r\n");
                 sb.Append("noche_desde=").Append(nocheDesde).Append("\r\n");
                 sb.Append("noche_hasta=").Append(nocheHasta).Append("\r\n");
                 sb.Append("noche_db=").Append(nocheDb.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
@@ -2320,7 +2224,6 @@ namespace Rocola
         {
             RevisaRespaldoDsee();   // ULTRA puede acabar de encenderse o apagarse: la cancion que suena se entera YA
             LevelTap t = curTap; if (t != null && nowPlaying != null && nowPlaying.Song != null) { t.Gain = NormGainFor(nowPlaying.Song.Path); t.Excite = ExciteAmountFor(nowPlaying.Song.Path); t.Master = MasterLin() * FactorNoche(); t.EqDb = EqCorrFor(nowPlaying.Song.Path); }
-            MezclaEfectos me = curEfectos; if (me != null) me.Volumen = EfectoVolLin();   // los sonidos de la rocola, al instante tambien
             DeepBassProvider bp = curBass; if (bp != null) bp.Amount = BassAmountNow();   // bajo psicoacustico: al instante, ya ajustado a la cancion
             SpectralTap sp = curSbr; if (sp != null) sp.Active = DseeActivo();   // reconstruccion espectral: alterna EN VIVO SIN matar el respaldo de ULTRA
         }
@@ -2848,7 +2751,7 @@ namespace Rocola
             bool wasMaint = maintMode;
             maintMode = true; maintUntil = DateTime.Now.AddMinutes(10);
             bool changed = false;
-            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkUp = masterDb, bkEq = eqAmount, bkBass = bassAmount; int bkVid = videoVol, bkDsk = perfilDisco; bool bkEfe = efectosOn, bkNoche = nocheOn, bkOn = normalizeOn, bkSbr = sbrOn, bkIa = iaVivo, bkEqA = eqAuto, bkBassA = bassAuto, bkVidA = videoAuto, bkIaDat = iaHarvestOn; string bkIaMez = iaMezcla, bkIaGpu = iaGpu;   // por si se Cancela
+            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkUp = masterDb, bkEq = eqAmount, bkBass = bassAmount; int bkVid = videoVol, bkDsk = perfilDisco; bool bkNoche = nocheOn, bkOn = normalizeOn, bkSbr = sbrOn, bkIa = iaVivo, bkEqA = eqAuto, bkBassA = bassAuto, bkVidA = videoAuto, bkIaDat = iaHarvestOn; string bkIaMez = iaMezcla, bkIaGpu = iaGpu;   // por si se Cancela
             try
             {
                 Cursor.Show();
@@ -2895,13 +2798,12 @@ namespace Rocola
                     // El subtitulo ya no ocupa el renglon entero: se queda con su mitad izquierda (su texto
                     // gasta 545 px medidos) y la derecha es del interruptor de aqui abajo. Antes reclamaba los
                     // 916 aunque no los usara, y asi los dos decian ser dueños del mismo sitio.
-                    // El subtitulo se aprieta -dice lo mismo con menos- para hacerle sitio al interruptor de
-                    // los sonidos. Este renglon es el de las REGLAS DE TODA LA MAQUINA (el modo noche vive
-                    // aqui por lo mismo), y las tres tarjetas de abajo estan llenas hasta el ultimo pixel:
-                    // meterlo en una de ellas habria obligado a mover algo que ya funciona.
-                    Label lSub = new Label(); lSub.SetBounds(24, 42, 344, 18); lSub.BackColor = Color.Transparent;
+                    // El subtitulo ya no ocupa el renglon entero: se queda con su mitad izquierda (su texto
+                    // gasta 545 px medidos) y la derecha es del interruptor de aqui abajo. Antes reclamaba los
+                    // 916 aunque no los usara, y asi los dos decian ser dueños del mismo sitio.
+                    Label lSub = new Label(); lSub.SetBounds(24, 42, 590, 18); lSub.BackColor = Color.Transparent;
                     lSub.ForeColor = cTenue; lSub.Font = fSub;
-                    lSub.Text = "Lo que cambies se oye al instante.";
+                    lSub.Text = "Todo lo que cambies aqui se oye al instante en la cancion que esta sonando.";
                     // MODO NOCHE. Va AQUI, en el renglon del subtitulo, y no dentro de una tarjeta: esta
                     // ventana mide 960x732 a proposito -con su barra de titulo cabe justo en 1024x768- y las
                     // tres tarjetas estan llenas hasta el ultimo pixel. Este renglon, en cambio, tiene 371 px
@@ -2916,13 +2818,6 @@ namespace Rocola
                     swNoche.SetBounds(624, 40, 316, 22); swNoche.ForeColor = cTenue; swNoche.Font = fInt;
                     swNoche.Text = "Bajar el volumen de " + nocheDesde + " a " + nocheHasta + " h";
                     swNoche.Acento = Color.FromArgb(150, 205, 255); swNoche.Checked = nocheOn;
-                    // LOS SONIDOS DE LA PROPIA ROCOLA. Va al lado del modo noche porque es de la misma
-                    // familia: una regla de toda la maquina, no una de las perillas de nivelado. Apagado,
-                    // la rocola vuelve a ser muda y la cadena de sonido queda EXACTAMENTE como estaba.
-                    Interruptor swEfe = new Interruptor();
-                    swEfe.SetBounds(380, 40, 234, 22); swEfe.ForeColor = cTenue; swEfe.Font = fInt;
-                    swEfe.Text = "Sonidos de la rocola";
-                    swEfe.Acento = Color.FromArgb(255, 198, 104); swEfe.Checked = efectosOn;
                     // QUE HAY DESPUES DEL CABLE. La rocola mide el ARCHIVO, y eso vale en cualquier equipo; lo
                     // que no puede saber por su cuenta es si Windows le esta metiendo sus propias mejoras
                     // encima. Se lee del registro de Windows y se dice aqui, en ambar si hay algo que arreglar.
@@ -3264,8 +3159,7 @@ namespace Rocola
                         iaVivo = ultra2;
                         iaMezcla = swIaAuto.Checked ? "auto" : barMix.Value.ToString();
                         sbrOn = swSbr.Checked && sbrAllowed;   // SOLO la preferencia: encender ULTRA ya no te la borra
-                        nocheOn = swNoche.Checked;
-                        efectosOn = swEfe.Checked;   // apagado, la rocola vuelve a ser muda (y la cadena, la de siempre)   // al apagarlo de madrugada, la rampa lo devuelve solo (AvanzaModoNoche)
+                        nocheOn = swNoche.Checked;   // al apagarlo de madrugada, la rampa lo devuelve solo (AvanzaModoNoche)
                         iaHarvestOn = swIa.Checked;
                         changed = true;
                         updateLabels();
@@ -3275,7 +3169,6 @@ namespace Rocola
                     for (int k = 0; k < bar.Length; k++) { bar[k].Scroll += apply; if (au[k] != null) au[k].CheckedChanged += apply; }
                     swOn.CheckedChanged += apply; swSbr.CheckedChanged += apply; swIa.CheckedChanged += apply;
                     swNoche.CheckedChanged += apply;
-                    swEfe.CheckedChanged += apply;
                     barMix.Scroll += apply; swIaAuto.CheckedChanged += apply;
                     swUltra.CheckedChanged += delegate { if (swUltra.Checked) { IaEnsureMotor(); IaRequestQueueJobs(); } apply(swUltra, EventArgs.Empty); };   // al encender ULTRA: motor oculto + preparar cola
                     cbGpu.SelectedIndexChanged += delegate
@@ -3293,8 +3186,7 @@ namespace Rocola
                         swUltra.Checked = false; swIaAuto.Checked = true;    // la IA en vivo, apagada
                         if (swSbr.Enabled) swSbr.Checked = false;            // el espectral ligero, apagado
                         swIa.Checked = true;                                 // juntar material para la IA: encendido de fabrica
-                        swNoche.Checked = true;
-                        swEfe.Checked = true;                                // y que la rocola suene al usarla                              // y bajar el volumen de madrugada, tambien
+                        swNoche.Checked = true;                              // y bajar el volumen de madrugada, tambien
                         if (perfilDisco != 0)                                // el tipo de disco, otra vez a medirlo sola
                         { perfilDisco = 0; lock (discoLock) discoLento.Clear(); AplicaPerfilDisco(); pintaDsk(); }
                         apply(bReset, EventArgs.Empty);
@@ -3342,7 +3234,7 @@ namespace Rocola
                     bPagS.Click += delegate { f3Pagina = 0; pintaPag(); };
                     bPagI.Click += delegate { f3Pagina = 1; pintaPag(); };
 
-                    dlg.Controls.Add(lTit); dlg.Controls.Add(bPagS); dlg.Controls.Add(bPagI); dlg.Controls.Add(lSub); dlg.Controls.Add(swEfe); dlg.Controls.Add(swNoche); dlg.Controls.Add(lSal);
+                    dlg.Controls.Add(lTit); dlg.Controls.Add(bPagS); dlg.Controls.Add(bPagI); dlg.Controls.Add(lSub); dlg.Controls.Add(swNoche); dlg.Controls.Add(lSal);
                     dlg.Controls.Add(tVol); dlg.Controls.Add(tCal); dlg.Controls.Add(tIa); dlg.Controls.Add(tBib);
                     dlg.Controls.Add(lDskT); dlg.Controls.Add(bDskA); dlg.Controls.Add(bDskS); dlg.Controls.Add(bDskH); dlg.Controls.Add(lDskS);
                     dlg.Controls.Add(bReset); dlg.Controls.Add(bOk); dlg.Controls.Add(pImg);
@@ -3363,7 +3255,7 @@ namespace Rocola
                 if (changed || f3CambioGraf) { SaveConfigPrefs(); ShowToast(changed ? "Sonido actualizado" : "Imagen actualizada", Color.FromArgb(40, 130, 90)); }
                 f3CambioGraf = false;
             }
-            catch { efectosOn = bkEfe; nocheOn = bkNoche; normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; masterDb = bkUp; eqAmount = bkEq; bassAmount = bkBass; videoVol = bkVid; videoAuto = bkVidA; sbrOn = bkSbr; iaVivo = bkIa; eqAuto = bkEqA; bassAuto = bkBassA; iaMezcla = bkIaMez; iaGpu = bkIaGpu; perfilDisco = bkDsk; iaHarvestOn = bkIaDat; AplicaPerfilDisco(); }   // si algo truena, deja los valores como estaban
+            catch { nocheOn = bkNoche; normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; masterDb = bkUp; eqAmount = bkEq; bassAmount = bkBass; videoVol = bkVid; videoAuto = bkVidA; sbrOn = bkSbr; iaVivo = bkIa; eqAuto = bkEqA; bassAuto = bkBassA; iaMezcla = bkIaMez; iaGpu = bkIaGpu; perfilDisco = bkDsk; iaHarvestOn = bkIaDat; AplicaPerfilDisco(); }   // si algo truena, deja los valores como estaban
             finally { try { Cursor.Hide(); } catch { } maintMode = wasMaint; ForceFocus(); }
         }
 
@@ -8169,8 +8061,8 @@ namespace Rocola
         {
             if (it == null) return AddResult.Repeat;
             if (credits <= 0)
-            {   // sin creditos no se puede poner nada, y ahora ademas SE OYE y SE VE
-                SuenaEfecto(Efecto.SinCredito);
+            {   // sin creditos no se puede poner nada, y ademas la capsula se SACUDE: a las dos de la
+                // manana nadie lee el letrero, pero un movimiento si se ve.
                 if (pastCred != null) { pastCred.Aviso(); pastCred.Invalidate(); }
                 return AddResult.NoCredit;
             }
@@ -8178,8 +8070,7 @@ namespace Rocola
             PlayItem last = (queue.Count > 0) ? queue[queue.Count - 1] : nowPlaying;
             if (last != null && string.Equals(last.PathKey(), it.PathKey(), StringComparison.OrdinalIgnoreCase)) return AddResult.Repeat;
             queue.Add(it); RefrescaCola(); PrecalientaSiguiente();
-            SuenaEfecto(Efecto.Cola);   // el golpe seco: se oye que la cancion entro, sin tener que leer nada
-            VuelaALaCola(it.Disc);      // y se VE: la portada sale de la pared y aterriza en la cola
+            VuelaALaCola(it.Disc);   // se VE: la portada sale de la pared y aterriza en la pastilla de la cola
             if (iaVivo && !it.IsVideo && it.Song != null) IaRequestJob(it.Song.Path);   // IA EN VIVO: prepara desde que se encola (lista para cuando le toque)
             RecordPlay(it);                                              // estadisticas: cuenta lo pedido
             credits--;                                                   // cada cosa cuesta 1 credito
@@ -8223,7 +8114,6 @@ namespace Rocola
         private void AddCoin()
         {
             credits += CreditsPerCoin;
-            SuenaEfecto(Efecto.Moneda);   // lo que hace que la mesa de al lado voltee a ver quien va a poner
             // ANTES de UpdateCredits, a proposito: la pastilla se guarda el numero de AHORA para rodar
             // desde el, y quien lo cambia es la linea de mas abajo.
             if (pastCred != null) { pastCred.Moneda(); pastCred.Invalidate(); }
@@ -9607,7 +9497,6 @@ namespace Rocola
                 // Y con ULTRA encendido, todo lo que NO suene por la version de Apollo lo atiende el DSEE
                 // normal mientras tanto. Las marcadas .orig incluidas: ahi suena el original, y si le falta
                 // banda el reconstructor la recrea; si no le falta, es un pase directo que no cuesta nada.
-                CierraEfectoSolo();   // la salida de la musica manda: la corta de los efectos se suelta ya
                 RevisaRespaldoDsee();
                 // Si la version de la CACHE no abre (la limpieza la borro justo en este instante, o quedo
                 // un encode raro), NO se salta la cancion ni se anota el ORIGINAL como incompatible ni se
@@ -9651,14 +9540,7 @@ namespace Rocola
                 bassSongFactor = BassFactorFor(t.Path);   // cuanto le toca a ESTA cancion (1 = la perilla tal cual)
                 bassAutoBase = BajoAuto(t.Path);          // y de cuanto se parte, si el bajo va en automatico
                 curBass = new DeepBassProvider(tap, BassAmountNow());
-                // LOS SONIDOS DE LA ROCOLA van AQUI, entre el bajo y el limitador. Detras del limitador,
-                // la suma de musica y efecto no la miraria nadie y podria pasarse de la raya; delante, el
-                // limitador la vigila igual que vigila la cancion. Sin ningun efecto sonando esta pieza
-                // devuelve la musica sin tocarle ni una muestra (ver MezclaEfectos.Read).
-                MezclaEfectos efx = new MezclaEfectos(curBass);
-                efx.Volumen = EfectoVolLin();
-                curEfectos = efx;
-                NAudio.Wave.ISampleProvider outChain = new LookaheadLimiter(efx, 0.98f, 3.0);   // limitador con pre-escucha (picos limpios)
+                NAudio.Wave.ISampleProvider outChain = new LookaheadLimiter(curBass, 0.98f, 3.0);   // limitador con pre-escucha (picos limpios)
                 if (crossfadeSec > 0.01f)
                 {
                     long tf = 0; try { tf = (long)(reader.TotalTime.TotalSeconds * reader.WaveFormat.SampleRate); } catch { }
@@ -9875,7 +9757,7 @@ namespace Rocola
                 output = null;
             }
             if (reader != null) { try { reader.Dispose(); } catch { } reader = null; }
-            curTap = null; curSbr = null; curBass = null; curEfectos = null;   // ya no hay taps actuales
+            curTap = null; curSbr = null; curBass = null;   // ya no hay taps actuales
             FinalizeLoudMeasure();   // guarda la sonoridad medida de la cancion que acaba de sonar (audio ya detenido: sin carrera)
             FinalizeEqMeasure();     // y su huella tonal (mismo momento seguro)
             lock (levelLock) levelQ.Clear();   // sin cancion no hay trozos pendientes: el pulso cae a cero
@@ -11004,7 +10886,6 @@ namespace Rocola
             if (winMode != 0 && Environment.TickCount - winTick >= WinMs) AbortWinTrans();
 #endif
             DrainCoverTrash();   // libera carátulas expulsadas (seguro: no hay repintado en curso)
-            RevisaEfectoSolo();  // y la salida corta de los efectos se cierra sola cuando ya no suena nada
 #if ROCOLA_GPU
             // Con la rocola quieta, se van horneando las casillas de la pagina de al lado: cuando alguien pase
             // de pagina, ya estan listas y el deslizamiento sale fluido de una. Dos casillas por vuelta y con
