@@ -56,7 +56,6 @@
     <Compile Include="Program.cs" />
     <Compile Include="D3D9Star.cs" />
     <Compile Include="Rendimiento.cs" />
-    <Compile Include="Efectos.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <EmbeddedResource Include="Properties\Resources.resx">
       <Generator>ResXFileCodeGenerator</Generator>
