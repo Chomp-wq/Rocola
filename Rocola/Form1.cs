@@ -938,6 +938,21 @@ namespace Rocola
         private static bool respiraOn = true;        // "respira=" en config
         private static float respiraFuerza = RespiraDef;   // "respira_fuerza=" en config, en por ciento
         private float quietud = 0f;                  // 0 = alguien esta tocando AHORA; 1 = hace rato que nadie
+        // LA VISTA PREVIA, y por que hace falta.
+        //
+        // La respiracion esta hecha para NO verse mientras se mira: el freno pide diez segundos sin que nadie
+        // toque un boton, tarda otros cuatro en volver del todo, y entonces mueve el cielo ocho o diez
+        // niveles de 255 repartidos en treinta segundos -unas tres decimas de nivel por segundo-. Eso es
+        // exactamente lo que se pidio... y hace imposible elegir cuanto respira, porque al pulsar el boton
+        // acabas de tocar la rocola y no se mueve nada.
+        //
+        // Asi que mientras se elige, y SOLO mientras se elige, respira deprisa: el ciclo entero en unos
+        // segundos y sin freno. Se apaga sola. En el bar no cambia nada: ni la velocidad, ni la fuerza, ni el
+        // freno.
+        private const int RespiraDemoSegs = 6;       // lo que dura la vista previa
+        private const float RespiraDemoPaso = 0.10f; // radianes por cuadro: una vuelta cada ~2.6 s
+        private DateTime respiraDemoHasta = DateTime.MinValue;
+        internal void MuestraRespiracion() { respiraDemoHasta = DateTime.Now.AddSeconds(RespiraDemoSegs); }
         private float respiraFase = 0f;
         private float bgDimResp = 1f;                // la atenuacion CON la respiracion puesta (estrellas y destellos)
         private float bgRespiro = 1f;                // y la respiracion SOLA, que es la que mueve el cielo
@@ -1109,6 +1124,7 @@ namespace Rocola
             LoadStats();   // estadisticas guardadas de sesiones anteriores (base de "Lo mas sonado")
             ProbeAudioTier();    // requisitos de maquina para el NIVEL 2 de audio (antes de leer dsee= de config)
             LoadConfigPrefs();   // preferencias: render GPU/CPU + carpetas de musica adicionales (Ctrl+F2)
+            Diag("rocola del " + DeCuandoEs());   // LO PRIMERO de la bitacora: de cuando es la que esta corriendo
             // AQUI y no en BuildUi: la pantalla se arma antes de leer la configuracion, asi que alla
             // "cola_portadas=0" todavia no se sabe. Y manda en el ANCHO de la capsula, que se mide luego.
             if (pastCola != null) pastCola.ConPortadas = colaPortadasOn;
@@ -1456,6 +1472,26 @@ namespace Rocola
             return sb.ToString();
         }
 
+        // DE CUANDO ES ESTA ROCOLA.
+        //
+        // Hasta ahora la rocola no lo decia en ningun sitio, y eso costo una tanda entera: se arreglo algo,
+        // se pidio una foto, la foto seguia igual... y no habia forma de distinguir "esta roto" de "es la
+        // version de antes, que no se copio". Las dos cosas se ven exactamente igual.
+        //
+        // Se saca de la FECHA DEL PROPIO ARCHIVO y no de un numero escrito a mano. Un numero a mano hay que
+        // acordarse de subirlo, y el dia que a alguien se le olvide la rocola mentira, que es peor que
+        // callarse. La fecha del archivo no se puede olvidar: la pone el compilador.
+        internal static string DeCuandoEs()
+        {
+            try
+            {
+                string exe = Application.ExecutablePath;
+                if (string.IsNullOrEmpty(exe) || !File.Exists(exe)) return "";
+                return File.GetLastWriteTime(exe).ToString("dd/MM/yyyy HH:mm");
+            }
+            catch { return ""; }
+        }
+
         private void Diag(string msg)
         {
             if (!diagOn) return;
@@ -1501,6 +1537,11 @@ namespace Rocola
                     else if (s.StartsWith("noche=")) nocheOn = s.Substring(6).Trim() != "0";   // modo noche (baja el volumen de madrugada)
                     else if (s.StartsWith("turno=")) turnoOn = s.Substring(6).Trim() != "0";   // el letrero de cuando suena tu cancion
                     else if (s.StartsWith("marca_cola=")) marcaColaOn = s.Substring(11).Trim() != "0";   // el palomito de "ya la pusiste"
+                    // Las tres perillas del fondo. Todas pasan por su funcion, que acota: un disparate en el
+                    // archivo no puede dejar la pantalla inservible.
+                    else if (s.StartsWith("portada_manda=")) portadaManda = PesoPortada(s.Substring(14));
+                    else if (s.StartsWith("cielo_azul=")) cieloAzul = AzulCielo(s.Substring(11));
+                    else if (s.StartsWith("cielo_negro=")) cieloCorte = CorteCielo(s.Substring(12));
                     else if (s.StartsWith("fondo_portada=")) fondoPortadaOn = s.Substring(14).Trim() != "0";   // el fondo toma el tono de la portada
                     else if (s.StartsWith("cola_portadas=")) colaPortadasOn = s.Substring(14).Trim() != "0";   // las portaditas en la capsula de la cola
                     else if (s.StartsWith("relevo=")) relevoOn = s.Substring(7).Trim() != "0";   // la media vuelta del cubito al cambiar de cancion
@@ -1640,6 +1681,9 @@ namespace Rocola
                 sb.Append("noche=").Append(nocheOn ? "1" : "0").Append("\r\n");
                 sb.Append("turno=").Append(turnoOn ? "1" : "0").Append("\r\n");
                 sb.Append("marca_cola=").Append(marcaColaOn ? "1" : "0").Append("\r\n");
+                sb.Append("portada_manda=").Append(Math.Round(portadaManda * 100f)).Append("\r\n");
+                sb.Append("cielo_azul=").Append(Math.Round(cieloAzul * 100f)).Append("\r\n");
+                sb.Append("cielo_negro=").Append(Math.Round(cieloCorte * 100f)).Append("\r\n");
                 sb.Append("fondo_portada=").Append(fondoPortadaOn ? "1" : "0").Append("\r\n");
                 sb.Append("cola_portadas=").Append(colaPortadasOn ? "1" : "0").Append("\r\n");
                 sb.Append("relevo=").Append(relevoOn ? "1" : "0").Append("\r\n");
@@ -2855,6 +2899,11 @@ namespace Rocola
                     // bajan para ganar rendimiento a cambio de que se vea menos bonito, y el medidor las
                     // puede proponer. Estas no cuestan nada que se note: se encienden y se dejan.
                     BotonPlano bPagD = new BotonPlano(); bPagD.SetBounds(484, 8, 148, 30); bPagD.Font = fBot; bPagD.Text = "Detalles";
+                    // Y LA CUARTA: los colores del fondo. Tampoco caben en Detalles -sus dos tarjetas ocupan
+                    // de y=4 a y=428 de 636 y debajo ya estan el pie y el boton de fabrica-, y ademas no son
+                    // lo mismo: las de alli son adornos que se encienden y se dejan; estas cambian de que
+                    // color es la rocola entera.
+                    BotonPlano bPagC = new BotonPlano(); bPagC.SetBounds(328, 8, 148, 30); bPagC.Font = fBot; bPagC.Text = "Colores";
                     // El subtitulo ya no ocupa el renglon entero: se queda con su mitad izquierda (su texto
                     // gasta 545 px medidos) y la derecha es del interruptor de aqui abajo. Antes reclamaba los
                     // 916 aunque no los usara, y asi los dos decian ser dueños del mismo sitio.
@@ -2864,6 +2913,12 @@ namespace Rocola
                     Label lSub = new Label(); lSub.SetBounds(24, 42, 590, 18); lSub.BackColor = Color.Transparent;
                     lSub.ForeColor = cTenue; lSub.Font = fSub;
                     lSub.Text = "Todo lo que cambies aqui se oye al instante en la cancion que esta sonando.";
+                    // Y DE CUANDO ES ESTA ROCOLA, en la esquina. Es lo primero que hay que mirar cuando algo
+                    // "no funciona": si la fecha no es la del arreglo, no hay nada roto, es que no se copio.
+                    Label lVer = new Label(); lVer.SetBounds(24, 700, 590, 16); lVer.BackColor = Color.Transparent;
+                    lVer.ForeColor = cApagado; lVer.Font = fSub;
+                    string cuando = DeCuandoEs();
+                    lVer.Text = (cuando.Length > 0) ? ("Esta rocola es del " + cuando) : "";
                     // MODO NOCHE. Va AQUI, en el renglon del subtitulo, y no dentro de una tarjeta: esta
                     // ventana mide 960x732 a proposito -con su barra de titulo cabe justo en 1024x768- y las
                     // tres tarjetas estan llenas hasta el ultimo pixel. Este renglon, en cambio, tiene 371 px
@@ -3190,22 +3245,24 @@ namespace Rocola
                     // pagina de Sonido ni se entera.
                     Panel pImg = PaginaImagen(fNom, fVal, fDes, fBot, cTexto, cTenue, cApagado);
                     Panel pDet = PaginaDetalles(fNom, fDes, fBot, cTexto, cTenue, cApagado);
-                    string[] nomPag = { "Sonido", "Imagen y rendimiento", "Detalles que dan vida" };
+                    Panel pCol = PaginaColores(fNom, fDes, fBot, cTexto, cTenue, cApagado);
+                    string[] nomPag = { "Sonido", "Imagen y rendimiento", "Detalles que dan vida", "Colores del fondo" };
                     Action pintaPag = delegate
                     {
-                        if (f3Pagina < 0 || f3Pagina > 2) f3Pagina = 0;
+                        if (f3Pagina < 0 || f3Pagina > 3) f3Pagina = 0;
                         // Se ensena o se esconde TODO lo que hay en la ventana menos el marco (titulo,
                         // pestanas y el boton de Listo, que se ven en las tres) y las paginas propias.
                         // Se hace asi y no con una lista de nombres a proposito: una lista se olvida de una
                         // tarjeta al agregarla -y en la rama del equipo potente hay una mas- y esa tarjeta se
                         // quedaria colgada encima de la pagina nueva.
                         foreach (Control cc in dlg.Controls)
-                            if (cc != lTit && cc != bPagS && cc != bPagI && cc != bPagD && cc != bOk && cc != pImg && cc != pDet)
+                            if (cc != lTit && cc != bPagS && cc != bPagI && cc != bPagD && cc != bPagC && cc != bOk && cc != pImg && cc != pDet && cc != pCol && cc != lVer)
                                 cc.Visible = (f3Pagina == 0);
                         pImg.Visible = (f3Pagina == 1);
                         pDet.Visible = (f3Pagina == 2);
+                        pCol.Visible = (f3Pagina == 3);
                         lTit.Text = nomPag[f3Pagina];
-                        BotonPlano[] pb = { bPagS, bPagI, bPagD };
+                        BotonPlano[] pb = { bPagS, bPagI, bPagD, bPagC };
                         for (int k = 0; k < pb.Length; k++)
                         {
                             bool act = (k == f3Pagina);
@@ -3218,11 +3275,12 @@ namespace Rocola
                     bPagS.Click += delegate { f3Pagina = 0; pintaPag(); };
                     bPagI.Click += delegate { f3Pagina = 1; pintaPag(); };
                     bPagD.Click += delegate { f3Pagina = 2; pintaPag(); };
+                    bPagC.Click += delegate { f3Pagina = 3; pintaPag(); };
 
-                    dlg.Controls.Add(lTit); dlg.Controls.Add(bPagS); dlg.Controls.Add(bPagI); dlg.Controls.Add(bPagD); dlg.Controls.Add(lSub); dlg.Controls.Add(swNoche); dlg.Controls.Add(lSal);
+                    dlg.Controls.Add(lTit); dlg.Controls.Add(bPagS); dlg.Controls.Add(bPagI); dlg.Controls.Add(bPagD); dlg.Controls.Add(bPagC); dlg.Controls.Add(lVer); dlg.Controls.Add(lSub); dlg.Controls.Add(swNoche); dlg.Controls.Add(lSal);
                     dlg.Controls.Add(tVol); dlg.Controls.Add(tCal); dlg.Controls.Add(tBib);
                     dlg.Controls.Add(lDskT); dlg.Controls.Add(bDskA); dlg.Controls.Add(bDskS); dlg.Controls.Add(bDskH); dlg.Controls.Add(lDskS);
-                    dlg.Controls.Add(bReset); dlg.Controls.Add(bOk); dlg.Controls.Add(pImg); dlg.Controls.Add(pDet);
+                    dlg.Controls.Add(bReset); dlg.Controls.Add(bOk); dlg.Controls.Add(pImg); dlg.Controls.Add(pDet); dlg.Controls.Add(pCol);
                     pintaPag();
                     // Escape cierra, como toda la vida (los controles propios se comen las teclas, asi que la
                     // ventana las mira antes con KeyPreview).
@@ -3421,11 +3479,81 @@ namespace Rocola
         // Factor de OSCURIDAD del cielo (100 = como antes; menor = mas oscuro). Solo brillo, conserva el tinte.
         private const int SkyDark = 75;
 
+        // ================== LAS TRES PERILLAS DEL FONDO ==================
+        //
+        // Hasta ahora los colores del cielo eran numeros fijos, y quien queria otra cosa no tenia como
+        // pedirla. Estas tres son las que de verdad cambian como se ve la pared, y viven en la pestaña
+        // "Colores del fondo" de Ctrl+F3.
+        //
+        // TODAS pasan por una funcion que las acota, igual que la fuerza de la respiracion: en el archivo de
+        // configuracion se puede escribir cualquier cosa, y un disparate aqui no puede dejar la pantalla
+        // inservible en un bar a las dos de la manana.
+        //
+        // Y viven AQUI, fuera del trozo de tarjeta grafica, porque las dos paredes -la de tarjeta y la
+        // horneada- tienen que usar las mismas. Con dos juegos de numeros, la maquina del bar y la de
+        // repuesto pintarian fondos distintos y nadie se enteraria hasta verlas juntas.
+
+        // CUANTO MANDA LA PORTADA en el tono del fondo. 0 = manda el genero y la portada no pinta nada;
+        // 1 = manda la portada entera, que es como estaba.
+        //
+        // AQUI ESTABA LA QUEJA: con la portada al mando entero, una cancion de Pop con una carátula azul
+        // pintaba la pantalla AZUL, y el rosa del Pop no aparecia por ningun lado. De fabrica se queda a
+        // MEDIAS: se reconoce el genero y se sigue notando que cada disco es distinto.
+        private static float portadaManda = 0.5f;    // "portada_manda=" en config
+        internal static float PesoPortada(string txt) { return LeePorCiento(txt, 0.5f); }
+
+        // CUANTO AZUL lleva el medio del cielo. 1 = como estaba; 0 = el medio se queda casi negro y el color
+        // del genero llega mucho mas arriba.
+        private static float cieloAzul = 1f;         // "cielo_azul=" en config
+        internal static float AzulCielo(string txt) { return LeePorCiento(txt, 1f); }
+
+        // CUANTO NEGRO hay arriba: donde esta el corte del negro al azul, como parte del alto de la pantalla.
+        // Mas negro = el azul empieza mas abajo. Se acota entre un cuarto y dos tercios: fuera de ahi deja de
+        // parecer un cielo.
+        private const float CieloCorteDef = 0.42f;
+        private static float cieloCorte = CieloCorteDef;   // "cielo_negro=" en config
+        internal static float CorteCielo(string txt)
+        {
+            float v;
+            if (txt == null) return CieloCorteDef;
+            if (!float.TryParse(txt.Trim(), System.Globalization.NumberStyles.Float,
+                                System.Globalization.CultureInfo.InvariantCulture, out v)) return CieloCorteDef;
+            return Clampf(v / 100f, 0.25f, 0.66f);
+        }
+        // El corte, ya acotado, tal y como lo piden las dos paredes.
+        internal static float CorteDelCielo { get { return cieloCorte; } }
+
+        // AL TOCAR UNA PERILLA, QUE SE VEA YA. La ventana de Ctrl+F3 no tapa la pared entera -mide 960 de
+        // ancho y la pantalla del bar 1920-, asi que se elige mirando: se toca y el fondo cambia al instante.
+        //
+        // Sin tarjeta grafica el cielo va horneado a un mapa de bits que se guarda, y hay que decirle que ya
+        // no vale; con tarjeta grafica los colores se le pasan al panel en cada cuadro y basta con repintar.
+        private void RepintaFondo()
+        {
+            if (formStars != null) formStars.TiraCieloCache();
+            this.Invalidate();
+            if (albumView != null) albumView.Invalidate();
+        }
+
+        // Un por ciento del archivo, acotado entre 0 y 1. Una linea sin sentido no apaga nada: se queda como
+        // de fabrica, que es la misma regla que ya sigue la fuerza de la respiracion.
+        private static float LeePorCiento(string txt, float porDefecto)
+        {
+            float v;
+            if (txt == null) return porDefecto;
+            if (!float.TryParse(txt.Trim(), System.Globalization.NumberStyles.Float,
+                                System.Globalization.CultureInfo.InvariantCulture, out v)) return porDefecto;
+            return Clampf(v / 100f, 0f, 1f);
+        }
+
         // EN MEDIO del cielo: el "azulado default". Casi independiente del genero (apenas un dejo) para que,
         // como pediste, despues del color del genero de abajo siga el azul antes de oscurecer al negro de arriba.
         private static Color SkyColorMid(Color accent)
         {
-            int r = 22 + accent.R / 10, g = 50 + accent.G / 8, b = 120 + accent.B / 7;
+            // La parte AZUL es la que lleva la perilla: la del genero se queda como esta. Con la perilla a
+            // cero el medio del cielo casi no tiene azul propio y el color de la cancion llega mucho mas
+            // arriba; con ella a tope es el azul de siempre.
+            int r = (int)(22 * cieloAzul) + accent.R / 10, g = (int)(50 * cieloAzul) + accent.G / 8, b = (int)(120 * cieloAzul) + accent.B / 7;
             if (r > 60) r = 60; if (g > 105) g = 105; if (b > 205) b = 205;
             r = r * SkyDark / 100; g = g * SkyDark / 100; b = b * SkyDark / 100;   // ESTETICA: mitad del cielo mas oscura
             return Color.FromArgb(255, r, g, b);
@@ -3606,7 +3734,11 @@ namespace Rocola
             int mx = Math.Max(genero.R, Math.Max(genero.G, genero.B));
             int mn = Math.Min(genero.R, Math.Min(genero.G, genero.B));
             if (mx - mn < 2) return genero;                        // un gris no tiene tono que girar
-            return GiraTono(genero, TonoDe(portada) - TonoDe(genero), 1f);
+            // Y NO SE VA ENTERO AL TONO DE LA PORTADA: se queda donde diga la perilla, de fabrica a medias.
+            // Antes iba entero, y por eso una cancion de Pop con carátula azul pintaba la pantalla azul sin
+            // rastro del rosa del Pop. Se va por el camino CORTO de la rueda (ver MezclaDeTono): a mitad de
+            // camino, dar la vuelta larga te deja en el color de enfrente.
+            return MezclaDeTono(genero, portada, portadaManda);
         }
 
         // LOS DOS COLORES DE "YA LA PEDISTE" Y "SUENA AHORA". Viven aqui, y no dentro de la lista del disco
@@ -4118,18 +4250,23 @@ namespace Rocola
             // dentro del disco (colaPos y sonandoKey), no con una copia: asi las dos pantallas no se pueden
             // desparejar, y la clave es la ruta del archivo, que es lo unico que sobrevive a un re-escaneo.
             //
-            // Y respeta el interruptor de Ctrl+F3: es el mismo adorno que el palomito de la pared -"ya la
-            // pusiste"-, asi que se apaga con el mismo boton. Dos interruptores para lo mismo seria peor que
-            // ninguno.
+            // Y NO MIRAN EL INTERRUPTOR DE Ctrl+F3, igual que no lo mira la lista de dentro del disco. Aqui
+            // me equivoque y se vio en el bar: lo puse a mirarlo, y con "marca_cola=0" las marcas salian
+            // dentro del disco y no en el buscador, que es justo la clase de diferencia que vuelve loco a
+            // quien la sufre.
+            //
+            // Ese interruptor se llama "Marcar los discos que ya pediste" y habla del palomito de la PARED,
+            // que va por disco. Esto va por CANCION, como las marcas de dentro del disco. Un interruptor que
+            // apaga tres cosas distintas no es un interruptor, es una sorpresa.
             searchOverlay.GetQueuePos = delegate (SearchItem it)
             {
-                if (!marcaColaOn || it == null || it.TrackRef == null || colaPos.Count == 0) return 0;
+                if (it == null || it.TrackRef == null || colaPos.Count == 0) return 0;
                 int pos;
                 return (it.TrackRef.Path != null && colaPos.TryGetValue(it.TrackRef.Path, out pos)) ? pos : 0;
             };
             searchOverlay.GetSonando = delegate (SearchItem it)
             {
-                if (!marcaColaOn || it == null || it.TrackRef == null || sonandoKey.Length == 0) return false;
+                if (it == null || it.TrackRef == null || sonandoKey.Length == 0) return false;
                 return it.TrackRef.Path != null && string.Equals(it.TrackRef.Path, sonandoKey, StringComparison.OrdinalIgnoreCase);
             };
             searchOverlay.OnQueryChanged = RecomputeResults;
@@ -11218,7 +11355,10 @@ namespace Rocola
             // Mezclarlas seria un fallo gordo: la atenuacion al navegar baja al 45%, y aplicada al cielo
             // dejaria toda la pantalla a media luz en cuanto alguien toca un boton con musica sonando. El
             // cielo no se atenua -nunca se atenuo- pero si respira.
-            bgRespiro = respiraOn ? Respiracion(respiraFuerza, quietud, respiraFase) : 1f;
+            // LA VISTA PREVIA de Ctrl+F3: va deprisa y sin freno, y se apaga sola. Fuera de ella, todo igual.
+            bool demo = respiraOn && DateTime.Now < respiraDemoHasta;
+            if (demo) respiraFase += RespiraDemoPaso - RespiraPaso;   // el paso normal ya se sumo arriba
+            bgRespiro = respiraOn ? Respiracion(respiraFuerza, demo ? 1f : quietud, respiraFase) : 1f;
             bgDimResp = bgDim * bgRespiro;
             albumView.BgDim = bgDimResp;
             if (panelSongs != null) panelSongs.BgDim = bgDimResp;   // el interior del disco comparte el mismo campo: atenua igual
@@ -12566,6 +12706,10 @@ namespace Rocola
             private Bitmap skyCache;                                       // RENDIMIENTO: cielo (degradado) HORNEADO a bitmap; se copia por cuadro en vez de rellenar el degradado cada vez
             private int scW = -1, scH = -1;
             private int fscTop = 0, fscMid = 0, fscBot = 0;               // colores con los que se horneo el cielo de pantalla completa (se re-hornea solo al cambiar genero/tamano)
+            // TIRA EL CIELO GUARDADO. Lo llama Ctrl+F3 al tocar una perilla del fondo: el corte del negro al
+            // azul no esta en la firma de arriba -no es un color- y sin esto el cielo se quedaria como estaba
+            // hasta que cambiara la cancion.
+            public void TiraCieloCache() { fscTop = 0; fscMid = 0; fscBot = 0; }
             // DERIVA con la musica (igual que la version GPU): al sonar, el campo entero se desliza LENTO en diagonal
             // (abajo-derecha) y se envuelve por los bordes. Barato: en la vista de discos solo desplaza el blit de la
             // capa de estrellas (toroidal); en el buscador desplaza cada estrella. Solo avanza en repintados COMPLETOS.
@@ -12605,7 +12749,7 @@ namespace Rocola
                 LinearGradientBrush lgb = new LinearGradientBrush(new Rectangle(0, -off, w, full + 1), top, bottom, LinearGradientMode.Vertical);
                 ColorBlend cb = new ColorBlend(3);
                 cb.Colors = new Color[] { top, mid, bottom };          // negro arriba -> azul noche en medio -> resplandor/azul abajo
-                cb.Positions = new float[] { 0f, 0.42f, 1f };          // negro SOLO en el cenit; el azul domina casi toda la pantalla; genero abajo
+                cb.Positions = new float[] { 0f, CorteDelCielo, 1f };  // donde acaba el negro y empieza el azul (perilla "cuanto negro")
                 lgb.InterpolationColors = cb;
                 skyBrush = lgb;
                 gbW = w; gbOff = off; gbFull = full; gbTop = t; gbMid = m; gbBot = b;
@@ -13101,7 +13245,7 @@ namespace Rocola
                     {
                         ColorBlend cb = new ColorBlend(3);
                         cb.Colors = new Color[] { top, mid, bottom };          // negro arriba -> azul noche en medio -> resplandor/genero abajo
-                        cb.Positions = new float[] { 0f, 0.42f, 1f };          // negro SOLO en el cenit; el azul domina casi toda la pantalla
+                        cb.Positions = new float[] { 0f, CorteDelCielo, 1f };  // ver la perilla "cuanto negro"
                         lgb.InterpolationColors = cb;
                         sg.FillRectangle(lgb, 0, 0, FW, FH);
                     }
@@ -16761,6 +16905,9 @@ namespace Rocola
             // y 2 textos cada una. Los resultados dependen SOLO de la consulta, asi que se cachean por Query y
             // solo se pinta EN VIVO la tarjeta seleccionada. Moverse por teclas/resultados deja de dar tirones.
             private Bitmap resCache; private string resCacheQuery = "\0"; private int resCacheW = -1, resCacheH = -1, resCacheAccent, resCacheDatos = -1, resCacheCola = -1;
+            // COMO ESTABA MARCADA CADA TARJETA cuando se horneo el cache. Sirve para no rehornear las
+            // cincuenta al pedir UNA cancion: ver el retoque de mas abajo.
+            private int[] resCacheMarca = new int[0];
             private SolidBrush marcaB;   // el resaltado de lo tecleado (reusable)
             private Point resCacheOrigin;
             // HORNOS DE LA TARJETA DE RESULTADO. Todas las tarjetas miden lo mismo, asi que su fondo (rectangulo
@@ -17455,7 +17602,48 @@ namespace Rocola
                 // moverse por los resultados NO lo toca (solo copia el cache + la tarjeta seleccionada en vivo).
                 int accentArgb = Accent.ToArgb();
                 string qNorm = Normalize(Query ?? "");   // UNA vez por dibujado, no una por tarjeta
-                if (resCache == null || resCacheW != region.Width || resCacheH != region.Height || resCacheAccent != accentArgb || resCacheQuery != Query || resCacheDatos != DatosVer || resCacheCola != ColaVer)
+                // AL PEDIR UNA CANCION NO SE REHORNEAN LAS CINCUENTA TARJETAS.
+                //
+                // Las marcas van DENTRO del mapa de bits de cada tarjeta, asi que al cambiar la cola hay que
+                // volver a dibujar... pero solo la que cambio. Rehacer el cache entero cuesta 10.8 ms medidos
+                // con cincuenta resultados en pantalla, y en la maquina del bar eso son cuatro o cinco veces
+                // mas: mas de un cuadro, o sea un tiron que se ve al pulsar el boton (y con musica sonando,
+                // se oye). Retocando solo lo que cambio es una tarjeta en vez de cincuenta.
+                //
+                // Se retocan tambien las dos vecinas de arriba y abajo: cada tarjeta se dibuja con tres
+                // pixeles de sombra que se salen de su sitio, y borrando en limpio se llevaria por delante un
+                // trozo de la de al lado.
+                bool soloCola = resCache != null && resCacheW == region.Width && resCacheH == region.Height
+                                && resCacheAccent == accentArgb && resCacheQuery == Query && resCacheDatos == DatosVer
+                                && resCacheOrigin == region.Location && resCacheCola != ColaVer
+                                && resCacheMarca.Length == n;
+                if (soloCola)
+                {
+                    int[] ahora = new int[n];
+                    for (int i = 0; i < n; i++) ahora[i] = MarcaDe(i);   // UNA vez por tarjeta, no dos
+                    using (Graphics cg = Graphics.FromImage(resCache))
+                    {
+                        cg.SmoothingMode = SmoothingMode.AntiAlias;
+                        for (int i = 0; i < n; i++)
+                        {
+                            if (ahora[i] == resCacheMarca[i]) continue;
+                            for (int k = i - 1; k <= i + 1; k++)
+                            {
+                                if (k < 0 || k >= n) continue;
+                                Rectangle rk = Rectangle.Round(resultRects[k].Key); rk.Offset(-region.X, -region.Y);
+                                rk.Inflate(MargenTarj, MargenTarj);
+                                cg.CompositingMode = CompositingMode.SourceCopy;
+                                cg.FillRectangle(Brushes.Transparent, rk);
+                                cg.CompositingMode = CompositingMode.SourceOver;
+                                Rectangle rr2 = Rectangle.Round(resultRects[k].Key); rr2.Offset(-region.X, -region.Y);
+                                DrawOneResultCard(cg, k, rr2, false, qNorm);
+                            }
+                        }
+                    }
+                    resCacheMarca = ahora;
+                    resCacheCola = ColaVer;
+                }
+                else if (resCache == null || resCacheW != region.Width || resCacheH != region.Height || resCacheAccent != accentArgb || resCacheQuery != Query || resCacheDatos != DatosVer || resCacheCola != ColaVer)
                 {
                     int rw = Math.Max(1, region.Width), rh = Math.Max(1, region.Height);
                     if (resCache == null || resCache.Width != rw || resCache.Height != rh)   // REUSA el bitmap si el tamano no cambio
@@ -17478,6 +17666,8 @@ namespace Rocola
                             }
                     }
                     resCacheW = region.Width; resCacheH = region.Height; resCacheAccent = accentArgb; resCacheQuery = Query; resCacheOrigin = region.Location; resCacheDatos = DatosVer; resCacheCola = ColaVer;
+                    if (resCacheMarca.Length != n) resCacheMarca = new int[n];
+                    for (int i = 0; i < n; i++) resCacheMarca[i] = MarcaDe(i);
                 }
                 g.DrawImageUnscaled(resCache, resCacheOrigin.X, resCacheOrigin.Y);
                 // Tarjeta seleccionada EN VIVO encima: su relleno es opaco y tapa la version sin seleccion del cache.
@@ -17581,6 +17771,17 @@ namespace Rocola
                     }
                 }
                 TextRenderer.DrawText(g, it.Display, fRes, tr, Color.White, TextFormatFlags.Left | TextFormatFlags.EndEllipsis);
+            }
+
+            // COMO ESTA MARCADA UNA TARJETA, en un solo numero: sirve para saber cuales cambiaron sin volver
+            // a dibujarlas. Cero es "ni pedida ni sonando".
+            private int MarcaDe(int i)
+            {
+                if (Results == null || i < 0 || i >= Results.Count) return 0;
+                SearchItem it = Results[i];
+                int pos = (GetQueuePos != null) ? GetQueuePos(it) : 0;
+                bool suena = (GetSonando != null) && GetSonando(it);
+                return pos * 2 + (suena ? 1 : 0);
             }
 
             // Dibuja una marca pegada a 'derLim' y devuelve el nuevo limite derecho para lo que venga detras.

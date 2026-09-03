@@ -689,6 +689,10 @@ namespace Rocola
                     // uno grande ahi marea a todo el bar.
                     respiraFuerza = FuerzaRespira(valFza[mio]);
                     f3CambioGraf = true;
+                    // Y QUE SE VEA. Tal y como esta hecha no se puede elegir mirando -tarda catorce segundos
+                    // en arrancar y se mueve tres decimas de nivel por segundo-, asi que al pulsar respira
+                    // deprisa unos segundos. En el bar sigue igual de lenta.
+                    MuestraRespiracion();
                     pinta();
                 };
             }
@@ -697,6 +701,7 @@ namespace Rocola
                 turnoOn = true; marcaColaOn = true; fondoPortadaOn = true; colaPortadasOn = true;
                 relevoOn = true; respiraOn = true;
                 respiraFuerza = FuerzaRespira("4.5");
+                MuestraRespiracion();
                 sw[0].Checked = true; sw[1].Checked = true; sw[2].Checked = true; sw[3].Checked = true; sw[4].Checked = true;
                 swResp.Checked = true;
                 f3CambioGraf = true;
@@ -707,6 +712,134 @@ namespace Rocola
             pg.Controls.Add(tVida); pg.Controls.Add(tResp); pg.Controls.Add(lPie); pg.Controls.Add(bResetD);
             pinta();
             return pg;
+        }
+
+        // ================== LA CUARTA PESTAÑA: LOS COLORES DEL FONDO ==================
+        //
+        // Los colores del cielo eran numeros fijos dentro del programa, y quien queria otro fondo no tenia
+        // como pedirlo. Aqui hay tres perillas, y las tres se eligen MIRANDO la pared, que esta detras de
+        // esta ventana: se toca una y el fondo cambia al instante.
+        //
+        // NO CABIAN EN "DETALLES": sus dos tarjetas ocupan de y=4 a y=428 de 636 y debajo ya estan el pie y
+        // el boton de fabrica. Es la misma razon por la que Detalles nacio de su propia pestaña cuando las
+        // tarjetas de Imagen se llenaron. Y ademas no son lo mismo: aquellas son adornos que se encienden y
+        // se dejan; estas cambian de que color es la rocola.
+        private Panel PaginaColores(Font fNom, Font fDes, Font fBot,
+                                    Color cTexto, Color cTenue, Color cApagado)
+        {
+            Color cAc = Color.FromArgb(190, 165, 255);
+            Color cOn = Color.FromArgb(28, 62, 104), cOff = Color.FromArgb(28, 34, 62);
+            Color cBordeOn = Color.FromArgb(150, 205, 255), cBordeOff = Color.FromArgb(60, 72, 118);
+
+            Panel pg = new Panel();
+            pg.SetBounds(0, 96, 960, 636);
+            pg.BackColor = Color.FromArgb(11, 14, 32);
+
+            Tarjeta t1 = new Tarjeta(); t1.SetBounds(16, 4, 928, 168); t1.Titulo = "DE QUE COLOR ES CADA CANCION"; t1.Acento = cAc;
+            Tarjeta t2 = new Tarjeta(); t2.SetBounds(16, 184, 928, 156); t2.Titulo = "CUANTO AZUL"; t2.Acento = cAc;
+            Tarjeta t3 = new Tarjeta(); t3.SetBounds(16, 352, 928, 156); t3.Titulo = "CUANTO NEGRO"; t3.Acento = cAc;
+
+            // ---------------- 1) quien manda en el tono: el genero o la caratula ----------------
+            Label l1 = new Label(); l1.SetBounds(16, 36, 896, 62); l1.BackColor = Color.Transparent;
+            l1.ForeColor = cTenue; l1.Font = fDes;
+            l1.Text = "El fondo sale del GENERO de la cancion, y encima se le pega el color de la CARATULA. Con la caratula al mando\n"
+                    + "entero, una cancion de Pop con portada azul pinta la pantalla azul y el rosa del Pop no aparece. Con el genero al\n"
+                    + "mando, dos cumbias seguidas pintan la misma pantalla naranja aunque una sea un disco rojo y la otra uno verde.\n"
+                    + "De la caratula se toma SOLO de que color es: lo oscuro y lo vivo lo manda siempre el genero, pase lo que pase.";
+            string[] nom1 = { "Manda el genero", "Mitad y mitad", "Manda la caratula" };
+            string[] val1 = { "20", "50", "100" };
+            BotonPlano[] b1 = new BotonPlano[3];
+            for (int k = 0; k < 3; k++)
+            {
+                b1[k] = new BotonPlano(); b1[k].SetBounds(16 + k * 200, 112, 192, 30);
+                b1[k].Font = fBot; b1[k].Text = nom1[k];
+                t1.Controls.Add(b1[k]);
+            }
+
+            // ---------------- 2) cuanto azul lleva el medio del cielo ----------------
+            Label l2 = new Label(); l2.SetBounds(16, 36, 896, 48); l2.BackColor = Color.Transparent;
+            l2.ForeColor = cTenue; l2.Font = fDes;
+            l2.Text = "El medio del cielo es azul noche y casi no depende de la cancion, a proposito: es lo que hace que parezca cielo.\n"
+                    + "Bajando el azul, el color de la cancion sube desde el horizonte y tine mucha mas pantalla.";
+            string[] nom2 = { "Poco azul", "Normal", "Todo azul" };
+            string[] val2 = { "35", "70", "100" };
+            BotonPlano[] b2 = new BotonPlano[3];
+            for (int k = 0; k < 3; k++)
+            {
+                b2[k] = new BotonPlano(); b2[k].SetBounds(16 + k * 200, 98, 192, 30);
+                b2[k].Font = fBot; b2[k].Text = nom2[k];
+                t2.Controls.Add(b2[k]);
+            }
+
+            // ---------------- 3) cuanto negro hay arriba ----------------
+            Label l3 = new Label(); l3.SetBounds(16, 36, 896, 48); l3.BackColor = Color.Transparent;
+            l3.ForeColor = cTenue; l3.Font = fDes;
+            l3.Text = "Arriba del todo el cielo es casi negro, y ahi es donde mejor se ven las estrellas. Este es el punto donde acaba\n"
+                    + "ese negro y empieza el azul: mas negro deja una noche mas cerrada, menos negro deja una pantalla mas encendida.";
+            string[] nom3 = { "Mas negro", "Normal", "Menos negro" };
+            string[] val3 = { "58", "42", "30" };
+            BotonPlano[] b3 = new BotonPlano[3];
+            for (int k = 0; k < 3; k++)
+            {
+                b3[k] = new BotonPlano(); b3[k].SetBounds(16 + k * 200, 98, 192, 30);
+                b3[k].Font = fBot; b3[k].Text = nom3[k];
+                t3.Controls.Add(b3[k]);
+            }
+
+            t1.Controls.Add(l1); t2.Controls.Add(l2); t3.Controls.Add(l3);
+
+            Label lPie = new Label(); lPie.SetBounds(16, 520, 928, 32); lPie.BackColor = Color.Transparent;
+            lPie.ForeColor = cApagado; lPie.Font = fDes;
+            lPie.Text = "La pared esta detras de esta ventana: toca una y mirala. Nada de esto le quita ni le pone rendimiento a la\n"
+                      + "rocola -son los mismos tres colores de siempre, con otros numeros- y todo se guarda al cerrar.";
+
+            BotonPlano bReset = new BotonPlano();
+            bReset.SetBounds(16, 564, 300, 38); bReset.Font = fBot; bReset.Text = "Colores como de fabrica";
+
+            // ---------------- lo que se ensena ----------------
+            Action pinta = delegate
+            {
+                Pinta3(b1, cual1(), cOn, cOff, cBordeOn, cBordeOff, cApagado);
+                Pinta3(b2, cual2(), cOn, cOff, cBordeOn, cBordeOff, cApagado);
+                Pinta3(b3, cual3(), cOn, cOff, cBordeOn, cBordeOff, cApagado);
+            };
+            for (int k = 0; k < 3; k++)
+            {
+                int mio = k;
+                // SIEMPRE por la funcion que acota, nunca poniendo el numero a mano: es la misma regla que
+                // sigue la fuerza de la respiracion, y la que hace que el archivo no pueda romper nada.
+                b1[k].Click += delegate { portadaManda = PesoPortada(val1[mio]); f3CambioGraf = true; RepintaFondo(); pinta(); };
+                b2[k].Click += delegate { cieloAzul = AzulCielo(val2[mio]); f3CambioGraf = true; RepintaFondo(); pinta(); };
+                b3[k].Click += delegate { cieloCorte = CorteCielo(val3[mio]); f3CambioGraf = true; RepintaFondo(); pinta(); };
+            }
+            bReset.Click += delegate
+            {
+                portadaManda = PesoPortada("50"); cieloAzul = AzulCielo("100"); cieloCorte = CorteCielo("42");
+                f3CambioGraf = true; RepintaFondo(); pinta();
+                ShowToast("Colores como de fabrica", Color.FromArgb(40, 130, 90));
+            };
+
+            pg.Controls.Add(t1); pg.Controls.Add(t2); pg.Controls.Add(t3); pg.Controls.Add(lPie); pg.Controls.Add(bReset);
+            pinta();
+            return pg;
+        }
+
+        // Cual de los tres pasos esta puesto ahora mismo, para cada perilla.
+        private int cual1() { return (portadaManda < 0.35f) ? 0 : (portadaManda > 0.75f ? 2 : 1); }
+        private int cual2() { return (cieloAzul < 0.52f) ? 0 : (cieloAzul > 0.85f ? 2 : 1); }
+        private int cual3() { return (cieloCorte > 0.50f) ? 0 : (cieloCorte < 0.36f ? 2 : 1); }
+
+        // Enciende el paso elegido de una fila de tres botones.
+        private static void Pinta3(BotonPlano[] b, int cual, Color cOn, Color cOff, Color cBordeOn, Color cBordeOff, Color cApagado)
+        {
+            for (int k = 0; k < b.Length; k++)
+            {
+                bool act = (k == cual);
+                b[k].Relleno = act ? cOn : cOff;
+                b[k].Borde = act ? cBordeOn : cBordeOff;
+                b[k].ForeColor = act ? Color.FromArgb(226, 240, 255) : cApagado;
+                b[k].Invalidate();
+            }
         }
 
         private Panel PaginaImagen(Font fNom, Font fVal, Font fDes, Font fBot,

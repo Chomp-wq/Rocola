@@ -266,9 +266,38 @@ class Pedidas
         Check(Codigo.LeeCampo(ui, "colaPos"), "el buscador mira la MISMA tabla de la cola (colaPos)");
         Check(Codigo.LeeCampo(ui, "sonandoKey"), "y el MISMO apunte de cual suena (sonandoKey)");
 
-        Console.WriteLine("\n  5) Y EL INTERRUPTOR DE Ctrl+F3 LAS APAGA\n");
-        // Es el mismo adorno que el palomito de la pared: se apaga con el mismo boton.
-        Check(Codigo.LeeCampo(ui, "marcaColaOn"), "las marcas del buscador respetan el interruptor del palomito");
+        Console.WriteLine("\n  5) Y VAN COMO LAS DE DENTRO DEL DISCO, NO COMO EL PALOMITO\n");
+        // AQUI ESTUVO UN FALLO, y fue mio: puse las marcas del buscador a mirar el interruptor del palomito
+        // de la pared, y las de dentro del disco no lo miran. Con "marca_cola=0" salian en una pantalla y no
+        // en la otra -que es justo la clase de diferencia que vuelve loco a quien la sufre-, y desde fuera
+        // parecia que el buscador estaba roto.
+        //
+        // Ese interruptor habla del palomito de la PARED, que va por disco. Esto va por CANCION.
+        // A cada delegado se le reconoce por lo que RECIBE: los del buscador reciben un resultado de
+        // busqueda, los de la lista del disco reciben el numero de renglon. Buscarlos por lo que LLAMAN no
+        // vale -TrackRef es un campo, no una propiedad, y no aparece como llamada-, y esa comprobacion
+        // vacia daba OK tambien con el codigo roto: no miraba nada.
+        List<MethodBase> delBuscador = new List<MethodBase>();
+        List<MethodBase> delDisco = new List<MethodBase>();
+        foreach (MethodBase m in ui)
+        {
+            ParameterInfo[] ps = m.GetParameters();
+            if (ps.Length != 1) continue;
+            if (ps[0].ParameterType == TItem) delBuscador.Add(m);
+            else if (ps[0].ParameterType == typeof(int))
+            {
+                int l2, e2;
+                Codigo.UsosDeCampo(m, "songItems", out l2, out e2);
+                if (l2 > 0) delDisco.Add(m);
+            }
+        }
+        Console.WriteLine("     delegados encontrados: " + delBuscador.Count + " del buscador, " + delDisco.Count + " de la lista del disco");
+        Check(delBuscador.Count >= 2 && delDisco.Count >= 2, "se encontraron los delegados de las dos pantallas");
+        bool discoMira = Codigo.LeeCampo(delDisco, "marcaColaOn");
+        bool buscaMira = Codigo.LeeCampo(delBuscador, "marcaColaOn");
+        Console.WriteLine("     mira el interruptor del palomito:  la lista del disco " + (discoMira ? "SI" : "NO")
+                          + ",  el buscador " + (buscaMira ? "SI" : "NO"));
+        Check(discoMira == buscaMira, "las dos pantallas siguen la MISMA regla: o las dos lo miran o ninguna");
 
         Console.WriteLine("\n  6) Y AL PEDIR UNA CANCION, SE ENTERA\n");
         MethodBase refresca = Met(TF, "RefrescaCola");
