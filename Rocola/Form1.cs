@@ -2883,9 +2883,10 @@ namespace Rocola
                     Color cTenue = Color.FromArgb(138, 149, 182);    // texto de las explicaciones
                     Color cApagado = Color.FromArgb(96, 104, 128);
 
-                    // El titulo encoge de 600 a 450 para dejarle sitio a la tercera pestaña. No mueve nada:
-                    // el texto mas largo que lleva es "Imagen y rendimiento", que ni de lejos llega a 450.
-                    Label lTit = new Label(); lTit.SetBounds(22, 10, 450, 28); lTit.BackColor = Color.Transparent;
+                    // El titulo encoge de 600 a 298 para dejarle sitio a las CUATRO pestañas. No mueve nada:
+                    // los cuatro titulos miden 76, 217, 214 y 179 px, medidos con su letra, asi que el mas
+                    // largo se queda a 81 px de tocar la primera pestaña (que empieza en 328).
+                    Label lTit = new Label(); lTit.SetBounds(22, 10, 298, 28); lTit.BackColor = Color.Transparent;
                     lTit.ForeColor = Color.FromArgb(232, 238, 255); lTit.Font = fTit; lTit.Text = "Sonido";
                     // LAS DOS PESTANAS VAN AQUI, EN EL RENGLON DEL TITULO, y no en una fila propia: esta ventana
                     // mide 960x732 a proposito -con su barra de titulo cabe justo en una pantalla de 1024x768- y
@@ -2913,9 +2914,15 @@ namespace Rocola
                     Label lSub = new Label(); lSub.SetBounds(24, 42, 590, 18); lSub.BackColor = Color.Transparent;
                     lSub.ForeColor = cTenue; lSub.Font = fSub;
                     lSub.Text = "Todo lo que cambies aqui se oye al instante en la cancion que esta sonando.";
-                    // Y DE CUANDO ES ESTA ROCOLA, en la esquina. Es lo primero que hay que mirar cuando algo
-                    // "no funciona": si la fecha no es la del arreglo, no hay nada roto, es que no se copio.
-                    Label lVer = new Label(); lVer.SetBounds(24, 700, 590, 16); lVer.BackColor = Color.Transparent;
+                    // Y DE CUANDO ES ESTA ROCOLA, abajo. Es lo primero que hay que mirar cuando algo "no
+                    // funciona": si la fecha no es la del arreglo, no hay nada roto, es que no se copio.
+                    //
+                    // VA ENTRE LOS DOS BOTONES DE ABAJO, y no a la izquierda como estaba: alli se dibujaba
+                    // ENCIMA del boton "Graficos como de fabrica" de la pagina de Imagen, que ocupa de la y
+                    // 680 a la 718. Esta franja -de la 734 para abajo, entre el boton de fabrica (acaba en la
+                    // x 236) y el de Listo (empieza en la 804)- es la unica que esta libre en las cuatro
+                    // paginas. El texto mide 214 px, medido, y hay 540.
+                    Label lVer = new Label(); lVer.SetBounds(250, 734, 540, 18); lVer.BackColor = Color.Transparent;
                     lVer.ForeColor = cApagado; lVer.Font = fSub;
                     string cuando = DeCuandoEs();
                     lVer.Text = (cuando.Length > 0) ? ("Esta rocola es del " + cuando) : "";

@@ -717,13 +717,19 @@ namespace Rocola
                 t[i] = (float)(0.45 + 0.55 * (0.5 + 0.5 * Math.Sin(2.0 * Math.PI * i / TitN)));
             return t;   // la ultima repite la primera: asi el mezclado del final no se sale de la tabla
         }
-        internal static float Titileo(float x)
+        // RECIBE UN DOUBLE, Y NO ES UN CAPRICHO. Justo aqui arriba esta escrito por que el reloj del campo
+        // de estrellas se lleva en double: en un bar la rocola no se apaga nunca, y "los segundos que llevo
+        // encendida" guardados en un float se quedan sin decimales a los pocos dias -a los 25 dias, un float
+        // ya solo distingue de 0.25 en 0.25 radianes- y el titileo empezaria a ir a saltos.
+        //
+        // La primera version de esta tabla recibia un float, o sea que tiraba el double a la basura JUSTO
+        // ANTES de usarlo y volvia a meter el fallo que ese comentario avisa de no meter. La vuelta a la
+        // rueda se hace aqui en double, y lo que se pasa a float es el resto, que siempre esta entre 0 y 1.
+        internal static float Titileo(double x)
         {
-            // A vueltas de la rueda, quedandose con la parte de detras de la coma. El % de coma flotante ya
-            // devuelve el resto con el signo del numerador, asi que basta con sumar uno si salio negativo.
-            float u = x * (1f / 6.28318531f);
-            u -= (float)Math.Floor(u);
-            float f = u * TitN;
+            double u = x * (1.0 / 6.28318530717958648);
+            u -= Math.Floor(u);
+            float f = (float)(u * TitN);
             int i = (int)f;
             if (i >= TitN) i = TitN - 1;
             float r = f - i;
@@ -735,7 +741,7 @@ namespace Rocola
             int vi = 0;
             for (int i = 0; i < n; i++)
             {
-                double tw = Titileo((float)(t * spd[i]) + ph[i]);
+                double tw = Titileo(t * spd[i] + ph[i]);
                 uint a = (uint)(tw * fade * 255); if (a > 255) a = 255;
                 uint c = (a << 24) | (col[i] & 0x00FFFFFF);             // alfa = brillo (titileo * entrecruzado); rgb = color
                 float s = sz[i];
