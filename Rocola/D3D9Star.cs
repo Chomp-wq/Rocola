@@ -632,6 +632,7 @@ namespace Rocola
         // que el campo estrellado se hubiera apagado. Por detras de una aurora de verdad tambien se ven.
         internal delegate void Dibuja();
         public Dibuja TrasCielo;
+        public Dibuja TrasEstrellas;   // lo que va DELANTE de las estrellas y detras de las fugaces (la luna)
 
         // Inicia el cuadro: dibuja el cielo + estrellas. Luego se pueden apilar texturas con DrawQuad y cerrar
         // con End. 'pulse' ya viene atenuado (es brillo); 'pulseCrudo' NO, porque la deriva del campo es
@@ -713,6 +714,7 @@ namespace Rocola
             }
             BuildStarVerts(starV, sx, sy, sphase, sspeed, ssize, skind, sforma, scol, nStars, t, (transing ? tr : 1f) * dim, pulse, driftX, driftY, w, h);   // patron ACTUAL (x atenuacion al navegar)
             gpu.DrawStars(starV, nStars * 2, glowTex);
+            if (TrasEstrellas != null) TrasEstrellas();   // la luna va aqui: esta muchisimo mas cerca que las estrellas
             UpdateAndDrawShoots(w, h, nowMs, finoMs);
             return true;
         }
@@ -871,14 +873,17 @@ namespace Rocola
                     if (!shoots[i].On)
                     {
                         shoots[i].On = true;
-                        shoots[i].X = (float)(srnd.NextDouble() * w * 0.6);
-                        shoots[i].Y = (float)(srnd.NextDouble() * h * 0.45);
-                        float spd = (w + h) * (0.40f + (float)srnd.NextDouble() * 0.45f);   // VELOCIDAD variada
-                        shoots[i].VX = spd; shoots[i].VY = spd * (0.30f + (float)srnd.NextDouble() * 0.40f);
-                        shoots[i].MaxLife = 0.9f + (float)srnd.NextDouble() * 0.8f; shoots[i].Life = shoots[i].MaxLife;
-                        shoots[i].Wdt = 0.9f + (float)srnd.NextDouble() * 1.5f;      // GROSOR variado
-                        shoots[i].Tail = 0.07f + (float)srnd.NextDouble() * 0.10f;   // LARGO de estela variado
-                        shoots[i].Col = shootPal[srnd.Next(shootPal.Length)];        // COLOR variado
+                        // De donde sale y hacia donde va lo dice Form1, fuera de este archivo, para que las
+                        // dos paredes tiren las MISMAS fugaces (ver TiraFugaz).
+                        bool gorda;
+                        Form1.TiraFugaz(srnd, w, h, out shoots[i].X, out shoots[i].Y,
+                                        out shoots[i].VX, out shoots[i].VY,
+                                        out shoots[i].MaxLife, out shoots[i].Wdt, out shoots[i].Tail, out gorda);
+                        shoots[i].Life = shoots[i].MaxLife;
+                        // Las gordas salen blancas o doradas: una bola de fuego no es rosa. Las demas, de la
+                        // paleta de siempre.
+                        shoots[i].Col = gorda ? ((srnd.Next(2) == 0) ? 0x00FFFFFFu : 0x00FFE6A0u)
+                                              : shootPal[srnd.Next(shootPal.Length)];
                         break;
                     }
             }
@@ -903,7 +908,12 @@ namespace Rocola
                 VShoot(shootV, vi + 3, s.X - hs, s.Y - hs, hc); VShoot(shootV, vi + 4, s.X + hs, s.Y + hs, hc); VShoot(shootV, vi + 5, s.X - hs, s.Y + hs, hc);
                 vi += 6;
                 s.X += s.VX * dt; s.Y += s.VY * dt; s.Life -= dt;
-                if (s.Life <= 0f || s.X > w + 60 || s.Y > h + 60) s.On = false;
+                // POR LOS CUATRO LADOS, y no es un detalle: antes solo podian irse por la derecha o por
+                // abajo porque solo podian ir hacia alla. Con la direccion suelta, una que se vaya por la
+                // izquierda seguiria viva, invisible y ocupando una de las dos ranuras hasta que se le
+                // acabara la vida, y mientras tanto no saldria ninguna otra.
+                if (s.Life <= 0f || s.X > w + Form1.FugazBorra || s.X < -Form1.FugazBorra
+                                 || s.Y > h + Form1.FugazBorra || s.Y < -Form1.FugazBorra) s.On = false;
                 shoots[i] = s;
             }
             if (vi > 0) gpu.DrawShootStreaks(shootV, vi / 3);
@@ -1540,7 +1550,8 @@ namespace Rocola
         {
             SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.Opaque, true);
             SetStyle(ControlStyles.OptimizedDoubleBuffer, false);   // D3D9 maneja sus pixeles: nada de doble-buffer GDI
-            trasCielo = delegate { DibujaNieblas(); if (auCuadro.Has) DrawAurora(auCuadro); };
+            trasCielo = delegate { DibujaNieblas(); if (auCuadro.Has) DrawAurora(auCuadro); DibujaRuido(); };
+            trasEstrellas = delegate { DibujaLuna(); };
         }
 
         private void OnIdle(object sender, EventArgs e)
@@ -1597,6 +1608,8 @@ namespace Rocola
             if (uiTex != IntPtr.Zero) { D3D9.Release(uiTex); uiTex = IntPtr.Zero; }
             if (hazTex != IntPtr.Zero) { D3D9.Release(hazTex); hazTex = IntPtr.Zero; }
             if (nebTex != IntPtr.Zero) { D3D9.Release(nebTex); nebTex = IntPtr.Zero; }
+            if (ruidoTex != IntPtr.Zero) { D3D9.Release(ruidoTex); ruidoTex = IntPtr.Zero; ruTW = ruTH = 0; }
+            if (lunaTex != IntPtr.Zero) { D3D9.Release(lunaTex); lunaTex = IntPtr.Zero; luTW = luTH = 0; lunaDe = -1; }
             if (uiBotTex != IntPtr.Zero) { D3D9.Release(uiBotTex); uiBotTex = IntPtr.Zero; }
             for (int i = 0; i < MaxPiezas; i++)
             {
@@ -1752,6 +1765,7 @@ namespace Rocola
             // Se engancha SIEMPRE: aqui van la via lactea y las nebulosas, haya aurora o no.
             auCuadro.Has = auCuadro.Has && auCuadro.B != null && auCuadro.B.Length >= 8;
             stars.TrasCielo = trasCielo;
+            stars.TrasEstrellas = trasEstrellas;
             // Dispositivo perdido (sesion bloqueada, cambio de pantalla...): sin este respiro, el bucle de
             // Application.Idle reintentaria a TODA MAQUINA y clavaria un nucleo entero hasta recuperarlo.
             if (!stars.Begin(Width, Height, pulse, pulseCrudo)) { System.Threading.Thread.Sleep(5); return; }
@@ -2073,6 +2087,7 @@ namespace Rocola
         private double aurFinoAnt; private bool aurRelojOk;   // para medir el paso de cada cuadro (reloj FINO: ver AhoraMs)
         private GpuAurora auCuadro;                          // la aurora de ESTE cuadro (la pide el render y la dibuja TrasCielo)
         private readonly GpuStarfield.Dibuja trasCielo;      // delegado creado UNA vez (nada de basura por cuadro)
+        private readonly GpuStarfield.Dibuja trasEstrellas; // idem: la luna, delante de las estrellas
 
         // LA VIA LACTEA Y LAS NEBULOSAS. Son manchas grandes y muy suaves, o sea justo lo que se puede
         // dibujar CHIQUITO y estirar sin que se note: se hornean a un CUARTO de tamano y la tarjeta las
@@ -2089,11 +2104,24 @@ namespace Rocola
         // LAS DOS NEBULOSAS. El form las pone: una con el color del GENERO y otra con el de la CARATULA
         // (ver ColoresNebulosa). NebFase es la misma cuenta lenta que las hace ir a la deriva.
         public uint NebColor = 0xFF8C78FF, NebColor2 = 0xFF8C78FF;
+        public float HazFase = 0f;   // el reloj LENTO de la via lactea (una vuelta cada ~3 min); lo lleva Form1
+        public bool ConLuna = true;  // perilla de Ctrl+F3 (pestana DETALLES)
         public float NebFase = 0f;
         // CUANTO SE SALEN DE LA PANTALLA. Las dos capas van a la deriva, y para que al moverse no asome el
         // borde se dibujan un poco mas grandes que la pantalla y se mueven DENTRO de ese margen. Por eso no
         // hace falta que la textura se repita: nunca se ve donde acaba.
         private const float NebDeriva = 0.06f;
+        // CUANTO SE MUEVE LA VIA LACTEA, en parte de pantalla. La mitad que las nebulosas y con la vuelta
+        // seis veces mas larga: es lo que esta mas lejos de todo.
+        //
+        // Y SE MUEVE EN CIRCULO ACOTADO, no dando la vuelta por el borde como hacen las estrellas. Tiene que
+        // ser asi: una estrella que sale por la derecha reaparece por la izquierda y nadie lo nota porque es
+        // un punto, pero la via lactea es una BANDA que cruza la pantalla entera y su dibujo llega hasta los
+        // dos cantos. Envolverla partiria la banda por la mitad con una costura recta.
+        //
+        // El seno y el coseno se cierran EXACTOS en la vuelta del reloj, asi que no hay salto ni tiron al
+        // completarse: es el mismo truco que ya usan las nebulosas.
+        private const float HazDeriva = 0.035f;
         // Las dos capas van a TINTA ENTERA: cuanto se notan se decide en el dibujo (ver Form1.NebFuerza), no
         // aqui. Poner la fuerza en el alfa del vertice no valdria: ese alfa es un byte y no puede pasar de
         // uno, y lo que se eligio mirando es cuatro veces lo de antes.
@@ -2106,6 +2134,67 @@ namespace Rocola
             int mw = Math.Max(8, Width / 4), mh = Math.Max(8, Height / 4);
             using (Bitmap hz = GpuStarfield.BakeViaLactea(mw, mh)) hazTex = Upload(hazTex, ref hazTW, ref hazTH, hz, out hazU, out hazV);
             using (Bitmap nb = GpuStarfield.BakeNebulosas(mw, mh)) nebTex = Upload(nebTex, ref nebTW, ref nebTH, nb, out nebU, out nebV);
+            if (ruidoTex == IntPtr.Zero)
+                using (Bitmap rd = Form1.BakeRuidoGrande(RuidoTeja)) ruidoTex = Upload(ruidoTex, ref ruTW, ref ruTH, rd, out ruU, out ruV);
+        }
+
+        // EL GRANO QUE DESHACE LAS FRANJAS DEL CIELO. El por que esta en Form1, junto al dibujito: el cielo
+        // se pintaba en unas treinta franjas planas porque el canal que menos se mueve cambia un nivel de 255
+        // cada treinta pixeles, y el ojo engancha ese canto recto. Un grano de un nivel se lo quita.
+        //
+        // Va DESPUES del cielo, de las nieblas y de la aurora -que son las tres cosas que hacen bandas- y
+        // ANTES de las estrellas, que no las hacen y a las que no tiene nada que aportarles.
+        //
+        // Y va en trozos porque las texturas de aqui estan en modo "pegado al borde" y no se repiten solas:
+        // una teja de 1024 cubre una pantalla de bar en cuatro estampados, y una de 1024x768 en uno.
+        private const int RuidoTeja = 1024;
+        private IntPtr ruidoTex; private int ruTW, ruTH; private float ruU = 1f, ruV = 1f;
+
+        // LA LUNA. El dibujo lo hace Form1 -es el mismo que usa la pared horneada, para que las dos pongan
+        // la misma luna- y aqui solo se sube a la tarjeta una vez y se estampa un cuadrilatero por cuadro.
+        //
+        // El TINTE DEL AIRE va en el COLOR DEL VERTICE: la tarjeta multiplica la textura por el, asi que
+        // apagarla y enrojecerla segun a que altura este no cuesta absolutamente nada. En la pared horneada
+        // lo mismo pide una matriz de color guardada; aqui son tres numeros.
+        private IntPtr lunaTex; private int luTW, luTH; private float luU = 1f, luV = 1f;
+        private int lunaDe = -1, lunaW, lunaH;
+        private D3D9.Vtx[] lunaQuad = new D3D9.Vtx[6];
+        private void DibujaLuna()
+        {
+            if (!ConLuna || Height < 64) return;
+            if (lunaTex == IntPtr.Zero || lunaDe != Height)
+            {
+                using (Bitmap lb = Form1.BakeLuna(Height))
+                {
+                    lunaTex = Upload(lunaTex, ref luTW, ref luTH, lb, out luU, out luV);
+                    lunaW = lb.Width; lunaH = lb.Height;
+                }
+                lunaDe = Height;
+            }
+            if (lunaTex == IntPtr.Zero) return;
+            // Se pasea con el reloj lento de la via lactea, y acotada: nunca se va de su sitio. Ver el
+            // comentario de Form1 sobre por que NO lleva la deriva de las estrellas.
+            float mx = Width * Form1.LunaMenea, my = Height * Form1.LunaMenea;
+            float cx = Width * Form1.LunaX + (float)Math.Sin(HazFase) * mx;
+            float cy = Height * Form1.LunaY + (float)Math.Cos(HazFase) * my;
+            float fr, fg, fb;
+            Form1.TinteDelAire(cy, Height, out fr, out fg, out fb);
+            uint cr = (uint)(fr * 255f + 0.5f), cg = (uint)(fg * 255f + 0.5f), cb = (uint)(fb * 255f + 0.5f);
+            if (cr > 255) cr = 255; if (cg > 255) cg = 255; if (cb > 255) cb = 255;
+            uint col = 0xFF000000u | (cr << 16) | (cg << 8) | cb;
+            SetTexQuadA(lunaQuad, cx - lunaW / 2f, cy - lunaH / 2f, cx + lunaW / 2f, cy + lunaH / 2f, luU, luV, col);
+            stars.DrawQuad(lunaTex, lunaQuad);
+        }
+        private void DibujaRuido()
+        {
+            if (ruidoTex == IntPtr.Zero) return;
+            for (int y = 0; y < Height; y += RuidoTeja)
+                for (int x = 0; x < Width; x += RuidoTeja)
+                {
+                    float aw = Math.Min(RuidoTeja, Width - x), ah = Math.Min(RuidoTeja, Height - y);
+                    SetTexQuad(nieblaQuad, x, y, x + aw, y + ah, ruU * (aw / RuidoTeja), ruV * (ah / RuidoTeja));
+                    stars.DrawQuad(ruidoTex, nieblaQuad);
+                }
         }
 
         // Aqui hay DOS capas a pantalla completa, y ahi esta el escalon de en medio: la nebulosa lleva el
@@ -2133,7 +2222,11 @@ namespace Rocola
             }
             if (hazTex != IntPtr.Zero && Nieblas == GpuStarfield.Alto)
             {
-                SetTexQuad(nieblaQuad, 0, 0, Width, Height, hazU, hazV);
+                // El cuadrilatero se sale de la pantalla lo que dice el margen por los cuatro lados, asi que
+                // por mucho que se mueva su borde nunca asoma. Es lo mismo que hace NieblaDeriva.
+                float mx = Width * HazDeriva, my = Height * HazDeriva;
+                float ox = (float)Math.Sin(HazFase) * mx, oy = (float)Math.Cos(HazFase) * my;
+                SetTexQuad(nieblaQuad, -mx + ox, -my + oy, Width + mx + ox, Height + my + oy, hazU, hazV);
                 stars.DrawQuad(hazTex, nieblaQuad);
             }
         }

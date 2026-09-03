@@ -558,8 +558,11 @@ namespace Rocola
             pg.SetBounds(0, 96, 960, 636);
             pg.BackColor = Color.FromArgb(11, 14, 32);
 
-            Tarjeta tVida = new Tarjeta(); tVida.SetBounds(16, 4, 456, 424); tVida.Titulo = "LO QUE SE VE"; tVida.Acento = cVida;
-            Tarjeta tResp = new Tarjeta(); tResp.SetBounds(488, 4, 456, 424); tResp.Titulo = "LA PARED QUE RESPIRA"; tResp.Acento = cResp;
+            // LAS DOS TARJETAS CRECEN 72 PX para que quepa el sexto interruptor. La pagina son 636 y debajo
+            // quedaban el pie y el boton de fabrica con sitio de sobra; ahora bajan y siguen cabiendo. La
+            // bateria 'luna' lo comprueba armando la pagina de verdad y midiendola.
+            Tarjeta tVida = new Tarjeta(); tVida.SetBounds(16, 4, 456, 496); tVida.Titulo = "LO QUE SE VE"; tVida.Acento = cVida;
+            Tarjeta tResp = new Tarjeta(); tResp.SetBounds(488, 4, 456, 496); tResp.Titulo = "LA PARED QUE RESPIRA"; tResp.Acento = cResp;
 
             // ---------------- LO QUE SE VE: cinco interruptores con su explicacion ----------------
             string[] nombre = {
@@ -568,6 +571,7 @@ namespace Rocola
                 "Que el fondo tome el color de la portada",
                 "Ensenar las portadas de la cola",
                 "Media vuelta al cambiar de cancion",
+                "La luna en el cielo",
             };
             string[] explica = {
                 "Al pedir una cancion, el aviso dice que puesto ocupa y cuantos\nminutos faltan, en vez de solo \"Cancion agregada\".",
@@ -575,6 +579,7 @@ namespace Rocola
                 "Del disco se toma SOLO de que color es. Lo oscuro y lo vivo lo\nsigue mandando el genero: ninguna portada estropea la pantalla.",
                 "En la capsula de \"En cola\", las caratulas de las tres proximas.\nSi hay mas de tres, la ultima lleva un \"+2\".",
                 "El cubito de la barra de abajo gira media vuelta y la portada\nnueva aparece en el camino, en vez de cambiar de golpe.",
+                "Una luna baja a un lado, con su halo, que se apaga y tira a\nnaranja cerca del horizonte igual que hacen las estrellas.",
             };
             Interruptor[] sw = new Interruptor[nombre.Length];
             for (int i = 0; i < nombre.Length; i++)
@@ -592,6 +597,7 @@ namespace Rocola
             sw[2].Checked = fondoPortadaOn;
             sw[3].Checked = colaPortadasOn;
             sw[4].Checked = relevoOn;
+            sw[5].Checked = lunaOn;
 
             // ---------------- LA PARED QUE RESPIRA ----------------
             Interruptor swResp = new Interruptor();
@@ -631,14 +637,14 @@ namespace Rocola
 
             tResp.Controls.Add(swResp); tResp.Controls.Add(lResp); tResp.Controls.Add(lCuanto); tResp.Controls.Add(lFreno);
 
-            Label lPie = new Label(); lPie.SetBounds(16, 444, 928, 48); lPie.BackColor = Color.Transparent;
+            Label lPie = new Label(); lPie.SetBounds(16, 508, 928, 48); lPie.BackColor = Color.Transparent;
             lPie.ForeColor = cApagado; lPie.Font = fDes;
             lPie.Text = "Nada de esto le quita ni le pone rendimiento a la rocola: no son las perillas de la pestaña de Imagen,\n"
                       + "que ahi si se cambia trabajo por bonito. Estas son de gusto, y apagarlas no gana nada mas que quitarlas\n"
                       + "de la vista. Todo lo que se toque aqui se guarda al cerrar la ventana.";
 
             BotonPlano bResetD = new BotonPlano();
-            bResetD.SetBounds(16, 508, 300, 38); bResetD.Font = fBot; bResetD.Text = "Detalles como de fabrica";
+            bResetD.SetBounds(16, 572, 300, 38); bResetD.Font = fBot; bResetD.Text = "Detalles como de fabrica";
 
             // ---------------- LO QUE SE ENSENA ----------------
             Action pinta = delegate
@@ -679,6 +685,9 @@ namespace Rocola
                 LayoutControls();
             };
             sw[4].CheckedChanged += delegate { relevoOn = sw[4].Checked; f3CambioGraf = true; };
+            // La luna NO va horneada en el cielo: se pega encima en cada cuadro, asi que con pedir un
+            // repintado basta y no hay que rehacer nada.
+            sw[5].CheckedChanged += delegate { lunaOn = sw[5].Checked; f3CambioGraf = true; RepintaFondo(); };
             swResp.CheckedChanged += delegate { respiraOn = swResp.Checked; f3CambioGraf = true; pinta(); };
             for (int k = 0; k < 3; k++)
             {
@@ -699,12 +708,13 @@ namespace Rocola
             bResetD.Click += delegate
             {
                 turnoOn = true; marcaColaOn = true; fondoPortadaOn = true; colaPortadasOn = true;
-                relevoOn = true; respiraOn = true;
+                relevoOn = true; respiraOn = true; lunaOn = true;
                 respiraFuerza = FuerzaRespira("4.5");
                 MuestraRespiracion();
-                sw[0].Checked = true; sw[1].Checked = true; sw[2].Checked = true; sw[3].Checked = true; sw[4].Checked = true;
+                for (int k = 0; k < sw.Length; k++) sw[k].Checked = true;
                 swResp.Checked = true;
                 f3CambioGraf = true;
+                RepintaFondo();   // la luna vuelve a encenderse: que se vea ya
                 pinta();
                 ShowToast("Detalles como de fabrica", Color.FromArgb(40, 130, 90));
             };

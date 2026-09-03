@@ -134,14 +134,23 @@ class Reposo
             // OJO con el orden: la fugaz se DIBUJA donde esta y DESPUES avanza, o sea que el cuadro de
             // despues de una espera la ensena todavia donde estaba. Hacen falta dos cuadros DESPUES de la
             // espera para verla en dos sitios distintos.
-            System.Threading.Thread.Sleep(60);
-            using (Graphics g = Graphics.FromImage(b1)) { ar[0] = g; mDraw.Invoke(cielo, ar); }
-            System.Threading.Thread.Sleep(60);
-            using (Graphics g = Graphics.FromImage(b2)) { ar[0] = g; mDraw.Invoke(cielo, ar); }
+            //
+            // Y SE INSISTE HASTA VERLA, en vez de mirar dos cuadros y ya. Antes bastaba con dos: la fugaz
+            // nacia DENTRO de la pantalla, asi que se veia desde el primer momento. Ahora nace FUERA -pegada
+            // al borde por donde entra, para que le quede pantalla por delante y de tiempo a verla- y tarda
+            // una o dos decimas en asomar; las de las gordas, que van lentas, algo mas. Con dos cuadros la
+            // prueba salia bien o mal segun la suerte, que es peor que no tenerla.
             int distintos = 0;
-            for (int y = 0; y < h; y += 2)
-                for (int x = 0; x < w; x += 2)
-                    if (b1.GetPixel(x, y).ToArgb() != b2.GetPixel(x, y).ToArgb()) distintos++;
+            for (int intento = 0; intento < 24 && distintos == 0; intento++)
+            {
+                System.Threading.Thread.Sleep(60);
+                using (Graphics g = Graphics.FromImage(b1)) { ar[0] = g; mDraw.Invoke(cielo, ar); }
+                System.Threading.Thread.Sleep(60);
+                using (Graphics g = Graphics.FromImage(b2)) { ar[0] = g; mDraw.Invoke(cielo, ar); }
+                for (int y = 0; y < h; y += 2)
+                    for (int x = 0; x < w; x += 2)
+                        if (b1.GetPixel(x, y).ToArgb() != b2.GetPixel(x, y).ToArgb()) distintos++;
+            }
             Console.WriteLine("     con el cielo congelado, pixeles que aun se mueven: " + distintos);
             Check(distintos > 0, "la fugaz avanza aunque el cielo no se rehaga: va dibujada en vivo");
             b1.Dispose(); b2.Dispose();
