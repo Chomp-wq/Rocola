@@ -457,6 +457,10 @@ namespace Rocola
         private D3D9.Vtx[] starV2;                            // vertices del patron ANTERIOR durante el entrecruzado
         private int transStart; private bool transing;
         private const int TransMs = 1300;                    // duracion del entrecruzado
+        // POR DEBAJO DE ESTO NO SE VE NADA. El brillo de una estrella acaba siendo un numero de 0 a 255, asi
+        // que un brillo de dos milesimas sale redondeado a cero: transparente del todo. Armar y mandar a la
+        // tarjeta un juego entero de estrellas para que dibuje nada es trabajo tirado.
+        private const float FadeMinimo = 0.002f;             // medio nivel de 255
         // Estrellas FUGACES: en CPU se podian pero costaban; en GPU son un par de cuadrangulos aditivos.
         // Cada una con tamaño, color, velocidad y largo de estela distintos.
         private struct Shoot { public bool On; public float X, Y, VX, VY, Life, MaxLife, Wdt, Tail; public uint Col; }
@@ -672,9 +676,18 @@ namespace Rocola
             SetQuad(skyV, 6, 0, midY, w, h, skyMid, skyMid, skyBot, skyBot);
             gpu.DrawSky(skyV);
             if (TrasCielo != null) TrasCielo();   // la aurora va aqui: entre el cielo y las estrellas
-            if (transing && px != null)   // patron ANTERIOR desvaneciendose
+            // EL PATRON ANTERIOR, DESVANECIENDOSE. Mientras dura el cruce -1.3 segundos, una vez por
+            // minuto- se arman y se dibujan DOS juegos de estrellas en vez de uno, o sea el doble de trabajo:
+            // hasta 2800 estrellas por cuadro.
+            //
+            // Y la ultima parte de ese segundo y pico no se ve: el brillo de las estrellas es un numero de 0
+            // a 255, asi que en cuanto lo que queda del patron viejo baja de medio nivel, todas sus estrellas
+            // salen ya transparentes del todo. Armarlas y mandarlas a la tarjeta para que dibuje nada es
+            // trabajo tirado, y justo del caro. Se corta ahi: no se ve, porque no habia nada que ver.
+            float fadeAnt = (1f - tr) * dim;
+            if (transing && px != null && fadeAnt > FadeMinimo)
             {
-                BuildStarVerts(starV2, px, py, pphase, pspeed, psize, pkind, pforma, pcol, pnStars, t, (1f - tr) * dim, pulse, driftX, driftY, w, h);
+                BuildStarVerts(starV2, px, py, pphase, pspeed, psize, pkind, pforma, pcol, pnStars, t, fadeAnt, pulse, driftX, driftY, w, h);
                 gpu.DrawStars(starV2, pnStars * 2, glowTex);
             }
             BuildStarVerts(starV, sx, sy, sphase, sspeed, ssize, skind, sforma, scol, nStars, t, (transing ? tr : 1f) * dim, pulse, driftX, driftY, w, h);   // patron ACTUAL (x atenuacion al navegar)
@@ -685,12 +698,44 @@ namespace Rocola
 
         // Construye los vertices de un campo de estrellas (titileo + latido) con un factor de brillo global
         // (para el entrecruzado del patron). Reutilizable por el patron actual y por el anterior.
+        // EL TITILEO DE UNA ESTRELLA, POR TABLA Y NO POR SENO.
+        //
+        // Esto se hace una vez POR ESTRELLA Y POR CUADRO: hasta mil cuatrocientas estrellas a ciento ochenta
+        // cuadros por segundo son 252.000 senos por segundo, y el DOBLE durante el segundo en que se cruzan
+        // los dos patrones de estrellas, una vez por minuto. Medido: 24 milisegundos de cada mil.
+        //
+        // Un seno no se puede calcular; se aproxima. La tabla es otra aproximacion, y aqui la pregunta buena
+        // no es cual es "mas exacta" sino si la diferencia SE VE: lo que sale de aqui acaba siendo el alfa de
+        // un pixel, o sea un numero de 0 a 255. Con 1024 entradas y mezclando las dos vecinas, el error queda
+        // por debajo de una centesima de nivel. La bateria 'fondocoste' lo comprueba en 20.000 puntos.
+        private const int TitN = 1024;
+        private static readonly float[] TitTab = HazTitTab();
+        private static float[] HazTitTab()
+        {
+            float[] t = new float[TitN + 1];
+            for (int i = 0; i <= TitN; i++)
+                t[i] = (float)(0.45 + 0.55 * (0.5 + 0.5 * Math.Sin(2.0 * Math.PI * i / TitN)));
+            return t;   // la ultima repite la primera: asi el mezclado del final no se sale de la tabla
+        }
+        internal static float Titileo(float x)
+        {
+            // A vueltas de la rueda, quedandose con la parte de detras de la coma. El % de coma flotante ya
+            // devuelve el resto con el signo del numerador, asi que basta con sumar uno si salio negativo.
+            float u = x * (1f / 6.28318531f);
+            u -= (float)Math.Floor(u);
+            float f = u * TitN;
+            int i = (int)f;
+            if (i >= TitN) i = TitN - 1;
+            float r = f - i;
+            return TitTab[i] + (TitTab[i + 1] - TitTab[i]) * r;   // entre las dos vecinas: sin escalones
+        }
+
         private static void BuildStarVerts(D3D9.Vtx[] buf, float[] xs, float[] ys, float[] ph, float[] spd, float[] sz, int[] kd, int[] fm, uint[] col, int n, double t, float fade, float pulse, float dx, float dy, float w, float h)
         {
             int vi = 0;
             for (int i = 0; i < n; i++)
             {
-                double tw = 0.45 + 0.55 * (0.5 + 0.5 * Math.Sin(t * spd[i] + ph[i]));
+                double tw = Titileo((float)(t * spd[i]) + ph[i]);
                 uint a = (uint)(tw * fade * 255); if (a > 255) a = 255;
                 uint c = (a << 24) | (col[i] & 0x00FFFFFF);             // alfa = brillo (titileo * entrecruzado); rgb = color
                 float s = sz[i];
