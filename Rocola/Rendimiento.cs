@@ -735,9 +735,14 @@ namespace Rocola
             pg.SetBounds(0, 96, 960, 636);
             pg.BackColor = Color.FromArgb(11, 14, 32);
 
-            Tarjeta t1 = new Tarjeta(); t1.SetBounds(16, 4, 928, 168); t1.Titulo = "DE QUE COLOR ES CADA CANCION"; t1.Acento = cAc;
-            Tarjeta t2 = new Tarjeta(); t2.SetBounds(16, 184, 928, 156); t2.Titulo = "CUANTO AZUL"; t2.Acento = cAc;
-            Tarjeta t3 = new Tarjeta(); t3.SetBounds(16, 352, 928, 156); t3.Titulo = "CUANTO NEGRO"; t3.Acento = cAc;
+            // LAS CUATRO TARJETAS VAN APRETADAS, y esta medido. La pagina son 636 px y no puede crecer: debajo
+            // esta la banda del sello de version. Antes eran tres tarjetas holgadas (168+156+156) que dejaban
+            // 26 px de aire cada una; ahora son cuatro (148+134+134+146) que acaban en 576, con el pie y el
+            // boton de fabrica repartidos a lo ancho en la ultima banda en vez de uno debajo del otro.
+            Tarjeta t1 = new Tarjeta(); t1.SetBounds(16, 2, 928, 148); t1.Titulo = "DE QUE COLOR ES CADA CANCION"; t1.Acento = cAc;
+            Tarjeta t2 = new Tarjeta(); t2.SetBounds(16, 154, 928, 134); t2.Titulo = "CUANTO AZUL"; t2.Acento = cAc;
+            Tarjeta t3 = new Tarjeta(); t3.SetBounds(16, 292, 928, 134); t3.Titulo = "CUANTO NEGRO"; t3.Acento = cAc;
+            Tarjeta t4 = new Tarjeta(); t4.SetBounds(16, 430, 928, 146); t4.Titulo = "CUANTO AIRE HAY EN EL CIELO"; t4.Acento = cAc;
 
             // ---------------- 1) quien manda en el tono: el genero o la caratula ----------------
             Label l1 = new Label(); l1.SetBounds(16, 36, 896, 62); l1.BackColor = Color.Transparent;
@@ -751,7 +756,7 @@ namespace Rocola
             BotonPlano[] b1 = new BotonPlano[3];
             for (int k = 0; k < 3; k++)
             {
-                b1[k] = new BotonPlano(); b1[k].SetBounds(16 + k * 200, 112, 192, 30);
+                b1[k] = new BotonPlano(); b1[k].SetBounds(16 + k * 200, 110, 192, 30);
                 b1[k].Font = fBot; b1[k].Text = nom1[k];
                 t1.Controls.Add(b1[k]);
             }
@@ -766,7 +771,7 @@ namespace Rocola
             BotonPlano[] b2 = new BotonPlano[3];
             for (int k = 0; k < 3; k++)
             {
-                b2[k] = new BotonPlano(); b2[k].SetBounds(16 + k * 200, 98, 192, 30);
+                b2[k] = new BotonPlano(); b2[k].SetBounds(16 + k * 200, 94, 192, 30);
                 b2[k].Font = fBot; b2[k].Text = nom2[k];
                 t2.Controls.Add(b2[k]);
             }
@@ -781,20 +786,50 @@ namespace Rocola
             BotonPlano[] b3 = new BotonPlano[3];
             for (int k = 0; k < 3; k++)
             {
-                b3[k] = new BotonPlano(); b3[k].SetBounds(16 + k * 200, 98, 192, 30);
+                b3[k] = new BotonPlano(); b3[k].SetBounds(16 + k * 200, 94, 192, 30);
                 b3[k].Font = fBot; b3[k].Text = nom3[k];
                 t3.Controls.Add(b3[k]);
             }
 
-            t1.Controls.Add(l1); t2.Controls.Add(l2); t3.Controls.Add(l3);
+            // ---------------- 4) cuanto aire hay delante de las estrellas ----------------
+            // Son tres numeros -cuanto se apaga, cuanto enrojece y cuanto centellea la estrella de abajo- pero
+            // UN SOLO mando, porque son la misma cosa: cuanto aire hay delante. Un cielo con las de abajo
+            // apagadas pero igual de blancas no es medio efecto, es un cielo raro.
+            // Y SI AHORA MISMO NO HAY TARJETA GRAFICA, QUE LO DIGA, y en la tercera linea en vez de en una
+            // cuarta: la tarjeta esta medida al milimetro y no hay sitio para una linea de mas. Esto se hace
+            // estrella por estrella al dibujar, y sin tarjeta las estrellas van horneadas en capas que se
+            // deslizan: no se les puede atar nada a la altura de la pantalla. El mando sigue vivo -se guarda
+            // y valdra en el equipo que si la tenga-, pero un mando que no hace nada y no lo dice es peor
+            // que no tenerlo.
+            bool conTarjeta = false;
+#if ROCOLA_GPU
+            conTarjeta = (gpuEnabled && gpuPanel != null);
+#endif
+            Label l4 = new Label(); l4.SetBounds(16, 36, 896, 62); l4.BackColor = Color.Transparent;
+            l4.ForeColor = cTenue; l4.Font = fDes;
+            l4.Text = "En un cielo de verdad, mirando al horizonte se atraviesa muchisimo mas aire que mirando arriba: las estrellas\n"
+                    + "de abajo salen mas apagadas, tiran a naranja y centellean mucho mas. Eso es lo que le da FONDO al cielo.\n"
+                    + (conTarjeta
+                       ? "Y ademas le deja el sitio al resplandor del genero, que vive justo ahi abajo. En PLANO salen todas iguales."
+                       : "AHORA MISMO esta rocola dibuja SIN tarjeta grafica: esto se guarda, pero aqui no se va a ver.");
+            string[] nom4 = { "Plano", "Suave", "Normal", "Fuerte" };
+            string[] val4 = { "0", "1", "2", "3" };
+            BotonPlano[] b4 = new BotonPlano[4];
+            for (int k = 0; k < 4; k++)
+            {
+                b4[k] = new BotonPlano(); b4[k].SetBounds(16 + k * 200, 108, 192, 30);
+                b4[k].Font = fBot; b4[k].Text = nom4[k];
+                t4.Controls.Add(b4[k]);
+            }
+            t1.Controls.Add(l1); t2.Controls.Add(l2); t3.Controls.Add(l3); t4.Controls.Add(l4);
 
-            Label lPie = new Label(); lPie.SetBounds(16, 520, 928, 32); lPie.BackColor = Color.Transparent;
+            Label lPie = new Label(); lPie.SetBounds(330, 582, 614, 32); lPie.BackColor = Color.Transparent;
             lPie.ForeColor = cApagado; lPie.Font = fDes;
-            lPie.Text = "La pared esta detras de esta ventana: toca una y mirala. Nada de esto le quita ni le pone rendimiento a la\n"
-                      + "rocola -son los mismos tres colores de siempre, con otros numeros- y todo se guarda al cerrar.";
+            lPie.Text = "La pared esta detras de esta ventana: toca una y mirala. Todo se guarda al\n"
+                      + "cerrar, y ninguna de las cuatro cuesta ni un cuadro por segundo (medido).";
 
             BotonPlano bReset = new BotonPlano();
-            bReset.SetBounds(16, 564, 300, 38); bReset.Font = fBot; bReset.Text = "Colores como de fabrica";
+            bReset.SetBounds(16, 580, 300, 38); bReset.Font = fBot; bReset.Text = "Colores como de fabrica";
 
             // ---------------- lo que se ensena ----------------
             Action pinta = delegate
@@ -802,6 +837,7 @@ namespace Rocola
                 Pinta3(b1, cual1(), cOn, cOff, cBordeOn, cBordeOff, cApagado);
                 Pinta3(b2, cual2(), cOn, cOff, cBordeOn, cBordeOff, cApagado);
                 Pinta3(b3, cual3(), cOn, cOff, cBordeOn, cBordeOff, cApagado);
+                Pinta3(b4, AirePaso, cOn, cOff, cBordeOn, cBordeOff, cApagado);   // aqui el paso ES el numero
             };
             for (int k = 0; k < 3; k++)
             {
@@ -812,14 +848,21 @@ namespace Rocola
                 b2[k].Click += delegate { cieloAzul = AzulCielo(val2[mio]); f3CambioGraf = true; RepintaFondo(); pinta(); };
                 b3[k].Click += delegate { cieloCorte = CorteCielo(val3[mio]); f3CambioGraf = true; RepintaFondo(); pinta(); };
             }
+            for (int k = 0; k < 4; k++)
+            {
+                int mio = k;
+                b4[k].Click += delegate { airePaso = PasoDelAire(val4[mio]); f3CambioGraf = true; RepintaFondo(); pinta(); };
+            }
             bReset.Click += delegate
             {
                 portadaManda = PesoPortada("50"); cieloAzul = AzulCielo("100"); cieloCorte = CorteCielo("42");
+                airePaso = PasoDelAire("2");
                 f3CambioGraf = true; RepintaFondo(); pinta();
                 ShowToast("Colores como de fabrica", Color.FromArgb(40, 130, 90));
             };
 
-            pg.Controls.Add(t1); pg.Controls.Add(t2); pg.Controls.Add(t3); pg.Controls.Add(lPie); pg.Controls.Add(bReset);
+            pg.Controls.Add(t1); pg.Controls.Add(t2); pg.Controls.Add(t3); pg.Controls.Add(t4);
+            pg.Controls.Add(lPie); pg.Controls.Add(bReset);
             pinta();
             return pg;
         }

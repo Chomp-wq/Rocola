@@ -1558,6 +1558,7 @@ namespace Rocola
                     else if (s.StartsWith("portada_manda=")) portadaManda = PesoPortada(s.Substring(14));
                     else if (s.StartsWith("cielo_azul=")) cieloAzul = AzulCielo(s.Substring(11));
                     else if (s.StartsWith("cielo_negro=")) cieloCorte = CorteCielo(s.Substring(12));
+                    else if (s.StartsWith("cielo_aire=")) airePaso = PasoDelAire(s.Substring(11));
                     else if (s.StartsWith("fondo_portada=")) fondoPortadaOn = s.Substring(14).Trim() != "0";   // el fondo toma el tono de la portada
                     else if (s.StartsWith("cola_portadas=")) colaPortadasOn = s.Substring(14).Trim() != "0";   // las portaditas en la capsula de la cola
                     else if (s.StartsWith("relevo=")) relevoOn = s.Substring(7).Trim() != "0";   // la media vuelta del cubito al cambiar de cancion
@@ -1742,6 +1743,7 @@ namespace Rocola
                 sb.Append("portada_manda=").Append(Math.Round(portadaManda * 100f)).Append("\r\n");
                 sb.Append("cielo_azul=").Append(Math.Round(cieloAzul * 100f)).Append("\r\n");
                 sb.Append("cielo_negro=").Append(Math.Round(cieloCorte * 100f)).Append("\r\n");
+                sb.Append("cielo_aire=").Append(airePaso).Append("\r\n");
                 sb.Append("fondo_portada=").Append(fondoPortadaOn ? "1" : "0").Append("\r\n");
                 sb.Append("cola_portadas=").Append(colaPortadasOn ? "1" : "0").Append("\r\n");
                 sb.Append("relevo=").Append(relevoOn ? "1" : "0").Append("\r\n");
@@ -3745,13 +3747,37 @@ namespace Rocola
             return (float)Math.Pow(u, AireCurva);
         }
 
-        // LOS TRES NUMEROS DE GUSTO. No se sacan de ninguna cuenta: son cuanto se nota el efecto, y se
-        // eligieron MIRANDO -dibujando el cielo a PNG con varias combinaciones y comparando- igual que se
-        // hizo con las nebulosas. La bateria 'cielohondo' los vigila para que nadie los deje en cero sin
-        // querer y el cielo vuelva a quedarse plano sin que salte nada.
-        internal const float AireApaga = 0.55f;      // brillo que PIERDE una estrella pegada al suelo (0 = ninguno)
-        internal const float AireCalor = 0.55f;      // cuanto enrojece ahi abajo (0 = sale del mismo color que arriba)
-        internal const float AireCentelleo = 0.9f;   // cuanto MAS titila ahi abajo (0 = titila igual que arriba)
+        // CUANTO SE NOTA, QUE ES COSA DE GUSTO Y POR ESO ES UNA PERILLA.
+        //
+        // Son tres numeros -cuanto se apaga una estrella pegada al suelo, cuanto enrojece y cuanto mas
+        // centellea- pero NO se eligen por separado. Van juntos porque son la misma cosa: cuanto aire hay
+        // delante. Un cielo con las estrellas de abajo apagadas pero igual de blancas no es "medio efecto",
+        // es un cielo raro. Asi que la perilla es UNA, de cuatro pasos, y cada paso lleva sus tres numeros.
+        //
+        // Y los cuatro pasos se eligieron MIRANDO: dibujando el cielo a PNG con las cuatro combinaciones y
+        // comparandolas de dos en dos, igual que se hizo con las nebulosas. A ojo no se elige esto.
+        private static readonly float[] AireApagaPaso     = { 0f, 0.35f, 0.55f, 0.75f };   // brillo que PIERDE la de abajo
+        private static readonly float[] AireCalorPaso     = { 0f, 0.35f, 0.55f, 0.72f };   // cuanto enrojece
+        private static readonly float[] AireCentelleoPaso = { 0f, 0.50f, 0.90f, 1.40f };   // cuanto MAS centellea
+        internal const int AirePasos = 4;
+        private const int AirePasoDef = 2;                 // de fabrica, el tercero: se nota y no llama la atencion
+        private static int airePaso = AirePasoDef;         // "cielo_aire=" en config
+        // Acotada como todas las demas: en el archivo de configuracion se puede escribir cualquier cosa, y un
+        // disparate ahi no puede dejar la pantalla inservible en un bar a las dos de la manana.
+        internal static int PasoDelAire(string txt)
+        {
+            int v;
+            if (txt == null) return AirePasoDef;
+            if (!int.TryParse(txt.Trim(), System.Globalization.NumberStyles.Integer,
+                              System.Globalization.CultureInfo.InvariantCulture, out v)) return AirePasoDef;
+            if (v < 0) return 0;
+            if (v > AirePasos - 1) return AirePasos - 1;
+            return v;
+        }
+        internal static int AirePaso { get { return airePaso; } }
+        internal static float AireApaga { get { return AireApagaPaso[airePaso]; } }
+        internal static float AireCalor { get { return AireCalorPaso[airePaso]; } }
+        internal static float AireCentelleo { get { return AireCentelleoPaso[airePaso]; } }
 
         // AL TOCAR UNA PERILLA, QUE SE VEA YA. La ventana de Ctrl+F3 no tapa la pared entera -mide 960 de
         // ancho y la pantalla del bar 1920-, asi que se elige mirando: se toca y el fondo cambia al instante.
