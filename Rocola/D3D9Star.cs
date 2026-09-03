@@ -328,9 +328,13 @@ namespace Rocola
             float tr = transing ? (nowMs - transStart) / (float)TransMs : 1f;
             if (tr >= 1f) { transing = false; tr = 1f; }
 
-            // Cielo de 3 PARADAS como en CPU: negro arriba -> azul noche al 42% -> color del genero abajo
-            // (antes 2 paradas: el genero teñia casi toda la pantalla). Dos quads apilados en la parada media.
-            float midY = h * 0.42f;
+            // Cielo de 3 PARADAS como en CPU: negro arriba -> azul noche -> color del genero abajo (antes 2
+            // paradas: el genero teñia casi toda la pantalla). Dos quads apilados en la parada media.
+            //
+            // DONDE esta esa parada lo dice la perilla "cuanto negro" de Ctrl+F3, y el numero vive en Form1
+            // -fuera de este archivo- porque la pared horneada tiene que usar exactamente el mismo: si cada
+            // una llevara el suyo, la maquina del bar y la de repuesto pintarian cielos distintos.
+            float midY = h * Form1.CorteDelCielo;
             SetQuad(skyV, 0, 0, 0, w, midY, skyTop, skyTop, skyMid, skyMid);
             SetQuad(skyV, 6, 0, midY, w, h, skyMid, skyMid, skyBot, skyBot);
             gpu.DrawSky(skyV);

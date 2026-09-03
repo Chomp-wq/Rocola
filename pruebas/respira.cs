@@ -267,6 +267,29 @@ class Respira
                   "y con tarjeta grafica, los tres colores que se le pasan al panel tambien la llevan");
         }
 
+        Console.WriteLine("\n  6d) Y SE PUEDE VER AL ELEGIRLA\n");
+        // AQUI ESTABA LA OTRA MITAD DEL PROBLEMA, y no era del codigo: la respiracion esta hecha para NO
+        // verse mientras se mira. El freno pide diez segundos sin tocar un boton, tarda otros cuatro en
+        // volver, y entonces mueve el cielo tres decimas de nivel de 255 por segundo. Al pulsar el boton de
+        // "cuanto respira" acabas de tocar la rocola: no se mueve NADA, y parece que el boton no hace nada.
+        //
+        // Asi que mientras se elige -y solo mientras- respira deprisa. En el bar no cambia nada.
+        MethodBase demo = Met("MuestraRespiracion");
+        Check(demo != null, "hay una vista previa de la respiracion (MuestraRespiracion)");
+        Check(Codigo.Llama(Codigo.ConAyudantes(TF, "PaginaDetalles"), "MuestraRespiracion"),
+              "y la ventana de Ctrl+F3 la enciende al elegir cuanto respira");
+        float pasoDemo = Cte("RespiraDemoPaso"), pasoNormal = Cte("RespiraPaso");
+        float segsDemo = Cte("RespiraDemoSegs");
+        double vueltaDemo = (6.2831853 / pasoDemo) / 24.0, vueltaReal = (6.2831853 / pasoNormal) / 24.0;
+        Console.WriteLine("     mirandola: una vuelta cada " + vueltaDemo.ToString("0.0") + " s, durante " + segsDemo.ToString("0") + " s");
+        Console.WriteLine("     en el bar: una vuelta cada " + vueltaReal.ToString("0") + " s, para siempre");
+        Check(vueltaDemo < 5.0, "mirandola da una vuelta entera en segundos: por eso se ve");
+        Check(segsDemo >= 3 && segsDemo <= 15, "y se apaga sola en unos segundos, no se queda encendida");
+        Check(vueltaReal > 25, "y lo que ve el bar NO cambia: sigue siendo una marea de medio minuto");
+        // Y no se salta el tope: por deprisa que vaya, se mueve lo mismo que se eligio.
+        Check(Codigo.Llama(Codigo.ConAyudantes(TF, "AnimTimer_Tick"), "Respiracion"),
+              "y la vista previa pasa por la misma cuenta: no se salta la fuerza elegida");
+
         Console.WriteLine("\n  7) Y CASI NUNCA OBLIGA A REPINTAR\n");
         // El fondo del formulario solo se repinta cuando la atenuacion cambia lo bastante para verse
         // (0.0015). La respiracion mueve el brillo tan despacio que la mayoria de los cuadros no llegan.
