@@ -227,6 +227,16 @@ class FondoCoste
                 Check(msVerts > 0, "la medida de los vertices salio");
                 // El titileo tiene que salir IGUAL que con Math.Sin: si se cambia por una tabla, aqui se ve.
                 MethodInfo mTit = TGpu.GetMethod("Titileo", BindingFlags.Static | BindingFlags.NonPublic);
+                // Y QUE RECIBA UN DOUBLE. En un bar la rocola no se apaga nunca, y el reloj del campo de
+                // estrellas se lleva en double justo por eso: en float, a los pocos dias encendida se queda
+                // sin decimales y el titileo va a saltos. La primera version de esta tabla recibia un float
+                // -o sea que tiraba el double justo antes de usarlo- y volvia a meter ese fallo.
+                if (mTit != null)
+                {
+                    ParameterInfo[] pt = mTit.GetParameters();
+                    Check(pt.Length == 1 && pt[0].ParameterType == typeof(double),
+                          "el titileo recibe el reloj en double: en float se va a saltos a los pocos dias");
+                }
                 if (mTit == null)
                     Console.WriteLine("     (el titileo todavia se calcula con Math.Sin en cada estrella)");
                 else
@@ -242,6 +252,21 @@ class FondoCoste
                     }
                     Console.WriteLine("     el titileo por tabla se aparta como mucho " + peor.ToString("0.00") + " niveles de 255 del real");
                     Check(peor < 1.0, "y eso es menos de un nivel: invisible, que era la regla");
+                    // Y CON LA ROCOLA LLEVANDO SEMANAS ENCENDIDA. Se le da el reloj que tendria a los 30
+                    // dias y se mira que el titileo SIGA MOVIENDOSE cuadro a cuadro, en vez de quedarse
+                    // clavado en el mismo valor porque el numero ya no tiene decimales.
+                    double treinta = 30.0 * 24 * 3600;          // segundos en 30 dias
+                    double paso = 1.0 / 180.0;                  // un cuadro a 180 por segundo
+                    int quietos = 0; double antes = -1;
+                    for (int k = 0; k < 400; k++)
+                    {
+                        double v = Convert.ToDouble(mTit.Invoke(null, new object[] { (treinta + k * paso) * 0.8 }));
+                        if (k > 0 && v == antes) quietos++;
+                        antes = v;
+                    }
+                    Console.WriteLine("     con la rocola 30 dias encendida, el titileo se queda clavado "
+                                      + quietos + " cuadros de 400");
+                    Check(quietos < 20, "a los 30 dias el titileo sigue moviendose, no va a saltos");
                 }
 
                 Console.WriteLine("\n  4b) Y EL CRUCE DE PATRONES NO DIBUJA LO QUE YA NO SE VE\n");
