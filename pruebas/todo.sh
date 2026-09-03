@@ -28,7 +28,7 @@ FUENTES="$RAIZ/Rocola/Form1.cs $RAIZ/Rocola/Form1.Designer.cs $RAIZ/Rocola/Progr
 
 # Las que miran cosas que solo existen con tarjeta grafica (la aurora, el barrido de luz) van
 # contra el perfil de GPU; las demas contra el normal.
-CPU="ajustes bajo eqauto bajoauto calidad eqia nivel titulo duracion prueba prueba2 prueba3 prueba4 neon fps abc barrido2 espacio busca buscaigual bolsa genero pagina busmov parcial disco ssd etiqueta sala hojea cosecha resol letrero dsee noche respaldo ventana salida salir datos carpeta carpetas miniaturas pared tiemporeal bits franjas ciclo videosonido videos2 sobras gasto historial estrellas limite vacias videos franja colores carriles indice proyecto primera gasta usando escribe reposo cambio apagon unasola entrar iadatos entrenador corta deriva ligera simbolos leer opengl sonido arranca instala turno cara vuelta respira orden detalles calienta sola duerme teclea palomito moneda nebulosa pedidas tiron cielo"
+CPU="ajustes bajo eqauto bajoauto calidad eqia nivel titulo duracion prueba prueba2 prueba3 prueba4 neon fps abc barrido2 espacio busca buscaigual bolsa genero pagina busmov parcial disco ssd etiqueta sala hojea cosecha resol letrero dsee noche respaldo ventana salida salir datos carpeta carpetas miniaturas pared tiemporeal bits franjas ciclo videosonido videos2 sobras gasto historial estrellas limite vacias videos franja colores carriles indice proyecto primera gasta usando escribe reposo cambio apagon unasola entrar iadatos entrenador corta deriva ligera simbolos leer opengl sonido arranca instala turno cara vuelta respira orden detalles calienta sola duerme teclea palomito moneda nebulosa pedidas tiron cielo fondocoste"
 # 'ceremonia' SI va contra el perfil de tarjeta grafica: la portada que vuela a la cola reusa la
 # animacion del disco que se abre, y esa solo existe alli (sin tarjeta, VuelaALaCola se queda vacia).
 # 'turno' tampoco: la cuenta de cuanto falta para tu cancion vive en dos funciones puras -reciben
@@ -42,7 +42,7 @@ CPU="ajustes bajo eqauto bajoauto calidad eqia nivel titulo duracion prueba prue
 # existe la funcion que pone la cancion ni el bucle que la deja respirar.
 # 'arranca' sale en las dos: enciende la rocola de verdad, y hay que ver que enciende y se dibuja entera
 # TAMBIEN con el fondo por tarjeta grafica, que en esa version dibuja la pantalla casi completa.
-GPU="fondo anim presencia barrido tope calma entrar gl luz mover arranca bibliotecas banco paginar ceremonia respira teclea palomito nebulosa pedidas"
+GPU="fondo anim presencia barrido tope calma entrar gl luz mover arranca bibliotecas banco paginar ceremonia respira teclea palomito nebulosa pedidas fondocoste"
 
 # Y las que miran algo que SOLO EXISTE en la rama de tarjeta grafica. La limpieza de videos que no
 # suenan es una de esas: para saber si un video suena hay que descomprimir su sonido, y eso alli lo
