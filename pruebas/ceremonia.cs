@@ -166,12 +166,18 @@ class Ceremonia
             Check(AlgunaLlama(TAlb, "BakeCell", "Palomito"), "y se hornea DENTRO de la casilla, no encima");
             // LA MARCA TIENE QUE ENTRAR EN LA LLAVE DE LA CACHE. Si no, al pedir una cancion la casilla
             // ya horneada se seguiria usando tal cual y el palomito no saldria hasta que algo mas
-            // obligara a rehacerla. Son DOS cajas -la del camino normal y la del de tarjeta grafica- y
-            // las dos tienen que llevarlo, que si no una pagina se veria marcada y la otra no.
+            // obligara a rehacerla.
+            //
+            // Antes esto se comprobaba buscando el "#q" DENTRO de cada caja, y ahi estaba el fallo: eran
+            // dos sitios copiados, llego un tercero -la clave que se le entrega a la tarjeta grafica- y
+            // ese se quedo sin la marca, con lo que el palomito no se veia en ninguna de las dos maquinas
+            // de Windows. Ahora la clave la arma UNA funcion y las cajas se la piden; quien vigila que
+            // nadie se la salte es la bateria 'palomito'.
             string[] cajas = { "GetOrBakeCell", "PeekOrBakeCell" };
             for (int i = 0; i < cajas.Length; i++)
-                Check(AlgunaNombra(TAlb, cajas[i], "#q"),
-                      "la marca entra en la llave de la caja de casillas (" + cajas[i] + ")");
+                Check(AlgunaLlama(TAlb, cajas[i], "ClaveCasilla"),
+                      "la caja de casillas pide la llave a quien le pone la marca (" + cajas[i] + ")");
+            Check(AlgunaNombra(TAlb, "ClaveCasilla", "#q"), "y esa llave lleva la marca de \"ya la pediste\"");
         }
 
         Console.WriteLine("\n  5) Y NO QUEDA NI RASTRO DE LOS SONIDOS\n");
