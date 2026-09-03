@@ -449,6 +449,64 @@ class CieloHondo
             Console.WriteLine("     (no se pudo armar la pagina aqui: " + e.GetType().Name + ")");
         }
 
+        // =========================================================================================
+        Console.WriteLine("\n  9) Y LA VIA LACTEA YA NO ESTA CLAVADA\n");
+        //
+        // Era lo unico quieto en un cielo donde todo lo demas se desliza: las estrellas van a la deriva y
+        // las dos nebulosas se cruzan en sentidos contrarios, y la banda se quedaba pegada a la esquina.
+        // Este mismo codigo ya dice, hablando del polvo, que una parte quieta mientras el resto se mueve
+        // "se ve peor que si no se moviera nada"; aqui habia quedado el mismo caso sin arreglar.
+        {
+            FieldInfo fHazPaso = TF.GetField("HazPaso", BindingFlags.Static | BindingFlags.NonPublic);
+            FieldInfo fNebPaso = TF.GetField("NebPaso", BindingFlags.Static | BindingFlags.NonPublic);
+            Check(fHazPaso != null, "la via lactea tiene su propio reloj");
+            if (fHazPaso != null && fNebPaso != null)
+            {
+                float hp = (float)fHazPaso.GetRawConstantValue(), np = (float)fNebPaso.GetRawConstantValue();
+                double vHaz = 6.2831853 / hp / 24.0, vNeb = 6.2831853 / np / 24.0;   // segundos por vuelta a 24 cuadros/s
+                Console.WriteLine("     una vuelta de la via lactea: " + vHaz.ToString("0") + " s;  de las nebulosas: " + vNeb.ToString("0") + " s");
+                Check(hp > 0f, "y se mueve de verdad, no a paso cero");
+                Check(hp < np / 3f, "y MUCHO mas despacio que las nebulosas: es lo que esta mas lejos de todo");
+            }
+            Type TPanel = null;
+            foreach (Type t in asm.GetTypes()) if (t.Name == "GpuPanel") TPanel = t;
+            if (TPanel != null)
+            {
+                // OJO CON LO FACIL: preguntar si el dibujado llama a Math.Sin NO vale, porque ya lo
+                // llamaba antes para las nebulosas. La pregunta buena es si LEE el reloj de la via lactea.
+                MethodInfo mNie = TPanel.GetMethod("DibujaNieblas", TODO);
+                List<MethodBase> unaSola = new List<MethodBase>();
+                if (mNie != null) unaSola.Add(mNie);
+                Check(mNie != null && Codigo.LeeCampo(unaSola, "HazFase"),
+                      "y el dibujado la mueve con ese reloj, no con el de las nebulosas");
+                FieldInfo fHD = TPanel.GetField("HazDeriva", BindingFlags.Static | BindingFlags.NonPublic);
+                Check(TPanel.GetField("HazFase", TODO) != null, "el reloj le llega desde Form1, no se lo inventa");
+                if (fHD != null)
+                {
+                    // QUE NO ASOME EL CANTO. El cuadrilatero se dibuja mas grande que la pantalla por un
+                    // margen, y se corre dentro de ese margen; si el corrimiento pudiera pasarse del margen,
+                    // por un lado se veria el borde recto del dibujo sobre el cielo. Se recorre la vuelta
+                    // entera y se comprueba.
+                    float hd = (float)fHD.GetRawConstantValue();
+                    const float W2 = 1920f, H2 = 1080f;
+                    float mx = W2 * hd, my = H2 * hd;
+                    double masFuera = 0; bool asoma = false;
+                    for (int i = 0; i < 720; i++)
+                    {
+                        double ph = i * 6.2831853 / 720.0;
+                        float ox = (float)Math.Sin(ph) * mx, oy = (float)Math.Cos(ph) * my;
+                        if (-mx + ox > 0.001f || W2 + mx + ox < W2 - 0.001f) asoma = true;
+                        if (-my + oy > 0.001f || H2 + my + oy < H2 - 0.001f) asoma = true;
+                        double rec = Math.Sqrt(ox * ox + oy * oy);
+                        if (rec > masFuera) masFuera = rec;
+                    }
+                    Console.WriteLine("     se pasea hasta " + masFuera.ToString("0") + " px de su sitio, en una pantalla de " + W2 + "x" + H2);
+                    Check(masFuera > 20, "se mueve lo bastante para que se note que el cielo entero va junto");
+                    Check(!asoma, "y por mucho que se mueva su canto no asoma nunca por ningun lado");
+                }
+            }
+        }
+
         Console.WriteLine("\n  " + (fallos == 0 ? "TODO EN ORDEN" : fallos + " FALLO(S)"));
         return fallos;
     }
