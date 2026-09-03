@@ -261,6 +261,46 @@ static class Codigo
         return r;
     }
 
+    // Los METODOS de un metodo mas sus ayudantes -lo mismo que ConAyudantes, pero devolviendo las funciones
+    // en vez de lo que llaman-. Hace falta para mirar QUE CAMPOS toca un delegado, no solo a quien llama.
+    public static List<MethodBase> MetodosConAyudantes(Type raiz, string metodo)
+    {
+        List<MethodBase> r = new List<MethodBase>();
+        if (raiz == null) return r;
+        BindingFlags bf = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public
+                        | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
+        string picos = "<" + metodo + ">";
+        foreach (Type t in ConLosDeDentro(raiz))
+            foreach (MethodInfo m in t.GetMethods(bf))
+                if (m.Name == metodo || m.Name.IndexOf(picos, StringComparison.Ordinal) >= 0
+                    || t.Name.IndexOf(picos, StringComparison.Ordinal) >= 0)
+                    r.Add(m);
+        return r;
+    }
+
+    // ¿Alguno de esos lee ese campo? Tres baterias tenian su propia copia de esta vuelta -y solo una miraba
+    // dentro de los delegados-, asi que vive aqui: un solo sitio que arreglar.
+    public static bool LeeCampo(List<MethodBase> ms, string campo)
+    {
+        foreach (MethodBase m in ms)
+        {
+            int lee, esc;
+            UsosDeCampo(m, campo, out lee, out esc);
+            if (lee > 0) return true;
+        }
+        return false;
+    }
+    public static bool EscribeCampo(List<MethodBase> ms, string campo)
+    {
+        foreach (MethodBase m in ms)
+        {
+            int lee, esc;
+            UsosDeCampo(m, campo, out lee, out esc);
+            if (esc > 0) return true;
+        }
+        return false;
+    }
+
     // Todos los metodos del programa, para pasarles algo por encima a todos.
     public static List<MethodBase> TodosLosMetodos(Type raiz)
     {
