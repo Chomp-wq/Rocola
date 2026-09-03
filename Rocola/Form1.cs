@@ -1097,6 +1097,13 @@ namespace Rocola
 
         private Color bgAccent = DefaultAccent;
         private Color bgAccentTarget = DefaultAccent;
+        // LAS DOS NEBULOSAS (ver ColoresNebulosa). Se guardan el genero A SECAS y los dos colores de la
+        // caratula, que son de donde salen; y los dos colores ya hechos, que se deslizan de una cancion a la
+        // siguiente igual que el acento, para que al cambiar de disco no den un salto.
+        private Color bgGeneroTarget = DefaultAccent;
+        private Color bgPort1 = SinColor, bgPort2 = SinColor;
+        private Color nebA = DefaultAccent, nebB = DefaultAccent;
+        private float nebFase = 0f;
 
         // ---- Reproductor de video (Windows Media Player ActiveX, hosteado por codigo) ----
         private VideoHost video;
@@ -3443,6 +3450,25 @@ namespace Rocola
             formStars.SkyOffsetX = offX; formStars.SkyOffsetY = offY;
             formStars.SkyFullW = ClientSize.Width; formStars.SkyFullH = ClientSize.Height;
             formStars.SkyMid = EscalaBrillo(SkyColorMid(bgAccent), bgRespiro); formStars.Acento = bgAccent;
+            // LAS DOS NEBULOSAS, AQUI QUIETAS. Y es a proposito.
+            //
+            // En esta maquina el cielo entero va horneado a un mapa de bits que se guarda, porque rehacerlo
+            // cuesta de 6 a 27 ms segun la pantalla, y se rehornea cuando cambia alguno de sus colores. Se
+            // probo pasarle los dos colores en movimiento -el cruce de la caratula y la respiracion- y esta
+            // medido lo que costaba: los rehorneados pasaban de 73 a 151 en medio minuto, o sea 70 ms de
+            // cada mil en una pantalla de 2560x1440. El doble de trabajo, en la maquina que se eligio
+            // JUSTAMENTE por no tener tarjeta grafica.
+            //
+            // Asi que aqui se pasan los dos colores QUIETOS, y ninguno de los dos depende de la fase: el del
+            // genero no depende de ella nunca, y el de la caratula es exactamente el que esta pared ya
+            // pintaba antes de todo esto. Los dos cambian solo al cambiar de cancion, que es cuando el cielo
+            // se rehornea de todas formas. Coste de esto, medido: CERO rehorneados mas.
+            //
+            // Lo que esta maquina se pierde es el MOVIMIENTO. Los dos colores estan -que era lo gordo, porque
+            // antes habia uno solo-; lo que no hay es el cruce ni la deriva, que es lo que sale gratis con
+            // tarjeta grafica y aqui costaria rehacer la pantalla entera.
+            formStars.NebUno = nebA;
+            formStars.NebDos = ColorNebulosa(bgAccent);
             formStars.Dim = bgDimResp;   // atenua TAMBIEN las franjas de arriba/abajo en sincronia con la rejilla (una sola pieza), respiracion incluida
             formStars.DrawCached(g, an, al, EscalaBrillo(SkyColor(bgAccent), bgRespiro), EscalaBrillo(SkyColor2(bgAccent), bgRespiro));
         }
@@ -3469,6 +3495,80 @@ namespace Rocola
         private static Color ColorNebulosa(Color accent)
         {
             return Color.FromArgb(255, (accent.R + 140) / 2, (accent.G + 120) / 2, (accent.B + 255) / 2);
+        }
+
+        // ================== LAS DOS NEBULOSAS: EL GENERO POR UN LADO, LA CARATULA POR OTRO ==================
+        //
+        // La capa de nebulosas es la unica cosa grande de la pantalla donde los 33 colores de los generos
+        // llegan enteros: medido, 33 de 33 se distinguen ahi, contra 10 de 33 en el medio del cielo y 4 de 33
+        // arriba. Y estaba QUIETA, y de un solo color.
+        //
+        // Ahora son dos, y se dibujan una encima de otra desplazandose despacio en sentidos contrarios: una
+        // lleva el color del GENERO y la otra el de la CARATULA. Donde se encima una con otra sale la mezcla
+        // de las dos, y como las dos se mueven, la mezcla se mueve. Los dos colores se ven por separado y
+        // juntos a la vez.
+        //
+        // LO QUE LA CARATULA NO DECIDE NUNCA: el brillo ni la viveza. De ella se toma SOLO de que color es
+        // (ver TinteConPortada). Por eso ninguna portada puede estropear la pantalla -ni una casi blanca
+        // lavandola, ni una negra apagandola, ni una de neon quemandola- y no hay ningun tope que se pueda
+        // quedar corto: sale de como esta hecho.
+        private const float NebPaso = 0.00654f;        // radianes por cuadro: a 24 cuadros/s, una vuelta cada ~40 s
+        // CUANTO SE TIENEN QUE NOTAR. El dibujo de las nebulosas esta hecho de manchas de alfa 4 y 7 de 255:
+        // un velo suavisimo. A esa fuerza los dos colores estan y se cruzan, pero casi no se ven, asi que
+        // todo esto no se notaria. Se dibujaron las cuatro fuerzas y se eligio mirando; esta es cuatro veces
+        // la de antes: las nubes de color se leen claras y cada disco tine la pantalla de lo suyo, pero
+        // siguen siendo nubes de fondo y no le pelean a las portadas ni al texto.
+        //
+        // Va aqui, fuera del trozo de tarjeta grafica, porque las dos paredes -la de tarjeta y la horneada-
+        // tienen que usar la MISMA. Con dos numeros, el dia que alguien toque uno la maquina del bar y la de
+        // repuesto pintarian fondos distintos y nadie se enteraria hasta verlas juntas.
+        internal const float NebFuerza = 2.4f;
+        private const float NebGiroSolo = 45f;         // grados que se le gira al genero cuando la portada no dice nada
+
+        internal static void ColoresNebulosa(Color genero, Color port1, Color port2, float fase,
+                                             out Color deGenero, out Color dePortada)
+        {
+            deGenero = ColorNebulosa(genero);
+            Color cp;
+            if (port1.A != 0 && port2.A != 0)
+            {
+                // LA PORTADA TIENE DOS COLORES: la nebulosa va cruzando de uno al otro, muy despacio. Este es
+                // el caso que antes no pintaba nada -una portada media roja y media verde daba un promedio
+                // que no se parecia a ninguna de las dos y la rocola se callaba-, y ahora es el que mas luce.
+                float t = 0.5f + 0.5f * (float)Math.Sin(fase);
+                cp = TinteConPortada(genero, MezclaDeTono(port1, port2, t));
+            }
+            else if (port1.A != 0) cp = TinteConPortada(genero, port1);
+            else cp = CompaneroDelGenero(genero);   // sin portada que aporte, el genero se acompana solo
+            dePortada = ColorNebulosa(cp);
+        }
+
+        // SIN PORTADA QUE APORTE -blanco y negro, o el interruptor de Ctrl+F3 apagado- las dos nebulosas
+        // saldrian del mismo color y no habria mezcla que ver. Entonces el segundo sale del propio genero,
+        // girandole el tono.
+        //
+        // Pero hay dos generos CASI GRISES a los que girarles el tono no les hace nada, y esta medido:
+        // Hablado (viveza 0.04) se movia dos niveles de 255 y Vocal (0.25) poco mas. A esos se les mueve el
+        // brillo y la temperatura, que es lo unico que un gris tiene.
+        private static Color CompaneroDelGenero(Color genero)
+        {
+            int mx = Math.Max(genero.R, Math.Max(genero.G, genero.B));
+            int mn = Math.Min(genero.R, Math.Min(genero.G, genero.B));
+            float viveza = (mx <= 0) ? 0f : (mx - mn) / (float)mx;
+            if (viveza >= TonoMinViveza) return GiraTono(genero, NebGiroSolo, 1f);
+            // Gris: se le da un lado FRIO y un poco mas claro. Sobre un cielo azul oscuro eso si se lee.
+            int r = genero.R * 82 / 100, g = genero.G * 92 / 100, b = genero.B * 125 / 100;
+            if (b > 255) b = 255;
+            return Color.FromArgb(255, r, g, b);
+        }
+
+        // Mezcla DE TONO entre dos colores, por el camino corto de la rueda. Mezclarlos numero a numero
+        // llevaria al gris por en medio: entre un rojo y un verde pasaria por un marron.
+        private static Color MezclaDeTono(Color a, Color b, float t)
+        {
+            float d = TonoDe(b) - TonoDe(a);
+            while (d > 180f) d -= 360f; while (d < -180f) d += 360f;
+            return GiraTono(a, d * t, 1f);
         }
 
         private static Color SkyColor(Color accent)
@@ -3648,16 +3748,23 @@ namespace Rocola
         // lo mismo. Deja de ser estatico porque esa cascada necesita lo que la rocola ha ido aprendiendo.
         private Color ColorDeLoQueSuena(Track t, Album org)
         {
+            // Y encima, EL TONO DE LA PORTADA. Dos cumbias seguidas pintaban exactamente la misma
+            // pantalla naranja aunque una fuera un disco rojo y la otra uno verde.
+            return TinteConPortada(GeneroDeLoQueSuena(t, org), ColorDePortadaDe(org));
+        }
+
+        // EL COLOR DEL GENERO A SECAS, sin el tinte de la portada. Antes esto no se guardaba en ningun lado:
+        // solo quedaba la mezcla de los dos. Hace falta suelto porque una de las dos nebulosas lleva EL
+        // GENERO y la otra LA CARATULA, y para eso hay que poder decir cual es cual.
+        private Color GeneroDeLoQueSuena(Track t, Album org)
+        {
             if (t == null) return DefaultAccent;
             string a = (t.Artist != null) ? t.Artist.ToLowerInvariant() : "";
             // El morado de BTS es una PETICION del bar, no una deduccion: se queda como esta y no se le
             // gira el tono. Lo pidieron morado, sale morado, tenga la portada el color que tenga.
             if (a.Contains("bts") || a.Contains("bangtan")) return Color.FromArgb(149, 86, 220);
             string et = GeneroDeCancion(t, org);
-            Color gen = (et.Length > 0) ? ColorDeEtiqueta(et) : DefaultAccent;
-            // Y encima, EL TONO DE LA PORTADA. Dos cumbias seguidas pintaban exactamente la misma
-            // pantalla naranja aunque una fuera un disco rojo y la otra uno verde.
-            return TinteConPortada(gen, ColorDePortadaDe(org));
+            return (et.Length > 0) ? ColorDeEtiqueta(et) : DefaultAccent;
         }
 
         // ---------- EL COLOR QUE LE PONE LA PORTADA AL FONDO ----------
@@ -3745,12 +3852,39 @@ namespace Rocola
         // la vez, asi que sumando, dos rojos darian verde.
         private static Color ColorDePortada(Bitmap b)
         {
+            Color uno, dos;
+            return ColoresDePortada(b, out uno, out dos);
+        }
+
+        // Y LOS COLORES -EN PLURAL- DE UNA PORTADA. Del mismo recorrido salen las dos cosas.
+        //
+        // El promedio de arriba tiene un limite que se nota: cuando una portada trae DOS colores fuertes
+        // -media roja y media verde- el promedio apunta a un sitio que no se parece a ninguno de los dos, y
+        // entonces la funcion se calla y manda el genero. O sea que las portadas mas vistosas eran justo las
+        // que no pintaban nada. Aqui, ademas del promedio, se sacan los DOS tonos que mas mandan, que es lo
+        // que las nebulosas necesitan para tener con que mezclarse.
+        //
+        // Se hace repartiendo los tonos en CASILLAS de la rueda de color en vez de promediarlos todos juntos.
+        // Una casilla no es un tono exacto -son 15 grados-, asi que del pico se saca el promedio de lo que
+        // cayo DENTRO de el y de sus dos vecinas: asi el color que sale es el de verdad y no el del centro
+        // de la casilla.
+        //
+        // Es el MISMO recorrido de 32x32 puntos de siempre: no cuesta una pasada mas, y como esto se apunta
+        // por disco (ver ColorDePortadaDe) se hace una sola vez por portada.
+        private const int TonoCasillas = 24;         // la rueda de color repartida en casillas de 15 grados
+        private const float TonoSegundoLejos = 40f;  // dos tonos mas juntos que esto son el mismo color
+        private const float TonoSegundoManda = 0.25f; // y el segundo tiene que pesar al menos esto del primero
+        private static Color ColoresDePortada(Bitmap b, out Color uno, out Color dos)
+        {
+            uno = Color.FromArgb(0, 0, 0, 0); dos = Color.FromArgb(0, 0, 0, 0);
             if (b == null) return Color.FromArgb(0, 0, 0, 0);
             int w = b.Width, h = b.Height;
             if (w < 2 || h < 2) return Color.FromArgb(0, 0, 0, 0);
             int px = (w + MuestraLado - 1) / MuestraLado; if (px < 1) px = 1;
             int py = (h + MuestraLado - 1) / MuestraLado; if (py < 1) py = 1;
             double sx = 0, sy = 0, peso = 0;
+            double[] cajaPeso = new double[TonoCasillas];
+            double[] cajaX = new double[TonoCasillas], cajaY = new double[TonoCasillas];
             for (int y = py / 2; y < h; y += py)
                 for (int x = px / 2; x < w; x += px)
                 {
@@ -3765,20 +3899,70 @@ namespace Rocola
                     if (mx == r) hue = 60f * (((g - bl) / d) % 6f);
                     else if (mx == g) hue = 60f * ((bl - r) / d + 2f);
                     else hue = 60f * ((r - g) / d + 4f);
+                    if (hue < 0f) hue += 360f;
                     // Pesa lo VIVO y lo CLARO: un rojo encendido manda mas que un beige que apenas pasa el
                     // corte. Si no, el fondo de una portada casi apagada decidiria por encima de su dibujo.
                     double pes = sat * mx;
                     double rad = hue * Math.PI / 180.0;
-                    sx += Math.Cos(rad) * pes; sy += Math.Sin(rad) * pes; peso += pes;
+                    double cx = Math.Cos(rad) * pes, cy = Math.Sin(rad) * pes;
+                    sx += cx; sy += cy; peso += pes;
+                    int k = (int)(hue * TonoCasillas / 360f); if (k >= TonoCasillas) k = TonoCasillas - 1;
+                    cajaPeso[k] += pes; cajaX[k] += cx; cajaY[k] += cy;
                 }
             if (peso <= 0.0001) return Color.FromArgb(0, 0, 0, 0);
+            PicosDeTono(cajaPeso, cajaX, cajaY, peso, out uno, out dos);
             // Y SI LOS COLORES NO SE PONEN DE ACUERDO tampoco se sabe. Una portada con de todo -media roja
             // y media verde- daria un promedio que apunta a cualquier lado y no se parece a ninguna de las
             // dos. Cuando eso pasa, mejor callarse y dejar mandar al genero.
+            //
+            // Esto vale para el color que tine EL CIELO, que es uno solo y tiene que ser de fiar. Los dos
+            // picos de arriba NO pasan por aqui a proposito: son justo para ese caso, dos colores que se
+            // mezclan en las nebulosas en vez de un promedio que no es ninguno de los dos.
             double acuerdo = Math.Sqrt(sx * sx + sy * sy) / peso;
             if (acuerdo < TonoMinAcuerdo) return Color.FromArgb(0, 0, 0, 0);
             double ang = Math.Atan2(sy, sx) * 180.0 / Math.PI; if (ang < 0) ang += 360.0;
             return GiraTono(Color.FromArgb(255, 0, 0), (float)ang, 1f);   // un color cualquiera con ESE tono
+        }
+
+        // Los dos tonos que mas mandan, sacados de las casillas. El primero es la casilla mas pesada; el
+        // segundo, la mas pesada de las que estan LEJOS de la primera -si estuvieran juntas serian el mismo
+        // color y no habria mezcla que ver- y ademas tiene que pesar lo suyo, que si no seria una esquinita
+        // de la portada decidiendo la mitad de la pantalla.
+        private static void PicosDeTono(double[] cajaPeso, double[] cajaX, double[] cajaY, double peso,
+                                        out Color uno, out Color dos)
+        {
+            uno = Color.FromArgb(0, 0, 0, 0); dos = Color.FromArgb(0, 0, 0, 0);
+            int p1 = -1;
+            for (int k = 0; k < TonoCasillas; k++) if (p1 < 0 || cajaPeso[k] > cajaPeso[p1]) p1 = k;
+            if (p1 < 0 || cajaPeso[p1] <= 0.0001) return;
+            float t1 = TonoDeCasilla(cajaX, cajaY, p1);
+            uno = GiraTono(Color.FromArgb(255, 0, 0), t1, 1f);
+            int p2 = -1;
+            for (int k = 0; k < TonoCasillas; k++)
+            {
+                if (cajaPeso[k] <= 0.0001) continue;
+                if (DifDeTono(TonoDeCasilla(cajaX, cajaY, k), t1) < TonoSegundoLejos) continue;
+                if (p2 < 0 || cajaPeso[k] > cajaPeso[p2]) p2 = k;
+            }
+            if (p2 < 0 || cajaPeso[p2] < cajaPeso[p1] * TonoSegundoManda) return;
+            dos = GiraTono(Color.FromArgb(255, 0, 0), TonoDeCasilla(cajaX, cajaY, p2), 1f);
+        }
+
+        // El tono de una casilla y sus dos vecinas, promediado en circulo: el pico cae donde de verdad esta
+        // el color y no en el centro del cajon.
+        private static float TonoDeCasilla(double[] cajaX, double[] cajaY, int k)
+        {
+            int a = (k + TonoCasillas - 1) % TonoCasillas, b = (k + 1) % TonoCasillas;
+            double x = cajaX[a] + cajaX[k] + cajaX[b], y = cajaY[a] + cajaY[k] + cajaY[b];
+            double ang = Math.Atan2(y, x) * 180.0 / Math.PI; if (ang < 0) ang += 360.0;
+            return (float)ang;
+        }
+
+        // Cuanto se separan dos tonos, por el camino corto de la rueda (de 0 a 180).
+        private static float DifDeTono(float a, float b)
+        {
+            float d = a - b; while (d < 0f) d += 360f; while (d >= 360f) d -= 360f;
+            return (d > 180f) ? 360f - d : d;
         }
 
         // El color de la portada de un disco, APUNTADO. Recorrer un mapa de bits cuesta, y esto se pregunta
@@ -3786,7 +3970,8 @@ namespace Rocola
         //
         // Si la portada aun no esta cargada NO se apunta nada: se vuelve a preguntar cuando llegue (lo hace
         // el aviso de portada cargada, que ya existia para el cubito de abajo).
-        private readonly Dictionary<string, Color> colorPortada = new Dictionary<string, Color>(StringComparer.OrdinalIgnoreCase);
+        private struct ColoresDisco { public Color Prom, Uno, Dos; }   // el promedio (tine el cielo) y los dos picos (las nebulosas)
+        private readonly Dictionary<string, ColoresDisco> colorPortada = new Dictionary<string, ColoresDisco>(StringComparer.OrdinalIgnoreCase);
         private static bool fondoPortadaOn = true;   // "fondo_portada=" en config
         private static readonly Color SinColor = Color.FromArgb(0, 0, 0, 0);
         private Color ColorDePortadaDe(Album a)
@@ -3794,13 +3979,26 @@ namespace Rocola
             if (!fondoPortadaOn || a == null) return SinColor;
             string k = a.CoverPath;
             if (string.IsNullOrEmpty(k)) return SinColor;
-            Color c;
-            if (colorPortada.TryGetValue(k, out c)) return c;
+            ColoresDisco c;
+            if (colorPortada.TryGetValue(k, out c)) return c.Prom;
             Bitmap b = LoadCover(a) as Bitmap;
             if (b == null) return SinColor;
-            c = ColorDePortada(b);
+            c.Prom = ColoresDePortada(b, out c.Uno, out c.Dos);
             colorPortada[k] = c;
-            return c;
+            return c.Prom;
+        }
+
+        // Los dos colores de la portada de un disco. Quien MIDE y APUNTA sigue siendo el de arriba -aqui solo
+        // se lee lo apuntado-, para que no haya dos sitios recorriendo la imagen.
+        private void ColoresDePortadaDe(Album a, out Color uno, out Color dos)
+        {
+            uno = SinColor; dos = SinColor;
+            ColorDePortadaDe(a);                     // si no estaba medido, lo mide y lo apunta
+            if (!fondoPortadaOn || a == null) return;
+            string k = a.CoverPath;
+            if (string.IsNullOrEmpty(k)) return;
+            ColoresDisco c;
+            if (colorPortada.TryGetValue(k, out c)) { uno = c.Uno; dos = c.Dos; }
         }
 
         // Etiqueta canonica del genero para agrupar los discos TOP (mismas familias que GenreToColor).
@@ -9362,6 +9560,7 @@ namespace Rocola
             if (nowPlaying.IsVideo)
             {
                 bgAccentTarget = DefaultAccent;       // el video no tiene genero
+                bgGeneroTarget = DefaultAccent; bgPort1 = SinColor; bgPort2 = SinColor;   // ni caratula que aporte
                 StartVideoItem(nowPlaying.VideoPath);
             }
             else
@@ -9866,6 +10065,8 @@ namespace Rocola
         {
             Color acc = ColorDeLoQueSuena(t, org);   // excepcion por artista (BTS=morado) y luego genero
             bgAccentTarget = acc;
+            bgGeneroTarget = GeneroDeLoQueSuena(t, org);          // el genero suelto: una de las dos nebulosas
+            ColoresDePortadaDe(org, out bgPort1, out bgPort2);    // y los colores del disco: la otra
             Color panel = Shade(acc, 0.70);
             Color list = Shade(acc, 0.76);
             panelSongs.BackColor = panel;
@@ -11562,6 +11763,19 @@ namespace Rocola
                 this.Invalidate();   // tambien con buscador abierto: el fondo es barato y la franja de estado debe recolorear
             }
             albumView.BgAccent = bgAccent;
+            // LAS DOS NEBULOSAS. Se calculan aqui, una sola vez por cuadro, y de aqui tiran los dos caminos:
+            // el del panel de tarjeta grafica y el del horneado del cielo. Es una cuenta de dos colores.
+            //
+            // Se DESLIZAN, como el acento: al cambiar de cancion el color de destino da un salto -otro genero,
+            // otra portada- y el que se pinta llega a el en el mismo segundo escaso de siempre. Y como el
+            // destino ademas se mueve solo (la portada va cruzando entre sus dos colores), el deslizamiento
+            // lo sigue sin enterarse.
+            nebFase += NebPaso;
+            if (nebFase > 6.2831853f) nebFase -= 6.2831853f;
+            Color nebAMeta, nebBMeta;
+            ColoresNebulosa(bgGeneroTarget, bgPort1, bgPort2, nebFase, out nebAMeta, out nebBMeta);
+            nebA = LerpColor(nebA, nebAMeta, 0.16);
+            nebB = LerpColor(nebB, nebBMeta, 0.16);
 #if ROCOLA_GPU
             SyncGpuFullScreen();   // muestra/oculta el panel GPU (pantalla completa) segun el modo, ANTES de los returns por modo
             if (gpuPanel != null && gpuPanel.Visible)
@@ -11578,7 +11792,11 @@ namespace Rocola
                     gpuPanel.SkyTop = ToD3D(EscalaBrillo(SkyColor(bgAccent), bgRespiro));
                     gpuPanel.SkyMid = ToD3D(EscalaBrillo(SkyColorMid(bgAccent), bgRespiro));
                     gpuPanel.SkyBot = ToD3D(EscalaBrillo(SkyColor2(bgAccent), bgRespiro));
-                    gpuPanel.NebColor = ToD3D(ColorNebulosa(bgAccent));
+                    // LAS DOS NEBULOSAS: una el genero, la otra la caratula. El desplazamiento va en la
+                    // misma fase lenta, y en sentidos contrarios: es el cruce de las dos lo que se ve moverse.
+                    gpuPanel.NebColor = ToD3D(EscalaBrillo(nebA, bgRespiro));
+                    gpuPanel.NebColor2 = ToD3D(EscalaBrillo(nebB, bgRespiro));
+                    gpuPanel.NebFase = nebFase;
                 }   // el degradado sigue al genero
             }
 #endif
@@ -12833,6 +13051,11 @@ namespace Rocola
             private int FullH(int h) { return SkyFullH > h ? SkyFullH : h; }
             public Color SkyMid = Color.Empty;                            // color INTERMEDIO (azul noche); si Empty -> 2 paradas (punto medio)
             public Color Acento = Color.Empty;                            // el color del GENERO que suena: es con el que se tinen las nebulosas
+            // LAS DOS NEBULOSAS (ver ColoresNebulosa): la del genero y la de la caratula. Aqui NO se mueven
+            // de sitio -el cielo va horneado a un mapa de bits que se guarda, y moverlas seria rehacerlo en
+            // cada cuadro, que es de 6 a 27 ms segun la pantalla-, pero si se cruzan sus COLORES. Si vienen
+            // vacias se dibuja una sola con el acento, como se hacia siempre.
+            public Color NebUno = Color.Empty, NebDos = Color.Empty;
             private LinearGradientBrush skyBrush;                         // pincel de cielo en DEGRADADO (cacheado, ligado al genero)
             private int gbW = -1, gbOff = -99999, gbFull = -1, gbTop = 0, gbMid = 0, gbBot = 0;
             private Bitmap skyCache;                                       // RENDIMIENTO: cielo (degradado) HORNEADO a bitmap; se copia por cuadro en vez de rellenar el degradado cada vez
@@ -13216,6 +13439,18 @@ namespace Rocola
                 BlitSkyAndStars(g, w, h);
             }
 
+            // Una pasada de la nebulosa: se estira su dibujo pequeno y se le pone el color con una matriz.
+            private void PintaNebulosa(Graphics sg, int FW, int FH, Color c, float alfa)
+            {
+                using (ImageAttributes ia = new ImageAttributes())
+                {
+                    ColorMatrix cm = new ColorMatrix();
+                    cm.Matrix00 = c.R / 255f; cm.Matrix11 = c.G / 255f; cm.Matrix22 = c.B / 255f; cm.Matrix33 = alfa;
+                    ia.SetColorMatrix(cm);
+                    sg.DrawImage(nebMask, new Rectangle(0, 0, FW, FH), 0, 0, nebMask.Width, nebMask.Height, GraphicsUnit.Pixel, ia);
+                }
+            }
+
             // LA NEBLINA DE LA VIA LACTEA Y LAS NEBULOSAS.
             //
             // Son manchas grandes y muy suaves, o sea justo lo que se puede dibujar CHIQUITO y estirar sin
@@ -13280,10 +13515,18 @@ namespace Rocola
                         float cy = mh * (0.10f + (float)r.NextDouble() * 0.42f);
                         for (int i = 0; i < 20; i++)
                             Mancha(g, cx + Gauss(r) * mw * 0.075f, cy + Gauss(r) * mh * 0.08f,
-                                   mh * (0.07f + (float)r.NextDouble() * 0.14f), Color.White, 4);
-                        Mancha(g, cx, cy, mh * 0.07f, Color.White, 7);   // el corazon, un pelin mas encendido
+                                   mh * (0.07f + (float)r.NextDouble() * 0.14f), Color.White, AlfaNeb(4));
+                        Mancha(g, cx, cy, mh * 0.07f, Color.White, AlfaNeb(7));   // el corazon, un pelin mas encendido
                     }
                 }
+            }
+
+            // El alfa de una mancha de nebulosa a la fuerza elegida (ver NebFuerza). La via lactea NO pasa
+            // por aqui: esa es blanca y de siempre, y no tiene nada que ver con el color del genero.
+            private static int AlfaNeb(int alfa)
+            {
+                int a = (int)(alfa * NebFuerza + 0.5f);
+                return (a > 255) ? 255 : a;
             }
 
             // Una mancha de luz redonda que se desvanece hacia fuera: la pieza con la que estan hechas la
@@ -13317,8 +13560,10 @@ namespace Rocola
                     : SkyMid;
                 Color acento = Acento;
                 // El acento entra en la firma: si no, al cambiar de genero el cielo no se re-hornearia y las
-                // nebulosas se quedarian del color de la cancion anterior.
+                // nebulosas se quedarian del color de la cancion anterior. Y los dos colores de las nebulosas
+                // tambien, por lo mismo: son los que se van cruzando.
                 int t = top.ToArgb(), m = mid.ToArgb(), b = bottom.ToArgb() ^ (acento.A == 0 ? 0 : acento.ToArgb() * 31);
+                t ^= (NebUno.A == 0 ? 0 : NebUno.ToArgb() * 7) ^ (NebDos.A == 0 ? 0 : NebDos.ToArgb() * 13);
                 if (skyCache != null && scW == FW && scH == FH && fscTop == t && fscMid == m && fscBot == b) { saltados = 0; return; }
                 // EL CIELO NO SE REHORNEA EN CADA CUADRO DEL DESLIZAMIENTO.
                 //
@@ -13366,14 +13611,20 @@ namespace Rocola
                         // Y el color se lleva a medias con un violeta azulado. El del genero a secas es
                         // demasiado terroso para una nebulosa; mezclado, se sigue notando de que color va la
                         // cancion pero parece cielo.
-                        Color a0 = (acento.A == 0) ? bottom : acento;
-                        Color acc = Color.FromArgb((a0.R + 140) / 2, (a0.G + 120) / 2, (a0.B + 255) / 2);
-                        using (ImageAttributes ia = new ImageAttributes())
+                        //
+                        // Y SON DOS: la del genero y la de la caratula, una encima de otra y cada una a poco
+                        // mas de media tinta, para que donde se encimen salga la mezcla de los dos colores. Es
+                        // la misma idea que en el camino de tarjeta grafica; lo que alli ademas se mueve de
+                        // sitio, aqui no puede: el cielo va horneado.
+                        if (NebUno.A != 0 && NebDos.A != 0)
                         {
-                            ColorMatrix cm = new ColorMatrix();
-                            cm.Matrix00 = acc.R / 255f; cm.Matrix11 = acc.G / 255f; cm.Matrix22 = acc.B / 255f;
-                            ia.SetColorMatrix(cm);
-                            sg.DrawImage(nebMask, new Rectangle(0, 0, FW, FH), 0, 0, nebMask.Width, nebMask.Height, GraphicsUnit.Pixel, ia);
+                            PintaNebulosa(sg, FW, FH, NebUno, 1f);
+                            PintaNebulosa(sg, FW, FH, NebDos, 1f);
+                        }
+                        else
+                        {
+                            Color a0 = (acento.A == 0) ? bottom : acento;
+                            PintaNebulosa(sg, FW, FH, ColorNebulosa(a0), 1f);
                         }
                     }
                     // LA VIA LACTEA: la banda de neblina, tambien horneada a un cuarto y estirada. Va del
