@@ -209,7 +209,7 @@ class FondoCoste
                     fm[i] = i % formas;   // las siluetas que de verdad tiene el atlas, no un numero inventado
                     col[i] = 0xFFFFFFFF;
                 }
-                object[] arg = { buf, xs, ys, ph, spd, sz, kd, fm, col, NE, 0.0, 1f, 0.3f, 0f, 0f, 1920f, 1080f };
+                object[] arg = { buf, xs, ys, ph, spd, sz, kd, fm, col, NE, 0.0, 1f, 0.3f, new float[3], new float[3], 1920f, 1080f };
                 mVerts.Invoke(null, arg);   // la primera calienta
                 List<double> v4 = new List<double>();
                 for (int k = 0; k < 21; k++)

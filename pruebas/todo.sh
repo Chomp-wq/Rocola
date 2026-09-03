@@ -34,7 +34,7 @@ CPU="ajustes bajo eqauto bajoauto calidad eqia nivel titulo duracion prueba prue
 # tarjeta grafica solo existe en ese perfil (si no, aparecia en las pruebas y no en el bar).
 # 'banco' va aqui porque el medidor de Ctrl+F3 mide el camino de la tarjeta grafica: sin ese perfil ni
 # existe la funcion que pone la cancion ni el bucle que la deja respirar.
-GPU="fondo anim presencia barrido tope calma entrar mover banco paginar ceremonia respira teclea palomito nebulosa pedidas fondocoste"
+GPU="fondo anim presencia barrido tope calma entrar mover banco paginar ceremonia respira teclea palomito nebulosa pedidas fondocoste cielohondo"
 
 # Y las que miran algo que SOLO EXISTE en la rama de tarjeta grafica. La limpieza de videos que no
 # suenan es una de esas: para saber si un video suena hay que descomprimir su sonido, y eso alli lo
@@ -58,6 +58,34 @@ if [ "$1" = "--lista" ]; then
   echo "  con tarjeta grafica: $GPU"
   exit 0
 fi
+# --- EL ARCHIVO DEL DIBUJO ES EL MISMO QUE EN LA OTRA RAMA DE TARJETA GRAFICA ---
+#
+# D3D9Star.cs (el dibujo) y D3D9Device.cs (el dispositivo de Direct3D) son identicos byte por byte en
+# la rama de Windows potente y en la de Linux, a proposito: asi un cambio en el fondo de estrellas se
+# hace UNA vez y se lleva de una copia. Esa propiedad es facil de perder sin darse cuenta -basta con
+# tocar uno y olvidar el otro-, asi que se comprueba en cada tanda. La cabecera del archivo lo promete
+# y aqui se cumple; un comentario que miente es peor que no tenerlo.
+#
+# Y SE COMPRUEBA DESDE LAS DOS RAMAS. Esto vivia solo en la de Linux, o sea que la promesa se miraba por
+# un lado y por el otro no: tocando el dibujo aqui, nada avisaba.
+#
+# Si la otra rama no esta a mano (una copia suelta, sin historial) no se dice nada y se sigue.
+case "$RAMA" in
+  rocola-hd)    OTRA="rocola-linux" ;;
+  rocola-linux) OTRA="rocola-hd" ;;
+  *)            OTRA="" ;;
+esac
+if [ -n "$OTRA" ] && git -C "$RAIZ" rev-parse --verify -q "$OTRA" > /dev/null 2>&1; then
+  dif=0
+  for f in D3D9Star.cs D3D9Device.cs; do
+    if ! git -C "$RAIZ" show "$OTRA:Rocola/$f" 2>/dev/null | diff -q - "$RAIZ/Rocola/$f" > /dev/null 2>&1; then
+      echo "  OJO: Rocola/$f NO es igual que en la rama $OTRA (tienen que ser identicos)"
+      dif=$((dif+1))
+    fi
+  done
+  [ $dif -eq 0 ] && echo "  el dibujo por tarjeta grafica es identico al de la rama $OTRA"
+fi
+
 echo "  compilando la rocola..."
 hecho=0
 for k in $ORDEN; do
