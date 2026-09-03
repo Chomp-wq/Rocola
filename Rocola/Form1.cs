@@ -10961,12 +10961,17 @@ namespace Rocola
 
         // Guarda el error completo (tipo + mensaje + pila) en rocola_error.txt junto al .exe,
         // para poder ver el metodo exacto que falta (p. ej. por una version equivocada de NAudio).
+        // Cada apunte lleva la fecha del EJECUTABLE al lado (ver el mismo sello en Program.LogCrash): un
+        // error que llega por mensaje no se puede diagnosticar si no se sabe de que version salio.
         private void LogError(string context, Exception ex)
         {
             try
             {
                 string f = RutaDatos("rocola_error.txt");
-                string msg = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "  [" + context + "]\r\n"
+                string sello = "";
+                try { sello = DeCuandoEs(); } catch { }
+                if (sello.Length > 0) sello = "  (rocola del " + sello + ")";
+                string msg = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "  [" + context + "]" + sello + "\r\n"
                            + (ex != null ? ex.ToString() : "(sin excepcion)") + "\r\n\r\n";
                 try { FileInfo fi = new FileInfo(f); if (fi.Exists && fi.Length > 262144) fi.Delete(); } catch { }   // tope ~256KB
                 File.AppendAllText(f, msg);
