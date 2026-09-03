@@ -161,8 +161,14 @@ class Corta
 
         // =========================================================================================
         Console.WriteLine("\n  3) UN MP3 QUE NO SE PUEDE ABRIR NO DEJA NADA TIRADO\n");
-        MethodInfo mAbre = TF.GetMethod("AbreMp3", BindingFlags.Static | BindingFlags.NonPublic);
+        // POR NOMBRE Y CONTANDO, no con GetMethod a secas: hay DOS caminos seguros -uno para un MP3 de un
+        // archivo y otro para uno que ya esta en memoria- y pedir "el" AbreMp3 revienta en cuanto hay dos.
+        int cuantosAbre = 0;
+        MethodInfo mAbre = null;
+        foreach (MethodInfo m in TF.GetMethods(BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public))
+            if (m.Name == "AbreMp3") { cuantosAbre++; if (mAbre == null) mAbre = m; }
         Check(mAbre != null, "los MP3 se abren por un camino propio, no directamente con NAudio");
+        Check(cuantosAbre >= 2, "y ese camino cubre TAMBIEN el MP3 reconstruido en memoria (por ahi se colo una fuga)");
         if (mAbre != null)
         {
             List<string> l = Codigo.ConAyudantes(TF, "AbreMp3");
