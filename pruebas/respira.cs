@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Drawing;
 using System.Reflection;
 
 // LA PARED QUE RESPIRA, Y SU FRENO.
@@ -53,6 +55,16 @@ class Respira
     { return Convert.ToSingle(mPaso.Invoke(null, new object[] { quietud, tocando })); }
     static float Fuerza(string txt)
     { return Convert.ToSingle(mFuerza.Invoke(null, new object[] { txt })); }
+
+    // El color del cielo a la altura 't' (0 = arriba, 1 = abajo): arriba -> medio -> abajo, que es como
+    // lo arma el degradado de verdad.
+    static Color Rampa(Color a, Color m, Color b, float t)
+    {
+        Color c1 = (t < 0.5f) ? a : m, c2 = (t < 0.5f) ? m : b;
+        float u = (t < 0.5f) ? (t * 2f) : ((t - 0.5f) * 2f);
+        return Color.FromArgb(255,
+            (int)(c1.R + (c2.R - c1.R) * u), (int)(c1.G + (c2.G - c1.G) * u), (int)(c1.B + (c2.B - c1.B) * u));
+    }
 
     static int Main(string[] argv)
     {
@@ -142,6 +154,118 @@ class Respira
         double segs = (6.2831853 / paso) / 24.0;   // el reloj de la pantalla va a 24 cuadros/s
         Console.WriteLine("     el ciclo entero dura " + segs.ToString("0") + " segundos");
         Check(segs > 20 && segs < 45, "una respiracion cada medio minuto (" + segs.ToString("0") + " s)");
+
+        Console.WriteLine("\n  6b) Y CON CUANTA FUERZA SE VE\n");
+        // AQUI ESTUVO EL FALLO, y fue mio: elegi el 2.5% pensando en no marear, sin comprobar que
+        // estuviera por encima del umbral de VERSE. El cielo es oscuro -su medio vale (33,45,97)- asi que
+        // un 2.5% de eso son uno o dos niveles de 255: por debajo de lo que el ojo distingue en un
+        // degradado. La respiracion corria, y no se veia.
+        //
+        // Se mide de verdad: se arma el degradado del cielo de arriba abajo, se pinta a su brillo normal y
+        // con la respiracion en lo alto, y se cuenta CUANTOS RENGLONES cambian al menos 2 niveles de 255,
+        // que es lo minimo que se distingue en una rampa suave.
+        MethodInfo mEsc = (MethodInfo)Met("EscalaBrillo");
+        Check(mEsc != null, "hay una sola funcion que sube o baja el brillo de un color (EscalaBrillo)");
+        if (mEsc != null)
+        {
+            Color arriba = (Color)((MethodInfo)Met("SkyColor")).Invoke(null, new object[] { Color.FromArgb(225, 95, 75) });
+            Color medio = (Color)((MethodInfo)Met("SkyColorMid")).Invoke(null, new object[] { Color.FromArgb(225, 95, 75) });
+            Color abajo = (Color)((MethodInfo)Met("SkyColor2")).Invoke(null, new object[] { Color.FromArgb(225, 95, 75) });
+            Console.WriteLine("     el cielo va de (" + arriba.R + "," + arriba.G + "," + arriba.B + ") arriba a ("
+                              + abajo.R + "," + abajo.G + "," + abajo.B + ") abajo, pasando por ("
+                              + medio.R + "," + medio.G + "," + medio.B + ")");
+            Console.WriteLine();
+            // Se mide CUANTOS NIVELES se mueve el cielo entre lo mas alto y lo mas bajo de la respiracion.
+            // Un nivel de 255 no se ve; dos estan justo en el limite; a partir de cuatro o cinco, en una
+            // superficie grande y en penumbra, se ve como una marea.
+            Console.WriteLine("     fuerza    lo que se mueve el cielo (niveles de 255, de un extremo al otro)");
+            Console.WriteLine("               arriba    en medio    abajo    lo mas que se mueve");
+            Console.WriteLine("     -------------------------------------------------------------------");
+            float[] pruebas = { 0.012f, 0.025f, 0.045f, 0.06f };
+            int elegida = -1;
+            foreach (float a in pruebas)
+            {
+                int[] d = new int[3];
+                Color[] cc = { arriba, medio, abajo };
+                for (int k = 0; k < 3; k++)
+                {
+                    Color hi = (Color)mEsc.Invoke(null, new object[] { cc[k], 1f + a });
+                    Color lo = (Color)mEsc.Invoke(null, new object[] { cc[k], 1f - a });
+                    d[k] = Math.Max(Math.Abs(hi.R - lo.R), Math.Max(Math.Abs(hi.G - lo.G), Math.Abs(hi.B - lo.B)));
+                }
+                int peor = Math.Max(d[0], Math.Max(d[1], d[2]));
+                Console.WriteLine(string.Format("     {0,5:0.0}%    {1,5}    {2,8}    {3,5}    {4,8}", a * 100, d[0], d[1], d[2], peor));
+                if (elegida < 0 && peor >= 8 && d[1] >= 4) elegida = (int)(a * 1000 + 0.5f);
+            }
+            Console.WriteLine();
+            float def = Cte("RespiraDef");
+            Console.WriteLine("     la mas floja que mueve el cielo de forma que se vea: " + (elegida / 10.0).ToString("0.0") + "%");
+            Console.WriteLine("     y la de fabrica es " + (def * 100).ToString("0.0") + "%");
+            Check(elegida > 0, "hay una fuerza con la que el cielo se mueve de forma que se vea");
+            Check(def * 1000 >= elegida - 1, "y la de fabrica llega a ella: si no, la respiracion corre y no se ve");
+            Check(tope >= def, "sin pasarse del tope");
+
+            // Y LO MISMO PARA LOS TRES PASOS QUE OFRECE LA VENTANA. De aqui salio media queja del
+            // operador: el paso mas flojo movia el cielo DOS niveles de 255, o sea nada. Tocarlo no
+            // hacia nada visible, y eso es peor que no tener el boton: parece que la ventana miente.
+            // Los pasos se sacan del propio codigo de la pagina, no se escriben aqui a mano.
+            Console.WriteLine();
+            MethodBase pagina = Met("PaginaDetalles");
+            List<float> pasosVentana = new List<float>();
+            if (pagina != null && mFuerza != null)
+                foreach (string t in Codigo.Textos(pagina))
+                {
+                    float x;
+                    if (!float.TryParse(t, System.Globalization.NumberStyles.Float,
+                                        System.Globalization.CultureInfo.InvariantCulture, out x)) continue;
+                    float fz = Fuerza(t);
+                    if (fz > 0f && !pasosVentana.Contains(fz)) pasosVentana.Add(fz);
+                }
+            Check(pasosVentana.Count >= 3, "la ventana de Ctrl+F3 ofrece pasos para elegir cuanto respira");
+            int flojo = 999;
+            foreach (float fz in pasosVentana)
+            {
+                Color hi = (Color)mEsc.Invoke(null, new object[] { medio, 1f + fz });
+                Color lo = (Color)mEsc.Invoke(null, new object[] { medio, 1f - fz });
+                int mueve = Math.Max(Math.Abs(hi.R - lo.R), Math.Max(Math.Abs(hi.G - lo.G), Math.Abs(hi.B - lo.B)));
+                Console.WriteLine("     paso de la ventana " + (fz * 100).ToString("0.0") + "%  ->  mueve el cielo "
+                                  + mueve + " niveles de 255");
+                if (mueve < flojo) flojo = mueve;
+            }
+            Check(flojo >= 4, "y TODOS se ven: ninguno es un boton que no hace nada (el mas flojo mueve "
+                              + flojo + " niveles)");
+        }
+
+        Console.WriteLine("\n  6c) Y LLEGA AL CIELO, NO SOLO A LAS ESTRELLAS\n");
+        // El otro medio fallo: 'Dim' mueve el brillo de las estrellas y de los destellos, y el cielo -que
+        // es la superficie grande, la que uno llama "la pared"- no se enteraba. La respiracion tiene que
+        // llegar a los COLORES DEL CIELO.
+        //
+        // Y el cielo se pinta por dos caminos distintos, asi que se miran los dos:
+        //
+        //   SIN tarjeta grafica lo pinta la ventana, en el momento de pintar. A ese sitio NO se le busca
+        //   por el nombre: se llama distinto en cada rama -en la de Linux es una implementacion explicita
+        //   de interfaz, "Rocola.IFondoPintable.PintaCieloEn", y en las de Windows es OnPaintBackground-.
+        //   Se le busca por lo que HACE: es el que le entrega el degradado al campo de estrellas.
+        //
+        //   CON tarjeta grafica los tres colores se le entregan al panel ya calculados, desde el reloj de
+        //   la pantalla. Ese trozo solo existe en ese perfil, asi que solo se exige alli.
+        MethodBase pinta = null;
+        foreach (MethodBase m in TF.GetMethods(TODO | BindingFlags.DeclaredOnly))
+            if (Codigo.Llama(m, "DrawCached")) pinta = m;
+        Check(pinta != null, "hay un sitio que le entrega el degradado del cielo al campo de estrellas");
+        Check(pinta != null && Codigo.Llama(pinta, "EscalaBrillo"),
+              "y ese cielo lleva la respiracion, no solo las estrellas");
+        // El perfil se reconoce por una pieza que SOLO existe con tarjeta grafica, como hace 'teclea'.
+        if (TF.GetField("gpuPanel", TODO) == null)
+            Console.WriteLine("     (esta version no dibuja por tarjeta grafica: no hay panel al que pasarle los colores)");
+        else
+        {
+            MethodBase tick2 = Met("AnimTimer_Tick");
+            List<string> pasos = Codigo.ConAyudantes(TF, "AnimTimer_Tick");
+            Check(tick2 != null && Codigo.Llama(pasos, "EscalaBrillo"),
+                  "y con tarjeta grafica, los tres colores que se le pasan al panel tambien la llevan");
+        }
 
         Console.WriteLine("\n  7) Y CASI NUNCA OBLIGA A REPINTAR\n");
         // El fondo del formulario solo se repinta cuando la atenuacion cambia lo bastante para verse

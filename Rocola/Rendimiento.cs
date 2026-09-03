@@ -606,8 +606,12 @@ namespace Rocola
 
             Label lCuanto = new Label(); lCuanto.SetBounds(16, 128, 424, 16); lCuanto.BackColor = Color.Transparent;
             lCuanto.ForeColor = cApagado; lCuanto.Font = fDes; lCuanto.Text = "Cuanto respira:";
+            // Los tres pasos, medidos sobre el degradado del cielo (cuanto se mueve, en niveles de 255, de
+            // un extremo de la respiracion al otro): 2.5% son 4-6 niveles, 4.5% son 8-10 y 6% son 12. El
+            // 1.2% que habia aqui son DOS niveles, o sea nada: se quito porque no era una opcion, era un
+            // apagado con otro nombre.
             string[] nomFza = { "Apenas", "Normal", "Se nota" };
-            string[] valFza = { "1.2", "2.5", "4.5" };
+            string[] valFza = { "2.5", "4.5", "6" };
             BotonPlano[] bFza = new BotonPlano[3];
             for (int k = 0; k < 3; k++)
             {
@@ -640,7 +644,7 @@ namespace Rocola
             Action pinta = delegate
             {
                 int cual = 1;
-                if (respiraFuerza < 0.018f) cual = 0; else if (respiraFuerza > 0.035f) cual = 2;
+                if (respiraFuerza < 0.035f) cual = 0; else if (respiraFuerza > 0.052f) cual = 2;
                 for (int k = 0; k < 3; k++)
                 {
                     bool act = (k == cual) && respiraOn;
@@ -692,7 +696,7 @@ namespace Rocola
             {
                 turnoOn = true; marcaColaOn = true; fondoPortadaOn = true; colaPortadasOn = true;
                 relevoOn = true; respiraOn = true;
-                respiraFuerza = FuerzaRespira("2.5");
+                respiraFuerza = FuerzaRespira("4.5");
                 sw[0].Checked = true; sw[1].Checked = true; sw[2].Checked = true; sw[3].Checked = true; sw[4].Checked = true;
                 swResp.Checked = true;
                 f3CambioGraf = true;

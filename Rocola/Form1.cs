@@ -922,13 +922,18 @@ namespace Rocola
         // el AIRE: la fuerza baja a cero mientras el ciclo sigue corriendo por dentro, y entonces la pared
         // acaba SIEMPRE en su brillo de siempre, se toque el boton en el punto del ciclo que se toque.
         private const float RespiraTope = 0.06f;     // por mucho que pida el archivo, nunca mas de un 6%
-        private const float RespiraDef = 0.025f;     // de fabrica, un 2.5%
+        // De fabrica, un 4.5%. NO es un numero a ojo: medido sobre el degradado del cielo, un 2.5% -lo que
+        // habia- mueve entre 4 y 6 niveles de 255, que en una pantalla grande y en penumbra esta justo en el
+        // limite de no verse. Con 4.5% se mueve entre 8 y 10, y eso ya se lee como una marea. Un 1.2% son
+        // DOS niveles: la respiracion corria y no se veia, que es exactamente lo que pasaba.
+        private const float RespiraDef = 0.045f;
         private const float RespiraPaso = 0.00873f;  // radianes por cuadro: a 24 cuadros/s, una vuelta cada ~30 s
         private static bool respiraOn = true;        // "respira=" en config
         private static float respiraFuerza = RespiraDef;   // "respira_fuerza=" en config, en por ciento
         private float quietud = 0f;                  // 0 = alguien esta tocando AHORA; 1 = hace rato que nadie
         private float respiraFase = 0f;
-        private float bgDimResp = 1f;                // la atenuacion CON la respiracion puesta (lo que se pinta)
+        private float bgDimResp = 1f;                // la atenuacion CON la respiracion puesta (estrellas y destellos)
+        private float bgRespiro = 1f;                // y la respiracion SOLA, que es la que mueve el cielo
 
         // El brillo ahora mismo: 1 es el de siempre. Es la forma de la respiracion y nada mas, sin tope
         // propio: la comparten la pared y la aurora del horizonte, que respira desde antes y con bastante
@@ -3258,9 +3263,9 @@ namespace Rocola
             if (gpuPanel != null && gpuPanel.Visible) return;   // el panel GPU (pantalla completa) ya cubre todo; no gastes CPU pintando el cielo detras
 #endif
             formStars.SkyOffsetX = 0; formStars.SkyOffsetY = 0; formStars.SkyFullW = w; formStars.SkyFullH = h;
-            formStars.SkyMid = SkyColorMid(bgAccent); formStars.Acento = bgAccent;
+            formStars.SkyMid = EscalaBrillo(SkyColorMid(bgAccent), bgRespiro); formStars.Acento = bgAccent;
             formStars.Dim = bgDimResp;   // atenua TAMBIEN las franjas de arriba/abajo en sincronia con la rejilla (una sola pieza), respiracion incluida
-            formStars.DrawCached(g, w, h, SkyColor(bgAccent), SkyColor2(bgAccent));   // cielo en degradado CONTINUO; etiquetas y mini-cubo transparentes encima
+            formStars.DrawCached(g, w, h, EscalaBrillo(SkyColor(bgAccent), bgRespiro), EscalaBrillo(SkyColor2(bgAccent), bgRespiro));   // cielo en degradado CONTINUO; etiquetas y mini-cubo transparentes encima
         }
 
         private static Color Shade(Color c, double towardBlack)
@@ -3317,6 +3322,16 @@ namespace Rocola
             if (r > 60) r = 60; if (g > 105) g = 105; if (b > 205) b = 205;
             r = r * SkyDark / 100; g = g * SkyDark / 100; b = b * SkyDark / 100;   // ESTETICA: mitad del cielo mas oscura
             return Color.FromArgb(255, r, g, b);
+        }
+
+        // Sube o baja el brillo de un color sin tocar su tono. La usa la respiracion del cielo: es lo
+        // unico que la pared hace por su cuenta, asi que va por un solo sitio.
+        internal static Color EscalaBrillo(Color c, float f)
+        {
+            if (f < 0f) f = 0f;
+            int r = (int)(c.R * f + 0.5f), g = (int)(c.G * f + 0.5f), b = (int)(c.B * f + 0.5f);
+            if (r > 255) r = 255; if (g > 255) g = 255; if (b > 255) b = 255;
+            return Color.FromArgb(c.A, r, g, b);
         }
 
         private static Color Lighten(Color c, double t)
@@ -9122,12 +9137,27 @@ namespace Rocola
             SaveState();   // estado vivo: los creditos cambiaron
         }
 
+        private int pastCredAncho;   // el ancho con el que se acomodo la capsula de creditos la ultima vez
+
         private void UpdateCredits()
         {
             if (pastCred == null) return;
             if (credits <= 0) { pastCred.Etiqueta = "Inserta una moneda"; pastCred.Valor = ""; pastCred.Acento = Color.FromArgb(255, 205, 90); }
             else { pastCred.Etiqueta = "Creditos"; pastCred.Valor = credits.ToString(); pastCred.Acento = Color.FromArgb(120, 240, 140); }
-            pastCred.Invalidate();
+            // Y SI AHORA PIDE OTRO ANCHO, HAY QUE VOLVER A ACOMODAR.
+            //
+            // Los dos letreros miden cosas muy distintas -"Creditos 1" y "Inserta una moneda" se llevan mas
+            // de cien pixeles- y el ancho de la capsula se calcula al acomodar la pantalla, no aqui. Al
+            // gastar el ultimo credito el texto pasaba al largo DENTRO de la capsula medida para el corto, y
+            // se cortaba a media palabra. Se veia en la rocola del bar: "Inserta una mon".
+            //
+            // Solo si CAMBIO: de "Creditos 1" a "Creditos 2" mide lo mismo, y rehacer el acomodo de la
+            // pantalla en cada moneda seria trabajo tirado veinte veces en una noche movida.
+            if (pastCred.Height >= 8)
+            {
+                int quiere = PastillaView.Ancho(pastCred.Etiqueta, pastCred.Valor, pastCred.Height, this.Font.FontFamily, pastCred.ConPortadas);
+                if (quiere != pastCredAncho) { pastCredAncho = quiere; LayoutControls(); }
+            }
             pastCred.Invalidate();
         }
 
@@ -10942,7 +10972,16 @@ namespace Rocola
             quietud = PasoQuietud(quietud, (DateTime.Now - lastInput).TotalSeconds < BgDimIdleSecs);
             respiraFase += RespiraPaso;
             if (respiraFase > 6.2831853f) respiraFase -= 6.2831853f;
-            bgDimResp = bgDim * (respiraOn ? Respiracion(respiraFuerza, quietud, respiraFase) : 1f);
+            // DOS COSAS DISTINTAS, y hay que tenerlas separadas.
+            //
+            // 'bgDimResp' es la atenuacion al navegar CON la respiracion encima, y va a las estrellas y a
+            // los destellos. 'bgRespiro' es SOLO la respiracion, y es la que va a los colores del CIELO.
+            //
+            // Mezclarlas seria un fallo gordo: la atenuacion al navegar baja al 45%, y aplicada al cielo
+            // dejaria toda la pantalla a media luz en cuanto alguien toca un boton con musica sonando. El
+            // cielo no se atenua -nunca se atenuo- pero si respira.
+            bgRespiro = respiraOn ? Respiracion(respiraFuerza, quietud, respiraFase) : 1f;
+            bgDimResp = bgDim * bgRespiro;
             albumView.BgDim = bgDimResp;
             if (panelSongs != null) panelSongs.BgDim = bgDimResp;   // el interior del disco comparte el mismo campo: atenua igual
             if (searchOverlay != null) searchOverlay.BgDim = bgDimResp;
@@ -10975,7 +11014,17 @@ namespace Rocola
                 if (attractOn)   // atraccion: cielo nocturno fijo (sin musica, no sigue al genero)
                 { gpuPanel.SkyTop = 0xFF06081Au; gpuPanel.SkyMid = 0xFF0C0E28u; gpuPanel.SkyBot = 0xFF12143Au; }
                 else
-                { gpuPanel.SkyTop = ToD3D(SkyColor(bgAccent)); gpuPanel.SkyMid = ToD3D(SkyColorMid(bgAccent)); gpuPanel.SkyBot = ToD3D(SkyColor2(bgAccent)); gpuPanel.NebColor = ToD3D(ColorNebulosa(bgAccent)); }   // el degradado sigue al genero
+                {
+                    // EL CIELO RESPIRA AQUI. Estos tres colores se le pasan al panel ya calculados, asi que
+                    // multiplicarlos no cuesta nada de tarjeta grafica: son tres numeros por cuadro. Antes la
+                    // respiracion iba solo a 'Dim', que mueve las estrellas y los destellos y deja el cielo
+                    // igual: la superficie grande -la que uno llama "la pared"- no se enteraba, y por eso no
+                    // se veia respirar.
+                    gpuPanel.SkyTop = ToD3D(EscalaBrillo(SkyColor(bgAccent), bgRespiro));
+                    gpuPanel.SkyMid = ToD3D(EscalaBrillo(SkyColorMid(bgAccent), bgRespiro));
+                    gpuPanel.SkyBot = ToD3D(EscalaBrillo(SkyColor2(bgAccent), bgRespiro));
+                    gpuPanel.NebColor = ToD3D(ColorNebulosa(bgAccent));
+                }   // el degradado sigue al genero
             }
 #endif
             if (progress != null) progress.Accent = bgAccent;   // ESTETICA: la barra de progreso sigue el color del genero
@@ -13655,7 +13704,7 @@ namespace Rocola
                 {
                     Rectangle area, lbl; Geometry(w, h, i, out area, out lbl);
                     Album a = Page[i];
-                    buf[n].Key = CellKey(a);
+                    buf[n].Key = ClaveCasilla(a);   // CON la marca: el panel cachea sus texturas por esta clave
                     buf[n].Bmp = PeekOrBakeCell(a, cw, side, labelH, gap, (GetCover != null) ? GetCover(a) : null, ref budget, chica);
                     buf[n].Slot = i;
                     buf[n].X = ox + (i % Cols) * cw + dx; buf[n].Y = oy + area.Y; buf[n].W = cw; buf[n].H = side + gap + labelH;
@@ -13936,6 +13985,29 @@ namespace Rocola
                 return a.KeyCache;
             }
 
+            // LA CLAVE DE LA CASILLA, CON LA MARCA PUESTA. UN SOLO SITIO, y por eso existe.
+            //
+            // El palomito de "ya la pusiste" va HORNEADO DENTRO del mapa de bits de la casilla, asi que al
+            // pedir una cancion hay que hornear una casilla NUEVA: por eso la clave lleva un "#q" pegado.
+            // Eso estaba bien puesto en los dos sitios que hornean... y no en el tercero, el que le entrega
+            // la rejilla a la tarjeta grafica, que ademas es el que manda: el panel cachea sus texturas por
+            // esa clave. Resultado: la rocola horneaba la casilla con marca, se la daba al panel, y el panel
+            // reusaba la textura vieja SIN marca. El adorno entero estaba invisible en las dos maquinas de
+            // Windows, y tampoco desaparecia nunca al vaciarse la cola.
+            //
+            // Pegar el "#q" en un tercer sitio habria sido repetir el error. Ahora los tres piden aqui.
+            //
+            // Y NO CUESTA UNA CADENA NUEVA POR CUADRO: la variante con marca se arma UNA vez por disco y se
+            // guarda en el propio disco, igual que la clave base. Esto se pide para cada casilla en cada
+            // cuadro -dieciocho, sesenta veces por segundo-, y pegar cadenas ahi seria basura sin fin.
+            private string ClaveCasilla(Album a)
+            {
+                string k = CellKey(a);
+                if (k == null || EnCola == null || !EnCola(a)) return k;
+                if (a.KeyQ == null || !object.ReferenceEquals(a.KeyQDe, k)) { a.KeyQDe = k; a.KeyQ = k + "#q"; }
+                return a.KeyQ;
+            }
+
             // Hornea la celda de un disco (portada estatica en angulo 0 + etiqueta a 2 lineas) a un bitmap propio.
             private Bitmap BakeCell(Album a, int cw, int side, int labelH, int gap, Image cover)
             { return BakeCell(a, cw, side, labelH, gap, cover, 1f); }
@@ -13998,11 +14070,10 @@ namespace Rocola
             // portada (placeholder -> cargada). Clave = CellKey(a) (ver arriba). Sin clave no se cachea.
             private Bitmap GetOrBakeCell(Album a, int cw, int side, int labelH, int gap, Image cover)
             {
-                string key = CellKey(a);
+                string key = ClaveCasilla(a);
                 // LA MARCA ENTRA EN LA LLAVE, y por eso no hace falta avisar a nadie de nada: al pedir una
                 // cancion, la llave de ese disco cambia, la casilla no esta en la caja y se hornea con su
                 // palomito. Y la version sin marca se queda guardada para cuando la cancion ya sono.
-                if (key != null && EnCola != null && EnCola(a)) key += "#q";
                 bool hasCover = (cover != null);
                 CellSprite cs = null;
                 if (key != null && cellCache.TryGetValue(key, out cs) && cs.Bmp != null && cs.HasCover == hasCover)
@@ -14035,8 +14106,7 @@ namespace Rocola
             // su propia clave para que la entera siga ahi: al parar hay que volver a ella.
             private Bitmap PeekOrBakeCell(Album a, int cw, int side, int labelH, int gap, Image cover, ref int budget, bool chica)
             {
-                string key = CellKey(a);
-                if (key != null && EnCola != null && EnCola(a)) key += "#q";   // ver GetOrBakeCell
+                string key = ClaveCasilla(a);
                 bool hasCover = (cover != null);
                 string k = (key == null) ? null : (chica ? key + "#c" : key);
                 CellSprite cs = null;
@@ -17347,6 +17417,7 @@ namespace Rocola
             public bool IsTop = false;             // disco virtual de "lo mas sonado" por genero
             public bool TopIsVideo = false;        // (TOP) este disco virtual contiene VIDEOS, no canciones
             public string KeyCache, KeyFrom;       // clave de la casilla ya armada (ver CellKey): se pide en cada cuadro
+            public string KeyQ, KeyQDe;            // y su variante con el palomito (ver ClaveCasilla), tambien armada una vez
             public List<string> CycleCovers;       // (TOP) caratulas distintas para ciclar en el cubo seleccionado
             public List<string> TrackCovers;       // (TOP) caratula de origen por cada cancion (alineado con Tracks)
             public List<string> TrackInfo;         // (TOP) "Artista - Album" de origen por cada cancion
