@@ -779,12 +779,18 @@ namespace Rocola
         // solo numero por la misma razon: una lectura de tabla en vez de dos.
         private const int AireN = 128;
         private const float TitMedia = 0.725f;   // el centro de TitTab (va de 0.45 a 1.0): el titileo se agranda ALREDEDOR de el
+        // Y SE REHACE AL TOCAR LA PERILLA, no al arrancar y nunca mas. La fuerza del aire se elige en
+        // Ctrl+F3 mirando la pared, asi que la tabla tiene que ponerse al dia sola en cuanto cambia. Se
+        // mira el paso puesto en cada cuadro -una comparacion de dos numeros- y se rehace solo si cambio:
+        // rellenar 128 bandas cuesta lo mismo que un pestaneo y pasa una vez, no cada cuadro.
         private static readonly float[] AireP = new float[AireN];   // el trozo FIJO del brillo
         private static readonly float[] AireQ = new float[AireN];   // y lo que multiplica al titileo
-        private static readonly uint[] AireGB = HazAire();          // verde<<16 | azul, de 0 a 256 cada uno
-        private static uint[] HazAire()
+        private static readonly uint[] AireGB = new uint[AireN];    // verde<<16 | azul, de 0 a 256 cada uno
+        private static int aireDe = -1;                             // con que paso de la perilla se lleno la tabla
+        internal static void HazAire()
         {
-            uint[] gb = new uint[AireN];
+            int paso = Form1.AirePaso;
+            if (aireDe == paso) return;
             for (int i = 0; i < AireN; i++)
             {
                 float aire = Form1.AireDelCielo(i + 0.5f, AireN);   // 0 arriba del todo, 1 abajo del todo
@@ -796,14 +802,15 @@ namespace Rocola
                 float c = Form1.AireCalor * aire;
                 uint g = (uint)(256f * (1f - 0.35f * c) + 0.5f);
                 uint az = (uint)(256f * (1f - 0.75f * c) + 0.5f);
-                gb[i] = (g << 16) | az;
+                AireGB[i] = (g << 16) | az;
             }
-            return gb;
+            aireDe = paso;
         }
 
         private static void BuildStarVerts(D3D9.Vtx[] buf, float[] xs, float[] ys, float[] ph, float[] spd, float[] sz, int[] kd, int[] fm, uint[] col, int n, double t, float fade, float pulse, float[] dx, float[] dy, float w, float h)
         {
             int vi = 0;
+            HazAire();   // se rehace SOLO si se toco la perilla; si no, es comparar dos numeros
             float aireEsc = (h > 0f) ? (AireN / h) : 0f;   // de altura en pixeles a banda de la tabla del aire
             float f255 = fade * 255f;                      // el entrecruzado y el paso a niveles, de una vez
             for (int i = 0; i < n; i++)
