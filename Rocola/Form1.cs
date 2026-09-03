@@ -3716,6 +3716,43 @@ namespace Rocola
         // El corte, ya acotado, tal y como lo piden las dos paredes.
         internal static float CorteDelCielo { get { return cieloCorte; } }
 
+        // ===================== CUANTO AIRE HAY DELANTE DE CADA ESTRELLA =====================
+        //
+        // Un cielo de verdad no se ve igual arriba que abajo. Mirando hacia arriba se atraviesa el minimo
+        // de atmosfera; mirando al horizonte, la misma mirada cruza muchisimo mas aire, y eso le hace tres
+        // cosas a las estrellas de ahi abajo: las APAGA, las tira a NARANJA y las hace CENTELLEAR mas.
+        //
+        // La pared las pintaba igual de blancas y de brillantes pegadas al techo que pegadas al suelo, y
+        // esa es la razon principal de que el campo se leyera como una textura lisa y no como un espacio
+        // con fondo. De paso arregla otra cosa: ahi abajo viven el resplandor del genero y la aurora, y
+        // hasta ahora las estrellas les peleaban el sitio.
+        //
+        // Devuelve 0 arriba del todo y 1 abajo del todo. El exponente es lo que concentra el efecto en la
+        // franja de abajo en vez de repartirlo por igual: a media altura el aire va por un quinto, no por
+        // la mitad.
+        //
+        // Y VIVE AQUI, fuera del trozo de tarjeta grafica, porque las dos paredes -la de tarjeta y la
+        // horneada- tienen que usar exactamente la misma curva, igual que ya pasa con el corte del cielo
+        // y con la fuerza de las nebulosas. Con dos copias, la maquina del bar y la de repuesto pintarian
+        // cielos distintos y nadie se enteraria hasta verlas juntas.
+        private const float AireCurva = 2.2f;
+        internal static float AireDelCielo(float y, float alto)
+        {
+            if (!(alto > 0f)) return 0f;
+            float u = y / alto;
+            if (!(u > 0f)) return 0f;   // el "!" atrapa tambien el NaN, que en una comparacion normal se colaria
+            if (u > 1f) u = 1f;
+            return (float)Math.Pow(u, AireCurva);
+        }
+
+        // LOS TRES NUMEROS DE GUSTO. No se sacan de ninguna cuenta: son cuanto se nota el efecto, y se
+        // eligieron MIRANDO -dibujando el cielo a PNG con varias combinaciones y comparando- igual que se
+        // hizo con las nebulosas. La bateria 'cielohondo' los vigila para que nadie los deje en cero sin
+        // querer y el cielo vuelva a quedarse plano sin que salte nada.
+        internal const float AireApaga = 0.55f;      // brillo que PIERDE una estrella pegada al suelo (0 = ninguno)
+        internal const float AireCalor = 0.55f;      // cuanto enrojece ahi abajo (0 = sale del mismo color que arriba)
+        internal const float AireCentelleo = 0.9f;   // cuanto MAS titila ahi abajo (0 = titila igual que arriba)
+
         // AL TOCAR UNA PERILLA, QUE SE VEA YA. La ventana de Ctrl+F3 no tapa la pared entera -mide 960 de
         // ancho y la pantalla del bar 1920-, asi que se elige mirando: se toca y el fondo cambia al instante.
         //
@@ -13844,6 +13881,31 @@ namespace Rocola
                 if (advance || shownLayer < 0 || layers == null || shownLayer >= layers.Length) shownLayer = CurrentStarLayerIndex();
                 Bitmap sl = (layers != null && shownLayer >= 0 && shownLayer < layers.Length) ? layers[shownLayer] : null;
                 if (sl != null) BlitEstrellas(g, sl, w, h, offX, offY);
+                // AQUI IRIA EL VELO DEL HORIZONTE, Y NO ESTA. QUEDA ESCRITO POR QUE.
+                //
+                // Con tarjeta grafica cada estrella se apaga y se enrojece segun a que altura de la pantalla
+                // cae -es lo que hace el aire de verdad, y es lo que le da fondo al cielo- (ver BuildStarVerts,
+                // al final de D3D9Star.cs). Ahi sale gratis: la cuenta se hace estrella por estrella dentro de
+                // un bucle que ya existia.
+                //
+                // Aqui no se puede hacer igual. Las estrellas van HORNEADAS en ocho capas que se DESLIZAN, asi
+                // que un valor atado a la altura viajaria con la estrella en vez de quedarse quieto en la
+                // pantalla, que es justo lo contrario de lo que hace el aire: el aire esta donde esta.
+                //
+                // La otra forma es un VELO -un degradado del color del propio cielo, con alfa creciendo hacia
+                // abajo, pegado encima de las estrellas-. SE ESCRIBIO Y SE MIDIO, horneado a un mapa de bits
+                // y pegado de una copia, que es lo mas barato que hay:
+                //
+                //     a 1024x768   pegar el fondo pasa de 0.55 a 1.10 ms por cuadro
+                //     a 1920x1080  pasa de 1.50 a 2.90 ms por cuadro
+                //
+                // O sea que DUPLICA lo que cuesta pintar el fondo, y en la maquina del bar -que es cuatro o
+                // cinco veces mas lenta, y que es justamente la que no tiene tarjeta grafica- eso son sesenta
+                // milisegundos de cada mil. No es un efecto que valga ese precio.
+                //
+                // Y no hay forma barata: el velo tapa el 90% de la pantalla (mas arriba el alfa no llega ni a
+                // un nivel de 255), asi que son casi dos millones de pixeles mezclando alfa en cada cuadro.
+                // Recortarlo a la franja de abajo ahorra la mitad y deja un canto que se ve.
                 g.CompositingMode = ocm;
             }
 

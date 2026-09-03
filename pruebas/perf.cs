@@ -258,7 +258,7 @@ class Perf
                     for (int i = 0; i < n; i++)
                     { xs[i] = (float)rr.NextDouble(); ys[i] = (float)rr.NextDouble(); ph[i] = (float)(rr.NextDouble() * 6);
                       sp[i] = 0.3f; sz[i] = 2f; kd[i] = i % 3; col[i] = 0xFFFFFFFFu; }
-                    object[] args = new object[] { v, xs, ys, ph, sp, sz, kd, col, n, 12.3, 1f, 0.4f, 0f, 0f, 1024f, 768f };
+                    object[] args = new object[] { v, xs, ys, ph, sp, sz, kd, null, col, n, 12.3, 1f, 0.4f, new float[3], new float[3], 1024f, 768f };
                     Fila("las " + n + " estrellas (BuildStarVerts)", Mide(3000, delegate { mStars.Invoke(null, args); }));
                 }
             }
