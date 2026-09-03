@@ -553,6 +553,13 @@ namespace Rocola
             // mapa de bits horneado, asi que sin este aviso la cancion recien pedida seguiria saliendo sin
             // marca hasta que algo mas obligara a rehacerla.
             RefrescaLista();
+            // Lo mismo para los resultados del buscador, que tambien van horneados a un mapa de bits: si no,
+            // pedir una cancion desde el buscador no cambiaria nada de lo que se ve hasta teclear otra letra.
+            if (searchOverlay != null)
+            {
+                searchOverlay.ColaVer = colaVer;
+                if (searchOpen) searchOverlay.Invalidate();
+            }
         }
         // LAS TRES PRIMERAS DE LA COLA, para la capsula. Se piden con LoadCover, que devuelve lo que ya
         // esta en memoria y encarga al disco lo que no; cuando lo que faltaba llegue, ApplyArrivedCover
@@ -3757,6 +3764,17 @@ namespace Rocola
             return GiraTono(genero, TonoDe(portada) - TonoDe(genero), 1f);
         }
 
+        // LOS DOS COLORES DE "YA LA PEDISTE" Y "SUENA AHORA". Viven aqui, y no dentro de la lista del disco
+        // donde nacieron, porque ahora los usan DOS sitios: esa lista y los resultados del buscador. Con una
+        // copia en cada uno, el dia que alguien cambiara el verde tendriamos una pantalla de un verde y la
+        // otra de otro, y nadie se enteraria hasta verlas seguidas.
+        //
+        // El AMBAR es deliberadamente de otra familia de color que el verde: de un vistazo, y a la distancia
+        // a la que se mira una rocola, tienen que distinguirse sin leer. Verde = la vas a oir; ambar = la
+        // estas oyendo.
+        internal static readonly Color ColaVerde = Color.FromArgb(120, 230, 165);
+        internal static readonly Color SonAmbar = Color.FromArgb(255, 198, 104);
+
         // TONO de un color, en grados de la rueda (0 = rojo, 120 = verde, 240 = azul).
         private static float TonoDe(Color c)
         {
@@ -4248,6 +4266,24 @@ namespace Rocola
                 // La misma respuesta que dentro del disco: si es una cancion se le pregunta por ella; si es un
                 // disco o un artista, por el disco. Antes el buscador y el interior podian decir cosas distintas.
                 return (it != null) ? GeneroDeCancion(it.TrackRef, it.AlbumRef) : "";
+            };
+            // QUE CANCION YA ESTA PEDIDA Y CUAL SUENA. Se contesta con las MISMAS tablas que la lista de
+            // dentro del disco (colaPos y sonandoKey), no con una copia: asi las dos pantallas no se pueden
+            // desparejar, y la clave es la ruta del archivo, que es lo unico que sobrevive a un re-escaneo.
+            //
+            // Y respeta el interruptor de Ctrl+F3: es el mismo adorno que el palomito de la pared -"ya la
+            // pusiste"-, asi que se apaga con el mismo boton. Dos interruptores para lo mismo seria peor que
+            // ninguno.
+            searchOverlay.GetQueuePos = delegate (SearchItem it)
+            {
+                if (!marcaColaOn || it == null || it.TrackRef == null || colaPos.Count == 0) return 0;
+                int pos;
+                return (it.TrackRef.Path != null && colaPos.TryGetValue(it.TrackRef.Path, out pos)) ? pos : 0;
+            };
+            searchOverlay.GetSonando = delegate (SearchItem it)
+            {
+                if (!marcaColaOn || it == null || it.TrackRef == null || sonandoKey.Length == 0) return false;
+                return it.TrackRef.Path != null && string.Equals(it.TrackRef.Path, sonandoKey, StringComparison.OrdinalIgnoreCase);
             };
             searchOverlay.OnQueryChanged = RecomputeResults;
             searchOverlay.OnTecleo = AlTeclearBusqueda;
@@ -11484,6 +11520,7 @@ namespace Rocola
                 sb = Mix(sb, 'S'); sb = Mix(sb, searchOverlay.Query);
                 sb = Mix(sb, searchOverlay.Results == null ? 0 : searchOverlay.Results.Count);
                 sb = Mix(sb, searchOverlay.ToastOn); sb = Mix(sb, searchOverlay.ToastMsg);
+                sb = Mix(sb, colaVer);   // las marcas "EN COLA" y "SUENA AHORA" van horneadas en las tarjetas
                 // LA TECLA ELEGIDA YA NO ENTRA AQUI. Entraba, y eso significaba que pulsar una flecha -que
                 // solo cambia QUE tecla lleva el recuadro- obligaba a rehacer y RE-SUBIR la pantalla completa:
                 // 5.91 ms por pulsacion a 1080p, el 35% de un cuadro. Ahora la tecla elegida sale como PIEZA
@@ -16950,11 +16987,6 @@ namespace Rocola
                 }
                 if (hornoPastAlto != ph) { TiraPastillas(); hornoPastAlto = ph; }   // otro alto de fila: se rehornean
             }
-            private static readonly Color ColaVerde = Color.FromArgb(120, 230, 165);
-            // AMBAR para la que suena AHORA. Deliberadamente de otra familia de color que el verde de "ya
-            // pedida": de un vistazo, y a la distancia a la que se mira una rocola, tienen que distinguirse
-            // sin leer. Verde = la vas a oir; ambar = la estas oyendo.
-            private static readonly Color SonAmbar = Color.FromArgb(255, 198, 104);
             private static readonly Color NumGris = Color.FromArgb(150, 170, 220);
 
             public SongListView()
@@ -17258,6 +17290,15 @@ namespace Rocola
             public Func<SearchItem, string> GetDisco;
             public Func<SearchItem, string> GetGenero;
             public int DatosVer;
+            // QUE CANCION YA ESTA PEDIDA, Y CUAL SUENA AHORA. Lo mismo que ya dice la lista de dentro del
+            // disco, con las mismas palabras y los mismos colores: el cliente busca "Depeche", ve cuarenta
+            // canciones y no tiene forma de acordarse de cuales pidio hace diez minutos.
+            //
+            // 'ColaVer' sube cada vez que la cola cambia y entra en la firma del cache de las tarjetas: sin
+            // el, pedir una cancion no cambiaria nada de lo que se ve hasta teclear otra letra.
+            public Func<SearchItem, int> GetQueuePos;    // 0 = no esta pedida; si no, su puesto en la cola
+            public Func<SearchItem, bool> GetSonando;
+            public int ColaVer;
             public int SelRow = 1;
             public int SelCol = 0;
             public bool FocusResults = false;
@@ -17347,7 +17388,7 @@ namespace Rocola
             // CACHE de la lista de resultados (mismo motivo que el teclado): ~40 tarjetas con degradado, contorno
             // y 2 textos cada una. Los resultados dependen SOLO de la consulta, asi que se cachean por Query y
             // solo se pinta EN VIVO la tarjeta seleccionada. Moverse por teclas/resultados deja de dar tirones.
-            private Bitmap resCache; private string resCacheQuery = "\0"; private int resCacheW = -1, resCacheH = -1, resCacheAccent, resCacheDatos = -1;
+            private Bitmap resCache; private string resCacheQuery = "\0"; private int resCacheW = -1, resCacheH = -1, resCacheAccent, resCacheDatos = -1, resCacheCola = -1;
             private SolidBrush marcaB;   // el resaltado de lo tecleado (reusable)
             private Point resCacheOrigin;
             // HORNOS DE LA TARJETA DE RESULTADO. Todas las tarjetas miden lo mismo, asi que su fondo (rectangulo
@@ -17387,6 +17428,32 @@ namespace Rocola
                 }
                 return b;
             }
+            // LA PASTILLA DE UNA MARCA ("EN COLA 3", "SUENA AHORA"), horneada igual que la del genero y
+            // guardada por su texto: en una pantalla de cuarenta resultados se repiten mucho, y hornear un
+            // fondo redondeado cuarenta veces por tecla se nota.
+            private readonly Dictionary<string, Bitmap> hornoMarca = new Dictionary<string, Bitmap>(StringComparer.Ordinal);
+            private Bitmap HorneaMarcaRes(Graphics medidor, string texto, Color c)
+            {
+                Bitmap b;
+                if (hornoMarca.TryGetValue(texto, out b)) return b;
+                Size gs = TextRenderer.MeasureText(medidor, texto, fResSub, new Size(9999, 99), TextFormatFlags.NoPadding);
+                int w = gs.Width + 14, h = 15;
+                if (w < 8) w = 8;
+                b = new Bitmap(w + 2 * MargenTarj, h + 2 * MargenTarj, PixelFormat.Format32bppPArgb);
+                using (Graphics g = Graphics.FromImage(b))
+                {
+                    g.SmoothingMode = SmoothingMode.AntiAlias;
+                    g.Clear(Color.Transparent);
+                    using (GraphicsPath gp = RoundedPath(new Rectangle(MargenTarj, MargenTarj, w, h), 7))
+                    {
+                        using (SolidBrush sb = new SolidBrush(Color.FromArgb(70, c))) g.FillPath(sb, gp);
+                        using (Pen pn = new Pen(Color.FromArgb(170, c), 1f)) g.DrawPath(pn, gp);
+                    }
+                }
+                hornoMarca[texto] = b;
+                return b;
+            }
+
             private Bitmap HorneaGeneroRes(Graphics medidor, string etiqueta)
             {
                 Bitmap b;   // el color sale del GENERO, no del color de la seccion: no caduca nunca
@@ -18016,7 +18083,7 @@ namespace Rocola
                 // moverse por los resultados NO lo toca (solo copia el cache + la tarjeta seleccionada en vivo).
                 int accentArgb = Accent.ToArgb();
                 string qNorm = Normalize(Query ?? "");   // UNA vez por dibujado, no una por tarjeta
-                if (resCache == null || resCacheW != region.Width || resCacheH != region.Height || resCacheAccent != accentArgb || resCacheQuery != Query || resCacheDatos != DatosVer)
+                if (resCache == null || resCacheW != region.Width || resCacheH != region.Height || resCacheAccent != accentArgb || resCacheQuery != Query || resCacheDatos != DatosVer || resCacheCola != ColaVer)
                 {
                     int rw = Math.Max(1, region.Width), rh = Math.Max(1, region.Height);
                     if (resCache == null || resCache.Width != rw || resCache.Height != rh)   // REUSA el bitmap si el tamano no cambio
@@ -18038,7 +18105,7 @@ namespace Rocola
                                 DrawOneResultCard(cg, i, rr, false, qNorm);
                             }
                     }
-                    resCacheW = region.Width; resCacheH = region.Height; resCacheAccent = accentArgb; resCacheQuery = Query; resCacheOrigin = region.Location; resCacheDatos = DatosVer;
+                    resCacheW = region.Width; resCacheH = region.Height; resCacheAccent = accentArgb; resCacheQuery = Query; resCacheOrigin = region.Location; resCacheDatos = DatosVer; resCacheCola = ColaVer;
                 }
                 g.DrawImageUnscaled(resCache, resCacheOrigin.X, resCacheOrigin.Y);
                 // Tarjeta seleccionada EN VIVO encima: su relleno es opaco y tapa la version sin seleccion del cache.
@@ -18078,6 +18145,24 @@ namespace Rocola
                         derLim = gx - 8;
                     }
                 }
+                // ---- LAS MARCAS: "ya la pediste" y "suena ahora" ----
+                // Van en el renglon de arriba, a la izquierda de la pastilla del genero, y con las MISMAS
+                // palabras y los mismos colores que dentro del disco. Las dos pueden salir a la vez: una
+                // cancion puede estar sonando Y estar pedida otra vez, y el cliente necesita las dos cosas.
+                //
+                // Si no cabe, no se dibuja: en una pantalla estrecha manda el nombre de la cancion.
+                int posCola = (GetQueuePos != null) ? GetQueuePos(it) : 0;
+                bool suena = (GetSonando != null) && GetSonando(it);
+                // Las MISMAS palabras que dentro del disco, incluido el triangulito: U+25BA y no U+25B6,
+                // que son casi identicos pero el otro no esta en el juego de simbolos de Windows XP y alli
+                // saldria un rectangulo vacio.
+                //
+                // Y EL VERDE VA PRIMERO, o sea el mas a la derecha. Si en una tarjeta estrecha solo cabe uno,
+                // tiene que ser ese: el cliente esta eligiendo cancion, y lo que le hace falta saber es que
+                // ESA ya la pidio. Que suene ahora ya se lo dice la franja de abajo.
+                if (posCola > 0) derLim = MarcaRes(g, "EN COLA " + posCola, ColaVerde, rr, xIz, derLim);
+                if (suena) derLim = MarcaRes(g, "\u25BA SONANDO", SonAmbar, rr, xIz, derLim);
+
                 // El rotulo se MIDE una vez (los tres posibles miden siempre lo mismo) pero se DIBUJA aqui:
                 // el texto no se puede hornear aparte, porque el sistema lo mezcla con el color que tiene
                 // debajo y una letra dibujada sobre transparente y luego pegada sale mas fina.
@@ -18124,6 +18209,20 @@ namespace Rocola
                     }
                 }
                 TextRenderer.DrawText(g, it.Display, fRes, tr, Color.White, TextFormatFlags.Left | TextFormatFlags.EndEllipsis);
+            }
+
+            // Dibuja una marca pegada a 'derLim' y devuelve el nuevo limite derecho para lo que venga detras.
+            // Si no cabe deja el limite como estaba y no dibuja nada.
+            private int MarcaRes(Graphics g, string texto, Color c, Rectangle rr, int xIz, int derLim)
+            {
+                Bitmap pm = HorneaMarcaRes(g, texto, c);
+                int mw = pm.Width - 2 * MargenTarj, mh = pm.Height - 2 * MargenTarj;
+                int mx = derLim - mw;
+                if (mx <= xIz + 40) return derLim;   // no cabe: manda el nombre de la cancion
+                g.DrawImageUnscaled(pm, mx - MargenTarj, rr.Y + 3 - MargenTarj);
+                TextRenderer.DrawText(g, texto, fResSub, new Rectangle(mx, rr.Y + 3, mw, mh), c,
+                                      TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+                return mx - 6;
             }
 
             // Cachea las caratulas (ya redimensionadas) de todos los discos del artista
