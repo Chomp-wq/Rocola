@@ -474,8 +474,25 @@ namespace Rocola
         // por estrella dentro del bucle que ya existe; ni asignaciones ni draws extra.
         private double driftFinoAnt;                         // ultimo Begin (reloj fino) para medir dt de la deriva
         private float driftEnv;                              // envolvente 0..1: sube al sonar, baja al parar (arranque/paro suave)
-        private float driftX, driftY;                        // desplazamiento acumulado (px), envuelto con w/h
         private const float DriftVX = 18f, DriftVY = 9f;     // px/seg (derecha, abajo): lento, diagonal suave 2:1
+
+        // ...Y NO TODAS A LA VEZ: DE AQUI SALE LA PROFUNDIDAD.
+        //
+        // Hasta ahora las mil cuatrocientas estrellas se deslizaban con el MISMO desplazamiento, y por eso el
+        // cielo se movia como un papel pintado que alguien arrastra y no como un espacio con fondo. Lo que el
+        // ojo lee como distancia -sin que nadie se lo explique- es que lo lejano se mueva MENOS que lo cercano.
+        //
+        // Cada estrella ya lleva apuntado su tamano, asi que el polvo -las mas pequenas, las que hacen de
+        // fondo- deriva a un tercio de lo que derivan las grandes, y las medianas a poco mas de la mitad.
+        //
+        // Y SON TRES CUENTAS ACUMULADAS, no una multiplicada por tres factores. Tiene que ser asi: el
+        // desplazamiento se guarda ya envuelto entre cero y el ancho de la pantalla, o sea que al dar la
+        // vuelta salta del ancho a cero. Multiplicar DESPUES ese salto por un tercio movería el polvo de
+        // golpe un tercio de pantalla cada vez que la cuenta grande da la vuelta: un tiron cada dos minutos
+        // de musica. Acumulando cada tamano por su lado, la vuelta de cada uno es exacta y sus estrellas
+        // reaparecen por el otro borde sin que se note nada.
+        private static readonly float[] DerivaKind = { 0.33f, 0.58f, 1f };       // polvo, mediana, grande
+        private readonly float[] driftX = new float[3], driftY = new float[3];   // acumulado (px) de cada tamano, envuelto con w/h
 
         public bool Ok { get { return gpu != null && gpu.Ok; } }
         public int Count { get { return nStars; } }
@@ -641,8 +658,12 @@ namespace Rocola
             if (ddt < 0f) ddt = 0f; else if (ddt > 0.1f) ddt = 0.1f;   // acota saltos (p.ej. tras un atasco)
             float dTgt = (pulseCrudo > 0.02f) ? 1f : 0f;
             driftEnv += (dTgt - driftEnv) * (dTgt > driftEnv ? Math.Min(1f, ddt * 2.5f) : Math.Min(1f, ddt * 0.6f));   // ataque medio, caida lenta
-            driftX += driftEnv * DriftVX * ddt; if (w > 0) driftX %= w;   // env>=0 -> solo crece; el modulo lo deja en [0,w)
-            driftY += driftEnv * DriftVY * ddt; if (h > 0) driftY %= h;
+            float avX = driftEnv * DriftVX * ddt, avY = driftEnv * DriftVY * ddt;   // env>=0 -> solo crece
+            for (int k = 0; k < 3; k++)
+            {
+                driftX[k] += avX * DerivaKind[k]; if (w > 0) driftX[k] %= w;   // el modulo lo deja en [0,w)
+                driftY[k] += avY * DerivaKind[k]; if (h > 0) driftY[k] %= h;
+            }
 
             // PATRON que cambia cada minuto, con ENTRECRUZADO: se conserva el patron anterior y se desvanece
             // mientras el nuevo aparece (el cielo nunca se queda sin estrellas). Por GPU re-sortear es barato.
@@ -736,18 +757,83 @@ namespace Rocola
             return TitTab[i] + (TitTab[i + 1] - TitTab[i]) * r;   // entre las dos vecinas: sin escalones
         }
 
-        private static void BuildStarVerts(D3D9.Vtx[] buf, float[] xs, float[] ys, float[] ph, float[] spd, float[] sz, int[] kd, int[] fm, uint[] col, int n, double t, float fade, float pulse, float dx, float dy, float w, float h)
+        // EL AIRE QUE HAY DELANTE DE CADA ESTRELLA, TAMBIEN POR TABLA.
+        //
+        // Cuanto se apaga una estrella, cuanto enrojece y cuanto mas titila segun a que altura de la pantalla
+        // cae. La CURVA vive en Form1 -la comparten las dos paredes, la de tarjeta grafica y la horneada- y
+        // aqui se guarda ya masticada en bandas de altura, por el mismo motivo que el titileo va por tabla:
+        // esto se hace mil cuatrocientas veces por cuadro, y el doble durante el cruce de patrones.
+        //
+        // Los dos factores del COLOR van en enteros de 0 a 256 para que apagar y enrojecer salga con una
+        // multiplicacion y un desplazamiento, que es exactamente lo que ya costaba empaquetar el color.
+        //
+        // Enrojecer no es sumarle rojo: es QUITARLE azul, y algo menos de verde. Es lo que hace el aire de
+        // verdad -se traga el azul antes que el rojo, por eso el sol se pone naranja- y ademas asi una
+        // estrella nunca sale mas brillante de lo que era.
+        //
+        // La tabla NO depende del alto de la pantalla: la banda se pide con la altura ya en tanto por uno.
+        // Y VIENE YA MASTICADA DEL TODO. Apagarse y titilar mas son dos cuentas que acaban en un solo
+        // numero, asi que en vez de guardar las dos por separado y rehacer la mezcla mil cuatrocientas veces
+        // por cuadro, se guarda la mezcla ya hecha: el brillo de una estrella sale de "algo fijo mas el
+        // titileo por algo", que son una multiplicacion y una suma. El verde y el azul viajan juntos en un
+        // solo numero por la misma razon: una lectura de tabla en vez de dos.
+        private const int AireN = 128;
+        private const float TitMedia = 0.725f;   // el centro de TitTab (va de 0.45 a 1.0): el titileo se agranda ALREDEDOR de el
+        private static readonly float[] AireP = new float[AireN];   // el trozo FIJO del brillo
+        private static readonly float[] AireQ = new float[AireN];   // y lo que multiplica al titileo
+        private static readonly uint[] AireGB = HazAire();          // verde<<16 | azul, de 0 a 256 cada uno
+        private static uint[] HazAire()
+        {
+            uint[] gb = new uint[AireN];
+            for (int i = 0; i < AireN; i++)
+            {
+                float aire = Form1.AireDelCielo(i + 0.5f, AireN);   // 0 arriba del todo, 1 abajo del todo
+                float br = 1f - Form1.AireApaga * aire;             // el brillo que le queda
+                float ti = 1f + Form1.AireCentelleo * aire;         // cuanto se le agranda el titileo
+                // brillo = (TitMedia + (titileo - TitMedia) * ti) * br, desarmado en fijo + titileo * factor
+                AireP[i] = TitMedia * (1f - ti) * br;
+                AireQ[i] = ti * br;
+                float c = Form1.AireCalor * aire;
+                uint g = (uint)(256f * (1f - 0.35f * c) + 0.5f);
+                uint az = (uint)(256f * (1f - 0.75f * c) + 0.5f);
+                gb[i] = (g << 16) | az;
+            }
+            return gb;
+        }
+
+        private static void BuildStarVerts(D3D9.Vtx[] buf, float[] xs, float[] ys, float[] ph, float[] spd, float[] sz, int[] kd, int[] fm, uint[] col, int n, double t, float fade, float pulse, float[] dx, float[] dy, float w, float h)
         {
             int vi = 0;
+            float aireEsc = (h > 0f) ? (AireN / h) : 0f;   // de altura en pixeles a banda de la tabla del aire
+            float f255 = fade * 255f;                      // el entrecruzado y el paso a niveles, de una vez
             for (int i = 0; i < n; i++)
             {
-                double tw = Titileo(t * spd[i] + ph[i]);
-                uint a = (uint)(tw * fade * 255); if (a > 255) a = 255;
-                uint c = (a << 24) | (col[i] & 0x00FFFFFF);             // alfa = brillo (titileo * entrecruzado); rgb = color
+                int k = kd[i];   // 0 polvo, 1 mediana, 2 grande: manda la deriva Y el latido
+                // LA POSICION VA PRIMERO, y no es por gusto. Lo que se apaga, lo que enrojece y lo que titila
+                // depende de a que ALTURA acaba la estrella, o sea de DESPUES de la deriva. Calcular el color
+                // antes -como estaba- lo dejaria atado a donde nacio y no a donde se la ve.
+                float x = xs[i] + dx[k]; if (x >= w) x -= w;   // deriva la de SU tamano + envuelve (xs,dx en [0,w) -> x en [0,2w) -> 1 resta basta)
+                float y = ys[i] + dy[k]; if (y >= h) y -= h;
+                int b = (int)(y * aireEsc); if (b < 0) b = 0; else if (b >= AireN) b = AireN - 1;
+
+                // EL TITILEO, MAS FUERTE ABAJO. Se agranda alrededor de su punto medio, no desde cero: asi la
+                // estrella centellea mas -sube y baja mas- sin quedarse de media ni mas clara ni mas oscura de
+                // lo que le toca. Lo de apagarse es el otro factor, y ese si le baja el brillo entero. Los dos
+                // vienen ya mezclados de la tabla (ver AireP/AireQ).
+                //
+                // El titileo se recoge en float y no en double a proposito: la tabla YA devuelve un float, asi
+                // que guardarlo en double no gana ni un decimal y arrastra toda la cuenta a double para nada.
+                // El double que importa es el del RELOJ, que es lo que entra ahi dentro.
+                float tw = Titileo(t * spd[i] + ph[i]);
+                float br = (AireP[b] + tw * AireQ[b]) * f255;
+                if (!(br > 0f)) br = 0f;   // con el titileo muy agrandado el valle se pasaria de rosca; y el "!" atrapa el NaN
+                uint a = (uint)br; if (a > 255) a = 255;
+                uint rgb = col[i], gb = AireGB[b];
+                uint c = (a << 24) | (rgb & 0x00FF0000u)                     // alfa = brillo; el rojo, entero
+                       | ((((rgb >> 8) & 0xFFu) * (gb >> 16) >> 8) << 8)      // el verde, algo comido
+                       | ((rgb & 0xFFu) * (gb & 0xFFFFu) >> 8);               // y el azul, comido del todo
                 float s = sz[i];
-                if (kd[i] != 0 && pulse > 0.02f) s += pulse * (kd[i] == 2 ? 9f : 5f);   // latido: medianas/grandes crecen con la musica
-                float x = xs[i] + dx; if (x >= w) x -= w;   // deriva + envuelve (xs,dx en [0,w) -> x en [0,2w) -> 1 resta basta)
-                float y = ys[i] + dy; if (y >= h) y -= h;
+                if (k != 0 && pulse > 0.02f) s += pulse * (k == 2 ? 9f : 5f);   // latido: medianas/grandes crecen con la musica
                 int f = (fm != null) ? fm[i] : FormaEstrella;
                 SetQuadUV(buf, vi, x - s, y - s, x + s, y + s, c, AtlasU0[f], AtlasV0[f], AtlasU1[f], AtlasV1[f]);
                 vi += 6;
