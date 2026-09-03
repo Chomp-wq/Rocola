@@ -159,6 +159,31 @@ class Detalles
         if (escribe != null) foreach (string s in Codigo.Textos(escribe)) if (s == "turno=") guarda = true;
         Check(guarda, "y la escribe al guardar");
 
+        Console.WriteLine("\n  6) Y LA VENTANA DICE DE CUANDO ES LA ROCOLA\n");
+        // Esto costo una tanda entera: se arreglo el buscador, se pidio una foto, la foto seguia igual... y
+        // no habia forma de distinguir "esta roto" de "es la version de antes, que no se copio al bar". Las
+        // dos cosas se ven exactamente igual desde fuera.
+        //
+        // La fecha sale del PROPIO ARCHIVO y no de un numero escrito a mano: un numero hay que acordarse de
+        // subirlo, y el dia que se olvide la rocola mentira, que es peor que callarse.
+        MethodInfo mCuando = (MethodInfo)Met("DeCuandoEs");
+        Check(mCuando != null, "la rocola sabe decir de cuando es (DeCuandoEs)");
+        if (mCuando != null)
+        {
+            string cuando = (string)mCuando.Invoke(null, null);
+            Console.WriteLine("     este ejecutable dice ser del " + (string.IsNullOrEmpty(cuando) ? "(nada)" : cuando));
+            Check(!string.IsNullOrEmpty(cuando), "y lo dice de verdad, no una cadena vacia");
+            bool enLaVentana = false, enLaBitacora = false;
+            foreach (MethodBase m in Codigo.TodosLosMetodos(TF))
+            {
+                if (!Codigo.Llama(m, "DeCuandoEs")) continue;
+                if (Codigo.Llama(m, "Diag")) enLaBitacora = true;
+                foreach (string t in Codigo.Textos(m)) if (t.IndexOf("Esta rocola es del", StringComparison.Ordinal) >= 0) enLaVentana = true;
+            }
+            Check(enLaVentana, "y sale en la ventana de Ctrl+F3, que es donde se mira");
+            Check(enLaBitacora, "y se apunta en la bitacora al encender");
+        }
+
         Console.WriteLine("\n  " + (fallos == 0 ? "TODO BIEN" : fallos + " FALLO(S)"));
         return fallos;
     }

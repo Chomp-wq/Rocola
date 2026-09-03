@@ -159,6 +159,7 @@ class Arranca
             foreach (string l in File.ReadAllLines(errores)) { Console.WriteLine("       " + l); break; }
         Check(!hayErrores, "y no apunta ni un error al arrancar");
 
+
         // =========================================================================================
         // Si este ejecutable trae el fondo por tarjeta grafica -o sea, el perfil con -d:ROCOLA_GPU-, tiene
         // que haberlo ENCENDIDO. Si el dispositivo fallara, la rocola se cae al fondo por procesador sin
