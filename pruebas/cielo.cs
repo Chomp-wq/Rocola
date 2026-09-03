@@ -35,7 +35,7 @@ class Cielo
 
     const BindingFlags TODO = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
     static Type TF;
-    static MethodInfo mTinte, mEtiqueta, mMid, mSky, mSky2;
+    static MethodInfo mTinte, mEtiqueta, mMid;
     static FieldInfo fManda, fAzul, fCorte;
 
     static MethodBase Met(string n)
@@ -86,7 +86,7 @@ class Cielo
         fManda = TF.GetField("portadaManda", TODO); fAzul = TF.GetField("cieloAzul", TODO); fCorte = TF.GetField("cieloCorte", TODO);
         Check(fManda != null && fAzul != null && fCorte != null, "y las tres se guardan en un solo sitio cada una");
         mTinte = (MethodInfo)Met("TinteConPortada"); mEtiqueta = (MethodInfo)Met("ColorDeEtiqueta");
-        mMid = (MethodInfo)Met("SkyColorMid"); mSky = (MethodInfo)Met("SkyColor"); mSky2 = (MethodInfo)Met("SkyColor2");
+        mMid = (MethodInfo)Met("SkyColorMid");
 
         // Disparates: 500, -3, "hola", vacio. Ninguno puede pasar.
         string[] locos = { "500", "-3", "hola", "" };
@@ -239,6 +239,47 @@ class Cielo
         Check(Codigo.EscribeCampo(deLaPagina, "f3CambioGraf"), "y lo que se toca se guarda al cerrar");
         Check(Codigo.Llama(Codigo.ConAyudantes(TF, "PaginaColores"), "RepintaFondo"),
               "y la pared cambia AL INSTANTE: estos se eligen mirando, no a ciegas");
+
+        // =========================================================================================
+        Console.WriteLine("\n  9) Y EL CIELO NO SE PINTA A FRANJAS\n");
+        //
+        // EL DEGRADADO SE PINTABA EN UNAS TREINTA FRANJAS PLANAS, y eso es lo que lo hacia parecer un
+        // degradado de computadora en vez de aire. El motivo esta en los numeros: el canal que menos se
+        // mueve recorre muy poco camino en toda la altura de la pantalla, asi que cambia UN NIVEL DE 255
+        // cada treinta pixeles y deja treinta cantos rectos de lado a lado.
+        //
+        // Y el ojo es especialmente bueno viendo eso -un canto recto entre dos tonos casi iguales se ve
+        // muchisimo mas de lo que la diferencia deberia dejar-, asi que el cielo SALIA bien y SE VEIA mal.
+        //
+        // Aqui se hornea el cielo de verdad y se recorre una columna contando los tramos en los que el color
+        // se repite exactamente. Cada tramo largo es una franja.
+        {
+            const int W = 1920, H = 1080;
+            Type TSky = TF.GetNestedType("Starfield", BindingFlags.NonPublic | BindingFlags.Public);
+            object sf = Activator.CreateInstance(TSky, true);
+            TSky.GetField("Density", TODO).SetValue(sf, 1f);
+            TSky.GetField("SkyFullW", TODO).SetValue(sf, W);
+            TSky.GetField("SkyFullH", TODO).SetValue(sf, H);
+            TSky.GetField("SkyMid", TODO).SetValue(sf, Color.FromArgb(255, 16, 37, 90));
+            TSky.GetMethod("EnsureSkyCache", TODO).Invoke(sf, new object[] {
+                W, H, Color.FromArgb(255, 3, 4, 8), Color.FromArgb(255, 37, 66, 141) });
+            Bitmap cielo = (Bitmap)TSky.GetField("skyCache", TODO).GetValue(sf);
+            // Una columna lejos de la via lactea y de las nebulosas: aqui se mide el degradado a secas.
+            int col = (int)(W * 0.08);
+            int largo = 1, mayor = 1, planos = 0;
+            Color ant = cielo.GetPixel(col, 0);
+            for (int y = 1; y < H; y++)
+            {
+                Color cc = cielo.GetPixel(col, y);
+                if (cc.ToArgb() == ant.ToArgb()) largo++;
+                else { if (largo >= 8) planos++; if (largo > mayor) mayor = largo; largo = 1; ant = cc; }
+            }
+            if (largo >= 8) planos++; if (largo > mayor) mayor = largo;
+            Console.WriteLine("     franjas planas de 8 px o mas en los 1080 de alto: " + planos);
+            Console.WriteLine("     y la mas ancha mide " + mayor + " px");
+            Check(planos <= 6, "el cielo no se pinta a franjas (antes de esto habia 26)");
+            Check(mayor <= 10, "y ninguna franja plana es ancha (antes la mayor media 13 px y se veia)");
+        }
 
         Console.WriteLine("\n  " + (fallos == 0 ? "TODO BIEN" : fallos + " FALLO(S)"));
         return fallos;

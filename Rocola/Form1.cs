@@ -999,6 +999,9 @@ namespace Rocola
         private const float RespiraDef = 0.045f;
         private const float RespiraPaso = 0.00873f;  // radianes por cuadro: a 24 cuadros/s, una vuelta cada ~30 s
         private static bool respiraOn = true;        // "respira=" en config
+        // LA LUNA. Encendida de fabrica. Es un adorno de gusto -no una mejora que a todo el mundo le sirva-
+        // y por eso se puede apagar, como los otros seis de la pestana DETALLES.
+        private static bool lunaOn = true;           // "luna=" en config
         private static float respiraFuerza = RespiraDef;   // "respira_fuerza=" en config, en por ciento
         private float quietud = 0f;                  // 0 = alguien esta tocando AHORA; 1 = hace rato que nadie
         // LA VISTA PREVIA, y por que hace falta.
@@ -1563,6 +1566,7 @@ namespace Rocola
                     else if (s.StartsWith("cola_portadas=")) colaPortadasOn = s.Substring(14).Trim() != "0";   // las portaditas en la capsula de la cola
                     else if (s.StartsWith("relevo=")) relevoOn = s.Substring(7).Trim() != "0";   // la media vuelta del cubito al cambiar de cancion
                     else if (s.StartsWith("respira=")) respiraOn = s.Substring(8).Trim() != "0";   // la pared que respira cuando nadie la usa
+                    else if (s.StartsWith("luna=")) lunaOn = s.Substring(5).Trim() != "0";
                     else if (s.StartsWith("respira_fuerza=")) respiraFuerza = FuerzaRespira(s.Substring(15));
                     else if (s.StartsWith("noche_desde=")) { int v; if (int.TryParse(s.Substring(12).Trim(), out v) && v >= 0 && v <= 23) nocheDesde = v; }
                     else if (s.StartsWith("noche_hasta=")) { int v; if (int.TryParse(s.Substring(12).Trim(), out v) && v >= 0 && v <= 23) nocheHasta = v; }
@@ -1748,6 +1752,7 @@ namespace Rocola
                 sb.Append("cola_portadas=").Append(colaPortadasOn ? "1" : "0").Append("\r\n");
                 sb.Append("relevo=").Append(relevoOn ? "1" : "0").Append("\r\n");
                 sb.Append("respira=").Append(respiraOn ? "1" : "0").Append("\r\n");
+                sb.Append("luna=").Append(lunaOn ? "1" : "0").Append("\r\n");
                 sb.Append("respira_fuerza=").Append((respiraFuerza * 100f).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("noche_desde=").Append(nocheDesde).Append("\r\n");
                 sb.Append("noche_hasta=").Append(nocheHasta).Append("\r\n");
@@ -3543,6 +3548,8 @@ namespace Rocola
             // tarjeta grafica y aqui costaria rehacer la pantalla entera.
             formStars.NebUno = nebA;
             formStars.NebDos = ColorNebulosa(bgAccent);
+            formStars.HazFase = hazFase;   // el paseo lento de la luna: el mismo reloj que la via lactea
+            formStars.ConLuna = lunaOn;
             formStars.Dim = bgDimResp;   // atenua TAMBIEN las franjas de arriba/abajo en sincronia con la rejilla (una sola pieza), respiracion incluida
             formStars.DrawCached(g, an, al, EscalaBrillo(SkyColor(bgAccent), bgRespiro), EscalaBrillo(SkyColor2(bgAccent), bgRespiro));
         }
@@ -3587,6 +3594,198 @@ namespace Rocola
         // lavandola, ni una negra apagandola, ni una de neon quemandola- y no hay ningun tope que se pueda
         // quedar corto: sale de como esta hecho.
         private const float NebPaso = 0.00654f;        // radianes por cuadro: a 24 cuadros/s, una vuelta cada ~40 s
+        // Y LA VIA LACTEA TAMBIEN SE MUEVE, PERO MUCHO MAS DESPACIO QUE NADA.
+        //
+        // Era lo unico clavado en un cielo donde todo lo demas se desliza: las estrellas van a la deriva,
+        // las dos nebulosas se cruzan en sentidos contrarios, y la banda se quedaba pegada a la esquina.
+        // Este archivo ya dice, hablando del polvo, que una parte quieta mientras el resto se mueve "se ve
+        // peor que si no se moviera nada"; aqui habia quedado el mismo caso sin arreglar.
+        //
+        // Una vuelta cada TRES MINUTOS, contra los cuarenta segundos de las nebulosas: es lo que esta mas
+        // lejos, y lo que esta mas lejos se mueve menos. Es la misma idea que la deriva por tamano de las
+        // estrellas, llevada hasta el fondo del todo.
+        private const float HazPaso = 0.001454f;       // radianes por cuadro: a 24 cuadros/s, una vuelta cada ~3 min
+        private float hazFase = 0f;
+
+        // ===================== EL RUIDO QUE DESHACE LAS FRANJAS DEL CIELO =====================
+        //
+        // EL CIELO SE PINTABA EN UNAS TREINTA FRANJAS PLANAS, y eso es lo que lo hacia parecer un degradado
+        // de computadora en vez de aire. La cuenta es facil de ver: el degradado va de tres paradas y cada
+        // canal recorre muy poco camino. Sin musica y en una pantalla de 1080 de alto, el rojo va de 3 a 16
+        // y de 16 a 37, o sea que cambia UN NIVEL DE 255 CADA TREINTA PIXELES. Con un genero que tire a azul
+        // llega a un nivel cada setenta.
+        //
+        // Y el ojo es justo bueno para eso: un canto recto entre dos tonos casi iguales se ve muchisimo mas
+        // de lo que la diferencia deberia dejar (se llama banda de Mach, y es cosa del ojo, no de la
+        // pantalla). Por eso no basta con que el degradado sea "correcto": SALE bien y SE VE mal.
+        //
+        // Lo que lo deshace es ruido de un nivel. No tapa el escalon -sigue estando- sino que le quita la
+        // linea recta, y sin linea recta el ojo ya no lo engancha. Es lo mismo que hacen los filtros de video
+        // cuando le echan grano a un cielo.
+        //
+        // COMO SE APLICA, y por que asi: encima va un dibujito de 64x64 repetido, mitad puntos blancos y
+        // mitad negros, los dos con alfa 2 de 255. Sobre un cielo oscuro el blanco sube dos niveles y el
+        // negro no baja casi ninguno, o sea que en la practica es "sube dos o no subas": ruido de mas o menos
+        // un nivel alrededor de una subida de uno, que no se ve. Se probo hacerlo pixel a pixel con la cuenta
+        // exacta y son dos copias de ocho megas mas el recorrido, contra UN relleno: no compensa por un nivel.
+        internal const int RuidoLado = 64;
+        internal const int RuidoAlfa = 2;    // de 255: sobre este cielo son dos niveles arriba o ninguno
+        internal static Bitmap BakeRuido()
+        {
+            Bitmap b = new Bitmap(RuidoLado, RuidoLado, PixelFormat.Format32bppArgb);
+            Random r = new Random(20260903);   // fijo: el mismo grano siempre, no uno distinto por arranque
+            Color cl = Color.FromArgb(RuidoAlfa, 255, 255, 255), os = Color.FromArgb(RuidoAlfa, 0, 0, 0);
+            for (int y = 0; y < RuidoLado; y++)
+                for (int x = 0; x < RuidoLado; x++)
+                    b.SetPixel(x, y, (r.Next(2) == 0) ? cl : os);
+            return b;
+        }
+
+        // EL MISMO GRANO, EN GRANDE, PARA LA PARED DE TARJETA GRAFICA. Alli no se puede repetir un dibujito
+        // al vuelo -las texturas van en modo "pegado al borde", no en modo repetir- asi que hay que subirle
+        // uno ya grande y estamparlo en unos pocos trozos. Se arma repitiendo el de 64 con UN relleno, no
+        // pixel a pixel: un millon de pixeles de uno en uno tardaria segundos al arrancar.
+        internal static Bitmap BakeRuidoGrande(int lado)
+        {
+            Bitmap chico = BakeRuido();
+            Bitmap b = new Bitmap(lado, lado, PixelFormat.Format32bppArgb);
+            using (Graphics g = Graphics.FromImage(b))
+            using (TextureBrush tb = new TextureBrush(chico, WrapMode.Tile))
+            {
+                g.CompositingMode = CompositingMode.SourceCopy;   // se COPIA el grano con su alfa, no se mezcla
+                g.FillRectangle(tb, 0, 0, lado, lado);
+            }
+            chico.Dispose();
+            return b;
+        }
+
+        // ===================== LA LUNA =====================
+        //
+        // No habia ninguna, y es lo unico que un cielo de noche tiene y este no tenia.
+        //
+        // Va BAJA y FUERA DEL CENTRO a proposito: en el centro le pelearia a la pared de discos, que es lo
+        // que la gente esta mirando. Abajo a un lado acompana el resplandor del genero en vez de competirle.
+        //
+        // Y SE MUEVE CON EL CIELO, no aparte: lleva el mismo reloj lento que la via lactea, o sea una vuelta
+        // cada tres minutos y sin salirse nunca de su sitio. Se penso en darle la deriva de las estrellas
+        // -que es lo que hace una luna de verdad- y no vale: esa deriva DA LA VUELTA por el borde, y una
+        // estrella que reaparece al otro lado no la nota nadie porque es un punto, pero una luna saltando de
+        // un canto al otro cada minuto y medio se ve, y se ve mal.
+        //
+        // El dibujo se hornea UNA vez -son unos 180 pixeles de lado- y luego es un pegado chico por cuadro,
+        // no una pasada de pantalla. Por eso esta es la unica de las mejoras de esta tanda que cabe TAMBIEN
+        // en la pared sin tarjeta grafica.
+        // Los sitios y los tamanos son internos porque las DOS paredes tienen que poner la luna en el mismo
+        // sitio y del mismo tamano, igual que pasa con la curva del aire y con el corte del cielo.
+        internal const float LunaX = 0.795f;      // donde se pone, en parte del ancho
+        internal const float LunaY = 0.605f;      // ... y del alto: abajo, donde ya hay resplandor
+        private const float LunaRadio = 0.026f;   // radio del disco, en parte del ALTO de la pantalla
+        private const float LunaHalo = 3.2f;      // hasta donde llega el resplandor, en radios del disco
+        private const float LunaMengua = 0.42f;   // cuanto se la come la sombra (0 = llena; 1 = no queda nada)
+        internal const float LunaMenea = 0.030f;  // cuanto se pasea, en parte de pantalla (el mismo reloj que la via lactea)
+
+        // El dibujo de la luna al tamano que le toca en esta pantalla. Devuelve un cuadro con el halo, el
+        // disco, sus manchas y la sombra de la fase ya recortada.
+        internal static Bitmap BakeLuna(int altoPantalla)
+        {
+            float rad = altoPantalla * LunaRadio; if (rad < 6f) rad = 6f;
+            int lado = (int)(rad * LunaHalo * 2f) | 1;   // impar: asi tiene un pixel de centro exacto
+            Bitmap b = new Bitmap(lado, lado, PixelFormat.Format32bppArgb);
+            float c = lado / 2f;
+            using (Graphics g = Graphics.FromImage(b))
+            {
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                g.Clear(Color.Transparent);
+                // EL HALO. Una luna sin halo es un circulo pegado encima; con el, el aire de alrededor se ve
+                // encendido y parece que la luz sale de ella. Va en dos tramos para que caiga en curva y no
+                // en linea recta, que es lo que lo delata como un degradado.
+                float rh = lado / 2f;
+                using (GraphicsPath gp = new GraphicsPath())
+                {
+                    gp.AddEllipse(c - rh, c - rh, rh * 2, rh * 2);
+                    using (PathGradientBrush pb = new PathGradientBrush(gp))
+                    {
+                        pb.CenterPoint = new PointF(c, c);
+                        pb.CenterColor = Color.FromArgb(96, 226, 232, 246);
+                        pb.SurroundColors = new Color[] { Color.FromArgb(0, 226, 232, 246) };
+                        Blend bl = new Blend(4);
+                        bl.Factors = new float[] { 0f, 0.06f, 0.30f, 1f };
+                        bl.Positions = new float[] { 0f, 0.42f, 0.72f, 1f };
+                        pb.Blend = bl;
+                        g.FillEllipse(pb, c - rh, c - rh, rh * 2, rh * 2);
+                    }
+                }
+                // EL DISCO, aparte, para poder recortarle la fase sin llevarse el halo por delante.
+                int ld = (int)(rad * 2f) + 4;
+                using (Bitmap disco = new Bitmap(ld, ld, PixelFormat.Format32bppArgb))
+                {
+                    float cd = ld / 2f;
+                    using (Graphics dg = Graphics.FromImage(disco))
+                    {
+                        dg.SmoothingMode = SmoothingMode.AntiAlias;
+                        dg.Clear(Color.Transparent);
+                        // Blanco con un dejo calido, y un poco mas apagada por el canto: una esfera iluminada
+                        // de lado no es un circulo de color liso.
+                        using (GraphicsPath gp = new GraphicsPath())
+                        {
+                            gp.AddEllipse(cd - rad, cd - rad, rad * 2, rad * 2);
+                            using (PathGradientBrush pb = new PathGradientBrush(gp))
+                            {
+                                pb.CenterPoint = new PointF(cd - rad * 0.28f, cd - rad * 0.28f);
+                                pb.CenterColor = Color.FromArgb(255, 252, 250, 240);
+                                pb.SurroundColors = new Color[] { Color.FromArgb(255, 206, 206, 202) };
+                                dg.FillEllipse(pb, cd - rad, cd - rad, rad * 2, rad * 2);
+                            }
+                        }
+                        // LOS MARES. Son las manchas oscuras que se ven a simple vista, y son las que hacen
+                        // que se lea "luna" y no "bola". Fijas, no al azar: la luna siempre ensena la misma cara.
+                        float[] mx = { -0.30f, 0.12f, -0.05f, 0.34f, -0.42f };
+                        float[] my = { -0.34f, -0.18f, 0.22f, 0.30f, 0.18f };
+                        float[] mr = { 0.30f, 0.22f, 0.26f, 0.15f, 0.13f };
+                        int[] ma = { 26, 20, 22, 15, 13 };
+                        for (int i = 0; i < mx.Length; i++)
+                            using (GraphicsPath gp = new GraphicsPath())
+                            {
+                                float r2 = rad * mr[i], px = cd + rad * mx[i], py = cd + rad * my[i];
+                                gp.AddEllipse(px - r2, py - r2, r2 * 2, r2 * 2);
+                                using (PathGradientBrush pb = new PathGradientBrush(gp))
+                                {
+                                    pb.CenterColor = Color.FromArgb(ma[i], 120, 124, 140);
+                                    pb.SurroundColors = new Color[] { Color.FromArgb(0, 120, 124, 140) };
+                                    dg.FillEllipse(pb, px - r2, py - r2, r2 * 2, r2 * 2);
+                                }
+                            }
+                        // LA FASE: se BORRA un circulo corrido, no se pinta negro encima. Pintar negro dejaria
+                        // una media luna negra sobre el cielo -que ahi no hay nada, hay cielo- y se veria.
+                        if (LunaMengua > 0.01f)
+                        {
+                            CompositingMode ocm = dg.CompositingMode;
+                            dg.CompositingMode = CompositingMode.SourceCopy;
+                            using (SolidBrush nada = new SolidBrush(Color.FromArgb(0, 0, 0, 0)))
+                            {
+                                float des = rad * (0.55f + 1.30f * LunaMengua);
+                                dg.FillEllipse(nada, cd - des - rad, cd - rad * 1.02f, rad * 2.04f, rad * 2.04f);
+                            }
+                            dg.CompositingMode = ocm;
+                        }
+                    }
+                    g.DrawImageUnscaled(disco, (int)(c - cd), (int)(c - cd));
+                }
+            }
+            return b;
+        }
+
+        // EL TINTE DEL AIRE, para la luna. La misma curva que apaga y enrojece las estrellas de abajo
+        // (AireDelCielo): una luna pegada al horizonte se apaga y se pone naranja, y es de lo que mas se
+        // acuerda cualquiera que haya visto una. Devuelve los tres factores de 0 a 1.
+        internal static void TinteDelAire(float y, float alto, out float fr, out float fg, out float fb)
+        {
+            float aire = AireDelCielo(y, alto);
+            fr = 1f - AireApaga * aire;
+            float c = AireCalor * aire;
+            fg = fr * (1f - 0.35f * c);
+            fb = fr * (1f - 0.75f * c);
+        }
         // CUANTO SE TIENEN QUE NOTAR. El dibujo de las nebulosas esta hecho de manchas de alfa 4 y 7 de 255:
         // un velo suavisimo. A esa fuerza los dos colores estan y se cruzan, pero casi no se ven, asi que
         // todo esto no se notaria. Se dibujaron las cuatro fuerzas y se eligio mirando; esta es cuatro veces
@@ -3778,6 +3977,59 @@ namespace Rocola
         internal static float AireApaga { get { return AireApagaPaso[airePaso]; } }
         internal static float AireCalor { get { return AireCalorPaso[airePaso]; } }
         internal static float AireCentelleo { get { return AireCentelleoPaso[airePaso]; } }
+
+        // ===================== DE DONDE SALE UNA FUGAZ Y HACIA DONDE VA =====================
+        //
+        // TODAS LAS FUGACES ERAN LA MISMA FUGAZ. Salian del sexto de arriba a la izquierda de la pantalla y
+        // caian hacia abajo-derecha con un angulo de entre 19 y 33 grados; nunca hacia el otro lado, nunca
+        // desde otro sitio. Y cae una cada 7-16 segundos, o sea que quien mira la rocola un minuto ve cinco
+        // identicas y deja de mirar.
+        //
+        // Ahora el angulo barre de lado a lado -de 32 a 148 grados- pero SIEMPRE cayendo, que es lo que hace
+        // una de verdad. Se probo dejar que subieran y no vale: abajo esta la pared de discos, y una fugaz
+        // que sale de detras de los discos hacia arriba parece un cohete de feria, no un cielo.
+        //
+        // Y NACE FUERA, PEGADA AL BORDE POR DONDE ENTRA. Antes nacia dentro, asi que con direcciones libres
+        // la mitad se saldria de la pantalla en dos palmos sin que diera tiempo a verla. El borde por donde
+        // entra sale de su propia direccion: si va mas de lado que de bajada, entra por el costado; si va
+        // mas de bajada, por arriba.
+        //
+        // UNA DE CADA OCHO ES DE LAS GORDAS: lenta, gruesa, con estela larga y brillante, de las que duran
+        // un segundo y medio y hacen que alguien levante la vista. Sin esto todas duran lo mismo y el cielo
+        // no tiene sorpresas, solo repeticion.
+        //
+        // Y VIVE AQUI, fuera del trozo de tarjeta grafica, porque las dos paredes tienen que tirar las
+        // mismas fugaces: igual que la curva del aire y el corte del cielo. Con dos copias, la maquina del
+        // bar y la de repuesto tendrian cielos distintos y no se sabria hasta verlas juntas.
+        internal const float FugazMargen = 40f;    // cuanto fuera de la pantalla nace
+        internal const float FugazBorra = 130f;    // y a cuanto de fuera se la da por ida (mas que el margen: si no, moriria al nacer)
+        internal static void TiraFugaz(Random r, float w, float h,
+                                       out float x, out float y, out float vx, out float vy,
+                                       out float vida, out float grosor, out float cola, out bool gorda)
+        {
+            gorda = (r.Next(8) == 0);
+            // De 32 a 148 grados: barre de abajo-derecha a abajo-izquierda pasando por la vertical.
+            double a = 0.18 * Math.PI + r.NextDouble() * 0.64 * Math.PI;
+            float dx = (float)Math.Cos(a), dy = (float)Math.Sin(a);   // dy > 0 siempre: en pantalla, abajo
+            float vel = gorda ? (w + h) * (0.16f + (float)r.NextDouble() * 0.10f)
+                              : (w + h) * (0.40f + (float)r.NextDouble() * 0.45f);
+            vx = dx * vel; vy = dy * vel;
+            vida = gorda ? 1.8f + (float)r.NextDouble() * 1.0f : 0.9f + (float)r.NextDouble() * 0.8f;
+            grosor = gorda ? 2.6f + (float)r.NextDouble() * 1.2f : 0.9f + (float)r.NextDouble() * 1.5f;
+            cola = gorda ? 0.16f + (float)r.NextDouble() * 0.08f : 0.07f + (float)r.NextDouble() * 0.10f;
+            if (Math.Abs(dx) > dy)
+            {
+                // Va mas de lado que de bajada: entra por el costado contrario, y por la mitad de arriba
+                // para que le quede pantalla por delante.
+                x = (dx > 0f) ? -FugazMargen : w + FugazMargen;
+                y = (float)(r.NextDouble() * h * 0.55);
+            }
+            else
+            {
+                x = (float)(r.NextDouble() * w);   // va mas de bajada: entra por arriba
+                y = -FugazMargen;
+            }
+        }
 
         // AL TOCAR UNA PERILLA, QUE SE VEA YA. La ventana de Ctrl+F3 no tapa la pared entera -mide 960 de
         // ancho y la pantalla del bar 1920-, asi que se elige mirando: se toca y el fondo cambia al instante.
@@ -12019,6 +12271,8 @@ namespace Rocola
             // lo sigue sin enterarse.
             nebFase += NebPaso;
             if (nebFase > 6.2831853f) nebFase -= 6.2831853f;
+            hazFase += HazPaso;
+            if (hazFase > 6.2831853f) hazFase -= 6.2831853f;
             Color nebAMeta, nebBMeta;
             ColoresNebulosa(bgGeneroTarget, bgPort1, bgPort2, nebFase, out nebAMeta, out nebBMeta);
             nebA = LerpColor(nebA, nebAMeta, 0.16);
@@ -12045,6 +12299,11 @@ namespace Rocola
                     gpuPanel.NebColor2 = ToD3D(EscalaBrillo(nebB, bgRespiro));
                     gpuPanel.NebFase = nebFase;
                 }   // el degradado sigue al genero
+                // EL RELOJ LENTO DEL CIELO Y LA LUNA VAN FUERA DEL SI: en modo atraccion el cielo se queda
+                // quieto de color -no sigue al genero porque no hay cancion- pero sigue siendo un cielo, y
+                // ahi es justamente donde mas rato se le mira.
+                gpuPanel.HazFase = hazFase;
+                gpuPanel.ConLuna = lunaOn;
             }
 #endif
             if (progress != null) progress.Accent = bgAccent;   // ESTETICA: la barra de progreso sigue el color del genero
@@ -13251,7 +13510,7 @@ namespace Rocola
             // verdad tiene un punado de estrellas fuertes y cientos que apenas se adivinan.
             // Rayos: si lleva las cuatro rayitas cruzadas. Las llevan MUY pocas (ver Ensure).
             private struct Star { public float X, Y; public int Size, Kind; public byte R, G, B, Bri; public bool Rayos; public float Tint, Off, Spd; public byte Band; }   // Band: 0=graves,1=medios,2=agudos
-            private struct Shoot { public bool On; public float X, Y, VX, VY; public float Life, MaxLife; }
+            private struct Shoot { public bool On; public float X, Y, VX, VY; public float Life, MaxLife, Wdt, Tail; }
             private Star[] stars;
             private int sw = -1, sh = -1;
             private SolidBrush sb;
@@ -13303,6 +13562,8 @@ namespace Rocola
             // cada cuadro, que es de 6 a 27 ms segun la pantalla-, pero si se cruzan sus COLORES. Si vienen
             // vacias se dibuja una sola con el acento, como se hacia siempre.
             public Color NebUno = Color.Empty, NebDos = Color.Empty;
+            public float HazFase = 0f;     // reloj lento del cielo (una vuelta cada ~3 min): pasea la luna
+            public bool ConLuna = true;    // perilla de Ctrl+F3
             private LinearGradientBrush skyBrush;                         // pincel de cielo en DEGRADADO (cacheado, ligado al genero)
             private int gbW = -1, gbOff = -99999, gbFull = -1, gbTop = 0, gbMid = 0, gbBot = 0;
             private Bitmap skyCache;                                       // RENDIMIENTO: cielo (degradado) HORNEADO a bitmap; se copia por cuadro en vez de rellenar el degradado cada vez
@@ -13710,6 +13971,64 @@ namespace Rocola
             // en cada cambio de cancion; asi son doscientas manchas UNA vez, al arrancar, y luego una copia.
             private Bitmap hazeMask, nebMask;
             private int nblW = -1, nblH = -1;
+            // El dibujito del grano: 64x64, uno para toda la rocola. Se hace una vez y se repite al estamparlo.
+            private static Bitmap ruidoTeja;
+            private static void EnsureRuido() { if (ruidoTeja == null) ruidoTeja = BakeRuido(); }
+
+            // LA LUNA. El dibujo se hornea una vez por tamano de pantalla (ver Form1.BakeLuna) y luego esto
+            // es UN pegado de unos 180 pixeles de lado por cuadro, que es lo unico de esta tanda que cabe en
+            // una maquina sin tarjeta grafica.
+            //
+            // EL TINTE DEL AIRE VA HORNEADO, NO APLICADO AL PEGAR. Ahi arriba, en CapaAtenuada, esta escrito
+            // por que: pegar con una matriz de color obliga a la libreria de dibujo a pasar por CADA pixel y
+            // cuesta VEINTE VECES lo que pegar el dibujo tal cual. Se hizo primero de la forma facil y se
+            // midio: la luna costaba 0.33 ms por cuadro -mas que armar las mil cuatrocientas estrellas de la
+            // otra pared entera- por tenir treinta mil pixeles en cada cuadro.
+            //
+            // Y no hace falta: la luna casi no cambia de altura, asi que se hornea TENIDA una vez y se reusa
+            // cuadro tras cuadro. Es la misma cuenta, hecha una vez en vez de veinticuatro veces por segundo.
+            // La clave lleva la altura en escalones de cuatro pixeles: por menos que eso el tinte no cambia
+            // ni un nivel de 255.
+            private Bitmap luna; private int lunaDe = -1;
+            private Bitmap lunaTenida; private int lunaTenidaKey = -1;
+            private void PintaLuna(Graphics g, int FW, int FH, int offX, int offY)
+            {
+                if (!ConLuna || FH < 64) return;
+                if (luna == null || lunaDe != FH)
+                {
+                    if (luna != null) luna.Dispose();
+                    if (lunaTenida != null) { lunaTenida.Dispose(); lunaTenida = null; }
+                    lunaTenidaKey = -1;
+                    luna = BakeLuna(FH); lunaDe = FH;
+                }
+                // Se pasea con el mismo reloj lento de la via lactea, y acotada: nunca se va de su sitio.
+                float mx = FW * LunaMenea, my = FH * LunaMenea;
+                float cx = FW * LunaX + (float)Math.Sin(HazFase) * mx;
+                float cy = FH * LunaY + (float)Math.Cos(HazFase) * my;
+
+                int key = ((int)cy) / 4;
+                if (lunaTenida == null || lunaTenidaKey != key)
+                {
+                    if (lunaTenida == null)
+                        lunaTenida = new Bitmap(luna.Width, luna.Height, PixelFormat.Format32bppPArgb);
+                    float fr, fg, fb;
+                    TinteDelAire(cy, FH, out fr, out fg, out fb);
+                    ColorMatrix cm = new ColorMatrix();
+                    cm.Matrix00 = fr; cm.Matrix11 = fg; cm.Matrix22 = fb;
+                    using (ImageAttributes ia = new ImageAttributes())
+                    {
+                        ia.SetColorMatrix(cm, ColorMatrixFlag.Default, ColorAdjustType.Bitmap);
+                        using (Graphics lg = Graphics.FromImage(lunaTenida))
+                        {
+                            lg.CompositingMode = CompositingMode.SourceCopy;   // copia exacta, sin mezclar con lo que hubiera
+                            lg.DrawImage(luna, new Rectangle(0, 0, luna.Width, luna.Height),
+                                         0, 0, luna.Width, luna.Height, GraphicsUnit.Pixel, ia);
+                        }
+                    }
+                    lunaTenidaKey = key;
+                }
+                g.DrawImageUnscaled(lunaTenida, (int)(cx - luna.Width / 2f) - offX, (int)(cy - luna.Height / 2f) - offY);
+            }
             private void EnsureNieblas(int FW, int FH)
             {
                 int mw = FW / 4, mh = FH / 4;
@@ -13884,6 +14203,15 @@ namespace Rocola
                     // EL POLVO YA NO VA AQUI: ver BakeStarFrame. Horneado en el cielo se quedaba clavado
                     // mientras el resto del campo se desliza, y eso -mas de la mitad de las estrellas quietas
                     // y el resto moviendose- se ve peor que si no se moviera nada.
+                    //
+                    // Y AL FINAL, EL GRANO que deshace las franjas del degradado (ver BakeRuido). Va el
+                    // ULTIMO a proposito: tiene que caer encima del degradado, de la via lactea y de las
+                    // nebulosas, que son las tres cosas que hacen bandas. Y aqui sale gratis: es un relleno
+                    // que se hace una vez con el cielo, no algo que haya que repetir en cada cuadro.
+                    EnsureRuido();
+                    if (ruidoTeja != null)
+                        using (TextureBrush tb = new TextureBrush(ruidoTeja, WrapMode.Tile))
+                            sg.FillRectangle(tb, 0, 0, FW, FH);
                 }
                 fscTop = t; fscMid = m; fscBot = b;
             }
@@ -13907,6 +14235,9 @@ namespace Rocola
                 if (advance || shownLayer < 0 || layers == null || shownLayer >= layers.Length) shownLayer = CurrentStarLayerIndex();
                 Bitmap sl = (layers != null && shownLayer >= 0 && shownLayer < layers.Length) ? layers[shownLayer] : null;
                 if (sl != null) BlitEstrellas(g, sl, w, h, offX, offY);
+                // LA LUNA VA DESPUES DE LAS ESTRELLAS porque esta muchisimo mas cerca que ellas: una
+                // estrella por delante de la luna se ve, y se ve mal.
+                PintaLuna(g, FullW(w), FullH(h), offX, offY);
                 // AQUI IRIA EL VELO DEL HORIZONTE, Y NO ESTA. QUEDA ESCRITO POR QUE.
                 //
                 // Con tarjeta grafica cada estrella se apaga y se enrojece segun a que altura de la pantalla
@@ -14167,11 +14498,12 @@ namespace Rocola
                         {
                             Shoot ns = new Shoot();
                             ns.On = true;
-                            ns.X = (float)(rnd.NextDouble() * w * 0.55);
-                            ns.Y = (float)(rnd.NextDouble() * h * 0.45);
-                            float spd = (w + h) * 0.55f;                 // px por segundo
-                            ns.VX = spd; ns.VY = spd * (0.35f + (float)rnd.NextDouble() * 0.30f);
-                            ns.MaxLife = 1.0f + (float)rnd.NextDouble() * 0.5f; ns.Life = ns.MaxLife;
+                            // De donde sale y hacia donde va lo dice Form1, para que las dos paredes tiren
+                            // las mismas fugaces (ver TiraFugaz).
+                            bool gorda;
+                            TiraFugaz(rnd, w, h, out ns.X, out ns.Y, out ns.VX, out ns.VY,
+                                      out ns.MaxLife, out ns.Wdt, out ns.Tail, out gorda);
+                            ns.Life = ns.MaxLife;
                             shoots[i] = ns;
                             break;
                         }
@@ -14182,13 +14514,20 @@ namespace Rocola
                     Shoot s = shoots[i];
                     float k = s.Life / s.MaxLife; if (k < 0f) k = 0f;
                     int la = (int)(230 * k * Dim);   // atenuada mientras se navega con musica
-                    float tx = s.X - s.VX * 0.10f, ty = s.Y - s.VY * 0.10f;   // estela corta
+                    float tx = s.X - s.VX * s.Tail, ty = s.Y - s.VY * s.Tail;   // estela: las gordas la traen larga
                     sp.Color = Color.FromArgb(la, 255, 255, 255);
+                    sp.Width = s.Wdt;
                     g.DrawLine(sp, tx, ty, s.X, s.Y);
                     sb.Color = Color.FromArgb(Math.Min(255, la + 25), 255, 255, 255);
-                    g.FillRectangle(sb, (int)s.X - 1, (int)s.Y - 1, 3, 3);
+                    int cab = 1 + (int)s.Wdt;
+                    g.FillRectangle(sb, (int)s.X - cab / 2, (int)s.Y - cab / 2, cab, cab);
                     s.X += s.VX * dt; s.Y += s.VY * dt; s.Life -= dt;
-                    if (s.Life <= 0f || s.X > w + 60 || s.Y > h + 60) s.On = false;
+                    // POR LOS CUATRO LADOS, y no es un detalle: antes solo podian irse por la derecha o por
+                    // abajo porque solo podian ir hacia alla. Con la direccion suelta, una que se vaya por la
+                    // izquierda seguiria viva, invisible y ocupando una de las dos ranuras hasta que se le
+                    // acabara la vida, y mientras tanto no saldria ninguna otra.
+                    if (s.Life <= 0f || s.X > w + FugazBorra || s.X < -FugazBorra
+                                     || s.Y > h + FugazBorra || s.Y < -FugazBorra) s.On = false;
                     shoots[i] = s;
                 }
             }
