@@ -591,11 +591,20 @@ namespace Rocola
                     float cy = mh * (0.10f + (float)r.NextDouble() * 0.42f);
                     for (int i = 0; i < 20; i++)
                         Mancha(g, cx + Gauss(r) * mw * 0.075f, cy + Gauss(r) * mh * 0.08f,
-                               mh * (0.07f + (float)r.NextDouble() * 0.14f), Color.White, 4);
-                    Mancha(g, cx, cy, mh * 0.07f, Color.White, 7);   // el corazon, un pelin mas encendido
+                               mh * (0.07f + (float)r.NextDouble() * 0.14f), Color.White, AlfaNeb(4));
+                    Mancha(g, cx, cy, mh * 0.07f, Color.White, AlfaNeb(7));   // el corazon, un pelin mas encendido
                 }
             }
             return bmp;
+        }
+
+        // El alfa de una mancha de nebulosa a la fuerza elegida. El numero vive en Form1 -fuera del trozo de
+        // tarjeta grafica- porque esta pared y la horneada tienen que usar la MISMA: con dos numeros, el dia
+        // que alguien toque uno, la maquina del bar y la de repuesto pintarian fondos distintos.
+        private static int AlfaNeb(int alfa)
+        {
+            int a = (int)(alfa * Form1.NebFuerza + 0.5f);
+            return (a > 255) ? 255 : a;
         }
 
         // Una mancha de luz redonda que se desvanece hacia fuera: la pieza con la que estan hechas las dos.
@@ -1589,7 +1598,18 @@ namespace Rocola
         private float nebU = 1f, nebV = 1f, hazU = 1f, hazV = 1f;
         private int nieblaW = -1, nieblaH = -1;
         private readonly D3D9.Vtx[] nieblaQuad = new D3D9.Vtx[6];
-        public uint NebColor = 0xFF8C78FF;   // el form lo pone con el color del genero
+        // LAS DOS NEBULOSAS. El form las pone: una con el color del GENERO y otra con el de la CARATULA
+        // (ver ColoresNebulosa). NebFase es la misma cuenta lenta que las hace ir a la deriva.
+        public uint NebColor = 0xFF8C78FF, NebColor2 = 0xFF8C78FF;
+        public float NebFase = 0f;
+        // CUANTO SE SALEN DE LA PANTALLA. Las dos capas van a la deriva, y para que al moverse no asome el
+        // borde se dibujan un poco mas grandes que la pantalla y se mueven DENTRO de ese margen. Por eso no
+        // hace falta que la textura se repita: nunca se ve donde acaba.
+        private const float NebDeriva = 0.06f;
+        // Las dos capas van a TINTA ENTERA: cuanto se notan se decide en el dibujo (ver Form1.NebFuerza), no
+        // aqui. Poner la fuerza en el alfa del vertice no valdria: ese alfa es un byte y no puede pasar de
+        // uno, y lo que se eligio mirando es cuatro veces lo de antes.
+        private const float NebAlfa = 1f;
 
         private void EnsureNieblas()
         {
@@ -1610,16 +1630,32 @@ namespace Rocola
             if (hazTex == IntPtr.Zero && nebTex == IntPtr.Zero) return;
             if (nebTex != IntPtr.Zero)
             {
-                // El color del genero va en el VERTICE: la tarjeta multiplica la textura por el y las
-                // nebulosas cambian de color con la cancion sin volver a subir nada.
-                SetTexQuadA(nieblaQuad, 0, 0, Width, Height, nebU, nebV, NebColor);
-                stars.DrawQuad(nebTex, nieblaQuad);
+                // El color va en el VERTICE: la tarjeta multiplica la textura por el y las nebulosas cambian
+                // de color con la cancion sin volver a subir nada.
+                //
+                // Y AQUI ESTA EL MOVIMIENTO. La misma capa se dibuja DOS VECES -una del color del genero y
+                // otra del de la caratula- yendo a la deriva en sentidos contrarios. Donde se cruzan sale la
+                // mezcla de los dos colores, y como las dos se mueven, la mezcla se mueve. Son dos
+                // cuadrilateros a pantalla completa en vez de uno: para la tarjeta no es nada.
+                uint a = (uint)(NebAlfa * 255f + 0.5f); if (a > 255) a = 255;
+                float mx = Width * NebDeriva, my = Height * NebDeriva;
+                float c = (float)Math.Cos(NebFase), sn = (float)Math.Sin(NebFase);
+                NieblaDeriva(mx, my, c * mx, sn * my, (a << 24) | (NebColor & 0x00FFFFFFu));
+                NieblaDeriva(mx, my, -c * mx, -sn * my, (a << 24) | (NebColor2 & 0x00FFFFFFu));
             }
             if (hazTex != IntPtr.Zero && Nieblas == GpuStarfield.Alto)
             {
                 SetTexQuad(nieblaQuad, 0, 0, Width, Height, hazU, hazV);
                 stars.DrawQuad(hazTex, nieblaQuad);
             }
+        }
+
+        // Una pasada de la nebulosa, corrida (dx, dy) de su sitio. El cuadrilatero se sale de la pantalla por
+        // los cuatro lados lo que dice el margen, asi que por mucho que se mueva nunca asoma su borde.
+        private void NieblaDeriva(float mx, float my, float dx, float dy, uint argb)
+        {
+            SetTexQuadA(nieblaQuad, -mx + dx, -my + dy, Width + mx + dx, Height + my + dy, nebU, nebV, argb);
+            stars.DrawQuad(nebTex, nieblaQuad);
         }
 
         // ESCALERA DE TONOS: aqui esta lo que hace que se lea la intensidad. NO se dibuja subiendo el brillo
