@@ -87,14 +87,23 @@ namespace Rocola
         }
 
         // Mismo archivo y tope (~256KB) que Form1.LogError, pero autonomo (aqui Form1 pudo no existir aun).
+        //
+        // Y CADA APUNTE DICE DE QUE VERSION SALIO. Sin eso, un error que llega por mensaje no se puede
+        // diagnosticar: paso de verdad con uno de "acmStreamClose" fechado quince dias DESPUES de haberlo
+        // arreglado, y no habia forma de saber si era un fallo nuevo o simplemente una rocola vieja que
+        // nadie habia vuelto a instalar. Con la fecha del ejecutable al lado, el apunte se explica solo.
+        // El sello sale de Form1.DeCuandoEs(), que es el mismo que se ensena en Ctrl+F3 y en la bitacora.
         private static void LogCrash(string context, Exception ex)
         {
             try
             {
                 string f = System.IO.Path.Combine(Form1.CarpetaDatos, "rocola_error.txt");
                 try { System.IO.FileInfo fi = new System.IO.FileInfo(f); if (fi.Exists && fi.Length > 262144) fi.Delete(); } catch { }
+                string sello = "";
+                try { sello = Form1.DeCuandoEs(); } catch { }
+                if (sello.Length > 0) sello = "  (rocola del " + sello + ")";
                 System.IO.File.AppendAllText(f,
-                    DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "  [" + context + "]\r\n"
+                    DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "  [" + context + "]" + sello + "\r\n"
                     + (ex != null ? ex.ToString() : "(sin excepcion)") + "\r\n\r\n");
             }
             catch { }

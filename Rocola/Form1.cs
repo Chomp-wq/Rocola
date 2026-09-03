@@ -6019,6 +6019,24 @@ namespace Rocola
             catch { if (hecho != null) { try { hecho.Dispose(); } catch { } } throw; }
         }
 
+        // Y LO MISMO PARA UN MP3 QUE YA ESTA EN MEMORIA, que es por donde se colo.
+        //
+        // Cuando NAudio rechaza un MP3 -tipico: uno que cambia de frecuencia a mitad- la rocola lo
+        // reconstruye en memoria y lo vuelve a intentar (ver OpenAudio y TolerantMp3Source). Ese segundo
+        // intento abria el lector A PELO, sin este camino, y ahi seguia la misma fuga que arriba.
+        //
+        // Y es JUSTO el peor sitio donde dejarla: por aqui pasan SOLO los archivos que ya hicieron fallar a
+        // NAudio una vez, o sea que la fuga vivia exactamente donde se concentran los fallos. Se cerro la
+        // rocola entera dos veces por esto, y la segunda con el arreglo de la otra puerta ya puesto.
+        private static Mp3FileReader AbreMp3(Stream flujo)
+        {
+            NAudio.Wave.IMp3FrameDecompressor hecho = null;
+            Mp3FileReader.FrameDecompressorBuilder armador = delegate(NAudio.Wave.WaveFormat wf)
+            { hecho = Mp3FileReader.CreateAcmFrameDecompressor(wf); return hecho; };
+            try { return new Mp3FileReader(flujo, armador); }
+            catch { if (hecho != null) { try { hecho.Dispose(); } catch { } } throw; }
+        }
+
         // Lector para MEDIR una cancion (no para que suene). Los MP3 van por el camino de arriba, que no deja
         // descompresores tirados; el resto de formatos, por donde siempre. Es EL MISMO montaje que usa NAudio
         // por dentro (el lector mas un canal de muestras), asi que lo medido no cambia ni en un bit.
@@ -11016,12 +11034,17 @@ namespace Rocola
 
         // Guarda el error completo (tipo + mensaje + pila) en rocola_error.txt junto al .exe,
         // para poder ver el metodo exacto que falta (p. ej. por una version equivocada de NAudio).
+        // Cada apunte lleva la fecha del EJECUTABLE al lado (ver el mismo sello en Program.LogCrash): un
+        // error que llega por mensaje no se puede diagnosticar si no se sabe de que version salio.
         private void LogError(string context, Exception ex)
         {
             try
             {
                 string f = RutaDatos("rocola_error.txt");
-                string msg = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "  [" + context + "]\r\n"
+                string sello = "";
+                try { sello = DeCuandoEs(); } catch { }
+                if (sello.Length > 0) sello = "  (rocola del " + sello + ")";
+                string msg = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "  [" + context + "]" + sello + "\r\n"
                            + (ex != null ? ex.ToString() : "(sin excepcion)") + "\r\n\r\n";
                 try { FileInfo fi = new FileInfo(f); if (fi.Exists && fi.Length > 262144) fi.Delete(); } catch { }   // tope ~256KB
                 File.AppendAllText(f, msg);
@@ -12558,8 +12581,14 @@ namespace Rocola
             public TolerantMp3Source(MemoryStream cleanMp3)
             {
                 ms = cleanMp3;
-                mp3 = new Mp3FileReader(ms);
-                sample = new SampleChannel(mp3, false);
+                // POR EL CAMINO SEGURO, igual que FileAudioSource y LectorMedida. Aqui habia DOS fugas en
+                // tres lineas: el lector se abria a pelo -si reventaba a medias dejaba el descompresor del
+                // sistema tirado- y, si el que fallaba era el canal de muestras, se quedaba tirado el lector
+                // entero. Lo tirado lo acaba cerrando el recolector de basura, Windows contesta que ya no
+                // vale, y la queja sale por un hilo donde NADIE la puede recoger: se cierra la rocola.
+                Mp3FileReader m = AbreMp3(ms);
+                try { sample = new SampleChannel(m, false); mp3 = m; m = null; }
+                finally { if (m != null) { try { m.Dispose(); } catch { } } }   // el canal fallo: el lector no se queda tirado
             }
             public NAudio.Wave.WaveFormat WaveFormat { get { return sample.WaveFormat; } }
             public int Read(float[] buffer, int offset, int count) { return sample.Read(buffer, offset, count); }
