@@ -5,6 +5,8 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Reflection;
+using System.Runtime.Serialization;
+using System.Windows.Forms;
 
 // EL CIELO TIENE QUE TENER FONDO, NO SOLO SUPERFICIE.
 //
@@ -25,6 +27,8 @@ using System.Reflection;
 // Y una tercera: que no cueste. Esto se hace mil cuatrocientas veces por cuadro.
 class CieloHondo
 {
+    static readonly char[] SALTO = { (char)10 };
+
     static int fallos = 0;
     static void Check(bool ok, string q) { Console.WriteLine((ok ? "  OK   " : "  FALLO") + "  " + q); if (!ok) fallos++; }
     const BindingFlags TODO = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
@@ -60,6 +64,24 @@ class CieloHondo
             py[i] = (float)fY.GetValue(v0) + sz[i];
         }
         return salida;
+    }
+
+    // Cuantos niveles de 255 le come el aire a la estrella de abajo respecto a la MISMA de arriba, con la
+    // perilla donde este puesta. Se barre una vuelta de titileo y se comparan las medias: asi el numero es
+    // del aire y no de en que momento del centelleo se miro.
+    static double ComeElAire(float W, float H)
+    {
+        float[] xx = { 100f, 100f }, yy = { H * 0.03f, H * 0.97f };
+        int[] kk = { 2, 2 }; float[] cero = { 0f, 0f, 0f };
+        const int P = 60;
+        double arr = 0, aba = 0;
+        for (int s = 0; s < P; s++)
+        {
+            float[] qx, qy;
+            uint[] c = Pinta(xx, yy, kk, s * (6.2831853 / P), cero, cero, W, H, out qx, out qy);
+            arr += (c[0] >> 24); aba += (c[1] >> 24);
+        }
+        return (arr - aba) / P;
     }
 
     static int Main(string[] argv)
@@ -291,6 +313,140 @@ class CieloHondo
                 Console.WriteLine("     (pegar el fondo entero -cielo mas una capa de estrellas- cuesta 0.55 ms ahi mismo: el velo lo DUPLICA)");
                 Check(!hayVelo, "el velo no esta puesto: duplicaria lo que cuesta el fondo justo en la maquina que no tiene tarjeta grafica");
             }
+        }
+
+        // =========================================================================================
+        Console.WriteLine("\n  7) Y SE ELIGE MIRANDO, DESDE Ctrl+F3\n");
+        // Cuanto se nota el aire es cosa de gusto, asi que es una perilla de cuatro pasos y no un numero
+        // escondido. Y los tres numeros van JUNTOS en cada paso a proposito: un cielo con las estrellas de
+        // abajo apagadas pero igual de blancas no es medio efecto, es un cielo raro.
+        MethodInfo mPaso = TF.GetMethod("PasoDelAire", BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
+        FieldInfo fPaso = TF.GetField("airePaso", BindingFlags.Static | BindingFlags.NonPublic);
+        Check(mPaso != null && fPaso != null, "la fuerza del aire es una perilla, no un numero escondido en el codigo");
+        if (mPaso != null && fPaso != null)
+        {
+            // Acotada, como todas: en el archivo de configuracion se puede escribir cualquier cosa.
+            int pMal = (int)mPaso.Invoke(null, new object[] { "esto no es un numero" });
+            int pNeg = (int)mPaso.Invoke(null, new object[] { "-7" });
+            int pAlto = (int)mPaso.Invoke(null, new object[] { "900" });
+            int pNulo = (int)mPaso.Invoke(null, new object[] { null });
+            Console.WriteLine("     un disparate en el archivo da " + pMal + ", un -7 da " + pNeg + " y un 900 da " + pAlto);
+            Check(pMal >= 0 && pMal <= 3 && pNeg == 0 && pAlto == 3 && pNulo >= 0 && pNulo <= 3,
+                  "y pasa por una funcion que la acota: el archivo no puede dejar la pantalla inservible");
+
+            int guardado = (int)fPaso.GetValue(null);
+            double[] come = new double[4];
+            for (int k = 0; k < 4; k++) { fPaso.SetValue(null, k); come[k] = ComeElAire(W, H); }
+            fPaso.SetValue(null, guardado);
+            Console.WriteLine("     lo que le come el aire a la de abajo, paso a paso: "
+                              + come[0].ToString("0") + ", " + come[1].ToString("0") + ", "
+                              + come[2].ToString("0") + " y " + come[3].ToString("0") + " niveles de 255");
+            Check(Math.Abs(come[0]) < 1.0, "en PLANO no le come nada: el cielo queda como estaba antes");
+            Check(come[1] > 8.0 && come[2] > come[1] + 8.0 && come[3] > come[2] + 8.0,
+                  "y cada paso se nota mas que el anterior, con hueco de sobra entre uno y otro");
+
+            // Y QUE LA TABLA SE REHAGA. Va guardada por bandas de altura para que no cueste; si al mover la
+            // perilla no se rehiciera, el mando se moveria y el cielo se quedaria igual, que es la peor
+            // clase de mando: el que parece que funciona.
+            fPaso.SetValue(null, 3); double a3 = ComeElAire(W, H);
+            fPaso.SetValue(null, 0); double a0 = ComeElAire(W, H);
+            fPaso.SetValue(null, 3); double b3 = ComeElAire(W, H);
+            fPaso.SetValue(null, guardado);
+            Check(Math.Abs(a3 - b3) < 0.5 && Math.Abs(a0) < 1.0,
+                  "y la tabla del aire se rehace al mover la perilla, en los dos sentidos");
+        }
+
+        MethodBase lee = null, escribe = null, pag = null, repinta = null;
+        foreach (MethodBase m in Codigo.TodosLosMetodos(TF))
+        {
+            if (m.Name == "LoadConfigPrefs") lee = m;
+            else if (m.Name == "SaveConfigPrefs") escribe = m;
+            else if (m.Name == "PaginaColores") pag = m;
+            else if (m.Name == "RepintaFondo") repinta = m;
+        }
+        bool enLee = false, enEsc = false;
+        if (lee != null) foreach (string t in Codigo.Textos(lee)) if (t == "cielo_aire=") enLee = true;
+        if (escribe != null) foreach (string t in Codigo.Textos(escribe)) if (t == "cielo_aire=") enEsc = true;
+        Check(enLee && enEsc, "la rocola se acuerda de como la dejaste al apagarla y encenderla");
+
+        Check(pag != null, "y esta en la pagina de colores de Ctrl+F3, con las otras tres del fondo");
+        if (pag != null)
+        {
+            List<MethodBase> deLaPagina = Codigo.MetodosConAyudantes(TF, "PaginaColores");
+            List<string> llamadas = Codigo.ConAyudantes(TF, "PaginaColores");
+            Check(Codigo.EscribeCampo(deLaPagina, "airePaso"), "la pagina puede mover la fuerza del aire");
+            Check(Codigo.Llama(llamadas, "PasoDelAire"),
+                  "   ...y lo hace por la funcion que acota, no poniendo el numero a mano");
+            Check(Codigo.EscribeCampo(deLaPagina, "f3CambioGraf"), "y lo que se toca se guarda al cerrar");
+            Check(Codigo.Llama(llamadas, "RepintaFondo"),
+                  "y la pared cambia AL INSTANTE: esto se elige mirando, no a ciegas");
+        }
+        Check(repinta != null, "hay por donde rehacer la pared al tocar la perilla");
+
+        // =========================================================================================
+        Console.WriteLine("\n  8) Y CABE EN LA PAGINA, QUE ESTABA LLENA\n");
+        // La pagina de colores mide 636 px y NO PUEDE CRECER: justo debajo va la banda del sello de version.
+        // Tenia tres tarjetas holgadas y ahora tiene cuatro apretadas, asi que la proxima linea que alguien
+        // le anada se sale sin avisar. Aqui se arma la pagina de verdad y se le miran las medidas: que nada
+        // se pise, que nada se salga, y que ningun texto se corte por la derecha.
+        //
+        // Un rotulo que no se pisa con nadie pero cuya frase se sale sigue estando roto, y eso no lo ve
+        // mirar rectangulos.
+        try
+        {
+            object frm = FormatterServices.GetUninitializedObject(TF);   // sin encender la rocola entera
+            FontFamily ff = FontFamily.GenericSansSerif;
+            using (Font fNom = new Font(ff, 10f, FontStyle.Bold))
+            using (Font fDes = new Font(ff, 8.5f))
+            using (Font fBot = new Font(ff, 10f, FontStyle.Bold))
+            {
+                MethodInfo mPag = TF.GetMethod("PaginaColores", BindingFlags.Instance | BindingFlags.NonPublic);
+                Panel pg = (Panel)mPag.Invoke(frm, new object[] { fNom, fDes, fBot,
+                    Color.FromArgb(226, 232, 245), Color.FromArgb(158, 170, 200), Color.FromArgb(110, 120, 150) });
+                Control[] hijos = new Control[pg.Controls.Count];
+                pg.Controls.CopyTo(hijos, 0);
+                int choques = 0, salidas = 0, cortes = 0;
+                float holgura = 99999f; string apretado = "";
+                for (int i = 0; i < hijos.Length; i++)
+                {
+                    Rectangle r = hijos[i].Bounds;
+                    if (r.Bottom > pg.Height || r.Right > pg.Width || r.Top < 0 || r.Left < 0) salidas++;
+                    for (int j = i + 1; j < hijos.Length; j++) if (r.IntersectsWith(hijos[j].Bounds)) choques++;
+                }
+                using (Bitmap tmp = new Bitmap(4, 4))
+                using (Graphics gg = Graphics.FromImage(tmp))
+                    foreach (Control c in hijos)
+                    {
+                        Control[] n = new Control[c.Controls.Count];
+                        c.Controls.CopyTo(n, 0);
+                        Control[] todos = new Control[n.Length + 1];
+                        n.CopyTo(todos, 0); todos[n.Length] = c;
+                        foreach (Control d in todos)
+                        {
+                            if (d.Bounds.Bottom > c.Height && d != c) salidas++;
+                            if (d.Text == null || d.Text.Length == 0) continue;
+                            int ancho = (d is Label) ? d.Width : d.Width - 8, alto = 0;
+                            foreach (string li in d.Text.Split(SALTO))
+                            {
+                                SizeF sz = gg.MeasureString(li, d.Font);
+                                alto += (int)Math.Ceiling(sz.Height);
+                                if (ancho - sz.Width < holgura) { holgura = ancho - sz.Width; apretado = li; }
+                                if (sz.Width > ancho) cortes++;
+                            }
+                            if (d is Label && alto > d.Height) cortes++;
+                        }
+                    }
+                Console.WriteLine("     la pagina son " + pg.Width + "x" + pg.Height + " px y lleva " + hijos.Length + " piezas");
+                Console.WriteLine("     la linea de texto mas apretada deja " + ((int)holgura) + " px de sobra: " + apretado);
+                Check(choques == 0, "nada se pisa con nada");
+                Check(salidas == 0, "y nada se sale de la pagina ni de su tarjeta");
+                Check(cortes == 0, "y ningun texto se corta: caben todos, de ancho y de alto");
+                Check(holgura > 12f, "y sobra sitio de verdad, no por un pelo (en el bar la letra puede ser otra)");
+            }
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine("     (no se pudo armar la pagina aqui: " + e.GetType().Name + ")");
         }
 
         Console.WriteLine("\n  " + (fallos == 0 ? "TODO EN ORDEN" : fallos + " FALLO(S)"));
