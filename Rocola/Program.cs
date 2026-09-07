@@ -65,9 +65,9 @@ namespace Rocola
             unica = new System.Threading.Mutex(true, ClaveInstancia(Form1.CarpetaDatos), out primera);
             if (!primera) { AlFrenteLaQueYaCorre(); return; }   // ya hay una rocola corriendo: esta se va
 
-            // BLINDAJE DE KIOSCO: una excepcion no controlada en el hilo de la interfaz mostraba el dialogo
-            // de error de .NET y dejaba la rocola muerta hasta reiniciarla a mano (sin teclado ni mouse en el
-            // local). Ahora se anota en rocola_error.txt (junto al .exe) y la rocola SIGUE corriendo.
+            // Registro de errores: la UI puede continuar tras algunos fallos, sin garantia de estado sano.
+            // UnhandledException de otros hilos puede terminar el proceso; registrar no lo recupera.
+            // No hay reinicio automatico ni se oculta esa limitacion al operador.
             Application.ThreadException += delegate (object s, System.Threading.ThreadExceptionEventArgs e)
             { LogCrash("ThreadException", e.Exception); };
             AppDomain.CurrentDomain.UnhandledException += delegate (object s, UnhandledExceptionEventArgs e)

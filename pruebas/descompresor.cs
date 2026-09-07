@@ -75,8 +75,12 @@ class Descompresor
         }
         if (!hayAcm)
         {
-            Console.WriteLine("  esta version no descomprime MP3 con el aparato del sistema (aqui lo hace NLayer):");
-            Console.WriteLine("  no hay descompresor que se pueda quedar tirado, y no hay nada que vigilar.\n");
+            // SE DICE COMO UNA COMPROBACION QUE PASA, no como un aviso suelto. El guion de las pruebas
+            // ahora da por FALLIDA una bateria que no saca ni una linea OK -y hace bien: una que no
+            // comprueba nada se veia igual de verde que una que si-. Aqui no hay nada que vigilar, pero
+            // eso ES el resultado: en esta version no puede existir el fallo.
+            Console.WriteLine("  OK     esta version no descomprime MP3 con el aparato del sistema (aqui lo hace");
+            Console.WriteLine("         NLayer), asi que no hay descompresor que se pueda quedar tirado\n");
             Console.WriteLine("  TODO EN ORDEN");
             return 0;
         }

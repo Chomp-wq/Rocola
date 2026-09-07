@@ -204,6 +204,9 @@ class Bolsa
             object listaBuena = TBol.GetField("Lista").GetValue(entrada);
             TBol.GetField("Lista").SetValue(entrada, Activator.CreateInstance(typeof(List<>).MakeGenericType(TItem)));
             TBol.GetField("Puntos").SetValue(entrada, new int[0]);
+            // La entrada tiene dos niveles coherentes: coincidencias completas y top visible.
+            FieldInfo fMejores = TBol.GetField("Mejores");
+            if (fMejores != null) fMejores.SetValue(entrada, null);
             rec("a"); int conMentira = Ensena(f).Count;
             Console.WriteLine("     con la respuesta de verdad: " + deVerdad + " resultados;  con una falsa metida a mano: " + conMentira);
             Check(deVerdad > 0 && conMentira == 0, "la respuesta guardada se consulta de verdad (no es un adorno)");
@@ -212,6 +215,14 @@ class Bolsa
             // Y el seguro: al recargar la musica, lo guardado apunta a canciones que ya no existen.
             Olvida(f); rec("a");
             Check(Igual(Ensena(f), aSolo), "y al vaciarla, la respuesta vuelve a salir del indice");
+
+            // Alterar la lista que usa la vista no debe corromper el top cacheado.
+            rec("a"); ((IList)fRes.GetValue(fOver.GetValue(f))).Clear(); rec("a");
+            Check(Igual(Ensena(f), aSolo), "la vista recibe una copia del top: modificarla no corrompe la cache");
+            // Una consulta mas larga debe seguir usando TODAS las coincidencias, no solo las 40 visibles.
+            rec("e"); rec("a"); rec("amor noche"); List<string> desdeCache = Ensena(f);
+            Olvida(f); rec("amor noche");
+            Check(Igual(desdeCache, Ensena(f)), "la busqueda incremental conserva coincidencias fuera del top 40");
 
             MethodInfo mStart = TF.GetMethod("StartScan", IF);
             Check(mStart != null, "el rearmado de la biblioteca esta donde tiene que estar");

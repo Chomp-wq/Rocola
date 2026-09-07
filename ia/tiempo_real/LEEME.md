@@ -5,22 +5,25 @@ El motor va CON la rocola, sin correr nada a mano:
    completa (con `ia\upscale\venv` ya instalado por su `1_instalar.bat`, e `ia\tiempo_real`).
 2. Enciende DSEE ULTRA (Ctrl+F3). La rocola ARRANCA el motor sola y oculto, y lo MANTIENE vivo
    (si se cae, lo revive; revisa cada ~10s). Nunca abres `iniciar_motor.bat`.
-3. TODO es relativo al `.exe` y queda en su disco: la cache y los temporales viven en
-   `ia\tiempo_real\cache` (y `cache\tmp`), NUNCA en C:. Muevelo de disco y sigue funcionando.
+3. Por defecto, el motor por demanda guarda cache y temporales en
+   `ia/tiempo_real/cache` y `cache/tmp`. `ia_cache=` permite otra ruta; revisala al mover
+   la instalacion. El kit offline usa tambien temporales del sistema, que pueden estar en C:.
 
 `iniciar_motor.bat` queda SOLO para depurar (ver mensajes de Apollo la primera vez).
 
 # IA en vivo (Apollo por demanda) para la rocola-hd
 
-Procesa con IA SOLO las canciones que suenan, cuando suenan, con interruptor. No hay que
-procesar la biblioteca entera: lo que se pone se mejora y se guarda (cache); si se repite, es
-instantaneo. Con el uso, tu biblioteca se vuelve HD sola, solo con lo que de verdad se escucha.
+Procesa por demanda canciones encoladas o reproducidas, con interruptor. No hace falta
+procesar toda la biblioteca: conserva en cache las salidas terminadas y verificadas.
+Reutilizarlas evita repetir la inferencia, pero la apertura y decodificacion aun cuestan tiempo.
+El procesamiento no garantiza una mejora auditiva: compruebalo con las muestras A/B.
 
 ## Requisito importante
 
-La maquina DONDE CORRE LA ROCOLA debe tener la GPU (tu RTX 4070 Super) y este motor abierto.
-Si la rocola corre en un gabinete sin GPU, esto no aplica: ahi conviene el procesado offline
-(carpeta upscale) desde tu PC potente.
+La maquina donde corre la Rocola necesita el motor y sus dependencias/checkpoint de Apollo.
+Con CUDA disponible usa GPU; el cargador admite CPU cuando no hay CUDA, con un coste y
+tiempo potencialmente mucho mayores. En un gabinete modesto puede convenir procesar offline
+desde otra PC. No se garantiza que termine antes de que empiece una cancion.
 
 ## Como se usa (automatico, sin cuidar terminales)
 
@@ -37,10 +40,11 @@ Si la rocola corre en un gabinete sin GPU, esto no aplica: ahi conviene el proce
 
 ## Que pasa por dentro
 
-- Al ENCOLAR una cancion, la rocola le pide al motor que la procese (deja un `.job`). Como casi
-  siempre hay algo sonando antes, para cuando le toca YA esta lista.
+- Al ENCOLAR una cancion, la rocola le pide al motor que la procese (deja un `.job`).
+  Puede quedar lista antes de su turno, segun la cola y la velocidad de inferencia.
 - Al sonar: si la version IA esta lista, suena esa; si no, suena la ORIGINAL al instante (la
-  rocola NUNCA se traba esperando) y queda lista para la proxima vez.
+  rocola no espera a la inferencia). Se reutiliza en una reproduccion posterior si termina
+  correctamente y la cache no se ha limpiado.
 - Todo se guarda en `ia\tiempo_real\cache\listos` y TU CARPETA DE MUSICA NO CRECE NUNCA:
   los originales no se tocan. En la cache, cada cancion mejorada es un **MP3 320** (pesa como
   un mp3 normal, no como un WAV: caben ~5 veces mas canciones por GB); si una cancion ya era
@@ -64,8 +68,9 @@ Si la rocola corre en un gabinete sin GPU, esto no aplica: ahi conviene el proce
                    Ctrl+F3 (muestra los nombres reales; al cambiarla el motor renace solo en esa
                    GPU). La lista la publica el motor en cache\gpus.txt al arrancar.
 - `ia_mezcla=auto` cuanta IA: auto (recomendado) o un numero 0..100.
-- `ia_cache=RUTA`  carpeta de cache (por defecto `ia_cache` junto a Rocola.exe; debe COINCIDIR
-                   con la que le das al motor en iniciar_motor.bat).
+- `ia_cache=RUTA`  carpeta de cache (por defecto `ia/tiempo_real/cache`).
+                   La Rocola pasa la ruta al motor que inicia; si lo abres manualmente,
+                   debes indicarle la misma ruta. El ajuste se conserva al guardar opciones.
 
 El modelo se cambia igual que en offline (upscale\modelo.txt): el motor usa el mismo cargador.
 

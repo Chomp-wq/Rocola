@@ -20,6 +20,14 @@ class Disco
     static int fallos = 0;
     static void Check(bool ok, string q) { Console.WriteLine((ok ? "  OK   " : "  FALLO") + "  " + q); if (!ok) fallos++; }
 
+    static bool MismosBytes(string a, string b)
+    {
+        byte[] x = File.ReadAllBytes(a), y = File.ReadAllBytes(b);
+        if (x.Length != y.Length) return false;
+        for (int i = 0; i < x.Length; i++) if (x[i] != y[i]) return false;
+        return true;
+    }
+
     static int Main(string[] argv)
     {
         string exe = (argv.Length > 0) ? argv[0] : "rocola.exe";
@@ -29,17 +37,25 @@ class Disco
         // El camino LENTO se toma del programa ANTERIOR: en el de ahora, MideDuracionAudio ya prueba primero
         // la cabecera, asi que medirlo aqui seria medir dos veces lo mismo.
         MethodInfo mLen = null;
+        Assembly aV = null;
         try
         {
-            Assembly aV = Assembly.LoadFrom("rocola_ant.exe");   // el commit anterior: ahi la duracion se media leyendo el archivo entero
+            if (!File.Exists("rocola_ant.exe"))
+                throw new FileNotFoundException("Falta la referencia historica", "rocola_ant.exe");
+            // LoadFrom puede unificar dos ejecutables con la misma identidad y devolver el actual.
+            // Cargar los bytes crea una referencia realmente independiente.
+            aV = Assembly.Load(File.ReadAllBytes("rocola_ant.exe"));
             mLen = aV.GetType("Rocola.Form1", true).GetMethod("MideDuracionAudio", BindingFlags.Static | BindingFlags.NonPublic);
         }
-        catch { }
-        if (mLen == null) mLen = TF.GetMethod("MideDuracionAudio", BindingFlags.Static | BindingFlags.NonPublic);
+        catch (Exception ex) { Console.WriteLine("  FALLO  no se pudo cargar rocola_ant.exe: " + ex.Message); fallos++; }
+        bool refDistinta = aV != null && !MismosBytes(exe, "rocola_ant.exe") && !Object.ReferenceEquals(aV, asm) &&
+            aV.ManifestModule.ModuleVersionId != asm.ManifestModule.ModuleVersionId &&
+            !Object.ReferenceEquals(aV.ManifestModule, asm.ManifestModule);
         Check(mRap != null, "el programa sabe leer la duracion de la cabecera");
-        Check(mLen != null, "y se puede comparar con el camino lento de antes");
+        Check(refDistinta, "la referencia es un ejecutable historico distinto al actual");
+        Check(mLen != null && aV != null && Object.ReferenceEquals(mLen.Module.Assembly, aV), "y se puede comparar con el camino lento de antes");
         Check(TF.GetMethod("MideDuracionAudio", BindingFlags.Static | BindingFlags.NonPublic) != null, "el camino lento sigue ahi como respaldo");
-        if (mRap == null || mLen == null) return 1;
+        if (mRap == null || mLen == null || !refDistinta) return 1;
 
         string dir = "mp3s";
         if (!Directory.Exists(dir) || !File.Exists(Path.Combine(dir, "esperado.txt")))

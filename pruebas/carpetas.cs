@@ -166,6 +166,21 @@ class Carpetas
                 Console.WriteLine("     y con las carpetas de verdad de esta maquina:");
                 Check(!(bool)mEsSistema.Invoke(null, new object[] { casa }), "  la carpeta de la prueba no es del sistema");
                 Check(!(bool)mEsSistema.Invoke(null, new object[] { Path.Combine(casa, "musica") }), "  ni la carpeta de musica");
+
+                // "Recovery" solo es especial cuando cuelga directamente de una unidad de Windows. Dentro
+                // de la biblioteca puede ser un artista o un disco y antes se perdia entero por llamarse asi.
+                string discoRecovery = Path.Combine(musica, "Recovery");
+                string cancionRecovery = Path.Combine(discoRecovery, "rescate.mp3");
+                Cancion(discoRecovery, "rescate.mp3");
+                Check(!(bool)mEsSistema.Invoke(null, new object[] { discoRecovery }),
+                      "  un disco llamado Recovery DENTRO de la musica no es carpeta del sistema");
+                if (Path.DirectorySeparatorChar == '\\')
+                    Check((bool)mEsSistema.Invoke(null, new object[] { @"C:\Recovery" }),
+                          "  pero C:\\Recovery, directamente en la unidad, si se protege");
+                List<string> ar = new List<string>(), vr = new List<string>();
+                Dictionary<string, string> cr = new Dictionary<string, string>();
+                mScan.Invoke(F, new object[] { musica, ar, vr, cr });
+                Check(ar.Contains(cancionRecovery), "  y el barrido encuentra la musica guardada dentro de Recovery");
             }
 
             Console.WriteLine("\n  5) Y NO SE QUEDA DANDO VUELTAS EN LOS ATAJOS\n");

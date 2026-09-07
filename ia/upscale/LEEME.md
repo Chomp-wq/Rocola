@@ -8,9 +8,13 @@ Orden de los dobles clic:
 3. **`4_muestras.bat`** — toma un abanico de las canciones MAS danadas y arma el A/B ciego
    (`piloto_danadas\ciego`). **Esta es la prueba que decide todo** — con archivos danados de
    verdad, no con rips buenos. Escucha X/Y sin ver, anota, abre `clave.txt` al final.
-4. **`5_procesar.bat`** — SOLO si el A/B te convence: procesa TODA la biblioteca a una carpeta
-   nueva en otro disco (mejora las danadas, copia las buenas tal cual, conserva etiquetas y
-   portada, reanuda si lo cierras). Esa carpeta nueva tambien te sirve de RESPALDO.
+4. **`5_procesar.bat`** — SOLO si el A/B te convence: procesa los archivos aptos a una carpeta
+   nueva en otro disco. Reanuda verificando el manifiesto y las salidas.
+   Las canciones sin recorte detectado se copian byte a byte **solo si coincide la extension
+   con el formato elegido**; las demas se convierten. MP3 intenta conservar etiquetas y
+   portada compatible; WAV convertido no conserva portada. No se garantiza conservar
+   todos los metadatos de cada contenedor. **Esta salida no sustituye un respaldo de los originales.**
+   Si falla algun archivo, termina con **INCOMPLETO**, devuelve estado 1 y deja `_errores.txt`.
 
 `2_piloto.bat` sigue existiendo para probar con una carpeta cualquiera que tu elijas.
 
@@ -27,7 +31,7 @@ MEZCLA con el original ("cuanta IA"), como el wet/dry de un estudio:
 
 ---
 
-# Kit de upscaling (Fase 1: piloto) — que un MP3 suene como FLAC
+# Kit de upscaling (Fase 1: piloto) — evaluar reconstruccion perceptual
 
 La ruta completa esta en la conversacion del proyecto; resumen: **NO se procesa en la rocola** —
 se mejora la biblioteca UNA VEZ, offline, en tu PC potente (RTX 4070 Super), con **Apollo**
@@ -83,17 +87,17 @@ python 00_verificar.py --descargar
 
 ## Interpretacion y siguiente paso
 
-- Si en ciego prefieres la mejorada en la mayoria de los pares -> el camino vale: seguimos con la
-  **Fase 2** (fine-tuning de Apollo con TU musica: pares degradados con TU encoder) y la
-  **Fase 3** (procesar toda la biblioteca con prioridad por acantilado + lo mas sonado, con
-  reanudacion). Los scripts 02 y 03 se construyen en cuanto des el veredicto del piloto.
+- Si en ciego prefieres la procesada en la mayoria de los pares, puedes usar el procesador
+  existente `05_procesar_todo.py`, con reanudacion. Un futuro fine-tuning de Apollo con tu
+  musica es trabajo separado; no se incluye en este flujo ni lo sustituye entrenar el MLP.
 - Si no convence: no se gasta un peso mas y nos quedamos con el DSEE espectral + IA de envolvente
-  (que ya estan en la rama) — costo cero por cancion.
+  (que ya estan en la rama), que tambien consumen CPU al actuar.
 
 ## Notas honestas
 
 - Apollo reconstruye PERCEPTUALMENTE: inventa detalle plausible donde el MP3 borro informacion.
-  En escucha ciega se acerca mucho al original; no es una recuperacion bit a bit (imposible).
+  Su conveniencia se decide escuchando tus muestras; no se garantiza preferencia ni
+  recuperacion bit a bit de la informacion perdida.
 - Licencia del checkpoint Apollo: CC-BY-SA-4.0 (uso en tu rocola sin problema; da credito).
 - De archivos ya buenos (256-320 kbps) casi no hay ganancia — el reporte del acantilado te dice
   donde SI vale la pena. Y lo MAS pedido, mejor re-consiguelo en calidad original (CD/compra):

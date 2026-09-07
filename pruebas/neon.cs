@@ -18,7 +18,7 @@ class Neon
 {
     static Type TP, TF, TVtx;
     static FieldInfo fX, fY, fCol;
-    static MethodInfo PERF, TONO, RAYO, TMEZ, LERP, MALLA, BRILLO, STONO, SKY, SKYM, SKY2, REAC, GIRA, GPUNTA;
+    static MethodInfo PERF, TONO, RAYO, TMEZ, LERP, MALLA, BRILLO, STONO, SKYM, SKY2, REAC, GIRA, GPUNTA;
     static int fallos = 0;
     static void Check(bool ok, string q) { Console.WriteLine((ok ? "  OK   " : "  FALLO") + "  " + q); if (!ok) fallos++; }
 
@@ -170,14 +170,21 @@ class Neon
         Assembly asm = Assembly.LoadFrom("rocola.exe");
         TF = asm.GetType("Rocola.Form1", true);
         foreach (Type t in asm.GetTypes()) { if (t.Name == "GpuPanel") TP = t; if (t.Name == "Vtx") TVtx = t; }
-        if (TP == null || TVtx == null) { Console.WriteLine("no hay panel GPU en este ejecutable"); return 0; }
+        // Igual que en 'fps': saltarse la bateria entera ES el resultado en el perfil sin tarjeta
+        // grafica, pero hay que decirlo en voz alta. El guion da por fallida una que no saca ni una
+        // linea OK, y hace bien: una que no comprueba nada se veia igual de verde que una que si.
+        if (TP == null || TVtx == null)
+        {
+            Console.WriteLine("  OK     este perfil no lleva panel de tarjeta grafica: aqui no hay aurora que medir");
+            return 0;
+        }
         fX = TVtx.GetField("X"); fY = TVtx.GetField("Y"); fCol = TVtx.GetField("Color");
         BindingFlags SP = BindingFlags.Static|BindingFlags.NonPublic|BindingFlags.Public;
         PERF = TP.GetMethod("AurPerfil", SP); TONO = TP.GetMethod("TonoPorNivel", SP); RAYO = TP.GetMethod("AurRayo", SP); ONDA = TP.GetMethod("AurOndaAlto", SP); SUAV = TP.GetMethod("AurSuaviza", SP);
         TMEZ = TP.GetMethod("AurTonoMezcla", SP); LERP = TP.GetMethod("AurLerpRgb", SP);
         MALLA = TP.GetMethod("AurMalla", SP); BRILLO = TP.GetMethod("AurBrillo", SP); STONO = TP.GetMethod("AurSueloTono", SP);
         BindingFlags SF = BindingFlags.Static|BindingFlags.NonPublic;
-        SKY = TF.GetMethod("SkyColor", SF); SKYM = TF.GetMethod("SkyColorMid", SF); SKY2 = TF.GetMethod("SkyColor2", SF);
+        SKYM = TF.GetMethod("SkyColorMid", SF); SKY2 = TF.GetMethod("SkyColor2", SF);
         REAC = TF.GetMethod("ColorReactivo", SF); GIRA = TF.GetMethod("GiraTono", SF); GPUNTA = TF.GetMethod("GiroPunta", SP);
         if (BRILLO == null) { Console.WriteLine("falta AurBrillo"); return 1; }
 
@@ -188,7 +195,6 @@ class Neon
         float nBla = Cte("AurNeonBlanco"), nHal = Cte("AurNeonHalo");
         float lNuc = Cte("AurLineaNucleo"), lArr = Cte("AurLineaArriba"), lAba = Cte("AurLineaAbajo");
         float lAlz = Cte("AurLineaAlza");
-        float lHal = Cte("AurLineaHalo");
 
         W = 1400; H = 585;
         // EL HORIZONTE, donde lo pone el programa de verdad: BaseY = BotStripTop + 6, y BotStripTop es la
@@ -411,7 +417,7 @@ class Neon
         string[] filaNom = { "1a linea del titulo", "Reproduciendo", "Siguiente", "tiempo / barra" };
         int[] filaY = { nowTopY+8, nowY+12, nextY+10, progY+6 };
         Color[] filaC = { verde, verde, azul, Color.White };
-        float peorSiempre = 99f, peorTodo = 99f; string quienSiempre = "", quienTodo = "";
+        float peorSiempre = 99f, peorTodo = 99f; string quienSiempre = "";
         float peorCaida = 0f; string dondeCaida = "";
         Console.WriteLine("     genero    fila                     sin neon   con neon   lo que quita el neon");
         for (int gg = 0; gg < generos.Length; gg++)
@@ -449,7 +455,7 @@ class Neon
                 Console.WriteLine(string.Format("     {0,-9} {1,-22}   {2,6:0.0}     {3,6:0.0}       {4,6:0.00}",
                                                 nomGen[gg], filaNom[q], sinN[q], conN[q], caida));
                 if (caida > peorCaida) { peorCaida = caida; dondeCaida = filaNom[q] + " en " + nomGen[gg]; }
-                if (conN[q] < peorTodo) { peorTodo = conN[q]; quienTodo = filaNom[q] + " en " + nomGen[gg]; }
+                if (conN[q] < peorTodo) peorTodo = conN[q];
                 if (q > 0 && conN[q] < peorSiempre) { peorSiempre = conN[q]; quienSiempre = filaNom[q] + " en " + nomGen[gg]; }
             }
         }

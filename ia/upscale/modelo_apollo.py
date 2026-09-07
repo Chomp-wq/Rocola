@@ -1,110 +1,245 @@
 # -*- coding: utf-8 -*-
-# Carga de Apollo, ROBUSTA. El from_pretrain de Apollo solo hace torch.load(ruta): NO baja de
-# internet (por eso "JusperLee/Apollo" daba "No such file or directory"). Aqui descargamos el
-# repo de Hugging Face a la cache, encontramos el checkpoint y le pasamos la RUTA LOCAL.
-import os, sys, glob
+"""Carga segura y reproducible del modelo Apollo.
+
+Nunca se deserializa pickle arbitrario: safetensors se carga directamente y los
+checkpoints de PyTorch pasan por ``weights_only=True``. Los repos remotos siempre
+se descargan desde una revision inmutable.
+"""
+import glob
+import hashlib
+import os
+import sys
+
 import numpy as np
 
-def _repo_apollo():
-    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "Apollo")
+DEFAULT_SOURCE = "JusperLee/Apollo"
+DEFAULT_REVISION = "0b123a4606d5345d9082f6f633d8bfebe84c8e79"
+DEFAULT_CHECKPOINT_SHA256 = "99d9af7f1ff20e63c393035513a655392818d66b4d7fc23d658175c1f15e8d76"
+PIPELINE_VERSION = "apollo-safe-v2"
+
+
+def _revision_inmutable(revision):
+    """Hugging Face acepta ramas y tags; aqui solo aceptamos un commit Git completo."""
+    return (isinstance(revision, str) and len(revision) in (40, 64) and
+            all(c in "0123456789abcdefABCDEF" for c in revision))
+
+
+def _repo_apollo(apollo_dir=None):
+    return os.path.abspath(apollo_dir or os.environ.get("APOLLO_DIR") or
+                           os.path.join(os.path.dirname(os.path.abspath(__file__)), "Apollo"))
+
 
 def fuente_modelo():
-    """Que modelo usar. Por defecto JusperLee/Apollo. Se puede cambiar SIN tocar codigo: crea un
-    archivo 'modelo.txt' junto a este script con UNA linea = un repo de Hugging Face
-    (p.ej. baicai1145/Apollo-universal) o la ruta local de un .ckpt. Asi se prueban modelos
-    mejores de la comunidad con cero cambios de programa; se comparan por oido como todo lo demas."""
+    """Devuelve ``(fuente, revision)``; repos remotos exigen una revision fija."""
+    fuente = os.environ.get("APOLLO_MODEL", "").strip()
+    revision = os.environ.get("APOLLO_MODEL_REVISION", "").strip()
     cfg = os.path.join(os.path.dirname(os.path.abspath(__file__)), "modelo.txt")
-    if os.path.exists(cfg):
-        for linea in open(cfg, encoding="utf-8"):
-            s = linea.strip()
-            if s and not s.startswith("#"):
-                return s
-    return "JusperLee/Apollo"
+    if not fuente and os.path.exists(cfg):
+        with open(cfg, encoding="utf-8") as f:
+            for linea in f:
+                s = linea.strip()
+                if s and not s.startswith("#"):
+                    fuente = s
+                    break
+    fuente = fuente or DEFAULT_SOURCE
+    # Una ruta relativa escrita en modelo.txt se interpreta junto al propio archivo, no segun
+    # el directorio desde el que por casualidad se haya lanzado Python.
+    if fuente != DEFAULT_SOURCE and not os.path.isabs(fuente):
+        local = os.path.abspath(os.path.join(os.path.dirname(cfg), fuente))
+        if os.path.exists(local):
+            fuente = local
+    if not os.path.exists(fuente) and "@" in fuente:
+        fuente, revision_cfg = fuente.rsplit("@", 1)
+        revision = revision or revision_cfg
+    if not os.path.exists(fuente):
+        if fuente == DEFAULT_SOURCE:
+            revision = revision or DEFAULT_REVISION
+        if not _revision_inmutable(revision):
+            raise RuntimeError("El modelo remoto requiere el hash completo de un commit: usuario/repo@commit")
+    return fuente, revision or None
 
-def descargar_checkpoint(fuente=None):
-    """Devuelve la ruta LOCAL del checkpoint. 'fuente' = repo de Hugging Face o ruta local
-    (archivo .ckpt o carpeta). Un repo se baja a la cache una vez."""
+
+def _sha256(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for bloque in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(bloque)
+    return h.hexdigest()
+
+
+def descargar_checkpoint(fuente=None, revision=None):
+    """Devuelve ``(checkpoint_local, fuente, revision_efectiva)``."""
     if fuente is None:
-        fuente = fuente_modelo()
-    if os.path.isfile(fuente):                     # ya es un .ckpt local
-        return fuente
+        fuente, revision_cfg = fuente_modelo()
+        revision = revision or revision_cfg
+    if os.path.isfile(fuente):
+        return os.path.abspath(fuente), os.path.abspath(fuente), None
     if os.path.isdir(fuente):
-        carpeta = fuente
-    else:                                          # repo de Hugging Face
+        carpeta = os.path.abspath(fuente)
+    else:
+        if not _revision_inmutable(revision):
+            raise RuntimeError("Se nego descargar un modelo remoto sin el hash completo de un commit")
         from huggingface_hub import snapshot_download
-        carpeta = snapshot_download(repo_id=fuente)
+        carpeta = snapshot_download(repo_id=fuente, revision=revision,
+                                     allow_patterns=["*.safetensors", "*.ckpt", "*.bin", "*.pt", "*.pth"])
+    candidatos = []
+    for ext in ("*.safetensors", "*.ckpt", "*.bin", "*.pt", "*.pth"):
+        candidatos.extend(glob.glob(os.path.join(carpeta, "**", ext), recursive=True))
+    if not candidatos:
+        raise RuntimeError("No encontre checkpoint en: " + carpeta)
+    candidatos.sort(key=lambda p: (0 if p.lower().endswith(".safetensors") else 1,
+                                   0 if os.path.basename(p).lower() in ("pytorch_model.bin", "apollo.pth") else 1,
+                                   -os.path.getsize(p), p.lower()))
+    ruta = candidatos[0]
+    digest = _sha256(ruta)
+    if fuente == DEFAULT_SOURCE and revision == DEFAULT_REVISION and digest != DEFAULT_CHECKPOINT_SHA256:
+        raise RuntimeError("El checkpoint oficial no coincide con su SHA-256 fijado; se nego cargarlo")
+    return ruta, fuente, revision
+
+
+def _cargar_checkpoint_seguro(ruta, digest=None):
+    digest_real = _sha256(ruta)
+    if digest is not None and digest_real != digest:
+        raise RuntimeError("El checkpoint cambio despues de resolverlo; se nego cargarlo")
+    if ruta.lower().endswith(".safetensors"):
+        from safetensors.torch import load_file
+        return load_file(ruta, device="cpu")
     import torch
-    cand = []
-    for ext in ("*.ckpt", "*.bin", "*.pt", "*.pth", "*.safetensors"):
-        cand += glob.glob(os.path.join(carpeta, "**", ext), recursive=True)
-    cand.sort(key=lambda f: -os.path.getsize(f))            # el checkpoint suele ser el archivo mas grande
-    for p in cand:                                          # preferir el que traiga state_dict/model_name
-        try:
-            d = torch.load(p, map_location="cpu", weights_only=False)
-            if isinstance(d, dict) and ("state_dict" in d or "model_name" in d):
-                return p
-        except Exception:
+    # El checkpoint oficial contiene metadatos OmegaConf que el cargador weights-only no admite.
+    # Es la unica excepcion: se permite pickle SOLO despues de comparar todos sus bytes con el
+    # SHA-256 inmutable publicado y fijado arriba. Un archivo remoto alterado no llega aqui.
+    if digest_real == DEFAULT_CHECKPOINT_SHA256:
+        return torch.load(ruta, map_location="cpu", weights_only=False)
+    try:
+        return torch.load(ruta, map_location="cpu", weights_only=True)
+    except TypeError:
+        raise RuntimeError("PyTorch es demasiado antiguo: se requiere torch.load(weights_only=True)")
+    except Exception as e:
+        raise RuntimeError("Checkpoint rechazado por el cargador seguro; conviertelo a safetensors: %s" % e)
+
+
+def _state_dict(datos):
+    if isinstance(datos, dict) and isinstance(datos.get("state_dict"), dict):
+        datos = datos["state_dict"]
+    if not isinstance(datos, dict) or not datos or not all(isinstance(k, str) for k in datos):
+        raise RuntimeError("El checkpoint no contiene un state_dict")
+    return datos
+
+
+def _ajusta_prefijo(sd, esperadas):
+    """Quita solamente un prefijo comun; nunca oculta claves incompatibles."""
+    for prefijo in ("", "audio_model.", "model.", "module."):
+        if prefijo and not all(k.startswith(prefijo) for k in sd):
             continue
-    if cand:
-        return cand[0]
-    raise RuntimeError("Descargue el repo pero no encontre checkpoint en: " + carpeta)
+        candidato = {(k[len(prefijo):] if prefijo else k): v for k, v in sd.items()}
+        if set(candidato) == esperadas:
+            return candidato
+    faltan = sorted(esperadas - set(sd))[:5]
+    sobran = sorted(set(sd) - esperadas)[:5]
+    raise RuntimeError("Pesos incompatibles (faltan %s; sobran %s)" % (faltan, sobran))
+
+
+def resolver_modelo():
+    ruta, fuente, revision = descargar_checkpoint()
+    digest = _sha256(ruta)
+    identidad = "%s|%s|%s|%s" % (PIPELINE_VERSION, fuente, revision or "local", digest)
+    return ruta, fuente, revision, digest, hashlib.sha256(identidad.encode("utf-8")).hexdigest()
+
+
+def _huella_codigo(repo):
+    """Incluye el codigo Apollo local en la identidad para no reutilizar audio de otra version."""
+    h = hashlib.sha256()
+    base = os.path.join(repo, "look2hear")
+    if not os.path.isdir(base):
+        raise RuntimeError("El repo Apollo no contiene look2hear: " + repo)
+    rutas = []
+    for carpeta, dirs, files in os.walk(base):
+        dirs[:] = sorted(d for d in dirs if d != "__pycache__" and not d.startswith("."))
+        rutas.extend(os.path.join(carpeta, f) for f in files if f.endswith(".py"))
+    for ruta in sorted(rutas, key=lambda p: os.path.relpath(p, repo).replace("\\", "/")):
+        rel = os.path.relpath(ruta, repo).replace("\\", "/")
+        h.update(rel.encode("utf-8")); h.update(b"\0")
+        with open(ruta, "rb") as f:
+            for bloque in iter(lambda: f.read(1024 * 1024), b""):
+                h.update(bloque)
+        h.update(b"\0")
+    return h.hexdigest()
+
+
+def identidad_modelo(apollo_dir=None, modelo_resuelto=None):
+    """Valida checkpoint/codigo y obtiene la misma huella sin importar Torch ni crear Apollo."""
+    repo = _repo_apollo(apollo_dir)
+    ruta, fuente, revision, digest, fingerprint = modelo_resuelto or resolver_modelo()
+    digest_real = _sha256(ruta)
+    if digest_real != digest:
+        raise RuntimeError("El checkpoint cambio despues de resolverlo; se nego cargarlo")
+    identidad_base = "%s|%s|%s|%s" % (PIPELINE_VERSION, fuente, revision or "local", digest_real)
+    fingerprint_base = hashlib.sha256(identidad_base.encode("utf-8")).hexdigest()
+    if fingerprint != fingerprint_base:
+        raise RuntimeError("La identidad resuelta del modelo no es valida")
+    return hashlib.sha256((fingerprint_base + "|" + _huella_codigo(repo)).encode("ascii")).hexdigest()
+
 
 def lista_gpus():
-    """Nombres de las GPUs CUDA visibles (la posicion en la lista ES el indice de --gpu).
-    El motor la escribe en cache/gpus.txt para que el selector de la rocola muestre nombres reales."""
     try:
         import torch
-        if not torch.cuda.is_available(): return []
+        if not torch.cuda.is_available():
+            return []
         return [torch.cuda.get_device_name(i) for i in range(torch.cuda.device_count())]
     except Exception:
         return []
 
+
 def _dispositivo(gpu):
-    """torch.device segun --gpu: 'auto' = la GPU por defecto (o CPU si no hay CUDA);
-    un numero = esa GPU en especifico, validado (si no existe, cae a la automatica)."""
     import torch
-    if not torch.cuda.is_available(): return torch.device("cpu")
+    if not torch.cuda.is_available():
+        return torch.device("cpu")
     try:
         n = int(gpu)
-        if 0 <= n < torch.cuda.device_count(): return torch.device("cuda:%d" % n)
+        if 0 <= n < torch.cuda.device_count():
+            return torch.device("cuda:%d" % n)
         print("   aviso: no existe la GPU %s; uso la automatica" % gpu)
     except (TypeError, ValueError):
         pass
     return torch.device("cuda")
 
-def cargar(gpu="auto"):
-    """Devuelve proc(x[n,ch] float64) -> y[n,ch] float64, con Apollo listo en la GPU elegida."""
-    sys.path.insert(0, _repo_apollo())
+
+def cargar(gpu="auto", apollo_dir=None, modelo_resuelto=None):
+    """Devuelve ``proc`` y publica la identidad en ``proc.model_fingerprint``."""
+    repo = _repo_apollo(apollo_dir)
+    if not os.path.isdir(repo):
+        raise RuntimeError("No encuentro el codigo Apollo: " + repo)
+    if repo not in sys.path:
+        sys.path.insert(0, repo)
     import torch
-    try: torch.set_num_threads(2)   # convive con la rocola: que torch no acapare todos los nucleos del CPU
-    except Exception: pass
-    import look2hear.models
-    fuente = fuente_modelo()
-    print("   modelo de IA:", fuente)
     try:
-        ruta = descargar_checkpoint(fuente)
+        torch.set_num_threads(2)
+    except Exception:
+        pass
+    try:
+        from look2hear.models.apollo import Apollo
     except Exception as e:
-        if fuente != "JusperLee/Apollo":
-            print("   aviso: no pude usar '%s' (%s). Uso el modelo base." % (fuente, e))
-            fuente = "JusperLee/Apollo"
-            ruta = descargar_checkpoint(fuente)
-        else:
-            raise
-    cfg = dict(sr=44100, win=20, feature_dim=256, layer=6)
+        raise RuntimeError("No pude importar Apollo desde %s: %s" % (repo, e))
     try:
-        model = look2hear.models.BaseModel.from_pretrain(ruta, **cfg)     # camino documentado, ya con ruta local
-    except Exception as e1:
-        # Respaldo: construir el modelo Apollo y cargar los pesos a mano (por si el checkpoint es
-        # un .ckpt de Lightning sin la envoltura model_name/state_dict que espera from_pretrain).
-        try:
-            from look2hear.models.apollo import Apollo
-        except Exception:
-            raise e1
-        model = Apollo(**cfg)
-        d = torch.load(ruta, map_location="cpu", weights_only=False)
-        sd = d.get("state_dict", d) if isinstance(d, dict) else d
-        sd = { (k[len("audio_model."):] if k.startswith("audio_model.") else k): v for k, v in sd.items() }
-        model.load_state_dict(sd, strict=False)
+        import inspect
+        origen_apollo = os.path.realpath(inspect.getfile(Apollo))
+        if os.path.commonpath((origen_apollo, os.path.realpath(repo))) != os.path.realpath(repo):
+            raise RuntimeError("se importo Apollo desde otra carpeta: " + origen_apollo)
+    except RuntimeError:
+        raise
+    except Exception as e:
+        raise RuntimeError("No pude validar el origen del codigo Apollo: %s" % e)
+
+    ruta, fuente, revision, digest, fingerprint = modelo_resuelto or resolver_modelo()
+    fingerprint = identidad_modelo(repo, (ruta, fuente, revision, digest, fingerprint))
+    print("   modelo de IA:", fuente, ("@" + revision) if revision else "")
+    print("   checkpoint SHA-256:", digest)
+    cfg = dict(sr=44100, win=20, feature_dim=256, layer=6)
+    model = Apollo(**cfg)
+    sd = _state_dict(_cargar_checkpoint_seguro(ruta, digest))
+    sd = _ajusta_prefijo(sd, set(model.state_dict().keys()))
+    model.load_state_dict(sd, strict=True)
+
     dev = _dispositivo(gpu)
     try:
         nombre = torch.cuda.get_device_name(dev) if dev.type == "cuda" else "CPU"
@@ -114,11 +249,14 @@ def cargar(gpu="auto"):
     model = model.to(dev).eval()
 
     def proc(x):
-        t = torch.from_numpy(np.ascontiguousarray(x.T, dtype=np.float32)).unsqueeze(0).to(dev)  # [1, ch, n]
+        t = torch.from_numpy(np.ascontiguousarray(x.T, dtype=np.float32)).unsqueeze(0).to(dev)
         with torch.no_grad():
             try:
                 y = model(t)
-            except Exception:                               # si el modelo exige mono: canal por canal
+            except Exception:
                 y = torch.cat([model(t[:, c:c+1, :]) for c in range(t.shape[1])], dim=1)
         return y.squeeze(0).detach().cpu().numpy().T.astype(np.float64)
+
+    proc.model_fingerprint = fingerprint
+    proc.checkpoint_sha256 = digest
     return proc

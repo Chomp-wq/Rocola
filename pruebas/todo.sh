@@ -25,6 +25,18 @@ NLAYER="$RAIZ/packages/NLayer.1.12.0/lib/net35/NLayer.dll"
 # el dispositivo es el que cambia de sistema. Aqui va el de OpenGL; el de Direct3D (D3D9Device.cs) esta en
 # el arbol para las ramas de Windows y NO se compila.
 FUENTES="$RAIZ/Rocola/Form1.cs $RAIZ/Rocola/Form1.Designer.cs $RAIZ/Rocola/Program.cs $RAIZ/Rocola/D3D9Star.cs $RAIZ/Rocola/Rendimiento.cs $RAIZ/Rocola/GLDevice.cs $RAIZ/Rocola/LinuxAudio.cs $RAIZ/Rocola/LinuxSistema.cs $RAIZ/Rocola/LinuxPintura.cs $RAIZ/Rocola/LinuxVideo.cs"
+# Los archivos de trabajo van a una carpeta propia que se limpia sola al salir, en vez de nombres fijos en
+# /tmp: dos tandas a la vez no se pisan, y no queda basura si esto se corta a medias.
+TMP_PRUEBAS="${TMPDIR:-/tmp}/rocola_pruebas_$$"
+if ! mkdir -p "$TMP_PRUEBAS"; then
+  echo "  No se pudo crear la carpeta temporal: $TMP_PRUEBAS"
+  exit 1
+fi
+limpia_tmp() { rm -rf "$TMP_PRUEBAS"; }
+trap limpia_tmp 0
+trap 'exit 2' 1 2 15
+C_ROCOLA="$TMP_PRUEBAS/c_rocola.txt"
+C_GPU="$TMP_PRUEBAS/c_rocola_gpu.txt"
 
 # Las que miran cosas que solo existen con tarjeta grafica (la aurora, el barrido de luz) van
 # contra el perfil de GPU; las demas contra el normal.
@@ -53,23 +65,53 @@ GPU="fondo anim presencia barrido tope calma entrar gl luz mover arranca bibliot
 # existe la funcion ni se prueba.
 SOLO_HD="mudos"
 
-# --- Que version de .NET pide esta rama. Lo manda la RAMA, no el compilador: el codigo de la rama
-#     de tarjeta grafica tambien compila con -sdk:2, asi que probar y ver si cuela elegiria mal y
-#     estariamos midiendo un ejecutable que no es el que se instala. Si la rama no se reconoce
-#     -por ejemplo en una copia suelta sin historial-, se prueba .NET 3.5 y se cae al 4.8. ---
+# --- Que version de .NET pide este PROYECTO. No se deduce probando compiladores ni depende de que
+#     exista .git: las copias entregadas y los ZIP no tienen rama, pero el .csproj siempre declara
+#     el framework que se instala. ---
 RAMA="$(git -C "$RAIZ" rev-parse --abbrev-ref HEAD 2>/dev/null)"
-case "$RAMA" in
-  rocola-hd) SDK=4; ORDEN="4"; CPU="$CPU $SOLO_HD" ;;   # la del equipo con tarjeta grafica: .NET 4.8
-  rocola-linux) SDK=4; ORDEN="4" ;;   # la de Linux: sale de la HD, misma version; sin videos (no hay Media Foundation)
-  ?*)        SDK=2; ORDEN="2" ;;      # la de Windows XP: .NET 3.5
-  *)         SDK=2; ORDEN="2 4" ;;    # sin rama conocida: se prueban los dos
-esac
+PROYECTO="$RAIZ/Rocola/Rocola.csproj"
+if [ ! -f "$PROYECTO" ]; then
+  echo "  FALTA el proyecto: $PROYECTO"
+  exit 1
+elif [ -f "$RAIZ/Rocola/GLDevice.cs" ]; then
+  # LA DE LINUX SE RECONOCE POR EL DIBUJO, NO POR EL .csproj. Sale de la HD y declara el MISMO .NET 4.8,
+  # asi que el proyecto no las distingue; lo que las separa es que aqui el dispositivo es el de OpenGL.
+  # Y no lleva 'mudos': saber si un video suena pide Media Foundation, que es de Windows.
+  SDK=4; TIPO=linux
+  REF_ID="hd:e3892d6:377e89e:cfdf912"
+elif grep -q '<TargetFrameworkVersion>v4.8</TargetFrameworkVersion>' "$PROYECTO"; then
+  SDK=4; TIPO=hd; CPU="$CPU $SOLO_HD"
+  REF_ID="hd:e3892d6:377e89e:cfdf912"
+elif grep -q '<TargetFrameworkVersion>v3.5</TargetFrameworkVersion>' "$PROYECTO"; then
+  SDK=2; TIPO=xp
+  REF_ID="xp:7f5b443:705c5d3:dc4a42d"
+else
+  echo "  No se reconoce el TargetFrameworkVersion de $PROYECTO"
+  exit 1
+fi
 
 if [ "$1" = "--lista" ]; then
   echo "  sin tarjeta grafica: $CPU"
   echo "  con tarjeta grafica: $GPU"
   exit 0
 fi
+
+for herramienta in mcs mono xvfb-run; do
+  if ! command -v "$herramienta" >/dev/null 2>&1; then
+    echo "  FALTA la herramienta necesaria: $herramienta"
+    exit 1
+  fi
+done
+if [ ! -f "$NAUDIO" ]; then
+  echo "  FALTA NAudio: $NAUDIO"
+  exit 1
+fi
+for f in $FUENTES; do
+  if [ ! -f "$f" ]; then
+    echo "  FALTA una fuente de la rocola: $f"
+    exit 1
+  fi
+done
 # --- EL ARCHIVO DEL DIBUJO ES EL MISMO QUE EN LA OTRA RAMA DE TARJETA GRAFICA ---
 #
 # D3D9Star.cs (el dibujo) y D3D9Device.cs (el dispositivo de Direct3D) son identicos byte por byte en
@@ -92,32 +134,33 @@ if [ -n "$OTRA" ] && git -C "$RAIZ" rev-parse --verify -q "$OTRA" > /dev/null 2>
       dif=$((dif+1))
     fi
   done
-  [ $dif -eq 0 ] && echo "  el dibujo por tarjeta grafica es identico al de la rama $OTRA"
+  if [ $dif -ne 0 ]; then
+    echo "  FALLA: las dos ramas ya no comparten el mismo codigo de dibujo"
+    exit 1
+  fi
+  echo "  el dibujo por tarjeta grafica es identico al de la rama $OTRA"
 fi
 
 echo "  compilando la rocola..."
-hecho=0
-for k in $ORDEN; do
-  if mcs -sdk:$k -langversion:5 -warn:4 -target:winexe -out:rocola_cpu.exe \
-       -r:System.Windows.Forms.dll -r:System.Drawing.dll -r:"$NAUDIO" -r:"$NLAYER" $FUENTES > /tmp/c_rocola.txt 2>&1; then
-    SDK=$k; hecho=1; break
-  fi
-done
-if [ $hecho -eq 0 ]; then echo "  LA ROCOLA NO COMPILA:"; tail -12 /tmp/c_rocola.txt; exit 1; fi
-if ! mcs -sdk:$SDK -langversion:5 -warn:4 -target:winexe -out:rocola_gpu.exe -d:ROCOLA_GPU \
-     -r:System.Windows.Forms.dll -r:System.Drawing.dll -r:"$NAUDIO" -r:"$NLAYER" $FUENTES > /tmp/c_rocola_gpu.txt 2>&1; then
-  echo "  EL PERFIL CON TARJETA GRAFICA NO COMPILA:"; tail -12 /tmp/c_rocola_gpu.txt; exit 1
+if ! mcs -sdk:$SDK -langversion:5 -warn:4 -warnaserror+ -target:winexe -out:rocola_cpu.exe \
+     -r:System.Windows.Forms.dll -r:System.Drawing.dll -r:"$NAUDIO" -r:"$NLAYER" $FUENTES > "$C_ROCOLA" 2>&1; then
+  echo "  LA ROCOLA NO COMPILA SIN AVISOS:"; tail -12 "$C_ROCOLA"; exit 1
+fi
+if ! mcs -sdk:$SDK -langversion:5 -warn:4 -warnaserror+ -target:winexe -out:rocola_gpu.exe -d:ROCOLA_GPU \
+     -r:System.Windows.Forms.dll -r:System.Drawing.dll -r:"$NAUDIO" -r:"$NLAYER" $FUENTES > "$C_GPU" 2>&1; then
+  echo "  EL PERFIL CON TARJETA GRAFICA NO COMPILA SIN AVISOS:"; tail -12 "$C_GPU"; exit 1
 fi
 # --- LOS AVISOS SE CUENTAN, Y DE LOS DOS PERFILES ---
 # Aqui la rocola se compila a CERO avisos. Antes esta linea decia "0 avisos" siempre, mirara o no: los del
 # perfil con tarjeta grafica ni se leian, y por ahi se colo uno sin que nadie se enterara. Ahora se cuentan
 # de verdad y, si hay alguno, se ensena cual y donde.
-avisos=$(cat /tmp/c_rocola.txt /tmp/c_rocola_gpu.txt 2>/dev/null | grep -c 'warning CS')
+avisos=$(cat "$C_ROCOLA" "$C_GPU" 2>/dev/null | grep -c 'warning CS')
 if [ "${avisos:-0}" -ne 0 ]; then
-  echo "  OJO: $avisos AVISO(S) al compilar la rocola (aqui se compila a cero):"
-  grep -h 'warning CS' /tmp/c_rocola.txt /tmp/c_rocola_gpu.txt | sed 's/^/    /'
+  echo "  FALLA: $avisos AVISO(S) al compilar la rocola (aqui se exige cero):"
+  grep -h 'warning CS' "$C_ROCOLA" "$C_GPU" | sed 's/^/    /'
+  exit 1
 fi
-echo "  rocola compilada (rama ${RAMA:-desconocida}, .NET $([ $SDK = 2 ] && echo 3.5 || echo 4.8), los dos perfiles, ${avisos:-0} avisos)"
+echo "  rocola compilada (proyecto $TIPO, rama ${RAMA:-sin-git}, .NET $([ $SDK = 2 ] && echo 3.5 || echo 4.8), los dos perfiles, 0 avisos)"
 echo
 
 # --- Si se pidieron baterias sueltas, se reparten segun a que perfil van ---
@@ -131,23 +174,37 @@ fi
 
 # El lector del programa ya compilado vive aparte y se compila JUNTO a cada bateria: antes cada una tenia
 # su propia copia del recorrido y solo cuatro de quince estaban completas. Un solo sitio que arreglar.
-COMUN=""
-[ -f leercodigo.cs ] && COMUN="leercodigo.cs"
+if [ ! -f leercodigo.cs ]; then
+  echo "  FALTA la fuente comun de las baterias: leercodigo.cs"
+  exit 1
+fi
+COMUN="leercodigo.cs"
 
 mal=0
 corre() {
   for t in $1; do
-    [ -f "$t.cs" ] || { echo "  ---          $t   (no existe)"; continue; }
-    if ! mcs -sdk:4 -warn:4 -out:$t.exe -r:System.Windows.Forms.dll -r:System.Drawing.dll -r:"$NAUDIO" -r:"$NLAYER" $t.cs $COMUN > /tmp/c_$t.txt 2>&1; then
-      echo "  COMPILA MAL  $t"; tail -3 /tmp/c_$t.txt; mal=$((mal+1)); continue
+    if [ ! -f "$t.cs" ]; then
+      echo "  FALTA        $t.cs"
+      mal=$((mal+1)); continue
     fi
-    xvfb-run -a mono $t.exe > /tmp/r_$t.txt 2>&1
+    ct="$TMP_PRUEBAS/c_$t.txt"
+    rt="$TMP_PRUEBAS/r_$t.txt"
+    if ! mcs -sdk:4 -warn:4 -warnaserror+ -out:$t.exe -r:System.Windows.Forms.dll -r:System.Drawing.dll -r:"$NAUDIO" -r:"$NLAYER" $t.cs $COMUN > "$ct" 2>&1; then
+      echo "  COMPILA MAL  $t"; tail -5 "$ct"; mal=$((mal+1)); continue
+    fi
+    if grep -q 'warning CS' "$ct"; then
+      echo "  CON AVISOS   $t"
+      grep 'warning CS' "$ct" | head -5
+      mal=$((mal+1)); continue
+    fi
+    xvfb-run -a mono $t.exe > "$rt" 2>&1
     rc=$?
-    n=$(grep -c '^  FALLO' /tmp/r_$t.txt)
-    if [ "$rc" -ne 0 ] || [ "$n" -ne 0 ]; then
-      echo "  FALLA        $t   (salida $rc, $n fallos)"
-      grep '^  FALLO' /tmp/r_$t.txt | head -6
-      tail -3 /tmp/r_$t.txt | sed 's/^/        /'
+    n=$(grep -c '^  FALLO' "$rt")
+    ok=$(grep -c '^  OK' "$rt")
+    if [ "$rc" -ne 0 ] || [ "$n" -ne 0 ] || [ "$ok" -eq 0 ]; then
+      echo "  FALLA        $t   (salida $rc, $n fallos, $ok comprobaciones OK)"
+      grep '^  FALLO' "$rt" | head -6
+      tail -3 "$rt" | sed 's/^/        /'
       mal=$((mal+1))
     else
       echo "  bien         $t"
@@ -157,22 +214,67 @@ corre() {
 
 # Mono busca NAudio AL LADO del programa que lo usa, asi que se trae aqui desde packages/.
 # (No se guarda en el repo: es el mismo archivo que ya vive en packages/.)
-cp -f "$NAUDIO" ./NAudio.dll 2>/dev/null || true
-cp -f "$NLAYER" ./NLayer.dll 2>/dev/null || true
+if ! cp -f "$NAUDIO" ./NAudio.dll; then
+  echo "  No se pudo copiar NAudio.dll junto a las baterias"
+  exit 1
+fi
+if ! cp -f "$NLAYER" ./NLayer.dll; then
+  echo "  No se pudo copiar NLayer.dll junto a las baterias"
+  exit 1
+fi
 
 # --- Material de apoyo: se genera solo si falta (nada de esto se guarda en el repo) ---
+incluye() { case " $CPU $GPU " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 # mp3 de prueba (los usan 'disco' y 'etiqueta')
-[ -f mp3s/esperado.txt ] || { echo "  generando mp3 de prueba..."; python3 hacemp3.py mp3s > /dev/null 2>&1; }
+if incluye disco || incluye etiqueta; then
+  if [ ! -f mp3s/esperado.txt ]; then
+    command -v python3 >/dev/null 2>&1 || { echo "  FALTA python3 para generar los mp3 de prueba"; exit 1; }
+    echo "  generando mp3 de prueba..."
+    python3 hacemp3.py mp3s || { echo "  No se pudieron generar los mp3 de prueba"; exit 1; }
+  fi
+  [ -f mp3s/esperado.txt ] || { echo "  Falta mp3s/esperado.txt despues de generarlo"; exit 1; }
+fi
 # wav de prueba (los usa 'duracion')
-[ -d wav ] || { echo "  generando wav de prueba..."; mkdir -p wav; python3 genwav.py > /dev/null 2>&1; }
+if incluye duracion && [ ! -d wav ]; then
+  command -v python3 >/dev/null 2>&1 || { echo "  FALTA python3 para generar los wav de prueba"; exit 1; }
+  echo "  generando wav de prueba..."
+  mkdir -p wav || exit 1
+  python3 genwav.py || { echo "  No se pudieron generar los wav de prueba"; exit 1; }
+fi
 # ejecutables de REFERENCIA: el "antes" con el que se comparan las mejoras del buscador ('buscaigual',
 # 'busmov'). Van fijados a un commit concreto; si no estan, se sacan del historial.
-[ -f rocola_ref.exe ] && [ -f rocola_prev.exe ] || { echo "  compilando los ejecutables de referencia..."; sh refs.sh > /dev/null 2>&1; }
-cp -f rocola_cpu.exe rocola.exe 2>/dev/null || true
+necesita_refs=0
+incluye buscaigual && necesita_refs=1
+incluye buscaperf && necesita_refs=1
+incluye busmov && necesita_refs=1
+incluye disco && necesita_refs=1
+if [ "$necesita_refs" -eq 1 ]; then
+  ref_actual=""
+  [ -f referencias.version ] && ref_actual=$(cat referencias.version)
+  faltan=0
+  incluye buscaigual && [ ! -s rocola_ref.exe ] && faltan=1
+  incluye buscaperf && [ ! -s rocola_ref.exe ] && faltan=1
+  incluye busmov && [ ! -s rocola_prev.exe ] && faltan=1
+  incluye disco && [ ! -s rocola_ant.exe ] && faltan=1
+  [ "$ref_actual" = "$REF_ID" ] || faltan=1
+  if [ "$faltan" -ne 0 ]; then
+    echo "  compilando los ejecutables historicos de referencia..."
+    if ! sh refs.sh; then
+      echo "  FALLA: no se pudieron obtener referencias historicas fiables"
+      exit 1
+    fi
+  fi
+  [ "$(cat referencias.version 2>/dev/null)" = "$REF_ID" ] || { echo "  Referencias de otra version del proyecto"; exit 1; }
+  incluye buscaigual && [ ! -s rocola_ref.exe ] && { echo "  Falta rocola_ref.exe"; exit 1; }
+  incluye buscaperf && [ ! -s rocola_ref.exe ] && { echo "  Falta rocola_ref.exe"; exit 1; }
+  incluye busmov && [ ! -s rocola_prev.exe ] && { echo "  Falta rocola_prev.exe"; exit 1; }
+  incluye disco && [ ! -s rocola_ant.exe ] && { echo "  Falta rocola_ant.exe"; exit 1; }
+fi
+cp -f rocola_cpu.exe rocola.exe || { echo "  No se pudo activar el perfil CPU"; exit 1; }
 corre "$CPU"
-cp -f rocola_gpu.exe rocola.exe 2>/dev/null || true
+cp -f rocola_gpu.exe rocola.exe || { echo "  No se pudo activar el perfil GPU"; exit 1; }
 corre "$GPU"
-cp -f rocola_cpu.exe rocola.exe 2>/dev/null || true
+cp -f rocola_cpu.exe rocola.exe || { echo "  No se pudo restaurar el perfil CPU"; exit 1; }
 
 echo
 if [ $mal -eq 0 ]; then echo "TODAS LAS BATERIAS EN VERDE"; else echo "BATERIAS CON PROBLEMAS: $mal"; fi

@@ -102,7 +102,6 @@ class Limite
         Check(TLim != null, "el limitador esta donde tiene que estar");
         if (TLim == null) return 1;
 
-        FieldInfo fLook = TLim.GetField("look", BindingFlags.Instance | BindingFlags.NonPublic);
 
         // 1) TONO SOSTENIDO POR ENCIMA DEL TECHO. Con un tono fijo el limitador se asienta en una ganancia
         //    constante y la salida deberia ser el MISMO tono, mas bajito y limpio. Si en vez de bajar la

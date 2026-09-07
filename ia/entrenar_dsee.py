@@ -29,6 +29,7 @@ QUE **NO** SE ENTRENA (porque no es una red, son medidas que la rocola ya lleva 
 """
 
 import os, struct, subprocess, sys
+from collections import deque
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
 SALIDA = os.path.join(AQUI, "entrenado")
@@ -93,11 +94,11 @@ def junta(paths):
     """Clasifica todo lo que se arrastro. Si es una carpeta, mira dentro (y un nivel mas, no la biblioteca
     entera: bajar sin freno significaba recorrer disco por disco toda la musica)."""
     datos_dsee, datos_eq, otros = [], [], []
-    pendientes = [(p, 0) for p in paths]
+    pendientes = deque((p, 0) for p in paths)
     vistos = set()
     saltados = 0
     while pendientes:
-        crudo, hondo = pendientes.pop(0)
+        crudo, hondo = pendientes.popleft()
         p = os.path.abspath(crudo)
         if p in vistos:
             continue

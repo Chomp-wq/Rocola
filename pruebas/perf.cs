@@ -7,7 +7,7 @@ using System.Drawing.Imaging;
 using System.Reflection;
 using System.Windows.Forms;
 
-// BANCO DE RENDIMIENTO. Mide lo que de verdad cuesta cada cuadro, en microsegundos y en basura generada.
+// BANCO DE RENDIMIENTO. Microsegundos por operacion, percentiles de tandas y cambios del heap.
 //
 // La rocola de la casa dibuja a 60 cuadros por segundo: cada cuadro tiene 16.666 microsegundos de presupuesto
 // (16 ms). La del bar es un Pentium con dos nucleos, asi que ahi cada microsegundo que se ahorre cuenta doble.
@@ -24,40 +24,41 @@ class Perf
         return FontFamily.GenericSansSerif;
     }
 
-    class Medida { public double Us; public long Bytes; }
+    class Medida { public double Us, P95, P99, Max; public long HeapDelta; public int G0, G1, G2; }
 
-    // Corre 'veces' iteraciones y devuelve microsegundos por iteracion y bytes de basura por iteracion.
-    // Se corren VARIAS tandas y se toma la MEJOR. Medir tiempos en una maquina compartida es ruidoso: si otro
-    // proceso se lleva el turno a mitad de una tanda, esa tanda sale el triple de lenta. El promedio se lo
-    // traga; el MINIMO no, porque el minimo es "lo que cuesta cuando nadie estorba", que es lo que se quiere
-    // comparar entre el antes y el despues.
-    const int TANDAS = 7;
+    // Percentiles del tiempo MEDIO por operacion de cada tanda, no de cuadros individuales.
+    // El delta del heap puede ser negativo: NO son bytes asignados ni memoria nativa/VRAM.
+    const int TANDAS = 31;
     static Medida Mide(int veces, Action a)
     {
         a(); a();                                   // calentar (JIT y caches)
         GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();
-        double mejor = double.MaxValue;
-        long bytes = 0;
+        double[] tiempos = new double[TANDAS];
+        Stopwatch sw = new Stopwatch();
+        long heap0 = GC.GetTotalMemory(false);
+        int g0 = GC.CollectionCount(0), g1 = GC.CollectionCount(1), g2 = GC.CollectionCount(2);
         for (int t = 0; t < TANDAS; t++)
         {
-            long b0 = GC.GetTotalMemory(false);
-            Stopwatch sw = Stopwatch.StartNew();
+            sw.Reset(); sw.Start();
             for (int i = 0; i < veces; i++) a();
             sw.Stop();
-            long b1 = GC.GetTotalMemory(false);
-            double us = sw.Elapsed.TotalMilliseconds * 1000.0 / veces;
-            if (us < mejor) { mejor = us; bytes = (b1 - b0) / veces; }
+            tiempos[t] = sw.Elapsed.TotalMilliseconds * 1000.0 / veces;
         }
         Medida m = new Medida();
-        m.Us = mejor; m.Bytes = bytes;
+        m.HeapDelta = GC.GetTotalMemory(false) - heap0;
+        m.G0 = GC.CollectionCount(0) - g0; m.G1 = GC.CollectionCount(1) - g1; m.G2 = GC.CollectionCount(2) - g2;
+        Array.Sort(tiempos);
+        m.Us = tiempos[TANDAS / 2]; m.P95 = tiempos[(int)Math.Ceiling(TANDAS * 0.95) - 1];
+        m.P99 = tiempos[(int)Math.Ceiling(TANDAS * 0.99) - 1]; m.Max = tiempos[TANDAS - 1];
         return m;
     }
 
     static void Fila(string que, Medida m)
     {
         double pct = m.Us / 16666.0 * 100.0;
-        Console.WriteLine(string.Format("     {0,-46} {1,9:0.0} us  {2,8} B   {3,6:0.00}% del cuadro",
-                                        que, m.Us, m.Bytes, pct));
+        Console.WriteLine("     {0}: p50={1:0.0} p95={2:0.0} p99={3:0.0} max={4:0.0} us/op (tandas); p50={5:0.00}% de 16.67ms",
+                          que, m.Us, m.P95, m.P99, m.Max, pct);
+        Console.WriteLine("       heap delta={0} B (no asignaciones); GC 0/1/2={1}/{2}/{3}", m.HeapDelta, m.G0, m.G1, m.G2);
     }
 
     static string LETRAS = "★#ABCDEFGHIJKLMNOPQRSTUVWXYZ►";

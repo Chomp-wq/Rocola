@@ -44,7 +44,7 @@ class Prueba
 
         // --- 3) SE DETIENE Y SE VUELVE A ENCENDER (rocola reiniciada): otra instancia limpia
         object F2 = FormatterServices.GetUninitializedObject(TF);
-        object viejo = F; F = F2;
+        F = F2;
         SetFld("deepDone", new HashSet<string>(StringComparer.OrdinalIgnoreCase));
         SetFld("deepDoneLock", new object());
         SetFld("deepPend", new List<string>());
@@ -85,7 +85,6 @@ class Prueba
         SetFld("deepDone", new HashSet<string>(StringComparer.OrdinalIgnoreCase));
         SetFld("deepDoneLock", new object());
         SetFld("deepPend", new List<string>());
-        HashSet<string> d4 = (HashSet<string>)Fld("deepDone");
         Marca(@"D:\musica\Los Ángeles Azules\03 Cómo Te Voy A Olvidar.mp3");
         Marca(@"D:\musica\Niño\canción ñ & símbolos.mp3");
         Call("SaveDeepDone");

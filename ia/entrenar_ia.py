@@ -27,6 +27,7 @@
 #  Requisitos: python3 + numpy. Para MP3, convierte antes a WAV (ffmpeg -i cancion.mp3 cancion.wav).
 # ============================================================================================
 import sys, os, wave, struct
+from functools import lru_cache
 import numpy as np
 
 FS = 44100
@@ -34,19 +35,48 @@ EPS = 1e-12
 
 # ---------------- contrato RIA1 (identico a Form1.cs) ----------------
 def hz_bin(hz, frame):
+    return _hz_bin_fs(hz, frame, FS)
+
+def _hz_bin_fs(hz, frame, fs):
     ny = frame // 2
-    b = int(hz / (FS / frame))
+    b = int(hz / (fs / frame))
     return min(max(b, 1), ny - 1)
+
+# Geometria solamente: los espectros y ejemplos no se retienen. Incluir FS y tipo
+# del corte evita reciclar limites calculados con otra frecuencia/precision.
+@lru_cache(maxsize=64, typed=True)
+def _bandas_entrada(frame, fc_hz, fs):
+    bandas = []
+    for i in range(24):
+        a = _hz_bin_fs(200.0 * (fc_hz / 200.0) ** (i / 24.0), frame, fs)
+        b = _hz_bin_fs(200.0 * (fc_hz / 200.0) ** ((i + 1) / 24.0), frame, fs)
+        if b <= a: b = a + 1
+        bandas.append((a, b))
+    return tuple(bandas)
+
+@lru_cache(maxsize=64, typed=True)
+def _bandas_objetivo(frame, fc_hz, fs):
+    ny = frame // 2
+    cut = _hz_bin_fs(fc_hz, frame, fs)
+    sa = _hz_bin_fs(fc_hz * 0.92, frame, fs)
+    if sa >= cut: sa = cut - 1
+    top = min(2.0 * fc_hz, 20000.0, ny * (fs / frame) * 0.95)
+    if top <= fc_hz * 1.1:
+        return sa, cut, None
+    bandas = []
+    for j in range(12):
+        a = _hz_bin_fs(fc_hz * (top / fc_hz) ** (j / 12.0), frame, fs)
+        b = _hz_bin_fs(fc_hz * (top / fc_hz) ** ((j + 1) / 12.0), frame, fs)
+        if a < cut: a = cut
+        if b <= a: b = a + 1
+        bandas.append((a, b))
+    return sa, cut, tuple(bandas)
 
 def features_and_target(mag2n, frame, fc_hz):
     """mag2n = |X[k]/N|^2 del cuadro COMPLETO (con banda alta real). Devuelve (x28, y12) o None."""
-    ny = frame // 2
     x = np.zeros(28, dtype=np.float64)
     # 24 bandas log de 200 Hz al corte (energia media por bin)
-    for i in range(24):
-        a = hz_bin(200.0 * (fc_hz / 200.0) ** (i / 24.0), frame)
-        b = hz_bin(200.0 * (fc_hz / 200.0) ** ((i + 1) / 24.0), frame)
-        if b <= a: b = a + 1
+    for i, (a, b) in enumerate(_bandas_entrada(frame, fc_hz, FS)):
         x[i] = np.log10(mag2n[a:b].mean() + EPS)
     mean = x[:24].mean()
     x[:24] -= mean
@@ -58,26 +88,27 @@ def features_and_target(mag2n, frame, fc_hz):
     if mean < -8.0:                                      # cuadro casi mudo: no sirve para aprender
         return None
     # costura: banda 0.92*corte .. corte
-    cut = hz_bin(fc_hz, frame)
-    sa = hz_bin(fc_hz * 0.92, frame)
-    if sa >= cut: sa = cut - 1
+    sa, cut, bandas = _bandas_objetivo(frame, fc_hz, FS)
     seam = mag2n[sa:cut].mean() + EPS
     # objetivo: 12 sub-bandas log del corte a min(2*corte, 20k, ny*0.95) (energia REAL de la banda alta)
-    top = min(2.0 * fc_hz, 20000.0, ny * (FS / frame) * 0.95)
-    if top <= fc_hz * 1.1:
+    if bandas is None:
         return None
     y = np.zeros(12, dtype=np.float64)
-    for j in range(12):
-        a = hz_bin(fc_hz * (top / fc_hz) ** (j / 12.0), frame)
-        b = hz_bin(fc_hz * (top / fc_hz) ** ((j + 1) / 12.0), frame)
-        if a < cut: a = cut
-        if b <= a: b = a + 1
+    for j, (a, b) in enumerate(bandas):
         y[j] = np.log10(mag2n[a:b].mean() + EPS) - np.log10(seam)
     return x, np.clip(y, -4.0, 0.5)
 
+@lru_cache(maxsize=2, typed=True)
+def _ventana_entrenamiento(frame):
+    # Solo se cachean los dos tamanos del contrato; inmutable para no contaminar otros clips.
+    win = np.sqrt(0.5 - 0.5 * np.cos(2.0 * np.pi * np.arange(frame) / frame))
+    win.flags.writeable = False
+    return win
+
 def frames_of(sig, frame):
     """Cuadros con ventana raiz-de-Hann (la MISMA del SpectralTap) -> |X/N|^2."""
-    win = np.sqrt(0.5 - 0.5 * np.cos(2.0 * np.pi * np.arange(frame) / frame))
+    win = (_ventana_entrenamiento(frame) if frame in (2048, 4096) else
+           np.sqrt(0.5 - 0.5 * np.cos(2.0 * np.pi * np.arange(frame) / frame)))
     hop = frame // 2
     out = []
     for p in range(0, len(sig) - frame, hop):
@@ -122,13 +153,18 @@ def load_wavs(folder, rng, max_clips=400, max_per_file=0):
     rng.shuffle(files)
     for fn in files:
         try:
-            w = wave.open(os.path.join(folder, fn), "rb")
-            if w.getframerate() != FS or w.getsampwidth() != 2:
-                w.close(); continue
-            nch = w.getnchannels()
-            nfr = min(w.getnframes(), FS * 60)
-            raw = np.frombuffer(w.readframes(nfr), dtype=np.int16).astype(np.float64) / 32768.0
-            w.close()
+            with wave.open(os.path.join(folder, fn), "rb") as w:
+                if w.getframerate() != FS or w.getsampwidth() != 2:
+                    continue
+                nch = w.getnchannels()
+                nfr = min(w.getnframes(), FS * 60)
+                quedan = max(1, max_clips - len(clips))
+                if max_per_file:
+                    quedan = min(quedan, max(1, max_per_file))
+                # El bucle historico excluye el ultimo trozo si termina EXACTAMENTE en EOF.
+                # Leer una muestra extra mantiene ese borde sin retener un minuto por un solo clip.
+                nfr = min(nfr, quedan * FS * 2 + 1)
+                raw = np.frombuffer(w.readframes(nfr), dtype=np.int16).astype(np.float64) / 32768.0
             mono = raw.reshape(-1, nch).mean(axis=1) if nch > 1 else raw
             propios = 0
             for p in range(0, len(mono) - FS * 2, FS * 2):     # trozos de 2s
@@ -141,14 +177,25 @@ def load_wavs(folder, rng, max_clips=400, max_per_file=0):
 
 def build_dataset(clips, rng):
     X, Y = [], []
+    usados = 0
+    bloque = 4096
     for ci, clip in enumerate(clips):
         fc = rng.uniform(10500, 17500)                     # el "corte del MP3" simulado, por clip
         for frame in (2048, 4096):                          # ambos tamanos de ventana de la rocola
             for m in frames_of(clip, frame):
                 r = features_and_target(m, frame, fc)
                 if r is not None:
-                    X.append(r[0]); Y.append(r[1])
-    return np.array(X, dtype=np.float64), np.array(Y, dtype=np.float64)
+                    fila = usados % bloque
+                    if fila == 0:
+                        X.append(np.empty((bloque, 28), dtype=np.float64))
+                        Y.append(np.empty((bloque, 12), dtype=np.float64))
+                    X[-1][fila] = r[0]; Y[-1][fila] = r[1]
+                    usados += 1
+    if not usados:
+        return np.array([], dtype=np.float64), np.array([], dtype=np.float64)
+    ultimo = (usados - 1) % bloque + 1
+    X[-1] = X[-1][:ultimo]; Y[-1] = Y[-1][:ultimo]
+    return np.concatenate(X), np.concatenate(Y)
 
 # ---------------- MLP + Adam (backprop a mano: sin dependencias pesadas) ----------------
 class Mlp:
@@ -164,6 +211,8 @@ class Mlp:
     def predict(self, X): return self.forward(X)[-1]
 
 def train(model, X, Y, Xv, Yv, epochs=60, lr=2e-3, batch=256, seed=3):
+    if epochs <= 0 or batch <= 0 or len(X) == 0 or len(Xv) == 0:
+        raise ValueError("Se requieren epocas/lote positivos y ejemplos de entrenamiento y validacion")
     rng = np.random.default_rng(seed)
     mW = [np.zeros_like(w) for w in model.W]; vW = [np.zeros_like(w) for w in model.W]
     mB = [np.zeros_like(b) for b in model.B]; vB = [np.zeros_like(b) for b in model.B]
@@ -175,12 +224,12 @@ def train(model, X, Y, Xv, Yv, epochs=60, lr=2e-3, batch=256, seed=3):
             acts = model.forward(X[bi])
             g = 2.0 * (acts[-1] - Y[bi]) / len(bi)          # dMSE
             tstep += 1
+            c1, c2 = 1 - b1 ** tstep, 1 - b2 ** tstep
             for L in reversed(range(len(model.W))):
                 gW = g.T @ acts[L]; gB = g.sum(axis=0)
                 if L > 0: g = (g @ model.W[L]) * (1.0 - acts[L] ** 2)
                 mW[L] = b1 * mW[L] + (1 - b1) * gW; vW[L] = b2 * vW[L] + (1 - b2) * gW ** 2
                 mB[L] = b1 * mB[L] + (1 - b1) * gB; vB[L] = b2 * vB[L] + (1 - b2) * gB ** 2
-                c1, c2 = 1 - b1 ** tstep, 1 - b2 ** tstep
                 model.W[L] -= lr * (mW[L] / c1) / (np.sqrt(vW[L] / c2) + eps)
                 model.B[L] -= lr * (mB[L] / c1) / (np.sqrt(vB[L] / c2) + eps)
         if (ep + 1) % 10 == 0 or ep == 0:
@@ -259,7 +308,13 @@ def main():
     if clips is not None:
         print("Extrayendo pares (forma espectral -> envolvente real)...")
         X, Y = build_dataset(clips, rng)
+        if len(X) == 0:
+            print("No se extrajeron ejemplos utilizables; no se guarda ningun modelo.")
+            return 1
         print("  %d ejemplos de %d entradas -> %d salidas" % (X.shape[0], X.shape[1], Y.shape[1]))
+    if len(X) <= 500:
+        print("Se requieren mas de 500 ejemplos: 500 se reservan para validar. No se guarda ningun modelo.")
+        return 1
     idx = rng.permutation(len(X)); X, Y = X[idx], Y[idx]
     nv = max(500, len(X) // 10)
     Xv, Yv, X, Y = X[:nv], Y[:nv], X[nv:], Y[nv:]

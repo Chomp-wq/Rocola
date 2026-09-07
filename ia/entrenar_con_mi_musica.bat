@@ -1,6 +1,7 @@
 @echo off
 setlocal
 cd /d "%~dp0"
+if not "%ERRORLEVEL%"=="0" exit /b 1
 echo ==============================================================
 echo  ENTRENAR LA IA PROPIA DE LA ROCOLA CON TU MUSICA
 echo --------------------------------------------------------------
@@ -11,31 +12,42 @@ echo   2. Entrena la red y deja rocola_ia.bin en esta carpeta.
 echo  Es reanudable: si lo cierras, vuelve a abrirlo y continua.
 echo ==============================================================
 echo.
-if not exist upscale\venv\Scripts\python.exe (
+set "PY=%~dp0upscale\venv\Scripts\python.exe"
+if not exist "%PY%" (
   echo [X] Primero corre upscale\1_instalar.bat
   pause
   exit /b 1
 )
-set MUSICA=%~1
-if "%MUSICA%"=="" set MUSICA=auto
-if not "%MUSICA%"=="auto" echo Usare la carpeta: %MUSICA%
+"%PY%" -c "import sys" >nul 2>nul
+if not "%ERRORLEVEL%"=="0" (
+  echo [X] El Python del entorno existe, pero no puede arrancar. Corre upscale\1_instalar.bat otra vez.
+  pause
+  exit /b 1
+)
+if not exist "%~dp0preparar_entrenamiento.py" ( echo [X] Falta preparar_entrenamiento.py & pause & exit /b 1 )
+if not exist "%~dp0entrenar_ia.py" ( echo [X] Falta entrenar_ia.py & pause & exit /b 1 )
+set "MUSICA=%~1"
+if "%MUSICA%"=="" set "MUSICA=auto"
+if not "%MUSICA%"=="auto" echo Usare la carpeta: "%MUSICA%"
 if "%MUSICA%"=="auto" echo Buscare la carpeta "musica" cerca de aqui, como hace la rocola.
 echo Consejo: tambien puedes ARRASTRAR tu carpeta de musica sobre este .bat
 echo.
 echo --- PASO 1 de 2: juntando canciones de calidad completa ---
-upscale\venv\Scripts\python preparar_entrenamiento.py --musica "%MUSICA%" --canciones 600
-if errorlevel 1 (
+"%PY%" "%~dp0preparar_entrenamiento.py" --musica "%MUSICA%" --canciones 600
+set "COD=%ERRORLEVEL%"
+if not "%COD%"=="0" (
   echo [X] No se pudo preparar el material. Revisa el mensaje de arriba.
   pause
-  exit /b 1
+  endlocal & exit /b %COD%
 )
 echo.
 echo --- PASO 2 de 2: entrenando la red ---
-upscale\venv\Scripts\python entrenar_ia.py --musica entrenamiento_wavs --clips 7200 --por_archivo 12
-if errorlevel 1 (
+"%PY%" "%~dp0entrenar_ia.py" --musica "%~dp0entrenamiento_wavs" --clips 7200 --por_archivo 12
+set "COD=%ERRORLEVEL%"
+if not "%COD%"=="0" (
   echo [X] El entrenamiento fallo. Revisa el mensaje de arriba.
   pause
-  exit /b 1
+  endlocal & exit /b %COD%
 )
 echo.
 echo ==============================================================
@@ -46,3 +58,4 @@ echo  espectral usara la envolvente aprendida de TU musica.
 echo  La carpeta entrenamiento_wavs ya se puede borrar si quieres.
 echo ==============================================================
 pause
+endlocal & exit /b 0
