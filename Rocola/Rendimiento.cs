@@ -225,6 +225,7 @@ namespace Rocola
         private int[] bancoPropuesta;              // el nivel propuesto para cada efecto (null = sin medir)
         private int bancoFpsPropuesta;             // donde quedaria
         private bool bancoConGpu;                  // si al medir la rocola dibujaba con tarjeta grafica
+        private string bancoError;                 // una medicion fallida no produce recomendaciones
         private bool bancoConMusica;               // si se pudo medir con una cancion puesta
 
         // Las cinco pantallas donde la rocola pasa su vida. Ya no son fotos fijas: cada una lleva dentro lo
@@ -324,8 +325,8 @@ namespace Rocola
                 if (ahora - ultTick >= 42) { ultTick = ahora; try { AnimTimer_Tick(null, EventArgs.Empty); } catch { } }
                 if (paso > 0 && ahora - ultPaso >= paso) { ultPaso = ahora; PasoDeEscena(escena); }
                 if (!bancoConMusica) PulsoDeMentira();   // sin cancion, un latido de mentira; con ella, el suyo
-                gpuPanel.DibujaUnCuadro();
-                if (contando) cuadros++;
+                bool presentado = gpuPanel.DibujaUnCuadro();
+                if (contando && presentado) cuadros++;
                 Application.DoEvents();   // de aqui come el audio: sin esto la musica no entraria en la cuenta
             }
             msReales = Environment.TickCount - tCuenta;
@@ -340,13 +341,16 @@ namespace Rocola
         }
         private EscenaMedida MideEscena(int escena, int ms, EscenaMedida m)
         {
-            if (gpuPanel == null || !gpuPanel.Visible) return m;
+            if (gpuPanel == null || !gpuPanel.Visible)
+                throw new InvalidOperationException("El panel GPU no esta disponible; medicion no valida");
             int cuadros, msReales;
             CorreEscena(escena, ms, out cuadros, out msReales);
+            if (gpuPanel.FallosMedidos != 0 || cuadros == 0)
+                throw new InvalidOperationException("La GPU no presento todos los cuadros; medicion no valida");
             m.MsTrabajo = gpuPanel.MsTrabajo;
-            // LOS CUADROS SON LOS ENTREGADOS DE VERDAD, contados con el reloj de pared: con la musica
+            // Cuadros cuyo Present acepto el controlador, contados con el reloj de pared: con la musica
             // peleando por el mismo hilo, este numero es lo que se siente. El de arriba (ms de trabajo) dice
-            // otra cosa distinta y igual de util: cuanto margen queda por debajo del techo de la pantalla.
+            // otra cosa distinta: margen de trabajo. No es una medicion de fotones ni latencia del monitor.
             m.Fps = (int)(cuadros * 1000L / msReales);
             return m;
         }
@@ -375,7 +379,7 @@ namespace Rocola
         {
             // Todo a cero primero: volver a medir no puede dejar ni un numero de la vez anterior asomando.
             bancoEscenas = new List<EscenaMedida>();
-            bancoPropuesta = null;
+            bancoPropuesta = null; bancoError = null;
             bancoConGpu = false; bancoConMusica = false;
             bancoPeor = ""; bancoMsPeor = 0.0; bancoFpsPeor = 0; bancoTope = 0; bancoFpsPropuesta = 0;
 #if ROCOLA_GPU
@@ -435,7 +439,7 @@ namespace Rocola
                 for (int i = 0; i < bancoEscenas.Count; i++)
                     if (bancoEscenas[i].MsTrabajo > 0.0 && (peor == null || bancoEscenas[i].MsTrabajo > peor.MsTrabajo))
                     { peor = bancoEscenas[i]; peorId = i; }
-                if (peor == null) return;
+                if (peor == null) throw new InvalidOperationException("No se obtuvieron cuadros validos");
                 bancoPeor = peor.Nombre; bancoPeorId = peorId; bancoMsPeor = peor.MsTrabajo; bancoFpsPeor = peor.Fps;
 
                 // ---- LO QUE AHORRA CADA ESCALON ----
@@ -467,7 +471,7 @@ namespace Rocola
                 bancoPropuesta = ProponeEscalones(am, ab, bancoMsPeor, MetaFps, out msFinal);
                 bancoFpsPropuesta = FpsDe(msFinal, bancoTope);
             }
-            catch { }
+            catch (Exception ex) { bancoPropuesta = null; bancoError = ex.Message; LogError("Medicion de GPU no valida", ex); }
             finally
             {
                 // La rocola vuelve donde estaba, truene lo que truene por el camino.
@@ -757,11 +761,11 @@ namespace Rocola
             // ---------------- 1) quien manda en el tono: el genero o la caratula ----------------
             Label l1 = new Label(); l1.SetBounds(16, 36, 896, 62); l1.BackColor = Color.Transparent;
             l1.ForeColor = cTenue; l1.Font = fDes;
-            l1.Text = "El fondo sale del GENERO de la cancion, y encima se le pega el color de la CARATULA. Con la caratula al mando\n"
-                    + "entero, una cancion de Pop con portada azul pinta la pantalla azul y el rosa del Pop no aparece. Con el genero al\n"
-                    + "mando, dos cumbias seguidas pintan la misma pantalla naranja aunque una sea un disco rojo y la otra uno verde.\n"
-                    + "De la caratula se toma SOLO de que color es: lo oscuro y lo vivo lo manda siempre el genero, pase lo que pase.";
-            string[] nom1 = { "Manda el genero", "Mitad y mitad", "Manda la caratula" };
+            l1.Text = "Los botones dan al tono del DISCO un peso de 20%, 50% o 100% en el acento; el resto viene del GENERO.\n"
+                    + "Con genero, una nebulosa conserva su tono. BTS/Bangtan con genero mantiene el morado fijo.\n"
+                    + "Sin genero reconocido, manda todo el tono disponible del disco, incluso con Mitad y mitad.\n"
+                    + "Se conservan brillo, viveza y degradados del cielo; no se copia el RGB de la portada como un fondo plano.";
+            string[] nom1 = { "Disco 20%", "Mitad y mitad", "Disco 100%" };
             string[] val1 = { "20", "50", "100" };
             BotonPlano[] b1 = new BotonPlano[3];
             for (int k = 0; k < 3; k++)
@@ -836,7 +840,7 @@ namespace Rocola
             Label lPie = new Label(); lPie.SetBounds(330, 582, 614, 32); lPie.BackColor = Color.Transparent;
             lPie.ForeColor = cApagado; lPie.Font = fDes;
             lPie.Text = "La pared esta detras de esta ventana: toca una y mirala. Todo se guarda al\n"
-                      + "cerrar, y ninguna de las cuatro cuesta ni un cuadro por segundo (medido).";
+                      + "cerrar. El coste depende del equipo; compruebalo con el medidor.";
 
             BotonPlano bReset = new BotonPlano();
             bReset.SetBounds(16, 580, 300, 38); bReset.Font = fBot; bReset.Text = "Colores como de fabrica";
@@ -1068,6 +1072,14 @@ namespace Rocola
                 lSinMus.Text = bancoConMusica ? "" :
                       "OJO: no se pudo poner ninguna cancion y se midio en\n"
                     + "silencio. De verdad saldra peor de lo que dice aqui.";
+                if (!string.IsNullOrEmpty(bancoError))
+                {
+                    lTecho.Text = ""; lVer.ForeColor = cMal;
+                    lVer.Text = "Medicion incompleta: " + bancoError;
+                    lProp.Text = "No se aplican recomendaciones de una medicion fallida. Revisa el dispositivo y vuelve a medir.";
+                    bApli.Enabled = false; bApli.Relleno = cOff; bApli.Borde = cBordeOff; bApli.ForeColor = cApagado;
+                    return;
+                }
                 if (!bancoConGpu)
                 {
                     lTecho.Text = "";

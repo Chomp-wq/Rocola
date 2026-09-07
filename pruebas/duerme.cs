@@ -109,7 +109,19 @@ class Duerme
         // Sin esto, el pre-analisis no tiene forma de apartarse de las miniaturas.
         FieldInfo fPend = TF.GetField("minisPendientes", TODO);
         Check(fPend != null, "la rocola lleva la cuenta de las miniaturas que faltan (minisPendientes)");
-        Check(AyudanteUsa("StartThumbWarm", "minisPendientes"), "y el calentador la mantiene al dia");
+        Check(AyudanteLlama("StartThumbWarm", "PublishThumbRemaining"), "el calentador publica el contador por generacion");
+        MethodInfo publica = (MethodInfo)Met("PublishThumbRemaining"), avanza = (MethodInfo)Met("AdvanceThumbWarm");
+        Check(publica != null && avanza != null, "existen publicacion y cancelacion del calentador");
+        if (publica != null && avanza != null)
+        {
+            object f = System.Runtime.Serialization.FormatterServices.GetUninitializedObject(TF);
+            TF.GetField("coverLock", TODO).SetValue(f, new object());
+            int viejo = (int)avanza.Invoke(f, null), actual = (int)avanza.Invoke(f, null);
+            publica.Invoke(f, new object[] { actual, 9 });
+            Check(!(bool)publica.Invoke(f, new object[] { viejo, 0 }), "un hilo retirado no borra el contador nuevo");
+            publica.Invoke(f, new object[] { actual, -1 });
+            Check((int)TF.GetField("minisPendientes", TODO).GetValue(f) == 8, "el hilo vigente descuenta una miniatura");
+        }
 
         Console.WriteLine("\n  4) LAS MINIATURAS PRIMERO, EL PRE-ANALISIS DESPUES\n");
         MethodInfo c = (MethodInfo)Met("CarrilesPara");

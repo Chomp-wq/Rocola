@@ -37,15 +37,20 @@ namespace Rocola
 
         public static int RefrescoPantallaHz()
         {
+            IntPtr dc = IntPtr.Zero;
             try
             {
-                IntPtr dc = GetDC(IntPtr.Zero);
+                dc = GetDC(IntPtr.Zero);
                 if (dc == IntPtr.Zero) return 0;
-                int hz = GetDeviceCaps(dc, VREFRESH);
-                ReleaseDC(IntPtr.Zero, dc);
-                return hz;
+                return GetDeviceCaps(dc, VREFRESH);
             }
             catch { return 0; }
+            finally
+            {
+                // GetDeviceCaps tambien puede lanzar (por ejemplo al desaparecer una sesion remota). El DC
+                // pertenece a USER32 y debe soltarse aun en ese camino para no agotar los handles de la rocola.
+                if (dc != IntPtr.Zero) try { ReleaseDC(IntPtr.Zero, dc); } catch { }
+            }
         }
 
         // ---------- hay algo esperando a que lo atiendan? ----------
@@ -55,6 +60,23 @@ namespace Rocola
         [StructLayout(LayoutKind.Sequential)]
         private struct NativeMessage { public IntPtr Hwnd; public uint Msg; public IntPtr W; public IntPtr L; public uint Time; public Point Pt; }
         [DllImport("user32.dll")] private static extern int PeekMessage(out NativeMessage msg, IntPtr hWnd, uint min, uint max, uint remove);
+
+        // La espera no consume mensajes ni bombea eventos de forma reentrante.
+        [DllImport("user32.dll")]
+        private static extern uint MsgWaitForMultipleObjectsEx(uint count, IntPtr handles, uint ms, uint mask, uint flags);
+        internal static bool EsperaMensajes(int ms)
+        {
+            ms = Math.Max(1, Math.Min(8, ms));
+            try
+            {
+                // QS_ALLINPUT / MWMO_INPUTAVAILABLE: despierta incluso si PeekMessage ya vio la entrada.
+                uint r = MsgWaitForMultipleObjectsEx(0, IntPtr.Zero, (uint)ms, 0x04FF, 0x0004);
+                if (r != 0xFFFFFFFF) return r == 0;
+            }
+            catch { }
+            System.Threading.Thread.Sleep(1);
+            return false;
+        }
 
         public static bool SinNadaQueAtender()
         {

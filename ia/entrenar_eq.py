@@ -89,6 +89,8 @@ class Mlp:
     def predict(self, X): return self.forward(X)[-1]
 
 def entrenar(model, X, Y, Xv, Yv, epocas, lr=3e-3, lote=256, semilla=3, l2=1e-5):
+    if epocas <= 0 or lote <= 0 or len(X) == 0 or len(Xv) == 0:
+        raise ValueError("Se requieren epocas/lote positivos y ejemplos de entrenamiento y validacion")
     rng = np.random.default_rng(semilla)
     mW = [np.zeros_like(w) for w in model.W]; vW = [np.zeros_like(w) for w in model.W]
     mB = [np.zeros_like(b) for b in model.B]; vB = [np.zeros_like(b) for b in model.B]
@@ -101,12 +103,12 @@ def entrenar(model, X, Y, Xv, Yv, epocas, lr=3e-3, lote=256, semilla=3, l2=1e-5)
             acts = model.forward(X[bi])
             g = 2.0 * (acts[-1] - Y[bi]) / len(bi)
             paso += 1
+            c1, c2 = 1-b1**paso, 1-b2**paso
             for L in reversed(range(len(model.W))):
                 gW = g.T @ acts[L] + l2 * model.W[L]; gB = g.sum(axis=0)
                 if L > 0: g = (g @ model.W[L]) * (1.0 - acts[L]**2)
                 mW[L] = b1*mW[L] + (1-b1)*gW; vW[L] = b2*vW[L] + (1-b2)*gW**2
                 mB[L] = b1*mB[L] + (1-b1)*gB; vB[L] = b2*vB[L] + (1-b2)*gB**2
-                c1, c2 = 1-b1**paso, 1-b2**paso
                 model.W[L] -= lr * (mW[L]/c1) / (np.sqrt(vW[L]/c2) + eps)
                 model.B[L] -= lr * (mB[L]/c1) / (np.sqrt(vB[L]/c2) + eps)
         vl = float(((model.predict(Xv) - Yv)**2).mean())

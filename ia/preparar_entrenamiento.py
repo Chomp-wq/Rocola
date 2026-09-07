@@ -48,9 +48,9 @@ def candidatas(raiz):
 def convertir(ffmpeg, src, dst):
     """Decodifica ~60s del centro de la cancion a WAV 44.1k/16-bit estereo. True si quedo bien."""
     try:
-        subprocess.run([ffmpeg, "-y", "-v", "error", "-ss", "45", "-t", str(SEG), "-i", src,
+        subprocess.run([ffmpeg, "-nostdin", "-y", "-v", "error", "-ss", "45", "-t", str(SEG), "-i", src,
                         "-ac", "2", "-ar", str(FS), "-sample_fmt", "s16", dst],
-                       check=True, timeout=120, stdout=subprocess.DEVNULL,
+                       check=True, timeout=120, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                        stderr=subprocess.DEVNULL, creationflags=NOWIN)
         return os.path.getsize(dst) > FS * 2 * 2 * 20     # al menos ~20s utiles (canciones cortas no alcanzan el centro)
     except Exception:

@@ -75,7 +75,11 @@ namespace Rocola
             IntPtr fn = Marshal.ReadIntPtr(vtbl, slot * IntPtr.Size);
             return (T)(object)Marshal.GetDelegateForFunctionPointer(fn, typeof(T));
         }
-        public static void Release(IntPtr punk) { try { Fn<UintSelf>(punk, 2)(punk); } catch { } }
+        public static void Release(IntPtr punk)
+        {
+            if (punk == IntPtr.Zero) return;
+            try { Fn<UintSelf>(punk, 2)(punk); } catch { }
+        }
     }
 
     // -------- Dispositivo D3D9 sobre una ventana --------
@@ -83,7 +87,7 @@ namespace Rocola
     {
         private IntPtr d3d, dev;
         private D3D9.PresentParams pp;
-        private bool lost;
+        private bool lost, resetPending, inScene;
 
         private D3D9.PresentDel present; private D3D9.ClearDel clear; private D3D9.HrSelf begin, end;
         private D3D9.SetU2Del setRS; private D3D9.SetU1Del setFVF; private D3D9.SetU3Del setTSS, setSamp;
@@ -94,29 +98,50 @@ namespace Rocola
 
         public D3D9Device(IntPtr hwnd, int w, int h)
         {
-            d3d = D3D9.Direct3DCreate9(32);
-            if (d3d == IntPtr.Zero) return;
-            pp = MakePP(hwnd, w, h);
-            D3D9.CreateDeviceDel create = D3D9.Fn<D3D9.CreateDeviceDel>(d3d, 16);
-            IntPtr dv;
-            int hr = create(d3d, 0, D3D9.DEVTYPE_HAL, hwnd, D3D9.CREATE_HARDWARE_VP | D3D9.CREATE_FPU_PRESERVE, ref pp, out dv);
-            if (hr < 0) hr = create(d3d, 0, D3D9.DEVTYPE_HAL, hwnd, D3D9.CREATE_SOFTWARE_VP | D3D9.CREATE_FPU_PRESERVE, ref pp, out dv);
-            if (hr < 0) { D3D9.Release(d3d); d3d = IntPtr.Zero; return; }
-            dev = dv;
-            present = D3D9.Fn<D3D9.PresentDel>(dev, 17);
-            clear = D3D9.Fn<D3D9.ClearDel>(dev, 43);
-            begin = D3D9.Fn<D3D9.HrSelf>(dev, 41);
-            end = D3D9.Fn<D3D9.HrSelf>(dev, 42);
-            setRS = D3D9.Fn<D3D9.SetU2Del>(dev, 57);
-            setFVF = D3D9.Fn<D3D9.SetU1Del>(dev, 89);
-            setTSS = D3D9.Fn<D3D9.SetU3Del>(dev, 67);
-            setSamp = D3D9.Fn<D3D9.SetU3Del>(dev, 69);
-            setTex = D3D9.Fn<D3D9.SetTexDel>(dev, 65);
-            drawUp = D3D9.Fn<D3D9.DrawUpDel>(dev, 83);
-            testCoop = D3D9.Fn<D3D9.HrSelf>(dev, 3);
-            reset = D3D9.Fn<D3D9.ResetDel>(dev, 16);
-            createTex = D3D9.Fn<D3D9.CreateTexDel>(dev, 23);
-            InitStates();
+            try
+            {
+                d3d = D3D9.Direct3DCreate9(32);
+                if (d3d == IntPtr.Zero) return;
+                pp = MakePP(hwnd, w, h);
+                D3D9.CreateDeviceDel create = D3D9.Fn<D3D9.CreateDeviceDel>(d3d, 16);
+                IntPtr dv = IntPtr.Zero;
+                int hr = create(d3d, 0, D3D9.DEVTYPE_HAL, hwnd, D3D9.CREATE_HARDWARE_VP | D3D9.CREATE_FPU_PRESERVE, ref pp, out dv);
+                if (hr < 0)
+                {
+                    // Aunque un driver correcto devuelve NULL al fallar, no se deja escapar una referencia
+                    // defectuosa antes de intentar el camino por software.
+                    if (dv != IntPtr.Zero) D3D9.Release(dv);
+                    dv = IntPtr.Zero;
+                    hr = create(d3d, 0, D3D9.DEVTYPE_HAL, hwnd, D3D9.CREATE_SOFTWARE_VP | D3D9.CREATE_FPU_PRESERVE, ref pp, out dv);
+                }
+                if (hr < 0 || dv == IntPtr.Zero)
+                {
+                    if (dv != IntPtr.Zero) D3D9.Release(dv);
+                    D3D9.Release(d3d); d3d = IntPtr.Zero;
+                    return;
+                }
+                dev = dv;
+                present = D3D9.Fn<D3D9.PresentDel>(dev, 17);
+                clear = D3D9.Fn<D3D9.ClearDel>(dev, 43);
+                begin = D3D9.Fn<D3D9.HrSelf>(dev, 41);
+                end = D3D9.Fn<D3D9.HrSelf>(dev, 42);
+                setRS = D3D9.Fn<D3D9.SetU2Del>(dev, 57);
+                setFVF = D3D9.Fn<D3D9.SetU1Del>(dev, 89);
+                setTSS = D3D9.Fn<D3D9.SetU3Del>(dev, 67);
+                setSamp = D3D9.Fn<D3D9.SetU3Del>(dev, 69);
+                setTex = D3D9.Fn<D3D9.SetTexDel>(dev, 65);
+                drawUp = D3D9.Fn<D3D9.DrawUpDel>(dev, 83);
+                testCoop = D3D9.Fn<D3D9.HrSelf>(dev, 3);
+                reset = D3D9.Fn<D3D9.ResetDel>(dev, 16);
+                createTex = D3D9.Fn<D3D9.CreateTexDel>(dev, 23);
+                if (!InitStates()) Dispose();
+            }
+            catch
+            {
+                // Direct3D puede no estar instalado o un controlador puede exponer una tabla COM incompleta.
+                // El fondo por CPU se encargara del dibujo; las referencias creadas hasta aqui se liberan.
+                Dispose();
+            }
         }
 
         public int BufAncho { get { return (int)pp.BackBufferWidth; } }
@@ -141,18 +166,25 @@ namespace Rocola
         public bool Redimensiona(int w, int h)
         {
             if (dev == IntPtr.Zero || w < 8 || h < 8) return false;
-            if (pp.BackBufferWidth == (uint)w && pp.BackBufferHeight == (uint)h) return true;
-            uint aw = pp.BackBufferWidth, ah = pp.BackBufferHeight;
-            pp.BackBufferWidth = (uint)w; pp.BackBufferHeight = (uint)h;
-            if (reset(dev, ref pp) < 0)
+            bool mismo = pp.BackBufferWidth == (uint)w && pp.BackBufferHeight == (uint)h;
+            if (mismo && !resetPending) return true;
+            if (!mismo) { pp.BackBufferWidth = (uint)w; pp.BackBufferHeight = (uint)h; }
+            resetPending = true;
+            if (inScene) { lost = true; return false; }
+            try
             {
-                // No se pudo ahora (p.ej. el dispositivo esta perdido en ese instante): se deja apuntado el
-                // tamano nuevo y se reintenta en el proximo cuadro, por el mismo camino que la perdida.
-                pp.BackBufferWidth = aw; pp.BackBufferHeight = ah;
-                lost = true;
-                return false;
+                if (reset(dev, ref pp) < 0)
+                {
+                    // Se conserva el tamano PEDIDO. BeginFrame lo reintentara cuando el dispositivo vuelva
+                    // a estar listo; restaurar el tamano anterior recreaba despues el buffer equivocado.
+                    lost = true;
+                    return false;
+                }
             }
-            InitStates();
+            catch { lost = true; return false; }
+            if (!InitStates()) { lost = true; return false; }
+            resetPending = false;
+            lost = false;
             return true;
         }
 
@@ -177,101 +209,235 @@ namespace Rocola
         private int stTss, stBlend;                  // 0 = sin fijar, 1 = diffuse / 2 = modulate ; 1 = sin mezcla, 2 = aditiva, 3 = normal
         private IntPtr stTex = new IntPtr(-1);       // -1 = sin fijar (IntPtr.Zero SI es un valor valido: sin textura)
 
-        private void InitStates()
+        private bool InitStates()
         {
             stTss = 0; stBlend = 0; stTex = new IntPtr(-1);   // tras crear o RESETEAR el dispositivo todo vuelve a su valor por defecto
-            setRS(dev, D3D9.RS_ZENABLE, 0);
-            setRS(dev, D3D9.RS_LIGHTING, 0);
-            setRS(dev, D3D9.RS_CULLMODE, D3D9.CULL_NONE);
-            setFVF(dev, D3D9.FVF);
-            setSamp(dev, 0, D3D9.SAMP_MAGFILTER, D3D9.TEXF_LINEAR);
-            setSamp(dev, 0, D3D9.SAMP_MINFILTER, D3D9.TEXF_LINEAR);
+            if (dev == IntPtr.Zero) return false;
+            try
+            {
+                if (setRS(dev, D3D9.RS_ZENABLE, 0) < 0) return false;
+                if (setRS(dev, D3D9.RS_LIGHTING, 0) < 0) return false;
+                if (setRS(dev, D3D9.RS_CULLMODE, D3D9.CULL_NONE) < 0) return false;
+                if (setFVF(dev, D3D9.FVF) < 0) return false;
+                if (setSamp(dev, 0, D3D9.SAMP_MAGFILTER, D3D9.TEXF_LINEAR) < 0) return false;
+                if (setSamp(dev, 0, D3D9.SAMP_MINFILTER, D3D9.TEXF_LINEAR) < 0) return false;
+                return true;
+            }
+            catch { return false; }
         }
 
-        private void Tex(IntPtr t) { if (stTex != t) { setTex(dev, 0, t); stTex = t; } }
+        private void EstadoFallido()
+        {
+            lost = true;
+            stTss = 0; stBlend = 0; stTex = new IntPtr(-1);
+        }
+
+        private void Tex(IntPtr t)
+        {
+            if (dev == IntPtr.Zero || lost || stTex == t) return;
+            try
+            {
+                if (setTex(dev, 0, t) < 0) { EstadoFallido(); return; }
+                stTex = t;
+            }
+            catch { EstadoFallido(); }
+        }
         private void Blend(int modo)   // 1 = sin mezcla, 2 = aditiva (brillos), 3 = normal (encima)
         {
-            if (stBlend == modo) return;
-            if (modo == 1) setRS(dev, D3D9.RS_ALPHABLENDENABLE, 0);
-            else
+            if (dev == IntPtr.Zero || lost || stBlend == modo) return;
+            try
             {
-                if (stBlend <= 1) setRS(dev, D3D9.RS_ALPHABLENDENABLE, 1);
-                setRS(dev, D3D9.RS_SRCBLEND, D3D9.BLEND_SRCALPHA);
-                setRS(dev, D3D9.RS_DESTBLEND, modo == 2 ? D3D9.BLEND_ONE : D3D9.BLEND_INVSRCALPHA);
+                if (modo == 1)
+                {
+                    if (setRS(dev, D3D9.RS_ALPHABLENDENABLE, 0) < 0) { EstadoFallido(); return; }
+                }
+                else
+                {
+                    if (stBlend <= 1 && setRS(dev, D3D9.RS_ALPHABLENDENABLE, 1) < 0) { EstadoFallido(); return; }
+                    if (setRS(dev, D3D9.RS_SRCBLEND, D3D9.BLEND_SRCALPHA) < 0) { EstadoFallido(); return; }
+                    if (setRS(dev, D3D9.RS_DESTBLEND, modo == 2 ? D3D9.BLEND_ONE : D3D9.BLEND_INVSRCALPHA) < 0) { EstadoFallido(); return; }
+                }
+                stBlend = modo;
             }
-            stBlend = modo;
+            catch { EstadoFallido(); }
         }
 
         public IntPtr CreateTextureFromBitmap(Bitmap bmp)
         {
-            if (dev == IntPtr.Zero) return IntPtr.Zero;
-            int w = bmp.Width, h = bmp.Height;
-            IntPtr tex;
-            if (createTex(dev, (uint)w, (uint)h, 1, 0, D3D9.FMT_A8R8G8B8, D3D9.POOL_MANAGED, out tex, IntPtr.Zero) < 0) return IntPtr.Zero;
-            D3D9.LockRectDel lockR = D3D9.Fn<D3D9.LockRectDel>(tex, 19);
-            D3D9.UnlockRectDel unlockR = D3D9.Fn<D3D9.UnlockRectDel>(tex, 20);
-            D3D9.LockedRect lr;
-            if (lockR(tex, 0, out lr, IntPtr.Zero, 0) < 0) return tex;
-            BitmapData bd = bmp.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
-            int rowBytes = w * 4;
-            for (int y = 0; y < h; y++)
-                D3D9.CopyMemory(new IntPtr(lr.Bits.ToInt64() + (long)y * lr.Pitch), new IntPtr(bd.Scan0.ToInt64() + (long)y * bd.Stride), (UIntPtr)(uint)rowBytes);
-            bmp.UnlockBits(bd);
-            unlockR(tex, 0);
-            return tex;
+            if (dev == IntPtr.Zero || bmp == null) return IntPtr.Zero;
+            IntPtr tex = IntPtr.Zero;
+            try
+            {
+                int w = bmp.Width, h = bmp.Height;
+                if (w < 1 || h < 1) return IntPtr.Zero;
+                if (createTex(dev, (uint)w, (uint)h, 1, 0, D3D9.FMT_A8R8G8B8, D3D9.POOL_MANAGED, out tex, IntPtr.Zero) < 0 || tex == IntPtr.Zero)
+                {
+                    if (tex != IntPtr.Zero) D3D9.Release(tex);
+                    return IntPtr.Zero;
+                }
+                if (!SubeBitmap(tex, bmp, w, h))
+                {
+                    D3D9.Release(tex);
+                    return IntPtr.Zero;
+                }
+                return tex;
+            }
+            catch
+            {
+                if (tex != IntPtr.Zero) D3D9.Release(tex);
+                return IntPtr.Zero;
+            }
+        }
+
+        // Bloquea y rellena una textura garantizando que tanto GDI+ como Direct3D quedan desbloqueados aun
+        // cuando el bitmap este corrupto, el driver rechace el recurso o falle una copia nativa.
+        private static bool SubeBitmap(IntPtr tex, Bitmap bmp, int w, int h)
+        {
+            D3D9.UnlockRectDel unlockR = null;
+            D3D9.LockedRect lr = new D3D9.LockedRect();
+            BitmapData bd = null;
+            bool texLocked = false, ok = false;
+            try
+            {
+                D3D9.LockRectDel lockR = D3D9.Fn<D3D9.LockRectDel>(tex, 19);
+                unlockR = D3D9.Fn<D3D9.UnlockRectDel>(tex, 20);
+                if (lockR(tex, 0, out lr, IntPtr.Zero, 0) < 0) return false;
+                texLocked = true;
+
+                bd = bmp.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+                int rowBytes = checked(w * 4);
+                if (lr.Bits == IntPtr.Zero || lr.Pitch < rowBytes || bd.Scan0 == IntPtr.Zero || Math.Abs((long)bd.Stride) < rowBytes)
+                    return false;
+                // Agrupa filas contiguas sin padding en bloques de hasta 64 KiB. Una copia gigante
+                // resulto mas lenta en la medicion; los bloques reducen interop sin ese retroceso.
+                // Stride negativo o pitch distinto conservan la copia exacta por filas.
+                if (lr.Pitch == rowBytes && bd.Stride == rowBytes)
+                {
+                    long total = (long)rowBytes * h;
+                    for (long offset = 0; offset < total; )
+                    {
+                        uint bytes = (uint)Math.Min(65536L, total - offset);
+                        D3D9.CopyMemory(new IntPtr(lr.Bits.ToInt64() + offset), new IntPtr(bd.Scan0.ToInt64() + offset), (UIntPtr)bytes);
+                        offset += bytes;
+                    }
+                }
+                else
+                    for (int y = 0; y < h; y++)
+                        D3D9.CopyMemory(new IntPtr(lr.Bits.ToInt64() + (long)y * lr.Pitch), new IntPtr(bd.Scan0.ToInt64() + (long)y * bd.Stride), (UIntPtr)(uint)rowBytes);
+                ok = true;
+            }
+            catch { ok = false; }
+            finally
+            {
+                if (bd != null)
+                {
+                    try { bmp.UnlockBits(bd); }
+                    catch { ok = false; }
+                }
+                if (texLocked && unlockR != null)
+                {
+                    try { if (unlockR(tex, 0) < 0) ok = false; }
+                    catch { ok = false; }
+                }
+            }
+            return ok;
         }
 
         // Inicia el cuadro (maneja perdida de dispositivo). Devuelve true si se puede dibujar.
         public bool BeginFrame()
         {
             if (dev == IntPtr.Zero) return false;
-            if (lost)
+            try
             {
-                int tc = testCoop(dev);
-                if (tc == D3D9.E_DEVICENOTRESET) { if (reset(dev, ref pp) >= 0) { lost = false; InitStates(); } else return false; }
-                else return false;
+                if (lost || resetPending)
+                {
+                    int tc = testCoop(dev);
+                    if (tc == D3D9.E_DEVICELOST) return false;
+                    if (tc < 0 && tc != D3D9.E_DEVICENOTRESET) return false;
+                    if (tc == D3D9.E_DEVICENOTRESET || resetPending)
+                    {
+                        if (reset(dev, ref pp) < 0 || !InitStates()) return false;
+                        resetPending = false;
+                        lost = false;
+                    }
+                    else
+                    {
+                        // Algunos controladores saltan directamente de DEVICELOST a S_OK. Se rehacen los
+                        // estados porque no sabemos cuanto de ellos conservaron durante la perdida.
+                        if (!InitStates()) return false;
+                        lost = false;
+                    }
+                }
+                // La textura apuntada se olvida en CADA cuadro: entre cuadro y cuadro se recrean texturas (portadas,
+                // UI) y una nueva puede caer en la MISMA direccion que una recien liberada. Los otros estados son
+                // numeros, no punteros, asi que esos si se conservan. Cuesta un cambio de textura por cuadro.
+                stTex = new IntPtr(-1);
+                if (clear(dev, 0, IntPtr.Zero, D3D9.CLEAR_TARGET, 0xFF05060F, 1f, 0) < 0) { lost = true; return false; }
+                if (begin(dev) < 0) { lost = true; return false; }
+                inScene = true;
+                return true;
             }
-            // La textura apuntada se olvida en CADA cuadro: entre cuadro y cuadro se recrean texturas (portadas,
-            // UI) y una nueva puede caer en la MISMA direccion que una recien liberada. Los otros estados son
-            // numeros, no punteros, asi que esos si se conservan. Cuesta un cambio de textura por cuadro.
-            stTex = new IntPtr(-1);
-            clear(dev, 0, IntPtr.Zero, D3D9.CLEAR_TARGET, 0xFF05060F, 1f, 0);
-            return begin(dev) >= 0;
+            catch { lost = true; return false; }
         }
 
-        public void EndFrame()
+        public bool EndFrame()
         {
-            end(dev);
-            int hr = present(dev, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
-            if (hr == D3D9.E_DEVICELOST) lost = true;
+            if (dev == IntPtr.Zero || !inScene) return false;
+            inScene = false;
+            try
+            {
+                if (end(dev) < 0) { lost = true; return false; }
+                // No se cuenta una escena incompleta ni una presentacion rechazada.
+                if (lost) return false;
+                if (present(dev, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero) < 0) { lost = true; return false; }
+                return true;
+            }
+            catch { lost = true; return false; }
         }
 
         private void TssDiffuse()   // usa el color del vertice (sin textura)
         {
-            if (stTss == 1) return;
-            setTSS(dev, 0, D3D9.TSS_COLOROP, D3D9.TOP_SELECTARG1); setTSS(dev, 0, D3D9.TSS_COLORARG1, D3D9.TA_DIFFUSE);
-            setTSS(dev, 0, D3D9.TSS_ALPHAOP, D3D9.TOP_SELECTARG1); setTSS(dev, 0, D3D9.TSS_ALPHAARG1, D3D9.TA_DIFFUSE);
-            stTss = 1;
+            if (dev == IntPtr.Zero || lost || stTss == 1) return;
+            try
+            {
+                if (setTSS(dev, 0, D3D9.TSS_COLOROP, D3D9.TOP_SELECTARG1) < 0 ||
+                    setTSS(dev, 0, D3D9.TSS_COLORARG1, D3D9.TA_DIFFUSE) < 0 ||
+                    setTSS(dev, 0, D3D9.TSS_ALPHAOP, D3D9.TOP_SELECTARG1) < 0 ||
+                    setTSS(dev, 0, D3D9.TSS_ALPHAARG1, D3D9.TA_DIFFUSE) < 0)
+                { EstadoFallido(); return; }
+                stTss = 1;
+            }
+            catch { EstadoFallido(); }
         }
         private void TssModulate()  // textura * color del vertice
         {
-            if (stTss == 2) return;
-            setTSS(dev, 0, D3D9.TSS_COLOROP, D3D9.TOP_MODULATE); setTSS(dev, 0, D3D9.TSS_COLORARG1, D3D9.TA_TEXTURE); setTSS(dev, 0, D3D9.TSS_COLORARG2, D3D9.TA_DIFFUSE);
-            setTSS(dev, 0, D3D9.TSS_ALPHAOP, D3D9.TOP_MODULATE); setTSS(dev, 0, D3D9.TSS_ALPHAARG1, D3D9.TA_TEXTURE); setTSS(dev, 0, D3D9.TSS_ALPHAARG2, D3D9.TA_DIFFUSE);
-            stTss = 2;
+            if (dev == IntPtr.Zero || lost || stTss == 2) return;
+            try
+            {
+                if (setTSS(dev, 0, D3D9.TSS_COLOROP, D3D9.TOP_MODULATE) < 0 ||
+                    setTSS(dev, 0, D3D9.TSS_COLORARG1, D3D9.TA_TEXTURE) < 0 ||
+                    setTSS(dev, 0, D3D9.TSS_COLORARG2, D3D9.TA_DIFFUSE) < 0 ||
+                    setTSS(dev, 0, D3D9.TSS_ALPHAOP, D3D9.TOP_MODULATE) < 0 ||
+                    setTSS(dev, 0, D3D9.TSS_ALPHAARG1, D3D9.TA_TEXTURE) < 0 ||
+                    setTSS(dev, 0, D3D9.TSS_ALPHAARG2, D3D9.TA_DIFFUSE) < 0)
+                { EstadoFallido(); return; }
+                stTss = 2;
+            }
+            catch { EstadoFallido(); }
         }
 
         // Cielo (color del vertice, sin mezcla) + estrellas (textura de glow, aditivo).
         // Cielo (color del vertice, sin mezcla). 2 quads apilados = degradado de 3 paradas (4 triangulos).
         public void DrawSky(D3D9.Vtx[] sky)
         {
+            if (dev == IntPtr.Zero || lost) return;
             Tex(IntPtr.Zero); TssDiffuse(); Blend(1);
             Draw(sky, 4);
         }
         // Estrellas (textura de glow, aditivo). Se puede llamar 2 veces (patron anterior + nuevo) en el entrecruzado.
         public void DrawStars(D3D9.Vtx[] stars, int starTris, IntPtr glowTex)
         {
-            if (dev == IntPtr.Zero || starTris <= 0 || glowTex == IntPtr.Zero) return;
+            if (dev == IntPtr.Zero || lost || starTris <= 0 || glowTex == IntPtr.Zero) return;
             Tex(glowTex); TssModulate(); Blend(2);
             Draw(stars, starTris);
         }
@@ -279,7 +445,7 @@ namespace Rocola
         // Estelas de estrellas fugaces: cuadrangulos BLANCOS con mezcla ADITIVA y SIN textura (color del vertice).
         public void DrawShootStreaks(D3D9.Vtx[] v, int tris)
         {
-            if (dev == IntPtr.Zero || tris <= 0) return;
+            if (dev == IntPtr.Zero || lost || tris <= 0) return;
             Tex(IntPtr.Zero); TssDiffuse(); Blend(2);
             Draw(v, tris);
         }
@@ -289,7 +455,7 @@ namespace Rocola
         // vertice. Al no sumar luz nunca se lava hacia el blanco, que es lo que manchaba con los halos.
         public void DrawMesh(D3D9.Vtx[] v, int tris)
         {
-            if (dev == IntPtr.Zero || tris <= 0) return;
+            if (dev == IntPtr.Zero || lost || tris <= 0) return;
             Tex(IntPtr.Zero); TssDiffuse(); Blend(3);
             Draw(v, tris);
         }
@@ -299,7 +465,7 @@ namespace Rocola
         // el nucleo satura a claro y el resplandor de alrededor tine sin borrar. Tapando no hay neon.
         public void DrawMeshAdd(D3D9.Vtx[] v, int tris)
         {
-            if (dev == IntPtr.Zero || tris <= 0) return;
+            if (dev == IntPtr.Zero || lost || tris <= 0) return;
             Tex(IntPtr.Zero); TssDiffuse(); Blend(2);
             Draw(v, tris);
         }
@@ -307,7 +473,7 @@ namespace Rocola
         // Un cuadro texturizado (2 triangulos) con mezcla NORMAL (encima): para los cubos, etiquetas, etc.
         public void DrawTexQuad(IntPtr tex, D3D9.Vtx[] quad)
         {
-            if (tex == IntPtr.Zero) return;
+            if (dev == IntPtr.Zero || lost || tex == IntPtr.Zero) return;
             Tex(tex); TssModulate(); Blend(3);
             Draw(quad, 2);
         }
@@ -317,37 +483,49 @@ namespace Rocola
         // repetir la peticion no cueste nada.
         public void DrawQuads(IntPtr tex, D3D9.Vtx[] v, int tris)
         {
-            if (dev == IntPtr.Zero || tris <= 0) return;
+            if (dev == IntPtr.Zero || lost || tris <= 0) return;
             if (tex != IntPtr.Zero) { Tex(tex); TssModulate(); } else { Tex(IntPtr.Zero); TssDiffuse(); }
             Blend(3);
             Draw(v, tris);
         }
 
-        private static int Pow2(int n) { int p = 1; while (p < n) p <<= 1; return p; }
+        private static int Pow2(int n)
+        {
+            if (n < 1 || n > 0x40000000) return 0;
+            int p = 1;
+            while (p < n) p <<= 1;
+            return p;
+        }
 
         // Crea una textura de tamano POTENCIA DE DOS (compatible con GPU vieja) y sube el bitmap en su
         // esquina superior izquierda. Devuelve las coordenadas de textura maximas usadas (uMax, vMax).
         public IntPtr CreateTexturePow2(Bitmap bmp, out float uMax, out float vMax)
         {
             uMax = 1f; vMax = 1f;
-            if (dev == IntPtr.Zero) return IntPtr.Zero;
-            int w = bmp.Width, h = bmp.Height, tw = Pow2(w), th = Pow2(h);
-            IntPtr tex;
-            if (createTex(dev, (uint)tw, (uint)th, 1, 0, D3D9.FMT_A8R8G8B8, D3D9.POOL_MANAGED, out tex, IntPtr.Zero) < 0) return IntPtr.Zero;
-            D3D9.LockRectDel lockR = D3D9.Fn<D3D9.LockRectDel>(tex, 19);
-            D3D9.UnlockRectDel unlockR = D3D9.Fn<D3D9.UnlockRectDel>(tex, 20);
-            D3D9.LockedRect lr;
-            if (lockR(tex, 0, out lr, IntPtr.Zero, 0) >= 0)
+            if (dev == IntPtr.Zero || bmp == null) return IntPtr.Zero;
+            IntPtr tex = IntPtr.Zero;
+            try
             {
-                BitmapData bd = bmp.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
-                int rowBytes = w * 4;
-                for (int y = 0; y < h; y++)
-                    D3D9.CopyMemory(new IntPtr(lr.Bits.ToInt64() + (long)y * lr.Pitch), new IntPtr(bd.Scan0.ToInt64() + (long)y * bd.Stride), (UIntPtr)(uint)rowBytes);
-                bmp.UnlockBits(bd);
-                unlockR(tex, 0);
+                int w = bmp.Width, h = bmp.Height, tw = Pow2(w), th = Pow2(h);
+                if (tw == 0 || th == 0) return IntPtr.Zero;
+                if (createTex(dev, (uint)tw, (uint)th, 1, 0, D3D9.FMT_A8R8G8B8, D3D9.POOL_MANAGED, out tex, IntPtr.Zero) < 0 || tex == IntPtr.Zero)
+                {
+                    if (tex != IntPtr.Zero) D3D9.Release(tex);
+                    return IntPtr.Zero;
+                }
+                if (!SubeBitmap(tex, bmp, w, h))
+                {
+                    D3D9.Release(tex);
+                    return IntPtr.Zero;
+                }
+                uMax = (float)w / tw; vMax = (float)h / th;
+                return tex;
             }
-            uMax = (float)w / tw; vMax = (float)h / th;
-            return tex;
+            catch
+            {
+                if (tex != IntPtr.Zero) D3D9.Release(tex);
+                return IntPtr.Zero;
+            }
         }
 
         // Re-sube el contenido a una textura pow2 YA existente (mismo tamano de bitmap) en vez de crear una
@@ -356,33 +534,39 @@ namespace Rocola
         public bool UpdateTexturePow2(IntPtr tex, Bitmap bmp, out float uMax, out float vMax)
         {
             uMax = 1f; vMax = 1f;
-            if (dev == IntPtr.Zero || tex == IntPtr.Zero) return false;
-            int w = bmp.Width, h = bmp.Height, tw = Pow2(w), th = Pow2(h);
-            D3D9.LockRectDel lockR = D3D9.Fn<D3D9.LockRectDel>(tex, 19);
-            D3D9.UnlockRectDel unlockR = D3D9.Fn<D3D9.UnlockRectDel>(tex, 20);
-            D3D9.LockedRect lr;
-            if (lockR(tex, 0, out lr, IntPtr.Zero, 0) < 0) return false;
-            BitmapData bd = bmp.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
-            int rowBytes = w * 4;
-            for (int y = 0; y < h; y++)
-                D3D9.CopyMemory(new IntPtr(lr.Bits.ToInt64() + (long)y * lr.Pitch), new IntPtr(bd.Scan0.ToInt64() + (long)y * bd.Stride), (UIntPtr)(uint)rowBytes);
-            bmp.UnlockBits(bd);
-            unlockR(tex, 0);
-            uMax = (float)w / tw; vMax = (float)h / th;
-            return true;
+            if (dev == IntPtr.Zero || tex == IntPtr.Zero || bmp == null) return false;
+            try
+            {
+                int w = bmp.Width, h = bmp.Height, tw = Pow2(w), th = Pow2(h);
+                if (tw == 0 || th == 0 || !SubeBitmap(tex, bmp, w, h)) return false;
+                uMax = (float)w / tw; vMax = (float)h / th;
+                return true;
+            }
+            catch { return false; }
         }
 
         private void Draw(D3D9.Vtx[] verts, int tris)
         {
+            if (dev == IntPtr.Zero || lost || verts == null || tris <= 0 || tris > verts.Length / 3) return;
             GCHandle gh = GCHandle.Alloc(verts, GCHandleType.Pinned);
-            try { drawUp(dev, D3D9.PT_TRIANGLELIST, (uint)tris, gh.AddrOfPinnedObject(), D3D9.VtxSize); }
+            try
+            {
+                if (drawUp(dev, D3D9.PT_TRIANGLELIST, (uint)tris, gh.AddrOfPinnedObject(), D3D9.VtxSize) < 0)
+                    EstadoFallido();
+            }
+            catch { EstadoFallido(); }
             finally { gh.Free(); }
         }
 
         public void Dispose()
         {
-            if (dev != IntPtr.Zero) { D3D9.Release(dev); dev = IntPtr.Zero; }
-            if (d3d != IntPtr.Zero) { D3D9.Release(d3d); d3d = IntPtr.Zero; }
+            lost = true;
+            resetPending = false;
+            inScene = false;
+            IntPtr dv = dev; dev = IntPtr.Zero;
+            IntPtr d = d3d; d3d = IntPtr.Zero;
+            if (dv != IntPtr.Zero) D3D9.Release(dv);
+            if (d != IntPtr.Zero) D3D9.Release(d);
         }
     }
 }

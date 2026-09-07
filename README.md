@@ -11,8 +11,8 @@ artista) y modo atracción.
 ## Ramas
 
 - **Clásica (XP)** — la rocola física original y rama de referencia: .NET Framework
-  **3.5 sin SP1**, Windows XP 32-bit, CPU modesto. Todo lo nuevo nace ahí y se prueba
-  en el fierro real.
+  **3.5 sin SP1**, Windows XP 32-bit, CPU modesto. Los cambios comunes se mantienen en ambas
+  versiones; probar en CLR 2 de un Windows moderno no sustituye la validación en XP real.
 - **`rocola-hd`** — *esta rama*, para PC **potente** (Windows 7+/10, 4+ núcleos, 4+ GB):
   retargeteada a **.NET Framework 4.8**. Mismo programa y **misma lógica de audio** que la
   clásica, más el **NIVEL HD** que la máquina activa sola al arrancar (`ProbeAudioTier`).
@@ -24,10 +24,11 @@ artista) y modo atracción.
 - Monedero con créditos y cola de canciones pagadas.
 - Buscador con teclado en pantalla; sección de videos; portadas en cubos 3D girando.
 - La lista de cada disco muestra la **duración** de cada canción. Va en su **propia pasada rápida**:
-  sacar solo la duración cuesta ~600 veces menos que el análisis de volumen/EQ (es leer la cabecera,
-  no descomprimir el audio), así que la biblioteca entera queda con duración en minutos en vez de
-  esperar días al análisis pesado. Se guarda en `rocola_duracion.txt` y sobrevive a los reinicios.
-- **Animaciones** (todas **por GPU**, así que no le cuestan nada al CPU; `animacion=0` las apaga):
+  consulta cabeceras cuando el formato lo permite; otros archivos requieren un recorrido mayor.
+  El tiempo depende de los archivos y del disco, sin un factor de aceleración universal.
+  Se guarda en `rocola_duracion.txt` y sobrevive a los reinicios.
+- **Animaciones** (aceleradas en el perfil **GPU**, con trabajo de preparación en CPU;
+  el coste y la fluidez dependen del equipo; `animacion=0` las apaga):
   - **La portada viaja entre cubos.** La rocola ya dibuja todo como cubos girando (la casilla de la
     cuadrícula, el cubo grande del disco, el cubo gigante de la atracción, el del buscador). La
     portada **sale calcada sobre el cubo de origen** —misma casilla y mismo giro, no se nota el
@@ -51,21 +52,22 @@ artista) y modo atracción.
   cuando no hay música. Las bandas viajan por la **misma cola retrasada** que el pulso, así que la
   aurora se mueve encima del sonido que se oye y no un segundo antes.
 - "Lo más sonado" y TOP por artista; modo atracción cuando nadie la usa.
-- **Blindaje de kiosco**: una excepción no controlada se anota en `rocola_error.txt`
-  y la rocola **sigue corriendo** (ya no muere con el diálogo de error de .NET).
+- **Registro de errores de kiosco**: intenta anotar las excepciones en `rocola_error.txt`.
+  El manejador de UI permite continuar en algunos casos; un error fatal de otro hilo puede
+  terminar el proceso. No hay garantía de recuperación ni reinicio automático del programa.
 
 **Sonido (idéntico en las dos ramas):**
-- **Nivelado perceptual por etapas** (tipo LUFS / BS.1770, con *K-weighting*): todas suenan
-  parejo; sube las bajitas y **no** baja las que ya suenan fuerte. Seis etapas según lo bajita
+- **Nivelado perceptual por etapas** (tipo LUFS / BS.1770, con *K-weighting*): busca emparejar
+  canciones; sube las bajitas y **no** baja las fuertes en esta etapa. Seis etapas según lo bajita
   que venga la canción (**ULTRA BAJA / BAJA / MEDIA-BAJA / MEDIA / ALTA / MUY ALTA**), cada una
   con su propio tope de subida (hasta **+20 dB** en las ultra bajas, apenas +4 en las muy altas),
   interpolado entre etapas para que no haya saltos.
 - **Pre-análisis de la biblioteca**: en segundo plano (prioridad mínima, solo cuando la rocola
   está en reposo) se mide el volumen, la **duración** y la **huella tonal del EQ automático** de
-  cada canción. Ya **no** hace falta que una canción suene una o dos veces para quedar nivelada
-  ni ecualizada: llega ajustada desde la primera.
+  cada canción legible. Si su análisis ya está disponible, llega ajustada desde la primera
+  reproducción; de lo contrario se mide al sonar para aplicar lo aprendido después.
 - **Subir TODO el volumen**: dB extra generales; el **limitador con pre-escucha** baja los picos
-  suave y ANTES de que lleguen (fuerte sin distorsión).
+  suave y ANTES de que lleguen. No garantiza ausencia de distorsión en el archivo o las bocinas.
 - **EQ automático**: corrige el tono de cada canción hacia el promedio de la biblioteca.
 - **Bajo psicoacústico** (`bajo=` en config, perilla en Ctrl+F3): las bocinas de un local no bajan de
   ~80 Hz, así que el grave profundo **no sale** por ellas. Subirlo con EQ no sirve — solo gasta
@@ -73,9 +75,12 @@ artista) y modo atracción.
   doble y el triple de su frecuencia), que la bocina sí reproduce, y **el oído reconstruye solo la
   nota que falta** (efecto de la *fundamental ausente*). El grave se toma de la mezcla mono y sale
   centrado. Verificado: genera el 2º y 3er armónico, **no toca** la nota original ni la voz ni los
-  agudos (0.00 dB), en 0 % el audio sale idéntico bit a bit, y cuesta **0.17 % de un núcleo**.
+  agudos en las señales de prueba; en 0 % el audio sale idéntico bit a bit.
+  El coste de CPU y el resultado audible dependen del equipo y del material.
 - **DSEE** (realce/reconstrucción de agudos): recrea el "aire" que el MP3 recorta.
-  Insignia **MEJORADA** (dorada, que brilla) cuando de verdad está mejorando la canción.
+  Insignia **MEJORADA** (dorada, que brilla) cuando actúa el reconstructor o, en HD,
+  se reproduce una versión procesada por Apollo. Indica procesamiento, no una garantía
+  de mejor calidad subjetiva ni recuperación exacta de información perdida.
 - **Des-recorte (declipper)**: repara los picos aplastados "de fábrica" de archivos mal
   masterizados (reconstruye el pico redondo perdido; `declip=` en config).
 - **Fundido** suave de salida al terminar cada canción **y cada video** (`fundido=` en config, 0-3 s).
@@ -97,9 +102,12 @@ artista) y modo atracción.
   **también mide los videos**, así que se nivelan solos al mismo objetivo que las canciones.
 - **Dither TPDF** al bajar a 16 bits (en la salida WaveOut de respaldo).
 - **Respaldo automático** de lo aprendido (volúmenes, EQ, estadísticas, config)
-  a otra carpeta/disco; conserva los 3 respaldos más recientes.
+  a otra carpeta/disco; conserva las 3 instantáneas completas más recientes, incluso del mismo día.
+  Cada archivo se copia y verifica antes de publicar la carpeta. Si falla, conserva los
+  anteriores y registra el error. No es una copia de la música ni una instantánea atómica
+  de todas las tablas a la vez.
 
-### La IA aprende de TODA la biblioteca (sin mover el disco)
+### La IA aprende del material apto de la biblioteca (sin mover la música)
 
 Para enseñarle a la red hacen falta pares *"esto es lo que queda / estos eran los agudos reales"*.
 En un MP3 dañado los agudos reales **ya no existen**, así que solo sirven de maestras las canciones
@@ -113,7 +121,7 @@ entrenamiento coincide **exactamente** con lo que la red verá en vivo (verifica
 Flujo completo:
 
 1. La rocola junta el material sola. El avance se ve en **Ctrl+F3** ("Material para la IA: N ejemplos").
-2. Copias `rocola_ia_datos.bin` a una **memoria USB** (el archivo es pequeño; no hay que mover el disco).
+2. Copias `rocola_ia_datos.bin` a una **memoria USB** con espacio suficiente (hasta 24 GiB por defecto).
 3. En una PC potente: `python3 ia/entrenar_ia.py --datos rocola_ia_datos.bin --capas 28,96,96,12`
 4. Regresas el `rocola_ia.bin` nuevo junto al `Rocola.exe`.
 
@@ -136,20 +144,21 @@ completo** a dejar todo calibrado:
 - Una **barra de avance** y el texto muestran cuántas canciones lleva y cuántos ejemplos de IA.
 - Sigue corriendo aunque cierres el panel; se detiene con el **mismo botón**.
 
-**Los dos modos se acumulan.** El modo automático saca un puñado de ejemplos por canción; el repaso
-a fondo la recorre **entera** y saca el triple, repartidos por todo el tema. Se apunta *hasta qué
-nivel* llegó cada canción (`rocola_ia_hechas.txt`), así que el repaso a fondo **vuelve a entrar** en
-las que solo tienen el muestreo y les añade el resto — pero dentro del mismo nivel una canción
-aporta una sola vez, para no sesgar el entrenamiento hacia ella.
+**Los dos modos se acumulan con límites.** La cosecha pasiva tiene un presupuesto de 192 cuadros
+por pasada y hasta ocho pasadas por canción. A fondo permite hasta 1.536 cuadros repartidos
+por el tema (ocho veces el presupuesto de una pasada pasiva, no tres). El número aprovechado
+depende de la duración, los cortes y los filtros de calidad. `rocola_ia_hechas.txt` registra
+el avance para no repetir indefinidamente la aportación de una canción.
 
-El archivo de material tiene un **tope de 24 GB** (`ia_datos_mb=` en config; 0 lo quita). Con eso
+El archivo de material tiene un **tope de 24 GiB** (`ia_datos_mb=` en config; 0 lo quita). Con eso
 cabe una biblioteca de ~20 000 canciones aptas cosechadas a fondo, y entra holgado en una memoria de
 64 GB. Ojo: la memoria tiene que estar en **exFAT o NTFS** — en FAT32 ningún archivo puede pasar de
 4 GB, y ahí habría que bajar el tope. En Ctrl+F3 se ve el tamaño actual y si llegó al tope.
 
-**El entrenador no necesita 24 GB de RAM**: se asoma al archivo desde el disco y toma una muestra
-repartida de punta a punta (uno de cada tantos ejemplos, así entran canciones de toda la biblioteca
-y no solo las primeras). Se ajusta con `--max-ejemplos N` (por defecto 4 millones; `0` = todos).
+**La RAM depende del tamaño de la muestra**: el entrenador mapea el archivo desde disco, pero
+materializa una muestra en float64 y copias de reordenación, además de buffers de entrenamiento.
+La muestra se reparte por el archivo para no tomar solo las primeras canciones. Se ajusta con
+`--max-ejemplos N` (por defecto 4 millones; `0` = todos y puede requerir mucha RAM).
 
 El modo a fondo **no** se guarda en la configuración a propósito: si se va la luz, la rocola vuelve
 sola a su modo normal y nunca se queda a todo gas en horario de negocio.
@@ -158,15 +167,32 @@ sola a su modo normal y nunca se queda a todo gas en horario de negocio.
 
 - **Salida WASAPI flotante** (`salida=auto|wasapi|waveout` en `rocola_config.txt`): muestras
   *float* de punta a punta hasta el motor de audio moderno, sin bajar a 16 bits ni pasar por
-  el mezclador clásico, y con menos latencia (el pulso visual se re-alinea solo). Si algo falla,
-  cae automáticamente al **WaveOut** clásico.
+  el mezclador clásico; la latencia real depende del controlador (el pulso visual se re-alinea).
+  Si falla la construcción, inicialización o arranque síncrono de WASAPI, reabre la pista
+  una sola vez por **WaveOut**. Los fallos asíncronos durante reproducción siguen el manejo
+  de error de pista; no se promete un cambio transparente de dispositivo a mitad de canción.
 - **Reconstructor espectral fino**: el DSEE espectral usa **STFT de 4096** (bins más finos =
   detección del corte y costura más limpias) en vez de 2048.
-- **DSEE ULTRA — IA propia (Apollo)**: por demanda, con **selector de GPU** en Ctrl+F3. La red
-  incluida (`rocola_ia.bin`) predice la **envolvente** de los agudos perdidos y el reconstructor
-  la usa en vez de su curva fija. Reentrenable con tu propia música (`--musica`; ver `ia/LEEME.md`),
-  con paridad python↔C# verificada. Regla de la casa: **no se embarca nada llamado "IA" que no lo sea.**
+- **IA de envolvente incluida** (`rocola_ia.bin`): un MLP predice la envolvente de agudos para
+  el reconstructor espectral. Se reentrena con tu música (`--musica`; ver `ia/LEEME.md`)
+  y tiene pruebas de paridad Python↔C#. Este archivo **no es Apollo**.
+- **DSEE ULTRA — Apollo por demanda**: motor externo Python, con selector de GPU en Ctrl+F3.
+  Requiere instalar sus dependencias, código y checkpoint por separado (`ia/upscale`).
+  Si la versión procesada aún no está lista, suena el original con el respaldo DSEE disponible.
 - **Render por GPU (Direct3D 9)**: estrellas, cubos 3D y buscador acelerados; con caída a GDI si no hay GPU.
+
+## Colores de fondo y portadas
+
+En Detalles, los tres botones asignan al tono del disco un peso de **20%, 50% y 100%**
+en el acento; el resto corresponde al género. Con género, una nebulosa conserva ese tono.
+BTS/Bangtan con género reconocido conserva su morado fijo. **Sin género reconocido**,
+cualquier peso de portada mayor que cero usa solo el tono disponible del disco, también
+en «Mitad y mitad» y para BTS. Apagar el efecto o poner peso cero desactiva esa sustitución.
+
+El género se busca en canción, disco, artista y nombre/carpeta; no se limita a ID3.
+El extractor ignora píxeles transparentes y representa el tono dominante/promedio y picos,
+manteniendo brillo, viveza, transiciones y degradados del diseño, no el RGB literal.
+Sin portada cromática disponible se usa el fondo de reserva.
 
 ## Compilar
 

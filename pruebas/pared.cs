@@ -46,10 +46,8 @@ class Pared
         return alDisco;
     }
 
-    // Cuanta memoria ve LA ROCOLA. No es lo mismo que la que tiene la maquina: la version de Windows
-    // la pide con una funcion de Windows, asi que corriendo las pruebas aqui no la ve y contesta cero.
-    // Eso NO es un fallo -es justo el caso "no lo se, se prudente"-, y por eso la comprobacion de abajo
-    // esta escrita para valer en las tres versiones.
+    // Medir por el mismo mecanismo que la variante bajo prueba. No confundir
+    // "no existe Rocola.Sistema" (variante Windows) con "no se puede medir RAM".
     static ulong RamQueVeLaRocola(Assembly asm)
     {
         try
@@ -59,6 +57,17 @@ class Pared
             {
                 MethodInfo m = TS.GetMethod("MemoriaTotalMb", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
                 if (m != null) return (ulong)m.Invoke(null, null);
+            }
+            Type form = asm.GetType("Rocola.Form1", true);
+            Type status = form.GetNestedType("MemStatusEx", BindingFlags.NonPublic);
+            MethodInfo windows = form.GetMethod("GlobalMemoryStatusEx", BindingFlags.Static | BindingFlags.NonPublic);
+            if (status != null && windows != null)
+            {
+                object ms = Activator.CreateInstance(status);
+                status.GetField("Length").SetValue(ms, (uint)System.Runtime.InteropServices.Marshal.SizeOf(status));
+                object[] args = { ms };
+                if ((bool)windows.Invoke(null, args))
+                    return (ulong)status.GetField("TotalPhys").GetValue(args[0]) / (1024UL * 1024UL);
             }
         }
         catch { }
@@ -151,6 +160,8 @@ class Pared
             F = FormatterServices.GetUninitializedObject(TF);
             fCache.SetValue(F, Activator.CreateInstance(fCache.FieldType));
             fOrder.SetValue(F, Activator.CreateInstance(fOrder.FieldType));
+            FieldInfo fNodes = TF.GetField("coverNodes", BindingFlags.Instance | BindingFlags.NonPublic);
+            if (fNodes != null) fNodes.SetValue(F, Activator.CreateInstance(fNodes.FieldType));
             fTrash.SetValue(F, Activator.CreateInstance(fTrash.FieldType));
             if (fLock != null) fLock.SetValue(F, new object());
             cache = (IDictionary)fCache.GetValue(F);

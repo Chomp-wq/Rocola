@@ -34,6 +34,18 @@ except ImportError: rev(False, "", "Falta torchaudio (se instala junto con torch
 
 ff = shutil.which("ffmpeg")
 rev(ff is not None, "ffmpeg: " + str(ff), "Falta ffmpeg:  winget install Gyan.FFmpeg  (y reabre la consola)")
+fp = shutil.which("ffprobe")
+if ff and not fp:
+    junto = os.path.join(os.path.dirname(ff), "ffprobe.exe" if os.name == "nt" else "ffprobe")
+    fp = junto if os.path.isfile(junto) else None
+rev(fp is not None, "ffprobe: " + str(fp), "Falta ffprobe junto a ffmpeg")
+for nombre, exe in (("ffmpeg", ff), ("ffprobe", fp)):
+    if exe:
+        try:
+            subprocess.run([exe, "-version"], check=True, stdin=subprocess.DEVNULL,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15)
+        except Exception as e:
+            rev(False, "", "%s no funciona (%s)" % (nombre, e))
 
 apollo = os.environ.get("APOLLO_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), "Apollo"))
 rev(os.path.isdir(apollo), "Repo Apollo: " + apollo,
@@ -49,7 +61,7 @@ if os.path.isdir(apollo):
         print("  ... descargando + cargando Apollo (Hugging Face: JusperLee/Apollo). La 1a vez baja ~180 MB.")
         try:
             import modelo_apollo
-            proc = modelo_apollo.cargar()
+            proc = modelo_apollo.cargar(apollo_dir=apollo)
             import numpy as _np
             y = proc(_np.zeros((44100, 2), dtype=_np.float64))   # prueba real: procesa 1 segundo de silencio
             rev(y is not None and y.shape[1] == 2, "Apollo cargado y probado en la GPU", "Apollo cargo pero la prueba fallo")

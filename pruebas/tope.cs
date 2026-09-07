@@ -93,7 +93,13 @@ class Tope
             List<string> l = Codigo.Llamadas(idle);
             Check(Codigo.Llama(l, "GpuPanel.TopeMs"), "el bucle le pregunta el tope antes de cada cuadro");
             Check(Codigo.Llama(l, "GpuPanel.AhoraMs"), "y sigue midiendo con el reloj fino, no con el gordo de Windows");
-            Check(Codigo.Llama(l, "Thread.Sleep"), "y cuando no le toca cuadro, DUERME (deja el nucleo libre)");
+            // ESPERA, NO NECESARIAMENTE Thread.Sleep. Lo que importa es que el bucle SUELTE el nucleo
+            // cuando va adelantado; con que llamada lo haga es cosa suya. Antes dormia a secas; ahora
+            // espera por el conducto de la pantalla (Sistema.EsperaMensajes), que suelta el nucleo IGUAL
+            // pero ademas se despierta si llega una tecla, en vez de tenerla esperando a que acabe la
+            // siesta. Preguntar por Thread.Sleep a secas daba por roto justamente el cambio que lo mejora.
+            Check(Codigo.Llama(l, "Thread.Sleep") || Codigo.Llama(l, "EsperaMensajes"),
+                  "y cuando no le toca cuadro, ESPERA (deja el nucleo libre)");
         }
 
         Console.WriteLine("\n  3) CON EL TOPE, EL PROCESADOR QUEDA CASI LIBRE\n");

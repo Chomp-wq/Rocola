@@ -13,7 +13,7 @@
 #    espectros/NN_<cancion>.png              (antes/despues, si matplotlib esta instalado)
 #    reporte.txt                             (acantilado antes/despues, tiempos, velocidad)
 # ============================================================================================
-import sys, os, time, glob, random, shutil, tempfile, argparse
+import sys, os, time, glob, random, shutil, tempfile, argparse, math
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import numpy as np
 from util_audio import FS, leer_wav, escribir_wav, decodificar_a_wav, acantilado_hz, igualar_rms, por_trozos
@@ -23,10 +23,15 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--entrada", required=True, help="carpeta con canciones REALES de la rocola (mp3/wav/flac)")
     ap.add_argument("--salida", required=True)
-    ap.add_argument("--apollo", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "Apollo"))
+    ap.add_argument("--apollo", default=os.environ.get("APOLLO_DIR") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "Apollo"))
     ap.add_argument("--max", type=int, default=12)
     ap.add_argument("--seg", type=float, default=10.0, help="segundos por trozo (baja a 6 si la GPU se queda corta)")
     a = ap.parse_args()
+
+    if not math.isfinite(a.seg) or a.seg <= 0.5:
+        print("[X] --seg debe ser mayor que el solape de 0.5 segundos"); return 2
+    if a.max < 1:
+        print("[X] --max debe ser al menos 1"); return 2
 
     ff = shutil.which("ffmpeg")
     if not ff: print("Falta ffmpeg (corre 00_verificar.py)"); return 1
@@ -39,7 +44,7 @@ def main():
         os.makedirs(os.path.join(a.salida, d), exist_ok=True)
     print("Cargando Apollo (primera vez descarga el checkpoint, ~180 MB)...")
     import modelo_apollo
-    proc = modelo_apollo.cargar()
+    proc = modelo_apollo.cargar(apollo_dir=a.apollo)
 
     try: import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
     except ImportError: plt = None; print("(sin matplotlib: no habra espectrogramas;  pip install matplotlib)")
@@ -49,10 +54,11 @@ def main():
     for i, ruta in enumerate(archivos, 1):
         nombre = os.path.splitext(os.path.basename(ruta))[0][:60]
         print("[%d/%d] %s" % (i, len(archivos), nombre))
-        tmp = os.path.join(tempfile.gettempdir(), "piloto_dec.wav")
-        try: decodificar_a_wav(ff, ruta, tmp)
-        except Exception as e: print("   no se pudo decodificar:", e); continue
-        x, _ = leer_wav(tmp)
+        with tempfile.TemporaryDirectory(prefix="rocola_piloto_") as td:
+            tmp = os.path.join(td, "dec.wav")
+            try: decodificar_a_wav(ff, ruta, tmp)
+            except Exception as e: print("   no se pudo decodificar:", e); continue
+            x, _ = leer_wav(tmp)
         c0 = acantilado_hz(x)
         t0 = time.time()
         y = por_trozos(x, proc, seg=a.seg)
