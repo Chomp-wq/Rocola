@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Globalization;
 using System.Diagnostics;
@@ -99,18 +100,16 @@ class Dsee
         tap = Crea(fu);
         ISampleProvider p = (ISampleProvider)tap;
         TSbr.GetField("Active").SetValue(tap, activo);
-        int n = entrelazado.Length;
-        float[] salida = new float[n];
-        int hecho = 0;
+        List<float> salida = new List<float>(entrelazado.Length);
         float[] buf = new float[4096];
-        while (hecho < n)
+        int got;
+        while ((got = p.Read(buf, 0, buf.Length)) > 0)
         {
-            int pide = Math.Min(buf.Length, n - hecho);
-            int got = p.Read(buf, 0, pide);
-            if (got <= 0) break;
-            Array.Copy(buf, 0, salida, hecho, got);
-            hecho += got;
+            for (int i = 0; i < got; i++) salida.Add(buf[i]);
+            // Un proveedor roto que inventase una cola infinita no puede colgar la bateria.
+            if (salida.Count > entrelazado.Length + 8192 * ch) break;
         }
+        int hecho = salida.Count;
         float[][] r = new float[ch][];
         for (int c = 0; c < ch; c++) { r[c] = new float[hecho / ch]; for (int i = 0; i < hecho / ch; i++) r[c][i] = salida[i * ch + c]; }
         return r;
@@ -153,6 +152,20 @@ class Dsee
         Check(TSbr != null, "el reconstructor de agudos esta donde tiene que estar");
         if (TSbr == null) return 1;
         FieldInfo fCut = TSbr.GetField("cutHz", BindingFlags.Instance | BindingFlags.NonPublic);
+
+        Console.WriteLine("\n  0) EL ULTIMO PEDAZO NO SE PIERDE\n");
+        // La FFT trabaja en saltos de 1024 cuadros. Una cancion casi nunca termina justo ahi: el ultimo
+        // pedazo debe rellenarse con ceros para procesarlo, pero publicarse con su largo REAL. Antes, todo
+        // lo que quedaba por debajo de un salto desaparecia al llegar EOF.
+        foreach (int cuadros in new int[] { 1, 17, 1023, 1024, 1025, 2047, 2051, 3073 })
+        {
+            float[] corto = new float[cuadros * 2];
+            for (int i = 0; i < corto.Length; i++) corto[i] = (float)((i % 97) - 48) / 1000f;
+            object tapCorto;
+            float[][] saleCorto = Pasa(corto, 2, true, out tapCorto);
+            Check(saleCorto[0].Length == cuadros && saleCorto[1].Length == cuadros,
+                  cuadros + " cuadros entran y salen completos, aunque el final no llene una ventana");
+        }
 
         const int N = FS * 3;                     // 3 segundos
         float[] L = Mono(N, 11, 1.0f);

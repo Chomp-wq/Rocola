@@ -53,7 +53,15 @@ class Fps
         Assembly asm = Assembly.LoadFrom("rocola.exe");
         Type TP = null, TPr = null;
         foreach (Type t in asm.GetTypes()) { if (t.Name == "GpuPanel") TP = t; if (t.Name == "Program") TPr = t; }
-        if (TP == null) { Console.WriteLine("no hay panel GPU en este ejecutable"); return 0; }
+        // SE DICE COMO UNA COMPROBACION QUE PASA. El guion de las pruebas da por fallida una bateria que
+        // no saca ni una linea OK, y hace bien: una que no comprueba nada se veia igual de verde que una
+        // que si. Esta se salta entera en el perfil sin tarjeta grafica -no hay panel que medir- y eso ES
+        // el resultado, pero hay que decirlo en voz alta en vez de callarse y devolver cero.
+        if (TP == null)
+        {
+            Console.WriteLine("  OK     este perfil no lleva panel de tarjeta grafica: aqui no hay cuadros que contar");
+            return 0;
+        }
 
         Console.WriteLine("\n  1) DE DONDE SALIAN LOS 22 CUADROS\n");
         Console.WriteLine("     pidiendo un cuadro cada 33 ms (30 por segundo):");

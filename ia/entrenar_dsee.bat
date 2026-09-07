@@ -12,8 +12,10 @@ rem  ventana se cierra sola, ahi esta escrito hasta donde llego.
 rem ============================================================================================
 setlocal
 cd /d "%~dp0"
+if not "%ERRORLEVEL%"=="0" exit /b 1
 set "LOG=%~dp0entrenar_dsee_log.txt"
 set "PYS=%~dp0entrenar_dsee.py"
+set "COD=1"
 
 > "%LOG%" echo === ENTRENAR EL DSEE ===  %DATE% %TIME%
 >>"%LOG%" echo carpeta: %~dp0
@@ -27,13 +29,16 @@ rem ---------- 1) QUE LLEGO ARRASTRADO ----------
 rem Se ensena ANTES de nada. Si aqui no aparece nada es que el arrastre no funciono, y eso ya es
 rem la respuesta: no hay que adivinar si el fallo vino despues.
 echo   LO QUE ME ARRASTRASTE
-set "TODOS=%*"
 set "N=0"
 :otroarg
 if "%~1"=="" goto finargs
 set /a N+=1
+if %N% GTR 8 goto demasiados
 echo      %N%.  "%~1"
 >>"%LOG%" echo ARG %N%: "%~1"
+rem Cada ruta va en una variable propia. No se conserva %%* ni se usa CALL: ambos hacen que cmd
+rem vuelva a interpretar &, |, ^ y %% de una ruta como comandos.
+set "A%N%=%~1"
 shift
 goto otroarg
 :finargs
@@ -80,15 +85,16 @@ if not defined PY (
 )
 >>"%LOG%" echo python: %PY%
 set "VER=?"
-%PY% -c "import sys;print(sys.version.split()[0])" > "%TEMP%\rocola_pyver.txt" 2>nul
-if exist "%TEMP%\rocola_pyver.txt" for /f "usebackq tokens=*" %%v in ("%TEMP%\rocola_pyver.txt") do set "VER=%%v"
-del "%TEMP%\rocola_pyver.txt" >nul 2>nul
+set "VERFILE=%TEMP%\rocola_pyver_%RANDOM%_%RANDOM%.txt"
+%PY% -c "import sys;print(sys.version.split()[0])" > "%VERFILE%" 2>nul
+if exist "%VERFILE%" for /f "usebackq tokens=*" %%v in ("%VERFILE%") do set "VER=%%v"
+del "%VERFILE%" >nul 2>nul
 echo   Python %VER%
 >>"%LOG%" echo version: %VER%
 
 rem ---------- 4) NUMPY ----------
 %PY% -c "import numpy" >nul 2>nul
-if errorlevel 1 (
+if not "%ERRORLEVEL%"=="0" (
   echo.
   echo   [X] Falta numpy, que es lo unico que hace falta ademas de Python.
   echo       Abre una ventana de consola y escribe:    pip install numpy
@@ -107,15 +113,22 @@ if not defined ENC goto sinargs
 echo   No arrastraste nada, pero el material esta en esta misma carpeta. Lo uso.
 echo.
 >>"%LOG%" echo usando material de la propia carpeta
-call %PY% "%PYS%" %ENC%
+%PY% "%PYS%" %ENC%
 goto listo
 
 :sinargs
-call %PY% "%PYS%"
+%PY% "%PYS%"
 goto listo
 
 :conargs
-call %PY% "%PYS%" %TODOS%
+if "%N%"=="1" %PY% "%PYS%" "%A1%"
+if "%N%"=="2" %PY% "%PYS%" "%A1%" "%A2%"
+if "%N%"=="3" %PY% "%PYS%" "%A1%" "%A2%" "%A3%"
+if "%N%"=="4" %PY% "%PYS%" "%A1%" "%A2%" "%A3%" "%A4%"
+if "%N%"=="5" %PY% "%PYS%" "%A1%" "%A2%" "%A3%" "%A4%" "%A5%"
+if "%N%"=="6" %PY% "%PYS%" "%A1%" "%A2%" "%A3%" "%A4%" "%A5%" "%A6%"
+if "%N%"=="7" %PY% "%PYS%" "%A1%" "%A2%" "%A3%" "%A4%" "%A5%" "%A6%" "%A7%"
+if "%N%"=="8" %PY% "%PYS%" "%A1%" "%A2%" "%A3%" "%A4%" "%A5%" "%A6%" "%A7%" "%A8%"
 
 :listo
 set "COD=%ERRORLEVEL%"
@@ -127,6 +140,14 @@ if not "%COD%"=="0" (
   echo      %LOG%
 )
 
+goto fin
+
+:demasiados
+set "COD=1"
+echo   [X] Arrastraste mas de 8 rutas. Arrastra solo los archivos de entrenamiento
+echo       rocola_ia_datos.bin y rocola_eq.txt (o la carpeta que los contiene^).
+>>"%LOG%" echo [X] demasiados argumentos: mas de 8
+
 :fin
 echo.
 echo ==========================================================================
@@ -134,13 +155,12 @@ echo   Esta ventana NO se cierra sola. Lee lo de arriba y aprieta una tecla.
 echo   Si algo salio mal, lo apuntado esta en: entrenar_dsee_log.txt
 echo ==========================================================================
 pause >nul
-endlocal
-exit /b 0
+endlocal & exit /b %COD%
 
 rem --- Prueba a arrancar un Python. Solo se queda con el que de verdad responde. ---
 :prueba
 if defined PY goto :eof
 %* -c "import sys" >nul 2>nul
-if errorlevel 1 goto :eof
+if not "%ERRORLEVEL%"=="0" goto :eof
 set "PY=%*"
 goto :eof

@@ -198,8 +198,16 @@ class Hojea
             Console.WriteLine("     copiarla ya horneada:     " + copia.ToString("0.000") + " ms   (" + (dibujo / Math.Max(copia, 0.0001)).ToString("0.0") + " veces menos)");
             Console.WriteLine("     un cuadro de hojeo son DOS copias: " + (copia * 2).ToString("0.000") + " ms, contra "
                               + (dibujo * 2).ToString("0.000") + " ms si no estuvieran horneadas");
-            Check(copia * 3 < dibujo, "copiar la pagina horneada cuesta bastante menos que dibujarla (por eso la animacion sale gratis)");
-            Check(copia * 2 < 2.0, "y un cuadro entero de hojeo cabe de sobra en el tiempo de un cuadro");
+            // El cociente depende de CPU/GDI/controlador: no es una propiedad funcional.
+            // Probar que el camino cacheado NO vuelve a pedir los textos de las filas.
+            FieldInfo textos = TL.GetField("GetText");
+            Func<int, string> originalTextos = (Func<int, string>)textos.GetValue(c);
+            int lecturas = 0;
+            textos.SetValue(c, new Func<int, string>(delegate(int i) { lecturas++; return originalTextos(i); }));
+            try { for (int i = 0; i < 20; i++) R.Invoke(c, new object[] { g }); }
+            finally { textos.SetValue(c, originalTextos); }
+            Check(lecturas == 0, "copiar una pagina vigente no vuelve a leer ni dibujar los textos de las filas");
+            Console.WriteLine("     tiempos orientativos: no garantizan un cociente ni FPS en otro equipo");
         }
 
         Console.WriteLine("\n  6) LO HORNEADO NO SE QUEDA VIEJO\n");

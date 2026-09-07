@@ -53,6 +53,8 @@ class Gasto
         int tope = (int)mMax.Invoke(null, null);
         fCache.SetValue(F, Activator.CreateInstance(fCache.FieldType));
         fOrder.SetValue(F, Activator.CreateInstance(fOrder.FieldType));
+        FieldInfo fNodes = TF.GetField("coverNodes", BindingFlags.Instance | BindingFlags.NonPublic);
+        if (fNodes != null) fNodes.SetValue(F, Activator.CreateInstance(fNodes.FieldType));
         fTrash.SetValue(F, Activator.CreateInstance(fTrash.FieldType));
         if (fLock != null) fLock.SetValue(F, new object());
 
@@ -92,6 +94,7 @@ class Gasto
         ((System.Collections.IList)trash).Clear();
         object cola = fOrder.GetValue(F);
         cola.GetType().GetMethod("Clear").Invoke(cola, null);
+        if (fNodes != null) ((System.Collections.IDictionary)fNodes.GetValue(F)).Clear();
         Bitmap primera = new Bitmap(256, 256, PixelFormat.Format32bppPArgb);
         mPut.Invoke(F, new object[] { @"D:\Musica\primera\cover.jpg", primera });
         for (int i = 0; i < tope; i++)

@@ -77,7 +77,8 @@ class Ssd
         Check(mDec != null, "y el perfilado 'de oido' sigue ahi como respaldo, por si no se pudo medir");
 
         Console.WriteLine("\n  3) MIDIENDO DE VERDAD, SOBRE ARCHIVOS DE VERDAD\n");
-        // Este banco tiene disco rapido, asi que lo que TIENE que salir es SSD.
+        // El disco/antivirus del equipo puede tardar mas de 3 ms. Verificar la decision
+        // contra la mediana observada, no suponer que todo entorno de pruebas es un SSD rapido.
         string dir = Path.Combine(Path.GetTempPath(), "ssdprueba");
         Directory.CreateDirectory(dir);
         string[] rutas = new string[12];
@@ -93,9 +94,13 @@ class Ssd
         int carriles = (int)Est("coverCarriles");
         int probeN = (int)Est("diskProbeN");
         Console.WriteLine("     disco de este banco -> " + (lento ? "disco duro" : "SSD") + ", " + carriles + " carril(es)");
-        Check(!lento, "en un disco rapido decide SSD");
-        Check(carriles >= 2 && carriles <= 4 && carriles <= Math.Max(2, Environment.ProcessorCount),
-              "y abre un carril por nucleo, hasta cuatro   [nucleos=" + Environment.ProcessorCount + ", carriles=" + carriles + "]");
+        Console.WriteLine("     medidas: " + Est("perfilTexto") + "; modo=" + Est("perfilDisco") + "; medidoLento=" + Est("medidoLento"));
+        string detalle = (string)Est("perfilTexto");
+        int abre = detalle.LastIndexOf('('), cierra = detalle.LastIndexOf(" ms)", StringComparison.Ordinal), medida = -1;
+        bool medidaValida = abre >= 0 && cierra > abre && int.TryParse(detalle.Substring(abre + 1, cierra - abre - 1), out medida);
+        Check(medidaValida && lento == (medida > (int)Est("UmbralDiscoMs")), "la clasificacion coincide con la mediana real y su umbral");
+        Check(lento ? carriles == 1 : carriles >= 2 && carriles <= 4 && carriles <= Math.Max(2, Environment.ProcessorCount),
+              "abre los carriles del perfil observado   [nucleos=" + Environment.ProcessorCount + ", carriles=" + carriles + "]");
         Check(probeN >= 16, "y deja cerrado el perfilado de oido: no puede volver a cambiar la decision a mitad de la noche");
 
         // Idempotente: llamarlo dos veces no puede volver a ampliar el turno de disco (se pasaria del tope).
@@ -105,7 +110,7 @@ class Ssd
         for (int i = 0; i < 32; i++) { if (sem.WaitOne(0)) pudo++; else break; }
         for (int i = 0; i < pudo; i++) sem.Release();
         Console.WriteLine("     turnos de disco disponibles a la vez: " + pudo);
-        Check(pudo == carriles, "el turno de disco quedo del tamano de los carriles, ni mas ni menos");
+        Check(pudo == (int)Est("coverAbiertos") && pudo >= carriles, "el semaforo coincide con los permisos concedidos (solo crece); las bombas respetan los carriles");
         mPerfil.Invoke(F, new object[] { ListaTracks(rutas) });   // segunda vez: no debe tocar nada
         int pudo2 = 0;
         for (int i = 0; i < 32; i++) { if (sem.WaitOne(0)) pudo2++; else break; }

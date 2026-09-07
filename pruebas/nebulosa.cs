@@ -42,7 +42,7 @@ class Nebulosa
 
     const BindingFlags TODO = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
     static Type TF;
-    static MethodInfo mColores, mEtiqueta, mTinte, mPortada, mColoresPortada, mNeb;
+    static MethodInfo mColores, mEtiqueta, mTinte, mPortada, mColoresPortada;
 
     static MethodBase Met(string n)
     {
@@ -141,7 +141,7 @@ class Nebulosa
         Check(cp != null, "y una que saca los colores -en plural- de una portada (ColoresDePortada)");
         if (col == null || neb == null || cp == null) { Console.WriteLine("\n  " + Math.Max(fallos, 1) + " FALLO(S)"); return Math.Max(fallos, 1); }
         Check(col.IsStatic, "es pura: se le dan los colores y contesta, sin encender la rocola");
-        mColores = (MethodInfo)col; mNeb = (MethodInfo)neb; mColoresPortada = (MethodInfo)cp;
+        mColores = (MethodInfo)col; mColoresPortada = (MethodInfo)cp;
         mEtiqueta = (MethodInfo)Met("ColorDeEtiqueta");
         mTinte = (MethodInfo)Met("TinteConPortada");
         mPortada = (MethodInfo)Met("ColorDePortada");

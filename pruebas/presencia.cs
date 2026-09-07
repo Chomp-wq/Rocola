@@ -229,7 +229,7 @@ class Presencia
         Console.WriteLine("\n  6) SIN MUSICA NO SE APAGA: SE QUEDA EN REPOSO\n");
         // Antes caia a cero y el cielo se quedaba vacio (en silencio, con un video puesto o en el modo
         // atraccion). Ahora se queda baja y tenue, y ademas RESPIRA muy despacio para que se vea viva.
-        float reposo = Cte("AurReposo"), onda = Cte("AurReposoOnda"), paso = Cte("AurReposoPaso");
+        float paso = Cte("AurReposoPaso");
         // NADIE ESTA TOCANDO LA ROCOLA. Hace falta decirlo porque la respiracion de la aurora tiene freno:
         // mientras alguien la usa se para, para no marear al que esta eligiendo cancion. Aqui se prueba el
         // caso contrario -la rocola sola- y mas abajo, que con alguien delante de verdad se para.
