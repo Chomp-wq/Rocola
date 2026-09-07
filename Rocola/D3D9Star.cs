@@ -589,7 +589,7 @@ namespace Rocola
         public void DrawQuad(IntPtr tex, D3D9.Vtx[] quad) { if (Ok) gpu.DrawTexQuad(tex, quad); }
         public void DrawMesh(D3D9.Vtx[] v, int tris) { if (Ok) gpu.DrawMesh(v, tris); }   // malla plana (fondo reactivo)
         public void DrawMeshAdd(D3D9.Vtx[] v, int tris) { if (Ok) gpu.DrawMeshAdd(v, tris); }   // malla plana SUMANDO luz (el neon)
-        public void End() { if (Ok) gpu.EndFrame(); }
+        public bool End() { return Ok && gpu.EndFrame(); }
 
         public void Dispose()
         {
@@ -1142,7 +1142,8 @@ namespace Rocola
         private double msTrabSuma; private int msTrabN;
         public double MsTrabajo { get { return (msTrabN > 0) ? (msTrabSuma / msTrabN) : 0.0; } }
         public int CuadrosMedidos { get { return msTrabN; } }
-        public void ReiniciaMedida() { msTrabSuma = 0.0; msTrabN = 0; Fps = 0; frames = 0; fpsTick = Environment.TickCount; }
+        public int FallosMedidos { get; private set; }
+        public void ReiniciaMedida() { msTrabSuma = 0.0; msTrabN = 0; FallosMedidos = 0; Fps = 0; frames = 0; fpsTick = Environment.TickCount; }
         public float Dim = 1f;                            // atenuacion del starfield mientras se navega con musica (el form la anima; 1 = normal)
         public Func<float> GetPulse;                      // el form provee el nivel de audio (0..1)
         public GpuGridFetch GetGrid;                      // el form llena el buffer con las celdas de la pagina actual (rejilla por quads)
@@ -1212,12 +1213,19 @@ namespace Rocola
             trasEstrellas = delegate { DibujaLuna(); };
         }
 
+        private static int MilisegundosEspera(double restante)
+        {
+            if (!(restante > 0.6)) return 0;
+            if (restante >= 8.6) return 8;
+            return Math.Max(1, (int)(restante - 0.6));
+        }
+
         private void OnIdle(object sender, EventArgs e)
         {
             // SIEMPRE hay tope (ver TopeMs): lo que refresca la pantalla y un poco mas. Con video A LA VISTA
             // el panel se puede limitar TODAVIA MAS (ThrottleMs ~33 = 30 fps) para dejarle equipo al video.
-            // Dormir 1 ms no atora nada: en cuanto llega un mensaje (tecla, timer), AppIdle lo ve y el bucle
-            // sale a atenderlo -o sea que una tecla se sigue notando en el milisegundo siguiente, igual que antes-.
+            // La espera se interrumpe al llegar mensajes; al despertar, AppIdle entrega el control a WinForms.
+            // El plazo es acotado y no promete precision de 1 ms: la planificacion depende de Windows.
             //
             // DOS COSAS, y las dos hacen falta:
             //  - Se mide con el RELOJ FINO. Con TickCount, que salta de ~15.6 en ~15.6 ms, pedir un cuadro
@@ -1232,7 +1240,7 @@ namespace Rocola
                 int th = TopeMs();                        // el tope de la pantalla
                 if (ThrottleMs > th) th = ThrottleMs;      // con video a la vista se pide ir MAS lento todavia
                 double ahora = AhoraMs();
-                if (ahora + 0.6 < proxCuadroMs) { System.Threading.Thread.Sleep(1); continue; }
+                if (ahora + 0.6 < proxCuadroMs) { Sistema.EsperaMensajes(MilisegundosEspera(proxCuadroMs - ahora)); continue; }
                 proxCuadroMs += th;
                 if (proxCuadroMs < ahora) proxCuadroMs = ahora + th;
                 RenderFrame();
@@ -1304,7 +1312,7 @@ namespace Rocola
         // las animaciones se habian quedado atras.
         private void EnsureCover(ref IntPtr tex, ref Bitmap last, ref int bw, ref int bh, ref float u, ref float v, Bitmap cur)
         {
-            if (ReferenceEquals(cur, last)) return;
+            if (ReferenceEquals(cur, last) && (cur == null || tex != IntPtr.Zero)) return;
             if (cur == null)
             {
                 if (tex != IntPtr.Zero) { D3D9.Release(tex); tex = IntPtr.Zero; }
@@ -1314,9 +1322,10 @@ namespace Rocola
             last = cur;
         }
 
-        private void RenderFrame()
+        private bool NoPresentado() { FallosMedidos++; Fps = 0; frames = 0; return false; }
+        private bool RenderFrame()
         {
-            if (stars == null || !stars.Ok) return;
+            if (stars == null || !stars.Ok) return NoPresentado();
             double msTrab0 = AhoraMs();   // arranca el cronometro del TRABAJO de este cuadro (ver MsTrabajo)
             stars.SetEfectos(Estrellas, Fugaces, RelevoPatron, Width, Height);   // las perillas de Ctrl+F3
             // Si la ventana cambio de tamano (resolucion de Windows, o el panel), el buffer de dibujo tiene
@@ -1350,7 +1359,7 @@ namespace Rocola
             if (GetContour != null)
             {
                 Bitmap cb = GetContour();
-                if (cb != lastContour)
+                if (cb != lastContour || (cb != null && contourTex == IntPtr.Zero))
                 {
                     if (contourTex != IntPtr.Zero) { D3D9.Release(contourTex); contourTex = IntPtr.Zero; }
                     if (cb != null) contourTex = stars.CreateOverlay(cb, out contU, out contV);
@@ -1373,7 +1382,7 @@ namespace Rocola
             GpuWin gw = (GetWin != null) ? GetWin() : new GpuWin();
             if (gw.Has && gw.Bmp != null) EnsureCover(ref winTex, ref winLastBmp, ref winBw, ref winBh, ref winU, ref winV, gw.Bmp);
             GpuToast tt = (GetToast != null) ? GetToast() : new GpuToast();
-            if (tt.Has && tt.Bmp != null && tt.Ver != toastVer)   // el bitmap se REUSA (mismo objeto), por eso manda la version
+            if (tt.Has && tt.Bmp != null && (tt.Ver != toastVer || toastTex == IntPtr.Zero))   // el bitmap se REUSA (mismo objeto), por eso manda la version
             { toastTex = Upload(toastTex, ref toastBw, ref toastBh, tt.Bmp, out toastU, out toastV); toastVer = tt.Ver; }
             // Barras (UI) a textura: se re-sube solo cuando cambia algun texto/estado (firma del form), limitada a
             // UNA por franja (heavyGapMs). UiUrgent: al CAMBIAR DE MODO (p.ej. cerrar el buscador) hay que rehacerla
@@ -1383,7 +1392,7 @@ namespace Rocola
             {
                 int t0 = Environment.TickCount;
                 int uv = GetUiVersion();   // puede rehacer el bitmap de la UI por dentro
-                if (uv != uiVer)
+                if (uv != uiVer || uiTex == IntPtr.Zero)
                 {
                     Bitmap ub = GetUi();
                     if (ub != null) uiTex = Upload(uiTex, ref uiBmpW, ref uiBmpH, ub, out uiU, out uiV);   // reutiliza la textura (no re-crear a pantalla completa cada vez)
@@ -1396,7 +1405,7 @@ namespace Rocola
             if (GetUiBot != null && GetUiBotVersion != null && (uiBotTex == IntPtr.Zero || uiUrgent || canHeavy))
             {
                 int bv = GetUiBotVersion();   // puede rehacer el bitmap de la tira por dentro
-                if (bv != uiBotVer)
+                if (bv != uiBotVer || uiBotTex == IntPtr.Zero)
                 {
                     Bitmap bb = GetUiBot();
                     if (bb != null) uiBotTex = Upload(uiBotTex, ref uiBotW, ref uiBotH, bb, out uiBotU, out uiBotV);
@@ -1409,10 +1418,10 @@ namespace Rocola
                 for (int i = 0; i < PiezasN && i < MaxPiezas; i++)
                 {
                     int pv = GetPiezaVersion(i);   // prepara la imagen por dentro
-                    if (pv == piezaVer[i]) continue;
+                    if (pv == piezaVer[i] && (piezaTex[i] != IntPtr.Zero || piezaW[i] == -1)) continue;
                     Bitmap pb = GetPieza(i);
                     if (pb != null) piezaTex[i] = Upload(piezaTex[i], ref piezaW[i], ref piezaH[i], pb, out piezaU[i], out piezaV[i]);
-                    else if (piezaTex[i] != IntPtr.Zero) { D3D9.Release(piezaTex[i]); piezaTex[i] = IntPtr.Zero; piezaW[i] = piezaH[i] = -1; }
+                    else { if (piezaTex[i] != IntPtr.Zero) D3D9.Release(piezaTex[i]); piezaTex[i] = IntPtr.Zero; piezaW[i] = piezaH[i] = -1; }
                     piezaVer[i] = pv;
                 }
             EnsureNieblas();               // la via lactea y las nebulosas (una vez por tamano de pantalla)
@@ -1428,7 +1437,7 @@ namespace Rocola
             stars.TrasEstrellas = trasEstrellas;
             // Dispositivo perdido (sesion bloqueada, cambio de pantalla...): sin este respiro, el bucle de
             // Application.Idle reintentaria a TODA MAQUINA y clavaria un nucleo entero hasta recuperarlo.
-            if (!stars.Begin(Width, Height, pulse, pulseCrudo)) { System.Threading.Thread.Sleep(5); return; }
+            if (!stars.Begin(Width, Height, pulse, pulseCrudo)) { System.Threading.Thread.Sleep(5); return NoPresentado(); }
             // Rejilla de discos: un quad por celda (textura ya resuelta arriba). Las celdas aun sin textura (recien
             // horneadas o sin presupuesto de subida este cuadro) se saltan y aparecen en los cuadros siguientes.
             if (ShowAlbum)
@@ -1527,10 +1536,12 @@ namespace Rocola
             if (ShowFps && fpsTex != IntPtr.Zero) { SetTexQuad(fpsQuad, Width - fpsTW - 10, 6, Width - 10, 6 + fpsTH, fpsU, fpsV); stars.DrawQuad(fpsTex, fpsQuad); }
             // El cronometro se para AQUI, justo antes de End: dentro de End esta Present, que es donde se
             // espera al monitor. Un cuadro que se pasa media vuelta esperando no costo media vuelta.
-            msTrabSuma += AhoraMs() - msTrab0; msTrabN++;
-            stars.End();
+            double trabajo = AhoraMs() - msTrab0;
+            if (!stars.End()) return NoPresentado();
+            msTrabSuma += trabajo; msTrabN++;
             frames++;
             if (Environment.TickCount - fpsTick >= 1000) { Fps = frames; frames = 0; fpsTick = Environment.TickCount; }
+            return true;
         }
 
         // Asegura (subiendo si hace falta) la textura de una celda y devuelve tex/u/v. Cachea por Key (Folder; los
@@ -1580,17 +1591,48 @@ namespace Rocola
         // Expulsa las texturas de celda mas VIEJAS (no usadas este cuadro) cuando se pasa del tope, para acotar VRAM.
         // La "edad" se calcula por RESTA (cellFrame - Frame): sobrevive el desbordamiento del contador de cuadros
         // (int a 60fps se desborda a los ~414 dias encendida; misma familia que el TickCount de las fugaces).
+        // Presupuesto de texeles ARGB (incluye redondeo POT), no una lectura de VRAM del driver.
+        // Las visibles se conservan incluso si una pagina por si sola supera el presupuesto.
+        private const long CellTexBytesCap = 32L * 1024 * 1024;
+        private static long CellBytes(CellTex ct)
+        {
+            if (ct == null || ct.Tex == IntPtr.Zero || ct.Bw < 1 || ct.Bh < 1) return 0;
+            long w = 1, h = 1;
+            while (w < ct.Bw) w <<= 1;
+            while (h < ct.Bh) h <<= 1;
+            // Dimensiones imposibles no deben desbordar el total ni desactivar la poda.
+            if (w > 0x40000000L || h > 0x40000000L) return long.MaxValue / 128;
+            return Math.Min(w * h * 4L, long.MaxValue / 128);
+        }
+        private long CachedCellBytes()
+        {
+            long bytes = 0;
+            foreach (CellTex ct in cellTexCache.Values) bytes += CellBytes(ct);
+            for (int i = 0; i < slotTex.Length; i++) bytes += CellBytes(slotTex[i]);
+            return bytes;
+        }
         private void EvictCellTex()
         {
-            while (cellTexCache.Count > CellTexCap)
+            long bytes = CachedCellBytes();
+            while (cellTexCache.Count > CellTexCap || bytes > CellTexBytesCap)
             {
-                string oldestKey = null; int oldestAge = -1;
+                string oldestKey = null; int oldestAge = 0, oldestSlot = -1;
                 foreach (KeyValuePair<string, CellTex> kv in cellTexCache)
-                { int age = cellFrame - kv.Value.Frame; if (age > oldestAge) { oldestAge = age; oldestKey = kv.Key; } }
-                if (oldestKey == null || oldestAge <= 0) break;   // no expulsar lo que se dibujo este cuadro
-                CellTex ct = cellTexCache[oldestKey];
+                { int age = unchecked(cellFrame - kv.Value.Frame); if (age > oldestAge) { oldestAge = age; oldestKey = kv.Key; } }
+                // Los slots sin carpeta tambien ocupan memoria. Solo compiten si se exceden los bytes.
+                if (bytes > CellTexBytesCap)
+                    for (int i = 0; i < slotTex.Length; i++)
+                    {
+                        CellTex st = slotTex[i]; if (st == null) continue;
+                        int age = unchecked(cellFrame - st.Frame);
+                        if (age > oldestAge) { oldestAge = age; oldestKey = null; oldestSlot = i; }
+                    }
+                if (oldestKey == null && oldestSlot < 0) break;
+                CellTex ct = oldestSlot >= 0 ? slotTex[oldestSlot] : cellTexCache[oldestKey];
+                bytes -= CellBytes(ct);
                 if (ct.Tex != IntPtr.Zero) D3D9.Release(ct.Tex);
-                cellTexCache.Remove(oldestKey);
+                if (oldestSlot >= 0) slotTex[oldestSlot] = null;
+                else cellTexCache.Remove(oldestKey);
             }
         }
 
@@ -1760,6 +1802,7 @@ namespace Rocola
         private int nebTW = -1, nebTH = -1, hazTW = -1, hazTH = -1;
         private float nebU = 1f, nebV = 1f, hazU = 1f, hazV = 1f;
         private int nieblaW = -1, nieblaH = -1;
+        private int nieblaRetryMs; private bool nieblaRetryPending;
         private readonly D3D9.Vtx[] nieblaQuad = new D3D9.Vtx[6];
         // LAS DOS NEBULOSAS. El form las pone: una con el color del GENERO y otra con el de la CARATULA
         // (ver ColoresNebulosa). NebFase es la misma cuenta lenta que las hace ir a la deriva.
@@ -1789,13 +1832,21 @@ namespace Rocola
 
         private void EnsureNieblas()
         {
-            if (nieblaW == Width && nieblaH == Height && hazTex != IntPtr.Zero) return;
+            bool nuevoTamano = nieblaW != Width || nieblaH != Height;
+            if (!nuevoTamano && hazTex != IntPtr.Zero && nebTex != IntPtr.Zero && ruidoTex != IntPtr.Zero) return;
+            int now = Environment.TickCount;
+            if (!nuevoTamano && nieblaRetryPending && unchecked(now - nieblaRetryMs) < 250) return;
             nieblaW = Width; nieblaH = Height;
             int mw = Math.Max(8, Width / 4), mh = Math.Max(8, Height / 4);
-            using (Bitmap hz = GpuStarfield.BakeViaLactea(mw, mh)) hazTex = Upload(hazTex, ref hazTW, ref hazTH, hz, out hazU, out hazV);
-            using (Bitmap nb = GpuStarfield.BakeNebulosas(mw, mh)) nebTex = Upload(nebTex, ref nebTW, ref nebTH, nb, out nebU, out nebV);
+            // Un fallo parcial solo reintenta la capa pendiente; no vuelve a hornear las que ya llegaron.
+            if (nuevoTamano || hazTex == IntPtr.Zero)
+                using (Bitmap hz = GpuStarfield.BakeViaLactea(mw, mh)) hazTex = Upload(hazTex, ref hazTW, ref hazTH, hz, out hazU, out hazV);
+            if (nuevoTamano || nebTex == IntPtr.Zero)
+                using (Bitmap nb = GpuStarfield.BakeNebulosas(mw, mh)) nebTex = Upload(nebTex, ref nebTW, ref nebTH, nb, out nebU, out nebV);
             if (ruidoTex == IntPtr.Zero)
                 using (Bitmap rd = Form1.BakeRuidoGrande(RuidoTeja)) ruidoTex = Upload(ruidoTex, ref ruTW, ref ruTH, rd, out ruU, out ruV);
+            nieblaRetryPending = hazTex == IntPtr.Zero || nebTex == IntPtr.Zero || ruidoTex == IntPtr.Zero;
+            nieblaRetryMs = Environment.TickCount;   // un fallo persistente no rehornea las capas en cada cuadro
         }
 
         // EL GRANO QUE DESHACE LAS FRANJAS DEL CIELO. El por que esta en Form1, junto al dibujito: el cielo
@@ -2466,7 +2517,7 @@ namespace Rocola
         // con el bucle de mensajes parado, asi que esperar a que el bucle de siempre (Application.Idle) dibuje
         // seria esperar sentado. Es el MISMO cuadro que dibuja la rocola encendida, por el mismo camino: si
         // aqui se midiera otra cosa, la medida no valdria para nada.
-        public void DibujaUnCuadro() { RenderFrame(); }
+        public bool DibujaUnCuadro() { return RenderFrame(); }
         protected override void OnPaintBackground(PaintEventArgs e) { }        // no borra (D3D9 es dueño de los pixeles)
 
         protected override void Dispose(bool disposing)

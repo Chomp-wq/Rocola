@@ -488,10 +488,17 @@ namespace Rocola
             return true;
         }
 
-        public void EndFrame()
+        // DEVUELVE SI EL CUADRO SE ENSENO DE VERDAD, igual que el dispositivo de Windows. El contador de
+        // cuadros por segundo y el promedio de lo que cuesta armar uno solo cuentan los que se ensenaron:
+        // uno que se quedo por el camino no es un cuadro, y contarlo estropea las dos medidas.
+        //
+        // Aqui no hay tanto que mirar como en Direct3D -que avisa cuando pierde el dispositivo-: OpenGL no
+        // contesta nada al cambiar el cuadro. Asi que se dice la verdad que se puede saber: hubo pantalla
+        // donde dibujar y el cambio no se quejo.
+        public bool EndFrame()
         {
-            if (ctx == IntPtr.Zero) return;
-            try { D3D9.glXSwapBuffers(dpy, win); } catch { }
+            if (ctx == IntPtr.Zero) return false;
+            try { D3D9.glXSwapBuffers(dpy, win); return true; } catch { return false; }
         }
 
         // ---------------- LOS DIBUJADOS ----------------

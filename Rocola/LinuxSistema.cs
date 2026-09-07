@@ -256,11 +256,40 @@ namespace Rocola
         // entrar enseguida. El ritmo de los cuadros no se resiente porque el bucle apunta la hora del
         // proximo cuadro en absoluto, no "dentro de tanto".
         [DllImport("libX11.so.6")] private static extern int XPending(IntPtr dpy);
+        [DllImport("libX11.so.6")] private static extern int XConnectionNumber(IntPtr dpy);
         private const double RebanadaMs = 8.0;            // lo que como mucho se esta dentro del bucle sin soltar
         private static readonly System.Diagnostics.Stopwatch relojRebanada = System.Diagnostics.Stopwatch.StartNew();
         private static double finRebanada = -1;
         private static IntPtr pantallaX11 = IntPtr.Zero;
         private static bool pantallaBuscada;
+
+        // La conexion con la pantalla, buscada UNA vez. La piden las dos de aqui abajo -si hay algo que
+        // atender, y la espera que se despierta sola-, asi que se busca en un solo sitio.
+        private static IntPtr PantallaX11()
+        {
+            if (pantallaBuscada) return pantallaX11;
+            pantallaBuscada = true;
+            try
+            {
+                System.Reflection.Assembly swf = typeof(System.Windows.Forms.Control).Assembly;
+                Type tx = swf.GetType("System.Windows.Forms.XplatUIX11");
+                if (tx != null)
+                {
+                    System.Reflection.BindingFlags bf = System.Reflection.BindingFlags.Static
+                                                      | System.Reflection.BindingFlags.Public
+                                                      | System.Reflection.BindingFlags.NonPublic;
+                    System.Reflection.PropertyInfo pr = tx.GetProperty("DisplayHandle", bf);
+                    if (pr != null) { try { pantallaX11 = (IntPtr)pr.GetValue(null, null); } catch { } }
+                    if (pantallaX11 == IntPtr.Zero)
+                    {
+                        System.Reflection.FieldInfo f = tx.GetField("DisplayHandle", bf);
+                        if (f != null) { try { pantallaX11 = (IntPtr)f.GetValue(null); } catch { } }
+                    }
+                }
+            }
+            catch { }
+            return pantallaX11;
+        }
 
         public static bool SinNadaQueAtender()
         {
@@ -268,27 +297,9 @@ namespace Rocola
             if (finRebanada < 0 || ahora >= finRebanada) { finRebanada = ahora + RebanadaMs; return false; }
             try
             {
-                if (!pantallaBuscada)
-                {
-                    pantallaBuscada = true;
-                    System.Reflection.Assembly swf = typeof(System.Windows.Forms.Control).Assembly;
-                    Type tx = swf.GetType("System.Windows.Forms.XplatUIX11");
-                    if (tx != null)
-                    {
-                        System.Reflection.BindingFlags bf = System.Reflection.BindingFlags.Static
-                                                          | System.Reflection.BindingFlags.Public
-                                                          | System.Reflection.BindingFlags.NonPublic;
-                        System.Reflection.PropertyInfo pr = tx.GetProperty("DisplayHandle", bf);
-                        if (pr != null) { try { pantallaX11 = (IntPtr)pr.GetValue(null, null); } catch { } }
-                        if (pantallaX11 == IntPtr.Zero)
-                        {
-                            System.Reflection.FieldInfo f = tx.GetField("DisplayHandle", bf);
-                            if (f != null) { try { pantallaX11 = (IntPtr)f.GetValue(null); } catch { } }
-                        }
-                    }
-                }
-                if (pantallaX11 == IntPtr.Zero) return true;   // sin pantalla no hay nada que atender
-                return XPending(pantallaX11) == 0;
+                IntPtr dpy = PantallaX11();
+                if (dpy == IntPtr.Zero) return true;   // sin pantalla no hay nada que atender
+                return XPending(dpy) == 0;
             }
             catch { return true; }
         }
@@ -483,6 +494,49 @@ namespace Rocola
             List<string> puntos, mentira;
             LaTabla(out puntos, out mentira);
             return EsCarpetaDelSistema(ruta, mentira);
+        }
+
+        // ---------- esperar un poco, PERO SALIR EN CUANTO LLEGUE ALGO ----------
+        //
+        // El bucle del fondo apunta la hora del proximo cuadro y, si va adelantado, espera. Dormir a secas
+        // ese rato seria lo facil y esta mal: una tecla o un boton de la botonera que llegan justo despues
+        // de empezar a dormir se quedarian esperando hasta que se acabe la siesta, y eso se nota al tocar.
+        //
+        // En Windows esto lo hace MsgWaitForMultipleObjectsEx: duerme, pero se despierta si llega algo.
+        // Aqui se hace lo mismo con la conexion a la pantalla: se le pregunta al sistema por ESE conducto
+        // con un plazo, y si llega cualquier cosa por el, contesta antes de que se cumpla. Es lo que hace
+        // cualquier programa de X11, con la funcion del sistema de toda la vida (poll).
+        //
+        // Y ANTES DE DORMIR SE MIRA LO QUE YA HAY. Xlib se adelanta y se trae los sucesos a su propia cola,
+        // asi que puede haber una tecla esperando SIN que quede nada en el conducto: dormirse ahi seria
+        // dormirse justo encima de lo que se estaba esperando. Es la misma cautela que en Windows.
+        [StructLayout(LayoutKind.Sequential)] private struct Conducto { public int fd; public short pide; public short trae; }
+        [DllImport("libc", SetLastError = true)] private static extern int poll(ref Conducto fds, uint cuantos, int plazoMs);
+        private const short HayLectura = 0x001;   // POLLIN
+
+        public static bool EsperaMensajes(int ms)
+        {
+            // El mismo acote que en Windows: como poco un milisegundo -para soltar el procesador- y como
+            // mucho ocho, que es lo que se puede estar sin atender los temporizadores de la rocola.
+            if (ms < 1) ms = 1; else if (ms > 8) ms = 8;
+            try
+            {
+                IntPtr dpy = PantallaX11();
+                if (dpy != IntPtr.Zero)
+                {
+                    if (XPending(dpy) != 0) return true;       // ya habia algo: ni se duerme
+                    Conducto c = new Conducto();
+                    c.fd = XConnectionNumber(dpy); c.pide = HayLectura;
+                    if (c.fd >= 0)
+                    {
+                        int r = poll(ref c, 1, ms);
+                        if (r >= 0) return r > 0;              // >0 = llego algo; 0 = se cumplio el plazo
+                    }
+                }
+            }
+            catch { }
+            System.Threading.Thread.Sleep(1);   // sin pantalla o si algo fallo: al menos se suelta el procesador
+            return false;
         }
 
         // Tira lo guardado para que la proxima consulta vuelva a mirar que discos hay. Se llama al rearmar
