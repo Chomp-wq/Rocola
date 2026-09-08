@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Runtime.Serialization;
+using System.Text;
 
 // DE QUE GENERO ES UNA CANCION QUE NO TRAE GENERO.
 //
@@ -66,6 +67,70 @@ class Etiqueta
     static IDictionary ArtTag() { return (IDictionary)Campo("artistTag"); }
     static IDictionary SongGen() { return (IDictionary)Campo("songGenre"); }
 
+    static byte[] Une(params byte[][] partes)
+    {
+        int n = 0; for (int i = 0; i < partes.Length; i++) n += partes[i].Length;
+        byte[] r = new byte[n]; int p = 0;
+        for (int i = 0; i < partes.Length; i++) { Array.Copy(partes[i], 0, r, p, partes[i].Length); p += partes[i].Length; }
+        return r;
+    }
+    static byte[] SyncSafe(int n)
+    { return new byte[] { (byte)((n >> 21) & 127), (byte)((n >> 14) & 127), (byte)((n >> 7) & 127), (byte)(n & 127) }; }
+    static byte[] Grande(int n)
+    { return new byte[] { (byte)(n >> 24), (byte)(n >> 16), (byte)(n >> 8), (byte)n }; }
+    static byte[] Unsync(byte[] b)
+    {
+        List<byte> r = new List<byte>(b.Length + 8);
+        for (int i = 0; i < b.Length; i++)
+        {
+            r.Add(b[i]);
+            if (b[i] == 0xff && i + 1 < b.Length && (b[i + 1] == 0x00 || b[i + 1] >= 0xe0)) r.Add(0x00);
+        }
+        return r.ToArray();
+    }
+    static byte[] Marco(int major, string id, byte[] cuerpo, byte formato)
+    {
+        byte[] h = new byte[10];
+        Array.Copy(Encoding.ASCII.GetBytes(id), 0, h, 0, 4);
+        byte[] tam = major >= 4 ? SyncSafe(cuerpo.Length) : Grande(cuerpo.Length);
+        Array.Copy(tam, 0, h, 4, 4); h[9] = formato;
+        return Une(h, cuerpo);
+    }
+    static void EscribeId3Complejo(string ruta, int major)
+    {
+        byte[] titulo = Une(new byte[] { 0 }, Encoding.GetEncoding(28591).GetBytes("Titulo \u00ff\u00e0 final"));
+        byte[] genero = Une(new byte[] { 0 }, Encoding.ASCII.GetBytes("Rock"));
+        byte[] extendida = major >= 4
+            ? new byte[] { 0, 0, 0, 6, 1, 0 }       // v2.4: el tamano INCLUYE estos cuatro bytes
+            : new byte[] { 0, 0, 0, 6, 0, 0, 0, 0, 0, 0 }; // v2.3: el tamano NO los incluye
+        byte[] cuerpo;
+        byte flags;
+        if (major >= 4)
+        {
+            byte[] tituloGuardado = Unsync(titulo);
+            cuerpo = Une(extendida, Marco(major, "TIT2", tituloGuardado, 0x02), Marco(major, "TCON", genero, 0));
+            flags = 0x40;                            // cabecera extendida; el TIT2 lleva su propia unsync
+        }
+        else
+        {
+            byte[] limpio = Une(extendida, Marco(major, "TIT2", titulo, 0), Marco(major, "TCON", genero, 0));
+            cuerpo = Unsync(limpio);                 // v2.3 des-sincroniza el cuerpo ENTERO
+            flags = 0xc0;                            // unsync + cabecera extendida
+        }
+        byte[] cab = new byte[10]; cab[0] = (byte)'I'; cab[1] = (byte)'D'; cab[2] = (byte)'3';
+        cab[3] = (byte)major; cab[5] = flags; Array.Copy(SyncSafe(cuerpo.Length), 0, cab, 6, 4);
+        File.WriteAllBytes(ruta, Une(cab, cuerpo, new byte[160]));
+    }
+
+    static object LeeTrack(string ruta)
+    {
+        object t = FormatterServices.GetUninitializedObject(TTrack);
+        TTrack.GetField("Path").SetValue(t, ruta);
+        foreach (string n in new string[] { "Title", "Artist", "Album", "Genre" }) TTrack.GetField(n).SetValue(t, "");
+        TTrack.GetMethod("EnsureTags").Invoke(t, null);
+        return t;
+    }
+
     static int Main(string[] argv)
     {
         string exe = (argv.Length > 0) ? argv[0] : "rocola.exe";
@@ -88,6 +153,27 @@ class Etiqueta
         foreach (string n in new string[] { "discTag", "artistTag", "nombreTag", "songGenre" })
             TF.GetField(n, BindingFlags.Instance | BindingFlags.NonPublic)
               .SetValue(F, Activator.CreateInstance(typeof(Dictionary<string, string>), new object[] { StringComparer.OrdinalIgnoreCase }));
+
+        Console.WriteLine("\n  0) ID3 2.3 Y 2.4: CABECERA EXTENDIDA Y DES-SINCRONIZACION\n");
+        MethodInfo mSolo = TTrack.GetMethod("SoloGenero", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+        Check(mSolo != null && TTrack.GetMethod("EnsureTags") != null, "estan los dos lectores de etiquetas: completo y genero rapido");
+        string dirId3 = Path.Combine(Path.GetTempPath(), "rocola_id3_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dirId3);
+        try
+        {
+            foreach (int major in new int[] { 3, 4 })
+            {
+                string mp3 = Path.Combine(dirId3, "id3v2" + major + ".mp3");
+                EscribeId3Complejo(mp3, major);
+                string rapido = (string)mSolo.Invoke(null, new object[] { mp3 });
+                object completo = LeeTrack(mp3);
+                string tit = (string)TTrack.GetField("Title").GetValue(completo);
+                string gen = (string)TTrack.GetField("Genre").GetValue(completo);
+                Check(rapido == "Rock" && gen == "Rock", "ID3v2." + major + " encuentra TCON despues de la cabecera extendida");
+                Check(tit == "Titulo \u00ff\u00e0 final", "ID3v2." + major + " revierte la des-sincronizacion sin correr los marcos");
+            }
+        }
+        finally { try { Directory.Delete(dirId3, true); } catch { } }
 
         string raiz = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "etiqprueba");
         string carpBep = System.IO.Path.Combine(raiz, "Black Eyed Peas - The END");

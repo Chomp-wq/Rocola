@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 using NAudio.Wave;
 
@@ -72,6 +73,53 @@ class Limite
         return sal;
     }
 
+    static float[] LeeTodo(ISampleProvider p, int tope)
+    {
+        List<float> todo = new List<float>();
+        float[] buf = new float[514];   // numero pequeno y par: obliga a vaciar la cola en varias lecturas
+        int n;
+        while ((n = p.Read(buf, 0, buf.Length)) > 0)
+        {
+            for (int i = 0; i < n; i++) todo.Add(buf[i]);
+            if (todo.Count > tope) break;
+        }
+        return todo.ToArray();
+    }
+
+    static void PruebaCola(Type tipo, bool esLimitador)
+    {
+        const int cuadros = 257;
+        float[] d = new float[cuadros * CH];
+        for (int f = 0; f < cuadros; f++)
+        {
+            d[f * CH] = (f + 1) / 4000f;
+            d[f * CH + 1] = -(f + 1) / 5000f;
+        }
+        object o = esLimitador
+            ? Crea(tipo, new Fuente3(d, FS, CH), 0.98f, 3.0)
+            : Crea(tipo, new Fuente3(d, FS, CH));
+        ISampleProvider p = o as ISampleProvider;
+        PropertyInfo pd = (tipo != null) ? tipo.GetProperty("DelayFrames") : null;
+        Check(p != null && pd != null, tipo != null ? tipo.Name + " declara cuanto retarda" : "existe el proveedor con retardo");
+        if (p == null || pd == null) return;
+        int retardo = (int)pd.GetValue(o, null);
+        float[] sal = LeeTodo(p, d.Length + retardo * CH + 1024);
+        Check(sal.Length == d.Length + retardo * CH,
+              tipo.Name + " devuelve tambien las " + retardo + " muestras que quedaban en su colchon");
+        bool ceros = sal.Length >= retardo * CH;
+        for (int i = 0; ceros && i < retardo * CH; i++) if (sal[i] != 0f) ceros = false;
+        Check(ceros, tipo.Name + " conserva su retardo inicial");
+        bool entero = sal.Length == d.Length + retardo * CH;
+        for (int i = 0; entero && i < d.Length; i++) if (sal[retardo * CH + i] != d[i]) entero = false;
+        Check(entero, tipo.Name + " no corta ni cambia el final de una senal que no necesita reparacion");
+
+        object vacio = esLimitador
+            ? Crea(tipo, new Fuente3(new float[0], FS, CH), 0.98f, 3.0)
+            : Crea(tipo, new Fuente3(new float[0], FS, CH));
+        float[] nada = LeeTodo((ISampleProvider)vacio, retardo * CH + 16);
+        Check(nada.Length == 0, tipo.Name + " no inventa una cola para una fuente vacia");
+    }
+
     // Cuanta energia hay FUERA del tono que se metio. Se compara la energia del tono (por correlacion con
     // un seno y un coseno de esa frecuencia) contra la energia total: lo que sobra es lo que el limitador
     // ha anadido, o sea distorsion.
@@ -99,9 +147,14 @@ class Limite
         Assembly asm = Assembly.LoadFrom(exe);
         Type TF = asm.GetType("Rocola.Form1", true);
         Type TLim = TF.GetNestedType("LookaheadLimiter", BindingFlags.NonPublic | BindingFlags.Public);
+        Type TDec = TF.GetNestedType("DeclipProvider", BindingFlags.NonPublic | BindingFlags.Public);
         Check(TLim != null, "el limitador esta donde tiene que estar");
-        if (TLim == null) return 1;
+        Check(TDec != null, "el reparador de recortes esta donde tiene que estar");
+        if (TLim == null || TDec == null) return 1;
 
+        Console.WriteLine("\n  0) AL TERMINAR, LOS COLCHONES SE VACIAN COMPLETOS\n");
+        PruebaCola(TDec, false);
+        PruebaCola(TLim, true);
 
         // 1) TONO SOSTENIDO POR ENCIMA DEL TECHO. Con un tono fijo el limitador se asienta en una ganancia
         //    constante y la salida deberia ser el MISMO tono, mas bajito y limpio. Si en vez de bajar la

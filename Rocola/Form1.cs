@@ -106,6 +106,7 @@ namespace Rocola
         // los graves (bombo), las medianas con medios/agudos. Cada trozo lleva el rms de las 3 bandas + su marca de tiempo.
         private struct Lvl { public int At; public float Lo, Mid, Hi; public float[] Esp; public Lvl(int at, float lo, float mid, float hi, float[] esp) { At = at; Lo = lo; Mid = mid; Hi = hi; Esp = esp; } }
         private readonly Queue<Lvl> levelQ = new Queue<Lvl>();
+        private Stack<float[]> levelBuffers;   // acceso solo bajo levelLock; hasta 96 espectros libres
         private int audioVisualDelayMs = 850;          // colchon REAL de la salida: ~850ms con WaveOut (5x200ms); ~240ms con WASAPI (300ms) - se fija al crear la salida
         private float fLp1, fLp2;                      // estado de los filtros paso-bajo (hilo de audio) que separan las bandas
         private float rmsLo, rmsMid, rmsHi;            // rms retrasado por banda (lo que se oye AHORA)
@@ -206,17 +207,17 @@ namespace Rocola
         // aprende en esa pasada y ya queda pareja para siempre. Se puede apagar con normalizar=0 en rocola_config.txt.
         private bool normalizeOn = true;                                                     // nivelado activo (por defecto si)
         private string backupDir = null;                                                     // 2o destino del respaldo (idealmente OTRO disco); "respaldo_dir=" en config
-        private readonly Dictionary<string, float> loudCache = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);   // ruta -> RMS integrado medido
+        private Dictionary<string, float> loudCache = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);   // ruta -> RMS integrado medido
         // DURACION de cada cancion (segundos). La calcula el PRE-ANALISIS junto con la sonoridad y se guarda en
         // el mismo archivo. Ademas de mostrarse en la lista, sirve de marca de "ya pre-analizada": esas canciones
         // ya tienen una medida COMPLETA y fiable, asi que sonar la cancion no vuelve a tocar su volumen medido.
-        private readonly Dictionary<string, float> durCache = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);     // ruta -> duracion en segundos
+        private Dictionary<string, float> durCache = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);     // ruta -> duracion en segundos
         // DURACION RAPIDA. Sacar SOLO la duracion de un archivo cuesta ~600 veces menos que el analisis
         // completo: es leer la cabecera, no descomprimir el audio. Antes la duracion venia "de regalo" con ese
         // analisis pesado, asi que con cien mil canciones practicamente ninguna la mostraba (el analisis tarda
         // dias). Ahora va en su PROPIA pasada, que barre la biblioteca entera en minutos. Cuando el analisis
         // completo mide una cancion, SU duracion (del archivo entero) manda sobre esta.
-        private readonly Dictionary<string, float> durFast = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
+        private Dictionary<string, float> durFast = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
         private readonly List<string> durFastPend = new List<string>();   // lineas apuntadas y aun sin escribir
         private readonly object durFastLock = new object();
         private System.Threading.Thread durScanTh;
@@ -241,12 +242,12 @@ namespace Rocola
         // (192 cuadros), 2 = el repaso A FONDO (12 veces mas). Se guarda el nivel, no un simple "ya esta",
         // porque los dos modos ACUMULAN: lo que junto el modo automatico se queda, y el repaso a fondo le
         // anade el resto. Dentro del MISMO nivel una cancion aporta una sola vez, para no sesgar hacia ella.
-        private readonly Dictionary<string, int> iaDone = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        private Dictionary<string, int> iaDone = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         // Canciones que YA recibieron el repaso A FONDO (cancion completa). Se guarda en disco para que el
         // entrenamiento a fondo CONTINUE donde iba al detenerlo y volverlo a encender, al cerrar la rocola o
         // si se va la luz. Sin esto, cada arranque volvia a empezar por la primera cancion de la biblioteca y
         // con una biblioteca grande el repaso no terminaba nunca.
-        private readonly HashSet<string> deepDone = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        private HashSet<string> deepDone = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private string curMeasurePath = null;                                                // cancion que se esta MIDIENDO ahora (null = no medir)
         private LevelTap curTap;                                                              // tap de la cancion actual (para cambiarle la ganancia en vivo desde Ctrl+F3)
         private double curSumSq = 0; private long curSamples = 0;                             // acumuladores del RMS integrado de la cancion actual (los llena el hilo de audio)
@@ -305,7 +306,7 @@ namespace Rocola
         //       80 Hz necesita mas ayuda del bajo psicoacustico que una que baja a 30.
         // 0 = todavia no se sabe. Ninguno cuesta un analisis aparte: salen del recorrido que ya se hacia.
         private const int EqLen = 11, EqCut = 8, EqClip = 9, EqCutLo = 10;
-        private readonly Dictionary<string, float[]> eqCache = new Dictionary<string, float[]>(StringComparer.OrdinalIgnoreCase);
+        private Dictionary<string, float[]> eqCache = new Dictionary<string, float[]>(StringComparer.OrdinalIgnoreCase);
         private float[] eqAvg = null;              // curva PROMEDIO de la biblioteca (el objetivo); null hasta tener 10 canciones medidas
         private float eqAmount = 0f;               // fuerza del EQ automatico 0..1 A MANO (perilla en Ctrl+F3; "eq_auto=" en config); 0 = apagado
         // AUTOMATICO (de fabrica): no hay perilla que ajustar. La fuerza del EQ y la cantidad de bajo las
@@ -514,7 +515,7 @@ namespace Rocola
         private const long NormMinSamples = 800000;                                           // ~9s en estereo 44.1k: minimo para aceptar una medida (si se salta antes, no se guarda)
         // ARCHIVOS INCOMPATIBLES: canciones que NO se pudieron reproducir ni con el lector tolerante (p.ej. MP3
         // demasiado dañados). Se anotan (una vez) en rocola_incompatibles.txt para poder repararlas/reconvertirlas.
-        private readonly HashSet<string> incompatibleLogged = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        private HashSet<string> incompatibleLogged = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         // ----- PAGINAS de canciones (vista de disco): la lista muestra solo la pagina actual -----
         private SongPagerBar songPager;                        // barra "pagina X de Y" con flechas, arriba de la lista
         private List<object> songItems = new List<object>();   // TODAS las canciones/videos del disco abierto
@@ -614,8 +615,10 @@ namespace Rocola
         private List<Album> videoAlbums = new List<Album>();   // discos que tienen archivo(s) de video
         private Dictionary<char, List<Album>> byLetter = new Dictionary<char, List<Album>>();
         private readonly Dictionary<string, Image> coverCache = new Dictionary<string, Image>();
-        private readonly Queue<string> coverOrder = new Queue<string>();   // orden de llegada (para acotar memoria)
-        private readonly HashSet<string> coverLoading = new HashSet<string>();
+        private readonly LinkedList<string> coverOrder = new LinkedList<string>();   // menos usada al principio
+        private readonly Dictionary<string, LinkedListNode<string>> coverNodes = new Dictionary<string, LinkedListNode<string>>();
+        private readonly Dictionary<string, CoverJob> coverLoading = new Dictionary<string, CoverJob>();
+        private readonly Dictionary<string, int> coverRetryUntil = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         private readonly List<Image> coverTrash = new List<Image>();   // expulsadas, a liberar de forma segura (en el timer)
         private volatile int coverGen = 0;     // sube al cambiar de pagina; descarta cargas de paginas viejas
         private bool coversOnHold = false;     // true mientras se hojea rapido: NO se piden caratulas
@@ -1071,7 +1074,7 @@ namespace Rocola
         // Lo que casa con cada letra SUELTA, ya puntuado. Ver RecomputeResults: la primera letra es la unica
         // que obliga a puntuar el indice entero, y para una letra el resultado no cambia mientras no cambie
         // la musica. Se vacia al rearmar la biblioteca.
-        private sealed class BolsaLetra { public List<SearchItem> Lista; public int[] Puntos; }
+        private sealed class BolsaLetra { public List<SearchItem> Lista; public int[] Puntos; public List<SearchItem> Mejores; }
         private readonly Dictionary<char, BolsaLetra> bolsaLetra = new Dictionary<char, BolsaLetra>();
         private int credits = 0;                              // creditos disponibles (cada cosa cuesta 1)
         private const int CreditsPerCoin = 4;                 // monedas -> creditos
@@ -1126,6 +1129,8 @@ namespace Rocola
         // caratula, que son de donde salen; y los dos colores ya hechos, que se deslizan de una cancion a la
         // siguiente igual que el acento, para que al cambiar de disco no den un salto.
         private Color bgGeneroTarget = DefaultAccent;
+        private bool bgSinGenero;   // ausencia tras consultar cancion, disco, artista y carpeta
+        private bool bgArtistaFijo;  // BTS conserva su morado cuando hay genero reconocido
         private Color bgPort1 = SinColor, bgPort2 = SinColor;
         private Color nebA = DefaultAccent, nebB = DefaultAccent;
         private float nebFase = 0f;
@@ -1152,6 +1157,124 @@ namespace Rocola
         private DateTime lastInput = DateTime.Now; // ultima tecla (para detectar inactividad)
         private Label lblAttract;                  // aviso amarillo pulsante "toca una tecla"
 
+        // Datos preparados sin tocar el formulario. Se publican juntos en OnShown, antes
+        // de abrir la biblioteca; mientras BuildUi/modelos/config trabajan, este hilo lee y parsea.
+        private sealed class StartupData
+        {
+            public readonly Dictionary<string, float> Loud = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
+            public readonly Dictionary<string, float> Dur = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
+            public readonly Dictionary<string, float> Fast = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
+            public readonly Dictionary<string, float[]> Eq = new Dictionary<string, float[]>(StringComparer.OrdinalIgnoreCase);
+            public readonly Dictionary<string, int> Ia = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            public readonly HashSet<string> Deep = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            public readonly HashSet<string> Incompatible = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            public int EqVersion, Healthy;
+            public float[] Average;
+            public bool OnlyHealthy;
+        }
+
+        private sealed class StartupLoad
+        {
+            public string[] Paths;
+            public volatile bool Cancelled;
+            public bool Done;
+            public StartupData Data;
+        }
+        private StartupLoad startupLoad;
+        private bool startupReadPending;   // evita guardar tablas vacias si se cierra antes de publicarlas
+        private bool startupClosing;
+
+        private static StartupData ReadStartupData(StartupLoad load)
+        {
+            if (load.Cancelled) return null;
+            StartupData data = new StartupData();
+            ReadLoudCache(load.Paths[0], data.Loud, data.Dur);
+            if (load.Cancelled) return null;
+            ReadEqCache(load.Paths[1], data.Eq, ref data.EqVersion);
+            ComputeEqAverage(data.Eq, ref data.Average, ref data.Healthy, ref data.OnlyHealthy);
+            if (load.Cancelled) return null;
+            ReadIaDone(load.Paths[2], data.Ia);
+            if (load.Cancelled) return null;
+            // Aceptar marcas solo contra las medidas de ESTA instantanea.
+            ReadDeepDone(load.Paths[3], data.Deep, data.Loud, data.Dur, data.Eq);
+            if (load.Cancelled) return null;
+            ReadDurFast(load.Paths[4], data.Fast);
+            if (load.Cancelled) return null;
+            ReadIncompatible(load.Paths[5], data.Incompatible);
+            return load.Cancelled ? null : data;
+        }
+
+        private static StartupLoad CreateStartupLoad(string[] paths)
+        {
+            StartupLoad load = new StartupLoad(); load.Paths = (string[])paths.Clone();
+            System.Threading.Thread worker = new System.Threading.Thread(delegate()
+            {
+                StartupData data = null;
+                try { data = ReadStartupData(load); } catch { }   // fallback de lectura en el hilo original
+                finally
+                {
+                    lock (load)
+                    {
+                        load.Data = load.Cancelled ? null : data;
+                        load.Done = true;
+                        System.Threading.Monitor.PulseAll(load);
+                    }
+                }
+            });
+            worker.IsBackground = true;
+            worker.Priority = System.Threading.ThreadPriority.BelowNormal;
+            worker.Start();
+            return load;
+        }
+
+        private void BeginStartupDataLoad()
+        {
+            startupReadPending = true;
+            try
+            {
+                startupLoad = CreateStartupLoad(new string[] { LoudFile(), EqFile(), IaDoneFile(),
+                    DeepDoneFile(), DurFastFile(), RutaDatos("rocola_incompatibles.txt") });
+            }
+            catch { startupLoad = null; }   // no cambia el arranque si no se pudo crear el trabajador
+        }
+
+        private bool CompleteStartupDataLoad()
+        {
+            StartupLoad load = startupLoad;
+            if (load == null || startupClosing) return false;
+            StartupData data;
+            lock (load)
+            {
+                // Barrera deliberada: OnShown no devuelve el control antes de tener las tablas.
+                // Solapa la preparacion, pero no adelanta entrada de monedas ni restauracion.
+                while (!load.Done && !load.Cancelled) System.Threading.Monitor.Wait(load);
+                data = load.Cancelled ? null : load.Data;
+                load.Data = null;
+            }
+            startupLoad = null;
+            if (data == null || startupClosing) return false;
+            // Solo el hilo UI publica referencias. No hay Merge ni copia de cientos de miles de filas.
+            loudCache = data.Loud; durCache = data.Dur; durFast = data.Fast; eqCache = data.Eq;
+            iaDone = data.Ia; deepDone = data.Deep; incompatibleLogged = data.Incompatible;
+            eqCacheVer = data.EqVersion; eqAvg = data.Average;
+            eqAvgSanas = data.Healthy; eqAvgSoloSanas = data.OnlyHealthy;
+            RememberEqAverage();
+            startupReadPending = false;
+            return true;
+        }
+
+        private void CancelStartupDataLoad()
+        {
+            startupClosing = true;
+            StartupLoad load = startupLoad; startupLoad = null;
+            if (load == null) return;
+            lock (load)
+            {
+                load.Cancelled = true; load.Data = null;
+                System.Threading.Monitor.PulseAll(load);
+            }
+        }
+
         public Form1()
         {
             this.DoubleBuffered = true;
@@ -1160,7 +1283,8 @@ namespace Rocola
             try { int wt, ct; System.Threading.ThreadPool.GetMinThreads(out wt, out ct); System.Threading.ThreadPool.SetMinThreads(Math.Max(wt, 3), ct); } catch { }  // arranque de cargas mas agil
             this.KeyPreview = true;                 // el formulario ve KeyPress aunque otro control tenga el foco
             this.KeyPress += Form_KeyPress;         // admite TODO caracter en el buscador (ñ, acentos, comillas...)
-            BuildUi();
+            BeginStartupDataLoad();
+            try { BuildUi(); } catch { CancelStartupDataLoad(); throw; }
             needConfig = !LoadKeys();   // si no hay botones guardados, lanzamos el asistente al mostrarse
             progressTimer = new System.Windows.Forms.Timer(); progressTimer.Interval = 500; progressTimer.Tick += ProgressTimer_Tick;
             coverSettleTimer = new System.Windows.Forms.Timer(); coverSettleTimer.Interval = 120; coverSettleTimer.Tick += CoverSettle_Tick;   // 0.12s: con SSD, casi inmediato pero sigue filtrando el hojeo
@@ -1177,6 +1301,11 @@ namespace Rocola
         protected override void OnFormClosed(FormClosedEventArgs e)
         {
             try { if (statsDirty) { statsDirty = false; SaveStats(false); } } catch { }   // guardar estadisticas pendientes
+            // ANTES DE IRSE, ESPERAR A LOS GUARDADOS. La rocola escribe en segundo plano para no parar
+            // la musica, y un hilo de fondo NO mantiene vivo el proceso: sin esta barrera la ultima medida
+            // podia quedarse a medio camino justo al apagar. (El "timeEndPeriod" que hay aqui en Windows no
+            // viene: la resolucion del reloj no se toca en Linux.)
+            EsperaGuardados();
             base.OnFormClosed(e);
         }
 
@@ -1185,6 +1314,7 @@ namespace Rocola
         protected override void OnShown(EventArgs e)
         {
             base.OnShown(e);
+            if (startupClosing || IsDisposed) return;
             LoadStats();   // estadisticas guardadas de sesiones anteriores (base de "Lo mas sonado")
             ProbeAudioTier();    // requisitos de maquina para el NIVEL 2 de audio (antes de leer dsee= de config)
             NeuralEnv.TryLoad(RutaLectura("rocola_ia.bin"));   // IA propia (el modelo entrenado: en la carpeta de datos, o el de fabrica)
@@ -1195,13 +1325,15 @@ namespace Rocola
             // "cola_portadas=0" todavia no se sabe. Y manda en el ANCHO de la capsula, que se mide luego.
             if (pastCola != null) pastCola.ConPortadas = colaPortadasOn;
             if (iaVivo) IaEnsureMotor();   // IA en vivo encendida -> arranca el motor OCULTO (sin terminal que cuidar)
-            LoadLoudCache();     // sonoridad medida por cancion (para nivelar el volumen de todas)
-            LoadEqCache();       // huella tonal medida por cancion (para el EQ automatico)
+            bool prepared = CompleteStartupDataLoad();
+            if (!prepared) LoadLoudCache();   // fallback si fallo el trabajador
+            if (!prepared) LoadEqCache();
             IaCountPairs();      // cuanto material de entrenamiento de la IA llevamos juntado
-            LoadIaDone();        // de que canciones ya se saco material (no repetirlas en los repasos a fondo)
-            LoadDeepDone();      // que canciones ya recibieron el repaso a fondo (para continuar donde iba)
-            LoadDurFast();       // duraciones ya barridas (para mostrarlas desde el primer momento)
-            LoadIncompatible();  // rutas ya anotadas como no reproducibles (para no repetirlas)
+            if (!prepared) LoadIaDone();
+            if (!prepared) LoadDeepDone();
+            if (!prepared) LoadDurFast();
+            if (!prepared) LoadIncompatible();
+            startupReadPending = false;
             BackupLearnedData(); // respalda lo aprendido de la sesion ANTERIOR antes de que esta lo modifique
             AjustaAPantallaCompleta();   // sin gestor de ventanas, "maximizado" no lo hace nadie (ver el metodo)
             LayoutControls();
@@ -1244,8 +1376,26 @@ namespace Rocola
         // foco pedido por codigo- hasta el punto de fabricar un clic de raton. En Linux no hace falta nada
         // de eso: se pide el foco y ya. Y en la maquina del bar la rocola es lo unico que corre, asi que
         // esto casi nunca tiene trabajo que hacer.
+        //
+        // Y AL CERRAR HAY QUE APAGAR EL VIGIA. Esto si vale igual aqui: el vigia es un reloj que cada
+        // segundo y medio vuelve a pedir el foco, y si sigue vivo mientras la ventana se destruye, un Tick
+        // ya encolado la despierta a medias y le fabrica un Handle nuevo cuando ya no deberia haberlo.
+        private bool focoCerrando;
+        private void DetieneVigiaFoco()
+        {
+            focoCerrando = true; // un Tick ya encolado tampoco puede recrear el Handle
+            System.Windows.Forms.Timer anterior = focusTimer;
+            focusTimer = null;
+            if (anterior != null)
+            {
+                anterior.Stop();
+                anterior.Tick -= FocusTimer_Tick;
+                anterior.Dispose();
+            }
+        }
         private void ForceFocus()
         {
+            if (focoCerrando || IsDisposed || Disposing || !IsHandleCreated) return;
             try { this.Activate(); this.BringToFront(); this.Focus(); }
             catch { }
         }
@@ -1280,6 +1430,7 @@ namespace Rocola
 
         private void FocusTimer_Tick(object sender, EventArgs e)
         {
+            if (focoCerrando || IsDisposed || Disposing || !IsHandleCreated) return;
             if (maintMode && DateTime.Now > maintUntil) { maintMode = false; ShowToast("Vigia de pantalla reactivado"); }
             if (maintMode) return;                       // pausa de mantenimiento (F10)
             if (!this.ContainsFocus) ForceFocus();
@@ -1599,8 +1750,19 @@ namespace Rocola
                     // tocarlo, y asi una configuracion que va y viene entre esta rocola y la de Windows no
                     // pierde por el camino algo que aqui no se usa pero alli si.
                     else if (s.StartsWith("ia_vivo=")) iaVivoAjeno = s.Substring(8).Trim();
-                    else if (s.StartsWith("ia_mezcla=")) iaMezcla = s.Substring(10).Trim();             // cuanta IA en vivo
-                    else if (s.StartsWith("ia_gpu=")) { string g = s.Substring(7).Trim(); int gn; iaGpu = (g == "auto" || int.TryParse(g, out gn)) ? g : "auto"; }   // GPU de la IA (saneado)
+                    // UN NUMERO QUE VIENE DE UN ARCHIVO SE SANEA AL LEERLO, no donde se usa. Antes se
+                    // guardaba el texto tal cual y "ia_mezcla=900" o "ia_gpu=-1" viajaban por dentro de la
+                    // rocola hasta el sitio que los creyera.
+                    else if (s.StartsWith("ia_mezcla="))
+                    {
+                        string m = s.Substring(10).Trim().ToLowerInvariant(); int mn;
+                        iaMezcla = (m == "auto" || (int.TryParse(m, out mn) && mn >= 0 && mn <= 100)) ? m : "auto";
+                    }
+                    else if (s.StartsWith("ia_gpu="))
+                    {
+                        string g = s.Substring(7).Trim().ToLowerInvariant(); int gn;
+                        iaGpu = (g == "auto" || (int.TryParse(g, out gn) && gn >= 0)) ? g : "auto";
+                    }   // GPU de la IA (saneado)
                     else if (s.StartsWith("ia_cache=")) { string d = s.Substring(9).Trim(); if (d.Length > 0) iaCacheDir = d; }
                     else if (s.StartsWith("dsee_forzar=")) { if (s.Substring(12).Trim() == "1") { sbrForce = true; sbrAllowed = true; sbrReason = ""; } }   // salta la puerta de requisitos (pruebas)
                     else if (s.StartsWith("dsee_ventana=")) { int v; dseeVentana = (int.TryParse(s.Substring(13).Trim(), out v) && (v == 2048 || v == 4096)) ? v : 0; }   // tamano de ventana del DSEE a mano (0 = automatico)
@@ -1771,6 +1933,7 @@ namespace Rocola
                 sb.Append("ia_vivo=").Append(iaVivoAjeno).Append("\r\n");   // tal cual vino: aqui no se usa (ver iaVivo)
                 sb.Append("ia_mezcla=").Append(iaMezcla).Append("\r\n");
                 sb.Append("ia_gpu=").Append(iaGpu).Append("\r\n");
+                if (!string.IsNullOrEmpty(iaCacheDir)) sb.Append("ia_cache=").Append(iaCacheDir).Append("\r\n");
                 if (sbrForce) sb.Append("dsee_forzar=1\r\n");   // conservar la bandera manual de pruebas (este saver reescribe el archivo completo)
                 if (dseeVentana > 0) sb.Append("dsee_ventana=").Append(dseeVentana).Append("\r\n");   // y el tamano de ventana puesto a mano, por lo mismo
                 for (int i = 0; i < extraMusicDirs.Count; i++) sb.Append("dir=").Append(extraMusicDirs[i]).Append("\r\n");
@@ -1808,6 +1971,32 @@ namespace Rocola
         // cada sitio que guarda, para que no dependa de que alguien se acuerde de ponerlo. Es POR ARCHIVO,
         // asi que guardar el volumen de la biblioteca -que es grande- no hace esperar a los creditos.
         private static readonly Dictionary<string, object> candados = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+        // Como maximo un escritor activo y una instantanea pendiente por tabla.
+        // El trabajador sigue registrado en el drenaje de cierre mientras queden solicitudes.
+        private sealed class GuardadoReciente { public Action Pending; public bool Running; }
+        private void GuardaUltimo(GuardadoReciente slot, Action work)
+        {
+            lock (slot)
+            {
+                slot.Pending = work;
+                if (slot.Running) return;
+                slot.Running = true;
+            }
+            GuardaEnFondo(delegate
+            {
+                while (true)
+                {
+                    Action next;
+                    lock (slot)
+                    {
+                        next = slot.Pending; slot.Pending = null;
+                        if (next == null) { slot.Running = false; return; }
+                    }
+                    try { next(); } catch { }
+                }
+            });
+        }
+
         private static object CandadoDe(string ruta)
         {
             lock (candados)
@@ -1821,6 +2010,78 @@ namespace Rocola
         private static void EscribeSeguro(string ruta, string texto)
         {
             lock (CandadoDe(ruta)) EscribeSeguroYa(ruta, texto);
+        }
+
+        // Todos los volcados grandes pasan por aqui. Ademas de permitir esperar al cierre, este contador
+        // evita que Windows termine el proceso mientras aun queda una instantanea en el ThreadPool.
+        private int guardadosPendientes;
+        private readonly object guardadosLock = new object();
+        private readonly System.Threading.ManualResetEvent guardadosEnReposo = new System.Threading.ManualResetEvent(true);
+        private void GuardaEnFondo(System.Action trabajo)
+        {
+            if (trabajo == null) return;
+            lock (guardadosLock) { guardadosPendientes++; guardadosEnReposo.Reset(); }
+            try
+            {
+                bool encolado = System.Threading.ThreadPool.QueueUserWorkItem(delegate
+                {
+                    try { trabajo(); }
+                    finally
+                    {
+                        lock (guardadosLock)
+                        {
+                            guardadosPendientes--;
+                            if (guardadosPendientes <= 0) { guardadosPendientes = 0; guardadosEnReposo.Set(); }
+                        }
+                    }
+                });
+                if (!encolado) throw new InvalidOperationException("ThreadPool no acepto el guardado");
+            }
+            catch
+            {
+                lock (guardadosLock)
+                {
+                    guardadosPendientes--;
+                    if (guardadosPendientes <= 0) { guardadosPendientes = 0; guardadosEnReposo.Set(); }
+                }
+                // Durante el cierre el ThreadPool puede rechazar un trabajo nuevo. En ese caso se guarda
+                // sincronicamente: es preferible esperar un instante a perder la ultima medicion.
+                try { trabajo(); } catch { }
+            }
+        }
+        private void EsperaGuardados()
+        {
+            try { guardadosEnReposo.WaitOne(15000); }
+            catch { }
+        }
+
+        private static void AnexaSeguro(string ruta, string texto)
+        {
+            if (string.IsNullOrEmpty(texto)) return;
+            byte[] datos = new UTF8Encoding(false).GetBytes(texto);
+            lock (CandadoDe(ruta))
+            using (FileStream fs = new FileStream(ruta, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read))
+            {
+                // Descarta una ultima linea partida por un apagon antes de pegarle registros nuevos.
+                if (fs.Length > 0)
+                {
+                    long pos = fs.Length - 1; fs.Position = pos;
+                    if (fs.ReadByte() != (byte)'\n')
+                    {
+                        while (pos >= 0)
+                        {
+                            fs.Position = pos;
+                            if (fs.ReadByte() == (byte)'\n') break;
+                            pos--;
+                        }
+                        fs.SetLength(pos + 1);
+                    }
+                }
+                fs.Position = fs.Length;
+                fs.Write(datos, 0, datos.Length);
+                fs.Flush();
+                try { Sistema.BajaAlDisco(fs); } catch { }
+            }
         }
 
         private static void EscribeSeguroYa(string ruta, string texto)
@@ -1837,6 +2098,11 @@ namespace Rocola
                 // es lo unico que sobrevive a un corte de luz.
                 try { Sistema.BajaAlDisco(fs); } catch { }
             }
+            PublicaGuardadoSeguro(ruta, tmp, bak);
+        }
+
+        private static void PublicaGuardadoSeguro(string ruta, string tmp, string bak)
+        {
             if (File.Exists(ruta))
             {
                 // Replace cambia el archivo de un tiron y deja el anterior como copia. En memorias USB
@@ -1844,9 +2110,40 @@ namespace Rocola
                 try { File.Replace(tmp, ruta, bak, true); return; }
                 catch { }
                 try { if (File.Exists(bak)) File.Delete(bak); } catch { }
-                try { File.Move(ruta, bak); } catch { try { File.Delete(ruta); } catch { } }
+                // Si no se pudo conservar el original, ABORTAR: nunca borrarlo para forzar el reemplazo.
+                File.Move(ruta, bak);
             }
             File.Move(tmp, ruta);
+        }
+
+        // Escritura acotada por registros; no publica si falla o queda obsoleta.
+        private static bool EscribeFlujoSeguro(string ruta, Func<TextWriter, bool> escribe, Func<bool> vigente)
+        {
+            lock (CandadoDe(ruta))
+            {
+                if (vigente != null && !vigente()) return false;
+                string tmp = ruta + ".tmp";
+                bool creado = false, listo = false;
+                try
+                {
+                    using (FileStream fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None))
+                    {
+                        creado = true;
+                        using (StreamWriter writer = new StreamWriter(fs, new UTF8Encoding(false), 4096))
+                        {
+                            if (!escribe(writer) || (vigente != null && !vigente())) return false;
+                            writer.Flush(); fs.Flush();
+                            try { Sistema.BajaAlDisco(fs); } catch { }
+                        }
+                    }
+                    if (vigente != null && !vigente()) return false;
+                    // Fallo al reemplazar: conservar el temporal COMPLETO para recuperacion, como antes.
+                    listo = true;
+                    PublicaGuardadoSeguro(ruta, tmp, ruta + ".bak");
+                    return true;
+                }
+                finally { if (creado && !listo) { try { File.Delete(tmp); } catch { } } }
+            }
         }
 
         // Lee un archivo guardado con EscribeSeguro. Si el bueno falta o quedo vacio -un corte de luz de los
@@ -1883,46 +2180,89 @@ namespace Rocola
         // Tabla de huellas tonales (d0;d1;...;d7|ruta). Perdida o rota no rompe nada: se re-aprende oyendo.
         private void LoadEqCache()
         {
+            try { if (!ReadEqCache(EqFile(), eqCache, ref eqCacheVer)) return; } catch { }
+            EnsureEqAverage();
+        }
+
+        private static bool ReadEqCache(string f, Dictionary<string, float[]> eqCache, ref int eqCacheVer)
+        {
             try
             {
-                string f = EqFile();
-                if (!File.Exists(f)) return;
-                foreach (string line in File.ReadAllLines(f))
-                {
-                    int bar = line.IndexOf('|');
-                    if (bar <= 0 || bar >= line.Length - 1) continue;
-                    string[] parts = line.Substring(0, bar).Split(';');
-                    if (parts.Length < 8 || parts.Length > EqLen) continue;   // 8 y 9 son formatos viejos
-                    float[] c = new float[EqLen]; bool ok = true;
-                    for (int b = 0; b < parts.Length; b++)
-                        if (!float.TryParse(parts[b], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out c[b])) { ok = false; break; }
-                    for (int b = parts.Length; b < EqLen; b++) c[b] = 0f;   // ficha vieja: lo que falte queda "sin saber"
-                    if (ok) { eqCache[Pool(line.Substring(bar + 1))] = c; eqCacheVer++; }
-                }
+                if (!File.Exists(f)) return false;
+                using (StreamReader reader = new StreamReader(f))
+                    ReadEqCacheRecords(reader, eqCache, ref eqCacheVer);
             }
             catch { }
-            RecomputeEqAvg();
+            return true;
+        }
+
+        // Preparar por registros sin conservar todas las lineas. Un fallo de lectura
+        // antes de EOF descarta pending: ninguna tabla de destino recibe una carga parcial.
+        private static void ReadEqCacheRecords(TextReader reader, Dictionary<string, float[]> eqCache, ref int eqCacheVer)
+        {
+            Dictionary<string, float[]> pending = new Dictionary<string, float[]>(eqCache.Comparer);
+            int updates = 0;
+            string line;
+            while ((line = reader.ReadLine()) != null)
+            {
+                int bar = line.IndexOf('|');
+                if (bar <= 0 || bar >= line.Length - 1) continue;
+                float[] c = ReadEqValues(line, bar);
+                if (c != null) { pending[Pool(line.Substring(bar + 1))] = c; updates++; }
+            }
+            foreach (KeyValuePair<string, float[]> item in pending) eqCache[item.Key] = item.Value;
+            eqCacheVer += updates;
+        }
+
+        private static float[] ReadEqValues(string line, int bar)
+        {
+            int parts = 1;
+            for (int i = 0; i < bar; i++) if (line[i] == ';') parts++;
+            if (parts < 8 || parts > EqLen) return null;   // misma admision de formatos antiguos
+            float[] values = new float[EqLen];   // los campos ausentes conservan +0
+            int start = 0;
+            for (int b = 0; b < parts; b++)
+            {
+                int end = line.IndexOf(';', start, bar - start);
+                if (end < 0) end = bar;
+                if (!float.TryParse(line.Substring(start, end - start), System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out values[b])) return null;
+                start = end + 1;
+            }
+            return values;   // sin copiar toda la cabecera ni crear un array de subcadenas
         }
 
         private readonly object eqSaveLock = new object();
+        private readonly GuardadoReciente eqSaveQueue = new GuardadoReciente();
+        private long eqSaveVersion;
         private void SaveEqCache()
         {
+            if (startupReadPending) return;
             List<KeyValuePair<string, float[]>> snap;
             try { snap = new List<KeyValuePair<string, float[]>>(eqCache); }   // copia rapida en el hilo de UI
             catch { return; }
-            System.Threading.ThreadPool.QueueUserWorkItem(delegate
+            long version = System.Threading.Interlocked.Increment(ref eqSaveVersion);
+            GuardaUltimo(eqSaveQueue, delegate
             {
                 try
                 {
-                    StringBuilder sb = new StringBuilder(snap.Count * 72 + 16);
-                    for (int i = 0; i < snap.Count; i++)
+                    Func<bool> vigente = delegate { return version == System.Threading.Interlocked.Read(ref eqSaveVersion); };
+                    if (!vigente()) return;
+                    lock (eqSaveLock)
                     {
-                        float[] c = snap[i].Value;
-                        for (int b = 0; b < EqLen; b++)
-                        { if (b > 0) sb.Append(';'); sb.Append(c[b].ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)); }
-                        sb.Append('|').Append(snap[i].Key).Append("\r\n");
+                        EscribeFlujoSeguro(EqFile(), delegate(TextWriter writer)
+                        {
+                            for (int i = 0; i < snap.Count; i++)
+                            {
+                                if ((i & 127) == 0 && !vigente()) return false;
+                                float[] c = snap[i].Value;
+                                for (int b = 0; b < EqLen; b++)
+                                { if (b > 0) writer.Write(';'); writer.Write(c[b].ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)); }
+                                writer.Write('|'); writer.Write(snap[i].Key); writer.Write("\r\n");
+                            }
+                            return true;
+                        }, vigente);
                     }
-                    lock (eqSaveLock) EscribeSeguro(EqFile(), sb.ToString());
                 }
                 catch { }
             });
@@ -1938,7 +2278,27 @@ namespace Rocola
         private int eqAvgSanas;                  // cuantas entraron en el promedio (se muestra en Ctrl+F3)
         private int eqCacheVer;                  // sube cada vez que cambia una huella: lo usan los recuentos cacheados
         private bool eqAvgSoloSanas;
+        private Dictionary<string, float[]> eqAverageSource;
+        private int eqAverageVersion, eqAverageCount;
+        private bool eqAverageReady;
+        private void RememberEqAverage()
+        {
+            eqAverageSource = eqCache; eqAverageVersion = eqCacheVer;
+            eqAverageCount = eqCache.Count; eqAverageReady = true;
+        }
+        private void EnsureEqAverage()
+        {
+            if (eqAverageReady && object.ReferenceEquals(eqAverageSource, eqCache)
+                && eqAverageVersion == eqCacheVer && eqAverageCount == eqCache.Count) return;
+            RecomputeEqAvg();
+        }
         private void RecomputeEqAvg()
+        {
+            ComputeEqAverage(eqCache, ref eqAvg, ref eqAvgSanas, ref eqAvgSoloSanas);
+            RememberEqAverage();   // solo despues de completar el calculo, nunca si lanza una excepcion
+        }
+
+        private static void ComputeEqAverage(Dictionary<string, float[]> eqCache, ref float[] eqAvg, ref int eqAvgSanas, ref bool eqAvgSoloSanas)
         {
             if (eqCache.Count < 10) { eqAvg = null; eqAvgSanas = 0; return; }
             float[] avg = new float[8]; int n = 0;
@@ -2258,38 +2618,55 @@ namespace Rocola
             curve[EqCutLo] = (eqMeasCutLo > 0f) ? eqMeasCutLo : (had ? prev[EqCutLo] : 0f);
             curve[EqClip] = had ? prev[EqClip] : 0f;   // el recorte solo lo mide el pre-analisis (aqui ya viene reparado)
             eqCache[path] = curve; eqCacheVer++;
-            RecomputeEqAvg();
+            EnsureEqAverage();
             SaveEqCache();
         }
 
         private void LoadLoudCache()
         {
+            try { ReadLoudCache(LoudFile(), loudCache, durCache); } catch { }
+        }
+
+        private static void ReadLoudCache(string f, Dictionary<string, float> loudCache, Dictionary<string, float> durCache)
+        {
             try
             {
-                string f = LoudFile();
                 if (!File.Exists(f)) return;
-                foreach (string line in File.ReadAllLines(f))
-                {
-                    int bar = line.IndexOf('|');
-                    if (bar <= 0 || bar >= line.Length - 1) continue;
-                    float rms;
-                    if (!float.TryParse(line.Substring(0, bar), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out rms)
-                        || rms <= 0f) continue;   // el silencio apuntado (LoudMudo) TIENE que sobrevivir al reinicio
-                    // Formato NUEVO "rms|duracion|ruta" y el VIEJO "rms|ruta" (una ruta de Windows no puede llevar
-                    // '|', asi que distinguirlos es seguro): lo viejo se sigue leyendo tal cual, sin duracion.
-                    string rest = line.Substring(bar + 1);
-                    int bar2 = rest.IndexOf('|');
-                    float dur = 0f;
-                    if (bar2 > 0 && bar2 < rest.Length - 1
-                        && float.TryParse(rest.Substring(0, bar2), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out dur))
-                        rest = rest.Substring(bar2 + 1);
-                    else dur = 0f;
-                    rest = Pool(rest);
-                    loudCache[rest] = rms;
-                    if (dur > 0.01f) durCache[rest] = dur;
-                }
+                using (StreamReader reader = new StreamReader(f))
+                    ReadLoudCacheRecords(reader, loudCache, durCache);
             }
             catch { }
+        }
+
+        // Preparar por registros sin conservar todas las lineas. Un fallo de lectura
+        // antes de EOF descarta pending: ninguna tabla de destino recibe una carga parcial.
+        private static void ReadLoudCacheRecords(TextReader reader, Dictionary<string, float> loudCache, Dictionary<string, float> durCache)
+        {
+            Dictionary<string, float> pending = new Dictionary<string, float>(loudCache.Comparer);
+            Dictionary<string, float> durations = new Dictionary<string, float>(durCache.Comparer);
+            string line;
+            while ((line = reader.ReadLine()) != null)
+            {
+                int bar = line.IndexOf('|');
+                if (bar <= 0 || bar >= line.Length - 1) continue;
+                float rms;
+                if (!float.TryParse(line.Substring(0, bar), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out rms)
+                    || rms <= 0f) continue;   // el silencio apuntado (LoudMudo) TIENE que sobrevivir al reinicio
+                // Formato NUEVO "rms|duracion|ruta" y el VIEJO "rms|ruta" (una ruta de Windows no puede llevar
+                // '|', asi que distinguirlos es seguro): lo viejo se sigue leyendo tal cual, sin duracion.
+                string rest = line.Substring(bar + 1);
+                int bar2 = rest.IndexOf('|');
+                float dur = 0f;
+                if (bar2 > 0 && bar2 < rest.Length - 1
+                    && float.TryParse(rest.Substring(0, bar2), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out dur))
+                    rest = rest.Substring(bar2 + 1);
+                else dur = 0f;
+                rest = Pool(rest);
+                pending[rest] = rms;
+                if (dur > 0.01f) durations[rest] = dur;
+            }
+            foreach (KeyValuePair<string, float> item in pending) loudCache[item.Key] = item.Value;
+            foreach (KeyValuePair<string, float> item in durations) durCache[item.Key] = item.Value;
         }
 
         // Guarda la tabla de sonoridades. Para no frenar el cambio de cancion en bibliotecas GRANDES (el archivo
@@ -2297,25 +2674,37 @@ namespace Rocola
         // hace en SEGUNDO PLANO. Un candado asegura un solo escritor a la vez. Si algo truena, se ignora (la medida
         // se vuelve a aprender sola). Un archivo perdido/roto no rompe nada: se reconstruye oyendo las canciones.
         private readonly object loudSaveLock = new object();
+        private readonly GuardadoReciente loudSaveQueue = new GuardadoReciente();
+        private long loudSaveVersion;
         private void SaveLoudCache()
         {
+            if (startupReadPending) return;
             List<KeyValuePair<string, float>> snap;
             Dictionary<string, float> durSnap;
             try { snap = new List<KeyValuePair<string, float>>(loudCache); durSnap = new Dictionary<string, float>(durCache, StringComparer.OrdinalIgnoreCase); }   // copia (rapida): las tablas solo se tocan aqui
             catch { return; }
-            System.Threading.ThreadPool.QueueUserWorkItem(delegate
+            long version = System.Threading.Interlocked.Increment(ref loudSaveVersion);
+            GuardaUltimo(loudSaveQueue, delegate
             {
                 try
                 {
-                    StringBuilder sb = new StringBuilder(snap.Count * 48 + 16);
-                    for (int i = 0; i < snap.Count; i++)
+                    Func<bool> vigente = delegate { return version == System.Threading.Interlocked.Read(ref loudSaveVersion); };
+                    if (!vigente()) return;
+                    lock (loudSaveLock)
                     {
-                        float du; if (!durSnap.TryGetValue(snap[i].Key, out du)) du = 0f;
-                        sb.Append(snap[i].Value.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture)).Append('|')
-                          .Append(du.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)).Append('|')
-                          .Append(snap[i].Key).Append("\r\n");
+                        EscribeFlujoSeguro(LoudFile(), delegate(TextWriter writer)
+                        {
+                            for (int i = 0; i < snap.Count; i++)
+                            {
+                                if ((i & 127) == 0 && !vigente()) return false;
+                                float du; if (!durSnap.TryGetValue(snap[i].Key, out du)) du = 0f;
+                                writer.Write(snap[i].Value.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture));
+                                writer.Write('|'); writer.Write(du.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture));
+                                writer.Write('|'); writer.Write(snap[i].Key); writer.Write("\r\n");
+                            }
+                            return true;
+                        }, vigente);
                     }
-                    lock (loudSaveLock) EscribeSeguro(LoudFile(), sb.ToString());   // el disco, fuera del hilo de la interfaz (no frena la musica)
                 }
                 catch { }
             });
@@ -3912,6 +4301,7 @@ namespace Rocola
             if (txt == null) return CieloCorteDef;
             if (!float.TryParse(txt.Trim(), System.Globalization.NumberStyles.Float,
                                 System.Globalization.CultureInfo.InvariantCulture, out v)) return CieloCorteDef;
+            if (float.IsNaN(v) || float.IsInfinity(v)) return CieloCorteDef;
             return Clampf(v / 100f, 0.25f, 0.66f);
         }
         // El corte, ya acotado, tal y como lo piden las dos paredes.
@@ -4038,6 +4428,8 @@ namespace Rocola
         // no vale; con tarjeta grafica los colores se le pasan al panel en cada cuadro y basta con repintar.
         private void RepintaFondo()
         {
+            if (nowPlaying != null && !nowPlaying.IsVideo)
+                ApplyGenreBackground(nowPlaying.Song, nowPlaying.Disc);
             if (formStars != null) formStars.TiraCieloCache();
             this.Invalidate();
             if (albumView != null) albumView.Invalidate();
@@ -4051,6 +4443,7 @@ namespace Rocola
             if (txt == null) return porDefecto;
             if (!float.TryParse(txt.Trim(), System.Globalization.NumberStyles.Float,
                                 System.Globalization.CultureInfo.InvariantCulture, out v)) return porDefecto;
+            if (float.IsNaN(v) || float.IsInfinity(v)) return porDefecto;
             return Clampf(v / 100f, 0f, 1f);
         }
 
@@ -4161,10 +4554,30 @@ namespace Rocola
         // DONDE CAE lo tecleado dentro de un texto, ignorando mayusculas y acentos, pero devolviendo la
         // posicion en el texto ORIGINAL. Normalizar el texto entero y buscar ahi NO vale: al quitar los acentos
         // las posiciones se corren y el resaltado caeria una letra mas alla de donde debe.
-        private static bool BuscaTramo(string texto, string qNorm, out int ini, out int largo)
+        private sealed class TextoTramo
         {
-            ini = 0; largo = 0;
-            if (string.IsNullOrEmpty(texto) || string.IsNullOrEmpty(qNorm)) return false;
+            public string Limpio;
+            public int[] Mapa;
+        }
+        private sealed class CacheTramos
+        {
+            public readonly Dictionary<string, TextoTramo> Textos = new Dictionary<string, TextoTramo>(StringComparer.Ordinal);
+            public readonly Queue<string> Orden = new Queue<string>();
+            public int Bytes;
+        }
+        // Solo texto/mapa, nunca medidas GDI: fuente, DPI, ancho y tema siguen midiendose al dibujar.
+        // Por hilo para no introducir candados en el render. Limites de entradas y payload, sin Intern.
+        [ThreadStatic] private static CacheTramos cacheTramos;
+        private const int TramosMax = 128, TramosBytesMax = 65536;
+        private static long BytesTramo(string texto, TextoTramo dato)
+        {
+            return 2L * texto.Length + 2L * dato.Limpio.Length + 4L * dato.Mapa.Length;
+        }
+        private static TextoTramo PreparaTramo(string texto)
+        {
+            CacheTramos cache = cacheTramos;
+            TextoTramo dato;
+            if (cache != null && cache.Textos.TryGetValue(texto, out dato)) return dato;
             string formd = texto.ToLowerInvariant().Normalize(NormalizationForm.FormD);
             StringBuilder sb = new StringBuilder(formd.Length);
             int[] mapa = new int[formd.Length];
@@ -4179,7 +4592,28 @@ namespace Rocola
                 orig++;
                 mapa[j] = orig; sb.Append(formd[i]); j++;
             }
-            string limpio = sb.ToString();
+            dato = new TextoTramo(); dato.Limpio = sb.ToString(); dato.Mapa = mapa;
+            long bytes = BytesTramo(texto, dato);
+            if (bytes <= TramosBytesMax)
+            {
+                if (cache == null) cacheTramos = cache = new CacheTramos();
+                while (cache.Textos.Count >= TramosMax || cache.Bytes + bytes > TramosBytesMax)
+                {
+                    string vieja = cache.Orden.Dequeue();
+                    TextoTramo anterior = cache.Textos[vieja];
+                    cache.Bytes -= (int)BytesTramo(vieja, anterior);
+                    cache.Textos.Remove(vieja);
+                }
+                cache.Textos.Add(texto, dato); cache.Orden.Enqueue(texto); cache.Bytes += (int)bytes;
+            }
+            return dato;
+        }
+        private static bool BuscaTramo(string texto, string qNorm, out int ini, out int largo)
+        {
+            ini = 0; largo = 0;
+            if (string.IsNullOrEmpty(texto) || string.IsNullOrEmpty(qNorm)) return false;
+            TextoTramo dato = PreparaTramo(texto);
+            string limpio = dato.Limpio; int[] mapa = dato.Mapa; int j = limpio.Length;
             int k = limpio.IndexOf(qNorm, StringComparison.Ordinal);
             if (k < 0 || k >= j) return false;
             ini = mapa[k];
@@ -4207,19 +4641,34 @@ namespace Rocola
         {
             // Y encima, EL TONO DE LA PORTADA. Dos cumbias seguidas pintaban exactamente la misma
             // pantalla naranja aunque una fuera un disco rojo y la otra uno verde.
-            return TinteConPortada(GeneroDeLoQueSuena(t, org), ColorDePortadaDe(org));
+            Color portada = ColorDePortadaDe(org);
+            if (t != null && GeneroDeCancion(t, org).Length == 0 && fondoPortadaOn && portadaManda > 0f)
+            {
+                // Sin genero no se mezcla con azul. Si el promedio se cancela, usa un pico real.
+                Color uno, dos;
+                ColoresDePortadaDe(org, out uno, out dos);
+                return TonoSoloPortada(portada.A != 0 ? portada : uno);
+            }
+            Color genero = GeneroDeLoQueSuena(t, org);
+            return EsArtistaMorado(t) ? genero : TinteConPortada(genero, portada);
         }
 
         // EL COLOR DEL GENERO A SECAS, sin el tinte de la portada. Antes esto no se guardaba en ningun lado:
         // solo quedaba la mezcla de los dos. Hace falta suelto porque una de las dos nebulosas lleva EL
         // GENERO y la otra LA CARATULA, y para eso hay que poder decir cual es cual.
+        private static bool EsArtistaMorado(Track t)
+        {
+            string a = t != null && t.Artist != null ? t.Artist.ToLowerInvariant() : "";
+            return a.Contains("bts") || a.Contains("bangtan");
+        }
+
         private Color GeneroDeLoQueSuena(Track t, Album org)
         {
             if (t == null) return DefaultAccent;
-            string a = (t.Artist != null) ? t.Artist.ToLowerInvariant() : "";
+
             // El morado de BTS es una PETICION del bar, no una deduccion: se queda como esta y no se le
             // gira el tono. Lo pidieron morado, sale morado, tenga la portada el color que tenga.
-            if (a.Contains("bts") || a.Contains("bangtan")) return Color.FromArgb(149, 86, 220);
+            if (EsArtistaMorado(t)) return Color.FromArgb(149, 86, 220);
             string et = GeneroDeCancion(t, org);
             return (et.Length > 0) ? ColorDeEtiqueta(et) : DefaultAccent;
         }
@@ -4258,6 +4707,19 @@ namespace Rocola
         // a la que se mira una rocola, tienen que distinguirse sin leer. Verde = la vas a oir; ambar = la
         // estas oyendo.
         internal static readonly Color ColaVerde = Color.FromArgb(120, 230, 165);
+
+        // Conserva brillo/viveza seguros; de la portada solo toma el tono, sin azul mezclado.
+        private static Color TonoSoloPortada(Color portada)
+        {
+            return portada.A == 0 ? DefaultAccent : MezclaDeTono(DefaultAccent, portada, 1f);
+        }
+
+        private static void NebulosasSinGenero(Color port1, Color port2, float fase, ref Color a, ref Color b)
+        {
+            if (!fondoPortadaOn || portadaManda <= 0f || port1.A == 0) return;
+            Color cp = port2.A == 0 ? port1 : MezclaDeTono(port1, port2, 0.5f + 0.5f * (float)Math.Sin(fase));
+            a = b = ColorNebulosa(TonoSoloPortada(cp));
+        }
         internal static readonly Color SonAmbar = Color.FromArgb(255, 198, 104);
 
         // TONO de un color, en grados de la rueda (0 = rojo, 120 = verde, 240 = azul).
@@ -4351,7 +4813,7 @@ namespace Rocola
             uno = Color.FromArgb(0, 0, 0, 0); dos = Color.FromArgb(0, 0, 0, 0);
             if (b == null) return Color.FromArgb(0, 0, 0, 0);
             int w = b.Width, h = b.Height;
-            if (w < 2 || h < 2) return Color.FromArgb(0, 0, 0, 0);
+            if (w < 1 || h < 1) return Color.FromArgb(0, 0, 0, 0);
             int px = (w + MuestraLado - 1) / MuestraLado; if (px < 1) px = 1;
             int py = (h + MuestraLado - 1) / MuestraLado; if (py < 1) py = 1;
             double sx = 0, sy = 0, peso = 0;
@@ -4374,7 +4836,7 @@ namespace Rocola
                     if (hue < 0f) hue += 360f;
                     // Pesa lo VIVO y lo CLARO: un rojo encendido manda mas que un beige que apenas pasa el
                     // corte. Si no, el fondo de una portada casi apagada decidiria por encima de su dibujo.
-                    double pes = sat * mx;
+                    double pes = sat * mx * (c.A / 255.0);   // el RGB invisible no decide el fondo
                     double rad = hue * Math.PI / 180.0;
                     double cx = Math.Cos(rad) * pes, cy = Math.Sin(rad) * pes;
                     sx += cx; sy += cy; peso += pes;
@@ -5053,8 +5515,27 @@ namespace Rocola
             else
             {
                 lblStatus.Text = "No encontre musica. Conecta el disco donde este y eligelo en la ventana que se abre.";
+                VigilaRaicesAusentes();
                 PideElegirMusica();
             }
+        }
+
+        private void VigilaRaicesAusentes()
+        {
+            if (stateRestored) return;
+            try { if (!File.Exists(StateFile()) && !File.Exists(StateFile() + ".bak")) return; } catch { return; }
+            List<string> falta = new List<string>();
+            List<string> cfg = new List<string>(); cfg.Add(MusicFolder);
+            for (int i = 0; i < extraMusicDirs.Count; i++) cfg.Add(extraMusicDirs[i]);
+            for (int i = 0; i < cfg.Count; i++)
+            {
+                string r = cfg[i]; if (string.IsNullOrEmpty(r)) continue;
+                try { r = Path.GetFullPath(r); if (Directory.Exists(r)) continue; } catch { continue; }
+                bool repetida = false;
+                for (int k = 0; k < falta.Count; k++) if (string.Equals(falta[k], r, StringComparison.OrdinalIgnoreCase)) { repetida = true; break; }
+                if (!repetida) falta.Add(r);
+            }
+            if (falta.Count > 0) { stateMissingRoots = falta; stateRootRetryTick = Environment.TickCount; }
         }
 
         // SIN MUSICA, LA VENTANA DE CARPETAS SE ABRE SOLA.
@@ -5080,14 +5561,18 @@ namespace Rocola
         }
 
         private List<string> scanRoots;   // raices del escaneo en curso/vigente (las usa el worker; solo se asignan aqui)
+        private string lastFreshRootSig;  // firma tomada alrededor del MISMO recorrido que produjo la instantanea
 
         private void StartScan(List<string> roots)
         {
             if (scanner != null && scanner.IsBusy) return;   // ya hay un escaneo en curso (doble F5): ignorar
+            InvalidateCoverMemory();   // F5/nuevo disco: una portada reemplazada no puede quedarse congelada en RAM
             libBuilding = true;   // desde aqui y hasta Completed, las listas son del worker
             if (searchOpen) CloseSearch();            // un re-escaneo invalida lo que el buscador muestra
             lastQuery = null; lastMatches = null;     // ...y su cache incremental (evita resultados huerfanos)
             bolsaLetra.Clear();                       // y lo guardado de cada letra suelta: apunta a fichas que ya no valen
+            AdvanceThumbWarm();
+            searchPostings = null;
             tracks.Clear(); albums.Clear(); byLetter.Clear(); letterAvailable.Clear(); searchIndex.Clear();
             BackToAlbums();
             scanRoots = roots;
@@ -5104,9 +5589,11 @@ namespace Rocola
         private void Scanner_DoWork(object sender, DoWorkEventArgs e)
         {
             List<string> roots = (List<string>)e.Argument;
+            lastFreshRootSig = null;
             // CACHE DE BIBLIOTECA: si es valido, evita las DOS caminatas del disco (en HDD eran minutos).
             List<Track> ctk; List<string> cvd; Dictionary<string, string> ccv;
-            if (TryLoadLibraryCache(roots, out ctk, out cvd, out ccv))
+            string sigObservada;
+            if (TryLoadLibraryCache(roots, out ctk, out cvd, out ccv, out sigObservada))
             {
                 // ARMADO EN SEGUNDO PLANO: ordenar e indexar las 118 mil canciones tomaba 1-3 segundos
                 // DEL HILO DE LA INTERFAZ al arrancar; aqui corre en el worker y el arranque no se congela.
@@ -5126,12 +5613,22 @@ namespace Rocola
             List<string> audio = new List<string>();
             List<string> vids = new List<string>();
             Dictionary<string, string> covs = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            // La cache rechazada ya hizo el recorrido previo. Sigue habiendo firma
+            // antes y despues del escaneo para detectar cambios concurrentes.
+            string sigAntes = sigObservada;
+            if (sigAntes == null) try { sigAntes = RootsSig(roots); } catch { }
             for (int r = 0; r < roots.Count; r++) ScanFolders(roots[r], audio, vids, covs);
             for (int i = 0; i < audio.Count; i++) found.Add(Track.FromFile(audio[i]));
             tracks.AddRange(found);
             PerfilaDisco(tracks);   // idem por el camino del escaneo fresco
             cachedVideoPaths = vids; cachedCovers = covs;
             BuildAlbums(roots); BuildVideoSection(roots); BuildSearchIndex();   // tambien en segundo plano
+            try
+            {
+                string sigDespues = RootsSig(roots);
+                if (sigAntes != null && sigAntes == sigDespues) lastFreshRootSig = sigDespues;
+            }
+            catch { lastFreshRootSig = null; }
             e.Result = false;   // escaneo fresco
         }
 
@@ -5203,7 +5700,7 @@ namespace Rocola
         {
             if (!eqDirty) return;
             eqDirty = false;
-            RecomputeEqAvg();
+            EnsureEqAverage();
             SaveEqCache();
         }
         // ---------- Archivo con el material de entrenamiento de la IA ----------
@@ -5246,32 +5743,125 @@ namespace Rocola
         // la propia lista de canciones. Con cien mil canciones eso eran CINCO copias del mismo texto, decenas de
         // megas tirados en una maquina de 4 GB. Compartiendo UNA sola copia por ruta se juntan todas en una, y
         // de paso las busquedas salen mas rapido (comparar dos iguales se resuelve por referencia).
-        private static string Pool(string s) { return (s == null || s.Length == 0) ? s : string.Intern(s); }
+        // No internar rutas para toda la sesion: al retirar una biblioteca, sus textos deben
+        // poder recogerse si ninguna tabla los necesita. El indice solo guarda referencias debiles.
+        private sealed class PoolRutas
+        {
+            private sealed class Entrada : WeakReference
+            {
+                internal Entrada Siguiente;
+                internal Entrada(string s, Entrada siguiente) : base(s) { Siguiente = siguiente; }
+            }
+            private readonly Entrada[] cubetas = new Entrada[65536];   // 256/512 KiB de indice en 32/64 bits
+            private readonly object candado = new object();
+            private const int MaxEntradas = 262144, MaxCadena = 64;
+            private int cantidad, cursor, llamadas;
+
+            private void Limpia(int index)
+            {
+                Entrada anterior = null, actual = cubetas[index];
+                while (actual != null)
+                {
+                    Entrada siguiente = actual.Siguiente;
+                    if (!actual.IsAlive)
+                    {
+                        if (anterior == null) cubetas[index] = siguiente; else anterior.Siguiente = siguiente;
+                        cantidad--;
+                    }
+                    else anterior = actual;
+                    actual = siguiente;
+                }
+            }
+            private void RetiraCubeta(int index)
+            {
+                for (Entrada e = cubetas[index]; e != null; e = e.Siguiente) cantidad--;
+                cubetas[index] = null;   // solo olvida deduplicacion, no datos de ninguna tabla
+            }
+            internal string Comparte(string s)
+            {
+                if (string.IsNullOrEmpty(s)) return s;
+                lock (candado)
+                {
+                    if ((unchecked(++llamadas) & 255) == 0)
+                        for (int i = 0; i < 8; i++) { Limpia(cursor); cursor = (cursor + 1) & (cubetas.Length - 1); }
+                    // CLR 2 x86 concentra los bits bajos de algunos patrones de rutas.
+                    // Mezclar tambien los altos evita cadenas largas sin cambiar la igualdad.
+                    uint hash = unchecked((uint)s.GetHashCode());
+                    hash ^= hash >> 16; hash = unchecked(hash * 0x7feb352dU); hash ^= hash >> 15;
+                    int index = (int)(hash & (uint)(cubetas.Length - 1));
+                    Entrada anterior = null, actual = cubetas[index];
+                    int largo = 0;
+                    while (actual != null)
+                    {
+                        Entrada siguiente = actual.Siguiente;
+                        string viva = actual.Target as string;   // una sola lectura: referencia fuerte durante la comparacion
+                        if (viva == null)
+                        {
+                            if (anterior == null) cubetas[index] = siguiente; else anterior.Siguiente = siguiente;
+                            cantidad--;
+                        }
+                        else
+                        {
+                            if (string.Equals(viva, s, StringComparison.Ordinal)) return viva;
+                            anterior = actual; largo++;
+                        }
+                        actual = siguiente;
+                    }
+                    // Topes tanto de bookkeeping como de trabajo ante colisiones.
+                    // Rebasarlos puede perder un acierto, nunca cambiar el contenido de una ruta.
+                    if (largo >= MaxCadena) RetiraCubeta(index);
+                    while (cantidad >= MaxEntradas)
+                    {
+                        RetiraCubeta(cursor);
+                        cursor = (cursor + 1) & (cubetas.Length - 1);
+                    }
+                    cubetas[index] = new Entrada(s, cubetas[index]); cantidad++;
+                    return s;
+                }
+            }
+        }
+        private static readonly PoolRutas rutasCompartidas = new PoolRutas();
+        private static string Pool(string s) { return rutasCompartidas.Comparte(s); }
         private string IaDataFile() { return RutaDatos("rocola_ia_datos.bin"); }
         private string IaDoneFile() { return RutaDatos("rocola_ia_hechas.txt"); }
         // Formato: "ruta" (nivel 1, el de siempre) o "N|ruta" (nivel N). Una ruta de Windows no puede llevar
         // "|", asi que distinguirlos es seguro y los archivos viejos se siguen leyendo tal cual.
         private void LoadIaDone()
         {
+            try { ReadIaDone(IaDoneFile(), iaDone); } catch { }
+        }
+
+        private static void ReadIaDone(string f, Dictionary<string, int> iaDone)
+        {
             try
             {
-                string f = IaDoneFile();
                 if (!File.Exists(f)) return;
-                foreach (string line in File.ReadAllLines(f))
-                {
-                    string r = line.Trim(); if (r.Length == 0) continue;
-                    int niv = 1;
-                    if (r.Length > 2 && r[1] == '|') { int d = r[0] - '0'; if (d >= 1 && d <= 9) { niv = d; r = r.Substring(2); } }
-                    // Si una cancion aparece dos veces manda la de MAS VALOR (ver IaRango): normalmente es
-                    // la ultima, porque el archivo se escribe anadiendo al final, pero lo que decide es el
-                    // valor y no la posicion. Asi un archivo escrito a medias o desordenado no puede hacer
-                    // que se vuelva a cosechar algo ya cosechado.
-                    r = Pool(r);
-                    int ant; if (iaDone.TryGetValue(r, out ant) && IaRango(ant) >= IaRango(niv)) continue;
-                    iaDone[r] = niv;
-                }
+                using (StreamReader reader = new StreamReader(f))
+                    ReadIaDoneRecords(reader, iaDone);
             }
             catch { }
+        }
+
+        // Preparar por registros sin conservar todas las lineas. Un fallo de lectura
+        // antes de EOF descarta pending: ninguna tabla de destino recibe una carga parcial.
+        private static void ReadIaDoneRecords(TextReader reader, Dictionary<string, int> iaDone)
+        {
+            Dictionary<string, int> pending = new Dictionary<string, int>(iaDone.Comparer);
+            string line;
+            while ((line = reader.ReadLine()) != null)
+            {
+                string r = line.Trim(); if (r.Length == 0) continue;
+                int niv = 1;
+                if (r.Length > 2 && r[1] == '|') { int d = r[0] - '0'; if (d >= 1 && d <= 9) { niv = d; r = r.Substring(2); } }
+                // Si una cancion aparece dos veces manda la de MAS VALOR (ver IaRango): normalmente es
+                // la ultima, porque el archivo se escribe anadiendo al final, pero lo que decide es el
+                // valor y no la posicion. Asi un archivo escrito a medias o desordenado no puede hacer
+                // que se vuelva a cosechar algo ya cosechado.
+                r = Pool(r);
+                int ant; if ((pending.TryGetValue(r, out ant) || iaDone.TryGetValue(r, out ant)) && IaRango(ant) >= IaRango(niv)) continue;
+                pending[r] = niv;
+            }
+            foreach (KeyValuePair<string, int> item in pending) iaDone[item.Key] = item.Value;
         }
         private readonly object iaDoneLock = new object();
         private volatile bool iaDoneDirty = false;   // hay canciones nuevas cosechadas sin apuntar en disco
@@ -5294,15 +5884,21 @@ namespace Rocola
         {
             List<string> nuevas;
             lock (iaDoneLock) { if (iaPend.Count == 0) return; nuevas = new List<string>(iaPend); iaPend.Clear(); }
-            System.Threading.ThreadPool.QueueUserWorkItem(delegate
+            GuardaEnFondo(delegate
             {
                 try
                 {
                     StringBuilder sb = new StringBuilder(nuevas.Count * 64 + 16);
                     for (int i = 0; i < nuevas.Count; i++) sb.Append(nuevas[i]).Append("\r\n");
-                    lock (iaDoneLock) File.AppendAllText(IaDoneFile(), sb.ToString());
+                    AnexaSeguro(IaDoneFile(), sb.ToString());
                 }
-                catch { }
+                catch
+                {
+                    // No se pierde la marca si el disco estaba lleno/desconectado: vuelve a la fila y se
+                    // reintenta en el siguiente guardado o al cerrar.
+                    lock (iaDoneLock) iaPend.InsertRange(0, nuevas);
+                    iaDoneDirty = true;
+                }
             });
         }
         // ---- Canciones ya repasadas A FONDO (mismo formato que las de la IA: una ruta por linea) ----
@@ -5312,13 +5908,37 @@ namespace Rocola
         private readonly List<string> deepPend = new List<string>();   // rutas apuntadas y aun sin escribir
         private void LoadDeepDone()
         {
+            try { ReadDeepDone(DeepDoneFile(), deepDone, loudCache, durCache, eqCache); } catch { }
+        }
+
+        private static void ReadDeepDone(string f, HashSet<string> deepDone, Dictionary<string, float> loudCache, Dictionary<string, float> durCache, Dictionary<string, float[]> eqCache)
+        {
             try
             {
-                string f = DeepDoneFile();
                 if (!File.Exists(f)) return;
-                foreach (string line in File.ReadAllLines(f)) { string r = line.Trim(); if (r.Length > 0) deepDone.Add(Pool(r)); }
+                using (StreamReader reader = new StreamReader(f))
+                    ReadDeepDoneRecords(reader, deepDone, loudCache, durCache, eqCache);
             }
             catch { }
+        }
+
+        // Preparar por registros sin conservar todas las lineas. Un fallo de lectura
+        // antes de EOF descarta pending: ninguna tabla de destino recibe una carga parcial.
+        private static void ReadDeepDoneRecords(TextReader reader, HashSet<string> deepDone, Dictionary<string, float> loudCache, Dictionary<string, float> durCache, Dictionary<string, float[]> eqCache)
+        {
+            HashSet<string> pending = new HashSet<string>(deepDone.Comparer);
+            string line;
+            while ((line = reader.ReadLine()) != null)
+            {
+                string r = line.Trim(); if (r.Length == 0) continue;
+                r = Pool(r);
+                // La marca puede haber llegado al disco un instante antes que las tablas en un apagon.
+                // Solo se acepta si la medida que promete tambien sobrevivio. Los videos no llevan EQ.
+                bool medida = loudCache.ContainsKey(r) && durCache.ContainsKey(r)
+                           && (EsVideo(r) || eqCache.ContainsKey(r));
+                if (medida) pending.Add(r);
+            }
+            foreach (string item in pending) deepDone.Add(item);
         }
         private void MarkDeepDone(string path)
         {
@@ -5330,23 +5950,52 @@ namespace Rocola
         {
             List<string> nuevas;
             lock (deepDoneLock) { if (deepPend.Count == 0) return; nuevas = new List<string>(deepPend); deepPend.Clear(); }
-            System.Threading.ThreadPool.QueueUserWorkItem(delegate
+            GuardaEnFondo(delegate
             {
                 try
                 {
                     StringBuilder sb = new StringBuilder(nuevas.Count * 64 + 16);
                     for (int i = 0; i < nuevas.Count; i++) sb.Append(nuevas[i]).Append("\r\n");
-                    lock (deepDoneLock) File.AppendAllText(DeepDoneFile(), sb.ToString());
+                    AnexaSeguro(DeepDoneFile(), sb.ToString());
                 }
-                catch { }
+                catch
+                {
+                    lock (deepDoneLock) deepPend.InsertRange(0, nuevas);
+                    deepDoneDirty = true;
+                }
             });
         }
-        private void IaCountPairs()
+
+        private static bool IaHeaderValida(BinaryReader br)
         {
             try
             {
-                FileInfo fi = new FileInfo(IaDataFile());
-                iaPairsTotal = (fi.Exists && fi.Length > 16) ? (int)((fi.Length - 16) / 160) : 0;
+                br.BaseStream.Position = 0;
+                return br.BaseStream.Length >= 16
+                    && br.ReadByte() == (byte)'R' && br.ReadByte() == (byte)'I'
+                    && br.ReadByte() == (byte)'A' && br.ReadByte() == (byte)'D'
+                    && br.ReadInt32() == 1 && br.ReadInt32() == 28 && br.ReadInt32() == 12;
+            }
+            catch { return false; }
+        }
+        private void IaCountPairs()
+        {
+            lock (iaFileLock)
+            try
+            {
+                string f = IaDataFile();
+                if (!File.Exists(f)) { iaPairsTotal = 0; return; }
+                using (FileStream fs = new FileStream(f, FileMode.Open, FileAccess.ReadWrite, FileShare.Read))
+                using (BinaryReader br = new BinaryReader(fs, Encoding.UTF8, true))
+                {
+                    if (!IaHeaderValida(br)) { iaPairsTotal = 0; return; }
+                    long completos = (fs.Length - 16) / 160;
+                    long valido = 16 + completos * 160;
+                    // Un apagon puede cortar el ultimo registro. Se quita SOLO esa cola incompleta; dejarla
+                    // desplazaria para siempre todos los pares que se agreguen despues.
+                    if (fs.Length != valido) { fs.SetLength(valido); fs.Flush(); try { Sistema.BajaAlDisco(fs); } catch { } }
+                    iaPairsTotal = (completos > int.MaxValue) ? int.MaxValue : (int)completos;
+                }
             }
             catch { iaPairsTotal = 0; }
         }
@@ -5355,57 +6004,81 @@ namespace Rocola
         // dejarian el archivo de material entrelazado y por tanto inservible. El candado cuesta nada al lado
         // de descomprimir una cancion, que es lo que hace el hilo justo antes de llegar aqui.
         private readonly object iaFileLock = new object();
-        private void IaAppendPairs(List<float> pairs)
+        private bool IaAppendPairs(List<float> pairs)
         {
-            if (pairs == null || pairs.Count < 40) return;
+            if (pairs == null || pairs.Count < 40 || (pairs.Count % 40) != 0) return false;
             lock (iaFileLock)
             try
             {
                 string f = IaDataFile();
-                bool nuevo = !File.Exists(f) || new FileInfo(f).Length < 16;
-                using (FileStream fs = new FileStream(f, FileMode.Append, FileAccess.Write))
-                using (BinaryWriter bw = new BinaryWriter(fs))
+                using (FileStream fs = new FileStream(f, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read))
+                using (BinaryReader br = new BinaryReader(fs, Encoding.UTF8, true))
+                using (BinaryWriter bw = new BinaryWriter(fs, Encoding.UTF8, true))
                 {
-                    if (nuevo) { bw.Write((byte)'R'); bw.Write((byte)'I'); bw.Write((byte)'A'); bw.Write((byte)'D'); bw.Write(1); bw.Write(28); bw.Write(12); }
+                    if (fs.Length == 0)
+                    { bw.Write((byte)'R'); bw.Write((byte)'I'); bw.Write((byte)'A'); bw.Write((byte)'D'); bw.Write(1); bw.Write(28); bw.Write(12); }
+                    else if (!IaHeaderValida(br)) return false;   // no anexar encima de un archivo ajeno/corrupto
+                    long completos = Math.Max(0, (fs.Length - 16) / 160);
+                    long valido = 16 + completos * 160;
+                    if (fs.Length != valido) fs.SetLength(valido);   // recupera una ultima escritura interrumpida
+                    fs.Position = valido;
                     for (int i = 0; i < pairs.Count; i++) bw.Write(pairs[i]);
+                    bw.Flush(); fs.Flush();
+                    try { Sistema.BajaAlDisco(fs); } catch { }
                 }
                 iaPairsTotal += pairs.Count / 40;
+                return true;
             }
-            catch { }
+            catch { return false; }
         }
 
         // ---- Duraciones rapidas: "segundos|ruta" por linea, escritas POR ANADIDO ----
         private string DurFastFile() { return RutaDatos("rocola_duracion.txt"); }
         private void LoadDurFast()
         {
+            try { ReadDurFast(DurFastFile(), durFast); } catch { }
+        }
+
+        private static void ReadDurFast(string f, Dictionary<string, float> durFast)
+        {
             try
             {
-                string f = DurFastFile();
                 if (!File.Exists(f)) return;
-                foreach (string line in File.ReadAllLines(f))
-                {
-                    int bar = line.IndexOf('|');
-                    if (bar <= 0 || bar >= line.Length - 1) continue;
-                    float d;
-                    if (!float.TryParse(line.Substring(0, bar), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out d) || d <= 0.01f) continue;
-                    durFast[Pool(line.Substring(bar + 1))] = d;
-                }
+                using (StreamReader reader = new StreamReader(f))
+                    ReadDurFastRecords(reader, durFast);
             }
             catch { }
+        }
+
+        // Preparar por registros sin conservar todas las lineas. Un fallo de lectura
+        // antes de EOF descarta pending: ninguna tabla de destino recibe una carga parcial.
+        private static void ReadDurFastRecords(TextReader reader, Dictionary<string, float> durFast)
+        {
+            Dictionary<string, float> pending = new Dictionary<string, float>(durFast.Comparer);
+            string line;
+            while ((line = reader.ReadLine()) != null)
+            {
+                int bar = line.IndexOf('|');
+                if (bar <= 0 || bar >= line.Length - 1) continue;
+                float d;
+                if (!float.TryParse(line.Substring(0, bar), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out d) || d <= 0.01f) continue;
+                pending[Pool(line.Substring(bar + 1))] = d;
+            }
+            foreach (KeyValuePair<string, float> item in pending) durFast[item.Key] = item.Value;
         }
         private void SaveDurFast()
         {
             List<string> nuevas;
             lock (durFastLock) { if (durFastPend.Count == 0) return; nuevas = new List<string>(durFastPend); durFastPend.Clear(); }
-            System.Threading.ThreadPool.QueueUserWorkItem(delegate
+            GuardaEnFondo(delegate
             {
                 try
                 {
                     StringBuilder sb = new StringBuilder(nuevas.Count * 64 + 16);
                     for (int i = 0; i < nuevas.Count; i++) sb.Append(nuevas[i]).Append("\r\n");
-                    lock (durFastLock) File.AppendAllText(DurFastFile(), sb.ToString());
+                    AnexaSeguro(DurFastFile(), sb.ToString());
                 }
-                catch { }
+                catch { lock (durFastLock) durFastPend.InsertRange(0, nuevas); }
             });
         }
 
@@ -5531,24 +6204,36 @@ namespace Rocola
             catch { letterTag.Clear(); discTag.Clear(); tintesPend = true; }
         }
 
+        private readonly GuardadoReciente tintesSaveQueue = new GuardadoReciente();
+        private long tintesSaveVersion;
         private void GuardaTintes(int firma)
         {
             Dictionary<char, string> copia = new Dictionary<char, string>(letterTag);
             Dictionary<string, string> copiaD = new Dictionary<string, string>(discTag, StringComparer.OrdinalIgnoreCase);
             string ruta = LetterTintFile();
-            System.Threading.ThreadPool.QueueUserWorkItem(delegate (object st)
+            long version = System.Threading.Interlocked.Increment(ref tintesSaveVersion);
+            // Incluido en el drenaje de cierre; la ultima instantanea manda.
+            GuardaUltimo(tintesSaveQueue, delegate
             {
                 try
                 {
-                    StringBuilder sb = new StringBuilder(64 + copiaD.Count * 64);
-                    sb.Append("ROCOLA-LETRAS v2\r\n").Append("n=").Append(firma).Append("\r\n");
-                    foreach (KeyValuePair<char, string> kv in copia)
-                        sb.Append("L|").Append(kv.Key).Append('|').Append(kv.Value).Append("\r\n");
-                    // La carpeta puede llevar barras y espacios, pero NO un salto de linea: se parte por el
-                    // ULTIMO separador, asi que una carpeta con "|" dentro tampoco rompe nada.
-                    foreach (KeyValuePair<string, string> kv in copiaD)
-                        sb.Append("D|").Append(kv.Key).Append('|').Append(kv.Value).Append("\r\n");
-                    EscribeSeguro(ruta, sb.ToString());
+                    Func<bool> vigente = delegate { return version == System.Threading.Interlocked.Read(ref tintesSaveVersion); };
+                    EscribeFlujoSeguro(ruta, delegate(TextWriter writer)
+                    {
+                        writer.Write("ROCOLA-LETRAS v2\r\nn="); writer.Write(firma); writer.Write("\r\n");
+                        foreach (KeyValuePair<char, string> kv in copia)
+                        {
+                            if (!vigente()) return false;
+                            writer.Write("L|"); writer.Write(kv.Key); writer.Write('|'); writer.Write(kv.Value); writer.Write("\r\n");
+                        }
+                        int n = 0;
+                        foreach (KeyValuePair<string, string> kv in copiaD)
+                        {
+                            if ((n++ & 127) == 0 && !vigente()) return false;
+                            writer.Write("D|"); writer.Write(kv.Key); writer.Write('|'); writer.Write(kv.Value); writer.Write("\r\n");
+                        }
+                        return true;
+                    }, vigente);
                 }
                 catch { }
             });
@@ -5736,6 +6421,9 @@ namespace Rocola
             // que hacer con un mp4 o un avi: se quedaban sin duracion igual. Ahora se miden por su camino
             // (ver MideDuracionVideo). Van al final, despues de la musica, porque cuestan bastante mas.
             int cuantasCanciones = pend.Count;
+            // Conserva el orden y la comparacion ordinal de List.Contains sin recorrer
+            // toda la musica por cada video. Se crea solo al encontrar un candidato.
+            HashSet<string> pendientesUnicos = null;
             if (videoAlbums != null)
                 for (int i = 0; i < videoAlbums.Count; i++)
                 {
@@ -5745,7 +6433,8 @@ namespace Rocola
                     {
                         string vp = va.VideoFiles[j];
                         if (vp == null || durCache.ContainsKey(vp) || durFast.ContainsKey(vp)) continue;
-                        if (!pend.Contains(vp)) pend.Add(vp);   // el mismo video puede estar en dos discos
+                        if (pendientesUnicos == null) pendientesUnicos = new HashSet<string>(pend, StringComparer.Ordinal);
+                        if (pendientesUnicos.Add(vp)) pend.Add(vp);   // el mismo video puede estar en dos discos
                     }
                 }
             if (pend.Count > cuantasCanciones) Diag("duraciones: " + (pend.Count - cuantasCanciones) + " videos por medir");
@@ -6432,9 +7121,8 @@ namespace Rocola
                             System.Threading.Thread.Sleep(500);
                         if (preScanStop || myGen != preScanGen) break;
                         string ruta = pend[i];
-                        // Si este equipo ya demostro que no sabe descomprimir el sonido de un video, los demas
-                        // ni se intentan: seria fallar mil veces seguidas y dejar el contador de "faltan"
-                        // clavado para siempre en el numero de videos.
+                        // En sistemas anteriores a Vista no existe Media Foundation. En los demas se prueba
+                        // CADA video: tres archivos corruptos no deben deshabilitar la medicion de todos los buenos.
                         bool esVid = EsVideo(ruta);
                         if (esVid && videoSinMedir) { System.Threading.Interlocked.Decrement(ref preScanLeft); continue; }
                         float rms, dur; float[] eqCurve;
@@ -6452,17 +7140,17 @@ namespace Rocola
                         try
                         {
                             if (!IsHandleCreated || preScanStop || myGen != preScanGen) break;
-                            BeginInvoke((MethodInvoker)delegate
-                            {
-                                if (myGen != preScanGen) return;   // llego de una generacion caducada: descartar
-                                PublicaMedida(ruta, rms, dur, eqCurve);
-                                if (preScanLeft > 0) System.Threading.Interlocked.Decrement(ref preScanLeft);
-                            });
+                             BeginInvoke((MethodInvoker)delegate
+                             {
+                                 if (myGen != preScanGen) return;   // llego de una generacion caducada: descartar
+                                 PublicaMedida(ruta, rms, dur, eqCurve);
+                                 // La marca se publica DESPUES de que las tablas recibieron la medida. Si F5
+                                 // invalida esta generacion, la cancion queda pendiente y puede intentarse otra vez.
+                                 if (turbo) MarkDeepDone(ruta);
+                                 if (preScanLeft > 0) System.Threading.Interlocked.Decrement(ref preScanLeft);
+                             });
                         }
                         catch { break; }
-                        // Apuntada como repasada a fondo (despues de encargar la publicacion, no antes: si algo
-                        // fallara al publicar no queremos darla por hecha sin haber guardado su medida).
-                        if (turbo) MarkDeepDone(ruta);
                         int hechas = System.Threading.Interlocked.Increment(ref hechasTot);
                         if ((hechas % guardaCada) == 0)
                             try { if (IsHandleCreated) BeginInvoke((MethodInvoker)delegate { SaveLoudCache(); FlushEqIfDirty(); if (iaDoneDirty) { iaDoneDirty = false; SaveIaDone(); } if (deepDoneDirty) { deepDoneDirty = false; SaveDeepDone(); } }); } catch { }
@@ -6690,8 +7378,9 @@ namespace Rocola
                 // sirven de maestras: en las dañadas los agudos reales ya no existen y no hay nada que enseñar.
                 if (hv != null && !soloCorte && hvPairs.Count >= 40 && hv.CutHz >= EqSanaHz)
                 {
-                    IaAppendPairs(hvPairs);
-                    MarkIaDone(path, nivelAhora);
+                    // Solo se marca hecha cuando el registro completo ya llego al disco. Si falla por espacio,
+                    // permisos o desconexion, la proxima pasada vuelve a cosecharla.
+                    if (IaAppendPairs(hvPairs)) MarkIaDone(path, nivelAhora);
                 }
                 float corteHz = (hv != null) ? hv.CutHz : 0f;
                 float corteLo = (hv != null) ? hv.CutLoHz : 0f;
@@ -6911,10 +7600,31 @@ namespace Rocola
         // de dos nucleos del bar, sueltos los dos a la vez se pelean por el disco y salen los dos peor.
         private volatile int minisPendientes;
 
+        // Generacion y contador cambian juntos: un trabajador retirado no puede pisar al nuevo.
+        private int AdvanceThumbWarm()
+        {
+            lock (coverLock)
+            {
+                unchecked { warmGen++; }
+                minisPendientes = 0;
+                return warmGen;
+            }
+        }
+
+        private bool PublishThumbRemaining(int generation, int remaining)
+        {
+            lock (coverLock)
+            {
+                if (generation != warmGen) return false;
+                if (remaining < 0) { if (minisPendientes > 0) minisPendientes--; }
+                else minisPendientes = remaining;
+                return true;
+            }
+        }
+
         private void StartThumbWarm()
         {
-            warmGen++;
-            int myGen = warmGen;
+            int myGen = AdvanceThumbWarm();
             List<Album> snap = new List<Album>(albums);
             System.Threading.Thread t = new System.Threading.Thread(delegate ()
             {
@@ -6924,6 +7634,7 @@ namespace Rocola
                     // Antes de ponerse a construir, barrer lo antiguo (solo si la carpeta se hizo grande;
                     // ver BarreMiniaturas). Va aqui y no en el arranque para no gastar ni un milisegundo
                     // del rato en que la rocola esta apareciendo.
+                    if (myGen != warmGen) return;
                     int barridas = BarreMiniaturas();
                     if (barridas > 0) Diag("miniaturas: barridas " + barridas + " de mas de " + MiniaturasDiasMax + " dias");
                     // CUANTAS FALTAN, antes de empezar. Es una pasada de File.Exists por disco -barata al
@@ -6932,11 +7643,12 @@ namespace Rocola
                     int faltan = 0;
                     for (int i = 0; i < snap.Count; i++)
                     {
+                        if (myGen != warmGen) return;
                         Album a0 = snap[i];
                         if (a0 == null || a0.CoverPath == null) continue;
                         try { if (!File.Exists(ThumbCachePath(a0.CoverPath))) faltan++; } catch { }
                     }
-                    minisPendientes = faltan;
+                    if (!PublishThumbRemaining(myGen, faltan)) return;
                     if (faltan > 0) Diag("miniaturas: faltan " + faltan + " por hacer");
                     for (int i = 0; i < snap.Count; i++)
                     {
@@ -6979,14 +7691,15 @@ namespace Rocola
                         }
                         catch { }
                         finally { coverSem.Release(); }
-                        if (minisPendientes > 0) minisPendientes--;
+                        if (!PublishThumbRemaining(myGen, -1)) return;
                         // Respiro largo en disco duro; en SSD el freno era el respiro, no el disco. Y sola no
                         // hay de quien descansar.
                         if (!RocolaSola()) System.Threading.Thread.Sleep(diskSlow ? 150 : 20);
                     }
-                    minisPendientes = 0;   // se acabo la vuelta: ya no falta ninguna
+                    PublishThumbRemaining(myGen, 0);   // solo la generacion vigente
                 }
                 catch { }
+                finally { PublishThumbRemaining(myGen, 0); }
             });
             t.IsBackground = true;
             t.Priority = System.Threading.ThreadPriority.Lowest;
@@ -7010,10 +7723,55 @@ namespace Rocola
             return null;
         }
 
-        // Firma de una raiz: fecha de modificacion + cantidad de subcarpetas (si cambia, hay que re-escanear).
+        // Firma RECURSIVA de una raiz. La fecha de la carpeta superior NO cambia cuando se agrega una cancion
+        // dentro de Artista\Album; por eso se incluyen ruta, tamano y fecha de cada archivo y cada directorio.
+        private static void RootHash(ref ulong h, string s)
+        {
+            if (s == null) s = "";
+            for (int i = 0; i < s.Length; i++) { h ^= char.ToLowerInvariant(s[i]); h *= 1099511628211UL; }
+            h ^= 0xff; h *= 1099511628211UL;
+        }
         private static string RootSig(string root)
         {
-            return Directory.GetLastWriteTimeUtc(root).Ticks + ":" + Directory.GetDirectories(root).Length;
+            ulong h = 1469598103934665603UL; long filesN = 0, dirsN = 0;
+            bool metadataEnumerada = Environment.Version.Major >= 4;
+            Stack<string> pendientes = new Stack<string>(); pendientes.Push(Path.GetFullPath(root));
+            while (pendientes.Count > 0)
+            {
+                string dir = pendientes.Pop(); dirsN++;
+                RootHash(ref h, dir); RootHash(ref h, Directory.GetLastWriteTimeUtc(dir).Ticks.ToString(CultureInfo.InvariantCulture));
+                // .NET 4 reutiliza metadatos de la enumeracion. En CLR 2 (.NET 3.5)
+                // GetFiles no aporta ese ahorro: conservar el recorrido medido mas rapido.
+                FileInfo[] files = null; string[] paths = null; int count;
+                if (metadataEnumerada)
+                {
+                    files = new DirectoryInfo(dir).GetFiles();
+                    Array.Sort(files, delegate(FileInfo a, FileInfo b) { return StringComparer.OrdinalIgnoreCase.Compare(a.Name, b.Name); });
+                    count = files.Length;
+                }
+                else
+                {
+                    paths = Directory.GetFiles(dir); Array.Sort(paths, StringComparer.OrdinalIgnoreCase);
+                    count = paths.Length;
+                }
+                for (int i = 0; i < count; i++)
+                {
+                    FileInfo fi = metadataEnumerada ? files[i] : new FileInfo(paths[i]); filesN++;
+                    RootHash(ref h, fi.FullName); RootHash(ref h, fi.Length.ToString(CultureInfo.InvariantCulture));
+                    RootHash(ref h, fi.LastWriteTimeUtc.Ticks.ToString(CultureInfo.InvariantCulture));
+                }
+                string[] subs = Directory.GetDirectories(dir); Array.Sort(subs, StringComparer.OrdinalIgnoreCase);
+                // Stack es LIFO: se meten al reves para que el orden recorrido siga siendo estable.
+                for (int i = subs.Length - 1; i >= 0; i--)
+                    if (!EsAtajo(subs[i]) && !EsCarpetaDelSistema(subs[i])) pendientes.Push(subs[i]);
+            }
+            return dirsN.ToString(CultureInfo.InvariantCulture) + ":" + filesN.ToString(CultureInfo.InvariantCulture) + ":" + h.ToString("x16");
+        }
+        private static string RootsSig(List<string> roots)
+        {
+            StringBuilder ss = new StringBuilder();
+            for (int i = 0; i < roots.Count; i++) { if (i > 0) ss.Append('|'); ss.Append(RootSig(roots[i])); }
+            return ss.ToString();
         }
         private static string JoinRoots(List<string> roots)
         {
@@ -7022,46 +7780,76 @@ namespace Rocola
             return sb.ToString();
         }
 
-        private bool TryLoadLibraryCache(List<string> roots, out List<Track> outTracks, out List<string> outVideos, out Dictionary<string, string> outCovers)
+        private bool TryLoadLibraryCache(List<string> roots, out List<Track> outTracks, out List<string> outVideos, out Dictionary<string, string> outCovers, out string observedSig)
         {
-            outTracks = null; outVideos = null; outCovers = null;
+            outTracks = null; outVideos = null; outCovers = null; observedSig = null;
             try
             {
                 string f = LibCacheFile();
                 if (!File.Exists(f)) return false;
-                string[] L = File.ReadAllLines(f);
-                if (L.Length < 7 || L[0] != "ROCOLA-LIB v2") return false;   // v2: multiples raices (Ctrl+F2)
-                if (!L[1].StartsWith("roots=") || !string.Equals(L[1].Substring(6), JoinRoots(roots), StringComparison.OrdinalIgnoreCase)) return false;
-                string sig = ""; try { StringBuilder ss = new StringBuilder(); for (int i = 0; i < roots.Count; i++) { if (i > 0) ss.Append('|'); ss.Append(RootSig(roots[i])); } sig = ss.ToString(); } catch { return false; }
-                if (!L[2].StartsWith("sig=") || L[2].Substring(4) != sig) return false;   // alguna raiz cambio -> re-escanear
-                if (!L[3].StartsWith("dirs=")) return false;   // linea reservada (compatibilidad de formato)
-
-                int li = 4;
-                int na; if (!L[li].StartsWith("A") || !int.TryParse(L[li].Substring(1), out na)) return false; li++;
-                if (li + na > L.Length) return false;
-                List<Track> tk = new List<Track>(na);
-                for (int i = 0; i < na; i++) { string p = L[li + i]; if (p.Length > 0) tk.Add(Track.FromFile(p)); }
-                li += na;
-                int nv; if (li >= L.Length || !L[li].StartsWith("V") || !int.TryParse(L[li].Substring(1), out nv)) return false; li++;
-                if (li + nv > L.Length) return false;
-                List<string> vd = new List<string>(nv);
-                for (int i = 0; i < nv; i++) { string p = L[li + i]; if (p.Length > 0) vd.Add(p); }
-                li += nv;
-                int nc; if (li >= L.Length || !L[li].StartsWith("C") || !int.TryParse(L[li].Substring(1), out nc)) return false; li++;
-                if (li + nc > L.Length) return false;
-                Dictionary<string, string> cv = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-                for (int i = 0; i < nc; i++)
+                using (StreamReader reader = new StreamReader(f))
                 {
-                    string s = L[li + i]; int b = s.IndexOf('|'); if (b <= 0) continue;
-                    cv[s.Substring(0, b)] = s.Substring(b + 1);
+                    // Rechazar cabeceras antiguas sin cargar todas las rutas en memoria.
+                    if (reader.ReadLine() != "ROCOLA-LIB v2") return false;
+                    string line = reader.ReadLine();
+                    if (line == null || !line.StartsWith("roots=") || !string.Equals(line.Substring(6), JoinRoots(roots), StringComparison.OrdinalIgnoreCase)) return false;
+                    string sig = RootsSig(roots);
+                    observedSig = sig;
+                    line = reader.ReadLine();
+                    if (line == null || !line.StartsWith("sig=") || line.Substring(4) != sig) return false;
+                    line = reader.ReadLine();
+                    if (line == null || !line.StartsWith("dirs=")) return false;
+                    return ReadLibraryRecords(reader, out outTracks, out outVideos, out outCovers);
                 }
-                if (tk.Count == 0) return false;
-                outTracks = tk; outVideos = vd; outCovers = cv;
-                return true;
             }
-            catch { return false; }
+            catch { outTracks = null; outVideos = null; outCovers = null; return false; }
         }
 
+        private static bool ReadLibraryCount(TextReader reader, char section, out int count)
+        {
+            count = 0;
+            string line = reader.ReadLine();
+            return line != null && line.Length > 0 && line[0] == section
+                && int.TryParse(line.Substring(1), out count) && count >= 0;
+        }
+
+        private static bool ReadLibraryRecords(TextReader reader, out List<Track> outTracks, out List<string> outVideos, out Dictionary<string, string> outCovers)
+        {
+            outTracks = null; outVideos = null; outCovers = null;
+            // No reservar segun un contador del archivo: puede estar truncado o corrupto.
+            // Publicar solo tras alcanzar EOF, tambien si hay lineas sobrantes.
+            int count;
+            if (!ReadLibraryCount(reader, 'A', out count)) return false;
+            List<Track> tk = new List<Track>();
+            for (int i = 0; i < count; i++)
+            {
+                string path = reader.ReadLine(); if (path == null) return false;
+                if (path.Length > 0) tk.Add(Track.FromFile(path));
+            }
+            if (!ReadLibraryCount(reader, 'V', out count)) return false;
+            List<string> vd = new List<string>();
+            for (int i = 0; i < count; i++)
+            {
+                string path = reader.ReadLine(); if (path == null) return false;
+                if (path.Length > 0) vd.Add(path);
+            }
+            if (!ReadLibraryCount(reader, 'C', out count)) return false;
+            Dictionary<string, string> cv = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < count; i++)
+            {
+                string line = reader.ReadLine(); if (line == null) return false;
+                int b = line.IndexOf('|'); if (b <= 0) continue;
+                cv[line.Substring(0, b)] = line.Substring(b + 1);
+            }
+            while (reader.ReadLine() != null) { }
+            if (tk.Count == 0) return false;
+            outTracks = tk; outVideos = vd; outCovers = cv;
+            return true;
+        }
+
+        private readonly object librarySaveLock = new object();
+        private readonly GuardadoReciente librarySaveQueue = new GuardadoReciente();
+        private long librarySaveVersion;
         // Guarda la biblioteca en segundo plano (la copia de datos es instantanea; la escritura va al pool).
         private void SaveLibraryCacheAsync()
         {
@@ -7069,30 +7857,51 @@ namespace Rocola
             {
                 List<string> roots = (scanRoots != null && scanRoots.Count > 0) ? new List<string>(scanRoots) : AllMusicRoots();
                 if (roots.Count == 0) return;
+                string firma = lastFreshRootSig;
+                // Si el arbol cambio mientras se escaneaba, no hay una firma honesta para esta instantanea.
+                // Se omite el cache; el proximo arranque vuelve a recorrer y no puede aceptar datos viejos.
+                if (string.IsNullOrEmpty(firma)) return;
                 List<string> ap = new List<string>(tracks.Count);
                 for (int i = 0; i < tracks.Count; i++) ap.Add(tracks[i].Path);
                 List<string> vp = (lastVideoPaths != null) ? new List<string>(lastVideoPaths) : new List<string>();
                 Dictionary<string, string> cv = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
                 for (int i = 0; i < albums.Count; i++) if (albums[i].CoverPath != null) cv[albums[i].Folder] = albums[i].CoverPath;
                 if (videoAlbums != null) for (int i = 0; i < videoAlbums.Count; i++) if (videoAlbums[i].CoverPath != null) cv[videoAlbums[i].Folder] = videoAlbums[i].CoverPath;
-                System.Threading.ThreadPool.QueueUserWorkItem(delegate (object st)
+                long version = System.Threading.Interlocked.Increment(ref librarySaveVersion);
+                GuardaUltimo(librarySaveQueue, delegate
                 {
                     try
                     {
-                        StringBuilder sb = new StringBuilder(ap.Count * 64);
-                        sb.Append("ROCOLA-LIB v2\r\n");
-                        sb.Append("roots=").Append(JoinRoots(roots)).Append("\r\n");
-                        sb.Append("sig=");
-                        for (int i = 0; i < roots.Count; i++) { if (i > 0) sb.Append('|'); sb.Append(RootSig(roots[i])); }
-                        sb.Append("\r\n");
-                        sb.Append("dirs=0\r\n");   // linea reservada (el formato v1 la usaba; se conserva la posicion)
-                        sb.Append("A").Append(ap.Count).Append("\r\n");
-                        for (int i = 0; i < ap.Count; i++) sb.Append(ap[i]).Append("\r\n");
-                        sb.Append("V").Append(vp.Count).Append("\r\n");
-                        for (int i = 0; i < vp.Count; i++) sb.Append(vp[i]).Append("\r\n");
-                        sb.Append("C").Append(cv.Count).Append("\r\n");
-                        foreach (KeyValuePair<string, string> kv in cv) sb.Append(kv.Key).Append('|').Append(kv.Value).Append("\r\n");
-                        EscribeSeguro(LibCacheFile(), sb.ToString());
+                        Func<bool> vigente = delegate { return version == System.Threading.Interlocked.Read(ref librarySaveVersion); };
+                        if (!vigente()) return;
+                        lock (librarySaveLock)
+                        {
+                            EscribeFlujoSeguro(LibCacheFile(), delegate(TextWriter writer)
+                            {
+                                writer.Write("ROCOLA-LIB v2\r\nroots="); writer.Write(JoinRoots(roots));
+                                writer.Write("\r\nsig="); writer.Write(firma); writer.Write("\r\ndirs=0\r\nA");
+                                writer.Write(ap.Count); writer.Write("\r\n");
+                                for (int i = 0; i < ap.Count; i++)
+                                {
+                                    if ((i & 127) == 0 && !vigente()) return false;
+                                    writer.Write(ap[i]); writer.Write("\r\n");
+                                }
+                                writer.Write('V'); writer.Write(vp.Count); writer.Write("\r\n");
+                                for (int i = 0; i < vp.Count; i++)
+                                {
+                                    if ((i & 127) == 0 && !vigente()) return false;
+                                    writer.Write(vp[i]); writer.Write("\r\n");
+                                }
+                                writer.Write('C'); writer.Write(cv.Count); writer.Write("\r\n");
+                                int n = 0;
+                                foreach (KeyValuePair<string, string> kv in cv)
+                                {
+                                    if ((n++ & 127) == 0 && !vigente()) return false;
+                                    writer.Write(kv.Key); writer.Write('|'); writer.Write(kv.Value); writer.Write("\r\n");
+                                }
+                                return true;
+                            }, vigente);
+                        }
                     }
                     catch { }
                 });
@@ -7146,6 +7955,11 @@ namespace Rocola
         // QUIEN LO SABE ES EL SISTEMA, cada uno a su manera, asi que lo contesta Sistema: aqui no hay que
         // adivinar nombres porque Linux dice de que TIPO es cada sitio montado (ver LinuxSistema.cs); en
         // Windows si va por nombre, que son cuatro y bien conocidos.
+        //
+        // Por eso el retoque que la rama de Windows le hizo a esa lista -sacar "Recovery" de los nombres
+        // prohibidos, porque un disco de un artista se puede llamar asi y solo hay que excluirlo cuando
+        // cuelga de la raiz de la unidad- aqui no hace falta: preguntando por el tipo de montaje, una
+        // carpeta llamada "Recovery" dentro de la musica no es un montaje y nunca se confundio.
         private static bool EsCarpetaDelSistema(string dir)
         {
             return Sistema.EsCarpetaDelSistema(dir);
@@ -7196,7 +8010,23 @@ namespace Rocola
         // disco es la raiz misma. Si por lo que sea no cae bajo ninguna raiz, se usa su carpeta inmediata.
         private static string AlbumFolderFor(string filePath, List<string> roots)
         {
+            return AlbumFolderFromDirectory(Path.GetDirectoryName(filePath), roots);
+        }
+
+        private static string AlbumFolderCached(string filePath, List<string> roots, string[] folderMemo)
+        {
             string dir = Path.GetDirectoryName(filePath);
+            if (string.IsNullOrEmpty(dir)) return "";
+            if (string.Equals(dir, folderMemo[0], StringComparison.Ordinal)) return folderMemo[1];
+            string folder = AlbumFolderFromDirectory(dir, roots);
+            // El escaner entrega archivos consecutivos por carpeta: basta la ultima.
+            // Dos referencias por reconstruccion, sin tabla hash ni retencion de todas las rutas.
+            folderMemo[0] = dir; folderMemo[1] = folder;
+            return folder;
+        }
+
+        private static string AlbumFolderFromDirectory(string dir, List<string> roots)
+        {
             if (string.IsNullOrEmpty(dir)) return "";
             if (roots != null)
                 for (int r = 0; r < roots.Count; r++)
@@ -7217,11 +8047,12 @@ namespace Rocola
 
         private void BuildAlbums(List<string> roots)
         {
+            string[] folderMemo = new string[2];
             Dictionary<string, Album> byFolder = new Dictionary<string, Album>(StringComparer.OrdinalIgnoreCase);
             for (int i = 0; i < tracks.Count; i++)
             {
                 Track t = tracks[i];
-                string folder = AlbumFolderFor(t.Path, roots);
+                string folder = AlbumFolderCached(t.Path, roots, folderMemo);
                 if (folder == null) folder = "";
                 Album al;
                 if (!byFolder.TryGetValue(folder, out al)) { al = new Album(); al.Folder = folder; byFolder[folder] = al; }
@@ -7295,6 +8126,7 @@ namespace Rocola
 
         private void BuildVideoSection(List<string> roots)
         {
+            string[] folderMemo = new string[2];
             // carpeta -> album de audio existente
             Dictionary<string, Album> byFolder = new Dictionary<string, Album>(StringComparer.OrdinalIgnoreCase);
             for (int i = 0; i < albums.Count; i++) { albums[i].VideoFiles.Clear(); byFolder[albums[i].Folder] = albums[i]; }
@@ -7305,7 +8137,7 @@ namespace Rocola
             List<string> vsrc = cachedVideoPaths ?? new List<string>();
             foreach (string vf in vsrc)
             {
-                string folder = AlbumFolderFor(vf, roots);
+                string folder = AlbumFolderCached(vf, roots, folderMemo);
                 Album al;
                 if (byFolder.TryGetValue(folder, out al)) al.VideoFiles.Add(vf);
                 else if (videoOnly.TryGetValue(folder, out al)) al.VideoFiles.Add(vf);
@@ -7330,8 +8162,54 @@ namespace Rocola
             lastVideoPaths = cachedVideoPaths;   // para guardar el cache
         }
 
+        // Solo listas selectivas y completas, en el orden original. Como maximo
+        // 28 * 8192 referencias; las letras comunes siguen usando el recorrido normal.
+        private List<SearchItem>[] searchPostings;
+
+        private void BuildSearchPostings()
+        {
+            searchPostings = null;
+            int n = searchIndex.Count;
+            if (n < 16000) return;
+            int[] counts = new int[28];
+            for (int i = 0; i < n; i++)
+                for (int bit = 0; bit < counts.Length; bit++)
+                    if ((searchIndex[i].Mask & (1 << bit)) != 0) counts[bit]++;
+            List<SearchItem>[] postings = new List<SearchItem>[28];
+            int limit = Math.Min(n / 8, 8192);
+            int selected = 0;
+            for (int bit = 0; bit < counts.Length; bit++)
+                if (counts[bit] <= limit)
+                {
+                    postings[bit] = new List<SearchItem>(counts[bit]);
+                    selected |= 1 << bit;
+                }
+            for (int i = 0; i < n; i++)
+            {
+                SearchItem item = searchIndex[i];
+                int mask = item.Mask & selected;
+                if (mask == 0) continue;
+                for (int bit = 0; bit < postings.Length; bit++)
+                    if ((mask & (1 << bit)) != 0) postings[bit].Add(item);
+            }
+            searchPostings = postings;
+        }
+
+        private List<SearchItem> SearchCandidates(List<SearchItem> source, int mask)
+        {
+            if (!object.ReferenceEquals(source, searchIndex) || searchPostings == null) return source;
+            List<SearchItem> best = source;
+            for (int bit = 0; bit < searchPostings.Length; bit++)
+            {
+                List<SearchItem> list = searchPostings[bit];
+                if ((mask & (1 << bit)) != 0 && list != null && list.Count < best.Count) best = list;
+            }
+            return best;
+        }
+
         private void BuildSearchIndex()
         {
+            searchPostings = null;
             searchIndex.Clear();
             // Mapa artista -> todos sus discos (para el cubo que cicla caratulas)
             Dictionary<string, List<Album>> artistAlbums = new Dictionary<string, List<Album>>(StringComparer.OrdinalIgnoreCase);
@@ -7369,6 +8247,7 @@ namespace Rocola
             // por entrada, y cada entrada solo depende de su propio texto: se puede repartir. Va aparte del
             // bucle de arriba a proposito, para que el indice quede armado y en orden ANTES de repartir.
             ClavesDelIndice();
+            BuildSearchPostings();
         }
 
         // LAS CLAVES DEL BUSCADOR, REPARTIDAS ENTRE LOS NUCLEOS.
@@ -7507,14 +8386,14 @@ namespace Rocola
         private Image PortadaEnMemoria(Album a)
         {
             if (a == null || a.CoverPath == null) return null;
-            lock (coverLock) { Image c; if (coverCache.TryGetValue(a.CoverPath, out c)) return c; }
+            lock (coverLock) { Image c; if (CoverEnCache(a.CoverPath, true, out c)) return c; }
             return null;
         }
 
         private Image LoadCover(Album a)
         {
             if (a == null || a.CoverPath == null) return null;
-            lock (coverLock) { Image c; if (coverCache.TryGetValue(a.CoverPath, out c)) return c; }
+            lock (coverLock) { Image c; if (CoverEnCache(a.CoverPath, true, out c)) return c; }
             RequestCover(a, false);   // encargar SIN el freno de hojeo (esto no es la rejilla)
             return null;
         }
@@ -7555,6 +8434,7 @@ namespace Rocola
         {
             try
             {
+                colorPortada.Remove(key);   // pudo recargarse una imagen distinta con la misma ruta
                 if (albumView != null) albumView.RefreshCover(key);
                 if (panelSongs != null && panelSongs.Visible && currentAlbum != null && cubeBox != null)
                 {
@@ -7566,18 +8446,60 @@ namespace Rocola
                 if (miniCube != null && miniCube.Visible && nowPlaying != null && nowPlaying.Disc != null && nowPlaying.Disc.CoverPath == key)
                 {
                     miniCube.Cover = LoadCover(nowPlaying.Disc); miniCube.Invalidate();
+                }
+                if (nowPlaying != null && nowPlaying.Disc != null &&
+                    string.Equals(nowPlaying.Disc.CoverPath, key, StringComparison.OrdinalIgnoreCase))
+                {
                     // Y EL FONDO. La portada de la que suena puede llegar DESPUES de que empiece la
                     // cancion -se decodifica en otro hilo-, y entonces el color se calculo sin ella.
                     // Aqui ya esta: se vuelve a preguntar, y si ahora dice otra cosa, el fondo viaja
                     // hasta el color nuevo con el mismo fundido lento de siempre (bgAccentTarget).
                     if (fondoPortadaOn && !nowPlaying.IsVideo)
                     {
-                        Color acc = ColorDeLoQueSuena(nowPlaying.Song, nowPlaying.Disc);
-                        if (acc.ToArgb() != bgAccentTarget.ToArgb()) ApplyGenreBackground(nowPlaying.Song, nowPlaying.Disc);
+                        // Los picos pueden cambiar aunque el promedio siga siendo el mismo.
+                        ApplyGenreBackground(nowPlaying.Song, nowPlaying.Disc);
                     }
                 }
+            }
+            catch { }
+        }
+
+        private readonly List<string> coverArrivals = new List<string>();
+        private bool coverArrivalsPosted;
+
+        // Cada clave se publico una sola vez en esta generacion. Agrupar las llegadas
+        // mientras espera el mensaje de UI, conservando su orden y sin demoras artificiales.
+        private bool RegisterCoverArrival(string key, int generation)
+        {
+            lock (coverLock)
+            {
+                if (generation != coverGen) return false;
+                coverArrivals.Add(key);
+                if (coverArrivalsPosted) return false;
+                coverArrivalsPosted = true;
+                return true;
+            }
+        }
+
+        private string[] TakeCoverArrivals()
+        {
+            lock (coverLock)
+            {
+                string[] keys = coverArrivals.ToArray();
+                coverArrivals.Clear(); coverArrivalsPosted = false;
+                return keys;
+            }
+        }
+
+        private void FlushCoverArrivals()
+        {
+            string[] keys = TakeCoverArrivals();
+            for (int i = 0; i < keys.Length; i++) ApplyArrivedCover(keys[i]);
+            if (keys.Length == 0) return;
+            try
+            {
                 if (searchOpen && searchOverlay != null) searchOverlay.Invalidate();
-                // Y las portaditas de la cola: la que faltaba puede ser esta.
+                // Estas dos vistas dependen del conjunto: refrescarlas una vez por tanda.
                 if (pastCola != null && pastCola.ConPortadas) { LlenaPortaditas(); pastCola.Invalidate(); }
             }
             catch { }
@@ -7590,10 +8512,49 @@ namespace Rocola
         // revueltas en el mismo turno de disco: a veces las caratulas que ESTAS viendo esperaban detras
         // de la prelectura. Ahora hay dos filas: ALTA (lo visible) y BAJA (prelectura); una sola bomba
         // atiende el disco y SIEMPRE saca primero la fila alta.
-        private class CoverJob { public string Key; public int Gen; }
-        private readonly List<CoverJob> coverQHi = new List<CoverJob>();
-        private readonly List<CoverJob> coverQLo = new List<CoverJob>();
+        private class CoverJob { public string Key; public int Gen; public LinkedListNode<CoverJob> Node; }
+        private readonly LinkedList<CoverJob> coverQHi = new LinkedList<CoverJob>();
+        private readonly LinkedList<CoverJob> coverQLo = new LinkedList<CoverJob>();
         private int coverPumpCount = 0;   // hasta 2 bombas de decodificacion (una por nucleo)
+
+        // Llamar bajo coverLock. Si la prelectura ahora es visible, pasa a la fila alta
+        // sin duplicar la decodificacion ni desplazar el resto de la cola.
+        private bool CoverYaSolicitada(string key, bool highPriority)
+        {
+            CoverJob j;
+            if (!coverLoading.TryGetValue(key, out j)) return false;
+            if (highPriority && j.Node != null && j.Node.List == coverQLo)
+            {
+                coverQLo.Remove(j.Node);
+                coverQHi.AddLast(j.Node);
+            }
+            return true;
+        }
+
+        private void InvalidateCoverMemory()
+        {
+            colorPortada.Clear();   // F5 invalida tambien los tonos de una imagen reemplazada
+            lock (coverLock)
+            {
+                coverGen++;
+                coverArrivals.Clear();   // el mensaje pendiente puede atender llegadas de la nueva generacion
+                coverQHi.Clear(); coverQLo.Clear(); coverLoading.Clear(); coverRetryUntil.Clear();
+                foreach (KeyValuePair<string, Image> kv in coverCache) if (kv.Value != null) coverTrash.Add(kv.Value);
+                coverCache.Clear(); coverOrder.Clear(); coverNodes.Clear();
+            }
+        }
+
+        // Una lectura fallida (archivo copiandose, disco que desperto tarde) no se guarda como null para
+        // siempre. Solo se frena unos segundos para que cada repintado no martillee el mismo archivo.
+        // Llamar bajo coverLock.
+        private bool CoverRetryPendiente(string key)
+        {
+            int hasta;
+            if (!coverRetryUntil.TryGetValue(key, out hasta)) return false;
+            if (unchecked(Environment.TickCount - hasta) < 0) return true;
+            coverRetryUntil.Remove(key);
+            return false;
+        }
 
         private Image RequestCover(Album a, bool respectHold) { return RequestCover(a, respectHold, true); }
 
@@ -7602,8 +8563,8 @@ namespace Rocola
         private Image LoadCoverByPath(string key)
         {
             if (string.IsNullOrEmpty(key)) return null;
-            lock (coverLock) { Image c; if (coverCache.TryGetValue(key, out c)) return c; }
-            RequestCoverByPath(key, false);
+            lock (coverLock) { Image c; if (CoverEnCache(key, true, out c)) return c; }
+            RequestCoverByPath(key, true);   // la pide el cubo visible, no el precalentador
             return null;
         }
 
@@ -7613,11 +8574,12 @@ namespace Rocola
             lock (coverLock)
             {
                 Image c;
-                if (coverCache.TryGetValue(key, out c)) return;
-                if (coverLoading.Contains(key)) return;
-                coverLoading.Add(key);
+                if (CoverEnCache(key, highPriority, out c)) return;
+                if (CoverYaSolicitada(key, highPriority)) return;
+                if (CoverRetryPendiente(key)) return;
                 CoverJob j = new CoverJob(); j.Key = key; j.Gen = coverGen;
-                if (highPriority) coverQHi.Add(j); else coverQLo.Add(j);
+                coverLoading.Add(key, j);
+                j.Node = highPriority ? coverQHi.AddLast(j) : coverQLo.AddLast(j);
                 if (coverPumpCount < coverCarriles)
                 {
                     coverPumpCount++;
@@ -7636,12 +8598,13 @@ namespace Rocola
             lock (coverLock)
             {
                 Image c;
-                if (coverCache.TryGetValue(key, out c)) return c;
+                if (CoverEnCache(key, highPriority, out c)) return c;
                 if (respectHold && coversOnHold) return null;   // hojeando rapido: todavia no pedir
-                if (coverLoading.Contains(key)) return null;
-                coverLoading.Add(key);
+                if (CoverYaSolicitada(key, highPriority)) return null;
+                if (CoverRetryPendiente(key)) return null;
                 CoverJob j = new CoverJob(); j.Key = key; j.Gen = coverGen;
-                if (highPriority) coverQHi.Add(j); else coverQLo.Add(j);
+                coverLoading.Add(key, j);
+                j.Node = highPriority ? coverQHi.AddLast(j) : coverQLo.AddLast(j);
                 if (coverPumpCount < coverCarriles)   // SSD: un carril por nucleo (hasta 4); HDD: carril unico (cabezal)
                 {
                     coverPumpCount++;
@@ -7662,24 +8625,58 @@ namespace Rocola
                 CoverJob j = null;
                 lock (coverLock)
                 {
-                    if (coverQHi.Count > 0) { j = coverQHi[0]; coverQHi.RemoveAt(0); }
-                    else if (coverQLo.Count > 0) { j = coverQLo[0]; coverQLo.RemoveAt(0); }
+                    if (coverQHi.Count > 0) { j = coverQHi.First.Value; coverQHi.RemoveFirst(); }
+                    else if (coverQLo.Count > 0) { j = coverQLo.First.Value; coverQLo.RemoveFirst(); }
                     else { coverPumpCount--; return; }
+                    j.Node = null;   // ya esta en vuelo: no se vuelve a encolar
                 }
                 string key = j.Key;
-                if (j.Gen != coverGen) { lock (coverLock) { coverLoading.Remove(key); } continue; }
+                if (j.Gen != coverGen) continue;   // la invalidacion ya retiro su registro
                 coverSem.WaitOne();   // turno unico de disco (compartido con el precalentador)
                 try
                 {
-                    if (j.Gen != coverGen) { lock (coverLock) { coverLoading.Remove(key); } continue; }
-                    Image thumb = DecodeCover(key);
-                    lock (coverLock) { CachePut(key, thumb); coverLoading.Remove(key); }
+                    if (j.Gen != coverGen) continue;
+                    Image thumb = null;
+                    string identidadAntes = null;
+                    try { identidadAntes = ThumbCachePath(key); thumb = DecodeCoverWithIdentity(key, identidadAntes); } catch { }
+                    // Si la portada fue reemplazada mientras se decodificaba, el bitmap pertenece a la
+                    // version anterior. No se publica en la cache de memoria con la misma ruta.
                     try
                     {
-                        if (this.IsHandleCreated)
-                            this.BeginInvoke((MethodInvoker)delegate { ApplyArrivedCover(key); });
+                        string identidadDespues = ThumbCachePath(key);
+                        if (!string.Equals(identidadAntes, identidadDespues, StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (thumb != null) thumb.Dispose();
+                            thumb = null;
+                        }
                     }
-                    catch { }
+                    catch { if (thumb != null) { try { thumb.Dispose(); } catch { } thumb = null; } }
+                    lock (coverLock)
+                    {
+                        // Validar y publicar en el MISMO candado que invalida. Un trabajo viejo
+                        // nunca puede borrar el registro ni publicar sobre la generacion nueva.
+                        if (j.Gen != coverGen)
+                        {
+                            if (thumb != null) { try { thumb.Dispose(); } catch { } }
+                            continue;
+                        }
+                        if (thumb != null) { CachePut(key, thumb); coverRetryUntil.Remove(key); }
+                        else coverRetryUntil[key] = unchecked(Environment.TickCount + 30000);
+                        coverLoading.Remove(key);
+                    }
+                    if (thumb != null)
+                        try
+                        {
+                            if (this.IsHandleCreated && RegisterCoverArrival(key, j.Gen))
+                            {
+                                try { this.BeginInvoke((MethodInvoker)FlushCoverArrivals); }
+                                catch
+                                {
+                                    lock (coverLock) { coverArrivals.Clear(); coverArrivalsPosted = false; }
+                                }
+                            }
+                        }
+                        catch { }
                 }
                 finally { coverSem.Release(); }
             }
@@ -7714,7 +8711,15 @@ namespace Rocola
 
         private static string ThumbCachePath(string coverPath)
         {
-            ulong h = Fnv64(coverPath.ToLowerInvariant());
+            string identidad = coverPath.ToLowerInvariant();
+            try
+            {
+                FileInfo fi = new FileInfo(coverPath);
+                identidad += "|" + fi.Length.ToString(CultureInfo.InvariantCulture)
+                          + "|" + fi.LastWriteTimeUtc.Ticks.ToString(CultureInfo.InvariantCulture);
+            }
+            catch { identidad += "|sin-archivo"; }
+            ulong h = Fnv64(identidad);
             return Path.Combine(CarpetaMiniaturas(), h.ToString("x16") + "_" + ThumbPx + ".jpg");
         }
 
@@ -7768,27 +8773,57 @@ namespace Rocola
             return hash;
         }
 
+        // Las claves de miniatura cambian con cada version de una portada. No retener
+        // un candado eterno por version ni compartir estas franjas con creditos/datos.
+        private static readonly object[] thumbWriteLocks = CreaCandadosMiniatura();
+        private static object[] CreaCandadosMiniatura()
+        {
+            object[] locks = new object[64];
+            for (int i = 0; i < locks.Length; i++) locks[i] = new object();
+            return locks;
+        }
+        private static object CandadoMiniatura(string path)
+        {
+            return thumbWriteLocks[StringComparer.OrdinalIgnoreCase.GetHashCode(path) & (thumbWriteLocks.Length - 1)];
+        }
+
         private static void SaveThumb(Bitmap thumb, string cacheFile)
         {
+            string tmp = cacheFile + ".tmp." + Guid.NewGuid().ToString("N");
             try
             {
-                if (jpegEnc == null)
-                    foreach (ImageCodecInfo ci in ImageCodecInfo.GetImageEncoders()) if (ci.MimeType == "image/jpeg") { jpegEnc = ci; break; }
-                if (jpegEnc == null) { thumb.Save(cacheFile); return; }
-                using (EncoderParameters ep = new EncoderParameters(1))
+                lock (CandadoMiniatura(cacheFile))
                 {
-                    ep.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 82L);
-                    thumb.Save(cacheFile, jpegEnc, ep);
+                    if (jpegEnc == null)
+                        foreach (ImageCodecInfo ci in ImageCodecInfo.GetImageEncoders()) if (ci.MimeType == "image/jpeg") { jpegEnc = ci; break; }
+                    if (jpegEnc == null) thumb.Save(tmp, ImageFormat.Jpeg);
+                    else
+                        using (EncoderParameters ep = new EncoderParameters(1))
+                        {
+                            ep.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 82L);
+                            thumb.Save(tmp, jpegEnc, ep);
+                        }
+                    if (File.Exists(cacheFile))
+                    {
+                        try { File.Replace(tmp, cacheFile, null, true); tmp = null; return; }
+                        catch { try { File.Delete(cacheFile); } catch { } }
+                    }
+                    File.Move(tmp, cacheFile); tmp = null;
                 }
             }
             catch { }
+            finally { if (tmp != null) try { File.Delete(tmp); } catch { } }
         }
 
         private static Image DecodeCover(string path)
         {
             string cacheFile = null;
             try { cacheFile = ThumbCachePath(path); } catch { }
+            return DecodeCoverWithIdentity(path, cacheFile);
+        }
 
+        private static Image DecodeCoverWithIdentity(string path, string cacheFile)
+        {
             // 1) miniatura en cache -> leerla (rapido)
             if (cacheFile != null)
             {
@@ -7846,14 +8881,38 @@ namespace Rocola
         // Guarda en cache acotando el tamaño (FIFO). Llamar SIEMPRE bajo coverLock.
         // Las expulsadas NO se liberan aqui (el hilo de pantalla podria estar dibujandolas):
         // se mandan a la papelera y se liberan en el temporizador, cuando no hay repintado en curso.
+        // Estos tres metodos se llaman bajo coverLock. Consultar desde prelectura NO
+        // rejuvenece una portada: solo el uso visible debe protegerla de la expulsion.
+        private void CoverToca(string key)
+        {
+            LinkedListNode<string> node;
+            if (!coverNodes.TryGetValue(key, out node) || node == coverOrder.Last) return;
+            coverOrder.Remove(node);
+            coverOrder.AddLast(node);   // reutilizar el nodo, sin asignaciones por repintado
+        }
+
+        private bool CoverEnCache(string key, bool visible, out Image img)
+        {
+            if (!coverCache.TryGetValue(key, out img)) return false;
+            if (visible) CoverToca(key);
+            return true;
+        }
+
         private void CachePut(string key, Image img)
         {
-            if (coverCache.ContainsKey(key)) { coverCache[key] = img; return; }
-            coverCache[key] = img;
-            coverOrder.Enqueue(key);
+            Image previous;
+            if (coverCache.TryGetValue(key, out previous))
+            {
+                coverCache[key] = img;
+                if (previous != null && !object.ReferenceEquals(previous, img)) coverTrash.Add(previous);
+                return;   // reemplazar no equivale a un nuevo uso visible
+            }
+            coverCache.Add(key, img);
+            coverNodes.Add(key, coverOrder.AddLast(key));
             while (coverOrder.Count > TopeDePortadas())
             {
-                string old = coverOrder.Dequeue();
+                string old = coverOrder.First.Value;
+                coverOrder.RemoveFirst(); coverNodes.Remove(old);
                 Image oldImg;
                 if (coverCache.TryGetValue(old, out oldImg)) { coverCache.Remove(old); if (oldImg != null) coverTrash.Add(oldImg); }
             }
@@ -7861,7 +8920,8 @@ namespace Rocola
 
         // Libera las carátulas expulsadas. Se llama desde el temporizador (mismo hilo que el dibujo,
         // asi que NUNCA hay un DrawImage en curso). No libera las que sigan en uso por el cubo del disco,
-        // el mini-cubo o la animacion de disco (esas las recoge el GC cuando dejen de usarse).
+        // el mini-cubo (incluido su relevo), la cola o la animacion de disco.
+        // Esas las recoge el GC cuando dejen de usarse, sin mantener otra lista creciente.
         private void DrainCoverTrash()
         {
             List<Image> dump = null;
@@ -7871,8 +8931,6 @@ namespace Rocola
                 dump = new List<Image>(coverTrash);
                 coverTrash.Clear();
             }
-            Image pin1 = (miniCube != null) ? miniCube.Cover : null;
-            Image pin2 = (cubeBox != null) ? cubeBox.Cover : null;
 #if ROCOLA_GPU
             Image pin3 = transImg;   // la animacion de disco la esta dibujando AHORA: liberarla revienta el render
 #else
@@ -7882,7 +8940,13 @@ namespace Rocola
             {
                 Image im = dump[i];
                 if (im == null) continue;
-                if (im == pin1 || im == pin2 || im == pin3) continue;   // sigue en uso: que lo recoja el GC luego
+                if (im == pin3 || (miniCube != null && miniCube.UsaPortada(im))
+                    || (cubeBox != null && cubeBox.UsaPortada(im))) continue;
+                bool enCola = false;
+                if (pastCola != null && pastCola.Portadas != null)
+                    for (int j = 0; j < pastCola.Portadas.Length; j++)
+                        if (object.ReferenceEquals(im, pastCola.Portadas[j])) { enCola = true; break; }
+                if (enCola) continue;   // una capsula puede volver a dibujar esta imagen en otro cuadro
                 try { im.Dispose(); } catch { }
             }
         }
@@ -8774,6 +9838,7 @@ namespace Rocola
                 else
                 {
                     matches = new List<SearchItem>();
+                    source = SearchCandidates(source, qMask);
                     int cuantos = source.Count;
                     for (int i = 0; i < cuantos; i++)
                     {
@@ -8788,6 +9853,7 @@ namespace Rocola
                         nb.Lista = matches; nb.Puntos = new int[matches.Count];
                         for (int i = 0; i < matches.Count; i++) nb.Puntos[i] = matches[i].Score;
                         bolsaLetra[q[0]] = nb;
+                        bolsa = nb;
                     }
                 }
                 // De todo lo que casa solo se ENSENAN 40. Ordenar la lista entera para tirar el resto era el
@@ -8796,7 +9862,14 @@ namespace Rocola
                 // 0.19 ms. La lista sin ordenar se guarda igual, porque para acotar la busqueda de la tecla
                 // siguiente lo unico que importa es QUIENES casan, no en que orden.
                 lastMatches = matches; lastQuery = q;
-                TomaMejores(matches, res, 40);
+                // Los puntos de TODAS las coincidencias ya fueron restaurados arriba:
+                // la tecla siguiente sigue teniendo su lista completa para acotar.
+                if (bolsa != null && bolsa.Mejores != null) res.AddRange(bolsa.Mejores);
+                else
+                {
+                    TomaMejores(matches, res, 40);
+                    if (bolsa != null) bolsa.Mejores = new List<SearchItem>(res);
+                }
             }
             else { lastMatches = null; lastQuery = null; }
             searchOverlay.Results = res;
@@ -9440,6 +10513,25 @@ namespace Rocola
         // Un apagon no dispara nada de esto -> el archivo sobrevive y la rocola reanuda.
         private string StateFile() { return RutaDatos("rocola_estado.txt"); }
         private bool stateRestored = false;   // la restauracion corre UNA vez (al primer armado de biblioteca)
+        private List<string> stateMissingRoots;
+        private int stateRootRetryTick;
+
+        private string RaizConfiguradaAusente(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return null;
+            List<string> cfg = new List<string>(); cfg.Add(MusicFolder);
+            for (int i = 0; i < extraMusicDirs.Count; i++) cfg.Add(extraMusicDirs[i]);
+            string mejor = null;
+            for (int i = 0; i < cfg.Count; i++)
+            {
+                string r = cfg[i]; if (string.IsNullOrEmpty(r)) continue;
+                try { r = Path.GetFullPath(r); } catch { continue; }
+                if (!PathInside(path, r) || (mejor != null && mejor.Length >= r.Length)) continue;
+                mejor = r;
+            }
+            if (mejor == null) return null;
+            try { return Directory.Exists(mejor) ? null : mejor; } catch { return mejor; }
+        }
 
         // El estado de recuperacion pertenece a UN "dia del negocio", que ARRANCA a las 7 AM (hora del sistema): a
         // esa hora ya cerro, y nada de la noche anterior debe cruzar las 7 AM. Todo lo de antes de las 7 AM cuenta
@@ -9503,20 +10595,76 @@ namespace Rocola
             {
                 try
                 {
-                    string stamp = DateTime.Now.ToString("yyyy-MM-dd");
-                    BackupTo(Path.Combine(baseDir, stamp), files); PruneBackups(baseDir, 3);
-                    if (!string.IsNullOrEmpty(second))
-                    { string s2 = Path.Combine(second, "respaldo_rocola"); try { BackupTo(Path.Combine(s2, stamp), files); PruneBackups(s2, 3); } catch { } }
+                    string stamp = DateTime.Now.ToString("yyyy-MM-dd_HHmmssfff", CultureInfo.InvariantCulture) + "_" + Guid.NewGuid().ToString("N");
+                    BackupDestino(baseDir, stamp, files);
+                    if (!string.IsNullOrEmpty(second)) BackupDestino(Path.Combine(second, "respaldo_rocola"), stamp, files);
                 }
                 catch { }
             });
         }
+        private void BackupDestino(string root, string stamp, string[] files)
+        {
+            try { BackupTo(Path.Combine(root, stamp), files); PruneBackups(root, 3); }
+            catch (Exception ex)
+            {
+                LogError("Respaldo incompleto en " + root + " (se conservan los anteriores)", ex);
+                try { BeginInvoke((MethodInvoker)delegate { ShowToast("Respaldo incompleto; anteriores conservados. Ver rocola_error.txt", Color.FromArgb(200, 80, 70)); }); } catch { }
+            }
+        }
+
+        private static readonly object backupLock = new object();
         private static void BackupTo(string dir, string[] files)
         {
-            Directory.CreateDirectory(dir);
-            for (int i = 0; i < files.Length; i++)
-                try { if (File.Exists(files[i])) File.Copy(files[i], Path.Combine(dir, Path.GetFileName(files[i])), true); }
-                catch { }
+            lock (backupLock)
+            {
+                dir = Path.GetFullPath(dir);
+                string parent = Path.GetDirectoryName(dir);
+                if (string.IsNullOrEmpty(parent) || Directory.Exists(dir) || File.Exists(dir))
+                    throw new IOException("El destino de respaldo debe ser una carpeta nueva");
+                Directory.CreateDirectory(parent);
+                string pending = Path.Combine(parent, ".rocola_backup_pending_" + Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(pending);
+                try
+                {
+                    int copied = 0;
+                    byte[] buffer = new byte[65536];
+                    for (int i = 0; i < files.Length; i++)
+                    {
+                        if (string.IsNullOrEmpty(files[i])) continue;
+                        FileStream input;
+                        try { input = new FileStream(files[i], FileMode.Open, FileAccess.Read, FileShare.Read); }
+                        catch (FileNotFoundException) { continue; }       // datos opcionales aun no creados
+                        catch (DirectoryNotFoundException) { continue; }
+                        using (input)
+                        {
+                            string dst = Path.Combine(pending, Path.GetFileName(files[i]));
+                            using (FileStream outputFile = new FileStream(dst, FileMode.CreateNew, FileAccess.Write, FileShare.None, buffer.Length, FileOptions.WriteThrough))
+                            {
+                                int n;
+                                while ((n = input.Read(buffer, 0, buffer.Length)) > 0) outputFile.Write(buffer, 0, n);
+                                outputFile.Flush();
+                                if (!Sistema.BajaAlDisco(outputFile)) throw new IOException("No se pudo confirmar el respaldo en disco");
+                            }
+                            input.Position = 0;
+                            using (System.Security.Cryptography.SHA256 hash = System.Security.Cryptography.SHA256.Create())
+                            using (FileStream check = File.OpenRead(dst))
+                            {
+                                byte[] a = hash.ComputeHash(input), b = hash.ComputeHash(check);
+                                for (int k = 0; k < a.Length; k++) if (a[k] != b[k]) throw new IOException("La copia del respaldo no coincide");
+                            }
+                            copied++;
+                        }
+                    }
+                    if (copied == 0) throw new IOException("No habia archivos legibles para respaldar");
+                    // Rename en el mismo volumen: la limpieza nunca ve un respaldo a medio copiar.
+                    Directory.Move(pending, dir);
+                }
+                finally
+                {
+                    // Solo la carpeta unica creada por ESTA operacion; nunca un respaldo publicado.
+                    if (Directory.Exists(pending)) try { Directory.Delete(pending, true); } catch { }
+                }
+            }
         }
         // Deja solo las 'keep' carpetas de respaldo mas recientes (por fecha de modificacion); borra el resto.
         private static void PruneBackups(string baseDir, int keep)
@@ -9525,7 +10673,16 @@ namespace Rocola
             {
                 DirectoryInfo bd = new DirectoryInfo(baseDir);
                 if (!bd.Exists) return;
-                DirectoryInfo[] dirs = bd.GetDirectories();
+                List<DirectoryInfo> validas = new List<DirectoryInfo>();
+                foreach (DirectoryInfo d in bd.GetDirectories())
+                {
+                    DateTime fecha;
+                    if ((d.Attributes & FileAttributes.ReparsePoint) != 0 || d.Name.Length < 10 ||
+                        !DateTime.TryParseExact(d.Name.Substring(0, 10), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out fecha) ||
+                        (d.Name.Length != 10 && d.Name[10] != '_')) continue;
+                    if (d.GetFiles().Length > 0) validas.Add(d);
+                }
+                DirectoryInfo[] dirs = validas.ToArray();
                 if (dirs.Length <= keep) return;
                 Array.Sort(dirs, delegate (DirectoryInfo a, DirectoryInfo b) { return b.LastWriteTime.CompareTo(a.LastWriteTime); });
                 for (int i = keep; i < dirs.Length; i++) { try { dirs[i].Delete(true); } catch { } }
@@ -9547,6 +10704,7 @@ namespace Rocola
         {
             if (stateRestored) return;
             stateRestored = true;
+            stateMissingRoots = null;
             try
             {
                 string f = StateFile();
@@ -9581,6 +10739,7 @@ namespace Rocola
                         { string vp = videoAlbums[i].VideoFiles[j]; if (vp != null && !vidDisc.ContainsKey(vp)) vidDisc[vp] = videoAlbums[i]; }
 
                 int cr = 0; PlayItem playing = null; List<PlayItem> q = new List<PlayItem>();
+                List<string> faltan = new List<string>();
                 for (int i = 1; i < L.Length; i++)
                 {
                     string s = L[i];
@@ -9603,8 +10762,31 @@ namespace Rocola
                         Track t;
                         if (byPath.TryGetValue(path, out t)) { it = new PlayItem(); it.Song = t; Album d; discByPath.TryGetValue(path, out d); it.Disc = d; }
                     }
-                    if (it == null) continue;   // el archivo ya no existe / se re-escaneo distinto: se omite
+                    if (it == null)
+                    {
+                        // Si la ruta pertenece a un disco configurado que hoy no esta, NO se consume el
+                        // estado ni los creditos. Se espera a que vuelva y se reescanea automaticamente.
+                        // Con la raiz presente, la seleccion fue borrada: devuelve el credito ya pagado.
+                        string raiz = RaizConfiguradaAusente(path);
+                        if (raiz != null)
+                        {
+                            bool repetida = false;
+                            for (int k = 0; k < faltan.Count; k++)
+                                if (string.Equals(faltan[k], raiz, StringComparison.OrdinalIgnoreCase)) { repetida = true; break; }
+                            if (!repetida) faltan.Add(raiz);
+                        }
+                        else cr++;
+                        continue;
+                    }
                     if (isNow) playing = it; else q.Add(it);
+                }
+                if (faltan.Count > 0)
+                {
+                    stateRestored = false;
+                    stateMissingRoots = faltan;
+                    stateRootRetryTick = Environment.TickCount;
+                    lblStatus.Text = "Esperando el disco de musica para restaurar creditos y cola...";
+                    return;
                 }
                 if (cr <= 0 && playing == null && q.Count == 0) return;   // estado vacio: arranque limpio
                 credits = Math.Max(0, cr);
@@ -9619,7 +10801,7 @@ namespace Rocola
                 }
                 else UpdateNowPlayingUI();
             }
-            catch { }
+            catch { stateRestored = false; }
         }
 
         // ===================== MOTOR DE ESTADISTICAS =====================
@@ -9706,6 +10888,8 @@ namespace Rocola
             return ks;
         }
 
+        private readonly object statsSaveLock = new object();
+        private long statsSaveVersion;
         private void SaveStats(bool async)
         {
             PruneStats();   // acotar antes de escribir
@@ -9714,11 +10898,20 @@ namespace Rocola
             // Este archivo tiene DOS escritores -uno de fondo cada tanto y otro sincrono al cerrar- y si se
             // pisaban se llevaban por delante "LO MAS SONADO" entero. El candado por archivo esta dentro de
             // EscribeSeguro, asi que aqui ya no hace falta acordarse de nada.
-            if (async)
-                System.Threading.ThreadPool.QueueUserWorkItem(delegate (object st)
-                { try { EscribeSeguro(LibStatsFile(), text); } catch { } });
-            else
-                try { EscribeSeguro(LibStatsFile(), text); } catch { }   // al cerrar: sincrono (el proceso podria salir antes de un hilo de fondo)
+            long version = System.Threading.Interlocked.Increment(ref statsSaveVersion);
+            System.Action guardar = delegate
+            {
+                try
+                {
+                    lock (statsSaveLock)
+                    {
+                        if (version != System.Threading.Interlocked.Read(ref statsSaveVersion)) return;
+                        EscribeSeguro(LibStatsFile(), text);
+                    }
+                }
+                catch { }
+            };
+            if (async) GuardaEnFondo(guardar); else guardar();   // al cerrar: sincrono y descarta instantaneas viejas
         }
 
         private string BuildStatsText()
@@ -10055,7 +11248,7 @@ namespace Rocola
             if (nowPlaying.IsVideo)
             {
                 bgAccentTarget = DefaultAccent;       // el video no tiene genero
-                bgGeneroTarget = DefaultAccent; bgPort1 = SinColor; bgPort2 = SinColor;   // ni caratula que aporte
+                bgGeneroTarget = DefaultAccent; bgPort1 = SinColor; bgPort2 = SinColor; bgSinGenero = false; bgArtistaFijo = false;   // ni caratula que aporte
                 StartVideoItem(nowPlaying.VideoPath);
             }
             else
@@ -10519,15 +11712,16 @@ namespace Rocola
 
             // FIN NORMAL del video (sin reembolso, se reprodujo bien): MediaEnded (8); o la posicion
             // alcanzo la duracion (algunos archivos se congelan en el ultimo cuadro y NO reportan
-            // MediaEnded -> esto era lo que dejaba la pantalla negra pegada); o Stopped tras reproducirse.
+            // MediaEnded -> esto era lo que dejaba la pantalla negra pegada); o Stopped CERCA del final.
+            // Haber reproducido tres segundos no basta: WMP tambien usa Stopped para errores a media cancion.
             bool reachedEnd = (dur > 0.5 && pos >= dur - 0.6);
-            bool stoppedAfterPlaying = (st == 1 && videoMaxPos >= 3.0);
-            if (st == 8 || reachedEnd || stoppedAfterPlaying) { PlayNext(); return; }
+            bool stoppedAtEnd = (st == 1 && dur > 0.5 && videoMaxPos >= dur - 1.5);
+            if (st == 8 || reachedEnd || stoppedAtEnd) { PlayNext(); return; }
 
-            // Stopped (1) SIN haberse reproducido = fallo real de arranque -> reembolso + saltar.
-            if (st == 1 && videoMaxPos < 3.0)
+            // Stopped (1) lejos del final (tambien si la duracion nunca llego) = fallo -> reembolso.
+            if (st == 1)
             {
-                try { LogError("video detenido sin reproducir: " + (nowPlaying != null ? nowPlaying.VideoPath : "?"), null); } catch { }
+                try { LogError("video detenido antes del final (pos=" + videoMaxPos.ToString("0.0") + ", dur=" + dur.ToString("0.0") + "): " + (nowPlaying != null ? nowPlaying.VideoPath : "?"), null); } catch { }
                 RefundCredit();
                 ShowToast("Video no disponible: credito devuelto", Color.FromArgb(200, 130, 35));
                 PlayNext();
@@ -10561,6 +11755,8 @@ namespace Rocola
             Color acc = ColorDeLoQueSuena(t, org);   // excepcion por artista (BTS=morado) y luego genero
             bgAccentTarget = acc;
             bgGeneroTarget = GeneroDeLoQueSuena(t, org);          // el genero suelto: una de las dos nebulosas
+            bgSinGenero = t != null && GeneroDeCancion(t, org).Length == 0;
+            bgArtistaFijo = !bgSinGenero && EsArtistaMorado(t);
             ColoresDePortadaDe(org, out bgPort1, out bgPort2);    // y los colores del disco: la otra
             Color panel = Shade(acc, 0.70);
             Color list = Shade(acc, 0.76);
@@ -10576,24 +11772,58 @@ namespace Rocola
         // hallada junto a la rocola -> rocola y motor coinciden SOLOS, sin configurar ni arrastrar nada.
         private string IaCache()
         {
-            if (!string.IsNullOrEmpty(iaCacheDir)) return iaCacheDir;
-            string py, dm;
-            if (IaFindEngine(out py, out dm)) return Path.Combine(Path.GetDirectoryName(dm), "cache");
-            return RutaDatos("ia_cache");
+            try
+            {
+                if (!string.IsNullOrEmpty(iaCacheDir))
+                {
+                    string d = iaCacheDir;
+                    // Si la ruta configurada es RELATIVA se cuelga de la CARPETA DE DATOS, no de la del
+                    // programa: hay UN solo sitio que decide donde viven los archivos de la rocola, y
+                    // pruebas/carpeta.cs no deja que nadie se lo salte. Mientras nadie ponga ROCOLA_DATOS
+                    // el resultado es EXACTAMENTE el mismo, porque la carpeta de datos es la del programa.
+                    if (!Path.IsPathRooted(d)) d = RutaDatos(d);
+                    return Path.GetFullPath(d);
+                }
+                string py, dm;
+                if (IaFindEngine(out py, out dm)) return Path.GetFullPath(Path.Combine(Path.GetDirectoryName(dm), "cache"));
+                return Path.GetFullPath(RutaDatos("ia_cache"));
+            }
+            catch { return RutaDatos("ia_cache"); }
         }
 
-        // Hash IDENTICO al de daemon_ia.py: sha1( ruta_absoluta_minusculas | tamano_bytes | mezcla )[:16].
-        private static string IaHashFor(string path, string mezcla)
+        private string IaPipelineFingerprint()
+        {
+            try
+            {
+                string f = Path.Combine(IaCache(), "modelo.fingerprint");
+                if (!File.Exists(f)) return null;   // Apollo aun no esta listo: no publicar trabajos prematuros
+                string s = File.ReadAllText(f).Trim();
+                if (s.Length != 64) return null;
+                for (int i = 0; i < s.Length; i++)
+                {
+                    char c = s[i];
+                    if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) return null;
+                }
+                return s.ToLowerInvariant();
+            }
+            catch { return null; }
+        }
+
+        // Identidad compartida con daemon_ia.py. Incluye contenido aproximado (tamano+mtime), mezcla y
+        // huella del modelo/pipeline: nunca se reutiliza audio de una fuente o Apollo anterior.
+        private static string IaHashFor(string path, string mezclaKey, string pipeline)
         {
             try
             {
                 string full = Path.GetFullPath(path).ToLowerInvariant();
-                long size = 0; try { size = new FileInfo(path).Length; } catch { }
-                byte[] data = Encoding.UTF8.GetBytes(full + "|" + size + "|" + mezcla);
-                using (System.Security.Cryptography.SHA1 sha = System.Security.Cryptography.SHA1.Create())
+                FileInfo fi = new FileInfo(full); if (!fi.Exists) return null;
+                byte[] data = Encoding.UTF8.GetBytes(full + "|" + fi.Length.ToString(CultureInfo.InvariantCulture) + "|"
+                    + fi.LastWriteTimeUtc.Ticks.ToString(CultureInfo.InvariantCulture)
+                    + "|" + mezclaKey + "|" + pipeline);
+                using (System.Security.Cryptography.SHA256 sha = System.Security.Cryptography.SHA256.Create())
                 {
                     byte[] h = sha.ComputeHash(data);
-                    StringBuilder sb = new StringBuilder(40);
+                    StringBuilder sb = new StringBuilder(64);
                     for (int i = 0; i < h.Length; i++) sb.Append(h[i].ToString("x2"));
                     return sb.ToString().Substring(0, 16);
                 }
@@ -10609,8 +11839,10 @@ namespace Rocola
             yaBuena = false;
             try
             {
-                string h = IaHashFor(path, iaMezcla); if (h == null) return null;
+                string pipeline = IaPipelineFingerprint(); if (pipeline == null) return null;
+                string h = IaHashFor(path, iaMezcla, pipeline); if (h == null) return null;
                 string dir = Path.Combine(IaCache(), "listos");
+                if (File.Exists(Path.Combine(dir, h + ".error"))) return null;             // backoff/terminal: original
                 string p = Path.Combine(dir, h + ".mp3"); if (File.Exists(p)) return IaTouch(p);   // cache nueva (MP3 320: ~5x mas canciones por GB)
                 p = Path.Combine(dir, h + ".wav"); if (File.Exists(p)) return IaTouch(p);          // cache vieja (WAV), sigue valiendo
                 if (File.Exists(Path.Combine(dir, h + ".orig"))) { yaBuena = true; return path; }
@@ -10635,22 +11867,40 @@ namespace Rocola
             try
             {
                 if (string.IsNullOrEmpty(path)) return;
-                string h = IaHashFor(path, iaMezcla); if (h == null) return;
+                string pipeline = IaPipelineFingerprint(); if (pipeline == null) return;
+                string full = Path.GetFullPath(path);
+                string h = IaHashFor(full, iaMezcla, pipeline); if (h == null) return;
                 string pend = Path.Combine(IaCache(), "pendientes");
                 string dirL = Path.Combine(IaCache(), "listos");                          // ya atendida (mejorada o marcada de calidad completa): no re-pedir
                 if (File.Exists(Path.Combine(dirL, h + ".mp3")) || File.Exists(Path.Combine(dirL, h + ".wav"))
-                    || File.Exists(Path.Combine(dirL, h + ".orig"))) return;
+                    || File.Exists(Path.Combine(dirL, h + ".orig")) || File.Exists(Path.Combine(dirL, h + ".error"))) return;
                 Directory.CreateDirectory(pend);
                 string job = Path.Combine(pend, h + ".job");
                 if (File.Exists(job)) return;
-                string esc = path.Replace("\\", "\\\\").Replace("\"", "\\\"");
-                string json = "{\"src\":\"" + esc + "\",\"mezcla\":\"" + iaMezcla + "\"}";
-                string tmp = job + ".tmp";
+                string json = "{\"src\":\"" + JsonEscape(full) + "\",\"mezcla\":\"" + JsonEscape(iaMezcla)
+                    + "\",\"mezcla_key\":\"" + JsonEscape(iaMezcla) + "\",\"pipeline\":\"" + pipeline
+                    + "\",\"cache_key\":\"" + h + "\"}";
+                string tmp = job + "." + System.Diagnostics.Process.GetCurrentProcess().Id + "." + System.Threading.Thread.CurrentThread.ManagedThreadId + ".tmp";
                 File.WriteAllText(tmp, json);
-                try { if (File.Exists(job)) File.Delete(job); } catch { }
-                File.Move(tmp, job);   // aparicion atomica del job
+                try { File.Move(tmp, job); }   // aparicion atomica; si otro proceso gano, se conserva su job
+                catch { try { File.Delete(tmp); } catch { } }
             }
             catch { }
+        }
+
+        private static string JsonEscape(string s)
+        {
+            if (s == null) return "";
+            StringBuilder b = new StringBuilder(s.Length + 16);
+            for (int i = 0; i < s.Length; i++)
+            {
+                char c = s[i];
+                if (c == '\\') b.Append("\\\\"); else if (c == '"') b.Append("\\\"");
+                else if (c == '\b') b.Append("\\b"); else if (c == '\f') b.Append("\\f");
+                else if (c == '\n') b.Append("\\n"); else if (c == '\r') b.Append("\\r"); else if (c == '\t') b.Append("\\t");
+                else if (c < 32) b.Append("\\u").Append(((int)c).ToString("x4")); else b.Append(c);
+            }
+            return b.ToString();
         }
 
         // ¿Esta corriendo el motor de IA? Primero el testigo mas fuerte: el PROCESO que esta rocola
@@ -10731,10 +11981,54 @@ namespace Rocola
         // Reinicia el motor de IA (para aplicar YA un cambio de GPU): mata el que lanzo esta rocola,
         // suelta el freno de 20s y lo relanza con los argumentos nuevos. Si el motor corriendo es de
         // otro (iniciar_motor.bat a mano), no se puede matar desde aqui: el cambio aplica cuando muera.
+        private bool IaStopMotor()
+        {
+            System.Diagnostics.Process p = iaMotorProc;
+            if (p == null) return false;
+            bool parado = false;
+            try
+            {
+                if (p.HasExited) { parado = true; return true; }
+                // Process.Kill solo mata python.exe; ffmpeg quedaria huerfano. taskkill /T termina el arbol.
+                try
+                {
+                    System.Diagnostics.ProcessStartInfo psi = new System.Diagnostics.ProcessStartInfo();
+                    psi.FileName = Path.Combine(Environment.SystemDirectory, "taskkill.exe");
+                    psi.Arguments = "/PID " + p.Id.ToString(CultureInfo.InvariantCulture) + " /T /F";
+                    psi.UseShellExecute = false; psi.CreateNoWindow = true; psi.WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden;
+                    using (System.Diagnostics.Process killer = System.Diagnostics.Process.Start(psi))
+                        if (killer != null) killer.WaitForExit(3000);
+                }
+                catch { }
+                try
+                {
+                    if (!p.HasExited) { p.Kill(); p.WaitForExit(3000); }
+                    parado = p.HasExited;
+                }
+                catch { parado = false; }
+                return parado;
+            }
+            catch
+            {
+                try { parado = p.HasExited; } catch { parado = false; }
+                return parado;
+            }
+            finally
+            {
+                // No se pierde la unica referencia a un motor que no pudimos cerrar: el siguiente intento
+                // todavia podra terminarlo y el vigia nunca lanzara un segundo Apollo encima.
+                if (parado)
+                {
+                    if (object.ReferenceEquals(iaMotorProc, p)) iaMotorProc = null;
+                    try { p.Dispose(); } catch { }
+                }
+            }
+        }
+
         private void IaRestartMotor()
         {
-            try { if (iaMotorProc != null && !iaMotorProc.HasExited) iaMotorProc.Kill(); } catch { }
-            iaMotorProc = null; iaMotorLaunchTick = 0;
+            bool paro = IaStopMotor(); iaMotorLaunchTick = 0;
+            if (paro) try { File.Delete(Path.Combine(IaCache(), "modelo.fingerprint")); } catch { }
             if (iaVivo) IaEnsureMotor();
         }
 
@@ -10791,10 +12085,14 @@ namespace Rocola
                 // NIVEL 2 (reconstructor espectral): solo se INSERTA en maquinas que cumplen requisitos; con
                 // Active=false es un pase directo (costo ~cero). Ctrl+F3 lo alterna EN VIVO para comparar A/B.
                 NAudio.Wave.ISampleProvider chain = reader;
+                int audioTailDelay = 0;   // estos retardos se vacian: el fundido debe abarcar tambien su cola
                 // DES-RECORTE: repara picos aplastados de origen (antes de medir y de DSEE). Ya sabemos, cancion
                 // por cancion, si de verdad viene recortada; en las que NO -que son la mayoria- ni se pone en la
                 // cadena: se ahorra su trabajo y su retardo de ~1.5 ms. Si aun no esta medida, se pone por si acaso.
-                if (declipOn && DeclipVale(t.Path)) chain = new DeclipProvider(chain);
+                if (declipOn && DeclipVale(t.Path))
+                {
+                    DeclipProvider dc = new DeclipProvider(chain); chain = dc; audioTailDelay += dc.DelayFrames;
+                }
                 if (sbrAllowed) { curSbr = new SpectralTap(chain, VentanaDsee()); curSbr.Active = DseeActivo(); chain = curSbr; }   // HD: ventana fina; respaldo espectral si ULTRA aun no tiene la version IA
                 else curSbr = null;
                 LevelTap tap = new LevelTap(chain, this);
@@ -10808,7 +12106,9 @@ namespace Rocola
                 bassSongFactor = BassFactorFor(t.Path);   // cuanto le toca a ESTA cancion (1 = la perilla tal cual)
                 bassAutoBase = BajoAuto(t.Path);          // y de cuanto se parte, si el bajo va en automatico
                 curBass = new DeepBassProvider(tap, BassAmountNow());
-                NAudio.Wave.ISampleProvider outChain = new LookaheadLimiter(curBass, 0.98f, 3.0);   // limitador con pre-escucha (picos limpios)
+                LookaheadLimiter lim = new LookaheadLimiter(curBass, 0.98f, 3.0);
+                audioTailDelay += lim.DelayFrames;
+                NAudio.Wave.ISampleProvider outChain = lim;   // limitador con pre-escucha (picos limpios)
                 if (crossfadeSec > 0.01f)
                 {
                     // CUANTO DURA. Se pregunta primero a lo que el pre-analisis dejo apuntado, que es de
@@ -10825,6 +12125,7 @@ namespace Rocola
                         tf = (yaSe > 0.01f) ? (long)(yaSe * hz) : (long)(reader.TotalTime.TotalSeconds * hz);
                     }
                     catch { }
+                    if (tf > 0) tf += audioTailDelay;
                     outChain = new FadeProvider(outChain, tf, crossfadeSec);   // fundido suave de entrada/salida
                 }
                 // ===== SALIDA DE AUDIO (rama de Linux) =====
@@ -10942,21 +12243,36 @@ namespace Rocola
         // Carga las rutas ya anotadas para no repetirlas en rocola_incompatibles.txt entre reinicios.
         private void LoadIncompatible()
         {
+            try { ReadIncompatible(RutaDatos("rocola_incompatibles.txt"), incompatibleLogged); } catch { }
+        }
+
+        private static void ReadIncompatible(string f, HashSet<string> incompatibleLogged)
+        {
             try
             {
-                string f = RutaDatos("rocola_incompatibles.txt");
                 if (!File.Exists(f)) return;
-                foreach (string line in File.ReadAllLines(f))
-                {
-                    int a = line.IndexOf("  |  ");
-                    if (a < 0) continue;
-                    int b = line.IndexOf("  |  ", a + 5);
-                    string p = (b > a) ? line.Substring(a + 5, b - (a + 5)) : line.Substring(a + 5);
-                    p = p.Trim();
-                    if (p.Length > 0) incompatibleLogged.Add(Pool(p));
-                }
+                using (StreamReader reader = new StreamReader(f))
+                    ReadIncompatibleRecords(reader, incompatibleLogged);
             }
             catch { }
+        }
+
+        // Preparar por registros sin conservar todas las lineas. Un fallo de lectura
+        // antes de EOF descarta pending: ninguna tabla de destino recibe una carga parcial.
+        private static void ReadIncompatibleRecords(TextReader reader, HashSet<string> incompatibleLogged)
+        {
+            HashSet<string> pending = new HashSet<string>(incompatibleLogged.Comparer);
+            string line;
+            while ((line = reader.ReadLine()) != null)
+            {
+                int a = line.IndexOf("  |  ");
+                if (a < 0) continue;
+                int b = line.IndexOf("  |  ", a + 5);
+                string p = (b > a) ? line.Substring(a + 5, b - (a + 5)) : line.Substring(a + 5);
+                p = p.Trim();
+                if (p.Length > 0) pending.Add(Pool(p));
+            }
+            foreach (string item in pending) incompatibleLogged.Add(item);
         }
 
         // Guarda el error completo (tipo + mensaje + pila) en rocola_error.txt junto al .exe,
@@ -10983,6 +12299,9 @@ namespace Rocola
         {
             // WASAPI (rama HD) avisa desde SU hilo de reproduccion; todo lo de abajo toca UI -> saltar al hilo de la interfaz
             if (InvokeRequired) { try { BeginInvoke((MethodInvoker)delegate { Output_PlaybackStopped(sender, e); }); } catch { } return; }
+            // Stop/Dispose de la salida anterior puede dejar un callback ya encolado. Si entretanto arranco
+            // otra cancion, ese aviso viejo no debe saltarla ni devolverle otro credito al cliente.
+            if (!object.ReferenceEquals(sender, output)) return;
             if (e.Exception != null)
             {
                 lblStatus.Text = "Aviso al reproducir: " + e.Exception.Message;
@@ -11019,7 +12338,7 @@ namespace Rocola
             curTap = null; curSbr = null; curBass = null;   // ya no hay taps actuales
             FinalizeLoudMeasure();   // guarda la sonoridad medida de la cancion que acaba de sonar (audio ya detenido: sin carrera)
             FinalizeEqMeasure();     // y su huella tonal (mismo momento seguro)
-            lock (levelLock) levelQ.Clear();   // sin cancion no hay trozos pendientes: el pulso cae a cero
+            ClearLevels();   // sin cancion no hay trozos pendientes: el pulso cae a cero
             rmsLo = rmsMid = rmsHi = 0f; avgLo = avgMid = avgHi = 0f;
         }
 
@@ -11040,12 +12359,12 @@ namespace Rocola
             float[] tLo = tmpLo ?? (tmpLo = new float[4]);
             float[] tMid = tmpMid ?? (tmpMid = new float[4]);
             float[] tHi = tmpHi ?? (tmpHi = new float[4]);
-            float[] tEsp = tmpEsp ?? (tmpEsp = new float[4 * SpecBands]);
+            bool espectro = EspectroActivo;
+            float[] tEsp = espectro ? (tmpEsp ?? (tmpEsp = new float[4 * SpecBands])) : null;
             // ESCALERA del espectro: los coeficientes se calculan al ritmo de CUADROS (rate), porque la escalera
             // trabaja sobre la mezcla mono de cada cuadro y no muestra por muestra del stream entrelazado. Asi los
             // cortes caen en los mismos Hz de siempre pero con la MITAD de trabajo, y ademas la diferencia entre
             // canales deja de colarse como falso "aire". Se recalculan solo si cambia el formato.
-            bool espectro = EspectroActivo;
             if (espectro && (specCoef == null || specRate != rate))
             {
                 specRate = rate;
@@ -11058,7 +12377,7 @@ namespace Rocola
                 specLp = new float[SpecCortes.Length * SpecPolos];
             }
             float[] sc = specCoef, sl = specLp;
-            double[] sSum = tmpSum ?? (tmpSum = new double[SpecBands]);
+            double[] sSum = espectro ? (tmpSum ?? (tmpSum = new double[SpecBands])) : null;
             int chEsp = ch < 1 ? 1 : ch;
             float invCh = 1f / chEsp;
             float fSum = 0f; int fCnt = 0;   // acumulador del cuadro en curso (sigue vivo entre trozos del bloque)
@@ -11073,7 +12392,7 @@ namespace Rocola
                 int end = (c == chunks - 1) ? offset + count : start + len;
                 double sumLo = 0, sumMid = 0, sumHi = 0;
                 int nEsp = 0;
-                for (int b = 0; b < SpecBands; b++) sSum[b] = 0;
+                if (espectro) for (int b = 0; b < SpecBands; b++) sSum[b] = 0;
                 for (int i = start; i < end; i++)
                 {
                     float v = buffer[i];
@@ -11113,7 +12432,7 @@ namespace Rocola
                 tLo[c] = (float)Math.Sqrt(sumLo / n);
                 tMid[c] = (float)Math.Sqrt(sumMid / n);
                 tHi[c] = (float)Math.Sqrt(sumHi / n);
-                for (int b = 0; b < SpecBands; b++) tEsp[c * SpecBands + b] = (float)Math.Sqrt(sSum[b] / ne);
+                if (espectro) for (int b = 0; b < SpecBands; b++) tEsp[c * SpecBands + b] = (float)Math.Sqrt(sSum[b] / ne);
             }
             fLp1 = lp1; fLp2 = lp2;   // persiste el estado de los filtros para el proximo bloque
             specLp = sl;
@@ -11181,16 +12500,43 @@ namespace Rocola
                 for (int c = 0; c < chunks; c++)
                 {
                     int atMs = now + (int)((long)(c * len) * 1000 / Math.Max(1, samplesPerSec));   // desfase del trozo dentro del bloque
-                    float[] esp = null;
-                    if (espectro)
-                    {
-                        esp = new float[SpecBands];   // 48 bytes por trozo (~20/seg): nada para el recolector
-                        for (int b = 0; b < SpecBands; b++) esp[b] = tEsp[c * SpecBands + b];
-                    }
-                    levelQ.Enqueue(new Lvl(atMs, tLo[c], tMid[c], tHi[c], esp));
+                    EnqueueLevel(atMs, tLo[c], tMid[c], tHi[c], espectro ? tEsp : null, c * SpecBands);
                 }
-                while (levelQ.Count > 96) levelQ.Dequeue();   // acotado (~5s de historial maximo)
             }
+        }
+
+        // Bajo levelLock: un espectro no se reutiliza hasta que sale de la cola y la UI
+        // ha copiado sus valores. Reciclar antes del alta mantiene tambien el pico en 96.
+        private void ReturnLevelBuffer(float[] values)
+        {
+            if (values == null) return;
+            if (levelBuffers == null) levelBuffers = new Stack<float[]>(96);
+            if (levelBuffers.Count < 96) levelBuffers.Push(values);
+        }
+        private void EnqueueLevel(int at, float lo, float mid, float hi, float[] values, int offset)
+        {
+            while (levelQ.Count >= 96) ReturnLevelBuffer(levelQ.Dequeue().Esp);
+            float[] esp = null;
+            if (values != null)
+            {
+                esp = (levelBuffers != null && levelBuffers.Count > 0) ? levelBuffers.Pop() : new float[SpecBands];
+                Array.Copy(values, offset, esp, 0, SpecBands);
+            }
+            levelQ.Enqueue(new Lvl(at, lo, mid, hi, esp));
+        }
+        private void ConsumeLevels(int now)
+        {
+            lock (levelLock)
+                while (levelQ.Count > 0 && unchecked(now - (levelQ.Peek().At + audioVisualDelayMs)) >= 0)
+                {
+                    Lvl l = levelQ.Dequeue(); rmsLo = l.Lo; rmsMid = l.Mid; rmsHi = l.Hi;
+                    if (l.Esp != null) Array.Copy(l.Esp, specNow, SpecBands);
+                    ReturnLevelBuffer(l.Esp);
+                }
+        }
+        private void ClearLevels()
+        {
+            lock (levelLock) while (levelQ.Count > 0) ReturnLevelBuffer(levelQ.Dequeue().Esp);
         }
 
         // Detecta el golpe de UNA banda contra su propio piso movil y devuelve su pulso (0..1) con ataque instantaneo
@@ -11308,8 +12654,7 @@ namespace Rocola
             // va del mismo color, asi que se entera aqui en vez de esperar a la siguiente.
             if (nowPlaying != null && !nowPlaying.IsVideo && panelSongs != null)
             {
-                Color acc = ColorDeLoQueSuena(nowPlaying.Song, nowPlaying.Disc);
-                if (acc.ToArgb() != bgAccentTarget.ToArgb()) ApplyGenreBackground(nowPlaying.Song, nowPlaying.Disc);
+                ApplyGenreBackground(nowPlaying.Song, nowPlaying.Disc);
             }
         }
 
@@ -12160,6 +13505,25 @@ namespace Rocola
             if (repintaPendientes > 0) { repintaPendientes--; Invalidate(true); }
             phase += 0.045;
             frameTick++;
+            { SpectralTap sp0 = curSbr; if (sp0 != null && sp0.CutHz > 0f) { eqMeasCut = sp0.CutHz; eqMeasCutLo = sp0.CutLoHz; } }
+            // Un disco que faltaba al arrancar puede volver sin reiniciar la rocola. Mientras el estado de
+            // apagon siga pendiente se comprueba con poca frecuencia y, al reaparecer una raiz, se rearma
+            // la biblioteca; si falta otra que la cola necesita, se seguira esperando sin consumir el estado.
+            if (!stateRestored && stateMissingRoots != null && stateMissingRoots.Count > 0
+                && Environment.TickCount - stateRootRetryTick > 5000
+                && (scanner == null || !scanner.IsBusy) && nowPlaying == null && queue.Count == 0)
+            {
+                stateRootRetryTick = Environment.TickCount;
+                bool alguna = false;
+                for (int i = 0; i < stateMissingRoots.Count; i++)
+                    try { if (Directory.Exists(stateMissingRoots[i])) { alguna = true; break; } } catch { }
+                if (alguna)
+                {
+                    stateMissingRoots = null;
+                    List<string> roots = AllMusicRoots();
+                    if (roots.Count > 0) StartScan(roots);
+                }
+            }
             // OPTIMIZACION CLAVE: los brillos del fondo se mueven MENOS DE MEDIO PIXEL por cuadro, asi
             // que repintar TODA la pantalla 25 veces/seg por ellos es desperdicio. El fondo completo se
             // repinta 1 de cada 3 cuadros (~8/seg, indistinguible en blobs borrosos); el cubo que gira
@@ -12186,16 +13550,19 @@ namespace Rocola
             // VIGIA DEL MOTOR DE IA: si DSEE ULTRA esta activo y el motor no responde (recien arrancado, o se
             // cayo), lo (re)lanza OCULTO. Cada ~10s. Asi el motor va integrado con el release: nunca hay que
             // abrir un .bat a mano, y si el motor muere se revive solo.
-            if (iaVivo && Environment.TickCount - iaMotorCheckTick > 10000) { iaMotorCheckTick = Environment.TickCount; if (!IaMotorAlive()) IaEnsureMotor(); }
+            if (iaVivo && Environment.TickCount - iaMotorCheckTick > 10000)
+            {
+                iaMotorCheckTick = Environment.TickCount;
+                if (!IaMotorAlive()) IaEnsureMotor();
+                IaRequestQueueJobs();   // cuando aparezca la huella del modelo, publica la cola que espero durante la carga
+            }
 
             // BEAT: toma el RMS cuyo momento de OIRSE ya llego (medido ~0.85s antes, al llenar el colchon) y
             // detecta GOLPES contra un piso movil: el pulso visual cae encima del golpe que se esta oyendo,
             // con ataque INSTANTANEO y caida rapida (pulso marcado), mas un fondo suave para que no muera
             // entre golpes. Antes era una envolvente de sonoridad adelantada ~1s: no transmitia el ritmo.
             int nowT = Environment.TickCount;
-            lock (levelLock)
-                while (levelQ.Count > 0 && nowT - (levelQ.Peek().At + audioVisualDelayMs) >= 0)
-                { Lvl l = levelQ.Dequeue(); rmsLo = l.Lo; rmsMid = l.Mid; rmsHi = l.Hi; if (l.Esp != null) Array.Copy(l.Esp, specNow, SpecBands); }
+            ConsumeLevels(nowT);
             if (nowPlaying == null) { rmsLo = rmsMid = rmsHi = 0f; for (int b = 0; b < SpecBands; b++) specNow[b] = 0f; }
 #if ROCOLA_GPU
             // Con un VIDEO en pantalla el audio sale del reproductor de Windows y NO pasa por la cadena, asi que no
@@ -12280,6 +13647,8 @@ namespace Rocola
             if (hazFase > 6.2831853f) hazFase -= 6.2831853f;
             Color nebAMeta, nebBMeta;
             ColoresNebulosa(bgGeneroTarget, bgPort1, bgPort2, nebFase, out nebAMeta, out nebBMeta);
+            if (bgSinGenero) NebulosasSinGenero(bgPort1, bgPort2, nebFase, ref nebAMeta, ref nebBMeta);
+            else if (bgArtistaFijo) nebAMeta = nebBMeta = ColorNebulosa(bgGeneroTarget);
             nebA = LerpColor(nebA, nebAMeta, 0.16);
             nebB = LerpColor(nebB, nebBMeta, 0.16);
 #if ROCOLA_GPU
@@ -12436,18 +13805,47 @@ namespace Rocola
 
         private static string Fmt(TimeSpan t) { return ((int)t.TotalMinutes) + ":" + t.Seconds.ToString("00"); }
 
+        private void GuardaTodoAlCerrar()
+        {
+            if (startupReadPending) return;   // no sobrescribir datos anteriores con tablas aun vacias
+            try
+            {
+                System.Threading.Thread[] th = preScanTh;
+                if (th != null) for (int i = 0; i < th.Length; i++)
+                    if (th[i] != null && th[i].IsAlive) th[i].Join(1200);
+            }
+            catch { }
+            try { if (durScanTh != null && durScanTh.IsAlive) durScanTh.Join(1200); } catch { }
+
+            try { SaveLoudCache(); } catch { }
+            try { FlushEqIfDirty(); } catch { }
+            try { SaveIaDone(); } catch { }
+            try { SaveDeepDone(); } catch { }
+            try { SaveDurFast(); } catch { }
+            try { if (statsDirty) { statsDirty = false; SaveStats(false); } } catch { }
+            EsperaGuardados();
+            try { SaveIaDone(); SaveDeepDone(); SaveDurFast(); } catch { }
+            EsperaGuardados();
+        }
+
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
+            DetieneVigiaFoco();
+            AdvanceThumbWarm();
+            CancelStartupDataLoad();
             preScanStop = true;   // que el pre-analisis suelte el archivo y termine
+            unchecked { preScanGen++; durScanGen++; }
             DisposePlaybackNow();
+            GuardaTodoAlCerrar();
             // APAGADO DELIBERADO vs APAGON. El boton de poder de la rocola esta configurado en Windows para APAGAR
             // -> al presionarlo, Windows avisa y ESTE evento se dispara (CloseReason.WindowsShutDown; tambien Alt+F4
             // = UserClosing). Ahi borramos el estado vivo para que manana arranque LIMPIA. En cambio, un APAGON corta
             // la corriente de golpe y no corre NADA de esto: el archivo SOBREVIVE y, al volver la luz, la rocola
             // REANUDA (creditos + cola). Es decir, la sola presencia del archivo al arrancar delata que fue apagon.
-            if (e.CloseReason == CloseReason.WindowsShutDown || e.CloseReason == CloseReason.UserClosing)
+            // Si ni siquiera publicamos los datos iniciales, conservar tambien el estado anterior.
+            if (!startupReadPending && (e.CloseReason == CloseReason.WindowsShutDown || e.CloseReason == CloseReason.UserClosing))
                 BorraSeguro(StateFile());
-            if (iaMotorProc != null) try { if (!iaMotorProc.HasExited) iaMotorProc.Kill(); } catch { }   // motor que lanzamos: se va con la rocola
+            IaStopMotor();   // motor y ffmpeg hijo que lanzamos: se van con la rocola
             base.OnFormClosing(e);
         }
 
@@ -12622,6 +14020,7 @@ namespace Rocola
             private readonly float binHz;
             public volatile bool Active;                   // false = pase directo (costo ~cero)
             private bool wasActive;                        // para reiniciar el colchon al alternar (A/B)
+            private bool firstFrame, detectPair;
             private readonly float[][] inBuf, outAcc;      // por canal: ventana de entrada y acumulador de solape
             private int fill;                              // muestras acumuladas (por canal) en inBuf
             private float[] re, im;                        // espectro de trabajo (se INTERCAMBIA con el del otro canal del par)
@@ -12639,6 +14038,7 @@ namespace Rocola
             // acantilado vaya y venga; una cancion ya completa (que nunca se reconstruye) jamas lo prende.
             public bool Mejorando { get { return Active && mejoro; } }
             private bool srcEnded;
+            private long sourceFrames, emittedFrames;      // conserva tambien la fraccion final menor que un Hop
             private readonly float[] iaIn = new float[28], iaOut = new float[12];   // IA propia: entrada/salida de la red (reusables)
 
             public SpectralTap(NAudio.Wave.ISampleProvider s, int frameSize)
@@ -12669,8 +14069,12 @@ namespace Rocola
                 if (act != wasActive)   // alternado en vivo: reinicia el colchon (microcorte de ~46ms) y sigue
                 {
                     wasActive = act;
-                    fill = 0; qHead = 0; qLen = 0;
-                    for (int c = 0; c < ch; c++) Array.Clear(outAcc[c], 0, Frame);
+                    // Un Hop de ceros ANTES del audio completa el solape inicial. Se procesa,
+                    // pero no se entrega: la muestra 0 real conserva sus dos ventanas y su ataque.
+                    fill = Hop; firstFrame = true; qHead = 0; qLen = 0;
+                    srcEnded = false; sourceFrames = 0; emittedFrames = 0;
+                    for (int c = 0; c < ch; c++)
+                    { Array.Clear(outAcc[c], 0, Frame); Array.Clear(inBuf[c], 0, Frame); }
                 }
                 if (!act) return src.Read(buffer, offset, count);   // pase directo
 
@@ -12703,21 +14107,25 @@ namespace Rocola
                         qLen -= take; written += take;
                         continue;
                     }
-                    if (srcEnded) break;                             // origen agotado y FIFO vacio -> fin (WaveOut detiene)
+                    if (srcEnded)
+                    {
+                        long quedan = sourceFrames - emittedFrames;
+                        if (quedan <= 0) break;
+                        for (int c = 0; c < ch; c++) Array.Clear(inBuf[c], fill, Frame - fill);
+                        fill = Frame;
+                        ProcessFrame((int)Math.Min((long)Hop, quedan));
+                        continue;
+                    }
                     int need = (Frame - fill) * ch;                  // llenar la ventana de analisis
                     if (need > inter.Length) need = inter.Length;
                     int got = src.Read(inter, 0, need);
                     if (got <= 0)
                     {
                         srcEnded = true;
-                        if (fill > 0)                                // cola final: completar con silencio y procesar una vez
-                        {
-                            for (int c = 0; c < ch; c++) Array.Clear(inBuf[c], fill, Frame - fill);
-                            fill = Frame; ProcessFrame();
-                        }
                         continue;
                     }
                     int frames = got / ch;
+                    sourceFrames += frames;
                     if (ch == 2)
                     {   // el caso normal, con los dos arrays sacados FUERA del bucle (dentro, cada muestra
                         // volvia a buscar inBuf[c] en la tabla de arrays y a comprobar sus limites)
@@ -12728,7 +14136,7 @@ namespace Rocola
                         for (int f = 0; f < frames; f++)
                             for (int c = 0; c < ch; c++) inBuf[c][fill + f] = inter[f * ch + c];
                     fill += frames;
-                    if (fill >= Frame) ProcessFrame();
+                    if (fill >= Frame) ProcessFrame(Hop);
                 }
                 return written;
             }
@@ -12833,7 +14241,7 @@ namespace Rocola
             // Cuatro FFT pasan a ser DOS. No es una aproximacion ni un atajo: da lo mismo que antes salvo el
             // ultimo pelo de redondeo de los flotantes (~1e-7, unas mil veces por debajo del ultimo bit de 16).
             // Con un numero impar de canales, el que sobra va por el camino de siempre.
-            private void ProcessFrame()
+            private void ProcessFrame(int emitFrames)
             {
                 int cn = 0;
                 for (; cn + 1 < ch; cn += 2)
@@ -12842,7 +14250,12 @@ namespace Rocola
                     for (int i = 0; i < Frame; i++) { float w = win[i]; re[i] = x0[i] * w; im[i] = x1[i] * w; }
                     Fft(false);
                     SeparaCanales();             // re/im = espectro del canal par ; reB/imB = el del impar
-                    if (cn == 0) DetectCliff();  // el acantilado es del ARCHIVO: se mide en el canal 0 y aplica a todos
+                    if (cn == 0)
+                    {
+                        // Potencia de AMBOS canales ya separados; no mezclar las ondas
+                        // (los agudos en contrafase se cancelarian). Sin FFT adicionales.
+                        detectPair = true; DetectCliff(); detectPair = false;
+                    }
                     Regenerate();                // canal par
                     Intercambia(); Regenerate(); Intercambia();   // canal impar (Regenerate trabaja sobre re/im)
                     // se vuelven a juntar: parte real = canal par, parte imaginaria = canal impar
@@ -12862,9 +14275,12 @@ namespace Rocola
                     float[] acc = outAcc[cn];
                     for (int i = 0; i < Frame; i++) acc[i] += re[i] * win[i];
                 }
-                for (int f = 0; f < Hop; f++)      // la primera mitad ya recibio sus DOS solapes: lista para salir
+                if (firstFrame) { emitFrames = 0; firstFrame = false; } // descarta solo el prefijo artificial
+                if (emitFrames < 0) emitFrames = 0; else if (emitFrames > Hop) emitFrames = Hop;
+                for (int f = 0; f < emitFrames; f++) // la primera mitad ya recibio sus DOS solapes: lista para salir
                     for (int c = 0; c < ch; c++)
                     { int tail = qHead + qLen; if (tail >= outQ.Length) tail -= outQ.Length; outQ[tail] = outAcc[c][f]; qLen++; }
+                emittedFrames += emitFrames;
                 for (int c = 0; c < ch; c++)
                 {
                     Array.Copy(outAcc[c], Hop, outAcc[c], 0, Frame - Hop); Array.Clear(outAcc[c], Frame - Hop, Hop);
@@ -12903,11 +14319,16 @@ namespace Rocola
 
             // Localiza el "acantilado" del codec: la frecuencia MAS ALTA donde todavia hay energia comparable
             // a la banda media (4-8 kHz). Suavizado entre ventanas para que no baile; en silencio no se mide.
+            private double DetectionPower(int k)
+            {
+                double p = re[k] * re[k] + im[k] * im[k];
+                return detectPair ? (p + (reB[k] * reB[k] + imB[k] * imB[k])) * 0.5 : p;
+            }
             private void DetectCliff()
             {
                 int b4 = Hz(4000f), b8 = Hz(8000f);
                 if (b8 <= b4 + 4) return;
-                double refE = 0; for (int b = b4; b < b8; b++) refE += re[b] * re[b] + im[b] * im[b];
+                double refE = 0; for (int b = b4; b < b8; b++) refE += DetectionPower(b);
                 refE /= (b8 - b4);
                 if (refE < 1e-10) return;                        // silencio: conservar la medida previa
                 float top = Math.Min(20000f, (Frame / 2) * binHz * 0.94f);
@@ -12915,7 +14336,7 @@ namespace Rocola
                 for (float hz = top - 300f; hz >= 9000f; hz -= 300f)
                 {
                     int a = Hz(hz), b = Hz(hz + 300f); if (b <= a) b = a + 1;
-                    double e = 0; for (int k = a; k < b; k++) e += re[k] * re[k] + im[k] * im[k];
+                    double e = 0; for (int k = a; k < b; k++) e += DetectionPower(k);
                     e /= (b - a);
                     if (e > refE * 0.002) { found = hz + 300f; break; }   // ~-27 dB de la banda media: aqui sigue VIVO
                 }
@@ -12934,7 +14355,7 @@ namespace Rocola
                 for (float hz = 25f; hz <= 140f; hz += 5f)
                 {
                     int a = Hz(hz), b = Hz(hz + 5f); if (b <= a) b = a + 1;
-                    double e = 0; for (int k = a; k < b; k++) e += re[k] * re[k] + im[k] * im[k];
+                    double e = 0; for (int k = a; k < b; k++) e += DetectionPower(k);
                     e /= (b - a);
                     if (e > refE * 0.02) { found = hz; break; }   // aqui ya hay grave de verdad
                 }
@@ -13181,6 +14602,8 @@ namespace Rocola
             private readonly float[] delay;        // circular: D cuadros * canales
             private int dpos;                      // cuadro de escritura actual
             private int primed;                    // cuadros cargados (mientras se llena sale silencio: ~1.5 ms una vez)
+            private bool srcEnded, hadInput;
+            private int drainFrames;
             private readonly int[] runLen;         // por canal: muestras seguidas pegadas al techo
             private readonly int[] runSign;        // por canal: signo del techo actual (+1/-1)
             private readonly float[] preVal;       // por canal: la muestra justo ANTES del techo
@@ -13195,6 +14618,19 @@ namespace Rocola
                 last1 = new float[ch]; last2 = new float[ch]; tooLong = new bool[ch];
             }
             public NAudio.Wave.WaveFormat WaveFormat { get { return src.WaveFormat; } }
+            public int DelayFrames { get { return D; } }
+            private int Drain(float[] buffer, int offset, int count)
+            {
+                int frames = Math.Min(drainFrames, count / ch);
+                for (int f = 0; f < frames; f++)
+                {
+                    int bi = offset + f * ch, di = dpos * ch;
+                    for (int c = 0; c < ch; c++) { buffer[bi + c] = delay[di + c]; delay[di + c] = 0f; }
+                    dpos++; if (dpos >= D) dpos = 0;
+                }
+                drainFrames -= frames;
+                return frames * ch;
+            }
             private void Repair(int c, float landing)
             {
                 int L = runLen[c];
@@ -13217,9 +14653,16 @@ namespace Rocola
             }
             public int Read(float[] buffer, int offset, int count)
             {
+                if (srcEnded) return Drain(buffer, offset, count);
                 int n = src.Read(buffer, offset, count);
-                if (n <= 0) return n;
+                if (n <= 0)
+                {
+                    srcEnded = true;
+                    drainFrames = hadInput ? D : 0;   // vacia TODO el retardo; no corta las ultimas muestras
+                    return Drain(buffer, offset, count);
+                }
                 int frames = n / ch;
+                if (frames > 0) hadInput = true;
                 for (int f = 0; f < frames; f++)
                 {
                     int bi = offset + f * ch, di = dpos * ch;
@@ -13259,61 +14702,100 @@ namespace Rocola
         private sealed class LookaheadLimiter : NAudio.Wave.ISampleProvider
         {
             private readonly NAudio.Wave.ISampleProvider src;
-            private readonly int ch;
-            private readonly float ceiling;    // techo (0..1): la senal nunca lo pasa
-            private readonly int look;         // frames de pre-escucha (retardo)
-            private readonly float[] delay;    // retardo circular: look frames * canales
-            private int dpos;                  // frame actual del circular
-            private int primed;                // frames ya cargados (durante el cebado sale silencio)
-            private float env = 1f;            // ganancia de reduccion actual (1 = sin reducir)
-            private int hold;                  // frames que faltan para que el pico que la bajo SALGA del retardo
-            private readonly float atk, rel;   // bajada (rapida) y recuperacion (lenta)
+            private readonly int ch, look;
+            private readonly float ceiling, atk, rel;
+            private readonly float[] delay;
+            // Maximo de la ventana [salida actual, entrada actual]. Cola monotona:
+            // cada pico entra/sale una vez; no hay barridos de look muestras ni asignaciones en Read.
+            private readonly float[] peaks;
+            private readonly long[] peakFrames;
+            private int peakHead, peakCount;
+            private long frameIndex;
+            private int dpos, primed;
+            private bool srcEnded, hadInput;
+            private int drainFrames;
+            private float env = 1f;
             public LookaheadLimiter(NAudio.Wave.ISampleProvider s, float ceilingLin, double lookMs)
             {
                 src = s; ch = Math.Max(1, s.WaveFormat.Channels); ceiling = ceilingLin;
                 int rate = s.WaveFormat.SampleRate; if (rate < 8000) rate = 44100;
                 look = Math.Max(16, (int)(lookMs * 0.001 * rate));
                 delay = new float[look * ch];
-                atk = 1f - (float)Math.Exp(-9.0 / look);            // llega al 99.99% de la bajada DENTRO de la pre-escucha
-                rel = 1f - (float)Math.Exp(-1.0 / (0.12 * rate));   // recupera en ~120 ms
+                peaks = new float[look + 1]; peakFrames = new long[look + 1];
+                atk = 1f - (float)Math.Exp(-9.0 / look);
+                rel = 1f - (float)Math.Exp(-1.0 / (0.12 * rate));
             }
             public NAudio.Wave.WaveFormat WaveFormat { get { return src.WaveFormat; } }
-            public int Read(float[] buffer, int offset, int count)
+            public int DelayFrames { get { return look; } }
+            private void AdvanceGain(float peak)
             {
-                int n = src.Read(buffer, offset, count);
-                if (n <= 0) return n;
-                int frames = n / ch;
+                long oldest = frameIndex - look;
+                while (peakCount > 0 && peakFrames[peakHead] < oldest)
+                { peakHead = (peakHead + 1) % peaks.Length; peakCount--; }
+                while (peakCount > 0)
+                {
+                    int last = (peakHead + peakCount - 1) % peaks.Length;
+                    if (peaks[last] > peak) break;
+                    peakCount--;
+                }
+                int tail = (peakHead + peakCount) % peaks.Length;
+                peaks[tail] = peak; peakFrames[tail] = frameIndex++; peakCount++;
+                float max = peaks[peakHead];
+                float target = max > ceiling ? ceiling / max : 1f;
+                env += (target < env ? atk : rel) * (target - env);
+            }
+            private float OutputGain(int di)
+            {
+                float peak = 0f;
+                for (int c = 0; c < ch; c++)
+                { float a = Math.Abs(delay[di + c]); if (a > peak) peak = a; }
+                // La exponencial se acerca al objetivo sin alcanzarlo exactamente. La correccion
+                // residual tambien es una GANANCIA ESTEREO, nunca un recorte distinto por canal.
+                if (peak > 0f && peak * env > ceiling)
+                    env = (ceiling / peak) * 0.9999999f;
+                return env;
+            }
+            private int Drain(float[] buffer, int offset, int count)
+            {
+                int frames = Math.Min(drainFrames, count / ch);
                 for (int f = 0; f < frames; f++)
                 {
-                    int bi = offset + f * ch;
+                    AdvanceGain(0f);
+                    int bi = offset + f * ch, di = dpos * ch;
+                    float g = OutputGain(di);
+                    for (int c = 0; c < ch; c++)
+                    { buffer[bi + c] = delay[di + c] * g; delay[di + c] = 0f; }
+                    dpos++; if (dpos >= look) dpos = 0;
+                }
+                drainFrames -= frames;
+                return frames * ch;
+            }
+            public int Read(float[] buffer, int offset, int count)
+            {
+                if (count < ch) return 0;   // una lectura vacia no marca fin del origen
+                if (srcEnded) return Drain(buffer, offset, count);
+                int n = src.Read(buffer, offset, count - count % ch);
+                if (n <= 0)
+                {
+                    srcEnded = true;
+                    drainFrames = hadInput ? look : 0;
+                    return Drain(buffer, offset, count);
+                }
+                int frames = n / ch;
+                if (frames > 0) hadInput = true;
+                for (int f = 0; f < frames; f++)
+                {
+                    int bi = offset + f * ch, di = dpos * ch;
                     float peak = 0f;
-                    for (int c = 0; c < ch; c++) { float a = buffer[bi + c]; if (a < 0f) a = -a; if (a > peak) peak = a; }
-                    float target = (peak > ceiling) ? (ceiling / peak) : 1f;
-                    // ATACAR, RETENER, Y SOLO ENTONCES SOLTAR.
-                    //
-                    // Antes la ganancia seguia la muestra que ENTRA, pero lo que sale es la de hace 3 ms. Al
-                    // pasar un golpe, la ganancia bajaba en el momento en que el pico ENTRABA... y en cuanto
-                    // el golpe empezaba a decaer las muestras siguientes ya no pedian reduccion, asi que la
-                    // ganancia empezaba a SOLTAR mientras el pico seguia dentro del retardo. Cuando el pico
-                    // llegaba por fin a la salida, la ganancia ya no estaba abajo del todo, se pasaba del
-                    // techo y lo cortaba en seco la red de seguridad: la punta de la onda salia APLANADA
-                    // hasta dos milisegundos, que es lo que se oye como aspereza en un bombo o una tarola.
-                    //
-                    // El arreglo es de manual: cuando se ataca, se apunta cuantos frames faltan para que ese
-                    // pico salga del retardo, y hasta entonces NO se suelta. Asi la ganancia sigue abajo
-                    // justo cuando el pico cruza la salida, que es para lo que existe la pre-escucha.
-                    if (target < env) { env += atk * (target - env); hold = look; }
-                    else if (hold > 0) hold--;                          // el pico que la bajo aun no ha salido
-                    else env += rel * (target - env);                   // ya salio: soltar despacio
-                    int di = dpos * ch;
+                    for (int c = 0; c < ch; c++)
+                    { float a = Math.Abs(buffer[bi + c]); if (a > peak) peak = a; }
+                    AdvanceGain(peak);
+                    float g = OutputGain(di);
                     for (int c = 0; c < ch; c++)
                     {
-                        float outv = delay[di + c] * env;    // muestra de hace look frames, ya con la ganancia bajada
-                        delay[di + c] = buffer[bi + c];       // guarda la entrante
-                        if (primed < look) outv = 0f;         // cebado: los primeros look frames salen en silencio
-                        else if (outv > ceiling) outv = ceiling;    // red de seguridad si un transitorio se colo
-                        else if (outv < -ceiling) outv = -ceiling;
-                        buffer[bi + c] = outv;
+                        float outv = delay[di + c] * g;
+                        delay[di + c] = buffer[bi + c];
+                        buffer[bi + c] = primed < look ? 0f : outv;
                     }
                     dpos++; if (dpos >= look) dpos = 0;
                     if (primed < look) primed++;
@@ -13399,7 +14881,7 @@ namespace Rocola
             // el biquad ni se crea). ~9 operaciones por muestra por banda activa (tipico: 2-4 bandas).
             public volatile float[] EqDb;
             private float[] eqDbUsed;   // referencia aplicada (los coeficientes se recalculan solo si cambia)
-            private float[][] eqCoef;   // 8 biquads (null = banda sin correccion)
+            private float[][] eqCoef;   // biquads activos compactados, en el orden original de bandas
             private float[] eqSt;       // estados: canal * banda * 4
             private int eqActivos;
             public LevelTap(NAudio.Wave.ISampleProvider s, Form1 o) { src = s; owner = o; }
@@ -13426,7 +14908,11 @@ namespace Rocola
                     {
                         int ch0 = WaveFormat.Channels; if (ch0 < 1) ch0 = 1;
                         eqCoef = new float[8][]; eqActivos = 0;
-                        for (int b = 0; b < 8; b++) { eqCoef[b] = Form1.EqPeak(Form1.EqCentros[b], WaveFormat.SampleRate, eqDb[b]); if (eqCoef[b] != null) eqActivos++; }
+                        for (int b = 0; b < 8; b++)
+                        {
+                            float[] cf = Form1.EqPeak(Form1.EqCentros[b], WaveFormat.SampleRate, eqDb[b]);
+                            if (cf != null) eqCoef[eqActivos++] = cf;
+                        }
                         eqSt = new float[ch0 * 32];
                         eqDbUsed = eqDb;
                     }
@@ -13438,15 +14924,16 @@ namespace Rocola
                         const float A = 0.55f;    // paso-alto ~5.5 kHz (a 44.1k): la banda donde el MP3 pierde el "aire"
                         float mix = ex * 0.5f;    // tope de mezcla: el realce es una PIZCA (el exceso suena aspero)
                         int end = offset + n, ci = 0;
+                        int bandasActivas = eqActivos;   // configuracion fija durante este bloque
                         for (int i = offset; i < end; i++)
                         {
                             float v = buffer[i] * g;
                             if (eqOn)
                             {
                                 int p0 = ci * 32;
-                                for (int b = 0; b < 8; b++)
+                                for (int b = 0; b < bandasActivas; b++)
                                 {
-                                    float[] cf = eqCoef[b]; if (cf == null) continue;
+                                    float[] cf = eqCoef[b];
                                     int q = p0 + b * 4;
                                     float o = cf[0] * v + cf[1] * eqSt[q] + cf[2] * eqSt[q + 1] - cf[3] * eqSt[q + 2] - cf[4] * eqSt[q + 3];
                                     eqSt[q + 1] = eqSt[q]; eqSt[q] = v;
@@ -13975,6 +15462,31 @@ namespace Rocola
             // estiran al copiarlas. Dibujarlas a tamano real serian trescientas manchas de gradiente radial
             // en cada cambio de cancion; asi son doscientas manchas UNA vez, al arrancar, y luego una copia.
             private Bitmap hazeMask, nebMask;
+            private Bitmap hazeFull;
+
+            // La Via Lactea no cambia de color: escalarla solo al cambiar geometria.
+            // SourceCopy conserva la transparencia; la composicion final sigue siendo SourceOver.
+            private void PintaViaLactea(Graphics g, int w, int h)
+            {
+                if (hazeMask == null) return;
+                if (hazeFull == null || hazeFull.Width != w || hazeFull.Height != h)
+                {
+                    Bitmap next = new Bitmap(w, h, PixelFormat.Format32bppPArgb);
+                    try
+                    {
+                        using (Graphics ng = Graphics.FromImage(next))
+                        {
+                            ng.CompositingMode = CompositingMode.SourceCopy;
+                            ng.InterpolationMode = InterpolationMode.Bilinear;
+                            ng.DrawImage(hazeMask, new Rectangle(0, 0, w, h), 0, 0, hazeMask.Width, hazeMask.Height, GraphicsUnit.Pixel);
+                        }
+                    }
+                    catch { next.Dispose(); throw; }
+                    if (hazeFull != null) hazeFull.Dispose();
+                    hazeFull = next;
+                }
+                g.DrawImage(hazeFull, new Rectangle(0, 0, w, h));
+            }
             private int nblW = -1, nblH = -1;
             // El dibujito del grano: 64x64, uno para toda la rocola. Se hace una vez y se repite al estamparlo.
             private static Bitmap ruidoTeja;
@@ -14039,6 +15551,7 @@ namespace Rocola
                 int mw = FW / 4, mh = FH / 4;
                 if (mw < 8) mw = 8; if (mh < 8) mh = 8;
                 if (hazeMask != null && nblW == mw && nblH == mh) return;
+                if (hazeFull != null) { hazeFull.Dispose(); hazeFull = null; }
                 if (hazeMask != null) { hazeMask.Dispose(); hazeMask = null; }
                 if (nebMask != null) { nebMask.Dispose(); nebMask = null; }
                 nblW = mw; nblH = mh;
@@ -14204,7 +15717,7 @@ namespace Rocola
                     }
                     // LA VIA LACTEA: la banda de neblina, tambien horneada a un cuarto y estirada. Va del
                     // mismo blanco azulado siempre, que es de lo que esta hecha de verdad.
-                    if (hazeMask != null) sg.DrawImage(hazeMask, new Rectangle(0, 0, FW, FH));
+                    PintaViaLactea(sg, FW, FH);
                     // EL POLVO YA NO VA AQUI: ver BakeStarFrame. Horneado en el cielo se quedaba clavado
                     // mientras el resto del campo se desliza, y eso -mas de la mitad de las estrellas quietas
                     // y el resto moviendose- se ve peor que si no se moviera nada.
@@ -14435,10 +15948,13 @@ namespace Rocola
                 Bitmap bmp = new Bitmap(w, h, PixelFormat.Format32bppPArgb);
                 using (Graphics lg = Graphics.FromImage(bmp))
                 using (SolidBrush b = new SolidBrush(Color.White))
+                using (ImageAttributes ia = new ImageAttributes())
                 {
                     lg.Clear(Color.Transparent);
                     lg.InterpolationMode = InterpolationMode.Bilinear;
                     lg.SmoothingMode = SmoothingMode.AntiAlias;
+                    ColorMatrix cm = new ColorMatrix();
+                    bool polvo = false;
                     double ph = 2.0 * Math.PI * j / TwK;   // fase de este cuadro
                     for (int i = 0; i < stars.Length; i++)
                     {
@@ -14451,16 +15967,15 @@ namespace Rocola
                         // o al cambiar de tamano de pantalla, no por cuadro.
                         if (s.Kind == 0)
                         {
-                            SmoothingMode osm2 = lg.SmoothingMode;
-                            lg.SmoothingMode = SmoothingMode.None;   // una estrella lejana es un pixel, no una manchita suavizada
+                            if (!polvo) { lg.SmoothingMode = SmoothingMode.None; polvo = true; }
                             int cr0, cg0, cb0;
                             if (s.Tint > 0f) { cr0 = 255; cg0 = 255; cb0 = 255; } else { cr0 = s.R; cg0 = s.G; cb0 = s.B; }
                             b.Color = Color.FromArgb(s.Bri, cr0, cg0, cb0);
                             int d0 = s.Size < 1 ? 1 : (s.Size > 2 ? 2 : s.Size);
                             lg.FillRectangle(b, (int)(s.X * w) - d0 / 2, (int)(s.Y * h) - d0 / 2, d0, d0);
-                            lg.SmoothingMode = osm2;
                             continue;
                         }
+                        if (polvo) { lg.SmoothingMode = SmoothingMode.AntiAlias; polvo = false; }
                         int harm = 1 + (i % 2);   // armonico ENTERO (1 o 2: bien muestreado con TwK=8) -> el set cicla exacto
                         double tw = 0.62 + 0.38 * (0.5 + 0.5 * Math.Sin(ph * harm + s.Off));   // titileo 0.62..1.00
                         int a = (int)(tw * s.Bri); if (a > 255) a = 255; if (a < 0) a = 0;
@@ -14474,9 +15989,9 @@ namespace Rocola
                         {
                             Rectangle gr = new Rectangle(px - gd / 2, py - gd / 2, gd, gd);
                             if (a >= 250) lg.DrawImage(gb, gr);
-                            else using (ImageAttributes ia = new ImageAttributes())   // el glow tambien titila (matriz solo al hornear)
+                            else   // recursos locales reutilizados; misma matriz y mismo orden de dibujo
                             {
-                                ColorMatrix cm = new ColorMatrix(); cm.Matrix33 = (float)tw;
+                                cm.Matrix33 = (float)tw;
                                 ia.SetColorMatrix(cm);
                                 lg.DrawImage(gb, gr, 0, 0, gb.Width, gb.Height, GraphicsUnit.Pixel, ia);
                             }
@@ -14822,6 +16337,13 @@ namespace Rocola
             private static readonly Color RedC = Color.FromArgb(228, 72, 72), GreenC = Color.FromArgb(72, 212, 112), YellowC = Color.FromArgb(242, 206, 72);
             private readonly InstrFlash flash = new InstrFlash();
 
+            protected override void Dispose(bool disposing)
+            {
+                // Solo recursos creados por esta vista: Font y portadas recibidas son prestadas.
+                try { if (disposing) { SueltaDibujo(ref hbFont); } }
+                finally { base.Dispose(disposing); }
+            }
+
             public HelpBar()
             {
                 SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint | ControlStyles.SupportsTransparentBackColor | ControlStyles.Opaque, true);
@@ -14942,6 +16464,18 @@ namespace Rocola
                 Sky.DrawCached(g, w, h, SkyColor(Accent), SkyColor2(Accent));   // cielo en degradado CONTINUO; un cubo transparente girando encima
             }
 
+        }
+
+        // Solo recursos PROPIOS de las vistas, nunca Font/Cover/Sky prestados.
+        private static void SueltaDibujo<T>(ref T resource) where T : class, IDisposable
+        {
+            T old = resource; resource = null;
+            if (old != null) old.Dispose();
+        }
+        private static void SueltaBitmaps(ref Bitmap[] images)
+        {
+            Bitmap[] old = images; images = null;
+            if (old != null) for (int i = 0; i < old.Length; i++) if (old[i] != null) old[i].Dispose();
         }
 
         private class AlbumView : Control
@@ -15135,21 +16669,40 @@ namespace Rocola
             public List<Album> Ahead;
             private int aheadPos;
             public void SetAhead(List<Album> lista) { Ahead = lista; aheadPos = 0; }
+            private long aheadBakeTicks;
+            private static readonly long AheadBudgetTicks = Math.Max(1L, System.Diagnostics.Stopwatch.Frequency / 250L);
+            private static bool CanStartAhead(long elapsed, long estimate, int baked)
+            {
+                if (elapsed < 0 || elapsed >= AheadBudgetTicks) return false;
+                // La primera casilla siempre puede intentarse: una estimacion cara no debe
+                // impedir el progreso. Una tarea indivisible aun puede exceder los 4 ms.
+                return baked == 0 || estimate <= AheadBudgetTicks - elapsed;
+            }
             public void BakeAhead()
             {
                 if (Ahead == null || aheadPos >= Ahead.Count) return;
                 int w = Width, h = Height;
                 if (w < 8 || h < 8) return;
                 int cw = w / Cols, ch = h / Rows;
-                if (cw < 4 || ch < 4 || cellCacheW != w || cellCacheH != h) return;   // otro tamano: ya se rehorneara solo
+                if (cw < 4 || ch < 4 || cellCacheW != w || cellCacheH != h) return;
                 int side, labelH, gap; CellMetrics(cw, ch, out side, out labelH, out gap);
-                int budget = 2;   // dos casillas por vuelta (~24 por segundo): invisible y en dos segundos hay pagina
-                int t0 = Environment.TickCount;
-                while (aheadPos < Ahead.Count && budget > 0 && Environment.TickCount - t0 < 4)
+                int budget = 2, visited = 0;
+                long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+                while (aheadPos < Ahead.Count && budget > 0 && visited < PageSize
+                    && CanStartAhead(System.Diagnostics.Stopwatch.GetTimestamp() - t0, aheadBakeTicks, 2 - budget))
                 {
                     Album a = Ahead[aheadPos++];
+                    long begin = System.Diagnostics.Stopwatch.GetTimestamp();
+                    int previous = budget;
                     PeekOrBakeCell(a, cw, side, labelH, gap, (GetCover != null) ? GetCover(a) : null, ref budget);
+                    if (budget < previous)
+                    {
+                        long cost = Math.Max(1L, System.Diagnostics.Stopwatch.GetTimestamp() - begin);
+                        aheadBakeTicks = Math.Max(cost, aheadBakeTicks - aheadBakeTicks / 4);
+                    }
+                    visited++;
                 }
+                if (cellCache.Count > capCeldas) PodaCeldas();
             }
             private Pen cPenGlow, cPenMid, cPenLine;   // contorno del disco seleccionado (cacheadas; antes se creaban por cuadro)
             private Bitmap contourSprite; private Size contourSpriteSize = Size.Empty;   // contorno HORNEADO (3 trazos AA -> 1 copia); todas las casillas miden igual
@@ -15330,6 +16883,29 @@ namespace Rocola
             public AlbumView()
             {
                 this.SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true);
+            }
+
+            protected override void OnFontChanged(EventArgs e)
+            {
+                base.OnFontChanged(e);
+                SueltaDibujo(ref lblFont);
+                if (cellCache != null) ResetCellCache();
+                SueltaDibujo(ref cubeCache);
+            }
+            protected override void Dispose(bool disposing)
+            {
+                try
+                {
+                    if (disposing)
+                    {
+                        if (cellCache != null) ClearCellCache();
+                        SueltaDibujo(ref cubeCache); SueltaDibujo(ref contourSprite);
+                        SueltaDibujo(ref blendBmp); SueltaDibujo(ref lblFont);
+                        SueltaDibujo(ref lblBrush); SueltaDibujo(ref lblSF);
+                        SueltaDibujo(ref cPenGlow); SueltaDibujo(ref cPenMid); SueltaDibujo(ref cPenLine);
+                    }
+                }
+                finally { base.Dispose(disposing); }
             }
 
             // Fuerza reconstruir la capa de cubos (cuando llega una portada en segundo plano)
@@ -15589,6 +17165,7 @@ namespace Rocola
             {
                 foreach (CellSprite cs in cellCache.Values) if (cs.Bmp != null) cs.Bmp.Dispose();
                 cellCache.Clear();
+                aheadBakeTicks = 0;
             }
 
             // Compone la rejilla en cubeCache (bitmap a pantalla completa) para el render por CPU. En modo GPU NO se
@@ -15874,6 +17451,10 @@ namespace Rocola
                 relTick = Environment.TickCount; if (relTick == 0) relTick = 1;
             }
             public bool Girando { get { return relTick != 0; } }
+            public bool UsaPortada(Image im)
+            {
+                return object.ReferenceEquals(Cover, im) || object.ReferenceEquals(relNueva, im);
+            }
 
             // Avanza el giro. Sin relevo, el paso de siempre. Con relevo, ademas, la media vuelta.
             // El giro lo lleva el cubo y no el reloj de la pantalla: si no, habria que repetir la cuenta
@@ -15966,6 +17547,13 @@ namespace Rocola
             }
             // Al abrir un disco el letrero se pone donde toque, sin viaje.
             public void PonSinAnimar(int p) { pagina = p; animTick = -1; }
+
+            protected override void Dispose(bool disposing)
+            {
+                // Solo recursos creados por esta vista: Font y portadas recibidas son prestadas.
+                try { if (disposing) { SueltaDibujo(ref pgFont); } }
+                finally { base.Dispose(disposing); }
+            }
 
             public SongPagerBar()
             {
@@ -16609,6 +18197,19 @@ namespace Rocola
             private Font fSec, fPag; private float fontAlto = -1f;
             private SolidBrush brocha; private StringFormat sfIzq;
 
+            protected override void OnFontChanged(EventArgs e)
+            {
+                SueltaDibujo(ref fSec); SueltaDibujo(ref fPag);
+                fontAlto = -1f;
+                base.OnFontChanged(e); Invalidate();
+            }
+            protected override void Dispose(bool disposing)
+            {
+                // Solo recursos creados por esta vista: Font y portadas recibidas son prestadas.
+                try { if (disposing) { SueltaDibujo(ref fSec); SueltaDibujo(ref fPag); SueltaDibujo(ref brocha); SueltaDibujo(ref sfIzq); } }
+                finally { base.Dispose(disposing); }
+            }
+
             public HeaderView()
             {
                 this.SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.SupportsTransparentBackColor | ControlStyles.Opaque, true);
@@ -16817,6 +18418,13 @@ namespace Rocola
             public double Phase = 0;          // para el parpadeo
             private Font fTxt; private float fAlto = -1f;
 
+            protected override void Dispose(bool disposing)
+            {
+                // Solo recursos creados por esta vista: Font y portadas recibidas son prestadas.
+                try { if (disposing) { SueltaDibujo(ref fTxt); } }
+                finally { base.Dispose(disposing); }
+            }
+
             public BuscaView()
             {
                 this.SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.SupportsTransparentBackColor, true);
@@ -16962,6 +18570,19 @@ namespace Rocola
             // Un numero que cambia mientras dura la animacion, y SOLO entonces: quieta, la firma no se
             // mueve y la textura no se rehace ni una vez de mas.
             public int Paso { get { return Animando ? (Environment.TickCount / 16) : 0; } }
+
+            protected override void OnFontChanged(EventArgs e)
+            {
+                SueltaDibujo(ref fEtq); SueltaDibujo(ref fVal); SueltaDibujo(ref fMas);
+                fontAlto = -1f;
+                base.OnFontChanged(e); Invalidate();
+            }
+            protected override void Dispose(bool disposing)
+            {
+                // Solo recursos creados por esta vista: Font y portadas recibidas son prestadas.
+                try { if (disposing) { SueltaDibujo(ref fEtq); SueltaDibujo(ref fVal); SueltaDibujo(ref fMas); SueltaDibujo(ref brocha); SueltaDibujo(ref sfCen); } }
+                finally { base.Dispose(disposing); }
+            }
 
             public PastillaView()
             {
@@ -17189,6 +18810,13 @@ namespace Rocola
             private bool medido; private int anchoPide, altoPide;
             private SolidBrush brocha; private StringFormat sfCen;
 
+            protected override void Dispose(bool disposing)
+            {
+                // Solo recursos creados por esta vista: Font y portadas recibidas son prestadas.
+                try { if (disposing) { SueltaDibujo(ref brocha); SueltaDibujo(ref sfCen); } }
+                finally { base.Dispose(disposing); }
+            }
+
             public GeneroView()
             {
                 this.SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.SupportsTransparentBackColor, true);
@@ -17229,11 +18857,18 @@ namespace Rocola
         private class ProgressView : Control
         {
             private double _value;
-            public double Value { get { return _value; } set { double v = value < 0 ? 0 : (value > 1 ? 1 : value); if (v != _value) { _value = v; Invalidate(); } } }
+            public double Value { get { return _value; } set { double v = !(value > 0) ? 0 : (value > 1 ? 1 : value); if (v != _value) { _value = v; Invalidate(); } } } // NaN tampoco es progreso valido
             private Color _accent = DefaultAccent;   // ESTETICA: la barra toma el color del genero que suena
             public Color Accent { get { return _accent; } set { if (value.ToArgb() != _accent.ToArgb()) { _accent = value; Invalidate(); } } }
 
             private SolidBrush trackB; private Pen trackP;   // riel: colores fijos -> se cachean (se dibuja en cada reconstruccion de UI)
+
+            protected override void Dispose(bool disposing)
+            {
+                // Solo recursos creados por esta vista: Font y portadas recibidas son prestadas.
+                try { if (disposing) { SueltaDibujo(ref trackB); SueltaDibujo(ref trackP); } }
+                finally { base.Dispose(disposing); }
+            }
 
             public ProgressView()
             {
@@ -17506,6 +19141,39 @@ namespace Rocola
             {
                 SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true);
                 BackColor = Shade(DefaultAccent, 0.76);
+            }
+
+            private void ClearFontDrawing()
+            {
+                SueltaDibujo(ref fNum); SueltaDibujo(ref fCola);
+                SueltaBitmaps(ref bmpDig); SueltaBitmaps(ref bmpDigCola); SueltaBitmaps(ref bmpDigSon);
+                if (hornoGen != null) TiraHornoGen();
+                SueltaDibujo(ref hornoPag); SueltaDibujo(ref hornoAnt);
+                fontFuente = hornoCuerpo = hornoGenCuerpo = -1f;
+                slideTick = -1;
+            }
+            protected override void OnFontChanged(EventArgs e)
+            {
+                base.OnFontChanged(e);
+                // Familia y estilo tambien importan: la firma anterior solo veia el cuerpo.
+                ClearFontDrawing();
+                Invalidate();
+            }
+            protected override void Dispose(bool disposing)
+            {
+                try
+                {
+                    if (disposing)
+                    {
+                        ClearFontDrawing();
+                        if (hornoPastV != null && hornoPastA != null) TiraPastillas();
+                        SueltaDibujo(ref bmpCirc); SueltaDibujo(ref bmpCircCola); SueltaDibujo(ref bmpCircSon);
+                        SueltaDibujo(ref hlB); SueltaDibujo(ref hlP); SueltaDibujo(ref txtB); SueltaDibujo(ref txtFmt);
+                        SueltaDibujo(ref bgB); SueltaDibujo(ref durB); SueltaDibujo(ref durFmt);
+                        SueltaDibujo(ref colaB); SueltaDibujo(ref cenFmt);
+                    }
+                }
+                finally { base.Dispose(disposing); }
             }
 
             // ================= HOJEAR DENTRO DE UN DISCO =================
@@ -19064,6 +20732,31 @@ namespace Rocola
             // llegar a leerlos. De un archivo con caratula de 300 KB se leen unos cientos de bytes. Si la
             // etiqueta larga no trae genero, se prueba la corta del final (128 bytes); y si tampoco, se queda
             // sin genero, que es decoracion, en vez de leerse el archivo entero.
+            private static int SyncSafe4(byte[] b, int p)
+            {
+                if (b == null || p < 0 || p + 4 > b.Length) return -1;
+                if ((b[p] | b[p + 1] | b[p + 2] | b[p + 3]) >= 128) return -1;
+                return (b[p] << 21) | (b[p + 1] << 14) | (b[p + 2] << 7) | b[p + 3];
+            }
+            private static int BigEndian4(byte[] b, int p)
+            {
+                if (b == null || p < 0 || p + 4 > b.Length) return -1;
+                uint v = ((uint)b[p] << 24) | ((uint)b[p + 1] << 16) | ((uint)b[p + 2] << 8) | b[p + 3];
+                return v > int.MaxValue ? -1 : (int)v;
+            }
+            private static byte[] DeUnsync(byte[] b, int start, int size)
+            {
+                if (b == null || start < 0 || size < 0 || start + size > b.Length) return new byte[0];
+                byte[] d = new byte[size]; int n = 0, end = start + size;
+                for (int i = start; i < end; i++)
+                {
+                    byte v = b[i]; d[n++] = v;
+                    if (v == 0xff && i + 1 < end && b[i + 1] == 0x00) i++;
+                }
+                if (n == d.Length) return d;
+                byte[] exact = new byte[n]; Array.Copy(d, 0, exact, 0, n); return exact;
+            }
+
             public static string SoloGenero(string path)
             {
                 Track t = new Track();
@@ -19075,19 +20768,35 @@ namespace Rocola
                     {
                         byte[] cab = new byte[10];
                         if (fs.Read(cab, 0, 10) == 10 && cab[0] == (byte)'I' && cab[1] == (byte)'D' && cab[2] == (byte)'3'
-                            && cab[3] >= 3)   // las etiquetas muy viejas (2.2) tienen otra forma: se cae a la corta
+                            && cab[3] >= 3 && cab[3] <= 4)   // 2.2 y versiones futuras tienen otra forma
                         {
                             int major = cab[3];
-                            long size = ((cab[6] & 0x7f) << 21) + ((cab[7] & 0x7f) << 14) + ((cab[8] & 0x7f) << 7) + (cab[9] & 0x7f);
+                            // En 2.3 la des-sincronizacion cubre el cuerpo entero y cambia sus posiciones.
+                            // Es un caso raro: se usa el lector completo, que la revierte antes de separar marcos.
+                            if (major <= 3 && (cab[5] & 0x80) != 0)
+                            {
+                                ReadId3(path, t);
+                                return t.Genre ?? "";
+                            }
+                            long size = SyncSafe4(cab, 6);
                             long fin = 10 + size;
+                            if (size <= 0 || fin > fs.Length) throw new InvalidDataException("ID3 truncado");
+                            if ((cab[5] & 0x40) != 0)
+                            {
+                                byte[] eh = new byte[4]; if (fs.Read(eh, 0, 4) != 4) throw new EndOfStreamException();
+                                int es = (major >= 4) ? SyncSafe4(eh, 0) : BigEndian4(eh, 0);
+                                long resta = (major >= 4) ? es - 4L : es;
+                                if (es < (major >= 4 ? 6 : 0) || resta < 0 || fs.Position + resta > fin) throw new InvalidDataException("ID3 extendido invalido");
+                                fs.Position += resta;
+                            }
                             byte[] fh = new byte[10];
                             while (fs.Position + 10 <= fin)
                             {
                                 if (fs.Read(fh, 0, 10) != 10) break;
                                 if (fh[0] == 0) break;   // relleno: se acabaron los marcos
                                 int fsz;
-                                if (major >= 4) fsz = ((fh[4] & 0x7f) << 21) + ((fh[5] & 0x7f) << 14) + ((fh[6] & 0x7f) << 7) + (fh[7] & 0x7f);
-                                else fsz = (fh[4] << 24) + (fh[5] << 16) + (fh[6] << 8) + fh[7];
+                                if (major >= 4) fsz = SyncSafe4(fh, 4);
+                                else fsz = BigEndian4(fh, 4);
                                 if (fsz <= 0 || fs.Position + fsz > fin) break;
                                 bool esGenero = (fh[0] == (byte)'T' && fh[1] == (byte)'C' && fh[2] == (byte)'O' && fh[3] == (byte)'N');
                                 if (esGenero && fsz <= 4096)
@@ -19098,7 +20807,7 @@ namespace Rocola
                                     Array.Copy(fh, 0, uno, 0, 10);
                                     int leidos = 0, r;
                                     while (leidos < fsz && (r = fs.Read(uno, 10 + leidos, fsz - leidos)) > 0) leidos += r;
-                                    ParseId3v2(uno, 10 + leidos, major, t);
+                                    ParseId3v2(uno, 10 + leidos, major, cab[5] & 0x80, t);
                                     if (!string.IsNullOrEmpty(t.Genre)) break;
                                 }
                                 else fs.Position += fsz;   // la caratula y lo demas: ni se tocan
@@ -19123,19 +20832,23 @@ namespace Rocola
 
             private static void ReadId3(string path, Track t)
             {
-                using (FileStream fs = new FileStream(path, FileMode.Open, FileAccess.Read))
+                using (FileStream fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
                 {
                     byte[] header = new byte[10];
-                    if (fs.Read(header, 0, 10) == 10 && header[0] == (byte)'I' && header[1] == (byte)'D' && header[2] == (byte)'3')
+                    if (fs.Read(header, 0, 10) == 10 && header[0] == (byte)'I' && header[1] == (byte)'D' && header[2] == (byte)'3'
+                        && header[3] >= 3 && header[3] <= 4)
                     {
                         int major = header[3];
-                        int size = ((header[6] & 0x7f) << 21) | ((header[7] & 0x7f) << 14) | ((header[8] & 0x7f) << 7) | (header[9] & 0x7f);
+                        int size = SyncSafe4(header, 6);
                         if (size > 0 && size <= 33554432)   // tope 32MB: un encabezado CORRUPTO puede declarar hasta 256MB y ese new byte[] tumbaria la RAM de la rocola; se cae al ID3v1
                         {
                             byte[] tag = new byte[size];
                             int read = 0, r;
                             while (read < size && (r = fs.Read(tag, read, size - read)) > 0) read += r;
-                            ParseId3v2(tag, read, major, t);
+                            int flags = header[5];
+                            if (major <= 3 && (flags & 0x80) != 0)
+                            { tag = DeUnsync(tag, 0, read); read = tag.Length; flags &= ~0x80; }
+                            ParseId3v2(tag, read, major, flags, t);
                         }
                     }
                 }
@@ -19143,8 +20856,19 @@ namespace Rocola
             }
 
             private static void ParseId3v2(byte[] tag, int len, int major, Track t)
+            { ParseId3v2(tag, len, major, 0, t); }
+
+            private static void ParseId3v2(byte[] tag, int len, int major, int tagFlags, Track t)
             {
                 int pos = 0;
+                if ((tagFlags & 0x40) != 0)
+                {
+                    if (len < 4) return;
+                    int es = (major >= 4) ? SyncSafe4(tag, 0) : BigEndian4(tag, 0);
+                    int skip = (major >= 4) ? es : (es < 0 ? -1 : es + 4);
+                    if (es < (major >= 4 ? 6 : 0) || skip < 4 || skip > len) return;
+                    pos = skip;
+                }
                 while (pos + 10 <= len)
                 {
                     string id = Encoding.ASCII.GetString(tag, pos, 4);
@@ -19153,13 +20877,26 @@ namespace Rocola
                     for (int i = 0; i < 4; i++) { char c = id[i]; if (!((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'))) { valid = false; break; } }
                     if (!valid) break;
                     int frameSize;
-                    if (major >= 4) frameSize = ((tag[pos + 4] & 0x7f) << 21) | ((tag[pos + 5] & 0x7f) << 14) | ((tag[pos + 6] & 0x7f) << 7) | (tag[pos + 7] & 0x7f);
-                    else frameSize = (tag[pos + 4] << 24) | (tag[pos + 5] << 16) | (tag[pos + 6] << 8) | tag[pos + 7];
+                    if (major >= 4) frameSize = SyncSafe4(tag, pos + 4);
+                    else frameSize = BigEndian4(tag, pos + 4);
                     int startPos = pos + 10;
                     if (frameSize <= 0 || startPos + frameSize > len) break;
                     if (id == "TIT2" || id == "TPE1" || id == "TALB" || id == "TCON")
                     {
-                        string val = DecodeText(tag, startPos, frameSize);
+                        int formatFlags = tag[pos + 9];
+                        bool compressed = major >= 4 ? (formatFlags & 0x08) != 0 : (formatFlags & 0x80) != 0;
+                        bool encrypted = major >= 4 ? (formatFlags & 0x04) != 0 : (formatFlags & 0x40) != 0;
+                        byte[] body = tag; int bs = startPos, bn = frameSize;
+                        if (major >= 4 && (((tagFlags & 0x80) != 0) || (formatFlags & 0x02) != 0))
+                        { body = DeUnsync(tag, startPos, frameSize); bs = 0; bn = body.Length; }
+                        if (major >= 4)
+                        {
+                            if ((formatFlags & 0x40) != 0) { bs++; bn--; }       // identidad de grupo
+                            if ((formatFlags & 0x01) != 0) { bs += 4; bn -= 4; } // indicador de longitud
+                        }
+                        else if ((formatFlags & 0x20) != 0) { bs++; bn--; }
+                        string val = (!compressed && !encrypted && bn > 0 && bs >= 0 && bs + bn <= body.Length)
+                            ? DecodeText(body, bs, bn) : "";
                         if (val != null) val = val.Trim();
                         bool has = !string.IsNullOrEmpty(val);
                         // El ID3 MANDA sobre titulo/artista: el nombre de archivo es solo una adivinanza

@@ -77,10 +77,14 @@ elif [ -f "$RAIZ/Rocola/GLDevice.cs" ]; then
   # LA DE LINUX SE RECONOCE POR EL DIBUJO, NO POR EL .csproj. Sale de la HD y declara el MISMO .NET 4.8,
   # asi que el proyecto no las distingue; lo que las separa es que aqui el dispositivo es el de OpenGL.
   # Y no lleva 'mudos': saber si un video suena pide Media Foundation, que es de Windows.
-  SDK=4; TIPO=linux
+  # 4.8, QUE ES LO QUE SE INSTALA, y no "4" a secas. En Mono, -sdk:4 son las bibliotecas de .NET 4.0, y
+  # entre 4.0 y 4.8 hay ocho anos de cosas nuevas: el lector binario que deja el archivo abierto, que este
+  # codigo usa, llego en 4.5. Con -sdk:4 la rocola NO COMPILA aqui... y en Windows si, porque alli el
+  # proyecto dice 4.8. O sea que la tanda estaria mirando un programa distinto del que se instala.
+  SDK=4.8; TIPO=linux
   REF_ID="hd:e3892d6:377e89e:cfdf912"
 elif grep -q '<TargetFrameworkVersion>v4.8</TargetFrameworkVersion>' "$PROYECTO"; then
-  SDK=4; TIPO=hd; CPU="$CPU $SOLO_HD"
+  SDK=4.8; TIPO=hd; CPU="$CPU $SOLO_HD"
   REF_ID="hd:e3892d6:377e89e:cfdf912"
 elif grep -q '<TargetFrameworkVersion>v3.5</TargetFrameworkVersion>' "$PROYECTO"; then
   SDK=2; TIPO=xp
@@ -160,7 +164,7 @@ if [ "${avisos:-0}" -ne 0 ]; then
   grep -h 'warning CS' "$C_ROCOLA" "$C_GPU" | sed 's/^/    /'
   exit 1
 fi
-echo "  rocola compilada (proyecto $TIPO, rama ${RAMA:-sin-git}, .NET $([ $SDK = 2 ] && echo 3.5 || echo 4.8), los dos perfiles, 0 avisos)"
+echo "  rocola compilada (proyecto $TIPO, rama ${RAMA:-sin-git}, .NET $([ "$SDK" = 2 ] && echo 3.5 || echo "$SDK"), los dos perfiles, 0 avisos)"
 echo
 
 # --- Si se pidieron baterias sueltas, se reparten segun a que perfil van ---

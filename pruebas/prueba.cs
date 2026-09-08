@@ -9,8 +9,38 @@ class Prueba
     static Type TF; static object F;
     static object Fld(string n) { return TF.GetField(n, BindingFlags.Instance|BindingFlags.NonPublic).GetValue(F); }
     static void SetFld(string n, object v) { TF.GetField(n, BindingFlags.Instance|BindingFlags.NonPublic).SetValue(F, v); }
-    static void Call(string n) { TF.GetMethod(n, BindingFlags.Instance|BindingFlags.NonPublic).Invoke(F, null); }
+    static void Call(string n) { TF.GetMethod(n, BindingFlags.Instance|BindingFlags.NonPublic).Invoke(F, null); EsperaGuardado(); }
+    // AL GUARDAR HAY QUE ESPERAR A QUE SE HAYA GUARDADO. La rocola escribe en segundo plano: pedir
+    // "guarda" no deja el archivo escrito al volver, lo deja ENCARGADO. La barrera esta en Codigo
+    // porque cada rama le puso un nombre distinto y aqui no hay por que saberlo.
+    static void EsperaGuardado() { Codigo.EsperaGuardado(TF, F); }
     static void Marca(string p) { TF.GetMethod("MarkDeepDone", BindingFlags.Instance|BindingFlags.NonPublic).Invoke(F, new object[]{p}); }
+
+    // LO QUE ARMARIA EL CONSTRUCTOR. Estas pruebas encienden la rocola sin encenderla (una instancia sin
+    // constructor) para poder reiniciarla a voluntad, asi que las tablas hay que ponerlas a mano, con la
+    // misma regla de mayusculas que usa Windows.
+    static void Limpia()
+    {
+        SetFld("deepDone", new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+        SetFld("deepDoneLock", new object());
+        SetFld("deepPend", new List<string>());
+        SetFld("loudCache", new Dictionary<string,float>(StringComparer.OrdinalIgnoreCase));
+        SetFld("durCache", new Dictionary<string,float>(StringComparer.OrdinalIgnoreCase));
+        SetFld("eqCache", new Dictionary<string,float[]>(StringComparer.OrdinalIgnoreCase));
+    }
+
+    // LAS MEDIDAS QUE SOBREVIVIERON AL APAGON. La lista del repaso a fondo solo dice "esta ya la mire";
+    // lo medido -sonoridad, duracion y huella de EQ- vive en otras tres tablas, que la rocola lee del
+    // disco ANTES que la lista. Al leer la lista se exige que la medida tambien este: una marca que llego
+    // al disco un instante antes que su medida no cuenta, o la cancion quedaria "repasada" sin que se le
+    // sepa nada y no se volveria a mirar nunca. Aqui se ponen las medidas que el reinicio encontraria.
+    static void Medidas(params string[] rutas)
+    {
+        Dictionary<string,float> lc = (Dictionary<string,float>)Fld("loudCache");
+        Dictionary<string,float> dc = (Dictionary<string,float>)Fld("durCache");
+        Dictionary<string,float[]> ec = (Dictionary<string,float[]>)Fld("eqCache");
+        foreach (string r in rutas) { lc[r] = -14f; dc[r] = 180f; ec[r] = new float[] { 0f, 0f, 0f }; }
+    }
 
     static int fallos = 0;
     static void Check(bool ok, string q) { Console.WriteLine((ok ? "  OK   " : "  FALLO") + "  " + q); if (!ok) fallos++; }
@@ -19,11 +49,8 @@ class Prueba
     {
         Assembly asm = Assembly.LoadFrom("rocola.exe");
         TF = asm.GetType("Rocola.Form1", true);
-        F = FormatterServices.GetUninitializedObject(TF);
-        // el constructor no corrio: armamos a mano solo lo que toca esta parte
-        SetFld("deepDone", new HashSet<string>(StringComparer.OrdinalIgnoreCase));
-        SetFld("deepDoneLock", new object());
-        SetFld("deepPend", new List<string>());
+        F = Codigo.FormSinEncender(TF);
+        Limpia();
 
         string archivo = (string)TF.GetMethod("DeepDoneFile", BindingFlags.Instance|BindingFlags.NonPublic).Invoke(F, null);
         Console.WriteLine("archivo: " + archivo);
@@ -38,16 +65,14 @@ class Prueba
         string[] tanda1 = { @"D:\musica\Banda\01 Uno.mp3", @"D:\musica\Banda\02 Dos.mp3", @"D:\musica\Otro\Tres.flac" };
         foreach (string r in tanda1) Marca(r);
         Call("SaveDeepDone");
-        System.Threading.Thread.Sleep(600);   // el guardado va en segundo plano
         Check(File.Exists(archivo), "el archivo se escribe");
         Check(File.ReadAllLines(archivo).Length >= 3, "trae las 3 rutas");
 
         // --- 3) SE DETIENE Y SE VUELVE A ENCENDER (rocola reiniciada): otra instancia limpia
-        object F2 = FormatterServices.GetUninitializedObject(TF);
+        object F2 = Codigo.FormSinEncender(TF);
         F = F2;
-        SetFld("deepDone", new HashSet<string>(StringComparer.OrdinalIgnoreCase));
-        SetFld("deepDoneLock", new object());
-        SetFld("deepPend", new List<string>());
+        Limpia();
+        Medidas(tanda1);          // sus medidas si llegaron al disco
         Call("LoadDeepDone");
         HashSet<string> d2 = (HashSet<string>)Fld("deepDone");
         Check(d2.Count == 3, "al reanudar recuerda las 3 (leyo " + d2.Count + ")");
@@ -67,12 +92,10 @@ class Prueba
         // --- 5) sigue midiendo y vuelve a guardar: se acumula, no se pisa
         foreach (string r in pend) Marca(r);
         Call("SaveDeepDone");
-        System.Threading.Thread.Sleep(600);
-        object F3 = FormatterServices.GetUninitializedObject(TF);
+        object F3 = Codigo.FormSinEncender(TF);
         F = F3;
-        SetFld("deepDone", new HashSet<string>(StringComparer.OrdinalIgnoreCase));
-        SetFld("deepDoneLock", new object());
-        SetFld("deepPend", new List<string>());
+        Limpia();
+        Medidas(biblioteca);
         Call("LoadDeepDone");
         HashSet<string> d3 = (HashSet<string>)Fld("deepDone");
         Check(d3.Count == 5, "tras la 2a tanda recuerda las 5 (leyo " + d3.Count + ")");
@@ -81,18 +104,15 @@ class Prueba
 
         // --- 6) rutas con acentos y espacios (los nombres reales de la rocola)
         File.Delete(archivo);   // el guardado ahora ANADE: se parte de limpio para contar solo estas dos
-        object F4 = FormatterServices.GetUninitializedObject(TF); F = F4;
-        SetFld("deepDone", new HashSet<string>(StringComparer.OrdinalIgnoreCase));
-        SetFld("deepDoneLock", new object());
-        SetFld("deepPend", new List<string>());
+        object F4 = Codigo.FormSinEncender(TF); F = F4;
+        Limpia();
         Marca(@"D:\musica\Los Ángeles Azules\03 Cómo Te Voy A Olvidar.mp3");
         Marca(@"D:\musica\Niño\canción ñ & símbolos.mp3");
         Call("SaveDeepDone");
-        System.Threading.Thread.Sleep(600);
-        object F5 = FormatterServices.GetUninitializedObject(TF); F = F5;
-        SetFld("deepDone", new HashSet<string>(StringComparer.OrdinalIgnoreCase));
-        SetFld("deepDoneLock", new object());
-        SetFld("deepPend", new List<string>());
+        object F5 = Codigo.FormSinEncender(TF); F = F5;
+        Limpia();
+        Medidas(@"D:\musica\Los Ángeles Azules\03 Cómo Te Voy A Olvidar.mp3",
+                @"D:\musica\Niño\canción ñ & símbolos.mp3");
         Call("LoadDeepDone");
         HashSet<string> d5 = (HashSet<string>)Fld("deepDone");
         Check(d5.Count == 2 && d5.Contains(@"D:\musica\Niño\canción ñ & símbolos.mp3"),

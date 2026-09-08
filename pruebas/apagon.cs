@@ -202,6 +202,42 @@ class Apagon
             Check(m != null && !hace.Contains("Delete"), "   ...y ya no se borra a mano por su cuenta");
         }
 
+        // ---------- 7) UN DISCO DESCONECTADO NO PARECE UNA CANCION BORRADA ----------
+        // Al restaurar, una ruta ausente tiene dos significados muy distintos: si su raiz tambien falta,
+        // el disco esta desconectado y hay que conservar intactos creditos/cola; si la raiz esta presente,
+        // el archivo si desaparecio y toca devolver el credito de esa seleccion.
+        Console.WriteLine("\n  7) UN DISCO DESCONECTADO NO CONSUME LA COLA PAGADA\n");
+        MethodInfo mRaizAusente = TF.GetMethod("RaizConfiguradaAusente", IN);
+        MethodInfo mRestore = TF.GetMethod("RestoreState", IN);
+        MethodInfo mTimer = TF.GetMethod("AnimTimer_Tick", IN);
+        Check(mRaizAusente != null, "la restauracion distingue una raiz desconectada de un archivo borrado");
+        if (mRaizAusente != null)
+        {
+            Limpia();
+            string presente = Path.Combine(Dir(), "presente");
+            string ausente = Path.Combine(Dir(), "disco_desconectado");
+            Directory.CreateDirectory(presente);
+            object f = FormatterServices.GetUninitializedObject(TF);
+            TF.GetField("extraMusicDirs", IN).SetValue(f, new List<string> { presente, ausente });
+            FieldInfo datos = TF.GetField("carpetaDatos", SN);
+            object datosAntes = datos.GetValue(null);
+            try
+            {
+                datos.SetValue(null, Dir());
+                string falta = (string)mRaizAusente.Invoke(f, new object[] { Path.Combine(ausente, "Album", "tema.mp3") });
+                string borrada = (string)mRaizAusente.Invoke(f, new object[] { Path.Combine(presente, "Album", "tema.mp3") });
+                Check(string.Equals(falta, Path.GetFullPath(ausente), StringComparison.OrdinalIgnoreCase),
+                      "una seleccion de la raiz desconectada queda pendiente, sin perder su pago");
+                Check(borrada == null, "una seleccion borrada dentro de una raiz presente si se reconoce como perdida");
+            }
+            finally { datos.SetValue(null, datosAntes); }
+        }
+        List<string> restaura = (mRestore == null) ? new List<string>() : Codigo.Nombres(mRestore);
+        List<string> reintenta = (mTimer == null) ? new List<string>() : Codigo.Nombres(mTimer);
+        Check(restaura.Contains("RaizConfiguradaAusente"), "RestoreState usa esa distincion antes de tocar creditos y cola");
+        Check(reintenta.Contains("StartScan") && reintenta.Contains("AllMusicRoots"),
+              "cuando vuelve el disco, la biblioteca se escanea otra vez y la restauracion puede continuar");
+
         Limpia();
         Console.WriteLine();
         Console.WriteLine(fallos == 0 ? "  TODO BIEN" : ("  FALLOS: " + fallos));

@@ -317,6 +317,67 @@ static class Codigo
         return r;
     }
 
+    // UN Form1 SIN ENCENDER LA ROCOLA, CON SUS CERROJOS PUESTOS.
+    //
+    // Las baterias arman un Form1 sin pasar por el constructor: encenderlo de verdad levantaria la ventana
+    // entera, y lo que se quiere probar son funciones sueltas. El precio es que los campos que se rellenan
+    // AL DECLARARLOS -"private readonly object candado = new object()"- se quedan en nada, porque eso lo
+    // hace el constructor.
+    //
+    // Mientras esos campos solo se leian, no pasaba nada. Desde que la rocola guarda en segundo plano hay
+    // cerrojos por medio, y un "lock" sobre nada no falla suave: revienta la bateria entera con un error
+    // que no tiene que ver con lo que se estaba probando. Aqui se les pone lo que el constructor les
+    // habria puesto.
+    //
+    // Los avisos de "ya no hay nada pendiente" se dejan ENCENDIDOS, que es como nacen: en una bateria no
+    // hay nada guardandose, asi que quien pregunte "¿ya acabo todo?" tiene que oir que si.
+    public static object FormSinEncender(Type tipo)
+    {
+        object f = System.Runtime.Serialization.FormatterServices.GetUninitializedObject(tipo);
+        PonCerrojos(f);
+        return f;
+    }
+
+    // ESPERAR A QUE EL GUARDADO EN SEGUNDO PLANO TERMINE DE VERDAD. Desde que la rocola escribe sin
+    // parar la musica, pedir "guarda" ya no deja el archivo escrito al volver: lo deja ENCARGADO. Una
+    // prueba que guardaba y acto seguido leia, leia lo de antes. Se hacia esperando a ciegas medio
+    // segundo, que es peor de lo que parece: en una maquina cargada no alcanza y la bateria falla sin
+    // que nada este roto, y en una despejada sobra y la tanda entera tarda de mas por nada.
+    //
+    // Cada rama le puso NOMBRE DISTINTO a la barrera -EsperaGuardados() en la de Windows potente,
+    // WaitDataWrites(ms) en la de XP- asi que se prueban las dos. Si no hay ninguna, esa rocola guarda
+    // a la cara y no hay nada que esperar. Preguntar por un solo nombre dejaba a la otra rama sin
+    // barrera y aguantando solo por la espera a ciegas, que es justo lo que no se quiere.
+    public static void EsperaGuardado(Type tf, object f)
+    {
+        if (tf == null || f == null) return;
+        MethodInfo m = tf.GetMethod("EsperaGuardados", BindingFlags.Instance | BindingFlags.NonPublic);
+        if (m != null) { try { m.Invoke(f, null); } catch { } return; }
+        m = tf.GetMethod("WaitDataWrites", BindingFlags.Instance | BindingFlags.NonPublic);
+        if (m != null) { try { m.Invoke(f, new object[] { 15000 }); } catch { } }
+    }
+
+    public static void PonCerrojos(object obj)
+    {
+        if (obj == null) return;
+        for (Type t = obj.GetType(); t != null && t.Name != "Object"; t = t.BaseType)
+            foreach (FieldInfo f in t.GetFields(BindingFlags.Instance | BindingFlags.Public
+                                              | BindingFlags.NonPublic | BindingFlags.DeclaredOnly))
+            {
+                if (f.IsStatic) continue;
+                object v = null;
+                try { v = f.GetValue(obj); } catch { continue; }
+                if (v != null) continue;
+                try
+                {
+                    if (f.FieldType == typeof(object)) f.SetValue(obj, new object());
+                    else if (f.FieldType == typeof(System.Threading.ManualResetEvent))
+                        f.SetValue(obj, new System.Threading.ManualResetEvent(true));
+                }
+                catch { }
+            }
+    }
+
     // Un tipo y TODOS los que lleva dentro, por hondo que esten.
     //
     // Antes se miraba un solo nivel, y eso dejaba fuera lo que mas importa mirar: cuando un delegado lleva

@@ -1,9 +1,12 @@
 using System;
+using System.Collections;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Diagnostics;
 using System.IO;
 using System.Reflection;
+using System.Runtime.Serialization;
+using System.Threading;
 
 // LAS MINIATURAS DE LAS PORTADAS TIENEN QUE SOBREVIVIR AL APAGON.
 //
@@ -30,6 +33,15 @@ class Miniaturas
     static int fallos = 0;
     static void Check(bool ok, string q) { Console.WriteLine((ok ? "  OK   " : "  FALLO") + "  " + q); if (!ok) fallos++; }
 
+    static bool MismosPixeles(Image a, Image b)
+    {
+        Bitmap x = a as Bitmap, y = b as Bitmap;
+        if (x == null || y == null || x.Size != y.Size) return false;
+        for (int j = 0; j < x.Height; j++) for (int i = 0; i < x.Width; i++)
+            if (x.GetPixel(i, j).ToArgb() != y.GetPixel(i, j).ToArgb()) return false;
+        return true;
+    }
+
     // Una portada de mentira pero del peso de una de verdad: ruido, que es lo que NO se comprime. Una
     // imagen de un solo color pesaria cuatro bytes y decodificarla no costaria nada, con lo que la medida
     // de aqui abajo no diria absolutamente nada.
@@ -55,7 +67,8 @@ class Miniaturas
         FieldInfo fThumbDir = TF.GetField("thumbDir", BindingFlags.Static | BindingFlags.NonPublic);
         MethodInfo mRutaMini = TF.GetMethod("ThumbCachePath", BindingFlags.Static | BindingFlags.NonPublic);
         MethodInfo mDecode = TF.GetMethod("DecodeCover", BindingFlags.Static | BindingFlags.NonPublic);
-        if (fCarpeta == null || fThumbDir == null || mRutaMini == null || mDecode == null)
+        MethodInfo mDecodeIdent = TF.GetMethod("DecodeCoverWithIdentity", BindingFlags.Static | BindingFlags.NonPublic);
+        if (fCarpeta == null || fThumbDir == null || mRutaMini == null || mDecode == null || mDecodeIdent == null)
         { Console.WriteLine("\n  FALLO  no encuentro las piezas de las portadas en el ejecutable\n"); return 1; }
 
         string donde = Path.Combine(Path.GetTempPath(), "rocola_mini_" + Guid.NewGuid().ToString("N").Substring(0, 8));
@@ -92,14 +105,77 @@ class Miniaturas
             sw = Stopwatch.StartNew();
             Image b = (Image)mDecode.Invoke(null, new object[] { portada });
             sw.Stop(); double segunda = sw.Elapsed.TotalMilliseconds;
-            if (b != null) b.Dispose();
+            try
+            {
+                string identidad = (string)mRutaMini.Invoke(null, new object[] { portada });
+                // La bomba ya conoce la identidad. Bloquear el original demuestra que la cache
+                // evita su lectura; no depende de antivirus, carga del sistema ni de dos cronometrajes.
+                using (FileStream bloqueo = new FileStream(portada, FileMode.Open, FileAccess.Read, FileShare.None))
+                {
+                    bool lecturaBloqueada = false;
+                    try { File.ReadAllBytes(portada); } catch (IOException) { lecturaBloqueada = true; }
+                    Check(lecturaBloqueada, "la prueba impide realmente leer la portada original");
+                    using (Image desdeCache = (Image)mDecodeIdent.Invoke(null, new object[] { portada, identidad }))
+                        Check(MismosPixeles(b, desdeCache), "reutiliza los mismos pixeles de miniatura sin leer la portada original");
+                }
+            }
+            finally { if (b != null) b.Dispose(); }
 
             Console.WriteLine("     la 1a vez (decodificar el JPG y guardar la miniatura): " + primera.ToString("0.00") + " ms");
             Console.WriteLine("     con la miniatura ya hecha:                             " + segunda.ToString("0.00") + " ms");
             Console.WriteLine("     una pagina son 18 discos:  1a vez " + (primera * 18).ToString("0") + " ms   /   ya hecha " + (segunda * 18).ToString("0") + " ms");
-            Check(segunda * 2 < primera, "tener la miniatura hecha ahorra mas de la mitad del trabajo");
+            Console.WriteLine("     tiempos orientativos de dos lecturas; no son una garantia de aceleracion");
             Check(File.Exists((string)mRutaMini.Invoke(null, new object[] { portada })),
                   "y la miniatura queda escrita donde toca");
+
+            Console.WriteLine("\n  2b) SI CAMBIA LA PORTADA, NO SE RECICLA LA MINIATURA VIEJA\n");
+            string miniAntes = (string)mRutaMini.Invoke(null, new object[] { portada });
+            DateTime marcaAntes = File.GetLastWriteTimeUtc(portada);
+            HazPortada(portada, 54321);                         // misma ruta, otros pixeles
+            File.SetLastWriteTimeUtc(portada, marcaAntes.AddMinutes(1));
+            string miniDespues = (string)mRutaMini.Invoke(null, new object[] { portada });
+            Check(miniDespues != miniAntes, "la clave incluye tamano y fecha del archivo, no solo su ruta");
+            Check(!File.Exists(miniDespues), "la portada nueva no apunta por accidente a la miniatura anterior");
+            Image renovada = (Image)mDecode.Invoke(null, new object[] { portada });
+            if (renovada != null) renovada.Dispose();
+            Check(File.Exists(miniDespues), "y al verla se fabrica una miniatura nueva para esa version");
+
+            Console.WriteLine("\n  2c) UNA LECTURA FALLIDA SE VUELVE A INTENTAR\n");
+            MethodInfo mPideRuta = TF.GetMethod("RequestCoverByPath", BindingFlags.Instance | BindingFlags.NonPublic);
+            FieldInfo fBomba = TF.GetField("coverPumpCount", BindingFlags.Instance | BindingFlags.NonPublic);
+            FieldInfo fCache = TF.GetField("coverCache", BindingFlags.Instance | BindingFlags.NonPublic);
+            FieldInfo fReintento = TF.GetField("coverRetryUntil", BindingFlags.Instance | BindingFlags.NonPublic);
+            bool piezas = mPideRuta != null && fBomba != null && fCache != null && fReintento != null;
+            Check(piezas, "la carga tiene una espera temporal separada de la cache de imagenes");
+            if (piezas)
+            {
+                try
+                {
+                    object F = FormatterServices.GetUninitializedObject(TF);
+                    foreach (string nombre in new string[] { "coverLock", "coverCache", "coverLoading", "coverRetryUntil", "coverQHi", "coverQLo" })
+                    {
+                        FieldInfo fi = TF.GetField(nombre, BindingFlags.Instance | BindingFlags.NonPublic);
+                        fi.SetValue(F, fi.FieldType == typeof(object) ? new object() : Activator.CreateInstance(fi.FieldType));
+                    }
+                    string falta = Path.Combine(donde, "todavia-no-llega.jpg");
+                    mPideRuta.Invoke(F, new object[] { falta, false });
+                    int espera = 0;
+                    while ((int)fBomba.GetValue(F) > 0 && espera < 5000) { Thread.Sleep(10); espera += 10; }
+                    IDictionary cache = (IDictionary)fCache.GetValue(F);
+                    IDictionary reintentos = (IDictionary)fReintento.GetValue(F);
+                    Check(!cache.Contains(falta) && reintentos.Contains(falta),
+                          "si el archivo no esta, NO se guarda null para siempre: solo se apunta cuando reintentar");
+
+                    reintentos[falta] = unchecked(Environment.TickCount - 1); // simula que pasaron los 30 segundos
+                    mPideRuta.Invoke(F, new object[] { falta, false });
+                    espera = 0;
+                    while ((int)fBomba.GetValue(F) > 0 && espera < 5000) { Thread.Sleep(10); espera += 10; }
+                    int hasta = reintentos.Contains(falta) ? (int)reintentos[falta] : 0;
+                    Check(unchecked(hasta - Environment.TickCount) > 20000,
+                          "al vencer la espera, se intenta de nuevo y se programa una espera nueva");
+                }
+                catch (Exception e) { Check(false, "se puede probar el reintento de portada: " + e.GetType().Name); }
+            }
 
             Console.WriteLine("\n  3) EL BARRIDO NO SE LLEVA POR DELANTE UN DISCO DESCONECTADO\n");
             // Pediste poder agregar y quitar discos de musica. Un barrido que borrara "lo que hoy no esta

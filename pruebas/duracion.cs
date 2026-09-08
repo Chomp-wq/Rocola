@@ -10,7 +10,11 @@ class Duracion
     static object Fld(string n) { return TF.GetField(n, BindingFlags.Instance|BindingFlags.NonPublic).GetValue(F); }
     static void SetFld(string n, object v) { TF.GetField(n, BindingFlags.Instance|BindingFlags.NonPublic).SetValue(F, v); }
     static object Call(string n, params object[] a)
-    { MethodInfo mi = TF.GetMethod(n, BindingFlags.Instance|BindingFlags.NonPublic); return mi.Invoke(F, a); }
+    { MethodInfo mi = TF.GetMethod(n, BindingFlags.Instance|BindingFlags.NonPublic); object r = mi.Invoke(F, a); EsperaGuardado(); return r; }
+    // AL GUARDAR HAY QUE ESPERAR A QUE SE HAYA GUARDADO. La rocola escribe en segundo plano: pedir
+    // "guarda" no deja el archivo escrito al volver, lo deja ENCARGADO. La barrera esta en Codigo
+    // porque cada rama le puso un nombre distinto y aqui no hay por que saberlo.
+    static void EsperaGuardado() { Codigo.EsperaGuardado(TF, F); }
     static int fallos = 0;
     static void Check(bool ok, string q) { Console.WriteLine((ok ? "  OK   " : "  FALLO") + "  " + q); if (!ok) fallos++; }
 
@@ -28,7 +32,7 @@ class Duracion
     {
         Assembly asm = Assembly.LoadFrom("rocola.exe");
         TF = asm.GetType("Rocola.Form1", true);
-        F = FormatterServices.GetUninitializedObject(TF);
+        F = Codigo.FormSinEncender(TF);
         Limpia();
         string f = (string)Call("DurFastFile");
         if (File.Exists(f)) File.Delete(f);
@@ -54,14 +58,12 @@ class Duracion
         Check((string)Call("DurText", wavs[4]) == "0:40", "y 0:40 en la corta de 40 s");
 
         // --- 3) se guarda por anadido y sobrevive al reinicio
-        System.Threading.Thread.Sleep(500);
         Check(File.Exists(f) && File.ReadAllLines(f).Length == wavs.Length, "se guardan " + wavs.Length + " lineas en rocola_duracion.txt");
         long t1 = new FileInfo(f).Length;
         Call("PublicaDuraciones", 0, rutas.ToArray(), segs.ToArray(), 0);   // repetir NO debe duplicar
-        System.Threading.Thread.Sleep(400);
         Check(new FileInfo(f).Length == t1, "volver a publicar lo mismo NO duplica el archivo");
 
-        object F2 = FormatterServices.GetUninitializedObject(TF); F = F2; Limpia();
+        object F2 = Codigo.FormSinEncender(TF); F = F2; Limpia();
         Call("LoadDurFast");
         Check(((Dictionary<string,float>)Fld("durFast")).Count == wavs.Length, "tras reiniciar la rocola las recuerda todas");
         Check((string)Call("DurText", wavs[0]) == "3:00", "y se siguen viendo en la lista");
@@ -79,7 +81,7 @@ class Duracion
         Check((int)Fld("durScanLeft") == 0, "y al final llega a 0 aunque lo ultimo fueran puros rotos");
 
         // --- 5) generacion caducada (re-escaneo con F5): se descarta, no ensucia
-        object F3 = FormatterServices.GetUninitializedObject(TF); F = F3; Limpia();
+        object F3 = Codigo.FormSinEncender(TF); F = F3; Limpia();
         SetFld("durScanGen", 7);
         Call("PublicaDuraciones", 3, rutas.ToArray(), segs.ToArray(), 0);
         Check(((Dictionary<string,float>)Fld("durFast")).Count == 0, "un lote de una generacion vieja se descarta");
@@ -124,7 +126,7 @@ class Duracion
             Check(ningunaCancion, "y tampoco confunde una cancion con un video");
             Check(!(bool)ESVID.Invoke(null, new object[]{ (string)null }), "un archivo sin nombre no truena");
         }
-        object F4 = FormatterServices.GetUninitializedObject(TF); F = F4; Limpia();
+        object F4 = Codigo.FormSinEncender(TF); F = F4; Limpia();
         MethodInfo MA = TF.GetMethod("MideDuracionAudio", BindingFlags.Static|BindingFlags.NonPublic);
         Check(MA != null && Math.Abs((float)MA.Invoke(null, new object[]{ wavs[0] }) - 180f) < 0.5f,
               "y las canciones se siguen midiendo como siempre (180 s)");
