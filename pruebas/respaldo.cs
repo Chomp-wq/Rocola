@@ -162,8 +162,9 @@ class Respaldo
 
         // ---------- 2) TU PREFERENCIA NO SE BORRA ----------
         Console.WriteLine("\n  2) ENCENDER ULTRA NO TE BORRA EL INTERRUPTOR DEL DSEE\n");
-        string fuente = Path.Combine("..", Path.Combine("Rocola", "Form1.cs"));
-        string[] src = File.ReadAllLines(fuente);
+        // TODAS las partes de Form1, no solo Form1.cs: la clase esta repartida por temas.
+        string[] src = Codigo.LineasDeForm1();
+        Check(src.Length > 1000, "se puede leer el codigo de la rocola entero (" + src.Length + " lineas)");
         List<string> conUltra = new List<string>();
         foreach (string l in src)
         {

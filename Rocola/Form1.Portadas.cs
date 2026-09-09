@@ -1,0 +1,604 @@
+﻿// LAS PORTADAS: el despachador, las miniaturas y el precalentado
+//
+// Parte de Form1. La clase esta repartida en varios archivos por temas -son todos "partial class Form1"-
+// para poder venir a tocar UNA cosa sin leerse el programa entero. Aqui no hay nada nuevo: es el mismo
+// codigo que estaba en Form1.cs, movido tal cual.
+
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
+using System.Globalization;
+using System.IO;
+using System.Reflection;
+using System.Text;
+using System.Windows.Forms;
+using NAudio.Wave;
+using NAudio.Wave.SampleProviders;
+
+namespace Rocola
+{
+    public partial class Form1 : Form
+    {
+        private CubeBox miniCube;
+        private readonly Dictionary<string, Image> coverCache = new Dictionary<string, Image>();
+        private readonly LinkedList<string> coverOrder = new LinkedList<string>();   // menos usada al principio
+        private readonly Dictionary<string, LinkedListNode<string>> coverNodes = new Dictionary<string, LinkedListNode<string>>();
+        private readonly Dictionary<string, CoverJob> coverLoading = new Dictionary<string, CoverJob>();
+        private readonly Dictionary<string, int> coverRetryUntil = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        private readonly List<Image> coverTrash = new List<Image>();   // expulsadas, a liberar de forma segura (en el timer)
+        private volatile int coverGen = 0;     // sube al cambiar de pagina; descarta cargas de paginas viejas
+        private System.Windows.Forms.Timer coverSettleTimer;   // espera ~0.25s a que el usuario se detenga
+        // CARRILES DE DISCO. Varias decodificaciones a la vez: con SSD el cuello es el CPU, no el disco. La
+        // interfaz no sufre (sus repintados son ligeros y por celda) y la musica esta blindada por su colchon
+        // de 1 segundo. Resultado: una pagina con miniaturas listas carga en ~70-120 ms. Un disco duro tiene UN cabezal: pedirle dos cosas a la vez lo obliga a ir y venir
+        // y las dos tardan mas, asi que se le pide en fila de uno. Un SSD es justo lo contrario: no tiene nada
+        // que mover y RINDE MAS cuantas mas peticiones tenga en la mano a la vez, porque las reparte entre sus
+        // propios canales internos. De ahi que al detectar SSD se abran varios carriles -uno por nucleo, hasta
+        // cuatro- en vez de los dos de antes. El turno arranca en dos y se AMPLIA cuando el perfil dice SSD.
+        private static readonly System.Threading.Semaphore coverSem = new System.Threading.Semaphore(2, 8);
+        private static volatile int coverCarriles = 1;   // bombas de caratula a la vez (1 = disco duro, como arranca)
+        private static int coverAbiertos = 2;            // turnos de disco ya concedidos (el semaforo solo puede CRECER)
+
+        private volatile int warmGen = 0;          // generacion del precalentador (se reinicia al recargar musica)
+        private readonly object coverLock = new object();
+        private const int ThumbPx = 256;         // resolucion de miniaturas (256 sobra a 1024x768; 384 gastaba 2x memoria sin verse mejor en la rocola)
+        // PRECALENTAR LA SIGUIENTE CANCION.
+        //
+        // Al arrancar una cancion, NAudio se recorre el MP3 COMPLETO para armar su indice de trozos (lo
+        // necesita para poder moverse por la cancion y para saber cuanto dura), y eso pasa en el hilo de la
+        // pantalla. En un disco duro mecanico, un archivo de 10 MB son unas decimas de segundo con la rocola
+        // clavada, justo en el momento del cambio de cancion.
+        //
+        // Aqui se lee ese archivo ANTES, en segundo plano y sin ninguna prisa, para que cuando le toque ya
+        // este en la memoria de Windows y abrirlo sea instantaneo. No se guarda nada: solo se pasa por
+        // encima para que el sistema lo cachee. Va a 64 KB por vez con una pausa entre trozos (una cancion
+        // de 10 MB se calienta en algo mas de un segundo, y quedan minutos por delante), cede el disco si
+        // hay caratulas en camino o un video sonando, y se cancela sola si la cola cambia.
+        private volatile int warmSongGen = 0;
+        private string warmSongPath;
+        private void PrecalientaSiguiente()
+        {
+            string ruta = null;
+            for (int i = 0; i < queue.Count; i++)
+            {
+                PlayItem it = queue[i];
+                if (it != null && !it.IsVideo && it.Song != null && it.Song.Path != null) { ruta = it.Song.Path; break; }
+            }
+            if (ruta == null) return;
+            if (string.Equals(ruta, warmSongPath, StringComparison.OrdinalIgnoreCase)) return;   // ya calentada o calentandose
+            warmSongPath = ruta;
+            int mio = ++warmSongGen;
+            // ¿YA ESTA MEDIDA? Se pregunta AQUI, que es el hilo de la pantalla y por tanto el dueño de las
+            // tablas: no llevan candado -a proposito, para no pagarlo en cada consulta-, y el pre-analisis
+            // escribe en ellas desde otro lado. Preguntarlo desde el hilo del calentador podria reventar
+            // justo en el momento en que el otro esta metiendo una fila.
+            bool yaMedida = durCache.ContainsKey(ruta);
+            System.Threading.Thread t = new System.Threading.Thread(delegate ()
+            {
+                try
+                {
+                    System.Threading.Thread.Sleep(1500);   // que la cancion que acaba de empezar tenga el disco
+                    if (mio != warmSongGen) return;
+                    while (true)   // caratulas del primer plano o un video: el disco es para ellos
+                    {
+                        int busy; lock (coverLock) { busy = coverLoading.Count + coverQHi.Count + coverQLo.Count; }
+                        if (busy == 0 && !videoOn) break;
+                        System.Threading.Thread.Sleep(300);
+                        if (mio != warmSongGen) return;
+                    }
+                    // TROZOS segun el disco. Un disco duro se lee a trozos chicos y con pausa entre trozo y
+                    // trozo, para no dejar al cabezal ocupado si de pronto hace falta para otra cosa. Un SSD
+                    // rinde al contrario: cuanto mas grande el trozo, menos veces se le molesta y antes acaba,
+                    // asi que se le piden 256 KB de una y la cancion queda en memoria en un pestaneo.
+                    // Y en los dos casos se avisa a Windows de que esto se va a leer DE PRINCIPIO A FIN
+                    // (SequentialScan): con eso adelanta la lectura por su cuenta en vez de ir trozo a trozo.
+                    bool lentoAqui = DiscoLento(ruta);
+                    int trozo = lentoAqui ? (64 * 1024) : (256 * 1024);
+                    byte[] buf = new byte[trozo];
+                    using (FileStream fs = new FileStream(ruta, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, trozo, FileOptions.SequentialScan))
+                    {
+                        while (fs.Read(buf, 0, buf.Length) > 0)
+                        {
+                            if (mio != warmSongGen) return;
+                            System.Threading.Thread.Sleep(lentoAqui ? 8 : 1);
+                        }
+                    }
+
+                    // Y YA QUE ESTA LEIDA, SE MIDE.
+                    //
+                    // Medir una cancion cuesta dos cosas: leerla del disco y descomprimirla. La lectura
+                    // acaba de pagarse aqui arriba, y hasta ahora se tiraba entera. Descomprimir lo que ya
+                    // esta en la memoria del sistema cuesta 550 ms por minuto de cancion -medido-, unos 2.2
+                    // segundos en una de cuatro minutos, y este hilo va en la prioridad mas baja que hay y
+                    // tiene por delante los minutos que la cancion pase en la cola.
+                    //
+                    // A cambio, cuando le toque sonar ya viene nivelada de volumen A LA PRIMERA -antes solo
+                    // a la segunda, porque la sonoridad se aprendia oyendola-, con su duracion apuntada y
+                    // con el turno pudiendo decir los minutos que faltan.
+                    if (yaMedida || mio != warmSongGen) return;
+                    while (true)   // otra vez: si entro un video o hay caratulas en camino, primero ellos
+                    {
+                        int ocupado; lock (coverLock) { ocupado = coverLoading.Count + coverQHi.Count + coverQLo.Count; }
+                        if (ocupado == 0 && !videoOn) break;
+                        System.Threading.Thread.Sleep(300);
+                        if (mio != warmSongGen) return;
+                    }
+                    float wrms, wdur; float[] weq;
+                    if (!MeasureFile(ruta, false, out wrms, out wdur, out weq)) return;
+                    if (mio != warmSongGen) return;
+                    // Las tablas son del hilo de la pantalla: se le encarga a el que las escriba.
+                    try
+                    {
+                        if (IsHandleCreated)
+                            BeginInvoke((MethodInvoker)delegate { PublicaMedida(ruta, wrms, wdur, weq); });
+                    }
+                    catch { }
+                }
+                catch { }
+            });
+            t.IsBackground = true;
+            t.Priority = System.Threading.ThreadPriority.Lowest;
+            t.Start();
+        }
+
+        // Generacion y contador cambian juntos: un trabajador retirado no puede pisar al nuevo.
+        private int AdvanceThumbWarm()
+        {
+            lock (coverLock)
+            {
+                unchecked { warmGen++; }
+                minisPendientes = 0;
+                return warmGen;
+            }
+        }
+
+        private bool PublishThumbRemaining(int generation, int remaining)
+        {
+            lock (coverLock)
+            {
+                if (generation != warmGen) return false;
+                if (remaining < 0) { if (minisPendientes > 0) minisPendientes--; }
+                else minisPendientes = remaining;
+                return true;
+            }
+        }
+
+        // En arranque desde cache: portadas resueltas SIN tocar el disco.
+        // La portada de una carpeta: siempre sale del mapa que dejo el recorrido del disco (el escaneo fresco lo
+        // arma sobre la marcha y el arranque por cache lo trae del archivo), asi que aqui ya no se toca el disco.
+        private string FindCoverCached(string folder)
+        {
+            string cp;
+            if (cachedCovers != null && cachedCovers.TryGetValue(folder, out cp)) return cp;
+            return null;
+        }
+
+
+        // La portada de una carpeta a partir de la lista de archivos que YA se leyo. Mismo criterio de siempre:
+        // primero los nombres tipicos (en su orden de preferencia) y, si no hay ninguno, la primera imagen.
+        private static string CoverFromList(string folder, string[] files)
+        {
+            for (int i = 0; i < CoverNames.Length; i++)
+                for (int j = 0; j < files.Length; j++)
+                    if (string.Equals(Path.GetFileName(files[j]), CoverNames[i], StringComparison.OrdinalIgnoreCase))
+                        return Path.Combine(folder, CoverNames[i]);
+            for (int i = 0; i < files.Length; i++)
+            {
+                string ext = Path.GetExtension(files[i]).ToLowerInvariant();
+                if (Array.IndexOf(ImgExt, ext) >= 0) return files[i];
+            }
+            return null;
+        }
+
+        // La carpeta del DISCO de una cancion: la subcarpeta de PRIMER nivel bajo su raiz de musica.
+        // Asi, si un disco tiene subcarpetas, TODA su musica (a cualquier profundidad) cae DENTRO del
+        // mismo disco en vez de aparecer como discos aparte. Si la cancion esta suelta en la raiz, el
+        // disco es la raiz misma. Si por lo que sea no cae bajo ninguna raiz, se usa su carpeta inmediata.
+        private static string AlbumFolderFor(string filePath, List<string> roots)
+        {
+            return AlbumFolderFromDirectory(Path.GetDirectoryName(filePath), roots);
+        }
+
+        private static string AlbumFolderCached(string filePath, List<string> roots, string[] folderMemo)
+        {
+            string dir = Path.GetDirectoryName(filePath);
+            if (string.IsNullOrEmpty(dir)) return "";
+            if (string.Equals(dir, folderMemo[0], StringComparison.Ordinal)) return folderMemo[1];
+            string folder = AlbumFolderFromDirectory(dir, roots);
+            // El escaner entrega archivos consecutivos por carpeta: basta la ultima.
+            // Dos referencias por reconstruccion, sin tabla hash ni retencion de todas las rutas.
+            folderMemo[0] = dir; folderMemo[1] = folder;
+            return folder;
+        }
+
+        private static string AlbumFolderFromDirectory(string dir, List<string> roots)
+        {
+            if (string.IsNullOrEmpty(dir)) return "";
+            if (roots != null)
+                for (int r = 0; r < roots.Count; r++)
+                {
+                    string root = roots[r] == null ? "" : roots[r].TrimEnd('\\', '/');
+                    if (root.Length == 0) continue;
+                    if (string.Equals(dir, root, StringComparison.OrdinalIgnoreCase)) return dir;   // suelta en la raiz -> el disco ES la raiz
+                    if (dir.Length > root.Length + 1
+                        && dir.StartsWith(root, StringComparison.OrdinalIgnoreCase)
+                        && (dir[root.Length] == '\\' || dir[root.Length] == '/'))
+                    {
+                        int slash = dir.IndexOfAny(SepChars, root.Length + 1);   // fin de la subcarpeta de 1er nivel
+                        return (slash < 0) ? dir : dir.Substring(0, slash);      // raiz + 1a subcarpeta (lo mas profundo cae aqui)
+                    }
+                }
+            return dir;   // fuera de toda raiz conocida: como antes (carpeta inmediata)
+        }
+
+        private static readonly string[] CoverNames = { "portada.jpg", "portada.jpeg", "portada.png", "cover.jpg", "cover.png", "folder.jpg", "front.jpg" };
+
+        // ASINCRONO: para la rejilla (18 portadas por pagina). Devuelve la cacheada o null,
+        // y carga en segundo plano para no trabar el cambio de pagina; al terminar, repinta.
+        // El usuario se detuvo en una pagina: AHORA si pedimos sus caratulas.
+        // (Las paginas que paso de largo nunca se piden: cero trabajo desperdiciado.)
+        private void CoverSettle_Tick(object sender, EventArgs e)
+        {
+            coverSettleTimer.Stop();
+            coversOnHold = false;
+            List<Album> p = (albumView != null) ? albumView.Page : null;
+            if (p != null) for (int i = 0; i < p.Count; i++) LoadCoverAsync(p[i]);
+            // PRELECTURA: tambien se encargan las paginas vecinas (despues de la actual, por orden de
+            // llegada). En disco duro, hojear con las flechas queda servido directo de la RAM.
+            List<Album> all = CurrentList();
+            PrefetchPage(all, page + 1);
+            PrefetchPage(all, page - 1);
+            if (!diskSlow)   // con SSD sobran lecturas: dos paginas de colchon; con HDD, solo una
+            {
+                PrefetchPage(all, page + 2);
+                PrefetchPage(all, page - 2);
+            }
+        }
+
+        private readonly List<string> coverArrivals = new List<string>();
+        private bool coverArrivalsPosted;
+
+        // Cada clave se publico una sola vez en esta generacion. Agrupar las llegadas
+        // mientras espera el mensaje de UI, conservando su orden y sin demoras artificiales.
+        private bool RegisterCoverArrival(string key, int generation)
+        {
+            lock (coverLock)
+            {
+                if (generation != coverGen) return false;
+                coverArrivals.Add(key);
+                if (coverArrivalsPosted) return false;
+                coverArrivalsPosted = true;
+                return true;
+            }
+        }
+
+        private string[] TakeCoverArrivals()
+        {
+            lock (coverLock)
+            {
+                string[] keys = coverArrivals.ToArray();
+                coverArrivals.Clear(); coverArrivalsPosted = false;
+                return keys;
+            }
+        }
+
+        private void FlushCoverArrivals()
+        {
+            string[] keys = TakeCoverArrivals();
+            for (int i = 0; i < keys.Length; i++) ApplyArrivedCover(keys[i]);
+            if (keys.Length == 0) return;
+            try
+            {
+                if (searchOpen && searchOverlay != null) searchOverlay.Invalidate();
+                // Estas dos vistas dependen del conjunto: refrescarlas una vez por tanda.
+                if (pastCola != null && pastCola.ConPortadas) { LlenaPortaditas(); pastCola.Invalidate(); }
+            }
+            catch { }
+        }
+
+        // ----- DESPACHADOR DE CARATULAS CON PRIORIDAD -----
+        // Antes todas las peticiones (pagina actual, prelectura de vecinas, lo que fuera) se formaban
+        // revueltas en el mismo turno de disco: a veces las caratulas que ESTAS viendo esperaban detras
+        // de la prelectura. Ahora hay dos filas: ALTA (lo visible) y BAJA (prelectura); una sola bomba
+        // atiende el disco y SIEMPRE saca primero la fila alta.
+        private class CoverJob { public string Key; public int Gen; public LinkedListNode<CoverJob> Node; }
+        private readonly LinkedList<CoverJob> coverQHi = new LinkedList<CoverJob>();
+        private readonly LinkedList<CoverJob> coverQLo = new LinkedList<CoverJob>();
+        private int coverPumpCount = 0;   // hasta 2 bombas de decodificacion (una por nucleo)
+
+        // Llamar bajo coverLock. Si la prelectura ahora es visible, pasa a la fila alta
+        // sin duplicar la decodificacion ni desplazar el resto de la cola.
+        private bool CoverYaSolicitada(string key, bool highPriority)
+        {
+            CoverJob j;
+            if (!coverLoading.TryGetValue(key, out j)) return false;
+            if (highPriority && j.Node != null && j.Node.List == coverQLo)
+            {
+                coverQLo.Remove(j.Node);
+                coverQHi.AddLast(j.Node);
+            }
+            return true;
+        }
+
+        private void InvalidateCoverMemory()
+        {
+            colorPortada.Clear();   // F5 invalida tambien los tonos de una imagen reemplazada
+            lock (coverLock)
+            {
+                coverGen++;
+                coverArrivals.Clear();   // el mensaje pendiente puede atender llegadas de la nueva generacion
+                coverQHi.Clear(); coverQLo.Clear(); coverLoading.Clear(); coverRetryUntil.Clear();
+                foreach (KeyValuePair<string, Image> kv in coverCache) if (kv.Value != null) coverTrash.Add(kv.Value);
+                coverCache.Clear(); coverOrder.Clear(); coverNodes.Clear();
+            }
+        }
+
+        // Una lectura fallida (archivo copiandose, disco que desperto tarde) no se guarda como null para
+        // siempre. Solo se frena unos segundos para que cada repintado no martillee el mismo archivo.
+        // Llamar bajo coverLock.
+        private bool CoverRetryPendiente(string key)
+        {
+            int hasta;
+            if (!coverRetryUntil.TryGetValue(key, out hasta)) return false;
+            if (unchecked(Environment.TickCount - hasta) < 0) return true;
+            coverRetryUntil.Remove(key);
+            return false;
+        }
+
+        // Una sola bomba de disco: fila ALTA primero, luego BAJA; termina y se apaga sola.
+        private void CoverPump()
+        {
+            while (true)
+            {
+                CoverJob j = null;
+                lock (coverLock)
+                {
+                    if (coverQHi.Count > 0) { j = coverQHi.First.Value; coverQHi.RemoveFirst(); }
+                    else if (coverQLo.Count > 0) { j = coverQLo.First.Value; coverQLo.RemoveFirst(); }
+                    else { coverPumpCount--; return; }
+                    j.Node = null;   // ya esta en vuelo: no se vuelve a encolar
+                }
+                string key = j.Key;
+                if (j.Gen != coverGen) continue;   // la invalidacion ya retiro su registro
+                coverSem.WaitOne();   // turno unico de disco (compartido con el precalentador)
+                try
+                {
+                    if (j.Gen != coverGen) continue;
+                    Image thumb = null;
+                    string identidadAntes = null;
+                    try { identidadAntes = ThumbCachePath(key); thumb = DecodeCoverWithIdentity(key, identidadAntes); } catch { }
+                    // Si la portada fue reemplazada mientras se decodificaba, el bitmap pertenece a la
+                    // version anterior. No se publica en la cache de memoria con la misma ruta.
+                    try
+                    {
+                        string identidadDespues = ThumbCachePath(key);
+                        if (!string.Equals(identidadAntes, identidadDespues, StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (thumb != null) thumb.Dispose();
+                            thumb = null;
+                        }
+                    }
+                    catch { if (thumb != null) { try { thumb.Dispose(); } catch { } thumb = null; } }
+                    lock (coverLock)
+                    {
+                        // Validar y publicar en el MISMO candado que invalida. Un trabajo viejo
+                        // nunca puede borrar el registro ni publicar sobre la generacion nueva.
+                        if (j.Gen != coverGen)
+                        {
+                            if (thumb != null) { try { thumb.Dispose(); } catch { } }
+                            continue;
+                        }
+                        if (thumb != null) { CachePut(key, thumb); coverRetryUntil.Remove(key); }
+                        else coverRetryUntil[key] = unchecked(Environment.TickCount + 30000);
+                        coverLoading.Remove(key);
+                    }
+                    if (thumb != null)
+                        try
+                        {
+                            if (this.IsHandleCreated && RegisterCoverArrival(key, j.Gen))
+                            {
+                                try { this.BeginInvoke((MethodInvoker)FlushCoverArrivals); }
+                                catch
+                                {
+                                    lock (coverLock) { coverArrivals.Clear(); coverArrivalsPosted = false; }
+                                }
+                            }
+                        }
+                        catch { }
+                }
+                finally { coverSem.Release(); }
+            }
+        }
+
+        // Caché de miniaturas en DISCO: la 1a vez decodifica la portada grande y guarda una miniatura
+        // pequeña; las siguientes veces lee la miniatura (leer ~30KB es muchisimo mas rapido que decodificar
+        // un JPG grande del disco duro). Acelera enormemente volver a ver paginas ya vistas.
+        private static string thumbDir;
+
+        // DONDE VIVEN LAS MINIATURAS. Iban a la carpeta TEMPORAL del sistema, y eso las condenaba: es una
+        // carpeta que por definicion se puede tirar, y Windows la limpia cada tanto -en la rocola de Linux
+        // es peor todavia, porque alli esta EN LA MEMORIA y se borra al apagar-. O sea que la promesa de
+        // aqui arriba -"la 1a vez tarda; luego todo vuela"- se rompia sola cada cierto tiempo y habia que
+        // volver a decodificar la portada grande de cada disco. Medido: 16 ms la primera vez contra 1.5 ms
+        // con la miniatura hecha, once veces mas.
+        //
+        // Ahora van con todo lo demas que la rocola guarda, en la carpeta de datos.
+        private static string CarpetaMiniaturas()
+        {
+            if (thumbDir == null)
+            {
+                string d = RutaDatos("rocola_miniaturas");
+                try { if (!Directory.Exists(d)) Directory.CreateDirectory(d); } catch { }
+                thumbDir = d;
+            }
+            return thumbDir;
+        }
+
+        private static string ThumbCachePath(string coverPath)
+        {
+            string identidad = coverPath.ToLowerInvariant();
+            try
+            {
+                FileInfo fi = new FileInfo(coverPath);
+                identidad += "|" + fi.Length.ToString(CultureInfo.InvariantCulture)
+                          + "|" + fi.LastWriteTimeUtc.Ticks.ToString(CultureInfo.InvariantCulture);
+            }
+            catch { identidad += "|sin-archivo"; }
+            ulong h = Fnv64(identidad);
+            return Path.Combine(CarpetaMiniaturas(), h.ToString("x16") + "_" + ThumbPx + ".jpg");
+        }
+
+        // EL BARRIDO. Al salir de la carpeta temporal ya nadie las borra nunca, asi que hay que barrer.
+        // Pero NO por "esto ya no esta en la biblioteca": la rocola admite varios discos de musica, y
+        // desconectar uno un fin de semana no puede costar reconstruir todas sus portadas. Se barre por
+        // EDAD, y solo si la carpeta se ha hecho grande de verdad.
+        //
+        // El tope es holgado a proposito: una miniatura ocupa unos 23 KB, asi que 200 MB son casi nueve
+        // mil discos. En una rocola normal esto no se dispara JAMAS; esta para que la carpeta no pueda
+        // crecer sin final en una maquina que lleve anos cambiando de musica.
+        //
+        // La fecha que se mira es la de cuando se HIZO la miniatura, no la de cuando se uso: apuntar cada
+        // uso seria escribir en el disco una vez por portada leida, que es justo lo que todo esto existe
+        // para evitar. Como mucho se borra una que seguia en uso, y la proxima vez que se vea ese disco se
+        // rehace sola: una portada, 16 ms, y ya esta otra vez.
+        private const int MiniaturasTopeMb = 200;    // por debajo de esto no se barre nada
+        private const int MiniaturasDiasMax = 365;   // y por encima, solo lo que lleve un ano sin rehacerse
+
+        // Las claves de miniatura cambian con cada version de una portada. No retener
+        // un candado eterno por version ni compartir estas franjas con creditos/datos.
+        private static readonly object[] thumbWriteLocks = CreaCandadosMiniatura();
+        private static object[] CreaCandadosMiniatura()
+        {
+            object[] locks = new object[64];
+            for (int i = 0; i < locks.Length; i++) locks[i] = new object();
+            return locks;
+        }
+        private static object CandadoMiniatura(string path)
+        {
+            return thumbWriteLocks[StringComparer.OrdinalIgnoreCase.GetHashCode(path) & (thumbWriteLocks.Length - 1)];
+        }
+
+        private static Image DecodeCover(string path)
+        {
+            string cacheFile = null;
+            try { cacheFile = ThumbCachePath(path); } catch { }
+            return DecodeCoverWithIdentity(path, cacheFile);
+        }
+
+        private static Image DecodeCoverWithIdentity(string path, string cacheFile)
+        {
+            // 1) miniatura en cache -> leerla (rapido)
+            if (cacheFile != null)
+            {
+                try
+                {
+                    if (File.Exists(cacheFile))
+                    {
+                        byte[] cdata;
+                        if (diskProbeN < 16)   // perfilado: cronometra las primeras lecturas de miniaturas
+                        {
+                            System.Diagnostics.Stopwatch dsw = System.Diagnostics.Stopwatch.StartNew();
+                            cdata = File.ReadAllBytes(cacheFile);
+                            dsw.Stop();
+                            DiskProbe((int)dsw.ElapsedMilliseconds);
+                        }
+                        else cdata = File.ReadAllBytes(cacheFile);   // I/O puro primero; GDI+ decodifica desde RAM
+                        using (MemoryStream cms = new MemoryStream(cdata))
+                        using (Image cimg = Image.FromStream(cms, false, false))
+                        {
+                            Bitmap tb = new Bitmap(ThumbPx, ThumbPx, PixelFormat.Format32bppPArgb);
+                            using (Graphics g = Graphics.FromImage(tb))
+                            {
+                                // la miniatura YA mide ThumbPx: copia 1:1 (mismos pixeles, sin filtro caro)
+                                g.InterpolationMode = InterpolationMode.NearestNeighbor;
+                                g.DrawImage(cimg, 0, 0, ThumbPx, ThumbPx);
+                            }
+                            return tb;
+                        }
+                    }
+                }
+                catch { /* cache corrupta -> recodificar abajo */ }
+            }
+
+            // 2) decodificar la portada original y GUARDAR la miniatura para la proxima vez
+            try
+            {
+                byte[] data = File.ReadAllBytes(path);   // I/O puro primero (lectura secuencial corta); GDI+ decodifica desde RAM
+                using (MemoryStream ms = new MemoryStream(data))
+                using (Image src = Image.FromStream(ms, false, false))
+                {
+                    Bitmap thumb = new Bitmap(ThumbPx, ThumbPx, PixelFormat.Format32bppPArgb);
+                    using (Graphics g = Graphics.FromImage(thumb))
+                    {
+                        g.InterpolationMode = InterpolationMode.HighQualityBilinear;   // filtro original de la miniatura (1 vez por disco)
+                        g.PixelOffsetMode = PixelOffsetMode.Half;
+                        g.DrawImage(src, 0, 0, ThumbPx, ThumbPx);
+                    }
+                    if (cacheFile != null) SaveThumb(thumb, cacheFile);
+                    return thumb;
+                }
+            }
+            catch { return null; }
+        }
+
+        // Guarda en cache acotando el tamaño (FIFO). Llamar SIEMPRE bajo coverLock.
+        // Las expulsadas NO se liberan aqui (el hilo de pantalla podria estar dibujandolas):
+        // se mandan a la papelera y se liberan en el temporizador, cuando no hay repintado en curso.
+        // Estos tres metodos se llaman bajo coverLock. Consultar desde prelectura NO
+        // rejuvenece una portada: solo el uso visible debe protegerla de la expulsion.
+        private void CoverToca(string key)
+        {
+            LinkedListNode<string> node;
+            if (!coverNodes.TryGetValue(key, out node) || node == coverOrder.Last) return;
+            coverOrder.Remove(node);
+            coverOrder.AddLast(node);   // reutilizar el nodo, sin asignaciones por repintado
+        }
+
+        private bool CoverEnCache(string key, bool visible, out Image img)
+        {
+            if (!coverCache.TryGetValue(key, out img)) return false;
+            if (visible) CoverToca(key);
+            return true;
+        }
+
+        // UNA pieza por latido, y solo con la rocola quieta: igual que el horneado de la pagina de al lado
+        // (BakeAhead) y que el precalentador de portadas. Asi la rocola enciende igual de rapido que siempre
+        // y en unos segundos esta todo caliente, sin quitarle la maquina a nadie.
+        private void PrecalientaUnPoco()
+        {
+            if (precalPaso < 0) return;
+            if (Environment.TickCount - lastInputTick < PrecalQuieta) return;   // hay alguien usandola: ahora no
+            bool hecho = false;
+            try
+            {
+                switch (precalPaso)
+                {
+                    case 0:
+                        hecho = EnSeco(searchOverlay, delegate (Graphics g)
+                        { searchOverlay.RenderContent(g, new Rectangle(0, 0, searchOverlay.Width, searchOverlay.Height), false); });
+                        break;
+                    case 1:
+                        hecho = EnSeco(songList, delegate (Graphics g) { songList.RenderContent(g); });
+                        break;
+                    case 2:
+                        // La pantalla de reposo no tiene RenderContent aparte: se le pide su propio dibujado,
+                        // que es lo mismo que hace la pantalla cuando le toca pintarse.
+                        hecho = EnSeco(attractView, delegate (Graphics g)
+                        {
+                            using (PaintEventArgs pe = new PaintEventArgs(g, new Rectangle(0, 0, attractView.Width, attractView.Height)))
+                                InvokePaint(attractView, pe);
+                        });
+                        break;
+                    default:
+                        precalPaso = -1; Diag("precalentado: las pantallas que no se ven al encender, ya horneadas");
+                        return;
+                }
+            }
+            catch { hecho = true; }   // precalentar es un lujo: si una pieza no se deja dibujar aun, se pasa a la siguiente
+            if (hecho || ++precalReintentos > 60) { precalPaso++; precalReintentos = 0; }
+        }
+    }
+}

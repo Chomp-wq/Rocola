@@ -357,6 +357,27 @@ static class Codigo
         if (m != null) { try { m.Invoke(f, new object[] { 15000 }); } catch { } }
     }
 
+    // EL CODIGO DE Form1 YA NO ESTA EN UN SOLO ARCHIVO. Esta repartido por temas -Form1.Sonido.cs,
+    // Form1.Fondo.cs...- porque un archivo de veinte mil lineas no hay quien lo mantenga. Las pruebas que
+    // repasan el codigo LEYENDOLO tienen que leerlos todos: si una se quedara con Form1.cs a secas seguiria
+    // pasando, pero mirando una decima parte del programa, que es la peor forma de fallar -en verde-.
+    public static string FuenteDeForm1()
+    {
+        System.Text.StringBuilder sb = new System.Text.StringBuilder();
+        string dir = System.IO.Path.Combine("..", "Rocola");
+        if (!System.IO.Directory.Exists(dir)) return "";
+        string[] fs = System.IO.Directory.GetFiles(dir, "Form1*.cs");
+        System.Array.Sort(fs);
+        foreach (string f in fs)
+        {
+            if (f.EndsWith("Form1.Designer.cs")) continue;   // lo escribe el disenador, no se repasa
+            try { sb.Append(System.IO.File.ReadAllText(f)).Append("\n"); } catch { }
+        }
+        return sb.ToString();
+    }
+    public static string[] LineasDeForm1()
+    { return FuenteDeForm1().Replace("\r\n", "\n").Split('\n'); }
+
     public static void PonCerrojos(object obj)
     {
         if (obj == null) return;
