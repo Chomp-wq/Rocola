@@ -170,6 +170,28 @@ namespace Rocola
         // resolucion -la cuarta parte de bytes a la tarjeta- y no se rehacen porque llegue su portada.
         // Encendido de fabrica: no se ve, porque solo pasa mientras la pagina esta en movimiento.
         private bool hojeoLigero = true;
+        private bool progresoNeon = true; // Ctrl+F3: tubo luminoso, sin temporizador adicional.
+        private bool muroReposo = true;
+        private bool nebulosasCine = true; // Solo GPU; no altera los colores del disco ni del genero.
+        private bool vinetaSuave = true;
+        private bool haloSeleccion = true;
+        private bool estrellasFinas = true;
+        private bool ondasSuaves = true;
+        private bool progresoFluido = true;
+        private bool estadoExpandido = true;
+        private bool neonIntenso = true;
+        private bool estadoTransparente = true;
+        private bool cancionesTransparentes = true;
+        private bool buscadorCache = true;
+        private bool cieloProfundo = true;
+        private bool auroraBandas = true;
+        private float muroAlpha = 1f;
+        internal static float PasoMuro(float actual, bool reposo)
+        {
+            float destino = reposo ? 0.10f : 1f;
+            float valor = actual + (destino - actual) * (reposo ? 0.08f : 0.5f);
+            return Math.Abs(valor - destino) < 0.005f ? destino : valor;
+        }
         // PRESENCIA de la aurora en pantalla, de 0 a 1. Antes se dibujaba o no se dibujaba segun si la banda
         // mas alta pasaba de un pelo: en un pasaje bajito (una intro, un silencio, el final de un tema) las
         // bandas caen a cero, la aurora DESAPARECIA de golpe y al volver la musica APARECIA de golpe. Eso era
@@ -1550,38 +1572,11 @@ namespace Rocola
         // Bitacora de DIAGNOSTICO (diagnostico=1 en config): apunta los eventos clave (video, animaciones,
         // cambios de render) con hora en rocola_diagnostico.txt junto al exe. Para cazar a distancia lo que
         // pasa en el fierro real sin adivinar. Apagada no cuesta nada; el archivo se recorta solo a ~2 MB.
-        // ==========  QUE HAY DESPUES DEL CABLE  ==========
-        //
-        // Todo lo que mide la rocola -el EQ automatico, los graves, el nivelado- es del ARCHIVO, y eso vale en
-        // cualquier equipo. Lo que la rocola NO puede saber por su cuenta es lo que pasa DESPUES de que el
-        // sonido sale: si Windows le esta metiendo sus propias "mejoras" (Loudness, Bass Boost, sonido
-        // envolvente virtual...), con que configuracion de bocinas cree que esta hablando, o si esta
-        // remezclando el estereo a 5.1. Dos ecualizadores peleandose es la receta para que el bajo profundo
-        // suene embarrado y el EQ automatico no acierte.
-        //
-        // Nada de esto se puede adivinar oyendo. Pero Windows SI lo tiene apuntado, y se puede leer. Aqui se
-        // lee y se cuenta en la ventana de sonido, en cristiano. No se toca nada: la rocola no va a cambiar la
-        // configuracion de Windows por su cuenta; avisa y ya.
-        //
-        // (Windows XP no guarda nada de esto: alli el panel de la tarjeta -Realtek y compania- es el unico
-        // sitio donde mirarlo, y se dice asi.)
-        internal struct SalidaWin
-        {
-            public string Nombre;
-            public int Hz, Bits, Canales;   // con lo que Windows MEZCLA todo antes de mandarlo a la tarjeta
-            public int Bocinas;             // configuracion de bocinas elegida en Windows (mascara de canales)
-            public int RangoCompleto;       // cuales de esas bocinas declaro el usuario "de rango completo"
-            public int Efectos;             // -1 = no se sabe, 0 = apagadas, 1 = encendidas
-        }
-
-        private const string MMDev = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\MMDevices\\Audio\\Render";
-        // Los nombres de las propiedades son GUIDs con un numero detras; son los de Windows, no inventados.
-        private const string PkNombre = "{b3f8fa53-0004-438e-9003-51a46e139bfc},6";   // nombre que se ve en el panel de sonido
-        private const string PkDesc   = "{a45c254e-df1c-4efd-8020-67d146a850e0},2";   // "Altavoces", por si no hay nombre
-        private const string PkFormato= "{f19f064d-082c-4e27-bc73-6882a1bb8e4c},0";   // con que mezcla Windows (WAVEFORMATEX)
-        private const string PkBocinas= "{1da5d803-d492-4edd-8c23-e0c0ffee7f0e},4";   // configuracion de bocinas elegida
-        private const string PkRango  = "{1da5d803-d492-4edd-8c23-e0c0ffee7f0e},3";   // cuales son de rango completo
-        private const string PkSinFx  = "{1da5d803-d492-4edd-8c23-e0c0ffee7f0e},5";   // 1 = "deshabilitar todas las mejoras"
+        // LO QUE HAY DESPUES DEL CABLE, EN WINDOWS, NO VIENE. Alla la rocola lee del registro lo que
+        // Windows tiene apuntado de cada salida -con que mezcla, que bocinas cree que hay, si le esta
+        // metiendo sus propias "mejoras"- y lo cuenta en la ventana de sonido. Aqui no hay registro que
+        // leer: quien manda es ALSA, y lo que haya despues del cable lo dice su mezclador. Si algun dia
+        // se quiere el mismo aviso en esta rama, hay que sacarlo de ahi, no traducir esto.
 
         // La frase que se ensena en la ventana de sonido. Devuelve tambien si hay algo que ARREGLAR, para
         // pintarla en ambar en vez de en gris.
@@ -1691,6 +1686,21 @@ namespace Rocola
                     else if (s.StartsWith("nieblas=")) nieblasNiv = NivelDe(s.Substring(8));     // nebulosas y neblina de color
                     else if (s.StartsWith("patron=")) relevoNiv = NivelDe(s.Substring(7));       // relevo de patron cada minuto
                     else if (s.StartsWith("hojeo_ligero=")) hojeoLigero = s.Substring(13).Trim() != "0";   // aligerar mientras se pasa de pagina
+                    else if (s.StartsWith("progreso_neon=")) progresoNeon = s.Substring(14).Trim() != "0";
+                    else if (s.StartsWith("muro_reposo=")) muroReposo = s.Substring(12).Trim() != "0";
+                    else if (s.StartsWith("nebulosas_cine=")) nebulosasCine = s.Substring(15).Trim() != "0";
+                    else if (s.StartsWith("vineta_suave=")) vinetaSuave = s.Substring(13).Trim() != "0";
+                    else if (s.StartsWith("halo_seleccion=")) haloSeleccion = s.Substring(15).Trim() != "0";
+                    else if (s.StartsWith("estrellas_finas=")) estrellasFinas = s.Substring(16).Trim() != "0";
+                    else if (s.StartsWith("ondas_suaves=")) ondasSuaves = s.Substring(13).Trim() != "0";
+                    else if (s.StartsWith("progreso_fluido=")) progresoFluido = s.Substring(16).Trim() != "0";
+                    else if (s.StartsWith("estado_expandido=")) estadoExpandido = s.Substring(17).Trim() != "0";
+                    else if (s.StartsWith("neon_intenso=")) neonIntenso = s.Substring(13).Trim() != "0";
+                    else if (s.StartsWith("estado_transparente=")) estadoTransparente = s.Substring(20).Trim() != "0";
+                    else if (s.StartsWith("canciones_transparentes=")) cancionesTransparentes = s.Substring(24).Trim() != "0";
+                    else if (s.StartsWith("buscador_cache=")) buscadorCache = s.Substring(15).Trim() != "0";
+                    else if (s.StartsWith("cielo_profundo=")) cieloProfundo = s.Substring(15).Trim() != "0";
+                    else if (s.StartsWith("aurora_bandas=")) auroraBandas = s.Substring(14).Trim() != "0";
                     else if (s.StartsWith("disco="))   // tipo de disco: auto (medir), ssd o hdd (Ctrl+F3)
                     {
                         string d = s.Substring(6).Trim().ToLowerInvariant();
@@ -1893,6 +1903,21 @@ namespace Rocola
                 sb.Append("nieblas=").Append(TextoNivel(nieblasNiv)).Append("\r\n");
                 sb.Append("patron=").Append(TextoNivel(relevoNiv)).Append("\r\n");
                 sb.Append("hojeo_ligero=").Append(hojeoLigero ? "1" : "0").Append("\r\n");
+                sb.Append("progreso_neon=").Append(progresoNeon ? "1" : "0").Append("\r\n");
+                sb.Append("muro_reposo=").Append(muroReposo ? "1" : "0").Append("\r\n");
+                sb.Append("nebulosas_cine=").Append(nebulosasCine ? "1" : "0").Append("\r\n");
+                sb.Append("vineta_suave=").Append(vinetaSuave ? "1" : "0").Append("\r\n");
+                sb.Append("halo_seleccion=").Append(haloSeleccion ? "1" : "0").Append("\r\n");
+                sb.Append("estrellas_finas=").Append(estrellasFinas ? "1" : "0").Append("\r\n");
+                sb.Append("ondas_suaves=").Append(ondasSuaves ? "1" : "0").Append("\r\n");
+                sb.Append("progreso_fluido=").Append(progresoFluido ? "1" : "0").Append("\r\n");
+                sb.Append("estado_expandido=").Append(estadoExpandido ? "1" : "0").Append("\r\n");
+                sb.Append("neon_intenso=").Append(neonIntenso ? "1" : "0").Append("\r\n");
+                sb.Append("estado_transparente=").Append(estadoTransparente ? "1" : "0").Append("\r\n");
+                sb.Append("canciones_transparentes=").Append(cancionesTransparentes ? "1" : "0").Append("\r\n");
+                sb.Append("buscador_cache=").Append(buscadorCache ? "1" : "0").Append("\r\n");
+                sb.Append("cielo_profundo=").Append(cieloProfundo ? "1" : "0").Append("\r\n");
+                sb.Append("aurora_bandas=").Append(auroraBandas ? "1" : "0").Append("\r\n");
                 sb.Append("disco=").Append(perfilDisco == 1 ? "ssd" : perfilDisco == 2 ? "hdd" : "auto").Append("\r\n");
                 sb.Append("video_gpu=").Append(videoGpuOn ? "1" : "0").Append("\r\n");
                 sb.Append("diagnostico=").Append(diagOn ? "1" : "0").Append("\r\n");
@@ -3306,17 +3331,25 @@ namespace Rocola
         // necesita la pantalla libre y la rocola quieta, y con la ventana encima ni se veria ni se mediria lo
         // mismo-, y en cuanto acaba vuelve con los numeros puestos, ya en la pestana de Imagen. Por eso el
         // cuerpo de siempre esta en VentanaAjustes y aqui solo hay la vuelta de mas.
+        private bool ajustesAbiertos;
         private void ShowVolumeManager()
         {
-            while (true)
+            // Los atajos reenviados al propietario no deben anidar otro ShowDialog:
+            // dos copias aplicaban/restauraban preferencias y foco en distinto orden.
+            if (ajustesAbiertos || IsDisposed || Disposing) return;
+            ajustesAbiertos = true;
+            try
             {
-                VentanaAjustes();
-                if (!f3Medir) break;
-                f3Medir = false;
-                MideRendimiento();
-                f3Pagina = 1;
+                while (true)
+                {
+                    VentanaAjustes();
+                    if (!f3Medir) break;
+                    f3Medir = false;
+                    MideRendimiento();
+                    f3Pagina = 1;
+                }
             }
-            f3Pagina = 0;   // la proxima vez que se abra con Ctrl+F3, en Sonido
+            finally { ajustesAbiertos = false; f3Pagina = 0; }
         }
 
         private void VentanaAjustes()
@@ -5186,6 +5219,7 @@ namespace Rocola
             miniCube.Visible = false;
 
             progress = new ProgressView();
+            progress.Neon = progresoNeon;
             lblTime = new EtiquetaClara(); TransLabel(lblTime, 13f); lblTime.Text = "0:00 / 0:00";
 
             lblToast = new EtiquetaClara();
@@ -12769,6 +12803,25 @@ namespace Rocola
             if (gpuPanel == null)
             {
                 gpuPanel = new GpuPanel();
+                Point ultimoMouseGpu = new Point(-10000, -10000);
+                gpuPanel.MouseMove += delegate(object senderMouse, MouseEventArgs mouse) {
+                    if (Math.Abs(mouse.X - ultimoMouseGpu.X) + Math.Abs(mouse.Y - ultimoMouseGpu.Y) < 4) return;
+                    ultimoMouseGpu = mouse.Location; lastInput = DateTime.Now; gpuPanel.IdleExpandTarget = false;
+                };
+                gpuPanel.MouseDown += delegate { lastInput = DateTime.Now; gpuPanel.IdleExpandTarget = false; };
+                gpuPanel.MouseWheel += delegate { lastInput = DateTime.Now; gpuPanel.IdleExpandTarget = false; };
+                gpuPanel.MouseClick += delegate(object sender, MouseEventArgs e)
+                {
+                    // El control del buscador esta oculto al componer por GPU: reenviar
+                    // el clic real usando sus coordenadas, sin duplicar la seleccion.
+                    if (e.Button != MouseButtons.Left || !searchOpen || gpuMode != 2 ||
+                        winMode != 0 || searchOverlay == null) return;
+                    Point p = new Point(e.X + gpuPanel.Left - searchOverlay.Left,
+                                        e.Y + gpuPanel.Top - searchOverlay.Top);
+                    if (!searchOverlay.ClientRectangle.Contains(p)) return;
+                    MarkSearchActivity();
+                    searchOverlay.ClickAt(p);
+                };
                 gpuPanel.ShowFps = gpuShowFps;
                 gpuPanel.TopeFps = fpsTope;   // 0 = que lo decida el panel por el refresco de la pantalla
                 AplicaEfectosGpu();           // y las perillas de los efectos (Ctrl+F3 -> Imagen y rendimiento)
@@ -12785,9 +12838,20 @@ namespace Rocola
                     return r;
                 };
                 gpuPanel.GetCubeState = delegate { return BuildGpuCubeState(); };   // album (offset a pantalla) + mini-cubo
+                gpuPanel.GetProgress = delegate {
+                    GpuProgress p = new GpuProgress();
+                    if (progress == null || !progress.Visible || attractOn) return p;
+                    p.Has = true; p.Rect = progress.Bounds; p.Value = progress.Value;
+                    p.Neon = progress.Neon; p.Color = ToD3D(progress.Accent); p.Key = reader != null ? (object)reader : (object)nowPlaying;
+                    if (!videoOn && reader != null && reader.TotalTime.TotalSeconds > 0)
+                        p.Value = reader.CurrentTime.TotalSeconds / reader.TotalTime.TotalSeconds;
+                    return p;
+                };
                 gpuPanel.GetUi = delegate { return uiOverlay; };                    // textura PRINCIPAL de la UI (altura segun el modo)
                 gpuPanel.GetUiVersion = delegate { return EnsureUiOverlay(); };
                 gpuPanel.GetUiBot = delegate { return uiBotOverlay; };              // franja de ESTADO de abajo (textura chica aparte: el reloj no rehace la principal)
+                gpuPanel.GetIdlePanel = BuildIdlePanel;
+                this.FormClosed += delegate { if (idlePanelBmp != null) { idlePanelBmp.Dispose(); idlePanelBmp = null; } };
                 gpuPanel.GetUiBotVersion = delegate { return EnsureUiBotOverlay(); };
                 gpuPanel.GetUiGlows = FillUiGlows;                                   // halos animados (destello de boton, pulso de letra, TOP, atraccion): quads GPU, sin re-subir textura
                 // Las piezas vivas del buscador (tarjeta y tecla elegidas): imagenes chicas aparte, encima de
@@ -12822,6 +12886,19 @@ namespace Rocola
                 if (albumView != null) albumView.GpuCovered = false;   // vuelve a pintar la rejilla por CPU (ya no hay panel encima)
                 if (lblGpu != null) lblGpu.Visible = false;
                 Invalidate(true);   // repinta la UI normal (CPU) que estaba tapada por el panel
+            }
+            // Cambiar de render no debe esconder una pantalla que sigue activa.
+            // No reabrirla: conservar consulta, resultados y seleccion.
+            if (gpuEnabled) SyncGpuFullScreen();
+            if (searchOverlay != null && searchOpen)
+            {
+                searchOverlay.Visible = !gpuEnabled;
+                if (!gpuEnabled) { searchOverlay.BringToFront(); searchOverlay.Focus(); }
+            }
+            if (attractView != null && attractOn)
+            {
+                attractView.Visible = !gpuEnabled;
+                if (!gpuEnabled) attractView.BringToFront();
             }
             if (persist) { gpuPrefOn = gpuEnabled; SaveConfigPrefs(); }   // recuerda la eleccion para el proximo arranque
         }
@@ -13003,7 +13080,12 @@ namespace Rocola
                     System.Drawing.Drawing2D.GraphicsState gs = g.Save();   // INTERIOR DE DISCO: etiqueta + lista + barra de paginas (el cubo grande lo pone la GPU)
                     g.TranslateTransform(panelSongs.Left, panelSongs.Top);   // los controles del disco son hijos de panelSongs
                     DrawLabelOverlay(g, lblAlbum);
-                    DrawCtrlOverlay(g, songList);
+                    if (cancionesTransparentes && songList != null)
+                    {
+                        GraphicsState listState = g.Save(); g.TranslateTransform(songList.Left, songList.Top);
+                        songList.RenderTransparentGpu(g); g.Restore(listState);
+                    }
+                    else DrawCtrlOverlay(g, songList);
                     if (songPager != null && songPager.Visible) DrawCtrlOverlay(g, songPager);
                     g.Restore(gs);
                 }
@@ -13072,7 +13154,7 @@ namespace Rocola
                     DrawLabelOverlay(g, lblTime);
                     DrawCtrlOverlay(g, pastCred);
                     DrawCtrlOverlay(g, pastCola);
-                    DrawCtrlOverlay(g, progress);
+                    if (!progresoFluido && !(neonIntenso && progresoNeon)) DrawCtrlOverlay(g, progress);
                 }
             }
             uiBotLastSig = sig; uiBotVer++;
@@ -13089,7 +13171,7 @@ namespace Rocola
         // SOLO LA TECLA, y no la tarjeta de los resultados. Al principio eran las dos y estaba mal: moverse
         // por los resultados cambia ademas el cubo de la portada y el texto de debajo, que si van dentro de
         // la imagen grande. Sacarlo de la firma dejaba el cubo y el texto viejos, y el teclado sin volver.
-        internal const int NumPiezas = 2;
+        internal const int NumPiezas = 4;
         private readonly Bitmap[] uiPieza = new Bitmap[NumPiezas];
         private readonly Rectangle[] uiPiezaRect = new Rectangle[NumPiezas];
         private readonly long[] uiPiezaSig = new long[NumPiezas];
@@ -13123,7 +13205,9 @@ namespace Rocola
             long sig = SigBase;
             sig = Mix(sig, cual); sig = Mix(sig, donde.X); sig = Mix(sig, donde.Y);
             sig = Mix(sig, donde.Width); sig = Mix(sig, donde.Height);
-            sig = Mix(sig, searchOverlay.SelResult); sig = Mix(sig, searchOverlay.SelRow);
+            if (!buscadorCache || cual >= 2) sig = Mix(sig, searchOverlay.SelResult);
+            sig = Mix(sig, searchOverlay.SelRow);
+            if (cual >= 2) sig = Mix(sig, colaVer);
             sig = Mix(sig, searchOverlay.SelCol); sig = Mix(sig, searchOverlay.FocusResults);
             Color acPieza = searchOverlay.Accent;   // a una local: es un tipo por valor dentro de un Control
             sig = Mix(sig, searchOverlay.Query); sig = Mix(sig, acPieza.ToArgb());
@@ -13236,10 +13320,11 @@ namespace Rocola
             if (!attractOn && lblMejorada != null && lblMejorada.Visible && n + 1 < buf.Length)
             {
                 bool gold = (iaBadgeKind == 2);
-                float cy2 = lblMejorada.Top + lblMejorada.Height / 2f;
+                RectangleF badgeGlow = gpuPanel != null ? gpuPanel.IdleBadgeGlow(lblMejorada.Bounds) : lblMejorada.Bounds;
+                float cy2 = badgeGlow.Top + badgeGlow.Height / 2f;
                 double pb = 0.5 + 0.5 * Math.Sin(phase * 2.8);
-                buf[n].Cx = lblMejorada.Left + lblMejorada.Width / 2f; buf[n].Cy = cy2;
-                buf[n].R = lblMejorada.Width * 0.72f;
+                buf[n].Cx = badgeGlow.Left + badgeGlow.Width / 2f; buf[n].Cy = cy2;
+                buf[n].R = badgeGlow.Width * 0.72f;
                 buf[n].Argb = (uint)(gold ? Color.FromArgb((int)(9 + 15 * pb), 255, 210, 100)
                                           : Color.FromArgb((int)(8 + 13 * pb), 205, 225, 255)).ToArgb(); n++;
                 double sw = (phase * 0.22) % 1.0;   // ciclo ~4s: 55% barrido de izq a der, 45% descanso
@@ -13247,7 +13332,7 @@ namespace Rocola
                 {
                     double t = sw / 0.55;
                     int a = (int)(95 * Math.Sin(Math.PI * t));   // entra y sale suave
-                    buf[n].Cx = lblMejorada.Left + (float)(t * lblMejorada.Width); buf[n].Cy = cy2; buf[n].R = 26f;
+                    buf[n].Cx = badgeGlow.Left + (float)(t * badgeGlow.Width); buf[n].Cy = cy2; buf[n].R = 26f;
                     buf[n].Argb = (uint)(gold ? Color.FromArgb(a, 255, 232, 150) : Color.FromArgb(a, 240, 248, 255)).ToArgb(); n++;
                 }
             }
@@ -13289,7 +13374,10 @@ namespace Rocola
                 //   SelResult, con el cubo delante, cambia que disco se ensena y el texto de debajo.
                 // Moverse por los RESULTADOS, por tanto, sigue rehaciendo la pantalla; moverse por las TECLAS
                 // -que es lo que se hace al teclear- ya no.
-                sb = Mix(sb, searchOverlay.FocusResults); sb = Mix(sb, searchOverlay.SelResult);
+                sb = Mix(sb, searchOverlay.FocusResults); sb = Mix(sb, buscadorCache);
+                Color searchAccent = searchOverlay.Accent;
+                sb = Mix(sb, searchOverlay.DatosVer); sb = Mix(sb, searchAccent.ToArgb());
+                if (!buscadorCache) sb = Mix(sb, searchOverlay.SelResult);
             }
                   // El DESTELLO del boton pulsado YA NO entra en la firma: lo dibuja la GPU como halo aparte (FillUiGlows),
                   // asi que su desvanecido no re-hornea ni re-sube la textura del teclado -> tecleo fluido con brillo suave.
@@ -13300,6 +13388,7 @@ namespace Rocola
                 // la firma no cambiaba y la textura quedaba horneada con las posiciones VIEJAS -la lista flotando
                 // donde ya no va- hasta salir y volver a entrar al disco. El cubo no lo sufria (es en vivo).
             {
+                sb = Mix(sb, cancionesTransparentes);
                 sb = Mix(sb, 'D'); sb = Mix(sb, lblAlbum != null ? lblAlbum.Text : ""); sb = Mix(sb, songSel); sb = Mix(sb, songItems.Count);
                 sb = Mix(sb, songList != null ? songList.PageStart : 0); sb = Mix(sb, bgAccent.ToArgb());
                 sb = Mix(sb, colaVer);   // sin esto, la marca "EN COLA" no saldria hasta que algo mas cambiara
@@ -13366,7 +13455,9 @@ namespace Rocola
                     for (int i = 0; i < pastCola.Portadas.Length; i++)
                         sb = Mix(sb, (pastCola.Portadas[i] != null) ? 1 : 0);
             }
-            if (progress != null) { sb = Mix(sb, (int)(progress.Value * 300)); sb = Mix(sb, progress.Accent.ToArgb()); }
+            sb = Mix(sb, progresoFluido ? 1 : 0);
+            sb = Mix(sb, neonIntenso); sb = Mix(sb, progresoNeon);
+            if (progress != null && !progresoFluido && !(neonIntenso && progresoNeon)) { sb = Mix(sb, (int)(progress.Value * 300)); sb = Mix(sb, progress.Accent.ToArgb()); sb = Mix(sb, progress.Neon ? 1 : 0); }
             return (sb == SigNada) ? 1L : sb;   // que nunca coincida con "sin firma"
         }
 
@@ -13589,6 +13680,16 @@ namespace Rocola
             // ATENUACION del starfield mientras se navega con musica sonando (ver BgDimLevel); transicion suave.
             float dimTgt = (nowPlaying != null && !attractOn && (DateTime.Now - lastInput).TotalSeconds < BgDimIdleSecs) ? BgDimLevel : 1f;
             bgDim += (dimTgt - bgDim) * 0.12f;
+            bool muroQuieto = muroReposo && nowPlaying != null && !videoOn && !attractOn &&
+                !searchOpen && !configMode && (lblConfig == null || !lblConfig.Visible) &&
+                !ajustesAbiertos && albumView.Visible && (panelSongs == null || !panelSongs.Visible) &&
+                (DateTime.Now - lastInput).TotalSeconds >= 15;
+            muroAlpha = PasoMuro(muroAlpha, muroQuieto);
+            albumView.WallOpacity = muroAlpha;
+#if ROCOLA_GPU
+            if (gpuPanel != null) gpuPanel.WallOpacity = Math.Max(0.02f, (muroAlpha - 0.1f) * (0.98f / 0.9f) + 0.02f); // GPU: reposo al 2 %, CPU intacto.
+            if (gpuPanel != null) gpuPanel.IdleExpandTarget = estadoExpandido && muroQuieto;
+#endif
             if (Math.Abs(bgDim - dimTgt) < 0.01f) bgDim = dimTgt;
             // LA RESPIRACION va APARTE de bgDim y no dentro, a proposito: bgDim es de quien sale la cuenta
             // de 'quieto' que calma la aurora, y metiendosela dentro se armaria una pescadilla que se muerde
@@ -13939,6 +14040,7 @@ namespace Rocola
         // para la envolvente de los agudos que re-crea, y el EQ automatico para su objetivo por cancion.
         private sealed class RedChica
         {
+            private readonly object modeloLock = new object();
             public volatile bool Loaded;
             private float[][] W, B;            // pesos (fila-mayor) y sesgos por capa
             private int[] rOut, cIn;           // dimensiones por capa
@@ -13951,7 +14053,18 @@ namespace Rocola
                 try
                 {
                     if (!File.Exists(path)) return;
-                    byte[] d = File.ReadAllBytes(path);
+                    byte[] d;
+                    // Ocho capas de 512x512 caben en menos de 9 MiB. No cargar
+                    // archivos arbitrariamente grandes antes de validar el contrato.
+                    using (FileStream file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+                    {
+                        if (file.Length < 12 || file.Length > 9 * 1024 * 1024) return;
+                        using (BinaryReader input = new BinaryReader(file))
+                        {
+                            d = input.ReadBytes((int)file.Length);
+                            if (d.Length != file.Length) return;
+                        }
+                    }
                     if (d.Length < 12 || d[0] != (byte)'R' || d[1] != (byte)'I' || d[2] != (byte)'A' || d[3] != (byte)'1') return;
                     int p = 4;
                     int nl = BitConverter.ToInt32(d, p); p += 4;
@@ -13960,44 +14073,58 @@ namespace Rocola
                     int[] ro = new int[nl], ci = new int[nl]; int maxDim = 0;
                     for (int L = 0; L < nl; L++)
                     {
+                        if (d.Length - p < 8) return;
                         int r = BitConverter.ToInt32(d, p); p += 4;
                         int c = BitConverter.ToInt32(d, p); p += 4;
                         if (r < 1 || r > 512 || c < 1 || c > 512) return;
+                        if (d.Length - p < (r * c + r) * 4) return;
                         w[L] = new float[r * c]; b[L] = new float[r];
-                        for (int i = 0; i < r * c; i++) { w[L][i] = BitConverter.ToSingle(d, p); p += 4; }
-                        for (int i = 0; i < r; i++) { b[L][i] = BitConverter.ToSingle(d, p); p += 4; }
+                        for (int i = 0; i < r * c; i++)
+                        { float v = BitConverter.ToSingle(d, p); p += 4; if (float.IsNaN(v) || float.IsInfinity(v)) return; w[L][i] = v; }
+                        for (int i = 0; i < r; i++)
+                        { float v = BitConverter.ToSingle(d, p); p += 4; if (float.IsNaN(v) || float.IsInfinity(v)) return; b[L][i] = v; }
                         ro[L] = r; ci[L] = c; if (r > maxDim) maxDim = r; if (c > maxDim) maxDim = c;
                     }
-                    if (ci[0] != nIn || ro[nl - 1] != nOut) return;   // el modelo no es para este uso
+                    if (p != d.Length || ci[0] != nIn || ro[nl - 1] != nOut) return;   // contrato exacto, sin bytes sobrantes
                     for (int L = 1; L < nl; L++) if (ci[L] != ro[L - 1]) return;
-                    buf1 = new float[maxDim]; buf2 = new float[maxDim];
-                    W = w; B = b; rOut = ro; cIn = ci;
-                    Loaded = true;
+                    float[] work1 = new float[maxDim], work2 = new float[maxDim];
+                    lock (modeloLock)
+                    {
+                        buf1 = work1; buf2 = work2;
+                        W = w; B = b; rOut = ro; cIn = ci;
+                        Loaded = true;
+                    }
                 }
-                catch { Loaded = false; }
+                catch { }   // una recarga invalida no destruye el ultimo modelo valido
             }
 
             // y = red(x). Capas ocultas con tanh; la de salida lineal. Devuelve false si no hay modelo.
             public bool Predict(float[] x, float[] y)
             {
-                float[][] w = W, b = B;
-                if (!Loaded || w == null) return false;
-                float[] cur = x, nxt = buf1;
-                int curN = cIn[0];
-                for (int L = 0; L < w.Length; L++)
+                lock (modeloLock)
                 {
-                    int r = rOut[L]; float[] wl = w[L], bl = b[L];
-                    float[] dst = (L == w.Length - 1) ? y : nxt;
-                    for (int i = 0; i < r; i++)
+                    float[][] w = W, b = B;
+                    if (!Loaded || w == null || x == null || y == null || x.Length < nIn || y.Length < nOut) return false;
+                    for (int i = 0; i < nIn; i++) if (float.IsNaN(x[i]) || float.IsInfinity(x[i])) return false;
+                    float[] cur = x, nxt = buf1;
+                    int curN = cIn[0];
+                    for (int L = 0; L < w.Length; L++)
                     {
-                        float s = bl[i]; int off = i * curN;
-                        for (int j = 0; j < curN; j++) s += wl[off + j] * cur[j];
-                        dst[i] = (L == w.Length - 1) ? s : (float)Math.Tanh(s);
+                        int r = rOut[L]; float[] wl = w[L], bl = b[L];
+                        float[] dst = nxt;   // no publicar una salida parcial si falla otra neurona
+                        for (int i = 0; i < r; i++)
+                        {
+                            float s = bl[i]; int off = i * curN;
+                            for (int j = 0; j < curN; j++) s += wl[off + j] * cur[j];
+                            if (float.IsNaN(s) || float.IsInfinity(s)) return false;
+                            dst[i] = (L == w.Length - 1) ? s : (float)Math.Tanh(s);
+                        }
+                        cur = dst; curN = r;
+                        nxt = (cur == buf1) ? buf2 : buf1;   // alterna buffers (la entrada x no se toca)
                     }
-                    cur = dst; curN = r;
-                    nxt = (cur == buf1) ? buf2 : buf1;   // alterna buffers (la entrada x no se toca)
+                    for (int i = 0; i < nOut; i++) y[i] = cur[i];
+                    return true;
                 }
-                return true;
             }
         }
 
@@ -14694,11 +14821,7 @@ namespace Rocola
             }
         }
 
-        // LIMITADOR CON PRE-ESCUCHA (lookahead): en vez de recortar el pico en seco (lo que mete distorsion
-        // aspera al subir el volumen), mira unos milisegundos HACIA ADELANTE y baja la ganancia SUAVE antes de
-        // que llegue el pico, recuperandola despacio. Asi se puede subir mucho el volumen y que suene fuerte pero
-        // LIMPIO. Aplica la MISMA ganancia a los dos canales (no mueve la imagen estereo). ~5 operaciones por
-        // muestra: barato hasta en la XP. Va al final de la cadena, tras el nivelado/realce.
+
         private sealed class LookaheadLimiter : NAudio.Wave.ISampleProvider
         {
             private readonly NAudio.Wave.ISampleProvider src;
@@ -16494,6 +16617,8 @@ namespace Rocola
             public float BgDim = 1f;  // atenuacion del starfield mientras se navega con musica (el form la anima)
 
             private Bitmap cubeCache;
+            public float WallOpacity = 1f;
+            private Bitmap wallLayer;
             private int cacheW = -1, cacheH = -1;
             private string cacheSig = null;
             // CACHE DE CELDAS: cada disco (portada estatica + etiqueta) se HORNEA a un bitmap UNA vez y luego se
@@ -16651,7 +16776,10 @@ namespace Rocola
                     Rectangle area, lbl; Geometry(w, h, i, out area, out lbl);
                     Album a = Page[i];
                     buf[n].Key = ClaveCasilla(a);   // CON la marca: el panel cachea sus texturas por esta clave
-                    buf[n].Bmp = PeekOrBakeCell(a, cw, side, labelH, gap, (GetCover != null) ? GetCover(a) : null, ref budget, chica);
+                    // Mientras se mueve, no solicitar ni hornear caratulas. Recuperar calidad completa al detenerse.
+                    buf[n].Bmp = chica ? null : PeekOrBakeCell(a, cw, side, labelH, gap, (GetCover != null) ? GetCover(a) : null, ref budget, false);
+                    buf[n].Placeholder = HojeoLigero;
+                    buf[n].CoverRect = new RectangleF(ox + area.X + dx, oy + area.Y, area.Width, area.Height);
                     buf[n].Slot = i;
                     buf[n].X = ox + (i % Cols) * cw + dx; buf[n].Y = oy + area.Y; buf[n].W = cw; buf[n].H = side + gap + labelH;
                     buf[n].A = alpha;
@@ -16899,7 +17027,7 @@ namespace Rocola
                     if (disposing)
                     {
                         if (cellCache != null) ClearCellCache();
-                        SueltaDibujo(ref cubeCache); SueltaDibujo(ref contourSprite);
+                        SueltaDibujo(ref cubeCache); SueltaDibujo(ref contourSprite); SueltaDibujo(ref wallLayer);
                         SueltaDibujo(ref blendBmp); SueltaDibujo(ref lblFont);
                         SueltaDibujo(ref lblBrush); SueltaDibujo(ref lblSF);
                         SueltaDibujo(ref cPenGlow); SueltaDibujo(ref cPenMid); SueltaDibujo(ref cPenLine);
@@ -17298,6 +17426,35 @@ namespace Rocola
                     Sky.Dim = BgDim;   // atenuado mientras se navega con musica (vuelve solo tras 10s sin botones)
                     Sky.DrawReactive(g, w, h, SkyColor(BgAccent), SkyColor2(BgAccent), PulseLo, PulseMid, PulseHi);   // fondo titilante + LATIDO por banda (grandes=graves, medianas=medios/agudos)
                 }
+                if (WallOpacity < 0.999f)
+                {
+                    if (wallLayer == null || wallLayer.Width != w || wallLayer.Height != h)
+                    {
+                        SueltaDibujo(ref wallLayer);
+                        wallLayer = new Bitmap(w, h, System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
+                    }
+                    using (Graphics layer = Graphics.FromImage(wallLayer))
+                    {
+                        layer.Clear(Color.Transparent);
+                        DrawWall(layer, w, h);
+                    }
+                    using (System.Drawing.Imaging.ImageAttributes ia = new System.Drawing.Imaging.ImageAttributes())
+                    {
+                        System.Drawing.Imaging.ColorMatrix cm = new System.Drawing.Imaging.ColorMatrix();
+                        cm.Matrix33 = Math.Max(0f, Math.Min(1f, WallOpacity));
+                        ia.SetColorMatrix(cm);
+                        g.DrawImage(wallLayer, new Rectangle(0, 0, w, h), 0, 0, w, h, GraphicsUnit.Pixel, ia);
+                    }
+                }
+                else
+                {
+                    SueltaDibujo(ref wallLayer);
+                    DrawWall(g, w, h);
+                }
+                if (cubesPending) Invalidate();
+            }
+            private void DrawWall(Graphics g, int w, int h)
+            {
                 g.DrawImageUnscaled(cubeCache, 0, 0);
 
                 if (Page != null && Selected >= 0 && Selected < Page.Count)
@@ -18856,6 +19013,8 @@ namespace Rocola
         // ==========  BARRA DE PROGRESO  ==========
         private class ProgressView : Control
         {
+            private bool _neon;
+            public bool Neon { get { return _neon; } set { if (_neon != value) { _neon = value; Invalidate(); } } }
             private double _value;
             public double Value { get { return _value; } set { double v = !(value > 0) ? 0 : (value > 1 ? 1 : value); if (v != _value) { _value = v; Invalidate(); } } } // NaN tampoco es progreso valido
             private Color _accent = DefaultAccent;   // ESTETICA: la barra toma el color del genero que suena
@@ -18883,6 +19042,31 @@ namespace Rocola
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 int w = Width, h = Height;
                 if (w < 4 || h < 4) return;
+                if (_neon)
+                {
+                    // El brillo cabe dentro de la altura existente, también al hornear la UI GPU.
+                    // Trazos simples: sin bitmap intermedio, desenfoque ni reloj de animación.
+                    float pad = Math.Min((w - 1) * 0.25f, Math.Min(4f, (h - 1) * 0.5f));
+                    float y = (h - 1) * 0.5f;
+                    float end = w - 1 - pad;
+                    using (Pen rail = new Pen(Color.FromArgb(135, 8, 15, 35), Math.Max(1f, h - 2)))
+                    { rail.StartCap = rail.EndCap = LineCap.Round; g.DrawLine(rail, pad, y, end, y); }
+                    float length = (float)(_value * (end - pad));
+                    if (length > 0)
+                    {
+                        Color tint = Lighten(_accent, 0.35);
+                        using (Pen halo = new Pen(Color.FromArgb(45, tint), Math.Max(1f, h - 1)))
+                        using (Pen tube = new Pen(Color.FromArgb(160, tint), Math.Max(1f, h * 0.48f)))
+                        using (Pen core = new Pen(Lighten(_accent, 0.88), Math.Max(1f, h * 0.16f)))
+                        {
+                            halo.StartCap = halo.EndCap = tube.StartCap = tube.EndCap = core.StartCap = core.EndCap = LineCap.Round;
+                            g.DrawLine(halo, pad, y, pad + length, y);
+                            g.DrawLine(tube, pad, y, pad + length, y);
+                            g.DrawLine(core, pad, y, pad + length, y);
+                        }
+                    }
+                    return;
+                }
 
                 // Riel HUNDIDO: oscuro translucido + borde interior tenue (parece rebajado, no plano).
                 Rectangle track = new Rectangle(0, 0, w - 1, h - 1);
@@ -18920,7 +19104,7 @@ namespace Rocola
         // ==========  LISTA DE CANCIONES (dibujada a mano, no ListBox nativo) ==========
         // Reemplaza al ListBox: asi el interior del disco se puede componer por GPU (un control nativo no se
         // puede poner sobre D3D). Es una VISTA de UNA pagina: la seleccion global la maneja el form (songSel).
-        private class SongListView : Control
+        private partial class SongListView : Control
         {
             public Func<int> GetCount;          // total de items (songItems.Count)
             public Func<int, string> GetText;   // texto del item i
@@ -19461,8 +19645,9 @@ namespace Rocola
             public RectangleF R;
         }
 
-        private class SearchOverlay : Control
+        private partial class SearchOverlay : Control
         {
+            public bool SeparateGpu = false;
             public string Query = "";
             public List<SearchItem> Results = new List<SearchItem>();
             // De que disco es y de que genero cada resultado. Los pone Form1 (el genero lo aprende el paseo de
@@ -19887,6 +20072,11 @@ namespace Rocola
                 else if (k.Kind == KKind.Choose) { if (Results != null && Results.Count > 0 && OnChoose != null) OnChoose(Results[0]); }
             }
 
+            public void ClickAt(Point p)
+            {
+                OnMouseClick(new MouseEventArgs(MouseButtons.Left, 1, p.X, p.Y, 0));
+            }
+
             protected override void OnMouseClick(MouseEventArgs e)
             {
                 if (!FocusResults)
@@ -19947,6 +20137,9 @@ namespace Rocola
             public bool PiezaViva(int cual, out Rectangle donde)
             {
                 donde = Rectangle.Empty;
+#if ROCOLA_GPU
+                if (cual >= 2) return ExtraGpuRect(cual, out donde);
+#endif
                 if (cual == PiezaEscrito)
                 {
                     // La caja de lo escrito se ve SIEMPRE que el buscador esta abierto, tambien con el foco
@@ -19969,6 +20162,9 @@ namespace Rocola
             // moviendo el lienzo la letra se iba fuera de la imagen chica (ver EnsureUiPieza).
             public void DibujaPiezaViva(Graphics g, int cual, int dx, int dy)
             {
+#if ROCOLA_GPU
+                if (cual >= 2) { DrawExtraGpu(g, cual, dx, dy); return; }
+#endif
                 if (cual == PiezaEscrito)
                 {
                     g.SmoothingMode = SmoothingMode.AntiAlias;
@@ -20083,7 +20279,7 @@ namespace Rocola
                     if (forGpu)
                     {
                         Image ca, cb; float f; Rectangle area;
-                        if (ComputePreview(kbRegion, out ca, out cb, out f, out area)) DrawPreviewInfo(g, kbRegion, area);   // el cubo lo dibuja la GPU; aqui solo el texto/ayuda
+                        if (!SeparateGpu && ComputePreview(kbRegion, out ca, out cb, out f, out area)) DrawPreviewInfo(g, kbRegion, area);
                     }
                     else if (kbRegion.IntersectsWith(clip)) DrawPreviewCube(g, kbRegion);
                 }
@@ -20339,7 +20535,7 @@ namespace Rocola
                 if (n > 0)
                 {
                     int selIdx = FocusResults ? SelResult : 0;
-                    if (selIdx >= 0 && selIdx < n) DrawOneResultCard(g, selIdx, Rectangle.Round(resultRects[selIdx].Key), true, qNorm);
+                    if ((!paraGpu || !SeparateGpu) && selIdx >= 0 && selIdx < n) DrawOneResultCard(g, selIdx, Rectangle.Round(resultRects[selIdx].Key), true, qNorm);
                 }
             }
 

@@ -140,17 +140,28 @@ class Reposo
             // al borde por donde entra, para que le quede pantalla por delante y de tiempo a verla- y tarda
             // una o dos decimas en asomar; las de las gordas, que van lentas, algo mas. Con dos cuadros la
             // prueba salia bien o mal segun la suerte, que es peor que no tenerla.
+            // Y NO SE ESPERA A QUE PASE UNA: SE PIDE. Las fugaces salen cada 7 a 16 segundos, y esta prueba
+            // miraba durante tres. O sea que salia bien o mal segun si quedaba viva la que sale al arrancar,
+            // que es exactamente la clase de prueba que un dia dice que si y otro que no sin que nada haya
+            // cambiado. Adelantando su reloj, la siguiente sale en el cuadro que viene y la prueba mide lo
+            // que dice medir.
+            FieldInfo fProx = TStar.GetField("nextShoot", BindingFlags.Instance | BindingFlags.NonPublic);
+            Check(fProx != null, "se le puede pedir una fugaz para mirarla (si no, esto dependeria de la suerte)");
             int distintos = 0;
-            for (int intento = 0; intento < 24 && distintos == 0; intento++)
+            for (int intento = 0; intento < 40 && distintos < 20; intento++)
             {
+                if (fProx != null) fProx.SetValue(cielo, Environment.TickCount - 1);   // que salga YA
                 System.Threading.Thread.Sleep(60);
                 using (Graphics g = Graphics.FromImage(b1)) { ar[0] = g; mDraw.Invoke(cielo, ar); }
                 System.Threading.Thread.Sleep(60);
                 using (Graphics g = Graphics.FromImage(b2)) { ar[0] = g; mDraw.Invoke(cielo, ar); }
+                distintos = 0;
                 for (int y = 0; y < h; y += 2)
                     for (int x = 0; x < w; x += 2)
                         if (b1.GetPixel(x, y).ToArgb() != b2.GetPixel(x, y).ToArgb()) distintos++;
             }
+            // Se piden VEINTE pixeles y no uno: con uno solo bastaba un pixel de nada para dar por vista una
+            // fugaz que no estaba, y la prueba se daba por buena sin haber mirado nada.
             Console.WriteLine("     con el cielo congelado, pixeles que aun se mueven: " + distintos);
             Check(distintos > 0, "la fugaz avanza aunque el cielo no se rehaga: va dibujada en vivo");
             b1.Dispose(); b2.Dispose();

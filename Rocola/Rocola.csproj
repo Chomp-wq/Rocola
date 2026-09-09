@@ -64,6 +64,9 @@
     <Compile Include="LinuxSistema.cs" />
     <Compile Include="LinuxPintura.cs" />
     <Compile Include="LinuxVideo.cs" />
+    <Compile Include="EstadoReposoGpu.cs" />
+    <Compile Include="AcabadoGpu.cs" />
+    <Compile Include="CieloNaturalGpu.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <EmbeddedResource Include="Properties\Resources.resx">
       <Generator>ResXFileCodeGenerator</Generator>

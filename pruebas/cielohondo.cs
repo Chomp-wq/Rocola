@@ -29,6 +29,13 @@ class CieloHondo
 {
     static readonly char[] SALTO = { (char)10 };
 
+    // Y COMO AHORA ES DE INSTANCIA, HAY QUE DARLE UNA. Se fabrica un panel SIN ENCENDER -sin constructor,
+    // sin ventana, sin tarjeta- que es todo lo que hace falta para armar vertices en memoria. Si el metodo
+    // vuelve a ser estatico algun dia, esto sigue valiendo: Invoke con instancia lo ignora.
+    static object DueNo(MethodInfo m, Type t)
+    { return m.IsStatic ? null : Codigo.FormSinEncender(t); }
+
+    static object duenoVerts;
     static int fallos = 0;
     static void Check(bool ok, string q) { Console.WriteLine((ok ? "  OK   " : "  FALLO") + "  " + q); if (!ok) fallos++; }
     const BindingFlags TODO = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
@@ -53,7 +60,7 @@ class CieloHondo
         int[] fm = new int[n]; uint[] col = new uint[n];
         for (int i = 0; i < n; i++) { ph[i] = 0f; spd[i] = 1f; sz[i] = 2f; fm[i] = 0; col[i] = 0xFFFFFFFF; }
         object qdx = porTamano ? (object)dx : (object)dx[2], qdy = porTamano ? (object)dy : (object)dy[2];
-        mVerts.Invoke(null, new object[] { buf, xs, ys, ph, spd, sz, kd, fm, col, n, reloj, 1f, 0f, qdx, qdy, w, h });
+        mVerts.Invoke(duenoVerts, new object[] { buf, xs, ys, ph, spd, sz, kd, fm, col, n, reloj, 1f, 0f, qdx, qdy, w, h });
         uint[] salida = new uint[n];
         px = new float[n]; py = new float[n];
         for (int i = 0; i < n; i++)
@@ -91,7 +98,12 @@ class CieloHondo
         TF = asm.GetType("Rocola.Form1", true);
         foreach (Type t in asm.GetTypes()) if (t.Name == "GpuStarfield") TG = t;
         if (TG == null) { Console.WriteLine("  (esta version no dibuja por tarjeta grafica: no hay cielo que mirar)"); return 0; }
-        mVerts = TG.GetMethod("BuildStarVerts", BindingFlags.Static | BindingFlags.NonPublic);
+        // ESTATICO O DE INSTANCIA, DA IGUAL: lo que esta prueba vigila es que los vertices de las
+        // estrellas se armen en UN SOLO SITIO, no como esta declarado ese sitio. Desde que el dibujo
+        // mira ajustes propios del panel -las estrellas finas, por ejemplo- el metodo dejo de ser
+        // estatico, y preguntar solo por los estaticos daba por roto justo el cambio que lo mejora.
+        mVerts = TG.GetMethod("BuildStarVerts", BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic);
+        duenoVerts = (mVerts != null) ? DueNo(mVerts, TG) : null;
         mAire = TF.GetMethod("AireDelCielo", BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
         if (mVerts == null) { Console.WriteLine("  FALLO  no esta BuildStarVerts"); return 1; }
         TVtx = mVerts.GetParameters()[0].ParameterType.GetElementType();
@@ -253,13 +265,13 @@ class CieloHondo
                 sz[i] = 1f + (float)r.NextDouble() * 2f; kk[i] = i % 3; fm[i] = i % formas; col[i] = 0xFFFFFFFF;
             }
             object[] arg = { buf, xx, yy, ph, spd, sz, kk, fm, col, NE, 0.0, 1f, 0.3f, new float[3], new float[3], W, H };
-            mVerts.Invoke(null, arg);
+            mVerts.Invoke(duenoVerts, arg);
             List<double> v = new List<double>();
             for (int k = 0; k < 21; k++)
             {
                 arg[10] = (double)k * 0.04;
                 Stopwatch w = Stopwatch.StartNew();
-                for (int i = 0; i < 10; i++) mVerts.Invoke(null, arg);
+                for (int i = 0; i < 10; i++) mVerts.Invoke(duenoVerts, arg);
                 w.Stop(); v.Add(w.Elapsed.TotalMilliseconds / 10.0);
             }
             v.Sort();

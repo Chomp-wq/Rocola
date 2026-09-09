@@ -200,7 +200,7 @@ namespace Rocola
                 uint g = (uint)(255 - darken);
                 uint col = textured
                     ? (av << 24) | (g << 16) | (g << 8) | g                                   // textura * gris (oscurecido por profundidad)
-                    : (av << 24) | ((60u * g / 255u) << 16) | ((70u * g / 255u) << 8) | (110u * g / 255u);  // relleno azulado (sin portada)
+                    : (av << 24) | ((((BlankCubeColor >> 16) & 255u) * g / 255u) << 16) | ((((BlankCubeColor >> 8) & 255u) * g / 255u) << 8) | ((BlankCubeColor & 255u) * g / 255u);
                 CubeFace(cubeFaceV, left, y0, right, y0 + Hh, cx, cyc, ct, stt, uMax, vMax, col);
                 gpu.DrawQuads(tex, cubeFaceV, 2);
             }
@@ -476,7 +476,8 @@ namespace Rocola
             aireDe = paso;
         }
 
-        private static void BuildStarVerts(D3D9.Vtx[] buf, float[] xs, float[] ys, float[] ph, float[] spd, float[] sz, int[] kd, int[] fm, uint[] col, int n, double t, float fade, float pulse, float[] dx, float[] dy, float w, float h)
+        public bool EstrellasFinas = true;
+        private void BuildStarVerts(D3D9.Vtx[] buf, float[] xs, float[] ys, float[] ph, float[] spd, float[] sz, int[] kd, int[] fm, uint[] col, int n, double t, float fade, float pulse, float[] dx, float[] dy, float w, float h)
         {
             int vi = 0;
             HazAire();   // se rehace SOLO si se toco la perilla; si no, es comparar dos numeros
@@ -510,6 +511,9 @@ namespace Rocola
                        | ((rgb & 0xFFu) * (gb & 0xFFFFu) >> 8);               // y el azul, comido del todo
                 float s = sz[i];
                 if (k != 0 && pulse > 0.02f) s += pulse * (k == 2 ? 9f : 5f);   // latido: medianas/grandes crecen con la musica
+                // No cambiar el patron ni reconstruir el atlas al alternar: solo
+                // reducir las puntas grandes, dejando algunas estrellas protagonistas.
+                if (EstrellasFinas) s *= k == 0 ? 0.85f : (k == 1 ? 0.66f : (i % 5 == 0 ? 0.78f : 0.42f));
                 int f = (fm != null) ? fm[i] : FormaEstrella;
                 SetQuadUV(buf, vi, x - s, y - s, x + s, y + s, c, AtlasU0[f], AtlasV0[f], AtlasU1[f], AtlasV1[f]);
                 vi += 6;
@@ -587,6 +591,8 @@ namespace Rocola
         }
         private static void VShoot(D3D9.Vtx[] v, int o, float x, float y, uint c) { v[o].X = x; v[o].Y = y; v[o].Z = 0f; v[o].Rhw = 1f; v[o].Color = c; v[o].U = 0f; v[o].V = 0f; }
         public void DrawQuad(IntPtr tex, D3D9.Vtx[] quad) { if (Ok) gpu.DrawTexQuad(tex, quad); }
+        public void DrawColorQuad(D3D9.Vtx[] quad) { if (Ok) gpu.DrawQuads(IntPtr.Zero, quad, 2); }
+        public uint BlankCubeColor = 0x003C466Eu;
         public void DrawMesh(D3D9.Vtx[] v, int tris) { if (Ok) gpu.DrawMesh(v, tris); }   // malla plana (fondo reactivo)
         public void DrawMeshAdd(D3D9.Vtx[] v, int tris) { if (Ok) gpu.DrawMeshAdd(v, tris); }   // malla plana SUMANDO luz (el neon)
         public bool End() { return Ok && gpu.EndFrame(); }
@@ -1007,7 +1013,8 @@ namespace Rocola
     // Una CELDA de la rejilla de discos para dibujarla como su PROPIO quad con textura (en vez de recomponer una
     // textura a pantalla completa por pagina). Bmp = disco estatico + etiqueta ya horneado (null si aun no listo).
     // Key = Folder (estable) para cachear su textura entre paginas; null = no cachear (discos TOP / sin carpeta).
-    internal struct GpuGridCell { public string Key; public Bitmap Bmp; public int Slot; public float X, Y, W, H; public float A; }   // A = opacidad (1 = normal; <1 mientras la pagina entra)
+    internal struct GpuGridCell { public string Key; public Bitmap Bmp; public int Slot; public float X, Y, W, H; public float A; public bool Placeholder; public RectangleF CoverRect; }
+    internal struct GpuProgress { public bool Has, Neon; public Rectangle Rect; public double Value; public uint Color; public object Key; }
     // TRANSICION entre dos CUBOS de la rocola (celda de la rejilla, cubo grande del disco, cubo gigante de la
     // atraccion, cubo del buscador): la portada viaja de uno al otro dibujada ENCIMA de todo, girando, con
     // bamboleo y un destello detras, y se funde al llegar. Se dibuja con el MISMO DrawCube que los demas cubos,
@@ -1043,7 +1050,7 @@ namespace Rocola
     // -------- Control D3D9 para usar el campo estrellado como FONDO de la vista de discos --------
     //  Es un control aparte (su propia ventana) con estilos aptos para D3D9 (sin doble-buffer GDI).
     //  Se muestra ENCIMA de la vista de discos al activar el modo GPU; el render lo maneja D3D9.
-    internal sealed class GpuPanel : Control
+    internal sealed partial class GpuPanel : Control
     {
         private GpuStarfield stars;
         private bool idleHooked;
@@ -1145,6 +1152,54 @@ namespace Rocola
         public int FallosMedidos { get; private set; }
         public void ReiniciaMedida() { msTrabSuma = 0.0; msTrabN = 0; FallosMedidos = 0; Fps = 0; frames = 0; fpsTick = Environment.TickCount; }
         public float Dim = 1f;                            // atenuacion del starfield mientras se navega con musica (el form la anima; 1 = normal)
+        public float WallOpacity = 1f;
+        public bool ProgresoFluido = true;
+        public Func<GpuProgress> GetProgress;
+        public bool IdleExpandTarget;
+        public Func<Bitmap> GetIdlePanel;
+        private float idleBlend;
+        private double idleClock;
+        private IntPtr idleTex;
+        private Bitmap idleLastBmp;
+        private int idleW, idleH;
+        private float idleU, idleV;
+        private float IdleRise { get { return Math.Max(0, idleH - uiBotH) * idleBlend; } }
+        internal static int IdlePanelHeight(int screenH) { return Math.Min(screenH, Math.Max(220, Math.Min(340, (int)(screenH * .32f)))); }
+        internal static int IdleProgressLeft(int h) { return 24 + (int)(180 * Math.Max(.8f, Math.Min(1.3f, h / 260f))); }
+        internal static Rectangle IdleBadgeRect(int w, int h)
+        {
+            int x = IdleCoverRect(w, h).Right + 20;
+            return new Rectangle(x, h - 73, Math.Max(30, Math.Min(156, (int)(w * .52f) - x - 24)), 30);
+        }
+        internal RectangleF IdleBadgeGlow(RectangleF normal)
+        {
+            Rectangle badge = IdleBadgeRect(Width, idleH);
+            float y = Height - uiBotH - IdleRise + badge.Y;
+            return new RectangleF(normal.X + (badge.X - normal.X) * idleBlend,
+                normal.Y + (y - normal.Y) * idleBlend,
+                normal.Width + (badge.Width - normal.Width) * idleBlend,
+                normal.Height + (badge.Height - normal.Height) * idleBlend);
+        }
+        internal static Rectangle IdleCoverRect(int w, int h)
+        {
+            int side = Math.Max(32, Math.Min(h - 76, (int)(w * .22f)));
+            return new Rectangle(24, 44, side, side);
+        }
+        internal static float StepIdle(float actual, bool target, double dt)
+        {
+            dt = Math.Max(0, Math.Min(.1, dt));
+            float end = target ? 1f : 0f;
+            float next = actual + (end - actual) * (float)(1 - Math.Exp(-dt * (target ? 3.5 : 9)));
+            return Math.Abs(next - end) < .001f ? end : next;
+        }
+        private object progressKey;
+        private double progressDraw = -1, progressClock;
+        private readonly D3D9.Vtx[] progressQuad = new D3D9.Vtx[6];
+        public bool VinetaSuave = true, HaloSeleccion = true, EstrellasFinas = true, OndasSuaves = true;
+        private IntPtr vinetaTex;
+        private float vinetaU, vinetaV;
+        private int vinetaRetry;
+        private readonly D3D9.Vtx[] adornoQuad = new D3D9.Vtx[6];
         public Func<float> GetPulse;                      // el form provee el nivel de audio (0..1)
         public GpuGridFetch GetGrid;                      // el form llena el buffer con las celdas de la pagina actual (rejilla por quads)
         public int PiezasN;                               // cuantas piezas vivas hay ahora (0 = ninguna)
@@ -1276,6 +1331,10 @@ namespace Rocola
             if (uiTex != IntPtr.Zero) { D3D9.Release(uiTex); uiTex = IntPtr.Zero; }
             if (hazTex != IntPtr.Zero) { D3D9.Release(hazTex); hazTex = IntPtr.Zero; }
             if (nebTex != IntPtr.Zero) { D3D9.Release(nebTex); nebTex = IntPtr.Zero; }
+            if (vinetaTex != IntPtr.Zero) { D3D9.Release(vinetaTex); vinetaTex = IntPtr.Zero; }
+            if (idleTex != IntPtr.Zero) { D3D9.Release(idleTex); idleTex = IntPtr.Zero; }
+            idleLastBmp = null; idleBlend = 0; idleClock = 0;
+            vinetaRetry = 0;
             if (ruidoTex != IntPtr.Zero) { D3D9.Release(ruidoTex); ruidoTex = IntPtr.Zero; ruTW = ruTH = 0; }
             if (lunaTex != IntPtr.Zero) { D3D9.Release(lunaTex); lunaTex = IntPtr.Zero; luTW = luTH = 0; lunaDe = -1; }
             if (uiBotTex != IntPtr.Zero) { D3D9.Release(uiBotTex); uiBotTex = IntPtr.Zero; }
@@ -1373,6 +1432,14 @@ namespace Rocola
             EnsureCover(ref selTexB, ref selImgB, ref selBwB, ref selBhB, ref selUB, ref selVB, cs.Sel.CoverB);
             EnsureCover(ref relTex, ref relImg, ref relBw, ref relBh, ref relU, ref relV, cs.Relay.CoverA);
             EnsureCover(ref miniTex, ref miniImg, ref miniBw, ref miniBh, ref miniU, ref miniV, cs.Mini.CoverA);   // mini-cubo de la barra inferior
+            double idleNow = AhoraMs();
+            double idleDt = idleClock == 0 ? 0 : (idleNow - idleClock) / 1000.0; idleClock = idleNow;
+            if ((IdleExpandTarget || idleBlend > 0) && GetIdlePanel != null)
+            {
+                Bitmap ib = GetIdlePanel();
+                if (ib != null) EnsureCover(ref idleTex, ref idleLastBmp, ref idleW, ref idleH, ref idleU, ref idleV, ib);
+            }
+            idleBlend = StepIdle(idleBlend, IdleExpandTarget && idleTex != IntPtr.Zero, idleDt);
             // ANIMACIONES: sus texturas TAMBIEN se aseguran AQUI, antes de Begin. Crear o bloquear una textura
             // con la escena ya abierta no es valido en Direct3D 9: fallaba en silencio y la portada que viajaba
             // entre cubos no llegaba a dibujarse NUNCA (la del buscador al abrir si, porque esa reusa la textura
@@ -1425,6 +1492,8 @@ namespace Rocola
                     piezaVer[i] = pv;
                 }
             EnsureNieblas();               // la via lactea y las nebulosas (una vez por tamano de pantalla)
+            EnsureVineta();
+            stars.EstrellasFinas = EstrellasFinas;
             if (ShowFps) EnsureFpsTex();   // crea/actualiza la textura del contador ANTES de Begin (solo si se pide, Ctrl+F1)
             stars.SetDim(Dim);             // atenuacion mientras se navega con musica (estrellas/brillos; el cielo queda igual)
             float pulseCrudo = (GetPulse != null) ? GetPulse() : 0f;
@@ -1433,11 +1502,28 @@ namespace Rocola
             auCuadro = (GetAurora != null) ? GetAurora() : new GpuAurora();
             // Se engancha SIEMPRE: aqui van la via lactea y las nebulosas, haya aurora o no.
             auCuadro.Has = auCuadro.Has && auCuadro.B != null && auCuadro.B.Length >= 8;
+            auCuadro.BaseY -= IdleRise;
             stars.TrasCielo = trasCielo;
             stars.TrasEstrellas = trasEstrellas;
             // Dispositivo perdido (sesion bloqueada, cambio de pantalla...): sin este respiro, el bucle de
             // Application.Idle reintentaria a TODA MAQUINA y clavaria un nucleo entero hasta recuperarlo.
             if (!stars.Begin(Width, Height, pulse, pulseCrudo)) { System.Threading.Thread.Sleep(5); return NoPresentado(); }
+            // Adornos solo del fondo: antes del muro y de toda la interfaz.
+            if (VinetaSuave && vinetaTex != IntPtr.Zero)
+            {
+                SetTexQuad(adornoQuad, 0, 0, Width, Height, vinetaU, vinetaV);
+                stars.DrawQuad(vinetaTex, adornoQuad);
+            }
+            if (HaloSeleccion && ShowAlbum && GetContourRect != null)
+            {
+                Rectangle hr = GetContourRect();
+                if (hr.Width > 0 && hr.Height > 0)
+                {
+                    uint ha = (uint)(90f * Math.Max(0f, Math.Min(1f, WallOpacity)));
+                    stars.DrawGlow(hr.X + hr.Width * 0.5f, hr.Y + hr.Height * 0.5f,
+                        Math.Max(hr.Width, hr.Height) * 0.85f, (ha << 24) | (NebColor & 0x00FFFFFFu));
+                }
+            }
             // Rejilla de discos: un quad por celda (textura ya resuelta arriba). Las celdas aun sin textura (recien
             // horneadas o sin presupuesto de subida este cuadro) se saltan y aparecen en los cuadros siguientes.
             if (ShowAlbum)
@@ -1446,25 +1532,35 @@ namespace Rocola
                     {
                         GpuGridCell c = gridBuf[i];
                         if (c.X + c.W <= 0f || c.X >= Width) continue;   // hojeando: la casilla ya salio de la pantalla, no se pinta
-                        int ca = (c.A >= 1f) ? 255 : (int)(c.A * 255f + 0.5f);
+                        int ca = (int)(Math.Max(0f, Math.Min(1f, c.A * WallOpacity)) * 255f + 0.5f);
                         if (ca <= 0) continue;
                         if (ca >= 255) SetTexQuad(cellQuad, c.X, c.Y, c.X + c.W, c.Y + c.H, gridU[i], gridV[i]);
                         else SetTexQuadA(cellQuad, c.X, c.Y, c.X + c.W, c.Y + c.H, gridU[i], gridV[i], ((uint)ca << 24) | 0x00FFFFFFu);
                         stars.DrawQuad(gridTex[i], cellQuad);
                     }
+                    else if (gridBuf[i].Placeholder)
+                    {
+                        GpuGridCell c = gridBuf[i];
+                        RectangleF r = c.CoverRect;
+                        if (r.Right <= 0 || r.Left >= Width || r.Width <= 0 || r.Height <= 0) continue;
+                        stars.BlankCubeColor = SkyMid & 0x00FFFFFFu;
+                        stars.DrawCube(IntPtr.Zero, 1, 1, r.X, r.Y, r.Width, r.Height, 0.22,
+                            Math.Max(0f, Math.Min(1f, c.A * WallOpacity)) * 0.35f, 0);
+                        stars.BlankCubeColor = 0x003C466Eu;
+                    }
             if (ShowAlbum && contourTex != IntPtr.Zero && GetContourRect != null)
             {
                 Rectangle r = GetContourRect();
-                if (r.Width > 0 && r.Height > 0) { SetTexQuad(contourQuad, r.X, r.Y, r.X + r.Width, r.Y + r.Height, contU, contV); stars.DrawQuad(contourTex, contourQuad); }
+                if (r.Width > 0 && r.Height > 0) { SetTexQuadA(contourQuad, r.X, r.Y, r.X + r.Width, r.Y + r.Height, contU, contV, ((uint)(Math.Max(0f, Math.Min(1f, WallOpacity)) * 255f) << 24) | 0x00FFFFFFu); stars.DrawQuad(contourTex, contourQuad); }
             }
             // Cubos girando ENCIMA del contorno (igual orden que en CPU): primero el relevo, luego el seleccionado.
             if (cs.Relay.Has)
-                stars.DrawCube(relTex, relU, relV, cs.Relay.X, cs.Relay.Y, cs.Relay.W, cs.Relay.H, cs.Relay.Angle, 1f, cs.Relay.Tilt);
+                stars.DrawCube(relTex, relU, relV, cs.Relay.X, cs.Relay.Y, cs.Relay.W, cs.Relay.H, cs.Relay.Angle, WallOpacity, cs.Relay.Tilt);
             if (cs.Sel.Has)
             {
-                stars.DrawCube(selTexA, selUA, selVA, cs.Sel.X, cs.Sel.Y, cs.Sel.W, cs.Sel.H, cs.Sel.Angle, 1f, cs.Sel.Tilt);
+                stars.DrawCube(selTexA, selUA, selVA, cs.Sel.X, cs.Sel.Y, cs.Sel.W, cs.Sel.H, cs.Sel.Angle, ShowAlbum ? WallOpacity : 1f, cs.Sel.Tilt);
                 if (cs.Sel.CoverB != null && cs.Sel.Fade > 0.002f)   // disco TOP: 2a portada encima con alfa = fundido
-                    stars.DrawCube(selTexB, selUB, selVB, cs.Sel.X, cs.Sel.Y, cs.Sel.W, cs.Sel.H, cs.Sel.Angle, cs.Sel.Fade, cs.Sel.Tilt);
+                    stars.DrawCube(selTexB, selUB, selVB, cs.Sel.X, cs.Sel.Y, cs.Sel.W, cs.Sel.H, cs.Sel.Angle, cs.Sel.Fade * (ShowAlbum ? WallOpacity : 1f), cs.Sel.Tilt);
             }
             // UI ENCIMA del fondo y los cubos: la textura principal anclada ARRIBA (a su tamano real: en
             // navegacion es solo la franja superior) y la franja de estado anclada ABAJO.
@@ -1499,7 +1595,18 @@ namespace Rocola
                     stars.DrawQuad(wt, winQuad);
                 }
             }
-            if (uiBotTex != IntPtr.Zero && uiBotW > 0 && uiBotH > 0) { SetTexQuad(uiBotQuad, 0, Height - uiBotH, uiBotW, Height, uiBotU, uiBotV); stars.DrawQuad(uiBotTex, uiBotQuad); }
+            if (uiBotTex != IntPtr.Zero && uiBotW > 0 && uiBotH > 0)
+            {
+                SetTexQuadA(uiBotQuad, 0, Height - uiBotH, uiBotW, Height, uiBotU, uiBotV, ((uint)((1-idleBlend)*255) << 24) | 0x00FFFFFFu);
+                stars.DrawQuad(uiBotTex, uiBotQuad);
+            }
+            if (idleBlend > 0 && idleTex != IntPtr.Zero)
+            {
+                float py = Height - uiBotH - IdleRise;
+                SetTexQuadA(adornoQuad, 0, py, Width, py + idleH, idleU, idleV, ((uint)(idleBlend*255) << 24) | 0x00FFFFFFu);
+                stars.DrawQuad(idleTex, adornoQuad);
+            }
+            DrawSmoothProgress();
             // DESTELLOS del boton pulsado (buscador): halos aditivos ENCIMA de la UI, animados por la GPU (sin re-subir textura).
             if (GetUiGlows != null)
             {
@@ -1513,7 +1620,18 @@ namespace Rocola
             }
             // Mini-cubo de la barra inferior (gira): cubo GPU, encima de la barra.
             if (cs.Mini.Has)
+            {
+                if (idleBlend > 0)
+                {
+                    Rectangle large = IdleCoverRect(Width, idleH);
+                    cs.Mini.X += (large.X - cs.Mini.X) * idleBlend;
+                    cs.Mini.Y += (Height - idleH + large.Y - cs.Mini.Y) * idleBlend;
+                    cs.Mini.W += (large.Width - cs.Mini.W) * idleBlend;
+                    cs.Mini.H += (large.Height - cs.Mini.H) * idleBlend;
+                    cs.Mini.Tilt *= 1 - idleBlend;
+                }
                 stars.DrawCube(miniTex, miniU, miniV, cs.Mini.X, cs.Mini.Y, cs.Mini.W, cs.Mini.H, cs.Mini.Angle, 1f, cs.Mini.Tilt);
+            }
             // TRANSICION entre cubos (viaje + giro + bamboleo + destello) ENCIMA de todo. Solo mientras vive.
             if (tr.Has && tr.Bmp != null && transTex != IntPtr.Zero && tr.Alpha > 0.004f && tr.W > 1f && tr.H > 1f)
             {
@@ -1832,6 +1950,7 @@ namespace Rocola
 
         private void EnsureNieblas()
         {
+            if (nebNaturalDe != CieloProfundo) { if (nebTex != IntPtr.Zero) { D3D9.Release(nebTex); nebTex = IntPtr.Zero; } nebNaturalDe = CieloProfundo; nieblaRetryPending = false; }
             bool nuevoTamano = nieblaW != Width || nieblaH != Height;
             if (!nuevoTamano && hazTex != IntPtr.Zero && nebTex != IntPtr.Zero && ruidoTex != IntPtr.Zero) return;
             int now = Environment.TickCount;
@@ -1842,7 +1961,7 @@ namespace Rocola
             if (nuevoTamano || hazTex == IntPtr.Zero)
                 using (Bitmap hz = GpuStarfield.BakeViaLactea(mw, mh)) hazTex = Upload(hazTex, ref hazTW, ref hazTH, hz, out hazU, out hazV);
             if (nuevoTamano || nebTex == IntPtr.Zero)
-                using (Bitmap nb = GpuStarfield.BakeNebulosas(mw, mh)) nebTex = Upload(nebTex, ref nebTW, ref nebTH, nb, out nebU, out nebV);
+                using (Bitmap nb = CieloProfundo ? BakeNatural(mw, mh) : GpuStarfield.BakeNebulosas(mw, mh)) nebTex = Upload(nebTex, ref nebTW, ref nebTH, nb, out nebU, out nebV);
             if (ruidoTex == IntPtr.Zero)
                 using (Bitmap rd = Form1.BakeRuidoGrande(RuidoTeja)) ruidoTex = Upload(ruidoTex, ref ruTW, ref ruTH, rd, out ruU, out ruV);
             nieblaRetryPending = hazTex == IntPtr.Zero || nebTex == IntPtr.Zero || ruidoTex == IntPtr.Zero;
@@ -1912,6 +2031,104 @@ namespace Rocola
         // color del genero -es la que se ve y la que ata el fondo con la cancion- y la neblina es un velo
         // encima que casi no se nota por si solo. En MEDIO se queda la nebulosa y se va el velo: la mitad de
         // pantalla pintada, y de lejos el fondo sigue siendo el mismo.
+        public bool NebulosasCine = true;
+        public bool NeonIntenso = true, CieloProfundo = true, AuroraBandas = true;
+        private bool nebNaturalDe;
+
+        internal static double SmoothProgress(double current, double target, double seconds)
+        {
+            if (double.IsNaN(target) || double.IsInfinity(target)) target = 0;
+            target = Math.Max(0, Math.Min(1, target));
+            if (current < 0 || Math.Abs(target - current) > 0.02 || target == 0 || target == 1) return target;
+            seconds = Math.Max(0, Math.Min(0.25, seconds));
+            return current + (target - current) * (1 - Math.Exp(-seconds * 18));
+        }
+        private void DrawSmoothProgress()
+        {
+            if (GetProgress == null) { progressDraw = -1; progressKey = null; return; }
+            GpuProgress p = GetProgress();
+            if (!ProgresoFluido && !(NeonIntenso && p.Neon) && idleBlend <= 0) { progressDraw = -1; return; }
+            if (!p.Has || p.Rect.Width < 4 || p.Rect.Height < 4) { progressDraw = -1; progressKey = null; return; }
+            double now = AhoraMs();
+            if (!ReferenceEquals(progressKey, p.Key)) progressDraw = -1;
+            progressDraw = SmoothProgress(progressDraw, p.Value, (now - progressClock) / 1000.0);
+            if (!ProgresoFluido) progressDraw = Math.Max(0, Math.Min(1, p.Value));
+            progressClock = now; progressKey = p.Key;
+            float h = p.Rect.Height, x = p.Rect.X + Math.Min(4f, (h - 1) * 0.5f);
+            float y = p.Rect.Y + (h - 1) * 0.5f;
+            float width = Math.Max(0, p.Rect.Right - 1 - (x - p.Rect.X) - x);
+            if (idleBlend > 0)
+            {
+                float expandedX = IdleProgressLeft(idleH);
+                x += (expandedX - x) * idleBlend;
+                y += (Height - 18 - y) * idleBlend;
+                width += (Math.Max(0, Width - 24 - expandedX) - width) * idleBlend;
+            }
+            ProgressBand(x, y, width, Math.Max(1, h - 2), 0x87080F23u);
+            float length = (float)(width * progressDraw);
+            if (!(length > 0)) return;
+            uint tint = ProgressLight(p.Color, 0.35f);
+            if (p.Neon && NeonIntenso) ProgressBand(x, y, length, h * 2.1f, 0x32000000u | tint);
+            if (p.Neon) ProgressBand(x, y, length, Math.Max(1, h - 1), (NeonIntenso ? 0x78000000u : 0x2D000000u) | tint);
+            ProgressBand(x, y, length, Math.Max(1, h * (NeonIntenso && p.Neon ? 0.65f : 0.48f)), (NeonIntenso && p.Neon ? 0xE0000000u : 0xA0000000u) | tint);
+            if (p.Neon) ProgressBand(x, y, length, Math.Max(1, h * (NeonIntenso ? 0.26f : 0.16f)), 0xFF000000u | ProgressLight(p.Color, NeonIntenso ? 0.96f : 0.88f));
+        }
+        private static uint ProgressLight(uint c, float f)
+        {
+            uint r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255;
+            return ((uint)(r + (255-r)*f) << 16) | ((uint)(g + (255-g)*f) << 8) | (uint)(b + (255-b)*f);
+        }
+        // Coordenadas fraccionarias y borde de un pixel interpolado por GPU:
+        // no cuantizar ni rehornear toda la barra de estado al avanzar.
+        private void ProgressBand(float x, float y, float w, float h, uint color)
+        {
+            float edge = Math.Min(1f, w * 0.5f);
+            float top = y - h * 0.5f, bottom = y + h * 0.5f;
+            SetTexQuadA(progressQuad, x, top, x + w - edge, bottom, 1, 1, color);
+            stars.DrawColorQuad(progressQuad);
+            SetTexQuadA(progressQuad, x + w - edge, top, x + w + edge, bottom, 1, 1, color);
+            progressQuad[1].Color &= 0x00FFFFFFu;
+            progressQuad[2].Color &= 0x00FFFFFFu;
+            progressQuad[4].Color &= 0x00FFFFFFu;
+            stars.DrawColorQuad(progressQuad);
+        }
+
+        internal static Bitmap BakeVineta(int n)
+        {
+            if (n < 2) throw new ArgumentOutOfRangeException("n");
+            Bitmap b = new Bitmap(n, n, PixelFormat.Format32bppArgb);
+            for (int y = 0; y < n; y++)
+                for (int x = 0; x < n; x++)
+                {
+                    double dx = 2.0 * x / (n - 1) - 1.0, dy = 2.0 * y / (n - 1) - 1.0;
+                    double f = Math.Max(0.0, Math.Min(1.0, (dx * dx + dy * dy - 0.18) / 1.82));
+                    f = f * f * (3.0 - 2.0 * f);
+                    b.SetPixel(x, y, Color.FromArgb((int)(110.0 * f + 0.5), 0, 0, 0));
+                }
+            return b;
+        }
+        private void EnsureVineta()
+        {
+            if (!VinetaSuave || vinetaTex != IntPtr.Zero) return;
+            int now = Environment.TickCount;
+            if (vinetaRetry != 0 && unchecked(now - vinetaRetry) < 1000) return;
+            vinetaRetry = now;
+            using (Bitmap b = BakeVineta(128))
+                vinetaTex = stars.CreateOverlay(b, out vinetaU, out vinetaV);
+        }
+
+        // Solo tinte de los vertices GPU: mismas texturas y dos pasadas, sin buffers
+        // ni asignaciones nuevas por cuadro. Conserva parte del acento musical.
+        internal static uint TinteNebulosa(uint original, bool segunda, bool activo)
+        {
+            if (!activo) return original & 0x00FFFFFFu;
+            uint baseColor = segunda ? 0x009C70E8u : 0x003899D8u;
+            uint r = ((((original >> 16) & 255) * 35 + ((baseColor >> 16) & 255) * 65 + 50) / 100);
+            uint g = ((((original >> 8) & 255) * 35 + ((baseColor >> 8) & 255) * 65 + 50) / 100);
+            uint b = (((original & 255) * 35 + (baseColor & 255) * 65 + 50) / 100);
+            return (r << 16) | (g << 8) | b;
+        }
+
         private void DibujaNieblas()
         {
             if (Nieblas == GpuStarfield.Bajo) return;   // perilla de Ctrl+F3
@@ -1928,8 +2145,8 @@ namespace Rocola
                 uint a = (uint)(NebAlfa * 255f + 0.5f); if (a > 255) a = 255;
                 float mx = Width * NebDeriva, my = Height * NebDeriva;
                 float c = (float)Math.Cos(NebFase), sn = (float)Math.Sin(NebFase);
-                NieblaDeriva(mx, my, c * mx, sn * my, (a << 24) | (NebColor & 0x00FFFFFFu));
-                NieblaDeriva(mx, my, -c * mx, -sn * my, (a << 24) | (NebColor2 & 0x00FFFFFFu));
+                NieblaDeriva(mx, my, c * mx, sn * my, (a << 24) | TinteNebulosa(NebColor, false, NebulosasCine));
+                NieblaDeriva(mx, my, -c * mx, -sn * my, (a << 24) | TinteNebulosa(NebColor2, true, NebulosasCine));
             }
             if (hazTex != IntPtr.Zero && Nieblas == GpuStarfield.Alto)
             {
@@ -2397,6 +2614,8 @@ namespace Rocola
 
         private void DrawAurora(GpuAurora au)
         {
+            // au es una copia: no modificar el espectro ni el renderizador CPU.
+            if (OndasSuaves) { au.Alto *= 0.78f; au.Dim *= 0.85f; au.DimFilo *= 0.65f; }
             if (au.Alto < 2f || au.Dim <= 0.02f) return;
             int puntos = AurCols + 1;
             if (aurH == null)
@@ -2434,7 +2653,7 @@ namespace Rocola
             for (int i = 0; i < puntos; i++)
             {
                 float fx = (float)i / AurCols;
-                float v = AurPerfil(au.B, fx);
+                float v = AuroraBandas ? PerfilDefinido(au.B, fx) : AurPerfil(au.B, fx);
                 if (au.Calma > 0f) { float vc = AurCalma(fx, t) * au.Calma; if (vc > v) v = vc; }   // en reposo manda la forma lenta
                 if (v > 1f) v = 1f;
                 float alt = AurPiso + (1f - AurPiso) * v;
@@ -2448,6 +2667,7 @@ namespace Rocola
                 for (int k = 0; k <= AurFilas; k++)
                 {
                     uint c = AurLerpRgb(aurRampPie[k], aurRampAgu[k], fx);
+                    if (AuroraBandas) c = AurLerpRgb(c, fx < .5f ? AurLerpRgb(0x009779F2u, 0x0059DBCCu, fx*2) : AurLerpRgb(0x0059DBCCu, 0x00E7BE88u, (fx-.5f)*2), .38f);
                     float rr = (c >> 16) & 0xFF, gg = (c >> 8) & 0xFF, bb = c & 0xFF;
                     TonoPorNivel(ref rr, ref gg, ref bb, v);
                     aurCortina[k * puntos + i] = ((uint)rr << 16) | ((uint)gg << 8) | (uint)bb;
@@ -2481,7 +2701,8 @@ namespace Rocola
             // TRES pasadas, de ida y vuelta entre los dos arreglos: una sola no basta para el fondo de los
             // valles, que es lo mas puntiagudo que hay en la silueta. Se dibuja el resultado -el mismo para el
             // relleno y para el filo, o se despegarian.
-            AurSuaviza(aurH, aurHs); AurSuaviza(aurHs, aurH); AurSuaviza(aurH, aurHs);
+            AurSuaviza(aurH, aurHs);
+            if (!AuroraBandas) { AurSuaviza(aurHs, aurH); AurSuaviza(aurH, aurHs); }
             int n = AurMalla(aurV, aurHs, aurCortina, aurSueloC, aurA, aurR, Width, au.BaseY, Height);
             if (n >= 3) stars.DrawMesh(aurV, n / 3);   // TODO el relleno en UNA sola llamada de dibujo
             // Y encima el BRILLO -el filo de neon y la linea del horizonte- en otra sola llamada, esta

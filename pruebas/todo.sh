@@ -24,7 +24,11 @@ NLAYER="$RAIZ/packages/NLayer.1.12.0/lib/net35/NLayer.dll"
 # El dibujo por tarjeta grafica va en dos archivos: D3D9Star.cs es el dibujo (igual en las tres ramas) y
 # el dispositivo es el que cambia de sistema. Aqui va el de OpenGL; el de Direct3D (D3D9Device.cs) esta en
 # el arbol para las ramas de Windows y NO se compila.
-FUENTES="$RAIZ/Rocola/Form1.cs $RAIZ/Rocola/Form1.Designer.cs $RAIZ/Rocola/Program.cs $RAIZ/Rocola/D3D9Star.cs $RAIZ/Rocola/Rendimiento.cs $RAIZ/Rocola/GLDevice.cs $RAIZ/Rocola/LinuxAudio.cs $RAIZ/Rocola/LinuxSistema.cs $RAIZ/Rocola/LinuxPintura.cs $RAIZ/Rocola/LinuxVideo.cs"
+# Los tres ultimos son NUEVOS y van dentro de #if ROCOLA_GPU, asi que en el perfil sin tarjeta grafica
+# no compilan nada. Estan aqui porque el .csproj de las ramas de Windows los incluye: si faltaran, la
+# tanda estaria probando un programa SIN el panel de reposo, sin la vineta y sin las nebulosas naturales,
+# mientras que lo que se instala si los trae. Una prueba que mira otro programa no prueba nada.
+FUENTES="$RAIZ/Rocola/Form1.cs $RAIZ/Rocola/Form1.Designer.cs $RAIZ/Rocola/Program.cs $RAIZ/Rocola/D3D9Star.cs $RAIZ/Rocola/Rendimiento.cs $RAIZ/Rocola/GLDevice.cs $RAIZ/Rocola/LinuxAudio.cs $RAIZ/Rocola/LinuxSistema.cs $RAIZ/Rocola/LinuxPintura.cs $RAIZ/Rocola/LinuxVideo.cs $RAIZ/Rocola/EstadoReposoGpu.cs $RAIZ/Rocola/AcabadoGpu.cs $RAIZ/Rocola/CieloNaturalGpu.cs"
 # Los archivos de trabajo van a una carpeta propia que se limpia sola al salir, en vez de nombres fijos en
 # /tmp: dos tandas a la vez no se pisan, y no queda basura si esto se corta a medias.
 TMP_PRUEBAS="${TMPDIR:-/tmp}/rocola_pruebas_$$"
