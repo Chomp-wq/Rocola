@@ -30,6 +30,12 @@ using System.Windows.Forms;
 // se comprueba comparando las dos maneras contra la casilla de verdad: la buena se parece, la ingenua no.
 class Paginar
 {
+    static FieldInfo fPlace;
+    // Una casilla sin dibujo pero CON marcador no es un hueco: la tarjeta pinta ahi un cubo del color del
+    // cielo. En una version que no tenga marcadores esto contesta que no, y entonces manda el dibujo.
+    static bool Marcador(object celda)
+    { return fPlace != null && celda != null && (bool)fPlace.GetValue(celda); }
+
     static int fallos = 0;
     static void Check(bool ok, string q) { Console.WriteLine((ok ? "  OK   " : "  FALLO") + "  " + q); if (!ok) fallos++; }
 
@@ -194,6 +200,7 @@ class Paginar
         }
         Array buf = Array.CreateInstance(TCel, 32);
         FieldInfo fBmp = TCel.GetField("Bmp"), fW = TCel.GetField("W");
+        fPlace = TCel.GetField("Placeholder");
         FieldInfo fSlideTick = TAV.GetField("slideTick", IF);
 
         // Quieta: casillas a resolucion entera.
@@ -206,12 +213,18 @@ class Paginar
         float anchoQuad = Convert.ToSingle(fW.GetValue(buf.GetValue(0)));
         Check(q0 != null && q0.Width > cw * 0.9, "quieta, la casilla va a resolucion entera (" + (q0 == null ? 0 : q0.Width) + " px)");
 
-        // Deslizando: mas chicas, PERO el hueco en pantalla es el mismo (no se mueve nada de sitio).
+        // MIENTRAS SE MUEVE YA NO SE HORNEA NADA, Y ESO ES MEJOR QUE HORNEAR CHICO. Antes la casilla se
+        // horneaba a media resolucion: barato, pero no gratis, y justo en el cuadro mas apretado. Ahora
+        // durante el deslizamiento no se hornea NI SE PIDE portada: en el sitio de cada disco va un
+        // marcador -un cubo del color del cielo, que dibuja la tarjeta sin textura- y la calidad entera
+        // vuelve en cuanto la pagina para. El hueco en pantalla sigue siendo el mismo: nada se mueve de
+        // sitio, que es lo que hacia falta para que hojear no diera saltos.
         mSlide.Invoke(av, new object[] { 1, W });
         for (int k = 0; k < 4; k++) mGrid.Invoke(av, new object[] { buf });
         Bitmap q1 = (Bitmap)fBmp.GetValue(buf.GetValue(0));
         float anchoQuad2 = Convert.ToSingle(fW.GetValue(buf.GetValue(0)));
-        Check(q1 != null && q1.Width < q0.Width, "deslizando, la casilla va mas chica (" + (q1 == null ? 0 : q1.Width) + " px)");
+        Check(q1 == null, "deslizando no se hornea nada (antes se horneaba a media resolucion)");
+        Check(Marcador(buf.GetValue(0)), "y en su sitio va un marcador, que la tarjeta pinta sin textura");
         Check(anchoQuad == anchoQuad2, "y ocupa EXACTAMENTE el mismo hueco en pantalla: no se mueve nada de sitio");
 
         Console.WriteLine("\n  5) Y NO SE REHACE EL TRABAJO DOS VECES\n");
@@ -225,13 +238,13 @@ class Paginar
         mSlide.Invoke(av, new object[] { 1, W });
         for (int k = 0; k < 4; k++) mGrid.Invoke(av, new object[] { buf });
         Bitmap sinTapa = (Bitmap)fBmp.GetValue(buf.GetValue(0));
-        Check(sinTapa != null, "deslizando sin portadas, la casilla se ve igual (con el disco vacio)");
+        Check(sinTapa == null && Marcador(buf.GetValue(0)), "deslizando sin portadas, el sitio no queda vacio: va el marcador");
 
         hayPortada = true;   // la portada acaba de llegar, y la pagina SIGUE moviendose
         for (int k = 0; k < 3; k++) mGrid.Invoke(av, new object[] { buf });
         Bitmap trasTapa = (Bitmap)fBmp.GetValue(buf.GetValue(0));
-        Check(ReferenceEquals(sinTapa, trasTapa),
-              "y aunque llegue la portada NO se rehace mientras se mueve: el momento apretado no hace el doble de trabajo");
+        Check(trasTapa == null,
+              "y aunque llegue la portada NO se hornea mientras se mueve: el momento apretado no hace el doble de trabajo");
 
         // En cuanto para, si que se rehace: la portada tiene que acabar viendose.
         fSlideTick.SetValue(av, -1);
@@ -272,14 +285,17 @@ class Paginar
         // dejando horneadas las casillas de la pagina de al lado. Ese es el estado desde el que se hojea.
         fSlideTick.SetValue(av, -1);
         for (int k = 0; k < 5; k++) mGrid.Invoke(av, new object[] { buf });
-        // Si no queda presupuesto y no hay casilla de esta resolucion, se echa mano de la OTRA antes que
-        // dejar el sitio vacio: la tarjeta la estira y se ve un pelo blanda un cuadro, que es infinitamente
-        // mejor que un agujero en la pared.
+        // ESTO ES LO QUE DE VERDAD IMPORTA Y NO HA CAMBIADO: ninguna casilla se queda SIN NADA que pintar.
+        // Lo que pinta si ha cambiado -antes su dibujo horneado, ahora un marcador mientras se mueve-, y
+        // por eso la comprobacion mira las dos cosas: lo que no se puede consentir es el agujero, no con
+        // cual de las dos se tapa. Un hueco en la pared se ve como un fallo; un marcador, como que va
+        // cargando.
         mSlide.Invoke(av, new object[] { -1, W });
         mGrid.Invoke(av, new object[] { buf });   // UNA sola vuelta: el presupuesto no da para las 18
         int vacias = 0;
-        for (int i = 0; i < 18; i++) if (fBmp.GetValue(buf.GetValue(i)) == null) vacias++;
-        Check(vacias == 0, "en el primer cuadro de un deslizamiento no queda ni una casilla vacia (quedaron " + vacias + ")");
+        for (int i = 0; i < 18; i++)
+            if (fBmp.GetValue(buf.GetValue(i)) == null && !Marcador(buf.GetValue(i))) vacias++;
+        Check(vacias == 0, "en el primer cuadro de un deslizamiento no queda ni una casilla sin nada que pintar (quedaron " + vacias + ")");
 
         Console.WriteLine("\n  " + (fallos == 0 ? "TODO BIEN" : fallos + " FALLO(S)"));
         return fallos;

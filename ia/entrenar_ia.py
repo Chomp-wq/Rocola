@@ -210,6 +210,30 @@ class Mlp:
         return acts
     def predict(self, X): return self.forward(X)[-1]
 
+class FilasMapeadas:
+    """Vista por indices: solo el lote solicitado se convierte a float64."""
+    def __init__(self, mapa, filas, inicio, fin):
+        self.mapa, self.filas = mapa, filas
+        self.inicio, self.fin = inicio, fin
+        self.shape = (len(filas), fin-inicio)
+    def __len__(self): return len(self.filas)
+    def seleccionar(self, indices):
+        return FilasMapeadas(self.mapa, self.filas[indices], self.inicio, self.fin)
+    def __getitem__(self, key):
+        rows, columns = key if isinstance(key, tuple) else (key, slice(None))
+        values = np.asarray(self.mapa[self.filas[rows], self.inicio:self.fin], dtype=np.float64)
+        return values[..., columns]
+
+def mse_modelo(model, X, Y, lote=4096):
+    if not isinstance(X, FilasMapeadas):
+        return float(((model.predict(X) - Y) ** 2).mean())
+    total = 0.0
+    count = 0
+    for p in range(0, len(X), lote):
+        error = (model.predict(X[p:p+lote]) - Y[p:p+lote]) ** 2
+        total += float(error.sum()); count += error.size
+    return total / max(1, count)
+
 def train(model, X, Y, Xv, Yv, epochs=60, lr=2e-3, batch=256, seed=3):
     if epochs <= 0 or batch <= 0 or len(X) == 0 or len(Xv) == 0:
         raise ValueError("Se requieren epocas/lote positivos y ejemplos de entrenamiento y validacion")
@@ -233,8 +257,8 @@ def train(model, X, Y, Xv, Yv, epochs=60, lr=2e-3, batch=256, seed=3):
                 model.W[L] -= lr * (mW[L] / c1) / (np.sqrt(vW[L] / c2) + eps)
                 model.B[L] -= lr * (mB[L] / c1) / (np.sqrt(vB[L] / c2) + eps)
         if (ep + 1) % 10 == 0 or ep == 0:
-            tr = float(((model.predict(X) - Y) ** 2).mean())
-            vl = float(((model.predict(Xv) - Yv) ** 2).mean())
+            tr = mse_modelo(model, X, Y)
+            vl = mse_modelo(model, Xv, Yv)
             print("  epoca %3d  mse-entren %.4f  mse-valid %.4f" % (ep + 1, tr, vl))
     return model
 
@@ -247,7 +271,7 @@ def export_ria1(model, path):
             f.write(W.astype(np.float32).tobytes())        # fila-mayor (out, in): igual que la rocola
             f.write(B.astype(np.float32).tobytes())
 
-def cargar_datos_rocola(ruta, max_ejemplos=4000000):
+def cargar_datos_rocola(ruta, max_ejemplos=4000000, por_indices=False):
     """Lee el material que la rocola junto sola (rocola_ia_datos.bin).
 
     Formato: cabecera "RIAD" + version + n_entradas + n_salidas, y luego cada par como
@@ -261,6 +285,8 @@ def cargar_datos_rocola(ruta, max_ejemplos=4000000):
     que entren canciones de toda la biblioteca y no solo las primeras. Con --max-ejemplos se
     cambia cuantos se usan (0 = todos, solo si te sobra la RAM).
     """
+    if max_ejemplos < 0:
+        raise ValueError("max_ejemplos debe ser cero o positivo")
     with open(ruta, "rb") as f:
         head = f.read(16)
         if len(head) < 16 or head[:4] != b"RIAD":
@@ -279,6 +305,9 @@ def cargar_datos_rocola(ruta, max_ejemplos=4000000):
         paso = int(np.ceil(n / float(max_ejemplos)))
         print("  el archivo trae %s ejemplos (%.1f GB): se toma 1 de cada %d, repartidos de punta a punta"
               % (format(n, ","), cuerpo / 1024.0 ** 3, paso))
+    if por_indices:
+        filas = np.arange(0, n, paso, dtype=np.int64)
+        return FilasMapeadas(mm, filas, 0, nin), FilasMapeadas(mm, filas, nin, por)
     crudo = np.array(mm[::paso], dtype=np.float64)
     del mm
     return crudo[:, :nin], crudo[:, nin:]
@@ -290,7 +319,7 @@ def main():
         ruta = sys.argv[sys.argv.index("--datos") + 1]
         tope = int(sys.argv[sys.argv.index("--max-ejemplos") + 1]) if "--max-ejemplos" in sys.argv else 4000000
         print("Leyendo el material que junto la rocola:", ruta)
-        X, Y = cargar_datos_rocola(ruta, tope)
+        X, Y = cargar_datos_rocola(ruta, tope, por_indices=True)
         print("  %d ejemplos de %d entradas -> %d salidas" % (X.shape[0], X.shape[1], Y.shape[1]))
         clips = None
     elif "--musica" in sys.argv:
@@ -315,18 +344,23 @@ def main():
     if len(X) <= 500:
         print("Se requieren mas de 500 ejemplos: 500 se reservan para validar. No se guarda ningun modelo.")
         return 1
-    idx = rng.permutation(len(X)); X, Y = X[idx], Y[idx]
+    idx = rng.permutation(len(X))
     nv = max(500, len(X) // 10)
-    Xv, Yv, X, Y = X[:nv], Y[:nv], X[nv:], Y[nv:]
+    if isinstance(X, FilasMapeadas):
+        Xv, Yv = X.seleccionar(idx[:nv]), Y.seleccionar(idx[:nv])
+        X, Y = X.seleccionar(idx[nv:]), Y.seleccionar(idx[nv:])
+    else:
+        X, Y = X[idx], Y[idx]
+        Xv, Yv, X, Y = X[:nv], Y[:nv], X[nv:], Y[nv:]
 
     # linea base: la curva FIJA del reconstructor clasico (-9 dB/oct de amplitud = -1.8 log10/oct de energia)
     fc = Xv[:, 25] * 20000.0
     top = np.minimum(2.0 * fc, np.minimum(20000.0, np.full_like(fc, FS / 2 * 0.95)))
-    ybase = np.zeros_like(Yv)
+    ybase = np.zeros(Yv.shape, dtype=np.float64)
     for j in range(12):
         fmid = fc * (top / fc) ** ((j + 0.5) / 12.0)
         ybase[:, j] = np.clip(-1.8 * np.log2(fmid / fc), -4.0, 0.5)
-    mse_base = float(((ybase - Yv) ** 2).mean())
+    mse_base = float(((ybase - Yv[:]) ** 2).mean())
 
     capas = [28, 48, 48, 12]
     if "--capas" in sys.argv:
@@ -338,7 +372,7 @@ def main():
         raise SystemExit("Demasiado grande para la rocola: maximo 8 capas de pesos y 512 neuronas.")
     print("Entrenando el MLP %s ..." % "->".join(str(c) for c in capas))
     model = train(Mlp(capas, rng), X, Y, Xv, Yv)
-    mse_net = float(((model.predict(Xv) - Yv) ** 2).mean())
+    mse_net = mse_modelo(model, Xv, Yv)
     print("RESULTADO  mse-valid: red = %.4f  |  curva fija = %.4f  (mejora %.1fx)" % (mse_net, mse_base, mse_base / max(mse_net, 1e-9)))
 
     here = os.path.dirname(os.path.abspath(__file__))

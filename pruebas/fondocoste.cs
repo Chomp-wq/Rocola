@@ -32,6 +32,13 @@ using System.Reflection;
 // permite decir si el estirado sale gratis o no.
 class FondoCoste
 {
+    // Y COMO AHORA ES DE INSTANCIA, HAY QUE DARLE UNA. Se fabrica un panel SIN ENCENDER -sin constructor,
+    // sin ventana, sin tarjeta- que es todo lo que hace falta para armar vertices en memoria. Si el metodo
+    // vuelve a ser estatico algun dia, esto sigue valiendo: Invoke con instancia lo ignora.
+    static object DueNo(MethodInfo m, Type t)
+    { return m.IsStatic ? null : Codigo.FormSinEncender(t); }
+
+    static object duenoVerts;
     static int fallos = 0;
     static void Check(bool ok, string q) { Console.WriteLine((ok ? "  OK   " : "  FALLO") + "  " + q); if (!ok) fallos++; }
 
@@ -185,7 +192,12 @@ class FondoCoste
             Console.WriteLine("     (esta version no dibuja por tarjeta grafica: no hay vertices que armar)");
         else
         {
-            MethodInfo mVerts = TGpu.GetMethod("BuildStarVerts", BindingFlags.Static | BindingFlags.NonPublic);
+            // ESTATICO O DE INSTANCIA, DA IGUAL: lo que esta prueba vigila es que los vertices de las
+            // estrellas se armen en UN SOLO SITIO, no como esta declarado ese sitio. Desde que el dibujo
+            // mira ajustes propios del panel -las estrellas finas, por ejemplo- el metodo dejo de ser
+            // estatico, y preguntar solo por los estaticos daba por roto justo el cambio que lo mejora.
+            MethodInfo mVerts = TGpu.GetMethod("BuildStarVerts", BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic);
+            duenoVerts = (mVerts != null) ? DueNo(mVerts, TGpu) : null;
             Check(mVerts != null, "los vertices de las estrellas se arman en un solo sitio (BuildStarVerts)");
             if (mVerts != null)
             {
@@ -210,13 +222,13 @@ class FondoCoste
                     col[i] = 0xFFFFFFFF;
                 }
                 object[] arg = { buf, xs, ys, ph, spd, sz, kd, fm, col, NE, 0.0, 1f, 0.3f, new float[3], new float[3], 1920f, 1080f };
-                mVerts.Invoke(null, arg);   // la primera calienta
+                mVerts.Invoke(duenoVerts, arg);   // la primera calienta
                 List<double> v4 = new List<double>();
                 for (int k = 0; k < 21; k++)
                 {
                     arg[10] = (double)k * 0.04;
                     Stopwatch w4 = Stopwatch.StartNew();
-                    for (int rep = 0; rep < 10; rep++) mVerts.Invoke(null, arg);
+                    for (int rep = 0; rep < 10; rep++) mVerts.Invoke(duenoVerts, arg);
                     w4.Stop();
                     v4.Add(w4.Elapsed.TotalMilliseconds / 10.0);
                 }

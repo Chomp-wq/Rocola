@@ -1,5 +1,86 @@
 # Rocola
 
+## Política de renderizado (8 de septiembre de 2026)
+
+El renderizador CPU es obsoleto y queda congelado por decisión del usuario.
+Las nuevas mejoras visuales y optimizaciones de renderizado se realizan solo en GPU,
+con interruptores persistentes en Ctrl+F3. No se retira el código CPU existente.
+Consultar [AGENTS.md](AGENTS.md) antes de modificar el proyecto.
+
+La opción «Nebulosas azul / violeta (solo GPU)» da a las dos capas del fondo una
+base azul y violeta, conservando un 35 % de sus colores musicales. No cambia los
+colores extraídos de los discos ni los de la ventana de detalles. Al desactivarla
+se recuperan los tintes originales; requiere nebulosas en nivel medio o alto.
+
+### Acabado, transparencias y buscador (9 de septiembre de 2026)
+
+Se añaden seis interruptores independientes, activados por defecto y guardados en
+Ctrl+F3 → Imagen:
+
+- Neon de progreso intenso: halo más amplio, tubo luminoso y núcleo más brillante.
+  Requiere el neón; funciona también con el suavizado del progreso desactivado.
+- Estado ampliado transparente: elimina el relleno de la franja expandida y conserva
+  un velo tenue en las tarjetas para mantener legibles sus textos.
+- Lista de canciones transparente: aplica un velo oscuro de aproximadamente 82 %
+  de opacidad al muro interior del disco (18 % de transparencia), manteniendo
+  títulos, selección, insignias y desplazamiento.
+- Optimizar selección del buscador: reutiliza la capa principal y actualiza por
+  separado la tarjeta seleccionada y la información de su vista previa.
+- Nebulosas con detalle natural: textura de nubes con varias escalas de detalle,
+  calculada al crear o regenerar la textura, no en cada cuadro.
+- Aurora con bandas más definidas: picos locales menos mezclados y gradación de
+  color por frecuencia. Es diferenciación visual del espectro, no separación real
+  de instrumentos ni procesamiento del audio.
+
+Desactivar cada opción recupera su comportamiento anterior. No se cambia el
+renderizador CPU. Las nebulosas requieren que sus capas estén habilitadas y la
+transparencia ampliada requiere el estado ampliado en reposo.
+Ver [verificación y despliegue](../auditoria-rendimiento/ACABADO-GPU-20260909.md).
+
+### Paquete visual GPU
+
+Revisión de legibilidad del 9 de septiembre: el estado ampliado utiliza tipografía
+Trebuchet MS más grande y en negrita, encabezados diferenciados y numeración de cola.
+El indicador MEJORADA aparece en una cápsula y su halo acompaña la expansión;
+conserva la condición real de mejora y el color propio de cada rama.
+El tiempo queda a la izquierda de la barra de progreso, en una fila inferior
+reservada. Son ajustes de los efectos existentes, con sus mismos interruptores
+en Ctrl+F3 → Imagen; el renderizado CPU no cambia.
+
+Actualización del 9 de septiembre:
+
+- Con música y 15 segundos sin interacción, el muro queda al 2 % de opacidad.
+- «Estado y cola ampliados en reposo (GPU)» hace crecer la franja hacia arriba,
+  agranda la carátula y muestra las tres próximas canciones con título, artista,
+  portada, número de turno y total en cola. Las ondas ascienden con la franja.
+  Al interactuar vuelve suavemente al tamaño habitual. Requiere el modo de discos
+  tenues en reposo; no se activa en ajustes, buscador, lista de canciones o vídeo.
+- «Ocultar carátulas al pasar de página» sustituye el horneado a baja resolución:
+  durante el deslizamiento se omiten carátulas y etiquetas. Cubos discretos del
+  tono del fondo ocupan su lugar hasta que cada celda está lista. Al detenerse,
+  la carga completa se reparte entre cuadros. Se conserva la clave hojeo_ligero.
+- «Progreso ultrafluido (solo GPU)» separa la barra de la textura de estado y la
+  dibuja por cuadro, con coordenadas fraccionarias y suavizado temporal del audio.
+  El interruptor del neón continúa siendo independiente.
+
+Los nuevos efectos no modifican el renderizador CPU. La valoración del rendimiento
+y la percepción de las transiciones con música corresponde al usuario.
+
+En Ctrl+F3 → Imagen, cada efecto tiene un interruptor independiente y persistente:
+
+- Viñeta suave: oscurece gradualmente los bordes del fondo, sin oscurecer discos ni textos.
+- Halo de selección: luz del acento del fondo detrás del disco seleccionado; se atenúa junto con el muro en reposo.
+- Estrellas finas: reduce las puntas grandes y conserva algunas estrellas destacadas, sin cambiar el patrón al alternar.
+- Ondas suaves: reduce altura e intensidad de la aurora, conservando su reacción musical.
+- Nebulosas azul/violeta, barra de progreso neón y discos tenues en reposo con música.
+- El hojeo ligero existente sigue disponible por separado.
+
+Las opciones están activadas por defecto. Desplazar la página hacia abajo para
+alcanzar todos los controles. Apagarlas recupera el aspecto anterior de cada efecto.
+La viñeta reutiliza una textura GPU de 128 × 128; el halo reutiliza la textura de
+brillo existente. No se añadieron temporizadores. El rendimiento real será evaluado
+por el usuario; las comprobaciones automatizadas no equivalen a una medición con música.
+
 Rocola digital para Windows (WinForms + NAudio): pantalla completa, manejo por
 botonera/teclado físico (sin depender de un teclado de PC), monedero con créditos,
 búsqueda con teclado en pantalla, sección de videos (Windows Media Player), portadas
