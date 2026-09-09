@@ -225,9 +225,9 @@ class Simbolos
         Console.WriteLine("\n  4) Y NO QUEDA NINGUN OTRO SIMBOLO QUE XP NO SEPA DIBUJAR\n");
         Check(TLet.GetField("fTop", BindingFlags.Instance | BindingFlags.NonPublic) == null,
               "la barra ya ni siquiera guarda una letra de Windows para la estrella");
-        string fuente = Path.Combine("..", Path.Combine("Rocola", "Form1.cs"));
-        string txt = File.Exists(fuente) ? File.ReadAllText(fuente) : "";
-        Check(txt.Length > 0, "se puede leer el codigo de la rocola para repasarlo");
+        // TODAS las partes de Form1, no solo Form1.cs: la clase esta repartida por temas.
+        string txt = Codigo.FuenteDeForm1();
+        Check(txt.Length > 100000, "se puede leer el codigo de la rocola ENTERO para repasarlo (" + txt.Length + " letras)");
         int malo = Cuenta(txt, "\\u25B6") + Cuenta(txt, "\\u25b6");
         Console.WriteLine("     triangulos de los que XP no sabe dibujar: " + malo);
         Check(malo == 0, "el triangulito de SONANDO es el que XP SI sabe dibujar (hay dos casi iguales)");

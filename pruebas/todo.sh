@@ -28,7 +28,7 @@ NLAYER="$RAIZ/packages/NLayer.1.12.0/lib/net35/NLayer.dll"
 # no compilan nada. Estan aqui porque el .csproj de las ramas de Windows los incluye: si faltaran, la
 # tanda estaria probando un programa SIN el panel de reposo, sin la vineta y sin las nebulosas naturales,
 # mientras que lo que se instala si los trae. Una prueba que mira otro programa no prueba nada.
-FUENTES="$RAIZ/Rocola/Form1.cs $RAIZ/Rocola/Form1.Designer.cs $RAIZ/Rocola/Program.cs $RAIZ/Rocola/D3D9Star.cs $RAIZ/Rocola/Rendimiento.cs $RAIZ/Rocola/GLDevice.cs $RAIZ/Rocola/LinuxAudio.cs $RAIZ/Rocola/LinuxSistema.cs $RAIZ/Rocola/LinuxPintura.cs $RAIZ/Rocola/LinuxVideo.cs $RAIZ/Rocola/EstadoReposoGpu.cs $RAIZ/Rocola/AcabadoGpu.cs $RAIZ/Rocola/CieloNaturalGpu.cs"
+FUENTES="$RAIZ/Rocola/Form1.cs $RAIZ/Rocola/Form1.Ajustes.cs $RAIZ/Rocola/Form1.Biblioteca.cs $RAIZ/Rocola/Form1.Buscador.cs $RAIZ/Rocola/Form1.Datos.cs $RAIZ/Rocola/Form1.Fondo.cs $RAIZ/Rocola/Form1.Ia.cs $RAIZ/Rocola/Form1.Pared.cs $RAIZ/Rocola/Form1.Portadas.cs $RAIZ/Rocola/Form1.Sonido.cs $RAIZ/Rocola/Form1.Video.cs $RAIZ/Rocola/Form1.Vistas.cs $RAIZ/Rocola/Form1.Designer.cs $RAIZ/Rocola/Program.cs $RAIZ/Rocola/D3D9Star.cs $RAIZ/Rocola/Rendimiento.cs $RAIZ/Rocola/GLDevice.cs $RAIZ/Rocola/LinuxAudio.cs $RAIZ/Rocola/LinuxSistema.cs $RAIZ/Rocola/LinuxPintura.cs $RAIZ/Rocola/LinuxVideo.cs $RAIZ/Rocola/EstadoReposoGpu.cs $RAIZ/Rocola/AcabadoGpu.cs $RAIZ/Rocola/CieloNaturalGpu.cs"
 # Los archivos de trabajo van a una carpeta propia que se limpia sola al salir, en vez de nombres fijos en
 # /tmp: dos tandas a la vez no se pisan, y no queda basura si esto se corta a medias.
 TMP_PRUEBAS="${TMPDIR:-/tmp}/rocola_pruebas_$$"
