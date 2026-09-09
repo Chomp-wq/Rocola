@@ -95,6 +95,9 @@ python 00_verificar.py --descargar
 
 ## Notas honestas
 
+- La exportacion WAV deja margen de muestra (0,98) con ganancia comun L/R y dither
+  PCM16, sin recorte duro. Los pares A/B comparten la misma atenuacion para conservar
+  la comparacion de nivel. No es una garantia de true peak ni del pico tras codificar MP3.
 - Apollo reconstruye PERCEPTUALMENTE: inventa detalle plausible donde el MP3 borro informacion.
   Su conveniencia se decide escuchando tus muestras; no se garantiza preferencia ni
   recuperacion bit a bit de la informacion perdida.

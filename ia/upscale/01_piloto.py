@@ -16,7 +16,7 @@
 import sys, os, time, glob, random, shutil, tempfile, argparse, math
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import numpy as np
-from util_audio import FS, leer_wav, escribir_wav, decodificar_a_wav, acantilado_hz, igualar_rms, por_trozos
+from util_audio import FS, leer_wav, escribir_wav, ganancia_wav, decodificar_a_wav, acantilado_hz, igualar_rms, por_trozos
 
 # La carga de Apollo vive en modelo_apollo.py (robusta: descarga de HF + ruta local).
 def main():
@@ -70,6 +70,9 @@ def main():
 
         po = os.path.join(a.salida, "pares", "%02d_original_%s.wav" % (i, nombre))
         pm = os.path.join(a.salida, "pares", "%02d_mejorada_%s.wav" % (i, nombre))
+        # El MISMO margen para ambos: atenuarlos por separado rompe el RMS igualado.
+        margen = min(ganancia_wav(x), ganancia_wav(y))
+        x *= margen; y *= margen
         escribir_wav(po, x); escribir_wav(pm, y)
         if rng.random() < 0.5:
             shutil.copyfile(po, os.path.join(a.salida, "ciego", "%02d_X.wav" % i))

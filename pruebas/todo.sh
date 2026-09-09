@@ -22,7 +22,11 @@ NAUDIO="$RAIZ/packages/NAudio.1.9.0/lib/net35/NAudio.dll"
 # El dibujo por tarjeta grafica va en dos archivos: D3D9Star.cs es el dibujo (el mismo que en la rama de
 # Linux) y D3D9Device.cs es el dispositivo, que es lo unico que cambia de un sistema a otro. WinSistema.cs
 # lleva las dos cosas que el dibujo le pregunta a Windows (el refresco de la pantalla y si hay mensajes).
-FUENTES="../Rocola/Form1.cs ../Rocola/Form1.Designer.cs ../Rocola/Program.cs ../Rocola/D3D9Star.cs ../Rocola/Rendimiento.cs ../Rocola/D3D9Device.cs ../Rocola/WinSistema.cs"
+# Los tres de abajo son NUEVOS y van dentro de #if ROCOLA_GPU, asi que en el perfil sin tarjeta grafica
+# no compilan nada. Estan aqui porque el .csproj los incluye: si faltaran en esta lista, la tanda estaria
+# probando un programa SIN el panel de reposo, sin la vineta y sin las nebulosas naturales, mientras que en
+# Windows se instala uno que si los trae. Una prueba que mira otro programa no prueba nada.
+FUENTES="../Rocola/Form1.cs ../Rocola/Form1.Designer.cs ../Rocola/Program.cs ../Rocola/D3D9Star.cs ../Rocola/Rendimiento.cs ../Rocola/D3D9Device.cs ../Rocola/WinSistema.cs ../Rocola/EstadoReposoGpu.cs ../Rocola/AcabadoGpu.cs ../Rocola/CieloNaturalGpu.cs"
 TMP_PRUEBAS="${TMPDIR:-/tmp}/rocola_pruebas_$$"
 if ! mkdir -p "$TMP_PRUEBAS"; then
   echo "  No se pudo crear la carpeta temporal: $TMP_PRUEBAS"

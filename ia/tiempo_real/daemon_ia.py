@@ -2,13 +2,13 @@
 # ============================================================================================
 #  MOTOR DE IA EN TIEMPO REAL (rocola-hd): mantiene Apollo cargado en la GPU y procesa canciones
 #  BAJO DEMANDA. La rocola (C#) pide trabajos dejando un archivo .job; el motor los procesa y
-#  deja el resultado en cache/listos/<hash>.mp3. La rocola reproduce ese mp3 si existe; si no,
+#  deja el resultado en cache/listos/<hash>.wav float32. La rocola reproduce ese WAV si existe; si no,
 #  reproduce el original (nunca se bloquea). Con cache: cada cancion se procesa UNA vez.
 #  La MUSICA ORIGINAL NUNCA SE TOCA: todo vive en la carpeta cache del motor, con tope de tamano.
 #
 #  Protocolo (carpeta, sin sockets ni dependencias raras -> robusto y facil de depurar):
 #    cache/pendientes/<hash>.job   JSON con src, mezcla, mezcla_key, pipeline y cache_key
-#    cache/listos/<hash>.mp3       version mejorada (MP3 320: pesa ~5 veces menos que WAV) <- motor
+#    cache/listos/<hash>.wav       version mejorada float32, sin nueva compresion con perdida <- motor
 #    cache/listos/<hash>.orig      marca "ya era de calidad completa; usa el ORIGINAL"     <- motor
 #    cache/listos/<hash>.error                                                             <- si algo fallo
 #    cache/modelo.fingerprint     huella que la rocola copia al job y usa en el hash
@@ -38,11 +38,11 @@ TIMEOUT_DECODE = 20 * 60
 TIMEOUT_ENCODE = 20 * 60
 MAX_REINTENTOS = 3
 BACKOFF = (60, 5 * 60, 30 * 60)
-PIPELINE_VERSION = "apollo-safe-v2"
-CACHE_FORMAT_VERSION = "mp3-320-or-wav-v2"
+PIPELINE_VERSION = "apollo-safe-v4-float-decode"
+CACHE_FORMAT_VERSION = "wav-float32-v4-sin-recompresion"
 AQUI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(AQUI, "..", "upscale"))
-from util_audio import FS, leer_wav, escribir_wav, acantilado_hz, por_trozos, mezclar, mezcla_auto
+from util_audio import FS, leer_wav, escribir_wav_float, acantilado_hz, por_trozos, mezclar, mezcla_auto
 
 def _ticks_desde_stat(st):
     # DateTime.UnixEpoch.Ticks: reproduce File.GetLastWriteTimeUtc(path).Ticks de C#.
@@ -279,26 +279,14 @@ def _quita_error(listos, h):
     return True
 
 def _a_cache(listos, h, wav, ffmpeg):
-    """Guarda el resultado como MP3 320 kbps: a esa tasa el oido no lo distingue del WAV y pesa
-    ~5 veces menos (caben ~5x mas canciones en el mismo tope). Si el encode fallara (ffmpeg sin
-    libmp3lame, raro), cae a copiar el WAV tal cual. Aparicion atomica en ambos casos."""
-    dst = os.path.join(listos, h + ".mp3"); t = dst + ".t.mp3"
-    try:
-        _run([ffmpeg, "-nostdin", "-y", "-v", "error", "-i", wav, "-codec:a", "libmp3lame",
-              "-b:a", "320k", t], TIMEOUT_ENCODE)
-        os.replace(t, dst)
-        return dst
-    except Exception:
-        try: os.remove(t)
-        except OSError: pass
-        dst = os.path.join(listos, h + ".wav")
-        tmp = dst + ".tmp"
-        try:
-            shutil.copyfile(wav, tmp); os.replace(tmp, dst)
-            return dst
-        finally:
-            try: os.remove(tmp)
-            except Exception: pass
+    """Publica WAV flotante sin recodificar. tmp/listos comparten disco/cache.
+
+    El nombre final aparece atomicamente; no hay otra copia completa del audio.
+    ffmpeg se conserva en la firma para los llamadores existentes.
+    """
+    dst = os.path.join(listos, h + ".wav")
+    os.replace(wav, dst)
+    return dst
 
 DEFERIDO = object()
 
@@ -368,7 +356,7 @@ def _finaliza_cache(job_path, listos, h, job, pipeline, dst, cache):
 
 def procesar_uno(job_path, listos, proc, ffmpeg, pipeline, ffprobe, seg=10.0):
     """Procesa UN trabajo. El resultado queda en cache/listos con el MISMO hash del .job:
-      <hash>.mp3   version mejorada (Apollo + mezcla), en MP3 320
+      <hash>.wav   version mejorada (Apollo + mezcla), IEEE float32
       <hash>.orig  marca de "esta cancion YA es de calidad completa": la rocola usa el ORIGINAL
     Los temporales van a cache/tmp (MISMO disco del release), nunca a C:\Temp."""
     tmpdir = os.path.join(os.path.dirname(listos), "tmp")
@@ -430,7 +418,7 @@ def procesar_uno(job_path, listos, proc, ffmpeg, pipeline, ffprobe, seg=10.0):
             dst = _marca_original(listos, h, motivo)
             return _finaliza_cache(job_path, listos, h, job, pipeline, dst, cache)
         _run([ffmpeg, "-nostdin", "-y", "-v", "error", "-t", str(MAX_SEG + 30), "-i", src,
-              "-ac", "2", "-ar", str(FS), "-sample_fmt", "s16", tmp], TIMEOUT_DECODE)
+              "-ac", "2", "-ar", str(FS), "-c:a", "pcm_f32le", tmp], TIMEOUT_DECODE)
         x, _ = leer_wav(tmp)
         if len(x) > (MAX_SEG + 31) * FS:
             raise RuntimeError("la decodificacion excedio el limite de duracion")
@@ -440,7 +428,7 @@ def procesar_uno(job_path, listos, proc, ffmpeg, pipeline, ffprobe, seg=10.0):
         else:
             y = por_trozos(x, proc, seg=seg)
             m = mezcla_auto(cliff) if mez == "auto" else max(0.0, min(1.0, float(mez) / 100.0))
-            escribir_wav(out, mezclar(y, x, m))
+            escribir_wav_float(out, mezclar(y, x, m))
             dst = _a_cache(listos, h, out, ffmpeg)
             if _duracion(ffprobe, dst) is None:
                 if not _quita_requerido(dst):

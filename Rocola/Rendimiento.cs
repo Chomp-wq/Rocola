@@ -194,12 +194,25 @@ namespace Rocola
         // Lleva las perillas al panel de la tarjeta grafica. Se llama al montarlo y cada vez que cambian.
         private void AplicaEfectosGpu()
         {
+            if (progress != null) progress.Neon = progresoNeon;
 #if ROCOLA_GPU
             // Este va ANTES del corte de abajo: la pared de discos existe aunque el panel de la tarjeta no,
             // y es la pared la que decide como hornea sus casillas.
             if (albumView != null) albumView.HojeoLigero = hojeoLigero;   // aligerar mientras se pasa de pagina
             if (gpuPanel == null) return;
             gpuPanel.Nieblas = nieblasNiv;
+            gpuPanel.NebulosasCine = nebulosasCine;
+            gpuPanel.VinetaSuave = vinetaSuave;
+            gpuPanel.HaloSeleccion = haloSeleccion;
+            gpuPanel.EstrellasFinas = estrellasFinas;
+            gpuPanel.OndasSuaves = ondasSuaves;
+            gpuPanel.ProgresoFluido = progresoFluido;
+            gpuPanel.NeonIntenso = neonIntenso;
+            gpuPanel.CieloProfundo = cieloProfundo;
+            gpuPanel.AuroraBandas = auroraBandas;
+            if (searchOverlay != null) searchOverlay.SeparateGpu = buscadorCache;
+            if (!estadoExpandido) gpuPanel.IdleExpandTarget = false;
+            gpuPanel.UiUrgent = true;
             gpuPanel.Fugaces = fugacesNiv;
             gpuPanel.RelevoPatron = relevoNiv;
             gpuPanel.Estrellas = estrellasDens;
@@ -916,7 +929,10 @@ namespace Rocola
 
             Tarjeta tMide = new Tarjeta(); tMide.SetBounds(16, 4, 456, 400); tMide.Titulo = "ESTE EQUIPO"; tMide.Acento = cMide;
             Tarjeta tProp = new Tarjeta(); tProp.SetBounds(16, 412, 456, 160); tProp.Titulo = "LA PROPUESTA"; tProp.Acento = cProp;
-            Tarjeta tEfe = new Tarjeta(); tEfe.SetBounds(488, 4, 456, 568); tEfe.Titulo = "EFECTOS"; tEfe.Acento = cEfe;
+            pg.AutoScroll = true;
+            // Reservar el ancho de la barra vertical: 944 px ya desbordaban
+            // el area util de 943 px y hacian aparecer scroll horizontal.
+            Tarjeta tEfe = new Tarjeta(); tEfe.SetBounds(480, 4, 456, 1026); tEfe.Titulo = "EFECTOS"; tEfe.Acento = cEfe;
 
             // ---------------- ESTE EQUIPO ----------------
             BotonPlano bMedir = new BotonPlano();
@@ -990,14 +1006,86 @@ namespace Rocola
             // no para regatearla.
             Interruptor swHojeo = new Interruptor();
             swHojeo.SetBounds(16, 466, 424, 26); swHojeo.ForeColor = cTexto; swHojeo.Font = fNom;
-            swHojeo.Text = "Aligerar mientras se pasa de pagina"; swHojeo.Acento = cEfe;
+            swHojeo.Text = "Ocultar caratulas al pasar de pagina"; swHojeo.Acento = cEfe;
             swHojeo.Checked = hojeoLigero;
-            Label lPierde = new Label(); lPierde.SetBounds(16, 498, 424, 64); lPierde.BackColor = Color.Transparent;
+            Interruptor swNeon = new Interruptor();
+            swNeon.SetBounds(16, 498, 424, 26); swNeon.ForeColor = cTexto; swNeon.Font = fNom;
+            swNeon.Text = "Barra de progreso neon"; swNeon.Acento = cEfe; swNeon.Checked = progresoNeon;
+            tEfe.Controls.Add(swNeon);
+            Interruptor swReposo = new Interruptor();
+            swReposo.SetBounds(16, 530, 424, 26); swReposo.ForeColor = cTexto; swReposo.Font = fNom;
+            swReposo.Text = "Discos tenues en reposo con musica"; swReposo.Acento = cEfe; swReposo.Checked = muroReposo;
+            tEfe.Controls.Add(swReposo);
+            Interruptor swCine = new Interruptor();
+            swCine.SetBounds(16, 562, 424, 26); swCine.ForeColor = cTexto; swCine.Font = fNom;
+            swCine.Text = "Nebulosas azul / violeta (solo GPU)"; swCine.Acento = cEfe; swCine.Checked = nebulosasCine;
+            tEfe.Controls.Add(swCine);
+            Interruptor swVinetaSuave = new Interruptor();
+            swVinetaSuave.SetBounds(16, 594, 424, 26); swVinetaSuave.ForeColor = cTexto; swVinetaSuave.Font = fNom;
+            swVinetaSuave.Text = "Vineta suave (solo GPU)"; swVinetaSuave.Acento = cEfe; swVinetaSuave.Checked = vinetaSuave;
+            tEfe.Controls.Add(swVinetaSuave);
+            swVinetaSuave.CheckedChanged += delegate { vinetaSuave = swVinetaSuave.Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            Interruptor swHaloSeleccion = new Interruptor();
+            swHaloSeleccion.SetBounds(16, 626, 424, 26); swHaloSeleccion.ForeColor = cTexto; swHaloSeleccion.Font = fNom;
+            swHaloSeleccion.Text = "Halo de seleccion (solo GPU)"; swHaloSeleccion.Acento = cEfe; swHaloSeleccion.Checked = haloSeleccion;
+            tEfe.Controls.Add(swHaloSeleccion);
+            swHaloSeleccion.CheckedChanged += delegate { haloSeleccion = swHaloSeleccion.Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            Interruptor swEstrellasFinas = new Interruptor();
+            swEstrellasFinas.SetBounds(16, 658, 424, 26); swEstrellasFinas.ForeColor = cTexto; swEstrellasFinas.Font = fNom;
+            swEstrellasFinas.Text = "Estrellas finas (solo GPU)"; swEstrellasFinas.Acento = cEfe; swEstrellasFinas.Checked = estrellasFinas;
+            tEfe.Controls.Add(swEstrellasFinas);
+            swEstrellasFinas.CheckedChanged += delegate { estrellasFinas = swEstrellasFinas.Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            Interruptor swOndasSuaves = new Interruptor();
+            swOndasSuaves.SetBounds(16, 690, 424, 26); swOndasSuaves.ForeColor = cTexto; swOndasSuaves.Font = fNom;
+            swOndasSuaves.Text = "Ondas suaves (solo GPU)"; swOndasSuaves.Acento = cEfe; swOndasSuaves.Checked = ondasSuaves;
+            tEfe.Controls.Add(swOndasSuaves);
+            swOndasSuaves.CheckedChanged += delegate { ondasSuaves = swOndasSuaves.Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            Interruptor swFluido = new Interruptor();
+            swFluido.SetBounds(16, 722, 424, 26); swFluido.ForeColor = cTexto; swFluido.Font = fNom;
+            swFluido.Text = "Progreso ultrafluido (solo GPU)"; swFluido.Acento = cEfe; swFluido.Checked = progresoFluido;
+            tEfe.Controls.Add(swFluido);
+            swFluido.CheckedChanged += delegate { progresoFluido = swFluido.Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            Interruptor swExpandido = new Interruptor();
+            swExpandido.SetBounds(16, 754, 424, 26); swExpandido.ForeColor = cTexto; swExpandido.Font = fNom;
+            swExpandido.Text = "Estado y cola ampliados en reposo (GPU)"; swExpandido.Acento = cEfe; swExpandido.Checked = estadoExpandido;
+            tEfe.Controls.Add(swExpandido);
+            swExpandido.CheckedChanged += delegate { estadoExpandido = swExpandido.Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            Interruptor swneonIntenso = new Interruptor();
+            swneonIntenso.SetBounds(16, 786, 424, 26); swneonIntenso.ForeColor = cTexto; swneonIntenso.Font = fNom;
+            swneonIntenso.Text = "Neon de progreso intenso (GPU)"; swneonIntenso.Acento = cEfe; swneonIntenso.Checked = neonIntenso;
+            tEfe.Controls.Add(swneonIntenso);
+            swneonIntenso.CheckedChanged += delegate { neonIntenso = swneonIntenso.Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            Interruptor swestadoTransparente = new Interruptor();
+            swestadoTransparente.SetBounds(16, 818, 424, 26); swestadoTransparente.ForeColor = cTexto; swestadoTransparente.Font = fNom;
+            swestadoTransparente.Text = "Estado ampliado transparente (GPU)"; swestadoTransparente.Acento = cEfe; swestadoTransparente.Checked = estadoTransparente;
+            tEfe.Controls.Add(swestadoTransparente);
+            swestadoTransparente.CheckedChanged += delegate { estadoTransparente = swestadoTransparente.Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            Interruptor swcancionesTransparentes = new Interruptor();
+            swcancionesTransparentes.SetBounds(16, 850, 424, 26); swcancionesTransparentes.ForeColor = cTexto; swcancionesTransparentes.Font = fNom;
+            swcancionesTransparentes.Text = "Lista de canciones transparente (GPU)"; swcancionesTransparentes.Acento = cEfe; swcancionesTransparentes.Checked = cancionesTransparentes;
+            tEfe.Controls.Add(swcancionesTransparentes);
+            swcancionesTransparentes.CheckedChanged += delegate { cancionesTransparentes = swcancionesTransparentes.Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            Interruptor swbuscadorCache = new Interruptor();
+            swbuscadorCache.SetBounds(16, 882, 424, 26); swbuscadorCache.ForeColor = cTexto; swbuscadorCache.Font = fNom;
+            swbuscadorCache.Text = "Optimizar seleccion del buscador (GPU)"; swbuscadorCache.Acento = cEfe; swbuscadorCache.Checked = buscadorCache;
+            tEfe.Controls.Add(swbuscadorCache);
+            swbuscadorCache.CheckedChanged += delegate { buscadorCache = swbuscadorCache.Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            Interruptor swcieloProfundo = new Interruptor();
+            swcieloProfundo.SetBounds(16, 914, 424, 26); swcieloProfundo.ForeColor = cTexto; swcieloProfundo.Font = fNom;
+            swcieloProfundo.Text = "Nebulosas con detalle natural (GPU)"; swcieloProfundo.Acento = cEfe; swcieloProfundo.Checked = cieloProfundo;
+            tEfe.Controls.Add(swcieloProfundo);
+            swcieloProfundo.CheckedChanged += delegate { cieloProfundo = swcieloProfundo.Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            Interruptor swauroraBandas = new Interruptor();
+            swauroraBandas.SetBounds(16, 946, 424, 26); swauroraBandas.ForeColor = cTexto; swauroraBandas.Font = fNom;
+            swauroraBandas.Text = "Aurora con bandas mas definidas (GPU)"; swauroraBandas.Acento = cEfe; swauroraBandas.Checked = auroraBandas;
+            tEfe.Controls.Add(swauroraBandas);
+            swauroraBandas.CheckedChanged += delegate { auroraBandas = swauroraBandas.Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            Label lPierde = new Label(); lPierde.SetBounds(16, 978, 424, 40); lPierde.BackColor = Color.Transparent;
             lPierde.ForeColor = cTenue; lPierde.Font = fDes;
             tEfe.Controls.Add(lGen); tEfe.Controls.Add(swHojeo); tEfe.Controls.Add(lPierde);
 
             BotonPlano bResetG = new BotonPlano();
-            bResetG.SetBounds(16, 584, 300, 38); bResetG.Font = fBot; bResetG.Text = "Graficos como de fabrica";
+            bResetG.SetBounds(16, 1042, 300, 38); bResetG.Font = fBot; bResetG.Text = "Graficos como de fabrica";
 
             int ultimoTocado = 0;
 
@@ -1172,6 +1260,23 @@ namespace Rocola
                 AplicaEfectosGpu();
                 f3CambioGraf = true;
             };
+            swNeon.CheckedChanged += delegate
+            {
+                progresoNeon = swNeon.Checked;
+                AplicaEfectosGpu();
+                f3CambioGraf = true;
+            };
+            swReposo.CheckedChanged += delegate
+            {
+                muroReposo = swReposo.Checked;
+                f3CambioGraf = true;
+            };
+            swCine.CheckedChanged += delegate
+            {
+                nebulosasCine = swCine.Checked;
+                AplicaEfectosGpu();
+                f3CambioGraf = true;
+            };
 
             bApli.Click += delegate
             {
@@ -1186,6 +1291,21 @@ namespace Rocola
                 foreach (EfectoGrafico e in ef) PonNivel(e.Clave, NivAlto);
                 fpsTope = 0;
                 hojeoLigero = true; swHojeo.Checked = true;   // de fabrica viene encendido: no se ve y paga
+                progresoNeon = true; swNeon.Checked = true;
+                muroReposo = true; swReposo.Checked = true;
+                nebulosasCine = true; swCine.Checked = true;
+                vinetaSuave = true; swVinetaSuave.Checked = true;
+                haloSeleccion = true; swHaloSeleccion.Checked = true;
+                estrellasFinas = true; swEstrellasFinas.Checked = true;
+                ondasSuaves = true; swOndasSuaves.Checked = true;
+                progresoFluido = true; swFluido.Checked = true;
+                estadoExpandido = true; swExpandido.Checked = true;
+                neonIntenso = true; swneonIntenso.Checked = true;
+                estadoTransparente = true; swestadoTransparente.Checked = true;
+                cancionesTransparentes = true; swcancionesTransparentes.Checked = true;
+                buscadorCache = true; swbuscadorCache.Checked = true;
+                cieloProfundo = true; swcieloProfundo.Checked = true;
+                auroraBandas = true; swauroraBandas.Checked = true;
                 AplicaEfectosGpu();
                 f3CambioGraf = true;
                 pinta();

@@ -4,7 +4,7 @@
 #   python comparar_mezcla.py --entrada muestras_danadas --salida comparar_mezcla --niveles 0,40,55,70,100
 import sys, os, glob, shutil, tempfile, argparse, math
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from util_audio import leer_wav, escribir_wav, decodificar_a_wav, acantilado_hz, por_trozos, mezclar, mezcla_auto
+from util_audio import leer_wav, escribir_wav, ganancia_wav, decodificar_a_wav, acantilado_hz, por_trozos, mezclar, mezcla_auto
 
 def main():
     ap = argparse.ArgumentParser()
@@ -47,9 +47,13 @@ def main():
             cliff = acantilado_hz(x)
             auto = int(round(mezcla_auto(cliff) * 100))
             y = por_trozos(x, proc, seg=a.seg)                   # Apollo UNA vez
+            # Dos pasadas ligeras, sin guardar todas las mezclas en RAM. Margen comun
+            # para no favorecer un nivel por una atenuacion de exportacion distinta.
+            margen = min(ganancia_wav(mezclar(y, x, niv / 100.0)) for niv in niveles)
             for niv in niveles:
                 etiqueta = "%03d" % niv + ("_AUTO" if niv == auto else "")
-                escribir_wav(os.path.join(a.salida, "%02d_%s__IA%s.wav" % (i, nombre, etiqueta)), mezclar(y, x, niv / 100.0))
+                mezcla = mezclar(y, x, niv / 100.0) * margen
+                escribir_wav(os.path.join(a.salida, "%02d_%s__IA%s.wav" % (i, nombre, etiqueta)), mezcla)
             rep.append("%s | corte %.0f Hz | IA recomendada (auto) = %d%%" % (nombre, cliff, auto))
     open(os.path.join(a.salida, "recomendado.txt"), "w", encoding="utf-8").write("\n".join(rep) + "\n")
     print("\nLISTO en:", a.salida)

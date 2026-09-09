@@ -67,7 +67,7 @@ def medir(ffmpeg, ffprobe, ruta):
             try:
                 subprocess.run([ffmpeg, "-nostdin", "-y", "-v", "error", "-ss", ss,
                                 "-t", "24", "-i", ruta, "-ac", "2", "-ar", "44100",
-                                "-sample_fmt", "s16", tmp], check=True,
+                                "-c:a", "pcm_f32le", tmp], check=True,
                                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                stderr=subprocess.DEVNULL, timeout=TIMEOUT_FFMPEG,
                                creationflags=NOWIN)

@@ -451,7 +451,7 @@ def main():
                 with tempfile.TemporaryDirectory(prefix="rocola_hd_") as td:
                     dec = os.path.join(td, "dec.wav")
                     _run([ffmpeg, "-nostdin", "-y", "-v", "error", "-i", src,
-                          "-ac", "2", "-ar", str(FS), "-sample_fmt", "s16", dec])
+                          "-ac", "2", "-ar", str(FS), "-c:a", "pcm_f32le", dec])
                     x, _ = leer_wav(dec)
                     cliff = acantilado_hz(x)
                     if cliff >= UMBRAL_BUENA:

@@ -46,14 +46,17 @@ desde otra PC. No se garantiza que termine antes de que empiece una cancion.
   rocola no espera a la inferencia). Se reutiliza en una reproduccion posterior si termina
   correctamente y la cache no se ha limpiado.
 - Todo se guarda en `ia\tiempo_real\cache\listos` y TU CARPETA DE MUSICA NO CRECE NUNCA:
-  los originales no se tocan. En la cache, cada cancion mejorada es un **MP3 320** (pesa como
-  un mp3 normal, no como un WAV: caben ~5 veces mas canciones por GB); si una cancion ya era
+  los originales no se tocan. En la cache, cada cancion mejorada es **WAV flotante de 32 bits**,
+  sin otra compresion con perdida ni recorte antes del DSP. Ocupa unos 21 MB por minuto
+  (aproximadamente 9 veces MP3 320); se mantiene el tope de espacio. Si una cancion ya era
   de calidad completa solo queda una marca `.orig` de unos bytes (suena el original tal cual).
-- La cache se limpia sola al pasar el tope (20 GB por defecto ~= unas 1500 canciones; se quita
+- La cache se limpia sola al pasar el tope (20 GiB por defecto: unas 1000 min de WAV estereo
+  a 44,1 kHz, aproximadamente 330 canciones de 3 min; se quita
   lo menos usado, y lo borrado simplemente se vuelve a procesar si algun dia se repite).
 - BLINDAJE: canciones de mas de 15 min o archivos que ffprobe no puede leer (tipico de discos
   rescatados: un mp3 corrupto puede "decodificar" horas de basura y comerse toda la RAM) NO
-  pasan por la IA: quedan marcadas y suenan con su original tal cual. El motor ademas corre
+  pasan por la IA: las largas se marcan de inmediato; los fallos de lectura se reintentan
+  hasta tres veces con espera antes de marcar el original. El motor ademas corre
   con prioridad BAJA: la rocola y Windows siempre respiran primero.
 - UN SOLO MOTOR, COLA DE UNO EN UNO: un candado del sistema (cache\motor.lock) hace IMPOSIBLE
   que corran dos motores a la vez sobre la misma cache (dos Apollos = doble RAM y VRAM), y los
@@ -82,7 +85,7 @@ El modelo se cambia igual que en offline (upscale\modelo.txt): el motor usa el m
    - Debe decir "Apollo LISTO". Si truena al cargar Apollo, el error sale ahi y en
      `cache\motor_log.txt`.
    - Pon una cancion en la rocola con DSEE ULTRA encendido: en el log debe aparecer
-     "procesada -> ...". Si aparece, en `cache\listos` ya hay un `.mp3` (o una marca `.orig`
+     "procesada -> ...". Si aparece, en `cache\listos` ya hay un `.wav` (o una marca `.orig`
      si esa cancion ya era de calidad completa y no necesitaba IA).
 3. En la rocola, la etiqueta "Reproduciendo" muestra:
    - `[DSEE]` = suena con el reconstructor espectral (respaldo instantaneo, 1a vez que suena

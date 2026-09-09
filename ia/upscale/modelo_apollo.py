@@ -2,8 +2,9 @@
 """Carga segura y reproducible del modelo Apollo.
 
 Nunca se deserializa pickle arbitrario: safetensors se carga directamente y los
-checkpoints de PyTorch pasan por ``weights_only=True``. Los repos remotos siempre
-se descargan desde una revision inmutable.
+checkpoints de PyTorch pasan por ``weights_only=True``, salvo el checkpoint oficial
+cuyo SHA-256 se verifica antes de permitir su formato heredado. Los repos remotos
+siempre se descargan desde una revision inmutable.
 """
 import glob
 import hashlib
@@ -15,7 +16,7 @@ import numpy as np
 DEFAULT_SOURCE = "JusperLee/Apollo"
 DEFAULT_REVISION = "0b123a4606d5345d9082f6f633d8bfebe84c8e79"
 DEFAULT_CHECKPOINT_SHA256 = "99d9af7f1ff20e63c393035513a655392818d66b4d7fc23d658175c1f15e8d76"
-PIPELINE_VERSION = "apollo-safe-v2"
+PIPELINE_VERSION = "apollo-safe-v4-float-decode"
 
 
 def _revision_inmutable(revision):
@@ -249,13 +250,32 @@ def cargar(gpu="auto", apollo_dir=None, modelo_resuelto=None):
     model = model.to(dev).eval()
 
     def proc(x):
-        t = torch.from_numpy(np.ascontiguousarray(x.T, dtype=np.float32)).unsqueeze(0).to(dev)
+        x = np.asarray(x)
+        if (x.ndim != 2 or x.shape[1] not in (1, 2) or
+                not np.issubdtype(x.dtype, np.number) or not np.isrealobj(x) or
+                not np.isfinite(x).all()):
+            raise ValueError("Apollo requiere audio mono/estereo finito [muestras, canales]")
+        n = len(x)
+        mudos = np.all(x == 0, axis=0)
+        if n == 0 or mudos.all():
+            return np.zeros(x.shape, dtype=np.float64)
+        # La STFT reflect necesita mas de 441 muestras; completar una ventana
+        # solo en fragmentos diminutos, y retirar ese relleno de la salida.
+        entrada = np.pad(x, ((0, max(0, 882 - n)), (0, 0))) if n < 882 else x
+        with np.errstate(over="ignore", invalid="ignore"):
+            entrada = np.ascontiguousarray(entrada.T, dtype=np.float32)
+        if not np.isfinite(entrada).all():
+            raise ValueError("el audio excede el rango flotante de Apollo")
+        t = torch.from_numpy(entrada).unsqueeze(0).to(dev)
         with torch.no_grad():
-            try:
-                y = model(t)
-            except Exception:
-                y = torch.cat([model(t[:, c:c+1, :]) for c in range(t.shape[1])], dim=1)
-        return y.squeeze(0).detach().cpu().numpy().T.astype(np.float64)
+            # Apollo validado admite mono/estereo directamente. No ocultar OOM u
+            # otros errores reintentando otra topologia con semantica distinta.
+            y = model(t)
+        resultado = y.squeeze(0).detach().cpu().numpy().T[:n].astype(np.float64)
+        if resultado.shape != x.shape or not np.isfinite(resultado).all():
+            raise ValueError("Apollo devolvio audio no finito o longitud incompatible")
+        resultado[:, mudos] = 0
+        return resultado
 
     proc.model_fingerprint = fingerprint
     proc.checkpoint_sha256 = digest

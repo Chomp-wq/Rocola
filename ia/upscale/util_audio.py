@@ -1,44 +1,142 @@
 # -*- coding: utf-8 -*-
 # Utilerias de audio del kit de upscaling. NUMPY PURO: estas funciones se prueban sin GPU
 # (test_util.py), asi el unico riesgo queda en la parte del modelo (la valida 00_verificar.py).
-import numpy as np, wave, subprocess
+import numpy as np, wave, subprocess, struct, os
 
 FS = 44100
 
 def leer_wav(path):
-    """WAV 16/32 bits -> (float64 [n, canales] en -1..1, fs)."""
-    with wave.open(path, 'rb') as w:
-        fs, ch, sw, n = w.getframerate(), w.getnchannels(), w.getsampwidth(), w.getnframes()
-        raw = w.readframes(n)
-    if sw == 2: x = np.frombuffer(raw, '<i2').astype(np.float64) / 32768.0
-    elif sw == 4: x = np.frombuffer(raw, '<i4').astype(np.float64) / 2147483648.0
-    else: raise ValueError('solo WAV de 16 o 32 bits')
-    return x.reshape(-1, ch), fs
+    """RIFF PCM16/24/32 o IEEE float32 -> float64 [n, canales], sin recortar.
 
-def escribir_wav(path, x, fs=FS):
-    """float [n, canales] -1..1 -> WAV 16 bits."""
-    if x.ndim != 2 or x.shape[1] < 1 or fs <= 0:
-        raise ValueError("se esperaba audio [muestras, canales] y fs > 0")
+    Lectura por bloques: evita retener ademas una copia completa de bytes PCM.
+    Incluye WAVE_FORMAT_EXTENSIBLE de FFmpeg; float puede superar +/-1.
+    """
+    with open(path, 'rb') as f:
+        length = os.fstat(f.fileno()).st_size
+        header = f.read(12)
+        if len(header) != 12 or header[:4] != b'RIFF' or header[8:] != b'WAVE':
+            raise ValueError('se requiere RIFF/WAVE')
+        end = struct.unpack_from('<I', header, 4)[0] + 8
+        if end > length or end < 12: raise ValueError('RIFF truncado')
+        fmt = data = None
+        while f.tell() + 8 <= end:
+            tag, size = struct.unpack('<4sI', f.read(8))
+            start = f.tell()
+            if start + size > end: raise ValueError('chunk WAV truncado')
+            if tag == b'fmt ':
+                if fmt is not None or size < 16 or size > 65536: raise ValueError('fmt WAV invalido')
+                fmt = f.read(size)
+            elif tag == b'data' and data is None:
+                data = (start, size)
+            f.seek(start + size + (size & 1))
+        if fmt is None or data is None: raise ValueError('WAV sin formato/audio')
+        kind, ch, fs, byte_rate, align, bits = struct.unpack_from('<HHIIHH', fmt)
+        if kind == 0xfffe:
+            if len(fmt) < 40 or struct.unpack_from('<H', fmt, 16)[0] < 22:
+                raise ValueError('WAV extensible incompleto')
+            valid = struct.unpack_from('<H', fmt, 18)[0]
+            guid = fmt[24:40]
+            if guid[4:] != bytes.fromhex('00001000800000aa00389b71') or valid not in (0, bits):
+                raise ValueError('subformato WAV no admitido')
+            kind = struct.unpack_from('<I', guid)[0]
+        if (not 1 <= ch <= 32 or fs <= 0 or
+                not ((kind == 1 and bits in (16, 24, 32)) or (kind == 3 and bits == 32))):
+            raise ValueError('solo PCM16/24/32 o float32')
+        sw = bits // 8
+        if align != ch * sw or byte_rate != fs * align or data[1] % align:
+            raise ValueError('alineacion WAV invalida')
+        n = data[1] // align
+        x = np.empty((n, ch), dtype=np.float64)
+        f.seek(data[0])
+        block = max(1, 65536 // ch)
+        for p in range(0, n, block):
+            frames = min(block, n-p)
+            raw = f.read(frames * align)
+            if len(raw) != frames * align: raise ValueError('audio WAV truncado')
+            if kind == 3:
+                values = np.frombuffer(raw, '<f4')
+            elif sw == 3:
+                octets = np.frombuffer(raw, np.uint8).reshape(-1, 3).astype(np.int32)
+                values = octets[:, 0] | (octets[:, 1] << 8) | (octets[:, 2] << 16)
+                values = ((values ^ 0x800000) - 0x800000) / 8388608.0
+            else:
+                values = np.frombuffer(raw, '<i2' if sw == 2 else '<i4') / float(1 << (bits-1))
+            if not np.isfinite(values).all(): raise ValueError('WAV no finito')
+            x[p:p+frames] = values.reshape(frames, ch)
+    return x, fs
+
+def ganancia_wav(x):
+    """Ganancia sin amplificar que deja margen PCM16; valida antes de exportar."""
+    if x.ndim != 2 or x.shape[1] < 1:
+        raise ValueError("se esperaba audio [muestras, canales]")
     if not np.issubdtype(x.dtype, np.number) or not np.isrealobj(x):
         raise ValueError("el audio contiene valores no numericos o no finitos")
     bloque = max(1, 65536 // x.shape[1])
     # Validar todo ANTES de abrir: una muestra no finita no debe truncar una salida existente.
+    pico = 0.0
     for p in range(0, len(x), bloque):
-        if not np.isfinite(x[p:p + bloque]).all():
+        parte = x[p:p + bloque]
+        if not np.isfinite(parte).all():
             raise ValueError("el audio contiene valores no numericos o no finitos")
+        pico = max(pico, float(np.max(np.abs(parte.astype(np.float64)))))
+    return min(1.0, 0.98 / pico) if pico else 1.0
+
+
+def escribir_wav(path, x, fs=FS):
+    """WAV PCM16 con ganancia comun anti-recorte y dither TPDF.
+
+    Conserva la dinamica y el balance L/R; no es un limitador true peak.
+    Devuelve la ganancia aplicada para diagnostico. No modifica x.
+    """
+    if fs <= 0:
+        raise ValueError("se esperaba fs > 0")
+    ganancia = ganancia_wav(x)
+    bloque = max(1, 65536 // x.shape[1])
+    # RNG local: reproducible y sin alterar el azar del entrenamiento ni otros trabajos.
+    azar = np.random.RandomState(0x524941)
     with wave.open(path, 'wb') as w:
         w.setnchannels(x.shape[1]); w.setsampwidth(2); w.setframerate(fs)
         w.setnframes(len(x))
         for p in range(0, len(x), bloque):
-            y = (np.clip(x[p:p + bloque], -1.0, 1.0) * 32767.0).astype('<i2')
+            parte = x[p:p + bloque].astype(np.float64) * ganancia
+            ruido = azar.random_sample((parte.size, 2))
+            dither = (ruido[:, 0] - ruido[:, 1]).reshape(parte.shape)
+            # Silencio digital exacto permanece en cero, incluidos canales mudos.
+            dither[parte == 0] = 0
+            y = np.floor(parte * 32768.0 + dither + 0.5).astype('<i2')
             w.writeframesraw(y.tobytes())
+    return ganancia
 
 def decodificar_a_wav(ffmpeg, origen, destino, timeout=20 * 60):
-    """Cualquier formato (mp3/flac/etc) -> WAV 44.1k estereo 16 bits, via ffmpeg."""
+    """Cualquier formato -> WAV float32 44.1k estereo, sin cuantizacion intermedia."""
     subprocess.run([ffmpeg, '-nostdin', '-y', '-v', 'error', '-i', origen, '-ac', '2',
-                    '-ar', str(FS), '-sample_fmt', 's16', destino], check=True,
+                    '-ar', str(FS), '-c:a', 'pcm_f32le', destino], check=True,
                    stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                    stderr=subprocess.PIPE, timeout=timeout)
+
+
+def escribir_wav_float(path, x, fs=FS):
+    """Cache IEEE float32: sin limitacion, dither ni nueva compresion con perdida.
+
+    La proteccion de picos se aplica al reproducir, despues del DSP/remuestreo.
+    Valida todo antes de abrir el destino; RIFF limitado a menos de 4 GiB.
+    """
+    ganancia_wav(x)  # validacion de forma y finitos; no aplicar esa ganancia
+    ch = x.shape[1]
+    size = x.size * 4
+    if ch > 32 or not isinstance(fs, (int, np.integer)) or fs <= 0 or size > 0xffffffff-50:
+        raise ValueError('formato/longitud excede WAV RIFF')
+    block = max(1, 65536 // ch)
+    for p in range(0,len(x),block):
+        if np.max(np.abs(x[p:p+block])) > np.finfo(np.float32).max:
+            raise ValueError('audio excede float32')
+    with open(path,'wb') as f:
+        f.write(b'RIFF'+struct.pack('<I',size+50)+b'WAVE')
+        f.write(b'fmt '+struct.pack('<IHHIIHHH',18,3,ch,fs,fs*ch*4,ch*4,32,0))
+        f.write(b'fact'+struct.pack('<II',4,len(x)))
+        f.write(b'data'+struct.pack('<I',size))
+        for p in range(0,len(x),block):
+            f.write(x[p:p+block].astype('<f4').tobytes())
 
 def acantilado_hz(x, fs=FS):
     """Corte del codec (Hz) por espectro promedio: la frecuencia mas alta con energia
