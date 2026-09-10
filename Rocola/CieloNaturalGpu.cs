@@ -49,7 +49,11 @@ namespace Rocola
             if(bands==null||bands.Length<2)return 0;
             if(float.IsNaN(x))x=0;
             float t=Math.Max(0,Math.Min(1,x))*(bands.Length-1); int center=(int)t;float sum=0;
-            for(int i=Math.Max(0,center-1);i<=Math.Min(bands.Length-1,center+2);i++)
+            // Solo center y center+1 pueden aportar: t cae dentro de [center,center+1), asi que
+            // center-1 y center+2 quedan siempre a distancia 1 o mas y la guarda de abajo (d>=1) los
+            // descarta SIEMPRE. Eran dos vueltas de cada cuatro que no podian sumar nada, y esto corre
+            // una vez por columna de la aurora en cada cuadro.
+            for(int i=center;i<=Math.Min(bands.Length-1,center+1);i++)
             {
                 float d=Math.Abs(t-i)/.90f;if(d>=1)continue;
                 float value=bands[i];if(!(value>0))continue;value=Math.Min(1,value);

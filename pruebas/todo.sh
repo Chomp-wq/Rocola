@@ -61,7 +61,7 @@ CPU="ajustes bajo eqauto bajoauto calidad eqia nivel titulo duracion prueba prue
 # 'fugaces' y 'luna' salen en las dos por lo mismo: las dos cosas se ven en las DOS paredes, y la mitad de
 # lo que vigilan -que las dos pidan la fugaz y el dibujo de la luna al mismo sitio- solo se puede mirar
 # cuando el trozo de tarjeta grafica esta compilado.
-GPU="fondo anim presencia barrido tope calma entrar gl luz mover arranca bibliotecas banco paginar ceremonia respira teclea palomito nebulosa pedidas fondocoste cielohondo fugaces luna"
+GPU="fondo anim presencia barrido tope calma entrar gl luz mover arranca bibliotecas banco paginar ceremonia respira teclea palomito nebulosa pedidas fondocoste cielohondo fugaces luna mando vineta geombusca"
 
 # Y las que miran algo que SOLO EXISTE en la rama de tarjeta grafica. La limpieza de videos que no
 # suenan es una de esas: para saber si un video suena hay que descomprimir su sonido, y eso alli lo

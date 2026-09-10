@@ -9,6 +9,17 @@ namespace Rocola
     {
         private partial class SongListView
         {
+            // El velo y la clave de color se hacian NUEVOS en cada pintada. Los dos son objetos de GDI+
+            // con su manija nativa detras, y esta lista se repinta al desplazarse y al pasar de pagina.
+            // Se guardan como hace el resto de la casa (ver EnsurePaintRes en el buscador) y se sueltan
+            // en el Dispose de la lista, por SueltaAcabadoGpu.
+            private SolidBrush veloGpu;
+            private ImageAttributes claveGpu;
+            private Color claveGpuDe;
+            partial void SueltaAcabadoGpu()
+            {
+                SueltaDibujo(ref veloGpu); SueltaDibujo(ref claveGpu);
+            }
             public void RenderTransparentGpu(Graphics g)
             {
                 int w = ClientSize.Width, h = ClientSize.Height;
@@ -16,28 +27,33 @@ namespace Rocola
                 AseguraHorneada(w, h);
                 float dx = DesplazaAhora();
                 // Velo mayormente opaco: deja ver el fondo sin competir con las letras.
-                using (SolidBrush veil = new SolidBrush(Color.FromArgb(210, 12, 16, 30)))
-                    g.FillRectangle(veil, 0, 0, w, h);
-                using (ImageAttributes attr = new ImageAttributes())
+                if (veloGpu == null) veloGpu = new SolidBrush(Color.FromArgb(210, 12, 16, 30));
+                g.FillRectangle(veloGpu, 0, 0, w, h);
+                // Elimina el relleno exacto, no reduce el alfa del texto ni de
+                // la seleccion. Conserva la cache, geometria y paginacion.
+                // Se rehace solo si cambio el color de fondo, que es de donde sale la clave.
+                if (claveGpu == null || claveGpuDe != BackColor)
                 {
-                    // Elimina el relleno exacto, no reduce el alfa del texto ni de
-                    // la seleccion. Conserva la cache, geometria y paginacion.
-                    attr.SetColorKey(BackColor, BackColor, ColorAdjustType.Bitmap);
-                    if (dx != 0f && hornoAnt != null)
-                        g.DrawImage(hornoAnt, new Rectangle((int)(dx-slideDesde), 0, w, h), 0, 0, w, h, GraphicsUnit.Pixel, attr);
-                    g.DrawImage(hornoPag, new Rectangle((int)dx, 0, w, h), 0, 0, w, h, GraphicsUnit.Pixel, attr);
+                    SueltaDibujo(ref claveGpu);
+                    claveGpu = new ImageAttributes();
+                    claveGpu.SetColorKey(BackColor, BackColor, ColorAdjustType.Bitmap);
+                    claveGpuDe = BackColor;
                 }
+                if (dx != 0f && hornoAnt != null)
+                    g.DrawImage(hornoAnt, new Rectangle((int)(dx-slideDesde), 0, w, h), 0, 0, w, h, GraphicsUnit.Pixel, claveGpu);
+                g.DrawImage(hornoPag, new Rectangle((int)dx, 0, w, h), 0, 0, w, h, GraphicsUnit.Pixel, claveGpu);
             }
         }
         private partial class SearchOverlay
         {
+            // LOS DOS NUMEROS SALEN DE UN SOLO SITIO. Antes esto rehacia a mano el reparto del
+            // buscador -el 128 escrito tal cual en vez de M+70+28, y el margen otra vez como 30- en un
+            // archivo distinto del que lo decide. Coincidian, pero nada los ataba: el dia que se toque
+            // el margen o el alto de la cabecera se mueve todo menos este trozo, y no avisa nadie.
             private void ExtraPreviewGeometry(out Rectangle region, out Rectangle area)
             {
-                int contentY = 128, contentH = Height - contentY - 30;
-                region = new Rectangle(30, contentY, (int)((Width-60)*.52), contentH);
-                int side = Math.Max(40, (int)(Math.Min(region.Width, region.Height)*.62));
-                int top = Math.Max(region.Y+6, region.Y+(region.Height-side)/2-24);
-                area = new Rectangle(region.X+region.Width/2-side/2, top, side, side);
+                region = RegionTeclado();
+                area = CajaPortada(region);
             }
             public bool ExtraGpuRect(int kind, out Rectangle rect)
             {

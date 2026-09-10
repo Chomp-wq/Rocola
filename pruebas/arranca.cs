@@ -93,6 +93,28 @@ class Arranca
         return (tot == 0) ? 0 : (double)hay / tot;
     }
 
+    // ¿QUEDA ALGUN CUADRO DE NEGRO PURO? Es EXACTAMENTE lo que se exige mas abajo, y por eso se mira
+    // tambien aqui: la espera se paraba al ver el 85% pintado, que es otra cosa. Un control que tarda un
+    // pelo mas en dibujarse cabe de sobra en ese 15% restante, y la foto salia con un hueco que ya no
+    // estaba un segundo despues. Fallaba sin que nada estuviera roto -medido: una de cada siete-.
+    //
+    // No se afloja nada: lo que se exige sigue siendo cero huecos. Lo que cambia es CUANDO se mira, que
+    // ahora es cuando ya no hay ninguno; si pasado el tiempo entero sigue habiendolo, falla igual.
+    static bool QuedaNegro(Bitmap b, Rectangle v)
+    {
+        if (v.Width < BLOQUE || v.Height < BLOQUE) return true;
+        for (int by = v.Top; by + BLOQUE <= v.Bottom; by += BLOQUE)
+            for (int bx = v.Left; bx + BLOQUE <= v.Right; bx += BLOQUE)
+            {
+                bool todo = true;
+                for (int y = by; y < by + BLOQUE && todo; y++)
+                    for (int x = bx; x < bx + BLOQUE && todo; x++)
+                    { Color c = b.GetPixel(x, y); if (c.R != 0 || c.G != 0 || c.B != 0) todo = false; }
+                if (todo) return true;
+            }
+        return false;
+    }
+
     static int Main(string[] argv)
     {
         string exe = (argv.Length > 0) ? argv[0] : "rocola.exe";
@@ -124,7 +146,7 @@ class Arranca
             foto = Foto(pant.Width, pant.Height);
             ven = Ventana(foto);
             pintado = Pintado(foto, ven);
-            if (pintado > 0.85 && i >= 5) break;
+            if (pintado > 0.85 && i >= 5 && !QuedaNegro(foto, ven)) break;
         }
 
         bool viva = !p.HasExited;
