@@ -616,8 +616,7 @@ namespace Rocola
         private void FocusTimer_Tick(object sender, EventArgs e)
         {
             if (focoCerrando || IsDisposed || Disposing || !IsHandleCreated) return;
-            if (maintMode && DateTime.Now > maintUntil) { maintMode = false; ShowToast("Vigia de pantalla reactivado"); }
-            if (maintMode) return;                       // pausa de mantenimiento (F10)
+            if (maintMode) return;                       // pausa de mantenimiento (F10), hasta que se vuelva a pulsar
             if (GetForegroundWindow() != this.Handle) ForceFocus();
         }
 
