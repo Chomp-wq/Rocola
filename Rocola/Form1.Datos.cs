@@ -1190,7 +1190,7 @@ namespace Rocola
         {
             if (searchOpen) CloseSearch();
             bool wasMaint = maintMode;
-            maintMode = true; maintUntil = DateTime.Now.AddMinutes(10);   // pausa el vigia de foco: el dialogo modal necesita quedarse al frente
+            maintMode = true;   // pausa el vigia de foco: el dialogo modal necesita quedarse al frente
             gestorAbierto = true;   // mientras este abierto, que no se pida abrirlo otra vez (ver PideElegirMusica)
             bool changed = false;
             try
