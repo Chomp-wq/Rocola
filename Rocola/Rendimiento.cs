@@ -1054,10 +1054,9 @@ namespace Rocola
 
             Tarjeta tMide = new Tarjeta(); tMide.SetBounds(16, 4, 456, 400); tMide.Titulo = "ESTE EQUIPO"; tMide.Acento = cMide;
             Tarjeta tProp = new Tarjeta(); tProp.SetBounds(16, 412, 456, 160); tProp.Titulo = "LA PROPUESTA"; tProp.Acento = cProp;
-            // SIN BARRA DE DESPLAZAMIENTO. La habia porque la tarjeta media 1026 px en una pagina de 636;
-            // con las once de gusto en su pestaña acaba en 572 y entra entera. Una lista que hay que
-            // desplazar para ver es una lista en la que la mitad de las cosas no existen.
-            Tarjeta tEfe = new Tarjeta(); tEfe.SetBounds(488, 4, 456, 578); tEfe.Titulo = "EFECTOS"; tEfe.Acento = cEfe;
+            // Las filas y los interruptores comparten un cursor vertical: no solapar
+            // los cinco mandos con los ultimos niveles. Cabe en los 636 px de la pagina.
+            Tarjeta tEfe = new Tarjeta(); tEfe.SetBounds(488, 4, 456, 624); tEfe.Titulo = "EFECTOS"; tEfe.Acento = cEfe;
 
             // ---------------- ESTE EQUIPO ----------------
             BotonPlano bMedir = new BotonPlano();
@@ -1107,10 +1106,8 @@ namespace Rocola
             BotonPlano[][] bNiv = new BotonPlano[ef.Length][];
             for (int i = 0; i < ef.Length; i++)
             {
-                // Paso de 62 y no de 68: el contenido de una fila mide 48, asi que quedan 14 px entre una y
-                // otra en vez de 20 -se sigue leyendo igual de suelto- y con lo que se ahorra cabe abajo el
-                // interruptor del hojeo ligero, que es la unica cosa de esta tarjeta que no tenia mando.
-                int y = 100 + i * 62;
+                // 48 px de contenido y 4 de separacion; fuentes y botones intactos.
+                int y = 94 + i * 52;
                 lNom[i] = new Label(); lNom[i].SetBounds(16, y, 424, 18); lNom[i].BackColor = Color.Transparent;
                 lNom[i].ForeColor = cTexto; lNom[i].Font = fNom; lNom[i].Text = ef[i].Nombre;
                 lCost[i] = new Label(); lCost[i].SetBounds(322, y + 24, 118, 18); lCost[i].BackColor = Color.Transparent;
@@ -1134,9 +1131,9 @@ namespace Rocola
             // cumplen -cada una quita trabajo de cada cuadro- y las once que eran de puro gusto se fueron
             // a la pestaña Fondo, que es su sitio.
             //
-            // Y ademas no cabian: con las dieciseis la tarjeta media 1026 px dentro de una pagina de 636 y
-            // hubo que ponerle barra de desplazamiento, o sea que la mitad de la lista no se veia hasta
-            // buscarla. Con cinco acaba en 572 y la barra sobra. Esta medido y lo comprueba 'ventana'.
+            // El primer interruptor empieza despues de TODAS las filas de niveles,
+            // no en una coordenada fija que pueda pisar la ultima.
+            int switchesY = 94 + ef.Length * 52 + 8;
             string[] nomSw = {
                 "Ocultar caratulas al pasar de pagina",
                 "Discos tenues en reposo con musica",
@@ -1149,7 +1146,7 @@ namespace Rocola
             for (int i = 0; i < sw.Length; i++)
             {
                 sw[i] = new Interruptor();
-                sw[i].SetBounds(16, 400 + i * 30, 424, 26); sw[i].ForeColor = cTexto; sw[i].Font = fNom;
+                sw[i].SetBounds(16, switchesY + i * 30, 424, 26); sw[i].ForeColor = cTexto; sw[i].Font = fNom;
                 sw[i].Text = nomSw[i]; sw[i].Acento = cEfe; sw[i].Checked = valSw[i];
                 tEfe.Controls.Add(sw[i]);
             }
@@ -1158,7 +1155,7 @@ namespace Rocola
             sw[2].CheckedChanged += delegate { estadoExpandido = sw[2].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             sw[3].CheckedChanged += delegate { cancionesTransparentes = sw[3].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             sw[4].CheckedChanged += delegate { buscadorCache = sw[4].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
-            Label lPierde = new Label(); lPierde.SetBounds(16, 548, 424, 24); lPierde.BackColor = Color.Transparent;
+            Label lPierde = new Label(); lPierde.SetBounds(16, switchesY + sw.Length * 30 + 4, 424, 48); lPierde.BackColor = Color.Transparent;
             lPierde.ForeColor = cTenue; lPierde.Font = fDes;
             tEfe.Controls.Add(lGen); tEfe.Controls.Add(swHojeo); tEfe.Controls.Add(lPierde);
 
