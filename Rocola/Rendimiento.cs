@@ -829,6 +829,19 @@ namespace Rocola
             barNat.Minimum = 0; barNat.Maximum = 100; barNat.Acento = cAc;
             barNat.Value = (int)Math.Round(nebNaturalFuerza * 100f);
             tNat.Controls.Add(lNatN); tNat.Controls.Add(lNatV); tNat.Controls.Add(lNatD); tNat.Controls.Add(barNat);
+            Interruptor swCristal = new Interruptor();
+            swCristal.SetBounds(16, 244, 424, 26); swCristal.Font = fNom; swCristal.ForeColor = cTexto;
+            swCristal.Text = "Interior de discos con cristal (GPU)"; swCristal.Acento = cAc; swCristal.Checked = cancionesCristal;
+            swCristal.CheckedChanged += delegate { cancionesCristal = swCristal.Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            Interruptor swDoce = new Interruptor();
+            swDoce.SetBounds(16, 280, 424, 26); swDoce.Font = fNom; swDoce.ForeColor = cTexto;
+            swDoce.Text = "Cola ampliada de 12 canciones (GPU)"; swDoce.Acento = cAc; swDoce.Checked = colaDoce;
+            swDoce.CheckedChanged += delegate { colaDoce = swDoce.Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            tNat.Controls.Add(swCristal); tNat.Controls.Add(swDoce);
+            Label lExtras = new Label(); lExtras.SetBounds(16, 318, 424, 74); lExtras.Font = fDes;
+            lExtras.ForeColor = cTenue; lExtras.BackColor = Color.Transparent;
+            lExtras.Text = "El cristal requiere Lista de canciones transparente (Imagen).\nLa cola de 12 requiere el estado ampliado en reposo.\nAl apagarlos vuelven el velo plano y las tres canciones.";
+            tNat.Controls.Add(lExtras);
 
             BotonPlano bResetF = new BotonPlano();
             bResetF.SetBounds(16, 572, 300, 38); bResetF.Font = fBot; bResetF.Text = "Fondo como de fabrica";
@@ -853,6 +866,7 @@ namespace Rocola
                 nebulosasCine = true; cieloProfundo = true; auroraBandas = true; ondasSuaves = true;
                 estrellasFinas = true; vinetaSuave = true; haloSeleccion = true; estadoTransparente = true;
                 progresoNeon = true; neonIntenso = true; progresoFluido = true;
+                cancionesCristal = true; colaDoce = true; swCristal.Checked = true; swDoce.Checked = true;
                 nebNaturalFuerza = NebNaturalDef;
                 for (int i = 0; i < sw.Length; i++) sw[i].Checked = true;
                 barNat.Value = (int)Math.Round(NebNaturalDef * 100f);

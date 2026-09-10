@@ -16,11 +16,15 @@ namespace Rocola
             private SolidBrush veloGpu;
             private ImageAttributes claveGpu;
             private Color claveGpuDe;
+            private Bitmap cristalGpu;
             partial void SueltaAcabadoGpu()
             {
                 SueltaDibujo(ref veloGpu); SueltaDibujo(ref claveGpu);
+                SueltaDibujo(ref cristalGpu);
             }
             public void RenderTransparentGpu(Graphics g)
+            { RenderTransparentGpuMode(g, false); }
+            public void RenderTransparentGpuMode(Graphics g, bool glass)
             {
                 int w = ClientSize.Width, h = ClientSize.Height;
                 if (w < 4 || h < 4) return;
@@ -28,7 +32,16 @@ namespace Rocola
                 float dx = DesplazaAhora();
                 // Velo mayormente opaco: deja ver el fondo sin competir con las letras.
                 if (veloGpu == null) veloGpu = new SolidBrush(Color.FromArgb(210, 12, 16, 30));
-                g.FillRectangle(veloGpu, 0, 0, w, h);
+                if (glass)
+                {
+                    if (cristalGpu == null || cristalGpu.Width != w || cristalGpu.Height != h)
+                    {
+                        SueltaDibujo(ref cristalGpu);
+                        cristalGpu = BakeSongGlass(w, h);
+                    }
+                    g.DrawImageUnscaled(cristalGpu, 0, 0);
+                }
+                else g.FillRectangle(veloGpu, 0, 0, w, h);
                 // Elimina el relleno exacto, no reduce el alfa del texto ni de
                 // la seleccion. Conserva la cache, geometria y paginacion.
                 // Se rehace solo si cambio el color de fondo, que es de donde sale la clave.
@@ -43,6 +56,22 @@ namespace Rocola
                     g.DrawImage(hornoAnt, new Rectangle((int)(dx-slideDesde), 0, w, h), 0, 0, w, h, GraphicsUnit.Pixel, claveGpu);
                 g.DrawImage(hornoPag, new Rectangle((int)dx, 0, w, h), 0, 0, w, h, GraphicsUnit.Pixel, claveGpu);
             }
+        }
+        internal static Bitmap BakeSongGlass(int w, int h)
+        {
+            Bitmap b = new Bitmap(w, h, PixelFormat.Format32bppPArgb);
+            using (Graphics g = Graphics.FromImage(b))
+            using (GraphicsPath edge = RoundedPath(new Rectangle(1, 1, w - 3, h - 3), Math.Min(28, Math.Min(w, h) / 4)))
+            using (LinearGradientBrush body = new LinearGradientBrush(new Rectangle(0, 0, w, h),
+                Color.FromArgb(205, 26, 37, 59), Color.FromArgb(218, 9, 16, 31), 90f))
+            using (LinearGradientBrush sheen = new LinearGradientBrush(new Rectangle(0, 0, w, h),
+                Color.FromArgb(36, 210, 230, 255), Color.FromArgb(0, 210, 230, 255), 115f))
+            using (Pen rim = new Pen(Color.FromArgb(96, 193, 222, 255), 1.3f))
+            {
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                g.FillPath(body, edge); g.FillPath(sheen, edge); g.DrawPath(rim, edge);
+            }
+            return b;
         }
         private partial class SearchOverlay
         {

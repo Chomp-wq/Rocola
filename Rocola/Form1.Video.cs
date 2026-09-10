@@ -934,7 +934,7 @@ namespace Rocola
                     if (cancionesTransparentes && songList != null)
                     {
                         GraphicsState listState = g.Save(); g.TranslateTransform(songList.Left, songList.Top);
-                        songList.RenderTransparentGpu(g); g.Restore(listState);
+                        songList.RenderTransparentGpuMode(g, cancionesCristal); g.Restore(listState);
                     }
                     else DrawCtrlOverlay(g, songList);
                     if (songPager != null && songPager.Visible) DrawCtrlOverlay(g, songPager);
@@ -1240,6 +1240,7 @@ namespace Rocola
                 // donde ya no va- hasta salir y volver a entrar al disco. El cubo no lo sufria (es en vivo).
             {
                 sb = Mix(sb, cancionesTransparentes);
+                sb = Mix(sb, cancionesCristal);
                 sb = Mix(sb, 'D'); sb = Mix(sb, lblAlbum != null ? lblAlbum.Text : ""); sb = Mix(sb, songSel); sb = Mix(sb, songItems.Count);
                 sb = Mix(sb, songList != null ? songList.PageStart : 0); sb = Mix(sb, bgAccent.ToArgb());
                 sb = Mix(sb, colaVer);   // sin esto, la marca "EN COLA" no saldria hasta que algo mas cambiara

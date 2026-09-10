@@ -1,5 +1,23 @@
 # Rocola
 
+## Fondo, cristal y cola ampliada
+
+- La pestaña Fondo permanece accesible desde todas las páginas de Ctrl+F3.
+- En Ctrl+F3 → Fondo, «Interior de discos con cristal (GPU)» añade esquinas
+  redondeadas, un borde iluminado y reflejos a la lista transparente. Requiere
+  «Lista de canciones transparente» en Imagen; apagado conserva el velo plano.
+  Es un acabado de vidrio con textura reutilizada, no desenfoque del fondo.
+- «Cola ampliada de 12 canciones (GPU)» muestra hasta doce próximas canciones
+  en tres columnas y cuatro filas, numeradas de izquierda a derecha. Apagado
+  recupera tres canciones. En espacios estrechos se omiten miniaturas y se
+  abrevian textos; la cola real y su orden no se modifican.
+- El tiempo del estado expandido se alinea al borde izquierdo del progreso,
+  separado por un pequeño margen, sin el hueco anterior.
+
+Las dos opciones nuevas están activadas por defecto y se guardan al cerrar
+los ajustes. El renderizador CPU permanece congelado.
+Prueba: pruebas/cristalcola.cs (persistencia, geometría y transparencia).
+
 ## Política de renderizado (8 de septiembre de 2026)
 
 El renderizador CPU es obsoleto y queda congelado por decisión del usuario.
