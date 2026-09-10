@@ -12,9 +12,11 @@ namespace Rocola
         private Bitmap idlePanelBmp;
         private string idlePanelSig;
         private int idlePanelCheck;
+        private int idlePanelProgressStart;
         private Bitmap BuildIdlePanel()
         {
             if (nowPlaying == null || videoOn) return null;
+            if (gpuPanel != null && idlePanelBmp != null) gpuPanel.IdleProgressStart = idlePanelProgressStart;
             int w = ClientSize.Width, h = GpuPanel.IdlePanelHeight(ClientSize.Height);
             if (w < 480 || h < 140) return null;
             int now = Environment.TickCount;
@@ -40,7 +42,10 @@ namespace Rocola
             sig.Append('|').Append(colaDoce);
             string key = sig.ToString();
             if (idlePanelBmp != null && key == idlePanelSig) return idlePanelBmp;
-            Bitmap next = RenderIdlePanelQueue(w, h, title, artist, time, qt, qa, covers, queue.Count, bgAccent, estadoTransparente, iaBadgeKind, colaDoce);
+            int progressStart;
+            Bitmap next = RenderIdlePanelLayout(w, h, title, artist, time, qt, qa, covers, queue.Count, bgAccent, estadoTransparente, iaBadgeKind, colaDoce, out progressStart);
+            idlePanelProgressStart = progressStart;
+            if (gpuPanel != null) gpuPanel.IdleProgressStart = progressStart;
             Bitmap old = idlePanelBmp; idlePanelBmp = next; idlePanelSig = key;
             if (old != null) old.Dispose();
             return idlePanelBmp;
@@ -72,6 +77,13 @@ namespace Rocola
         internal static Bitmap RenderIdlePanelQueue(int w, int h, string title, string artist, string time,
             string[] qt, string[] qa, Image[] covers, int count, Color accent, bool transparent, int badgeKind, bool dozen)
         {
+            int progressStart;
+            return RenderIdlePanelLayout(w, h, title, artist, time, qt, qa, covers, count, accent, transparent, badgeKind, dozen, out progressStart);
+        }
+
+        internal static Bitmap RenderIdlePanelLayout(int w, int h, string title, string artist, string time,
+            string[] qt, string[] qa, Image[] covers, int count, Color accent, bool transparent, int badgeKind, bool dozen, out int progressStart)
+        {
             float scale = Math.Max(.8f, Math.Min(1.3f, h / 260f));
             Bitmap bitmap = new Bitmap(w, h, PixelFormat.Format32bppPArgb);
             using (Graphics g = Graphics.FromImage(bitmap))
@@ -96,7 +108,7 @@ namespace Rocola
                 g.FillRectangle(bg, 0, 0, w, h); g.DrawLine(top, 0, 1, w, 1);
                 int split = (int)(w * .52f);
                 Rectangle cover = GpuPanel.IdleCoverRect(w, h);
-                using (GraphicsPath shape = RoundedPath(cover, 12)) g.FillPath(card, shape);
+                // Sin tarjeta bajo el cubo: se ve directamente el fondo del estado.
                 int tx = cover.Right + 20, tw = Math.Max(20, split - tx - 24);
                 g.DrawString("A H O R A   S U E N A", small, color, new RectangleF(24, 12, split - 40, 26 * scale), line);
                 float titleH = Math.Min(90, h * .28f), artistY = 56 + titleH + 6;
@@ -121,9 +133,14 @@ namespace Rocola
                 }
                 using (StringFormat timeFormat = new StringFormat(line))
                 {
-                    timeFormat.Alignment = StringAlignment.Far;
+                    timeFormat.Alignment = StringAlignment.Near;
                     timeFormat.LineAlignment = StringAlignment.Center;
-                    g.DrawString(time ?? "", clock, white, new RectangleF(24, h - 32, GpuPanel.IdleProgressLeft(h) - 32, 28), timeFormat);
+                    int timeX = cover.Right + 16;
+                    int timeWidth = (int)Math.Ceiling(g.MeasureString(time ?? "", clock, int.MaxValue, timeFormat).Width) + 2;
+                    // Dejar al menos 80 px de progreso incluso en ventanas estrechas.
+                    timeWidth = Math.Max(1, Math.Min(timeWidth, w - timeX - 112));
+                    progressStart = timeX + timeWidth + 8;
+                    g.DrawString(time ?? "", clock, white, new RectangleF(timeX, h - 32, timeWidth, 28), timeFormat);
                 }
                 string heading = "A CONTINUACION  /  " + count + (count == 1 ? " CANCION" : " CANCIONES");
                 g.DrawString(heading, small, color, new RectangleF(split, 12, w - split - 24, 26 * scale), line);
