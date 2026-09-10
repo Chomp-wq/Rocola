@@ -130,11 +130,22 @@ class Luna
                         w = Stopwatch.StartNew(); mBlit.Invoke(sf, arg); w.Stop();
                         sin.Add(w.Elapsed.TotalMilliseconds);
                     }
+                    // SE MIRA LA VUELTA MAS LIMPIA DE LAS QUINCE, NO LA DE ENMEDIO.
+                    //
+                    // Esto mide una diferencia de decimas de milisegundo, y la mediana se la lleva por
+                    // delante cualquier cosa que haga el sistema mientras tanto: un recolector de basura,
+                    // otro nucleo ocupado, la propia tanda compilando al lado. Medido: fallaba una de cada
+                    // cinco veces corriendo SOLA, sin que nada estuviera roto -que es la peor clase de
+                    // prueba, la que hay que volver a correr para creersela-.
+                    //
+                    // La vuelta mas rapida de las quince es la que menos estorbo tuvo, o sea la que mas se
+                    // acerca a lo que cuesta de verdad. Y se toma la mas limpia de las DOS medidas, asi que
+                    // la resta sigue siendo la misma resta: no se afloja el limite, se quita el ruido.
                     con.Sort(); sin.Sort();
-                    double cuesta = con[con.Count / 2] - sin[sin.Count / 2];
+                    double cuesta = con[0] - sin[0];
                     fCon.SetValue(sf, true);
-                    Console.WriteLine("     pegar el fondo con luna " + con[con.Count / 2].ToString("0.000")
-                                      + " ms, sin luna " + sin[sin.Count / 2].ToString("0.000") + " ms");
+                    Console.WriteLine("     pegar el fondo con luna " + con[0].ToString("0.000")
+                                      + " ms, sin luna " + sin[0].ToString("0.000") + " ms   (la vuelta mas limpia de 15)");
                     Console.WriteLine("     o sea que la luna cuesta " + cuesta.ToString("+0.000;-0.000") + " ms por cuadro, a " + W + "x" + H);
                     Check(cuesta < 0.15, "la luna cuesta casi nada: su tinte va horneado, no aplicado al pegar");
                 }

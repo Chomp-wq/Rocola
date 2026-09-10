@@ -748,6 +748,27 @@ namespace Rocola
             // LA CAJA DONDE SE ESCRIBE. Su sitio lo saben los dos caminos: el dibujado normal y la imagen
             // chica que la lleva cuando hay tarjeta grafica.
             public Rectangle CajaEscrito() { int M = 30; return new Rectangle(M, M, Width - 2 * M, 70); }
+            // DONDE VA EL TECLADO -y, cuando hay resultados, la vista previa que ocupa su sitio-. Esta
+            // cuenta la necesitan dos: el pintado de aqui y el trozo que dibuja la tarjeta grafica
+            // aparte, que vive en AcabadoGpu.cs. Alli estaba copiada a mano, con el 128 escrito tal cual
+            // en vez de M+70+28. Ahora hay una sola y los dos la piden, que es lo que impide que se
+            // separen sin que nadie se entere.
+            internal Rectangle RegionTeclado()
+            {
+                int M = 30, contentY = M + 70 + 28, contentH = Height - contentY - M;
+                return new Rectangle(M, contentY, (int)((Width - 2 * M) * 0.52), contentH);
+            }
+            // Y donde va la portada grande dentro de esa region. Lo mismo: lo usan ComputePreview y el
+            // trozo de la tarjeta.
+            internal static Rectangle CajaPortada(Rectangle region)
+            {
+                int side = (int)(Math.Min(region.Width, region.Height) * 0.62);
+                if (side < 40) side = 40;
+                int cx = region.X + region.Width / 2;
+                int top = region.Y + (region.Height - side) / 2 - 24;
+                if (top < region.Y + 6) top = region.Y + 6;
+                return new Rectangle(cx - side / 2, top, side, side);
+            }
 
             // Y como se dibuja. El desplazamiento va POR PARAMETRO y no moviendo el lienzo, por lo mismo que
             // en DibujaPiezaViva: el texto lo pinta el sistema en pixeles de verdad y no hace caso a las
@@ -834,11 +855,9 @@ namespace Rocola
                     }
                 }
 
-                int contentY = M + 70 + 28;
-                int contentH = H - contentY - M;
+                Rectangle kbRegion = RegionTeclado();   // teclado mas angosto -> resultados mas anchos (caben 2 columnas)
+                int contentY = kbRegion.Y, contentH = kbRegion.Height, kbW = kbRegion.Width;
                 if (contentH < 60) return;
-                int kbW = (int)((W - 2 * M) * 0.52);   // teclado mas angosto -> resultados mas anchos (caben 2 columnas)
-                Rectangle kbRegion = new Rectangle(M, contentY, kbW, contentH);
                 Rectangle resRegion = new Rectangle(M + kbW + 20, contentY, (W - 2 * M) - kbW - 20, contentH);
 
                 bool showCube = FocusResults && Results != null && Results.Count > 0 && GetCover != null;
@@ -1314,12 +1333,7 @@ namespace Rocola
                 }
                 else ca = Portada(it.AlbumRef);
 
-                int side = (int)(Math.Min(region.Width, region.Height) * 0.62);
-                if (side < 40) side = 40;
-                int cx = region.X + region.Width / 2;
-                int top = region.Y + (region.Height - side) / 2 - 24;
-                if (top < region.Y + 6) top = region.Y + 6;
-                area = new Rectangle(cx - side / 2, top, side, side);
+                area = CajaPortada(region);
                 cubeRect = area;
                 return true;
             }

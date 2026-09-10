@@ -2505,12 +2505,36 @@ namespace Rocola
         // uno, y lo que se eligio mirando es cuatro veces lo de antes.
         private const float NebAlfa = 1f;
 
+        // CUANTO ESPERA EL MAPA ANTES DE REHORNEARSE POR EL DESLIZADOR.
+        //
+        // El interruptor del detalle natural es un clic: rehornea al momento y se acabo. El DESLIZADOR
+        // no, y esa es toda la diferencia. Arrastrarlo de punta a punta suelta un aviso POR CADA UNIDAD
+        // -cien-, y hornear el mapa cuesta 23 ms en la pantalla del bar, medido. Un cuadro a sesenta por
+        // segundo dura 16,7: un solo horneado ya se pasa. Cien seguidos son dos segundos y pico de
+        // tirones, mas cien veces destruir y crear la textura, que es lo que peor le sienta al
+        // controlador de la tarjeta.
+        //
+        // Asi que la fuerza se apunta al vuelo -el numero sube mientras arrastras- pero el mapa se
+        // hornea como mucho una vez cada NebEspera. Al soltar, el ultimo valor entra en la ronda
+        // siguiente: nunca se queda sin hornear, y nunca tarda mas de esta espera en verse.
+        internal const int NebEspera = 150;
+        private int nebFuerzaMs;
+        // LA DECISION VA APARTE Y ES PURA: recibe si cambio el interruptor, si cambio la fuerza, el reloj
+        // de ahora y cuando se horneo la ultima vez, y dice si toca. Asi se puede probar sin tarjeta
+        // grafica, que aqui no hay ninguna. Es el mismo apaño que PasoMuro, StepIdle o SmoothProgress.
+        internal static bool TocaRehornear(bool cambioMando, bool cambioFuerza, int ahora, int ultimo)
+        {
+            if (cambioMando) return true;        // el interruptor es un clic: al momento
+            if (!cambioFuerza) return false;
+            return unchecked(ahora - ultimo) >= NebEspera;   // el deslizador se junta
+        }
         private void EnsureNieblas()
         {
-            // Se rehornea si cambio el interruptor O si movieron el deslizador de la fuerza: el mapa
-            // lleva la fuerza cocida dentro, asi que sin esto el mando no se notaria hasta reiniciar.
-            if (nebNaturalDe != CieloProfundo || nebFuerzaDe != Form1.nebNaturalFuerza)
-            { if (nebTex != IntPtr.Zero) { D3D9.Release(nebTex); nebTex = IntPtr.Zero; } nebNaturalDe = CieloProfundo; nebFuerzaDe = Form1.nebNaturalFuerza; nieblaRetryPending = false; }
+            bool cambioMando = nebNaturalDe != CieloProfundo;
+            bool cambioFuerza = nebFuerzaDe != Form1.nebNaturalFuerza;
+            int ahoraNeb = Environment.TickCount;
+            if (TocaRehornear(cambioMando, cambioFuerza, ahoraNeb, nebFuerzaMs))
+            { if (nebTex != IntPtr.Zero) { D3D9.Release(nebTex); nebTex = IntPtr.Zero; } nieblaRetryPending = false; }
             bool nuevoTamano = nieblaW != Width || nieblaH != Height;
             if (!nuevoTamano && hazTex != IntPtr.Zero && nebTex != IntPtr.Zero && ruidoTex != IntPtr.Zero) return;
             int now = Environment.TickCount;
@@ -2521,7 +2545,13 @@ namespace Rocola
             if (nuevoTamano || hazTex == IntPtr.Zero)
                 using (Bitmap hz = GpuStarfield.BakeViaLactea(mw, mh)) hazTex = Upload(hazTex, ref hazTW, ref hazTH, hz, out hazU, out hazV);
             if (nuevoTamano || nebTex == IntPtr.Zero)
+            {
+                // CON QUE se horneo se apunta AQUI, no arriba al soltar la textura: si se apuntara antes
+                // de saber que el horneado ocurre, un mapa que no llego a hacerse quedaria dado por bueno
+                // y el mando no se veria hasta el siguiente cambio.
+                nebNaturalDe = CieloProfundo; nebFuerzaDe = Form1.nebNaturalFuerza; nebFuerzaMs = ahoraNeb;
                 using (Bitmap nb = CieloProfundo ? BakeNatural(mw, mh) : GpuStarfield.BakeNebulosas(mw, mh)) nebTex = Upload(nebTex, ref nebTW, ref nebTH, nb, out nebU, out nebV);
+            }
             if (ruidoTex == IntPtr.Zero)
                 using (Bitmap rd = Form1.BakeRuidoGrande(RuidoTeja)) ruidoTex = Upload(ruidoTex, ref ruTW, ref ruTH, rd, out ruU, out ruV);
             nieblaRetryPending = hazTex == IntPtr.Zero || nebTex == IntPtr.Zero || ruidoTex == IntPtr.Zero;
@@ -2654,28 +2684,50 @@ namespace Rocola
             stars.DrawColorQuad(progressQuad);
         }
 
+        // MISMOS PIXELES QUE ANTES, escritos de otra manera. SetPixel es una llamada a GDI+ por
+        // pixel -16 384 aqui- y esto son 2 ms que se pagan en cada reinicio del dispositivo. La
+        // hermana de al lado, BakeNatural, ya lo hacia con LockBits y una sola copia por fila.
         internal static Bitmap BakeVineta(int n)
         {
             if (n < 2) throw new ArgumentOutOfRangeException("n");
             Bitmap b = new Bitmap(n, n, PixelFormat.Format32bppArgb);
+            int[] pixels = new int[n * n];
             for (int y = 0; y < n; y++)
                 for (int x = 0; x < n; x++)
                 {
                     double dx = 2.0 * x / (n - 1) - 1.0, dy = 2.0 * y / (n - 1) - 1.0;
                     double f = Math.Max(0.0, Math.Min(1.0, (dx * dx + dy * dy - 0.18) / 1.82));
                     f = f * f * (3.0 - 2.0 * f);
-                    b.SetPixel(x, y, Color.FromArgb((int)(110.0 * f + 0.5), 0, 0, 0));
+                    pixels[y * n + x] = unchecked((int)((uint)(110.0 * f + 0.5) << 24));   // negro; solo cambia el alfa
                 }
+            BitmapData data = b.LockBits(new Rectangle(0, 0, n, n), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+            try { for (int y = 0; y < n; y++) Marshal.Copy(pixels, y * n, new IntPtr(data.Scan0.ToInt64() + y * (long)data.Stride), n); }
+            finally { b.UnlockBits(data); }
             return b;
         }
+        // EL MAPA SE HORNEA UNA VEZ Y SE GUARDA. Lo que puede fallar en el reintento es la SUBIDA a la
+        // tarjeta -al arrancar, o cuando Windows se lleva el dispositivo al bloquear la sesion-, nunca
+        // el horneado. Antes se rehorneaba entero en cada reintento, o sea cada segundo mientras durara
+        // el fallo. Es la misma precaucion que ya tenia EnsureNieblas dos funciones mas arriba.
+        //
+        // Y al APAGAR el interruptor se suelta todo: antes la textura se quedaba puesta en la tarjeta
+        // hasta cerrar la rocola, aunque ya no se dibujara.
+        private Bitmap vinetaMapa;
         private void EnsureVineta()
         {
-            if (!VinetaSuave || vinetaTex != IntPtr.Zero) return;
+            if (!VinetaSuave)
+            {
+                if (vinetaTex != IntPtr.Zero) { D3D9.Release(vinetaTex); vinetaTex = IntPtr.Zero; }
+                if (vinetaMapa != null) { vinetaMapa.Dispose(); vinetaMapa = null; }
+                vinetaRetry = 0;
+                return;
+            }
+            if (vinetaTex != IntPtr.Zero) return;
             int now = Environment.TickCount;
             if (vinetaRetry != 0 && unchecked(now - vinetaRetry) < 1000) return;
             vinetaRetry = now;
-            using (Bitmap b = BakeVineta(128))
-                vinetaTex = stars.CreateOverlay(b, out vinetaU, out vinetaV);
+            if (vinetaMapa == null) vinetaMapa = BakeVineta(128);
+            vinetaTex = stars.CreateOverlay(vinetaMapa, out vinetaU, out vinetaV);
         }
 
         // Solo tinte de los vertices GPU: mismas texturas y dos pasadas, sin buffers
@@ -3304,7 +3356,11 @@ namespace Rocola
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing) StopGpu();
+            if (disposing)
+            {
+                StopGpu();
+                if (vinetaMapa != null) { vinetaMapa.Dispose(); vinetaMapa = null; }   // el mapa guardado de la vineta
+            }
             base.Dispose(disposing);
         }
     }
