@@ -25,14 +25,14 @@ class CristalCola
   using(Font desc=new Font("Segoe UI",8.5f))
   using(Panel p=(Panel)t.GetMethod("PaginaFondo",F).Invoke(o,new object[]{font,font,desc,font,Color.White,Color.Gray,Color.Gray}))
   {
-   string[] labels={"Interior de discos con cristal (GPU)","Cola ampliada de 12 canciones (GPU)"};
-   string[] fields={"cancionesCristal","colaDoce"};
-   for(int mask=0;mask<4;mask++){
-    for(int i=0;i<2;i++){Control c=Find(p,labels[i]);if(c==null||c.Bottom>c.Parent.Height)throw new Exception("Falta control");
+   string[] labels={"Interior de discos con cristal (GPU)","Cola ampliada de 12 canciones (GPU)","Respuesta inmediata al toque (GPU)","Transiciones de vista y seleccion (GPU)","Cache de portadas recientes (GPU)"};
+   string[] fields={"cancionesCristal","colaDoce","respuestaInmediata","transicionesTacto","cachePortadasGpu"};
+   for(int mask=0;mask<32;mask++){
+    for(int i=0;i<fields.Length;i++){Control c=Find(p,labels[i]);if(c==null||c.Bottom>c.Parent.Height)throw new Exception("Falta control");
      c.GetType().GetProperty("Checked",F).SetValue(c,(mask&(1<<i))!=0,null);
      if((bool)t.GetField(fields[i],F).GetValue(o)!=((mask&(1<<i))!=0))throw new Exception("Evento incorrecto");}
     t.GetMethod("SaveConfigPrefs",F).Invoke(o,null);object read=Blank(t);t.GetMethod("LoadConfigPrefs",F).Invoke(read,null);
-    for(int i=0;i<2;i++)if((bool)t.GetField(fields[i],F).GetValue(read)!=((mask&(1<<i))!=0))throw new Exception("No persiste "+fields[i]);
+    for(int i=0;i<fields.Length;i++)if((bool)t.GetField(fields[i],F).GetValue(read)!=((mask&(1<<i))!=0))throw new Exception("No persiste "+fields[i]);
    }
   }
   foreach(int w in new int[]{640,1024,1920,3440})

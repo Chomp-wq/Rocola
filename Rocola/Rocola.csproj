@@ -91,6 +91,7 @@
     <Compile Include="Rendimiento.cs" />
     <Compile Include="EstadoReposoGpu.cs" />
     <Compile Include="AcabadoGpu.cs" />
+    <Compile Include="RespuestaGpu.cs" />
     <Compile Include="CieloNaturalGpu.cs" />
     <Compile Include="D3D9Device.cs" />
     <Compile Include="WinSistema.cs" />

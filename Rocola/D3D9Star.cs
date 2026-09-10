@@ -1319,6 +1319,7 @@ namespace Rocola
 
         public void StopGpu()
         {
+            TrimRecentCovers(true);
             if (idleHooked) { Application.Idle -= OnIdle; idleHooked = false; }
             ReleaseCellTex();   // libera todas las texturas de celda (cache por Folder + slots TOP)
             if (contourTex != IntPtr.Zero) { D3D9.Release(contourTex); contourTex = IntPtr.Zero; }
@@ -1429,9 +1430,9 @@ namespace Rocola
             // Cubos que GIRAN (seleccionado + relevo): suben la PORTADA como textura SOLO cuando cambia
             // (al navegar o al ciclar un disco TOP), no en cada cuadro. El giro luego es solo geometria.
             GpuCubeState cs = (GetCubeState != null) ? GetCubeState() : new GpuCubeState();
-            EnsureCover(ref selTexA, ref selImgA, ref selBwA, ref selBhA, ref selUA, ref selVA, cs.Sel.CoverA);
-            EnsureCover(ref selTexB, ref selImgB, ref selBwB, ref selBhB, ref selUB, ref selVB, cs.Sel.CoverB);
-            EnsureCover(ref relTex, ref relImg, ref relBw, ref relBh, ref relU, ref relV, cs.Relay.CoverA);
+            EnsureRecentCover(ref selTexA, ref selImgA, ref selBwA, ref selBhA, ref selUA, ref selVA, cs.Sel.CoverA);
+            EnsureRecentCover(ref selTexB, ref selImgB, ref selBwB, ref selBhB, ref selUB, ref selVB, cs.Sel.CoverB);
+            EnsureRecentCover(ref relTex, ref relImg, ref relBw, ref relBh, ref relU, ref relV, cs.Relay.CoverA);
             EnsureCover(ref miniTex, ref miniImg, ref miniBw, ref miniBh, ref miniU, ref miniV, cs.Mini.CoverA);   // mini-cubo de la barra inferior
             double idleNow = AhoraMs();
             double idleDt = idleClock == 0 ? 0 : (idleNow - idleClock) / 1000.0; idleClock = idleNow;
@@ -1567,7 +1568,7 @@ namespace Rocola
             // navegacion es solo la franja superior) y la franja de estado anclada ABAJO.
             bool uiPropia = gw.Has && gw.Bmp == null;   // se anima la PROPIA textura de UI (abriendo el buscador)
             if (uiTex != IntPtr.Zero && uiBmpW > 0 && uiBmpH > 0 && !(gw.Has && gw.HideUi))
-                { SetTexQuad(uiQuad, 0, 0, uiBmpW, uiBmpH, uiU, uiV); stars.DrawQuad(uiTex, uiQuad); }
+                { SetTexQuadA(uiQuad, 0, 0, uiBmpW, uiBmpH, uiU, uiV, ((uint)(SceneAlpha() * 255) << 24) | 0xFFFFFFu); stars.DrawQuad(uiTex, uiQuad); }
             // Y ENCIMA las piezas vivas (la tarjeta y la tecla elegidas). Van despues de la textura de UI a
             // proposito: en ella estan las versiones SIN elegir, y estas las tapan. Se rellenan opacas, asi que
             // el resultado es identico a tenerlas horneadas dentro (comprobado pixel a pixel: pruebas/mover.cs).
@@ -1577,7 +1578,8 @@ namespace Rocola
                     if (piezaTex[i] == IntPtr.Zero) continue;
                     Rectangle pr = GetPiezaRect(i);
                     if (pr.Width < 1 || pr.Height < 1) continue;
-                    SetTexQuad(piezaQuad, pr.X, pr.Y, pr.X + pr.Width, pr.Y + pr.Height, piezaU[i], piezaV[i]);
+                    SetTexQuadA(piezaQuad, pr.X, pr.Y, pr.X + pr.Width, pr.Y + pr.Height, piezaU[i], piezaV[i],
+                        ((uint)(FocusAlpha(i, pr) * 255) << 24) | 0xFFFFFFu);
                     stars.DrawQuad(piezaTex[i], piezaQuad);
                 }
             // VENTANA del buscador abriendo/cerrando: el mismo quad de la UI, escalado desde su centro y fundido.

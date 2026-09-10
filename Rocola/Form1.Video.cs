@@ -660,8 +660,8 @@ namespace Rocola
                     if (Math.Abs(mouse.X - ultimoMouseGpu.X) + Math.Abs(mouse.Y - ultimoMouseGpu.Y) < 4) return;
                     ultimoMouseGpu = mouse.Location; lastInput = DateTime.Now; gpuPanel.IdleExpandTarget = false;
                 };
-                gpuPanel.MouseDown += delegate { lastInput = DateTime.Now; gpuPanel.IdleExpandTarget = false; };
-                gpuPanel.MouseWheel += delegate { lastInput = DateTime.Now; gpuPanel.IdleExpandTarget = false; };
+                gpuPanel.MouseDown += delegate { lastInput = DateTime.Now; gpuPanel.IdleExpandTarget = false; gpuPanel.TouchUi(); };
+                gpuPanel.MouseWheel += delegate { lastInput = DateTime.Now; gpuPanel.IdleExpandTarget = false; gpuPanel.TouchUi(); };
                 gpuPanel.MouseClick += delegate(object sender, MouseEventArgs e)
                 {
                     // El control del buscador esta oculto al componer por GPU: reenviar
@@ -673,6 +673,7 @@ namespace Rocola
                     if (!searchOverlay.ClientRectangle.Contains(p)) return;
                     MarkSearchActivity();
                     searchOverlay.ClickAt(p);
+                    gpuPanel.TouchUi();
                 };
                 gpuPanel.ShowFps = gpuShowFps;
                 gpuPanel.TopeFps = fpsTope;   // 0 = que lo decida el panel por el refresco de la pantalla
@@ -863,6 +864,7 @@ namespace Rocola
             // (ShowAlbum, cubos): si no, se ve un instante el modo viejo detras del nuevo (p.ej. la rejilla de
             // discos por los huecos del teclado al cerrar el buscador). UiUrgent salta la limitacion de franja.
             int mode = search ? 2 : discGpu ? 3 : attract ? 4 : nav ? 1 : 0;
+            gpuPanel.SetScene(mode);
             if (mode != gpuMode) { gpuMode = mode; uiOverlaySig = SigNada; gpuPanel.UiUrgent = true; Diag("render: modo GPU " + mode + (videoOn ? " (video sonando)" : "")); }
             // Mientras el video SE VE, el panel baja a ~30 cuadros por segundo: el resto del equipo es para
             // el video (WMP decodifica por CPU en el fierro modesto). Sin video (o con el buscador abierto,

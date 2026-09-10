@@ -1,5 +1,34 @@
 # Rocola
 
+## Respuesta y transiciones GPU (10 de septiembre de 2026)
+
+Tres interruptores independientes, activados por defecto, en Ctrl+F3 → Fondo:
+
+- **Respuesta inmediata al toque:** una tecla o clic solicita actualizar la UI
+  en el próximo cuadro, sin esperar su intervalo de trabajo pesado (hasta 250 ms).
+  También inicia el regreso desde el estado ampliado sin esperar al temporizador.
+  No ejecuta el render dentro del evento, ni retrasa o duplica acciones.
+- **Transiciones de vista y selección:** fundido breve de la interfaz al cambiar
+  entre muro e interior (140 ms) y del énfasis de resultados del buscador (120 ms).
+  Los controles mantienen sus posiciones y siguen respondiendo durante el efecto.
+  Se conservan las animaciones existentes de cubos, buscador, páginas y avisos.
+- **Caché de portadas recientes:** hasta ocho texturas GPU y 8 MiB adicionales
+  de texeles ARGB, incluido redondeo de dimensiones. Reutiliza las texturas al
+  revisitar portadas, sin reducir resolución. Se libera al apagar la opción o la GPU.
+  La contabilidad no representa todo el consumo del controlador y puede retener
+  referencias a los bitmaps originales mientras estén en la caché.
+
+Las mejoras no cambian el renderizador CPU, audio, orden de cola o contenido.
+Desactivarlas recupera su ruta previa. No prometen eliminar el tiempo necesario
+para leer una portada que todavía no esté cargada.
+
+Verificación: pruebas/respuesta.cs comprueba las curvas a 24–240 Hz, prioridad
+de entrada y la caché con HAL local (150 cambios, identidad de texturas,
+propietario único, límite y liberación). pruebas/cristalcola.cs comprueba
+32 combinaciones de las cinco opciones recientes y su guardado/restauración.
+Son pruebas automatizadas; no una medición de latencia/FPS de la aplicación
+completa con música ni una validación de Windows XP real.
+
 ## Fondo, cristal y cola ampliada
 
 - La pestaña Fondo permanece accesible desde todas las páginas de Ctrl+F3.
