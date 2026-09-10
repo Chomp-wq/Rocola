@@ -1165,7 +1165,8 @@ namespace Rocola
         private float idleU, idleV;
         private float IdleRise { get { return Math.Max(0, idleH - uiBotH) * idleBlend; } }
         internal static int IdlePanelHeight(int screenH) { return Math.Min(screenH, Math.Max(220, Math.Min(340, (int)(screenH * .32f)))); }
-        internal static int IdleProgressLeft(int h) { return 24 + (int)(180 * Math.Max(.8f, Math.Min(1.3f, h / 260f))); }
+        // Coordenada calculada al hornear el texto; no medir fuentes por cuadro.
+        public float IdleProgressStart;
         internal static Rectangle IdleBadgeRect(int w, int h)
         {
             int x = IdleCoverRect(w, h).Right + 20;
@@ -1183,7 +1184,7 @@ namespace Rocola
         internal static Rectangle IdleCoverRect(int w, int h)
         {
             int side = Math.Max(32, Math.Min(h - 76, (int)(w * .22f)));
-            return new Rectangle(24, 44, side, side);
+            return new Rectangle(24, h - side - 8, side, side);
         }
         internal static float StepIdle(float actual, bool target, double dt)
         {
@@ -2093,7 +2094,7 @@ namespace Rocola
             float width = Math.Max(0, p.Rect.Right - 1 - (x - p.Rect.X) - x);
             if (idleBlend > 0)
             {
-                float expandedX = IdleProgressLeft(idleH);
+                float expandedX = IdleProgressStart > 0 ? IdleProgressStart : IdleCoverRect(Width, idleH).Right + 180;
                 x += (expandedX - x) * idleBlend;
                 y += (Height - 18 - y) * idleBlend;
                 width += (Math.Max(0, Width - 24 - expandedX) - width) * idleBlend;

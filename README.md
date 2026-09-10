@@ -11,12 +11,16 @@
   en tres columnas y cuatro filas, numeradas de izquierda a derecha. Apagado
   recupera tres canciones. En espacios estrechos se omiten miniaturas y se
   abrevian textos; la cola real y su orden no se modifican.
-- El tiempo del estado expandido se alinea al borde izquierdo del progreso,
-  separado por un pequeño margen, sin el hueco anterior.
+- En el estado expandido, el cubo llega hasta la fila inferior; a su derecha
+  quedan el tiempo y el progreso. El espacio del reloj se mide con su texto real
+  al actualizar el panel, sin mediciones por cuadro. Se elimina la tarjeta oscura
+  detrás del cubo, sin alterar la imagen de la carátula ni sus caras sombreadas.
 
 Las dos opciones nuevas están activadas por defecto y se guardan al cerrar
 los ajustes. El renderizador CPU permanece congelado.
 Prueba: pruebas/cristalcola.cs (persistencia, geometría y transparencia).
+Prueba adicional: pruebas/cubofila.cs, 45 combinaciones de ancho, altura y tiempo;
+comprueba alineación, espacio del progreso y ausencia de relleno tras el cubo.
 
 ## Política de renderizado (8 de septiembre de 2026)
 
