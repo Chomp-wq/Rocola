@@ -85,8 +85,13 @@ namespace Rocola
         private ProgressView progress;
         private System.Windows.Forms.Timer progressTimer, animTimer, toastTimer;
         private System.Windows.Forms.Timer focusTimer;                 // vigia de foco al arrancar (autoarranque)
-        private bool maintMode = false;                                 // F10: pausa de mantenimiento del vigia de foco
-        private DateTime maintUntil = DateTime.MinValue;                // la pausa expira sola (30 min) por si se olvida
+        // F10: pausa de mantenimiento del vigia de foco. ENCENDIDO O APAGADO, sin reloj: antes se
+        // reactivaba sola a la media hora "por si se olvida", y eso mordia justo cuando hacia falta -en
+        // mitad de un mantenimiento largo la rocola volvia a robar el foco sin avisar, y con las manos
+        // dentro de otra ventana eso es peor que dejarla pausada-. Ahora se queda como se dejo hasta que
+        // se vuelva a pulsar F10. Al arrancar SIEMPRE vuelve encendida (ver mas abajo), asi que una pausa
+        // olvidada no sobrevive a un reinicio.
+        private bool maintMode = false;
 
         // ---- Reproduccion / cola ----
         private IWavePlayer output;   // WaveOut con callback por ventana (compatible con XP SIN .NET 3.5 SP1)
@@ -311,7 +316,11 @@ namespace Rocola
             // teclado para dar mantenimiento, puedes salir de la rocola sin que te regrese a fuerzas).
             // VIGIA PERMANENTE: la rocola debe estar SIEMPRE al frente. Si cualquier ventana le roba el
             // foco (un dialogo de Windows, lo que sea), el vigia lo recupera; F10 (solo teclado de PC) lo
-            // pausa 30 minutos para mantenimiento. Costo: una llamada ligera cada 1.5s, nada.
+            // pausa para mantenimiento, y se queda pausado hasta que se vuelva a pulsar. Costo: una
+            // llamada ligera cada 1.5s, nada.
+            //
+            // Esta linea de aqui abajo es la red: arrancar SIEMPRE enciende el vigia. Como la pausa ya no
+            // caduca sola, es lo unico que impide que una pausa olvidada se quede puesta para siempre.
             maintMode = false;
             if (focusTimer == null)
             {
@@ -1227,7 +1236,8 @@ namespace Rocola
             if (keyData == Keys.F10 && !IsConfiguredKey(Keys.F10))   // F10 = mantenimiento: pausa/reactiva el vigia de foco
             {
                 maintMode = !maintMode;
-                if (maintMode) { maintUntil = DateTime.Now.AddMinutes(30); ShowToast("Mantenimiento: vigia pausado 30 min", Color.FromArgb(200, 130, 35)); }
+                // El aviso dice como devolverlo, que ahora es la unica forma: ya no vuelve solo.
+                if (maintMode) ShowToast("Mantenimiento: vigia pausado (F10 para reactivar)", Color.FromArgb(200, 130, 35));
                 else ShowToast("Vigia de pantalla reactivado");
                 return true;
             }

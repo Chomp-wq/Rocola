@@ -303,7 +303,7 @@ namespace Rocola
         {
             if (searchOpen) CloseSearch();
             bool wasMaint = maintMode;
-            maintMode = true; maintUntil = DateTime.Now.AddMinutes(10);
+            maintMode = true;   // el dialogo modal necesita quedarse al frente; se devuelve en el finally
             bool changed = false;
             float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkUp = masterDb, bkEq = eqAmount, bkBass = bassAmount; int bkVid = videoVol, bkDsk = perfilDisco; bool bkNoche = nocheOn, bkOn = normalizeOn, bkSbr = sbrOn, bkIa = iaVivo, bkEqA = eqAuto, bkBassA = bassAuto, bkVidA = videoAuto, bkIaDat = iaHarvestOn; string bkIaMez = iaMezcla, bkIaGpu = iaGpu;   // por si se Cancela
             try
