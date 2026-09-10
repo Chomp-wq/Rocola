@@ -838,10 +838,15 @@ namespace Rocola
                 lNatV.Text = barNat.Value + " %";
                 for (int i = 0; i < sw.Length; i++) sw[i].Invalidate();
             };
+            // NO llama a RepintaFondo, y eso es a proposito. RepintaFondo tira la cache del cielo de la
+            // CPU y rehace el fondo del genero, y este mando NO PUEDE cambiar ninguna de las dos cosas:
+            // nebNaturalFuerza solo entra en BakeNatural, que vive dentro de #if ROCOLA_GPU. El cielo por
+            // CPU usa NebFuerza, que es const y esta congelado. Era trabajo tirado, cien veces por
+            // arrastre. Se hace lo mismo que los demas mandos que son solo de tarjeta: AplicaEfectosGpu.
             barNat.Scroll += delegate
             {
                 nebNaturalFuerza = barNat.Value / 100f;
-                f3CambioGraf = true; pinta(); RepintaFondo();
+                f3CambioGraf = true; pinta(); AplicaEfectosGpu();
             };
             bResetF.Click += delegate
             {

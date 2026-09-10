@@ -1416,6 +1416,9 @@ namespace Rocola
             // El circulito del numero de pista y la marca de "ya pedida". Todo cacheado: la lista se redibuja
             // entera cada vez que cambia algo, y crear una brocha por fila seria basura por gusto.
             private SolidBrush colaB;
+            // Sin tarjeta grafica no hay lista transparente y esto no compila nada: es un metodo parcial
+            // sin cuerpo, que el compilador borra junto con su llamada.
+            partial void SueltaAcabadoGpu();
             private Font fNum, fCola; private float fontFuente = -1f;
             private StringFormat cenFmt;
             // EL CIRCULITO Y LA PASTILLA, HORNEADOS. Dibujar dos elipses suavizadas por fila costaba 80 us por
@@ -1642,6 +1645,7 @@ namespace Rocola
                         SueltaDibujo(ref hlB); SueltaDibujo(ref hlP); SueltaDibujo(ref txtB); SueltaDibujo(ref txtFmt);
                         SueltaDibujo(ref bgB); SueltaDibujo(ref durB); SueltaDibujo(ref durFmt);
                         SueltaDibujo(ref colaB); SueltaDibujo(ref cenFmt);
+                        SueltaAcabadoGpu();   // el velo y la clave de color de la lista transparente (solo con tarjeta)
                     }
                 }
                 finally { base.Dispose(disposing); }
