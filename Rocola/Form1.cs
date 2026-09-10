@@ -1718,6 +1718,9 @@ namespace Rocola
 
             lastInput = DateTime.Now;   // cualquier tecla reinicia la inactividad
             lastInputTick = Environment.TickCount;   // el precalentador de miniaturas pausa si hay actividad
+#if ROCOLA_GPU
+            if (gpuEnabled && gpuPanel != null) gpuPanel.TouchUi();
+#endif
             if (attractOn)
             {
                 // Cualquier boton despierta la rocola... pero la MONEDA ademas ACREDITA. Antes este return se

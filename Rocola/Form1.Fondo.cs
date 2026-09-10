@@ -54,6 +54,7 @@ namespace Rocola
         private bool cancionesTransparentes = true;
         private bool cancionesCristal = true;
         private bool colaDoce = true;
+        private bool respuestaInmediata = true, transicionesTacto = true, cachePortadasGpu = true;
         private bool buscadorCache = true;
         private bool cieloProfundo = true;
         // CUANTO SE NOTA EL DETALLE NATURAL. El mapa de nubes cubre casi toda la pantalla, y a fuerza

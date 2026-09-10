@@ -210,6 +210,9 @@ namespace Rocola
             gpuPanel.NeonIntenso = neonIntenso;
             gpuPanel.CieloProfundo = cieloProfundo;
             gpuPanel.AuroraBandas = auroraBandas;
+            gpuPanel.RespuestaInmediata = respuestaInmediata;
+            gpuPanel.TransicionesTacto = transicionesTacto;
+            gpuPanel.CachePortadas = cachePortadasGpu;
             if (searchOverlay != null) searchOverlay.SeparateGpu = buscadorCache;
             if (!estadoExpandido) gpuPanel.IdleExpandTarget = false;
             gpuPanel.UiUrgent = true;
@@ -808,10 +811,9 @@ namespace Rocola
 
             Label lAd = new Label(); lAd.SetBounds(16, 396, 424, 88); lAd.BackColor = Color.Transparent;
             lAd.ForeColor = cApagado; lAd.Font = fDes;
-            lAd.Text = "Ninguno de estos le quita trabajo a la rocola: son de gusto. Se encienden, se miran en la pared\n"
-                     + "-que esta detras de esta ventana- y se dejan como mas guste. Los de la pestaña Imagen son otra\n"
-                     + "cosa: alli si se cambia trabajo por bonito, y por eso el medidor los puede proponer.\n\n"
-                     + "Los tres del progreso son la barra de abajo; los de arriba, el cielo.";
+            lAd.Text = "Estos mandos cambian el aspecto; su coste depende del equipo.\n"
+                     + "Pruebalos con musica y usa el medidor de Imagen.\n\n"
+                     + "Las opciones del progreso actuan sobre la barra inferior.";
 
             // ---------------- CUANTO DETALLE NATURAL ----------------
             Label lNatN = new Label(); lNatN.SetBounds(16, 40, 320, 20); lNatN.BackColor = Color.Transparent;
@@ -820,11 +822,9 @@ namespace Rocola
             lNatV.ForeColor = cAc; lNatV.Font = fVal; lNatV.TextAlign = ContentAlignment.TopRight;
             Label lNatD = new Label(); lNatD.SetBounds(16, 66, 424, 120); lNatD.BackColor = Color.Transparent;
             lNatD.ForeColor = cTenue; lNatD.Font = fDes;
-            lNatD.Text = "El mapa de nubes cubre casi toda la pantalla. A fuerza entera la bruma ancha tapa el cielo:\n"
-                       + "el degradado -azul arriba, calido abajo- desaparece y queda una pared de color.\n\n"
-                       + "Bajandolo se va la bruma y quedan los picos, que es donde esta la forma de la nube. Sale\n"
-                       + "MAS definida, no solo mas oscura. De fabrica viene a la mitad larga.\n\n"
-                       + "Solo se nota con el interruptor de al lado encendido, y solo con tarjeta grafica.";
+            lNatD.Text = "Regula la bruma de las nubes. Al bajarla se aprecia mejor\n"
+                       + "el degradado del cielo y el relieve de la nebulosa.\n\n"
+                       + "Requiere Nebulosas con detalle natural y renderizado GPU.";
             Deslizador barNat = new Deslizador(); barNat.SetBounds(16, 196, 424, 22);
             barNat.Minimum = 0; barNat.Maximum = 100; barNat.Acento = cAc;
             barNat.Value = (int)Math.Round(nebNaturalFuerza * 100f);
@@ -842,6 +842,20 @@ namespace Rocola
             lExtras.ForeColor = cTenue; lExtras.BackColor = Color.Transparent;
             lExtras.Text = "El cristal requiere Lista de canciones transparente (Imagen).\nLa cola de 12 requiere el estado ampliado en reposo.\nAl apagarlos vuelven el velo plano y las tres canciones.";
             tNat.Controls.Add(lExtras);
+            tNat.Height = 548;
+            tNat.Titulo = "DETALLE Y RESPUESTA";
+            string[] tactileNames = { "Respuesta inmediata al toque (GPU)", "Transiciones de vista y seleccion (GPU)", "Cache de portadas recientes (GPU)" };
+            bool[] tactileValues = { respuestaInmediata, transicionesTacto, cachePortadasGpu };
+            Interruptor[] tactile = new Interruptor[3];
+            for (int i = 0; i < tactile.Length; i++)
+            {
+                tactile[i] = new Interruptor(); tactile[i].SetBounds(16, 404 + i * 40, 424, 26);
+                tactile[i].Font = fNom; tactile[i].ForeColor = cTexto; tactile[i].Acento = cAc;
+                tactile[i].Text = tactileNames[i]; tactile[i].Checked = tactileValues[i]; tNat.Controls.Add(tactile[i]);
+            }
+            tactile[0].CheckedChanged += delegate { respuestaInmediata = tactile[0].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            tactile[1].CheckedChanged += delegate { transicionesTacto = tactile[1].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            tactile[2].CheckedChanged += delegate { cachePortadasGpu = tactile[2].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
 
             BotonPlano bResetF = new BotonPlano();
             bResetF.SetBounds(16, 572, 300, 38); bResetF.Font = fBot; bResetF.Text = "Fondo como de fabrica";
@@ -867,6 +881,8 @@ namespace Rocola
                 estrellasFinas = true; vinetaSuave = true; haloSeleccion = true; estadoTransparente = true;
                 progresoNeon = true; neonIntenso = true; progresoFluido = true;
                 cancionesCristal = true; colaDoce = true; swCristal.Checked = true; swDoce.Checked = true;
+                respuestaInmediata = true; transicionesTacto = true; cachePortadasGpu = true;
+                for (int i = 0; i < tactile.Length; i++) tactile[i].Checked = true;
                 nebNaturalFuerza = NebNaturalDef;
                 for (int i = 0; i < sw.Length; i++) sw[i].Checked = true;
                 barNat.Value = (int)Math.Round(NebNaturalDef * 100f);

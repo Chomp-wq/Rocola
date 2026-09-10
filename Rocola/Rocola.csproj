@@ -90,6 +90,7 @@
     <Compile Include="D3D9Star.cs" />
     <Compile Include="EstadoReposoGpu.cs" />
     <Compile Include="AcabadoGpu.cs" />
+    <Compile Include="RespuestaGpu.cs" />
     <Compile Include="CieloNaturalGpu.cs" />
     <Compile Include="Rendimiento.cs">
       <SubType>Form</SubType>
