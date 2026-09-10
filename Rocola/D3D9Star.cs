@@ -1950,7 +1950,10 @@ namespace Rocola
 
         private void EnsureNieblas()
         {
-            if (nebNaturalDe != CieloProfundo) { if (nebTex != IntPtr.Zero) { D3D9.Release(nebTex); nebTex = IntPtr.Zero; } nebNaturalDe = CieloProfundo; nieblaRetryPending = false; }
+            // Se rehornea si cambio el interruptor O si movieron el deslizador de la fuerza: el mapa
+            // lleva la fuerza cocida dentro, asi que sin esto el mando no se notaria hasta reiniciar.
+            if (nebNaturalDe != CieloProfundo || nebFuerzaDe != Form1.nebNaturalFuerza)
+            { if (nebTex != IntPtr.Zero) { D3D9.Release(nebTex); nebTex = IntPtr.Zero; } nebNaturalDe = CieloProfundo; nebFuerzaDe = Form1.nebNaturalFuerza; nieblaRetryPending = false; }
             bool nuevoTamano = nieblaW != Width || nieblaH != Height;
             if (!nuevoTamano && hazTex != IntPtr.Zero && nebTex != IntPtr.Zero && ruidoTex != IntPtr.Zero) return;
             int now = Environment.TickCount;
@@ -2034,6 +2037,7 @@ namespace Rocola
         public bool NebulosasCine = true;
         public bool NeonIntenso = true, CieloProfundo = true, AuroraBandas = true;
         private bool nebNaturalDe;
+        private float nebFuerzaDe = -1f;   // con que fuerza se horneo el mapa que hay puesto
 
         internal static double SmoothProgress(double current, double target, double seconds)
         {

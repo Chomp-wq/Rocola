@@ -667,25 +667,36 @@ namespace Rocola
                     // El titulo encoge de 600 a 298 para dejarle sitio a las CUATRO pestañas. No mueve nada:
                     // los cuatro titulos miden 76, 217, 214 y 179 px, medidos con su letra, asi que el mas
                     // largo se queda a 81 px de tocar la primera pestaña (que empieza en 328).
-                    Label lTit = new Label(); lTit.SetBounds(22, 10, 298, 28); lTit.BackColor = Color.Transparent;
+                    Label lTit = new Label(); lTit.SetBounds(22, 10, 284, 28);   // hasta el 306: la primera pestaña empieza en 312 lTit.BackColor = Color.Transparent;
                     lTit.ForeColor = Color.FromArgb(232, 238, 255); lTit.Font = fTit; lTit.Text = "Sonido";
                     // LAS DOS PESTANAS VAN AQUI, EN EL RENGLON DEL TITULO, y no en una fila propia: esta ventana
                     // mide 960x732 a proposito -con su barra de titulo cabe justo en una pantalla de 1024x768- y
                     // esta ocupada del primer pixel al ultimo. Una fila de pestanas de 34 px de alto habria
                     // obligado a encoger algo de lo que ya funciona. Aqui no cuestan NADA de alto y la pagina de
                     // Sonido se queda exactamente donde estaba.
-                    BotonPlano bPagS = new BotonPlano(); bPagS.SetBounds(640, 8, 148, 30); bPagS.Font = fBot; bPagS.Text = "Sonido";
-                    BotonPlano bPagI = new BotonPlano(); bPagI.SetBounds(796, 8, 148, 30); bPagI.Font = fBot; bPagI.Text = "Imagen";
+                    //
+                    // Y AHORA SON CINCO, DE 120 Y NO DE 148. Con cuatro de 148 la tira iba de 328 a 944; una
+                    // quinta habria empezado en 172 y se habria comido el titulo, que llega hasta el 328. A
+                    // 120 las cinco van de 312 a 944 -acaban en el mismo sitio- y al titulo le quedan 290 px
+                    // para los 247 que gasta el mas largo. La ventana no crece: sigue cabiendo en la pantalla
+                    // del bar. Lo comprueba la bateria 'ventana', que las mide de verdad.
+                    BotonPlano bPagS = new BotonPlano(); bPagS.SetBounds(568, 8, 120, 30); bPagS.Font = fBot; bPagS.Text = "Sonido";
+                    BotonPlano bPagI = new BotonPlano(); bPagI.SetBounds(696, 8, 120, 30); bPagI.Font = fBot; bPagI.Text = "Imagen";
+                    // LA QUINTA: el fondo y sus adornos. Once interruptores que estaban en Imagen y no eran
+                    // de ahi: ninguno le quita trabajo a la rocola, son de gusto. Y no cabian: con los
+                    // dieciseis, la tarjeta de Imagen media 1026 px en una pagina de 636 y hubo que ponerle
+                    // barra de desplazamiento.
+                    BotonPlano bPagF = new BotonPlano(); bPagF.SetBounds(824, 8, 120, 30); bPagF.Font = fBot; bPagF.Text = "Fondo";
                     // Y LA TERCERA: los detalles que dan vida. No caben en Imagen -la tarjeta EFECTOS mide
                     // 568 px y su contenido llega al 562, medido- y ademas no son lo mismo: las de alli se
                     // bajan para ganar rendimiento a cambio de que se vea menos bonito, y el medidor las
                     // puede proponer. Estas no cuestan nada que se note: se encienden y se dejan.
-                    BotonPlano bPagD = new BotonPlano(); bPagD.SetBounds(484, 8, 148, 30); bPagD.Font = fBot; bPagD.Text = "Detalles";
+                    BotonPlano bPagD = new BotonPlano(); bPagD.SetBounds(440, 8, 120, 30); bPagD.Font = fBot; bPagD.Text = "Detalles";
                     // Y LA CUARTA: los colores del fondo. Tampoco caben en Detalles -sus dos tarjetas ocupan
                     // de y=4 a y=428 de 636 y debajo ya estan el pie y el boton de fabrica-, y ademas no son
                     // lo mismo: las de alli son adornos que se encienden y se dejan; estas cambian de que
                     // color es la rocola entera.
-                    BotonPlano bPagC = new BotonPlano(); bPagC.SetBounds(328, 8, 148, 30); bPagC.Font = fBot; bPagC.Text = "Colores";
+                    BotonPlano bPagC = new BotonPlano(); bPagC.SetBounds(312, 8, 120, 30); bPagC.Font = fBot; bPagC.Text = "Colores";
                     // El subtitulo ya no ocupa el renglon entero: se queda con su mitad izquierda (su texto
                     // gasta 545 px medidos) y la derecha es del interruptor de aqui abajo. Antes reclamaba los
                     // 916 aunque no los usara, y asi los dos decian ser dueños del mismo sitio.
@@ -1114,10 +1125,11 @@ namespace Rocola
                     Panel pImg = PaginaImagen(fNom, fVal, fDes, fBot, cTexto, cTenue, cApagado);
                     Panel pDet = PaginaDetalles(fNom, fDes, fBot, cTexto, cTenue, cApagado);
                     Panel pCol = PaginaColores(fNom, fDes, fBot, cTexto, cTenue, cApagado);
-                    string[] nomPag = { "Sonido", "Imagen y rendimiento", "Detalles que dan vida", "Colores del fondo" };
+                    Panel pFon = PaginaFondo(fNom, fVal, fDes, fBot, cTexto, cTenue, cApagado);
+                    string[] nomPag = { "Sonido", "Imagen y rendimiento", "Detalles que dan vida", "Colores del fondo", "El fondo y sus adornos" };
                     Action pintaPag = delegate
                     {
-                        if (f3Pagina < 0 || f3Pagina > 3) f3Pagina = 0;
+                        if (f3Pagina < 0 || f3Pagina > 4) f3Pagina = 0;
                         // Se ensena o se esconde TODO lo que hay en la ventana menos el marco (titulo,
                         // pestanas y el boton de Listo, que se ven en las tres) y las paginas propias.
                         // Se hace asi y no con una lista de nombres a proposito: una lista se olvida de una
@@ -1129,8 +1141,9 @@ namespace Rocola
                         pImg.Visible = (f3Pagina == 1);
                         pDet.Visible = (f3Pagina == 2);
                         pCol.Visible = (f3Pagina == 3);
+                        pFon.Visible = (f3Pagina == 4);
                         lTit.Text = nomPag[f3Pagina];
-                        BotonPlano[] pb = { bPagS, bPagI, bPagD, bPagC };
+                        BotonPlano[] pb = { bPagS, bPagI, bPagD, bPagC, bPagF };
                         for (int k = 0; k < pb.Length; k++)
                         {
                             bool act = (k == f3Pagina);
@@ -1144,11 +1157,12 @@ namespace Rocola
                     bPagI.Click += delegate { f3Pagina = 1; pintaPag(); };
                     bPagD.Click += delegate { f3Pagina = 2; pintaPag(); };
                     bPagC.Click += delegate { f3Pagina = 3; pintaPag(); };
+                    bPagF.Click += delegate { f3Pagina = 4; pintaPag(); };
 
-                    dlg.Controls.Add(lTit); dlg.Controls.Add(bPagS); dlg.Controls.Add(bPagI); dlg.Controls.Add(bPagD); dlg.Controls.Add(bPagC); dlg.Controls.Add(lVer); dlg.Controls.Add(lSub); dlg.Controls.Add(swNoche); dlg.Controls.Add(lSal);
+                    dlg.Controls.Add(lTit); dlg.Controls.Add(bPagS); dlg.Controls.Add(bPagI); dlg.Controls.Add(bPagD); dlg.Controls.Add(bPagC); dlg.Controls.Add(bPagF); dlg.Controls.Add(lVer); dlg.Controls.Add(lSub); dlg.Controls.Add(swNoche); dlg.Controls.Add(lSal);
                     dlg.Controls.Add(tVol); dlg.Controls.Add(tCal); dlg.Controls.Add(tIa); dlg.Controls.Add(tBib);
                     dlg.Controls.Add(lDskT); dlg.Controls.Add(bDskA); dlg.Controls.Add(bDskS); dlg.Controls.Add(bDskH); dlg.Controls.Add(lDskS);
-                    dlg.Controls.Add(bReset); dlg.Controls.Add(bOk); dlg.Controls.Add(pImg); dlg.Controls.Add(pDet); dlg.Controls.Add(pCol);
+                    dlg.Controls.Add(bReset); dlg.Controls.Add(bOk); dlg.Controls.Add(pImg); dlg.Controls.Add(pDet); dlg.Controls.Add(pCol); dlg.Controls.Add(pFon);
                     pintaPag();
                     // Escape cierra, como toda la vida (los controles propios se comen las teclas, asi que la
                     // ventana las mira antes con KeyPreview).

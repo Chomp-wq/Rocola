@@ -33,7 +33,10 @@ namespace Rocola
                 float ridge=1-Math.Abs(CloudNoise(u*27+warp*4,v*22+warp*3)*2-1);
                 float envelope=(float)Math.Exp(-Math.Pow((v-(.35+.15*Math.Sin(u*6)))*2.4,2));
                 float value=Math.Max(0,n-.28f)*envelope*(.6f+.4f*ridge*ridge);
-                int alpha=(int)Math.Min(125,value*180*Form1.NebFuerza);
+                // La fuerza multiplica el VALOR y no el tope: asi la bruma ancha baja y los picos se
+                // quedan donde estan, que es donde vive la forma de la nube. Bajando tambien el tope
+                // saldria lo mismo pero todo mas oscuro, que no es lo que se quiere.
+                int alpha=(int)Math.Min(125,value*180*Form1.NebFuerza*Form1.nebNaturalFuerza);
                 pixels[y*w+x]=unchecked((int)((uint)alpha<<24|0x00FFFFFFu));
             }
             BitmapData data=b.LockBits(new Rectangle(0,0,w,h),ImageLockMode.WriteOnly,PixelFormat.Format32bppArgb);

@@ -293,6 +293,7 @@ namespace Rocola
                     else if (s.StartsWith("canciones_transparentes=")) cancionesTransparentes = s.Substring(24).Trim() != "0";
                     else if (s.StartsWith("buscador_cache=")) buscadorCache = s.Substring(15).Trim() != "0";
                     else if (s.StartsWith("cielo_profundo=")) cieloProfundo = s.Substring(15).Trim() != "0";
+                    else if (s.StartsWith("cielo_profundo_fuerza=")) nebNaturalFuerza = FuerzaNatural(s.Substring(22));
                     else if (s.StartsWith("aurora_bandas=")) auroraBandas = s.Substring(14).Trim() != "0";
                     else if (s.StartsWith("disco="))   // tipo de disco: auto (medir), ssd o hdd (Ctrl+F3)
                     {
@@ -390,6 +391,7 @@ namespace Rocola
                 sb.Append("canciones_transparentes=").Append(cancionesTransparentes ? "1" : "0").Append("\r\n");
                 sb.Append("buscador_cache=").Append(buscadorCache ? "1" : "0").Append("\r\n");
                 sb.Append("cielo_profundo=").Append(cieloProfundo ? "1" : "0").Append("\r\n");
+                sb.Append("cielo_profundo_fuerza=").Append((int)Math.Round(nebNaturalFuerza * 100f)).Append("\r\n");
                 sb.Append("aurora_bandas=").Append(auroraBandas ? "1" : "0").Append("\r\n");
                 sb.Append("disco=").Append(perfilDisco == 1 ? "ssd" : perfilDisco == 2 ? "hdd" : "auto").Append("\r\n");
                 sb.Append("video_gpu=").Append(videoGpuOn ? "1" : "0").Append("\r\n");
