@@ -292,6 +292,8 @@ namespace Rocola
                     else if (s.StartsWith("neon_intenso=")) neonIntenso = s.Substring(13).Trim() != "0";
                     else if (s.StartsWith("estado_transparente=")) estadoTransparente = s.Substring(20).Trim() != "0";
                     else if (s.StartsWith("canciones_transparentes=")) cancionesTransparentes = s.Substring(24).Trim() != "0";
+                    else if (s.StartsWith("canciones_cristal=")) cancionesCristal = s.Substring(18).Trim() != "0";
+                    else if (s.StartsWith("cola_doce=")) colaDoce = s.Substring(10).Trim() != "0";
                     else if (s.StartsWith("buscador_cache=")) buscadorCache = s.Substring(15).Trim() != "0";
                     else if (s.StartsWith("cielo_profundo=")) cieloProfundo = s.Substring(15).Trim() != "0";
                     else if (s.StartsWith("cielo_profundo_fuerza=")) nebNaturalFuerza = FuerzaNatural(s.Substring(22));
@@ -376,6 +378,8 @@ namespace Rocola
                 sb.Append("neon_intenso=").Append(neonIntenso ? "1" : "0").Append("\r\n");
                 sb.Append("estado_transparente=").Append(estadoTransparente ? "1" : "0").Append("\r\n");
                 sb.Append("canciones_transparentes=").Append(cancionesTransparentes ? "1" : "0").Append("\r\n");
+                sb.Append("canciones_cristal=").Append(cancionesCristal ? "1" : "0").Append("\r\n");
+                sb.Append("cola_doce=").Append(colaDoce ? "1" : "0").Append("\r\n");
                 sb.Append("buscador_cache=").Append(buscadorCache ? "1" : "0").Append("\r\n");
                 sb.Append("cielo_profundo=").Append(cieloProfundo ? "1" : "0").Append("\r\n");
                 sb.Append("cielo_profundo_fuerza=").Append((int)Math.Round(nebNaturalFuerza * 100f)).Append("\r\n");
