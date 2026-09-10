@@ -741,6 +741,126 @@ namespace Rocola
             return pg;
         }
 
+        // ================== LA QUINTA PESTAÑA: EL FONDO Y SUS ADORNOS ==================
+        //
+        // Once interruptores que estaban en "Imagen" y no eran de ahi. La regla de Imagen es que lo de alli
+        // se BAJA para ganar rendimiento a cambio de que se vea menos bonito, y por eso el medidor lo puede
+        // proponer. Estos once no quitan trabajo de ningun cuadro: se mira en el codigo y se ve.
+        //
+        //   Estrellas finas          multiplica un tamaño (D3D9Star, BuildStarVerts)
+        //   Ondas suaves             multiplica tres numeros de la aurora
+        //   Aurora con bandas        APAGARLO cuesta mas: añade dos pasadas de suavizado
+        //   Nebulosas azul/violeta   elige un tinte
+        //   Detalle natural          elige que mapa se hornea UNA vez
+        //   Viñeta, halo             un dibujo mas, y el halo solo con disco abierto
+        //   Los tres del progreso    la barra de abajo, que es del tamaño de un dedo
+        //
+        // Y no cabian donde estaban: con las dieciseis, la tarjeta EFECTOS media 1026 px en una pagina de
+        // 636 y llevaba barra de desplazamiento. Tampoco cabian en Detalles (sus tarjetas llegan a 500 de
+        // 636) ni en Colores (cuatro tarjetas apretadas que acaban en 576). Asi que pestaña propia, igual
+        // que hicieron Detalles y Colores en su momento.
+        private Panel PaginaFondo(Font fNom, Font fVal, Font fDes, Font fBot,
+                                  Color cTexto, Color cTenue, Color cApagado)
+        {
+            Color cAc = Color.FromArgb(150, 190, 255);
+            Panel pg = new Panel();
+            pg.SetBounds(0, 96, 960, 636);
+            pg.BackColor = Color.FromArgb(11, 14, 32);
+
+            Tarjeta tAd = new Tarjeta(); tAd.SetBounds(16, 4, 456, 496); tAd.Titulo = "LOS ADORNOS DEL FONDO"; tAd.Acento = cAc;
+            Tarjeta tNat = new Tarjeta(); tNat.SetBounds(488, 4, 456, 496); tNat.Titulo = "CUANTO DETALLE NATURAL"; tNat.Acento = cAc;
+
+            // ---------------- LOS ONCE ADORNOS ----------------
+            string[] nom = {
+                "Nebulosas azul / violeta",
+                "Nebulosas con detalle natural",
+                "Aurora con bandas mas definidas",
+                "Ondas suaves",
+                "Estrellas finas",
+                "Viñeta suave",
+                "Halo de seleccion",
+                "Estado ampliado transparente",
+                "Barra de progreso neon",
+                "Neon de progreso intenso",
+                "Progreso ultrafluido",
+            };
+            bool[] val = { nebulosasCine, cieloProfundo, auroraBandas, ondasSuaves, estrellasFinas,
+                           vinetaSuave, haloSeleccion, estadoTransparente, progresoNeon, neonIntenso, progresoFluido };
+            Interruptor[] sw = new Interruptor[nom.Length];
+            for (int i = 0; i < sw.Length; i++)
+            {
+                sw[i] = new Interruptor();
+                sw[i].SetBounds(16, 36 + i * 32, 424, 26); sw[i].ForeColor = cTexto; sw[i].Font = fNom;
+                sw[i].Text = nom[i]; sw[i].Acento = cAc; sw[i].Checked = val[i];
+                tAd.Controls.Add(sw[i]);
+            }
+            sw[0].CheckedChanged += delegate { nebulosasCine = sw[0].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            sw[1].CheckedChanged += delegate { cieloProfundo = sw[1].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            sw[2].CheckedChanged += delegate { auroraBandas = sw[2].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            sw[3].CheckedChanged += delegate { ondasSuaves = sw[3].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            sw[4].CheckedChanged += delegate { estrellasFinas = sw[4].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            sw[5].CheckedChanged += delegate { vinetaSuave = sw[5].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            sw[6].CheckedChanged += delegate { haloSeleccion = sw[6].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            sw[7].CheckedChanged += delegate { estadoTransparente = sw[7].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            sw[8].CheckedChanged += delegate { progresoNeon = sw[8].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            sw[9].CheckedChanged += delegate { neonIntenso = sw[9].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            sw[10].CheckedChanged += delegate { progresoFluido = sw[10].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+
+            Label lAd = new Label(); lAd.SetBounds(16, 396, 424, 88); lAd.BackColor = Color.Transparent;
+            lAd.ForeColor = cApagado; lAd.Font = fDes;
+            lAd.Text = "Ninguno de estos le quita trabajo a la rocola: son de gusto. Se encienden, se miran en la pared\n"
+                     + "-que esta detras de esta ventana- y se dejan como mas guste. Los de la pestaña Imagen son otra\n"
+                     + "cosa: alli si se cambia trabajo por bonito, y por eso el medidor los puede proponer.\n\n"
+                     + "Los tres del progreso son la barra de abajo; los de arriba, el cielo.";
+
+            // ---------------- CUANTO DETALLE NATURAL ----------------
+            Label lNatN = new Label(); lNatN.SetBounds(16, 40, 320, 20); lNatN.BackColor = Color.Transparent;
+            lNatN.ForeColor = cTexto; lNatN.Font = fNom; lNatN.Text = "Fuerza del detalle natural";
+            Label lNatV = new Label(); lNatV.SetBounds(340, 40, 100, 20); lNatV.BackColor = Color.Transparent;
+            lNatV.ForeColor = cAc; lNatV.Font = fVal; lNatV.TextAlign = ContentAlignment.TopRight;
+            Label lNatD = new Label(); lNatD.SetBounds(16, 66, 424, 120); lNatD.BackColor = Color.Transparent;
+            lNatD.ForeColor = cTenue; lNatD.Font = fDes;
+            lNatD.Text = "El mapa de nubes cubre casi toda la pantalla. A fuerza entera la bruma ancha tapa el cielo:\n"
+                       + "el degradado -azul arriba, calido abajo- desaparece y queda una pared de color.\n\n"
+                       + "Bajandolo se va la bruma y quedan los picos, que es donde esta la forma de la nube. Sale\n"
+                       + "MAS definida, no solo mas oscura. De fabrica viene a la mitad larga.\n\n"
+                       + "Solo se nota con el interruptor de al lado encendido, y solo con tarjeta grafica.";
+            Deslizador barNat = new Deslizador(); barNat.SetBounds(16, 196, 424, 22);
+            barNat.Minimum = 0; barNat.Maximum = 100; barNat.Acento = cAc;
+            barNat.Value = (int)Math.Round(nebNaturalFuerza * 100f);
+            tNat.Controls.Add(lNatN); tNat.Controls.Add(lNatV); tNat.Controls.Add(lNatD); tNat.Controls.Add(barNat);
+
+            BotonPlano bResetF = new BotonPlano();
+            bResetF.SetBounds(16, 572, 300, 38); bResetF.Font = fBot; bResetF.Text = "Fondo como de fabrica";
+
+            Action pinta = delegate
+            {
+                lNatV.Text = barNat.Value + " %";
+                for (int i = 0; i < sw.Length; i++) sw[i].Invalidate();
+            };
+            barNat.Scroll += delegate
+            {
+                nebNaturalFuerza = barNat.Value / 100f;
+                f3CambioGraf = true; pinta(); RepintaFondo();
+            };
+            bResetF.Click += delegate
+            {
+                nebulosasCine = true; cieloProfundo = true; auroraBandas = true; ondasSuaves = true;
+                estrellasFinas = true; vinetaSuave = true; haloSeleccion = true; estadoTransparente = true;
+                progresoNeon = true; neonIntenso = true; progresoFluido = true;
+                nebNaturalFuerza = NebNaturalDef;
+                for (int i = 0; i < sw.Length; i++) sw[i].Checked = true;
+                barNat.Value = (int)Math.Round(NebNaturalDef * 100f);
+                f3CambioGraf = true; AplicaEfectosGpu(); pinta(); RepintaFondo();
+                ShowToast("Fondo como de fabrica", Color.FromArgb(40, 130, 90));
+            };
+
+            pg.Controls.Add(tAd); pg.Controls.Add(tNat); pg.Controls.Add(bResetF);
+            tAd.Controls.Add(lAd);
+            pinta();
+            return pg;
+        }
+
         // ================== LA CUARTA PESTAÑA: LOS COLORES DEL FONDO ==================
         //
         // Los colores del cielo eran numeros fijos dentro del programa, y quien queria otro fondo no tenia
@@ -929,10 +1049,10 @@ namespace Rocola
 
             Tarjeta tMide = new Tarjeta(); tMide.SetBounds(16, 4, 456, 400); tMide.Titulo = "ESTE EQUIPO"; tMide.Acento = cMide;
             Tarjeta tProp = new Tarjeta(); tProp.SetBounds(16, 412, 456, 160); tProp.Titulo = "LA PROPUESTA"; tProp.Acento = cProp;
-            pg.AutoScroll = true;
-            // Reservar el ancho de la barra vertical: 944 px ya desbordaban
-            // el area util de 943 px y hacian aparecer scroll horizontal.
-            Tarjeta tEfe = new Tarjeta(); tEfe.SetBounds(480, 4, 456, 1026); tEfe.Titulo = "EFECTOS"; tEfe.Acento = cEfe;
+            // SIN BARRA DE DESPLAZAMIENTO. La habia porque la tarjeta media 1026 px en una pagina de 636;
+            // con las once de gusto en su pestaña acaba en 572 y entra entera. Una lista que hay que
+            // desplazar para ver es una lista en la que la mitad de las cosas no existen.
+            Tarjeta tEfe = new Tarjeta(); tEfe.SetBounds(488, 4, 456, 578); tEfe.Titulo = "EFECTOS"; tEfe.Acento = cEfe;
 
             // ---------------- ESTE EQUIPO ----------------
             BotonPlano bMedir = new BotonPlano();
@@ -1004,88 +1124,41 @@ namespace Rocola
             // menos bonito, y por eso el medidor las puede proponer. Esta no se ve -solo ocurre mientras la
             // pagina esta en movimiento- y apagarla solo CUESTA rendimiento. Esta aqui para poder deshacerla,
             // no para regatearla.
-            Interruptor swHojeo = new Interruptor();
-            swHojeo.SetBounds(16, 466, 424, 26); swHojeo.ForeColor = cTexto; swHojeo.Font = fNom;
-            swHojeo.Text = "Ocultar caratulas al pasar de pagina"; swHojeo.Acento = cEfe;
-            swHojeo.Checked = hojeoLigero;
-            Interruptor swNeon = new Interruptor();
-            swNeon.SetBounds(16, 498, 424, 26); swNeon.ForeColor = cTexto; swNeon.Font = fNom;
-            swNeon.Text = "Barra de progreso neon"; swNeon.Acento = cEfe; swNeon.Checked = progresoNeon;
-            tEfe.Controls.Add(swNeon);
-            Interruptor swReposo = new Interruptor();
-            swReposo.SetBounds(16, 530, 424, 26); swReposo.ForeColor = cTexto; swReposo.Font = fNom;
-            swReposo.Text = "Discos tenues en reposo con musica"; swReposo.Acento = cEfe; swReposo.Checked = muroReposo;
-            tEfe.Controls.Add(swReposo);
-            Interruptor swCine = new Interruptor();
-            swCine.SetBounds(16, 562, 424, 26); swCine.ForeColor = cTexto; swCine.Font = fNom;
-            swCine.Text = "Nebulosas azul / violeta (solo GPU)"; swCine.Acento = cEfe; swCine.Checked = nebulosasCine;
-            tEfe.Controls.Add(swCine);
-            Interruptor swVinetaSuave = new Interruptor();
-            swVinetaSuave.SetBounds(16, 594, 424, 26); swVinetaSuave.ForeColor = cTexto; swVinetaSuave.Font = fNom;
-            swVinetaSuave.Text = "Vineta suave (solo GPU)"; swVinetaSuave.Acento = cEfe; swVinetaSuave.Checked = vinetaSuave;
-            tEfe.Controls.Add(swVinetaSuave);
-            swVinetaSuave.CheckedChanged += delegate { vinetaSuave = swVinetaSuave.Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
-            Interruptor swHaloSeleccion = new Interruptor();
-            swHaloSeleccion.SetBounds(16, 626, 424, 26); swHaloSeleccion.ForeColor = cTexto; swHaloSeleccion.Font = fNom;
-            swHaloSeleccion.Text = "Halo de seleccion (solo GPU)"; swHaloSeleccion.Acento = cEfe; swHaloSeleccion.Checked = haloSeleccion;
-            tEfe.Controls.Add(swHaloSeleccion);
-            swHaloSeleccion.CheckedChanged += delegate { haloSeleccion = swHaloSeleccion.Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
-            Interruptor swEstrellasFinas = new Interruptor();
-            swEstrellasFinas.SetBounds(16, 658, 424, 26); swEstrellasFinas.ForeColor = cTexto; swEstrellasFinas.Font = fNom;
-            swEstrellasFinas.Text = "Estrellas finas (solo GPU)"; swEstrellasFinas.Acento = cEfe; swEstrellasFinas.Checked = estrellasFinas;
-            tEfe.Controls.Add(swEstrellasFinas);
-            swEstrellasFinas.CheckedChanged += delegate { estrellasFinas = swEstrellasFinas.Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
-            Interruptor swOndasSuaves = new Interruptor();
-            swOndasSuaves.SetBounds(16, 690, 424, 26); swOndasSuaves.ForeColor = cTexto; swOndasSuaves.Font = fNom;
-            swOndasSuaves.Text = "Ondas suaves (solo GPU)"; swOndasSuaves.Acento = cEfe; swOndasSuaves.Checked = ondasSuaves;
-            tEfe.Controls.Add(swOndasSuaves);
-            swOndasSuaves.CheckedChanged += delegate { ondasSuaves = swOndasSuaves.Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
-            Interruptor swFluido = new Interruptor();
-            swFluido.SetBounds(16, 722, 424, 26); swFluido.ForeColor = cTexto; swFluido.Font = fNom;
-            swFluido.Text = "Progreso ultrafluido (solo GPU)"; swFluido.Acento = cEfe; swFluido.Checked = progresoFluido;
-            tEfe.Controls.Add(swFluido);
-            swFluido.CheckedChanged += delegate { progresoFluido = swFluido.Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
-            Interruptor swExpandido = new Interruptor();
-            swExpandido.SetBounds(16, 754, 424, 26); swExpandido.ForeColor = cTexto; swExpandido.Font = fNom;
-            swExpandido.Text = "Estado y cola ampliados en reposo (GPU)"; swExpandido.Acento = cEfe; swExpandido.Checked = estadoExpandido;
-            tEfe.Controls.Add(swExpandido);
-            swExpandido.CheckedChanged += delegate { estadoExpandido = swExpandido.Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
-            Interruptor swneonIntenso = new Interruptor();
-            swneonIntenso.SetBounds(16, 786, 424, 26); swneonIntenso.ForeColor = cTexto; swneonIntenso.Font = fNom;
-            swneonIntenso.Text = "Neon de progreso intenso (GPU)"; swneonIntenso.Acento = cEfe; swneonIntenso.Checked = neonIntenso;
-            tEfe.Controls.Add(swneonIntenso);
-            swneonIntenso.CheckedChanged += delegate { neonIntenso = swneonIntenso.Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
-            Interruptor swestadoTransparente = new Interruptor();
-            swestadoTransparente.SetBounds(16, 818, 424, 26); swestadoTransparente.ForeColor = cTexto; swestadoTransparente.Font = fNom;
-            swestadoTransparente.Text = "Estado ampliado transparente (GPU)"; swestadoTransparente.Acento = cEfe; swestadoTransparente.Checked = estadoTransparente;
-            tEfe.Controls.Add(swestadoTransparente);
-            swestadoTransparente.CheckedChanged += delegate { estadoTransparente = swestadoTransparente.Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
-            Interruptor swcancionesTransparentes = new Interruptor();
-            swcancionesTransparentes.SetBounds(16, 850, 424, 26); swcancionesTransparentes.ForeColor = cTexto; swcancionesTransparentes.Font = fNom;
-            swcancionesTransparentes.Text = "Lista de canciones transparente (GPU)"; swcancionesTransparentes.Acento = cEfe; swcancionesTransparentes.Checked = cancionesTransparentes;
-            tEfe.Controls.Add(swcancionesTransparentes);
-            swcancionesTransparentes.CheckedChanged += delegate { cancionesTransparentes = swcancionesTransparentes.Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
-            Interruptor swbuscadorCache = new Interruptor();
-            swbuscadorCache.SetBounds(16, 882, 424, 26); swbuscadorCache.ForeColor = cTexto; swbuscadorCache.Font = fNom;
-            swbuscadorCache.Text = "Optimizar seleccion del buscador (GPU)"; swbuscadorCache.Acento = cEfe; swbuscadorCache.Checked = buscadorCache;
-            tEfe.Controls.Add(swbuscadorCache);
-            swbuscadorCache.CheckedChanged += delegate { buscadorCache = swbuscadorCache.Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
-            Interruptor swcieloProfundo = new Interruptor();
-            swcieloProfundo.SetBounds(16, 914, 424, 26); swcieloProfundo.ForeColor = cTexto; swcieloProfundo.Font = fNom;
-            swcieloProfundo.Text = "Nebulosas con detalle natural (GPU)"; swcieloProfundo.Acento = cEfe; swcieloProfundo.Checked = cieloProfundo;
-            tEfe.Controls.Add(swcieloProfundo);
-            swcieloProfundo.CheckedChanged += delegate { cieloProfundo = swcieloProfundo.Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
-            Interruptor swauroraBandas = new Interruptor();
-            swauroraBandas.SetBounds(16, 946, 424, 26); swauroraBandas.ForeColor = cTexto; swauroraBandas.Font = fNom;
-            swauroraBandas.Text = "Aurora con bandas mas definidas (GPU)"; swauroraBandas.Acento = cEfe; swauroraBandas.Checked = auroraBandas;
-            tEfe.Controls.Add(swauroraBandas);
-            swauroraBandas.CheckedChanged += delegate { auroraBandas = swauroraBandas.Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
-            Label lPierde = new Label(); lPierde.SetBounds(16, 978, 424, 40); lPierde.BackColor = Color.Transparent;
+            // LAS CINCO QUE SE QUEDAN AQUI, y por que estas y no otras. La regla de esta pagina es que lo
+            // de aqui se BAJA para ganar rendimiento a cambio de que se vea menos bonito. Estas cinco lo
+            // cumplen -cada una quita trabajo de cada cuadro- y las once que eran de puro gusto se fueron
+            // a la pestaña Fondo, que es su sitio.
+            //
+            // Y ademas no cabian: con las dieciseis la tarjeta media 1026 px dentro de una pagina de 636 y
+            // hubo que ponerle barra de desplazamiento, o sea que la mitad de la lista no se veia hasta
+            // buscarla. Con cinco acaba en 572 y la barra sobra. Esta medido y lo comprueba 'ventana'.
+            string[] nomSw = {
+                "Ocultar caratulas al pasar de pagina",
+                "Discos tenues en reposo con musica",
+                "Estado y cola ampliados en reposo",
+                "Lista de canciones transparente",
+                "Optimizar seleccion del buscador",
+            };
+            bool[] valSw = { hojeoLigero, muroReposo, estadoExpandido, cancionesTransparentes, buscadorCache };
+            Interruptor[] sw = new Interruptor[nomSw.Length];
+            for (int i = 0; i < sw.Length; i++)
+            {
+                sw[i] = new Interruptor();
+                sw[i].SetBounds(16, 400 + i * 30, 424, 26); sw[i].ForeColor = cTexto; sw[i].Font = fNom;
+                sw[i].Text = nomSw[i]; sw[i].Acento = cEfe; sw[i].Checked = valSw[i];
+                tEfe.Controls.Add(sw[i]);
+            }
+            Interruptor swHojeo = sw[0];
+            sw[1].CheckedChanged += delegate { muroReposo = sw[1].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            sw[2].CheckedChanged += delegate { estadoExpandido = sw[2].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            sw[3].CheckedChanged += delegate { cancionesTransparentes = sw[3].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            sw[4].CheckedChanged += delegate { buscadorCache = sw[4].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            Label lPierde = new Label(); lPierde.SetBounds(16, 548, 424, 24); lPierde.BackColor = Color.Transparent;
             lPierde.ForeColor = cTenue; lPierde.Font = fDes;
             tEfe.Controls.Add(lGen); tEfe.Controls.Add(swHojeo); tEfe.Controls.Add(lPierde);
 
             BotonPlano bResetG = new BotonPlano();
-            bResetG.SetBounds(16, 1042, 300, 38); bResetG.Font = fBot; bResetG.Text = "Graficos como de fabrica";
+            bResetG.SetBounds(16, 590, 300, 38); bResetG.Font = fBot; bResetG.Text = "Graficos como de fabrica";
 
             int ultimoTocado = 0;
 
@@ -1260,23 +1333,6 @@ namespace Rocola
                 AplicaEfectosGpu();
                 f3CambioGraf = true;
             };
-            swNeon.CheckedChanged += delegate
-            {
-                progresoNeon = swNeon.Checked;
-                AplicaEfectosGpu();
-                f3CambioGraf = true;
-            };
-            swReposo.CheckedChanged += delegate
-            {
-                muroReposo = swReposo.Checked;
-                f3CambioGraf = true;
-            };
-            swCine.CheckedChanged += delegate
-            {
-                nebulosasCine = swCine.Checked;
-                AplicaEfectosGpu();
-                f3CambioGraf = true;
-            };
 
             bApli.Click += delegate
             {
@@ -1290,22 +1346,12 @@ namespace Rocola
             {
                 foreach (EfectoGrafico e in ef) PonNivel(e.Clave, NivAlto);
                 fpsTope = 0;
-                hojeoLigero = true; swHojeo.Checked = true;   // de fabrica viene encendido: no se ve y paga
-                progresoNeon = true; swNeon.Checked = true;
-                muroReposo = true; swReposo.Checked = true;
-                nebulosasCine = true; swCine.Checked = true;
-                vinetaSuave = true; swVinetaSuave.Checked = true;
-                haloSeleccion = true; swHaloSeleccion.Checked = true;
-                estrellasFinas = true; swEstrellasFinas.Checked = true;
-                ondasSuaves = true; swOndasSuaves.Checked = true;
-                progresoFluido = true; swFluido.Checked = true;
-                estadoExpandido = true; swExpandido.Checked = true;
-                neonIntenso = true; swneonIntenso.Checked = true;
-                estadoTransparente = true; swestadoTransparente.Checked = true;
-                cancionesTransparentes = true; swcancionesTransparentes.Checked = true;
-                buscadorCache = true; swbuscadorCache.Checked = true;
-                cieloProfundo = true; swcieloProfundo.Checked = true;
-                auroraBandas = true; swauroraBandas.Checked = true;
+                // Solo lo de ESTA pagina. Los once adornos del fondo los devuelve el boton de su propia
+                // pestaña: un boton que dice "graficos como de fabrica" y ademas te reordena el cielo seria
+                // una sorpresa, y en la ventana de al lado no se ve lo que cambio.
+                hojeoLigero = true; muroReposo = true; estadoExpandido = true;
+                cancionesTransparentes = true; buscadorCache = true;
+                for (int i = 0; i < sw.Length; i++) sw[i].Checked = true;   // de fabrica vienen encendidos
                 AplicaEfectosGpu();
                 f3CambioGraf = true;
                 pinta();

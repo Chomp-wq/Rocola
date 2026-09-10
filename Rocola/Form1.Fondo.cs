@@ -54,6 +54,24 @@ namespace Rocola
         private bool cancionesTransparentes = true;
         private bool buscadorCache = true;
         private bool cieloProfundo = true;
+        // CUANTO SE NOTA EL DETALLE NATURAL. El mapa de nubes cubre casi toda la pantalla, y a fuerza
+        // entera la bruma ancha tapa el cielo en vez de adornarlo. Bajando esto se va la bruma y quedan
+        // los picos, que es donde esta la forma de la nube: sale MAS definida, no solo mas oscura. El
+        // tope del alfa NO se toca a proposito, justo por eso.
+        //
+        // Y es un mando aparte de Form1.NebFuerza, que es const y la comparten las dos paredes -la de
+        // tarjeta grafica y la horneada- para que la maquina del bar y la de repuesto pinten igual. Esto
+        // es solo del detalle natural, que es solo de tarjeta grafica.
+        internal const float NebNaturalDef = 0.55f;
+        internal static float nebNaturalFuerza = NebNaturalDef;   // "cielo_profundo_fuerza=" en config, 0..1
+        internal static float FuerzaNatural(string txt)
+        {
+            int v;
+            if (!int.TryParse((txt ?? "").Trim(), System.Globalization.NumberStyles.Integer,
+                              System.Globalization.CultureInfo.InvariantCulture, out v)) return NebNaturalDef;
+            if (v < 0) v = 0; else if (v > 100) v = 100;
+            return v / 100f;
+        }
         private bool auroraBandas = true;
         private float muroAlpha = 1f;
         internal static float PasoMuro(float actual, bool reposo)
