@@ -853,6 +853,21 @@ namespace Rocola
                 gpuPanel.GetPieza = delegate(int i) { return uiPieza[i]; };
                 gpuPanel.GetPiezaRect = delegate(int i) { return uiPiezaRect[i]; };
                 gpuPanel.GetPiezaVersion = delegate(int i) { return EnsureUiPieza(i); };
+                gpuPanel.GetGlassMode = delegate { return CanUseSongGlass; };
+                gpuPanel.GetPaletteKey = delegate {
+                    if (!coloresCache || !searchOpen || searchOverlay == null) return 0;
+                    searchOverlay.Accent = bgAccentTarget;
+                    return bgAccentTarget.ToArgb();
+                };
+                gpuPanel.GetPaletteContent = delegate {
+                    if (!searchOpen || searchOverlay == null) return 0L;
+                    long key = Mix(Mix(SigBase, Width), Height);
+                    key = Mix(key, searchOverlay.Query); key = Mix(key, searchOverlay.DatosVer);
+                    key = Mix(key, searchOverlay.FocusResults); key = Mix(key, searchOverlay.SelResult);
+                    key = Mix(key, searchOverlay.SelRow); key = Mix(key, searchOverlay.SelCol);
+                    key = Mix(key, searchOverlay.Escrito); key = Mix(key, colaVer);
+                    key = Mix(key, searchOverlay.ToastOn); return Mix(key, searchOverlay.ToastMsg);
+                };
                 Controls.Add(gpuPanel);
             }
             if (on && !gpuEnabled)
@@ -1073,10 +1088,11 @@ namespace Rocola
                     System.Drawing.Drawing2D.GraphicsState gs = g.Save();   // INTERIOR DE DISCO: etiqueta + lista + barra de paginas (el cubo grande lo pone la GPU)
                     g.TranslateTransform(panelSongs.Left, panelSongs.Top);   // los controles del disco son hijos de panelSongs
                     DrawLabelOverlay(g, lblAlbum);
-                    if (cancionesTransparentes && songList != null)
+                    if (FastSongGlass) { /* vidrio, pagina y fila: texturas independientes */ }
+                    else if (cancionesTransparentes && songList != null)
                     {
                         GraphicsState listState = g.Save(); g.TranslateTransform(songList.Left, songList.Top);
-                        songList.RenderTransparentGpuMode(g, cancionesCristal); g.Restore(listState);
+                        songList.RenderTransparentGpuTint(g, cancionesCristal, glassCapas, Lighten(bgAccent, .55)); g.Restore(listState);
                     }
                     else DrawCtrlOverlay(g, songList);
                     if (songPager != null && songPager.Visible) DrawCtrlOverlay(g, songPager);
@@ -1184,6 +1200,11 @@ namespace Rocola
         private int EnsureUiPieza(int cual)
         {
             if (cual < 0 || cual >= NumPiezas) return 0;
+            if (gpuPanel != null)
+            {
+                gpuPanel.GlassTint = ToD3D(Lighten(bgAccent, .55));
+            }
+            if (FastSongGlass) return EnsureSongPiece(cual);
             if (!searchOpen || searchOverlay == null)
             {
                 if (uiPieza[cual] != null) { uiPieza[cual].Dispose(); uiPieza[cual] = null; uiPiezaRect[cual] = Rectangle.Empty; uiPiezaVer[cual]++; uiPiezaSig[cual] = SigNada; }
@@ -1381,8 +1402,10 @@ namespace Rocola
             {
                 sb = Mix(sb, cancionesTransparentes);
                 sb = Mix(sb, cancionesCristal);
-                sb = Mix(sb, 'D'); sb = Mix(sb, lblAlbum != null ? lblAlbum.Text : ""); sb = Mix(sb, songSel); sb = Mix(sb, songItems.Count);
-                sb = Mix(sb, songList != null ? songList.PageStart : 0); sb = Mix(sb, bgAccent.ToArgb());
+                sb = Mix(sb, FastSongGlass);
+                sb = Mix(sb, 'D'); sb = Mix(sb, lblAlbum != null ? lblAlbum.Text : ""); sb = Mix(sb, songItems.Count);
+                sb = Mix(sb, songList != null ? songList.PageStart : 0);
+                if (!FastSongGlass) { sb = Mix(sb, songSel); sb = Mix(sb, bgAccent.ToArgb()); }
                 sb = Mix(sb, colaVer);   // sin esto, la marca "EN COLA" no saldria hasta que algo mas cambiara
                 sb = Mix(sb, generoVer);   // idem para las pastillas de genero, que se aprenden en segundo plano
                 sb = Mix(sb, panelSongs.Left); sb = Mix(sb, panelSongs.Top); sb = Mix(sb, panelSongs.Width); sb = Mix(sb, panelSongs.Height);

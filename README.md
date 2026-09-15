@@ -296,6 +296,20 @@ La muestra se reparte por el archivo para no tomar solo las primeras canciones. 
 El modo a fondo **no** se guarda en la configuración a propósito: si se va la luz, la rocola vuelve
 sola a su modo normal y nunca se queda a todo gas en horario de negocio.
 
+## Vidrio, cola compacta y cambios de color (14-09-2026)
+
+Cambios compartidos con Modest/HD, exclusivamente en el renderizador GPU:
+
+- La cola ampliada reparte hasta 12 canciones en una cuadrícula según el ancho, el alto y la cantidad real. No se ocultan las miniaturas en pantallas pequeñas; el título y artista conservan elipsis cuando falta ancho. Con «Cola ampliada de 12 canciones» apagado se conserva la distribución de tres filas.
+- «Vidrio por capas y color vivo (GPU)» en Ctrl+F3 → Fondo separa el vidrio, la página y la fila seleccionada. El vidrio sigue el acento musical mediante color de vértice, sin reconstruir el bitmap por cada tono intermedio. Se conserva el hojeo y el aspecto de textos/marcas; desactivarlo recupera la composición anterior. Requiere las opciones de cristal y lista transparente.
+- «Cache de transiciones de color (GPU)» hornea el buscador con el color de destino una vez por cambio. La GPU mezcla los extremos durante 420 ms; tocar un control o cambiar el contenido cancela la mezcla para no mantener textos anteriores. La retención adicional está limitada a 64 MiB y se libera al terminar, cerrar o desactivar. Si no cabe, se aplica el destino directamente.
+- «Luna musical con orbitas (GPU)» añade desplazamiento, halo y tres estelas orbitales moduladas por nivel, medios y agudos suavizados. Sube con el estado ampliado para no esconderse detrás. Reutiliza la textura lunar y el atlas de halos; no genera bitmaps por cuadro. Requiere la luna habilitada en Detalles. Apagarlo recupera la luna anterior.
+
+Claves persistentes nuevas: `glass_capas`, `colores_cache`, `luna_activa` (1 activado / 0 desactivado).
+
+Validación reproducible en Windows: `powershell -File pruebas/validar-capas.ps1`.
+Compila con advertencias como errores y ejecuta pruebas de píxeles, disposición, configuración y recursos D3D9. Los tiempos de preparación son microbenchmarks, **no FPS del programa con música**. Modest sigue apuntando a .NET 3.5/XP, pero no se ha probado en Windows XP. El renderizador CPU permanece congelado; compilarlo solo comprueba que no se rompió el proyecto.
+
 ## Colores de fondo y portadas
 
 En Detalles, los tres botones asignan al tono del disco un peso de **20%, 50% y 100%**

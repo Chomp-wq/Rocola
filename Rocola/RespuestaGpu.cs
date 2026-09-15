@@ -6,11 +6,141 @@ namespace Rocola
     internal sealed partial class GpuPanel
     {
         public bool RespuestaInmediata = true, TransicionesTacto = true, CachePortadas = true;
+        public bool GlassPieces, ColoresCache = true, LunaActiva = true;
+        public uint GlassTint = 0xFFFFFFFFu;
+        public Func<bool> GetGlassMode;
+        public Func<int> GetPaletteKey;
+        public Func<long> GetPaletteContent;
+        private int paletteKey;
+        private long paletteContent;
+        private double paletteStart = -1000;
+        private sealed class PaletteTexture
+        {
+            public IntPtr Tex; public Rectangle Rect; public float U, V;
+        }
+        private readonly PaletteTexture[] paletteOld = new PaletteTexture[MaxPiezas + 1];
+        private void ClearPaletteFade()
+        {
+            for (int i = 0; i < paletteOld.Length; i++)
+                if (paletteOld[i] != null)
+                {
+                    if (paletteOld[i].Tex != IntPtr.Zero) D3D9.Release(paletteOld[i].Tex);
+                    paletteOld[i] = null;
+                }
+            paletteStart = -1000;
+        }
+        private void PreparePalette()
+        {
+            // Fijar el modo UNA vez por cuadro. Al terminar el hojeo no pueden
+            // aparecer las capas nuevas encima de la ultima UI compuesta.
+            bool glass = GetGlassMode != null && GetGlassMode();
+            if (glass != GlassPieces) { GlassPieces = glass; UiUrgent = true; }
+            int key = GetPaletteKey != null && ColoresCache ? GetPaletteKey() : 0;
+            long content = GetPaletteContent != null ? GetPaletteContent() : 0;
+            if (key == 0 || content != paletteContent || AhoraMs() - paletteStart >= 420)
+                ClearPaletteFade();
+            if (key != 0 && key != paletteKey && paletteKey != 0 && content == paletteContent && uiTex != IntPtr.Zero)
+            {
+                ClearPaletteFade();
+                long bytes = CoverBytes(uiBmpW, uiBmpH);
+                for (int i = 0; i < MaxPiezas; i++) bytes += CoverBytes(piezaW[i], piezaH[i]);
+                // Cota adicional: la transicion nunca retiene mas de 64 MiB de texturas.
+                if (bytes <= 64L * 1024 * 1024)
+                {
+                    paletteOld[0] = new PaletteTexture { Tex = uiTex, Rect = new Rectangle(0, 0, uiBmpW, uiBmpH), U = uiU, V = uiV };
+                    uiTex = IntPtr.Zero; uiBmpW = uiBmpH = -1; uiVer = -1;
+                    for (int i = 0; i < MaxPiezas; i++)
+                    {
+                        if (piezaTex[i] == IntPtr.Zero) continue;
+                        paletteOld[i + 1] = new PaletteTexture { Tex = piezaTex[i], Rect = GetPiezaRect(i), U = piezaU[i], V = piezaV[i] };
+                        piezaTex[i] = IntPtr.Zero; piezaW[i] = piezaH[i] = -1; piezaVer[i] = -1;
+                    }
+                    paletteStart = AhoraMs();
+                }
+            }
+            if (key != paletteKey) UiUrgent = true;
+            paletteKey = key; paletteContent = content;
+        }
+        private float PaletteAlpha()
+        { return paletteOld[0] == null ? 1 : TactileAlpha(AhoraMs() - paletteStart, 420, 0); }
+        private void DrawPaletteOld()
+        {
+            for (int i = 0; i < paletteOld.Length; i++)
+            {
+                PaletteTexture old = paletteOld[i];
+                if (old == null || old.Tex == IntPtr.Zero) continue;
+                Rectangle r = old.Rect;
+                SetTexQuad(uiQuad, r.Left, r.Top, r.Right, r.Bottom, old.U, old.V);
+                stars.DrawQuad(old.Tex, uiQuad);
+            }
+        }
+        // Omite la fila elegida en la pagina base: asi ni el texto ni sus bordes
+        // suavizados se dibujan dos veces bajo la capa de seleccion.
+        private void DrawSongPage(Rectangle page, Rectangle selected, int index, uint tint)
+        {
+            int cutTop = Math.Max(page.Top, Math.Min(page.Bottom, selected.Top));
+            int cutBottom = Math.Max(cutTop, Math.Min(page.Bottom, selected.Bottom));
+            if (selected.IsEmpty) { cutTop = page.Bottom; cutBottom = page.Bottom; }
+            DrawPieceBand(page, index, page.Top, cutTop, tint);
+            DrawPieceBand(page, index, cutBottom, page.Bottom, tint);
+        }
+        private void DrawPieceBand(Rectangle page, int index, int top, int bottom, uint tint)
+        {
+            if (bottom <= top) return;
+            SetTexQuadA(piezaQuad, page.Left, top, page.Right, bottom, piezaU[index], piezaV[index], tint);
+            float from = piezaV[index] * (top - page.Top) / page.Height;
+            float to = piezaV[index] * (bottom - page.Top) / page.Height;
+            for (int k = 0; k < piezaQuad.Length; k++) piezaQuad[k].V = piezaQuad[k].V == 0 ? from : to;
+            stars.DrawQuad(piezaTex[index], piezaQuad);
+        }
+        private float lunaBeat, lunaMid, lunaHigh;
+        private double lunaClock;
+        internal static float SafeMoonLevel(float level)
+        { return float.IsNaN(level) || float.IsInfinity(level) ? 0 : Math.Max(0, Math.Min(1, level)); }
+        internal static PointF MoonCenter(int w, int h, double seconds, float rise)
+        {
+            return new PointF(w * (.79f + .045f * (float)Math.Sin(seconds * .13)),
+                h * (.57f + .038f * (float)Math.Cos(seconds * .17)) - Math.Max(0, rise) * .50f);
+        }
+        private void UpdateMoonMusic(float pulse)
+        {
+            double now = AhoraMs();
+            float dt = (float)Math.Max(0, Math.Min(.1, (now - lunaClock) / 1000)); lunaClock = now;
+            float blend = 1 - (float)Math.Exp(-dt * 9);
+            float mid = auCuadro.Has ? SafeMoonLevel(auCuadro.B[3]) : 0;
+            float high = auCuadro.Has ? SafeMoonLevel(auCuadro.B[6]) : 0;
+            lunaBeat += (SafeMoonLevel(pulse) - lunaBeat) * blend;
+            lunaMid += (mid - lunaMid) * blend; lunaHigh += (high - lunaHigh) * blend;
+        }
+        private void DrawMoonOrbits(float cx, float cy, float radius)
+        {
+            double seconds = AhoraMs() / 1000;
+            stars.GlowBatchBegin(19);
+            uint rgb = (NebColor & 0xFFFFFFu) | 0x00406080u;
+            stars.GlowBatchAdd(cx, cy, radius * (2.5f + lunaBeat), ((uint)((25 + lunaBeat * 50) * Dim) << 24) | rgb);
+            for (int orbit = 0; orbit < 3; orbit++)
+            {
+                float band = orbit == 0 ? lunaBeat : orbit == 1 ? lunaMid : lunaHigh;
+                double angle = seconds * (.35 + orbit * .16) + orbit * 2.094;
+                uint color = orbit == 0 ? 0xFFD899u : orbit == 1 ? 0xAACFFFu : 0xECC2FFu;
+                for (int tail = 5; tail >= 0; tail--)
+                {
+                    double a = angle - tail * .095;
+                    float x = cx + (float)Math.Cos(a) * radius * (1.7f + orbit * .33f);
+                    float y = cy + (float)Math.Sin(a) * radius * (.60f + orbit * .15f);
+                    float size = radius * (tail == 0 ? .24f + band * .22f : .12f);
+                    int alpha = (int)((tail == 0 ? 165 + band * 80 : 75 - tail * 11) * Dim);
+                    stars.GlowBatchAdd(x, y, Math.Max(1, size), ((uint)alpha << 24) | color);
+                }
+            }
+            stars.GlowBatchEnd();
+        }
         private double sceneStart = -1000, focusStart = -1000;
         private Rectangle focusPrevious;
         private int sceneMode;
         public void TouchUi()
         {
+            ClearPaletteFade(); // la entrada nunca espera a una transicion de color
             if (!RespuestaInmediata) return;
             UiUrgent = true;
             IdleExpandTarget = false;

@@ -66,12 +66,23 @@ namespace Rocola
         { return RenderIdlePanelQueue(w, h, title, artist, time, qt, qa, covers, count, accent, transparent, badgeKind, false); }
 
         internal static Rectangle IdleQueueCell(int w, int h, int index, bool dozen)
+        { return IdleQueueCellCount(w, h, index, dozen ? 12 : 3, dozen); }
+
+        internal static Rectangle IdleQueueCellCount(int w, int h, int index, int count, bool dozen)
         {
-            int split = (int)(w * .52f), cols = dozen ? 3 : 1;
-            int rows = dozen ? 12 / cols : 3, gap = 8;
+            int split = (int)(w * .52f), visible = Math.Max(1, Math.Min(count, 12));
+            int cols = !dozen ? 1 : w >= 1500 ? Math.Min(3, visible) :
+                visible <= 3 ? 1 : visible <= 8 && h >= 260 ? 2 : visible <= 6 ? 2 : 3;
+            int rows = dozen ? (visible + cols - 1) / cols : 3, gap = 8;
             int cw = (w - split - 24 - (cols - 1) * gap) / cols;
             int rh = (h - 78) / rows;
             return new Rectangle(split + (index % cols) * (cw + gap), 42 + (index / cols) * rh, cw, rh - 5);
+        }
+
+        internal static Rectangle IdleQueueThumb(Rectangle cell)
+        {
+            int side = Math.Max(12, Math.Min(Math.Min(cell.Height - 6, cell.Width / 3), 64));
+            return new Rectangle(cell.X + 5, cell.Y + (cell.Height - side) / 2, side, side);
         }
 
         internal static Bitmap RenderIdlePanelQueue(int w, int h, string title, string artist, string time,
@@ -100,6 +111,7 @@ namespace Rocola
             using (SolidBrush card = new SolidBrush(Color.FromArgb(transparent ? 65 : 160, 27, 40, 67)))
             using (StringFormat line = new StringFormat())
             using (StringFormat wrap = new StringFormat())
+            using (StringFormat numberFormat = StringFormat.GenericTypographic)
             {
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
@@ -146,28 +158,31 @@ namespace Rocola
                 g.DrawString(heading, small, color, new RectangleF(split, 12, w - split - 24, 26 * scale), line);
                 if (count == 0)
                     g.DrawString("La siguiente cancion la eliges tu", normal, muted, new RectangleF(split + 14, 62, w - split - 45, 64));
-                Rectangle sample = IdleQueueCell(w, h, 0, dozen);
+                Rectangle sample = IdleQueueCellCount(w, h, 0, qt.Length, dozen);
                 using (Font queueTitle = new Font("Trebuchet MS", dozen ? Math.Max(9, Math.Min(21 * scale, (sample.Height - 8) * .52f)) : normal.Size, FontStyle.Bold, GraphicsUnit.Pixel))
                 using (Font queueArtist = new Font("Trebuchet MS", dozen ? Math.Max(8, Math.Min(16 * scale, (sample.Height - 8) * .40f)) : small.Size, FontStyle.Bold, GraphicsUnit.Pixel))
                 for (int i = 0; i < qt.Length && i < (dozen ? 12 : 3); i++)
                 {
-                    Rectangle r = IdleQueueCell(w, h, i, dozen);
+                    Rectangle r = IdleQueueCellCount(w, h, i, qt.Length, dozen);
                     using (GraphicsPath shape = RoundedPath(r, Math.Min(10, r.Height / 3))) g.FillPath(card, shape);
-                    int textX = r.X + 8;
-                    if (!dozen || (r.Height >= 42 && r.Width >= 220))
-                    {
-                        int side = Math.Max(16, r.Height - 12);
-                        Rectangle thumb = new Rectangle(r.X + 8, r.Y + 6, side, side);
-                        if (i < covers.Length && covers[i] != null) g.DrawImage(covers[i], thumb);
-                        else g.FillRectangle(color, thumb);
-                        textX = thumb.Right + 8;
-                    }
+                    Rectangle thumb = IdleQueueThumb(r);
+                    if (i < covers.Length && covers[i] != null) g.DrawImage(covers[i], thumb);
+                    else g.FillRectangle(color, thumb);
+                    int textX = thumb.Right + 5;
                     int numberWidth = (int)Math.Ceiling(g.MeasureString("12", queueArtist).Width) + 4;
-                    int textW = Math.Max(12, r.Right - textX - numberWidth - 8);
+                    bool compact = r.Width < 180;
+                    int textW = Math.Max(12, r.Right - textX - (compact ? 5 : numberWidth + 8));
                     float titleHeight = queueTitle.GetHeight(g);
                     g.DrawString(qt[i] ?? "", queueTitle, white, new RectangleF(textX, r.Y + 2, textW, titleHeight), line);
                     g.DrawString(i < qa.Length ? qa[i] ?? "" : "", queueArtist, muted, new RectangleF(textX, r.Y + 2 + titleHeight, textW, r.Height - titleHeight - 2), line);
-                    g.DrawString((i + 1).ToString("00"), queueArtist, color, new RectangleF(r.Right - numberWidth - 3, r.Y + 3, numberWidth, r.Height - 4), line);
+                    if (compact)
+                    {
+                        float numberHeight = (float)Math.Ceiling(queueArtist.GetHeight(g)) + 2;
+                        RectangleF label = new RectangleF(thumb.Left, thumb.Bottom - numberHeight, numberWidth, numberHeight);
+                        using (SolidBrush shade = new SolidBrush(Color.FromArgb(210, 8, 12, 24))) g.FillRectangle(shade, label);
+                        g.DrawString((i + 1).ToString("00"), queueArtist, white, label.Location, numberFormat);
+                    }
+                    else g.DrawString((i + 1).ToString("00"), queueArtist, color, new RectangleF(r.Right - numberWidth - 3, r.Y + 3, numberWidth, r.Height - 4), line);
                 }
             }
             return bitmap;

@@ -210,6 +210,8 @@ namespace Rocola
             gpuPanel.NeonIntenso = neonIntenso;
             gpuPanel.CieloProfundo = cieloProfundo;
             gpuPanel.AuroraBandas = auroraBandas;
+            gpuPanel.LunaActiva = lunaActiva;
+            gpuPanel.ColoresCache = coloresCache;
             gpuPanel.RespuestaInmediata = respuestaInmediata;
             gpuPanel.TransicionesTacto = transicionesTacto;
             gpuPanel.CachePortadas = cachePortadasGpu;
@@ -809,11 +811,9 @@ namespace Rocola
             sw[9].CheckedChanged += delegate { neonIntenso = sw[9].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             sw[10].CheckedChanged += delegate { progresoFluido = sw[10].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
 
-            Label lAd = new Label(); lAd.SetBounds(16, 396, 424, 88); lAd.BackColor = Color.Transparent;
+            Label lAd = new Label(); lAd.SetBounds(16, 398, 424, 32); lAd.BackColor = Color.Transparent;
             lAd.ForeColor = cApagado; lAd.Font = fDes;
-            lAd.Text = "Estos mandos cambian el aspecto; su coste depende del equipo.\n"
-                     + "Pruebalos con musica y usa el medidor de Imagen.\n\n"
-                     + "Las opciones del progreso actuan sobre la barra inferior.";
+            lAd.Text = "Efectos GPU: el coste depende del equipo.\nPruebalos con musica; puedes apagarlos por separado.";
 
             // ---------------- CUANTO DETALLE NATURAL ----------------
             Label lNatN = new Label(); lNatN.SetBounds(16, 40, 320, 20); lNatN.BackColor = Color.Transparent;
@@ -843,6 +843,19 @@ namespace Rocola
             lExtras.Text = "El cristal requiere Lista de canciones transparente (Imagen).\nLa cola de 12 requiere el estado ampliado en reposo.\nAl apagarlos vuelven el velo plano y las tres canciones.";
             tNat.Controls.Add(lExtras);
             tNat.Height = 548;
+            tAd.Height = 548;
+            string[] extraNames = { "Vidrio por capas y color vivo (GPU)", "Cache de transiciones de color (GPU)", "Luna musical con orbitas (GPU)" };
+            bool[] extraValues = { glassCapas, coloresCache, lunaActiva };
+            Interruptor[] extras = new Interruptor[3];
+            for (int i = 0; i < extras.Length; i++)
+            {
+                extras[i] = new Interruptor(); extras[i].SetBounds(16, 434 + i * 36, 424, 26);
+                extras[i].Font = fNom; extras[i].ForeColor = cTexto; extras[i].Acento = cAc;
+                extras[i].Text = extraNames[i]; extras[i].Checked = extraValues[i]; tAd.Controls.Add(extras[i]);
+            }
+            extras[0].CheckedChanged += delegate { glassCapas = extras[0].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            extras[1].CheckedChanged += delegate { coloresCache = extras[1].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            extras[2].CheckedChanged += delegate { lunaActiva = extras[2].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             tNat.Titulo = "DETALLE Y RESPUESTA";
             string[] tactileNames = { "Respuesta inmediata al toque (GPU)", "Transiciones de vista y seleccion (GPU)", "Cache de portadas recientes (GPU)" };
             bool[] tactileValues = { respuestaInmediata, transicionesTacto, cachePortadasGpu };
@@ -882,6 +895,8 @@ namespace Rocola
                 progresoNeon = true; neonIntenso = true; progresoFluido = true;
                 cancionesCristal = true; colaDoce = true; swCristal.Checked = true; swDoce.Checked = true;
                 respuestaInmediata = true; transicionesTacto = true; cachePortadasGpu = true;
+                glassCapas = coloresCache = lunaActiva = true;
+                for (int i = 0; i < extras.Length; i++) extras[i].Checked = true;
                 for (int i = 0; i < tactile.Length; i++) tactile[i].Checked = true;
                 nebNaturalFuerza = NebNaturalDef;
                 for (int i = 0; i < sw.Length; i++) sw[i].Checked = true;

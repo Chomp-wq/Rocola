@@ -54,6 +54,7 @@ namespace Rocola
         private bool cancionesTransparentes = true;
         private bool cancionesCristal = true;
         private bool colaDoce = true;
+        private bool glassCapas = true, coloresCache = true, lunaActiva = true;
         private bool respuestaInmediata = true, transicionesTacto = true, cachePortadasGpu = true;
         private bool buscadorCache = true;
         private bool cieloProfundo = true;

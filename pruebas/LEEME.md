@@ -88,6 +88,23 @@ falta `mcs` (Mono), `xvfb-run` y `python3`.
 Los `diag*.cs` y `comp*.cs` son diagnósticos de un rato concreto: se dejan porque explican
 cómo se cazó un fallo, pero no forman parte de la suite.
 
+## Baterías nativas de capas y color (Windows)
+
+Ejecutar `powershell -File pruebas/validar-capas.ps1` desde esta rama. Puede pasarse
+`-OutputDirectory` con una carpeta temporal propia. No ejecuta la biblioteca real
+ni sustituye archivos de los releases; necesita Direct3D 9 para las comprobaciones HAL.
+
+- `capascolor`: 18 composiciones idénticas píxel a píxel; firmas de selección/datos,
+  conservación del hojeo y coste de preparación; propiedad de texturas, reutilización
+  durante la mezcla, cancelación al toque/cambio de contenido y limpieza al apagar.
+- `cristalcola`: 256 combinaciones de configuración; 56 paneles entre 480 y 3440 px,
+  miniaturas visibles y celdas sin cruces; transparencia y acceso a Fondo.
+- `cubofila`, `respuesta`, `efectoslayout`: regresiones del cubo/tiempo/progreso,
+  caché de portadas y mandos de Imagen.
+
+Estas baterías usan el runtime de cada rama. No equivalen a una prueba con música,
+una medición de FPS en el equipo de destino ni una certificación de Windows XP.
+
 ## Añadir una batería nueva
 
 1. Escribe `mibateria.cs` con un `Main` que reciba la ruta del ejecutable como primer argumento.
