@@ -106,6 +106,11 @@ ni sustituye archivos de los releases; necesita Direct3D 9 para las comprobacion
   HAL del alfa, posición y reutilización de texturas. Detecta el defecto de
   tarjetas gigantes al ejecutarse contra la versión anterior.
 
+- `lunadetalle`: superficie determinista de 256 px, borde alfa, luz lateral,
+  16 combinaciones de opciones guardadas/aplicadas a GPU, geometria y brillo del
+  realce, cache entre cuadros/resoluciones, regreso al diseno anterior y liberacion
+  HAL. Genera una vista de la textura (no una captura de la aplicacion con musica).
+
 Estas baterías usan el runtime de cada rama. No equivalen a una prueba con música,
 una medición de FPS en el equipo de destino ni una certificación de Windows XP.
 

@@ -214,6 +214,10 @@ namespace Rocola
             gpuPanel.ColoresCache = coloresCache;
             gpuPanel.ControlesReposo = controlesReposo;
             gpuPanel.OndasUnidas = ondasUnidas;
+            gpuPanel.LunaRealista = lunaRealista;
+            gpuPanel.HaloLunar = haloLunar;
+            gpuPanel.PolvoLunar = polvoLunar;
+            gpuPanel.LunaProtagonista = lunaProtagonista;
             gpuPanel.RespuestaInmediata = respuestaInmediata;
             gpuPanel.TransicionesTacto = transicionesTacto;
             gpuPanel.CachePortadas = cachePortadasGpu;
@@ -822,25 +826,23 @@ namespace Rocola
             lNatN.ForeColor = cTexto; lNatN.Font = fNom; lNatN.Text = "Fuerza del detalle natural";
             Label lNatV = new Label(); lNatV.SetBounds(340, 40, 100, 20); lNatV.BackColor = Color.Transparent;
             lNatV.ForeColor = cAc; lNatV.Font = fVal; lNatV.TextAlign = ContentAlignment.TopRight;
-            Label lNatD = new Label(); lNatD.SetBounds(16, 66, 424, 120); lNatD.BackColor = Color.Transparent;
+            Label lNatD = new Label(); lNatD.SetBounds(16, 66, 424, 34); lNatD.BackColor = Color.Transparent;
             lNatD.ForeColor = cTenue; lNatD.Font = fDes;
-            lNatD.Text = "Regula la bruma de las nubes. Al bajarla se aprecia mejor\n"
-                       + "el degradado del cielo y el relieve de la nebulosa.\n\n"
-                       + "Requiere Nebulosas con detalle natural y renderizado GPU.";
-            Deslizador barNat = new Deslizador(); barNat.SetBounds(16, 196, 424, 22);
+            lNatD.Text = "Menos bruma deja ver mas el relieve y el degradado.\nRequiere Nebulosas con detalle natural (GPU).";
+            Deslizador barNat = new Deslizador(); barNat.SetBounds(16, 106, 424, 22);
             barNat.Minimum = 0; barNat.Maximum = 100; barNat.Acento = cAc;
             barNat.Value = (int)Math.Round(nebNaturalFuerza * 100f);
             tNat.Controls.Add(lNatN); tNat.Controls.Add(lNatV); tNat.Controls.Add(lNatD); tNat.Controls.Add(barNat);
             Interruptor swCristal = new Interruptor();
-            swCristal.SetBounds(16, 244, 424, 26); swCristal.Font = fNom; swCristal.ForeColor = cTexto;
+            swCristal.SetBounds(16, 140, 424, 26); swCristal.Font = fNom; swCristal.ForeColor = cTexto;
             swCristal.Text = "Interior de discos con cristal (GPU)"; swCristal.Acento = cAc; swCristal.Checked = cancionesCristal;
             swCristal.CheckedChanged += delegate { cancionesCristal = swCristal.Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             Interruptor swDoce = new Interruptor();
-            swDoce.SetBounds(16, 280, 424, 26); swDoce.Font = fNom; swDoce.ForeColor = cTexto;
+            swDoce.SetBounds(16, 176, 424, 26); swDoce.Font = fNom; swDoce.ForeColor = cTexto;
             swDoce.Text = "Cola ampliada de 12 canciones (GPU)"; swDoce.Acento = cAc; swDoce.Checked = colaDoce;
             swDoce.CheckedChanged += delegate { colaDoce = swDoce.Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             tNat.Controls.Add(swCristal); tNat.Controls.Add(swDoce);
-            Label lExtras = new Label(); lExtras.SetBounds(16, 318, 424, 74); lExtras.Font = fDes;
+            Label lExtras = new Label(); lExtras.SetBounds(16, 208, 424, 48); lExtras.Font = fDes;
             lExtras.ForeColor = cTenue; lExtras.BackColor = Color.Transparent;
             lExtras.Text = "El cristal requiere Lista de canciones transparente (Imagen).\nLa cola de 12 requiere el estado ampliado en reposo.\nAl apagarlos vuelven el velo plano y las tres canciones.";
             tNat.Controls.Add(lExtras);
@@ -865,7 +867,7 @@ namespace Rocola
             Interruptor[] tactile = new Interruptor[tactileNames.Length];
             for (int i = 0; i < tactile.Length; i++)
             {
-                tactile[i] = new Interruptor(); tactile[i].SetBounds(16, 404 + i * 40, 424, 26);
+                tactile[i] = new Interruptor(); tactile[i].SetBounds(16, 264 + i * 32, 424, 26);
                 tactile[i].Font = fNom; tactile[i].ForeColor = cTexto; tactile[i].Acento = cAc;
                 tactile[i].Text = tactileNames[i]; tactile[i].Checked = tactileValues[i]; tNat.Controls.Add(tactile[i]);
             }
@@ -873,6 +875,24 @@ namespace Rocola
             tactile[1].CheckedChanged += delegate { transicionesTacto = tactile[1].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             tactile[2].CheckedChanged += delegate { cachePortadasGpu = tactile[2].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             tactile[3].CheckedChanged += delegate { ondasUnidas = tactile[3].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+
+            Label lMoon = new Label(); lMoon.SetBounds(16, 398, 424, 20);
+            lMoon.Text = "LUNA: halo, polvo y realce requieren el nuevo diseno";
+            lMoon.Font = fDes; lMoon.ForeColor = cTenue; lMoon.BackColor = Color.Transparent;
+            tNat.Controls.Add(lMoon);
+            string[] moonNames = { "Luna con relieve y crateres (GPU)", "Halo lunar musical (GPU)", "Polvo estelar orbital (GPU)", "Realzar luna al atenuar el fondo (GPU)" };
+            bool[] moonValues = { lunaRealista, haloLunar, polvoLunar, lunaProtagonista };
+            Interruptor[] moonSwitches = new Interruptor[moonNames.Length];
+            for (int i = 0; i < moonSwitches.Length; i++)
+            {
+                moonSwitches[i] = new Interruptor(); moonSwitches[i].SetBounds(16, 424 + i * 32, 424, 26);
+                moonSwitches[i].Font = fNom; moonSwitches[i].ForeColor = cTexto; moonSwitches[i].Acento = cAc;
+                moonSwitches[i].Text = moonNames[i]; moonSwitches[i].Checked = moonValues[i]; tNat.Controls.Add(moonSwitches[i]);
+            }
+            moonSwitches[0].CheckedChanged += delegate { lunaRealista = moonSwitches[0].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            moonSwitches[1].CheckedChanged += delegate { haloLunar = moonSwitches[1].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            moonSwitches[2].CheckedChanged += delegate { polvoLunar = moonSwitches[2].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            moonSwitches[3].CheckedChanged += delegate { lunaProtagonista = moonSwitches[3].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
 
             BotonPlano bResetF = new BotonPlano();
             bResetF.SetBounds(16, 594, 300, 38); bResetF.Font = fBot; bResetF.Text = "Fondo como de fabrica";
@@ -901,6 +921,8 @@ namespace Rocola
                 respuestaInmediata = true; transicionesTacto = true; cachePortadasGpu = true;
                 glassCapas = coloresCache = lunaActiva = true;
                 controlesReposo = ondasUnidas = true;
+                lunaRealista = haloLunar = polvoLunar = lunaProtagonista = true;
+                for (int i = 0; i < moonSwitches.Length; i++) moonSwitches[i].Checked = true;
                 for (int i = 0; i < extras.Length; i++) extras[i].Checked = true;
                 for (int i = 0; i < tactile.Length; i++) tactile[i].Checked = true;
                 nebNaturalFuerza = NebNaturalDef;
