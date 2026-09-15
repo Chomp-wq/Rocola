@@ -296,6 +296,16 @@ La muestra se reparte por el archivo para no tomar solo las primeras canciones. 
 El modo a fondo **no** se guarda en la configuración a propósito: si se va la luz, la rocola vuelve
 sola a su modo normal y nunca se queda a todo gas en horario de negocio.
 
+## Reposo integrado y cola compacta (15-09-2026)
+
+- Desde 1500 px de ancho, las tarjetas de la cola ampliada tienen un máximo de 520 × 79 px y se agrupan arriba, con la carátula y las dos líneas de texto alineadas. Una o dos canciones ya no generan paneles enormes. Se conserva el reparto de las resoluciones bajas y la capacidad de 12 canciones.
+- «Controles tenues en reposo (GPU)» atenúa al 2% la barra de letras, el botón Buscar, las instrucciones, el encabezado, sus halos y el contador de FPS cuando se expande el estado. Recuperan su opacidad con la animación de regreso al interactuar. La canción actual, su cola y los avisos permanecen legibles; las vistas activas del buscador y del disco no se atenúan.
+- «Ondas unidas al estado (GPU)» hace que el núcleo del horizonte y el borde de la barra compartan posición durante toda la expansión y contracción. Corrige la separación anterior sin reconstruir texturas por cuadro.
+
+Los dos interruptores están en Ctrl+F3 → Fondo, activados por defecto. Se guardan como `controles_reposo` y `ondas_unidas`; apagarlos recupera la visibilidad o separación anterior. Cambios exclusivos GPU; CPU congelado.
+
+`pruebas/validar-capas.ps1` ejecuta seis baterías: incluye 297 disposiciones de cola, 126 posiciones del horizonte verificadas contra su malla, curvas de atenuación a 24–240 Hz y comprobaciones con Direct3D 9. No son mediciones de FPS con la biblioteca real ni pruebas en XP.
+
 ## Vidrio, cola compacta y cambios de color (14-09-2026)
 
 Cambios compartidos con Modest/HD, exclusivamente en el renderizador GPU:

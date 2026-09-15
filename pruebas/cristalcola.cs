@@ -25,9 +25,16 @@ class CristalCola
   using(Font desc=new Font("Segoe UI",8.5f))
   using(Panel p=(Panel)t.GetMethod("PaginaFondo",F).Invoke(o,new object[]{font,font,desc,font,Color.White,Color.Gray,Color.Gray}))
   {
-   string[] labels={"Interior de discos con cristal (GPU)","Cola ampliada de 12 canciones (GPU)","Respuesta inmediata al toque (GPU)","Transiciones de vista y seleccion (GPU)","Cache de portadas recientes (GPU)","Vidrio por capas y color vivo (GPU)","Cache de transiciones de color (GPU)","Luna musical con orbitas (GPU)"};
-   string[] fields={"cancionesCristal","colaDoce","respuestaInmediata","transicionesTacto","cachePortadasGpu","glassCapas","coloresCache","lunaActiva"};
-   for(int mask=0;mask<256;mask++){
+   string[] labels={"Interior de discos con cristal (GPU)","Cola ampliada de 12 canciones (GPU)","Respuesta inmediata al toque (GPU)","Transiciones de vista y seleccion (GPU)","Cache de portadas recientes (GPU)","Vidrio por capas y color vivo (GPU)","Cache de transiciones de color (GPU)","Luna musical con orbitas (GPU)","Controles tenues en reposo (GPU)","Ondas unidas al estado (GPU)"};
+   string[] fields={"cancionesCristal","colaDoce","respuestaInmediata","transicionesTacto","cachePortadasGpu","glassCapas","coloresCache","lunaActiva","controlesReposo","ondasUnidas"};
+   foreach(Control card in p.Controls){
+    if(card.Bottom>p.Height||card.Right>p.Width)throw new Exception("Tarjeta fuera de Fondo");
+    foreach(Control c in card.Controls){
+     if(c.Top<32||c.Bottom>card.Height||c.Right>card.Width)throw new Exception("Control recortado: "+c.Text);
+     foreach(Control other in card.Controls)if(other!=c&&c.Bounds.IntersectsWith(other.Bounds))throw new Exception("Mandos solapados");
+    }
+   }
+   for(int mask=0;mask<(1<<fields.Length);mask++){
     for(int i=0;i<fields.Length;i++){Control c=Find(p,labels[i]);if(c==null||c.Bottom>c.Parent.Height)throw new Exception("Falta control");
      c.GetType().GetProperty("Checked",F).SetValue(c,(mask&(1<<i))!=0,null);
      if((bool)t.GetField(fields[i],F).GetValue(o)!=((mask&(1<<i))!=0))throw new Exception("Evento incorrecto");}
@@ -66,7 +73,7 @@ class CristalCola
   string source=File.ReadAllText(args[1]);
   string guard=null;foreach(string line in source.Split('\n'))if(line.Contains("cc != lTit"))guard=line;
   if(guard==null||!guard.Contains("cc != bPagF")||!guard.Contains("cc != pFon"))throw new Exception("Fondo se oculta");
-  Console.WriteLine("PASS: 256 combinaciones de opciones, 56 paneles, miniaturas visibles, celdas sin cruces, vidrio y pestanas. Imagenes: "+dir);
+  Console.WriteLine("PASS: 1024 combinaciones de opciones, Fondo sin cruces, 56 paneles, miniaturas visibles, vidrio y pestanas. Imagenes: "+dir);
   return 0;
  }
 }

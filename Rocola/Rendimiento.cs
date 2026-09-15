@@ -212,6 +212,8 @@ namespace Rocola
             gpuPanel.AuroraBandas = auroraBandas;
             gpuPanel.LunaActiva = lunaActiva;
             gpuPanel.ColoresCache = coloresCache;
+            gpuPanel.ControlesReposo = controlesReposo;
+            gpuPanel.OndasUnidas = ondasUnidas;
             gpuPanel.RespuestaInmediata = respuestaInmediata;
             gpuPanel.TransicionesTacto = transicionesTacto;
             gpuPanel.CachePortadas = cachePortadasGpu;
@@ -842,11 +844,11 @@ namespace Rocola
             lExtras.ForeColor = cTenue; lExtras.BackColor = Color.Transparent;
             lExtras.Text = "El cristal requiere Lista de canciones transparente (Imagen).\nLa cola de 12 requiere el estado ampliado en reposo.\nAl apagarlos vuelven el velo plano y las tres canciones.";
             tNat.Controls.Add(lExtras);
-            tNat.Height = 548;
-            tAd.Height = 548;
-            string[] extraNames = { "Vidrio por capas y color vivo (GPU)", "Cache de transiciones de color (GPU)", "Luna musical con orbitas (GPU)" };
-            bool[] extraValues = { glassCapas, coloresCache, lunaActiva };
-            Interruptor[] extras = new Interruptor[3];
+            tNat.Height = 580;
+            tAd.Height = 580;
+            string[] extraNames = { "Vidrio por capas y color vivo (GPU)", "Cache de transiciones de color (GPU)", "Luna musical con orbitas (GPU)", "Controles tenues en reposo (GPU)" };
+            bool[] extraValues = { glassCapas, coloresCache, lunaActiva, controlesReposo };
+            Interruptor[] extras = new Interruptor[extraNames.Length];
             for (int i = 0; i < extras.Length; i++)
             {
                 extras[i] = new Interruptor(); extras[i].SetBounds(16, 434 + i * 36, 424, 26);
@@ -856,10 +858,11 @@ namespace Rocola
             extras[0].CheckedChanged += delegate { glassCapas = extras[0].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             extras[1].CheckedChanged += delegate { coloresCache = extras[1].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             extras[2].CheckedChanged += delegate { lunaActiva = extras[2].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            extras[3].CheckedChanged += delegate { controlesReposo = extras[3].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             tNat.Titulo = "DETALLE Y RESPUESTA";
-            string[] tactileNames = { "Respuesta inmediata al toque (GPU)", "Transiciones de vista y seleccion (GPU)", "Cache de portadas recientes (GPU)" };
-            bool[] tactileValues = { respuestaInmediata, transicionesTacto, cachePortadasGpu };
-            Interruptor[] tactile = new Interruptor[3];
+            string[] tactileNames = { "Respuesta inmediata al toque (GPU)", "Transiciones de vista y seleccion (GPU)", "Cache de portadas recientes (GPU)", "Ondas unidas al estado (GPU)" };
+            bool[] tactileValues = { respuestaInmediata, transicionesTacto, cachePortadasGpu, ondasUnidas };
+            Interruptor[] tactile = new Interruptor[tactileNames.Length];
             for (int i = 0; i < tactile.Length; i++)
             {
                 tactile[i] = new Interruptor(); tactile[i].SetBounds(16, 404 + i * 40, 424, 26);
@@ -869,9 +872,10 @@ namespace Rocola
             tactile[0].CheckedChanged += delegate { respuestaInmediata = tactile[0].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             tactile[1].CheckedChanged += delegate { transicionesTacto = tactile[1].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             tactile[2].CheckedChanged += delegate { cachePortadasGpu = tactile[2].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            tactile[3].CheckedChanged += delegate { ondasUnidas = tactile[3].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
 
             BotonPlano bResetF = new BotonPlano();
-            bResetF.SetBounds(16, 572, 300, 38); bResetF.Font = fBot; bResetF.Text = "Fondo como de fabrica";
+            bResetF.SetBounds(16, 594, 300, 38); bResetF.Font = fBot; bResetF.Text = "Fondo como de fabrica";
 
             Action pinta = delegate
             {
@@ -896,6 +900,7 @@ namespace Rocola
                 cancionesCristal = true; colaDoce = true; swCristal.Checked = true; swDoce.Checked = true;
                 respuestaInmediata = true; transicionesTacto = true; cachePortadasGpu = true;
                 glassCapas = coloresCache = lunaActiva = true;
+                controlesReposo = ondasUnidas = true;
                 for (int i = 0; i < extras.Length; i++) extras[i].Checked = true;
                 for (int i = 0; i < tactile.Length; i++) tactile[i].Checked = true;
                 nebNaturalFuerza = NebNaturalDef;

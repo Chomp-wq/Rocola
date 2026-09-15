@@ -297,6 +297,8 @@ namespace Rocola
                     else if (s.StartsWith("glass_capas=")) glassCapas = s.Substring(12).Trim() != "0";
                     else if (s.StartsWith("colores_cache=")) coloresCache = s.Substring(14).Trim() != "0";
                     else if (s.StartsWith("luna_activa=")) lunaActiva = s.Substring(12).Trim() != "0";
+                    else if (s.StartsWith("controles_reposo=")) controlesReposo = s.Substring("controles_reposo=".Length).Trim() != "0";
+                    else if (s.StartsWith("ondas_unidas=")) ondasUnidas = s.Substring("ondas_unidas=".Length).Trim() != "0";
                     else if (s.StartsWith("respuesta_inmediata=")) respuestaInmediata = s.Substring(20).Trim() != "0";
                     else if (s.StartsWith("transiciones_tacto=")) transicionesTacto = s.Substring(19).Trim() != "0";
                     else if (s.StartsWith("cache_portadas_gpu=")) cachePortadasGpu = s.Substring(19).Trim() != "0";
@@ -389,6 +391,8 @@ namespace Rocola
                 sb.Append("glass_capas=").Append(glassCapas ? "1" : "0").Append("\r\n");
                 sb.Append("colores_cache=").Append(coloresCache ? "1" : "0").Append("\r\n");
                 sb.Append("luna_activa=").Append(lunaActiva ? "1" : "0").Append("\r\n");
+                sb.Append("controles_reposo=").Append(controlesReposo ? "1" : "0").Append("\r\n");
+                sb.Append("ondas_unidas=").Append(ondasUnidas ? "1" : "0").Append("\r\n");
                 sb.Append("respuesta_inmediata=").Append(respuestaInmediata ? "1" : "0").Append("\r\n");
                 sb.Append("transiciones_tacto=").Append(transicionesTacto ? "1" : "0").Append("\r\n");
                 sb.Append("cache_portadas_gpu=").Append(cachePortadasGpu ? "1" : "0").Append("\r\n");
