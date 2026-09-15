@@ -313,6 +313,16 @@ sola a su modo normal y nunca se queda a todo gas en horario de negocio.
   Si la versión procesada aún no está lista, suena el original con el respaldo DSEE disponible.
 - **Render por GPU (Direct3D 9)**: estrellas, cubos 3D y buscador acelerados; con caída a GDI si no hay GPU.
 
+## Luna con relieve, halo y polvo orbital (15-09-2026)
+
+- Nuevo diseno exclusivamente GPU: superficie procedural con mares oscuros, crateres con bordes y sombra lateral; el relieve es aparente, no una simulacion astronomica. La cara nocturna conserva una iluminacion tenue y el exterior del disco es transparente.
+- Halo del color del ambiente que respira con los graves y tres trazas pequenas de polvo orbital, dibujadas por delante/detras del disco. La superficie no rebota ni se deforma. El interruptor existente de luna musical controla el movimiento y la respuesta al audio.
+- Al atenuarse el fondo durante la navegacion, la luna gana luminosidad y hasta un 22% de diametro siguiendo la misma transicion. Sigue detras de los controles. No depende de que el muro de discos este en reposo.
+- Cuatro interruptores persistentes en Ctrl+F3 → Fondo: diseno con crateres, halo, polvo y realce al atenuar. Los tres ultimos requieren el nuevo diseno; al desactivarlo vuelve la luna anterior. El interruptor general de luna sigue ocultando el conjunto.
+- Textura fija de 256 × 256 (256 KiB sin contar recursos del controlador), reutilizada entre cuadros y resoluciones. Sin modelos de IA, descargas, shaders nuevos ni reconstruccion por latido. CPU congelado; se conservan .NET 3.5 en Modest y .NET 4.8 en HD.
+
+Validacion: siete baterias, incluida superficie determinista/transparencia/luz lateral, 16 configuraciones lunares, realce, reutilizacion y liberacion de textura en Direct3D 9. No equivale a medir FPS con musica real ni a probar Windows XP.
+
 ## Reposo integrado y cola compacta (15-09-2026)
 
 - Desde 1500 px de ancho, las tarjetas de la cola ampliada tienen un máximo de 520 × 79 px y se agrupan arriba, con la carátula y las dos líneas de texto alineadas. Una o dos canciones ya no generan paneles enormes. Se conserva el reparto de las resoluciones bajas y la capacidad de 12 canciones.

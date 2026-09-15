@@ -298,6 +298,10 @@ namespace Rocola
                     else if (s.StartsWith("luna_activa=")) lunaActiva = s.Substring(12).Trim() != "0";
                     else if (s.StartsWith("controles_reposo=")) controlesReposo = s.Substring("controles_reposo=".Length).Trim() != "0";
                     else if (s.StartsWith("ondas_unidas=")) ondasUnidas = s.Substring("ondas_unidas=".Length).Trim() != "0";
+                    else if (s.StartsWith("luna_realista=")) lunaRealista = s.Substring("luna_realista=".Length).Trim() != "0";
+                    else if (s.StartsWith("halo_lunar=")) haloLunar = s.Substring("halo_lunar=".Length).Trim() != "0";
+                    else if (s.StartsWith("polvo_lunar=")) polvoLunar = s.Substring("polvo_lunar=".Length).Trim() != "0";
+                    else if (s.StartsWith("luna_protagonista=")) lunaProtagonista = s.Substring("luna_protagonista=".Length).Trim() != "0";
                     else if (s.StartsWith("respuesta_inmediata=")) respuestaInmediata = s.Substring(20).Trim() != "0";
                     else if (s.StartsWith("transiciones_tacto=")) transicionesTacto = s.Substring(19).Trim() != "0";
                     else if (s.StartsWith("cache_portadas_gpu=")) cachePortadasGpu = s.Substring(19).Trim() != "0";
@@ -406,6 +410,10 @@ namespace Rocola
                 sb.Append("luna_activa=").Append(lunaActiva ? "1" : "0").Append("\r\n");
                 sb.Append("controles_reposo=").Append(controlesReposo ? "1" : "0").Append("\r\n");
                 sb.Append("ondas_unidas=").Append(ondasUnidas ? "1" : "0").Append("\r\n");
+                sb.Append("luna_realista=").Append(lunaRealista ? "1" : "0").Append("\r\n");
+                sb.Append("halo_lunar=").Append(haloLunar ? "1" : "0").Append("\r\n");
+                sb.Append("polvo_lunar=").Append(polvoLunar ? "1" : "0").Append("\r\n");
+                sb.Append("luna_protagonista=").Append(lunaProtagonista ? "1" : "0").Append("\r\n");
                 sb.Append("respuesta_inmediata=").Append(respuestaInmediata ? "1" : "0").Append("\r\n");
                 sb.Append("transiciones_tacto=").Append(transicionesTacto ? "1" : "0").Append("\r\n");
                 sb.Append("cache_portadas_gpu=").Append(cachePortadasGpu ? "1" : "0").Append("\r\n");

@@ -2028,8 +2028,8 @@ namespace Rocola
         private const int RuidoTeja = 1024;
         private IntPtr ruidoTex; private int ruTW, ruTH; private float ruU = 1f, ruV = 1f;
 
-        // LA LUNA. El dibujo lo hace Form1 -es el mismo que usa la pared horneada, para que las dos pongan
-        // la misma luna- y aqui solo se sube a la tarjeta una vez y se estampa un cuadrilatero por cuadro.
+        // LA LUNA. LunaGpu prepara la nueva superficie una vez; al apagar ese diseno
+        // se usa BakeLuna sin modificarlo. La pared CPU conserva siempre su dibujo.
         //
         // El TINTE DEL AIRE va en el COLOR DEL VERTICE: la tarjeta multiplica la textura por el, asi que
         // apagarla y enrojecerla segun a que altura este no cuesta absolutamente nada. En la pared horneada
@@ -2040,20 +2040,22 @@ namespace Rocola
         private void EnsureLuna()
         {
             if (!ConLuna || Height < 64) return;
-            if (lunaTex == IntPtr.Zero || lunaDe != Height)
+            int moonKey = LunaRealista ? MoonTextureSize : Height;
+            if (lunaTex == IntPtr.Zero || lunaDe != moonKey || lunaDetalleDe != LunaRealista)
             {
-                using (Bitmap lb = Form1.BakeLuna(Height))
+                using (Bitmap lb = LunaRealista ? BakeDetailedMoon() : Form1.BakeLuna(Height))
                 {
                     lunaTex = Upload(lunaTex, ref luTW, ref luTH, lb, out luU, out luV);
                     lunaW = lb.Width; lunaH = lb.Height;
                 }
-                lunaDe = Height;
+                lunaDe = moonKey; lunaDetalleDe = LunaRealista;
             }
         }
         private void DibujaLuna()
         {
             if (!ConLuna || Height < 64) return;
             if (lunaTex == IntPtr.Zero) return;
+            if (LunaRealista) { DrawDetailedMoon(); return; }
             // Se pasea con el reloj lento de la via lactea, y acotada: nunca se va de su sitio. Ver el
             // comentario de Form1 sobre por que NO lleva la deriva de las estrellas.
             float mx = Width * Form1.LunaMenea, my = Height * Form1.LunaMenea;
