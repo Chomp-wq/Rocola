@@ -1319,6 +1319,7 @@ namespace Rocola
 
         public void StopGpu()
         {
+            ClearPaletteFade(); paletteKey = 0;
             TrimRecentCovers(true);
             if (idleHooked) { Application.Idle -= OnIdle; idleHooked = false; }
             ReleaseCellTex();   // libera todas las texturas de celda (cache por Folder + slots TOP)
@@ -1456,6 +1457,7 @@ namespace Rocola
             // Barras (UI) a textura: se re-sube solo cuando cambia algun texto/estado (firma del form), limitada a
             // UNA por franja (heavyGapMs). UiUrgent: al CAMBIAR DE MODO (p.ej. cerrar el buscador) hay que rehacerla
             // en ESTE mismo cuadro, sin esperar franja: si no, se veria la rejilla por los huecos del teclado un instante.
+            PreparePalette();
             bool uiUrgent = UiUrgent; UiUrgent = false;
             if (GetUi != null && GetUiVersion != null && (uiTex == IntPtr.Zero || uiUrgent || canHeavy))
             {
@@ -1495,6 +1497,7 @@ namespace Rocola
                 }
             EnsureNieblas();               // la via lactea y las nebulosas (una vez por tamano de pantalla)
             EnsureVineta();
+            EnsureLuna(); // ninguna reserva/subida de la luna dentro de Begin
             stars.EstrellasFinas = EstrellasFinas;
             if (ShowFps) EnsureFpsTex();   // crea/actualiza la textura del contador ANTES de Begin (solo si se pide, Ctrl+F1)
             stars.SetDim(Dim);             // atenuacion mientras se navega con musica (estrellas/brillos; el cielo queda igual)
@@ -1505,6 +1508,7 @@ namespace Rocola
             // Se engancha SIEMPRE: aqui van la via lactea y las nebulosas, haya aurora o no.
             auCuadro.Has = auCuadro.Has && auCuadro.B != null && auCuadro.B.Length >= 8;
             auCuadro.BaseY -= IdleRise;
+            UpdateMoonMusic(pulseCrudo);
             stars.TrasCielo = trasCielo;
             stars.TrasEstrellas = trasEstrellas;
             // Dispositivo perdido (sesion bloqueada, cambio de pantalla...): sin este respiro, el bucle de
@@ -1567,8 +1571,9 @@ namespace Rocola
             // UI ENCIMA del fondo y los cubos: la textura principal anclada ARRIBA (a su tamano real: en
             // navegacion es solo la franja superior) y la franja de estado anclada ABAJO.
             bool uiPropia = gw.Has && gw.Bmp == null;   // se anima la PROPIA textura de UI (abriendo el buscador)
+            if (!(gw.Has && gw.HideUi)) DrawPaletteOld();
             if (uiTex != IntPtr.Zero && uiBmpW > 0 && uiBmpH > 0 && !(gw.Has && gw.HideUi))
-                { SetTexQuadA(uiQuad, 0, 0, uiBmpW, uiBmpH, uiU, uiV, ((uint)(SceneAlpha() * 255) << 24) | 0xFFFFFFu); stars.DrawQuad(uiTex, uiQuad); }
+                { SetTexQuadA(uiQuad, 0, 0, uiBmpW, uiBmpH, uiU, uiV, ((uint)(SceneAlpha() * PaletteAlpha() * 255) << 24) | 0xFFFFFFu); stars.DrawQuad(uiTex, uiQuad); }
             // Y ENCIMA las piezas vivas (la tarjeta y la tecla elegidas). Van despues de la textura de UI a
             // proposito: en ella estan las versiones SIN elegir, y estas las tapan. Se rellenan opacas, asi que
             // el resultado es identico a tenerlas horneadas dentro (comprobado pixel a pixel: pruebas/mover.cs).
@@ -1578,8 +1583,12 @@ namespace Rocola
                     if (piezaTex[i] == IntPtr.Zero) continue;
                     Rectangle pr = GetPiezaRect(i);
                     if (pr.Width < 1 || pr.Height < 1) continue;
+                    uint ink = GlassPieces ? (i == 0 ? GlassTint : 0xFFFFFFFFu) :
+                        ((uint)(FocusAlpha(i, pr) * PaletteAlpha() * 255) << 24) | 0xFFFFFFu;
+                    if (GlassPieces) ink = (ink & 0xFFFFFFu) | ((uint)(SceneAlpha() * 255) << 24);
+                    if (GlassPieces && i == 1) { DrawSongPage(pr, GetPiezaRect(2), i, ink); continue; }
                     SetTexQuadA(piezaQuad, pr.X, pr.Y, pr.X + pr.Width, pr.Y + pr.Height, piezaU[i], piezaV[i],
-                        ((uint)(FocusAlpha(i, pr) * 255) << 24) | 0xFFFFFFu);
+                        ink);
                     stars.DrawQuad(piezaTex[i], piezaQuad);
                 }
             // VENTANA del buscador abriendo/cerrando: el mismo quad de la UI, escalado desde su centro y fundido.
@@ -2025,7 +2034,7 @@ namespace Rocola
         private IntPtr lunaTex; private int luTW, luTH; private float luU = 1f, luV = 1f;
         private int lunaDe = -1, lunaW, lunaH;
         private D3D9.Vtx[] lunaQuad = new D3D9.Vtx[6];
-        private void DibujaLuna()
+        private void EnsureLuna()
         {
             if (!ConLuna || Height < 64) return;
             if (lunaTex == IntPtr.Zero || lunaDe != Height)
@@ -2037,18 +2046,30 @@ namespace Rocola
                 }
                 lunaDe = Height;
             }
+        }
+        private void DibujaLuna()
+        {
+            if (!ConLuna || Height < 64) return;
             if (lunaTex == IntPtr.Zero) return;
             // Se pasea con el reloj lento de la via lactea, y acotada: nunca se va de su sitio. Ver el
             // comentario de Form1 sobre por que NO lleva la deriva de las estrellas.
             float mx = Width * Form1.LunaMenea, my = Height * Form1.LunaMenea;
             float cx = Width * Form1.LunaX + (float)Math.Sin(HazFase) * mx;
             float cy = Height * Form1.LunaY + (float)Math.Cos(HazFase) * my;
+            float scale = 1;
+            if (LunaActiva)
+            {
+                PointF center = MoonCenter(Width, Height, AhoraMs() / 1000, IdleRise);
+                cx = center.X; cy = center.Y; scale = 1.35f + lunaBeat * .16f;
+                DrawMoonOrbits(cx, cy, lunaW * scale * .48f);
+            }
             float fr, fg, fb;
             Form1.TinteDelAire(cy, Height, out fr, out fg, out fb);
             uint cr = (uint)(fr * 255f + 0.5f), cg = (uint)(fg * 255f + 0.5f), cb = (uint)(fb * 255f + 0.5f);
             if (cr > 255) cr = 255; if (cg > 255) cg = 255; if (cb > 255) cb = 255;
             uint col = 0xFF000000u | (cr << 16) | (cg << 8) | cb;
-            SetTexQuadA(lunaQuad, cx - lunaW / 2f, cy - lunaH / 2f, cx + lunaW / 2f, cy + lunaH / 2f, luU, luV, col);
+            SetTexQuadA(lunaQuad, cx - lunaW * scale / 2f, cy - lunaH * scale / 2f,
+                cx + lunaW * scale / 2f, cy + lunaH * scale / 2f, luU, luV, col);
             stars.DrawQuad(lunaTex, lunaQuad);
         }
         private void DibujaRuido()

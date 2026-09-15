@@ -25,9 +25,9 @@ class CristalCola
   using(Font desc=new Font("Segoe UI",8.5f))
   using(Panel p=(Panel)t.GetMethod("PaginaFondo",F).Invoke(o,new object[]{font,font,desc,font,Color.White,Color.Gray,Color.Gray}))
   {
-   string[] labels={"Interior de discos con cristal (GPU)","Cola ampliada de 12 canciones (GPU)","Respuesta inmediata al toque (GPU)","Transiciones de vista y seleccion (GPU)","Cache de portadas recientes (GPU)"};
-   string[] fields={"cancionesCristal","colaDoce","respuestaInmediata","transicionesTacto","cachePortadasGpu"};
-   for(int mask=0;mask<32;mask++){
+   string[] labels={"Interior de discos con cristal (GPU)","Cola ampliada de 12 canciones (GPU)","Respuesta inmediata al toque (GPU)","Transiciones de vista y seleccion (GPU)","Cache de portadas recientes (GPU)","Vidrio por capas y color vivo (GPU)","Cache de transiciones de color (GPU)","Luna musical con orbitas (GPU)"};
+   string[] fields={"cancionesCristal","colaDoce","respuestaInmediata","transicionesTacto","cachePortadasGpu","glassCapas","coloresCache","lunaActiva"};
+   for(int mask=0;mask<256;mask++){
     for(int i=0;i<fields.Length;i++){Control c=Find(p,labels[i]);if(c==null||c.Bottom>c.Parent.Height)throw new Exception("Falta control");
      c.GetType().GetProperty("Checked",F).SetValue(c,(mask&(1<<i))!=0,null);
      if((bool)t.GetField(fields[i],F).GetValue(o)!=((mask&(1<<i))!=0))throw new Exception("Evento incorrecto");}
@@ -35,18 +35,28 @@ class CristalCola
     for(int i=0;i<fields.Length;i++)if((bool)t.GetField(fields[i],F).GetValue(read)!=((mask&(1<<i))!=0))throw new Exception("No persiste "+fields[i]);
    }
   }
-  foreach(int w in new int[]{640,1024,1920,3440})
-  foreach(int count in new int[]{0,1,3,10,12,20})
+  foreach(int w in new int[]{480,640,800,1024,1280,1920,3440})
+  foreach(int count in new int[]{0,1,2,3,6,10,12,20})
+  using(Bitmap cover=new Bitmap(32,32))
   {
+   using(Graphics cg=Graphics.FromImage(cover))cg.Clear(Color.Lime);
    int h=w<1100?220:340,n=Math.Min(12,count);string[] titles=new string[n],artists=new string[n];Image[] covers=new Image[n];
-   for(int i=0;i<n;i++){titles[i]="Cancion "+(i+1)+" - titulo largo";artists[i]="Depeche Mode";}
+   for(int i=0;i<n;i++){titles[i]="Cancion "+(i+1)+" - titulo largo";artists[i]="Depeche Mode";covers[i]=cover;}
    for(int i=0;i<12;i++){Rectangle r=(Rectangle)t.GetMethod("IdleQueueCell",F).Invoke(null,new object[]{w,h,i,true});
     if(r.Right>w-24||r.Bottom>h-32||r.Width<1||r.Height<1)throw new Exception("Celda recortada");
     for(int j=0;j<i;j++)if(r.IntersectsWith((Rectangle)t.GetMethod("IdleQueueCell",F).Invoke(null,new object[]{w,h,j,true})))throw new Exception("Cruce cola");}
    using(Bitmap b=(Bitmap)t.GetMethod("RenderIdlePanelQueue",F).Invoke(null,new object[]{w,h,"I Feel You","Depeche Mode","0:24 / 4:36",titles,artists,covers,count,Color.MediumPurple,true,2,true}))
    using(Bitmap preview=new Bitmap(w,h)){
+    for(int i=0;i<n;i++){
+     Rectangle cell=(Rectangle)t.GetMethod("IdleQueueCellCount",F).Invoke(null,new object[]{w,h,i,n,true});
+     Rectangle thumb=(Rectangle)t.GetMethod("IdleQueueThumb",F).Invoke(null,new object[]{cell});
+     if(!cell.Contains(thumb)||thumb.Width<20)throw new Exception("Miniatura fuera de tarjeta");
+     if(b.GetPixel(thumb.X+3,thumb.Y+3).ToArgb()!=Color.Lime.ToArgb())throw new Exception("Miniatura no visible");
+     for(int j=0;j<i;j++)
+      if(cell.IntersectsWith((Rectangle)t.GetMethod("IdleQueueCellCount",F).Invoke(null,new object[]{w,h,j,n,true})))throw new Exception("Cruce cola adaptable");
+    }
     using(Graphics g=Graphics.FromImage(preview)){g.Clear(Color.FromArgb(23,17,44));g.DrawImageUnscaled(b,0,0);}
-    if(count==12)preview.Save(Path.Combine(dir,"cola-"+w+".png"));
+    if(count==12||count==2)preview.Save(Path.Combine(dir,"cola-"+w+"-"+count+".png"));
    }
   }
   using(Bitmap b=(Bitmap)t.GetMethod("BakeSongGlass",F).Invoke(null,new object[]{900,420})){
@@ -56,7 +66,7 @@ class CristalCola
   string source=File.ReadAllText(args[1]);
   string guard=null;foreach(string line in source.Split('\n'))if(line.Contains("cc != lTit"))guard=line;
   if(guard==null||!guard.Contains("cc != bPagF")||!guard.Contains("cc != pFon"))throw new Exception("Fondo se oculta");
-  Console.WriteLine("PASS: controles/persistencia, 24 paneles, 12 celdas sin cruce, vidrio y guardia de pestanas. Imagenes: "+dir);
+  Console.WriteLine("PASS: 256 combinaciones de opciones, 56 paneles, miniaturas visibles, celdas sin cruces, vidrio y pestanas. Imagenes: "+dir);
   return 0;
  }
 }

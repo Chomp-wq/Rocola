@@ -1588,6 +1588,9 @@ namespace Rocola
             {
                 if ((DateTime.Now - searchLastActivity).TotalSeconds >= 60) { CloseSearch(); return; }   // 1 min sin actividad
                 searchOverlay.Accent = bgAccent;
+#if ROCOLA_GPU
+                if (gpuEnabled && coloresCache) searchOverlay.Accent = bgAccentTarget;
+#endif
                 searchOverlay.Phase = phase;
                 searchOverlay.PulseLo = levLo; searchOverlay.PulseMid = levMid; searchOverlay.PulseHi = levHi;   // cada estrella late con SU banda
                 searchOverlay.CubeAngle += 0.075;   // gira mas rapido
