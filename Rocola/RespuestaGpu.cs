@@ -6,6 +6,33 @@ namespace Rocola
     internal sealed partial class GpuPanel
     {
         public bool RespuestaInmediata = true, TransicionesTacto = true, CachePortadas = true;
+        public bool ControlesReposo = true, OndasUnidas = true;
+        internal const int StatusEdgeOffset = 1;
+        internal static float IdleControlAlpha(float blend, bool enabled)
+        {
+            if (!enabled) return 1f;
+            if (float.IsNaN(blend)) blend = 0;
+            return 1f - .98f * Math.Max(0, Math.Min(1, blend));
+        }
+        public float ControlsOpacity
+        { get { return IdleControlAlpha(idleBlend, ControlesReposo && sceneMode == 1); } }
+        internal static uint FadeArgb(uint color, float opacity)
+        { return (color & 0xFFFFFFu) | ((uint)((color >> 24) * Math.Max(0, Math.Min(1, opacity))) << 24); }
+        internal static float StatusPanelTop(int screenH, int compactH, int expandedH, float blend)
+        {
+            compactH = Math.Max(0, compactH);
+            if (float.IsNaN(blend)) blend = 0;
+            return screenH - compactH - Math.Max(0, expandedH - compactH) * Math.Max(0, Math.Min(1, blend));
+        }
+        private float StatusTopY
+        { get { return StatusPanelTop(Height, uiBotH, idleH, idleBlend); } }
+        internal static float AuroraBaseAtStatus(int screenH, int compactH, int expandedH, float blend)
+        {
+            // AurBrillo eleva su nucleo AurLineaAlza desde BaseY. Compensarlo
+            // con la misma coordenada y el mismo borde que usa el panel, sin
+            // redondear durante la animacion: no aparece una segunda linea.
+            return StatusPanelTop(screenH, compactH, expandedH, blend) + StatusEdgeOffset + AurLineaAlza;
+        }
         public bool GlassPieces, ColoresCache = true, LunaActiva = true;
         public uint GlassTint = 0xFFFFFFFFu;
         public Func<bool> GetGlassMode;

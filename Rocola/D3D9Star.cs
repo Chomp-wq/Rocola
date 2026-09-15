@@ -1175,7 +1175,7 @@ namespace Rocola
         internal RectangleF IdleBadgeGlow(RectangleF normal)
         {
             Rectangle badge = IdleBadgeRect(Width, idleH);
-            float y = Height - uiBotH - IdleRise + badge.Y;
+            float y = StatusTopY + badge.Y;
             return new RectangleF(normal.X + (badge.X - normal.X) * idleBlend,
                 normal.Y + (y - normal.Y) * idleBlend,
                 normal.Width + (badge.Width - normal.Width) * idleBlend,
@@ -1507,7 +1507,9 @@ namespace Rocola
             auCuadro = (GetAurora != null) ? GetAurora() : new GpuAurora();
             // Se engancha SIEMPRE: aqui van la via lactea y las nebulosas, haya aurora o no.
             auCuadro.Has = auCuadro.Has && auCuadro.B != null && auCuadro.B.Length >= 8;
-            auCuadro.BaseY -= IdleRise;
+            auCuadro.BaseY = OndasUnidas && uiBotH > 0
+                ? AuroraBaseAtStatus(Height, uiBotH, idleH, idleBlend)
+                : auCuadro.BaseY - IdleRise;
             UpdateMoonMusic(pulseCrudo);
             stars.TrasCielo = trasCielo;
             stars.TrasEstrellas = trasEstrellas;
@@ -1573,7 +1575,7 @@ namespace Rocola
             bool uiPropia = gw.Has && gw.Bmp == null;   // se anima la PROPIA textura de UI (abriendo el buscador)
             if (!(gw.Has && gw.HideUi)) DrawPaletteOld();
             if (uiTex != IntPtr.Zero && uiBmpW > 0 && uiBmpH > 0 && !(gw.Has && gw.HideUi))
-                { SetTexQuadA(uiQuad, 0, 0, uiBmpW, uiBmpH, uiU, uiV, ((uint)(SceneAlpha() * PaletteAlpha() * 255) << 24) | 0xFFFFFFu); stars.DrawQuad(uiTex, uiQuad); }
+                { SetTexQuadA(uiQuad, 0, 0, uiBmpW, uiBmpH, uiU, uiV, ((uint)(SceneAlpha() * PaletteAlpha() * ControlsOpacity * 255) << 24) | 0xFFFFFFu); stars.DrawQuad(uiTex, uiQuad); }
             // Y ENCIMA las piezas vivas (la tarjeta y la tecla elegidas). Van despues de la textura de UI a
             // proposito: en ella estan las versiones SIN elegir, y estas las tapan. Se rellenan opacas, asi que
             // el resultado es identico a tenerlas horneadas dentro (comprobado pixel a pixel: pruebas/mover.cs).
@@ -1586,6 +1588,7 @@ namespace Rocola
                     uint ink = GlassPieces ? (i == 0 ? GlassTint : 0xFFFFFFFFu) :
                         ((uint)(FocusAlpha(i, pr) * PaletteAlpha() * 255) << 24) | 0xFFFFFFu;
                     if (GlassPieces) ink = (ink & 0xFFFFFFu) | ((uint)(SceneAlpha() * 255) << 24);
+                    ink = FadeArgb(ink, ControlsOpacity);
                     if (GlassPieces && i == 1) { DrawSongPage(pr, GetPiezaRect(2), i, ink); continue; }
                     SetTexQuadA(piezaQuad, pr.X, pr.Y, pr.X + pr.Width, pr.Y + pr.Height, piezaU[i], piezaV[i],
                         ink);
@@ -1614,7 +1617,7 @@ namespace Rocola
             }
             if (idleBlend > 0 && idleTex != IntPtr.Zero)
             {
-                float py = Height - uiBotH - IdleRise;
+                float py = StatusTopY;
                 SetTexQuadA(adornoQuad, 0, py, Width, py + idleH, idleU, idleV, ((uint)(idleBlend*255) << 24) | 0x00FFFFFFu);
                 stars.DrawQuad(idleTex, adornoQuad);
             }
@@ -1663,7 +1666,7 @@ namespace Rocola
                 stars.DrawQuad(toastTex, toastQuad);
             }
             // Contador de FPS (diagnostico) encima de todo, en su textura pequeña. Oculto por defecto (Ctrl+F1).
-            if (ShowFps && fpsTex != IntPtr.Zero) { SetTexQuad(fpsQuad, Width - fpsTW - 10, 6, Width - 10, 6 + fpsTH, fpsU, fpsV); stars.DrawQuad(fpsTex, fpsQuad); }
+            if (ShowFps && fpsTex != IntPtr.Zero) { SetTexQuadA(fpsQuad, Width - fpsTW - 10, 6, Width - 10, 6 + fpsTH, fpsU, fpsV, FadeArgb(0xFFFFFFFFu, ControlsOpacity)); stars.DrawQuad(fpsTex, fpsQuad); }
             // El cronometro se para AQUI, justo antes de End: dentro de End esta Present, que es donde se
             // espera al monitor. Un cuadro que se pasa media vuelta esperando no costo media vuelta.
             double trabajo = AhoraMs() - msTrab0;

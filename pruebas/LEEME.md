@@ -97,10 +97,14 @@ ni sustituye archivos de los releases; necesita Direct3D 9 para las comprobacion
 - `capascolor`: 18 composiciones idénticas píxel a píxel; firmas de selección/datos,
   conservación del hojeo y coste de preparación; propiedad de texturas, reutilización
   durante la mezcla, cancelación al toque/cambio de contenido y limpieza al apagar.
-- `cristalcola`: 256 combinaciones de configuración; 56 paneles entre 480 y 3440 px,
+- `cristalcola`: 1024 combinaciones de configuración y mandos sin solapamientos; 56 paneles entre 480 y 3440 px,
   miniaturas visibles y celdas sin cruces; transparencia y acceso a Fondo.
 - `cubofila`, `respuesta`, `efectoslayout`: regresiones del cubo/tiempo/progreso,
   caché de portadas y mandos de Imagen.
+- `reposounido`: 297 rejillas compactas/simétricas, 126 uniones entre la malla del
+  horizonte y el borde de la barra; atenuación/restauración a 24–240 Hz y prueba
+  HAL del alfa, posición y reutilización de texturas. Detecta el defecto de
+  tarjetas gigantes al ejecutarse contra la versión anterior.
 
 Estas baterías usan el runtime de cada rama. No equivalen a una prueba con música,
 una medición de FPS en el equipo de destino ni una certificación de Windows XP.

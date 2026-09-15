@@ -75,6 +75,10 @@ namespace Rocola
             int rows = dozen ? (visible + cols - 1) / cols : 3, gap = 8;
             int cw = (w - split - 24 - (cols - 1) * gap) / cols;
             int rh = (h - 78) / rows;
+            // Una cola corta no debe estirar las tarjetas hasta llenar la pantalla.
+            // Mantener la rejilla compacta y anclada arriba; las pantallas pequenas
+            // conservan el reparto que deja sitio para todas sus miniaturas.
+            if (dozen && w >= 1500) { cw = Math.Min(cw, 520); rh = Math.Min(rh, 84); }
             return new Rectangle(split + (index % cols) * (cw + gap), 42 + (index / cols) * rh, cw, rh - 5);
         }
 
@@ -116,7 +120,8 @@ namespace Rocola
                 g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
                 line.Trimming = StringTrimming.EllipsisCharacter; line.FormatFlags = StringFormatFlags.NoWrap;
                 wrap.Trimming = StringTrimming.EllipsisWord; wrap.FormatFlags = StringFormatFlags.LineLimit;
-                g.FillRectangle(bg, 0, 0, w, h); g.DrawLine(top, 0, 1, w, 1);
+                g.FillRectangle(bg, 0, 0, w, h);
+                g.DrawLine(top, 0, GpuPanel.StatusEdgeOffset, w, GpuPanel.StatusEdgeOffset);
                 int split = (int)(w * .52f);
                 Rectangle cover = GpuPanel.IdleCoverRect(w, h);
                 // Sin tarjeta bajo el cubo: se ve directamente el fondo del estado.
@@ -172,8 +177,9 @@ namespace Rocola
                     bool compact = r.Width < 180;
                     int textW = Math.Max(12, r.Right - textX - (compact ? 5 : numberWidth + 8));
                     float titleHeight = queueTitle.GetHeight(g);
-                    g.DrawString(qt[i] ?? "", queueTitle, white, new RectangleF(textX, r.Y + 2, textW, titleHeight), line);
-                    g.DrawString(i < qa.Length ? qa[i] ?? "" : "", queueArtist, muted, new RectangleF(textX, r.Y + 2 + titleHeight, textW, r.Height - titleHeight - 2), line);
+                    float textY = dozen && w >= 1500 ? r.Y + Math.Max(2, (r.Height - titleHeight - queueArtist.GetHeight(g)) * .5f) : r.Y + 2;
+                    g.DrawString(qt[i] ?? "", queueTitle, white, new RectangleF(textX, textY, textW, titleHeight), line);
+                    g.DrawString(i < qa.Length ? qa[i] ?? "" : "", queueArtist, muted, new RectangleF(textX, textY + titleHeight, textW, r.Bottom - textY - titleHeight - 2), line);
                     if (compact)
                     {
                         float numberHeight = (float)Math.Ceiling(queueArtist.GetHeight(g)) + 2;
@@ -181,7 +187,7 @@ namespace Rocola
                         using (SolidBrush shade = new SolidBrush(Color.FromArgb(210, 8, 12, 24))) g.FillRectangle(shade, label);
                         g.DrawString((i + 1).ToString("00"), queueArtist, white, label.Location, numberFormat);
                     }
-                    else g.DrawString((i + 1).ToString("00"), queueArtist, color, new RectangleF(r.Right - numberWidth - 3, r.Y + 3, numberWidth, r.Height - 4), line);
+                    else g.DrawString((i + 1).ToString("00"), queueArtist, color, new RectangleF(r.Right - numberWidth - 3, textY, numberWidth, r.Bottom - textY - 2), line);
                 }
             }
             return bitmap;

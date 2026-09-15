@@ -1188,6 +1188,10 @@ namespace Rocola
                     }
                 }
             }
+            // Atenuar tambien los halos de los controles, no los de la cancion
+            // actual. Se aplica al alfa, sin invalidar ni rehornear la interfaz.
+            if (gpuPanel != null)
+                for (int i = 0; i < n; i++) buf[i].Argb = GpuPanel.FadeArgb(buf[i].Argb, gpuPanel.ControlsOpacity);
             // Letrero "MEJORADA" (franja de estado, visible en todos los modos menos atraccion): un resplandor
             // suave que RESPIRA + un destello que RECORRE las letras cada ~4s (reflejo metalico, plateado o
             // dorado). El texto va FIJO en la textura de la franja: estos halos no rehacen NINGUNA textura.
