@@ -36,6 +36,10 @@ namespace Rocola
 
         [StructLayout(LayoutKind.Sequential)]
         public struct LockedRect { public int Pitch; public IntPtr Bits; }
+        [StructLayout(LayoutKind.Sequential)]
+        public struct RectI { public int Left, Top, Right, Bottom; }
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+        public delegate int LockRegionDel(IntPtr self, uint level, out LockedRect lr, ref RectI rect, uint flags);
 
         public const uint DEVTYPE_HAL = 1;
         public const uint CREATE_HARDWARE_VP = 0x40, CREATE_SOFTWARE_VP = 0x20, CREATE_FPU_PRESERVE = 0x2;
@@ -531,6 +535,40 @@ namespace Rocola
         // Re-sube el contenido a una textura pow2 YA existente (mismo tamano de bitmap) en vez de crear una
         // nueva: evita el churn de crear/destruir una textura a pantalla completa en cada reconstruccion de UI.
         // El llamador garantiza el mismo tamano. Devuelve false si no pudo bloquearla (entonces se recrea).
+        // Actualiza solo la banda modificada. El rectangulo D3D marca tambien
+        // la region sucia de la textura MANAGED, sin resubir todo el panel.
+        public bool UpdateTextureRegion(IntPtr tex, Bitmap bmp, Rectangle area)
+        {
+            if (tex == IntPtr.Zero || bmp == null || area.Width <= 0 || area.Height <= 0 ||
+                !new Rectangle(0, 0, bmp.Width, bmp.Height).Contains(area)) return false;
+            BitmapData data = null; bool locked = false, ok = false;
+            D3D9.UnlockRectDel unlock = null;
+            try
+            {
+                D3D9.RectI rect = new D3D9.RectI();
+                rect.Left = area.Left; rect.Top = area.Top; rect.Right = area.Right; rect.Bottom = area.Bottom;
+                D3D9.LockedRect dest;
+                D3D9.LockRegionDel take = D3D9.Fn<D3D9.LockRegionDel>(tex, 19);
+                unlock = D3D9.Fn<D3D9.UnlockRectDel>(tex, 20);
+                if (take(tex, 0, out dest, ref rect, 0) < 0) return false;
+                locked = true;
+                data = bmp.LockBits(area, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+                int bytes = checked(area.Width * 4);
+                if (dest.Bits == IntPtr.Zero || dest.Pitch < bytes || Math.Abs((long)data.Stride) < bytes) return false;
+                for (int y = 0; y < area.Height; y++)
+                    D3D9.CopyMemory(new IntPtr(dest.Bits.ToInt64() + (long)y * dest.Pitch),
+                        new IntPtr(data.Scan0.ToInt64() + (long)y * data.Stride), (UIntPtr)(uint)bytes);
+                ok = true;
+            }
+            catch { ok = false; }
+            finally
+            {
+                if (data != null) { try { bmp.UnlockBits(data); } catch { ok = false; } }
+                if (locked && unlock != null) { try { if (unlock(tex, 0) < 0) ok = false; } catch { ok = false; } }
+            }
+            return ok;
+        }
+
         public bool UpdateTexturePow2(IntPtr tex, Bitmap bmp, out float uMax, out float vMax)
         {
             uMax = 1f; vMax = 1f;

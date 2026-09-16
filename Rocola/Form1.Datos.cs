@@ -142,6 +142,7 @@ namespace Rocola
             startupLoad = null;
             if (data == null || startupClosing) return false;
             // Solo el hilo UI publica referencias. No hay Merge ni copia de cientos de miles de filas.
+            InvalidateVideoMeasurements();
             loudCache = data.Loud; durCache = data.Dur; durFast = data.Fast; eqCache = data.Eq;
             iaDone = data.Ia; deepDone = data.Deep; incompatibleLogged = data.Incompatible;
             eqCacheVer = data.EqVersion; eqAvg = data.Average;
@@ -304,8 +305,6 @@ namespace Rocola
                     else if (s.StartsWith("luna_protagonista=")) lunaProtagonista = s.Substring("luna_protagonista=".Length).Trim() != "0";
                     else if (s.StartsWith("respuesta_inmediata=")) respuestaInmediata = s.Substring(20).Trim() != "0";
                     else if (s.StartsWith("transiciones_tacto=")) transicionesTacto = s.Substring(19).Trim() != "0";
-                    else if (s.StartsWith("cache_portadas_gpu=")) cachePortadasGpu = s.Substring(19).Trim() != "0";
-                    else if (s.StartsWith("buscador_cache=")) buscadorCache = s.Substring(15).Trim() != "0";
                     else if (s.StartsWith("cielo_profundo=")) cieloProfundo = s.Substring(15).Trim() != "0";
                     else if (s.StartsWith("cielo_profundo_fuerza=")) nebNaturalFuerza = FuerzaNatural(s.Substring(22));
                     else if (s.StartsWith("aurora_bandas=")) auroraBandas = s.Substring(14).Trim() != "0";
@@ -416,8 +415,6 @@ namespace Rocola
                 sb.Append("luna_protagonista=").Append(lunaProtagonista ? "1" : "0").Append("\r\n");
                 sb.Append("respuesta_inmediata=").Append(respuestaInmediata ? "1" : "0").Append("\r\n");
                 sb.Append("transiciones_tacto=").Append(transicionesTacto ? "1" : "0").Append("\r\n");
-                sb.Append("cache_portadas_gpu=").Append(cachePortadasGpu ? "1" : "0").Append("\r\n");
-                sb.Append("buscador_cache=").Append(buscadorCache ? "1" : "0").Append("\r\n");
                 sb.Append("cielo_profundo=").Append(cieloProfundo ? "1" : "0").Append("\r\n");
                 sb.Append("cielo_profundo_fuerza=").Append((int)Math.Round(nebNaturalFuerza * 100f)).Append("\r\n");
                 sb.Append("aurora_bandas=").Append(auroraBandas ? "1" : "0").Append("\r\n");
@@ -1081,6 +1078,7 @@ namespace Rocola
 
         private void LoadLoudCache()
         {
+            InvalidateVideoMeasurements();
             try { ReadLoudCache(LoudFile(), loudCache, durCache); } catch { }
         }
 
@@ -1488,7 +1486,7 @@ namespace Rocola
         {
             if (ruta == null) return;
             if (dur > 0.01f) durCache[ruta] = dur;
-            if (rms > 0f) loudCache[ruta] = rms;   // incluido el silencio (ver LoudMudo)
+            if (rms > 0f) { loudCache[ruta] = rms; InvalidateVideoMeasurements(); }   // incluido el silencio (ver LoudMudo)
             if (eqCurve != null) { eqCache[ruta] = eqCurve; eqCacheVer++; eqDirty = true; }   // huella tonal del EQ automatico
             if (panelSongs != null && panelSongs.Visible) RefrescaLista();   // que aparezca la duracion recien sabida
         }
@@ -1725,20 +1723,25 @@ namespace Rocola
                         catch (FileNotFoundException) { continue; }       // datos opcionales aun no creados
                         catch (DirectoryNotFoundException) { continue; }
                         using (input)
+                        using (System.Security.Cryptography.SHA256 copyHash = System.Security.Cryptography.SHA256.Create())
                         {
                             string dst = Path.Combine(pending, Path.GetFileName(files[i]));
                             using (FileStream outputFile = new FileStream(dst, FileMode.CreateNew, FileAccess.Write, FileShare.None, buffer.Length, FileOptions.WriteThrough))
                             {
                                 int n;
-                                while ((n = input.Read(buffer, 0, buffer.Length)) > 0) outputFile.Write(buffer, 0, n);
+                                while ((n = input.Read(buffer, 0, buffer.Length)) > 0)
+                                {
+                                    outputFile.Write(buffer, 0, n);
+                                    copyHash.TransformBlock(buffer, 0, n, buffer, 0);
+                                }
+                                copyHash.TransformFinalBlock(buffer, 0, 0);
                                 outputFile.Flush();
                                 if (!FlushFileBuffers(outputFile.SafeFileHandle.DangerousGetHandle())) throw new IOException("No se pudo confirmar el respaldo en disco");
                             }
-                            input.Position = 0;
                             using (System.Security.Cryptography.SHA256 hash = System.Security.Cryptography.SHA256.Create())
                             using (FileStream check = File.OpenRead(dst))
                             {
-                                byte[] a = hash.ComputeHash(input), b = hash.ComputeHash(check);
+                                byte[] a = copyHash.Hash, b = hash.ComputeHash(check);
                                 for (int k = 0; k < a.Length; k++) if (a[k] != b[k]) throw new IOException("La copia del respaldo no coincide");
                             }
                             copied++;

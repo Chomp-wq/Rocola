@@ -17,7 +17,7 @@
 #
 #    python daemon_ia.py [--cache <carpeta>] [--tope_gb 20]
 # ============================================================================================
-import sys, os, json, time, glob, hashlib, subprocess, argparse, shutil, math, stat
+import sys, os, json, time, fnmatch, hashlib, subprocess, argparse, shutil, math, stat
 # Bajo pythonw.exe (la rocola lo lanza SIN consola) sys.stdout y sys.stderr son None: cualquier
 # print() nuestro o barra de progreso de una libreria (huggingface/tqdm) reventaria con
 # "'NoneType' object has no attribute 'write'". Los redirigimos a la nada para que nada truene;
@@ -231,11 +231,13 @@ def _dirs(cache):
     return p, l
 
 def _en_cache(listos, h):
-    """Lo que ya haya en cache para este hash: .mp3 (nuevo), .wav (cache vieja) o .orig (marca)."""
+    """Cache de este hash: .mp3 heredado, .wav flotante o .orig (marca)."""
     for ext in (".mp3", ".wav", ".orig"):
         p = os.path.join(listos, h + ext)
         try:
-            if os.path.isfile(p) and (ext == ".orig" or os.path.getsize(p) > 44): return p
+            st = os.stat(p)  # una sola consulta; conserva seguimiento de enlaces
+            if stat.S_ISREG(st.st_mode) and (ext == ".orig" or st.st_size > 44):
+                return p
         except OSError:
             pass
     return None
@@ -359,9 +361,6 @@ def procesar_uno(job_path, listos, proc, ffmpeg, pipeline, ffprobe, seg=10.0):
       <hash>.wav   version mejorada (Apollo + mezcla), IEEE float32
       <hash>.orig  marca de "esta cancion YA es de calidad completa": la rocola usa el ORIGINAL
     Los temporales van a cache/tmp (MISMO disco del release), nunca a C:\Temp."""
-    tmpdir = os.path.join(os.path.dirname(listos), "tmp")
-    try: os.makedirs(tmpdir, exist_ok=True)
-    except OSError: tmpdir = os.path.dirname(listos)
     try:
         if os.path.getsize(job_path) > 64 * 1024:
             raise ValueError("archivo .job demasiado grande")
@@ -406,6 +405,10 @@ def procesar_uno(job_path, listos, proc, ffmpeg, pipeline, ffprobe, seg=10.0):
     except (TypeError, ValueError): retry_at = 0
     if retry_at > time.time():
         return DEFERIDO
+    # Los trabajos diferidos/listos/rechazados no necesitan tocar la carpeta temporal.
+    tmpdir = os.path.join(os.path.dirname(listos), "tmp")
+    try: os.makedirs(tmpdir, exist_ok=True)
+    except OSError: tmpdir = os.path.dirname(listos)
     tmp = os.path.join(tmpdir, "ia_dec_%s.wav" % h)
     out = os.path.join(tmpdir, "ia_out_%s.wav" % h)
     try:
@@ -428,7 +431,7 @@ def procesar_uno(job_path, listos, proc, ffmpeg, pipeline, ffprobe, seg=10.0):
         else:
             y = por_trozos(x, proc, seg=seg)
             m = mezcla_auto(cliff) if mez == "auto" else max(0.0, min(1.0, float(mez) / 100.0))
-            escribir_wav_float(out, mezclar(y, x, m))
+            escribir_wav_float(out, mezclar(y, x, m, optimizar=True))
             dst = _a_cache(listos, h, out, ffmpeg)
             if _duracion(ffprobe, dst) is None:
                 if not _quita_requerido(dst):
@@ -505,9 +508,22 @@ def evictar(listos, tope_gb):
         total -= size
 
 def _un_ciclo_log(pend, listos, proc, ffmpeg, pipeline, ffprobe, tope_gb, cache, seg=10.0):
-    jobs = sorted(glob.glob(os.path.join(pend, "*.job")), key=lambda p: os.path.getmtime(p))
+    jobs = []
+    try:
+        with os.scandir(pend) as entries:
+            for entry in entries:
+                # Mismo patron y orden de antiguedad de glob; no abrir JSON para ordenar.
+                if entry.name.startswith(".") or not fnmatch.fnmatch(entry.name, "*.job"):
+                    continue
+                try:
+                    jobs.append((entry.path, entry.stat().st_mtime))
+                except OSError:
+                    continue  # retirado durante la enumeracion: no bloquea el resto
+    except FileNotFoundError:
+        return 0
+    jobs.sort(key=lambda item: item[1])
     atendidos = 0
-    for j in jobs:
+    for j, _ in jobs:
         r = procesar_uno(j, listos, proc, ffmpeg, pipeline, ffprobe, seg)
         if r is DEFERIDO:
             continue

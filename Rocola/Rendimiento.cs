@@ -220,8 +220,8 @@ namespace Rocola
             gpuPanel.LunaProtagonista = lunaProtagonista;
             gpuPanel.RespuestaInmediata = respuestaInmediata;
             gpuPanel.TransicionesTacto = transicionesTacto;
-            gpuPanel.CachePortadas = cachePortadasGpu;
-            if (searchOverlay != null) searchOverlay.SeparateGpu = buscadorCache;
+            gpuPanel.CachePortadas = true;
+            if (searchOverlay != null) searchOverlay.SeparateGpu = true;
             if (!estadoExpandido) gpuPanel.IdleExpandTarget = false;
             gpuPanel.UiUrgent = true;
             gpuPanel.Fugaces = fugacesNiv;
@@ -848,7 +848,7 @@ namespace Rocola
             tNat.Controls.Add(lExtras);
             tNat.Height = 580;
             tAd.Height = 580;
-            string[] extraNames = { "Vidrio por capas y color vivo (GPU)", "Cache de transiciones de color (GPU)", "Luna musical con orbitas (GPU)", "Controles tenues en reposo (GPU)" };
+            string[] extraNames = { "Vidrio por capas y color vivo (GPU)", "Transiciones suaves de color (GPU)", "Luna musical con orbitas (GPU)", "Controles tenues en reposo (GPU)" };
             bool[] extraValues = { glassCapas, coloresCache, lunaActiva, controlesReposo };
             Interruptor[] extras = new Interruptor[extraNames.Length];
             for (int i = 0; i < extras.Length; i++)
@@ -862,8 +862,8 @@ namespace Rocola
             extras[2].CheckedChanged += delegate { lunaActiva = extras[2].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             extras[3].CheckedChanged += delegate { controlesReposo = extras[3].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             tNat.Titulo = "DETALLE Y RESPUESTA";
-            string[] tactileNames = { "Respuesta inmediata al toque (GPU)", "Transiciones de vista y seleccion (GPU)", "Cache de portadas recientes (GPU)", "Ondas unidas al estado (GPU)" };
-            bool[] tactileValues = { respuestaInmediata, transicionesTacto, cachePortadasGpu, ondasUnidas };
+            string[] tactileNames = { "Respuesta inmediata al toque (GPU)", "Transiciones de vista y seleccion (GPU)", "Ondas unidas al estado (GPU)" };
+            bool[] tactileValues = { respuestaInmediata, transicionesTacto, ondasUnidas };
             Interruptor[] tactile = new Interruptor[tactileNames.Length];
             for (int i = 0; i < tactile.Length; i++)
             {
@@ -873,8 +873,7 @@ namespace Rocola
             }
             tactile[0].CheckedChanged += delegate { respuestaInmediata = tactile[0].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             tactile[1].CheckedChanged += delegate { transicionesTacto = tactile[1].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
-            tactile[2].CheckedChanged += delegate { cachePortadasGpu = tactile[2].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
-            tactile[3].CheckedChanged += delegate { ondasUnidas = tactile[3].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            tactile[2].CheckedChanged += delegate { ondasUnidas = tactile[2].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
 
             Label lMoon = new Label(); lMoon.SetBounds(16, 398, 424, 20);
             lMoon.Text = "LUNA: halo, polvo y realce requieren el nuevo diseno";
@@ -918,7 +917,7 @@ namespace Rocola
                 estrellasFinas = true; vinetaSuave = true; haloSeleccion = true; estadoTransparente = true;
                 progresoNeon = true; neonIntenso = true; progresoFluido = true;
                 cancionesCristal = true; colaDoce = true; swCristal.Checked = true; swDoce.Checked = true;
-                respuestaInmediata = true; transicionesTacto = true; cachePortadasGpu = true;
+                respuestaInmediata = true; transicionesTacto = true;
                 glassCapas = coloresCache = lunaActiva = true;
                 controlesReposo = ondasUnidas = true;
                 lunaRealista = haloLunar = polvoLunar = lunaProtagonista = true;
@@ -1211,9 +1210,8 @@ namespace Rocola
                 "Discos tenues en reposo con musica",
                 "Estado y cola ampliados en reposo",
                 "Lista de canciones transparente",
-                "Optimizar seleccion del buscador",
             };
-            bool[] valSw = { hojeoLigero, muroReposo, estadoExpandido, cancionesTransparentes, buscadorCache };
+            bool[] valSw = { hojeoLigero, muroReposo, estadoExpandido, cancionesTransparentes };
             Interruptor[] sw = new Interruptor[nomSw.Length];
             for (int i = 0; i < sw.Length; i++)
             {
@@ -1226,7 +1224,6 @@ namespace Rocola
             sw[1].CheckedChanged += delegate { muroReposo = sw[1].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             sw[2].CheckedChanged += delegate { estadoExpandido = sw[2].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             sw[3].CheckedChanged += delegate { cancionesTransparentes = sw[3].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
-            sw[4].CheckedChanged += delegate { buscadorCache = sw[4].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             Label lPierde = new Label(); lPierde.SetBounds(16, switchesY + sw.Length * 30 + 4, 424, 48); lPierde.BackColor = Color.Transparent;
             lPierde.ForeColor = cTenue; lPierde.Font = fDes;
             tEfe.Controls.Add(lGen); tEfe.Controls.Add(swHojeo); tEfe.Controls.Add(lPierde);
@@ -1424,7 +1421,7 @@ namespace Rocola
                 // pestaña: un boton que dice "graficos como de fabrica" y ademas te reordena el cielo seria
                 // una sorpresa, y en la ventana de al lado no se ve lo que cambio.
                 hojeoLigero = true; muroReposo = true; estadoExpandido = true;
-                cancionesTransparentes = true; buscadorCache = true;
+                cancionesTransparentes = true;
                 for (int i = 0; i < sw.Length; i++) sw[i].Checked = true;   // de fabrica vienen encendidos
                 AplicaEfectosGpu();
                 f3CambioGraf = true;

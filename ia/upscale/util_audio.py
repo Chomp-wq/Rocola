@@ -215,7 +215,7 @@ def por_trozos(x, proc, fs=FS, seg=10.0, sol=0.5):
     # Con float32 la division original PROMUEVE a float64; no redondear in-place.
     return out / wsum
 
-def mezclar(mejorada, original, m):
+def mezclar(mejorada, original, m, optimizar=True):
     """Wet/dry: combina 'mejorada' (Apollo) con 'original' en proporcion m (0..1).
     m=0 -> original; m=1 -> puro Apollo. Se igualan longitud y RMS para que sea justo y
     la mezcla no cambie el volumen. Suaviza el vaiven de la IA en material muy danado."""
@@ -224,6 +224,22 @@ def mezclar(mejorada, original, m):
     b = original[:n]
     if m <= 0.0: return b.copy()
     if m >= 1.0: return a
+    if optimizar and a.dtype == np.float64 and b.dtype == np.float64 and 0.0 < m < 1.0:
+        # Mismas operaciones, precision y reducciones globales. Reusar solo memoria
+        # propia: igualar_rms devuelve la entrada cuando la senal es casi muda.
+        # Mantener tambien el layout de arrays no contiguos/Fortran: su reduccion
+        # puede seguir otro orden. Esos casos conservan la expresion original.
+        if a.flags.c_contiguous and b.flags.c_contiguous:
+            if np.shares_memory(a, mejorada) or np.shares_memory(a, original) or not a.flags.writeable:
+                a = a.copy()
+            np.multiply(m, a, out=a)
+            dry = (1.0 - m) * b
+            np.add(a, dry, out=a)
+            del dry
+            ro = np.sqrt((b ** 2).mean()); rm = np.sqrt((a ** 2).mean())
+            if not rm < 1e-9:  # conservar tambien la propagacion de NaN del camino original
+                np.multiply(a, ro / rm, out=a)
+            return a
     return igualar_rms(m * a + (1.0 - m) * b, b)          # mezcla, re-igualada (volumen estable entre niveles)
 
 def mezcla_auto(cliff_hz):

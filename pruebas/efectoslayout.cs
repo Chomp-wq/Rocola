@@ -39,13 +39,13 @@ class EfectosLayout
                     if (other != c && c.Bounds.IntersectsWith(other.Bounds))
                         throw new Exception("Solapamiento: " + c.Text + " / " + other.Text);
             }
-            if (switches != 5 || buttons != 21) throw new Exception("Faltan mandos");
+            if (switches != 4 || buttons != 21) throw new Exception("Faltan mandos");
             using (Bitmap bmp = new Bitmap(page.Width, page.Height))
             {
                 page.DrawToBitmap(bmp, new Rectangle(Point.Empty, bmp.Size));
                 bmp.Save(args[1]);
             }
-            Console.WriteLine("PASS: 6 filas, 5 interruptores, 21 botones; sin solapamientos ni controles recortados.");
+            Console.WriteLine("PASS: 6 filas, 4 interruptores, 21 botones; sin solapamientos ni controles recortados.");
         }
         return 0;
     }

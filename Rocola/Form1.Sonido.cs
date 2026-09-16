@@ -296,6 +296,7 @@ namespace Rocola
             // "aprendida" el guardado deja de dispararse en cada cancion (menos escrituras a disco, cero churn).
             if (had && Math.Abs(val - prev) < 0.004f) return;
             loudCache[path] = val;
+            InvalidateVideoMeasurements();
             SaveLoudCache();
         }
 
@@ -394,6 +395,7 @@ namespace Rocola
         private bool MeasureFile(string path, bool aFondo, out float rms, out float durSec, out float[] eqCurve)
         {
             rms = 0f; durSec = 0f; eqCurve = null;
+            if (MeasurementCancelled()) return false;
             // De un VIDEO solo interesa CUANTO SUENA. Su sonido lo saca el reproductor de Windows, no
             // nosotros: no pasa por el ecualizador ni por el DSEE ni por los graves. Medirle la huella tonal
             // o cosechar cuadros para la IA seria trabajo y disco gastados en algo que nunca se usaria.
@@ -505,6 +507,7 @@ namespace Rocola
                     long got = 0;
                     while (got < want)
                     {
+                        if (MeasurementCancelled()) return false;
                         int want2 = (int)Math.Min(buf.Length, want - got);
                         int n = rd.Read(buf, 0, want2);
                         if (n <= 0) break;
@@ -572,6 +575,7 @@ namespace Rocola
                         }
                     }
                 }
+                if (MeasurementCancelled()) return false; // no publicar ni cosechar una medida cancelada
                 // Solo las canciones COMPLETAS (sin acantilado, el mismo umbral que usa el DSEE para no tocarlas)
                 // sirven de maestras: en las dañadas los agudos reales ya no existen y no hay nada que enseñar.
                 if (hv != null && !soloCorte && hvPairs.Count >= 40 && hv.CutHz >= EqSanaHz)
@@ -1811,11 +1815,9 @@ namespace Rocola
                 for (int c = 0; c < ch; c++) { inBuf[c] = new float[Frame]; outAcc[c] = new float[Frame]; }
                 re = new float[Frame]; im = new float[Frame];
                 if (ch >= 2) { reB = new float[Frame]; imB = new float[Frame]; }   // los canales se procesan de dos en dos (ver ProcessFrame)
-                win = new float[Frame];
-                for (int i = 0; i < Frame; i++) win[i] = (float)Math.Sqrt(0.5 - 0.5 * Math.Cos(2.0 * Math.PI * i / Frame));   // raiz de Hann: analisis*sintesis = Hann, que al 50% suma EXACTO 1
-                bitrev = new int[Frame];
-                twCos = new float[Frame / 2]; twSin = new float[Frame / 2]; twSinNeg = new float[Frame / 2];
-                BuildFftTables();
+                AudioFftPlan plan = GetAudioFftPlan(Frame);
+                win = plan.Window; bitrev = plan.Reverse;
+                twCos = plan.Cos; twSin = plan.Sin; twSinNeg = plan.SinNeg;
                 inter = new float[Hop * ch];
                 outQ = new float[Frame * ch * 2];          // FIFO holgado (nunca acumula mas de Hop*ch)
             }
@@ -1904,21 +1906,7 @@ namespace Rocola
             // Emite Hop muestras por canal al FIFO y desliza entrada/salida media ventana.
             // Tablas de la FFT (inversion de bits y factores de giro). Las comparten el camino de
             // reproduccion y el de solo analisis, para que ambos calculen EXACTAMENTE el mismo espectro.
-            private void BuildFftTables()
-            {
-                for (int i = 1, j = 0; i < Frame; i++)
-                {
-                    int bit = Frame >> 1;
-                    for (; (j & bit) != 0; bit >>= 1) j ^= bit;
-                    j |= bit; bitrev[i] = j;
-                }
-                for (int k = 0; k < Frame / 2; k++)
-                {
-                    twCos[k] = (float)Math.Cos(2.0 * Math.PI * k / Frame);
-                    twSin[k] = (float)Math.Sin(2.0 * Math.PI * k / Frame);
-                    twSinNeg[k] = -twSin[k];   // la ida usa el seno cambiado de signo y la vuelta el normal
-                }
-            }
+            // Las tablas se crean en GetAudioFftPlan; no se modifican al procesar muestras.
 
             // ---------- COSECHA DE MATERIAL PARA LA IA ----------
             // Para ENSEÑARLE a la red hacen falta pares "esto queda / estos eran los agudos reales". En un MP3
@@ -1937,10 +1925,10 @@ namespace Rocola
                 Frame = 2048; Hop = Frame / 2;
                 src = null; ch = channels < 1 ? 1 : channels; rate = rateHz < 8000 ? 44100 : rateHz;
                 binHz = (float)rate / Frame;
-                re = new float[Frame]; im = new float[Frame]; win = new float[Frame];
-                for (int i = 0; i < Frame; i++) win[i] = (float)Math.Sqrt(0.5 - 0.5 * Math.Cos(2.0 * Math.PI * i / Frame));
-                bitrev = new int[Frame]; twCos = new float[Frame / 2]; twSin = new float[Frame / 2]; twSinNeg = new float[Frame / 2];
-                BuildFftTables();
+                re = new float[Frame]; im = new float[Frame];
+                AudioFftPlan plan = GetAudioFftPlan(Frame);
+                win = plan.Window; bitrev = plan.Reverse;
+                twCos = plan.Cos; twSin = plan.Sin; twSinNeg = plan.SinNeg;
             }
             public int FrameLen { get { return Frame; } }
             public float CutHz { get { return cutHz; } }   // acantilado detectado hasta ahora (0 = aun sin medir)
@@ -2780,8 +2768,40 @@ namespace Rocola
             // EQ AUTOMATICO: correccion en dB por banda (8) o null = apagado. Se aplica con biquads
             // PEAKING (RBJ) en cascada, SOLO en las bandas con correccion real (0 dB = identidad exacta,
             // el biquad ni se crea). ~9 operaciones por muestra por banda activa (tipico: 2-4 bandas).
-            public volatile float[] EqDb;
-            private float[] eqDbUsed;   // referencia aplicada (los coeficientes se recalculan solo si cambia)
+            private sealed class PreparedEq
+            {
+                internal readonly float[] Curve, State;
+                internal readonly float[][] Coefficients;
+                internal readonly int Active;
+                internal PreparedEq(float[] curve, int rate, int channels)
+                {
+                    Curve = curve;
+                    Coefficients = new float[8][];
+                    int active = 0;
+                    for (int b = 0; b < 8; b++)
+                    {
+                        float[] cf = Form1.EqPeak(Form1.EqCentros[b], rate, curve[b]);
+                        if (cf != null) Coefficients[active++] = cf;
+                    }
+                    Active = active;
+                    State = new float[Math.Max(1, channels) * 32];
+                }
+            }
+            // Publicacion atomica: preparar trigonometria y memoria en el llamador (UI),
+            // nunca en Read. Solo el lector de audio modifica State despues de publicarla.
+            private volatile PreparedEq pendingEq;
+            public float[] EqDb
+            {
+                get { PreparedEq p = pendingEq; return p != null ? p.Curve : null; }
+                set
+                {
+                    PreparedEq p = pendingEq;
+                    if (p != null && ReferenceEquals(p.Curve, value)) return;
+                    pendingEq = value == null ? null :
+                        new PreparedEq(value, WaveFormat.SampleRate, WaveFormat.Channels);
+                }
+            }
+            private float[] eqDbUsed;   // referencia aplicada: no reiniciar estados por cambios que el lector no llego a ver
             private float[][] eqCoef;   // biquads activos compactados, en el orden original de bandas
             private float[] eqSt;       // estados: canal * banda * 4
             private int eqActivos;
@@ -2803,19 +2823,13 @@ namespace Rocola
                     { int fin0 = offset + n; for (int i = offset; i < fin0; i++) { float x0 = buffer[i]; if (!(x0 >= -4f && x0 <= 4f)) buffer[i] = 0f; } }
                     owner.ReportAudioBlock(buffer, offset, n, WaveFormat.SampleRate, WaveFormat.Channels);   // mide el nivel CRUDO (beat + sonoridad + huella tonal) ANTES de tocar nada
                     float g = Gain * Master, ex = Excite;
-                    float[] eqDb = EqDb;
-                    bool exOn = ex > 0.001f, eqOn = eqDb != null;
-                    if (eqOn && !ReferenceEquals(eqDb, eqDbUsed))
+                    PreparedEq prepared = pendingEq;
+                    bool exOn = ex > 0.001f, eqOn = prepared != null;
+                    if (eqOn && !ReferenceEquals(prepared.Curve, eqDbUsed))
                     {
-                        int ch0 = WaveFormat.Channels; if (ch0 < 1) ch0 = 1;
-                        eqCoef = new float[8][]; eqActivos = 0;
-                        for (int b = 0; b < 8; b++)
-                        {
-                            float[] cf = Form1.EqPeak(Form1.EqCentros[b], WaveFormat.SampleRate, eqDb[b]);
-                            if (cf != null) eqCoef[eqActivos++] = cf;
-                        }
-                        eqSt = new float[ch0 * 32];
-                        eqDbUsed = eqDb;
+                        eqCoef = prepared.Coefficients; eqActivos = prepared.Active;
+                        eqSt = prepared.State;
+                        eqDbUsed = prepared.Curve;
                     }
                     if (eqOn && eqActivos == 0) eqOn = false;
                     if (g != 1f || exOn || eqOn)   // nivelado + EQ + realce en UNA pasada (el limitador de la cadena controla los picos)

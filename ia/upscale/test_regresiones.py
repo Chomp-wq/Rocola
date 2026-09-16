@@ -205,6 +205,95 @@ class ModeloTests(unittest.TestCase):
 
 
 class DaemonTests(unittest.TestCase):
+    def test_cache_una_consulta_por_candidato(self):
+        with tempfile.TemporaryDirectory() as td:
+            h = "a" * 16
+            wav = os.path.join(td, h + ".wav")
+            with open(wav, "wb") as f: f.write(b"x" * 45)
+            with mock.patch.object(daemon.os, "stat", wraps=os.stat) as consulta:
+                self.assertEqual(daemon._en_cache(td, h), wav)
+                self.assertEqual(consulta.call_count, 2)  # mp3 ausente, wav presente
+            mp3 = os.path.join(td, h + ".mp3")
+            with open(mp3, "wb") as f: f.write(b"x" * 45)
+            self.assertEqual(daemon._en_cache(td, h), mp3)  # conserva precedencia
+            os.remove(mp3); os.remove(wav)
+            os.mkdir(wav)  # un directorio no es audio
+            orig = os.path.join(td, h + ".orig")
+            with open(orig, "wb"): pass
+            self.assertEqual(daemon._en_cache(td, h), orig)  # marca vacia valida
+
+    def test_ciclo_conserva_orden_sin_getmtime(self):
+        with tempfile.TemporaryDirectory() as td:
+            paths = []
+            for name, age in (("nuevo.job", 30), ("viejo.job", 10), ("medio.job", 20),
+                              (".oculto.job", 0), ("temporal.tmp", 0)):
+                path = os.path.join(td, name)
+                with open(path, "w") as f: f.write("{}")
+                os.utime(path, (age, age)); paths.append(path)
+            with mock.patch.object(daemon, "procesar_uno", return_value=None) as procesa, \
+                 mock.patch.object(daemon.os.path, "getmtime", side_effect=AssertionError("consulta duplicada")), \
+                 mock.patch.object(daemon, "_log"), mock.patch.object(daemon, "evictar") as evicta:
+                self.assertEqual(daemon._un_ciclo_log(td, td, object(), "ffmpeg", "p", "ffprobe", 1, td), 3)
+            self.assertEqual([call.args[0] for call in procesa.call_args_list], [paths[1], paths[2], paths[0]])
+            evicta.assert_called_once_with(td, 1)
+
+    def test_ciclo_archivo_desaparecido_no_bloquea_otros(self):
+        vanished = mock.Mock(name="retirado"); vanished.name = "retirado.job"
+        vanished.path = "retirado.job"; vanished.stat.side_effect = FileNotFoundError()
+        valid = mock.Mock(name="valido"); valid.name = "valido.job"
+        valid.path = "valido.job"; valid.stat.return_value.st_mtime = 1
+        scan = mock.MagicMock(); scan.__enter__.return_value = iter((vanished, valid))
+        with mock.patch.object(daemon.os, "scandir", return_value=scan), \
+             mock.patch.object(daemon, "procesar_uno", return_value=daemon.DEFERIDO) as procesa:
+            self.assertEqual(daemon._un_ciclo_log("pend", "listos", object(), "ffmpeg", "p", "ffprobe", 1, "cache"), 0)
+        self.assertEqual(procesa.call_count, 1)
+        self.assertEqual(procesa.call_args.args[0], "valido.job")
+
+    def test_ciclo_carpeta_ausente(self):
+        with tempfile.TemporaryDirectory() as td:
+            self.assertEqual(daemon._un_ciclo_log(os.path.join(td, "ausente"), td, object(),
+                                                "ffmpeg", "p", "ffprobe", 1, td), 0)
+
+    def test_espera_no_prepara_temporales_y_reintenta_al_vencer(self):
+        with tempfile.TemporaryDirectory() as td:
+            pend, listos = daemon._dirs(td)
+            src = os.path.join(td, "tema.mp3")
+            with open(src, "wb") as f: f.write(b"abc")
+            pipeline = "f" * 64; h = daemon.hash_trabajo(src, "auto", pipeline)
+            path = os.path.join(pend, h + ".job")
+            job = dict(src=src, mezcla="auto", mezcla_key="auto", pipeline=pipeline, cache_key=h)
+            with open(path, "w") as f: json.dump(job, f)
+            daemon._guarda_error(listos, h, 1, "transitorio")
+            with mock.patch.object(daemon.os, "makedirs", side_effect=AssertionError("toca temporales")), \
+                 mock.patch.object(daemon, "_duracion") as probe:
+                for _ in range(4):
+                    self.assertIs(daemon.procesar_uno(path, listos, object(), "ffmpeg", pipeline, "ffprobe"), daemon.DEFERIDO)
+                probe.assert_not_called()
+            error_path = daemon._error_path(listos, h)
+            with open(error_path) as f: error = json.load(f)
+            self.assertEqual(error["attempts"], 1)
+            error["retry_at"] = 0
+            with open(error_path, "w") as f: json.dump(error, f)
+            with mock.patch.object(daemon, "_duracion", return_value=None) as probe:
+                self.assertIs(daemon.procesar_uno(path, listos, object(), "ffmpeg", pipeline, "ffprobe"), daemon.DEFERIDO)
+                probe.assert_called_once()
+            with open(error_path) as f: self.assertEqual(json.load(f)["attempts"], 2)
+
+    def test_cache_lista_no_prepara_temporales(self):
+        with tempfile.TemporaryDirectory() as td:
+            pend, listos = daemon._dirs(td)
+            src = os.path.join(td, "tema.mp3")
+            with open(src, "wb") as f: f.write(b"abc")
+            pipeline = "f" * 64; h = daemon.hash_trabajo(src, "auto", pipeline)
+            path = os.path.join(pend, h + ".job")
+            job = dict(src=src, mezcla="auto", mezcla_key="auto", pipeline=pipeline, cache_key=h)
+            with open(path, "w") as f: json.dump(job, f)
+            orig = os.path.join(listos, h + ".orig")
+            with open(orig, "w") as f: f.write("completa")
+            with mock.patch.object(daemon.os, "makedirs", side_effect=AssertionError("toca temporales")):
+                self.assertEqual(daemon.procesar_uno(path, listos, object(), "ffmpeg", pipeline, "ffprobe"), orig)
+            self.assertFalse(os.path.exists(path))
+
     def test_hash_incluye_fecha_mezcla_y_pipeline(self):
         with tempfile.TemporaryDirectory() as td:
             p = os.path.join(td, "tema.mp3")

@@ -1153,7 +1153,7 @@ namespace Rocola
                             pb[k].Invalidate();
                         }
                     };
-                    bPagS.Click += delegate { f3Pagina = 0; pintaPag(); };
+                    bPagS.Click += delegate { f3Pagina = 0; updateLabels(); pintaPag(); };
                     bPagI.Click += delegate { f3Pagina = 1; pintaPag(); };
                     bPagD.Click += delegate { f3Pagina = 2; pintaPag(); };
                     bPagC.Click += delegate { f3Pagina = 3; pintaPag(); };
@@ -1171,7 +1171,7 @@ namespace Rocola
                     // Refresco del avance mientras el dialogo esta abierto (el trabajo ocurre en otro hilo).
                     System.Windows.Forms.Timer tTrain = new System.Windows.Forms.Timer();
                     tTrain.Interval = 500;
-                    tTrain.Tick += delegate { updateLabels(); };
+                    tTrain.Tick += delegate { if (f3Pagina == 0) updateLabels(); };
                     tTrain.Start();
                     updateLabels();
                     dlg.ShowDialog(this);

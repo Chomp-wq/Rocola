@@ -165,6 +165,7 @@ namespace Rocola
         public void SetSky(uint top, uint mid, uint bot) { skyTop = top; skyMid = mid; skyBot = bot; }
         public IntPtr CreateOverlay(Bitmap bmp, out float uMax, out float vMax) { return gpu.CreateTexturePow2(bmp, out uMax, out vMax); }
         public bool UpdateOverlay(IntPtr tex, Bitmap bmp, out float uMax, out float vMax) { return gpu.UpdateTexturePow2(tex, bmp, out uMax, out vMax); }
+        public bool UpdateOverlayRegion(IntPtr tex, Bitmap bmp, Rectangle area) { return gpu.UpdateTextureRegion(tex, bmp, area); }
         // Buffers reutilizables del cubo (evita asignar por cuadro). Solo se usan desde el hilo de render.
         private readonly D3D9.Vtx[] cubeFaceV = new D3D9.Vtx[6];
         private readonly double[] cbx = new double[4];
@@ -1157,6 +1158,9 @@ namespace Rocola
         public Func<GpuProgress> GetProgress;
         public bool IdleExpandTarget;
         public Func<Bitmap> GetIdlePanel;
+        public int IdlePanelVersion;
+        public Rectangle IdlePanelDirty;
+        private int idleUploadedVersion = -1;
         private float idleBlend;
         private double idleClock;
         private IntPtr idleTex;
@@ -1336,7 +1340,7 @@ namespace Rocola
             if (nebTex != IntPtr.Zero) { D3D9.Release(nebTex); nebTex = IntPtr.Zero; }
             if (vinetaTex != IntPtr.Zero) { D3D9.Release(vinetaTex); vinetaTex = IntPtr.Zero; }
             if (idleTex != IntPtr.Zero) { D3D9.Release(idleTex); idleTex = IntPtr.Zero; }
-            idleLastBmp = null; idleBlend = 0; idleClock = 0;
+            idleLastBmp = null; idleBlend = 0; idleClock = 0; idleUploadedVersion = -1;
             vinetaRetry = 0;
             if (ruidoTex != IntPtr.Zero) { D3D9.Release(ruidoTex); ruidoTex = IntPtr.Zero; ruTW = ruTH = 0; }
             if (lunaTex != IntPtr.Zero) { D3D9.Release(lunaTex); lunaTex = IntPtr.Zero; luTW = luTH = 0; lunaDe = -1; }
@@ -1359,6 +1363,7 @@ namespace Rocola
         {
             foreach (CellTex ct in cellTexCache.Values) if (ct.Tex != IntPtr.Zero) D3D9.Release(ct.Tex);
             cellTexCache.Clear();
+            cellBytesDirty = true;
             for (int i = 0; i < slotTex.Length; i++) { CellTex ct = slotTex[i]; if (ct != null && ct.Tex != IntPtr.Zero) D3D9.Release(ct.Tex); slotTex[i] = null; }
             for (int i = 0; i < gridTex.Length; i++) gridTex[i] = IntPtr.Zero;
             gridN = 0;
@@ -1440,7 +1445,16 @@ namespace Rocola
             if ((IdleExpandTarget || idleBlend > 0) && GetIdlePanel != null)
             {
                 Bitmap ib = GetIdlePanel();
-                if (ib != null) EnsureCover(ref idleTex, ref idleLastBmp, ref idleW, ref idleH, ref idleU, ref idleV, ib);
+                if (ib != null)
+                {
+                    if (ReferenceEquals(ib, idleLastBmp) && idleTex != IntPtr.Zero && IdlePanelVersion != idleUploadedVersion)
+                    {
+                        if (IdlePanelDirty.IsEmpty || !stars.UpdateOverlayRegion(idleTex, ib, IdlePanelDirty))
+                            idleLastBmp = null; // fallo regional: reintentar la subida completa habitual
+                    }
+                    EnsureCover(ref idleTex, ref idleLastBmp, ref idleW, ref idleH, ref idleU, ref idleV, ib);
+                    if (idleTex != IntPtr.Zero) idleUploadedVersion = IdlePanelVersion;
+                }
             }
             idleBlend = StepIdle(idleBlend, IdleExpandTarget && idleTex != IntPtr.Zero, idleDt);
             // ANIMACIONES: sus texturas TAMBIEN se aseguran AQUI, antes de Begin. Crear o bloquear una textura
@@ -1693,6 +1707,7 @@ namespace Rocola
                     if (ReferenceEquals(ct.Bmp, c.Bmp) && ct.Tex != IntPtr.Zero) { tex = ct.Tex; u = ct.U; v = ct.V; return true; }   // ya subida y sin cambios
                     if (upBudget <= 0) { if (ct.Tex == IntPtr.Zero) return false; tex = ct.Tex; u = ct.U; v = ct.V; return true; }   // sin presupuesto: usa la vieja (p.ej. placeholder) hasta que toque
                     upBudget--;
+                    cellBytesDirty = true;
                     ct.Tex = Upload(ct.Tex, ref ct.Bw, ref ct.Bh, c.Bmp, out ct.U, out ct.V);   // portada llego / re-horneada: re-sube (mismo tamano -> reutiliza)
                     ct.Bmp = c.Bmp;
                     if (ct.Tex == IntPtr.Zero) return false;
@@ -1701,6 +1716,7 @@ namespace Rocola
                 if (upBudget <= 0) return false;   // celda nueva sin presupuesto: se salta este cuadro
                 upBudget--;
                 ct = new CellTex();
+                cellBytesDirty = true;
                 ct.Tex = Upload(IntPtr.Zero, ref ct.Bw, ref ct.Bh, c.Bmp, out ct.U, out ct.V);
                 ct.Bmp = c.Bmp; ct.Frame = cellFrame;
                 cellTexCache[c.Key] = ct;
@@ -1714,6 +1730,7 @@ namespace Rocola
             {
                 if (upBudget <= 0) { if (st.Tex == IntPtr.Zero) return false; tex = st.Tex; u = st.U; v = st.V; return true; }
                 upBudget--;
+                cellBytesDirty = true;
                 st.Tex = Upload(st.Tex, ref st.Bw, ref st.Bh, c.Bmp, out st.U, out st.V);
                 st.Bmp = c.Bmp;
                 if (st.Tex == IntPtr.Zero) return false;
@@ -1727,6 +1744,8 @@ namespace Rocola
         // Presupuesto de texeles ARGB (incluye redondeo POT), no una lectura de VRAM del driver.
         // Las visibles se conservan incluso si una pagina por si sola supera el presupuesto.
         private const long CellTexBytesCap = 32L * 1024 * 1024;
+        private long cellBytesTotal;
+        private bool cellBytesDirty = true;
         private static long CellBytes(CellTex ct)
         {
             if (ct == null || ct.Tex == IntPtr.Zero || ct.Bw < 1 || ct.Bh < 1) return 0;
@@ -1739,9 +1758,11 @@ namespace Rocola
         }
         private long CachedCellBytes()
         {
+            if (!cellBytesDirty) return cellBytesTotal;
             long bytes = 0;
             foreach (CellTex ct in cellTexCache.Values) bytes += CellBytes(ct);
             for (int i = 0; i < slotTex.Length; i++) bytes += CellBytes(slotTex[i]);
+            cellBytesTotal = bytes; cellBytesDirty = false;
             return bytes;
         }
         private void EvictCellTex()
@@ -1763,6 +1784,7 @@ namespace Rocola
                 if (oldestKey == null && oldestSlot < 0) break;
                 CellTex ct = oldestSlot >= 0 ? slotTex[oldestSlot] : cellTexCache[oldestKey];
                 bytes -= CellBytes(ct);
+                cellBytesTotal = bytes;
                 if (ct.Tex != IntPtr.Zero) D3D9.Release(ct.Tex);
                 if (oldestSlot >= 0) slotTex[oldestSlot] = null;
                 else cellTexCache.Remove(oldestKey);

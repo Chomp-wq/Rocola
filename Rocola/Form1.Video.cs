@@ -49,6 +49,7 @@ namespace Rocola
 
         private void BuildVideoSection(List<string> roots)
         {
+            InvalidateVideoMeasurements();
             string[] folderMemo = new string[2];
             // carpeta -> album de audio existente
             Dictionary<string, Album> byFolder = new Dictionary<string, Album>(StringComparer.OrdinalIgnoreCase);
@@ -152,9 +153,19 @@ namespace Rocola
             videoBaseAuto = v;
             return v;
         }
+        private bool videoMeasurementsDirty = true;
+        private int videoMeasuredCount;
+        // Solo el hilo UI publica medidas y cambia la biblioteca.
+        private void InvalidateVideoMeasurements()
+        {
+            videoMeasurementsDirty = true;
+            videoBaseAuto = -1;
+        }
+
         // Cuantos videos llevan medida (para poder decirlo en los ajustes).
         private int VideosMedidos()
         {
+            if (!videoMeasurementsDirty) return videoMeasuredCount;
             int n = 0;
             if (videoAlbums == null) return 0;
             HashSet<string> vistos = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -169,6 +180,7 @@ namespace Rocola
                     if (loudCache.TryGetValue(vp, out rms) && rms > 0.0001f) n++;
                 }
             }
+            videoMeasuredCount = n; videoMeasurementsDirty = false;
             return n;
         }
 
@@ -288,6 +300,7 @@ namespace Rocola
                 loudCache.Remove(rutas[i]); durCache.Remove(rutas[i]); durFast.Remove(rutas[i]);
             }
             if (n == 0) return 0;
+            InvalidateVideoMeasurements();
             if (videoAlbums != null)
             {
                 for (int i = 0; i < videoAlbums.Count; i++)
@@ -704,7 +717,7 @@ namespace Rocola
                 gpuPanel.GetUiVersion = delegate { return EnsureUiOverlay(); };
                 gpuPanel.GetUiBot = delegate { return uiBotOverlay; };              // franja de ESTADO de abajo (textura chica aparte: el reloj no rehace la principal)
                 gpuPanel.GetIdlePanel = BuildIdlePanel;
-                this.FormClosed += delegate { if (idlePanelBmp != null) { idlePanelBmp.Dispose(); idlePanelBmp = null; } };
+                this.FormClosed += delegate { if (idlePanelBmp != null) { idlePanelBmp.Dispose(); idlePanelBmp = null; } if (idleClockUnderlay != null) { idleClockUnderlay.Dispose(); idleClockUnderlay = null; } };
                 gpuPanel.GetUiBotVersion = delegate { return EnsureUiBotOverlay(); };
                 gpuPanel.GetUiGlows = FillUiGlows;                                   // halos animados (destello de boton, pulso de letra, TOP, atraccion): quads GPU, sin re-subir textura
                 // Las piezas vivas del buscador (tarjeta y tecla elegidas): imagenes chicas aparte, encima de
@@ -1079,7 +1092,7 @@ namespace Rocola
             long sig = SigBase;
             sig = Mix(sig, cual); sig = Mix(sig, donde.X); sig = Mix(sig, donde.Y);
             sig = Mix(sig, donde.Width); sig = Mix(sig, donde.Height);
-            if (!buscadorCache || cual >= 2) sig = Mix(sig, searchOverlay.SelResult);
+            if (cual >= 2) sig = Mix(sig, searchOverlay.SelResult);
             sig = Mix(sig, searchOverlay.SelRow);
             if (cual >= 2) sig = Mix(sig, colaVer);
             sig = Mix(sig, searchOverlay.SelCol); sig = Mix(sig, searchOverlay.FocusResults);
@@ -1252,10 +1265,9 @@ namespace Rocola
                 //   SelResult, con el cubo delante, cambia que disco se ensena y el texto de debajo.
                 // Moverse por los RESULTADOS, por tanto, sigue rehaciendo la pantalla; moverse por las TECLAS
                 // -que es lo que se hace al teclear- ya no.
-                sb = Mix(sb, searchOverlay.FocusResults); sb = Mix(sb, buscadorCache);
+                sb = Mix(sb, searchOverlay.FocusResults);
                 Color searchAccent = searchOverlay.Accent;
                 sb = Mix(sb, searchOverlay.DatosVer); sb = Mix(sb, searchAccent.ToArgb());
-                if (!buscadorCache) sb = Mix(sb, searchOverlay.SelResult);
             }
                   // El DESTELLO del boton pulsado YA NO entra en la firma: lo dibuja la GPU como halo aparte (FillUiGlows),
                   // asi que su desvanecido no re-hornea ni re-sube la textura del teclado -> tecleo fluido con brillo suave.

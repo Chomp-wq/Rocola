@@ -741,12 +741,14 @@ namespace Rocola
         // Cache compartida con el motor. Por defecto: la MISMA que usa daemon_ia.py (ia\tiempo_real\cache),
         // hallada junto a la rocola -> rocola y motor coinciden SOLOS, sin configurar ni arrastrar nada.
         private string IaCache()
+        { return IaCacheFor(iaCacheDir); }
+        private static string IaCacheFor(string configured)
         {
             try
             {
-                if (!string.IsNullOrEmpty(iaCacheDir))
+                if (!string.IsNullOrEmpty(configured))
                 {
-                    string d = iaCacheDir;
+                    string d = configured;
                     // Si la ruta configurada es RELATIVA se cuelga de la CARPETA DE DATOS, no de la del
                     // programa: hay UN solo sitio que decide donde viven los archivos de la rocola, y
                     // pruebas/carpeta.cs no deja que nadie se lo salte. Mientras nadie ponga ROCOLA_DATOS
@@ -762,10 +764,12 @@ namespace Rocola
         }
 
         private string IaPipelineFingerprint()
+        { return ReadIaPipelineFingerprint(IaCache()); }
+        private static string ReadIaPipelineFingerprint(string cache)
         {
             try
             {
-                string f = Path.Combine(IaCache(), "modelo.fingerprint");
+                string f = Path.Combine(cache, "modelo.fingerprint");
                 if (!File.Exists(f)) return null;   // Apollo aun no esta listo: no publicar trabajos prematuros
                 string s = File.ReadAllText(f).Trim();
                 if (s.Length != 64) return null;
@@ -831,24 +835,69 @@ namespace Rocola
             return p;
         }
 
-        // Le pide al motor que procese esta cancion (deja un .job atomico). Barato e idempotente.
+        private sealed class IaJobRequest
+        {
+            internal string Path, Mix, Cache, Key;
+        }
+        private readonly object iaRequestLock = new object();
+        private readonly Queue<IaJobRequest> iaRequestQueue = new Queue<IaJobRequest>();
+        private readonly HashSet<string> iaRequestsPending = new HashSet<string>(StringComparer.Ordinal);
+        private bool iaRequestWorker;
+        // Solo captura valores en la UI; el trabajador no toca controles ni la cola musical.
         private void IaRequestJob(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return;
+            string mix = iaMezcla, configured = iaCacheDir;
+            IaJobRequest request = new IaJobRequest();
+            request.Path = path; request.Mix = mix; request.Cache = configured;
+            request.Key = path.Length + ":" + path + "|" + mix + "|" + configured;
+            lock (iaRequestLock)
+            {
+                if (!iaRequestsPending.Add(request.Key)) return;
+                iaRequestQueue.Enqueue(request);
+                if (iaRequestWorker) return;
+                iaRequestWorker = true;
+                try
+                {
+                    if (!System.Threading.ThreadPool.QueueUserWorkItem(delegate { IaDrainRequests(); }))
+                        throw new InvalidOperationException("No se pudo programar Apollo");
+                }
+                catch { iaRequestWorker = false; iaRequestQueue.Clear(); iaRequestsPending.Clear(); }
+            }
+        }
+        private void IaDrainRequests()
+        {
+            while (true)
+            {
+                IaJobRequest request;
+                lock (iaRequestLock)
+                {
+                    if (iaRequestQueue.Count == 0) { iaRequestWorker = false; return; }
+                    request = iaRequestQueue.Dequeue();
+                }
+                try { IaWriteJob(request.Path, request.Mix, IaCacheFor(request.Cache)); }
+                catch (Exception ex) { LogError("Solicitud Apollo", ex); }
+                finally { lock (iaRequestLock) iaRequestsPending.Remove(request.Key); }
+            }
+        }
+        // Conserva comprobaciones frescas de modelo/fuente y publicacion atomica.
+        private static void IaWriteJob(string path, string mix, string cache)
         {
             try
             {
                 if (string.IsNullOrEmpty(path)) return;
-                string pipeline = IaPipelineFingerprint(); if (pipeline == null) return;
+                string pipeline = ReadIaPipelineFingerprint(cache); if (pipeline == null) return;
                 string full = Path.GetFullPath(path);
-                string h = IaHashFor(full, iaMezcla, pipeline); if (h == null) return;
-                string pend = Path.Combine(IaCache(), "pendientes");
-                string dirL = Path.Combine(IaCache(), "listos");                          // ya atendida (mejorada o marcada de calidad completa): no re-pedir
+                string h = IaHashFor(full, mix, pipeline); if (h == null) return;
+                string pend = Path.Combine(cache, "pendientes");
+                string dirL = Path.Combine(cache, "listos");                          // ya atendida (mejorada o marcada de calidad completa): no re-pedir
                 if (File.Exists(Path.Combine(dirL, h + ".mp3")) || File.Exists(Path.Combine(dirL, h + ".wav"))
                     || File.Exists(Path.Combine(dirL, h + ".orig")) || File.Exists(Path.Combine(dirL, h + ".error"))) return;
                 Directory.CreateDirectory(pend);
                 string job = Path.Combine(pend, h + ".job");
                 if (File.Exists(job)) return;
-                string json = "{\"src\":\"" + JsonEscape(full) + "\",\"mezcla\":\"" + JsonEscape(iaMezcla)
-                    + "\",\"mezcla_key\":\"" + JsonEscape(iaMezcla) + "\",\"pipeline\":\"" + pipeline
+                string json = "{\"src\":\"" + JsonEscape(full) + "\",\"mezcla\":\"" + JsonEscape(mix)
+                    + "\",\"mezcla_key\":\"" + JsonEscape(mix) + "\",\"pipeline\":\"" + pipeline
                     + "\",\"cache_key\":\"" + h + "\"}";
                 string tmp = job + "." + System.Diagnostics.Process.GetCurrentProcess().Id + "." + System.Threading.Thread.CurrentThread.ManagedThreadId + ".tmp";
                 File.WriteAllText(tmp, json);
