@@ -88,7 +88,7 @@ class Pestanas
         string[] mando = {
             "hojeoLigero", "progresoNeon", "muroReposo", "nebulosasCine", "vinetaSuave", "haloSeleccion",
             "estrellasFinas", "ondasSuaves", "progresoFluido", "estadoExpandido", "neonIntenso",
-            "estadoTransparente", "cancionesTransparentes", "buscadorCache", "cieloProfundo",
+            "estadoTransparente", "cancionesTransparentes", "cieloProfundo",
             "auroraBandas", "nebNaturalFuerza",
         };
         List<string> huerfanos = new List<string>();

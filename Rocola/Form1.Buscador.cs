@@ -22,6 +22,38 @@ namespace Rocola
 {
     public partial class Form1 : Form
     {
+        private sealed class QueryBag { internal string Key; internal BolsaLetra Data; }
+        private List<QueryBag> recentQueries;
+        private int recentQueryItems;
+        private void ClearRecentQueries()
+        {
+            if (recentQueries != null) recentQueries.Clear();
+            recentQueryItems = 0;
+        }
+        private BolsaLetra FindRecentQuery(string key)
+        {
+            if (recentQueries == null || key.Length > 128) return null;
+            for (int i = 0; i < recentQueries.Count; i++)
+            {
+                QueryBag entry = recentQueries[i];
+                if (entry.Key != key) continue;
+                recentQueries.RemoveAt(i); recentQueries.Add(entry);
+                return entry.Data;
+            }
+            return null;
+        }
+        private void RememberQuery(string key, BolsaLetra data)
+        {
+            if (recentQueries == null) recentQueries = new List<QueryBag>();
+            while (recentQueries.Count > 0 && (recentQueries.Count >= 8 || recentQueryItems + data.Lista.Count > 65536))
+            {
+                recentQueryItems -= recentQueries[0].Data.Lista.Count;
+                recentQueries.RemoveAt(0);
+            }
+            QueryBag entry = new QueryBag(); entry.Key = key; entry.Data = data;
+            recentQueries.Add(entry); recentQueryItems += data.Lista.Count;
+        }
+
         private SearchOverlay searchOverlay;
         // Lo que casa con cada letra SUELTA, ya puntuado. Ver RecomputeResults: la primera letra es la unica
         // que obliga a puntuar el indice entero, y para una letra el resultado no cambia mientras no cambie

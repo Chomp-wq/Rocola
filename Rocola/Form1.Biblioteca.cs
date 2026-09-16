@@ -1434,8 +1434,9 @@ namespace Rocola
                         bool esVid = EsVideo(ruta);
                         if (esVid && videoSinMedir) { System.Threading.Interlocked.Decrement(ref preScanLeft); continue; }
                         float rms, dur; float[] eqCurve;
-                        if (!MeasureFile(ruta, turbo, out rms, out dur, out eqCurve))
+                        if (!MeasureFileResponsive(ruta, turbo, delegate { return preScanStop || myGen != preScanGen; }, out rms, out dur, out eqCurve))
                         {
+                            if (preScanStop || myGen != preScanGen) break;
                             System.Threading.Interlocked.Decrement(ref preScanLeft);
                             continue;
                         }
@@ -1828,6 +1829,9 @@ namespace Rocola
 
         private void BuildSearchIndex()
         {
+            ClearRecentQueries();
+            lastQuery = null; lastMatches = null;
+            if (bolsaLetra != null) bolsaLetra.Clear();
             searchPostings = null;
             searchIndex.Clear();
             // Mapa artista -> todos sus discos (para el cubo que cicla caratulas)
@@ -2849,7 +2853,8 @@ namespace Rocola
                 // Cabe de sobra: con 8.000 canciones, la bolsa de la letra que mas casa son 96 KB.
                 List<SearchItem> matches = null;
                 BolsaLetra bolsa = null;
-                if (q.Length == 1 && bolsaLetra.TryGetValue(q[0], out bolsa) && bolsa != null)
+                if ((q.Length == 1 && bolsaLetra.TryGetValue(q[0], out bolsa) && bolsa != null) ||
+                    (q.Length > 1 && (bolsa = FindRecentQuery(q)) != null))
                 {
                     matches = bolsa.Lista;
                     for (int i = 0; i < matches.Count; i++) matches[i].Score = bolsa.Puntos[i];   // los puntos, que otra busqueda los piso
@@ -2866,12 +2871,13 @@ namespace Rocola
                         int sc = Score(si.Key, q, toks);
                         if (sc > 0) { si.Score = sc; matches.Add(si); }
                     }
-                    if (q.Length == 1)
+                    if (q.Length == 1 || (q.Length <= 128 && matches.Count <= 32768))
                     {
                         BolsaLetra nb = new BolsaLetra();
                         nb.Lista = matches; nb.Puntos = new int[matches.Count];
                         for (int i = 0; i < matches.Count; i++) nb.Puntos[i] = matches[i].Score;
-                        bolsaLetra[q[0]] = nb;
+                        if (q.Length == 1) bolsaLetra[q[0]] = nb;
+                        else RememberQuery(q, nb);
                         bolsa = nb;
                     }
                 }

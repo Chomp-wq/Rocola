@@ -57,8 +57,7 @@ namespace Rocola
         private bool glassCapas = true, coloresCache = true, lunaActiva = true;
         private bool controlesReposo = true, ondasUnidas = true;
         private bool lunaRealista = true, haloLunar = true, polvoLunar = true, lunaProtagonista = true;
-        private bool respuestaInmediata = true, transicionesTacto = true, cachePortadasGpu = true;
-        private bool buscadorCache = true;
+        private bool respuestaInmediata = true, transicionesTacto = true;
         private bool cieloProfundo = true;
         // CUANTO SE NOTA EL DETALLE NATURAL. El mapa de nubes cubre casi toda la pantalla, y a fuerza
         // entera la bruma ancha tapa el cielo en vez de adornarlo. Bajando esto se va la bruma y quedan

@@ -37,6 +37,10 @@ namespace Rocola
 
         [StructLayout(LayoutKind.Sequential)]
         public struct LockedRect { public int Pitch; public IntPtr Bits; }
+        [StructLayout(LayoutKind.Sequential)]
+        public struct RectI { public int Left, Top, Right, Bottom; }
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+        public delegate int LockRegionDel(IntPtr self, uint level, out LockedRect lr, ref RectI rect, uint flags);
 
         [StructLayout(LayoutKind.Sequential)]
         public struct Vtx { public float X, Y, Z, Rhw; public uint Color; public float U, V; }
@@ -593,6 +597,39 @@ namespace Rocola
         // Re-sube el contenido a una textura pow2 YA existente (mismo tamano de bitmap) en vez de crear una
         // nueva: evita el churn de crear/destruir una textura a pantalla completa en cada reconstruccion de UI.
         // El llamador garantiza el mismo tamano. Devuelve false si no pudo bloquearla (entonces se recrea).
+        // Actualiza solo la banda modificada. El rectangulo D3D marca tambien
+        // la region sucia de la textura MANAGED, sin resubir todo el panel.
+        public bool UpdateTextureRegion(IntPtr tex, Bitmap bmp, Rectangle area)
+        {
+            if (tex == IntPtr.Zero || bmp == null || area.Width <= 0 || area.Height <= 0 ||
+                !new Rectangle(0, 0, bmp.Width, bmp.Height).Contains(area)) return false;
+            BitmapData data = null; bool locked = false, ok = false;
+            D3D9.UnlockRectDel unlock = null;
+            try
+            {
+                D3D9.RectI rect = new D3D9.RectI();
+                rect.Left = area.Left; rect.Top = area.Top; rect.Right = area.Right; rect.Bottom = area.Bottom;
+                D3D9.LockedRect dest;
+                D3D9.LockRegionDel take = D3D9.Fn<D3D9.LockRegionDel>(tex, 19);
+                unlock = D3D9.Fn<D3D9.UnlockRectDel>(tex, 20);
+                if (take(tex, 0, out dest, ref rect, 0) < 0) return false;
+                locked = true;
+                data = bmp.LockBits(area, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+                int bytes = checked(area.Width * 4);
+                if (dest.Bits == IntPtr.Zero || dest.Pitch < bytes || Math.Abs((long)data.Stride) < bytes) return false;
+                for (int y = 0; y < area.Height; y++)
+                    D3D9.CopyMemory(new IntPtr(dest.Bits.ToInt64() + (long)y * dest.Pitch),
+                        new IntPtr(data.Scan0.ToInt64() + (long)y * data.Stride), (UIntPtr)(uint)bytes);
+                ok = true;
+            }
+            catch { ok = false; }
+            finally
+            {
+                if (data != null) { try { bmp.UnlockBits(data); } catch { ok = false; } }
+                if (locked && unlock != null) { try { if (unlock(tex, 0) < 0) ok = false; } catch { ok = false; } }
+            }
+            return ok;
+        }
         public bool UpdateTexturePow2(IntPtr tex, Bitmap bmp, out float uMax, out float vMax)
         {
             uMax = 1f; vMax = 1f;
@@ -749,6 +786,7 @@ namespace Rocola
         public void SetSky(uint top, uint mid, uint bot) { skyTop = top; skyMid = mid; skyBot = bot; }
         public IntPtr CreateOverlay(Bitmap bmp, out float uMax, out float vMax) { return gpu.CreateTexturePow2(bmp, out uMax, out vMax); }
         public bool UpdateOverlay(IntPtr tex, Bitmap bmp, out float uMax, out float vMax) { return gpu.UpdateTexturePow2(tex, bmp, out uMax, out vMax); }
+        public bool UpdateOverlayRegion(IntPtr tex, Bitmap bmp, Rectangle area) { return gpu.UpdateTextureRegion(tex, bmp, area); }
         public void DrawCube(IntPtr tex, float uMax, float vMax, float x, float y, float w, float h, double angle, float alpha, double tilt)
         { if (Ok) gpu.DrawCube(tex, uMax, vMax, x, y, w, h, angle, alpha, tilt); }
 
@@ -1687,6 +1725,9 @@ namespace Rocola
         public Func<GpuProgress> GetProgress;
         public bool IdleExpandTarget;
         public Func<Bitmap> GetIdlePanel;
+        public int IdlePanelVersion;
+        public Rectangle IdlePanelDirty;
+        private int idleUploadedVersion = -1;
         private float idleBlend;
         private double idleClock;
         private IntPtr idleTex;
@@ -1893,7 +1934,7 @@ namespace Rocola
             if (nebTex != IntPtr.Zero) { D3D9.Release(nebTex); nebTex = IntPtr.Zero; }
             if (vinetaTex != IntPtr.Zero) { D3D9.Release(vinetaTex); vinetaTex = IntPtr.Zero; }
             if (idleTex != IntPtr.Zero) { D3D9.Release(idleTex); idleTex = IntPtr.Zero; }
-            idleLastBmp = null; idleBlend = 0; idleClock = 0;
+            idleLastBmp = null; idleBlend = 0; idleClock = 0; idleUploadedVersion = -1;
             vinetaRetry = 0;
             if (ruidoTex != IntPtr.Zero) { D3D9.Release(ruidoTex); ruidoTex = IntPtr.Zero; ruTW = ruTH = 0; }
             if (lunaTex != IntPtr.Zero) { D3D9.Release(lunaTex); lunaTex = IntPtr.Zero; luTW = luTH = 0; lunaDe = -1; }
@@ -1916,6 +1957,7 @@ namespace Rocola
         {
             foreach (CellTex ct in cellTexCache.Values) if (ct.Tex != IntPtr.Zero) D3D9.Release(ct.Tex);
             cellTexCache.Clear();
+            cellBytesDirty = true;
             for (int i = 0; i < slotTex.Length; i++) { CellTex ct = slotTex[i]; if (ct != null && ct.Tex != IntPtr.Zero) D3D9.Release(ct.Tex); slotTex[i] = null; }
             for (int i = 0; i < gridTex.Length; i++) gridTex[i] = IntPtr.Zero;
             gridN = 0;
@@ -1997,7 +2039,16 @@ namespace Rocola
             if ((IdleExpandTarget || idleBlend > 0) && GetIdlePanel != null)
             {
                 Bitmap ib = GetIdlePanel();
-                if (ib != null) EnsureCover(ref idleTex, ref idleLastBmp, ref idleW, ref idleH, ref idleU, ref idleV, ib);
+                if (ib != null)
+                {
+                    if (ReferenceEquals(ib, idleLastBmp) && idleTex != IntPtr.Zero && IdlePanelVersion != idleUploadedVersion)
+                    {
+                        if (IdlePanelDirty.IsEmpty || !stars.UpdateOverlayRegion(idleTex, ib, IdlePanelDirty))
+                            idleLastBmp = null; // fallo regional: reintentar la subida completa habitual
+                    }
+                    EnsureCover(ref idleTex, ref idleLastBmp, ref idleW, ref idleH, ref idleU, ref idleV, ib);
+                    if (idleTex != IntPtr.Zero) idleUploadedVersion = IdlePanelVersion;
+                }
             }
             idleBlend = StepIdle(idleBlend, IdleExpandTarget && idleTex != IntPtr.Zero, idleDt);
             // ANIMACIONES: sus texturas TAMBIEN se aseguran AQUI, antes de Begin. Crear o bloquear una textura
@@ -2250,6 +2301,7 @@ namespace Rocola
                     if (ReferenceEquals(ct.Bmp, c.Bmp) && ct.Tex != IntPtr.Zero) { tex = ct.Tex; u = ct.U; v = ct.V; return true; }   // ya subida y sin cambios
                     if (upBudget <= 0) { if (ct.Tex == IntPtr.Zero) return false; tex = ct.Tex; u = ct.U; v = ct.V; return true; }   // sin presupuesto: usa la vieja (p.ej. placeholder) hasta que toque
                     upBudget--;
+                    cellBytesDirty = true;
                     ct.Tex = Upload(ct.Tex, ref ct.Bw, ref ct.Bh, c.Bmp, out ct.U, out ct.V);   // portada llego / re-horneada: re-sube (mismo tamano -> reutiliza)
                     ct.Bmp = c.Bmp;
                     if (ct.Tex == IntPtr.Zero) return false;
@@ -2258,6 +2310,7 @@ namespace Rocola
                 if (upBudget <= 0) return false;   // celda nueva sin presupuesto: se salta este cuadro
                 upBudget--;
                 ct = new CellTex();
+                cellBytesDirty = true;
                 ct.Tex = Upload(IntPtr.Zero, ref ct.Bw, ref ct.Bh, c.Bmp, out ct.U, out ct.V);
                 ct.Bmp = c.Bmp; ct.Frame = cellFrame;
                 cellTexCache[c.Key] = ct;
@@ -2271,6 +2324,7 @@ namespace Rocola
             {
                 if (upBudget <= 0) { if (st.Tex == IntPtr.Zero) return false; tex = st.Tex; u = st.U; v = st.V; return true; }
                 upBudget--;
+                cellBytesDirty = true;
                 st.Tex = Upload(st.Tex, ref st.Bw, ref st.Bh, c.Bmp, out st.U, out st.V);
                 st.Bmp = c.Bmp;
                 if (st.Tex == IntPtr.Zero) return false;
@@ -2284,6 +2338,8 @@ namespace Rocola
         // Presupuesto de texeles ARGB (incluye redondeo POT), no una lectura de VRAM del driver.
         // Las visibles se conservan incluso si una pagina por si sola supera el presupuesto.
         private const long CellTexBytesCap = 32L * 1024 * 1024;
+        private long cellBytesTotal;
+        private bool cellBytesDirty = true;
         private static long CellBytes(CellTex ct)
         {
             if (ct == null || ct.Tex == IntPtr.Zero || ct.Bw < 1 || ct.Bh < 1) return 0;
@@ -2296,9 +2352,11 @@ namespace Rocola
         }
         private long CachedCellBytes()
         {
+            if (!cellBytesDirty) return cellBytesTotal;
             long bytes = 0;
             foreach (CellTex ct in cellTexCache.Values) bytes += CellBytes(ct);
             for (int i = 0; i < slotTex.Length; i++) bytes += CellBytes(slotTex[i]);
+            cellBytesTotal = bytes; cellBytesDirty = false;
             return bytes;
         }
         private void EvictCellTex()
@@ -2320,6 +2378,7 @@ namespace Rocola
                 if (oldestKey == null && oldestSlot < 0) break;
                 CellTex ct = oldestSlot >= 0 ? slotTex[oldestSlot] : cellTexCache[oldestKey];
                 bytes -= CellBytes(ct);
+                cellBytesTotal = bytes;
                 if (ct.Tex != IntPtr.Zero) D3D9.Release(ct.Tex);
                 if (oldestSlot >= 0) slotTex[oldestSlot] = null;
                 else cellTexCache.Remove(oldestKey);

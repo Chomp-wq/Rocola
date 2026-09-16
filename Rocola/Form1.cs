@@ -1528,6 +1528,7 @@ namespace Rocola
             if (searchOpen) CloseSearch();            // un re-escaneo invalida lo que el buscador muestra
             lastQuery = null; lastMatches = null;     // ...y su cache incremental (evita resultados huerfanos)
             bolsaLetra.Clear();                       // y lo guardado de cada letra suelta: apunta a fichas que ya no valen
+            ClearRecentQueries();
             AdvanceThumbWarm();
             searchPostings = null;
             tracks.Clear(); albums.Clear(); byLetter.Clear(); letterAvailable.Clear(); searchIndex.Clear();

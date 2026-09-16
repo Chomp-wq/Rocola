@@ -11,6 +11,9 @@ namespace Rocola
     {
         private Bitmap idlePanelBmp;
         private string idlePanelSig;
+        private Bitmap idleClockUnderlay;
+        private string idlePanelTime;
+        private int idlePanelRevision;
         private int idlePanelCheck;
         private int idlePanelProgressStart;
         private Bitmap BuildIdlePanel()
@@ -31,7 +34,7 @@ namespace Rocola
                 .Append(title).Append('|').Append(artist).Append('|').Append(queue.Count).Append('|').Append(bgAccent.ToArgb());
             string time = lblTime != null ? lblTime.Text : "";
             int iaBadgeKind = MejActivo() ? 2 : 0;
-            sig.Append('|').Append(time).Append('|').Append(estadoTransparente).Append('|').Append(iaBadgeKind);
+            sig.Append('|').Append(estadoTransparente).Append('|').Append(iaBadgeKind);
             for (int i = 0; i < qt.Length; i++)
             {
                 queue[i].TituloArtista(out qt[i], out qa[i]);
@@ -41,14 +44,63 @@ namespace Rocola
             }
             sig.Append('|').Append(colaDoce);
             string key = sig.ToString();
-            if (idlePanelBmp != null && key == idlePanelSig) return idlePanelBmp;
+            if (idlePanelBmp != null && key == idlePanelSig)
+            {
+                if (idleClockUnderlay != null && idlePanelTime != time)
+                {
+                    idlePanelProgressStart = UpdateIdleClock(idlePanelBmp, idleClockUnderlay, time);
+                    idlePanelTime = time; idlePanelRevision++;
+                    if (gpuPanel != null)
+                    {
+                        gpuPanel.IdlePanelVersion = idlePanelRevision;
+                        gpuPanel.IdlePanelDirty = new Rectangle(0, h - 34, w, 34);
+                        gpuPanel.IdleProgressStart = idlePanelProgressStart;
+                    }
+                }
+                return idlePanelBmp;
+            }
             int progressStart;
-            Bitmap next = RenderIdlePanelLayout(w, h, title, artist, time, qt, qa, covers, queue.Count, bgAccent, estadoTransparente, iaBadgeKind, colaDoce, out progressStart);
+            Bitmap next = RenderIdlePanelLayout(w, h, title, artist, "", qt, qa, covers, queue.Count, bgAccent, estadoTransparente, iaBadgeKind, colaDoce, out progressStart);
+            if (idleClockUnderlay != null) { idleClockUnderlay.Dispose(); idleClockUnderlay = null; }
+            idleClockUnderlay = next.Clone(new Rectangle(0, h - 34, w, 34), PixelFormat.Format32bppPArgb);
+            progressStart = UpdateIdleClock(next, idleClockUnderlay, time);
+            idlePanelTime = time; idlePanelRevision++;
+            if (gpuPanel != null) { gpuPanel.IdlePanelVersion = idlePanelRevision; gpuPanel.IdlePanelDirty = Rectangle.Empty; }
             idlePanelProgressStart = progressStart;
             if (gpuPanel != null) gpuPanel.IdleProgressStart = progressStart;
             Bitmap old = idlePanelBmp; idlePanelBmp = next; idlePanelSig = key;
             if (old != null) old.Dispose();
             return idlePanelBmp;
+        }
+
+        internal static int DrawIdleClock(Graphics g, int w, int h, string time)
+        {
+            float scale = Math.Max(.8f, Math.Min(1.3f, h / 260f));
+            using (Font clock = new Font("Tahoma", 17 * scale, FontStyle.Bold, GraphicsUnit.Pixel))
+            using (SolidBrush white = new SolidBrush(Color.FromArgb(240, 245, 255)))
+            using (StringFormat format = new StringFormat())
+            {
+                format.Trimming = StringTrimming.EllipsisCharacter;
+                format.FormatFlags = StringFormatFlags.NoWrap;
+                format.Alignment = StringAlignment.Near; format.LineAlignment = StringAlignment.Center;
+                int x = GpuPanel.IdleCoverRect(w, h).Right + 16;
+                int width = (int)Math.Ceiling(g.MeasureString(time ?? "", clock, int.MaxValue, format).Width) + 2;
+                width = Math.Max(1, Math.Min(width, w - x - 112));
+                g.DrawString(time ?? "", clock, white, new RectangleF(x, h - 32, width, 28), format);
+                return x + width + 8;
+            }
+        }
+        internal static int UpdateIdleClock(Bitmap panel, Bitmap underlay, string time)
+        {
+            using (Graphics g = Graphics.FromImage(panel))
+            {
+                g.CompositingMode = CompositingMode.SourceCopy;
+                g.DrawImageUnscaled(underlay, 0, panel.Height - underlay.Height);
+                g.CompositingMode = CompositingMode.SourceOver;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+                return DrawIdleClock(g, panel.Width, panel.Height, time);
+            }
         }
 
         // Textura exclusiva GPU: sus textos no se escalan durante la animacion.
@@ -108,7 +160,6 @@ namespace Rocola
             using (Font small = new Font("Trebuchet MS", 15 * scale, FontStyle.Bold, GraphicsUnit.Pixel))
             using (Font normal = new Font("Trebuchet MS", 20 * scale, FontStyle.Bold, GraphicsUnit.Pixel))
             using (Font big = new Font("Trebuchet MS", Math.Max(22, Math.Min(36 * scale, w / 30f)), FontStyle.Bold, GraphicsUnit.Pixel))
-            using (Font clock = new Font("Tahoma", 17 * scale, FontStyle.Bold, GraphicsUnit.Pixel))
             using (SolidBrush white = new SolidBrush(Color.FromArgb(240, 245, 255)))
             using (SolidBrush muted = new SolidBrush(Color.FromArgb(157, 179, 209)))
             using (SolidBrush color = new SolidBrush(Lighten(accent, .5)))
@@ -148,17 +199,7 @@ namespace Rocola
                         }
                     }
                 }
-                using (StringFormat timeFormat = new StringFormat(line))
-                {
-                    timeFormat.Alignment = StringAlignment.Near;
-                    timeFormat.LineAlignment = StringAlignment.Center;
-                    int timeX = cover.Right + 16;
-                    int timeWidth = (int)Math.Ceiling(g.MeasureString(time ?? "", clock, int.MaxValue, timeFormat).Width) + 2;
-                    // Dejar al menos 80 px de progreso incluso en ventanas estrechas.
-                    timeWidth = Math.Max(1, Math.Min(timeWidth, w - timeX - 112));
-                    progressStart = timeX + timeWidth + 8;
-                    g.DrawString(time ?? "", clock, white, new RectangleF(timeX, h - 32, timeWidth, 28), timeFormat);
-                }
+                progressStart = DrawIdleClock(g, w, h, time);
                 string heading = "A CONTINUACION  /  " + count + (count == 1 ? " CANCION" : " CANCIONES");
                 g.DrawString(heading, small, color, new RectangleF(split, 12, w - split - 24, 26 * scale), line);
                 if (count == 0)

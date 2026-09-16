@@ -67,7 +67,11 @@ namespace Rocola
                 PlayItem it = queue[i];
                 if (it != null && !it.IsVideo && it.Song != null && it.Song.Path != null) { ruta = it.Song.Path; break; }
             }
-            if (ruta == null) return;
+            if (ruta == null)
+            {
+                warmSongPath = null; unchecked { warmSongGen++; }
+                return;
+            }
             if (string.Equals(ruta, warmSongPath, StringComparison.OrdinalIgnoreCase)) return;   // ya calentada o calentandose
             warmSongPath = ruta;
             int mio = ++warmSongGen;
@@ -127,13 +131,13 @@ namespace Rocola
                         if (mio != warmSongGen) return;
                     }
                     float wrms, wdur; float[] weq;
-                    if (!MeasureFile(ruta, false, out wrms, out wdur, out weq)) return;
+                    if (!MeasureFileResponsive(ruta, false, delegate { return mio != warmSongGen || preScanStop; }, out wrms, out wdur, out weq)) return;
                     if (mio != warmSongGen) return;
                     // Las tablas son del hilo de la pantalla: se le encarga a el que las escriba.
                     try
                     {
                         if (IsHandleCreated)
-                            BeginInvoke((MethodInvoker)delegate { PublicaMedida(ruta, wrms, wdur, weq); });
+                            BeginInvoke((MethodInvoker)delegate { if (mio == warmSongGen && !preScanStop) PublicaMedida(ruta, wrms, wdur, weq); });
                     }
                     catch { }
                 }
