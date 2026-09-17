@@ -428,12 +428,12 @@ namespace Rocola
                 // pone una, y MUDA: con el volumen a cero hace exactamente el mismo trabajo -descomprimir el
                 // MP3, el DSEE, el nivelado, los graves, el limitador- porque todo eso pasa antes de llegar a
                 // la bocina. Se mide igual de duro y no se le suelta medio minuto de ruido al local.
-                if (nowPlaying != null && output != null) bancoConMusica = true;
+                if (nowPlaying != null) bancoConMusica = output != null; // no reemplazar una cancion aun abriendo
                 else if (tracks.Count > 0)
                 {
                     try
                     {
-                        PlayTrack(tracks[new Random().Next(tracks.Count)]);
+                        PlayTrackForMeasurement(tracks[new Random().Next(tracks.Count)]);
                         if (output != null) { output.Volume = 0f; bancoConMusica = true; bancoPuseYoLaCancion = true; }
                     }
                     catch { bancoConMusica = false; }

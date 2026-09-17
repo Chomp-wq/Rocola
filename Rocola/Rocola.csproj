@@ -94,6 +94,7 @@
     <Compile Include="RespuestaGpu.cs" />
     <Compile Include="CargaTrabajo.cs" />
     <Compile Include="EscaneoMemo.cs" />
+    <Compile Include="AperturaAudio.cs" />
     <Compile Include="Optimizaciones.cs" />
     <Compile Include="LunaGpu.cs" />
     <Compile Include="CieloNaturalGpu.cs" />

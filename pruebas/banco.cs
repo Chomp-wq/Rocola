@@ -247,7 +247,7 @@ class Banco
             lb.AddRange(lla);
             Check(Codigo.Llama(lb, "DoEvents"),
                   "el bucle del medidor DEJA CORRER los mensajes (de ahi come el audio; sin eso la musica no cuenta)");
-            Check(Codigo.Llama(lla, "PlayTrack"), "el medidor pone una cancion para medir con carga de verdad");
+            Check(Codigo.Llama(lla, "PlayTrackForMeasurement"), "el medidor prepara una cancion antes de medir con carga de verdad");
             Check(Codigo.Llama(lla, "DisposePlaybackNow"), "y la para al acabar");
             // SOLO LA SUYA. Si ya habia algo sonando, es de un cliente que lo pago: se usa esa carga y no se
             // toca. Que la regla este escrita en un campo -y que el final lo LEA- es lo que evita que un dia

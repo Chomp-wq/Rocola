@@ -925,6 +925,7 @@ namespace Rocola
                 wa.PlaybackStopped += Output_PlaybackStopped;
                 wa.Init(new NAudio.Wave.SampleProviders.SampleToWaveProvider(samples));
                 audioVisualDelayMs = 240;
+                if (audioOpeningForMeasurement) wa.Volume = 0f;
                 wa.Play();
             }
             catch
@@ -956,16 +957,34 @@ namespace Rocola
                 // Si la version de la CACHE no abre (la limpieza la borro justo en este instante, o quedo
                 // un encode raro), NO se salta la cancion ni se anota el ORIGINAL como incompatible ni se
                 // devuelve el credito: el archivo malo se borra (el motor lo regenera) y suena el original.
-                try { reader = OpenAudio(iaSrc); }
-                catch (Exception cex)
+                bool forceWaveOut = reintentandoWaveOut; // conservar el reintento al volver al bucle de mensajes
+                BeginAudioOpen(iaSrc, delegate(IAudioSource source, Exception error)
                 {
-                    if (iaSrc == t.Path) throw;                    // fallo el original de verdad: al catch de abajo
-                    LogError("cache IA no abre (suena el original): " + Path.GetFileName(iaSrc), cex);
-                    try { File.Delete(iaSrc); } catch { }          // solo puede ser un archivo de la cache (regenerable)
-                    IaRequestJob(t.Path);                          // que el motor la vuelva a preparar
-                    iaSrc = t.Path; iaNowEnhanced = false; RevisaRespaldoDsee();
-                    reader = OpenAudio(t.Path);
-                }
+                    if (error != null && iaSrc != t.Path)
+                    {
+                        try
+                        {
+                            LogError("cache IA no abre (suena el original): " + Path.GetFileName(iaSrc), error);
+                            try { File.Delete(iaSrc); } catch { }
+                            IaRequestJob(t.Path);
+                            iaNowEnhanced = false; RevisaRespaldoDsee();
+                            BeginAudioOpen(t.Path, delegate(IAudioSource original, Exception originalError) {
+                                StartOpenedTrack(t, original, originalError, forceWaveOut);
+                            });
+                        }
+                        catch (Exception fallbackError) { AudioStartFailed(t, fallbackError); }
+                    }
+                    else StartOpenedTrack(t, source, error, forceWaveOut);
+                });
+            }
+            catch (Exception error) { AudioStartFailed(t, error); }
+        }
+        private void StartOpenedTrack(Track t, IAudioSource source, Exception error, bool forceWaveOut)
+        {
+            try
+            {
+                reader = source;
+                if (error != null) throw error;
                 reader.Volume = FixedVolume;   // se queda en 1.0 (crudo): el nivelado se aplica en LevelTap, tras medir el volumen REAL
                 // NIVELADO: si esta cancion ya se oyo antes, se aplica la ganancia que la lleva al nivel comun; si es
                 // nueva, va a su volumen original y se APRENDE su sonoridad en esta pasada (para nivelarla la proxima vez).
@@ -1026,7 +1045,7 @@ namespace Rocola
                 // moderno (sin bajar a 16 bits ni pasar por el mezclador clasico) y latencia menor. Si
                 // La inicializacion o el arranque sincrono fallan: reabre la pista por WaveOut clasico
                 // de siempre. salida= en config: auto (WASAPI si la maquina es HD) | wasapi | waveout.
-                bool wantWasapi = !reintentandoWaveOut && (outPref == "wasapi" || (outPref != "waveout" && tierHd));
+                bool wantWasapi = !forceWaveOut && (outPref == "wasapi" || (outPref != "waveout" && tierHd));
                 bool isWasapi = false;
                 output = null;
                 if (wantWasapi && Environment.OSVersion.Version.Major >= 6)
@@ -1065,22 +1084,15 @@ namespace Rocola
                     output.Init(new DitherWaveProvider16(outChain));   // 16 bits CON dither TPDF (menos aspereza en pasajes silenciosos)
                 }
                 audioVisualDelayMs = isWasapi ? 240 : 850;   // el pulso visual se alinea al colchon REAL de la salida en uso
+                if (audioOpeningForMeasurement) output.Volume = 0f;
                 if (!isWasapi) output.Play();   // WASAPI ya arranco dentro de su bloque protegido
                 progressTimer.Start();
+                UpdateNowPlayingUI(); // lector ya listo; refrescar estado tras la apertura asincrona
                 PrecalientaSiguiente();   // la que viene detras, leida en segundo plano (ver arriba)
             }
             catch (Exception ex)
             {
-                lblStatus.Text = "No se pudo reproducir " + Path.GetFileName(t.Path) + " (" + ex.Message + ")";
-                LogError("PlayTrack " + Path.GetFileName(t.Path), ex);
-                NoteIncompatible(t.Path, ex);   // ni con el lector tolerante: deja la ruta en rocola_incompatibles.txt para repararla
-                RefundCredit();   // la cancion que el cliente pago no sono: se le devuelve el credito
-                ShowToast("No se pudo reproducir: credito devuelto", Color.FromArgb(200, 80, 70));
-                DisposePlaybackNow();
-                // OPTIMIZACION (estabilidad): antes era PlayNext() directo. Si varias canciones seguidas
-                // no abren (archivos movidos/corruptos) se apilaba PlayTrack->PlayNext->PlayTrack... hasta
-                // un posible StackOverflow. Via BeginInvoke se desenreda la pila (igual que en el video).
-                try { if (this.IsHandleCreated) this.BeginInvoke((MethodInvoker)delegate { PlayNext(); }); } catch { }
+                AudioStartFailed(t, ex);
             }
         }
 
@@ -1234,6 +1246,7 @@ namespace Rocola
 
         private void DisposePlaybackNow()
         {
+            CancelAudioOpen(); // saltar/cerrar invalida resultados que aun esten abriendo
             progressTimer.Stop();
             if (output != null)
             {

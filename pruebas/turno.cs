@@ -122,8 +122,8 @@ class Turno
         // entero -3.87 ms y nueve megas de disco en una cancion de cuatro minutos-, y eso pasa en el hilo
         // de la pantalla, en el instante exacto en que el cliente acaba de soltar el boton. Y la duracion
         // ya esta apuntada desde el pre-analisis: se pregunta ahi.
-        MethodBase pone = Met("PlayTrack");
-        Check(pone != null, "hay un sitio por donde arranca una cancion (PlayTrack)");
+        MethodBase pone = Met("StartOpenedTrack");
+        Check(pone != null, "hay un sitio por donde arranca una cancion ya abierta (StartOpenedTrack)");
         if (pone != null)
         {
             Check(Codigo.Llama(pone, "SegundosDe"), "al arrancar una cancion, la duracion sale de lo ya apuntado");

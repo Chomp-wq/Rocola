@@ -29,3 +29,5 @@ Sin cambios visuales, interruptores nuevos ni modificaciones del renderizador CP
 ## Pendiente
 
 Esto mejora el recorrido y el índice, no completa todo el arranque por fases. Siguen pendientes preparación anticipada del decodificador, coordinación/deduplicación restante de análisis y medición previa a nuevas agrupaciones de geometría GPU.
+
+Continuación: [apertura de audio en segundo plano](APERTURA_AUDIO_2026-09-17.md). Se saca la apertura solicitada del hilo de interfaz; la preparación anticipada de la siguiente canción sigue pendiente.

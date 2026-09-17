@@ -179,7 +179,7 @@ class Respaldo
 
         // ---------- 3) TODOS LOS QUE LA NECESITAN, LA PREGUNTAN ----------
         Console.WriteLine("\n  3) Y TODOS LOS QUE LA NECESITAN PREGUNTAN LA REGLA\n");
-        string[] quienes = { "ApplyNormNow", "PlayTrack", "MejKind", "ExciteFactorFor" };
+        string[] quienes = { "ApplyNormNow", "StartOpenedTrack", "MejKind", "ExciteFactorFor" };
         string[] paraQue = { "el cambio se oye al instante", "la cancion arranca con el reconstructor bien puesto",
                              "el letrero plateado", "el realce no empuja dos veces" };
         int sinPreguntar = 0;
