@@ -18,7 +18,7 @@ foreach ($mode in @('gpu', 'cpu')) {
     if ($LASTEXITCODE -ne 0) { throw "No compila $mode" }
 }
 $exe = Join-Path $OutputDirectory 'Rocola-gpu.exe'
-foreach ($test in @('capascolor', 'cristalcola', 'cubofila', 'respuesta', 'efectoslayout', 'reposounido', 'lunadetalle', 'optimizaciones', 'eqpreparado', 'hojeoportadas', 'cargaadaptativa')) {
+foreach ($test in @('capascolor', 'cristalcola', 'cubofila', 'respuesta', 'efectoslayout', 'reposounido', 'lunadetalle', 'optimizaciones', 'eqpreparado', 'hojeoportadas', 'cargaadaptativa', 'escaneomemo')) {
     $testExe = Join-Path $OutputDirectory ($test + '.exe')
     & $compiler /nologo /target:exe /optimize+ /warnaserror+ ("/out:$testExe") /r:System.dll /r:System.Core.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll ("/r:$naudio") (Join-Path $testRoot ($test + '.cs'))
     if ($LASTEXITCODE -ne 0) { throw "No compila $test" }
@@ -27,4 +27,4 @@ foreach ($test in @('capascolor', 'cristalcola', 'cubofila', 'respuesta', 'efect
     else { & $testExe $exe }
     if ($LASTEXITCODE -ne 0) { throw "Fallo: $test" }
 }
-Write-Output "PASS: compilacion GPU/CPU y once baterias. No se reemplazo ningun ejecutable de produccion. Salida: $OutputDirectory"
+Write-Output "PASS: compilacion GPU/CPU y doce baterias. No se reemplazo ningun ejecutable de produccion. Salida: $OutputDirectory"
