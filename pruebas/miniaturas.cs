@@ -151,12 +151,16 @@ class Miniaturas
             {
                 try
                 {
-                    object F = FormatterServices.GetUninitializedObject(TF);
-                    foreach (string nombre in new string[] { "coverLock", "coverCache", "coverLoading", "coverRetryUntil", "coverQHi", "coverQLo" })
-                    {
-                        FieldInfo fi = TF.GetField(nombre, BindingFlags.Instance | BindingFlags.NonPublic);
-                        fi.SetValue(F, fi.FieldType == typeof(object) ? new object() : Activator.CreateInstance(fi.FieldType));
-                    }
+                    // LOS CAMPOS NO SE NOMBRAN A MANO. Aqui habia una lista de seis escrita a dedo, y el dia
+                    // que la rocola gano un septimo -coverActiveUnits, el que cuenta cuantas lecturas hay en
+                    // vuelo por unidad de disco- se quedo fuera. Como la bomba de portadas corre en un HILO
+                    // DE FONDO, eso no salio como un FALLO ordenado: el hilo se llevo el proceso entero por
+                    // delante con un NullReferenceException, despues de nueve comprobaciones en verde, y la
+                    // prueba de las miniaturas dejo de existir sin que nadie lo notara.
+                    //
+                    // FormSinEncender los llena TODOS -cerrojos y colecciones- mirando los campos que hay,
+                    // no los que alguien recordo escribir. Un campo nuevo ya no puede volver a romper esto.
+                    object F = Codigo.FormSinEncender(TF);
                     string falta = Path.Combine(donde, "todavia-no-llega.jpg");
                     mPideRuta.Invoke(F, new object[] { falta, false });
                     int espera = 0;

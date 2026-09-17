@@ -335,6 +335,7 @@ static class Codigo
     {
         object f = System.Runtime.Serialization.FormatterServices.GetUninitializedObject(tipo);
         PonCerrojos(f);
+        PonColecciones(f);
         return f;
     }
 
@@ -396,6 +397,39 @@ static class Codigo
                         f.SetValue(obj, new System.Threading.ManualResetEvent(true));
                 }
                 catch { }
+            }
+    }
+
+    // LO MISMO CON LAS LISTAS Y LOS DICCIONARIOS, y por la misma razon.
+    //
+    // Un Form1 armado sin encender no ejecuta NINGUN inicializador: todo lo que la clase crea junto a su
+    // declaracion -"= new LinkedList<...>()", "= new Dictionary<...>()"- se queda en nulo. Con los cerrojos
+    // eso ya se arreglaba arriba; con las colecciones no, y es peor: el codigo que las toca suele correr en
+    // un HILO DE FONDO, donde una excepcion no se ve venir, no la caza nadie y se lleva el proceso entero
+    // por delante. Paso de verdad: 'miniaturas' hacia nueve comprobaciones y se caia con un
+    // NullReferenceException en TakeCoverJob, dentro del hilo de las portadas. No era un fallo de la rocola
+    // -alli el constructor si corre y esos campos nunca son nulos-: era la bateria mirando un Form1 a medio
+    // hacer.
+    //
+    // Se crea la coleccion vacia y con su constructor de siempre. OJO: si la de verdad se creo con algo
+    // dentro -un comparador que no distingue mayusculas, por ejemplo- esta copia no lo lleva. Para lo que
+    // hacen las baterias basta; para medir ESO, hay que ponerlo a mano.
+    public static void PonColecciones(object obj)
+    {
+        if (obj == null) return;
+        for (Type t = obj.GetType(); t != null && t.Name != "Object"; t = t.BaseType)
+            foreach (FieldInfo f in t.GetFields(BindingFlags.Instance | BindingFlags.Public
+                                              | BindingFlags.NonPublic | BindingFlags.DeclaredOnly))
+            {
+                if (f.IsStatic) continue;
+                Type ft = f.FieldType;
+                if (ft.IsInterface || ft.IsAbstract) continue;
+                if (ft.Namespace == null || !ft.Namespace.StartsWith("System.Collections", StringComparison.Ordinal)) continue;
+                if (ft.GetConstructor(Type.EmptyTypes) == null) continue;
+                object v = null;
+                try { v = f.GetValue(obj); } catch { continue; }
+                if (v != null) continue;
+                try { f.SetValue(obj, Activator.CreateInstance(ft)); } catch { }
             }
     }
 
