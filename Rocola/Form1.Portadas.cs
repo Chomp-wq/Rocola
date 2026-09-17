@@ -29,15 +29,11 @@ namespace Rocola
         private readonly Dictionary<string, CoverJob> coverLoading = new Dictionary<string, CoverJob>();
         private readonly Dictionary<string, int> coverRetryUntil = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         private readonly List<Image> coverTrash = new List<Image>();   // expulsadas, a liberar de forma segura (en el timer)
-        private volatile int coverGen = 0;     // sube al cambiar de pagina; descarta cargas de paginas viejas
-        private System.Windows.Forms.Timer coverSettleTimer;   // espera ~0.25s a que el usuario se detenga
-        // CARRILES DE DISCO. Varias decodificaciones a la vez: con SSD el cuello es el CPU, no el disco. La
-        // interfaz no sufre (sus repintados son ligeros y por celda) y la musica esta blindada por su colchon
-        // de 1 segundo. Resultado: una pagina con miniaturas listas carga en ~70-120 ms. Un disco duro tiene UN cabezal: pedirle dos cosas a la vez lo obliga a ir y venir
-        // y las dos tardan mas, asi que se le pide en fila de uno. Un SSD es justo lo contrario: no tiene nada
-        // que mover y RINDE MAS cuantas mas peticiones tenga en la mano a la vez, porque las reparte entre sus
-        // propios canales internos. De ahi que al detectar SSD se abran varios carriles -uno por nucleo, hasta
-        // cuatro- en vez de los dos de antes. El turno arranca en dos y se AMPLIA cuando el perfil dice SSD.
+        private volatile int coverGen = 0;     // solo invalida contenido (F5), no lecturas utiles al cambiar pagina
+        private System.Windows.Forms.Timer coverSettleTimer;   // espera 120 ms antes de precargar vecinas
+        // CARRILES: tope global segun CPU (uno en 2C/2T); cada unidad HDD admite un lector,
+        // SSD admite paralelismo dentro del tope. El semaforo se comparte con el generador
+        // de miniaturas, que cede a las peticiones visibles. No se promete latencia fija de disco.
         private static readonly System.Threading.Semaphore coverSem = new System.Threading.Semaphore(2, 8);
         private static volatile int coverCarriles = 1;   // bombas de caratula a la vez (1 = disco duro, como arranca)
         private static int coverAbiertos = 2;            // turnos de disco ya concedidos (el semaforo solo puede CRECER)
@@ -59,6 +55,21 @@ namespace Rocola
         // hay caratulas en camino o un video sonando, y se cancela sola si la cola cambia.
         private volatile int warmSongGen = 0;
         private string warmSongPath;
+        // Ceder prelectura antes del siguiente bloque si el usuario navega. No afecta al audio actual.
+        private bool YieldSongWarm(string route)
+        { return YieldCoverWork(UnidadDe(route), CargaTrabajo.Procesadores <= 2); }
+        private bool YieldCoverWork(string unit, bool smallCpu)
+        {
+            lock (coverLock)
+            {
+                if (smallCpu) return coverLoading.Count != 0;
+                int active;
+                if (coverActiveUnits.TryGetValue(unit, out active) && active > 0) return true;
+                for (LinkedListNode<CoverJob> node = coverQHi.First; node != null; node = node.Next)
+                    if (string.Equals(UnidadDe(node.Value.Key), unit, StringComparison.OrdinalIgnoreCase)) return true;
+                return false;
+            }
+        }
         private void PrecalientaSiguiente()
         {
             string ruta = null;
@@ -104,9 +115,15 @@ namespace Rocola
                     byte[] buf = new byte[trozo];
                     using (FileStream fs = new FileStream(ruta, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, trozo, FileOptions.SequentialScan))
                     {
-                        while (fs.Read(buf, 0, buf.Length) > 0)
+                        while (true)
                         {
                             if (mio != warmSongGen) return;
+                            while (YieldSongWarm(ruta))
+                            {
+                                System.Threading.Thread.Sleep(40);
+                                if (mio != warmSongGen) return;
+                            }
+                            if (fs.Read(buf, 0, buf.Length) <= 0) break;
                             System.Threading.Thread.Sleep(lentoAqui ? 8 : 1);
                         }
                     }
@@ -309,10 +326,11 @@ namespace Rocola
         // revueltas en el mismo turno de disco: a veces las caratulas que ESTAS viendo esperaban detras
         // de la prelectura. Ahora hay dos filas: ALTA (lo visible) y BAJA (prelectura); una sola bomba
         // atiende el disco y SIEMPRE saca primero la fila alta.
-        private class CoverJob { public string Key; public int Gen; public LinkedListNode<CoverJob> Node; }
+        private class CoverJob { public string Key, Unit; public int Gen; public LinkedListNode<CoverJob> Node; }
+        private readonly Dictionary<string, int> coverActiveUnits = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         private readonly LinkedList<CoverJob> coverQHi = new LinkedList<CoverJob>();
         private readonly LinkedList<CoverJob> coverQLo = new LinkedList<CoverJob>();
-        private int coverPumpCount = 0;   // hasta 2 bombas de decodificacion (una por nucleo)
+        private int coverPumpCount = 0;   // hasta coverCarriles, nunca un hilo por solicitud
 
         // Llamar bajo coverLock. Si la prelectura ahora es visible, pasa a la fila alta
         // sin duplicar la decodificacion ni desplazar el resto de la cola.
@@ -326,6 +344,30 @@ namespace Rocola
                 coverQHi.AddLast(j.Node);
             }
             return true;
+        }
+
+        // Cancelar solo lo que no ha empezado. Las lecturas en vuelo siguen siendo validas:
+        // terminar y cachearlas evita repetir disco/decodificacion al volver o cambiar de pagina.
+        private void PrepareCoverPage()
+        {
+            lock (coverLock)
+            {
+                CancelQueuedCovers(coverQHi);
+                CancelQueuedCovers(coverQLo);
+            }
+        }
+
+        // Llamar bajo coverLock: retirar cola y registro juntos, sin dejar solicitudes fantasma.
+        private void CancelQueuedCovers(LinkedList<CoverJob> jobs)
+        {
+            while (jobs.Count > 0)
+            {
+                CoverJob job = jobs.First.Value;
+                jobs.RemoveFirst(); job.Node = null;
+                CoverJob registered;
+                if (coverLoading.TryGetValue(job.Key, out registered) && object.ReferenceEquals(job, registered))
+                    coverLoading.Remove(job.Key);
+            }
         }
 
         private void InvalidateCoverMemory()
@@ -353,7 +395,37 @@ namespace Rocola
             return false;
         }
 
-        // Una sola bomba de disco: fila ALTA primero, luego BAJA; termina y se apaga sola.
+        // Bajo coverLock. Saltar unidades ocupadas permite atender otra unidad sin abrir mas hilos.
+        private CoverJob TakeCoverJob(LinkedList<CoverJob> jobs)
+        {
+            for (LinkedListNode<CoverJob> node = jobs.First; node != null; node = node.Next)
+            {
+                CoverJob job = node.Value;
+                string unit = UnidadDe(job.Key);
+                int active; coverActiveUnits.TryGetValue(unit, out active);
+                int limit = DiscoLento(job.Key) ? 1 : coverCarriles;
+                if (active >= limit) continue;
+                jobs.Remove(node); job.Node = null; job.Unit = unit;
+                coverActiveUnits[unit] = active + 1;
+                return job;
+            }
+            return null;
+        }
+
+        private void ReleaseCoverUnit(CoverJob job)
+        {
+            lock (coverLock)
+            {
+                int active;
+                if (job.Unit != null && coverActiveUnits.TryGetValue(job.Unit, out active))
+                {
+                    if (active <= 1) coverActiveUnits.Remove(job.Unit);
+                    else coverActiveUnits[job.Unit] = active - 1;
+                }
+            }
+        }
+
+        // Prioridad visible y limites por unidad. F5 no borra unidades ocupadas por lecturas en vuelo.
         private void CoverPump()
         {
             while (true)
@@ -361,16 +433,15 @@ namespace Rocola
                 CoverJob j = null;
                 lock (coverLock)
                 {
-                    if (coverQHi.Count > 0) { j = coverQHi.First.Value; coverQHi.RemoveFirst(); }
-                    else if (coverQLo.Count > 0) { j = coverQLo.First.Value; coverQLo.RemoveFirst(); }
-                    else { coverPumpCount--; return; }
-                    j.Node = null;   // ya esta en vuelo: no se vuelve a encolar
+                    j = TakeCoverJob(coverQHi) ?? TakeCoverJob(coverQLo);
+                    if (j == null) { coverPumpCount--; return; }
                 }
                 string key = j.Key;
-                if (j.Gen != coverGen) continue;   // la invalidacion ya retiro su registro
-                coverSem.WaitOne();   // turno unico de disco (compartido con el precalentador)
+                bool entered = false;
                 try
                 {
+                    if (j.Gen != coverGen) continue;
+                    coverSem.WaitOne(); entered = true; // compartido con el generador de miniaturas
                     if (j.Gen != coverGen) continue;
                     Image thumb = null;
                     string identidadAntes = null;
@@ -414,7 +485,7 @@ namespace Rocola
                         }
                         catch { }
                 }
-                finally { coverSem.Release(); }
+                finally { if (entered) coverSem.Release(); ReleaseCoverUnit(j); }
             }
         }
 

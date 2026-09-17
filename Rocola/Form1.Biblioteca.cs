@@ -1956,15 +1956,14 @@ namespace Rocola
             if (selAlbumIndex < 0) selAlbumIndex = 0;
             if (selAlbumIndex >= list.Count) selAlbumIndex = Math.Max(0, list.Count - 1);
 
-            // Cambio de pagina/letra -> nueva "generacion": las cargas de la pagina anterior se descartan
-            // GRATIS en la bomba (revisa la generacion antes de decodificar). Gracias a eso, la pagina
-            // VISIBLE se pide AL INSTANTE, sin esperar nada -> sensacion de carga inmediata. El
-            // asentamiento (timer) queda solo para la PRELECTURA de las paginas vecinas.
+            // Cambio de pagina/letra: retirar peticiones que aun no empezaron, conservando las
+            // lecturas en vuelo y su generacion de contenido. La pagina visible se pide enseguida;
+            // el asentamiento (timer) queda solo para la prelectura de las paginas vecinas.
             bool newPage = false;
             string psig = currentLetter + "|" + page;
             if (psig != lastPageSig)
             {
-                lastPageSig = psig; coverGen++;
+                lastPageSig = psig; PrepareCoverPage();
                 newPage = true;
                 coversOnHold = true;   // sigue frenando las peticiones nacidas del PINTADO durante el hojeo
                 if (coverSettleTimer != null) { coverSettleTimer.Stop(); coverSettleTimer.Start(); }
@@ -1984,6 +1983,10 @@ namespace Rocola
             // en el momento de pulsar mas se nota.
             List<Album> siguiente = new List<Album>();
             for (int i = start + PageSize; i < start + PageSize * 2 && i < list.Count; i++) siguiente.Add(list[i]);
+#if ROCOLA_GPU
+            if (gpuEnabled)
+                for (int i = Math.Max(0, start - PageSize); i < start && i < list.Count; i++) siguiente.Add(list[i]);
+#endif
             albumView.SetAhead(siguiente);
             albumView.Selected = selAlbumIndex - start;
             albumView.SelAngle = 0;

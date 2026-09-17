@@ -836,6 +836,7 @@ namespace Rocola
                 gpuPanel.GetTrans = delegate { return BuildTransState(); };   // zoom al entrar/salir de un disco
                 gpuPanel.GetWin = delegate { return BuildWinState(); };        // ventana del buscador abriendo/cerrando
                 gpuPanel.GetGrid = albumView.BuildGpuGrid;   // rejilla de discos: cada celda su propio quad con textura cacheada (hojear = elegir texturas + posiciones)
+                gpuPanel.GetGridAhead = albumView.BuildGpuAhead;
                 gpuPanel.GetContour = delegate { return albumView.ContourSpriteBmp; };          // resalte de seleccion
                 gpuPanel.GetContourRect = delegate {
                     Rectangle r = albumView.ContourScreenRect();

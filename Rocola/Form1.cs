@@ -282,8 +282,9 @@ namespace Rocola
             int pf = perfilDisco;
             bool lento = (pf == 1) ? false : (pf == 2) ? true : medidoLento;
             diskSlow = lento;
-            int carriles = 1;
-            if (!lento) { carriles = Environment.ProcessorCount; if (carriles > 4) carriles = 4; else if (carriles < 2) carriles = 2; }
+            // Tope global por CPU; cada unidad HDD conserva un solo lector en TakeCoverJob.
+            // En 2C/2T un trabajador, reservando margen para interfaz y audio incluso con SSD.
+            int carriles = CargaTrabajo.Lectores(CargaTrabajo.Procesadores);
             // El semaforo solo puede CRECER (quitarle turnos concedidos mientras se usan no es seguro). No pasa
             // nada: quien de verdad limita cuantas bombas hay a la vez es coverCarriles, y ese si baja.
             lock (discoLock)
@@ -1095,6 +1096,13 @@ namespace Rocola
             albumView = new AlbumView();
             albumView.Sky = formStars;   // MISMO campo de estrellas que el fondo del form: la rejilla pinta su ventana (una sola pieza, sin costuras)
             albumView.GetCover = LoadCoverAsync;
+#if ROCOLA_GPU
+            albumView.PeekCoverGpu = delegate (Album a)
+            {
+                if (a == null || a.CoverPath == null) return null;
+                lock (coverLock) { Image c; return CoverEnCache(a.CoverPath, false, out c) ? c : null; }
+            };
+#endif
             // LA MARCA DE "YA LA PUSISTE". La pared no guarda la cola: pregunta. Asi no hay dos listas
             // que puedan decir cosas distintas, y apagar la marca es dejar de contestar.
             albumView.EnCola = delegate (Album a)
@@ -2018,7 +2026,7 @@ namespace Rocola
             // de pagina, ya estan listas y el deslizamiento sale fluido de una. Dos casillas por vuelta y con
             // tope de 4 ms: si alguien esta usando la rocola en ese momento, no le quita nada.
             if (gpuEnabled && albumView != null && albumView.Visible && !attractOn && !searchOpen && !videoOn
-                && transMode == 0 && winMode == 0 && !albumView.Sliding) albumView.BakeAhead();
+                && transMode == 0 && winMode == 0 && !albumView.Sliding) albumView.BakeAheadGpu();
 #endif
             PrecalientaUnPoco();   // y las pantallas que al encender no se ven, horneadas antes de que hagan falta
             CheckBusinessDayReset();   // al cruzar las 7 AM: reinicia el estado (nada de anoche cruza el corte del dia)

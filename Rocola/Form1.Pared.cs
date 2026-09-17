@@ -429,10 +429,19 @@ namespace Rocola
             // que de el equipo, igual que las demas animaciones de la rocola.
             public const int SlideMs = 230;
             private int slideTick = -1; private float slideFrom;
+            private int gpuLastSlideTick;
+            private bool gpuHasSlideTick, gpuRapidSlide;
+            private long gpuBakeCost;
+            private static readonly long GpuBakeLimit = CargaTrabajo.LimiteTicks(CargaTrabajo.Procesadores);
+            internal static bool RapidPageTurn(int now, int previous, bool hasPrevious)
+            { return hasPrevious && unchecked((uint)(now - previous)) < 300u; }
             public void StartSlide(int dir, int ancho)   // dir: +1 la nueva entra por la derecha, -1 por la izquierda
             {
                 if (ancho < 8) { slideTick = -1; return; }
-                slideFrom = dir * (float)ancho; slideTick = Environment.TickCount;
+                int now = Environment.TickCount;
+                gpuRapidSlide = RapidPageTurn(now, gpuLastSlideTick, gpuHasSlideTick);
+                gpuLastSlideTick = now; gpuHasSlideTick = true;
+                slideFrom = dir * (float)ancho; slideTick = now;
             }
             public bool Sliding { get { return slideTick >= 0 && Environment.TickCount - slideTick < SlideMs; } }
             // CURVA del hojeo (funcion pura, para poder comprobarla): devuelve cuanto FALTA por recorrer
@@ -470,32 +479,82 @@ namespace Rocola
                 if (cellCacheW != w || cellCacheH != h) { ClearCellCache(); cellCacheW = w; cellCacheH = h; RecalculaCajon(w, h); }   // tamano nuevo: rehornear (y el cajon cambia de tope: la casilla mide otra cosa)
                 else if (cellCache.Count > capCeldas) PodaCeldas();                                              // lleno: fuera las mas viejas
                 int side, labelH, gap; CellMetrics(cw, ch, out side, out labelH, out gap);
-                // MIENTRAS LA PAGINA SE MUEVE, LAS CASILLAS VAN A MEDIA RESOLUCION. Ocupan el mismo hueco en
-                // pantalla -la tarjeta las estira- pero pesan la cuarta parte al subirlas, que es lo que se
-                // atasca hojeando rapido. Va antes de SlideNow porque SlideNow apaga el deslizamiento al
-                // acabarse, y esta pagina todavia es de las que se estaban moviendo.
-                bool chica = Sliding && HojeoLigero;
+                // Una pagina aislada muestra las caratulas desde el primer cuadro disponible.
+                // Solo ocultarlas al encadenar paginas rapido; nunca degradar su resolucion.
+                bool chica = Sliding && HojeoLigero && gpuRapidSlide;
                 float alpha; float dx = SlideNow(out alpha);   // hojeo: desplazamiento y desvanecido de ESTE cuadro
                 int ox = this.Left, oy = this.Top;   // coords de albumView -> pantalla (mismo criterio que los cubos que giran)
                 int budget = GridBakeBudget;
-                int bakeT0 = Environment.TickCount;   // tope de TIEMPO ademas del de cantidad: en el CPU lento de la
-                int n = 0;                            // rocola 6 horneadas podian pasar de 16ms -> cuadro perdido al paginar
+                long bakeT0 = System.Diagnostics.Stopwatch.GetTimestamp();
+                int n = 0;
                 for (int i = 0; i < Page.Count && i < PageSize && n < buf.Length; i++)
                 {
                     Rectangle area, lbl; Geometry(w, h, i, out area, out lbl);
                     Album a = Page[i];
                     buf[n].Key = ClaveCasilla(a);   // CON la marca: el panel cachea sus texturas por esta clave
-                    // Mientras se mueve, no solicitar ni hornear caratulas. Recuperar calidad completa al detenerse.
+                    // En rafaga no hornear; en pasos normales reutilizar la cache y el presupuesto habitual.
+                    long cellStart = System.Diagnostics.Stopwatch.GetTimestamp();
+                    int beforeBudget = budget;
                     buf[n].Bmp = chica ? null : PeekOrBakeCell(a, cw, side, labelH, gap, (GetCover != null) ? GetCover(a) : null, ref budget, false);
+                    if (budget < beforeBudget)
+                        gpuBakeCost = CargaTrabajo.AprendeCoste(gpuBakeCost, System.Diagnostics.Stopwatch.GetTimestamp() - cellStart);
                     buf[n].Placeholder = HojeoLigero;
                     buf[n].CoverRect = new RectangleF(ox + area.X + dx, oy + area.Y, area.Width, area.Height);
                     buf[n].Slot = i;
                     buf[n].X = ox + (i % Cols) * cw + dx; buf[n].Y = oy + area.Y; buf[n].W = cw; buf[n].H = side + gap + labelH;
                     buf[n].A = alpha;
                     n++;
-                    if (budget < GridBakeBudget && budget > 0 && Environment.TickCount - bakeT0 >= 6) budget = 0;   // ~6ms horneando: el resto al proximo cuadro
+                    if (budget < GridBakeBudget && budget > 0 &&
+                        !CargaTrabajo.PuedeEmpezar(System.Diagnostics.Stopwatch.GetTimestamp() - bakeT0, gpuBakeCost, GpuBakeLimit, false))
+                        budget = 0; // seguir consultando cache, aplazar solo composiciones nuevas
                 }
                 return n;
+            }
+            public Func<Album, Image> PeekCoverGpu;
+            // Solo referencias ya horneadas, en orden estable. Nunca lee disco ni compone imagenes.
+            public int BuildGpuAhead(GpuGridCell[] cells)
+            {
+                if (Sliding || Ahead == null || cellCacheW != Width || cellCacheH != Height) return 0;
+                int count = Math.Min(cells.Length, Ahead.Count);
+                for (int i = 0; i < count; i++)
+                {
+                    string key = ClaveCasilla(Ahead[i]);
+                    CellSprite sprite;
+                    cells[i] = new GpuGridCell();
+                    cells[i].Key = key;
+                    if (key != null && cellCache.TryGetValue(key, out sprite) && sprite.HasCover)
+                        cells[i].Bmp = sprite.Bmp;
+                }
+                return count;
+            }
+            // Prepara solo imagenes YA disponibles, sin lecturas ni promocion a prioridad visible.
+            // Volver a visitar el anillo permite recoger portadas que llegaron tras la primera pasada.
+            public void BakeAheadGpu()
+            {
+                if (Ahead == null || Ahead.Count == 0 || PeekCoverGpu == null || Sliding) return;
+                int w = Width, h = Height, cw = w / Cols, ch = h / Rows;
+                if (cw < 4 || ch < 4 || cellCacheW != w || cellCacheH != h) return;
+                int side, labelH, gap; CellMetrics(cw, ch, out side, out labelH, out gap);
+                int budget = 2, visited = 0;
+                long begin = System.Diagnostics.Stopwatch.GetTimestamp();
+                while (visited < Math.Min(8, Ahead.Count) && budget > 0 &&
+                    CargaTrabajo.PuedeEmpezar(System.Diagnostics.Stopwatch.GetTimestamp() - begin, aheadBakeTicks, GpuBakeLimit, budget == 2))
+                {
+                    if (aheadPos >= Ahead.Count) aheadPos = 0;
+                    Album a = Ahead[aheadPos++]; visited++;
+                    if (a == null) continue;
+                    Image cover = PeekCoverGpu(a);
+                    if (cover == null) continue; // no hornear un disco vacio que habria que rehacer
+                    int previous = budget;
+                    long start = System.Diagnostics.Stopwatch.GetTimestamp();
+                    PeekOrBakeCell(a, cw, side, labelH, gap, cover, ref budget);
+                    if (budget < previous)
+                    {
+                        long cost = Math.Max(1L, System.Diagnostics.Stopwatch.GetTimestamp() - start);
+                        aheadBakeTicks = Math.Max(cost, aheadBakeTicks - aheadBakeTicks / 4);
+                    }
+                }
+                if (cellCache.Count > capCeldas) PodaCeldas();
             }
 #endif
 

@@ -1206,7 +1206,7 @@ namespace Rocola
             // no en una coordenada fija que pueda pisar la ultima.
             int switchesY = 94 + ef.Length * 52 + 8;
             string[] nomSw = {
-                "Ocultar caratulas al pasar de pagina",
+                "Ocultar caratulas en hojeo rapido",
                 "Discos tenues en reposo con musica",
                 "Estado y cola ampliados en reposo",
                 "Lista de canciones transparente",

@@ -133,6 +133,8 @@ namespace Rocola
         {
             double now = AhoraMs();
             float dt = (float)Math.Max(0, Math.Min(.1, (now - lunaClock) / 1000)); lunaClock = now;
+            // Integrar velocidad mantiene la fase continua al entrar/salir del reposo.
+            if (LunaActiva) moonMotionTime += dt * MoonMotionSpeed(idleBlend);
             float blend = 1 - (float)Math.Exp(-dt * 9);
             float mid = auCuadro.Has ? SafeMoonLevel(auCuadro.B[3]) : 0;
             float high = auCuadro.Has ? SafeMoonLevel(auCuadro.B[6]) : 0;
