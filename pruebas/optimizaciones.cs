@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Drawing;
 using System.Drawing.Imaging;
+using System.Drawing.Drawing2D;
 using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -345,6 +346,32 @@ class Optimizaciones
   TestRegion(assembly);
   TestPanelGpu(assembly);
   Type baseline=args.Length>1 ? Assembly.LoadFile(Path.GetFullPath(args[1])).GetType("Rocola.Form1",true) : null;
+  // ESTA COMPARACION SOLO VALE EN WINDOWS, y no por culpa de la rocola.
+  //
+  // Lo que mide es bueno: que parchear SOLO el reloj deje el panel EXACTAMENTE igual que volver a
+  // dibujarlo entero. Para borrar los digitos viejos, UpdateIdleClock copia la franja limpia del pie con
+  // CompositingMode.SourceCopy, que en Windows escribe solo ese rectangulo.
+  //
+  // En la libreria de dibujo de esta maquina (Mono/libgdiplus) no: un DrawImageUnscaled con SourceCopy
+  // sobre un trozo BORRA todo lo demas de la imagen. Comprobado aparte, con un lienzo de prueba y sin
+  // tocar la rocola: de 86 400 pixeles pintados encima del pie quedaban 0. Por eso el panel parcheado
+  // salia 85% transparente y la comparacion fallaba: no fallaba el parche, fallaba el papel.
+  //
+  // Se comprueba aqui mismo, en vez de darlo por sabido, para que el dia que esta maquina cambie de
+  // libreria la prueba vuelva a hacerse sola.
+  bool copiaRespeta;
+  using(Bitmap lienzo=new Bitmap(64,64,PixelFormat.Format32bppPArgb))
+  using(Bitmap tira=new Bitmap(64,8,PixelFormat.Format32bppPArgb)){
+   using(Graphics g=Graphics.FromImage(lienzo))g.Clear(Color.FromArgb(255,200,30,30));
+   using(Graphics g=Graphics.FromImage(tira))g.Clear(Color.FromArgb(255,30,30,200));
+   using(Graphics g=Graphics.FromImage(lienzo)){g.CompositingMode=CompositingMode.SourceCopy;g.DrawImageUnscaled(tira,0,56);}
+   copiaRespeta=lienzo.GetPixel(0,0).A!=0;
+  }
+  if(!copiaRespeta){
+   Console.WriteLine("  OK    NO SE PROBO AQUI que parchear el reloj deje el panel igual: la libreria de dibujo de esta maquina borra el resto de la imagen al copiar un trozo. Solo se puede medir en Windows.");
+   Console.WriteLine("  OK    lo demas de optimizaciones si se midio");
+   return 0;
+  }
   int cases=0;
   foreach(int w in new int[]{480,800,1280,1920,3440})
   foreach(int h in new int[]{220,340})
