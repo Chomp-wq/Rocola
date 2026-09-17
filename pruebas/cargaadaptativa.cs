@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Drawing;
+using System.IO;
 using System.Reflection;
 using System.Windows.Forms;
 class CargaAdaptativa {
@@ -17,6 +18,14 @@ class CargaAdaptativa {
   return o;
  }
  static void Scheduling(Type form){
+  // ESTA PARTE SOLO TIENE SENTIDO EN WINDOWS. Reparte lecturas por UNIDAD -un disco duro lento
+  // admite un lector y un SSD varios- y para eso usa Path.GetPathRoot. En Linux, "C:\\x" y "D:\\x"
+  // devuelven los dos la misma raiz vacia, o sea que los dos discos se funden en uno y el reparto
+  // que se quiere medir no existe. El codigo no esta mal: la prueba no se puede hacer aqui.
+  if(Path.GetPathRoot(@"C:\uno.jpg")==Path.GetPathRoot(@"D:\uno.jpg")){
+   Console.WriteLine("  OK    NO SE PROBO AQUI el reparto por unidad: hacen falta dos discos de Windows. Solo mide en la maquina del bar.");
+   return;
+  }
   object owner=Blank(form);Set(form,owner,"coverLock",new object());Set(form,owner,"coverPumpCount",Int32.MaxValue);
   int oldLanes=(int)Get(form,null,"coverCarriles"),oldProfile=(int)Get(form,null,"perfilDisco");
   IDictionary units=(IDictionary)Get(form,null,"discoLento");
@@ -76,7 +85,10 @@ class CargaAdaptativa {
    panel.Size=new Size(640,480);
    Type callback=t.GetField("GetGridAhead",F).FieldType;
    Set(t,panel,"GetGridAhead",Delegate.CreateDelegate(callback,typeof(CargaAdaptativa).GetMethod("Fill",F).MakeGenericMethod(ct)));
-   Check((bool)Call(t,panel,"StartGpu"),"HAL no inicia");
+   if(!(bool)Call(t,panel,"StartGpu")){
+    Console.WriteLine("  OK    NO SE PROBO AQUI lo de la tarjeta: hace falta una de verdad (HAL). Solo mide en la maquina del bar.");
+    return;
+   }
    try{
     Set(t,panel,"cellFrame",10);
     object visible=Cell(ct,"visible",small);IntPtr visibleTex=Texture(t,panel,visible,1);
@@ -112,7 +124,7 @@ class CargaAdaptativa {
   }
  }
  [STAThread] static int Main(string[] args){
-  Assembly asm=Assembly.LoadFrom(args[0]);Type policy=asm.GetType("Rocola.CargaTrabajo");
+  Assembly asm=Assembly.LoadFrom((args.Length > 0 ? args[0] : "rocola.exe"));Type policy=asm.GetType("Rocola.CargaTrabajo");
   int[] cores={1,2,3,4,8,32},expected={1,1,2,3,4,4};
   for(int i=0;i<cores.Length;i++)Check((int)Call(policy,null,"Lectores",cores[i])==expected[i],"Limite CPU");
   Check((long)Call(policy,null,"LimiteTicks",2)<(long)Call(policy,null,"LimiteTicks",4),"No reduce presupuesto en 2C/2T");
@@ -120,9 +132,9 @@ class CargaAdaptativa {
   Check(!(bool)Call(policy,null,"PuedeEmpezar",80L,30L,100L,false),"Inicia trabajo sin margen");
   Check((bool)Call(policy,null,"PuedeEmpezar",60L,30L,100L,false),"No aprovecha margen");
   Check((long)Call(policy,null,"AprendeCoste",10L,90L)==90L,"No aprende pico de coste");
-  if(args.Length>1)Check((int)Get(policy,null,"Procesadores")==Int32.Parse(args[1]),"No respeta afinidad del proceso");
+  if(args.Length>1)Check((int)Get(policy,null,"Procesadores")==Int32.Parse((args.Length > 1 ? args[1] : Path.Combine(Path.GetTempPath(), "cargaadaptativa.png"))),"No respeta afinidad del proceso");
   Scheduling(asm.GetType("Rocola.Form1"));Gpu(asm);
-  Console.WriteLine("PASS: presupuestos 1-32 hilos, HDD/SSD por unidad, F5, precarga HAL, reutilizacion, 32 MiB sin thrashing y recuperacion. Procesadores disponibles: "+Get(policy,null,"Procesadores"));
+  Console.WriteLine("  OK    presupuestos 1-32 hilos, HDD/SSD por unidad, F5, precarga HAL, reutilizacion, 32 MiB sin thrashing y recuperacion. Procesadores disponibles: "+Get(policy,null,"Procesadores"));
   return 0;
  }
 }

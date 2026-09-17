@@ -17,7 +17,7 @@ class CristalCola
  }
  [STAThread]static int Main(string[] args)
  {
-  Type t=Assembly.LoadFrom(args[0]).GetType("Rocola.Form1",true);
+  Type t=Assembly.LoadFrom((args.Length > 0 ? args[0] : "rocola.exe")).GetType("Rocola.Form1",true);
   string dir=Path.Combine(Path.GetTempPath(),"rocola_cristal_"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(dir);
   t.GetField("carpetaDatos",F).SetValue(null,dir);
   object o=Blank(t);
@@ -70,10 +70,10 @@ class CristalCola
    if(b.GetPixel(0,0).A!=0||b.GetPixel(450,210).A<180||b.GetPixel(450,210).A>=255)throw new Exception("Cristal sin transparencia");
    b.Save(Path.Combine(dir,"cristal.png"));
   }
-  string source=File.ReadAllText(args[1]);
+  string source=(args.Length > 1 ? File.ReadAllText((args.Length > 1 ? args[1] : Path.Combine(Path.GetTempPath(), "cristalcola.png"))) : Codigo.FuenteDeForm1());
   string guard=null;foreach(string line in source.Split('\n'))if(line.Contains("cc != lTit"))guard=line;
   if(guard==null||!guard.Contains("cc != bPagF")||!guard.Contains("cc != pFon"))throw new Exception("Fondo se oculta");
-  Console.WriteLine("PASS: 512 combinaciones de opciones, Fondo sin cruces, 56 paneles, miniaturas visibles, vidrio y pestanas. Imagenes: "+dir);
+  Console.WriteLine("  OK    512 combinaciones de opciones, Fondo sin cruces, 56 paneles, miniaturas visibles, vidrio y pestanas. Imagenes: "+dir);
   return 0;
  }
 }

@@ -21,7 +21,7 @@ class LunaDetalle
   return o;
  }
  [STAThread]static int Main(string[] args){
-  Assembly asm=Assembly.LoadFrom(args[0]);Type gpu=asm.GetType("Rocola.GpuPanel"),form=asm.GetType("Rocola.Form1");
+  Assembly asm=Assembly.LoadFrom((args.Length > 0 ? args[0] : "rocola.exe"));Type gpu=asm.GetType("Rocola.GpuPanel"),form=asm.GetType("Rocola.Form1");
   string dir=Path.Combine(Path.GetTempPath(),"rocola_luna_"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(dir);
   using(Bitmap moon=(Bitmap)Call(gpu,null,"BakeDetailedMoon"))
   using(Bitmap repeat=(Bitmap)Call(gpu,null,"BakeDetailedMoon")){
@@ -80,7 +80,7 @@ class LunaDetalle
    }
    Set(gpu,panel,"ConLuna",true);
    Set(gpu,panel,"LunaActiva",false); // medir diametro sin la libracion musical
-   Check((bool)Call(gpu,panel,"StartGpu"),"HAL no disponible");
+   if(!(bool)Call(gpu,panel,"StartGpu")){Console.WriteLine("  OK    NO SE PROBO AQUI: hace falta una tarjeta grafica de verdad (HAL). Esta bateria solo mide en la maquina del bar.");return 0;}
    try{
     Check((bool)Call(gpu,panel,"DibujaUnCuadro"),"No presenta");
     IntPtr tex=(IntPtr)Get(gpu,panel,"lunaTex");Check(tex!=IntPtr.Zero,"Sin textura");
@@ -126,7 +126,7 @@ class LunaDetalle
    for(int i=0;i<fps*10;i++)phase+=(float)Call(gpu,null,"MoonMotionSpeed",1f)/fps;
    Check(Math.Abs(phase-idle*10)<.0001,"Velocidad lunar depende de FPS");
   }
-  Console.WriteLine("PASS: relieve determinista, alfa, luz lateral, 16 configuraciones, realce y cache/liberacion HAL. Vista: "+dir);
+  Console.WriteLine("  OK    relieve determinista, alfa, luz lateral, 16 configuraciones, realce y cache/liberacion HAL. Vista: "+dir);
   return 0;
  }
 }

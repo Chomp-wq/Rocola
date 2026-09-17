@@ -54,7 +54,7 @@ class EscaneoMemoTest {
   Check((long)Get(memoType,memo,"Bytes")==0&&(int)Get(memoType,memo,"Paths")==0,"Retiene entradas consumidas");
  }
  static void Main(string[] args){
-  Type form=Assembly.LoadFrom(args[0]).GetType("Rocola.Form1"),memoType=form.GetNestedType("ScanDirectoryMemo",F);
+  Type form=Assembly.LoadFrom((args.Length > 0 ? args[0] : "rocola.exe")).GetType("Rocola.Form1"),memoType=form.GetNestedType("ScanDirectoryMemo",F);
   object owner=FormatterServices.GetUninitializedObject(form);
   int[] cpu={1,2,3,4,8,32},workers={1,1,2,3,4,4};
   for(int i=0;i<cpu.Length;i++){
@@ -124,6 +124,6 @@ class EscaneoMemoTest {
    catch(TargetInvocationException ex){Check(ex.InnerException is InvalidCastException,"Error inesperado de worker");}
    Check(Get(form,owner,"scanDirectoryMemo")==null&&Thread.CurrentThread.Priority==previous,"Worker no limpia/restaura");
   }finally{Directory.Delete(root,true);}
-  Console.WriteLine("PASS: catalogo/orden/portadas y firma equivalentes; cambios profundos, memoria acotada, invalidacion, limpieza y 20000 claves iguales al indice serial.");
+  Console.WriteLine("  OK    catalogo/orden/portadas y firma equivalentes; cambios profundos, memoria acotada, invalidacion, limpieza y 20000 claves iguales al indice serial.");
  }
 }
