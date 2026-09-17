@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Drawing;
+using System.IO;
 using System.Reflection;
 using System.Runtime.Serialization;
 using System.Threading;
@@ -131,13 +132,13 @@ class EqPreparado
         if(failure!=null)throw failure;
     }
     static int Main(string[] args) {
-        Type form=Assembly.LoadFrom(args[0]).GetType("Rocola.Form1",true);
-        Type baseline=args.Length>1?Assembly.LoadFile(System.IO.Path.GetFullPath(args[1])).GetType("Rocola.Form1",true):null;
+        Type form=Assembly.LoadFrom((args.Length > 0 ? args[0] : "rocola.exe")).GetType("Rocola.Form1",true);
+        Type baseline=args.Length>1?Assembly.LoadFile(System.IO.Path.GetFullPath((args.Length > 1 ? args[1] : Path.Combine(Path.GetTempPath(), "eqpreparado.png")))).GetType("Rocola.Form1",true):null;
         foreach(int rate in new[]{22050,44100,48000,96000})
         foreach(int channels in new[]{1,2,6})
         foreach(float excite in new[]{0f,.35f})Test(form,baseline,rate,channels,excite);
         TestConcurrent(form);
-        Console.WriteLine("PASS: 24 formatos/realces, 14 cambios EQ, offsets, identidad, estado y publicacion concurrente; PCM exacto"+(baseline!=null?" frente a Release previo":"")+".");
+        Console.WriteLine("  OK    24 formatos/realces, 14 cambios EQ, offsets, identidad, estado y publicacion concurrente; PCM exacto"+(baseline!=null?" frente a Release previo":"")+".");
         return 0;
     }
 }

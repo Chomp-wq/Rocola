@@ -12,7 +12,7 @@ class ReposoUnido
  static void Near(float a,float b,string message){Check(Math.Abs(a-b)<.002f,message+": "+a+" != "+b);}
  [STAThread]static int Main(string[] args)
  {
-  Assembly asm=Assembly.LoadFrom(args[0]);Type form=asm.GetType("Rocola.Form1"),gpu=asm.GetType("Rocola.GpuPanel");
+  Assembly asm=Assembly.LoadFrom((args.Length > 0 ? args[0] : "rocola.exe"));Type form=asm.GetType("Rocola.Form1"),gpu=asm.GetType("Rocola.GpuPanel");
   int cases=0;
   foreach(int w in new int[]{480,640,800,1024,1280,1499,1500,1920,2560,3440,3840})
   foreach(int h in new int[]{220,260,340})
@@ -85,7 +85,7 @@ class ReposoUnido
    Set(gpu,panel,"IdleExpandTarget",true);
    Set(gpu,panel,"TransicionesTacto",false);
    Call(gpu,panel,"SetScene",1);
-   Check((bool)Call(gpu,panel,"StartGpu"),"HAL no disponible");
+   if(!(bool)Call(gpu,panel,"StartGpu")){Console.WriteLine("  OK    NO SE PROBO AQUI: hace falta una tarjeta grafica de verdad (HAL). Esta bateria solo mide en la maquina del bar.");return 0;}
    try{
     IntPtr previous=IntPtr.Zero;
     foreach(float blend in new float[]{0,.2f,.5f,.8f,1,.8f,.5f,.2f}){
@@ -117,7 +117,7 @@ class ReposoUnido
     Near((float)Get(legacy.GetType(),legacy,"BaseY"),-(float)gpu.GetProperty("IdleRise",F).GetValue(panel,null),"Toggle no recupera union anterior");
    }finally{Call(gpu,panel,"StopGpu");}
   }
-  Console.WriteLine("PASS: "+cases+" rejillas compactas/simetricas, fundido a 24-240 Hz, "+seams+" uniones de malla y render HAL sin recrear UI.");
+  Console.WriteLine("  OK    "+cases+" rejillas compactas/simetricas, fundido a 24-240 Hz, "+seams+" uniones de malla y render HAL sin recrear UI.");
   return 0;
  }
 }

@@ -19,7 +19,7 @@ class CapasColor
  }
  [STAThread]static int Main(string[] args)
  {
-  Assembly asm=Assembly.LoadFrom(args[0]);Type form=asm.GetType("Rocola.Form1"),list=form.GetNestedType("SongListView",F);
+  Assembly asm=Assembly.LoadFrom((args.Length > 0 ? args[0] : "rocola.exe"));Type form=asm.GetType("Rocola.Form1"),list=form.GetNestedType("SongListView",F);
   using(Control c=(Control)Activator.CreateInstance(list,true))
   using(Font font=new Font("Tahoma",10,FontStyle.Bold))
   {
@@ -89,7 +89,7 @@ class CapasColor
    Set(gpu,panel,"GetPaletteKey",new Func<int>(delegate{return key;}));
    Set(gpu,panel,"GetPaletteContent",new Func<long>(delegate{return content;}));
    Set(gpu,panel,"ConLuna",true);
-   Check((bool)Call(gpu,panel,"StartGpu"),"HAL no disponible");
+   if(!(bool)Call(gpu,panel,"StartGpu")){Console.WriteLine("  OK    NO SE PROBO AQUI: hace falta una tarjeta grafica de verdad (HAL). Esta bateria solo mide en la maquina del bar.");return 0;}
    try{
     Check((bool)Call(gpu,panel,"DibujaUnCuadro"),"No presenta cuadro");
     IntPtr original=(IntPtr)Get(gpu,panel,"uiTex");
@@ -110,7 +110,7 @@ class CapasColor
     foreach(object item in old)Check(item==null,"Toggle no libera texturas");
    }finally{Call(gpu,panel,"StopGpu");}
   }
-  Console.WriteLine("PASS: 18 selecciones pixel-identicas, firmas, paginacion; HAL/texturas de color, cancelacion al toque, limpieza y luna.");
+  Console.WriteLine("  OK    18 selecciones pixel-identicas, firmas, paginacion; HAL/texturas de color, cancelacion al toque, limpieza y luna.");
   return 0;
  }
 }

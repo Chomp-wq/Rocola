@@ -40,6 +40,21 @@ class Paginar
     static void Check(bool ok, string q) { Console.WriteLine((ok ? "  OK   " : "  FALLO") + "  " + q); if (!ok) fallos++; }
 
     const BindingFlags IF = BindingFlags.Instance | BindingFlags.NonPublic;
+
+    // UN PASO SUELTO: se borra la marca del paso anterior, asi que no puede contar como rafaga.
+    static void PasoSuelto(object av, FieldInfo hayPaso, MethodInfo mSlide, int W)
+    {
+        hayPaso.SetValue(av, false);
+        mSlide.Invoke(av, new object[] { 1, W });
+    }
+    // UN PASO EN RAFAGA: se dice que el anterior fue AHORA MISMO, o sea hace menos de los 300 ms que
+    // separan "pasar una pagina" de "encadenarlas".
+    static void PasoEnRafaga(object av, FieldInfo hayPaso, FieldInfo ultPaso, MethodInfo mSlide, int W)
+    {
+        hayPaso.SetValue(av, true);
+        ultPaso.SetValue(av, Environment.TickCount);
+        mSlide.Invoke(av, new object[] { 1, W });
+    }
     const BindingFlags PUB = BindingFlags.Instance | BindingFlags.Public;
 
     static Type TF, TAV, TAlb, TStar, TCel;
@@ -213,17 +228,33 @@ class Paginar
         float anchoQuad = Convert.ToSingle(fW.GetValue(buf.GetValue(0)));
         Check(q0 != null && q0.Width > cw * 0.9, "quieta, la casilla va a resolucion entera (" + (q0 == null ? 0 : q0.Width) + " px)");
 
-        // MIENTRAS SE MUEVE YA NO SE HORNEA NADA, Y ESO ES MEJOR QUE HORNEAR CHICO. Antes la casilla se
-        // horneaba a media resolucion: barato, pero no gratis, y justo en el cuadro mas apretado. Ahora
-        // durante el deslizamiento no se hornea NI SE PIDE portada: en el sitio de cada disco va un
-        // marcador -un cubo del color del cielo, que dibuja la tarjeta sin textura- y la calidad entera
-        // vuelve en cuanto la pagina para. El hueco en pantalla sigue siendo el mismo: nada se mueve de
-        // sitio, que es lo que hacia falta para que hojear no diera saltos.
-        mSlide.Invoke(av, new object[] { 1, W });
+        // PASAR UNA PAGINA Y ENCADENARLAS RAPIDO YA NO SON LO MISMO, Y ESO ES A PROPOSITO.
+        //
+        // Antes, deslizar era deslizar: durante el movimiento no se horneaba nada, punto. Ahora se
+        // distingue. Pasar UNA pagina enseña las caratulas desde el primer cuadro -da tiempo de sobra y
+        // se ve mejor-, y solo al ENCADENAR paginas -otra antes de 300 ms- se deja de hornear, que es
+        // cuando de verdad aprieta. La promesa que importa no se ha perdido: en rafaga sigue sin
+        // hornearse nada, y eso es lo que se comprueba abajo.
+        //
+        // Si alguien vuelve a esconder las caratulas al pasar UNA pagina, salta la primera; si alguien
+        // quita el ahorro de la rafaga, saltan las tres de despues.
+        //
+        // Y el test manda sobre si hay rafaga o no en vez de depender de lo rapido que corra la maquina:
+        // pone a mano la marca del paso anterior. Una prueba que cambia de resultado segun lo ocupado
+        // que este el equipo no prueba nada.
+        FieldInfo fHayPaso = TAV.GetField("gpuHasSlideTick", IF);
+        FieldInfo fUltPaso = TAV.GetField("gpuLastSlideTick", IF);
+        Check(fHayPaso != null && fUltPaso != null, "se puede fijar a mano si el paso viene en rafaga o no");
+        PasoSuelto(av, fHayPaso, mSlide, W);
+        for (int k = 0; k < 4; k++) mGrid.Invoke(av, new object[] { buf });
+        Check((Bitmap)fBmp.GetValue(buf.GetValue(0)) != null,
+              "pasando UNA pagina las caratulas se siguen viendo: no se esconde lo que da tiempo a ensenar");
+
+        PasoEnRafaga(av, fHayPaso, fUltPaso, mSlide, W);
         for (int k = 0; k < 4; k++) mGrid.Invoke(av, new object[] { buf });
         Bitmap q1 = (Bitmap)fBmp.GetValue(buf.GetValue(0));
         float anchoQuad2 = Convert.ToSingle(fW.GetValue(buf.GetValue(0)));
-        Check(q1 == null, "deslizando no se hornea nada (antes se horneaba a media resolucion)");
+        Check(q1 == null, "encadenando paginas rapido no se hornea nada (que es el cuadro mas apretado)");
         Check(Marcador(buf.GetValue(0)), "y en su sitio va un marcador, que la tarjeta pinta sin textura");
         Check(anchoQuad == anchoQuad2, "y ocupa EXACTAMENTE el mismo hueco en pantalla: no se mueve nada de sitio");
 
@@ -235,7 +266,7 @@ class Paginar
         mReset.Invoke(av, null);
         fSlideTick.SetValue(av, -1);
         hayPortada = false;
-        mSlide.Invoke(av, new object[] { 1, W });
+        PasoEnRafaga(av, fHayPaso, fUltPaso, mSlide, W);
         for (int k = 0; k < 4; k++) mGrid.Invoke(av, new object[] { buf });
         Bitmap sinTapa = (Bitmap)fBmp.GetValue(buf.GetValue(0));
         Check(sinTapa == null && Marcador(buf.GetValue(0)), "deslizando sin portadas, el sitio no queda vacio: va el marcador");

@@ -50,7 +50,7 @@ class HojeoPortadas {
   Check(pending.Count==0,"Registro fantasma tras F5 y cambio de pagina");
  }
  [STAThread] static int Main(string[] args) {
-  Assembly asm=Assembly.LoadFrom(args[0]);Type form=asm.GetType("Rocola.Form1");
+  Assembly asm=Assembly.LoadFrom((args.Length > 0 ? args[0] : "rocola.exe"));Type form=asm.GetType("Rocola.Form1");
   TestPendingPages(form);
   Type view=form.GetNestedType("AlbumView",F),album=form.GetNestedType("Album",F),cell=asm.GetType("Rocola.GpuGridCell");
   Check(!(bool)Call(view,null,"RapidPageTurn",100,0,false),"Primera pagina tratada como rafaga");
@@ -111,7 +111,7 @@ class HojeoPortadas {
    Call(view,panel,"BuildGpuGrid",cells);
    Check(Object.ReferenceEquals(warmed,Get(cell,cells.GetValue(0),"Bmp")),"Repite horneado de pagina preparada");
   }
-  Console.WriteLine("PASS: pagina simple inmediata, cache reutilizada, rafaga sin carga, precarga tardia, cancelacion sin registros fantasma y F5.");
+  Console.WriteLine("  OK    pagina simple inmediata, cache reutilizada, rafaga sin carga, precarga tardia, cancelacion sin registros fantasma y F5.");
   return 0;
  }
 }

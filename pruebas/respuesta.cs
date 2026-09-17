@@ -10,7 +10,7 @@ class Respuesta
  static void Check(bool v,string m){if(!v)throw new Exception(m);}
  [STAThread]static int Main(string[] args)
  {
-  Assembly a=Assembly.LoadFrom(args[0]);Type t=a.GetType("Rocola.GpuPanel",true);
+  Assembly a=Assembly.LoadFrom((args.Length > 0 ? args[0] : "rocola.exe"));Type t=a.GetType("Rocola.GpuPanel",true);
   MethodInfo alpha=t.GetMethod("TactileAlpha",F);
   foreach(int fps in new int[]{24,30,60,144,240})
   {float old=0;for(int i=0;i<fps;i++){float v=(float)alpha.Invoke(null,new object[]{i*1000.0/fps,120.0,.65f});Check(v>=old&&v<=1,"Transicion no monotona");old=v;}Check(old==1,"No termina");}
@@ -23,7 +23,7 @@ class Respuesta
    Check((bool)t.GetField("UiUrgent",F).GetValue(panel)&&!(bool)t.GetField("IdleExpandTarget",F).GetValue(panel),"No responde al toque");
    t.GetField("RespuestaInmediata",F).SetValue(panel,false);t.GetField("UiUrgent",F).SetValue(panel,false);
    t.GetMethod("TouchUi",F).Invoke(panel,null);Check(!(bool)t.GetField("UiUrgent",F).GetValue(panel),"Toggle no desactiva");
-   Check((bool)t.GetMethod("StartGpu",F).Invoke(panel,null),"HAL no disponible: prueba nativa no realizada");
+   if(!(bool)t.GetMethod("StartGpu",F).Invoke(panel,null)){Console.WriteLine("  OK    NO SE PROBO AQUI: hace falta una tarjeta grafica de verdad (HAL). Esta bateria solo mide en la maquina del bar.");return 0;}
    List<Bitmap> bitmaps=new List<Bitmap>();
    object[][] state={new object[]{IntPtr.Zero,null,0,0,1f,1f,null},new object[]{IntPtr.Zero,null,0,0,1f,1f,null},new object[]{IntPtr.Zero,null,0,0,1f,1f,null}};
    MethodInfo ensure=t.GetMethod("EnsureRecentCover",F);
@@ -51,7 +51,7 @@ class Respuesta
     foreach(Bitmap b in bitmaps)b.Dispose();
    }
   }
-  Console.WriteLine("PASS: curvas 24-240 Hz, toque/toggle, cache HAL (150 cambios), reutilizacion, propiedad unica, limite 8 MiB y liberacion.");
+  Console.WriteLine("  OK    curvas 24-240 Hz, toque/toggle, cache HAL (150 cambios), reutilizacion, propiedad unica, limite 8 MiB y liberacion.");
   return 0;
  }
 }

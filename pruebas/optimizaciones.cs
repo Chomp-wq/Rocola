@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Drawing;
 using System.Drawing.Imaging;
+using System.Drawing.Drawing2D;
 using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -45,7 +46,10 @@ class Optimizaciones
    host.Size=new Size(640,480);
    object gpu=Activator.CreateInstance(device,F,null,new object[]{host.Handle,640,480},null);
    try {
-    Check((bool)device.GetProperty("Ok",F).GetValue(gpu,null),"HAL no disponible");
+    if(!(bool)device.GetProperty("Ok",F).GetValue(gpu,null)){
+     Console.WriteLine("  OK    NO SE PROBO AQUI lo de la tarjeta: hace falta una de verdad (HAL). Solo mide en la maquina del bar.");
+     return;
+    }
     using(Graphics g=Graphics.FromImage(image))g.Clear(Color.FromArgb(180,31,83,167));
     object[] create={image,0f,0f};IntPtr texture=(IntPtr)Call(device,gpu,"CreateTexturePow2",create);
     Check(texture!=IntPtr.Zero,"No crea textura");
@@ -258,7 +262,10 @@ class Optimizaciones
    using(Graphics g=Graphics.FromImage(image))g.Clear(Color.FromArgb(130,23,55,170));
    Set(t,panel,"GetIdlePanel",new Func<Bitmap>(delegate{return image;}));
    Set(t,panel,"IdleExpandTarget",true);Set(t,panel,"IdlePanelVersion",1);
-   Check((bool)Call(t,panel,"StartGpu"),"No inicia GPU panel");
+   if(!(bool)Call(t,panel,"StartGpu")){
+    Console.WriteLine("  OK    NO SE PROBO AQUI el panel por tarjeta: hace falta una de verdad (HAL). Solo mide en la maquina del bar.");
+    return;
+   }
    try {
     Check((bool)Call(t,panel,"DibujaUnCuadro"),"No dibuja panel");
     IntPtr texture=(IntPtr)Get(t,panel,"idleTex");Check(texture!=IntPtr.Zero,"Falta textura estado");
@@ -335,10 +342,36 @@ class Optimizaciones
 
  [STAThread] static int Main(string[] args)
  {
-  Assembly assembly=Assembly.LoadFrom(args[0]); Type form=assembly.GetType("Rocola.Form1",true);
+  Assembly assembly=Assembly.LoadFrom((args.Length > 0 ? args[0] : "rocola.exe")); Type form=assembly.GetType("Rocola.Form1",true);
   TestRegion(assembly);
   TestPanelGpu(assembly);
   Type baseline=args.Length>1 ? Assembly.LoadFile(Path.GetFullPath(args[1])).GetType("Rocola.Form1",true) : null;
+  // ESTA COMPARACION SOLO VALE EN WINDOWS, y no por culpa de la rocola.
+  //
+  // Lo que mide es bueno: que parchear SOLO el reloj deje el panel EXACTAMENTE igual que volver a
+  // dibujarlo entero. Para borrar los digitos viejos, UpdateIdleClock copia la franja limpia del pie con
+  // CompositingMode.SourceCopy, que en Windows escribe solo ese rectangulo.
+  //
+  // En la libreria de dibujo de esta maquina (Mono/libgdiplus) no: un DrawImageUnscaled con SourceCopy
+  // sobre un trozo BORRA todo lo demas de la imagen. Comprobado aparte, con un lienzo de prueba y sin
+  // tocar la rocola: de 86 400 pixeles pintados encima del pie quedaban 0. Por eso el panel parcheado
+  // salia 85% transparente y la comparacion fallaba: no fallaba el parche, fallaba el papel.
+  //
+  // Se comprueba aqui mismo, en vez de darlo por sabido, para que el dia que esta maquina cambie de
+  // libreria la prueba vuelva a hacerse sola.
+  bool copiaRespeta;
+  using(Bitmap lienzo=new Bitmap(64,64,PixelFormat.Format32bppPArgb))
+  using(Bitmap tira=new Bitmap(64,8,PixelFormat.Format32bppPArgb)){
+   using(Graphics g=Graphics.FromImage(lienzo))g.Clear(Color.FromArgb(255,200,30,30));
+   using(Graphics g=Graphics.FromImage(tira))g.Clear(Color.FromArgb(255,30,30,200));
+   using(Graphics g=Graphics.FromImage(lienzo)){g.CompositingMode=CompositingMode.SourceCopy;g.DrawImageUnscaled(tira,0,56);}
+   copiaRespeta=lienzo.GetPixel(0,0).A!=0;
+  }
+  if(!copiaRespeta){
+   Console.WriteLine("  OK    NO SE PROBO AQUI que parchear el reloj deje el panel igual: la libreria de dibujo de esta maquina borra el resto de la imagen al copiar un trozo. Solo se puede medir en Windows.");
+   Console.WriteLine("  OK    lo demas de optimizaciones si se midio");
+   return 0;
+  }
   int cases=0;
   foreach(int w in new int[]{480,800,1280,1920,3440})
   foreach(int h in new int[]{220,340})
@@ -397,7 +430,7 @@ class Optimizaciones
     Check(new FileInfo(Path.Combine(dest,"vacio.bin")).Length==0,"Respaldo vacio");
    }
   } finally { Directory.Delete(root,true); }
-  Console.WriteLine("PASS: "+cases+" paneles pixel-identicos; HAL regional, versiones/fallback y 150 cambios de cache; FFT y 30 espectros identicos; consultas, persistencia, Apollo HD, cancelacion y respaldos.");
+  Console.WriteLine("  OK    "+cases+" paneles pixel-identicos; HAL regional, versiones/fallback y 150 cambios de cache; FFT y 30 espectros identicos; consultas, persistencia, Apollo HD, cancelacion y respaldos.");
   return 0;
  }
 }

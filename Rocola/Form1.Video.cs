@@ -1397,13 +1397,17 @@ namespace Rocola
                 // VIVA aparte, en su propia imagen chica (ver SearchOverlay.PiezaViva y EnsureUiPieza),
                 // exactamente igual que ya se hacia con el destello de los botones y la franja de abajo.
                 //
-                // PERO ESTAS DOS SI TIENEN QUE ESTAR, y sacarlas fue un error que se vio en el bar:
+                // PERO ESTA SI TIENE QUE ESTAR, y sacarla fue un error que se vio en el bar:
                 //   FocusResults cambia MEDIA PANTALLA -donde estaba el teclado se pone el cubo de la
                 //     portada-. Sin el, al volver de los resultados al teclado la imagen no se rehacia y EL
                 //     TECLADO NO VOLVIA A APARECER hasta cerrar y abrir el buscador.
-                //   SelResult, con el cubo delante, cambia que disco se ensena y el texto de debajo.
-                // Moverse por los RESULTADOS, por tanto, sigue rehaciendo la pantalla; moverse por las TECLAS
-                // -que es lo que se hace al teclear- ya no.
+                //
+                // SelResult ESTUVO AQUI y ya no hace falta, que no es lo mismo que "no hacia falta". Con el
+                // cubo delante cambia que disco se ensena y el texto de debajo, y mientras eso se dibujaba
+                // DENTRO de esta imagen, sacarlo dejaba media pantalla congelada. Ahora la vista previa es
+                // una PIEZA aparte -siempre, desde que SeparateGpu dejo de tener interruptor-, asi que la
+                // promesa vive en la firma de la pieza (ver EnsureUiPieza) y rehacer la pantalla entera por
+                // mover la seleccion seria trabajo tirado. La bateria 'mover' vigila las dos mitades.
                 sb = Mix(sb, searchOverlay.FocusResults);
                 Color searchAccent = searchOverlay.Accent;
                 sb = Mix(sb, searchOverlay.DatosVer); sb = Mix(sb, searchAccent.ToArgb());

@@ -7,7 +7,7 @@ class CuboFila
  const BindingFlags F=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Static;
  static int Main(string[] args)
  {
-  Assembly a=Assembly.LoadFrom(args[0]);
+  Assembly a=Assembly.LoadFrom((args.Length > 0 ? args[0] : "rocola.exe"));
   Type form=a.GetType("Rocola.Form1",true),gpu=a.GetType("Rocola.GpuPanel",true);
   int checks=0;
   foreach(int w in new int[]{480,640,1024,1920,3440})
@@ -32,12 +32,12 @@ class CuboFila
       // Guia de geometria, no captura del cubo real ni de la aplicacion.
       g.DrawRectangle(Pens.Cyan,cube);
       g.DrawLine(Pens.Magenta,start,h-18,w-24,h-18);
-      preview.Save(args[1]);
+      preview.Save((args.Length > 1 ? args[1] : Path.Combine(Path.GetTempPath(), "cubofila.png")));
      }
     checks++;
    }
   }
-  Console.WriteLine("PASS: "+checks+" casos; cubo alineado, fondo alfa cero y espacio para tiempo/progreso.");
+  Console.WriteLine("  OK    "+checks+" casos; cubo alineado, fondo alfa cero y espacio para tiempo/progreso.");
   return 0;
  }
 }

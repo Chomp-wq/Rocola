@@ -71,7 +71,27 @@ class Ssd
 
         Console.WriteLine("\n  2) SE DECIDE ANTES DE LA PRIMERA PAGINA DE CARATULAS\n");
         MethodInfo mWork = TF.GetMethod("Scanner_DoWork", BindingFlags.Instance | BindingFlags.NonPublic);
-        Check(mWork != null && Codigo.Llama(mWork, "Form1.PerfilaDisco"),
+        // SE SIGUE EL SALTO, no solo el cuerpo. El armado de la biblioteca se repartio: Scanner_DoWork
+        // delega en otro metodo -hoy ScanLibraryCore- y la llamada al perfilado quedo alli. Preguntando
+        // solo por el cuerpo de arriba, una promesa que se sigue cumpliendo salia por rota.
+        //
+        // Se mira el cuerpo, sus ayudantes, y los metodos de Form1 a los que llama. Un salto, no mas: si
+        // algun dia hicieran falta dos, es que el armado se reparte demasiado y eso tambien conviene verlo.
+        bool perfilaAlArmar = false;
+        foreach (MethodBase m in Codigo.MetodosConAyudantes(TF, "Scanner_DoWork"))
+        {
+            if (Codigo.Llama(m, "Form1.PerfilaDisco")) { perfilaAlArmar = true; break; }
+            foreach (string nom in Codigo.Nombres(m))
+            {
+                MethodInfo sig = TF.GetMethod(nom, BindingFlags.Instance | BindingFlags.NonPublic);
+                if (sig == null) continue;
+                foreach (MethodBase m2 in Codigo.MetodosConAyudantes(TF, nom))
+                    if (Codigo.Llama(m2, "Form1.PerfilaDisco")) perfilaAlArmar = true;
+                if (perfilaAlArmar) break;
+            }
+            if (perfilaAlArmar) break;
+        }
+        Check(mWork != null && perfilaAlArmar,
               "se perfila dentro del armado de la biblioteca (en segundo plano), no despues de leer 16 miniaturas");
         MethodInfo mDec = TF.GetMethod("DecodeCover", BindingFlags.Static | BindingFlags.NonPublic);
         Check(mDec != null, "y el perfilado 'de oido' sigue ahi como respaldo, por si no se pudo medir");
@@ -131,7 +151,24 @@ class Ssd
         Check(!(bool)Est("diskSlow") && (int)Est("coverCarriles") >= 2, "el respaldo tambien detecta SSD y abre el segundo carril");
         Reinicia();
         for (int i = 0; i < 16; i++) mProbe.Invoke(null, new object[] { 9 });
-        Check((bool)Est("diskSlow") && (int)Est("coverCarriles") == 1, "y con lecturas lentas se queda en modo disco duro, con un solo carril");
+        Check((bool)Est("diskSlow"), "y con lecturas lentas se queda en modo disco duro");
+        // EL DISCO DURO SIGUE CON UN SOLO LECTOR, PERO YA NO POR LA VIA GLOBAL.
+        //
+        // Antes, "lento" ponia coverCarriles en 1 y se acabo: un solo lector para TODO. Eso castigaba de
+        // mas al equipo con dos discos -si habia un disco duro, el SSD tambien se quedaba con un carril-.
+        // Ahora coverCarriles es el TOPE GLOBAL segun los procesadores, y el limite del cabezal se aplica
+        // POR UNIDAD dentro de TakeCoverJob: "DiscoLento(ruta) ? 1 : coverCarriles". Cada disco duro sigue
+        // con su lector unico y el SSD ya no paga por el.
+        //
+        // Asi que aqui se comprueban las dos mitades: que el veredicto de lento se toma, y que quien
+        // reparte el trabajo consulta ese veredicto por unidad. Lo que NO se puede comprobar en esta
+        // maquina es el reparto de verdad: pide dos unidades de Windows, y en Linux "C:\\x" y "D:\\x"
+        // dan la misma raiz (por eso 'cargaadaptativa' tambien se salta esa parte aqui).
+        MethodInfo mToma = TF.GetMethod("TakeCoverJob", BindingFlags.Instance | BindingFlags.NonPublic);
+        Check(mToma != null, "hay un repartidor de lecturas de portada (TakeCoverJob)");
+        Check(mToma != null && Codigo.Llama(mToma, "Form1.DiscoLento"),
+              "y pregunta por CADA unidad si es disco duro, para dejarle un solo lector");
+
 
         Console.WriteLine("\n  4) LO QUE SE DEJA DE PERDER EN RESPIROS (biblioteca de 100.000 canciones)\n");
         // El repaso de cabeceras dormia 1 ms POR ARCHIVO en SSD. Parece nada; multiplicado no lo es.
@@ -186,7 +223,8 @@ class Ssd
         {
             PonEst("medidoLento", false);
             PonEst("perfilDisco", 2); mAplica.Invoke(null, null);
-            Check((bool)Est("diskSlow") && (int)Est("coverCarriles") == 1, "forzado a disco duro: un solo carril");
+            Check((bool)Est("diskSlow"), "forzado a disco duro: el veredicto se toma");
+            Check((int)Est("coverCarriles") >= 1, "y el tope global sigue siendo el de los procesadores (" + Est("coverCarriles") + ")");
             PonEst("perfilDisco", 1); mAplica.Invoke(null, null);
             Check(!(bool)Est("diskSlow") && (int)Est("coverCarriles") >= 2, "forzado a SSD: varios carriles");
             PonEst("perfilDisco", 0); mAplica.Invoke(null, null);

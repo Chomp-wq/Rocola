@@ -89,8 +89,27 @@ class Calienta
         if (cal == null || mide == null || pub == null) { Console.WriteLine("\n  " + fallos + " FALLO(S)"); return Math.Max(fallos, 1); }
 
         Console.WriteLine("\n  2) YA QUE LEE EL ARCHIVO ENTERO, LO MIDE\n");
-        Check(AlgunAyudante("PrecalientaSiguiente", "MeasureFile"),
-              "el calentador aprovecha lo que acaba de leer y mide la cancion");
+        // EL CALENTADOR YA NO LLAMA A MeasureFile DIRECTO, Y NO PASA NADA: llama a MeasureFileResponsive,
+        // que es la MISMA medida con un permiso para apartarse. Mientras mide, si hace falta el disco para
+        // una portada que se esta viendo, cede el paso y sigue despues. La medida es la de siempre -por
+        // dentro llama a MeasureFile-, solo que sabe esperar.
+        //
+        // Asi que la promesa se mira en dos tramos, que es lo que la deja bien atada: el calentador tiene
+        // que llegar a la medida (por la envoltura o directo), Y la envoltura tiene que acabar en
+        // MeasureFile. Si alguien pusiera ahi una segunda forma de medir, el segundo tramo lo dice: sigue
+        // habiendo UN SOLO sitio que mide un archivo, que es lo que esta bateria defiende desde el principio.
+        bool directo = AlgunAyudante("PrecalientaSiguiente", "MeasureFile");
+        bool porEnvoltura = AlgunAyudante("PrecalientaSiguiente", "MeasureFileResponsive");
+        Check(directo || porEnvoltura,
+              "el calentador aprovecha lo que acaba de leer y mide la cancion"
+              + (porEnvoltura ? " (por MeasureFileResponsive, que sabe cederle el disco a las portadas)" : ""));
+        if (porEnvoltura && !directo)
+        {
+            MethodBase env = Met("MeasureFileResponsive");
+            Check(env != null, "existe esa envoltura");
+            Check(env != null && Codigo.Llama(env, "MeasureFile"),
+                  "y acaba en MeasureFile: sigue habiendo un solo sitio que mide un archivo");
+        }
         Check(AlgunAyudante("PrecalientaSiguiente", "PublicaMedida"),
               "y apunta lo medido donde lo apunta el pre-analisis");
 

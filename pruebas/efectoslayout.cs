@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.IO;
 using System.Reflection;
 using System.Runtime.Serialization;
 using System.Windows.Forms;
@@ -9,7 +10,7 @@ class EfectosLayout
     const BindingFlags F = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static;
     [STAThread] static int Main(string[] args)
     {
-        Type t = Assembly.LoadFrom(args[0]).GetType("Rocola.Form1", true);
+        Type t = Assembly.LoadFrom((args.Length > 0 ? args[0] : "rocola.exe")).GetType("Rocola.Form1", true);
         object form = FormatterServices.GetUninitializedObject(t);
         foreach (FieldInfo f in t.GetFields(F))
             if (!f.IsStatic && f.FieldType.Namespace != null && f.FieldType.Namespace.StartsWith("System.Collections") &&
@@ -43,9 +44,9 @@ class EfectosLayout
             using (Bitmap bmp = new Bitmap(page.Width, page.Height))
             {
                 page.DrawToBitmap(bmp, new Rectangle(Point.Empty, bmp.Size));
-                bmp.Save(args[1]);
+                bmp.Save((args.Length > 1 ? args[1] : Path.Combine(Path.GetTempPath(), "efectoslayout.png")));
             }
-            Console.WriteLine("PASS: 6 filas, 4 interruptores, 21 botones; sin solapamientos ni controles recortados.");
+            Console.WriteLine("  OK    6 filas, 4 interruptores, 21 botones; sin solapamientos ni controles recortados.");
         }
         return 0;
     }

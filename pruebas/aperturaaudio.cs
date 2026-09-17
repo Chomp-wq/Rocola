@@ -130,15 +130,15 @@ class AperturaAudioTest {
     Check(total>0,"Archivo vacio: "+path);
    }
    using(FileStream exclusive=new FileStream(path,FileMode.Open,FileAccess.Read,FileShare.None))Check(exclusive.Length>0,"Archivo retenido");
-   Console.WriteLine("PASS: PCM exacto y archivo liberado: "+Path.GetFileName(path));
+   Console.WriteLine("  OK    PCM exacto y archivo liberado: "+Path.GetFileName(path));
   }
  }
  [STAThread]
  static void Main(string[] args){
-  Assembly asm=Assembly.LoadFrom(args[0]);workerType=asm.GetType("Rocola.AperturaEnFondo"+(char)96+"1").MakeGenericType(typeof(Source));
+  Assembly asm=Assembly.LoadFrom((args.Length > 0 ? args[0] : "rocola.exe"));workerType=asm.GetType("Rocola.AperturaEnFondo"+(char)96+"1").MakeGenericType(typeof(Source));
   worker=Activator.CreateInstance(workerType,true);
-  try{Races();Audio(asm.GetType("Rocola.Form1"));if(args.Length>1)AudioFiles(asm.GetType("Rocola.Form1"),args[1]);}
+  try{Races();Audio(asm.GetType("Rocola.Form1"));if(args.Length>1)AudioFiles(asm.GetType("Rocola.Form1"),(args.Length > 1 ? args[1] : Path.Combine(Path.GetTempPath(), "aperturaaudio.png")));}
   finally{Cancel();}
-  Console.WriteLine("PASS: apertura fuera del llamador, un trabajador, 100 saltos coalescidos, cancelacion, cierre, errores, reintento y PCM WAV 16/float32 mono/estereo identico.");
+  Console.WriteLine("  OK    apertura fuera del llamador, un trabajador, 100 saltos coalescidos, cancelacion, cierre, errores, reintento y PCM WAV 16/float32 mono/estereo identico.");
  }
 }
