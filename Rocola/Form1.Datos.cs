@@ -1480,7 +1480,7 @@ namespace Rocola
                     if (reader.ReadLine() != "ROCOLA-LIB v2") return false;
                     string line = reader.ReadLine();
                     if (line == null || !line.StartsWith("roots=") || !string.Equals(line.Substring(6), JoinRoots(roots), StringComparison.OrdinalIgnoreCase)) return false;
-                    string sig = RootsSig(roots);
+                    string sig = RootsSigForScan(roots);
                     observedSig = sig;
                     line = reader.ReadLine();
                     if (line == null || !line.StartsWith("sig=") || line.Substring(4) != sig) return false;

@@ -30,4 +30,6 @@ Las pruebas de planificación no son mediciones de un HDD físico ni certificaci
 
 ## Lo que esta pasada no cierra
 
+Actualización del 17/09: reutilización acotada de enumeraciones y límites del índice implementados; ver `ARRANQUE_BIBLIOTECA_2026-09-17.md`. No supone completar toda la reorganización del arranque.
+
 La reorganización completa del arranque/catálogo y la preparación anticipada del decodificador siguen pendientes. También siguen pendientes deduplicación de mediciones entre trabajadores y agrupación adicional de geometría, que necesita identificar primero el coste dominante y conservar el orden de transparencias. No se presentan como implementadas por esta optimización de carga.

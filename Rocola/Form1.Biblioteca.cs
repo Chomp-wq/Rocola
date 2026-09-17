@@ -84,6 +84,24 @@ namespace Rocola
 
         private void Scanner_DoWork(object sender, DoWorkEventArgs e)
         {
+            // El BackgroundWorker usa un hilo compartido: restaurar su prioridad al salir.
+            System.Threading.Thread thread = System.Threading.Thread.CurrentThread;
+            System.Threading.ThreadPriority previous = thread.Priority;
+            scanDirectoryMemo = new ScanDirectoryMemo();
+            try
+            {
+                try { thread.Priority = System.Threading.ThreadPriority.BelowNormal; } catch { }
+                ScanLibraryCore(sender, e);
+            }
+            finally
+            {
+                scanDirectoryMemo.Clear(); scanDirectoryMemo = null;
+                try { thread.Priority = previous; } catch { }
+            }
+        }
+
+        private void ScanLibraryCore(object sender, DoWorkEventArgs e)
+        {
             List<string> roots = (List<string>)e.Argument;
             lastFreshRootSig = null;
             // CACHE DE BIBLIOTECA: si es valido, evita las DOS caminatas del disco (en HDD eran minutos).
@@ -112,7 +130,7 @@ namespace Rocola
             // La cache rechazada ya hizo el recorrido previo. Sigue habiendo firma
             // antes y despues del escaneo para detectar cambios concurrentes.
             string sigAntes = sigObservada;
-            if (sigAntes == null) try { sigAntes = RootsSig(roots); } catch { }
+            if (sigAntes == null) try { sigAntes = RootsSigForScan(roots); } catch { }
             for (int r = 0; r < roots.Count; r++) ScanFolders(roots[r], audio, vids, covs);
             for (int i = 0; i < audio.Count; i++) found.Add(Track.FromFile(audio[i]));
             tracks.AddRange(found);
@@ -1533,6 +1551,8 @@ namespace Rocola
             h ^= 0xff; h *= 1099511628211UL;
         }
         private static string RootSig(string root)
+        { return RootSigCaptured(root, null); }
+        private static string RootSigCaptured(string root, ScanDirectoryMemo memo)
         {
             ulong h = 1469598103934665603UL; long filesN = 0, dirsN = 0;
             bool metadataEnumerada = Environment.Version.Major >= 4;
@@ -1540,19 +1560,28 @@ namespace Rocola
             while (pendientes.Count > 0)
             {
                 string dir = pendientes.Pop(); dirsN++;
-                RootHash(ref h, dir); RootHash(ref h, Directory.GetLastWriteTimeUtc(dir).Ticks.ToString(CultureInfo.InvariantCulture));
+                long stamp = Directory.GetLastWriteTimeUtc(dir).Ticks;
+                RootHash(ref h, dir); RootHash(ref h, stamp.ToString(CultureInfo.InvariantCulture));
                 // .NET 4 reutiliza metadatos de la enumeracion. En CLR 2 (.NET 3.5)
                 // GetFiles no aporta ese ahorro: conservar el recorrido medido mas rapido.
                 FileInfo[] files = null; string[] paths = null; int count;
+                string[] captured = null;
                 if (metadataEnumerada)
                 {
                     files = new DirectoryInfo(dir).GetFiles();
+                    if (memo != null && memo.CanCapture(files.Length))
+                    {
+                        captured = new string[files.Length];
+                        for (int i = 0; i < files.Length; i++) captured[i] = files[i].FullName;
+                    }
                     Array.Sort(files, delegate(FileInfo a, FileInfo b) { return StringComparer.OrdinalIgnoreCase.Compare(a.Name, b.Name); });
                     count = files.Length;
                 }
                 else
                 {
-                    paths = Directory.GetFiles(dir); Array.Sort(paths, StringComparer.OrdinalIgnoreCase);
+                    paths = Directory.GetFiles(dir);
+                    if (memo != null && memo.CanCapture(paths.Length)) captured = (string[])paths.Clone();
+                    Array.Sort(paths, StringComparer.OrdinalIgnoreCase);
                     count = paths.Length;
                 }
                 for (int i = 0; i < count; i++)
@@ -1561,7 +1590,9 @@ namespace Rocola
                     RootHash(ref h, fi.FullName); RootHash(ref h, fi.Length.ToString(CultureInfo.InvariantCulture));
                     RootHash(ref h, fi.LastWriteTimeUtc.Ticks.ToString(CultureInfo.InvariantCulture));
                 }
-                string[] subs = Directory.GetDirectories(dir); Array.Sort(subs, StringComparer.OrdinalIgnoreCase);
+                string[] subs = Directory.GetDirectories(dir);
+                if (memo != null && captured != null) memo.Remember(dir, stamp, captured, subs);
+                Array.Sort(subs, StringComparer.OrdinalIgnoreCase);
                 for (int i = subs.Length - 1; i >= 0; i--)
                     if (!EsAtajo(subs[i]) && !EsCarpetaDelSistema(subs[i])) pendientes.Push(subs[i]);
             }
@@ -1650,8 +1681,9 @@ namespace Rocola
             while (dirs.Count > 0)
             {
                 string dir = dirs.Pop();
-                string[] files = null;
-                try { files = Directory.GetFiles(dir); } catch { }
+                string[] files = null, subs = null;
+                bool reused = scanDirectoryMemo != null && scanDirectoryMemo.Take(dir, out files, out subs);
+                if (!reused) try { files = Directory.GetFiles(dir); } catch { }
                 if (files != null)
                 {
                     for (int i = 0; i < files.Length; i++)
@@ -1667,8 +1699,7 @@ namespace Rocola
                     }
                     if (audio.Count % 50 < files.Length) { try { scanner.ReportProgress(0, audio.Count); } catch { } }   // avance para la pantalla de arranque
                 }
-                string[] subs = null;
-                try { subs = Directory.GetDirectories(dir); } catch { }
+                if (!reused) try { subs = Directory.GetDirectories(dir); } catch { }
                 if (subs != null)
                     foreach (string d in subs)
                     {
@@ -1879,23 +1910,17 @@ namespace Rocola
         // compartido que proteger: ni candados ni esperas. Se reparte por TRAMOS y no de una en una porque
         // el trabajo de cada entrada es minusculo y ponerse de acuerdo costaria mas que hacerlo.
         //
-        // Aqui si se usan todos los nucleos, al reves que en el repaso de la biblioteca: aquello dura horas
-        // y convive con la musica sonando, y esto dura decimas de segundo mientras la rocola todavia esta
-        // cargando, sin nada a lo que estorbar. Por debajo de 8000 entradas ni se reparte: arrancar los
-        // hilos costaria mas que el trabajo.
+        // Reservar margen para interfaz y musica, tambien al reescanear durante una reproduccion.
+        // En 2C/2T se usa solo el worker actual. Por debajo de 8000 entradas no compensa repartir.
         //
         // Al volver de los Join ya no queda nadie tocando el indice, y ademas Join deja a la vista de este
         // hilo todo lo que escribieron los otros: de aqui en adelante el indice se lee como siempre.
+        internal static int IndexWorkers(int count, int processors)
+        { return count < 8000 ? 1 : CargaTrabajo.Lectores(processors); }
         private void ClavesDelIndice()
         {
             int n = searchIndex.Count;
-            int hilos = 1;
-            if (n >= 8000)
-            {
-                hilos = Environment.ProcessorCount;
-                if (hilos > 4) hilos = 4;
-                if (hilos < 1) hilos = 1;
-            }
+            int hilos = IndexWorkers(n, CargaTrabajo.Procesadores);
             if (hilos <= 1) { TramoDeClaves(0, n); return; }
 
             int trozo = (n + hilos - 1) / hilos;
@@ -1906,6 +1931,7 @@ namespace Rocola
                 int hasta = Math.Min(n, desde + trozo);
                 th[k - 1] = new System.Threading.Thread(delegate () { TramoDeClaves(desde, hasta); });
                 th[k - 1].IsBackground = true;
+                th[k - 1].Priority = System.Threading.ThreadPriority.BelowNormal;
                 th[k - 1].Start();
             }
             TramoDeClaves(0, Math.Min(n, trozo));   // el hilo que reparte tambien lleva su tramo
