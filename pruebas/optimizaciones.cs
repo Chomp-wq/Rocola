@@ -207,6 +207,7 @@ class Optimizaciones
    for(int i=0;i<frames;i++)w.Write((short)(12000*Math.Sin(2*Math.PI*440*i/44100)));
   }
   object owner=Blank(form);form.GetField("iaDoneLock",F).SetValue(owner,new object());
+  form.GetField("coverLock",F).SetValue(owner,new object());
   Func<bool> never=delegate {return false;};
   object[] full={path,true,never,0f,0f,null};
   Check((bool)Call(form,owner,"MeasureFileResponsive",full),"No mide WAV sintetico");
@@ -222,6 +223,22 @@ class Optimizaciones
   Check((bool)Call(form,owner,"MeasureFileResponsive",legacy),"Contexto cancelado contamina medida siguiente");
   Check(full[3].Equals(legacy[3])&&full[4].Equals(legacy[4]),"RMS/duracion distintos");
   Equal((Array)full[5],(Array)legacy[5],"EQ distinto");
+  // Analisis detenido temporalmente por una portada: cancelar sin esperar al fin de la lectura.
+  System.Collections.IDictionary active=(System.Collections.IDictionary)Get(form,owner,"coverActiveUnits");
+  System.Collections.IDictionary loading=(System.Collections.IDictionary)Get(form,owner,"coverLoading");
+  string unit=Path.GetPathRoot(path);active[unit]=1;
+  Type job=form.GetNestedType("CoverJob",F);
+  loading["prueba"]=Activator.CreateInstance(job,true);
+  int waiting=0;Func<bool> stopWaiting=delegate {return ++waiting>=3;};
+  object[] paused={path,true,stopWaiting,0f,0f,null};
+  Check(!(bool)Call(form,owner,"MeasureFileResponsive",paused)&&waiting==3,"No cancela durante espera de portadas");
+  int resumed=0;Func<bool> resume=delegate {
+   if(++resumed==2){active.Clear();loading.Clear();}return false;
+  };
+  object[] afterWait={path,true,resume,0f,0f,null};
+  Check((bool)Call(form,owner,"MeasureFileResponsive",afterWait),"No reanuda analisis al liberar portadas");
+  Check(full[3].Equals(afterWait[3])&&full[4].Equals(afterWait[4]),"Ceder trabajo altera medida");
+  Equal((Array)full[5],(Array)afterWait[5],"Ceder trabajo altera EQ");
  }
 
  static void Set(Type t,object o,string field,object value){t.GetField(field,F).SetValue(o,value);}

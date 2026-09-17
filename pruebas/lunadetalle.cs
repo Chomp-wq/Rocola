@@ -30,6 +30,7 @@ class LunaDetalle
    for(int y=0;y<256;y++)for(int x=0;x<256;x++){
     Color c=moon.GetPixel(x,y);Check(c.ToArgb()==repeat.GetPixel(x,y).ToArgb(),"Superficie no determinista");
     if(c.A==0)transparent++;else if(c.A<255)partial++;
+    if((x-127.5)*(x-127.5)+(y-127.5)*(y-127.5)<120*120) Check(c.A==255,"Interior lunar translucido");
     if(y>65&&y<190){if(x>35&&x<95)lit+=c.R;if(x>160&&x<220)dark+=c.R;}
    }
    Check(transparent>15000 && partial>400,"Borde no transparente/suave");
@@ -78,7 +79,7 @@ class LunaDetalle
     }
    }
    Set(gpu,panel,"ConLuna",true);
-   Set(gpu,panel,"LunaActiva",true);
+   Set(gpu,panel,"LunaActiva",false); // medir diametro sin la libracion musical
    Check((bool)Call(gpu,panel,"StartGpu"),"HAL no disponible");
    try{
     Check((bool)Call(gpu,panel,"DibujaUnCuadro"),"No presenta");
@@ -93,7 +94,7 @@ class LunaDetalle
      float expected=(float)Call(gpu,null,"DetailedMoonDiameter",480,1-dim);
      Check(Math.Abs(right-left-expected)<.01f,"Realce no llega a geometria");
      uint color=(uint)Get(vertex,quad.GetValue(0),"Color");
-     Check((color>>24)==(uint)((.72f+.28f*(1-dim))*255),"Realce no llega a luz");
+     Check((color>>24)==255,"La superficie de la luna no es opaca");
     }
     foreach(int h in new int[]{600,720,1080,480}){
      panel.Size=new Size(h*4/3,h);Call(gpu,panel,"EnsureLuna");
@@ -106,6 +107,24 @@ class LunaDetalle
     Check((int)Get(gpu,panel,"lunaW")==256 && (bool)Get(gpu,panel,"lunaDetalleDe"),"No recupera diseno");
    }finally{Call(gpu,panel,"StopGpu");}
    Check((IntPtr)Get(gpu,panel,"lunaTex")==IntPtr.Zero,"No libera textura");
+  }
+  float calm=(float)Call(gpu,null,"MoonMotionSpeed",0f),idle=(float)Call(gpu,null,"MoonMotionSpeed",1f);
+  Check(idle>calm*4,"Reposo no anima mas que navegacion");
+  Check((float)Call(gpu,null,"MoonSceneScale",0f,1f,true)==1,"Late demasiado al navegar");
+  Check((float)Call(gpu,null,"MoonSceneScale",1f,1f,true)>1.3f,"Reposo no realza luna");
+  Check((float)Call(gpu,null,"MoonSceneScale",1f,1f,false)==1,"Interruptor no detiene realce musical");
+  foreach(float blend in new float[]{0,.1f,.5f,.9f,1}) {
+   PointF still=(PointF)Call(gpu,null,"DetailedMoonCenter",1920,1080,0d,blend,0f,false);
+   PointF later=(PointF)Call(gpu,null,"DetailedMoonCenter",1920,1080,80d,blend,0f,false);
+   Check(still==later,"Luna apagada se mueve");
+   PointF p=(PointF)Call(gpu,null,"DetailedMoonCenter",1920,1080,5d,blend,0f,true);
+   PointF next=(PointF)Call(gpu,null,"DetailedMoonCenter",1920,1080,5.001d,blend,0f,true);
+   Check(Math.Abs(p.X-next.X)<1&&Math.Abs(p.Y-next.Y)<1,"Movimiento discontinuo");
+  }
+  foreach(int fps in new int[]{24,60,144,240}) {
+   double phase=0;
+   for(int i=0;i<fps*10;i++)phase+=(float)Call(gpu,null,"MoonMotionSpeed",1f)/fps;
+   Check(Math.Abs(phase-idle*10)<.0001,"Velocidad lunar depende de FPS");
   }
   Console.WriteLine("PASS: relieve determinista, alfa, luz lateral, 16 configuraciones, realce y cache/liberacion HAL. Vista: "+dir);
   return 0;

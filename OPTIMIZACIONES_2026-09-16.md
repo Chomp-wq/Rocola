@@ -18,3 +18,24 @@ Esta mejora traslada trabajo fuera de la entrega de audio; no pretende eliminar 
 - Se conserva la prueba de preparación completa antes de leer y de reutilización al asignar de nuevo la misma curva.
 
 Las compilaciones se generan en directorios temporales: no se reemplazan las releases del usuario ni sus datos. No se probó hardware XP ni una sesión real con música. Esta pasada cierra la preparación del EQ (#8); siguen pendientes las oportunidades enumeradas en `OPTIMIZACIONES_2026-09-15.md`.
+
+## Luna sólida y movimiento contextual (GPU, Modest y HD)
+
+- La superficie detallada usa alfa completo; conserva transparencia solo en el borde suavizado, halo y polvo.
+- Al expandirse la barra de estado aumenta suavemente el recorrido, tamaño, libración y velocidad orbital. Al interactuar vuelve a un movimiento discreto y reduce la respuesta musical del halo.
+- La fase se integra con el tiempo transcurrido para no saltar al cambiar de velocidad. Se reutiliza la textura de relieve: no se genera otra por fotograma.
+- Se conservan las opciones visuales existentes de luna activa, relieve, halo, polvo y protagonismo; no se añaden interruptores.
+
+## Carátulas durante el cambio de página
+
+- Un paso aislado muestra las imágenes disponibles durante la animación; la ocultación opcional se reserva para pasos consecutivos separados por menos de 300 ms. La opción visual se llama «Ocultar caratulas en hojeo rapido».
+- El prehorneado GPU prepara la página siguiente y la anterior con imágenes que ya están en memoria. Revisa también las que llegaron tarde, sin hornear discos vacíos ni pedir disco desde ese recorrido.
+- Conserva los presupuestos de horneado/subida por cuadro y la resolución completa. Una imagen todavía no leída sigue dependiendo del almacenamiento; esto no promete cargas instantáneas ni ausencia absoluta de tirones.
+- Corregido un defecto común del despachador: cambiar página invalidaba trabajos sin retirar sus registros pendientes y podía bloquear nuevas solicitudes. Ahora cancela cola y registro juntos, conserva las lecturas en vuelo y prioriza la página visible. F5 sigue invalidando el contenido y rechazando generaciones antiguas.
+- No se modifica el renderizado CPU. La corrección del despachador común sí beneficia a ambos modos.
+
+### Verificación de esta continuación
+
+Diez baterías automatizadas pasan en ambas ramas. La nueva `pruebas/hojeoportadas.cs` comprueba página aislada, reutilización, ráfagas, opción visual, llegadas tardías, 20 cambios de página sin solicitudes fantasma, prioridad, ausencia de duplicados en vuelo y F5. Las pruebas de luna comprueban alfa interior completo, velocidad contextual, continuidad temporal y persistencia de opciones.
+
+Compilaciones GPU/CPU de pruebas y Release de ambas ramas correctas. Modest emite el aviso del SDK Windows 6.0A ausente, sin impedir compilar. Los ejecutables quedan en carpetas temporales `rocola-luna-caratulas-release-hd-20260916` y `rocola-luna-caratulas-release-modest-20260916`; no se reemplazan archivos de producción. Pendiente valoración visual con música y medición de FPS reales; no se probó XP.

@@ -81,21 +81,42 @@ namespace Rocola
         { return enabled ? 1-SafeMoonLevel(backgroundDim) : 0; }
         internal static float DetailedMoonDiameter(int height, float emphasis)
         { return Math.Max(48,Math.Min(180,height*.115f))*(1+.22f*SafeMoonLevel(emphasis)); }
+        private double moonMotionTime;
+        internal static float MoonSceneScale(float idle, float beat, bool active)
+        { return active ? 1 + SafeMoonLevel(idle) * (.32f + .025f * SafeMoonLevel(beat)) : 1; }
+        internal static float MoonMotionSpeed(float idle)
+        { return .30f + 1.30f * SafeMoonLevel(idle); }
+        internal static PointF DetailedMoonCenter(int width, int height, double phase, float idle, float rise, bool active)
+        {
+            float mix = active ? SafeMoonLevel(idle) : 0;
+            return new PointF(width * (.79f + (active ? (.012f + .078f * mix) * (float)Math.Sin(phase * .23) : 0)),
+                height * (.47f + (active ? (.006f + .032f * mix) * (float)Math.Cos(phase * .29) : 0)) - rise * .32f);
+        }
         private void DrawDetailedMoon()
         {
             float emphasis=MoonEmphasis(Dim,LunaProtagonista);
-            float diameter=DetailedMoonDiameter(Height,emphasis), radius=diameter*.5f;
-            double seconds=AhoraMs()/1000;
-            float cx=Width*(.79f+(LunaActiva ? .025f*(float)Math.Sin(seconds*.055) : 0));
-            float cy=Height*(.47f+(LunaActiva ? .018f*(float)Math.Cos(seconds*.067) : 0))-IdleRise*.32f;
+            float diameter=DetailedMoonDiameter(Height,emphasis)*MoonSceneScale(idleBlend,lunaBeat,LunaActiva), radius=diameter*.5f;
+            PointF center=DetailedMoonCenter(Width,Height,moonMotionTime,idleBlend,IdleRise,LunaActiva);
+            float cx=center.X, cy=center.Y;
             cx=Math.Max(radius*2,Math.Min(Width-radius*2,cx));
             cy=Math.Max(radius*2,Math.Min(StatusTopY-radius*2,cy));
-            float visibility=.72f+.28f*emphasis;
+            float visibility=LunaActiva ? .40f+.60f*idleBlend : .72f+.28f*emphasis;
             DrawLunarDust(cx,cy,radius,visibility,false);
             float fr,fg,fb; Form1.TinteDelAire(cy,Height,out fr,out fg,out fb);
-            uint color=((uint)(visibility*255)<<24)|((uint)((.82f+.18f*fr)*255)<<16)|
+            // La superficie es solida: solo el borde antialias y el halo llevan transparencia.
+            uint color=0xFF000000u|((uint)((.82f+.18f*fr)*255)<<16)|
                 ((uint)((.82f+.18f*fg)*255)<<8)|(uint)((.82f+.18f*fb)*255);
             SetTexQuadA(lunaQuad,cx-radius,cy-radius,cx+radius,cy+radius,luU,luV,color);
+            if (LunaActiva)
+            {
+                double tilt=Math.Sin(moonMotionTime*.17)*(.008+.075*idleBlend);
+                float co=(float)Math.Cos(tilt), si=(float)Math.Sin(tilt);
+                for(int i=0;i<lunaQuad.Length;i++)
+                {
+                    float x=lunaQuad[i].X-cx, y=lunaQuad[i].Y-cy;
+                    lunaQuad[i].X=cx+x*co-y*si; lunaQuad[i].Y=cy+x*si+y*co;
+                }
+            }
             stars.DrawQuad(lunaTex,lunaQuad);
             DrawLunarDust(cx,cy,radius,visibility,true);
         }
@@ -106,15 +127,15 @@ namespace Rocola
             uint rgb=NebColor&0xFFFFFFu;
             if (!front && HaloLunar)
             {
-                float beat=LunaActiva ? lunaBeat : 0;
+                float beat=LunaActiva ? lunaBeat*(.15f+.85f*idleBlend) : 0;
                 stars.GlowBatchAdd(cx,cy,radius*(1.9f+beat*.12f),((uint)((50+beat*22)*visibility)<<24)|rgb);
                 stars.GlowBatchAdd(cx-radius*.16f,cy-radius*.06f,radius*1.20f,((uint)(64*visibility)<<24)|0xC9DAFFu);
             }
             if (PolvoLunar)
                 for(int orbit=0;orbit<3;orbit++)
                 {
-                    float band=LunaActiva ? (orbit==0 ? lunaBeat : orbit==1 ? lunaMid : lunaHigh) : 0;
-                    double angle=(LunaActiva ? AhoraMs()/1000*(.13+orbit*.035) : 0)+orbit*2.094;
+                    float band=LunaActiva ? (orbit==0 ? lunaBeat : orbit==1 ? lunaMid : lunaHigh)*(.15f+.85f*idleBlend) : 0;
+                    double angle=(LunaActiva ? moonMotionTime*(.55+orbit*.12) : 0)+orbit*2.094;
                     for(int tail=5;tail>=0;tail--)
                     {
                         double a=angle-tail*.05;

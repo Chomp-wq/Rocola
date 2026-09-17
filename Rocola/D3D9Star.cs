@@ -1081,6 +1081,11 @@ namespace Rocola
         private readonly D3D9.Vtx[] winQuad = new D3D9.Vtx[6];
         private readonly float[] gridU = new float[MaxCells], gridV = new float[MaxCells];
         private int gridN, cellFrame;
+        public GpuGridFetch GetGridAhead;
+        private readonly GpuGridCell[] aheadGrid = new GpuGridCell[36];
+        private long gridUploadCost;
+        private double lastAheadMs, lastFrameWork;
+        private static readonly long GridWorkLimit = CargaTrabajo.LimiteTicks(CargaTrabajo.Procesadores);
         private readonly D3D9.Vtx[] cellQuad = new D3D9.Vtx[6];
         private IntPtr contourTex; private Bitmap lastContour; private float contU = 1f, contV = 1f;
         private readonly D3D9.Vtx[] contourQuad = new D3D9.Vtx[6];
@@ -1413,12 +1418,20 @@ namespace Rocola
                 gridN = GetGrid(gridBuf);
                 cellFrame++;
                 int upBudget = GridUploadBudget;
+                long uploadStart = System.Diagnostics.Stopwatch.GetTimestamp();
                 for (int i = 0; i < gridN; i++)
                 {
                     IntPtr tex; float u, v;
+                    int beforeBudget = upBudget;
+                    long oneStart = System.Diagnostics.Stopwatch.GetTimestamp();
                     if (gridBuf[i].Bmp != null && EnsureCellTex(gridBuf[i], ref upBudget, out tex, out u, out v))
                     { gridTex[i] = tex; gridU[i] = u; gridV[i] = v; }
                     else gridTex[i] = IntPtr.Zero;   // aun sin hornear o sin presupuesto de subida: se salta este cuadro (aparece luego)
+                    if (upBudget < beforeBudget)
+                        gridUploadCost = CargaTrabajo.AprendeCoste(gridUploadCost, System.Diagnostics.Stopwatch.GetTimestamp() - oneStart);
+                    if (upBudget < GridUploadBudget && upBudget > 0 &&
+                        !CargaTrabajo.PuedeEmpezar(System.Diagnostics.Stopwatch.GetTimestamp() - uploadStart, gridUploadCost, GridWorkLimit, false))
+                        upBudget = 0; // las texturas cacheadas siguen disponibles con presupuesto cero
                 }
                 EvictCellTex();
             }
@@ -1529,6 +1542,18 @@ namespace Rocola
             stars.TrasEstrellas = trasEstrellas;
             // Dispositivo perdido (sesion bloqueada, cambio de pantalla...): sin este respiro, el bucle de
             // Application.Idle reintentaria a TODA MAQUINA y clavaria un nucleo entero hasta recuperarlo.
+            double aheadNow = AhoraMs();
+            double uploadMs = gridUploadCost * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+            if (ShowAlbum && GetGridAhead != null && !UiUrgent &&
+                aheadNow - lastAheadMs >= (CargaTrabajo.Procesadores <= 2 ? 40 : 20) &&
+                aheadNow - msTrab0 + uploadMs < GridWorkLimit * 1000.0 / System.Diagnostics.Stopwatch.Frequency &&
+                lastFrameWork + uploadMs < 850.0 / Math.Max(1, TopeFpsReal))
+            {
+                lastAheadMs = aheadNow;
+                bool ready = gridN > 0;
+                for (int i = 0; i < gridN; i++) if (gridTex[i] == IntPtr.Zero) ready = false;
+                if (ready) WarmAheadCells();
+            }
             if (!stars.Begin(Width, Height, pulse, pulseCrudo)) { System.Threading.Thread.Sleep(5); return NoPresentado(); }
             // Adornos solo del fondo: antes del muro y de toda la interfaz.
             if (VinetaSuave && vinetaTex != IntPtr.Zero)
@@ -1684,6 +1709,7 @@ namespace Rocola
             // El cronometro se para AQUI, justo antes de End: dentro de End esta Present, que es donde se
             // espera al monitor. Un cuadro que se pasa media vuelta esperando no costo media vuelta.
             double trabajo = AhoraMs() - msTrab0;
+            lastFrameWork = trabajo;
             if (!stars.End()) return NoPresentado();
             msTrabSuma += trabajo; msTrabN++;
             frames++;
@@ -1736,6 +1762,63 @@ namespace Rocola
                 if (st.Tex == IntPtr.Zero) return false;
             }
             tex = st.Tex; u = st.U; v = st.V; return true;
+        }
+
+        private bool AheadContains(string key, int count)
+        {
+            for (int i = 0; i < count; i++) if (aheadGrid[i].Key == key) return true;
+            return false;
+        }
+
+        // Nunca expulsar visibles ni las vecinas ya preparadas: evita un ciclo de subidas/expulsiones
+        // cuando a resolucion alta no caben las tres paginas en el presupuesto.
+        private bool ReserveAheadSpace(GpuGridCell cell, int aheadCount)
+        {
+            long w = 1, h = 1;
+            while (w < cell.Bmp.Width) w <<= 1;
+            while (h < cell.Bmp.Height) h <<= 1;
+            long incoming = w * h * 4;
+            if (incoming > CellTexBytesCap) return false;
+            CellTex old; cellTexCache.TryGetValue(cell.Key, out old);
+            int extra = old == null ? 1 : 0;
+            while (CachedCellBytes() - CellBytes(old) + incoming > CellTexBytesCap ||
+                cellTexCache.Count + extra > CellTexCap)
+            {
+                string victim = null; int oldest = 0;
+                foreach (KeyValuePair<string, CellTex> kv in cellTexCache)
+                {
+                    int age = unchecked(cellFrame - kv.Value.Frame);
+                    if (age > oldest && !AheadContains(kv.Key, aheadCount))
+                    { oldest = age; victim = kv.Key; }
+                }
+                if (victim == null) return false;
+                CellTex removed = cellTexCache[victim];
+                if (removed.Tex != IntPtr.Zero) D3D9.Release(removed.Tex);
+                cellTexCache.Remove(victim); cellBytesDirty = true;
+            }
+            return true;
+        }
+
+        private void WarmAheadCells()
+        {
+            if (GetGridAhead == null) return;
+            int count = Math.Max(0, Math.Min(aheadGrid.Length, GetGridAhead(aheadGrid)));
+            for (int i = 0; i < count; i++)
+            {
+                GpuGridCell cell = aheadGrid[i];
+                if (cell.Key == null || cell.Bmp == null) continue;
+                CellTex old;
+                if (cellTexCache.TryGetValue(cell.Key, out old) &&
+                    (old.Frame == cellFrame || (old.Tex != IntPtr.Zero && ReferenceEquals(old.Bmp, cell.Bmp)))) continue;
+                if (!ReserveAheadSpace(cell, count)) continue;
+                int budget = 1; IntPtr tex; float u, v;
+                long start = System.Diagnostics.Stopwatch.GetTimestamp();
+                EnsureCellTex(cell, ref budget, out tex, out u, out v);
+                gridUploadCost = CargaTrabajo.AprendeCoste(gridUploadCost, System.Diagnostics.Stopwatch.GetTimestamp() - start);
+                if (cellTexCache.TryGetValue(cell.Key, out old)) old.Frame = unchecked(cellFrame - 1);
+                break; // una sola subida de fondo; la pagina visible siempre tiene prioridad
+            }
+            Array.Clear(aheadGrid, 0, aheadGrid.Length); // no retener bitmaps expulsados por la cache de composicion
         }
 
         // Expulsa las texturas de celda mas VIEJAS (no usadas este cuadro) cuando se pasa del tope, para acotar VRAM.

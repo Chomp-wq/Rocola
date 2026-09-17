@@ -140,8 +140,9 @@ namespace Rocola
             int pf = perfilDisco;
             bool lento = (pf == 1) ? false : (pf == 2) ? true : medidoLento;
             diskSlow = lento;
-            int carriles = 1;
-            if (!lento) { carriles = Environment.ProcessorCount; if (carriles > 4) carriles = 4; else if (carriles < 2) carriles = 2; }
+            // Tope global por CPU; cada unidad HDD conserva un solo lector en TakeCoverJob.
+            // En 2C/2T un trabajador, reservando margen para interfaz y audio incluso con SSD.
+            int carriles = CargaTrabajo.Lectores(CargaTrabajo.Procesadores);
             // El semaforo solo puede CRECER (quitarle turnos concedidos mientras se usan no es seguro). No pasa
             // nada: quien de verdad limita cuantas bombas hay a la vez es coverCarriles, y ese si baja.
             lock (discoLock)

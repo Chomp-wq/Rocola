@@ -10,7 +10,20 @@ namespace Rocola
             out float rms, out float durSec, out float[] eqCurve)
         {
             Func<bool> previous = measureCancellation;
-            measureCancellation = cancel;
+            // Solo en los trabajadores de analisis, nunca en el callback de reproduccion.
+            // Ceder por bloques a las portadas visibles; comprobar cancelacion tambien durante la espera.
+            string unit = UnidadDe(path);
+            bool smallCpu = CargaTrabajo.Procesadores <= 2;
+            measureCancellation = delegate
+            {
+                if (cancel != null && cancel()) return true;
+                while (YieldCoverWork(unit, smallCpu))
+                {
+                    System.Threading.Thread.Sleep(40);
+                    if (cancel != null && cancel()) return true;
+                }
+                return false;
+            };
             try { return MeasureFile(path, aFondo, out rms, out durSec, out eqCurve); }
             finally { measureCancellation = previous; }
         }
