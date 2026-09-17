@@ -150,14 +150,32 @@ class Mover
             //    Sin esto, al volver de los resultados el teclado NO volvia a aparecer nunca.
             //  - SelResult, con el cubo delante, cambia la portada y el texto de debajo.
             //  - Query, porque los resultados son otros de verdad.
-            string[] dentro = { "FocusResults", "SelResult", "Query" };
+            string[] dentro = { "FocusResults", "Query" };
             string[] porque = { "cambia media pantalla: teclado <-> cubo de la portada",
-                                "con el cubo delante, cambia que disco se ensena y su texto",
                                 "los resultados son otros de verdad" };
             for (int i = 0; i < dentro.Length; i++)
             {
                 int lee, esc; Codigo.UsosDeCampo(mUi, dentro[i], out lee, out esc);
                 Check(lee > 0, dentro[i] + " SI entra en la firma (" + porque[i] + ")");
+            }
+
+            // SelResult YA NO VA EN LA FIRMA GRANDE, Y ESO ESTA BIEN AHORA. Antes tenia que estar: con el
+            // cubo delante, moverse por los resultados cambia que disco se ensena y el texto de debajo, y
+            // sacarlo dejaba esa media pantalla congelada -se vio en el bar-. Lo que cambio es DONDE se
+            // dibuja: la vista previa salio de la imagen grande y ahora es una PIEZA aparte, siempre, asi
+            // que rehacer la pantalla entera por mover la seleccion seria trabajo tirado.
+            //
+            // Pero la promesa es la misma y hay que seguir vigilandola, solo que en su sitio nuevo: si
+            // SelResult no entra en la firma de la PIEZA, la portada y su texto se quedan clavados igual
+            // que antes. Por eso esto no se borro: se mudo.
+            int leeGrande, escGrande; Codigo.UsosDeCampo(mUi, "SelResult", out leeGrande, out escGrande);
+            Check(leeGrande == 0, "SelResult ya NO entra en la firma grande: mover la seleccion no rehace la pantalla entera");
+            MethodInfo mPieza = TF.GetMethod("EnsureUiPieza", IF);
+            Check(mPieza != null, "existe la firma de las piezas, que es donde vive ahora la vista previa");
+            if (mPieza != null)
+            {
+                int leePieza, escPieza; Codigo.UsosDeCampo(mPieza, "SelResult", out leePieza, out escPieza);
+                Check(leePieza > 0, "pero SI entra en la firma de la PIEZA (con el cubo delante, cambia que disco se ensena y su texto)");
             }
         }
 
