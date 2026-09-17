@@ -115,7 +115,7 @@ class Noche
         // consultarlo por su cuenta.
         MethodInfo vvf = Met("VideoVolumeFor");
         Check(vvf != null && Codigo.Llama(vvf, "FactorNoche"), "el volumen del video consulta el factor de noche");
-        MethodInfo play = Met("PlayTrack");
+        MethodInfo play = Met("StartOpenedTrack");
         Check(play != null && Codigo.Llama(play, "FactorNoche"), "y el de la musica tambien");
         MethodInfo apply = Met("ApplyNormNow");
         Check(apply != null && Codigo.Llama(apply, "FactorNoche"), "y el ajuste en vivo, para que se oiga bajar sin cambiar de cancion");

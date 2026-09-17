@@ -426,6 +426,7 @@ namespace Rocola
 
         private void DisposePlaybackNow()
         {
+            CancelAudioOpen(); // saltar/cerrar invalida resultados que aun esten abriendo
             progressTimer.Stop();
             if (output != null)
             {

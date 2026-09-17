@@ -855,9 +855,15 @@ namespace Rocola
 
         private void PlayTrack(Track t)
         {
+            try { BeginAudioOpen(t.Path, delegate(IAudioSource source, Exception error) { StartOpenedTrack(t, source, error); }); }
+            catch (Exception error) { AudioStartFailed(t, error); }
+        }
+        private void StartOpenedTrack(Track t, IAudioSource source, Exception error)
+        {
             try
             {
-                reader = OpenAudio(t.Path);   // normal; si NAudio rechaza el MP3 (frecuencia mezclada, etc.) reintenta con el lector TOLERANTE
+                reader = source;
+                if (error != null) throw error;
                 reader.Volume = FixedVolume;   // se queda en 1.0 (crudo): el nivelado se aplica en LevelTap, tras medir el volumen REAL
                 // NIVELADO: si esta cancion ya se oyo antes, se aplica la ganancia que la lleva al nivel comun; si es
                 // nueva, va a su volumen original y se APRENDE su sonoridad en esta pasada (para nivelarla la proxima vez).
@@ -932,22 +938,15 @@ namespace Rocola
                     outChain = new FadeProvider(outChain, tf, crossfadeSec);   // fundido suave de entrada/salida
                 }
                 output.Init(new DitherWaveProvider16(outChain));   // 16 bits CON dither TPDF (menos aspereza en pasajes silenciosos)
+                if (audioOpeningForMeasurement) output.Volume = 0f;
                 output.Play();
                 progressTimer.Start();
+                UpdateNowPlayingUI(); // lector ya listo; refrescar estado tras la apertura asincrona
                 PrecalientaSiguiente();   // la que viene detras, leida en segundo plano (ver arriba)
             }
             catch (Exception ex)
             {
-                lblStatus.Text = "No se pudo reproducir " + Path.GetFileName(t.Path) + " (" + ex.Message + ")";
-                LogError("PlayTrack " + Path.GetFileName(t.Path), ex);
-                NoteIncompatible(t.Path, ex);   // ni con el lector tolerante: deja la ruta en rocola_incompatibles.txt para repararla
-                RefundCredit();   // la cancion que el cliente pago no sono: se le devuelve el credito
-                ShowToast("No se pudo reproducir: credito devuelto", Color.FromArgb(200, 80, 70));
-                DisposePlaybackNow();
-                // OPTIMIZACION (estabilidad): antes era PlayNext() directo. Si varias canciones seguidas
-                // no abren (archivos movidos/corruptos) se apilaba PlayTrack->PlayNext->PlayTrack... hasta
-                // un posible StackOverflow. Via BeginInvoke se desenreda la pila (igual que en el video).
-                try { if (this.IsHandleCreated) this.BeginInvoke((MethodInvoker)delegate { PlayNext(); }); } catch { }
+                AudioStartFailed(t, ex);
             }
         }
 
