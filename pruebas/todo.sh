@@ -117,6 +117,17 @@ done
 # un lado y por el otro no: tocando el dibujo aqui, nada avisaba.
 #
 # Si la otra rama no esta a mano (una copia suelta, sin historial) no se dice nada y se sigue.
+#
+# UNA RAMA APARCADA NO PUEDE DEJAR A LA OTRA SIN PRUEBAS. Si se decide parar el porte a una de las dos
+# -aqui, el de Linux- el dibujo se separa a proposito, y entonces esta comprobacion, siendo un fallo
+# duro, dejaba la rama que SI se trabaja sin correr NI UNA bateria. Eso es peor que la separacion que
+# vigila: la maquina del bar se queda sin red por cuidar una promesa que nadie esta rompiendo.
+#
+# Asi que se aparca a mano, por nombre, y se avisa EN CADA VUELTA con un cartel que no se puede pasar
+# por alto. No se afloja la vigilancia: la pareja que sigue viva sigue siendo un fallo duro, y cuando
+# se retome el porte se borra esta linea y vuelve a serlo.
+APARCADA="rocola-linux"
+
 case "$RAMA" in
   rocola-hd)    OTRA="rocola-linux" ;;
   rocola-linux) OTRA="rocola-hd" ;;
@@ -131,10 +142,20 @@ if [ -n "$OTRA" ] && git -C "$RAIZ" rev-parse --verify -q "$OTRA" > /dev/null 2>
     fi
   done
   if [ $dif -ne 0 ]; then
-    echo "  FALLA: las dos ramas ya no comparten el mismo codigo de dibujo"
-    exit 1
+    if [ "$OTRA" = "$APARCADA" ]; then
+      echo "  ---------------------------------------------------------------------------"
+      echo "  LA RAMA $OTRA ESTA APARCADA y el dibujo ya NO es el mismo que el de aqui."
+      echo "  Se sigue para que esta rama tenga pruebas, pero la promesa de que las dos"
+      echo "  comparten el dibujo esta ROTA a proposito. Al retomar el porte hay que"
+      echo "  llevarle D3D9Star.cs y D3D9Device.cs y quitar APARCADA de este archivo."
+      echo "  ---------------------------------------------------------------------------"
+    else
+      echo "  FALLA: las dos ramas ya no comparten el mismo codigo de dibujo"
+      exit 1
+    fi
+  else
+    echo "  el dibujo por tarjeta grafica es identico al de la rama $OTRA"
   fi
-  echo "  el dibujo por tarjeta grafica es identico al de la rama $OTRA"
 fi
 
 echo "  compilando la rocola..."
