@@ -1485,9 +1485,14 @@ namespace Rocola
         private void PublicaMedida(string ruta, float rms, float dur, float[] eqCurve)
         {
             if (ruta == null) return;
-            if (dur > 0.01f) durCache[ruta] = dur;
-            if (rms > 0f) { loudCache[ruta] = rms; InvalidateVideoMeasurements(); }   // incluido el silencio (ver LoudMudo)
-            if (eqCurve != null) { eqCache[ruta] = eqCurve; eqCacheVer++; eqDirty = true; }   // huella tonal del EQ automatico
+            bool puesto = false;
+            if (dur > 0.01f) { durCache[ruta] = dur; puesto = true; }
+            if (rms > 0f) { loudCache[ruta] = rms; InvalidateVideoMeasurements(); puesto = true; }   // incluido el silencio (ver LoudMudo)
+            if (eqCurve != null) { eqCache[ruta] = eqCurve; eqCacheVer++; eqDirty = true; puesto = true; }   // huella tonal del EQ automatico
+            // Y se apunta en la libreta compartida, para que nadie la vuelva a medir en esta sesion. Solo
+            // si de verdad quedo algo escrito: un archivo roto no da nada, y darlo por medido seria no
+            // volver a intentarlo nunca.
+            if (puesto) MedidaPuesta(ruta);
             if (panelSongs != null && panelSongs.Visible) RefrescaLista();   // que aparezca la duracion recien sabida
         }
 
