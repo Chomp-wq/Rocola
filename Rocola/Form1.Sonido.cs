@@ -1688,6 +1688,7 @@ namespace Rocola
             preScanStop = true;   // que el pre-analisis suelte el archivo y termine
             unchecked { preScanGen++; durScanGen++; }
             DisposePlaybackNow();
+            SueltaLookahead();   // el lector que esperaba a la siguiente: se suelta el archivo al cerrar
             GuardaTodoAlCerrar();
             // APAGADO DELIBERADO vs APAGON. El boton de poder de la rocola esta configurado en Windows para APAGAR
             // -> al presionarlo, Windows avisa y ESTE evento se dispara (CloseReason.WindowsShutDown; tambien Alt+F4

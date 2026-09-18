@@ -81,9 +81,11 @@ namespace Rocola
             if (ruta == null)
             {
                 warmSongPath = null; unchecked { warmSongGen++; }
+                SueltaLookahead();   // no hay siguiente: si habia un lector esperando, ya no vale
                 return;
             }
             if (string.Equals(ruta, warmSongPath, StringComparison.OrdinalIgnoreCase)) return;   // ya calentada o calentandose
+            SueltaLookahead();       // la siguiente es OTRA: lo que hubiera abierto era para la de antes
             warmSongPath = ruta;
             int mio = ++warmSongGen;
             // ¿YA ESTA MEDIDA? Se pregunta AQUI, que es el hilo de la pantalla y por tanto el dueño de las
@@ -127,6 +129,22 @@ namespace Rocola
                             System.Threading.Thread.Sleep(lentoAqui ? 8 : 1);
                         }
                     }
+
+                    // Y YA QUE ESTA LEIDA, SE ABRE SU LECTOR.
+                    //
+                    // Abrir un MP3 no es gratis: NAudio recorre el archivo entero armando el indice de sus
+                    // cuadros, y ademas monta el descompresor del sistema. Desde el 17/09 eso ya no para la
+                    // pantalla, pero sigue estando EN EL CAMINO: la cancion no empieza hasta que su lector
+                    // esta listo. Hacerlo aqui lo saca de ese camino.
+                    //
+                    // Va DESPUES de leer los bytes, no antes: con el archivo ya en la memoria del sistema,
+                    // abrir no vuelve a tocar el disco, que es de la cancion que esta sonando.
+                    try
+                    {
+                        if (IsHandleCreated)
+                            BeginInvoke((MethodInvoker)delegate { if (mio == warmSongGen && !preScanStop) PideLookahead(ruta); });
+                    }
+                    catch { }
 
                     // Y YA QUE ESTA LEIDA, SE MIDE.
                     //
