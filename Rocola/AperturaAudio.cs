@@ -93,9 +93,75 @@ namespace Rocola
         }
     }
 
+    // ==============================================================================================
+    //  MIRAR POR DELANTE: el lector de la que viene, abierto antes de que haga falta.
+    //
+    //  Desde el 17/09 abrir ya no para la pantalla: lo hace un trabajador aparte. Pero SIGUE estando en
+    //  el camino hasta el primer sonido, porque la cancion no empieza hasta que su lector esta listo.
+    //  Entre cancion y cancion, eso es silencio.
+    //
+    //  Aqui se guarda UN lector y la ruta para la que vale. Si cuando toca sonar piden esa misma ruta, se
+    //  entrega y no se abre nada. Si piden otra -la cola cambio, o la version mejorada de Apollo termino
+    //  mientras tanto- lo guardado se suelta y se abre como siempre. LA RUTA TIENE QUE COINCIDIR: un
+    //  desajuste cuesta una apertura, nunca un archivo por otro.
+    //
+    //  Un fallo al abrir por delante NO se anota ni devuelve creditos: esa cancion todavia no es la que
+    //  suena. Se tira y ya; cuando le toque, el camino normal la abre y ahi el error se trata como siempre.
+    // ==============================================================================================
+    internal sealed class MiraPorDelante<T> where T : class, IDisposable
+    {
+        private readonly AperturaEnFondo<T> apertura = new AperturaEnFondo<T>();
+        private readonly object gate = new object();
+        private long version;
+        private string para;   // para que ruta vale lo que hay (o lo que se esta abriendo)
+        private T listo;       // ya abierto, esperando su turno
+        internal string Para { get { lock (gate) return para; } }
+        internal bool Listo { get { lock (gate) return listo != null; } }
+        private static void Release(T value) { if (value != null) try { value.Dispose(); } catch { } }
+
+        internal void Suelta()
+        {
+            T old;
+            lock (gate) { version++; para = null; old = listo; listo = null; }
+            apertura.Cancel();
+            Release(old);
+        }
+
+        internal void Pide(string ruta, Func<T> abre, Action<Action> post)
+        {
+            if (ruta == null || abre == null || post == null) { Suelta(); return; }
+            lock (gate) { if (string.Equals(ruta, para, StringComparison.OrdinalIgnoreCase)) return; }   // ya es esa
+            Suelta();
+            long mia;
+            lock (gate) { para = ruta; mia = version; }
+            apertura.Start(abre, delegate(T value, Exception error)
+            {
+                bool guardar;
+                lock (gate) { guardar = (error == null && value != null && mia == version && listo == null); if (guardar) listo = value; }
+                if (!guardar) Release(value);
+            }, post);
+        }
+
+        internal T Toma(string ruta)
+        {
+            T mio = null, sobra = null;
+            lock (gate)
+            {
+                version++;
+                if (listo != null && string.Equals(ruta, para, StringComparison.OrdinalIgnoreCase)) mio = listo;
+                else sobra = listo;
+                listo = null; para = null;
+            }
+            apertura.Cancel();   // lo que se estuviera abriendo ya no vale: esta sonando otra cosa
+            Release(sobra);
+            return mio;
+        }
+    }
+
     public partial class Form1
     {
         private AperturaEnFondo<IAudioSource> audioOpening;
+        private MiraPorDelante<IAudioSource> lookahead;
         private long audioStartVersion;
         private bool audioOpeningForMeasurement;
         // El medidor es una operacion explicita y sincronica: necesita la cadena lista
@@ -115,6 +181,25 @@ namespace Rocola
                 completed(source, error);
                 return;
             }
+            // ¿ESTA YA ABIERTA? Se pide por la ruta EXACTA. Si el que espera es otro archivo, se suelta
+            // ahi mismo y se abre como siempre.
+            IAudioSource yaAbierto = (lookahead != null) ? lookahead.Toma(path) : null;
+            if (yaAbierto != null)
+            {
+                // Se entrega por el MISMO camino que una apertura de verdad -un salto al hilo de la
+                // pantalla- para que el orden de lo que pasa despues no cambie por venir ya abierta.
+                long mio = ++audioStartVersion;
+                try
+                {
+                    BeginInvoke((MethodInvoker)delegate
+                    {
+                        if (audioStartVersion != mio || IsDisposed || Disposing) { try { yaAbierto.Dispose(); } catch { } return; }
+                        completed(yaAbierto, null);
+                    });
+                }
+                catch { try { yaAbierto.Dispose(); } catch { } throw; }
+                return;
+            }
             if (audioOpening == null) audioOpening = new AperturaEnFondo<IAudioSource>();
             audioStartVersion++;
             audioOpening.Start(delegate { return OpenAudio(path); }, completed,
@@ -124,6 +209,27 @@ namespace Rocola
                     BeginInvoke((MethodInvoker)delegate { action(); });
                 });
         }
+        // QUE ARCHIVO SUENA DE VERDAD. En esta rocola, el mismo que pide la cola: aqui no hay IA en vivo
+        // -Apollo es solo de la rama de Windows potente- asi que nunca suena una version mejorada en vez
+        // del original. Existe igual, y con el mismo nombre que alla, porque quien mira por delante tiene
+        // que preguntarlo SIEMPRE: el dia que esta rocola tenga otra fuente, se cambia aqui y en un solo
+        // sitio. Lo que no puede hacer nunca es tener efectos secundarios: esta cancion todavia no suena.
+        private string RutaQueSonaria(string path) { return path; }
+        private void PideLookahead(string songPath)
+        {
+            // El medidor de Ctrl+F3 abre a la cara y no debe dejar nada pendiente: alli no se mira por delante.
+            if (audioOpeningForMeasurement || songPath == null) { SueltaLookahead(); return; }
+            string ruta = RutaQueSonaria(songPath);
+            if (ruta == null) { SueltaLookahead(); return; }
+            if (lookahead == null) lookahead = new MiraPorDelante<IAudioSource>();
+            lookahead.Pide(ruta, delegate { return OpenAudio(ruta); },
+                delegate(Action action)
+                {
+                    if (IsDisposed || Disposing || !IsHandleCreated) throw new ObjectDisposedException("Rocola");
+                    BeginInvoke((MethodInvoker)delegate { action(); });
+                });
+        }
+        private void SueltaLookahead() { if (lookahead != null) lookahead.Suelta(); }
         private void CancelAudioOpen()
         {
             audioStartVersion++;
