@@ -58,6 +58,13 @@ namespace Rocola
         private bool controlesReposo = true, ondasUnidas = true;
         private bool lunaRealista = true, haloLunar = true, polvoLunar = true, lunaProtagonista = true;
         private bool respuestaInmediata = true, transicionesTacto = true;
+        // AVISOS PARA EL PANEL DE REPOSO. El panel solo existe con tarjeta grafica, pero las cosas que
+        // ensena -la cola, la cancion, el color del genero- cambian en archivos que compilan siempre. Por
+        // eso los avisos son metodos PARCIALES: con tarjeta llevan cuerpo (ver EstadoReposoGpu.cs) y sin
+        // ella el compilador los borra a ellos y a sus llamadas, sin dejar ni un if por medio.
+        partial void CambioElPanelDeReposo();
+        partial void CambioElAcentoDelPanel(Color nuevo);
+
         private bool cieloProfundo = true;
         // CUANTO SE NOTA EL DETALLE NATURAL. El mapa de nubes cubre casi toda la pantalla, y a fuerza
         // entera la bruma ancha tapa el cielo en vez de adornarlo. Bajando esto se va la bruma y quedan

@@ -147,6 +147,11 @@ namespace Rocola
         private int fpsTope = 0;
         private Label lblMejorada;           // letrero "MEJORADA" dorado junto a "Reproduciendo": brilla cuando la cancion suena con DSEE
         private int mejRowW = 120;           // ancho total de la fila "Reproduciendo" (lo fija el layout; el letrero se acomoda dentro)
+        // EN QUE ESTA EL LETRERO MEJORADA, GUARDADO. Antes se preguntaba (MejActivo) alli donde hiciera
+        // falta, y el panel de reposo lo preguntaba dos veces y media por segundo. Ahora se apunta cuando
+        // CAMBIA -que es lo que ya miraba TickMejorada- y quien lo necesite lo lee de aqui.
+        // 0 = sin letrero, 2 = dorado (el DSEE espectral reconstruyendo de verdad).
+        private int iaBadgeKind;
         private static readonly Color MejGoldBase = Color.FromArgb(238, 192, 76), MejGoldHi = Color.FromArgb(255, 233, 145);   // dorado: base y brillo
         private SpectralTap curSbr;          // tap de la cancion actual (para alternar A/B en vivo)
         private const float NormMaxBoost = 16.0f;                                             // techo ABSOLUTO de subida (+24 dB): evita amplificar al infinito una cancion casi muda (el tope real lo pone la etapa, ver TierMaxDb)
@@ -180,6 +185,10 @@ namespace Rocola
         private int colaVer;
         private void RefrescaCola()
         {
+            // El panel de reposo ensena la cancion y las de la cola, asi que se entera aqui. Este aviso
+            // cubre las dos cosas de una: los tres sitios que cambian nowPlaying llaman a RefrescaCola en
+            // la linea de al lado, a proposito, para que la marca de "SONANDO" salga en la misma pasada.
+            CambioElPanelDeReposo();
             colaPos.Clear();
             // Y APARTE, DE QUE DISCOS. Un cliente recorre la pared, pide tres canciones y a los cinco
             // minutos ya no se acuerda de cuales: vuelve a pedir la misma. Con una marca en la esquina
@@ -1977,7 +1986,8 @@ namespace Rocola
         private void TickMejorada(bool gpuCovered)
         {
             if (lblMejorada == null) return;
-            if (MejActivo() != lblMejorada.Visible) PositionMejorada();   // en cuanto el reconstructor ACTUA (~0.1s) aparece, y queda TODA la cancion (solo se va con el switch o al cambiar de cancion)
+            int k = MejActivo() ? 2 : 0;   // en cuanto el reconstructor ACTUA (~0.1s) aparece, y queda TODA la cancion (solo se va con el switch o al cambiar de cancion)
+            if (k != iaBadgeKind || (k != 0) != lblMejorada.Visible) { iaBadgeKind = k; PositionMejorada(); CambioElPanelDeReposo(); }
             if (!lblMejorada.Visible) return;
             if (!gpuCovered)
             {
@@ -2116,6 +2126,7 @@ namespace Rocola
                 bgAccent = LerpColor(bgAccent, bgAccentTarget, 0.16);
                 if (Math.Abs(bgAccent.R - bgAccentTarget.R) <= 2 && Math.Abs(bgAccent.G - bgAccentTarget.G) <= 2 && Math.Abs(bgAccent.B - bgAccentTarget.B) <= 2)
                     bgAccent = bgAccentTarget;
+                CambioElAcentoDelPanel(bgAccent);   // con umbral: esto corre en CADA latido, no solo al cambiar de cancion
                 this.Invalidate();   // tambien con buscador abierto: el fondo es barato y la franja de estado debe recolorear
             }
             albumView.BgAccent = bgAccent;
