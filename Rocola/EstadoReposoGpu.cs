@@ -14,18 +14,64 @@ namespace Rocola
         private Bitmap idleClockUnderlay;
         private string idlePanelTime;
         private int idlePanelRevision;
-        private int idlePanelCheck;
         private int idlePanelProgressStart;
+
+        // EL PANEL SE REHACE CUANDO ALGO CAMBIA, NO CADA 400 ms MIRANDO A VER.
+        //
+        // Antes se rearmaba la firma -titulo, artista, y para cada una de las doce de la cola su ruta, su
+        // texto y su caratula- dos veces y media por segundo, para casi siempre descubrir que nada habia
+        // cambiado. No costaba casi nada -0,005 ms, medido con doce en la cola-, pero tenia un precio
+        // peor que el del procesador: un cambio tardaba hasta 400 ms en verse. Pones una cancion y el
+        // panel va detras. Ese, y no el ahorro, es el motivo de este cambio.
+        //
+        // Ahora cada sitio que cambia algo del panel avisa, y la firma solo se rearma cuando hay aviso.
+        // LA FIRMA SE QUEDA como segundo filtro, y eso es a proposito: un aviso de mas cuesta 0,005 ms y
+        // no un redibujo de 1,70. O sea que avisar de sobra sale barato y lo unico caro es olvidarse, que
+        // es justo al reves de como suele salir esto. Lo vigila la bateria 'panelreposo': cambia cada cosa
+        // que el panel ensena, una por una, y exige que se entere.
+        private int idlePanelDatos;
+        private int idlePanelDatosDe = -1;
+        private Color idlePanelAcento = Color.Empty;
+        partial void CambioElPanelDeReposo() { unchecked { idlePanelDatos++; } }
+
+        // EL COLOR DEL GENERO ES OTRA COSA: no cambia, SE DESLIZA. En cada latido -24 por segundo- se
+        // acerca un 16% al color de la cancion nueva, y tarda unos 24 latidos en llegar. Avisar en cuanto
+        // se mueve un punto seria rehacer el panel en los 24 seguidos: 41 ms, medido.
+        //
+        // Asi que avisa cuando se ha movido lo bastante para VERSE. Seis de 255 es un 2%: por debajo de
+        // eso, dos paneles seguidos son el mismo panel para cualquiera que lo mire. Con el umbral la
+        // transicion baja a 14 redibujos, 24 ms.
+        //
+        // Y AUN ASI ESTO SALE MAS CARO QUE ANTES, que hay que decirlo: con el reloj de los 400 ms la
+        // misma transicion costaba unos 3 redibujos -5 ms-, porque la mayoria de los latidos ni se
+        // miraban. Son 19 ms de mas UNA VEZ POR CANCION -cada tres o cuatro minutos- a cambio de que se
+        // vea al momento en vez de hasta 400 ms tarde. El numero lo vuelve a sacar la bateria
+        // 'panelreposo' cada vez que corre, para que no se pierda.
+        private const int AcentoPaso = 6;
+        partial void CambioElAcentoDelPanel(Color nuevo)
+        {
+            if (idlePanelAcento != Color.Empty
+                && Math.Abs(nuevo.R - idlePanelAcento.R) < AcentoPaso
+                && Math.Abs(nuevo.G - idlePanelAcento.G) < AcentoPaso
+                && Math.Abs(nuevo.B - idlePanelAcento.B) < AcentoPaso) return;
+            idlePanelAcento = nuevo;
+            CambioElPanelDeReposo();
+        }
         private Bitmap BuildIdlePanel()
         {
             if (nowPlaying == null || videoOn) return null;
             if (gpuPanel != null && idlePanelBmp != null) gpuPanel.IdleProgressStart = idlePanelProgressStart;
             int w = ClientSize.Width, h = GpuPanel.IdlePanelHeight(ClientSize.Height);
             if (w < 480 || h < 140) return null;
-            int now = Environment.TickCount;
             if (idlePanelBmp != null && idlePanelBmp.Width == w && idlePanelBmp.Height == h &&
-                unchecked(now - idlePanelCheck) < 400) return idlePanelBmp;
-            idlePanelCheck = now;
+                idlePanelDatos == idlePanelDatosDe)
+            {
+                // Nada de lo que el panel ensena ha cambiado. Lo unico que corre solo es el reloj, y ese
+                // se parchea aparte sin rehacer nada mas.
+                ParcheaElReloj(w, h);
+                return idlePanelBmp;
+            }
+            idlePanelDatosDe = idlePanelDatos;
             string title, artist; nowPlaying.TituloArtista(out title, out artist);
             string[] qt = new string[Math.Min(colaDoce ? 12 : 3, queue.Count)], qa = new string[qt.Length];
             Image[] covers = new Image[qt.Length];
@@ -43,21 +89,7 @@ namespace Rocola
             }
             sig.Append('|').Append(colaDoce);
             string key = sig.ToString();
-            if (idlePanelBmp != null && key == idlePanelSig)
-            {
-                if (idleClockUnderlay != null && idlePanelTime != time)
-                {
-                    idlePanelProgressStart = UpdateIdleClock(idlePanelBmp, idleClockUnderlay, time);
-                    idlePanelTime = time; idlePanelRevision++;
-                    if (gpuPanel != null)
-                    {
-                        gpuPanel.IdlePanelVersion = idlePanelRevision;
-                        gpuPanel.IdlePanelDirty = new Rectangle(0, h - 34, w, 34);
-                        gpuPanel.IdleProgressStart = idlePanelProgressStart;
-                    }
-                }
-                return idlePanelBmp;
-            }
+            if (idlePanelBmp != null && key == idlePanelSig) { ParcheaElReloj(w, h); return idlePanelBmp; }
             int progressStart;
             Bitmap next = RenderIdlePanelLayout(w, h, title, artist, "", qt, qa, covers, queue.Count, bgAccent, estadoTransparente, iaBadgeKind, colaDoce, out progressStart);
             if (idleClockUnderlay != null) { idleClockUnderlay.Dispose(); idleClockUnderlay = null; }
@@ -89,6 +121,23 @@ namespace Rocola
                 return x + width + 8;
             }
         }
+        // SOLO EL RELOJ. Es lo unico del panel que cambia sin que nadie lo toque, asi que no entra en el
+        // sistema de avisos: se mira su texto -una comparacion de cadenas- y si cambio se repinta la franja
+        // de abajo y nada mas. Rehacer el panel entero por un digito costaria 1,70 ms cada segundo.
+        private void ParcheaElReloj(int w, int h)
+        {
+            string time = lblTime != null ? lblTime.Text : "";
+            if (idleClockUnderlay == null || idlePanelBmp == null || idlePanelTime == time) return;
+            idlePanelProgressStart = UpdateIdleClock(idlePanelBmp, idleClockUnderlay, time);
+            idlePanelTime = time; idlePanelRevision++;
+            if (gpuPanel != null)
+            {
+                gpuPanel.IdlePanelVersion = idlePanelRevision;
+                gpuPanel.IdlePanelDirty = new Rectangle(0, h - 34, w, 34);
+                gpuPanel.IdleProgressStart = idlePanelProgressStart;
+            }
+        }
+
         internal static int UpdateIdleClock(Bitmap panel, Bitmap underlay, string time)
         {
             using (Graphics g = Graphics.FromImage(panel))

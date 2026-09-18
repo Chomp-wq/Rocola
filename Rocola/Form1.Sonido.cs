@@ -1483,6 +1483,7 @@ namespace Rocola
             }
             else { nowFullText = "Nada reproduciendose"; nowArtista = ""; }
             iaBadgeKind = MejKind();   // dorado = version IA (Apollo); plateado = DSEE espectral reconstruyendo DE VERDAD
+            CambioElPanelDeReposo();   // la insignia sale tambien en el panel de reposo
             ActualizaGenero();    // la pastilla del genero, antes de acomodar: manda en el ancho del artista
             PositionMejorada();   // pone titulo y artista y coloca el letrero MEJORADA
             lblNext.Text = (queue.Count > 0) ? "Sigue:  " + queue[0].Display() : "Sigue:  -";

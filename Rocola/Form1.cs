@@ -184,6 +184,10 @@ namespace Rocola
         private int colaVer;
         private void RefrescaCola()
         {
+            // El panel de reposo ensena la cancion y las de la cola, asi que se entera aqui. Este aviso
+            // cubre las dos cosas de una: los tres sitios que cambian nowPlaying llaman a RefrescaCola en
+            // la linea de al lado, a proposito, para que la marca de "SONANDO" salga en la misma pasada.
+            CambioElPanelDeReposo();
             colaPos.Clear();
             // Y APARTE, DE QUE DISCOS. Un cliente recorre la pared, pide tres canciones y a los cinco
             // minutos ya no se acuerda de cuales: vuelve a pedir la misma. Con una marca en la esquina
@@ -1386,7 +1390,7 @@ namespace Rocola
         {
             if (lblMejorada == null) return;
             int k = MejKind();   // en cuanto el reconstructor ACTUA (~0.1s) el plateado aparece y queda TODA la cancion; el dorado (version IA) dura toda la cancion de origen
-            if (k != iaBadgeKind || (k != 0) != lblMejorada.Visible) { iaBadgeKind = k; PositionMejorada(); }
+            if (k != iaBadgeKind || (k != 0) != lblMejorada.Visible) { iaBadgeKind = k; PositionMejorada(); CambioElPanelDeReposo(); }
             if (!lblMejorada.Visible) return;
             if (!gpuCovered)
             {
@@ -1541,6 +1545,7 @@ namespace Rocola
                 bgAccent = LerpColor(bgAccent, bgAccentTarget, 0.16);
                 if (Math.Abs(bgAccent.R - bgAccentTarget.R) <= 2 && Math.Abs(bgAccent.G - bgAccentTarget.G) <= 2 && Math.Abs(bgAccent.B - bgAccentTarget.B) <= 2)
                     bgAccent = bgAccentTarget;
+                CambioElAcentoDelPanel(bgAccent);   // con umbral: esto corre en CADA latido, no solo al cambiar de cancion
                 this.Invalidate();   // tambien con buscador abierto: el fondo es barato y la franja de estado debe recolorear
             }
             albumView.BgAccent = bgAccent;

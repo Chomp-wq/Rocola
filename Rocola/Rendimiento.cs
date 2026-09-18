@@ -222,6 +222,7 @@ namespace Rocola
             gpuPanel.TransicionesTacto = transicionesTacto;
             gpuPanel.CachePortadas = true;
             if (searchOverlay != null) searchOverlay.SeparateGpu = true;
+            CambioElPanelDeReposo();   // 'estado ampliado transparente' y 'cola de doce' cambian como se dibuja
             if (!estadoExpandido) gpuPanel.IdleExpandTarget = false;
             gpuPanel.UiUrgent = true;
             gpuPanel.Fugaces = fugacesNiv;
