@@ -897,12 +897,18 @@ namespace Rocola
                         // ---- LA DURACION ----
                         if (v.Dur)
                         {
-                            float seg;
-                            if (EsVideo(v.Ruta)) { seg = MideDuracionVideo(v.Ruta, ref medidorVideo); caro = true; }
-                            else
+                            // ¿YA LA MIDIO ALGUIEN MIENTRAS TANTO? Medir una cancion publica TAMBIEN su
+                            // duracion, y esta lista se armo al arrancar: sin esta pregunta se vuelve a
+                            // abrir la cabecera de un archivo cuya duracion ya esta puesta.
+                            float seg = 0f;
+                            if (!YaSeMidio(v.Ruta))
                             {
-                                seg = DuracionPorCabecera(v.Ruta);            // unos kilobytes
-                                if (seg <= 0.01f) { seg = MideDuracionAudio(v.Ruta); caro = true; }   // respaldo: el archivo entero
+                                if (EsVideo(v.Ruta)) { seg = MideDuracionVideo(v.Ruta, ref medidorVideo); caro = true; }
+                                else
+                                {
+                                    seg = DuracionPorCabecera(v.Ruta);            // unos kilobytes
+                                    if (seg <= 0.01f) { seg = MideDuracionAudio(v.Ruta); caro = true; }   // respaldo: el archivo entero
+                                }
                             }
                             if (seg > 0.01f) { lote.Add(v.Ruta); lotd.Add(seg); }
                             durHechas++;
@@ -1451,8 +1457,19 @@ namespace Rocola
                         // CADA video: tres archivos corruptos no deben deshabilitar la medicion de todos los buenos.
                         bool esVid = EsVideo(ruta);
                         if (esVid && videoSinMedir) { System.Threading.Interlocked.Decrement(ref preScanLeft); continue; }
-                        float rms, dur; float[] eqCurve;
-                        if (!MeasureFileResponsive(ruta, turbo, delegate { return preScanStop || myGen != preScanGen; }, out rms, out dur, out eqCurve))
+                        // ¿LA ESTA MIDIENDO OTRO, O YA LA MIDIO ALGUIEN? Esta lista se armo al arrancar y
+                        // vive horas; mientras tanto el calentador va midiendo lo que la gente pide. Sin
+                        // esta pregunta, cada cancion pedida se media DOS VECES (ver ReclamaMedida).
+                        if (!ReclamaMedida(ruta, turbo))
+                        {
+                            System.Threading.Interlocked.Decrement(ref preScanLeft);   // idem que abajo: si no, el contador de 'faltan' se queda clavado
+                            continue;
+                        }
+                        float rms = 0f, dur = 0f; float[] eqCurve = null;
+                        bool midio;
+                        try { midio = MeasureFileResponsive(ruta, turbo, delegate { return preScanStop || myGen != preScanGen; }, out rms, out dur, out eqCurve); }
+                        finally { SueltaMedida(ruta); }   // pase lo que pase: un turno que no se suelta tapa ese archivo para siempre
+                        if (!midio)
                         {
                             if (preScanStop || myGen != preScanGen) break;
                             System.Threading.Interlocked.Decrement(ref preScanLeft);

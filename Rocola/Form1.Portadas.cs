@@ -165,8 +165,16 @@ namespace Rocola
                         System.Threading.Thread.Sleep(300);
                         if (mio != warmSongGen) return;
                     }
-                    float wrms, wdur; float[] weq;
-                    if (!MeasureFileResponsive(ruta, false, delegate { return mio != warmSongGen || preScanStop; }, out wrms, out wdur, out weq)) return;
+                    // El turno, igual que en el repaso: si otro la esta midiendo -o ya se midio- no se
+                    // vuelve a hacer el trabajo. Aqui se pide DESPUES de esperar a caratulas y video, no
+                    // antes: un turno pedido y guardado mientras se espera taparia el archivo sin estar
+                    // midiendolo.
+                    if (!ReclamaMedida(ruta, false)) return;
+                    float wrms = 0f, wdur = 0f; float[] weq = null;
+                    bool midio;
+                    try { midio = MeasureFileResponsive(ruta, false, delegate { return mio != warmSongGen || preScanStop; }, out wrms, out wdur, out weq); }
+                    finally { SueltaMedida(ruta); }
+                    if (!midio) return;
                     if (mio != warmSongGen) return;
                     // Las tablas son del hilo de la pantalla: se le encarga a el que las escriba.
                     try
