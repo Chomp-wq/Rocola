@@ -743,7 +743,37 @@ namespace Rocola
         // hallada junto a la rocola -> rocola y motor coinciden SOLOS, sin configurar ni arrastrar nada.
         private string IaCache()
         { return IaCacheFor(iaCacheDir); }
+
+        // BUSCAR EL MOTOR CUESTA DOCE PREGUNTAS AL DISCO, Y SE HACIA EN CADA CANCION.
+        //
+        // IaFindEngine sube hasta SEIS carpetas y en cada una pregunta por dos archivos. Eso corre dentro
+        // de IaCache(), que corre dentro de IaEnhancedPath, que corre al empezar cada cancion. Medido
+        // aqui son 0,026 ms: poco. Pero son doce toques de disco a la hora en que ESE disco esta ocupado
+        // leyendo por delante la siguiente cancion y repasando la biblioteca, y lo que se repite no es el
+        // tiempo, es el numero de veces que se le pide algo al cabezal.
+        //
+        // El motor NO SE MUEVE mientras la rocola corre, asi que se recuerda. Y se vuelve a mirar cada
+        // diez segundos, no una sola vez, por si alguien lo ACABA de instalar: asi sigue apareciendo solo
+        // sin tener que reiniciar la rocola, que es como estaba pensado.
+        //
+        // El recuerdo lleva candado porque esto tambien lo llama el trabajador que publica los encargos
+        // (IaDrainRequests), no solo el hilo de la pantalla.
+        private static readonly object iaCacheCerrojo = new object();
+        private static string iaCacheRecordada, iaCacheDeQue;
+        private static int iaCacheCuando;
+        private const int IaCacheRecuerdoMs = 10000;
         private static string IaCacheFor(string configured)
+        {
+            string clave = configured ?? "";
+            int ahora = Environment.TickCount;
+            lock (iaCacheCerrojo)
+                if (iaCacheRecordada != null && iaCacheDeQue == clave
+                    && unchecked(ahora - iaCacheCuando) < IaCacheRecuerdoMs) return iaCacheRecordada;
+            string r = IaCacheCalcula(configured);
+            lock (iaCacheCerrojo) { iaCacheRecordada = r; iaCacheDeQue = clave; iaCacheCuando = ahora; }
+            return r;
+        }
+        private static string IaCacheCalcula(string configured)
         {
             try
             {

@@ -40,7 +40,7 @@ C_GPU="$TMP_PRUEBAS/c_rocola_gpu.txt"
 
 # Las que miran cosas que solo existen con tarjeta grafica (la aurora, el barrido de luz) van
 # contra el perfil de GPU; las demas contra el normal.
-CPU="ajustes bajo eqauto bajoauto calidad eqia nivel titulo duracion prueba prueba2 prueba3 prueba4 neon fps abc barrido2 espacio busca buscaigual bolsa genero pagina busmov parcial disco ssd etiqueta sala hojea cosecha resol letrero franjas dsee noche respaldo ventana salir carpeta carpetas miniaturas pared sobras gasto historial estrellas limite vacias videos franja colores carriles indice proyecto primera usando escribe reposo cambio apagon unasola entrar iadatos entrenador corta deriva ligera simbolos leer turno cara vuelta respira orden detalles calienta sola duerme teclea palomito moneda nebulosa pedidas tiron cielo fondocoste fugaces luna descompresor pestanas nebfuerza vigia aperturaaudio efectoslayout eqpreparado escaneomemo precarga medidas arranque"
+CPU="ajustes bajo eqauto bajoauto calidad eqia nivel titulo duracion prueba prueba2 prueba3 prueba4 neon fps abc barrido2 espacio busca buscaigual bolsa genero pagina busmov parcial disco ssd etiqueta sala hojea cosecha resol letrero franjas dsee noche respaldo ventana salir carpeta carpetas miniaturas pared sobras gasto historial estrellas limite vacias videos franja colores carriles indice proyecto primera usando escribe reposo cambio apagon unasola entrar iadatos entrenador corta deriva ligera simbolos leer turno cara vuelta respira orden detalles calienta sola duerme teclea palomito moneda nebulosa pedidas tiron cielo fondocoste fugaces luna descompresor pestanas nebfuerza vigia aperturaaudio efectoslayout eqpreparado escaneomemo precarga medidas arranque apollo"
 # 'turno' no va contra el perfil de tarjeta grafica: la cuenta de cuanto falta para tu cancion vive
 # en dos funciones puras -reciben numeros y devuelven un numero-, asi que se le pueden dar casos a
 # mano sin encender nada.
@@ -288,6 +288,37 @@ corre "$CPU"
 cp -f rocola_gpu.exe rocola.exe || { echo "  No se pudo activar el perfil GPU"; exit 1; }
 corre "$GPU"
 cp -f rocola_cpu.exe rocola.exe || { echo "  No se pudo restaurar el perfil CPU"; exit 1; }
+
+# ============================================================================================
+#  LAS PRUEBAS DE LAS HERRAMIENTAS DE FUERA (Python)
+#
+#  Apollo, el entrenamiento del EQ y el comparador A/B traen sus propias pruebas desde hace
+#  tiempo, pero vivian SUELTAS: habia que acordarse de lanzarlas a mano, y por tanto no se
+#  lanzaban. Aqui se enganchan a la tanda, que es lo unico que se corre de verdad.
+#
+#  No piden ni torch ni el modelo de Apollo: son de numpy y de la biblioteca de Python. Si esta
+#  maquina no tiene numpy se dice y se sigue -el resto de la tanda no depende de ellas-, pero no
+#  se da por buena una tanda sin decir que faltaron.
+# ============================================================================================
+if python3 -c "import numpy" >/dev/null 2>&1; then
+  for d in "$RAIZ/ia/upscale" "$RAIZ/ia"; do
+    [ -d "$d" ] || continue
+    for f in "$d"/test_*.py; do
+      [ -f "$f" ] || continue
+      t=$(basename "$f" .py)
+      rt="$TMP_PRUEBAS/py_$t.txt"
+      if (cd "$d" && python3 -m unittest "$t" > "$rt" 2>&1); then
+        echo "  bien         $t   (python)"
+      else
+        echo "  FALLA        $t   (python)"
+        tail -6 "$rt" | sed 's/^/        /'
+        mal=$((mal+1))
+      fi
+    done
+  done
+else
+  echo "  SIN NUMPY: las pruebas de las herramientas de fuera no se corrieron en esta maquina"
+fi
 
 echo
 if [ $mal -eq 0 ]; then echo "TODAS LAS BATERIAS EN VERDE"; else echo "BATERIAS CON PROBLEMAS: $mal"; fi

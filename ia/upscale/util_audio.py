@@ -190,7 +190,23 @@ def por_trozos(x, proc, fs=FS, seg=10.0, sol=0.5):
         if not np.issubdtype(y.dtype, np.number) or not np.isrealobj(y) or not np.isfinite(y[:n]).all():
             raise ValueError("el modelo devolvio valores no numericos o no finitos")
         return y[:n]
-    out = np.zeros_like(x); wsum = np.zeros((n, 1))
+    out = np.zeros_like(x)
+    # NO SE GUARDA UN MAPA DE PESOS DEL LARGO DE LA CANCION.
+    #
+    # Antes habia un wsum de n muestras -ochenta megas en una cancion de cuatro minutos, medido- que solo
+    # servia para dividir al final. No hace falta: con trozos que avanzan mas de lo que se solapan, cada
+    # muestra la tocan COMO MUCHO DOS trozos, y donde se tocan los dos pesos suman siempre LO MISMO (una
+    # rampa que sube mas la que baja). Fuera de esos solapes el peso es exactamente 1, y dividir por 1 no
+    # cambia ni un bit.
+    #
+    # Asi que se apuntan solo los solapes -unos pocos numeros- y se divide ahi. El resultado sale IDENTICO
+    # byte a byte al de antes; lo comprueba test_mezcla_memoria.py.
+    #
+    # Si alguien pide trozos que se pisan de tres en tres (seg apenas mayor que sol), esa cuenta corta ya
+    # no vale y se hace como siempre, con el mapa entero. Vale mas gastar memoria que devolver otra cosa.
+    acotado = (L - O >= O)
+    wsum = None if acotado else np.zeros((n, 1))
+    solapes = []
     p = 0
     while p < n:
         q = min(p + L, n)
@@ -203,11 +219,24 @@ def por_trozos(x, proc, fs=FS, seg=10.0, sol=0.5):
         w = np.ones((q - p, 1))
         if O and p > 0: w[:min(O, q - p), 0] = np.linspace(0.0, 1.0, min(O, q - p))
         if O and q < n: w[-min(O, q - p):, 0] = np.minimum(w[-min(O, q - p):, 0], np.linspace(1.0, 0.0, min(O, q - p)))
-        out[p:q] += y * w; wsum[p:q] += w
+        out[p:q] += y * w
+        if acotado:
+            if O and q < n: solapes.append(q)
+        else: wsum[p:q] += w
         if q >= n: break
         p = q - O
-    # Ambos buffers son locales. Evita otro array del tamano de la cancion y otro
-    # de pesos sin cambiar el orden aritmetico ni la precision float64 de Apollo.
+    # Los buffers son locales. Se conserva el orden aritmetico y la precision float64 de Apollo.
+    if acotado:
+        # Lo que suman los dos pesos en un solape: siempre el mismo vector, y siempre de O muestras.
+        comb = np.maximum((np.linspace(1.0, 0.0, O) + np.linspace(0.0, 1.0, O)).reshape(O, 1), 1e-9) if O else None
+        if out.dtype == np.float64:
+            for q in solapes: np.divide(out[q - O:q], comb, out=out[q - O:q])
+            return out
+        # Con float32 la division original PROMUEVE a float64; fuera del solape, dividir por 1.0 es
+        # exactamente pasar a float64, asi que se hace de una y solo se divide en los solapes.
+        res = out.astype(np.float64)
+        for q in solapes: np.divide(out[q - O:q], comb, out=res[q - O:q])
+        return res
     np.maximum(wsum, 1e-9, out=wsum)
     if out.dtype == np.float64:
         np.divide(out, wsum, out=out)
