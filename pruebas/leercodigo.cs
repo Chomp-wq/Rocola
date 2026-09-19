@@ -162,6 +162,73 @@ static class Codigo
         return r;
     }
 
+    // DONDE EMPIEZAN Y ACABAN LOS BUCLES de un metodo.
+    //
+    // En el programa ya compilado un bucle es un SALTO HACIA ATRAS: una instruccion que dice "vuelve a
+    // aquella de mas arriba". Todo lo que quede entre el sitio al que vuelve y el salto mismo se ejecuta
+    // MAS DE UNA VEZ.
+    //
+    // Hace falta para poder preguntar "¿esta llamada se hace UNA vez, o una por cada disco de la pared?",
+    // que es la diferencia entre un envio de dibujo y treinta.
+    //
+    // Pasos() no sirve para esto: solo descifra los numeros de cuatro bytes, y la mayoria de los saltos son
+    // de UNO -la forma corta-, asi que alli el destino se queda en cero. Aqui se lee el metodo byte a byte.
+    //
+    // Devuelve pares {desde, hasta} en bytes del metodo. Se solapan cuando hay un bucle dentro de otro, que
+    // es justo lo que hay que ver para contar bien.
+    public static List<int[]> Bucles(MethodBase m)
+    {
+        List<int[]> r = new List<int[]>();
+        if (m == null) return r;
+        MethodBody b = null; try { b = m.GetMethodBody(); } catch { }
+        if (b == null) return r;
+        byte[] il = null; try { il = b.GetILAsByteArray(); } catch { }
+        if (il == null) return r;
+        int i = 0;
+        while (i < il.Length)
+        {
+            int op = il[i];
+            if (op == 0xFE)
+            {
+                if (i + 1 >= il.Length) break;
+                i += 2 + Largo2(il[i + 1]);
+                continue;
+            }
+            if (op == 0x45)   // switch: los destinos van detras, uno por rama
+            {
+                if (i + 5 > il.Length) break;
+                int n = BitConverter.ToInt32(il, i + 1);
+                if (n < 0 || n > (il.Length - i) / 4) break;
+                i += 1 + 4 + 4 * n;
+                continue;
+            }
+            int largo = Largo1(op);
+            int sigue = i + 1 + largo;
+            bool corto = (op >= 0x2B && op <= 0x37) || op == 0xDE;
+            bool largoSalto = (op >= 0x38 && op <= 0x44) || op == 0xDD;
+            if (corto && i + 1 < il.Length)
+            {
+                int destino = sigue + (sbyte)il[i + 1];
+                if (destino <= i) r.Add(new int[] { destino, i });
+            }
+            else if (largoSalto && i + 4 < il.Length)
+            {
+                int destino = sigue + BitConverter.ToInt32(il, i + 1);
+                if (destino <= i) r.Add(new int[] { destino, i });
+            }
+            i = sigue;
+        }
+        return r;
+    }
+
+    // ¿Este byte del metodo cae dentro de algun bucle?
+    public static bool EnBucle(List<int[]> bucles, int donde)
+    {
+        for (int i = 0; i < bucles.Count; i++)
+            if (donde >= bucles[i][0] && donde <= bucles[i][1]) return true;
+        return false;
+    }
+
     // Lo que un metodo LLAMA o LEE, en orden: el nombre pelado de cada llamada, y el nombre del campo con un
     // "$" delante cuando lo que hace es leerlo. Sirve para preguntarle al programa "¿que mira justo antes de
     // hacer esto?", que es como se comprueba una condicion sin apretar un solo boton.
