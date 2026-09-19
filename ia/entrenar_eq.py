@@ -88,6 +88,28 @@ class Mlp:
         return acts
     def predict(self, X): return self.forward(X)[-1]
 
+def error_medio(model, X, Y, lote):
+    """El error cuadratico medio, SUMADO POR LOTES.
+
+    Antes esto era ((model.predict(X) - Y)**2).mean(), y se hacia con el conjunto ENTERO de una vez:
+    en cada epoca para el de validacion, y cada veinte para el de entrenamiento. Predecir de una arma
+    la pila de activaciones de TODAS las canciones a la vez -entradas, capa oculta y salida-, y con una
+    biblioteca grande eso es el pico de memoria de todo el entrenamiento, pagado una y otra vez solo
+    para imprimir un numero.
+
+    Se suma lote a lote, del mismo tamano con el que ya se entrena. El resultado NO es identico al
+    ultimo bit -sumar en trozos no da exactamente lo mismo que sumar de una-, pero la diferencia es del
+    orden del redondeo y no cambia cual es la mejor epoca. Lo comprueba ia/test_entrenar_eq.py.
+    """
+    if len(X) == 0:
+        return 0.0
+    suma = 0.0
+    for i in range(0, len(X), lote):
+        d = model.predict(X[i:i + lote]) - Y[i:i + lote]
+        suma += float((d * d).sum())
+    return suma / (len(X) * Y.shape[1])
+
+
 def entrenar(model, X, Y, Xv, Yv, epocas, lr=3e-3, lote=256, semilla=3, l2=1e-5):
     if epocas <= 0 or lote <= 0 or len(X) == 0 or len(Xv) == 0:
         raise ValueError("Se requieren epocas/lote positivos y ejemplos de entrenamiento y validacion")
@@ -111,12 +133,12 @@ def entrenar(model, X, Y, Xv, Yv, epocas, lr=3e-3, lote=256, semilla=3, l2=1e-5)
                 mB[L] = b1*mB[L] + (1-b1)*gB; vB[L] = b2*vB[L] + (1-b2)*gB**2
                 model.W[L] -= lr * (mW[L]/c1) / (np.sqrt(vW[L]/c2) + eps)
                 model.B[L] -= lr * (mB[L]/c1) / (np.sqrt(vB[L]/c2) + eps)
-        vl = float(((model.predict(Xv) - Yv)**2).mean())
+        vl = error_medio(model, Xv, Yv, lote)
         if vl < mejor:   # se guarda el MEJOR punto, no el ultimo: asi no se pasa de entrenamiento
             mejor = vl
             mejorW = [w.copy() for w in model.W]; mejorB = [b.copy() for b in model.B]
         if (ep+1) % 20 == 0 or ep == 0:
-            tr = float(((model.predict(X) - Y)**2).mean())
+            tr = error_medio(model, X, Y, lote)
             print("  epoca %3d   error entrenando %.4f   error validando %.4f" % (ep+1, tr, vl))
     model.W, model.B = mejorW, mejorB
     return model
