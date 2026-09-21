@@ -1356,6 +1356,7 @@ namespace Rocola
             // por caducado en cuanto lo nota y sale solo. Antes se volvia con "ya hay uno trabajando", asi que
             // la musica AGREGADA despues no se media hasta reiniciar la rocola.
             int myGen = ++preScanGen;
+            ReiniciaMedidasHechas();
             bool turbo = preScanTurbo;
             int elegibles;
             List<string> pend = TandaPorMedir(turbo, out elegibles);
@@ -1425,36 +1426,45 @@ namespace Rocola
                         // ¿LA ESTA MIDIENDO OTRO, O YA LA MIDIO ALGUIEN? Esta lista se armo al arrancar y
                         // vive horas; mientras tanto el calentador va midiendo lo que la gente pide. Sin
                         // esta pregunta, cada cancion pedida se media DOS VECES (ver ReclamaMedida).
-                        if (!ReclamaMedida(ruta, turbo))
+                        if (!ReclamaMedidaEsperando(ruta, turbo, delegate { return preScanStop || myGen != preScanGen; }))
                         {
+                            if (preScanStop || myGen != preScanGen) break;
                             System.Threading.Interlocked.Decrement(ref preScanLeft);   // idem que abajo: si no, el contador de 'faltan' se queda clavado
                             continue;
                         }
                         float rms = 0f, dur = 0f; float[] eqCurve = null;
-                        bool midio;
-                        try { midio = MeasureFileResponsive(ruta, turbo, delegate { return preScanStop || myGen != preScanGen; }, out rms, out dur, out eqCurve); }
-                        finally { SueltaMedida(ruta); }   // pase lo que pase: un turno que no se suelta tapa ese archivo para siempre
-                        if (!midio)
-                        {
-                            if (preScanStop || myGen != preScanGen) break;
-                            System.Threading.Interlocked.Decrement(ref preScanLeft);
-                            continue;
-                        }
-                        // publicar en el hilo de la interfaz (las tablas son suyas): sin carreras
+                        bool midio, queued = false;
                         try
                         {
-                            if (!IsHandleCreated || preScanStop || myGen != preScanGen) break;
-                             BeginInvoke((MethodInvoker)delegate
-                             {
-                                 if (myGen != preScanGen) return;   // llego de una generacion caducada: descartar
-                                 PublicaMedida(ruta, rms, dur, eqCurve);
-                                 // La marca se publica DESPUES de que las tablas recibieron la medida. Si F5
-                                 // invalida esta generacion, la cancion queda pendiente y puede intentarse otra vez.
-                                 if (turbo) MarkDeepDone(ruta);
-                                 if (preScanLeft > 0) System.Threading.Interlocked.Decrement(ref preScanLeft);
-                             });
+                            midio = MeasureFileResponsive(ruta, turbo, delegate { return preScanStop || myGen != preScanGen; }, out rms, out dur, out eqCurve);
+                            if (!midio)
+                            {
+                                if (preScanStop || myGen != preScanGen) break;
+                                System.Threading.Interlocked.Decrement(ref preScanLeft);
+                                continue;
+                            }
+                            // publicar en el hilo de la interfaz (las tablas son suyas): sin carreras
+                            try
+                            {
+                                if (!IsHandleCreated || preScanStop || myGen != preScanGen) break;
+                                 BeginInvoke((MethodInvoker)delegate
+                                 {
+                                     try
+                                     {
+                                     if (myGen != preScanGen) return;   // llego de una generacion caducada: descartar
+                                     PublicaMedida(ruta, rms, dur, eqCurve);
+                                     // La marca se publica DESPUES de que las tablas recibieron la medida. Si F5
+                                     // invalida esta generacion, la cancion queda pendiente y puede intentarse otra vez.
+                                     if (turbo) MarkDeepDone(ruta);
+                                     if (preScanLeft > 0) System.Threading.Interlocked.Decrement(ref preScanLeft);
+                                     }
+                                     finally { SueltaMedida(ruta); }
+                                 });
+                                queued = true;
+                            }
+                            catch { break; }
                         }
-                        catch { break; }
+                        finally { if (!queued) SueltaMedida(ruta); }
                         int hechas = System.Threading.Interlocked.Increment(ref hechasTot);
                         if ((hechas % guardaCada) == 0)
                             try { if (IsHandleCreated) BeginInvoke((MethodInvoker)delegate { SaveLoudCache(); FlushEqIfDirty(); if (iaDoneDirty) { iaDoneDirty = false; SaveIaDone(); } if (deepDoneDirty) { deepDoneDirty = false; SaveDeepDone(); } }); } catch { }

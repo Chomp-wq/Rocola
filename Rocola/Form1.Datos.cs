@@ -1492,7 +1492,7 @@ namespace Rocola
             // Y se apunta en la libreta compartida, para que nadie la vuelva a medir en esta sesion. Solo
             // si de verdad quedo algo escrito: un archivo roto no da nada, y darlo por medido seria no
             // volver a intentarlo nunca.
-            if (puesto) MedidaPuesta(ruta);
+            if (puesto && rms > 0f && dur > 0.01f) MedidaPuesta(ruta);
             if (panelSongs != null && panelSongs.Visible) RefrescaLista();   // que aparezca la duracion recien sabida
         }
 

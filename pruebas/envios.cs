@@ -152,12 +152,12 @@ class Envios
         Console.WriteLine("     LA PARED DE DISCOS, una por casilla          hasta " + maxCasillas + " envios"
                           + ((cols > 0 && filas > 0) ? ("   (la pagina son " + cols + "x" + filas + " = " + (cols * filas)
                              + "; hojeando se ven dos)") : ""));
-        Console.WriteLine("     el disco elegido y el del relevo (cubos)     2 a 8 envios   (una por cara visible)");
+        Console.WriteLine("     el disco elegido y el del relevo (cubos)     hasta 2 envios (uno por cubo visible)");
         Console.WriteLine("     las franjas de arriba y de abajo             2 envios");
         Console.WriteLine("     TODOS los halos juntos                       1 envio");
         Console.WriteLine();
-        Console.WriteLine("     o sea que de un cuadro de unos " + (maxCasillas + 16) + " envios, LA PARED SE LLEVA "
-                          + maxCasillas + ": dos de cada tres.");
+        Console.WriteLine("     Estimacion de este escenario: hasta " + (maxCasillas + 12) + " envios; pared: hasta "
+                          + maxCasillas + ". No es un contador de un cuadro real.");
         Console.WriteLine("     Y cada casilla lleva SU PROPIA textura, asi que juntarlas de verdad pediria un");
         Console.WriteLine("     atlas: meter muchas portadas en una sola imagen. Es un cambio grande, y sin los");
         Console.WriteLine("     FPS del equipo del bar no se justifica.");
@@ -212,7 +212,7 @@ class Envios
         int bucles = 0;
         foreach (Sitio s in sitios) if (s.EnBucle) bucles++;
         Console.WriteLine("     sitios que envian dentro de un bucle: " + bucles);
-        Exige(bucles >= 1, "hay al menos un sitio que envia por vuelta (la pared, y las caras de los cubos)");
+        Exige(bucles >= 1, "hay al menos un sitio que envia por vuelta (las casillas de la pared)");
         Exige(bucles <= 6, "y NO se han ido multiplicando: siguen siendo " + bucles
                            + ". Si este numero sube, alguien metio un envio nuevo dentro de un bucle");
     }

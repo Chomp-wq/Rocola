@@ -18,13 +18,16 @@ foreach ($mode in @('gpu', 'cpu')) {
     if ($LASTEXITCODE -ne 0) { throw "No compila $mode" }
 }
 $exe = Join-Path $OutputDirectory 'Rocola-gpu.exe'
-foreach ($test in @('capascolor', 'cristalcola', 'cubofila', 'respuesta', 'efectoslayout', 'reposounido', 'lunadetalle', 'optimizaciones', 'eqpreparado', 'hojeoportadas', 'cargaadaptativa', 'escaneomemo', 'aperturaaudio')) {
+Push-Location $testRoot
+try {
+foreach ($test in @('capascolor', 'cristalcola', 'cubofila', 'respuesta', 'efectoslayout', 'reposounido', 'lunadetalle', 'optimizaciones', 'eqpreparado', 'hojeoportadas', 'cargaadaptativa', 'escaneomemo', 'aperturaaudio', 'precarga', 'medidas', 'arranque', 'apollo', 'panelreposo', 'envios', 'revision20260921', 'cuboagrupado')) {
     $testExe = Join-Path $OutputDirectory ($test + '.exe')
-    & $compiler /nologo /target:exe /optimize+ /warnaserror+ ("/out:$testExe") /r:System.dll /r:System.Core.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll ("/r:$naudio") (Join-Path $testRoot ($test + '.cs'))
+    & $compiler /nologo /target:exe /optimize+ /warnaserror+ ("/out:$testExe") /r:System.dll /r:System.Core.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll ("/r:$naudio") (Join-Path $testRoot ($test + '.cs')) (Join-Path $testRoot 'leercodigo.cs')
     if ($LASTEXITCODE -ne 0) { throw "No compila $test" }
     if ($test -eq 'cristalcola') { & $testExe $exe (Join-Path $sourceRoot 'Form1.Ajustes.cs') }
     elseif ($test -eq 'cubofila' -or $test -eq 'efectoslayout') { & $testExe $exe (Join-Path $OutputDirectory ($test + '.png')) }
     else { & $testExe $exe }
     if ($LASTEXITCODE -ne 0) { throw "Fallo: $test" }
 }
-Write-Output "PASS: compilacion GPU/CPU y trece baterias. No se reemplazo ningun ejecutable de produccion. Salida: $OutputDirectory"
+} finally { Pop-Location }
+Write-Output "PASS: compilacion GPU/CPU y veintiuna baterias. No se reemplazo ningun ejecutable de produccion. Salida: $OutputDirectory"

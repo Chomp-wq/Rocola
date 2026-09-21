@@ -18,6 +18,8 @@
 #    python daemon_ia.py [--cache <carpeta>] [--tope_gb 20]
 # ============================================================================================
 import sys, os, json, time, fnmatch, hashlib, subprocess, argparse, shutil, math, stat
+from collections import OrderedDict
+from copy import deepcopy
 # Bajo pythonw.exe (la rocola lo lanza SIN consola) sys.stdout y sys.stderr son None: cualquier
 # print() nuestro o barra de progreso de una libreria (huggingface/tqdm) reventaria con
 # "'NoneType' object has no attribute 'write'". Los redirigimos a la nada para que nada truene;
@@ -246,11 +248,43 @@ def _error_path(listos, h):
     return os.path.join(listos, h + ".error")
 
 _ERRORES_MEM = {}
+_JSON_MEM = OrderedDict()
+_JSON_MEM_TOPE = 64
+
+
+def _lee_json_recordado(path, encoding="utf-8"):
+    """Evita reabrir trabajos/errores sin cambiar; nunca recuerda fuente ni modelo.
+
+    El motor tiene un solo consumidor. Metadatos frescos en cada consulta y TTL
+    de dos segundos como resguardo para unidades con marcas de tiempo gruesas.
+    Solo se guardan documentos pequenos, con un maximo de 64 entradas.
+    """
+    key = (os.path.abspath(path), encoding)
+    def firma(st):
+        return (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns)
+    try:
+        stamp = firma(os.stat(path))
+        now = time.monotonic()
+        saved = _JSON_MEM.get(key)
+        if saved is not None and saved[0] == stamp and now - saved[1] < 2.0:
+            _JSON_MEM.move_to_end(key)
+            return deepcopy(saved[2])
+        with open(path, encoding=encoding) as f:
+            value = json.load(f)
+            after = firma(os.fstat(f.fileno()))
+        _JSON_MEM.pop(key, None)
+        if stamp == after and stamp[2] <= 64 * 1024:
+            _JSON_MEM[key] = (stamp, now, deepcopy(value))
+            while len(_JSON_MEM) > _JSON_MEM_TOPE:
+                _JSON_MEM.popitem(last=False)
+        return value
+    except Exception:
+        _JSON_MEM.pop(key, None)
+        raise
 
 def _lee_error(listos, h):
     try:
-        with open(_error_path(listos, h), encoding="utf-8") as f:
-            dato = json.load(f)
+        dato = _lee_json_recordado(_error_path(listos, h))
         if isinstance(dato, dict):
             _ERRORES_MEM[h] = dato
             return dato
@@ -364,7 +398,7 @@ def procesar_uno(job_path, listos, proc, ffmpeg, pipeline, ffprobe, seg=10.0):
     try:
         if os.path.getsize(job_path) > 64 * 1024:
             raise ValueError("archivo .job demasiado grande")
-        with open(job_path, encoding="utf-8-sig") as f: job = json.load(f)
+        job = _lee_json_recordado(job_path, "utf-8-sig")
     except Exception as e:
         h = os.path.splitext(os.path.basename(job_path))[0].lower()
         persistido = False
@@ -478,7 +512,7 @@ def _quita_requerido(p):
 
 def evictar(listos, tope_gb):
     """Si la cache pasa del tope, borra los archivos MENOS usados recientemente (por fecha de
-    acceso). Cubre .mp3 (cache nueva) y .wav (cache vieja); las marcas .orig pesan bytes."""
+    acceso). Cubre .mp3 heredado y .wav flotante actual; las marcas .orig pesan bytes."""
     tope = tope_gb * (1024 ** 3)
     arch = []
     total = 0

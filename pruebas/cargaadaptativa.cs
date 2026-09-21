@@ -125,7 +125,7 @@ class CargaAdaptativa {
  }
  [STAThread] static int Main(string[] args){
   Assembly asm=Assembly.LoadFrom((args.Length > 0 ? args[0] : "rocola.exe"));Type policy=asm.GetType("Rocola.CargaTrabajo");
-  int[] cores={1,2,3,4,8,32},expected={1,1,2,3,4,4};
+  int[] cores={1,2,3,4,8,12,16,32},expected={1,1,2,3,4,6,8,8};
   for(int i=0;i<cores.Length;i++)Check((int)Call(policy,null,"Lectores",cores[i])==expected[i],"Limite CPU");
   Check((long)Call(policy,null,"LimiteTicks",2)<(long)Call(policy,null,"LimiteTicks",4),"No reduce presupuesto en 2C/2T");
   Check((bool)Call(policy,null,"PuedeEmpezar",200L,500L,100L,true),"No garantiza avance visible");

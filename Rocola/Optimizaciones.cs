@@ -58,6 +58,23 @@ namespace Rocola
             if (ruta == null) return;
             lock (medidasCerrojo) medidasEnCurso.Remove(ruta);
         }
+        private static bool ReclamaMedidaEsperando(string ruta, bool aFondo, Func<bool> cancel)
+        {
+            if (ruta == null) return false;
+            while (true)
+            {
+                if (cancel != null && cancel()) return false;
+                lock (medidasCerrojo)
+                    if (!medidasEnCurso.Contains(ruta)) return ReclamaMedida(ruta, aFondo);
+                // Ocupado no significa completado: si el otro se cancela, este conserva su trabajo.
+                System.Threading.Thread.Sleep(40);
+            }
+        }
+        private static void ReiniciaMedidasHechas()
+        {
+            // No borrar turnos vivos: una generacion vieja aun debe soltar su propio archivo.
+            lock (medidasCerrojo) medidasHechas.Clear();
+        }
         // Se apunta cuando la medida ESTA PUESTA en las tablas, no cuando se pide. Un archivo roto no
         // da ni duracion ni sonoridad: darlo por medido seria no volver a intentarlo nunca.
         private static void MedidaPuesta(string ruta)

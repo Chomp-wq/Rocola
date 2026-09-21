@@ -768,7 +768,7 @@ namespace Rocola
             int ahora = Environment.TickCount;
             lock (iaCacheCerrojo)
                 if (iaCacheRecordada != null && iaCacheDeQue == clave
-                    && unchecked(ahora - iaCacheCuando) < IaCacheRecuerdoMs) return iaCacheRecordada;
+                    && unchecked((uint)(ahora - iaCacheCuando)) < IaCacheRecuerdoMs) return iaCacheRecordada;
             string r = IaCacheCalcula(configured);
             lock (iaCacheCerrojo) { iaCacheRecordada = r; iaCacheDeQue = clave; iaCacheCuando = ahora; }
             return r;
@@ -848,8 +848,8 @@ namespace Rocola
                 string h = IaHashFor(path, iaMezcla, pipeline); if (h == null) return null;
                 string dir = Path.Combine(IaCache(), "listos");
                 if (File.Exists(Path.Combine(dir, h + ".error"))) return null;             // backoff/terminal: original
-                string p = Path.Combine(dir, h + ".mp3"); if (File.Exists(p)) return IaTouch(p);   // cache nueva (MP3 320: ~5x mas canciones por GB)
-                p = Path.Combine(dir, h + ".wav"); if (File.Exists(p)) return IaTouch(p);          // cache vieja (WAV), sigue valiendo
+                string p = Path.Combine(dir, h + ".mp3"); if (File.Exists(p)) return IaTouch(p);   // formato heredado, si coincide la identidad
+                p = Path.Combine(dir, h + ".wav"); if (File.Exists(p)) return IaTouch(p);          // salida actual: WAV float32 sin recompresion
                 if (File.Exists(Path.Combine(dir, h + ".orig"))) { yaBuena = true; return path; }
                 return null;
             }
