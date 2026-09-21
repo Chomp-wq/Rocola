@@ -56,7 +56,7 @@ class EscaneoMemoTest {
  static void Main(string[] args){
   Type form=Assembly.LoadFrom((args.Length > 0 ? args[0] : "rocola.exe")).GetType("Rocola.Form1"),memoType=form.GetNestedType("ScanDirectoryMemo",F);
   object owner=FormatterServices.GetUninitializedObject(form);
-  int[] cpu={1,2,3,4,8,32},workers={1,1,2,3,4,4};
+  int[] cpu={1,2,3,4,8,12,16,32},workers={1,1,2,3,4,6,8,8};
   for(int i=0;i<cpu.Length;i++){
    Check((int)Call(form,null,"IndexWorkers",7999,cpu[i])==1,"Paraleliza indice pequeno");
    Check((int)Call(form,null,"IndexWorkers",20000,cpu[i])==workers[i],"No reserva margen al indexar");

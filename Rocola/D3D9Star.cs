@@ -498,6 +498,7 @@ namespace Rocola
 
         // Buffers reutilizables del cubo (evita asignar por cuadro). Solo se usan desde el hilo de render.
         private readonly D3D9.Vtx[] cubeFaceV = new D3D9.Vtx[6];
+        private readonly D3D9.Vtx[] cubeBatchV = new D3D9.Vtx[24];
         private readonly double[] cbx = new double[4];
         private readonly double[] cbz = new double[4];
         private readonly int[] cbo = new int[4];
@@ -522,6 +523,7 @@ namespace Rocola
             if (textured) { Tex(tex); TssModulate(); } else { Tex(IntPtr.Zero); TssDiffuse(); }
             Blend(3);
             uint av = (uint)(alpha * 255f + 0.5f); if (av > 255) av = 255;
+            int cubeCount = 0;
             for (int oi = 0; oi < 4; oi++)
             {
                 int k = cbo[oi];
@@ -535,8 +537,11 @@ namespace Rocola
                     ? (av << 24) | (g << 16) | (g << 8) | g                                   // textura * gris (oscurecido por profundidad)
                     : (av << 24) | ((((BlankCubeColor >> 16) & 255u) * g / 255u) << 16) | ((((BlankCubeColor >> 8) & 255u) * g / 255u) << 8) | ((BlankCubeColor & 255u) * g / 255u);
                 CubeFace(cubeFaceV, left, y0, right, y0 + Hh, cx, cyc, ct, stt, uMax, vMax, col);
-                Draw(cubeFaceV, 2);
+                Array.Copy(cubeFaceV, 0, cubeBatchV, cubeCount, 6);
+                cubeCount += 6;
             }
+            // Misma secuencia de triangulos y transparencias, una sola llamada por cubo.
+            if (cubeCount > 0) Draw(cubeBatchV, cubeCount / 3);
         }
         // Construye la cara (2 triangulos) con sus 4 esquinas ROTADAS el bamboleo alrededor de (cx,cy).
         private static void CubeFace(D3D9.Vtx[] v, float x0, float y0, float x1, float y1,
@@ -1652,7 +1657,7 @@ namespace Rocola
         private readonly GpuGridCell[] aheadGrid = new GpuGridCell[36];
         private long gridUploadCost;
         private double lastAheadMs, lastFrameWork;
-        private static readonly long GridWorkLimit = CargaTrabajo.LimiteTicks(CargaTrabajo.Procesadores);
+        private long GridWorkLimit { get { return CargaTrabajo.PresupuestoGpu(CargaTrabajo.Procesadores, TopeFpsReal, lastFrameWork); } }
         private readonly D3D9.Vtx[] cellQuad = new D3D9.Vtx[6];
         private IntPtr contourTex; private Bitmap lastContour; private float contU = 1f, contV = 1f;
         private readonly D3D9.Vtx[] contourQuad = new D3D9.Vtx[6];

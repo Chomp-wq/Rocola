@@ -207,10 +207,11 @@ class Arranque
 
         Exige(medidas >= 4, "se miden las piezas del arranque en cada pasada (" + medidas + ")");
         Console.WriteLine();
-        Console.WriteLine("     OJO CON EL PRIMER NUMERO: la llamada de Windows que baja el archivo al disco");
-        Console.WriteLine("     no existe en esta maquina, asi que ese tiempo sale SIN ella. En el equipo del");
-        Console.WriteLine("     bar hay que sumarle lo que tarde su disco en confirmar, que en uno duro son");
-        Console.WriteLine("     milisegundos y en un SSD bastante menos. Aqui no se puede saber.");
+        Console.WriteLine("     Es una microprueba local, no la latencia hasta oir la cancion.");
+        Console.WriteLine(Environment.OSVersion.Platform == PlatformID.Win32NT
+            ? "     En Windows incluye la llamada de vaciado; no certifica resistencia a apagones."
+            : "     Fuera de Windows no incluye FlushFileBuffers: no extrapolar al disco real.");
+        Console.WriteLine("     Hay que medir tambien almacenamiento, codecs y tarjeta de sonido del destino.");
         Bien("y se dice lo que este numero NO incluye, en vez de darlo por bueno");
     }
 

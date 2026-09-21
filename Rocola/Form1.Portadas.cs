@@ -169,20 +169,29 @@ namespace Rocola
                     // vuelve a hacer el trabajo. Aqui se pide DESPUES de esperar a caratulas y video, no
                     // antes: un turno pedido y guardado mientras se espera taparia el archivo sin estar
                     // midiendolo.
-                    if (!ReclamaMedida(ruta, false)) return;
+                    if (!ReclamaMedidaEsperando(ruta, false, delegate { return mio != warmSongGen || preScanStop; })) return;
                     float wrms = 0f, wdur = 0f; float[] weq = null;
-                    bool midio;
-                    try { midio = MeasureFileResponsive(ruta, false, delegate { return mio != warmSongGen || preScanStop; }, out wrms, out wdur, out weq); }
-                    finally { SueltaMedida(ruta); }
-                    if (!midio) return;
-                    if (mio != warmSongGen) return;
-                    // Las tablas son del hilo de la pantalla: se le encarga a el que las escriba.
+                    bool midio, queued = false;
                     try
                     {
-                        if (IsHandleCreated)
-                            BeginInvoke((MethodInvoker)delegate { if (mio == warmSongGen && !preScanStop) PublicaMedida(ruta, wrms, wdur, weq); });
+                        midio = MeasureFileResponsive(ruta, false, delegate { return mio != warmSongGen || preScanStop; }, out wrms, out wdur, out weq);
+                        if (!midio) return;
+                        if (mio != warmSongGen) return;
+                        // Las tablas son del hilo de la pantalla: se le encarga a el que las escriba.
+                        try
+                        {
+                            if (IsHandleCreated)
+                            {
+                                BeginInvoke((MethodInvoker)delegate {
+                                    try { if (mio == warmSongGen && !preScanStop) PublicaMedida(ruta, wrms, wdur, weq); }
+                                    finally { SueltaMedida(ruta); }
+                                });
+                                queued = true;
+                            }
+                        }
+                        catch { }
                     }
-                    catch { }
+                    finally { if (!queued) SueltaMedida(ruta); }
                 }
                 catch { }
             });

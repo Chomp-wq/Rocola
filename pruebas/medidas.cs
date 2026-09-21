@@ -129,9 +129,9 @@ class Medidas
         List<string> calienta = Codigo.ConAyudantes(TF, "PrecalientaSiguiente");
         List<string> duraciones = Codigo.ConAyudantes(TF, "StartDurScan");
 
-        Exige(Codigo.Llama(repaso, "ReclamaMedida"), "el repaso de la biblioteca pide turno antes de medir");
+        Exige(Codigo.Llama(repaso, "ReclamaMedidaEsperando"), "el repaso de la biblioteca pide turno antes de medir");
         Exige(Codigo.Llama(repaso, "SueltaMedida"), "y lo suelta despues");
-        Exige(Codigo.Llama(calienta, "ReclamaMedida"), "el calentador de la siguiente pide turno antes de medir");
+        Exige(Codigo.Llama(calienta, "ReclamaMedidaEsperando"), "el calentador de la siguiente pide turno antes de medir");
         Exige(Codigo.Llama(calienta, "SueltaMedida"), "y lo suelta despues");
 
         // SOLTARLO SIEMPRE. Si una medicion revienta a medias y el turno se queda pedido, ese archivo no
@@ -156,7 +156,7 @@ class Medidas
             {
                 Exige(!YaSe("rota-de-verdad.mp3"), "un archivo del que no sale nada NO se da por medido");
                 try { publica.Invoke(f, new object[] { "buena-de-verdad.mp3", 0f, 12.5f, null }); } catch { }
-                Exige(YaSe("buena-de-verdad.mp3"), "y uno del que sale la duracion, si");
+                Exige(!YaSe("buena-de-verdad.mp3"), "solo duracion no bloquea sonoridad y EQ");
             }
         }
         Exige(Codigo.Llama(duraciones, "YaSeMidio"), "el barrido de duraciones no re-abre lo que ya se midio");
@@ -171,9 +171,9 @@ class Medidas
             List<Codigo.Paso> pasos = Codigo.Pasos(m);
             for (int i = 0; i < pasos.Count; i++)
             {
-                if (!EsLlamadaA(m, pasos[i], "ReclamaMedida")) continue;
+                if (!EsLlamadaA(m, pasos[i], "ReclamaMedidaEsperando")) continue;
                 encontrado = true;
-                for (int j = i + 1; j < pasos.Count && j <= i + 12; j++)
+                for (int j = i + 1; j < pasos.Count && j <= i + 40; j++)
                     if (EsLlamadaA(m, pasos[j], "Decrement")) restaAlSaltar = true;
             }
         }

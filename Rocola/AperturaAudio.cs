@@ -115,6 +115,8 @@ namespace Rocola
         private long version;
         private string para;   // para que ruta vale lo que hay (o lo que se esta abriendo)
         private T listo;       // ya abierto, esperando su turno
+        internal Func<string, string> Signature;
+        private string firma;
         internal string Para { get { lock (gate) return para; } }
         internal bool Listo { get { lock (gate) return listo != null; } }
         private static void Release(T value) { if (value != null) try { value.Dispose(); } catch { } }
@@ -122,7 +124,7 @@ namespace Rocola
         internal void Suelta()
         {
             T old;
-            lock (gate) { version++; para = null; old = listo; listo = null; }
+            lock (gate) { version++; para = null; firma = null; old = listo; listo = null; }
             apertura.Cancel();
             Release(old);
         }
@@ -130,27 +132,31 @@ namespace Rocola
         internal void Pide(string ruta, Func<T> abre, Action<Action> post)
         {
             if (ruta == null || abre == null || post == null) { Suelta(); return; }
-            lock (gate) { if (string.Equals(ruta, para, StringComparison.OrdinalIgnoreCase)) return; }   // ya es esa
+            string stamp = Signature == null ? "" : Signature(ruta);
+            if (stamp == null) { Suelta(); return; }
+            lock (gate) { if (string.Equals(ruta, para, StringComparison.OrdinalIgnoreCase) && stamp == firma) return; }
             Suelta();
             long mia;
-            lock (gate) { para = ruta; mia = version; }
+            lock (gate) { para = ruta; firma = stamp; mia = version; }
             apertura.Start(abre, delegate(T value, Exception error)
             {
+                bool unchanged = Signature == null || stamp == Signature(ruta);
                 bool guardar;
-                lock (gate) { guardar = (error == null && value != null && mia == version && listo == null); if (guardar) listo = value; }
+                lock (gate) { guardar = (unchanged && error == null && value != null && mia == version && listo == null); if (guardar) listo = value; else if (mia == version) { para = null; firma = null; } }
                 if (!guardar) Release(value);
             }, post);
         }
 
         internal T Toma(string ruta)
         {
+            string stamp = Signature == null ? "" : Signature(ruta);
             T mio = null, sobra = null;
             lock (gate)
             {
                 version++;
-                if (listo != null && string.Equals(ruta, para, StringComparison.OrdinalIgnoreCase)) mio = listo;
+                if (listo != null && stamp != null && stamp == firma && string.Equals(ruta, para, StringComparison.OrdinalIgnoreCase)) mio = listo;
                 else sobra = listo;
-                listo = null; para = null;
+                listo = null; para = null; firma = null;
             }
             apertura.Cancel();   // lo que se estuviera abriendo ya no vale: esta sonando otra cosa
             Release(sobra);
@@ -162,6 +168,7 @@ namespace Rocola
     {
         private AperturaEnFondo<IAudioSource> audioOpening;
         private MiraPorDelante<IAudioSource> lookahead;
+        private IAudioSource audioReady; // propiedad explicita mientras BeginInvoke espera; cerrar tambien la libera
         private long audioStartVersion;
         private bool audioOpeningForMeasurement;
         // El medidor es una operacion explicita y sincronica: necesita la cadena lista
@@ -184,20 +191,25 @@ namespace Rocola
             // ¿ESTA YA ABIERTA? Se pide por la ruta EXACTA. Si el que espera es otro archivo, se suelta
             // ahi mismo y se abre como siempre.
             IAudioSource yaAbierto = (lookahead != null) ? lookahead.Toma(path) : null;
+            warmSongPath = null; unchecked { warmSongGen++; } // tambien permite precargar dos pedidos consecutivos iguales
             if (yaAbierto != null)
             {
                 // Se entrega por el MISMO camino que una apertura de verdad -un salto al hilo de la
                 // pantalla- para que el orden de lo que pasa despues no cambie por venir ya abierta.
-                long mio = ++audioStartVersion;
+                CancelAudioOpen();
+                audioReady = yaAbierto;
+                long mio = audioStartVersion;
                 try
                 {
                     BeginInvoke((MethodInvoker)delegate
                     {
+                        if (!object.ReferenceEquals(audioReady, yaAbierto)) return;
+                        audioReady = null;
                         if (audioStartVersion != mio || IsDisposed || Disposing) { try { yaAbierto.Dispose(); } catch { } return; }
                         completed(yaAbierto, null);
                     });
                 }
-                catch { try { yaAbierto.Dispose(); } catch { } throw; }
+                catch { CancelAudioOpen(); throw; }
                 return;
             }
             if (audioOpening == null) audioOpening = new AperturaEnFondo<IAudioSource>();
@@ -221,18 +233,33 @@ namespace Rocola
             if (audioOpeningForMeasurement || songPath == null) { SueltaLookahead(); return; }
             string ruta = RutaQueSonaria(songPath);
             if (ruta == null) { SueltaLookahead(); return; }
-            if (lookahead == null) lookahead = new MiraPorDelante<IAudioSource>();
-            lookahead.Pide(ruta, delegate { return OpenAudio(ruta); },
+            if (lookahead == null) { lookahead = new MiraPorDelante<IAudioSource>(); lookahead.Signature = AudioFileSignature; }
+            try { lookahead.Pide(ruta, delegate { return OpenAudio(ruta); },
                 delegate(Action action)
                 {
                     if (IsDisposed || Disposing || !IsHandleCreated) throw new ObjectDisposedException("Rocola");
                     BeginInvoke((MethodInvoker)delegate { action(); });
-                });
+                }); }
+            catch { SueltaLookahead(); } // precarga opcional: un fallo al crear el hilo no corta la UI
         }
         private void SueltaLookahead() { if (lookahead != null) lookahead.Suelta(); }
+        internal static string AudioFileSignature(string path)
+        {
+            try
+            {
+                System.IO.FileInfo info = new System.IO.FileInfo(path);
+                if (!info.Exists) return null;
+                return info.Length.ToString(System.Globalization.CultureInfo.InvariantCulture) + ":" +
+                    info.LastWriteTimeUtc.Ticks.ToString(System.Globalization.CultureInfo.InvariantCulture) + ":" +
+                    info.CreationTimeUtc.Ticks.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            }
+            catch { return null; } // no conservar un lector cuya identidad no podemos revalidar
+        }
         private void CancelAudioOpen()
         {
             audioStartVersion++;
+            IAudioSource ready = audioReady; audioReady = null;
+            if (ready != null) try { ready.Dispose(); } catch { }
             if (audioOpening != null) audioOpening.Cancel();
         }
         private void AudioStartFailed(Track t, Exception ex)
