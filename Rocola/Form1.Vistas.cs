@@ -2127,17 +2127,63 @@ namespace Rocola
                         int size = SyncSafe4(header, 6);
                         if (size > 0 && size <= 33554432)   // tope 32MB: un encabezado CORRUPTO puede declarar hasta 256MB y ese new byte[] tumbaria la RAM de la rocola; se cae al ID3v1
                         {
-                            byte[] tag = new byte[size];
-                            int read = 0, r;
-                            while (read < size && (r = fs.Read(tag, read, size - read)) > 0) read += r;
                             int flags = header[5];
                             if (major <= 3 && (flags & 0x80) != 0)
-                            { tag = DeUnsync(tag, 0, read); read = tag.Length; flags &= ~0x80; }
-                            ParseId3v2(tag, read, major, flags, t);
+                            {
+                                // En 2.3 el escape global cambia posiciones: conservar el lector completo.
+                                byte[] tag = new byte[size];
+                                int read = ReadFully(fs, tag, 0, size);
+                                tag = DeUnsync(tag, 0, read); read = tag.Length; flags &= ~0x80;
+                                ParseId3v2(tag, read, major, flags, t);
+                            }
+                            else ReadId3Frames(fs, size, major, flags, t);
                         }
                     }
                 }
                 if (string.IsNullOrEmpty(t.Title) || string.IsNullOrEmpty(t.Artist) || string.IsNullOrEmpty(t.Album) || string.IsNullOrEmpty(t.Genre)) ReadId3v1(path, t);
+            }
+
+            // Lee solo los marcos de texto. Saltar APIC evita leer megabytes de portada al pulsar.
+            // El parser existente interpreta los textos/flags; esta rutina solo recorre el archivo.
+            private static void ReadId3Frames(Stream fs, int size, int major, int flags, Track t)
+            {
+                long end = Math.Min(fs.Length, fs.Position + size);
+                if ((flags & 0x40) != 0)
+                {
+                    byte[] ext = new byte[4];
+                    if (end - fs.Position < 4 || ReadFully(fs, ext, 0, 4) != 4) return;
+                    int es = major >= 4 ? SyncSafe4(ext, 0) : BigEndian4(ext, 0);
+                    long remaining = major >= 4 ? es - 4L : es;
+                    if (es < (major >= 4 ? 6 : 0) || remaining < 0 || remaining > end - fs.Position) return;
+                    fs.Seek(remaining, SeekOrigin.Current);
+                }
+                byte[] header = new byte[10];
+                while (end - fs.Position >= 10)
+                {
+                    if (ReadFully(fs, header, 0, 10) != 10) return;
+                    bool valid = true;
+                    for (int i = 0; i < 4; i++)
+                        if (!((header[i] >= 'A' && header[i] <= 'Z') || (header[i] >= '0' && header[i] <= '9'))) { valid = false; break; }
+                    if (!valid) return;
+                    int frameSize = major >= 4 ? SyncSafe4(header, 4) : BigEndian4(header, 4);
+                    if (frameSize <= 0 || frameSize > end - fs.Position) return;
+                    string id = Encoding.ASCII.GetString(header, 0, 4);
+                    if (id == "TIT2" || id == "TPE1" || id == "TALB" || id == "TCON")
+                    {
+                        byte[] frame = new byte[10 + frameSize];
+                        Array.Copy(header, frame, 10);
+                        if (ReadFully(fs, frame, 10, frameSize) != frameSize) return;
+                        ParseId3v2(frame, frame.Length, major, flags & 0x80, t);
+                    }
+                    else fs.Seek(frameSize, SeekOrigin.Current);
+                }
+            }
+
+            private static int ReadFully(Stream stream, byte[] buffer, int offset, int count)
+            {
+                int done = 0, read;
+                while (done < count && (read = stream.Read(buffer, offset + done, count - done)) > 0) done += read;
+                return done;
             }
 
             private static void ParseId3v2(byte[] tag, int len, int major, Track t)

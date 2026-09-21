@@ -41,3 +41,20 @@ El panel de reposo por eventos también pasa su guardián de invalidación. Se c
 - **Validación en equipos destino:** tiempos de cuadro, primera carátula/primer sonido, HDD/SSD y XP real.
 
 Las optimizaciones no bajan calidad para favorecer equipos modestos. Aun así, que una política funcione en pruebas no garantiza el mejor rendimiento en todo hardware; los límites fijos restantes deben evaluarse con mediciones reales.
+
+## Continuación: etiquetas sin leer la imagen incrustada
+
+En ambas ramas, el lector completo de ID3 v2.3/v2.4 ahora recorre los marcos y salta carátulas (APIC) y datos que no utiliza. Sigue leyendo título, artista, álbum y género con el mismo parser, incluyendo marcos repetidos, banderas, cabeceras extendidas y fallback ID3v1.
+
+ID3 v2.3 con desincronización global conserva el lector anterior: ahí los escapes cambian posiciones y no se puede saltar usando el tamaño del marco sin más. Se mantiene el límite de 32 MiB y la carga de etiquetas una sola vez por objeto Track. No se cambia la imagen mostrada ni se escribe en el MP3.
+
+Verificación de esta continuación:
+
+- 23 baterías C# por rama; compilaciones GPU/CPU con advertencias como errores.
+- Rebuild Release de HD y Modest sin advertencias, en temporales; no se reemplazaron ejecutables ni datos del usuario.
+- 644 comparaciones entre recorrido selectivo y parser anterior: versiones, codificaciones, banderas, truncados, lecturas parciales y cabeceras inválidas.
+- En los casos con APIC de 1 MiB, como máximo 145 bytes lógicos de estructura/texto leídos. No equivale a bytes físicos del disco: FileStream y Windows tienen sus propios búferes.
+- Pruebas del camino real EnsureTags con archivos temporales, fallback v1, desincronización global y segunda consulta sin reabrir.
+- La nueva batería pasa también contra Release con afinidad de dos hilos. No es una prueba en CPU antiguo ni XP real.
+
+Elimina una lectura grande evitable al elegir canción; EnsureTags aún es síncrono. CompleteStartupDataLoad sigue esperando a las tablas y conserva el orden de restauración. No se presenta esta mejora como arranque totalmente asíncrono ni como latencia/FPS medidos en HDD.
