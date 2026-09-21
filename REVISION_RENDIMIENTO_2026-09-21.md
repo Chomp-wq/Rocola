@@ -35,7 +35,7 @@ El panel de reposo por eventos también pasa su guardián de invalidación. Se c
 
 - **Arranque por fases sin espera de interfaz:** `CompleteStartupDataLoad` todavía espera al lector. Separarlo requiere mantener orden de restauración de créditos/cola e impedir que una interacción inicial se pierda al restaurar el estado.
 - **I/O restante al elegir canción:** etiquetas y consultas de disponibilidad aún pueden tocar disco. Las micropruebas no demuestran ausencia de pausas en HDD.
-- **Apollo con memoria total acotada:** entrada y salida completas aún existen. Falta llevar lectura, mezcla y exportación a bloques o archivos mapeados, verificando muestras, bordes, clipping y archivos largos.
+- **Apollo, validación de memoria real e I/O:** entrada/salida y RMS ya tienen respaldo mapeado adaptativo y operaciones por bloques; ver [continuación de memoria](APOLLO_MEMORIA_2026-09-21.md). Queda medir RAM residente, disco y modelo real; no se promete un límite estricto de memoria total.
 - **Escalado adicional:** siguen existiendo límites fijos (por ejemplo caché gráfica de 32 MiB y algunos intervalos/hilos). No afirmar que todo el programa se adapta ya a cualquier equipo potente.
 - **Contador GPU real y atlas del muro:** el inventario no sustituye tiempos de CPU/GPU y conteo durante navegación real. El atlas requiere validar filtrado, bordes, invalidación y pérdida del dispositivo.
 - **Validación en equipos destino:** tiempos de cuadro, primera carátula/primer sonido, HDD/SSD y XP real.

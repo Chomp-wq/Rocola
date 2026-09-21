@@ -44,7 +44,8 @@ PIPELINE_VERSION = "apollo-safe-v4-float-decode"
 CACHE_FORMAT_VERSION = "wav-float32-v4-sin-recompresion"
 AQUI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(AQUI, "..", "upscale"))
-from util_audio import FS, leer_wav, escribir_wav_float, acantilado_hz, por_trozos, mezclar, mezcla_auto
+from util_audio import FS, leer_wav, escribir_wav_float, acantilado_hz, por_trozos, mezcla_auto
+from memoria_audio import MemoriaAudio
 
 def _ticks_desde_stat(st):
     # DateTime.UnixEpoch.Ticks: reproduce File.GetLastWriteTimeUtc(path).Ticks de C#.
@@ -456,21 +457,22 @@ def procesar_uno(job_path, listos, proc, ffmpeg, pipeline, ffprobe, seg=10.0):
             return _finaliza_cache(job_path, listos, h, job, pipeline, dst, cache)
         _run([ffmpeg, "-nostdin", "-y", "-v", "error", "-t", str(MAX_SEG + 30), "-i", src,
               "-ac", "2", "-ar", str(FS), "-c:a", "pcm_f32le", tmp], TIMEOUT_DECODE)
-        x, _ = leer_wav(tmp)
-        if len(x) > (MAX_SEG + 31) * FS:
-            raise RuntimeError("la decodificacion excedio el limite de duracion")
-        cliff = acantilado_hz(x)
-        if cliff >= 18500:                         # ya buena: solo la MARCA (bytes, no megas)
-            dst = _marca_original(listos, h, str(int(cliff)))
-        else:
-            y = por_trozos(x, proc, seg=seg)
-            m = mezcla_auto(cliff) if mez == "auto" else max(0.0, min(1.0, float(mez) / 100.0))
-            escribir_wav_float(out, mezclar(y, x, m, optimizar=True))
-            dst = _a_cache(listos, h, out, ffmpeg)
-            if _duracion(ffprobe, dst) is None:
-                if not _quita_requerido(dst):
-                    raise RuntimeError("ffprobe rechazo la salida y no se pudo retirarla")
-                raise RuntimeError("ffprobe rechazo la salida generada")
+        with MemoriaAudio(tmp) as memoria:
+            x, _ = leer_wav(tmp, reservar=memoria.crear)
+            if len(x) > (MAX_SEG + 31) * FS:
+                raise RuntimeError("la decodificacion excedio el limite de duracion")
+            cliff = acantilado_hz(x)
+            if cliff >= 18500:                     # ya buena: solo la MARCA (bytes, no megas)
+                dst = _marca_original(listos, h, str(int(cliff)))
+            else:
+                y = por_trozos(x, proc, seg=seg, reservar=memoria.crear)
+                m = mezcla_auto(cliff) if mez == "auto" else max(0.0, min(1.0, float(mez) / 100.0))
+                escribir_wav_float(out, memoria.mezclar(y, x, m))
+                dst = _a_cache(listos, h, out, ffmpeg)
+                if _duracion(ffprobe, dst) is None:
+                    if not _quita_requerido(dst):
+                        raise RuntimeError("ffprobe rechazo la salida y no se pudo retirarla")
+                    raise RuntimeError("ffprobe rechazo la salida generada")
         return _finaliza_cache(job_path, listos, h, job, pipeline, dst, cache)
     except Exception as e:
         try: intentos = int(anterior.get("attempts", 0)) + 1

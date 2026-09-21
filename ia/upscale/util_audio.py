@@ -5,7 +5,7 @@ import numpy as np, wave, subprocess, struct, os
 
 FS = 44100
 
-def leer_wav(path):
+def leer_wav(path, reservar=None):
     """RIFF PCM16/24/32 o IEEE float32 -> float64 [n, canales], sin recortar.
 
     Lectura por bloques: evita retener ademas una copia completa de bytes PCM.
@@ -46,7 +46,7 @@ def leer_wav(path):
         if align != ch * sw or byte_rate != fs * align or data[1] % align:
             raise ValueError('alineacion WAV invalida')
         n = data[1] // align
-        x = np.empty((n, ch), dtype=np.float64)
+        x = np.empty((n, ch), dtype=np.float64) if reservar is None else reservar((n, ch), False)
         f.seek(data[0])
         block = max(1, 65536 // ch)
         for p in range(0, n, block):
@@ -171,7 +171,7 @@ def igualar_rms(mejorada, original):
     ro = np.sqrt((original ** 2).mean()); rm = np.sqrt((mejorada ** 2).mean())
     return mejorada if rm < 1e-9 else mejorada * (ro / rm)
 
-def por_trozos(x, proc, fs=FS, seg=10.0, sol=0.5):
+def por_trozos(x, proc, fs=FS, seg=10.0, sol=0.5, reservar=None):
     """Procesa [n, ch] en trozos de 'seg' segundos con 'sol' de solape y fundido cruzado
     lineal (para que la GPU no se quede sin memoria en canciones largas). Conserva longitud."""
     if fs <= 0 or seg <= 0 or sol < 0 or seg <= sol:
@@ -190,7 +190,9 @@ def por_trozos(x, proc, fs=FS, seg=10.0, sol=0.5):
         if not np.issubdtype(y.dtype, np.number) or not np.isrealobj(y) or not np.isfinite(y[:n]).all():
             raise ValueError("el modelo devolvio valores no numericos o no finitos")
         return y[:n]
-    out = np.zeros_like(x)
+    if reservar is not None and x.dtype != np.float64:
+        raise ValueError("el almacenamiento externo requiere float64")
+    out = np.zeros_like(x) if reservar is None else reservar(x.shape, True)
     # NO SE GUARDA UN MAPA DE PESOS DEL LARGO DE LA CANCION.
     #
     # Antes habia un wsum de n muestras -ochenta megas en una cancion de cuatro minutos, medido- que solo
@@ -205,7 +207,7 @@ def por_trozos(x, proc, fs=FS, seg=10.0, sol=0.5):
     # Si alguien pide trozos que se pisan de tres en tres (seg apenas mayor que sol), esa cuenta corta ya
     # no vale y se hace como siempre, con el mapa entero. Vale mas gastar memoria que devolver otra cosa.
     acotado = (L - O >= O)
-    wsum = None if acotado else np.zeros((n, 1))
+    wsum = None if acotado else (np.zeros((n, 1)) if reservar is None else reservar((n, 1), True))
     solapes = []
     p = 0
     while p < n:

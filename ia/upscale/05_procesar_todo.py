@@ -13,7 +13,8 @@ import tempfile
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from util_audio import FS, leer_wav, escribir_wav, acantilado_hz, por_trozos, mezclar, mezcla_auto
+from util_audio import FS, leer_wav, escribir_wav, acantilado_hz, por_trozos, mezcla_auto
+from memoria_audio import MemoriaAudio
 
 UMBRAL_BUENA = 18500.0
 EXTS = (".mp3", ".wav", ".flac", ".m4a", ".ogg", ".wma")
@@ -397,6 +398,13 @@ def main():
     if candado is None:
         print("[X] Ya hay otro proceso trabajando en esta misma carpeta de salida")
         return 1
+    try:
+        return _procesar_carpeta(a, raiz, salida, ffmpeg, ffprobe)
+    finally:
+        candado.close()
+
+
+def _procesar_carpeta(a, raiz, salida, ffmpeg, ffprobe):
     rutas = orden_desde_csv(a.csv, raiz)
     if not rutas:
         print("No hay canciones compatibles en", raiz)
@@ -452,17 +460,18 @@ def main():
                     dec = os.path.join(td, "dec.wav")
                     _run([ffmpeg, "-nostdin", "-y", "-v", "error", "-i", src,
                           "-ac", "2", "-ar", str(FS), "-c:a", "pcm_f32le", dec])
-                    x, _ = leer_wav(dec)
-                    cliff = acantilado_hz(x)
-                    if cliff >= UMBRAL_BUENA:
-                        _copiar_o_convertir_buena(ffmpeg, src, dst, a.formato, a.calidad)
-                    else:
-                        y = por_trozos(x, proc, seg=a.seg)
-                        m = mezcla_auto(cliff) if a.mezcla == "auto" else max(0.0, min(1.0, float(a.mezcla) / 100.0))
-                        out_wav = os.path.join(td, "out.wav")
-                        escribir_wav(out_wav, mezclar(y, x, m))
-                        _encode_desde_wav(ffmpeg, out_wav, src, dst, a.formato, a.calidad)
-                        fue_mejorada = True
+                    with MemoriaAudio(dec) as memoria:
+                        x, _ = leer_wav(dec, reservar=memoria.crear)
+                        cliff = acantilado_hz(x)
+                        if cliff >= UMBRAL_BUENA:
+                            _copiar_o_convertir_buena(ffmpeg, src, dst, a.formato, a.calidad)
+                        else:
+                            y = por_trozos(x, proc, seg=a.seg, reservar=memoria.crear)
+                            m = mezcla_auto(cliff) if a.mezcla == "auto" else max(0.0, min(1.0, float(a.mezcla) / 100.0))
+                            out_wav = os.path.join(td, "out.wav")
+                            escribir_wav(out_wav, memoria.mezclar(y, x, m))
+                            _encode_desde_wav(ffmpeg, out_wav, src, dst, a.formato, a.calidad)
+                            fue_mejorada = True
                 if entrada_antes != _identidad_entrada(src):
                     try: os.remove(dst)
                     except OSError: pass
