@@ -1271,7 +1271,13 @@ namespace Rocola
                 if (IsRight(kc)) { searchOverlay.MoveSel(1, 0); return true; }
                 if (IsUp(kc)) { searchOverlay.MoveSel(0, -1); return true; }
                 if (IsDown(kc)) { searchOverlay.MoveSel(0, 1); return true; }
-                if (IsOK(kc)) { searchOverlay.PressSelected(); return true; }
+                if (IsOK(kc))
+                {
+                    // Una pulsacion, cuatro creditos: no repetir por mantener el boton.
+                    if (!SecretCreditGate.Matches(searchOverlay.Escrito) || (msg.LParam.ToInt64() & 0x40000000L) == 0)
+                        searchOverlay.PressSelected();
+                    return true;
+                }
                 if (IsBack(kc)) { searchOverlay.Backspace(); return true; }   // REGRESAR = borrar letra; cerrar = REGRESAR+PONER
                 // letras, numeros, Ñ, acentos, comillas, espacio y BORRAR los entrega KeyPress (admite TODO caracter)
                 return base.ProcessCmdKey(ref msg, keyData);
@@ -1593,6 +1599,7 @@ namespace Rocola
                 // ahi es justamente donde mas rato se le mira.
                 gpuPanel.HazFase = hazFase;
                 gpuPanel.ConLuna = lunaOn;
+                SyncGpuCoverPalette();
             }
 #endif
             if (progress != null) progress.Accent = bgAccent;   // ESTETICA: la barra de progreso sigue el color del genero
@@ -1600,6 +1607,7 @@ namespace Rocola
             if (searchOpen)
             {
                 if ((DateTime.Now - searchLastActivity).TotalSeconds >= 60) { CloseSearch(); return; }   // 1 min sin actividad
+                UpdateSecretCredits();
                 searchOverlay.Accent = bgAccent;
 #if ROCOLA_GPU
                 if (gpuEnabled && coloresCache) searchOverlay.Accent = bgAccentTarget;

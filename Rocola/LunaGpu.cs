@@ -90,7 +90,7 @@ namespace Rocola
         {
             float mix = active ? SafeMoonLevel(idle) : 0;
             return new PointF(width * (.79f + (active ? (.012f + .078f * mix) * (float)Math.Sin(phase * .23) : 0)),
-                height * (.47f + (active ? (.006f + .032f * mix) * (float)Math.Cos(phase * .29) : 0)) - rise * .32f);
+                height * (.47f - .20f * mix + (active ? (.006f + .016f * mix) * (float)Math.Cos(phase * .29) : 0)) - rise * .32f);
         }
         private void DrawDetailedMoon()
         {

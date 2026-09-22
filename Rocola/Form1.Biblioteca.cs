@@ -2727,6 +2727,7 @@ namespace Rocola
 
         private void AlTeclearBusqueda()
         {
+            UpdateSecretCredits();
             int ahora = Environment.TickCount;
             bool ya = PosarYa(ahora - tecleoUltimo);
             tecleoUltimo = ahora;
@@ -2784,6 +2785,7 @@ namespace Rocola
 #endif
             if (posaTimer != null) posaTimer.Stop();   // el buscador se va: no queda consulta que posar
             searchOpen = false;
+            UpdateSecretCredits();
             searchOverlay.Visible = false;
             if (videoOn && video != null) { video.Visible = true; video.BringToFront(); }
             this.Focus();
@@ -2860,6 +2862,7 @@ namespace Rocola
         private void RecomputeResults(string query)
         {
             MarkSearchActivity();
+            if (SecretCreditGate.Matches(query)) { UpdateSecretCredits(); return; }
             if (libBuilding)   // el worker esta llenando searchIndex: no iterarlo (carrera = crash)
             {
                 searchOverlay.Results = new List<SearchItem>();
@@ -2983,6 +2986,7 @@ namespace Rocola
         {
             if (it == null) return;
             MarkSearchActivity();
+            if (it.Kind == 3) { GrantSecretCredits(it); return; }
             if (it.Kind == 2 && it.TrackRef != null)
             {
                 PlayItem p = new PlayItem(); p.IsVideo = false; p.Song = it.TrackRef; p.Disc = it.AlbumRef;

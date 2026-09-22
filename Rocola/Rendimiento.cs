@@ -877,6 +877,11 @@ namespace Rocola
             tactile[2].CheckedChanged += delegate { ondasUnidas = tactile[2].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
 
             Label lMoon = new Label(); lMoon.SetBounds(16, 398, 424, 20);
+            Interruptor swPaleta = new Interruptor(); swPaleta.SetBounds(16, 364, 424, 26);
+            swPaleta.Font = fNom; swPaleta.ForeColor = cTexto; swPaleta.Acento = cAc;
+            swPaleta.Text = "Paleta completa de caratula (GPU)"; swPaleta.Checked = paletaCompleta;
+            swPaleta.CheckedChanged += delegate { paletaCompleta = swPaleta.Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            tNat.Controls.Add(swPaleta);
             lMoon.Text = "LUNA: halo, polvo y realce requieren el nuevo diseno";
             lMoon.Font = fDes; lMoon.ForeColor = cTenue; lMoon.BackColor = Color.Transparent;
             tNat.Controls.Add(lMoon);
@@ -922,6 +927,7 @@ namespace Rocola
                 glassCapas = coloresCache = lunaActiva = true;
                 controlesReposo = ondasUnidas = true;
                 lunaRealista = haloLunar = polvoLunar = lunaProtagonista = true;
+                paletaCompleta = true; swPaleta.Checked = true;
                 for (int i = 0; i < moonSwitches.Length; i++) moonSwitches[i].Checked = true;
                 for (int i = 0; i < extras.Length; i++) extras[i].Checked = true;
                 for (int i = 0; i < tactile.Length; i++) tactile[i].Checked = true;
@@ -972,7 +978,7 @@ namespace Rocola
             Label l1 = new Label(); l1.SetBounds(16, 36, 896, 62); l1.BackColor = Color.Transparent;
             l1.ForeColor = cTenue; l1.Font = fDes;
             l1.Text = "Los botones dan al tono del DISCO un peso de 20%, 50% o 100% en el acento; el resto viene del GENERO.\n"
-                    + "Con genero, una nebulosa conserva su tono. BTS/Bangtan con genero mantiene el morado fijo.\n"
+                    + "Paleta completa (GPU): hasta ocho colores del disco. BTS/Bangtan con genero conserva el morado fijo.\n"
                     + "Sin genero reconocido, manda todo el tono disponible del disco, incluso con Mitad y mitad.\n"
                     + "Se conservan brillo, viveza y degradados del cielo; no se copia el RGB de la portada como un fondo plano.";
             string[] nom1 = { "Disco 20%", "Mitad y mitad", "Disco 100%" };

@@ -369,6 +369,7 @@ namespace Rocola
                     else if (s.StartsWith("glass_capas=")) glassCapas = s.Substring(12).Trim() != "0";
                     else if (s.StartsWith("colores_cache=")) coloresCache = s.Substring(14).Trim() != "0";
                     else if (s.StartsWith("luna_activa=")) lunaActiva = s.Substring(12).Trim() != "0";
+                    else if (s.StartsWith("paleta_completa=")) paletaCompleta = s.Substring(16).Trim() != "0";
                     else if (s.StartsWith("controles_reposo=")) controlesReposo = s.Substring("controles_reposo=".Length).Trim() != "0";
                     else if (s.StartsWith("ondas_unidas=")) ondasUnidas = s.Substring("ondas_unidas=".Length).Trim() != "0";
                     else if (s.StartsWith("luna_realista=")) lunaRealista = s.Substring("luna_realista=".Length).Trim() != "0";
@@ -479,6 +480,7 @@ namespace Rocola
                 sb.Append("glass_capas=").Append(glassCapas ? "1" : "0").Append("\r\n");
                 sb.Append("colores_cache=").Append(coloresCache ? "1" : "0").Append("\r\n");
                 sb.Append("luna_activa=").Append(lunaActiva ? "1" : "0").Append("\r\n");
+                sb.Append("paleta_completa=").Append(paletaCompleta ? "1" : "0").Append("\r\n");
                 sb.Append("controles_reposo=").Append(controlesReposo ? "1" : "0").Append("\r\n");
                 sb.Append("ondas_unidas=").Append(ondasUnidas ? "1" : "0").Append("\r\n");
                 sb.Append("luna_realista=").Append(lunaRealista ? "1" : "0").Append("\r\n");
