@@ -143,9 +143,10 @@ class Contrato(unittest.TestCase):
     def test_margen_de_redondeo_medido(self):
         # Cuantos limites de banda cambiarian si la division se hiciera sin redondear a float32 (lo que
         # puede ocurrir con la FPU x87 de un XP de 32 bits). Es una MEDIDA del riesgo, no una prueba en XP.
-        total, cambian, _ = C.margen_redondeo(rates=(44100,), frames=(2048,))
+        total, solo_cociente, todo, _ = C.margen_redondeo(rates=(44100,), frames=(2048,))
         self.assertGreater(total, 10000)
-        self.assertLess(cambian / float(total), 0.02)
+        self.assertLessEqual(solo_cociente, todo)
+        self.assertLess(todo / float(total), 0.02)
 
 
 if __name__ == "__main__":

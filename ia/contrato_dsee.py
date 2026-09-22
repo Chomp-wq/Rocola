@@ -345,18 +345,23 @@ def compara_volcado(ruta):
 
 
 def margen_redondeo(rates=(22050, 32000, 44100, 48000, 88200, 96000), frames=CUADROS):
-    """Cuantas divisiones hz/binHz de TODA la geometria cambiarian de bin si se hicieran sin
-    redondear a float32 (lo que puede hacer la FPU x87 de un Windows XP de 32 bits). Devuelve
-    (divisiones mirando, las que cambiarian, distancia minima al entero en unidades de bin)."""
-    total, cambian, minimo = 0, 0, 1.0
+    """Cuantas divisiones hz/binHz de TODA la geometria caerian en otro bin si el procesador no
+    redondeara a float32, como puede hacer la FPU x87 de un Windows XP de 32 bits. Dos escenarios,
+    porque depende de lo que el compilador de XP deje en registros:
+      cociente -> solo la division se hace con mas precision (hz ya redondeado al pasarlo a Hz())
+      todo     -> tampoco se redondean los productos que dan hz (Hz() metida en linea)
+    Devuelve (divisiones miradas, cambian_cociente, cambian_todo, distancia minima al entero)."""
+    total, cambia_q, cambia_t, minimo = 0, 0, 0, 1.0
 
     def mira(hz_exacto, hz32, bhz):
-        nonlocal total, cambian, minimo
-        q32 = float(F32(F32(hz32) / bhz))
-        qx = hz_exacto / float(bhz)
+        nonlocal total, cambia_q, cambia_t, minimo
+        q32 = int(float(F32(F32(hz32) / bhz)))
         total += 1
-        if int(q32) != int(qx):
-            cambian += 1
+        if int(float(F32(hz32)) / float(bhz)) != q32:
+            cambia_q += 1
+        qx = hz_exacto / float(bhz)
+        if int(qx) != q32:
+            cambia_t += 1
         minimo = min(minimo, abs(qx - round(qx)))
 
     for rate in rates:
@@ -370,17 +375,17 @@ def margen_redondeo(rates=(22050, 32000, 44100, 48000, 88200, 96000), frames=CUA
                 fc = F32(F32(cut) * bhz)
                 fc200 = float(F32(fc / F32(200.0)))
                 for i in range(25):
-                    p = F32(math.pow(fc200, i / 24.0))
-                    mira(200.0 * float(p), F32(F32(200.0) * p), bhz)
+                    pw = F32(math.pow(fc200, i / 24.0))
+                    mira(200.0 * float(pw), F32(F32(200.0) * pw), bhz)
                 mira(float(fc) * 0.92, F32(fc * F32(0.92)), bhz)
                 if g["objetivo"] is None:
                     continue
                 top = F32(F32(g["top"]) * bhz)
                 razon = float(F32(top / fc))
                 for j in range(13):
-                    p = F32(math.pow(razon, j / 12.0))
-                    mira(float(fc) * float(p), F32(fc * p), bhz)
-    return total, cambian, minimo
+                    pw = F32(math.pow(razon, j / 12.0))
+                    mira(float(fc) * float(pw), F32(fc * pw), bhz)
+    return total, cambia_q, cambia_t, minimo
 
 
 def main(argv):
@@ -397,9 +402,10 @@ def main(argv):
             print("  " + m)
         return 0 if (vistos > 0 and not malos) else 1
     if len(argv) == 1 and argv[0] == "--margen":
-        total, cambian, minimo = margen_redondeo()
+        total, cq, ct, minimo = margen_redondeo()
         print("DIVISIONES %d" % total)
-        print("CAMBIARIAN %d" % cambian)
+        print("CAMBIARIAN_SOLO_COCIENTE %d" % cq)
+        print("CAMBIARIAN_TODO %d" % ct)
         print("MINIMO %.9g" % minimo)
         return 0
     print(__doc__)

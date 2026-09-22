@@ -33,7 +33,7 @@ falta `mcs` (Mono), `xvfb-run` y `python3`.
 | batería | qué comprueba |
 |---|---|
 | `dsee` | el reconstructor de agudos: que no se cuele un canal en el otro al meter los dos en una FFT, que apagado sea bit a bit idéntico, que una canción completa salga intacta, y que el realce no empuje dos veces lo mismo |
-| `iaparidad` | que el entrenador mide lo mismo que la rocola: las 28 entradas y los 12 objetivos de `MakePair` contra `ia/paridad_extractor.txt`, todos los cortes a seis frecuencias de muestreo contrastados con `ia/contrato_dsee.py` (lanza Python; sin Python lo dice y no lo da por comprobado), y las bandas que rellena `RegenNeural` |
+| `iaparidad` | que el entrenador mide lo mismo que la rocola: las 28 entradas y los 12 objetivos de `MakePair` contra `ia/paridad_extractor.txt`, todos los cortes a seis frecuencias de muestreo contrastados con `ia/contrato_dsee.py` (lanza Python; sin Python lo dice y no lo da por comprobado), las bandas que rellena `RegenNeural`, y que la imitación en float32 de la red que usa el entrenador da las mismas salidas que `RedChica.Predict`, bit a bit |
 | `iaorigen` | que la rocola apunta de qué canción viene cada ejemplo de la IA (`rocola_ia_datos.idx`) y que el lector del entrenador nunca lo atribuye mal: apagones a media escritura, bytes cambiados, datos recortados o borrados, índice ajeno y cuatro hilos a la vez (lanza Python) |
 | `atoron` | lo que la pantalla se queda parada cada vez que hay que dar de comer al sonido |
 | `nivel`, `bajo`, `bajoauto` | nivelado de volumen y bajo psicoacústico |

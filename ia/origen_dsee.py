@@ -67,10 +67,12 @@ def cabecera_idx():
 # ---------------------------------------------------------------------------------------------
 #  Lectura del indice
 # ---------------------------------------------------------------------------------------------
-def lee_indice(ruta_idx, ruta_datos, verificar_datos=True, bloque=4096):
+def lee_indice(ruta_idx, ruta_datos, verificar_datos=True, bloque=4096, avance=None, cada=1 << 30):
     """Devuelve (entradas, informe). entradas es un arreglo estructurado ordenado por primer registro,
     solo con las validas. El recorrido es por bloques: memoria acotada aunque el indice sea enorme, y
-    la comprobacion de los datos lee los rangos en orden (lectura secuencial del archivo de datos)."""
+    la comprobacion de los datos lee los rangos en orden (lectura secuencial del archivo de datos).
+    Comprobar los CRC lee el material ENTERO: con gigas tarda lo que tarde el disco en leerlos, asi que
+    avance(leidos, total) se llama cada GiB para que se vea que no esta colgado."""
     informe = {"indice": False, "entradas_leidas": 0, "validas": 0, "crc_entrada_malo": 0,
                "cola_incompleta": 0, "fuera_de_rango": 0, "solapadas": 0, "crc_datos_malo": 0,
                "cabecera_mala": False, "registros_totales": 0, "registros_con_origen": 0}
@@ -123,6 +125,8 @@ def lee_indice(ruta_idx, ruta_datos, verificar_datos=True, bloque=4096):
         ent = ent[~pisa]
     if verificar_datos and len(ent):
         buenas = np.ones(len(ent), dtype=bool)
+        total = int(ent["cuenta"].sum()) * TAM_REGISTRO
+        leidos, aviso = 0, cada
         with open(ruta_datos, "rb") as f:
             for i in range(len(ent)):
                 f.seek(CABECERA_DATOS + int(ent["primero"][i]) * TAM_REGISTRO)
@@ -133,6 +137,10 @@ def lee_indice(ruta_idx, ruta_datos, verificar_datos=True, bloque=4096):
                         break
                     crc = zlib.crc32(trozo, crc)
                     falta -= len(trozo)
+                    leidos += len(trozo)
+                    if avance is not None and leidos >= aviso:
+                        avance(leidos, total)
+                        aviso += cada
                 if falta or (crc & 0xFFFFFFFF) != int(ent["crc"][i]):
                     buenas[i] = False
         informe["crc_datos_malo"] = int((~buenas).sum())

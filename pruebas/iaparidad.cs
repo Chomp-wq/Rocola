@@ -335,6 +335,88 @@ class IaParidad
                   "la rocola mide hasta 20,5 kHz: lo que el contrato fija y lo que el extractor viejo no hacia");
         }
 
+        // ============================================================================================
+        Console.WriteLine("\n  4) Y LA RED CALCULA LO MISMO QUE EL ENTRENADOR CREE QUE CALCULA\n");
+        // El entrenador decide con su propia cuenta de la red, y ademas imita en float32 la de la rocola
+        // (prediccion_como_la_rocola) para no publicar un modelo que aqui diera otra cosa. Esa imitacion tiene
+        // que ser FIEL: se carga un modelo aleatorio reproducible en una RedChica de la rocola, se le pasan
+        // entradas y Python compara sus salidas con la imitacion, fila por fila.
+        {
+            string tmp4 = Path.Combine(Path.GetTempPath(), "rocola_iaparidad4_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tmp4);
+            try
+            {
+                int[] capas = { 28, 32, 32, 12 };
+                Lcg g = new Lcg(777);
+                string modelo = Path.Combine(tmp4, "red.bin");
+                using (BinaryWriter w = new BinaryWriter(File.Create(modelo)))
+                {
+                    w.Write(Encoding.ASCII.GetBytes("RIA1")); w.Write(capas.Length - 1);
+                    for (int L = 0; L + 1 < capas.Length; L++)
+                    {
+                        w.Write(capas[L + 1]); w.Write(capas[L]);
+                        for (int i = 0; i < capas[L + 1] * capas[L]; i++) w.Write(g.Valor() * 1.5f);
+                        for (int i = 0; i < capas[L + 1]; i++) w.Write(g.Valor());
+                    }
+                }
+                Type TRed = TF.GetNestedType("RedChica", BindingFlags.NonPublic | BindingFlags.Public);
+                object red = Activator.CreateInstance(TRed, BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public,
+                                                      null, new object[] { 28, 12 }, null);
+                TRed.GetMethod("TryLoad").Invoke(red, new object[] { modelo });
+                bool cargo = (bool)TRed.GetField("Loaded").GetValue(red);
+                Check(cargo, "la rocola carga el modelo de prueba (28-32-32-12)");
+                string volcado = Path.Combine(tmp4, "salidas.txt");
+                int filas = 0;
+                if (cargo)
+                    using (StreamWriter sw = new StreamWriter(volcado, false, new UTF8Encoding(false)))
+                    {
+                        sw.NewLine = "\n";
+                        MethodInfo mP = TRed.GetMethod("Predict");
+                        float[] x = new float[28], y = new float[12];
+                        for (int r = 0; r < 400; r++)
+                        {
+                            for (int i = 0; i < 28; i++) x[i] = g.Valor() * 24f;
+                            if (!(bool)mP.Invoke(red, new object[] { x, y })) continue;
+                            StringBuilder sb = new StringBuilder();
+                            for (int i = 0; i < 28; i++) sb.Append(F(x[i])).Append(' ');
+                            sb.Append('|');
+                            for (int j = 0; j < 12; j++) sb.Append(' ').Append(F(y[j]));
+                            sw.WriteLine(sb.ToString()); filas++;
+                        }
+                    }
+                string script = Path.GetFullPath(Path.Combine("..", Path.Combine("ia", "calidad_dsee.py")));
+                string todo = null;
+                try
+                {
+                    ProcessStartInfo psi = new ProcessStartInfo(Python(), "\"" + script + "\" --paridad-inferencia \"" + modelo + "\" \"" + volcado + "\"");
+                    psi.UseShellExecute = false; psi.RedirectStandardOutput = true; psi.RedirectStandardError = true;
+                    psi.WorkingDirectory = Path.GetDirectoryName(script);
+                    using (Process p = Process.Start(psi)) { todo = p.StandardOutput.ReadToEnd() + p.StandardError.ReadToEnd(); p.WaitForExit(); }
+                }
+                catch { todo = null; }
+                if (todo == null)
+                    Console.WriteLine("  OK     (sin Python en esta maquina: la imitacion de la red NO se contrasto aqui)");
+                else
+                {
+                    Dictionary<string, string> d = new Dictionary<string, string>();
+                    foreach (string l in todo.Split('\n')) { string[] t = l.Trim().Split(' '); if (t.Length == 2) d[t[0]] = t[1]; }
+                    string v;
+                    int n = d.TryGetValue("FILAS", out v) ? int.Parse(v) : -1;
+                    int iguales = d.TryGetValue("IGUALES", out v) ? int.Parse(v) : -1;
+                    double peor = d.TryGetValue("PEOR", out v) ? double.Parse(v, CultureInfo.InvariantCulture) : 1;
+                    Console.WriteLine("     " + n + " filas; identicas bit a bit " + iguales + "; peor diferencia "
+                                      + peor.ToString("0.000e0", CultureInfo.InvariantCulture));
+                    if (n != filas) Console.Write(todo);
+                    Check(n == filas && filas >= 300, "Python leyo las " + filas + " salidas que dio la red de la rocola");
+                    Check(peor <= 1e-6, "y su imitacion en float32 da lo mismo (tolerancia 1e-6; el limite para publicar es 1e-3)");
+                    // Mismo orden de suma = mismos bits. Se deja un 1 % por si la tangente de otra plataforma
+                    // difiriera en su ultimo bit; un orden de suma distinto cambia casi todas las filas.
+                    Check(iguales >= filas * 0.99, "y sale identica bit a bit en al menos el 99 % de las filas (" + iguales + " de " + filas + ")");
+                }
+            }
+            finally { try { Directory.Delete(tmp4, true); } catch { } }
+        }
+
         Console.WriteLine(fallos == 0 ? "\n  TODO BIEN" : "\n  FALLOS: " + fallos);
         return fallos;
     }

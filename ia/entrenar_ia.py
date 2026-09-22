@@ -62,21 +62,32 @@ def _ventana_entrenamiento(frame):
     win.flags.writeable = False
     return win
 
-def frames_of(sig, frame):
+def frames_of(sig, frame, con_energia=False):
     """Cuadros con ventana raiz-de-Hann (la MISMA del SpectralTap) -> |X/N|^2. Se saltan los
-    cuadros casi mudos con el mismo umbral que la cosecha de la rocola."""
+    cuadros casi mudos con el mismo umbral que la cosecha de la rocola. Con con_energia=True cada
+    cuadro va con la energia del suyo y la del cuadro que empieza medio cuadro antes (aunque ese
+    fuera mudo): con eso se sabe si es un ATAQUE (ver TRANSITORIO)."""
     win = (_ventana_entrenamiento(frame) if frame in (2048, 4096) else
            np.sqrt(0.5 - 0.5 * np.cos(2.0 * np.pi * np.arange(frame) / frame)))
     hop = frame // 2
     out = []
+    previa = None                     # el primer cuadro de un trozo no tiene anterior: no se sabe si es ataque
     for p in range(0, len(sig) - frame, hop):
         trozo = np.asarray(sig[p:p + frame], dtype=np.float64)
-        if float(np.dot(trozo, trozo)) / frame <= UMBRAL_MUDO:
-            continue
-        X = np.fft.rfft(trozo * win)
-        m = (np.abs(X) / frame) ** 2
-        out.append(m)
+        energia = float(np.dot(trozo, trozo)) / frame
+        if energia > UMBRAL_MUDO:
+            X = np.fft.rfft(trozo * win)
+            m = (np.abs(X) / frame) ** 2
+            out.append((m, energia, previa) if con_energia else m)
+        previa = energia
     return out
+
+# Un cuadro es TRANSITORIO (un ataque: golpe, pua, consonante) si su energia es al menos 4 veces (+6 dB)
+# la del cuadro que empieza medio cuadro antes. Solo se puede saber con la senal a mano.
+TRANSITORIO = 4.0
+
+def es_transitorio(energia, previa):
+    return previa is not None and energia >= TRANSITORIO * max(previa, UMBRAL_MUDO)
 
 # ---------------- datos: sintetico "musical" o carpeta de WAVs ----------------
 def synth_clip(rng, secs=1.2):
@@ -164,16 +175,15 @@ def load_wavs(folder, rng, max_clips=400, max_per_file=0):
             continue
     return clips, claves
 
-def build_dataset(clips, rng, con_origen=False):
-    """Pares de todos los trozos. Con con_origen=True devuelve ademas, por cada ejemplo, el indice del
-    trozo del que salio (para repartir por grupo DESPUES sin mezclar)."""
-    X, Y, O = [], [], []
+def build_dataset_detalle(clips, rng):
+    """Pares de todos los trozos, con el trozo de origen y si el cuadro es un transitorio."""
+    X, Y, O, A = [], [], [], []
     usados = 0
     bloque = 4096
     for ci, clip in enumerate(clips):
         fc = rng.uniform(10500, 17500)                     # el "corte del MP3" simulado, por clip
         for frame in (2048, 4096):                          # ambos tamanos de ventana de la rocola
-            for m in frames_of(clip, frame):
+            for m, energia, previa in frames_of(clip, frame, con_energia=True):
                 r = features_and_target(m, frame, fc)
                 if r is not None:
                     fila = usados % bloque
@@ -181,16 +191,22 @@ def build_dataset(clips, rng, con_origen=False):
                         X.append(np.empty((bloque, 28), dtype=np.float64))
                         Y.append(np.empty((bloque, 12), dtype=np.float64))
                         O.append(np.empty(bloque, dtype=np.int64))
+                        A.append(np.empty(bloque, dtype=bool))
                     X[-1][fila] = r[0]; Y[-1][fila] = r[1]; O[-1][fila] = ci
+                    A[-1][fila] = es_transitorio(energia, previa)
                     usados += 1
     if not usados:
-        vacio = (np.array([], dtype=np.float64), np.array([], dtype=np.float64))
-        return vacio + (np.array([], dtype=np.int64),) if con_origen else vacio
+        return (np.array([], dtype=np.float64), np.array([], dtype=np.float64),
+                np.array([], dtype=np.int64), np.array([], dtype=bool))
     ultimo = (usados - 1) % bloque + 1
-    X[-1] = X[-1][:ultimo]; Y[-1] = Y[-1][:ultimo]; O[-1] = O[-1][:ultimo]
-    if con_origen:
-        return np.concatenate(X), np.concatenate(Y), np.concatenate(O)
-    return np.concatenate(X), np.concatenate(Y)
+    X[-1] = X[-1][:ultimo]; Y[-1] = Y[-1][:ultimo]; O[-1] = O[-1][:ultimo]; A[-1] = A[-1][:ultimo]
+    return np.concatenate(X), np.concatenate(Y), np.concatenate(O), np.concatenate(A)
+
+def build_dataset(clips, rng, con_origen=False):
+    """Pares de todos los trozos. Con con_origen=True devuelve ademas, por cada ejemplo, el indice del
+    trozo del que salio (para repartir por grupo DESPUES sin mezclar)."""
+    X, Y, O, _ = build_dataset_detalle(clips, rng)
+    return (X, Y, O) if con_origen else (X, Y)
 
 # ---------------- MLP + Adam (backprop a mano: sin dependencias pesadas) ----------------
 class Mlp:
@@ -340,7 +356,9 @@ def particiones_rocola(ruta, X, nivel="artista", incluir_sin_origen=False):
     (None, informe) si no hay reparto independiente posible. Las posiciones son indices dentro de X."""
     import origen_dsee as O
     filas = X.filas if isinstance(X, FilasMapeadas) else np.arange(len(X), dtype=np.int64)
-    ent, inf = O.lee_indice(O.ruta_indice(ruta), ruta)
+    def avance(leidos, total):
+        print("  comprobando que el indice describe este material: %.1f de %.1f GB" % (leidos / 1e9, total / 1e9))
+    ent, inf = O.lee_indice(O.ruta_indice(ruta), ruta, avance=avance)
     informe = {"independiente": False, "motivo": "", "indice": inf, "nivel": nivel}
     if len(ent) == 0:
         informe["motivo"] = ("rocola_ia_datos.bin sin indice de origen (RIAD v1): no se sabe de que cancion "
@@ -411,6 +429,7 @@ def main():
         X, Y = cargar_datos_rocola(ruta, tope, por_indices=True)
         print("  %d ejemplos de %d entradas -> %d salidas" % (X.shape[0], X.shape[1], Y.shape[1]))
         partes, informe = particiones_rocola(ruta, X, nivel, sin_origen)
+        transitorio = None                                   # cuadros sueltos: no se sabe cuales son ataques
         import origen_dsee as O
         origen_datos = {"tipo": "rocola", "huella": O.huella_datos(ruta, O.ruta_indice(ruta)),
                         "ejemplos_usados": int(len(X)), "max_ejemplos": int(tope)}
@@ -435,7 +454,7 @@ def main():
             claves = [(i + 1, 0) for i in range(len(clips))]       # cada trozo sintetico es independiente
             origen_datos = {"tipo": "sintetico", "trozos": len(clips)}
         print("Extrayendo pares (forma espectral -> envolvente real)...")
-        X, Y, origen = build_dataset(clips, rng, con_origen=True)
+        X, Y, origen, transitorio = build_dataset_detalle(clips, rng)
         if len(X) == 0:
             print("No se extrajeron ejemplos utilizables; no se guarda ningun modelo.")
             return 1
@@ -469,7 +488,8 @@ def main():
     epocas = int(sys.argv[sys.argv.index("--epocas") + 1]) if "--epocas" in sys.argv else 60
     print("Entrenando el MLP %s ..." % "->".join(str(c) for c in capas))
     model = train(Mlp(capas, rng), Xtr, Ytr, Xv, Yv, epochs=epocas)   # la validacion SOLO elige el checkpoint
-    from calidad_dsee import cuantizar, evaluar_tres, decide, cargar_ria1, bytes_ria1, escribir_atomico, POLITICA
+    from calidad_dsee import (cuantizar, evaluar_tres, decide, cargar_ria1, bytes_ria1, escribir_atomico, POLITICA,
+                              paridad_inferencia, errores_por_clase, avisos_por_clase, LIMITE_PARIDAD)
     cuantizar(model)
 
     # El modelo INSTALADO, leido como lo leeria la rocola. Por defecto, el que hay en esta carpeta.
@@ -488,6 +508,15 @@ def main():
     val = evaluar_tres(model, instalado, Xv, Yv)
     err = evaluar_tres(model, instalado, Xp, Yp)          # la decision, con la particion de PRUEBA
     publicar, motivos = decide(err)
+    # Lo que calcularia la ROCOLA con este modelo (float32, en su mismo orden): si no coincide con lo que
+    # se acaba de evaluar, lo evaluado no es lo que va a sonar, y no se publica.
+    paridad = paridad_inferencia(model, Xp)
+    if paridad["no_finitas"] or not paridad["max_abs"] <= LIMITE_PARIDAD:
+        publicar = False
+        motivos = motivos + ["la rocola no calcularia lo mismo: diferencia %.3g (limite %g), %d filas no finitas"
+                             % (paridad["max_abs"], LIMITE_PARIDAD, paridad["no_finitas"])]
+    por_clase = errores_por_clase(model, instalado, Xp, Yp, None if transitorio is None else transitorio[pr])
+    avisos = avisos_por_clase(por_clase)
     mse_net, mse_base = err["candidato"].mean(), err["referencia"].mean()
     print("VALIDACION (eligio el checkpoint, epoca %s): red = %.4f  |  curva fija = %.4f"
           % (getattr(model, "mejor_epoca", "?"), val["candidato"].mean(), val["referencia"].mean()))
@@ -500,6 +529,9 @@ def main():
     print("  MSE por banda (prueba): red", err["candidato"], "| referencia", err["referencia"])
     for m in motivos:
         print("  " + m)
+    print("  paridad con la rocola: %.2g en %d filas de prueba" % (paridad["max_abs"], paridad["filas"]))
+    for a in avisos:
+        print("  [!] " + a + " -> escucha ese tipo de musica en el A/B")
 
     if not informe["independiente"]:
         codigo = SALIDA_NO_VERIFICABLE
@@ -508,7 +540,8 @@ def main():
         codigo = 0 if publicar else 2
     modelo_bytes = bytes_ria1(model)
     rep = informe_reproducible(informe, capas, model, val, err, instalado, estado_inst, huella_inst,
-                               codigo, motivos, modelo_bytes, (tr, va, pr), origen_datos, POLITICA)
+                               codigo, motivos, modelo_bytes, (tr, va, pr), origen_datos, POLITICA,
+                               paridad, por_clase, avisos, here)
     ruta_rep = sys.argv[sys.argv.index("--informe") + 1] if "--informe" in sys.argv else os.path.join(here, "informe_dsee.json")
     escribir_atomico(ruta_rep, lambda f: f.write(rep))
     print("Informe reproducible:", os.path.basename(ruta_rep))
@@ -541,12 +574,21 @@ def vectores_de_paridad(model, Xp, modelo_bytes, n=24):
                          for i in range(min(n, len(Xp))))
 
 
+def _sha_de(carpeta, nombre):
+    try:
+        with open(os.path.join(carpeta, nombre), "rb") as f:
+            return hashlib.sha256(f.read()).hexdigest()
+    except (OSError, TypeError):
+        return None
+
+
 def _num(v):
     return [float(repr(float(x))) for x in np.asarray(v).ravel()] if np.ndim(v) else float(v)
 
 
 def informe_reproducible(informe, capas, model, val, err, instalado, estado_inst, huella_inst,
-                         codigo, motivos, modelo_bytes, partes, origen_datos, politica):
+                         codigo, motivos, modelo_bytes, partes, origen_datos, politica,
+                         paridad=None, por_clase=None, avisos=(), here=None):
     """El informe: la misma entrada da el MISMO archivo, byte a byte. Sin fechas, sin rutas ni nombres."""
     rep = {
         "formato": "ROCOLA-INFORME-DSEE 1",
@@ -568,6 +610,11 @@ def informe_reproducible(informe, capas, model, val, err, instalado, estado_inst
         "politica": politica,
         "decision": {"codigo": int(codigo), "publicar": codigo == 0, "motivos": list(motivos)},
         "candidato_sha256": hashlib.sha256(modelo_bytes).hexdigest(),
+        "paridad_inferencia": None if paridad is None else {k: _num(v) if isinstance(v, float) else v
+                                                          for k, v in sorted(paridad.items())},
+        "paridad_extractor": {"extractor": EXTRACTOR, "vectores_sha256": _sha_de(here, "paridad_extractor.txt")},
+        "por_clase": por_clase,
+        "avisos_por_clase": list(avisos),
     }
     return (json.dumps(rep, sort_keys=True, indent=1, ensure_ascii=True, allow_nan=True) + "\n").encode("ascii")
 
