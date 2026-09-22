@@ -33,70 +33,27 @@ import numpy as np
 FS = 44100
 EPS = 1e-12
 
-# ---------------- contrato RIA1 (identico a Form1.cs) ----------------
-def hz_bin(hz, frame):
-    return _hz_bin_fs(hz, frame, FS)
+# ---------------- contrato RIA1: la geometria de la ROCOLA (ver contrato_dsee.py) ----------------
+# Hasta la version 1 del extractor este archivo tenia su propia geometria, y no era la de la rocola:
+# techo de 20 kHz (la rocola llega a 20,5), corte sin redondear a bin, tope del objetivo en +0,5
+# (la rocola en +0,1) y bandas vacias estiradas. La red aprendia 12 bandas que no eran las que la
+# rocola rellena. Ahora el extractor ES el de la rocola, transcrito con su mismo redondeo float32,
+# y pruebas/iaparidad.cs compara los dos lenguajes corte por corte.
+from contrato_dsee import EXTRACTOR, corte_de, par_desde_potencia
 
-def _hz_bin_fs(hz, frame, fs):
-    ny = frame // 2
-    b = int(hz / (fs / frame))
-    return min(max(b, 1), ny - 1)
+# La cosecha de la rocola salta los cuadros casi mudos ANTES de analizarlos (energia media por muestra
+# <= 1e-8). Es un filtro del cuadro, no del extractor: aqui se aplica en el mismo sitio.
+UMBRAL_MUDO = 1e-8
 
-# Geometria solamente: los espectros y ejemplos no se retienen. Incluir FS y tipo
-# del corte evita reciclar limites calculados con otra frecuencia/precision.
-@lru_cache(maxsize=64, typed=True)
-def _bandas_entrada(frame, fc_hz, fs):
-    bandas = []
-    for i in range(24):
-        a = _hz_bin_fs(200.0 * (fc_hz / 200.0) ** (i / 24.0), frame, fs)
-        b = _hz_bin_fs(200.0 * (fc_hz / 200.0) ** ((i + 1) / 24.0), frame, fs)
-        if b <= a: b = a + 1
-        bandas.append((a, b))
-    return tuple(bandas)
-
-@lru_cache(maxsize=64, typed=True)
-def _bandas_objetivo(frame, fc_hz, fs):
-    ny = frame // 2
-    cut = _hz_bin_fs(fc_hz, frame, fs)
-    sa = _hz_bin_fs(fc_hz * 0.92, frame, fs)
-    if sa >= cut: sa = cut - 1
-    top = min(2.0 * fc_hz, 20000.0, ny * (fs / frame) * 0.95)
-    if top <= fc_hz * 1.1:
-        return sa, cut, None
-    bandas = []
-    for j in range(12):
-        a = _hz_bin_fs(fc_hz * (top / fc_hz) ** (j / 12.0), frame, fs)
-        b = _hz_bin_fs(fc_hz * (top / fc_hz) ** ((j + 1) / 12.0), frame, fs)
-        if a < cut: a = cut
-        if b <= a: b = a + 1
-        bandas.append((a, b))
-    return sa, cut, tuple(bandas)
-
-def features_and_target(mag2n, frame, fc_hz):
-    """mag2n = |X[k]/N|^2 del cuadro COMPLETO (con banda alta real). Devuelve (x28, y12) o None."""
-    x = np.zeros(28, dtype=np.float64)
-    # 24 bandas log de 200 Hz al corte (energia media por bin)
-    for i, (a, b) in enumerate(_bandas_entrada(frame, fc_hz, FS)):
-        x[i] = np.log10(mag2n[a:b].mean() + EPS)
-    mean = x[:24].mean()
-    x[:24] -= mean
-    x[24] = mean
-    x[25] = fc_hz / 20000.0
-    e = x[16:24] + mean                                  # planitud de las ultimas 8 bandas bajo el corte
-    x[26] = e.mean() - np.log10((10.0 ** e).mean() + EPS)
-    x[27] = 0.0
-    if mean < -8.0:                                      # cuadro casi mudo: no sirve para aprender
+def features_and_target(mag2n, frame, fc_hz, fs=FS):
+    """mag2n = |X[k]/N|^2 del cuadro COMPLETO (con banda alta real). fc_hz es el corte SIMULADO,
+    como el cutHzSim de MakePair: se redondea a bin igual que alli. Devuelve (x28, y12) o None
+    exactamente cuando la rocola devolveria false."""
+    cut = corte_de(fs, frame, fc_hz)
+    r = par_desde_potencia(fs, frame, cut, np.asarray(mag2n, dtype=np.float64) * float(frame * frame))
+    if r is None:
         return None
-    # costura: banda 0.92*corte .. corte
-    sa, cut, bandas = _bandas_objetivo(frame, fc_hz, FS)
-    seam = mag2n[sa:cut].mean() + EPS
-    # objetivo: 12 sub-bandas log del corte a min(2*corte, 20k, ny*0.95) (energia REAL de la banda alta)
-    if bandas is None:
-        return None
-    y = np.zeros(12, dtype=np.float64)
-    for j, (a, b) in enumerate(bandas):
-        y[j] = np.log10(mag2n[a:b].mean() + EPS) - np.log10(seam)
-    return x, np.clip(y, -4.0, 0.5)
+    return r[0].astype(np.float64), r[1].astype(np.float64)
 
 @lru_cache(maxsize=2, typed=True)
 def _ventana_entrenamiento(frame):
@@ -106,13 +63,17 @@ def _ventana_entrenamiento(frame):
     return win
 
 def frames_of(sig, frame):
-    """Cuadros con ventana raiz-de-Hann (la MISMA del SpectralTap) -> |X/N|^2."""
+    """Cuadros con ventana raiz-de-Hann (la MISMA del SpectralTap) -> |X/N|^2. Se saltan los
+    cuadros casi mudos con el mismo umbral que la cosecha de la rocola."""
     win = (_ventana_entrenamiento(frame) if frame in (2048, 4096) else
            np.sqrt(0.5 - 0.5 * np.cos(2.0 * np.pi * np.arange(frame) / frame)))
     hop = frame // 2
     out = []
     for p in range(0, len(sig) - frame, hop):
-        X = np.fft.rfft(sig[p:p + frame] * win)
+        trozo = np.asarray(sig[p:p + frame], dtype=np.float64)
+        if float(np.dot(trozo, trozo)) / frame <= UMBRAL_MUDO:
+            continue
+        X = np.fft.rfft(trozo * win)
         m = (np.abs(X) / frame) ** 2
         out.append(m)
     return out

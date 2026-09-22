@@ -23,7 +23,8 @@ desarrollo y medición. La revisión anterior está en REVISION_AUDIO_2026-09-22
 | Normalización del entrenador AutoEQ sin usar validación | Implementado y probado |
 | Escucha A/B, DAC, XP real y CPU antiguo | Pendiente |
 | Sonoridad integrada, true-peak, antialiasing, salidas y continuidad | Pendiente; plan abajo |
-| Validación por canciones y paridad completa del extractor IA | Pendiente; prioridad siguiente |
+| Paridad del extractor IA (contrato EXTRACTOR=2) | Implementado y probado; ver 1.7 |
+| Validación por canciones, selección contra instalado y publicación conjunta | Pendiente; siguientes entregas |
 
 ## 1. Qué se implementó y cómo funciona
 
@@ -159,6 +160,52 @@ Al exportar se absorbe la normalización en la primera capa, conservando el form
 Esto corrige una fuga de información en la normalización. No equivale a una división
 por artista ni corrige automáticamente otros posibles sesgos. El promedio de referencia
 de canciones sanas sigue siendo el utilizado por la biblioteca, como antes.
+
+### 1.7 Contrato del extractor DSEE (entrega 1 del bloque A)
+
+Archivos: ia/contrato_dsee.py (nuevo), ia/entrenar_ia.py, ia/calidad_dsee.py,
+ia/paridad_extractor.txt (nuevo), pruebas/iaparidad.cs (nueva).
+
+Manda la geometría de la rocola: la red se aplica en RegenNeural y la cosecha sale de MakePair.
+El extractor Python anterior (ahora llamado versión 1) se apartaba en cinco cosas, no en una:
+
+| | Rocola (C#) | Extractor Python v1 |
+|---|---|---|
+| Techo de los objetivos | topBin = mín(20,5 kHz, 95 % Nyquist, 2·corte−2 bins, ny−4) | mín(2·corte, 20 kHz, 95 % Nyquist) |
+| Corte | redondeado a bin | continuo |
+| Entrada 25 y bandas de entrada | con el corte redondeado | con el corte sin redondear |
+| Tope superior del objetivo | +0,1 | +0,5 |
+| Sub-banda vacía | el par no vale | se estiraba un bin |
+
+La diferencia de 20 kHz frente a 20,5 kHz no es solo una constante: el techo de la rocola sale
+de redondear a bins, del límite 2·corte−2 (la fuente t/2 debe quedar bajo el corte) y de
+Nyquist. contrato_dsee.py transcribe MakePair/BuildIaFeatures con el mismo redondeo float32 y
+entrenar_ia.py lo usa (EXTRACTOR = 2). El filtro de «cuadro casi mudo» pasó a donde lo aplica la
+cosecha (energía del cuadro ≤ 1e-8, antes de analizar) en vez de formar parte del extractor.
+curva_fija usa el mismo techo (geometría de 44,1 kHz y cuadro 2048).
+
+Datos y modelos: la reproducción no cambió, así que los modelos RIA1 instalados funcionan igual.
+MakePair y BuildIaFeatures no han cambiado desde su creación (3 de agosto de 2026, comprobado en
+el historial), por lo que rocola_ia_datos.bin ya está en la geometría v2 y no se reinterpreta.
+Lo afectado eran los modelos entrenados con --musica o audio sintético: aprendían bandas que no
+son las que la rocola rellena. No se reentrenó ni reemplazó ningún modelo.
+
+Comprobado (automático, Mono en Linux, ambas ramas):
+- 300 casos del archivo de paridad (178 pares válidos, 122 rechazados igual): diferencia máxima
+  9,7e-9 en log10 con espectro inyectado y 3,3e-6 partiendo de la señal (FFT float32 de la rocola
+  frente a FFT de doble precisión).
+- Barrido de todos los cortes a 22,05/32/44,1/48/88,2/96 kHz: 17.712 pares y 12.839
+  reconstrucciones en HD (cuadros 2048 y 4096) y 5.784 y 4.214 en Modest (solo 2048); cero
+  discrepancias, peor diferencia 4,8e-7.
+  Incluye las bandas que rellena RegenNeural, medidas por los bins que toca.
+- La batería se pone roja al cambiar el techo a 20 kHz, el tope a +0,5, un límite de banda o el
+  redondeo del corte, y al alterar un valor del archivo de paridad.
+
+Riesgo medido, no comprobado en XP: de 500.721 divisiones hz/binHz de toda la geometría, 5.312
+(1,06 %) caerían en otro bin si se calcularan sin redondear a float32, lo que puede hacer la FPU
+x87 de un Windows XP de 32 bits. En una misma máquina la cosecha y la reproducción usan el mismo
+código, pero la paridad exacta con Python en XP solo se sabrá corriendo pruebas/iaparidad.cs allí
+(con Python instalado o fijando ROCOLA_TEST_PYTHON).
 
 ## 2. Comprobaciones y cómo repetirlas
 

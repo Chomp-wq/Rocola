@@ -45,11 +45,15 @@ class CalidadDsee(unittest.TestCase):
         a = quality.evaluar(Constant(.25), x, y, 1)
         b = quality.evaluar(Constant(.25), x, y, 4096)
         np.testing.assert_allclose(a[1:], b[1:], rtol=1e-14)
-        fc = x[:, 25]*20000
-        top = np.minimum(2*fc, 20000)
-        old = np.array([np.clip(-1.8*np.log2(fc*(top/fc)**((j+.5)/12)/fc), -4, .5)
-                        for j in range(12)]).T
-        np.testing.assert_allclose(quality.curva_fija(x), old, atol=1e-14)
+        # Contrato EXTRACTOR=2: el techo es el topBin de la rocola (44,1 kHz, cuadro 2048), no 20 kHz.
+        import contrato_dsee as contrato
+        bhz = float(contrato.bin_hz(44100, 2048))
+        esperado = []
+        for f in x[:, 25]*20000:
+            cut = int(np.floor(f / bhz + .5))
+            top = contrato.top_bin(44100, 2048, cut) * bhz
+            esperado.append([np.clip(-1.8*np.log2(top/f)*((j+.5)/12), -4, .1) for j in range(12)])
+        np.testing.assert_allclose(quality.curva_fija(x), np.array(esperado), atol=1e-12)
 
     def test_invalid_shapes_cutoffs_and_empty(self):
         x, y = self.data()

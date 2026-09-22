@@ -62,6 +62,32 @@ este en reposo y saca de cada cancion unas ocho veces mas material. Dejalo una n
 - `ia_vectores_prueba.txt` son los vectores de paridad de ESTE modelo (los usa la bateria de pruebas).
 - Para RE-entrenar con mas musica: rama rocola-hd, `ia\entrenar_con_mi_musica.bat`.
 
+## El contrato (RIA1) — no romperlo
+
+Manda la ROCOLA: la red se aplica en `SpectralTap.RegenNeural` y la cosecha sale de `MakePair`.
+`contrato_dsee.py` transcribe esas funciones y `BuildIaFeatures` paso a paso, con su mismo redondeo
+float32, y es lo que usa `entrenar_ia.py` (version del extractor `EXTRACTOR = 2`).
+- entrada[0..23]: log10 de la energia media por bin (|X/N|^2) de 24 bandas log de 200 Hz al corte,
+  restada su media; [24] = esa media; [25] = corte/20000 **con el corte redondeado a bin**;
+  [26] = planitud (ultimas 8 bandas); [27] = 0.
+- salida[0..11]: log10(energia objetivo / energia de la costura) de 12 sub-bandas log del corte al
+  `topBin` de la rocola: el menor entre 20,5 kHz, 95 % de Nyquist, 2·corte−2 bins y ny−4.
+  Topes −4 y **+0,1**. Si una sub-banda queda vacia el par no vale (como en la rocola).
+- Ventana raiz-de-Hann, cuadro 2048 (en esta rama es fijo: cosecha y reproduccion), solape 50 %.
+  El contrato cubre tambien 4096 porque lo usa la rama HD; aqui esos casos se saltan diciendolo.
+
+La version 1 (el extractor Python anterior) usaba 20 kHz de techo, corte sin redondear y tope +0,5:
+un modelo entrenado con `--musica` o con audio sintetico aprendia bandas que no son las que la
+rocola rellena. Lo que junta la propia rocola nunca tuvo ese problema: `MakePair` no ha cambiado
+desde que existe (3 de agosto de 2026). Los modelos RIA1 instalados siguen funcionando igual: la
+reproduccion no cambio.
+
+`paridad_extractor.txt` son los vectores de paridad del extractor (28 entradas y 12 objetivos para
+espectros y senales reproducibles bit a bit). `pruebas/iaparidad.cs` los compara con la rocola y
+ademas recorre TODOS los cortes a seis frecuencias de muestreo contrastandolos con este contrato.
+Si se cambia el contrato a proposito: `python3 contrato_dsee.py --generar-paridad paridad_extractor.txt`
+y subir `EXTRACTOR`.
+
 ## El EQ y el bajo van SOLOS (no hay perilla que ajustar)
 
 De fabrica, en Ctrl+F3, el "EQ automatico" y los "Graves (bajo profundo)" llevan puesta la casilla
