@@ -49,7 +49,8 @@ class AudioEstereo {
   }
   // Una huella vieja no se mezcla 50/50: sus primeras ocho bandas se reemplazan.
   float[] old=new float[12];for(int i=0;i<8;i++)old[i]=30;old[8]=18000;old[9]=.12f;old[10]=40;
-  cache["old"]=old;Set(f,"eqMeasPath","old");Set(f,"eqMeasN",882000L);
+  // 882000 cuadros son 20 s a 44,1 kHz: el minimo ahora va por segundos, asi que se dice la frecuencia.
+ cache["old"]=old;Set(f,"eqMeasPath","old");Set(f,"eqMeasN",882000L);Set(f,"eqMeasRate",44100);
   double[] sums=new double[8];for(int i=0;i<8;i++)sums[i]=882000;
   Set(f,"eqMeasSum",sums);Call(f,"FinalizeEqMeasure");
   float[] fresh=cache["old"];for(int i=0;i<8;i++)Check(fresh[i]==0,"Contamina huella con mezcla mono vieja");

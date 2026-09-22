@@ -1022,13 +1022,16 @@ namespace Rocola
                         string iaTxt = iaHarvestOn
                             ? ("Material para la IA: " + IaInfoText() + ".   ")
                             : "Material para la IA: apagado (lo demas se sigue midiendo igual).   ";
+                        int iFal = integLeft;   // canciones que aun no tienen su medida ENTERA (ver Sonoridad.cs)
                         hint.Text = (preScanTurbo && tTot > 0)
-                            ? ((tFal > 0 ? "Repasando la biblioteca a fondo ahora mismo." : "Repaso a fondo terminado: la biblioteca esta entera.")
+                            ? ((tFal > 0 || iFal > 0 ? "Repasando la biblioteca a fondo ahora mismo." : "Repaso a fondo terminado: la biblioteca esta entera.")
                                + "\n" + iaTxt
                                + (etapa.Length > 0 ? ("La cancion que suena entra en la etapa " + etapa + ".") : "")
                                + "\nEl detalle, cancion por cancion, queda en rocola_calidad.txt junto al programa.")
-                            : ("La biblioteca se mide sola mientras la rocola trabaja: "
-                               + (tFal > 0 ? ("faltan " + tFal.ToString("#,0") + " archivos.") : "ya esta al dia.")
+                            : (((tFal > 0 || iFal <= 0)
+                                ? ("La biblioteca se mide sola mientras la rocola trabaja: "
+                                   + (tFal > 0 ? ("faltan " + tFal.ToString("#,0") + " archivos.") : "ya esta al dia."))
+                                : ("Primera medida lista; ahora mide cada cancion entera: faltan " + iFal.ToString("#,0") + "."))
                                + (durScanLeft > 0 ? ("   Duraciones: faltan " + durScanLeft.ToString("#,0") + ".") : "")
                                + "\n" + iaTxt
                                + (etapa.Length > 0 ? ("La cancion que suena entra en la etapa " + etapa + ".") : "")

@@ -22,7 +22,9 @@ desarrollo y medición. La revisión anterior está en REVISION_AUDIO_2026-09-22
 | Guardián del entrenador DSEE y mejor checkpoint evaluado | Implementado y probado; modelos actuales intactos |
 | Normalización del entrenador AutoEQ sin usar validación | Implementado y probado |
 | Escucha A/B, DAC, XP real y CPU antiguo | Pendiente |
-| Sonoridad integrada, true-peak, antialiasing, salidas y continuidad | Pendiente; plan abajo |
+| Sonoridad integrada BS.1770 de la canción entera, aparte de la estimación | Implementado y probado; ver 1.12 |
+| Mínimos de aprendizaje por duración y lecturas que parten un cuadro | Implementado y probado; ver 1.12 |
+| True-peak, antialiasing, salidas y continuidad | Pendiente; plan abajo |
 | Paridad del extractor IA (contrato EXTRACTOR=2) | Implementado y probado; ver 1.7 |
 | Identidad de origen, particiones por canción y estéreo por canal | Implementado y probado; ver 1.8 |
 | Selección contra curva e instalado, informe reproducible | Implementado y probado; ver 1.9 |
@@ -356,6 +358,109 @@ rojo sin la guardia de paridad, con la emulación en float64, con avisos que no 
 instalado o contando el primer cuadro como ataque. Los ejemplos que produce build_dataset no
 cambian ni un bit (comparado con la versión publicada).
 
+### 1.12 Sonoridad integrada ITU-R BS.1770 de la canción entera (etapa 1 de audio)
+
+Archivos: Rocola/Sonoridad.cs (nuevo), Form1.Sonido.cs (MeasureFile, NormGainFor, ReportAudioBlock;
+en Modest ReportAudioBlock está en Form1.Video.cs), Form1.Datos.cs, Form1.Biblioteca.cs,
+Form1.Portadas.cs, Form1.Ajustes.cs, Form1.Fondo.cs, Form1.Ia.cs (Form1.cs en Modest),
+pruebas/sonoridad.cs y pruebas/ref_bs1770.py (nuevos).
+
+Dos medidas, separadas y con su nombre:
+
+- ESTIMACIÓN RÁPIDA (rocola_volumen.txt, sin cambios): tres tramos de 20 s, o la canción entera si
+  dura menos de un minuto, con un filtro parecido a la ponderación K y sin puertas; y lo aprendido
+  oyendo. Su cálculo no cambió: la batería lo comprueba bit a bit. Medido: su filtro se aparta del de
+  la norma −0,05 dB en graves y agudos y hasta −0,49 dB cerca de 1,5 kHz.
+- MEDIDA INTEGRADA (rocola_sonoridad.txt, nueva): la canción entera como la define BS.1770-4/-5:
+  ponderación K exacta en doble precisión, bloques de 400 ms con 75 % de solape (subbloques de 100 ms
+  con límites en floor(k·fs/10), así a 11,025 kHz cada bloque mide 400 ms justos), puerta absoluta
+  −70 LKFS y relativa −10 LU. A 48 kHz los coeficientes son los de la tabla de la norma (diferencia
+  8,9e-16); a otras frecuencias salen del mismo prototipo con transformación bilineal predistorsionada.
+
+Canales: mono y estéreo según su formato (1 canal es mono y 2 son izquierdo y derecho en MP3 y en
+WAV sin máscara). Con 3 o más, SOLO si el WAV trae máscara de altavoces (WAVE_FORMAT_EXTENSIBLE): LFE
+fuera, laterales a 1,41, traseros a 1,41 si no hay laterales (5.1 clásico) y a 1 si los hay (7.1),
+resto a 1, según la regla de posición de BS.1770 (60°–120° de acimut y menos de 30° de altura).
+Sin máscara, o con una máscara que no cuadra, no hay integrada y se queda la estimación.
+
+Solo se publica lo que se midió ENTERO: nada cancelado, ni lecturas que se quedan cortas o que traen
+de más respecto de lo que el archivo dice durar (margen: 100 ms o una milésima), ni tramos haciéndose
+pasar por canción entera. Menos de 400 ms: no hay medida. Todo por debajo de −70 LKFS: «muda».
+
+La tabla nueva lleva cabecera de formato («ROCOLA-SONORIDAD v1») y la versión del algoritmo en cada
+registro. Una tabla con otra cabecera, o que no se pudo leer, no se usa NI se pisa. Los registros de
+un algoritmo posterior se guardan intactos. Si falta el archivo bueno se lee su copia .bak. Entra en
+el respaldo diario. La estimación vieja nunca se borra: sigue mandando mientras no haya integrada.
+
+Nivelado: NormGainFor usa la integrada si existe, en la misma escala de siempre (la raíz de la
+potencia K media por canal: 10^((L+0,691)/10) dividido entre la suma de pesos), y con los MISMOS
+topes (el de la etapa, +24 dB absoluto, nunca baja). Un tema mono y el mismo tema en estéreo reciben
+la misma ganancia. Una medida nueva NO cambia el volumen de la canción que ya suena: se aplica la
+próxima vez que suene, desde su primera muestra y sin fundido de entrada. Lo que se toca en vivo en
+Ctrl+F3 sigue pasando por las rampas existentes. La etapa que se muestra sale de la misma medida.
+
+Cuándo se mide:
+- De paso, cuando el análisis ya lee la canción entera (canciones de menos de un minuto, repaso a
+  fondo, y el calentador de la siguiente con esas canciones cortas).
+- El resto, en una SEGUNDA TANDA del repaso de la biblioteca, después de todas las estimaciones y en
+  el mismo hilo: prioridad mínima, un solo carril en el equipo de dos núcleos, espera 8 s sin que nadie
+  toque la rocola y sin vídeo, cede el disco a las carátulas, pide turno para no medir lo mismo que
+  otro, y con música sonando descansa al menos lo que trabajó (como mucho la mitad de un núcleo). Va
+  en el orden de siempre: lo pedido, lo más sonado, lo más reciente. Los vídeos se quedan con la
+  estimación (su sonido lo pone Windows).
+- Ctrl+F3, pestaña de biblioteca: «Primera medida lista; ahora mide cada cancion entera: faltan N».
+  Es solo texto de estado; no hay interruptor nuevo.
+- Bitácora (rocola_diagnostico.txt, si está encendida): cada 50 canciones, cuánto se aparta en
+  promedio la estimación de la integrada. Es el dato real de tu biblioteca para saber cuánto cambia.
+
+Mínimos por duración: la huella tonal oída pide 20 s de música a cualquier frecuencia (antes 882.000
+cuadros: 40 s a 22,05 kHz y 9,2 s a 96 kHz) y la estimación oída 9,07 s (antes 800.000 muestras: 18 s
+en mono y 4,2 s en estéreo a 96 kHz).
+
+Lecturas que parten un cuadro: la sonoridad oída recuerda el canal que toca entre bloques y la huella
+guarda el cuadro partido para completarlo; el análisis por tramos lee siempre cuadros enteros. Antes
+ese trozo se perdía y todo el bloque siguiente se leía corrido un canal (el izquierdo por el filtro del
+derecho). Con cuadros enteros, la cuenta es la misma de antes bit a bit.
+
+Comprobado (pruebas automáticas con Mono en Linux; no es XP real ni escucha):
+- EBU Tech 3341, casos 1 a 6, a 22,05/32/44,1/48/88,2/96 kHz: todos dentro de ±0,1 LU; el peor, 0,051
+  LU (caso 5 a 22,05 kHz). A 48 kHz: +0,007 +0,007 −0,014 −0,014 +0,021 −0,016.
+- Contra la referencia independiente en Python (tabla de 48 kHz aplicada por FFT, bloques por suma
+  acumulada, puertas comparadas en LKFS) con señales de programa: a 48 kHz iguales a 4 decimales
+  (estéreo con tramos, silencio digital y bajo la puerta; 5.1 con LFE); a 44,1/32/96/22,05 kHz se
+  apartan 0,004/0,024/0,022/0,059 LU, que es la distinta forma de llevar el filtro a esa frecuencia.
+- Leyendo en trozos de 1, 3, 883, 8192, 65537 muestras y al azar: resultado idéntico bit a bit, en
+  estéreo y con cinco canales. Mono, estéreo, 5.1, 7.1, LFE, máscaras erróneas, cabeceras WAV con
+  trozos intercalados, RF64 y cabeceras cortadas.
+- Tabla: ida y vuelta, registros rotos, algoritmo posterior intacto, cabecera ajena sin tocar,
+  disco que falla a mitad sin publicar nada a medias, .bak, y la octava tabla del arranque.
+- Solo entera: cortado, cancelado, seis canales sin máscara, tramos de 63,16 s (que suman lo mismo
+  que el archivo) y lectura de más.
+- Mínimos a 22,05/44,1/48/96 kHz en mono y estéreo; lecturas partidas en vivo.
+- En rojo al quitar cada una: puerta relativa, puerta absoluta, LFE fuera, fase entre lecturas
+  (medidor y en vivo), cuadro partido de la huella, lectura completa, división por pesos, preferencia
+  de la integrada, mínimo en segundos, no pisar tabla ajena, conservar registros ajenos, un solo tramo.
+- Coste en esta máquina (Mono): el medidor gasta 5,8 ns por muestra en estéreo, 0,5 ms por segundo de
+  música (0,12 s en una canción de 4 minutos) y 19 KB por canción. En un WAV de 4 minutos, la medida
+  entera tardó 254 ms y la estimación por tramos 481 ms. En MP3 manda el descompresor, que aquí no se
+  puede medir (Linux no tiene el de Windows): es la cifra que falta medir en el equipo del bar.
+- En el hilo del sonido, ReportAudioBlock con la medición en vivo encendida (solo en canciones aún sin
+  analizar) cuesta lo mismo que antes: 7,4 ms por segundo de música en las dos versiones; el peor
+  bloque (93 ms de audio) entre 0,7 y 1,7 ms en ambas, que es ruido de la máquina.
+- Tandas completas (pruebas/todo.sh): HD 164 baterías bien y Modest 152, las dos con la batería nueva;
+  en las dos sigue en rojo solo `disco`, como antes de esta etapa (pendiente de tu decisión).
+
+Limitaciones y pendientes:
+- No pude abrir aquí el texto oficial de BS.1770-5 ni EBU Tech 3341 (el acceso a itu.int y a
+  tech.ebu.ch está bloqueado en este entorno). Lo implementado sigue la norma tal como la conozco; la
+  regla de pesos por posición se confirmó por búsqueda. Conviene cotejar con el PDF oficial. Los casos 7
+  y 8 de Tech 3341 son grabaciones reales que tampoco se pudieron descargar.
+- Un WAV multicanal con máscara lo abre NAudio a través del conversor de Windows: aquí se probó la
+  lectura de la máscara y el medidor con esos pesos, no el archivo de punta a punta.
+- Falta: XP real, CPU antigua real, MP3 reales, cuánto tarda la tanda en tu biblioteca y escucha A/B a
+  volumen igualado (en canciones con intros largas o silencios la integrada sube menos que antes).
+- Sin sonoridad momentánea, de corto plazo ni rango (EBU Tech 3342): la rocola no los usa.
+
 ## 2. Comprobaciones y cómo repetirlas
 
 En cada repositorio, con sus herramientas de compilación .NET, Python con NumPy y FFmpeg:
@@ -369,8 +474,8 @@ El script:
 
 1. Compila GPU y CPU con advertencias tratadas como errores; ejecuta las 29 baterías
    de validar-capas.ps1. Compilar CPU no significa modificar su renderizado.
-2. Ejecuta once baterías adicionales: dsee, limite, entrenador, iaparidad, iaorigen, iadatos,
-   eqauto, calidad, nivel, bajoauto y bajo.
+2. Ejecuta doce baterías adicionales: dsee, limite, entrenador, iaparidad, iaorigen, sonoridad,
+   iadatos, eqauto, calidad, nivel, bajoauto y bajo.
 3. Ejecuta las pruebas Python de los entrenadores y sus protecciones (test_calidad_dsee,
    test_entrenar_eq, test_contrato_dsee, test_origen_dsee, test_estereo_dsee,
    test_seleccion_dsee y test_publicacion_dsee).
@@ -467,6 +572,10 @@ No rotularla como LUFS integrado completo.
 
 Coste: análisis completo más lento en HDD; reproducir una canción ya medida solo lee caché.
 Conservar pausas, cancelación y prioridad frente a carátulas/arranque, sin saturar 2C/2T.
+
+Estado (22 de septiembre, etapa 1 de audio, las dos ramas): hechos 1 a 6 (ver 1.12). Queda: medir la
+tanda en el equipo del bar con MP3 reales, cotejar con el texto oficial y los casos 7-8 de Tech 3341,
+y escuchar A/B a volumen igualado.
 
 ### C. Protección de picos entre muestras
 

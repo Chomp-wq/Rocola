@@ -63,6 +63,10 @@ namespace Rocola
             public float[] Average;
             public bool OnlyHealthy;
             public StartupStats Stats;
+            // La sonoridad integrada (ver Sonoridad.cs). Estado 0 = este trabajador no la leyo.
+            public Dictionary<string, SonoridadIntegrada> Integ = new Dictionary<string, SonoridadIntegrada>(StringComparer.OrdinalIgnoreCase);
+            public List<string> IntegAjenas = new List<string>();
+            public int IntegEstado;
         }
 
         private sealed class StartupLoad
@@ -77,11 +81,21 @@ namespace Rocola
         {
             if (load.Cancelled) return null;
             StartupData data = new StartupData();
-            for (int table = 0; table < Math.Min(7, load.Paths.Length); table++)
+            for (int table = 0; table < Math.Min(8, load.Paths.Length); table++)
             {
                 if (load.Cancelled) return null;
                 try
                 {
+                    if (table == 7)
+                    {
+                        // La integrada tiene sus reglas: si no existe se empieza de cero, pero si existe y no se
+                        // puede leer -o la escribio otra version- no se usa ni se pisa (ver Sonoridad.cs).
+                        Dictionary<string, SonoridadIntegrada> integ = new Dictionary<string, SonoridadIntegrada>(StringComparer.OrdinalIgnoreCase);
+                        List<string> ajenas = new List<string>();
+                        int estado = LeeIntegArchivo(load.Paths[7], delegate(TextReader r) { return new StartupTextReader(r, load); }, integ, ajenas);
+                        data.Integ = integ; data.IntegAjenas = ajenas; data.IntegEstado = estado;
+                        continue;
+                    }
                     // Un solo lector secuencial: no multiplicar accesos al HDD ni trabajadores en 2C.
                     using (FileStream stream = new FileStream(load.Paths[table], FileMode.Open, FileAccess.Read,
                         FileShare.Read, 65536, FileOptions.SequentialScan))
@@ -192,7 +206,7 @@ namespace Rocola
             try
             {
                 startupLoad = CreateStartupLoad(new string[] { LoudFile(), EqFile(), IaDoneFile(),
-                    DeepDoneFile(), DurFastFile(), RutaDatos("rocola_incompatibles.txt"), LibStatsFile() });
+                    DeepDoneFile(), DurFastFile(), RutaDatos("rocola_incompatibles.txt"), LibStatsFile(), IntegFile() });
             }
             catch { startupLoad = null; }   // no cambia el arranque si no se pudo crear el trabajador
         }
@@ -216,6 +230,8 @@ namespace Rocola
             InvalidateVideoMeasurements();
             loudCache = data.Loud; durCache = data.Dur; durFast = data.Fast; eqCache = data.Eq;
             iaDone = data.Ia; deepDone = data.Deep; incompatibleLogged = data.Incompatible;
+            if (data.IntegEstado == 0) LoadIntegCache();   // el trabajador no la leyo: se lee aqui
+            else { integCache = data.Integ; integAjenas = data.IntegAjenas; integEstado = data.IntegEstado; }
             eqCacheVer = data.EqVersion; eqAvg = data.Average;
             eqAvgSanas = data.Healthy; eqAvgSoloSanas = data.OnlyHealthy;
             RememberEqAverage();
@@ -1131,9 +1147,9 @@ namespace Rocola
         private void FinalizeEqMeasure()
         {
             string path = eqMeasPath; eqMeasPath = null;
-            double[] sums = eqMeasSum; long n = eqMeasN;
+            double[] sums = eqMeasSum; long n = eqMeasN; int tasa = eqMeasRate;
             eqMeasSum = new double[8]; eqMeasN = 0;
-            if (path == null || n < EqMinFrames) return;
+            if (path == null || tasa <= 0 || n < (long)(EqMinSec * tasa)) return;   // 20 s a la frecuencia que sea
             float[] curve = new float[EqLen];
             for (int b = 0; b < 8; b++) curve[b] = (float)(10.0 * Math.Log10(sums[b] / n + 1e-12));
             // referencia = MEDIANA de las bandas del CUERPO (158 Hz - 5.6 kHz): invariante al volumen y
@@ -1561,8 +1577,10 @@ namespace Rocola
         // pre-analisis y el calentador de la siguiente cancion. Con dos sitios que escriban las mismas tres
         // tablas, el dia que alguien arregle uno se olvidara del otro.
         //
-        // SOBRESCRIBE lo que hubiera: estas medidas son de la cancion COMPLETA, asi que son mejores que lo
-        // aprendido a medias oyendola (que promediaba entre pasadas).
+        // SOBRESCRIBE lo que hubiera: estas medidas recorren TODA la cancion -repartida en tramos, o entera si es
+        // corta o va a fondo-, asi que son mejores que lo aprendido a medias oyendola (que promediaba entre
+        // pasadas). Siguen siendo la ESTIMACION: la medida integrada de la cancion entera va aparte, en
+        // PublicaIntegrada (ver Sonoridad.cs).
         //
         // Las tablas son del hilo de la pantalla y no llevan candado -a proposito, para no pagarlo en cada
         // consulta-, asi que quien llame a esto tiene que estar EN ese hilo.
@@ -1765,7 +1783,8 @@ namespace Rocola
                 RutaLectura("rocola_ia.bin"), RutaLectura("rocola_eq_ia.bin"),
                 Path.Combine(sp, "rocola_incompatibles.txt"),
                 IaDoneFile(), DeepDoneFile(),  // sin estas dos, un repaso a fondo empezaria de cero y la IA repetiria ejemplos
-                DurFastFile(), LetterTintFile()   // sin este, la barra tendria que releer el ID3 de toda la biblioteca
+                DurFastFile(), LetterTintFile(),   // sin este, la barra tendria que releer el ID3 de toda la biblioteca
+                IntegFile()   // sin esta, habria que volver a descomprimir la biblioteca entera para medirla
             };
             System.Threading.ThreadPool.QueueUserWorkItem(delegate   // fuera del hilo de la interfaz (no frena nada)
             {
@@ -2500,6 +2519,7 @@ namespace Rocola
             try { if (durScanTh != null && durScanTh.IsAlive) durScanTh.Join(1200); } catch { }
 
             try { SaveLoudCache(); } catch { }
+            try { SaveIntegCache(); } catch { }
             try { FlushEqIfDirty(); } catch { }
             try { SaveIaDone(); } catch { }
             try { SaveDeepDone(); } catch { }

@@ -284,6 +284,7 @@ namespace Rocola
             bool prepared = CompleteStartupDataLoad();
             if (!prepared) LoadStats();   // antes de armar TOP y restaurar creditos/cola
             if (!prepared) LoadLoudCache();   // fallback si fallo el trabajador
+            if (!prepared) LoadIntegCache();
             if (!prepared) LoadEqCache();
             IaCountPairs();      // cuanto material de entrenamiento de la IA llevamos juntado
             if (!prepared) LoadIaDone();

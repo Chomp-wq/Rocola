@@ -75,7 +75,7 @@ class Ajustes
         if (pa <= 0 || pb <= 0) return false;
         string ra = a.Substring(0, pa);
         if (ra != b.Substring(0, pb)) return false;
-        return ra == "salida" || ra == "veredicto" || ra == "propuesta" || ra == "pierde";
+        return ra == "salida" || ra == "veredicto" || ra == "propuesta" || ra == "pierde" || ra == "estado";
     }
 
     const int anchoFila = 424;
@@ -190,8 +190,13 @@ class Ajustes
         int bx = 16, by = hd ? 750 : 508;
         C("calidad", bx + 16, by + 40, 896, 20,
           "Calidad:   52,842 completas     52,842 aceptables     52,842 pobres     52,842 con los picos recortados", fNom, 10f, false);
-        C("estado", bx + 16, by + 62, 896, 48,
+        C("estado.tramos", bx + 16, by + 62, 896, 48,
           "La biblioteca se mide sola mientras la rocola trabaja: faltan 52,842 canciones.   Duraciones: faltan 52,842.\n"
+          + "Material para la IA: apagado (lo demas se sigue midiendo igual).   La cancion que suena entra en la etapa MEDIA.\n"
+          + "El detalle, cancion por cancion, queda en rocola_calidad.txt junto al programa.", fDes, 8.5f, true);
+        // El mismo renglon cuando la primera medida ya termino y va la de la cancion ENTERA (Sonoridad.cs).
+        C("estado.entera", bx + 16, by + 62, 896, 48,
+          "Primera medida lista; ahora mide cada cancion entera: faltan 52,842.   Duraciones: faltan 52,842.\n"
           + "Material para la IA: apagado (lo demas se sigue midiendo igual).   La cancion que suena entra en la etapa MEDIA.\n"
           + "El detalle, cancion por cancion, queda en rocola_calidad.txt junto al programa.", fDes, 8.5f, true);
         C("boton.repaso", bx + 16, by + 114, 300, 34, "Repasar la biblioteca a fondo", fBot, 10f, false);
