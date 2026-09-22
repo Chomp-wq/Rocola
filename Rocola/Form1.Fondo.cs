@@ -1086,7 +1086,13 @@ namespace Rocola
         //
         // Si la portada aun no esta cargada NO se apunta nada: se vuelve a preguntar cuando llegue (lo hace
         // el aviso de portada cargada, que ya existia para el cubito de abajo).
-        private struct ColoresDisco { public Color Prom, Uno, Dos; }   // el promedio (tine el cielo) y los dos picos (las nebulosas)
+        private struct ColoresDisco
+        {
+            public Color Prom, Uno, Dos;
+#if ROCOLA_GPU
+            public Color[] Paleta;
+#endif
+        }
         private readonly Dictionary<string, ColoresDisco> colorPortada = new Dictionary<string, ColoresDisco>(StringComparer.OrdinalIgnoreCase);
         private static bool fondoPortadaOn = true;   // "fondo_portada=" en config
         private static readonly Color SinColor = Color.FromArgb(0, 0, 0, 0);
@@ -1100,6 +1106,9 @@ namespace Rocola
             Bitmap b = LoadCover(a) as Bitmap;
             if (b == null) return SinColor;
             c.Prom = ColoresDePortada(b, out c.Uno, out c.Dos);
+#if ROCOLA_GPU
+            c.Paleta = ExtractCoverPalette(b);
+#endif
             colorPortada[k] = c;
             return c.Prom;
         }

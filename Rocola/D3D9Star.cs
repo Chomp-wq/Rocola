@@ -2131,6 +2131,7 @@ namespace Rocola
             float pulse = pulseCrudo * Dim;   // el beat tambien baja mientras esta atenuado (la deriva NO: ver Begin)
             // La aurora se dibuja DENTRO de Begin, justo despues del cielo y antes de las estrellas.
             auCuadro = (GetAurora != null) ? GetAurora() : new GpuAurora();
+            AdvanceCoverPalette(AhoraMs());
             // Se engancha SIEMPRE: aqui van la via lactea y las nebulosas, haya aurora o no.
             auCuadro.Has = auCuadro.Has && auCuadro.B != null && auCuadro.B.Length >= 8;
             auCuadro.BaseY = OndasUnidas && uiBotH > 0
@@ -2769,6 +2770,7 @@ namespace Rocola
             if (LunaActiva)
             {
                 PointF center = MoonCenter(Width, Height, AhoraMs() / 1000, IdleRise);
+                center.Y -= Height * .20f * idleBlend;
                 cx = center.X; cy = center.Y; scale = 1.35f + lunaBeat * .16f;
                 DrawMoonOrbits(cx, cy, lunaW * scale * .48f);
             }
@@ -2953,6 +2955,7 @@ namespace Rocola
         private void NieblaDeriva(float mx, float my, float dx, float dy, uint argb)
         {
             SetTexQuadA(nieblaQuad, -mx + dx, -my + dy, Width + mx + dx, Height + my + dy, nebU, nebV, argb);
+            TintCoverNebula(nieblaQuad, argb);
             stars.DrawQuad(nebTex, nieblaQuad);
         }
 
@@ -3442,6 +3445,7 @@ namespace Rocola
             for (int i = 0; i < puntos; i++)
             {
                 float fx = (float)i / AurCols;
+                uint coverColumn = CoverColor(fx);
                 float v = AuroraBandas ? PerfilDefinido(au.B, fx) : AurPerfil(au.B, fx);
                 if (au.Calma > 0f) { float vc = AurCalma(fx, t) * au.Calma; if (vc > v) v = vc; }   // en reposo manda la forma lenta
                 if (v > 1f) v = 1f;
@@ -3457,6 +3461,7 @@ namespace Rocola
                 {
                     uint c = AurLerpRgb(aurRampPie[k], aurRampAgu[k], fx);
                     if (AuroraBandas) c = AurLerpRgb(c, fx < .5f ? AurLerpRgb(0x009779F2u, 0x0059DBCCu, fx*2) : AurLerpRgb(0x0059DBCCu, 0x00E7BE88u, (fx-.5f)*2), .38f);
+                    c = MixCoverColor(c, coverColumn);
                     float rr = (c >> 16) & 0xFF, gg = (c >> 8) & 0xFF, bb = c & 0xFF;
                     TonoPorNivel(ref rr, ref gg, ref bb, v);
                     aurCortina[k * puntos + i] = ((uint)rr << 16) | ((uint)gg << 8) | (uint)bb;
@@ -3465,6 +3470,7 @@ namespace Rocola
                 // otro): asi el contorno es del color de la aurora, encendido, y no una raya postiza.
                 aurNc[i] = aurCortina[AurFilas * puntos + i];
                 uint cPie = AurLerpRgb(au.Rgb, au.Rgb2, fx);
+                cPie = MixCoverColor(cPie, coverColumn);
                 float r0 = (cPie >> 16) & 0xFF, g0 = (cPie >> 8) & 0xFF, b0 = cPie & 0xFF;
                 for (int k = 0; k <= AurSuelo; k++)                   // el suelo: el mismo color, hundiendose
                 {

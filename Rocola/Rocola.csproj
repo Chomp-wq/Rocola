@@ -96,6 +96,8 @@
     <Compile Include="AperturaAudio.cs" />
     <Compile Include="Optimizaciones.cs" />
     <Compile Include="LunaGpu.cs" />
+    <Compile Include="PaletaCaratulaGpu.cs" />
+    <Compile Include="CreditosServicio.cs" />
     <Compile Include="CieloNaturalGpu.cs" />
     <Compile Include="Rendimiento.cs">
       <SubType>Form</SubType>

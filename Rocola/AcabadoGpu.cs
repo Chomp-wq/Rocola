@@ -210,7 +210,7 @@ namespace Rocola
                     rect = Rectangle.Inflate(Rectangle.Round(resultRects[selected].Key), MargenTarj, MargenTarj);
                     return true;
                 }
-                if (kind == 3 && FocusResults && GetCover != null)
+                if (kind == 3 && FocusResults && GetCover != null && Results[selected].Kind != 3)
                 {
                     Rectangle region, area; ExtraPreviewGeometry(out region, out area);
                     int top = area.Bottom + 10;

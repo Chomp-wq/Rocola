@@ -1168,6 +1168,9 @@ namespace Rocola
                 g.DrawImageUnscaled(sel ? bmpTarjSel : bmpTarj, rr.X - MargenTarj, rr.Y - MargenTarj);
                 SearchItem it = Results[i];
                 string tag = (it.Kind == 0) ? "ARTISTA" : (it.Kind == 1) ? "ALBUM" : "CANCION";
+#if ROCOLA_GPU
+                if (SeparateGpu && it.Kind == 3) tag = "SERVICIO";
+#endif
                 Color tagc = (it.Kind == 0) ? Color.FromArgb(150, 215, 255) : (it.Kind == 1) ? Color.FromArgb(255, 210, 120) : Color.FromArgb(170, 245, 170);
 
                 // ---- RENGLON DE ARRIBA: que es, de que disco, y de que genero ----
@@ -1344,6 +1347,9 @@ namespace Rocola
                 if (SelResult != selAnterior) { selAnterior = SelResult; selMomento = Environment.TickCount; }
                 if (n == 0 || SelResult < 0 || SelResult >= n) { cubeRect = Rectangle.Empty; return false; }
                 SearchItem it = Results[SelResult];
+#if ROCOLA_GPU
+                if (SeparateGpu && it.Kind == 3) { cubeRect = Rectangle.Empty; return false; }
+#endif
                 if (it.Kind == 0)
                 {
                     List<Image> cov = EnsureArtistCovers(it);
