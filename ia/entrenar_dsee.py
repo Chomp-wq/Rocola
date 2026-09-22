@@ -243,6 +243,7 @@ def main(argv):
         raya("   arrastrado:     " + a + ("" if os.path.exists(a) else "   [X] NO EXISTE"))
     raya()
     datos_dsee, datos_eq, otros, saltados = junta(argv)
+    otros_todos = list(otros)
     if saltados:
         raya("   (me salte %s archivos de musica, video o imagen: esos nunca son material)" % format(saltados, ","))
     for p in datos_dsee:
@@ -285,7 +286,14 @@ def main(argv):
             raya("      haya visto, y el modelo NO se guarda. Las rocolas nuevas lo escriben solas al cosechar.")
         guarda_copia("rocola_ia.bin")
         guarda_copia("ia_vectores_prueba.txt")
-        cod = corre(["entrenar_ia.py", "--datos", mayor, "--capas", "28,96,96,12"],
+        # El modelo que el dueno tiene PUESTO: si lo arrastro junto al material, el candidato se compara
+        # con ese; si no, con el que haya en esta carpeta. Nunca se reemplaza sin ganarle.
+        instalados = [p for p, q in otros_todos if q == "modelo" and os.path.basename(p).lower() == "rocola_ia.bin"]
+        apartado = os.path.join(AQUI, "rocola_ia.bin.anterior")      # guarda_copia lo acaba de apartar
+        if not instalados and os.path.exists(apartado):
+            instalados = [apartado]
+        extra = ["--instalado", instalados[0]] if instalados else []
+        cod = corre(["entrenar_ia.py", "--datos", mayor, "--capas", "28,96,96,12"] + extra,
                     "PASO 1: el reconstructor de agudos (rocola_ia.bin)")
         if cod == 0 and lleva_a_salida("rocola_ia.bin"):
             hechos.append(("rocola_ia.bin", "reconstruye los agudos que el MP3 corto"))

@@ -147,6 +147,9 @@ class CalidadDsee(unittest.TestCase):
                 self.assertEqual(f.read(4), b"RIA1")
             with open(os.path.join(folder, "ia_vectores_prueba.txt")) as f:
                 lines = f.readlines()
+            # Primera linea: la huella del modelo que acompanan (sin '|': los lectores viejos la saltan).
+            self.assertTrue(lines[0].startswith("# rocola_ia.bin sha256="))
+            lines = lines[1:]
             self.assertEqual(len(lines), 24)
             for line in lines:
                 inputs, outputs = line.split("|")

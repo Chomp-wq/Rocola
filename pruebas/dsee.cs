@@ -383,6 +383,21 @@ class Dsee
                         { double d = Math.Abs(y[i] - double.Parse(sal[i], CultureInfo.InvariantCulture)); if (d > peorVec) peorVec = d; }
                         n++;
                     }
+                    // Desde el entrenador nuevo, la primera linea dice de QUE modelo son (su SHA-256). Si esta,
+                    // tiene que ser el que hay al lado: unos vectores de otro modelo no prueban este.
+                    string huella = null;
+                    foreach (string l in File.ReadAllLines(vec))
+                        if (l.StartsWith("#") && l.IndexOf("sha256=") > 0)
+                        { huella = l.Substring(l.IndexOf("sha256=") + 7).Split(' ')[0].Trim(); break; }
+                    if (huella == null)
+                        Console.WriteLine("     (vectores del formato anterior: no dicen de que modelo son)");
+                    else
+                    {
+                        string real;
+                        using (System.Security.Cryptography.SHA256 sha = System.Security.Cryptography.SHA256.Create())
+                            real = BitConverter.ToString(sha.ComputeHash(File.ReadAllBytes(mod))).Replace("-", "").ToLowerInvariant();
+                        Check(real == huella, "los vectores dicen ser de este mismo modelo (SHA-256 " + huella.Substring(0, Math.Min(12, huella.Length)) + "...)");
+                    }
                     Console.WriteLine("     " + n + " vectores de prueba; la mayor diferencia con lo que dijo el entrenador: " + peorVec.ToString("0.0000000"));
                     Check(n >= 8, "hay vectores de prueba suficientes para fiarse");
                     Check(peorVec < 0.001, "y la rocola calcula lo MISMO que el entrenador: el modelo llego entero");
