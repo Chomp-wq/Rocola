@@ -132,6 +132,7 @@ namespace Rocola
         private string curMeasurePath = null;                                                // cancion que se esta MIDIENDO ahora (null = no medir)
         private LevelTap curTap;                                                              // tap de la cancion actual (para cambiarle la ganancia en vivo desde Ctrl+F3)
         private double curSumSq = 0; private long curSamples = 0;                             // acumuladores del RMS integrado de la cancion actual (los llena el hilo de audio)
+        private int kwCanal, kwCanales;                                                       // canal que toca en el K-weighting en vivo (sobrevive a las lecturas partidas) y cuantos hay
         // ----- EQ AUTOMATICO (correctivo y suave): cada cancion aprende su HUELLA TONAL (8 bandas anchas,
         // en dB relativos a su propia media) la primera vez que suena; desde la siguiente se corrige hacia
         // el promedio de la biblioteca, con tope de +-4 dB por banda y una perilla de fuerza en Ctrl+F3.
@@ -187,7 +188,9 @@ namespace Rocola
         //       80 Hz necesita mas ayuda del bajo psicoacustico que una que baja a 30.
         // 0 = todavia no se sabe. Ninguno cuesta un analisis aparte: salen del recorrido que ya se hacia.
         private const int EqLen = 12, EqCut = 8, EqClip = 9, EqCutLo = 10, EqFingerprint = 11;
-        private const long EqMinFrames = 882000;   // ~20 s de musica: con menos, la huella no es confiable
+        // 20 s de musica: con menos, la huella no es confiable. Se cuenta en SEGUNDOS: antes eran 882.000
+        // cuadros, que son 20 s solo a 44,1 kHz (9,2 s a 96 kHz y 40 s a 22,05 kHz).
+        private const double EqMinSec = 20.0;
         // "SUBIR EL PISO": las canciones BAJITAS se SUBEN hacia un volumen objetivo; las que ya suenan FUERTE
         // NO se bajan (se prioriza subir las flojas, como pidio el operador). Ajustable desde la interfaz (Ctrl+F3).
         //   ganancia = (objetivo / rms) ^ fuerza , recortada a [1 , tope]   (fuerza 0..1; nunca por debajo de 1 = no baja)

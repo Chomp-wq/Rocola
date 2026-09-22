@@ -32,6 +32,7 @@ namespace Rocola
         // no hace falta 'volatile', que encima no se puede combinar con Interlocked sin que el compilador
         // avise). Quien lo LEE es la barra de avance, y ahi un valor con unas milesimas de retraso da igual.
         private int preScanLeft = 0;                    // archivos que le faltan por medir (0 = al dia)
+        private int integLeft = 0;                      // canciones que aun no tienen su medida ENTERA (ver Sonoridad.cs)
         private volatile int preScanGen = 0;            // generacion: al re-escanear la biblioteca (F5) el hilo viejo caduca y arranca uno nuevo
         private volatile int preScanTotal = 0;          // cuantas canciones tiene la tanda en curso (para la barra de avance)
         // ENTRENAMIENTO A FONDO (boton en Ctrl+F3, para cuando se hace mantenimiento): la rocola se dedica POR
@@ -1410,6 +1411,10 @@ namespace Rocola
             bool turbo = preScanTurbo;
             int elegibles;
             List<string> pend = TandaPorMedir(turbo, out elegibles);
+            // Y DETRAS, LA CANCION ENTERA: la sonoridad integrada de las que aun no la tienen (ver Sonoridad.cs).
+            // Va despues de las estimaciones: primero que todo suene nivelado, luego que lo este de verdad.
+            List<string> pendInteg = TandaIntegrada();
+            integLeft = pendInteg.Count;
             // CADA cuanto se vuelcan las tablas a disco. Un volcado reescribe ENTERAS las tablas de sonoridad y
             // de EQ: con cien mil canciones son ~17 MB por volcado. Hacerlo cada 10 canciones durante un repaso a
             // fondo son CIENTOS de gigas escritos para nada, y eso desgasta el SSD. Asi que el intervalo crece con
@@ -1423,7 +1428,7 @@ namespace Rocola
             // La barra del entrenamiento a fondo se mide sobre TODA la biblioteca (no sobre la tanda que queda),
             // para que al reanudar siga desde donde iba en vez de volver a arrancar en cero.
             preScanTotal = turbo ? elegibles : pend.Count;
-            if (pend.Count == 0) return;
+            if (pend.Count == 0 && pendInteg.Count == 0) return;
             // CUANTOS CARRILES. El repaso A FONDO es el trabajo mas largo que hace la rocola -descomprime la
             // biblioteca entera- y hasta ahora lo hacia UN solo hilo: en un equipo de ocho o dieciseis nucleos
             // eso es dejar quieto el 90% de la maquina durante horas.
@@ -1444,6 +1449,7 @@ namespace Rocola
             preScanCarriles = carriles;
             int siguiente = -1;      // de aqui saca cada carril la siguiente cancion (reparto por demanda: las
             int hechasTot = 0;       // canciones no duran lo mismo, y asi ninguno se queda esperando al otro)
+            int siguienteInteg = -1, hechasInteg = 0;   // lo mismo para la tanda de la cancion entera
             int vivos = carriles;
             Diag("repaso: " + pend.Count + " archivos en " + carriles + " carril(es)");
             preScanTh = new System.Threading.Thread[carriles];
@@ -1484,9 +1490,11 @@ namespace Rocola
                         }
                         float rms = 0f, dur = 0f; float[] eqCurve = null;
                         bool midio, queued = false;
+                        SonoridadIntegrada entera; bool hayEntera = false;
                         try
                         {
                             midio = MeasureFileResponsive(ruta, turbo, delegate { return preScanStop || myGen != preScanGen; }, out rms, out dur, out eqCurve);
+                            hayEntera = TomaIntegrada(out entera);   // si la leyo entera (corta, o a fondo), trae tambien la integrada
                             if (!midio)
                             {
                                 if (preScanStop || myGen != preScanGen) break;
@@ -1503,6 +1511,7 @@ namespace Rocola
                                      {
                                      if (myGen != preScanGen) return;   // llego de una generacion caducada: descartar
                                     PublicaMedida(ruta, rms, dur, eqCurve);
+                                    if (hayEntera) PublicaIntegrada(ruta, entera);
                                     if (turbo) MarkDeepDone(ruta);
                                      if (preScanLeft > 0) System.Threading.Interlocked.Decrement(ref preScanLeft);
                                      }
@@ -1515,7 +1524,7 @@ namespace Rocola
                         finally { if (!queued) SueltaMedida(ruta); }
                         int hechas = System.Threading.Interlocked.Increment(ref hechasTot);
                         if ((hechas % guardaCada) == 0)
-                            try { if (IsHandleCreated) BeginInvoke((MethodInvoker)delegate { SaveLoudCache(); FlushEqIfDirty(); if (iaDoneDirty) { iaDoneDirty = false; SaveIaDone(); } if (deepDoneDirty) { deepDoneDirty = false; SaveDeepDone(); } }); } catch { }
+                            try { if (IsHandleCreated) BeginInvoke((MethodInvoker)delegate { SaveLoudCache(); SaveIntegCache(); FlushEqIfDirty(); if (iaDoneDirty) { iaDoneDirty = false; SaveIaDone(); } if (deepDoneDirty) { deepDoneDirty = false; SaveDeepDone(); } }); } catch { }
                         // Respiro entre archivos. En ENTRENAMIENTO A FONDO practicamente no hay: la maquina se
                         // dedica a esto. En modo normal, con algo SONANDO se descansa mas (decodificar cuesta CPU
                         // y no vale la pena arriesgar un corte), y la espera se ajusta al equipo: con UN SOLO
@@ -1526,6 +1535,69 @@ namespace Rocola
                         else respiro = diskSlow ? 120 : 40;
                         System.Threading.Thread.Sleep(respiro);
                     }
+                    // ===== SEGUNDA TANDA: LA CANCION ENTERA (sonoridad integrada BS.1770, ver Sonoridad.cs) =====
+                    // Mismas reglas que la primera: espera a que nadie este usando la rocola y a que no haya video,
+                    // pide turno para no medir a la vez que otro, cede a las caratulas (MideIntegradaResponsive) y
+                    // solo apunta lo que se midio ENTERO. Lo cancelado o roto no deja nada.
+                    for (; ; )
+                    {
+                        if (preScanStop || myGen != preScanGen) break;
+                        int k = System.Threading.Interlocked.Increment(ref siguienteInteg);
+                        if (k >= pendInteg.Count) break;
+                        while (!turbo && !preScanStop && myGen == preScanGen && (Environment.TickCount - lastInputTick < 8000 || videoOn))
+                            System.Threading.Thread.Sleep(500);
+                        if (preScanStop || myGen != preScanGen) break;
+                        string ruta = pendInteg[k];
+                        if (YaIntegrada(ruta)) { System.Threading.Interlocked.Decrement(ref integLeft); continue; }   // la midio otro mientras tanto
+                        // Turno "a fondo": esta ya se midio por tramos y la libreta lo sabe; aqui lo que importa es
+                        // no medirla a la vez que otro.
+                        if (!ReclamaMedidaEsperando(ruta, true, delegate { return preScanStop || myGen != preScanGen; }))
+                        {
+                            if (preScanStop || myGen != preScanGen) break;
+                            System.Threading.Interlocked.Decrement(ref integLeft);
+                            continue;
+                        }
+                        int t0 = Environment.TickCount;
+                        bool enCola = false;
+                        try
+                        {
+                            SonoridadIntegrada si;
+                            if (!MideIntegradaResponsive(ruta, delegate { return preScanStop || myGen != preScanGen; }, out si))
+                            {
+                                if (preScanStop || myGen != preScanGen) break;
+                                System.Threading.Interlocked.Decrement(ref integLeft);   // rota, corta o de canales desconocidos: se queda la estimacion
+                                continue;
+                            }
+                            try
+                            {
+                                if (!IsHandleCreated || preScanStop || myGen != preScanGen) break;
+                                BeginInvoke((MethodInvoker)delegate
+                                {
+                                    try
+                                    {
+                                        if (myGen != preScanGen) return;   // generacion caducada: descartar
+                                        PublicaIntegrada(ruta, si);
+                                        if (integLeft > 0) System.Threading.Interlocked.Decrement(ref integLeft);
+                                    }
+                                    finally { SueltaMedida(ruta); }
+                                });
+                                enCola = true;
+                            }
+                            catch { break; }
+                        }
+                        finally { if (!enCola) SueltaMedida(ruta); }
+                        if ((System.Threading.Interlocked.Increment(ref hechasInteg) % guardaCada) == 0)
+                            try { if (IsHandleCreated) BeginInvoke((MethodInvoker)delegate { SaveIntegCache(); }); } catch { }
+                        // RESPIRO PROPORCIONAL. Medir una cancion entera es descomprimirla entera: unas cuatro veces
+                        // lo de los tramos. Con musica sonando se descansa al menos tanto como se trabajo, o sea como
+                        // mucho la mitad de UN nucleo, y en prioridad minima. Sola, no hay de quien descansar.
+                        int gasto = Environment.TickCount - t0; if (gasto < 0 || gasto > 10000) gasto = 10000;
+                        int respiroI;
+                        if (turbo || RocolaSola()) respiroI = 1;
+                        else if (nowPlaying != null) respiroI = Math.Max(gasto, (Environment.ProcessorCount >= 2) ? (diskSlow ? 220 : 120) : (diskSlow ? 700 : 400));
+                        else respiroI = diskSlow ? 120 : 40;
+                        System.Threading.Thread.Sleep(respiroI);
+                    }
                 }
                 catch { }
                 finally
@@ -1533,7 +1605,7 @@ namespace Rocola
                     // El volcado final lo hace el ULTIMO carril que termina, no todos: si no, con cuatro
                     // carriles se reescribirian las tablas enteras cuatro veces seguidas para nada.
                     ultimo = System.Threading.Interlocked.Decrement(ref vivos) == 0;
-                    try { if (ultimo && IsHandleCreated && hechasTot > 0) BeginInvoke((MethodInvoker)delegate { SaveLoudCache(); FlushEqIfDirty(); if (iaDoneDirty) { iaDoneDirty = false; SaveIaDone(); } if (deepDoneDirty) { deepDoneDirty = false; SaveDeepDone(); } }); } catch { }
+                    try { if (ultimo && IsHandleCreated && (hechasTot > 0 || hechasInteg > 0)) BeginInvoke((MethodInvoker)delegate { SaveLoudCache(); SaveIntegCache(); FlushEqIfDirty(); if (iaDoneDirty) { iaDoneDirty = false; SaveIaDone(); } if (deepDoneDirty) { deepDoneDirty = false; SaveDeepDone(); } }); } catch { }
                 }
             });
             for (int carril = 0; carril < carriles; carril++)

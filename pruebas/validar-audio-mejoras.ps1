@@ -17,7 +17,7 @@ Copy-Item -LiteralPath $app -Destination (Join-Path $out 'rocola.exe') -Force
 $previousPython = $env:ROCOLA_TEST_PYTHON
 try {
     $env:ROCOLA_TEST_PYTHON = (Get-Command $Python -ErrorAction Stop).Source
-    foreach ($test in @('dsee','limite','entrenador','iaparidad','iaorigen','iadatos','eqauto','calidad','nivel','bajoauto','bajo')) {
+    foreach ($test in @('dsee','limite','entrenador','iaparidad','iaorigen','sonoridad','iadatos','eqauto','calidad','nivel','bajoauto','bajo')) {
         $exe = Join-Path $out ($test + '.exe')
         & $compiler /nologo /optimize+ /warnaserror+ ("/out:$exe") /r:System.Core.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll ("/r:$naudio") (Join-Path $testRoot ($test+'.cs')) (Join-Path $testRoot 'leercodigo.cs')
         if ($LASTEXITCODE -ne 0) { throw "No compila $test" }
@@ -28,7 +28,7 @@ try {
             & $Ffmpeg -hide_banner -loglevel error -nostdin -n -f lavfi -i 'anoisesrc=color=white:amplitude=0.12:sample_rate=44100:duration=12:seed=1234' -ac 2 -c:a pcm_s16le $fixture
             if ($LASTEXITCODE -ne 0) { throw 'No genera WAV de prueba' }
         }
-        if ($test -in @('dsee','limite','entrenador','iaparidad','iaorigen')) { Push-Location $testRoot } else { Push-Location $out }
+        if ($test -in @('dsee','limite','entrenador','iaparidad','iaorigen','sonoridad')) { Push-Location $testRoot } else { Push-Location $out }
         try {
             & $exe $app
             if ($LASTEXITCODE -ne 0) { throw "Fallo $test" }

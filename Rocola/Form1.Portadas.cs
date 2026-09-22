@@ -175,6 +175,7 @@ namespace Rocola
                     try
                     {
                         midio = MeasureFileResponsive(ruta, false, delegate { return mio != warmSongGen || preScanStop; }, out wrms, out wdur, out weq);
+                        SonoridadIntegrada wentera; bool whay = TomaIntegrada(out wentera);   // solo si la leyo entera (canciones cortas)
                         if (!midio) return;
                         if (mio != warmSongGen) return;
                         // Las tablas son del hilo de la pantalla: se le encarga a el que las escriba.
@@ -183,7 +184,7 @@ namespace Rocola
                             if (IsHandleCreated)
                             {
                                 BeginInvoke((MethodInvoker)delegate {
-                                    try { if (mio == warmSongGen && !preScanStop) PublicaMedida(ruta, wrms, wdur, weq); }
+                                    try { if (mio == warmSongGen && !preScanStop) { PublicaMedida(ruta, wrms, wdur, weq); if (whay) PublicaIntegrada(ruta, wentera); } }
                                     finally { SueltaMedida(ruta); }
                                 });
                                 queued = true;

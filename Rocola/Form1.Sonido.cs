@@ -23,7 +23,7 @@ namespace Rocola
     public partial class Form1 : Form
     {
         private float rmsLo, rmsMid, rmsHi;            // rms retrasado por banda (lo que se oye AHORA)
-        private Dictionary<string, float> loudCache = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);   // ruta -> RMS integrado medido
+        private Dictionary<string, float> loudCache = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);   // ruta -> ESTIMACION de sonoridad (tramos u oida); la integrada BS.1770 va en integCache
         private Dictionary<string, float[]> eqCache = new Dictionary<string, float[]>(StringComparer.OrdinalIgnoreCase);
         private float[] eqAvg = null;              // curva PROMEDIO de la biblioteca (el objetivo); null hasta tener 10 canciones medidas
         private float eqAmount = 0f;               // fuerza del EQ automatico 0..1 A MANO (perilla en Ctrl+F3; "eq_auto=" en config); 0 = apagado
@@ -38,6 +38,7 @@ namespace Rocola
         private float eqMeasCut = 0f, eqMeasCutLo = 0f;   // cortes (arriba y abajo) de la cancion que suena (0 = aun no se sabe)
         private double[] eqMeasSum = new double[8]; private long eqMeasN = 0;   // energia acumulada por banda (hilo de audio)
         private float[][] eqMeasCoef = null; private float[] eqMeasSt = null; private int eqMeasRate = 0;   // medicion: 4 estados por banda y canal
+        private float[] eqPend; private int eqPendN;   // un cuadro que una lectura dejo partido, para completarlo con la siguiente
         // BAJO PSICOACUSTICO: 0..1 ("bajo=" en config, perilla en Ctrl+F3). Recrea el grave que las bocinas
         // del local NO pueden dar, generando sus armonicos. Ver DeepBassProvider.
         private float bassAmount = 0.30f;
@@ -244,7 +245,7 @@ namespace Rocola
         private string LoudTierName(string path)
         {
             float rms;
-            if (path == null || !loudCache.TryGetValue(path, out rms) || rms <= 0.0001f) return "";
+            if (!SonoridadParaNivelar(path, out rms)) return "";   // la misma medida con la que se nivela
             return TierName[LoudTier(rms)];
         }
 
@@ -253,7 +254,9 @@ namespace Rocola
         {
             if (!normalizeOn || normStrength <= 0.001f || path == null) return 1f;
             float rms;
-            if (!loudCache.TryGetValue(path, out rms) || rms <= 0.0001f) return 1f;   // aun no medida: va a su volumen original y se aprende en esta pasada
+            // La medida de la cancion ENTERA (BS.1770) si ya esta; si no, la estimacion por tramos o la
+            // aprendida oyendola. Misma escala y mismos topes de abajo (ver SonoridadParaNivelar).
+            if (!SonoridadParaNivelar(path, out rms)) return 1f;   // aun no medida: va a su volumen original y se aprende en esta pasada
             // "Subir el piso": si la cancion suena mas BAJITO que el objetivo, se SUBE (segun la fuerza). Si ya suena
             // igual o mas FUERTE que el objetivo, se deja igual (nunca se baja). El tope de subida es el de SU ETAPA.
             float g = (float)Math.Pow(normTarget / rms, normStrength);
@@ -269,7 +272,8 @@ namespace Rocola
         {
             string path = curMeasurePath; curMeasurePath = null;
             double sumSq = curSumSq; long samples = curSamples; curSumSq = 0; curSamples = 0;
-            if (path == null || samples < NormMinSamples) return;
+            int tasa = kwRate, canales = kwCanales;
+            if (path == null || tasa <= 0 || canales <= 0 || samples < (long)(NormMinSec * tasa * canales)) return;   // por duracion
             float rms = (float)Math.Sqrt(sumSq / samples);
             if (rms <= 0.0001f) return;
             float prev; bool had = loudCache.TryGetValue(path, out prev);
@@ -293,8 +297,9 @@ namespace Rocola
         // cada cancion ya llega nivelada la PRIMERA vez que alguien la pone.
         // Para que no le robe la maquina a la rocola: hilo de prioridad MINIMA, espera a que nadie este usando
         // la rocola, cede el paso si hay video, y de cada cancion mide TRAMOS repartidos (no el archivo entero):
-        // ~60 s bien elegidos dan practicamente la misma sonoridad integrada que el tema completo, a una fraccion
-        // del costo. Lo medido se guarda en disco cada pocas canciones: se puede apagar la rocola sin perder nada.
+        // ~60 s bien elegidos dan una buena ESTIMACION a una fraccion del costo. La medida integrada de la cancion
+        // ENTERA viene despues, en una segunda tanda (ver Sonoridad.cs). Lo medido se guarda en disco cada pocas
+        // canciones: se puede apagar la rocola sin perder nada.
         private bool eqDirty = false;             // hay huellas de EQ nuevas sin guardar (las escribe FlushEqIfDirty)
 
         // ABRIR UN MP3 SIN DEJAR NADA COLGANDO.
@@ -368,7 +373,8 @@ namespace Rocola
             }
         }
 
-        // Mide un archivo SIN reproducirlo: sonoridad K-weighted (BS.1770, igual que el nivelado en vivo), duracion
+        // Mide un archivo SIN reproducirlo: la ESTIMACION de sonoridad (un filtro parecido al K de BS.1770, sin
+        // puertas, igual que el nivelado en vivo), duracion
         // y la HUELLA TONAL del EQ automatico (8 bandas, mismo bandpass y misma referencia que al oirla). Analiza
         // PreSegs tramos repartidos por el tema (o el tema entero si es corto). Devuelve false si no se pudo.
         // "aFondo" = modo ENTRENAMIENTO A FONDO: analiza la cancion COMPLETA en vez de por tramos (la medida
@@ -377,6 +383,7 @@ namespace Rocola
         private bool MeasureFile(string path, bool aFondo, out float rms, out float durSec, out float[] eqCurve)
         {
             rms = 0f; durSec = 0f; eqCurve = null;
+            integradaLista = false;   // lo que deja para TomaIntegrada: nada, salvo que lea la cancion entera
             if (MeasurementCancelled()) return false;
             // De un VIDEO solo interesa CUANTO SUENA. Su sonido lo saca el reproductor de Windows, no
             // nosotros: no pasa por el ecualizador ni por el DSEE ni por los graves. Medirle la huella tonal
@@ -422,6 +429,15 @@ namespace Rocola
                 // cada cuantos cuadros conviene tomar uno.)
                 int segs = (aFondo || total <= PreSegSec * PreSegs) ? 1 : PreSegs;
                 double segLen = (segs == 1) ? total : PreSegSec;
+                // Y SI ESTE RECORRIDO LEE LA CANCION ENTERA (corta, o repaso a fondo), de paso se le mide la
+                // sonoridad integrada BS.1770 (ver Sonoridad.cs). No cambia nada de lo que se mide aqui.
+                MedidorBs1770 integ = null;
+                if (segs == 1 && !esVideo && rd.WaveFormat.SampleRate >= 8000)
+                {
+                    double[] pesosInteg = DisposicionBs1770.DeArchivo(path, ch);
+                    if (pesosInteg != null) { try { integ = new MedidorBs1770(rd.WaveFormat.SampleRate, pesosInteg); } catch { integ = null; } }
+                }
+                Func<float[], int, int, int> lee = rd.Read;
                 int cuadroLen = 2048;   // el de SpectralTap; se confirma al crearlo
                 long framesTot = (long)(segs * segLen * rate / cuadroLen);
                 int diana = aFondo ? IaDeepFrames : IaFramesPerSong;
@@ -495,9 +511,10 @@ namespace Rocola
                     {
                         if (MeasurementCancelled()) return false;
                         int want2 = (int)Math.Min(buf.Length, want - got);
-                        int n = rd.Read(buf, 0, want2);
+                        int n = LeeCuadrosCompletos(lee, buf, want2, ch);   // cuadros enteros: ningun canal se cruza con otro
                         if (n <= 0) break;
                         got += n;
+                        if (integ != null) integ.Procesa(buf, 0, n);
                         for (int i = 0; i + ch <= n; i += ch)
                         {
                             if (!esVideo) AccumulateEqFrame(buf, i, ch, bp, bpSt, bpSum);
@@ -551,7 +568,21 @@ namespace Rocola
                         }
                     }
                 }
-                if (MeasurementCancelled()) return false; // no publicar ni cosechar una medida cancelada
+                // Hasta el final del archivo, SOLO para la integrada: lo de arriba queda exactamente como antes. Si
+                // el archivo se acaba antes de lo que dice durar, la integrada no vale y no se publica.
+                if (integ != null && !preScanStop)
+                {
+                    while (true)
+                    {
+                        if (MeasurementCancelled()) return false;
+                        int n = LeeCuadrosCompletos(lee, buf, buf.Length, ch);
+                        if (n <= 0) break;
+                        integ.Procesa(buf, 0, n);
+                    }
+                    SonoridadIntegrada si;
+                    if (!MeasurementCancelled() && CierraIntegrada(integ, total, rd.WaveFormat.SampleRate, out si)) { integradaValor = si; integradaLista = true; }
+                }
+                if (MeasurementCancelled()) { integradaLista = false; return false; } // no publicar ni cosechar una medida cancelada
                 // Solo las canciones COMPLETAS (sin acantilado, el mismo umbral que usa el DSEE para no tocarlas)
                 // sirven de maestras: en las dañadas los agudos reales ya no existen y no hay nada que enseñar.
                 if (hv != null && !soloCorte && hvPairs.Count >= 40 && hv.CutHz >= EqSanaHz)

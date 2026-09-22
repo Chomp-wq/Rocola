@@ -156,7 +156,9 @@ namespace Rocola
         private SpectralTap curSbr;          // tap de la cancion actual (para alternar A/B en vivo)
         private const float NormMaxBoost = 16.0f;                                             // techo ABSOLUTO de subida (+24 dB): evita amplificar al infinito una cancion casi muda (el tope real lo pone la etapa, ver TierMaxDb)
         private const float NormTargetMin = 0.06f, NormTargetMax = 0.40f;                     // rango del volumen objetivo que ofrece la interfaz (de flojo a muy fuerte)
-        private const long NormMinSamples = 800000;                                           // ~9s en estereo 44.1k: minimo para aceptar una medida (si se salta antes, no se guarda)
+        // Minimo de musica oida para aceptar una medida (si se salta antes, no se guarda). En SEGUNDOS: antes
+        // eran 800.000 muestras, que son 9 s en estereo a 44,1 kHz pero 18 s en mono y 4,2 s en estereo a 96 kHz.
+        private const double NormMinSec = 800000.0 / (2 * 44100.0);
         // ARCHIVOS INCOMPATIBLES: canciones que NO se pudieron reproducir ni con el lector tolerante (p.ej. MP3
         // demasiado dañados). Se anotan (una vez) en rocola_incompatibles.txt para poder repararlas/reconvertirlas.
         private HashSet<string> incompatibleLogged = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -776,6 +778,7 @@ namespace Rocola
             bool prepared = CompleteStartupDataLoad();
             if (!prepared) LoadStats();   // antes de armar TOP y restaurar creditos/cola
             if (!prepared) LoadLoudCache();   // fallback si fallo el trabajador
+            if (!prepared) LoadIntegCache();
             if (!prepared) LoadEqCache();
             IaCountPairs();      // cuanto material de entrenamiento de la IA llevamos juntado
             if (!prepared) LoadIaDone();
