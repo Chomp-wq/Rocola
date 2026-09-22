@@ -284,35 +284,34 @@ def main(argv):
             raya("  [!] Junto a %s no esta rocola_ia_datos.idx (de que cancion viene cada ejemplo)." % os.path.basename(mayor))
             raya("      Sin el se entrena para mirar, pero no se puede validar con canciones que la red no")
             raya("      haya visto, y el modelo NO se guarda. Las rocolas nuevas lo escriben solas al cosechar.")
-        guarda_copia("rocola_ia.bin")
-        guarda_copia("ia_vectores_prueba.txt")
+        # El DSEE ya no aparta ni devuelve copias: entrenar_ia.py publica modelo, vectores e informe como UNA
+        # version (publicar_dsee.py) y solo si le gana a la curva y al modelo puesto. Si no publica, no toca
+        # nada; si una publicacion se corto, se repara sola desde la version activa.
         # El modelo que el dueno tiene PUESTO: si lo arrastro junto al material, el candidato se compara
         # con ese; si no, con el que haya en esta carpeta. Nunca se reemplaza sin ganarle.
         instalados = [p for p, q in otros_todos if q == "modelo" and os.path.basename(p).lower() == "rocola_ia.bin"]
-        apartado = os.path.join(AQUI, "rocola_ia.bin.anterior")      # guarda_copia lo acaba de apartar
-        if not instalados and os.path.exists(apartado):
-            instalados = [apartado]
         extra = ["--instalado", instalados[0]] if instalados else []
         cod = corre(["entrenar_ia.py", "--datos", mayor, "--capas", "28,96,96,12"] + extra,
                     "PASO 1: el reconstructor de agudos (rocola_ia.bin)")
-        if cod == 0 and lleva_a_salida("rocola_ia.bin"):
-            hechos.append(("rocola_ia.bin", "reconstruye los agudos que el MP3 corto"))
+        if cod == 0:
+            try:
+                import publicar_dsee
+                publicar_dsee.materializa(AQUI, (SALIDA,))       # copia exacta de la version activa
+                hechos.append(("rocola_ia.bin", "reconstruye los agudos que el MP3 corto"))
+            except Exception as e:
+                faltaron.append("el DSEE se publico, pero no se pudo copiar a la carpeta entrenado (%s); "
+                                "esta en ia\\modelos y en ia\\rocola_ia.bin" % e)
         elif cod == 2:
-            devuelve_copia("rocola_ia.bin")
-            devuelve_copia("ia_vectores_prueba.txt")
-            faltaron.append("el DSEE no supero el control de calidad: se conserva el modelo anterior; no es un fallo del entrenamiento")
+            faltaron.append("el DSEE no supero el control de calidad (curva fija y modelo puesto): se conserva el "
+                            "modelo anterior; no es un fallo del entrenamiento. Mira informe_dsee.json")
         elif cod == 3:
-            devuelve_copia("rocola_ia.bin")
-            devuelve_copia("ia_vectores_prueba.txt")
             faltaron.append("el DSEE no se pudo VERIFICAR: el material no dice de que cancion viene cada ejemplo "
                             "(falta rocola_ia_datos.idx, o tiene muy pocas canciones), asi que no hay validacion "
                             "independiente. Se conserva el modelo anterior. Deja que la rocola nueva coseche unos "
                             "dias (o una noche de REPASO A FONDO) y trae los DOS archivos: .bin e .idx")
         else:
-            faltaron.append("el reconstructor de agudos no se pudo entrenar (mira el mensaje de arriba)")
-            if devuelve_copia("rocola_ia.bin"):
-                devuelve_copia("ia_vectores_prueba.txt")
-                faltaron.append("se dejo puesto el rocola_ia.bin que ya tenias, sin tocar")
+            faltaron.append("el reconstructor de agudos no se pudo entrenar (mira el mensaje de arriba); "
+                            "el rocola_ia.bin que ya tenias sigue puesto, sin tocar")
     else:
         faltaron.append("no trajiste rocola_ia_datos.bin: sin el no se puede entrenar el reconstructor")
 
