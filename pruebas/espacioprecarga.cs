@@ -71,9 +71,10 @@ class EspacioPrecarga {
     Color c=star.GetPixel(x,y);Check(c.ToArgb()==again.GetPixel(x,y).ToArgb(),"No determinista");
     if(c.A==0)clear++;if(c.ToArgb()!=simple.GetPixel(x,y).ToArgb())different++;
     double nx=(x-127.5)/(256*.49),ny=(y-127.5)/(256*.49);
-    if(nx*nx+ny*ny<.8*.8){Check(c.A==255,"Superficie translucida");solid++;}
+    if(nx*nx+ny*ny<.10*.10){Check(c.A==255,"Nucleo translucido");solid++;}
    }
-   Check(clear>14000&&solid>30000&&different>25000,"Sin corona/superficie detallada");
+   Check(clear>20000&&solid>400&&different>3000,"Sin puntas/nucleo/detalle estelar");
+   Check(star.GetPixel(127,38).A>20&&star.GetPixel(38,38).A<5,"No tiene silueta estelar");
    string path=Path.Combine(dir,"estrella-superficie.png");star.Save(path,ImageFormat.Png);
    using(Bitmap preview=new Bitmap(760,330))
    using(Graphics g=Graphics.FromImage(preview))

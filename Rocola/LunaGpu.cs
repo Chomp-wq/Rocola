@@ -89,8 +89,8 @@ namespace Rocola
         internal static PointF DetailedMoonCenter(int width, int height, double phase, float idle, float rise, bool active)
         {
             float mix = active ? SafeMoonLevel(idle) : 0;
-            return new PointF(width * (.79f + (active ? (.012f + .078f * mix) * (float)Math.Sin(phase * .23) : 0)),
-                height * (.47f - .20f * mix + (active ? (.006f + .016f * mix) * (float)Math.Cos(phase * .29) : 0)) - rise * .32f);
+            return new PointF(width * (.79f + (active ? (.004f + .052f * mix) * (float)Math.Sin(phase * .70) : 0)),
+                height * (.47f - .22f * mix + (active ? (.003f + .028f * mix) * (float)Math.Cos(phase * .70) : 0)) - rise * .32f);
         }
         private void DrawDetailedMoon()
         {
@@ -104,18 +104,17 @@ namespace Rocola
             DrawLunarDust(cx,cy,radius,visibility,false);
             // La superficie es solida: solo el borde antialias y el halo llevan transparencia.
             uint color=StarColor();
+            float angle=LunaActiva ? (float)(.08*Math.Sin(moonMotionTime*.31)) : 0;
+            double now=AhoraMs()/1000.0;
+            UpdateStarEchoes(now,cx,cy,radius,angle,color);
+            DrawStarEchoes(now);
             SetTexQuadA(lunaQuad,cx-radius,cy-radius,cx+radius,cy+radius,luU,luV,color);
-            if (LunaActiva)
-            {
-                double tilt=moonMotionTime*.14;
-                float co=(float)Math.Cos(tilt), si=(float)Math.Sin(tilt);
-                for(int i=0;i<lunaQuad.Length;i++)
-                {
-                    float x=lunaQuad[i].X-cx, y=lunaQuad[i].Y-cy;
-                    lunaQuad[i].X=cx+x*co-y*si; lunaQuad[i].Y=cy+x*si+y*co;
-                }
-            }
+            RotateStarQuad(lunaQuad,cx,cy,angle);
             stars.DrawQuad(lunaTex,lunaQuad);
+            // Punto de luz blanco encima del tinte; la estrella no parece una pegatina plana.
+            stars.GlowBatchBegin(1);
+            stars.GlowBatchAdd(cx,cy,radius*.24f,0xDDF1F7FFu);
+            stars.GlowBatchEnd();
             DrawLunarDust(cx,cy,radius,visibility,true);
         }
         private void DrawLunarDust(float cx,float cy,float radius,float visibility,bool front)

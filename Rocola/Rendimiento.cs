@@ -218,6 +218,7 @@ namespace Rocola
             gpuPanel.HaloLunar = haloLunar;
             gpuPanel.PolvoLunar = polvoLunar;
             gpuPanel.LunaProtagonista = lunaProtagonista;
+            gpuPanel.EstelaEstelar = estelaEstelar;
             gpuPanel.RespuestaInmediata = respuestaInmediata;
             gpuPanel.TransicionesTacto = transicionesTacto;
             gpuPanel.CachePortadas = true;
@@ -847,7 +848,7 @@ namespace Rocola
             lExtras.ForeColor = cTenue; lExtras.BackColor = Color.Transparent;
             lExtras.Text = "El cristal requiere Lista de canciones transparente (Imagen).\nLa cola de 12 requiere el estado ampliado en reposo.\nAl apagarlos vuelven el velo plano y las tres canciones.";
             tNat.Controls.Add(lExtras);
-            tNat.Height = 580;
+            tNat.Height = 586;
             tAd.Height = 580;
             string[] extraNames = { "Vidrio por capas y color vivo (GPU)", "Transiciones suaves de color (GPU)", "Estrella musical con orbitas (GPU)", "Ocultar controles en reposo (GPU)" };
             bool[] extraValues = { glassCapas, coloresCache, lunaActiva, controlesReposo };
@@ -898,6 +899,11 @@ namespace Rocola
             moonSwitches[1].CheckedChanged += delegate { haloLunar = moonSwitches[1].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             moonSwitches[2].CheckedChanged += delegate { polvoLunar = moonSwitches[2].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             moonSwitches[3].CheckedChanged += delegate { lunaProtagonista = moonSwitches[3].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            Interruptor swEstela = new Interruptor(); swEstela.SetBounds(16, 552, 424, 26);
+            swEstela.Font = fNom; swEstela.ForeColor = cTexto; swEstela.Acento = cAc;
+            swEstela.Text = "Ecos de color de la estrella (GPU)"; swEstela.Checked = estelaEstelar;
+            swEstela.CheckedChanged += delegate { estelaEstelar = swEstela.Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            tNat.Controls.Add(swEstela);
 
             BotonPlano bResetF = new BotonPlano();
             bResetF.SetBounds(16, 594, 300, 38); bResetF.Font = fBot; bResetF.Text = "Fondo como de fabrica";
@@ -927,6 +933,7 @@ namespace Rocola
                 glassCapas = coloresCache = lunaActiva = true;
                 controlesReposo = ondasUnidas = true;
                 lunaRealista = haloLunar = polvoLunar = lunaProtagonista = true;
+                estelaEstelar = true; swEstela.Checked = true;
                 paletaCompleta = true; swPaleta.Checked = true;
                 for (int i = 0; i < moonSwitches.Length; i++) moonSwitches[i].Checked = true;
                 for (int i = 0; i < extras.Length; i++) extras[i].Checked = true;

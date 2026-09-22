@@ -1174,6 +1174,8 @@ namespace Rocola
         }
         private static void VShoot(D3D9.Vtx[] v, int o, float x, float y, uint c) { v[o].X = x; v[o].Y = y; v[o].Z = 0f; v[o].Rhw = 1f; v[o].Color = c; v[o].U = 0f; v[o].V = 0f; }
         public void DrawQuad(IntPtr tex, D3D9.Vtx[] quad) { if (Ok) gpu.DrawTexQuad(tex, quad); }
+        public void DrawTexturedBatch(IntPtr tex, D3D9.Vtx[] vertices, int triangles)
+        { if (Ok && tex != IntPtr.Zero) gpu.DrawQuads(tex, vertices, triangles); }
         public void DrawColorQuad(D3D9.Vtx[] quad) { if (Ok) gpu.DrawQuads(IntPtr.Zero, quad, 2); }
         public uint BlankCubeColor { set { if (gpu != null) gpu.CubeBaseColor = value; } }
         public void DrawMesh(D3D9.Vtx[] v, int tris) { if (Ok) gpu.DrawMesh(v, tris); }   // malla plana (fondo reactivo)
@@ -1958,6 +1960,7 @@ namespace Rocola
             idleLastBmp = null; idleBlend = 0; idleClock = 0; idleUploadedVersion = -1;
             vinetaRetry = 0;
             if (ruidoTex != IntPtr.Zero) { D3D9.Release(ruidoTex); ruidoTex = IntPtr.Zero; ruTW = ruTH = 0; }
+            ResetStarEchoes();
             if (lunaTex != IntPtr.Zero) { D3D9.Release(lunaTex); lunaTex = IntPtr.Zero; luTW = luTH = 0; lunaDe = -1; }
             if (uiBotTex != IntPtr.Zero) { D3D9.Release(uiBotTex); uiBotTex = IntPtr.Zero; }
             for (int i = 0; i < MaxPiezas; i++)
