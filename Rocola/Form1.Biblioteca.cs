@@ -41,7 +41,7 @@ namespace Rocola
         // y nunca se queda a todo gas durante el horario del negocio por un olvido.
         private volatile bool preScanTurbo = false;
         private int generoVer;   // sube cuando el paseo de fondo aprende generos (entra en la firma del interior del disco)
-        private readonly Dictionary<string, int> artistCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        private Dictionary<string, int> artistCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         private const int ArtistStatCap = 1000, ArtistStatTarget = 900;
 
         private readonly HashSet<char> letterAvailable = new HashSet<char>();

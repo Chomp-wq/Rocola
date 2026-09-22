@@ -62,6 +62,7 @@ namespace Rocola
             public int EqVersion, Healthy;
             public float[] Average;
             public bool OnlyHealthy;
+            public StartupStats Stats;
         }
 
         private sealed class StartupLoad
@@ -76,7 +77,7 @@ namespace Rocola
         {
             if (load.Cancelled) return null;
             StartupData data = new StartupData();
-            for (int table = 0; table < 6; table++)
+            for (int table = 0; table < Math.Min(7, load.Paths.Length); table++)
             {
                 if (load.Cancelled) return null;
                 try
@@ -134,6 +135,9 @@ namespace Rocola
                     FillIncompatibleRecords(reader, incompatible);
                     data.Incompatible = incompatible;
                     break;
+                case 6:
+                    data.Stats = ReadStatsRecords(reader);
+                    break;
                 default: throw new ArgumentOutOfRangeException("table");
             }
         }
@@ -177,6 +181,7 @@ namespace Rocola
             });
             worker.IsBackground = true;
             worker.Priority = System.Threading.ThreadPriority.BelowNormal;
+            worker.CurrentCulture = CultureInfo.CurrentCulture;   // los contadores antiguos usan la cultura del llamador
             worker.Start();
             return load;
         }
@@ -187,7 +192,7 @@ namespace Rocola
             try
             {
                 startupLoad = CreateStartupLoad(new string[] { LoudFile(), EqFile(), IaDoneFile(),
-                    DeepDoneFile(), DurFastFile(), RutaDatos("rocola_incompatibles.txt") });
+                    DeepDoneFile(), DurFastFile(), RutaDatos("rocola_incompatibles.txt"), LibStatsFile() });
             }
             catch { startupLoad = null; }   // no cambia el arranque si no se pudo crear el trabajador
         }
@@ -214,6 +219,7 @@ namespace Rocola
             eqCacheVer = data.EqVersion; eqAvg = data.Average;
             eqAvgSanas = data.Healthy; eqAvgSoloSanas = data.OnlyHealthy;
             RememberEqAverage();
+            PublishStartupStats(data.Stats);
             startupReadPending = false;
             return true;
         }
@@ -2106,50 +2112,86 @@ namespace Rocola
             return sb.ToString();
         }
 
-        private void LoadStats()
+        // El historial se prepara en privado, sin array de todas las lineas ni acceso al formulario.
+        private sealed class StartupStats
         {
-            try
+            public readonly Dictionary<string, int> songCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            public readonly Dictionary<string, long> songSeq = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+            public readonly Dictionary<string, int> artistCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            public readonly Dictionary<string, int> videoCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            public readonly Dictionary<string, long> videoSeq = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+            public readonly Dictionary<string, string> songGenre = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            public long statsTotal, statsSongTotal, statsVideoTotal, statsCoins, statsCreditsAdded, statsSeq;
+        }
+
+        private static StartupStats ReadStatsRecords(TextReader reader)
+        {
+            if (reader.ReadLine() != "ROCOLA-STATS v1") return null;
+            StartupStats data = new StartupStats();
+            int section = 0;   // 0=totales 1=canciones 2=artistas 3=videos
+            string line;
+            while ((line = reader.ReadLine()) != null)
             {
-                string f = LibStatsFile();
-                if (!File.Exists(f)) return;
-                string[] L = File.ReadAllLines(f);
-                if (L.Length < 1 || L[0] != "ROCOLA-STATS v1") return;
-                int section = 0;   // 0=totales 1=canciones 2=artistas 3=videos
-                for (int i = 1; i < L.Length; i++)
+                if (line.Length == 0) continue;
+                if (line.StartsWith("[CANCIONES]")) { section = 1; continue; }
+                if (line.StartsWith("[ARTISTAS]")) { section = 2; continue; }
+                if (line.StartsWith("[VIDEOS]")) { section = 3; continue; }
+                if (line.StartsWith("[GENEROS]")) { section = 4; continue; }
+                if (section == 0)
                 {
-                    string line = L[i];
-                    if (line.Length == 0) continue;
-                    if (line.StartsWith("[CANCIONES]")) { section = 1; continue; }
-                    if (line.StartsWith("[ARTISTAS]")) { section = 2; continue; }
-                    if (line.StartsWith("[VIDEOS]")) { section = 3; continue; }
-                    if (line.StartsWith("[GENEROS]")) { section = 4; continue; }
-                    if (section == 0)
-                    {
-                        int eq = line.IndexOf('=');
-                        if (eq <= 0) continue;
-                        string k = line.Substring(0, eq); long v;
-                        if (!long.TryParse(line.Substring(eq + 1), out v)) continue;
-                        if (k == "total-reproducciones") statsTotal = v;
-                        else if (k == "total-canciones") statsSongTotal = v;
-                        else if (k == "total-videos") statsVideoTotal = v;
-                        else if (k == "monedas") statsCoins = v;
-                        else if (k == "creditos-cargados") statsCreditsAdded = v;
-                    }
-                    else
-                    {
-                        int b = line.IndexOf('|');
-                        if (b <= 0) continue;
-                        string key = line.Substring(b + 1);
-                        if (key.Length == 0) continue;
-                        if (section == 4) { songGenre[key] = line.Substring(0, b); continue; }   // genero|ruta (lo de antes del | es la etiqueta, no un numero)
-                        int cnt; if (!int.TryParse(line.Substring(0, b), out cnt)) continue;
-                        if (section == 1) { songCounts[key] = cnt; songSeq[key] = ++statsSeq; }
-                        else if (section == 2) artistCounts[key] = cnt;
-                        else if (section == 3) { videoCounts[key] = cnt; videoSeq[key] = ++statsSeq; }
-                    }
+                    int eq = line.IndexOf('=');
+                    if (eq <= 0) continue;
+                    string k = line.Substring(0, eq); long v;
+                    if (!long.TryParse(line.Substring(eq + 1), out v)) continue;
+                    if (k == "total-reproducciones") data.statsTotal = v;
+                    else if (k == "total-canciones") data.statsSongTotal = v;
+                    else if (k == "total-videos") data.statsVideoTotal = v;
+                    else if (k == "monedas") data.statsCoins = v;
+                    else if (k == "creditos-cargados") data.statsCreditsAdded = v;
+                }
+                else
+                {
+                    int b = line.IndexOf('|');
+                    if (b <= 0) continue;
+                    string key = line.Substring(b + 1);
+                    if (key.Length == 0) continue;
+                    if (section == 4) { data.songGenre[key] = line.Substring(0, b); continue; }   // genero|ruta (lo de antes del | es la etiqueta, no un numero)
+                    int cnt; if (!int.TryParse(line.Substring(0, b), out cnt)) continue;
+                    if (section == 1) { data.songCounts[key] = cnt; data.songSeq[key] = ++data.statsSeq; }
+                    else if (section == 2) data.artistCounts[key] = cnt;
+                    else if (section == 3) { data.videoCounts[key] = cnt; data.videoSeq[key] = ++data.statsSeq; }
                 }
             }
-            catch { }
+            return data;
+        }
+
+        // Solo se llama en UI, antes de abrir la biblioteca y de restaurar la cola.
+        private void PublishStartupStats(StartupStats data)
+        {
+            if (data == null) return;
+            songCounts = data.songCounts;
+            songSeq = data.songSeq;
+            artistCounts = data.artistCounts;
+            videoCounts = data.videoCounts;
+            videoSeq = data.videoSeq;
+            songGenre = data.songGenre;
+            statsTotal = data.statsTotal;
+            statsSongTotal = data.statsSongTotal;
+            statsVideoTotal = data.statsVideoTotal;
+            statsCoins = data.statsCoins;
+            statsCreditsAdded = data.statsCreditsAdded;
+            statsSeq = data.statsSeq;
+        }
+
+        private void LoadStats()
+        {
+            // Fallback del arranque si no se pudo crear/completar el lector.
+            try
+            {
+                using (StreamReader reader = new StreamReader(LibStatsFile()))
+                    PublishStartupStats(ReadStatsRecords(reader));
+            }
+            catch { }   // nada se publica si la lectura se corta antes de EOF
         }
 
         private class TopEntry { public Track T; public int C; public Album A; public string V; }

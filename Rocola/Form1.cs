@@ -272,7 +272,6 @@ namespace Rocola
         {
             base.OnShown(e);
             if (startupClosing || IsDisposed) return;
-            LoadStats();   // estadisticas guardadas de sesiones anteriores (base de "Lo mas sonado")
             ProbeAudioTier();    // requisitos de maquina para el NIVEL 2 de audio (antes de leer dsee= de config)
             NeuralEnv.TryLoad(RutaLectura("rocola_ia.bin"));   // IA propia (el modelo entrenado: en la carpeta de datos, o el de fabrica)
             EqNet.TryLoad(RutaLectura("rocola_eq_ia.bin"));    // IA del EQ automatico (objetivo por cancion)
@@ -283,6 +282,7 @@ namespace Rocola
             if (pastCola != null) pastCola.ConPortadas = colaPortadasOn;
             if (iaVivo) IaEnsureMotor();   // IA en vivo encendida -> arranca el motor OCULTO (sin terminal que cuidar)
             bool prepared = CompleteStartupDataLoad();
+            if (!prepared) LoadStats();   // antes de armar TOP y restaurar creditos/cola
             if (!prepared) LoadLoudCache();   // fallback si fallo el trabajador
             if (!prepared) LoadEqCache();
             IaCountPairs();      // cuanto material de entrenamiento de la IA llevamos juntado

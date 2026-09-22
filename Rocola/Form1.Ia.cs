@@ -89,11 +89,11 @@ namespace Rocola
         // ---- Estadisticas (base de "Lo mas sonado") ----
         // Se cuenta lo que entra a la cola CON EXITO (lo que la gente pide y paga). Se guarda en
         // rocola_stats.txt junto al .exe: en segundo plano cada minuto si hubo cambios, y al cerrar.
-        private readonly Dictionary<string, int> songCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        private Dictionary<string, int> songCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         // Topes del archivo de estadisticas: se conserva lo MAS sonado y reciente; lo viejo/poco sonado
         // se descarta solo, para que el archivo nunca crezca de mas ni alente la rocola.
         private const int SongStatCap = 2000, SongStatTarget = 1800;
-        private readonly Dictionary<string, long> songSeq = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);   // recencia (cuando se sono por ultima vez)
+        private Dictionary<string, long> songSeq = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);   // recencia (cuando se sono por ultima vez)
 
         // ---- Datos ----
         private readonly List<Track> tracks = new List<Track>();
@@ -402,7 +402,7 @@ namespace Rocola
         // una reproduccion o tras re-escanear): topDirty=true marca que hay que reconstruir; si no, se
         // devuelve el topDiscs ya armado. Hojear TOP queda instantaneo.
         private bool topDirty = true;
-        private readonly Dictionary<string, string> songGenre = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);   // ruta -> etiqueta de genero (capturada al sonar)
+        private Dictionary<string, string> songGenre = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);   // ruta -> etiqueta de genero (capturada al sonar)
         private int page = 0;
         private int selAlbumIndex = 0;
         private Album currentAlbum;

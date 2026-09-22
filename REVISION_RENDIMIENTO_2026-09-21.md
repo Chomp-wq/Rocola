@@ -75,3 +75,21 @@ Verificación:
 - Artefactos en temporales; no se reemplazaron releases, configuración, música ni modelos.
 
 Sigue pendiente el arranque totalmente no bloqueante: CompleteStartupDataLoad conserva su espera y el orden de créditos/cola. Esta tanda reduce trabajo y asignaciones de memoria, pero no adelanta la interacción mientras se recupera el estado.
+
+## Continuación: historial preparado por el lector de arranque
+
+El historial de reproducciones y la base de «Lo más sonado» ahora se leen por registros en el trabajador de arranque existente. Ya no se carga un array con todas las líneas en el hilo de la ventana. La instantánea privada conserva contadores, géneros y secuencias de recencia; se publica por referencia antes de abrir la biblioteca y restaurar créditos/cola. No se añaden trabajadores, interruptores ni límites para equipos potentes.
+
+El trabajador hereda explícitamente la cultura numérica del llamador, también en .NET 3.5. Una cabecera inválida o una excepción antes de EOF no publica un historial parcial. Se conserva un lector de respaldo para el caso de fallo del trabajador.
+
+Verificación de esta continuación:
+
+- 25 baterías C# por rama y compilaciones GPU/CPU con advertencias como errores; Rebuild Release de ambas versiones aprobado.
+- 125 historiales comparados con el parser anterior: contadores, duplicados, líneas inválidas, mayúsculas/minúsculas, recencia y texto serializado idénticos.
+- Archivos UTF-8 con/sin BOM y UTF-16; cultura numérica personalizada en el trabajador, fallback, archivos ausentes, cierre de lectores y fallos de lectura sin publicación parcial.
+- Publicación por referencia sin tocar créditos ni cola; comprobación del orden de publicación respecto a la biblioteca.
+- Nueva batería y prueba adicional de persistencia/apagón aprobadas contra ambos Release con afinidad de dos hilos.
+- Microprueba HD de 100.000 entradas: aproximadamente 34,9 MB asignados con el parser de referencia frente a 32,0 MB con lectura por registros. Son asignaciones acumuladas en una prueba sintética, no pico de RAM ni medición del tiempo total de arranque.
+- No se modificó el renderizador CPU ni se reemplazaron ejecutables instalados, datos, configuración o modelos.
+
+La barrera de CompleteStartupDataLoad permanece. Esta mejora desplaza preparación fuera de la ventana y elimina el array de líneas, pero no convierte todo el arranque en no bloqueante. Siguen pendientes esa separación y las mediciones físicas en HDD/SSD, CPU antigua y Windows XP.

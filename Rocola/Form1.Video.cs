@@ -22,9 +22,9 @@ namespace Rocola
 {
     public partial class Form1 : Form
     {
-        private readonly Dictionary<string, int> videoCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        private Dictionary<string, int> videoCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         private const int VideoStatCap = 1000, VideoStatTarget = 900;
-        private readonly Dictionary<string, long> videoSeq = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+        private Dictionary<string, long> videoSeq = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
         private List<Album> videoAlbums = new List<Album>();   // discos que tienen archivo(s) de video
         private const char VideoMark = '\u25BA';   // "letra" especial = seccion VIDEOS
         private System.Windows.Forms.Timer videoPoll;
