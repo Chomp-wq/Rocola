@@ -393,6 +393,13 @@ def particiones_por_grupo(claves_trozo, origen_ejemplo, nivel="artista"):
 
 def main():
     rng = np.random.default_rng(20260715)
+    # Si una publicacion anterior se corto a medias, las copias se rehacen desde la version activa ANTES
+    # de nada: asi el "modelo instalado" con el que se compara es de verdad el publicado.
+    import publicar_dsee
+    rec = publicar_dsee.recuperar(os.path.dirname(os.path.abspath(__file__)))
+    if rec["limpiadas"] or rec["rehechas"] or rec["aviso"]:
+        print("Publicacion anterior reparada: %d copias rehechas, %d a medias quitadas. %s"
+              % (rec["rehechas"], rec["limpiadas"], rec["aviso"]))
     nivel = sys.argv[sys.argv.index("--agrupar") + 1] if "--agrupar" in sys.argv else "artista"
     if nivel not in ("artista", "carpeta", "cancion"):
         raise SystemExit("--agrupar admite artista, carpeta o cancion")
@@ -513,10 +520,14 @@ def main():
         print("NO se guarda: no supera la politica (curva fija y modelo instalado). Se conservan modelo y vectores anteriores.")
         return 2
     vectors = vectores_de_paridad(model, Xp, modelo_bytes)
-    # Cada archivo se reemplaza atomicamente. No constituyen una transaccion conjunta.
-    escribir_atomico(os.path.join(here, "ia_vectores_prueba.txt"), lambda f: f.write(vectors.encode("ascii")))
-    export_ria1(model, os.path.join(here, "rocola_ia.bin"))
-    print("Listo: rocola_ia.bin (copialo junto a Rocola.exe) + ia_vectores_prueba.txt")
+    # Modelo, vectores e informe se publican como UNA version (ver publicar_dsee.py): un corte de luz a
+    # media publicacion deja el conjunto viejo o el nuevo, nunca una mezcla. rocola_ia.bin y los vectores
+    # de esta carpeta son copias de la version activa.
+    import publicar_dsee
+    version = publicar_dsee.publicar(here, {"rocola_ia.bin": modelo_bytes,
+                                            "ia_vectores_prueba.txt": vectors.encode("ascii"),
+                                            "informe_dsee.json": rep}, EXTRACTOR)
+    print("Listo: version %s publicada. rocola_ia.bin (copialo junto a Rocola.exe) + ia_vectores_prueba.txt" % version)
     return 0
 
 

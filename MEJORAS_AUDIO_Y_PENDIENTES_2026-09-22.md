@@ -26,7 +26,7 @@ desarrollo y medición. La revisión anterior está en REVISION_AUDIO_2026-09-22
 | Paridad del extractor IA (contrato EXTRACTOR=2) | Implementado y probado; ver 1.7 |
 | Identidad de origen, particiones por canción y estéreo por canal | Implementado y probado; ver 1.8 |
 | Selección contra curva e instalado, informe reproducible | Implementado y probado; ver 1.9 |
-| Publicación conjunta de modelo y vectores | Pendiente; siguiente entrega |
+| Publicación conjunta de modelo y vectores | Implementado y probado; ver 1.10 |
 
 ## 1. Qué se implementó y cómo funciona
 
@@ -142,10 +142,8 @@ Archivos: ia/calidad_dsee.py, ia/entrenar_ia.py, ia/entrenar_dsee.py.
   Se rechazan NaN, infinito, datos inválidos y una referencia ya prácticamente perfecta.
 - Si no cumple, devuelve código 2 y conserva modelo y vectores anteriores.
   El lanzador explica que el rechazo es una decisión de calidad.
-- RIA1 y vectores se escriben mediante archivos temporales y sustitución atómica por archivo.
-  **No son una transacción conjunta:** un fallo entre las dos sustituciones puede dejar
-  vectores nuevos junto a un modelo anterior. No rompe el modelo reproducible, pero
-  exige volver a generar/verificar el par antes de distribuirlo.
+- RIA1 y vectores se escribían mediante sustitución atómica por archivo, pero el conjunto no
+  era una transacción. **Resuelto en 1.10**: ahora se publican como una versión con manifiesto.
 
 La referencia es la curva fija histórica del entrenador, NO una reproducción PCM completa
 del reconstructor clásico. Los márgenes 5%/10% son criterios conservadores iniciales,
@@ -286,6 +284,41 @@ RIA1 contra archivos truncados, con bytes sobrantes, NaN o del EQ; informe idén
 corridas; paridad de los vectores con el modelo leído, 2e-6). En rojo al quitar la comparación con
 el instalado, al meter una fecha en el informe o al estropear la huella de los vectores.
 
+### 1.10 Publicación conjunta de modelo y vectores (entrega 4)
+
+Archivos: ia/publicar_dsee.py (nuevo), ia/entrenar_ia.py, ia/entrenar_dsee.py,
+ia/test_publicacion_dsee.py (nueva).
+
+- La versión se escribe entera en ia/modelos/.preparando-*: modelo, vectores e informe, y el
+  manifiesto (SHA-256 y tamaño de cada archivo, versión del extractor y su propio SHA-256 al
+  final) el último; todo forzado a disco. Luego se renombra de una vez a ia/modelos/dsee-<huella>.
+- Activar es reemplazar de forma atómica ia/modelos/ACTIVO («versión sha256-del-manifiesto»):
+  es el ÚNICO paso que decide. Las versiones anteriores quedan en HISTORIAL para volver atrás
+  (python publicar_dsee.py --activar dsee-…; --estado; --recuperar).
+- ia/rocola_ia.bin, ia/ia_vectores_prueba.txt y la carpeta entrenado/ son COPIAS de la versión
+  activa. recuperar() (al empezar cualquier entrenamiento) quita versiones a medio preparar,
+  comprueba la activa byte a byte contra su manifiesto —si está dañada vuelve a la última sana
+  del historial— y rehace las copias que no cuadren.
+- La primera vez, el par que ya hubiera se archiva como versión «previo-…» y queda activo antes
+  de tocar nada; se puede volver a él.
+- entrenar_dsee.py deja de apartar y devolver copias .anterior del DSEE (las del EQ siguen igual);
+  si no se publica, no se toca nada.
+- Qué se publica: modelo, vectores de inferencia (con su huella) e informe sin rutas. Nunca el
+  material de entrenamiento. ia/modelos/ e ia/informe_dsee.json están en .gitignore.
+
+Comprobado: se simula un apagón en CADA uno de los 25 pasos de una publicación (escrituras,
+vaciados a disco, renombrado, activación y cada copia derivada, también en entrenado/) y, tras
+recuperar, queda el conjunto viejo si el corte fue hasta el reemplazo de ACTIVO (paso 13) y el
+nuevo desde ahí; nunca una mezcla. Versiones truncadas o alteradas no se activan; manifiestos
+alterados se detectan; copias estropeadas se reparan; el par previo se archiva y se puede volver.
+En rojo si recuperar no rehace las copias, no limpia lo preparado a medias, si ACTIVO se escribe
+sin reemplazo atómico o si no se comparan los hashes. De punta a punta con el lanzador sobre
+material sintético con índice: comparó con el modelo puesto, rechazó y no tocó nada.
+
+Límite: la atomicidad depende del sistema de archivos (os.replace/rename en el mismo volumen).
+El vaciado de la carpeta no es posible en Windows; allí la garantía es la del reemplazo NTFS.
+No se probó un corte de luz real ni un disco USB extraído a media escritura.
+
 ## 2. Comprobaciones y cómo repetirlas
 
 En cada repositorio, con sus herramientas de compilación .NET, Python con NumPy y FFmpeg:
@@ -299,9 +332,16 @@ El script:
 
 1. Compila GPU y CPU con advertencias tratadas como errores; ejecuta las 29 baterías
    de validar-capas.ps1. Compilar CPU no significa modificar su renderizado.
-2. Ejecuta nueve baterías adicionales: dsee, limite, entrenador, iadatos, eqauto,
-   calidad, nivel, bajoauto y bajo.
-3. Ejecuta 12 pruebas Python de los entrenadores y sus protecciones.
+2. Ejecuta once baterías adicionales: dsee, limite, entrenador, iaparidad, iaorigen, iadatos,
+   eqauto, calidad, nivel, bajoauto y bajo.
+3. Ejecuta las pruebas Python de los entrenadores y sus protecciones (test_calidad_dsee,
+   test_entrenar_eq, test_contrato_dsee, test_origen_dsee, test_estereo_dsee,
+   test_seleccion_dsee y test_publicacion_dsee).
+
+Nota del 22 de septiembre (bloque A): este script NO se pudo ejecutar en el entorno donde se
+hizo el bloque A (Linux, sin PowerShell, Windows ni FFmpeg). Sus piezas sí: todas las baterías
+con Mono mediante pruebas/todo.sh y todas las pruebas Python, en las dos ramas. Queda pendiente
+correrlo completo en Windows.
 4. Genera WAV de ruido reproducible en temporal para probar cosecha activada/desactivada.
 5. Comprueba decodificación MP3 CBR/VBR, WMA, AAC, WAV PCM y float32 y liberación de archivos.
 6. Repite los nuevos controles y medición con afinidad de hasta dos procesadores lógicos,
@@ -353,6 +393,17 @@ IaAppendPairs en Form1.Ia.cs, entrenar_ia.py y calidad_dsee.py.
 Aceptación: ningún origen compartido entre particiones, paridad de características con
 tolerancia documentada, cero datos no finitos y superioridad verificada también al escuchar.
 No requiere una red más grande ni añade coste a la reproducción.
+
+Estado (22 de septiembre, cuatro entregas en las dos ramas): hechos 1, 2, 3, 4, 5, 6 y 8 (ver
+1.7 a 1.10). Del 7 están el informe por banda y la paridad C#; faltan el desglose por
+transitorios y clases de señal. Lo que queda y por qué:
+- Entrenar de verdad con validación independiente: necesita material cosechado por la rocola
+  nueva (con rocola_ia_datos.idx). Con el material actual el entrenador se niega a publicar.
+- Superioridad audible: A/B a volumen igualado en tu equipo; ningún número de aquí la demuestra.
+- Paridad en XP real: correr pruebas/iaparidad.cs allí. Riesgo medido: 1,06 % de las divisiones
+  de la geometría caería en otro bin sin redondeo float32 (FPU x87).
+- validar-audio-mejoras.ps1 completo en Windows.
+- El artista queda en 0 en el índice: leerlo desde el hilo de fondo no es seguro hoy.
 
 ### B. Medida de sonoridad integrada y caché versionada
 

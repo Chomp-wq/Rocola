@@ -112,6 +112,15 @@ decide escuchando A/B a volumen igualado. Cada entrenamiento deja `informe_dsee.
 fechas: la misma entrada da el mismo informe) y los vectores llevan la huella SHA-256 de su modelo.
 Codigos: 0 guardado, 2 no supera la politica, 3 no verificable (sin validacion independiente).
 
+## Publicar sin dejar nunca un par a medias
+
+Cuando un modelo SI se guarda, modelo, vectores e informe se publican juntos como una version en
+`modelos/dsee-<huella>/` con su manifiesto, y se activa cambiando un solo archivo (`modelos/ACTIVO`).
+`rocola_ia.bin` y `ia_vectores_prueba.txt` de esta carpeta (y de `entrenado/`) son copias de la
+version activa: si un corte de luz dejo una a medias, se rehacen solas al empezar el siguiente
+entrenamiento. La primera vez, el modelo que ya tenias se archiva como version `previo-...`.
+`python publicar_dsee.py --estado`, `--recuperar` o `--activar dsee-XXXX` para volver a una anterior.
+
 ## El EQ y el bajo van SOLOS (no hay perilla que ajustar)
 
 De fabrica, en Ctrl+F3, el "EQ automatico" y los "Graves (bajo profundo)" llevan puesta la casilla

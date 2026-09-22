@@ -9,3 +9,5 @@ __pycache__/
 ia/entrenar_log.txt
 # el informe que deja cada entrenamiento del DSEE: es de cada maquina
 ia/informe_dsee.json
+# las versiones publicadas del DSEE (publicar_dsee.py): son de cada maquina
+ia/modelos/
