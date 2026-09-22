@@ -120,7 +120,7 @@ class Entrenador
         // musica: bajaba disco por disco abriendo cada cancion para mirarle los primeros bytes. Con una
         // biblioteca de verdad eso es el disco moliendo un buen rato sin ensenar una sola linea, que desde
         // fuera se ve exactamente igual que si se hubiera colgado.
-        string raiz = Path.Combine(Path.GetTempPath(), "rocola_entrenador");
+        string raiz = Path.Combine(Path.GetTempPath(), "rocola_entrenador_" + Guid.NewGuid().ToString("N"));
         try { if (Directory.Exists(raiz)) Directory.Delete(raiz, true); } catch { }
         Directory.CreateDirectory(Path.Combine(raiz, Path.Combine("musica", "Un disco")));
         Directory.CreateDirectory(Path.Combine(raiz, Path.Combine("musica", "Otro disco")));
@@ -139,12 +139,12 @@ class Entrenador
             "import entrenar_dsee as e\n" +
             "d, q, o, s = e.junta([r'" + raiz + "'])\n" +
             "print('DSEE', len(d)); print('EQ', len(q)); print('OTROS', len(o)); print('SALTADOS', s)\n";
-        string tmpPy = Path.Combine(Path.GetTempPath(), "rocola_entrenador_mirar.py");
+        string tmpPy = Path.Combine(Path.GetTempPath(), "rocola_entrenador_" + Guid.NewGuid().ToString("N") + ".py");
         File.WriteAllText(tmpPy, guion);
         string salida = "";
         try
         {
-            ProcessStartInfo psi = new ProcessStartInfo("python3", "\"" + tmpPy + "\"");
+            ProcessStartInfo psi = new ProcessStartInfo(Environment.GetEnvironmentVariable("ROCOLA_TEST_PYTHON") ?? "python3", "\"" + tmpPy + "\"");
             psi.UseShellExecute = false; psi.RedirectStandardOutput = true; psi.RedirectStandardError = true;
             using (Process pr = Process.Start(psi))
             {
@@ -187,7 +187,7 @@ class Entrenador
                           + (dondeCorte + 1) + "o");
 
         // El archivo de HOY, tal cual lo escribe la rocola, con una de cada tres canciones sana.
-        string eqHoy = Path.Combine(Path.GetTempPath(), "rocola_eq_hoy.txt");
+        string eqHoy = Path.Combine(Path.GetTempPath(), "rocola_eq_hoy_" + Guid.NewGuid().ToString("N") + ".txt");
         int cuantasCanciones = 1200;
         int sanasPuestas = EscribeHuellas(eqHoy, cuantasCanciones, cuantos, dondeCorte, sanaHz, true);
         string salHoy = CorreEq(eqHoy);
@@ -201,7 +201,7 @@ class Entrenador
         // Y el de una rocola VIEJA, que no trae el dato del corte: no puede saber cuales estan sanas, pero
         // eso no es motivo para tirar meses de trabajo. Se entrena con todas, que es exactamente lo que la
         // rocola hace con su promedio cuando no tiene bastantes sanas medidas.
-        string eqViejo = Path.Combine(Path.GetTempPath(), "rocola_eq_viejo.txt");
+        string eqViejo = Path.Combine(Path.GetTempPath(), "rocola_eq_viejo_" + Guid.NewGuid().ToString("N") + ".txt");
         EscribeHuellas(eqViejo, cuantasCanciones, 8, dondeCorte, sanaHz, false);
         string salViejo = CorreEq(eqViejo);
         LeeCuenta(salViejo, out total, out sanas);
@@ -252,11 +252,11 @@ class Entrenador
     static string CorreEq(string datos)
     {
         string py = Path.GetFullPath(Path.Combine("..", Path.Combine("ia", "entrenar_eq.py")));
-        string fuera = Path.Combine(Path.GetTempPath(), "rocola_eq_ia_prueba.bin");
+        string fuera = Path.Combine(Path.GetTempPath(), "rocola_eq_ia_prueba_" + Guid.NewGuid().ToString("N") + ".bin");
         try { File.Delete(fuera); } catch { }
         try
         {
-            ProcessStartInfo psi = new ProcessStartInfo("python3",
+            ProcessStartInfo psi = new ProcessStartInfo(Environment.GetEnvironmentVariable("ROCOLA_TEST_PYTHON") ?? "python3",
                 "\"" + py + "\" --datos \"" + datos + "\" --salida \"" + fuera + "\" --epocas 6");
             psi.UseShellExecute = false; psi.RedirectStandardOutput = true; psi.RedirectStandardError = true;
             using (Process pr = Process.Start(psi))

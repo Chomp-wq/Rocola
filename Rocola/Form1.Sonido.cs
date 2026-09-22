@@ -37,7 +37,7 @@ namespace Rocola
         private string eqMeasPath = null;          // cancion cuya huella se esta midiendo (null = no medir)
         private float eqMeasCut = 0f, eqMeasCutLo = 0f;   // cortes (arriba y abajo) de la cancion que suena (0 = aun no se sabe)
         private double[] eqMeasSum = new double[8]; private long eqMeasN = 0;   // energia acumulada por banda (hilo de audio)
-        private float[][] eqMeasCoef = null; private float[] eqMeasSt = null; private int eqMeasRate = 0;   // bandpass de la medicion (mezcla mono; 4 estados por banda)
+        private float[][] eqMeasCoef = null; private float[] eqMeasSt = null; private int eqMeasRate = 0;   // medicion: 4 estados por banda y canal
         // BAJO PSICOACUSTICO: 0..1 ("bajo=" en config, perilla en Ctrl+F3). Recrea el grave que las bocinas
         // del local NO pueden dar, generando sus armonicos. Ver DeepBassProvider.
         private float bassAmount = 0.30f;
@@ -400,7 +400,7 @@ namespace Rocola
                 // RECORTE DE ORIGEN: muestras pegadas al techo digital en rachas de 3 o mas. No es distorsion
                 // que metamos nosotros: viene asi masterizada. Se cuenta aqui, en el recorrido que ya se hacia.
                 long clipN = 0; int[] clipRun = new int[ch];
-                float[][] bp = new float[8][]; float[] bpSt = new float[8 * 4];   // huella tonal: bandpass por banda
+                float[][] bp = new float[8][]; float[] bpSt = new float[ch * 32];   // huella tonal: estados por canal y banda
                 if (!esVideo) for (int b = 0; b < 8; b++) bp[b] = EqBpf(EqCentros[b], rate);   // (de un video no se saca huella: se quedan en nulo y el filtro se salta)
                 double[] bpSum = new double[8]; long bpN = 0;
                 // COSECHA PARA LA IA: se analiza el canal 0 con el MISMO motor del DSEE. Los pares se guardan
@@ -476,6 +476,10 @@ namespace Rocola
                     }
                     catch { hv = null; }
                 }
+                // La ficha de calidad usa la misma ventana tanto si se cosecha IA como si no.
+                // El analizador puede seguir avanzando para cosechar, pero no cambia esa ficha.
+                int qualityFrames = IaWarmFrames + 24;
+                float measuredCut = hv != null ? hv.CutHz : 0f, measuredCutLo = hv != null ? hv.CutLoHz : 0f;
                 for (int s = 0; s < segs && !preScanStop; s++)
                 {
                     if (segs > 1)
@@ -496,19 +500,7 @@ namespace Rocola
                         got += n;
                         for (int i = 0; i + ch <= n; i += ch)
                         {
-                            // HUELLA TONAL (EQ automatico): igual que en vivo, sobre la mezcla MONO del cuadro.
-                            float m = buf[i];
-                            for (int mc = 1; mc < ch; mc++) m += buf[i + mc];   // mc: el nombre c2 ya es el coeficiente del K-weighting
-                            m /= ch;
-                            for (int b2 = 0; b2 < 8; b2++)
-                            {
-                                float[] cf = bp[b2]; if (cf == null) continue;
-                                int q = b2 * 4;
-                                float o = cf[0] * m + cf[1] * bpSt[q] + cf[2] * bpSt[q + 1] - cf[3] * bpSt[q + 2] - cf[4] * bpSt[q + 3];
-                                bpSt[q + 1] = bpSt[q]; bpSt[q] = m;
-                                bpSt[q + 3] = bpSt[q + 2]; bpSt[q + 2] = o;
-                                bpSum[b2] += o * o;
-                            }
+                            if (!esVideo) AccumulateEqFrame(buf, i, ch, bp, bpSt, bpSum);
                             bpN++;
                             // canal 0 hacia el analizador de la IA (el DSEE tambien trabaja por canal)
                             if (hv != null && hvVistos < hvVistosMax)
@@ -526,12 +518,14 @@ namespace Rocola
                                         // el trabajo de los que no tocaban: en el repaso a fondo eso eran mas
                                         // de tres cuartas partes de las FFT hechas para nada. Los primeros si
                                         // van seguidos: el acantilado necesita unos cuantos para asentarse.
-                                        bool sirve = (hvVistos <= IaWarmFrames) || hvStride == 1
+                                        bool sirve = (hvVistos <= qualityFrames) || hvStride == 1
                                                      || (((hvVistos + hvFase) % hvStride) == 0);
                                         if (sirve)
                                         {
                                             hv.AnalyzeFrame(hvFrame, 0);
-                                            if (!soloCorte && hvVistos > IaWarmFrames)   // acantilado ya estabilizado
+                                            if (hvVistos <= qualityFrames) { measuredCut = hv.CutHz; measuredCutLo = hv.CutLoHz; }
+                                            if (!soloCorte && hvVistos > IaWarmFrames &&
+                                                (hvStride == 1 || ((hvVistos + hvFase) % hvStride) == 0))
                                                 for (int q = 0; q < IaCutsHz.Length; q++)
                                                     if (hv.MakePair(IaCutsHz[q], hvFeat, hvTgt))
                                                     {
@@ -564,8 +558,8 @@ namespace Rocola
                 {
                     if (IaAppendPairs(hvPairs)) MarkIaDone(path, nivelAhora);
                 }
-                float corteHz = (hv != null) ? hv.CutHz : 0f;
-                float corteLo = (hv != null) ? hv.CutLoHz : 0f;
+                float corteHz = measuredCut;
+                float corteLo = measuredCutLo;
                 float recorte = (nSamp > 0) ? (float)((double)clipN / nSamp) : 0f;
                 if (nSamp < 40000) return durSec > 0.01f;   // muy poco audio util: al menos queda la duracion
                 rms = (float)Math.Sqrt(sumSq / nSamp);
@@ -580,7 +574,7 @@ namespace Rocola
                 if (bpN >= 40000 && !esVideo)
                 {
                     float[] curve = new float[EqLen];
-                    curve[EqCut] = corteHz; curve[EqClip] = recorte; curve[EqCutLo] = corteLo;
+                    curve[EqCut] = corteHz; curve[EqClip] = recorte; curve[EqCutLo] = corteLo; curve[EqFingerprint] = 1f;
                     for (int b = 0; b < 8; b++) curve[b] = (float)(10.0 * Math.Log10(bpSum[b] / bpN + 1e-12));
                     float[] cuerpo = { curve[1], curve[2], curve[3], curve[4], curve[5] };
                     Array.Sort(cuerpo);
@@ -874,7 +868,7 @@ namespace Rocola
                 // nueva, va a su volumen original y se APRENDE su sonoridad en esta pasada (para nivelarla la proxima vez).
                 curMeasurePath = (normalizeOn && !durCache.ContainsKey(t.Path)) ? t.Path : null;   // ya pre-analizada = medida COMPLETA y fiable: no se vuelve a medir (y se ahorra el K-weighting)
                 curSumSq = 0; curSamples = 0;
-                eqMeasPath = (EqMideHuella && !durCache.ContainsKey(t.Path)) ? t.Path : null;   // huella tonal: solo si no la trae ya del pre-analisis (que la mide completa)
+                eqMeasPath = (EqMideHuella && !HasStereoEq(t.Path)) ? t.Path : null;   // actualiza huellas antiguas sin borrar la biblioteca
                 eqMeasCut = 0f;   // el acantilado es de ESTA cancion: se vuelve a medir
                 eqMeasSum = new double[8]; eqMeasN = 0; eqMeasRate = 0;
                 kwRate = 0;   // reinicia el estado del K-weighting: cada cancion mide desde cero (sin cola del filtro anterior)
@@ -2079,17 +2073,17 @@ namespace Rocola
         // Toma el nivel de audio (RMS) del bloque recien leido SIN modificar el sonido: solo observa el
         // buffer que ya lleno el lector y lo reporta. Sirve para que las estrellas laten con la musica.
         // Como el colchon es de ~1s, el nivel va algo adelantado de lo que se oye (envolvente de energia).
-        private class LevelTap : NAudio.Wave.ISampleProvider
+        private partial class LevelTap : NAudio.Wave.ISampleProvider
         {
             private readonly NAudio.Wave.ISampleProvider src;
             private readonly Form1 owner;
-            public float Gain = 1f;   // NIVELADO: ganancia de volumen de esta cancion (1 = sin cambio). Se aplica DESPUES de medir el nivel crudo.
-            public float Master = 1f; // SUBIR TODO: ganancia general (dB de Ctrl+F3) para todas las canciones. Los picos que se pasen los redondea la RODILLA SUAVE de abajo (no recorte aspero).
+            public volatile float Gain = 1f;   // objetivos; la rampa se aplica DESPUES de medir
+            public volatile float Master = 1f; // los picos los controla el limitador final
             // REALCE DE AGUDOS (exciter armonico, tipo DSEE): separa la banda alta con un paso-alto de un polo,
             // la satura suave (tanh: crea armonicos NUEVOS por encima, el "aire" que el MP3 recorta) y mezcla
             // una pizca de vuelta. Todo en el dominio del tiempo: ~2 operaciones y un tanh por muestra, ~1-2%
             // de CPU en la rocola (nada de FFT). 0 = apagado (la pasada ni se ejecuta si tampoco hay nivelado).
-            public float Excite = 0f;   // intensidad 0..1 (perilla en Ctrl+F3; ajustable en vivo)
+            public volatile float Excite = 0f;   // intensidad 0..1, suavizada al cambiar en vivo
             private float[] exLp;       // estado del filtro del exciter (uno por canal)
             // EQ AUTOMATICO: correccion en dB por banda (8) o null = apagado. Se aplica con biquads
             // PEAKING (RBJ) en cascada, SOLO en las bandas con correccion real (0 dB = identidad exacta,
@@ -2127,11 +2121,13 @@ namespace Rocola
                         new PreparedEq(value, WaveFormat.SampleRate, WaveFormat.Channels);
                 }
             }
-            private float[] eqDbUsed;   // referencia aplicada: no reiniciar estados por cambios que el lector no llego a ver
-            private float[][] eqCoef;   // biquads activos compactados, en el orden original de bandas
-            private float[] eqSt;       // estados: canal * banda * 4
-            private int eqActivos;
-            public LevelTap(NAudio.Wave.ISampleProvider s, Form1 o) { src = s; owner = o; }
+            public LevelTap(NAudio.Wave.ISampleProvider s, Form1 o)
+            {
+                src=s;owner=o;audioChannels=Math.Max(1,s.WaveFormat.Channels);
+                rampFrames=Math.Max(1,(int)(s.WaveFormat.SampleRate*.020));
+                eqFadeFrames=Math.Max(1,(int)(s.WaveFormat.SampleRate*.030));
+                exciterPole=ExciterPole(s.WaveFormat.SampleRate);exLp=new float[audioChannels];
+            }
             public NAudio.Wave.WaveFormat WaveFormat { get { return src.WaveFormat; } }
             public int Read(float[] buffer, int offset, int count)
             {
@@ -2148,51 +2144,41 @@ namespace Rocola
                     // (un archivo roto que devuelve 1e30) que reventarian el nivelado.
                     { int fin0 = offset + n; for (int i = offset; i < fin0; i++) { float x0 = buffer[i]; if (!(x0 >= -4f && x0 <= 4f)) buffer[i] = 0f; } }
                     owner.ReportAudioBlock(buffer, offset, n, WaveFormat.SampleRate, WaveFormat.Channels);   // mide el nivel CRUDO (beat + sonoridad + huella tonal) ANTES de tocar nada
-                    float g = Gain * Master, ex = Excite;
-                    PreparedEq prepared = pendingEq;
-                    bool exOn = ex > 0.001f, eqOn = prepared != null;
-                    if (eqOn && !ReferenceEquals(prepared.Curve, eqDbUsed))
+                    float g=Gain*Master, ex=Excite;
+                    if(float.IsNaN(g)||float.IsInfinity(g)||g<0)g=audioReady?gainRamp.Current:1f;
+                    if(float.IsNaN(ex)||float.IsInfinity(ex))ex=audioReady?exciteRamp.Current:0f;
+                    ex=ex>.001f?Math.Min(1f,ex):0f;
+                    PreparedEq prepared=pendingEq;
+                    if(!audioReady)
                     {
-                        eqCoef = prepared.Coefficients; eqActivos = prepared.Active;
-                        eqSt = prepared.State;
-                        eqDbUsed = prepared.Curve;
+                        gainRamp.Init(g);exciteRamp.Init(ex);currentEq=prepared;audioReady=true;
                     }
-                    if (eqOn && eqActivos == 0) eqOn = false;
-                    if (g != 1f || exOn || eqOn)   // nivelado + EQ + realce en UNA pasada (el limitador de la cadena controla los picos)
+                    bool identity=g==1f && gainRamp.Current==1f && gainRamp.Remaining==0 &&
+                        ex==0 && exciteRamp.Current==0 && exciteRamp.Remaining==0 &&
+                        eqFadeLeft==0 && SameEq(currentEq,prepared) && (currentEq==null||currentEq.Active==0);
+                    if(identity) audioChannel=(audioChannel+n)%audioChannels;
+                    else
                     {
-                        int ch = WaveFormat.Channels; if (ch < 1) ch = 1;
-                        if (exOn && (exLp == null || exLp.Length < ch)) exLp = new float[ch];
-                        const float A = 0.55f;    // paso-alto ~5.5 kHz (a 44.1k): la banda donde el MP3 pierde el "aire"
-                        float mix = ex * 0.5f;    // tope de mezcla: el realce es una PIZCA (el exceso suena aspero)
-                        int end = offset + n, ci = 0;
-                        int bandasActivas = eqActivos;   // configuracion fija durante este bloque
-                        for (int i = offset; i < end; i++)
+                        int end=offset+n;
+                        for(int i=offset;i<end;i++)
                         {
-                            float v = buffer[i] * g;
-                            if (eqOn)
+                            if(audioChannel==0)AdvanceAudioControls(g,ex,prepared);
+                            float input=buffer[i]*gainRamp.Current;
+                            float v=ApplyPreparedEq(currentEq,input,audioChannel);
+                            if(eqMix<1f)
                             {
-                                int p0 = ci * 32;
-                                for (int b = 0; b < bandasActivas; b++)
-                                {
-                                    float[] cf = eqCoef[b];
-                                    int q = p0 + b * 4;
-                                    float o = cf[0] * v + cf[1] * eqSt[q] + cf[2] * eqSt[q + 1] - cf[3] * eqSt[q + 2] - cf[4] * eqSt[q + 3];
-                                    eqSt[q + 1] = eqSt[q]; eqSt[q] = v;
-                                    eqSt[q + 3] = eqSt[q + 2]; eqSt[q + 2] = o;
-                                    v = o;
-                                }
+                                float old=ApplyPreparedEq(previousEq,input,audioChannel);
+                                v=old+(v-old)*eqMix;
                             }
-                            if (exOn)
+                            if(exciteRamp.Current>0)
                             {
-                                float lp = (exLp[ci] += (v - exLp[ci]) * A);
-                                float h = v - lp;                                   // solo la banda alta que sobrevivio
-                                v += Form1.TanhRapida(h * 2.5f) * 0.4f * mix;      // saturacion suave = armonicos nuevos por encima (brillo/presencia)
+                                float lp=(exLp[audioChannel]+=(v-exLp[audioChannel])*exciterPole);
+                                float h=v-lp;
+                                float mix=exciteRamp.Current*.5f;
+                                v+=Form1.TanhRapida(h*2.5f)*.4f*mix;
                             }
-                            if (exOn || eqOn) { ci++; if (ci >= ch) ci = 0; }
-                            // El control de picos ya NO se hace aqui (era una rodilla que distorsiona al empujar):
-                            // lo hace el LIMITADOR CON PRE-ESCUCHA al final de la cadena, que baja la ganancia suave
-                            // ANTES del pico. Aqui la senal sale CRUDA (puede pasar de 1.0; el limitador la controla).
-                            buffer[i] = v;
+                            buffer[i]=v; // limitador final conserva su lugar y anticipacion
+                            if(++audioChannel>=audioChannels)audioChannel=0;
                         }
                     }
                 }

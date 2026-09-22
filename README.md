@@ -1,5 +1,11 @@
 # Rocola
 
+## Audio — 22 de septiembre de 2026
+
+Rampas de volumen/excitador, transición de EQ, huellas estéreo sin cancelación y
+protecciones del entrenamiento compartidas por Modest y HD. Detalles, comprobaciones
+y tareas aún pendientes en [la guía de audio](MEJORAS_AUDIO_Y_PENDIENTES_2026-09-22.md).
+
 ## Respuesta y transiciones GPU (10 de septiembre de 2026)
 
 Tres interruptores independientes, activados por defecto, en Ctrl+F3 → Fondo:

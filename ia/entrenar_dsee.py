@@ -276,6 +276,10 @@ def main(argv):
                     "PASO 1: el reconstructor de agudos (rocola_ia.bin)")
         if cod == 0 and lleva_a_salida("rocola_ia.bin"):
             hechos.append(("rocola_ia.bin", "reconstruye los agudos que el MP3 corto"))
+        elif cod == 2:
+            devuelve_copia("rocola_ia.bin")
+            devuelve_copia("ia_vectores_prueba.txt")
+            faltaron.append("el DSEE no supero el control de calidad: se conserva el modelo anterior; no es un fallo del entrenamiento")
         else:
             faltaron.append("el reconstructor de agudos no se pudo entrenar (mira el mensaje de arriba)")
             if devuelve_copia("rocola_ia.bin"):

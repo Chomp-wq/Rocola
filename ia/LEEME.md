@@ -1,5 +1,19 @@
 # IA propia de la rocola (modelo entrenado por el dueno con su biblioteca)
 
+## Actualización de calidad — 22 de septiembre de 2026
+
+El entrenador DSEE conserva el mejor checkpoint evaluado y solo publica si mejora
+al menos 5% el MSE global frente a su curva fija y ninguna banda empeora más de 10%.
+El código 2 significa rechazo por calidad; se conserva el modelo anterior.
+Esto no sustituye validación por canciones independientes ni escucha a volumen igualado.
+
+Copiar la carpeta de herramientas completa: `entrenar_ia.py` ahora necesita
+`calidad_dsee.py` a su lado. Esta dependencia es del entrenador, no del reproductor.
+Los modelos existentes no necesitan convertirse ni se reemplazan automáticamente.
+AutoEQ acepta también las huellas de 12 campos y normaliza usando solo entrenamiento.
+
+Ver [implementación, pruebas y pendientes detallados](../MEJORAS_AUDIO_Y_PENDIENTES_2026-09-22.md).
+
 ## LO CORTO: que archivos me llevo de la rocola y que hago con ellos
 
 Junto a `Rocola.exe` hay dos archivos, y son los UNICOS que hacen falta para entrenar:

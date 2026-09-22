@@ -1,5 +1,9 @@
 # Revisión de calidad de audio — 22 de septiembre de 2026
 
+Actualización posterior: esta revisión se conserva como diagnóstico inicial. Las mejoras
+implementadas después y el plan detallado para continuar están en
+[Mejoras de audio y pendientes](MEJORAS_AUDIO_Y_PENDIENTES_2026-09-22.md).
+
 ## Resultado y alcance
 
 Sí queda margen de mejora. Esta revisión inspecciona la cadena, análisis, entrenadores, salida y herramientas; **no modifica el DSP, sus ajustes, los modelos instalados ni el sonido por defecto**. Distingue defectos observables en código de mejoras cuya ventaja audible debe medirse.

@@ -568,31 +568,19 @@ namespace Rocola
                 }
                 curSumSq += sumK; curSamples += nK * ch3;   // energia K-pesada (misma escala que el RMS de antes)
             }
-            // EQ AUTOMATICO: huella tonal de la cancion (energia por banda via bandpass RBJ, mezcla MONO).
-            // Solo durante el aprendizaje de esta cancion; ~70 operaciones por cuadro, costo despreciable.
+            // EQ AUTOMATICO: potencia por banda y canal, solo mientras falta una huella actual.
             if (eqMeasPath != null)
             {
-                if (eqMeasRate != rate || eqMeasCoef == null)
+                if (eqMeasRate != rate || eqMeasCoef == null || eqMeasSt.Length != Math.Max(1, ch) * 32)
                 {
-                    eqMeasRate = rate; eqMeasCoef = new float[8][]; eqMeasSt = new float[8 * 4];
+                    eqMeasRate = rate; eqMeasCoef = new float[8][]; eqMeasSt = new float[Math.Max(1, ch) * 32];
                     for (int b = 0; b < 8; b++) eqMeasCoef[b] = EqBpf(EqCentros[b], rate);
                 }
                 int ch2 = ch < 1 ? 1 : ch;
                 float[] st = eqMeasSt; double[] sums = eqMeasSum;
                 for (int i = offset; i + ch2 <= offset + count; i += ch2)
                 {
-                    float m = buffer[i];
-                    for (int c2 = 1; c2 < ch2; c2++) m += buffer[i + c2];
-                    m /= ch2;
-                    for (int b = 0; b < 8; b++)
-                    {
-                        float[] cf = eqMeasCoef[b]; if (cf == null) continue;
-                        int q = b * 4;
-                        float o = cf[0] * m + cf[1] * st[q] + cf[2] * st[q + 1] - cf[3] * st[q + 2] - cf[4] * st[q + 3];
-                        st[q + 1] = st[q]; st[q] = m;
-                        st[q + 3] = st[q + 2]; st[q + 2] = o;
-                        sums[b] += o * o;
-                    }
+                    AccumulateEqFrame(buffer, i, ch2, eqMeasCoef, st, sums);
                     eqMeasN++;
                 }
             }
