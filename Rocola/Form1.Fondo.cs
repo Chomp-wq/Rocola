@@ -57,6 +57,7 @@ namespace Rocola
         private bool glassCapas = true, coloresCache = true, lunaActiva = true;
         private bool controlesReposo = true, ondasUnidas = true;
         private bool lunaRealista = true, haloLunar = true, polvoLunar = true, lunaProtagonista = true;
+        private bool estelaEstelar = true;
         private bool respuestaInmediata = true, transicionesTacto = true;
         // AVISOS PARA EL PANEL DE REPOSO. El panel solo existe con tarjeta grafica, pero las cosas que
         // ensena -la cola, la cancion, el color del genero- cambian en archivos que compilan siempre. Por

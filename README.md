@@ -1,5 +1,11 @@
 # Rocola
 
+## Estrella reactiva — 22 de septiembre de 2026
+
+Nueva silueta luminosa, órbita elevada y ecos cromáticos en reposo, con control
+visual en Ctrl+F3 → Fondo. Implementación GPU compartida por Modest y HD.
+Detalles y límites de las pruebas en [la guía de la estrella](ESTRELLA_ECOS_2026-09-22.md).
+
 ## Audio — 22 de septiembre de 2026
 
 Rampas de volumen/excitador, transición de EQ, huellas estéreo sin cancelación y

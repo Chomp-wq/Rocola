@@ -58,20 +58,20 @@ class LunaDetalle
   }
   using(Control panel=(Control)Activator.CreateInstance(gpu,true)){
    panel.Size=new Size(640,480);
-   string[] fields={"lunaRealista","haloLunar","polvoLunar","lunaProtagonista"};
-   string[] gpuFields={"LunaRealista","HaloLunar","PolvoLunar","LunaProtagonista"};
-   string[] labels={"Superficie detallada de la estrella (GPU)","Corona estelar musical (GPU)","Polvo estelar orbital (GPU)","Realzar estrella en reposo (GPU)"};
+   string[] fields={"lunaRealista","haloLunar","polvoLunar","lunaProtagonista","estelaEstelar"};
+   string[] gpuFields={"LunaRealista","HaloLunar","PolvoLunar","LunaProtagonista","EstelaEstelar"};
+   string[] labels={"Superficie detallada de la estrella (GPU)","Corona estelar musical (GPU)","Polvo estelar orbital (GPU)","Realzar estrella en reposo (GPU)","Ecos de color de la estrella (GPU)"};
    Set(form,null,"carpetaDatos",dir);object o=Blank(form);Set(form,o,"gpuPanel",panel);
    using(Font font=new Font("Segoe UI",10,FontStyle.Bold))
    using(Font desc=new Font("Segoe UI",8.5f))
    using(Panel p=(Panel)Call(form,o,"PaginaFondo",font,font,desc,font,Color.White,Color.Gray,Color.Gray)){
-    for(int mask=0;mask<16;mask++){
-     for(int i=0;i<4;i++){
+    for(int mask=0;mask<32;mask++){
+     for(int i=0;i<5;i++){
       Control c=Find(p,labels[i]);Check(c!=null&&c.Bottom<=c.Parent.Height,"Interruptor lunar fuera de pagina");
       c.GetType().GetProperty("Checked",F).SetValue(c,(mask&(1<<i))!=0,null);
      }
      Call(form,o,"AplicaEfectosGpu");Call(form,o,"SaveConfigPrefs");object read=Blank(form);Call(form,read,"LoadConfigPrefs");
-     for(int i=0;i<4;i++){
+     for(int i=0;i<5;i++){
       bool expected=(mask&(1<<i))!=0;
       Check((bool)Get(form,read,fields[i])==expected,"No persiste "+fields[i]);
       Check((bool)Get(gpu,panel,gpuFields[i])==expected,"No aplica a GPU "+fields[i]);
@@ -101,9 +101,9 @@ class LunaDetalle
      Check((IntPtr)Get(gpu,panel,"lunaTex")==tex && (int)Get(gpu,panel,"lunaDe")==256,"Resolucion rehornea superficie");
     }
     Set(gpu,panel,"LunaRealista",false);Call(gpu,panel,"EnsureLuna");
-    Check((int)Get(gpu,panel,"lunaW")==256 && !(bool)Get(gpu,panel,"lunaDetalleDe"),"No cambia a estrella sencilla");
+    Check((int)Get(gpu,panel,"luTW")==256 && !(bool)Get(gpu,panel,"lunaDetalleDe"),"No cambia a estrella sencilla");
     Set(gpu,panel,"LunaRealista",true);Call(gpu,panel,"EnsureLuna");
-    Check((int)Get(gpu,panel,"lunaW")==256 && (bool)Get(gpu,panel,"lunaDetalleDe"),"No recupera diseno");
+    Check((int)Get(gpu,panel,"luTW")==256 && (bool)Get(gpu,panel,"lunaDetalleDe"),"No recupera diseno");
    }finally{Call(gpu,panel,"StopGpu");}
    Check((IntPtr)Get(gpu,panel,"lunaTex")==IntPtr.Zero,"No libera textura");
   }
@@ -125,7 +125,7 @@ class LunaDetalle
    for(int i=0;i<fps*10;i++)phase+=(float)Call(gpu,null,"MoonMotionSpeed",1f)/fps;
    Check(Math.Abs(phase-idle*10)<.0001,"Velocidad lunar depende de FPS");
   }
-  Console.WriteLine("  OK    relieve determinista, alfa, luz lateral, 16 configuraciones, realce y cache/liberacion HAL. Vista: "+dir);
+  Console.WriteLine("  OK    relieve determinista, alfa, luz lateral, 32 configuraciones, realce y cache/liberacion HAL. Vista: "+dir);
   return 0;
  }
 }
