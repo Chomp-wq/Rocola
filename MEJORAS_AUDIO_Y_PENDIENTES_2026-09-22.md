@@ -216,8 +216,11 @@ rocola_ia_datos.bin (RIAD v1) no cambia: los lectores y ejecutables anteriores s
 Al lado, la rocola escribe rocola_ia_datos.idx: una entrada de 64 bytes por canción cosechada con
 primer registro, cuenta, versión del extractor, frecuencia, cuadro, canal, huellas FNV-1a de la
 canción (nombre de archivo + duración), de la carpeta y del artista, CRC32 de esos registros y CRC32
-de la propia entrada. Solo huellas: ni rutas ni nombres. El artista queda en 0 («desconocido»): la
-lista de canciones vive en el hilo de la pantalla y no se lee desde el hilo de fondo.
+de la propia entrada. Solo huellas: ni rutas ni nombres. El artista entra SOLO si viene en la
+etiqueta del MP3 (ID3v2 o ID3v1, leída con Track.SoloArtista, que salta la carátula y no toca la
+lista de la pantalla): nunca se adivina del nombre del archivo o de la carpeta. Sin etiqueta, o
+con comodines como «Various Artists» o «Desconocido», queda en 0 («no se sabe»). Coste medido:
+2,2 ms por canción cosechada con una carátula de 300 KB delante (primera llamada incluida).
 
 Robustez (nunca atribuir mal; como mucho quedarse «sin origen»):
 - Se escribe después de que los ejemplos llegaron al disco; un apagón entre ambos deja esos
@@ -403,7 +406,9 @@ transitorios y clases de señal. Lo que queda y por qué:
 - Paridad en XP real: correr pruebas/iaparidad.cs allí. Riesgo medido: 1,06 % de las divisiones
   de la geometría caería en otro bin sin redondeo float32 (FPU x87).
 - validar-audio-mejoras.ps1 completo en Windows.
-- El artista queda en 0 en el índice: leerlo desde el hilo de fondo no es seguro hoy.
+- El artista solo se conoce si la canción es MP3 con etiqueta; distintas grafías del mismo
+  artista («Queen» y «Queen & David Bowie») cuentan como artistas distintos. La separación por
+  canción y por carpeta sí es estricta.
 
 ### B. Medida de sonoridad integrada y caché versionada
 
