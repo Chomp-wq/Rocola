@@ -27,12 +27,25 @@ def cuantizar(model):
     model.W, model.B = weights, biases
 
 
+# La referencia clasica: una curva FIJA que cae con la octava. No es el reconstructor clasico de la
+# rocola muestra a muestra (ese depende del espectro de cada cuadro); es la linea base historica del
+# entrenador. Lo que si comparte con la rocola es la GEOMETRIA: el techo de las 12 sub-bandas es el
+# topBin del contrato (contrato_dsee.py) en la cosecha tipica, 44,1 kHz y cuadro de 2048. Antes usaba
+# 20 kHz, que no es el techo que la rocola rellena.
+_REF_RATE, _REF_FRAME = 44100, 2048
+
+
 def curva_fija(x):
+    from contrato_dsee import bin_hz, top_bin
     fc = x[:, 25:26] * 20000.0
     if not np.isfinite(x).all() or np.any(fc <= 0) or np.any(fc >= 20947.5):
         raise ValueError("Entradas o frecuencia de corte invalidas")
-    top = np.minimum(2 * fc, 20000.0)
-    return np.clip(-1.8 * np.log2(top / fc) * ((np.arange(12) + .5) / 12), -4, .5)
+    bhz = float(bin_hz(_REF_RATE, _REF_FRAME))
+    cut = np.floor(fc / bhz + 0.5)
+    techo = top_bin(_REF_RATE, _REF_FRAME, _REF_FRAME)      # con corte alto manda el techo fijo (952 bins)
+    top = np.minimum(techo, 2 * cut - 2) * bhz
+    top = np.maximum(top, fc * (1 + 1e-6))                  # un par valido siempre tiene techo por encima
+    return np.clip(-1.8 * np.log2(top / fc) * ((np.arange(12) + .5) / 12), -4, .1)
 
 
 def evaluar(model, x, y, lote=4096):

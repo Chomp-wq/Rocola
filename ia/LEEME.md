@@ -91,12 +91,28 @@ que sobrevivio. El reconstructor espectral de la rocola la usa en vez de su curv
 
 ## El contrato (RIA1) — no romperlo
 
-La extraccion de caracteristicas de `entrenar_ia.py` y la de `Form1.cs` (SpectralTap.BuildIaFeatures)
-deben coincidir EXACTO:
+Manda la ROCOLA: la red se aplica en `SpectralTap.RegenNeural` y la cosecha sale de `MakePair`.
+`contrato_dsee.py` transcribe esas funciones y `BuildIaFeatures` paso a paso, con su mismo redondeo
+float32, y es lo que usa `entrenar_ia.py` (version del extractor `EXTRACTOR = 2`).
 - entrada[0..23]: log10 de la energia media por bin (|X/N|^2) de 24 bandas log de 200 Hz al corte,
-  restada su media; [24] = esa media; [25] = corte/20000; [26] = planitud (ultimas 8 bandas); [27] = 0.
-- salida[0..11]: log10(energia objetivo / energia de la costura) de 12 sub-bandas log del corte a
-  min(2*corte, 20 kHz). Ventana raiz-de-Hann, cuadro 2048/4096, solape 50%.
+  restada su media; [24] = esa media; [25] = corte/20000 **con el corte redondeado a bin**;
+  [26] = planitud (ultimas 8 bandas); [27] = 0.
+- salida[0..11]: log10(energia objetivo / energia de la costura) de 12 sub-bandas log del corte al
+  `topBin` de la rocola: el menor entre 20,5 kHz, 95 % de Nyquist, 2·corte−2 bins y ny−4.
+  Topes −4 y **+0,1**. Si una sub-banda queda vacia el par no vale (como en la rocola).
+- Ventana raiz-de-Hann, cuadro 2048 (cosecha y reproduccion normal) o 4096 (nivel HD), solape 50 %.
+
+La version 1 (el extractor Python anterior) usaba 20 kHz de techo, corte sin redondear y tope +0,5:
+un modelo entrenado con `--musica` o con audio sintetico aprendia bandas que no son las que la
+rocola rellena. Lo que junta la propia rocola nunca tuvo ese problema: `MakePair` no ha cambiado
+desde que existe (3 de agosto de 2026). Los modelos RIA1 instalados siguen funcionando igual: la
+reproduccion no cambio.
+
+`paridad_extractor.txt` son los vectores de paridad del extractor (28 entradas y 12 objetivos para
+espectros y senales reproducibles bit a bit). `pruebas/iaparidad.cs` los compara con la rocola y
+ademas recorre TODOS los cortes a seis frecuencias de muestreo contrastandolos con este contrato.
+Si se cambia el contrato a proposito: `python3 contrato_dsee.py --generar-paridad paridad_extractor.txt`
+y subir `EXTRACTOR`.
 
 Resultados de la prueba de concepto (validacion): la red predice la envolvente real con
 **mse 0.54** contra **1.53** de la curva fija (2.8x mejor).

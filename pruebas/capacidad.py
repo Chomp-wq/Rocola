@@ -35,12 +35,9 @@ def main():
     print("  %d para entrenar, %d para validar\n" % (len(Xt), len(Xv)))
 
     # linea base: la curva FIJA de -9 dB/octava (lo que hace la rocola SIN modelo)
-    fc = Xv[:, 25] * 20000.0
-    top = np.minimum(2.0 * fc, np.minimum(20000.0, np.full_like(fc, FS / 2 * 0.95)))
-    ybase = np.zeros_like(Yv)
-    for j in range(12):
-        fmid = fc * (top / fc) ** ((j + 0.5) / 12.0)
-        ybase[:, j] = np.clip(-1.8 * np.log2(fmid / fc), -4.0, 0.5)
+    # (la MISMA referencia que usa el guardian del entrenador, con el techo del contrato de la rocola)
+    from calidad_dsee import curva_fija
+    ybase = curva_fija(Xv)
     mse_base = float(((ybase - Yv) ** 2).mean())
 
     tamanos = [
