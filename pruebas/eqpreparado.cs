@@ -74,7 +74,8 @@ class EqPreparado
                         state[q+1]=state[q];state[q]=v;state[q+3]=state[q+2];state[q+2]=o;v=o;
                     }
                     if(excite){
-                        float low=(lp[ci]+=(v-lp[ci])*.55f);float high=v-low;
+                        float pole=WaveFormat.SampleRate==44100?.55f:(float)(1-Math.Pow(.45,44100.0/WaveFormat.SampleRate));
+                        float low=(lp[ci]+=(v-lp[ci])*pole);float high=v-low;
                         float x=high*2.5f;float tanh;
                         if(!(x>-3f))tanh=-1f;else if(x>3f)tanh=1f;else{float x2=x*x;tanh=x*(27f+x2)/(27f+9f*x2);}
                         v+=tanh*.4f*mix;
@@ -87,14 +88,16 @@ class EqPreparado
         }
     }
     static void Test(Type form,Type baseline,int rate,int channels,float excite) {
-        ISampleProvider tap=Tap(form,rate,channels),old=baseline==null?null:Tap(baseline,rate,channels);
-        Reference reference=new Reference(form,rate,channels);reference.Gain=.87f;reference.Master=1.23f;reference.Excite=excite;
-        foreach(ISampleProvider p in old==null?new[]{tap}:new[]{tap,old}){
-            Set(p.GetType(),p,"Gain",.87f);Set(p.GetType(),p,"Master",1.23f);Set(p.GetType(),p,"Excite",excite);
-        }
         float[] a={2f,-3f,0f,.00001f,4f,-1f,0f,1.5f},b={-1f,0f,2f,0f,-2f,1f,3f,0f},zero=new float[8];
         float[][] sequence={null,a,a,null,a,b,zero,b,null,b,a,(float[])a.Clone(),zero,null};
         for(int k=0;k<sequence.Length;k++){
+            // Comparacion exacta al ARRANCAR configurado; los cambios en vivo ahora tienen
+            // una mezcla intencional y se comprueban aparte en audiosuave.cs.
+            ISampleProvider tap=Tap(form,rate,channels),old=baseline==null?null:Tap(baseline,rate,channels);
+            Reference reference=new Reference(form,rate,channels);reference.Gain=.87f;reference.Master=1.23f;reference.Excite=excite;
+            foreach(ISampleProvider p in old==null?new[]{tap}:new[]{tap,old}){
+                Set(p.GetType(),p,"Gain",.87f);Set(p.GetType(),p,"Master",1.23f);Set(p.GetType(),p,"Excite",excite);
+            }
             if(k==2) { Curve(tap,b); if(old!=null)Curve(old,b); reference.Curve=b; } // dos cambios sin leer: no reiniciar A
             Curve(tap,sequence[k]);reference.Curve=sequence[k];if(old!=null)Curve(old,sequence[k]);
             object pending=Get(tap.GetType(),tap,"pendingEq");
@@ -110,7 +113,7 @@ class EqPreparado
                 for(int i=0;i<x.Length;i++)x[i]=y[i]=z[i]=777f;
                 Check(tap.Read(x,offset,count)==reference.Read(y,offset,count),"Longitud distinta");
                 Equal(x,y,"PCM de referencia distinto "+rate+"/"+channels+" cambio "+k);
-                if(old!=null){old.Read(z,offset,count);Equal(x,z,"PCM del Release anterior distinto");}
+                if(old!=null && (excite==0 || rate==44100)){old.Read(z,offset,count);Equal(x,z,"PCM del Release anterior distinto");}
             }
         }
     }
@@ -138,7 +141,7 @@ class EqPreparado
         foreach(int channels in new[]{1,2,6})
         foreach(float excite in new[]{0f,.35f})Test(form,baseline,rate,channels,excite);
         TestConcurrent(form);
-        Console.WriteLine("  OK    24 formatos/realces, 14 cambios EQ, offsets, identidad, estado y publicacion concurrente; PCM exacto"+(baseline!=null?" frente a Release previo":"")+".");
+        Console.WriteLine("  OK    24 formatos/realces, 14 configuraciones iniciales EQ, offsets, identidad y publicacion concurrente; PCM estable exacto"+(baseline!=null?" frente a Release previo donde conserva respuesta":"")+".");
         return 0;
     }
 }

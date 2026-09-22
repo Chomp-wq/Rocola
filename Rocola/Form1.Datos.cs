@@ -1141,7 +1141,7 @@ namespace Rocola
             float refDb = cuerpo[2];
             for (int b = 0; b < 8; b++) curve[b] -= refDb;
             float[] prev; bool had = eqCache.TryGetValue(path, out prev);
-            if (had)
+            if (had && HasStereoEq(path))
             {
                 float maxDelta = 0f;
                 for (int b = 0; b < 8; b++) { curve[b] = prev[b] * 0.5f + curve[b] * 0.5f; float d = Math.Abs(curve[b] - prev[b]); if (d > maxDelta) maxDelta = d; }
@@ -1152,6 +1152,7 @@ namespace Rocola
             curve[EqCut] = (eqMeasCut > 0f) ? eqMeasCut : (had ? prev[EqCut] : 0f);
             curve[EqCutLo] = (eqMeasCutLo > 0f) ? eqMeasCutLo : (had ? prev[EqCutLo] : 0f);
             curve[EqClip] = had ? prev[EqClip] : 0f;   // el recorte solo lo mide el pre-analisis (aqui ya viene reparado)
+            curve[EqFingerprint] = 1f;   // no promediar con la antigua medicion mono
             eqCache[path] = curve; eqCacheVer++;
             EnsureEqAverage();
             SaveEqCache();

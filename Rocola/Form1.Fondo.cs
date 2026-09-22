@@ -185,7 +185,7 @@ namespace Rocola
         //   [10] corte de ABAJO (Hz): donde empieza a haber grave de verdad. Una grabacion vieja cortada en
         //       80 Hz necesita mas ayuda del bajo psicoacustico que una que baja a 30.
         // 0 = todavia no se sabe. Ninguno cuesta un analisis aparte: salen del recorrido que ya se hacia.
-        private const int EqLen = 11, EqCut = 8, EqClip = 9, EqCutLo = 10;
+        private const int EqLen = 12, EqCut = 8, EqClip = 9, EqCutLo = 10, EqFingerprint = 11;
         private const long EqMinFrames = 882000;   // ~20 s de musica: con menos, la huella no es confiable
         // "SUBIR EL PISO": las canciones BAJITAS se SUBEN hacia un volumen objetivo; las que ya suenan FUERTE
         // NO se bajan (se prioriza subir las flojas, como pidio el operador). Ajustable desde la interfaz (Ctrl+F3).

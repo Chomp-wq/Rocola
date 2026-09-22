@@ -241,6 +241,8 @@ def train(model, X, Y, Xv, Yv, epochs=60, lr=2e-3, batch=256, seed=3):
     mW = [np.zeros_like(w) for w in model.W]; vW = [np.zeros_like(w) for w in model.W]
     mB = [np.zeros_like(b) for b in model.B]; vB = [np.zeros_like(b) for b in model.B]
     b1, b2, eps, tstep = 0.9, 0.999, 1e-8, 0
+    best = float('inf')
+    best_weights = best_biases = None
     for ep in range(epochs):
         idx = rng.permutation(len(X))
         for s in range(0, len(X), batch):
@@ -256,20 +258,22 @@ def train(model, X, Y, Xv, Yv, epochs=60, lr=2e-3, batch=256, seed=3):
                 mB[L] = b1 * mB[L] + (1 - b1) * gB; vB[L] = b2 * vB[L] + (1 - b2) * gB ** 2
                 model.W[L] -= lr * (mW[L] / c1) / (np.sqrt(vW[L] / c2) + eps)
                 model.B[L] -= lr * (mB[L] / c1) / (np.sqrt(vB[L] / c2) + eps)
-        if (ep + 1) % 10 == 0 or ep == 0:
+        if (ep + 1) % 10 == 0 or ep == 0 or ep + 1 == epochs:
             tr = mse_modelo(model, X, Y)
             vl = mse_modelo(model, Xv, Yv)
+            if np.isfinite(vl) and vl < best and all(np.isfinite(v).all() for v in model.W + model.B):
+                best = vl
+                best_weights = [w.copy() for w in model.W]
+                best_biases = [b.copy() for b in model.B]
             print("  epoca %3d  mse-entren %.4f  mse-valid %.4f" % (ep + 1, tr, vl))
+    if best_weights is None:
+        raise ValueError("Ningun punto de entrenamiento valido; se conserva el modelo anterior")
+    model.W, model.B = best_weights, best_biases
     return model
 
 def export_ria1(model, path):
-    with open(path, "wb") as f:
-        f.write(b"RIA1")
-        f.write(struct.pack("<i", len(model.W)))
-        for W, B in zip(model.W, model.B):
-            f.write(struct.pack("<ii", W.shape[0], W.shape[1]))
-            f.write(W.astype(np.float32).tobytes())        # fila-mayor (out, in): igual que la rocola
-            f.write(B.astype(np.float32).tobytes())
+    from calidad_dsee import exportar
+    exportar(model, path)
 
 def cargar_datos_rocola(ruta, max_ejemplos=4000000, por_indices=False):
     """Lee el material que la rocola junto sola (rocola_ia_datos.bin).
@@ -353,34 +357,32 @@ def main():
         X, Y = X[idx], Y[idx]
         Xv, Yv, X, Y = X[:nv], Y[:nv], X[nv:], Y[nv:]
 
-    # linea base: la curva FIJA del reconstructor clasico (-9 dB/oct de amplitud = -1.8 log10/oct de energia)
-    fc = Xv[:, 25] * 20000.0
-    top = np.minimum(2.0 * fc, np.minimum(20000.0, np.full_like(fc, FS / 2 * 0.95)))
-    ybase = np.zeros(Yv.shape, dtype=np.float64)
-    for j in range(12):
-        fmid = fc * (top / fc) ** ((j + 0.5) / 12.0)
-        ybase[:, j] = np.clip(-1.8 * np.log2(fmid / fc), -4.0, 0.5)
-    mse_base = float(((ybase - Yv[:]) ** 2).mean())
-
     capas = [28, 48, 48, 12]
     if "--capas" in sys.argv:
         capas = [int(v) for v in sys.argv[sys.argv.index("--capas") + 1].split(",")]
     # La rocola solo acepta hasta 8 matrices de pesos y 512 neuronas por capa (ver NeuralEnv).
     if capas[0] != 28 or capas[-1] != 12:
         raise SystemExit("Las capas deben empezar en 28 y terminar en 12 (contrato de la rocola).")
-    if len(capas) - 1 > 8 or max(capas) > 512:
+    if len(capas) - 1 > 8 or max(capas) > 512 or min(capas) < 1:
         raise SystemExit("Demasiado grande para la rocola: maximo 8 capas de pesos y 512 neuronas.")
     print("Entrenando el MLP %s ..." % "->".join(str(c) for c in capas))
     model = train(Mlp(capas, rng), X, Y, Xv, Yv)
-    mse_net = mse_modelo(model, Xv, Yv)
+    from calidad_dsee import cuantizar, evaluar, escribir_atomico
+    cuantizar(model)
+    accepted, error_red, error_base = evaluar(model, Xv, Yv)
+    mse_net, mse_base = error_red.mean(), error_base.mean()
     print("RESULTADO  mse-valid: red = %.4f  |  curva fija = %.4f  (mejora %.1fx)" % (mse_net, mse_base, mse_base / max(mse_net, 1e-9)))
 
+    print("  MSE por banda: red", error_red, "| referencia", error_base)
+    if not accepted:
+        print("NO se guarda: exige 5% de mejora global y ninguna banda mas de 10% peor. Se conservan modelo y vectores anteriores.")
+        return 2
     here = os.path.dirname(os.path.abspath(__file__))
+    P = model.predict(Xv[:24])
+    vectors = "".join(" ".join("%.9g" % v for v in Xv[i]) + " | " + " ".join("%.9g" % v for v in P[i]) + "\n" for i in range(24))
+    # Cada archivo se reemplaza atomicamente. No constituyen una transaccion conjunta.
+    escribir_atomico(os.path.join(here, "ia_vectores_prueba.txt"), lambda f: f.write(vectors.encode("ascii")))
     export_ria1(model, os.path.join(here, "rocola_ia.bin"))
-    with open(os.path.join(here, "ia_vectores_prueba.txt"), "w") as f:   # paridad python <-> C#
-        P = model.predict(Xv[:24])
-        for i in range(24):
-            f.write(" ".join("%.9g" % v for v in Xv[i]) + " | " + " ".join("%.9g" % v for v in P[i]) + "\n")
     print("Listo: rocola_ia.bin (copialo junto a Rocola.exe) + ia_vectores_prueba.txt")
     return 0
 

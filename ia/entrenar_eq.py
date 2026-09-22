@@ -152,6 +152,13 @@ def exportar(model, path):
             f.write(W.astype(np.float32).tobytes())   # fila-mayor (salidas, entradas): igual que la rocola
             f.write(B.astype(np.float32).tobytes())
 
+def normalizar_entrenamiento(x, tr):
+    if len(tr) == 0:
+        raise ValueError("No hay canciones para entrenamiento")
+    mu, sd = x[tr].mean(axis=0), x[tr].std(axis=0) + 1e-6
+    return (x - mu) / sd, mu, sd
+
+
 def main():
     ap = argparse.ArgumentParser(description="Entrena el modelo del EQ automatico de la rocola.")
     ap.add_argument("--datos", default="rocola_eq.txt", help="archivo de huellas que escribe la rocola")
@@ -208,14 +215,12 @@ def main():
     X = D[:, ENTRADAS]
     Y = D[:, SALIDAS]
 
-    # normalizar entradas (la red trabaja mejor con numeros centrados)
-    mu, sd = X.mean(axis=0), X.std(axis=0) + 1e-6
-    Xn = (X - mu) / sd
-
     rng = np.random.default_rng(7)
-    idx = rng.permutation(len(Xn))
+    idx = rng.permutation(len(X))
     corte = int(len(idx) * 0.8)
     tr, va = idx[:corte], idx[corte:]
+    # La validacion no participa en las estadisticas de entrenamiento.
+    Xn, mu, sd = normalizar_entrenamiento(X, tr)
     print("  entrenando con %d canciones, validando con %d (nunca vistas)" % (len(tr), len(va)))
 
     modelo = Mlp([len(ENTRADAS), a.oculta, a.oculta, len(SALIDAS)], rng)

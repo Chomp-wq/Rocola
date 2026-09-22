@@ -1,0 +1,157 @@
+import contextlib
+import io
+import os
+import tempfile
+import unittest
+from unittest import mock
+import numpy as np
+import calidad_dsee as quality
+import entrenar_ia as trainer
+import entrenar_eq as eq
+
+
+class Constant:
+    def __init__(self, value):
+        self.value = np.asarray(value)
+    def predict(self, x):
+        return np.broadcast_to(self.value, (len(x), 12))
+
+
+class CalidadDsee(unittest.TestCase):
+    def data(self, n=33):
+        x = np.zeros((n, 28))
+        x[:, 25] = .6
+        return x, np.zeros((n, 12))
+
+    def test_guard_good_bad_tie_and_one_bad_band(self):
+        x, y = self.data()
+        self.assertTrue(quality.evaluar(Constant(0), x, y, 7)[0])
+        self.assertFalse(quality.evaluar(Constant(20), x, y)[0])
+        baseline = quality.curva_fija(x)[0]
+        self.assertFalse(quality.evaluar(Constant(baseline), x, y)[0])
+        bad = np.zeros(12)
+        bad[0] = abs(baseline[0])*1.1
+        self.assertFalse(quality.evaluar(Constant(bad), x, y)[0])
+        for value in [float("nan"), float("inf"), 1e300]:
+            with self.assertRaises(ValueError):
+                quality.evaluar(Constant(value), x, y)
+        y[:] = float("nan")
+        with self.assertRaises(ValueError):
+            quality.evaluar(Constant(0), x, y)
+
+    def test_chunk_equivalence_and_reference(self):
+        x, y = self.data(101)
+        x[:, 25] = np.linspace(.525, .875, len(x))
+        a = quality.evaluar(Constant(.25), x, y, 1)
+        b = quality.evaluar(Constant(.25), x, y, 4096)
+        np.testing.assert_allclose(a[1:], b[1:], rtol=1e-14)
+        fc = x[:, 25]*20000
+        top = np.minimum(2*fc, 20000)
+        old = np.array([np.clip(-1.8*np.log2(fc*(top/fc)**((j+.5)/12)/fc), -4, .5)
+                        for j in range(12)]).T
+        np.testing.assert_allclose(quality.curva_fija(x), old, atol=1e-14)
+
+    def test_invalid_shapes_cutoffs_and_empty(self):
+        x, y = self.data()
+        for cutoff in [0, -.1, float("nan"), 2]:
+            x[:, 25] = cutoff
+            with self.assertRaises(ValueError):
+                quality.evaluar(Constant(0), x, y)
+        with self.assertRaises(ValueError):
+            quality.evaluar(Constant(0), x[:0], y[:0])
+        with self.assertRaises(ValueError):
+            quality.evaluar(Constant(0), x, y[:, :1])
+
+    def test_export_atomic_and_float32_validation(self):
+        m = trainer.Mlp([28, 4, 12], np.random.default_rng(5))
+        with tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, "model.bin")
+            trainer.export_ria1(m, path)
+            with open(path, "rb") as f:
+                previous = f.read()
+            self.assertTrue(previous.startswith(b"RIA1"))
+            m.W[0][0, 0] = 1e100
+            with self.assertRaises(ValueError):
+                trainer.export_ria1(m, path)
+            def broken(f):
+                f.write(b"partial")
+                raise OSError("simulated")
+            with self.assertRaises(OSError):
+                quality.escribir_atomico(path, broken)
+            with open(path, "rb") as f:
+                self.assertEqual(f.read(), previous)
+            self.assertEqual(os.listdir(folder), ["model.bin"])
+        with self.assertRaises(ValueError):
+            quality.cuantizar(trainer.Mlp([5, 3], np.random.default_rng(1)))
+
+    def test_best_checkpoint_not_last(self):
+        x, y = self.data(8)
+        m = trainer.Mlp([28, 4, 12], np.random.default_rng(5))
+        first = []
+        calls = []
+        def metric(model, a, b):
+            calls.append(1)
+            if len(calls) == 2:
+                first.extend([v.copy() for v in model.W + model.B])
+                return .1
+            return .9
+        with mock.patch.object(trainer, "mse_modelo", side_effect=metric), contextlib.redirect_stdout(io.StringIO()):
+            trainer.train(m, x, y, x, y, epochs=2, batch=4)
+        self.assertEqual(len(calls), 4)  # final epoch evaluated even if not multiple of ten
+        for a, b in zip(first, m.W+m.B):
+            np.testing.assert_array_equal(a, b)
+
+    def test_rejected_main_preserves_model_and_vectors(self):
+        x, y = self.data(600)
+        m = trainer.Mlp([28, 12], np.random.default_rng(2))
+        m.W[0][:] = 0
+        m.B[0][:] = 20
+        with tempfile.TemporaryDirectory() as folder:
+            names = ["rocola_ia.bin", "ia_vectores_prueba.txt"]
+            for name in names:
+                with open(os.path.join(folder, name), "wb") as f:
+                    f.write(b"keep")
+            with mock.patch.object(trainer, "__file__", os.path.join(folder, "entrenar_ia.py")), \
+                 mock.patch.object(trainer.sys, "argv", ["entrenar_ia.py", "--datos", "unused"]), \
+                 mock.patch.object(trainer, "cargar_datos_rocola", return_value=(x, y)), \
+                 mock.patch.object(trainer, "train", return_value=m), contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(trainer.main(), 2)
+            for name in names:
+                with open(os.path.join(folder, name), "rb") as f:
+                    self.assertEqual(f.read(), b"keep")
+
+    def test_accepted_main_exports_quantized_pair(self):
+        x, y = self.data(600)
+        m = trainer.Mlp([28, 12], np.random.default_rng(3))
+        m.W[0][:] = 0
+        m.B[0][:] = 0
+        with tempfile.TemporaryDirectory() as folder:
+            with mock.patch.object(trainer, "__file__", os.path.join(folder, "entrenar_ia.py")), \
+                 mock.patch.object(trainer.sys, "argv", ["entrenar_ia.py", "--datos", "unused"]), \
+                 mock.patch.object(trainer, "cargar_datos_rocola", return_value=(x, y)), \
+                 mock.patch.object(trainer, "train", return_value=m), contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(trainer.main(), 0)
+            with open(os.path.join(folder, "rocola_ia.bin"), "rb") as f:
+                self.assertEqual(f.read(4), b"RIA1")
+            with open(os.path.join(folder, "ia_vectores_prueba.txt")) as f:
+                lines = f.readlines()
+            self.assertEqual(len(lines), 24)
+            for line in lines:
+                inputs, outputs = line.split("|")
+                self.assertEqual(len(inputs.split()), 28)
+                self.assertEqual([float(v) for v in outputs.split()], [0]*12)
+
+    def test_validation_does_not_change_normalization(self):
+        x = np.arange(20, dtype=float).reshape(4, 5)
+        tr = np.array([0, 1, 2])
+        _, mu, sd = eq.normalizar_entrenamiento(x, tr)
+        x[-1] = 1e8
+        _, other_mu, other_sd = eq.normalizar_entrenamiento(x, tr)
+        np.testing.assert_array_equal(mu, other_mu)
+        np.testing.assert_array_equal(sd, other_sd)
+        with self.assertRaises(ValueError):
+            eq.normalizar_entrenamiento(x, [])
+
+
+if __name__ == "__main__":
+    unittest.main()

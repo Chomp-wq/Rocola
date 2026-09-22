@@ -1258,8 +1258,8 @@ namespace Rocola
                 // lo que ya recibio su repaso completo: asi, al detenerlo y volverlo a encender (o tras un apagon)
                 // CONTINUA donde iba en vez de empezar por la primera cancion otra vez.
                 elegibles++;
-                if (!turbo && durCache.ContainsKey(tk.Path)) continue;
-                if (turbo) { bool ya; lock (deepDoneLock) ya = deepDone.Contains(tk.Path); if (ya) continue; }
+                if (!turbo && durCache.ContainsKey(tk.Path) && !NeedsStereoEqRefresh(tk.Path)) continue;
+                if (turbo) { bool ya; lock (deepDoneLock) ya = deepDone.Contains(tk.Path); if (ya && !NeedsStereoEqRefresh(tk.Path)) continue; }
                 pend.Add(tk.Path);
             }
             // Y LOS VIDEOS. No estaban: 'tracks' solo lleva canciones, los videos viven aparte (VideoFiles de
