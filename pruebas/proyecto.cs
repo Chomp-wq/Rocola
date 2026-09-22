@@ -53,7 +53,10 @@ class Proyecto
             if (!bien || nom.Length == 0) continue;
             int fin = t.IndexOf('"', eq + 2);
             if (fin < 0) continue;
-            if (!v.ContainsKey(nom)) v[nom] = t.Substring(eq + 2, fin - eq - 2);
+            string val = t.Substring(eq + 2, fin - eq - 2);
+            // FUENTES="$FUENTES mas.cs" AGREGA a la lista: sin esto se perdian los archivos anadidos despues.
+            if (v.ContainsKey(nom) && val.IndexOf("$" + nom) >= 0) v[nom] = val.Replace("$" + nom, v[nom]);
+            else if (!v.ContainsKey(nom)) v[nom] = val;
         }
         return v;
     }
