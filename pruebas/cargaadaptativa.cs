@@ -94,7 +94,9 @@ class CargaAdaptativa {
     object visible=Cell(ct,"visible",small);IntPtr visibleTex=Texture(t,panel,visible,1);
     IDictionary cache=(IDictionary)Get(t,panel,"cellTexCache");
     ahead=new object[36];for(int i=0;i<ahead.Length;i++)ahead[i]=Cell(ct,"vecina-"+i,small);
-    Call(t,panel,"WarmAheadCells");Check(cache.Count==2,"Prepara mas de una textura por llamada");
+    Call(t,panel,"WarmAheadCells");
+    int allowance=(int)Call(t,null,"AheadUploadAllowance",(int)Get(asm.GetType("Rocola.CargaTrabajo"),null,"Procesadores"));
+    Check(cache.Count>=2&&cache.Count<=1+allowance,"Precarga excede presupuesto de subidas");
     IntPtr prepared=Texture(t,panel,ahead[0],0);
     Check(prepared!=IntPtr.Zero,"Pagina preparada aun necesita subida");
     for(int i=0;i<50;i++)Call(t,panel,"WarmAheadCells");
@@ -109,6 +111,7 @@ class CargaAdaptativa {
     for(int i=0;i<36;i++)Check(Texture(t,panel,ahead[i],0)==textures[i],"Recrea vecinas ya preparadas");
     Call(t,panel,"StopGpu");
     Check((bool)Call(t,panel,"StartGpu"),"No recupera GPU");
+    Set(t,panel,"cellTextureBudget",32L*1024*1024); // ejercitar explicitamente el perfil conservador
     Set(t,panel,"cellFrame",100);
     visibleTex=Texture(t,panel,visible,1);
     for(int i=0;i<ahead.Length;i++)ahead[i]=Cell(ct,"grande-"+i,large);

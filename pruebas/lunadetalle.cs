@@ -60,7 +60,7 @@ class LunaDetalle
    panel.Size=new Size(640,480);
    string[] fields={"lunaRealista","haloLunar","polvoLunar","lunaProtagonista"};
    string[] gpuFields={"LunaRealista","HaloLunar","PolvoLunar","LunaProtagonista"};
-   string[] labels={"Luna con relieve y crateres (GPU)","Halo lunar musical (GPU)","Polvo estelar orbital (GPU)","Realzar luna al atenuar el fondo (GPU)"};
+   string[] labels={"Superficie detallada de la estrella (GPU)","Corona estelar musical (GPU)","Polvo estelar orbital (GPU)","Realzar estrella en reposo (GPU)"};
    Set(form,null,"carpetaDatos",dir);object o=Blank(form);Set(form,o,"gpuPanel",panel);
    using(Font font=new Font("Segoe UI",10,FontStyle.Bold))
    using(Font desc=new Font("Segoe UI",8.5f))
@@ -101,8 +101,7 @@ class LunaDetalle
      Check((IntPtr)Get(gpu,panel,"lunaTex")==tex && (int)Get(gpu,panel,"lunaDe")==256,"Resolucion rehornea superficie");
     }
     Set(gpu,panel,"LunaRealista",false);Call(gpu,panel,"EnsureLuna");
-    using(Bitmap old=(Bitmap)Call(form,null,"BakeLuna",480))
-     Check((int)Get(gpu,panel,"lunaW")==old.Width && !(bool)Get(gpu,panel,"lunaDetalleDe"),"No restaura diseno anterior");
+    Check((int)Get(gpu,panel,"lunaW")==256 && !(bool)Get(gpu,panel,"lunaDetalleDe"),"No cambia a estrella sencilla");
     Set(gpu,panel,"LunaRealista",true);Call(gpu,panel,"EnsureLuna");
     Check((int)Get(gpu,panel,"lunaW")==256 && (bool)Get(gpu,panel,"lunaDetalleDe"),"No recupera diseno");
    }finally{Call(gpu,panel,"StopGpu");}

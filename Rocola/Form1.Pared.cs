@@ -535,10 +535,11 @@ namespace Rocola
                 int w = Width, h = Height, cw = w / Cols, ch = h / Rows;
                 if (cw < 4 || ch < 4 || cellCacheW != w || cellCacheH != h) return;
                 int side, labelH, gap; CellMetrics(cw, ch, out side, out labelH, out gap);
-                int budget = 2, visited = 0;
+                int allowance = Math.Max(2, Math.Min(6, CargaTrabajo.Procesadores / 2));
+                int budget = allowance, visited = 0;
                 long begin = System.Diagnostics.Stopwatch.GetTimestamp();
-                while (visited < Math.Min(8, Ahead.Count) && budget > 0 &&
-                    CargaTrabajo.PuedeEmpezar(System.Diagnostics.Stopwatch.GetTimestamp() - begin, aheadBakeTicks, GpuBakeLimit, budget == 2))
+                while (visited < Math.Min(24, Ahead.Count) && budget > 0 &&
+                    CargaTrabajo.PuedeEmpezar(System.Diagnostics.Stopwatch.GetTimestamp() - begin, aheadBakeTicks, GpuBakeLimit, budget == allowance))
                 {
                     if (aheadPos >= Ahead.Count) aheadPos = 0;
                     Album a = Ahead[aheadPos++]; visited++;

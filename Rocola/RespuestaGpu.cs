@@ -12,7 +12,7 @@ namespace Rocola
         {
             if (!enabled) return 1f;
             if (float.IsNaN(blend)) blend = 0;
-            return 1f - .98f * Math.Max(0, Math.Min(1, blend));
+            return 1f - Math.Max(0, Math.Min(1, blend));
         }
         public float ControlsOpacity
         { get { return IdleControlAlpha(idleBlend, ControlesReposo && sceneMode == 1); } }
@@ -97,7 +97,7 @@ namespace Rocola
                 PaletteTexture old = paletteOld[i];
                 if (old == null || old.Tex == IntPtr.Zero) continue;
                 Rectangle r = old.Rect;
-                SetTexQuad(uiQuad, r.Left, r.Top, r.Right, r.Bottom, old.U, old.V);
+                SetTexQuadA(uiQuad, r.Left, r.Top, r.Right, r.Bottom, old.U, old.V, FadeArgb(0xFFFFFFFFu, ControlsOpacity));
                 stars.DrawQuad(old.Tex, uiQuad);
             }
         }

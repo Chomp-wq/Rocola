@@ -38,9 +38,9 @@ class ReposoUnido
    for(int i=0;i<fps*3;i++){
     blend=(float)Call(gpu,null,"StepIdle",blend,true,1.0/fps);
     float alpha=(float)Call(gpu,null,"IdleControlAlpha",blend,true);
-    Check(alpha<=previous && alpha>=.019f,"Atenuacion salta o invierte");previous=alpha;
+    Check(alpha<=previous && alpha>=0f,"Atenuacion salta o invierte");previous=alpha;
    }
-   Near(previous,.02f,"Controles no quedan tenues");
+   Near(previous,0f,"Controles no desaparecen");
    for(int i=0;i<fps*2;i++){
     blend=(float)Call(gpu,null,"StepIdle",blend,false,1.0/fps);
     float alpha=(float)Call(gpu,null,"IdleControlAlpha",blend,true);
@@ -106,7 +106,7 @@ class ReposoUnido
      Check(texture!=IntPtr.Zero && (previous==IntPtr.Zero||texture==previous),"Fundido recrea textura UI");previous=texture;
     }
     Set(gpu,panel,"idleBlend",1f);
-    Near((float)gpu.GetProperty("ControlsOpacity",F).GetValue(panel,null),.02f,"Modo navegacion");
+    Near((float)gpu.GetProperty("ControlsOpacity",F).GetValue(panel,null),0f,"Modo navegacion");
     foreach(int scene in new int[]{0,2,3,4}){
      Call(gpu,panel,"SetScene",scene);
      Near((float)gpu.GetProperty("ControlsOpacity",F).GetValue(panel,null),1,"Oculta interfaz activa");

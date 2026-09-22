@@ -99,6 +99,15 @@ namespace Rocola
         private D3D9.ResetDel reset; private D3D9.CreateTexDel createTex;
 
         public bool Ok { get { return dev != IntPtr.Zero; } }
+        public uint EstimatedTextureMemory
+        {
+            get
+            {
+                if (dev == IntPtr.Zero) return 0;
+                try { return D3D9.Fn<D3D9.UintSelf>(dev, 4)(dev); }
+                catch { return 0; }
+            }
+        }
 
         public D3D9Device(IntPtr hwnd, int w, int h)
         {

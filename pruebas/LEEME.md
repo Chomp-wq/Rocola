@@ -10,6 +10,12 @@ Cada una escribe líneas `OK` y `FALLO` y devuelve cuántos fallos hubo.
 
 ## Cómo se corren
 
+En Windows: `pruebas/validar-capas.ps1 -OutputDirectory <carpeta-temporal>`
+compila GPU/CPU y ejecuta 27 baterías, incluida `espacioprecarga`
+(siguiente página/letra, prioridades, memoria adaptativa, estrella y ocultación).
+No reemplaza ejecutables instalados. La prueba HAL usa Direct3D real cuando está
+disponible; si falta, lo indica y no demuestra el comportamiento de la tarjeta.
+
 ```sh
 sh pruebas/todo.sh              # la suite entera (compila la rocola sola y arranca)
 sh pruebas/todo.sh disco ssd    # solo esas dos

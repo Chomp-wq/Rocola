@@ -305,6 +305,12 @@ namespace Rocola
             // PRELECTURA: tambien se encargan las paginas vecinas (despues de la actual, por orden de
             // llegada). En disco duro, hojear con las flechas queda servido directo de la RAM.
             List<Album> all = CurrentList();
+#if ROCOLA_GPU
+            // Incluye el salto entre letras al acabar la pagina. Durante una rafaga se
+            // espera a este asentamiento; la misma cola baja evita trabajo duplicado.
+            if (gpuEnabled && albumView != null && albumView.Ahead != null)
+                for (int i = 0; i < albumView.Ahead.Count; i++) RequestCover(albumView.Ahead[i], true, false);
+#endif
             PrefetchPage(all, page + 1);
             PrefetchPage(all, page - 1);
             if (!diskSlow)   // con SSD sobran lecturas: dos paginas de colchon; con HDD, solo una

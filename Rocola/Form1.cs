@@ -1506,7 +1506,7 @@ namespace Rocola
             muroAlpha = PasoMuro(muroAlpha, muroQuieto);
             albumView.WallOpacity = muroAlpha;
 #if ROCOLA_GPU
-            if (gpuPanel != null) gpuPanel.WallOpacity = Math.Max(0.02f, (muroAlpha - 0.1f) * (0.98f / 0.9f) + 0.02f); // GPU: reposo al 2 %, CPU intacto.
+            if (gpuPanel != null) gpuPanel.WallOpacity = GpuPanel.IdleWallAlpha(muroAlpha); // GPU: desaparece en reposo; CPU intacto.
             if (gpuPanel != null) gpuPanel.IdleExpandTarget = estadoExpandido && muroQuieto;
 #endif
             if (Math.Abs(bgDim - dimTgt) < 0.01f) bgDim = dimTgt;
