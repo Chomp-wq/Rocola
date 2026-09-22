@@ -164,6 +164,8 @@ class Videos
             Pon("durCache", durCache);
             Pon("loudCache", Activator.CreateInstance(typeof(Dictionary<string, float>), new object[] { StringComparer.OrdinalIgnoreCase }));
             Pon("deepDone", new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+            // La migracion de huellas estereo pregunta al eqCache: vacio = ninguna huella vieja que rehacer.
+            Pon("eqCache", new Dictionary<string, float[]>(StringComparer.OrdinalIgnoreCase));
             Pon("deepDoneLock", new object());
             Pon("diagOn", false);
             object[] arg = new object[] { false, 0 };

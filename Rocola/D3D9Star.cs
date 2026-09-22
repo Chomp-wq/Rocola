@@ -2761,7 +2761,7 @@ namespace Rocola
         // texturas al cambiar de cancion. Se conservan las claves de configuracion lunar.
         // La pared CPU mantiene su luna original, sin cambios.
         private IntPtr lunaTex; private int luTW, luTH; private float luU = 1f, luV = 1f;
-        private int lunaDe = -1, lunaW, lunaH;
+        private int lunaDe = -1;
         private D3D9.Vtx[] lunaQuad = new D3D9.Vtx[6];
         private void EnsureLuna()
         {
@@ -2772,7 +2772,6 @@ namespace Rocola
                 using (Bitmap lb = BakeStar(LunaRealista))
                 {
                     lunaTex = Upload(lunaTex, ref luTW, ref luTH, lb, out luU, out luV);
-                    lunaW = lb.Width; lunaH = lb.Height;
                 }
                 lunaDe = moonKey; lunaDetalleDe = LunaRealista;
             }

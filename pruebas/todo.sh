@@ -158,10 +158,13 @@ corre() {
       grep 'warning CS' "$ct" | head -5
       mal=$((mal+1)); continue
     fi
-    xvfb-run -a mono $t.exe > "$rt" 2>&1
+    # La ruta del ejecutable va como primer argumento: es la convencion de todas las baterias, y las
+    # nuevas de audio y arranque (audiosuave, audioestereo, tablasarranque...) la exigen.
+    xvfb-run -a mono $t.exe rocola.exe > "$rt" 2>&1
     rc=$?
     n=$(grep -c '^  FALLO' "$rt")
-    ok=$(grep -c '^  OK' "$rt")
+    # Las baterias nuevas resumen con una linea "OK ..." sin sangria (y lanzan una excepcion si algo falla).
+    ok=$(grep -c '^  OK\|^OK ' "$rt")
     if [ "$rc" -ne 0 ] || [ "$n" -ne 0 ] || [ "$ok" -eq 0 ]; then
       echo "  FALLA        $t   (salida $rc, $n fallos, $ok comprobaciones OK)"
       grep '^  FALLO' "$rt" | head -6
