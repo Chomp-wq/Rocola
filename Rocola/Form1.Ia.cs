@@ -177,8 +177,8 @@ namespace Rocola
         //    16 frecuencia   20 cuadro      40 huella de la carpeta
         // Solo HUELLAS (FNV-1a de 64 bits), ni rutas ni nombres. La cancion es su nombre de archivo mas su
         // duracion: mover la biblioteca de sitio no la convierte en otra. La carpeta es el "album" tal como lo
-        // arma la rocola. El artista se deja en 0: la lista de canciones vive en el hilo de la pantalla y
-        // leerla desde este hilo no es seguro; mejor "no se sabe" que un dato a medias.
+        // arma la rocola. El artista, SOLO si viene en la etiqueta del MP3 (Track.SoloArtista: nunca se
+        // adivina del nombre); sin etiqueta, o con comodines como "Various Artists", queda en 0 = no se sabe.
         //
         // Se escribe DESPUES de que los ejemplos llegaron al disco. Si se corta la luz entre las dos cosas, esos
         // ejemplos se quedan sin entrada: "sin origen", que el entrenador no usa para validar. Una entrada a
@@ -195,7 +195,8 @@ namespace Rocola
         {
             IaOrigen o = new IaOrigen();
             o.Rate = rate; o.Frame = frame; o.Canal = canal;
-            o.Artista = 0;   // no se sabe (ver arriba): 0 es "desconocido", nunca se inventa
+            o.Artista = 0;   // 0 es "desconocido": nunca se inventa
+            try { string a = Track.SoloArtista(path); if (IaArtistaFiable(a)) o.Artista = IaHuella(a); } catch { }
             try
             {
                 long seg = (long)Math.Round(durSec);
@@ -205,6 +206,18 @@ namespace Rocola
             }
             catch { return null; }
             return o;
+        }
+        // Lo que ponen los programas cuando NO saben el artista. Agrupar por eso juntaria canciones que no
+        // tienen nada que ver (y una recopilacion entera "Various Artists" son artistas distintos).
+        private static readonly string[] IaArtistasComodin = { "unknown", "unknown artist", "various", "various artists",
+            "va", "v.a.", "varios", "varios artistas", "desconocido", "artista desconocido", "sin artista", "<unknown>" };
+        private static bool IaArtistaFiable(string a)
+        {
+            if (string.IsNullOrEmpty(a)) return false;
+            string n = a.Trim().ToLowerInvariant();
+            if (n.Length == 0) return false;
+            for (int i = 0; i < IaArtistasComodin.Length; i++) if (n == IaArtistasComodin[i]) return false;
+            return true;
         }
         private static ulong IaHuella(string s)
         {

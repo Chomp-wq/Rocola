@@ -2042,6 +2042,24 @@ namespace Rocola
                 byte[] exact = new byte[n]; Array.Copy(d, 0, exact, 0, n); return exact;
             }
 
+            // EL ARTISTA, SOLO SI LO DICE LA ETIQUETA. Lo usa el indice de origen de la IA (IaOrigenDe): agrupar
+            // canciones por artista solo vale si el dato es fiable, asi que aqui NO se adivina del nombre del
+            // archivo ni de la carpeta (eso lo hace FromFile para la pantalla). Se leen solo los marcos de texto;
+            // la caratula se salta sin leerla. Es estatico y no toca la biblioteca: se puede llamar desde el hilo
+            // de fondo. Sin etiqueta, o si no es un MP3: cadena vacia, que es "no se sabe".
+            public static string SoloArtista(string path)
+            {
+                Track t = new Track();
+                t.Path = path; t.Artist = ""; t.Title = ""; t.Album = ""; t.Genre = "";
+                try
+                {
+                    if (System.IO.Path.GetExtension(path).ToLowerInvariant() != ".mp3") return "";
+                    ReadId3(path, t);
+                }
+                catch { }
+                return (t.Artist ?? "").Trim();
+            }
+
             public static string SoloGenero(string path)
             {
                 Track t = new Track();

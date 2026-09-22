@@ -84,6 +84,44 @@ class IaOrigenPrueba
         return d;
     }
 
+    // Un MP3 de mentira: solo lo que mira el lector de etiquetas. Con ID3v2.3 (una caratula APIC de 'caratula'
+    // bytes DELANTE del artista, para comprobar que no se lee) o con la etiqueta corta ID3v1 del final.
+    static void Mp3(string ruta, string artista, bool v1, int caratula)
+    {
+        List<byte> b = new List<byte>();
+        Encoding latin = Encoding.GetEncoding(28591);
+        if (artista != null && !v1)
+        {
+            List<byte> marcos = new List<byte>();
+            if (caratula > 0) Marco(marcos, "APIC", new byte[caratula]);
+            byte[] txt = latin.GetBytes(artista);
+            byte[] cuerpo = new byte[1 + txt.Length];
+            Array.Copy(txt, 0, cuerpo, 1, txt.Length);
+            Marco(marcos, "TPE1", cuerpo);
+            int tam = marcos.Count + 64;
+            b.AddRange(new byte[] { (byte)'I', (byte)'D', (byte)'3', 3, 0, 0,
+                                    (byte)((tam >> 21) & 0x7F), (byte)((tam >> 14) & 0x7F), (byte)((tam >> 7) & 0x7F), (byte)(tam & 0x7F) });
+            b.AddRange(marcos); b.AddRange(new byte[64]);
+        }
+        for (int i = 0; i < 4096; i++) b.Add((byte)(i * 37));
+        if (artista != null && v1)
+        {
+            byte[] tag = new byte[128];
+            tag[0] = (byte)'T'; tag[1] = (byte)'A'; tag[2] = (byte)'G';
+            byte[] a = latin.GetBytes(artista); Array.Copy(a, 0, tag, 33, Math.Min(30, a.Length));
+            tag[127] = 255;
+            b.AddRange(tag);
+        }
+        File.WriteAllBytes(ruta, b.ToArray());
+    }
+    static void Marco(List<byte> l, string id, byte[] cuerpo)
+    {
+        l.AddRange(Encoding.ASCII.GetBytes(id));
+        int n = cuerpo.Length;
+        l.AddRange(new byte[] { (byte)(n >> 24), (byte)(n >> 16), (byte)(n >> 8), (byte)n, 0, 0 });
+        l.AddRange(cuerpo);
+    }
+
     static int N(Dictionary<string, string> d, string k) { string v; return d != null && d.TryGetValue(k, out v) ? int.Parse(v) : -999; }
     static string S(Dictionary<string, string> d, string k) { string v; return d != null && d.TryGetValue(k, out v) ? v : ""; }
 
@@ -231,6 +269,48 @@ class IaOrigenPrueba
         Check(mMide != null && Codigo.Llama(mMide, "IaAppendPairsOrigen") && Codigo.Llama(mMide, "IaOrigenDe")
               && !Codigo.Llama(mMide, "IaAppendPairs"),
               "la cosecha de la biblioteca guarda con origen (no por el camino sin origen)");
+
+        // ============================================================================================
+        Console.WriteLine("\n  6) EL ARTISTA, SOLO SI LO DICE LA ETIQUETA\n");
+        // Agrupar por artista solo vale si el dato es fiable. La pantalla adivina el artista del nombre del
+        // archivo ("Artista - Titulo.mp3") o de la carpeta; aqui eso NO sirve: solo la etiqueta del MP3.
+        {
+            string d6 = Path.Combine(tmp, "Adivinanza - Titulo");
+            Directory.CreateDirectory(d6);
+            string conTag = Path.Combine(d6, "Otro Nombre - 01.mp3");
+            string conV1 = Path.Combine(d6, "Solo v1.mp3");
+            string sinTag = Path.Combine(d6, "Adivinanza - Sin etiqueta.mp3");
+            string comodin = Path.Combine(d6, "Recopilacion.mp3");
+            Mp3(conTag, "Los Tigres del Norte", false, 300 * 1024);
+            Mp3(conV1, "Celia Cruz", true, 0);
+            Mp3(sinTag, null, false, 0);
+            Mp3(comodin, "Various Artists", false, 0);
+            FieldInfo fArt = mOrigen.ReturnType.GetField("Artista", IF);
+            Func<string, ulong> art = delegate (string ruta) { return (ulong)fArt.GetValue(Origen(ruta, 180)); };
+            string py = Path.Combine(tmp, "art.py");
+            File.WriteAllText(py, "import sys\nsys.path.insert(0, r'" + Path.GetFullPath(Path.Combine("..", "ia")) + "')\n"
+                + "import origen_dsee as O\nprint('%x %x' % (O.huella('Los Tigres del Norte'), O.huella('Celia Cruz')))\n");
+            string esperado = "";
+            try
+            {
+                ProcessStartInfo psi = new ProcessStartInfo(Environment.GetEnvironmentVariable("ROCOLA_TEST_PYTHON") ?? "python3", "\"" + py + "\"");
+                psi.UseShellExecute = false; psi.RedirectStandardOutput = true;
+                using (Process p = Process.Start(psi)) { esperado = p.StandardOutput.ReadToEnd().Trim(); p.WaitForExit(); }
+            }
+            catch { }
+            string[] h = esperado.Split(' ');
+            Stopwatch sw = Stopwatch.StartNew();
+            ulong aTag = art(conTag);
+            double ms = sw.Elapsed.TotalMilliseconds;
+            Console.WriteLine("     leer el artista de un MP3 con caratula de 300 KB: " + ms.ToString("0.00", CultureInfo.InvariantCulture) + " ms");
+            Check(aTag != 0 && (h.Length != 2 || aTag.ToString("x") == h[0]),
+                  "con etiqueta ID3v2 el artista entra, con la misma huella que calcula Python" + (h.Length == 2 ? "" : " (sin Python no se contrasto la huella)"));
+            Check(art(conV1) != 0 && (h.Length != 2 || art(conV1).ToString("x") == h[1]), "tambien de la etiqueta corta del final (ID3v1)");
+            Check(art(sinTag) == 0, "sin etiqueta NO se adivina del nombre del archivo ni de la carpeta: queda en 0 (no se sabe)");
+            Check(art(comodin) == 0, "\"Various Artists\" y parecidos cuentan como no se sabe: juntarian canciones que no tienen que ver");
+            Check(art(Path.Combine(d6, "no existe.mp3")) == 0 && Origen(Path.Combine(d6, "no existe.mp3"), 1) != null,
+                  "si el archivo no se puede leer, el origen se apunta igual, sin artista");
+        }
 
         Console.WriteLine(fallos == 0 ? "\n  TODO BIEN" : "\n  FALLOS: " + fallos);
         return fallos;
