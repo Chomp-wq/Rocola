@@ -88,6 +88,20 @@ ademas recorre TODOS los cortes a seis frecuencias de muestreo contrastandolos c
 Si se cambia el contrato a proposito: `python3 contrato_dsee.py --generar-paridad paridad_extractor.txt`
 y subir `EXTRACTOR`.
 
+## Validacion de verdad: de que cancion viene cada ejemplo
+
+La rocola escribe, junto a `rocola_ia_datos.bin`, el archivo `rocola_ia_datos.idx`: de que cancion
+(y de que carpeta) viene cada ejemplo, solo como huellas. **Traete los dos.** Con el, el entrenador
+separa por cancion/carpeta ANTES de mirar un cuadro: entrenamiento, validacion (elige el mejor
+checkpoint) y prueba (decide si se publica). Ningun grupo esta en dos sitios.
+
+Sin el `.idx` (todo lo cosechado antes de esta version) no se inventan grupos: se entrena para mirar,
+pero sale el aviso VALIDACION NO INDEPENDIENTE, el codigo es 3 y no se reemplaza ningun modelo.
+Opciones: `--agrupar artista|carpeta|cancion` (defecto artista) y `--incluir-sin-origen` (los suma
+solo al entrenamiento; el resultado tampoco se publica). Con `--musica`, cada canal de cada WAV da
+sus propios ejemplos (una mezcla mono anulaba lo que estuviera en contrafase) y los dos canales
+van siempre juntos.
+
 ## El EQ y el bajo van SOLOS (no hay perilla que ajustar)
 
 De fabrica, en Ctrl+F3, el "EQ automatico" y los "Graves (bajo profundo)" llevan puesta la casilla

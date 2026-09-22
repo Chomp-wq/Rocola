@@ -556,7 +556,9 @@ namespace Rocola
                 // sirven de maestras: en las dañadas los agudos reales ya no existen y no hay nada que enseñar.
                 if (hv != null && !soloCorte && hvPairs.Count >= 40 && hv.CutHz >= EqSanaHz)
                 {
-                    if (IaAppendPairs(hvPairs)) MarkIaDone(path, nivelAhora);
+                    // Con su ORIGEN (cancion, carpeta, frecuencia, cuadro, canal 0) para que el entrenador pueda
+                    // separar por cancion. Ver IaApuntaOrigen.
+                    if (IaAppendPairsOrigen(hvPairs, IaOrigenDe(path, total, rate, hv.FrameLen, 0))) MarkIaDone(path, nivelAhora);
                 }
                 float corteHz = measuredCut;
                 float corteLo = measuredCutLo;
