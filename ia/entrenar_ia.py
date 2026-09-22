@@ -26,7 +26,7 @@
 #
 #  Requisitos: python3 + numpy. Para MP3, convierte antes a WAV (ffmpeg -i cancion.mp3 cancion.wav).
 # ============================================================================================
-import sys, os, wave, struct
+import sys, os, wave, struct, hashlib, json
 from functools import lru_cache
 import numpy as np
 
@@ -238,6 +238,7 @@ def train(model, X, Y, Xv, Yv, epochs=60, lr=2e-3, batch=256, seed=3):
     b1, b2, eps, tstep = 0.9, 0.999, 1e-8, 0
     best = float('inf')
     best_weights = best_biases = None
+    best_epoch = 0
     for ep in range(epochs):
         idx = rng.permutation(len(X))
         for s in range(0, len(X), batch):
@@ -258,12 +259,14 @@ def train(model, X, Y, Xv, Yv, epochs=60, lr=2e-3, batch=256, seed=3):
             vl = mse_modelo(model, Xv, Yv)
             if np.isfinite(vl) and vl < best and all(np.isfinite(v).all() for v in model.W + model.B):
                 best = vl
+                best_epoch = ep + 1
                 best_weights = [w.copy() for w in model.W]
                 best_biases = [b.copy() for b in model.B]
             print("  epoca %3d  mse-entren %.4f  mse-valid %.4f" % (ep + 1, tr, vl))
     if best_weights is None:
         raise ValueError("Ningun punto de entrenamiento valido; se conserva el modelo anterior")
     model.W, model.B = best_weights, best_biases
+    model.mejor_epoca, model.mejor_mse_validacion = best_epoch, best   # para el informe
     return model
 
 def export_ria1(model, path):
@@ -401,6 +404,9 @@ def main():
         X, Y = cargar_datos_rocola(ruta, tope, por_indices=True)
         print("  %d ejemplos de %d entradas -> %d salidas" % (X.shape[0], X.shape[1], Y.shape[1]))
         partes, informe = particiones_rocola(ruta, X, nivel, sin_origen)
+        import origen_dsee as O
+        origen_datos = {"tipo": "rocola", "huella": O.huella_datos(ruta, O.ruta_indice(ruta)),
+                        "ejemplos_usados": int(len(X)), "max_ejemplos": int(tope)}
     else:
         if "--musica" in sys.argv:
             folder = sys.argv[sys.argv.index("--musica") + 1]
@@ -411,10 +417,16 @@ def main():
             if len(set(claves)) < 20:
                 print("Muy pocos WAV 44.1k/16-bit utilizables (%d archivos). Convierte con ffmpeg y reintenta." % len(set(claves))); return 1
             print("  %d senales de un canal de %d archivos" % (len(clips), len(set(claves))))
+            h = hashlib.sha256()
+            for fn in sorted(f for f in os.listdir(folder) if f.lower().endswith((".wav", ".tsv"))):
+                h.update(("%s:%d\n" % (fn.lower(), os.path.getsize(os.path.join(folder, fn)))).encode("utf-8"))
+            origen_datos = {"tipo": "wav", "huella": h.hexdigest(), "archivos": len(set(claves)), "senales": len(clips)}
         else:
             print("Generando audio SINTETICO variado (prueba de concepto; para produccion usa --musica)...")
-            clips = [synth_clip(rng) for _ in range(320)]
+            nclips = int(sys.argv[sys.argv.index("--clips") + 1]) if "--clips" in sys.argv else 320
+            clips = [synth_clip(rng) for _ in range(nclips)]
             claves = [(i + 1, 0) for i in range(len(clips))]       # cada trozo sintetico es independiente
+            origen_datos = {"tipo": "sintetico", "trozos": len(clips)}
         print("Extrayendo pares (forma espectral -> envolvente real)...")
         X, Y, origen = build_dataset(clips, rng, con_origen=True)
         if len(X) == 0:
@@ -447,31 +459,106 @@ def main():
         raise SystemExit("Las capas deben empezar en 28 y terminar en 12 (contrato de la rocola).")
     if len(capas) - 1 > 8 or max(capas) > 512 or min(capas) < 1:
         raise SystemExit("Demasiado grande para la rocola: maximo 8 capas de pesos y 512 neuronas.")
+    epocas = int(sys.argv[sys.argv.index("--epocas") + 1]) if "--epocas" in sys.argv else 60
     print("Entrenando el MLP %s ..." % "->".join(str(c) for c in capas))
-    model = train(Mlp(capas, rng), Xtr, Ytr, Xv, Yv)      # la validacion SOLO elige el checkpoint
-    from calidad_dsee import cuantizar, evaluar, escribir_atomico
+    model = train(Mlp(capas, rng), Xtr, Ytr, Xv, Yv, epochs=epocas)   # la validacion SOLO elige el checkpoint
+    from calidad_dsee import cuantizar, evaluar_tres, decide, cargar_ria1, bytes_ria1, escribir_atomico, POLITICA
     cuantizar(model)
-    _, val_red, val_base = evaluar(model, Xv, Yv)
-    accepted, error_red, error_base = evaluar(model, Xp, Yp)   # la decision, con la particion de PRUEBA
-    mse_net, mse_base = error_red.mean(), error_base.mean()
-    print("VALIDACION (eligio el checkpoint): red = %.4f  |  curva fija = %.4f" % (val_red.mean(), val_base.mean()))
-    print("RESULTADO  mse-prueba: red = %.4f  |  curva fija = %.4f  (mejora %.1fx)" % (mse_net, mse_base, mse_base / max(mse_net, 1e-9)))
 
-    print("  MSE por banda (prueba): red", error_red, "| referencia", error_base)
-    if not informe["independiente"]:
-        print("NO se guarda: sin validacion independiente no se puede verificar la mejora. Se conservan modelo y vectores anteriores.")
-        return SALIDA_NO_VERIFICABLE
-    if not accepted:
-        print("NO se guarda: exige 5% de mejora global y ninguna banda mas de 10% peor. Se conservan modelo y vectores anteriores.")
-        return 2
+    # El modelo INSTALADO, leido como lo leeria la rocola. Por defecto, el que hay en esta carpeta.
     here = os.path.dirname(os.path.abspath(__file__))
-    P = model.predict(Xp[:24])
-    vectors = "".join(" ".join("%.9g" % v for v in Xp[i]) + " | " + " ".join("%.9g" % v for v in P[i]) + "\n" for i in range(24))
+    ruta_inst = sys.argv[sys.argv.index("--instalado") + 1] if "--instalado" in sys.argv else os.path.join(here, "rocola_ia.bin")
+    instalado, estado_inst, huella_inst = None, "ausente: se compara solo con la curva fija", None
+    if os.path.exists(ruta_inst):
+        with open(ruta_inst, "rb") as f:
+            huella_inst = hashlib.sha256(f.read()).hexdigest()
+        try:
+            instalado = cargar_ria1(ruta_inst)
+            estado_inst = "comparado"
+        except ValueError as e:
+            estado_inst = "invalido (%s): la rocola no lo cargaria y usa la curva fija" % e
+
+    val = evaluar_tres(model, instalado, Xv, Yv)
+    err = evaluar_tres(model, instalado, Xp, Yp)          # la decision, con la particion de PRUEBA
+    publicar, motivos = decide(err)
+    mse_net, mse_base = err["candidato"].mean(), err["referencia"].mean()
+    print("VALIDACION (eligio el checkpoint, epoca %s): red = %.4f  |  curva fija = %.4f"
+          % (getattr(model, "mejor_epoca", "?"), val["candidato"].mean(), val["referencia"].mean()))
+    print("RESULTADO  mse-prueba: red = %.4f  |  curva fija = %.4f  (mejora %.1fx)" % (mse_net, mse_base, mse_base / max(mse_net, 1e-9)))
+    if instalado is not None:
+        print("           modelo instalado = %.4f  (%d parametros; el candidato tiene %d)"
+              % (err["instalado"].mean(), instalado.parametros(), sum(w.size + b.size for w, b in zip(model.W, model.B))))
+    else:
+        print("           modelo instalado: " + estado_inst)
+    print("  MSE por banda (prueba): red", err["candidato"], "| referencia", err["referencia"])
+    for m in motivos:
+        print("  " + m)
+
+    if not informe["independiente"]:
+        codigo = SALIDA_NO_VERIFICABLE
+        motivos = motivos + ["sin validacion independiente: " + informe["motivo"]]
+    else:
+        codigo = 0 if publicar else 2
+    modelo_bytes = bytes_ria1(model)
+    rep = informe_reproducible(informe, capas, model, val, err, instalado, estado_inst, huella_inst,
+                               codigo, motivos, modelo_bytes, (tr, va, pr), origen_datos, POLITICA)
+    ruta_rep = sys.argv[sys.argv.index("--informe") + 1] if "--informe" in sys.argv else os.path.join(here, "informe_dsee.json")
+    escribir_atomico(ruta_rep, lambda f: f.write(rep))
+    print("Informe reproducible:", os.path.basename(ruta_rep))
+
+    if codigo == SALIDA_NO_VERIFICABLE:
+        print("NO se guarda: sin validacion independiente no se puede verificar la mejora. Se conservan modelo y vectores anteriores.")
+        return codigo
+    if codigo == 2:
+        print("NO se guarda: no supera la politica (curva fija y modelo instalado). Se conservan modelo y vectores anteriores.")
+        return 2
+    vectors = vectores_de_paridad(model, Xp, modelo_bytes)
     # Cada archivo se reemplaza atomicamente. No constituyen una transaccion conjunta.
     escribir_atomico(os.path.join(here, "ia_vectores_prueba.txt"), lambda f: f.write(vectors.encode("ascii")))
     export_ria1(model, os.path.join(here, "rocola_ia.bin"))
     print("Listo: rocola_ia.bin (copialo junto a Rocola.exe) + ia_vectores_prueba.txt")
     return 0
+
+
+def vectores_de_paridad(model, Xp, modelo_bytes, n=24):
+    """24 entradas de la particion de PRUEBA y lo que responde el modelo ya en float32. La primera linea
+    lleva la huella del modelo: asi se sabe si los vectores y el modelo que tienen al lado van juntos
+    (dsee.cs ignora las lineas sin '|')."""
+    P = model.predict(Xp[:n])
+    cab = "# rocola_ia.bin sha256=%s extractor=%d origen=prueba\n" % (hashlib.sha256(modelo_bytes).hexdigest(), EXTRACTOR)
+    return cab + "".join(" ".join("%.9g" % v for v in Xp[i]) + " | " + " ".join("%.9g" % v for v in P[i]) + "\n"
+                         for i in range(min(n, len(Xp))))
+
+
+def _num(v):
+    return [float(repr(float(x))) for x in np.asarray(v).ravel()] if np.ndim(v) else float(v)
+
+
+def informe_reproducible(informe, capas, model, val, err, instalado, estado_inst, huella_inst,
+                         codigo, motivos, modelo_bytes, partes, origen_datos, politica):
+    """El informe: la misma entrada da el MISMO archivo, byte a byte. Sin fechas, sin rutas ni nombres."""
+    rep = {
+        "formato": "ROCOLA-INFORME-DSEE 1",
+        "extractor": EXTRACTOR,
+        "contrato_ria1": {"entradas": 28, "salidas": 12},
+        "semilla": 20260715,
+        "datos": origen_datos,
+        "reparto": {"independiente": bool(informe["independiente"]), "motivo": informe.get("motivo", ""),
+                    "nivel": informe.get("nivel", ""), "grupos": informe.get("grupos"),
+                    "ejemplos": [int(len(p)) for p in partes], "sin_origen": int(informe.get("sin_origen", 0))},
+        "capas": [int(c) for c in capas],
+        "parametros": int(sum(w.size + b.size for w, b in zip(model.W, model.B))),
+        "checkpoint": {"epoca": getattr(model, "mejor_epoca", None),
+                       "mse_validacion": _num(getattr(model, "mejor_mse_validacion", float("nan")))},
+        "validacion": {k: _num(v) for k, v in sorted(val.items())},
+        "prueba": {k: _num(v) for k, v in sorted(err.items())},
+        "instalado": {"estado": estado_inst, "sha256": huella_inst,
+                      "parametros": instalado.parametros() if instalado is not None else None},
+        "politica": politica,
+        "decision": {"codigo": int(codigo), "publicar": codigo == 0, "motivos": list(motivos)},
+        "candidato_sha256": hashlib.sha256(modelo_bytes).hexdigest(),
+    }
+    return (json.dumps(rep, sort_keys=True, indent=1, ensure_ascii=True, allow_nan=True) + "\n").encode("ascii")
 
 if __name__ == "__main__":
     sys.exit(main())

@@ -128,6 +128,16 @@ solo al entrenamiento; el resultado tampoco se publica). Con `--musica`, cada ca
 sus propios ejemplos (una mezcla mono anulaba lo que estuviera en contrafase) y los dos canales
 van siempre juntos.
 
+## Cuando se reemplaza un modelo (y cuando no)
+
+El candidato se mide sobre la particion de PRUEBA contra la curva fija y contra el modelo que ya
+tienes (arrastra tu `rocola_ia.bin` junto al material, o se usa el de esta carpeta). Solo se guarda si
+gana a la curva (5 % global, ninguna banda 10 % peor) y al instalado (2 % global, ninguna banda 10 %
+peor). Es una politica inicial para no publicar regresiones, no una prueba de que suene mejor: eso se
+decide escuchando A/B a volumen igualado. Cada entrenamiento deja `informe_dsee.json` (sin rutas ni
+fechas: la misma entrada da el mismo informe) y los vectores llevan la huella SHA-256 de su modelo.
+Codigos: 0 guardado, 2 no supera la politica, 3 no verificable (sin validacion independiente).
+
 Resultados de la prueba de concepto (validacion): la red predice la envolvente real con
 **mse 0.54** contra **1.53** de la curva fija (2.8x mejor).
 

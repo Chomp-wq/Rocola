@@ -25,7 +25,8 @@ desarrollo y medición. La revisión anterior está en REVISION_AUDIO_2026-09-22
 | Sonoridad integrada, true-peak, antialiasing, salidas y continuidad | Pendiente; plan abajo |
 | Paridad del extractor IA (contrato EXTRACTOR=2) | Implementado y probado; ver 1.7 |
 | Identidad de origen, particiones por canción y estéreo por canal | Implementado y probado; ver 1.8 |
-| Selección contra el modelo instalado y publicación conjunta | Pendiente; siguientes entregas |
+| Selección contra curva e instalado, informe reproducible | Implementado y probado; ver 1.9 |
+| Publicación conjunta de modelo y vectores | Pendiente; siguiente entrega |
 
 ## 1. Qué se implementó y cómo funciona
 
@@ -256,6 +257,34 @@ peor); sin índice devuelve 3 y deja modelo y vectores intactos.
 
 Pendiente que necesita tus datos: que la rocola nueva coseche con índice (días de uso o una noche
 de repaso a fondo). Con el rocola_ia_datos.bin actual el entrenador se negará a publicar.
+
+### 1.9 Selección del modelo e informe reproducible (entrega 3)
+
+Archivos: ia/calidad_dsee.py (cargar_ria1, evaluar_tres, decide), ia/entrenar_ia.py,
+ia/entrenar_dsee.py, pruebas/dsee.cs, ia/test_seleccion_dsee.py (nueva).
+
+- El candidato se compara, sobre la MISMA partición de prueba, con la curva fija y con el modelo
+  instalado. El instalado se lee con las mismas reglas que RedChica.TryLoad; si la rocola no lo
+  cargaría, se dice y solo cuenta la curva (que es lo que la rocola usa en ese caso).
+- Política inicial, escrita como tal en el informe: contra la curva, al menos 5 % de mejora global
+  y ninguna banda más de 10 % peor (la de antes); contra el instalado, al menos 2 % global y
+  ninguna banda más de 10 % peor. Una red más grande que empata no gana: el tamaño se informa
+  pero no puntúa. No son prueba de superioridad audible.
+- Se conservan finitos, dimensiones, redondeo float32 antes de evaluar, errores por banda y mejor
+  checkpoint (ahora con su época en el informe). --epocas cambia las épocas (60 por defecto).
+- informe_dsee.json se escribe en cada entrenamiento, publique o no: extractor, huella de los
+  datos, reparto (grupos y ejemplos), checkpoint, errores por banda de los tres en validación y
+  prueba, estado y SHA-256 del instalado, política, decisión con sus motivos y SHA-256 del
+  candidato. Sin fechas ni rutas: la misma entrada da el mismo archivo byte a byte (probado).
+- Los vectores de inferencia salen de la partición de prueba y su primera línea lleva el SHA-256
+  del modelo. pruebas/dsee.cs lo comprueba si está (los del repositorio son del formato anterior y
+  lo dice). entrenar_dsee.py compara con el rocola_ia.bin arrastrado o con el que tenía la carpeta.
+
+Comprobado: test_seleccion_dsee (gana a la curva pero pierde contra el instalado → no; gana a los
+dos → sí; empate de una red más grande → no; una banda mucho peor → no; no finitos; lotes; lector
+RIA1 contra archivos truncados, con bytes sobrantes, NaN o del EQ; informe idéntico en dos
+corridas; paridad de los vectores con el modelo leído, 2e-6). En rojo al quitar la comparación con
+el instalado, al meter una fecha en el informe o al estropear la huella de los vectores.
 
 ## 2. Comprobaciones y cómo repetirlas
 

@@ -8,3 +8,5 @@ __pycache__/
 ia/entrenamiento_wavs/
 # la bitacora que deja el guion de entrenar: es de cada maquina, no del programa
 ia/entrenar_log.txt
+# el informe que deja cada entrenamiento del DSEE: es de cada maquina
+ia/informe_dsee.json

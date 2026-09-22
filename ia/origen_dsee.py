@@ -272,6 +272,8 @@ def huella_datos(ruta_datos, ruta_idx=None):
     """Huella reproducible del material SIN leer gigas: tamano, cabecera, primer y ultimo MiB, e indice."""
     import hashlib
     h = hashlib.sha256()
+    if not os.path.exists(ruta_datos):
+        return None
     tam = os.path.getsize(ruta_datos)
     h.update(struct.pack("<q", tam))
     with open(ruta_datos, "rb") as f:
