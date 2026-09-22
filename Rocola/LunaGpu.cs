@@ -94,7 +94,7 @@ namespace Rocola
         }
         private void DrawDetailedMoon()
         {
-            float emphasis=MoonEmphasis(Dim,LunaProtagonista);
+            float emphasis=LunaProtagonista ? Math.Max(MoonEmphasis(Dim,true),idleBlend) : 0;
             float diameter=DetailedMoonDiameter(Height,emphasis)*MoonSceneScale(idleBlend,lunaBeat,LunaActiva), radius=diameter*.5f;
             PointF center=DetailedMoonCenter(Width,Height,moonMotionTime,idleBlend,IdleRise,LunaActiva);
             float cx=center.X, cy=center.Y;
@@ -102,14 +102,12 @@ namespace Rocola
             cy=Math.Max(radius*2,Math.Min(StatusTopY-radius*2,cy));
             float visibility=LunaActiva ? .40f+.60f*idleBlend : .72f+.28f*emphasis;
             DrawLunarDust(cx,cy,radius,visibility,false);
-            float fr,fg,fb; Form1.TinteDelAire(cy,Height,out fr,out fg,out fb);
             // La superficie es solida: solo el borde antialias y el halo llevan transparencia.
-            uint color=0xFF000000u|((uint)((.82f+.18f*fr)*255)<<16)|
-                ((uint)((.82f+.18f*fg)*255)<<8)|(uint)((.82f+.18f*fb)*255);
+            uint color=StarColor();
             SetTexQuadA(lunaQuad,cx-radius,cy-radius,cx+radius,cy+radius,luU,luV,color);
             if (LunaActiva)
             {
-                double tilt=Math.Sin(moonMotionTime*.17)*(.008+.075*idleBlend);
+                double tilt=moonMotionTime*.14;
                 float co=(float)Math.Cos(tilt), si=(float)Math.Sin(tilt);
                 for(int i=0;i<lunaQuad.Length;i++)
                 {
@@ -124,7 +122,7 @@ namespace Rocola
         {
             if (!PolvoLunar && (front || !HaloLunar)) return;
             stars.GlowBatchBegin(21);
-            uint rgb=NebColor&0xFFFFFFu;
+            uint rgb=StarColor()&0xFFFFFFu;
             if (!front && HaloLunar)
             {
                 float beat=LunaActiva ? lunaBeat*(.15f+.85f*idleBlend) : 0;

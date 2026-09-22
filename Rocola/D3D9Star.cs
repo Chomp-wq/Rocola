@@ -102,6 +102,15 @@ namespace Rocola
         private D3D9.ResetDel reset; private D3D9.CreateTexDel createTex;
 
         public bool Ok { get { return dev != IntPtr.Zero; } }
+        public uint EstimatedTextureMemory
+        {
+            get
+            {
+                if (dev == IntPtr.Zero) return 0;
+                try { return D3D9.Fn<D3D9.UintSelf>(dev, 4)(dev); }
+                catch { return 0; }
+            }
+        }
 
         public D3D9Device(IntPtr hwnd, int w, int h)
         {
@@ -734,6 +743,7 @@ namespace Rocola
         private readonly float[] driftX = new float[3], driftY = new float[3];   // acumulado (px) de cada tamano, envuelto con w/h
 
         public bool Ok { get { return gpu != null && gpu.Ok; } }
+        public uint EstimatedTextureMemory { get { return gpu != null ? gpu.EstimatedTextureMemory : 0; } }
         public int Count { get { return nStars; } }
         private float dim = 1f;   // atenuacion del campo (estrellas + fugaces) mientras se navega con musica
         public void SetDim(float d) { dim = d < 0f ? 0f : (d > 1f ? 1f : d); }
@@ -1920,6 +1930,7 @@ namespace Rocola
                 if (stars != null) stars.Dispose();
                 stars = new GpuStarfield(this.Handle, Width, Height, 4321);
                 if (!stars.Ok) { stars.Dispose(); stars = null; return false; }
+                cellTextureBudget = AdaptiveCellBudget(stars.EstimatedTextureMemory, Form1.CacheCeldasMb(), IntPtr.Size);
             }
             if (!idleHooked) { Application.Idle += OnIdle; idleHooked = true; }
             return true;
@@ -2152,7 +2163,13 @@ namespace Rocola
                 lastAheadMs = aheadNow;
                 bool ready = gridN > 0;
                 for (int i = 0; i < gridN; i++) if (gridTex[i] == IntPtr.Zero) ready = false;
-                if (ready) WarmAheadCells();
+                if (ready)
+                {
+                    double margin = Math.Min(GridWorkLimit * 1000.0 / System.Diagnostics.Stopwatch.Frequency - (AhoraMs()-msTrab0),
+                        850.0 / Math.Max(1, TopeFpsReal) - lastFrameWork);
+                    aheadAvailableTicks = Math.Max(1L, (long)(margin * System.Diagnostics.Stopwatch.Frequency / 1000));
+                    WarmAheadCells();
+                }
             }
             if (!stars.Begin(Width, Height, pulse, pulseCrudo)) { System.Threading.Thread.Sleep(5); return NoPresentado(); }
             // Adornos solo del fondo: antes del muro y de toda la interfaz.
@@ -2378,10 +2395,10 @@ namespace Rocola
             while (w < cell.Bmp.Width) w <<= 1;
             while (h < cell.Bmp.Height) h <<= 1;
             long incoming = w * h * 4;
-            if (incoming > CellTexBytesCap) return false;
+            if (incoming > cellTextureBudget) return false;
             CellTex old; cellTexCache.TryGetValue(cell.Key, out old);
             int extra = old == null ? 1 : 0;
-            while (CachedCellBytes() - CellBytes(old) + incoming > CellTexBytesCap ||
+            while (CachedCellBytes() - CellBytes(old) + incoming > cellTextureBudget ||
                 cellTexCache.Count + extra > CellTexCap)
             {
                 string victim = null; int oldest = 0;
@@ -2403,8 +2420,13 @@ namespace Rocola
         {
             if (GetGridAhead == null) return;
             int count = Math.Max(0, Math.Min(aheadGrid.Length, GetGridAhead(aheadGrid)));
+            int remaining = AheadUploadAllowance(CargaTrabajo.Procesadores);
+            long begin = System.Diagnostics.Stopwatch.GetTimestamp();
+            long available = aheadAvailableTicks > 0 ? Math.Min(GridWorkLimit, aheadAvailableTicks) : GridWorkLimit;
             for (int i = 0; i < count; i++)
             {
+                if (remaining <= 0 || !CargaTrabajo.PuedeEmpezar(System.Diagnostics.Stopwatch.GetTimestamp()-begin,
+                    gridUploadCost, available, remaining == AheadUploadAllowance(CargaTrabajo.Procesadores))) break;
                 GpuGridCell cell = aheadGrid[i];
                 if (cell.Key == null || cell.Bmp == null) continue;
                 CellTex old;
@@ -2416,7 +2438,7 @@ namespace Rocola
                 EnsureCellTex(cell, ref budget, out tex, out u, out v);
                 gridUploadCost = CargaTrabajo.AprendeCoste(gridUploadCost, System.Diagnostics.Stopwatch.GetTimestamp() - start);
                 if (cellTexCache.TryGetValue(cell.Key, out old)) old.Frame = unchecked(cellFrame - 1);
-                break; // una sola subida de fondo; la pagina visible siempre tiene prioridad
+                remaining--; // hasta 1/2/4, solo si queda margen; visibles siempre primero
             }
             Array.Clear(aheadGrid, 0, aheadGrid.Length); // no retener bitmaps expulsados por la cache de composicion
         }
@@ -2427,6 +2449,7 @@ namespace Rocola
         // Presupuesto de texeles ARGB (incluye redondeo POT), no una lectura de VRAM del driver.
         // Las visibles se conservan incluso si una pagina por si sola supera el presupuesto.
         private const long CellTexBytesCap = 32L * 1024 * 1024;
+        private long cellTextureBudget = CellTexBytesCap;
         private long cellBytesTotal;
         private bool cellBytesDirty = true;
         private static long CellBytes(CellTex ct)
@@ -2451,13 +2474,13 @@ namespace Rocola
         private void EvictCellTex()
         {
             long bytes = CachedCellBytes();
-            while (cellTexCache.Count > CellTexCap || bytes > CellTexBytesCap)
+            while (cellTexCache.Count > CellTexCap || bytes > cellTextureBudget)
             {
                 string oldestKey = null; int oldestAge = 0, oldestSlot = -1;
                 foreach (KeyValuePair<string, CellTex> kv in cellTexCache)
                 { int age = unchecked(cellFrame - kv.Value.Frame); if (age > oldestAge) { oldestAge = age; oldestKey = kv.Key; } }
                 // Los slots sin carpeta tambien ocupan memoria. Solo compiten si se exceden los bytes.
-                if (bytes > CellTexBytesCap)
+                if (bytes > cellTextureBudget)
                     for (int i = 0; i < slotTex.Length; i++)
                     {
                         CellTex st = slotTex[i]; if (st == null) continue;
@@ -2733,22 +2756,20 @@ namespace Rocola
         private const int RuidoTeja = 1024;
         private IntPtr ruidoTex; private int ruTW, ruTH; private float ruU = 1f, ruV = 1f;
 
-        // LA LUNA. LunaGpu prepara la nueva superficie una vez; al apagar ese diseno
-        // se usa BakeLuna sin modificarlo. La pared CPU conserva siempre su dibujo.
-        //
-        // El TINTE DEL AIRE va en el COLOR DEL VERTICE: la tarjeta multiplica la textura por el, asi que
-        // apagarla y enrojecerla segun a que altura este no cuesta absolutamente nada. En la pared horneada
-        // lo mismo pide una matriz de color guardada; aqui son tres numeros.
+        // ESTRELLA GPU: superficie neutra preparada una vez por estilo (detallado/sencillo).
+        // El color musical y el movimiento van en los vertices, sin rehornear ni subir
+        // texturas al cambiar de cancion. Se conservan las claves de configuracion lunar.
+        // La pared CPU mantiene su luna original, sin cambios.
         private IntPtr lunaTex; private int luTW, luTH; private float luU = 1f, luV = 1f;
         private int lunaDe = -1, lunaW, lunaH;
         private D3D9.Vtx[] lunaQuad = new D3D9.Vtx[6];
         private void EnsureLuna()
         {
             if (!ConLuna || Height < 64) return;
-            int moonKey = LunaRealista ? MoonTextureSize : Height;
+            int moonKey = MoonTextureSize;
             if (lunaTex == IntPtr.Zero || lunaDe != moonKey || lunaDetalleDe != LunaRealista)
             {
-                using (Bitmap lb = LunaRealista ? BakeDetailedMoon() : Form1.BakeLuna(Height))
+                using (Bitmap lb = BakeStar(LunaRealista))
                 {
                     lunaTex = Upload(lunaTex, ref luTW, ref luTH, lb, out luU, out luV);
                     lunaW = lb.Width; lunaH = lb.Height;
@@ -2760,28 +2781,7 @@ namespace Rocola
         {
             if (!ConLuna || Height < 64) return;
             if (lunaTex == IntPtr.Zero) return;
-            if (LunaRealista) { DrawDetailedMoon(); return; }
-            // Se pasea con el reloj lento de la via lactea, y acotada: nunca se va de su sitio. Ver el
-            // comentario de Form1 sobre por que NO lleva la deriva de las estrellas.
-            float mx = Width * Form1.LunaMenea, my = Height * Form1.LunaMenea;
-            float cx = Width * Form1.LunaX + (float)Math.Sin(HazFase) * mx;
-            float cy = Height * Form1.LunaY + (float)Math.Cos(HazFase) * my;
-            float scale = 1;
-            if (LunaActiva)
-            {
-                PointF center = MoonCenter(Width, Height, AhoraMs() / 1000, IdleRise);
-                center.Y -= Height * .20f * idleBlend;
-                cx = center.X; cy = center.Y; scale = 1.35f + lunaBeat * .16f;
-                DrawMoonOrbits(cx, cy, lunaW * scale * .48f);
-            }
-            float fr, fg, fb;
-            Form1.TinteDelAire(cy, Height, out fr, out fg, out fb);
-            uint cr = (uint)(fr * 255f + 0.5f), cg = (uint)(fg * 255f + 0.5f), cb = (uint)(fb * 255f + 0.5f);
-            if (cr > 255) cr = 255; if (cg > 255) cg = 255; if (cb > 255) cb = 255;
-            uint col = 0xFF000000u | (cr << 16) | (cg << 8) | cb;
-            SetTexQuadA(lunaQuad, cx - lunaW * scale / 2f, cy - lunaH * scale / 2f,
-                cx + lunaW * scale / 2f, cy + lunaH * scale / 2f, luU, luV, col);
-            stars.DrawQuad(lunaTex, lunaQuad);
+            DrawDetailedMoon();
         }
         private void DibujaRuido()
         {

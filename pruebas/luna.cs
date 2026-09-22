@@ -42,7 +42,7 @@ class Luna
         Type TF = asm.GetType("Rocola.Form1", true);
         Type TS = TF.GetNestedType("Starfield", BindingFlags.NonPublic | BindingFlags.Public);
 
-        Console.WriteLine("\n  1) HAY LUNA, Y ES LA MISMA EN LAS DOS PAREDES\n");
+        Console.WriteLine("\n  1) CPU CONSERVA LA LUNA; GPU USA LA ESTRELLA\n");
         MethodInfo mBake = TF.GetMethod("BakeLuna", BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
         Check(mBake != null, "hay una luna, y su dibujo se hace en un solo sitio (BakeLuna)");
         Check(TS != null && TS.GetMethod("PintaLuna", TODO) != null, "la pared sin tarjeta grafica la pinta");
@@ -53,26 +53,18 @@ class Luna
             MethodInfo mGpu = TG.GetMethod("DibujaLuna", TODO);
             Check(mGpu != null, "y la de tarjeta grafica tambien");
 
-            // LA LUNA DE TARJETA YA NO ES LA MISMA QUE LA DE CPU, Y ESO ES LO ACORDADO. Antes se exigia
-            // que la de tarjeta le pidiera el dibujo a Form1, para que las dos paredes ensenaran la misma
-            // luna. Ahora la de tarjeta tiene la suya con relieve, halo y polvo, que es justo lo que dice
-            // la regla de la casa: las mejoras de dibujo nuevas van SOLO por tarjeta, y el dibujo por CPU
-            // no se toca.
-            //
-            // Pero la regla tiene una segunda mitad que es la que de verdad protege: cada mejora lleva su
-            // interruptor, y APAGANDOLO tiene que volver lo de antes. Eso es lo que se comprueba aqui:
-            // que apagando LunaRealista se vuelve al dibujo compartido de Form1.BakeLuna. Si algun dia se
-            // quita esa vuelta atras, la de tarjeta se queda sin camino de regreso y la regla se rompe
-            // sin que nadie lo note.
+            // El usuario pidio sustituir la luna por una estrella en GPU. El interruptor
+            // de detalle conserva su clave, pero ahora elige superficie detallada/sencilla.
+            // El astro completo sigue teniendo su interruptor; la luna CPU no cambia.
             MethodInfo mEnsure = TG.GetMethod("EnsureLuna", TODO);
             Check(mEnsure != null, "   ...y hay un solo sitio que decide que luna se sube (EnsureLuna)");
             if (mEnsure != null)
             {
-                Check(Codigo.Llama(mEnsure, "BakeLuna"),
-                      "   ...que sigue sabiendo pedirle el dibujo compartido a Form1");
+                Check(Codigo.Llama(mEnsure, "BakeStar") && !Codigo.Llama(mEnsure, "BakeLuna"),
+                      "   ...que prepara la estrella sin tocar el dibujo CPU");
                 int leeSw, escSw; Codigo.UsosDeCampo(mEnsure, "LunaRealista", out leeSw, out escSw);
                 Check(leeSw > 0,
-                      "   ...y mira el interruptor: apagando la luna con relieve vuelve la de siempre");
+                      "   ...y mira el interruptor de superficie detallada/sencilla");
             }
         }
         if (mBake == null) { Console.WriteLine("\n  " + Math.Max(fallos, 1) + " FALLO(S)"); return Math.Max(fallos, 1); }

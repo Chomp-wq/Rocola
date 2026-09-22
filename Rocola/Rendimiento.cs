@@ -600,7 +600,7 @@ namespace Rocola
                 "Que el fondo tome el color de la portada",
                 "Ensenar las portadas de la cola",
                 "Media vuelta al cambiar de cancion",
-                "La luna en el cielo",
+                "Astro principal en el cielo",
             };
             string[] explica = {
                 "Al pedir una cancion, el aviso dice que puesto ocupa y cuantos\nminutos faltan, en vez de solo \"Cancion agregada\".",
@@ -608,7 +608,7 @@ namespace Rocola
                 "Del disco se toma SOLO de que color es. Lo oscuro y lo vivo lo\nsigue mandando el genero: ninguna portada estropea la pantalla.",
                 "En la capsula de \"En cola\", las caratulas de las tres proximas.\nSi hay mas de tres, la ultima lleva un \"+2\".",
                 "El cubito de la barra de abajo gira media vuelta y la portada\nnueva aparece en el camino, en vez de cambiar de golpe.",
-                "Una luna baja a un lado, con su halo, que se apaga y tira a\nnaranja cerca del horizonte igual que hacen las estrellas.",
+                "Estrella de color musical y corona en GPU.\nEl renderizador CPU conserva la luna clasica.",
             };
             Interruptor[] sw = new Interruptor[nombre.Length];
             for (int i = 0; i < nombre.Length; i++)
@@ -849,7 +849,7 @@ namespace Rocola
             tNat.Controls.Add(lExtras);
             tNat.Height = 580;
             tAd.Height = 580;
-            string[] extraNames = { "Vidrio por capas y color vivo (GPU)", "Transiciones suaves de color (GPU)", "Luna musical con orbitas (GPU)", "Controles tenues en reposo (GPU)" };
+            string[] extraNames = { "Vidrio por capas y color vivo (GPU)", "Transiciones suaves de color (GPU)", "Estrella musical con orbitas (GPU)", "Ocultar controles en reposo (GPU)" };
             bool[] extraValues = { glassCapas, coloresCache, lunaActiva, controlesReposo };
             Interruptor[] extras = new Interruptor[extraNames.Length];
             for (int i = 0; i < extras.Length; i++)
@@ -882,10 +882,10 @@ namespace Rocola
             swPaleta.Text = "Paleta completa de caratula (GPU)"; swPaleta.Checked = paletaCompleta;
             swPaleta.CheckedChanged += delegate { paletaCompleta = swPaleta.Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             tNat.Controls.Add(swPaleta);
-            lMoon.Text = "LUNA: halo, polvo y realce requieren el nuevo diseno";
+            lMoon.Text = "ESTRELLA: superficie, corona y polvo independientes";
             lMoon.Font = fDes; lMoon.ForeColor = cTenue; lMoon.BackColor = Color.Transparent;
             tNat.Controls.Add(lMoon);
-            string[] moonNames = { "Luna con relieve y crateres (GPU)", "Halo lunar musical (GPU)", "Polvo estelar orbital (GPU)", "Realzar luna al atenuar el fondo (GPU)" };
+            string[] moonNames = { "Superficie detallada de la estrella (GPU)", "Corona estelar musical (GPU)", "Polvo estelar orbital (GPU)", "Realzar estrella en reposo (GPU)" };
             bool[] moonValues = { lunaRealista, haloLunar, polvoLunar, lunaProtagonista };
             Interruptor[] moonSwitches = new Interruptor[moonNames.Length];
             for (int i = 0; i < moonSwitches.Length; i++)
@@ -1214,7 +1214,7 @@ namespace Rocola
             int switchesY = 94 + ef.Length * 52 + 8;
             string[] nomSw = {
                 "Ocultar caratulas en hojeo rapido",
-                "Discos tenues en reposo con musica",
+                "Ocultar discos en reposo con musica",
                 "Estado y cola ampliados en reposo",
                 "Lista de canciones transparente",
             };

@@ -2043,6 +2043,9 @@ namespace Rocola
 
             if (newPage)
                 for (int i = 0; i < pageList.Count; i++) RequestCover(pageList[i], false, true);   // fila ALTA, ya mismo
+#if ROCOLA_GPU
+            if (newPage && gpuEnabled) PrimeNextPage(list, page);
+#endif
 
             albumView.Page = pageList;
             // La pagina de AL LADO se va horneando mientras nadie toca nada (ver BakeAhead): al pasar de pagina
@@ -2053,7 +2056,10 @@ namespace Rocola
             for (int i = start + PageSize; i < start + PageSize * 2 && i < list.Count; i++) siguiente.Add(list[i]);
 #if ROCOLA_GPU
             if (gpuEnabled)
+            {
+                if (siguiente.Count == 0) siguiente = NextGpuPage(list, page);
                 for (int i = Math.Max(0, start - PageSize); i < start && i < list.Count; i++) siguiente.Add(list[i]);
+            }
 #endif
             albumView.SetAhead(siguiente);
             albumView.Selected = selAlbumIndex - start;

@@ -296,7 +296,7 @@ class Optimizaciones
     // Simular presion del presupuesto con dimensiones efectivas grandes.
     foreach(object entry in cache.Values){Set(entry.GetType(),entry,"Bw",4096);Set(entry.GetType(),entry,"Bh",4096);}
     Set(t,panel,"cellBytesDirty",true);Call(t,panel,"EvictCellTex");CheckCellAccounting(t,panel);
-    Check((long)Call(t,panel,"CachedCellBytes")<=32L*1024*1024,"No respeta limite de texturas");
+    Check((long)Call(t,panel,"CachedCellBytes")<=(long)Get(t,panel,"cellTextureBudget"),"No respeta limite adaptativo de texturas");
    } finally {Call(t,panel,"StopGpu");}
    Check((long)Call(t,panel,"CachedCellBytes")==0,"No limpia contabilidad al liberar GPU");
   }
