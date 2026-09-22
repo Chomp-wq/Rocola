@@ -137,6 +137,9 @@ peor). Es una politica inicial para no publicar regresiones, no una prueba de qu
 decide escuchando A/B a volumen igualado. Cada entrenamiento deja `informe_dsee.json` (sin rutas ni
 fechas: la misma entrada da el mismo informe) y los vectores llevan la huella SHA-256 de su modelo.
 Codigos: 0 guardado, 2 no supera la politica, 3 no verificable (sin validacion independiente).
+El informe trae ademas los errores por clase de senal (nivel, tonalidad, brillo, corte y, con WAV,
+ataques) con avisos si el candidato empeora en alguna, y cuanto se aparta lo evaluado de lo que
+calcularia la rocola en float32: si se aparta mas de 1e-3, no se publica.
 
 ## Publicar sin dejar nunca un par a medias
 

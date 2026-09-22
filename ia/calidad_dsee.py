@@ -232,3 +232,175 @@ def decide(errores, politica=POLITICA):
         motivos.append("contra el modelo instalado: " + m2)
         ok = ok and ok2
     return bool(ok), motivos
+
+
+# ---------------------------------------------------------------------------------------------
+#  La inferencia EXACTAMENTE como la hace la rocola (RedChica.Predict)
+# ---------------------------------------------------------------------------------------------
+LIMITE_PARIDAD = 1e-3      # el mismo que exige pruebas/dsee.cs a los vectores de un modelo publicado
+
+
+def prediccion_como_la_rocola(model, x):
+    """RedChica.Predict en numpy: pesos y entradas float32, suma float32 en el MISMO orden
+    (s = sesgo; s += w[j]*x[j] para j = 0, 1, ...), tanh de doble precision convertida a float32 en
+    las capas ocultas y la ultima lineal. Devuelve (salida float64, filas no finitas): en una fila no
+    finita la rocola no usa la red y se queda con la curva clasica para ese cuadro."""
+    a = np.asarray(x, dtype=np.float32)
+    malas = np.zeros(len(a), dtype=bool)
+    with np.errstate(over="ignore", invalid="ignore"):
+        for i, (w, b) in enumerate(zip(model.W, model.B)):
+            w32 = np.asarray(w, dtype=np.float32)
+            s = np.broadcast_to(np.asarray(b, dtype=np.float32), (len(a), w32.shape[0])).copy()
+            for j in range(w32.shape[1]):
+                s = (s + (a[:, j:j + 1] * w32[None, :, j]).astype(np.float32)).astype(np.float32)
+            malas |= ~np.isfinite(s).all(axis=1)
+            a = s if i == len(model.W) - 1 else np.tanh(s.astype(np.float64)).astype(np.float32)
+    return a.astype(np.float64), malas
+
+
+def paridad_inferencia(model, x, max_filas=20000):
+    """Diferencia maxima entre lo que evalua el entrenador (float64) y lo que calcularia la rocola,
+    sobre hasta max_filas filas repartidas por todo el conjunto (deterministas)."""
+    n = len(x)
+    if n == 0:
+        return {"filas": 0, "max_abs": 0.0, "no_finitas": 0, "limite": LIMITE_PARIDAD}
+    idx = np.unique(np.linspace(0, n - 1, min(n, max_filas)).astype(np.int64))
+    xs = x[idx] if not hasattr(x, "seleccionar") else x.seleccionar(idx)[:]
+    xs = np.asarray(xs, dtype=np.float64)
+    ref = model.predict(xs)
+    roc, malas = prediccion_como_la_rocola(model, xs)
+    buenas = ~malas & np.isfinite(ref).all(axis=1)
+    dif = float(np.max(np.abs(ref[buenas] - roc[buenas]))) if buenas.any() else float("inf")
+    return {"filas": int(len(idx)), "max_abs": dif, "no_finitas": int(malas.sum()), "limite": LIMITE_PARIDAD}
+
+
+# ---------------------------------------------------------------------------------------------
+#  Errores por CLASE DE SENAL (y por transitorios cuando se sabe cuales son)
+# ---------------------------------------------------------------------------------------------
+# Las clases salen de las propias 28 entradas, asi que existen para todo material, tambien el de la
+# rocola. Tres dimensiones por terciles del conjunto evaluado (reproducible: mismos datos, mismos
+# cortes) y una por la frecuencia del corte:
+#   nivel      entrada 24 (energia media, log10)                    -> suave / media / fuerte
+#   tonalidad  entrada 26 (planitud de las 8 bandas bajo el corte)  -> tonal / intermedia / ruidosa
+#   brillo     pendiente de las entradas 0..23                       -> oscura / media / brillante
+#   corte      entrada 25 * 20 kHz                                   -> bajo 13 kHz / 13-16 kHz / desde 16 kHz
+# Los TRANSITORIOS (ataques) no se pueden ver en un cuadro suelto: solo se informan cuando el material
+# viene de senal (WAV o sintetico), donde se conoce el cuadro anterior.
+DIMENSIONES = (("nivel", ("suave", "media", "fuerte")),
+               ("tonalidad", ("tonal", "intermedia", "ruidosa")),
+               ("brillo", ("oscura", "media", "brillante")),
+               ("corte", ("bajo_13k", "13_16k", "desde_16k")))
+_PESO_PENDIENTE = (np.arange(24) - 11.5) / np.sum((np.arange(24) - 11.5) ** 2)
+MIN_FILAS_AVISO = 200
+
+
+def _descriptores(xs):
+    # La pendiente se suma banda a banda en un orden FIJO: con un producto de matrices el ultimo bit
+    # dependeria del tamano del lote, y el informe dejaria de salir identico.
+    pendiente = np.zeros(len(xs))
+    for i in range(24):
+        pendiente = pendiente + xs[:, i] * _PESO_PENDIENTE[i]
+    return np.stack([xs[:, 24], xs[:, 26], pendiente, xs[:, 25] * 20.0], axis=1)
+
+
+def _mse_filas(pred, ys):
+    e = np.zeros(len(ys))
+    for j in range(12):
+        e = e + (pred[:, j] - ys[:, j]) ** 2
+    return e / 12.0
+
+
+def errores_por_clase(model, instalado, x, y, transitorio=None, lote=4096):
+    """MSE medio por fila de candidato, referencia e instalado, agrupado por clase. Dos pasadas por
+    lotes: memoria de unos pocos numeros por fila, nunca el conjunto entero en float64."""
+    n = len(x)
+    desc = np.empty((n, 4), dtype=np.float64)
+    err = {"candidato": np.empty(n), "referencia": np.empty(n)}
+    if instalado is not None:
+        err["instalado"] = np.empty(n)
+    for p in range(0, n, lote):
+        xs = np.asarray(x[p:p + lote], dtype=np.float64)
+        ys = np.asarray(y[p:p + lote], dtype=np.float64)
+        desc[p:p + len(xs)] = _descriptores(xs)
+        err["candidato"][p:p + len(xs)] = _mse_filas(model.predict(xs), ys)
+        err["referencia"][p:p + len(xs)] = _mse_filas(curva_fija(xs), ys)
+        if instalado is not None:
+            err["instalado"][p:p + len(xs)] = _mse_filas(instalado.predict(xs), ys)
+    umbrales = {}
+    etiquetas = {}
+    for k, (dim, nombres) in enumerate(DIMENSIONES):
+        if dim == "corte":
+            cortes = [13.0, 16.0]
+        else:
+            cortes = [float(repr(float(v))) for v in np.quantile(desc[:, k], [1.0 / 3.0, 2.0 / 3.0])]
+        umbrales[dim] = cortes
+        etiquetas[dim] = np.searchsorted(np.asarray(cortes), desc[:, k], side="right")
+    salida = {"umbrales": umbrales}
+
+    def resume(sel):
+        r = {"filas": int(sel.sum())}
+        for k in sorted(err):
+            r[k] = float(repr(float(err[k][sel].mean()))) if sel.any() else None
+        return r
+
+    for dim, nombres in DIMENSIONES:
+        salida[dim] = {nombre: resume(etiquetas[dim] == c) for c, nombre in enumerate(nombres)}
+    if transitorio is None:
+        salida["transitorios"] = {"disponible": False,
+                                  "motivo": "el material de la rocola guarda cuadros sueltos, sin el anterior: "
+                                            "no se puede saber cuales son ataques"}
+    else:
+        t = np.asarray(transitorio, dtype=bool)
+        salida["transitorios"] = {"disponible": True, "transitorio": resume(t), "estable": resume(~t)}
+    return salida
+
+
+def avisos_por_clase(por_clase, margen=0.10, minimo=MIN_FILAS_AVISO):
+    """Clases (con suficientes filas) donde el candidato queda mas de un 10 % peor que el instalado, o
+    que la curva fija si no hay instalado. Es informacion para escuchar con cuidado ESE tipo de
+    musica; no cambia la decision, que sigue la politica global y por banda."""
+    avisos = []
+    grupos = [(d, por_clase[d]) for d, _ in DIMENSIONES]
+    if por_clase.get("transitorios", {}).get("disponible"):
+        grupos.append(("transitorios", {k: v for k, v in por_clase["transitorios"].items() if k != "disponible"}))
+    for dim, clases in grupos:
+        for nombre, r in sorted(clases.items()):
+            if r["filas"] < minimo or r["candidato"] is None:
+                continue
+            contra = "instalado" if r.get("instalado") is not None else "referencia"
+            if r[contra] is not None and r["candidato"] > r[contra] * (1.0 + margen):
+                avisos.append("%s=%s: el candidato es %.0f %% peor que %s (%d filas)"
+                              % (dim, nombre, 100.0 * (r["candidato"] / max(r[contra], 1e-12) - 1.0),
+                                 "el modelo instalado" if contra == "instalado" else "la curva fija", r["filas"]))
+    return avisos
+
+
+def compara_inferencia(ruta_modelo, ruta_volcado):
+    """Lo que calculo la ROCOLA (volcado 'x0..x27 | y0..y11' de pruebas/iaparidad.cs) contra
+    prediccion_como_la_rocola. Devuelve (filas, peor diferencia, filas identicas bit a bit)."""
+    m = cargar_ria1(ruta_modelo)
+    xs, ys = [], []
+    with open(ruta_volcado, "r", encoding="ascii") as f:
+        for linea in f:
+            if "|" not in linea:
+                continue
+            a, b = linea.split("|")
+            xs.append([float(v) for v in a.split()])
+            ys.append([float(v) for v in b.split()])
+    x = np.asarray(xs, dtype=np.float64)
+    y = np.asarray(ys, dtype=np.float32).astype(np.float64)
+    p, malas = prediccion_como_la_rocola(m, x)
+    iguales = int(np.sum(np.all(p.astype(np.float32) == y.astype(np.float32), axis=1)))
+    return len(x), float(np.max(np.abs(p - y))) if len(x) else 0.0, iguales
+
+
+if __name__ == "__main__":
+    import sys
+    if len(sys.argv) == 4 and sys.argv[1] == "--paridad-inferencia":
+        n, peor, iguales = compara_inferencia(sys.argv[2], sys.argv[3])
+        print("FILAS %d" % n)
+        print("PEOR %.9g" % peor)
+        print("IGUALES %d" % iguales)
+        sys.exit(0 if n > 0 else 1)
+    print("uso: python3 calidad_dsee.py --paridad-inferencia modelo.bin volcado.txt")
+    sys.exit(2)

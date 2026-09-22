@@ -44,8 +44,25 @@ echo.
 echo --- PASO 2 de 2: entrenando la red ---
 "%PY%" "%~dp0entrenar_ia.py" --musica "%~dp0entrenamiento_wavs" --clips 7200 --por_archivo 12
 set "COD=%ERRORLEVEL%"
+rem 2 y 3 NO son fallos: el entrenamiento salio bien y decidio, con razon, no cambiar nada.
+if "%COD%"=="2" (
+  echo.
+  echo  No se guardo ningun modelo nuevo: no le gano a la curva fija y al modelo que ya tenias
+  echo  por el margen que se exige. No es un fallo. Tu rocola_ia.bin sigue igual.
+  echo  Los numeros estan en informe_dsee.json, en esta carpeta.
+  pause
+  endlocal & exit /b 2
+)
+if "%COD%"=="3" (
+  echo.
+  echo  No se guardo ningun modelo nuevo: no hay canciones suficientes para validar con musica
+  echo  que la red no haya visto. No es un fallo. Tu rocola_ia.bin sigue igual.
+  echo  Junta mas canciones con el PASO 1 y vuelve a correr este archivo.
+  pause
+  endlocal & exit /b 3
+)
 if not "%COD%"=="0" (
-  echo [X] El entrenamiento fallo. Revisa el mensaje de arriba.
+  echo [X] El entrenamiento fallo. Revisa el mensaje de arriba. Tu rocola_ia.bin sigue igual.
   pause
   endlocal & exit /b %COD%
 )
@@ -55,6 +72,8 @@ echo  LISTO. El modelo entrenado quedo en:
 echo    %~dp0rocola_ia.bin
 echo  Copialo JUNTO a Rocola.exe y reinicia la rocola: el DSEE
 echo  espectral usara la envolvente aprendida de TU musica.
+echo  Queda tambien guardado como version en la carpeta modelos, con su
+echo  informe, para poder volver atras con publicar_dsee.py.
 echo  La carpeta entrenamiento_wavs ya se puede borrar si quieres.
 echo ==============================================================
 pause

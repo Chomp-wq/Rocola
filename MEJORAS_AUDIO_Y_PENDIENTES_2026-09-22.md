@@ -201,9 +201,11 @@ Comprobado (automático, Mono en Linux, ambas ramas):
 - La batería se pone roja al cambiar el techo a 20 kHz, el tope a +0,5, un límite de banda o el
   redondeo del corte, y al alterar un valor del archivo de paridad.
 
-Riesgo medido, no comprobado en XP: de 500.721 divisiones hz/binHz de toda la geometría, 5.312
-(1,06 %) caerían en otro bin si se calcularan sin redondear a float32, lo que puede hacer la FPU
-x87 de un Windows XP de 32 bits. En una misma máquina la cosecha y la reproducción usan el mismo
+Riesgo medido, no comprobado en XP: la FPU x87 de un Windows XP de 32 bits puede calcular con
+más precisión que float32. Sobre las 500.721 divisiones hz/binHz de toda la geometría: si solo la
+división se hace con más precisión (hz redondeado al pasarlo a Hz(), una llamada normal) no cambia
+NINGUNA; si además el compilador mete Hz() en línea y deja sin redondear el producto que da hz,
+cambiarían de bin 5.312 (1,06 %). En una misma máquina la cosecha y la reproducción usan el mismo
 código, pero la paridad exacta con Python en XP solo se sabrá corriendo pruebas/iaparidad.cs allí
 (con Python instalado o fijando ROCOLA_TEST_PYTHON).
 
@@ -322,6 +324,38 @@ Límite: la atomicidad depende del sistema de archivos (os.replace/rename en el 
 El vaciado de la carpeta no es posible en Windows; allí la garantía es la del reemplazo NTFS.
 No se probó un corte de luz real ni un disco USB extraído a media escritura.
 
+### 1.11 Informe por clases de señal, transitorios y paridad de inferencia (entrega 6)
+
+Archivos: ia/calidad_dsee.py, ia/entrenar_ia.py, ia/origen_dsee.py, ia/contrato_dsee.py,
+ia/entrenar_con_mi_musica.bat (HD), pruebas/iaparidad.cs, ia/test_informe_dsee.py (nueva).
+
+- Lo que calcularía la rocola: prediccion_como_la_rocola imita RedChica.Predict en float32 y en su
+  mismo orden de suma. pruebas/iaparidad.cs carga un modelo aleatorio 28-32-32-12 en la red de la
+  rocola y compara 400 salidas: idénticas bit a bit (Mono). Con otro orden de suma, 0 de 400.
+- Guardia nueva: si sobre la partición de prueba la rocola no calcularía lo mismo que lo evaluado
+  (diferencia > 1e-3, el mismo límite que dsee.cs, o alguna fila que desborda en float32), no se
+  publica. Con una red 28-96-96-12 aleatoria la diferencia medida es 1,7e-6 (20.000 filas, 1 s).
+- Errores por clase de señal, con las propias 28 entradas (sirve también para el material de la
+  rocola): nivel, tonalidad y brillo por terciles del conjunto evaluado, y corte (<13, 13-16, ≥16
+  kHz). Candidato, curva fija e instalado por clase, en informe_dsee.json.
+- Avisos por clase: si en una clase con al menos 200 filas el candidato queda más de un 10 % peor
+  que el instalado (o que la curva si no hay instalado), se avisa para escuchar con cuidado ese tipo
+  de música. NO cambia la decisión: la política sigue siendo global y por banda. Si quieres que un
+  aviso bloquee la publicación es una decisión tuya; está preparado para hacerlo.
+- Transitorios: un cuadro es ataque si su energía es al menos 4 veces (+6 dB) la del que empieza
+  medio cuadro antes; el primero de cada trozo no cuenta. Solo se sabe con la señal a mano (WAV o
+  sintético); en el material de la rocola, que guarda cuadros sueltos, el informe dice por qué no.
+- Comprobar el índice lee el material entero: ahora avisa cada GB para que no parezca colgado.
+- entrenar_con_mi_musica.bat (HD) trataba cualquier código distinto de 0 como «falló»; el 2 (no
+  supera la política) y el 3 (no verificable) ya se explican como lo que son.
+
+Comprobado: test_informe_dsee (emulación float32 frente a float64 y desbordes; clases que suman el
+total y no dependen del tamaño de lote; aviso en la clase que empeora aunque el global mejore;
+transitorios en señal real y sintética; la guardia de paridad bloquea; avance al comprobar). En
+rojo sin la guardia de paridad, con la emulación en float64, con avisos que no comparan contra el
+instalado o contando el primer cuadro como ataque. Los ejemplos que produce build_dataset no
+cambian ni un bit (comparado con la versión publicada).
+
 ## 2. Comprobaciones y cómo repetirlas
 
 En cada repositorio, con sus herramientas de compilación .NET, Python con NumPy y FFmpeg:
@@ -397,14 +431,14 @@ Aceptación: ningún origen compartido entre particiones, paridad de caracterís
 tolerancia documentada, cero datos no finitos y superioridad verificada también al escuchar.
 No requiere una red más grande ni añade coste a la reproducción.
 
-Estado (22 de septiembre, cuatro entregas en las dos ramas): hechos 1, 2, 3, 4, 5, 6 y 8 (ver
-1.7 a 1.10). Del 7 están el informe por banda y la paridad C#; faltan el desglose por
-transitorios y clases de señal. Lo que queda y por qué:
+Estado (22 de septiembre, seis entregas en las dos ramas): hechos 1 a 8 (ver 1.7 a 1.11). Del 7,
+los transitorios solo se pueden medir con material de señal (WAV o sintético): el de la rocola
+guarda cuadros sueltos. Lo que queda y por qué:
 - Entrenar de verdad con validación independiente: necesita material cosechado por la rocola
   nueva (con rocola_ia_datos.idx). Con el material actual el entrenador se niega a publicar.
 - Superioridad audible: A/B a volumen igualado en tu equipo; ningún número de aquí la demuestra.
-- Paridad en XP real: correr pruebas/iaparidad.cs allí. Riesgo medido: 1,06 % de las divisiones
-  de la geometría caería en otro bin sin redondeo float32 (FPU x87).
+- Paridad en XP real: correr pruebas/iaparidad.cs allí. Riesgo medido: entre 0 % y 1,06 % de las
+  divisiones de la geometría caería en otro bin, según lo que el compilador de XP deje en registros.
 - validar-audio-mejoras.ps1 completo en Windows.
 - El artista solo se conoce si la canción es MP3 con etiqueta; distintas grafías del mismo
   artista («Queen» y «Queen & David Bowie») cuentan como artistas distintos. La separación por
