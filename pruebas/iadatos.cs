@@ -84,6 +84,21 @@ class IaDatos
 
     static long Tam(string f) { try { return new FileInfo(f).Length; } catch { return 0; } }
 
+    // El indice que dejo la prueba (y lo que la rocola aparto al ver el material empezar de cero). Los
+    // ".anterior" que ya estaban antes de empezar la prueba NO se tocan: son del dueno.
+    static HashSet<string> anterioresPrevios;
+    static string[] Anteriores(string indice)
+    {
+        try { return Directory.GetFiles(Path.GetDirectoryName(Path.GetFullPath(indice)), Path.GetFileName(indice) + ".anterior*"); }
+        catch { return new string[0]; }
+    }
+    static void BorraIndice(string indice)
+    {
+        try { File.Delete(indice); } catch { }
+        foreach (string f in Anteriores(indice))
+            if (!anterioresPrevios.Contains(f)) { try { File.Delete(f); } catch { } }
+    }
+
     static int Main(string[] argv)
     {
         string exe = (argv.Length > 0) ? argv[0] : "rocola.exe";
@@ -151,6 +166,15 @@ class IaDatos
         string datosBak = datos + ".guardado_por_la_prueba";
         bool habiaDatos = File.Exists(datos);
         try { if (habiaDatos) File.Move(datos, datosBak); } catch { }
+        // Desde que la cosecha apunta de que cancion viene cada ejemplo, al lado vive rocola_ia_datos.idx.
+        // Se aparta y se devuelve igual que el material: una prueba no toca los datos de nadie.
+        MethodInfo mIndice = TF.GetMethod("IaIndexFile", BindingFlags.Instance | BindingFlags.NonPublic);
+        string indice = mIndice != null ? (string)mIndice.Invoke(F, null) : null;
+        string indiceBak = indice + ".guardado_por_la_prueba";
+        bool habiaIndice = indice != null && File.Exists(indice);
+        anterioresPrevios = new HashSet<string>(indice != null ? Anteriores(indice) : new string[0]);
+        try { if (habiaIndice) File.Move(indice, indiceBak); } catch { }
+        long indiceOn = 0, indiceOff = 0;
 
         float rOn = 0, dOn = 0, rOff = 0, dOff = 0; float[] eOn = null, eOff = null;
         long creceOn = 0, creceOff = 0;
@@ -165,14 +189,17 @@ class IaDatos
                 long antes = Tam(datos);
                 if (!Medir(w, out rOn, out dOn, out eOn)) continue;
                 creceOn = Tam(datos) - antes;
+                if (indice != null) indiceOn = Tam(indice);
                 if (creceOn <= 0) continue;         // esta cancion no da material (agudos ya cortados): la siguiente
 
                 // ----- la MISMA, con el interruptor APAGADO -----
                 Prepara(false);
                 try { File.Delete(datos); } catch { }
+                if (indice != null) { BorraIndice(indice); }
                 antes = Tam(datos);
                 Medir(w, out rOff, out dOff, out eOff);
                 creceOff = Tam(datos) - antes;
+                if (indice != null) indiceOff = Tam(indice);
                 usada = Path.GetFileNameWithoutExtension(w);
                 break;
             }
@@ -181,6 +208,8 @@ class IaDatos
         {
             try { File.Delete(datos); } catch { }
             try { if (habiaDatos) File.Move(datosBak, datos); } catch { }
+            if (indice != null) BorraIndice(indice);
+            try { if (habiaIndice) File.Move(indiceBak, indice); } catch { }
         }
 
         Check(usada != null, "hay al menos una cancion completa de la que se puede sacar material");
@@ -190,6 +219,11 @@ class IaDatos
         Console.WriteLine("        con el interruptor APAGADO   crecio " + creceOff.ToString("#,0") + " bytes");
         Check(creceOn > 0, "encendido SI se junta material");
         Check(creceOff == 0, "y apagado no se guarda ni un byte");
+        if (indice != null)
+        {
+            Console.WriteLine("        indice de origen: " + indiceOn + " bytes encendido, " + indiceOff + " apagado");
+            Check(indiceOn == 16 + 64 && indiceOff == 0, "encendido se apunta de que cancion viene (una entrada); apagado, nada");
+        }
 
         // =========================================================================================
         Console.WriteLine("\n  4) PERO TODO LO DEMAS SE SIGUE MIDIENDO EXACTAMENTE IGUAL\n");

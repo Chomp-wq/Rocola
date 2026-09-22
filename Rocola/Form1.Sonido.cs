@@ -581,7 +581,9 @@ namespace Rocola
                 {
                     // Solo se marca hecha cuando el registro completo ya llego al disco. Si falla por espacio,
                     // permisos o desconexion, la proxima pasada vuelve a cosecharla.
-                    if (IaAppendPairs(hvPairs)) MarkIaDone(path, nivelAhora);
+                    // Con su ORIGEN (cancion, carpeta, frecuencia, cuadro, canal 0) para que el entrenador pueda
+                    // separar por cancion. Ver IaApuntaOrigen.
+                    if (IaAppendPairsOrigen(hvPairs, IaOrigenDe(path, total, rate, hv.FrameLen, 0))) MarkIaDone(path, nivelAhora);
                 }
                 float corteHz = measuredCut;
                 float corteLo = measuredCutLo;

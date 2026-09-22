@@ -109,7 +109,31 @@ def synth_clip(rng, secs=1.2):
     return (x / m * 0.5) if m > 0 else x
 
 def load_wavs(folder, rng, max_clips=400, max_per_file=0):
-    clips = []
+    """Trozos de 2 s de los WAV 44,1 kHz/16 bits de una carpeta. Devuelve (clips, grupos):
+    clips es una lista de senales de UN canal (float32) y grupos, la huella de origen de cada una.
+
+    CADA CANAL POR SEPARADO. Antes se promediaban L y R: un contenido en contrafase (L = s, R = -s)
+    se anulaba y la red aprendia de un silencio que la cancion no tenia. La rocola tampoco mezcla:
+    RegenNeural trabaja canal por canal. Los canales de un mismo archivo llevan el MISMO grupo, asi que
+    nunca acaban uno en entrenamiento y otro en validacion. --clips cuenta trozos de 2 s (con todos sus
+    canales), como antes. Se guardan en float32: el doble de canales ocupa lo mismo que el mono en float64.
+
+    Si junto a los WAV hay un origen.tsv (lo deja preparar_entrenamiento.py: nombre<TAB>huella de la
+    carpeta de la cancion original), los WAV de una misma carpeta de la biblioteca van juntos."""
+    import origen_dsee as O
+    carpeta_de = {}
+    tsv = os.path.join(folder, "origen.tsv")
+    if os.path.exists(tsv):
+        with open(tsv, "r", encoding="utf-8", errors="replace") as f:
+            for linea in f:
+                t = linea.rstrip("\n").split("\t")
+                if len(t) >= 2:
+                    try:
+                        carpeta_de[t[0].lower()] = int(t[1], 16)
+                    except ValueError:
+                        pass
+    clips, claves = [], []
+    trozos = 0
     files = [f for f in sorted(os.listdir(folder)) if f.lower().endswith(".wav")]
     rng.shuffle(files)
     for fn in files:
@@ -119,25 +143,31 @@ def load_wavs(folder, rng, max_clips=400, max_per_file=0):
                     continue
                 nch = w.getnchannels()
                 nfr = min(w.getnframes(), FS * 60)
-                quedan = max(1, max_clips - len(clips))
+                quedan = max(1, max_clips - trozos)
                 if max_per_file:
                     quedan = min(quedan, max(1, max_per_file))
                 # El bucle historico excluye el ultimo trozo si termina EXACTAMENTE en EOF.
                 # Leer una muestra extra mantiene ese borde sin retener un minuto por un solo clip.
                 nfr = min(nfr, quedan * FS * 2 + 1)
-                raw = np.frombuffer(w.readframes(nfr), dtype=np.int16).astype(np.float64) / 32768.0
-            mono = raw.reshape(-1, nch).mean(axis=1) if nch > 1 else raw
+                raw = np.frombuffer(w.readframes(nfr), dtype=np.int16).astype(np.float32) / np.float32(32768.0)
+            canales = raw.reshape(-1, nch) if nch > 1 else raw.reshape(-1, 1)
+            clave = (O.huella(fn), carpeta_de.get(fn.lower(), 0))
             propios = 0
-            for p in range(0, len(mono) - FS * 2, FS * 2):     # trozos de 2s
-                clips.append(mono[p:p + FS * 2]); propios += 1
-                if len(clips) >= max_clips: return clips
+            for p in range(0, canales.shape[0] - FS * 2, FS * 2):     # trozos de 2s
+                for c in range(canales.shape[1]):
+                    clips.append(np.ascontiguousarray(canales[p:p + FS * 2, c]))
+                    claves.append(clave)
+                trozos += 1; propios += 1
+                if trozos >= max_clips: return clips, claves
                 if max_per_file and propios >= max_per_file: break   # variedad: mejor MAS canciones que mas trozos de una
         except Exception:
             continue
-    return clips
+    return clips, claves
 
-def build_dataset(clips, rng):
-    X, Y = [], []
+def build_dataset(clips, rng, con_origen=False):
+    """Pares de todos los trozos. Con con_origen=True devuelve ademas, por cada ejemplo, el indice del
+    trozo del que salio (para repartir por grupo DESPUES sin mezclar)."""
+    X, Y, O = [], [], []
     usados = 0
     bloque = 4096
     for ci, clip in enumerate(clips):
@@ -150,12 +180,16 @@ def build_dataset(clips, rng):
                     if fila == 0:
                         X.append(np.empty((bloque, 28), dtype=np.float64))
                         Y.append(np.empty((bloque, 12), dtype=np.float64))
-                    X[-1][fila] = r[0]; Y[-1][fila] = r[1]
+                        O.append(np.empty(bloque, dtype=np.int64))
+                    X[-1][fila] = r[0]; Y[-1][fila] = r[1]; O[-1][fila] = ci
                     usados += 1
     if not usados:
-        return np.array([], dtype=np.float64), np.array([], dtype=np.float64)
+        vacio = (np.array([], dtype=np.float64), np.array([], dtype=np.float64))
+        return vacio + (np.array([], dtype=np.int64),) if con_origen else vacio
     ultimo = (usados - 1) % bloque + 1
-    X[-1] = X[-1][:ultimo]; Y[-1] = Y[-1][:ultimo]
+    X[-1] = X[-1][:ultimo]; Y[-1] = Y[-1][:ultimo]; O[-1] = O[-1][:ultimo]
+    if con_origen:
+        return np.concatenate(X), np.concatenate(Y), np.concatenate(O)
     return np.concatenate(X), np.concatenate(Y)
 
 # ---------------- MLP + Adam (backprop a mano: sin dependencias pesadas) ----------------
@@ -278,45 +312,132 @@ def cargar_datos_rocola(ruta, max_ejemplos=4000000, por_indices=False):
     return crudo[:, :nin], crudo[:, nin:]
 
 
+# ---------------- particiones SIN MEZCLAR canciones ----------------
+# Tres particiones, por GRUPO (cancion, y ademas carpeta/artista cuando se sabe), repartidas ANTES de
+# mirar un solo cuadro:
+#   entrenamiento -> ajusta los pesos
+#   validacion    -> solo elige el mejor checkpoint
+#   prueba        -> solo decide si el modelo se publica; nunca se usa para elegir nada
+# Ningun grupo esta en dos particiones. Si no se sabe de donde viene el material (el rocola_ia_datos.bin
+# de antes, sin rocola_ia_datos.idx), no se inventa: se entrena igual para poder mirar, pero la
+# validacion NO es independiente y el resultado no se publica (codigo 3).
+SALIDA_NO_VERIFICABLE = 3
+
+def _toma(X, pos):
+    return X.seleccionar(pos) if isinstance(X, FilasMapeadas) else X[pos]
+
+def _reparto_legado(n, rng, motivo):
+    """El reparto al azar de siempre, SOLO para poder mirar: marcado como no independiente."""
+    idx = rng.permutation(n)
+    nv = max(100, n // 10)
+    return [idx[2 * nv:], idx[:nv], idx[nv:2 * nv]], {"independiente": False, "motivo": motivo}
+
+def particiones_rocola(ruta, X, nivel="artista", incluir_sin_origen=False):
+    """Reparto del material de la rocola segun su indice de origen. Devuelve (posiciones, informe) o
+    (None, informe) si no hay reparto independiente posible. Las posiciones son indices dentro de X."""
+    import origen_dsee as O
+    filas = X.filas if isinstance(X, FilasMapeadas) else np.arange(len(X), dtype=np.int64)
+    ent, inf = O.lee_indice(O.ruta_indice(ruta), ruta)
+    informe = {"independiente": False, "motivo": "", "indice": inf, "nivel": nivel}
+    if len(ent) == 0:
+        informe["motivo"] = ("rocola_ia_datos.bin sin indice de origen (RIAD v1): no se sabe de que cancion "
+                             "viene cada ejemplo" if not inf["indice"] else "el indice de origen no describe ningun ejemplo valido")
+        return None, informe
+    ini = ent["primero"].astype(np.int64)
+    k = np.searchsorted(ini, filas, side="right") - 1
+    dentro = (k >= 0) & (filas < (ini + ent["cuenta"])[np.maximum(k, 0)])
+    pesos = np.bincount(k[dentro], minlength=len(ent))
+    etiquetas, nivel_usado = O.grupos(ent, nivel)
+    informe["nivel"] = nivel_usado
+    parte, motivo = O.reparte(etiquetas, pesos)
+    if motivo:
+        informe["motivo"] = motivo
+        return None, informe
+    partes, sin = O.filas_de(ent, parte, filas)
+    pos = [np.searchsorted(filas, p) for p in partes]
+    informe["sin_origen"] = int(len(sin))
+    informe["grupos"] = [int(len(np.unique(etiquetas[(parte == p) & (pesos > 0)]))) for p in range(3)]
+    informe["independiente"] = True
+    if incluir_sin_origen and len(sin):
+        pos[0] = np.concatenate([pos[0], np.searchsorted(filas, sin)])
+        informe["independiente"] = False
+        informe["motivo"] = ("se sumaron %d ejemplos sin origen al entrenamiento: podrian ser de canciones "
+                             "que estan en validacion o prueba" % len(sin))
+    return pos, informe
+
+def particiones_por_grupo(claves_trozo, origen_ejemplo, nivel="artista"):
+    """El mismo reparto para trozos de WAV o sinteticos: claves_trozo[i] = (huella del archivo, huella de
+    la carpeta o 0); origen_ejemplo[j] = trozo del que salio el ejemplo j."""
+    import origen_dsee as O
+    tipo = np.dtype([("primero", "<i8"), ("cuenta", "<i4"), ("cancion", "<u8"), ("carpeta", "<u8"), ("artista", "<u8")])
+    unicas = sorted(set(claves_trozo))
+    cual = {c: i for i, c in enumerate(unicas)}
+    ent = np.zeros(len(unicas), dtype=tipo)
+    for c, i in cual.items():
+        ent[i]["cancion"], ent[i]["carpeta"] = c[0], c[1]
+    grupo_trozo = np.array([cual[c] for c in claves_trozo], dtype=np.int64)
+    grupo_ej = grupo_trozo[origen_ejemplo]
+    ent["cuenta"] = np.bincount(grupo_ej, minlength=len(unicas))
+    etiquetas, nivel_usado = O.grupos(ent, nivel)
+    parte, motivo = O.reparte(etiquetas, ent["cuenta"])
+    informe = {"independiente": not motivo, "motivo": motivo, "nivel": nivel_usado}
+    if motivo:
+        return None, informe
+    parte_ej = parte[grupo_ej]
+    informe["grupos"] = [int(len(np.unique(etiquetas[parte == p]))) for p in range(3)]
+    return [np.where(parte_ej == p)[0] for p in range(3)], informe
+
+
 def main():
     rng = np.random.default_rng(20260715)
+    nivel = sys.argv[sys.argv.index("--agrupar") + 1] if "--agrupar" in sys.argv else "artista"
+    if nivel not in ("artista", "carpeta", "cancion"):
+        raise SystemExit("--agrupar admite artista, carpeta o cancion")
+    sin_origen = "--incluir-sin-origen" in sys.argv
     if "--datos" in sys.argv:
         ruta = sys.argv[sys.argv.index("--datos") + 1]
         tope = int(sys.argv[sys.argv.index("--max-ejemplos") + 1]) if "--max-ejemplos" in sys.argv else 4000000
         print("Leyendo el material que junto la rocola:", ruta)
         X, Y = cargar_datos_rocola(ruta, tope, por_indices=True)
         print("  %d ejemplos de %d entradas -> %d salidas" % (X.shape[0], X.shape[1], Y.shape[1]))
-        clips = None
-    elif "--musica" in sys.argv:
-        folder = sys.argv[sys.argv.index("--musica") + 1]
-        nclips = int(sys.argv[sys.argv.index("--clips") + 1]) if "--clips" in sys.argv else 400
-        porarch = int(sys.argv[sys.argv.index("--por_archivo") + 1]) if "--por_archivo" in sys.argv else 0
-        print("Cargando WAVs de:", folder)
-        clips = load_wavs(folder, rng, max_clips=nclips, max_per_file=porarch)
-        if len(clips) < 20:
-            print("Muy pocos WAV 44.1k/16-bit utilizables (%d). Convierte con ffmpeg y reintenta." % len(clips)); return 1
-        print("  %d trozos de musica real" % len(clips))
+        partes, informe = particiones_rocola(ruta, X, nivel, sin_origen)
     else:
-        print("Generando audio SINTETICO variado (prueba de concepto; para produccion usa --musica)...")
-        clips = [synth_clip(rng) for _ in range(320)]
-    if clips is not None:
+        if "--musica" in sys.argv:
+            folder = sys.argv[sys.argv.index("--musica") + 1]
+            nclips = int(sys.argv[sys.argv.index("--clips") + 1]) if "--clips" in sys.argv else 400
+            porarch = int(sys.argv[sys.argv.index("--por_archivo") + 1]) if "--por_archivo" in sys.argv else 0
+            print("Cargando WAVs de:", folder)
+            clips, claves = load_wavs(folder, rng, max_clips=nclips, max_per_file=porarch)
+            if len(set(claves)) < 20:
+                print("Muy pocos WAV 44.1k/16-bit utilizables (%d archivos). Convierte con ffmpeg y reintenta." % len(set(claves))); return 1
+            print("  %d senales de un canal de %d archivos" % (len(clips), len(set(claves))))
+        else:
+            print("Generando audio SINTETICO variado (prueba de concepto; para produccion usa --musica)...")
+            clips = [synth_clip(rng) for _ in range(320)]
+            claves = [(i + 1, 0) for i in range(len(clips))]       # cada trozo sintetico es independiente
         print("Extrayendo pares (forma espectral -> envolvente real)...")
-        X, Y = build_dataset(clips, rng)
+        X, Y, origen = build_dataset(clips, rng, con_origen=True)
         if len(X) == 0:
             print("No se extrajeron ejemplos utilizables; no se guarda ningun modelo.")
             return 1
         print("  %d ejemplos de %d entradas -> %d salidas" % (X.shape[0], X.shape[1], Y.shape[1]))
+        partes, informe = particiones_por_grupo(claves, origen, nivel)
     if len(X) <= 500:
-        print("Se requieren mas de 500 ejemplos: 500 se reservan para validar. No se guarda ningun modelo.")
+        print("Se requieren mas de 500 ejemplos para entrenar, validar y probar. No se guarda ningun modelo.")
         return 1
-    idx = rng.permutation(len(X))
-    nv = max(500, len(X) // 10)
-    if isinstance(X, FilasMapeadas):
-        Xv, Yv = X.seleccionar(idx[:nv]), Y.seleccionar(idx[:nv])
-        X, Y = X.seleccionar(idx[nv:]), Y.seleccionar(idx[nv:])
-    else:
-        X, Y = X[idx], Y[idx]
-        Xv, Yv, X, Y = X[:nv], Y[:nv], X[nv:], Y[nv:]
+    if partes is None:
+        partes, _ = _reparto_legado(len(X), rng, informe["motivo"])
+    tr, va, pr = partes
+    print("  reparto por %s: entrenamiento %d, validacion %d, prueba %d ejemplos%s"
+          % (informe.get("nivel", "?"), len(tr), len(va), len(pr),
+             ("" if "grupos" not in informe else " (%d / %d / %d grupos)" % tuple(informe["grupos"]))))
+    if informe.get("sin_origen"):
+        print("  %d ejemplos sin origen conocido quedan FUERA (no se sabe de que cancion son)" % informe["sin_origen"])
+    if not informe["independiente"]:
+        print("  [!] VALIDACION NO INDEPENDIENTE: " + informe["motivo"] + ". Se entrena para poder mirar, pero no se publicara.")
+    Xtr, Ytr = _toma(X, tr), _toma(Y, tr)
+    Xv, Yv = _toma(X, va), _toma(Y, va)
+    Xp, Yp = _toma(X, pr), _toma(Y, pr)
 
     capas = [28, 48, 48, 12]
     if "--capas" in sys.argv:
@@ -327,20 +448,25 @@ def main():
     if len(capas) - 1 > 8 or max(capas) > 512 or min(capas) < 1:
         raise SystemExit("Demasiado grande para la rocola: maximo 8 capas de pesos y 512 neuronas.")
     print("Entrenando el MLP %s ..." % "->".join(str(c) for c in capas))
-    model = train(Mlp(capas, rng), X, Y, Xv, Yv)
+    model = train(Mlp(capas, rng), Xtr, Ytr, Xv, Yv)      # la validacion SOLO elige el checkpoint
     from calidad_dsee import cuantizar, evaluar, escribir_atomico
     cuantizar(model)
-    accepted, error_red, error_base = evaluar(model, Xv, Yv)
+    _, val_red, val_base = evaluar(model, Xv, Yv)
+    accepted, error_red, error_base = evaluar(model, Xp, Yp)   # la decision, con la particion de PRUEBA
     mse_net, mse_base = error_red.mean(), error_base.mean()
-    print("RESULTADO  mse-valid: red = %.4f  |  curva fija = %.4f  (mejora %.1fx)" % (mse_net, mse_base, mse_base / max(mse_net, 1e-9)))
+    print("VALIDACION (eligio el checkpoint): red = %.4f  |  curva fija = %.4f" % (val_red.mean(), val_base.mean()))
+    print("RESULTADO  mse-prueba: red = %.4f  |  curva fija = %.4f  (mejora %.1fx)" % (mse_net, mse_base, mse_base / max(mse_net, 1e-9)))
 
-    print("  MSE por banda: red", error_red, "| referencia", error_base)
+    print("  MSE por banda (prueba): red", error_red, "| referencia", error_base)
+    if not informe["independiente"]:
+        print("NO se guarda: sin validacion independiente no se puede verificar la mejora. Se conservan modelo y vectores anteriores.")
+        return SALIDA_NO_VERIFICABLE
     if not accepted:
         print("NO se guarda: exige 5% de mejora global y ninguna banda mas de 10% peor. Se conservan modelo y vectores anteriores.")
         return 2
     here = os.path.dirname(os.path.abspath(__file__))
-    P = model.predict(Xv[:24])
-    vectors = "".join(" ".join("%.9g" % v for v in Xv[i]) + " | " + " ".join("%.9g" % v for v in P[i]) + "\n" for i in range(24))
+    P = model.predict(Xp[:24])
+    vectors = "".join(" ".join("%.9g" % v for v in Xp[i]) + " | " + " ".join("%.9g" % v for v in P[i]) + "\n" for i in range(24))
     # Cada archivo se reemplaza atomicamente. No constituyen una transaccion conjunta.
     escribir_atomico(os.path.join(here, "ia_vectores_prueba.txt"), lambda f: f.write(vectors.encode("ascii")))
     export_ria1(model, os.path.join(here, "rocola_ia.bin"))

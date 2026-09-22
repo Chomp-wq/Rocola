@@ -105,6 +105,12 @@ class CalidadDsee(unittest.TestCase):
         for a, b in zip(first, m.W+m.B):
             np.testing.assert_array_equal(a, b)
 
+    @staticmethod
+    def independiente(n=600):
+        # Un reparto por grupos como el que sale de rocola_ia_datos.idx: 400 / 100 / 100.
+        pos = np.arange(n)
+        return [pos[:400], pos[400:500], pos[500:]], {"independiente": True, "motivo": "", "nivel": "cancion"}
+
     def test_rejected_main_preserves_model_and_vectors(self):
         x, y = self.data(600)
         m = trainer.Mlp([28, 12], np.random.default_rng(2))
@@ -118,6 +124,7 @@ class CalidadDsee(unittest.TestCase):
             with mock.patch.object(trainer, "__file__", os.path.join(folder, "entrenar_ia.py")), \
                  mock.patch.object(trainer.sys, "argv", ["entrenar_ia.py", "--datos", "unused"]), \
                  mock.patch.object(trainer, "cargar_datos_rocola", return_value=(x, y)), \
+                 mock.patch.object(trainer, "particiones_rocola", return_value=self.independiente()), \
                  mock.patch.object(trainer, "train", return_value=m), contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(trainer.main(), 2)
             for name in names:
@@ -133,6 +140,7 @@ class CalidadDsee(unittest.TestCase):
             with mock.patch.object(trainer, "__file__", os.path.join(folder, "entrenar_ia.py")), \
                  mock.patch.object(trainer.sys, "argv", ["entrenar_ia.py", "--datos", "unused"]), \
                  mock.patch.object(trainer, "cargar_datos_rocola", return_value=(x, y)), \
+                 mock.patch.object(trainer, "particiones_rocola", return_value=self.independiente()), \
                  mock.patch.object(trainer, "train", return_value=m), contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(trainer.main(), 0)
             with open(os.path.join(folder, "rocola_ia.bin"), "rb") as f:
@@ -144,6 +152,29 @@ class CalidadDsee(unittest.TestCase):
                 inputs, outputs = line.split("|")
                 self.assertEqual(len(inputs.split()), 28)
                 self.assertEqual([float(v) for v in outputs.split()], [0]*12)
+
+    def test_sin_origen_no_publica_aunque_gane(self):
+        # El mismo modelo que se publica arriba, pero con un rocola_ia_datos.bin sin indice de origen:
+        # no se sabe de que cancion es cada ejemplo, asi que la mejora no se puede verificar.
+        x, y = self.data(600)
+        m = trainer.Mlp([28, 12], np.random.default_rng(3))
+        m.W[0][:] = 0
+        m.B[0][:] = 0
+        with tempfile.TemporaryDirectory() as folder:
+            names = ["rocola_ia.bin", "ia_vectores_prueba.txt"]
+            for name in names:
+                with open(os.path.join(folder, name), "wb") as f:
+                    f.write(b"keep")
+            salida = io.StringIO()
+            with mock.patch.object(trainer, "__file__", os.path.join(folder, "entrenar_ia.py")), \
+                 mock.patch.object(trainer.sys, "argv", ["entrenar_ia.py", "--datos", os.path.join(folder, "no.bin")]), \
+                 mock.patch.object(trainer, "cargar_datos_rocola", return_value=(x, y)), \
+                 mock.patch.object(trainer, "train", return_value=m), contextlib.redirect_stdout(salida):
+                self.assertEqual(trainer.main(), trainer.SALIDA_NO_VERIFICABLE)
+            self.assertIn("NO INDEPENDIENTE", salida.getvalue())
+            for name in names:
+                with open(os.path.join(folder, name), "rb") as f:
+                    self.assertEqual(f.read(), b"keep")
 
     def test_validation_does_not_change_normalization(self):
         x = np.arange(20, dtype=float).reshape(4, 5)

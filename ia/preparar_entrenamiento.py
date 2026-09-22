@@ -20,6 +20,7 @@ import sys, os, random, argparse, subprocess, shutil, hashlib
 AQUI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(AQUI, "upscale"))
 from util_audio import FS, leer_wav, acantilado_hz
+from origen_dsee import huella
 
 NOWIN = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 EXTS = (".mp3", ".flac", ".wav", ".m4a", ".ogg", ".wma", ".aac")
@@ -93,6 +94,13 @@ def main():
         if cliff >= MIN_HZ:
             os.replace(tmp, os.path.join(a.destino, nombre))
             hechas.add(nombre); buenas += 1
+            # De que CARPETA de la biblioteca viene (solo su huella, sin la ruta): el entrenador pone las
+            # canciones de un mismo disco en la misma particion, para que validar no sea hacer trampa.
+            try:
+                with open(os.path.join(a.destino, "origen.tsv"), "a", encoding="utf-8") as f:
+                    f.write("%s\t%x\n" % (nombre, huella(os.path.dirname(os.path.abspath(src)))))
+            except OSError:
+                pass
         if vistas % 25 == 0:
             print("  revisadas %d  |  buenas juntadas %d / %d" % (vistas, buenas, a.canciones))
     try: os.remove(tmp)

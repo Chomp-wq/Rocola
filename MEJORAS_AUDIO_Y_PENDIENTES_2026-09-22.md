@@ -24,7 +24,8 @@ desarrollo y medición. La revisión anterior está en REVISION_AUDIO_2026-09-22
 | Escucha A/B, DAC, XP real y CPU antiguo | Pendiente |
 | Sonoridad integrada, true-peak, antialiasing, salidas y continuidad | Pendiente; plan abajo |
 | Paridad del extractor IA (contrato EXTRACTOR=2) | Implementado y probado; ver 1.7 |
-| Validación por canciones, selección contra instalado y publicación conjunta | Pendiente; siguientes entregas |
+| Identidad de origen, particiones por canción y estéreo por canal | Implementado y probado; ver 1.8 |
+| Selección contra el modelo instalado y publicación conjunta | Pendiente; siguientes entregas |
 
 ## 1. Qué se implementó y cómo funciona
 
@@ -206,6 +207,55 @@ Riesgo medido, no comprobado en XP: de 500.721 divisiones hz/binHz de toda la ge
 x87 de un Windows XP de 32 bits. En una misma máquina la cosecha y la reproducción usan el mismo
 código, pero la paridad exacta con Python en XP solo se sabrá corriendo pruebas/iaparidad.cs allí
 (con Python instalado o fijando ROCOLA_TEST_PYTHON).
+
+### 1.8 De qué canción viene cada ejemplo, y particiones que no mezclan (entrega 2)
+
+Archivos: Rocola/Form1.Ia.cs y Form1.Sonido.cs (índice al cosechar), ia/origen_dsee.py (nuevo),
+ia/entrenar_ia.py, ia/entrenar_dsee.py, ia/preparar_entrenamiento.py (HD), pruebas/iaorigen.cs.
+
+rocola_ia_datos.bin (RIAD v1) no cambia: los lectores y ejecutables anteriores siguen funcionando.
+Al lado, la rocola escribe rocola_ia_datos.idx: una entrada de 64 bytes por canción cosechada con
+primer registro, cuenta, versión del extractor, frecuencia, cuadro, canal, huellas FNV-1a de la
+canción (nombre de archivo + duración), de la carpeta y del artista, CRC32 de esos registros y CRC32
+de la propia entrada. Solo huellas: ni rutas ni nombres. El artista queda en 0 («desconocido»): la
+lista de canciones vive en el hilo de la pantalla y no se lee desde el hilo de fondo.
+
+Robustez (nunca atribuir mal; como mucho quedarse «sin origen»):
+- Se escribe después de que los ejemplos llegaron al disco; un apagón entre ambos deja esos
+  ejemplos sin origen.
+- Entrada cortada, con CRC malo, fuera del archivo de datos, que pisa otra o cuyos datos no
+  coinciden con su CRC: se ignora. Si el archivo de datos vuelve a empezar, el índice viejo se
+  aparta como .anterior; un índice ajeno no se toca.
+- Coste medido (Mono, sin disco real): CRC de 0,66 ms por canción del repaso normal y 5 ms por
+  canción a fondo, en el hilo de fondo; más 64 bytes y un vaciado a disco por canción.
+
+Entrenamiento:
+- Grupos por unión de canción, carpeta y artista (--agrupar artista|carpeta|cancion; por defecto
+  artista). Una canción cosechada en dos carpetas une ambas. Si un grupo supera la mitad de los
+  ejemplos se baja de nivel y se informa.
+- Tres particiones por grupo, antes de tomar cuadros: entrenamiento, validación (solo elige el
+  checkpoint) y prueba (solo decide la publicación). Reparto determinista; mínimos de 3 grupos y
+  200 ejemplos en validación y prueba.
+- Sin índice (todo el material juntado hasta ahora) no se inventan grupos: se entrena para poder
+  mirar, se avisa «VALIDACIÓN NO INDEPENDIENTE» y se devuelve el código 3 sin publicar. Lo mismo
+  si se suman ejemplos sin origen con --incluir-sin-origen. entrenar_dsee.py conserva el modelo
+  anterior con el código 3 y reconoce el .idx.
+- WAV: cada canal da sus ejemplos (antes se promediaba L y R y una contrafase L = s, R = −s
+  quedaba en silencio); los canales de un archivo llevan el mismo grupo. preparar_entrenamiento.py
+  deja origen.tsv con la huella de la carpeta de cada WAV. Los trozos se guardan en float32.
+- Memoria: repartir 30.000 filas de un material de 19,2 MB con 3.000 canciones pide 2,5 MB de pico
+  (tracemalloc) y 0,5 s; el material se sigue leyendo por lotes (memmap).
+
+Comprobado (automático): pruebas/iaorigen.cs escribe con el código de la rocola, rompe el índice
+de todas las formas anteriores y lo hace leer al lector Python; se pone roja si la cosecha vuelve
+al guardado sin origen, si el índice viejo no se aparta, si se escribe tras una entrada cortada o
+si el CRC de la entrada se calcula mal. test_origen_dsee (300 repartos al azar sin ningún grupo en
+dos particiones, RIAD v1 sin grupos inventados, memoria) y test_estereo_dsee. De punta a punta con
+material sintético: con índice llega a decidir (en esa prueba rechazó: tres bandas más de 10 %
+peor); sin índice devuelve 3 y deja modelo y vectores intactos.
+
+Pendiente que necesita tus datos: que la rocola nueva coseche con índice (días de uso o una noche
+de repaso a fondo). Con el rocola_ia_datos.bin actual el entrenador se negará a publicar.
 
 ## 2. Comprobaciones y cómo repetirlas
 

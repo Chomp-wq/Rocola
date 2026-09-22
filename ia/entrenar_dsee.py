@@ -9,6 +9,7 @@ Esto es el motor; lo normal es no llamarlo a mano sino ARRASTRAR los archivos so
 QUE HAY QUE TRAERSE DE LA ROCOLA (los dos archivos estan JUNTO a Rocola.exe)
 
     rocola_ia_datos.bin   el material del reconstructor de agudos (lo mas gordo; puede pesar gigas)
+    rocola_ia_datos.idx   de que cancion viene cada ejemplo (pequeno; sin el no se puede validar)
     rocola_eq.txt         la huella tonal de cada cancion, para el EQ automatico (unos pocos MB)
 
 No hace falta traerse nada mas: ni la musica, ni el resto de archivos de la rocola. Se pueden
@@ -57,6 +58,8 @@ def mira_que_es(ruta):
         return "datos_dsee"          # material cosechado del reconstructor
     if cab[:4] == b"RIA1":
         return "modelo"              # un modelo YA entrenado
+    if cab[:4] == b"RIAX":
+        return "indice_dsee"         # de que cancion viene cada ejemplo del material
     # Texto: la huella tonal son lineas "b0;b1;...;corte|ruta"
     try:
         with open(ruta, "r", encoding="utf-8", errors="replace") as f:
@@ -248,6 +251,10 @@ def main(argv):
     for p in datos_eq:
         raya("   [EQ automatico] %-34s %10s   %s canciones medidas"
              % (os.path.basename(p), tam(p), format(cuantas_canciones(p), ",")))
+    for p, que in otros:
+        if que == "indice_dsee":
+            raya("   [origen]        %-34s %10s   de que cancion viene cada ejemplo" % (os.path.basename(p), tam(p)))
+    otros = [(p, q) for p, q in otros if q != "indice_dsee"]
     for p, que in otros[:12]:
         pista = "ya es un modelo entrenado, no material" if que == "modelo" else "no me sirve para entrenar"
         raya("   [ni idea]       %-34s %10s   (%s)" % (os.path.basename(p), tam(p), pista))
@@ -270,6 +277,12 @@ def main(argv):
             raya("  [!] Solo hay %s ejemplos para el reconstructor. Se puede entrenar, pero con tan poco" % format(n, ","))
             raya("      la red aprende de memoria en vez de aprender de verdad. Deja la rocola encendida")
             raya("      unos dias mas, o enciende el REPASO A FONDO en Ctrl+F3 una noche.")
+        idx = mayor[:-4] + ".idx" if mayor.lower().endswith(".bin") else mayor + ".idx"
+        if not os.path.exists(idx):
+            raya()
+            raya("  [!] Junto a %s no esta rocola_ia_datos.idx (de que cancion viene cada ejemplo)." % os.path.basename(mayor))
+            raya("      Sin el se entrena para mirar, pero no se puede validar con canciones que la red no")
+            raya("      haya visto, y el modelo NO se guarda. Las rocolas nuevas lo escriben solas al cosechar.")
         guarda_copia("rocola_ia.bin")
         guarda_copia("ia_vectores_prueba.txt")
         cod = corre(["entrenar_ia.py", "--datos", mayor, "--capas", "28,96,96,12"],
@@ -280,6 +293,13 @@ def main(argv):
             devuelve_copia("rocola_ia.bin")
             devuelve_copia("ia_vectores_prueba.txt")
             faltaron.append("el DSEE no supero el control de calidad: se conserva el modelo anterior; no es un fallo del entrenamiento")
+        elif cod == 3:
+            devuelve_copia("rocola_ia.bin")
+            devuelve_copia("ia_vectores_prueba.txt")
+            faltaron.append("el DSEE no se pudo VERIFICAR: el material no dice de que cancion viene cada ejemplo "
+                            "(falta rocola_ia_datos.idx, o tiene muy pocas canciones), asi que no hay validacion "
+                            "independiente. Se conserva el modelo anterior. Deja que la rocola nueva coseche unos "
+                            "dias (o una noche de REPASO A FONDO) y trae los DOS archivos: .bin e .idx")
         else:
             faltaron.append("el reconstructor de agudos no se pudo entrenar (mira el mensaje de arriba)")
             if devuelve_copia("rocola_ia.bin"):

@@ -710,32 +710,169 @@ namespace Rocola
         // dejarian el archivo de material entrelazado y por tanto inservible. El candado cuesta nada al lado
         // de descomprimir una cancion, que es lo que hace el hilo justo antes de llegar aqui.
         private readonly object iaFileLock = new object();
-        private bool IaAppendPairs(List<float> pairs)
+        // Con el ORIGEN de esos pares (ver IaApuntaOrigen). Sin origen -como la llaman las pruebas de los
+        // carriles- se guarda igual y esos ejemplos quedan "sin origen": nunca se inventa de donde vienen.
+        private bool IaAppendPairs(List<float> pairs) { return IaAppendPairsOrigen(pairs, null); }
+        private bool IaAppendPairsOrigen(List<float> pairs, IaOrigen origen)
         {
             if (pairs == null || pairs.Count < 40 || (pairs.Count % 40) != 0) return false;
             lock (iaFileLock)
-            try
             {
-                string f = IaDataFile();
-                using (FileStream fs = new FileStream(f, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read))
-                using (BinaryReader br = new BinaryReader(fs, Encoding.UTF8, true))
-                using (BinaryWriter bw = new BinaryWriter(fs, Encoding.UTF8, true))
+                long primero; bool nuevo; byte[] raw;
+                try
                 {
-                    if (fs.Length == 0)
-                    { bw.Write((byte)'R'); bw.Write((byte)'I'); bw.Write((byte)'A'); bw.Write((byte)'D'); bw.Write(1); bw.Write(28); bw.Write(12); }
-                    else if (!IaHeaderValida(br)) return false;   // no anexar encima de un archivo ajeno/corrupto
-                    long completos = Math.Max(0, (fs.Length - 16) / 160);
-                    long valido = 16 + completos * 160;
-                    if (fs.Length != valido) fs.SetLength(valido);   // recupera una ultima escritura interrumpida
-                    fs.Position = valido;
-                    for (int i = 0; i < pairs.Count; i++) bw.Write(pairs[i]);
-                    bw.Flush(); fs.Flush();
-                    try { FlushFileBuffers(fs.SafeFileHandle.DangerousGetHandle()); } catch { }
+                    string f = IaDataFile();
+                    using (FileStream fs = new FileStream(f, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read))
+                    using (BinaryReader br = new BinaryReader(fs, Encoding.UTF8, true))
+                    {
+                        nuevo = fs.Length == 0;
+                        if (nuevo)
+                        {
+                            byte[] head = new byte[16];
+                            head[0] = (byte)'R'; head[1] = (byte)'I'; head[2] = (byte)'A'; head[3] = (byte)'D';
+                            Buffer.BlockCopy(BitConverter.GetBytes(1), 0, head, 4, 4);
+                            Buffer.BlockCopy(BitConverter.GetBytes(28), 0, head, 8, 4);
+                            Buffer.BlockCopy(BitConverter.GetBytes(12), 0, head, 12, 4);
+                            fs.Write(head, 0, head.Length);
+                        }
+                        else if (!IaHeaderValida(br)) return false;   // no anexar encima de un archivo ajeno/corrupto
+                        long completos = Math.Max(0, (fs.Length - 16) / 160);
+                        long valido = 16 + completos * 160;
+                        if (fs.Length != valido) fs.SetLength(valido);   // recupera una ultima escritura interrumpida
+                        fs.Position = valido;
+                        // Los mismos bytes que antes (float32 little-endian, uno tras otro), de una sola vez:
+                        // hacen falta enteros para la huella CRC32 del indice de origen.
+                        float[] valores = pairs.ToArray();
+                        raw = new byte[valores.Length * 4];
+                        Buffer.BlockCopy(valores, 0, raw, 0, raw.Length);
+                        fs.Write(raw, 0, raw.Length);
+                        fs.Flush();
+                        try { FlushFileBuffers(fs.SafeFileHandle.DangerousGetHandle()); } catch { }
+                        primero = completos;
+                    }
+                    iaPairsTotal += pairs.Count / 40;
                 }
-                iaPairsTotal += pairs.Count / 40;
+                catch { return false; }
+                if (origen != null) IaApuntaOrigen(primero, pairs.Count / 40, IaCrc32(raw, 0, raw.Length), origen, nuevo);
                 return true;
             }
-            catch { return false; }
+        }
+
+        // ---------- DE QUE CANCION VIENE CADA EJEMPLO: rocola_ia_datos.idx ----------
+        // Para validar la IA de verdad hay que separar por CANCION antes de mirar un solo ejemplo: si cuadros
+        // de la misma cancion caen en entrenamiento y en validacion, la red se "sabe" la respuesta y el
+        // numero de validacion miente. rocola_ia_datos.bin no dice de que cancion viene cada ejemplo, y por
+        // su posicion no se puede adivinar. Asi que al lado se apunta UNA entrada de 64 bytes por cancion
+        // cosechada (lo lee ia/origen_dsee.py):
+        //     0 primer registro (int64)     24 canal                     48 huella del artista (0 = no se sabe)
+        //     8 cuantos registros           28 CRC32 de esos registros   56 reservado
+        //    12 version del extractor       32 huella de la cancion      60 CRC32 de los bytes 0..59
+        //    16 frecuencia   20 cuadro      40 huella de la carpeta
+        // Solo HUELLAS (FNV-1a de 64 bits), ni rutas ni nombres. La cancion es su nombre de archivo mas su
+        // duracion: mover la biblioteca de sitio no la convierte en otra. La carpeta es el "album" tal como lo
+        // arma la rocola. El artista se deja en 0: la lista de canciones vive en el hilo de la pantalla y
+        // leerla desde este hilo no es seguro; mejor "no se sabe" que un dato a medias.
+        //
+        // Se escribe DESPUES de que los ejemplos llegaron al disco. Si se corta la luz entre las dos cosas, esos
+        // ejemplos se quedan sin entrada: "sin origen", que el entrenador no usa para validar. Una entrada a
+        // medias, con su CRC malo o que no cuadra con los datos, se ignora al leer. Nunca se atribuye mal.
+        // Coste: un CRC de lo que ya estaba en memoria y 64 bytes mas por cancion, en el hilo de fondo.
+        private const int IaExtractorVersion = 2;   // la geometria de MakePair (ia/contrato_dsee.py, EXTRACTOR)
+        private string IaIndexFile() { return RutaDatos("rocola_ia_datos.idx"); }
+        private sealed class IaOrigen
+        {
+            public ulong Cancion, Carpeta, Artista;
+            public int Rate, Frame, Canal;
+        }
+        private static IaOrigen IaOrigenDe(string path, double durSec, int rate, int frame, int canal)
+        {
+            IaOrigen o = new IaOrigen();
+            o.Rate = rate; o.Frame = frame; o.Canal = canal;
+            o.Artista = 0;   // no se sabe (ver arriba): 0 es "desconocido", nunca se inventa
+            try
+            {
+                long seg = (long)Math.Round(durSec);
+                o.Cancion = IaHuella(Path.GetFileName(path) + "|" + seg.ToString(CultureInfo.InvariantCulture));
+                string dir = Path.GetDirectoryName(Path.GetFullPath(path));
+                o.Carpeta = string.IsNullOrEmpty(dir) ? 0UL : IaHuella(dir);
+            }
+            catch { return null; }
+            return o;
+        }
+        private static ulong IaHuella(string s)
+        {
+            byte[] b = Encoding.UTF8.GetBytes(s.ToLowerInvariant());
+            ulong h = 14695981039346656037UL;
+            unchecked { for (int i = 0; i < b.Length; i++) { h ^= b[i]; h *= 1099511628211UL; } }
+            return h == 0 ? 1UL : h;
+        }
+        private static uint[] iaCrcTabla;
+        private static uint IaCrc32(byte[] d, int off, int n)
+        {
+            uint[] t = iaCrcTabla;
+            if (t == null)
+            {
+                t = new uint[256];
+                for (uint i = 0; i < 256; i++)
+                {
+                    uint c = i;
+                    for (int k = 0; k < 8; k++) c = ((c & 1) != 0) ? (0xEDB88320u ^ (c >> 1)) : (c >> 1);
+                    t[i] = c;
+                }
+                iaCrcTabla = t;
+            }
+            uint crc = 0xFFFFFFFFu;
+            for (int i = 0; i < n; i++) crc = t[(crc ^ d[off + i]) & 0xFF] ^ (crc >> 8);
+            return crc ^ 0xFFFFFFFFu;
+        }
+        private static void IaPon(byte[] e, int off, long v) { Buffer.BlockCopy(BitConverter.GetBytes(v), 0, e, off, 8); }
+        private static void IaPon(byte[] e, int off, int v) { Buffer.BlockCopy(BitConverter.GetBytes(v), 0, e, off, 4); }
+        private static void IaPon(byte[] e, int off, uint v) { Buffer.BlockCopy(BitConverter.GetBytes(v), 0, e, off, 4); }
+        private static void IaPon(byte[] e, int off, ulong v) { Buffer.BlockCopy(BitConverter.GetBytes(v), 0, e, off, 8); }
+        // Solo se llama con iaFileLock tomado (desde IaAppendPairsOrigen).
+        private void IaApuntaOrigen(long primero, int cuenta, uint crcDatos, IaOrigen o, bool datosNuevos)
+        {
+            try
+            {
+                string idx = IaIndexFile();
+                if (datosNuevos && File.Exists(idx))
+                {
+                    // El archivo de datos empieza de cero: el indice que habia describia OTRO archivo. Se aparta,
+                    // no se borra (son datos del dueno), y se empieza uno nuevo.
+                    string aparte = idx + ".anterior";
+                    if (File.Exists(aparte)) aparte = idx + ".anterior-" + DateTime.UtcNow.Ticks.ToString(CultureInfo.InvariantCulture);
+                    File.Move(idx, aparte);
+                }
+                using (FileStream fs = new FileStream(idx, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read))
+                {
+                    byte[] cab = new byte[16];
+                    if (fs.Length == 0)
+                    {
+                        cab[0] = (byte)'R'; cab[1] = (byte)'I'; cab[2] = (byte)'A'; cab[3] = (byte)'X';
+                        IaPon(cab, 4, 1); IaPon(cab, 8, 64); IaPon(cab, 12, 0);
+                        fs.Write(cab, 0, 16);
+                    }
+                    else
+                    {
+                        // Un archivo que no es un indice nuestro no se toca: esos ejemplos quedan sin origen.
+                        if (fs.Length < 16 || fs.Read(cab, 0, 16) != 16 || cab[0] != (byte)'R' || cab[1] != (byte)'I'
+                            || cab[2] != (byte)'A' || cab[3] != (byte)'X' || BitConverter.ToInt32(cab, 4) != 1
+                            || BitConverter.ToInt32(cab, 8) != 64) return;
+                    }
+                    long enteras = (fs.Length - 16) / 64, valido = 16 + enteras * 64;
+                    if (fs.Length != valido) fs.SetLength(valido);   // una entrada a medias de un apagon
+                    fs.Position = valido;
+                    byte[] e = new byte[64];
+                    IaPon(e, 0, primero); IaPon(e, 8, cuenta); IaPon(e, 12, IaExtractorVersion);
+                    IaPon(e, 16, o.Rate); IaPon(e, 20, o.Frame); IaPon(e, 24, o.Canal); IaPon(e, 28, crcDatos);
+                    IaPon(e, 32, o.Cancion); IaPon(e, 40, o.Carpeta); IaPon(e, 48, o.Artista); IaPon(e, 56, 0);
+                    IaPon(e, 60, IaCrc32(e, 0, 60));
+                    fs.Write(e, 0, 64);
+                    fs.Flush();
+                    try { FlushFileBuffers(fs.SafeFileHandle.DangerousGetHandle()); } catch { }
+                }
+            }
+            catch { }   // sin entrada, esos ejemplos quedan "sin origen": el entrenador no los usa para validar
         }
 
         // ===== Puente con el motor de IA en vivo (carpeta compartida, mismo hash que daemon_ia.py) =====
