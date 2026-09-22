@@ -29,11 +29,68 @@ class Id3Selectivo {
    frames.Invoke(null,new object[]{s,declared,major,flags,actual});Equal(expected,actual);return s.Bytes;
   }
  }
+ static byte[] V1(){
+  byte[] data=new byte[128];Array.Copy(Encoding.ASCII.GetBytes("TAG"),data,3);
+  Array.Copy(Encoding.ASCII.GetBytes("Titulo v1"),0,data,3,9);
+  Array.Copy(Encoding.ASCII.GetBytes("Artista v1"),0,data,33,10);
+  Array.Copy(Encoding.ASCII.GetBytes("Album v1"),0,data,63,8);data[127]=17;return data;
+ }
+ static void SingleHandle(){
+  MethodInfo full=track.GetMethod("ReadId3Stream",F),genre=track.GetMethod("ReadGenreStream",F),v1=track.GetMethod("ReadId3v1Stream",F);
+  foreach(MethodInfo method in new MethodInfo[]{full,genre,v1})
+   Check(!Codigo.Llamadas(method).Contains("FileStream..ctor")&&!Codigo.Nombres(method).Contains("ReadId3"),"Lector de stream reabre archivo");
+  foreach(string method in new string[]{"ReadId3","SoloGenero"}){
+   int opens=0;foreach(string call in Codigo.Llamadas(track.GetMethod(method,F)))if(call=="FileStream..ctor")opens++;
+   Check(opens==1,"Aperturas de archivo en "+method);
+  }
+  int tested=0;
+  // Campos modernos, defaults del nombre y v1: la precedencia no puede cambiar.
+  foreach(int version in new int[]{3,4})foreach(int flags in new int[]{0,128})foreach(int mask in new int[]{0,1,3,7,15})
+  foreach(int cap in new int[]{1,7,4096})foreach(bool defaults in new bool[]{false,true}){
+   List<byte[]> parts=new List<byte[]>();string[] ids={"TIT2","TPE1","TALB","TCON"},names={"Title","Artist","Album","Genre"},values={"Titulo moderno","Artista moderno","Album moderno","Pop"};
+   for(int i=0;i<4;i++)if((mask&(1<<i))!=0)parts.Add(Frame(version,ids[i],Text(0,values[i]),0));
+   parts.Add(new byte[10]);byte[] body=Join(parts.ToArray());
+   byte[] bytes=Join(Encoding.ASCII.GetBytes("ID3"),new byte[]{(byte)version,0,(byte)flags},Number(body.Length,true),body,new byte[160],V1());
+   object t=Empty();track.GetField("Path").SetValue(t,"no-se-debe-abrir-ninguna-ruta.mp3");
+   if(defaults){track.GetField("Title").SetValue(t,"Nombre archivo");track.GetField("Artist").SetValue(t,"Nombre carpeta");}
+   using(CountStream s=new CountStream(bytes,cap)){
+    full.Invoke(null,new object[]{s,t});Check(s.CanRead,"Cierra stream prestado");
+   }
+   string[] expected={"Titulo v1","Artista v1","Album v1","Rock"};
+   if(defaults){expected[0]="Nombre archivo";expected[1]="Nombre carpeta";}
+   for(int i=0;i<4;i++)Check((string)track.GetField(names[i]).GetValue(t)==(((mask&(1<<i))!=0)?values[i]:expected[i]),"Prioridad "+names[i]);
+   object g=Empty();
+   using(CountStream s=new CountStream(bytes,cap)){
+    genre.Invoke(null,new object[]{s,g});Check(s.CanRead,"Genero cierra stream");
+   }
+   Check((string)track.GetField("Genre").GetValue(g)==((mask&8)!=0?"Pop":"Rock"),"Genero v1/v2");
+   tested++;
+  }
+  // Corruptos con v1 util: el lector de genero debe recuperar sin reabrir.
+  byte[][] bad={
+   new byte[160],
+   Join(Encoding.ASCII.GetBytes("ID3"),new byte[]{3,0,0},Number(10000,true),new byte[10]),
+   Join(Encoding.ASCII.GetBytes("ID3"),new byte[]{4,0,64},Number(4,true),Number(100,true)),
+   Join(Encoding.ASCII.GetBytes("ID3"),new byte[]{3,0,0},new byte[]{255,255,255,255})
+  };
+  foreach(byte[] prefix in bad)foreach(int cap in new int[]{1,17,4096}){
+   foreach(MethodInfo method in new MethodInfo[]{full,genre}){
+    object t=Empty();using(CountStream s=new CountStream(Join(prefix,V1()),cap))method.Invoke(null,new object[]{s,t});
+    Check((string)track.GetField("Genre").GetValue(t)=="Rock","Pierde v1 con cabecera corrupta");
+   }tested++;
+  }
+  for(int n=0;n<128;n++){
+   object t=Empty();using(CountStream s=new CountStream(new byte[n],1))v1.Invoke(null,new object[]{s,t});
+   Check((string)track.GetField("Genre").GetValue(t)=="","Inventa v1 corta");tested++;
+  }
+  Console.WriteLine("  OK    "+tested+" casos de un solo stream: prioridad v2/defaults/v1, genero, truncados y lecturas de 1 byte.");
+ }
  static void Main(string[] args){
   Assembly asm=Assembly.LoadFrom(args.Length>0?args[0]:"rocola.exe");
   track=asm.GetType("Rocola.Form1").GetNestedType("Track",F);
   parse=track.GetMethod("ParseId3v2",F,null,new Type[]{typeof(byte[]),typeof(int),typeof(int),typeof(int),track},null);
   frames=track.GetMethod("ReadId3Frames",F);
+  SingleHandle();
   int tested=0;long largest=0;
   foreach(int v in new int[]{3,4})foreach(bool ext in new bool[]{false,true})foreach(int enc in new int[]{0,1,2,3})foreach(byte ff in new byte[]{0,1,2,4,8,32,64,128}){
    byte[] extension=!ext?new byte[0]:v==4?new byte[]{0,0,0,6,1,0}:new byte[]{0,0,0,6,0,0,0,0,0,0};
@@ -72,6 +129,8 @@ class Id3Selectivo {
    byte[] v1=new byte[128];Array.Copy(Encoding.ASCII.GetBytes("TAGTitulo de v1"),v1,15);v1[127]=17;
    File.WriteAllBytes(path,Join(new byte[160],v1));object t=Empty();track.GetField("Path").SetValue(t,path);
    track.GetMethod("EnsureTags").Invoke(t,null);Check((string)track.GetField("Title").GetValue(t)=="Titulo de v1","Perdio v1");
+   Check((string)track.GetMethod("SoloGenero",F).Invoke(null,new object[]{path})=="Rock","SoloGenero pierde v1 real");
+   using(FileStream exclusive=new FileStream(path,FileMode.Open,FileAccess.ReadWrite,FileShare.None))Check(exclusive.Length>0,"Retiene archivo");
    File.Delete(path);track.GetMethod("EnsureTags").Invoke(t,null);Check((string)track.GetField("Title").GetValue(t)=="Titulo de v1","Relee etiquetas cargadas");
   }finally{Directory.Delete(dir,true);}
   Console.WriteLine("  OK    "+tested+" etiquetas equivalentes; APIC de 1 MiB omitido, maximo "+largest+" bytes logicos; lecturas parciales y v1.");

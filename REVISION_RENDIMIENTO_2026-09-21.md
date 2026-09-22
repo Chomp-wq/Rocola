@@ -93,3 +93,20 @@ Verificación de esta continuación:
 - No se modificó el renderizador CPU ni se reemplazaron ejecutables instalados, datos, configuración o modelos.
 
 La barrera de CompleteStartupDataLoad permanece. Esta mejora desplaza preparación fuera de la ventana y elimina el array de líneas, pero no convierte todo el arranque en no bloqueante. Siguen pendientes esa separación y las mediciones físicas en HDD/SSD, CPU antigua y Windows XP.
+
+## Continuación: etiquetas MP3 con una sola apertura
+
+El lector completo y SoloGenero reutilizan el mismo stream para consultar ID3v2 y el fallback ID3v1 del final del archivo. Antes, la falta de algún campo cerraba y reabría el MP3; el caso de desincronización global podía abrir otro lector dentro del lector de género. Ahora cada entrada abre una sola vez y los lectores internos no abren rutas ni retienen el stream.
+
+Las cabeceras y el bloque v1 completan lecturas parciales, en lugar de asumir que una llamada Read entrega todos los bytes pedidos. Se conserva el parser, la prioridad de campos v2/nombre/v1, el límite de 32 MiB, los saltos sobre APIC y la consulta de etiquetas una sola vez por Track. El género sigue recurriendo a v1 cuando la cabecera moderna es inválida.
+
+Verificación:
+
+- 25 baterías por rama y compilaciones GPU/CPU sin advertencias; Rebuild Release aprobado para HD y Modest.
+- 260 casos adicionales: precedencia de campos, v2.3/v2.4, desincronización, v1, cabeceras corruptas, archivos cortos y streams que devuelven un byte por lectura.
+- Siguen pasando las 644 comparaciones previas y el caso APIC de 1 MiB omitido.
+- Inspección de llamadas: una apertura en cada entrada y ninguna reapertura en los lectores internos. Archivo temporal real con v1 y apertura exclusiva posterior para comprobar su liberación.
+- Prueba ampliada contra GPU, CPU y Release en ambas ramas con afinidad de dos hilos. No se modificó el renderizador CPU.
+- No se tocaron música, modelos, configuración ni ejecutables instalados.
+
+EnsureTags sigue siendo síncrono: se quita trabajo redundante, no se promete ausencia total de pausas. No se midió aquí latencia en HDD/SSD físico ni ejecución en Windows XP.

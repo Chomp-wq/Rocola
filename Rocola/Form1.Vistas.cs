@@ -2050,59 +2050,68 @@ namespace Rocola
                 {
                     if (System.IO.Path.GetExtension(path).ToLowerInvariant() != ".mp3") return "";
                     using (FileStream fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 4096))
+                        ReadGenreStream(fs, t);
+                }
+                catch { }
+                return t.Genre ?? "";
+            }
+
+            private static void ReadGenreStream(Stream fs, Track t)
+            {
+                // Si v2 esta truncada/corrupta, intentar v1 sin abrir otro archivo.
+                try
+                {
+                    fs.Position = 0;
+                    byte[] cab = new byte[10];
+                    if (ReadFully(fs, cab, 0, 10) == 10 && cab[0] == (byte)'I' && cab[1] == (byte)'D' && cab[2] == (byte)'3'
+                        && cab[3] >= 3 && cab[3] <= 4)   // 2.2 y versiones futuras tienen otra forma
                     {
-                        byte[] cab = new byte[10];
-                        if (fs.Read(cab, 0, 10) == 10 && cab[0] == (byte)'I' && cab[1] == (byte)'D' && cab[2] == (byte)'3'
-                            && cab[3] >= 3 && cab[3] <= 4)   // 2.2 y versiones futuras tienen otra forma
+                        int major = cab[3];
+                        // En 2.3 la des-sincronizacion cubre el cuerpo entero y cambia sus posiciones.
+                        // Es un caso raro: se usa el lector completo, que la revierte antes de separar marcos.
+                        if (major <= 3 && (cab[5] & 0x80) != 0)
                         {
-                            int major = cab[3];
-                            // En 2.3 la des-sincronizacion cubre el cuerpo entero y cambia sus posiciones.
-                            // Es un caso raro: se usa el lector completo, que la revierte antes de separar marcos.
-                            if (major <= 3 && (cab[5] & 0x80) != 0)
+                            ReadId3Stream(fs, t);
+                            return;
+                        }
+                        long size = SyncSafe4(cab, 6);
+                        long fin = 10 + size;
+                        if (size <= 0 || fin > fs.Length) throw new InvalidDataException("ID3 truncado");
+                        if ((cab[5] & 0x40) != 0)
+                        {
+                            byte[] eh = new byte[4]; if (ReadFully(fs, eh, 0, 4) != 4) throw new EndOfStreamException();
+                            int es = (major >= 4) ? SyncSafe4(eh, 0) : BigEndian4(eh, 0);
+                            long resta = (major >= 4) ? es - 4L : es;
+                            if (es < (major >= 4 ? 6 : 0) || resta < 0 || fs.Position + resta > fin) throw new InvalidDataException("ID3 extendido invalido");
+                            fs.Position += resta;
+                        }
+                        byte[] fh = new byte[10];
+                        while (fs.Position + 10 <= fin)
+                        {
+                            if (ReadFully(fs, fh, 0, 10) != 10) break;
+                            if (fh[0] == 0) break;   // relleno: se acabaron los marcos
+                            int fsz;
+                            if (major >= 4) fsz = SyncSafe4(fh, 4);
+                            else fsz = BigEndian4(fh, 4);
+                            if (fsz <= 0 || fs.Position + fsz > fin) break;
+                            bool esGenero = (fh[0] == (byte)'T' && fh[1] == (byte)'C' && fh[2] == (byte)'O' && fh[3] == (byte)'N');
+                            if (esGenero && fsz <= 4096)
                             {
-                                ReadId3(path, t);
-                                return t.Genre ?? "";
+                                // Se le pasa el marco entero (cabecera incluida) al mismo lector de siempre,
+                                // asi el genero se interpreta exactamente igual que cuando se lee todo.
+                                byte[] uno = new byte[10 + fsz];
+                                Array.Copy(fh, 0, uno, 0, 10);
+                                int leidos = 0, r;
+                                while (leidos < fsz && (r = fs.Read(uno, 10 + leidos, fsz - leidos)) > 0) leidos += r;
+                                ParseId3v2(uno, 10 + leidos, major, cab[5] & 0x80, t);
+                                if (!string.IsNullOrEmpty(t.Genre)) break;
                             }
-                            long size = SyncSafe4(cab, 6);
-                            long fin = 10 + size;
-                            if (size <= 0 || fin > fs.Length) throw new InvalidDataException("ID3 truncado");
-                            if ((cab[5] & 0x40) != 0)
-                            {
-                                byte[] eh = new byte[4]; if (fs.Read(eh, 0, 4) != 4) throw new EndOfStreamException();
-                                int es = (major >= 4) ? SyncSafe4(eh, 0) : BigEndian4(eh, 0);
-                                long resta = (major >= 4) ? es - 4L : es;
-                                if (es < (major >= 4 ? 6 : 0) || resta < 0 || fs.Position + resta > fin) throw new InvalidDataException("ID3 extendido invalido");
-                                fs.Position += resta;
-                            }
-                            byte[] fh = new byte[10];
-                            while (fs.Position + 10 <= fin)
-                            {
-                                if (fs.Read(fh, 0, 10) != 10) break;
-                                if (fh[0] == 0) break;   // relleno: se acabaron los marcos
-                                int fsz;
-                                if (major >= 4) fsz = SyncSafe4(fh, 4);
-                                else fsz = BigEndian4(fh, 4);
-                                if (fsz <= 0 || fs.Position + fsz > fin) break;
-                                bool esGenero = (fh[0] == (byte)'T' && fh[1] == (byte)'C' && fh[2] == (byte)'O' && fh[3] == (byte)'N');
-                                if (esGenero && fsz <= 4096)
-                                {
-                                    // Se le pasa el marco entero (cabecera incluida) al mismo lector de siempre,
-                                    // asi el genero se interpreta exactamente igual que cuando se lee todo.
-                                    byte[] uno = new byte[10 + fsz];
-                                    Array.Copy(fh, 0, uno, 0, 10);
-                                    int leidos = 0, r;
-                                    while (leidos < fsz && (r = fs.Read(uno, 10 + leidos, fsz - leidos)) > 0) leidos += r;
-                                    ParseId3v2(uno, 10 + leidos, major, cab[5] & 0x80, t);
-                                    if (!string.IsNullOrEmpty(t.Genre)) break;
-                                }
-                                else fs.Position += fsz;   // la caratula y lo demas: ni se tocan
-                            }
+                            else fs.Position += fsz;   // la caratula y lo demas: ni se tocan
                         }
                     }
                 }
                 catch { }
-                if (string.IsNullOrEmpty(t.Genre)) { try { ReadId3v1(path, t); } catch { } }
-                return t.Genre ?? "";
+                if (string.IsNullOrEmpty(t.Genre)) { try { ReadId3v1Stream(fs, t); } catch { } }
             }
 
             // Lee el ID3 bajo demanda (una sola vez), sobre todo para el GENERO (color de fondo).
@@ -2118,29 +2127,35 @@ namespace Rocola
             private static void ReadId3(string path, Track t)
             {
                 using (FileStream fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                    ReadId3Stream(fs, t);
+            }
+
+            // Cabecera y etiqueta v1 usan el mismo handle; no reabrir el MP3 al cambiar cancion.
+            private static void ReadId3Stream(Stream fs, Track t)
+            {
+                fs.Position = 0;
+                byte[] header = new byte[10];
+                if (ReadFully(fs, header, 0, 10) == 10 && header[0] == (byte)'I' && header[1] == (byte)'D' && header[2] == (byte)'3'
+                    && header[3] >= 3 && header[3] <= 4)
                 {
-                    byte[] header = new byte[10];
-                    if (fs.Read(header, 0, 10) == 10 && header[0] == (byte)'I' && header[1] == (byte)'D' && header[2] == (byte)'3'
-                        && header[3] >= 3 && header[3] <= 4)
+                    int major = header[3];
+                    int size = SyncSafe4(header, 6);
+                    if (size > 0 && size <= 33554432)   // tope 32MB: un encabezado CORRUPTO puede declarar hasta 256MB y ese new byte[] tumbaria la RAM de la rocola; se cae al ID3v1
                     {
-                        int major = header[3];
-                        int size = SyncSafe4(header, 6);
-                        if (size > 0 && size <= 33554432)   // tope 32MB: un encabezado CORRUPTO puede declarar hasta 256MB y ese new byte[] tumbaria la RAM de la rocola; se cae al ID3v1
+                        int flags = header[5];
+                        if (major <= 3 && (flags & 0x80) != 0)
                         {
-                            int flags = header[5];
-                            if (major <= 3 && (flags & 0x80) != 0)
-                            {
-                                // En 2.3 el escape global cambia posiciones: conservar el lector completo.
-                                byte[] tag = new byte[size];
-                                int read = ReadFully(fs, tag, 0, size);
-                                tag = DeUnsync(tag, 0, read); read = tag.Length; flags &= ~0x80;
-                                ParseId3v2(tag, read, major, flags, t);
-                            }
-                            else ReadId3Frames(fs, size, major, flags, t);
+                            // En 2.3 el escape global cambia posiciones: conservar el lector completo.
+                            byte[] tag = new byte[size];
+                            int read = ReadFully(fs, tag, 0, size);
+                            tag = DeUnsync(tag, 0, read); read = tag.Length; flags &= ~0x80;
+                            ParseId3v2(tag, read, major, flags, t);
                         }
+                        else ReadId3Frames(fs, size, major, flags, t);
                     }
                 }
-                if (string.IsNullOrEmpty(t.Title) || string.IsNullOrEmpty(t.Artist) || string.IsNullOrEmpty(t.Album) || string.IsNullOrEmpty(t.Genre)) ReadId3v1(path, t);
+                if (string.IsNullOrEmpty(t.Title) || string.IsNullOrEmpty(t.Artist) || string.IsNullOrEmpty(t.Album) || string.IsNullOrEmpty(t.Genre))
+                    ReadId3v1Stream(fs, t);
             }
 
             // Lee solo los marcos de texto. Saltar APIC evita leer megabytes de portada al pulsar.
@@ -2263,26 +2278,23 @@ namespace Rocola
                 return result.Trim();
             }
 
-            private static void ReadId3v1(string path, Track t)
+            private static void ReadId3v1Stream(Stream fs, Track t)
             {
-                using (FileStream fs = new FileStream(path, FileMode.Open, FileAccess.Read))
-                {
-                    if (fs.Length < 128) return;
-                    fs.Seek(-128, SeekOrigin.End);
-                    byte[] b = new byte[128];
-                    if (fs.Read(b, 0, 128) != 128) return;
-                    if (!(b[0] == (byte)'T' && b[1] == (byte)'A' && b[2] == (byte)'G')) return;
-                    Encoding latin = Encoding.GetEncoding(28591);
-                    char[] tc = new char[] { '\0', ' ' };
-                    string title = latin.GetString(b, 3, 30).Trim(tc);
-                    string artist = latin.GetString(b, 33, 30).Trim(tc);
-                    string album = latin.GetString(b, 63, 30).Trim(tc);
-                    if (string.IsNullOrEmpty(t.Title) && title.Length > 0) t.Title = title;
-                    if (string.IsNullOrEmpty(t.Artist) && artist.Length > 0) t.Artist = artist;
-                    if (string.IsNullOrEmpty(t.Album) && album.Length > 0) t.Album = album;
-                    int gi = b[127];
-                    if (string.IsNullOrEmpty(t.Genre) && gi >= 0 && gi < Id3v1Genres.Length) t.Genre = Id3v1Genres[gi];
-                }
+                if (fs.Length < 128) return;
+                fs.Seek(-128, SeekOrigin.End);
+                byte[] b = new byte[128];
+                if (ReadFully(fs, b, 0, 128) != 128) return;
+                if (!(b[0] == (byte)'T' && b[1] == (byte)'A' && b[2] == (byte)'G')) return;
+                Encoding latin = Encoding.GetEncoding(28591);
+                char[] tc = new char[] { '\0', ' ' };
+                string title = latin.GetString(b, 3, 30).Trim(tc);
+                string artist = latin.GetString(b, 33, 30).Trim(tc);
+                string album = latin.GetString(b, 63, 30).Trim(tc);
+                if (string.IsNullOrEmpty(t.Title) && title.Length > 0) t.Title = title;
+                if (string.IsNullOrEmpty(t.Artist) && artist.Length > 0) t.Artist = artist;
+                if (string.IsNullOrEmpty(t.Album) && album.Length > 0) t.Album = album;
+                int gi = b[127];
+                if (string.IsNullOrEmpty(t.Genre) && gi >= 0 && gi < Id3v1Genres.Length) t.Genre = Id3v1Genres[gi];
             }
         }
     }
