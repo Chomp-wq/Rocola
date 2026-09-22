@@ -53,13 +53,13 @@ namespace Rocola
         // de abrir la biblioteca; mientras BuildUi/modelos/config trabajan, este hilo lee y parsea.
         private sealed class StartupData
         {
-            public readonly Dictionary<string, float> Loud = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
-            public readonly Dictionary<string, float> Dur = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
-            public readonly Dictionary<string, float> Fast = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
-            public readonly Dictionary<string, float[]> Eq = new Dictionary<string, float[]>(StringComparer.OrdinalIgnoreCase);
-            public readonly Dictionary<string, int> Ia = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-            public readonly HashSet<string> Deep = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            public readonly HashSet<string> Incompatible = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            public Dictionary<string, float> Loud = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
+            public Dictionary<string, float> Dur = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
+            public Dictionary<string, float> Fast = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
+            public Dictionary<string, float[]> Eq = new Dictionary<string, float[]>(StringComparer.OrdinalIgnoreCase);
+            public Dictionary<string, int> Ia = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            public HashSet<string> Deep = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            public HashSet<string> Incompatible = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             public int EqVersion, Healthy;
             public float[] Average;
             public bool OnlyHealthy;
@@ -77,20 +77,86 @@ namespace Rocola
         {
             if (load.Cancelled) return null;
             StartupData data = new StartupData();
-            ReadLoudCache(load.Paths[0], data.Loud, data.Dur);
+            for (int table = 0; table < 6; table++)
+            {
+                if (load.Cancelled) return null;
+                try
+                {
+                    // Un solo lector secuencial: no multiplicar accesos al HDD ni trabajadores en 2C.
+                    using (FileStream stream = new FileStream(load.Paths[table], FileMode.Open, FileAccess.Read,
+                        FileShare.Read, 65536, FileOptions.SequentialScan))
+                    using (StartupTextReader reader = new StartupTextReader(new StreamReader(stream), load))
+                        ReadStartupTableRecords(reader, table, data);
+                }
+                catch (OperationCanceledException) { return null; }
+                catch { }   // archivo opcional ausente/ilegible: conserva esa tabla vacia, nunca parcial
+            }
             if (load.Cancelled) return null;
-            ReadEqCache(load.Paths[1], data.Eq, ref data.EqVersion);
             ComputeEqAverage(data.Eq, ref data.Average, ref data.Healthy, ref data.OnlyHealthy);
-            if (load.Cancelled) return null;
-            ReadIaDone(load.Paths[2], data.Ia);
-            if (load.Cancelled) return null;
-            // Aceptar marcas solo contra las medidas de ESTA instantanea.
-            ReadDeepDone(load.Paths[3], data.Deep, data.Loud, data.Dur, data.Eq);
-            if (load.Cancelled) return null;
-            ReadDurFast(load.Paths[4], data.Fast);
-            if (load.Cancelled) return null;
-            ReadIncompatible(load.Paths[5], data.Incompatible);
             return load.Cancelled ? null : data;
+        }
+
+        // Cada parser llena una tabla privada. Solo al llegar a EOF se adopta su referencia:
+        // evita duplicar todos los buckets/entries y recorrerlos de nuevo durante el arranque.
+        // Los lectores usados sobre tablas vivas conservan su publicacion transaccional original.
+        private static void ReadStartupTableRecords(TextReader reader, int table, StartupData data)
+        {
+            switch (table)
+            {
+                case 0:
+                    Dictionary<string, float> loud = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
+                    Dictionary<string, float> dur = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
+                    FillLoudCacheRecords(reader, loud, dur);
+                    data.Loud = loud; data.Dur = dur;
+                    break;
+                case 1:
+                    Dictionary<string, float[]> eq = new Dictionary<string, float[]>(StringComparer.OrdinalIgnoreCase);
+                    int version = FillEqCacheRecords(reader, eq);
+                    data.Eq = eq; data.EqVersion = version;
+                    break;
+                case 2:
+                    Dictionary<string, int> ia = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                    FillIaDoneRecords(reader, ia, null);
+                    data.Ia = ia;
+                    break;
+                case 3:
+                    HashSet<string> deep = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    // Solo aceptar marcas contra las medidas de ESTA instantanea.
+                    FillDeepDoneRecords(reader, deep, data.Loud, data.Dur, data.Eq);
+                    data.Deep = deep;
+                    break;
+                case 4:
+                    Dictionary<string, float> fast = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
+                    FillDurFastRecords(reader, fast);
+                    data.Fast = fast;
+                    break;
+                case 5:
+                    HashSet<string> incompatible = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    FillIncompatibleRecords(reader, incompatible);
+                    data.Incompatible = incompatible;
+                    break;
+                default: throw new ArgumentOutOfRangeException("table");
+            }
+        }
+
+        private sealed class StartupTextReader : TextReader
+        {
+            private readonly TextReader inner;
+            private readonly StartupLoad load;
+            public StartupTextReader(TextReader inner, StartupLoad load) { this.inner = inner; this.load = load; }
+            public override string ReadLine()
+            {
+                // Cancelar entre registros, no solo despues de un archivo potencialmente enorme.
+                if (load.Cancelled) throw new OperationCanceledException();
+                string line = inner.ReadLine();
+                if (load.Cancelled) throw new OperationCanceledException();
+                return line;
+            }
+            protected override void Dispose(bool disposing)
+            {
+                try { if (disposing) inner.Dispose(); }
+                finally { base.Dispose(disposing); }
+            }
         }
 
         private static StartupLoad CreateStartupLoad(string[] paths)
@@ -675,6 +741,14 @@ namespace Rocola
         private static void ReadEqCacheRecords(TextReader reader, Dictionary<string, float[]> eqCache, ref int eqCacheVer)
         {
             Dictionary<string, float[]> pending = new Dictionary<string, float[]>(eqCache.Comparer);
+            int updates = FillEqCacheRecords(reader, pending);
+            foreach (KeyValuePair<string, float[]> item in pending) eqCache[item.Key] = item.Value;
+            eqCacheVer += updates;
+        }
+
+        // Solo para una tabla privada que todavia no se ha publicado.
+        private static int FillEqCacheRecords(TextReader reader, Dictionary<string, float[]> pending)
+        {
             int updates = 0;
             string line;
             while ((line = reader.ReadLine()) != null)
@@ -684,8 +758,7 @@ namespace Rocola
                 float[] c = ReadEqValues(line, bar);
                 if (c != null) { pending[Pool(line.Substring(bar + 1))] = c; updates++; }
             }
-            foreach (KeyValuePair<string, float[]> item in pending) eqCache[item.Key] = item.Value;
-            eqCacheVer += updates;
+            return updates;
         }
 
         private static float[] ReadEqValues(string line, int bar)

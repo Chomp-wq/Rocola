@@ -58,3 +58,20 @@ Verificación de esta continuación:
 - La nueva batería pasa también contra Release con afinidad de dos hilos. No es una prueba en CPU antiguo ni XP real.
 
 Elimina una lectura grande evitable al elegir canción; EnsureTags aún es síncrono. CompleteStartupDataLoad sigue esperando a las tablas y conserva el orden de restauración. No se presenta esta mejora como arranque totalmente asíncrono ni como latencia/FPS medidos en HDD.
+
+## Continuación: tablas de arranque sin duplicar sus índices
+
+Las seis lecturas de datos aprendidos (sonoridad/duración, EQ, cosecha IA, repaso completo, duración rápida e incompatibles) preparan ahora tablas privadas y adoptan sus referencias solo al terminar cada archivo. Se elimina el segundo diccionario/conjunto poblado y su recorrido de copia durante el arranque. Los lectores que mezclan datos con tablas ya existentes conservan la publicación transaccional; se comparte el parser para evitar diferencias de formatos, duplicados o niveles de IA.
+
+Se utiliza un único lector secuencial con búfer de 64 KiB y el mismo trabajador de prioridad baja: no se añaden hilos ni límites para máquinas potentes. La cancelación se revisa antes y después de cada registro, no solo al terminar cada archivo. Es cooperativa: no interrumpe una lectura del sistema operativo ya bloqueada ni garantiza cierre instantáneo.
+
+Verificación:
+
+- 24 baterías C# por rama; compilaciones GPU/CPU y Rebuild Release sin advertencias. No se modificó el renderizador CPU.
+- Nueva batería: equivalencia de las seis tablas, formatos viejos, duplicados, marcas completas validadas contra sus medidas, fallos de lectura sin publicación parcial, cancelación, archivos UTF-8 con BOM, archivos ausentes, copia de las rutas del trabajador y liberación de lectores.
+- Prueba sintética de 100.000 duraciones: en HD, aproximadamente 33,7 MB asignados con copia frente a 25,2 MB con adopción (unos 8,5 MB menos de asignaciones acumuladas; no es RAM residente ni pico del proceso). No se extrapola a tiempo total de arranque, FPS o HDD físico.
+- La nueva batería también pasa contra ambos Release con afinidad de dos hilos. No equivale a una CPU antigua ni a Windows XP real.
+- Batería adicional de persistencia/apagón aprobada en ambos Release: guardado/copia, recuperación, escrituras concurrentes y raíz desconectada. Se corrigieron dos llamadas de la propia prueba que usaban una variante de Path.Combine no disponible en .NET 3.5.
+- Artefactos en temporales; no se reemplazaron releases, configuración, música ni modelos.
+
+Sigue pendiente el arranque totalmente no bloqueante: CompleteStartupDataLoad conserva su espera y el orden de créditos/cola. Esta tanda reduce trabajo y asignaciones de memoria, pero no adelanta la interacción mientras se recupera el estado.

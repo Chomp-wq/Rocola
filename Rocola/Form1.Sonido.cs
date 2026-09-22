@@ -195,6 +195,13 @@ namespace Rocola
         {
             Dictionary<string, float> pending = new Dictionary<string, float>(loudCache.Comparer);
             Dictionary<string, float> durations = new Dictionary<string, float>(durCache.Comparer);
+            FillLoudCacheRecords(reader, pending, durations);
+            foreach (KeyValuePair<string, float> item in pending) loudCache[item.Key] = item.Value;
+            foreach (KeyValuePair<string, float> item in durations) durCache[item.Key] = item.Value;
+        }
+
+        private static void FillLoudCacheRecords(TextReader reader, Dictionary<string, float> pending, Dictionary<string, float> durations)
+        {
             string line;
             while ((line = reader.ReadLine()) != null)
             {
@@ -216,8 +223,6 @@ namespace Rocola
                 pending[rest] = rms;
                 if (dur > 0.01f) durations[rest] = dur;
             }
-            foreach (KeyValuePair<string, float> item in pending) loudCache[item.Key] = item.Value;
-            foreach (KeyValuePair<string, float> item in durations) durCache[item.Key] = item.Value;
         }
 
         // Guarda la tabla de sonoridades. Para no frenar el cambio de cancion en bibliotecas GRANDES (el archivo
@@ -1047,6 +1052,12 @@ namespace Rocola
         private static void ReadIncompatibleRecords(TextReader reader, HashSet<string> incompatibleLogged)
         {
             HashSet<string> pending = new HashSet<string>(incompatibleLogged.Comparer);
+            FillIncompatibleRecords(reader, pending);
+            foreach (string item in pending) incompatibleLogged.Add(item);
+        }
+
+        private static void FillIncompatibleRecords(TextReader reader, HashSet<string> pending)
+        {
             string line;
             while ((line = reader.ReadLine()) != null)
             {
@@ -1057,7 +1068,6 @@ namespace Rocola
                 p = p.Trim();
                 if (p.Length > 0) pending.Add(Pool(p));
             }
-            foreach (string item in pending) incompatibleLogged.Add(item);
         }
 
         private void Output_PlaybackStopped(object sender, StoppedEventArgs e)

@@ -224,8 +224,8 @@ class Apagon
             try
             {
                 datos.SetValue(null, Dir());
-                string falta = (string)mRaizAusente.Invoke(f, new object[] { Path.Combine(ausente, "Album", "tema.mp3") });
-                string borrada = (string)mRaizAusente.Invoke(f, new object[] { Path.Combine(presente, "Album", "tema.mp3") });
+                string falta = (string)mRaizAusente.Invoke(f, new object[] { Path.Combine(Path.Combine(ausente, "Album"), "tema.mp3") });
+                string borrada = (string)mRaizAusente.Invoke(f, new object[] { Path.Combine(Path.Combine(presente, "Album"), "tema.mp3") });
                 Check(string.Equals(falta, Path.GetFullPath(ausente), StringComparison.OrdinalIgnoreCase),
                       "una seleccion de la raiz desconectada queda pendiente, sin perder su pago");
                 Check(borrada == null, "una seleccion borrada dentro de una raiz presente si se reconoce como perdida");

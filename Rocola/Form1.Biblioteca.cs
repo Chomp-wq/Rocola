@@ -308,6 +308,12 @@ namespace Rocola
         private static void ReadIaDoneRecords(TextReader reader, Dictionary<string, int> iaDone)
         {
             Dictionary<string, int> pending = new Dictionary<string, int>(iaDone.Comparer);
+            FillIaDoneRecords(reader, pending, iaDone);
+            foreach (KeyValuePair<string, int> item in pending) iaDone[item.Key] = item.Value;
+        }
+
+        private static void FillIaDoneRecords(TextReader reader, Dictionary<string, int> pending, Dictionary<string, int> iaDone)
+        {
             string line;
             while ((line = reader.ReadLine()) != null)
             {
@@ -319,10 +325,9 @@ namespace Rocola
                 // valor y no la posicion. Asi un archivo escrito a medias o desordenado no puede hacer
                 // que se vuelva a cosechar algo ya cosechado.
                 r = Pool(r);
-                int ant; if ((pending.TryGetValue(r, out ant) || iaDone.TryGetValue(r, out ant)) && IaRango(ant) >= IaRango(niv)) continue;
+                int ant; if ((pending.TryGetValue(r, out ant) || (iaDone != null && iaDone.TryGetValue(r, out ant))) && IaRango(ant) >= IaRango(niv)) continue;
                 pending[r] = niv;
             }
-            foreach (KeyValuePair<string, int> item in pending) iaDone[item.Key] = item.Value;
         }
         // Apunta que de esta cancion ya se cosecho hasta "nivel". false si ya estaba en ese nivel o mas.
         private bool MarkIaDone(string path, int nivel)
@@ -389,6 +394,12 @@ namespace Rocola
         private static void ReadDeepDoneRecords(TextReader reader, HashSet<string> deepDone, Dictionary<string, float> loudCache, Dictionary<string, float> durCache, Dictionary<string, float[]> eqCache)
         {
             HashSet<string> pending = new HashSet<string>(deepDone.Comparer);
+            FillDeepDoneRecords(reader, pending, loudCache, durCache, eqCache);
+            foreach (string item in pending) deepDone.Add(item);
+        }
+
+        private static void FillDeepDoneRecords(TextReader reader, HashSet<string> pending, Dictionary<string, float> loudCache, Dictionary<string, float> durCache, Dictionary<string, float[]> eqCache)
+        {
             string line;
             while ((line = reader.ReadLine()) != null)
             {
@@ -400,7 +411,6 @@ namespace Rocola
                            && (EsVideo(r) || eqCache.ContainsKey(r));
                 if (medida) pending.Add(r);
             }
-            foreach (string item in pending) deepDone.Add(item);
         }
         private void MarkDeepDone(string path)
         {
@@ -459,6 +469,12 @@ namespace Rocola
         private static void ReadDurFastRecords(TextReader reader, Dictionary<string, float> durFast)
         {
             Dictionary<string, float> pending = new Dictionary<string, float>(durFast.Comparer);
+            FillDurFastRecords(reader, pending);
+            foreach (KeyValuePair<string, float> item in pending) durFast[item.Key] = item.Value;
+        }
+
+        private static void FillDurFastRecords(TextReader reader, Dictionary<string, float> pending)
+        {
             string line;
             while ((line = reader.ReadLine()) != null)
             {
@@ -468,7 +484,6 @@ namespace Rocola
                 if (!float.TryParse(line.Substring(0, bar), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out d) || d <= 0.01f) continue;
                 pending[Pool(line.Substring(bar + 1))] = d;
             }
-            foreach (KeyValuePair<string, float> item in pending) durFast[item.Key] = item.Value;
         }
         private void SaveDurFast()
         {
