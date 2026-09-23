@@ -1836,8 +1836,8 @@ namespace Rocola
         // se hereda de la fuente (suena natural, no metalico). Archivos ya completos (WAV / 320kbps, corte
         // >= ~19.3 kHz) pasan INTACTOS: sin acantilado no se toca ni un bin. Costo: ~3-5% de CPU (4 FFT de
         // 2048 por ciclo de ~23ms en estereo); por eso SOLO se ofrece si la maquina cumple requisitos
-        // (ProbeAudioTier). Active se alterna EN VIVO desde Ctrl+F3 para comparar A/B (al alternar hay un
-        // microcorte de ~46ms: es el colchon del STFT llenandose; normal y esperado).
+        // (ProbeAudioTier). Active se alterna EN VIVO desde Ctrl+F3 para comparar A/B: la banda recreada entra y
+        // sale con un fundido corto y no se pierde ni se repite ninguna muestra (ver los campos de abajo).
         private sealed class SpectralTap : NAudio.Wave.ISampleProvider
         {
             private readonly int Frame, Hop;   // 2048 normal; 4096 en NIVEL HD (bins mas finos = deteccion y costura mas limpias)
@@ -1845,7 +1845,26 @@ namespace Rocola
             private readonly int ch, rate;
             private readonly float binHz;
             public volatile bool Active;                   // false = pase directo (costo ~cero)
-            private bool wasActive;                        // para reiniciar el colchon al alternar (A/B)
+            // ENCENDER Y APAGAR EN VIVO SIN SALTOS (Ctrl+F3, A/B). Antes, al alternar se tiraba el colchon del
+            // STFT: al APAGARLO se perdian de golpe los 23-93 ms de musica que ya se habian leido (un salto
+            // hacia delante con chasquido) y al ENCENDERLO la banda recreada entraba de golpe. Ahora:
+            //  - la banda recreada entra y sale con un fundido de ~100 ms, y nunca en menos de 4 ventanas (con las
+            //    de 4096 del nivel HD, 171-186 ms); va por ventana y el solape lo suaviza;
+            //  - al apagar, el STFT sigue hasta que el fundido llega a cero; entonces se entrega lo que ya
+            //    estaba leido, tal cual, y se sigue en pase directo: no se pierde ni se repite ni una muestra;
+            //  - al empezar la cancion NO hay fundido: si empieza encendido, reconstruye desde la primera muestra.
+            private bool stft;                             // el STFT esta en marcha (encendido, o apagandose)
+            private bool arrancado;                        // ya se leyo algo: la primera lectura no hace fundido
+            private bool saliendo; private int saleIdx;    // apagado del todo: entregando lo ya leido, tal cual
+            private float regen = 1f, regenObjetivo = 1f;  // cuanto de la banda recreada entra (0..1) y hacia donde va;
+                                                           // 1 si nadie lo toca (el analizador de la cosecha no lee)
+            private float pasoRegen;                       // cuanto cambia por ventana (~100 ms; al menos 4 ventanas)
+            private bool ultimoCero;                       // la ultima ventana no recreo nada: se puede salir sin salto
+            // CUADROS PARTIDOS. Si una lectura trae un cuadro a medias, lo que sobra espera al principio de 'inter'
+            // (restoN muestras) y se completa con la siguiente; antes se tiraba y los canales quedaban cruzados el
+            // resto de la cancion. (Arrancar el STFT a media trama no hace falta evitarlo: trata igual a todos los
+            // canales y devuelve cada muestra a su sitio; solo cambiaria cual llama canal 0.)
+            private int restoN;
             private bool firstFrame, detectPair;
             private readonly float[][] inBuf, outAcc;      // por canal: ventana de entrada y acumulador de solape
             private int fill;                              // muestras acumuladas (por canal) en inBuf
@@ -1890,17 +1909,16 @@ namespace Rocola
             public int Read(float[] buffer, int offset, int count)
             {
                 bool act = Active;
-                if (act != wasActive)   // alternado en vivo: reinicia el colchon (microcorte de ~46ms) y sigue
+                if (!arrancado)
                 {
-                    wasActive = act;
-                    // Un Hop de ceros ANTES del audio completa el solape inicial. Se procesa,
-                    // pero no se entrega: la muestra 0 real conserva sus dos ventanas y su ataque.
-                    fill = Hop; firstFrame = true; qHead = 0; qLen = 0;
-                    srcEnded = false; sourceFrames = 0; emittedFrames = 0;
-                    for (int c = 0; c < ch; c++)
-                    { Array.Clear(outAcc[c], 0, Frame); Array.Clear(inBuf[c], 0, Frame); }
+                    arrancado = true;
+                    pasoRegen = Math.Min(0.25f, Hop / (0.1f * rate));   // ~100 ms de fundido, y nunca menos de 4 ventanas
+                    regen = act ? 1f : 0f;                         // al empezar la cancion, tal cual: sin fundido
+                    if (act) EmpiezaStft();
                 }
-                if (!act) return src.Read(buffer, offset, count);   // pase directo
+                else if (act && !stft) { regen = 0f; EmpiezaStft(); }   // encendido a media cancion: entra con fundido
+                regenObjetivo = act ? 1f : 0f;
+                if (!stft) return src.Read(buffer, offset, count);   // pase directo
 
                 int written = 0;
                 while (written < count)
@@ -1931,6 +1949,23 @@ namespace Rocola
                         qLen -= take; written += take;
                         continue;
                     }
+                    if (saliendo)
+                    {
+                        // Lo que ya estaba leido del origen y aun no salio, tal cual (el fundido ya llego a cero, asi
+                        // que la reconstruccion de esas muestras seria ellas mismas). Despues, pase directo.
+                        int enBuf = fill * ch, total = enBuf + restoN;
+                        while (written < count && saleIdx < total)
+                        {
+                            buffer[offset + written] = saleIdx < enBuf ? inBuf[saleIdx % ch][saleIdx / ch] : inter[saleIdx - enBuf];
+                            saleIdx++; written++;
+                        }
+                        if (saleIdx < total) break;
+                        saliendo = false; stft = false; restoN = 0;
+                        if (written < count) { int d = src.Read(buffer, offset + written, count - written); if (d > 0) written += d; }
+                        break;
+                    }
+                    if (!srcEnded && regenObjetivo <= 0f && regen <= 0f && ultimoCero)
+                    { saliendo = true; saleIdx = 0; continue; }       // apagado y ya sin nada recreado: salir sin salto
                     if (srcEnded)
                     {
                         long quedan = sourceFrames - emittedFrames;
@@ -1940,14 +1975,15 @@ namespace Rocola
                         ProcessFrame((int)Math.Min((long)Hop, quedan));
                         continue;
                     }
-                    int need = (Frame - fill) * ch;                  // llenar la ventana de analisis
-                    if (need > inter.Length) need = inter.Length;
-                    int got = src.Read(inter, 0, need);
+                    int need = (Frame - fill) * ch - restoN;         // llenar la ventana de analisis
+                    if (need > inter.Length - restoN) need = inter.Length - restoN;
+                    int got = src.Read(inter, restoN, need);
                     if (got <= 0)
                     {
-                        srcEnded = true;
+                        srcEnded = true;                              // un cuadro que quedo a medias al final no se completa
                         continue;
                     }
+                    got += restoN;
                     int frames = got / ch;
                     sourceFrames += frames;
                     if (ch == 2)
@@ -1959,10 +1995,24 @@ namespace Rocola
                     else
                         for (int f = 0; f < frames; f++)
                             for (int c = 0; c < ch; c++) inBuf[c][fill + f] = inter[f * ch + c];
+                    restoN = got - frames * ch;                       // lo que sobra de un cuadro partido: al principio
+                    for (int k = 0; k < restoN; k++) inter[k] = inter[frames * ch + k];
                     fill += frames;
                     if (fill >= Frame) ProcessFrame(Hop);
                 }
                 return written;
+            }
+
+            // Pone el STFT en marcha desde donde va el origen. Un Hop de ceros ANTES del audio completa el solape
+            // inicial: se procesa, pero no se entrega, y la primera muestra real conserva sus dos ventanas y su
+            // ataque. No se pierde ni se repite nada: lo que sale sigue justo donde iba el pase directo.
+            private void EmpiezaStft()
+            {
+                stft = true; saliendo = false; ultimoCero = false; restoN = 0;
+                fill = Hop; firstFrame = true; qHead = 0; qLen = 0;
+                srcEnded = false; sourceFrames = 0; emittedFrames = 0;
+                for (int c = 0; c < ch; c++)
+                { Array.Clear(outAcc[c], 0, Frame); Array.Clear(inBuf[c], 0, Frame); }
             }
 
             // Procesa UNA ventana completa: FFT -> (detector + regeneracion) -> iFFT -> solape-y-suma.
@@ -2053,6 +2103,11 @@ namespace Rocola
             // Con un numero impar de canales, el que sobra va por el camino de siempre.
             private void ProcessFrame(int emitFrames)
             {
+                if (!firstFrame)   // la ventana de arranque no recrea nada: no gasta un paso del fundido
+                {
+                    if (regen < regenObjetivo) regen = Math.Min(regenObjetivo, regen + pasoRegen);
+                    else if (regen > regenObjetivo) regen = Math.Max(regenObjetivo, regen - pasoRegen);
+                }
                 int cn = 0;
                 for (; cn + 1 < ch; cn += 2)
                 {
@@ -2060,7 +2115,11 @@ namespace Rocola
                     for (int i = 0; i < Frame; i++) { float w = win[i]; re[i] = x0[i] * w; im[i] = x1[i] * w; }
                     Fft(false);
                     SeparaCanales();             // re/im = espectro del canal par ; reB/imB = el del impar
-                    if (cn == 0)
+                    // La ventana de arranque (media ventana de ceros y media de musica) NO mide el acantilado: el
+                    // salto de cero a musica en su centro salpica energia hasta 20 kHz y la daba por "completa";
+                    // la reconstruccion no empezaba hasta que esa medida falsa se diluia (cientos de ms) y entonces
+                    // aparecia de golpe. Se mide desde la primera ventana de musica entera.
+                    if (cn == 0 && !firstFrame)
                     {
                         // Potencia de AMBOS canales ya separados; no mezclar las ondas
                         // (los agudos en contrafase se cancelarian). Sin FFT adicionales.
@@ -2079,7 +2138,7 @@ namespace Rocola
                     float[] xin = inBuf[cn];
                     for (int i = 0; i < Frame; i++) { re[i] = xin[i] * win[i]; im[i] = 0f; }
                     Fft(false);
-                    if (cn == 0) DetectCliff();
+                    if (cn == 0 && !firstFrame) DetectCliff();   // la ventana de arranque no mide (ver arriba)
                     Regenerate();
                     Fft(true);
                     float[] acc = outAcc[cn];
@@ -2097,6 +2156,7 @@ namespace Rocola
                     Array.Copy(inBuf[c], Hop, inBuf[c], 0, Frame - Hop);
                 }
                 fill = Frame - Hop;
+                ultimoCero = regen <= 0f;
             }
 
             // Desenreda los dos espectros que vienen dentro de una sola FFT. Se apoya en que el espectro de una
@@ -2179,6 +2239,7 @@ namespace Rocola
             private void Regenerate()
             {
                 if (cutHz <= 0f || cutHz >= 19300f) return;      // sin medida aun, o archivo ya completo
+                if (regen <= 0f) return;                          // apagandose y ya en cero: la ventana sale tal cual
                 int ny = Frame / 2;
                 int cut = (int)(cutHz / binHz);
                 if (cut < 64) return;                             // corte absurdamente bajo: no inventar tanto
@@ -2199,7 +2260,8 @@ namespace Rocola
                 for (int t = cut; t <= topBin; t++)
                 {
                     int s = t >> 1;                               // fuente: una octava abajo (siempre < cut: contenido real)
-                    re[t] += re[s] * f; im[t] += im[s] * f;
+                    float fr = f * regen;                         // con el fundido completo (1) es f exacto
+                    re[t] += re[s] * fr; im[t] += im[s] * fr;
                     int m = Frame - t;                            // espejo (frecuencias negativas): la señal sigue siendo real
                     re[m] = re[t]; im[m] = -im[t];
                     f *= step;
@@ -2263,6 +2325,7 @@ namespace Rocola
                     float yj = iaOut[j]; if (yj > 0.1f) yj = 0.1f; else if (yj < -4f) yj = -4f;   // tope: nunca mas fuerte que la costura (+~1dB)
                     float sc = (float)Math.Sqrt(seamE * Math.Pow(10.0, yj) / mapped) * 0.9f;      // 0.9 = colchon
                     if (sc > 3f) sc = 3f;
+                    sc *= regen;                                     // fundido al encender/apagar (1 = tal cual)
                     for (int t = a; t < b; t++)
                     {
                         int s = t >> 1;
@@ -2378,6 +2441,15 @@ namespace Rocola
         // armonicos se suman a los dos canales: el grave sale centrado y sin rarezas de fase.
         // Con Amount = 0 devuelve el audio tal cual (costo cero), asi que se deja SIEMPRE en la cadena y se
         // mueve en vivo desde Ctrl+F3 para comparar A/B sin cambiar de cancion.
+        // CAMBIOS EN VIVO SIN ESCALON: antes la mezcla nueva entraba de golpe en el siguiente bloque (un escalon
+        // del grave cada vez que se tocaba la perilla) y, al apagarlo, sus filtros se quedaban congelados: al
+        // volver a encenderlo arrancaba con el estado de hacia minutos. Ahora la mezcla va en rampa de 20 ms
+        // hasta el valor pedido exacto, y una vez usado en la cancion sus filtros siguen la musica aunque este en
+        // cero (sin sumar nada: sale intacto). Si la cancion EMPIEZA en cero, ni se calcula: pase directo. Al
+        // empezar la cancion la mezcla es la pedida desde la primera muestra (sin fundido que debilite el golpe).
+        // El grave de un cuadro se suma al cuadro SIGUIENTE (1 muestra, 23 us: a 320 Hz son 2,6 grados): asi un
+        // cuadro que llega partido entre dos lecturas se completa sin tocar lo ya entregado, y da igual como
+        // lleguen las lecturas; antes suponia cuadros enteros (una muestra suelta se quedaba sin su grave).
         private sealed class DeepBassProvider : NAudio.Wave.ISampleProvider
         {
             private readonly NAudio.Wave.ISampleProvider src;
@@ -2387,6 +2459,11 @@ namespace Rocola
             private float env;                 // energia del grave (ataque rapido, caida lenta)
             private float hpS, lpS;            // banda por donde salen los armonicos
             private readonly float aLow, aHp, aLp, aAtk, aRel;
+            private readonly int rampa;        // cuadros de la rampa de la mezcla (20 ms)
+            private float mix, objetivo, paso; private int quedan;   // mezcla actual, pedida y su rampa
+            private bool empezo, vivo;         // empezo: ya leyo; vivo: sus filtros siguen la musica
+            private int fase; private float suma, hSal;   // cuadro que va llegando: canal, suma mono y lo que se le suma
+            private readonly float[] cuadro;   // para completar un cuadro que llego partido (se reserva al construir)
             public DeepBassProvider(NAudio.Wave.ISampleProvider s, float amount)
             {
                 src = s; ch = Math.Max(1, s.WaveFormat.Channels); Amount = amount;
@@ -2396,6 +2473,8 @@ namespace Rocola
                 aLp = Coef(320f, fs);     // ...a ~320 Hz, donde cualquier bocina responde bien
                 aAtk = Coef(1f / (2f * (float)Math.PI * 0.004f), fs);   // 4 ms: agarra el golpe del bombo
                 aRel = Coef(1f / (2f * (float)Math.PI * 0.150f), fs);   // 150 ms: no bombea
+                rampa = Math.Max(1, (int)(fs * .020));
+                cuadro = new float[ch];
             }
             private static float Coef(float hz, int fs)
             {
@@ -2406,15 +2485,51 @@ namespace Rocola
             public int Read(float[] buffer, int offset, int count)
             {
                 int n = src.Read(buffer, offset, count);
-                float amt = Amount;
-                if (n <= 0 || amt <= 0.001f) return n;   // apagado: pase directo
-                float mix = amt * 0.85f;
-                int end = offset + n - (ch - 1);   // solo cuadros COMPLETOS (si sobra una muestra suelta, pasa tal cual)
-                for (int i = offset; i < end; i += ch)
+                if (n <= 0) return n;
+                float amt = Amount, obj;
+                if (float.IsNaN(amt) || float.IsInfinity(amt)) obj = objetivo;   // un valor roto no mueve nada
+                else obj = amt > 0.001f ? amt * 0.85f : 0f;
+                if (!empezo) { empezo = true; mix = objetivo = obj; }            // al empezar: la pedida, sin rampa
+                else if (obj != objetivo) { objetivo = obj; quedan = rampa; paso = (objetivo - mix) / rampa; }
+                if (!vivo)
                 {
-                    float m = buffer[i];
-                    for (int c = 1; c < ch; c++) m += buffer[i + c];
-                    if (ch > 1) m /= ch;
+                    if (mix == 0f && quedan == 0) return n;   // nunca encendido en esta cancion: pase directo, sin coste
+                    vivo = true;
+                }
+                int i = offset, end = offset + n;
+                // Un cuadro que quedo a medias en la lectura anterior (lecturas que parten cuadros; en la cadena
+                // normal no pasa): se completa, y su suma pasa por la misma cuenta que los cuadros enteros.
+                if (fase != 0)
+                {
+                    int k = Math.Min(ch - fase, n);
+                    for (int c = 0; c < k; c++) { float x = buffer[i + c]; suma = (float)(suma + x); buffer[i + c] = x + hSal; }
+                    i += k; fase += k;
+                    if (fase < ch) return n;
+                    cuadro[0] = suma; for (int c = 1; c < ch; c++) cuadro[c] = 0f;   // su suma, y ceros: la misma cuenta
+                    fase = 0; suma = 0f;
+                    Cuadros(cuadro, 0, 1);
+                }
+                int enteros = (end - i) / ch;
+                Cuadros(buffer, i, enteros);
+                i += enteros * ch;
+                // Lo que sobra de un cuadro partido: recibe el grave del cuadro anterior y espera a la lectura siguiente.
+                for (; i < end; i++) { float x = buffer[i]; suma = (float)(suma + x); buffer[i] = x + hSal; fase++; }
+                return n;
+            }
+            // Cuadros enteros: a cada canal se le suma el grave del cuadro ANTERIOR (0 exacto si esta apagado) y con la
+            // suma de este se calcula el del siguiente. Los redondeos a float son explicitos para que la cuenta sea la
+            // misma se lea como se lea, tambien en el FPU x87 de XP (que si no guarda las variables con mas precision).
+            // Por cuadros y no muestra a muestra: en Mono, la misma cuenta muestra a muestra costaba el doble (33 ns
+            // por muestra frente a 16, lo mismo que antes de esta etapa).
+            private void Cuadros(float[] b, int i, int cuadros)
+            {
+                float mx = mix, hs = hSal; int q = quedan;
+                for (int f = 0; f < cuadros; f++, i += ch)
+                {
+                    float m = b[i];
+                    for (int c = 1; c < ch; c++) m = (float)(m + b[i + c]);
+                    if (ch > 1) m /= ch;                          // antes de sumar el grave: con este orden Mono va el doble de rapido
+                    for (int c = 0; c < ch; c++) b[i + c] += hs;
                     // 1) aislar el grave que la bocina NO puede reproducir
                     lp1 += (m - lp1) * aLow;
                     lp2 += (lp1 - lp2) * aLow;
@@ -2436,10 +2551,11 @@ namespace Rocola
                     }
                     // 4) dejar SOLO la banda que la bocina si da (el paso-alto tambien quita el continuo del x^2)
                     hpS += (h - hpS) * aHp; h -= hpS;
-                    lpS += (h - lpS) * aLp; h = lpS * mix;
-                    for (int c = 0; c < ch; c++) buffer[i + c] += h;   // el mismo grave a los dos canales: centrado
+                    lpS += (h - lpS) * aLp;
+                    if (q > 0) { mx = (float)(mx + paso); if (--q == 0) mx = objetivo; }
+                    hs = (float)(lpS * mx);                   // el mismo grave a todos los canales: centrado
                 }
-                return n;
+                hSal = hs; mix = mx; quedan = q;
             }
         }
 

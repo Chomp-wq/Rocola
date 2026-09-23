@@ -27,7 +27,8 @@ desarrollo y medición. La revisión anterior está en REVISION_AUDIO_2026-09-22
 | Limitador de pico real entre muestras (true-peak) | Implementado y probado, con un límite medido; ver 1.13 |
 | Plegado (aliasing) del realce de agudos: saturación a 2× con el seco alineado | Implementado y probado; ver 1.14 |
 | Plegado del grave sintético | Medido: no hace falta sobremuestrear; ver 1.14 |
-| Transiciones del grave sintético y del DSEE, salidas y continuidad | Pendiente; plan abajo |
+| Transiciones en vivo del grave sintético y del DSEE | Implementado y probado; ver 1.15 |
+| Salidas y continuidad | Pendiente; plan abajo |
 | Paridad del extractor IA (contrato EXTRACTOR=2) | Implementado y probado; ver 1.7 |
 | Identidad de origen, particiones por canción y estéreo por canal | Implementado y probado; ver 1.8 |
 | Selección contra curva e instalado, informe reproducible | Implementado y probado; ver 1.9 |
@@ -625,6 +626,80 @@ coeficientes (un cuarto menos de multiplicaciones; medido en los prototipos: la 
 19 kHz queda igual con el realce de fábrica y hasta 7 dB peor al máximo, y un tono de 20 kHz, 8 dB
 peor), no quitarlo.
 
+### 1.15 Transiciones en vivo del grave sintético y del DSEE (etapa 4 de audio)
+
+Archivos: DeepBassProvider y SpectralTap en Form1.Sonido.cs; pruebas/transiciones.cs (nueva);
+ref_realce.py y realce.cs saben que el grave se suma una muestra después (ver abajo).
+
+Auditoría (lo que había): las rampas de LevelTap (volumen, realce y EQ) no cubrían estos dos:
+- Grave sintético: la mezcla nueva entraba de golpe en el siguiente bloque (un escalón cada vez que se
+  tocaba la perilla). Al ponerlo en cero se saltaba el cálculo y sus filtros se quedaban congelados: al
+  volver a encenderlo arrancaba con el estado de hacía minutos. Además suponía cuadros enteros: una
+  lectura que partiera un cuadro dejaba una muestra sin grave (un chasquido).
+- DSEE: al alternarlo se tiraba su colchón. Al APAGARLO se perdían de golpe los 23 a 93 ms de música
+  que ya había leído (un salto hacia delante, con chasquido). Al ENCENDERLO la banda recreada entraba
+  sin fundido, y la primera ventana (mitad ceros) medía mal el corte: con el salto de cero a música
+  en su centro lo daba por «completo» (20 kHz), la reconstrucción no empezaba hasta que esa medida falsa
+  se diluía (cientos de ms) y entonces aparecía de golpe. Y si una lectura traía un cuadro partido, la
+  muestra que sobraba se tiraba y los canales quedaban cruzados el resto de la canción.
+- El DSEE en vivo no tiene perilla de intensidad: su intensidad efectiva cambia al encenderlo o
+  apagarlo; el realce, que depende de si el DSEE está activo, ya iba en rampa (LevelTap).
+
+Lo que se hizo:
+- Grave: la mezcla va en rampa de 20 ms hasta el valor pedido exacto. Al empezar la canción, la pedida
+  desde la primera muestra (sin fundido que debilite el golpe). Si la canción empieza en cero, ni se
+  calcula (pase directo exacto, 0,2 ns por muestra). Una vez usado, sus filtros siguen la música aunque
+  esté en cero (sin sumar nada: sale intacto bit a bit), así que al volver no trae estado viejo. El grave
+  de un cuadro se suma al cuadro siguiente (una muestra, 23 µs: a 320 Hz son 2,6 grados): así un cuadro
+  que llega partido entre dos lecturas se completa sin tocar lo ya entregado, y da igual cómo lleguen
+  las lecturas. Los redondeos a float son explícitos, para que la cuenta sea la misma también en el FPU
+  x87 de XP. Un valor roto (NaN o infinito) se ignora.
+- DSEE: la banda recreada entra y sale con un fundido por ventana (~100 ms con cuadros de 2048; con los
+  de 4096 del nivel HD, al menos 4 ventanas: 171–186 ms). Al apagarlo, el STFT sigue hasta que el fundido
+  llega a cero; entonces entrega lo que ya había leído, tal cual, y sigue en pase directo: no se pierde
+  ni se repite ninguna muestra. Al encenderlo arranca justo donde iba el pase directo. La ventana de
+  arranque ya no mide el corte ni gasta un paso del fundido. Un cuadro partido espera a completarse con
+  la lectura siguiente. Al empezar la canción no hay fundido.
+
+Comprobado: pruebas/transiciones.cs (70 comprobaciones en HD; 46 en Modest, que solo tiene cuadros de 2048):
+- Grave: empieza en cero = intacto y sin calcular; empieza encendido = mezcla pedida desde la primera
+  muestra; la mezcla, medida desde fuera frente a una corrida fija (en un canal en silencio, donde la
+  salida es exactamente lo agregado), cambia cuadro a cuadro sin pasar de la pendiente de 20 ms
+  (7,7e-4 por cuadro) y llega EXACTA al valor pedido; apagado sale bit a bit intacto; al volver, lo
+  agregado es el grave de verdad por su mezcla (sin estado viejo); cientos de cambios, NaN y lecturas
+  partidas sin nada roto y acabando exacto en el último valor; un NaN o un infinito solos no mueven la
+  mezcla; 47 combinaciones de lecturas (1/2/6 canales, de una muestra, partiendo cuadros) bit a bit
+  iguales; el mismo grave en los seis canales.
+- DSEE, con cuadros de 2048 y 4096, a 44,1 y 48 kHz: empieza encendido sin fundido; apagado a media
+  canción no pierde ni una muestra (por debajo de 8 kHz la salida es la entrada: −138 a −141 dB, puro
+  redondeo) y, acabado el fundido, sale bit a bit la entrada y bit a bit lo mismo que apagándolo de
+  golpe; encendido a media canción: el corte se mide con la primera ventana de música (15,8 kHz con
+  música que corta en 16; antes, la ventana de arranque lo falseaba); antes intacta, después nada
+  repetido ni corrido, fundido paso a paso
+  y en los primeros 40 ms recrea el 6–20 % de lo que recrearía encendido de golpe; acabado el fundido,
+  bit a bit lo mismo; alternado cada 5–65 ms durante 3 s con lecturas que parten cuadros: nada perdido,
+  repetido ni cruzado; la canción puede acabar a media transición; con el encendido fijo, cualquier
+  tamaño de lectura da lo mismo bit a bit. También en mono y con 3 canales (el tercero va solo, fuera de
+  las parejas de la FFT), mirando cada canal. Ni leer ni procesar reservan memoria. Y iaparidad sigue
+  viendo las mismas bandas en RegenNeural: el analizador de la cosecha, que no lee, recrea sin fundido.
+En rojo al romper, una por una: el grave sin rampa, con sus filtros congelados al apagarlo, con fundido al
+empezar la canción, dejando que un NaN mueva la mezcla y perdiendo la suma de un cuadro partido; el DSEE sin volver al pase directo, tirando lo
+ya leído al apagarlo, con el fundido de golpe, tirando el resto de un cuadro partido y midiendo el corte
+en la ventana de arranque. Arrancar el STFT a media trama resultó inofensivo (trata igual a todos los
+canales y devuelve cada muestra a su sitio): no se añadió ninguna guarda para eso.
+
+Coste (Mono): grave apagado desde el principio 0,2 ns por muestra; encendido 14,7 ns (1,3 ms por segundo
+de música estéreo; antes de esta etapa ~16); apagado a media canción, lo mismo que encendido (sigue la
+música). Una primera versión muestra a muestra costaba 33 ns: en Mono, hacer la división de la suma
+DESPUÉS de sumar el grave duplicaba el coste; con el orden cambiado (misma cuenta) quedó en 14,7. El
+DSEE cuesta lo mismo que antes mientras recrea; durante el fundido de salida sigue su STFT (100–186 ms) y
+después vuelve al pase directo. Cadena completa por bloque de 50 ms (atoron.cs, alternando versiones):
+1,23 ms, frente a 1,24–1,25 con la etapa 3: sin coste añadido.
+
+Limitaciones: como antes, en el primer instante de una canción el DSEE necesita una ventana de música
+para medir el corte (23–46 ms), y su interferencia entre ventanas hace que un tono puro recreado varíe
+de nivel entre ventanas (no es de esta entrega). Escucha A/B pendiente.
+
 ## 2. Comprobaciones y cómo repetirlas
 
 En cada repositorio, con sus herramientas de compilación .NET, Python con NumPy y FFmpeg:
@@ -638,8 +713,8 @@ El script:
 
 1. Compila GPU y CPU con advertencias tratadas como errores; ejecuta las 29 baterías
    de validar-capas.ps1. Compilar CPU no significa modificar su renderizado.
-2. Ejecuta quince baterías adicionales: dsee, limite, entrenador, iaparidad, iaorigen, sonoridad,
-   picoreal, realce, eqpreparado, iadatos, eqauto, calidad, nivel, bajoauto y bajo.
+2. Ejecuta dieciséis baterías adicionales: dsee, limite, entrenador, iaparidad, iaorigen, sonoridad,
+   picoreal, realce, transiciones, eqpreparado, iadatos, eqauto, calidad, nivel, bajoauto y bajo.
 3. Ejecuta las pruebas Python de los entrenadores y sus protecciones (test_calidad_dsee,
    test_entrenar_eq, test_contrato_dsee, test_origen_dsee, test_estereo_dsee,
    test_seleccion_dsee y test_publicacion_dsee).
@@ -783,10 +858,10 @@ Dónde: excitador de LevelTap, DeepBassProvider, SbrProvider/SpectralTap y contr
 El grave sintético ya filtra su banda: necesita medición propia, no copiar automáticamente
 el tratamiento del excitador agudo.
 
-Estado (23 de septiembre, etapa 3 de audio, las dos ramas): hechos 1 a 4 y la parte de aliasing del 6
-(ver 1.14): el realce satura a 2× con el seco alineado; el grave, medido, no lo necesita. Queda el 5
-(transiciones del grave sintético y del DSEE, etapa 4), la escucha A/B y medir el coste en XP real y en
-el equipo del bar.
+Estado (23 de septiembre, etapas 3 y 4 de audio, las dos ramas): hechos 1 a 6 (ver 1.14 y 1.15): el
+realce satura a 2× con el seco alineado; el grave, medido, no lo necesita; el grave sintético y el DSEE
+ya cambian en vivo sin escalones ni saltos. Queda la escucha A/B y medir el coste en XP real y en el
+equipo del bar.
 
 ### E. Remuestreo y Apollo — principalmente HD
 

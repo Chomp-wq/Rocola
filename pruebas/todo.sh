@@ -60,7 +60,7 @@ GPU="fondo anim presencia barrido tope calma entrar mover banco paginar ceremoni
 # hace Media Foundation, que llego con Windows Vista. En la rama de XP no hay con que, asi que ni
 # existe la funcion ni se prueba.
 SOLO_HD="mudos"
-CPU="$CPU id3selectivo tablasarranque historialarranque audiosuave audioestereo sonoridad picoreal realce"
+CPU="$CPU id3selectivo tablasarranque historialarranque audiosuave audioestereo sonoridad picoreal realce transiciones"
 GPU="$GPU espacioprecarga estelaestelar estrellaflujo"
 
 # --- Que version de .NET pide este PROYECTO. No se deduce probando compiladores ni depende de que
