@@ -96,15 +96,17 @@ namespace Rocola
         {
             float emphasis=LunaProtagonista ? Math.Max(MoonEmphasis(Dim,true),idleBlend) : 0;
             float diameter=DetailedMoonDiameter(Height,emphasis)*MoonSceneScale(idleBlend,lunaBeat,LunaActiva), radius=diameter*.5f;
-            PointF center=DetailedMoonCenter(Width,Height,moonMotionTime,idleBlend,IdleRise,LunaActiva);
+            PointF center=LunaActiva
+                ? StarTravelCenter(Width,Height,starTravelX,starTravelY,radius,StatusTopY,IdleRise)
+                : DetailedMoonCenter(Width,Height,moonMotionTime,idleBlend,IdleRise,false);
             float cx=center.X, cy=center.Y;
-            cx=Math.Max(radius*2,Math.Min(Width-radius*2,cx));
-            cy=Math.Max(radius*2,Math.Min(StatusTopY-radius*2,cy));
+            cx=Math.Max(radius,Math.Min(Width-radius,cx));
+            cy=Math.Max(radius,Math.Min(StatusTopY-radius,cy));
             float visibility=LunaActiva ? .40f+.60f*idleBlend : .72f+.28f*emphasis;
             DrawLunarDust(cx,cy,radius,visibility,false);
             // La superficie es solida: solo el borde antialias y el halo llevan transparencia.
-            uint color=StarColor();
-            float angle=LunaActiva ? (float)(.08*Math.Sin(moonMotionTime*.31)) : 0;
+            uint color=StarColorAt(cx,cy);
+            float angle=LunaActiva ? (float)((.08+.16*starDrive)*Math.Sin(moonMotionTime*.31)) : 0;
             double now=AhoraMs()/1000.0;
             UpdateStarEchoes(now,cx,cy,radius,angle,color);
             DrawStarEchoes(now);
@@ -113,7 +115,7 @@ namespace Rocola
             stars.DrawQuad(lunaTex,lunaQuad);
             // Punto de luz blanco encima del tinte; la estrella no parece una pegatina plana.
             stars.GlowBatchBegin(1);
-            stars.GlowBatchAdd(cx,cy,radius*.24f,0xDDF1F7FFu);
+            stars.GlowBatchAdd(cx-radius*.73f,cy-radius*.29f,radius*.16f,0xC0F1F7FFu);
             stars.GlowBatchEnd();
             DrawLunarDust(cx,cy,radius,visibility,true);
         }
@@ -121,12 +123,12 @@ namespace Rocola
         {
             if (!PolvoLunar && (front || !HaloLunar)) return;
             stars.GlowBatchBegin(21);
-            uint rgb=StarColor()&0xFFFFFFu;
+            uint rgb=StarColorAt(cx,cy)&0xFFFFFFu;
             if (!front && HaloLunar)
             {
                 float beat=LunaActiva ? lunaBeat*(.15f+.85f*idleBlend) : 0;
                 stars.GlowBatchAdd(cx,cy,radius*(1.9f+beat*.12f),((uint)((50+beat*22)*visibility)<<24)|rgb);
-                stars.GlowBatchAdd(cx-radius*.16f,cy-radius*.06f,radius*1.20f,((uint)(64*visibility)<<24)|0xC9DAFFu);
+                stars.GlowBatchAdd(cx-radius*.16f,cy-radius*.06f,radius*1.20f,((uint)(64*visibility)<<24)|FlowColor(0xC9DAFFu,cx/Math.Max(1,Width),cy/Math.Max(1,Height)));
             }
             if (PolvoLunar)
                 for(int orbit=0;orbit<3;orbit++)
@@ -141,7 +143,8 @@ namespace Rocola
                         float dy=(float)Math.Sin(a)*radius*(.40f+orbit*.09f)-dx*.24f;
                         float size=radius*(tail==0 ? .043f+band*.019f : .025f);
                         uint alpha=(uint)((tail==0 ? 165+band*65 : 58-tail*8)*visibility);
-                        stars.GlowBatchAdd(cx+dx,cy+dy,Math.Max(1,size),(alpha<<24)|0xD5E5FFu);
+                        uint dust=FlowColor(0xD5E5FFu,(cx+dx)/Math.Max(1,Width),(cy+dy)/Math.Max(1,Height));
+                        stars.GlowBatchAdd(cx+dx,cy+dy,Math.Max(1,size),(alpha<<24)|dust);
                     }
                 }
             stars.GlowBatchEnd();

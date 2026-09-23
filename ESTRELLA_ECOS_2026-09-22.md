@@ -1,5 +1,8 @@
 # Estrella reactiva y ecos cromáticos — 22 de septiembre de 2026
 
+Nota: el diseño y los límites descritos aquí son los de la primera versión.
+La actualización vigente es [estrella del icono y color fluido](ESTRELLA_Y_COLOR_FLUIDO_2026-09-22.md).
+
 Cambios compartidos por Modest y HD, exclusivamente en el renderizador GPU.
 No se modifica el renderizador CPU, el audio ni los datos del usuario.
 

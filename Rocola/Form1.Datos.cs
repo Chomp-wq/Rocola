@@ -393,6 +393,7 @@ namespace Rocola
                     else if (s.StartsWith("polvo_lunar=")) polvoLunar = s.Substring("polvo_lunar=".Length).Trim() != "0";
                     else if (s.StartsWith("luna_protagonista=")) lunaProtagonista = s.Substring("luna_protagonista=".Length).Trim() != "0";
                     else if (s.StartsWith("estela_estelar=")) estelaEstelar = s.Substring("estela_estelar=".Length).Trim() != "0";
+                    else if (s.StartsWith("colores_fluidos=")) coloresFluidos = s.Substring("colores_fluidos=".Length).Trim() != "0";
                     else if (s.StartsWith("respuesta_inmediata=")) respuestaInmediata = s.Substring(20).Trim() != "0";
                     else if (s.StartsWith("transiciones_tacto=")) transicionesTacto = s.Substring(19).Trim() != "0";
                     else if (s.StartsWith("cielo_profundo=")) cieloProfundo = s.Substring(15).Trim() != "0";
@@ -505,6 +506,7 @@ namespace Rocola
                 sb.Append("polvo_lunar=").Append(polvoLunar ? "1" : "0").Append("\r\n");
                 sb.Append("luna_protagonista=").Append(lunaProtagonista ? "1" : "0").Append("\r\n");
                 sb.Append("estela_estelar=").Append(estelaEstelar ? "1" : "0").Append("\r\n");
+                sb.Append("colores_fluidos=").Append(coloresFluidos ? "1" : "0").Append("\r\n");
                 sb.Append("respuesta_inmediata=").Append(respuestaInmediata ? "1" : "0").Append("\r\n");
                 sb.Append("transiciones_tacto=").Append(transicionesTacto ? "1" : "0").Append("\r\n");
                 sb.Append("cielo_profundo=").Append(cieloProfundo ? "1" : "0").Append("\r\n");

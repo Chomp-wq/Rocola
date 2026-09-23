@@ -48,7 +48,7 @@ namespace Rocola
     }
 
     // -------- Campo estrellado reusable (titileo + latido), teñible por genero --------
-    internal sealed class GpuStarfield
+    internal sealed partial class GpuStarfield
     {
         private D3D9Device gpu; private IntPtr glowTex; private IntPtr uiGlowTex;   // glow de estrella (con chispa) / glow radial LISO para el destello de UI
         private float[] sx, sy, sphase, sspeed, ssize; private int[] skind, sforma; private uint[] scol; private int nStars;
@@ -370,7 +370,8 @@ namespace Rocola
             float midY = h * Form1.CorteDelCielo;
             SetQuad(skyV, 0, 0, 0, w, midY, skyTop, skyTop, skyMid, skyMid);
             SetQuad(skyV, 6, 0, midY, w, h, skyMid, skyMid, skyBot, skyBot);
-            gpu.DrawSky(skyV);
+            if(FlowBlend>0&&FlowPalette!=null)DrawFlowSky(w,h,midY);
+            else gpu.DrawSky(skyV);
             if (TrasCielo != null) TrasCielo();   // la aurora va aqui: entre el cielo y las estrellas
             // EL PATRON ANTERIOR, DESVANECIENDOSE. Mientras dura el cruce -1.3 segundos, una vez por
             // minuto- se arman y se dibujan DOS juegos de estrellas en vez de uno, o sea el doble de trabajo:
@@ -490,6 +491,7 @@ namespace Rocola
             HazAire();   // se rehace SOLO si se toco la perilla; si no, es comparar dos numeros
             float aireEsc = (h > 0f) ? (AireN / h) : 0f;   // de altura en pixeles a banda de la tabla del aire
             float f255 = fade * 255f;                      // el entrecruzado y el paso a niveles, de una vez
+            float invW=1/Math.Max(1,w),invH=1/Math.Max(1,h);
             for (int i = 0; i < n; i++)
             {
                 int k = kd[i];   // 0 polvo, 1 mediana, 2 grande: manda la deriva Y el latido
@@ -513,6 +515,7 @@ namespace Rocola
                 if (!(br > 0f)) br = 0f;   // con el titileo muy agrandado el valle se pasaria de rosca; y el "!" atrapa el NaN
                 uint a = (uint)br; if (a > 255) a = 255;
                 uint rgb = col[i], gb = AireGB[b];
+                rgb=FlowStarColor(rgb,x*invW,y*invH);
                 uint c = (a << 24) | (rgb & 0x00FF0000u)                     // alfa = brillo; el rojo, entero
                        | ((((rgb >> 8) & 0xFFu) * (gb >> 16) >> 8) << 8)      // el verde, algo comido
                        | ((rgb & 0xFFu) * (gb & 0xFFFFu) >> 8);               // y el azul, comido del todo
@@ -577,6 +580,7 @@ namespace Rocola
                 float nx = (len > 0.001f) ? s.VX / len : 1f, ny = (len > 0.001f) ? s.VY / len : 0f;
                 float ox = -ny * s.Wdt, oy = nx * s.Wdt;   // perpendicular (medio ancho variado)
                 uint rgb = s.Col & 0x00FFFFFF;
+                rgb=FlowStarColor(rgb,s.X/Math.Max(1,w),s.Y/Math.Max(1,h));
                 uint headC = (la << 24) | rgb, tailC = rgb;   // estela: brillante en cabeza -> transparente en cola
                 VShoot(shootV, vi + 0, s.X + ox, s.Y + oy, headC); VShoot(shootV, vi + 1, s.X - ox, s.Y - oy, headC); VShoot(shootV, vi + 2, tailX - ox, tailY - oy, tailC);
                 VShoot(shootV, vi + 3, s.X + ox, s.Y + oy, headC); VShoot(shootV, vi + 4, tailX - ox, tailY - oy, tailC); VShoot(shootV, vi + 5, tailX + ox, tailY + oy, tailC);
@@ -1542,13 +1546,13 @@ namespace Rocola
             float pulse = pulseCrudo * Dim;   // el beat tambien baja mientras esta atenuado (la deriva NO: ver Begin)
             // La aurora se dibuja DENTRO de Begin, justo despues del cielo y antes de las estrellas.
             auCuadro = (GetAurora != null) ? GetAurora() : new GpuAurora();
-            AdvanceCoverPalette(AhoraMs());
             // Se engancha SIEMPRE: aqui van la via lactea y las nebulosas, haya aurora o no.
             auCuadro.Has = auCuadro.Has && auCuadro.B != null && auCuadro.B.Length >= 8;
             auCuadro.BaseY = OndasUnidas && uiBotH > 0
                 ? AuroraBaseAtStatus(Height, uiBotH, idleH, idleBlend)
                 : auCuadro.BaseY - IdleRise;
             UpdateMoonMusic(pulseCrudo);
+            AdvanceCoverPalette(AhoraMs());
             stars.TrasCielo = trasCielo;
             stars.TrasEstrellas = trasEstrellas;
             // Dispositivo perdido (sesion bloqueada, cambio de pantalla...): sin este respiro, el bucle de
@@ -2345,7 +2349,8 @@ namespace Rocola
                 float mx = Width * HazDeriva, my = Height * HazDeriva;
                 float ox = (float)Math.Sin(HazFase) * mx, oy = (float)Math.Cos(HazFase) * my;
                 SetTexQuad(nieblaQuad, -mx + ox, -my + oy, Width + mx + ox, Height + my + oy, hazU, hazV);
-                stars.DrawQuad(hazTex, nieblaQuad);
+                if(flowBlend>0)DrawFlowNebula(hazTex,hazU,hazV);
+                else stars.DrawQuad(hazTex, nieblaQuad);
             }
         }
 
@@ -2355,7 +2360,8 @@ namespace Rocola
         {
             SetTexQuadA(nieblaQuad, -mx + dx, -my + dy, Width + mx + dx, Height + my + dy, nebU, nebV, argb);
             TintCoverNebula(nieblaQuad, argb);
-            stars.DrawQuad(nebTex, nieblaQuad);
+            if(flowBlend>0)DrawFlowNebula(nebTex,nebU,nebV);
+            else stars.DrawQuad(nebTex, nieblaQuad);
         }
 
         // ESCALERA DE TONOS: aqui esta lo que hace que se lea la intensidad. NO se dibuja subiendo el brillo
@@ -2861,6 +2867,7 @@ namespace Rocola
                     uint c = AurLerpRgb(aurRampPie[k], aurRampAgu[k], fx);
                     if (AuroraBandas) c = AurLerpRgb(c, fx < .5f ? AurLerpRgb(0x009779F2u, 0x0059DBCCu, fx*2) : AurLerpRgb(0x0059DBCCu, 0x00E7BE88u, (fx-.5f)*2), .38f);
                     c = MixCoverColor(c, coverColumn);
+                    c = FlowColor(c,fx,(au.BaseY-aurH[i]*k/AurFilas)/Math.Max(1,Height));
                     float rr = (c >> 16) & 0xFF, gg = (c >> 8) & 0xFF, bb = c & 0xFF;
                     TonoPorNivel(ref rr, ref gg, ref bb, v);
                     aurCortina[k * puntos + i] = ((uint)rr << 16) | ((uint)gg << 8) | (uint)bb;
@@ -2870,6 +2877,7 @@ namespace Rocola
                 aurNc[i] = aurCortina[AurFilas * puntos + i];
                 uint cPie = AurLerpRgb(au.Rgb, au.Rgb2, fx);
                 cPie = MixCoverColor(cPie, coverColumn);
+                cPie = FlowColor(cPie,fx,au.BaseY/Math.Max(1,Height));
                 float r0 = (cPie >> 16) & 0xFF, g0 = (cPie >> 8) & 0xFF, b0 = cPie & 0xFF;
                 for (int k = 0; k <= AurSuelo; k++)                   // el suelo: el mismo color, hundiendose
                 {
