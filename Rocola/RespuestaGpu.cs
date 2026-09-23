@@ -133,12 +133,14 @@ namespace Rocola
         {
             double now = AhoraMs();
             float dt = (float)Math.Max(0, Math.Min(.1, (now - lunaClock) / 1000)); lunaClock = now;
-            // Integrar velocidad mantiene la fase continua al entrar/salir del reposo.
-            if (LunaActiva) moonMotionTime += dt * MoonMotionSpeed(idleBlend);
             float blend = 1 - (float)Math.Exp(-dt * 9);
-            float mid = auCuadro.Has ? SafeMoonLevel(auCuadro.B[3]) : 0;
-            float high = auCuadro.Has ? SafeMoonLevel(auCuadro.B[6]) : 0;
-            lunaBeat += (SafeMoonLevel(pulse) - lunaBeat) * blend;
+            // Fuente musical independiente de la perilla de aurora; apagar ondas no apaga la estrella.
+            StarMusic music=GetStarMusic!=null ? GetStarMusic() : new StarMusic {
+                Bass=SafeMoonLevel(pulse),Mid=auCuadro.Has ? SafeMoonLevel(auCuadro.B[3]) : 0,
+                High=auCuadro.Has ? SafeMoonLevel(auCuadro.B[6]) : 0 };
+            float mid=SafeMoonLevel(music.Mid),high=SafeMoonLevel(music.High);
+            AdvanceStarMusic(dt,music.Bass,mid,high);
+            lunaBeat += (SafeMoonLevel(music.Bass) - lunaBeat) * blend;
             lunaMid += (mid - lunaMid) * blend; lunaHigh += (high - lunaHigh) * blend;
         }
         private void DrawMoonOrbits(float cx, float cy, float radius)

@@ -1,54 +1,119 @@
 #if ROCOLA_GPU
 using System;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 namespace Rocola
 {
+    internal struct StarMusic { public float Bass,Mid,High; }
     internal sealed partial class GpuPanel
     {
-        // Silueta estelar, no esfera ruidosa: cuatro puntas largas, cuatro cortas
-        // y nucleo solido. Una textura neutra por estilo, tintada en GPU.
+        // Cinco puntas facetadas como rocola.ico. Geometria propia horneada una vez
+        // para la GPU: no se modifica el icono ni el renderizador CPU.
         internal static Bitmap BakeStar(bool detailed)
         {
             const int n = MoonTextureSize;
             int[] pixels = new int[n*n];
             for (int y=0;y<n;y++) for (int x=0;x<n;x++)
             {
-                double nx=(x-(n-1)*.5)/(n*.49), ny=(y-(n-1)*.5)/(n*.49);
-                double r=Math.Sqrt(nx*nx+ny*ny);
-                if(r>=1)continue;
-                double axis=Math.Pow(Math.Abs(nx)/.94,.43)+Math.Pow(Math.Abs(ny)/.94,.43);
-                double solid=Math.Max(0,Math.Min(1,(1-axis)*65))*(.30+.70*Math.Exp(-r*r/.12));
-                double core=Math.Max(0,Math.Min(1,(.115-r)*180));
-                double diagonal=0;
-                if(detailed)
-                {
-                    double u=(nx+ny)*.70710678, v=(nx-ny)*.70710678;
-                    diagonal=.64*Math.Max(0,Math.Min(1,(1-Math.Pow(Math.Abs(u)/.47,.43)-Math.Pow(Math.Abs(v)/.47,.43))*55))*Math.Exp(-r*r/.18);
-                }
-                double halo=(detailed?.26:.13)*Math.Exp(-r*r/ .065)*Math.Pow(1-r,2);
-                double alpha=Math.Max(Math.Max(solid,core),Math.Max(diagonal,halo));
-                double light=Math.Min(1,.50+.50*Math.Exp(-r*r/.055));
-                int a=(int)Math.Round(255*alpha), c=(int)Math.Round(255*light);
-                pixels[y*n+x]=unchecked((int)((uint)a<<24))|(c<<16)|(c<<8)|c;
+                double dx=(x-127.5)/127.5,dy=(y-127.5)/127.5,r=dx*dx+dy*dy;
+                int a=r>=1?0:(int)(32*Math.Exp(-r*3)*(1-r));
+                pixels[y*n+x]=unchecked((int)((uint)a<<24))|0xB0CFFF;
             }
             Bitmap b=new Bitmap(n,n,PixelFormat.Format32bppArgb);
             BitmapData data=b.LockBits(new Rectangle(0,0,n,n),ImageLockMode.WriteOnly,PixelFormat.Format32bppArgb);
             try { for(int y=0;y<n;y++)Marshal.Copy(pixels,y*n,new IntPtr(data.Scan0.ToInt64()+y*(long)data.Stride),n); }
             finally { b.UnlockBits(data); }
+            PointF center=new PointF(127.5f,127.5f);
+            PointF[] edge=new PointF[10];
+            for(int i=0;i<10;i++){
+                double angle=-Math.PI*.5+i*Math.PI/5;
+                float r=i%2==0?110f:49f;
+                edge[i]=new PointF(center.X+r*(float)Math.Cos(angle),center.Y+r*(float)Math.Sin(angle));
+            }
+            using(Graphics g=Graphics.FromImage(b))
+            using(SolidBrush body=new SolidBrush(Color.FromArgb(185,201,230)))
+            using(Pen rim=new Pen(Color.FromArgb(235,22,34,61),3f)){
+                g.SmoothingMode=SmoothingMode.AntiAlias;
+                g.FillPolygon(body,edge);
+                if(detailed){
+                    // Caras plata a la izquierda y acero azulado a la derecha; siguen admitiendo tinte.
+                    Color[] facets={Color.FromArgb(231,239,255),Color.FromArgb(125,166,228),
+                        Color.FromArgb(57,106,184),Color.FromArgb(27,57,113),Color.FromArgb(71,105,163),
+                        Color.FromArgb(27,44,77),Color.FromArgb(139,156,188),Color.FromArgb(222,230,246),
+                        Color.FromArgb(170,192,226),Color.FromArgb(244,248,255)};
+                    for(int i=0;i<10;i++)
+                    using(LinearGradientBrush face=new LinearGradientBrush(center,edge[i],
+                        facets[i],Color.FromArgb(255,Math.Min(255,facets[i].R+14),Math.Min(255,facets[i].G+14),Math.Min(255,facets[i].B+14))))
+                        g.FillPolygon(face,new PointF[]{center,edge[i],edge[(i+1)%10]});
+                }
+                g.DrawPolygon(rim,edge);
+                using(Pen bevel=new Pen(Color.FromArgb(150,225,238,255),1.2f))
+                    for(int i=0;i<10;i+=2)g.DrawLine(bevel,center,edge[i]);
+                if(detailed){
+                    PaintStarGlint(g,29,96,15);
+                    PaintStarGlint(g,173,166,9);
+                }
+            }
             return b;
+        }
+        private static void PaintStarGlint(Graphics g,float x,float y,float r)
+        { g.FillPolygon(Brushes.White,new PointF[]{new PointF(x,y-r),new PointF(x+2,y-2),new PointF(x+r,y),new PointF(x+2,y+2),new PointF(x,y+r),new PointF(x-2,y+2),new PointF(x-r,y),new PointF(x-2,y-2)}); }
+
+        public Func<StarMusic> GetStarMusic;
+        private string starGenre;
+        private float starGenreTarget=1,starGenreDrive=1,starDrive,starAttack,starPreviousEnergy;
+        private double starTravelX=.65,starTravelY=2.8;
+        internal void SetStarGenre(string genre)
+        {
+            if(string.Equals(starGenre,genre,StringComparison.OrdinalIgnoreCase))return;
+            starGenre=genre;starGenreTarget=StarGenreDrive(genre);
+        }
+        internal static float StarGenreDrive(string genre)
+        {
+            string g=(genre??"").ToLowerInvariant();
+            if(g.Contains("metal")||g.Contains("electr")||g.Contains("dance")||g.Contains("techno")||g.Contains("rock"))return 1.22f;
+            if(g.Contains("clasic")||g.Contains("clásic")||g.Contains("classical")||g.Contains("ambient")||g.Contains("balad")||g.Contains("jazz"))return .78f;
+            if(g.Contains("regga")||g.Contains("hip")||g.Contains("rap"))return 1.12f;
+            return 1;
+        }
+        internal void AdvanceStarMusic(float dt,float bass,float mid,float high)
+        {
+            dt=Math.Min(.1f,SafeMoonLevel(dt));
+            bass=SafeMoonLevel(bass);mid=SafeMoonLevel(mid);high=SafeMoonLevel(high);
+            float energy=.52f*bass+.28f*mid+.20f*high;
+            float onset=Math.Max(0,energy-starPreviousEnergy);starPreviousEnergy=energy;
+            starAttack=Math.Max(starAttack*(float)Math.Exp(-dt*4.5),Math.Min(1,onset*4));
+            starGenreDrive+=(starGenreTarget-starGenreDrive)*(1-(float)Math.Exp(-dt*2));
+            float target=SafeMoonLevel((energy+starAttack*.35f)*starGenreDrive);
+            starDrive+=(target-starDrive)*(1-(float)Math.Exp(-dt*(target>starDrive?12:3)));
+            if(LunaActiva){
+                float calm=.18f+.82f*SafeMoonLevel(idleBlend);
+                starTravelX+=dt*calm*(.13+.62*starDrive+.32*starAttack);
+                starTravelY+=dt*calm*(.10+.30*mid+.22*high+.12*starAttack)*starGenreDrive;
+                moonMotionTime+=dt*MoonMotionSpeed(idleBlend)*(1+.55*starDrive);
+            }
+        }
+        internal static PointF StarTravelCenter(int w,int h,double px,double py,float radius,float statusTop,float rise)
+        {
+            float mx=Math.Min(w*.45f,Math.Max(12,radius*1.65f));
+            float top=Math.Min(h*.25f,Math.Max(12,radius*1.65f));
+            float bottom=Math.Max(top,Math.Min(statusTop-radius*1.8f,h*.52f-Math.Max(0,rise)*.22f));
+            double x=.5+.49*Math.Sin(px+.18*Math.Sin(py));
+            double y=.5+.48*Math.Sin(py+.24*Math.Sin(px*.71));
+            return new PointF(mx+(w-2*mx)*(float)x,top+(bottom-top)*(float)y);
         }
         public bool EstelaEstelar = true;
         private struct StarEcho
         {
             internal double Time;
-            internal float X,Y,Radius,Angle;
+            internal float X,Y,Radius,Angle,Strength;
             internal uint Color;
         }
-        private readonly StarEcho[] starEchoes=new StarEcho[8];
+        private readonly StarEcho[] starEchoes=new StarEcho[12];
         private readonly D3D9.Vtx[] starEchoQuad=new D3D9.Vtx[6];
-        private readonly D3D9.Vtx[] starEchoBatch=new D3D9.Vtx[8*6];
+        private readonly D3D9.Vtx[] starEchoBatch=new D3D9.Vtx[12*6];
         private int starEchoHead,starEchoCount,starEchoWidth,starEchoHeight;
         private double starEchoLast=-1,starEchoClock=-1;
         private float starEchoVisibility;
@@ -57,9 +122,9 @@ namespace Rocola
 
         internal static float StarEchoAlpha(double age,float visibility)
         {
-            if(double.IsNaN(age)||age<0||age>=1.6)return 0;
-            float life=(float)(1-age/1.6);
-            return .50f*SafeMoonLevel(visibility)*life;
+            if(double.IsNaN(age)||age<0||age>=1.8)return 0;
+            float life=(float)(1-age/1.8);
+            return .86f*SafeMoonLevel(visibility)*life;
         }
         private void UpdateStarEchoes(double now,float x,float y,float radius,float angle,uint color)
         {
@@ -76,7 +141,7 @@ namespace Rocola
                 if(starEchoVisibility<.002f){starEchoCount=0;starEchoLast=-1;}
                 return;
             }
-            if(starEchoLast>=0&&now-starEchoLast<.18)return;
+            if(starEchoLast>=0&&now-starEchoLast<.14-.07*starDrive)return;
             // Si no hubo desplazamiento real, no apilar siluetas en el mismo punto.
             if(starEchoCount>0)
             {
@@ -84,7 +149,8 @@ namespace Rocola
                 float dx=x-last.X,dy=y-last.Y;
                 if(dx*dx+dy*dy<1)return;
             }
-            starEchoes[starEchoHead]=new StarEcho {Time=now,X=x,Y=y,Radius=radius,Angle=angle,Color=StarEchoColor(color,starEchoHead,1)};
+            starEchoes[starEchoHead]=new StarEcho {Time=now,X=x,Y=y,Radius=radius,Angle=angle,
+                Strength=.48f+.52f*starDrive,Color=StarEchoColor(color,starEchoHead,1)};
             starEchoHead=(starEchoHead+1)%starEchoes.Length;
             starEchoCount=Math.Min(starEchoes.Length,starEchoCount+1);starEchoLast=now;
         }
@@ -113,9 +179,9 @@ namespace Rocola
             {
                 StarEcho echo=starEchoes[(starEchoHead-starEchoCount+i+starEchoes.Length)%starEchoes.Length];
                 double age=now-echo.Time;
-                float alpha=StarEchoAlpha(age,starEchoVisibility);
+                float alpha=StarEchoAlpha(age,starEchoVisibility)*echo.Strength;
                 if(age<.055||alpha<.003f)continue;
-                float r=echo.Radius*(.80f+.15f*(float)(1-age/1.6));
+                float r=echo.Radius*(.88f+.10f*(float)(1-age/1.8));
                 uint tint=((uint)(alpha*255)<<24)|(echo.Color&0xFFFFFFu);
                 SetTexQuadA(starEchoQuad,echo.X-r,echo.Y-r,echo.X+r,echo.Y+r,luU,luV,tint);
                 RotateStarQuad(starEchoQuad,echo.X,echo.Y,echo.Angle);

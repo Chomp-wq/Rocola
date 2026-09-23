@@ -24,12 +24,13 @@ class EstelaEstelar {
     object e=echoes.GetValue((head-count+i+echoes.Length)%echoes.Length);
     double age=2-(double)Get(e,"Time");float alpha=(float)Call(null,"StarEchoAlpha",age,1f);
     if(age<.055)continue;
-    float r=(float)Get(e,"Radius")*(.80f+.15f*(float)(1-age/1.6));
+    alpha*=(float)Get(e,"Strength");
+    float r=(float)Get(e,"Radius")*(.88f+.10f*(float)(1-age/1.8));
     Paint(g,star,(float)Get(e,"X"),(float)Get(e,"Y"),r,(uint)Get(e,"Color"),alpha);
    }
-   PointF current=(PointF)Call(null,"DetailedMoonCenter",1000,600,9.2,1f,0f,true);
+   PointF current=(PointF)Call(null,"StarTravelCenter",1000,600,(double)Get(panel,"starTravelX"),(double)Get(panel,"starTravelY"),65f,500f,0f);
    Paint(g,star,current.X,current.Y,65,0xFF82C6FFu,1);
-   g.DrawString("Nucleo definido / ecos cromaticos / sin esfera texturizada",font,Brushes.LightSteelBlue,24,378);
+   g.DrawString("Cinco puntas facetadas / ecos cromaticos / sin esfera texturizada",font,Brushes.LightSteelBlue,24,378);
    scene.Save(path,ImageFormat.Png);
   }
  }
@@ -42,13 +43,14 @@ class EstelaEstelar {
  [STAThread]static int Main(string[] args){
   gpu=Assembly.LoadFrom(args[0]).GetType("Rocola.GpuPanel");
   using(Control panel=(Control)Activator.CreateInstance(gpu,true)){
-   panel.Size=new Size(1000,600);Set(panel,"idleBlend",1f);
+   panel.Size=new Size(1000,600);Set(panel,"idleBlend",1f);Set(panel,"starDrive",1f);
    for(int i=0;i<=120;i++){
-    PointF p=(PointF)Call(null,"DetailedMoonCenter",1000,600,6+i/60d*1.6,1f,0f,true);
+    Call(panel,"AdvanceStarMusic",1f/60,.85f,.65f,.7f);
+    PointF p=(PointF)Call(null,"StarTravelCenter",1000,600,(double)Get(panel,"starTravelX"),(double)Get(panel,"starTravelY"),65f,500f,0f);
     Tick(panel,i/60d,p.X,p.Y);
    }
-   Check((int)Get(panel,"starEchoCount")==8,"Historia no acotada");
-   Check(((Array)Get(panel,"starEchoBatch")).Length==48,"Geometria crece");
+   Check((int)Get(panel,"starEchoCount")==12,"Historia no acotada");
+   Check(((Array)Get(panel,"starEchoBatch")).Length==72,"Geometria crece");
    object history=Get(panel,"starEchoes"),batch=Get(panel,"starEchoBatch");
    Preview(panel,System.IO.Path.Combine(System.IO.Path.GetDirectoryName(args[0]),"estrella-ecos.png"));
    for(int i=121;i<3000;i++)Tick(panel,i/60d,680+i*.1f,200);
@@ -68,7 +70,7 @@ class EstelaEstelar {
    foreach(int fps in new int[]{24,60,144,240}){
     Call(panel,"ResetStarEchoes");Set(panel,"LunaActiva",true);
     for(int i=0;i<=fps*2;i++)Tick(panel,i/(double)fps,300+i*70f/fps,200);
-    Check((int)Get(panel,"starEchoCount")==8,"Capacidad depende de FPS");
+    Check((int)Get(panel,"starEchoCount")==12,"Capacidad depende de FPS");
     Check((float)Get(panel,"starEchoVisibility")>.99,"Fundido depende de FPS");
    }
    float previous=1;

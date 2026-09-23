@@ -2,9 +2,10 @@
 
 ## Estrella reactiva — 22 de septiembre de 2026
 
-Nueva silueta luminosa, órbita elevada y ecos cromáticos en reposo, con control
-visual en Ctrl+F3 → Fondo. Implementación GPU compartida por Modest y HD.
-Detalles y límites de las pruebas en [la guía de la estrella](ESTRELLA_ECOS_2026-09-22.md).
+Estrella facetada de cinco puntas como el icono, recorrido amplio y ecos reactivos
+a la música. Los colores de portada/género fluyen por el cielo y sus elementos,
+con controles visuales en Ctrl+F3 → Fondo. GPU compartida por Modest y HD.
+Detalles y límites en [la guía actualizada](ESTRELLA_Y_COLOR_FLUIDO_2026-09-22.md).
 
 ## Audio — 22 de septiembre de 2026
 

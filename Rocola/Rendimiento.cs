@@ -219,6 +219,7 @@ namespace Rocola
             gpuPanel.PolvoLunar = polvoLunar;
             gpuPanel.LunaProtagonista = lunaProtagonista;
             gpuPanel.EstelaEstelar = estelaEstelar;
+            gpuPanel.ColoresFluidos = coloresFluidos;
             gpuPanel.RespuestaInmediata = respuestaInmediata;
             gpuPanel.TransicionesTacto = transicionesTacto;
             gpuPanel.CachePortadas = true;
@@ -819,9 +820,14 @@ namespace Rocola
             sw[9].CheckedChanged += delegate { neonIntenso = sw[9].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             sw[10].CheckedChanged += delegate { progresoFluido = sw[10].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
 
-            Label lAd = new Label(); lAd.SetBounds(16, 398, 424, 32); lAd.BackColor = Color.Transparent;
+            Label lAd = new Label(); lAd.SetBounds(340, 598, 604, 32); lAd.BackColor = Color.Transparent;
             lAd.ForeColor = cApagado; lAd.Font = fDes;
             lAd.Text = "Efectos GPU: el coste depende del equipo.\nPruebalos con musica; puedes apagarlos por separado.";
+            Interruptor swFlujo=new Interruptor();swFlujo.SetBounds(16,392,424,26);
+            swFlujo.Font=fNom;swFlujo.ForeColor=cTexto;swFlujo.Acento=cAc;
+            swFlujo.Text="Colores del fondo en movimiento (GPU)";swFlujo.Checked=coloresFluidos;
+            swFlujo.CheckedChanged+=delegate { coloresFluidos=swFlujo.Checked;AplicaEfectosGpu();f3CambioGraf=true; };
+            tAd.Controls.Add(swFlujo);
 
             // ---------------- CUANTO DETALLE NATURAL ----------------
             Label lNatN = new Label(); lNatN.SetBounds(16, 40, 320, 20); lNatN.BackColor = Color.Transparent;
@@ -934,6 +940,7 @@ namespace Rocola
                 controlesReposo = ondasUnidas = true;
                 lunaRealista = haloLunar = polvoLunar = lunaProtagonista = true;
                 estelaEstelar = true; swEstela.Checked = true;
+                coloresFluidos = true; swFlujo.Checked = true;
                 paletaCompleta = true; swPaleta.Checked = true;
                 for (int i = 0; i < moonSwitches.Length; i++) moonSwitches[i].Checked = true;
                 for (int i = 0; i < extras.Length; i++) extras[i].Checked = true;
@@ -946,7 +953,7 @@ namespace Rocola
             };
 
             pg.Controls.Add(tAd); pg.Controls.Add(tNat); pg.Controls.Add(bResetF);
-            tAd.Controls.Add(lAd);
+            pg.Controls.Add(lAd);
             pinta();
             return pg;
         }

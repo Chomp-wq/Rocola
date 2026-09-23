@@ -839,6 +839,7 @@ namespace Rocola
                 gpuPanel.TopeFps = fpsTope;   // 0 = que lo decida el panel por el refresco de la pantalla
                 AplicaEfectosGpu();           // y las perillas de los efectos (Ctrl+F3 -> Imagen y rendimiento)
                 gpuPanel.GetPulse = delegate { return audioLevel; };
+                gpuPanel.GetStarMusic = delegate { return new StarMusic { Bass=levLo, Mid=levMid, High=levHi }; };
                 gpuPanel.GetAurora = delegate { return BuildAuroraState(); };   // aurora del horizonte (espectro)
                 gpuPanel.GetToast = delegate { return BuildToastState(); };     // aviso flotante (moneda, cancion agregada...)
                 gpuPanel.GetTrans = delegate { return BuildTransState(); };   // zoom al entrar/salir de un disco

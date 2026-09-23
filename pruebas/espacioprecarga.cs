@@ -145,7 +145,8 @@ class EspacioPrecarga {
     }
     Check(Codigo.Llama(gpu.GetMethod("EnsureLuna",F),"BakeStar"),"GPU no dibuja estrella");
     Check(!Codigo.Llama(gpu.GetMethod("EnsureLuna",F),"BakeLuna"),"Sigue usando luna");
-    Check(Codigo.Llama(gpu.GetMethod("DrawDetailedMoon",F),"StarColor"),"Tinte desconectado");
+    Check(Codigo.Llama(gpu.GetMethod("DrawDetailedMoon",F),"StarColorAt")&&
+      Codigo.Llama(gpu.GetMethod("StarColorAt",F),"FlowColor"),"Tinte dinamico desconectado");
    }finally{Call(gpu,panel,"StopGpu");ahead=null;}
    Check((long)Call(gpu,panel,"CachedCellBytes")==0,"No libera memoria");
    Console.WriteLine("HAL: dos paginas completas 512px reutilizadas sin subidas al navegar; color y textura estable.");

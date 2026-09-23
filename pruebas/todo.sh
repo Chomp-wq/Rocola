@@ -58,7 +58,7 @@ GPU="fondo anim presencia barrido tope calma entrar mover banco paginar ceremoni
 # existe la funcion ni se prueba.
 SOLO_HD="mudos"
 CPU="$CPU id3selectivo tablasarranque historialarranque audiosuave audioestereo sonoridad picoreal realce"
-GPU="$GPU espacioprecarga estelaestelar"
+GPU="$GPU espacioprecarga estelaestelar estrellaflujo"
 
 # --- Que version de .NET pide este PROYECTO. No se deduce probando compiladores ni depende de que
 #     exista .git: las copias entregadas y los ZIP no tienen rama, pero el .csproj siempre declara
