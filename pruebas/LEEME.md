@@ -48,6 +48,11 @@ falta `mcs` (Mono), `xvfb-run` y `python3`.
 | `colores` | que ningún género musical se quede sin color: los que trae un ID3 y los que se leen del nombre de la carpeta, en español y con acentos; que el color sea el mismo se pregunte por donde se pregunte; y que no haya dos que no se puedan distinguir |
 | `mudos` | *(sólo en la rama de tarjeta gráfica)* la limpieza de videos que no suenan. Lo que vigila no es que borre, es que NO BORRE DE MÁS: uno sin medir no puede aparecer nunca, y si Windows no puede mandarlos a la papelera la biblioteca se queda exactamente como estaba |
 | `videos` | que los videos entren en el repaso que los mide, y que suenen todos parejo: el reproductor de Windows sólo sabe BAJAR, así que se comprueba con qué volumen quedaría cada uno y cuánta diferencia queda entre el que más suena y el que menos |
+| `sinpausa` | que la canción siguiente entre por la misma salida sin hueco ni cebado, sin cobrar dos veces ni repetir o saltar ninguna, y que cola, créditos e historial queden como antes, también cuando algo falla a mitad del relevo |
+| `salida` | la salida al aparato: coma flotante en Vista o posterior y 16 bits con un solo dither si no; que un fallo del APARATO (desenchufado, tomado por otro programa) no gaste canciones ni créditos y se retome la misma donde iba; el vigía de la salida muda; el cambio de aparato; y que la canción de la medida de rendimiento salga callada sin tocar ningún volumen de Windows |
+| `videoaudio` | las reglas del sonido de los vídeos: nunca más de 100 en el reproductor, emparejado con las canciones dentro de sus límites, y de noche solo baja |
+| `remuestreo` | *(sólo en la rama de tarjeta gráfica)* el remuestreador de la salida moderna: en Windows mide el DMO de verdad (respuesta, plegado, retraso, coste); fuera de Windows valida el método de medida |
+| `exclusivo` | *(sólo en la rama de tarjeta gráfica)* la salida WASAPI exclusiva con un aparato de mentira: el formato exacto que ve Windows, el orden en que se pide, la conversión (24 y 32 bits sin dither, 16 con uno), el volumen de Windows respetado, y que cualquier cosa que impida el exclusivo deje la música en compartido sin perder la canción |
 
 **Pantalla**
 

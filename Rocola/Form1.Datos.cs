@@ -441,7 +441,7 @@ namespace Rocola
                     else if (s.StartsWith("eq_automatico=")) eqAuto = s.Substring(14).Trim() != "0";     // la fuerza del EQ la decide el programa
                     else if (s.StartsWith("bajo_automatico=")) bassAuto = s.Substring(16).Trim() != "0"; // y la cantidad de bajo tambien
                     else if (s.StartsWith("dsee=")) sbrOn = s.Substring(5).Trim() == "1";   // reconstruccion espectral (NIVEL 2)
-                    else if (s.StartsWith("salida=")) { string v = s.Substring(7).Trim().ToLowerInvariant(); if (v == "auto" || v == "wasapi" || v == "waveout") outPref = v; }   // salida de audio (rama HD)
+                    else if (s.StartsWith("salida=")) { string v = s.Substring(7).Trim().ToLowerInvariant(); if (v == "auto" || v == "exclusivo" || v == "wasapi" || v == "waveout") outPref = v; }   // salida de audio (rama HD)
                     else if (s.StartsWith("ia_vivo=")) iaVivo = s.Substring(8).Trim() == "1";           // Apollo en vivo (Ctrl+F4)
                     else if (s.StartsWith("ia_mezcla="))
                     {

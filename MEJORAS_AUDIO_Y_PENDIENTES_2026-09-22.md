@@ -31,8 +31,10 @@ desarrollo y medición. La revisión anterior está en REVISION_AUDIO_2026-09-22
 | Remuestreo de Apollo a 44,1 kHz con SoXR, caché versionada y reaprovechamiento | Implementado y probado (HD); ver 1.16 |
 | Continuidad sin pausas entre canciones (misma salida, sin cebado, cola y créditos intactos) | Implementado y probado; ver 1.17. Retardo y relleno propios del MP3: medidos, sin implementar |
 | Remuestreo en reproducción (HD, DMO de Windows) | Medición preparada y validada; el DMO se mide en Windows; sin cambios; ver 1.18 |
-| Salida al dispositivo: coma flotante en Vista o posterior, fallos del aparato sin gastar canciones, cambio de aparato | Implementado y probado con salidas simuladas; ver 1.19. WASAPI exclusivo: estudiado, decisión tuya |
-| Audio de vídeo (reproductor de Windows Media) | Documentado y con batería que fija las reglas de hoy; procesamiento compartido: decisión tuya; ver 1.20 |
+| Salida al dispositivo: coma flotante en Vista o posterior, fallos del aparato sin gastar canciones, cambio de aparato | Implementado y probado con salidas simuladas; ver 1.19 |
+| WASAPI exclusivo (HD) con caída automática al compartido y el volumen de Windows respetado | Implementado por tu decisión y probado con un aparato simulado; falta oírlo en el bar; ver 1.19 |
+| Medida de rendimiento: la canción muda sin tocar el volumen de Windows | Defecto corregido y probado (las dos ramas); ver 1.19 |
+| Audio de vídeo (reproductor de Windows Media) | Documentado y con batería que fija las reglas de hoy; decidido: opción A, sigue el reproductor sin cambios; ver 1.20 |
 | Paridad del extractor IA (contrato EXTRACTOR=2) | Implementado y probado; ver 1.7 |
 | Identidad de origen, particiones por canción y estéreo por canal | Implementado y probado; ver 1.8 |
 | Selección contra curva e instalado, informe reproducible | Implementado y probado; ver 1.9 |
@@ -1000,14 +1002,59 @@ Implementado:
   de la salida. Si alguna vez la rocola se quedó muda después de medir: subir su control en el mezclador de
   Windows (Modest) o el volumen general (HD). La rocola no lo sube sola para no pisar un ajuste hecho a propósito.
 
-Estudiado y no adoptado:
-- WASAPI EXCLUSIVO (HD). La rocola tomaría el aparato para ella sola, sin el mezclador de Windows: lo que sale
-  llega tal cual al DAC, en su formato y con menos retraso. En un bar tiene contras: mientras suena, ningún otro
-  programa (ni los sonidos de Windows) puede usar el aparato; el volumen de Windows deja de actuar; hay que
-  entregar un formato que el aparato admita, y remuestrear en la rocola si no admite la frecuencia de la canción;
-  falla si otro programa lo tiene o si Windows no permite el modo exclusivo; y necesita su propia recuperación de
-  errores. No se implementó ni se volvió predeterminado: es una decisión tuya. Si lo quieres, iría como un valor
-  de la línea `salida=` de la configuración (por ejemplo `salida=exclusivo`), sin tocar Ctrl+F3.
+WASAPI EXCLUSIVO (HD; implementado el 23 de septiembre por tu decisión: «no importa si toma control exclusivo del
+audio, la rocola no se usa para otra cosa más que para música»). Archivo nuevo Rocola/SalidaExclusiva.cs; batería
+pruebas/exclusivo.cs (solo HD).
+- QUÉ HACE. En una máquina HD (`salida=auto`, lo de siempre) cada canción se abre primero en WASAPI EXCLUSIVO: la
+  rocola toma el aparato para ella sola y Windows no pasa la música por su mezclador, ni por sus «mejoras» de
+  sonido, ni por su conversión de formato. Mientras suena, ningún otro programa (ni los sonidos de Windows) puede
+  usar ese aparato. Los vídeos no cambian: antes de cada vídeo la salida de la música se cierra y el reproductor de
+  Windows Media suena como siempre.
+- EL FORMATO. Se pide a la frecuencia a la que ya trabaja el aparato (la de su formato predeterminado en Windows),
+  para que no cambie de frecuencia entre canciones ni al volver de un vídeo: hay receptores que tardan en
+  reengancharse y se comerían el principio de la canción. Una canción a otra frecuencia se remuestrea como hasta
+  ahora en compartido, con el limitador de pico real detrás. Profundidad: 24 bits (en 4 o en 3 bytes), 32 bits
+  enteros o coma flotante; 16 bits con dither TPDF solo si el aparato no admite ninguna de esas en ninguna
+  frecuencia. En 24 y 32 bits se redondea sin dither (el error queda 144 dB bajo el máximo). Una canción mono sale
+  duplicada. A NAudio se le da un formato exacto que el aparato ya aceptó; si aun así lo cambiara (metería su
+  remuestreador detrás del limitador), esa salida no se usa. Para que las canciones de 44,1 kHz no se remuestreen:
+  en Windows, Sonido → el aparato → Propiedades → Opciones avanzadas → formato predeterminado a 44100 Hz.
+- EL VOLUMEN DE WINDOWS. Si el aparato tiene volumen propio (casi todos los DAC USB y las tarjetas de la placa),
+  Windows lo mueve en el aparato y funciona igual que siempre. Si no lo tiene (muchas salidas HDMI), la música
+  saldría a tope: entonces la rocola aplica ella misma el volumen y el silencio de Windows, desde la primera
+  muestra y en rampa de 50 ms, mirándolo cada medio segundo. El volumen de Windows solo se lee, nunca se escribe.
+  El control de la ROCOLA en el mezclador de Windows (no el general) no actúa en exclusivo.
+- SI NO SE PUEDE, sigue en compartido como antes, sin perder la canción ni tocar cola ni créditos: otro programa
+  usando el aparato → esa canción en compartido y la siguiente lo vuelve a intentar; Windows con el exclusivo
+  prohibido para ese aparato, ningún formato admitido, o un fallo al arrancar antes de sonar (la canción se reabre
+  en compartido desde donde iba a empezar) → compartido en ese aparato el resto de la sesión; lo mismo si la salida
+  exclusiva se queda muda (el vigía: hay controladores que se atascan en exclusivo y en compartido no). Una canción
+  de más de dos canales que el aparato no admite va en compartido sin quitarle el exclusivo a las demás. Un aparato
+  desenchufado es un fallo del aparato y lo atiende la espera de siempre. Queda apuntado en rocola_error.txt una
+  vez por aparato y motivo, también cuando va bien («WASAPI exclusivo: en marcha: 24 bits en 4 bytes, 48000 Hz,
+  2 canales»): así se comprueba en Windows que está en exclusivo y en qué formato.
+- PARA VOLVER A LO DE ANTES: `salida=wasapi` en rocola_config.txt (compartido, como hasta ahora) y reiniciar la
+  rocola. `salida=exclusivo` lo usa aunque la máquina no sea HD; `salida=waveout`, la salida clásica. No cambia
+  ningún archivo de datos.
+- Comprobado (pruebas automáticas, Mono, con un aparato y una salida de mentira; 47 comprobaciones): los 40 bytes
+  del formato que ve Windows, y los mismos que arma NAudio donde NAudio sabe hacerlos; el orden de la negociación;
+  la conversión (coma flotante bit a bit; 24 y 32 bits a medio escalón como mucho, sin sesgo, recortando a tope;
+  16 bits con un solo dither, 0,502 escalones eficaces); el volumen (−20 dB = 0,1, el silencio, la primera muestra
+  ya atenuada, la rampa sin saltos en 45 ms, bit a bit a volumen 1); abrir (formato exacto, mono duplicado,
+  remuestreo con el limitador detrás, formato rechazado → el siguiente sin salidas colgando, NAudio que cambia el
+  formato → no se usa, otro programa, prohibido, sin formatos, aparato que falla al preguntarle, canción de seis
+  canales, salida muda); el fallo al arrancar (un error de Windows antes de sonar sí; ya sonando, si es el aparato
+  o si no es de Windows, no); y el cableado leído del programa (el exclusivo antes del compartido, WASAPI exclusivo
+  sin eventos y con 300 ms, el vigía lo aparta antes de retomar, ningún sitio escribe el volumen de Windows).
+  26 fallos puestos a propósito la ponen en rojo.
+- NO comprobado: un Windows y un aparato de verdad. Que el aparato admita el formato, que suene sin cortes en
+  exclusivo (NAudio lo rellena cada 150 ms con 300 ms de colchón, como en compartido), que el volumen de Windows
+  actúe, y el paso de canción a vídeo y de vuelta. Qué mirar primero en el bar: poner una canción y buscar en
+  rocola_error.txt la línea «WASAPI exclusivo: en marcha»; subir y bajar el volumen de Windows; poner un vídeo y
+  otra canción detrás; desenchufar el DAC a media canción. Si algo suena raro (cortes, chasquidos, volumen
+  distinto), `salida=wasapi` devuelve exactamente lo de antes.
+- Tandas completas con Mono sobre esta versión (23 de septiembre): HD 175 de 175 (con `exclusivo` y `disco`) y
+  Modest 160 de 160.
 
 Qué se comprobó y qué no: las pruebas comprueban lo que la rocola ENTREGA a Windows (muestra a muestra, formato
 y reacción a fallos simulados). Que el ruido de fondo baje en el aparato depende del motor de audio y del DAC:
@@ -1098,6 +1145,10 @@ en los vídeos, empezar por B solo en HD, como prueba con criterios medibles (de
 todo el vídeo, sin cortes, CPU aceptable en el equipo del bar) y con el sonido del reproductor de respaldo; C solo
 si B no los cumple. No se sustituyó nada.
 
+Decisión (23 de septiembre): opción A. Los vídeos siguen con el Reproductor de Windows Media tal como están; no se
+cambió nada de su sonido. Con la salida exclusiva de HD tampoco cambia: la música suelta el aparato antes de cada
+vídeo. Queda disponible, cuando quieras, medir la curva de volumen del reproductor (cómo, arriba).
+
 Comprobado (pruebas/videoaudio.cs, 10 comprobaciones, las dos ramas): 600 combinaciones de base, «Subir TODO»
 (−12 a +12 dB), modo noche y vídeos de −26 a +26 dB sin pedir nunca más de 100 ni menos de 0; el emparejado
 exacto dentro de los límites (×0,15 a ×4); «Subir TODO» no empuja a los medidos y sí sigue a los no medidos
@@ -1124,7 +1175,8 @@ El script:
 3. Ejecuta las pruebas Python de los entrenadores y sus protecciones (test_calidad_dsee,
    test_entrenar_eq, test_contrato_dsee, test_origen_dsee, test_estereo_dsee,
    test_seleccion_dsee y test_publicacion_dsee) y, en HD, test_remuestreo de ia/upscale (con el
-   FFmpeg del PATH) y la batería remuestreo (el DMO de la salida moderna, medido de verdad en Windows).
+   FFmpeg del PATH), la batería remuestreo (el DMO de la salida moderna, medido de verdad en Windows) y la batería
+   exclusivo (la salida WASAPI exclusiva, con un aparato de mentira).
 
 Nota del 22 de septiembre (bloque A): este script NO se pudo ejecutar en el entorno donde se
 hizo el bloque A (Linux, sin PowerShell, Windows ni FFmpeg). Sus piezas sí: todas las baterías
@@ -1325,8 +1377,13 @@ incompatible con .NET 3.5 para obtener un formato nuevo.
 
 Estado (23 de septiembre, etapa 8, las dos ramas): hechos 1, 2 y 4 con salidas simuladas (ver 1.19): coma
 flotante en Vista o posterior, 16 bits con dither en XP y si se rechaza, fallos del aparato sin gastar
-canciones, retomar, vigía y cambio de aparato. El 3 (WASAPI exclusivo) está estudiado y espera tu decisión. El 5
-(loopback y medición del DAC) es del equipo del bar. NAudio sigue en 1.9.0.
+canciones, retomar, vigía y cambio de aparato. El 5 (loopback y medición del DAC) es del equipo del bar. NAudio
+sigue en 1.9.0.
+
+Estado del 3 (23 de septiembre, HD): decidido por ti e implementado (ver 1.19). WASAPI exclusivo es lo
+predeterminado en las máquinas HD, con el formato que el aparato admite a su propia frecuencia, el volumen de
+Windows respetado y caída automática al compartido. `salida=wasapi` vuelve a lo de antes. Probado con un aparato
+simulado; falta oírlo en el equipo del bar.
 
 ### G. Continuidad entre canciones y audio de vídeo
 
@@ -1351,8 +1408,9 @@ pero no se recortan hasta medir el descompresor ACM de Windows. El 5 (vídeo) es
 
 Estado del 5 (23 de septiembre, etapa 9, las dos ramas): documentado cómo se relacionan el reproductor de
 Windows Media, la música y la sincronía, con tres caminos y sus consecuencias (ver 1.20). No se sustituyó el motor
-ni se añadió ninguna dependencia: espera tu decisión. Lo implementado es la batería videoaudio, que fija las reglas
-de hoy (nunca más de 100 en el reproductor, emparejado dentro de límites, noche solo baja).
+ni se añadió ninguna dependencia. Lo implementado es la batería videoaudio, que fija las reglas de hoy (nunca más
+de 100 en el reproductor, emparejado dentro de límites, noche solo baja). Decisión (23 de septiembre): opción A, el
+reproductor sigue como está.
 
 ## 4. Criterios de entrega y despliegue
 

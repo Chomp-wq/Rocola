@@ -1017,6 +1017,7 @@ namespace Rocola
                 // un encode raro), NO se salta la cancion ni se anota el ORIGINAL como incompatible ni se
                 // devuelve el credito: el archivo malo se borra (el motor lo regenera) y suena el original.
                 bool forceWaveOut = reintentandoWaveOut; // conservar el reintento al volver al bucle de mensajes
+                bool forceCompartido = reintentandoCompartido;   // idem: se reabre en compartido tras fallar el exclusivo (SalidaExclusiva.cs)
                 BeginAudioOpen(iaSrc, delegate(IAudioSource source, Exception error)
                 {
                     if (error != null && iaSrc != t.Path)
@@ -1028,17 +1029,17 @@ namespace Rocola
                             IaRequestJob(t.Path);
                             iaNowEnhanced = false; RevisaRespaldoDsee();
                             BeginAudioOpen(t.Path, delegate(IAudioSource original, Exception originalError) {
-                                StartOpenedTrack(t, original, originalError, forceWaveOut);
+                                StartOpenedTrack(t, original, originalError, forceWaveOut, forceCompartido);
                             });
                         }
                         catch (Exception fallbackError) { AudioStartFailed(t, fallbackError); }
                     }
-                    else StartOpenedTrack(t, source, error, forceWaveOut);
+                    else StartOpenedTrack(t, source, error, forceWaveOut, forceCompartido);
                 });
             }
             catch (Exception error) { AudioStartFailed(t, error); }
         }
-        private void StartOpenedTrack(Track t, IAudioSource source, Exception error, bool forceWaveOut)
+        private void StartOpenedTrack(Track t, IAudioSource source, Exception error, bool forceWaveOut, bool forceCompartido)
         {
             try
             {
@@ -1068,28 +1069,34 @@ namespace Rocola
                 NAudio.Wave.ISampleProvider outChain = secuencia;
                 outChain = CallaSiEsMedida(outChain);   // la medida de rendimiento: callada aqui, sin tocar volumenes de Windows (SalidaSonido.cs)
                 // ===== SALIDA DE AUDIO (rama HD) =====
-                // WASAPI compartido con muestras FLOTANTES: float de punta a punta hasta el motor de audio
-                // moderno (sin bajar a 16 bits ni pasar por el mezclador clasico) y latencia menor. Si
-                // La inicializacion o el arranque sincrono fallan: reabre la pista por WaveOut clasico
-                // de siempre. salida= en config: auto (WASAPI si la maquina es HD) | wasapi | waveout.
-                bool wantWasapi = !forceWaveOut && (outPref == "wasapi" || (outPref != "waveout" && tierHd));
+                // WASAPI EXCLUSIVO (SalidaExclusiva.cs): la musica llega al aparato sin pasar por el mezclador de
+                // Windows. Si no se puede, WASAPI compartido con muestras FLOTANTES: float de punta a punta hasta el
+                // motor de audio moderno y latencia menor. Si la inicializacion o el arranque sincrono del compartido
+                // fallan: reabre la pista por WaveOut clasico de siempre. salida= en config: auto (en maquina HD,
+                // exclusivo y si no se puede compartido) | exclusivo | wasapi (compartido, como antes) | waveout.
+                bool wantWasapi = !forceWaveOut && (outPref == "wasapi" || outPref == "exclusivo" || (outPref != "waveout" && tierHd));
+                bool wantExclusivo = wantWasapi && !forceCompartido && (outPref == "exclusivo" || (outPref == "auto" && tierHd));
                 bool isWasapi = false;
                 output = null;
                 if (wantWasapi && Environment.OSVersion.Version.Major >= 6)
                 {
-                    NAudio.Wave.WasapiOut wa = null;
-                    try
+                    if (wantExclusivo && AbreExclusiva(outChain)) isWasapi = true;   // ya suena; si no se pudo, compartido
+                    else
                     {
-                        outChain = PreparaSalidaWasapi(outChain);
-                        wa = new NAudio.Wave.WasapiOut(outputDevice, NAudio.CoreAudioApi.AudioClientShareMode.Shared, false, 300);
-                        IniciaSalidaWasapi(wa, outChain);   // Init Y Play protegidos; mantiene salida float
-                        isWasapi = true;
-                        formatoSalida = "WASAPI float32";
-                    }
-                    catch (Exception wex)
-                    {
-                        ReintentaWaveOut(t, wex);
-                        return;
+                        NAudio.Wave.WasapiOut wa = null;
+                        try
+                        {
+                            outChain = PreparaSalidaWasapi(outChain);
+                            wa = new NAudio.Wave.WasapiOut(outputDevice, NAudio.CoreAudioApi.AudioClientShareMode.Shared, false, 300);
+                            IniciaSalidaWasapi(wa, outChain);   // Init Y Play protegidos; mantiene salida float
+                            isWasapi = true;
+                            formatoSalida = "WASAPI float32";
+                        }
+                        catch (Exception wex)
+                        {
+                            ReintentaWaveOut(t, wex);
+                            return;
+                        }
                     }
                 }
                 if (output == null)
@@ -1318,6 +1325,8 @@ namespace Rocola
             if (secuencia != null) e = RecogeAlParar(e);
             if (e.Exception != null)
             {
+                // WASAPI EXCLUSIVO que falla al arrancar, antes de sonar: la misma cancion, en compartido (SalidaExclusiva.cs).
+                if (FalloAlArrancarExclusivo(deLaSalida)) { ReintentaCompartido(nowPlaying.Song, deLaSalida); return; }
                 // El hilo de WasapiOut puede fallar DESPUES de Play(), antes del
                 // primer bloque. No perder la pista ni devolver un credito de mas.
                 if (output is WasapiOut && outputResampler != null && !outputResampler.HasOutput &&
@@ -1364,6 +1373,7 @@ namespace Rocola
             }
             if (outputResampler != null) { try { outputResampler.Dispose(); } catch { } outputResampler = null; }
             if (outputDevice != null) { try { outputDevice.Dispose(); } catch { } outputDevice = null; }
+            SueltaExclusivo();   // el aparato del exclusivo y lo que recibia (SalidaExclusiva.cs)
             if (reader != null) { try { reader.Dispose(); } catch { } reader = null; }
             SueltaSinPausa();   // la siguiente preparada (o ya entrando): con la salida ya parada
             curTap = null; curSbr = null; curBass = null;   // ya no hay taps actuales
@@ -1723,7 +1733,8 @@ namespace Rocola
         {
             if (reader == null) return;
             // LA SALIDA SE QUEDO MUDA (SalidaSonido.cs): como si hubiera avisado de un fallo del aparato.
-            if (SalidaMuda()) { NAudio.Wave.IWavePlayer o = output; if (o != null) Output_PlaybackStopped(o, new StoppedEventArgs(new SalidaMudaException())); return; }
+            if (SalidaMuda()) { MudoEnExclusivo(); NAudio.Wave.IWavePlayer o = output; if (o != null) Output_PlaybackStopped(o, new StoppedEventArgs(new SalidaMudaException())); return; }
+            SigueVolumenWindows();   // en exclusivo, si el aparato no tiene volumen propio, el de Windows lo aplica la rocola (SalidaExclusiva.cs)
             PreparaSiguienteSinPausa();   // a la que suena le quedan pocos segundos: la siguiente, lista para entrar sin pausa
             TimeSpan cur = reader.CurrentTime, tot = reader.TotalTime;
             if (tot.TotalSeconds > 0) progress.Value = cur.TotalSeconds / tot.TotalSeconds;

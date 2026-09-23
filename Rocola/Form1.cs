@@ -157,7 +157,7 @@ namespace Rocola
         // ===== NIVEL HD (rama rocola-hd): maquinas potentes =====
         // Requisitos (ProbeAudioTier): 4+ nucleos, >=3.5 GB de RAM y Windows Vista/7+. Activa:
         //   - STFT fino (4096) en el reconstructor espectral (bins mas finos -> costura mas limpia)
-        //   - salida WASAPI flotante por defecto (salida=auto)
+        //   - salida WASAPI exclusiva por defecto, y compartida en coma flotante si no se puede (salida=auto; SalidaExclusiva.cs)
         // NIVEL 3 (IA real): el punto de enchufe es OTRO tap en la cadena de PlayTrack, gateado por tierHd
         // (+ ONNX Runtime x64). Sin un modelo digno de produccion NO se embarca nada llamado "IA" (README).
         private bool tierHd = false;

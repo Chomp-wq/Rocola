@@ -51,7 +51,7 @@ namespace Rocola
         private string iaMezcla = "auto";     // cuanta IA (auto | 0..100); coincide con el motor
         private string iaGpu = "auto";        // que GPU hace los calculos de IA (auto | 0 | 1 | ...); selector en Ctrl+F3
         private string iaCacheDir = null;     // cache compartida con el motor (ia_cache= en config; por defecto junto al exe)
-        private string outPref = "auto";     // salida= en config: auto (WASAPI si la maquina es HD) | wasapi | waveout
+        private string outPref = "auto";     // salida= en config: auto (maquina HD: WASAPI exclusivo, y si no se puede compartido) | exclusivo | wasapi (compartido) | waveout
         private SpectralTap curSbr;          // tap de la cancion actual (para alternar A/B en vivo)
         private const float NormMaxBoost = 16.0f;                                             // techo ABSOLUTO de subida (+24 dB): evita amplificar al infinito una cancion casi muda (el tope real lo pone la etapa, ver TierMaxDb)
         private const float NormTargetMin = 0.06f, NormTargetMax = 0.40f;                     // rango del volumen objetivo que ofrece la interfaz (de flojo a muy fuerte)

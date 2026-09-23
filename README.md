@@ -321,12 +321,16 @@ sola a su modo normal y nunca se queda a todo gas en horario de negocio.
 
 ## Nivel HD (solo esta rama)
 
-- **Salida WASAPI flotante** (`salida=auto|wasapi|waveout` en `rocola_config.txt`): muestras
-  *float* de punta a punta hasta el motor de audio moderno, sin bajar a 16 bits ni pasar por
-  el mezclador clásico; la latencia real depende del controlador (el pulso visual se re-alinea).
-  Si falla la construcción, inicialización o arranque síncrono de WASAPI, reabre la pista
-  una sola vez por **WaveOut**. Los fallos asíncronos durante reproducción siguen el manejo
-  de error de pista; no se promete un cambio transparente de dispositivo a mitad de canción.
+- **Salida WASAPI exclusiva** (`salida=auto|exclusivo|wasapi|waveout` en `rocola_config.txt`;
+  `SalidaExclusiva.cs`): la rocola toma el aparato para ella sola y la música no pasa por el
+  mezclador de Windows. Formato exacto que el aparato admite a su propia frecuencia (24 bits,
+  32, coma flotante; 16 con dither solo si no hay otro), volumen de Windows respetado (en el
+  aparato, o aplicado por la rocola si el aparato no tiene volumen propio) y caída automática a
+  **WASAPI compartido** (muestras *float* de punta a punta) si otro programa usa el aparato,
+  Windows no lo permite o falla al arrancar. `salida=wasapi` vuelve al compartido de antes.
+  Si falla la construcción, inicialización o arranque síncrono del compartido, reabre la pista
+  una sola vez por **WaveOut**. Los vídeos suenan como siempre: la música suelta el aparato
+  antes de cada vídeo. Detalles y límites en `MEJORAS_AUDIO_Y_PENDIENTES_2026-09-22.md` (1.19).
 - **Reconstructor espectral fino**: el DSEE espectral usa **STFT de 4096** (bins más finos =
   detección del corte y costura más limpias) en vez de 2048.
 - **IA de envolvente incluida** (`rocola_ia.bin`): un MLP predice la envolvente de agudos para

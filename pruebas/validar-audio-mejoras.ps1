@@ -62,6 +62,20 @@ try {
             if ($LASTEXITCODE -ne 0) { throw 'Fallo remuestreo' }
         } finally { Pop-Location }
     }
+    # WASAPI exclusivo (solo HD tiene SalidaExclusiva.cs): el formato que ve Windows, la negociacion, la conversion,
+    # el volumen de Windows, las caidas al compartido y el cableado, con un aparato de mentira. Que un aparato de
+    # verdad lo admita y suene bien se comprueba en el equipo del bar.
+    $exclusivo = Join-Path $testRoot 'exclusivo.cs'
+    if (Test-Path -LiteralPath $exclusivo) {
+        $exe = Join-Path $out 'exclusivo.exe'
+        & $compiler /nologo /optimize+ /warnaserror+ ("/out:$exe") /r:System.Core.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll ("/r:$naudio") $exclusivo (Join-Path $testRoot 'leercodigo.cs')
+        if ($LASTEXITCODE -ne 0) { throw 'No compila exclusivo' }
+        Push-Location $out
+        try {
+            & $exe $app
+            if ($LASTEXITCODE -ne 0) { throw 'Fallo exclusivo' }
+        } finally { Pop-Location }
+    }
     & (Join-Path $testRoot 'validar-audio-formatos.ps1') -OutputDirectory $out -Ffmpeg $Ffmpeg
     # Solo este proceso de pruebas y sus hijos. No cambia afinidad del sistema/rocola instalada.
     $process = [System.Diagnostics.Process]::GetCurrentProcess()
