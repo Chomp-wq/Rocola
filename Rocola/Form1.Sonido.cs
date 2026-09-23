@@ -1287,6 +1287,12 @@ namespace Rocola
             public void Dispose() { try { mp3.Dispose(); } catch { } try { ms.Dispose(); } catch { } }
         }
 
+        // ==========  RECONSTRUCTOR ESPECTRAL DE AGUDOS (el DSEE "serio")  ==========
+        // Parte el audio en ventanas (STFT de 2048 puntos, solape 50 %, raiz de Hann en analisis y sintesis),
+        // localiza el "acantilado" donde el codec corto los agudos y re-crea la banda que falta copiando hacia
+        // arriba, por BLOQUES y con la fase corregida, lo que sobrevivio bajo el corte (como el SBR de HE-AAC),
+        // con la envolvente de la curva clasica o la que dice la IA propia (ver Regenerate). Archivos ya
+        // completos (corte >= ~19,3 kHz) pasan intactos: sin acantilado no se toca ni un bin.
         private sealed class SpectralTap : NAudio.Wave.ISampleProvider
         {
             private const int Frame = 2048, Hop = Frame / 2;
@@ -1327,6 +1333,30 @@ namespace Rocola
             private bool srcEnded;
             private long sourceFrames, emittedFrames;      // conserva tambien la fraccion final menor que un Hop
             private readonly float[] iaIn = new float[28], iaOut = new float[12];   // IA propia: entrada/salida de la red (reusables)
+            // LA COPIA POR BLOQUES (ver Regenerate)
+            private int canalRegen;                        // canal que se esta recreando (lo pone ProcessFrame)
+            private bool ventanaImpar;                     // paridad de la ventana: mantiene la fase de la copia
+            private int corteRecreado;                     // el corte con el que se recrea, con histeresis (0 = aun ninguno)
+            private float[] ganHoy;                        // por bin sobre el corte: la escala de la copia de una octava abajo
+            private double[][] numSuave, denSuave;         // por canal y sub-banda: las dos energias de la escala, suavizadas
+            private bool[] suaveListo;                     // por canal: ya hay energias previas con las que suavizar
+            private readonly int[] bordes = new int[160];  // bordes (bin) de las sub-bandas de la copia
+            private int[] marcas;                          // (para armar los bordes)
+            private int nBordes, bordesCorte = -1, bordesTop = -1, bordesLargo = -1;
+            private float alfaSuave;                       // cuanto se mueven esas energias por ventana (~50 ms)
+            private readonly float[] ampSub = new float[160];   // por sub-banda: la escala de esta ventana, en amplitud
+            private float[] fuenteSuave;                   // bajo el corte: cuanto suena la fuente por ahi, sin picos ni huecos
+            private readonly double[] bandaFuente = new double[12];   // (las 12 bandas de 1/12 de octava de la fuente)
+            private readonly int[] bordeFuente = new int[13];
+            private readonly float[] medFuente = new float[12], cenFuente = new float[12];   // (su mediana y su centro)
+            // EL NIVEL QUE DE VERDAD SONABA. La copia de antes perdia energia al solapar las ventanas: cada ventana
+            // salia con otra forma en el tiempo, que la ventana de sintesis recortaba, y dos ventanas vecinas no se
+            // sumaban en fase. Sonaba 10*log10(8/3) = 4,26 dB por debajo de la energia que le pedia la envolvente
+            // (la copia por bloques sin esta escala salia de +3,8 a +4,2 dB mas fuerte, medido con ruido). La copia
+            // por bloques no pierde nada, asi que se escala a lo que sonaba cuando funcionaba. (Ojo: casi siempre
+            // funcionaba poco, porque media la costura en un trozo vacio; ver EnvolventeClasica.) Si el brillo se
+            // quiere mas bajo o mas alto, es esta constante y nada mas.
+            private const float PotenciaDeAntes = 0.375f;  // 3/8, en potencia
 
             private volatile bool mejoro;                  // ya reconstruyo al menos UNA vez en esta cancion
             // La cancion FUE mejorada en esta reproduccion: en cuanto Regenerate() actua un cuadro, esto
@@ -1344,6 +1374,8 @@ namespace Rocola
                 inBuf = new float[ch][]; outAcc = new float[ch][];
                 for (int c = 0; c < ch; c++) { inBuf[c] = new float[Frame]; outAcc[c] = new float[Frame]; }
                 re = new float[Frame]; im = new float[Frame];
+                ganHoy = new float[Frame / 2];
+                fuenteSuave = new float[Frame / 2];
                 if (ch >= 2) { reB = new float[Frame]; imB = new float[Frame]; }   // los canales se procesan de dos en dos (ver ProcessFrame)
                 AudioFftPlan plan = GetAudioFftPlan(Frame);
                 win = plan.Window; bitrev = plan.Reverse;
@@ -1463,6 +1495,8 @@ namespace Rocola
             private void EmpiezaStft()
             {
                 stft = true; saliendo = false; ultimoCero = false; restoN = 0;
+                ventanaImpar = false;
+                if (suaveListo != null) for (int c = 0; c < suaveListo.Length; c++) suaveListo[c] = false;
                 fill = Hop; firstFrame = true; qHead = 0; qLen = 0;
                 srcEnded = false; sourceFrames = 0; emittedFrames = 0;
                 for (int c = 0; c < ch; c++)
@@ -1482,6 +1516,8 @@ namespace Rocola
                 src = null; ch = channels < 1 ? 1 : channels; rate = rateHz < 8000 ? 44100 : rateHz;
                 binHz = (float)rate / Frame;
                 re = new float[Frame]; im = new float[Frame];
+                ganHoy = new float[Frame / 2];
+                fuenteSuave = new float[Frame / 2];
                 AudioFftPlan plan = GetAudioFftPlan(Frame);
                 win = plan.Window; bitrev = plan.Reverse;
                 twCos = plan.Cos; twSin = plan.Sin; twSinNeg = plan.SinNeg;
@@ -1546,6 +1582,7 @@ namespace Rocola
             // Con un numero impar de canales, el que sobra va por el camino de siempre.
             private void ProcessFrame(int emitFrames)
             {
+                ventanaImpar = !ventanaImpar;   // la copia por bloques corrige la fase segun la paridad de la ventana
                 if (!firstFrame)   // la ventana de arranque no recrea nada: no gasta un paso del fundido
                 {
                     if (regen < regenObjetivo) regen = Math.Min(regenObjetivo, regen + pasoRegen);
@@ -1561,15 +1598,18 @@ namespace Rocola
                     // La ventana de arranque (media ventana de ceros y media de musica) NO mide el acantilado: el
                     // salto de cero a musica en su centro salpica energia hasta 20 kHz y la daba por "completa";
                     // la reconstruccion no empezaba hasta que esa medida falsa se diluia (cientos de ms) y entonces
-                    // aparecia de golpe. Se mide desde la primera ventana de musica entera.
-                    if (cn == 0 && !firstFrame)
+                    // aparecia de golpe. Se mide desde la primera ventana de musica entera. Y por lo mismo, tampoco las
+                    // del final, rellenadas con ceros (srcEnded): el corte seco de la ultima nota salpica igual y
+                    // movia el corte con el que se recreaban los ultimos milisegundos.
+                    if (cn == 0 && !firstFrame && !srcEnded)
                     {
                         // Potencia de AMBOS canales ya separados; no mezclar las ondas
                         // (los agudos en contrafase se cancelarian). Sin FFT adicionales.
                         detectPair = true; DetectCliff(); detectPair = false;
+                        ActualizaCorte();
                     }
-                    Regenerate();                // canal par
-                    Intercambia(); Regenerate(); Intercambia();   // canal impar (Regenerate trabaja sobre re/im)
+                    canalRegen = cn; Regenerate();                // canal par
+                    Intercambia(); canalRegen = cn + 1; Regenerate(); Intercambia();   // canal impar (Regenerate trabaja sobre re/im)
                     // se vuelven a juntar: parte real = canal par, parte imaginaria = canal impar
                     for (int i = 0; i < Frame; i++) { float t = re[i] - imB[i]; im[i] = im[i] + reB[i]; re[i] = t; }
                     Fft(true);
@@ -1581,8 +1621,8 @@ namespace Rocola
                     float[] xin = inBuf[cn];
                     for (int i = 0; i < Frame; i++) { re[i] = xin[i] * win[i]; im[i] = 0f; }
                     Fft(false);
-                    if (cn == 0 && !firstFrame) DetectCliff();   // la ventana de arranque no mide (ver arriba)
-                    Regenerate();
+                    if (cn == 0 && !firstFrame && !srcEnded) { DetectCliff(); ActualizaCorte(); }   // ni la de arranque ni las del final miden (ver arriba)
+                    canalRegen = cn; Regenerate();
                     Fft(true);
                     float[] acc = outAcc[cn];
                     for (int i = 0; i < Frame; i++) acc[i] += re[i] * win[i];
@@ -1644,6 +1684,15 @@ namespace Rocola
                 double refE = 0; for (int b = b4; b < b8; b++) refE += DetectionPower(b);
                 refE /= (b8 - b4);
                 if (refE < 1e-10) return;                        // silencio: conservar la medida previa
+                // ...O CASI: de 4 a 8 kHz no hay musica, solo lo que la ventana derrama de un grave fuerte (un bajo o un
+                // bombo solos, o la pausa entre dos golpes de charles). Ese derrame baja muy despacio hasta 20 kHz, asi
+                // que en cada pausa el acantilado "subia" hacia los 20 kHz, el corte con el que se recrea se movia y
+                // hasta se dejaba de recrear, por creer la cancion completa. En musica de verdad esta banda queda como
+                // mucho a unos 40 dB del cuerpo (100 Hz - 4 kHz) y el derrame de un grave solo, a 52-88 dB (medido): mas
+                // de 45 dB por debajo no es musica, y se conserva la medida previa.
+                int b1 = Hz(100f); double cuerpo = 0;
+                for (int b = b1; b < b4; b++) cuerpo += DetectionPower(b);
+                if (refE < cuerpo / (b4 - b1) * 3e-5) return;
                 float top = Math.Min(20000f, (Frame / 2) * binHz * 0.94f);
                 float found = 0f;
                 for (float hz = top - 300f; hz >= 9000f; hz -= 300f)
@@ -1712,6 +1761,7 @@ namespace Rocola
             {
                 if (!BuildIaFeatures(cut)) return false;
                 if (!NeuralEnv.Predict(iaIn, iaOut)) return false;
+                for (int t = cut; t <= topBin; t++) ganHoy[t - cut] = 0f;
                 float n2 = (float)Frame * (float)Frame;
                 int sa = Hz(cut * binHz * 0.92f); if (sa >= cut) sa = cut - 1;
                 double seamE = 0; for (int k = sa; k < cut; k++) seamE += re[k] * re[k] + im[k] * im[k];
@@ -1722,57 +1772,233 @@ namespace Rocola
                     int a = Hz(fc * (float)Math.Pow(top / fc, j / 12.0));
                     int b = Hz(fc * (float)Math.Pow(top / fc, (j + 1) / 12.0));
                     if (a < cut) a = cut; if (b > topBin) b = topBin; if (b <= a) continue;
-                    double mapped = 0;                               // energia de la fuente transpuesta en esta sub-banda
-                    for (int t = a; t < b; t++) { int s = t >> 1; mapped += re[s] * re[s] + im[s] * im[s]; }
+                    double mapped = 0;                               // energia de la fuente transpuesta en esta sub-banda (sin picos: ver FuenteSuave)
+                    for (int t = a; t < b; t++) mapped += fuenteSuave[t >> 1];
                     mapped = mapped / ((b - a) * n2);
                     if (mapped < 1e-14) continue;                    // fuente muda: nada que transponer aqui
                     float yj = iaOut[j]; if (yj > 0.1f) yj = 0.1f; else if (yj < -4f) yj = -4f;   // tope: nunca mas fuerte que la costura (+~1dB)
                     float sc = (float)Math.Sqrt(seamE * Math.Pow(10.0, yj) / mapped) * 0.9f;      // 0.9 = colchon
                     if (sc > 3f) sc = 3f;
-                    sc *= regen;                                     // fundido al encender/apagar (1 = tal cual)
-                    for (int t = a; t < b; t++)
-                    {
-                        int s = t >> 1;
-                        re[t] += re[s] * sc; im[t] += im[s] * sc;
-                        int m = Frame - t;                           // espejo: la señal sigue siendo real
-                        re[m] = re[t]; im[m] = -im[t];
-                    }
+                    for (int t = a; t < b; t++) ganHoy[t - cut] = sc;   // la envolvente; la copia la hace CopiaPorBloques
                 }
                 return true;
             }
 
-            // Re-crea la banda por ENCIMA del acantilado: t <- t/2 (una octava abajo = contenido REAL que
-            // sobrevivio). La ENVOLVENTE (cuanto suena cada sub-banda nueva) la decide la IA PROPIA si hay
-            // modelo cargado (rocola_ia.bin); si no, la curva clasica: costura empatada y ~-9 dB/octava.
+            // RE-CREA LA BANDA POR ENCIMA DEL ACANTILADO.
+            //
+            // CUANTO suena cada parte de la banda nueva (la envolvente) se decide como siempre: la IA propia si hay
+            // modelo cargado (rocola_ia.bin) y, si no, la curva clasica (costura empatada y ~-9 dB por octava), las
+            // dos sobre lo que daria copiar la octava de abajo. DE DONDE sale el detalle fino, en cambio, ya no es de
+            // ahi (23 de septiembre de 2026):
+            //
+            // Antes cada bin copiaba al de la mitad de su frecuencia (t <- t/2). Dos bins vecinos salian de la MISMA
+            // fuente desplazada distinto, y la fase no seguia de una ventana a la siguiente: un tono estable recreado
+            // salia con bandas laterales casi tan fuertes como el (medido con un tono de 7 kHz: solo el 54 % de su
+            // energia limpia con ventanas de 2048 y el 11 % con las de 4096). Eso se oye como aspereza o tremolo en
+            // los agudos recreados de voces, cuerdas y sintetizadores.
+            //
+            // Ahora se copia por BLOQUES, como el SBR de los codecs AAC: el bloque de la octava bajo el corte sube
+            // entero con un desplazamiento CONSTANTE y, como las ventanas avanzan media ventana, un desplazamiento
+            // impar cambia de signo en las ventanas impares para que la fase siga de una a otra. Un tono estable sale
+            // como UN tono estable. Cada sub-banda (de ~500 Hz, sin cruzar los bordes de las bandas de la IA ni los de
+            // los bloques) se escala a la energia que le pide la envolvente, medida sobre cuanto suena la fuente por
+            // ahi sin contar picos ni huecos sueltos (ver FuenteSuave), y a la potencia a la que sonaba la copia de
+            // antes cuando funcionaba (ver PotenciaDeAntes). Las dos energias de esa PROPORCION son de la misma ventana
+            // y se suavizan entre ventanas (~50 ms): quita el temblor de medir con pocos bins sin retrasar un golpe de
+            // platillo, que llega en la misma ventana a los dos lados de la proporcion.
             private void Regenerate()
             {
                 if (cutHz <= 0f || cutHz >= 19300f) return;      // sin medida aun, o archivo ya completo
                 if (regen <= 0f) return;                          // apagandose y ya en cero: la ventana sale tal cual
                 int ny = Frame / 2;
-                int cut = (int)(cutHz / binHz);
+                int cut = corteRecreado > 0 ? corteRecreado : (int)(cutHz / binHz);
                 if (cut < 64) return;                             // corte absurdamente bajo: no inventar tanto
                 mejoro = true;                                    // desde aqui SI se reconstruye: el letrero queda toda la cancion
                 int topBin = Math.Min((int)(Math.Min(20500f, ny * binHz * 0.95f) / binHz), Math.Min(2 * cut - 2, ny - 4));
                 if (topBin <= cut + 4) return;
-                if (NeuralEnv.Loaded && RegenNeural(cut, topBin)) return;   // IA propia: envolvente APRENDIDA
-                double mBelow = 0, mSrc = 0;                      // costura: magnitud media bajo el corte vs banda fuente
-                for (int k = cut - 6; k < cut; k++) mBelow += Math.Sqrt(re[k] * re[k] + im[k] * im[k]);
+                FuenteSuave(cut);                                 // cuanto suena la fuente, sin picos ni huecos: lo usan las dos de abajo
+                // La envolvente: la IA propia (aprendida) o, si no hay modelo o no puede, la curva clasica.
+                if (!(NeuralEnv.Loaded && RegenNeural(cut, topBin)) && !EnvolventeClasica(cut, topBin)) return;
+                CopiaPorBloques(cut, topBin);
+            }
+
+            // LA CURVA CLASICA, bin a bin: la costura empatada con colchon (que NUNCA suba) y ~-9 dB por octava, sobre la
+            // copia de una octava abajo. false = no hay nada que recrear (la fuente esta muda).
+            //
+            // LA COSTURA se mide justo DEBAJO de donde empieza la caida del filtro del codec (el mismo borde de arriba
+            // del bloque que se copia), no en los 6 bins de justo debajo del corte. El corte medido puede quedar hasta
+            // 300 Hz por encima de donde acaba la musica y ahi esos 6 bins estan casi vacios: con el corte ya quieto, la
+            // cancion entera se quedaba sin agudos recreados (medido con tono y ruido cortados en 12 kHz: 31 dB menos
+            // que antes). Antes lo tapaba, a medias, el propio baile del corte: en algunas ventanas caia mas abajo y los
+            // agudos aparecian de golpe (en 4096, una de cada diez ventanas sonaba ~25 dB mas fuerte que las demas).
+            private bool EnvolventeClasica(int cut, int topBin)
+            {
+                double mBelow = 0, mSrc = 0;                      // costura: magnitud media bajo la caida del codec vs banda fuente
+                int s1 = cut - Math.Max(2, cut / 32);
+                for (int k = s1 - 6; k < s1; k++) mBelow += Math.Sqrt(re[k] * re[k] + im[k] * im[k]);
                 int s0 = cut >> 1;
                 for (int k = s0; k < s0 + 6; k++) mSrc += Math.Sqrt(re[k] * re[k] + im[k] * im[k]);
-                if (mSrc < 1e-9) return;
+                if (mSrc < 1e-9) return false;
                 float g = (float)(mBelow / mSrc) * 0.85f;         // empatada con colchon (que la costura NUNCA suba)
                 if (g > 1.1f) g = 1.1f;
-                if (g <= 1e-6f) return;
+                if (g <= 1e-6f) return false;
                 float step = (float)Math.Pow(10.0, -0.45 / cut);  // ~-9 dB por octava (una octava = cut bins)
                 float f = g;
-                for (int t = cut; t <= topBin; t++)
+                for (int t = cut; t <= topBin; t++) { ganHoy[t - cut] = f; f *= step; }
+                return true;
+            }
+
+            // EL CORTE CON EL QUE SE RECREA. El medido baila unos bins de una ventana a otra (en un pasaje callado la
+            // energia de arriba baja y parece que corta antes), y cada cambio del corte usado cambia los bloques y su
+            // fase. Solo se mueve si el medido se aparta mas de un 2 %.
+            private void ActualizaCorte()
+            {
+                if (cutHz <= 0f) return;
+                int medido = (int)(cutHz / binHz);
+                if (corteRecreado <= 0 || Math.Abs(medido - corteRecreado) > Math.Max(2, corteRecreado / 50)) corteRecreado = medido;
+            }
+
+            // CUANTO SUENA LA FUENTE POR CADA ZONA, SIN PICOS NI HUECOS SUELTOS, en la octava bajo el corte, que es de
+            // donde leen la envolvente y los bloques. La proporcion de cada sub-banda compara dos zonas DISTINTAS de la
+            // fuente (la de la copia de antes, una octava abajo, y la del bloque), asi que no puede mirar los picos: un
+            // tono de 7 kHz, que la copia de antes subia a 14 kHz y la de bloques sube a 13,1, hacia que la escala
+            // apagara el tono recreado e inflara hasta el tope el ruido de 14 kHz (con la energia bin a bin) o movia el
+            // ruido recreado de alrededor hasta 23 dB (con la energia promediada en media octava). Aqui la octava se
+            // parte en 12 bandas de 1/12 de octava, de cada banda se toma su energia media y de cada tres vecinas la
+            // del medio (mediana): un tono o un hueco que caiga en una banda no cuenta. Entre los centros de las bandas
+            // se interpola. Medido con ese tono (pruebas/dsee.cs, seccion 11): el ruido recreado de alrededor queda a
+            // menos de 1 dB del que sale sin el tono. Los bordes van en enteros (2^(i/12) * 1024, redondeado) para que
+            // salgan iguales en cualquier procesador.
+            private static readonly int[] DozavoDeOctava = { 1024, 1085, 1149, 1218, 1290, 1367, 1448, 1534, 1625, 1722, 1825, 1933, 2048 };
+            private void FuenteSuave(int cut)
+            {
+                // Con cut >= 64 (Regenerate no recrea por debajo) la banda mas estrecha tiene 2 bins: ninguna queda vacia.
+                int k0 = cut >> 1;
+                int[] e = bordeFuente; double[] m = bandaFuente; float[] v = medFuente, cc = cenFuente;
+                for (int i = 0; i < 12; i++) e[i] = (k0 * DozavoDeOctava[i] + 512) >> 10;
+                e[12] = cut;
+                for (int i = 0; i < 12; i++)
                 {
-                    int s = t >> 1;                               // fuente: una octava abajo (siempre < cut: contenido real)
-                    float fr = f * regen;                         // con el fundido completo (1) es f exacto
-                    re[t] += re[s] * fr; im[t] += im[s] * fr;
-                    int m = Frame - t;                            // espejo (frecuencias negativas): la señal sigue siendo real
-                    re[m] = re[t]; im[m] = -im[t];
-                    f *= step;
+                    double s = 0; for (int k = e[i]; k < e[i + 1]; k++) s += re[k] * re[k] + im[k] * im[k];
+                    m[i] = s / (e[i + 1] - e[i]);
+                    cc[i] = (e[i] + e[i + 1] - 1) * 0.5f;
+                }
+                for (int i = 0; i < 12; i++) v[i] = Mediana3(m, i);
+                float[] fs = fuenteSuave;
+                int j = 0;
+                for (int k = k0; k < cut; k++)
+                {
+                    while (j < 12 && cc[j] <= k) j++;             // j = la primera banda con el centro a la derecha de k
+                    fs[k] = j == 0 ? v[0] : (j == 12 ? v[11] : v[j - 1] + (v[j] - v[j - 1]) * ((k - cc[j - 1]) / (cc[j] - cc[j - 1])));
+                }
+            }
+            // La mediana de la banda i y sus dos vecinas (en los extremos, las tres del extremo).
+            private static float Mediana3(double[] m, int i)
+            {
+                int j = i - 1; if (j < 0) j = 0; else if (j > 9) j = 9;
+                double a = m[j], b = m[j + 1], c = m[j + 2];
+                double med = a > b ? (b > c ? b : (a > c ? c : a)) : (a > c ? a : (b > c ? c : b));
+                return (float)med;
+            }
+
+            // LA COPIA POR BLOQUES, con la envolvente que dejo ganHoy (ver Regenerate).
+            private void CopiaPorBloques(int cut, int topBin)
+            {
+                int srcLo = cut >> 1;                             // el bloque fuente: desde una octava abajo...
+                int srcHi = cut - Math.Max(2, cut / 32);          // ...hasta casi el corte (sin la caida del filtro del codec)
+                int largo = srcHi - srcLo;                        // lo que sube cada bloque sobre el anterior
+                if (largo < 8) return;
+                ArmaSubbandas(cut, topBin, largo);
+                int c = canalRegen;
+                if (numSuave == null || numSuave.Length < ch) { numSuave = new double[ch][]; denSuave = new double[ch][]; suaveListo = new bool[ch]; }
+                double[] ns = numSuave[c], ds = denSuave[c];
+                if (ns == null) { ns = numSuave[c] = new double[bordes.Length]; ds = denSuave[c] = new double[bordes.Length]; }
+                if (alfaSuave <= 0f) alfaSuave = (float)(1.0 - Math.Exp(-(double)Hop / (0.05 * rate)));
+                bool previa = suaveListo[c];
+                int nsb = nBordes - 1;
+                // 1) La escala de cada sub-banda: la energia que le pide la envolvente sobre la copia de antes, entre la
+                //    del bloque (las dos sobre FuenteSuave), al nivel al que sonaba la copia de antes. Se suavizan las DOS
+                //    ENERGIAS por separado, no la escala: asi cuentan las ventanas con musica y no las casi mudas, cuya
+                //    escala es ruido de medir. Suavizando la escala, una mezcla con charles en corcheas pasada a MP3 de
+                //    128 kbps llevaba la escala de los silencios (hasta el tope) al golpe siguiente y sus agudos recreados
+                //    salian hasta 40 dB mas fuertes que antes (medido). Y como son energias, el promedio es de POTENCIA,
+                //    como el que hacia la copia de antes al sumar ventanas sueltas (suavizar la amplitud quedaba ~1 dB
+                //    por debajo cuando la costura baila de una ventana a otra, medido).
+                for (int k = 0; k < nsb; k++)
+                {
+                    int a = bordes[k], b = bordes[k + 1];
+                    int d = cut + ((a - cut) / largo) * largo - srcLo;   // desplazamiento de su bloque
+                    double eHoy = 0, eBlk = 0;
+                    for (int t = a; t < b; t++)
+                    {
+                        float gh = ganHoy[t - cut];
+                        eHoy += fuenteSuave[t >> 1] * gh * gh;
+                        eBlk += fuenteSuave[t - d];
+                    }
+                    if (previa) { ns[k] += (eHoy - ns[k]) * alfaSuave; ds[k] += (eBlk - ds[k]) * alfaSuave; }
+                    else { ns[k] = eHoy; ds[k] = eBlk; }
+                    float pk = ds[k] > 1e-24 ? (float)(ns[k] / ds[k]) * PotenciaDeAntes : 0f;
+                    if (pk > 36f) pk = 36f;                       // (x6 en amplitud) un hueco en la fuente no se infla sin limite
+                    ampSub[k] = (float)Math.Sqrt(pk);
+                }
+                suaveListo[c] = true;
+                // 2) La copia, bin a bin: la escala interpolada entre los centros de las sub-bandas de SU bloque, y el
+                //    signo que mantiene la fase de una ventana a la siguiente.
+                for (int k = 0; k < nsb; k++)
+                {
+                    int a = bordes[k], b = bordes[k + 1];
+                    int r = (a - cut) / largo, d = cut + r * largo - srcLo;
+                    float signo = ((d & 1) == 1 && ventanaImpar) ? -regen : regen;   // con el fundido de encendido (1 = tal cual)
+                    float centro = (a + b - 1) * 0.5f;
+                    bool conAnt = k > 0 && (bordes[k - 1] - cut) / largo == r;        // la sub-banda de antes es del mismo bloque
+                    bool conSig = k + 1 < nsb && (bordes[k + 1] - cut) / largo == r;  // y la de despues
+                    float cAnt = conAnt ? (bordes[k - 1] + a - 1) * 0.5f : 0f;
+                    float cSig = conSig ? (b + bordes[k + 2] - 1) * 0.5f : 0f;
+                    for (int t = a; t < b; t++)
+                    {
+                        float g = ampSub[k];
+                        if (t < centro && conAnt) g = ampSub[k - 1] + (ampSub[k] - ampSub[k - 1]) * ((t - cAnt) / (centro - cAnt));
+                        else if (t > centro && conSig) g = ampSub[k] + (ampSub[k + 1] - ampSub[k]) * ((t - centro) / (cSig - centro));
+                        float fr = g * signo;
+                        int s = t - d;                            // fuente: siempre bajo el corte (contenido real)
+                        re[t] += re[s] * fr; im[t] += im[s] * fr;
+                        int m = Frame - t;                        // espejo (frecuencias negativas): la señal sigue siendo real
+                        re[m] = re[t]; im[m] = -im[t];
+                    }
+                }
+            }
+
+            // Las sub-bandas de la copia: bordes en el corte, al empezar cada bloque, en las bandas de la IA (las mismas
+            // de RegenNeural y MakePair) y, si quedan anchas, partidas en trozos de ~500 Hz. Se rehacen solo si cambia
+            // el corte, y entonces se olvida el suavizado, que era de otras sub-bandas.
+            private void ArmaSubbandas(int cut, int topBin, int largo)
+            {
+                if (cut == bordesCorte && topBin == bordesTop && largo == bordesLargo) return;
+                bordesCorte = cut; bordesTop = topBin; bordesLargo = largo;
+                if (suaveListo != null) for (int c = 0; c < suaveListo.Length; c++) suaveListo[c] = false;
+                if (marcas == null) marcas = new int[64];
+                int n = 0, fin = topBin + 1;
+                marcas[n++] = cut; marcas[n++] = fin;
+                for (int p = cut + largo; p < fin && n < marcas.Length; p += largo) marcas[n++] = p;
+                float fc = cut * binHz, top = topBin * binHz;
+                for (int j = 1; j < 12 && n < marcas.Length; j++)
+                {
+                    int e = Hz(fc * (float)Math.Pow(top / fc, j / 12.0));
+                    if (e > cut && e < fin) marcas[n++] = e;
+                }
+                Array.Sort(marcas, 0, n);
+                int w = Math.Max(4, (int)(500f / binHz));
+                nBordes = 0;
+                for (int i = 0; i < n; i++)
+                {
+                    int e = marcas[i];
+                    if (nBordes > 0 && e <= bordes[nBordes - 1]) continue;   // repetido
+                    if (nBordes > 0)
+                    {
+                        int prev = bordes[nBordes - 1], ancho = e - prev, partes = (ancho + w - 1) / w;
+                        for (int p = 1; p < partes && nBordes < bordes.Length - 1; p++) bordes[nBordes++] = prev + ancho * p / partes;
+                    }
+                    if (nBordes < bordes.Length) bordes[nBordes++] = e;
                 }
             }
 
