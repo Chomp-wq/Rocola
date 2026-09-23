@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Reflection;
@@ -43,11 +44,31 @@ class EqPreparado
     }
     // Camino anterior independiente: prepara al leer, conserva estados al desactivar
     // y compacta las mismas bandas en el mismo orden, sin suavizados nuevos.
+    // El realce, si la cancion EMPIEZA con el encendido, va a 2x (Rocola/Realce.cs): aqui se rehace aparte, con
+    // el historial entero de cada canal (sin anillos ni trozos), las mismas cuentas en el mismo orden.
     sealed class Reference : ISampleProvider {
         readonly ISampleProvider source; readonly Type form; readonly float[] centers;
         public float[] Curve; float[] used,state,lp; float[][] coef;int active;
         public float Gain=1f,Master=1f,Excite;
-        public Reference(Type f,int rate,int channels) { form=f;source=new Input(rate,channels);centers=(float[])Get(f,null,"EqCentros"); }
+        readonly double[] C; readonly int K,D; List<double>[] H,V,G,N; float[] lp2; int modo;
+        public Reference(Type f,int rate,int channels) {
+            form=f;source=new Input(rate,channels);centers=(float[])Get(f,null,"EqCentros");
+            Type re=f.Assembly.GetType("Rocola.RealceSobremuestreado",true);
+            C=(double[])re.GetField("C",F).GetValue(null);K=(int)re.GetField("Pares",F).GetValue(null);D=(int)re.GetField("Retraso",F).GetValue(null);
+            H=new List<double>[channels];V=new List<double>[channels];G=new List<double>[channels];N=new List<double>[channels];
+            for(int c=0;c<channels;c++){H[c]=new List<double>();V[c]=new List<double>();G[c]=new List<double>();N[c]=new List<double>();}
+            lp2=new float[channels];
+        }
+        static double Resto(double u){double x=2.5*u;if(!(x>-3.0))return -1.0-x;if(x>3.0)return 1.0-x;double x2=x*x;return x*(27.0+x2)/(27.0+9.0*x2)-x;}
+        static double At(List<double> l,int i){return i<0?0.0:l[i];}
+        float Realce2x(int c,float v,float k,float pole){
+            float l=(lp2[c]+=(v-lp2[c])*pole);float h=v-l;
+            H[c].Add(h);V[c].Add(v);int m=H[c].Count-1;
+            double y=0;for(int t=0;t<K;t++)y+=C[t]*(At(H[c],m-t)+At(H[c],m-D+t));
+            G[c].Add(Resto(y));N[c].Add(Resto(At(H[c],m-(K-1))));
+            double w=.5*At(N[c],m-K);for(int t=0;t<K;t++)w+=(.5*C[t])*(At(G[c],m-t)+At(G[c],m-D+t));
+            return (float)At(V[c],m-D)+k*(float)(2.5*At(H[c],m-D)+w);
+        }
         public WaveFormat WaveFormat { get { return source.WaveFormat; } }
         public int Read(float[] buffer,int offset,int count) {
             int n=source.Read(buffer,offset,count);
@@ -63,6 +84,22 @@ class EqPreparado
                 state=new float[ch*32];used=db;
             }
             if(eq&&active==0)eq=false;
+            if(modo==0)modo=excite?2:1;
+            if(modo==2){
+                float pole=WaveFormat.SampleRate==44100?.55f:(float)(1-Math.Pow(.45,44100.0/WaveFormat.SampleRate));
+                float k=ex*.5f*.4f;int ci=0;
+                for(int i=offset;i<offset+n;i++){
+                    float v=buffer[i]*g;
+                    if(eq)for(int b=0;b<active;b++){
+                        float[] cf=coef[b];int q=ci*32+b*4;
+                        float o=cf[0]*v+cf[1]*state[q]+cf[2]*state[q+1]-cf[3]*state[q+2]-cf[4]*state[q+3];
+                        state[q+1]=state[q];state[q]=v;state[q+3]=state[q+2];state[q+2]=o;v=o;
+                    }
+                    buffer[i]=Realce2x(ci,v,k,pole);
+                    ci++;if(ci>=ch)ci=0;
+                }
+                return n;
+            }
             if(g!=1f||excite||eq){
                 if(excite&&lp==null)lp=new float[ch];
                 float mix=ex*.5f;int ci=0;

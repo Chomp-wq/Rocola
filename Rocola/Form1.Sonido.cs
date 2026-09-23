@@ -1046,6 +1046,7 @@ namespace Rocola
                 tap.Excite = ExciteAmountFor(t.Path);   // realce de agudos: mas a las dañadas, menos a las que ya traen su aire
                 tap.Master = MasterLin() * FactorNoche();  // SUBIR TODO (con rodilla suave anti-distorsion), y de madrugada mas bajo
                 tap.EqDb = EqCorrFor(t.Path);      // EQ automatico: correccion aprendida (null la 1a vez que suena)
+                audioTailDelay += tap.DelayFrames;   // realce 2x: retiene 31 cuadros y los entrega al final (Realce.cs)
                 curTap = tap;   // referencia para ajustar la ganancia en vivo (Ctrl+F3)
                 // BAJO PSICOACUSTICO: despues de nivelar/ecualizar y ANTES del limitador, que es quien controla
                 // los picos que anaden los armonicos.
@@ -2826,8 +2827,10 @@ namespace Rocola
             public volatile float Master = 1f; // los picos los controla el limitador final
             // REALCE DE AGUDOS (exciter armonico, tipo DSEE): separa la banda alta con un paso-alto de un polo,
             // la satura suave (tanh: crea armonicos NUEVOS por encima, el "aire" que el MP3 recorta) y mezcla
-            // una pizca de vuelta. Todo en el dominio del tiempo: ~2 operaciones y un tanh por muestra, ~1-2%
-            // de CPU en la rocola (nada de FFT). 0 = apagado (la pasada ni se ejecuta si tampoco hay nivelado).
+            // una pizca de vuelta. Todo en el dominio del tiempo (nada de FFT). La saturacion se calcula al
+            // doble de frecuencia para que sus armonicos no se plieguen (Realce.cs); el camino de una muestra
+            // por vez que queda abajo solo se usa si el realce se sube a media cancion desde cero.
+            // 0 = apagado (la pasada ni se ejecuta si tampoco hay nivelado).
             public volatile float Excite = 0f;   // intensidad 0..1, suavizada al cambiar en vivo
             private float[] exLp;       // estado del filtro del exciter (uno por canal)
             // EQ AUTOMATICO: correccion en dB por banda (8) o null = apagado. Se aplica con biquads
@@ -2872,11 +2875,26 @@ namespace Rocola
                 rampFrames=Math.Max(1,(int)(s.WaveFormat.SampleRate*.020));
                 eqFadeFrames=Math.Max(1,(int)(s.WaveFormat.SampleRate*.030));
                 exciterPole=ExciterPole(s.WaveFormat.SampleRate);exLp=new float[audioChannels];
+                PreparaRealce();   // realce 2x (Realce.cs): su memoria se reserva aqui, nunca al leer
             }
             public NAudio.Wave.WaveFormat WaveFormat { get { return src.WaveFormat; } }
+            private void Objetivos(out float g, out float ex)
+            {
+                g=Gain*Master; ex=Excite;
+                if(float.IsNaN(g)||float.IsInfinity(g)||g<0)g=audioReady?gainRamp.Current:1f;
+                if(float.IsNaN(ex)||float.IsInfinity(ex))ex=audioReady?exciteRamp.Current:0f;
+                ex=ex>.001f?Math.Min(1f,ex):0f;
+            }
             public int Read(float[] buffer, int offset, int count)
             {
+                if (vaciando) return VaciaRealce(buffer, offset, count);
                 int n = src.Read(buffer, offset, count);
+                if (n <= 0 && modoRealce == 2 && audioReady && owner != null)
+                {
+                    // Se acabo la cancion: el realce 2x tiene retenidos sus 31 cuadros; salen enteros, no se cortan.
+                    vaciando = true; porVaciar = RealceSobremuestreado.Retraso * audioChannels;
+                    return VaciaRealce(buffer, offset, count);
+                }
                 if (n > 0 && owner != null)
                 {
                     // RED DE SEGURIDAD, y no es teorica: en una biblioteca con miles de archivos pobres o
@@ -2889,15 +2907,17 @@ namespace Rocola
                     // (un archivo roto que devuelve 1e30) que reventarian el nivelado.
                     { int fin0 = offset + n; for (int i = offset; i < fin0; i++) { float x0 = buffer[i]; if (!(x0 >= -4f && x0 <= 4f)) buffer[i] = 0f; } }
                     owner.ReportAudioBlock(buffer, offset, n, WaveFormat.SampleRate, WaveFormat.Channels);   // mide el nivel CRUDO (beat + sonoridad + huella tonal) ANTES de tocar nada
-                    float g=Gain*Master, ex=Excite;
-                    if(float.IsNaN(g)||float.IsInfinity(g)||g<0)g=audioReady?gainRamp.Current:1f;
-                    if(float.IsNaN(ex)||float.IsInfinity(ex))ex=audioReady?exciteRamp.Current:0f;
-                    ex=ex>.001f?Math.Min(1f,ex):0f;
+                    float g, ex;
+                    Objetivos(out g, out ex);
                     PreparedEq prepared=pendingEq;
                     if(!audioReady)
                     {
                         gainRamp.Init(g);exciteRamp.Init(ex);currentEq=prepared;audioReady=true;
+                        FijaModoRealce(ex);
                     }
+                    // Realce 2x (la cancion empezo con el realce encendido): siempre por la linea de retraso,
+                    // tambien si luego se apaga (sale el seco intacto, retrasado lo mismo).
+                    if(modoRealce==2){ProcesaConRealce(buffer,offset,n,g,ex,prepared);return n;}
                     bool identity=g==1f && gainRamp.Current==1f && gainRamp.Remaining==0 &&
                         ex==0 && exciteRamp.Current==0 && exciteRamp.Remaining==0 &&
                         eqFadeLeft==0 && SameEq(currentEq,prepared) && (currentEq==null||currentEq.Active==0);
@@ -2915,7 +2935,7 @@ namespace Rocola
                                 float old=ApplyPreparedEq(previousEq,input,audioChannel);
                                 v=old+(v-old)*eqMix;
                             }
-                            if(exciteRamp.Current>0)
+                            if(exciteRamp.Current>0)   // realce sin sobremuestrear: solo si se encendio a media cancion
                             {
                                 float lp=(exLp[audioChannel]+=(v-exLp[audioChannel])*exciterPole);
                                 float h=v-lp;

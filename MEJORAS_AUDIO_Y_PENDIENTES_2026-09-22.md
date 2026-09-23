@@ -25,7 +25,9 @@ desarrollo y medición. La revisión anterior está en REVISION_AUDIO_2026-09-22
 | Sonoridad integrada BS.1770 de la canción entera, aparte de la estimación | Implementado y probado; ver 1.12 |
 | Mínimos de aprendizaje por duración y lecturas que parten un cuadro | Implementado y probado; ver 1.12 |
 | Limitador de pico real entre muestras (true-peak) | Implementado y probado, con un límite medido; ver 1.13 |
-| Antialiasing, salidas y continuidad | Pendiente; plan abajo |
+| Plegado (aliasing) del realce de agudos: saturación a 2× con el seco alineado | Implementado y probado; ver 1.14 |
+| Plegado del grave sintético | Medido: no hace falta sobremuestrear; ver 1.14 |
+| Transiciones del grave sintético y del DSEE, salidas y continuidad | Pendiente; plan abajo |
 | Paridad del extractor IA (contrato EXTRACTOR=2) | Implementado y probado; ver 1.7 |
 | Identidad de origen, particiones por canción y estéreo por canal | Implementado y probado; ver 1.8 |
 | Selección contra curva e instalado, informe reproducible | Implementado y probado; ver 1.9 |
@@ -70,7 +72,7 @@ El coeficiente anterior era 0,55 a todas las frecuencias. Ahora:
 
 A 44,1 kHz se conserva exactamente 0,55. A otras frecuencias se conserva la constante
 temporal del polo de referencia. Se calcula una vez al construir la etapa.
-Esto no elimina el aliasing de la no linealidad; eso es otra tarea pendiente.
+Esto no eliminaba el aliasing de la no linealidad; eso se resolvió después (etapa 3, ver 1.14).
 
 ### 1.3 Medición AutoEQ que no cancela el estéreo
 
@@ -534,6 +536,95 @@ a 1,01–1,15 ms; con la estimación de «el bar es 4 veces más lento», 4,0–
 equipo del bar.
 LookaheadLimiter ya no va en la cadena; se conserva como referencia de las pruebas.
 
+### 1.14 Realce de agudos sin plegado; el grave sintético, medido aparte (etapa 3 de audio)
+
+Archivos: Rocola/Realce.cs (nuevo), LevelTap en Form1.Sonido.cs (cómo entra en la lectura y en la cuenta
+del fundido), pruebas/realce.cs y pruebas/ref_realce.py (nuevos); eqpreparado.cs rehace aparte el
+realce nuevo para seguir comparando bit a bit.
+
+El problema, medido: el realce satura la banda alta (tanh) para crear armónicos, y a 44,1 kHz los que
+pasan de 22 kHz no desaparecen: se pliegan y vuelven como tonos que no son armónicos de nada (un
+platillo en 15 kHz da su tercer armónico en 45 kHz, que reaparece en 0,9 kHz). Contra una referencia
+independiente (ref_realce.py: la misma saturación a 16× con interpolación exacta, lo que pasa de
+Nyquist se tira), con el realce de fábrica:
+- tonos de 11 a 20 kHz a −6 dB: productos plegados 47 a 50 dB por debajo del tono (38 a 41 con el
+  realce al máximo);
+- música tipo MP3 que llega a 19 kHz: el peor tercio de octava por debajo de 16 kHz quedaba a solo
+  27 dB de lo que suena en esa banda (18 al máximo); la que llega a 16 kHz, a 57 dB.
+Se distinguió lo deseado de lo plegado: la referencia se queda con los armónicos e intermodulación
+que caben (lo que se quiere), y el plegado es lo que la rocola saca de más. La intermodulación de
+verdad (por ejemplo 1 kHz entre 19 y 20 kHz) está en la referencia, no se cuenta como error.
+
+El grave sintético, medido aparte igual (tonos de 30 a 100 Hz, dos tonos, bombo, barrido y música):
+su plegado queda entre 102 y 129 dB por debajo de los armónicos que genera. Trabaja por debajo de
+320 Hz; no se sobremuestrea.
+
+Lo que se hizo: la saturación se calcula al doble de frecuencia, pero solo su parte NO lineal
+(tanh(2,5h) = 2,5h + resto): la parte lineal no crea nada y no se filtra (filtrarla le quitaría agudos
+al realce). El resto se sube a 2×, se satura allí y se baja con un filtro de media banda de 63
+coeficientes (Kaiser 7; medido: se aparta 0,002 dB hasta 0,40·fs y rechaza 74,7 dB desde 0,60·fs). Retrasa 31
+muestras (0,70 ms a 44,1 kHz; 0,65 a 48; 0,32 a 96) y el seco y la parte lineal se retrasan exactamente
+lo mismo: todo sale alineado. Se hace por canal y por trozos de 512 cuadros; la memoria se reserva al
+crear la etapa, nunca al leer.
+
+Resultado medido (pruebas/realce.cs contra ref_realce.py, 44,1 y 48 kHz):
+- tonos de 11 a 17 kHz y barrido: de −48 a entre −74 y −126 dB con el realce de fábrica (−65 a −117
+  al máximo); pegados a Nyquist (19, 20 y 19+20 kHz): −68 a −75 dB (−58 a −66 al máximo);
+- música tipo MP3 que llega a 19 kHz: peor tercio de octava −55/−59 dB (−46/−50 al máximo); la que
+  llega a 16 kHz, −89/−95 dB. En nivel absoluto, la banda con más plegado pasa de −79 a −103 dBFS con
+  el realce de fábrica (de −70 a −94 al máximo);
+- los armónicos que sí se quieren siguen ahí: con tonos fuertes de 1 a 3 kHz, cuyos armónicos caben
+  sin plegarse, la salida es la del realce de antes (retrasada) dentro de 3e-7, con un efecto de 0,1.
+
+Por qué 2× y no 4× (comparado, no supuesto): lo que queda a 2× viene de dos sitios. La imagen de lo
+que hay muy cerca de Nyquist (19–22 kHz), que un 4× no arregla porque depende del primer filtro; y los
+productos de quinto orden de lo fuerte por encima de 13 kHz. Ahí un 4× bien hecho (63 + 15
+coeficientes) sí gana: 11 a 13 dB en la peor banda de la música que llega a 19 kHz y hasta −100 dB en
+tonos puros fuertes; pero esa banda ya está a −103 dBFS, cuesta 1,6 a 1,75 veces más (81–88 frente a
+48–50 ns por muestra y canal, medido) y retrasa 35 muestras en vez de 31. Un 4× con el segundo filtro
+corto (7 u 11 coeficientes) resultó PEOR que el 2× (−39 a −57 dB en música). Filtros de 2× más largos
+(95 coeficientes) no mejoran la música; β = 7 fue mejor que 8, 9 o 10 con la misma longitud. Modest usa
+el mismo 2×.
+
+Cuándo se usa y qué pasa con los controles:
+- La canción que EMPIEZA con el realce encendido (lo normal: viene de fábrica) usa el 2× toda la
+  canción. Si se apaga desde Ctrl+F3, la rampa de 20 ms lo lleva a cero y después sale el seco intacto,
+  bit a bit, retrasado 31 cuadros (cambiar el retraso a media canción sería un salto en el tiempo).
+- La canción que empieza con el realce en cero va por el camino directo de siempre: intacta, sin
+  retraso ni coste. Si alguien lo sube a media canción, esa canción usa el realce de antes (sin
+  sobremuestrear) hasta que termina, para no saltar; la siguiente ya empieza con el 2×.
+- Al terminar la canción se entregan los 31 cuadros retenidos (su cola completa) y el fundido final
+  los tiene en la cuenta. No hay fundido nuevo al principio: los primeros 31 cuadros son el retraso.
+
+Comprobado: pruebas/realce.cs (33 comprobaciones): filtro medido; paso directo bit a bit y sin retraso;
+apagado a media canción = seco intacto de hace 31 cuadros, bit a bit; alineado (con señal chica es el
+realce de antes retrasado, dentro de 1e-10; con tonos de 1 a 3 kHz fuertes, dentro de 3e-7 con un
+efecto de 0,1); plegado contra la referencia (arriba); seis canales, cada uno bit a bit como si fuera
+solo, y el canal en silencio sigue en silencio exacto; 119 combinaciones de tamaños de lectura
+(incluidas de una muestra y partiendo cuadros) iguales bit a bit con la misma cola; archivos de 1 a
+4000 cuadros con la cola entera, fuente vacía, final a todo volumen, silencio, NaN e infinitos; subirlo
+a media canción no salta; el grave medido aparte; el cableado (el retraso entra en el fundido; leer no
+reserva memoria). En rojo al romper, una por una: el seco un cuadro corrido, la parte lineal corrida, la
+muestra de la rejilla corrida, quitar el 2×, no vaciar la cola, decidir siempre 2×, no contar el retraso
+en el fundido, cruzar canales, normalizar mal el filtro, perder el historial entre trozos y equivocar el
+canal con que empieza un trozo. eqpreparado.cs rehace aparte el 2× (historial entero, sin anillos ni
+trozos) y compara bit a bit a 22,05/44,1/48/96 kHz con 1, 2 y 6 canales.
+
+Coste (Mono en esta máquina, que exagera las cuentas en float): LevelTap entero pasa de 29 ns por
+muestra con el realce de antes a 74 ns con el 2× (sin realce, 12): 6,5 ms por segundo de música
+estéreo. Peor bloque de 50 ms de LevelTap: 0,88 ms. En la cadena completa (atoron.cs, alternando
+versiones), un bloque de 50 ms —el que usa la salida clásica— pasa de 1,01 a 1,20 ms; con la
+estimación de «el bar es 4 veces más lento», de 4,0 a 4,8 ms, por debajo de los 16,7 ms de un cuadro.
+atoron marca «se nota» en su fila hipotética de bloques de 200 ms (19,2 ms estimados; antes 16,1),
+que la rocola no usa. No medido en XP real ni en el equipo del bar.
+
+Límites y pendientes: la escucha A/B a volumen igualado (el realce suena igual por diseño, sin los
+tonos plegados; que se oiga la diferencia depende del material y del equipo) y medir el coste en XP
+real y en el equipo del bar. Si allí hiciera falta, la alternativa concreta es acortar el filtro a 47
+coeficientes (un cuarto menos de multiplicaciones; medido en los prototipos: la música que llega a
+19 kHz queda igual con el realce de fábrica y hasta 7 dB peor al máximo, y un tono de 20 kHz, 8 dB
+peor), no quitarlo.
+
 ## 2. Comprobaciones y cómo repetirlas
 
 En cada repositorio, con sus herramientas de compilación .NET, Python con NumPy y FFmpeg:
@@ -547,8 +638,8 @@ El script:
 
 1. Compila GPU y CPU con advertencias tratadas como errores; ejecuta las 29 baterías
    de validar-capas.ps1. Compilar CPU no significa modificar su renderizado.
-2. Ejecuta trece baterías adicionales: dsee, limite, entrenador, iaparidad, iaorigen, sonoridad,
-   picoreal, iadatos, eqauto, calidad, nivel, bajoauto y bajo.
+2. Ejecuta quince baterías adicionales: dsee, limite, entrenador, iaparidad, iaorigen, sonoridad,
+   picoreal, realce, eqpreparado, iadatos, eqauto, calidad, nivel, bajoauto y bajo.
 3. Ejecuta las pruebas Python de los entrenadores y sus protecciones (test_calidad_dsee,
    test_entrenar_eq, test_contrato_dsee, test_origen_dsee, test_estereo_dsee,
    test_seleccion_dsee y test_publicacion_dsee).
@@ -691,6 +782,11 @@ Dónde: excitador de LevelTap, DeepBassProvider, SbrProvider/SpectralTap y contr
 
 El grave sintético ya filtra su banda: necesita medición propia, no copiar automáticamente
 el tratamiento del excitador agudo.
+
+Estado (23 de septiembre, etapa 3 de audio, las dos ramas): hechos 1 a 4 y la parte de aliasing del 6
+(ver 1.14): el realce satura a 2× con el seco alineado; el grave, medido, no lo necesita. Queda el 5
+(transiciones del grave sintético y del DSEE, etapa 4), la escucha A/B y medir el coste en XP real y en
+el equipo del bar.
 
 ### E. Remuestreo y Apollo — principalmente HD
 
