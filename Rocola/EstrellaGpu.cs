@@ -96,6 +96,9 @@ namespace Rocola
                 // mantiene continua la trayectoria incluso durante ataques bruscos.
                 AdvanceStarVelocity(ref starTravelX,ref starVelocityX,calm*(.13f+.62f*starDrive+.32f*starAttack),dt);
                 AdvanceStarVelocity(ref starTravelY,ref starVelocityY,calm*(.10f+.30f*mid+.22f*high+.12f*starAttack)*starGenreDrive,dt);
+                // El giro en 3D (Estrella3dGpu.cs): una vuelta cada ~6 s en calma y cada ~1,6 s con la musica a
+                // tope, con la misma suavidad que el recorrido (la velocidad cambia sin tirones).
+                AdvanceStarVelocity(ref starYaw,ref starSpin,calm*(float)(2*Math.PI)*(.16f+.34f*starDrive+.12f*starAttack),dt);
                 starEchoPhase=(starEchoPhase+dt*(.30+.45*starDrive))%1.0;
                 moonMotionTime+=dt*MoonMotionSpeed(idleBlend)*(1+.55*starDrive);
             }
@@ -129,6 +132,8 @@ namespace Rocola
             internal double Time;
             internal float X,Y,Radius,Angle,Strength;
             internal uint Color;
+            internal double Yaw;      // el giro en 3D de ese momento (la copia lo conserva)
+            internal float Pitch;
         }
         private readonly StarEcho[] starEchoes=new StarEcho[12];
         private readonly D3D9.Vtx[] starEchoQuad=new D3D9.Vtx[6];
@@ -137,7 +142,7 @@ namespace Rocola
         private double starEchoLast=-1,starEchoClock=-1;
         private float starEchoVisibility;
         private void ResetStarEchoes()
-        { starEchoHead=starEchoCount=0;starEchoLast=starEchoClock=-1;starEchoVisibility=0; }
+        { starEchoHead=starEchoCount=0;starEchoLast=starEchoClock=-1;starEchoVisibility=0;starEchoCamino=0;starEchoHayUlt=false; }
 
         internal static float StarEchoAlpha(double age,float visibility)
         {

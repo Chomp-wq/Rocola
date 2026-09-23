@@ -131,7 +131,12 @@ namespace Rocola
         }
         private void UpdateMoonMusic(float pulse)
         {
-            double now = AhoraMs();
+            // La estrella se mueve para el momento en que se va a VER el cuadro, no para el de dibujarlo: asi cada
+            // refresco de la pantalla la muestra avanzada lo mismo (RelojPantallaGpu.cs). Sin saberlo (sin compositor,
+            // o un cuadro pedido fuera del bucle), con el reloj de siempre, y nunca hacia atras.
+            double now = vistoMs >= 0 ? vistoMs : AhoraMs();
+            if (now < cuadroMs) now = cuadroMs;
+            cuadroMs = now;
             float dt = (float)Math.Max(0, Math.Min(.1, (now - lunaClock) / 1000)); lunaClock = now;
             float blend = 1 - (float)Math.Exp(-dt * 9);
             // Fuente musical independiente de la perilla de aurora; apagar ondas no apaga la estrella.

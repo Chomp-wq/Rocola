@@ -70,6 +70,7 @@ falta `mcs` (Mono), `xvfb-run` y `python3`.
 | `vacias` | que las letras sin discos detrás no se dibujen, y que las que quedan salgan más grandes |
 | `franja` | la franja de abajo: que al sonar una canción se vea de qué género es, y que los créditos y la cola se lean de lejos |
 | `estrellas` | que el fondo tenga las cuatro siluetas de estrella, que el color fuerte se lo queden las grandes y que dibujarlo no cueste más |
+| `estrella3d` | *(sólo con tarjeta gráfica)* la estrella grande en 3D: que el sólido esté cerrado y de frente sea el icono, que gire igual a cualquier velocidad de cuadros y cambie de velocidad sin tirones, la luz por facetas, la estela de copias separadas por lo recorrido (no por tiempo) que nacen y se van sin saltos, los saltitos (el bucle de dibujo acompasado al refresco frente al compositor de Windows simulado: antes, la primera idea y ahora; la cuenta de Windows y su ausencia, como en XP), el interruptor, que dibujarla no reserve memoria y que el dibujo por procesador no la use |
 | `sala` | dentro de un disco: las marcas de "sonando" y "en cola" |
 | `fondo`, `anim`, `presencia`, `barrido`, `tope`, `calma` | la aurora y el fondo reactivo (sólo con tarjeta gráfica) |
 

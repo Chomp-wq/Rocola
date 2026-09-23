@@ -2,11 +2,17 @@
 
 ## Estrella reactiva — 23 de septiembre de 2026
 
-Estrella facetada de cinco puntas como el icono, recorrido amplio y ecos reactivos
-a la música, ahora con aceleración suave y colores de estela tomados de la canción.
-El flujo de portada/género es más rápido en el espectro; el cielo conserva su
-degradado nocturno azul/negro. Controles en Ctrl+F3 → Fondo, sin interruptores nuevos.
-GPU compartida por Modest y HD. [Corrección y pruebas](CIELO_ESTRELLA_2026-09-23.md).
+Estrella de cinco puntas como el icono, ahora **sólida en 3D**: gira vueltas enteras
+sobre su eje mientras recorre el fondo, con luz por facetas y un brillo que corre al
+girar. Su estela, tipo Sandevistan, son copias congeladas con el giro de ese momento:
+una por cada radio recorrido, aparecen sin saltos y se desvanecen en 1,2 s con los
+colores de la canción. Con el compositor de Windows el panel dibuja un cuadro por
+refresco de la pantalla y coloca la estrella para el refresco en que se verá: eso quita
+los saltitos al moverse (sin compositor, como en XP, sigue como antes). Interruptor
+nuevo en Ctrl+F3 → Fondo, "Estrella en 3D girando (GPU)". El flujo de portada/género
+es más rápido en el espectro; el cielo conserva su degradado nocturno azul/negro. GPU
+compartida por Modest y HD.
+[La estrella 3D](ESTRELLA_3D_2026-09-23.md) · [Cielo y estela musical](CIELO_ESTRELLA_2026-09-23.md).
 
 ## Audio — 23 de septiembre de 2026
 

@@ -630,6 +630,11 @@ class Salida
         try
         {
             object f = Codigo.FormSinEncender(TF);
+            // EL MODO NOCHE, APAGADO. De 11pm a 7am la rocola baja 4 dB, y la retomada pide mas de 0,15 de nivel medio:
+            // de madrugada salia 0,134 y la prueba fallaba solo por la hora. Una prueba que depende de la hora a la que
+            // la corras no vale para nada (el modo noche tiene su propia bateria, 'noche').
+            FieldInfo fNoche = TF.GetField("nocheOn", BindingFlags.Static | BindingFlags.NonPublic);
+            if (fNoche != null) fNoche.SetValue(null, false);
             PonGuardados(f);
             ElFormato(f);
             AparatoOCancion();
