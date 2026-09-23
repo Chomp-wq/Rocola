@@ -493,7 +493,7 @@ class RealceBateria
                 int at = 0, n; while (at < y.Length && (n = p.Read(y, at, Math.Min(4096, y.Length - at))) > 0) at += n;
                 string a = Path.Combine(dir, "g_in.wav"), o = Path.Combine(dir, "g_out.wav");
                 Wav(a, s[k], fs, 2); Wav(o, y, fs, 2);
-                int cod; string r = Python("ref_realce.py grave \"" + a + "\" \"" + o + "\" 0.8", out cod);
+                int cod; string r = Python("ref_realce.py grave \"" + a + "\" \"" + o + "\" 0.8 1", out cod);   // 1: el grave de cada cuadro se suma al siguiente
                 double al = double.NaN, es = double.NaN;
                 if (r != null && cod == 0)
                 {

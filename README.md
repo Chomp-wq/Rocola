@@ -7,11 +7,15 @@ a la música. Los colores de portada/género fluyen por el cielo y sus elementos
 con controles visuales en Ctrl+F3 → Fondo. GPU compartida por Modest y HD.
 Detalles y límites en [la guía actualizada](ESTRELLA_Y_COLOR_FLUIDO_2026-09-22.md).
 
-## Audio — 22 de septiembre de 2026
+## Audio — 23 de septiembre de 2026
 
 Rampas de volumen/excitador, transición de EQ, huellas estéreo sin cancelación y
-protecciones del entrenamiento compartidas por Modest y HD. Detalles, comprobaciones
-y tareas aún pendientes en [la guía de audio](MEJORAS_AUDIO_Y_PENDIENTES_2026-09-22.md).
+protecciones del entrenamiento; además, sonoridad integrada BS.1770 de la canción
+entera, limitador de pico real entre muestras, realce de agudos sin plegado (la
+saturación trabaja a 2× con el camino seco alineado) y cambios en vivo del grave
+sintético y del DSEE sin escalones ni saltos. Todo compartido por Modest y HD.
+Detalles, mediciones y tareas aún pendientes (escucha A/B, Windows XP real, CPU
+antiguo) en [la guía de audio](MEJORAS_AUDIO_Y_PENDIENTES_2026-09-22.md).
 
 ## Respuesta y transiciones GPU (10 de septiembre de 2026)
 

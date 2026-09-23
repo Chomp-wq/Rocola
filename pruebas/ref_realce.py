@@ -16,9 +16,10 @@ Uso:
         DESEADO: los armonicos e intermodulacion reales (lo no lineal de la ideal), en dB respecto a la senal
         BANDA:   el tercio de octava (por debajo de 16 kHz) con MAS error, en nivel absoluto: su potencia respecto a
                  la de un seno a fondo de escala (dBFS)
-  python3 ref_realce.py grave entrada.wav salida.wav CANTIDAD
+  python3 ref_realce.py grave entrada.wav salida.wav CANTIDAD [RETRASO]
       Lo que el grave sintetico AGREGO (salida - entrada, el mismo en todos los canales) contra la ideal sin
-      plegado: su parte no lineal a 16x con low y env interpolados; los filtros de salida, los mismos.
+      plegado: su parte no lineal a 16x con low y env interpolados; los filtros de salida, los mismos. RETRASO:
+      cuantas muestras despues se suma el grave de cada cuadro (la rocola lo suma al cuadro siguiente: 1).
       GRAVE ALIAS <dB respecto a lo deseado> PICO <dBFS> ESPEJO <dB: rocola contra la cuenta a 1x de aqui>
 """
 import sys
@@ -126,6 +127,7 @@ def grave(argv):
     fs, x = lee_wav(argv[2])
     _, y = lee_wav(argv[3])
     cantidad = float(argv[4])
+    lag = int(argv[5]) if len(argv) > 5 else 0
     ch = x.shape[1]
     m = x.sum(axis=1) / ch if ch > 1 else x[:, 0]
     aLow, aHp, aLp = coef(100.0, fs), coef(95.0, fs), coef(320.0, fs)
@@ -157,6 +159,9 @@ def grave(argv):
 
     a1 = salida(f(low, en))
     ideal = salida(sin_plegado(f, low, en))
+    if lag > 0:
+        a1 = np.concatenate([np.zeros(lag), a1[:-lag]])
+        ideal = np.concatenate([np.zeros(lag), ideal[:-lag]])
     agregado = y[: len(m), 0] - x[:, 0]
     w = np.blackman(len(m))
     P = lambda z: np.abs(np.fft.rfft(z * w)) ** 2
