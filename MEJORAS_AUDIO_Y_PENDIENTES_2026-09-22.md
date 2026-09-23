@@ -1118,6 +1118,14 @@ Nota del 22 de septiembre (bloque A): este script NO se pudo ejecutar en el ento
 hizo el bloque A (Linux, sin PowerShell, Windows ni FFmpeg). Sus piezas sí: todas las baterías
 con Mono mediante pruebas/todo.sh y todas las pruebas Python, en las dos ramas. Queda pendiente
 correrlo completo en Windows.
+
+Nota del 23 de septiembre: la batería `disco` vuelve a estar en verde en las dos ramas. Desde que
+leer la etiqueta entera también salta la carátula, el cronómetro ya no separaba los dos caminos
+(0,06 frente a 0,07 ms); ahora se cuentan los bytes que pide cada uno: con carátulas de 120 a 300 KB,
+242 bytes para sacar solo el género y 541 para la etiqueta entera, de 703 KB de etiquetas. Se pone en
+rojo si cualquiera de los dos vuelve a leer la imagen (comprobado rompiendo cada camino). El tiempo
+queda solo como información.
+
 4. Genera WAV de ruido reproducible en temporal para probar cosecha activada/desactivada.
 5. Comprueba decodificación MP3 CBR/VBR, WMA, AAC, WAV PCM y float32 y liberación de archivos.
 6. Repite los nuevos controles y medición con afinidad de hasta dos procesadores lógicos,
