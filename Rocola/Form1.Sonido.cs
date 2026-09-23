@@ -985,7 +985,6 @@ namespace Rocola
                 wa.PlaybackStopped += Output_PlaybackStopped;
                 wa.Init(new NAudio.Wave.SampleProviders.SampleToWaveProvider(samples));
                 audioVisualDelayMs = 240;
-                if (audioOpeningForMeasurement) wa.Volume = 0f;
                 wa.Play();
             }
             catch
@@ -1067,6 +1066,7 @@ namespace Rocola
                 // siguiente ya esta preparada, sigue en la MISMA lectura sin cerrar la salida.
                 secuencia = new Encadenado(cad.Salida, cad);
                 NAudio.Wave.ISampleProvider outChain = secuencia;
+                outChain = CallaSiEsMedida(outChain);   // la medida de rendimiento: callada aqui, sin tocar volumenes de Windows (SalidaSonido.cs)
                 // ===== SALIDA DE AUDIO (rama HD) =====
                 // WASAPI compartido con muestras FLOTANTES: float de punta a punta hasta el motor de audio
                 // moderno (sin bajar a 16 bits ni pasar por el mezclador clasico) y latencia menor. Si
@@ -1105,7 +1105,6 @@ namespace Rocola
                     }
                 }
                 audioVisualDelayMs = isWasapi ? 240 : 850;   // el pulso visual se alinea al colchon REAL de la salida en uso
-                if (audioOpeningForMeasurement) output.Volume = 0f;
                 if (!isWasapi)   // WASAPI ya arranco dentro de su bloque protegido
                 {
                     try { output.Play(); }

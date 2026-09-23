@@ -990,6 +990,15 @@ Implementado:
   3); con la coma flotante nueva habría llegado también a Modest. Ahora se borra muestra a muestra, y la batería
   lee la cadena entera -des-recorte, DSEE, realce, grave, limitador, fundido- y el relevo sin pausa por esa vista
   y exige que salgan idénticos (238.626 muestras, 0 distintas).
+- OTRO DEFECTO CORREGIDO (23 de septiembre, las dos ramas). La medida de rendimiento de Ctrl+F3, si no sonaba
+  nada, ponía una canción y la callaba bajándole el volumen a la SALIDA. Ese volumen no es de la rocola: en HD
+  por WASAPI es el volumen general de Windows (comprobado leyendo NAudio 1.9: WasapiOut.Volume cambia el volumen
+  del aparato) y en WaveOut, desde Vista, el de la rocola en el mezclador de Windows, que Windows guarda (según la
+  documentación de Microsoft; no probado en Windows). No se devolvía al acabar, así que después de medir la
+  música -en HD, el equipo entero- podía quedarse callada. Ahora la canción de la medida se calla al final de la
+  cadena (hace el mismo trabajo y a la salida solo le llegan ceros) y ningún sitio del programa toca el volumen
+  de la salida. Si alguna vez la rocola se quedó muda después de medir: subir su control en el mezclador de
+  Windows (Modest) o el volumen general (HD). La rocola no lo sube sola para no pisar un ajuste hecho a propósito.
 
 Estudiado y no adoptado:
 - WASAPI EXCLUSIVO (HD). La rocola tomaría el aparato para ella sola, sin el mezclador de Windows: lo que sale
@@ -1016,7 +1025,10 @@ salida parada, un vídeo, la medida de Ctrl+F3 o un atorón corto); el cambio de
 `PreparaSiguienteSinPausa`; y el cableado leído del programa compilado. Diez fallos puestos a propósito (volver
 al `Array.Clear`, confundir el aparato con el formato, no rendirse, no ajustar el fundido, no mirar el aparato,
 todo al aparato, devolver crédito al esperar, vigía sin mirar el estado, 16 bits sin dither, aprender del
-trozo) la ponen en rojo.
+trozo) la ponen en rojo. Desde el 23 de septiembre, 44 comprobaciones en HD y 43 en Modest: la canción de la
+medida sale en ceros (también por la vista flotante de NAudio) y ningún método del programa, con o sin tarjeta,
+cambia el volumen de la salida; volver a poner el volumen a cero en la medida, no callar, callar con
+`Array.Clear` o no llamar al silenciador la ponen en rojo.
 
 Tandas completas con Mono: HD 172 baterías bien y Modest 158; en las dos solo falla `disco` (espera tu
 decisión; no es de esta etapa).
