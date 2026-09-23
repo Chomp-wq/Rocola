@@ -62,7 +62,7 @@ GPU="fondo anim presencia barrido tope calma entrar mover banco paginar ceremoni
 # existe la funcion ni se prueba. Lo mismo el remuestreador de la salida moderna (WASAPI): en esta maquina
 # la bateria solo comprueba su vara de medir; el remuestreador de Windows se mide en Windows.
 SOLO_HD="mudos remuestreo"
-CPU="$CPU id3selectivo tablasarranque historialarranque audiosuave audioestereo sonoridad picoreal realce transiciones sinpausa salida"
+CPU="$CPU id3selectivo tablasarranque historialarranque audiosuave audioestereo sonoridad picoreal realce transiciones sinpausa salida videoaudio"
 GPU="$GPU espacioprecarga estelaestelar estrellaflujo"
 
 # --- Que version de .NET pide este PROYECTO. No se deduce probando compiladores ni depende de que

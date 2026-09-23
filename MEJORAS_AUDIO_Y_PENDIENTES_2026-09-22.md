@@ -32,7 +32,7 @@ desarrollo y medición. La revisión anterior está en REVISION_AUDIO_2026-09-22
 | Continuidad sin pausas entre canciones (misma salida, sin cebado, cola y créditos intactos) | Implementado y probado; ver 1.17. Retardo y relleno propios del MP3: medidos, sin implementar |
 | Remuestreo en reproducción (HD, DMO de Windows) | Medición preparada y validada; el DMO se mide en Windows; sin cambios; ver 1.18 |
 | Salida al dispositivo: coma flotante en Vista o posterior, fallos del aparato sin gastar canciones, cambio de aparato | Implementado y probado con salidas simuladas; ver 1.19. WASAPI exclusivo: estudiado, decisión tuya |
-| Audio de vídeo | Pendiente; plan abajo |
+| Audio de vídeo (reproductor de Windows Media) | Documentado y con batería que fija las reglas de hoy; procesamiento compartido: decisión tuya; ver 1.20 |
 | Paridad del extractor IA (contrato EXTRACTOR=2) | Implementado y probado; ver 1.7 |
 | Identidad de origen, particiones por canción y estéreo por canal | Implementado y probado; ver 1.8 |
 | Selección contra curva e instalado, informe reproducible | Implementado y probado; ver 1.9 |
@@ -1034,6 +1034,65 @@ Riesgos de migración y cómo volver atrás:
   canción donde iba.
 - No cambia ningún archivo de datos ni de configuración: volver al ejecutable anterior es seguro.
 
+### 1.20 Audio de vídeo (etapa 9 de audio): cómo funciona hoy, qué se puede compartir y la decisión
+
+Esta etapa es sobre todo de documentación y de decisión: completar el procesamiento compartido exige cambiar la
+forma en que suenan los vídeos, y eso se decide antes de hacerlo. Lo que se implementó es una batería que fija las
+reglas de hoy (pruebas/videoaudio.cs). Nada de lo que suena cambió.
+
+Cómo funciona hoy (leído del código, igual en las dos ramas):
+- Los vídeos los reproduce el control del Reproductor de Windows Media (wmp.dll) dentro de la ventana de la
+  rocola. Él decodifica la imagen y el sonido y los mantiene sincronizados con su propio reloj. Su sonido va por
+  el camino de Windows (el mezclador de XP, o el motor de audio en Vista y posteriores), NO por la cadena de la
+  rocola: a los vídeos no les llegan el DSEE, el EQ automático, el grave, el realce, el limitador de pico real ni
+  la continuidad sin pausas. La sincronía imagen-sonido es enteramente del reproductor.
+- Música y vídeo nunca suenan a la vez: `PlayNext` cierra la salida de la música antes de empezar un vídeo, y la
+  continuidad sin pausas no encadena vídeos.
+- Lo único que la rocola controla del sonido de un vídeo es el VOLUMEN del reproductor, de 0 a 100, y 100 es el
+  archivo tal cual: el reproductor no sabe subir. Se calcula así (`VideoVolumeFor`):
+  - base: la perilla de vídeo de Ctrl+F3 (`video_vol=`, 85 por defecto) o, en automático, el base más alto con
+    el que el 85 % de los vídeos medidos llegan al objetivo de las canciones sin pasar de 100 (nunca menos de 40);
+  - si el vídeo está medido, base × objetivo / sonoridad del vídeo (entre ×0,15 y ×4), topado en 100; «Subir
+    TODO» no se les aplica, porque solo los empujaría contra el techo; a los no medidos sí;
+  - el modo noche multiplica al final (solo baja);
+  - al final, el sondeo del vídeo (cada 80 ms durante el fundido) baja el volumen hasta 0.
+  La sonoridad de los vídeos la mide el pre-análisis cuando Windows puede decodificar su sonido (Media
+  Foundation, de Vista en adelante; en XP no se miden y manda la perilla).
+- Consecuencias: un vídeo grabado más bajo que el objetivo no se puede subir; sus picos no pasan por el
+  limitador; y música y vídeos solo se emparejan en sonoridad media. Por regla, no se intenta arreglar pasando
+  del 100 del reproductor.
+- Lo que no está comprobado: la cuenta supone que el volumen del reproductor es lineal en amplitud (50 = −6 dB).
+  Si su curva es otra, el emparejado de vídeos es aproximado. Cómo medirlo en Windows: un vídeo de prueba con un
+  tono de 1 kHz a −20 dBFS, reproducido a 100, 71, 50 y 25, grabado en bucle (WASAPI loopback, por ejemplo con
+  Audacity); si 71 no da −3 dB y 50 no da −6 dB, hay que corregir la cuenta.
+
+Tres caminos para compartir procesamiento (decisión tuya):
+- A) SEGUIR CON EL REPRODUCTOR (lo de hoy). Sin paridad de procesamiento: solo volumen. Mejora posible sin
+  cambiar de motor: medir la curva de volumen del reproductor y corregir la cuenta. Riesgo nulo.
+- B) EN HD, EL SONIDO DEL VÍDEO POR LA CADENA DE LA ROCOLA. Media Foundation decodifica la pista de sonido del
+  mismo archivo, el reproductor se silencia y sigue poniendo la imagen, y la rocola reproduce el sonido por su
+  cadena (WASAPI) atado al reloj del reproductor: lee su posición y corrige la deriva (saltando o repitiendo unos
+  milisegundos) para quedar dentro de la sincronía labial (unos ±40 ms). Consecuencias: el archivo se decodifica
+  dos veces (más CPU en el equipo de 2 núcleos); la posición que da el reproductor tiene saltos y retraso propios
+  que hay que medir; solo es viable con WASAPI (con WaveOut el colchón es de 850 ms); si Media Foundation no abre
+  un archivo, vuelve el sonido del reproductor; y no sirve para Modest (XP no tiene Media Foundation).
+- C) OTRO MOTOR DE VÍDEO que entregue el sonido a la rocola (Media Foundation Media Engine, un grafo de
+  DirectShow propio, LibVLC o FFmpeg): sincronía exacta con su reloj y la cadena completa. Es sustituir el motor
+  audiovisual y, con LibVLC o FFmpeg, añadir una dependencia grande (decenas de MB), con dudas de compatibilidad
+  en XP y trabajo de integración con la ventana de vídeo y el panel GPU.
+
+Recomendación: A hoy, sin prometer paridad, y medir la curva del reproductor. Si quieres el mismo procesamiento
+en los vídeos, empezar por B solo en HD, como prueba con criterios medibles (desfase por debajo de 40 ms durante
+todo el vídeo, sin cortes, CPU aceptable en el equipo del bar) y con el sonido del reproductor de respaldo; C solo
+si B no los cumple. No se sustituyó nada.
+
+Comprobado (pruebas/videoaudio.cs, 10 comprobaciones, las dos ramas): 600 combinaciones de base, «Subir TODO»
+(−12 a +12 dB), modo noche y vídeos de −26 a +26 dB sin pedir nunca más de 100 ni menos de 0; el emparejado
+exacto dentro de los límites (×0,15 a ×4); «Subir TODO» no empuja a los medidos y sí sigue a los no medidos
+(topado en 100); de noche nunca suena más que de día; el base automático deja hueco (36 de 40 vídeos llegan) y
+no baja de 40; y todo el que pone volumen al reproductor lo saca de `VideoVolumeFor`. Cómo repetirlo:
+`sh pruebas/todo.sh videoaudio` o validar-audio-mejoras.ps1.
+
 ## 2. Comprobaciones y cómo repetirlas
 
 En cada repositorio, con sus herramientas de compilación .NET, Python con NumPy y FFmpeg:
@@ -1047,8 +1106,9 @@ El script:
 
 1. Compila GPU y CPU con advertencias tratadas como errores; ejecuta las 29 baterías
    de validar-capas.ps1. Compilar CPU no significa modificar su renderizado.
-2. Ejecuta dieciocho baterías adicionales: dsee, limite, entrenador, iaparidad, iaorigen, sonoridad,
-   picoreal, realce, transiciones, sinpausa, salida, eqpreparado, iadatos, eqauto, calidad, nivel, bajoauto y bajo.
+2. Ejecuta diecinueve baterías adicionales: dsee, limite, entrenador, iaparidad, iaorigen, sonoridad,
+   picoreal, realce, transiciones, sinpausa, salida, videoaudio, eqpreparado, iadatos, eqauto, calidad, nivel,
+   bajoauto y bajo.
 3. Ejecuta las pruebas Python de los entrenadores y sus protecciones (test_calidad_dsee,
    test_entrenar_eq, test_contrato_dsee, test_origen_dsee, test_estereo_dsee,
    test_seleccion_dsee y test_publicacion_dsee) y, en HD, test_remuestreo de ia/upscale (con el
@@ -1268,6 +1328,11 @@ Estado (23 de septiembre, etapa 7 de audio, las dos ramas): hechos 1 a 4 para la
 como antes. No se implementó fundido cruzado (solapar canciones pide una decisión tuya). Del 3, la
 latencia del DSP se compensa; el retardo y el relleno del MP3 están medidos (46-51 ms por unión con LAME)
 pero no se recortan hasta medir el descompresor ACM de Windows. El 5 (vídeo) es la etapa 9.
+
+Estado del 5 (23 de septiembre, etapa 9, las dos ramas): documentado cómo se relacionan el reproductor de
+Windows Media, la música y la sincronía, con tres caminos y sus consecuencias (ver 1.20). No se sustituyó el motor
+ni se añadió ninguna dependencia: espera tu decisión. Lo implementado es la batería videoaudio, que fija las reglas
+de hoy (nunca más de 100 en el reproductor, emparejado dentro de límites, noche solo baja).
 
 ## 4. Criterios de entrega y despliegue
 
