@@ -36,6 +36,7 @@ desarrollo y medición. La revisión anterior está en REVISION_AUDIO_2026-09-22
 | Medida de rendimiento: la canción muda sin tocar el volumen de Windows | Defecto corregido y probado (las dos ramas); ver 1.19 |
 | Audio de vídeo (reproductor de Windows Media) | Documentado y con batería que fija las reglas de hoy; decidido: opción A, sigue el reproductor sin cambios; ver 1.20 |
 | DSEE: copia por bloques (tonos limpios), nivel de la curva de diseño, corte quieto | Implementado y probado (las dos ramas); falta oírlo; ver 1.21 |
+| Decodificar en coma flotante (MP3 por el decodificador de Windows comprobado; AAC/WMA/M4A por Media Foundation) | Implementado y probado con imitaciones (solo HD); falta probarlo en Windows; ver 1.22 |
 | Paridad del extractor IA (contrato EXTRACTOR=2) | Implementado y probado; ver 1.7 |
 | Identidad de origen, particiones por canción y estéreo por canal | Implementado y probado; ver 1.8 |
 | Selección contra curva e instalado, informe reproducible | Implementado y probado; ver 1.9 |
@@ -1243,6 +1244,75 @@ No comprobado: escucharlo, tu música, Windows, XP real, el DAC y las bocinas de
 
 Cómo volver atrás: basta con el ejecutable anterior. No cambia ningún archivo de datos.
 
+### 1.22 Decodificar en coma flotante (solo HD): lo que el MP3 trae por encima del máximo ya no se corta
+
+Qué pasaba:
+- Los MP3 los descomprimía el ACM de Windows, que entrega enteros de 16 bits.
+- Un MP3 hecho de un máster fuerte trae picos por encima del máximo digital. Medido con LAME: hasta +3,5 dB, y en
+  los másters recortados, hasta el 2,8 % de las muestras.
+- El entero de 16 bits los cortaba en seco antes de que la rocola pudiera bajar el volumen. Esa distorsión ya no la
+  quitan ni el nivelado ni el limitador.
+- AAC, M4A y WMA igual: Media Foundation los entregaba también en 16 bits.
+
+Qué hace ahora (solo HD; Modest no cambia):
+1. **MP3.** El lector sigue siendo el mismo (duración, saltos, continuidad sin pausas); solo cambia quién descomprime
+   cada cuadro: el decodificador de MP3 de Windows usado como MFT. Microsoft documenta que da coma flotante solo en
+   ese modo. No se usa a ciegas:
+   - **Se compara con el de siempre** una vez por sesión y por formato (frecuencia y canales), con la primera
+     canción que se abre. Los dos descomprimen los mismos cuadros y el de Windows tiene que dar la misma cuenta de
+     muestras y la misma señal (a menos de −50 dB), salvo lo que el de siempre recortó. Si no, esa sesión sigue con
+     el de siempre.
+   - **Solo trabaja en hilos que no son STA**, como el de la salida WASAPI. Con la salida clásica (WaveOut, que se
+     rellena desde la pantalla) descomprime el de siempre.
+   - **Si falla a media canción**, sigue el de siempre desde ese mismo cuadro, sin cortar ni repetir nada. Con tres
+     fallos en la sesión ya no se usa.
+   - **Cuando descomprime el de siempre**, sale exactamente lo mismo que antes, bit a bit. Si en la sesión no se usa
+     el de Windows, el lector se arma exactamente como antes.
+2. **AAC, M4A, WMA y el sonido de los vídeos.** Media Foundation pide coma flotante al decodificador: es el mismo
+   decodificador de antes, con otra salida. Si no la da, se usa el camino de siempre.
+3. **Lo que pasa de 1,0 sigue en coma flotante por la cadena.** El nivelado lo baja y el limitador de pico real del
+   final no deja pasar nada del techo. El des-recorte sigue igual: trabaja con lo que pasa de 0,985.
+
+Qué dice la rocola: en rocola_error.txt aparece una línea como esta:
+
+    MP3 en coma flotante (44100 Hz, 2 canales), comprobado con <canción>: se aparta −NN dB del de siempre: en uso
+
+Si no se usa, la línea dice por qué. Va al archivo de errores aunque no sea un error, como la del WASAPI exclusivo.
+
+Pruebas automáticas (Mono en Linux, con decodificadores de mentira que imitan a los de Windows): pruebas/flotante.cs,
+60 comprobaciones.
+- El de siempre, convertido, da lo mismo que NAudio en los 65.536 enteros de 16 bits.
+- Entrega coma flotante y deja pasar lo que supera 1,0.
+- Un fallo a media canción sigue por el de siempre en ese mismo cuadro. Si ni se puede preparar, la canción suena
+  entera por el de siempre.
+- En un hilo STA descomprime el de siempre. Al cambiar de hilo, el que entra se calienta con los tres cuadros
+  anteriores, como hace el lector tras un salto.
+- No se pierde nada si un decodificador suelta más de la cuenta; un salto lo olvida; se cierra todo una sola vez.
+- Por el lector de NAudio de verdad: la misma duración exacta, los cuadros en orden y los saltos al cuadro pedido.
+- La comparación acepta al bueno y rechaza al que suelta cada cuadro con uno de retraso, al desplazado, al que
+  falla y al que no arranca.
+- Una comparación por sesión y formato, en un hilo propio que no es STA. Con tres fallos en vivo se deja de usar.
+- AAC, WMA y M4A: si Media Foundation no lo abre en coma flotante, se usa el camino de siempre.
+
+Roturas a propósito: 26; la batería detecta las 26. Siguen en verde las baterías que vigilan que ningún MP3 se abra
+fuera de AbreMp3 ni deje el descompresor tirado (descompresor y corta).
+
+**NO PROBADO EN WINDOWS.** El decodificador de Windows de verdad solo existe en Windows. En Windows, la misma batería
+(la corre validar-audio-mejoras.ps1) compara el de verdad con el de siempre sobre pruebas/flotante_overs.mp3, cuenta
+lo que pasa de 1,0 y mide el coste. Ese MP3 es una mezcla sintética masterizada a lo bruto (+8 dB y recortada) y
+pasada a MP3 con LAME: al descomprimirla llega a +2,6 dBFS (ver genera_flotante_overs.py). Hasta que se corra en el
+equipo del bar, esto es código probado con imitaciones, no con el decodificador real.
+
+Qué mirar en el bar:
+1. rocola_error.txt: la línea «MP3 en coma flotante». Si dice «en uso», funciona. Si dice «NO se usa» o «no se pudo
+   saber», dice por qué, y la rocola sigue como antes.
+2. Correr validar-audio-mejoras.ps1.
+3. Escuchar un disco muy fuerte (de los recortados) contra el ejecutable anterior: en los golpes fuertes debería
+   sonar algo menos áspero.
+
+Cómo volver atrás: basta con el ejecutable anterior. No cambia ningún archivo de datos. Las sonoridades ya medidas
+siguen valiendo: la diferencia en la medida es mínima.
+
 ## 2. Comprobaciones y cómo repetirlas
 
 En cada repositorio, con sus herramientas de compilación .NET, Python con NumPy y FFmpeg:
@@ -1262,8 +1332,9 @@ El script:
 3. Ejecuta las pruebas Python de los entrenadores y sus protecciones (test_calidad_dsee,
    test_entrenar_eq, test_contrato_dsee, test_origen_dsee, test_estereo_dsee,
    test_seleccion_dsee y test_publicacion_dsee) y, en HD, test_remuestreo de ia/upscale (con el
-   FFmpeg del PATH), la batería remuestreo (el DMO de la salida moderna, medido de verdad en Windows) y la batería
-   exclusivo (la salida WASAPI exclusiva, con un aparato de mentira).
+   FFmpeg del PATH), la batería remuestreo (el DMO de la salida moderna, medido de verdad en Windows), la batería
+   exclusivo (la salida WASAPI exclusiva, con un aparato de mentira) y la batería flotante (la decodificación en coma
+   flotante; en Windows, con el decodificador de MP3 de Windows de verdad: ver 1.22).
 
 Nota del 22 de septiembre (bloque A): este script NO se pudo ejecutar en el entorno donde se
 hizo el bloque A (Linux, sin PowerShell, Windows ni FFmpeg). Sus piezas sí: todas las baterías
