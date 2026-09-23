@@ -228,7 +228,10 @@ namespace Rocola
             {
                 int m = Math.Min(count, porVaciar);
                 if (m <= 0) return 0;
-                Array.Clear(buffer, offset, m);
+                // A MANO, NO CON Array.Clear: lo que llega como float[] puede ser la vista que NAudio pone sobre su
+                // byte[] (SampleToWaveProvider, la salida en coma flotante). Array.Clear mira el tipo de verdad y
+                // borraria BYTES en otro sitio: el final de la cancion salia con restos de la vuelta anterior.
+                for (int i = 0; i < m; i++) buffer[offset + i] = 0f;
                 float g, ex;
                 Objetivos(out g, out ex);
                 ProcesaConRealce(buffer, offset, m, g, ex, pendingEq);

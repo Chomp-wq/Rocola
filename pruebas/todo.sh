@@ -30,7 +30,7 @@ FUENTES="../Rocola/Form1.cs ../Rocola/Form1.Ajustes.cs ../Rocola/Form1.Bibliotec
 FUENTES="$FUENTES $RAIZ/Rocola/EstrellaGpu.cs $RAIZ/Rocola/PrecargaPaginaGpu.cs $RAIZ/Rocola/PaletaCaratulaGpu.cs $RAIZ/Rocola/CreditosServicio.cs"
 TMP_PRUEBAS="${TMPDIR:-/tmp}/rocola_pruebas_$$"
 FUENTES="$FUENTES $RAIZ/Rocola/AudioControles.cs $RAIZ/Rocola/Sonoridad.cs $RAIZ/Rocola/PicoReal.cs $RAIZ/Rocola/Realce.cs"
-FUENTES="$FUENTES $RAIZ/Rocola/SinPausa.cs $RAIZ/Rocola/Form1.SinPausa.cs"
+FUENTES="$FUENTES $RAIZ/Rocola/SinPausa.cs $RAIZ/Rocola/Form1.SinPausa.cs $RAIZ/Rocola/SalidaSonido.cs"
 if ! mkdir -p "$TMP_PRUEBAS"; then
   echo "  No se pudo crear la carpeta temporal: $TMP_PRUEBAS"
   exit 1
@@ -62,7 +62,7 @@ GPU="fondo anim presencia barrido tope calma entrar mover banco paginar ceremoni
 # existe la funcion ni se prueba. Lo mismo el remuestreador de la salida moderna (WASAPI): en esta maquina
 # la bateria solo comprueba su vara de medir; el remuestreador de Windows se mide en Windows.
 SOLO_HD="mudos remuestreo"
-CPU="$CPU id3selectivo tablasarranque historialarranque audiosuave audioestereo sonoridad picoreal realce transiciones sinpausa"
+CPU="$CPU id3selectivo tablasarranque historialarranque audiosuave audioestereo sonoridad picoreal realce transiciones sinpausa salida"
 GPU="$GPU espacioprecarga estelaestelar estrellaflujo"
 
 # --- Que version de .NET pide este PROYECTO. No se deduce probando compiladores ni depende de que

@@ -64,6 +64,9 @@ namespace Rocola
             double quedan;
             try { quedan = (r.TotalTime - r.CurrentTime).TotalSeconds; } catch { return; }
             if (quedan > PreparaAntesSeg) return;
+            // Si Windows cambio de aparato de sonido, no se encadena: la salida se cierra al acabar esta y la
+            // siguiente se abre en el aparato nuevo (SalidaSonido.cs).
+            if (!MismaSalida()) return;
             // El lector de la siguiente lo abre por delante el calentador (MiraPorDelante). Si aun no esta, o
             // viene en otra frecuencia o con otros canales, no se toca: la abrira el camino de siempre.
             string ruta = RutaQueSonaria(sig.Song.Path);
@@ -76,7 +79,7 @@ namespace Rocola
             try
             {
                 lector.Volume = FixedVolume;
-                c = ArmaCadena(sig.Song, lector, iaMejorada);
+                c = ArmaCadena(sig.Song, lector, iaMejorada, 0);
                 c.Item = sig;
             }
             catch (Exception ex)

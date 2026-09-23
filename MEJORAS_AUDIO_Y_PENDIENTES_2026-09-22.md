@@ -31,7 +31,8 @@ desarrollo y medición. La revisión anterior está en REVISION_AUDIO_2026-09-22
 | Remuestreo de Apollo a 44,1 kHz con SoXR, caché versionada y reaprovechamiento | Implementado y probado (HD); ver 1.16 |
 | Continuidad sin pausas entre canciones (misma salida, sin cebado, cola y créditos intactos) | Implementado y probado; ver 1.17. Retardo y relleno propios del MP3: medidos, sin implementar |
 | Remuestreo en reproducción (HD, DMO de Windows) | Medición preparada y validada; el DMO se mide en Windows; sin cambios; ver 1.18 |
-| Salida al dispositivo y audio de vídeo | Pendiente; plan abajo |
+| Salida al dispositivo: coma flotante en Vista o posterior, fallos del aparato sin gastar canciones, cambio de aparato | Implementado y probado con salidas simuladas; ver 1.19. WASAPI exclusivo: estudiado, decisión tuya |
+| Audio de vídeo | Pendiente; plan abajo |
 | Paridad del extractor IA (contrato EXTRACTOR=2) | Implementado y probado; ver 1.7 |
 | Identidad de origen, particiones por canción y estéreo por canal | Implementado y probado; ver 1.8 |
 | Selección contra curva e instalado, informe reproducible | Implementado y probado; ver 1.9 |
@@ -947,6 +948,92 @@ Cómo repetirlo: `sh pruebas/todo.sh remuestreo` (Linux: solo la vara de medir) 
 Windows (mide el DMO; también `remuestreo.exe Rocola.exe` a mano). Pendiente: correrla en Windows y en el
 equipo del bar, y decidir con esos números. No hay riesgo de migración: no cambia nada de lo que suena.
 
+### 1.19 Salida al dispositivo (etapa 8 de audio, las dos ramas)
+
+Archivos: Rocola/SalidaSonido.cs (nuevo, igual en las dos ramas), Form1.Sonido.cs (arranque, parada, lectores
+que saltan, cadena retomada), Form1.Video.cs (Modest: parar y barra de progreso), Form1.SinPausa.cs (cambio de
+aparato), Realce.cs (un defecto corregido, abajo); pruebas/salida.cs (nueva).
+
+Lo que había: WaveOut (Modest siempre; HD si WASAPI no arranca o con `salida=waveout`) recibía 16 bits con
+dither TPDF; HD por WASAPI compartido, coma flotante de punta a punta. Y un fallo de la SALIDA se trataba como
+un fallo de la canción: crédito devuelto, apuntada en rocola_incompatibles.txt y a la siguiente. Con el DAC o
+la tarjeta desenchufados, cada canción fallaba igual: la cola entera se vaciaba en segundos (devolviendo
+créditos) y, al volver el aparato, la rocola seguía callada.
+
+Implementado:
+- FORMATO. En Windows Vista o posterior WaveOut recibe coma flotante de 32 bits tal cual sale de la cadena: allí
+  el motor de audio de Windows mezcla en coma flotante, y entregarle 16 bits obligaba a redondear y a meter el
+  ruido del dither para nada. Si el sistema la rechaza, 16 bits con dither TPDF, y no se vuelve a probar en esa
+  sesión (queda apuntado en rocola_error.txt). En XP, 16 bits con dither como siempre: allí no se puede probar
+  que el mezclador la admita. El dither se pone en un solo sitio, al final y solo en 16 bits. PCM de 24 bits no
+  se usa: en Vista o posterior la coma flotante ya evita cuantizar, y en XP no se puede probar.
+- EL APARATO NO ES LA CANCIÓN. Un fallo del dispositivo (no hay aparato ni controlador, lo tiene otro programa
+  en exclusiva, se quitó, no hay servicio de audio o aparato predeterminado; la lista de códigos está en
+  SalidaSonido.cs) ya no devuelve crédito, ni salta la canción, ni la apunta como incompatible: se espera
+  (medio segundo, 2 s y después cada 10 s) y se retoma LA MISMA desde lo que ya se había oído (lo leído menos el
+  colchón de la salida). La cola, los créditos y el historial no cambian; el letrero lo dice y a la tercera
+  espera sale un aviso. Saltar cancela la espera. Si la salida se cae A MEDIA canción más de cinco veces seguidas
+  con la misma, se trata como antes (crédito devuelto y siguiente), para no quedarse en un bucle. Un formato
+  rechazado o un archivo roto siguen como siempre.
+- RETOMAR. El lector salta al punto, el fundido de salida cuenta desde ahí (acaba donde acaba la canción) y de
+  un trozo no se aprende sonoridad ni huella tonal. En HD, si WASAPI no arranca y se reintenta por WaveOut, se
+  retoma en el mismo sitio.
+- EL VIGÍA. Diez segundos con la salida en marcha sin pedir música (un controlador que se queda mudo sin avisar)
+  cuentan como fallo del aparato. Un atorón corto o el cambio de canción sin pausa no cuentan.
+- CAMBIO DE APARATO. Con la continuidad sin pausas la salida puede seguir abierta canción tras canción. Si Windows
+  cambia de aparato predeterminado (Vista o posterior; se pregunta al motor de audio), la siguiente no se
+  encadena: se abre en el aparato nuevo al acabar la que suena, como antes de la continuidad.
+- DEFECTO CORREGIDO. En coma flotante NAudio no le da a la cadena un arreglo propio: le da una vista sobre su
+  búfer de bytes. El vaciado del realce 2× al final de cada canción la borraba con `Array.Clear`, que sobre esa
+  vista borra bytes en otro sitio: las últimas ~47 muestras de cada canción (con realce) salían con restos de la
+  vuelta anterior en vez de silencio. Ya pasaba en HD por WASAPI cuando no hace falta remuestrear (desde la etapa
+  3); con la coma flotante nueva habría llegado también a Modest. Ahora se borra muestra a muestra, y la batería
+  lee la cadena entera -des-recorte, DSEE, realce, grave, limitador, fundido- y el relevo sin pausa por esa vista
+  y exige que salgan idénticos (238.626 muestras, 0 distintas).
+
+Estudiado y no adoptado:
+- WASAPI EXCLUSIVO (HD). La rocola tomaría el aparato para ella sola, sin el mezclador de Windows: lo que sale
+  llega tal cual al DAC, en su formato y con menos retraso. En un bar tiene contras: mientras suena, ningún otro
+  programa (ni los sonidos de Windows) puede usar el aparato; el volumen de Windows deja de actuar; hay que
+  entregar un formato que el aparato admita, y remuestrear en la rocola si no admite la frecuencia de la canción;
+  falla si otro programa lo tiene o si Windows no permite el modo exclusivo; y necesita su propia recuperación de
+  errores. No se implementó ni se volvió predeterminado: es una decisión tuya. Si lo quieres, iría como un valor
+  de la línea `salida=` de la configuración (por ejemplo `salida=exclusivo`), sin tocar Ctrl+F3.
+
+Qué se comprobó y qué no: las pruebas comprueban lo que la rocola ENTREGA a Windows (muestra a muestra, formato
+y reacción a fallos simulados). Que el ruido de fondo baje en el aparato depende del motor de audio y del DAC:
+una grabación en bucle (loopback) confirma lo que sale de Windows, y solo un analizador en la salida analógica
+dice cómo mide el DAC. No se afirma ninguna mejora audible.
+
+Comprobado (pruebas automáticas, Mono; pruebas/salida.cs, 40 comprobaciones en HD y 39 en Modest, con salidas
+de mentira): coma flotante bit a bit; rechazo → 16 bits (la salida rechazada se suelta sin avisos colgando) y
+no se vuelve a probar; XP → 16 bits con el ruido justo del dither triangular (0,502 escalones eficaces; sin
+sesgo); un fallo del aparato no se confunde con un rechazo de formato; los dos formatos rechazados no dejan
+salidas abiertas; 14 códigos de fallo del aparato y 11 de la canción bien separados; la espera no toca
+créditos, cola ni incompatibles, espera 0,5 / 2 / 10 s, se cancela al saltar y a la sexta caída a medias se
+rinde; retomar (salto exacto, fundido al final, sin aprender del trozo); el vigía (a los 10 s, no con la
+salida parada, un vídeo, la medida de Ctrl+F3 o un atorón corto); el cambio de aparato de punta a punta con
+`PreparaSiguienteSinPausa`; y el cableado leído del programa compilado. Diez fallos puestos a propósito (volver
+al `Array.Clear`, confundir el aparato con el formato, no rendirse, no ajustar el fundido, no mirar el aparato,
+todo al aparato, devolver crédito al esperar, vigía sin mirar el estado, 16 bits sin dither, aprender del
+trozo) la ponen en rojo.
+
+Tandas completas con Mono: HD 172 baterías bien y Modest 158; en las dos solo falla `disco` (espera tu
+decisión; no es de esta etapa).
+
+Cómo repetirlo: `sh pruebas/todo.sh salida` (Linux con Mono) o validar-audio-mejoras.ps1 en Windows (la
+incluye). Pendiente en Windows y en el bar: desenchufar de verdad el DAC en mitad de una canción y ver que
+retoma donde iba; cambiar el aparato predeterminado; comprobar en rocola_error.txt qué formato se usa; XP real.
+
+Riesgos de migración y cómo volver atrás:
+- Un controlador de Vista o posterior que acepte la coma flotante y la reproduzca mal sería raro (WaveOut pasa
+  por el motor de audio), pero se oiría: se vuelve al ejecutable anterior.
+- Con el aparato desenchufado la rocola ahora se queda en silencio con la cola intacta, esperando (el letrero lo
+  dice); antes vaciaba la cola devolviendo créditos. Saltar sigue funcionando.
+- El vigía podría tomar por aparato mudo un disco tan lento que la música no avance en 10 s: entonces retoma la
+  canción donde iba.
+- No cambia ningún archivo de datos ni de configuración: volver al ejecutable anterior es seguro.
+
 ## 2. Comprobaciones y cómo repetirlas
 
 En cada repositorio, con sus herramientas de compilación .NET, Python con NumPy y FFmpeg:
@@ -960,8 +1047,8 @@ El script:
 
 1. Compila GPU y CPU con advertencias tratadas como errores; ejecuta las 29 baterías
    de validar-capas.ps1. Compilar CPU no significa modificar su renderizado.
-2. Ejecuta diecisiete baterías adicionales: dsee, limite, entrenador, iaparidad, iaorigen, sonoridad,
-   picoreal, realce, transiciones, sinpausa, eqpreparado, iadatos, eqauto, calidad, nivel, bajoauto y bajo.
+2. Ejecuta dieciocho baterías adicionales: dsee, limite, entrenador, iaparidad, iaorigen, sonoridad,
+   picoreal, realce, transiciones, sinpausa, salida, eqpreparado, iadatos, eqauto, calidad, nivel, bajoauto y bajo.
 3. Ejecuta las pruebas Python de los entrenadores y sus protecciones (test_calidad_dsee,
    test_entrenar_eq, test_contrato_dsee, test_origen_dsee, test_estereo_dsee,
    test_seleccion_dsee y test_publicacion_dsee) y, en HD, test_remuestreo de ia/upscale (con el
@@ -1155,6 +1242,11 @@ No aplicar dither repetidamente dentro de la cadena flotante.
 
 Requiere hardware y XP real para cerrar compatibilidad; no cambiar NAudio a una versión
 incompatible con .NET 3.5 para obtener un formato nuevo.
+
+Estado (23 de septiembre, etapa 8, las dos ramas): hechos 1, 2 y 4 con salidas simuladas (ver 1.19): coma
+flotante en Vista o posterior, 16 bits con dither en XP y si se rechaza, fallos del aparato sin gastar
+canciones, retomar, vigía y cambio de aparato. El 3 (WASAPI exclusivo) está estudiado y espera tu decisión. El 5
+(loopback y medición del DAC) es del equipo del bar. NAudio sigue en 1.9.0.
 
 ### G. Continuidad entre canciones y audio de vídeo
 
