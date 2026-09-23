@@ -24,6 +24,11 @@
 // 4) CAMBIO DE DISPOSITIVO. Con la continuidad sin pausas la salida puede quedar abierta cancion tras cancion.
 //    Si Windows cambia de aparato predeterminado (se enchufa otro), la siguiente no se encadena: la salida se
 //    cierra al acabar la que suena y la siguiente se abre en el aparato nuevo, como antes de la continuidad.
+//
+// 5) LA CANCION DE LA MEDIDA, CALLADA DESDE DENTRO. La medida de rendimiento pone una cancion muda y antes se
+//    callaba bajandole el volumen a la SALIDA. Ese volumen no es de la rocola: en WASAPI es el volumen general
+//    de Windows y en WaveOut (Vista o posterior) el de la rocola en el mezclador de Windows, y no se devolvia.
+//    Ahora se calla al final de la cadena y no se toca ningun volumen de Windows.
 
 using System;
 using System.Windows.Forms;
@@ -274,6 +279,29 @@ namespace Rocola
             if (abierta == null) return true;
             string ahora = IdSalidaPorDefecto();
             return ahora == null || string.Equals(ahora, abierta, StringComparison.OrdinalIgnoreCase);
+        }
+
+        // ------------------------------------------------------------------ 5) LA CANCION DE LA MEDIDA, CALLADA
+        // La medida de rendimiento pone una cancion para cargar la maquina de verdad, y MUDA. Se calla aqui, al final
+        // de la cadena: se descomprime y se procesa todo igual, y a la salida solo le llegan ceros. NUNCA con el
+        // volumen de la salida: en WASAPI es el volumen general de Windows (callaria el equipo entero) y en WaveOut,
+        // desde Vista, el de la rocola en el mezclador de Windows, que se queda guardado. Ninguno se devolvia al
+        // acabar la medida, asi que la musica de despues podia salir callada. En exclusivo, ademas, no callaria.
+        private ISampleProvider CallaSiEsMedida(ISampleProvider s) { return audioOpeningForMeasurement ? new Callada(s) : s; }
+
+        private sealed class Callada : ISampleProvider
+        {
+            private readonly ISampleProvider src;
+            public Callada(ISampleProvider s) { src = s; }
+            public WaveFormat WaveFormat { get { return src.WaveFormat; } }
+            public int Read(float[] buffer, int offset, int count)
+            {
+                int n = src.Read(buffer, offset, count);
+                // Muestra a muestra: 'buffer' puede ser la vista flotante que NAudio pone sobre su byte[], donde
+                // Array.Clear borraria en otro sitio (ver Realce.cs).
+                for (int i = 0; i < n; i++) buffer[offset + i] = 0f;
+                return n;
+            }
         }
     }
 }

@@ -18,6 +18,7 @@ using NAudio.Wave;
 //   5) EL VIGIA: 10 s con la salida en marcha sin pedir musica cuentan como fallo del aparato.
 //   6) CAMBIO DE APARATO: con otro aparato predeterminado no se encadena la siguiente.
 //   7) EL CABLEADO, leyendo el programa compilado.
+//   8) LA CANCION DE LA MEDIDA de rendimiento: callada al final de la cadena, sin tocar ningun volumen de Windows.
 //
 // Todo con una salida DE MENTIRA que acepta o rechaza formatos y falla como un aparato de verdad. Lo que NO se
 // prueba aqui: un Windows de verdad aceptando coma flotante, un DAC desenchufado de verdad, ni como suena. Eso
@@ -553,6 +554,67 @@ class Salida
               "un fallo de la CANCION sigue como siempre: credito devuelto y apuntada");
     }
 
+    // ================================================================================================
+    //  8) LA CANCION DE LA MEDIDA, CALLADA SIN TOCAR NINGUN VOLUMEN DE WINDOWS
+    // ================================================================================================
+    // Antes se callaba bajandole el volumen a la salida. En WASAPI eso es el volumen GENERAL de Windows y en WaveOut
+    // (Vista o posterior) el de la rocola en el mezclador; ninguno se devolvia al acabar la medida.
+    static List<string> VolumenesDeSalida(Type tf)
+    {
+        List<string> r = new List<string>();
+        foreach (MethodBase m in Codigo.TodosLosMetodos(tf))
+            foreach (string s in Codigo.Llamadas(m))
+                if (s.EndsWith(".set_Volume") && (s.StartsWith("IWavePlayer.") || s.StartsWith("WasapiOut.") || s.StartsWith("WaveOut.")
+                    || s.StartsWith("WaveOutEvent.") || s.StartsWith("DirectSoundOut.") || s.StartsWith("AsioOut.")))
+                    r.Add(m.Name);
+        return r;
+    }
+    static void LaMedidaCallada(object f, string exe)
+    {
+        Console.WriteLine("\n  8) LA CANCION DE LA MEDIDA, CALLADA SIN TOCAR VOLUMENES DE WINDOWS\n");
+        int fs = 44100, ch = 2;
+        float[] x = Musica(fs, ch, 1.0, 7);
+        Set(f, "audioOpeningForMeasurement", true);
+        Fuente src = new Fuente(x, fs, ch);
+        ISampleProvider c = (ISampleProvider)Inv(f, "CallaSiEsMedida", src);
+        float[] y = new float[x.Length + 100];
+        for (int i = 0; i < y.Length; i++) y[i] = 1f;
+        int n = c.Read(y, 0, y.Length);
+        bool ceros = n == x.Length && c.WaveFormat.SampleRate == fs && c.WaveFormat.Channels == ch;
+        for (int i = 0; ceros && i < y.Length; i++) if (y[i] != (i < n ? 0f : 1f)) ceros = false;
+        // Por la vista flotante que NAudio pone sobre su byte[] (coma flotante): tambien ceros, y en su sitio.
+        IWaveProvider w = new NAudio.Wave.SampleProviders.SampleToWaveProvider((ISampleProvider)Inv(f, "CallaSiEsMedida", new Fuente(x, fs, ch)));
+        byte[] b = new byte[x.Length * 4 + 64];
+        for (int i = 0; i < b.Length; i++) b[i] = 0x55;
+        int nb = w.Read(b, 0, x.Length * 4);
+        bool vista = nb == x.Length * 4;
+        for (int i = 0; vista && i < b.Length; i++) if (b[i] != (i < nb ? (byte)0 : (byte)0x55)) vista = false;
+        Set(f, "audioOpeningForMeasurement", false);
+        Fuente fuera = new Fuente(x, fs, ch);
+        bool pasa = object.ReferenceEquals(Inv(f, "CallaSiEsMedida", fuera), fuera);
+        Check(ceros && vista && pasa, "la cancion de la medida se calla al final de la cadena: se lee entera (el mismo trabajo) y a la salida solo le llegan ceros, tambien por la vista flotante de NAudio; fuera de la medida la cadena pasa tal cual");
+        List<string> arranca = Codigo.Nombres(Met("StartOpenedTrack"));
+        int iCalla = arranca.IndexOf("CallaSiEsMedida"), iAbre = arranca.IndexOf("AbreSalidaClasica");
+        Check(iCalla >= 0 && iAbre > iCalla, "la cancion calla su cadena ANTES de darsela a la salida");
+        // Ningun sitio le cambia el volumen a la salida: ni en este programa ni en el de tarjeta, donde esta la medida.
+        List<string> revisados = new List<string>(), tocan = new List<string>(); bool conTarjeta = false;
+        string dir = Path.GetDirectoryName(Path.GetFullPath(exe));
+        foreach (string nombre in new string[] { Path.GetFullPath(exe), Path.Combine(dir, "rocola_cpu.exe"), Path.Combine(dir, "rocola_gpu.exe"),
+                                                 Path.Combine(dir, "Rocola-cpu.exe"), Path.Combine(dir, "Rocola-gpu.exe") })
+        {
+            if (!File.Exists(nombre) || revisados.Contains(Path.GetFileName(nombre))) continue;
+            Type tf = Assembly.Load(File.ReadAllBytes(nombre)).GetType("Rocola.Form1", false);
+            if (tf == null) continue;
+            revisados.Add(Path.GetFileName(nombre));
+            foreach (string m in VolumenesDeSalida(tf)) tocan.Add(Path.GetFileName(nombre) + ": " + m);
+            MethodBase mide = tf.GetMethod("MideRendimiento", T);
+            if (mide != null && Codigo.Llama(mide, "PlayTrackForMeasurement")) conTarjeta = true;
+        }
+        Check(conTarjeta, "se repaso tambien el programa con tarjeta, donde esta la medida de rendimiento (" + string.Join(", ", revisados.ToArray()) + ")");
+        Check(revisados.Count > 0 && tocan.Count == 0, "ningun sitio del programa le cambia el volumen a la salida (en WASAPI seria el volumen general de Windows; en WaveOut, el de la rocola en el mezclador)"
+              + (tocan.Count > 0 ? ": " + string.Join(", ", tocan.ToArray()) : ""));
+    }
+
     static int Main(string[] args)
     {
         asm = Assembly.LoadFrom(args.Length > 0 ? args[0] : "rocola.exe");
@@ -576,6 +638,7 @@ class Salida
             ElVigia(f);
             CambioDeAparato(f);
             ElCableado();
+            LaMedidaCallada(f, args.Length > 0 ? args[0] : "rocola.exe");
         }
         finally { try { Directory.Delete(tmp, true); } catch { } }
         Console.WriteLine(fallos == 0 ? ("\n  TODO BIEN (" + oks + " comprobaciones)") : ("\n  FALLOS: " + fallos));

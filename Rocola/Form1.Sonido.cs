@@ -931,6 +931,7 @@ namespace Rocola
                 // siguiente ya esta preparada, sigue en la MISMA lectura sin cerrar la salida.
                 secuencia = new Encadenado(cad.Salida, cad);
                 NAudio.Wave.ISampleProvider outChain = secuencia;
+                outChain = CallaSiEsMedida(outChain);   // la medida de rendimiento: callada aqui, sin tocar volumenes de Windows (SalidaSonido.cs)
                 // WaveOut (callback por ventana, 1 segundo de colchon en bloques de 50 ms): en XP, 16 bits con dither
                 // TPDF como siempre; en Vista o posterior, coma flotante, y 16 bits si el sistema la rechaza
                 // (SalidaSonido.cs).
@@ -941,7 +942,6 @@ namespace Rocola
                     if (EsFalloDelDispositivo(sex) && SalidaCaida(t, desde, sex, false)) return;
                     throw;
                 }
-                if (audioOpeningForMeasurement) output.Volume = 0f;
                 try { output.Play(); }
                 catch (Exception pex) { if (EsFalloDelDispositivo(pex) && SalidaCaida(t, desde, pex, false)) return; throw; }
                 SalidaArranco(IdSalidaPorDefecto());   // el aparato esta: en cual (SalidaSonido.cs; en XP no se pregunta)
