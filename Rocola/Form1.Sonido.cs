@@ -52,6 +52,8 @@ namespace Rocola
         private float bassSongFactor = 1f;
         private float BassBaseNow() { return bassAuto ? bassAutoBase : bassAmount; }
         private float BassAmountNow() { return Clampf(BassBaseNow() * bassSongFactor, 0f, 1f); }
+        // Lo mismo para una cancion que aun no suena (la siguiente, preparada para entrar sin pausa).
+        private float BassAmountPara(float factor, float autoBase) { return Clampf((bassAuto ? autoBase : bassAmount) * factor, 0f, 1f); }
 
         // ============================== MODO NOCHE ==============================
         // De las 11 de la noche a las 7 de la manana la rocola baja 4 dB.
@@ -139,7 +141,7 @@ namespace Rocola
             float antes = nocheFactor;
             nocheFactor = AvanzaRampa(nocheFactor, meta, dt);
             // Y se empuja a la cancion que YA esta sonando: si no, la baja no se oiria hasta la siguiente.
-            if (nocheFactor != antes) { LevelTap t = curTap; if (t != null) t.Master = MasterLin() * FactorNoche(); }
+            if (nocheFactor != antes) { LevelTap t = curTap; if (t != null) t.Master = MasterLin() * FactorNoche(); AplicaAPreparada(); }
         }
         private float crossfadeSec = 0.5f;   // FUNDIDO de salida entre canciones: segundos de rampa al terminar ("fundido=" en config; 0 = corte seco)
         private bool declipOn = true;        // DES-RECORTE (declipper): repara picos aplastados de origen en archivos mal masterizados ("declip=" en config)
@@ -288,6 +290,24 @@ namespace Rocola
         // las canciones que no suenan por la version de Apollo: sobre ESA no se vuelve a empujar, que ya trae
         // sus agudos puestos.
         private bool DseeActivo() { return sbrAllowed && (iaVivo ? iaSpectralFallback : sbrOn); }
+        // Lo mismo para una cancion que aun no suena (la siguiente, preparada para entrar sin pausa): con ULTRA, el
+        // respaldo depende de si ELLA viene mejorada, no de la que suena. Con la que suena da lo mismo que DseeActivo.
+        private bool DseeActivoPara(bool iaMejorada) { return sbrAllowed && (iaVivo ? !iaMejorada : sbrOn); }
+        // LO PROPIO DE ESTA RAMA PARA EL RELEVO SIN PAUSA (Form1.SinPausa.cs):
+        private bool DseeDe(CadenaCancion c) { return DseeActivoPara(c.IaMejorada); }
+        private float ExcitePara(CadenaCancion c) { return ExciteAmountPara(c.Cancion.Path, DseeDe(c)); }
+        private int RetrasoAudible() { return audioVisualDelayMs; }
+        // La misma cuenta que PlayTrack: si ya esta la version de Apollo, suena esa (y sale el letrero dorado);
+        // si no, suena la original y se le pide al motor para la proxima.
+        private bool IaMejoradaPara(string path)
+        {
+            if (!iaVivo || path == null) return false;
+            bool yaBuena;
+            string enh = IaEnhancedPath(path, out yaBuena);
+            if (enh == null) { IaRequestJob(path); return false; }
+            return !yaBuena;
+        }
+        private void AlEntrarPorRelevo(CadenaCancion b) { iaNowEnhanced = b.IaMejorada; RevisaRespaldoDsee(); }
 
         // Cierra la medida de la cancion que acaba de sonar: calcula su RMS integrado y lo guarda (si se oyo lo
         // suficiente). La llama DisposePlaybackNow, ya con el audio detenido (sin carrera con el hilo de sonido).
@@ -295,7 +315,11 @@ namespace Rocola
         {
             string path = curMeasurePath; curMeasurePath = null;
             double sumSq = curSumSq; long samples = curSamples; curSumSq = 0; curSamples = 0;
-            int tasa = kwRate, canales = kwCanales;
+            CierraSonoridad(path, sumSq, samples, kwRate, kwCanales);
+        }
+        // Lo mismo con lo que se guardo de una cancion que acabo por relevo sin pausa (Form1.SinPausa.cs).
+        private void CierraSonoridad(string path, double sumSq, long samples, int tasa, int canales)
+        {
             if (path == null || tasa <= 0 || canales <= 0 || samples < (long)(NormMinSec * tasa * canales)) return;   // por duracion
             float rms = (float)Math.Sqrt(sumSq / samples);
             if (rms <= 0.0001f) return;
@@ -1020,64 +1044,24 @@ namespace Rocola
                 reader = source;
                 if (error != null) throw error;
                 reader.Volume = FixedVolume;   // se queda en 1.0 (crudo): el nivelado se aplica en LevelTap, tras medir el volumen REAL
-                // NIVELADO: si esta cancion ya se oyo antes, se aplica la ganancia que la lleva al nivel comun; si es
-                // nueva, va a su volumen original y se APRENDE su sonoridad en esta pasada (para nivelarla la proxima vez).
-                curMeasurePath = (normalizeOn && !durCache.ContainsKey(t.Path)) ? t.Path : null;   // ya pre-analizada = medida COMPLETA y fiable: no se vuelve a medir (y se ahorra el K-weighting)
-                curSumSq = 0; curSamples = 0;
-                eqMeasPath = (EqMideHuella && !HasStereoEq(t.Path)) ? t.Path : null;   // actualiza huellas antiguas sin borrar la biblioteca
+                // LA CADENA DE ESTA CANCION (ArmaCadena, mas abajo): la misma que arma el relevo sin pausa para la
+                // siguiente, asi que las dos suenan exactamente igual.
+                CadenaCancion cad = ArmaCadena(t, reader, iaNowEnhanced);
+                cad.Item = nowPlaying;
+                // Lo que se aprende oyendola va en los campos de siempre (la salida aun no arranco: sin carrera).
+                curMeasurePath = cad.MedidaRuta; curSumSq = 0; curSamples = 0;
+                eqMeasPath = cad.EqRuta;
                 eqMeasCut = 0f;   // el acantilado es de ESTA cancion: se vuelve a medir
                 eqMeasSum = new double[8]; eqMeasN = 0; eqMeasRate = 0;
                 kwRate = 0;   // reinicia el estado del K-weighting: cada cancion mide desde cero (sin cola del filtro anterior)
-                // NIVEL 2 (reconstructor espectral): solo se INSERTA en maquinas que cumplen requisitos; con
-                // Active=false es un pase directo (costo ~cero). Ctrl+F3 lo alterna EN VIVO para comparar A/B.
-                NAudio.Wave.ISampleProvider chain = reader;
-                int audioTailDelay = 0;   // estos retardos se vacian: el fundido debe abarcar tambien su cola
-                // DES-RECORTE: repara picos aplastados de origen (antes de medir y de DSEE). Ya sabemos, cancion
-                // por cancion, si de verdad viene recortada; en las que NO -que son la mayoria- ni se pone en la
-                // cadena: se ahorra su trabajo y su retardo de ~1.5 ms. Si aun no esta medida, se pone por si acaso.
-                if (declipOn && DeclipVale(t.Path))
-                {
-                    DeclipProvider dc = new DeclipProvider(chain); chain = dc; audioTailDelay += dc.DelayFrames;
-                }
-                if (sbrAllowed) { curSbr = new SpectralTap(chain, VentanaDsee()); curSbr.Active = DseeActivo(); chain = curSbr; }   // HD: ventana fina; respaldo espectral si ULTRA aun no tiene la version IA
-                else curSbr = null;
-                LevelTap tap = new LevelTap(chain, this);
-                tap.Gain = NormGainFor(t.Path);
-                tap.Excite = ExciteAmountFor(t.Path);   // realce de agudos: mas a las dañadas, menos a las que ya traen su aire
-                tap.Master = MasterLin() * FactorNoche();  // SUBIR TODO (con rodilla suave anti-distorsion), y de madrugada mas bajo
-                tap.EqDb = EqCorrFor(t.Path);      // EQ automatico: correccion aprendida (null la 1a vez que suena)
-                audioTailDelay += tap.DelayFrames;   // realce 2x: retiene 31 cuadros y los entrega al final (Realce.cs)
-                curTap = tap;   // referencia para ajustar la ganancia en vivo (Ctrl+F3)
-                // BAJO PSICOACUSTICO: despues de nivelar/ecualizar y ANTES del limitador, que es quien controla
-                // los picos que anaden los armonicos.
-                bassSongFactor = BassFactorFor(t.Path);   // cuanto le toca a ESTA cancion (1 = la perilla tal cual)
-                bassAutoBase = BajoAuto(t.Path);          // y de cuanto se parte, si el bajo va en automatico
-                curBass = new DeepBassProvider(tap, BassAmountNow());
-                // LIMITADOR DE PICO REAL: el techo de 0,98 vale para la onda que reconstruye el DAC, no solo para
-                // las muestras (ver PicoReal.cs). Detras solo quedan el fundido (que solo baja) y, en la salida
-                // clasica, el paso a 16 bits con su dither de un bit.
-                LimitadorPicoReal lim = new LimitadorPicoReal(curBass, 0.98f, 3.0);
-                audioTailDelay += lim.DelayFrames;
-                NAudio.Wave.ISampleProvider outChain = lim;   // limitador con pre-escucha (picos limpios)
-                if (crossfadeSec > 0.01f)
-                {
-                    // CUANTO DURA. Se pregunta primero a lo que el pre-analisis dejo apuntado, que es de
-                    // donde lo saca tambien el turno de la cola. Preguntarselo AL ARCHIVO obliga a
-                    // recorrerlo entero cuando no trae la cuenta escrita, que es lo normal: 3.87 ms y
-                    // nueve megas de disco en una cancion de cuatro minutos, y aqui eso caeria en el hilo
-                    // de la pantalla, en el instante en que el cliente acaba de soltar el boton. El camino
-                    // largo se deja solo para las canciones de las que aun no se sabe nada.
-                    long tf = 0;
-                    try
-                    {
-                        int hz = reader.WaveFormat.SampleRate;
-                        float yaSe = SegundosDe(t.Path);
-                        tf = (yaSe > 0.01f) ? (long)(yaSe * hz) : (long)(reader.TotalTime.TotalSeconds * hz);
-                    }
-                    catch { }
-                    if (tf > 0) tf += audioTailDelay;
-                    outChain = new FadeProvider(outChain, tf, crossfadeSec);   // fundido suave de entrada/salida
-                }
+                tapMedido = cad.Tap;
+                curSbr = cad.Sbr; curTap = cad.Tap; curBass = cad.Bajo;   // para ajustarla en vivo (Ctrl+F3)
+                bassSongFactor = cad.BajoFactor; bassAutoBase = cad.BajoBase;
+                cadenaSonando = cad; cadenaPreparada = null;
+                // RELEVO SIN PAUSA (SinPausa.cs): la salida lee de la secuencia. Cuando esta cancion se acabe, si la
+                // siguiente ya esta preparada, sigue en la MISMA lectura sin cerrar la salida.
+                secuencia = new Encadenado(cad.Salida, cad);
+                NAudio.Wave.ISampleProvider outChain = secuencia;
                 // ===== SALIDA DE AUDIO (rama HD) =====
                 // WASAPI compartido con muestras FLOTANTES: float de punta a punta hasta el motor de audio
                 // moderno (sin bajar a 16 bits ni pasar por el mezclador clasico) y latencia menor. Si
@@ -1132,6 +1116,71 @@ namespace Rocola
             {
                 AudioStartFailed(t, ex);
             }
+        }
+
+        // LA CADENA DE UNA CANCION, del lector al fundido de salida (sin la salida). La usan el arranque de
+        // siempre (StartOpenedTrack) y el relevo sin pausa (Form1.SinPausa.cs), asi que las dos suenan igual.
+        // Solo ARMA: no toca lo que suena ahora (ni los campos de medida ni los controles en vivo).
+        private CadenaCancion ArmaCadena(Track t, IAudioSource source, bool iaMejorada)
+        {
+            CadenaCancion c = new CadenaCancion();
+            c.Cancion = t; c.Lector = source; c.IaMejorada = iaMejorada;
+            bool dsee = DseeActivoPara(iaMejorada);   // el reconstructor para ESTA cancion (con ULTRA, segun si viene mejorada)
+            // NIVELADO: si esta cancion ya se oyo antes, se aplica la ganancia que la lleva al nivel comun; si es
+            // nueva, va a su volumen original y se APRENDE su sonoridad en esta pasada (para nivelarla la proxima vez).
+            c.MedidaRuta = (normalizeOn && !durCache.ContainsKey(t.Path)) ? t.Path : null;   // ya pre-analizada = medida COMPLETA y fiable: no se vuelve a medir (y se ahorra el K-weighting)
+            c.EqRuta = (EqMideHuella && !HasStereoEq(t.Path)) ? t.Path : null;   // actualiza huellas antiguas sin borrar la biblioteca
+            // NIVEL 2 (reconstructor espectral): solo se INSERTA en maquinas que cumplen requisitos; con
+            // Active=false es un pase directo (costo ~cero). Ctrl+F3 lo alterna EN VIVO para comparar A/B.
+            NAudio.Wave.ISampleProvider chain = source;
+            int audioTailDelay = 0;   // estos retardos se vacian: el fundido debe abarcar tambien su cola
+            // DES-RECORTE: repara picos aplastados de origen (antes de medir y de DSEE). Ya sabemos, cancion
+            // por cancion, si de verdad viene recortada; en las que NO -que son la mayoria- ni se pone en la
+            // cadena: se ahorra su trabajo y su retardo de ~1.5 ms. Si aun no esta medida, se pone por si acaso.
+            if (declipOn && DeclipVale(t.Path))
+            {
+                DeclipProvider dc = new DeclipProvider(chain); chain = dc; audioTailDelay += dc.DelayFrames;
+            }
+            if (sbrAllowed) { c.Sbr = new SpectralTap(chain, VentanaDsee()); c.Sbr.Active = dsee; chain = c.Sbr; }   // HD: ventana fina; respaldo espectral si ULTRA aun no tiene la version IA
+            LevelTap tap = new LevelTap(chain, this);
+            tap.Gain = NormGainFor(t.Path);
+            tap.Excite = ExciteAmountPara(t.Path, dsee);   // realce de agudos: mas a las dañadas, menos a las que ya traen su aire
+            tap.Master = MasterLin() * FactorNoche();  // SUBIR TODO (con rodilla suave anti-distorsion), y de madrugada mas bajo
+            tap.EqDb = EqCorrFor(t.Path);      // EQ automatico: correccion aprendida (null la 1a vez que suena)
+            audioTailDelay += tap.DelayFrames;   // realce 2x: retiene 31 cuadros y los entrega al final (Realce.cs)
+            c.Tap = tap; tap.Medida = new MedidaCancion(c.MedidaRuta, c.EqRuta);   // lo que aprende oyendola (ver MedidaDe)
+            // BAJO PSICOACUSTICO: despues de nivelar/ecualizar y ANTES del limitador, que es quien controla
+            // los picos que anaden los armonicos.
+            c.BajoFactor = BassFactorFor(t.Path);   // cuanto le toca a ESTA cancion (1 = la perilla tal cual)
+            c.BajoBase = BajoAuto(t.Path);          // y de cuanto se parte, si el bajo va en automatico
+            c.Bajo = new DeepBassProvider(tap, BassAmountPara(c.BajoFactor, c.BajoBase));
+            // LIMITADOR DE PICO REAL: el techo de 0,98 vale para la onda que reconstruye el DAC, no solo para
+            // las muestras (ver PicoReal.cs). Detras solo quedan el fundido (que solo baja) y, en la salida
+            // clasica, el paso a 16 bits con su dither de un bit.
+            LimitadorPicoReal lim = new LimitadorPicoReal(c.Bajo, 0.98f, 3.0);
+            audioTailDelay += lim.DelayFrames;
+            NAudio.Wave.ISampleProvider outChain = lim;   // limitador con pre-escucha (picos limpios)
+            if (crossfadeSec > 0.01f)
+            {
+                // CUANTO DURA. Se pregunta primero a lo que el pre-analisis dejo apuntado, que es de
+                // donde lo saca tambien el turno de la cola. Preguntarselo AL ARCHIVO obliga a
+                // recorrerlo entero cuando no trae la cuenta escrita, que es lo normal: 3.87 ms y
+                // nueve megas de disco en una cancion de cuatro minutos, y aqui eso caeria en el hilo
+                // de la pantalla, en el instante en que el cliente acaba de soltar el boton. El camino
+                // largo se deja solo para las canciones de las que aun no se sabe nada.
+                long tf = 0;
+                try
+                {
+                    int hz = source.WaveFormat.SampleRate;
+                    float yaSe = SegundosDe(t.Path);
+                    tf = (yaSe > 0.01f) ? (long)(yaSe * hz) : (long)(source.TotalTime.TotalSeconds * hz);
+                }
+                catch { }
+                if (tf > 0) tf += audioTailDelay;
+                c.Fundido = new FadeProvider(outChain, tf, crossfadeSec); outChain = c.Fundido;   // fundido suave de entrada/salida
+            }
+            c.Retardo = audioTailDelay; c.Salida = outChain;
+            return c;
         }
 
         // Abre el audio. Camino NORMAL: FileAudioSource (rapido, para el 99.99% de los archivos). Si NAudio lo
@@ -1256,6 +1305,9 @@ namespace Rocola
             // Stop/Dispose de la salida anterior puede dejar un callback ya encolado. Si entretanto arranco
             // otra cancion, ese aviso viejo no debe saltarla ni devolverle otro credito al cliente.
             if (!object.ReferenceEquals(sender, output)) return;
+            // RELEVO SIN PAUSA: la siguiente que ya habia entrado y aun no se daba por sonando, y un fallo de lectura
+            // que atrapo la secuencia (se atiende aqui, UNA vez, como si lo hubiera avisado la salida). Ver RecogeAlParar.
+            if (secuencia != null) e = RecogeAlParar(e);
             if (e.Exception != null)
             {
                 // El hilo de WasapiOut puede fallar DESPUES de Play(), antes del
@@ -1301,6 +1353,7 @@ namespace Rocola
             if (outputResampler != null) { try { outputResampler.Dispose(); } catch { } outputResampler = null; }
             if (outputDevice != null) { try { outputDevice.Dispose(); } catch { } outputDevice = null; }
             if (reader != null) { try { reader.Dispose(); } catch { } reader = null; }
+            SueltaSinPausa();   // la siguiente preparada (o ya entrando): con la salida ya parada
             curTap = null; curSbr = null; curBass = null;   // ya no hay taps actuales
             FinalizeLoudMeasure();   // guarda la sonoridad medida de la cancion que acaba de sonar (audio ya detenido: sin carrera)
             FinalizeEqMeasure();     // y su huella tonal (mismo momento seguro)
@@ -1657,6 +1710,7 @@ namespace Rocola
         private void ProgressTimer_Tick(object sender, EventArgs e)
         {
             if (reader == null) return;
+            PreparaSiguienteSinPausa();   // a la que suena le quedan pocos segundos: la siguiente, lista para entrar sin pausa
             TimeSpan cur = reader.CurrentTime, tot = reader.TotalTime;
             if (tot.TotalSeconds > 0) progress.Value = cur.TotalSeconds / tot.TotalSeconds;
             lblTime.Text = Fmt(cur) + " / " + Fmt(tot);
@@ -2887,6 +2941,10 @@ namespace Rocola
             private readonly long fadeFrames;    // frames de rampa del fundido de salida
             private long totalFrames;            // frames totales (0 = desconocido o muy corta: sin fundido de salida)
             private long pos;                    // frames ya entregados
+            // RELEVO SIN PAUSA a la pista siguiente del MISMO disco: el fundido se quita si aun no empezo (un disco
+            // continuo tiene que seguir continuo). 0 = normal, 1 = quitado a tiempo, 2 = ya empezo y se termina.
+            private int estadoFundido;
+            internal bool Quita() { return System.Threading.Interlocked.CompareExchange(ref estadoFundido, 1, 0) == 0; }
             public FadeProvider(NAudio.Wave.ISampleProvider s, long total, double fadeSec)
             {
                 src = s; ch = Math.Max(1, s.WaveFormat.Channels);
@@ -2904,6 +2962,7 @@ namespace Rocola
                 // Fuera de los ultimos segundos no hay nada que hacer, y eso es TODA la cancion menos el final.
                 // Antes se recorria muestra a muestra igualmente para acabar multiplicando por uno.
                 if (totalFrames <= 0 || pos + frames <= totalFrames - fadeFrames) { pos += frames; return n; }
+                if (System.Threading.Interlocked.CompareExchange(ref estadoFundido, 2, 0) == 1) { pos += frames; return n; }   // quitado a tiempo
                 for (int f = 0; f < frames; f++)
                 {
                     long rem = totalFrames - (pos + f);                                 // frames que faltan para el final
@@ -2939,6 +2998,7 @@ namespace Rocola
         {
             private readonly NAudio.Wave.ISampleProvider src;
             private readonly Form1 owner;
+            internal MedidaCancion Medida;     // lo que aprende oyendola, si entra por relevo sin pausa (Form1.SinPausa.cs)
             public volatile float Gain = 1f;   // objetivos; la rampa se aplica DESPUES de medir
             public volatile float Master = 1f; // los picos los controla el limitador final
             // REALCE DE AGUDOS (exciter armonico, tipo DSEE): separa la banda alta con un paso-alto de un polo,
@@ -3022,6 +3082,7 @@ namespace Rocola
                     // de medir nada. Es UNA comparacion por muestra, y de paso atrapa los valores absurdos
                     // (un archivo roto que devuelve 1e30) que reventarian el nivelado.
                     { int fin0 = offset + n; for (int i = offset; i < fin0; i++) { float x0 = buffer[i]; if (!(x0 >= -4f && x0 <= 4f)) buffer[i] = 0f; } }
+                    owner.MedidaDe(this);   // relevo sin pausa: en su primer bloque, la medida en vivo pasa a ser de esta cancion
                     owner.ReportAudioBlock(buffer, offset, n, WaveFormat.SampleRate, WaveFormat.Channels);   // mide el nivel CRUDO (beat + sonoridad + huella tonal) ANTES de tocar nada
                     float g, ex;
                     Objetivos(out g, out ex);

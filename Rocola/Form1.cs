@@ -1474,6 +1474,7 @@ namespace Rocola
             // entre golpes. Antes era una envolvente de sonoridad adelantada ~1s: no transmitia el ritmo.
             int nowT = Environment.TickCount;
             ConsumeLevels(nowT);
+            RevisaRelevo(nowT);   // la siguiente entro sin pausa y ya se oye: la pantalla se entera (Form1.SinPausa.cs)
             if (nowPlaying == null) { rmsLo = rmsMid = rmsHi = 0f; for (int b = 0; b < SpecBands; b++) specNow[b] = 0f; }
 #if ROCOLA_GPU
             // Con un VIDEO en pantalla el audio sale del reproductor de Windows y NO pasa por la cadena, asi que no

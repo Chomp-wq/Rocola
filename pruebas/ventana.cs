@@ -160,6 +160,12 @@ class Ventana
     // no reproduce nada y usa el constructor de solo analisis, que ni siquiera lleva tamano.)
     static MethodBase QuienArmaElTap()
     {
+        // La cadena de cada cancion se arma en ArmaCadena (la usan el arranque de siempre y el relevo sin
+        // pausa): el reconstructor que suena se construye ahi y se guarda en la cadena, no en curSbr.
+        MethodBase armaCadena = TF.GetMethod("ArmaCadena", BindingFlags.Instance | BindingFlags.NonPublic);
+        if (armaCadena != null)
+            foreach (string s in Codigo.Llamadas(armaCadena))
+                if (s.IndexOf("SpectralTap", StringComparison.Ordinal) >= 0 && s.EndsWith(".ctor")) return armaCadena;
         foreach (MethodBase m in Codigo.TodosLosMetodos(TF))
         {
             if (m.DeclaringType == TSbr) continue;                    // el propio reconstructor no cuenta

@@ -1034,7 +1034,9 @@ namespace Rocola
         // esa ya trae su aire de verdad y no hace falta inventarselo.
         // Lo que recibe una cancion que ya trae todo su aire (el suelo de la escala de aqui abajo).
         private const float ExciteCompleta = 0.75f;
-        private float ExciteFactorFor(string path)
+        private float ExciteFactorFor(string path) { return ExciteFactorPara(path, DseeActivo()); }
+        // Lo mismo para una cancion que aun no suena, con SU reconstructor (relevo sin pausa, Form1.SinPausa.cs).
+        private float ExciteFactorPara(string path, bool dsee)
         {
             float[] c;
             if (path == null || !eqCache.TryGetValue(path, out c) || c == null || c.Length < EqLen) return 1f;
@@ -1053,11 +1055,12 @@ namespace Rocola
             // Se le quita la MITAD del extra, no todo: el reconstructor devuelve la ENVOLVENTE de los agudos
             // transponiendo lo que sobrevivio una octava mas abajo, que no es el detalle original, asi que
             // algo de realce encima sigue teniendo sentido. Y con el reconstructor apagado no cambia nada.
-            if (DseeActivo() && corte < EqSanaHz)
+            if (dsee && corte < EqSanaHz)
                 f = ExciteCompleta + (f - ExciteCompleta) * 0.5f;
             return f;
         }
         private float ExciteAmountFor(string path) { return Clampf(excAmount * ExciteFactorFor(path), 0f, 1f); }
+        private float ExciteAmountPara(string path, bool dsee) { return Clampf(excAmount * ExciteFactorPara(path, dsee), 0f, 1f); }
 
         // ¿Vale la pena poner el des-recorte en esta cancion? Solo si de verdad viene con picos aplastados. Una
         // cancion aun sin medir se trata como sospechosa (mas vale ponerlo). El umbral es bajo a proposito: con
@@ -1151,7 +1154,12 @@ namespace Rocola
             string path = eqMeasPath; eqMeasPath = null;
             double[] sums = eqMeasSum; long n = eqMeasN; int tasa = eqMeasRate;
             eqMeasSum = new double[8]; eqMeasN = 0;
-            if (path == null || tasa <= 0 || n < (long)(EqMinSec * tasa)) return;   // 20 s a la frecuencia que sea
+            CierraHuella(path, sums, n, tasa, eqMeasCut, eqMeasCutLo);
+        }
+        // Lo mismo con lo que se guardo de una cancion que acabo por relevo sin pausa (Form1.SinPausa.cs).
+        private void CierraHuella(string path, double[] sums, long n, int tasa, float corte, float corteBajo)
+        {
+            if (path == null || sums == null || tasa <= 0 || n < (long)(EqMinSec * tasa)) return;   // 20 s a la frecuencia que sea
             float[] curve = new float[EqLen];
             for (int b = 0; b < 8; b++) curve[b] = (float)(10.0 * Math.Log10(sums[b] / n + 1e-12));
             // referencia = MEDIANA de las bandas del CUERPO (158 Hz - 5.6 kHz): invariante al volumen y
@@ -1169,8 +1177,8 @@ namespace Rocola
             }
             // CORTE: lo mide el propio DSEE mientras la cancion suena, este encendido o no (el acantilado es del
             // ARCHIVO, no del efecto). Si no lo supimos esta vez, se conserva el que ya estuviera guardado.
-            curve[EqCut] = (eqMeasCut > 0f) ? eqMeasCut : (had ? prev[EqCut] : 0f);
-            curve[EqCutLo] = (eqMeasCutLo > 0f) ? eqMeasCutLo : (had ? prev[EqCutLo] : 0f);
+            curve[EqCut] = (corte > 0f) ? corte : (had ? prev[EqCut] : 0f);
+            curve[EqCutLo] = (corteBajo > 0f) ? corteBajo : (had ? prev[EqCutLo] : 0f);
             curve[EqClip] = had ? prev[EqClip] : 0f;   // el recorte solo lo mide el pre-analisis (aqui ya viene reparado)
             curve[EqFingerprint] = 1f;   // no promediar con la antigua medicion mono
             eqCache[path] = curve; eqCacheVer++;
@@ -1274,6 +1282,7 @@ namespace Rocola
             LevelTap t = curTap; if (t != null && nowPlaying != null && nowPlaying.Song != null) { t.Gain = NormGainFor(nowPlaying.Song.Path); t.Excite = ExciteAmountFor(nowPlaying.Song.Path); t.Master = MasterLin() * FactorNoche(); t.EqDb = EqCorrFor(nowPlaying.Song.Path); }
             DeepBassProvider bp = curBass; if (bp != null) bp.Amount = BassAmountNow();   // bajo psicoacustico: al instante, ya ajustado a la cancion
             SpectralTap sp = curSbr; if (sp != null) sp.Active = DseeActivo();   // reconstruccion espectral: alterna EN VIVO SIN matar el respaldo de ULTRA
+            AplicaAPreparada();   // y a la siguiente, si ya esta preparada para entrar sin pausa
         }
 
         // Todas las raices de musica que EXISTEN ahora: la carpeta "musica" principal + las agregadas con Ctrl+F2.

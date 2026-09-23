@@ -179,14 +179,17 @@ class Respaldo
 
         // ---------- 3) TODOS LOS QUE LA NECESITAN, LA PREGUNTAN ----------
         Console.WriteLine("\n  3) Y TODOS LOS QUE LA NECESITAN PREGUNTAN LA REGLA\n");
-        string[] quienes = { "ApplyNormNow", "StartOpenedTrack", "MejKind", "ExciteFactorFor" };
+        // La cadena de cada cancion se arma en ArmaCadena (arranque de siempre y relevo sin pausa). Pregunta la
+        // MISMA regla con la version de Apollo de ESA cancion (DseeActivoPara), que con la que suena da lo mismo que
+        // DseeActivo: lo comprueba pruebas/sinpausa.cs en los dieciseis casos.
+        string[] quienes = { "ApplyNormNow", "ArmaCadena", "MejKind", "ExciteFactorFor" };
         string[] paraQue = { "el cambio se oye al instante", "la cancion arranca con el reconstructor bien puesto",
                              "el letrero plateado", "el realce no empuja dos veces" };
         int sinPreguntar = 0;
         for (int i = 0; i < quienes.Length; i++)
         {
             MethodInfo m = TF.GetMethod(quienes[i], IF);
-            bool ok = (m != null) && Codigo.Llama(m, "DseeActivo");
+            bool ok = (m != null) && (Codigo.Llama(m, "DseeActivo") || (quienes[i] == "ArmaCadena" && Codigo.Llama(m, "DseeActivoPara")));
             if (!ok) sinPreguntar++;
             Console.WriteLine("     " + (ok ? "si " : "NO ") + " " + quienes[i].PadRight(16) + "(" + paraQue[i] + ")");
         }

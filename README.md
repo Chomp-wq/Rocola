@@ -13,7 +13,9 @@ Rampas de volumen/excitador, transición de EQ, huellas estéreo sin cancelació
 protecciones del entrenamiento; además, sonoridad integrada BS.1770 de la canción
 entera, limitador de pico real entre muestras, realce de agudos sin plegado (la
 saturación trabaja a 2× con el camino seco alineado) y cambios en vivo del grave
-sintético y del DSEE sin escalones ni saltos, compartido por Modest y HD. Solo en
+sintético y del DSEE sin escalones ni saltos, y continuidad sin pausas entre
+canciones del mismo formato (la siguiente entra por la misma salida, sin solaparse,
+con cola y créditos como siempre), compartido por Modest y HD. Solo en
 HD, Apollo pasa a 44,1 kHz con SoXR cuando el FFmpeg lo trae (con alternativa
 probada) y reaprovecha sin reprocesar lo que no cambia.
 Detalles, mediciones y tareas aún pendientes (escucha A/B, Windows XP real, CPU
