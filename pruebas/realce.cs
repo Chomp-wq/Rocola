@@ -530,8 +530,10 @@ class RealceBateria
     static void Cableado()
     {
         Console.WriteLine("\n  10) EL CABLEADO\n");
-        List<string> arranca = Codigo.ConAyudantes(TF, "StartOpenedTrack");
-        Check(Codigo.Llama(arranca, "LevelTap.get_DelayFrames"), "al arrancar la cancion, el retraso del realce entra en la cuenta del fundido final");
+        // La cadena se arma en ArmaCadena (arranque de siempre y relevo sin pausa).
+        List<string> arranca = Codigo.ConAyudantes(TF, "ArmaCadena");
+        Check(Codigo.Llama(arranca, "LevelTap.get_DelayFrames") && Codigo.Llama(Codigo.ConAyudantes(TF, "StartOpenedTrack"), "ArmaCadena"),
+              "al arrancar la cancion, el retraso del realce entra en la cuenta del fundido final (y en el cebado que se descarta en el relevo sin pausa)");
         MethodInfo leer = TTap.GetMethod("Read", T);
         Check(Codigo.Llama(leer, "ProcesaConRealce") && Codigo.Llama(leer, "VaciaRealce"), "leer pasa por el realce 2x y, al acabar la fuente, vacia lo retenido");
         bool sinReservas = true;

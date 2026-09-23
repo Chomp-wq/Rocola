@@ -119,6 +119,13 @@ namespace Rocola
         private string firma;
         internal string Para { get { lock (gate) return para; } }
         internal bool Listo { get { lock (gate) return listo != null; } }
+        // ¿Lo ya abierto para 'ruta' cumple 'condicion'? Sin entregarlo: el relevo sin pausa mira su formato
+        // antes de llevarselo, y si no le sirve lo deja para el camino de siempre.
+        internal bool Cumple(string ruta, Func<T, bool> condicion)
+        {
+            lock (gate)
+                return listo != null && condicion != null && string.Equals(ruta, para, StringComparison.OrdinalIgnoreCase) && condicion(listo);
+        }
         private static void Release(T value) { if (value != null) try { value.Dispose(); } catch { } }
 
         internal void Suelta()

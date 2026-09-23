@@ -436,6 +436,7 @@ namespace Rocola
                 output = null;
             }
             if (reader != null) { try { reader.Dispose(); } catch { } reader = null; }
+            SueltaSinPausa();   // la siguiente preparada (o ya entrando): con la salida ya parada
             curTap = null; curSbr = null; curBass = null;   // ya no hay taps actuales
             FinalizeLoudMeasure();   // guarda la sonoridad medida de la cancion que acaba de sonar (audio ya detenido: sin carrera)
             FinalizeEqMeasure();     // y su huella tonal (mismo momento seguro)
@@ -753,6 +754,7 @@ namespace Rocola
         private void ProgressTimer_Tick(object sender, EventArgs e)
         {
             if (reader == null) return;
+            PreparaSiguienteSinPausa();   // a la que suena le quedan pocos segundos: la siguiente, lista para entrar sin pausa
             TimeSpan cur = reader.CurrentTime, tot = reader.TotalTime;
             if (tot.TotalSeconds > 0) progress.Value = cur.TotalSeconds / tot.TotalSeconds;
             lblTime.Text = Fmt(cur) + " / " + Fmt(tot);

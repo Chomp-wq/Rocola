@@ -1101,7 +1101,12 @@ namespace Rocola
             string path = eqMeasPath; eqMeasPath = null;
             double[] sums = eqMeasSum; long n = eqMeasN; int tasa = eqMeasRate;
             eqMeasSum = new double[8]; eqMeasN = 0;
-            if (path == null || tasa <= 0 || n < (long)(EqMinSec * tasa)) return;   // 20 s a la frecuencia que sea
+            CierraHuella(path, sums, n, tasa, eqMeasCut, eqMeasCutLo);
+        }
+        // Lo mismo con lo que se guardo de una cancion que acabo por relevo sin pausa (Form1.SinPausa.cs).
+        private void CierraHuella(string path, double[] sums, long n, int tasa, float corte, float corteBajo)
+        {
+            if (path == null || sums == null || tasa <= 0 || n < (long)(EqMinSec * tasa)) return;   // 20 s a la frecuencia que sea
             float[] curve = new float[EqLen];
             for (int b = 0; b < 8; b++) curve[b] = (float)(10.0 * Math.Log10(sums[b] / n + 1e-12));
             // referencia = MEDIANA de las bandas del CUERPO (158 Hz - 5.6 kHz): invariante al volumen y
@@ -1119,8 +1124,8 @@ namespace Rocola
             }
             // CORTE: lo mide el propio DSEE mientras la cancion suena, este encendido o no (el acantilado es del
             // ARCHIVO, no del efecto). Si no lo supimos esta vez, se conserva el que ya estuviera guardado.
-            curve[EqCut] = (eqMeasCut > 0f) ? eqMeasCut : (had ? prev[EqCut] : 0f);
-            curve[EqCutLo] = (eqMeasCutLo > 0f) ? eqMeasCutLo : (had ? prev[EqCutLo] : 0f);
+            curve[EqCut] = (corte > 0f) ? corte : (had ? prev[EqCut] : 0f);
+            curve[EqCutLo] = (corteBajo > 0f) ? corteBajo : (had ? prev[EqCutLo] : 0f);
             curve[EqClip] = had ? prev[EqClip] : 0f;   // el recorte solo lo mide el pre-analisis (aqui ya viene reparado)
             curve[EqFingerprint] = 1f;   // no promediar con la antigua medicion mono
             eqCache[path] = curve; eqCacheVer++;
@@ -1218,6 +1223,7 @@ namespace Rocola
             LevelTap t = curTap; if (t != null && nowPlaying != null && nowPlaying.Song != null) { t.Gain = NormGainFor(nowPlaying.Song.Path); t.Excite = ExciteAmountFor(nowPlaying.Song.Path); t.Master = MasterLin() * FactorNoche(); t.EqDb = EqCorrFor(nowPlaying.Song.Path); }
             DeepBassProvider bp = curBass; if (bp != null) bp.Amount = BassAmountNow();   // bajo psicoacustico: al instante, ya ajustado a la cancion
             SpectralTap sp = curSbr; if (sp != null) sp.Active = sbrOn;   // reconstruccion espectral: alterna EN VIVO (A/B desde Ctrl+F3)
+            AplicaAPreparada();   // y a la siguiente, si ya esta preparada para entrar sin pausa
         }
 
         // Todas las raices de musica que EXISTEN ahora: la carpeta "musica" principal + las agregadas con Ctrl+F2.

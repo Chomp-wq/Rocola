@@ -124,14 +124,18 @@ class Turno
         // ya esta apuntada desde el pre-analisis: se pregunta ahi.
         MethodBase pone = Met("StartOpenedTrack");
         Check(pone != null, "hay un sitio por donde arranca una cancion ya abierta (StartOpenedTrack)");
-        if (pone != null)
+        // El fundido, que es quien necesita la duracion, va en la cadena, y la cadena se arma en ArmaCadena: la
+        // usan el arranque de siempre y el relevo sin pausa (que arma la siguiente antes de que suene).
+        MethodBase arma = Met("ArmaCadena");
+        Check(pone != null && arma != null && Codigo.Llama(pone, "ArmaCadena"), "y arma su cadena en ArmaCadena, la misma que usa el relevo sin pausa");
+        if (arma != null)
         {
-            Check(Codigo.Llama(pone, "SegundosDe"), "al arrancar una cancion, la duracion sale de lo ya apuntado");
+            Check(Codigo.Llama(arma, "SegundosDe"), "al arrancar una cancion, la duracion sale de lo ya apuntado");
             // El camino largo TIENE que seguir estando: una cancion recien copiada al disco aun no esta
             // medida y de algun lado hay que sacar su duracion. Lo que se comprueba es el ORDEN: que se
             // pregunte a lo apuntado ANTES que al archivo, para que el archivo sea el ultimo recurso y no
             // el primero.
-            List<string> pasos = Codigo.Llamadas(pone);
+            List<string> pasos = Codigo.Llamadas(arma);
             int iApunte = -1, iArchivo = -1;
             for (int i = 0; i < pasos.Count; i++)
             {

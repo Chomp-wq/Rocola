@@ -29,7 +29,8 @@ desarrollo y medición. La revisión anterior está en REVISION_AUDIO_2026-09-22
 | Plegado del grave sintético | Medido: no hace falta sobremuestrear; ver 1.14 |
 | Transiciones en vivo del grave sintético y del DSEE | Implementado y probado; ver 1.15 |
 | Remuestreo de Apollo a 44,1 kHz con SoXR, caché versionada y reaprovechamiento | Implementado y probado (HD); ver 1.16 |
-| Salidas y continuidad | Pendiente; plan abajo |
+| Continuidad sin pausas entre canciones (misma salida, sin cebado, cola y créditos intactos) | Implementado y probado; ver 1.17. Retardo y relleno propios del MP3: medidos, sin implementar |
+| Salida al dispositivo y audio de vídeo | Pendiente; plan abajo |
 | Paridad del extractor IA (contrato EXTRACTOR=2) | Implementado y probado; ver 1.7 |
 | Identidad de origen, particiones por canción y estéreo por canal | Implementado y probado; ver 1.8 |
 | Selección contra curva e instalado, informe reproducible | Implementado y probado; ver 1.9 |
@@ -788,6 +789,109 @@ Pendiente: correr test_remuestreo con el FFmpeg de tu equipo (validar-audio-mejo
 escuchar A/B canciones a 22,05/32/48 kHz. Un MP3 que cambia de frecuencia a media canción (raro) se
 toma por su primera frecuencia al decidir si se reaprovecha.
 
+### 1.17 Continuidad sin pausas entre canciones (etapa 7 de audio, las dos ramas)
+
+Archivos: Rocola/SinPausa.cs (nuevo: la secuencia `Encadenado` y `MedidaCancion`), Rocola/Form1.SinPausa.cs
+(nuevo, igual en las dos ramas: cuándo se prepara la siguiente y qué pasa con la cola y la pantalla),
+Form1.Sonido.cs (la cadena de una canción se arma en `ArmaCadena`, que usan el arranque de siempre y el
+relevo; `LevelTap` pasa la medida en vivo; `FadeProvider.Quita`; `Output_PlaybackStopped`), Form1.Datos.cs,
+Form1.cs, AperturaAudio.cs (`MiraPorDelante.Cumple`); pruebas/sinpausa.cs (nueva) y las baterías que
+buscaban la cadena dentro de `StartOpenedTrack`, puestas al día (noche, turno, picoreal y realce; en HD
+también respaldo y ventana).
+
+Antes, al acabar una canción se cerraba la salida de audio, `PlayNext` abría la siguiente, se armaba su
+cadena y se abría otra salida, que empieza llenando su colchón. Entre canción y canción quedaba un silencio
+que no está en la música: el cierre y la apertura de la salida (no se puede medir sin Windows) más el
+cebado de la cadena nueva, que sí se mide aquí: 144 cuadros (3,3 ms) con la cadena mínima y 243 cuadros
+(5,5 ms) con des-recorte, DSEE, realce y limitador, a 44,1 kHz.
+
+Cómo funciona ahora:
+- La salida se queda abierta y lee de una secuencia. Cuando a la canción que suena le quedan 12 s, se arma
+  la siguiente de la cola con la MISMA `ArmaCadena` (suena igual que si empezara sola), usando el lector
+  que el calentador ya había abierto por delante, y solo si viene en el mismo formato (frecuencia, canales
+  y tipo de muestra). Cuando la cadena que suena se acaba -con sus colas ya entregadas: realce, limitador,
+  fundido- la siguiente sigue en la misma lectura, sin su cebado.
+- No es un fundido cruzado: nada se solapa ni se mezcla. El fundido de salida de siempre se conserva entre
+  canciones sueltas; solo se quita cuando la siguiente es la pista que sigue en el MISMO disco (no en un
+  disco TOP, no con vídeos) y el fundido aún no empezó, para que un disco continuo siga continuo.
+- La cola, el letrero y «lo que suena» cambian cuando la siguiente empieza a OÍRSE (pasado el colchón de la
+  salida: 850 ms con WaveOut, 240 ms con WASAPI en HD), no cuando empieza a leerse. Los créditos no se tocan:
+  se cobran al encolar, como siempre. El estado guardado para un corte de luz dice lo que de verdad suena.
+- Va por el camino de siempre (cerrar la salida y `PlayNext`): la siguiente en otro formato, un vídeo, la
+  medida de Ctrl+F3, una canción que aún no abrió el calentador, o si la que suena acaba antes de haber
+  recogido el relevo anterior (canciones de menos de un segundo).
+- Saltar sigue siendo `PlayNext`: para todo y empieza la siguiente desde el principio. Si se salta justo
+  cuando la siguiente ya entró pero aún no se oía, esa siguiente empieza desde el principio (no se pierde).
+- Fallos: si la siguiente falla al leer (archivo roto o desaparecido, disco extraíble quitado), la
+  secuencia lo atrapa; la salida acaba como al terminar una canción y el fallo se atiende UNA vez, como el
+  de siempre: aviso, un crédito devuelto a la canción que falló y sigue la próxima. Si lo que falla es la
+  SALIDA (DAC desenchufado) con la siguiente ya dentro pero sin oírse, esa siguiente NO se da por sonada:
+  sigue primera en la cola y empieza desde el principio, como antes.
+- La sonoridad y la huella tonal que se aprenden oyendo pasan a la canción nueva en su primer bloque, en el
+  hilo del sonido y sin reservar memoria (`MedidaCancion`); lo medido de la anterior se cierra una sola vez.
+  Los ajustes en vivo de Ctrl+F3 y el modo noche también llegan a la siguiente ya preparada. En HD, el DSEE
+  de la siguiente se decide con SU versión de Apollo; para la que suena da lo mismo que antes.
+
+Medido (Mono, esta máquina; no es un procesador antiguo): entre las dos canciones sale 0 muestras de hueco
+(bit a bit igual a cada una sola, seguidas); armar la cadena de la siguiente cuesta 0,12-0,28 ms en el hilo
+de la pantalla, 12 s antes del final; leer a través de la secuencia añade menos de 0,2 ns por muestra (por
+debajo del ruido de la medida). Leer y pasar a la siguiente no reservan memoria (comprobado en el código
+compilado). Memoria de más: la cadena de la siguiente (sus búferes de DSEE, realce y limitador) durante esos
+12 s; el lector ya lo tenía abierto el calentador.
+
+Lo único que se descarta al empezar la siguiente es su cebado. Sin el DSEE es silencio (el realce 2× deja a
+lo sumo su pre-oscilación, 2·10⁻⁶); con el DSEE detrás del des-recorte queda además el eco previo de la
+banda que recrea sobre el silencio que mete el des-recorte: −67 dBFS a 44,1 kHz y −69 dBFS a 48 kHz, durante
+1,2-1,4 ms (en la prueba, una entrada brusca a plena escala). Sin des-recorte no existe.
+
+RETARDO Y RELLENO DEL MP3: medidos, SIN implementar. Cada MP3 lleva al principio el retardo del codificador
+(576 muestras con LAME) y al final un relleno hasta completar el último cuadro. Medido con un disco continuo
+sintético partido en tres pistas y codificado con LAME (128 y 320 kbit/s, 44,1 kHz): con un decodificador
+de 529 muestras de retardo que no lee la etiqueta LAME, en cada unión quedan 2.027-2.257 muestras (46-51 ms)
+que no son música. La rocola decodifica los MP3 con el descompresor ACM de Windows (NAudio); cuánto retrasa
+ese descompresor y si entrega el final no se puede medir aquí (Linux no tiene ACM). Recortar por la etiqueta
+LAME sin conocerlo podría cortar música o dejar parte del hueco, así que no se hizo. En discos en WAV (y en
+cualquier formato sin retardo de codificador) la unión es exacta. Siguiente paso: medir en Windows el
+retardo del ACM con un MP3 de prueba con un clic en una muestra conocida y, con ese dato, recortar SOLO en los
+relevos entre pistas seguidas del mismo disco. AAC/WMA (HD, Media Foundation): sin medir.
+
+Comprobado (pruebas automáticas, Mono; pruebas/sinpausa.cs, 73 comprobaciones en HD y 72 en Modest):
+- La secuencia con cadenas de contenido conocido: 1, 2 y 6 canales y lecturas de 1, 7, 441 y 4096 cuadros
+  y al azar (sin una muestra de más ni de menos); relevo apuntado una vez y recogido cuando se oye; otro
+  formato no entra; fallo al empezar, a media canción y durante el cebado; siguiente vacía; cuadro a medias;
+  dos hilos a la vez (150 canciones, cientos de retiradas); leer no reserva memoria.
+- Las cadenas de verdad (des-recorte, DSEE, nivelado con realce, grave, limitador, fundido) a 44,1 y
+  48 kHz: el cebado dura justo lo que suman sus retrasos y la música empieza en ese cuadro; encadenadas,
+  bit a bit iguales a cada una sola.
+- La rocola sin ventana: la medida en vivo; el relevo pasa la cola como `PlayNext` (créditos intactos,
+  lector anterior soltado, estado guardado); al parar se suelta la preparada; «pista siguiente del mismo
+  disco»; los cinco casos al parar la salida (acaba bien, falla la salida con la siguiente dentro o antes,
+  falla la siguiente, falla la que suena); y de punta a punta con `ArmaCadena`, `PreparaSiguienteSinPausa` y
+  el relevo: la salida es cada canción tal cual sonaría sola, seguidas, bit a bit; no se prepara a 48 kHz
+  tras una de 44,1, ni un vídeo, ni a 13 s del final, ni durante la medida de Ctrl+F3; con otro disco se
+  conserva el fundido.
+- Nueve fallos puestos a propósito (no descartar el cebado, dar por sonada la siguiente cuando falla la
+  salida, no mirar el formato, no pasar la medida, «siguiente del disco» siempre cierto, no sacar de la
+  cola, no apuntar el relevo, dejar escapar el fallo de lectura, preparar a cualquier distancia): la
+  batería se pone en rojo en todos.
+
+Tandas completas con Mono: HD 170 baterías bien y Modest 157; en las dos solo falla `disco`, que no es de
+esta etapa y espera tu decisión (leer solo el género ya no cuesta menos de la mitad desde que la lectura
+completa se salta las carátulas).
+
+Cómo repetirlo: `sh pruebas/todo.sh sinpausa` (Linux con Mono) o validar-audio-mejoras.ps1 en Windows
+(la incluye). Para oírlo: un disco continuo (en vivo, mezclas) en WAV, encolado entero.
+
+Riesgos de migración y cómo volver atrás:
+- No cambia ningún archivo de datos, preferencia, crédito, caché ni modelo: volver al ejecutable anterior
+  deja la rocola exactamente como estaba.
+- Cambio audible deliberado: entre pistas seguidas del mismo disco ya no hay fundido de salida. Si se
+  prefiere el fundido también ahí, es una línea (`PreparaSiguienteSinPausa`, la llamada a `Quita`).
+- El letrero cambia cuando pasa el colchón estimado de la salida (el mismo que ya usaba el pulso visual);
+  con un controlador de otra latencia puede adelantarse o atrasarse un poco.
+- Pendiente de comprobar en Windows y en el bar: que WaveOut (Modest y HD) y WASAPI (HD) no dejan hueco al
+  encadenar, con el oído y con una grabación del DAC; y XP real.
+
 ## 2. Comprobaciones y cómo repetirlas
 
 En cada repositorio, con sus herramientas de compilación .NET, Python con NumPy y FFmpeg:
@@ -801,8 +905,8 @@ El script:
 
 1. Compila GPU y CPU con advertencias tratadas como errores; ejecuta las 29 baterías
    de validar-capas.ps1. Compilar CPU no significa modificar su renderizado.
-2. Ejecuta dieciséis baterías adicionales: dsee, limite, entrenador, iaparidad, iaorigen, sonoridad,
-   picoreal, realce, transiciones, eqpreparado, iadatos, eqauto, calidad, nivel, bajoauto y bajo.
+2. Ejecuta diecisiete baterías adicionales: dsee, limite, entrenador, iaparidad, iaorigen, sonoridad,
+   picoreal, realce, transiciones, sinpausa, eqpreparado, iadatos, eqauto, calidad, nivel, bajoauto y bajo.
 3. Ejecuta las pruebas Python de los entrenadores y sus protecciones (test_calidad_dsee,
    test_entrenar_eq, test_contrato_dsee, test_origen_dsee, test_estereo_dsee,
    test_seleccion_dsee y test_publicacion_dsee) y, en HD, test_remuestreo de ia/upscale (con el
@@ -1008,6 +1112,12 @@ El audio WMP de vídeos sigue fuera de la cadena musical.
    intentar resolverlo elevando el volumen WMP por encima de su rango.
 
 Este bloque es rediseño, no un ajuste rápido de calidad.
+
+Estado (23 de septiembre, etapa 7 de audio, las dos ramas): hechos 1 a 4 para la continuidad SIN solape
+(ver 1.17): la siguiente entra por la misma salida sin cebado, con cola, créditos, historial y fallos
+como antes. No se implementó fundido cruzado (solapar canciones pide una decisión tuya). Del 3, la
+latencia del DSP se compensa; el retardo y el relleno del MP3 están medidos (46-51 ms por unión con LAME)
+pero no se recortan hasta medir el descompresor ACM de Windows. El 5 (vídeo) es la etapa 9.
 
 ## 4. Criterios de entrega y despliegue
 

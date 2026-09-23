@@ -504,16 +504,19 @@ class PicoReal
     static void Cableado()
     {
         Console.WriteLine("\n  7) ES EL ULTIMO PASO DE LA CADENA\n");
-        List<string> arranca = Codigo.ConAyudantes(TF, "StartOpenedTrack");
-        Check(Codigo.Llama(arranca, "LimitadorPicoReal..ctor") && !Codigo.Llama(arranca, "LookaheadLimiter..ctor"),
+        // La cadena de cada cancion se arma en ArmaCadena: la usan el arranque de siempre (StartOpenedTrack) y el
+        // relevo sin pausa, asi que las dos llevan el mismo limitador.
+        List<string> arranca = Codigo.ConAyudantes(TF, "ArmaCadena"), empieza = Codigo.ConAyudantes(TF, "StartOpenedTrack");
+        Check(Codigo.Llama(empieza, "ArmaCadena") && Codigo.Llama(arranca, "LimitadorPicoReal..ctor")
+              && !Codigo.Llama(arranca, "LookaheadLimiter..ctor") && !Codigo.Llama(empieza, "LookaheadLimiter..ctor"),
               "la cancion arranca con el limitador de pico real (y ya no con el de muestras)");
         MethodInfo wasapi = TF.GetMethod("PreparaSalidaWasapi", T);
         if (wasapi != null)
             Check(Codigo.Llama(wasapi, "LimitadorPicoReal..ctor") && !Codigo.Llama(wasapi, "LookaheadLimiter..ctor"),
                   "salida moderna: despues de remuestrear, otra vez el de pico real (remuestrear saca a la luz lo que caia entre muestras)");
         else Check(true, "(esta rama no tiene salida moderna: el limitador de la cancion es el ultimo paso antes de los 16 bits)");
-        Check(Codigo.LeeCampo(Codigo.MetodosConAyudantes(TF, "StartOpenedTrack"), "audioTailDelay") || Codigo.Llama(arranca, "get_DelayFrames"),
-              "su retardo (pre-escucha + espera del detector) entra en la cuenta del fundido final");
+        Check(Codigo.Llama(arranca, "LimitadorPicoReal.get_DelayFrames"),
+              "su retardo (pre-escucha + espera del detector) entra en la cuenta del fundido final (y en el cebado que se descarta en el relevo sin pausa)");
     }
 
     // ---------------------------------------------------------------------------------------------

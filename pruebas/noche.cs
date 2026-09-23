@@ -115,8 +115,12 @@ class Noche
         // consultarlo por su cuenta.
         MethodInfo vvf = Met("VideoVolumeFor");
         Check(vvf != null && Codigo.Llama(vvf, "FactorNoche"), "el volumen del video consulta el factor de noche");
-        MethodInfo play = Met("StartOpenedTrack");
-        Check(play != null && Codigo.Llama(play, "FactorNoche"), "y el de la musica tambien");
+        // La cadena de cada cancion se arma en ArmaCadena: la usan el arranque de siempre (StartOpenedTrack) y el
+        // relevo sin pausa, que arma la siguiente antes de que suene.
+        MethodInfo play = Met("ArmaCadena"), arranca = Met("StartOpenedTrack");
+        Check(play != null && Codigo.Llama(play, "FactorNoche") && arranca != null && Codigo.Llama(arranca, "ArmaCadena"), "y el de la musica tambien");
+        MethodInfo prep = Met("AplicaAPreparada");
+        Check(prep != null && Codigo.Llama(prep, "FactorNoche"), "y el de la siguiente ya preparada para entrar sin pausa, si cambia la hora mientras espera");
         MethodInfo apply = Met("ApplyNormNow");
         Check(apply != null && Codigo.Llama(apply, "FactorNoche"), "y el ajuste en vivo, para que se oiga bajar sin cambiar de cancion");
 

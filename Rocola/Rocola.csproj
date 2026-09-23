@@ -83,6 +83,9 @@
     <Compile Include="Form1.Vistas.cs">
       <DependentUpon>Form1.cs</DependentUpon>
     </Compile>
+    <Compile Include="Form1.SinPausa.cs">
+      <DependentUpon>Form1.cs</DependentUpon>
+    </Compile>
     <Compile Include="Form1.Designer.cs">
       <DependentUpon>Form1.cs</DependentUpon>
     </Compile>
@@ -98,6 +101,7 @@
     <Compile Include="Sonoridad.cs" />
     <Compile Include="PicoReal.cs" />
     <Compile Include="Realce.cs" />
+    <Compile Include="SinPausa.cs" />
     <Compile Include="Optimizaciones.cs" />
     <Compile Include="LunaGpu.cs" />
     <Compile Include="EstrellaGpu.cs" />
