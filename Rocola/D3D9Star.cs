@@ -1817,6 +1817,11 @@ namespace Rocola
         // pidiera justo lo mismo que refresca, de vez en cuando un cuadro llegaria un pelo tarde y ese barrido
         // de pantalla tendria que repetir el anterior (un salto que SE VE). Con un poco de sobra, cada barrido
         // tiene siempre un cuadro nuevo esperando. Se ve exactamente igual que antes y sobra procesador.
+        //
+        // (23-09-2026) Ese 10 % de mas tenia su propio salto: con 66 cuadros para 60 refrescos, cada ~10 refrescos uno
+        // no llega a verse y todo aparece avanzado el doble. Con el compositor de Windows el bucle ya no va por su
+        // cuenta: dibuja uno por refresco, empezado justo despues de cada uno (OnIdle y RelojPantallaGpu.cs), y el tope
+        // queda de techo. Sin compositor (XP, o el tema basico) sigue valiendo lo de arriba.
         public int TopeFps;                               // 0 = automatico (segun la pantalla); >0 = lo manda el config
         private int topeMs = -1;                          // ms minimos entre cuadros, ya resueltos (-1 = aun sin resolver)
         private const int VREFRESH = 116;                 // GetDeviceCaps: veces por segundo que refresca la pantalla
@@ -1858,6 +1863,7 @@ namespace Rocola
         private static readonly System.Diagnostics.Stopwatch reloj = System.Diagnostics.Stopwatch.StartNew();
         internal static double AhoraMs() { return reloj.Elapsed.TotalMilliseconds; }
         private double proxCuadroMs;                      // cuando TOCA el proximo cuadro (ms del reloj fino)
+        private double vistoMs = -1;                      // cuando se VERA el que se esta dibujando (-1 = no se sabe)
         public uint SkyTop = 0xFF06081A, SkyMid = 0xFF101C3A, SkyBot = 0xFF1A2C5A;   // el form los setea por genero (3 paradas)
 
         // Bucle de render por Application.Idle (patron estandar para D3D en WinForms): dibuja tan rapido como
@@ -1920,10 +1926,23 @@ namespace Rocola
                 if (ThrottleMs > th) th = ThrottleMs;      // con video a la vista se pide ir MAS lento todavia
                 double ahora = AhoraMs();
                 if (ahora + 0.6 < proxCuadroMs) { EsperaMensajes(MilisegundosEspera(proxCuadroMs - ahora)); continue; }
-                proxCuadroMs += th;
-                if (proxCuadroMs < ahora) proxCuadroMs = ahora + th;
+                AgendaCuadro(ahora, th);
                 RenderFrame();
+                vistoMs = -1;   // un cuadro pedido fuera de este bucle (WM_PAINT, el medidor) no sabe cuando se vera
             }
+        }
+
+        // Cuando toca el cuadro siguiente y cuando se vera el que empieza ahora. Con la rejilla de refrescos de Windows:
+        // un cuadro por refresco, empezado justo despues de uno, y la estrella colocada para cuando se vera
+        // (RelojPantallaGpu.cs). Sin ella, como siempre: 'th' despues del objetivo anterior, y sin saber cuando se vera.
+        private void AgendaCuadro(double ahora, int th)
+        {
+            double refresco, periodo, sig = double.NaN;
+            if (RelojPantalla.Rejilla(ahora, out refresco, out periodo)) sig = RelojPantalla.Siguiente(ahora, th, refresco, periodo);
+            vistoMs = -1;
+            if (!double.IsNaN(sig)) { proxCuadroMs = sig; vistoMs = RelojPantalla.Despues(ahora, refresco, periodo); return; }
+            proxCuadroMs += th;
+            if (proxCuadroMs < ahora) proxCuadroMs = ahora + th;
         }
 
         public bool StartGpu()

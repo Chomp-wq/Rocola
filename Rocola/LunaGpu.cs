@@ -107,7 +107,14 @@ namespace Rocola
             // La superficie es solida: solo el borde antialias y el halo llevan transparencia.
             uint color=StarColorAt(cx,cy);
             float angle=LunaActiva ? (float)((.08+.16*starDrive)*Math.Sin(moonMotionTime*.31)) : 0;
-            double now=AhoraMs()/1000.0;
+            // El momento en que se va a VER este cuadro (Estrella3dGpu.cs, "EL RELOJ DE LA PANTALLA").
+            double now=(cuadroMs>=0 ? cuadroMs : AhoraMs())/1000.0;
+            if(Estrella3D)
+            {
+                DrawStar3d(now,cx,cy,radius,angle,color);
+                DrawLunarDust(cx,cy,radius,visibility,true);
+                return;
+            }
             UpdateStarEchoes(now,cx,cy,radius,angle,color);
             DrawStarEchoes(now);
             SetTexQuadA(lunaQuad,cx-radius,cy-radius,cx+radius,cy+radius,luU,luV,color);

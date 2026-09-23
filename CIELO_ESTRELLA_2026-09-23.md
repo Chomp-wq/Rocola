@@ -3,6 +3,11 @@
 Corrección compartida por HD y Modest, del 23 de septiembre de 2026.
 Solo cambia el dibujo GPU. El renderizador CPU continúa congelado.
 
+> **Actualización del mismo día:** la estrella pasó a ser sólida en 3D y gira; su estela
+> deja una copia por cada radio recorrido, y se quitaron los saltitos al moverse. Lo que
+> aquí se dice de los ecos por tiempo vale solo con "Estrella en 3D girando (GPU)"
+> apagado. Ver [La estrella en 3D](ESTRELLA_3D_2026-09-23.md).
+
 ## Aspecto
 
 - El degradado original vuelve a dibujarse con sus tres paradas: cenit oscuro,

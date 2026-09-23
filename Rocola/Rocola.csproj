@@ -108,6 +108,8 @@
     <Compile Include="Optimizaciones.cs" />
     <Compile Include="LunaGpu.cs" />
     <Compile Include="EstrellaGpu.cs" />
+    <Compile Include="Estrella3dGpu.cs" />
+    <Compile Include="RelojPantallaGpu.cs" />
     <Compile Include="PrecargaPaginaGpu.cs" />
     <Compile Include="PaletaCaratulaGpu.cs" />
     <Compile Include="CreditosServicio.cs" />

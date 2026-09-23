@@ -219,6 +219,7 @@ namespace Rocola
             gpuPanel.PolvoLunar = polvoLunar;
             gpuPanel.LunaProtagonista = lunaProtagonista;
             gpuPanel.EstelaEstelar = estelaEstelar;
+            gpuPanel.Estrella3D = estrella3d;
             gpuPanel.ColoresFluidos = coloresFluidos;
             gpuPanel.RespuestaInmediata = respuestaInmediata;
             gpuPanel.TransicionesTacto = transicionesTacto;
@@ -876,7 +877,7 @@ namespace Rocola
             Interruptor[] tactile = new Interruptor[tactileNames.Length];
             for (int i = 0; i < tactile.Length; i++)
             {
-                tactile[i] = new Interruptor(); tactile[i].SetBounds(16, 264 + i * 32, 424, 26);
+                tactile[i] = new Interruptor(); tactile[i].SetBounds(16, 262 + i * 30, 424, 26);
                 tactile[i].Font = fNom; tactile[i].ForeColor = cTexto; tactile[i].Acento = cAc;
                 tactile[i].Text = tactileNames[i]; tactile[i].Checked = tactileValues[i]; tNat.Controls.Add(tactile[i]);
             }
@@ -884,8 +885,8 @@ namespace Rocola
             tactile[1].CheckedChanged += delegate { transicionesTacto = tactile[1].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             tactile[2].CheckedChanged += delegate { ondasUnidas = tactile[2].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
 
-            Label lMoon = new Label(); lMoon.SetBounds(16, 398, 424, 20);
-            Interruptor swPaleta = new Interruptor(); swPaleta.SetBounds(16, 364, 424, 26);
+            Label lMoon = new Label(); lMoon.SetBounds(16, 386, 424, 20);
+            Interruptor swPaleta = new Interruptor(); swPaleta.SetBounds(16, 354, 424, 26);
             swPaleta.Font = fNom; swPaleta.ForeColor = cTexto; swPaleta.Acento = cAc;
             swPaleta.Text = "Paleta completa de caratula (GPU)"; swPaleta.Checked = paletaCompleta;
             swPaleta.CheckedChanged += delegate { paletaCompleta = swPaleta.Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
@@ -898,7 +899,7 @@ namespace Rocola
             Interruptor[] moonSwitches = new Interruptor[moonNames.Length];
             for (int i = 0; i < moonSwitches.Length; i++)
             {
-                moonSwitches[i] = new Interruptor(); moonSwitches[i].SetBounds(16, 424 + i * 32, 424, 26);
+                moonSwitches[i] = new Interruptor(); moonSwitches[i].SetBounds(16, 410 + i * 30, 424, 26);
                 moonSwitches[i].Font = fNom; moonSwitches[i].ForeColor = cTexto; moonSwitches[i].Acento = cAc;
                 moonSwitches[i].Text = moonNames[i]; moonSwitches[i].Checked = moonValues[i]; tNat.Controls.Add(moonSwitches[i]);
             }
@@ -906,11 +907,17 @@ namespace Rocola
             moonSwitches[1].CheckedChanged += delegate { haloLunar = moonSwitches[1].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             moonSwitches[2].CheckedChanged += delegate { polvoLunar = moonSwitches[2].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             moonSwitches[3].CheckedChanged += delegate { lunaProtagonista = moonSwitches[3].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
-            Interruptor swEstela = new Interruptor(); swEstela.SetBounds(16, 552, 424, 26);
+            Interruptor swEstela = new Interruptor(); swEstela.SetBounds(16, 530, 424, 26);
             swEstela.Font = fNom; swEstela.ForeColor = cTexto; swEstela.Acento = cAc;
             swEstela.Text = "Ecos de color de la estrella (GPU)"; swEstela.Checked = estelaEstelar;
             swEstela.CheckedChanged += delegate { estelaEstelar = swEstela.Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             tNat.Controls.Add(swEstela);
+            // La estrella en 3D girando (Estrella3dGpu.cs). Apagado vuelve la estrella plana del icono, con sus ecos de antes.
+            Interruptor sw3d = new Interruptor(); sw3d.SetBounds(16, 560, 424, 26);
+            sw3d.Font = fNom; sw3d.ForeColor = cTexto; sw3d.Acento = cAc;
+            sw3d.Text = "Estrella en 3D girando (GPU)"; sw3d.Checked = estrella3d;
+            sw3d.CheckedChanged += delegate { estrella3d = sw3d.Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            tNat.Controls.Add(sw3d);
 
             BotonPlano bResetF = new BotonPlano();
             bResetF.SetBounds(16, 594, 300, 38); bResetF.Font = fBot; bResetF.Text = "Fondo como de fabrica";
@@ -941,6 +948,7 @@ namespace Rocola
                 controlesReposo = ondasUnidas = true;
                 lunaRealista = haloLunar = polvoLunar = lunaProtagonista = true;
                 estelaEstelar = true; swEstela.Checked = true;
+                estrella3d = true; sw3d.Checked = true;
                 coloresFluidos = true; swFlujo.Checked = true;
                 paletaCompleta = true; swPaleta.Checked = true;
                 for (int i = 0; i < moonSwitches.Length; i++) moonSwitches[i].Checked = true;
