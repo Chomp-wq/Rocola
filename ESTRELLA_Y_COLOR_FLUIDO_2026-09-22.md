@@ -1,5 +1,10 @@
 # Estrella del icono y color fluido — 22 de septiembre de 2026
 
+**Nota del 23 de septiembre:** este documento describe la implementación anterior.
+La [corrección posterior](CIELO_ESTRELLA_2026-09-23.md) devuelve el cielo azul/negro,
+limita el flujo al espectro y la estrella, suaviza su velocidad y elimina los
+tres acentos fijos de la estela. Es la referencia vigente para esos apartados.
+
 Actualiza el diseño de la estrella y de sus ecos anteriores. Compartido por HD y
 Modest, exclusivamente en GPU. No modifica el renderizador CPU, la cadena de
 audio, las carátulas originales, el icono de la aplicación ni los datos del usuario.

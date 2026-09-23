@@ -329,8 +329,8 @@ namespace Rocola
 
     public partial class Form1 : Form
     {
-        internal Func<object> aparatoExclusivoPrueba;                              // solo las pruebas: un AparatoExclusivo (null = el de Windows)
-        internal Func<ISampleProvider, int, ISampleProvider> remuestreoPrueba;     // idem: remuestreador de mentira
+        internal Func<object> aparatoExclusivoPrueba = null;                              // solo las pruebas: un AparatoExclusivo (null = el de Windows)
+        internal Func<ISampleProvider, int, ISampleProvider> remuestreoPrueba = null;     // idem: remuestreador de mentira
         private AparatoExclusivo aparatoExclusivo;    // el de la salida exclusiva abierta (para seguir el volumen de Windows)
         private SalidaExacta salidaExacta;            // lo que le llega (volumen y si ya arranco)
         private Dictionary<string, string> exclusivoNo;   // aparato -> por que no se usa en esta sesion

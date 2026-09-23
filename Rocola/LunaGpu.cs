@@ -97,7 +97,7 @@ namespace Rocola
             float emphasis=LunaProtagonista ? Math.Max(MoonEmphasis(Dim,true),idleBlend) : 0;
             float diameter=DetailedMoonDiameter(Height,emphasis)*MoonSceneScale(idleBlend,lunaBeat,LunaActiva), radius=diameter*.5f;
             PointF center=LunaActiva
-                ? StarTravelCenter(Width,Height,starTravelX,starTravelY,radius,StatusTopY,IdleRise)
+                ? StarSceneCenter()
                 : DetailedMoonCenter(Width,Height,moonMotionTime,idleBlend,IdleRise,false);
             float cx=center.X, cy=center.Y;
             cx=Math.Max(radius,Math.Min(Width-radius,cx));

@@ -1,11 +1,12 @@
 # Rocola
 
-## Estrella reactiva — 22 de septiembre de 2026
+## Estrella reactiva — 23 de septiembre de 2026
 
 Estrella facetada de cinco puntas como el icono, recorrido amplio y ecos reactivos
-a la música. Los colores de portada/género fluyen por el cielo y sus elementos,
-con controles visuales en Ctrl+F3 → Fondo. GPU compartida por Modest y HD.
-Detalles y límites en [la guía actualizada](ESTRELLA_Y_COLOR_FLUIDO_2026-09-22.md).
+a la música, ahora con aceleración suave y colores de estela tomados de la canción.
+El flujo de portada/género es más rápido en el espectro; el cielo conserva su
+degradado nocturno azul/negro. Controles en Ctrl+F3 → Fondo, sin interruptores nuevos.
+GPU compartida por Modest y HD. [Corrección y pruebas](CIELO_ESTRELLA_2026-09-23.md).
 
 ## Audio — 23 de septiembre de 2026
 
