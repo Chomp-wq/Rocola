@@ -209,17 +209,69 @@ class Disco
             }
             Check(mal == 0, "el genero sale igual que leyendo la etiqueta entera, este antes o despues de la caratula");
 
-            // Y cuanto cuesta cada camino, con caratulas de 300 KB por medio.
+            // Y cuanto hay que traer del archivo, con caratulas de 120 a 300 KB por medio. Desde que leer la etiqueta
+            // entera TAMBIEN salta la caratula, los dos caminos cuestan casi lo mismo y el cronometro ya no los
+            // separa (con los archivos en la memoria del sistema, ademas, dice poco). Lo que importa, y no
+            // depende de la maquina, es que NINGUNO de los dos traiga la imagen: se cuentan los bytes que piden
+            // de verdad, pasandoles el archivo por un flujo que los cuenta.
             string[] conArte = { "gen_antes.mp3", "gen_despues.mp3", "gen_ninguno.mp3" };
+            MethodInfo mLeeGen = TTrack.GetMethod("ReadGenreStream", BindingFlags.Static | BindingFlags.NonPublic);
+            MethodInfo mLeeTodo = TTrack.GetMethod("ReadId3Stream", BindingFlags.Static | BindingFlags.NonPublic);
+            Check(mLeeGen != null && mLeeTodo != null, "se pueden contar los bytes que lee cada camino");
+            if (mLeeGen != null && mLeeTodo != null)
+            {
+                long etiquetas = 0, bSolo = 0, bTodo = 0; int sinCaratula = 0, distinto = 0;
+                Console.WriteLine(string.Format("\n     {0,-20} {1,12} {2,14} {3,14}", "archivo", "etiqueta", "solo genero", "etiqueta ent."));
+                Console.WriteLine("     " + new string('-', 64));
+                foreach (string f in conArte)
+                {
+                    byte[] datos = File.ReadAllBytes(Path.Combine(dir, f));
+                    long etiqueta = (datos.Length >= 10 && datos[0] == (byte)'I' && datos[1] == (byte)'D' && datos[2] == (byte)'3')
+                        ? 10L + ((datos[6] & 0x7F) << 21 | (datos[7] & 0x7F) << 14 | (datos[8] & 0x7F) << 7 | (datos[9] & 0x7F)) : 0;
+                    // Sin una caratula grande dentro, la cuenta no demostraria nada.
+                    if (etiqueta < 100 * 1024) sinCaratula++;
+                    object g = TrackVacio(TTrack), t = TrackVacio(TTrack);
+                    long lg, lt;
+                    using (Contador s = new Contador(datos)) { mLeeGen.Invoke(null, new object[] { s, g }); lg = s.Bytes; }
+                    using (Contador s = new Contador(datos)) { mLeeTodo.Invoke(null, new object[] { s, t }); lt = s.Bytes; }
+                    // Contados asi tienen que dar el mismo genero que leyendo el archivo de verdad.
+                    if ((string)fGenero.GetValue(g) != (string)fGenero.GetValue(t)) distinto++;
+                    etiquetas += etiqueta; bSolo += lg; bTodo += lt;
+                    Console.WriteLine(string.Format("     {0,-20} {1,9} KB {2,8} bytes {3,8} bytes", f, etiqueta / 1024, lg, lt));
+                }
+                Check(sinCaratula == 0, "los tres archivos llevan de verdad una caratula de mas de 100 KB en la etiqueta");
+                Check(distinto == 0, "contando los bytes, los dos caminos siguen dando el mismo genero");
+                Check(bSolo * 10 < etiquetas, "leer solo el genero no trae la caratula (" + bSolo + " bytes de " + (etiquetas / 1024) + " KB de etiquetas)");
+                Check(bTodo * 10 < etiquetas, "leer la etiqueta entera tampoco la trae (" + bTodo + " bytes de " + (etiquetas / 1024) + " KB de etiquetas)");
+                Check(bSolo <= bTodo, "y leer solo el genero no pide mas que leer la etiqueta entera");
+            }
+            // El cronometro queda solo como informacion.
             double tSolo = MideGen(mGen, null, null, dir, conArte);
             double tTodo = MideGen(null, mFrom, mEnsure, dir, conArte);
-            Console.WriteLine(string.Format("\n     tres archivos con caratula de 300 KB:  a solas {0,6:0.00} ms      leyendo todo {1,6:0.00} ms   ({2:0.0} veces)",
-                                            tSolo, tTodo, tTodo / Math.Max(tSolo, 0.001)));
-            Check(tSolo * 2 < tTodo, "leer solo el genero cuesta menos de la mitad que leer la etiqueta entera");
+            Console.WriteLine(string.Format("\n     tiempo (informativo):  a solas {0,6:0.00} ms      leyendo todo {1,6:0.00} ms",
+                                            tSolo, tTodo));
         }
 
         Console.WriteLine(fallos == 0 ? "\nTODO BIEN" : "\nFALLOS: " + fallos);
         return fallos;
+    }
+
+    // Un archivo en memoria que apunta cuantos bytes se le piden de verdad (saltar con Position o Seek no cuenta:
+    // en un disco duro saltar no trae nada del plato).
+    sealed class Contador : MemoryStream
+    {
+        public long Bytes;
+        public Contador(byte[] datos) : base(datos, false) { }
+        public override int Read(byte[] b, int off, int n) { int r = base.Read(b, off, n); Bytes += r; return r; }
+        public override int ReadByte() { int r = base.ReadByte(); if (r >= 0) Bytes++; return r; }
+    }
+
+    static object TrackVacio(Type TTrack)
+    {
+        object t = Activator.CreateInstance(TTrack, true);
+        foreach (string f in new string[] { "Title", "Artist", "Album", "Genre" }) TTrack.GetField(f).SetValue(t, "");
+        TTrack.GetField("Path").SetValue(t, "no-se-abre.mp3");
+        return t;
     }
 
     static double MideGen(MethodInfo mGen, MethodInfo mFrom, MethodInfo mEnsure, string dir, string[] archivos)
