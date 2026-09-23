@@ -438,7 +438,7 @@ namespace Rocola
             }
             if (reader != null) { try { reader.Dispose(); } catch { } reader = null; }
             SueltaSinPausa();   // la siguiente preparada (o ya entrando): con la salida ya parada
-            curTap = null; curSbr = null; curBass = null;   // ya no hay taps actuales
+            curTap = null; curSbr = null; curBass = null; curNoche = null;   // ya no hay taps actuales
             FinalizeLoudMeasure();   // guarda la sonoridad medida de la cancion que acaba de sonar (audio ya detenido: sin carrera)
             FinalizeEqMeasure();     // y su huella tonal (mismo momento seguro)
             ClearLevels();   // sin cancion no hay trozos pendientes: el pulso cae a cero

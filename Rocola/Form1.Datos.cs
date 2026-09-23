@@ -431,6 +431,8 @@ namespace Rocola
                     else if (s.StartsWith("noche_desde=")) { int v; if (int.TryParse(s.Substring(12).Trim(), out v) && v >= 0 && v <= 23) nocheDesde = v; }
                     else if (s.StartsWith("noche_hasta=")) { int v; if (int.TryParse(s.Substring(12).Trim(), out v) && v >= 0 && v <= 23) nocheHasta = v; }
                     else if (s.StartsWith("noche_db=")) { float v; if (float.TryParse(s.Substring(9).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) nocheDb = Clampf(v, -24f, 0f); }   // cuanto baja (negativo)
+                    else if (s.StartsWith("noche_compensa=")) nocheCompensa = NocheCompensa(s.Substring(15));   // graves y agudos que devuelve de noche (%)
+                    else if (s.StartsWith("grave_mono=")) graveMonoHz = GraveMonoHz(s.Substring(11));   // corte del grave en mono (Hz; 0 = apagado)
                     else if (s.StartsWith("subir_db=")) { float v; if (float.TryParse(s.Substring(9).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) masterDb = Clampf(v, 0f, 12f); }   // SUBIR TODO (dB extra general)
                     else if (s.StartsWith("fundido=")) { float v; if (float.TryParse(s.Substring(8).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) crossfadeSec = Clampf(v, 0f, 3f); }   // FUNDIDO entre canciones (segundos)
                     else if (s.StartsWith("declip=")) declipOn = s.Substring(7).Trim() != "0";   // des-recorte de picos aplastados (por defecto si)
@@ -525,6 +527,8 @@ namespace Rocola
                 sb.Append("noche_desde=").Append(nocheDesde).Append("\r\n");
                 sb.Append("noche_hasta=").Append(nocheHasta).Append("\r\n");
                 sb.Append("noche_db=").Append(nocheDb.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
+                sb.Append("noche_compensa=").Append((nocheCompensa * 100f).ToString("0", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
+                sb.Append("grave_mono=").Append(graveMonoHz.ToString("0", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("fundido=").Append(crossfadeSec.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("declip=").Append(declipOn ? "1" : "0").Append("\r\n");
                 sb.Append("ia_datos=").Append(iaHarvestOn ? "1" : "0").Append("\r\n");
@@ -1222,6 +1226,7 @@ namespace Rocola
         {
             LevelTap t = curTap; if (t != null && nowPlaying != null && nowPlaying.Song != null) { t.Gain = NormGainFor(nowPlaying.Song.Path); t.Excite = ExciteAmountFor(nowPlaying.Song.Path); t.Master = MasterLin() * FactorNoche(); t.EqDb = EqCorrFor(nowPlaying.Song.Path); }
             DeepBassProvider bp = curBass; if (bp != null) bp.Amount = BassAmountNow();   // bajo psicoacustico: al instante, ya ajustado a la cancion
+            CompensaNoche cn = curNoche; if (cn != null) cn.Db = NocheCompensaDb();   // el modo noche, si se acaba de encender o apagar
             SpectralTap sp = curSbr; if (sp != null) sp.Active = sbrOn;   // reconstruccion espectral: alterna EN VIVO (A/B desde Ctrl+F3)
             AplicaAPreparada();   // y a la siguiente, si ya esta preparada para entrar sin pausa
         }

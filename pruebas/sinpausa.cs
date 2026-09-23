@@ -81,7 +81,7 @@ class SinPausa
 {
     const BindingFlags T = BindingFlags.Static | BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
     static Assembly asm;
-    static Type TF, TEnc, TMedida, TCadena, TLevel, TBajo, TLim, TFade, TDeclip, TSp, TPlay, TTrack, TAlbum, TFile, TIA;
+    static Type TF, TEnc, TMedida, TCadena, TLevel, TBajo, TLim, TFade, TDeclip, TSp, TPlay, TTrack, TAlbum, TFile, TIA, TNoche, TMono;
     static int fallos, oks;
     static void Check(bool ok, string q) { Console.WriteLine((ok ? "  OK    " : "  FALLO ") + q); if (ok) oks++; else fallos++; }
     static void Info(string q) { Console.WriteLine("        " + q); }
@@ -372,7 +372,8 @@ class SinPausa
         return x;
     }
 
-    // La misma composicion que ArmaCadena: [des-recorte] -> [DSEE] -> nivelado con realce -> grave -> limitador -> fundido.
+    // La misma composicion que ArmaCadena: [des-recorte] -> [DSEE] -> nivelado con realce -> compensacion de noche (de dia)
+    // -> grave en mono -> grave sintetico -> limitador -> fundido.
     static ISampleProvider Cadena(object form, float[] x, int fs, int ch, bool completa, out int retardo, out object fundido)
     { return Cadena(form, x, fs, ch, completa, completa, out retardo, out fundido); }
     static ISampleProvider Cadena(object form, float[] x, int fs, int ch, bool completa, bool dsee, out int retardo, out object fundido)
@@ -391,7 +392,9 @@ class SinPausa
         Set(tap, "Excite", completa ? 0.3f : 0f);
         Set(tap, "Gain", 1.3f);
         retardo += (int)Prop(tap, "DelayFrames");
-        object bajo = Nuevo(TBajo, tap, completa ? 0.5f : 0f);
+        object noche = Nuevo(TNoche, tap);
+        object mono = Nuevo(TMono, noche, 120f);
+        object bajo = Nuevo(TBajo, mono, completa ? 0.5f : 0f);
         object lim = Nuevo(TLim, bajo, 0.98f, 3.0);
         retardo += (int)Prop(lim, "DelayFrames");
         long total = x.Length / ch + retardo;
@@ -773,21 +776,25 @@ class SinPausa
                            && (bool)Prop(sec1, "HayPreparada") && !(bool)Prop(Get(f, "lookahead"), "Listo") && Cola(f, iB, iC);
             bool quitado = Get(cadA, "Fundido") != null && (int)Get(Get(cadA, "Fundido"), "estadoFundido") == 1;
             Check(preparo && quitado, "a 4 s del final, la siguiente del mismo disco se prepara con el lector que ya abrio el calentador, y a la que suena se le quita el fundido; la cola aun no cambia");
+            Check(object.ReferenceEquals(Get(Get(cadB, "Mono"), "anterior"), Get(cadA, "Mono")) && object.ReferenceEquals(Get(Get(cadB, "Noche"), "anterior"), Get(cadA, "Noche")),
+                  "y como A acaba entera, B seguira con los filtros de A (grave en mono y compensacion de noche): el cambio no se oye");
             float[] y = LeeTodo((ISampleProvider)sec1, new int[] { 2205 * ch, 999 * ch, 4096 * ch }, null, null);
             object medidaB = Get(Get(cadB, "Tap"), "Medida");
             bool midio = object.ReferenceEquals(Get(f, "tapMedido"), Get(cadB, "Tap")) && (bool)Get(Get(medidaB, "CierreAnterior"), "Listo")
                          && (string)Get(Get(medidaB, "CierreAnterior"), "Ruta") == pa && (string)Get(f, "curMeasurePath") == pb;
-            // Lo mismo, cada una sola y desde el principio (A sin su fundido, como queda en un disco continuo).
+            // Lo mismo, cada una por su lado (A sin su fundido, como queda en un disco continuo), con B siguiendo con los
+            // filtros de A, que es lo que hace el relevo en un disco continuo (SigueA).
             object sA = Inv(f, "ArmaCadena", tA, Lector(pa), false, 0.0); Inv(Get(sA, "Fundido"), "Quita");
             object sB = Inv(f, "ArmaCadena", tB, Lector(pb), false, 0.0);
             float[] soloA = LeeTodo((ISampleProvider)Get(sA, "Salida"), new int[] { 4096 }, null, null);
+            Inv(f, "SigueA", sB, sA);
             float[] soloB = LeeTodo((ISampleProvider)Get(sB, "Salida"), new int[] { 4096 }, null, null);
             int rbx = (int)Get(sB, "Retardo");
             float[] esperado = new float[soloA.Length + soloB.Length - rbx * ch];
             Array.Copy(soloA, esperado, soloA.Length);
             Array.Copy(soloB, rbx * ch, esperado, soloA.Length, soloB.Length - rbx * ch);
             Check(Igual(y, esperado) && (int)Get(cadB, "Retardo") == rbx,
-                  "lo que sale son las dos canciones, cada una tal cual sonaria sola, seguidas bit a bit: A entera con su cola, y B sin sus " + rbx + " cuadros de cebado (" + F(1000.0 * rbx / fs, "0.0") + " ms)");
+                  "lo que sale son las dos canciones seguidas bit a bit: A entera con su cola, y B sin sus " + rbx + " cuadros de cebado (" + F(1000.0 * rbx / fs, "0.0") + " ms), siguiendo con los filtros de A");
             Check(midio, "la medida en vivo paso a B en su primer bloque; lo medido de A quedo guardado aparte para cerrarlo");
             StoppedEventArgs fin = AlParar(f, null);
             Check(fin.Exception == null && object.ReferenceEquals(Get(f, "nowPlaying"), iB) && Cola(f, iC) && object.ReferenceEquals(Get(f, "reader"), lB)
@@ -818,6 +825,8 @@ class SinPausa
             object cadL = Get(f, "cadenaPreparada");
             Check(cadL != null && (int)Get(Get(sonando[0], "Fundido"), "estadoFundido") == 0,
                   "la siguiente de OTRO disco si entra sin pausa, pero la que suena conserva su fundido de salida");
+            Check(cadL != null && Get(Get(cadL, "Mono"), "anterior") == null && Get(Get(cadL, "Noche"), "anterior") == null,
+                  "y como la que suena acaba fundiendo a silencio, la siguiente empieza sus filtros de cero (no arrastra la memoria de una musica que ya no se oye)");
             Inv(f, "SueltaSinPausa");
             Set(f, "sbrAllowed", false); Set(f, "sbrOn", false); Set(f, "lookahead", null); Set(f, "output", null);
         }
@@ -917,6 +926,7 @@ class SinPausa
         TLevel = TF.GetNestedType("LevelTap", T); TBajo = TF.GetNestedType("DeepBassProvider", T);
         TLim = TF.GetNestedType("LimitadorPicoReal", T); TFade = TF.GetNestedType("FadeProvider", T);
         TDeclip = TF.GetNestedType("DeclipProvider", T); TSp = TF.GetNestedType("SpectralTap", T);
+        TNoche = TF.GetNestedType("CompensaNoche", T); TMono = TF.GetNestedType("GraveMono", T);
         TPlay = TF.GetNestedType("PlayItem", T); TTrack = TF.GetNestedType("Track", T); TAlbum = TF.GetNestedType("Album", T);
         TFile = TF.GetNestedType("FileAudioSource", T); TIA = TF.GetNestedType("IAudioSource", T);
         if (TEnc == null || TMedida == null || TCadena == null) { Check(false, "no esta el relevo sin pausa (SinPausa.cs)"); return 1; }
