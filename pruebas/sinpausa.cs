@@ -753,7 +753,7 @@ class SinPausa
                 object it0 = Item(tp, dq);
                 Set(f, "nowPlaying", it0);
                 object l = Lector((string)Get(tp, "Path"));
-                object cad = Inv(f, "ArmaCadena", tp, l, false);
+                object cad = Inv(f, "ArmaCadena", tp, l, false, 0.0);
                 Set(cad, "Item", it0);
                 Set(f, "reader", l); Set(f, "cadenaSonando", cad); Set(f, "cadenaPreparada", null);
                 object sec = Enc((ISampleProvider)Get(cad, "Salida"), cad);
@@ -778,8 +778,8 @@ class SinPausa
             bool midio = object.ReferenceEquals(Get(f, "tapMedido"), Get(cadB, "Tap")) && (bool)Get(Get(medidaB, "CierreAnterior"), "Listo")
                          && (string)Get(Get(medidaB, "CierreAnterior"), "Ruta") == pa && (string)Get(f, "curMeasurePath") == pb;
             // Lo mismo, cada una sola y desde el principio (A sin su fundido, como queda en un disco continuo).
-            object sA = Inv(f, "ArmaCadena", tA, Lector(pa), false); Inv(Get(sA, "Fundido"), "Quita");
-            object sB = Inv(f, "ArmaCadena", tB, Lector(pb), false);
+            object sA = Inv(f, "ArmaCadena", tA, Lector(pa), false, 0.0); Inv(Get(sA, "Fundido"), "Quita");
+            object sB = Inv(f, "ArmaCadena", tB, Lector(pb), false, 0.0);
             float[] soloA = LeeTodo((ISampleProvider)Get(sA, "Salida"), new int[] { 4096 }, null, null);
             float[] soloB = LeeTodo((ISampleProvider)Get(sB, "Salida"), new int[] { 4096 }, null, null);
             int rbx = (int)Get(sB, "Retardo");

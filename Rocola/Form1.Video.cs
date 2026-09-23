@@ -427,6 +427,7 @@ namespace Rocola
         private void DisposePlaybackNow()
         {
             CancelAudioOpen(); // saltar/cerrar invalida resultados que aun esten abriendo
+            CancelaReintentoSalida();   // y la espera a que vuelva el aparato de sonido (SalidaSonido.cs)
             progressTimer.Stop();
             if (output != null)
             {
@@ -754,6 +755,8 @@ namespace Rocola
         private void ProgressTimer_Tick(object sender, EventArgs e)
         {
             if (reader == null) return;
+            // LA SALIDA SE QUEDO MUDA (SalidaSonido.cs): como si hubiera avisado de un fallo del aparato.
+            if (SalidaMuda()) { NAudio.Wave.IWavePlayer o = output; if (o != null) Output_PlaybackStopped(o, new NAudio.Wave.StoppedEventArgs(new SalidaMudaException())); return; }
             PreparaSiguienteSinPausa();   // a la que suena le quedan pocos segundos: la siguiente, lista para entrar sin pausa
             TimeSpan cur = reader.CurrentTime, tot = reader.TotalTime;
             if (tot.TotalSeconds > 0) progress.Value = cur.TotalSeconds / tot.TotalSeconds;

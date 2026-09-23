@@ -910,9 +910,12 @@ namespace Rocola
                 reader = source;
                 if (error != null) throw error;
                 reader.Volume = FixedVolume;   // se queda en 1.0 (crudo): el nivelado se aplica en LevelTap, tras medir el volumen REAL
+                // RETOMADA: volvio el aparato de sonido y la cancion sigue desde donde iba (SalidaSonido.cs).
+                double desde = TomaReanudar();
+                if (desde > 0) reader.Salta(TimeSpan.FromSeconds(desde));
                 // LA CADENA DE ESTA CANCION (ArmaCadena, mas abajo): la misma que arma el relevo sin pausa para la
                 // siguiente, asi que las dos suenan exactamente igual.
-                CadenaCancion cad = ArmaCadena(t, reader, false);
+                CadenaCancion cad = ArmaCadena(t, reader, false, desde);
                 cad.Item = nowPlaying;
                 // Lo que se aprende oyendola va en los campos de siempre (la salida aun no arranco: sin carrera).
                 curMeasurePath = cad.MedidaRuta; curSumSq = 0; curSamples = 0;
@@ -928,27 +931,20 @@ namespace Rocola
                 // siguiente ya esta preparada, sigue en la MISMA lectura sin cerrar la salida.
                 secuencia = new Encadenado(cad.Salida, cad);
                 NAudio.Wave.ISampleProvider outChain = secuencia;
-                // WaveOut con callback por VENTANA, no WaveOutEvent: el de eventos llama a
-                // WaitHandle.WaitOne(Int32), que NO existe en .NET 3.5 sin Service Pack 1
-                // (el de la rockola) y truena con MissingMethodException. Este no lo usa.
-                WaveOut wo = new WaveOut();
-                // El audio se rellena desde el bucle de mensajes de la interfaz; con 1 SEGUNDO de colchon,
-                // la musica aguanta CUALQUIER atoron (paginas, caratulas, GC, video) sin cortarse jamas.
-                // Rellenar 200ms de MP3 cuesta ~2-5ms de CPU: el colchon grande sale practicamente gratis.
-                wo.DesiredLatency = 1000;
-                // BLOQUES CORTOS. El audio se rellena DESDE EL HILO DE LA PANTALLA (arriba se explica por que),
-                // asi que cada vez que se vacia un bloque la interfaz se para en seco a descifrar MP3 y a pasarlo
-                // por toda la cadena de sonido. Con 5 bloques de 200 ms esa parada era larga y ocurria 5 veces por
-                // segundo: en el ordenador del bar se comia un cuadro entero cada vez, y eso es lo que se sentia
-                // como tirones MIENTRAS SUENA MUSICA (se nota sobre todo en el buscador, que es lo que mas dibuja).
-                // Con 20 bloques de 50 ms se hace el MISMO trabajo total, pero repartido en pausas cuatro veces
-                // mas cortas, que caben de sobra dentro de un cuadro. El colchon sigue siendo de 1 segundo.
-                wo.NumberOfBuffers = 20;    // 20 bloques de 50ms (mismo segundo de colchon, pausas 4 veces mas cortas)
-                output = wo;
-                output.PlaybackStopped += Output_PlaybackStopped;
-                output.Init(new DitherWaveProvider16(outChain));   // 16 bits CON dither TPDF (menos aspereza en pasajes silenciosos)
+                // WaveOut (callback por ventana, 1 segundo de colchon en bloques de 50 ms): en XP, 16 bits con dither
+                // TPDF como siempre; en Vista o posterior, coma flotante, y 16 bits si el sistema la rechaza
+                // (SalidaSonido.cs).
+                try { AbreSalidaClasica(outChain, FlotanteAdmitido()); }
+                catch (Exception sex)
+                {
+                    // EL APARATO, NO LA CANCION: se espera y se retoma la misma (SalidaSonido.cs).
+                    if (EsFalloDelDispositivo(sex) && SalidaCaida(t, desde, sex, false)) return;
+                    throw;
+                }
                 if (audioOpeningForMeasurement) output.Volume = 0f;
-                output.Play();
+                try { output.Play(); }
+                catch (Exception pex) { if (EsFalloDelDispositivo(pex) && SalidaCaida(t, desde, pex, false)) return; throw; }
+                SalidaArranco(IdSalidaPorDefecto());   // el aparato esta: en cual (SalidaSonido.cs; en XP no se pregunta)
                 progressTimer.Start();
                 UpdateNowPlayingUI(); // lector ya listo; refrescar estado tras la apertura asincrona
                 PrecalientaSiguiente();   // la que viene detras, leida en segundo plano (ver arriba)
@@ -962,14 +958,17 @@ namespace Rocola
         // LA CADENA DE UNA CANCION, del lector al fundido de salida (sin la salida). La usan el arranque de
         // siempre (StartOpenedTrack) y el relevo sin pausa (Form1.SinPausa.cs), asi que las dos suenan igual.
         // Solo ARMA: no toca lo que suena ahora (ni los campos de medida ni los controles en vivo).
-        private CadenaCancion ArmaCadena(Track t, IAudioSource source, bool iaMejorada)
+        // 'saltadoSeg': la cancion se retoma desde ahi (volvio el aparato de sonido; SalidaSonido.cs); 0 = entera.
+        private CadenaCancion ArmaCadena(Track t, IAudioSource source, bool iaMejorada, double saltadoSeg)
         {
             CadenaCancion c = new CadenaCancion();
             c.Cancion = t; c.Lector = source; c.IaMejorada = iaMejorada;
             // NIVELADO: si esta cancion ya se oyo antes, se aplica la ganancia que la lleva al nivel comun; si es
             // nueva, va a su volumen original y se APRENDE su sonoridad en esta pasada (para nivelarla la proxima vez).
-            c.MedidaRuta = (normalizeOn && !durCache.ContainsKey(t.Path)) ? t.Path : null;   // ya pre-analizada = medida COMPLETA y fiable: no se vuelve a medir (y se ahorra el K-weighting)
-            c.EqRuta = (EqMideHuella && !HasStereoEq(t.Path)) ? t.Path : null;   // actualiza huellas antiguas sin borrar la biblioteca
+            // De una cancion retomada a medias no se aprende nada: seria la medida de un trozo.
+            bool entera = saltadoSeg <= 0;
+            c.MedidaRuta = (entera && normalizeOn && !durCache.ContainsKey(t.Path)) ? t.Path : null;   // ya pre-analizada = medida COMPLETA y fiable: no se vuelve a medir (y se ahorra el K-weighting)
+            c.EqRuta = (entera && EqMideHuella && !HasStereoEq(t.Path)) ? t.Path : null;   // actualiza huellas antiguas sin borrar la biblioteca
             // NIVEL 2 (reconstructor espectral): solo se INSERTA en maquinas que cumplen requisitos; con
             // Active=false es un pase directo (costo ~cero). Ctrl+F3 lo alterna EN VIVO para comparar A/B.
             NAudio.Wave.ISampleProvider chain = source;
@@ -1014,6 +1013,7 @@ namespace Rocola
                     int hz = source.WaveFormat.SampleRate;
                     float yaSe = SegundosDe(t.Path);
                     tf = (yaSe > 0.01f) ? (long)(yaSe * hz) : (long)(source.TotalTime.TotalSeconds * hz);
+                    tf -= (long)(saltadoSeg * hz);   // retomada: el fundido cuenta desde donde se retomo
                 }
                 catch { }
                 if (tf > 0) tf += audioTailDelay;
@@ -1144,11 +1144,15 @@ namespace Rocola
             // toca controles y la cola, asi que siempre se termina en el hilo de la interfaz.
             if (InvokeRequired) { try { BeginInvoke((MethodInvoker)delegate { Output_PlaybackStopped(sender, e); }); } catch { } return; }
             if (!object.ReferenceEquals(sender, output)) return;   // callback viejo de una salida ya reemplazada
+            Exception deLaSalida = e.Exception;   // lo que aviso la salida misma (no un fallo de lectura de la cancion)
             // RELEVO SIN PAUSA: la siguiente que ya habia entrado y aun no se daba por sonando, y un fallo de lectura
             // que atrapo la secuencia (se atiende aqui, UNA vez, como si lo hubiera avisado la salida). Ver RecogeAlParar.
             if (secuencia != null) e = RecogeAlParar(e);
             if (e.Exception != null)
             {
+                // EL APARATO, NO LA CANCION (SalidaSonido.cs): se espera y se retoma la misma desde donde iba.
+                if (deLaSalida != null && EsFalloDelDispositivo(deLaSalida) && nowPlaying != null && !nowPlaying.IsVideo
+                    && SalidaCaida(nowPlaying.Song, PosicionActual(), deLaSalida, true)) return;
                 lblStatus.Text = "Aviso al reproducir: " + e.Exception.Message;
                 LogError("PlaybackStopped", e.Exception);
                 RefundCredit();   // la cancion que el cliente pago fallo al reproducirse: se le devuelve el credito
@@ -1213,6 +1217,7 @@ namespace Rocola
             float Volume { set; }
             TimeSpan CurrentTime { get; }
             TimeSpan TotalTime { get; }
+            void Salta(TimeSpan donde);   // retomar a media cancion (volvio el aparato de sonido; SalidaSonido.cs)
         }
 
         // Camino NORMAL para la cancion que suena: float + volumen + tiempos en un solo objeto.
@@ -1246,6 +1251,7 @@ namespace Rocola
             public float Volume { set { if (mp3 != null) canal.Volume = value; else r.Volume = value; } }
             public TimeSpan CurrentTime { get { return (mp3 != null) ? mp3.CurrentTime : r.CurrentTime; } }
             public TimeSpan TotalTime { get { return (mp3 != null) ? mp3.TotalTime : r.TotalTime; } }
+            public void Salta(TimeSpan donde) { if (mp3 != null) mp3.CurrentTime = donde; else r.CurrentTime = donde; }
             public void Dispose()
             {
                 if (mp3 != null) { try { mp3.Dispose(); } catch { } }
@@ -1277,6 +1283,7 @@ namespace Rocola
             public float Volume { set { sample.Volume = value; } }
             public TimeSpan CurrentTime { get { return mp3.CurrentTime; } }
             public TimeSpan TotalTime { get { return mp3.TotalTime; } }
+            public void Salta(TimeSpan donde) { mp3.CurrentTime = donde; }
             public void Dispose() { try { mp3.Dispose(); } catch { } try { ms.Dispose(); } catch { } }
         }
 
