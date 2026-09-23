@@ -146,14 +146,21 @@ class Limite
         string exe = (argv.Length > 0) ? argv[0] : "rocola.exe";
         Assembly asm = Assembly.LoadFrom(exe);
         Type TF = asm.GetType("Rocola.Form1", true);
-        Type TLim = TF.GetNestedType("LookaheadLimiter", BindingFlags.NonPublic | BindingFlags.Public);
+        // Los dos limitadores: el de pico real, que es el que va en la cadena, y el de muestras de siempre, que
+        // se queda como referencia. A los dos se les exige lo mismo.
+        Type TReal = TF.GetNestedType("LimitadorPicoReal", BindingFlags.NonPublic | BindingFlags.Public);
+        Type TViejo = TF.GetNestedType("LookaheadLimiter", BindingFlags.NonPublic | BindingFlags.Public);
         Type TDec = TF.GetNestedType("DeclipProvider", BindingFlags.NonPublic | BindingFlags.Public);
-        Check(TLim != null, "el limitador esta donde tiene que estar");
+        Check(TReal != null || TViejo != null, "el limitador esta donde tiene que estar");
         Check(TDec != null, "el reparador de recortes esta donde tiene que estar");
-        if (TLim == null || TDec == null) return 1;
+        if ((TReal == null && TViejo == null) || TDec == null) return 1;
 
         Console.WriteLine("\n  0) AL TERMINAR, LOS COLCHONES SE VACIAN COMPLETOS\n");
         PruebaCola(TDec, false);
+        foreach (Type TLim in new Type[] { TReal, TViejo })
+        {
+        if (TLim == null) continue;
+        Console.WriteLine("\n  ===== " + TLim.Name + " =====");
         PruebaCola(TLim, true);
 
         // 1) TONO SOSTENIDO POR ENCIMA DEL TECHO. Con un tono fijo el limitador se asienta en una ganancia
@@ -194,6 +201,7 @@ class Limite
                               + peorCorrida + " muestras (" + (peorCorrida * 1000.0 / FS).ToString("0.00") + " ms)"
                               + "   y en total " + aplanadas + " muestras aplanadas");
             Check(peorCorrida <= 44, "con golpes a " + pico.ToString("0.0") + " la punta no se aplana ni un milisegundo");
+        }
         }
 
         Console.WriteLine(fallos == 0 ? "\nTODO BIEN" : "\nFALLOS: " + fallos);

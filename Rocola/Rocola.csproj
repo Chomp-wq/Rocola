@@ -97,6 +97,7 @@
     <Compile Include="AperturaAudio.cs" />
     <Compile Include="AudioControles.cs" />
     <Compile Include="Sonoridad.cs" />
+    <Compile Include="PicoReal.cs" />
     <Compile Include="Optimizaciones.cs" />
     <Compile Include="LunaGpu.cs" />
     <Compile Include="EstrellaGpu.cs" />

@@ -221,7 +221,8 @@ class Arranque
         Type TLim = null, TBass = null, TDeclip = null;
         foreach (Type t in TF.GetNestedTypes(BindingFlags.NonPublic | BindingFlags.Public))
         {
-            if (t.Name == "LookaheadLimiter") TLim = t;
+            // El limitador que de verdad va en la cadena: el de pico real (el de muestras queda de referencia).
+            if (t.Name == "LimitadorPicoReal" || (TLim == null && t.Name == "LookaheadLimiter")) TLim = t;
             if (t.Name == "DeepBassProvider") TBass = t;
             if (t.Name == "DeclipProvider") TDeclip = t;
         }

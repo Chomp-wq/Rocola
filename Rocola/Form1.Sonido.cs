@@ -945,7 +945,9 @@ namespace Rocola
             if (samples.WaveFormat.SampleRate != mix.SampleRate)
             {
                 outputResampler = new SalidaRemuestreada(samples, mix.SampleRate);
-                samples = new LookaheadLimiter(outputResampler, 0.98f, 3.0);
+                // Remuestrear reconstruye la onda y deja en muestras lo que antes caia ENTRE ellas: el ultimo
+                // limitador va DESPUES, y mira el pico real (ver PicoReal.cs).
+                samples = new LimitadorPicoReal(outputResampler, 0.98f, 3.0);
             }
             return samples;
         }
@@ -1050,7 +1052,10 @@ namespace Rocola
                 bassSongFactor = BassFactorFor(t.Path);   // cuanto le toca a ESTA cancion (1 = la perilla tal cual)
                 bassAutoBase = BajoAuto(t.Path);          // y de cuanto se parte, si el bajo va en automatico
                 curBass = new DeepBassProvider(tap, BassAmountNow());
-                LookaheadLimiter lim = new LookaheadLimiter(curBass, 0.98f, 3.0);
+                // LIMITADOR DE PICO REAL: el techo de 0,98 vale para la onda que reconstruye el DAC, no solo para
+                // las muestras (ver PicoReal.cs). Detras solo quedan el fundido (que solo baja) y, en la salida
+                // clasica, el paso a 16 bits con su dither de un bit.
+                LimitadorPicoReal lim = new LimitadorPicoReal(curBass, 0.98f, 3.0);
                 audioTailDelay += lim.DelayFrames;
                 NAudio.Wave.ISampleProvider outChain = lim;   // limitador con pre-escucha (picos limpios)
                 if (crossfadeSec > 0.01f)
@@ -2645,6 +2650,9 @@ namespace Rocola
             }
         }
 
+        // EL LIMITADOR DE MUESTRAS (el de siempre, descrito arriba). Ya NO va en la cadena: lo reemplaza
+        // LimitadorPicoReal (PicoReal.cs), que hace lo mismo mirando la onda reconstruida entre muestras. Se
+        // conserva como referencia: las pruebas (limite, picoreal) comparan contra el lo que se gano.
         private sealed class LookaheadLimiter : NAudio.Wave.ISampleProvider
         {
             private readonly NAudio.Wave.ISampleProvider src;
