@@ -60,9 +60,21 @@ desde otra PC. No se garantiza que termine antes de que empiece una cancion.
   con prioridad BAJA: la rocola y Windows siempre respiran primero.
 - UN SOLO MOTOR, COLA DE UNO EN UNO: un candado del sistema (cache\motor.lock) hace IMPOSIBLE
   que corran dos motores a la vez sobre la misma cache (dos Apollos = doble RAM y VRAM), y los
-  trabajos se procesan estrictamente uno por uno, en el orden en que se encolaron. El latido
+  trabajos se procesan estrictamente uno por uno, en el orden en que se encolaron (salvo los que
+  se resuelven reaprovechando, que van primero: ver abajo). El latido
   (motor.vivo) late cada ~3s desde un hilo propio, desde el segundo cero: la rocola ya no
   relanza motores mientras Apollo carga ni a mitad de un trabajo largo.
+- REMUESTREO A 44,1 kHz (23/09/2026): las canciones que no vienen a 44,1 kHz se convierten con
+  SoXR si el FFmpeg lo trae (si no, con un swr reforzado); ver `upscale\LEEME.md`. El motor lo
+  prueba al arrancar y lo anota en `cache\motor_log.txt` ("remuestreo=..."). Como cambia el
+  resultado de esas canciones, forma parte de la HUELLA: al actualizar, la rocola pide las
+  canciones con su clave nueva. Las que vienen a 44,1 kHz no cambian: su resultado anterior se
+  RENOMBRA a la clave nueva en un instante, sin volver a pasar por Apollo. Las de otra frecuencia
+  se vuelven a procesar la proxima vez que se pidan (mientras tanto suena el original con el DSEE);
+  sus archivos viejos los retira la limpieza por uso. Si cambias el FFmpeg con el motor en marcha,
+  lo vuelve a probar solo.
+- VOLVER ATRAS: con el FFmpeg de antes (o sin SoXR ni swr reforzado) la huella vuelve a ser la de
+  siempre, y lo reaprovechable se renombra de vuelta del mismo modo.
 
 ## Ajustes (en rocola_config.txt, junto a Rocola.exe)
 

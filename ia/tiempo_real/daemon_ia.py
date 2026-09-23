@@ -45,6 +45,8 @@ CACHE_FORMAT_VERSION = "wav-float32-v4-sin-recompresion"
 AQUI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(AQUI, "..", "upscale"))
 from util_audio import FS, leer_wav, escribir_wav_float, acantilado_hz, por_trozos, mezcla_auto
+from util_audio import (REMUESTREO_HEREDADO, REMUESTREOS, remuestreador, args_decodificar,
+                        firma_herramienta, sondeo_audio, sin_remuestreo)
 from memoria_audio import MemoriaAudio
 
 def _ticks_desde_stat(st):
@@ -77,10 +79,24 @@ def hash_trabajo(src, mezcla_clave, pipeline):
     return hashlib.sha256(clave.encode("utf-8", "replace")).hexdigest()[:16]
 
 
-def huella_pipeline(model_fingerprint, seg):
+def huella_pipeline(model_fingerprint, seg, remuestreo=REMUESTREO_HEREDADO):
     identidad = "%s|modelo=%s|seg=%.9g|fs=%d|cache=%s" % (
         PIPELINE_VERSION, model_fingerprint, seg, FS, CACHE_FORMAT_VERSION)
+    # EL REMUESTREO A 44,1 kHz ES PARTE DE LA IDENTIDAD. Cambia el resultado de las canciones que no
+    # vienen a 44,1 kHz, asi que otro remuestreador da otra huella y la cache no le atribuye a un
+    # archivo viejo la calidad nueva. El de siempre conserva EXACTAMENTE la huella de siempre.
+    if remuestreo != REMUESTREO_HEREDADO:
+        identidad += "|remuestreo=" + remuestreo
     return hashlib.sha256(identidad.encode("utf-8")).hexdigest()
+
+
+def huellas_vecinas(model_fingerprint, seg, remuestreo):
+    """Las huellas del MISMO modelo con los OTROS remuestreadores (el de siempre incluido).
+
+    Lo que se hizo con ellas de una cancion que ya venia a 44,1 kHz sale igual bit a bit con el
+    actual: se reaprovecha en vez de volver a pasarlo por Apollo (ver _reaprovecha)."""
+    ids = [REMUESTREO_HEREDADO] + [ident for ident, _ in REMUESTREOS]
+    return tuple(huella_pipeline(model_fingerprint, seg, ident) for ident in ids if ident != remuestreo)
 
 _JOB_HANDLE = None
 def _activar_job_hijos():
@@ -245,6 +261,50 @@ def _en_cache(listos, h):
             pass
     return None
 
+def _reaprovecha(listos, h, src, mezcla_clave, vecinas, frecuencias, cache):
+    """Resultado de esta cancion hecho con OTRO remuestreador, cuando para ella no cambia nada.
+
+    Solo si se SABE que todas sus pistas vienen a 44,1 kHz: entonces el remuestreador no interviene
+    y la decodificacion sale igual bit a bit (medido con FFmpeg 6.1 y 7.0; lo repite
+    test_remuestreo.py). Se RENOMBRA a la clave nueva, sin copiar ni recalcular: una sola operacion
+    atomica. Si algo corta despues, el archivo ya esta con su clave y la siguiente vuelta completa
+    los metadatos como con cualquier publicacion interrumpida. Una cancion a otra frecuencia NO se
+    reaprovecha: su resultado cambia y se vuelve a procesar."""
+    if not sin_remuestreo(frecuencias):
+        return None
+    for vecina in vecinas:
+        try:
+            viejo_h = hash_trabajo(src, mezcla_clave, vecina)
+        except OSError:
+            return None
+        if viejo_h == h:
+            continue
+        viejo = _en_cache(listos, viejo_h)
+        if not viejo or viejo.endswith(".mp3"):   # .mp3: formato de pipelines anteriores a estos
+            continue
+        nuevo = os.path.join(listos, h + os.path.splitext(viejo)[1])
+        try:
+            os.replace(viejo, nuevo)
+        except OSError:
+            continue
+        _quita(os.path.join(listos, viejo_h + ".meta.json"))
+        _log(cache, "reaprovechada sin reprocesar (viene a %d Hz): %s -> %s" % (FS, viejo_h, h))
+        return nuevo
+    return None
+
+
+def _tiene_vecina(job_path, listos, vecinas):
+    """Si el trabajo podria resolverse reaprovechando (sin mirar aun su frecuencia): va primero."""
+    try:
+        job = _lee_json_recordado(job_path, "utf-8-sig")
+        src, clave = job["src"], job["mezcla_key"]
+        if not isinstance(src, str) or not isinstance(clave, str):
+            return False
+        return any(_en_cache(listos, hash_trabajo(src, clave, vecina)) for vecina in vecinas)
+    except Exception:
+        return False
+
+
 def _error_path(listos, h):
     return os.path.join(listos, h + ".error")
 
@@ -391,11 +451,13 @@ def _finaliza_cache(job_path, listos, h, job, pipeline, dst, cache):
         return DEFERIDO
     return dst
 
-def procesar_uno(job_path, listos, proc, ffmpeg, pipeline, ffprobe, seg=10.0):
+def procesar_uno(job_path, listos, proc, ffmpeg, pipeline, ffprobe, seg=10.0, filtro=None, vecinas=()):
     """Procesa UN trabajo. El resultado queda en cache/listos con el MISMO hash del .job:
       <hash>.wav   version mejorada (Apollo + mezcla), IEEE float32
       <hash>.orig  marca de "esta cancion YA es de calidad completa": la rocola usa el ORIGINAL
-    Los temporales van a cache/tmp (MISMO disco del release), nunca a C:\Temp."""
+    Los temporales van a cache/tmp (MISMO disco del release), nunca a C:\Temp.
+    ``filtro`` es el remuestreador a 44,1 kHz (None = el de siempre) y ``vecinas`` las huellas del
+    mismo modelo con otros remuestreadores, de las que se reaprovecha lo que no cambia."""
     try:
         if os.path.getsize(job_path) > 64 * 1024:
             raise ValueError("archivo .job demasiado grande")
@@ -415,7 +477,7 @@ def procesar_uno(job_path, listos, proc, ffmpeg, pipeline, ffprobe, seg=10.0):
     h = os.path.splitext(os.path.basename(job_path))[0]
     cache = os.path.dirname(listos)
     try:
-        src, mez, _ = _valida_job(job, h, pipeline)
+        src, mez, mezcla_clave = _valida_job(job, h, pipeline)
     except Exception as e:
         _log(cache, "trabajo rechazado %s: %s" % (os.path.basename(job_path), e))
         try:
@@ -425,6 +487,12 @@ def procesar_uno(job_path, listos, proc, ffmpeg, pipeline, ffprobe, seg=10.0):
         _quita(job_path)
         return None
     ya = _en_cache(listos, h)
+    sondeo = None
+    if not ya and vecinas:
+        # Una sola llamada a ffprobe da la frecuencia (para saber si se puede reaprovechar) y la
+        # duracion que hace falta mas abajo de todos modos.
+        sondeo = sondeo_audio(ffprobe, src, TIMEOUT_PROBE)
+        ya = _reaprovecha(listos, h, src, mezcla_clave, vecinas, sondeo[1], cache)
     if ya:                                         # completa una publicacion interrumpida
         if not ya.endswith(".orig") and _duracion(ffprobe, ya) is None:
             if not _quita_requerido(ya):
@@ -447,7 +515,7 @@ def procesar_uno(job_path, listos, proc, ffmpeg, pipeline, ffprobe, seg=10.0):
     tmp = os.path.join(tmpdir, "ia_dec_%s.wav" % h)
     out = os.path.join(tmpdir, "ia_out_%s.wav" % h)
     try:
-        dur = _duracion(ffprobe, src)
+        dur = sondeo[0] if sondeo is not None else _duracion(ffprobe, src)
         if dur is None:
             raise RuntimeError("ffprobe no pudo leer una duracion de audio valida")
         if dur > MAX_SEG:
@@ -455,8 +523,8 @@ def procesar_uno(job_path, listos, proc, ffmpeg, pipeline, ffprobe, seg=10.0):
             _log(cache, "SIN IA (queda el original): %s -> %s" % (os.path.basename(src or "?"), motivo))
             dst = _marca_original(listos, h, motivo)
             return _finaliza_cache(job_path, listos, h, job, pipeline, dst, cache)
-        _run([ffmpeg, "-nostdin", "-y", "-v", "error", "-t", str(MAX_SEG + 30), "-i", src,
-              "-ac", "2", "-ar", str(FS), "-c:a", "pcm_f32le", tmp], TIMEOUT_DECODE)
+        _run([ffmpeg, "-nostdin", "-y", "-v", "error", "-t", str(MAX_SEG + 30), "-i", src] +
+             args_decodificar(filtro) + [tmp], TIMEOUT_DECODE)
         with MemoriaAudio(tmp) as memoria:
             x, _ = leer_wav(tmp, reservar=memoria.crear)
             if len(x) > (MAX_SEG + 31) * FS:
@@ -543,7 +611,8 @@ def evictar(listos, tope_gb):
             continue   # un archivo bloqueado sigue ocupando su espacio
         total -= size
 
-def _un_ciclo_log(pend, listos, proc, ffmpeg, pipeline, ffprobe, tope_gb, cache, seg=10.0):
+def _un_ciclo_log(pend, listos, proc, ffmpeg, pipeline, ffprobe, tope_gb, cache, seg=10.0,
+                  filtro=None, vecinas=()):
     jobs = []
     try:
         with os.scandir(pend) as entries:
@@ -557,10 +626,17 @@ def _un_ciclo_log(pend, listos, proc, ffmpeg, pipeline, ffprobe, tope_gb, cache,
                     continue  # retirado durante la enumeracion: no bloquea el resto
     except FileNotFoundError:
         return 0
-    jobs.sort(key=lambda item: item[1])
+    # PRIMERO LO QUE SE PUEDE REAPROVECHAR. Tras cambiar de remuestreador, las canciones que ya
+    # estaban hechas piden trabajo con su clave nueva; las que vienen a 44,1 kHz se resuelven con un
+    # renombrado. Si esperaran detras de una cancion que de verdad pasa por Apollo (minutos), mientras
+    # tanto sonarian sin su version mejorada. Dentro de cada grupo, el orden de antiguedad de siempre.
+    if vecinas:
+        jobs.sort(key=lambda item: (0 if _tiene_vecina(item[0], listos, vecinas) else 1, item[1]))
+    else:
+        jobs.sort(key=lambda item: item[1])
     atendidos = 0
     for j, _ in jobs:
-        r = procesar_uno(j, listos, proc, ffmpeg, pipeline, ffprobe, seg)
+        r = procesar_uno(j, listos, proc, ffmpeg, pipeline, ffprobe, seg, filtro, vecinas)
         if r is DEFERIDO:
             continue
         atendidos += 1
@@ -568,6 +644,35 @@ def _un_ciclo_log(pend, listos, proc, ffmpeg, pipeline, ffprobe, tope_gb, cache,
              ("trabajo descartado: " + os.path.basename(j)))
     if atendidos: evictar(listos, tope_gb)
     return atendidos
+
+
+def estado_remuestreo(ffmpeg, model_fingerprint, seg):
+    """Remuestreador, huella y vecinas para ESTE ffmpeg (ver util_audio.remuestreador)."""
+    remuestreo, filtro = remuestreador(ffmpeg)
+    try:
+        firma = firma_herramienta(ffmpeg)
+    except OSError:
+        firma = None
+    return {"firma": firma, "remuestreo": remuestreo, "filtro": filtro,
+            "pipeline": huella_pipeline(model_fingerprint, seg, remuestreo),
+            "vecinas": huellas_vecinas(model_fingerprint, seg, remuestreo)}
+
+
+def revisa_ffmpeg(ffmpeg, estado, model_fingerprint, seg):
+    """OTRO FFMPEG CON EL MOTOR EN MARCHA (se actualizo o se cambio de carpeta): se vuelve a probar.
+
+    Devuelve True si ahora toca otro remuestreador: la huella cambio y hay que publicarla. Si el
+    ejecutable no se puede mirar (se esta copiando, por ejemplo), se deja todo como estaba."""
+    try:
+        firma = firma_herramienta(ffmpeg)
+    except OSError:
+        return False
+    if firma == estado["firma"]:
+        return False
+    nuevo = estado_remuestreo(ffmpeg, model_fingerprint, seg)
+    cambio = nuevo["remuestreo"] != estado["remuestreo"]
+    estado.update(nuevo)
+    return cambio
 
 
 def _publica_atomico(path, contenido):
@@ -628,21 +733,33 @@ def main():
         _log(a.cache, "ERROR cargando Apollo: " + repr(e))
         print("[X] No se pudo cargar Apollo:", e)
         return 1
-    pipeline = huella_pipeline(proc.model_fingerprint, a.seg)
+    # EL REMUESTREO A 44,1 kHz: el mejor que ESTE ffmpeg ejecuta de verdad (se prueba, no se supone).
+    rs = estado_remuestreo(ffmpeg, proc.model_fingerprint, a.seg)
     try:
         # publica las GPUs detectadas para el selector de la rocola (nombres REALES de torch)
         _publica_atomico(os.path.join(a.cache, "gpus.txt"), "\n".join(modelo_apollo.lista_gpus()))
-        _publica_atomico(os.path.join(a.cache, "modelo.fingerprint"), pipeline + "\n")
+        _publica_atomico(os.path.join(a.cache, "modelo.fingerprint"), rs["pipeline"] + "\n")
     except Exception:
         _log(a.cache, "ERROR publicando la huella del modelo")
         return 1
-    _log(a.cache, "Apollo LISTO (gpu=%s, pipeline=%s)" % (a.gpu, pipeline))
+    _log(a.cache, "Apollo LISTO (gpu=%s, pipeline=%s, remuestreo=%s)" % (a.gpu, rs["pipeline"], rs["remuestreo"]))
+    print("Remuestreo a 44,1 kHz:", rs["remuestreo"])
     print("Motor de IA LISTO. Escuchando trabajos en:", pend)
     print("Deja esta ventana ABIERTA mientras uses la rocola con IA en vivo.")
+    publicada = rs["pipeline"]
     while True:
         try:
-            hechos = _un_ciclo_log(pend, listos, proc, ffmpeg, pipeline, ffprobe,
-                                   a.tope_gb, a.cache, a.seg)
+            # Otro ffmpeg con el motor en marcha: si toca otro remuestreador, cambia la huella y se
+            # publica; la rocola la lee en su siguiente consulta y los trabajos con la huella vieja se
+            # rechazan como siempre (y los que no cambian se reaprovechan). Si publicarla falla, el
+            # aviso de abajo lo apunta y se reintenta ANTES de atender ningun trabajo.
+            revisa_ffmpeg(ffmpeg, rs, proc.model_fingerprint, a.seg)
+            if rs["pipeline"] != publicada:
+                _publica_atomico(os.path.join(a.cache, "modelo.fingerprint"), rs["pipeline"] + "\n")
+                publicada = rs["pipeline"]
+                _log(a.cache, "ffmpeg cambio: remuestreo=%s, pipeline=%s" % (rs["remuestreo"], rs["pipeline"]))
+            hechos = _un_ciclo_log(pend, listos, proc, ffmpeg, rs["pipeline"], ffprobe,
+                                   a.tope_gb, a.cache, a.seg, rs["filtro"], rs["vecinas"])
             time.sleep(0.2 if hechos else 0.6)     # atiende rapido si hay cola; descansa si no
         except KeyboardInterrupt:
             print("\nMotor detenido."); return 0

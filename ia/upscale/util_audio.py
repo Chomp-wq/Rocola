@@ -1,9 +1,133 @@
 # -*- coding: utf-8 -*-
 # Utilerias de audio del kit de upscaling. NUMPY PURO: estas funciones se prueban sin GPU
 # (test_util.py), asi el unico riesgo queda en la parte del modelo (la valida 00_verificar.py).
-import numpy as np, wave, subprocess, struct, os
+import numpy as np, wave, subprocess, struct, os, json, math, tempfile, threading
 
 FS = 44100
+# ffmpeg y ffprobe son programas de consola: lanzados desde pythonw (el motor) Windows les abriria
+# una ventana por cada llamada. Fuera de Windows vale 0.
+NOWIN = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+# =============================================================================================
+#  REMUESTREO A 44,1 kHz PARA APOLLO (el modelo solo trabaja a 44,1 kHz)
+#
+#  Una cancion que ya viene a 44,1 kHz NO se remuestrea: sale igual bit a bit con cualquiera de
+#  estas opciones (comprobado con FFmpeg 6.1 y 7.0 en WAV, MP3, 16 bits, mono y 5.1). Las demas si,
+#  y el remuestreador que FFmpeg usa por defecto (swr) hace dano MEDIDO donde mas importa:
+#    - bajando de 48/96 kHz: -1,28 dB a 20 kHz, y lo que hay entre 22 y 24 kHz vuelve plegado
+#      a 20-22 kHz a solo -14..-36 dB;
+#    - subiendo de 22,05/24/32 kHz (los archivos flojos, que son los que Apollo repara): deja
+#      IMAGENES justo encima del corte original (un tono de 10 kHz a 22,05 kHz sale reflejado en
+#      12,05 kHz a -25 dB). El detector del corte las toma por musica: a 32 kHz con musica hasta
+#      15 kHz mide 17,4 kHz y la mezcla sube de 0,82 a 1,00.
+#  SoXR de alta precision (28 bits) queda plano hasta 20,5 kHz y sin plegados ni imagenes medibles
+#  (-158 dB o menos). Si el FFmpeg instalado no lo trae, un swr reforzado (filtro de 256 puntos)
+#  deja los plegados en -125 dB o menos. Detalles y mediciones: MEJORAS_AUDIO_Y_PENDIENTES, 1.16.
+# =============================================================================================
+REMUESTREO_HEREDADO = "swr-defecto"    # lo de siempre: '-ar 44100' sin filtro propio
+REMUESTREOS = (
+    ("soxr-p28", "aresample=resampler=soxr:precision=28"),
+    ("swr-f256-c092-k12", "aresample=filter_size=256:cutoff=0.92:kaiser_beta=12"),
+)
+_CAPACIDAD = {}                        # firma del ffmpeg -> (id, filtro)
+_CAPACIDAD_CERROJO = threading.Lock()
+
+
+def args_decodificar(filtro=None):
+    """Argumentos de SALIDA de FFmpeg para Apollo: estereo, 44,1 kHz, float32 sin cuantizar.
+
+    Con ``filtro=None`` son exactamente los de antes (el remuestreador por defecto)."""
+    salida = ["-ac", "2"]
+    if filtro:
+        salida += ["-af", filtro]
+    return salida + ["-ar", str(FS), "-c:a", "pcm_f32le"]
+
+
+def firma_herramienta(ruta):
+    """Identidad de un ejecutable: si cambia (otro FFmpeg), hay que volver a probarlo."""
+    st = os.stat(ruta)
+    return (os.path.abspath(ruta), st.st_size, st.st_mtime_ns)
+
+
+def _prueba_remuestreo(ffmpeg, filtro, carpeta, timeout):
+    """Convierte 0,1 s de dos tonos a 48 kHz y comprueba formato, largo y nivel de lo que sale."""
+    src = os.path.join(carpeta, "prueba_48k.wav")
+    dst = os.path.join(carpeta, "prueba_441.wav")
+    if not os.path.exists(src):
+        t = np.arange(4800) / 48000.0
+        escribir_wav_float(src, np.stack((0.25 * np.sin(2 * np.pi * 1000 * t),
+                                          0.25 * np.sin(2 * np.pi * 1500 * t)), axis=1), 48000)
+    try:
+        subprocess.run([ffmpeg, "-nostdin", "-y", "-v", "error", "-i", src] +
+                       args_decodificar(filtro) + [dst], check=True, stdin=subprocess.DEVNULL,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=timeout,
+                       creationflags=NOWIN)
+        y, fs = leer_wav(dst)
+    except Exception:
+        return False
+    finally:
+        try: os.remove(dst)
+        except OSError: pass
+    if fs != FS or y.ndim != 2 or y.shape[1] != 2 or abs(len(y) - 4410) > 1:
+        return False
+    centro = y[441:-441]
+    # 0,25 de pico es 0,1768 eficaz; se tolera 0,1 dB (los extremos llevan el arranque del filtro).
+    rms = np.sqrt((centro ** 2).mean(axis=0))
+    return bool(np.all(np.abs(20 * np.log10(np.maximum(rms, 1e-12) / (0.25 / np.sqrt(2)))) < 0.1))
+
+
+def remuestreador(ffmpeg, timeout=30):
+    """El mejor remuestreador que ESTE FFmpeg ejecuta de verdad: ``(id, filtro)``.
+
+    No se da por hecho que un FFmpeg traiga SoXR: se prueba convirtiendo de verdad. Si ninguna
+    opcion funciona queda el de siempre (``filtro=None``). Se recuerda por ejecutable (ruta,
+    tamano y fecha): otro FFmpeg en la misma ruta se vuelve a probar."""
+    try:
+        clave = firma_herramienta(ffmpeg)
+    except OSError:
+        return (REMUESTREO_HEREDADO, None)
+    with _CAPACIDAD_CERROJO:
+        if clave in _CAPACIDAD:
+            return _CAPACIDAD[clave]
+        elegido = (REMUESTREO_HEREDADO, None)
+        with tempfile.TemporaryDirectory(prefix="rocola_remuestreo_") as carpeta:
+            for ident, filtro in REMUESTREOS:
+                if _prueba_remuestreo(ffmpeg, filtro, carpeta, timeout):
+                    elegido = (ident, filtro)
+                    break
+        _CAPACIDAD[clave] = elegido
+        return elegido
+
+
+def sondeo_audio(ffprobe, ruta, timeout=30):
+    """``(duracion, frecuencias)`` de TODAS las pistas de audio con una sola llamada a ffprobe.
+
+    ``(None, [])`` si no se pudo leer. Una frecuencia que no se sabe cuenta como 0."""
+    try:
+        r = subprocess.run([ffprobe, "-v", "error", "-select_streams", "a",
+                            "-show_entries", "stream=index,sample_rate:format=duration",
+                            "-of", "json", ruta], capture_output=True, text=True,
+                           stdin=subprocess.DEVNULL, timeout=timeout, creationflags=NOWIN)
+        if r.returncode != 0:
+            return (None, [])
+        dato = json.loads(r.stdout)
+        pistas = dato.get("streams") or []
+        frecuencias = []
+        for p in pistas:
+            try:
+                frecuencias.append(int(p.get("sample_rate", 0)))
+            except (TypeError, ValueError):
+                frecuencias.append(0)
+        dur = float(dato.get("format", {}).get("duration", 0))
+        return ((dur if pistas and math.isfinite(dur) and dur > 0 else None), frecuencias)
+    except Exception:
+        return (None, [])
+
+
+def sin_remuestreo(frecuencias):
+    """True solo si se SABE que todas las pistas vienen ya a 44,1 kHz: ahi el remuestreador no
+    interviene y el resultado es el mismo con cualquiera."""
+    return bool(frecuencias) and all(f == FS for f in frecuencias)
 
 def leer_wav(path, reservar=None):
     """RIFF PCM16/24/32 o IEEE float32 -> float64 [n, canales], sin recortar.
@@ -107,12 +231,17 @@ def escribir_wav(path, x, fs=FS):
             w.writeframesraw(y.tobytes())
     return ganancia
 
-def decodificar_a_wav(ffmpeg, origen, destino, timeout=20 * 60):
-    """Cualquier formato -> WAV float32 44.1k estereo, sin cuantizacion intermedia."""
-    subprocess.run([ffmpeg, '-nostdin', '-y', '-v', 'error', '-i', origen, '-ac', '2',
-                    '-ar', str(FS), '-c:a', 'pcm_f32le', destino], check=True,
+def decodificar_a_wav(ffmpeg, origen, destino, timeout=20 * 60, filtro=False):
+    """Cualquier formato -> WAV float32 44.1k estereo, sin cuantizacion intermedia.
+
+    Por defecto usa el mejor remuestreador que tenga este FFmpeg (ver ``remuestreador``);
+    ``filtro=None`` fuerza el de siempre."""
+    if filtro is False:
+        filtro = remuestreador(ffmpeg)[1]
+    subprocess.run([ffmpeg, '-nostdin', '-y', '-v', 'error', '-i', origen] +
+                   args_decodificar(filtro) + [destino], check=True,
                    stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                   stderr=subprocess.PIPE, timeout=timeout)
+                   stderr=subprocess.PIPE, timeout=timeout, creationflags=NOWIN)
 
 
 def escribir_wav_float(path, x, fs=FS):

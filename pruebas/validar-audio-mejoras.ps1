@@ -39,6 +39,16 @@ try {
         & $env:ROCOLA_TEST_PYTHON -m unittest test_calidad_dsee test_entrenar_eq test_contrato_dsee test_origen_dsee test_estereo_dsee test_seleccion_dsee test_publicacion_dsee test_informe_dsee
         if ($LASTEXITCODE -ne 0) { throw 'Fallo Python/IA' }
     } finally { Pop-Location }
+    # Remuestreo de Apollo (solo HD tiene ia\upscale): eleccion probada, calidad medida con el
+    # FFmpeg del PATH, 44,1 kHz bit a bit, cache versionada y reaprovechamiento.
+    $upscale = Join-Path $repoRoot 'ia\upscale'
+    if (Test-Path -LiteralPath (Join-Path $upscale 'test_remuestreo.py')) {
+        Push-Location $upscale
+        try {
+            & $env:ROCOLA_TEST_PYTHON -m unittest test_remuestreo
+            if ($LASTEXITCODE -ne 0) { throw 'Fallo Python/remuestreo de Apollo' }
+        } finally { Pop-Location }
+    }
     & (Join-Path $testRoot 'validar-audio-formatos.ps1') -OutputDirectory $out -Ffmpeg $Ffmpeg
     # Solo este proceso de pruebas y sus hijos. No cambia afinidad del sistema/rocola instalada.
     $process = [System.Diagnostics.Process]::GetCurrentProcess()

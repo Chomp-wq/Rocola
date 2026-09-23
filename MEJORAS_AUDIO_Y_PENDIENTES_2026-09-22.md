@@ -28,6 +28,7 @@ desarrollo y medición. La revisión anterior está en REVISION_AUDIO_2026-09-22
 | Plegado (aliasing) del realce de agudos: saturación a 2× con el seco alineado | Implementado y probado; ver 1.14 |
 | Plegado del grave sintético | Medido: no hace falta sobremuestrear; ver 1.14 |
 | Transiciones en vivo del grave sintético y del DSEE | Implementado y probado; ver 1.15 |
+| Remuestreo de Apollo a 44,1 kHz con SoXR, caché versionada y reaprovechamiento | Implementado y probado (HD); ver 1.16 |
 | Salidas y continuidad | Pendiente; plan abajo |
 | Paridad del extractor IA (contrato EXTRACTOR=2) | Implementado y probado; ver 1.7 |
 | Identidad de origen, particiones por canción y estéreo por canal | Implementado y probado; ver 1.8 |
@@ -700,6 +701,93 @@ Limitaciones: como antes, en el primer instante de una canción el DSEE necesita
 para medir el corte (23–46 ms), y su interferencia entre ventanas hace que un tono puro recreado varíe
 de nivel entre ventanas (no es de esta entrega). Escucha A/B pendiente.
 
+### 1.16 Remuestreo de Apollo a 44,1 kHz con SoXR (etapa 5 de audio, solo HD)
+
+Archivos: ia/upscale/util_audio.py (elección y argumentos comunes), ia/tiempo_real/daemon_ia.py (motor
+en vivo), ia/upscale/05_procesar_todo.py (por lotes), escanear_calidad.py y 00_verificar.py;
+ia/upscale/test_remuestreo.py (nueva). Modest no tiene Apollo: no cambia nada allí.
+
+Apollo solo trabaja a 44,1 kHz, así que el motor decodifica cada canción con FFmpeg a 44,1 kHz estéreo
+float32 (sin cuantizar). Una canción que ya viene a 44,1 kHz no se remuestrea: sale igual bit a bit con
+cualquier opción (comprobado con FFmpeg 6.1 y 7.0 en WAV float, WAV de 16 bits, mono, 5.1 y MP3). Las
+demás pasaban por el remuestreador por defecto de FFmpeg (swr). Medido contra la verdad analítica
+(tonos puros, ajuste por mínimos cuadrados y espectro del resto):
+
+| Conversión | Qué se mira | swr por defecto (antes) | SoXR precisión 28 (ahora) |
+|---|---|---|---|
+| 48 → 44,1 kHz | tono de 19 / 20 kHz | −0,22 / −1,28 dB | 0,00 / 0,00 dB |
+| 48 → 44,1 kHz | lo que había en 22,5 / 23 kHz vuelve plegado a | −14 / −20 dB | −161 / −160 dB |
+| 96 → 44,1 kHz | 24 kHz plegado | −36 dB | −193 dB |
+| 22,05 → 44,1 kHz | imagen de un tono de 10 kHz (en 12,05 kHz) | −25 dB | −167 dB |
+| 32 → 44,1 kHz | imagen de un tono de 15 kHz (en 17 kHz) | −17 dB | −162 dB |
+| 88,2 → 44,1 kHz | 20 kHz | −1,29 dB | 0,00 dB |
+
+Por qué importa para Apollo: las imágenes de la subida quedan justo encima del corte original, y el
+detector del corte (el que decide si una canción ya es buena y cuánta IA lleva) las toma por agudos.
+Con música de ruido rosa: a 32 kHz con contenido hasta 15 kHz medía 17,4 kHz (mezcla 1,00 en vez de
+0,82); a 24 kHz hasta 11,5 kHz, 13,2 kHz (0,82 en vez de 0,70); a 22,05 kHz hasta 10,5 kHz, 12 kHz.
+Con SoXR mide 15,3 / 11,7 / 10,8 kHz. A 48 kHz no cambia la medida (16,2 y 19,8 kHz con los dos).
+
+Lo que se hizo:
+- Se usa SoXR de alta precisión (`aresample=resampler=soxr:precision=28`) si el FFmpeg instalado lo
+  ejecuta; si no, un swr reforzado (`filter_size=256:cutoff=0.92:kaiser_beta=12`: plegados −119 a
+  −141 dB, −0,42 dB a 20 kHz; solo se le escapa un tono pegado al corte original, a menos de 30 Hz);
+  si tampoco, el de siempre. No se da por hecho que un FFmpeg traiga
+  SoXR: se PRUEBA convirtiendo 0,1 s de dos tonos a 48 kHz y mirando formato, largo y nivel. Se recuerda
+  por ejecutable (ruta, tamaño y fecha); otro FFmpeg en la misma ruta se vuelve a probar, también con el
+  motor en marcha.
+- Alineación, duración y final, medidos con los tres motores y a 48/96/32/22,05 kHz con largos que no
+  cuadran: un impulso sale en su sitio (desvío 0,000 muestras), la duración a una muestra de lo exacto
+  (redondeo) y una ráfaga en los últimos 8 ms sale entera (energía 1,0000). Sin cruce de canales.
+- Picos: remuestrear convierte en muestras los picos que la onda ya tenía entre muestras. Una
+  cuadrada a 0 dBFS sale a +1,96 dB con el de siempre y +2,15 dB con SoXR; música recortada a 0,99,
+  igual con los tres (±0,1 dB). La caché es WAV float: no se recorta, y el limitador de pico real de la
+  rocola lo controla al reproducir.
+- Coste medido (un núcleo, 4 minutos de música, con la escritura del WAV): 48 kHz 0,24 → 0,51 s;
+  22,05 kHz 0,19 → 0,20 s; 96 kHz 0,31 → 0,62 s. El swr reforzado, 0,58–1,59 s. Nada al lado de lo que
+  tarda Apollo por canción; el motor sigue con prioridad baja y un trabajo a la vez.
+- Mismo remuestreo en el motor en vivo, en `5_procesar.bat`, en el escaneo de calidad y en las
+  herramientas de prueba (piloto y comparación de mezcla). `00_verificar.py` dice cuál se usará.
+
+Caché versionada: el remuestreador forma parte de la huella del motor (`modelo.fingerprint`), así que
+la rocola nunca toma un resultado viejo como si fuera nuevo. Con el de siempre la huella es EXACTAMENTE
+la anterior (prueba HuellaTests). Para no repetir trabajo que no cambia:
+- Motor en vivo: si una canción pedida con la clave nueva tiene resultado con la clave de otro
+  remuestreador y TODAS sus pistas vienen a 44,1 kHz (según ffprobe), el archivo se renombra a la
+  clave nueva (una operación atómica, sin copiar ni volver a pasar por Apollo). Esos trabajos van
+  primero en la cola. Las canciones a otra frecuencia se vuelven a procesar cuando se piden; mientras
+  tanto suena el original (con el DSEE), como con cualquier canción aún sin procesar.
+- Por lotes: el manifiesto apunta el remuestreador de cada canción (`ninguno` si no hizo falta). Al
+  reanudar, las entradas de antes que siguen valiendo (44,1 kHz) se reapuntan una vez; las de otra
+  frecuencia se rehacen.
+
+Comprobado (pruebas automáticas en Linux con FFmpeg 6.1 y ffprobe; 28 casos en test_remuestreo.py):
+elección con un FFmpeg simulado (con SoXR, sin SoXR, sin ninguno, salida de largo o nivel equivocado,
+recuerdo por ejecutable y nueva prueba si cambia); calidad del elegido frente al de siempre (la tabla de
+arriba); 44,1 kHz bit a bit en cinco formatos; alineación, duración, final y canales; picos; motor de
+punta a punta (la de 48 kHz se decodifica con el elegido y cambia; la de 44,1 kHz y una marca `.orig` se
+reaprovechan sin llamar a Apollo; la de 48 kHz se rehace y su archivo viejo no se toca; primero lo
+reaprovechable y, sin cambio de huella, el orden de siempre); revisión del FFmpeg en marcha; y la
+herramienta por lotes con un manifiesto de antes (la de 44,1 kHz no se rehace, la de 48 kHz sí, y una
+tercera pasada no tiene nada pendiente). Las pruebas que ya había de Apollo siguen en verde, y ahora
+corren también las de integración con FFmpeg real que antes se saltaban.
+
+Riesgos de migración y cómo volver atrás:
+- Al actualizar, la huella cambia (si tu FFmpeg trae SoXR). Lo de 44,1 kHz se reaprovecha al pedirse;
+  lo de otras frecuencias se vuelve a procesar una vez, a medida que suena. Los WAV viejos de esas
+  canciones quedan en la caché hasta que la limpieza por uso los retire (cuentan para el tope).
+- Si vuelves a un FFmpeg sin SoXR (o sin ninguno de los dos), el motor lo detecta y la huella vuelve a
+  la correspondiente; lo reaprovechable se renombra de vuelta del mismo modo.
+- Si vuelves a la versión ANTERIOR del código, esta no sabe renombrar: las canciones cuyo resultado ya
+  se movió a la clave nueva se volverían a procesar (tiempo de GPU; ni música ni configuración se
+  pierden). Para evitarlo, respalda `ia\tiempo_real\cache\listos` antes de actualizar.
+- `5_procesar.bat` añade una línea por canción reapuntada al manifiesto la primera vez (JSONL que solo
+  crece; se lee la última línea de cada canción).
+
+Pendiente: correr test_remuestreo con el FFmpeg de tu equipo (validar-audio-mejoras.ps1 lo incluye) y
+escuchar A/B canciones a 22,05/32/48 kHz. Un MP3 que cambia de frecuencia a media canción (raro) se
+toma por su primera frecuencia al decidir si se reaprovecha.
+
 ## 2. Comprobaciones y cómo repetirlas
 
 En cada repositorio, con sus herramientas de compilación .NET, Python con NumPy y FFmpeg:
@@ -717,7 +805,8 @@ El script:
    picoreal, realce, transiciones, eqpreparado, iadatos, eqauto, calidad, nivel, bajoauto y bajo.
 3. Ejecuta las pruebas Python de los entrenadores y sus protecciones (test_calidad_dsee,
    test_entrenar_eq, test_contrato_dsee, test_origen_dsee, test_estereo_dsee,
-   test_seleccion_dsee y test_publicacion_dsee).
+   test_seleccion_dsee y test_publicacion_dsee) y, en HD, test_remuestreo de ia/upscale (con el
+   FFmpeg del PATH).
 
 Nota del 22 de septiembre (bloque A): este script NO se pudo ejecutar en el entorno donde se
 hizo el bloque A (Linux, sin PowerShell, Windows ni FFmpeg). Sus piezas sí: todas las baterías
@@ -883,6 +972,11 @@ Dónde: SalidaRemuestreada, apertura/salida y ia/upscale.
 
 No cambiar modelos Apollo por tamaño/reputación sin probar pesos, memoria, coste y
 escucha con material del usuario. No introducir dependencias de HD en Modest/XP.
+
+Estado (23 de septiembre, etapa 5 de audio, HD): hechos 2 a 6 (ver 1.16): SoXR donde el FFmpeg lo
+ejecuta, con alternativa probada; WAV float32 y 44,1 kHz como pide Apollo; alineación, picos,
+canales, duración y final medidos; la huella cambia con el remuestreador y lo que no cambia se
+reaprovecha. El punto 1 (el remuestreador DMO de la salida en vivo) es la etapa 6.
 
 ### F. Salida al dispositivo
 

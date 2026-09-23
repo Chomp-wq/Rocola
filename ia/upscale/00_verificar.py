@@ -46,6 +46,18 @@ for nombre, exe in (("ffmpeg", ff), ("ffprobe", fp)):
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15)
         except Exception as e:
             rev(False, "", "%s no funciona (%s)" % (nombre, e))
+if ff:
+    # Que remuestreador usara Apollo con las canciones que no vienen a 44,1 kHz (se prueba de verdad).
+    # Sin SoXR no es una falla: queda un swr reforzado que tambien evita los plegados.
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from util_audio import remuestreador, REMUESTREO_HEREDADO
+        ident = remuestreador(ff)[0]
+        rev(ident != REMUESTREO_HEREDADO, "remuestreo a 44,1 kHz: " + ident +
+            ("" if ident.startswith("soxr") else "  (este ffmpeg no trae SoXR; va el swr reforzado)"),
+            "este ffmpeg no ejecuta ni SoXR ni el swr reforzado: se usara el remuestreo de siempre")
+    except Exception as e:
+        rev(False, "", "no se pudo probar el remuestreo de ffmpeg (%s)" % e)
 
 apollo = os.environ.get("APOLLO_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), "Apollo"))
 rev(os.path.isdir(apollo), "Repo Apollo: " + apollo,

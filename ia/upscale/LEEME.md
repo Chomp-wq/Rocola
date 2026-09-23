@@ -18,6 +18,26 @@ Orden de los dobles clic:
 
 `2_piloto.bat` sigue existiendo para probar con una carpeta cualquiera que tu elijas.
 
+## Remuestreo a 44,1 kHz (23 de septiembre de 2026)
+
+Apollo solo trabaja a 44,1 kHz. Una cancion que ya viene a 44,1 kHz (la inmensa mayoria de los MP3)
+no se remuestrea y sale **igual bit a bit que antes**. Las demas (48/96 kHz, o los archivos flojos a
+22,05/24/32 kHz) se convierten ahora con **SoXR de alta precision** si tu FFmpeg lo trae, y si no
+con un swr reforzado. Se PRUEBA convirtiendo de verdad: no se da por hecho que un FFmpeg traiga
+SoXR. `00_verificar.py` dice cual va a usar.
+
+Por que (medido): el remuestreador que FFmpeg usa por defecto baja 1,28 dB a 20 kHz, devuelve
+plegado lo que hay entre 22 y 24 kHz (a solo -14..-36 dB) y, al subir de 22,05/32 kHz, deja
+imagenes justo encima del corte original (-6..-25 dB). El detector del corte las toma por agudos:
+una cancion a 32 kHz con musica hasta 15 kHz median 17,4 kHz y le tocaba mas IA de la cuenta.
+Con SoXR: plano hasta 20,5 kHz y nada medible por debajo de -158 dB. Cuesta 0,5 s por cancion
+de 4 minutos a 48 kHz (antes 0,24 s): nada al lado de Apollo.
+
+Lo que ya estaba hecho: el escaneo, `5_procesar.bat` y el motor en vivo usan el mismo remuestreo.
+Al reanudar, `5_procesar.bat` NO rehace las canciones a 44,1 kHz (no cambian); solo las de otra
+frecuencia, que ahora salen distintas. Prueba: `python -m unittest test_remuestreo` (con FFmpeg en
+el PATH mide la calidad y los casos de punta a punta; sin FFmpeg, solo la eleccion y la cache).
+
 ## "Cuanta IA" (mezcla wet/dry)
 
 En canciones MUY danadas la IA a veces suena despareja (pedazos igual al original, otros de

@@ -14,6 +14,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from util_audio import FS, leer_wav, escribir_wav, acantilado_hz, por_trozos, mezcla_auto
+from util_audio import REMUESTREO_HEREDADO, remuestreador, args_decodificar, sondeo_audio, sin_remuestreo
 from memoria_audio import MemoriaAudio
 
 UMBRAL_BUENA = 18500.0
@@ -274,6 +275,39 @@ def entrada_completa(registro, src, dst, parametros):
         return False
 
 
+SIN_REMUESTREO = "ninguno"
+
+
+def remuestreo_de(frecuencias, remuestreo):
+    """Lo que se apunta de ESTA cancion: el remuestreador solo cuenta si de verdad interviene."""
+    return SIN_REMUESTREO if sin_remuestreo(frecuencias) else remuestreo
+
+
+def estado_entrada(registro, src, dst, parametros, remuestreo, frecuencias_de):
+    """``(completa, refresco)`` de una entrada del manifiesto con el remuestreador de hoy.
+
+    ``frecuencias_de(src)`` solo se llama para entradas de antes de apuntar el remuestreo; las que
+    siguen valiendo se devuelven con ``refresco`` (los parametros que conviene reescribir para no
+    volver a preguntar). Una cancion a 44,1 kHz no cambia con ningun remuestreador; una a otra
+    frecuencia hecha con otro remuestreador se vuelve a procesar."""
+    try:
+        previos = registro["params"]
+    except (KeyError, TypeError):
+        return (False, None)
+    if not isinstance(previos, dict):
+        return (False, None)
+    if "remuestreo" in previos:
+        usado = previos["remuestreo"]
+        vale = usado == SIN_REMUESTREO or usado == remuestreo
+        return (vale and entrada_completa(registro, src, dst, dict(parametros, remuestreo=usado)), None)
+    if not entrada_completa(registro, src, dst, parametros):
+        return (False, None)
+    usado = remuestreo_de(frecuencias_de(src), REMUESTREO_HEREDADO)
+    if usado == SIN_REMUESTREO or remuestreo == REMUESTREO_HEREDADO:
+        return (True, dict(parametros, remuestreo=usado))
+    return (False, None)
+
+
 def _anota_manifest(f, src, dst, parametros, identidad_entrada=None):
     dato = {"version": MANIFEST_VERSION, "input": identidad_entrada or _identidad_entrada(src),
             "params": parametros, "output": _identidad_salida(dst),
@@ -423,11 +457,29 @@ def _procesar_carpeta(a, raiz, salida, ffmpeg, ffprobe):
                   "mezcla": str(a.mezcla), "modelo": fingerprint,
                   "umbral": UMBRAL_BUENA}
 
+    # El remuestreo a 44,1 kHz: el mejor que ESTE ffmpeg ejecuta de verdad (ver util_audio).
+    remuestreo, filtro = remuestreador(ffmpeg)
+    print("Remuestreo a 44,1 kHz:", remuestreo)
+
     manifest_path = os.path.join(salida, "_procesadas.jsonl")
     anteriores = cargar_manifest(manifest_path)
-    pendientes = [r for r in rutas
-                  if not (entrada_completa(anteriores.get(_canon(r)), r, destinos[_canon(r)], parametros)
-                          and _salida_valida(ffprobe, destinos[_canon(r)]))]
+    pendientes, refrescos = [], []
+    for r in rutas:
+        dst = destinos[_canon(r)]
+        completa, refresco = estado_entrada(anteriores.get(_canon(r)), r, dst, parametros, remuestreo,
+                                            lambda s: sondeo_audio(ffprobe, s)[1])
+        if completa and _salida_valida(ffprobe, dst):
+            if refresco is not None:
+                refrescos.append((r, dst, refresco))
+        else:
+            pendientes.append(r)
+    if refrescos:
+        # Las entradas de antes de apuntar el remuestreo que siguen valiendo quedan apuntadas con el
+        # suyo: la proxima vez no hace falta volver a preguntarle a ffprobe por su frecuencia.
+        _repara_ultima_linea(manifest_path)
+        with open(manifest_path, "a", encoding="utf-8", newline="\n") as regf:
+            for r, dst, p in refrescos:
+                _anota_manifest(regf, r, dst, p)
     if not pendientes:
         print("Nada pendiente: manifiesto y salidas verificados.")
         return 0
@@ -456,10 +508,11 @@ def _procesar_carpeta(a, raiz, salida, ffmpeg, ffprobe):
             try:
                 entrada_antes = _identidad_entrada(src)
                 fue_mejorada = False
+                params_src = dict(parametros, remuestreo=remuestreo_de(sondeo_audio(ffprobe, src)[1], remuestreo))
                 with tempfile.TemporaryDirectory(prefix="rocola_hd_") as td:
                     dec = os.path.join(td, "dec.wav")
-                    _run([ffmpeg, "-nostdin", "-y", "-v", "error", "-i", src,
-                          "-ac", "2", "-ar", str(FS), "-c:a", "pcm_f32le", dec])
+                    _run([ffmpeg, "-nostdin", "-y", "-v", "error", "-i", src] +
+                         args_decodificar(filtro) + [dec])
                     with MemoriaAudio(dec) as memoria:
                         x, _ = leer_wav(dec, reservar=memoria.crear)
                         cliff = acantilado_hz(x)
@@ -478,7 +531,7 @@ def _procesar_carpeta(a, raiz, salida, ffmpeg, ffprobe):
                     raise RuntimeError("el archivo original cambio mientras se procesaba; se reintentara")
                 if not _salida_valida(ffprobe, dst):
                     raise RuntimeError("ffprobe rechazo la salida generada")
-                _anota_manifest(regf, src, dst, parametros, entrada_antes)
+                _anota_manifest(regf, src, dst, params_src, entrada_antes)
                 if fue_mejorada: mejoradas += 1
                 else: copiadas += 1
             except Exception as e:

@@ -13,7 +13,7 @@
 import sys, os, csv, argparse, tempfile, subprocess, shutil, threading, math, json
 from concurrent.futures import ThreadPoolExecutor
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from util_audio import leer_wav, acantilado_hz
+from util_audio import leer_wav, acantilado_hz, remuestreador, args_decodificar
 
 EXTS = (".mp3", ".wav", ".flac", ".m4a", ".ogg", ".wma")
 
@@ -51,14 +51,20 @@ def _duracion(ffprobe, ruta):
         return None
 
 
-def medir(ffmpeg, ffprobe, ruta):
-    """Acantilado (Hz) de ~24s del medio de la cancion; 0 si no se pudo leer."""
+def medir(ffmpeg, ffprobe, ruta, filtro=False):
+    """Acantilado (Hz) de ~24s del medio de la cancion; 0 si no se pudo leer.
+
+    Se pasa a 44,1 kHz con el mismo remuestreador que el motor (``filtro``; por defecto el mejor
+    de este ffmpeg): el de siempre deja imagenes que el detector toma por agudos (una cancion a
+    32 kHz con musica hasta 15 kHz median 17,4 kHz)."""
     if ruta.lower().endswith(".wav") and ffmpeg is None:
         try:
             x, _ = leer_wav(ruta)
             return acantilado_hz(x)
         except Exception:
             return 0.0
+    if filtro is False:
+        filtro = remuestreador(ffmpeg)[1]
     dur = _duracion(ffprobe, ruta)
     posiciones = ([max(0.0, (dur - 24.0) / 2.0), 0.0] if dur is not None else [30.0, 0.0])
     with tempfile.TemporaryDirectory(prefix="rocola_scan_") as td:
@@ -66,8 +72,7 @@ def medir(ffmpeg, ffprobe, ruta):
         for ss in dict.fromkeys("%.3f" % p for p in posiciones):
             try:
                 subprocess.run([ffmpeg, "-nostdin", "-y", "-v", "error", "-ss", ss,
-                                "-t", "24", "-i", ruta, "-ac", "2", "-ar", "44100",
-                                "-c:a", "pcm_f32le", tmp], check=True,
+                                "-t", "24", "-i", ruta] + args_decodificar(filtro) + [tmp], check=True,
                                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                stderr=subprocess.DEVNULL, timeout=TIMEOUT_FFMPEG,
                                creationflags=NOWIN)
@@ -154,12 +159,14 @@ def main():
         print("[X] No se pudo recorrer toda la biblioteca:", e); return 1
     if a.max > 0: rutas = rutas[: a.max]
     if not rutas: print("No hay canciones en", a.musica); return 1
+    remuestreo, filtro = remuestreador(ffmpeg)   # una vez, antes de repartir el trabajo en hilos
+    print("Remuestreo a 44,1 kHz:", remuestreo)
     print("Midiendo %d canciones con %d hilos... (esto se puede dejar corriendo solo)" % (len(rutas), a.hilos))
     res = []
     hecho = [0]
     progreso_lock = threading.Lock()
     def uno(r):
-        hz = medir(ffmpeg, ffprobe, r)
+        hz = medir(ffmpeg, ffprobe, r, filtro)
         with progreso_lock:
             res.append((hz, r))
             hecho[0] += 1
