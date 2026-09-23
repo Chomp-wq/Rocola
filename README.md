@@ -22,6 +22,9 @@ cola, compartido por Modest y HD (el sonido de los vídeos sigue siendo del
 reproductor de Windows Media: la guía explica las opciones y espera una decisión). Solo en
 HD, Apollo pasa a 44,1 kHz con SoXR cuando el FFmpeg lo trae (con alternativa
 probada) y reaprovecha sin reprocesar lo que no cambia.
+De noche, al bajar el volumen, devuelve los graves y agudos que el oído pierde
+(ISO 226), y el grave por debajo de 120 Hz sale igual por todas las bocinas (una
+grabación con un canal al revés conserva su grave). Las dos ramas.
 Detalles, mediciones y tareas aún pendientes (escucha A/B, Windows XP real, CPU
 antiguo) en [la guía de audio](MEJORAS_AUDIO_Y_PENDIENTES_2026-09-22.md).
 
@@ -234,6 +237,13 @@ artista) y modo atracción.
   centrado. Verificado: genera el 2º y 3er armónico, **no toca** la nota original ni la voz ni los
   agudos en las señales de prueba; en 0 % el audio sale idéntico bit a bit.
   El coste de CPU y el resultado audible dependen del equipo y del material.
+- **Grave en mono** (`grave_mono=` en config, el corte en Hz; 0 lo quita): por debajo de 120 Hz el mismo grave sale
+  por los dos canales, así que con bocinas repartidas nadie se queda sin bajo por estar junto a la "equivocada". Lo
+  mono no cambia de nivel; el grave sale unos 4 ms tarde, como en el cruce de una bocina de dos vías. Una grabación
+  con un canal al revés no pierde su grave: se detecta y se devuelve en fase. Ver 1.24 de la guía de audio.
+- **Modo noche que no apaga el sonido** (`noche_compensa=` en config, en %; 0 lo quita): mientras la noche baja el
+  volumen, devuelve los graves y agudos que el oído pierde al bajar (curvas de igual sonoridad ISO 226): con los 4 dB
+  de fábrica, +1,6 dB en 50 Hz y +0,7 en 12,5 kHz. De día no hace nada. Ver 1.23 de la guía de audio.
 - **DSEE** (realce/reconstrucción de agudos): recrea el "aire" que el MP3 recorta. Copia por
   bloques con la fase seguida entre ventanas (como el SBR de AAC): un tono recreado sale limpio, al
   nivel de la curva de diseño y con el corte quieto (ver 1.21 de `MEJORAS_AUDIO_Y_PENDIENTES_2026-09-22.md`).

@@ -35,6 +35,8 @@ namespace Rocola
             internal LevelTap Tap;
             internal SpectralTap Sbr;
             internal DeepBassProvider Bajo;
+            internal CompensaNoche Noche;        // graves y agudos que devuelve el modo noche (ModoNoche.cs)
+            internal GraveMono Mono;             // el grave en mono (GraveMono.cs)
             internal FadeProvider Fundido;
             internal int Retardo;                // cuadros de cebado: se descartan si entra por relevo
             internal string MedidaRuta, EqRuta;  // que se aprende oyendola (null = nada)
@@ -92,7 +94,10 @@ namespace Rocola
             cadenaPreparada = c;
             // PISTA SIGUIENTE DEL MISMO DISCO: el fundido de salida de la que suena se quita, si aun no empezo,
             // para que un disco continuo siga continuo. Entre canciones sueltas queda el fundido de siempre.
-            if (SiguienteDelDisco(nowPlaying, sig) && cadenaSonando.Fundido != null) cadenaSonando.Fundido.Quita();
+            bool entera = cadenaSonando.Fundido == null;   // sin fundido ("fundido=0"), la que suena acaba entera
+            if (SiguienteDelDisco(nowPlaying, sig) && cadenaSonando.Fundido != null) entera = cadenaSonando.Fundido.Quita();
+            // Si acaba entera, la siguiente sigue con la memoria de sus filtros: el cambio no se oye (SigueA).
+            if (entera) SigueA(c, cadenaSonando);
         }
 
         // La siguiente ya suena. Lo mira el temporizador de la animacion (cada 42 ms): el relevo se recoge
@@ -133,7 +138,7 @@ namespace Rocola
             { try { a.Lector.Dispose(); } catch { } }
             // El corte de agudos lo medira el DSEE de la nueva: no se le arrastra el de la anterior.
             eqMeasCut = 0f; eqMeasCutLo = 0f;
-            curTap = b.Tap; curSbr = b.Sbr; curBass = b.Bajo;
+            curTap = b.Tap; curSbr = b.Sbr; curBass = b.Bajo; curNoche = b.Noche;
             bassSongFactor = b.BajoFactor; bassAutoBase = b.BajoBase;
             AlEntrarPorRelevo(b);
             playFailStreak = 0;   // la anterior termino bien
@@ -238,6 +243,17 @@ namespace Rocola
             CierraHuella(c.EqRuta, c.EqSumas, c.EqN, c.EqTasa, corte, corteBajo);
         }
 
+        // DISCO CONTINUO: la que entra ('nueva') sigue con la memoria de los filtros de la que acaba ('vieja'): la
+        // compensacion del modo noche y el grave en mono. Solo cuando la vieja acaba entera, sin fundido (si no,
+        // su memoria es la de una musica que ya no se oye). Sin esto, esos filtros empezarian de cero justo en el
+        // cambio, y el del grave en mono deja un golpe en el grave que se oye. Lo toman en su primera lectura.
+        private static void SigueA(CadenaCancion nueva, CadenaCancion vieja)
+        {
+            if (nueva == null || vieja == null) return;
+            if (nueva.Noche != null) nueva.Noche.Sigue(vieja.Noche);
+            if (nueva.Mono != null) nueva.Mono.Sigue(vieja.Mono);
+        }
+
         // ¿'b' es la pista que sigue a 'a' en el MISMO disco? (un disco TOP junta canciones de discos distintos)
         private static bool SiguienteDelDisco(PlayItem a, PlayItem b)
         {
@@ -259,6 +275,7 @@ namespace Rocola
             p.Tap.Master = MasterLin() * FactorNoche();
             p.Tap.EqDb = EqCorrFor(p.Cancion.Path);
             if (p.Bajo != null) p.Bajo.Amount = BassAmountPara(p.BajoFactor, p.BajoBase);
+            if (p.Noche != null) p.Noche.Db = NocheCompensaDb();
             if (p.Sbr != null) p.Sbr.Active = DseeDe(p);
         }
     }

@@ -42,6 +42,8 @@ falta `mcs` (Mono), `xvfb-run` y `python3`.
 | `respaldo` | *(ramas con DSEE ULTRA)* que con ULTRA encendido el DSEE normal SI atienda a las canciones que Apollo aún no ha hecho: que salga su letrero plateado, que el realce no empuje dos veces, y que encender ULTRA no te borre para siempre el interruptor del DSEE |
 | `atoron` | lo que la pantalla se queda parada cada vez que hay que dar de comer al sonido |
 | `nivel`, `bajo`, `bajoauto` | nivelado de volumen y bajo psicoacústico |
+| `noche` | el modo noche: el cruce de la medianoche, que los vídeos también bajen, la rampa por reloj, que de día no cambie nada y, en la sección 8, los graves y agudos que devuelve al bajar el volumen, medidos contra la norma ISO 226 calculada en la batería, sin saltos, bit a bit de día y al amanecer, disco continuo, configuración y cableado |
+| `gravemono` | el grave en mono: la respuesta contra la teoría del cruce, lo mono intacto, un instrumento abierto que sigue a su lado por encima del corte, un canal al revés que no pierde el grave (y que lo normal no lo activa), lo que no se toca, cualquier forma de leer bit a bit igual, el disco continuo, la cadena de verdad, la configuración y el coste |
 | `limite` | que el limitador BAJE la ganancia en vez de recortar: distorsión de un tono fuerte y aplanado de la punta en un golpe seco |
 | `eqauto`, `eqia`, `calidad` | el EQ automático y su objetivo por canción |
 | `duracion`, `titulo`, `etiqueta`, `genero` | lo que se lee de cada archivo |

@@ -141,7 +141,13 @@ namespace Rocola
             float antes = nocheFactor;
             nocheFactor = AvanzaRampa(nocheFactor, meta, dt);
             // Y se empuja a la cancion que YA esta sonando: si no, la baja no se oiria hasta la siguiente.
-            if (nocheFactor != antes) { LevelTap t = curTap; if (t != null) t.Master = MasterLin() * FactorNoche(); AplicaAPreparada(); }
+            // Y lo que devuelve de graves y agudos sigue la misma rampa (ModoNoche.cs).
+            if (nocheFactor != antes)
+            {
+                LevelTap t = curTap; if (t != null) t.Master = MasterLin() * FactorNoche();
+                CompensaNoche cn = curNoche; if (cn != null) cn.Db = NocheCompensaDb();
+                AplicaAPreparada();
+            }
         }
         private float crossfadeSec = 0.5f;   // FUNDIDO de salida entre canciones: segundos de rampa al terminar ("fundido=" en config; 0 = corte seco)
         private bool declipOn = true;        // DES-RECORTE (declipper): repara picos aplastados de origen en archivos mal masterizados ("declip=" en config)
@@ -1090,6 +1096,7 @@ namespace Rocola
                 kwRate = 0;   // reinicia el estado del K-weighting: cada cancion mide desde cero (sin cola del filtro anterior)
                 tapMedido = cad.Tap;
                 curSbr = cad.Sbr; curTap = cad.Tap; curBass = cad.Bajo;   // para ajustarla en vivo (Ctrl+F3)
+                curNoche = cad.Noche;                                     // y para que siga la rampa del modo noche
                 bassSongFactor = cad.BajoFactor; bassAutoBase = cad.BajoBase;
                 cadenaSonando = cad; cadenaPreparada = null;
                 // RELEVO SIN PAUSA (SinPausa.cs): la salida lee de la secuencia. Cuando esta cancion se acabe, si la
@@ -1191,11 +1198,16 @@ namespace Rocola
             tap.EqDb = EqCorrFor(t.Path);      // EQ automatico: correccion aprendida (null la 1a vez que suena)
             audioTailDelay += tap.DelayFrames;   // realce 2x: retiene 31 cuadros y los entrega al final (Realce.cs)
             c.Tap = tap; tap.Medida = new MedidaCancion(c.MedidaRuta, c.EqRuta);   // lo que aprende oyendola (ver MedidaDe)
+            // MODO NOCHE: al bajar el volumen de madrugada, devuelve los graves y agudos que el oido pierde
+            // (ModoNoche.cs). De dia no hace nada: sale tal cual.
+            c.Noche = new CompensaNoche(tap); c.Noche.Db = NocheCompensaDb();
+            // GRAVE EN MONO: por debajo del corte, el mismo grave por todas las bocinas; lo demas, tal cual (GraveMono.cs).
+            c.Mono = new GraveMono(c.Noche, graveMonoHz);
             // BAJO PSICOACUSTICO: despues de nivelar/ecualizar y ANTES del limitador, que es quien controla
             // los picos que anaden los armonicos.
             c.BajoFactor = BassFactorFor(t.Path);   // cuanto le toca a ESTA cancion (1 = la perilla tal cual)
             c.BajoBase = BajoAuto(t.Path);          // y de cuanto se parte, si el bajo va en automatico
-            c.Bajo = new DeepBassProvider(tap, BassAmountPara(c.BajoFactor, c.BajoBase));
+            c.Bajo = new DeepBassProvider(c.Mono, BassAmountPara(c.BajoFactor, c.BajoBase));
             // LIMITADOR DE PICO REAL: el techo de 0,98 vale para la onda que reconstruye el DAC, no solo para
             // las muestras (ver PicoReal.cs). Detras solo quedan el fundido (que solo baja) y, en la salida
             // clasica, el paso a 16 bits con su dither de un bit.
@@ -1405,7 +1417,7 @@ namespace Rocola
             SueltaExclusivo();   // el aparato del exclusivo y lo que recibia (SalidaExclusiva.cs)
             if (reader != null) { try { reader.Dispose(); } catch { } reader = null; }
             SueltaSinPausa();   // la siguiente preparada (o ya entrando): con la salida ya parada
-            curTap = null; curSbr = null; curBass = null;   // ya no hay taps actuales
+            curTap = null; curSbr = null; curBass = null; curNoche = null;   // ya no hay taps actuales
             FinalizeLoudMeasure();   // guarda la sonoridad medida de la cancion que acaba de sonar (audio ya detenido: sin carrera)
             FinalizeEqMeasure();     // y su huella tonal (mismo momento seguro)
             ClearLevels();   // sin cancion no hay trozos pendientes: el pulso cae a cero

@@ -5,7 +5,7 @@ Fecha: 22 de septiembre de 2026.
 
 Aplicado a **rocola-hd** (.NET 4.8) y **claude/modest-carson-fa2v2n** (.NET 3.5, destino XP).
 No se modificó el renderizado por CPU. No se añadieron interruptores ni dependencias de
-audio nuevas. No se desplegaron ejecutables ni se reemplazaron música, modelos, créditos,
+audio nuevas (hay dos líneas nuevas de configuración, sin interruptor: ver 1.23 y 1.24). No se desplegaron ejecutables ni se reemplazaron música, modelos, créditos,
 preferencias o datos de las instalaciones del usuario.
 
 Este documento separa lo que YA está implementado de propuestas que todavía necesitan
@@ -37,6 +37,8 @@ desarrollo y medición. La revisión anterior está en REVISION_AUDIO_2026-09-22
 | Audio de vídeo (reproductor de Windows Media) | Documentado y con batería que fija las reglas de hoy; decidido: opción A, sigue el reproductor sin cambios; ver 1.20 |
 | DSEE: copia por bloques (tonos limpios), nivel de la curva de diseño, corte quieto | Implementado y probado (las dos ramas); falta oírlo; ver 1.21 |
 | Decodificar en coma flotante (MP3 por el decodificador de Windows comprobado; AAC/WMA/M4A por Media Foundation) | Implementado y probado con imitaciones (solo HD); falta probarlo en Windows; ver 1.22 |
+| Modo noche que devuelve los graves y agudos que el oído pierde (ISO 226) | Implementado y probado (las dos ramas); falta oírlo; ver 1.23 |
+| Grave en mono por debajo de 120 Hz, con un canal al revés corregido | Implementado y probado (las dos ramas); falta oírlo; ver 1.24 |
 | Paridad del extractor IA (contrato EXTRACTOR=2) | Implementado y probado; ver 1.7 |
 | Identidad de origen, particiones por canción y estéreo por canal | Implementado y probado; ver 1.8 |
 | Selección contra curva e instalado, informe reproducible | Implementado y probado; ver 1.9 |
@@ -1313,6 +1315,122 @@ Qué mirar en el bar:
 Cómo volver atrás: basta con el ejecutable anterior. No cambia ningún archivo de datos. Las sonoridades ya medidas
 siguen valiendo: la diferencia en la medida es mínima.
 
+### 1.23 El modo noche devuelve los graves y agudos que el oído pierde al bajar el volumen (las dos ramas)
+
+Qué pasaba:
+- De 23 a 7 h la rocola baja 4 dB, y los baja igual en todas las frecuencias.
+- El oído no pierde lo mismo en todas: al bajar el volumen, los graves y los agudos más altos se apagan antes que la
+  voz. Lo dicen las curvas de igual sonoridad de la norma ISO 226. De noche la música sonaba más baja y, además, más
+  apagada.
+
+Qué hace ahora:
+- Mientras el modo noche baja el volumen, devuelve lo que el oído pierde, con dos estantes suaves:
+  - graves: de primer orden en 160 Hz, 0,44 dB por cada dB que baja la noche;
+  - agudos: de segundo orden en 7,5 kHz, 0,24 dB por cada dB.
+- Lo que pide la norma casi no depende de lo fuerte que suene el local: calculado a 60 y a 90 fonios cambia 0,06 dB
+  como mucho. Por eso sirve sin micrófono.
+- Sigue la rampa de 20 s del modo noche: entra poco a poco con ella y sale igual al amanecer.
+- De día no hace nada: sale bit a bit lo que entra, y ni se calcula.
+- Va detrás del nivelado y antes del grave en mono, del grave sintético y del limitador. Los armónicos del grave
+  sintético siguen al grave ya compensado.
+- Los vídeos no pasan por aquí (su sonido lo baja el reproductor de Windows): de noche bajan igual, sin compensar.
+
+Medido en la etapa de verdad con tonos, con los 4 dB de fábrica (44,1 kHz; a 48 kHz, lo mismo ±0,02 dB):
+
+| Frecuencia | Se devuelve | La norma pide |
+|---|---|---|
+| 50 Hz | +1,63 dB | +1,66 |
+| 100 Hz | +1,33 | +1,24 |
+| 200 Hz | +0,77 | +0,80 |
+| 1 kHz | +0,04 | 0 |
+| 4 kHz | −0,18 | −0,15 |
+| 12,5 kHz | +0,73 | +0,65 |
+| 16 kHz | +0,89 | (la norma no llega) |
+
+De 40 Hz a 12,5 kHz se aparta de la norma 0,07 dB de media y 0,17 como mucho. Si noche_db baja 8 dB: 0,18 de media
+y 0,44 como mucho.
+
+Lo que hay que saber:
+- **Los graves bajan menos que antes**: en 50 Hz, 2,4 dB en vez de 4. Si de noche lo que molesta a los vecinos es el
+  grave, `noche_compensa=0` lo quita (queda solo la bajada de volumen) y `noche_compensa=50` lo deja a la mitad.
+- Se calculó con las tablas de ISO 226:2003. No pude consultar las de 2023; sus autores dicen que se apartan
+  0,6 dB como mucho de las de 2003.
+- Disco continuo: la pista siguiente sigue con los filtros de la anterior (como el grave en mono, ver 1.24).
+
+Configuración: `noche_compensa=` en rocola_config.txt, en % (de fábrica 100; 0 la quita). No hay interruptor nuevo en
+Ctrl+F3: se apaga junto con el modo noche.
+
+Pruebas automáticas: pruebas/noche.cs, sección 8 (27 comprobaciones nuevas): la respuesta contra la norma a 44,1 y
+48 kHz, bajando 4 y 8 dB; de día bit a bit (estéreo y mono); valores rotos; sin saltos al entrar y salir; al amanecer
+vuelve a salir bit a bit; disco continuo igual que una sola etapa; la configuración; y que la rampa, la canción
+preparada y los ajustes en vivo le pasan lo que baja la noche.
+
+Coste: de noche, 0,81 ms por segundo de música estéreo (9,2 ns por muestra; Mono en esta máquina, que no es un
+procesador antiguo). De día, nada.
+
+### 1.24 El grave en mono: por debajo de 120 Hz, lo mismo por todas las bocinas (las dos ramas)
+
+Qué pasaba:
+- En el billar hay 4 bocinas en el gabinete y 3 repartidas, y no se sabe qué canal lleva cada una.
+- Si una grabación trae el bajo cargado a un lado, o el grave de un canal al revés que el del otro, quien está junto
+  a la bocina que no lo lleva se queda sin bajo, y donde se juntan dos bocinas el grave se cancela.
+
+Qué hace ahora:
+- Por debajo de 120 Hz pone el mismo grave en los dos canales. Por encima, todo sigue igual.
+- Es el cruce de las bocinas de dos vías (Linkwitz-Riley de cuarto orden) aplicado a la diferencia entre canales.
+  Lo mono no cambia de nivel en ninguna frecuencia.
+- El precio: el grave sale unos 4 ms más tarde que los agudos (4,3 ms medidos en 50 Hz), como en el cruce de
+  cualquier bocina de dos vías.
+
+Medido con tonos por la etapa de verdad (44,1 y 48 kHz dan lo mismo):
+
+| | 30 Hz | 50 | 80 | 100 | 120 | 150 | 200 | 300 | 1 kHz |
+|---|---|---|---|---|---|---|---|---|---|
+| Diferencia entre canales que queda (dB) | −48 | −31 | −16 | −10 | −6 | −3 | −1,1 | −0,2 | 0 |
+| Instrumento solo a la izquierda: lo que sale por la derecha (dB) | −0,1 | −0,5 | −2,9 | −5,9 | −9,5 | −15 | −24 | −38 | −80 |
+
+- Lo mono sale igual de fuerte en todas las frecuencias (se aparta menos de 0,0001 dB) y con los dos canales
+  idénticos, bit a bit.
+- En la cadena de canción de verdad: un bajo de 50 Hz que viene solo por la izquierda sale por las dos bocinas
+  (−0,5 dB por la derecha).
+
+**Un canal al revés.** Si una grabación trae un canal con la polaridad invertida (un defecto de copia), todo su grave
+va en la diferencia y sumarlo a mono lo borraría. La etapa lo detecta: en la banda del grave, compara la energía de la
+diferencia con la de la suma en los últimos ~0,3 s. Si la diferencia tiene más del doble, devuelve ese grave en fase
+por los dos canales. Medido: el grave sale entero por el canal izquierdo y a −0,5 dB por el derecho, en fase, y se
+corrige del todo a los 0,51 s. Por encima del corte, todo sigue como venía. En grabaciones normales (bajo en el
+centro, a un lado, distinto en cada canal, o en el centro con algo de contrafase) no se activa nunca.
+
+Lo que no se toca: un archivo de un canal, uno de más de dos, y `grave_mono=0` salen bit a bit.
+
+Disco continuo: la pista siguiente de un disco (la que entra sin fundido) sigue con los filtros de la anterior. Sin
+eso, en el cambio se oía un golpe en el grave: medido con un bajo continuo, se apartaba hasta 0,27 de lo que tocaba
+(con picos de 0,72). Con fundido, la siguiente empieza de cero, como siempre. La batería sinpausa lo comprueba con
+la rocola de verdad.
+
+Configuración: `grave_mono=` en rocola_config.txt, el corte en Hz (de fábrica 120; de 40 a 250; 0 lo quita). No hay
+interruptor nuevo en Ctrl+F3.
+
+Pruebas automáticas: pruebas/gravemono.cs (41 comprobaciones): la respuesta contra la teoría, lo mono intacto, el
+instrumento abierto, el canal al revés y que lo normal no lo activa; lo que no se toca; cualquier forma de leer
+(tamaños al azar, impares, de una muestra, un origen que parte cuadros) bit a bit igual; el disco continuo; la cadena
+de verdad; la configuración; que leer no reserve memoria; y el coste. Y sinpausa.cs, actualizada.
+
+Roturas a propósito (del grave en mono y de la compensación de noche): 25; las baterías detectan las 25. Otras dos no
+cambian nada de lo que sale: una tocaba código que nunca se ejecutaba (se quitó) y la otra un valor roto que otra
+guarda ya para.
+
+Coste: 0,92 ms por segundo de música estéreo (21 ns por cuadro; Mono en esta máquina).
+
+Lo que no se hizo: estrechar el estéreo y quitar el grave que las bocinas no dan. Siguen pendientes de saber qué
+bocinas son (ver 3.H).
+
+Qué mirar en el bar (esto solo se sabe escuchando):
+1. Caminar por el billar con una canción de bajo marcado: el bajo debería sonar parecido cerca de cada bocina (salvo
+   lo que haga la sala).
+2. Una canción vieja con el bajo cargado a un lado: debería oírse el bajo junto a todas las bocinas.
+3. De noche, comparar con el ejecutable anterior: debería sonar más bajo, pero no más apagado.
+
 ## 2. Comprobaciones y cómo repetirlas
 
 En cada repositorio, con sus herramientas de compilación .NET, Python con NumPy y FFmpeg:
@@ -1326,9 +1444,9 @@ El script:
 
 1. Compila GPU y CPU con advertencias tratadas como errores; ejecuta las 29 baterías
    de validar-capas.ps1. Compilar CPU no significa modificar su renderizado.
-2. Ejecuta diecinueve baterías adicionales: dsee, limite, entrenador, iaparidad, iaorigen, sonoridad,
+2. Ejecuta veintiuna baterías adicionales: dsee, limite, entrenador, iaparidad, iaorigen, sonoridad,
    picoreal, realce, transiciones, sinpausa, salida, videoaudio, eqpreparado, iadatos, eqauto, calidad, nivel,
-   bajoauto y bajo.
+   bajoauto, bajo, noche y gravemono.
 3. Ejecuta las pruebas Python de los entrenadores y sus protecciones (test_calidad_dsee,
    test_entrenar_eq, test_contrato_dsee, test_origen_dsee, test_estereo_dsee,
    test_seleccion_dsee y test_publicacion_dsee) y, en HD, test_remuestreo de ia/upscale (con el
@@ -1579,10 +1697,10 @@ El 23 de septiembre contaste cómo está montado el sonido:
 - 4 bocinas en el gabinete de la rocola, conectadas a un amplificador;
 - 3 bocinas más repartidas por el billar, de tipo desconocido.
 
-Esto importa para tres propuestas pendientes, que no se han hecho:
-1. **Grave por debajo de ~120 Hz igual por los dos canales.** Con bocinas repartidas, mucha gente oye sobre todo
-   una. Si el grave de una mezcla va más por un lado, se pierde. Sirve con cualquier tipo de bocina.
-2. **Estrechar un poco el estéreo** para quien está lejos de una bocina.
+Esto importa para tres propuestas:
+1. **Grave por debajo de ~120 Hz igual por los dos canales.** Hecho el 23 de septiembre (ver 1.24): no depende del
+   tipo de bocina. Si alguna bocina resultara ser un subwoofer que solo recibe un canal, esto también lo arregla.
+2. **Estrechar un poco el estéreo** para quien está lejos de una bocina. Pendiente.
 3. **Quitar el grave que las bocinas no reproducen** (si no bajan de ~80 Hz). Antes hay que saber qué bocinas son;
    con un subwoofer no conviene.
 
