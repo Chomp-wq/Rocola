@@ -24,7 +24,8 @@ desarrollo y medición. La revisión anterior está en REVISION_AUDIO_2026-09-22
 | Escucha A/B, DAC, XP real y CPU antiguo | Pendiente |
 | Sonoridad integrada BS.1770 de la canción entera, aparte de la estimación | Implementado y probado; ver 1.12 |
 | Mínimos de aprendizaje por duración y lecturas que parten un cuadro | Implementado y probado; ver 1.12 |
-| True-peak, antialiasing, salidas y continuidad | Pendiente; plan abajo |
+| Limitador de pico real entre muestras (true-peak) | Implementado y probado, con un límite medido; ver 1.13 |
+| Antialiasing, salidas y continuidad | Pendiente; plan abajo |
 | Paridad del extractor IA (contrato EXTRACTOR=2) | Implementado y probado; ver 1.7 |
 | Identidad de origen, particiones por canción y estéreo por canal | Implementado y probado; ver 1.8 |
 | Selección contra curva e instalado, informe reproducible | Implementado y probado; ver 1.9 |
@@ -461,6 +462,78 @@ Limitaciones y pendientes:
   volumen igualado (en canciones con intros largas o silencios la integrada sube menos que antes).
 - Sin sonoridad momentánea, de corto plazo ni rango (EBU Tech 3342): la rocola no los usa.
 
+### 1.13 Limitador de pico real entre muestras (etapa 2 de audio)
+
+Archivos: Rocola/PicoReal.cs (nuevo), Form1.Sonido.cs (dónde va en la cadena), pruebas/picoreal.cs y
+pruebas/ref_picoreal.py (nuevos); limite.cs, atoron.cs y arranque.cs miden ahora el limitador que va en
+la cadena.
+
+El limitador de antes (LookaheadLimiter) solo miraba las muestras. Pero el convertidor del equipo
+reconstruye la onda que pasa por ellas, y esa onda sube ENTRE muestras: un tono a fs/4 desfasado 45°
+tiene las muestras en 0,707 y la onda en 1,0. Medido con la referencia, el limitador viejo dejaba salir
+la onda hasta +1,94 dBTP con señales de prueba y hasta +0,99 dBTP con música tipo MP3 pasada por la
+cadena real (nivelado, realce y grave sintético).
+
+El nuevo (LimitadorPicoReal) es el mismo limitador con pre-escucha (misma ganancia para todos los
+canales, ataque que llega antes que el pico, soltar de 120 ms, techo 0,98), pero el pico que manda es
+el de la onda reconstruida:
+- Detector 4× con un filtro de interpolación de 24 coeficientes por fase (Kaiser β=6) y una parábola
+  donde la rejilla tiene un máximo. Solo DETECTA sobremuestreado: la señal no se sobremuestrea; la
+  ganancia se aplica a la frecuencia de siempre. Por simetría del filtro, 36 multiplicaciones por muestra
+  y canal; si ninguna de las 24 muestras en juego pasa de 0,98/2,30, ni se calcula (no puede pasar).
+- Espera 12 muestras (0,27 ms a 44,1 kHz) a que el detector vea el pico entero, APARTE de los 3 ms de
+  pre-escucha; al terminar la canción vacía las dos cosas. Retardo total 144 cuadros a 44,1 kHz, ya
+  incluido en la cuenta del fundido final.
+- Va al final: en Modest es lo último antes del fundido (que solo baja) y del paso a 16 bits con su
+  dither de un bit. En HD además va DESPUÉS del remuestreador de la salida moderna, que es lo último que
+  puede crear picos. Lo que haga Windows detrás (volumen del sistema, mejoras de sonido) no depende de la
+  rocola.
+- Lo que no pasa del techo sale intacto, bit a bit (solo retrasado).
+
+Cómo se eligió (medido, no supuesto; prototipos en Python contra una reconstrucción 64× exacta):
+- Con tonos largos cualquier diseño parece casi perfecto, porque alguna fase del filtro acierta; en un
+  golpe corto el pico puede caer en la fase que más cae. Por eso se midió con golpes, impulsos en posición
+  fraccionaria, ruido, cuadradas, sierras y señal recortada.
+- Error del detector en señales limitadas a 20 kHz (a 44,1): con 12 coeficientes por fase, hasta −0,82
+  dB; con 16, −0,32 dB; con 24, −0,10 dB (el elegido); más coeficientes apenas mejoran. Sin la parábola,
+  el margen medido baja de 0,15 a 0,016 dB.
+- Con material tipo MP3 (cortado a 16 o 19 kHz), incluso con el realce, cualquier diseño de 12 o más
+  coeficientes se equivoca menos de 0,03 dB; el de 24, menos de 0,013 dB.
+- Lo que el detector NO ve bien es lo que hay entre 0,4535·fs y Nyquist (20–22 kHz a 44,1): ahí su filtro
+  se corta. Se queda corto hasta 0,18 dB con ruido blanco sin filtrar y 0,25 dB con un master recortado
+  sin comprimir; con 64 coeficientes seguiría en 0,14 dB. Es un límite de cualquier detector 4×.
+
+Margen de salida MEDIDO (referencia independiente pruebas/ref_picoreal.py: interpolación de banda
+limitada exacta a 32×, se equivoca menos de 0,0003 dB en tonos de 1 a 20 kHz):
+- Señales limitadas a 20 kHz, a 22,05/44,1/48/96 kHz, mono, estéreo y 6 canales: la onda sale como mucho
+  a −0,152 dBTP. Techo −0,175 dB: quedan 0,15 dB hasta 0 dBTP.
+- Música tipo MP3 por la cadena real (nivelado +4 dB, realce 60 %, grave 80 %): −0,145 dBTP.
+- LÍMITE: con contenido fuerte hasta Nyquist (saltos en seco, ruido blanco sin filtrar) la onda puede
+  pasar de 0 dBTP: +0,018 dBTP, y +0,217 dBTP en la cadena con platillos de ruido blanco hasta 22 kHz
+  (extremo que un MP3 o un AAC no tienen; un WAV/FLAC de un CD muy recortado sí podría acercarse). El
+  viejo, con esas mismas señales, +0,89 dBTP. No se bajó el techo para taparlo.
+  Alternativas concretas si eso importa en tu equipo: bajar el techo lo medido (0,25 dB: de 0,98 a
+  0,952), o un detector de 64 coeficientes por fase (se queda en 0,14 dB, cuesta el triple).
+
+Comprobado: pruebas/picoreal.cs (35 comprobaciones): filtro (fase 0 = la muestra, simetrías, ganancia
+máxima), casos al estilo de EBU Tech 3341 15–19 con la verdad analítica (fs/4 a 0° y 45°, fs/6 a 60°,
+fs/8 a 67,5°, fs/4 a +3 dBTP: error ≤ 0,006 dB), detector por bloques igual bit a bit que muestra a
+muestra, contra la referencia (se queda corto ≤ 0,10 dB; lee de más ≤ 0,2 dB, que solo limita antes);
+salida contra la referencia a cuatro frecuencias y 1/2/6 canales; intacto bajo el techo; silencio,
+fuente vacía, archivos de 1, 7, 100 y 200 cuadros, final a todo volumen, saltos bruscos (lo que deja un
+salto de posición), origen que parte cuadros y lecturas chicas (bit a bit iguales); la misma ganancia en
+los dos canales (diferencia 7e-8); tonos sostenidos sin distorsión y ganancia asentada que no se mueve
+(sin bombeo); cableado en las dos salidas. En rojo al quitar: la rejilla fina, la parábola, la espera del
+detector, el umbral de salto, la corrección final. limite.cs exige lo mismo a los dos limitadores: el
+nuevo no aplana ni una muestra en los golpes secos (el viejo, 12).
+Coste en esta máquina (Mono, que hace las cuentas en float convirtiéndolas a double y exagera): sin
+limitar, lo mismo que el viejo (39–44 frente a 38–42 ns por muestra); limitando, 111–119 frente a 36
+(≈ 10 ms por segundo de música estéreo). En la cadena completa por bloque de 50 ms (atoron.cs): de 0,83
+a 1,01–1,15 ms; con la estimación de «el bar es 4 veces más lento», 4,0–4,6 ms por bloque, lejos de los
+16,7 ms de un cuadro de pantalla. Por eso Modest usa el mismo detector. No medido en XP real ni en el
+equipo del bar.
+LookaheadLimiter ya no va en la cadena; se conserva como referencia de las pruebas.
+
 ## 2. Comprobaciones y cómo repetirlas
 
 En cada repositorio, con sus herramientas de compilación .NET, Python con NumPy y FFmpeg:
@@ -474,8 +547,8 @@ El script:
 
 1. Compila GPU y CPU con advertencias tratadas como errores; ejecuta las 29 baterías
    de validar-capas.ps1. Compilar CPU no significa modificar su renderizado.
-2. Ejecuta doce baterías adicionales: dsee, limite, entrenador, iaparidad, iaorigen, sonoridad,
-   iadatos, eqauto, calidad, nivel, bajoauto y bajo.
+2. Ejecuta trece baterías adicionales: dsee, limite, entrenador, iaparidad, iaorigen, sonoridad,
+   picoreal, iadatos, eqauto, calidad, nivel, bajoauto y bajo.
 3. Ejecuta las pruebas Python de los entrenadores y sus protecciones (test_calidad_dsee,
    test_entrenar_eq, test_contrato_dsee, test_origen_dsee, test_estereo_dsee,
    test_seleccion_dsee y test_publicacion_dsee).
@@ -596,6 +669,11 @@ Dónde: LookaheadLimiter y salida posterior al último DSP/remuestreo.
 La referencia de medida de pico real es también BS.1770-5, citada arriba.
 No afirmar true-peak por pasar las pruebas actuales de sample-peak. No forzar sobremuestreo
 de toda la cadena en Modest. No activarlo globalmente antes de validar coste y escucha.
+
+Estado (23 de septiembre, etapa 2 de audio, las dos ramas): hechos 1 a 6 (ver 1.13), con un límite
+medido: con contenido fuerte entre 20 kHz y Nyquist la onda puede pasar hasta +0,22 dBTP (el viejo
++0,89). Queda: escucha A/B a volumen igualado, medir en XP real y en el equipo del bar, y decidir si
+conviene cualquiera de las dos alternativas del límite.
 
 ### D. Aliasing y transiciones de otros efectos
 

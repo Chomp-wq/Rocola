@@ -118,7 +118,9 @@ class Atoron
         object bass = Crea("DeepBassProvider", cad, 0.5f);
         if (bass != null) cad = (ISampleProvider)bass;
 
-        object lim = Crea("LookaheadLimiter", cad, 0.98f, 3.0);
+        // El limitador que de verdad va en la cadena: el de pico real, si la rocola lo trae.
+        object lim = Crea(TF.GetNestedType("LimitadorPicoReal", BindingFlags.NonPublic | BindingFlags.Public) != null
+                          ? "LimitadorPicoReal" : "LookaheadLimiter", cad, 0.98f, 3.0);
         if (lim != null) cad = (ISampleProvider)lim;
 
         object dith = Crea("DitherWaveProvider16", cad);

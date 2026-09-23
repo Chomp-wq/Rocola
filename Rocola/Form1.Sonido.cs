@@ -947,7 +947,10 @@ namespace Rocola
                 bassSongFactor = BassFactorFor(t.Path);   // cuanto le toca a ESTA cancion (1 = la perilla tal cual)
                 bassAutoBase = BajoAuto(t.Path);          // y de cuanto se parte, si el bajo va en automatico
                 curBass = new DeepBassProvider(tap, BassAmountNow());
-                LookaheadLimiter lim = new LookaheadLimiter(curBass, 0.98f, 3.0);
+                // LIMITADOR DE PICO REAL: el techo de 0,98 vale para la onda que reconstruye el DAC, no solo para
+                // las muestras (ver PicoReal.cs). Detras solo quedan el fundido (que solo baja) y el paso a 16 bits
+                // con su dither de un bit.
+                LimitadorPicoReal lim = new LimitadorPicoReal(curBass, 0.98f, 3.0);
                 audioTailDelay += lim.DelayFrames;
                 NAudio.Wave.ISampleProvider outChain = lim;
                 if (crossfadeSec > 0.01f)
@@ -1941,6 +1944,10 @@ namespace Rocola
         // que llegue el pico, recuperandola despacio. Asi se puede subir mucho el volumen y que suene fuerte pero
         // LIMPIO. Aplica la MISMA ganancia a los dos canales (no mueve la imagen estereo). ~5 operaciones por
         // muestra: barato hasta en la XP. Va al final de la cadena, tras el nivelado/realce.
+        //
+        // Ya NO va en la cadena: lo reemplaza LimitadorPicoReal (PicoReal.cs), que hace lo mismo mirando la onda
+        // reconstruida entre muestras. Se conserva como referencia: las pruebas (limite, picoreal) comparan
+        // contra el lo que se gano.
         private sealed class LookaheadLimiter : NAudio.Wave.ISampleProvider
         {
             private readonly NAudio.Wave.ISampleProvider src;
