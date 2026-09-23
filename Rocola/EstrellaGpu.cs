@@ -65,6 +65,8 @@ namespace Rocola
         private string starGenre;
         private float starGenreTarget=1,starGenreDrive=1,starDrive,starAttack,starPreviousEnergy;
         private double starTravelX=.65,starTravelY=2.8;
+        private float starVelocityX=.0234f,starVelocityY=.018f;
+        private double starEchoPhase;
         internal void SetStarGenre(string genre)
         {
             if(string.Equals(starGenre,genre,StringComparison.OrdinalIgnoreCase))return;
@@ -90,10 +92,27 @@ namespace Rocola
             starDrive+=(target-starDrive)*(1-(float)Math.Exp(-dt*(target>starDrive?12:3)));
             if(LunaActiva){
                 float calm=.18f+.82f*SafeMoonLevel(idleBlend);
-                starTravelX+=dt*calm*(.13+.62*starDrive+.32*starAttack);
-                starTravelY+=dt*calm*(.10+.30*mid+.22*high+.12*starAttack)*starGenreDrive;
+                // El analizador entrega escalones. Filtrar la velocidad y su integral
+                // mantiene continua la trayectoria incluso durante ataques bruscos.
+                AdvanceStarVelocity(ref starTravelX,ref starVelocityX,calm*(.13f+.62f*starDrive+.32f*starAttack),dt);
+                AdvanceStarVelocity(ref starTravelY,ref starVelocityY,calm*(.10f+.30f*mid+.22f*high+.12f*starAttack)*starGenreDrive,dt);
+                starEchoPhase=(starEchoPhase+dt*(.30+.45*starDrive))%1.0;
                 moonMotionTime+=dt*MoonMotionSpeed(idleBlend)*(1+.55*starDrive);
             }
+        }
+        private static void AdvanceStarVelocity(ref double phase,ref float velocity,float target,float dt)
+        {
+            const double response=5;
+            double blend=1-Math.Exp(-dt*response);
+            phase+=target*dt+(velocity-target)*blend/response;
+            velocity+=(target-velocity)*(float)blend;
+        }
+        private PointF StarSceneCenter()
+        {
+            // Reservar el tamano maximo, no el del pulso actual: latir/crecer
+            // no desplaza los limites de la orbita a cada golpe de bateria.
+            float margin=DetailedMoonDiameter(Height,1)*MoonSceneScale(1,1,true)*.5f;
+            return StarTravelCenter(Width,Height,starTravelX,starTravelY,margin,StatusTopY,IdleRise);
         }
         internal static PointF StarTravelCenter(int w,int h,double px,double py,float radius,float statusTop,float rise)
         {
@@ -150,18 +169,19 @@ namespace Rocola
                 if(dx*dx+dy*dy<1)return;
             }
             starEchoes[starEchoHead]=new StarEcho {Time=now,X=x,Y=y,Radius=radius,Angle=angle,
-                Strength=.48f+.52f*starDrive,Color=StarEchoColor(color,starEchoHead,1)};
+                Strength=.48f+.52f*starDrive,Color=StarEchoColor(color)};
             starEchoHead=(starEchoHead+1)%starEchoes.Length;
             starEchoCount=Math.Min(starEchoes.Length,starEchoCount+1);starEchoLast=now;
         }
-        internal static uint StarEchoColor(uint color,int index,float alpha)
+        private uint StarEchoColor(uint color)
         {
-            // Ecos espectrales mezclados con la portada; no un arcoiris ajeno al cielo.
-            uint accent=index%3==0?0x71E6FFu:index%3==1?0xAE8CFFu:0xFF91CCu;
-            uint r=(((color>>16)&255)*2+((accent>>16)&255)*3)/5;
-            uint g=(((color>>8)&255)*2+((accent>>8)&255)*3)/5;
-            uint b=((color&255)*2+(accent&255)*3)/5;
-            return ((uint)(255*SafeMoonLevel(alpha))<<24)|(r<<16)|(g<<8)|b;
+            // Paleta real del disco/genero y fase continua, nunca el indice del
+            // buffer circular. Cada eco conserva el color de cuando nacio.
+            uint accent=PaletteFlow.Sample(flowColors,(float)(starEchoPhase*1.25),0);
+            uint rgb=PaletteFlow.Mix(color,accent,.85f);
+            // Luz neutra para leer las facetas con portadas oscuras; sin colores fijos.
+            return 0xFF000000u|((48+((rgb>>16)&255)*207/255)<<16)|
+                ((48+((rgb>>8)&255)*207/255)<<8)|(48+(rgb&255)*207/255);
         }
         private static void RotateStarQuad(D3D9.Vtx[] quad,float x,float y,float angle)
         {

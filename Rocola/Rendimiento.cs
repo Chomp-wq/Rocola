@@ -826,7 +826,7 @@ namespace Rocola
             lAd.Text = "Efectos GPU: el coste depende del equipo.\nPruebalos con musica; puedes apagarlos por separado.";
             Interruptor swFlujo=new Interruptor();swFlujo.SetBounds(16,392,424,26);
             swFlujo.Font=fNom;swFlujo.ForeColor=cTexto;swFlujo.Acento=cAc;
-            swFlujo.Text="Colores del fondo en movimiento (GPU)";swFlujo.Checked=coloresFluidos;
+            swFlujo.Text="Colores del espectro en movimiento (GPU)";swFlujo.Checked=coloresFluidos;
             swFlujo.CheckedChanged+=delegate { coloresFluidos=swFlujo.Checked;AplicaEfectosGpu();f3CambioGraf=true; };
             tAd.Controls.Add(swFlujo);
 

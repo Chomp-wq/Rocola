@@ -40,7 +40,7 @@ namespace Rocola
     public partial class Form1 : Form
     {
         // ------------------------------------------------------------------ 1) EL FORMATO
-        internal Func<IWavePlayer> fabricaSalidaClasica;   // solo la ponen las pruebas (null = WaveOut de verdad)
+        internal Func<IWavePlayer> fabricaSalidaClasica = null;   // solo la ponen las pruebas (null = WaveOut de verdad)
         private string formatoSalida = "";                 // "float32" o "PCM16+TPDF": lo que recibe la salida clasica
         private bool flotanteRechazado;                    // en esta sesion el sistema ya rechazo la coma flotante
 
@@ -255,7 +255,7 @@ namespace Rocola
         }
 
         // ------------------------------------------------------------------ 4) CAMBIO DE DISPOSITIVO
-        internal Func<string> idSalidaActual;     // solo la ponen las pruebas (null = preguntar a Windows)
+        internal Func<string> idSalidaActual = null;     // solo la ponen las pruebas (null = preguntar a Windows)
         private string idSalidaAbierta;           // el aparato en el que se abrio la salida (null = no se sabe)
 
         // El aparato de salida predeterminado ahora mismo (Vista o posterior; en XP no se pregunta: null).

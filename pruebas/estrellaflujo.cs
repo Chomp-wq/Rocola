@@ -91,6 +91,60 @@ class EstrellaFlujo {
    b.Save(Path.Combine(dir,"estrella-icono.png"),ImageFormat.Png);
   }
  }
+ static void SmoothMotion(){
+  MethodInfo integrate=gpu.GetMethod("AdvanceStarVelocity",F);
+  double reference=-1;
+  foreach(int fps in new int[]{24,60,144,240}){
+   object[] args={0d,0f,1f,1f/fps};
+   for(int i=0;i<fps*4;i++){
+    args[2]=i<fps*2?1f:0f;
+    double phase=(double)args[0];float velocity=(float)args[1],dt=(float)args[3];
+    integrate.Invoke(null,args);
+    float next=(float)args[1];double distance=(double)args[0]-phase;
+    Check(Math.Abs(next-velocity)<=5*dt+.00001,"Velocidad cambia de golpe");
+    Check(distance>=Math.Min(velocity,next)*dt-.00001&&distance<=Math.Max(velocity,next)*dt+.00001,"Posicion no integra la velocidad");
+   }
+   if(reference<0)reference=(double)args[0];
+   else Check(Math.Abs((double)args[0]-reference)<.00001,"Aceleracion dependiente de FPS");
+  }
+  using(Control p=(Control)Activator.CreateInstance(gpu,true)){
+   p.Size=new Size(3440,1440);Set(p,"idleBlend",1f);
+   Set(p,"lunaBeat",0f);PointF a=(PointF)Run(p,"StarSceneCenter");
+   Set(p,"lunaBeat",1f);PointF b=(PointF)Run(p,"StarSceneCenter");
+   Check(a==b,"El pulso mueve los limites de la orbita");
+   for(int i=0;i<2400;i++){
+    float dt=i%3==0?1f/24:i%3==1?1f/144:1f/60;
+    float oldX=(float)Get(p,"starVelocityX"),oldY=(float)Get(p,"starVelocityY");
+    Run(p,"AdvanceStarMusic",dt,i%8<4?1f:0f,i%5<2?1f:0f,i%3==0?1f:0f);
+    Check(Math.Abs((float)Get(p,"starVelocityX")-oldX)<6*dt,"Tiron de graves");
+    Check(Math.Abs((float)Get(p,"starVelocityY")-oldY)<6*dt,"Tiron de medios/agudos");
+   }
+  }
+ }
+ static void EchoPalette(Control p){
+  Set(p,"ColoresFluidos",false);
+  double now=100000;
+  foreach(Color c in new Color[]{Color.Red,Color.Lime,Color.Blue,Color.White}){
+   Run(p,"SetCoverPalette",new Color[]{c},1f);
+   for(int i=0;i<600;i++)Run(p,"AdvanceCoverPalette",now+=16);
+   uint rgb=(uint)Run(p,"StarEchoColor",0xFFFFFFFFu);
+   int r=(int)((rgb>>16)&255),g=(int)((rgb>>8)&255),b=(int)(rgb&255);
+   if(c==Color.Red)Check(r>g*2&&r>b*2,"Estela roja conserva acentos fijos");
+   if(c==Color.Lime)Check(g>r*2&&g>b*2,"Estela verde conserva acentos fijos");
+   if(c==Color.Blue)Check(b>r*2&&b>g*2,"Estela azul conserva acentos fijos");
+   if(c==Color.White)Check(r==g&&g==b,"Portada blanca inventa tintes");
+  }
+  Run(p,"SetCoverPalette",new Color[]{Color.Red,Color.Lime,Color.Blue,Color.Gold},1f);
+  for(int i=0;i<600;i++)Run(p,"AdvanceCoverPalette",now+=16);
+  HashSet<uint> colors=new HashSet<uint>();
+  for(int i=0;i<192;i++){Set(p,"starEchoPhase",i/192d);colors.Add((uint)Run(p,"StarEchoColor",0xFFFFFFFFu));}
+  Check(colors.Count>60,"La estela solo repite tres colores");
+  Set(p,"starEchoHead",0);uint old=(uint)Run(p,"StarEchoColor",0xFFFFFFFFu);
+  Set(p,"starEchoHead",11);Check(old==(uint)Run(p,"StarEchoColor",0xFFFFFFFFu),"El buffer circular decide el color");
+  Set(p,"starDrive",0f);double before=(double)Get(p,"flowPhase");
+  Run(p,"AdvanceColorFlow",.1d);
+  Check(Math.Abs(((double)Get(p,"flowPhase")-before+1)%1-.0038)<.000001,"Velocidad del flujo incorrecta");
+ }
  static void Palette(Control p){
   uint[] source={0xFFFFFFu,0u,0xFF80C0u,0x70BFFFu};
   foreach(double pos in new double[]{0,.001,.25,.499,.75,.999,1,1000.25,-.25}){
@@ -100,7 +154,7 @@ class EstrellaFlujo {
   Set(p,"ColoresFluidos",true);Set(p,"NebColor",0xFF3080FFu);Set(p,"NebColor2",0xFFFF4070u);
   Run(p,"SetCoverPalette",new Color[]{Color.White,Color.Black,Color.HotPink,Color.SteelBlue},1f);
   double now=0;for(int i=0;i<600;i++)Run(p,"AdvanceCoverPalette",now+=16);
-  object colors=Get(p,"flowColors"),mesh=Get(p,"flowNebula");
+  object colors=Get(p,"flowColors");
   HashSet<uint> seen=new HashSet<uint>();
   for(int i=0;i<4000;i++){
    Run(p,"AdvanceCoverPalette",now+=16);
@@ -108,7 +162,7 @@ class EstrellaFlujo {
    Check((c>>24)==128,"Flujo cambia alfa");seen.Add(c&0xFFFFFFu);
   }
   Check(seen.Count>100,"Colores siguen fijos en el centro");
-  Check(Object.ReferenceEquals(colors,Get(p,"flowColors"))&&Object.ReferenceEquals(mesh,Get(p,"flowNebula")),"Reasigna buffers de flujo");
+  Check(Object.ReferenceEquals(colors,Get(p,"flowColors")),"Reasigna buffers de flujo");
   Set(p,"ColoresFluidos",false);for(int i=0;i<600;i++)Run(p,"AdvanceCoverPalette",now+=16);
   Check((uint)Run(p,"FlowColor",0x80554433u,.5f,.4f)==0x80554433u,"Apagar flujo no recupera colores");
   Set(p,"ColoresFluidos",true);Run(p,"SetCoverPalette",null,0f);
@@ -124,7 +178,7 @@ class EstrellaFlujo {
   using(Font f=new Font("Segoe UI",9))
   using(Panel page=(Panel)Call(form,owner,"PaginaFondo",f,f,f,f,Color.White,Color.Gray,Color.Gray)){
    Bounds(page);
-   Control toggle=Find(page,"Colores del fondo en movimiento (GPU)");
+   Control toggle=Find(page,"Colores del espectro en movimiento (GPU)");
    Check(toggle!=null,"Falta control");
    foreach(bool b in new bool[]{true,false,true}){
     toggle.GetType().GetProperty("Checked",F).SetValue(toggle,b,null);
@@ -148,17 +202,17 @@ class EstrellaFlujo {
   try{
    Set(panel,"flowBlend",1f);Check((bool)Run(panel,"DibujaUnCuadro"),"No presenta");
    IntPtr texture=(IntPtr)Get(panel,"lunaTex"),neb=(IntPtr)Get(panel,"nebTex");
-   object sky=Get(panel,"stars"),mesh=Get(panel,"flowNebula");
-   uint oldSky=VertexColor(sky,"flowSky"),oldNeb=VertexColor(panel,"flowNebula"),oldStar=VertexColor(sky,"starV");
+   object sky=Get(panel,"stars");
+   uint oldSky=VertexColor(sky,"skyV"),oldNeb=VertexColor(panel,"nieblaQuad"),oldStar=VertexColor(sky,"starV");
    uint oldAur=((uint[])Get(panel,"aurNc"))[0];
    Set(panel,"flowPhase",.65d);
    Check((bool)Run(panel,"DibujaUnCuadro"),"No presenta flujo");
-   Check(oldSky!=VertexColor(sky,"flowSky"),"Cielo fijo");
-   Check(oldNeb!=VertexColor(panel,"flowNebula"),"Nebulosa fija");
-   Check((oldStar&0xFFFFFFu)!=(VertexColor(sky,"starV")&0xFFFFFFu),"Estrellas fijas");
+   Check(oldSky==VertexColor(sky,"skyV"),"La paleta invade el cielo");
+   Check(oldNeb==VertexColor(panel,"nieblaQuad"),"La paleta invade la nebulosa");
+   Check((oldStar&0xFFFFFFu)==(VertexColor(sky,"starV")&0xFFFFFFu),"La paleta recolorea las estrellas de fondo");
    Check(oldAur!=((uint[])Get(panel,"aurNc"))[0],"Aurora fija");
    Check(texture==(IntPtr)Get(panel,"lunaTex")&&neb==(IntPtr)Get(panel,"nebTex"),"Colores resuben textura");
-   Check(Object.ReferenceEquals(mesh,Get(panel,"flowNebula")),"Malla no reutilizada");
+   Check(sky.GetType().GetField("flowSky",F)==null&&gpu.GetField("flowNebula",F)==null,"Conserva mallas de tinte global innecesarias");
    foreach(float b in bands)Check(b==.5f,"Flujo modifica las frecuencias");
    // Comparacion de trabajo local (excluye Present), no benchmark del programa con biblioteca/audio.
    foreach(bool enabled in new bool[]{false,true,false,true}){
@@ -173,9 +227,9 @@ class EstrellaFlujo {
  }
  [STAThread]static int Main(string[] args){
   Assembly asm=Assembly.LoadFrom(args[0]);gpu=asm.GetType("Rocola.GpuPanel");form=asm.GetType("Rocola.Form1");flow=asm.GetType("Rocola.PaletteFlow");
-  Dynamics();Shape(Path.GetDirectoryName(args[0]));
-  using(Control p=(Control)Activator.CreateInstance(gpu,true)){Palette(p);Config(p);Hal(p,asm);}
-  foreach(string name in new string[]{"AdvanceStarMusic","AdvanceColorFlow","DrawFlowNebula"})
+  Dynamics();SmoothMotion();Shape(Path.GetDirectoryName(args[0]));
+  using(Control p=(Control)Activator.CreateInstance(gpu,true)){Palette(p);EchoPalette(p);Config(p);Hal(p,asm);}
+  foreach(string name in new string[]{"AdvanceStarMusic","AdvanceStarVelocity","AdvanceColorFlow","StarEchoColor","StarSceneCenter"})
    foreach(Codigo.Paso step in Codigo.Pasos(gpu.GetMethod(name,F)))Check(step.Op!=0x8D,"Reserva arreglos por cuadro: "+name);
   Console.WriteLine("OK estrella/icono/flujo: "+checks+" comprobaciones. No mide FPS del programa con musica.");return 0;
  }
