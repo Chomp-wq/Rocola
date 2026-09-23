@@ -35,6 +35,7 @@ desarrollo y medición. La revisión anterior está en REVISION_AUDIO_2026-09-22
 | WASAPI exclusivo (HD) con caída automática al compartido y el volumen de Windows respetado | Implementado por tu decisión y probado con un aparato simulado; falta oírlo en el bar; ver 1.19 |
 | Medida de rendimiento: la canción muda sin tocar el volumen de Windows | Defecto corregido y probado (las dos ramas); ver 1.19 |
 | Audio de vídeo (reproductor de Windows Media) | Documentado y con batería que fija las reglas de hoy; decidido: opción A, sigue el reproductor sin cambios; ver 1.20 |
+| DSEE: copia por bloques (tonos limpios), nivel de la curva de diseño, corte quieto | Implementado y probado (las dos ramas); falta oírlo; ver 1.21 |
 | Paridad del extractor IA (contrato EXTRACTOR=2) | Implementado y probado; ver 1.7 |
 | Identidad de origen, particiones por canción y estéreo por canal | Implementado y probado; ver 1.8 |
 | Selección contra curva e instalado, informe reproducible | Implementado y probado; ver 1.9 |
@@ -1156,6 +1157,92 @@ exacto dentro de los límites (×0,15 a ×4); «Subir TODO» no empuja a los med
 no baja de 40; y todo el que pone volumen al reproductor lo saca de `VideoVolumeFor`. Cómo repetirlo:
 `sh pruebas/todo.sh videoaudio` o validar-audio-mejoras.ps1.
 
+### 1.21 El DSEE: agudos recreados limpios, parejos y con el corte quieto (las dos ramas)
+
+Pediste empezar por el DSEE. Es solo código (`Form1.Sonido.cs`, el reconstructor de agudos). No cambia ningún
+archivo de datos ni añade ningún interruptor.
+
+Qué fallaba (medido con el código de antes, con Mono y señales sintéticas):
+- **Aspereza en los tonos.** Cada bin de arriba copiaba al de la mitad de su frecuencia. Un tono estable recreado
+  salía con bandas laterales casi tan fuertes como él: según la señal, entre el 45 y el 54 % de su energía salía
+  limpia con ventanas de 2048 (Modest, y HD en el nivel normal), y entre el 11 y el 14 % con las de 4096 (HD). Se
+  oye como aspereza o trémolo en los agudos recreados de voces, cuerdas y sintetizadores.
+- **Un nivel al azar.** La costura se medía en los 6 bins de justo debajo del corte. El corte medido queda hasta
+  300 Hz por encima de donde acaba la música, y ahí esos bins están casi vacíos: casi siempre se recreaba muy poco.
+  Lo tapaba, a medias, el propio baile del corte. Cuando en alguna ventana caía más abajo, los agudos aparecían de
+  golpe: con 4096, una de cada diez ventanas sonaba unos 25 dB más fuerte que las demás.
+- **Pausas que apagaban el DSEE.** Cuando solo sonaba el bajo, lo que la ventana derrama de él hacía creer que la
+  canción estaba completa. El corte subía hacia 20 kHz y se dejaba de recrear hasta el golpe siguiente.
+
+Qué hace ahora:
+1. **Copia por bloques**, como el SBR de los códecs AAC. El trozo de la octava bajo el corte sube entero, con un
+   desplazamiento fijo. Como las ventanas avanzan media ventana, la fase se corrige para que siga de una ventana a
+   la siguiente. Así, un tono estable sale como un tono estable.
+   - Diferencia de fondo: la copia de antes conservaba la octava (un tono de 7 kHz subía a 14 kHz). La de bloques
+     lo sube a unos 13 kHz y, más arriba, lo repite a unos 18,8 kHz, como hacen los códecs AAC.
+2. **Cuánto suena cada trozo de ~500 Hz** lo sigue decidiendo la envolvente de siempre: la curva clásica o la IA
+   propia.
+   - Se mide sobre cuánto suena la fuente por esa zona sin contar picos ni huecos sueltos: la mediana de tres
+     bandas vecinas de 1/12 de octava.
+   - Se suavizan las dos energías de la proporción (~50 ms). Un golpe de platillo llega en la misma ventana, y las
+     pausas casi mudas no cuentan.
+3. **El nivel es la curva de diseño de siempre**: la costura por 0,85 y unos −9 dB por octava. Suena a 3/8 de
+   potencia, que es a lo que sonaba la copia de antes cuando funcionaba: al solapar ventanas perdía 4,26 dB.
+4. **La costura se mide donde hay música**: justo debajo de donde empieza la caída del filtro del códec.
+5. **El corte con el que se recrea está quieto.** Solo se mueve si el medido se aparta más de un 2 %. No se mide:
+   - en pausas sin nada entre 4 y 8 kHz (más de 45 dB por debajo del cuerpo de la canción);
+   - en la ventana de arranque;
+   - en las ventanas del final, rellenas con ceros.
+
+Lo que no cambia:
+- El contrato de la IA: `MakePair`, `BuildIaFeatures` y sus 12 bandas. Los datos que junta la rocola para
+  entrenarla son los mismos.
+- Con el DSEE apagado, la salida es idéntica bit a bit.
+- Una canción completa pasa intacta.
+- El encendido y apagado con fundido de Ctrl+F3.
+
+Medido con el código real (Mono en Linux, las señales sintéticas de `pruebas/dsee.cs`; no es tu música ni se
+escuchó). Ventana de 2048; entre paréntesis, la de 4096:
+
+| | Antes | Ahora |
+|---|---|---|
+| Tono de 7 kHz recreado limpio | 44,9 % (13,9 %) | 98,8 % (98,5 %) |
+| Ruido cortado en 12 kHz: lo recreado junto al corte, contra la curva de diseño (−5,9 dB) | −45 dB (−61 dB) | −6,0 dB (−6,0 dB) |
+| Ruido recreado alrededor de un tono fuerte, contra el mismo ruido sin tono | hasta 36 dB (49 dB) | hasta 0,9 dB |
+| Golpes de charles entre pausas, contra el mismo ruido seguido | 43 dB (29 dB) por debajo | a 0,1 dB |
+| Salto de la banda recreada de una ventana a la siguiente (la fuente salta 0,54 dB) | 2,9 dB (9,0 dB) | 1,0 dB (1,1 dB) |
+| Coste con música estéreo, en esta máquina | 8,4 ms por segundo (9,0) | 9,1 ms por segundo (9,5): +6 a +8 % |
+
+Dos mezclas sintéticas pasadas a MP3 con LAME (128, 96 y 64 kbps). La banda recreada, contra el original sin
+comprimir:
+- Con platillos, charles y acordes con armónicos hasta 16 kHz: antes de −9 a −23 dB; ahora de −6 a −12 dB.
+- Con charles en corcheas sobre bajo y acordes sin agudos: antes de −33 a −80 dB (casi nada); ahora de −7 a −18 dB.
+- Lo que la banda recreada salta de una ventana a otra queda parecido a lo que salta el original.
+
+**Lo que vas a notar.** En muchos MP3 el DSEE de antes hacía muy poco o parpadeaba. Ahora recrea los agudos de
+forma pareja, así que en esas canciones va a sonar más brillante que antes (en estas mezclas sigue de 6 a 18 dB por
+debajo del original). Para compararlo, enciende y apaga el DSEE en Ctrl+F3 con la misma canción. Si te parece
+demasiado brillo, se baja cambiando una sola constante (`PotenciaDeAntes`), sin tocar nada más.
+
+Pruebas automáticas:
+- `pruebas/dsee.cs`, sección 11 (nueva), con las medidas de la tabla. En HD son 22 comprobaciones; en Modest 14,
+  porque no tiene ventana de 4096. Incluye:
+  - con la IA de fábrica, el tono sale limpio;
+  - con una IA de prueba que siempre dice lo mismo, un tono no mueve el ruido de alrededor;
+  - la mediana y la fuente sin picos, comprobadas por separado.
+- `pruebas/iaparidad.cs`: `RegenNeural` ya no copia, deja la escala por bin (`ganHoy`) y la copia la hace
+  `CopiaPorBloques`. La sección 2 mira esa escala; las bandas son las mismas.
+- `transiciones.cs` (fundidos de Ctrl+F3), sin cambios.
+- Roturas a propósito: 20; la batería detecta 18. No detecta dos cosas:
+  - quitar la interpolación entre sub-bandas, que evita escalones de hasta ~0,5 dB entre trozos de 500 Hz;
+  - quitar el tope de ×6 de la escala, una salvaguarda para huecos de la fuente que, con la fuente medida sin
+    picos ni huecos, casi nunca actúa.
+- Tandas completas en verde en las dos ramas.
+
+No comprobado: escucharlo, tu música, Windows, XP real, el DAC y las bocinas del bar.
+
+Cómo volver atrás: basta con el ejecutable anterior. No cambia ningún archivo de datos.
+
 ## 2. Comprobaciones y cómo repetirlas
 
 En cada repositorio, con sus herramientas de compilación .NET, Python con NumPy y FFmpeg:
@@ -1411,6 +1498,28 @@ Windows Media, la música y la sincronía, con tres caminos y sus consecuencias 
 ni se añadió ninguna dependencia. Lo implementado es la batería videoaudio, que fija las reglas de hoy (nunca más
 de 100 en el reproductor, emparejado dentro de límites, noche solo baja). Decisión (23 de septiembre): opción A, el
 reproductor sigue como está.
+
+Decisión (23 de septiembre): sin fundido cruzado. Las canciones siguen una tras otra sin solaparse (ver 1.17) y
+no se implementa el solape.
+
+### H. Las bocinas del bar (dato para decidir el grave y el estéreo)
+
+El 23 de septiembre contaste cómo está montado el sonido:
+- 4 bocinas en el gabinete de la rocola, conectadas a un amplificador;
+- 3 bocinas más repartidas por el billar, de tipo desconocido.
+
+Esto importa para tres propuestas pendientes, que no se han hecho:
+1. **Grave por debajo de ~120 Hz igual por los dos canales.** Con bocinas repartidas, mucha gente oye sobre todo
+   una. Si el grave de una mezcla va más por un lado, se pierde. Sirve con cualquier tipo de bocina.
+2. **Estrechar un poco el estéreo** para quien está lejos de una bocina.
+3. **Quitar el grave que las bocinas no reproducen** (si no bajan de ~80 Hz). Antes hay que saber qué bocinas son;
+   con un subwoofer no conviene.
+
+Para decidir, hace falta saber:
+- de qué canal va cada una de las 3 del billar, y si comparten amplificador con las del gabinete;
+- al menos el tamaño del cono de las bocinas.
+
+Una prueba sencilla: poner un tono que baje de 200 a 30 Hz y anotar dónde deja de oírse en cada zona.
 
 ## 4. Criterios de entrega y despliegue
 

@@ -143,6 +143,175 @@ class Dsee
     // Que metodos llama otro metodo, leyendo su codigo compilado. Sirve para comprobar que una funcion
     // sigue ENCHUFADA donde debe: un ayudante puede existir, estar documentado y no llamarlo nadie.
 
+    // ---------- Para MEDIR lo que se oye en la banda recreada (seccion 11) ----------
+    // Una FFT de base 2 en doble precision, solo para medir: la del reconstructor es la suya.
+    static void FftD(double[] re, double[] im, bool inversa)
+    {
+        int n = re.Length;
+        for (int i = 1, j = 0; i < n; i++)
+        {
+            int bit = n >> 1;
+            for (; (j & bit) != 0; bit >>= 1) j ^= bit;
+            j ^= bit;
+            if (i < j) { double t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t; }
+        }
+        for (int largo = 2; largo <= n; largo <<= 1)
+        {
+            int mitad = largo >> 1;
+            double ang = 2 * Math.PI / largo * (inversa ? 1 : -1);
+            for (int k = 0; k < mitad; k++)
+            {
+                double cr = Math.Cos(ang * k), ci = Math.Sin(ang * k);
+                for (int i = k; i < n; i += largo)
+                {
+                    int b = i + mitad;
+                    double xr = re[b] * cr - im[b] * ci, xi = re[b] * ci + im[b] * cr;
+                    re[b] = re[i] - xr; im[b] = im[i] - xi; re[i] += xr; im[i] += xi;
+                }
+            }
+        }
+        if (inversa) for (int i = 0; i < n; i++) { re[i] /= n; im[i] /= n; }
+    }
+
+    // Deja una senal (largo potencia de 2) solo entre hzMin y hzMax, con NADA encima: como la deja un codec.
+    static double[] Recorta(double[] x, double hzMin, double hzMax)
+    {
+        int n = x.Length; double[] re = (double[])x.Clone(), im = new double[n];
+        FftD(re, im, false);
+        for (int k = 0; k < n; k++)
+        {
+            double hz = (double)(k <= n / 2 ? k : n - k) * FS / n;
+            if (hz < hzMin || hz > hzMax) { re[k] = 0; im[k] = 0; }
+        }
+        FftD(re, im, true);
+        return re;
+    }
+    // Ruido blanco reproducible entre 200 Hz y hzMax, a ese RMS.
+    static float[] RuidoHasta(int n, int semilla, double hzMax, double rms)
+    {
+        Random r = new Random(semilla);
+        double[] g = new double[n];
+        for (int i = 0; i < n; i++)
+        { double u1 = 1.0 - r.NextDouble(), u2 = r.NextDouble(); g[i] = Math.Sqrt(-2 * Math.Log(u1)) * Math.Cos(2 * Math.PI * u2); }
+        double[] re = Recorta(g, 200, hzMax);
+        double s = 0; for (int i = 0; i < n; i++) s += re[i] * re[i];
+        double esc = rms / Math.Sqrt(s / n);
+        float[] x = new float[n]; for (int i = 0; i < n; i++) x[i] = (float)(re[i] * esc);
+        return x;
+    }
+
+    // Potencia media por bin (ventanas de 8192 con solape de la mitad), desde la muestra 'desde'.
+    static double[] Psd(float[] y, int desde)
+    {
+        const int n = 8192; double[] acc = new double[n / 2 + 1]; int veces = 0;
+        double[] re = new double[n], im = new double[n];
+        for (int i = desde; i + n <= y.Length; i += n / 2)
+        {
+            for (int k = 0; k < n; k++) { re[k] = y[i + k] * (0.5 - 0.5 * Math.Cos(2 * Math.PI * k / n)); im[k] = 0; }
+            FftD(re, im, false);
+            for (int k = 0; k <= n / 2; k++) acc[k] += re[k] * re[k] + im[k] * im[k];
+            veces++;
+        }
+        for (int k = 0; k <= n / 2; k++) acc[k] /= Math.Max(1, veces);
+        return acc;
+    }
+    // dB de la MEDIA de una banda, y de su MEDIANA (el piso de ruido: un tono no la mueve).
+    static double Nivel(double[] psd, double lo, double hi)
+    {
+        double s = 0; int c = 0;
+        for (int k = (int)Math.Ceiling(lo * 8192 / FS); k * (double)FS / 8192 < hi; k++) { s += psd[k]; c++; }
+        return 10 * Math.Log10(s / c + 1e-30);
+    }
+    // El piso de ruido de la banda recreada contra otro, por 24avos de octava de 12,2 a 20,4 kHz: lo que mas se
+    // aparta. Tan finos para que una sub-banda que se hunda no quede escondida en la mediana de una banda ancha.
+    static double PeorPiso(double[] a, double[] b)
+    {
+        double peor = 0;
+        for (double lo = 12200; lo < 20400; lo *= Math.Pow(2, 1 / 24.0))
+        {
+            double hi = Math.Min(20400, lo * Math.Pow(2, 1 / 24.0));
+            peor = Math.Max(peor, Math.Abs(Piso(a, lo, hi) - Piso(b, lo, hi)));
+        }
+        return peor;
+    }
+    static double Piso(double[] psd, double lo, double hi)
+    {
+        List<double> v = new List<double>();
+        for (int k = (int)Math.Ceiling(lo * 8192 / FS); k * (double)FS / 8192 < hi; k++) v.Add(psd[k]);
+        v.Sort(); return 10 * Math.Log10(v[v.Count / 2] + 1e-30);
+    }
+
+    // Cuanto de la energia de un tono recreado es el tono y cuanto bandas laterales: el pico mas fuerte entre
+    // 12,2 y 20,4 kHz, la energia a +-2 Hz de el entre la de +-250 Hz (ventana Blackman-Harris de 2^17).
+    static double Pureza(float[] y, int desde, out double f0)
+    {
+        int n = 1 << 17; double[] re = new double[n], im = new double[n];
+        for (int k = 0; k < n; k++)
+        {
+            double a = 2 * Math.PI * k / (n - 1);
+            re[k] = y[desde + k] * (0.35875 - 0.48829 * Math.Cos(a) + 0.14128 * Math.Cos(2 * a) - 0.01168 * Math.Cos(3 * a));
+        }
+        FftD(re, im, false);
+        double hz = (double)FS / n; int lo = (int)(12200 / hz), hi = (int)(20400 / hz), kp = lo; double pm = 0;
+        for (int k = lo; k < hi; k++) { double p = re[k] * re[k] + im[k] * im[k]; if (p > pm) { pm = p; kp = k; } }
+        f0 = kp * hz;
+        double limpio = 0, total = 0; int ancho = (int)(250 / hz);
+        for (int k = kp - ancho; k <= kp + ancho; k++)
+        { double p = re[k] * re[k] + im[k] * im[k]; total += p; if (Math.Abs(k - kp) * hz <= 2.0) limpio += p; }
+        return 100 * limpio / total;
+    }
+
+    // Cuanto salta (dB, desviacion) la energia de una banda de una ventana de ~46 ms a la siguiente.
+    static double Vaiven(float[] y, int desde, double lo, double hi)
+    {
+        const int n = 2048; double[] re = new double[n], im = new double[n];
+        double prev = double.NaN, s = 0, s2 = 0; int c = 0;
+        for (int i = desde; i + n <= y.Length; i += n / 2)
+        {
+            for (int k = 0; k < n; k++) { re[k] = y[i + k] * (0.5 - 0.5 * Math.Cos(2 * Math.PI * k / n)); im[k] = 0; }
+            FftD(re, im, false);
+            double e = 0; for (int k = (int)(lo * n / FS); k < (int)(hi * n / FS); k++) e += re[k] * re[k] + im[k] * im[k];
+            double db = 10 * Math.Log10(e + 1e-30);
+            if (!double.IsNaN(prev)) { double d = db - prev; s += d; s2 += d * d; c++; }
+            prev = db;
+        }
+        double m = s / c; return Math.Sqrt(Math.Max(0, s2 / c - m * m));
+    }
+
+    // Un reconstructor mono con la ventana pedida (4096 solo existe en la rama que reproduce con ella).
+    static object CreaVentana(ISampleProvider fu, int ventana)
+    {
+        foreach (ConstructorInfo ci in TSbr.GetConstructors(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public))
+        {
+            ParameterInfo[] ps = ci.GetParameters();
+            if (ps.Length == 2 && ps[0].ParameterType.IsInstanceOfType(fu) && ps[1].ParameterType == typeof(int))
+            {
+                object t = ci.Invoke(new object[] { fu, ventana });
+                return (int)TSbr.GetProperty("FrameLen").GetValue(t, null) == ventana ? t : null;
+            }
+        }
+        return ventana == 2048 ? Crea(fu) : null;
+    }
+    // Pasa un mono (o un intercalado de 'canales') por el reconstructor encendido, de 1024 en 1024 muestras, y
+    // anota el corte con el que recrea despues de cada lectura (cortes[i]; -1 si esta version no tiene ese campo).
+    static float[] PasaVentana(float[] x, int ventana, out object tap, List<int> cortes)
+    { return PasaVentana(x, ventana, out tap, cortes, 1); }
+    static float[] PasaVentana(float[] x, int ventana, out object tap, List<int> cortes, int canales)
+    {
+        tap = CreaVentana(new FuenteD(x, FS, canales), ventana);
+        if (tap == null) return null;
+        TSbr.GetField("Active").SetValue(tap, true);
+        FieldInfo fCorte = TSbr.GetField("corteRecreado", BindingFlags.Instance | BindingFlags.NonPublic);
+        ISampleProvider p = (ISampleProvider)tap;
+        float[] y = new float[x.Length]; float[] buf = new float[1024]; int hecho = 0, got;
+        while (hecho < y.Length && (got = p.Read(buf, 0, Math.Min(buf.Length, y.Length - hecho))) > 0)
+        {
+            Array.Copy(buf, 0, y, hecho, got); hecho += got;
+            if (cortes != null) cortes.Add(fCorte != null ? (int)fCorte.GetValue(tap) : -1);
+        }
+        return y;
+    }
+
     static int Main(string[] argv)
     {
         string exe = (argv.Length > 0) ? argv[0] : "rocola.exe";
@@ -403,6 +572,185 @@ class Dsee
                     Check(peorVec < 0.001, "y la rocola calcula lo MISMO que el entrenador: el modelo llego entero");
                 }
             }
+        }
+
+        // ============================================================================================
+        Console.WriteLine("\n  11) LA COPIA POR BLOQUES: UN TONO SALE LIMPIO, CON EL BRILLO DE LA CURVA Y SIN TEMBLOR\n");
+        // Antes cada bin de arriba copiaba al de la mitad de su frecuencia, con el corte bailando de una ventana a
+        // otra y la escala medida en 6 bins sin suavizar: un tono de 7 kHz recreado salia con bandas laterales casi
+        // tan fuertes como el (54 % limpio con ventanas de 2048, 11 % con las de 4096). Ahora se copia por bloques
+        // con la fase seguida entre ventanas (23 de septiembre de 2026). Aqui se mide lo que se oye: la limpieza del
+        // tono, el nivel contra la curva de diseno, el ruido alrededor de un tono, los golpes entre silencios, el
+        // temblor y que el corte usado no baile. Con la version de antes, estas comprobaciones fallan.
+        {
+            const int NS = 1 << 18;                   // ~6 s
+            int desde = (int)(0.7 * FS);              // el arranque del STFT y del corte, fuera
+            float[] ruido = RuidoHasta(NS, 5, 12000, 0.03);
+            // Para los golpes, un ruido INCLINADO (9 dB menos por encima de 9 kHz: la costura queda mas baja que el
+            // arranque de la fuente) y, entre golpes, un hilo de 11,78 kHz a -50 dBFS justo en la costura: en las
+            // pausas la escala que se mediria seria la del tope, mucho mas alta que la de los golpes.
+            double[] gT = new double[NS]; Random rT = new Random(9);
+            for (int i = 0; i < NS; i++) { double u1 = 1.0 - rT.NextDouble(), u2 = rT.NextDouble(); gT[i] = Math.Sqrt(-2 * Math.Log(u1)) * Math.Cos(2 * Math.PI * u2); }
+            double[] ruidoT = Recorta(gT, 200, 12000), agudo = Recorta(gT, 9000, 12000);
+            double sT = 0; for (int i = 0; i < NS; i++) { ruidoT[i] -= agudo[i] * (1 - Math.Pow(10, -9 / 20.0)); sT += ruidoT[i] * ruidoT[i]; }
+            double escT = 0.03 / Math.Sqrt(sT / NS);
+            float[] tono = new float[NS]; double[] golpes = new double[NS], seguido = new double[NS];
+            for (int i = 0; i < NS; i++)
+            {
+                double t = (double)i / FS;
+                tono[i] = ruido[i] + (float)(0.3 * Math.Sin(2 * Math.PI * 7000 * t));
+                // charles en corcheas: golpes de ruido cada 250 ms (2 ms de subida, 15 ms de caida y CERRADOS a los
+                // 65 ms), y entre golpes solo un bajo que nunca calla: en las pausas no queda nada de 4 a 8 kHz, como en
+                // un MP3 con charles y bajo. Todo cortado en 12 kHz DESPUES, como lo deja el codec (el arranque de un
+                // golpe tambien tiene agudos, y el MP3 se los quita).
+                double enGolpe = t % 0.25, sube = enGolpe < 0.002 ? 0.5 - 0.5 * Math.Cos(Math.PI * enGolpe / 0.002) : 1.0;
+                double cierra = enGolpe < 0.06 ? 1.0 : (enGolpe < 0.065 ? 0.5 + 0.5 * Math.Cos(Math.PI * (enGolpe - 0.06) / 0.005) : 0.0);
+                double fondo = 0.2 * Math.Sin(2 * Math.PI * 100 * t) + 0.003 * Math.Sin(2 * Math.PI * 11780 * t);
+                golpes[i] = ruidoT[i] * escT * 4 * sube * cierra * Math.Exp(-enGolpe / 0.015) + fondo;
+                seguido[i] = ruidoT[i] * escT + fondo;
+            }
+            double[] golpesC = Recorta(golpes, 20, 12000), seguidoC = Recorta(seguido, 20, 12000);
+            float[] rafagas = new float[NS], continuo = new float[NS], rafagas2 = new float[NS * 2];
+            for (int i = 0; i < NS; i++)
+            { rafagas[i] = (float)golpesC[i]; continuo[i] = (float)seguidoC[i]; rafagas2[2 * i] = rafagas[i]; rafagas2[2 * i + 1] = rafagas[i] * 0.7f; }
+            double[] pEnt = Psd(ruido, desde);
+            double costura = Nivel(pEnt, 11300, 11800);
+
+            // Cuanto suena la fuente sin picos ni huecos (FuenteSuave): la mediana de cada banda de 1/12 de octava
+            // con sus dos vecinas. Primero la mediana sola, con numeros conocidos...
+            MethodInfo mMed = TSbr.GetMethod("Mediana3", BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
+            MethodInfo mFue = TSbr.GetMethod("FuenteSuave", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+            Check(mMed != null && mFue != null, "estan las piezas de la fuente sin picos ni huecos (Mediana3, FuenteSuave)");
+            if (mMed != null && mFue != null)
+            {
+                double[] m12 = new double[12]; for (int i = 0; i < 12; i++) m12[i] = 10 * (i + 1);
+                m12[6] = 1000; m12[3] = 0;   // un pico y un hueco sueltos
+                float[] esperado = { 20, 20, 20, 30, 50, 60, 80, 90, 90, 100, 110, 110 };
+                bool bien = true;
+                for (int i = 0; i < 12; i++) if ((float)mMed.Invoke(null, new object[] { m12, i }) != esperado[i]) bien = false;
+                Check(bien, "la mediana de cada banda es la de ella y sus dos vecinas (y en los extremos, la de las tres del extremo)");
+                // ...y despues la fuente entera: espectro plano bajo el corte, con un tono (x1000 de energia) y una
+                // banda entera en silencio. Ni el tono ni el hueco aparecen en lo que se lee.
+                object an = Activator.CreateInstance(TSbr, BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public, null, new object[] { FS, 1 }, null);
+                float[] reA = (float[])TSbr.GetField("re", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(an);
+                float[] imA = (float[])TSbr.GetField("im", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(an);
+                int corte = 560, k0 = corte / 2;
+                for (int k = 0; k < reA.Length; k++) { reA[k] = k < corte ? 1f : 0f; imA[k] = 0f; }
+                reA[(int)(k0 * Math.Pow(2, 5.5 / 12))] = (float)Math.Sqrt(1000);                                   // el tono
+                for (int k = (int)Math.Ceiling(k0 * Math.Pow(2, 8 / 12.0)); k < (int)(k0 * Math.Pow(2, 9 / 12.0)); k++) reA[k] = 0f;   // el hueco
+                mFue.Invoke(an, new object[] { corte });
+                float[] fsu = (float[])TSbr.GetField("fuenteSuave", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(an);
+                double lo = double.MaxValue, hi = 0;
+                for (int k = k0; k < corte; k++) { lo = Math.Min(lo, fsu[k]); hi = Math.Max(hi, fsu[k]); }
+                Console.WriteLine("     fuente plana (1) con un tono x1000 y una banda muda: lo que se lee va de " + lo.ToString("0.000") + " a " + hi.ToString("0.000"));
+                Check(lo >= 0.9 && hi <= 1.1, "un tono o un hueco sueltos en la fuente no cambian cuanto se lee que suena (+-10 %)");
+            }
+            foreach (int ventana in new int[] { 2048, 4096 })
+            {
+                object tR, tT, tG; List<int> cortes = new List<int>();
+                float[] yR = PasaVentana(ruido, ventana, out tR, cortes);
+                if (yR == null) { Console.WriteLine("     (ventana de " + ventana + ": no existe en esta rama)"); continue; }
+                float[] yT = PasaVentana(tono, ventana, out tT, null);
+                List<int> cortesG = new List<int>(), cortesG2 = new List<int>();
+                float[] yG = PasaVentana(rafagas, ventana, out tG, cortesG);
+                object tS, tG2; float[] yS = PasaVentana(continuo, ventana, out tS, null);
+                PasaVentana(rafagas2, ventana, out tG2, cortesG2, 2);
+                Console.WriteLine("     --- ventana de " + ventana + " ---");
+
+                double f0, pu = Pureza(yT, desde, out f0);
+                Console.WriteLine("     tono de 7 kHz recreado en " + f0.ToString("0") + " Hz: limpio el " + pu.ToString("0.0") + " % de su energia (+-2 Hz entre +-250 Hz)");
+                Check(pu >= 90, "un tono estable recreado sale como UN tono, sin bandas laterales (ventana " + ventana + ")");
+
+                // El nivel: la curva de diseno es la costura por 0,85 (colchon) al nivel al que sonaba la copia de
+                // antes (3/8 de potencia) y ~-9 dB por octava desde el corte.
+                double[] pR = Psd(yR, desde);
+                float cutHz = (float)fCut.GetValue(tR);
+                double bin = (double)FS / ventana, fc = cortes.Count > 0 && cortes[cortes.Count - 1] > 0 ? cortes[cortes.Count - 1] * bin : cutHz;
+                double dis0 = 20 * Math.Log10(0.85) + 10 * Math.Log10(3.0 / 8.0);
+                double arr0 = Nivel(pR, fc + 100, fc + 400) - costura, esp0 = dis0 - 9 * Math.Log(fc + 250, 2) + 9 * Math.Log(fc, 2);
+                double arr1 = Nivel(pR, 19800, 20400) - costura, esp1 = dis0 - 9 * Math.Log(20100 / fc, 2);
+                Console.WriteLine("     ruido cortado en 12 kHz: justo encima del corte " + arr0.ToString("0.0") + " dB contra la costura (curva: "
+                                  + esp0.ToString("0.0") + "); a 20 kHz " + arr1.ToString("0.0") + " dB (curva: " + esp1.ToString("0.0") + ")");
+                Check(Math.Abs(arr0 - esp0) <= 1.5 && Math.Abs(arr1 - esp1) <= 1.5,
+                      "la banda recreada sigue la curva de diseno a +-1,5 dB, arriba del corte y a 20 kHz (ventana " + ventana + ")");
+
+                // Con un tono fuerte en la fuente, el ruido recreado de ALREDEDOR es el mismo que sin el tono.
+                double[] pT = Psd(yT, desde);
+                double peorPiso = PeorPiso(pT, pR);
+                Console.WriteLine("     ruido recreado alrededor del tono contra el mismo ruido sin tono: se aparta como mucho " + peorPiso.ToString("0.0") + " dB (24avo de octava)");
+                Check(peorPiso <= 2.0, "un tono fuerte no infla ni apaga el ruido recreado de alrededor (ventana " + ventana + ")");
+
+                // Golpes entre silencios: la escala de las ventanas casi mudas no se lleva al golpe siguiente.
+                double[] pG = Psd(yG, desde), pGe = Psd(rafagas, desde), pS = Psd(yS, desde), pSe = Psd(continuo, desde);
+                double relR = Nivel(pS, 12500, 20000) - Nivel(pSe, 6000, 11500);
+                double relG = Nivel(pG, 12500, 20000) - Nivel(pGe, 6000, 11500);
+                Console.WriteLine("     agudos recreados contra la fuente: el mismo ruido seguido " + relR.ToString("0.0") + " dB, en golpes de charles " + relG.ToString("0.0") + " dB");
+                Check(Math.Abs(relG - relR) <= 2.0, "los golpes entre silencios se recrean al mismo nivel que el ruido seguido (ventana " + ventana + ")");
+                int cambiosG = 0;
+                for (int i = 1; i < cortesG.Count; i++) if ((i + 1) * 1024 > desde && cortesG[i] != cortesG[i - 1]) cambiosG++;
+                Console.WriteLine("     con los golpes, el corte usado cambio " + cambiosG + " veces (acantilado medido al final: "
+                                  + ((float)fCut.GetValue(tG)).ToString("0") + " Hz)");
+                Check(cortesG.Count > 0 && cortesG[0] >= 0 && cambiosG == 0, "y en las pausas con solo el bajo el corte no se va hacia arriba (ventana " + ventana + ")");
+                int cambiosG2 = 0;
+                for (int i = 1; i < cortesG2.Count; i++) if ((i + 1) * 512 > desde && cortesG2[i] != cortesG2[i - 1]) cambiosG2++;
+                Check(cortesG2.Count > 0 && cortesG2[0] >= 0 && cambiosG2 == 0, "lo mismo en estereo, hasta el final de la cancion (ventana " + ventana + ")");
+
+                // Temblor: con ruido estable, la banda recreada no salta mas de una ventana a otra que la fuente.
+                double vR = Vaiven(yR, desde, fc * 1.03, 20000), vF = Vaiven(ruido, desde, 6200, 11500);
+                Console.WriteLine("     salto de una ventana a otra: banda recreada " + vR.ToString("0.00") + " dB, la fuente " + vF.ToString("0.00") + " dB");
+                Check(vR <= vF * 1.5 + 0.3, "la banda recreada no tiembla mas que la musica de la que sale (ventana " + ventana + ")");
+
+                // El corte con el que se recrea no baila con una senal estable.
+                int cambios = 0, vistos = 0;
+                for (int i = 1; i < cortes.Count; i++) if ((i + 1) * 1024 > desde) { vistos++; if (cortes[i] != cortes[i - 1]) cambios++; }
+                Console.WriteLine("     corte usado: " + (cortes.Count > 0 ? cortes[cortes.Count - 1] * bin : 0).ToString("0") + " Hz; cambios en "
+                                  + vistos + " lecturas: " + cambios);
+                Check(cortes.Count > 0 && cortes[0] >= 0 && cambios == 0, "con una senal estable, el corte con el que se recrea no baila (ventana " + ventana + ")");
+            }
+
+            // La IA propia pone la envolvente, pero la copia es la misma: su tono tambien sale limpio. Y su envolvente
+            // tambien lee la fuente sin picos (FuenteSuave): con un modelo de prueba que dice SIEMPRE lo mismo (asi un
+            // tono no le cambia la prediccion), el ruido recreado alrededor del tono es el mismo que sin el. La IA de
+            // fabrica no sirve para eso: el tono cambia lo que ve y, con razon, lo que predice.
+            string mod = Path.Combine("..", Path.Combine("ia", "rocola_ia.bin"));
+            FieldInfo fNeural = TF.GetField("NeuralEnv", BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
+            object red = fNeural != null ? fNeural.GetValue(null) : null;
+            if (red != null && File.Exists(mod))
+            {
+                object tC; float[] yC = PasaVentana(tono, 2048, out tC, null);
+                red.GetType().GetMethod("TryLoad").Invoke(red, new object[] { Path.GetFullPath(mod) });
+                FieldInfo fCargo = red.GetType().GetField("Loaded");
+                bool cargo = (bool)fCargo.GetValue(red);
+                object tN; float[] yN = PasaVentana(tono, 2048, out tN, null);
+                fCargo.SetValue(red, false);   // el resto de la bateria sigue con la curva clasica
+                double fN, puN = Pureza(yN, desde, out fN);
+                Console.WriteLine("     con la IA propia: tono recreado en " + fN.ToString("0") + " Hz, limpio el " + puN.ToString("0.0") + " %");
+                Check(cargo && MaxDif(yN, yC) > 1e-5, "la IA propia se usa de verdad (su envolvente no es la de la curva)");
+                Check(puN >= 90, "y con la IA el tono recreado tambien sale limpio: la copia es la misma");
+
+                string tmpIa = Path.Combine(Path.GetTempPath(), "rocola_dsee_ia_" + Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(tmpIa);
+                try
+                {
+                    string fija = Path.Combine(tmpIa, "fija.bin");
+                    using (BinaryWriter w = new BinaryWriter(File.Create(fija)))
+                    {
+                        w.Write(System.Text.Encoding.ASCII.GetBytes("RIA1")); w.Write(1); w.Write(12); w.Write(28);
+                        for (int i = 0; i < 12 * 28; i++) w.Write(0f);
+                        for (int j = 0; j < 12; j++) w.Write(-0.4f - 0.1f * j);   // bajando hacia arriba, como la musica
+                    }
+                    red.GetType().GetMethod("TryLoad").Invoke(red, new object[] { fija });
+                    bool cargoF = (bool)fCargo.GetValue(red);
+                    object tF1, tF2; float[] yF1 = PasaVentana(tono, 2048, out tF1, null), yF2 = PasaVentana(ruido, 2048, out tF2, null);
+                    fCargo.SetValue(red, false);
+                    double peorN = PeorPiso(Psd(yF1, desde), Psd(yF2, desde));
+                    Console.WriteLine("     con una IA que dice siempre lo mismo, el ruido recreado alrededor del tono contra el mismo ruido sin tono: "
+                                      + peorN.ToString("0.0") + " dB");
+                    Check(cargoF && peorN <= 2.0, "y la envolvente de la IA tampoco se deja mover por un tono: lee la fuente sin picos");
+                }
+                finally { try { Directory.Delete(tmpIa, true); } catch { } }
+            }
+            else Check(false, "esta la IA propia de fabrica para probar su camino");
         }
 
         Console.WriteLine(fallos == 0 ? "\nTODO BIEN" : "\nFALLOS: " + fallos);

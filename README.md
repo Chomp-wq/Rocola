@@ -233,7 +233,9 @@ artista) y modo atracción.
   centrado. Verificado: genera el 2º y 3er armónico, **no toca** la nota original ni la voz ni los
   agudos en las señales de prueba; en 0 % el audio sale idéntico bit a bit.
   El coste de CPU y el resultado audible dependen del equipo y del material.
-- **DSEE** (realce/reconstrucción de agudos): recrea el "aire" que el MP3 recorta.
+- **DSEE** (realce/reconstrucción de agudos): recrea el "aire" que el MP3 recorta. Copia por
+  bloques con la fase seguida entre ventanas (como el SBR de AAC): un tono recreado sale limpio, al
+  nivel de la curva de diseño y con el corte quieto (ver 1.21 de `MEJORAS_AUDIO_Y_PENDIENTES_2026-09-22.md`).
   Insignia **MEJORADA** (dorada, que brilla) cuando actúa el reconstructor o, en HD,
   se reproduce una versión procesada por Apollo. Indica procesamiento, no una garantía
   de mejor calidad subjetiva ni recuperación exacta de información perdida.

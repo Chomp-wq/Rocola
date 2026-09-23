@@ -25,6 +25,8 @@ using NAudio.Wave;
 //   2) TODOS los cortes posibles, a varias frecuencias de muestreo: la rocola escribe sus 40 numeros y el
 //      contrato de Python los contrasta uno por uno;
 //   3) las bandas que RELLENA RegenNeural (no solo las que mide MakePair), mirando que bins toca cada una.
+//      Desde la copia por bloques (23 de septiembre de 2026) RegenNeural ya no copia: deja la escala de cada
+//      bin en ganHoy y copia CopiaPorBloques; lo que se mira es esa escala.
 class FuenteMuda : ISampleProvider
 {
     private readonly WaveFormat wf;
@@ -39,8 +41,8 @@ class IaParidad
     static void Check(bool ok, string q) { Console.WriteLine((ok ? "  OK   " : "  FALLO") + "  " + q); if (!ok) fallos++; }
 
     static Type TSt;
-    static FieldInfo fRe, fIm;
-    static MethodInfo mPar, mAnaliza, mRegen;
+    static FieldInfo fRe, fIm, fGan;
+    static MethodInfo mPar, mAnaliza, mRegen, mFuente;
 
     // El MISMO generador que ia/contrato_dsee.py: congruente de 32 bits y escalas potencia de dos.
     sealed class Lcg
@@ -151,8 +153,9 @@ class IaParidad
         fRe = TSt.GetField("re", bi); fIm = TSt.GetField("im", bi);
         mPar = TSt.GetMethod("MakePair", bi); mAnaliza = TSt.GetMethod("AnalyzeFrame", bi);
         mRegen = TSt.GetMethod("RegenNeural", bi);
-        Check(fRe != null && fIm != null && mPar != null && mAnaliza != null && mRegen != null,
-              "estan las piezas que se comparan: el espectro, MakePair, AnalyzeFrame y RegenNeural");
+        fGan = TSt.GetField("ganHoy", bi); mFuente = TSt.GetMethod("FuenteSuave", bi);
+        Check(fRe != null && fIm != null && mPar != null && mAnaliza != null && mRegen != null && fGan != null && mFuente != null,
+              "estan las piezas que se comparan: el espectro, MakePair, AnalyzeFrame, RegenNeural y la escala que deja (ganHoy)");
         if (fallos > 0) return fallos;
         bool hay4096 = Tap(44100, 4096) != null;
         float[] feat = new float[28], tgt = new float[12];
@@ -260,7 +263,9 @@ class IaParidad
                             }
                             sw.WriteLine(sb.ToString()); lineasP++;
                         }
-                        // Bandas de RegenNeural: fuente plana bajo el corte, nada encima; asi re[t] = factor de su banda.
+                        // Bandas de RegenNeural: fuente plana bajo el corte, nada encima; asi la escala que deja para
+                        // cada bin (ganHoy) es el factor de su banda. Antes se le da lo que lee de la fuente (FuenteSuave),
+                        // como hace Regenerate.
                         if (!cargo) continue;
                         float ciel = Math.Min(20500f, ny * bhz * 0.95f);
                         for (int cut = 64; cut < ny; cut++)
@@ -270,15 +275,17 @@ class IaParidad
                             float[] r2 = new float[frame], i2 = new float[frame];
                             for (int k = 0; k < cut; k++) { r2[k] = 1f; i2[k] = 0.5f; }
                             Pon(tap, r2, i2);
+                            mFuente.Invoke(tap, new object[] { cut });
                             if (!(bool)mRegen.Invoke(tap, new object[] { cut, topBin })) continue;   // fc < 1200: tampoco en MakePair
-                            float[] rr = (float[])fRe.GetValue(tap);
+                            float[] gh = (float[])fGan.GetValue(tap);
                             int[] ini = new int[12], fin = new int[12];
                             for (int j = 0; j < 12; j++) { ini[j] = -1; fin[j] = -1; }
                             for (int t = cut; t <= topBin; t++)
                             {
-                                if (rr[t] == 0f) continue;
+                                float v = gh[t - cut];
+                                if (v == 0f) continue;
                                 // A que banda pertenece: la de factor mas parecido (0,9 * 10^(y/2), sin tope en este rango)
-                                double lg = Math.Log10(rr[t] / 0.9) * 2.0;
+                                double lg = Math.Log10(v / 0.9) * 2.0;
                                 int j = (int)Math.Round((lg + 3.9) / 0.3);
                                 if (j < 0 || j > 11 || Math.Abs(lg - sesgo[j]) > 0.01) { noCuadra++; continue; }
                                 if (ini[j] < 0) ini[j] = t;
