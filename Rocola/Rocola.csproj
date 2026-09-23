@@ -105,6 +105,7 @@
     <Compile Include="SinPausa.cs" />
     <Compile Include="SalidaSonido.cs" />
     <Compile Include="SalidaExclusiva.cs" />
+    <Compile Include="DecodificaFlotante.cs" />
     <Compile Include="Optimizaciones.cs" />
     <Compile Include="LunaGpu.cs" />
     <Compile Include="EstrellaGpu.cs" />

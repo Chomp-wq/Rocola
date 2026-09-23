@@ -31,7 +31,7 @@ FUENTES="$FUENTES $RAIZ/Rocola/EstrellaGpu.cs $RAIZ/Rocola/PrecargaPaginaGpu.cs 
 TMP_PRUEBAS="${TMPDIR:-/tmp}/rocola_pruebas_$$"
 FUENTES="$FUENTES $RAIZ/Rocola/AudioControles.cs $RAIZ/Rocola/Sonoridad.cs $RAIZ/Rocola/PicoReal.cs $RAIZ/Rocola/Realce.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/SinPausa.cs $RAIZ/Rocola/Form1.SinPausa.cs $RAIZ/Rocola/SalidaSonido.cs"
-FUENTES="$FUENTES $RAIZ/Rocola/SalidaExclusiva.cs"
+FUENTES="$FUENTES $RAIZ/Rocola/SalidaExclusiva.cs $RAIZ/Rocola/DecodificaFlotante.cs"
 if ! mkdir -p "$TMP_PRUEBAS"; then
   echo "  No se pudo crear la carpeta temporal: $TMP_PRUEBAS"
   exit 1
@@ -62,7 +62,7 @@ GPU="fondo anim presencia barrido tope calma entrar mover banco paginar ceremoni
 # hace Media Foundation, que llego con Windows Vista. En la rama de XP no hay con que, asi que ni
 # existe la funcion ni se prueba. Lo mismo el remuestreador de la salida moderna (WASAPI): en esta maquina
 # la bateria solo comprueba su vara de medir; el remuestreador de Windows se mide en Windows.
-SOLO_HD="mudos remuestreo exclusivo"
+SOLO_HD="mudos remuestreo exclusivo flotante"
 CPU="$CPU id3selectivo tablasarranque historialarranque audiosuave audioestereo sonoridad picoreal realce transiciones sinpausa salida videoaudio"
 GPU="$GPU espacioprecarga estelaestelar estrellaflujo"
 

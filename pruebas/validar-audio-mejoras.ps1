@@ -76,6 +76,20 @@ try {
             if ($LASTEXITCODE -ne 0) { throw 'Fallo exclusivo' }
         } finally { Pop-Location }
     }
+    # Decodificacion en coma flotante (solo HD tiene DecodificaFlotante.cs): la logica con decodificadores de mentira y,
+    # aqui en Windows, el decodificador de MP3 de Windows DE VERDAD contra el de siempre con pruebas\flotante_overs.mp3
+    # (la comparacion, cuanto pasa de 1,0 y lo que cuesta). Corre en la carpeta de pruebas, donde esta ese MP3.
+    $flotante = Join-Path $testRoot 'flotante.cs'
+    if (Test-Path -LiteralPath $flotante) {
+        $exe = Join-Path $out 'flotante.exe'
+        & $compiler /nologo /optimize+ /warnaserror+ ("/out:$exe") /r:System.Core.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll ("/r:$naudio") $flotante (Join-Path $testRoot 'leercodigo.cs')
+        if ($LASTEXITCODE -ne 0) { throw 'No compila flotante' }
+        Push-Location $testRoot
+        try {
+            & $exe $app
+            if ($LASTEXITCODE -ne 0) { throw 'Fallo flotante' }
+        } finally { Pop-Location }
+    }
     & (Join-Path $testRoot 'validar-audio-formatos.ps1') -OutputDirectory $out -Ffmpeg $Ffmpeg
     # Solo este proceso de pruebas y sus hijos. No cambia afinidad del sistema/rocola instalada.
     $process = [System.Diagnostics.Process]::GetCurrentProcess()

@@ -323,6 +323,11 @@ sola a su modo normal y nunca se queda a todo gas en horario de negocio.
 
 ## Nivel HD (solo esta rama)
 
+- **Decodificación en coma flotante**: los MP3 los descomprime el decodificador de MP3 de Windows en coma flotante
+  (como MFT) cuando queda comprobado contra el de siempre, una vez por sesión; AAC, M4A y WMA, Media Foundation en
+  coma flotante. Lo que el MP3 trae por encima del máximo digital ya no se corta antes de bajar el volumen. Si algo
+  no cuadra, el de siempre, bit a bit como antes. Sin probar todavía en Windows: ver 1.22 de
+  `MEJORAS_AUDIO_Y_PENDIENTES_2026-09-22.md` y la línea «MP3 en coma flotante» de `rocola_error.txt`.
 - **Salida WASAPI exclusiva** (`salida=auto|exclusivo|wasapi|waveout` en `rocola_config.txt`;
   `SalidaExclusiva.cs`): la rocola toma el aparato para ella sola y la música no pasa por el
   mezclador de Windows. Formato exacto que el aparato admite a su propia frecuencia (24 bits,

@@ -363,11 +363,22 @@ namespace Rocola
         //
         // NAudio deja un gancho para armar el descompresor uno mismo. Se usa para apuntar CUAL creo: si la
         // apertura falla, lo cerramos NOSOTROS ahi mismo y no queda nada pendiente para el recolector.
+        //
+        // EN COMA FLOTANTE (HD, ver DecodificaFlotante.cs): el descompresor de siempre se arma igual y, si en esta
+        // sesion el decodificador de Windows quedo comprobado contra el, se envuelve en uno que da coma flotante; si
+        // no, se queda tal cual. Para comprobarlo hace falta otro descompresor de siempre: se arma AQUI tambien, que
+        // es el unico sitio donde se arman (pruebas/descompresor.cs).
         private static Mp3FileReader AbreMp3(string ruta)
         {
             NAudio.Wave.IMp3FrameDecompressor hecho = null;
+            Func<NAudio.Wave.WaveFormat, NAudio.Wave.IMp3FrameDecompressor> otroAcm = delegate(NAudio.Wave.WaveFormat f)
+            { return Mp3FileReader.CreateAcmFrameDecompressor(f); };
             Mp3FileReader.FrameDecompressorBuilder armador = delegate(NAudio.Wave.WaveFormat wf)
-            { hecho = Mp3FileReader.CreateAcmFrameDecompressor(wf); return hecho; };
+            {
+                hecho = Mp3FileReader.CreateAcmFrameDecompressor(wf);
+                hecho = DecodificacionFlotante.Envuelve(wf, hecho, ruta, otroAcm);   // si falla, se queda el de siempre
+                return hecho;
+            };
             try { return new Mp3FileReader(ruta, armador); }
             catch { if (hecho != null) { try { hecho.Dispose(); } catch { } } throw; }
         }
@@ -385,7 +396,11 @@ namespace Rocola
         {
             NAudio.Wave.IMp3FrameDecompressor hecho = null;
             Mp3FileReader.FrameDecompressorBuilder armador = delegate(NAudio.Wave.WaveFormat wf)
-            { hecho = Mp3FileReader.CreateAcmFrameDecompressor(wf); return hecho; };
+            {
+                hecho = Mp3FileReader.CreateAcmFrameDecompressor(wf);
+                hecho = DecodificacionFlotante.Envuelve(wf, hecho, null, null);   // en memoria: lo ya decidido, sin comprobar
+                return hecho;
+            };
             try { return new Mp3FileReader(flujo, armador); }
             catch { if (hecho != null) { try { hecho.Dispose(); } catch { } } throw; }
         }
@@ -393,9 +408,12 @@ namespace Rocola
         // Lector para MEDIR una cancion (no para que suene). Los MP3 van por el camino de arriba, que no deja
         // descompresores tirados; el resto de formatos, por donde siempre. Es EL MISMO montaje que usa NAudio
         // por dentro (el lector mas un canal de muestras), asi que lo medido no cambia ni en un bit.
+        // En HD, lo que no es MP3 ni WAV/AIFF (AAC, M4A, WMA, videos) se lee en coma flotante (AbreOtro), igual que
+        // cuando suena: se mide lo mismo que se oye.
         private sealed class LectorMedida : IDisposable
         {
             private readonly Mp3FileReader mp3;
+            private readonly WaveStream flotante;          // HD: Media Foundation en coma flotante
             private readonly SampleChannel canal;
             private readonly AudioFileReader otro;
             public LectorMedida(string ruta)
@@ -406,16 +424,27 @@ namespace Rocola
                     try { canal = new SampleChannel(r, false); mp3 = r; r = null; }
                     finally { if (r != null) { try { r.Dispose(); } catch { } } }   // el canal fallo: el lector no se queda tirado
                 }
-                else otro = new AudioFileReader(ruta);
+                else
+                {
+                    WaveStream f = DecodificacionFlotante.AbreOtro(ruta);
+                    if (f != null)
+                    {
+                        try { canal = new SampleChannel(f, false); flotante = f; f = null; }
+                        finally { if (f != null) { try { f.Dispose(); } catch { } } }
+                    }
+                    else otro = new AudioFileReader(ruta);
+                }
             }
-            public NAudio.Wave.WaveFormat WaveFormat { get { return (mp3 != null) ? canal.WaveFormat : otro.WaveFormat; } }
-            public TimeSpan TotalTime { get { return (mp3 != null) ? mp3.TotalTime : otro.TotalTime; } }
-            public TimeSpan CurrentTime { set { if (mp3 != null) mp3.CurrentTime = value; else otro.CurrentTime = value; } }
-            public float Volume { set { if (mp3 != null) canal.Volume = value; else otro.Volume = value; } }
-            public int Read(float[] b, int o, int c) { return (mp3 != null) ? canal.Read(b, o, c) : otro.Read(b, o, c); }
+            private WaveStream Lector { get { return (mp3 != null) ? (WaveStream)mp3 : flotante; } }
+            public NAudio.Wave.WaveFormat WaveFormat { get { return (otro == null) ? canal.WaveFormat : otro.WaveFormat; } }
+            public TimeSpan TotalTime { get { return (otro == null) ? Lector.TotalTime : otro.TotalTime; } }
+            public TimeSpan CurrentTime { set { if (otro == null) Lector.CurrentTime = value; else otro.CurrentTime = value; } }
+            public float Volume { set { if (otro == null) canal.Volume = value; else otro.Volume = value; } }
+            public int Read(float[] b, int o, int c) { return (otro == null) ? canal.Read(b, o, c) : otro.Read(b, o, c); }
             public void Dispose()
             {
                 if (mp3 != null) { try { mp3.Dispose(); } catch { } }
+                if (flotante != null) { try { flotante.Dispose(); } catch { } }
                 if (otro != null) { try { otro.Dispose(); } catch { } }
             }
         }
@@ -1852,9 +1881,12 @@ namespace Rocola
         // hilo donde NADIE la puede recoger: se cierra la rocola entera. Por aqui se abren menos archivos que
         // en el repaso, pero se abren TODOS los que alguien pide en el bar. Es el mismo montaje que hace
         // NAudio por dentro (el lector mas un canal de muestras), asi que no cambia ni una muestra.
+        // En HD, lo que no es MP3 ni WAV/AIFF (AAC, M4A, WMA) se abre en coma flotante (DecodificaFlotante.cs); si no
+        // se puede, por el camino de siempre.
         private sealed class FileAudioSource : IAudioSource
         {
             private readonly Mp3FileReader mp3;
+            private readonly WaveStream flotante;          // HD: Media Foundation en coma flotante
             private readonly SampleChannel canal;
             private readonly AudioFileReader r;
             public FileAudioSource(string path)
@@ -1865,18 +1897,29 @@ namespace Rocola
                     try { canal = new SampleChannel(m, false); mp3 = m; m = null; }
                     finally { if (m != null) { try { m.Dispose(); } catch { } } }   // el canal fallo: el lector no se queda tirado
                 }
-                else r = new AudioFileReader(path);
+                else
+                {
+                    WaveStream f = DecodificacionFlotante.AbreOtro(path);
+                    if (f != null)
+                    {
+                        try { canal = new SampleChannel(f, false); flotante = f; f = null; }
+                        finally { if (f != null) { try { f.Dispose(); } catch { } } }
+                    }
+                    else r = new AudioFileReader(path);
+                }
             }
-            public NAudio.Wave.WaveFormat WaveFormat { get { return (mp3 != null) ? canal.WaveFormat : r.WaveFormat; } }
+            private WaveStream Lector { get { return (mp3 != null) ? (WaveStream)mp3 : flotante; } }
+            public NAudio.Wave.WaveFormat WaveFormat { get { return (r == null) ? canal.WaveFormat : r.WaveFormat; } }
             public int Read(float[] buffer, int offset, int count)
-            { return (mp3 != null) ? canal.Read(buffer, offset, count) : r.Read(buffer, offset, count); }
-            public float Volume { set { if (mp3 != null) canal.Volume = value; else r.Volume = value; } }
-            public TimeSpan CurrentTime { get { return (mp3 != null) ? mp3.CurrentTime : r.CurrentTime; } }
-            public TimeSpan TotalTime { get { return (mp3 != null) ? mp3.TotalTime : r.TotalTime; } }
-            public void Salta(TimeSpan donde) { if (mp3 != null) mp3.CurrentTime = donde; else r.CurrentTime = donde; }
+            { return (r == null) ? canal.Read(buffer, offset, count) : r.Read(buffer, offset, count); }
+            public float Volume { set { if (r == null) canal.Volume = value; else r.Volume = value; } }
+            public TimeSpan CurrentTime { get { return (r == null) ? Lector.CurrentTime : r.CurrentTime; } }
+            public TimeSpan TotalTime { get { return (r == null) ? Lector.TotalTime : r.TotalTime; } }
+            public void Salta(TimeSpan donde) { if (r == null) Lector.CurrentTime = donde; else r.CurrentTime = donde; }
             public void Dispose()
             {
                 if (mp3 != null) { try { mp3.Dispose(); } catch { } }
+                if (flotante != null) { try { flotante.Dispose(); } catch { } }
                 if (r != null) { try { r.Dispose(); } catch { } }
             }
         }
