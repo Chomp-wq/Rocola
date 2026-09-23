@@ -49,6 +49,19 @@ try {
             if ($LASTEXITCODE -ne 0) { throw 'Fallo Python/remuestreo de Apollo' }
         } finally { Pop-Location }
     }
+    # Remuestreador de la salida moderna (solo HD tiene SalidaRemuestreada). En Windows mide el DMO de verdad:
+    # respuesta, plegado, imagenes, retraso, duracion, final, canales y coste, con la calidad de siempre y la 60.
+    $remuestreo = Join-Path $testRoot 'remuestreo.cs'
+    if (Test-Path -LiteralPath $remuestreo) {
+        $exe = Join-Path $out 'remuestreo.exe'
+        & $compiler /nologo /optimize+ /warnaserror+ ("/out:$exe") /r:System.Core.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll ("/r:$naudio") $remuestreo
+        if ($LASTEXITCODE -ne 0) { throw 'No compila remuestreo' }
+        Push-Location $out
+        try {
+            & $exe $app
+            if ($LASTEXITCODE -ne 0) { throw 'Fallo remuestreo' }
+        } finally { Pop-Location }
+    }
     & (Join-Path $testRoot 'validar-audio-formatos.ps1') -OutputDirectory $out -Ffmpeg $Ffmpeg
     # Solo este proceso de pruebas y sus hijos. No cambia afinidad del sistema/rocola instalada.
     $process = [System.Diagnostics.Process]::GetCurrentProcess()

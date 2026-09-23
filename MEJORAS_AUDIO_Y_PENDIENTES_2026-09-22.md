@@ -30,6 +30,7 @@ desarrollo y medición. La revisión anterior está en REVISION_AUDIO_2026-09-22
 | Transiciones en vivo del grave sintético y del DSEE | Implementado y probado; ver 1.15 |
 | Remuestreo de Apollo a 44,1 kHz con SoXR, caché versionada y reaprovechamiento | Implementado y probado (HD); ver 1.16 |
 | Continuidad sin pausas entre canciones (misma salida, sin cebado, cola y créditos intactos) | Implementado y probado; ver 1.17. Retardo y relleno propios del MP3: medidos, sin implementar |
+| Remuestreo en reproducción (HD, DMO de Windows) | Medición preparada y validada; el DMO se mide en Windows; sin cambios; ver 1.18 |
 | Salida al dispositivo y audio de vídeo | Pendiente; plan abajo |
 | Paridad del extractor IA (contrato EXTRACTOR=2) | Implementado y probado; ver 1.7 |
 | Identidad de origen, particiones por canción y estéreo por canal | Implementado y probado; ver 1.8 |
@@ -892,6 +893,60 @@ Riesgos de migración y cómo volver atrás:
 - Pendiente de comprobar en Windows y en el bar: que WaveOut (Modest y HD) y WASAPI (HD) no dejan hueco al
   encadenar, con el oído y con una grabación del DAC; y XP real.
 
+### 1.18 Remuestreo en reproducción (etapa 6 de audio, HD): medido el método, falta medir el DMO en Windows
+
+Dónde convierte la rocola de frecuencia mientras suena: solo en HD, por WASAPI compartido, cuando la canción
+viene a una frecuencia y Windows mezcla a otra (lo típico: canción a 44,1 kHz y equipo a 48 kHz).
+`SalidaRemuestreada` usa el remuestreador DMO de Windows Media a través de NAudio y va ANTES del limitador
+final, para que Windows no convierta después del limitador. Con WaveOut (Modest siempre, y HD si WASAPI no
+arranca) convierte Windows: en XP el mezclador del sistema, cuya calidad se elige en el Panel de control
+(Dispositivos de sonido y audio → Volumen → opciones avanzadas de los altavoces → Rendimiento: calidad de la
+conversión de la frecuencia de muestreo; el nombre exacto depende del idioma de Windows); en Vista y
+posteriores, el motor de audio. Eso no lo controla la rocola.
+
+Lo que se sabe leyendo el código de NAudio 1.9 (sin Windows no se puede medir):
+- NAudio no le pone calidad al DMO: trabaja con la de fábrica. La calidad va de 1 a 60 («media longitud del
+  filtro», IWMResamplerProps::SetHalfFilterLength); cuánto vale la de fábrica no lo dice NAudio.
+- Para que el DMO entregue sus últimas muestras, `SalidaRemuestreada` le añade 512·⌈entrada/salida⌉ cuadros
+  de silencio y corta en la duración exacta. Si el DMO retrasara la señal sin compensarlo, ese corte se
+  llevaría las últimas muestras (solo al final de la secuencia: con la continuidad sin pausas el
+  remuestreador sigue de una canción a la otra). La batería lo comprueba con una ráfaga al final.
+- El envoltorio de NAudio reserva dos arreglos pequeños en cada lectura (hilo de WASAPI, cada ~85 ms). No se
+  cambió: no hay indicios de cortes y cambiarlo pide reescribir el envoltorio.
+- El DMO nace en el hilo que lo lee (MTA), como exige; la cancelación y el vaciado no se tocan.
+- La rocola solo convierte a la frecuencia a la que mezcla Windows, porque el modo compartido lo exige; no
+  sube la frecuencia por su cuenta. Si el equipo está puesto a 96 o 192 kHz en el Panel de sonido, convierte
+  a eso: no aporta información y cuesta más; si el DAC lo admite, 44,1 o 48 kHz basta.
+
+Batería nueva pruebas/remuestreo.cs (solo HD). Mide con señales de contenido conocido: tonos de 1 a 20 kHz
+(ganancia de cada canal y resto tras quitar el tono), un barrido logarítmico (respuesta continua, dónde cae
+1 y 3 dB), ruido blanco por bandas, plegado al bajar de frecuencia (tonos por encima de la nueva mitad),
+imágenes al subir, retraso y eco de un impulso, duración exacta, final (energía de 8 ms de tono al final) y
+cruce de canales, en 44,1→48, 48→44,1, 44,1→96, 44,1→192 y 48→96 kHz, y el coste por segundo de música. En
+Windows mide el DMO como lo usa la rocola y con calidad 60, y exige duración exacta, final entero, canales
+separados y 1 kHz a su nivel y limpio. Donde no hay DMO (aquí: Linux con Mono) lo dice y solo comprueba que
+la vara de medir sirve, con dos remuestreadores de referencia escritos en la propia batería:
+
+| 44,1 → 48 kHz | Referencia (polifásica, doble precisión) | Interpolación lineal (mala a propósito) |
+|---|---|---|
+| Tonos de 1 a 20 kHz | 0,00 dB; resto −137 a −151 dB | −0,01 a −6,34 dB; resto −62 a −3 dB |
+| Barrido | desvío 0,02 dB hasta 15 kHz; cae 1 dB en 21,6 kHz | cae 1 dB en 8,4 kHz y 3 dB en 14,7 kHz |
+| Ruido por bandas hasta 15 kHz | 0,07 dB | 2,31 dB |
+| Imágenes por encima de 22,05 kHz | −137 dB | −5 dB |
+| Retraso, duración, final | 0,000 ms, exacta, 1,0000 | 0,000 ms, exacta, 0,9966 |
+| Plegado 48 → 44,1 kHz | −128 dB | −5 dB |
+
+Qué se evaluó y no se adoptó (todavía): subir la calidad del DMO a 60 (la batería la mide en Windows; se
+sube solo si la de fábrica pierde más de 0,5 dB antes de 18 kHz, deja plegado o imágenes por encima de
+−80 dB o no entrega el final, y la 60 lo arregla con un coste razonable en el equipo de 2 núcleos); el
+remuestreador WDL de NAudio (su modo sinc no es público en NAudio 1.9 y el público es de filtro IIR: no
+sirve); un polifásico propio como la referencia, pero ligero (solo si el DMO sale mal: no hay razón para
+sustituir un componente del sistema sin números).
+
+Cómo repetirlo: `sh pruebas/todo.sh remuestreo` (Linux: solo la vara de medir) o validar-audio-mejoras.ps1 en
+Windows (mide el DMO; también `remuestreo.exe Rocola.exe` a mano). Pendiente: correrla en Windows y en el
+equipo del bar, y decidir con esos números. No hay riesgo de migración: no cambia nada de lo que suena.
+
 ## 2. Comprobaciones y cómo repetirlas
 
 En cada repositorio, con sus herramientas de compilación .NET, Python con NumPy y FFmpeg:
@@ -910,7 +965,7 @@ El script:
 3. Ejecuta las pruebas Python de los entrenadores y sus protecciones (test_calidad_dsee,
    test_entrenar_eq, test_contrato_dsee, test_origen_dsee, test_estereo_dsee,
    test_seleccion_dsee y test_publicacion_dsee) y, en HD, test_remuestreo de ia/upscale (con el
-   FFmpeg del PATH).
+   FFmpeg del PATH) y la batería remuestreo (el DMO de la salida moderna, medido de verdad en Windows).
 
 Nota del 22 de septiembre (bloque A): este script NO se pudo ejecutar en el entorno donde se
 hizo el bloque A (Linux, sin PowerShell, Windows ni FFmpeg). Sus piezas sí: todas las baterías
@@ -1081,6 +1136,9 @@ Estado (23 de septiembre, etapa 5 de audio, HD): hechos 2 a 6 (ver 1.16): SoXR d
 ejecuta, con alternativa probada; WAV float32 y 44,1 kHz como pide Apollo; alineación, picos,
 canales, duración y final medidos; la huella cambia con el remuestreador y lo que no cambia se
 reaprovecha. El punto 1 (el remuestreador DMO de la salida en vivo) es la etapa 6.
+
+Estado del punto 1 (23 de septiembre, etapa 6, HD): medición preparada y validada (ver 1.18). El DMO solo
+se puede medir en Windows; hasta tener esos números no se cambia ni el algoritmo ni la calidad.
 
 ### F. Salida al dispositivo
 

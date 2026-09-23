@@ -59,8 +59,9 @@ GPU="fondo anim presencia barrido tope calma entrar mover banco paginar ceremoni
 # Y las que miran algo que SOLO EXISTE en la rama de tarjeta grafica. La limpieza de videos que no
 # suenan es una de esas: para saber si un video suena hay que descomprimir su sonido, y eso alli lo
 # hace Media Foundation, que llego con Windows Vista. En la rama de XP no hay con que, asi que ni
-# existe la funcion ni se prueba.
-SOLO_HD="mudos"
+# existe la funcion ni se prueba. Lo mismo el remuestreador de la salida moderna (WASAPI): en esta maquina
+# la bateria solo comprueba su vara de medir; el remuestreador de Windows se mide en Windows.
+SOLO_HD="mudos remuestreo"
 CPU="$CPU id3selectivo tablasarranque historialarranque audiosuave audioestereo sonoridad picoreal realce transiciones sinpausa"
 GPU="$GPU espacioprecarga estelaestelar estrellaflujo"
 
