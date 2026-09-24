@@ -1428,6 +1428,9 @@ namespace Rocola
             for (int i = 0; i < queue.Count - 1; i++) antes[i] = SegundosDe(queue[i].PathKey());
             turnoSegs = EsperaSegundos(antes, RestanDeLaQueSuena());
             VuelaALaCola(it.Disc);   // se VE: la portada sale de la pared y aterriza en la pastilla de la cola
+#if ROCOLA_GPU
+            VuelaBoleto(it);         // y dentro de un disco, la cancion sale de su fila (DiscoVivoGpu.cs)
+#endif
             if (iaVivo && !it.IsVideo && it.Song != null) IaRequestJob(it.Song.Path);   // IA EN VIVO: prepara desde que se encola (lista para cuando le toque)
             RecordPlay(it);                                              // estadisticas: cuenta lo pedido
             credits--;                                                   // cada cosa cuesta 1 credito

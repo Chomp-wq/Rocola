@@ -1,5 +1,15 @@
 # Rocola
 
+## Pantalla viva, tanda 2: dentro del disco — 24 de septiembre de 2026
+
+Las ideas elegidas para el interior de un disco, solo en el dibujo por tarjeta gráfica y en las dos ramas. Si suena
+una canción del disco abierto, un vinilo sale de detrás de la portada, gira a 33 ⅓ vueltas y lleva la portada en su
+etiqueta. La lista se lee de lejos: unas nueve canciones por página, con la letra más grande. La que suena lleva un
+ecualizador de cuatro barritas que se mueve con la música, y las pedidas dicen cuánto falta: "EN COLA 3 · en ~9 min".
+Al pedir una canción, su boleto vuela desde la fila hasta "En cola" y el número sube cuando llega. Cada idea tiene su
+interruptor en Ctrl+F3 → Pantalla, en la tarjeta **Dentro del disco**. El dibujo por procesador no cambia.
+[La guía de la tanda](PANTALLA_VIVA_DISCO_2026-09-24.md).
+
 ## Pantalla viva, tanda 1 — 24 de septiembre de 2026
 
 Las primeras ideas elegidas del lienzo de bocetos, solo en el dibujo por tarjeta gráfica y en las dos ramas.

@@ -707,6 +707,9 @@ namespace Rocola
                 };
                 gpuPanel.GetFoco = BuildFocoState;     // el letrero de la portada enfocada
                 gpuPanel.GetFicha = BuildFichaState;   // la ficha rapida del disco
+                gpuPanel.GetVinilo = BuildViniloState;   // dentro del disco: el vinilo que asoma (DiscoVivoGpu.cs)
+                gpuPanel.GetEq = BuildEqState;           // las barritas de la que suena
+                gpuPanel.GetBoleto = BuildBoletoState;   // el boleto que vuela de la fila a la cola
                 gpuPanel.GetGridAhead = albumView.BuildGpuAhead;
                 gpuPanel.GetContour = delegate { return albumView.ContourSpriteBmp; };          // resalte de seleccion
                 gpuPanel.GetContourRect = delegate {
@@ -772,6 +775,7 @@ namespace Rocola
             else if (!on && gpuEnabled)
             {
                 gpuEnabled = false;
+                AjustaDiscoVivo(false);   // la lista del disco vuelve a ser la de siempre: ahora la pinta el procesador
                 gpuPanel.StopGpu(); gpuPanel.Visible = false;
                 SueltaPiezas();     // las piezas vivas del buscador solo existen para la tarjeta grafica
                 if (albumView != null) albumView.GpuCovered = false;   // vuelve a pintar la rejilla por CPU (ya no hay panel encima)
@@ -899,6 +903,10 @@ namespace Rocola
             // a la posicion del panel) el texto caia en 0,0. Ya usa DrawString (GDI+), que la respeta.
             // Ctrl+F11 (gpuDiscTry) alterna a CPU como valvula de escape. Navegacion y buscador van por GPU.
             bool discGpu = disc && gpuDiscTry && !searchOpen && noBlock;
+            // La lista del disco, grande y con sus extras, SOLO si la compone la tarjeta (con el buscador encima
+            // tampoco se ve, asi que no cambia). Va antes de esconder el panel: si el disco pasa a pintarlo el
+            // procesador, cuando lo pinte ya es la lista de siempre (DiscoVivoGpu.cs).
+            AjustaDiscoVivo(ListaPorGpu());
             bool attract = attractOn && notBlockedByVideoCfg;   // modo atraccion (reposo): cubo gigante + estrellas por GPU
             // Al CAMBIAR de modo, rehacer la textura de UI en el MISMO cuadro que cambia lo que se dibuja
             // (ShowAlbum, cubos): si no, se ve un instante el modo viejo detras del nuevo (p.ej. la rejilla de
@@ -1302,6 +1310,8 @@ namespace Rocola
                 if (!FastSongGlass) { sb = Mix(sb, songSel); sb = Mix(sb, bgAccent.ToArgb()); }
                 sb = Mix(sb, colaVer);   // sin esto, la marca "EN COLA" no saldria hasta que algo mas cambiara
                 sb = Mix(sb, generoVer);   // idem para las pastillas de genero, que se aprenden en segundo plano
+                // La lista grande, el ecualizador y los minutos de la cola (DiscoVivoGpu.cs) cambian lo horneado.
+                if (songList != null) { sb = Mix(sb, songList.Vivo); sb = Mix(sb, songList.RowH); sb = Mix(sb, songList.EsperaVer); }
                 sb = Mix(sb, panelSongs.Left); sb = Mix(sb, panelSongs.Top); sb = Mix(sb, panelSongs.Width); sb = Mix(sb, panelSongs.Height);
                 // Mientras la pagina se desliza, la firma tiene que cambiar en cada cuadro o la textura no se
                 // rehace y la animacion no se veria mover (igual que la capsula de la barra de letras).
@@ -1381,7 +1391,7 @@ namespace Rocola
             if (hb != null) hb.RenderContent(g, true);   // forGpu: sus pulsos van como halos por quad, no en la textura
             else { HeaderView hv = c as HeaderView; if (hv != null) hv.RenderContent(g);
             else { LetterBar lb = c as LetterBar; if (lb != null) lb.RenderContent(g, true);
-            else { PastillaView pa = c as PastillaView; if (pa != null) pa.RenderContent(g);
+            else { PastillaView pa = c as PastillaView; if (pa != null) pa.RenderContentGpu(g);   // con la cancion que llega a la cola (DiscoVivoGpu.cs)
             else { ProgressView pv = c as ProgressView; if (pv != null) pv.RenderContent(g);
             else { GeneroView gv = c as GeneroView; if (gv != null) gv.RenderContent(g);
             else { SongListView sl = c as SongListView; if (sl != null) sl.RenderContent(g);

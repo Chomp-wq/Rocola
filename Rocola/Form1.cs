@@ -208,6 +208,9 @@ namespace Rocola
             // la vez -la que suena puede estar pedida otra vez- y el cliente necesita ver LAS DOS marcas.
             sonandoKey = (nowPlaying != null) ? nowPlaying.PathKey() : "";
             colaVer++;
+#if ROCOLA_GPU
+            ActualizaEsperas(true);   // "EN COLA 3 · en ~9 min": con la cola nueva, antes de volver a hornear la lista
+#endif
             // Y la lista del disco tiene que volver a hornearse: sus marcas (verde y ambar) van DENTRO del
             // mapa de bits horneado, asi que sin este aviso la cancion recien pedida seguiria saliendo sin
             // marca hasta que algo mas obligara a rehacerla.
@@ -1446,6 +1449,7 @@ namespace Rocola
             // zoom es fluido aunque este temporizador vaya a 24. Aqui solo se apagan al cumplirse su tiempo.
             if (transMode != 0 && Environment.TickCount - transTick >= TransMs) AbortDiscTrans();
             if (winMode != 0 && Environment.TickCount - winTick >= WinMs) AbortWinTrans();
+            DiscoVivoTic();   // dentro del disco: los minutos de la cola y el vinilo de lo que suena (DiscoVivoGpu.cs)
 #endif
             DrainCoverTrash();   // libera carátulas expulsadas (seguro: no hay repintado en curso)
 #if ROCOLA_GPU

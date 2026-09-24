@@ -14,6 +14,9 @@
 //    deslizamiento de antes (Form1.Pared.cs, AlbumView.CurvaColumna).
 //  - BARRA DE LETRAS CON LUPA. La letra elegida y sus vecinas se ven mas grandes, y una rayita debajo de cada una
 //    dice cuanta musica tiene (Form1.Vistas.cs, LetterBar.RenderLupa).
+//
+// TANDA 2, DENTRO DEL DISCO, en DiscoVivoGpu.cs: el vinilo que asoma, la lista grande, el ecualizador en la que suena,
+// los minutos de la cola y el boleto que vuela a la cola. Sus interruptores van en esta misma pestaña, en su tarjeta.
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -57,7 +60,7 @@ namespace Rocola
             Panel pg = new Panel();
             pg.SetBounds(0, 96, 960, 636);
             pg.BackColor = Color.FromArgb(11, 14, 32);
-            Tarjeta tPared = new Tarjeta(); tPared.SetBounds(16, 4, 456, 340); tPared.Titulo = "LA PARED Y LAS LETRAS"; tPared.Acento = cAc;
+            Tarjeta tPared = new Tarjeta(); tPared.SetBounds(16, 4, 456, 412); tPared.Titulo = "LA PARED Y LAS LETRAS"; tPared.Acento = cAc;
             string[] nom = {
                 "Portada enfocada (GPU)",
                 "Ficha rápida del disco (GPU)",
@@ -86,6 +89,39 @@ namespace Rocola
             sw[1].CheckedChanged += delegate { fichaDisco = sw[1].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             sw[2].CheckedChanged += delegate { paginaDesliza = sw[2].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             sw[3].CheckedChanged += delegate { letrasLupa = sw[3].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            // LA TANDA 2, al lado: lo que pasa dentro de un disco (DiscoVivoGpu.cs).
+            Tarjeta tDisco = new Tarjeta(); tDisco.SetBounds(488, 4, 456, 412); tDisco.Titulo = "DENTRO DEL DISCO"; tDisco.Acento = cAc;
+            string[] nomD = {
+                "Vinilo que asoma (GPU)",
+                "Lista grande (GPU)",
+                "Ecualizador en la que suena (GPU)",
+                "En cola, con los minutos (GPU)",
+                "Ver adónde va la canción (GPU)",
+            };
+            string[] explicaD = {
+                "Si suena ese disco, un vinilo sale de detras de la portada y gira\nmientras suena. Al acabar se vuelve a guardar.",
+                "Filas mas altas y letra mas grande dentro del disco: se lee de\nlejos. Caben menos canciones por pagina.",
+                "La cancion que suena lleva cuatro barritas que se mueven con\nla musica, en vez del triangulito.",
+                "Las canciones pedidas dicen tambien cuanto falta para que\nsuenen: \"EN COLA 3 · en ~9 min\".",
+                "Al pedir una cancion, su boleto vuela desde la fila hasta \"En\ncola\" y el numero sube cuando llega.",
+            };
+            bool[] valD = { viniloDisco, listaGrande, eqSonando, colaMinutos, vueloCola };
+            Interruptor[] swD = new Interruptor[nomD.Length];
+            for (int i = 0; i < swD.Length; i++)
+            {
+                int y = 40 + i * 72;
+                swD[i] = new Interruptor(); swD[i].SetBounds(16, y, 424, 26);
+                swD[i].Font = fNom; swD[i].ForeColor = cTexto; swD[i].Acento = cAc;
+                swD[i].Text = nomD[i]; swD[i].Checked = valD[i];
+                Label le = new Label(); le.SetBounds(16, y + 30, 424, 32); le.BackColor = Color.Transparent;
+                le.ForeColor = cTenue; le.Font = fDes; le.Text = explicaD[i];
+                tDisco.Controls.Add(swD[i]); tDisco.Controls.Add(le);
+            }
+            swD[0].CheckedChanged += delegate { viniloDisco = swD[0].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            swD[1].CheckedChanged += delegate { listaGrande = swD[1].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            swD[2].CheckedChanged += delegate { eqSonando = swD[2].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            swD[3].CheckedChanged += delegate { colaMinutos = swD[3].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            swD[4].CheckedChanged += delegate { vueloCola = swD[4].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             Label lPie = new Label(); lPie.SetBounds(16, 508, 928, 48); lPie.BackColor = Color.Transparent;
             lPie.ForeColor = cApagado; lPie.Font = fDes;
             lPie.Text = "Las ideas que se eligieron del lienzo de bocetos. Solo se ven con la tarjeta grafica: sin ella la pantalla\n"
@@ -95,11 +131,13 @@ namespace Rocola
             bReset.Click += delegate
             {
                 portadaEnfocada = fichaDisco = paginaDesliza = letrasLupa = true;
+                viniloDisco = listaGrande = eqSonando = colaMinutos = vueloCola = true;
                 for (int i = 0; i < sw.Length; i++) sw[i].Checked = true;
+                for (int i = 0; i < swD.Length; i++) swD[i].Checked = true;
                 f3CambioGraf = true; AplicaEfectosGpu();
                 ShowToast("Pantalla como de fabrica", Color.FromArgb(40, 130, 90));
             };
-            pg.Controls.Add(tPared); pg.Controls.Add(lPie); pg.Controls.Add(bReset);
+            pg.Controls.Add(tPared); pg.Controls.Add(tDisco); pg.Controls.Add(lPie); pg.Controls.Add(bReset);
             return pg;
         }
     }

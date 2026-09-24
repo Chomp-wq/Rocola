@@ -744,7 +744,9 @@ namespace Rocola
             FillCubeBoxGeom(ref ci, cubeBox, panelSongs.Left + cubeBox.Left, panelSongs.Top + cubeBox.Top);
             if (ci.W < 8f || ci.H < 8f) return RectangleF.Empty;
             ang = ci.Angle;
-            return new RectangleF(ci.X, ci.Y, ci.W, ci.H);
+            // Con el vinilo fuera, el cubo esta apartado un poco a su izquierda (DiscoVivoGpu.cs): el viaje sale de ahi.
+            float corrido = (gpuPanel != null) ? gpuPanel.CuboCorrido : 0f;
+            return new RectangleF(ci.X - corrido, ci.Y, ci.W, ci.H);
         }
 
         // Estado del VIAJE de la portada para el panel GPU. El recorrido va con suavizado quintico (arranca y

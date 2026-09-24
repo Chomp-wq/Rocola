@@ -405,6 +405,12 @@ namespace Rocola
                     else if (s.StartsWith("ficha_disco=")) fichaDisco = s.Substring("ficha_disco=".Length).Trim() != "0";
                     else if (s.StartsWith("pagina_desliza=")) paginaDesliza = s.Substring("pagina_desliza=".Length).Trim() != "0";
                     else if (s.StartsWith("letras_lupa=")) letrasLupa = s.Substring("letras_lupa=".Length).Trim() != "0";
+                    // Ctrl+F3 -> Pantalla -> Dentro del disco (DiscoVivoGpu.cs): tambien solo por tarjeta grafica.
+                    else if (s.StartsWith("vinilo_disco=")) viniloDisco = s.Substring("vinilo_disco=".Length).Trim() != "0";
+                    else if (s.StartsWith("lista_grande=")) listaGrande = s.Substring("lista_grande=".Length).Trim() != "0";
+                    else if (s.StartsWith("eq_sonando=")) eqSonando = s.Substring("eq_sonando=".Length).Trim() != "0";
+                    else if (s.StartsWith("cola_minutos=")) colaMinutos = s.Substring("cola_minutos=".Length).Trim() != "0";
+                    else if (s.StartsWith("vuelo_cola=")) vueloCola = s.Substring("vuelo_cola=".Length).Trim() != "0";
                     else if (s.StartsWith("disco="))   // tipo de disco: auto (medir), ssd o hdd (Ctrl+F3)
                     {
                         string d = s.Substring(6).Trim().ToLowerInvariant();
@@ -525,6 +531,11 @@ namespace Rocola
                 sb.Append("ficha_disco=").Append(fichaDisco ? "1" : "0").Append("\r\n");
                 sb.Append("pagina_desliza=").Append(paginaDesliza ? "1" : "0").Append("\r\n");
                 sb.Append("letras_lupa=").Append(letrasLupa ? "1" : "0").Append("\r\n");
+                sb.Append("vinilo_disco=").Append(viniloDisco ? "1" : "0").Append("\r\n");
+                sb.Append("lista_grande=").Append(listaGrande ? "1" : "0").Append("\r\n");
+                sb.Append("eq_sonando=").Append(eqSonando ? "1" : "0").Append("\r\n");
+                sb.Append("cola_minutos=").Append(colaMinutos ? "1" : "0").Append("\r\n");
+                sb.Append("vuelo_cola=").Append(vueloCola ? "1" : "0").Append("\r\n");
                 sb.Append("disco=").Append(perfilDisco == 1 ? "ssd" : perfilDisco == 2 ? "hdd" : "auto").Append("\r\n");
                 sb.Append("video_gpu=").Append(videoGpuOn ? "1" : "0").Append("\r\n");
                 sb.Append("diagnostico=").Append(diagOn ? "1" : "0").Append("\r\n");

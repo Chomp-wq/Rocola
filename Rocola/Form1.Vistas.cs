@@ -1193,7 +1193,7 @@ namespace Rocola
             }
         }
 
-        private class PastillaView : Control
+        private partial class PastillaView : Control
         {
             public string Etiqueta = "", Valor = "";
             public Color Acento = DefaultAccent;
@@ -1241,6 +1241,9 @@ namespace Rocola
                 get
                 {
                     int t = Environment.TickCount;
+#if ROCOLA_GPU
+                    if (LlegaViva(t)) return true;   // la cancion que llega a la cola (DiscoVivoGpu.cs)
+#endif
                     return (monTick != 0 && t - monTick < MonMs + DestMs)
                         || (aviTick != 0 && t - aviTick < AviMs);
                 }
@@ -1334,6 +1337,15 @@ namespace Rocola
                     }
                     else if (da >= AviMs) aviTick = 0;
                 }
+#if ROCOLA_GPU
+                // EL SALTITO de la cancion que llega a la cola: solo en la imagen de la tarjeta (DiscoVivoGpu.cs).
+                float salto = SaltoLlegada(t);
+                if (stSac == null && salto != 1f)
+                {
+                    stSac = g.Save();
+                    g.TranslateTransform(w * 0.5f, h * 0.5f); g.ScaleTransform(salto, salto); g.TranslateTransform(-w * 0.5f, -h * 0.5f);
+                }
+#endif
                 using (GraphicsPath p = RoundRectF(new RectangleF(0.5f, 0.5f, w - 1, h - 1), h / 2f))
                 {
                     using (SolidBrush b = new SolidBrush(Color.FromArgb(52, Acento))) g.FillPath(b, p);
@@ -1343,6 +1355,9 @@ namespace Rocola
                     float br = 0f;
                     if (monTick != 0) { int dd = t - (monTick + MonMs); if (dd >= 0 && dd < DestMs) br = 1f - dd / (float)DestMs; }
                     if (aviTick != 0) { int da2 = t - aviTick; if (da2 >= 0 && da2 < AviMs) br = Math.Max(br, 1f - da2 / (float)AviMs); }
+#if ROCOLA_GPU
+                    br = Math.Max(br, DestelloLlegada(t));
+#endif
                     if (br > 0.01f)
                     {
                         using (SolidBrush b2 = new SolidBrush(Color.FromArgb((int)(70 * br), Acento))) g.FillPath(b2, p);
@@ -1364,15 +1379,19 @@ namespace Rocola
                 // EL NUMERO RUEDA COMO UN ODOMETRO: el de antes sube y se va, el nuevo entra por abajo. Se
                 // recorta a su hueco para que ninguno de los dos asome fuera de la capsula.
                 float rp = -1f;
+                string de = rodDe;
                 if (monTick != 0) { int dr = t - rodTick; if (dr < 0) rp = 0f; else if (dr < RodMs) rp = dr / (float)RodMs; }
+#if ROCOLA_GPU
+                if (rp < 0f) rp = RodadoLlegada(t, ref de);   // el numero de la cola sube cuando llega el boleto
+#endif
                 if (rp >= 0f)
                 {
                     float sube = (float)(1.0 - Math.Pow(1.0 - rp, 3));   // frena al llegar, como un rodillo
                     System.Drawing.Drawing2D.GraphicsState st = g.Save();
                     g.SetClip(new RectangleF(xv - 3f, 1f, Math.Max(wv, 10f) + 12f, h - 2f), CombineMode.Intersect);
                     brocha.Color = Acento;
-                    if (rodDe.Length > 0)
-                        g.DrawString(rodDe, fVal, brocha, new RectangleF(xv, -h * sube, wv + 6, h), sfCen);
+                    if (de.Length > 0)
+                        g.DrawString(de, fVal, brocha, new RectangleF(xv, -h * sube, wv + 6, h), sfCen);
                     if (va.Length > 0)
                         g.DrawString(va, fVal, brocha, new RectangleF(xv, h * (1f - sube), wv + 6, h), sfCen);
                     g.Restore(st);
@@ -1959,6 +1978,9 @@ namespace Rocola
                 k = k * 31 + Accent.ToArgb(); k = k * 31 + BackColor.ToArgb();
                 k = k * 31 + (int)(Font.SizeInPoints * 64f);
                 k = k * 31 + ((GetCount != null) ? GetCount() : 0);
+#if ROCOLA_GPU
+                if (Vivo != 0) { k = k * 31 + Vivo; k = k * 31 + EsperaVer; }   // lo que cambia con la tarjeta (DiscoVivoGpu.cs)
+#endif
                 return k;
             }
 
@@ -1976,6 +1998,9 @@ namespace Rocola
                     hornoPag = new Bitmap(w, h, PixelFormat.Format32bppPArgb);
                     hornoAncho = w; hornoAlto = h;
                 }
+#if ROCOLA_GPU
+                eqIdx = -1;   // donde van las barritas del ecualizador: lo vuelve a apuntar este horneado (DiscoVivoGpu.cs)
+#endif
                 using (Graphics gb = Graphics.FromImage(hornoPag)) PintaPagina(gb, PageStart);
                 hornoSig = sig;
             }
@@ -2038,6 +2063,9 @@ namespace Rocola
                 g.FillRectangle(bgB, 0, 0, w, h);
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 float rad = Math.Min(11f, RowH * 0.34f);        // el circulito del numero
+#if ROCOLA_GPU
+                if ((Vivo & VivoGrande) != 0) rad = RadioGrande(RowH);   // lista grande (DiscoVivoGpu.cs): crece con la fila
+#endif
                 float xTexto = 16 + rad * 2 + 10;
                 // ALTO de las marcas. Sale del circulito del numero, pero ese va TOPADO (rad no pasa de 11)
                 // para que en una fila alta no quede un circulo gigante... y la letra si crece con la fila. En
@@ -2045,6 +2073,9 @@ namespace Rocola
                 // y por abajo. Asi que la pastilla crece tambien si hace falta para envolver a su letra.
                 int hCola = Math.Max((int)(rad * 1.64f), fCola.Height + 4);
                 EnsureHorno((int)(rad * 2), hCola);
+#if ROCOLA_GPU
+                if ((Vivo & VivoGrande) != 0) PlanPaginaGpu(g, rpp, n, w, xTexto, hCola);   // el genero: en toda la pagina o en ninguna fila
+#endif
                 for (int row = 0; row < rpp; row++)
                 {
                     int idx = arranque + row;
@@ -2082,6 +2113,9 @@ namespace Rocola
                             durFmt.LineAlignment = StringAlignment.Center;
                         }
                         durW = 58;
+#if ROCOLA_GPU
+                        if ((Vivo & VivoGrande) != 0) durW = AnchoDuracion(g);   // con la letra grande no caben 58 px
+#endif
                         durB.Color = (idx == Sel) ? Color.FromArgb(235, 245, 255) : Color.FromArgb(175, 190, 215);
                         g.DrawString(dur, Font, durB, new Rectangle(r.Right - durW - 14, r.Y, durW, r.Height), durFmt);
                     }
@@ -2089,6 +2123,12 @@ namespace Rocola
                     // mismo color que ya salen en los resultados del buscador: la rocola habla siempre igual.
                     int quitaGen = 0;
                     string gen = (GetGenero != null) ? GetGenero(idx) : null;
+#if ROCOLA_GPU
+                    // Con la tarjeta grafica (DiscoVivoGpu.cs) manda el titulo: una pedida dice sus minutos si caben, y
+                    // con la lista grande el genero sale solo si el titulo cabe entero a su lado.
+                    string tColaGpu = null;
+                    if ((Vivo & (VivoGrande | VivoMinutos)) != 0) tColaGpu = PlanFilaGpu(g, idx, pos, enCola, suena, r, durW, xTexto, hCola, ref gen);
+#endif
                     if (!string.IsNullOrEmpty(gen))
                     {
                         Bitmap pg = HorneaGenero(gen);
@@ -2111,6 +2151,9 @@ namespace Rocola
                     if (enCola)
                     {
                         string t = "EN COLA " + pos;
+#if ROCOLA_GPU
+                        if (tColaGpu != null) t = tColaGpu;   // "EN COLA 3 · en ~9 min"
+#endif
                         int wp = AnchoTexto(g, t, fCola) + hCola;
                         xMarca -= wp;
                         RectangleF cr = new RectangleF(xMarca, cy - hCola * 0.5f, wp, hCola);
@@ -2119,6 +2162,11 @@ namespace Rocola
                         g.DrawString(t, fCola, colaB, cr, cenFmt);
                         xMarca -= 8; quitaCola += wp + 8;
                     }
+#if ROCOLA_GPU
+                    // Con el ecualizador (DiscoVivoGpu.cs) la pastilla de SONANDO lleva el hueco de las barritas en vez
+                    // del triangulito, y ya no hace falta la de siempre.
+                    if (suena && (Vivo & VivoEq) != 0) { quitaCola += PastillaSonandoEq(g, idx, ref xMarca, cy, hCola); suena = false; }
+#endif
                     if (suena)
                     {
                         // U+25BA y no U+25B6: son dos triangulitos casi identicos, pero el otro no esta en el

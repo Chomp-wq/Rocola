@@ -91,6 +91,7 @@ class Pestanas
             "estadoTransparente", "cancionesTransparentes", "cieloProfundo",
             "auroraBandas", "nebNaturalFuerza",
             "portadaEnfocada", "fichaDisco", "paginaDesliza", "letrasLupa",   // la pestaña de la pantalla
+            "viniloDisco", "listaGrande", "eqSonando", "colaMinutos", "vueloCola",   // y su tarjeta de dentro del disco
         };
         List<string> huerfanos = new List<string>();
         foreach (string campo in mando)
