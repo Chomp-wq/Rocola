@@ -1242,6 +1242,7 @@ namespace Rocola
         // sube la version, que es lo que hace que la GPU vuelva a subirlo.
         private void HorneaToast(string text, Color back)
         {
+            if (AvisoClaro()) { HorneaAviso(text, back); return; }   // el aviso que se entiende (SuenaVivoGpu.cs)
             if (toastBmp == null) toastBmp = new Bitmap(ToastW, ToastH, PixelFormat.Format32bppPArgb);
             PintaToast(toastBmp, text, back, lblToast.Font);
             toastVer++; toastTick = Environment.TickCount;
@@ -1349,6 +1350,7 @@ namespace Rocola
             VuelaALaCola(it.Disc);   // se VE: la portada sale de la pared y aterriza en la pastilla de la cola
 #if ROCOLA_GPU
             VuelaBoleto(it);         // y dentro de un disco, la cancion sale de su fila (DiscoVivoGpu.cs)
+            ultimoPedido = it;       // para el aviso claro (SuenaVivoGpu.cs)
 #endif
             RecordPlay(it);                                              // estadisticas: cuenta lo pedido
             credits--;                                                   // cada cosa cuesta 1 credito
@@ -1368,6 +1370,7 @@ namespace Rocola
             // con cada una. Y si no se supiera el puesto -no deberia pasar- se vuelve al de siempre.
             string msg = TextoTurno(turnoPuesto, turnoSegs);
             if (msg.Length == 0) msg = songTotal > 1 ? "Cancion agregada  X" + songTotal : "Cancion agregada";
+            AvisoPedido();   // con tarjeta grafica y avisos claros: "Pusiste «El Rey»" y cuanto falta (SuenaVivoGpu.cs)
             if (search) ShowSearchToast(msg, true); else ShowToast(msg);
             MarkToast(ToastKind.Song);
         }
@@ -1385,7 +1388,8 @@ namespace Rocola
             // Monedas rapidas seguidas: el aviso SUMA (+4, +8, +12...) en vez de reiniciar; si ya paso su
             // tiempo (el usuario fue lento), arranca de nuevo en +4.
             coinTotal = SameToastActive(ToastKind.Coin) ? coinTotal + CreditsPerCoin : CreditsPerCoin;
-            ShowToast("+" + coinTotal + " creditos", Color.FromArgb(40, 165, 90));
+            // Con la moneda cayendo a la vista (SuenaVivoGpu.cs) el "+4 creditos" sale junto a la capsula, no arriba.
+            if (!MonedaSinAviso()) ShowToast("+" + coinTotal + " creditos", Color.FromArgb(40, 165, 90));
             MarkToast(ToastKind.Coin);
         }
     }

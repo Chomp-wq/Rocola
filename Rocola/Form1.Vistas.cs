@@ -1339,7 +1339,7 @@ namespace Rocola
                 }
 #if ROCOLA_GPU
                 // EL SALTITO de la cancion que llega a la cola: solo en la imagen de la tarjeta (DiscoVivoGpu.cs).
-                float salto = SaltoLlegada(t);
+                float salto = SaltoLlegada(t) * SaltoMoneda(t);   // y el golpe de la moneda grande (SuenaVivoGpu.cs)
                 if (stSac == null && salto != 1f)
                 {
                     stSac = g.Save();
@@ -1454,7 +1454,11 @@ namespace Rocola
                 if (monTick != 0)
                 {
                     int dt = t - monTick;
-                    if (dt >= 0 && dt < MonMs)
+                    bool monedita = dt >= 0 && dt < MonMs;
+#if ROCOLA_GPU
+                    if (MoneditaTapada()) monedita = false;   // la tapa la moneda grande de la tarjeta (SuenaVivoGpu.cs)
+#endif
+                    if (monedita)
                     {
                         float u = dt / (float)MonMs;
                         float d = h * 0.44f;

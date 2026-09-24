@@ -17,6 +17,9 @@
 //
 // TANDA 2, DENTRO DEL DISCO, en DiscoVivoGpu.cs: el vinilo que asoma, la lista grande, el ecualizador en la que suena,
 // los minutos de la cola y el boleto que vuela a la cola. Sus interruptores van en esta misma pestaña, en su tarjeta.
+//
+// TANDA 3, LO QUE SUENA Y LOS CREDITOS, en SuenaVivoGpu.cs: lo que suena en grande, la moneda que cae, la tarjeta que
+// invita cuando no hay creditos y los avisos que se entienden. Van en la segunda hoja de esta pestaña.
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -60,7 +63,11 @@ namespace Rocola
             Panel pg = new Panel();
             pg.SetBounds(0, 96, 960, 636);
             pg.BackColor = Color.FromArgb(11, 14, 32);
-            Tarjeta tPared = new Tarjeta(); tPared.SetBounds(16, 4, 456, 412); tPared.Titulo = "LA PARED Y LAS LETRAS"; tPared.Acento = cAc;
+            // DOS HOJAS: ya no caben todas las tarjetas a la vez. Arriba, un boton por hoja; debajo, la que toque.
+            Panel hPared = new Panel(), hSuena = new Panel();
+            hPared.SetBounds(0, 48, 960, 452); hSuena.SetBounds(0, 48, 960, 452);
+            hPared.BackColor = pg.BackColor; hSuena.BackColor = pg.BackColor;
+            Tarjeta tPared = new Tarjeta(); tPared.SetBounds(16, 0, 456, 412); tPared.Titulo = "LA PARED Y LAS LETRAS"; tPared.Acento = cAc;
             string[] nom = {
                 "Portada enfocada (GPU)",
                 "Ficha rápida del disco (GPU)",
@@ -90,7 +97,7 @@ namespace Rocola
             sw[2].CheckedChanged += delegate { paginaDesliza = sw[2].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             sw[3].CheckedChanged += delegate { letrasLupa = sw[3].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             // LA TANDA 2, al lado: lo que pasa dentro de un disco (DiscoVivoGpu.cs).
-            Tarjeta tDisco = new Tarjeta(); tDisco.SetBounds(488, 4, 456, 412); tDisco.Titulo = "DENTRO DEL DISCO"; tDisco.Acento = cAc;
+            Tarjeta tDisco = new Tarjeta(); tDisco.SetBounds(488, 0, 456, 412); tDisco.Titulo = "DENTRO DEL DISCO"; tDisco.Acento = cAc;
             string[] nomD = {
                 "Vinilo que asoma (GPU)",
                 "Lista grande (GPU)",
@@ -122,6 +129,36 @@ namespace Rocola
             swD[2].CheckedChanged += delegate { eqSonando = swD[2].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             swD[3].CheckedChanged += delegate { colaMinutos = swD[3].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             swD[4].CheckedChanged += delegate { vueloCola = swD[4].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            // LA TANDA 3, en la segunda hoja: lo que suena y los creditos (SuenaVivoGpu.cs).
+            Tarjeta tSuena = new Tarjeta(); tSuena.SetBounds(16, 0, 456, 328); tSuena.Titulo = "LO QUE SUENA Y LOS CREDITOS"; tSuena.Acento = cAc;
+            string[] nomS = {
+                "Lo que suena, en grande (GPU)",
+                "La moneda que cae (GPU)",
+                "Sin creditos, invitar (GPU)",
+                "Avisos que se entienden (GPU)",
+            };
+            string[] explicaS = {
+                "En reposo, un vinilo gira detras de la portada, el titulo se\ndesliza si no cabe y dice cuanto falta, tambien de las que siguen.",
+                "Al meter una moneda cae una moneda dorada en la capsula de\ncreditos, el numero rueda y sube \"+4 creditos\".",
+                "Si alguien pide algo sin creditos, en vez del letrero naranja\nsale una tarjeta amable que invita a meter una moneda.",
+                "Los avisos entran por la derecha con su color y su icono, en\ndos renglones, y una linea dice cuanto les queda.",
+            };
+            bool[] valS = { suenaGrande, monedaCae, sinCreditosInvita, avisosClaros };
+            Interruptor[] swS = new Interruptor[nomS.Length];
+            for (int i = 0; i < swS.Length; i++)
+            {
+                int y = 40 + i * 72;
+                swS[i] = new Interruptor(); swS[i].SetBounds(16, y, 424, 26);
+                swS[i].Font = fNom; swS[i].ForeColor = cTexto; swS[i].Acento = cAc;
+                swS[i].Text = nomS[i]; swS[i].Checked = valS[i];
+                Label le = new Label(); le.SetBounds(16, y + 30, 424, 32); le.BackColor = Color.Transparent;
+                le.ForeColor = cTenue; le.Font = fDes; le.Text = explicaS[i];
+                tSuena.Controls.Add(swS[i]); tSuena.Controls.Add(le);
+            }
+            swS[0].CheckedChanged += delegate { suenaGrande = swS[0].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            swS[1].CheckedChanged += delegate { monedaCae = swS[1].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            swS[2].CheckedChanged += delegate { sinCreditosInvita = swS[2].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            swS[3].CheckedChanged += delegate { avisosClaros = swS[3].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             Label lPie = new Label(); lPie.SetBounds(16, 508, 928, 48); lPie.BackColor = Color.Transparent;
             lPie.ForeColor = cApagado; lPie.Font = fDes;
             lPie.Text = "Las ideas que se eligieron del lienzo de bocetos. Solo se ven con la tarjeta grafica: sin ella la pantalla\n"
@@ -132,13 +169,40 @@ namespace Rocola
             {
                 portadaEnfocada = fichaDisco = paginaDesliza = letrasLupa = true;
                 viniloDisco = listaGrande = eqSonando = colaMinutos = vueloCola = true;
+                suenaGrande = monedaCae = sinCreditosInvita = avisosClaros = true;
                 for (int i = 0; i < sw.Length; i++) sw[i].Checked = true;
                 for (int i = 0; i < swD.Length; i++) swD[i].Checked = true;
+                for (int i = 0; i < swS.Length; i++) swS[i].Checked = true;
                 f3CambioGraf = true; AplicaEfectosGpu();
                 ShowToast("Pantalla como de fabrica", Color.FromArgb(40, 130, 90));
             };
-            pg.Controls.Add(tPared); pg.Controls.Add(tDisco); pg.Controls.Add(lPie); pg.Controls.Add(bReset);
+            hPared.Controls.Add(tPared); hPared.Controls.Add(tDisco); hSuena.Controls.Add(tSuena);
+            Panel[] hojas = { hPared, hSuena };
+            string[] nomHoja = { "La pared y el disco", "Lo que suena y los creditos" };
+            BotonPlano[] bHoja = new BotonPlano[hojas.Length];
+            for (int i = 0; i < hojas.Length; i++)
+            {
+                bHoja[i] = new BotonPlano(); bHoja[i].SetBounds(16 + i * 312, 4, 300, 36); bHoja[i].Font = fBot; bHoja[i].Text = nomHoja[i];
+                int k = i;   // una copia por vuelta: cada boton recuerda su hoja
+                bHoja[i].Click += delegate { MuestraHoja(hojas, bHoja, k, cApagado); };
+                pg.Controls.Add(bHoja[i]); pg.Controls.Add(hojas[i]);
+            }
+            MuestraHoja(hojas, bHoja, 0, cApagado);
+            pg.Controls.Add(lPie); pg.Controls.Add(bReset);
             return pg;
+        }
+        // Enseña una hoja y enciende su boton, con los mismos colores que las pestañas de arriba.
+        private static void MuestraHoja(Panel[] hojas, BotonPlano[] botones, int k, Color cApagado)
+        {
+            for (int i = 0; i < hojas.Length; i++)
+            {
+                bool act = (i == k);
+                hojas[i].Visible = act;
+                botones[i].Relleno = act ? Color.FromArgb(28, 62, 104) : Color.FromArgb(28, 34, 62);
+                botones[i].Borde = act ? Color.FromArgb(150, 205, 255) : Color.FromArgb(60, 72, 118);
+                botones[i].ForeColor = act ? Color.FromArgb(226, 240, 255) : cApagado;
+                botones[i].Invalidate();
+            }
         }
     }
 

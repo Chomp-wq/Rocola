@@ -676,7 +676,7 @@ namespace Rocola
         private ToastKind toastKind = ToastKind.Other; private int toastKindTick;
         private int coinTotal, songTotal;
         private void MarkToast(ToastKind k) { toastKind = k; toastKindTick = Environment.TickCount; }
-        private bool SameToastActive(ToastKind k) { return toastKind == k && (Environment.TickCount - toastKindTick) < 1300; }   // 1300 = duracion del aviso
+        private bool SameToastActive(ToastKind k) { return toastKind == k && (Environment.TickCount - toastKindTick) < VidaAviso(); }   // lo que dura el aviso (1300, o el claro)
 
         // ---- BOTONES DE LA ROCOLA (configurables; se guardan en rocola_teclas.txt) ----
         // Valores por defecto (sirven para probar con teclado normal antes de configurar).
@@ -1945,7 +1945,7 @@ namespace Rocola
             PlayItem it = new PlayItem(); it.IsVideo = false; it.Song = t; it.Disc = disc;
             AddResult r = AddItem(it);
             if (r == AddResult.Added) ShowSongAddedToast(false);
-            else if (r == AddResult.NoCredit) ShowToast("Inserta una moneda", Color.FromArgb(200, 130, 35));
+            else if (r == AddResult.NoCredit) { if (!InvitaSinCredito(it)) ShowToast("Inserta una moneda", Color.FromArgb(200, 130, 35)); }
             else ShowToast("Esa ya va seguida", Color.FromArgb(200, 130, 35));
         }
 
@@ -1957,9 +1957,10 @@ namespace Rocola
             if (r == AddResult.Added)
             {   // el video tambien dice su turno: para quien lo pidio es exactamente lo mismo
                 string mv = TextoTurno(turnoPuesto, turnoSegs);
+                AvisoPedido();   // con avisos claros: "Pusiste «...»" y cuanto falta (SuenaVivoGpu.cs)
                 ShowToast(mv.Length > 0 ? mv : "Video agregado a la cola");
             }
-            else if (r == AddResult.NoCredit) ShowToast("Inserta una moneda", Color.FromArgb(200, 130, 35));
+            else if (r == AddResult.NoCredit) { if (!InvitaSinCredito(it)) ShowToast("Inserta una moneda", Color.FromArgb(200, 130, 35)); }
             else ShowToast("Ese video ya va seguido", Color.FromArgb(200, 130, 35));
         }
 
@@ -2042,6 +2043,7 @@ namespace Rocola
             if (transMode != 0 && Environment.TickCount - transTick >= TransMs) AbortDiscTrans();
             if (winMode != 0 && Environment.TickCount - winTick >= WinMs) AbortWinTrans();
             DiscoVivoTic();   // dentro del disco: los minutos de la cola y el vinilo de lo que suena (DiscoVivoGpu.cs)
+            SuenaVivoTic();   // y el vinilo del panel de reposo en grande (SuenaVivoGpu.cs)
 #endif
             DrainCoverTrash();   // libera carátulas expulsadas (seguro: no hay repintado en curso)
 #if ROCOLA_GPU

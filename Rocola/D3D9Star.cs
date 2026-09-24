@@ -1768,7 +1768,7 @@ namespace Rocola
         }
         internal RectangleF IdleBadgeGlow(RectangleF normal)
         {
-            Rectangle badge = IdleBadgeRect(Width, idleH);
+            Rectangle badge = IdleBadgeRectCorrido(Width, idleH, IdleCorre);   // corrida si asoma el vinilo (SuenaVivoGpu.cs)
             float y = StatusTopY + badge.Y;
             return new RectangleF(normal.X + (badge.X - normal.X) * idleBlend,
                 normal.Y + (y - normal.Y) * idleBlend,
@@ -1974,6 +1974,7 @@ namespace Rocola
             if (toastTex != IntPtr.Zero) { D3D9.Release(toastTex); toastTex = IntPtr.Zero; toastVer = -1; }
             SueltaPantallaViva();   // el letrero de la elegida y la ficha rapida
             SueltaDiscoVivo();      // el vinilo y el boleto
+            SueltaSuenaVivo();      // los avisos, la invitacion, la moneda y lo del panel de reposo
             if (uiTex != IntPtr.Zero) { D3D9.Release(uiTex); uiTex = IntPtr.Zero; }
             if (hazTex != IntPtr.Zero) { D3D9.Release(hazTex); hazTex = IntPtr.Zero; }
             if (nebTex != IntPtr.Zero) { D3D9.Release(nebTex); nebTex = IntPtr.Zero; }
@@ -2119,6 +2120,7 @@ namespace Rocola
             { toastTex = Upload(toastTex, ref toastBw, ref toastBh, tt.Bmp, out toastU, out toastV); toastVer = tt.Ver; }
             PreparaPantallaViva();         // el letrero de la elegida, la ficha rapida y el empujon del cielo al pasar de pagina
             PreparaDiscoVivo();            // dentro del disco: el vinilo, las barritas de la que suena y el boleto que vuela
+            PreparaSuenaVivo();            // los avisos, la invitacion, la moneda y el panel de reposo en grande
             // Barras (UI) a textura: se re-sube solo cuando cambia algun texto/estado (firma del form), limitada a
             // UNA por franja (heavyGapMs). UiUrgent: al CAMBIAR DE MODO (p.ej. cerrar el buscador) hay que rehacerla
             // en ESTE mismo cuadro, sin esperar franja: si no, se veria la rejilla por los huecos del teclado un instante.
@@ -2315,6 +2317,8 @@ namespace Rocola
                 float py = StatusTopY;
                 SetTexQuadA(adornoQuad, 0, py, Width, py + idleH, idleU, idleV, ((uint)(idleBlend*255) << 24) | 0x00FFFFFFu);
                 stars.DrawQuad(idleTex, adornoQuad);
+                DibujaLatidoGenero(py);   // lo que suena, en grande: la pastilla del genero late con los graves
+                DibujaTituloReposo(py);   // y el titulo que no cabe se desliza
             }
             DrawSmoothProgress();
             // DESTELLOS del boton pulsado (buscador): halos aditivos ENCIMA de la UI, animados por la GPU (sin re-subir textura).
@@ -2340,6 +2344,7 @@ namespace Rocola
                     cs.Mini.H += (large.Height - cs.Mini.H) * idleBlend;
                     cs.Mini.Tilt *= 1 - idleBlend;
                 }
+                DibujaViniloReposo(cs.Mini.X, cs.Mini.Y, cs.Mini.W, cs.Mini.H);   // en reposo, el vinilo asoma detras de la portada grande
                 stars.DrawCube(miniTex, miniU, miniV, cs.Mini.X, cs.Mini.Y, cs.Mini.W, cs.Mini.H, cs.Mini.Angle, 1f, cs.Mini.Tilt);
             }
             DibujaFicha();   // la ficha rapida del disco: encima de la pared y las barras, debajo del viaje y de los avisos
@@ -2354,6 +2359,8 @@ namespace Rocola
                 stars.DrawCube(transTex, transU, transV, tr.X, tr.Y, tr.W, tr.H, tr.Angle, tr.Alpha, tr.Tilt);
             }
             DibujaBoleto();   // la cancion pedida volando de su fila a la cola: tambien encima de todo, menos los avisos
+            DibujaMoneda();   // la moneda que cae en la capsula de creditos y su "+4 creditos"
+            DibujaInvita();   // sin creditos: la tarjeta que invita a meter una moneda
             // AVISO flotante (moneda, cancion agregada...) por ENCIMA de todo menos el contador de FPS.
             if (tt.Has && toastTex != IntPtr.Zero && tt.Alpha > 0.004f && tt.Bmp != null)
             {
@@ -2362,6 +2369,7 @@ namespace Rocola
                             toastU, toastV, ((uint)ta << 24) | 0x00FFFFFFu);
                 stars.DrawQuad(toastTex, toastQuad);
             }
+            DibujaAviso();   // el aviso claro (SuenaVivoGpu.cs): en el sitio del de siempre, encima de todo
             // Contador de FPS (diagnostico) encima de todo, en su textura pequeña. Oculto por defecto (Ctrl+F1).
             if (ShowFps && fpsTex != IntPtr.Zero) { SetTexQuadA(fpsQuad, Width - fpsTW - 10, 6, Width - 10, 6 + fpsTH, fpsU, fpsV, FadeArgb(0xFFFFFFFFu, ControlsOpacity)); stars.DrawQuad(fpsTex, fpsQuad); }
             // El cronometro se para AQUI, justo antes de End: dentro de End esta Present, que es donde se

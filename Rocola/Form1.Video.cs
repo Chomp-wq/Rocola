@@ -719,6 +719,7 @@ namespace Rocola
             if (et == pastGenero.Texto) return;
             pastGenero.Texto = et;
             pastGenero.Tinte = (et.Length > 0) ? ColorDeEtiqueta(et) : DefaultAccent;
+            CambioElPanelDeReposo();   // el panel grande lleva la pastilla del genero (SuenaVivoGpu.cs)
             PositionMejorada();   // el ancho del artista depende de si hay pastilla y de lo que mida
             // El genero se aprende en segundo plano, asi que puede llegar con la cancion ya sonando. El fondo
             // va del mismo color, asi que se entera aqui en vez de esperar a la siguiente.
@@ -862,6 +863,10 @@ namespace Rocola
                 gpuPanel.GetVinilo = BuildViniloState;   // dentro del disco: el vinilo que asoma (DiscoVivoGpu.cs)
                 gpuPanel.GetEq = BuildEqState;           // las barritas de la que suena
                 gpuPanel.GetBoleto = BuildBoletoState;   // el boleto que vuela de la fila a la cola
+                gpuPanel.GetAviso = BuildAvisoState;     // los avisos que se entienden (SuenaVivoGpu.cs)
+                gpuPanel.GetInvita = BuildInvitaState;   // sin creditos: la tarjeta que invita
+                gpuPanel.GetMoneda = BuildMonedaState;   // la moneda que cae en la capsula de creditos
+                gpuPanel.GetReposo = BuildReposoState;   // lo que suena, en grande: el vinilo y el titulo del panel de reposo
                 gpuPanel.GetGridAhead = albumView.BuildGpuAhead;
                 gpuPanel.GetContour = delegate { return albumView.ContourSpriteBmp; };          // resalte de seleccion
                 gpuPanel.GetContourRect = delegate {

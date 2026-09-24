@@ -115,9 +115,15 @@ namespace Rocola
             int i = puesto - 1;
             return (e != null && i >= 0 && i < e.Length) ? e[i] : -1;
         }
+        // Los piden la lista del disco y, con "Lo que suena, en grande", el panel de reposo (SuenaVivoGpu.cs).
+        private bool QuiereEsperas()
+        {
+            if (songList != null && (songList.Vivo & SongListView.VivoMinutos) != 0) return true;
+            return suenaGrande && estadoExpandido && gpuEnabled;
+        }
         private void ActualizaEsperas(bool ya)
         {
-            if (songList == null || (songList.Vivo & SongListView.VivoMinutos) == 0) return;
+            if (!QuiereEsperas()) return;
             int ahora = Environment.TickCount;
             if (!ya && esperaTick != 0 && ahora - esperaTick < 500) return;
             esperaTick = ahora; if (esperaTick == 0) esperaTick = 1;
@@ -138,6 +144,8 @@ namespace Rocola
             for (int i = 0; igual && i < n; i++) if (nuevo[i] != antes[i]) igual = false;
             if (igual) return;
             esperaMin = nuevo;
+            CambioElPanelDeReposo();   // el panel grande dice en cuanto suena cada una (SuenaVivoGpu.cs)
+            if (songList == null) return;
             songList.EsperaVer++;
             RefrescaLista();
         }
