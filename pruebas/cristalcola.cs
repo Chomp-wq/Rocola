@@ -25,7 +25,7 @@ class CristalCola
   using(Font desc=new Font("Segoe UI",8.5f))
   using(Panel p=(Panel)t.GetMethod("PaginaFondo",F).Invoke(o,new object[]{font,font,desc,font,Color.White,Color.Gray,Color.Gray}))
   {
-   string[] labels={"Interior de discos con cristal (GPU)","Cola ampliada de 12 canciones (GPU)","Respuesta inmediata al toque (GPU)","Transiciones de vista y seleccion (GPU)","Vidrio por capas y color vivo (GPU)","Transiciones suaves de color (GPU)","Estrella musical con orbitas (GPU)","Ocultar controles en reposo (GPU)","Ondas unidas al estado (GPU)"};
+   string[] labels={"Interior de discos con cristal (GPU)","Cola ampliada de 12 canciones (GPU)","Respuesta inmediata al toque (GPU)","Transiciones de vista y seleccion (GPU)","Vidrio por capas y color vivo (GPU)","Transiciones suaves de color (GPU)","Estrella viajera con orbitas (GPU)","Ocultar controles en reposo (GPU)","Ondas unidas al estado (GPU)"};
    string[] fields={"cancionesCristal","colaDoce","respuestaInmediata","transicionesTacto","glassCapas","coloresCache","lunaActiva","controlesReposo","ondasUnidas"};
    foreach(Control card in p.Controls){
     if(card.Bottom>p.Height||card.Right>p.Width)throw new Exception("Tarjeta fuera de Fondo");

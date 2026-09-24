@@ -80,6 +80,16 @@ namespace Rocola
             if(g.Contains("regga")||g.Contains("hip")||g.Contains("rap"))return 1.12f;
             return 1;
         }
+        // LA ESTRELLA YA NO BAILA CON LA MUSICA (lo pidio el dueño el 24-09-2026: "da brincos"). Con cada golpe le
+        // cambiaban de golpe la velocidad, el giro, el balanceo, el tamaño y el halo, y a la vista eran saltitos.
+        // Ahora va siempre a su ritmo de CRUCERO -el que antes le daba una cancion de energia media- y solo cambia
+        // de ritmo con lo que cambia despacio: se calma al navegar y se anima en reposo.
+        //
+        // La musica se sigue escuchando aqui, pero solo para lo que NO es la estrella: la velocidad del flujo de
+        // color del espectro (starDrive, PaletaCaratulaGpu.cs) y las barritas de la que suena (lunaBeat y demas,
+        // DiscoVivoGpu.cs).
+        internal const float StarCrucero = .40f;                                   // el starDrive de una cancion media
+        internal const float StarCruceroMedios = .30f, StarCruceroAgudos = .20f;   // y sus medios y agudos
         internal void AdvanceStarMusic(float dt,float bass,float mid,float high)
         {
             dt=Math.Min(.1f,SafeMoonLevel(dt));
@@ -92,15 +102,15 @@ namespace Rocola
             starDrive+=(target-starDrive)*(1-(float)Math.Exp(-dt*(target>starDrive?12:3)));
             if(LunaActiva){
                 float calm=.18f+.82f*SafeMoonLevel(idleBlend);
-                // El analizador entrega escalones. Filtrar la velocidad y su integral
-                // mantiene continua la trayectoria incluso durante ataques bruscos.
-                AdvanceStarVelocity(ref starTravelX,ref starVelocityX,calm*(.13f+.62f*starDrive+.32f*starAttack),dt);
-                AdvanceStarVelocity(ref starTravelY,ref starVelocityY,calm*(.10f+.30f*mid+.22f*high+.12f*starAttack)*starGenreDrive,dt);
-                // El giro en 3D (Estrella3dGpu.cs): una vuelta cada ~6 s en calma y cada ~1,6 s con la musica a
-                // tope, con la misma suavidad que el recorrido (la velocidad cambia sin tirones).
-                AdvanceStarVelocity(ref starYaw,ref starSpin,calm*(float)(2*Math.PI)*(.16f+.34f*starDrive+.12f*starAttack),dt);
-                starEchoPhase=(starEchoPhase+dt*(.30+.45*starDrive))%1.0;
-                moonMotionTime+=dt*MoonMotionSpeed(idleBlend)*(1+.55*starDrive);
+                // Velocidades de crucero, fijas: la trayectoria no tiene ni un tiron. Lo unico que las mueve es 'calm',
+                // que cambia despacio (el reposo entra y sale en segundos), y aun asi pasa por la velocidad filtrada.
+                AdvanceStarVelocity(ref starTravelX,ref starVelocityX,calm*(.13f+.62f*StarCrucero),dt);
+                AdvanceStarVelocity(ref starTravelY,ref starVelocityY,calm*(.10f+.30f*StarCruceroMedios+.22f*StarCruceroAgudos),dt);
+                // El giro en 3D (Estrella3dGpu.cs): una vuelta cada ~3,4 s en reposo y cada ~19 s navegando, con la
+                // misma suavidad que el recorrido.
+                AdvanceStarVelocity(ref starYaw,ref starSpin,calm*(float)(2*Math.PI)*(.16f+.34f*StarCrucero),dt);
+                starEchoPhase=(starEchoPhase+dt*(.30+.45*StarCrucero))%1.0;
+                moonMotionTime+=dt*MoonMotionSpeed(idleBlend)*(1+.55*StarCrucero);
             }
         }
         private static void AdvanceStarVelocity(ref double phase,ref float velocity,float target,float dt)
@@ -112,9 +122,9 @@ namespace Rocola
         }
         private PointF StarSceneCenter()
         {
-            // Reservar el tamano maximo, no el del pulso actual: latir/crecer
-            // no desplaza los limites de la orbita a cada golpe de bateria.
-            float margin=DetailedMoonDiameter(Height,1)*MoonSceneScale(1,1,true)*.5f;
+            // Reservar el tamano maximo (el del reposo), no el de ahora: crecer
+            // no desplaza los limites de la orbita.
+            float margin=DetailedMoonDiameter(Height,1)*MoonSceneScale(1,true)*.5f;
             return StarTravelCenter(Width,Height,starTravelX,starTravelY,margin,StatusTopY,IdleRise);
         }
         internal static PointF StarTravelCenter(int w,int h,double px,double py,float radius,float statusTop,float rise)
@@ -165,7 +175,7 @@ namespace Rocola
                 if(starEchoVisibility<.002f){starEchoCount=0;starEchoLast=-1;}
                 return;
             }
-            if(starEchoLast>=0&&now-starEchoLast<.14-.07*starDrive)return;
+            if(starEchoLast>=0&&now-starEchoLast<.14-.07*StarCrucero)return;
             // Si no hubo desplazamiento real, no apilar siluetas en el mismo punto.
             if(starEchoCount>0)
             {
@@ -174,7 +184,7 @@ namespace Rocola
                 if(dx*dx+dy*dy<1)return;
             }
             starEchoes[starEchoHead]=new StarEcho {Time=now,X=x,Y=y,Radius=radius,Angle=angle,
-                Strength=.48f+.52f*starDrive,Color=StarEchoColor(color)};
+                Strength=.48f+.52f*StarCrucero,Color=StarEchoColor(color)};
             starEchoHead=(starEchoHead+1)%starEchoes.Length;
             starEchoCount=Math.Min(starEchoes.Length,starEchoCount+1);starEchoLast=now;
         }

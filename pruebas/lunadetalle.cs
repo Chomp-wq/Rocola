@@ -60,7 +60,7 @@ class LunaDetalle
    panel.Size=new Size(640,480);
    string[] fields={"lunaRealista","haloLunar","polvoLunar","lunaProtagonista","estelaEstelar"};
    string[] gpuFields={"LunaRealista","HaloLunar","PolvoLunar","LunaProtagonista","EstelaEstelar"};
-   string[] labels={"Superficie detallada de la estrella (GPU)","Corona estelar musical (GPU)","Polvo estelar orbital (GPU)","Realzar estrella en reposo (GPU)","Ecos de color de la estrella (GPU)"};
+   string[] labels={"Superficie detallada de la estrella (GPU)","Corona estelar (GPU)","Polvo estelar orbital (GPU)","Realzar estrella en reposo (GPU)","Ecos de color de la estrella (GPU)"};
    Set(form,null,"carpetaDatos",dir);object o=Blank(form);Set(form,o,"gpuPanel",panel);
    using(Font font=new Font("Segoe UI",10,FontStyle.Bold))
    using(Font desc=new Font("Segoe UI",8.5f))
@@ -79,7 +79,7 @@ class LunaDetalle
     }
    }
    Set(gpu,panel,"ConLuna",true);
-   Set(gpu,panel,"LunaActiva",false); // medir diametro sin la libracion musical
+   Set(gpu,panel,"LunaActiva",false); // medir diametro sin el agrandado del reposo
    if(!(bool)Call(gpu,panel,"StartGpu")){Console.WriteLine("  OK    NO SE PROBO AQUI: hace falta una tarjeta grafica de verdad (HAL). Esta bateria solo mide en la maquina del bar.");return 0;}
    try{
     Check((bool)Call(gpu,panel,"DibujaUnCuadro"),"No presenta");
@@ -109,9 +109,9 @@ class LunaDetalle
   }
   float calm=(float)Call(gpu,null,"MoonMotionSpeed",0f),idle=(float)Call(gpu,null,"MoonMotionSpeed",1f);
   Check(idle>calm*4,"Reposo no anima mas que navegacion");
-  Check((float)Call(gpu,null,"MoonSceneScale",0f,1f,true)==1,"Late demasiado al navegar");
-  Check((float)Call(gpu,null,"MoonSceneScale",1f,1f,true)>1.3f,"Reposo no realza luna");
-  Check((float)Call(gpu,null,"MoonSceneScale",1f,1f,false)==1,"Interruptor no detiene realce musical");
+  Check((float)Call(gpu,null,"MoonSceneScale",0f,true)==1,"Crece al navegar");
+  Check((float)Call(gpu,null,"MoonSceneScale",1f,true)>1.3f,"Reposo no realza luna");
+  Check((float)Call(gpu,null,"MoonSceneScale",1f,false)==1,"Interruptor no detiene el realce");
   foreach(float blend in new float[]{0,.1f,.5f,.9f,1}) {
    PointF still=(PointF)Call(gpu,null,"DetailedMoonCenter",1920,1080,0d,blend,0f,false);
    PointF later=(PointF)Call(gpu,null,"DetailedMoonCenter",1920,1080,80d,blend,0f,false);

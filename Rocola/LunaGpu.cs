@@ -82,8 +82,12 @@ namespace Rocola
         internal static float DetailedMoonDiameter(int height, float emphasis)
         { return Math.Max(48,Math.Min(180,height*.115f))*(1+.22f*SafeMoonLevel(emphasis)); }
         private double moonMotionTime;
-        internal static float MoonSceneScale(float idle, float beat, bool active)
-        { return active ? 1 + SafeMoonLevel(idle) * (.32f + .025f * SafeMoonLevel(beat)) : 1; }
+        // En reposo la estrella se agranda un 32 %, despacio. Ya no late con los golpes (EstrellaGpu.cs, StarCrucero).
+        internal static float MoonSceneScale(float idle, bool active)
+        { return active ? 1 + SafeMoonLevel(idle) * .32f : 1; }
+        // Su balanceo: un vaiven lento, siempre igual de ancho.
+        internal static float StarRoll(double motionTime)
+        { return (float)((.08 + .16 * StarCrucero) * Math.Sin(motionTime * .31)); }
         internal static float MoonMotionSpeed(float idle)
         { return .30f + 1.30f * SafeMoonLevel(idle); }
         internal static PointF DetailedMoonCenter(int width, int height, double phase, float idle, float rise, bool active)
@@ -95,7 +99,7 @@ namespace Rocola
         private void DrawDetailedMoon()
         {
             float emphasis=LunaProtagonista ? Math.Max(MoonEmphasis(Dim,true),idleBlend) : 0;
-            float diameter=DetailedMoonDiameter(Height,emphasis)*MoonSceneScale(idleBlend,lunaBeat,LunaActiva), radius=diameter*.5f;
+            float diameter=DetailedMoonDiameter(Height,emphasis)*MoonSceneScale(idleBlend,LunaActiva), radius=diameter*.5f;
             PointF center=LunaActiva
                 ? StarSceneCenter()
                 : DetailedMoonCenter(Width,Height,moonMotionTime,idleBlend,IdleRise,false);
@@ -106,7 +110,7 @@ namespace Rocola
             DrawLunarDust(cx,cy,radius,visibility,false);
             // La superficie es solida: solo el borde antialias y el halo llevan transparencia.
             uint color=StarColorAt(cx,cy);
-            float angle=LunaActiva ? (float)((.08+.16*starDrive)*Math.Sin(moonMotionTime*.31)) : 0;
+            float angle=LunaActiva ? StarRoll(moonMotionTime) : 0;
             // El momento en que se va a VER este cuadro (Estrella3dGpu.cs, "EL RELOJ DE LA PANTALLA").
             double now=(cuadroMs>=0 ? cuadroMs : AhoraMs())/1000.0;
             if(Estrella3D)
@@ -133,14 +137,12 @@ namespace Rocola
             uint rgb=StarColorAt(cx,cy)&0xFFFFFFu;
             if (!front && HaloLunar)
             {
-                float beat=LunaActiva ? lunaBeat*(.15f+.85f*idleBlend) : 0;
-                stars.GlowBatchAdd(cx,cy,radius*(1.9f+beat*.12f),((uint)((50+beat*22)*visibility)<<24)|rgb);
+                stars.GlowBatchAdd(cx,cy,radius*1.9f,((uint)(50*visibility)<<24)|rgb);   // la corona, quieta: sin latido
                 stars.GlowBatchAdd(cx-radius*.16f,cy-radius*.06f,radius*1.20f,((uint)(64*visibility)<<24)|FlowColor(0xC9DAFFu,cx/Math.Max(1,Width),cy/Math.Max(1,Height)));
             }
             if (PolvoLunar)
                 for(int orbit=0;orbit<3;orbit++)
                 {
-                    float band=LunaActiva ? (orbit==0 ? lunaBeat : orbit==1 ? lunaMid : lunaHigh)*(.15f+.85f*idleBlend) : 0;
                     double angle=(LunaActiva ? moonMotionTime*(.55+orbit*.12) : 0)+orbit*2.094;
                     for(int tail=5;tail>=0;tail--)
                     {
@@ -148,8 +150,8 @@ namespace Rocola
                         if ((Math.Sin(a)>=0)!=front) continue;
                         float dx=(float)Math.Cos(a)*radius*(1.38f+orbit*.17f);
                         float dy=(float)Math.Sin(a)*radius*(.40f+orbit*.09f)-dx*.24f;
-                        float size=radius*(tail==0 ? .043f+band*.019f : .025f);
-                        uint alpha=(uint)((tail==0 ? 165+band*65 : 58-tail*8)*visibility);
+                        float size=radius*(tail==0 ? .043f : .025f);   // el polvo tampoco late: gira a su paso
+                        uint alpha=(uint)((tail==0 ? 165 : 58-tail*8)*visibility);
                         uint dust=FlowColor(0xD5E5FFu,(cx+dx)/Math.Max(1,Width),(cy+dy)/Math.Max(1,Height));
                         stars.GlowBatchAdd(cx+dx,cy+dy,Math.Max(1,size),(alpha<<24)|dust);
                     }

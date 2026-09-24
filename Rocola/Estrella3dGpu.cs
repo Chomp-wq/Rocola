@@ -298,7 +298,7 @@ namespace Rocola
             if (starEchoCamino < paso) return;
             starEchoCamino = Math.Min(starEchoCamino - paso, paso);   // si va muy rapido no se acumula deuda
             starEchoes[starEchoHead] = new StarEcho { Time = now, X = x, Y = y, Radius = r, Angle = roll, Yaw = yaw, Pitch = (float)pitch,
-                Strength = .48f + .52f * starDrive, Color = StarEchoColor(color) };
+                Strength = .48f + .52f * StarCrucero, Color = StarEchoColor(color) };
             starEchoHead = (starEchoHead + 1) % starEchoes.Length;
             starEchoCount = Math.Min(starEchoes.Length, starEchoCount + 1); starEchoLast = now;
         }

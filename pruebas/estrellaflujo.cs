@@ -59,8 +59,9 @@ class EstrellaFlujo {
     }
    }
   }
-  Check(travel[1]>travel[0]*2,"No distingue silencio/musica");
-  Check(travel[1]>travel[2],"Genero no matiza");Check(travel[1]>travel[3]*2,"No calma al navegar");
+  // La estrella ya no baila con la musica (24-09-2026): el mismo recorrido con musica, en silencio y con otro genero.
+  Check(travel[1]==travel[0],"La musica mueve la estrella");
+  Check(travel[1]==travel[2],"El genero cambia el paso de la estrella");Check(travel[1]>travel[3]*2,"No calma al navegar");
   Check((float)Run(null,"StarGenreDrive",(object)null)==1,"Genero ausente");
   using(Control bass=(Control)Activator.CreateInstance(gpu,true))
   using(Control high=(Control)Activator.CreateInstance(gpu,true)){
@@ -69,14 +70,14 @@ class EstrellaFlujo {
     Run(bass,"AdvanceStarMusic",1f/60,1f,0f,0f);
     Run(high,"AdvanceStarMusic",1f/60,0f,0f,1f);
    }
-   Check((double)Get(bass,"starTravelX")>(double)Get(high,"starTravelX"),"Graves no distinguen recorrido");
-   Check((double)Get(high,"starTravelY")>(double)Get(bass,"starTravelY"),"Agudos no distinguen recorrido");
+   Check((double)Get(bass,"starTravelX")==(double)Get(high,"starTravelX"),"Los graves mueven la estrella");
+   Check((double)Get(high,"starTravelY")==(double)Get(bass,"starTravelY"),"Los agudos mueven la estrella");
    Type type=gpu.Assembly.GetType("Rocola.StarMusic");music=Activator.CreateInstance(type);
    Set(music,"Bass",.8f);Set(music,"Mid",.7f);Set(music,"High",.6f);
    Set(bass,"GetStarMusic",Delegate.CreateDelegate(gpu.GetField("GetStarMusic",F).FieldType,typeof(EstrellaFlujo).GetMethod("Music",F).MakeGenericMethod(type)));
    Set(bass,"lunaClock",(double)Run(null,"AhoraMs")-50);
    Run(bass,"UpdateMoonMusic",0f);
-   Check((float)Get(bass,"lunaBeat")>0&&(float)Get(bass,"lunaMid")>0&&(float)Get(bass,"lunaHigh")>0,"Apagar aurora corta musica de estrella");
+   Check((float)Get(bass,"lunaBeat")>0&&(float)Get(bass,"lunaMid")>0&&(float)Get(bass,"lunaHigh")>0,"Apagar aurora corta la musica de las barritas");
   }
  }
  static void Shape(string dir){
