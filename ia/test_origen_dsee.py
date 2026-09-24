@@ -185,16 +185,18 @@ class Particiones(unittest.TestCase):
             pos2, inf2 = T.particiones_rocola(datos, X, "carpeta", incluir_sin_origen=True)
             self.assertFalse(inf2["independiente"])
             self.assertEqual(len(pos2[0]), len(pos[0]) + 37)
+            del X, Y  # Windows no permite borrar el temporal mientras siga mapeado.
 
     def test_riad_antiguo_sin_indice_no_inventa_grupos(self):
         with tempfile.TemporaryDirectory() as d:
             datos, idx, _ = _escribe(d, [("t%d.mp3" % i, "/m/%d" % i, 50) for i in range(40)])
             os.remove(idx)
-            X, _ = T.cargar_datos_rocola(datos, 0, por_indices=True)
+            X, Y = T.cargar_datos_rocola(datos, 0, por_indices=True)
             pos, inf = T.particiones_rocola(datos, X)
             self.assertIsNone(pos)
             self.assertFalse(inf["independiente"])
             self.assertIn("sin indice", inf["motivo"])
+            del X, Y
 
     def test_memoria_acotada(self):
         # 120.000 ejemplos (19 MB) y 3.000 canciones, tomando 1 de cada 4: el reparto no debe cargar el material.
@@ -203,13 +205,14 @@ class Particiones(unittest.TestCase):
             datos, idx, _ = _escribe(d, canciones)
             tam = os.path.getsize(datos)
             with contextlib.redirect_stdout(io.StringIO()):
-                X, _ = T.cargar_datos_rocola(datos, 30000, por_indices=True)
+                X, Y = T.cargar_datos_rocola(datos, 30000, por_indices=True)
             tracemalloc.start()
             pos, inf = T.particiones_rocola(datos, X, "carpeta")
             _, pico = tracemalloc.get_traced_memory()
             tracemalloc.stop()
             self.assertTrue(inf["independiente"], inf["motivo"])
             self.assertLess(pico, tam / 4, "el reparto uso %.1f MB para un material de %.1f MB" % (pico / 1e6, tam / 1e6))
+            del X, Y
 
     def test_huella_de_datos_reproducible(self):
         with tempfile.TemporaryDirectory() as d:

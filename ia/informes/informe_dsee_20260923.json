@@ -1,0 +1,284 @@
+{
+  "avisos_por_clase": [
+    "nivel=fuerte: el candidato es 53 % peor que el modelo instalado (12712 filas)",
+    "nivel=media: el candidato es 50 % peor que el modelo instalado (12711 filas)",
+    "nivel=suave: el candidato es 52 % peor que el modelo instalado (12712 filas)",
+    "tonalidad=intermedia: el candidato es 60 % peor que el modelo instalado (12711 filas)",
+    "tonalidad=ruidosa: el candidato es 40 % peor que el modelo instalado (12712 filas)",
+    "tonalidad=tonal: el candidato es 75 % peor que el modelo instalado (12712 filas)",
+    "brillo=brillante: el candidato es 49 % peor que el modelo instalado (12712 filas)",
+    "brillo=media: el candidato es 56 % peor que el modelo instalado (12711 filas)",
+    "brillo=oscura: el candidato es 50 % peor que el modelo instalado (12712 filas)",
+    "corte=13_16k: el candidato es 44 % peor que el modelo instalado (7627 filas)",
+    "corte=bajo_13k: el candidato es 50 % peor que el modelo instalado (15254 filas)",
+    "corte=desde_16k: el candidato es 65 % peor que el modelo instalado (15254 filas)"
+  ],
+  "candidato_sha256": "1520593b18fd75046b2fb4eb4402737eea8980c94d567db1aaa6f9493be4f20b",
+  "capas": [
+    28,
+    96,
+    96,
+    12
+  ],
+  "checkpoint": {
+    "epoca": 30,
+    "mse_validacion": 0.5435481785492672
+  },
+  "contrato_ria1": {
+    "entradas": 28,
+    "salidas": 12
+  },
+  "datos": {
+    "ejemplos_usados": 171300,
+    "huella": "5672dd14bbf30f4834085fc8d0cc919ab79f6d13bb184d9964f8226e28e399ab",
+    "max_ejemplos": 0,
+    "tipo": "rocola"
+  },
+  "decision": {
+    "codigo": 2,
+    "motivos": [
+      "contra la curva fija: mejora global 19.2 %",
+      "contra el modelo instalado: mejora global -51.6 % (hace falta 2 %)"
+    ],
+    "publicar": false
+  },
+  "extractor": 2,
+  "formato": "ROCOLA-INFORME-DSEE 1",
+  "instalado": {
+    "estado": "comparado",
+    "parametros": 13260,
+    "sha256": "f185f80fd8a41aa27b09063da03f74e44799372cf13d9e5983b14d1e62a389cb"
+  },
+  "parametros": 13260,
+  "paridad_extractor": {
+    "extractor": 2,
+    "vectores_sha256": "b8116cd52207263ab5cb9332ba0d83e9999a06730aea61efba6f201191896949"
+  },
+  "paridad_inferencia": {
+    "filas": 20000,
+    "limite": 0.001,
+    "max_abs": 0.0000023972313623055186,
+    "no_finitas": 0
+  },
+  "politica": {
+    "nota": "politica inicial; no demuestra superioridad audible",
+    "tolerancia": 1e-12,
+    "vs_instalado": {
+      "mejora_global_min": 0.02,
+      "peor_banda_max": 0.1
+    },
+    "vs_referencia": {
+      "mejora_global_min": 0.05,
+      "peor_banda_max": 0.1
+    }
+  },
+  "por_clase": {
+    "brillo": {
+      "brillante": {
+        "candidato": 3.482026581489454,
+        "filas": 12712,
+        "instalado": 2.334291206003315,
+        "referencia": 4.5336676827702345
+      },
+      "media": {
+        "candidato": 2.6848062728024304,
+        "filas": 12711,
+        "instalado": 1.726011322446124,
+        "referencia": 3.251666192986908
+      },
+      "oscura": {
+        "candidato": 1.020121721641433,
+        "filas": 12712,
+        "instalado": 0.6797173082571717,
+        "referencia": 1.1086359548928526
+      }
+    },
+    "corte": {
+      "13_16k": {
+        "candidato": 2.5985595070853376,
+        "filas": 7627,
+        "instalado": 1.8071181470996514,
+        "referencia": 3.815412442723087
+      },
+      "bajo_13k": {
+        "candidato": 3.458260662745163,
+        "filas": 15254,
+        "instalado": 2.301868249679842,
+        "referencia": 4.356897293930938
+      },
+      "desde_16k": {
+        "candidato": 1.2315694409949496,
+        "filas": 15254,
+        "instalado": 0.7445796357903925,
+        "referencia": 1.1470191948838495
+      }
+    },
+    "nivel": {
+      "fuerte": {
+        "candidato": 3.027276330953243,
+        "filas": 12712,
+        "instalado": 1.9813316020246783,
+        "referencia": 3.803602222187426
+      },
+      "media": {
+        "candidato": 2.6315497510848953,
+        "filas": 12711,
+        "instalado": 1.7508459440180844,
+        "referencia": 3.361379497830739
+      },
+      "suave": {
+        "candidato": 1.5281243044268253,
+        "filas": 12712,
+        "instalado": 1.0078442442999065,
+        "referencia": 1.7289967413197505
+      }
+    },
+    "tonalidad": {
+      "intermedia": {
+        "candidato": 2.740031053641631,
+        "filas": 12711,
+        "instalado": 1.7167884617665272,
+        "referencia": 3.35196412038008
+      },
+      "ruidosa": {
+        "candidato": 3.353780283661281,
+        "filas": 12712,
+        "instalado": 2.398761297515136,
+        "referencia": 4.422736073610033
+      },
+      "tonal": {
+        "candidato": 1.0931475829334931,
+        "filas": 12712,
+        "instalado": 0.6244693519009796,
+        "referencia": 1.119277526679343
+      }
+    },
+    "transitorios": {
+      "disponible": false,
+      "motivo": "el material de la rocola guarda cuadros sueltos, sin el anterior: no se puede saber cuales son ataques"
+    },
+    "umbrales": {
+      "brillo": [
+        -0.14150996380958003,
+        -0.09493345053299616
+      ],
+      "corte": [
+        13,
+        16
+      ],
+      "nivel": [
+        -5.748131116231283,
+        -5.174508253733317
+      ],
+      "tonalidad": [
+        -0.7001116871833801,
+        -0.3133701980113983
+      ]
+    }
+  },
+  "prueba": {
+    "candidato": [
+      0.9466839366928951,
+      1.0331174335290672,
+      2.3078663052082495,
+      2.419945234664532,
+      2.338829690629558,
+      3.3341391750138776,
+      3.287641977307402,
+      3.0392707168112754,
+      2.851664360676161,
+      2.640597210096481,
+      2.3976155549060563,
+      2.1503557194217993
+    ],
+    "instalado": [
+      0.8211171572674841,
+      0.8453523137269064,
+      1.9018961263305638,
+      1.9042843256845463,
+      1.8213522889776455,
+      2.5794747470529145,
+      2.1970480122161007,
+      1.8213769057110054,
+      1.5002135736772468,
+      1.3259416688747219,
+      1.1796377028048244,
+      1.062338580972325
+    ],
+    "referencia": [
+      1.151853117742684,
+      1.2274360226408627,
+      2.5733755790094124,
+      2.7354164139784842,
+      2.737521798769383,
+      3.763376067318826,
+      3.785751844642133,
+      3.633850130076977,
+      3.6277896818239266,
+      3.490367262925897,
+      3.4085247779642764,
+      3.440526311953522
+    ]
+  },
+  "reparto": {
+    "ejemplos": [
+      115665,
+      17500,
+      38135
+    ],
+    "grupos": [
+      51,
+      8,
+      4
+    ],
+    "independiente": true,
+    "motivo": "",
+    "nivel": "artista",
+    "sin_origen": 0
+  },
+  "semilla": 20260715,
+  "validacion": {
+    "candidato": [
+      0.1915889083446623,
+      0.23626452139485876,
+      0.26820245055933417,
+      0.32738655830073676,
+      0.38755618933290475,
+      0.4539060038975921,
+      0.5530177246618565,
+      0.6248668160299625,
+      0.7738925354243633,
+      0.9334875605816879,
+      1.0040375077818098,
+      0.7683713309944866
+    ],
+    "instalado": [
+      0.25490505202372904,
+      0.3369823181288761,
+      0.3379342692364711,
+      0.40826944273663146,
+      0.4912704452383327,
+      0.5625656336738454,
+      0.6953063375315824,
+      0.791980658561306,
+      0.9831647636461246,
+      1.097335405294516,
+      1.103014345726829,
+      0.6733307079750498
+    ],
+    "referencia": [
+      0.2707440495824861,
+      0.3360762213750875,
+      0.3759600864368872,
+      0.4565618932030906,
+      0.5593659790772147,
+      0.6631347658372856,
+      0.8283502102170872,
+      0.9505002250244978,
+      1.217087972216072,
+      1.6443885783667094,
+      2.864040155684218,
+      5.79309415275685
+    ]
+  }
+}

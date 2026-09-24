@@ -1007,10 +1007,10 @@ namespace Rocola
             c.BajoFactor = BassFactorFor(t.Path);   // cuanto le toca a ESTA cancion (1 = la perilla tal cual)
             c.BajoBase = BajoAuto(t.Path);          // y de cuanto se parte, si el bajo va en automatico
             c.Bajo = new DeepBassProvider(c.Mono, BassAmountPara(c.BajoFactor, c.BajoBase));
-            // LIMITADOR DE PICO REAL: el techo de 0,98 vale para la onda que reconstruye el DAC, no solo para
-            // las muestras (ver PicoReal.cs). Detras solo quedan el fundido (que solo baja) y el paso a 16 bits
+            // LIMITADOR DE PICO REAL: techo con margen para el error de estimacion entre
+            // muestras (ver PicoReal.cs). Detras solo quedan el fundido (que solo baja) y el paso a 16 bits
             // con su dither de un bit.
-            LimitadorPicoReal lim = new LimitadorPicoReal(c.Bajo, 0.98f, 3.0);
+            LimitadorPicoReal lim = new LimitadorPicoReal(c.Bajo, TechoPicoReal, 3.0);
             audioTailDelay += lim.DelayFrames;
             NAudio.Wave.ISampleProvider outChain = lim;
             if (crossfadeSec > 0.01f)

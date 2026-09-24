@@ -44,6 +44,7 @@ class PicoReal
 {
     const BindingFlags T = BindingFlags.Static | BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
     static Type TF, TDet, TLim, TViejo;
+    static float techo;
     static int fallos, oks;
     static string dir;
     static bool hayPython;
@@ -60,7 +61,7 @@ class PicoReal
     // Pasa una senal por un limitador y devuelve TODA la salida (con su retardo y su cola).
     static float[] Limita(Type t, float[] x, int fs, int ch, int[] trozos, int bloque, out int retardo)
     {
-        object lim = Crea(t, new FuenteP(x, fs, ch, trozos), 0.98f, 3.0);
+        object lim = Crea(t, new FuenteP(x, fs, ch, trozos), t == TLim ? techo : 0.98f, 3.0);
         retardo = Retardo(lim);
         ISampleProvider p = (ISampleProvider)lim;
         List<float> r = new List<float>(x.Length + retardo * ch);
@@ -298,7 +299,7 @@ class PicoReal
     // ---------------------------------------------------------------------------------------------
     static void ContraLaReferencia()
     {
-        Console.WriteLine("\n  2) LA ONDA QUE SALE, MEDIDA CON LA REFERENCIA (techo 0,98 = -0,175 dB)\n");
+        Console.WriteLine("\n  2) LA ONDA QUE SALE, MEDIDA CON LA REFERENCIA (techo operativo " + F(Db(techo), "0.000") + " dB)\n");
         if (!hayPython) { Check(true, "(sin Python con numpy: la medida de la onda de salida se salta y se dice)"); return; }
         double peorNuevo = -99, peorViejo = -99; string cualNuevo = "", cualViejo = "";
         double peorNyq = -99; string cualNyq = "";
@@ -333,11 +334,9 @@ class PicoReal
         Info("con contenido hasta Nyquist (saltos en seco y ruido sin filtrar): hasta " + F(peorNyq, "+0.000;-0.000") + " dBTP (" + cualNyq + ")");
         Check(peorViejo > 0.5, "el limitador viejo SI dejaba pasar la onda por encima de 0 dBTP con estas senales");
         Check(peorNuevo <= 0.0, "con el nuevo, en senales de banda limitada, la onda no pasa de 0 dBTP a ninguna frecuencia de muestreo ni con 1, 2 o 6 canales");
-        Check(peorNuevo <= -0.175 + 0.12, "y queda dentro del techo mas el error medido del detector: margen medido " + F(-peorNuevo, "0.000") + " dB hasta 0 dBTP");
-        // Lo que queda entre 0,4535 fs y Nyquist el detector lo ve atenuado (su filtro se corta ahi). Es lo que
-        // tiene de mas un CD recortado sin comprimir o ruido blanco sin filtrar; en un MP3 o un AAC no existe. Se
-        // informa y se acota con lo medido, sin prometer 0 dBTP.
-        Check(peorNyq <= 0.3 && peorNyq < peorViejo - 1.0, "con contenido fuerte hasta Nyquist (saltos en seco, ruido sin filtrar) no se garantiza 0 dBTP: queda en "
+        Check(peorNuevo <= Db(techo) + 0.12, "y queda dentro del techo mas el error medido del detector: margen medido " + F(-peorNuevo, "0.000") + " dB hasta 0 dBTP");
+        // El margen cubre estos casos, no constituye una garantia para cualquier senal/DAC.
+        Check(peorNyq <= 0.0 && peorNyq < peorViejo - 1.0, "con contenido fuerte hasta Nyquist (saltos en seco, ruido sin filtrar) queda bajo 0 dBTP en esta bateria: "
               + F(peorNyq, "+0.000;-0.000") + " dBTP, frente a " + F(peorViejo, "+0.000;-0.000") + " del viejo");
     }
 
@@ -377,17 +376,17 @@ class PicoReal
             float[] c = new float[largo * ch];
             for (int i = 0; i < c.Length; i++) c[i] = (float)(1.6 * Math.Sin(i * 0.9));
             y = Limita(TLim, c, fs, ch, null, 514, out ret);
-            Check(y.Length == c.Length + ret * ch && Finitos(y) && Pico(y) <= 0.98f + 1e-6f,
+            Check(y.Length == c.Length + ret * ch && Finitos(y) && Pico(y) <= techo + 1e-6f,
                   "archivo de " + largo + " cuadros (menos que la espera del limitador): sale entero, con su cola, y dentro del techo");
         }
         // Final de cancion a todo volumen: el ultimo pico tambien se limita al vaciar.
         float[] fin = Seno(fs, ch, 1000, 1.5, 0, 0.2);
         for (int i = fin.Length - 20 * ch; i < fin.Length; i++) fin[i] = (i % 2 == 0) ? 1.9f : -1.9f;
         y = Limita(TLim, fin, fs, ch, null, 4096, out ret);
-        Check(y.Length == fin.Length + ret * ch && Pico(y) <= 0.98f + 1e-6f, "un final a todo volumen se limita tambien mientras se vacia la cola");
+        Check(y.Length == fin.Length + ret * ch && Pico(y) <= techo + 1e-6f, "un final a todo volumen se limita tambien mientras se vacia la cola");
         // Saltos bruscos: sin NaN, dentro del techo de muestras.
         y = Limita(TLim, Saltos(fs, ch, 1.4, 0.5), fs, ch);
-        Check(Finitos(y) && Pico(y) <= 0.98f + 1e-6f, "saltos bruscos de +1,4 a -1,4: todo finito y dentro del techo");
+        Check(Finitos(y) && Pico(y) <= techo + 1e-6f, "saltos bruscos de +1,4 a -1,4: todo finito y dentro del techo");
         // Lecturas partidas: el origen entrega trozos que parten cuadros; la salida es la misma bit a bit.
         float[] m = Musica(fs, 6, 1.5, 0.5, 9);
         float[] a = Limita(TLim, m, fs, 6, null, 4096 * 6, out ret);
@@ -470,7 +469,7 @@ class PicoReal
         cad = (ISampleProvider)tap;
         object bajo = Crea(TF.GetNestedType("DeepBassProvider", T), cad, 0.8f);
         cad = (ISampleProvider)bajo;
-        object lim = Crea(tLim, cad, 0.98f, 3.0);
+        object lim = Crea(tLim, cad, tLim == TLim ? techo : 0.98f, 3.0);
         ISampleProvider p = (ISampleProvider)lim;
         List<float> r = new List<float>();
         float[] buf = new float[4096 * ch]; int n;
@@ -495,7 +494,7 @@ class PicoReal
         Info("musica tipo MP3 (hasta 16 y 19 kHz) con nivelado +4 dB, realce al 60 % y grave al 80 %: viejo " + F(peorV, "+0.000;-0.000") + " dBTP, nuevo " + F(peorN, "+0.000;-0.000") + " dBTP");
         Info("la misma con platillos de ruido blanco hasta Nyquist (extremo, no es un MP3): viejo " + F(extV, "+0.000;-0.000") + " dBTP, nuevo " + F(extN, "+0.000;-0.000") + " dBTP");
         Check(peorN <= 0.0, "con la cadena de verdad y musica tipo MP3, la onda que sale no pasa de 0 dBTP (margen medido " + F(-peorN, "0.000") + " dB)");
-        Check(extN < extV - 0.5 && extN <= 0.3, "y en el extremo con ruido hasta Nyquist, mucho menos que el viejo (acotado en +0,3 dBTP)");
+        Check(extN < extV - 0.5 && extN <= 0.0, "y en el extremo con ruido hasta Nyquist, bajo 0 dBTP en esta bateria");
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -519,6 +518,38 @@ class PicoReal
               "su retardo (pre-escucha + espera del detector) entra en la cuenta del fundido final (y en el cebado que se descarta en el relevo sin pausa)");
     }
 
+    // Misma implementacion, dos techos: aisla el efecto del margen nuevo.
+    static void MargenOperativo()
+    {
+        if (!hayPython) { Check(false, "el margen requiere Python/numpy y referencia independiente"); return; }
+        float actual = techo;
+        double anterior = -99, nuevo = -99, extremo = -99;
+        try
+        {
+            float[] x = Musica(44100, 2, 0.9, 1.5, 21);
+            techo = 0.98f;
+            anterior = Db(Referencia(Cadena(TLim, x, 44100, 2), 44100, 2));
+            techo = actual;
+            nuevo = Db(Referencia(Cadena(TLim, x, 44100, 2), 44100, 2));
+            foreach (int fs in new int[] { 22050, 44100, 48000, 96000 })
+                foreach (double fr in new double[] { .47, .49, .499 })
+                {
+                    x = Seno(fs, 2, fs * fr, 1.5, .7, .2);
+                    extremo = Math.Max(extremo, Db(Referencia(Limita(TLim, x, fs, 2), fs, 2)));
+                }
+            foreach (uint seed in new uint[] { 13, 42, 99 })
+            {
+                x = Musica(48000, 2, 2.5, .4, seed);
+                extremo = Math.Max(extremo, Db(Referencia(Limita(TLim, x, 48000, 2), 48000, 2)));
+            }
+        }
+        finally { techo = actual; }
+        Info("mismo limitador/cadena: antes " + F(anterior, "0.000") + " dBTP, ahora " + F(nuevo, "0.000") + " dBTP");
+        Info("tonos 0,47/0,49/0,499 fs y tres ruidos adicionales: " + F(extremo, "0.000") + " dBTP");
+        Check(anterior > 0 && nuevo < 0 && anterior - nuevo > .45, "el margen elimina el exceso anterior en el caso de regresion sin cambiar el FIR");
+        Check(extremo <= 0, "casos adicionales cerca de Nyquist por debajo de 0 dBTP");
+    }
+
     // ---------------------------------------------------------------------------------------------
     //  8) LO QUE CUESTA
     // ---------------------------------------------------------------------------------------------
@@ -538,7 +569,7 @@ class PicoReal
                 double mejor = 1e9;
                 for (int vuelta = 0; vuelta < 4; vuelta++)
                 {
-                    object lim = Crea(tipos[t], new FuenteP(senales[k], fs, ch, null), 0.98f, 3.0);
+                    object lim = Crea(tipos[t], new FuenteP(senales[k], fs, ch, null), tipos[t] == TLim ? techo : 0.98f, 3.0);
                     ISampleProvider p = (ISampleProvider)lim;
                     float[] buf = new float[4096 * ch];
                     Stopwatch sw = Stopwatch.StartNew(); double peor = 0;
@@ -568,6 +599,8 @@ class PicoReal
         TDet = a.GetType("Rocola.DetectorPicoReal", false);
         TLim = TF.GetNestedType("LimitadorPicoReal", T);
         TViejo = TF.GetNestedType("LookaheadLimiter", T);
+        techo = (float)TF.GetField("TechoPicoReal", T).GetRawConstantValue();
+        Check(techo == 0.88f, "techo operativo comun: 0,88; no cambia el contrato de otros techos");
         if (TDet == null || TLim == null || TViejo == null) { Check(false, "no estan el detector de pico real, su limitador o el limitador viejo"); return 1; }
         int cod; string o = Python("-c \"import numpy\"", out cod);
         hayPython = o != null && cod == 0;
@@ -581,6 +614,7 @@ class PicoReal
             Bordes();
             Enlazados();
             LaCadena();
+            MargenOperativo();
             Cableado();
             Coste();
         }

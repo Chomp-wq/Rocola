@@ -1,0 +1,62 @@
+{
+  "aceptado_numericamente": false,
+  "activado": false,
+  "candidato_sha256": "fe597dd56c7bcc6332b730f4110f6fd86a13fae8914ec83b0d76779123f2c731",
+  "datos_sha256": "9c784710ba58d8601e0dd2b1c77d2aea7696acf1e5a93cf082aa2984aba6dd11",
+  "dimensiones": [
+    5,
+    24,
+    24,
+    3
+  ],
+  "epocas": 200,
+  "escucha_pendiente": true,
+  "filas": [
+    7495,
+    967,
+    945
+  ],
+  "formato": "ROCOLA-CANDIDATO-EQ 1",
+  "grupos": [
+    1191,
+    134,
+    150
+  ],
+  "instalado_parametros": 819,
+  "instalado_sha256": "46061e637efa6fd5662f4562933865f22480e65d77c975c075cb998bef8591bd",
+  "lectura": {
+    "invalidas": 0,
+    "rutas_unicas": 62389,
+    "sanas": 9407
+  },
+  "limites": [
+    "Separacion por album/copia exacta, no por artista ni genero",
+    "El origen del entrenamiento del modelo instalado no se conoce",
+    "Corte >=19300 Hz es un indicador, no garantiza un master sin perdidas",
+    "Prediccion de curvas no demuestra superioridad audible"
+  ],
+  "numpy": "2.4.6",
+  "parametros": 819,
+  "paridad_float32_max": 0.000004687774644906995,
+  "particion_sha256": "9b9eebfb20c1a55571fd4ac90fe93ad31741426e63259991f77544fda44b21cc",
+  "politica": "RMSE: mejora >=5% vs promedio train y >=2% vs instalado; ninguna banda >10% peor; paridad <=1e-4",
+  "python": "3.11.9",
+  "rmse_db_por_banda": {
+    "candidato": [
+      3.7055904138409286,
+      1.7038056117475637,
+      2.5948782800056955
+    ],
+    "instalado": [
+      3.5556291623284624,
+      1.6088075389746936,
+      2.5744306683745575
+    ],
+    "promedio_entrenamiento": [
+      4.9433837455363525,
+      3.5243970693674855,
+      4.1101179225921785
+    ]
+  },
+  "semilla": 20260923
+}

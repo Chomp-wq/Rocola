@@ -188,6 +188,12 @@ namespace Rocola
 
     public partial class Form1
     {
+        // Techo operativo: ~0,94 dB adicionales frente al antiguo 0,98.
+        // Cubre los excesos medidos del detector 4x sin triplicar su FIR.
+        // No es una atenuacion fija: lo que no necesita limitar sigue intacto.
+        // Referencia independiente y limites: pruebas/picoreal.cs.
+        internal const float TechoPicoReal = 0.88f;
+
         // LIMITADOR DE PICO REAL. El mismo limitador con pre-escucha de siempre (misma ganancia para todos los
         // canales, ataque que llega antes que el pico, soltar de 120 ms), pero el pico que manda es el de la onda
         // reconstruida, no el de las muestras. Anade Retraso muestras de espera (0,27 ms a 44,1 kHz) para que el
