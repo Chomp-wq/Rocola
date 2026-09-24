@@ -505,7 +505,7 @@ namespace Rocola
         private ToastKind toastKind = ToastKind.Other; private int toastKindTick;
         private int coinTotal, songTotal;
         private void MarkToast(ToastKind k) { toastKind = k; toastKindTick = Environment.TickCount; }
-        private bool SameToastActive(ToastKind k) { return toastKind == k && (Environment.TickCount - toastKindTick) < 1300; }   // 1300 = duracion del aviso
+        private bool SameToastActive(ToastKind k) { return toastKind == k && (Environment.TickCount - toastKindTick) < VidaAviso(); }   // lo que dura el aviso (1300, o el claro)
 
         // ---- BOTONES DE LA ROCOLA (configurables; se guardan en rocola_teclas.txt) ----
         // Valores por defecto (sirven para probar con teclado normal antes de configurar).

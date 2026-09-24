@@ -710,6 +710,10 @@ namespace Rocola
                 gpuPanel.GetVinilo = BuildViniloState;   // dentro del disco: el vinilo que asoma (DiscoVivoGpu.cs)
                 gpuPanel.GetEq = BuildEqState;           // las barritas de la que suena
                 gpuPanel.GetBoleto = BuildBoletoState;   // el boleto que vuela de la fila a la cola
+                gpuPanel.GetAviso = BuildAvisoState;     // los avisos que se entienden (SuenaVivoGpu.cs)
+                gpuPanel.GetInvita = BuildInvitaState;   // sin creditos: la tarjeta que invita
+                gpuPanel.GetMoneda = BuildMonedaState;   // la moneda que cae en la capsula de creditos
+                gpuPanel.GetReposo = BuildReposoState;   // lo que suena, en grande: el vinilo y el titulo del panel de reposo
                 gpuPanel.GetGridAhead = albumView.BuildGpuAhead;
                 gpuPanel.GetContour = delegate { return albumView.ContourSpriteBmp; };          // resalte de seleccion
                 gpuPanel.GetContourRect = delegate {

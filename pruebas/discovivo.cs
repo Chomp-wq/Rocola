@@ -800,19 +800,31 @@ class DiscoVivo
             for (int i = 0; i < 5; i++) { sw[i] = Find(page, nom[i]); if (sw[i] == null) estan = false; }
             Check(estan && Find(page, "Portada enfocada (GPU)") != null, "la pestaña Pantalla tiene los cinco nuevos al lado de los cuatro de la pared");
             if (!estan) return;
-            bool dentro = true, noSePisan = true; int fondo = 0; List<Rectangle> tarjetas = new List<Rectangle>();
-            foreach (Control card in page.Controls)
+            // Las tarjetas van en HOJAS (paneles lisos, una a la vista; tanda 3): dentro de cada hoja, lado a lado y sin pisarse.
+            bool dentro = true, noSePisan = true, juntas = false; int fondo = 0, hojas = 0;
+            foreach (Control hoja in page.Controls)
             {
-                fondo = Math.Max(fondo, card.Bottom);
-                if (card.Right > page.Width || card.Left < 0) dentro = false;
-                if (card is Panel) { foreach (Rectangle r in tarjetas) if (r.IntersectsWith(card.Bounds)) noSePisan = false; tarjetas.Add(card.Bounds); }
-                foreach (Control x in card.Controls)
+                fondo = Math.Max(fondo, hoja.Bottom);
+                if (hoja.Right > page.Width || hoja.Left < 0) dentro = false;
+                if (hoja.GetType() != typeof(Panel)) continue;
+                hojas++;
+                List<Rectangle> tarjetas = new List<Rectangle>(); bool pared = false, disco = false;
+                foreach (Control card in hoja.Controls)
                 {
-                    if (card is Panel && (x.Left < 0 || x.Top < 0 || x.Right > card.Width || x.Bottom > card.Height)) dentro = false;
-                    foreach (Control d in card.Controls) if (x != d && x.Bounds.IntersectsWith(d.Bounds)) dentro = false;
+                    if (card.Left < 0 || card.Top < 0 || card.Right > hoja.Width || card.Bottom > hoja.Height) dentro = false;
+                    foreach (Rectangle r in tarjetas) if (r.IntersectsWith(card.Bounds)) noSePisan = false;
+                    tarjetas.Add(card.Bounds);
+                    if (Find(card, "Portada enfocada (GPU)") != null) pared = true;
+                    if (Find(card, nom[0]) != null) disco = true;
+                    foreach (Control x in card.Controls)
+                    {
+                        if (x.Left < 0 || x.Top < 0 || x.Right > card.Width || x.Bottom > card.Height) dentro = false;
+                        foreach (Control d in card.Controls) if (x != d && x.Bounds.IntersectsWith(d.Bounds)) dentro = false;
+                    }
                 }
+                if (pared && disco && tarjetas.Count == 2) juntas = true;
             }
-            Check(dentro && noSePisan && fondo <= page.Height && tarjetas.Count == 2, "dos tarjetas lado a lado, todo cabe sin taparse (lo mas bajo llega a " + fondo + " de " + page.Height + ")");
+            Check(dentro && noSePisan && juntas && hojas >= 2 && fondo <= page.Height, "la pared y dentro del disco, lado a lado en su hoja; todo cabe sin taparse (lo mas bajo llega a " + fondo + " de " + page.Height + ")");
             PropertyInfo marcado = sw[0].GetType().GetProperty("Checked", F);
             bool guarda = true, aplica = true;
             for (int mask = 31; mask >= 0; mask--)

@@ -78,7 +78,7 @@ namespace Rocola
             StringBuilder sig = new StringBuilder();
             sig.Append(w).Append('|').Append(h).Append('|').Append(nowPlaying.PathKey()).Append('|')
                 .Append(title).Append('|').Append(artist).Append('|').Append(queue.Count).Append('|').Append(bgAccent.ToArgb());
-            string time = lblTime != null ? lblTime.Text : "";
+            string time = TextoRelojReposo(reader);   // con "Lo que suena, en grande", tambien cuanto falta (SuenaVivoGpu.cs)
             sig.Append('|').Append(estadoTransparente).Append('|').Append(iaBadgeKind);
             for (int i = 0; i < qt.Length; i++)
             {
@@ -88,10 +88,20 @@ namespace Rocola
                     .Append('|').Append(covers[i] != null ? covers[i].GetHashCode() : 0);
             }
             sig.Append('|').Append(colaDoce);
+            // Lo que suena, en grande (SuenaVivoGpu.cs): el genero y lo que falta para cada una de la cola.
+            ReposoGrande extra = ExtraReposo(w, h, qt.Length);
+            if (extra != null)
+            {
+                sig.Append("|G|").Append(extra.Genero).Append('|').Append(extra.GeneroColor.ToArgb());
+                for (int i = 0; i < extra.Minutos.Length; i++) sig.Append('|').Append(extra.Minutos[i]);
+            }
             string key = sig.ToString();
             if (idlePanelBmp != null && key == idlePanelSig) { ParcheaElReloj(w, h); return idlePanelBmp; }
             int progressStart;
-            Bitmap next = RenderIdlePanelLayout(w, h, title, artist, "", qt, qa, covers, queue.Count, bgAccent, estadoTransparente, iaBadgeKind, colaDoce, out progressStart);
+            Bitmap next = RenderIdlePanelGrande(w, h, title, artist, "", qt, qa, covers, queue.Count, bgAccent, estadoTransparente, iaBadgeKind, colaDoce, extra, out progressStart);
+            reposoUltimo = extra;
+            if (gpuPanel != null) gpuPanel.IdleCorre = (extra != null) ? extra.Corre : 0;
+            if (extra != null) { extra.Titulo = title; extra.W = w; extra.H = h; }   // el titulo que se desliza lo hornea la tarjeta al pedirlo
             if (idleClockUnderlay != null) { idleClockUnderlay.Dispose(); idleClockUnderlay = null; }
             idleClockUnderlay = next.Clone(new Rectangle(0, h - 34, w, 34), PixelFormat.Format32bppPArgb);
             progressStart = UpdateIdleClock(next, idleClockUnderlay, time);
@@ -126,7 +136,7 @@ namespace Rocola
         // de abajo y nada mas. Rehacer el panel entero por un digito costaria 1,70 ms cada segundo.
         private void ParcheaElReloj(int w, int h)
         {
-            string time = lblTime != null ? lblTime.Text : "";
+            string time = TextoRelojReposo(reader);
             if (idleClockUnderlay == null || idlePanelBmp == null || idlePanelTime == time) return;
             idlePanelProgressStart = UpdateIdleClock(idlePanelBmp, idleClockUnderlay, time);
             idlePanelTime = time; idlePanelRevision++;
@@ -198,6 +208,18 @@ namespace Rocola
 
         internal static Bitmap RenderIdlePanelLayout(int w, int h, string title, string artist, string time,
             string[] qt, string[] qa, Image[] covers, int count, Color accent, bool transparent, int badgeKind, bool dozen, out int progressStart)
+        { return RenderIdlePanelGrande(w, h, title, artist, time, qt, qa, covers, count, accent, transparent, badgeKind, dozen, null, out progressStart); }
+
+        // La letra del titulo del panel (tambien la del titulo que se desliza, SuenaVivoGpu.cs).
+        internal static Font FuenteTituloReposo(int w, int h)
+        {
+            float scale = Math.Max(.8f, Math.Min(1.3f, h / 260f));
+            return new Font("Trebuchet MS", Math.Max(22, Math.Min(36 * scale, w / 30f)), FontStyle.Bold, GraphicsUnit.Pixel);
+        }
+
+        // 'extra' es lo de "Lo que suena, en grande" (SuenaVivoGpu.cs); con null, el panel de siempre.
+        internal static Bitmap RenderIdlePanelGrande(int w, int h, string title, string artist, string time,
+            string[] qt, string[] qa, Image[] covers, int count, Color accent, bool transparent, int badgeKind, bool dozen, ReposoGrande extra, out int progressStart)
         {
             float scale = Math.Max(.8f, Math.Min(1.3f, h / 260f));
             Bitmap bitmap = new Bitmap(w, h, PixelFormat.Format32bppPArgb);
@@ -207,7 +229,7 @@ namespace Rocola
             using (Pen top = new Pen(Color.FromArgb(155, Lighten(accent, .45)), 2))
             using (Font small = new Font("Trebuchet MS", 15 * scale, FontStyle.Bold, GraphicsUnit.Pixel))
             using (Font normal = new Font("Trebuchet MS", 20 * scale, FontStyle.Bold, GraphicsUnit.Pixel))
-            using (Font big = new Font("Trebuchet MS", Math.Max(22, Math.Min(36 * scale, w / 30f)), FontStyle.Bold, GraphicsUnit.Pixel))
+            using (Font big = FuenteTituloReposo(w, h))
             using (SolidBrush white = new SolidBrush(Color.FromArgb(240, 245, 255)))
             using (SolidBrush muted = new SolidBrush(Color.FromArgb(157, 179, 209)))
             using (SolidBrush color = new SolidBrush(Lighten(accent, .5)))
@@ -225,14 +247,18 @@ namespace Rocola
                 int split = (int)(w * .52f);
                 Rectangle cover = GpuPanel.IdleCoverRect(w, h);
                 // Sin tarjeta bajo el cubo: se ve directamente el fondo del estado.
-                int tx = cover.Right + 20, tw = Math.Max(20, split - tx - 24);
+                int tx = cover.Right + 20 + (extra != null ? extra.Corre : 0), tw = Math.Max(20, split - tx - 24);
                 g.DrawString("A H O R A   S U E N A", small, color, new RectangleF(24, 12, split - 40, 26 * scale), line);
                 float titleH = Math.Min(90, h * .28f), artistY = 56 + titleH + 6;
-                g.DrawString(title ?? "", big, white, new RectangleF(tx, 56, tw, titleH), wrap);
-                g.DrawString(artist ?? "", normal, color, new RectangleF(tx, artistY, tw, Math.Max(22, h - 82 - artistY)), line);
+                if (extra == null)
+                {
+                    g.DrawString(title ?? "", big, white, new RectangleF(tx, 56, tw, titleH), wrap);
+                    g.DrawString(artist ?? "", normal, color, new RectangleF(tx, artistY, tw, Math.Max(22, h - 82 - artistY)), line);
+                }
+                else PintaTituloGrande(g, extra, title, artist, big, normal, small, white, color, line, tx, tw);   // en una linea
                 if (badgeKind != 0)
                 {
-                    Rectangle badge = GpuPanel.IdleBadgeRect(w, h);
+                    Rectangle badge = GpuPanel.IdleBadgeRectCorrido(w, h, extra != null ? extra.Corre : 0);
                     Color metal = badgeKind == 2 ? Color.FromArgb(255, 221, 132) : Color.FromArgb(218, 237, 255);
                     using (SolidBrush tint = new SolidBrush(Color.FromArgb(42, metal)))
                     using (SolidBrush ink = new SolidBrush(metal))
@@ -269,7 +295,10 @@ namespace Rocola
                     float titleHeight = queueTitle.GetHeight(g);
                     float textY = dozen && w >= 1500 ? r.Y + Math.Max(2, (r.Height - titleHeight - queueArtist.GetHeight(g)) * .5f) : r.Y + 2;
                     g.DrawString(qt[i] ?? "", queueTitle, white, new RectangleF(textX, textY, textW, titleHeight), line);
-                    g.DrawString(i < qa.Length ? qa[i] ?? "" : "", queueArtist, muted, new RectangleF(textX, textY + titleHeight, textW, r.Bottom - textY - titleHeight - 2), line);
+                    string enMin = (extra != null) ? TextoMinutosCola(extra, i) : "";   // "en ~6 min" (SuenaVivoGpu.cs)
+                    if (enMin.Length == 0)
+                        g.DrawString(i < qa.Length ? qa[i] ?? "" : "", queueArtist, muted, new RectangleF(textX, textY + titleHeight, textW, r.Bottom - textY - titleHeight - 2), line);
+                    else PintaMinutosCola(g, enMin, i < qa.Length ? qa[i] ?? "" : "", queueArtist, muted, compact, textX, textY + titleHeight, textW, r.Bottom - textY - titleHeight - 2, line);
                     if (compact)
                     {
                         float numberHeight = (float)Math.Ceiling(queueArtist.GetHeight(g)) + 2;

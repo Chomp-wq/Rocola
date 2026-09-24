@@ -115,6 +115,7 @@
     <Compile Include="RelojPantallaGpu.cs" />
     <Compile Include="PantallaVivaGpu.cs" />
     <Compile Include="DiscoVivoGpu.cs" />
+    <Compile Include="SuenaVivoGpu.cs" />
     <Compile Include="PrecargaPaginaGpu.cs" />
     <Compile Include="PaletaCaratulaGpu.cs" />
     <Compile Include="CreditosServicio.cs" />

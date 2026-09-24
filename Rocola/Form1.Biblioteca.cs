@@ -3070,7 +3070,7 @@ namespace Rocola
                 PlayItem p = new PlayItem(); p.IsVideo = false; p.Song = it.TrackRef; p.Disc = it.AlbumRef;
                 AddResult r = AddItem(p);
                 if (r == AddResult.Added) ShowSongAddedToast(true);
-                else if (r == AddResult.NoCredit) ShowSearchToast("Inserta una moneda", false);
+                else if (r == AddResult.NoCredit) { if (!InvitaSinCredito(p)) ShowSearchToast("Inserta una moneda", false); }
                 else ShowSearchToast("Esa cancion ya va seguida", false);
                 return; // no cierra el buscador
             }
@@ -3088,6 +3088,7 @@ namespace Rocola
         private void ShowSearchToast(string msg, bool ok)
         {
             toastKind = ToastKind.Other;   // por defecto NO acumulable; cancion lo re-marca tras llamar
+            if (AvisoEnBuscador(msg, ok)) { toastTimer.Stop(); toastTimer.Start(); return; }   // aviso claro, encima de todo (SuenaVivoGpu.cs)
             searchOverlay.ToastMsg = msg;
             searchOverlay.ToastBack = ok ? Color.FromArgb(238, 40, 165, 90) : Color.FromArgb(238, 205, 130, 35);
             searchOverlay.ToastOn = true;

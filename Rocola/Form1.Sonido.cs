@@ -1741,6 +1741,7 @@ namespace Rocola
             if (et == pastGenero.Texto) return;
             pastGenero.Texto = et;
             pastGenero.Tinte = (et.Length > 0) ? ColorDeEtiqueta(et) : DefaultAccent;
+            CambioElPanelDeReposo();   // el panel grande lleva la pastilla del genero (SuenaVivoGpu.cs)
             PositionMejorada();   // el ancho del artista depende de si hay pastilla y de lo que mida
             // El genero se aprende en segundo plano, asi que puede llegar con la cancion ya sonando. El fondo
             // va del mismo color, asi que se entera aqui en vez de esperar a la siguiente.

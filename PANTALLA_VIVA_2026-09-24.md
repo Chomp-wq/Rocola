@@ -131,10 +131,7 @@ Las otras ideas que elegiste, por tandas, cada una con sus pruebas y en las dos 
 
 2. **Dentro del disco.** Hecha: el vinilo que asoma, la lista grande, el ecualizador, "en cola · en ~N min" y el
    vuelo desde la lista hasta "En cola". Ver [la guía de la tanda 2](PANTALLA_VIVA_DISCO_2026-09-24.md).
-3. **Lo que suena y los créditos.**
-   - Lo que suena, en grande.
-   - La moneda que cae.
-   - Sin créditos, invitar en vez de regañar.
-   - Avisos que se entienden, con color, icono y línea de tiempo.
+3. **Lo que suena y los créditos.** Hecha: lo que suena en grande, la moneda que cae, sin créditos invitar en vez de
+   regañar y avisos que se entienden. Ver [la guía de la tanda 3](PANTALLA_VIVA_SUENA_2026-09-24.md).
 4. **Modo atracción.** El escaparate y lo más pedido esta noche.
 5. **Estilo general.** Letra para leer de lejos y el color del género en todo.

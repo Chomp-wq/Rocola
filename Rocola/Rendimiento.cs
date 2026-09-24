@@ -202,6 +202,7 @@ namespace Rocola
             if (albumView != null) albumView.PaginaDesliza = paginaDesliza;   // la vieja sale mientras entra la nueva (Ctrl+F3 -> Pantalla)
             if (letterBar != null) letterBar.LupaGpu = letrasLupa;            // la barra de letras con lupa
             AjustaDiscoVivo(ListaPorGpu());                                   // la lista del disco (Pantalla -> Dentro del disco)
+            if (pastCred != null) pastCred.MonedaGrande = monedaCae;           // la moneda que cae (Pantalla -> Lo que suena y los creditos)
             if (gpuPanel == null) return;
             gpuPanel.PortadaEnfocada = portadaEnfocada;
             gpuPanel.Nieblas = nieblasNiv;

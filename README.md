@@ -1,5 +1,17 @@
 # Rocola
 
+## Pantalla viva, tanda 3: lo que suena y los créditos — 24 de septiembre de 2026
+
+Las ideas elegidas para lo que suena, las monedas y los avisos, solo en el dibujo por tarjeta gráfica y en las dos
+ramas. Cuando nadie toca la rocola, el panel de "A H O R A   S U E N A" lleva un vinilo que gira detrás de la portada,
+el título en una sola línea (si no cabe, se desliza despacio), cuánto le falta a la canción y en cuánto suena cada una
+de la cola. Al meter una moneda cae una moneda dorada que aterriza en el número de créditos, la cápsula da un golpe y
+sube "+4 créditos". Si alguien pide algo sin créditos, en vez del letrero naranja sale una tarjeta amable que le dice
+qué le falta y cuánto da una moneda; no pone nada en la cola sola. Y los avisos entran por la derecha con su color, su
+icono y dos renglones: qué pasó y el detalle. Cada idea tiene su interruptor en Ctrl+F3 → Pantalla, en la hoja nueva
+**Lo que suena y los créditos**. El dibujo por procesador no cambia.
+[La guía de la tanda](PANTALLA_VIVA_SUENA_2026-09-24.md).
+
 ## La estrella ya no baila con la música — 24 de septiembre de 2026
 
 La estrella que cruza el cielo daba brincos porque seguía la música: con cada golpe cambiaban de golpe su velocidad, su
