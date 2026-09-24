@@ -123,4 +123,5 @@ Medido en este contenedor, con Mono. Sirve para comparar unas cosas con otras; l
 
 ## Lo que viene
 
-5. **Estilo general.** Letra para leer de lejos y el color del género en todo. Irá en esta misma hoja de Ctrl+F3.
+5. **Estilo general.** Hecha: letra para leer de lejos y el color del género en todo. Ver
+   [la guía de la tanda 5](PANTALLA_VIVA_ESTILO_2026-09-24.md).

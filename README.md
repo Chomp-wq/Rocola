@@ -1,5 +1,15 @@
 # Rocola
 
+## Pantalla viva, tanda 5: el estilo general — 24 de septiembre de 2026
+
+Las dos últimas ideas elegidas, solo en el dibujo por tarjeta gráfica y en las dos ramas. Letra para leer de lejos: en
+la tarjeta de lo que suena, abajo, el título crece, el artista baja casi un renglón y lo que sigue pasa a ese mismo
+renglón, a la derecha, en un gris mucho más claro; la franja mide lo mismo y nada más se mueve. El color del género en todo:
+la portada de lo que suena y la de dentro de un disco llevan detrás un resplandor del color del género que respira
+despacio, y el pulso de la letra elegida toma el color de su género. Cada idea tiene su interruptor en Ctrl+F3 →
+Pantalla → **La atracción y el estilo**, tarjeta **ESTILO GENERAL**. Sin tarjeta, o con las ideas apagadas, todo sale
+como siempre. Con esta tanda están hechas las cinco. [La guía de la tanda](PANTALLA_VIVA_ESTILO_2026-09-24.md).
+
 ## Pantalla viva, tanda 4: el modo atracción — 24 de septiembre de 2026
 
 Las dos ideas elegidas para cuando la rocola se queda sola, solo en el dibujo por tarjeta gráfica y en las dos ramas.

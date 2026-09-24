@@ -1054,11 +1054,14 @@ namespace Rocola
                     g.SmoothingMode = SmoothingMode.AntiAlias;
                     g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;   // gris: ClearType deja flecos sobre transparente
                     g.TranslateTransform(0, -top);   // las etiquetas estan en coords del form; la tira empieza en 'top'
-                    DrawLabelOverlay(g, lblNowTop);   // 2a linea del titulo (vacia casi siempre: no dibuja nada)
-                    DrawLabelOverlay(g, lblNow);
-                    if (lblMejorada != null && lblMejorada.Visible) DrawLabelOverlay(g, lblMejorada);   // letrero MEJORADA (su brillo es un halo por quad, no rehace esta textura)
-                    if (pastGenero != null && pastGenero.Visible) DrawCtrlOverlay(g, pastGenero);
-                    DrawLabelOverlay(g, lblNext);
+                    if (!FranjaLejos(g))   // la letra para leer de lejos (EstiloGpu.cs): el titulo grande y lo que sigue a la derecha
+                    {
+                        DrawLabelOverlay(g, lblNowTop);   // 2a linea del titulo (vacia casi siempre: no dibuja nada)
+                        DrawLabelOverlay(g, lblNow);
+                        if (lblMejorada != null && lblMejorada.Visible) DrawLabelOverlay(g, lblMejorada);   // letrero MEJORADA (su brillo es un halo por quad, no rehace esta textura)
+                        if (pastGenero != null && pastGenero.Visible) DrawCtrlOverlay(g, pastGenero);
+                        DrawLabelOverlay(g, lblNext);
+                    }
                     DrawLabelOverlay(g, lblTime);
                     DrawCtrlOverlay(g, pastCred);
                     DrawCtrlOverlay(g, pastCola);
@@ -1221,7 +1224,8 @@ namespace Rocola
                     {
                         double p = 0.5 + 0.5 * Math.Sin(phase * 2.2);   // mismo ritmo que antes, pero ahora a cuadro pleno y GRATIS
                         buf[n].Cx = letterBar.Left + cx; buf[n].Cy = letterBar.Top + cy; buf[n].R = r;
-                        buf[n].Argb = (uint)Color.FromArgb((int)(45 + 65 * p), 110, 180, 255).ToArgb(); n++;
+                        Color pl = ColorPulsoLetra();   // el color del genero de la letra, o el azul de siempre (EstiloGpu.cs)
+                        buf[n].Argb = (uint)Color.FromArgb((int)(45 + 65 * p), pl.R, pl.G, pl.B).ToArgb(); n++;
                     }
                     if (n < buf.Length && letterBar.GetTopGlow(out cx, out cy, out r))       // dorado pulsante del marcador TOP
                     {
@@ -1241,7 +1245,7 @@ namespace Rocola
             if (!attractOn && lblMejorada != null && lblMejorada.Visible && n + 1 < buf.Length)
             {
                 bool gold = (iaBadgeKind == 2);
-                RectangleF badgeGlow = gpuPanel != null ? gpuPanel.IdleBadgeGlow(lblMejorada.Bounds) : lblMejorada.Bounds;
+                RectangleF badgeGlow = gpuPanel != null ? gpuPanel.IdleBadgeGlow(RectMejorada()) : RectMejorada();   // donde se ve (de lejos, un renglon mas abajo)
                 float cy2 = badgeGlow.Top + badgeGlow.Height / 2f;
                 double pb = 0.5 + 0.5 * Math.Sin(phase * 2.8);
                 buf[n].Cx = badgeGlow.Left + badgeGlow.Width / 2f; buf[n].Cy = cy2;
@@ -1369,6 +1373,7 @@ namespace Rocola
             long sb = SigBase;
             sb = Mix(sb, ClientSize.Width); sb = Mix(sb, ClientSize.Height);
             if (attractOn) return Mix(sb, 'A');   // en atraccion la franja va limpia (transparente)
+            sb = Mix(sb, LetraLejosActiva() ? 1 : 0);   // la letra de lejos cambia como se hornea (EstiloGpu.cs)
             if (lblNowTop != null) sb = Mix(sb, lblNowTop.Text);
             if (lblNow != null) sb = Mix(sb, lblNow.Text);
             if (lblMejorada != null && lblMejorada.Visible) { sb = Mix(sb, 'M'); sb = Mix(sb, iaBadgeKind); sb = Mix(sb, lblMejorada.Left); sb = Mix(sb, lblMejorada.ForeColor.ToArgb()); }

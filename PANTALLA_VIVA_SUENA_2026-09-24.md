@@ -123,4 +123,5 @@ Medido en este contenedor, con Mono. Sirve para comparar unas cosas con otras; l
 
 4. **Modo atracción.** Hecha: el escaparate y lo más pedido esta noche. Ver
    [la guía de la tanda 4](PANTALLA_VIVA_ATRACCION_2026-09-24.md).
-5. **Estilo general.** Letra para leer de lejos y el color del género en todo.
+5. **Estilo general.** Hecha: letra para leer de lejos y el color del género en todo. Ver
+   [la guía de la tanda 5](PANTALLA_VIVA_ESTILO_2026-09-24.md).

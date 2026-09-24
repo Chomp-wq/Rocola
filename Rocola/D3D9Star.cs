@@ -1657,6 +1657,7 @@ namespace Rocola
             // Cubos girando ENCIMA del contorno (igual orden que en CPU): primero el relevo, luego el seleccionado.
             if (cs.Relay.Has)
                 stars.DrawCube(relTex, relU, relV, cs.Relay.X, cs.Relay.Y, cs.Relay.W, cs.Relay.H, cs.Relay.Angle, WallOpacity, cs.Relay.Tilt);
+            if (cs.Sel.Has && sceneMode == 3) DibujaHaloGenero(cs.Sel.X, cs.Sel.Y, cs.Sel.W, cs.Sel.H, ShowAlbum ? WallOpacity : 1f);   // dentro del disco, el color del genero detras, con el mismo alfa que el cubo (EstiloGpu.cs)
             DibujaVinilo(ref cs);   // dentro del disco, DETRAS del cubo grande: el cubo se aparta y el vinilo asoma por su lado
             if (cs.Sel.Has)
             {
@@ -1744,6 +1745,7 @@ namespace Rocola
                     cs.Mini.H += (large.Height - cs.Mini.H) * idleBlend;
                     cs.Mini.Tilt *= 1 - idleBlend;
                 }
+                DibujaHaloGenero(cs.Mini.X, cs.Mini.Y, cs.Mini.W, cs.Mini.H, 1f);   // el color del genero detras de la portada (EstiloGpu.cs)
                 DibujaViniloReposo(cs.Mini.X, cs.Mini.Y, cs.Mini.W, cs.Mini.H);   // en reposo, el vinilo asoma detras de la portada grande
                 stars.DrawCube(miniTex, miniU, miniV, cs.Mini.X, cs.Mini.Y, cs.Mini.W, cs.Mini.H, cs.Mini.Angle, 1f, cs.Mini.Tilt);
             }

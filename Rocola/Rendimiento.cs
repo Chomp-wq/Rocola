@@ -205,6 +205,7 @@ namespace Rocola
             if (pastCred != null) pastCred.MonedaGrande = monedaCae;           // la moneda que cae (Pantalla -> Lo que suena y los creditos)
             if (gpuPanel == null) return;
             gpuPanel.PortadaEnfocada = portadaEnfocada;
+            gpuPanel.GeneroTodo = colorGenero;   // el color del genero en todo (Pantalla -> El estilo)
             gpuPanel.Nieblas = nieblasNiv;
             gpuPanel.NebulosasCine = nebulosasCine;
             gpuPanel.VinetaSuave = vinetaSuave;
