@@ -1372,6 +1372,7 @@ namespace Rocola
             SueltaPantallaViva();   // el letrero de la elegida y la ficha rapida
             SueltaDiscoVivo();      // el vinilo y el boleto
             SueltaSuenaVivo();      // los avisos, la invitacion, la moneda y lo del panel de reposo
+            SueltaAtraccion();      // las fichas del escaparate, sus mensajes y la lista de la noche
             if (uiTex != IntPtr.Zero) { D3D9.Release(uiTex); uiTex = IntPtr.Zero; }
             if (hazTex != IntPtr.Zero) { D3D9.Release(hazTex); hazTex = IntPtr.Zero; }
             if (nebTex != IntPtr.Zero) { D3D9.Release(nebTex); nebTex = IntPtr.Zero; }
@@ -1518,6 +1519,7 @@ namespace Rocola
             PreparaPantallaViva();         // el letrero de la elegida, la ficha rapida y el empujon del cielo al pasar de pagina
             PreparaDiscoVivo();            // dentro del disco: el vinilo, las barritas de la que suena y el boleto que vuela
             PreparaSuenaVivo();            // los avisos, la invitacion, la moneda y el panel de reposo en grande
+            PreparaAtraccion();            // el escaparate y lo mas pedido esta noche (AtraccionGpu.cs)
             // Barras (UI) a textura: se re-sube solo cuando cambia algun texto/estado (firma del form), limitada a
             // UNA por franja (heavyGapMs). UiUrgent: al CAMBIAR DE MODO (p.ej. cerrar el buscador) hay que rehacerla
             // en ESTE mismo cuadro, sin esperar franja: si no, se veria la rejilla por los huecos del teclado un instante.
@@ -1668,7 +1670,8 @@ namespace Rocola
             bool uiPropia = gw.Has && gw.Bmp == null;   // se anima la PROPIA textura de UI (abriendo el buscador)
             if (!(gw.Has && gw.HideUi)) DrawPaletteOld();
             if (uiTex != IntPtr.Zero && uiBmpW > 0 && uiBmpH > 0 && !(gw.Has && gw.HideUi))
-                { SetTexQuadA(uiQuad, 0, 0, uiBmpW, uiBmpH, uiU, uiV, ((uint)(SceneAlpha() * PaletteAlpha() * ControlsOpacity * 255) << 24) | 0xFFFFFFu); stars.DrawQuad(uiTex, uiQuad); }
+                { SetTexQuadA(uiQuad, 0, 0, uiBmpW, uiBmpH, uiU, uiV, ((uint)(SceneAlpha() * PaletteAlpha() * ControlsOpacity * AtrUiAlfa * 255) << 24) | 0xFFFFFFu); stars.DrawQuad(uiTex, uiQuad); }
+            DibujaAtraccion();   // el escaparate y lo mas pedido esta noche (AtraccionGpu.cs); fuera de la atraccion, nada
             // Y ENCIMA las piezas vivas (la tarjeta y la tecla elegidas). Van despues de la textura de UI a
             // proposito: en ella estan las versiones SIN elegir, y estas las tapan. Se rellenan opacas, asi que
             // el resultado es identico a tenerlas horneadas dentro (comprobado pixel a pixel: pruebas/mover.cs).

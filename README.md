@@ -1,5 +1,16 @@
 # Rocola
 
+## Pantalla viva, tanda 4: el modo atracción — 24 de septiembre de 2026
+
+Las dos ideas elegidas para cuando la rocola se queda sola, solo en el dibujo por tarjeta gráfica y en las dos ramas.
+El escaparate: el cubo gigante se va a la izquierda y se mece, y a su lado sale el disco que enseña (su nombre en
+grande, el artista, el género, cuántas veces se ha pedido y cuántas canciones trae), con un mensaje debajo que se turna:
+cómo elegir, lo que da una moneda, lo más pedido y cómo buscar. Y cada 30 segundos, la lista de las cinco canciones más
+pedidas esta noche (desde las 8 de la mañana), con sus portadas y barras que crecen; la cuenta se guarda en
+`rocola_noche.txt`. Cada idea tiene su interruptor en Ctrl+F3 → Pantalla, en la hoja nueva **La atracción y el
+estilo**. Sin tarjeta, o con las ideas apagadas, la atracción es la de siempre.
+[La guía de la tanda](PANTALLA_VIVA_ATRACCION_2026-09-24.md).
+
 ## Pantalla viva, tanda 3: lo que suena y los créditos — 24 de septiembre de 2026
 
 Las ideas elegidas para lo que suena, las monedas y los avisos, solo en el dibujo por tarjeta gráfica y en las dos

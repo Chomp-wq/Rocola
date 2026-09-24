@@ -20,6 +20,8 @@
 //
 // TANDA 3, LO QUE SUENA Y LOS CREDITOS, en SuenaVivoGpu.cs: lo que suena en grande, la moneda que cae, la tarjeta que
 // invita cuando no hay creditos y los avisos que se entienden. Van en la segunda hoja de esta pestaña.
+//
+// TANDA 4, EL MODO ATRACCION, en AtraccionGpu.cs: el escaparate y lo mas pedido esta noche. Van en la tercera hoja.
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -63,10 +65,10 @@ namespace Rocola
             Panel pg = new Panel();
             pg.SetBounds(0, 96, 960, 636);
             pg.BackColor = Color.FromArgb(11, 14, 32);
-            // DOS HOJAS: ya no caben todas las tarjetas a la vez. Arriba, un boton por hoja; debajo, la que toque.
-            Panel hPared = new Panel(), hSuena = new Panel();
-            hPared.SetBounds(0, 48, 960, 452); hSuena.SetBounds(0, 48, 960, 452);
-            hPared.BackColor = pg.BackColor; hSuena.BackColor = pg.BackColor;
+            // HOJAS: ya no caben todas las tarjetas a la vez. Arriba, un boton por hoja; debajo, la que toque.
+            Panel hPared = new Panel(), hSuena = new Panel(), hAtr = new Panel();
+            hPared.SetBounds(0, 48, 960, 452); hSuena.SetBounds(0, 48, 960, 452); hAtr.SetBounds(0, 48, 960, 452);
+            hPared.BackColor = pg.BackColor; hSuena.BackColor = pg.BackColor; hAtr.BackColor = pg.BackColor;
             Tarjeta tPared = new Tarjeta(); tPared.SetBounds(16, 0, 456, 412); tPared.Titulo = "LA PARED Y LAS LETRAS"; tPared.Acento = cAc;
             string[] nom = {
                 "Portada enfocada (GPU)",
@@ -159,6 +161,30 @@ namespace Rocola
             swS[1].CheckedChanged += delegate { monedaCae = swS[1].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             swS[2].CheckedChanged += delegate { sinCreditosInvita = swS[2].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             swS[3].CheckedChanged += delegate { avisosClaros = swS[3].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            // LA TANDA 4, en la tercera hoja: el modo atraccion (AtraccionGpu.cs).
+            Tarjeta tAtr = new Tarjeta(); tAtr.SetBounds(16, 0, 456, 184); tAtr.Titulo = "MODO ATRACCION"; tAtr.Acento = cAc;
+            string[] nomA = {
+                "El escaparate (GPU)",
+                "Lo más pedido esta noche (GPU)",
+            };
+            string[] explicaA = {
+                "Cuando nadie usa la rocola, el cubo se mece a la izquierda y a\nsu lado sale el disco en grande, con mensajes que se turnan.",
+                "Cada 30 segundos, la lista de las cinco más pedidas desde las\n8 de la mañana, con barras que crecen.",
+            };
+            bool[] valA = { escaparate, topNoche };
+            Interruptor[] swA = new Interruptor[nomA.Length];
+            for (int i = 0; i < swA.Length; i++)
+            {
+                int y = 40 + i * 72;
+                swA[i] = new Interruptor(); swA[i].SetBounds(16, y, 424, 26);
+                swA[i].Font = fNom; swA[i].ForeColor = cTexto; swA[i].Acento = cAc;
+                swA[i].Text = nomA[i]; swA[i].Checked = valA[i];
+                Label le = new Label(); le.SetBounds(16, y + 30, 424, 32); le.BackColor = Color.Transparent;
+                le.ForeColor = cTenue; le.Font = fDes; le.Text = explicaA[i];
+                tAtr.Controls.Add(swA[i]); tAtr.Controls.Add(le);
+            }
+            swA[0].CheckedChanged += delegate { escaparate = swA[0].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            swA[1].CheckedChanged += delegate { topNoche = swA[1].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             Label lPie = new Label(); lPie.SetBounds(16, 508, 928, 48); lPie.BackColor = Color.Transparent;
             lPie.ForeColor = cApagado; lPie.Font = fDes;
             lPie.Text = "Las ideas que se eligieron del lienzo de bocetos. Solo se ven con la tarjeta grafica: sin ella la pantalla\n"
@@ -170,15 +196,17 @@ namespace Rocola
                 portadaEnfocada = fichaDisco = paginaDesliza = letrasLupa = true;
                 viniloDisco = listaGrande = eqSonando = colaMinutos = vueloCola = true;
                 suenaGrande = monedaCae = sinCreditosInvita = avisosClaros = true;
+                escaparate = topNoche = true;
                 for (int i = 0; i < sw.Length; i++) sw[i].Checked = true;
                 for (int i = 0; i < swD.Length; i++) swD[i].Checked = true;
                 for (int i = 0; i < swS.Length; i++) swS[i].Checked = true;
+                for (int i = 0; i < swA.Length; i++) swA[i].Checked = true;
                 f3CambioGraf = true; AplicaEfectosGpu();
                 ShowToast("Pantalla como de fabrica", Color.FromArgb(40, 130, 90));
             };
-            hPared.Controls.Add(tPared); hPared.Controls.Add(tDisco); hSuena.Controls.Add(tSuena);
-            Panel[] hojas = { hPared, hSuena };
-            string[] nomHoja = { "La pared y el disco", "Lo que suena y los creditos" };
+            hPared.Controls.Add(tPared); hPared.Controls.Add(tDisco); hSuena.Controls.Add(tSuena); hAtr.Controls.Add(tAtr);
+            Panel[] hojas = { hPared, hSuena, hAtr };
+            string[] nomHoja = { "La pared y el disco", "Lo que suena y los creditos", "La atracción y el estilo" };
             BotonPlano[] bHoja = new BotonPlano[hojas.Length];
             for (int i = 0; i < hojas.Length; i++)
             {
