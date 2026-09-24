@@ -913,6 +913,17 @@ namespace Rocola
                 if (ToastOn) DrawToast(g, W, H);
             }
 
+            // Lo que ocupa el aviso flotante de DrawToast, con su contorno y su suavizado: lo unico de la pantalla que cambia
+            // cuando el aviso entra o sale. Es la misma cuenta que DrawToast; la bateria 'buscaligero' compara la pantalla
+            // entera antes y despues del aviso, asi que si las dos cuentas se separan, se entera.
+            internal Rectangle ZonaAviso()
+            {
+                int tw = 400, th = 56;
+                Rectangle r = new Rectangle((Width - tw) / 2, 104, tw, th);
+                r.Inflate(4, 4);
+                return r;
+            }
+
             private void DrawToast(Graphics g, int W, int H)
             {
                 int tw = 400, th = 56;
