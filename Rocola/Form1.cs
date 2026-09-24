@@ -1476,6 +1476,15 @@ namespace Rocola
             int listX = cube + 30, listW = Math.Max(60, w - cube - 42);
             if (songPager != null) songPager.SetBounds(listX, 52, listW, 24);   // instrucciones de pagina, ARRIBA de la lista
             songList.SetBounds(listX, 80, listW, Math.Max(60, h - 88));
+#if ROCOLA_GPU
+            if (ListaPorGpu())
+            {
+                int pagerH = Math.Max(32, Math.Min(44, h / 20));
+                if (songPager != null) songPager.SetBounds(listX, 48, listW, pagerH);
+                int listY = 52 + pagerH;
+                songList.SetBounds(listX, listY, listW, Math.Max(60, h - listY - 8));
+            }
+#endif
             // La lista contiene SOLO la pagina actual (sin scroll); al cambiar el tamaño se reparte de nuevo.
             if (panelSongs.Visible && songItems.Count > 0 && songList.RowH > 0) FillSongPage();
         }

@@ -104,20 +104,18 @@ namespace Rocola
             // LA TANDA 2, al lado: lo que pasa dentro de un disco (DiscoVivoGpu.cs).
             Tarjeta tDisco = new Tarjeta(); tDisco.SetBounds(488, 0, 456, 412); tDisco.Titulo = "DENTRO DEL DISCO"; tDisco.Acento = cAc;
             string[] nomD = {
-                "Vinilo que asoma (GPU)",
                 "Lista grande (GPU)",
                 "Ecualizador en la que suena (GPU)",
                 "En cola, con los minutos (GPU)",
                 "Ver adónde va la canción (GPU)",
             };
             string[] explicaD = {
-                "Si suena ese disco, un vinilo sale de detras de la portada y gira\nmientras suena. Al acabar se vuelve a guardar.",
                 "Filas mas altas y letra mas grande dentro del disco: se lee de\nlejos. Caben menos canciones por pagina.",
                 "La cancion que suena lleva cuatro barritas que se mueven con\nla musica, en vez del triangulito.",
                 "Las canciones pedidas dicen tambien cuanto falta para que\nsuenen: \"EN COLA 3 · en ~9 min\".",
                 "Al pedir una cancion, su boleto vuela desde la fila hasta \"En\ncola\" y el numero sube cuando llega.",
             };
-            bool[] valD = { viniloDisco, listaGrande, eqSonando, colaMinutos, vueloCola };
+            bool[] valD = { listaGrande, eqSonando, colaMinutos, vueloCola };
             Interruptor[] swD = new Interruptor[nomD.Length];
             for (int i = 0; i < swD.Length; i++)
             {
@@ -129,11 +127,10 @@ namespace Rocola
                 le.ForeColor = cTenue; le.Font = fDes; le.Text = explicaD[i];
                 tDisco.Controls.Add(swD[i]); tDisco.Controls.Add(le);
             }
-            swD[0].CheckedChanged += delegate { viniloDisco = swD[0].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
-            swD[1].CheckedChanged += delegate { listaGrande = swD[1].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
-            swD[2].CheckedChanged += delegate { eqSonando = swD[2].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
-            swD[3].CheckedChanged += delegate { colaMinutos = swD[3].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
-            swD[4].CheckedChanged += delegate { vueloCola = swD[4].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            swD[0].CheckedChanged += delegate { listaGrande = swD[0].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            swD[1].CheckedChanged += delegate { eqSonando = swD[1].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            swD[2].CheckedChanged += delegate { colaMinutos = swD[2].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            swD[3].CheckedChanged += delegate { vueloCola = swD[3].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             // LA TANDA 3, en la segunda hoja: lo que suena y los creditos (SuenaVivoGpu.cs).
             Tarjeta tSuena = new Tarjeta(); tSuena.SetBounds(16, 0, 456, 328); tSuena.Titulo = "LO QUE SUENA Y LOS CREDITOS"; tSuena.Acento = cAc;
             string[] nomS = {
@@ -221,7 +218,7 @@ namespace Rocola
             bReset.Click += delegate
             {
                 portadaEnfocada = fichaDisco = paginaDesliza = letrasLupa = true;
-                viniloDisco = listaGrande = eqSonando = colaMinutos = vueloCola = true;
+                listaGrande = eqSonando = colaMinutos = vueloCola = true;
                 suenaGrande = monedaCae = sinCreditosInvita = avisosClaros = true;
                 escaparate = topNoche = true;
                 letraLejos = colorGenero = true;

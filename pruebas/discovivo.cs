@@ -604,7 +604,7 @@ class DiscoVivo
         bool quieto = (int)Get(g, "viniloVer") == 2;
         Set(pg, "viniloSal", 0f); prep.Invoke(g, null);
         Check(quieto && (int)Get(g, "viniloVer") == 3, "mientras se guarda porque ya no suena este disco, su etiqueta no cambia a medio camino (la nueva, ya guardado)");
-        Check(Codigo.Llama(form.GetMethod("DiscoVivoTic", F), "PreparaVinilo"), "y lo repasa el reloj de la pantalla, no el cuadro que entra al disco");
+        Check(!Codigo.Llama(form.GetMethod("DiscoVivoTic", F), "PreparaVinilo"), "el reloj ya no prepara vinilos retirados");
 
         // Lo que se entrega al panel.
         Set(g, "viniloDisco", true); Set(g, "gpuMode", 3);
@@ -647,7 +647,7 @@ class DiscoVivo
         List<string> orden = Codigo.Repasa(gpu.GetMethod("RenderFrame", F));
         int iv = orden.IndexOf("DibujaVinilo"), ifo = orden.IndexOf("DibujaFoco");
         bool cuboDespues = false; for (int i = iv + 1; i < ifo && iv >= 0; i++) if (orden[i] == "DrawCube") cuboDespues = true;
-        Check(iv >= 0 && cuboDespues, "se dibuja ANTES del cubo grande: el cubo lo tapa y el vinilo asoma");
+        Check(iv < 0 && !cuboDespues, "el renderizador ya no llama al vinilo");
         MethodInfo pdv = gpu.GetMethod("PreparaDiscoVivo", F);
         Set(p, "viniloSal", .7f); Set(p, "discoUltMs", 0.0);
         pdv.Invoke(p, null);
@@ -786,8 +786,8 @@ class DiscoVivo
         string dir = Path.Combine(Path.GetTempPath(), "rocola_discovivo_" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(dir);
         form.GetField("carpetaDatos", F).SetValue(null, dir);
         object owner = Codigo.FormSinEncender(form);
-        string[] nom = { "Vinilo que asoma (GPU)", "Lista grande (GPU)", "Ecualizador en la que suena (GPU)", "En cola, con los minutos (GPU)", "Ver adónde va la canción (GPU)" };
-        string[] campo = { "viniloDisco", "listaGrande", "eqSonando", "colaMinutos", "vueloCola" };
+        string[] nom = { "Lista grande (GPU)", "Ecualizador en la que suena (GPU)", "En cola, con los minutos (GPU)", "Ver adónde va la canción (GPU)" };
+        string[] campo = { "listaGrande", "eqSonando", "colaMinutos", "vueloCola" };
         string[] viejos = { "portadaEnfocada", "fichaDisco", "paginaDesliza", "letrasLupa" };
         Control sl = (Control)Activator.CreateInstance(slT, true);
         sl.Size = new Size(556, 452); sl.Font = new Font(FontFamily.GenericSansSerif, 13f, FontStyle.Bold); Set(sl, "RowH", 30);
@@ -796,9 +796,9 @@ class DiscoVivo
         using (Font f = new Font("Segoe UI", 9))
         using (Panel page = (Panel)form.GetMethod("PaginaPantalla", F).Invoke(owner, new object[] { f, f, f, Color.White, Color.Gray, Color.Gray }))
         {
-            Control[] sw = new Control[5]; bool estan = true;
-            for (int i = 0; i < 5; i++) { sw[i] = Find(page, nom[i]); if (sw[i] == null) estan = false; }
-            Check(estan && Find(page, "Portada enfocada (GPU)") != null, "la pestaña Pantalla tiene los cinco nuevos al lado de los cuatro de la pared");
+            Control[] sw = new Control[4]; bool estan = true;
+            for (int i = 0; i < 4; i++) { sw[i] = Find(page, nom[i]); if (sw[i] == null) estan = false; }
+            Check(estan && Find(page, "Portada enfocada (GPU)") != null, "la pestaña Pantalla tiene los cuatro ajustes al lado de los cuatro de la pared");
             if (!estan) return;
             // Las tarjetas van en HOJAS (paneles lisos, una a la vista; tanda 3): dentro de cada hoja, lado a lado y sin pisarse.
             bool dentro = true, noSePisan = true, juntas = false; int fondo = 0, hojas = 0;
@@ -827,27 +827,27 @@ class DiscoVivo
             Check(dentro && noSePisan && juntas && hojas >= 2 && fondo <= page.Height, "la pared y dentro del disco, lado a lado en su hoja; todo cabe sin taparse (lo mas bajo llega a " + fondo + " de " + page.Height + ")");
             PropertyInfo marcado = sw[0].GetType().GetProperty("Checked", F);
             bool guarda = true, aplica = true;
-            for (int mask = 31; mask >= 0; mask--)
+            for (int mask = 15; mask >= 0; mask--)
             {
-                for (int i = 0; i < 5; i++) marcado.SetValue(sw[i], (mask & (1 << i)) != 0, null);
+                for (int i = 0; i < 4; i++) marcado.SetValue(sw[i], (mask & (1 << i)) != 0, null);
                 form.GetMethod("SaveConfigPrefs", F).Invoke(owner, null);
                 Codigo.EsperaGuardado(form, owner);
                 object leido = Codigo.FormSinEncender(form); form.GetMethod("LoadConfigPrefs", F).Invoke(leido, null);
-                for (int i = 0; i < 5; i++) if ((bool)Get(leido, campo[i]) != ((mask & (1 << i)) != 0) || (bool)Get(owner, campo[i]) != ((mask & (1 << i)) != 0)) guarda = false;
+                for (int i = 0; i < 4; i++) if ((bool)Get(leido, campo[i]) != ((mask & (1 << i)) != 0) || (bool)Get(owner, campo[i]) != ((mask & (1 << i)) != 0)) guarda = false;
                 if (gpu != null)
                 {
                     int vivo = (int)Get(sl, "Vivo");
-                    if (((vivo & 1) != 0) != ((mask & 2) != 0) || ((vivo & 2) != 0) != ((mask & 4) != 0) || ((vivo & 4) != 0) != ((mask & 8) != 0)) aplica = false;
+                    if (((vivo & 1) != 0) != ((mask & 1) != 0) || ((vivo & 2) != 0) != ((mask & 2) != 0) || ((vivo & 4) != 0) != ((mask & 4) != 0)) aplica = false;
                 }
             }
-            Check(guarda, "las 32 combinaciones se guardan en rocola_config.txt y se leen igual");
+            Check(guarda, "las 16 combinaciones se guardan en rocola_config.txt y se leen igual");
             if (gpu != null) Check(aplica, "y la lista del disco se entera al momento (con la tarjeta dibujando el disco)");
             Control reset = Find(page, "Pantalla como de fabrica");
             try { typeof(Control).GetMethod("OnClick", F).Invoke(reset, new object[] { EventArgs.Empty }); } catch { }
             bool todos = true;
-            for (int i = 0; i < 5; i++) if (!(bool)Get(owner, campo[i]) || !(bool)marcado.GetValue(sw[i], null)) todos = false;
+            for (int i = 0; i < 4; i++) if (!(bool)Get(owner, campo[i]) || !(bool)marcado.GetValue(sw[i], null)) todos = false;
             foreach (string v in viejos) if (!(bool)Get(owner, v)) todos = false;
-            Check(reset != null && todos, "\"Pantalla como de fabrica\" vuelve a encender las nueve");
+            Check(reset != null && todos, "\"Pantalla como de fabrica\" vuelve a encender las ocho");
         }
         try { Directory.Delete(dir, true); } catch { }
         if (gpu != null)

@@ -860,7 +860,7 @@ namespace Rocola
                 };
                 gpuPanel.GetFoco = BuildFocoState;     // el letrero de la portada enfocada
                 gpuPanel.GetFicha = BuildFichaState;   // la ficha rapida del disco
-                gpuPanel.GetVinilo = BuildViniloState;   // dentro del disco: el vinilo que asoma (DiscoVivoGpu.cs)
+                gpuPanel.GetVinilo = null; // efecto retirado, no se hornea ni se sube
                 gpuPanel.GetEq = BuildEqState;           // las barritas de la que suena
                 gpuPanel.GetBoleto = BuildBoletoState;   // el boleto que vuela de la fila a la cola
                 gpuPanel.GetAviso = BuildAvisoState;     // los avisos que se entienden (SuenaVivoGpu.cs)
@@ -900,6 +900,8 @@ namespace Rocola
                 gpuPanel.GetPiezaRect = delegate(int i) { return uiPiezaRect[i]; };
                 gpuPanel.GetPiezaVersion = delegate(int i) { return EnsureUiPieza(i); };
                 gpuPanel.GetGlassMode = delegate { return CanUseSongGlass; };
+                gpuPanel.GetSongSlide = delegate { return songList == null ? 0f : songList.GpuSlideOffset; };
+                gpuPanel.GetSongTravel = delegate { return songList == null ? 0f : songList.GpuSlideTravel; };
                 gpuPanel.GetPaletteKey = delegate {
                     if (!coloresCache || !searchOpen || searchOverlay == null) return 0;
                     searchOverlay.Accent = bgAccentTarget;
@@ -1195,7 +1197,7 @@ namespace Rocola
                         songList.RenderTransparentGpuTint(g, cancionesCristal, glassCapas, Lighten(bgAccent, .55)); g.Restore(listState);
                     }
                     else DrawCtrlOverlay(g, songList);
-                    if (songPager != null && songPager.Visible) DrawCtrlOverlay(g, songPager);
+                    if (songPager != null && songPager.Visible) DrawSongPagerGpu(g);
                     g.Restore(gs);
                 }
                 else if (attractOn && EscaparateActivo()) { }   // con el escaparate, los textos los pone el (AtraccionGpu.cs)
@@ -1260,11 +1262,11 @@ namespace Rocola
                     g.TranslateTransform(0, -top);   // las etiquetas estan en coords del form; la tira empieza en 'top'
                     if (!FranjaLejos(g))   // la letra para leer de lejos (EstiloGpu.cs): el titulo grande y lo que sigue a la derecha
                     {
-                        DrawLabelOverlay(g, lblNowTop);   // 2a linea del titulo (vacia casi siempre: no dibuja nada)
+                        PintaTituloCompacto(g, false);
                         DrawLabelOverlay(g, lblNow);
                         if (lblMejorada != null && lblMejorada.Visible) DrawLabelOverlay(g, lblMejorada);   // letrero MEJORADA (su brillo es un halo por quad, no rehace esta textura)
                         if (pastGenero != null && pastGenero.Visible) DrawCtrlOverlay(g, pastGenero);
-                        DrawLabelOverlay(g, lblNext);
+                        PintaSiguienteCompacto(g);
                     }
                     DrawLabelOverlay(g, lblTime);
                     DrawCtrlOverlay(g, pastCred);
@@ -1529,10 +1531,9 @@ namespace Rocola
                 // La lista grande, el ecualizador y los minutos de la cola (DiscoVivoGpu.cs) cambian lo horneado.
                 if (songList != null) { sb = Mix(sb, songList.Vivo); sb = Mix(sb, songList.RowH); sb = Mix(sb, songList.EsperaVer); }
                 sb = Mix(sb, panelSongs.Left); sb = Mix(sb, panelSongs.Top); sb = Mix(sb, panelSongs.Width); sb = Mix(sb, panelSongs.Height);
-                // Mientras la pagina se desliza, la firma tiene que cambiar en cada cuadro o la textura no se
-                // rehace y la animacion no se veria mover (igual que la capsula de la barra de letras).
-                if (songList != null && songList.Sliding) sb = Mix(sb, (int)(songList.SlidePaso * 128f));
-                if (songPager != null && songPager.Animando) sb = Mix(sb, (int)(songPager.Paso * 128f));
+                // Con capas, la GPU mueve las texturas: el reloj no invalida el horneado.
+                // Solo la ruta GPU compuesta conserva el repintado del desplazamiento.
+                if (!FastSongGlass && songList != null && songList.Sliding) sb = Mix(sb, (int)(songList.SlidePaso * 128f));
             }
             else if (attractOn)                        // MODO ATRACCION: solo la cantidad de canciones (el pulso del texto va como halo por quad)
             { sb = Mix(sb, 'A'); sb = Mix(sb, attractView != null ? attractView.SongCount : 0); sb = Mix(sb, EscaparateActivo() ? 1 : 0); }

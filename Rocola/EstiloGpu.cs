@@ -7,8 +7,8 @@
 //        termina en puntos suspensivos). Se queda con casi todo el alto del renglon de lo que sigue;
 //      * el ARTISTA, con su pastilla del genero y el letrero MEJORADA, baja casi ese renglon, lo que deja la caja del
 //        reloj (y el brillo del letrero va con el);
-//      * LO QUE SIGUE se va a ese mismo renglon del artista, a la derecha y hasta el borde de las capsulas, en un gris
-//        mucho mas claro. Si no cabe, termina en puntos suspensivos.
+//      * LO QUE SIGUE tiene una tarjeta lateral; en pantallas estrechas conserva su renglon bajo el artista.
+//        El titulo reserva ese espacio y los textos largos terminan en puntos suspensivos.
 //    La franja mide lo mismo y nada mas se mueve: la pared de discos, las capsulas, la barra y el reloj siguen donde
 //    estaban. Las etiquetas de verdad no se tocan: si alguna vez las pinta el procesador, salen como siempre.
 //  - EL COLOR DEL GENERO EN TODO (color_genero=). El color del genero de lo que suena ya tenia el cielo, la aurora, la
@@ -49,7 +49,12 @@ namespace Rocola
         }
         // Cuanto baja el renglon del artista (con su pastilla y el letrero): un renglon de lo que sigue, o lo que quepa
         // sin tocar la caja del reloj (lo que sigue va a ir en ese renglon, a la derecha, encima del reloj).
-        private int BajaArtistaLejos() { return LetraLejosActiva() ? BajaLejos(lblNow.Bounds, lblNext.Height, lblTime.Bounds) : 0; }
+        private int BajaArtistaLejos()
+        {
+            // Si no cabe la tarjeta lateral, conservar un renglon propio para lo siguiente.
+            return LetraLejosActiva() && (TextoSiguiente().Length == 0 || !CajaSiguienteCompacto().IsEmpty)
+                ? BajaLejos(lblNow.Bounds, lblNext.Height, lblTime.Bounds) : 0;
+        }
         internal static int BajaLejos(Rectangle artista, int renglon, Rectangle reloj)
         {
             return Math.Max(0, Math.Min(renglon, reloj.Top - 1 - artista.Bottom));
@@ -87,21 +92,24 @@ namespace Rocola
         {
             if (!LetraLejosActiva()) return false;
             int baja = BajaArtistaLejos();
-            PintaTituloLejos(g, lblNowTop, baja);
+            PintaTituloCompacto(g, true);
             GraphicsState st = g.Save();
             g.TranslateTransform(0, baja);   // el renglon del artista baja, con su pastilla y su letrero
             DrawLabelOverlay(g, lblNow);
             if (lblMejorada != null && lblMejorada.Visible) DrawLabelOverlay(g, lblMejorada);
             if (pastGenero != null && pastGenero.Visible) DrawCtrlOverlay(g, pastGenero);
             g.Restore(st);
-            Rectangle renglon = lblNow.Bounds; renglon.Offset(0, baja);
-            PintaSigueLejos(g, lblNext, CajaSigueLejos(renglon, FinRenglonArtista(), Math.Max(pastCola.Right, pastCred.Right)));
+            PintaSiguienteCompacto(g);
             return true;
         }
         internal static void PintaTituloLejos(Graphics g, Label titulo, int extra)
         {
             if (titulo == null || string.IsNullOrEmpty(titulo.Text)) return;
             RectangleF r = new RectangleF(titulo.Left, titulo.Top, titulo.Width, titulo.Height + extra);
+            PintaTituloEnCaja(g, titulo, r);
+        }
+        private static void PintaTituloEnCaja(Graphics g, Label titulo, RectangleF r)
+        {
             float e = EscalaTituloLejos(g, titulo.Text, titulo.Font, r.Width, r.Height);
             using (Font f = new Font(titulo.Font.FontFamily, titulo.Font.Size * e, titulo.Font.Style, titulo.Font.Unit))
                 PintaRenglonLejos(g, titulo.Text, f, titulo.ForeColor, r, StringAlignment.Near);
@@ -110,6 +118,58 @@ namespace Rocola
         {
             if (sigue == null || string.IsNullOrEmpty(sigue.Text) || caja.Width < 20 || caja.Height < 6) return;
             PintaRenglonLejos(g, sigue.Text, sigue.Font, LejosSigue, caja, StringAlignment.Far);
+        }
+        private string TextoSiguiente()
+        {
+            if (lblNext == null) return "";
+            string next = (lblNext.Text ?? "").Trim();
+            if (next.StartsWith("Sigue:", StringComparison.OrdinalIgnoreCase)) next = next.Substring(6).Trim();
+            return next == "-" ? "" : next;
+        }
+        private Rectangle CajaSiguienteCompacto()
+        {
+            if (lblNow == null || lblNowTop == null || progress == null || pastCola == null || TextoSiguiente().Length == 0) return Rectangle.Empty;
+            int left = Math.Max(FinRenglonArtista() + 28, Math.Max(ClientSize.Width * 43 / 100, lblNowTop.Left + 240));
+            int right = pastCola.Left - 20;
+            Rectangle box = new Rectangle(left, lblNowTop.Top, Math.Max(0, right - left), Math.Max(0, progress.Top - lblNowTop.Top - 4));
+            return box.Width >= 180 && box.Height >= 28 ? box : Rectangle.Empty;
+        }
+        private void PintaTituloCompacto(Graphics g, bool grande)
+        {
+            if (lblNowTop == null) return;
+            Rectangle box = CajaSiguienteCompacto();
+            Rectangle r = lblNowTop.Bounds;
+            if (!box.IsEmpty) r.Width = Math.Min(r.Width, Math.Max(0, box.Left - r.Left - 20));
+            if (grande) { r.Height += BajaArtistaLejos(); PintaTituloEnCaja(g, lblNowTop, r); }
+            else PintaRenglonLejos(g, lblNowTop.Text, lblNowTop.Font, lblNowTop.ForeColor, r, StringAlignment.Near);
+        }
+        private void PintaSiguienteCompacto(Graphics g)
+        {
+            string next = TextoSiguiente();
+            if (next.Length == 0) return;
+            Rectangle box = CajaSiguienteCompacto();
+            if (box.IsEmpty)
+            {
+                PintaRenglonLejos(g, "SIGUE  ·  " + next, lblNext.Font, LejosSigue, lblNext.Bounds, StringAlignment.Near);
+                return;
+            }
+            PintaTarjetaSiguiente(g, next, box);
+        }
+        internal static void PintaTarjetaSiguiente(Graphics g, string next, Rectangle box)
+        {
+            using (GraphicsPath p = RoundedPath(box, Math.Min(12, box.Height / 3)))
+            using (SolidBrush body = new SolidBrush(Color.FromArgb(66, 12, 20, 40)))
+            using (Pen edge = new Pen(Color.FromArgb(55, 180, 210, 255)))
+            using (Font caption = new Font(FontFamily.GenericSansSerif, Math.Max(10f, Math.Min(13f, box.Height * .25f)), FontStyle.Bold, GraphicsUnit.Pixel))
+            using (Font title = new Font(FontFamily.GenericSansSerif, Math.Max(12f, Math.Min(20f, box.Height * .40f)), FontStyle.Bold, GraphicsUnit.Pixel))
+            {
+                g.FillPath(body, p); g.DrawPath(edge, p);
+                int head = Math.Max(12, (int)(box.Height * .38f));
+                PintaRenglonLejos(g, "A CONTINUACIÓN", caption, Color.FromArgb(169, 191, 224),
+                    new Rectangle(box.X + 12, box.Y + 2, Math.Max(0, box.Width - 24), head), StringAlignment.Near);
+                PintaRenglonLejos(g, next, title, LejosSigue,
+                    new Rectangle(box.X + 12, box.Y + head, Math.Max(0, box.Width - 24), box.Height - head - 2), StringAlignment.Near);
+            }
         }
         // Un renglon de la franja de lejos. Si no cabe, se recorta aqui y termina en puntos suspensivos (U+2026): asi sale
         // igual con cualquier GDI+. Alineado a la derecha, el recorte propio de GDI+ no se porta igual en todas partes

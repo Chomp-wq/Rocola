@@ -491,8 +491,7 @@ namespace Rocola
         {
             if (!suenaGrande) return null;
             ReposoGrande x = new ReposoGrande();
-            Rectangle cov = GpuPanel.IdleCoverRect(w, h);
-            x.Corre = (int)Math.Round(cov.Width * (ViniloReposoRadio + ViniloReposoSale - .5f)) + 6;
+            x.Corre = 0; // sin reservar espacio para el vinilo retirado
             if (nowPlaying != null && !nowPlaying.IsVideo && nowPlaying.Song != null)
             {
                 string et = GeneroDeCancion(nowPlaying.Song, nowPlaying.Disc) ?? "";
@@ -596,7 +595,7 @@ namespace Rocola
             ReposoGrande x = reposoUltimo;
             if (x == null) return r;
             r.Has = true;
-            r.Vinilo = viniloReposoBmp; r.ViniloVer = viniloReposoVer;
+            r.Vinilo = null; r.ViniloVer = 0;
             if (x.TituloFuera)
             {
                 // El titulo que se desliza se hornea aqui, al pedirlo la tarjeta y una vez por titulo (no dentro del panel).
@@ -625,7 +624,7 @@ namespace Rocola
         // Una vez por latido del reloj de la pantalla.
         private void SuenaVivoTic()
         {
-            PreparaViniloReposo();
+            // El panel conserva titulo y genero; ya no hornea vinilos.
         }
 
         // EL TITULO EN UNA LINEA (EstadoReposoGpu.cs): si cabe, aqui; si no, lo pinta la tarjeta deslizandose y aqui solo

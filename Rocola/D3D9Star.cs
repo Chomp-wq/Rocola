@@ -2267,7 +2267,7 @@ namespace Rocola
             if (cs.Relay.Has)
                 stars.DrawCube(relTex, relU, relV, cs.Relay.X, cs.Relay.Y, cs.Relay.W, cs.Relay.H, cs.Relay.Angle, WallOpacity, cs.Relay.Tilt);
             if (cs.Sel.Has && sceneMode == 3) DibujaHaloGenero(cs.Sel.X, cs.Sel.Y, cs.Sel.W, cs.Sel.H, ShowAlbum ? WallOpacity : 1f);   // dentro del disco, el color del genero detras, con el mismo alfa que el cubo (EstiloGpu.cs)
-            DibujaVinilo(ref cs);   // dentro del disco, DETRAS del cubo grande: el cubo se aparta y el vinilo asoma por su lado
+            // Sin vinilo ni desplazamiento lateral de la portada.
             if (cs.Sel.Has)
             {
                 stars.DrawCube(selTexA, selUA, selVA, cs.Sel.X, cs.Sel.Y, cs.Sel.W, cs.Sel.H, cs.Sel.Angle, ShowAlbum ? WallOpacity : 1f, cs.Sel.Tilt);
@@ -2299,6 +2299,7 @@ namespace Rocola
                     if (GlassPieces) ink = (ink & 0xFFFFFFu) | ((uint)(SceneAlpha() * 255) << 24);
                     ink = FadeArgb(ink, ControlsOpacity);
                     if (GlassPieces && i == 1) { DrawSongPage(pr, GetPiezaRect(2), i, ink); continue; }
+                    if (GlassPieces && i > 1) { DrawPieceBand(pr, i, pr.Top, pr.Bottom, ink); continue; }
                     SetTexQuadA(piezaQuad, pr.X, pr.Y, pr.X + pr.Width, pr.Y + pr.Height, piezaU[i], piezaV[i],
                         ink);
                     stars.DrawQuad(piezaTex[i], piezaQuad);
@@ -2359,7 +2360,6 @@ namespace Rocola
                     cs.Mini.Tilt *= 1 - idleBlend;
                 }
                 DibujaHaloGenero(cs.Mini.X, cs.Mini.Y, cs.Mini.W, cs.Mini.H, 1f);   // el color del genero detras de la portada (EstiloGpu.cs)
-                DibujaViniloReposo(cs.Mini.X, cs.Mini.Y, cs.Mini.W, cs.Mini.H);   // en reposo, el vinilo asoma detras de la portada grande
                 stars.DrawCube(miniTex, miniU, miniV, cs.Mini.X, cs.Mini.Y, cs.Mini.W, cs.Mini.H, cs.Mini.Angle, 1f, cs.Mini.Tilt);
             }
             DibujaFicha();   // la ficha rapida del disco: encima de la pared y las barras, debajo del viaje y de los avisos

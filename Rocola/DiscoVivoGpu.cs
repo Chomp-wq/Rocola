@@ -27,7 +27,9 @@ namespace Rocola
     public partial class Form1
     {
         // Existen en los dos perfiles porque la configuracion es la misma; sin tarjeta grafica no se usan.
-        private bool viniloDisco = true;   // "vinilo_disco="
+#if ROCOLA_GPU
+        private bool viniloDisco = false;  // efecto retirado; contrato interno conservado
+#endif
         private bool listaGrande = true;   // "lista_grande="
         private bool eqSonando = true;     // "eq_sonando="
         private bool colaMinutos = true;   // "cola_minutos="
@@ -468,7 +470,6 @@ namespace Rocola
         private void DiscoVivoTic()
         {
             ActualizaEsperas(false);
-            PreparaVinilo();
         }
     }
 
