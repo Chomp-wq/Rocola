@@ -91,7 +91,7 @@ CPU="$CPU estilo"
 GPU="$GPU dibujoligero"
 # 'buscaligero' tambien solo con tarjeta grafica: el buscador mas ligero para la tarjeta (BuscadorLigeroGpu.cs). Subir
 # solo el trozo que cambia, cerrar sin copiar y abrir sin crear; con la tarjeta imitada de 'dibujoligero'.
-GPU="$GPU buscaligero"
+GPU="$GPU buscaligero paginasgpu"
 
 # --- Que version de .NET pide este PROYECTO. No se deduce probando compiladores ni depende de que
 #     exista .git: las copias entregadas y los ZIP no tienen rama, pero el .csproj siempre declara

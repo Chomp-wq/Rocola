@@ -36,6 +36,7 @@ namespace Rocola
         public bool GlassPieces, ColoresCache = true, LunaActiva = true;
         public uint GlassTint = 0xFFFFFFFFu;
         public Func<bool> GetGlassMode;
+        public Func<float> GetSongSlide, GetSongTravel;
         public Func<int> GetPaletteKey;
         public Func<long> GetPaletteContent;
         private int paletteKey;
@@ -114,10 +115,21 @@ namespace Rocola
         private void DrawPieceBand(Rectangle page, int index, int top, int bottom, uint tint)
         {
             if (bottom <= top) return;
-            SetTexQuadA(piezaQuad, page.Left, top, page.Right, bottom, piezaU[index], piezaV[index], tint);
+            Rectangle clip = GetPiezaRect != null ? GetPiezaRect(0) : page;
+            float dx = GetSongSlide != null ? GetSongSlide() : 0f;
+            if (index == 3) dx -= GetSongTravel != null ? GetSongTravel() : 0f;
+            float left = Math.Max(clip.Left, page.Left + dx), right = Math.Min(clip.Right, page.Right + dx);
+            if (right <= left) return;
+            SetTexQuadA(piezaQuad, left, top, right, bottom, piezaU[index], piezaV[index], tint);
+            float u0 = piezaU[index] * (left - page.Left - dx) / page.Width;
+            float u1 = piezaU[index] * (right - page.Left - dx) / page.Width;
             float from = piezaV[index] * (top - page.Top) / page.Height;
             float to = piezaV[index] * (bottom - page.Top) / page.Height;
-            for (int k = 0; k < piezaQuad.Length; k++) piezaQuad[k].V = piezaQuad[k].V == 0 ? from : to;
+            for (int k = 0; k < piezaQuad.Length; k++)
+            {
+                piezaQuad[k].U = piezaQuad[k].U == 0 ? u0 : u1;
+                piezaQuad[k].V = piezaQuad[k].V == 0 ? from : to;
+            }
             stars.DrawQuad(piezaTex[index], piezaQuad);
         }
         private float lunaBeat, lunaMid, lunaHigh;

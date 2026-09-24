@@ -30,17 +30,24 @@ namespace Rocola
                 int saved = Sel;
                 try
                 {
+                    if (!selected)
+                    {
+                        Sel = -1; hornoSig = long.MinValue; AseguraHorneada(w, h);
+                        using (Graphics output = Graphics.FromImage(result))
+                        using (ImageAttributes key = new ImageAttributes())
+                        {
+                            key.SetColorKey(BackColor, BackColor, ColorAdjustType.Bitmap);
+                            output.DrawImage(hornoPag, new Rectangle(0, 0, w, h), 0, 0, w, h, GraphicsUnit.Pixel, key);
+                        }
+                        gpuSnapshotSel = -1;
+                        return result;
+                    }
                     using (Bitmap raw = new Bitmap(w, h, PixelFormat.Format32bppPArgb))
                     using (Graphics g = Graphics.FromImage(raw))
                     using (Graphics output = Graphics.FromImage(result))
                     using (ImageAttributes key = new ImageAttributes())
                     {
-                        if (!selected)
-                        {
-                            Sel = -1; hornoSig = long.MinValue; AseguraHorneada(w, h);
-                            g.DrawImageUnscaled(hornoPag, 0, 0); gpuSnapshotSel = -1;
-                        }
-                        else
+                        // Solo la fila seleccionada necesita una superficie temporal pequena.
                         {
                             PintaPagina(g, saved);
                             if (hornoPag != null)
@@ -74,6 +81,26 @@ namespace Rocola
                     return Mix(Mix(FirmaPagina(Width, Height), Font.Name), (int)Font.Style);
                 }
                 finally { Sel = saved; }
+            }
+            public int GpuSlideToken { get { return slideTick; } }
+            public float GpuSlideOffset { get { return DesplazaAhora(); } }
+            public float GpuSlideTravel { get { return slideDesde; } }
+            public bool GpuPreviousReady { get { return Sliding && hornoAnt != null && hornoAnt.Width == Width && hornoAnt.Height == Height; } }
+            public Bitmap BakeGpuPrevious()
+            {
+                if (!GpuPreviousReady) return null;
+                Bitmap result = new Bitmap(Width, Height, PixelFormat.Format32bppPArgb);
+                try
+                {
+                    using (Graphics g = Graphics.FromImage(result))
+                    using (ImageAttributes key = new ImageAttributes())
+                    {
+                        key.SetColorKey(BackColor, BackColor, ColorAdjustType.Bitmap);
+                        g.DrawImage(hornoAnt, new Rectangle(0, 0, Width, Height), 0, 0, Width, Height, GraphicsUnit.Pixel, key);
+                    }
+                    return result;
+                }
+                catch { result.Dispose(); throw; }
             }
             partial void SueltaAcabadoGpu()
             {
@@ -129,18 +156,48 @@ namespace Rocola
                 g.DrawImage(hornoPag, new Rectangle((int)dx, 0, w, h), 0, 0, w, h, GraphicsUnit.Pixel, claveGpu);
             }
         }
+        private void DrawSongPagerGpu(Graphics g)
+        {
+            Rectangle r = songPager.Bounds;
+            int pages = songPager.Pages, page = songPager.Page;
+            if (pages <= 1 || r.Width < 60) return;
+            float size = Math.Max(12f, Math.Min(20f, r.Height * .43f));
+            using (Font font = new Font(FontFamily.GenericSansSerif, size, FontStyle.Bold, GraphicsUnit.Pixel))
+            using (SolidBrush text = new SolidBrush(Color.FromArgb(236, 242, 255)))
+            using (SolidBrush dim = new SolidBrush(Color.FromArgb(180, 200, 230)))
+            using (SolidBrush body = new SolidBrush(Color.FromArgb(125, 16, 24, 45)))
+            using (Pen rim = new Pen(Color.FromArgb(110, Lighten(bgAccentTarget, .45))))
+            using (StringFormat sf = new StringFormat())
+            {
+                sf.Alignment = StringAlignment.Center; sf.LineAlignment = StringAlignment.Center;
+                sf.FormatFlags = StringFormatFlags.NoWrap; sf.Trimming = StringTrimming.EllipsisCharacter;
+                int cw = Math.Min(r.Width, Math.Max(170, (int)(size * 13)));
+                Rectangle center = new Rectangle(r.X + (r.Width - cw) / 2, r.Y + 2, cw, Math.Max(12, r.Height - 4));
+                using (GraphicsPath p = RoundedPath(center, Math.Min(15, center.Height / 2)))
+                { g.FillPath(body, p); g.DrawPath(rim, p); }
+                g.DrawString("PÁGINA  " + (page + 1) + " / " + pages, font, text, center, sf);
+                int side = Math.Max(0, (r.Width - cw) / 2 - 12);
+                if (side >= 90)
+                {
+                    sf.Alignment = StringAlignment.Near;
+                    if (page > 0) g.DrawString("‹  ANTERIOR", font, dim, new Rectangle(r.Left + 8, r.Top, side, r.Height), sf);
+                    sf.Alignment = StringAlignment.Far;
+                    if (page + 1 < pages) g.DrawString("SIGUIENTE  ›", font, dim, new Rectangle(r.Right - side - 8, r.Top, side, r.Height), sf);
+                }
+            }
+        }
         private bool FastSongGlass { get { return gpuPanel != null && gpuPanel.GlassPieces; } }
         private bool CanUseSongGlass
         {
             get { return glassCapas && cancionesCristal && cancionesTransparentes && !searchOpen &&
                 panelSongs != null && panelSongs.Visible && songList != null &&
-                songList.Width >= 4 && songList.Height >= 4 && !songList.Sliding; }
+                songList.Width >= 4 && songList.Height >= 4; }
         }
         private int EnsureSongPiece(int index)
         {
             Rectangle rect = new Rectangle(panelSongs.Left + songList.Left, panelSongs.Top + songList.Top,
                 songList.Width, songList.Height);
-            bool empty = index == 3;
+            bool empty = index == 3 && !songList.GpuPreviousReady;
             if (index == 2)
             {
                 empty = songList.Sel < songList.PageStart || songList.Sel >= songList.PageStart + songList.RowsPerPage ||
@@ -156,14 +213,19 @@ namespace Rocola
             }
             long sig = Mix(Mix(Mix(SigBase, 'G'), index), songList.Width);
             sig = Mix(sig, songList.Height);
-            if (index != 0)
+            if (index == 3)
+            {
+                sig = Mix(sig, songList.GpuSlideToken); sig = Mix(sig, songList.PageStart);
+            }
+            else if (index != 0)
             {
                 sig = Mix(sig, songList.GpuLayerSignature()); sig = Mix(sig, colaVer); sig = Mix(sig, generoVer);
                 if (index == 2) sig = Mix(sig, songList.Sel);
             }
             uiPiezaRect[index] = rect; // mover una capa no obliga a volver a subir sus pixeles
             if (uiPieza[index] != null && uiPiezaSig[index] == sig) return uiPiezaVer[index];
-            Bitmap next = index == 0 ? BakeSongGlassTint(songList.Width, songList.Height, true) : songList.BakeGpuListLayer(index == 2);
+            Bitmap next = index == 0 ? BakeSongGlassTint(songList.Width, songList.Height, true) :
+                index == 3 ? songList.BakeGpuPrevious() : songList.BakeGpuListLayer(index == 2);
             if (uiPieza[index] != null) uiPieza[index].Dispose();
             uiPieza[index] = next; uiPiezaSig[index] = sig;
             return ++uiPiezaVer[index];

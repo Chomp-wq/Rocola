@@ -90,6 +90,8 @@ class Estilo
         mej.Visible = false;
         Set(f, "lblNowTop", tit); Set(f, "lblNow", art); Set(f, "lblNext", sig); Set(f, "lblTime", tiempo);
         Set(f, "pastCred", cred); Set(f, "pastCola", cola); Set(f, "lblMejorada", mej); Set(f, "pastGenero", null);
+        Control progress = (Control)Activator.CreateInstance(Campo(form, "progress").FieldType, true);
+        progress.Bounds = new Rectangle(txtX, filaY, 700, 12); Set(f, "progress", progress);
         return f;
     }
     static Bitmap PintaFranja(object f)
@@ -171,7 +173,7 @@ class Estilo
         Check(baja >= sig.Height - 4 && baja <= sig.Height && art.Bottom + baja < tiempo.Top,
               "el artista baja casi un renglon, lo que deja la caja del reloj");
         Rectangle renglon = art.Bounds; renglon.Offset(0, baja);
-        Rectangle caja = (Rectangle)St(form, "CajaSigueLejos", renglon, (int)Run(f1, "FinRenglonArtista"), Math.Max(cola.Right, cred.Right));
+        Rectangle caja = (Rectangle)Run(f1, "CajaSiguienteCompacto");
         using (Bitmap siempre = PintaFranja(f0))
         using (Bitmap lejos = PintaFranja(f1))
         {
@@ -179,24 +181,24 @@ class Estilo
             using (Bitmap a = siempre.Clone(strip, siempre.PixelFormat)) a.Save(Path.Combine(dirPng, "franja_siempre.png"), ImageFormat.Png);
             using (Bitmap a = lejos.Clone(strip, lejos.PixelFormat)) a.Save(Path.Combine(dirPng, "franja_lejos.png"), ImageFormat.Png);
             int s0, s1, l0, l1;
-            Rectangle zonaTit = new Rectangle(tit.Left, tit.Top - 4, 600, tit.Height + sig.Height + 8);
+            Rectangle zonaTit = new Rectangle(tit.Left, tit.Top - 4, caja.Left - tit.Left - 20, tit.Height + sig.Height + 8);
             Alto(siempre, zonaTit, Blanco, 30, out s0, out s1); Alto(lejos, zonaTit, Blanco, 30, out l0, out l1);
             float crece = (l1 - l0 + 1f) / Math.Max(1f, s1 - s0 + 1f);
             Info("alto de las letras del titulo: " + (s1 - s0 + 1) + " px -> " + (l1 - l0 + 1) + " px");
             Check(crece > 1.3f && crece < 1.6f && l1 < art.Top + baja, "el titulo se lee mas grande (" + Fm(crece, "0.00") + " veces) y se queda arriba del artista");
             int a0, a1, b0, b1;
-            Rectangle zonaArt = new Rectangle(art.Left, tit.Top, 400, 128);
+            Rectangle zonaArt = new Rectangle(art.Left, tit.Top, caja.Left - art.Left - 20, 128);
             Alto(siempre, zonaArt, Verde, 30, out a0, out a1); Alto(lejos, zonaArt, Verde, 30, out b0, out b1);
             Check(b0 - a0 == baja && b1 - a1 == baja, "el artista baja justo eso (" + (b0 - a0) + " px), y todo el con el");
             int clara = Cuenta(lejos, caja, Color.FromArgb(214, 224, 246), 10), clara0 = Cuenta(siempre, caja, Color.FromArgb(214, 224, 246), 10);
             int claraFuera = Cuenta(lejos, strip, Color.FromArgb(214, 224, 246), 10) - clara;   // 10: con mas, el blanco del titulo tambien cuenta
             int grisEnLejos = Cuenta(lejos, strip, GrisSigue, 12), grisSiempre = Cuenta(siempre, sig.Bounds, GrisSigue, 12);
             Info("lo que sigue: " + clara + " pixeles claros en su sitio (antes " + clara0 + ", fuera " + claraFuera + "); del gris de antes " + grisEnLejos + " (antes " + grisSiempre + ")");
-            Check(clara > 60 && clara0 == 0 && claraFuera == 0 && grisEnLejos == 0 && grisSiempre > 60, "lo que sigue pasa al renglon del artista, a la derecha, en un gris mucho mas claro");
+            Check(clara > 60 && clara0 == 0 && claraFuera == 0 && grisEnLejos == 0 && grisSiempre > 60, "lo siguiente tiene su propia tarjeta legible, sin tinta fuera de ella");
             // Donde queda, medido en la imagen: detras de lo ultimo verde del artista, antes del borde de las capsulas, sin
             // subir a las capsulas ni bajar a la caja del reloj.
             int verdeFin = -1, sx0 = int.MaxValue, sx1 = -1;
-            for (int y = renglon.Top; y < renglon.Bottom; y++)
+            for (int y = caja.Top; y < caja.Bottom; y++)
                 for (int x = 0; x < 1024; x++)
                 {
                     Color p = lejos.GetPixel(x, y);
@@ -204,9 +206,9 @@ class Estilo
                     if (Parecido(p, Color.FromArgb(214, 224, 246), 10)) { sx0 = Math.Min(sx0, x); sx1 = Math.Max(sx1, x); }
                 }
             Info("en el renglon del artista: el verde acaba en x=" + verdeFin + "; lo que sigue va de x=" + sx0 + " a x=" + sx1 + " (su sitio: " + caja.Left + " a " + caja.Right + ")");
-            Check(caja.Top == art.Top + baja && caja.Bottom <= tiempo.Top && caja.Top >= Math.Max(cola.Bottom, cred.Bottom) && caja.Right <= Math.Max(cola.Right, cred.Right)
-                  && caja.Height >= sig.Font.Height && verdeFin > 0 && caja.Left >= verdeFin + 12 && sx0 >= caja.Left && sx1 >= caja.Right - 12,
-                  "en ese renglon, detras del artista y pegado a la derecha, sin pisar nada");
+            Check(caja.Top == tit.Top && caja.Bottom < ((Control)Get(f1,"progress")).Top && caja.Right < cola.Left
+                  && caja.Height >= sig.Font.Height && verdeFin > 0 && caja.Left >= verdeFin + 12 && sx0 >= caja.Left && sx1 < caja.Right,
+                  "tarjeta separada del artista, los creditos y el progreso");
         }
         // Lo que lleva el renglon del artista (el artista, su pastilla del genero y el letrero): lo que sigue empieza detras.
         // Como los pone PositionMejorada: el artista, 12 px, la pastilla, 12 px, el letrero.
@@ -228,7 +230,7 @@ class Estilo
         object fl = Franja("Volver Volver", true, sigueLargo);
         Label artL = (Label)Get(fl, "lblNow"), sigL = (Label)Get(fl, "lblNext");
         Rectangle renglonL = artL.Bounds; renglonL.Offset(0, (int)St(form, "BajaLejos", artL.Bounds, sigL.Height, ((Label)Get(fl, "lblTime")).Bounds));
-        Rectangle cajaL = (Rectangle)St(form, "CajaSigueLejos", renglonL, (int)Run(fl, "FinRenglonArtista"), Math.Max(((Control)Get(fl, "pastCola")).Right, ((Control)Get(fl, "pastCred")).Right));
+        Rectangle cajaL = (Rectangle)Run(fl, "CajaSiguienteCompacto");
         using (Bitmap bl = PintaFranja(fl))
         using (Bitmap b1 = new Bitmap(10, 10))
         using (Graphics g1 = Graphics.FromImage(b1))
@@ -250,8 +252,24 @@ class Estilo
             int x0 = int.MaxValue, x1 = -1;
             for (int y = cajaL.Top; y < cajaL.Bottom; y++) for (int x = 0; x < 1024; x++) if (Parecido(bl.GetPixel(x, y), Color.FromArgb(214, 224, 246), 10)) { x0 = Math.Min(x0, x); x1 = Math.Max(x1, x); }
             Info("lo que sigue, largo, de x=" + x0 + " a x=" + x1 + " (su sitio: " + cajaL.Left + " a " + cajaL.Right + ")");
-            Check(dentro > 60 && dentro == todo && x0 >= cajaL.Left && x1 >= cajaL.Right - 12, "y no se sale de su sitio: empieza dentro y termina pegado a la derecha");
+            Check(dentro > 60 && dentro == todo && x0 >= cajaL.Left && x1 < cajaL.Right, "y el titulo largo queda dentro de la tarjeta con margen");
         }
+        // Pantalla estrecha: siguiente vuelve a su propia fila, sin bajar el artista encima.
+        object estrecho = Franja("Un titulo largo para pantalla estrecha", true);
+        ((Control)Get(estrecho, "pastCola")).Left = 400;
+        Check(((Rectangle)Run(estrecho, "CajaSiguienteCompacto")).IsEmpty &&
+              (int)Run(estrecho, "BajaArtistaLejos") == 0,
+              "sin espacio lateral se conserva una fila para siguiente y no se pisa al artista");
+        using (Bitmap b = PintaFranja(estrecho))
+        {
+            Rectangle r = ((Label)Get(estrecho, "lblNext")).Bounds;
+            Check(Cuenta(b, r, Color.FromArgb(214,224,246), 10) > 60,
+                  "en pantalla estrecha siguiente sigue visible, no se oculta");
+        }
+        ((Label)Get(estrecho, "lblNext")).Text = "Sigue: -";
+        Check((string)Run(estrecho, "TextoSiguiente") == "" &&
+              ((Rectangle)Run(estrecho, "CajaSiguienteCompacto")).IsEmpty,
+              "sin canciones en cola no aparece una tarjeta vacia");
         // El letrero MEJORADA y su brillo, igual de mas abajo; apagada, donde siempre.
         Label mej = (Label)Get(f1, "lblMejorada");
         Rectangle rm1 = (Rectangle)Run(f1, "RectMejorada"), rm0 = (Rectangle)Run(f0, "RectMejorada");
@@ -297,7 +315,7 @@ class Estilo
         List<string> cuadro = Codigo.Repasa(M(gpu, "RenderFrame"));
         int h1 = cuadro.IndexOf("DibujaHaloGenero"), h2 = cuadro.LastIndexOf("DibujaHaloGenero");
         int vin = cuadro.IndexOf("DibujaVinilo"), vinRep = cuadro.IndexOf("DibujaViniloReposo");
-        Check(h1 >= 0 && h2 > h1 && h1 < vin && h2 < vinRep, "el resplandor va detras de la portada de dentro del disco y de la de lo que suena (tambien en reposo), antes de sus vinilos");
+        Check(h1 >= 0 && h2 > h1 && vin < 0 && vinRep < 0, "el resplandor de las portadas se conserva sin dibujar vinilos");
         Check(Codigo.LeeCampo(Codigo.MetodosConAyudantes(gpu, "DibujaHaloGenero"), "GeneroTodo"), "y solo con la idea encendida");
         // El pulso de la letra elegida.
         object fl = Codigo.FormSinEncender(form); Codigo.PonCerrojos(fl); Codigo.PonColecciones(fl);
