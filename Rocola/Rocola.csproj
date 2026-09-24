@@ -110,6 +110,7 @@
     <Compile Include="EstrellaGpu.cs" />
     <Compile Include="Estrella3dGpu.cs" />
     <Compile Include="RelojPantallaGpu.cs" />
+    <Compile Include="PantallaVivaGpu.cs" />
     <Compile Include="PrecargaPaginaGpu.cs" />
     <Compile Include="PaletaCaratulaGpu.cs" />
     <Compile Include="CreditosServicio.cs" />

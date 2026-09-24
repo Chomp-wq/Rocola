@@ -65,7 +65,7 @@ class Pestanas
         object f = Codigo.FormSinEncender(TF);
 
         Console.WriteLine("\n  1) LAS PAGINAS CABEN SIN BARRA DE DESPLAZAMIENTO\n");
-        string[] pagina = { "PaginaImagen", "PaginaDetalles", "PaginaColores", "PaginaFondo" };
+        string[] pagina = { "PaginaImagen", "PaginaDetalles", "PaginaColores", "PaginaFondo", "PaginaPantalla" };
         int mirados = 0;
         foreach (string nom in pagina)
         {
@@ -79,7 +79,7 @@ class Pestanas
             int ancho = 0; foreach (Control c in pg.Controls) if (c.Right > ancho) ancho = c.Right;
             Check(ancho <= pg.Width, nom + " tampoco se sale por el costado (" + ancho + " de " + pg.Width + ")");
         }
-        Check(mirados >= 4, "se midieron las cuatro paginas (si no, esta prueba no probaria nada)");
+        Check(mirados >= 5, "se midieron las cinco paginas (si no, esta prueba no probaria nada)");
 
         Console.WriteLine("\n  2) NINGUN MANDO SE QUEDA SIN PESTAÑA\n");
         // Cada bandera de un efecto tiene que salir en ALGUNA pagina. Mover una de pestaña y olvidarse de
@@ -90,6 +90,7 @@ class Pestanas
             "estrellasFinas", "ondasSuaves", "progresoFluido", "estadoExpandido", "neonIntenso",
             "estadoTransparente", "cancionesTransparentes", "cieloProfundo",
             "auroraBandas", "nebNaturalFuerza",
+            "portadaEnfocada", "fichaDisco", "paginaDesliza", "letrasLupa",   // la pestaña de la pantalla
         };
         List<string> huerfanos = new List<string>();
         foreach (string campo in mando)
@@ -125,7 +126,7 @@ class Pestanas
             Array.Sort(xs);
             Console.WriteLine("     pestañas en x = " + string.Join(", ", Array.ConvertAll(xs, delegate(int v) { return v.ToString(); }))
                               + "  (ancho " + anchoBoton + ")");
-            Check(xs.Length >= 5, "hay al menos cinco pestañas (" + xs.Length + ")");
+            Check(xs.Length >= 6, "hay al menos seis pestañas (" + xs.Length + ")");
             Check(xs[xs.Length - 1] + anchoBoton <= 960, "la ultima acaba dentro de la ventana ("
                   + (xs[xs.Length - 1] + anchoBoton) + " de 960)");
             // El titulo es una etiqueta de 284 px que empieza en 22, o sea que acaba en 306. Que reclame

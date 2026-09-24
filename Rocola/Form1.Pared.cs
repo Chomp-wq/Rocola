@@ -437,11 +437,118 @@ namespace Rocola
             { return hasPrevious && unchecked((uint)(now - previous)) < 300u; }
             public void StartSlide(int dir, int ancho)   // dir: +1 la nueva entra por la derecha, -1 por la izquierda
             {
+                bool enCurso = Sliding;   // (antes de tocar nada) si la anterior aun no habia llegado
                 if (ancho < 8) { slideTick = -1; return; }
                 int now = Environment.TickCount;
                 gpuRapidSlide = RapidPageTurn(now, gpuLastSlideTick, gpuHasSlideTick);
                 gpuLastSlideTick = now; gpuHasSlideTick = true;
+                // PASAR DE PAGINA DESLIZANDO: la que se estaba viendo sale mientras entra la nueva. No si la pagina no
+                // cambio (no hay de donde salir) ni si la anterior iba a medio entrar: habria que sacarla de donde
+                // estaba, no de su sitio, y daria un salto. Ahi se va de golpe, como siempre.
+                slideViejas = (PaginaDesliza && !enCurso && paginaVista != null && !ReferenceEquals(paginaVista, Page)) ? paginaVista : null;
+                empujeHecho = PaginaDesliza ? 0f : 1f; empujeDir = dir; empujeDesde = now;
                 slideFrom = dir * (float)ancho; slideTick = now;
+            }
+            // ---------------- PASAR DE PAGINA DESLIZANDO (Ctrl+F3 -> Pantalla; PantallaVivaGpu.cs) ----------------
+            // Las dos paginas van en fila, una detras de otra, y cada columna sale con un pequeño retraso respecto
+            // a la que va delante en el sentido del movimiento: primero la vieja, columna a columna, y detras la
+            // nueva. Todas siguen LA MISMA curva, solo que mas tarde, asi que ninguna alcanza a la de delante: se
+            // separan un poco por el camino y se vuelven a juntar al llegar. Todo cabe en SlideMs, como antes.
+            public bool PaginaDesliza = true;
+            private List<Album> paginaVista, slideViejas;   // la ultima pagina dibujada, y la que esta saliendo
+            // Los numeros salen de simular la pared a mitad de camino: con 8 ms entre columna y columna, y la vieja
+            // apagandose pronto, a los ~100 ms quedaba cubierta menos de un tercio (parecia vacia). Con 4 ms, la nueva
+            // apareciendo en su primer cuarto de camino y la vieja apagandose solo al final, nunca baja del 60 %, y el
+            // escalonado se sigue viendo (44 ms de punta a punta, casi tres cuadros).
+            internal const int DesfaseCol = 4;                                   // ms entre una columna y la siguiente
+            internal const int ViajeCol = SlideMs - (2 * Cols - 1) * DesfaseCol; // lo que tarda cada columna (186 ms)
+            // En que turno se mueve una columna: primero la de delante segun hacia donde va todo, y la vieja antes
+            // que la nueva (van en fila).
+            internal static int OrdenColumna(int col, bool haciaIzquierda, bool vieja)
+            {
+                int k = haciaIzquierda ? col : (Cols - 1 - col);
+                return vieja ? k : Cols + k;
+            }
+            // Cuanto le FALTA a esa columna (1 = aun no salio, 0 = ya llego), y su opacidad: la nueva aparece al
+            // empezar a moverse y la vieja se apaga al final de su camino. La curva es mitad "arranca y frena suave" y
+            // mitad "arranca ya y frena": sola, la primera tardaba 30 ms en moverse algo que se viera (el boton se
+            // sentia lento); sola, la segunda arranca de golpe. Juntas, la primera columna ya se mueve en el primer
+            // cuadro, el paso mas grande es de un 1 % del camino por milisegundo, y la pared nunca queda cubierta menos
+            // de un 75 % a mitad de camino (simulado a 1000 px).
+            internal static float CurvaColumna(int dt, int orden, bool vieja, out float alpha)
+            {
+                float u = (dt - orden * DesfaseCol) / (float)ViajeCol;
+                if (!(u > 0f)) u = 0f; else if (u > 1f) u = 1f;
+                float q = 1f - u;
+                float suave = (u < .5f) ? 4f * u * u * u : 1f - 4f * q * q * q;
+                float e = .5f * suave + .5f * (1f - q * q * q);
+                if (vieja) alpha = 1f - Math.Min(1f, Math.Max(0f, (u - .4f) / .55f));
+                else alpha = Math.Min(1f, u / .25f);
+                return 1f - e;
+            }
+            // EL CIELO SE CORRE un poco al pasar de pagina, en el mismo sentido y mucho mas despacio que las portadas
+            // (un 4.5 % del ancho de la pared): lo lejano se mueve menos, y eso se lee como profundidad.
+            internal const float EmpujeFr = .045f;
+            private float empujeHecho = 1f; private int empujeDir, empujeDesde;
+            internal static float CurvaCielo(int dt)
+            {
+                if (dt <= 0) return 0f;
+                if (dt >= SlideMs) return 1f;
+                float u = dt / (float)SlideMs;
+                return u * u * (3f - 2f * u);
+            }
+            // Lo que hay que correr el cielo DESDE LA ULTIMA VEZ que se pregunto (px; negativo = a la izquierda). Si
+            // nadie lo pregunto mientras pasaba la pagina (la pared estaba tapada), lo que faltaba se tira: correr el
+            // cielo de golpe mas tarde seria un salto.
+            public float TomaEmpuje()
+            {
+                if (empujeHecho >= 1f) return 0f;
+                int dt = Environment.TickCount - empujeDesde;
+                if (!PaginaDesliza || dt < 0 || dt > SlideMs + 150) { empujeHecho = 1f; return 0f; }
+                float p = CurvaCielo(dt);
+                float d = p - empujeHecho; empujeHecho = p;
+                return -empujeDir * EmpujeFr * Width * d;
+            }
+            // El lado de la portada de una casilla (el mismo calculo que Geometry), para el letrero de la elegida.
+            internal static int LadoPortada(int w, int h)
+            {
+                int side, labelH, gap; CellMetrics(Math.Max(1, w / Cols), Math.Max(1, h / Rows), out side, out labelH, out gap);
+                return side;
+            }
+            // Donde esta la portada elegida (coords de la pared); vacio si no hay o si la pagina se esta moviendo.
+            public Rectangle RectElegida()
+            {
+                if (Page == null || Selected < 0 || Selected >= Page.Count || Sliding) return Rectangle.Empty;
+                int w = Width, h = Height; if (w / Cols < 4 || h / Rows < 4) return Rectangle.Empty;
+                Rectangle area, lbl; Geometry(w, h, Selected, out area, out lbl);
+                return area;
+            }
+            // La pagina que SE VA: sus casillas tal como se vieron -sin hornear nada ni pedir portadas-, un ancho de
+            // pared por detras de la nueva. Van en los puestos PageSize.. para no pisar las texturas por puesto de la
+            // nueva, y DESPUES de ella en el buffer: si no caben, la que falta es la que sale, nunca la que entra.
+            private int CeldasViejas(GpuGridCell[] buf, int n, int w, int h, int cw, int side, int labelH, int gap, int dt, int ox, int oy)
+            {
+                bool izq = slideFrom > 0f;
+                int nada = 0;
+                for (int i = 0; i < slideViejas.Count && i < PageSize && n < buf.Length; i++)
+                {
+                    Album a = slideViejas[i];
+                    int col = i % Cols;
+                    float al; float falta = CurvaColumna(dt, OrdenColumna(col, izq, true), true, out al);
+                    float cdx = slideFrom * (falta - 1f);
+                    Rectangle area, lbl; Geometry(w, h, i, out area, out lbl);
+                    Image tapa = (PeekCoverGpu != null) ? PeekCoverGpu(a) : null;
+                    buf[n] = new GpuGridCell();
+                    buf[n].Key = ClaveCasilla(a);
+                    buf[n].Bmp = PeekOrBakeCell(a, cw, side, labelH, gap, tapa, ref nada, false);
+                    buf[n].Placeholder = HojeoLigero;
+                    buf[n].CoverRect = new RectangleF(ox + area.X + cdx, oy + area.Y, area.Width, area.Height);
+                    buf[n].Slot = PageSize + i;
+                    buf[n].X = ox + col * cw + cdx; buf[n].Y = oy + area.Y; buf[n].W = cw; buf[n].H = side + gap + labelH;
+                    buf[n].A = al;
+                    n++;
+                }
+                return n;
             }
             public bool Sliding { get { return slideTick >= 0 && Environment.TickCount - slideTick < SlideMs; } }
             // CURVA del hojeo (funcion pura, para poder comprobarla): devuelve cuanto FALTA por recorrer
@@ -483,6 +590,11 @@ namespace Rocola
                 // Solo ocultarlas al encadenar paginas rapido; nunca degradar su resolucion.
                 bool chica = Sliding && HojeoLigero && gpuRapidSlide;
                 float alpha; float dx = SlideNow(out alpha);   // hojeo: desplazamiento y desvanecido de ESTE cuadro
+                // Pasar de pagina deslizando: cada columna lleva su propio punto del camino (CurvaColumna).
+                int dtHojeo = (slideTick >= 0) ? Environment.TickCount - slideTick : -1;
+                bool columnas = PaginaDesliza && dtHojeo >= 0;
+                if (!columnas) slideViejas = null;
+                bool izq = slideFrom > 0f;
                 int ox = this.Left, oy = this.Top;   // coords de albumView -> pantalla (mismo criterio que los cubos que giran)
                 int budget = GridBakeBudget;
                 long bakeT0 = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -499,15 +611,20 @@ namespace Rocola
                     if (budget < beforeBudget)
                         gpuBakeCost = CargaTrabajo.AprendeCoste(gpuBakeCost, System.Diagnostics.Stopwatch.GetTimestamp() - cellStart);
                     buf[n].Placeholder = HojeoLigero;
-                    buf[n].CoverRect = new RectangleF(ox + area.X + dx, oy + area.Y, area.Width, area.Height);
+                    float cdx = dx, ca = alpha;
+                    if (columnas) cdx = slideFrom * CurvaColumna(dtHojeo, OrdenColumna(i % Cols, izq, false), false, out ca);
+                    buf[n].CoverRect = new RectangleF(ox + area.X + cdx, oy + area.Y, area.Width, area.Height);
                     buf[n].Slot = i;
-                    buf[n].X = ox + (i % Cols) * cw + dx; buf[n].Y = oy + area.Y; buf[n].W = cw; buf[n].H = side + gap + labelH;
-                    buf[n].A = alpha;
+                    buf[n].X = ox + (i % Cols) * cw + cdx; buf[n].Y = oy + area.Y; buf[n].W = cw; buf[n].H = side + gap + labelH;
+                    buf[n].A = ca;
+                    buf[n].Sel = (i == Selected) && dtHojeo < 0;   // la elegida (quieta): la portada enfocada no la apaga
                     n++;
                     if (budget < GridBakeBudget && budget > 0 &&
                         !CargaTrabajo.PuedeEmpezar(System.Diagnostics.Stopwatch.GetTimestamp() - bakeT0, gpuBakeCost, GpuBakeLimit, false))
                         budget = 0; // seguir consultando cache, aplazar solo composiciones nuevas
                 }
+                if (columnas && slideViejas != null) n = CeldasViejas(buf, n, w, h, cw, side, labelH, gap, dtHojeo, ox, oy);
+                paginaVista = Page;
                 return n;
             }
             public Func<Album, Image> PeekCoverGpu;

@@ -665,7 +665,9 @@ namespace Rocola
             GpuCubeState st = albumView.BuildCubeState();
             if (!st.Sel.Has || st.Sel.W < 8f || st.Sel.H < 8f) return RectangleF.Empty;
             ang = st.Sel.Angle;
-            return new RectangleF(albumView.Left + st.Sel.X, albumView.Top + st.Sel.Y, st.Sel.W, st.Sel.H);
+            RectangleF r = new RectangleF(albumView.Left + st.Sel.X, albumView.Top + st.Sel.Y, st.Sel.W, st.Sel.H);
+            // Con la portada enfocada, desde donde se VE (ya crecida): si no, el viaje saldria con un saltito.
+            return (gpuPanel != null) ? gpuPanel.Enfocado(r) : r;
         }
 
         // Cubo GRANDE del interior de un disco.
