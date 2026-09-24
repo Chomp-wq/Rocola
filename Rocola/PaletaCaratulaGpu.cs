@@ -162,8 +162,9 @@ namespace Rocola
         internal static uint Mix(uint a,uint b,float f)
         {
             f=GpuPanel.SafeMoonLevel(f);
-            return ((uint)(((a>>16)&255)*(1-f)+((b>>16)&255)*f)<<16)|
-                ((uint)(((a>>8)&255)*(1-f)+((b>>8)&255)*f)<<8)|(uint)((a&255)*(1-f)+(b&255)*f);
+            // Por entero y no por "sin signo": los mismos numeros (0..255, f entre 0 y 1) sin la conversion lenta.
+            return ((uint)(int)((int)((a>>16)&255)*(1-f)+(int)((b>>16)&255)*f)<<16)|
+                ((uint)(int)((int)((a>>8)&255)*(1-f)+(int)((b>>8)&255)*f)<<8)|(uint)(int)((int)(a&255)*(1-f)+(int)(b&255)*f);
         }
         internal static uint Ring(uint[] colors,double position)
         {

@@ -1,5 +1,14 @@
 # Rocola
 
+## El dibujo por tarjeta, más ligero — 24 de septiembre de 2026
+
+Más imágenes por segundo sin cambiar lo que se ve, solo en el dibujo por tarjeta gráfica y en las dos ramas. El cuadro ya
+no borra la pantalla (el cielo, opaco, la tapa entera); la vía láctea, la viñeta y la interfaz quieta se pintan solo por los
+trozos que tienen algo, y lo que va con opacidad cero no se manda; y la aurora deja de repetir en cada cuadro las cuentas
+de color que solo cambian con la canción. En la simulación (1024×768, navegando con música) cada cuadro pinta 6,89
+pantallas en vez de 8,58 y el procesador tarda 0,39 ms en vez de 0,64 (HD) o 0,77 (Modest). Automático y sin interruptor.
+No se midieron FPS en una tarjeta real ni se probó en XP. [La guía](OPTIMIZACIONES_2026-09-24.md).
+
 ## Pantalla viva, tanda 5: el estilo general — 24 de septiembre de 2026
 
 Las dos últimas ideas elegidas, solo en el dibujo por tarjeta gráfica y en las dos ramas. Letra para leer de lejos: en
