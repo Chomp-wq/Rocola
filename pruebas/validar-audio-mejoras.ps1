@@ -36,7 +36,7 @@ try {
     }
     Push-Location (Join-Path $repoRoot 'ia')
     try {
-        & $env:ROCOLA_TEST_PYTHON -m unittest test_calidad_dsee test_entrenar_eq test_contrato_dsee test_origen_dsee test_estereo_dsee test_seleccion_dsee test_publicacion_dsee test_informe_dsee
+        & $env:ROCOLA_TEST_PYTHON -m unittest test_calidad_dsee test_entrenar_eq test_contrato_dsee test_origen_dsee test_estereo_dsee test_seleccion_dsee test_publicacion_dsee test_informe_dsee test_candidatos_audio
         if ($LASTEXITCODE -ne 0) { throw 'Fallo Python/IA' }
     } finally { Pop-Location }
     # Remuestreo de Apollo (solo HD tiene ia\upscale): eleccion probada, calidad medida con el

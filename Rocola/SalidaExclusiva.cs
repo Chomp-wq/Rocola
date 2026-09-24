@@ -372,7 +372,7 @@ namespace Rocola
                         {
                             // Remuestrear reconstruye la onda y deja en muestras lo que caia ENTRE ellas: el ultimo
                             // limitador va DESPUES y mira el pico real (ver PicoReal.cs), igual que en compartido.
-                            s = new LimitadorPicoReal(NuevoRemuestreo(s, fmt.SampleRate), 0.98f, 3.0);
+                            s = new LimitadorPicoReal(NuevoRemuestreo(s, fmt.SampleRate), TechoPicoReal, 3.0);
                         }
                         SalidaExacta sx = new SalidaExacta(s, fmt);
                         sx.GananciaInicial(GananciaDeWindowsDe(ap));   // desde la primera muestra: nada de arrancar a tope
