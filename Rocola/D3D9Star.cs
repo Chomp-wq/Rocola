@@ -1620,7 +1620,8 @@ namespace Rocola
     // se encoge desde SU CENTRO, sube/baja un poco y se funde. Bmp = null significa "anima la PROPIA textura
     // de UI" (al abrir, esa textura YA es el buscador: no hay que copiar ni subir nada). HideUi = no dibujarla
     // ademas a tamano normal. Al cerrar, la textura de UI ya es la de navegacion y se anima una instantanea.
-    internal struct GpuWin { public bool Has; public bool HideUi; public Bitmap Bmp; public float Scale, ScaleY, Dy, Alpha; }
+    // Robada = cerrando, con la textura que tenia la UI (sin copia: BuscadorLigeroGpu.cs); entonces Bmp es null.
+    internal struct GpuWin { public bool Has; public bool HideUi; public Bitmap Bmp; public bool Robada; public float Scale, ScaleY, Dy, Alpha; }
     // AURORA DEL HORIZONTE: el visualizador de espectro, dibujado como parte del CIELO y no como un aparato
     // encima. B = 8 bandas ya suavizadas (0..1, de graves a agudos); se interpolan a lo ancho y se pintan con
     // halos aditivos MUY solapados, que es lo que convierte ocho valores sueltos en una franja continua de luz.
@@ -2137,7 +2138,7 @@ namespace Rocola
                 if (uv != uiVer || uiTex == IntPtr.Zero)
                 {
                     Bitmap ub = GetUi();
-                    if (ub != null) uiTex = Upload(uiTex, ref uiBmpW, ref uiBmpH, ub, out uiU, out uiV);   // reutiliza la textura (no re-crear a pantalla completa cada vez)
+                    SubeUi(ub, gw);   // reutiliza la textura, y en el buscador sube solo lo que cambio (BuscadorLigeroGpu.cs)
                     uiVer = uv;
                     NoteHeavy(t0);   // mide el coste real y ajusta la espera (la UI cacheada es barata -> franja corta)
                     uiTeselas = null; uiSubidaMs = AhoraMs();   // imagen nueva: sus teselas, cuando este quieta (DibujoLigeroGpu.cs)
@@ -2276,7 +2277,7 @@ namespace Rocola
             }
             // UI ENCIMA del fondo y los cubos: la textura principal anclada ARRIBA (a su tamano real: en
             // navegacion es solo la franja superior) y la franja de estado anclada ABAJO.
-            bool uiPropia = gw.Has && gw.Bmp == null;   // se anima la PROPIA textura de UI (abriendo el buscador)
+            bool uiPropia = gw.Has && gw.Bmp == null && !gw.Robada;   // se anima la PROPIA textura de UI (abriendo el buscador)
             if (!(gw.Has && gw.HideUi)) DrawPaletteOld();
             if (uiTex != IntPtr.Zero && uiBmpW > 0 && uiBmpH > 0 && !(gw.Has && gw.HideUi))
             {
@@ -2308,6 +2309,7 @@ namespace Rocola
             {
                 IntPtr wt; float wu, wv, bw, bh;
                 if (uiPropia) { wt = uiTex; wu = uiU; wv = uiV; bw = uiBmpW; bh = uiBmpH; }
+                else if (gw.Robada) { wt = winTex; wu = winU; wv = winV; bw = winBw; bh = winBh; }   // cerrando: la textura que tenia la UI
                 else { wt = winTex; wu = winU; wv = winV; bw = gw.Bmp.Width; bh = gw.Bmp.Height; }
                 if (wt != IntPtr.Zero && bw > 1f && bh > 1f)
                 {

@@ -887,6 +887,7 @@ namespace Rocola
                 };
                 gpuPanel.GetUi = delegate { return uiOverlay; };                    // textura PRINCIPAL de la UI (altura segun el modo)
                 gpuPanel.GetUiVersion = delegate { return EnsureUiOverlay(); };
+                gpuPanel.GetUiCambio = UiCambioDesde;   // y que trozo cambio (en el buscador: BuscadorLigeroGpu.cs)
                 gpuPanel.GetUiBot = delegate { return uiBotOverlay; };              // franja de ESTADO de abajo (textura chica aparte: el reloj no rehace la principal)
                 gpuPanel.GetIdlePanel = BuildIdlePanel;
                 this.FormClosed += delegate { if (idlePanelBmp != null) { idlePanelBmp.Dispose(); idlePanelBmp = null; } if (idleClockUnderlay != null) { idleClockUnderlay.Dispose(); idleClockUnderlay = null; } };
@@ -1098,6 +1099,47 @@ namespace Rocola
         // La textura mide LO QUE EL MODO NECESITA, no la pantalla completa: en NAVEGACION solo la franja superior
         // (instrucciones + letras + encabezado, ~140px) -> rehacerla y subirla al paginar cuesta ~7x menos que
         // antes. Buscador/disco/atraccion usan hasta la franja de estado (que tiene su propia textura, mas abajo).
+        // EL BUSCADOR, SUBIENDO SOLO LO QUE CAMBIA (rendimiento, 24-09-2026; ver BuscadorLigeroGpu.cs). La firma del
+        // buscador (UiSig) en tres partes: lo que cambia la pantalla entera, lo que solo cambia la columna de resultados y lo
+        // que solo cambia el aviso flotante. Si cambio solo una de las dos ultimas, a la tarjeta le basta con ese trozo; la
+        // imagen se rehace entera igual que siempre. Cualquier otra cosa -tambien algo que se meta en UiSig y no aqui- cambia
+        // la firma sin cambiar esas dos, y entonces se sube entera. La bateria 'buscaligero' comprueba que fuera del trozo no
+        // cambia ni un pixel.
+        private long uiBuscaFija = SigNada, uiBuscaRes = SigNada, uiBuscaAviso = SigNada;
+        private Rectangle uiOverlayZona = Rectangle.Empty; private int uiOverlayZonaVer = -1;
+        private void FirmasBuscador(int w, int h, int mainH, out long fija, out long res, out long aviso)
+        {
+            fija = SigBase; fija = Mix(fija, 'S'); fija = Mix(fija, w); fija = Mix(fija, h); fija = Mix(fija, mainH);
+            fija = Mix(fija, searchOverlay.Left); fija = Mix(fija, searchOverlay.Top);
+            fija = Mix(fija, searchOverlay.Width); fija = Mix(fija, searchOverlay.Height);
+            fija = Mix(fija, searchOverlay.FocusResults);
+            // Con los resultados enfocados, la mitad izquierda es el cubo de la portada SI HAY resultados, y el teclado si no
+            // los hay (la misma condicion que RenderContent): quedarse sin resultados, o volver a tenerlos, cambia media
+            // pantalla. Por eso va aqui y no solo con los resultados. (Lo encontro la bateria 'buscaligero'.)
+            fija = Mix(fija, searchOverlay.FocusResults && searchOverlay.Results != null && searchOverlay.Results.Count > 0 && searchOverlay.GetCover != null);
+            Color acento = searchOverlay.Accent;   // a una local: es un tipo por valor dentro de un Control
+            fija = Mix(fija, acento.ToArgb());
+            res = SigBase; res = Mix(res, searchOverlay.Query); res = Mix(res, searchOverlay.Results == null ? 0 : searchOverlay.Results.Count);
+            res = Mix(res, colaVer); res = Mix(res, searchOverlay.DatosVer);
+            aviso = SigBase; aviso = Mix(aviso, searchOverlay.ToastOn); aviso = Mix(aviso, searchOverlay.ToastMsg);
+        }
+        // Que trozo de la imagen cambio desde la version 'desde', que es la que tiene la tarjeta. Solo se sabe de la version
+        // de justo antes; de cualquier otra, nada (vacio: se sube entera).
+        private Rectangle UiCambioDesde(int desde)
+        { return (desde == uiOverlayVer - 1 && uiOverlayZonaVer == uiOverlayVer) ? uiOverlayZona : Rectangle.Empty; }
+        // El trozo de la imagen (w x mainH) que hay que volver a subir. Vacio: entera.
+        private Rectangle ZonaBuscador(int w, int mainH, long fija, long res, long aviso)
+        {
+            if (fija != uiBuscaFija || (res == uiBuscaRes && aviso == uiBuscaAviso)) return Rectangle.Empty;
+            Rectangle arriba, derecha, zona = Rectangle.Empty;
+            if (!searchOverlay.ZonasAlEscribir(out arriba, out derecha)) return Rectangle.Empty;
+            if (res != uiBuscaRes) zona = derecha;   // las tarjetas de los resultados, con su cabecera
+            if (aviso != uiBuscaAviso) zona = zona.IsEmpty ? searchOverlay.ZonaAviso() : Rectangle.Union(zona, searchOverlay.ZonaAviso());
+            zona.Offset(searchOverlay.Left, searchOverlay.Top);
+            zona.Intersect(new Rectangle(0, 0, w, mainH));
+            return zona;
+        }
+
         private int EnsureUiOverlay()
         {
             int w = ClientSize.Width, h = ClientSize.Height;
@@ -1116,6 +1158,13 @@ namespace Rocola
             if (mainH > h) mainH = h; if (mainH < 8) mainH = 8;
             long sig = UiSig();
             if (uiOverlay != null && uiOverlay.Width == w && uiOverlay.Height == mainH && sig == uiOverlaySig) return uiOverlayVer;
+            long bFija = SigNada, bRes = SigNada, bAviso = SigNada;   // en el buscador: que trozo cambia (ver ZonaBuscador)
+            Rectangle zona = Rectangle.Empty;
+            if (searchOpen && searchOverlay != null)
+            {
+                FirmasBuscador(w, h, mainH, out bFija, out bRes, out bAviso);
+                if (uiOverlay != null && uiOverlay.Width == w && uiOverlay.Height == mainH) zona = ZonaBuscador(w, mainH, bFija, bRes, bAviso);
+            }
             if (uiOverlay == null || uiOverlay.Width != w || uiOverlay.Height != mainH)
             {
                 if (uiOverlay != null) uiOverlay.Dispose();
@@ -1179,6 +1228,8 @@ namespace Rocola
                 // El contador de FPS tampoco: lo pinta el GpuPanel en su propia textura pequeña.
             }
             uiOverlaySig = sig; uiOverlayVer++;
+            uiOverlayZona = zona; uiOverlayZonaVer = uiOverlayVer;   // lo que cambio desde la version anterior (vacio: todo)
+            uiBuscaFija = bFija; uiBuscaRes = bRes; uiBuscaAviso = bAviso;
             return uiOverlayVer;
         }
 

@@ -116,6 +116,7 @@
     <Compile Include="AtraccionGpu.cs" />
     <Compile Include="EstiloGpu.cs" />
     <Compile Include="DibujoLigeroGpu.cs" />
+    <Compile Include="BuscadorLigeroGpu.cs" />
     <Compile Include="PrecargaPaginaGpu.cs" />
     <Compile Include="PaletaCaratulaGpu.cs" />
     <Compile Include="CreditosServicio.cs" />

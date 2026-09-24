@@ -2587,8 +2587,14 @@ namespace Rocola
             {
                 if (gpuMode != 2 || uiOverlay == null) return;   // el buscador no llego a componerse: nada que animar
                 if (uiOverlay.Width < 40 || uiOverlay.Height < 40) return;
-                try { winSnap = uiOverlay.Clone(new Rectangle(0, 0, uiOverlay.Width, uiOverlay.Height), PixelFormat.Format32bppPArgb); }
-                catch { winSnap = null; return; }
+                // SIN COPIAR NI VOLVER A SUBIR (BuscadorLigeroGpu.cs): si la textura de la UI tiene justo esta imagen, pasa a
+                // ser la de la ventana. Si no la tiene -un cambio que todavia no se subio-, la copia de siempre.
+                winRobada = gpuPanel.RobaUiParaVentana(uiOverlayVer);
+                if (!winRobada)
+                {
+                    try { winSnap = uiOverlay.Clone(new Rectangle(0, 0, uiOverlay.Width, uiOverlay.Height), PixelFormat.Format32bppPArgb); }
+                    catch { winSnap = null; return; }
+                }
             }
             winMode = abriendo ? 1 : 2;
             winTick = Environment.TickCount;
@@ -2596,7 +2602,7 @@ namespace Rocola
         }
         private void AbortWinTrans()
         {
-            winMode = 0;
+            winMode = 0; winRobada = false;
             if (winSnap != null) { try { winSnap.Dispose(); } catch { } winSnap = null; }   // ya no se dibuja: liberarla es seguro
         }
 #endif

@@ -1,5 +1,15 @@
 # Rocola
 
+## El buscador, más ligero para la tarjeta — 24 de septiembre de 2026
+
+Revisados todos los apartados del buscador (buscar, teclear, moverse, posar, avisos, abrir, cerrar, quieto), solo en el
+dibujo por tarjeta gráfica y en las dos ramas. La búsqueda, el tecleo y el movimiento ya estaban optimizados de antes. Lo
+nuevo es lo que se le manda a la tarjeta: al posar una consulta, pedir una canción o salir un aviso se sube solo el trozo
+que cambió (la columna de resultados o el aviso) en vez de la imagen entera; al cerrar, la animación usa la textura que
+ya tenía la imagen en vez de copiarla y volver a subirla; y al abrir se reutiliza la textura grande de la última ventana
+en vez de crear otra. La imagen se sigue haciendo exactamente igual. Automático y sin interruptor. No se probó en una
+tarjeta real ni en XP. [La guía](OPTIMIZACIONES_2026-09-24.md#el-buscador-más-ligero-para-la-tarjeta).
+
 ## El dibujo por tarjeta, más ligero — 24 de septiembre de 2026
 
 Más imágenes por segundo sin cambiar lo que se ve, solo en el dibujo por tarjeta gráfica y en las dos ramas. El cuadro ya

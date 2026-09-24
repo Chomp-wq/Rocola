@@ -345,6 +345,7 @@ namespace Rocola
         private int winMode = 0;          // 0 = nada, 1 = abriendo el buscador, 2 = cerrandolo
         private int winTick = 0;
         private Bitmap winSnap;           // instantanea del buscador para animarlo AL CERRAR (al abrir se anima la textura de UI)
+        private bool winRobada;           // ...o, sin copia, la textura que ya tenia la UI (BuscadorLigeroGpu.cs)
 #endif
         // El zoom al entrar/salir de un disco: hay o no hay. Ya no es un campo aparte que haya que
         // mantener a mano en dos sitios: SALE del nivel, y asi no se pueden contradecir nunca.

@@ -893,7 +893,8 @@ namespace Rocola
                 g.ScaleY = 1f - 0.16f * e + imp * 0.6f;             // estira un poco a lo ancho al tomar impulso
                 g.Dy = e * 14f;                                     // se hunde un poco al cerrarse
                 g.Alpha = 1f - e;
-                g.Bmp = winSnap; if (g.Bmp == null) return g;       // la textura de UI ya es la de navegacion
+                g.Bmp = winSnap; g.Robada = winRobada && winSnap == null;   // la imagen copiada, o la textura que tenia la UI
+                if (g.Bmp == null && !g.Robada) return g;           // ni una ni otra: la textura de UI ya es la de navegacion
                 g.HideUi = false;                                   // esa UI (la rejilla) SI se dibuja: la ventana se va sobre ella
             }
             g.Has = true;
