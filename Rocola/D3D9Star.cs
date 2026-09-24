@@ -512,7 +512,7 @@ namespace Rocola
                 float tw = Titileo(t * spd[i] + ph[i]);
                 float br = (AireP[b] + tw * AireQ[b]) * f255;
                 if (!(br > 0f)) br = 0f;   // con el titileo muy agrandado el valle se pasaria de rosca; y el "!" atrapa el NaN
-                uint a = (uint)br; if (a > 255) a = 255;
+                uint a = (uint)(int)br; if (a > 255) a = 255;   // por entero: el mismo numero sin la conversion lenta
                 uint rgb = col[i], gb = AireGB[b];
                 uint c = (a << 24) | (rgb & 0x00FF0000u)                     // alfa = brillo; el rojo, entero
                        | ((((rgb >> 8) & 0xFFu) * (gb >> 16) >> 8) << 8)      // el verde, algo comido
@@ -1535,7 +1535,9 @@ namespace Rocola
                     if (ub != null) uiTex = Upload(uiTex, ref uiBmpW, ref uiBmpH, ub, out uiU, out uiV);   // reutiliza la textura (no re-crear a pantalla completa cada vez)
                     uiVer = uv;
                     NoteHeavy(t0);   // mide el coste real y ajusta la espera (la UI cacheada es barata -> franja corta)
+                    uiTeselas = null; uiSubidaMs = AhoraMs();   // imagen nueva: sus teselas, cuando este quieta (DibujoLigeroGpu.cs)
                 }
+                else if (uiTeselas == null) uiTeselas = TeselasQuietas(GetUi(), uiBmpW, uiBmpH, uiSubidaMs);
             }
             // Franja de ESTADO de abajo: textura chica aparte. El tic del reloj/progreso (~2/seg con musica)
             // rehace y sube SOLO esta tira (~400KB), no la textura principal. Misma franja de trabajo pesado.
@@ -1547,7 +1549,9 @@ namespace Rocola
                     Bitmap bb = GetUiBot();
                     if (bb != null) uiBotTex = Upload(uiBotTex, ref uiBotW, ref uiBotH, bb, out uiBotU, out uiBotV);
                     uiBotVer = bv;
+                    uiBotTeselas = null; uiBotSubidaMs = AhoraMs();   // imagen nueva: sus teselas, cuando este quieta (DibujoLigeroGpu.cs)
                 }
+                else if (uiBotTeselas == null) uiBotTeselas = TeselasQuietas(GetUiBot(), uiBotW, uiBotH, uiBotSubidaMs);
             }
             // Las piezas vivas. Se preguntan SIEMPRE (no solo cuando toca trabajo pesado): son diminutas, y
             // son justo lo que tiene que responder al instante cuando alguien se mueve entre casillas.
@@ -1604,8 +1608,7 @@ namespace Rocola
             // Adornos solo del fondo: antes del muro y de toda la interfaz.
             if (VinetaSuave && vinetaTex != IntPtr.Zero)
             {
-                SetTexQuad(adornoQuad, 0, 0, Width, Height, vinetaU, vinetaV);
-                stars.DrawQuad(vinetaTex, adornoQuad);
+                DibujaTeselas(vinetaTex, vinetaTeselas, 0, 0, Width, Height, vinetaU, vinetaV, 0xFFFFFFFFu, adornoQuad);   // sin pintar su centro transparente (DibujoLigeroGpu.cs)
             }
             if (HaloSeleccion && ShowAlbum && GetContourRect != null)
             {
@@ -1671,7 +1674,10 @@ namespace Rocola
             bool uiPropia = gw.Has && gw.Bmp == null;   // se anima la PROPIA textura de UI (abriendo el buscador)
             if (!(gw.Has && gw.HideUi)) DrawPaletteOld();
             if (uiTex != IntPtr.Zero && uiBmpW > 0 && uiBmpH > 0 && !(gw.Has && gw.HideUi))
-                { SetTexQuadA(uiQuad, 0, 0, uiBmpW, uiBmpH, uiU, uiV, ((uint)(SceneAlpha() * PaletteAlpha() * ControlsOpacity * AtrUiAlfa * 255) << 24) | 0xFFFFFFu); stars.DrawQuad(uiTex, uiQuad); }
+            {
+                uint uiAlfa = (uint)(SceneAlpha() * PaletteAlpha() * ControlsOpacity * AtrUiAlfa * 255);
+                if (uiAlfa > 0) DibujaTeselas(uiTex, uiTeselas, 0, 0, uiBmpW, uiBmpH, uiU, uiV, (uiAlfa << 24) | 0xFFFFFFu, uiQuad);   // sin lo transparente ni lo invisible (DibujoLigeroGpu.cs)
+            }
             DibujaAtraccion();   // el escaparate y lo mas pedido esta noche (AtraccionGpu.cs); fuera de la atraccion, nada
             // Y ENCIMA las piezas vivas (la tarjeta y la tecla elegidas). Van despues de la textura de UI a
             // proposito: en ella estan las versiones SIN elegir, y estas las tapan. Se rellenan opacas, asi que
@@ -1710,8 +1716,8 @@ namespace Rocola
             }
             if (uiBotTex != IntPtr.Zero && uiBotW > 0 && uiBotH > 0)
             {
-                SetTexQuadA(uiBotQuad, 0, Height - uiBotH, uiBotW, Height, uiBotU, uiBotV, ((uint)((1-idleBlend)*255) << 24) | 0x00FFFFFFu);
-                stars.DrawQuad(uiBotTex, uiBotQuad);
+                uint botAlfa = (uint)((1-idleBlend)*255);   // con el reposo del todo abierto va a opacidad cero: no se manda
+                if (botAlfa > 0) DibujaTeselas(uiBotTex, uiBotTeselas, 0, Height - uiBotH, uiBotW, Height, uiBotU, uiBotV, (botAlfa << 24) | 0x00FFFFFFu, uiBotQuad);   // (DibujoLigeroGpu.cs)
             }
             if (idleBlend > 0 && idleTex != IntPtr.Zero)
             {
@@ -2180,7 +2186,11 @@ namespace Rocola
             int mw = Math.Max(8, Width / 4), mh = Math.Max(8, Height / 4);
             // Un fallo parcial solo reintenta la capa pendiente; no vuelve a hornear las que ya llegaron.
             if (nuevoTamano || hazTex == IntPtr.Zero)
-                using (Bitmap hz = GpuStarfield.BakeViaLactea(mw, mh)) hazTex = Upload(hazTex, ref hazTW, ref hazTH, hz, out hazU, out hazV);
+                using (Bitmap hz = GpuStarfield.BakeViaLactea(mw, mh))
+                {
+                    hazTex = Upload(hazTex, ref hazTW, ref hazTH, hz, out hazU, out hazV);
+                    hazTeselas = TeselasVisibles.De(hz, TeselasVisibles.LadoTesela, true);   // lo que tiene algo que pintar (DibujoLigeroGpu.cs)
+                }
             if (nuevoTamano || nebTex == IntPtr.Zero)
             {
                 // CON QUE se horneo se apunta AQUI, no arriba al soltar la textura: si se apuntara antes
@@ -2347,6 +2357,7 @@ namespace Rocola
             {
                 if (vinetaTex != IntPtr.Zero) { D3D9.Release(vinetaTex); vinetaTex = IntPtr.Zero; }
                 if (vinetaMapa != null) { vinetaMapa.Dispose(); vinetaMapa = null; }
+                vinetaTeselas = null;
                 vinetaRetry = 0;
                 return;
             }
@@ -2355,6 +2366,7 @@ namespace Rocola
             if (vinetaRetry != 0 && unchecked(now - vinetaRetry) < 1000) return;
             vinetaRetry = now;
             if (vinetaMapa == null) vinetaMapa = BakeVineta(128);
+            if (vinetaTeselas == null) vinetaTeselas = TeselasVisibles.De(vinetaMapa, TeselasVisibles.LadoTesela, true);   // su centro es transparente (DibujoLigeroGpu.cs)
             vinetaTex = stars.CreateOverlay(vinetaMapa, out vinetaU, out vinetaV);
         }
 
@@ -2395,8 +2407,7 @@ namespace Rocola
                 // por mucho que se mueva su borde nunca asoma. Es lo mismo que hace NieblaDeriva.
                 float mx = Width * HazDeriva, my = Height * HazDeriva;
                 float ox = (float)Math.Sin(HazFase) * mx, oy = (float)Math.Cos(HazFase) * my;
-                SetTexQuad(nieblaQuad, -mx + ox, -my + oy, Width + mx + ox, Height + my + oy, hazU, hazV);
-                stars.DrawQuad(hazTex, nieblaQuad);
+                DibujaTeselas(hazTex, hazTeselas, -mx + ox, -my + oy, Width + mx + ox, Height + my + oy, hazU, hazV, 0xFFFFFFFFu, nieblaQuad);   // solo lo que no es transparente (DibujoLigeroGpu.cs)
             }
         }
 
@@ -2639,11 +2650,14 @@ namespace Rocola
             return (ri << 16) | (gi << 8) | bi;
         }
         // Mezcla canal a canal: solo para lo ANCHO, donde los dos tonos estan a 32 grados y no hay nada que ensuciar.
+        // Por entero y no por "sin signo": son los mismos numeros (de 0 a 255, con f entre 0 y 1) y se ahorra la
+        // conversion lenta entre decimales y enteros sin signo, que aqui se hace miles de veces por cuadro.
         private static uint AurLerpRgb(uint c0, uint c1, float f)
         {
-            uint r = (uint)(((c0 >> 16) & 0xFF) + (((int)((c1 >> 16) & 0xFF) - (int)((c0 >> 16) & 0xFF)) * f));
-            uint g = (uint)(((c0 >> 8) & 0xFF) + (((int)((c1 >> 8) & 0xFF) - (int)((c0 >> 8) & 0xFF)) * f));
-            uint b = (uint)((c0 & 0xFF) + (((int)(c1 & 0xFF) - (int)(c0 & 0xFF)) * f));
+            int r0 = (int)((c0 >> 16) & 0xFF), g0 = (int)((c0 >> 8) & 0xFF), b0 = (int)(c0 & 0xFF);
+            uint r = (uint)(int)(r0 + (((int)((c1 >> 16) & 0xFF) - r0) * f));
+            uint g = (uint)(int)(g0 + (((int)((c1 >> 8) & 0xFF) - g0) * f));
+            uint b = (uint)(int)(b0 + (((int)(c1 & 0xFF) - b0) * f));
             return (r << 16) | (g << 8) | b;
         }
 
@@ -2653,8 +2667,9 @@ namespace Rocola
             if (v < 0) v = 0; else if (v > 255) v = 255;
             return ((uint)v << 24) | rgb;
         }
-        private static void AurV3(D3D9.Vtx[] a, int i, float x, float y, uint c)
-        { a[i].X = x - 0.5f; a[i].Y = y - 0.5f; a[i].Z = 0f; a[i].Rhw = 1f; a[i].Color = c; a[i].U = 0f; a[i].V = 0f; }
+        // Por referencia: una comprobacion de limites por vertice en vez de siete (se escriben miles por cuadro).
+        private static void AurV3(ref D3D9.Vtx a, float x, float y, uint c)
+        { a.X = x - 0.5f; a.Y = y - 0.5f; a.Z = 0f; a.Rhw = 1f; a.Color = c; a.U = 0f; a.V = 0f; }
 
         // Arma la malla entera y devuelve cuantos vertices escribio. Aparte del dibujo para poder comprobarla
         // sin tarjeta. 'alturaPanel' es el borde de abajo de la PANTALLA: el color baja hasta ahi (por detras
@@ -2687,8 +2702,8 @@ namespace Rocola
                 {
                     float x0 = i * paso, x1 = x0 + paso;
                     uint cR0 = AurArgb(cSuelo[k0 + i + 1], aCol[i + 1] * m0), cR1 = AurArgb(cSuelo[k1 + i + 1], aCol[i + 1] * m1);
-                    AurV3(v, n + 0, x0, y0, cL0); AurV3(v, n + 1, x1, y0, cR0); AurV3(v, n + 2, x0, y1, cL1);
-                    AurV3(v, n + 3, x1, y0, cR0); AurV3(v, n + 4, x1, y1, cR1); AurV3(v, n + 5, x0, y1, cL1);
+                    AurV3(ref v[n + 0], x0, y0, cL0); AurV3(ref v[n + 1], x1, y0, cR0); AurV3(ref v[n + 2], x0, y1, cL1);
+                    AurV3(ref v[n + 3], x1, y0, cR0); AurV3(ref v[n + 4], x1, y1, cR1); AurV3(ref v[n + 5], x0, y1, cL1);
                     n += 6;
                     cL0 = cR0; cL1 = cR1;
                 }
@@ -2714,8 +2729,8 @@ namespace Rocola
                     float wR0 = aCol[i + 1] * m0 * (1f + (rCol[i + 1] - 1f) * g0), wR1 = aCol[i + 1] * m1 * (1f + (rCol[i + 1] - 1f) * g1);
                     uint cR0 = AurArgb(cCortina[k0 + i + 1], wR0);
                     uint cR1 = AurArgb(cCortina[k1 + i + 1], wR1);
-                    AurV3(v, n + 0, x0, yL1, cL1); AurV3(v, n + 1, x1, yR1, cR1); AurV3(v, n + 2, x0, yL0, cL0);
-                    AurV3(v, n + 3, x1, yR1, cR1); AurV3(v, n + 4, x1, yR0, cR0); AurV3(v, n + 5, x0, yL0, cL0);
+                    AurV3(ref v[n + 0], x0, yL1, cL1); AurV3(ref v[n + 1], x1, yR1, cR1); AurV3(ref v[n + 2], x0, yL0, cL0);
+                    AurV3(ref v[n + 3], x1, yR1, cR1); AurV3(ref v[n + 4], x1, yR0, cR0); AurV3(ref v[n + 5], x0, yL0, cL0);
                     n += 6;
                     yL0 = yR0; yL1 = yR1; cL0 = cR0; cL1 = cR1;
                 }
@@ -2762,8 +2777,8 @@ namespace Rocola
                                     float yL0, float yR0, float yL1, float yR1,
                                     uint cL0, uint cR0, uint cL1, uint cR1)
         {
-            AurV3(v, n + 0, x0, yL0, cL0); AurV3(v, n + 1, x1, yR0, cR0); AurV3(v, n + 2, x0, yL1, cL1);
-            AurV3(v, n + 3, x1, yR0, cR0); AurV3(v, n + 4, x1, yR1, cR1); AurV3(v, n + 5, x0, yL1, cL1);
+            AurV3(ref v[n + 0], x0, yL0, cL0); AurV3(ref v[n + 1], x1, yR0, cR0); AurV3(ref v[n + 2], x0, yL1, cL1);
+            AurV3(ref v[n + 3], x1, yR0, cR0); AurV3(ref v[n + 4], x1, yR1, cR1); AurV3(ref v[n + 5], x0, yL1, cL1);
             return n + 6;
         }
 
@@ -2882,19 +2897,14 @@ namespace Rocola
             }
             aurFinoAnt = tkAur; aurRelojOk = true;
             float t = (float)aurT;
-            // DEGRADADO del pie a la punta, UNA vez por cuadro y para los dos extremos (grave y agudo). Se hace
-            // girando el tono por el BORDE de la rueda (ver AurTonoMezcla): asi a media altura el color sigue
-            // siendo un color y no una mezcla sucia, que es lo que deslucia el degradado.
-            for (int k = 0; k <= AurFilas; k++)
-            {
-                float f = (float)k / AurFilas;
-                aurRampPie[k] = AurTonoMezcla(au.Rgb, au.RgbA, f);
-                aurRampAgu[k] = AurTonoMezcla(au.Rgb2, au.Rgb2A, f);
-            }
+            // DEGRADADO del pie a la punta de los dos extremos (grave y agudo), girando el tono por el BORDE de la
+            // rueda (ver AurTonoMezcla): asi a media altura el color sigue siendo un color y no una mezcla sucia. Con
+            // el ancho y la paleta de la portada da el color de partida de cada franja; se guarda y solo se rehace
+            // cuando cambia algo de eso (AurBases, en DibujoLigeroGpu.cs).
+            AurBases(au, puntos);
             for (int i = 0; i < puntos; i++)
             {
                 float fx = (float)i / AurCols;
-                uint coverColumn = CoverColor(fx);
                 float v = AuroraBandas ? PerfilDefinido(au.B, fx) : AurPerfil(au.B, fx);
                 if (au.Calma > 0f) { float vc = AurCalma(fx, t) * au.Calma; if (vc > v) v = vc; }   // en reposo manda la forma lenta
                 if (v > 1f) v = 1f;
@@ -2908,26 +2918,22 @@ namespace Rocola
                 // para que todas las cortinas lleven el MISMO degradado y los picos salgan parejos entre si.
                 for (int k = 0; k <= AurFilas; k++)
                 {
-                    uint c = AurLerpRgb(aurRampPie[k], aurRampAgu[k], fx);
-                    if (AuroraBandas) c = AurLerpRgb(c, fx < .5f ? AurLerpRgb(0x009779F2u, 0x0059DBCCu, fx*2) : AurLerpRgb(0x0059DBCCu, 0x00E7BE88u, (fx-.5f)*2), .38f);
-                    c = MixCoverColor(c, coverColumn);
-                    c = FlowColor(c,fx,(au.BaseY-aurH[i]*k/AurFilas)/Math.Max(1,Height));
-                    float rr = (c >> 16) & 0xFF, gg = (c >> 8) & 0xFF, bb = c & 0xFF;
+                    uint c = FlowColor(aurBase[k * puntos + i],fx,(au.BaseY-aurH[i]*k/AurFilas)/Math.Max(1,Height));   // la base: AurBases
+                    // Por entero y no por "sin signo": el mismo numero (van de 0 a 255) sin la conversion lenta.
+                    float rr = (int)((c >> 16) & 0xFF), gg = (int)((c >> 8) & 0xFF), bb = (int)(c & 0xFF);
                     TonoPorNivel(ref rr, ref gg, ref bb, v);
-                    aurCortina[k * puntos + i] = ((uint)rr << 16) | ((uint)gg << 8) | (uint)bb;
+                    aurCortina[k * puntos + i] = ((uint)(int)rr << 16) | ((uint)(int)gg << 8) | (uint)(int)bb;
                 }
                 // EL FILO lleva el color de la PUNTA de su columna (el mismo de la cortina ahi arriba, no
                 // otro): asi el contorno es del color de la aurora, encendido, y no una raya postiza.
                 aurNc[i] = aurCortina[AurFilas * puntos + i];
-                uint cPie = AurLerpRgb(au.Rgb, au.Rgb2, fx);
-                cPie = MixCoverColor(cPie, coverColumn);
-                cPie = FlowColor(cPie,fx,au.BaseY/Math.Max(1,Height));
-                float r0 = (cPie >> 16) & 0xFF, g0 = (cPie >> 8) & 0xFF, b0 = cPie & 0xFF;
+                uint cPie = FlowColor(aurBasePie[i],fx,au.BaseY/Math.Max(1,Height));   // la base: AurBases
+                float r0 = (int)((cPie >> 16) & 0xFF), g0 = (int)((cPie >> 8) & 0xFF), b0 = (int)(cPie & 0xFF);
                 for (int k = 0; k <= AurSuelo; k++)                   // el suelo: el mismo color, hundiendose
                 {
                     float rd = r0, gd = g0, bd = b0;
                     TonoPorNivel(ref rd, ref gd, ref bd, v * AurSueloTono((float)k / AurSuelo));
-                    aurSueloC[k * puntos + i] = ((uint)rd << 16) | ((uint)gd << 8) | (uint)bd;
+                    aurSueloC[k * puntos + i] = ((uint)(int)rd << 16) | ((uint)(int)gd << 8) | (uint)(int)bd;
                 }
                 float al = (AurAlfaBase + AurAlfaPico * v) * au.Dim;
                 if (al < 0f) al = 0f; else if (al > 1f) al = 1f;

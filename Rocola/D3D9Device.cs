@@ -93,7 +93,7 @@ namespace Rocola
         private D3D9.PresentParams pp;
         private bool lost, resetPending, inScene;
 
-        private D3D9.PresentDel present; private D3D9.ClearDel clear; private D3D9.HrSelf begin, end;
+        private D3D9.PresentDel present; private D3D9.HrSelf begin, end;
         private D3D9.SetU2Del setRS; private D3D9.SetU1Del setFVF; private D3D9.SetU3Del setTSS, setSamp;
         private D3D9.SetTexDel setTex; private D3D9.DrawUpDel drawUp; private D3D9.HrSelf testCoop;
         private D3D9.ResetDel reset; private D3D9.CreateTexDel createTex;
@@ -135,7 +135,6 @@ namespace Rocola
                 }
                 dev = dv;
                 present = D3D9.Fn<D3D9.PresentDel>(dev, 17);
-                clear = D3D9.Fn<D3D9.ClearDel>(dev, 43);
                 begin = D3D9.Fn<D3D9.HrSelf>(dev, 41);
                 end = D3D9.Fn<D3D9.HrSelf>(dev, 42);
                 setRS = D3D9.Fn<D3D9.SetU2Del>(dev, 57);
@@ -385,7 +384,10 @@ namespace Rocola
                 // UI) y una nueva puede caer en la MISMA direccion que una recien liberada. Los otros estados son
                 // numeros, no punteros, asi que esos si se conservan. Cuesta un cambio de textura por cuadro.
                 stTex = new IntPtr(-1);
-                if (clear(dev, 0, IntPtr.Zero, D3D9.CLEAR_TARGET, 0xFF05060F, 1f, 0) < 0) { lost = true; return false; }
+                // SIN BORRAR LA PANTALLA (rendimiento, 24-09-2026). Lo primero que se dibuja en cada cuadro es el
+                // cielo (GpuStarfield.Begin): dos cuadrilateros opacos, sin mezcla, que tapan todos los pixeles. Borrar
+                // antes era escribir la pantalla entera para nada, una vez por cuadro. El buffer se descarta al
+                // presentar (SWAPEFFECT_DISCARD): no hay nada viejo que respetar.
                 if (begin(dev) < 0) { lost = true; return false; }
                 inScene = true;
                 return true;
