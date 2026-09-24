@@ -697,7 +697,16 @@ namespace Rocola
                 gpuPanel.GetToast = delegate { return BuildToastState(); };     // aviso flotante (moneda, cancion agregada...)
                 gpuPanel.GetTrans = delegate { return BuildTransState(); };   // zoom al entrar/salir de un disco
                 gpuPanel.GetWin = delegate { return BuildWinState(); };        // ventana del buscador abriendo/cerrando
-                gpuPanel.GetGrid = albumView.BuildGpuGrid;   // rejilla de discos: cada celda su propio quad con textura cacheada (hojear = elegir texturas + posiciones)
+                // Rejilla de discos: cada celda su propio quad con textura cacheada (hojear = elegir texturas + posiciones).
+                // De paso recoge lo que el cielo se corre al pasar de pagina (PantallaVivaGpu.cs).
+                gpuPanel.GetGrid = delegate(GpuGridCell[] celdas)
+                {
+                    int cuantas = albumView.BuildGpuGrid(celdas);
+                    gpuPanel.EmpujeCielo += albumView.TomaEmpuje();
+                    return cuantas;
+                };
+                gpuPanel.GetFoco = BuildFocoState;     // el letrero de la portada enfocada
+                gpuPanel.GetFicha = BuildFichaState;   // la ficha rapida del disco
                 gpuPanel.GetGridAhead = albumView.BuildGpuAhead;
                 gpuPanel.GetContour = delegate { return albumView.ContourSpriteBmp; };          // resalte de seleccion
                 gpuPanel.GetContourRect = delegate {
@@ -832,6 +841,7 @@ namespace Rocola
                 int ox = albumView.Left, oy = albumView.Top;
                 if (st.Sel.Has) { st.Sel.X += ox; st.Sel.Y += oy; }
                 if (st.Relay.Has) { st.Relay.X += ox; st.Relay.Y += oy; }
+                st.Pared = true;   // el elegido es el de la pared: la portada enfocada solo se aplica aqui
             }
             if (miniCube != null && miniCube.Visible && miniCube.Cover != null)   // mini-cubo (barra inferior): comun
             {
@@ -1303,6 +1313,7 @@ namespace Rocola
             else if (letterBar != null)                // parte superior = navegacion (A-Z + encabezado)
             {
                 sb = Mix(sb, 'N'); sb = Mix(sb, letterBar.Current); sb = Mix(sb, letterBar.Letters);
+                sb = Mix(sb, letterBar.LupaGpu);   // encender o apagar la lupa rehace la barra
                 sb = Mix(sb, letterBar.Available == null ? 0 : letterBar.Available.Count);
                 // Los NUMEROS y los COLORES de las letras los va aprendiendo el paseo de fondo, y el
                 // DESLIZAMIENTO al cambiar de letra se mueve solo. Sin esto, en modo GPU la textura no se

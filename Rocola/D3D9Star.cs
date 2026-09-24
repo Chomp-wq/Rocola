@@ -1018,12 +1018,12 @@ namespace Rocola
         public float Fade;             // 0..1 mezcla A->B
         public float Tilt;             // bamboleo del cubo entero (radianes); los CubeBox grande/mini lo usan
     }
-    internal struct GpuCubeState { public GpuCubeInfo Sel, Relay, Mini; }   // album: seleccionado (gira) + relevo (decae); Mini = cubo de la barra inferior
+    internal struct GpuCubeState { public GpuCubeInfo Sel, Relay, Mini; public bool Pared; }   // album: seleccionado (gira) + relevo (decae); Mini = cubo de la barra inferior; Pared = Sel es el de la pared de discos
 
     // Una CELDA de la rejilla de discos para dibujarla como su PROPIO quad con textura (en vez de recomponer una
     // textura a pantalla completa por pagina). Bmp = disco estatico + etiqueta ya horneado (null si aun no listo).
     // Key = Folder (estable) para cachear su textura entre paginas; null = no cachear (discos TOP / sin carpeta).
-    internal struct GpuGridCell { public string Key; public Bitmap Bmp; public int Slot; public float X, Y, W, H; public float A; public bool Placeholder; public RectangleF CoverRect; }
+    internal struct GpuGridCell { public string Key; public Bitmap Bmp; public int Slot; public float X, Y, W, H; public float A; public bool Placeholder; public RectangleF CoverRect; public bool Sel; }   // Sel = la casilla elegida (la portada enfocada no la apaga)
     internal struct GpuProgress { public bool Has, Neon; public Rectangle Rect; public double Value; public uint Color; public object Key; }
     // TRANSICION entre dos CUBOS de la rocola (celda de la rejilla, cubo grande del disco, cubo gigante de la
     // atraccion, cubo del buscador): la portada viaja de uno al otro dibujada ENCIMA de todo, girando, con
@@ -1071,7 +1071,7 @@ namespace Rocola
         // subida UNA vez y cacheada por Folder. Hojear = elegir texturas + posiciones y dibujar quads: instantaneo
         // al revisitar, sin reconstruir ni resubir una textura a pantalla completa por pagina. Las subidas nuevas
         // se reparten por cuadro (presupuesto) para que un barrido de paginas nuevas no baje los fps.
-        private const int MaxCells = 32;
+        private const int MaxCells = 36;                  // dos paginas: pasando de pagina se ven la que sale y la que entra (PantallaVivaGpu.cs)
         private const int CellTexCap = 3 * 18;            // ~3 paginas de texturas de celda en VRAM (acotado); se expulsa lo mas viejo
         private const int GridUploadBudget = 6;           // texturas de celda NUEVAS subidas por cuadro (barrer sin bajon)
         private sealed class CellTex { public IntPtr Tex; public int Bw, Bh; public float U = 1f, V = 1f; public Bitmap Bmp; public int Frame; }
@@ -1369,6 +1369,7 @@ namespace Rocola
             if (transTex != IntPtr.Zero) { D3D9.Release(transTex); transTex = IntPtr.Zero; transLastBmp = null; }
             if (winTex != IntPtr.Zero) { D3D9.Release(winTex); winTex = IntPtr.Zero; winLastBmp = null; }
             if (toastTex != IntPtr.Zero) { D3D9.Release(toastTex); toastTex = IntPtr.Zero; toastVer = -1; }
+            SueltaPantallaViva();   // el letrero de la elegida y la ficha rapida
             if (uiTex != IntPtr.Zero) { D3D9.Release(uiTex); uiTex = IntPtr.Zero; }
             if (hazTex != IntPtr.Zero) { D3D9.Release(hazTex); hazTex = IntPtr.Zero; }
             if (nebTex != IntPtr.Zero) { D3D9.Release(nebTex); nebTex = IntPtr.Zero; }
@@ -1483,6 +1484,7 @@ namespace Rocola
             EnsureRecentCover(ref selTexB, ref selImgB, ref selBwB, ref selBhB, ref selUB, ref selVB, cs.Sel.CoverB);
             EnsureRecentCover(ref relTex, ref relImg, ref relBw, ref relBh, ref relU, ref relV, cs.Relay.CoverA);
             EnsureCover(ref miniTex, ref miniImg, ref miniBw, ref miniBh, ref miniU, ref miniV, cs.Mini.CoverA);   // mini-cubo de la barra inferior
+            AplicaEnfoque(ref cs);         // portada enfocada: agranda el cubo elegido y apaga un poco las demas (Ctrl+F3 -> Pantalla)
             double idleNow = AhoraMs();
             double idleDt = idleClock == 0 ? 0 : (idleNow - idleClock) / 1000.0; idleClock = idleNow;
             if ((IdleExpandTarget || idleBlend > 0) && GetIdlePanel != null)
@@ -1511,6 +1513,7 @@ namespace Rocola
             GpuToast tt = (GetToast != null) ? GetToast() : new GpuToast();
             if (tt.Has && tt.Bmp != null && (tt.Ver != toastVer || toastTex == IntPtr.Zero))   // el bitmap se REUSA (mismo objeto), por eso manda la version
             { toastTex = Upload(toastTex, ref toastBw, ref toastBh, tt.Bmp, out toastU, out toastV); toastVer = tt.Ver; }
+            PreparaPantallaViva();         // el letrero de la elegida, la ficha rapida y el empujon del cielo al pasar de pagina
             // Barras (UI) a textura: se re-sube solo cuando cambia algun texto/estado (firma del form), limitada a
             // UNA por franja (heavyGapMs). UiUrgent: al CAMBIAR DE MODO (p.ej. cerrar el buscador) hay que rehacerla
             // en ESTE mismo cuadro, sin esperar franja: si no, se veria la rejilla por los huecos del teclado un instante.
@@ -1603,9 +1606,10 @@ namespace Rocola
                 Rectangle hr = GetContourRect();
                 if (hr.Width > 0 && hr.Height > 0)
                 {
-                    uint ha = (uint)(90f * Math.Max(0f, Math.Min(1f, WallOpacity)));
-                    stars.DrawGlow(hr.X + hr.Width * 0.5f, hr.Y + hr.Height * 0.5f,
-                        Math.Max(hr.Width, hr.Height) * 0.85f, (ha << 24) | (NebColor & 0x00FFFFFFu));
+                    // Con la portada enfocada el halo crece con ella y toma su color (HaloArgb); si no, el de siempre.
+                    float hx = hr.X, hy = hr.Y, hw = hr.Width, hh = hr.Height;
+                    EnfocaCaja(ref hx, ref hy, ref hw, ref hh);
+                    stars.DrawGlow(hx + hw * 0.5f, hy + hh * 0.5f, Math.Max(hw, hh) * 0.85f, HaloArgb());
                 }
             }
             // Rejilla de discos: un quad por celda (textura ya resuelta arriba). Las celdas aun sin textura (recien
@@ -1618,8 +1622,9 @@ namespace Rocola
                         if (c.X + c.W <= 0f || c.X >= Width) continue;   // hojeando: la casilla ya salio de la pantalla, no se pinta
                         int ca = (int)(Math.Max(0f, Math.Min(1f, c.A * WallOpacity)) * 255f + 0.5f);
                         if (ca <= 0) continue;
-                        if (ca >= 255) SetTexQuad(cellQuad, c.X, c.Y, c.X + c.W, c.Y + c.H, gridU[i], gridV[i]);
-                        else SetTexQuadA(cellQuad, c.X, c.Y, c.X + c.W, c.Y + c.H, gridU[i], gridV[i], ((uint)ca << 24) | 0x00FFFFFFu);
+                        float apagada = atenua[i];   // portada enfocada: las demas, un poco mas oscuras (0 = como siempre)
+                        if (ca >= 255 && !(apagada > 0f)) SetTexQuad(cellQuad, c.X, c.Y, c.X + c.W, c.Y + c.H, gridU[i], gridV[i]);
+                        else SetTexQuadA(cellQuad, c.X, c.Y, c.X + c.W, c.Y + c.H, gridU[i], gridV[i], ColorCelda(ca, apagada));
                         stars.DrawQuad(gridTex[i], cellQuad);
                     }
                     else if (gridBuf[i].Placeholder)
@@ -1635,7 +1640,13 @@ namespace Rocola
             if (ShowAlbum && contourTex != IntPtr.Zero && GetContourRect != null)
             {
                 Rectangle r = GetContourRect();
-                if (r.Width > 0 && r.Height > 0) { SetTexQuadA(contourQuad, r.X, r.Y, r.X + r.Width, r.Y + r.Height, contU, contV, ((uint)(Math.Max(0f, Math.Min(1f, WallOpacity)) * 255f) << 24) | 0x00FFFFFFu); stars.DrawQuad(contourTex, contourQuad); }
+                if (r.Width > 0 && r.Height > 0)
+                {
+                    float rx = r.X, ry = r.Y, rw = r.Width, rh = r.Height;
+                    EnfocaCaja(ref rx, ref ry, ref rw, ref rh);   // el contorno crece con la portada enfocada
+                    SetTexQuadA(contourQuad, rx, ry, rx + rw, ry + rh, contU, contV, ((uint)(Math.Max(0f, Math.Min(1f, WallOpacity)) * 255f) << 24) | 0x00FFFFFFu);
+                    stars.DrawQuad(contourTex, contourQuad);
+                }
             }
             // Cubos girando ENCIMA del contorno (igual orden que en CPU): primero el relevo, luego el seleccionado.
             if (cs.Relay.Has)
@@ -1645,6 +1656,7 @@ namespace Rocola
                 stars.DrawCube(selTexA, selUA, selVA, cs.Sel.X, cs.Sel.Y, cs.Sel.W, cs.Sel.H, cs.Sel.Angle, ShowAlbum ? WallOpacity : 1f, cs.Sel.Tilt);
                 if (cs.Sel.CoverB != null && cs.Sel.Fade > 0.002f)   // disco TOP: 2a portada encima con alfa = fundido
                     stars.DrawCube(selTexB, selUB, selVB, cs.Sel.X, cs.Sel.Y, cs.Sel.W, cs.Sel.H, cs.Sel.Angle, cs.Sel.Fade * (ShowAlbum ? WallOpacity : 1f), cs.Sel.Tilt);
+                DibujaFoco(cs);   // "12 canciones · 38 min" sobre el borde de abajo de la portada enfocada
             }
             // UI ENCIMA del fondo y los cubos: la textura principal anclada ARRIBA (a su tamano real: en
             // navegacion es solo la franja superior) y la franja de estado anclada ABAJO.
@@ -1723,6 +1735,7 @@ namespace Rocola
                 }
                 stars.DrawCube(miniTex, miniU, miniV, cs.Mini.X, cs.Mini.Y, cs.Mini.W, cs.Mini.H, cs.Mini.Angle, 1f, cs.Mini.Tilt);
             }
+            DibujaFicha();   // la ficha rapida del disco: encima de la pared y las barras, debajo del viaje y de los avisos
             // TRANSICION entre cubos (viaje + giro + bamboleo + destello) ENCIMA de todo. Solo mientras vive.
             if (tr.Has && tr.Bmp != null && transTex != IntPtr.Zero && tr.Alpha > 0.004f && tr.W > 1f && tr.H > 1f)
             {

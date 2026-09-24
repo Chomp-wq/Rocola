@@ -625,6 +625,9 @@ namespace Rocola
                 AjustaFuentes(g, slot, h);
                 float bajo = AltoCuenta(slot, h);
                 float altoL = h - bajo;
+#if ROCOLA_GPU
+                if (forGpu && LupaGpu) { RenderLupa(g, w, h, n, slot, altoL, bajo); return; }   // Ctrl+F3 -> Pantalla (abajo)
+#endif
 
                 // TIRA CACHEADA: el riel y las ~28 letras solo se redibujan al cambiar letra/tamano/datos.
                 // Por cuadro: copiar la tira + la letra ACTUAL con su capsula + la estrella (antes: ~28 textos).
@@ -743,6 +746,237 @@ namespace Rocola
                 p.CloseFigure();
                 return p;
             }
+#if ROCOLA_GPU
+            // ---------- LA LUPA (solo con tarjeta grafica: Ctrl+F3 -> Pantalla, PantallaVivaGpu.cs) ----------
+            // La letra elegida y sus vecinas se dibujan mas grandes, como bajo una lupa que viaja con la capsula, y una
+            // rayita debajo de cada letra dice cuanta musica tiene comparada con la que mas tiene. Va en su PROPIA
+            // tira (lupaCache): la de siempre, la del dibujo por procesador, no se toca ni se rehace por esto. Y como
+            // la barra por tarjeta se hornea en la textura de la interfaz, esto solo cuesta al cambiar de letra (y en
+            // los cuadros que dura el deslizamiento de la capsula), nunca en un cuadro quieto.
+            public bool LupaGpu;
+            internal const float LupaMax = .45f;     // cuanto crece la del centro (un 45 %: mas, y la letra roza la capsula)
+            internal const float LupaAncho = 1.6f;   // y a cuantas casillas llega: a dos ya casi no crece, a tres nada
+            private Bitmap lupaCache; private int luW = -1, luH = -1, luAvailN = -2, luDatos, luCentro = int.MinValue;
+            private char luCur = '\0'; private string luLetters;
+            private readonly Dictionary<char, float> anchoLetra = new Dictionary<char, float>(); private Font anchoDe;
+
+            // Cuanto crece una letra que esta a 'd' casillas del centro de la lupa (1 = nada).
+            internal static float EscalaLupa(float d) { return 1f + LupaMax * (float)Math.Exp(-(d / LupaAncho) * (d / LupaAncho)); }
+            // ...pero sin salirse de su casilla ni de la barra: 'ancho' es lo que mide la letra sin crecer.
+            internal static float TopeLupa(float s, float ancho, float slot, float alto, float altoL)
+            {
+                if (ancho > 0f) s = Math.Min(s, Math.Max(1f, (slot - 3f) / ancho));
+                if (alto > 0f) s = Math.Min(s, Math.Max(1f, (altoL - 3f) / alto));
+                return s;
+            }
+            // Lo que mide de verdad el dibujo de una letra (sin el aire que le pone GDI+ a los lados). Se mide una vez
+            // por letra y cuerpo.
+            private float AnchoDe(Graphics g, string lbl, Font f)
+            {
+                if (!ReferenceEquals(anchoDe, fMain)) { anchoLetra.Clear(); anchoDe = fMain; }
+                char k = (lbl.Length == 1) ? lbl[0] : '\u0001';   // "VIDEO" va por su cuenta
+                float a;
+                if (anchoLetra.TryGetValue(k, out a)) return a;
+                a = g.MeasureString(lbl, f, PointF.Empty, StringFormat.GenericTypographic).Width;
+                anchoLetra[k] = a;
+                return a;
+            }
+            // Lo que crece la letra de la casilla 'i' con la lupa centrada en 'centro' (en casillas, 0.5 = el medio
+            // de la primera).
+            private float EscalaDe(Graphics g, int i, float centro, float slot, float altoL)
+            {
+                char ch = Letters[i];
+                float s = EscalaLupa(i + .5f - centro);
+                if (ch == TopMark) return TopeLupa(s, radioEstrella * 2f, slot, radioEstrella * 2f, altoL);
+                bool isVideo = (ch == VideoMark);
+                Font f = isVideo ? fVideo : fMain;
+                string lbl = isVideo ? lblVideo : ch.ToString();
+                float alto = f.SizeInPoints * g.DpiY / 72f * .78f;   // lo que sube una mayuscula, mas o menos
+                return TopeLupa(s, AnchoDe(g, lbl, f), slot, alto, altoL);
+            }
+            // Dibuja 'accion' con el lienzo agrandado 's' veces alrededor del centro de 'r'.
+            private delegate void Dibujo();
+            private static void Agrandado(Graphics g, RectangleF r, float s, Dibujo accion)
+            {
+                if (s <= 1.001f) { accion(); return; }
+                GraphicsState st = g.Save();
+                float cx = r.X + r.Width * .5f, cy = r.Y + r.Height * .5f;
+                g.TranslateTransform(cx, cy); g.ScaleTransform(s, s); g.TranslateTransform(-cx, -cy);
+                accion();
+                g.Restore(st);
+            }
+
+            private void RenderLupa(Graphics g, int w, int h, int n, float slot, float altoL, float bajo)
+            {
+                const double pulse = 0.45;   // brillo FIJO, como en el camino de la tarjeta de siempre (el pulso va por halo)
+                int iCur = Letters.IndexOf(Current);
+                float centro = (iCur >= 0) ? XCapsula(iCur, slot) / slot + .5f : -100f;   // la lupa va con la capsula
+                int availN = (Available == null) ? -1 : Available.Count;
+                int datos = FirmaDatos();
+                int cq = (int)Math.Round(centro * 64f);
+                if (lupaCache == null || luW != w || luH != h || luCur != Current || luLetters != Letters
+                    || luAvailN != availN || luDatos != datos || luCentro != cq)
+                {
+                    RebuildLupa(g, w, h, n, slot, altoL, bajo, centro);
+                    luW = w; luH = h; luCur = Current; luLetters = Letters; luAvailN = availN; luDatos = datos; luCentro = cq;
+                }
+                g.DrawImageUnscaled(lupaCache, 0, 0);
+
+                // LA CASILLA ELEGIDA: la misma capsula de neon, y la letra agrandada.
+                for (int i = 0; i < n; i++)
+                {
+                    char ch = Letters[i];
+                    if (ch != Current || ch == TopMark) continue;
+                    bool isVideo = (ch == VideoMark);
+                    string lbl = isVideo ? lblVideo : ch.ToString();
+                    Font useF = isVideo ? fVideo : fMain;
+                    float paso = AnimPaso, xCap = XCapsula(i, slot);
+                    RectangleF slotRect = new RectangleF(i * slot, 0, slot, altoL);
+                    float s = EscalaDe(g, i, centro, slot, altoL);
+                    if (paso < 1f)
+                    {
+                        bool hayD = (Available == null) || Available.Contains(ch);
+                        Color tono = TonoLetra(ch, hayD);
+                        Agrandado(g, slotRect, s, delegate { Grabada(g, whiteB, lbl, useF, slotRect, tono, hayD); });
+                    }
+                    RectangleF box = new RectangleF(xCap + 3.5f, 3.5f, slot - 7f, altoL - 7f);
+                    if (pulsePath == null || box != pulseBox)
+                    {
+                        if (pulsePath != null) pulsePath.Dispose();
+                        pulsePath = RoundRectF(box, 9);
+                        pulseBox = box;
+                    }
+                    if (pulseBrush == null) pulseBrush = new SolidBrush(Color.Black);
+                    if (pulsePen == null) pulsePen = new Pen(Color.Black, 2.6f);
+                    pulsePen.LineJoin = LineJoin.Round;
+                    for (int k = 5; k >= 1; k--)
+                    {
+                        pulsePen.Color = Color.FromArgb(9 + (int)(pulse * 7 * (6 - k)), 120, 190, 255);
+                        pulsePen.Width = k * 2.4f;
+                        g.DrawPath(pulsePen, pulsePath);
+                    }
+                    pulseBrush.Color = Color.FromArgb(26 + (int)(pulse * 30), 70, 150, 240);
+                    g.FillPath(pulseBrush, pulsePath);
+                    pulsePen.Color = Color.FromArgb(120 + (int)(pulse * 70), 130, 200, 255); pulsePen.Width = 2.6f;
+                    g.DrawPath(pulsePen, pulsePath);
+                    pulsePen.Color = Color.FromArgb(215 + (int)(pulse * 40), 225, 242, 255); pulsePen.Width = 1.1f;
+                    g.DrawPath(pulsePen, pulsePath);
+                    whiteB.Color = (paso >= 1f) ? Color.White : Color.FromArgb((int)(255 * paso), 255, 255, 255);
+                    Agrandado(g, slotRect, s, delegate { g.DrawString(lbl, useF, whiteB, slotRect, sfCen); });
+                    break;
+                }
+
+                // LA ESTRELLITA DORADA de "lo mas sonado", tambien bajo la lupa si esta cerca.
+                int topI = Letters.IndexOf(TopMark);
+                if (topI >= 0 && Available != null && Available.Contains(TopMark))
+                {
+                    RectangleF gsl = new RectangleF(topI * slot, 0, slot, altoL);
+                    const double gpu = 0.5;
+                    bool topSel = (Current == TopMark);
+                    if (goldTextBrush == null) goldTextBrush = new SolidBrush(Color.Black);
+                    float r0 = radioEstrella;
+                    radioEstrella = r0 * EscalaDe(g, topI, centro, slot, altoL);
+                    if (topSel)
+                    {
+                        RectangleF gbx = new RectangleF(XCapsula(topI, slot) + 3.5f, 3.5f, gsl.Width - 7f, altoL - 7f);
+                        int ga = 80 + (int)(gpu * 150);
+                        if (goldPath == null || gbx != goldBox) { if (goldPath != null) goldPath.Dispose(); goldPath = RoundRectF(gbx, 9); goldBox = gbx; }
+                        if (goldBrush == null) goldBrush = new SolidBrush(Color.Black);
+                        if (goldPen == null) goldPen = new Pen(Color.Black, 2.2f);
+                        goldPen.LineJoin = LineJoin.Round;
+                        goldBrush.Color = Color.FromArgb(ga, 255, 200, 40);
+                        goldPen.Color = Color.FromArgb(235, 255, 228, 130); goldPen.Width = 2.2f;
+                        g.FillPath(goldBrush, goldPath);
+                        g.DrawPath(goldPen, goldPath);
+                        goldTextBrush.Color = Color.White;
+                        Estrella(g, goldTextBrush, gsl, 0f, 0f);
+                    }
+                    else
+                    {
+                        int hAlpha = 35 + (int)(gpu * 55);
+                        goldTextBrush.Color = Color.FromArgb(hAlpha, 255, 205, 90);
+                        Estrella(g, goldTextBrush, gsl, -1f, 0f);
+                        Estrella(g, goldTextBrush, gsl, 1f, 0f);
+                        Estrella(g, goldTextBrush, gsl, 0f, -1f);
+                        Estrella(g, goldTextBrush, gsl, 0f, 1f);
+                        int gb = 60 + (int)(gpu * 70); if (gb > 255) gb = 255;
+                        goldTextBrush.Color = Color.FromArgb(255, 255, 210, gb);
+                        Estrella(g, goldTextBrush, gsl, 0f, 0f);
+                    }
+                    radioEstrella = r0;
+                }
+            }
+
+            // La tira de la lupa: el mismo riel y las mismas letras que RebuildStrip, pero cada letra crecida segun lo
+            // cerca que este del centro, y la rayita de cuanta musica tiene cada una.
+            private void RebuildLupa(Graphics gMide, int w, int h, int n, float slot, float altoL, float bajo, float centro)
+            {
+                if (lupaCache == null || lupaCache.Width != w || lupaCache.Height != h)
+                {
+                    if (lupaCache != null) lupaCache.Dispose();
+                    lupaCache = new Bitmap(w, h, PixelFormat.Format32bppPArgb);
+                }
+                // Lo que mas tiene una letra: la rayita de cada una se mide contra eso.
+                int mas = 0;
+                if (Counts != null)
+                    for (int i = 0; i < n; i++) { int c; if (Counts.TryGetValue(Letters[i], out c) && c > mas) mas = c; }
+                using (Graphics g = Graphics.FromImage(lupaCache))
+                using (SolidBrush tb = new SolidBrush(Color.White))
+                {
+                    g.Clear(Color.Transparent);
+                    g.SmoothingMode = SmoothingMode.AntiAlias;
+                    Riel(g, w, h);
+                    using (Pen sep = new Pen(Color.FromArgb(24, 150, 175, 225)))
+                        for (int i = 1; i < n; i++)
+                            g.DrawLine(sep, i * slot, 10, i * slot, h - 10);
+                    float grueso = Math.Max(1.5f, h * .035f);
+                    float yRaya = (bajo > 0f) ? altoL - grueso * .5f : h - grueso - 2f;
+                    for (int i = 0; i < n; i++)
+                    {
+                        char ch = Letters[i];
+                        bool isTop = (ch == TopMark);
+                        bool avail = (Available == null) || Available.Contains(ch);
+                        RectangleF rL = new RectangleF(i * slot, 0, slot, altoL);
+                        if (ch != Current && !(isTop && avail))
+                        {
+                            bool isVideo = (ch == VideoMark);
+                            float s = EscalaDe(gMide, i, centro, slot, altoL);
+                            if (isTop)
+                            {
+                                float r0 = radioEstrella; radioEstrella = r0 * s;
+                                EstrellaGrabada(g, tb, rL, Color.FromArgb(122, 116, 96), avail);
+                                radioEstrella = r0;
+                            }
+                            else
+                            {
+                                string lbl = isVideo ? lblVideo : ch.ToString();
+                                Font f = isVideo ? fVideo : fMain;
+                                Color tono = TonoLetra(ch, avail);
+                                Agrandado(g, rL, s, delegate { Grabada(g, tb, lbl, f, rL, tono, avail); });
+                            }
+                        }
+                        if (bajo > 0f && fNum != null) Cuenta(g, tb, ch, i, slot, h, bajo, avail);
+                        // LA RAYITA: cuanta musica hay detras de esta letra, contra la que mas tiene.
+                        int cuantas = 0;
+                        if (mas > 0 && Counts != null && Counts.TryGetValue(ch, out cuantas) && cuantas > 0)
+                        {
+                            float largo = RayaLupa(cuantas, mas, slot);
+                            Color tono = TonoLetra(ch, avail);
+                            tb.Color = Color.FromArgb(avail ? 170 : 80, tono);
+                            g.FillRectangle(tb, i * slot + (slot - largo) * .5f, yRaya - grueso * .5f, largo, grueso);
+                        }
+                    }
+                }
+            }
+            // Lo larga que es la rayita de una letra: proporcional a lo que tiene, y al menos 3 px para que se vea
+            // que hay algo.
+            internal static float RayaLupa(int cuantas, int mas, float slot)
+            {
+                if (cuantas <= 0 || mas <= 0) return 0f;
+                float max = Math.Max(3f, slot - 10f);
+                return Math.Max(3f, max * Math.Min(1f, cuantas / (float)mas));
+            }
+#endif
         }
 
         // ==========  ENCABEZADO DE LA SECCION  ==========

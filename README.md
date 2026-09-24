@@ -1,5 +1,16 @@
 # Rocola
 
+## Pantalla viva, tanda 1 — 24 de septiembre de 2026
+
+Las primeras ideas elegidas del lienzo de bocetos, solo en el dibujo por tarjeta gráfica y en las dos ramas.
+La portada elegida crece, brilla con su propio color y dice cuántas canciones trae y cuánto dura, mientras las
+demás se apagan un poco. Si el cursor se queda un segundo en un disco, sale una ficha con sus canciones más
+pedidas y cuántas van en la cola. Al pasar de página, la vieja sale mientras entra la nueva, columna a columna, y
+el cielo se corre un poco más despacio. La barra de letras lleva lupa y una rayita que dice cuánta música hay
+detrás de cada letra. Cada idea tiene su interruptor en la pestaña nueva de Ctrl+F3, **Pantalla**. El dibujo por
+procesador no cambia.
+[La guía de la tanda](PANTALLA_VIVA_2026-09-24.md).
+
 ## Estrella reactiva — 23 de septiembre de 2026
 
 Estrella de cinco puntas como el icono, ahora **sólida en 3D**: gira vueltas enteras

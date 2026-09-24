@@ -400,6 +400,11 @@ namespace Rocola
                     else if (s.StartsWith("cielo_profundo=")) cieloProfundo = s.Substring(15).Trim() != "0";
                     else if (s.StartsWith("cielo_profundo_fuerza=")) nebNaturalFuerza = FuerzaNatural(s.Substring(22));
                     else if (s.StartsWith("aurora_bandas=")) auroraBandas = s.Substring(14).Trim() != "0";
+                    // Ctrl+F3 -> Pantalla (PantallaVivaGpu.cs): solo cambian el dibujo por tarjeta grafica.
+                    else if (s.StartsWith("portada_enfocada=")) portadaEnfocada = s.Substring("portada_enfocada=".Length).Trim() != "0";
+                    else if (s.StartsWith("ficha_disco=")) fichaDisco = s.Substring("ficha_disco=".Length).Trim() != "0";
+                    else if (s.StartsWith("pagina_desliza=")) paginaDesliza = s.Substring("pagina_desliza=".Length).Trim() != "0";
+                    else if (s.StartsWith("letras_lupa=")) letrasLupa = s.Substring("letras_lupa=".Length).Trim() != "0";
                     else if (s.StartsWith("disco="))   // tipo de disco: auto (medir), ssd o hdd (Ctrl+F3)
                     {
                         string d = s.Substring(6).Trim().ToLowerInvariant();
@@ -516,6 +521,10 @@ namespace Rocola
                 sb.Append("cielo_profundo=").Append(cieloProfundo ? "1" : "0").Append("\r\n");
                 sb.Append("cielo_profundo_fuerza=").Append((int)Math.Round(nebNaturalFuerza * 100f)).Append("\r\n");
                 sb.Append("aurora_bandas=").Append(auroraBandas ? "1" : "0").Append("\r\n");
+                sb.Append("portada_enfocada=").Append(portadaEnfocada ? "1" : "0").Append("\r\n");
+                sb.Append("ficha_disco=").Append(fichaDisco ? "1" : "0").Append("\r\n");
+                sb.Append("pagina_desliza=").Append(paginaDesliza ? "1" : "0").Append("\r\n");
+                sb.Append("letras_lupa=").Append(letrasLupa ? "1" : "0").Append("\r\n");
                 sb.Append("disco=").Append(perfilDisco == 1 ? "ssd" : perfilDisco == 2 ? "hdd" : "auto").Append("\r\n");
                 sb.Append("video_gpu=").Append(videoGpuOn ? "1" : "0").Append("\r\n");
                 sb.Append("diagnostico=").Append(diagOn ? "1" : "0").Append("\r\n");

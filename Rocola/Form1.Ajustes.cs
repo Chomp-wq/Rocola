@@ -680,23 +680,31 @@ namespace Rocola
                     // 120 las cinco van de 312 a 944 -acaban en el mismo sitio- y al titulo le quedan 290 px
                     // para los 247 que gasta el mas largo. La ventana no crece: sigue cabiendo en la pantalla
                     // del bar. Lo comprueba la bateria 'ventana', que las mide de verdad.
-                    BotonPlano bPagS = new BotonPlano(); bPagS.SetBounds(568, 8, 120, 30); bPagS.Font = fBot; bPagS.Text = "Sonido";
-                    BotonPlano bPagI = new BotonPlano(); bPagI.SetBounds(696, 8, 120, 30); bPagI.Font = fBot; bPagI.Text = "Imagen";
+                    //
+                    // SEIS, DE 100. La sexta es la de la pantalla (PantallaVivaGpu.cs). A 100 px y 6 de aire van de 312
+                    // a 942: no pisan el titulo (acaba en 306) ni se salen de los 960, y la palabra mas larga
+                    // ("Detalles", "Pantalla") mide unos 62 px con su letra. Lo vuelve a medir la bateria 'pestanas'.
+                    BotonPlano bPagS = new BotonPlano(); bPagS.SetBounds(524, 8, 100, 30); bPagS.Font = fBot; bPagS.Text = "Sonido";
+                    BotonPlano bPagI = new BotonPlano(); bPagI.SetBounds(630, 8, 100, 30); bPagI.Font = fBot; bPagI.Text = "Imagen";
                     // LA QUINTA: el fondo y sus adornos. Once interruptores que estaban en Imagen y no eran
                     // de ahi: ninguno le quita trabajo a la rocola, son de gusto. Y no cabian: con los
                     // dieciseis, la tarjeta de Imagen media 1026 px en una pagina de 636 y hubo que ponerle
                     // barra de desplazamiento.
-                    BotonPlano bPagF = new BotonPlano(); bPagF.SetBounds(824, 8, 120, 30); bPagF.Font = fBot; bPagF.Text = "Fondo";
+                    BotonPlano bPagF = new BotonPlano(); bPagF.SetBounds(736, 8, 100, 30); bPagF.Font = fBot; bPagF.Text = "Fondo";
+                    // Y LA SEXTA: las ideas de la pantalla que se eligieron del lienzo de bocetos (portada enfocada,
+                    // ficha rapida, pasar de pagina deslizando, lupa de letras...). Son de la tarjeta grafica y de
+                    // gusto; no caben en ninguna de las otras, que ya estan llenas.
+                    BotonPlano bPagP = new BotonPlano(); bPagP.SetBounds(842, 8, 100, 30); bPagP.Font = fBot; bPagP.Text = "Pantalla";
                     // Y LA TERCERA: los detalles que dan vida. No caben en Imagen -la tarjeta EFECTOS mide
                     // 568 px y su contenido llega al 562, medido- y ademas no son lo mismo: las de alli se
                     // bajan para ganar rendimiento a cambio de que se vea menos bonito, y el medidor las
                     // puede proponer. Estas no cuestan nada que se note: se encienden y se dejan.
-                    BotonPlano bPagD = new BotonPlano(); bPagD.SetBounds(440, 8, 120, 30); bPagD.Font = fBot; bPagD.Text = "Detalles";
+                    BotonPlano bPagD = new BotonPlano(); bPagD.SetBounds(418, 8, 100, 30); bPagD.Font = fBot; bPagD.Text = "Detalles";
                     // Y LA CUARTA: los colores del fondo. Tampoco caben en Detalles -sus dos tarjetas ocupan
                     // de y=4 a y=428 de 636 y debajo ya estan el pie y el boton de fabrica-, y ademas no son
                     // lo mismo: las de alli son adornos que se encienden y se dejan; estas cambian de que
                     // color es la rocola entera.
-                    BotonPlano bPagC = new BotonPlano(); bPagC.SetBounds(312, 8, 120, 30); bPagC.Font = fBot; bPagC.Text = "Colores";
+                    BotonPlano bPagC = new BotonPlano(); bPagC.SetBounds(312, 8, 100, 30); bPagC.Font = fBot; bPagC.Text = "Colores";
                     // El subtitulo ya no ocupa el renglon entero: se queda con su mitad izquierda (su texto
                     // gasta 545 px medidos) y la derecha es del interruptor de aqui abajo. Antes reclamaba los
                     // 916 aunque no los usara, y asi los dos decian ser dueños del mismo sitio.
@@ -1129,24 +1137,26 @@ namespace Rocola
                     Panel pDet = PaginaDetalles(fNom, fDes, fBot, cTexto, cTenue, cApagado);
                     Panel pCol = PaginaColores(fNom, fDes, fBot, cTexto, cTenue, cApagado);
                     Panel pFon = PaginaFondo(fNom, fVal, fDes, fBot, cTexto, cTenue, cApagado);
-                    string[] nomPag = { "Sonido", "Imagen y rendimiento", "Detalles que dan vida", "Colores del fondo", "El fondo y sus adornos" };
+                    Panel pPan = PaginaPantalla(fNom, fDes, fBot, cTexto, cTenue, cApagado);
+                    string[] nomPag = { "Sonido", "Imagen y rendimiento", "Detalles que dan vida", "Colores del fondo", "El fondo y sus adornos", "La pantalla" };
                     Action pintaPag = delegate
                     {
-                        if (f3Pagina < 0 || f3Pagina > 4) f3Pagina = 0;
+                        if (f3Pagina < 0 || f3Pagina > 5) f3Pagina = 0;
                         // Se ensena o se esconde TODO lo que hay en la ventana menos el marco (titulo,
                         // pestanas y el boton de Listo, que se ven en las tres) y las paginas propias.
                         // Se hace asi y no con una lista de nombres a proposito: una lista se olvida de una
                         // tarjeta al agregarla -y en la rama del equipo potente hay una mas- y esa tarjeta se
                         // quedaria colgada encima de la pagina nueva.
                         foreach (Control cc in dlg.Controls)
-                            if (cc != lTit && cc != bPagS && cc != bPagI && cc != bPagD && cc != bPagC && cc != bPagF && cc != bOk && cc != pImg && cc != pDet && cc != pCol && cc != pFon && cc != lVer)
+                            if (cc != lTit && cc != bPagS && cc != bPagI && cc != bPagD && cc != bPagC && cc != bPagF && cc != bPagP && cc != bOk && cc != pImg && cc != pDet && cc != pCol && cc != pFon && cc != pPan && cc != lVer)
                                 cc.Visible = (f3Pagina == 0);
                         pImg.Visible = (f3Pagina == 1);
                         pDet.Visible = (f3Pagina == 2);
                         pCol.Visible = (f3Pagina == 3);
                         pFon.Visible = (f3Pagina == 4);
+                        pPan.Visible = (f3Pagina == 5);
                         lTit.Text = nomPag[f3Pagina];
-                        BotonPlano[] pb = { bPagS, bPagI, bPagD, bPagC, bPagF };
+                        BotonPlano[] pb = { bPagS, bPagI, bPagD, bPagC, bPagF, bPagP };
                         for (int k = 0; k < pb.Length; k++)
                         {
                             bool act = (k == f3Pagina);
@@ -1161,11 +1171,12 @@ namespace Rocola
                     bPagD.Click += delegate { f3Pagina = 2; pintaPag(); };
                     bPagC.Click += delegate { f3Pagina = 3; pintaPag(); };
                     bPagF.Click += delegate { f3Pagina = 4; pintaPag(); };
+                    bPagP.Click += delegate { f3Pagina = 5; pintaPag(); };
 
-                    dlg.Controls.Add(lTit); dlg.Controls.Add(bPagS); dlg.Controls.Add(bPagI); dlg.Controls.Add(bPagD); dlg.Controls.Add(bPagC); dlg.Controls.Add(bPagF); dlg.Controls.Add(lVer); dlg.Controls.Add(lSub); dlg.Controls.Add(swNoche); dlg.Controls.Add(lSal);
+                    dlg.Controls.Add(lTit); dlg.Controls.Add(bPagS); dlg.Controls.Add(bPagI); dlg.Controls.Add(bPagD); dlg.Controls.Add(bPagC); dlg.Controls.Add(bPagF); dlg.Controls.Add(bPagP); dlg.Controls.Add(lVer); dlg.Controls.Add(lSub); dlg.Controls.Add(swNoche); dlg.Controls.Add(lSal);
                     dlg.Controls.Add(tVol); dlg.Controls.Add(tCal); dlg.Controls.Add(tIa); dlg.Controls.Add(tBib);
                     dlg.Controls.Add(lDskT); dlg.Controls.Add(bDskA); dlg.Controls.Add(bDskS); dlg.Controls.Add(bDskH); dlg.Controls.Add(lDskS);
-                    dlg.Controls.Add(bReset); dlg.Controls.Add(bOk); dlg.Controls.Add(pImg); dlg.Controls.Add(pDet); dlg.Controls.Add(pCol); dlg.Controls.Add(pFon);
+                    dlg.Controls.Add(bReset); dlg.Controls.Add(bOk); dlg.Controls.Add(pImg); dlg.Controls.Add(pDet); dlg.Controls.Add(pCol); dlg.Controls.Add(pFon); dlg.Controls.Add(pPan);
                     pintaPag();
                     // Escape cierra, como toda la vida (los controles propios se comen las teclas, asi que la
                     // ventana las mira antes con KeyPreview).

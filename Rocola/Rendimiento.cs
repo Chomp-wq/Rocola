@@ -199,7 +199,10 @@ namespace Rocola
             // Este va ANTES del corte de abajo: la pared de discos existe aunque el panel de la tarjeta no,
             // y es la pared la que decide como hornea sus casillas.
             if (albumView != null) albumView.HojeoLigero = hojeoLigero;   // aligerar mientras se pasa de pagina
+            if (albumView != null) albumView.PaginaDesliza = paginaDesliza;   // la vieja sale mientras entra la nueva (Ctrl+F3 -> Pantalla)
+            if (letterBar != null) letterBar.LupaGpu = letrasLupa;            // la barra de letras con lupa
             if (gpuPanel == null) return;
+            gpuPanel.PortadaEnfocada = portadaEnfocada;
             gpuPanel.Nieblas = nieblasNiv;
             gpuPanel.NebulosasCine = nebulosasCine;
             gpuPanel.VinetaSuave = vinetaSuave;
