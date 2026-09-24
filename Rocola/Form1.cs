@@ -759,6 +759,7 @@ namespace Rocola
         protected override void OnFormClosed(FormClosedEventArgs e)
         {
             try { if (statsDirty) { statsDirty = false; SaveStats(false); } } catch { }   // guardar estadisticas pendientes
+            try { GuardaNoche(false); } catch { }   // y lo mas pedido esta noche (AtraccionGpu.cs)
             WaitDataWrites(5000);   // ultima barrera por si Windows cerro la ventana por otra ruta
             try { if (timerResRaised) { timeEndPeriod(1); timerResRaised = false; } } catch { }
             base.OnFormClosed(e);
@@ -2044,6 +2045,7 @@ namespace Rocola
             if (winMode != 0 && Environment.TickCount - winTick >= WinMs) AbortWinTrans();
             DiscoVivoTic();   // dentro del disco: los minutos de la cola y el vinilo de lo que suena (DiscoVivoGpu.cs)
             SuenaVivoTic();   // y el vinilo del panel de reposo en grande (SuenaVivoGpu.cs)
+            AtraccionTic();   // y lo que se hornea para la atraccion, una cosa por vuelta (AtraccionGpu.cs)
 #endif
             DrainCoverTrash();   // libera carátulas expulsadas (seguro: no hay repintado en curso)
 #if ROCOLA_GPU

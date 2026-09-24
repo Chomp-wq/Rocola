@@ -867,6 +867,7 @@ namespace Rocola
                 gpuPanel.GetInvita = BuildInvitaState;   // sin creditos: la tarjeta que invita
                 gpuPanel.GetMoneda = BuildMonedaState;   // la moneda que cae en la capsula de creditos
                 gpuPanel.GetReposo = BuildReposoState;   // lo que suena, en grande: el vinilo y el titulo del panel de reposo
+                gpuPanel.GetAtraccion = BuildAtraccionState;   // el modo atraccion: el escaparate y lo mas pedido (AtraccionGpu.cs)
                 gpuPanel.GetGridAhead = albumView.BuildGpuAhead;
                 gpuPanel.GetContour = delegate { return albumView.ContourSpriteBmp; };          // resalte de seleccion
                 gpuPanel.GetContourRect = delegate {
@@ -965,11 +966,11 @@ namespace Rocola
             {
                 st = new GpuCubeState();
                 Image ca, cb; float f;
-                attractView.GetCoverPair(out ca, out cb, out f);   // puede dar null (portadas aun cargando): el cubo muestra relleno azulado
-                RectangleF cubo = AttractCubeRect();   // mismo rectangulo que usa la animacion de entrada/salida
+                ParCuboAtraccion(out ca, out cb, out f);   // puede dar null (portadas aun cargando): el cubo muestra relleno azulado
+                RectangleF cubo = CuboAtraccionAhora();   // el de siempre, o el del escaparate (AtraccionGpu.cs): lo mismo que la animacion de entrada/salida
                 st.Sel.Has = true;
                 st.Sel.X = cubo.X; st.Sel.Y = cubo.Y; st.Sel.W = cubo.Width; st.Sel.H = cubo.Height;
-                st.Sel.Angle = attractView.Angle; st.Sel.CoverA = ca as Bitmap; st.Sel.CoverB = cb as Bitmap; st.Sel.Fade = f;
+                st.Sel.Angle = AnguloAtraccion(); st.Sel.CoverA = ca as Bitmap; st.Sel.CoverB = cb as Bitmap; st.Sel.Fade = f;
                 return st;   // en atraccion no hay mini-cubo (no suena nada)
             }
             if (searchOpen && searchOverlay != null)
@@ -1148,6 +1149,7 @@ namespace Rocola
                     if (songPager != null && songPager.Visible) DrawCtrlOverlay(g, songPager);
                     g.Restore(gs);
                 }
+                else if (attractOn && EscaparateActivo()) { }   // con el escaparate, los textos los pone el (AtraccionGpu.cs)
                 else if (attractOn)   // MODO ATRACCION: solo los dos textos (el cubo gigante y las estrellas los pone la GPU)
                 {
                     RectangleF cuboA = AttractCubeRect();   // mismo rectangulo que el cubo y que la animacion
@@ -1336,8 +1338,12 @@ namespace Rocola
                 int side = (int)(Math.Min(w, h) * 0.40); if (side < 80) side = 80;
                 int cubeBottom = (h - side) / 2 - 30 + side;
                 double p = 0.5 + 0.5 * Math.Sin(phase * 3.0);
-                buf[n].Cx = w / 2f; buf[n].Cy = cubeBottom + 72; buf[n].R = 150f;
-                buf[n].Argb = (uint)Color.FromArgb((int)(16 + 38 * p), 255, 220, 120).ToArgb(); n++;
+                float apaga = UiAlfaAtraccion();   // se apaga con su texto cuando sale la lista de lo mas pedido (AtraccionGpu.cs)
+                if (!EscaparateActivo() && apaga > 0f)   // con el escaparate, su respiro va con su mensaje
+                {
+                    buf[n].Cx = w / 2f; buf[n].Cy = cubeBottom + 72; buf[n].R = 150f;
+                    buf[n].Argb = (uint)Color.FromArgb((int)((16 + 38 * p) * apaga), 255, 220, 120).ToArgb(); n++;
+                }
             }
             else
             {
@@ -1474,7 +1480,7 @@ namespace Rocola
                 if (songPager != null && songPager.Animando) sb = Mix(sb, (int)(songPager.Paso * 128f));
             }
             else if (attractOn)                        // MODO ATRACCION: solo la cantidad de canciones (el pulso del texto va como halo por quad)
-            { sb = Mix(sb, 'A'); sb = Mix(sb, attractView != null ? attractView.SongCount : 0); }
+            { sb = Mix(sb, 'A'); sb = Mix(sb, attractView != null ? attractView.SongCount : 0); sb = Mix(sb, EscaparateActivo() ? 1 : 0); }
             else if (letterBar != null)                // parte superior = navegacion (A-Z + encabezado)
             {
                 sb = Mix(sb, 'N'); sb = Mix(sb, letterBar.Current); sb = Mix(sb, letterBar.Letters);

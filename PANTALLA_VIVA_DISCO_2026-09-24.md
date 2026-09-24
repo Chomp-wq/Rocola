@@ -105,5 +105,6 @@ Medido en este contenedor, con Mono. Sirve para comparar unas cosas con otras; l
 ## Lo que viene
 
 3. **Lo que suena y los créditos.** Hecha: ver [la guía de la tanda 3](PANTALLA_VIVA_SUENA_2026-09-24.md).
-4. **Modo atracción.** El escaparate y lo más pedido esta noche.
+4. **Modo atracción.** Hecha: el escaparate y lo más pedido esta noche. Ver
+   [la guía de la tanda 4](PANTALLA_VIVA_ATRACCION_2026-09-24.md).
 5. **Estilo general.** Letra para leer de lejos y el color del género en todo.

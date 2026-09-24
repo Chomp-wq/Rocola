@@ -417,6 +417,9 @@ namespace Rocola
                     else if (s.StartsWith("moneda_cae=")) monedaCae = s.Substring("moneda_cae=".Length).Trim() != "0";
                     else if (s.StartsWith("sin_creditos_invita=")) sinCreditosInvita = s.Substring("sin_creditos_invita=".Length).Trim() != "0";
                     else if (s.StartsWith("avisos_claros=")) avisosClaros = s.Substring("avisos_claros=".Length).Trim() != "0";
+                    // Ctrl+F3 -> Pantalla -> La atraccion (AtraccionGpu.cs): tambien solo por tarjeta grafica.
+                    else if (s.StartsWith("escaparate=")) escaparate = s.Substring("escaparate=".Length).Trim() != "0";
+                    else if (s.StartsWith("top_noche=")) topNoche = s.Substring("top_noche=".Length).Trim() != "0";
                     else if (s.StartsWith("disco="))   // tipo de disco: auto (medir), ssd o hdd (Ctrl+F3)
                     {
                         string d = s.Substring(6).Trim().ToLowerInvariant();
@@ -532,6 +535,8 @@ namespace Rocola
                 sb.Append("moneda_cae=").Append(monedaCae ? "1" : "0").Append("\r\n");
                 sb.Append("sin_creditos_invita=").Append(sinCreditosInvita ? "1" : "0").Append("\r\n");
                 sb.Append("avisos_claros=").Append(avisosClaros ? "1" : "0").Append("\r\n");
+                sb.Append("escaparate=").Append(escaparate ? "1" : "0").Append("\r\n");
+                sb.Append("top_noche=").Append(topNoche ? "1" : "0").Append("\r\n");
                 sb.Append("disco=").Append(perfilDisco == 1 ? "ssd" : perfilDisco == 2 ? "hdd" : "auto").Append("\r\n");
                 sb.Append("video_gpu=").Append(videoGpuOn ? "1" : "0").Append("\r\n");
                 sb.Append("diagnostico=").Append(diagOn ? "1" : "0").Append("\r\n");
@@ -752,6 +757,10 @@ namespace Rocola
                 try { FlushFileBuffers(fs.SafeFileHandle.DangerousGetHandle()); } catch { }
             }
         }
+
+        // Guarda en segundo plano, con la cuenta de pendientes (el cierre espera a que acabe). Lo usa lo mas pedido esta
+        // noche (AtraccionGpu.cs).
+        private void GuardaDetras(System.Action trabajo) { QueueDataWrite(delegate (object ignorado) { trabajo(); }); }
 
         // Lee un archivo guardado con EscribeSeguro. Si el bueno falta o quedo vacio -un corte de luz de los
         // de antes, o un disco con problemas- se lee la copia. Devuelve null si no hay nada que leer.
@@ -2021,11 +2030,13 @@ namespace Rocola
             }
             statsDirty = true;
             topDirty = true;   // OPTIMIZACION (TOP): cambiaron counts/genero/artista -> reconstruir al entrar a TOP
+            CuentaNoche(it);   // y lo mas pedido esta noche, para la atraccion (AtraccionGpu.cs; sin tarjeta, nada)
         }
 
         private void StatsTimer_Tick(object sender, EventArgs e)
         {
             if (statsDirty) { statsDirty = false; SaveStats(true); }   // guardado periodico en segundo plano
+            GuardaNoche(true);   // lo mas pedido esta noche, si cambio (AtraccionGpu.cs)
         }
 
         // Mantiene el archivo acotado: descarta lo menos sonado (y mas viejo) para dejar entrar lo nuevo.
@@ -2517,6 +2528,7 @@ namespace Rocola
             try { SaveDeepDone(); } catch { }
             try { SaveDurFast(); } catch { }
             try { if (statsDirty) { statsDirty = false; SaveStats(false); } } catch { }
+            try { GuardaNoche(false); } catch { }   // y lo mas pedido esta noche (AtraccionGpu.cs), antes de esperar a los guardados
             WaitDataWrites(15000);
 
             // Un append que fallo vuelve a poner sus lineas en la cola. Segundo intento corto: cubre una

@@ -609,8 +609,8 @@ class SuenaVivo
             Control hojaSuena = sw[0].Parent != null ? sw[0].Parent.Parent : null;
             Control hojaPared = Find(page, "Portada enfocada (GPU)").Parent.Parent;
             bool unaVisible = hojaPared.Visible && !hojaSuena.Visible;
-            Check(hojas.Count == 2 && botones.Count == 2 && hojaSuena != hojaPared && unaVisible,
-                  "en dos hojas con su boton arriba (\"" + (botones.Count > 1 ? botones[1].Text : "") + "\"); al abrir se ve la de la pared y el disco");
+            Check(hojas.Count >= 2 && botones.Count == hojas.Count && hojaSuena != hojaPared && unaVisible,
+                  "en su hoja con su boton arriba (\"" + (botones.Count > 1 ? botones[1].Text : "") + "\"); al abrir se ve la de la pared y el disco");
             typeof(Control).GetMethod("OnClick", F).Invoke(botones[1], new object[] { EventArgs.Empty });
             bool cambia = !hojaPared.Visible && hojaSuena.Visible;
             typeof(Control).GetMethod("OnClick", F).Invoke(botones[0], new object[] { EventArgs.Empty });

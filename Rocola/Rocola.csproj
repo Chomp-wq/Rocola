@@ -113,6 +113,7 @@
     <Compile Include="PantallaVivaGpu.cs" />
     <Compile Include="DiscoVivoGpu.cs" />
     <Compile Include="SuenaVivoGpu.cs" />
+    <Compile Include="AtraccionGpu.cs" />
     <Compile Include="PrecargaPaginaGpu.cs" />
     <Compile Include="PaletaCaratulaGpu.cs" />
     <Compile Include="CreditosServicio.cs" />

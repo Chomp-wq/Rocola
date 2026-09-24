@@ -2760,6 +2760,7 @@ namespace Rocola
             attractView.CycleCovers = covers;
             attractView.SongCount = tracks.Count;
             attractView.Phase = phase;
+            EscaparateEntra();   // el escaparate y lo mas pedido esta noche (AtraccionGpu.cs; sin tarjeta, nada)
             for (int i = 0; i < covers.Count && i < 3; i++) RequestCoverByPath(covers[i], true);   // adelantar las primeras
             attractOn = true;
 #if ROCOLA_GPU
@@ -2775,7 +2776,7 @@ namespace Rocola
                 List<Album> lst = CurrentList();
                 Album selAlb = (selAlbumIndex >= 0 && selAlbumIndex < lst.Count) ? lst[selAlbumIndex] : null;
                 double angDesde; RectangleF desde = SelectedDiscRect(out angDesde);
-                StartDiscTrans(desde, AttractCubeRect(), angDesde, attractView.Angle,
+                StartDiscTrans(desde, CuboAtraccionAhora(), angDesde, AnguloAtraccion(),   // adonde va el cubo (con el escaparate, a la izquierda)
                                (selAlb != null) ? RequestCover(selAlb, false, true) : null);
             }
             else
@@ -2794,10 +2795,12 @@ namespace Rocola
 #if ROCOLA_GPU
             Image portadaAtraccion = null;   // la que muestra el cubo gigante AHORA: hay que leerla ANTES de apagar la atraccion
             double angAtraccion = 0;
+            RectangleF cuboAtraccion = AttractCubeRect();   // y DONDE esta: con el escaparate, a la izquierda o en la esquina
             if (attractView != null && gpuPanel != null && gpuEnabled)
-            { Image c2; float f2; attractView.GetCoverPair(out portadaAtraccion, out c2, out f2); angAtraccion = attractView.Angle; }
+            { Image c2; float f2; ParCuboAtraccion(out portadaAtraccion, out c2, out f2); angAtraccion = AnguloAtraccion(); cuboAtraccion = CuboAtraccionAhora(); }
 #endif
             attractOn = false;
+            EscaparateSale();   // lo horneado para el escaparate se suelta (AtraccionGpu.cs; sin tarjeta, nada)
             if (attractView != null) attractView.Visible = false;
 #if ROCOLA_GPU
             uiOverlaySig = SigNada;   // rehace la textura de UI de inmediato (deja los textos de atraccion por la barra normal)
@@ -2806,7 +2809,7 @@ namespace Rocola
                 SyncGpuFullScreen();   // aplica el modo navegacion YA (sin un cuadro mezclado de por medio)
                 // Ya con la rejilla puesta: el cubo gigante se encoge hasta la casilla del disco elegido y se funde.
                 double angHasta; RectangleF hasta = SelectedDiscRect(out angHasta);
-                StartDiscTrans(AttractCubeRect(), hasta, angAtraccion, angHasta, portadaAtraccion);
+                StartDiscTrans(cuboAtraccion, hasta, angAtraccion, angHasta, portadaAtraccion);
             }
 #endif
             this.Invalidate();
