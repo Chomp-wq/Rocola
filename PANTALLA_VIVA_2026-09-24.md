@@ -129,8 +129,8 @@ Medido en este contenedor, con Mono. Sirve para comparar unas cosas con otras; l
 
 Las otras ideas que elegiste, por tandas, cada una con sus pruebas y en las dos ramas:
 
-2. **Dentro del disco.** El vinilo que asoma si suena ese disco, el ecualizador en la canción que suena, "en cola ·
-   en ~N min", y el vuelo desde la lista hasta "En cola".
+2. **Dentro del disco.** Hecha: el vinilo que asoma, la lista grande, el ecualizador, "en cola · en ~N min" y el
+   vuelo desde la lista hasta "En cola". Ver [la guía de la tanda 2](PANTALLA_VIVA_DISCO_2026-09-24.md).
 3. **Lo que suena y los créditos.**
    - Lo que suena, en grande.
    - La moneda que cae.

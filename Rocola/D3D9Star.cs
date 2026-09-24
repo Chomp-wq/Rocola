@@ -1973,6 +1973,7 @@ namespace Rocola
             if (winTex != IntPtr.Zero) { D3D9.Release(winTex); winTex = IntPtr.Zero; winLastBmp = null; }
             if (toastTex != IntPtr.Zero) { D3D9.Release(toastTex); toastTex = IntPtr.Zero; toastVer = -1; }
             SueltaPantallaViva();   // el letrero de la elegida y la ficha rapida
+            SueltaDiscoVivo();      // el vinilo y el boleto
             if (uiTex != IntPtr.Zero) { D3D9.Release(uiTex); uiTex = IntPtr.Zero; }
             if (hazTex != IntPtr.Zero) { D3D9.Release(hazTex); hazTex = IntPtr.Zero; }
             if (nebTex != IntPtr.Zero) { D3D9.Release(nebTex); nebTex = IntPtr.Zero; }
@@ -2117,6 +2118,7 @@ namespace Rocola
             if (tt.Has && tt.Bmp != null && (tt.Ver != toastVer || toastTex == IntPtr.Zero))   // el bitmap se REUSA (mismo objeto), por eso manda la version
             { toastTex = Upload(toastTex, ref toastBw, ref toastBh, tt.Bmp, out toastU, out toastV); toastVer = tt.Ver; }
             PreparaPantallaViva();         // el letrero de la elegida, la ficha rapida y el empujon del cielo al pasar de pagina
+            PreparaDiscoVivo();            // dentro del disco: el vinilo, las barritas de la que suena y el boleto que vuela
             // Barras (UI) a textura: se re-sube solo cuando cambia algun texto/estado (firma del form), limitada a
             // UNA por franja (heavyGapMs). UiUrgent: al CAMBIAR DE MODO (p.ej. cerrar el buscador) hay que rehacerla
             // en ESTE mismo cuadro, sin esperar franja: si no, se veria la rejilla por los huecos del teclado un instante.
@@ -2254,6 +2256,7 @@ namespace Rocola
             // Cubos girando ENCIMA del contorno (igual orden que en CPU): primero el relevo, luego el seleccionado.
             if (cs.Relay.Has)
                 stars.DrawCube(relTex, relU, relV, cs.Relay.X, cs.Relay.Y, cs.Relay.W, cs.Relay.H, cs.Relay.Angle, WallOpacity, cs.Relay.Tilt);
+            DibujaVinilo(ref cs);   // dentro del disco, DETRAS del cubo grande: el cubo se aparta y el vinilo asoma por su lado
             if (cs.Sel.Has)
             {
                 stars.DrawCube(selTexA, selUA, selVA, cs.Sel.X, cs.Sel.Y, cs.Sel.W, cs.Sel.H, cs.Sel.Angle, ShowAlbum ? WallOpacity : 1f, cs.Sel.Tilt);
@@ -2285,6 +2288,7 @@ namespace Rocola
                         ink);
                     stars.DrawQuad(piezaTex[i], piezaQuad);
                 }
+            if (!(gw.Has && gw.HideUi)) DibujaEq();   // las barritas de la que suena, encima de la lista y de su fila elegida
             // VENTANA del buscador abriendo/cerrando: el mismo quad de la UI, escalado desde su centro y fundido.
             if (gw.Has && gw.Alpha > 0.004f && gw.Scale > 0.01f)
             {
@@ -2349,6 +2353,7 @@ namespace Rocola
                 }
                 stars.DrawCube(transTex, transU, transV, tr.X, tr.Y, tr.W, tr.H, tr.Angle, tr.Alpha, tr.Tilt);
             }
+            DibujaBoleto();   // la cancion pedida volando de su fila a la cola: tambien encima de todo, menos los avisos
             // AVISO flotante (moneda, cancion agregada...) por ENCIMA de todo menos el contador de FPS.
             if (tt.Has && toastTex != IntPtr.Zero && tt.Alpha > 0.004f && tt.Bmp != null)
             {
