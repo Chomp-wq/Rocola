@@ -11,8 +11,10 @@ using System.Windows.Forms;
 //  1) El solido: cerrado (cada arista entre dos caras), con las normales hacia afuera, y de frente es la estrella del
 //     icono (las puntas y los valles en su sitio, la de arriba arriba). De frente se ven las diez caras de delante; de
 //     espaldas, las de detras. Una cara de espaldas no se pinta, y las que se ven van de atras hacia adelante.
-//  2) El giro: da la vuelta entera, la velocidad cambia sin tirones, no depende de los cuadros por segundo, la musica
-//     lo acelera y al navegar se calma. Apagada la estrella musical, queda de frente como el icono.
+//  2) El giro: da la vuelta entera, la velocidad cambia sin tirones, no depende de los cuadros por segundo y al navegar
+//     se calma. LA MUSICA YA NO LA MUEVE (24-09-2026, "da brincos"): con silencio, con golpes o con otro genero, el
+//     mismo recorrido, el mismo giro y el mismo balanceo, y ninguna parte de su dibujo lee la musica. Apagada la
+//     estrella viajera, queda de frente como el icono.
 //  3) La luz: cada cara segun hacia donde mira; el brillo corre por las facetas al girar.
 //  4) La estela: una copia por distancia recorrida (igual de separadas a 24, 60 o 144 cuadros por segundo, lenta o
 //     rapida), ninguna si no se mueve, cada una nace transparente (sin copias que salten a la vista) y guarda el giro
@@ -143,7 +145,7 @@ class Estrella3dPrueba
                 if (referencia < 0) referencia = y; else if (Math.Abs(y - referencia) > .05) pasos = false;
             }
         Check(pasos, "el giro no depende de los cuadros por segundo (24, 60, 144 y 240) y su velocidad cambia sin tirones");
-        Check(referencia > 2 * Math.PI, "da la vuelta entera: en 20 s de musica, " + Fm(referencia / (2 * Math.PI), "0.0") + " vueltas");
+        Check(referencia > 2 * Math.PI, "da la vuelta entera: en 20 s, " + Fm(referencia / (2 * Math.PI), "0.0") + " vueltas");
         double[] vueltas = new double[3];
         for (int modo = 0; modo < 3; modo++)
             using (Control p = (Control)Activator.CreateInstance(gpu, true))
@@ -155,12 +157,67 @@ class Estrella3dPrueba
                 {
                     double y0 = (double)Get(p, "starYaw"); Set(p, "LunaActiva", false);
                     Run(p, "AdvanceStarMusic", .1f, 1f, 1f, 1f);
-                    Check((double)Get(p, "starYaw") == y0, "con la estrella musical apagada no gira");
+                    Check((double)Get(p, "starYaw") == y0, "con la estrella viajera apagada no gira");
                 }
             }
         Info("vueltas en 10 s: en silencio " + Fm(vueltas[0], "0.00") + ", con musica " + Fm(vueltas[1], "0.00") + ", navegando " + Fm(vueltas[2], "0.00"));
-        Check(vueltas[1] > vueltas[0] * 1.5 && vueltas[1] > vueltas[2] * 3, "la musica la hace girar mas deprisa y al navegar se calma");
+        Check(vueltas[1] == vueltas[0] && vueltas[0] > vueltas[2] * 3, "con musica gira igual que en silencio, y al navegar se calma");
         Check(vueltas[1] / 10 < 1.0 && vueltas[0] / 10 > .1, "ni frenetica (menos de una vuelta por segundo) ni parada (mas de una cada 10 s)");
+        LaMusicaNoLaMueve();
+    }
+
+    // LO QUE PIDIO EL DUEÑO: que no brinque con la musica. Tres estrellas a la par durante 30 s -en silencio, con
+    // golpes secos de graves, medios y agudos (lo que mas la hacia saltar) y con musica de otro genero- tienen que ir
+    // exactamente por el mismo sitio, con el mismo giro y el mismo balanceo, cuadro a cuadro.
+    static void LaMusicaNoLaMueve()
+    {
+        Control[] p = new Control[3];
+        string[] genero = { "Rock", "Rock", "Balada" };
+        for (int k = 0; k < 3; k++) { p[k] = (Control)Activator.CreateInstance(gpu, true); Set(p[k], "idleBlend", 1f); Run(p[k], "SetStarGenre", genero[k]); }
+        string[] campos = { "starTravelX", "starTravelY", "starYaw", "moonMotionTime", "starEchoPhase" };
+        bool igual = true, velIgual = true; double maxDif = 0;
+        try
+        {
+            for (int i = 0; i < 60 * 30; i++)
+            {
+                float dt = (i % 3 == 0) ? 1f / 24 : (i % 3 == 1) ? 1f / 144 : 1f / 60;   // cuadros desparejos, como en el bar
+                bool golpe = (i % 29) < 3;
+                Run(p[0], "AdvanceStarMusic", dt, 0f, 0f, 0f);
+                Run(p[1], "AdvanceStarMusic", dt, golpe ? 1f : 0f, (i % 11) < 2 ? 1f : 0f, (i % 7) == 0 ? 1f : 0f);
+                Run(p[2], "AdvanceStarMusic", dt, .9f, .8f, .7f);
+                foreach (string c in campos)
+                {
+                    double a = (double)Get(p[0], c), b1 = (double)Get(p[1], c), b2 = (double)Get(p[2], c);
+                    maxDif = Math.Max(maxDif, Math.Max(Math.Abs(a - b1), Math.Abs(a - b2)));
+                    if (a != b1 || a != b2) igual = false;
+                }
+                foreach (string c in new string[] { "starVelocityX", "starVelocityY", "starSpin" })
+                    if ((float)Get(p[0], c) != (float)Get(p[1], c) || (float)Get(p[0], c) != (float)Get(p[2], c)) velIgual = false;
+            }
+            // La musica se sigue oyendo (para el flujo de color del espectro): no es que no le llegue.
+            Check((float)Get(p[2], "starDrive") > .5f && (float)Get(p[0], "starDrive") < .001f,
+                  "la musica le sigue llegando (el color del espectro la usa), pero...");
+            Check(igual && velIgual, "...en silencio, a golpes secos o con otro genero, el mismo recorrido, el mismo giro, el mismo balanceo y la misma estela, cuadro a cuadro durante 30 s (diferencia maxima " + maxDif.ToString("0.###E0") + ")");
+            double maxRoll = 0;
+            for (int i = 0; i <= 2000; i++) maxRoll = Math.Max(maxRoll, Math.Abs((float)Run(null, "StarRoll", i * .05)));
+            Check(maxRoll > .14 && maxRoll < .15, "su balanceo va siempre igual de ancho: hasta " + Fm(maxRoll * 180 / Math.PI, "0.0") + " grados a cada lado, sin crecer con los golpes");
+        }
+        finally { for (int k = 0; k < 3; k++) p[k].Dispose(); }
+        // Y ninguna parte de su dibujo lee la musica: ni el tamaño, ni el balanceo, ni la corona, ni el polvo, ni la
+        // estela, ni el color. (lunaBeat y los demas siguen vivos para las barritas de la que suena, DiscoVivoGpu.cs.)
+        string[] dibujo = { "DrawDetailedMoon", "DrawLunarDust", "DrawStar3d", "UpdateStarEchoes3d", "DrawStarEchoes3d",
+                            "UpdateStarEchoes", "DrawStarEchoes", "StarPitch", "StarSceneCenter", "StarColor", "StarEchoColor" };
+        string[] musica = { "lunaBeat", "lunaMid", "lunaHigh", "starDrive", "starAttack", "starGenreDrive" };
+        List<string> leen = new List<string>();
+        foreach (string m in dibujo)
+        {
+            List<MethodBase> ms = Codigo.MetodosConAyudantes(gpu, m);
+            if (ms.Count == 0) { leen.Add(m + " (no esta)"); continue; }
+            foreach (string c in musica) if (Codigo.LeeCampo(ms, c)) leen.Add(m + " lee " + c);
+        }
+        Check(leen.Count == 0, "ninguna parte del dibujo de la estrella lee la musica" + (leen.Count > 0 ? ": " + string.Join(", ", leen.ToArray()) : ""));
+        Check((float)Run(null, "MoonSceneScale", 1f, true) > 1.3f && (float)Run(null, "MoonSceneScale", 0f, true) == 1f,
+              "su tamaño: un 32 % mas en reposo, entrando despacio, y ni un latido");
     }
 
     static void LaLuz()

@@ -1,5 +1,13 @@
 # Rocola
 
+## La estrella ya no baila con la música — 24 de septiembre de 2026
+
+La estrella que cruza el cielo daba brincos porque seguía la música: con cada golpe cambiaban de golpe su velocidad, su
+giro, su balanceo y su tamaño. Ahora va siempre a su ritmo de crucero, el de una canción normal. Solo se calma al
+navegar y se anima en reposo, despacio. En Ctrl+F3 → Fondo el interruptor se llama ahora **Estrella viajera con órbitas**,
+y la corona, **Corona estelar**. Solo cambia el dibujo por tarjeta gráfica, en las dos ramas.
+[Los detalles](ESTRELLA_3D_2026-09-23.md).
+
 ## Pantalla viva, tanda 2: dentro del disco — 24 de septiembre de 2026
 
 Las ideas elegidas para el interior de un disco, solo en el dibujo por tarjeta gráfica y en las dos ramas. Si suena

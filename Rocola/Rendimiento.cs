@@ -862,7 +862,7 @@ namespace Rocola
             tNat.Controls.Add(lExtras);
             tNat.Height = 586;
             tAd.Height = 580;
-            string[] extraNames = { "Vidrio por capas y color vivo (GPU)", "Transiciones suaves de color (GPU)", "Estrella musical con orbitas (GPU)", "Ocultar controles en reposo (GPU)" };
+            string[] extraNames = { "Vidrio por capas y color vivo (GPU)", "Transiciones suaves de color (GPU)", "Estrella viajera con orbitas (GPU)", "Ocultar controles en reposo (GPU)" };
             bool[] extraValues = { glassCapas, coloresCache, lunaActiva, controlesReposo };
             Interruptor[] extras = new Interruptor[extraNames.Length];
             for (int i = 0; i < extras.Length; i++)
@@ -898,7 +898,7 @@ namespace Rocola
             lMoon.Text = "ESTRELLA: superficie, corona y polvo independientes";
             lMoon.Font = fDes; lMoon.ForeColor = cTenue; lMoon.BackColor = Color.Transparent;
             tNat.Controls.Add(lMoon);
-            string[] moonNames = { "Superficie detallada de la estrella (GPU)", "Corona estelar musical (GPU)", "Polvo estelar orbital (GPU)", "Realzar estrella en reposo (GPU)" };
+            string[] moonNames = { "Superficie detallada de la estrella (GPU)", "Corona estelar (GPU)", "Polvo estelar orbital (GPU)", "Realzar estrella en reposo (GPU)" };
             bool[] moonValues = { lunaRealista, haloLunar, polvoLunar, lunaProtagonista };
             Interruptor[] moonSwitches = new Interruptor[moonNames.Length];
             for (int i = 0; i < moonSwitches.Length; i++)

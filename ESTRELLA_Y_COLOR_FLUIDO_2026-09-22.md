@@ -62,7 +62,8 @@ de la paleta. La interfaz, letras y carátulas no se recolorean por este efecto.
 
 Ctrl+F3 → Fondo:
 
-- **Estrella musical con órbitas (GPU)**: activa el nuevo recorrido musical.
+- **Estrella musical con órbitas (GPU)**: activa el nuevo recorrido musical. Desde el 24-09-2026 se llama **Estrella
+  viajera con órbitas (GPU)** y ya no sigue la música: va a ritmo fijo (ver `ESTRELLA_3D_2026-09-23.md`).
 - **Ecos de color de la estrella (GPU)**: activa el rastro reforzado.
 - **Colores del fondo en movimiento (GPU)**: nuevo interruptor, activado por
   defecto y persistente mediante `colores_fluidos`. Al apagarlo, el color vuelve
