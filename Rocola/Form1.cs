@@ -2193,6 +2193,7 @@ namespace Rocola
                 gpuPanel.HazFase = hazFase;
                 gpuPanel.ConLuna = lunaOn;
                 SyncGpuCoverPalette();
+                gpuPanel.GeneroArgb = ToD3D(bgAccent);   // el color del genero, para el resplandor de las portadas (EstiloGpu.cs)
             }
 #endif
             if (progress != null) progress.Accent = bgAccent;   // ESTETICA: la barra de progreso sigue el color del genero

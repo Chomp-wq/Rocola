@@ -22,6 +22,9 @@
 // invita cuando no hay creditos y los avisos que se entienden. Van en la segunda hoja de esta pestaña.
 //
 // TANDA 4, EL MODO ATRACCION, en AtraccionGpu.cs: el escaparate y lo mas pedido esta noche. Van en la tercera hoja.
+//
+// TANDA 5, EL ESTILO GENERAL, en EstiloGpu.cs: la letra para leer de lejos y el color del genero en todo. En la tercera
+// hoja, al lado del modo atraccion.
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -185,6 +188,30 @@ namespace Rocola
             }
             swA[0].CheckedChanged += delegate { escaparate = swA[0].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             swA[1].CheckedChanged += delegate { topNoche = swA[1].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            // LA TANDA 5, al lado: el estilo general (EstiloGpu.cs).
+            Tarjeta tEst = new Tarjeta(); tEst.SetBounds(488, 0, 456, 184); tEst.Titulo = "ESTILO GENERAL"; tEst.Acento = cAc;
+            string[] nomE = {
+                "Letra para leer de lejos (GPU)",
+                "El color del género en todo (GPU)",
+            };
+            string[] explicaE = {
+                "El titulo de lo que suena, abajo, crece y lo que sigue pasa a la\nderecha en un gris mas claro: se lee de pie, a dos metros.",
+                "La portada de lo que suena y la de dentro de un disco brillan con\nel color del genero, y tambien el pulso de la letra elegida.",
+            };
+            bool[] valE = { letraLejos, colorGenero };
+            Interruptor[] swE = new Interruptor[nomE.Length];
+            for (int i = 0; i < swE.Length; i++)
+            {
+                int y = 40 + i * 72;
+                swE[i] = new Interruptor(); swE[i].SetBounds(16, y, 424, 26);
+                swE[i].Font = fNom; swE[i].ForeColor = cTexto; swE[i].Acento = cAc;
+                swE[i].Text = nomE[i]; swE[i].Checked = valE[i];
+                Label le = new Label(); le.SetBounds(16, y + 30, 424, 32); le.BackColor = Color.Transparent;
+                le.ForeColor = cTenue; le.Font = fDes; le.Text = explicaE[i];
+                tEst.Controls.Add(swE[i]); tEst.Controls.Add(le);
+            }
+            swE[0].CheckedChanged += delegate { letraLejos = swE[0].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            swE[1].CheckedChanged += delegate { colorGenero = swE[1].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             Label lPie = new Label(); lPie.SetBounds(16, 508, 928, 48); lPie.BackColor = Color.Transparent;
             lPie.ForeColor = cApagado; lPie.Font = fDes;
             lPie.Text = "Las ideas que se eligieron del lienzo de bocetos. Solo se ven con la tarjeta grafica: sin ella la pantalla\n"
@@ -197,14 +224,16 @@ namespace Rocola
                 viniloDisco = listaGrande = eqSonando = colaMinutos = vueloCola = true;
                 suenaGrande = monedaCae = sinCreditosInvita = avisosClaros = true;
                 escaparate = topNoche = true;
+                letraLejos = colorGenero = true;
                 for (int i = 0; i < sw.Length; i++) sw[i].Checked = true;
                 for (int i = 0; i < swD.Length; i++) swD[i].Checked = true;
                 for (int i = 0; i < swS.Length; i++) swS[i].Checked = true;
                 for (int i = 0; i < swA.Length; i++) swA[i].Checked = true;
+                for (int i = 0; i < swE.Length; i++) swE[i].Checked = true;
                 f3CambioGraf = true; AplicaEfectosGpu();
                 ShowToast("Pantalla como de fabrica", Color.FromArgb(40, 130, 90));
             };
-            hPared.Controls.Add(tPared); hPared.Controls.Add(tDisco); hSuena.Controls.Add(tSuena); hAtr.Controls.Add(tAtr);
+            hPared.Controls.Add(tPared); hPared.Controls.Add(tDisco); hSuena.Controls.Add(tSuena); hAtr.Controls.Add(tAtr); hAtr.Controls.Add(tEst);
             Panel[] hojas = { hPared, hSuena, hAtr };
             string[] nomHoja = { "La pared y el disco", "Lo que suena y los creditos", "La atracción y el estilo" };
             BotonPlano[] bHoja = new BotonPlano[hojas.Length];

@@ -420,6 +420,9 @@ namespace Rocola
                     // Ctrl+F3 -> Pantalla -> La atraccion (AtraccionGpu.cs): tambien solo por tarjeta grafica.
                     else if (s.StartsWith("escaparate=")) escaparate = s.Substring("escaparate=".Length).Trim() != "0";
                     else if (s.StartsWith("top_noche=")) topNoche = s.Substring("top_noche=".Length).Trim() != "0";
+                    // Ctrl+F3 -> Pantalla -> El estilo (EstiloGpu.cs): tambien solo por tarjeta grafica.
+                    else if (s.StartsWith("letra_lejos=")) letraLejos = s.Substring("letra_lejos=".Length).Trim() != "0";
+                    else if (s.StartsWith("color_genero=")) colorGenero = s.Substring("color_genero=".Length).Trim() != "0";
                     else if (s.StartsWith("disco="))   // tipo de disco: auto (medir), ssd o hdd (Ctrl+F3)
                     {
                         string d = s.Substring(6).Trim().ToLowerInvariant();
@@ -537,6 +540,8 @@ namespace Rocola
                 sb.Append("avisos_claros=").Append(avisosClaros ? "1" : "0").Append("\r\n");
                 sb.Append("escaparate=").Append(escaparate ? "1" : "0").Append("\r\n");
                 sb.Append("top_noche=").Append(topNoche ? "1" : "0").Append("\r\n");
+                sb.Append("letra_lejos=").Append(letraLejos ? "1" : "0").Append("\r\n");
+                sb.Append("color_genero=").Append(colorGenero ? "1" : "0").Append("\r\n");
                 sb.Append("disco=").Append(perfilDisco == 1 ? "ssd" : perfilDisco == 2 ? "hdd" : "auto").Append("\r\n");
                 sb.Append("video_gpu=").Append(videoGpuOn ? "1" : "0").Append("\r\n");
                 sb.Append("diagnostico=").Append(diagOn ? "1" : "0").Append("\r\n");
