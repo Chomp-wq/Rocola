@@ -264,7 +264,7 @@ namespace Rocola
         {
             Rectangle rect = new Rectangle(panelSongs.Left + songList.Left, panelSongs.Top + songList.Top,
                 songList.Width, songList.Height);
-            bool empty = index == 3 && !songList.GpuPreviousReady;
+            bool empty = (index == 3 && !songList.GpuPreviousReady) || index >= 4;   // la 4 es del buscador con portadas
             if (index == 2)
             {
                 empty = songList.Sel < songList.PageStart || songList.Sel >= songList.PageStart + songList.RowsPerPage ||

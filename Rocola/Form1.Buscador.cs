@@ -287,6 +287,9 @@ namespace Rocola
             public bool GetPreviewCube(out Rectangle area, out Image ca, out Image cb, out float f)
             {
                 area = Rectangle.Empty; ca = null; cb = null; f = 0f;
+#if ROCOLA_GPU
+                if (Nuevo) return false;   // el buscador con portadas no tiene cubo: la portada va en cada tarjeta
+#endif
                 int W = Width, H = Height;
                 if (W < 60 || H < 60) return false;
                 if (!(FocusResults && Results != null && Results.Count > 0 && GetCover != null)) return false;
@@ -547,8 +550,22 @@ namespace Rocola
             // intermedias, que nadie llega a leer, ni se buscan ni se hornean.
             public string Escrito = "";
             public void SetQuery(string q) { Query = q; Escrito = q; FocusResults = false; SelResult = 0; Invalidate(); }
-            public void TypeChar(char c) { Escrito += c; Tecleo(); }
-            public void Backspace() { if (Escrito.Length > 0) Escrito = Escrito.Substring(0, Escrito.Length - 1); Tecleo(); }
+            public void TypeChar(char c)
+            {
+#if ROCOLA_GPU
+                if (Nuevo) MarcaTecla(c);   // su tecla se enciende un instante (BuscadorPortadasGpu.cs)
+#endif
+                Escrito += c; Tecleo();
+            }
+            public void Backspace()
+            {
+#if ROCOLA_GPU
+                if (Nuevo) MarcaTecla('\b');
+                if (Nuevo && ModoAtajo != null && Escrito.Length == 0) { SalDeAtajo(); return; }   // borrar sin nada escrito: se sale del atajo
+#endif
+                if (Escrito.Length > 0) Escrito = Escrito.Substring(0, Escrito.Length - 1);
+                Tecleo();
+            }
 
             // Una letra entra: se ve al momento, y nada mas. La caja de lo escrito es una imagen chica
             // aparte, asi que repintarla no arrastra ni el cielo ni el teclado.
@@ -579,6 +596,9 @@ namespace Rocola
             // esto ya NO se llama en cada letra, sino cuando la consulta se posa.
             private void Changed()
             {
+#if ROCOLA_GPU
+                if (Nuevo) AlCambiarConsulta();
+#endif
                 bool veniaDeResultados = FocusResults;
                 FocusResults = false; SelResult = 0;
                 if (OnQueryChanged != null) OnQueryChanged(Query);
@@ -607,6 +627,9 @@ namespace Rocola
 
             public void MoveSel(int dx, int dy)
             {
+#if ROCOLA_GPU
+                if (Nuevo) { MoveSelNuevo(dx, dy); return; }   // con atajos y tarjetas en dos columnas (BuscadorPortadasGpu.cs)
+#endif
                 if (FocusResults)
                 {
                     int cap = Math.Max(1, resCols * resRowsPerCol);
@@ -654,6 +677,9 @@ namespace Rocola
 
             public void PressSelected()
             {
+#if ROCOLA_GPU
+                if (Nuevo) { PressNuevo(); return; }
+#endif
                 if (FocusResults)
                 {
                     if (Results != null && SelResult >= 0 && SelResult < Results.Count && OnChoose != null) OnChoose(Results[SelResult]);
@@ -679,6 +705,9 @@ namespace Rocola
 
             protected override void OnMouseClick(MouseEventArgs e)
             {
+#if ROCOLA_GPU
+                if (Nuevo) { ClickNuevo(e.Location); base.OnMouseClick(e); return; }
+#endif
                 if (!FocusResults)
                 {
                     for (int r = 0; r < rows.Count; r++)
@@ -738,6 +767,7 @@ namespace Rocola
             {
                 donde = Rectangle.Empty;
 #if ROCOLA_GPU
+                if (Nuevo) return PiezaVivaNueva(cual, out donde);   // el buscador con portadas (BuscadorPortadasGpu.cs)
                 if (cual >= 2) return ExtraGpuRect(cual, out donde);
 #endif
                 if (cual == PiezaEscrito)
@@ -763,6 +793,7 @@ namespace Rocola
             public void DibujaPiezaViva(Graphics g, int cual, int dx, int dy)
             {
 #if ROCOLA_GPU
+                if (Nuevo) { DibujaPiezaVivaNueva(g, cual, dx, dy); return; }
                 if (cual >= 2) { DrawExtraGpu(g, cual, dx, dy); return; }
 #endif
                 if (cual == PiezaEscrito)
@@ -826,6 +857,9 @@ namespace Rocola
                 int W = Width, H = Height;
                 if (W < 60 || H < 60) return;
                 paraGpu = forGpu;
+#if ROCOLA_GPU
+                if (forGpu && Nuevo) { RenderNuevo(g); return; }   // el buscador con portadas (BuscadorPortadasGpu.cs)
+#endif
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 if (forGpu) clip = new Rectangle(0, 0, W, H);
 

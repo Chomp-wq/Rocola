@@ -203,6 +203,7 @@ namespace Rocola
             if (letterBar != null) letterBar.LupaGpu = letrasLupa;            // la barra de letras con lupa
             AjustaDiscoVivo(ListaPorGpu());                                   // la lista del disco (Pantalla -> Dentro del disco)
             if (pastCred != null) pastCred.MonedaGrande = monedaCae;           // la moneda que cae (Pantalla -> Lo que suena y los creditos)
+            AjustaBuscadorPortadas();                                         // el buscador con portadas (Pantalla -> El buscador)
             if (gpuPanel == null) return;
             gpuPanel.PortadaEnfocada = portadaEnfocada;
             gpuPanel.GeneroTodo = colorGenero;   // el color del genero en todo (Pantalla -> El estilo)
