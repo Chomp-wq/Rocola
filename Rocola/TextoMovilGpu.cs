@@ -187,7 +187,7 @@ namespace Rocola
             foreach (CintaTile tile in cintaTiles)
             {
                 if ((tile.Group >= 2) != lista) continue;
-                if (lista && (GetPiezaRect == null || (tile.Group == 4 ? GlassPieces : !GlassPieces))) continue;
+                if (lista && !CintaDeLista(tile.Group)) continue;   // (BuscadorPortadasGpu.cs: lo de siempre, y con la ventana del buscador)
                 float alpha = lista ? SceneAlpha() * ControlsOpacity : tile.Group == 0 ? 1 - idleBlend : idleBlend;
                 if (alpha <= .003f || tile.Tex == IntPtr.Zero) continue;
                 CintaTexto run = tile.Run; RectangleF r = run.Rect;
@@ -195,7 +195,7 @@ namespace Rocola
                 RectangleF clip = new RectangleF(x, y, r.Width, r.Height);
                 if (lista)
                 {
-                    Rectangle origin = GetPiezaRect(tile.Group == 4 ? 3 : tile.Group == 2 ? 1 : 2);
+                    Rectangle origin = tile.Group == 4 ? OrigenVistaPrevia() : GetPiezaRect(tile.Group == 2 ? 1 : 2);
                     if (origin.IsEmpty) continue;
                     if (tile.Group == 2)
                     {
@@ -206,7 +206,7 @@ namespace Rocola
                     x = origin.X + r.X + (tile.Group == 4 || songFrameVertical ? 0 : songFrameSlide);
                     y = origin.Y + r.Y + (tile.Group != 4 && songFrameVertical ? songFrameSlide : 0);
                     clip = RectangleF.Intersect(new RectangleF(x, y, r.Width, r.Height), tile.Group == 4 ? origin : GetPiezaRect(0));
-                    if (tile.Group == 4) alpha = FocusAlpha(3, origin) * PaletteAlpha() * ControlsOpacity;
+                    if (tile.Group == 4) alpha = AlfaVistaPrevia(origin);
                     if (clip.IsEmpty) continue;
                 }
                 float off = CorreTitulo((uint)(now - run.Born), Math.Max(0, run.Width - r.Width));

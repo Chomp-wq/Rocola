@@ -47,7 +47,8 @@ contar, elegir y las portadas que llegan (`Form1.Biblioteca.cs`), de dónde sale
   - qué es: ARTISTA (azul), ÁLBUM (ámbar) o CANCIÓN (verde);
   - el nombre, con lo tecleado resaltado; el de una canción, sin su número de pista ("03 - Dreamer" sale
     "Dreamer"), como en el resto del dibujo por tarjeta. Si no cabe, se corta con puntos suspensivos, como las
-    tarjetas del buscador de siempre;
+    tarjetas del buscador de siempre; en la **tarjeta elegida**, con **Títulos largos deslizantes** encendido, el nombre
+    y el renglón de debajo que no caben se deslizan (ver "Añadido el 25 de septiembre");
   - un renglón que ayuda a elegir: los discos y canciones del artista; el artista y las canciones del álbum; el artista
     y la duración de la canción (o su disco, si aún no se sabe lo que dura);
   - **SONANDO** y **EN COLA n**, con las mismas palabras y colores que dentro del disco.
@@ -86,10 +87,11 @@ Imágenes de la simulación: se enviaron por el chat (a 800×600, 1024×768, 128
   ocupan en su imagen); en la imagen de todas las tarjetas cambian unos pocos píxeles del borde suavizado, entre 4 y 21
   por imagen y en 1 de 255, porque cada tarjeta se hornea en otro sitio que donde va: no se nota a la vista.
 - **Con la ventana.** El buscador entra subiendo desde abajo y se va bajando (`NAVEGACION_Y_RELOJ_2026-09-24.md`).
-  Aquí la casilla, lo elegido y las tarjetas van en sus imágenes chicas, no en la imagen grande, así que van con ella:
-  al abrir se dibujan corridas lo mismo que la ventana; al cerrar, la ventana se queda con sus texturas ya subidas (sin
-  copiar ni subir nada, como hace ya con la imagen grande) y se sueltan al acabar. Sin esto subiría sin ellas y
-  saldrían de golpe al llegar. El buscador de siempre sigue como estaba.
+  La casilla, lo elegido y (en el nuevo) las tarjetas van en sus imágenes chicas, no en la imagen grande, así que van
+  con ella: al abrir se dibujan corridas lo mismo que la ventana; al cerrar, la ventana se queda con sus texturas ya
+  subidas (sin copiar ni subir nada, como hace ya con la imagen grande) y se sueltan al acabar. Con ellas van las cintas
+  de su vista previa (lo que se desliza). Sin esto subiría sin ellas y saldrían de golpe al llegar. Desde el 25 de
+  septiembre vale también para el buscador de siempre.
 
 ### Lo que cuesta
 
@@ -118,15 +120,17 @@ medio); a 1024×768 la diferencia es pequeña (346 KB frente a 279).
 
 ## Qué no cambia
 
-- **Sin tarjeta gráfica, o con el interruptor apagado, el buscador sale idéntico al de antes.** En cada rama se
+- **Sin tarjeta gráfica, o con el interruptor apagado, el buscador sale idéntico al de antes** (parado; lo único que
+  cambia es que ahora va con la ventana al abrir y al cerrar, ver abajo). En cada rama se
   compiló la versión publicada (HD `49abb0a`, Modest `5d9fda8`) y la nueva y se compararon sus pantallas del buscador,
   con los mismos datos y los mismos pasos (abrir, moverse, pasar a los resultados, bajar, un aviso, teclear y borrar,
   volver), a 1024×768, 1280×720 y 1920×1080: 24 pantallas por procesador y 48 por tarjeta (la imagen grande y sus
   piezas), **0 píxeles distintos** en las dos ramas.
 - Lo que se busca y cómo: las mismas 40 mejores, las mismas marcas, la tarjeta de servicio, el botón de cerrar.
-- **Lo que ya pasaba con el buscador de siempre, sigue igual**: su casilla y lo elegido van en imágenes chicas que no
-  acompañan a la ventana al abrir y al cerrar (salen al llegar). No se tocó: es su camino, y cambiarlo cambiaría cómo se
-  ve. En el nuevo sí van con ella (ver arriba).
+- **En el buscador de siempre cambia una cosa, solo con la ventana moviéndose** (25 de septiembre): su casilla, la
+  tecla, el resultado elegido y el texto de debajo del cubo, que van en imágenes chicas, ahora suben y bajan con la
+  ventana en vez de salir de golpe al llegar. Parado sale igual que antes: se volvió a comparar con la versión publicada
+  (24 pantallas por procesador y 48 por tarjeta, 0 píxeles distintos).
 
 ## Cómo se comprobó y qué falta
 
@@ -175,3 +179,53 @@ medio); a 1024×768 la diferencia es pequeña (346 KB frente a 279).
   de HD.
 - **Sin probar en Windows XP.** La rama Modest compila con el lenguaje de .NET 3.5 (C# 3), pero no se ha probado en un
   Windows XP real.
+
+## Añadido el 25 de septiembre
+
+### La tarjeta elegida desliza lo que no cabe
+
+Con **Títulos largos deslizantes** encendido (Ctrl+F3 → Pantalla → La atracción y el estilo, `TITULOS_LEGIBLES_2026-09-24.md`),
+el nombre y el renglón de debajo de la **tarjeta elegida** que no caben se deslizan en bucle, con las mismas pausas que
+el resto (2,2 s al principio, 1,4 s al final). En el buscador de siempre eso lo hace la vista previa, el texto de debajo
+del cubo; en el nuevo no hay cubo, así que lo hace la tarjeta elegida: es donde se lee el nombre entero. Las demás
+tarjetas siguen cortando con puntos suspensivos, como pide la guía de los títulos para las tarjetas de resultados.
+
+- Usa el mismo sistema de cintas, sin grupos nuevos: el grupo 4 es "lo que se desliza de la vista previa del buscador".
+  El formulario le dice al panel qué pieza es: la 3 (el texto de debajo del cubo) en el de siempre y la 2 (la tarjeta
+  elegida) en el nuevo. En `TextoMovilGpu.cs` cambian tres renglones de `DibujaCintasTexto`: qué grupos van (lo mismo
+  que antes, y con la ventana solo el 4), de qué pieza sale el grupo 4 y con qué transparencia.
+- La cinta se prepara al hacer la imagen chica de la tarjeta elegida. Si el nombre no cabe, va en su cinta y en la imagen
+  no se dibuja; si cabe, o con el interruptor apagado, sale quieto como antes, con lo tecleado resaltado. En la cinta no
+  va el resaltado, como en la vista previa del de siempre.
+- La cinta entra con su tarjeta (la misma transparencia) y va con la ventana al abrir y al cerrar.
+
+### Los dos buscadores van con la ventana
+
+Lo que ya hacía el nuevo (ver "Con la ventana") vale ahora también para el de siempre: su casilla, la tecla, el
+resultado elegido y el texto de debajo del cubo suben y bajan con la ventana, con sus cintas. Sin copiar ni subir nada:
+al cerrar, la ventana se queda con las texturas ya subidas y las suelta al acabar.
+
+### Cómo se comprobó
+
+- **Batería** `buscaportadas`: 100 comprobaciones con tarjeta gráfica y 6 sin ella, en las dos ramas. Lo nuevo:
+  - la cinta del nombre y la del renglón, dentro de la imagen de la tarjeta elegida, y el nombre no dibujado quieto (0
+    píxeles de letra donde va la cinta);
+  - apagado, quietos y cortados (687 píxeles de letra), y cambiar el interruptor rehace la imagen;
+  - lo que cabe no se desliza, tampoco lo que cabe justo (un nombre de 228 px en una columna de 229);
+  - en la tarjeta imitada: encima de la elegida, en el sitio del nombre y con su transparencia; con el buscador de siempre
+    esas cintas son de la pieza 3; con el vidrio de las canciones no van; entrando, con la misma transparencia que su
+    tarjeta; y con la ventana al abrir y al cerrar, también con el buscador de siempre;
+  - el formulario: las piezas van con la ventana con los dos buscadores y se las lleva al cerrar sin preguntar cuál.
+- **Las baterías de al lado**: `textosgpu` (la de las cintas) y `envios` pasan; `panelreposo` sigue con los mismos dos
+  fallos que ya tenía.
+- **El buscador de siempre parado**: 0 píxeles distintos con la versión publicada, en las dos ramas.
+- **Mutaciones**: 82 en HD (las de antes y las nuevas de las cintas y de la ventana con los dos buscadores). Se
+  detectaron 81; la que sobrevivió quitaba una comprobación que sobraba ("si cabe, sin cinta", que ya hace la cinta
+  sola). Se quitó, se ajustó el recuadro para que la cinta corte justo donde el renglón quieto y se añadió la prueba
+  de un nombre que cabe justo (228 px en una columna de 229): se repitieron las 13 de las cintas, con una que corre ese
+  borde, y se detectaron todas. En Modest, 22 de los enganches, la ventana y las cintas: detectadas las 22.
+- **Tandas completas**: en las dos ramas fallan las mismas cinco baterías que ya fallaban en las versiones publicadas
+  (`pestanas`, `estilo`, `panelreposo`, `suenavivo` y `paginasgpu`), y ninguna nueva; `textosgpu`, `envios` y
+  `buscaportadas` (con los dos perfiles) pasan. En la corrida de HD, `panelreposo` salió con código 5 por un error de
+  `xvfb-run` al limpiar su carpeta temporal; corrida sola, sale como siempre (los mismos dos fallos).
+- **Sin comprobar**: una tarjeta gráfica real y Windows XP real, igual que el resto.

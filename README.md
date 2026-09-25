@@ -1,5 +1,13 @@
 # Rocola
 
+## El buscador: la tarjeta elegida desliza lo que no cabe, y los dos buscadores van con la ventana — 25 de septiembre de 2026
+
+En el buscador con portadas, con **Títulos largos deslizantes** encendido, el nombre y el renglón de la tarjeta elegida
+que no caben se deslizan, como hace la vista previa en el buscador de siempre (usa las mismas cintas). Y ahora los dos
+buscadores llevan su casilla y lo elegido con la ventana al abrir y al cerrar, sin copiar nada. Solo en el dibujo por
+tarjeta gráfica y en las dos ramas; parado, el buscador de siempre sale igual que antes (comprobado píxel a píxel). No se
+probó en una tarjeta real ni en XP. [En la guía de la tanda 6](PANTALLA_VIVA_BUSCADOR_2026-09-24.md#añadido-el-25-de-septiembre).
+
 ## Pantalla viva, tanda 6: el buscador con portadas — 24 de septiembre de 2026
 
 La idea "Teclado compacto y resultados con portada", solo en el dibujo por tarjeta gráfica y en las dos ramas. El teclado

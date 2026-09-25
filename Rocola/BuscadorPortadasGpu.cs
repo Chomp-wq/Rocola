@@ -98,8 +98,12 @@ namespace Rocola
             searchOverlay.PonNuevo(BuscadorPortadasActivo());
             if (era != searchOverlay.Nuevo && searchOpen) ArmaAtajos();
         }
-        // Con el buscador con portadas abierto, sus piezas son parte de la ventana: van con ella al abrir y al cerrar.
-        private bool PiezasSubenConLaVentana() { return searchOpen && searchOverlay != null && searchOverlay.Nuevo; }
+        // Con el buscador abierto (el nuevo o el de siempre), sus piezas son parte de la ventana: van con ella al abrir y al
+        // cerrar (GpuPanel.PiezasConLaVentana).
+        private bool PiezasSubenConLaVentana() { return searchOpen && searchOverlay != null; }
+        // Lo que se desliza de la vista previa del buscador (Titulos largos deslizantes, TextoMovilGpu.cs): en el de siempre,
+        // el texto de debajo del cubo (la pieza 3); en el buscador con portadas no hay cubo, y es la tarjeta elegida (la 2).
+        private int PiezaVistaPreviaBuscador() { return (searchOverlay != null && searchOverlay.Nuevo) ? 2 : 3; }
         private void AlAbrirBuscadorGpu()
         {
             AjustaBuscadorPortadas();
@@ -1104,9 +1108,17 @@ namespace Rocola
                 int y = cr.Y + (cr.Height - total) / 2;
                 Renglon(g, tipo, fnTipo, ctipo, tx, y + hTipo / 2f, tw);
                 y += hTipo + gap;
-                LineaResaltada(g, titulo, fnTitulo, Color.White, tx, y + hTit / 2f, tw, qn);
+                // En la elegida, el nombre y el renglon que no caben se deslizan (Titulos largos deslizantes, TextoMovilGpu.cs):
+                // van en su cinta y aqui no se dibujan. Sin cintas (apagado, o cabe), quietos y cortados, como siempre.
+                if (!(sel && Cinta(g, titulo, fnTitulo, Color.White, tx, y + hTit / 2f, tw)))
+                    LineaResaltada(g, titulo, fnTitulo, Color.White, tx, y + hTit / 2f, tw, qn);
                 y += hTit + gap;
-                if (sub.Length > 0) { LineaResaltada(g, sub, fnSub, TextoSub, tx, y + hSub / 2f, tw, qn); y += hSub + gap; }
+                if (sub.Length > 0)
+                {
+                    if (!(sel && Cinta(g, sub, fnSub, TextoSub, tx, y + hSub / 2f, tw)))
+                        LineaResaltada(g, sub, fnSub, TextoSub, tx, y + hSub / 2f, tw, qn);
+                    y += hSub + gap;
+                }
                 if (hayMarca)
                 {
                     // Las MISMAS palabras y colores que dentro del disco y que las tarjetas de siempre.
@@ -1168,6 +1180,17 @@ namespace Rocola
                 sbS.Color = c;
                 g.DrawString(texto, fnMarca, sbS, new RectangleF(r.X, r.Y - alto / 2f, r.Width, 2f * alto), sfCentro);
                 return x + w + Px(6, rep.S);
+            }
+            // Un renglon que no cabe, como cinta que se desliza. Solo si alguien las recoge (la tarjeta elegida, al hornear su
+            // imagen chica con el interruptor encendido: EnsureUiPieza); si no, false y se dibuja quieto.
+            private bool Cinta(Graphics g, string t, Font f, Color c, float x, float cy, float ancho)
+            {
+                if (string.IsNullOrEmpty(t)) return false;
+                float h = f.GetHeight(g);
+                // La cinta decide sola si cabe: lo que no mide mas que su recuadro menos un pixel se queda quieto. Con el recuadro
+                // un pixel mas ancho, cabe exactamente lo que cabe en Recorta (lo que no mide mas de 'ancho'), y se ve quieto,
+                // con lo tecleado resaltado.
+                return TextoConCinta(g, t, f, c, new RectangleF(x, cy - h, ancho + 1f, 2f * h), sfLinea);
             }
             // Un texto en un renglon, centrado en 'cy'. El recuadro es el doble de alto que la letra: con uno justo, GDI+
             // puede dar el renglon por "que no cabe" y no dibujarlo (se vio en la simulacion a 1024x768).
@@ -1599,12 +1622,13 @@ namespace Rocola
         { x.X = px; x.Y = py; x.Z = 0; x.Rhw = 1; x.Color = c; x.U = u; x.V = v; }
 
         // ---- CON LA VENTANA DEL BUSCADOR (sube al abrir y baja al cerrar: BuildWinState en Form1.Sonido.cs) ----
-        // Aqui la casilla, lo elegido y las tarjetas van en sus piezas, no en la imagen grande: sin esto la ventana subiria
-        // sin ellas y saldrian de golpe al llegar. Al ABRIR, encima de la ventana van las piezas de ahora, corridas lo mismo
-        // que ella. Al CERRAR, la ventana se queda con las texturas ya subidas de las piezas (sin copiar ni subir nada, como
-        // RobaUiParaVentana) y se sueltan al acabar. El buscador de siempre no cambia: GetPiezasSuben solo dice que si con
-        // el nuevo.
+        // La casilla, lo elegido y (en el buscador con portadas) las tarjetas van en sus piezas, no en la imagen grande: sin
+        // esto la ventana subiria sin ellas y saldrian de golpe al llegar. Vale para los dos buscadores. Al ABRIR, encima de
+        // la ventana van las piezas de ahora, corridas lo mismo que ella. Al CERRAR, la ventana se queda con las texturas ya
+        // subidas de las piezas (sin copiar ni subir nada, como RobaUiParaVentana) y se sueltan al acabar. Con las piezas van
+        // las cintas de su vista previa (lo que se desliza: CintasConLaVentana).
         public Func<bool> GetPiezasSuben;
+        private int ventVistaPrevia = 3;   // cual de las que se llevo es la de la vista previa
         private readonly IntPtr[] ventPiezaTex = new IntPtr[MaxPiezas];
         private readonly Rectangle[] ventPiezaRect = new Rectangle[MaxPiezas];
         private readonly float[] ventPiezaU = new float[MaxPiezas], ventPiezaV = new float[MaxPiezas];
@@ -1617,6 +1641,7 @@ namespace Rocola
         internal void RobaPiezasParaVentana()
         {
             SueltaPiezasVentana();
+            ventVistaPrevia = PiezaVistaPrevia();
             if (GetPiezaRect == null) return;
             for (int i = 0; i < PiezasN && i < MaxPiezas; i++)
             {
@@ -1640,7 +1665,7 @@ namespace Rocola
             float a = Math.Max(0f, Math.Min(1f, gw.Alpha));
             if (gw.HideUi && uiPropia)
             {
-                if (GetPiezaRect != null && GetPiezasSuben != null && GetPiezasSuben()) DibujaPiezasNuevas(gw.Dy, a);
+                if (GetPiezaRect != null && GetPiezasSuben != null && GetPiezasSuben()) DibujaPiezasCorridas(gw.Dy, a);
                 return;
             }
             // Cerrando: primero las tarjetas y encima lo demas, como siempre. Pieza a pieza y sin bucle: son cinco y fijas
@@ -1648,6 +1673,8 @@ namespace Rocola
             uint ink = ((uint)(a * 255f + .5f) << 24) | 0xFFFFFFu;
             PiezaDeLaVentana(PiezaCartas, gw.Dy, ink);
             PiezaDeLaVentana(0, gw.Dy, ink); PiezaDeLaVentana(1, gw.Dy, ink); PiezaDeLaVentana(2, gw.Dy, ink); PiezaDeLaVentana(3, gw.Dy, ink);
+            int vp = ventVistaPrevia;
+            if (vp >= 0 && vp < MaxPiezas && ventPiezaTex[vp] != IntPtr.Zero) CintasConLaVentana(ventPiezaRect[vp], gw.Dy, a);
         }
         private void PiezaDeLaVentana(int i, float dy, uint ink)
         {
@@ -1658,10 +1685,16 @@ namespace Rocola
         }
         // Las piezas de ahora corridas 'dy', con la transparencia de la ventana: lo mismo que el bucle de las piezas de
         // D3D9Star.cs, sin el vidrio de la lista de canciones (con el buscador abierto no esta). Tambien pieza a pieza.
-        private void DibujaPiezasNuevas(float dy, float a)
+        private void DibujaPiezasCorridas(float dy, float a)
         {
             DibujaCartasPrimero(dy, a, 1f);
             PiezaCorrida(0, dy, a); PiezaCorrida(1, dy, a); PiezaCorrida(2, dy, a); PiezaCorrida(3, dy, a);
+            int vp = PiezaVistaPrevia();
+            if (vp < PiezasN && piezaTex[vp] != IntPtr.Zero)
+            {
+                Rectangle pr = GetPiezaRect(vp);
+                if (pr.Width >= 1 && pr.Height >= 1) CintasConLaVentana(pr, dy, a * FocusAlpha(vp, pr) * (vp == 2 ? CartaElegidaAlfa : 1f));
+            }
         }
         private void PiezaCorrida(int i, float dy, float a)
         {
@@ -1671,6 +1704,44 @@ namespace Rocola
             uint ink = ((uint)(a * FocusAlpha(i, pr) * (i == 2 ? CartaElegidaAlfa : 1f) * 255) << 24) | 0xFFFFFFu;
             SetTexQuadA(piezaQuad, pr.X, pr.Y + dy, pr.X + pr.Width, pr.Y + pr.Height + dy, piezaU[i], piezaV[i], ink);
             stars.DrawQuad(piezaTex[i], piezaQuad);
+        }
+
+        // ---- LAS CINTAS DE LA VISTA PREVIA (Titulos largos deslizantes: TextoMovilGpu.cs) ----
+        // El grupo 4 de cintas es lo que se desliza de la vista previa del buscador: en el de siempre, el texto de debajo del
+        // cubo (pieza 3); en el buscador con portadas, que no tiene cubo, la tarjeta elegida (pieza 2). Lo dice el formulario.
+        public Func<int> GetPiezaVistaPrevia;
+        internal int PiezaVistaPrevia()
+        {
+            int p = (GetPiezaVistaPrevia != null) ? GetPiezaVistaPrevia() : 3;
+            return (p >= 0 && p < MaxPiezas) ? p : 3;
+        }
+        private bool cintasVentana;           // dibujando las cintas de la vista previa con la ventana moviendose
+        private Rectangle cintaOrigenVentana;
+        private float cintaAlfaVentana;
+        // Que grupos de cintas van encima de la lista (DibujaCintasTexto). Sin la ventana, lo mismo que antes: la 4 sin el
+        // vidrio de las canciones y las demas con el; con la ventana moviendose, solo las de la vista previa.
+        private bool CintaDeLista(int grupo)
+        {
+            if (GetPiezaRect == null) return false;
+            if (cintasVentana) return grupo == 4;
+            return (grupo == 4) ? !GlassPieces : GlassPieces;
+        }
+        private Rectangle OrigenVistaPrevia() { return cintasVentana ? cintaOrigenVentana : GetPiezaRect(PiezaVistaPrevia()); }
+        // Lo que se ve de las cintas de la vista previa: lo mismo que su pieza (la tarjeta elegida, ademas, entra con la suya).
+        private float AlfaVistaPrevia(Rectangle origen)
+        {
+            if (cintasVentana) return cintaAlfaVentana;
+            int p = PiezaVistaPrevia();
+            return FocusAlpha(p, origen) * PaletteAlpha() * ControlsOpacity * (p == 2 ? CartaElegidaAlfa : 1f);
+        }
+        // Las cintas de la vista previa encima de su pieza, corridas con la ventana (al pixel: la ventana dura 210 ms).
+        private void CintasConLaVentana(Rectangle pieza, float dy, float alfa)
+        {
+            cintasVentana = true;
+            cintaOrigenVentana = new Rectangle(pieza.X, pieza.Y + (int)Math.Round(dy), pieza.Width, pieza.Height);
+            cintaAlfaVentana = Math.Max(0f, Math.Min(1f, alfa));
+            try { DibujaCintasTexto(true); }
+            finally { cintasVentana = false; }
         }
     }
 #endif

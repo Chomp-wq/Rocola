@@ -90,8 +90,8 @@ GPU="$GPU dibujoligero"
 GPU="$GPU buscaligero paginasgpu"
 # 'buscaportadas', con los dos perfiles: la pantalla viva, tanda 6, el buscador con portadas (BuscadorPortadasGpu.cs). Con
 # tarjeta grafica: el reparto, moverse, pulsar y tocar, que la imagen grande solo lleva lo quieto, las imagenes chicas, la
-# entrada de las tarjetas, los atajos, las portadas, la tarjeta imitada (tambien con la ventana que sube y baja) y lo
-# quieto horneado. Sin ella: que no hay nada del nuevo y la pestana.
+# entrada de las tarjetas, los atajos, las portadas, la tarjeta imitada (tambien con la ventana que sube y baja), lo
+# quieto horneado y las cintas de la tarjeta elegida. Sin ella: que no hay nada del nuevo y la pestana.
 GPU="$GPU buscaportadas"
 CPU="$CPU buscaportadas"
 
