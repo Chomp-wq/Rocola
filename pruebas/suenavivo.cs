@@ -43,6 +43,18 @@ class SuenaVivo
     static void Set(object o, string n, object v) { Campo(o.GetType(), n).SetValue(o, v); }
     static object St(Type t, string n, params object[] a) { return t.GetMethod(n, F).Invoke(null, a); }
     static object Run(object o, string n, params object[] a) { return o.GetType().GetMethod(n, F).Invoke(o, a); }
+    // Ningun salto de 'm' pasa por encima de la llamada a 'llamada': se hace siempre (no hay un "if" que la esquive).
+    static bool NadieSeLoSalta(MethodInfo m, string llamada)
+    {
+        int donde = -1;
+        foreach (Codigo.Paso p in Codigo.Pasos(m))
+            if (p.Op2 < 0 && (p.Op == 0x28 || p.Op == 0x6F))
+            { try { MethodBase mb = m.Module.ResolveMethod(p.Numero); if (mb != null && mb.Name == llamada) { donde = p.Donde; break; } } catch { } }
+        if (donde < 0) return false;
+        foreach (int[] salto in Codigo.Saltos(m))
+            if (salto[0] < donde && salto[1] > donde) return false;
+        return true;
+    }
     static object Prop(object o, string n) { return o.GetType().GetProperty(n, F).GetValue(o, null); }
     static T Cte<T>(Type t, string n) { return (T)t.GetField(n, F).GetValue(null); }
     static Control Find(Control p, string name) { foreach (Control c in p.Controls) { if (c.Text == name) return c; Control r = Find(c, name); if (r != null) return r; } return null; }
@@ -216,7 +228,6 @@ class SuenaVivo
         Type cf = asmCpu.GetType("Rocola.Form1");
         object fc = Codigo.FormSinEncender(cf);
         bool quietos = !(bool)cf.GetMethod("InvitaSinCredito", F).Invoke(fc, new object[] { null })
-                    && !(bool)cf.GetMethod("MonedaSinAviso", F).Invoke(fc, null)
                     && (int)cf.GetMethod("VidaAviso", F).Invoke(fc, null) == 1300
                     && !(bool)cf.GetMethod("AvisoEnBuscador", F).Invoke(fc, new object[] { "x", true });
         Check(quietos, "sin tarjeta grafica: el letrero naranja sale, el \"+4 creditos\" de arriba tambien, y los avisos duran 1,3 s como siempre");
@@ -452,15 +463,14 @@ class SuenaVivo
         // Aterriza cuando rueda el numero.
         Check((int)form.GetProperty("MonedaCaeMs", F).GetValue(null, null) == Cte<int>(pvT, "MonMs"),
               "cae en lo mismo que tarda la capsula en rodar su numero: aterriza justo cuando el numero cambia");
-        // El letrero de arriba ya no sale mientras la moneda se ve.
-        Check((bool)Run(f, "MonedaSinAviso"), "con la moneda a la vista, el \"+4 creditos\" de arriba no sale (lo dice la capsula)");
-        Set(f, "attractOn", true); bool atr = (bool)Run(f, "MonedaSinAviso"); Set(f, "attractOn", false);
-        Set(f, "monedaCae", false); bool apag = (bool)Run(f, "MonedaSinAviso"); Set(f, "monedaCae", true);
-        Check(!atr && !apag, "pero sale como siempre en modo atraccion (la franja va limpia) o con la idea apagada");
+        // El letrero de arriba sale SIEMPRE, tambien con la moneda a la vista (25/09: no se veia al meter una moneda con
+        // el buscador abierto; la moneda cae abajo y el que la mete mira arriba).
         MethodInfo add = form.GetMethod("AddCoin", F);
         List<string> pasos = Codigo.Repasa(add);
-        int iSin = pasos.IndexOf("MonedaSinAviso"), iShow = pasos.IndexOf("ShowToast"), iMark = pasos.IndexOf("MarkToast");
-        Check(iSin >= 0 && iSin < iShow && iMark > iShow, "AddCoin pregunta antes de poner el letrero, y la cuenta de monedas seguidas se sigue llevando");
+        int iShow = pasos.IndexOf("ShowToast"), iMark = pasos.IndexOf("MarkToast");
+        Check(form.GetMethod("MonedaSinAviso", F) == null && !pasos.Contains("MonedaSeVe") && !pasos.Contains("AvisoClaro")
+              && iShow >= 0 && iMark > iShow && pasos.Contains("Moneda") && NadieSeLoSalta(add, "ShowToast"),
+              "al meter una moneda el \"+4 creditos\" de arriba sale siempre (sin preguntar si la moneda se ve), la moneda cae igual y la cuenta de monedas seguidas se sigue llevando");
         // El golpe de la capsula y la monedita tapada: solo en la imagen de la tarjeta.
         Set(pc, "MonedaGrande", true);
         int t0 = Environment.TickCount - 420 - 150;   // aterrizo hace 150 ms: en pleno golpe
@@ -726,7 +736,7 @@ class SuenaVivo
         {
             // Sin tarjeta grafica: los enganches existen (se llaman desde el codigo comun) y no hacen nada.
             object fc = Codigo.FormSinEncender(form);
-            bool quietos = !(bool)Run(fc, "InvitaSinCredito", new object[] { null }) && !(bool)Run(fc, "MonedaSinAviso") && (int)Run(fc, "VidaAviso") == 1300
+            bool quietos = !(bool)Run(fc, "InvitaSinCredito", new object[] { null }) && (int)Run(fc, "VidaAviso") == 1300
                         && !(bool)Run(fc, "AvisoEnBuscador", "x", true);
             Check(quietos, "los enganches no hacen nada: letrero naranja, \"+4 creditos\" arriba y avisos de 1,3 s, como siempre");
         }

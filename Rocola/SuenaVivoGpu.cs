@@ -52,15 +52,6 @@ namespace Rocola
             PreparaAvisoPropio(TipoAviso.Hecho, t, d);
 #endif
         }
-        // Con la moneda cayendo a la vista, el "+4 creditos" ya lo dice la capsula: sin letrero arriba.
-        private bool MonedaSinAviso()
-        {
-#if ROCOLA_GPU
-            return MonedaSeVe();
-#else
-            return false;
-#endif
-        }
         // Lo que dura el aviso a la vista (para sumar monedas o canciones seguidas mientras se ve).
         private int VidaAviso()
         {

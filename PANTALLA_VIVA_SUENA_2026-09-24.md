@@ -44,8 +44,10 @@ Es el panel que crece abajo cuando nadie toca la rocola durante 15 segundos ("A 
 - Al tocar, la cápsula da un **golpe** (crece un 12 % y vuelve) con un **destello verde** detrás.
 - Sube **"+4 créditos"** (lo que entró de verdad) y se desvanece en un segundo.
 - La monedita de dentro de la cápsula no se pinta mientras tanto, para que no haya dos monedas.
-- Con la moneda a la vista, el aviso de arriba "+4 creditos" no sale: lo dice la cápsula. En modo atracción, o con la
-  idea apagada, sale como siempre.
+- ~~Con la moneda a la vista, el aviso de arriba "+4 creditos" no sale: lo dice la cápsula.~~ **Cambiado el 25 de
+  septiembre:** el aviso de arriba "+4 creditos" sale siempre, también con la moneda cayendo y con el buscador abierto
+  (se echaba de menos: la moneda cae abajo y quien la mete mira arriba). La moneda y su "+4 créditos" junto a la
+  cápsula siguen igual. Sin tarjeta gráfica no cambia nada (ya salía).
 
 ## 3. Sin créditos, invitar — `sin_creditos_invita=`
 
