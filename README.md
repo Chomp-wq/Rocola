@@ -1,5 +1,12 @@
 # Rocola
 
+## El letrero "+4 créditos" vuelve a salir al meter una moneda — 25 de septiembre de 2026
+
+Con la moneda que cae (tanda 3), el aviso de arriba "+4 créditos" se quitaba mientras la moneda se veía caer, y con el
+buscador abierto no se notaba que había entrado. Ahora sale siempre, además de la moneda. Solo cambia con tarjeta
+gráfica (sin ella ya salía) y en las dos ramas. Comprobado con la batería `suenavivo`; no se probó en una tarjeta real
+ni en XP. [Guía de la tanda 3](PANTALLA_VIVA_SUENA_2026-09-24.md#2-la-moneda-que-cae--moneda_cae).
+
 ## El buscador: la tarjeta elegida desliza lo que no cabe, y los dos buscadores van con la ventana — 25 de septiembre de 2026
 
 En el buscador con portadas, con **Títulos largos deslizantes** encendido, el nombre y el renglón de la tarjeta elegida

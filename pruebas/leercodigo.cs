@@ -179,6 +179,15 @@ static class Codigo
     public static List<int[]> Bucles(MethodBase m)
     {
         List<int[]> r = new List<int[]>();
+        foreach (int[] s in Saltos(m)) if (s[1] <= s[0]) r.Add(new int[] { s[1], s[0] });
+        return r;
+    }
+
+    // TODOS LOS SALTOS de un metodo, hacia delante y hacia atras: pares {donde esta el salto, a donde va}, en bytes
+    // del metodo. Un salto hacia delante que pasa por encima de una llamada es un "if" que la puede esquivar.
+    public static List<int[]> Saltos(MethodBase m)
+    {
+        List<int[]> r = new List<int[]>();
         if (m == null) return r;
         MethodBody b = null; try { b = m.GetMethodBody(); } catch { }
         if (b == null) return r;
@@ -208,13 +217,11 @@ static class Codigo
             bool largoSalto = (op >= 0x38 && op <= 0x44) || op == 0xDD;
             if (corto && i + 1 < il.Length)
             {
-                int destino = sigue + (sbyte)il[i + 1];
-                if (destino <= i) r.Add(new int[] { destino, i });
+                r.Add(new int[] { i, sigue + (sbyte)il[i + 1] });
             }
             else if (largoSalto && i + 4 < il.Length)
             {
-                int destino = sigue + BitConverter.ToInt32(il, i + 1);
-                if (destino <= i) r.Add(new int[] { destino, i });
+                r.Add(new int[] { i, sigue + BitConverter.ToInt32(il, i + 1) });
             }
             i = sigue;
         }

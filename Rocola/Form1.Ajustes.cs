@@ -1388,8 +1388,9 @@ namespace Rocola
             // Monedas rapidas seguidas: el aviso SUMA (+4, +8, +12...) en vez de reiniciar; si ya paso su
             // tiempo (el usuario fue lento), arranca de nuevo en +4.
             coinTotal = SameToastActive(ToastKind.Coin) ? coinTotal + CreditsPerCoin : CreditsPerCoin;
-            // Con la moneda cayendo a la vista (SuenaVivoGpu.cs) el "+4 creditos" sale junto a la capsula, no arriba.
-            if (!MonedaSinAviso()) ShowToast("+" + coinTotal + " creditos", Color.FromArgb(40, 165, 90));
+            // El letrero sale siempre, tambien con la moneda cayendo a la vista (SuenaVivoGpu.cs) y con el buscador
+            // abierto: la moneda se ve abajo, en la capsula, y el que la metio esta mirando arriba.
+            ShowToast("+" + coinTotal + " creditos", Color.FromArgb(40, 165, 90));
             MarkToast(ToastKind.Coin);
         }
     }
