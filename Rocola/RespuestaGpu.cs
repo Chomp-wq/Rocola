@@ -37,6 +37,16 @@ namespace Rocola
         public uint GlassTint = 0xFFFFFFFFu;
         public Func<bool> GetGlassMode;
         public Func<float> GetSongSlide, GetSongTravel;
+        public Func<bool> GetSongVertical;
+        private float songFrameSlide, songFrameTravel;
+        private bool songFrameVertical;
+        private void CaptureSongSlide()
+        {
+            // Pagina, seleccion y pagina saliente comparten el MISMO instante.
+            songFrameSlide = GetSongSlide != null ? GetSongSlide() : 0f;
+            songFrameTravel = GetSongTravel != null ? GetSongTravel() : 0f;
+            songFrameVertical = GetSongVertical != null && GetSongVertical();
+        }
         public Func<int> GetPaletteKey;
         public Func<long> GetPaletteContent;
         private int paletteKey;
@@ -116,15 +126,18 @@ namespace Rocola
         {
             if (bottom <= top) return;
             Rectangle clip = GetPiezaRect != null ? GetPiezaRect(0) : page;
-            float dx = GetSongSlide != null ? GetSongSlide() : 0f;
-            if (index == 3) dx -= GetSongTravel != null ? GetSongTravel() : 0f;
+            float dx = songFrameSlide;
+            if (index == 3) dx -= songFrameTravel;
+            float dy = 0;
+            if (songFrameVertical) { dy = dx; dx = 0; }
             float left = Math.Max(clip.Left, page.Left + dx), right = Math.Min(clip.Right, page.Right + dx);
-            if (right <= left) return;
-            SetTexQuadA(piezaQuad, left, top, right, bottom, piezaU[index], piezaV[index], tint);
+            float y0 = Math.Max(clip.Top, top + dy), y1 = Math.Min(clip.Bottom, bottom + dy);
+            if (right <= left || y1 <= y0) return;
+            SetTexQuadA(piezaQuad, left, y0, right, y1, piezaU[index], piezaV[index], tint);
             float u0 = piezaU[index] * (left - page.Left - dx) / page.Width;
             float u1 = piezaU[index] * (right - page.Left - dx) / page.Width;
-            float from = piezaV[index] * (top - page.Top) / page.Height;
-            float to = piezaV[index] * (bottom - page.Top) / page.Height;
+            float from = piezaV[index] * (y0 - page.Top - dy) / page.Height;
+            float to = piezaV[index] * (y1 - page.Top - dy) / page.Height;
             for (int k = 0; k < piezaQuad.Length; k++)
             {
                 piezaQuad[k].U = piezaQuad[k].U == 0 ? u0 : u1;

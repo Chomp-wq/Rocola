@@ -902,6 +902,7 @@ namespace Rocola
                 gpuPanel.GetGlassMode = delegate { return CanUseSongGlass; };
                 gpuPanel.GetSongSlide = delegate { return songList == null ? 0f : songList.GpuSlideOffset; };
                 gpuPanel.GetSongTravel = delegate { return songList == null ? 0f : songList.GpuSlideTravel; };
+                gpuPanel.GetSongVertical = delegate { return songList != null && songList.GpuSlideVertical; };
                 gpuPanel.GetPaletteKey = delegate {
                     if (!coloresCache || !searchOpen || searchOverlay == null) return 0;
                     searchOverlay.Accent = bgAccentTarget;
@@ -1194,9 +1195,16 @@ namespace Rocola
                     else if (cancionesTransparentes && songList != null)
                     {
                         GraphicsState listState = g.Save(); g.TranslateTransform(songList.Left, songList.Top);
+                        g.SetClip(new Rectangle(0, 0, songList.Width, songList.Height));
                         songList.RenderTransparentGpuTint(g, cancionesCristal, glassCapas, Lighten(bgAccent, .55)); g.Restore(listState);
                     }
-                    else DrawCtrlOverlay(g, songList);
+                    else
+                    {
+                        GraphicsState listState = g.Save();
+                        g.TranslateTransform(songList.Left, songList.Top);
+                        g.SetClip(new Rectangle(0, 0, songList.Width, songList.Height));
+                        songList.RenderOpaqueGpu(g); g.Restore(listState);
+                    }
                     if (songPager != null && songPager.Visible) DrawSongPagerGpu(g);
                     g.Restore(gs);
                 }
@@ -1377,9 +1385,26 @@ namespace Rocola
         {
             if (buf == null) return 0;
             int n = 0;
+            if (!searchOpen && panelSongs != null && panelSongs.Visible && songPager != null && songPager.Visible && songPagerFlash != null)
+            {
+                for (int k = 0; k < 2 && n < buf.Length; k++)
+                {
+                    float level = songPagerFlash.Level(k);
+                    if (level <= .01f) continue;
+                    Rectangle r = songPager.Bounds;
+                    float size = Math.Max(12f, Math.Min(20f, r.Height * .43f));
+                    int cw = Math.Min(r.Width, Math.Max(170, (int)(size * 13)));
+                    if ((r.Width - cw) / 2 - 12 < 90) continue;
+                    buf[n].Cx = panelSongs.Left + (k == 0 ? r.Left + 8 + size * .5f : r.Right - 8 - size * .5f);
+                    buf[n].Cy = panelSongs.Top + r.Top + r.Height * .5f;
+                    buf[n].R = size * 1.25f;
+                    buf[n].Argb = (uint)Color.FromArgb((int)(215 * level), 242, 206, 72).ToArgb(); n++;
+                }
+            }
             if (searchOpen && searchOverlay != null)
             {
                 int sx = searchOverlay.Left, sy = searchOverlay.Top;
+                if (winMode == 1) sy += (int)BuildWinState().Dy;
                 for (int k = 0; k < 3 && n < buf.Length; k++)
                 {
                     float cx, cy, r; int argb;

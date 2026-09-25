@@ -861,11 +861,14 @@ namespace Rocola
             return g;
         }
 
-        // Estado de la animacion de VENTANA (el buscador) para el panel GPU, imitando a macOS:
-        //  - ABRIENDO: entra al 86% de su tamano y un poco mas abajo, se pasa un pelin de su tamano final y
-        //    REBOTA hasta asentarse, mientras aparece de golpe (el fundido acaba a media animacion). El rebote
-        //    es algo mayor a lo ancho que a lo alto, asi que se "estira" un instante: es lo que le da vida.
-        //  - CERRANDO: primero toma IMPULSO (crece un pelin) y luego se va encogiendo, hundiendose y acelerando.
+        // El buscador sube desde fuera de pantalla, a escala nativa y frenando al llegar.
+        // Se mueve su textura ya preparada: no se recompone por fotograma.
+        internal static float DesplazamientoBuscador(float t, float alto, bool abre)
+        {
+            t = Math.Max(0f, Math.Min(1f, t));
+            float u = abre ? 1f - t : t;
+            return Math.Max(0f, alto) * u * u * u;
+        }
         private GpuWin BuildWinState()
         {
             GpuWin g = new GpuWin();
@@ -876,23 +879,16 @@ namespace Rocola
                                      // no la haya apagado todavia, asi la UI nunca se puede quedar escondida.
             if (winMode == 1)
             {
-                float u = t - 1f;
-                float e = 1f + 4.2f * u * u * u + 3.2f * u * u;      // frenado con REBOTE: se pasa ~1.3x y vuelve
-                float ey = 1f + 3.2f * u * u * u + 2.2f * u * u;     // vertical: rebota menos -> se estira un instante
-                g.Scale = 0.86f + 0.14f * e;
-                g.ScaleY = 0.86f + 0.14f * ey;
-                g.Dy = (1f - e) * 22f;                              // sube un poco al abrirse (y se pasa un pelin)
-                g.Alpha = t * 2.4f; if (g.Alpha > 1f) g.Alpha = 1f; // ya visible en el primer tercio
+                g.Scale = g.ScaleY = 1f;
+                g.Dy = DesplazamientoBuscador(t, ClientSize.Height, true);
+                g.Alpha = 1f;
                 g.Bmp = null; g.HideUi = true;                      // se anima la PROPIA textura de UI (ya es el buscador)
             }
             else
             {
-                float e = t * t;                                    // acelera (ease-in): se va rapido
-                float imp = 0.34f * t * (1f - t) * (1f - t);         // IMPULSO: crece ~3% al arrancar y se desvanece
-                g.Scale = 1f - 0.16f * e + imp;
-                g.ScaleY = 1f - 0.16f * e + imp * 0.6f;             // estira un poco a lo ancho al tomar impulso
-                g.Dy = e * 14f;                                     // se hunde un poco al cerrarse
-                g.Alpha = 1f - e;
+                g.Scale = g.ScaleY = 1f;
+                g.Dy = DesplazamientoBuscador(t, ClientSize.Height, false);
+                g.Alpha = 1f;
                 g.Bmp = winSnap; g.Robada = winRobada && winSnap == null;   // la imagen copiada, o la textura que tenia la UI
                 if (g.Bmp == null && !g.Robada) return g;           // ni una ni otra: la textura de UI ya es la de navegacion
                 g.HideUi = false;                                   // esa UI (la rejilla) SI se dibuja: la ventana se va sobre ella
