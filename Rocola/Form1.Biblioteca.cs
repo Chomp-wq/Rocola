@@ -2565,7 +2565,7 @@ namespace Rocola
                     try { winSnap = uiOverlay.Clone(new Rectangle(0, 0, uiOverlay.Width, uiOverlay.Height), PixelFormat.Format32bppPArgb); }
                     catch { winSnap = null; return; }
                 }
-                if (searchOverlay != null && searchOverlay.Nuevo) gpuPanel.RobaPiezasParaVentana();   // y sus piezas (BuscadorPortadasGpu.cs)
+                gpuPanel.RobaPiezasParaVentana();   // y sus piezas, con los dos buscadores (BuscadorPortadasGpu.cs)
             }
             winMode = abriendo ? 1 : 2;
             winTick = Environment.TickCount;

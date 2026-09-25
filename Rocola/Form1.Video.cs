@@ -749,7 +749,8 @@ namespace Rocola
                 gpuPanel.GetPiezaRect = delegate(int i) { return uiPiezaRect[i]; };
                 gpuPanel.GetPiezaVersion = delegate(int i) { return EnsureUiPieza(i); };
                 gpuPanel.GetCartas = FillCartas;   // el buscador con portadas: cada tarjeta entra por su cuenta (BuscadorPortadasGpu.cs)
-                gpuPanel.GetPiezasSuben = PiezasSubenConLaVentana;   // y sus piezas van con la ventana
+                gpuPanel.GetPiezasSuben = PiezasSubenConLaVentana;   // las piezas de los dos buscadores van con la ventana
+                gpuPanel.GetPiezaVistaPrevia = PiezaVistaPreviaBuscador;   // y lo que se desliza de su vista previa
                 gpuPanel.GetGlassMode = delegate { return CanUseSongGlass; };
                 gpuPanel.GetSongSlide = delegate { return songList == null ? 0f : songList.GpuSlideOffset; };
                 gpuPanel.GetSongTravel = delegate { return songList == null ? 0f : songList.GpuSlideTravel; };
@@ -1199,7 +1200,7 @@ namespace Rocola
             long sig = SigBase;
             sig = Mix(sig, cual); sig = Mix(sig, donde.X); sig = Mix(sig, donde.Y);
             sig = Mix(sig, donde.Width); sig = Mix(sig, donde.Height);
-            if (searchOverlay.Nuevo) sig = Mix(Mix(sig, 'P'), searchOverlay.FirmaPieza(cual));   // lo suyo de cada una (BuscadorPortadasGpu.cs)
+            if (searchOverlay.Nuevo) sig = Mix(Mix(Mix(sig, 'P'), searchOverlay.FirmaPieza(cual)), textosDeslizantes);   // lo suyo de cada una (BuscadorPortadasGpu.cs)
             else {
             if (cual >= 2) sig = Mix(sig, searchOverlay.SelResult);
             sig = Mix(sig, searchOverlay.SelRow);
@@ -1226,7 +1227,7 @@ namespace Rocola
                 if (uiPieza[cual] != null) uiPieza[cual].Dispose();
                 uiPieza[cual] = new Bitmap(donde.Width, donde.Height, PixelFormat.Format32bppPArgb);
             }
-            using (cual == 3 ? CapturaTexto(4) : new CapturaCintas(null))
+            using (cual == PiezaVistaPreviaBuscador() ? CapturaTexto(4) : new CapturaCintas(null))   // en el buscador con portadas, la tarjeta elegida (BuscadorPortadasGpu.cs)
             using (Graphics g = Graphics.FromImage(uiPieza[cual]))
             {
                 g.Clear(Color.Transparent);

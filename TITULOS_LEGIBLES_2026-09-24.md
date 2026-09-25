@@ -51,3 +51,7 @@ Pendiente: comprobar reproducción y movimiento real en el equipo del usuario,
 con cambios de página, apertura/cierre del buscador, expansión y vuelta de reposo
 y distintas resoluciones. No se afirman FPS reales ni compatibilidad probada en XP.
 No se copiaron ejecutables a las instalaciones con música.
+
+Nota del 25/09: en el buscador con portadas no hay vista previa; lo que en el de siempre desliza la vista previa lo
+desliza la tarjeta elegida (su nombre y su renglón), con este mismo interruptor y las mismas cintas. Las demás tarjetas
+siguen recortando. Ver `PANTALLA_VIVA_BUSCADOR_2026-09-24.md` ("Añadido el 25 de septiembre").

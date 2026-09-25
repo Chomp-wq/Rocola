@@ -18,3 +18,5 @@ Pruebas ampliadas en `pruebas/paginasgpu.cs`: caché y firmas estables en ambos 
 También se ejecutan capascolor, cristalcola, estilo, respuesta y dibujoligero. Se revisa una imagen generada del paginador. Son pruebas automatizadas y revisión de componentes, no una medición de FPS de la sesión de música del usuario ni una prueba en Windows XP.
 
 Los fallos preexistentes documentados en PAGINAS_Y_ESTADO_2026-09-24.md siguen fuera de esta pasada. No se modifican música, modelos, créditos ni carpetas instaladas.
+
+Nota del 25/09: la casilla, lo elegido y (en el buscador con portadas) las tarjetas van en imágenes chicas aparte de la textura de la ventana; ahora suben y bajan con ella en los dos buscadores, con sus cintas, sin copiar nada (al cerrar, la ventana se queda con sus texturas y las suelta al acabar). Ver `PANTALLA_VIVA_BUSCADOR_2026-09-24.md`.

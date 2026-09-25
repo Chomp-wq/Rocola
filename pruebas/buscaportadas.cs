@@ -35,6 +35,9 @@ using System.Windows.Forms;
 // 11) ENCHUFADO donde toca, y sin el interruptor todo por el camino de siempre.
 // 12) LO QUIETO, HORNEADO: el resplandor, los fondos y los bordes se dibujan una vez y se pegan. Pegar da los mismos
 //     pixeles que dibujar; moverse y teclear no hornean nada; otro color no reutiliza lo del anterior; se guardan pocas.
+// 13) LAS CINTAS DE LA TARJETA ELEGIDA: con los titulos deslizantes, el nombre y el renglon que no caben van en su cinta
+//     (y no quietos); apagado o si cabe, quietos. En la tarjeta imitada, encima de la elegida, entrando con ella y con la
+//     ventana al abrir y al cerrar; con el buscador de siempre, las de su vista previa tambien van con la ventana.
 //
 // Sin tarjeta grafica solo se mira lo que vive en los dos perfiles (la preferencia y la pestana): el dibujo por
 // procesador no sabe nada de esto.
@@ -1101,7 +1104,7 @@ class BuscaPortadas
         piezasSuben = false;
         List<Envio> abreViejo = Cuadro(p);
         Exige(Busca(abreViejo, tex[1]) < 0 && Busca(abreViejo, tex[2]) < 0 && Busca(abreViejo, tex[4]) < 0,
-              "con el buscador de siempre, abriendo, como siempre: sin las piezas hasta que llega");
+              "y si el formulario dice que no hay buscador que vaya con la ventana, no se dibuja ninguna pieza con ella");
         // CERRANDO: la ventana se queda con las texturas ya subidas de las piezas, sin copiar nada.
         Llama(p, "RobaPiezasParaVentana");
         IntPtr[] ahora = (IntPtr[])Toma(p, "piezaTex");
@@ -1117,15 +1120,16 @@ class BuscaPortadas
               "si la ventana no llega a salir, las piezas se vuelven a subir y se ven, y lo que se llevo se suelta");
         tex = otra;
         Llama(p, "RobaPiezasParaVentana");
-        for (int k = 0; k < 5; k++) { piezas[k] = null; piezasVer[k]++; }   // el buscador ya se cerro: sus piezas no estan
+        Rectangle[] sitio = (Rectangle[])piezasRect.Clone();   // donde estaban (la ventana se las lleva de ahi)
+        for (int k = 0; k < 5; k++) { piezas[k] = null; piezasRect[k] = Rectangle.Empty; piezasVer[k]++; }   // el buscador ya se cerro: sus piezas no estan
         Bitmap foto = new Bitmap(64, 64, PixelFormat.Format32bppPArgb);
         ventana = Ven(true, false, foto, 50f);
         List<Envio> cierra = Cuadro(p);
         int c1 = Busca(cierra, tex[1]), c2 = Busca(cierra, tex[2]), c4 = Busca(cierra, tex[4]);
         bool bajan = c1 >= 0 && c2 >= 0 && c4 >= 0 && c4 < c2 && c4 < c1
-            && Math.Abs(Arriba(cierra[c1]) - (piezasRect[1].Y + 50f - .5f)) < 1e-3
-            && Math.Abs(Arriba(cierra[c2]) - (piezasRect[2].Y + 50f - .5f)) < 1e-3
-            && Math.Abs(Arriba(cierra[c4]) - (piezasRect[4].Y + 50f - .5f)) < 1e-3;
+            && Math.Abs(Arriba(cierra[c1]) - (sitio[1].Y + 50f - .5f)) < 1e-3
+            && Math.Abs(Arriba(cierra[c2]) - (sitio[2].Y + 50f - .5f)) < 1e-3
+            && Math.Abs(Arriba(cierra[c4]) - (sitio[4].Y + 50f - .5f)) < 1e-3;
         Exige(bajan, "y bajan con ella: 50 px mas abajo, con las tarjetas debajo de lo demas");
         ventana = Ven(false, false, null, 0f);
         Cuadro(p);
@@ -1212,7 +1216,9 @@ class BuscaPortadas
             new string[] { "GpuPanel", "RenderFrame", "DibujaCartasPrimero" }, new string[] { "Form1", "FillUiGlows", "GetDestelloTecla" },
             new string[] { "SearchOverlay", "TypeChar", "MarcaTecla" }, new string[] { "SearchOverlay", "Backspace", "MarcaTecla" },
             new string[] { "GpuPanel", "RenderFrame", "PiezasConLaVentana" }, new string[] { "Form1", "StartWinTrans", "RobaPiezasParaVentana" },
-            new string[] { "GpuPanel", "StopGpu", "SueltaPiezasVentana" },
+            new string[] { "GpuPanel", "StopGpu", "SueltaPiezasVentana" }, new string[] { "Form1", "EnsureUiPieza", "PiezaVistaPreviaBuscador" },
+            new string[] { "GpuPanel", "DibujaCintasTexto", "CintaDeLista" }, new string[] { "GpuPanel", "DibujaCintasTexto", "OrigenVistaPrevia" },
+            new string[] { "GpuPanel", "DibujaCintasTexto", "AlfaVistaPrevia" },
         };
         int malas = 0; string primera = null;
         foreach (string[] l in llamadas)
@@ -1233,17 +1239,20 @@ class BuscaPortadas
               "manda el nuevo solo con el interruptor Y la tarjeta dibujando");
         Exige(Codigo.Llama(Metodo(TF, "ApplyAlbumGpu"), "AjustaBuscadorPortadas"), "y se vuelve a mirar cada vez que la tarjeta se enciende o se apaga (al apagarse, vuelve el de siempre)");
         Exige((int)TF.GetField("NumPiezas", TODO).GetValue(null) == 5, "hay una pieza mas, la 4, para las tarjetas");
-        // Las piezas van con la ventana solo con el nuevo: el formulario se lo dice al panel.
-        Exige(Codigo.EscribeCampo(Codigo.TodosLosMetodos(TF), "GetPiezasSuben") && Codigo.Llama(Metodo(TF, "StartWinTrans"), "get_Nuevo"),
-              "el formulario le dice al panel cuando las piezas van con la ventana, y al cerrar solo se las lleva con el nuevo");
+        // Las piezas de los DOS buscadores van con la ventana: el formulario se lo dice al panel, y al cerrar se las lleva
+        // sin preguntar cual es.
+        Exige(Codigo.EscribeCampo(Codigo.TodosLosMetodos(TF), "GetPiezasSuben") && Codigo.EscribeCampo(Codigo.TodosLosMetodos(TF), "GetPiezaVistaPrevia")
+              && !Codigo.Llama(Metodo(TF, "StartWinTrans"), "get_Nuevo"),
+              "el formulario le dice al panel cuando las piezas van con la ventana y cual es la vista previa, y al cerrar se las lleva con los dos buscadores");
         object f = Codigo.FormSinEncender(TF);
         Control so = (Control)Activator.CreateInstance(TSO, true);
         Pon(f, "searchOverlay", so);
-        bool[] r = new bool[3];
-        Pon(f, "searchOpen", true); Llama(so, "PonNuevo", true); r[0] = (bool)Llama(f, "PiezasSubenConLaVentana");
-        Llama(so, "PonNuevo", false); r[1] = (bool)Llama(f, "PiezasSubenConLaVentana");
+        bool[] r = new bool[3]; int[] v = new int[2];
+        Pon(f, "searchOpen", true); Llama(so, "PonNuevo", true); r[0] = (bool)Llama(f, "PiezasSubenConLaVentana"); v[0] = (int)Llama(f, "PiezaVistaPreviaBuscador");
+        Llama(so, "PonNuevo", false); r[1] = (bool)Llama(f, "PiezasSubenConLaVentana"); v[1] = (int)Llama(f, "PiezaVistaPreviaBuscador");
         Llama(so, "PonNuevo", true); Pon(f, "searchOpen", false); r[2] = (bool)Llama(f, "PiezasSubenConLaVentana");
-        Exige(r[0] && !r[1] && !r[2], "y solo con el buscador con portadas abierto (con el de siempre, o cerrado, no)");
+        Exige(r[0] && r[1] && !r[2], "y van con ella con los dos buscadores abiertos (el nuevo y el de siempre); cerrado, no");
+        Exige(v[0] == 2 && v[1] == 3, "lo que se desliza de la vista previa es la tarjeta elegida en el nuevo (pieza " + v[0] + ") y el texto de debajo del cubo en el de siempre (pieza " + v[1] + ")");
         so.Dispose();
     }
 
@@ -1427,6 +1436,186 @@ class BuscaPortadas
         }
     }
 
+    // ======================= 13) LAS CINTAS DE LA TARJETA ELEGIDA =======================
+    static object devuelto;
+    static T Devuelve<T>() { return (T)devuelto; }
+    static int vistaPrevia = 2;
+    static int Vista() { return vistaPrevia; }
+    // Un formulario sin encender con el buscador con portadas abierto y, elegida, una cancion cuyo nombre y renglon no caben.
+    static object FormConCintas(out Control so)
+    {
+        object f = Codigo.FormSinEncender(TF);
+        int np = (int)TF.GetField("NumPiezas", TODO).GetValue(null);
+        Pon(f, "uiPieza", new Bitmap[np]); Pon(f, "uiPiezaRect", new Rectangle[np]); Pon(f, "uiPiezaSig", new long[np]); Pon(f, "uiPiezaVer", new int[np]);
+        so = Buscador(1280, 720, 4);
+        Pon(so, "GetDuracion", null);   // sin la duracion, el renglon lleva el disco, que es largo
+        object alb = Album("Las Mas Grandes Rancheras de Todos los Tiempos, en Vivo desde el Palenque", "Vicente Fernandez", "/m/vf", 3, null);
+        object tr = Activator.CreateInstance(TTrack, true);
+        TTrack.GetField("Title").SetValue(tr, "El Rey de la Cancion Ranchera Mas Larga que Cabe en una Tarjeta Grande");
+        TTrack.GetField("Artist").SetValue(tr, "Vicente Fernandez"); TTrack.GetField("Path").SetValue(tr, "/m/vf/rey.mp3");
+        IList res = Lista();
+        res.Add(Item(0, "Vicente Fernandez", Album("Hoy", "Vicente Fernandez", "/m/vf2", 3, null), null));
+        res.Add(Item(2, "Vicente Fernandez - El Rey", alb, tr));
+        Pon(so, "Results", res); Pon(so, "TotalResultados", 2);
+        Pon(so, "FocusResults", true); Pon(so, "SelResult", 1);
+        Pon(f, "searchOverlay", so); Pon(f, "searchOpen", true); Pon(f, "gpuEnabled", true); Pon(f, "textosDeslizantes", true);
+        return f;
+    }
+    static IList Cintas4(object f)
+    {
+        Array g = (Array)Toma(f, "cintasTexto");
+        if (g == null || g.GetValue(4) == null) return new ArrayList();
+        return (IList)Toma(g.GetValue(4), "Items");
+    }
+    static RectangleF RectCinta(object run) { return (RectangleF)Toma(run, "Rect"); }
+    // Cuantos pixeles casi blancos (la letra del nombre) hay dentro de un recuadro de una imagen.
+    static int Blancos(Bitmap b, RectangleF r)
+    {
+        int[] px = Pixeles(b); int n = 0;
+        for (int y = Math.Max(0, (int)r.Top); y < Math.Min(b.Height, (int)Math.Ceiling(r.Bottom)); y++)
+            for (int x = Math.Max(0, (int)r.Left); x < Math.Min(b.Width, (int)Math.Ceiling(r.Right)); x++)
+            {
+                int c = px[y * b.Width + x];
+                if (((c >> 16) & 255) > 200 && ((c >> 8) & 255) > 200 && (c & 255) > 200) n++;
+            }
+        return n;
+    }
+    static void LasCintas()
+    {
+        Console.WriteLine("\n  13) LA TARJETA ELEGIDA DESLIZA LO QUE NO CABE (TITULOS LARGOS DESLIZANTES)\n");
+        Control so; object f = FormConCintas(out so);
+        Bitmap[] up = (Bitmap[])Toma(f, "uiPieza"); Rectangle[] ur = (Rectangle[])Toma(f, "uiPiezaRect");
+        // Con el interruptor: el nombre y el renglon, que no caben, van en su cinta y no en la imagen.
+        int v0 = (int)Llama(f, "EnsureUiPieza", 2);
+        IList cs = Cintas4(f);
+        Bitmap conCinta = (up[2] != null) ? (Bitmap)up[2].Clone() : null;
+        RectangleF rt = cs.Count > 0 ? RectCinta(cs[0]) : RectangleF.Empty, rs = cs.Count > 1 ? RectCinta(cs[1]) : RectangleF.Empty;
+        // La columna del texto, sacada del reparto (no de la cinta): del sitio del texto al borde de la tarjeta, menos su margen.
+        float sEsc = Escala(so);
+        Rectangle cartaEnPieza = (Rectangle)Llama(so, "CartaRect", 1); cartaEnPieza.Offset(-ur[2].X, -ur[2].Y);
+        float columna = cartaEnPieza.Right - (int)LlamaS(TSO, "Px", 10f, sEsc) - rt.X;
+        bool dentro = conCinta != null && cs.Count == 2 && rt.Left >= 0 && rt.Right <= conCinta.Width + 1 && rt.Width == rs.Width
+                      && Math.Abs(rt.Width - (columna + 1f)) < 0.01f && rs.Top > rt.Top;
+        int blancosCinta = (conCinta != null && !rt.IsEmpty) ? Blancos(conCinta, rt) : -1;
+        Exige(dentro && blancosCinta == 0, "con los titulos deslizantes, el nombre y el renglon de la tarjeta elegida que no caben van en su cinta (" + cs.Count + ", de " + rt.Width + " px, dentro de su imagen) y no se dibujan quietos (" + blancosCinta + " pixeles de letra)");
+        // Apagado: quietos, cortados, y la imagen se rehace (su firma mira el interruptor).
+        Pon(f, "textosDeslizantes", false);
+        int v1 = (int)Llama(f, "EnsureUiPieza", 2);
+        int nApagado = Cintas4(f).Count, blancosQuieto = (up[2] != null && !rt.IsEmpty) ? Blancos(up[2], rt) : -1;
+        Exige(v1 != v0 && nApagado == 0 && blancosQuieto > 20, "sin ellos, el nombre y el renglon quietos y cortados, como siempre (" + blancosQuieto + " pixeles de letra), y cambiar el interruptor rehace la imagen");
+        // Lo que cabe no se desliza.
+        Pon(f, "textosDeslizantes", true); Pon(so, "SelResult", 0);
+        Llama(f, "EnsureUiPieza", 2);
+        Exige(Cintas4(f).Count == 0, "y lo que cabe (un artista corto) no se desliza: quieto, con lo tecleado resaltado");
+        // Y lo que cabe justo, a menos de una letra del borde, tampoco: la cinta corta donde corta el renglon quieto.
+        {
+            object tr = TItem.GetField("TrackRef").GetValue(((IList)Toma(so, "Results"))[1]);
+            string largo = (string)TTrack.GetField("Title").GetValue(tr);
+            Graphics med = (Graphics)Llama(so, "Medidor");
+            Font fnt = (Font)Toma(so, "fnTitulo");
+            float ancho = columna, w = 0f;
+            string justo = "";
+            for (int k = largo.Length; k > 0; k--)
+            {
+                string pre = largo.Substring(0, k).TrimEnd();
+                w = (float)Llama(so, "Mide", med, pre, fnt);
+                if (w <= ancho) { justo = pre; break; }
+            }
+            TTrack.GetField("Title").SetValue(tr, justo);
+            Pon(so, "SelResult", 1); Llama(f, "EnsureUiPieza", 2);
+            IList cj = Cintas4(f);
+            bool soloRenglon = cj.Count == 1 && RectCinta(cj[0]).Top > rt.Top;
+            Exige(justo.Length > 0 && ancho - w < 12f && soloRenglon, "y lo que cabe justo (" + w.ToString("0.0") + " de " + ancho.ToString("0.0") + " px) tampoco: se desliza solo el renglon, que no cabe");
+            TTrack.GetField("Title").SetValue(tr, largo);
+        }
+        // Otra vez la larga, para lo que sigue.
+        Pon(so, "SelResult", 1); Llama(f, "EnsureUiPieza", 2);
+        cs = Cintas4(f);
+
+        // LA TARJETA IMITADA: las cintas encima de la tarjeta elegida, con su transparencia.
+        Control p = Panel(1280, 720);
+        Pon(p, "TransicionesTacto", false);
+        soGpu = so; relojCartas = Ahora() + 60000;
+        for (int k = 0; k < 5; k++) { piezas[k] = (k == 2) ? up[2] : null; piezasRect[k] = (k == 2) ? ur[2] : Rectangle.Empty; piezasVer[k]++; }
+        Pon(p, "PiezasN", 5);
+        Pon(p, "GetPieza", (Func<int, Bitmap>)delegate (int i) { return piezas[i]; });
+        Pon(p, "GetPiezaRect", (Func<int, Rectangle>)delegate (int i) { return piezasRect[i]; });
+        Pon(p, "GetPiezaVersion", (Func<int, int>)delegate (int i) { return piezasVer[i]; });
+        Pon(p, "GetCartas", Delegate.CreateDelegate(Campo(TPanel, "GetCartas").FieldType, typeof(BuscaPortadas).GetMethod("FillGpu", TODO).MakeGenericMethod(TCarta)));
+        Type tcs = TF.Assembly.GetType("Rocola.CintasTexto", true), arr = tcs.MakeArrayType();
+        devuelto = Toma(f, "cintasTexto");
+        Pon(p, "GetCintasTexto", Delegate.CreateDelegate(typeof(Func<>).MakeGenericType(arr), typeof(BuscaPortadas).GetMethod("Devuelve", TODO).MakeGenericMethod(arr)));
+        vistaPrevia = 2;
+        Pon(p, "GetPiezaVistaPrevia", (Func<int>)Vista);
+        Cuadro(p); List<Envio> es = Cuadro(p);
+        IList tiles = (IList)Toma(p, "cintaTiles");
+        IntPtr t0 = tiles.Count > 0 ? (IntPtr)Toma(tiles[0], "Tex") : IntPtr.Zero;
+        RectangleF r0 = tiles.Count > 0 ? RectCinta(Toma(tiles[0], "Run")) : RectangleF.Empty;
+        IntPtr[] tex = (IntPtr[])Toma(p, "piezaTex");
+        int ic = Busca(es, t0), i2 = Busca(es, tex[2]);
+        float izq = float.MaxValue; if (ic >= 0) for (int vv = 0; vv < 6; vv++) izq = Math.Min(izq, VF(es[ic].Datos, vv, 0));
+        bool encima = ic >= 0 && i2 >= 0 && ic > i2 && Math.Abs(izq - (piezasRect[2].X + r0.X - .5f)) < 1e-3 && Math.Abs(Arriba(es[ic]) - (piezasRect[2].Y + r0.Y - .5f)) < 1e-3
+                      && (VC(es[ic].Datos, 0) >> 24) == (VC(es[i2].Datos, 0) >> 24);
+        Exige(encima, "en la tarjeta grafica las cintas van encima de la tarjeta elegida, en el sitio del nombre y con la misma transparencia (" + tiles.Count + " trozos)");
+        float arribaQuieto = ic >= 0 ? Arriba(es[ic]) : 0f;
+        vistaPrevia = 3;
+        List<Envio> viejo = Cuadro(p);
+        Exige(Busca(viejo, t0) < 0, "y con el buscador de siempre esas cintas son del texto de debajo del cubo (pieza 3): sin el, no se dibujan en la tarjeta");
+        vistaPrevia = 2;
+        // Con el vidrio de la lista de canciones (dentro de un disco) las de la vista previa no van, como antes.
+        Pon(p, "GetGlassMode", (Func<bool>)delegate { return true; });
+        List<Envio> vidrio = Cuadro(p);
+        Pon(p, "GetGlassMode", (Func<bool>)delegate { return false; });
+        Cuadro(p);
+        Exige(Busca(vidrio, t0) < 0, "y con el vidrio de la lista de canciones (dentro de un disco) no se dibujan, como antes");
+        // Entrando: la cinta entra con la tarjeta elegida.
+        relojCartas = Ahora() - 100000;
+        IList otra = Lista(); foreach (object it in (IList)Toma(so, "Results")) otra.Add(it);
+        Pon(so, "Results", otra);
+        Rectangle d4; piezas[4] = Pieza(so, 4, out d4); piezasRect[4] = d4; piezasVer[4]++;
+        relojCartas = Ahora() + 100;
+        Cuadro(p); es = Cuadro(p);
+        tex = (IntPtr[])Toma(p, "piezaTex");
+        ic = Busca(es, t0); i2 = Busca(es, tex[2]);
+        uint ac = ic >= 0 ? VC(es[ic].Datos, 0) >> 24 : 999, a2 = i2 >= 0 ? VC(es[i2].Datos, 0) >> 24 : 0;
+        Exige(ic >= 0 && i2 >= 0 && a2 < 250 && Math.Abs((int)ac - (int)a2) <= 1, "entrando, la cinta entra con la tarjeta elegida (" + ac + " y " + a2 + " de 255)");
+        piezas[4] = null; piezasVer[4]++; relojCartas = Ahora() + 60000;
+
+        // CON LA VENTANA: al abrir y al cerrar, las cintas van con su tarjeta.
+        Type tw = TF.Assembly.GetType("Rocola.GpuWin", true);
+        Pon(p, "GetWin", Delegate.CreateDelegate(typeof(Func<>).MakeGenericType(tw), typeof(BuscaPortadas).GetMethod("Ventana", TODO).MakeGenericMethod(tw)));
+        Pon(p, "GetPiezasSuben", (Func<bool>)delegate { return piezasSuben; });
+        ventana = Ven(false, false, null, 0f);
+        Cuadro(p);
+        piezasSuben = true; ventana = Ven(true, true, null, 137f);
+        List<Envio> abre = Cuadro(p);
+        ic = Busca(abre, t0);
+        Exige(ic >= 0 && Math.Abs(Arriba(abre[ic]) - (arribaQuieto + 137f)) < 1e-3, "al abrir, las cintas suben con la ventana, 137 px mas abajo, encima de su tarjeta");
+        ventana = Ven(false, false, null, 0f); Cuadro(p);
+        Llama(p, "RobaPiezasParaVentana");
+        for (int k = 0; k < 5; k++) { piezas[k] = null; piezasRect[k] = Rectangle.Empty; piezasVer[k]++; }   // el buscador se cerro
+        Bitmap foto = new Bitmap(64, 64, PixelFormat.Format32bppPArgb);
+        ventana = Ven(true, false, foto, 50f);
+        List<Envio> cierra = Cuadro(p);
+        ic = Busca(cierra, t0);
+        Exige(ic >= 0 && Math.Abs(Arriba(cierra[ic]) - (arribaQuieto + 50f)) < 1e-3, "al cerrar, bajan con la tarjeta que se llevo la ventana (50 px mas abajo)");
+        ventana = Ven(false, false, null, 0f); Cuadro(p);
+        // Con el buscador de siempre, las del texto de debajo del cubo (pieza 3), igual.
+        vistaPrevia = 3;
+        piezas[3] = up[2]; piezasRect[3] = ur[2]; piezasVer[3]++;
+        Cuadro(p);
+        Llama(p, "RobaPiezasParaVentana");
+        for (int k = 0; k < 5; k++) { piezas[k] = null; piezasRect[k] = Rectangle.Empty; piezasVer[k]++; }
+        ventana = Ven(true, false, foto, 50f);
+        cierra = Cuadro(p);
+        ic = Busca(cierra, t0);
+        Exige(ic >= 0 && Math.Abs(Arriba(cierra[ic]) - (arribaQuieto + 50f)) < 1e-3, "y con el buscador de siempre, las cintas de su vista previa bajan tambien con ella");
+        ventana = Ven(false, false, null, 0f); Cuadro(p);
+        Pon(p, "GetWin", null);
+        foto.Dispose(); if (conCinta != null) conCinta.Dispose();
+        vistaPrevia = 2;
+    }
+
     // En Linux (Mono) la rocola copia memoria con RtlMoveMemory, de Windows: se carga una COPIA con su .config que la lleva
     // a memmove (como en 'dibujoligero'). No se toca el ejecutable de las pruebas y la carpeta se borra al acabar.
     static string carpetaCopia;
@@ -1487,6 +1676,7 @@ class BuscaPortadas
         try { CtrlF3(); } catch (Exception e) { Mal("ctrl+f3: " + e.GetType().Name + ": " + e.Message + " " + e.StackTrace); }
         try { Enchufado(); } catch (Exception e) { Mal("enchufado: " + e.GetType().Name + ": " + e.Message + " " + e.StackTrace); }
         try { LoQuieto(); } catch (Exception e) { Mal("lo quieto: " + e.GetType().Name + ": " + e.Message + " " + e.StackTrace); }
+        try { LasCintas(); } catch (Exception e) { Mal("las cintas: " + e.GetType().Name + ": " + e.Message + " " + e.StackTrace); }
         Console.WriteLine(fallos == 0 ? "\n  todo bien" : ("\n  " + fallos + " fallos"));
         return fallos;
     }
