@@ -748,6 +748,8 @@ namespace Rocola
                 gpuPanel.GetPieza = delegate(int i) { return uiPieza[i]; };
                 gpuPanel.GetPiezaRect = delegate(int i) { return uiPiezaRect[i]; };
                 gpuPanel.GetPiezaVersion = delegate(int i) { return EnsureUiPieza(i); };
+                gpuPanel.GetCartas = FillCartas;   // el buscador con portadas: cada tarjeta entra por su cuenta (BuscadorPortadasGpu.cs)
+                gpuPanel.GetPiezasSuben = PiezasSubenConLaVentana;   // y sus piezas van con la ventana
                 gpuPanel.GetGlassMode = delegate { return CanUseSongGlass; };
                 gpuPanel.GetSongSlide = delegate { return songList == null ? 0f : songList.GpuSlideOffset; };
                 gpuPanel.GetSongTravel = delegate { return songList == null ? 0f : songList.GpuSlideTravel; };
@@ -764,7 +766,8 @@ namespace Rocola
                     key = Mix(key, searchOverlay.FocusResults); key = Mix(key, searchOverlay.SelResult);
                     key = Mix(key, searchOverlay.SelRow); key = Mix(key, searchOverlay.SelCol);
                     key = Mix(key, searchOverlay.Escrito); key = Mix(key, colaVer);
-                    key = Mix(key, searchOverlay.ToastOn); return Mix(key, searchOverlay.ToastMsg);
+                    key = Mix(key, searchOverlay.ToastOn); key = Mix(key, searchOverlay.ToastMsg);
+                    return searchOverlay.Nuevo ? Mix(key, searchOverlay.FirmaContenido()) : key;
                 };
                 Controls.Add(gpuPanel);
             }
@@ -793,6 +796,7 @@ namespace Rocola
                 if (lblGpu != null) lblGpu.Visible = false;
                 Invalidate(true);   // repinta la UI normal (CPU) que estaba tapada por el panel
             }
+            AjustaBuscadorPortadas();   // el buscador con portadas solo existe con la tarjeta dibujando
             // Cambiar de render no debe esconder una pantalla que sigue activa.
             // No reabrirla: conservar consulta, resultados y seleccion.
             if (gpuEnabled) SyncGpuFullScreen();
@@ -964,6 +968,15 @@ namespace Rocola
             fija = SigBase; fija = Mix(fija, 'S'); fija = Mix(fija, w); fija = Mix(fija, h); fija = Mix(fija, mainH);
             fija = Mix(fija, searchOverlay.Left); fija = Mix(fija, searchOverlay.Top);
             fija = Mix(fija, searchOverlay.Width); fija = Mix(fija, searchOverlay.Height);
+            if (searchOverlay.Nuevo)
+            {
+                // El buscador con portadas: las tarjetas no van en esta imagen (son la pieza 4), asi que no hay trozo de
+                // resultados; el del aviso, como siempre.
+                fija = Mix(fija, 'P'); fija = Mix(fija, searchOverlay.FirmaFija());
+                res = SigBase;
+                aviso = SigBase; aviso = Mix(aviso, searchOverlay.ToastOn); aviso = Mix(aviso, searchOverlay.ToastMsg);
+                return;
+            }
             fija = Mix(fija, searchOverlay.FocusResults);
             // Con los resultados enfocados, la mitad izquierda es el cubo de la portada SI HAY resultados, y el teclado si no
             // los hay (la misma condicion que RenderContent): quedarse sin resultados, o volver a tenerlos, cambia media
@@ -1146,7 +1159,8 @@ namespace Rocola
         // SOLO LA TECLA, y no la tarjeta de los resultados. Al principio eran las dos y estaba mal: moverse
         // por los resultados cambia ademas el cubo de la portada y el texto de debajo, que si van dentro de
         // la imagen grande. Sacarlo de la firma dejaba el cubo y el texto viejos, y el teclado sin volver.
-        internal const int NumPiezas = 4;
+        // La pieza 4 son las tarjetas del buscador con portadas (BuscadorPortadasGpu.cs): con el buscador de siempre no hay.
+        internal const int NumPiezas = 5;
         private readonly Bitmap[] uiPieza = new Bitmap[NumPiezas];
         private readonly Rectangle[] uiPiezaRect = new Rectangle[NumPiezas];
         private readonly long[] uiPiezaSig = new long[NumPiezas];
@@ -1185,6 +1199,8 @@ namespace Rocola
             long sig = SigBase;
             sig = Mix(sig, cual); sig = Mix(sig, donde.X); sig = Mix(sig, donde.Y);
             sig = Mix(sig, donde.Width); sig = Mix(sig, donde.Height);
+            if (searchOverlay.Nuevo) sig = Mix(Mix(sig, 'P'), searchOverlay.FirmaPieza(cual));   // lo suyo de cada una (BuscadorPortadasGpu.cs)
+            else {
             if (cual >= 2) sig = Mix(sig, searchOverlay.SelResult);
             sig = Mix(sig, searchOverlay.SelRow);
             if (cual >= 2) sig = Mix(sig, colaVer);
@@ -1195,6 +1211,7 @@ namespace Rocola
             // Solo la caja de lo escrito mira LO TECLEADO. Metiendolo en la firma de todas, la tecla
             // elegida se reharia en cada letra sin que hubiera cambiado nada de ella.
             if (cual == SearchOverlay.PiezaEscrito) sig = Mix(sig, searchOverlay.Escrito);
+            }
             if (sig == SigNada) sig = 1L;
 
             // El sitio se guarda SIEMPRE (aunque la imagen no cambie): al desplazarse la lista, la misma
@@ -1262,6 +1279,9 @@ namespace Rocola
                     if (searchOverlay.GetHintGlow(k, out cx, out cy, out r, out argb))
                     { buf[n].Cx = sx + cx; buf[n].Cy = sy + cy; buf[n].R = r; buf[n].Argb = (uint)argb; n++; }
                 }
+                float tcx, tcy, tr; int targb;   // la tecla que se acaba de escribir (el buscador con portadas)
+                if (n < buf.Length && searchOverlay.GetDestelloTecla(GpuPanel.AhoraMs(), out tcx, out tcy, out tr, out targb))
+                { buf[n].Cx = sx + tcx; buf[n].Cy = sy + tcy; buf[n].R = tr; buf[n].Argb = (uint)targb; n++; }
             }
             else if (attractOn)
             {
@@ -1364,6 +1384,12 @@ namespace Rocola
             sb = Mix(sb, ClientSize.Width); sb = Mix(sb, ClientSize.Height);
             if (searchOpen && searchOverlay != null)   // parte superior = buscador
             {
+                if (searchOverlay.Nuevo)   // el buscador con portadas: aqui solo va lo quieto (BuscadorPortadasGpu.cs)
+                {
+                    sb = Mix(sb, 'P'); sb = Mix(sb, searchOverlay.FirmaFija());
+                    sb = Mix(sb, searchOverlay.ToastOn); sb = Mix(sb, searchOverlay.ToastMsg);
+                }
+                else {
                 sb = Mix(sb, 'S'); sb = Mix(sb, searchOverlay.Query);
                 sb = Mix(sb, searchOverlay.Results == null ? 0 : searchOverlay.Results.Count);
                 sb = Mix(sb, searchOverlay.ToastOn); sb = Mix(sb, searchOverlay.ToastMsg);
@@ -1388,6 +1414,7 @@ namespace Rocola
                 sb = Mix(sb, searchOverlay.FocusResults);
                 Color searchAccent = searchOverlay.Accent;
                 sb = Mix(sb, searchOverlay.DatosVer); sb = Mix(sb, searchAccent.ToArgb());
+                }
             }
                   // El DESTELLO del boton pulsado YA NO entra en la firma: lo dibuja la GPU como halo aparte (FillUiGlows),
                   // asi que su desvanecido no re-hornea ni re-sube la textura del teclado -> tecleo fluido con brillo suave.

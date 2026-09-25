@@ -95,6 +95,7 @@ class Pestanas
             "suenaGrande", "monedaCae", "sinCreditosInvita", "avisosClaros",         // y la de lo que suena y los creditos
             "escaparate", "topNoche",                                                // y la del modo atraccion
             "letraLejos", "colorGenero",                                             // y la del estilo general
+            "buscadorPortadas",                                                      // y la del buscador
         };
         List<string> huerfanos = new List<string>();
         foreach (string campo in mando)

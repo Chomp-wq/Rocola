@@ -212,6 +212,17 @@ namespace Rocola
             swE[0].CheckedChanged += delegate { letraLejos = swE[0].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             swE[1].CheckedChanged += delegate { colorGenero = swE[1].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             swE[2].CheckedChanged += delegate { textosDeslizantes = swE[2].Checked; CambioElPanelDeReposo(); AplicaEfectosGpu(); f3CambioGraf = true; };
+            // LA TANDA 6, debajo del estilo: el buscador con portadas (BuscadorPortadasGpu.cs).
+            Tarjeta tBus = new Tarjeta(); tBus.SetBounds(488, 272, 456, 112); tBus.Titulo = "EL BUSCADOR"; tBus.Acento = cAc;
+            Interruptor swB = new Interruptor(); swB.SetBounds(16, 40, 424, 26);
+            swB.Font = fNom; swB.ForeColor = cTexto; swB.Acento = cAc;
+            swB.Text = "Buscador con portadas (GPU)"; swB.Checked = buscadorPortadas;
+            Label leB = new Label(); leB.SetBounds(16, 70, 424, 32); leB.BackColor = Color.Transparent;
+            leB.ForeColor = cTenue; leB.Font = fDes;
+            leB.Text = "Teclado compacto y resultados en tarjetas con su portada. Arriba,\n"
+                     + "atajos: lo m\u00e1s pedido hoy, videos, karaoke y lo \u00faltimo buscado.";
+            tBus.Controls.Add(swB); tBus.Controls.Add(leB);
+            swB.CheckedChanged += delegate { buscadorPortadas = swB.Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             Label lPie = new Label(); lPie.SetBounds(16, 508, 928, 48); lPie.BackColor = Color.Transparent;
             lPie.ForeColor = cApagado; lPie.Font = fDes;
             lPie.Text = "Las ideas que se eligieron del lienzo de bocetos. Solo se ven con la tarjeta grafica: sin ella la pantalla\n"
@@ -225,15 +236,17 @@ namespace Rocola
                 suenaGrande = monedaCae = sinCreditosInvita = avisosClaros = true;
                 escaparate = topNoche = true;
                 letraLejos = colorGenero = textosDeslizantes = true;
+                buscadorPortadas = true;
                 for (int i = 0; i < sw.Length; i++) sw[i].Checked = true;
                 for (int i = 0; i < swD.Length; i++) swD[i].Checked = true;
                 for (int i = 0; i < swS.Length; i++) swS[i].Checked = true;
                 for (int i = 0; i < swA.Length; i++) swA[i].Checked = true;
                 for (int i = 0; i < swE.Length; i++) swE[i].Checked = true;
+                swB.Checked = true;
                 f3CambioGraf = true; AplicaEfectosGpu();
                 ShowToast("Pantalla como de fabrica", Color.FromArgb(40, 130, 90));
             };
-            hPared.Controls.Add(tPared); hPared.Controls.Add(tDisco); hSuena.Controls.Add(tSuena); hAtr.Controls.Add(tAtr); hAtr.Controls.Add(tEst);
+            hPared.Controls.Add(tPared); hPared.Controls.Add(tDisco); hSuena.Controls.Add(tSuena); hAtr.Controls.Add(tAtr); hAtr.Controls.Add(tEst); hAtr.Controls.Add(tBus);
             Panel[] hojas = { hPared, hSuena, hAtr };
             string[] nomHoja = { "La pared y el disco", "Lo que suena y los creditos", "La atracción y el estilo" };
             BotonPlano[] bHoja = new BotonPlano[hojas.Length];

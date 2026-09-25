@@ -715,6 +715,7 @@ namespace Rocola
         {
             ang = 0;
             if (searchOverlay == null || !searchOpen) return RectangleF.Empty;   // en GPU el overlay no se pinta: mirar el estado, no Visible
+            if (searchOverlay.Nuevo) return PortadaElegidaBuscador();   // el buscador con portadas: sale de la portada de su tarjeta
             Rectangle r; Image ca, cb; float f;
             if (!searchOverlay.GetPreviewCube(out r, out ca, out cb, out f)) return RectangleF.Empty;
             if (r.Width < 8 || r.Height < 8) return RectangleF.Empty;

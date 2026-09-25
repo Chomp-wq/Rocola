@@ -1117,7 +1117,7 @@ namespace Rocola
         // tarjeta y la tecla elegidas del buscador). Antes iban horneados dentro de la textura grande, asi que
         // mover el recuadro obligaba a rehacerla y re-subirla entera -7 MB a 1080p por pulsacion-. Cada pieza
         // tiene su textura chica y solo se re-sube cuando de verdad cambia.
-        private const int MaxPiezas = 4;
+        private const int MaxPiezas = 5;   // la 4: las tarjetas del buscador con portadas (BuscadorPortadasGpu.cs)
         private readonly IntPtr[] piezaTex = new IntPtr[MaxPiezas];
         private readonly int[] piezaVer = new int[MaxPiezas];
         private readonly int[] piezaW = new int[MaxPiezas], piezaH = new int[MaxPiezas];
@@ -1370,6 +1370,7 @@ namespace Rocola
             if (miniTex != IntPtr.Zero) { D3D9.Release(miniTex); miniTex = IntPtr.Zero; }
             if (transTex != IntPtr.Zero) { D3D9.Release(transTex); transTex = IntPtr.Zero; transLastBmp = null; }
             if (winTex != IntPtr.Zero) { D3D9.Release(winTex); winTex = IntPtr.Zero; winLastBmp = null; }
+            SueltaPiezasVentana();   // las piezas que se llevo la ventana del buscador con portadas (BuscadorPortadasGpu.cs)
             if (toastTex != IntPtr.Zero) { D3D9.Release(toastTex); toastTex = IntPtr.Zero; toastVer = -1; }
             SueltaPantallaViva();   // el letrero de la elegida y la ficha rapida
             SueltaDiscoVivo();      // el vinilo y el boleto
@@ -1687,13 +1688,15 @@ namespace Rocola
             // el resultado es identico a tenerlas horneadas dentro (comprobado pixel a pixel: pruebas/mover.cs).
             if (GlassPieces) CaptureSongSlide();
             if (GetPiezaRect != null && !(gw.Has && gw.HideUi))
+            {
+                DibujaCartasPrimero(0f, PaletteAlpha(), ControlsOpacity);   // las tarjetas del buscador con portadas, debajo de la elegida (BuscadorPortadasGpu.cs)
                 for (int i = 0; i < PiezasN && i < MaxPiezas; i++)
                 {
-                    if (piezaTex[i] == IntPtr.Zero) continue;
+                    if (i == PiezaCartas || piezaTex[i] == IntPtr.Zero) continue;
                     Rectangle pr = GetPiezaRect(i);
                     if (pr.Width < 1 || pr.Height < 1) continue;
                     uint ink = GlassPieces ? (i == 0 ? GlassTint : 0xFFFFFFFFu) :
-                        ((uint)(FocusAlpha(i, pr) * PaletteAlpha() * 255) << 24) | 0xFFFFFFu;
+                        ((uint)(FocusAlpha(i, pr) * PaletteAlpha() * (i == 2 ? CartaElegidaAlfa : 1f) * 255) << 24) | 0xFFFFFFu;
                     if (GlassPieces) ink = (ink & 0xFFFFFFu) | ((uint)(SceneAlpha() * 255) << 24);
                     ink = FadeArgb(ink, ControlsOpacity);
                     if (GlassPieces && i == 1) { DrawSongPage(pr, GetPiezaRect(2), i, ink); continue; }
@@ -1702,6 +1705,7 @@ namespace Rocola
                         ink);
                     stars.DrawQuad(piezaTex[i], piezaQuad);
                 }
+            }
             if (!(gw.Has && gw.HideUi)) DibujaCintasTexto(true);
             if (!(gw.Has && gw.HideUi)) DibujaEq();   // las barritas de la que suena, encima de la lista y de su fila elegida
             // VENTANA del buscador abriendo/cerrando: el mismo quad de la UI, escalado desde su centro y fundido.
@@ -1721,6 +1725,7 @@ namespace Rocola
                     stars.DrawQuad(wt, winQuad);
                 }
             }
+            PiezasConLaVentana(gw, uiPropia);   // el buscador con portadas: su casilla, lo elegido y sus tarjetas van con la ventana (BuscadorPortadasGpu.cs)
             if (uiBotTex != IntPtr.Zero && uiBotW > 0 && uiBotH > 0)
             {
                 uint botAlfa = (uint)((1-idleBlend)*255);   // con el reposo del todo abierto va a opacidad cero: no se manda

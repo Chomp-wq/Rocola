@@ -1,5 +1,17 @@
 # Rocola
 
+## Pantalla viva, tanda 6: el buscador con portadas — 24 de septiembre de 2026
+
+La idea "Teclado compacto y resultados con portada", solo en el dibujo por tarjeta gráfica y en las dos ramas. El teclado
+queda compacto y siempre a la vista, a la izquierda; a la derecha los resultados salen en dos columnas de tarjetas grandes
+con su portada, qué son (artista, álbum o canción), lo tecleado resaltado y SONANDO / EN COLA; y arriba hay atajos, solo con
+datos de verdad: lo más pedido hoy, videos, karaoke y las dos últimas búsquedas. Las tarjetas que llegan entran una tras
+otra, y si no caben todas se baja fila a fila. Todo sube y baja con la ventana del buscador, y lo quieto (resplandores y
+fondos) va horneado: moverse por el teclado cuesta menos que en el buscador de siempre. Interruptor en Ctrl+F3 → Pantalla
+→ **La atracción y el estilo** → **EL BUSCADOR**. Sin tarjeta, o con el interruptor apagado, el buscador sale idéntico al
+de antes (comprobado píxel a píxel). No se probó en una tarjeta real ni en XP.
+[La guía de la tanda](PANTALLA_VIVA_BUSCADOR_2026-09-24.md).
+
 ## El buscador, más ligero para la tarjeta — 24 de septiembre de 2026
 
 Revisados todos los apartados del buscador (buscar, teclear, moverse, posar, avisos, abrir, cerrar, quieto), solo en el

@@ -2151,6 +2151,7 @@ namespace Rocola
         {
             try
             {
+                PortadaLlegoBuscador(key);   // si la esperaba una tarjeta del buscador con portadas
                 colorPortada.Remove(key);   // pudo recargarse una imagen distinta con la misma ruta
                 if (albumView != null) albumView.RefreshCover(key);
                 if (panelSongs != null && panelSongs.Visible && currentAlbum != null && cubeBox != null)
@@ -2564,6 +2565,7 @@ namespace Rocola
                     try { winSnap = uiOverlay.Clone(new Rectangle(0, 0, uiOverlay.Width, uiOverlay.Height), PixelFormat.Format32bppPArgb); }
                     catch { winSnap = null; return; }
                 }
+                if (searchOverlay != null && searchOverlay.Nuevo) gpuPanel.RobaPiezasParaVentana();   // y sus piezas (BuscadorPortadasGpu.cs)
             }
             winMode = abriendo ? 1 : 2;
             winTick = Environment.TickCount;
@@ -2855,6 +2857,7 @@ namespace Rocola
             searchOverlay.SetQuery("");
             searchOverlay.Results = new List<SearchItem>();
             searchOverlay.SelRow = 1; searchOverlay.SelCol = 0;
+            AlAbrirBuscador();   // el buscador con portadas: reparto y atajos al dia (BuscadorPortadasGpu.cs)
             searchOverlay.Bounds = SearchOverlayRect();
 #if ROCOLA_GPU
             if (gpuEnabled && gpuPanel != null)
@@ -3038,6 +3041,7 @@ namespace Rocola
                 }
             }
             else { lastMatches = null; lastQuery = null; }
+            CuentaResultados(query, lastMatches != null ? lastMatches.Count : 0);   // la casilla del buscador con portadas lo dice
             searchOverlay.Results = res;
             searchOverlay.Invalidate();
         }
@@ -3085,6 +3089,7 @@ namespace Rocola
             if (it == null) return;
             MarkSearchActivity();
             if (it.Kind == 3) { GrantSecretCredits(it); return; }
+            ApuntaBusqueda(it);   // lo buscado pasa a los atajos del buscador con portadas ("Buscaste: ...")
             if (it.Kind == 2 && it.TrackRef != null)
             {
                 PlayItem p = new PlayItem(); p.IsVideo = false; p.Song = it.TrackRef; p.Disc = it.AlbumRef;

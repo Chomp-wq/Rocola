@@ -137,3 +137,6 @@ Las otras ideas que elegiste, por tandas, cada una con sus pruebas y en las dos 
    [la guía de la tanda 4](PANTALLA_VIVA_ATRACCION_2026-09-24.md).
 5. **Estilo general.** Hecha: letra para leer de lejos y el color del género en todo. Ver
    [la guía de la tanda 5](PANTALLA_VIVA_ESTILO_2026-09-24.md).
+6. **El buscador.** Hecha después, con la idea "teclado compacto y resultados con portada": el teclado compacto, las
+   tarjetas grandes con portada que entran una tras otra y los atajos. Ver
+   [la guía de la tanda 6](PANTALLA_VIVA_BUSCADOR_2026-09-24.md).

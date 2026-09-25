@@ -121,6 +121,7 @@
     <Compile Include="TextoMovilGpu.cs" />
     <Compile Include="DibujoLigeroGpu.cs" />
     <Compile Include="BuscadorLigeroGpu.cs" />
+    <Compile Include="BuscadorPortadasGpu.cs" />
     <Compile Include="PrecargaPaginaGpu.cs" />
     <Compile Include="PaletaCaratulaGpu.cs" />
     <Compile Include="CreditosServicio.cs" />
