@@ -630,6 +630,9 @@ namespace Rocola
             {
                 string tit, art;
                 nowPlaying.TituloArtista(out tit, out art);
+#if ROCOLA_GPU
+                if (gpuEnabled) tit = TituloSinPista(tit);
+#endif
                 nowFullText = tit; nowArtista = art;
             }
             else { nowFullText = "Nada reproduciendose"; nowArtista = ""; }
@@ -638,6 +641,10 @@ namespace Rocola
             ActualizaGenero();    // la pastilla del genero, antes de acomodar: manda en el ancho del artista
             PositionMejorada();   // pone titulo y artista y coloca el letrero MEJORADA
             lblNext.Text = (queue.Count > 0) ? "Sigue:  " + queue[0].Display() : "Sigue:  -";
+#if ROCOLA_GPU
+            if (gpuEnabled && queue.Count > 0 && !queue[0].IsVideo && queue[0].Song != null)
+                lblNext.Text = "Sigue:  " + queue[0].Song.Artist + " - " + TituloSinPista(queue[0].Song.Title);
+#endif
             pastCola.Valor = queue.Count.ToString();
             LlenaPortaditas();
             pastCola.Invalidate();
@@ -890,6 +897,8 @@ namespace Rocola
                 gpuPanel.GetUiCambio = UiCambioDesde;   // y que trozo cambio (en el buscador: BuscadorLigeroGpu.cs)
                 gpuPanel.GetUiBot = delegate { return uiBotOverlay; };              // franja de ESTADO de abajo (textura chica aparte: el reloj no rehace la principal)
                 gpuPanel.GetIdlePanel = BuildIdlePanel;
+                gpuPanel.GetCintasTexto = delegate { return cintasTexto; };
+                this.FormClosed += delegate { SueltaCintasTexto(); };
                 this.FormClosed += delegate { if (idlePanelBmp != null) { idlePanelBmp.Dispose(); idlePanelBmp = null; } if (idleClockUnderlay != null) { idleClockUnderlay.Dispose(); idleClockUnderlay = null; } };
                 gpuPanel.GetUiBotVersion = delegate { return EnsureUiBotOverlay(); };
                 gpuPanel.GetUiGlows = FillUiGlows;                                   // halos animados (destello de boton, pulso de letra, TOP, atraccion): quads GPU, sin re-subir textura
@@ -1260,6 +1269,7 @@ namespace Rocola
                 if (uiBotOverlay != null) uiBotOverlay.Dispose();
                 uiBotOverlay = new Bitmap(w, bh, PixelFormat.Format32bppPArgb);
             }
+            using (CapturaTexto(0))
             using (Graphics g = Graphics.FromImage(uiBotOverlay))
             {
                 g.Clear(Color.Transparent);
@@ -1271,7 +1281,7 @@ namespace Rocola
                     if (!FranjaLejos(g))   // la letra para leer de lejos (EstiloGpu.cs): el titulo grande y lo que sigue a la derecha
                     {
                         PintaTituloCompacto(g, false);
-                        DrawLabelOverlay(g, lblNow);
+                        PintaArtistaCompacto(g);
                         if (lblMejorada != null && lblMejorada.Visible) DrawLabelOverlay(g, lblMejorada);   // letrero MEJORADA (su brillo es un halo por quad, no rehace esta textura)
                         if (pastGenero != null && pastGenero.Visible) DrawCtrlOverlay(g, pastGenero);
                         PintaSiguienteCompacto(g);
@@ -1341,7 +1351,7 @@ namespace Rocola
             sig = Mix(sig, searchOverlay.SelCol); sig = Mix(sig, searchOverlay.FocusResults);
             Color acPieza = searchOverlay.Accent;   // a una local: es un tipo por valor dentro de un Control
             sig = Mix(sig, searchOverlay.Query); sig = Mix(sig, acPieza.ToArgb());
-            sig = Mix(sig, searchOverlay.DatosVer);
+            sig = Mix(sig, searchOverlay.DatosVer); sig = Mix(sig, textosDeslizantes);
             // Solo la caja de lo escrito mira LO TECLEADO. Metiendolo en la firma de todas, la tecla
             // elegida se reharia en cada letra sin que hubiera cambiado nada de ella.
             if (cual == SearchOverlay.PiezaEscrito) sig = Mix(sig, searchOverlay.Escrito);
@@ -1359,6 +1369,7 @@ namespace Rocola
                 if (uiPieza[cual] != null) uiPieza[cual].Dispose();
                 uiPieza[cual] = new Bitmap(donde.Width, donde.Height, PixelFormat.Format32bppPArgb);
             }
+            using (cual == 3 ? CapturaTexto(4) : new CapturaCintas(null))
             using (Graphics g = Graphics.FromImage(uiPieza[cual]))
             {
                 g.Clear(Color.Transparent);
@@ -1601,6 +1612,7 @@ namespace Rocola
             long sb = SigBase;
             sb = Mix(sb, ClientSize.Width); sb = Mix(sb, ClientSize.Height);
             if (attractOn) return Mix(sb, 'A');   // en atraccion la franja va limpia (transparente)
+            sb = Mix(sb, textosDeslizantes);
             sb = Mix(sb, LetraLejosActiva() ? 1 : 0);   // la letra de lejos cambia como se hornea (EstiloGpu.cs)
             if (lblNowTop != null) sb = Mix(sb, lblNowTop.Text);
             if (lblNow != null) sb = Mix(sb, lblNow.Text);

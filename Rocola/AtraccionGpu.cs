@@ -429,7 +429,7 @@ namespace Rocola
                     if (t == null || t.Path == null || !quiero.TryGetValue(t.Path, out j) || hallada[j] != null) continue;
                     FilaNoche f = new FilaNoche();
                     f.Ruta = t.Path; f.Veces = nocheCuenta[cand[j]];
-                    f.Titulo = string.IsNullOrEmpty(t.Title) ? t.ToString() : t.Title;
+                    f.Titulo = TituloSinPista(string.IsNullOrEmpty(t.Title) ? t.ToString() : t.Title);
                     f.Artista = string.IsNullOrEmpty(t.Artist) ? (a.Artist ?? "") : t.Artist;
                     f.Portada = a.CoverPath;
                     string e = GeneroDeCancion(t, a);

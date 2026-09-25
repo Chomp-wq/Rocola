@@ -1176,7 +1176,14 @@ namespace Rocola
                 return GeneroDeCancion(songItems[i] as Track, org);
             };
             songList.GetCount = delegate { return songItems.Count; };
-            songList.GetText = delegate (int i) { return (i >= 0 && i < songItems.Count) ? songItems[i].ToString() : ""; };
+            songList.GetText = delegate (int i)
+            {
+                string title = (i >= 0 && i < songItems.Count) ? songItems[i].ToString() : "";
+#if ROCOLA_GPU
+                if (gpuEnabled) title = TituloSinPista(title);
+#endif
+                return title;
+            };
             songList.GetRight = delegate (int i)   // duracion de la cancion (los videos no se pre-analizan)
             {
                 if (i < 0 || i >= songItems.Count) return "";

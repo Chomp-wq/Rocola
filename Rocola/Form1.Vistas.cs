@@ -2191,7 +2191,11 @@ namespace Rocola
                     int derContenido = r.Right - 14 - durW - quitaGen - quitaCola;
                     Rectangle tr = new Rectangle(r.X + (int)xTexto, r.Y, Math.Max(10, derContenido - 6 - r.X - (int)xTexto), r.Height);
                     string text = (GetText != null) ? GetText(idx) : "";
-                    g.DrawString(text, Font, txtB, tr, txtFmt);   // GDI+: respeta la traslacion del Graphics (en el control es identidad; en la textura de UI lleva la lista a su sitio)
+#if ROCOLA_GPU
+                    PintaTextoMovil(g, text, Font, txtB, tr, txtFmt);
+#else
+                    g.DrawString(text, Font, txtB, tr, txtFmt);
+#endif   // GDI+: respeta la traslacion del Graphics (en el control es identidad; en la textura de UI lleva la lista a su sitio)
                 }
             }
 

@@ -1178,6 +1178,11 @@ namespace Rocola
                 EnsureHornoTarjeta(rr.Width, rr.Height);
                 g.DrawImageUnscaled(sel ? bmpTarjSel : bmpTarj, rr.X - MargenTarj, rr.Y - MargenTarj);
                 SearchItem it = Results[i];
+                string display = it.Display;
+#if ROCOLA_GPU
+                if (SeparateGpu && it.Kind == 2 && it.TrackRef != null)
+                    display = it.TrackRef.Artist + " - " + TituloSinPista(it.TrackRef.Title);
+#endif
                 string tag = (it.Kind == 0) ? "ARTISTA" : (it.Kind == 1) ? "ALBUM" : "CANCION";
 #if ROCOLA_GPU
                 if (SeparateGpu && it.Kind == 3) tag = "SERVICIO";
@@ -1238,12 +1243,12 @@ namespace Rocola
                 // ---- RENGLON PRINCIPAL: el nombre, con LO TECLEADO encendido ----
                 Rectangle tr = new Rectangle(rr.X + 9, rr.Y + 16, rr.Width - 16, rr.Height - 18);
                 int mIni, mLar;
-                if (qn != null && qn.Length > 0 && BuscaTramo(it.Display, qn, out mIni, out mLar))
+                if (qn != null && qn.Length > 0 && BuscaTramo(display, qn, out mIni, out mLar))
                 {
                     // Se mide con NoPadding y se dibuja con NoPadding: si no, medir y pintar no coinciden y el
                     // resaltado sale corrido.
                     const TextFormatFlags FL = TextFormatFlags.Left | TextFormatFlags.NoPadding | TextFormatFlags.NoClipping;
-                    string ante = it.Display.Substring(0, mIni), coincide = it.Display.Substring(mIni, mLar);
+                    string ante = display.Substring(0, mIni), coincide = display.Substring(mIni, mLar);
                     int wa = TextRenderer.MeasureText(g, ante, fRes, new Size(9999, 99), TextFormatFlags.NoPadding).Width;
                     int wc = TextRenderer.MeasureText(g, coincide, fRes, new Size(9999, 99), TextFormatFlags.NoPadding).Width;
                     if (wa + wc <= tr.Width)   // si el tramo no se ve entero, mejor no resaltar nada
@@ -1258,13 +1263,13 @@ namespace Rocola
                             g.FillPath(marcaB, gp);
                         TextRenderer.DrawText(g, ante, fRes, new Rectangle(tr.X, tr.Y, tr.Width, tr.Height), Color.White, FL);
                         TextRenderer.DrawText(g, coincide, fRes, new Rectangle(tr.X + wa, tr.Y, tr.Width - wa, tr.Height), Color.FromArgb(255, 214, 120), FL);
-                        TextRenderer.DrawText(g, it.Display.Substring(mIni + mLar), fRes,
+                        TextRenderer.DrawText(g, display.Substring(mIni + mLar), fRes,
                                               new Rectangle(tr.X + wa + wc, tr.Y, Math.Max(4, tr.Width - wa - wc), tr.Height),
                                               Color.White, TextFormatFlags.Left | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
                         return;
                     }
                 }
-                TextRenderer.DrawText(g, it.Display, fRes, tr, Color.White, TextFormatFlags.Left | TextFormatFlags.EndEllipsis);
+                TextRenderer.DrawText(g, display, fRes, tr, Color.White, TextFormatFlags.Left | TextFormatFlags.EndEllipsis);
             }
 
             // COMO ESTA MARCADA UNA TARJETA, en un solo numero: sirve para saber cuales cambiaron sin volver
@@ -1409,9 +1414,18 @@ namespace Rocola
                 else if (it.Kind == 2 && it.TrackRef != null) { title = it.TrackRef.Title; sub = it.TrackRef.Artist + ((it.AlbumRef != null) ? "   -   " + it.AlbumRef.Name : ""); }
                 else { title = it.Display; int dc = (it.Albums != null) ? it.Albums.Count : 0; sub = dc + (dc == 1 ? " disco" : " discos"); }
 
+#if ROCOLA_GPU
+                if (SeparateGpu && it.Kind == 2) title = TituloSinPista(title);
+#endif
                 int ty = area.Bottom + 12;
                 EnsurePaintRes();
+#if ROCOLA_GPU
+                if (!CintaVistaPrevia(g, title, fPrevT, Color.White, new Rectangle(region.X, ty, region.Width, 28)))
+#endif
                 TextRenderer.DrawText(g, title, fPrevT, new Rectangle(region.X, ty, region.Width, 28), Color.White, TextFormatFlags.HorizontalCenter | TextFormatFlags.EndEllipsis);
+#if ROCOLA_GPU
+                if (!CintaVistaPrevia(g, sub, fPrevS, Color.FromArgb(215, 225, 245), new Rectangle(region.X, ty + 30, region.Width, 24)))
+#endif
                 TextRenderer.DrawText(g, sub, fPrevS, new Rectangle(region.X, ty + 30, region.Width, 24), Color.FromArgb(215, 225, 245), TextFormatFlags.HorizontalCenter | TextFormatFlags.EndEllipsis);
                 // Ayuda con ICONOS (mismo estilo que la barra de arriba), centrada.
                 {

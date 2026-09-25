@@ -1963,6 +1963,7 @@ namespace Rocola
 
         public void StopGpu()
         {
+            SueltaCintasGpu();
             ClearPaletteFade(); paletteKey = 0;
             TrimRecentCovers(true);
             if (idleHooked) { Application.Idle -= OnIdle; idleHooked = false; }
@@ -2171,6 +2172,7 @@ namespace Rocola
                     else { if (piezaTex[i] != IntPtr.Zero) D3D9.Release(piezaTex[i]); piezaTex[i] = IntPtr.Zero; piezaW[i] = piezaH[i] = -1; }
                     piezaVer[i] = pv;
                 }
+            PreparaCintasTexto();
             EnsureNieblas();               // la via lactea y las nebulosas (una vez por tamano de pantalla)
             EnsureVineta();
             EnsureLuna(); // ninguna reserva/subida de la luna dentro de Begin
@@ -2305,6 +2307,7 @@ namespace Rocola
                         ink);
                     stars.DrawQuad(piezaTex[i], piezaQuad);
                 }
+            if (!(gw.Has && gw.HideUi)) DibujaCintasTexto(true);
             if (!(gw.Has && gw.HideUi)) DibujaEq();   // las barritas de la que suena, encima de la lista y de su fila elegida
             // VENTANA del buscador abriendo/cerrando: el mismo quad de la UI, escalado desde su centro y fundido.
             if (gw.Has && gw.Alpha > 0.004f && gw.Scale > 0.01f)
@@ -2336,6 +2339,7 @@ namespace Rocola
                 DibujaLatidoGenero(py);   // lo que suena, en grande: la pastilla del genero late con los graves
                 DibujaTituloReposo(py);   // y el titulo que no cabe se desliza
             }
+            DibujaCintasTexto(false);
             DrawSmoothProgress();
             // DESTELLOS del boton pulsado (buscador): halos aditivos ENCIMA de la UI, animados por la GPU (sin re-subir textura).
             if (GetUiGlows != null)

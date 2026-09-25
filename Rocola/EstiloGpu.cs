@@ -30,6 +30,7 @@ namespace Rocola
     {
         // Existen en los dos perfiles porque la configuracion es la misma; sin tarjeta grafica no se usan.
         private bool letraLejos = true;    // "letra_lejos="
+        private bool textosDeslizantes = true; // "textos_deslizantes="
         private bool colorGenero = true;   // "color_genero="
     }
 
@@ -95,7 +96,7 @@ namespace Rocola
             PintaTituloCompacto(g, true);
             GraphicsState st = g.Save();
             g.TranslateTransform(0, baja);   // el renglon del artista baja, con su pastilla y su letrero
-            DrawLabelOverlay(g, lblNow);
+            PintaArtistaCompacto(g);
             if (lblMejorada != null && lblMejorada.Visible) DrawLabelOverlay(g, lblMejorada);
             if (pastGenero != null && pastGenero.Visible) DrawCtrlOverlay(g, pastGenero);
             g.Restore(st);
@@ -181,7 +182,8 @@ namespace Rocola
             {
                 sf.FormatFlags |= StringFormatFlags.NoWrap; sf.Trimming = StringTrimming.None;
                 sf.Alignment = al; sf.LineAlignment = StringAlignment.Center;
-                g.DrawString(RecortaLejos(g, texto, f, r.Width - 1f), f, b, r, sf);
+                if (!TextoConCinta(g, texto, f, c, r, sf))
+                    g.DrawString(RecortaLejos(g, texto, f, r.Width - 1f), f, b, r, sf);
             }
         }
         // El texto tal cual si cabe; si no, lo mas largo que quepa con los puntos suspensivos detras.

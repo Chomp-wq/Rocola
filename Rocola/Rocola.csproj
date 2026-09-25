@@ -115,6 +115,7 @@
     <Compile Include="SuenaVivoGpu.cs" />
     <Compile Include="AtraccionGpu.cs" />
     <Compile Include="EstiloGpu.cs" />
+    <Compile Include="TextoMovilGpu.cs" />
     <Compile Include="DibujoLigeroGpu.cs" />
     <Compile Include="BuscadorLigeroGpu.cs" />
     <Compile Include="PrecargaPaginaGpu.cs" />
