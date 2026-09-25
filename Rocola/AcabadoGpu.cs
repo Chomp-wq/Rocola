@@ -7,6 +7,26 @@ namespace Rocola
 {
     public partial class Form1
     {
+        // Solo presentacion: nunca cambia rutas, etiquetas, orden ni claves de busqueda.
+        internal static string TituloSinPista(string title)
+        {
+            if (string.IsNullOrEmpty(title)) return title;
+            int i = 0;
+            while (i < title.Length && char.IsWhiteSpace(title[i])) i++;
+            if (i < title.Length && title[i] == '-') i++;
+            int start = i;
+            while (i < title.Length && title[i] >= '0' && title[i] <= '9') i++;
+            int digits = i - start;
+            if (digits < 1 || digits > 3) return title;
+            while (i < title.Length && char.IsWhiteSpace(title[i])) i++;
+            if (i >= title.Length) return title;
+            char separator = title[i++];
+            if (separator != '-' && separator != '.' && separator != '–' && separator != '—') return title;
+            // Un numero decimal no es un numero de pista.
+            if (separator == '.' && i < title.Length && char.IsDigit(title[i])) return title;
+            while (i < title.Length && char.IsWhiteSpace(title[i])) i++;
+            return i < title.Length ? title.Substring(i) : title;
+        }
         private bool songMoveVertical;
         private int songMoveDirection;
         private InstrFlash songPagerFlash;
@@ -58,12 +78,19 @@ namespace Rocola
                 {
                     if (!selected)
                     {
-                        Sel = -1; hornoSig = long.MinValue; AseguraHorneada(w, h);
+                        Sel = -1; hornoSig = long.MinValue;
+                        using (new CapturaCintas(null)) AseguraHorneada(w, h);
                         using (Graphics output = Graphics.FromImage(result))
                         using (ImageAttributes key = new ImageAttributes())
                         {
                             key.SetColorKey(BackColor, BackColor, ColorAdjustType.Bitmap);
-                            output.DrawImage(hornoPag, new Rectangle(0, 0, w, h), 0, 0, w, h, GraphicsUnit.Pixel, key);
+                            if (capturandoCintas == null)
+                                output.DrawImage(hornoPag, new Rectangle(0, 0, w, h), 0, 0, w, h, GraphicsUnit.Pixel, key);
+                            else using (Bitmap raw = new Bitmap(w, h, PixelFormat.Format32bppPArgb))
+                            {
+                                using (Graphics g = Graphics.FromImage(raw)) PintaPagina(g, PageStart);
+                                output.DrawImage(raw, new Rectangle(0, 0, w, h), 0, 0, w, h, GraphicsUnit.Pixel, key);
+                            }
                         }
                         gpuSnapshotSel = -1;
                         return result;
@@ -73,7 +100,8 @@ namespace Rocola
                     using (Graphics output = Graphics.FromImage(result))
                     using (ImageAttributes key = new ImageAttributes())
                     {
-                        // Solo la fila seleccionada necesita una superficie temporal pequena.
+                        // La instantanea anterior conserva el titulo completo estatico.
+                        using (new CapturaCintas(null))
                         {
                             PintaPagina(g, saved);
                             if (hornoPag != null)
@@ -89,6 +117,7 @@ namespace Rocola
                                 gpuSnapshotSel = saved;
                             }
                         }
+                        if (capturandoCintas != null) PintaPagina(g, saved);
                         key.SetColorKey(BackColor, BackColor, ColorAdjustType.Bitmap);
                         output.DrawImage(raw, new Rectangle(0, 0, w, h), 0, 0, w, h, GraphicsUnit.Pixel, key);
                     }
@@ -250,7 +279,7 @@ namespace Rocola
                 return uiPiezaVer[index];
             }
             long sig = Mix(Mix(Mix(SigBase, 'G'), index), songList.Width);
-            sig = Mix(sig, songList.Height);
+            sig = Mix(sig, songList.Height); sig = Mix(sig, textosDeslizantes);
             if (index == 3)
             {
                 sig = Mix(sig, songList.GpuSlideToken); sig = Mix(sig, songList.PageStart);
@@ -262,8 +291,10 @@ namespace Rocola
             }
             uiPiezaRect[index] = rect; // mover una capa no obliga a volver a subir sus pixeles
             if (uiPieza[index] != null && uiPiezaSig[index] == sig) return uiPiezaVer[index];
-            Bitmap next = index == 0 ? BakeSongGlassTint(songList.Width, songList.Height, true) :
-                index == 3 ? songList.BakeGpuPrevious() : songList.BakeGpuListLayer(index == 2);
+            Bitmap next;
+            if (index == 0) next = BakeSongGlassTint(songList.Width, songList.Height, true);
+            else if (index == 3) next = songList.BakeGpuPrevious();
+            else using (CapturaTexto(index == 1 ? 2 : 3)) next = songList.BakeGpuListLayer(index == 2);
             if (uiPieza[index] != null) uiPieza[index].Dispose();
             uiPieza[index] = next; uiPiezaSig[index] = sig;
             return ++uiPiezaVer[index];

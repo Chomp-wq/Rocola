@@ -73,6 +73,7 @@ namespace Rocola
             }
             idlePanelDatosDe = idlePanelDatos;
             string title, artist; nowPlaying.TituloArtista(out title, out artist);
+            title = TituloSinPista(title);
             string[] qt = new string[Math.Min(colaDoce ? 12 : 3, queue.Count)], qa = new string[qt.Length];
             Image[] covers = new Image[qt.Length];
             StringBuilder sig = new StringBuilder();
@@ -83,11 +84,12 @@ namespace Rocola
             for (int i = 0; i < qt.Length; i++)
             {
                 queue[i].TituloArtista(out qt[i], out qa[i]);
+                qt[i] = TituloSinPista(qt[i]);
                 covers[i] = queue[i].Disc != null ? LoadCoverAsync(queue[i].Disc) : null;
                 sig.Append('|').Append(queue[i].PathKey()).Append('|').Append(qt[i]).Append('|').Append(qa[i])
                     .Append('|').Append(covers[i] != null ? covers[i].GetHashCode() : 0);
             }
-            sig.Append('|').Append(colaDoce);
+            sig.Append('|').Append(colaDoce).Append('|').Append(textosDeslizantes);
             // Lo que suena, en grande (SuenaVivoGpu.cs): el genero y lo que falta para cada una de la cola.
             ReposoGrande extra = ExtraReposo(w, h, qt.Length);
             if (extra != null)
@@ -98,7 +100,9 @@ namespace Rocola
             string key = sig.ToString();
             if (idlePanelBmp != null && key == idlePanelSig) { ParcheaElReloj(w, h); return idlePanelBmp; }
             int progressStart;
-            Bitmap next = RenderIdlePanelGrande(w, h, title, artist, "", qt, qa, covers, queue.Count, bgAccent, estadoTransparente, iaBadgeKind, colaDoce, extra, out progressStart);
+            Bitmap next;
+            using (CapturaTexto(1))
+                next = RenderIdlePanelGrande(w, h, title, artist, "", qt, qa, covers, queue.Count, bgAccent, estadoTransparente, iaBadgeKind, colaDoce, extra, out progressStart);
             reposoUltimo = extra;
             if (gpuPanel != null) gpuPanel.IdleCorre = (extra != null) ? extra.Corre : 0;
             if (extra != null) { extra.Titulo = title; extra.W = w; extra.H = h; }   // el titulo que se desliza lo hornea la tarjeta al pedirlo
@@ -253,7 +257,7 @@ namespace Rocola
                 if (extra == null)
                 {
                     g.DrawString(title ?? "", big, white, new RectangleF(tx, 56, tw, titleH), wrap);
-                    g.DrawString(artist ?? "", normal, color, new RectangleF(tx, artistY, tw, Math.Max(22, h - 82 - artistY)), line);
+                    PintaTextoMovil(g, artist ?? "", normal, color, new RectangleF(tx, artistY, tw, Math.Max(22, h - 82 - artistY)), line);
                 }
                 else PintaTituloGrande(g, extra, title, artist, big, normal, small, white, color, line, tx, tw);   // en una linea
                 if (badgeKind != 0)
@@ -294,10 +298,10 @@ namespace Rocola
                     int textW = Math.Max(12, r.Right - textX - (compact ? 5 : numberWidth + 8));
                     float titleHeight = queueTitle.GetHeight(g);
                     float textY = dozen && w >= 1500 ? r.Y + Math.Max(2, (r.Height - titleHeight - queueArtist.GetHeight(g)) * .5f) : r.Y + 2;
-                    g.DrawString(qt[i] ?? "", queueTitle, white, new RectangleF(textX, textY, textW, titleHeight), line);
+                    PintaTextoMovil(g, qt[i] ?? "", queueTitle, white, new RectangleF(textX, textY, textW, titleHeight), line);
                     string enMin = (extra != null) ? TextoMinutosCola(extra, i) : "";   // "en ~6 min" (SuenaVivoGpu.cs)
                     if (enMin.Length == 0)
-                        g.DrawString(i < qa.Length ? qa[i] ?? "" : "", queueArtist, muted, new RectangleF(textX, textY + titleHeight, textW, r.Bottom - textY - titleHeight - 2), line);
+                        PintaTextoMovil(g, i < qa.Length ? qa[i] ?? "" : "", queueArtist, muted, new RectangleF(textX, textY + titleHeight, textW, r.Bottom - textY - titleHeight - 2), line);
                     else PintaMinutosCola(g, enMin, i < qa.Length ? qa[i] ?? "" : "", queueArtist, muted, compact, textX, textY + titleHeight, textW, r.Bottom - textY - titleHeight - 2, line);
                     if (compact)
                     {

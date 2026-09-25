@@ -1644,6 +1644,9 @@ namespace Rocola
             {
                 string tit, art;
                 nowPlaying.TituloArtista(out tit, out art);
+#if ROCOLA_GPU
+                if (gpuEnabled) tit = TituloSinPista(tit);
+#endif
                 nowFullText = tit; nowArtista = art;
             }
             else { nowFullText = "Nada reproduciendose"; nowArtista = ""; }
@@ -1652,6 +1655,10 @@ namespace Rocola
             ActualizaGenero();    // la pastilla del genero, antes de acomodar: manda en el ancho del artista
             PositionMejorada();   // pone titulo y artista y coloca el letrero MEJORADA
             lblNext.Text = (queue.Count > 0) ? "Sigue:  " + queue[0].Display() : "Sigue:  -";
+#if ROCOLA_GPU
+            if (gpuEnabled && queue.Count > 0 && !queue[0].IsVideo && queue[0].Song != null)
+                lblNext.Text = "Sigue:  " + queue[0].Song.Artist + " - " + TituloSinPista(queue[0].Song.Title);
+#endif
             pastCola.Valor = queue.Count.ToString();
             LlenaPortaditas();
             pastCola.Invalidate();

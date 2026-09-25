@@ -46,7 +46,7 @@ namespace Rocola
         {
 #if ROCOLA_GPU
             if (!AvisoClaro() || ultimoPedido == null) return;
-            string tit, art; ultimoPedido.TituloArtista(out tit, out art);
+            string tit, art; ultimoPedido.TituloArtista(out tit, out art); tit = TituloSinPista(tit);
             bool yaSuena = ReferenceEquals(ultimoPedido, nowPlaying);
             string t, d; TextoPedido(tit, turnoPuesto, turnoOn ? turnoSegs : -1, yaSuena, ultimoPedido.IsVideo, out t, out d);
             PreparaAvisoPropio(TipoAviso.Hecho, t, d);
@@ -309,7 +309,7 @@ namespace Rocola
             int w = ClientSize.Width, h = ClientSize.Height;
             if (w < 400 || h < 300) return false;
             string que = "";
-            if (it != null) { string tit, art; it.TituloArtista(out tit, out art); que = tit ?? ""; }
+            if (it != null) { string tit, art; it.TituloArtista(out tit, out art); que = TituloSinPista(tit) ?? ""; }
             if (fInvTit == null) fInvTit = new Font(lblToast.Font.FontFamily, 17f, FontStyle.Bold);
             if (fInvTxt == null) fInvTxt = new Font(lblToast.Font.FontFamily, 12.5f, FontStyle.Bold);
             if (fInvPie == null) fInvPie = new Font(lblToast.Font.FontFamily, 10.5f, FontStyle.Bold);
@@ -650,7 +650,7 @@ namespace Rocola
             float anchoArt = g.MeasureString(artist ?? "", normal).Width;
             bool alLado = gw <= 0f || anchoArt + 14f + gw <= tw;
             float artW = alLado ? tw : tw;
-            g.DrawString(artist ?? "", normal, color, new RectangleF(tx, artistY, artW, hArt), line);
+            PintaTextoMovil(g, artist ?? "", normal, color, new RectangleF(tx, artistY, artW, hArt), line);
             x.GeneroCaja = RectangleF.Empty;
             if (gw > 0f)
             {
@@ -689,7 +689,7 @@ namespace Rocola
                 if (estrecha) { g.DrawString(minutos, f, azul, new RectangleF(x, y, w, h), line); return; }
                 float wm = g.MeasureString(minutos, f).Width + 2f;
                 if (wm > w * .6f) { g.DrawString(minutos, f, azul, new RectangleF(x, y, w, h), line); return; }
-                g.DrawString(artista ?? "", f, tenue, new RectangleF(x, y, Math.Max(10f, w - wm - 8f), h), line);
+                PintaTextoMovil(g, artista ?? "", f, tenue, new RectangleF(x, y, Math.Max(10f, w - wm - 8f), h), line);
                 g.DrawString(minutos, f, azul, new RectangleF(x + w - wm, y, wm, h), line);
             }
         }

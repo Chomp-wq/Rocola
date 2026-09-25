@@ -385,7 +385,7 @@ namespace Rocola
                 hasta = new RectangleF(miniCube.Left, miniCube.Top, miniCube.Width, miniCube.Height);
             }
             int x0 = panelSongs.Left + songList.Left, y0 = panelSongs.Top + songList.Top + fila * songList.RowH;
-            string titulo = songItems[songSel].ToString();
+            string titulo = TituloSinPista(songItems[songSel].ToString());
             Size tam = TamanoBoleto(songList.RowH, titulo, songList.Font, songList.Width);
             if (boletoBmp == null || boletoBmp.Width != tam.Width || boletoBmp.Height != tam.Height)
             {

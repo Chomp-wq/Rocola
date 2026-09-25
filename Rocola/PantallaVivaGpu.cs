@@ -186,16 +186,18 @@ namespace Rocola
             swA[0].CheckedChanged += delegate { escaparate = swA[0].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             swA[1].CheckedChanged += delegate { topNoche = swA[1].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             // LA TANDA 5, al lado: el estilo general (EstiloGpu.cs).
-            Tarjeta tEst = new Tarjeta(); tEst.SetBounds(488, 0, 456, 184); tEst.Titulo = "ESTILO GENERAL"; tEst.Acento = cAc;
+            Tarjeta tEst = new Tarjeta(); tEst.SetBounds(488, 0, 456, 256); tEst.Titulo = "ESTILO GENERAL"; tEst.Acento = cAc;
             string[] nomE = {
                 "Letra para leer de lejos (GPU)",
                 "El color del género en todo (GPU)",
+                "Títulos largos deslizantes (GPU)",
             };
             string[] explicaE = {
                 "El titulo de lo que suena, abajo, crece y lo que sigue pasa a la\nderecha en un gris mas claro: se lee de pie, a dos metros.",
                 "La portada de lo que suena y la de dentro de un disco brillan con\nel color del genero, y tambien el pulso de la letra elegida.",
+                "Los nombres que no caben se deslizan en bucle, con pausas\npara leer el principio y el final, sin reducir la letra.",
             };
-            bool[] valE = { letraLejos, colorGenero };
+            bool[] valE = { letraLejos, colorGenero, textosDeslizantes };
             Interruptor[] swE = new Interruptor[nomE.Length];
             for (int i = 0; i < swE.Length; i++)
             {
@@ -209,6 +211,7 @@ namespace Rocola
             }
             swE[0].CheckedChanged += delegate { letraLejos = swE[0].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             swE[1].CheckedChanged += delegate { colorGenero = swE[1].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            swE[2].CheckedChanged += delegate { textosDeslizantes = swE[2].Checked; CambioElPanelDeReposo(); AplicaEfectosGpu(); f3CambioGraf = true; };
             Label lPie = new Label(); lPie.SetBounds(16, 508, 928, 48); lPie.BackColor = Color.Transparent;
             lPie.ForeColor = cApagado; lPie.Font = fDes;
             lPie.Text = "Las ideas que se eligieron del lienzo de bocetos. Solo se ven con la tarjeta grafica: sin ella la pantalla\n"
@@ -221,7 +224,7 @@ namespace Rocola
                 listaGrande = eqSonando = colaMinutos = vueloCola = true;
                 suenaGrande = monedaCae = sinCreditosInvita = avisosClaros = true;
                 escaparate = topNoche = true;
-                letraLejos = colorGenero = true;
+                letraLejos = colorGenero = textosDeslizantes = true;
                 for (int i = 0; i < sw.Length; i++) sw[i].Checked = true;
                 for (int i = 0; i < swD.Length; i++) swD[i].Checked = true;
                 for (int i = 0; i < swS.Length; i++) swS[i].Checked = true;
@@ -496,7 +499,7 @@ namespace Rocola
             for (int k = 0; k < top.Count; k++)
             {
                 Track t = a.Tracks[top[k]];
-                filas[k] = t.ToString(); durs[k] = DurText(t.Path);
+                filas[k] = TituloSinPista(t.ToString()); durs[k] = DurText(t.Path);
                 int v = 0; if (t.Path != null) songCounts.TryGetValue(t.Path, out v); veces[k] = v;
             }
             // Arriba el artista y debajo el disco, como en el boceto; si el disco no trae artista, solo su nombre.
