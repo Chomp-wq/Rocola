@@ -7,8 +7,34 @@ namespace Rocola
 {
     public partial class Form1
     {
+        private bool songMoveVertical;
+        private int songMoveDirection;
+        private InstrFlash songPagerFlash;
+        private void MoveSongInput(int delta, bool vertical)
+        {
+            if (!gpuEnabled) { MoveSong(delta); return; }
+            songMoveVertical = vertical; songMoveDirection = Math.Sign(delta);
+            if (!vertical)
+            {
+                if (songPagerFlash == null) songPagerFlash = new InstrFlash();
+                songPagerFlash.Fire(delta < 0 ? 0 : 1, Color.FromArgb(242, 206, 72));
+            }
+            try
+            {
+                // Con una sola fila por pagina, izquierda/derecha tampoco deben ciclar.
+                if (!vertical) delta = Math.Max(0, Math.Min(songItems.Count - 1, songSel + delta)) - songSel;
+                MoveSong(delta);
+            }
+            finally { songMoveVertical = false; songMoveDirection = 0; }
+        }
         private partial class SongListView
         {
+            public bool GpuSlideVertical;
+            public void StartGpuSlide(int direction, bool vertical)
+            {
+                StartSlide(direction); GpuSlideVertical = vertical;
+                if (vertical) slideDesde = direction * (float)Height;
+            }
             // El velo y la clave de color se hacian NUEVOS en cada pintada. Los dos son objetos de GDI+
             // con su manija nativa detras, y esta lista se repinta al desplazarse y al pasar de pagina.
             // Se guardan como hace el resto de la casa (ver EnsurePaintRes en el buscador) y se sueltan
@@ -152,8 +178,16 @@ namespace Rocola
                     claveGpuDe = BackColor;
                 }
                 if (dx != 0f && hornoAnt != null)
-                    g.DrawImage(hornoAnt, new Rectangle((int)(dx-slideDesde), 0, w, h), 0, 0, w, h, GraphicsUnit.Pixel, claveGpu);
-                g.DrawImage(hornoPag, new Rectangle((int)dx, 0, w, h), 0, 0, w, h, GraphicsUnit.Pixel, claveGpu);
+                    g.DrawImage(hornoAnt, GpuSlideVertical ? new Rectangle(0, (int)(dx-slideDesde), w, h) : new Rectangle((int)(dx-slideDesde), 0, w, h), 0, 0, w, h, GraphicsUnit.Pixel, claveGpu);
+                g.DrawImage(hornoPag, GpuSlideVertical ? new Rectangle(0, (int)dx, w, h) : new Rectangle((int)dx, 0, w, h), 0, 0, w, h, GraphicsUnit.Pixel, claveGpu);
+            }
+            public void RenderOpaqueGpu(Graphics g)
+            {
+                int w = Width, h = Height;
+                AseguraHorneada(w, h);
+                float d = DesplazaAhora();
+                if (d != 0 && hornoAnt != null) g.DrawImageUnscaled(hornoAnt, GpuSlideVertical ? 0 : (int)(d-slideDesde), GpuSlideVertical ? (int)(d-slideDesde) : 0);
+                g.DrawImageUnscaled(hornoPag, GpuSlideVertical ? 0 : (int)d, GpuSlideVertical ? (int)d : 0);
             }
         }
         private void DrawSongPagerGpu(Graphics g)
@@ -179,10 +213,14 @@ namespace Rocola
                 int side = Math.Max(0, (r.Width - cw) / 2 - 12);
                 if (side >= 90)
                 {
+                    int cy = r.Top + r.Height / 2, arrow = (int)size;
+                    Color yellow = Color.FromArgb(242, 206, 72);
+                    CtrlDirLeft(g, r.Left + 8, cy, arrow, page > 0 ? yellow : Color.FromArgb(80, yellow));
+                    CtrlDirRight(g, r.Right - 8 - arrow, cy, arrow, page + 1 < pages ? yellow : Color.FromArgb(80, yellow));
                     sf.Alignment = StringAlignment.Near;
-                    if (page > 0) g.DrawString("‹  ANTERIOR", font, dim, new Rectangle(r.Left + 8, r.Top, side, r.Height), sf);
+                    if (page > 0) g.DrawString("ANTERIOR", font, dim, new Rectangle(r.Left + 16 + arrow, r.Top, side - arrow - 8, r.Height), sf);
                     sf.Alignment = StringAlignment.Far;
-                    if (page + 1 < pages) g.DrawString("SIGUIENTE  ›", font, dim, new Rectangle(r.Right - side - 8, r.Top, side, r.Height), sf);
+                    if (page + 1 < pages) g.DrawString("SIGUIENTE", font, dim, new Rectangle(r.Right - side - 8, r.Top, side - arrow - 8, r.Height), sf);
                 }
             }
         }

@@ -1683,6 +1683,7 @@ namespace Rocola
             // Y ENCIMA las piezas vivas (la tarjeta y la tecla elegidas). Van despues de la textura de UI a
             // proposito: en ella estan las versiones SIN elegir, y estas las tapan. Se rellenan opacas, asi que
             // el resultado es identico a tenerlas horneadas dentro (comprobado pixel a pixel: pruebas/mover.cs).
+            if (GlassPieces) CaptureSongSlide();
             if (GetPiezaRect != null && !(gw.Has && gw.HideUi))
                 for (int i = 0; i < PiezasN && i < MaxPiezas; i++)
                 {

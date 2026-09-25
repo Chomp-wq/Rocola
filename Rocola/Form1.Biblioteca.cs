@@ -2671,7 +2671,18 @@ namespace Rocola
             // todavia es la pagina que se va.
             int arranque = pg * rpp;
             if (pages > 1 && songList.PageStart != arranque && panelSongs != null && panelSongs.Visible)
+#if ROCOLA_GPU
+            {
+                if (gpuEnabled)
+                {
+                    if (transAnimOn) songList.StartGpuSlide(songMoveDirection != 0 ? songMoveDirection : (arranque > songList.PageStart ? 1 : -1), songMoveVertical);
+                    else songList.OlvidaPagina();
+                }
+                else songList.StartSlide(arranque > songList.PageStart ? 1 : -1);
+            }
+#else
                 songList.StartSlide(arranque > songList.PageStart ? 1 : -1);
+#endif
             songList.PageStart = arranque; songList.Sel = songSel; songList.Accent = bgAccent;
             songList.Invalidate();
             if (songPager != null)

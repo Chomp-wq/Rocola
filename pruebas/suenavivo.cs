@@ -539,7 +539,7 @@ class SuenaVivo
         string s1 = (string)tf.Invoke(null, new object[] { TimeSpan.FromSeconds(107), TimeSpan.FromSeconds(252), "x" });
         string s2 = (string)tf.Invoke(null, new object[] { TimeSpan.FromSeconds(10), TimeSpan.Zero, "0:10 / 0:00" });
         Info(s1);
-        Check(s1 == "1:47  ·  faltan 2:25" && s2 == "0:10 / 0:00", "el reloj dice por donde va y cuanto falta; si no se sabe lo que dura, el de siempre");
+        Check(s1 == "1:47 / 4:12" && s2 == "0:10 / 0:00", "el reloj dice transcurrido / duracion; sin duracion conocida conserva el anterior");
         Check(Codigo.Llama(form.GetMethod("ParcheaElReloj", F), "TextoRelojReposo") && Codigo.Llama(form.GetMethod("BuildIdlePanel", F), "TextoRelojReposo"),
               "y el reloj del panel lo usa en sus dos caminos (el parche de cada segundo tambien)");
         // El titulo que se desliza: quieto, va, se para, vuelve; sin saltos y a su ritmo.

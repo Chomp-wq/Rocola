@@ -501,7 +501,7 @@ namespace Rocola
             for (int i = 0; i < enCola; i++) x.Minutos[i] = EsperaDePuesto(i + 1);
             return x;
         }
-        // El reloj del panel grande: por donde va y cuanto falta. De lo que suena, no de la etiqueta de abajo, para que
+        // El reloj del panel grande: transcurrido / duracion total. De lo que suena, no de la etiqueta de abajo, para que
         // los dos numeros salgan del mismo instante.
         // 'r' es la fuente de lo que suena: la pasan los dos caminos del reloj del panel (el parche de cada segundo y el
         // panel entero), que es donde se lee.
@@ -516,8 +516,8 @@ namespace Rocola
         internal static string TextoFaltan(TimeSpan cur, TimeSpan tot, string siNo)
         {
             if (tot.TotalSeconds <= 0 || cur.TotalSeconds < 0) return siNo;
-            TimeSpan q = tot - cur; if (q.TotalSeconds < 0) q = TimeSpan.Zero;
-            return Fmt(cur) + "  ·  faltan " + Fmt(q);
+            if (cur > tot) cur = tot;
+            return Fmt(cur) + " / " + Fmt(tot);
         }
         // El vinilo del panel grande: el mismo dibujo que el de dentro del disco, a la medida de la portada grande. Se
         // hornea al cambiar la que suena (o su portada, o el tamaño), en el reloj de la pantalla, no al dibujar.

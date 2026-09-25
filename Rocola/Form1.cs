@@ -1302,10 +1302,17 @@ namespace Rocola
                 int rpc = SongRowsPerPage();   // misma cuenta que la paginacion: izq/der = pagina anterior/siguiente
                 // Con ROJO mantenido, arriba/abajo NO navegan: queda reservado para el combo de ocultar
                 // (ROJO+ARRIBA+ABAJO 5 s), asi la lista no salta mientras se mantiene el combo.
+#if ROCOLA_GPU
+                if (IsUp(kc)) { if (!BackHeld()) MoveSongInput(-1, true); return true; }
+                if (IsDown(kc)) { if (!BackHeld()) MoveSongInput(1, true); return true; }
+                if (IsLeft(kc)) { MoveSongInput(-rpc, false); return true; }
+                if (IsRight(kc)) { MoveSongInput(rpc, false); return true; }
+#else
                 if (IsUp(kc)) { if (!BackHeld()) MoveSong(-1); return true; }
                 if (IsDown(kc)) { if (!BackHeld()) MoveSong(1); return true; }
                 if (IsLeft(kc)) { MoveSong(-rpc); return true; }     // pagina anterior
                 if (IsRight(kc)) { MoveSong(rpc); return true; }      // pagina siguiente
+#endif
                 if (IsOK(kc)) { EnqueueSelectedSong(); return true; }
                 if (IsBack(kc)) { BackToAlbums(); return true; }
             }
