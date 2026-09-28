@@ -1485,6 +1485,17 @@ Qué mirar en el bar: una canción vieja con buen rango (mariachi, boleros graba
 anterior. Debería sonar algo más baja, sin "respirar" en los golpes. Y un disco moderno muy fuerte: algo más bajo que
 antes, más parejo con el resto.
 
+**"Subir TODO el volumen", parejo y con techo automático (28 de septiembre, después; tu decisión, opción 2 de 3).** Sus
+dB se multiplicaban encima del nivelado sin mirar los picos: con +6 dB el limitador volvía a quitar 5–6 dB en los
+momentos fuertes, y con +12 hasta 12. Subir cada canción solo lo que aguantan sus picos se probó y se descartó: rompe
+el volumen parejo (las dinámicas no suben nada y las comprimidas unos 3 dB). Ahora (`Rocola/SubirTodo.cs`) todas suben
+**lo mismo**, pero no más del **techo** de tu biblioteca: lo más que se puede subir a todas sin que más del 10 % de las
+canciones medidas pase del tope del nivelado (3 dB de limitador en el P99, 6 en el pico). Si pides más, se aplica el
+techo y Ctrl+F3 lo dice debajo de la barra ("Pides +6 dB; tu música aguanta +3 dB sin aplastar los golpes: se aplican
++3 dB"). Con menos de 20 canciones con picos medidos no se puede saber y se aplica lo pedido, como antes. El techo se
+calcula en la pantalla y se guarda (se rehace al cambiar ajustes del nivelado o, con medidas nuevas, como mucho una vez
+por minuto). Para más volumen que el techo, el amplificador. `pruebas/nivelpicos.cs`, apartado 6.
+
 ### 1.26 El limitador espera 20 ms antes de soltar: el bajo fuerte ya no se distorsiona (28 de septiembre, las dos ramas)
 
 Qué pasaba: el limitador soltaba en 120 ms en cuanto el pico salía de su pre-escucha de 3 ms. Con un bajo por encima del

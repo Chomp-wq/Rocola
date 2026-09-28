@@ -1,5 +1,12 @@
 # Rocola
 
+## "Subir TODO el volumen", parejo y sin aplastar — 28 de septiembre de 2026
+
+- Ese deslizador de Ctrl+F3 sumaba sus dB encima del nivelado sin mirar los picos: con +6 dB el limitador aplastaba
+  los golpes (5–6 dB), con +12 hasta 12. Ahora todas las canciones suben lo mismo (sigue parejo), pero no más de lo
+  que aguanta tu biblioteca sin aplastar: si pides +6 y tu música aguanta +3, se aplican +3 y debajo de la barra lo
+  dice. Para más volumen, el amplificador. Las dos ramas; probado con la cuenta, no se ha oído en el bar.
+
 ## Saltar los silencios largos — 28 de septiembre de 2026
 
 - Las canciones con varios segundos mudos al principio, un final callado o una "pista oculta" después de un minuto
