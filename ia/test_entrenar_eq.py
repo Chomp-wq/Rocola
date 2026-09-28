@@ -81,5 +81,34 @@ class ErrorPorLotesTests(unittest.TestCase):
                         "de una %.1f MB, por lotes %.1f MB" % (de_una, por_lotes))
 
 
+
+class HuellasRepetidasTests(unittest.TestCase):
+    """La rocola anade al final lo que cambia (DiarioTablas.cs): una cancion medida otra vez sale repetida en
+    rocola_eq.txt. Al leerla manda la ULTIMA linea, como en la rocola, y no cuenta doble."""
+
+    def test_manda_la_ultima_y_no_cuenta_doble(self):
+        import os, tempfile
+        fila = lambda v, ruta: ";".join(["%g" % v] * 12) + "|" + ruta + "\r\n"
+        with tempfile.TemporaryDirectory() as d:
+            ruta = os.path.join(d, "rocola_eq.txt")
+            with open(ruta, "w", encoding="utf-8", newline="") as f:
+                f.write(fila(1, "D:\\a.mp3") + fila(2, "D:\\b.mp3") + fila(3, "D:\\A.MP3") + fila(4, "D:\\c.mp3"))
+            curvas, cortes = entrenar_eq.leer_huellas(ruta)
+        self.assertEqual(len(curvas), 3)                    # a (repetida, con otra caja), b y c
+        self.assertEqual(list(curvas[:, 0]), [3.0, 2.0, 4.0])   # la de a es la de abajo; el orden, el de siempre
+        self.assertEqual(list(cortes), [3.0, 2.0, 4.0])
+
+    def test_sin_repetidas_sale_lo_de_siempre(self):
+        import os, tempfile
+        with tempfile.TemporaryDirectory() as d:
+            ruta = os.path.join(d, "rocola_eq.txt")
+            with open(ruta, "w", encoding="utf-8", newline="") as f:
+                for i in range(50):
+                    f.write(";".join(["%d" % (i + b) for b in range(12)]) + "|D:\\m\\%d.mp3\r\n" % i)
+            curvas, cortes = entrenar_eq.leer_huellas(ruta)
+        self.assertEqual(curvas.shape, (50, 8))
+        self.assertEqual([int(c[0]) for c in curvas], list(range(50)))
+        self.assertEqual([int(k) for k in cortes], [i + 8 for i in range(50)])
+
 if __name__ == "__main__":
     unittest.main()

@@ -665,7 +665,7 @@ namespace Rocola
             try
             {
                 using (FileStream fs = new FileStream(f, FileMode.Open, FileAccess.Read, FileShare.Read, 65536, FileOptions.SequentialScan))
-                using (TextReader r = envuelve != null ? envuelve(new StreamReader(fs)) : new StreamReader(fs))
+                using (TextReader r = envuelve != null ? envuelve(LeeLineasSanas(fs)) : LeeLineasSanas(fs))   // solo lineas enteras
                     return LeeIntegRegistros(r, tabla, ajenas) ? 1 : 2;
             }
             catch (OperationCanceledException) { throw; }
@@ -697,6 +697,7 @@ namespace Rocola
             long version = System.Threading.Interlocked.Increment(ref integGuardaVersion);
             if (integGuardaCola == null) integGuardaCola = new GuardadoReciente();
             object cerrojo = integGuardaCerrojo ?? new object();
+            DiarioTabla diario = diarioInteg ?? (diarioInteg = new DiarioTabla());   // solo lo nuevo (DiarioTablas.cs)
             GuardaUltimo(integGuardaCola, delegate
             {
                 try
@@ -704,18 +705,12 @@ namespace Rocola
                     Func<bool> vigente = delegate { return version == System.Threading.Interlocked.Read(ref integGuardaVersion); };
                     if (!vigente()) return;
                     bool hecho;
+                    // Entera: la cabecera, los registros y los de una version posterior tal cual. Si no, solo lo nuevo,
+                    // anadido al final (DiarioTablas.cs).
                     lock (cerrojo)
-                        hecho = EscribeFlujoSeguro(ruta, delegate(TextWriter w)
-                        {
-                            w.Write(IntegCabecera); w.Write("\r\n");
-                            for (int i = 0; i < copia.Count; i++)
-                            {
-                                if ((i & 127) == 0 && !vigente()) return false;
-                                EscribeIntegRegistro(w, copia[i].Key, copia[i].Value);
-                            }
-                            for (int i = 0; i < ajenas.Count; i++) { w.Write(ajenas[i]); w.Write("\r\n"); }
-                            return true;
-                        }, vigente);
+                        hecho = diario.Guarda(ruta, copia, delegate(string cancion, SonoridadIntegrada s) { return HuellaInteg(s); },
+                                              delegate(TextWriter w, string cancion, SonoridadIntegrada s) { EscribeIntegRegistro(w, cancion, s); },
+                                              IntegCabecera, ajenas, vigente);
                     if (hecho) System.Threading.Interlocked.Exchange(ref integGuardados, hasta);
                 }
                 catch { }

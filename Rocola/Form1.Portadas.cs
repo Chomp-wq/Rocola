@@ -114,9 +114,15 @@ namespace Rocola
                     // (SequentialScan): con eso adelanta la lectura por su cuenta en vez de ir trozo a trozo.
                     bool lentoAqui = DiscoLento(ruta);
                     int trozo = lentoAqui ? (64 * 1024) : (256 * 1024);
-                    byte[] buf = new byte[trozo];
+                    // Y SE GUARDA (CancionEnMemoria.cs): si es un MP3 que cabe, se lee a su sitio en memoria en vez de
+                    // tirarlo, con los mismos trozos y las mismas pausas. Al abrirla ya no se vuelve a leer, y mientras
+                    // suene no se toca el disco. La firma se toma ANTES de leer: si el archivo cambia, no se usa.
+                    string firma = AudioFileSignature(ruta);
                     using (FileStream fs = new FileStream(ruta, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, trozo, FileOptions.SequentialScan))
                     {
+                        byte[] entera = (firma != null) ? ReservaEnMemoria(ruta, fs.Length) : null;
+                        byte[] buf = (entera == null) ? new byte[trozo] : null;
+                        int hecho = 0;
                         while (true)
                         {
                             if (mio != warmSongGen) return;
@@ -125,9 +131,12 @@ namespace Rocola
                                 System.Threading.Thread.Sleep(40);
                                 if (mio != warmSongGen) return;
                             }
-                            if (fs.Read(buf, 0, buf.Length) <= 0) break;
+                            int n = (entera != null) ? fs.Read(entera, hecho, Math.Min(trozo, entera.Length - hecho)) : fs.Read(buf, 0, buf.Length);
+                            if (n <= 0) break;
+                            hecho += n;
                             System.Threading.Thread.Sleep(lentoAqui ? 8 : 1);
                         }
+                        if (entera != null && hecho == entera.Length && mio == warmSongGen) DejaEnMemoria(ruta, firma, entera);
                     }
 
                     // Y YA QUE ESTA LEIDA, SE ABRE SU LECTOR.

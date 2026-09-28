@@ -99,7 +99,8 @@ namespace Rocola
                     // Un solo lector secuencial: no multiplicar accesos al HDD ni trabajadores en 2C.
                     using (FileStream stream = new FileStream(load.Paths[table], FileMode.Open, FileAccess.Read,
                         FileShare.Read, 65536, FileOptions.SequentialScan))
-                    using (StartupTextReader reader = new StartupTextReader(new StreamReader(stream), load))
+                    // Las dos tablas grandes se guardan anadiendo al final: de ellas, solo lineas enteras (DiarioTablas.cs).
+                    using (StartupTextReader reader = new StartupTextReader(table <= 1 ? LeeLineasSanas(stream) : new StreamReader(stream), load))
                         ReadStartupTableRecords(reader, table, data);
                 }
                 catch (OperationCanceledException) { return null; }
@@ -863,7 +864,8 @@ namespace Rocola
             try
             {
                 if (!File.Exists(f)) return false;
-                using (StreamReader reader = new StreamReader(f))
+                using (FileStream fs = new FileStream(f, FileMode.Open, FileAccess.Read, FileShare.Read))
+                using (TextReader reader = LeeLineasSanas(fs))   // solo lineas enteras (DiarioTablas.cs)
                     ReadEqCacheRecords(reader, eqCache, ref eqCacheVer);
             }
             catch { }
@@ -919,6 +921,7 @@ namespace Rocola
             try { snap = new List<KeyValuePair<string, float[]>>(eqCache); }   // copia rapida en el hilo de UI
             catch { return; }
             long version = System.Threading.Interlocked.Increment(ref eqSaveVersion);
+            DiarioTabla diario = diarioEq ?? (diarioEq = new DiarioTabla());   // solo lo nuevo (DiarioTablas.cs)
             GuardaUltimo(eqSaveQueue, delegate
             {
                 try
@@ -927,18 +930,14 @@ namespace Rocola
                     if (!vigente()) return;
                     lock (eqSaveLock)
                     {
-                        EscribeFlujoSeguro(EqFile(), delegate(TextWriter writer)
+                        // Igual que la de volumen: solo lo nuevo, anadido al final (DiarioTablas.cs).
+                        diario.Guarda(EqFile(), snap, delegate(string cancion, float[] c) { return HuellaEq(c); },
+                        delegate(TextWriter writer, string cancion, float[] c)
                         {
-                            for (int i = 0; i < snap.Count; i++)
-                            {
-                                if ((i & 127) == 0 && !vigente()) return false;
-                                float[] c = snap[i].Value;
-                                for (int b = 0; b < EqLen; b++)
-                                { if (b > 0) writer.Write(';'); writer.Write(c[b].ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)); }
-                                writer.Write('|'); writer.Write(snap[i].Key); writer.Write("\r\n");
-                            }
-                            return true;
-                        }, vigente);
+                            for (int b = 0; b < EqLen; b++)
+                            { if (b > 0) writer.Write(';'); writer.Write(c[b].ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)); }
+                            writer.Write('|'); writer.Write(cancion); writer.Write("\r\n");
+                        }, null, null, vigente);
                     }
                 }
                 catch { }
@@ -1253,7 +1252,8 @@ namespace Rocola
             try
             {
                 if (!File.Exists(f)) return;
-                using (StreamReader reader = new StreamReader(f))
+                using (FileStream fs = new FileStream(f, FileMode.Open, FileAccess.Read, FileShare.Read))
+                using (TextReader reader = LeeLineasSanas(fs))   // solo lineas enteras (DiarioTablas.cs)
                     ReadLoudCacheRecords(reader, loudCache, durCache);
             }
             catch { }
@@ -1266,6 +1266,7 @@ namespace Rocola
             try { snap = new List<KeyValuePair<string, float>>(loudCache); durSnap = new Dictionary<string, float>(durCache, StringComparer.OrdinalIgnoreCase); }   // copia (rapida): las tablas solo se tocan aqui
             catch { return; }
             long version = System.Threading.Interlocked.Increment(ref loudSaveVersion);
+            DiarioTabla diario = diarioVolumen ?? (diarioVolumen = new DiarioTabla());   // solo lo nuevo (DiarioTablas.cs)
             GuardaUltimo(loudSaveQueue, delegate
             {
                 try
@@ -1274,18 +1275,19 @@ namespace Rocola
                     if (!vigente()) return;
                     lock (loudSaveLock)
                     {
-                        EscribeFlujoSeguro(LoudFile(), delegate(TextWriter writer)
+                        // Anade al final solo las canciones nuevas o que cambiaron; entera cuando toca (DiarioTablas.cs).
+                        // Cada linea, la de siempre: "rms|duracion|ruta".
+                        diario.Guarda(LoudFile(), snap, delegate(string cancion, float rms)
                         {
-                            for (int i = 0; i < snap.Count; i++)
-                            {
-                                if ((i & 127) == 0 && !vigente()) return false;
-                                float du; if (!durSnap.TryGetValue(snap[i].Key, out du)) du = 0f;
-                                writer.Write(snap[i].Value.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture));
-                                writer.Write('|'); writer.Write(du.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture));
-                                writer.Write('|'); writer.Write(snap[i].Key); writer.Write("\r\n");
-                            }
-                            return true;
-                        }, vigente);
+                            float du; if (!durSnap.TryGetValue(cancion, out du)) du = 0f;
+                            return HuellaVolumen(rms, du);
+                        }, delegate(TextWriter writer, string cancion, float rms)
+                        {
+                            float du; if (!durSnap.TryGetValue(cancion, out du)) du = 0f;
+                            writer.Write(rms.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture));
+                            writer.Write('|'); writer.Write(du.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture));
+                            writer.Write('|'); writer.Write(cancion); writer.Write("\r\n");
+                        }, null, null, vigente);
                     }
                 }
                 catch { }

@@ -1958,12 +1958,23 @@ namespace Rocola
             private readonly WaveStream flotante;          // HD: Media Foundation en coma flotante
             private readonly SampleChannel canal;
             private readonly AudioFileReader r;
+            private MemoryStream enMemoria;   // la cancion entera, si se abrio desde la memoria (CancionEnMemoria.cs)
+            internal bool EnMemoria { get { return enMemoria != null; } }
             public FileAudioSource(string path)
             {
                 if (path != null && path.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase))
                 {
-                    Mp3FileReader m = AbreMp3(path);
-                    try { canal = new SampleChannel(m, false); mp3 = m; m = null; }
+                    // LA CANCION ENTERA EN MEMORIA, si cabe (CancionEnMemoria.cs): mientras suena ya no se lee el disco. Se
+                    // oye lo mismo: el mismo lector y el mismo descompresor, sobre los mismos bytes.
+                    MemoryStream ms = CancionEnMemoria(path);
+                    Mp3FileReader m = null;
+                    if (ms != null)
+                    {
+                        try { m = AbreMp3(path, ms); }
+                        catch { ms = null; }   // desde la memoria no pudo: por donde siempre, que dira lo que haga falta
+                    }
+                    if (m == null) m = AbreMp3(path);
+                    try { canal = new SampleChannel(m, false); mp3 = m; m = null; enMemoria = ms; }
                     finally { if (m != null) { try { m.Dispose(); } catch { } } }   // el canal fallo: el lector no se queda tirado
                 }
                 else
@@ -1990,6 +2001,7 @@ namespace Rocola
                 if (mp3 != null) { try { mp3.Dispose(); } catch { } }
                 if (flotante != null) { try { flotante.Dispose(); } catch { } }
                 if (r != null) { try { r.Dispose(); } catch { } }
+                enMemoria = null;   // que la cancion se pueda recoger aunque alguien se quede con este objeto
             }
         }
 
