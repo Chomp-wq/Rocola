@@ -21,6 +21,9 @@
 // (cuesta lo que cuesta buscar en el archivo, no descomprimir un minuto de nada). El fundido de salida se calcula con
 // lo que de verdad va a sonar, asi que cae en el margen mudo del final y no en la musica.
 //
+// El mapa es de una ruta: si el archivo que hay en ella ya no dura lo que se midio (lo cambiaron por otro con el mismo
+// nombre), no se usa y la cancion suena entera (MapaSilencios.DeEsteArchivo).
+//
 // El interruptor se mira al abrir cada cancion: apagarlo o encenderlo se nota desde la siguiente. Decision del usuario
 // del 28 de septiembre de 2026: esta opcion lleva interruptor en Ctrl+F3.
 using System;
@@ -51,6 +54,12 @@ namespace Rocola
                 return HuecoDesde > Desde && HuecoHasta > HuecoDesde && HuecoHasta < Hasta;
             }
         }
+        // EL MAPA TIENE QUE SER DE ESTE ARCHIVO. Las medidas se guardan por ruta, y en esa ruta puede haber hoy OTRO
+        // archivo (una version mejor con el mismo nombre, un disco rehecho). Con el mapa del de antes se saltaba musica
+        // de verdad al principio o en medio, o se cortaba el final de la cancion pagada. Solo se usa si el archivo dura lo
+        // que se midio (con un segundo de margen); si no, suena entera, como antes de medirla, hasta que se vuelva a medir.
+        internal const double MargenDura = 1.0;
+        internal bool DeEsteArchivo(double segundos) { return Valido && Math.Abs(segundos - Dura) <= MargenDura; }
         internal static string Texto(float v) { return v < 0f ? "-" : v.ToString("0.##", CultureInfo.InvariantCulture); }
         internal static bool Lee(string t, out float v)
         {
@@ -227,6 +236,7 @@ namespace Rocola
             {
                 MapaSilencios m;
                 if (!MapaDe(path, out m)) return s;
+                if (!m.DeEsteArchivo(s.TotalTime.TotalSeconds)) return s;   // en esa ruta hay ahora otro archivo (ver DeEsteArchivo)
                 PlanSilencios p = PlanSilencios.De(m, s.WaveFormat.SampleRate, crossfadeSec);
                 if (p == null) return s;
                 return new FuenteSinSilencios(s, p);

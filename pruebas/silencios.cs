@@ -12,7 +12,7 @@ using NAudio.Wave;
 //   3) que se salta y que no (2 s en los extremos, 5 s en medio, los margenes y el fundido);
 //   4) el recorte muestra a muestra, con lecturas de cualquier tamano, saltos del lector, un salto que falla y una
 //      retomada;
-//   5) de punta a punta: un WAV medido con MideIntegrada y abierto con OpenAudio, con el interruptor encendido y
+//   5) de punta a punta (y si en la ruta hay OTRO archivo, el mapa viejo no se usa): un WAV medido con MideIntegrada y abierto con OpenAudio, con el interruptor encendido y
 //      apagado, y el fundido calculado con lo que de verdad suena;
 //   6) el interruptor de Ctrl+F3, lo que se guarda en rocola_config.txt y los enganches.
 // Son senales sinteticas: miden la cuenta, no el oido.
@@ -65,6 +65,7 @@ class Silencios
         return picos.GetType().GetMethod("Mapa", T).Invoke(picos, new object[] { (long)TM.GetProperty("Cuadros", T).GetValue(med, null) });
     }
     static bool Cerca(float a, double b, double tol) { return Math.Abs(a - b) <= tol; }
+    static float Pico(List<float> x, int cuadros) { float p = 0f; for (int i = 0; i < 2 * cuadros && i < x.Count; i++) p = Math.Max(p, Math.Abs(x[i])); return p; }   // lo mas alto de los primeros cuadros
     static string Txt(object m) { return F(Mf(m, "Desde"), "0.0#") + "-" + F(Mf(m, "Hasta"), "0.0#") + ", hueco " + F(Mf(m, "HuecoDesde"), "0.0#") + "-" + F(Mf(m, "HuecoHasta"), "0.0#") + ", dura " + F(Mf(m, "Dura"), "0.0#"); }
 
     static void DondeSuena()
@@ -301,6 +302,23 @@ class Silencios
             object src3 = Call(f, "OpenAudio", ruta);
             List<float> sale3 = Lee(src3); ((IDisposable)src3).Dispose();
             Check(src3.GetType().Name != "FuenteSinSilencios" && sale3.Count == x.Length, "si la cancion aun no esta medida con el algoritmo 3, suena entera");
+            // OTRO ARCHIVO CON LA MISMA RUTA (una version mejor con el mismo nombre): el mapa medido es del de antes. La de
+            // ahora suena desde el primer instante y dura 40 s: con el mapa viejo se saltaban sus primeros 2,7 s y se cortaba
+            // a los 30,5 s. No se usa: suena entera, como antes de medirla.
+            tab[ruta] = s;
+            float[] otra = Cancion(fs, 2, new double[] { 40 }, true);
+            using (WaveFileWriter w = new WaveFileWriter(ruta, WaveFormat.CreateIeeeFloatWaveFormat(fs, 2))) w.WriteSamples(otra, 0, otra.Length);
+            object src4 = Call(f, "OpenAudio", ruta);
+            List<float> sale4 = Lee(src4); ((IDisposable)src4).Dispose();
+            Check(src4.GetType().Name != "FuenteSinSilencios" && sale4.Count == otra.Length && Pico(sale4, 4410) > 0.1f,
+                  "si en la ruta hay OTRO archivo (no dura lo que se midio), el mapa viejo no se usa: suena entera (" + F(sale4.Count / 2.0 / fs, "0.00") + " s de 40)");
+            // Y el mismo archivo con un poco de diferencia en la duracion (otro lector, el relleno del codificador): se usa.
+            object mm = TS.GetField("Silencios", T).GetValue(s);
+            MethodInfo deEste = TMapa.GetMethod("DeEsteArchivo", T);
+            float d0 = Mf(mm, "Dura");
+            Check((bool)deEste.Invoke(mm, new object[] { (double)d0 + 0.2 }) && (bool)deEste.Invoke(mm, new object[] { (double)d0 - 0.9 })
+                  && !(bool)deEste.Invoke(mm, new object[] { (double)d0 + 1.5 }) && !(bool)deEste.Invoke(mm, new object[] { 0.0 }),
+                  "con unas decimas de diferencia es el mismo archivo y se usa; con mas de un segundo, o sin duracion, no");
         }
         finally { try { Directory.Delete(dir, true); } catch { } }
     }
