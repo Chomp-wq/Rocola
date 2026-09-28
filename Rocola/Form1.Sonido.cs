@@ -303,7 +303,7 @@ namespace Rocola
         // LO PROPIO DE ESTA RAMA PARA EL RELEVO SIN PAUSA (Form1.SinPausa.cs):
         private bool DseeDe(CadenaCancion c) { return DseeActivoPara(c.IaMejorada); }
         private float ExcitePara(CadenaCancion c) { return ExciteAmountPara(c.Cancion.Path, DseeDe(c)); }
-        private int RetrasoAudible() { return audioVisualDelayMs; }
+        private int RetrasoAudible() { return audioVisualDelayMs + AdelantoBomba(); }   // mas lo que el hilo de la musica lee por delante (BombaSonido.cs)
         // La misma cuenta que PlayTrack: si ya esta la version de Apollo, suena esa (y sale el letrero dorado);
         // si no, suena la original y se le pide al motor para la proxima.
         private bool IaMejoradaPara(string path)
@@ -1435,6 +1435,7 @@ namespace Rocola
             if (outputResampler != null) { try { outputResampler.Dispose(); } catch { } outputResampler = null; }
             if (outputDevice != null) { try { outputDevice.Dispose(); } catch { } outputDevice = null; }
             SueltaExclusivo();   // el aparato del exclusivo y lo que recibia (SalidaExclusiva.cs)
+            SueltaBomba();   // el hilo de la musica, parado y esperado ANTES de soltar el lector (BombaSonido.cs)
             if (reader != null) { try { reader.Dispose(); } catch { } reader = null; }
             SueltaSinPausa();   // la siguiente preparada (o ya entrando): con la salida ya parada
             curTap = null; curSbr = null; curBass = null; curNoche = null;   // ya no hay taps actuales
@@ -1654,8 +1655,9 @@ namespace Rocola
 #else
             const bool fina = false;
 #endif
+            int retraso = RetrasoAudible();   // el colchon de la salida y lo que la bomba lee por delante
             lock (levelLock)
-                while (levelQ.Count > 0 && unchecked(now - (levelQ.Peek().At + audioVisualDelayMs)) >= 0)
+                while (levelQ.Count > 0 && unchecked(now - (levelQ.Peek().At + retraso)) >= 0)
                 {
                     Lvl l = levelQ.Dequeue(); rmsLo = l.Lo; rmsMid = l.Mid; rmsHi = l.Hi;
                     if (l.Esp != null && !fina) Array.Copy(l.Esp, specNow, SpecBands);

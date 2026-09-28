@@ -1,5 +1,15 @@
 # Rocola
 
+## Más fluido en los equipos de dos núcleos — 28 de septiembre de 2026
+
+- **La música en su propio hilo.** En los equipos de dos núcleos la pantalla se paraba cada 50 ms a descomprimir la
+  canción y pasarla por toda la cadena de sonido (1,8 ms de media y picos de 7,6 ms medidos en el servidor de pruebas;
+  en un equipo viejo, varias veces más). Ahora lo hace un hilo aparte y la pantalla solo copia lo ya hecho: 0,07 ms por
+  bloque en la simulación. El sonido sale igual bit a bit; lo que se ve sigue cayendo en el golpe.
+
+Automático y sin interruptor, en las dos ramas. Probado con la cuenta; no se ha visto en el equipo del bar ni se probó
+en XP. [La guía](OPTIMIZACIONES_2026-09-28.md).
+
 ## Nivel por disco y la espera de la cola — 28 de septiembre de 2026
 
 - Cuando suenan seguidas canciones del mismo disco, se nivelan juntas: el disco llega al volumen de siempre y por
