@@ -56,7 +56,9 @@ def leer_huellas(ruta):
     """Devuelve (curvas Nx8, cortes N). Vale para el archivo de cualquier version de la rocola: se piden
     los 8 primeros numeros y se coge el 9o si esta (corte 0 = esa version no lo apuntaba). Lo que venga
     detras -recorte, corte de graves, o lo que se anada manana- se ignora sin dar la linea por mala."""
-    curvas, cortes = [], []
+    # La rocola anade al final lo que cambia (DiarioTablas.cs): una cancion medida otra vez sale repetida y manda la
+    # ULTIMA linea, igual que al leerla la rocola. Sin esto, esa cancion contaria doble al entrenar.
+    filas = {}
     malas = 0
     with open(ruta, "r", encoding="utf-8", errors="replace") as f:
         for linea in f:
@@ -70,10 +72,11 @@ def leer_huellas(ruta):
                 v = [float(x) for x in partes[:IDX_CORTE + 1]]
             except ValueError:
                 malas += 1; continue
-            curvas.append(v[:N_BANDAS])
-            cortes.append(v[IDX_CORTE] if len(v) > N_BANDAS else 0.0)
+            filas[linea[bar + 1:].rstrip("\r\n").lower()] = (v[:N_BANDAS], v[IDX_CORTE] if len(v) > N_BANDAS else 0.0)
     if malas:
         print("  (%d lineas ilegibles, saltadas)" % malas)
+    curvas = [c for c, _ in filas.values()]
+    cortes = [k for _, k in filas.values()]
     return np.array(curvas, dtype=np.float64), np.array(cortes, dtype=np.float64)
 
 class Mlp:

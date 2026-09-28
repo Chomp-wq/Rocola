@@ -1,5 +1,18 @@
 # Rocola
 
+## Menos disco: SSD y disco duro — 28 de septiembre de 2026
+
+- **Las tablas grandes ya no se reescriben enteras.** El volumen, el EQ y la sonoridad de cada canción se guardaban
+  enteros cada 25 canciones medidas: con 20.000 canciones, unos 3 GB escritos en la primera medición para dejar 8 MB de
+  tablas (calculado). Ahora se añade al final solo lo nuevo, con el formato de siempre: en la prueba, la tabla de volumen
+  de 20.000 canciones pasa de 686 MB escritos (calculado) a 1,7 MB (medido), y el archivo queda idéntico byte a byte.
+- **La canción que suena y la siguiente, en memoria.** Un MP3 de hasta 32 MB se abre desde la memoria: mientras suena, el
+  disco no se toca (antes, miles de lecturas pequeñas por canción) y un atasco del disco no puede cortar la música. La
+  siguiente aprovecha lo que ya leía la lectura por adelantado. Se oye exactamente lo mismo.
+
+Automático y sin interruptor, en las dos ramas. Probado con la cuenta; no se ha medido en el disco del bar ni se probó en
+XP. [La guía](OPTIMIZACIONES_2026-09-28.md).
+
 ## Más fluido en los equipos de dos núcleos — 28 de septiembre de 2026
 
 - **La música en su propio hilo.** En los equipos de dos núcleos la pantalla se paraba cada 50 ms a descomprimir la

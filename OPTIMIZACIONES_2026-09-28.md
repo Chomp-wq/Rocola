@@ -150,3 +150,84 @@ no ponerla); la batería las detecta todas.
 
 - Cuánto se nota en el equipo del bar con Windows ocupado en sus cosas: no se puede medir aquí.
 - Windows XP real (la prioridad "por encima de lo normal" existe desde Windows 2000).
+
+## 4. Las tablas grandes, sin reescribirlas enteras (SSD y disco duro)
+
+### Qué pasaba
+
+`rocola_volumen.txt`, `rocola_eq.txt` y `rocola_sonoridad.txt` tienen una línea por canción y se guardaban **enteras**
+cada 25 canciones medidas durante el repaso de la biblioteca. Había una regla para guardar menos a menudo cuanto más
+grande fuera la biblioteca, pero miraba lo **ya medido**, que en la primera medición empieza en cero: ahí no servía. Con
+20.000 canciones eso eran unos **3 GB** escritos para dejar 8 MB de tablas; con 100.000, unos 80 GB (calculado a partir
+del código, con rutas de unos 80 caracteres). En un SSD es desgaste; en un disco duro, varios MB forzados al disco cada
+minuto mientras suena la música.
+
+### Qué cambia
+
+Se **añade al final** solo lo nuevo o lo que cambió, con el formato de siempre (`DiarioTablas.cs`). Se puede porque la
+rocola -esta y las de antes- ya lee esas tablas quedándose con la **última** línea de cada canción. Se sigue escribiendo
+entera, con el guardado seguro de siempre, la primera vez de cada sesión, si se quitó alguna canción, si alguien tocó o
+borró el archivo, y cuando hay demasiadas repetidas (se compacta). Qué dice ya el archivo se sabe por una huella de cada
+medida (sus números bit a bit), sin volver a escribir el texto. Lo añadido se baja al disco de verdad, igual que antes.
+
+Si se va la luz justo al añadir, lo de antes no se toca; al leer se descarta una última línea a medias y cualquier línea
+con ceros. El entrenador del EQ (`ia/entrenar_eq.py`) también se queda con la última línea de cada canción.
+
+### Comprobaciones automáticas
+
+Batería nueva **`pruebas/diario.cs`** (27 comprobaciones): la primera vez entera y con los mismos bytes; 25 nuevas, solo
+esas 25 líneas; tres cambios (también solo de duración), solo esas tres; al leer, lo que hay en memoria; sin cambios, nada;
+entera al quitar una canción, al tocar el archivo desde fuera (con y sin cambios en memoria) y si desapareció; la
+compactación; cada sesión empieza limpia; apagones (última línea a medias, ceros al final y en medio); lo mismo en el EQ y
+en la integrada (cabecera y registros de una versión posterior). **Medido en la prueba**: la tabla de volumen de 20.000
+canciones medidas de 25 en 25 escribe 1,7 MB en vez de 686 MB (lo de antes, calculado: la tabla entera en cada guardado),
+399 veces menos, y queda idéntica byte a byte a la escrita entera. Y en `ia/test_entrenar_eq.py`, las repetidas.
+
+**Averías metidas a propósito**: 17 (siempre entera, sin mirar el largo, sin mirar si se quitó alguna, sin compactar,
+añadir todas, huella sin la duración, no apuntar lo añadido, no apuntar el largo nuevo, añadir sin bajar al disco, leer la
+última a medias, leer líneas con ceros, el arranque, la integrada y el respaldo leyendo todo, la integrada sin cabecera o
+sin los registros futuros, el EQ por fuera); la batería las detecta todas.
+
+### Lo que no se ha comprobado
+
+- El disco del bar: lo escrito se ha contado aquí, no medido en su SSD o disco duro.
+- Windows XP real.
+
+## 5. La canción que suena y la siguiente, en memoria
+
+### Qué pasaba
+
+Mientras sonaba, la canción se seguía leyendo del disco a trozos chicos: **medido** con un MP3 de 488 KB, NAudio hace
+2.413 lecturas y saltos al abrirlo y 2.402 más mientras suena. Windows las junta, pero si el disco se atasca (un disco
+duro con el antivirus encima, un disco que se había dormido, una memoria USB lenta), la música espera al disco. La
+siguiente ya se leía entera por adelantado, pero los bytes se tiraban y se confiaba en que Windows los guardara.
+
+### Qué cambia
+
+Un MP3 de hasta **32 MB** (y nunca más de un octavo de la memoria libre) se abre **desde la memoria**
+(`CancionEnMemoria.cs`): la lectura por adelantado deja ahí los bytes de la siguiente -con los mismos trozos y pausas de
+siempre- y, si una canción llega sin ellos, se lee entera de una vez al abrirla (en trozos de 256 KB). Mientras suena, el
+disco queda libre para las portadas y el repaso. Lo leído por adelantado se usa una sola vez y solo si el archivo no cambió.
+Como mucho hay dos a la vez en memoria: la que suena y la siguiente. Lo que no es MP3, o pasa del tope, sigue como siempre.
+
+**Se oye lo mismo**: es el mismo lector de NAudio con el mismo descompresor (el `AbreMp3` de memoria es el de siempre letra
+por letra), sobre los mismos bytes.
+
+### Comprobaciones automáticas
+
+Batería nueva **`pruebas/enmemoria.cs`** (18 comprobaciones): con un descompresor de prueba (el de Windows no existe
+aquí), el lector entrega exactamente lo mismo desde la memoria que desde el archivo, también saltando a mitad de canción;
+el `AbreMp3` de memoria es igual al de siempre en la fuente y compilado; el cargador (una sola vez, firma, otra canción,
+soltar al cambiar la cola, formatos, tope); **con el archivo vaciado y borrado a mitad de canción, desde la memoria sigue
+entera e idéntica, y leyendo del archivo se cortaba en el 33 %**; y el enganche.
+
+**Averías metidas a propósito**: 10 (no pedirla a la memoria, que la lectura por adelantado no la deje, sin mirar la firma,
+sin mirar la ruta, entregarla dos veces, sin tope, cualquier formato, otro descompresor en memoria, soltar la cola sin
+soltar la memoria, cerrar sin soltar la canción); la batería las detecta todas.
+
+### Lo que no se ha comprobado
+
+- La decodificación real de Windows (ACM / Media Foundation) y NLayer por este camino: aquí no hay descompresor de MP3 del
+  sistema; la igualdad se comprobó con un descompresor de prueba y comparando el código.
+- El tope de memoria libre (aquí no se puede preguntar a Windows) y un XP real con poca memoria.
+- Cuánto se nota en el disco del bar.

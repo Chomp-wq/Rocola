@@ -250,7 +250,7 @@ namespace Rocola
                 }); }
             catch { SueltaLookahead(); } // precarga opcional: un fallo al crear el hilo no corta la UI
         }
-        private void SueltaLookahead() { if (lookahead != null) lookahead.Suelta(); }
+        private void SueltaLookahead() { if (lookahead != null) lookahead.Suelta(); SueltaEnMemoria(); }   // (y lo leido por adelantado)
         internal static string AudioFileSignature(string path)
         {
             try

@@ -1,0 +1,148 @@
+using System;
+using System.IO;
+using System.Threading;
+using NAudio.Wave;
+
+namespace Rocola
+{
+    // ============================== LA CANCION, EN MEMORIA ==============================
+    //
+    // Mientras sonaba, la cancion se seguia leyendo del disco: NAudio pide el MP3 a trozos chicos (al abrir un MP3 de
+    // 1,5 MB, 3.807 lecturas de 4 bytes y 3.804 saltos para armar su indice; al tocarlo, 7.602 lecturas mas; medido).
+    // Windows junta esas lecturas, pero cada una es una llamada, y si el disco se atasca -un disco duro con el antivirus
+    // o las actualizaciones encima, un disco que se habia dormido, una memoria USB lenta- la musica espera al disco.
+    // Y la siguiente ya se leia ENTERA por adelantado (PrecalientaSiguiente), pero los bytes se tiraban y se confiaba
+    // en que Windows los guardara hasta que tocara: con poca memoria y el repaso de la biblioteca leyendo canciones
+    // enteras, eso dura minutos.
+    //
+    // Ahora un MP3 se abre desde la MEMORIA: la lectura por adelantado deja aqui los bytes de la siguiente y, si una
+    // cancion llega sin ellos (la primera, o una elegida con la cola vacia), se lee entera de una vez al abrirla, en
+    // trozos grandes. Mientras suena, el disco no se toca: queda libre para las portadas y el repaso, y un atasco del
+    // disco no puede cortar la musica.
+    //
+    // LO QUE SE OYE ES IDENTICO: el mismo lector de NAudio con el mismo descompresor (AbreMp3 de dos argumentos es el de
+    // siempre, letra por letra, leyendo de la memoria en vez del archivo), sobre los mismos bytes.
+    //
+    // Con tope: solo MP3 (lo demas lo abre Windows por el nombre), hasta 32 MB (una sesion de una hora sigue leyendose
+    // del disco como siempre) y nunca mas de un octavo de la memoria libre del equipo. Como mucho hay dos a la vez: la
+    // que suena y la siguiente.
+    public partial class Form1
+    {
+        internal const long TopeEnMemoria = 32L * 1024 * 1024;
+        private static readonly object enMemoriaCerrojo = new object();
+        private static string adelantoRuta, adelantoFirma;   // la siguiente, tal como la dejo la lectura por adelantado
+        private static byte[] adelantoDatos;
+        internal static int EnMemoriaDelAdelanto, EnMemoriaLeidas;   // cuantas se abrieron asi (pruebas y diagnostico)
+
+        // ¿Se puede tener entera en memoria?
+        private static bool CabeEnMemoria(string ruta, long largo)
+        {
+            if (ruta == null || !ruta.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase)) return false;
+            if (largo <= 0 || largo > TopeEnMemoria) return false;
+            ulong libre = MemoriaLibre();
+            return libre == 0 || (ulong)largo * 8UL <= libre;
+        }
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        private struct EstadoMemoria { public uint Largo, Carga; public ulong Fisica, FisicaLibre, Paginacion, PaginacionLibre, Virtual, VirtualLibre, Extendida; }
+        [System.Runtime.InteropServices.DllImport("kernel32.dll", EntryPoint = "GlobalMemoryStatusEx")]
+        private static extern bool PideEstadoMemoria(ref EstadoMemoria e);
+        private static ulong MemoriaLibre()
+        {
+            try
+            {
+                EstadoMemoria e = new EstadoMemoria();
+                e.Largo = (uint)System.Runtime.InteropServices.Marshal.SizeOf(typeof(EstadoMemoria));
+                if (PideEstadoMemoria(ref e)) return e.FisicaLibre;
+            }
+            catch { }
+            return 0;   // no se sabe (otro sistema): no se pone pega
+        }
+
+        // La lectura por adelantado pide donde leer: la cancion entera si cabe, o null (se lee a trozos y se tira, como
+        // siempre).
+        private static byte[] ReservaEnMemoria(string ruta, long largo)
+        {
+            if (!CabeEnMemoria(ruta, largo)) return null;
+            try { return new byte[largo]; }
+            catch (OutOfMemoryException) { return null; }
+        }
+        // Y la deja aqui, entera, con la firma que tenia el archivo antes de leerlo.
+        private static void DejaEnMemoria(string ruta, string firma, byte[] datos)
+        {
+            if (ruta == null || firma == null || datos == null) return;
+            lock (enMemoriaCerrojo) { adelantoRuta = ruta; adelantoFirma = firma; adelantoDatos = datos; }
+        }
+        // La cola cambio: lo leido por adelantado ya no es la siguiente.
+        private static void SueltaEnMemoria()
+        {
+            lock (enMemoriaCerrojo) { adelantoRuta = null; adelantoFirma = null; adelantoDatos = null; }
+        }
+        // Los bytes de 'ruta' si los dejo la lectura por adelantado y el archivo no cambio desde entonces. Se entregan una
+        // sola vez.
+        private static byte[] TomaDelAdelanto(string ruta)
+        {
+            byte[] d; string firma;
+            lock (enMemoriaCerrojo)
+            {
+                if (adelantoDatos == null || !string.Equals(ruta, adelantoRuta, StringComparison.OrdinalIgnoreCase)) return null;
+                d = adelantoDatos; firma = adelantoFirma;
+                adelantoRuta = null; adelantoFirma = null; adelantoDatos = null;
+            }
+            return (firma == AudioFileSignature(ruta)) ? d : null;
+        }
+        // Entera, de una vez y en trozos grandes; null si no cabe o no se pudo (entonces se abre del disco, como siempre).
+        private static byte[] LeeEnteraEnMemoria(string ruta)
+        {
+            try
+            {
+                using (FileStream fs = new FileStream(ruta, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 4096, FileOptions.SequentialScan))
+                {
+                    long largo = fs.Length;
+                    if (!CabeEnMemoria(ruta, largo)) return null;
+                    byte[] d = new byte[largo];
+                    int hecho = 0;
+                    while (hecho < d.Length)
+                    {
+                        int n = fs.Read(d, hecho, Math.Min(256 * 1024, d.Length - hecho));
+                        if (n <= 0) return null;   // se acorto mientras se leia: del disco, como siempre
+                        hecho += n;
+                    }
+                    return d;
+                }
+            }
+            catch { return null; }   // (sin memoria incluido)
+        }
+        // El MP3 entero en memoria, listo para abrir; null si no toca.
+        private static MemoryStream CancionEnMemoria(string ruta)
+        {
+            if (ruta == null || !ruta.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase)) return null;
+            byte[] d = TomaDelAdelanto(ruta);
+            if (d != null) Interlocked.Increment(ref EnMemoriaDelAdelanto);
+            else
+            {
+                d = LeeEnteraEnMemoria(ruta);
+                if (d == null) return null;
+                Interlocked.Increment(ref EnMemoriaLeidas);
+            }
+            return new MemoryStream(d, 0, d.Length, false, true);
+        }
+
+        // EL MISMO AbreMp3 DE SIEMPRE (el de un archivo), letra por letra, pero leyendo de la memoria: el mismo descompresor,
+        // la misma comprobacion de la coma flotante con el nombre del archivo, y el mismo cierre si la apertura falla. El
+        // lector no se queda con el flujo: lo guarda quien lo abrio (FileAudioSource).
+        private static Mp3FileReader AbreMp3(string ruta, Stream enMemoria)
+        {
+            NAudio.Wave.IMp3FrameDecompressor hecho = null;
+            Func<NAudio.Wave.WaveFormat, NAudio.Wave.IMp3FrameDecompressor> otroAcm = delegate(NAudio.Wave.WaveFormat f)
+            { return Mp3FileReader.CreateAcmFrameDecompressor(f); };
+            Mp3FileReader.FrameDecompressorBuilder armador = delegate(NAudio.Wave.WaveFormat wf)
+            {
+                hecho = Mp3FileReader.CreateAcmFrameDecompressor(wf);
+                hecho = DecodificacionFlotante.Envuelve(wf, hecho, ruta, otroAcm);
+                return hecho;
+            };
+            try { return new Mp3FileReader(enMemoria, armador); }
+            catch { if (hecho != null) { try { hecho.Dispose(); } catch { } } throw; }
+        }
+    }
+}

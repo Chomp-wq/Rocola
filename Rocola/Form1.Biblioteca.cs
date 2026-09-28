@@ -1420,6 +1420,8 @@ namespace Rocola
             // fondo son CIENTOS de gigas escritos para nada, y eso desgasta el SSD. Asi que el intervalo crece con
             // la biblioteca: en una chica se guarda tan seguido como siempre; en una grande, cada tanto (como mucho
             // se pierde un rato de trabajo si se va la luz, y lo perdido solo se vuelve a medir).
+            // Desde el 28/09 un volcado ya no reescribe las tablas: anade al final solo lo nuevo (DiarioTablas.cs). Con
+            // 20.000 canciones, unos 24 MB en toda la primera medicion en vez de unos 3 GB (calculado).
             int guardaCada = turbo ? 10 : 25;
             int escala = loudCache.Count / 500;                        // se calcula aqui, en el hilo de la interfaz
             if (escala > guardaCada) guardaCada = escala;              // (las tablas son suyas: leerlas desde el hilo de fondo seria una carrera)
