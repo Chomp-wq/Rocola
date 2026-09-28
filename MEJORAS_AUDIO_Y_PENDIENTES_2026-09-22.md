@@ -855,7 +855,7 @@ lo sumo su pre-oscilación, 2·10⁻⁶); con el DSEE detrás del des-recorte qu
 banda que recrea sobre el silencio que mete el des-recorte: −67 dBFS a 44,1 kHz y −69 dBFS a 48 kHz, durante
 1,2-1,4 ms (en la prueba, una entrada brusca a plena escala). Sin des-recorte no existe.
 
-RETARDO Y RELLENO DEL MP3: medidos, SIN implementar. Cada MP3 lleva al principio el retardo del codificador
+RETARDO Y RELLENO DEL MP3: medidos; desde el 28/09 se recortan (ver 1.27). Cada MP3 lleva al principio el retardo del codificador
 (576 muestras con LAME) y al final un relleno hasta completar el último cuadro. Medido con un disco continuo
 sintético partido en tres pistas y codificado con LAME (128 y 320 kbit/s, 44,1 kHz): con un decodificador
 de 529 muestras de retardo que no lee la etiqueta LAME, en cada unión quedan 2.027-2.257 muestras (46-51 ms)
@@ -1507,6 +1507,51 @@ rato, con dos envolventes). No ganaba en todo: o bombeaba más en música densa 
 
 Lo de siempre: lo que no llega al techo sale intacto, bit a bit; nada pasa del techo (también lo vigilan `picoreal` y
 `limite`). Roturas a propósito: ver 1.25.
+
+### 1.27 MP3 sin huecos entre pistas: el retraso y el relleno del codificador (28 de septiembre, las dos ramas)
+
+Qué pasaba: cada MP3 lleva al principio el retraso del codificador (576 muestras con LAME) y al final un relleno hasta
+completar el último cuadro; el descompresor añade el suyo. En un disco continuo (en vivo, mezclas, óperas) eso dejaba
+entre pista y pista unos 40-50 ms de silencio que no estaban en el disco (medido en 1.17; no se recortaba porque no se
+sabía cuánto retrasa el descompresor de Windows).
+
+Qué hace ahora:
+1. **Lee la etiqueta LAME** del primer cuadro de cada MP3: el retraso, el relleno y cuántos cuadros hay. Solo MPEG-1
+   (32, 44,1 y 48 kHz), solo si la escribió LAME o ffmpeg y solo si cuadra su CRC (los primeros 190 bytes del cuadro).
+2. **Mide el descompresor de este equipo**, una vez por sesión: la rocola lleva dentro un MP3 de medio segundo con un
+   clic en una muestra conocida, lo descomprime por el mismo camino que las canciones y busca el clic. Solo si la medida
+   sale limpia (un clic claro, el resto en silencio, un retraso de 0 a 4 cuadros y el final completo) se recorta. Si
+   no, todo sigue como antes.
+3. **Recorta:** quita del principio el retraso del codificador más el del descompresor, y corta al final en la duración
+   real de la música. El fundido de salida cuenta con esa duración. Tras un salto dentro de la canción (volvió el aparato
+   de sonido) deja de recortar.
+
+Qué dice la rocola: en rocola_error.txt, una vez por sesión, aunque no sea un error:
+
+    [Sin huecos]
+    MP3 sin huecos: el descompresor de este equipo retrasa NNN muestras; ... en uso
+
+o `NO se usa (por qué); los MP3 suenan como antes`.
+
+Medido aquí (no hay descompresor de Windows en este equipo):
+- Con NLayer como descompresor de sustituto (retrasa 529): un tono continuo partido en tres MP3 (192 kbit/s). Sin
+  recorte, 1.635 muestras casi mudas (37 ms) en cada unión. Con el recorte de la rocola (la medida con su clip da 529),
+  el disco sale con la duración exacta (176.400 muestras) y el error junto a las uniones es el mismo que en el resto
+  (0,033, lo propio del MP3 a 192 kbit/s).
+- En la batería, con un descompresor imitado: el disco sale idéntico al original muestra a muestra, también si entrega
+  trozos que parten cuadros y si retrasa un cuadro más.
+
+En una canción suelta no cambia nada que se oiga: lo quitado es el silencio del codificador (unos 25 ms al principio)
+y el relleno del final.
+
+Pruebas automáticas: `pruebas/relleno.cs` (28 comprobaciones): la etiqueta de MP3 de verdad hechos con ffmpeg/LAME
+(esta carpeta: estéreo, mono, 48 kHz, tasa variable, sin etiqueta, MPEG-2, con 60 KB de ID3 delante, con un bit
+cambiado), la medida con el clic (retrasos de 0 a 4.608, un canal, y los casos en que no se fía), la medida de la rocola
+una vez por sesión y lo que apunta, el recorte de un disco continuo partido en tres y que esté conectado.
+
+**NO PROBADO EN WINDOWS**: qué mide el descompresor de verdad (ACM en XP; en HD, el de Windows o el MFT) solo se sabe
+allí. Mirar la línea `[Sin huecos]` de rocola_error.txt. Qué mirar en el bar: un disco en vivo, de una pista a la
+siguiente, debería seguir sin corte.
 
 ## 2. Comprobaciones y cómo repetirlas
 

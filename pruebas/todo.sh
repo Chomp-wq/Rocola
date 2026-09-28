@@ -27,7 +27,7 @@ FUENTES="../Rocola/Form1.cs ../Rocola/Form1.Ajustes.cs ../Rocola/Form1.Bibliotec
 FUENTES="$FUENTES $RAIZ/Rocola/EstrellaGpu.cs $RAIZ/Rocola/Estrella3dGpu.cs $RAIZ/Rocola/RelojPantallaGpu.cs $RAIZ/Rocola/PantallaVivaGpu.cs $RAIZ/Rocola/DiscoVivoGpu.cs $RAIZ/Rocola/SuenaVivoGpu.cs $RAIZ/Rocola/AtraccionGpu.cs $RAIZ/Rocola/EstiloGpu.cs $RAIZ/Rocola/DibujoLigeroGpu.cs $RAIZ/Rocola/BuscadorLigeroGpu.cs $RAIZ/Rocola/BuscadorPortadasGpu.cs $RAIZ/Rocola/PrecargaPaginaGpu.cs $RAIZ/Rocola/PaletaCaratulaGpu.cs $RAIZ/Rocola/CreditosServicio.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/TextoMovilGpu.cs"
 TMP_PRUEBAS="${TMPDIR:-/tmp}/rocola_pruebas_$$"
-FUENTES="$FUENTES $RAIZ/Rocola/AudioControles.cs $RAIZ/Rocola/Sonoridad.cs $RAIZ/Rocola/PicoReal.cs $RAIZ/Rocola/Realce.cs"
+FUENTES="$FUENTES $RAIZ/Rocola/AudioControles.cs $RAIZ/Rocola/Sonoridad.cs $RAIZ/Rocola/RellenoMp3.cs $RAIZ/Rocola/PicoReal.cs $RAIZ/Rocola/Realce.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/ModoNoche.cs $RAIZ/Rocola/GraveMono.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/SinPausa.cs $RAIZ/Rocola/Form1.SinPausa.cs $RAIZ/Rocola/SalidaSonido.cs"
 if ! mkdir -p "$TMP_PRUEBAS"; then
@@ -66,6 +66,8 @@ CPU="$CPU id3selectivo tablasarranque historialarranque audiosuave audioestereo 
 CPU="$CPU nivelpicos"
 # 'soltar': el limitador espera 20 ms antes de soltar (el bajo sale limpio), con el limitador de verdad.
 CPU="$CPU soltar"
+# 'relleno': los MP3 sin huecos entre pistas (la etiqueta LAME, la medida del descompresor con el clic y el recorte).
+CPU="$CPU relleno"
 GPU="$GPU espacioprecarga estelaestelar estrellaflujo estrella3d pantallaviva"
 # 'pantallaviva' sale en las dos: sin tarjeta grafica solo existe la pestaña de ajustes (se comprueba que se guarda y
 # que no hay nada mas); con ella, todo lo de la tanda 1 de la pantalla (PantallaVivaGpu.cs).
