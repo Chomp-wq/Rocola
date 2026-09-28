@@ -188,6 +188,7 @@ namespace Rocola
         }
         private void BeginAudioOpen(string path, Action<IAudioSource, Exception> completed)
         {
+            bitacoraCancion = Environment.TickCount;   // (bitacora: MedidasBitacora.cs)
             if (audioOpeningForMeasurement)
             {
                 IAudioSource source = null; Exception error = null;

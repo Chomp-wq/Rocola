@@ -67,6 +67,7 @@ namespace Rocola
             public Dictionary<string, SonoridadIntegrada> Integ = new Dictionary<string, SonoridadIntegrada>(StringComparer.OrdinalIgnoreCase);
             public List<string> IntegAjenas = new List<string>();
             public int IntegEstado;
+            public int MsLeer;   // lo que tardo en leerlas (bitacora: MedidasBitacora.cs)
         }
 
         private sealed class StartupLoad
@@ -80,6 +81,7 @@ namespace Rocola
         private static StartupData ReadStartupData(StartupLoad load)
         {
             if (load.Cancelled) return null;
+            int leer = Environment.TickCount;
             StartupData data = new StartupData();
             for (int table = 0; table < Math.Min(8, load.Paths.Length); table++)
             {
@@ -108,6 +110,7 @@ namespace Rocola
             }
             if (load.Cancelled) return null;
             ComputeEqAverage(data.Eq, ref data.Average, ref data.Healthy, ref data.OnlyHealthy);
+            data.MsLeer = Desde(leer);
             return load.Cancelled ? null : data;
         }
 
@@ -218,6 +221,7 @@ namespace Rocola
             StartupLoad load = startupLoad;
             if (load == null || startupClosing) return false;
             StartupData data;
+            int espera = Environment.TickCount;   // (bitacora: MedidasBitacora.cs)
             lock (load)
             {
                 // Barrera deliberada: OnShown no devuelve el control antes de tener las tablas.
@@ -239,6 +243,7 @@ namespace Rocola
             RememberEqAverage();
             PublishStartupStats(data.Stats);
             startupReadPending = false;
+            ApuntaArranque(data.MsLeer, Desde(espera));
             return true;
         }
 

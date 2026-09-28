@@ -89,6 +89,7 @@ namespace Rocola
             System.Threading.Thread thread = System.Threading.Thread.CurrentThread;
             System.Threading.ThreadPriority previous = thread.Priority;
             scanDirectoryMemo = new ScanDirectoryMemo();
+            bitacoraBiblioteca = Environment.TickCount; bitacoraFirmaMs = -1;   // (bitacora: MedidasBitacora.cs)
             try
             {
                 try { thread.Priority = System.Threading.ThreadPriority.BelowNormal; } catch { }
@@ -108,7 +109,10 @@ namespace Rocola
             // CACHE DE BIBLIOTECA: si es valido, evita las DOS caminatas del disco (en HDD eran minutos).
             List<Track> ctk; List<string> cvd; Dictionary<string, string> ccv;
             string sigObservada;
-            if (TryLoadLibraryCache(roots, out ctk, out cvd, out ccv, out sigObservada))
+            int firmaTick = Environment.TickCount;
+            bool guardadaVale = TryLoadLibraryCache(roots, out ctk, out cvd, out ccv, out sigObservada);
+            bitacoraFirmaMs = Desde(firmaTick);   // leer la guardada y recorrer las carpetas (bitacora)
+            if (guardadaVale)
             {
                 // ARMADO EN SEGUNDO PLANO: ordenar e indexar las 118 mil canciones tomaba 1-3 segundos
                 // DEL HILO DE LA INTERFAZ al arrancar; aqui corre en el worker y el arranque no se congela.
@@ -183,6 +187,7 @@ namespace Rocola
             if (albums.Count == 0) lblStatus.Text = "No encontre MP3 en esa carpeta: " + MusicFolder;
             else lblStatus.Text = "";   // las instrucciones las muestra la barra de ayuda (formas/colores)
 
+            ApuntaBiblioteca(fromCache);   // (bitacora: MedidasBitacora.cs)
             StartThumbWarm();   // en segundo plano: construir las miniaturas que falten (1a vez tarda; luego todo vuela)
             StartDurScan();     // barrido RAPIDO: la duracion de toda la biblioteca en minutos (no espera al analisis pesado)
             StartPreScan();     // en segundo plano: medir volumen y duracion de las canciones nuevas (nivelado desde la 1a vez)

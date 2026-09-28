@@ -1102,6 +1102,7 @@ namespace Rocola
             try
             {
                 reader = source;
+                int abiertaMs = Desde(bitacoraCancion);   // (bitacora: MedidasBitacora.cs)
                 if (error != null) throw error;
                 reader.Volume = FixedVolume;   // se queda en 1.0 (crudo): el nivelado se aplica en LevelTap, tras medir el volumen REAL
                 // RETOMADA: volvio el aparato de sonido y la cancion sigue desde donde iba (SalidaSonido.cs).
@@ -1180,6 +1181,7 @@ namespace Rocola
                 progressTimer.Start();
                 UpdateNowPlayingUI(); // lector ya listo; refrescar estado tras la apertura asincrona
                 PrecalientaSiguiente();   // la que viene detras, leida en segundo plano (ver arriba)
+                ApuntaCancion(abiertaMs);
             }
             catch (Exception ex)
             {

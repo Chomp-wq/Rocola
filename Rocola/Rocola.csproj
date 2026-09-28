@@ -107,6 +107,7 @@
     <Compile Include="BombaSonido.cs" />
     <Compile Include="DiarioTablas.cs" />
     <Compile Include="CancionEnMemoria.cs" />
+    <Compile Include="MedidasBitacora.cs" />
     <Compile Include="PicoReal.cs" />
     <Compile Include="Realce.cs" />
     <Compile Include="ModoNoche.cs" />

@@ -30,7 +30,7 @@ FUENTES="../Rocola/Form1.cs ../Rocola/Form1.Ajustes.cs ../Rocola/Form1.Bibliotec
 FUENTES="$FUENTES $RAIZ/Rocola/EstrellaGpu.cs $RAIZ/Rocola/Estrella3dGpu.cs $RAIZ/Rocola/RelojPantallaGpu.cs $RAIZ/Rocola/AuroraFinaGpu.cs $RAIZ/Rocola/PantallaVivaGpu.cs $RAIZ/Rocola/DiscoVivoGpu.cs $RAIZ/Rocola/SuenaVivoGpu.cs $RAIZ/Rocola/AtraccionGpu.cs $RAIZ/Rocola/EstiloGpu.cs $RAIZ/Rocola/DibujoLigeroGpu.cs $RAIZ/Rocola/BuscadorLigeroGpu.cs $RAIZ/Rocola/FranjaLigeraGpu.cs $RAIZ/Rocola/BuscadorPortadasGpu.cs $RAIZ/Rocola/PrecargaPaginaGpu.cs $RAIZ/Rocola/PaletaCaratulaGpu.cs $RAIZ/Rocola/CreditosServicio.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/TextoMovilGpu.cs"
 TMP_PRUEBAS="${TMPDIR:-/tmp}/rocola_pruebas_$$"
-FUENTES="$FUENTES $RAIZ/Rocola/AudioControles.cs $RAIZ/Rocola/Sonoridad.cs $RAIZ/Rocola/RellenoMp3.cs $RAIZ/Rocola/SinSilencios.cs $RAIZ/Rocola/SubirTodo.cs $RAIZ/Rocola/NivelDisco.cs $RAIZ/Rocola/BombaSonido.cs $RAIZ/Rocola/DiarioTablas.cs $RAIZ/Rocola/CancionEnMemoria.cs $RAIZ/Rocola/PicoReal.cs $RAIZ/Rocola/Realce.cs"
+FUENTES="$FUENTES $RAIZ/Rocola/AudioControles.cs $RAIZ/Rocola/Sonoridad.cs $RAIZ/Rocola/RellenoMp3.cs $RAIZ/Rocola/SinSilencios.cs $RAIZ/Rocola/SubirTodo.cs $RAIZ/Rocola/NivelDisco.cs $RAIZ/Rocola/BombaSonido.cs $RAIZ/Rocola/DiarioTablas.cs $RAIZ/Rocola/CancionEnMemoria.cs $RAIZ/Rocola/MedidasBitacora.cs $RAIZ/Rocola/PicoReal.cs $RAIZ/Rocola/Realce.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/ModoNoche.cs $RAIZ/Rocola/GraveMono.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/SinPausa.cs $RAIZ/Rocola/Form1.SinPausa.cs $RAIZ/Rocola/SalidaSonido.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/SalidaExclusiva.cs $RAIZ/Rocola/DecodificaFlotante.cs"
@@ -97,6 +97,9 @@ CPU="$CPU diario"
 # 'enmemoria': la cancion que suena y la siguiente, en memoria (CancionEnMemoria.cs). Lo mismo desde la memoria que desde
 # el archivo (tambien saltando), el cargador (tope, firma, una sola vez), sin disco mientras suena y el enganche.
 CPU="$CPU enmemoria"
+# 'bitacora': con "diagnostico=1", lo que tardan las tablas del arranque, la biblioteca y cada cancion quedan en
+# rocola_diagnostico.txt (MedidasBitacora.cs); sin eso, nada. Y enganchado donde toca.
+CPU="$CPU bitacora"
 # 'nofinitos': lo que no es un numero (NaN o infinito) no entra en las medidas ni en las tablas. Un WAV con muestras rotas
 # se mide igual que con esas muestras en silencio; PublicaMedida, CierraHuella y CierraSonoridad no guardan NaN; y al
 # leer las tablas (arranque y respaldo) una fila con NaN no entra, asi que la media del EQ de la biblioteca sale finita.
