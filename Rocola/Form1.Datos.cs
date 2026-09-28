@@ -1843,16 +1843,49 @@ namespace Rocola
         private static DateTime BusinessDay(DateTime dt) { return dt.AddHours(-BusinessDayStartHour).Date; }
         private DateTime stateDay = BusinessDay(DateTime.Now);   // dia del negocio del estado vivo actual
 
+        // EL ESTADO QUE AUN NO SE RESTAURO. Tras un apagon, los creditos y la cola se restauran cuando la biblioteca ya
+        // esta armada (o cuando vuelve el disco que faltaba), pero la moneda funciona desde el primer instante. Una
+        // moneda en ese rato guardaba el estado de AHORA encima del de antes, y al restaurar se perdian los creditos y la
+        // cola que los clientes ya habian pagado. Mientras no se haya restaurado, lo de antes se conserva y lo de ahora
+        // se le suma: los creditos, unos encima de otros, y la cola de ahora detras de la de antes (SaveState). Con la
+        // misma regla que la restauracion: lo de otro dia del negocio no se conserva (se descartaria al restaurar).
+        private string[] estadoAntes;       // lo que habia guardado al arrancar (null: aun no se miro; vacio: nada)
+        private DateTime estadoAntesTs;     // y cuando se guardo
+        private string[] EstadoPorRestaurar()
+        {
+            if (stateRestored) return null;
+            if (estadoAntes == null)
+            {
+                string f = StateFile();
+                string[] L = LeeLineasSeguro(f);
+                if (L != null && L.Length > 0 && L[0] != "ROCOLA-ESTADO v1")
+                    try { L = File.Exists(f + ".bak") ? File.ReadAllLines(f + ".bak") : null; } catch { L = null; }   // como RestoreState
+                estadoAntes = (L != null && L.Length > 0 && L[0] == "ROCOLA-ESTADO v1") ? L : new string[0];
+                estadoAntesTs = estadoAntes.Length > 0 ? SavedStateTime(estadoAntes, f) : DateTime.Now;
+            }
+            if (estadoAntes.Length == 0) return null;
+            if (BusinessDay(DateTime.Now) != BusinessDay(estadoAntesTs) && (DateTime.Now - estadoAntesTs).TotalMinutes > StateRecentMins) return null;
+            return estadoAntes;
+        }
+
         private void SaveState()
         {
             try
             {
                 StringBuilder sb = new StringBuilder(256);
                 sb.Append("ROCOLA-ESTADO v1\r\n");
-                sb.Append("ts=").Append(DateTime.Now.Ticks).Append("\r\n");   // cuando se guardo (para descartarlo si cruza las 7 AM)
-                sb.Append("creditos=").Append(credits).Append("\r\n");
-                if (nowPlaying != null)
-                    sb.Append("sonando=").Append(nowPlaying.IsVideo ? 'V' : 'S').Append('|').Append(nowPlaying.PathKey()).Append("\r\n");
+                string[] antes = EstadoPorRestaurar();   // lo de antes del apagon, si aun no se restauro (ver abajo)
+                sb.Append("ts=").Append(antes != null ? estadoAntesTs.Ticks : DateTime.Now.Ticks).Append("\r\n");   // cuando se guardo (para descartarlo si cruza las 7 AM)
+                int crAntes = 0;
+                if (antes != null)
+                    for (int i = 1; i < antes.Length; i++)
+                        if (antes[i].StartsWith("creditos=")) { if (!int.TryParse(antes[i].Substring(9), out crAntes) || crAntes < 0) crAntes = 0; break; }
+                sb.Append("creditos=").Append(crAntes + credits).Append("\r\n");
+                if (antes != null)
+                    for (int i = 1; i < antes.Length; i++)
+                        if (antes[i].StartsWith("sonando=") || antes[i].StartsWith("cola=")) sb.Append(antes[i]).Append("\r\n");
+                if (nowPlaying != null)   // con lo de antes delante, lo de ahora va a la cola, detras
+                    sb.Append(antes != null ? "cola=" : "sonando=").Append(nowPlaying.IsVideo ? 'V' : 'S').Append('|').Append(nowPlaying.PathKey()).Append("\r\n");
                 for (int i = 0; i < queue.Count; i++)
                     sb.Append("cola=").Append(queue[i].IsVideo ? 'V' : 'S').Append('|').Append(queue[i].PathKey()).Append("\r\n");
                 EscribeSeguro(StateFile(), sb.ToString());   // archivo diminuto (<1KB): escritura sincrona sin costo notable
