@@ -897,6 +897,10 @@ namespace Rocola
             return updates;
         }
 
+        // Un numero de verdad (ni NaN ni infinito): lo unico que se guarda en las tablas y lo unico que se lee de ellas.
+        private static bool Finito(float v) { return v - v == 0f; }
+        private static bool Finitos(float[] c) { if (c == null) return false; for (int i = 0; i < c.Length; i++) if (c[i] - c[i] != 0f) return false; return true; }
+
         private static float[] ReadEqValues(string line, int bar)
         {
             int parts = 1;
@@ -909,7 +913,7 @@ namespace Rocola
                 int end = line.IndexOf(';', start, bar - start);
                 if (end < 0) end = bar;
                 if (!float.TryParse(line.Substring(start, end - start), System.Globalization.NumberStyles.Float,
-                    System.Globalization.CultureInfo.InvariantCulture, out values[b])) return null;
+                    System.Globalization.CultureInfo.InvariantCulture, out values[b]) || !Finito(values[b])) return null;   // NaN o infinito: fila rota
                 start = end + 1;
             }
             return values;   // sin copiar toda la cabecera ni crear un array de subcadenas
@@ -1236,6 +1240,7 @@ namespace Rocola
             curve[EqCutLo] = (corteBajo > 0f) ? corteBajo : (had ? prev[EqCutLo] : 0f);
             curve[EqClip] = had ? prev[EqClip] : 0f;   // el recorte solo lo mide el pre-analisis (aqui ya viene reparado)
             curve[EqFingerprint] = 1f;   // no promediar con la antigua medicion mono
+            if (!Finitos(curve)) return;   // una medida rota no se guarda (envenenaria la media de la biblioteca)
             eqCache[path] = curve; eqCacheVer++;
             EnsureEqAverage();
             SaveEqCache();
@@ -1658,13 +1663,13 @@ namespace Rocola
         {
             if (ruta == null) return;
             bool puesto = false;
-            if (dur > 0.01f) { durCache[ruta] = dur; puesto = true; }
-            if (rms > 0f) { loudCache[ruta] = rms; InvalidateVideoMeasurements(); puesto = true; }   // incluido el silencio (ver LoudMudo)
-            if (eqCurve != null) { eqCache[ruta] = eqCurve; eqCacheVer++; eqDirty = true; puesto = true; }   // huella tonal del EQ automatico
+            if (dur > 0.01f && Finito(dur)) { durCache[ruta] = dur; puesto = true; }
+            if (rms > 0f && Finito(rms)) { loudCache[ruta] = rms; InvalidateVideoMeasurements(); puesto = true; }   // incluido el silencio (ver LoudMudo)
+            if (eqCurve != null && Finitos(eqCurve)) { eqCache[ruta] = eqCurve; eqCacheVer++; eqDirty = true; puesto = true; }   // huella tonal del EQ automatico
             // Y se apunta en la libreta compartida, para que nadie la vuelva a medir en esta sesion. Solo
             // si de verdad quedo algo escrito: un archivo roto no da nada, y darlo por medido seria no
             // volver a intentarlo nunca.
-            if (puesto && rms > 0f && dur > 0.01f) MedidaPuesta(ruta);
+            if (puesto && rms > 0f && Finito(rms) && dur > 0.01f && Finito(dur)) MedidaPuesta(ruta);
             if (panelSongs != null && panelSongs.Visible) RefrescaLista();   // que aparezca la duracion recien sabida
         }
 

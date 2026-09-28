@@ -462,7 +462,7 @@ namespace Rocola
                 int bar = line.IndexOf('|');
                 if (bar <= 0 || bar >= line.Length - 1) continue;
                 float d;
-                if (!float.TryParse(line.Substring(0, bar), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out d) || d <= 0.01f) continue;
+                if (!float.TryParse(line.Substring(0, bar), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out d) || !(d > 0.01f) || !Finito(d)) continue;
                 pending[Pool(line.Substring(bar + 1))] = d;
             }
         }

@@ -226,7 +226,7 @@ namespace Rocola
                 if (bar <= 0 || bar >= line.Length - 1) continue;
                 float rms;
                 if (!float.TryParse(line.Substring(0, bar), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out rms)
-                    || rms <= 0f) continue;   // el silencio apuntado (LoudMudo) TIENE que sobrevivir al reinicio
+                    || !(rms > 0f) || !Finito(rms)) continue;   // el silencio apuntado (LoudMudo) TIENE que sobrevivir al reinicio; NaN o infinito, no
                 // Formato NUEVO "rms|duracion|ruta" y el VIEJO "rms|ruta" (una ruta de Windows no puede llevar
                 // '|', asi que distinguirlos es seguro): lo viejo se sigue leyendo tal cual, sin duracion.
                 string rest = line.Substring(bar + 1);
@@ -238,7 +238,7 @@ namespace Rocola
                 else dur = 0f;
                 rest = Pool(rest);
                 pending[rest] = rms;
-                if (dur > 0.01f) durations[rest] = dur;
+                if (dur > 0.01f && Finito(dur)) durations[rest] = dur;
             }
         }
 
@@ -329,7 +329,7 @@ namespace Rocola
         {
             if (path == null || tasa <= 0 || canales <= 0 || samples < (long)(NormMinSec * tasa * canales)) return;   // por duracion
             float rms = (float)Math.Sqrt(sumSq / samples);
-            if (rms <= 0.0001f) return;
+            if (!(rms > 0.0001f) || !Finito(rms)) return;   // (tambien NaN: una medida rota no se guarda)
             float prev; bool had = loudCache.TryGetValue(path, out prev);
             float val = had ? (prev * 0.5f + rms * 0.5f) : rms;   // promedia con la medida anterior: se estabiliza si la cancion se salto en distinto punto
             // Si ya estaba medida y el valor casi no cambia, NO reescribir el archivo: en una biblioteca ya
@@ -447,7 +447,16 @@ namespace Rocola
             public TimeSpan TotalTime { get { return (otro == null) ? Lector.TotalTime : otro.TotalTime; } }
             public TimeSpan CurrentTime { set { if (otro == null) Lector.CurrentTime = value; else otro.CurrentTime = value; } }
             public float Volume { set { if (otro == null) canal.Volume = value; else otro.Volume = value; } }
-            public int Read(float[] b, int o, int c) { return (otro == null) ? canal.Read(b, o, c) : otro.Read(b, o, c); }
+            // UNA MUESTRA QUE NO ES UN NUMERO (NaN o infinito: un WAV en coma flotante estropeado, por ejemplo) cuenta como
+            // silencio, que es lo que llega a oirse. Antes la medida entera salia NaN y se daba por buena: la huella del EQ
+            // se guardaba con NaN y, con ella, la media de toda la biblioteca (ComputeEqAverage) y el EQ automatico de
+            // todas las canciones. (v - v no es 0 solo si v es NaN o infinito.)
+            public int Read(float[] b, int o, int c)
+            {
+                int n = (otro == null) ? canal.Read(b, o, c) : otro.Read(b, o, c);
+                for (int i = o; i < o + n; i++) { float v = b[i]; if (v - v != 0f) b[i] = 0f; }
+                return n;
+            }
             public void Dispose()
             {
                 if (mp3 != null) { try { mp3.Dispose(); } catch { } }
