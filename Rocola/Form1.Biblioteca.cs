@@ -1643,44 +1643,55 @@ namespace Rocola
             while (pendientes.Count > 0)
             {
                 string dir = pendientes.Pop(); dirsN++;
-                long stamp = Directory.GetLastWriteTimeUtc(dir).Ticks;
-                RootHash(ref h, dir); RootHash(ref h, stamp.ToString(CultureInfo.InvariantCulture));
-                // .NET 4 reutiliza metadatos de la enumeracion. En CLR 2 (.NET 3.5)
-                // GetFiles no aporta ese ahorro: conservar el recorrido medido mas rapido.
-                FileInfo[] files = null; string[] paths = null; int count;
-                string[] captured = null;
-                if (metadataEnumerada)
-                {
-                    files = new DirectoryInfo(dir).GetFiles();
-                    if (memo != null && memo.CanCapture(files.Length))
-                    {
-                        captured = new string[files.Length];
-                        for (int i = 0; i < files.Length; i++) captured[i] = files[i].FullName;
-                    }
-                    Array.Sort(files, delegate(FileInfo a, FileInfo b) { return StringComparer.OrdinalIgnoreCase.Compare(a.Name, b.Name); });
-                    count = files.Length;
-                }
-                else
-                {
-                    paths = Directory.GetFiles(dir);
-                    if (memo != null && memo.CanCapture(paths.Length)) captured = (string[])paths.Clone();
-                    Array.Sort(paths, StringComparer.OrdinalIgnoreCase);
-                    count = paths.Length;
-                }
-                for (int i = 0; i < count; i++)
-                {
-                    FileInfo fi = metadataEnumerada ? files[i] : new FileInfo(paths[i]); filesN++;
-                    RootHash(ref h, fi.FullName); RootHash(ref h, fi.Length.ToString(CultureInfo.InvariantCulture));
-                    RootHash(ref h, fi.LastWriteTimeUtc.Ticks.ToString(CultureInfo.InvariantCulture));
-                }
-                string[] subs = Directory.GetDirectories(dir);
-                if (memo != null && captured != null) memo.Remember(dir, stamp, captured, subs);
-                Array.Sort(subs, StringComparer.OrdinalIgnoreCase);
-                // Stack es LIFO: se meten al reves para que el orden recorrido siga siendo estable.
-                for (int i = subs.Length - 1; i >= 0; i--)
-                    if (!EsAtajo(subs[i]) && !EsCarpetaDelSistema(subs[i])) pendientes.Push(subs[i]);
+                // UNA CARPETA QUE NO SE PUEDE LEER (sin permiso, una ruta de mas de 260 letras, un disco que se fue a
+                // media lectura) tiraba la firma ENTERA. Sin firma, la biblioteca no se guarda (SaveLibraryCacheAsync) y
+                // cada arranque volvia a recorrer el disco completo: minutos en un disco duro, todas las noches. El
+                // recorrido de verdad (ScanFolders) ya se salta esa carpeta; aqui se hace lo mismo y queda apuntada en
+                // la firma (con el tipo de fallo), asi que si un dia se puede leer, la firma cambia y se vuelve a mirar.
+                try { FirmaCarpeta(dir, memo, metadataEnumerada, pendientes, ref h, ref filesN); }
+                catch (Exception ex) { RootHash(ref h, "!" + ex.GetType().Name); }
             }
             return dirsN.ToString(CultureInfo.InvariantCulture) + ":" + filesN.ToString(CultureInfo.InvariantCulture) + ":" + h.ToString("x16");
+        }
+        // Lo de una carpeta en la firma (sin cambiar nada de lo que se apuntaba: las bibliotecas ya guardadas siguen valiendo).
+        private static void FirmaCarpeta(string dir, ScanDirectoryMemo memo, bool metadataEnumerada, Stack<string> pendientes, ref ulong h, ref long filesN)
+        {
+            long stamp = Directory.GetLastWriteTimeUtc(dir).Ticks;
+            RootHash(ref h, dir); RootHash(ref h, stamp.ToString(CultureInfo.InvariantCulture));
+            // .NET 4 reutiliza metadatos de la enumeracion. En CLR 2 (.NET 3.5)
+            // GetFiles no aporta ese ahorro: conservar el recorrido medido mas rapido.
+            FileInfo[] files = null; string[] paths = null; int count;
+            string[] captured = null;
+            if (metadataEnumerada)
+            {
+                files = new DirectoryInfo(dir).GetFiles();
+                if (memo != null && memo.CanCapture(files.Length))
+                {
+                    captured = new string[files.Length];
+                    for (int i = 0; i < files.Length; i++) captured[i] = files[i].FullName;
+                }
+                Array.Sort(files, delegate(FileInfo a, FileInfo b) { return StringComparer.OrdinalIgnoreCase.Compare(a.Name, b.Name); });
+                count = files.Length;
+            }
+            else
+            {
+                paths = Directory.GetFiles(dir);
+                if (memo != null && memo.CanCapture(paths.Length)) captured = (string[])paths.Clone();
+                Array.Sort(paths, StringComparer.OrdinalIgnoreCase);
+                count = paths.Length;
+            }
+            for (int i = 0; i < count; i++)
+            {
+                FileInfo fi = metadataEnumerada ? files[i] : new FileInfo(paths[i]); filesN++;
+                RootHash(ref h, fi.FullName); RootHash(ref h, fi.Length.ToString(CultureInfo.InvariantCulture));
+                RootHash(ref h, fi.LastWriteTimeUtc.Ticks.ToString(CultureInfo.InvariantCulture));
+            }
+            string[] subs = Directory.GetDirectories(dir);
+            if (memo != null && captured != null) memo.Remember(dir, stamp, captured, subs);
+            Array.Sort(subs, StringComparer.OrdinalIgnoreCase);
+            // Stack es LIFO: se meten al reves para que el orden recorrido siga siendo estable.
+            for (int i = subs.Length - 1; i >= 0; i--)
+                if (!EsAtajo(subs[i]) && !EsCarpetaDelSistema(subs[i])) pendientes.Push(subs[i]);
         }
         private static string RootsSig(List<string> roots)
         {
