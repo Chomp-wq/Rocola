@@ -1,5 +1,17 @@
 # Rocola
 
+## Sonido: subir sin aplastar, y el bajo fuerte limpio — 28 de septiembre de 2026
+
+- El nivelado ya no sube una canción bajita tanto que el limitador le aplaste los golpes: mide los picos de cada
+  canción (el más alto y el que solo supera el 1 % del tiempo) y deja al limitador como mucho 3 y 6 dB. En canciones
+  de prueba con golpes, el limitador pasó de quitar 5–8 dB y trabajar hasta el 95 % del tiempo a 3–4 dB. Esas
+  canciones suenan algo más bajas y más enteras. Las muy fuertes se bajan un poco (como mucho 4 dB).
+- El limitador espera 20 ms antes de soltar: un bajo fuerte sale con −76 dB de distorsión en vez de −44 (a 40 Hz).
+- Hay que volver a medir la biblioteca (lo hace sola en reposo; mientras, se nivela como antes).
+
+Las dos ramas. Probado con señales sintéticas y el limitador de verdad; no se escuchó en el bar ni se probó en XP.
+[Detalles: 1.25 y 1.26](MEJORAS_AUDIO_Y_PENDIENTES_2026-09-22.md#125-subir-sin-aplastar-el-nivelado-mira-los-picos-de-cada-canción-y-baja-un-poco-las-muy-fuertes-28-de-septiembre-las-dos-ramas).
+
 ## El letrero "+4 créditos" vuelve a salir al meter una moneda — 25 de septiembre de 2026
 
 Con la moneda que cae (tanda 3), el aviso de arriba "+4 créditos" se quitaba mientras la moneda se veía caer, y con el

@@ -1434,6 +1434,80 @@ Qué mirar en el bar (esto solo se sabe escuchando):
 2. Una canción vieja con el bajo cargado a un lado: debería oírse el bajo junto a todas las bocinas.
 3. De noche, comparar con el ejecutable anterior: debería sonar más bajo, pero no más apagado.
 
+### 1.25 Subir sin aplastar: el nivelado mira los picos de cada canción, y baja un poco las muy fuertes (28 de septiembre, las dos ramas)
+
+Qué pasaba:
+- El nivelado sube las canciones bajitas hasta el nivel objetivo, con un tope que depende solo de lo bajita que sea.
+  No miraba hasta dónde llegaban sus picos.
+- En una canción con golpes (batería, metales, una grabación con buen rango), los golpes quedaban muy por encima del
+  techo y el limitador del final los aplastaba casi todo el rato: el volumen "respiraba" con cada golpe.
+- Y no se bajaba nunca nada: un disco moderno muy comprimido quedaba varios dB por encima del resto.
+
+Qué hace ahora:
+1. **Mide los picos de cada canción** en la misma pasada de la sonoridad integrada (la de la canción entera). Guarda el
+   pico más alto y el **P99**: el pico que solo superan el 1 % de los bloques de 100 ms con sonido. Así un chasquido
+   suelto no deja la canción sin subir. Los bloques de −60 dBFS o menos (silencio, colas) no cuentan.
+2. **Sube sin aplastar.** La subida se queda donde el limitador no tenga que quitar más de 3 dB en el P99 ni más de
+   6 dB en el golpe más fuerte. Si los picos caben, sube lo mismo que antes.
+3. **Baja un poco las muy fuertes:** la mitad de lo que pasen de 2 dB por encima del objetivo, y como mucho 4 dB. Con
+   el objetivo de fábrica: una canción a −8 dBFS baja 0,85 dB; a −4 dBFS, 2,85 dB. Nunca se invierte el orden: la que
+   entra más fuerte sale igual o más fuerte que otra.
+
+Medido con el limitador de la rocola, en canciones de prueba de 60 s con golpes (señales sintéticas, no tu música):
+
+| Canción de prueba | Antes: sube | peor | limita >1 dB | >3 dB | Ahora: sube | peor | limita >1 dB | >3 dB |
+|---|---|---|---|---|---|---|---|---|
+| −20,2 dBFS, picos −1,0 | 8,5 dB | 8,3 dB | 20 % | 7 % | 4,4 dB | 4,4 dB | 8 % | 0 % |
+| −18,3 dBFS, picos −0,5 | 6,6 dB | 7,0 dB | 36 % | 12 % | 3,2 dB | 3,7 dB | 17 % | 0 % |
+| −17,4 dBFS, picos −0,3 | 5,7 dB | 6,4 dB | 65 % | 18 % | 2,6 dB | 3,4 dB | 21 % | 0 % |
+| −16,2 dBFS, picos −0,1 | 4,5 dB | 5,4 dB | 95 % | 14 % | 2,5 dB | 3,4 dB | 33 % | 0 % |
+
+El precio: esas canciones suenan 3–4 dB más bajas que antes (y más enteras). Las que ya vienen comprimidas, con los
+picos cerca de su volumen, suben igual que antes.
+
+La tabla `rocola_sonoridad.txt`:
+- Las medidas nuevas son de algoritmo 2 y llevan dos campos más: `2|LKFS|pesos|bloques|pico|P99|ruta`.
+- Las de algoritmo 1 se siguen usando, sin picos (se sube como antes), mientras la tanda larga las vuelve a medir con
+  la rocola en reposo. **Hay que volver a leer la biblioteca entera**: en un disco duro son horas, cediendo a la música,
+  a la pantalla y a las carátulas, como la primera vez.
+- Un ejecutable anterior guarda las de algoritmo 2 tal cual (como "ajenas") y no las pisa: se puede volver atrás.
+
+Coste: el pico de cada muestra al medir (una comparación); nada al reproducir.
+
+Pruebas automáticas: `pruebas/nivelpicos.cs` (33 comprobaciones): el medidor de picos (golpes sueltos que no mandan,
+leer a trozos de cualquier tamaño, el silencio, el último trozo, NaN), la tabla (ida y vuelta, las de 1, lo roto), la
+ganancia (sin picos igual que antes, los topes de 3 y 6 dB, la bajada y el orden), que esté conectado de punta a punta
+(y que la tanda larga vuelva a medir las de 1) y la tabla de arriba con el limitador de verdad. `nivel.cs` y
+`sonoridad.cs` actualizadas: ya no exigen que no se baje nunca. Roturas a propósito: 17 del nivelado y 7 del limitador
+(1.26); `nivelpicos` y `soltar` detectan las 24. Una 18.ª tocaba una línea que no cambiaba nada y se quitó.
+
+Qué mirar en el bar: una canción vieja con buen rango (mariachi, boleros grabados en los 60-70) contra el ejecutable
+anterior. Debería sonar algo más baja, sin "respirar" en los golpes. Y un disco moderno muy fuerte: algo más bajo que
+antes, más parejo con el resto.
+
+### 1.26 El limitador espera 20 ms antes de soltar: el bajo fuerte ya no se distorsiona (28 de septiembre, las dos ramas)
+
+Qué pasaba: el limitador soltaba en 120 ms en cuanto el pico salía de su pre-escucha de 3 ms. Con un bajo por encima del
+techo, eso es media vuelta de cada ciclo: la ganancia subía y bajaba con la onda, y el bajo salía distorsionado.
+
+Qué hace ahora: tras bajar, espera 20 ms quieta (un ciclo de 50 Hz) y luego suelta en 100 ms.
+
+Medido con el limitador de verdad (`pruebas/soltar.cs`):
+
+| | Antes | Ahora |
+|---|---|---|
+| Bajo sostenido 6 dB sobre el techo: distorsión a 40 / 60 / 100 Hz | −44 / −55 / −72 dB | −76 / −76 / −74 dB |
+| Tras un golpe suelto, vuelve a menos de 0,5 dB en | 250 ms | 220 ms |
+| Canciones de prueba ya niveladas: tiempo limitando (>1 dB) | 8 / 33 / 17 % | 9 / 38 / 18 % |
+| Lo que se mueve la ganancia (bombeo), dB/s | 4,3 / 14,0 / 8,5 | 4,4 / 14,6 / 8,8 |
+
+Se probó también lo que propuse primero: soltar "según la música" (rápido tras un golpe suelto, lento si limita mucho
+rato, con dos envolventes). No ganaba en todo: o bombeaba más en música densa (+35 %) o dejaba 1 dB de cola durante
+0,6 s tras cada golpe. No se puso.
+
+Lo de siempre: lo que no llega al techo sale intacto, bit a bit; nada pasa del techo (también lo vigilan `picoreal` y
+`limite`). Roturas a propósito: ver 1.25.
+
 ## 2. Comprobaciones y cómo repetirlas
 
 En cada repositorio, con sus herramientas de compilación .NET, Python con NumPy y FFmpeg:

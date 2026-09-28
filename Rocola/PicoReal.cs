@@ -195,8 +195,16 @@ namespace Rocola
         internal const float TechoPicoReal = 0.88f;
 
         // LIMITADOR DE PICO REAL. El mismo limitador con pre-escucha de siempre (misma ganancia para todos los
-        // canales, ataque que llega antes que el pico, soltar de 120 ms), pero el pico que manda es el de la onda
-        // reconstruida, no el de las muestras. Anade Retraso muestras de espera (0,27 ms a 44,1 kHz) para que el
+        // canales, ataque que llega antes que el pico), pero el pico que manda es el de la onda
+        // reconstruida, no el de las muestras.
+        //
+        // ESPERA ANTES DE SOLTAR (28/09). Antes soltaba en 120 ms en cuanto el pico salia de la pre-escucha (3 ms). Con un
+        // bajo por encima del techo eso es media vuelta de cada ciclo: la ganancia subia y bajaba con la onda y el bajo
+        // salia distorsionado. Ahora, tras bajar, espera 20 ms quieta (un ciclo de 50 Hz) y luego suelta en 100 ms.
+        // Medido (pruebas/soltar.cs): un bajo sostenido 6 dB por encima del techo sale con -76 dB de distorsion a
+        // 40 Hz, -76 a 60 y -74 a 100 (antes -44, -55 y -72); tras un golpe suelto vuelve en 220 ms (antes 250); en
+        // canciones de prueba ya niveladas limita casi lo mismo que antes. Se probo tambien soltar "segun la musica"
+        // (rapido tras un golpe, lento si limita mucho rato): no ganaba en todo y no se puso. Anade Retraso muestras de espera (0,27 ms a 44,1 kHz) para que el
         // detector vea el pico entero antes de decidir, y al terminar la cancion vacia tambien eso.
         //
         // Lo que no pasa del techo sale tal cual (solo retrasado): la ganancia se queda en 1 exacto.
@@ -205,6 +213,9 @@ namespace Rocola
             private readonly NAudio.Wave.ISampleProvider src;
             private readonly int ch, look, lag, total;
             private readonly float ceiling, atk, rel;
+            internal const double SoltarS = 0.10, EsperaS = 0.02;   // soltar (constante de tiempo) y espera antes de soltar
+            private readonly int espera;   // cuadros
+            private int esperando;
             private readonly float[] delay;             // 'total' cuadros: pre-escucha + espera del detector
             private readonly DetectorPicoReal[] det;    // uno por canal
             private readonly float[] picoCuadro;        // pico real de los ultimos look+1 cuadros resueltos
@@ -232,7 +243,8 @@ namespace Rocola
                 for (int c = 0; c < ch; c++) det[c] = new DetectorPicoReal(ceilingLin);
                 peaks = new float[look + 1]; peakFrames = new long[look + 1];
                 atk = 1f - (float)Math.Exp(-9.0 / look);
-                rel = 1f - (float)Math.Exp(-1.0 / (0.12 * rate));
+                rel = 1f - (float)Math.Exp(-1.0 / (SoltarS * rate));
+                espera = (int)(EsperaS * rate);
                 resto = new float[ch];
             }
             public NAudio.Wave.WaveFormat WaveFormat { get { return src.WaveFormat; } }
@@ -255,7 +267,9 @@ namespace Rocola
                 peaks[tail] = peak; peakFrames[tail] = frameIndex++; peakCount++;
                 float max = peaks[peakHead];
                 float target = max > ceiling ? ceiling / max : 1f;
-                env += (target < env ? atk : rel) * (target - env);
+                if (target < env) { env += atk * (target - env); esperando = espera; }
+                else if (esperando > 0) esperando--;
+                else env += rel * (target - env);
             }
 
             private float[] intervalos = new float[0];   // pico real de cada intervalo del bloque (el mayor de los canales)

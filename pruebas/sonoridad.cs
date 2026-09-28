@@ -463,7 +463,7 @@ class Sonoridad
               "ida y vuelta: LKFS (a la milesima), pesos, bloques, algoritmo y la cancion MUDA; rutas sin distinguir mayusculas");
         Check(texto.Contains("1|-11.482|2|2398|C:\\musica\\a.mp3") && texto.Contains("|muda|"), "el formato escrito es el documentado: algoritmo|LKFS|pesos|bloques|ruta");
         // Un algoritmo POSTERIOR: no se usa, pero se conserva tal cual. Lo roto se salta.
-        string futuro = "2|-9.5|2|100|C:\\musica\\a.mp3";
+        string futuro = "3|-9.5|2|100|C:\\musica\\a.mp3";   // el 2 es el de ahora (con los picos)
         t = TablaNueva(); aj = new List<string>();
         ok = Lee(texto + futuro + "\r\nbasura\r\n1|NaN|2|100|x.mp3\r\n1|-10|0|100|y.mp3\r\n1|-10|2|0|z.mp3\r\n1|-10|2|5|\r\n0|-10|2|5|w.mp3\r\n", t, aj);
         a = t["C:\\musica\\a.mp3"];
@@ -670,7 +670,8 @@ class Sonoridad
             float g = (float)Math.Pow(0.26f / rms, 1f);
             float cap = (float)Math.Pow(10.0, (float)Call(null, "TierCapDb", rms) / 20.0);
             if (cap > maxBoost) cap = maxBoost;
-            if (g < 1f) g = 1f; else if (g > cap) g = cap;
+            if (g < 1f) return (float)Call(null, "GananciaNivelado", 0.26f, rms, 1f, cap, false, 0f, 0f);   // las fuertes: nivelpicos.cs
+            if (g > cap) g = cap;
             return g;
         };
         loud["a.mp3"] = 0.05f;
@@ -685,7 +686,8 @@ class Sonoridad
         float gBaja = Ganancia(f, "baja.mp3");
         Check(gBaja <= maxBoost && gBaja == esperada(RmsPorCanal(tab["baja.mp3"])), "una muy baja (-70 LKFS) sube como mucho lo que dice su etapa (" + F(20 * Math.Log10(gBaja), "0.0") + " dB)");
         tab["fuerte.mp3"] = Integ(1, -5f, 2f, 500);
-        Check(Ganancia(f, "fuerte.mp3") == 1f, "una fuerte (-5 LKFS) no se baja nunca");
+        float gFuerte = Ganancia(f, "fuerte.mp3");   // desde el 28/09 las muy fuertes se bajan un poco (nivelpicos.cs)
+        Check(gFuerte < 1f && gFuerte >= (float)Math.Pow(10.0, -4.0 / 20.0) - 1e-6f, "una fuerte (-5 LKFS) se baja un poco, como mucho 4 dB (" + F(20 * Math.Log10(gFuerte), "0.0") + " dB)");
         tab["muda.mp3"] = Integ(1, float.NegativeInfinity, 2f, 500);
         loud["muda.mp3"] = 0.05f;
         Check(Ganancia(f, "muda.mp3") == 1f, "una integrada MUDA no se sube (ni se cae a la estimacion)");
