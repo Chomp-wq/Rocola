@@ -889,6 +889,12 @@ namespace Rocola
                     swIa.Text = "Juntar material para la IA"; swIa.Acento = cBib; swIa.Checked = iaHarvestOn;
                     tBib.Controls.Add(lCal); tBib.Controls.Add(hint); tBib.Controls.Add(bTrain); tBib.Controls.Add(lPct); tBib.Controls.Add(pbTrain); tBib.Controls.Add(bMudos);
                     tBib.Controls.Add(swIa);
+                    // SALTAR LOS SILENCIOS LARGOS (SinSilencios.cs). En el mismo renglon que el de la IA, a su derecha: de la
+                    // x 318 a la 912 no hay nada (el renglon de arriba acaba en la y 148). Se mira al abrir cada cancion.
+                    Interruptor swSil = new Interruptor();
+                    swSil.SetBounds(318, 156, 594, 26); swSil.ForeColor = cTexto; swSil.Font = fNom;
+                    swSil.Text = "Saltar silencios largos (desde la siguiente cancion)"; swSil.Acento = cBib; swSil.Checked = saltaSilencios;
+                    tBib.Controls.Add(swSil);
                     EscribeInformeCalidad();   // el detalle, cancion por cancion, queda en un archivo junto al programa
 
                     // ---------------- TIPO DE DISCO ----------------
@@ -1086,6 +1092,7 @@ namespace Rocola
                         sbrOn = swSbr.Checked && sbrAllowed;   // SOLO la preferencia: encender ULTRA ya no te la borra
                         nocheOn = swNoche.Checked;   // al apagarlo de madrugada, la rampa lo devuelve solo (AvanzaModoNoche)
                         iaHarvestOn = swIa.Checked;
+                        saltaSilencios = swSil.Checked;
                         changed = true;
                         updateLabels();
                         ApplyNormNow();   // se oye el cambio al instante en la cancion que suena
@@ -1094,6 +1101,7 @@ namespace Rocola
                     for (int k = 0; k < bar.Length; k++) { bar[k].Scroll += apply; if (au[k] != null) au[k].CheckedChanged += apply; }
                     swOn.CheckedChanged += apply; swSbr.CheckedChanged += apply; swIa.CheckedChanged += apply;
                     swNoche.CheckedChanged += apply;
+                    swSil.CheckedChanged += apply;
                     barMix.Scroll += apply; swIaAuto.CheckedChanged += apply;
                     swUltra.CheckedChanged += delegate { if (swUltra.Checked) { IaEnsureMotor(); IaRequestQueueJobs(); } apply(swUltra, EventArgs.Empty); };   // al encender ULTRA: motor oculto + preparar cola
                     cbGpu.SelectedIndexChanged += delegate
@@ -1112,6 +1120,7 @@ namespace Rocola
                         if (swSbr.Enabled) swSbr.Checked = false;            // el espectral ligero, apagado
                         swIa.Checked = true;                                 // juntar material para la IA: encendido de fabrica
                         swNoche.Checked = true;                              // y bajar el volumen de madrugada, tambien
+                        swSil.Checked = true;                                // y saltar los silencios largos
                         if (perfilDisco != 0)                                // el tipo de disco, otra vez a medirlo sola
                         { perfilDisco = 0; lock (discoLock) discoLento.Clear(); AplicaPerfilDisco(); pintaDsk(); }
                         apply(bReset, EventArgs.Empty);

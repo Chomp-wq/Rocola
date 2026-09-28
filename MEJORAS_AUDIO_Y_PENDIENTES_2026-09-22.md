@@ -1553,6 +1553,46 @@ una vez por sesión y lo que apunta, el recorte de un disco continuo partido en 
 allí. Mirar la línea `[Sin huecos]` de rocola_error.txt. Qué mirar en el bar: un disco en vivo, de una pista a la
 siguiente, debería seguir sin corte.
 
+### 1.29 Saltar los silencios largos: principio, final y el hueco de una pista oculta (28 de septiembre, las dos ramas)
+
+Qué pasaba: canciones con varios segundos mudos al principio, finales que se quedan callados diez o veinte segundos,
+o una "pista oculta" que llega después de un minuto de nada. En un bar, eso es la rocola callada sin motivo.
+
+Qué hace ahora (`Rocola/SinSilencios.cs`):
+1. **Dónde suena.** La medida entera de cada canción ya miraba el pico de cada bloque de 100 ms (1.25). Ahora apunta
+   también el primer y el último bloque con sonido y el silencio más largo de en medio. "Silencio" es un bloque cuyo
+   pico no pasa de −60 dBFS (el mismo umbral que ya se usaba para el P99). Se guarda en `rocola_sonoridad.txt` como
+   algoritmo 3: `3|lkfs|pesos|bloques|pico|p99|desde|hasta|hueco desde|hueco hasta|duración|ruta` (segundos; "-" si no
+   hay). Las de algoritmo 2 siguen valiendo para nivelar mientras la tanda larga las vuelve a medir; hasta entonces
+   esa canción suena entera, como siempre.
+2. **Qué se salta.** Al principio y al final, si hay 2 s o más de silencio: se empieza 0,3 s antes del primer sonido
+   y se acaba 0,5 s después del último (o lo que dure el fundido, si es más, para que el fundido caiga en lo mudo y
+   no en la música). En medio, el silencio más largo si pasa de 5 s: se deja la misma cola detrás y se retoma 0,3 s
+   antes de que vuelva a sonar. La pista oculta sí suena; lo que se quita es la espera.
+3. **Cómo, sin costar al sonar.** La canción se envuelve al abrirla, que ya ocurre en segundo plano: el principio mudo
+   se descomprime y se tira ahí mismo (si pasa de 20 s, se salta buscando en el archivo). El final se corta dejando de
+   entregar muestras; el hueco de en medio, con un salto del lector. Si el lector no puede saltar, se oye el hueco,
+   como antes, y no se pierde nada. El fundido de salida se calcula con lo que de verdad va a sonar.
+4. **Interruptor.** Ctrl+F3 → Sonido → Tu biblioteca ("Saltar silencios largos"), encendido de fábrica, guardado como
+   `saltar_silencios=` en `rocola_config.txt`. Se mira al abrir cada canción: se nota desde la siguiente. Decisión
+   tuya del 28 de septiembre (anotada en `AGENTS.md`): esta opción de sonido sí lleva interruptor.
+   En Modest la ventana está llena hasta el último píxel (cabe justo en 1024×768): el interruptor del DSEE se quedó con
+   150 px (antes 424 para cuatro letras) y el nuevo va a su derecha. En HD va en la tarjeta de la biblioteca.
+5. **La tabla la escribe la pantalla y la canción se abre en segundo plano**: quien la cambia o la lee desde otro hilo
+   pasa por un cerrojo.
+
+Pruebas (`pruebas/silencios.cs`, 37 comprobaciones, con la rocola de verdad): el mapa de sonido de canciones
+sintéticas (3 s mudos, 10 de música, 60 mudos, 5 de música, 4 mudos → 3,0 / 78,0 / hueco 13,0–73,0), mono y estéreo, el
+bloque a medias del final, una muda, una intro a −55 dBFS que sí cuenta; la tabla de algoritmo 3 y lo que se descarta;
+los umbrales; el recorte exacto muestra a muestra con lecturas de cualquier tamaño, saltos, un salto que falla y una
+retomada; un WAV medido con `MideIntegrada` y abierto con `OpenAudio` (de 34 s salen 16,6: la música a los 0,3 s);
+interruptor apagado y canción sin medir = entera; preferencia guardada y enganches. 21 mutaciones del código nuevo:
+20 detectadas; la otra (quitar el corte explícito del final) es equivalente, porque el tope de lectura ya pide 0
+muestras al llegar al final.
+
+Pendiente: oírlo en el bar; la cuenta de "en ~N min" de la cola sigue usando la duración entera de cada canción (se
+queda algo larga con las que tienen silencios); y en XP real.
+
 ## 2. Comprobaciones y cómo repetirlas
 
 En cada repositorio, con sus herramientas de compilación .NET, Python con NumPy y FFmpeg:

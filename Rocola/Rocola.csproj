@@ -101,6 +101,7 @@
     <Compile Include="AudioControles.cs" />
     <Compile Include="Sonoridad.cs" />
     <Compile Include="RellenoMp3.cs" />
+    <Compile Include="SinSilencios.cs" />
     <Compile Include="PicoReal.cs" />
     <Compile Include="Realce.cs" />
     <Compile Include="ModoNoche.cs" />

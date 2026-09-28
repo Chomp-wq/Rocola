@@ -123,7 +123,7 @@ class NivelPicos
     {
         Console.WriteLine("\n  2) LA TABLA (rocola_sonoridad.txt, algoritmo 2)\n");
         int alg = (int)TM.GetField("Algoritmo", T).GetValue(null);
-        Check(alg == 2, "el algoritmo sube a 2 (lleva los picos): la tanda larga vuelve a medir las de 1");
+        Check(alg >= 2, "el algoritmo es 2 o posterior (lleva los picos): la tanda larga vuelve a medir las de 1");
         StringWriter w = new StringWriter();
         string cab = (string)Get(null, "IntegCabecera");
         w.Write(cab + "\r\n");
@@ -133,7 +133,7 @@ class NivelPicos
         string texto = w.ToString();
         Check(texto.Contains("2|-14.25|2|1800|-0.31|-3.4|C:\\m\\a.mp3") && texto.Contains("1|-11.5|2|900|C:\\m\\vieja.mp3"),
               "formato: algoritmo|LKFS|pesos|bloques|pico|P99|ruta (el 1 sigue sin picos, como siempre)");
-        string futuro = "3|-9|2|100|x|y|z|C:\\m\\a.mp3";
+        string futuro = "9|-9|2|100|x|y|z|C:\\m\\a.mp3";
         string rotas = "2|-10|2|100|-1|-2|\r\n2|-10|2|100|-3|-1|C:\\m\\p99mayor.mp3\r\n2|-10|2|100|NaN|-2|C:\\m\\nan.mp3\r\n2|-10|2|100|-1|C:\\m\\corta.mp3\r\n2|-10|2|100|25|-1|C:\\m\\alto.mp3\r\n";
         IDictionary t = TablaNueva(); List<string> aj = new List<string>();
         bool ok;
@@ -217,8 +217,8 @@ class NivelPicos
         bool cerro = (bool)TF.GetMethod("CierraIntegrada", T).Invoke(null, ca);
         object si = ca[3];
         Check(cerro && ConPicos(si) && Math.Abs(Campo(si, "PicoDb") - (float)Db(0.5)) < 0.01f && Math.Abs(Campo(si, "P99Db") - (float)Db(0.5)) < 0.11f
-              && Campo(si, "Algoritmo") == 2,
-              "CierraIntegrada guarda la medida con algoritmo 2 y sus picos (un golpe en 1 de 20 bloques es el 5 %: manda en el P99; pico " + (cerro ? F(Campo(si, "PicoDb"), "0.00") : "?") + ", P99 " + (cerro ? F(Campo(si, "P99Db"), "0.00") : "?") + ")");
+              && Campo(si, "Algoritmo") >= 2,
+              "CierraIntegrada guarda la medida con algoritmo 2 o posterior y sus picos (un golpe en 1 de 20 bloques es el 5 %: manda en el P99; pico " + (cerro ? F(Campo(si, "PicoDb"), "0.00") : "?") + ", P99 " + (cerro ? F(Campo(si, "P99Db"), "0.00") : "?") + ")");
         Check(Codigo.Llama(TM.GetMethod("Procesa", T), "Procesa"), "el medidor BS.1770 mide los picos en cada lectura");
         // De punta a punta: una cancion con integrada de 2 se sube menos que la misma con la de 1.
         object f = Codigo.FormSinEncender(TF);
@@ -228,7 +228,7 @@ class NivelPicos
         Set(f, "integCache", tab); Set(f, "normalizeOn", true); Set(f, "normStrength", 1f); Set(f, "normTarget", 0.26f);
         float gc2 = (float)Call(f, "NormGainFor", "c2.mp3"), gc1 = (float)Call(f, "NormGainFor", "c1.mp3");
         Check(gc2 < gc1 && gc2 >= 1f, "de punta a punta: con picos medidos se sube " + F(Db(gc2), "0.0") + " dB; con la medida de antes, " + F(Db(gc1), "0.0"));
-        // La tanda larga vuelve a medir las de 1 y no las de 2.
+        // La tanda larga vuelve a medir las de un algoritmo anterior al de ahora (con el 3, tambien las de 2).
         Type tt = TF.GetNestedType("Track", T);
         IList tracks = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(tt));
         foreach (string r in new string[] { "c1.mp3", "c2.mp3", "nueva.mp3" })
@@ -239,8 +239,9 @@ class NivelPicos
         }
         Set(f, "tracks", tracks);
         List<string> pend = (List<string>)Call(f, "TandaIntegrada");
-        Check(pend.Contains("c1.mp3") && pend.Contains("nueva.mp3") && !pend.Contains("c2.mp3"),
-              "la tanda larga vuelve a medir las de algoritmo 1 (y las nuevas), no las que ya tienen picos");
+        int algAhora = (int)TM.GetField("Algoritmo", T).GetValue(null);
+        Check(pend.Contains("c1.mp3") && pend.Contains("nueva.mp3") && pend.Contains("c2.mp3") == (algAhora > 2),
+              "la tanda larga vuelve a medir las de un algoritmo anterior (y las nuevas), no las del de ahora");
     }
 
     // ---------------- con el limitador de verdad ----------------
