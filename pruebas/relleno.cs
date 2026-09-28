@@ -10,7 +10,8 @@ using NAudio.Wave;
 // con un MP3 de prueba que lleva dentro (un clic en una muestra conocida). Aqui no hay descompresor de Windows: la
 // etiqueta se lee de MP3 de verdad (hechos con ffmpeg/LAME, en esta carpeta) y el descompresor se imita (silencio,
 // la musica y el relleno, con el retraso que se le diga). En Windows, la linea "[Sin huecos]" de rocola_error.txt
-// dice lo que midio en ese equipo.
+// dice lo que midio en ese equipo. Y la etiqueta tiene que cuadrar con el archivo: un MP3 unido (copy /b) lleva la de su
+// primera parte y se cortaba a la mitad; ahora suena entero, como antes.
 class Relleno
 {
     const BindingFlags T = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static;
@@ -226,6 +227,64 @@ class Relleno
         Check(lee > 0, "el fundido de salida cuenta con la duracion recortada");
     }
 
+    // ---------------- la etiqueta tiene que cuadrar con el archivo ----------------
+    // Un MP3 UNIDO (copy /b a.mp3+b.mp3) lleva la etiqueta de su PRIMERA parte. Aqui el lector es un WAV con la duracion
+    // que tendria cada archivo (en Linux no hay descompresor de MP3 de Windows); la etiqueta se lee del MP3 de verdad.
+    static void Cuadra()
+    {
+        Console.WriteLine("\n  5) LA ETIQUETA TIENE QUE CUADRAR CON EL ARCHIVO (un MP3 unido, uno cortado)\n");
+        object e; Lee("relleno_p0.mp3", out e);
+        object e1; Lee("relleno_p1.mp3", out e1);
+        long c0 = Campo(e, "Cuadros"), c1 = Campo(e1, "Cuadros");
+        string dir = Path.Combine(Path.GetTempPath(), "rocola_unido_" + Guid.NewGuid().ToString("N").Substring(0, 8));
+        Directory.CreateDirectory(dir);
+        FieldInfo cache = TF.GetField("rellenoExtra", T);
+        object previo = cache.GetValue(null);
+        try
+        {
+            cache.SetValue(null, 529);   // el descompresor, medido (como en un equipo donde se pudo)
+            string unido = Path.Combine(dir, "unido.mp3");
+            byte[] a = File.ReadAllBytes("relleno_p0.mp3"), b = File.ReadAllBytes("relleno_p1.mp3");
+            byte[] u = new byte[a.Length + b.Length]; Array.Copy(a, u, a.Length); Array.Copy(b, 0, u, a.Length, b.Length);
+            File.WriteAllBytes(unido, u);
+            object eu; Lee(unido, out eu);
+            Check(Campo(eu, "Cuadros") == c0, "el MP3 unido lleva la etiqueta de la primera parte (" + c0 + " cuadros, y tiene " + (c0 + c1 + 1) + ")");
+            object f = Codigo.FormSinEncender(TF);
+            string sinRelleno = "FuenteSinRelleno";
+            long[] cuadros = { c0, c0 + 1, c0 + c1 + 1, c0 / 2 };
+            string[] que = { "el MP3 de verdad (lo que dice la etiqueta)", "con un cuadro mas (el lector cuenta el de la etiqueta)",
+                             "el MP3 unido: NO se recorta y suena ENTERO", "uno cortado (una descarga a medias): NO se recorta" };
+            bool[] recorta = { true, true, false, false };
+            for (int k = 0; k < cuadros.Length; k++)
+            {
+                string wav = Path.Combine(dir, "lector" + k + ".wav");
+                int n = (int)(cuadros[k] * 1152);
+                using (WaveFileWriter w = new WaveFileWriter(wav, WaveFormat.CreateIeeeFloatWaveFormat(44100, 2)))
+                {
+                    float[] x = new float[2 * 4096];
+                    for (int i = 0; i < x.Length; i++) x[i] = 0.25f;
+                    for (int hecho = 0; hecho < n; hecho += 4096) w.WriteSamples(x, 0, 2 * Math.Min(4096, n - hecho));
+                }
+                object lector = TF.GetMethod("OpenAudio", T).Invoke(f, new object[] { wav });
+                object r = TF.GetMethod("SinRelleno", T).Invoke(f, new object[] { k == 2 ? unido : "relleno_p0.mp3", lector });
+                bool esRecorte = r != null && r.GetType().Name == sinRelleno;
+                long salen = 0;
+                ISampleProvider sp = (ISampleProvider)r; float[] buf = new float[8192]; int m;
+                while ((m = sp.Read(buf, 0, buf.Length)) > 0) salen += m;
+                ((IDisposable)r).Dispose();
+                bool bien = esRecorte == recorta[k] && (recorta[k] || salen == 2L * n);
+                Check(bien, que[k] + " (" + (esRecorte ? "recorta" : "no recorta") + ", salen " + salen / 2 + " de " + n + " muestras)");
+            }
+            object ee = e;
+            MethodInfo cu = TR.GetMethod("Cuadra", T);
+            Check(!(bool)cu.Invoke(null, new object[] { ee, 0.0 }) && !(bool)cu.Invoke(null, new object[] { ee, double.NaN }),
+                  "sin duracion (o una que no es un numero), no cuadra: no se recorta");
+            Check(Codigo.Llama(TF.GetMethod("SinRelleno", T), "Cuadra") && Codigo.Llama(TF.GetMethod("SinRelleno", T), "get_TotalTime"),
+                  "SinRelleno lo mira con lo que el lector cuenta en el archivo");
+        }
+        finally { cache.SetValue(null, previo); try { Directory.Delete(dir, true); } catch { } }
+    }
+
     static int Main(string[] args)
     {
         Assembly a = Assembly.LoadFrom(args.Length > 0 ? args[0] : "rocola.exe");
@@ -236,6 +295,7 @@ class Relleno
         try { LaMedida(); } catch (Exception e) { Check(false, "la medida: " + e); }
         try { ElRecorte(); } catch (Exception e) { Check(false, "el recorte: " + e); }
         try { Conectado(); } catch (Exception e) { Check(false, "conectado: " + e); }
+        try { Cuadra(); } catch (Exception e) { Check(false, "cuadra: " + (e.InnerException ?? e)); }
         Console.WriteLine(fallos == 0 ? "\n  todo bien (" + oks + " comprobaciones)" : "\n  FALLOS: " + fallos);
         return fallos == 0 ? 0 : 1;
     }

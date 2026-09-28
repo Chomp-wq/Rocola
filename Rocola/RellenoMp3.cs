@@ -17,7 +17,8 @@
 //
 // El recorte (FuenteSinRelleno): se quitan del principio el retraso del codificador mas el del descompresor, y se
 // corta al final en la duracion real de la musica. Solo en MP3 de MPEG-1 (32, 44,1 y 48 kHz) con etiqueta LAME
-// valida (con su CRC). Un salto dentro de la cancion (volvio el aparato de sonido) deja de recortar: sigue como antes.
+// valida (con su CRC) y que cuadre con lo que hay en el archivo (un MP3 unido lleva la etiqueta de su primera parte: ver
+// Cuadra). Un salto dentro de la cancion (volvio el aparato de sonido) deja de recortar: sigue como antes.
 // Lo recortado es silencio (el del codificador) y el relleno del final: en una cancion suelta no cambia nada que se
 // oiga, y en un disco continuo desaparece el hueco.
 using System;
@@ -112,6 +113,17 @@ namespace Rocola
             e.Retraso = retraso; e.Relleno = relleno; e.Tasa = tasas[tasaIdx]; e.PorCuadro = 1152; e.Cuadros = cuadros;
             if (cuadros <= 0 || e.Muestras <= 0) { e = new EtiquetaLame(); return false; }
             return true;
+        }
+        // LA ETIQUETA TIENE QUE CUADRAR CON EL ARCHIVO. Un MP3 UNIDO (copy /b a.mp3+b.mp3, o un programa que pega pistas
+        // sin rehacerla) lleva la etiqueta de la PRIMERA parte; uno cortado (una descarga a medias), una que dice mas de lo
+        // que hay. Creerla cortaba la cancion pagada donde acababa la primera parte, o ponia el fundido de salida despues
+        // del final. Solo vale si lo que el lector cuenta en el archivo ('segundos') es lo que dice, con dos cuadros de
+        // margen (hay lectores que cuentan tambien el cuadro de la etiqueta). Si no, suena como antes, sin recortar.
+        internal static bool Cuadra(EtiquetaLame e, double segundos)
+        {
+            if (e.Tasa <= 0 || e.PorCuadro <= 0 || !(segundos > 0)) return false;
+            double cuadros = segundos * e.Tasa / e.PorCuadro;
+            return Math.Abs(cuadros - e.Cuadros) <= 2.0;
         }
         private static int Be32(byte[] d, int p) { return (d[p] << 24) | (d[p + 1] << 16) | (d[p + 2] << 8) | d[p + 3]; }
         // CRC-16 (polinomio 0x8005 reflejado, como el de la etiqueta LAME).
@@ -340,6 +352,7 @@ namespace Rocola
                 EtiquetaLame e;
                 if (!RellenoMp3.Lee(path, out e)) return s;
                 if (s.WaveFormat.SampleRate != e.Tasa) return s;
+                if (!RellenoMp3.Cuadra(e, s.TotalTime.TotalSeconds)) return s;   // un MP3 unido o cortado: como antes (ver Cuadra)
                 int extra = RellenoExtra();
                 if (extra < 0) return s;
                 return new FuenteSinRelleno(s, e.Retraso + extra, e.Muestras);
