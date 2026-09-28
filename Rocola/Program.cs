@@ -77,6 +77,7 @@ namespace Rocola
 
             // (El reloj fino de Windows -timeBeginPeriod(1)- ya lo pide Form1 al construirse, y lo devuelve
             // al cerrarse. Aqui no hace falta repetirlo.)
+            PrioridadDeLaRocola();   // la musica y la pantalla, por delante de las tareas de Windows (ver abajo)
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             Application.Run(new Form1());
@@ -84,6 +85,19 @@ namespace Rocola
             // se guardara y nunca se usara, el recolector de basura podria llevarsela con la rocola aun
             // corriendo, y entonces otra rocola podria arrancar encima.)
             try { unica.ReleaseMutex(); } catch { }
+        }
+
+        // LA ROCOLA POR DELANTE DE LAS TAREAS DE WINDOWS (rendimiento, 28-09-2026). El equipo del bar es de la rocola, pero
+        // Windows sigue a lo suyo -actualizaciones, el antivirus repasando el disco, el indexador- y, con la prioridad normal,
+        // le quita procesador justo cuando lo necesita: en dos nucleos, eso es la musica o la pantalla esperando. "Por encima
+        // de lo normal" la pone delante de esas tareas sin llegar a "alta", que puede estorbar al propio Windows (el raton, el
+        // sonido del sistema). Lo de fondo de la rocola (el repaso de la biblioteca, las portadas) sigue en prioridad minima
+        // o baja DENTRO de ella: nunca por delante de su pantalla ni de su musica. Los programas que lanza (el motor de la
+        // IA) no la heredan: Windows les da la normal. Si Windows no deja cambiarla, sigue como siempre.
+        internal static void PrioridadDeLaRocola()
+        {
+            try { System.Diagnostics.Process.GetCurrentProcess().PriorityClass = System.Diagnostics.ProcessPriorityClass.AboveNormal; }
+            catch { }
         }
 
         // Mismo archivo y tope (~256KB) que Form1.LogError, pero autonomo (aqui Form1 pudo no existir aun).

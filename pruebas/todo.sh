@@ -83,6 +83,9 @@ CPU="$CPU discoparejo"
 # lee un hilo aparte que deja un colchon corto hecho, y la pantalla solo copia. Mismo sonido bit a bit, el final y los
 # fallos como antes, cuanto espera la pantalla a un hilo atrasado y lo que le cuesta cada bloque.
 CPU="$CPU bomba"
+# 'prioridad': la rocola con prioridad por encima de lo normal (Program.cs): se pone al arrancar la unica rocola, nunca
+# "alta" ni "tiempo real", y en ningun otro sitio.
+CPU="$CPU prioridad"
 # 'franjareloj' solo con tarjeta grafica: el reloj de la cancion repinta y sube solo su recuadro de la franja de abajo
 # (FranjaLigeraGpu.cs). Identica a rehacerla entera, pixel a pixel; las cintas no se tocan; lo demas, entera; y la tarjeta
 # imitada recibe solo el trozo.

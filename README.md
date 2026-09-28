@@ -9,6 +9,8 @@
 - **El reloj de la canción, solo su recuadro.** Cada segundo se rehacía y se subía a la tarjeta la franja de abajo entera
   (440 KB). Ahora, si solo cambió el reloj o la barra, se repinta y se sube solo su recuadro (70 KB), idéntico píxel a
   píxel a rehacerla entera. Solo con tarjeta gráfica.
+- **La rocola, por delante de las tareas de Windows.** Arranca con prioridad "por encima de lo normal": las
+  actualizaciones, el antivirus o el indexador ya no le quitan procesador a la música ni a la pantalla. Nunca "alta".
 
 Automático y sin interruptor, en las dos ramas. Probado con la cuenta; no se ha visto en el equipo del bar ni se probó
 en XP. [La guía](OPTIMIZACIONES_2026-09-28.md).
