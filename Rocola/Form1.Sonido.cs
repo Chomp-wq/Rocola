@@ -773,6 +773,14 @@ namespace Rocola
         // golpe es la mitad de la altura, asi que el fondo respira de verdad con la musica sin volverse nervioso.
         private void AvanzaAurora()
         {
+            AvanzaBandas(1f);
+            AvanzaPresencia(1f);
+        }
+        // Las bandas, 'pasos' latidos de 42 ms (fracciones incluidas: la tarjeta las avanza en cada cuadro, ver
+        // AuroraFinaGpu.cs). Con un latido justo, la cuenta de siempre.
+        private void AvanzaBandas(float pasos)
+        {
+            float kPiso = AurPorPasos(0.045f, pasos), kGolpe = AurQueda(0.80f, pasos), kBaja = AurPorPasos(0.22f, pasos);
             for (int b = 0; b < SpecBands; b++)
             {
                 float rms = specNow[b];
@@ -786,7 +794,7 @@ namespace Rocola
                 }
                 // PISO MOVIL de la banda (~0.9 s): lo que esta banda ha venido sonando ultimamente.
                 float piso = specPiso[b];
-                piso += (rms - piso) * 0.045f;
+                piso += (rms - piso) * kPiso;
                 specPiso[b] = piso;
                 // GOLPE: cuanto sobresale AHORA por encima de ese piso. Ataque instantaneo, caida rapida.
                 float golpe = 0f;
@@ -796,15 +804,18 @@ namespace Rocola
                     if (golpe > 1f) golpe = 1f;
                 }
                 float gp = specGolpe[b];
-                specGolpe[b] = (golpe > gp) ? golpe : gp * 0.80f;   // ~0.25 s de caida a 24 cuadros/s
+                specGolpe[b] = (golpe > gp) ? golpe : gp * kGolpe;   // ~0.25 s de caida (0,80 por latido de 42 ms)
                 float v = cuerpo * 0.55f + specGolpe[b] * cuerpo * 0.45f;   // el golpe solo luce donde ya hay banda
                 if (v > 1f) v = 1f;
                 float prev = specVis[b];
-                specVis[b] = (v > prev) ? v : prev + (v - prev) * 0.22f;   // sube al instante, baja en ~0.2 s
+                specVis[b] = (v > prev) ? v : prev + (v - prev) * kBaja;   // sube al instante, baja en ~0.2 s
             }
-            // Y la PRESENCIA: sube y baja despacio, para que la aurora no aparezca ni desaparezca de golpe.
-            // Sin musica NO cae a cero: cae al REPOSO, que ademas respira (ver AurReposo).
-            auroraFase += AurReposoPaso;
+        }
+        // Y la PRESENCIA: sube y baja despacio, para que la aurora no aparezca ni desaparezca de golpe.
+        // Sin musica NO cae a cero: cae al REPOSO, que ademas respira (ver AurReposo).
+        private void AvanzaPresencia(float pasos)
+        {
+            auroraFase += AurReposoPaso * pasos;
             if (auroraFase > 6.2831853f) auroraFase -= 6.2831853f;
             float pico = 0f;
             for (int b = 0; b < SpecBands; b++) if (specVis[b] > pico) pico = specVis[b];
@@ -816,7 +827,7 @@ namespace Rocola
             // nadie: seguia moviendose delante del que estaba eligiendo cancion. Es la misma queja, asi que
             // pasa por la misma cuenta, con la misma quietud y el mismo tope.
             float meta = hayMusica ? 1f : (AurReposo * Respiracion(AurReposoOnda, quietud, auroraFase));
-            auroraPres += (meta - auroraPres) * (hayMusica ? 0.075f : 0.014f);
+            auroraPres += (meta - auroraPres) * AurPorPasos(hayMusica ? 0.075f : 0.014f, pasos);
             if (auroraPres < 0f) auroraPres = 0f; else if (auroraPres > 1f) auroraPres = 1f;
         }
 
@@ -1473,6 +1484,12 @@ namespace Rocola
             // visualizador, no un ecualizador: basta que "se sienta" la separacion. El estado persiste entre bloques.
             const float A1 = 0.012f, A2 = 0.13f;
             float lp1 = fLp1, lp2 = fLp2;
+#if ROCOLA_GPU
+            // La aurora fina (AuroraFinaGpu.cs): el mismo espectro, apuntado ademas cada 1/60 s.
+            double[] acFino = null; int nFino = 0, largoFino = 1;
+            double ahoraFino = 0.0;
+            if (espectro) { acFino = AuroraFinaEmpieza(rate, out nFino, out largoFino); ahoraFino = AuroraMs(); }
+#endif
             for (int c = 0; c < chunks; c++)              // el RMS se calcula FUERA del lock (no retiene a la UI)
             {
                 int start = offset + c * len;
@@ -1510,9 +1527,16 @@ namespace Rocola
                         }
                         float bnd = x - ant; ant = x;     // lo que este peldano deja pasar menos lo del anterior
                         sSum[k] += bnd * bnd;
+#if ROCOLA_GPU
+                        acFino[k] += bnd * bnd;
+#endif
                     }
                     float top = m - ant;                 // lo que queda por encima del ultimo corte: el aire
                     sSum[7] += top * top;
+#if ROCOLA_GPU
+                    acFino[7] += top * top;
+                    if (++nFino >= largoFino) { AuroraFinaCierra(nFino, i + 1 - offset, samplesPerSec); nFino = 0; }
+#endif
                     nEsp++;
                 }
                 int n = Math.Max(1, end - start), ne = Math.Max(1, nEsp);
@@ -1594,6 +1618,9 @@ namespace Rocola
                     int atMs = now + (int)((long)(c * len) * 1000 / Math.Max(1, samplesPerSec));   // desfase del trozo dentro del bloque
                     EnqueueLevel(atMs, tLo[c], tMid[c], tHi[c], espectro ? tEsp : null, c * SpecBands);
                 }
+#if ROCOLA_GPU
+                if (espectro) AuroraFinaEncola(ahoraFino, nFino);
+#endif
             }
         }
 
@@ -1618,17 +1645,28 @@ namespace Rocola
         }
         private void ConsumeLevels(int now)
         {
+#if ROCOLA_GPU
+            bool fina = AuroraFinaViva();   // la aurora la lleva la tarjeta, cuadro a cuadro (AuroraFinaGpu.cs)
+#else
+            const bool fina = false;
+#endif
             lock (levelLock)
                 while (levelQ.Count > 0 && unchecked(now - (levelQ.Peek().At + audioVisualDelayMs)) >= 0)
                 {
                     Lvl l = levelQ.Dequeue(); rmsLo = l.Lo; rmsMid = l.Mid; rmsHi = l.Hi;
-                    if (l.Esp != null) Array.Copy(l.Esp, specNow, SpecBands);
+                    if (l.Esp != null && !fina) Array.Copy(l.Esp, specNow, SpecBands);
                     ReturnLevelBuffer(l.Esp);
                 }
         }
         private void ClearLevels()
         {
-            lock (levelLock) while (levelQ.Count > 0) ReturnLevelBuffer(levelQ.Dequeue().Esp);
+            lock (levelLock)
+            {
+                while (levelQ.Count > 0) ReturnLevelBuffer(levelQ.Dequeue().Esp);
+#if ROCOLA_GPU
+                AuroraFinaVacia();
+#endif
+            }
         }
 
         // Detecta el golpe de UNA banda contra su propio piso movil y devuelve su pulso (0..1) con ataque instantaneo

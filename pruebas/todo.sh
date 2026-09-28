@@ -27,7 +27,7 @@ NAUDIO="$RAIZ/packages/NAudio.1.9.0/lib/net35/NAudio.dll"
 # probando un programa SIN el panel de reposo, sin la vineta y sin las nebulosas naturales, mientras que en
 # Windows se instala uno que si los trae. Una prueba que mira otro programa no prueba nada.
 FUENTES="../Rocola/Form1.cs ../Rocola/Form1.Ajustes.cs ../Rocola/Form1.Biblioteca.cs ../Rocola/Form1.Buscador.cs ../Rocola/Form1.Datos.cs ../Rocola/Form1.Fondo.cs ../Rocola/Form1.Ia.cs ../Rocola/Form1.Pared.cs ../Rocola/Form1.Portadas.cs ../Rocola/Form1.Sonido.cs ../Rocola/Form1.Video.cs ../Rocola/Form1.Vistas.cs ../Rocola/Form1.Designer.cs ../Rocola/Program.cs ../Rocola/D3D9Star.cs ../Rocola/Rendimiento.cs ../Rocola/D3D9Device.cs ../Rocola/WinSistema.cs ../Rocola/EstadoReposoGpu.cs ../Rocola/AcabadoGpu.cs ../Rocola/CieloNaturalGpu.cs $RAIZ/Rocola/AperturaAudio.cs $RAIZ/Rocola/CargaTrabajo.cs $RAIZ/Rocola/EscaneoMemo.cs $RAIZ/Rocola/LunaGpu.cs $RAIZ/Rocola/Optimizaciones.cs $RAIZ/Rocola/RespuestaGpu.cs"
-FUENTES="$FUENTES $RAIZ/Rocola/EstrellaGpu.cs $RAIZ/Rocola/Estrella3dGpu.cs $RAIZ/Rocola/RelojPantallaGpu.cs $RAIZ/Rocola/PantallaVivaGpu.cs $RAIZ/Rocola/DiscoVivoGpu.cs $RAIZ/Rocola/SuenaVivoGpu.cs $RAIZ/Rocola/AtraccionGpu.cs $RAIZ/Rocola/EstiloGpu.cs $RAIZ/Rocola/DibujoLigeroGpu.cs $RAIZ/Rocola/BuscadorLigeroGpu.cs $RAIZ/Rocola/BuscadorPortadasGpu.cs $RAIZ/Rocola/PrecargaPaginaGpu.cs $RAIZ/Rocola/PaletaCaratulaGpu.cs $RAIZ/Rocola/CreditosServicio.cs"
+FUENTES="$FUENTES $RAIZ/Rocola/EstrellaGpu.cs $RAIZ/Rocola/Estrella3dGpu.cs $RAIZ/Rocola/RelojPantallaGpu.cs $RAIZ/Rocola/AuroraFinaGpu.cs $RAIZ/Rocola/PantallaVivaGpu.cs $RAIZ/Rocola/DiscoVivoGpu.cs $RAIZ/Rocola/SuenaVivoGpu.cs $RAIZ/Rocola/AtraccionGpu.cs $RAIZ/Rocola/EstiloGpu.cs $RAIZ/Rocola/DibujoLigeroGpu.cs $RAIZ/Rocola/BuscadorLigeroGpu.cs $RAIZ/Rocola/BuscadorPortadasGpu.cs $RAIZ/Rocola/PrecargaPaginaGpu.cs $RAIZ/Rocola/PaletaCaratulaGpu.cs $RAIZ/Rocola/CreditosServicio.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/TextoMovilGpu.cs"
 TMP_PRUEBAS="${TMPDIR:-/tmp}/rocola_pruebas_$$"
 FUENTES="$FUENTES $RAIZ/Rocola/AudioControles.cs $RAIZ/Rocola/Sonoridad.cs $RAIZ/Rocola/RellenoMp3.cs $RAIZ/Rocola/PicoReal.cs $RAIZ/Rocola/Realce.cs"
@@ -97,6 +97,11 @@ CPU="$CPU estilo"
 # lo transparente y la aurora sin repetir cuentas, comprobado con una tarjeta imitada y un raster de referencia: la
 # misma imagen con menos pixeles. Sin tarjeta grafica no hay nada que mirar (el dibujo por procesador no se toca).
 GPU="$GPU dibujoligero"
+# 'aurorafina' solo con tarjeta grafica: la aurora avanza en cada cuadro (AuroraFinaGpu.cs). La misma cancion por el
+# latido de antes y por el cuadro a cuadro: cuantas veces cambia la forma a 60 cuadros por segundo, que se vea igual, que
+# no dependa de los cuadros por segundo, el golpe a la hora, las medidas cada 1/60 s, la cuenta de antes bit a bit y la
+# reserva. Sin tarjeta grafica no hay aurora (el dibujo por procesador no se toca).
+GPU="$GPU aurorafina"
 # 'buscaligero' tambien solo con tarjeta grafica: el buscador mas ligero para la tarjeta (BuscadorLigeroGpu.cs). Subir
 # solo el trozo que cambia, cerrar sin copiar y abrir sin crear; con la tarjeta imitada de 'dibujoligero'.
 GPU="$GPU buscaligero paginasgpu"

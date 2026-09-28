@@ -693,7 +693,7 @@ namespace Rocola
                 AplicaEfectosGpu();           // y las perillas de los efectos (Ctrl+F3 -> Imagen y rendimiento)
                 gpuPanel.GetPulse = delegate { return audioLevel; };
                 gpuPanel.GetStarMusic = delegate { return new StarMusic { Bass=levLo, Mid=levMid, High=levHi }; };
-                gpuPanel.GetAurora = delegate { return BuildAuroraState(); };   // aurora del horizonte (espectro)
+                gpuPanel.GetAurora = delegate { return AuroraDelCuadro(); };   // aurora del horizonte (espectro), avanzada a este cuadro
                 gpuPanel.GetToast = delegate { return BuildToastState(); };     // aviso flotante (moneda, cancion agregada...)
                 gpuPanel.GetTrans = delegate { return BuildTransState(); };   // zoom al entrar/salir de un disco
                 gpuPanel.GetWin = delegate { return BuildWinState(); };        // ventana del buscador abriendo/cerrando

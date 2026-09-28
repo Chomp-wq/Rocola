@@ -114,6 +114,7 @@
     <Compile Include="EstrellaGpu.cs" />
     <Compile Include="Estrella3dGpu.cs" />
     <Compile Include="RelojPantallaGpu.cs" />
+    <Compile Include="AuroraFinaGpu.cs" />
     <Compile Include="PantallaVivaGpu.cs" />
     <Compile Include="DiscoVivoGpu.cs" />
     <Compile Include="SuenaVivoGpu.cs" />

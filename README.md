@@ -1,5 +1,19 @@
 # Rocola
 
+## La aurora se mueve a 60 cuadros por segundo — 28 de septiembre de 2026
+
+- La forma de la aurora (la altura de cada banda del espectro) se recalculaba 24 veces por segundo, con medidas del
+  sonido de ~42 ms. La tarjeta dibuja 60 cuadros por segundo: el ondeo iba liso, pero la silueta cambiaba solo en 4 de
+  cada 10 cuadros y avanzaba a saltos. Ahora el sonido se mide cada 1/60 s (con la misma ventana de 50 ms) y la forma
+  se avanza en cada cuadro: cambia en todos, y el salto más grande de un cuadro al siguiente baja de 0,096 a 0,037.
+- Se ve igual, con una diferencia: sale un poco más alta (de +0,01 a +0,06 de media por banda, en una escala de 0 a 1), porque antes
+  se perdían los picos que caían entre latido y latido. El golpe sale ~17 ms antes de oírse (antes salía 17 ms tarde).
+- Solo con tarjeta gráfica (el dibujo por procesador no se toca). No lleva interruptor: es más fluidez, no otro aspecto.
+  Coste: ~1 µs por cuadro y nada medible en el hilo de audio.
+
+Las dos ramas. Probado con una canción sintética y un reloj de mentira (`pruebas/aurorafina.cs`); no se ha visto en
+la pantalla del bar ni en XP.
+
 ## Sonido: subir sin aplastar, y el bajo fuerte limpio — 28 de septiembre de 2026
 
 - El nivelado ya no sube una canción bajita tanto que el limitador le aplaste los golpes: mide los picos de cada
