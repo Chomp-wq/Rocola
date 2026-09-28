@@ -85,6 +85,7 @@ class PanelReposo
         Console.WriteLine("\n  2) QUE ENSENA EL PANEL (leido del programa, no de una lista)\n");
         List<string> perdonados = new List<string>();
         List<string> cosas = Ingredientes(bip, reloj, puerta, perdonados);
+        CintasDelPanel(cosas, perdonados);
         Console.Write("     detras de la puerta:");
         foreach (string c in cosas) Console.Write(" " + c);
         Console.WriteLine();
@@ -188,6 +189,28 @@ class PanelReposo
         return r;
     }
     static void Apunta(List<string> l, string s) { if (!l.Contains(s)) l.Add(s); }
+
+    // LAS CINTAS DE LOS TITULOS DESLIZANTES (TextoMovilGpu.cs) van por grupos: cada horneado rellena el suyo mientras se
+    // hace (CapturaTexto(n)) y la tarjeta las dibuja al vuelo. El 1 es del panel de reposo: lo rellena el mismo al
+    // hornearse, asi que cambiarlo no es algo que haya que contarle. Soltarlas todas (SueltaCintasTexto) es solo al cerrar.
+    // Se perdona el campo SOLO si eso se cumple; si otro horneado toma el grupo 1 o se sueltan en otro momento, falla.
+    static void CintasDelPanel(List<string> cosas, List<string> perdonados)
+    {
+        if (!cosas.Contains("cintasTexto")) return;
+        string dir = System.IO.Path.Combine("..", "Rocola");
+        int delPanel = 0, deOtros = 0, sueltas = 0, alCerrar = 0;
+        foreach (string arch in System.IO.Directory.GetFiles(dir, "*.cs"))
+            foreach (string linea in System.IO.File.ReadAllLines(arch))
+            {
+                string l = linea.Trim();
+                if (l.StartsWith("//")) continue;
+                if (l.Contains("CapturaTexto(1)")) { if (System.IO.Path.GetFileName(arch) == "EstadoReposoGpu.cs") delPanel++; else deOtros++; }
+                if (l.Contains("SueltaCintasTexto()") && !l.Contains("void SueltaCintasTexto")) { sueltas++; if (l.Contains("FormClosed")) alCerrar++; }
+            }
+        Exige(delPanel == 1 && deOtros == 0, "el grupo 1 de las cintas es solo del panel de reposo, que lo rellena al hornearse");
+        Exige(sueltas >= 1 && sueltas == alCerrar, "y las cintas solo se sueltan todas al cerrar la ventana");
+        if (delPanel == 1 && deOtros == 0 && sueltas == alCerrar) { cosas.Remove("cintasTexto"); Apunta(perdonados, "cintasTexto"); }
+    }
 
     static void Centro(string metodo, string porque)
     {

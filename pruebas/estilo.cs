@@ -206,7 +206,7 @@ class Estilo
                     if (Parecido(p, Color.FromArgb(214, 224, 246), 10)) { sx0 = Math.Min(sx0, x); sx1 = Math.Max(sx1, x); }
                 }
             Info("en el renglon del artista: el verde acaba en x=" + verdeFin + "; lo que sigue va de x=" + sx0 + " a x=" + sx1 + " (su sitio: " + caja.Left + " a " + caja.Right + ")");
-            Check(caja.Top == tit.Top && caja.Bottom < ((Control)Get(f1,"progress")).Top && caja.Right < cola.Left
+            Check(caja.Top == tit.Top && caja.Bottom < ((Control)Get(f1,"progress")).Top && caja.Right < cola.Left && caja.Right < cred.Left
                   && caja.Height >= sig.Font.Height && verdeFin > 0 && caja.Left >= verdeFin + 12 && sx0 >= caja.Left && sx1 < caja.Right,
                   "tarjeta separada del artista, los creditos y el progreso");
         }
