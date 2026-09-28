@@ -2155,7 +2155,7 @@ namespace Rocola
                 if (bv != uiBotVer || uiBotTex == IntPtr.Zero)
                 {
                     Bitmap bb = GetUiBot();
-                    if (bb != null) uiBotTex = Upload(uiBotTex, ref uiBotW, ref uiBotH, bb, out uiBotU, out uiBotV);
+                    if (bb != null) SubeUiBot(bb);   // el trozo que cambio, o entera (FranjaLigeraGpu.cs)
                     uiBotVer = bv;
                     uiBotTeselas = null; uiBotSubidaMs = AhoraMs();   // imagen nueva: sus teselas, cuando este quieta (DibujoLigeroGpu.cs)
                 }

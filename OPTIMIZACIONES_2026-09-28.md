@@ -69,3 +69,51 @@ Batería nueva **`pruebas/bomba.cs`** (24 comprobaciones), verde en HD y en Mode
   Ctrl+F3).
 - Windows XP real. Modest compila como C# 3 para .NET 3.5; el hilo usa solo lo que ya había en .NET 2.0.
 - Un disco duro de verdad que tarda en despertar: el atraso está simulado.
+
+## 2. El reloj de la canción, solo su recuadro
+
+### Qué pasaba
+
+La franja de abajo (lo que suena, lo que sigue, el reloj, los créditos, la cola con sus portaditas y la barra) es una
+imagen aparte que se rehace cuando cambia lo que dice. Con música, el reloj ("1:47 / 4:12") cambia cada segundo, así que
+**cada segundo se rehacía la franja entera** (todos los textos y las pastillas) y **se subía entera a la tarjeta**: 440 KB
+a 1024×768, en el mismo hilo que dibuja la pantalla.
+
+### Qué cambia
+
+Si lo único que cambió es el reloj o la barra, se repinta solo su recuadro y la tarjeta recibe solo ese trozo
+(`Rocola/FranjaLigeraGpu.cs`). Solo en el dibujo por tarjeta gráfica; el dibujo por procesador no se toca.
+
+- Se pinta todo como siempre y en el mismo orden, pero recortado al recuadro, así que dentro sale lo mismo que saldría
+  entera. El recuadro se vacía con copia directa, sin depender de cómo trate Windows el borrado con recorte.
+- Los títulos que se deslizan no se tocan: un recuadro no los puede borrar.
+- Cualquier otra cosa (otro título, otros créditos, la cola, la letra de lejos, otra pantalla, el reloj que cambia de
+  sitio, la atracción) rehace la franja entera, como siempre.
+- La barra de progreso de la franja va con su valor exacto: antes se rehacía por tramos de 1/300 de la canción; ahora su
+  recuadro se repinta cada vez que avanza (dos veces por segundo). Se ve igual, un poco más fluida.
+
+### Comprobaciones automáticas
+
+Batería nueva **`pruebas/franjareloj.cs`** (16 comprobaciones), verde en HD y en Modest:
+
+- **Idéntica a rehacerla entera, píxel a píxel**, en 24 escenas (dos pantallas; letra de lejos o no; títulos que se
+  deslizan o no; barra en la franja, en neón o dibujada por la tarjeta) y 9 pasos de reloj y barra en cada una
+  (0:59 → 1:00, 9:59 → 10:00, 59:59 → 1:00:00...): 216 de 216, todos por recuadro.
+- Los títulos que se deslizan quedan igual que rehaciéndola entera.
+- Si solo avanza la barra: por su recuadro e idéntica; si la dibuja la tarjeta, la franja ni se rehace.
+- Lo demás, entera; la atracción, limpia; al salir, entera e idéntica.
+- El trozo solo vale para la versión de justo antes.
+- **Con la tarjeta imitada**: en 9 pasos la tarjeta recibe solo el recuadro, en la misma textura, y queda igual que la
+  imagen; si cambia otra cosa o la tarjeta se saltó una versión, entera.
+
+**Medido** (servidor de pruebas): el recuadro es de media el 13 % de la franja; lo que se sube cada segundo pasa de
+**440 KB a 70 KB**, y rehacerla a 1920×1080 de **2,3 ms a 0,8 ms**.
+
+**Averías metidas a propósito**: 13, y la batería las detecta todas: pintar sin recorte, no vaciar el recuadro o vaciarlo sin copia directa, redondear la barra, tocar las cintas de verdad, no mirar la firma fija ni la de la atracción, dar el trozo a cualquier versión, que la tarjeta suba siempre entera o no pregunte el trozo, quitar el margen del reloj o de la barra, y que el reloj no mire dónde está.
+
+### Lo que no se ha comprobado
+
+- Una tarjeta de verdad: la de las pruebas es imitada. Cuánto se nota se ve con el medidor de Ctrl+F3.
+- El dibujo de Windows: las pruebas usan el de Mono. El recorte del dibujo se mantiene al mover el origen (así trabaja
+  Windows y así lo dan las pruebas), pero no se ha mirado en un Windows real.
+- Windows XP real.

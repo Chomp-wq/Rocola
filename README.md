@@ -6,6 +6,9 @@
   canción y pasarla por toda la cadena de sonido (1,8 ms de media y picos de 7,6 ms medidos en el servidor de pruebas;
   en un equipo viejo, varias veces más). Ahora lo hace un hilo aparte y la pantalla solo copia lo ya hecho: 0,07 ms por
   bloque en la simulación. El sonido sale igual bit a bit; lo que se ve sigue cayendo en el golpe.
+- **El reloj de la canción, solo su recuadro.** Cada segundo se rehacía y se subía a la tarjeta la franja de abajo entera
+  (440 KB). Ahora, si solo cambió el reloj o la barra, se repinta y se sube solo su recuadro (70 KB), idéntico píxel a
+  píxel a rehacerla entera. Solo con tarjeta gráfica.
 
 Automático y sin interruptor, en las dos ramas. Probado con la cuenta; no se ha visto en el equipo del bar ni se probó
 en XP. [La guía](OPTIMIZACIONES_2026-09-28.md).
