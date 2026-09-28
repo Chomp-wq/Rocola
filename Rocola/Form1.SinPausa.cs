@@ -272,7 +272,7 @@ namespace Rocola
             if (p == null || p.Cancion == null || p.Tap == null) return;
             p.Tap.Gain = NormGainFor(p.Cancion.Path);
             p.Tap.Excite = ExcitePara(p);
-            p.Tap.Master = MasterLin() * FactorNoche();
+            p.Tap.Master = MasterEfectivo() * FactorNoche();
             p.Tap.EqDb = EqCorrFor(p.Cancion.Path);
             if (p.Bajo != null) p.Bajo.Amount = BassAmountPara(p.BajoFactor, p.BajoBase);
             if (p.Noche != null) p.Noche.Db = NocheCompensaDb();

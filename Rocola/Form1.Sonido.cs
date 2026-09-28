@@ -144,7 +144,7 @@ namespace Rocola
             // Y lo que devuelve de graves y agudos sigue la misma rampa (ModoNoche.cs).
             if (nocheFactor != antes)
             {
-                LevelTap t = curTap; if (t != null) t.Master = MasterLin() * FactorNoche();
+                LevelTap t = curTap; if (t != null) t.Master = MasterEfectivo() * FactorNoche();
                 CompensaNoche cn = curNoche; if (cn != null) cn.Db = NocheCompensaDb();
                 AplicaAPreparada();
             }
@@ -1208,7 +1208,7 @@ namespace Rocola
             LevelTap tap = new LevelTap(chain, this);
             tap.Gain = NormGainFor(t.Path);
             tap.Excite = ExciteAmountPara(t.Path, dsee);   // realce de agudos: mas a las dañadas, menos a las que ya traen su aire
-            tap.Master = MasterLin() * FactorNoche();  // SUBIR TODO (con rodilla suave anti-distorsion), y de madrugada mas bajo
+            tap.Master = MasterEfectivo() * FactorNoche();  // SUBIR TODO (lo mismo a todas, sin pasar del techo de la biblioteca: SubirTodo.cs), y de madrugada mas bajo
             tap.EqDb = EqCorrFor(t.Path);      // EQ automatico: correccion aprendida (null la 1a vez que suena)
             audioTailDelay += tap.DelayFrames;   // realce 2x: retiene 31 cuadros y los entrega al final (Realce.cs)
             c.Tap = tap; tap.Medida = new MedidaCancion(c.MedidaRuta, c.EqRuta);   // lo que aprende oyendola (ver MedidaDe)

@@ -197,6 +197,91 @@ class NivelPicos
               "una muda o picos raros no dan NaN ni bajan");
     }
 
+    // ---------------- subir todo ----------------
+    static object Integ2(float lk, float pico, float p99) { return Integ(new object[] { 2, lk, 2f, 1000, pico, p99 }); }
+    static void SubirTodo()
+    {
+        Console.WriteLine("\n  6) SUBIR TODO EL VOLUMEN: PAREJO Y CON TECHO (SubirTodo.cs)\n");
+        MethodInfo techo = TF.GetMethod("TechoDeHolguras", T), holg = TF.GetMethod("HolguraDb", T);
+        float[] h = new float[100]; for (int i = 0; i < 100; i++) h[i] = i < 10 ? 0f : 4f;
+        float t1 = (float)techo.Invoke(null, new object[] { h, 100 });
+        float[] h2 = new float[100]; for (int i = 0; i < 100; i++) h2[i] = i < 11 ? 0f : 4f;
+        float t2 = (float)techo.Invoke(null, new object[] { h2, 100 });
+        Check(t1 == 4f && t2 == 0f, "el techo deja fuera como mucho el 10 %: 10 de 100 sin holgura, +4 dB; 11 de 100, 0 dB");
+        float[] h3 = new float[30]; for (int i = 0; i < 30; i++) h3[i] = 2.37f + i * 0.01f;
+        Check((float)techo.Invoke(null, new object[] { h3, 30 }) == 2.3f, "y se redondea a la decima hacia abajo (2,40 da +2,3): nunca se pasa");
+        float hol = (float)holg.Invoke(null, new object[] { 1f, Lin(-20), Lin(-24) });
+        double esperado = Db(Math.Min((float)Get(null, "TechoPicoReal") * Lin(3) / Lin(-24), (float)Get(null, "TechoPicoReal") * Lin(6) / Lin(-20)));
+        Check(Math.Abs(hol - esperado) < 0.01 && (float)holg.Invoke(null, new object[] { 8f, Lin(0), Lin(0) }) == 0f,
+              "la holgura de una cancion es lo que le queda hasta el tope del limitador (" + F(hol, "0.0") + " dB); si ya esta en el tope, 0");
+        // Con una biblioteca de mentira: 60 comprimidas (bajadas por el nivelado, con sitio) y 40 dinamicas (ya en su tope).
+        object f = Codigo.FormSinEncender(TF);
+        Set(f, "normalizeOn", true); Set(f, "normTarget", 0.26f); Set(f, "normStrength", 1f); Set(f, "masterDb", 6f);
+        IDictionary tab = TablaNueva();
+        for (int i = 0; i < 60; i++) tab["pop" + i + ".mp3"] = Integ2(-7f, 0f, -0.5f);
+        for (int i = 0; i < 5; i++) tab["din" + i + ".mp3"] = Integ2(-20f, -0.5f, -6f);
+        Set(f, "integCache", tab);
+        float apl = (float)Call(f, "SubirAplicadoDb");
+        Check(apl < 6f && apl > 0.5f, "biblioteca de 65 con 5 dinamicas (8 %): pides +6, se aplican +" + F(apl, "0.0") + " dB (lo que aguantan las comprimidas)");
+        float mE = (float)Call(f, "MasterEfectivo");
+        Check(Math.Abs(Db(mE) - apl) < 0.01, "y es lo mismo para TODAS las canciones: el volumen sigue parejo");
+        for (int i = 5; i < 40; i++) tab["din" + i + ".mp3"] = Integ2(-20f, -0.5f, -6f);
+        Set(f, "normTarget", 0.2601f);   // un ajuste distinto obliga a rehacer la cuenta (y las medidas nuevas, cada minuto)
+        float apl2 = (float)Call(f, "SubirAplicadoDb");
+        Check(apl2 == 0f, "con 40 dinamicas de 100 ya en su tope, no se sube nada: aplastaria a la mayoria (" + F(apl2, "0.0") + " dB)");
+        Set(f, "masterDb", 0f);
+        Check((float)Call(f, "SubirAplicadoDb") == 0f && (float)Call(f, "MasterEfectivo") == 1f, "en 0 dB no hace nada");
+        object g = Codigo.FormSinEncender(TF);
+        Set(g, "normalizeOn", true); Set(g, "normTarget", 0.26f); Set(g, "normStrength", 1f); Set(g, "masterDb", 6f);
+        IDictionary poca = TablaNueva(); for (int i = 0; i < 19; i++) poca["d" + i + ".mp3"] = Integ2(-20f, -0.5f, -6f);
+        poca["vieja.mp3"] = Integ(new object[] { 1, -20f, 2f, 1000 });
+        Set(g, "integCache", poca);
+        Check((float)Call(g, "SubirAplicadoDb") == 6f, "con menos de 20 canciones con los picos medidos no se sabe: se aplica lo pedido, como antes");
+        // Al arrancar, la tabla se carga entera de golpe (sin contar como medida nueva): el techo se rehace ya.
+        IDictionary cargada = TablaNueva(); for (int i = 0; i < 40; i++) cargada["d" + i + ".mp3"] = Integ2(-20f, -0.5f, -6f);
+        Set(g, "integCache", cargada);
+        Check((float)Call(g, "SubirAplicadoDb") == 0f, "al cargar la tabla del arranque el techo se rehace en el acto, sin esperar a medidas nuevas");
+        // Las mudas no cuentan: 18 comprimidas y 3 dinamicas (14 % sin holgura) no suben, aunque haya 30 mudas.
+        IDictionary conMudas = TablaNueva();
+        for (int i = 0; i < 18; i++) conMudas["p" + i + ".mp3"] = Integ2(-7f, 0f, -0.5f);
+        for (int i = 0; i < 3; i++) conMudas["d" + i + ".mp3"] = Integ2(-20f, -0.5f, -6f);
+        for (int i = 0; i < 30; i++) conMudas["m" + i + ".mp3"] = Integ(new object[] { 2, float.NegativeInfinity, 2f, 100, -200f, -200f });
+        Set(g, "integCache", conMudas);
+        Check((float)Call(g, "SubirAplicadoDb") == 0f, "las canciones mudas no cuentan para el techo (con 30 mudas y 3 de 21 sin holgura, no se sube)");
+        string txt = (string)Call(f, "TextoSubir", 6);
+        Check(txt.StartsWith("Tu musica ya va al limite"), "si no aguanta nada, lo dice asi: \"" + txt.Replace("\n", " ") + "\"");
+        Set(f, "masterDb", 6f); Set(f, "normTarget", 0.26f);
+        for (int i = 5; i < 40; i++) tab.Remove("din" + i + ".mp3");
+        string txt2 = (string)Call(f, "TextoSubir", 6);
+        Check(txt2.StartsWith("Pides +6 dB; tu musica aguanta +") && txt2.Contains("se aplican +"), "Ctrl+F3 lo dice: \"" + txt2.Replace("\n", " ") + "\"");
+        // Coste: 50 000 canciones.
+        IDictionary grande = TablaNueva(); Random r = new Random(4);
+        for (int i = 0; i < 50000; i++) grande["c" + i + ".mp3"] = Integ2(-6f - (float)r.NextDouble() * 18f, -(float)r.NextDouble() * 3f, -3f - (float)r.NextDouble() * 6f);
+        object k = Codigo.FormSinEncender(TF);
+        Set(k, "normalizeOn", true); Set(k, "normTarget", 0.26f); Set(k, "normStrength", 1f); Set(k, "masterDb", 6f); Set(k, "integCache", grande);
+        Call(k, "SubirAplicadoDb"); Set(k, "normTarget", 0.2601f);
+        System.Diagnostics.Stopwatch sw = System.Diagnostics.Stopwatch.StartNew();
+        Call(k, "SubirAplicadoDb");
+        sw.Stop();
+        sw = System.Diagnostics.Stopwatch.StartNew(); for (int i = 0; i < 1000; i++) Call(k, "SubirAplicadoDb"); sw.Stop();
+        Info("rehacer el techo con 50 000 canciones: medido abajo; ya hecho, " + F(sw.Elapsed.TotalMilliseconds, "0.0") + " ms las 1000 veces");
+        Set(k, "normTarget", 0.2602f);
+        System.Diagnostics.Stopwatch s2 = System.Diagnostics.Stopwatch.StartNew(); Call(k, "SubirAplicadoDb"); s2.Stop();
+        Check(s2.Elapsed.TotalMilliseconds < 400 && sw.Elapsed.TotalMilliseconds < 50, "50 000 canciones: el techo se rehace en " + F(s2.Elapsed.TotalMilliseconds, "0") + " ms (en la pantalla, al cambiar ajustes o cada minuto con medidas nuevas); guardado, casi nada");
+        // Enchufado: los cuatro sitios que ponen el Master pasan por MasterEfectivo; ninguno pone MasterLin a pelo.
+        bool todos = Codigo.Llama(TF.GetMethod("ArmaCadena", T), "MasterEfectivo") && Codigo.Llama(TF.GetMethod("AplicaAPreparada", T), "MasterEfectivo")
+                     && Codigo.Llama(TF.GetMethod("ApplyNormNow", T), "MasterEfectivo") && Codigo.Llama(TF.GetMethod("AvanzaModoNoche", T), "MasterEfectivo");
+        bool ningunoSolo = true;
+        foreach (MethodBase m in Codigo.TodosLosMetodos(TF))
+        {
+            int lee, esc; Codigo.UsosDeCampo(m, "Master", out lee, out esc);
+            if (esc > 0 && Codigo.Llama(m, "MasterLin")) ningunoSolo = false;
+        }
+        List<MethodBase> ven = Codigo.MetodosConAyudantes(TF, "VentanaAjustes");
+        bool texto = false; foreach (MethodBase m in ven) if (Codigo.Llama(m, "TextoSubir")) texto = true;
+        Check(todos && ningunoSolo && texto, "la cadena, la siguiente preparada, el ajuste en vivo y la rampa de la noche pasan por el techo; Ctrl+F3 lo explica");
+    }
+
     // ---------------- conectado ----------------
     static void Conectado()
     {
@@ -322,6 +407,7 @@ class NivelPicos
         try { LaGanancia(); } catch (Exception e) { Check(false, "la ganancia: " + e); }
         try { Conectado(); } catch (Exception e) { Check(false, "conectado: " + e); }
         try { ConElLimitador(); } catch (Exception e) { Check(false, "con el limitador: " + e); }
+        try { SubirTodo(); } catch (Exception e) { Check(false, "subir todo: " + e); }
         Console.WriteLine(fallos == 0 ? "\n  todo bien (" + oks + " comprobaciones)" : "\n  FALLOS: " + fallos);
         return fallos == 0 ? 0 : 1;
     }
