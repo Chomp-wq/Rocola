@@ -13,6 +13,7 @@ class PaginasGpu
     static int checks;
     static Type form, list, gpu;
     static void Check(bool b, string s) { if (!b) throw new Exception(s); checks++; }
+    static bool sinHal;   // sin tarjeta de verdad (este servidor, Mono): la parte HAL se salta y se dice
     static void Set(object o, string n, object v) { o.GetType().GetField(n,F).SetValue(o,v); }
     static object Get(object o, string n) { return o.GetType().GetField(n,F).GetValue(o); }
     static object Call(object o, string n, params object[] a) { return o.GetType().GetMethod(n,F).Invoke(o,a); }
@@ -38,7 +39,10 @@ class PaginasGpu
             Set(f,"gpuPanel",panel); Set(f,"panelSongs",host); Set(f,"songList",c);
             Set(f,"glassCapas",true); Set(f,"cancionesCristal",true); Set(f,"cancionesTransparentes",true);
             Set(panel,"GlassPieces",true);
-            Set(f,"uiPieza",new Bitmap[4]); Set(f,"uiPiezaRect",new Rectangle[4]); Set(f,"uiPiezaSig",new long[4]); Set(f,"uiPiezaVer",new int[4]);
+            // Tantas piezas como tenga el programa (NumPiezas), no un numero escrito a mano: eran 4 y el buscador con portadas
+            // anadio la quinta; con 4 fijas, SueltaPiezas se salia del arreglo y la bateria entera caia antes de mirar nada.
+            int piezas=(int)form.GetField("NumPiezas",BindingFlags.Static|BindingFlags.NonPublic|BindingFlags.Public).GetValue(null);
+            Set(f,"uiPieza",new Bitmap[piezas]); Set(f,"uiPiezaRect",new Rectangle[piezas]); Set(f,"uiPiezaSig",new long[piezas]); Set(f,"uiPiezaVer",new int[piezas]);
             IList songs=(IList)Get(f,"songItems"); for(int i=0;i<80;i++)songs.Add("tema");
             try
             {
@@ -161,7 +165,7 @@ class PaginasGpu
                     }
                 }
             }finally{Call(p,"StopGpu");}
-            else throw new Exception("HAL no disponible: falta verificar GPU");
+            else { sinHal = true; Console.WriteLine("  SE SALTA el dibujo real con Direct3D (HAL): aqui no hay tarjeta. En Windows con tarjeta se hace."); }
         }
         Check(!Codigo.Llama(gpu.GetMethod("DibujaUnCuadro",F),"DibujaVinilo") && !Codigo.Llama(gpu.GetMethod("DibujaUnCuadro",F),"DibujaViniloReposo"),"Sigue dibujando vinilos");
         Check(!Codigo.Llama(form.GetMethod("DiscoVivoTic",F),"PreparaVinilo") && !Codigo.Llama(form.GetMethod("SuenaVivoTic",F),"PreparaViniloReposo"),"Sigue horneando vinilos");
@@ -200,6 +204,6 @@ class PaginasGpu
                 Check((uint)Get(glows.GetValue(0),"Argb")>>24>0,"Halo invisible");
             }
         }
-        Console.WriteLine("OK paginas GPU: "+checks+" comprobaciones; vinilos desconectados y siguiente dibujado.");return 0;
+        Console.WriteLine("OK paginas GPU: "+checks+" comprobaciones; vinilos desconectados y siguiente dibujado"+(sinHal?" (SIN el dibujo real con Direct3D: no hay tarjeta aqui)":"")+".");return 0;
     }
 }

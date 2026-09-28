@@ -91,12 +91,14 @@ class Pestanas
             "estadoTransparente", "cancionesTransparentes", "cieloProfundo",
             "auroraBandas", "nebNaturalFuerza",
             "portadaEnfocada", "fichaDisco", "paginaDesliza", "letrasLupa",   // la pestaña de la pantalla
-            "viniloDisco", "listaGrande", "eqSonando", "colaMinutos", "vueloCola",   // y su tarjeta de dentro del disco
+            "listaGrande", "eqSonando", "colaMinutos", "vueloCola",                  // y su tarjeta de dentro del disco (el vinilo se retiro el 24/09)
             "suenaGrande", "monedaCae", "sinCreditosInvita", "avisosClaros",         // y la de lo que suena y los creditos
             "escaparate", "topNoche",                                                // y la del modo atraccion
             "letraLejos", "colorGenero",                                             // y la del estilo general
             "buscadorPortadas",                                                      // y la del buscador
         };
+        // Y el vinilo retirado (24/09) no puede volver a tener mando sin que alguien lo decida: si reaparece, se avisa.
+        Check(TF.GetField("viniloDisco", TODO) == null, "el vinilo retirado el 24/09 no tiene mando (ni campo)");
         List<string> huerfanos = new List<string>();
         foreach (string campo in mando)
         {

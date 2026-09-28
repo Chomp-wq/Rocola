@@ -23,7 +23,7 @@ using System.Windows.Forms;
 //  4) LA MONEDA QUE CAE: se entera sola de cada moneda (y de los creditos de servicio), cae acelerando hasta el numero,
 //     la capsula da su golpe solo en la imagen de la tarjeta, la monedita de dentro no se pinta, sube "+4 creditos" y
 //     el letrero de arriba no sale.
-//  5) LO QUE SUENA, EN GRANDE: el texto se corre para el vinilo (y la insignia con el), el titulo en una linea que se
+//  5) LO QUE SUENA, EN GRANDE: el texto ya no se corre (el vinilo se retiro el 24/09), el titulo en una linea que se
 //     desliza si no cabe (quieto, va, se para, vuelve, sin saltos), cuanto falta, la pastilla del genero y los minutos
 //     de cada una de la cola (los mismos de la cola del disco), y que el panel se entera cuando cambian.
 //  6) Ctrl+F3 -> Pantalla: las dos hojas, los cuatro interruptores, 16 combinaciones guardadas y aplicadas.
@@ -583,14 +583,12 @@ class SuenaVivo
         int[] mins = (int[])Get(xr, "Minutos");
         Check(mins.Length == 3 && mins[0] == 3 && mins[1] == 7 && mins[2] == -1, "cada una de la cola lleva los minutos de la cola del disco (los mismos, no otra cuenta)");
         int corre = (int)Get(xr, "Corre");
-        float r = Cte<float>(form, "ViniloReposoRadio"), sa = Cte<float>(form, "ViniloReposoSale");
-        Check(corre >= (int)(cover.Width * (r + sa - .5f)) && corre <= (int)(cover.Width * (r + sa - .5f)) + 12,
-              "el texto se corre lo que asoma el vinilo (" + corre + " px con una portada de " + cover.Width + ")");
+        Check(corre == 0, "el texto ya no se corre: el vinilo se retiro el 24/09 y no se le guarda sitio (" + corre + " px con una portada de " + cover.Width + ")");
         // El vinilo: el mismo dibujo que el de dentro del disco, una vez por cancion.
         Check(Codigo.Llama(form.GetMethod("PreparaViniloReposo", F), "PintaEtiqueta") && Codigo.Llama(form.GetMethod("PreparaViniloReposo", F), "PintaSurcos"),
               "el vinilo del reposo es el mismo dibujo que el de dentro del disco (surcos una vez por tamaño, la etiqueta por cancion)");
-        Check(Codigo.Llama(form.GetMethod("SuenaVivoTic", F), "PreparaViniloReposo") && !Codigo.Llama(form.GetMethod("BuildReposoState", F), "PreparaViniloReposo"),
-              "se hornea en el reloj de la pantalla, no al dibujar");
+        Check(!Codigo.Llama(form.GetMethod("SuenaVivoTic", F), "PreparaViniloReposo") && !Codigo.Llama(form.GetMethod("BuildReposoState", F), "PreparaViniloReposo"),
+              "y retirado, no se hornea: ni en el reloj de la pantalla ni al dibujar");
     }
 
     // ================================================================================================
