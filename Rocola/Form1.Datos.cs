@@ -205,6 +205,7 @@ namespace Rocola
         private void BeginStartupDataLoad()
         {
             startupReadPending = true;
+            RecuperaGuardadosCortados();   // antes de leer nada (ver PublicaGuardadoSeguro)
             try
             {
                 startupLoad = CreateStartupLoad(new string[] { LoudFile(), EqFile(), IaDoneFile(),
@@ -693,6 +694,31 @@ namespace Rocola
                 try { FlushFileBuffers(fs.SafeFileHandle.DangerousGetHandle()); } catch { }
             }
             PublicaGuardadoSeguro(ruta, tmp, bak);
+        }
+
+        // UN GUARDADO CORTADO A MEDIAS. Donde File.Replace no se puede (una memoria FAT32, o el archivo bloqueado un
+        // instante por un antivirus), el cambio de abajo va en dos pasos: el bueno pasa a .bak y el nuevo a su sitio. Si
+        // la luz se va entre los dos, o el segundo falla, el bueno queda SOLO como .bak. Casi ningun lector miraba ahi
+        // (solo el estado, la integrada y lo de esta noche): la rocola arrancaba con esa tabla VACIA, el primer guardado
+        // entero de la sesion (DiarioTablas.cs) la dejaba asi y el siguiente se llevaba tambien la copia. Horas de
+        // medidas, los ajustes o las teclas, perdidos. Por eso, antes de leer nada al arrancar, la copia vuelve a su
+        // sitio (copiada: la .bak se queda como estaba). El estado no entra: su lector ya mira la copia, y ahi que el
+        // archivo no este quiere decir algo (ver BorraSeguro).
+        private void RecuperaGuardadosCortados()
+        {
+            string[] rutas = { ConfigFile, KeysFile(), LoudFile(), EqFile(), IntegFile(), LibStatsFile(), LibCacheFile(),
+                               LetterTintFile(), IaDoneFile(), DeepDoneFile(), DurFastFile(), RutaDatos("rocola_incompatibles.txt") };
+            for (int i = 0; i < rutas.Length; i++)
+            {
+                string bak = rutas[i] + ".bak";
+                try
+                {
+                    if (File.Exists(rutas[i]) || !File.Exists(bak)) continue;
+                    File.Copy(bak, rutas[i]);
+                    LogError("Guardado cortado: " + Path.GetFileName(rutas[i]) + " recuperado de su copia", null);   // que se sepa que paso
+                }
+                catch (Exception ex) { LogError("Guardado cortado: no se pudo recuperar " + Path.GetFileName(rutas[i]), ex); }   // se arranca como antes, sin tocar la copia
+            }
         }
 
         private static void PublicaGuardadoSeguro(string ruta, string tmp, string bak)

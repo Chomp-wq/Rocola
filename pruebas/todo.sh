@@ -98,6 +98,9 @@ CPU="$CPU enmemoria"
 # se mide igual que con esas muestras en silencio; PublicaMedida, CierraHuella y CierraSonoridad no guardan NaN; y al
 # leer las tablas (arranque y respaldo) una fila con NaN no entra, asi que la media del EQ de la biblioteca sale finita.
 CPU="$CPU nofinitos"
+# 'guardadocortado': un guardado cortado entre sus dos pasos (sin File.Replace) deja el bueno solo como .bak. Al arrancar
+# vuelve de su copia (volumen, EQ, ajustes...), se lee entero y guardar despues no pierde lo de antes; el estado no entra.
+CPU="$CPU guardadocortado"
 # 'franjareloj' solo con tarjeta grafica: el reloj de la cancion repinta y sube solo su recuadro de la franja de abajo
 # (FranjaLigeraGpu.cs). Identica a rehacerla entera, pixel a pixel; las cintas no se tocan; lo demas, entera; y la tarjeta
 # imitada recibe solo el trozo.
