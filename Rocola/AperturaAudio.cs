@@ -234,6 +234,7 @@ namespace Rocola
         // que preguntarlo SIEMPRE: el dia que esta rocola tenga otra fuente, se cambia aqui y en un solo
         // sitio. Lo que no puede hacer nunca es tener efectos secundarios: esta cancion todavia no suena.
         private string RutaQueSonaria(string path) { return path; }
+        private string RutaOriginalDe(string ruta) { return ruta; }   // sin Apollo, el archivo que suena es la cancion
         private void PideLookahead(string songPath)
         {
             // El medidor de Ctrl+F3 abre a la cara y no debe dejar nada pendiente: alli no se mira por delante.
