@@ -2095,8 +2095,13 @@ namespace Rocola
             // Con un VIDEO en pantalla el audio sale del reproductor de Windows y NO pasa por la cadena, asi que no
             // llegan bandas nuevas: sin esto el fondo se quedaria CONGELADO con la forma de la ultima cancion durante
             // todo el video. (El pulso no lo sufre: su detector de golpes se apaga solo contra su piso movil.)
-            if (videoOn || !EspectroActivo) for (int b = 0; b < SpecBands; b++) specNow[b] = 0f;
-            AvanzaAurora();   // el fondo lo dibuja el panel GPU; por CPU ni se calcula
+            // La aurora la avanza la tarjeta en CADA cuadro (AuroraFinaGpu.cs); el latido solo la lleva si la tarjeta
+            // lleva un rato sin pedir cuadros, para que la presencia y la respiracion sigan su curso.
+            if (!AuroraFinaViva())
+            {
+                if (videoOn || !EspectroActivo) for (int b = 0; b < SpecBands; b++) specNow[b] = 0f;
+                AvanzaAurora();   // el fondo lo dibuja el panel GPU; por CPU ni se calcula
+            }
 #endif
             // Cada banda detecta su propio golpe contra su propio piso movil (ataque instantaneo, caida rapida). Asi
             // el bombo (graves) y los platillos/voz (agudos) laten por separado y se SIENTE la separacion de beats.

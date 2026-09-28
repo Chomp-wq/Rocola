@@ -489,6 +489,12 @@ namespace Rocola
             // visualizador, no un ecualizador: basta que "se sienta" la separacion. El estado persiste entre bloques.
             const float A1 = 0.012f, A2 = 0.13f;
             float lp1 = fLp1, lp2 = fLp2;
+#if ROCOLA_GPU
+            // La aurora fina (AuroraFinaGpu.cs): el mismo espectro, apuntado ademas cada 1/60 s.
+            double[] acFino = null; int nFino = 0, largoFino = 1;
+            double ahoraFino = 0.0;
+            if (espectro) { acFino = AuroraFinaEmpieza(rate, out nFino, out largoFino); ahoraFino = AuroraMs(); }
+#endif
             for (int c = 0; c < chunks; c++)              // el RMS se calcula FUERA del lock (no retiene a la UI)
             {
                 int start = offset + c * len;
@@ -526,9 +532,16 @@ namespace Rocola
                         }
                         float bnd = x - ant; ant = x;     // lo que este peldano deja pasar menos lo del anterior
                         sSum[k] += bnd * bnd;
+#if ROCOLA_GPU
+                        acFino[k] += bnd * bnd;
+#endif
                     }
                     float top = m - ant;                 // lo que queda por encima del ultimo corte: el aire
                     sSum[7] += top * top;
+#if ROCOLA_GPU
+                    acFino[7] += top * top;
+                    if (++nFino >= largoFino) { AuroraFinaCierra(nFino, i + 1 - offset, samplesPerSec); nFino = 0; }
+#endif
                     nEsp++;
                 }
                 int n = Math.Max(1, end - start), ne = Math.Max(1, nEsp);
@@ -610,6 +623,9 @@ namespace Rocola
                     int atMs = now + (int)((long)(c * len) * 1000 / Math.Max(1, samplesPerSec));   // desfase del trozo dentro del bloque
                     EnqueueLevel(atMs, tLo[c], tMid[c], tHi[c], espectro ? tEsp : null, c * SpecBands);
                 }
+#if ROCOLA_GPU
+                if (espectro) AuroraFinaEncola(ahoraFino, nFino);
+#endif
             }
         }
 
@@ -853,7 +869,7 @@ namespace Rocola
                 AplicaEfectosGpu();           // y las perillas de los efectos (Ctrl+F3 -> Imagen y rendimiento)
                 gpuPanel.GetPulse = delegate { return audioLevel; };
                 gpuPanel.GetStarMusic = delegate { return new StarMusic { Bass=levLo, Mid=levMid, High=levHi }; };
-                gpuPanel.GetAurora = delegate { return BuildAuroraState(); };   // aurora del horizonte (espectro)
+                gpuPanel.GetAurora = delegate { return AuroraDelCuadro(); };   // aurora del horizonte (espectro), avanzada a este cuadro
                 gpuPanel.GetToast = delegate { return BuildToastState(); };     // aviso flotante (moneda, cancion agregada...)
                 gpuPanel.GetTrans = delegate { return BuildTransState(); };   // zoom al entrar/salir de un disco
                 gpuPanel.GetWin = delegate { return BuildWinState(); };        // ventana del buscador abriendo/cerrando
