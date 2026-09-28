@@ -1435,7 +1435,7 @@ namespace Rocola
             // al meterla, y unas lineas mas abajo PlayNext puede sacar la primera y correrlo todo.
             turnoPuesto = queue.Count;
             double[] antes = new double[queue.Count - 1];
-            for (int i = 0; i < queue.Count - 1; i++) antes[i] = SegundosDe(queue[i].PathKey());
+            for (int i = 0; i < queue.Count - 1; i++) antes[i] = SegundosQueSuenan(queue[i].PathKey());   // sin los silencios que se saltan
             turnoSegs = EsperaSegundos(antes, RestanDeLaQueSuena());
             VuelaALaCola(it.Disc);   // se VE: la portada sale de la pared y aterriza en la pastilla de la cola
 #if ROCOLA_GPU

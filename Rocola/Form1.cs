@@ -1007,6 +1007,8 @@ namespace Rocola
             if (nowPlaying.IsVideo) return -1;
             double tot = SegundosDe(nowPlaying.PathKey());
             if (tot <= 0) return -1;
+            double sin = QuedaSinSilencios(reader, tot);   // si se saltan silencios, lo que de verdad le queda por sonar
+            if (sin >= 0) return sin;
             double va = 0; try { if (reader != null) va = reader.CurrentTime.TotalSeconds; } catch { }
             double q = tot - va;
             return (q > 0) ? q : 0;

@@ -85,6 +85,16 @@ namespace Rocola
             }
             return algo ? p : null;
         }
+        // Cuantos segundos se saltan de una cancion con este mapa (la misma cuenta que al sonar).
+        internal static double SegundosSaltados(MapaSilencios m, double fundidoSeg)
+        {
+            PlanSilencios p = De(m, 1000, fundidoSeg);
+            if (p == null) return 0.0;
+            double s = p.Inicio / 1000.0;
+            if (p.Fin >= 0) s += Math.Max(0.0, m.Dura - p.Fin / 1000.0);
+            if (p.HuecoDesde >= 0) s += (p.HuecoHasta - p.HuecoDesde) / 1000.0;
+            return s;
+        }
     }
 
     // EL RECORTE, contando en muestras (de todos los canales), como RecorteRelleno: un origen que entrega cuadros
@@ -186,6 +196,27 @@ namespace Rocola
             if (!s.ConSilencios) return false;
             m = s.Silencios;
             return true;
+        }
+
+        // LO QUE DE VERDAD SUENA UNA CANCION (segundos; 0 = no se sabe), para la espera de la cola: su duracion menos
+        // los silencios largos que se saltan, si el interruptor esta encendido y la cancion ya esta medida. Sin esto,
+        // "en ~7 min" contaba tambien los 20 s mudos del final de cada cancion de la cola.
+        private float SegundosQueSuenan(string path)
+        {
+            float d = SegundosDe(path);
+            if (d <= 0f || !saltaSilencios) return d;
+            MapaSilencios m;
+            if (!MapaDe(path, out m)) return d;
+            double r = d - PlanSilencios.SegundosSaltados(m, crossfadeSec);
+            return (r > 1.0) ? (float)r : d;
+        }
+        // Lo que le queda a la que suena si va envuelta: desde donde va, sin lo que aun falte por saltar (-1: no va).
+        private static double QuedaSinSilencios(IAudioSource r, double totalSeg)
+        {
+            FuenteSinSilencios s = r as FuenteSinSilencios;
+            if (s == null || !(totalSeg > 0)) return -1;
+            int hz = Math.Max(1, s.WaveFormat.SampleRate);
+            return s.Salen((long)(totalSeg * hz)) / (double)hz;
         }
 
         // Envuelve la cancion si el interruptor esta encendido y hay algo que saltar; si no, la deja tal cual.

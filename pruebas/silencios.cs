@@ -304,6 +304,46 @@ class Silencios
         }
         finally { try { Directory.Delete(dir, true); } catch { } }
     }
+    static void LaEspera()
+    {
+        Console.WriteLine("\n  7) LA ESPERA DE LA COLA\n");
+        string dir = Path.Combine(Path.GetTempPath(), "rocola_silencios_eta_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            int fs = 44100;
+            float[] x = Cancion(fs, 2, new double[] { 3, 10, 12, 5, 4 }, false);
+            string ruta = Path.Combine(dir, "oculta.wav");
+            using (WaveFileWriter w = new WaveFileWriter(ruta, WaveFormat.CreateIeeeFloatWaveFormat(fs, 2))) w.WriteSamples(x, 0, x.Length);
+            object f = Codigo.FormSinEncender(TF);
+            object[] a = { ruta, null };
+            Call(f, "MideIntegrada", a);
+            IDictionary tab = (IDictionary)Activator.CreateInstance(typeof(Dictionary<,>).MakeGenericType(typeof(string), TS), StringComparer.OrdinalIgnoreCase);
+            tab[ruta] = a[1]; Set(f, "integCache", tab); Set(f, "crossfadeSec", 0.5f);
+            IDictionary dur = (IDictionary)Get(f, "durCache"); dur[ruta] = 34f;
+            Set(f, "saltaSilencios", true);
+            float s1 = (float)Call(f, "SegundosQueSuenan", ruta);
+            Set(f, "saltaSilencios", false);
+            float s0 = (float)Call(f, "SegundosQueSuenan", ruta);
+            Check(Math.Abs(s1 - 16.6) < 0.2 && s0 == 34f, "en la cola, la cancion cuenta " + F(s1, "0.0") + " s con el interruptor encendido (lo que suena) y 34 apagado");
+            // La que suena: lo que de verdad le queda, sin el hueco que aun falta saltar.
+            Set(f, "saltaSilencios", true);
+            object src = Call(f, "OpenAudio", ruta);
+            MethodInfo rd = src.GetType().GetMethod("Read"); float[] b = new float[44100 * 2];
+            for (int k = 0; k < 5; k++) rd.Invoke(src, new object[] { b, 0, b.Length });   // 5 s de musica: va por los 7,7 s del archivo
+            Type tp = TF.GetField("nowPlaying", T).FieldType; object it = System.Runtime.Serialization.FormatterServices.GetUninitializedObject(tp);
+            object tr = Activator.CreateInstance(TF.GetNestedType("Track", T), true); TF.GetNestedType("Track", T).GetField("Path", T).SetValue(tr, ruta);
+            tp.GetField("Song", T).SetValue(it, tr);
+            Set(f, "nowPlaying", it); Set(f, "reader", src);
+            double queda = (double)Call(f, "RestanDeLaQueSuena");
+            ((IDisposable)src).Dispose();
+            Check(Math.Abs(queda - 11.6) < 0.2, "a la que suena le quedan " + F(queda, "0.0") + " s de verdad (sin el hueco ni el final mudo; contando el archivo serian 26,3)");
+            Check(Codigo.Llama(TF.GetMethod("AddItem", T), "SegundosQueSuenan") && Codigo.Llama(TF.GetMethod("RestanDeLaQueSuena", T), "QuedaSinSilencios")
+                  && (TF.GetMethod("ActualizaEsperas", T) == null || Codigo.Llama(TF.GetMethod("ActualizaEsperas", T), "SegundosQueSuenan")),
+                  "el aviso de turno, los minutos de la lista y lo que le queda a la que suena cuentan lo que de verdad suena");
+        }
+        finally { try { Directory.Delete(dir, true); } catch { } }
+    }
     static List<float> Lee(object src)
     {
         MethodInfo r = src.GetType().GetMethod("Read"); float[] b = new float[8192]; List<float> l = new List<float>();
@@ -354,6 +394,7 @@ class Silencios
         try { ElRecorte(); } catch (Exception e) { Check(false, "el recorte: " + e); }
         try { DePuntaAPunta(); } catch (Exception e) { Check(false, "de punta a punta: " + e); }
         try { ElInterruptor(); } catch (Exception e) { Check(false, "el interruptor: " + e); }
+        try { LaEspera(); } catch (Exception e) { Check(false, "la espera: " + e); }
         Console.WriteLine(fallos == 0 ? "\n  todo bien (" + oks + " comprobaciones)" : "\n  FALLOS: " + fallos);
         return fallos == 0 ? 0 : 1;
     }
