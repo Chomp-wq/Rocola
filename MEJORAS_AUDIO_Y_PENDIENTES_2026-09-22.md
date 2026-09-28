@@ -1553,6 +1553,49 @@ una vez por sesión y lo que apunta, el recorte de un disco continuo partido en 
 allí. Mirar la línea `[Sin huecos]` de rocola_error.txt. Qué mirar en el bar: un disco en vivo, de una pista a la
 siguiente, debería seguir sin corte.
 
+### 1.28 Modest: MP3 en coma flotante con NLayer en las canciones que llegan al máximo (28 de septiembre, solo Modest)
+
+Qué pasaba: en Modest los MP3 los descomprime el ACM de Windows, que da enteros de 16 bits. Un MP3 de un máster fuerte
+trae picos por encima del máximo digital (hasta +3,5 dB, medido con LAME), y el entero los corta en seco antes de que
+la rocola pueda bajar el volumen. En HD eso ya lo resuelve el decodificador de Windows usado como MFT (1.22); en XP no
+existe.
+
+Qué hace ahora: lo mismo que HD, con NLayer (packages/NLayer.1.12.0, un descompresor de MP3 escrito en C#, licencia MIT;
+el mismo que usa la rama de Linux), y con el mismo cuidado:
+- Se **compara con el de siempre** una vez por sesión y por formato, con la primera canción que lo necesita: la misma
+  cuenta de muestras y la misma señal (a menos de −50 dB), salvo lo que el de siempre recortó. Si no, esa sesión sigue
+  con el de siempre.
+- Si falla a media canción, sigue el de siempre desde ese cuadro; con tres fallos en la sesión ya no se usa.
+- **Sin NLayer.dll** junto a Rocola.exe, se apunta y todo sigue como antes. Al desplegar hay que copiar `NLayer.dll`
+  junto a `NAudio.dll`.
+
+Y dos frenos, porque en XP el sonido se descomprime en el hilo de la pantalla y el equipo es modesto:
+- **Solo en las canciones que lo necesitan:** las que llegan al máximo digital (su pico medido, 1.25, es de −0,05 dBFS o
+  más). Las demás no tienen nada que recortar: siguen con el de siempre, bit a bit, sin gastar nada.
+- **Solo si el equipo lo aguanta:** al comparar se cronometra NLayer (100 cuadros, ~2,6 s de música). Si gasta más del
+  3 % de un núcleo, no se usa en esa sesión. El de siempre gasta alrededor del 1 %.
+
+Medido aquí (Mono, procesador de servidor actual): NLayer gasta el 2,0-2,2 % de un núcleo en un MP3 de 192 kbit/s
+estéreo. En un procesador de la época de XP puede gastar varias veces más: entonces el freno lo deja fuera y la rocola
+lo apunta. Con NLayer de verdad y el de siempre imitado (NLayer recortado a 16 bits): se aparta −90 dB salvo lo
+recortado, y los picos de `flotante_overs.mp3` llegan a +2,6 dBFS en vez de quedarse en 0.
+
+Qué dice la rocola: en rocola_error.txt, una línea `MP3 en coma flotante (44100 Hz, 2 canales), comprobado con
+<canción>: ...`, con lo que decidió, por qué y lo que gasta.
+
+Pruebas automáticas: `pruebas/flotantexp.cs` (21 comprobaciones): NLayer cuadro a cuadro igual que NLayer leyendo el
+archivo entero, bit a bit; que deja pasar lo que supera el máximo; la comparación (y que rechaza uno desplazado un
+cuadro); el freno del gasto; los frenos de cuándo se usa (sin ruta, sin saber qué canciones, una que no llega, sin
+NLayer.dll) y que entonces el lector se arma con el mismo descompresor de siempre; con el lector de NAudio de verdad (la
+misma duración, los picos por encima de 1,0, un salto a los 3 s); qué canciones lo necesitan y que esté conectado.
+
+**NO PROBADO EN XP.** Qué gasta NLayer en el equipo del bar y qué decide allí lo dice la línea de rocola_error.txt.
+
+**Un ajuste de Windows XP, sin código:** si la tarjeta de sonido trabaja a 48 kHz, XP convierte los 44,1 kHz de la
+música, y de fábrica no lo hace con la mejor calidad. En **Panel de control → Dispositivos de sonido y audio → Audio →
+Reproducción de sonido: Opciones avanzadas → Rendimiento → Calidad de conversión de la frecuencia de muestreo**, ponerla
+en la más alta (**Óptima**). Gasta un poco más de procesador; si la música se entrecorta, dejarla en la de en medio.
+
 ## 2. Comprobaciones y cómo repetirlas
 
 En cada repositorio, con sus herramientas de compilación .NET, Python con NumPy y FFmpeg:

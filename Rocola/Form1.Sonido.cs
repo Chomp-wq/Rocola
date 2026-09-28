@@ -339,8 +339,14 @@ namespace Rocola
         private static Mp3FileReader AbreMp3(string ruta)
         {
             NAudio.Wave.IMp3FrameDecompressor hecho = null;
+            Func<NAudio.Wave.WaveFormat, NAudio.Wave.IMp3FrameDecompressor> otroAcm = delegate(NAudio.Wave.WaveFormat f)
+            { return Mp3FileReader.CreateAcmFrameDecompressor(f); };
             Mp3FileReader.FrameDecompressorBuilder armador = delegate(NAudio.Wave.WaveFormat wf)
-            { hecho = Mp3FileReader.CreateAcmFrameDecompressor(wf); return hecho; };
+            {
+                hecho = Mp3FileReader.CreateAcmFrameDecompressor(wf);
+                hecho = DecodificacionFlotante.Envuelve(wf, hecho, ruta, otroAcm);   // coma flotante con NLayer si la cancion llega al maximo (FlotanteNLayer.cs)
+                return hecho;
+            };
             try { return new Mp3FileReader(ruta, armador); }
             catch { if (hecho != null) { try { hecho.Dispose(); } catch { } } throw; }
         }

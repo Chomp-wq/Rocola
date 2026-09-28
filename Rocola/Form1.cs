@@ -735,6 +735,7 @@ namespace Rocola
         public Form1()
         {
             this.DoubleBuffered = true;
+            DecodificacionFlotante.LaNecesita = LlegaAlMaximo;   // que MP3 se descomprimen en coma flotante (FlotanteNLayer.cs)
             formStars.Density = 1f;      // MISMA densidad que albumView: el borde entre secciones deja de notarse
             formStars.QuietBands = true;   // y ademas evitar acumularlas en el abecedario (arriba) y la barra de estado (abajo)
             try { if (timeBeginPeriod(1) == 0) timerResRaised = true; } catch { }   // reloj a 1ms -> animacion pareja

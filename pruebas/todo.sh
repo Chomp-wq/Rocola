@@ -19,6 +19,8 @@
 cd "$(dirname "$0")" || exit 1
 RAIZ="$(cd .. && pwd)"
 NAUDIO="$RAIZ/packages/NAudio.1.9.0/lib/net35/NAudio.dll"
+# NLayer: descomprime en coma flotante los MP3 que llegan al maximo digital (FlotanteNLayer.cs). Solo en esta rama.
+NLAYER="$RAIZ/packages/NLayer.1.12.0/lib/net35/NLayer.dll"
 # Los tres de abajo son NUEVOS y van dentro de #if ROCOLA_GPU, asi que en el perfil sin tarjeta grafica
 # no compilan nada. Estan aqui porque el .csproj los incluye: si faltaran en esta lista, la tanda estaria
 # probando un programa SIN el panel de reposo, sin la vineta y sin las nebulosas naturales, mientras que en
@@ -27,7 +29,7 @@ FUENTES="../Rocola/Form1.cs ../Rocola/Form1.Ajustes.cs ../Rocola/Form1.Bibliotec
 FUENTES="$FUENTES $RAIZ/Rocola/EstrellaGpu.cs $RAIZ/Rocola/Estrella3dGpu.cs $RAIZ/Rocola/RelojPantallaGpu.cs $RAIZ/Rocola/PantallaVivaGpu.cs $RAIZ/Rocola/DiscoVivoGpu.cs $RAIZ/Rocola/SuenaVivoGpu.cs $RAIZ/Rocola/AtraccionGpu.cs $RAIZ/Rocola/EstiloGpu.cs $RAIZ/Rocola/DibujoLigeroGpu.cs $RAIZ/Rocola/BuscadorLigeroGpu.cs $RAIZ/Rocola/BuscadorPortadasGpu.cs $RAIZ/Rocola/PrecargaPaginaGpu.cs $RAIZ/Rocola/PaletaCaratulaGpu.cs $RAIZ/Rocola/CreditosServicio.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/TextoMovilGpu.cs"
 TMP_PRUEBAS="${TMPDIR:-/tmp}/rocola_pruebas_$$"
-FUENTES="$FUENTES $RAIZ/Rocola/AudioControles.cs $RAIZ/Rocola/Sonoridad.cs $RAIZ/Rocola/RellenoMp3.cs $RAIZ/Rocola/PicoReal.cs $RAIZ/Rocola/Realce.cs"
+FUENTES="$FUENTES $RAIZ/Rocola/AudioControles.cs $RAIZ/Rocola/Sonoridad.cs $RAIZ/Rocola/RellenoMp3.cs $RAIZ/Rocola/FlotanteNLayer.cs $RAIZ/Rocola/PicoReal.cs $RAIZ/Rocola/Realce.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/ModoNoche.cs $RAIZ/Rocola/GraveMono.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/SinPausa.cs $RAIZ/Rocola/Form1.SinPausa.cs $RAIZ/Rocola/SalidaSonido.cs"
 if ! mkdir -p "$TMP_PRUEBAS"; then
@@ -68,6 +70,9 @@ CPU="$CPU nivelpicos"
 CPU="$CPU soltar"
 # 'relleno': los MP3 sin huecos entre pistas (la etiqueta LAME, la medida del descompresor con el clic y el recorte).
 CPU="$CPU relleno"
+# 'flotantexp': los MP3 en coma flotante con NLayer (solo esta rama): el descompresor, la comparacion con el de siempre,
+# los dos frenos (solo las canciones que llegan al maximo y solo si el equipo lo aguanta) y que este conectado.
+CPU="$CPU flotantexp"
 GPU="$GPU espacioprecarga estelaestelar estrellaflujo estrella3d pantallaviva"
 # 'pantallaviva' sale en las dos: sin tarjeta grafica solo existe la pestaña de ajustes (se comprueba que se guarda y
 # que no hay nada mas); con ella, todo lo de la tanda 1 de la pantalla (PantallaVivaGpu.cs).
@@ -146,11 +151,11 @@ done
 
 echo "  compilando la rocola..."
 if ! mcs -sdk:$SDK -langversion:5 -warn:4 -warnaserror+ -target:winexe -out:rocola_cpu.exe \
-     -r:System.Windows.Forms.dll -r:System.Drawing.dll -r:"$NAUDIO" $FUENTES > "$C_ROCOLA" 2>&1; then
+     -r:System.Windows.Forms.dll -r:System.Drawing.dll -r:"$NAUDIO" -r:"$NLAYER" $FUENTES > "$C_ROCOLA" 2>&1; then
   echo "  LA ROCOLA NO COMPILA SIN AVISOS:"; tail -12 "$C_ROCOLA"; exit 1
 fi
 if ! mcs -sdk:$SDK -langversion:5 -warn:4 -warnaserror+ -target:winexe -out:rocola_gpu.exe -d:ROCOLA_GPU \
-     -r:System.Windows.Forms.dll -r:System.Drawing.dll -r:"$NAUDIO" $FUENTES > "$C_GPU" 2>&1; then
+     -r:System.Windows.Forms.dll -r:System.Drawing.dll -r:"$NAUDIO" -r:"$NLAYER" $FUENTES > "$C_GPU" 2>&1; then
   echo "  EL PERFIL CON TARJETA GRAFICA NO COMPILA SIN AVISOS:"; tail -12 "$C_GPU"; exit 1
 fi
 # --- LOS AVISOS SE CUENTAN, Y DE LOS DOS PERFILES ---
@@ -222,6 +227,11 @@ corre() {
 # (No se guarda en el repo: es el mismo archivo que ya vive en packages/.)
 if ! cp -f "$NAUDIO" ./NAudio.dll; then
   echo "  No se pudo copiar NAudio.dll junto a las baterias"
+  exit 1
+fi
+# Y NLayer, igual (la rocola de esta rama lo carga al descomprimir en coma flotante).
+if ! cp -f "$NLAYER" ./NLayer.dll; then
+  echo "  No se pudo copiar NLayer.dll junto a las baterias"
   exit 1
 fi
 
