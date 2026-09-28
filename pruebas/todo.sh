@@ -94,6 +94,10 @@ CPU="$CPU diario"
 # 'enmemoria': la cancion que suena y la siguiente, en memoria (CancionEnMemoria.cs). Lo mismo desde la memoria que desde
 # el archivo (tambien saltando), el cargador (tope, firma, una sola vez), sin disco mientras suena y el enganche.
 CPU="$CPU enmemoria"
+# 'nofinitos': lo que no es un numero (NaN o infinito) no entra en las medidas ni en las tablas. Un WAV con muestras rotas
+# se mide igual que con esas muestras en silencio; PublicaMedida, CierraHuella y CierraSonoridad no guardan NaN; y al
+# leer las tablas (arranque y respaldo) una fila con NaN no entra, asi que la media del EQ de la biblioteca sale finita.
+CPU="$CPU nofinitos"
 # 'franjareloj' solo con tarjeta grafica: el reloj de la cancion repinta y sube solo su recuadro de la franja de abajo
 # (FranjaLigeraGpu.cs). Identica a rehacerla entera, pixel a pixel; las cintas no se tocan; lo demas, entera; y la tarjeta
 # imitada recibe solo el trozo.
