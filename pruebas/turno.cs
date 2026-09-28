@@ -165,7 +165,9 @@ class Turno
         if (mete != null)
         {
             Check(Codigo.Llama(mete, "EsperaSegundos"), "y la cuenta se hace ALLI, con la cola tal como quedo");
-            Check(Codigo.Llama(mete, "SegundosDe"), "sumando lo que dura cada una de las que van por delante");
+            // Con "saltar silencios" cuenta lo que de verdad suena (SegundosQueSuenan, que parte de SegundosDe).
+            Check(Codigo.Llama(mete, "SegundosDe") || (Codigo.Llama(mete, "SegundosQueSuenan") && Codigo.Llama(Met("SegundosQueSuenan"), "SegundosDe")),
+                  "sumando lo que dura cada una de las que van por delante");
         }
 
         Console.WriteLine("\n  " + (fallos == 0 ? "TODO BIEN" : fallos + " FALLO(S)"));

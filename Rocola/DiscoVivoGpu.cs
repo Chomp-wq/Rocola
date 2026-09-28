@@ -137,7 +137,7 @@ namespace Rocola
                 nuevo[i] = MinutosEspera(s);
                 if (s >= 0)
                 {
-                    double d = (queue[i] != null) ? SegundosDe(queue[i].PathKey()) : 0;
+                    double d = (queue[i] != null) ? SegundosQueSuenan(queue[i].PathKey()) : 0;   // sin los silencios que se saltan
                     s = (d > 0) ? s + d : -1;   // de una que no se sabe en adelante, ninguna se sabe
                 }
             }

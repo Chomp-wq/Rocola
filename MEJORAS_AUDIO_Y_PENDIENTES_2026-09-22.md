@@ -1638,6 +1638,9 @@ Qué hace ahora (`Rocola/SinSilencios.cs`):
    prepara la siguiente cuando "le quedan 12 s" y la barra de progreso se llena con eso; contando con el final del
    archivo, con el silencio final cortado la siguiente llegaba tarde y volvía el hueco. Y (HD) con DSEE ULTRA suena la
    versión de Apollo, que es otro archivo alineado con la original: se usa la medida de la original.
+7. **La espera de la cola** ("Tu canción es la 3ª – en ~7 min", los minutos de la lista y del panel grande) cuenta lo
+   que de verdad suena: la duración de cada canción de la cola menos los silencios que se le saltan, y a la que suena
+   lo que le queda desde donde va sin el hueco que aún falte. Con el interruptor apagado, como antes.
 
 Pruebas (`pruebas/silencios.cs`, 37 comprobaciones, con la rocola de verdad): el mapa de sonido de canciones
 sintéticas (3 s mudos, 10 de música, 60 mudos, 5 de música, 4 mudos → 3,0 / 78,0 / hueco 13,0–73,0), mono y estéreo, el
