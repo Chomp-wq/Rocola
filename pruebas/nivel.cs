@@ -4,8 +4,9 @@ using System.Drawing;
 using System.Reflection;
 using System.Runtime.Serialization;
 
-// Nivelado de volumen: las canciones BAJITAS se suben hacia el objetivo, las que ya suenan fuerte no se
-// bajan nunca, y cada etapa tiene su propio tope. Se acaba de subir el tope de las bajitas.
+// Nivelado de volumen: las canciones BAJITAS se suben hacia el objetivo, cada etapa tiene su propio tope, y desde
+// el 28/09 las muy fuertes se bajan un poco (la mitad de lo que pasen de 2 dB sobre el objetivo, como mucho 4 dB;
+// lo de los picos se prueba en nivelpicos.cs).
 class Nivel
 {
     static Type TF; static object F; static MethodInfo GAIN, TIERCAP;
@@ -65,14 +66,15 @@ class Nivel
         {
             double g = GananciaDb(d);
             Console.WriteLine(string.Format("    cancion a {0,4:0} dB  ->  se le suben {1,5:0.0} dB   (queda en {2,5:0.0} dB)", d, g, d + g));
-            if (g < -0.001) nuncaBaja = false;
+            if (g < -4.001 || (d < -11.7 + 2.0 && g < -0.001)) nuncaBaja = false;
             if (g > prev + 0.001) mono = false;
             prev = g;
         }
-        Check(nuncaBaja, "a ninguna cancion se le BAJA el volumen (solo se sube el piso)");
+        Check(nuncaBaja, "solo se bajan las que pasan del objetivo por mas de 2 dB, y como mucho 4 dB");
         Check(mono, "cuanto mas bajita viene, mas se le sube");
         Check(GananciaDb(-40) > 20.0, "una grabacion muy floja ya recibe mas de 20 dB (antes se quedaba clavada en 20)");
-        Check(GananciaDb(-4) < 0.001, "una que ya suena mas fuerte que el objetivo se queda como esta");
+        Check(Math.Abs(GananciaDb(-4) + (-4 + 11.7 - 2) * 0.5) < 0.05, "una que suena 7,7 dB por encima del objetivo baja la mitad de lo que pasa de 2 dB (2,85 dB)");
+        Check(Math.Abs(GananciaDb(-10.5)) < 0.001, "una apenas por encima del objetivo se queda como esta");
 
         // fuerza 0 y apagado: no se toca nada
         SetFld("normStrength", 0f);

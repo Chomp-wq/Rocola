@@ -272,13 +272,14 @@ namespace Rocola
             // La medida de la cancion ENTERA (BS.1770) si ya esta; si no, la estimacion por tramos o la
             // aprendida oyendola. Misma escala y mismos topes de abajo (ver SonoridadParaNivelar).
             if (!SonoridadParaNivelar(path, out rms)) return 1f;   // aun no medida: va a su volumen original y se aprende en esta pasada
-            // "Subir el piso": si la cancion suena mas BAJITO que el objetivo, se SUBE (segun la fuerza). Si ya suena
-            // igual o mas FUERTE que el objetivo, se deja igual (nunca se baja). El tope de subida es el de SU ETAPA.
-            float g = (float)Math.Pow(normTarget / rms, normStrength);
+            // "Subir el piso": si la cancion suena mas BAJITO que el objetivo, se SUBE (segun la fuerza), con el tope
+            // de SU ETAPA y sin pasar de lo que aguantan sus picos. Si suena bastante mas FUERTE, se baja un poco. La
+            // cuenta esta en GananciaNivelado (Sonoridad.cs).
             float cap = (float)Math.Pow(10.0, TierCapDb(rms) / 20.0);
             if (cap > NormMaxBoost) cap = NormMaxBoost;   // NormMaxBoost sigue siendo el techo absoluto de seguridad
-            if (g < 1f) g = 1f; else if (g > cap) g = cap;
-            return g;
+            float pico, p99;
+            bool hayPicos = PicosParaNivelar(path, out pico, out p99);
+            return GananciaNivelado(normTarget, rms, normStrength, cap, hayPicos, pico, p99);
         }
 
         // Cierra la medida de la cancion que acaba de sonar: calcula su RMS integrado y lo guarda (si se oyo lo

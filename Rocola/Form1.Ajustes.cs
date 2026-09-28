@@ -920,7 +920,7 @@ namespace Rocola
                         val[0].Text = bar[0].Value + "%";
                         des[0].Text = "Que tan fuerte queda el conjunto.\nMas alto = todas las canciones suenan mas fuerte.";
                         val[1].Text = bar[1].Value + "%";
-                        des[1].Text = "Cuanto se suben las canciones bajitas.\nLas que ya suenan fuerte NUNCA se bajan.";
+                        des[1].Text = "Cuanto se suben las canciones bajitas.\nLas muy fuertes se bajan un poco (4 dB como mucho).";
                         val[2].Text = "+" + bar[2].Value + " dB";
                         des[2].Text = "De mas para TODAS, ademas del nivelado.\nPara cuando el local se queda corto de volumen.";
                         // Los videos no pasan por la cadena de sonido: los pone el reproductor de Windows, que solo

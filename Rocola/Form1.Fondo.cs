@@ -193,7 +193,8 @@ namespace Rocola
         // cuadros, que son 20 s solo a 44,1 kHz (9,2 s a 96 kHz y 40 s a 22,05 kHz).
         private const double EqMinSec = 20.0;
         // "SUBIR EL PISO": las canciones BAJITAS se SUBEN hacia un volumen objetivo; las que ya suenan FUERTE
-        // NO se bajan (se prioriza subir las flojas, como pidio el operador). Ajustable desde la interfaz (Ctrl+F3).
+        // NO se bajan (se prioriza subir las flojas, como pidio el operador). Desde el 28/09 las muy fuertes si se bajan
+        // un poco, pedido tambien por el operador (ver GananciaNivelado en Sonoridad.cs). Ajustable desde la interfaz (Ctrl+F3).
         //   ganancia = (objetivo / rms) ^ fuerza , recortada a [1 , tope]   (fuerza 0..1; nunca por debajo de 1 = no baja)
         private float normTarget = 0.26f;                                                     // volumen OBJETIVO (RMS lineal) al que se suben las bajitas; mas alto = todo mas fuerte
         private float normStrength = 1.0f;                                                    // FUERZA del nivelado 0..1 (cuanto se acerca al objetivo; 0 = no toca nada)

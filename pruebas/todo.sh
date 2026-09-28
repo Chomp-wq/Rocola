@@ -61,6 +61,11 @@ GPU="textosgpu fondo anim presencia barrido tope calma entrar mover banco pagina
 # existe la funcion ni se prueba.
 SOLO_HD="mudos"
 CPU="$CPU id3selectivo tablasarranque historialarranque audiosuave audioestereo sonoridad picoreal realce transiciones sinpausa salida videoaudio gravemono"
+# 'nivelpicos': el nivelado que mira los picos de cada cancion y baja un poco las muy fuertes (Sonoridad.cs), con el
+# limitador de verdad sobre canciones de prueba.
+CPU="$CPU nivelpicos"
+# 'soltar': el limitador espera 20 ms antes de soltar (el bajo sale limpio), con el limitador de verdad.
+CPU="$CPU soltar"
 GPU="$GPU espacioprecarga estelaestelar estrellaflujo estrella3d pantallaviva"
 # 'pantallaviva' sale en las dos: sin tarjeta grafica solo existe la pestaña de ajustes (se comprueba que se guarda y
 # que no hay nada mas); con ella, todo lo de la tanda 1 de la pantalla (PantallaVivaGpu.cs).

@@ -36,7 +36,11 @@ namespace Rocola
     {
         // Sube cuando cambia algo que altere el resultado. Va escrito en cada medida guardada: una medida de
         // otro algoritmo se distingue sin adivinar.
-        internal const int Algoritmo = 1;
+        //   1: la sonoridad integrada.
+        //   2: la misma sonoridad (la cuenta no cambia) y ADEMAS los picos de la cancion (PicosBloques). Las de 1
+        //      siguen valiendo para nivelar mientras la tanda larga las vuelve a medir; un ejecutable anterior
+        //      guarda las de 2 como ajenas, sin tocarlas.
+        internal const int Algoritmo = 2;
         internal const double PuertaAbsoluta = -70.0;   // LKFS
         internal const double PuertaRelativa = -10.0;   // LU respecto de la media de lo que paso la absoluta
         internal const double Desfase = -0.691;         // la constante de la definicion de LKFS
@@ -80,7 +84,11 @@ namespace Rocola
             r1 = e2[3]; r2 = e2[4];
             estado = new double[canales * 8];
             finSub = tasa / 10;
+            Picos = new PicosBloques(tasaMuestreo, canales);
         }
+
+        // Los picos de la cancion, de paso (no tocan la cuenta de la sonoridad).
+        internal readonly PicosBloques Picos;
 
         internal int Canales { get { return canales; } }
         internal double PesoTotal { get { return pesoTotal; } }
@@ -124,6 +132,7 @@ namespace Rocola
         internal void Procesa(float[] datos, int desde, int cuantos)
         {
             int i = desde, fin = desde + cuantos;
+            Picos.Procesa(datos, desde, cuantos);             // aparte, sin tocar nada de lo de abajo
             if (fase != 0) i = Suelto(datos, i, fin, true);   // primero, el cuadro que quedo partido
             if (canales == 2) i = Estereo(datos, i, fin);
             else if (canales == 1) i = Mono(datos, i, fin);
@@ -275,6 +284,97 @@ namespace Rocola
         }
     }
 
+    // LOS PICOS DE UNA CANCION, para no subirla mas de lo que aguanta.
+    //
+    // El nivelado sube las canciones bajitas. Si la cancion trae golpes fuertes (bateria, metales, una grabacion
+    // con buen rango), al subirla esos golpes quedan por encima del techo y el limitador del final los aplasta
+    // todo el rato: el volumen "respira" con cada golpe. Para saber cuanto se puede subir hace falta saber hasta
+    // donde llegan sus picos, y no basta con el mas alto: un chasquido suelto dejaria toda la cancion sin subir.
+    //
+    // Se mira el pico (el valor absoluto mas alto, de cualquier canal) de cada bloque de 100 ms y se guardan dos
+    // cosas: el PICO de toda la cancion y el que solo supera el 1 % de los bloques con sonido (P99). Los bloques
+    // de -60 dBFS o menos (silencio, colas) no cuentan para el P99. Los picos de cada bloque van a un histograma de
+    // decimas de dB (de -80 a +20 dBFS), asi que la memoria no crece con la cancion; el P99 sale redondeado hacia
+    // ARRIBA a la decima (se pasa de prudente, nunca de atrevido). Es el pico de las MUESTRAS: entre muestras la
+    // onda puede subir algo mas, y de eso ya se ocupa el techo del limitador de pico real (PicoReal.cs).
+    internal sealed class PicosBloques
+    {
+        internal const float DbMin = -80f, DbMax = 20f, Paso = 0.1f;
+        internal const float Sonando = -60f;     // un bloque con el pico por debajo no cuenta para el P99
+        internal const double Fraccion = 0.01;   // el P99: lo supera como mucho el 1 % de los bloques con sonido
+        internal const float Nada = -200f;       // dB de "no hubo nada" (silencio digital)
+        private readonly int porBloque;          // muestras (todas las de todos los canales) de un bloque
+        private int enBloque;
+        private float maxBloque, maxTotal;
+        private readonly int[] hist = new int[(int)((DbMax - DbMin) / Paso) + 1];
+        private int nSonando;
+
+        internal PicosBloques(int tasa, int canales)
+        {
+            porBloque = Math.Max(1, tasa / 10) * Math.Max(1, canales);
+        }
+
+        internal void Procesa(float[] datos, int desde, int cuantos)
+        {
+            int i = desde, fin = desde + cuantos, e = enBloque;
+            float m = maxBloque;
+            while (i < fin)
+            {
+                int hasta = i + (porBloque - e); if (hasta > fin) hasta = fin;
+                e += hasta - i;
+                for (; i < hasta; i++)
+                {
+                    float v = datos[i]; if (v < 0f) v = -v;
+                    if (v > m) m = v;   // un NaN no pasa la comparacion: no cuenta
+                }
+                if (e == porBloque) { CierraBloque(m); m = 0f; e = 0; }
+            }
+            maxBloque = m; enBloque = e;
+        }
+        private void CierraBloque(float m)
+        {
+            if (m > maxTotal) maxTotal = m;
+            int b = Casilla(m);
+            if (b < 0) return;
+            hist[b]++; nSonando++;
+        }
+        // La casilla del histograma de un pico, o -1 si el bloque no cuenta (silencio).
+        private int Casilla(float m)
+        {
+            float db = Db(m);
+            if (db <= Sonando) return -1;
+            int b = (int)((db - DbMin) / Paso);
+            if (b < 0) b = 0; else if (b >= hist.Length) b = hist.Length - 1;
+            return b;
+        }
+        internal static float Db(float lin)
+        {
+            if (!(lin > 1e-10f)) return Nada;
+            float db = (float)(20.0 * Math.Log10(lin));
+            return db > DbMax ? DbMax : db;
+        }
+        // El pico de toda la cancion (con el bloque que quedo a medias al final).
+        internal float PicoDb { get { return Db(Math.Max(maxTotal, maxBloque)); } }
+        // El P99, contando tambien el bloque a medias del final. Sin bloques con sonido, el pico.
+        internal float P99Db
+        {
+            get
+            {
+                int extra = (enBloque > 0) ? Casilla(maxBloque) : -1;
+                int n = nSonando + (extra >= 0 ? 1 : 0);
+                if (n == 0) return PicoDb;
+                int permitidos = (int)Math.Floor(n * Fraccion);   // cuantos bloques pueden quedar por encima
+                int encima = 0;
+                for (int b = hist.Length - 1; b >= 0; b--)
+                {
+                    encima += hist[b] + (b == extra ? 1 : 0);
+                    if (encima > permitidos) return Math.Min(PicoDb, DbMin + (b + 1) * Paso);
+                }
+                return PicoDb;
+            }
+        }
+    }
+
     // DE QUE ALTAVOZ ES CADA CANAL.
     //
     // No se deduce del numero de canales. Un archivo mono o estereo lo dice su propio formato (en WAV sin
@@ -398,8 +498,13 @@ namespace Rocola
         internal readonly float Lkfs;     // -infinito: ningun bloque paso la puerta absoluta (silencio)
         internal readonly float Pesos;    // suma de los pesos de los canales medidos (1 mono, 2 estereo)
         internal readonly int Bloques;    // bloques de 400 ms que se midieron (10 por segundo)
+        internal readonly float PicoDb;   // desde el algoritmo 2: el pico de la cancion y su P99 (PicosBloques),
+        internal readonly float P99Db;    // en dBFS; NaN si la medida es de antes (no se sabe)
         internal SonoridadIntegrada(int algoritmo, float lkfs, float pesos, int bloques)
-        { Algoritmo = algoritmo; Lkfs = lkfs; Pesos = pesos; Bloques = bloques; }
+        { Algoritmo = algoritmo; Lkfs = lkfs; Pesos = pesos; Bloques = bloques; PicoDb = float.NaN; P99Db = float.NaN; }
+        internal SonoridadIntegrada(int algoritmo, float lkfs, float pesos, int bloques, float picoDb, float p99Db)
+        { Algoritmo = algoritmo; Lkfs = lkfs; Pesos = pesos; Bloques = bloques; PicoDb = picoDb; P99Db = p99Db; }
+        internal bool ConPicos { get { return Algoritmo >= 2 && !float.IsNaN(PicoDb) && !float.IsNaN(P99Db); } }
         internal bool Valida { get { return Algoritmo >= 1 && Pesos > 0f && Bloques > 0; } }
         internal bool Muda { get { return float.IsNegativeInfinity(Lkfs); } }
 
@@ -453,11 +558,14 @@ namespace Rocola
             char[] barra = { '|' };
             while ((linea = r.ReadLine()) != null)
             {
-                string[] p = linea.Split(barra, 5);
-                if (p.Length != 5 || p[4].Length == 0) continue;
+                int corte = linea.IndexOf('|');
+                if (corte <= 0) continue;
                 int alg;
-                if (!int.TryParse(p[0], NumberStyles.None, CultureInfo.InvariantCulture, out alg) || alg < 1) continue;
+                if (!int.TryParse(linea.Substring(0, corte), NumberStyles.None, CultureInfo.InvariantCulture, out alg) || alg < 1) continue;
                 if (alg > MedidorBs1770.Algoritmo) { ajenas.Add(linea); continue; }
+                int campos = (alg >= 2) ? 7 : 5;   // desde el 2: alg|lkfs|pesos|bloques|pico|p99|ruta
+                string[] p = linea.Split(barra, campos);
+                if (p.Length != campos || p[campos - 1].Length == 0) continue;
                 float lk, pesos; int bloques;
                 if (p[1] == "muda") lk = float.NegativeInfinity;
                 else if (!float.TryParse(p[1], NumberStyles.Float, CultureInfo.InvariantCulture, out lk)
@@ -465,10 +573,13 @@ namespace Rocola
                 if (!float.TryParse(p[2], NumberStyles.Float, CultureInfo.InvariantCulture, out pesos)
                     || float.IsNaN(pesos) || !(pesos > 0f) || pesos > 64f) continue;
                 if (!int.TryParse(p[3], NumberStyles.None, CultureInfo.InvariantCulture, out bloques) || bloques < 1) continue;
-                string ruta = Pool(p[4]);
+                float pico = float.NaN, p99 = float.NaN;
+                if (alg >= 2 && (!LeePico(p[4], out pico) || !LeePico(p[5], out p99) || p99 > pico)) continue;
+                string ruta = Pool(p[campos - 1]);
                 SonoridadIntegrada antes;
                 if (tabla.TryGetValue(ruta, out antes) && antes.Algoritmo > alg) continue;   // ya hay una de algoritmo mas nuevo
-                tabla[ruta] = new SonoridadIntegrada(alg, lk, pesos, bloques);
+                tabla[ruta] = (alg >= 2) ? new SonoridadIntegrada(alg, lk, pesos, bloques, pico, p99)
+                                         : new SonoridadIntegrada(alg, lk, pesos, bloques);
             }
             return true;
         }
@@ -479,7 +590,18 @@ namespace Rocola
             w.Write(s.Muda ? "muda" : s.Lkfs.ToString("0.###", CultureInfo.InvariantCulture)); w.Write('|');
             w.Write(s.Pesos.ToString("0.###", CultureInfo.InvariantCulture)); w.Write('|');
             w.Write(s.Bloques.ToString(CultureInfo.InvariantCulture)); w.Write('|');
+            if (s.Algoritmo >= 2)
+            {
+                w.Write(s.PicoDb.ToString("0.##", CultureInfo.InvariantCulture)); w.Write('|');
+                w.Write(s.P99Db.ToString("0.##", CultureInfo.InvariantCulture)); w.Write('|');
+            }
             w.Write(ruta); w.Write("\r\n");
+        }
+        // Un pico guardado: dBFS entre "nada" (-200) y +20.
+        private static bool LeePico(string t, out float db)
+        {
+            return float.TryParse(t, NumberStyles.Float, CultureInfo.InvariantCulture, out db)
+                   && !float.IsNaN(db) && db >= PicosBloques.Nada && db <= PicosBloques.DbMax;
         }
 
         // Lee la tabla de un archivo (o de su copia .bak si el bueno falta). Devuelve el estado: 1 si se puede
@@ -601,6 +723,61 @@ namespace Rocola
             return l != null && l.TryGetValue(path, out rms) && rms > 0.0001f;
         }
 
+        // LOS PICOS CON LOS QUE SE NIVELA (lineales): solo los de una medida integrada del algoritmo 2 o posterior.
+        private bool PicosParaNivelar(string path, out float picoLin, out float p99Lin)
+        {
+            picoLin = p99Lin = 0f;
+            Dictionary<string, SonoridadIntegrada> t = integCache;
+            SonoridadIntegrada s;
+            if (path == null || t == null || !t.TryGetValue(path, out s) || !s.Valida || !s.ConPicos) return false;
+            picoLin = DbALin(s.PicoDb); p99Lin = DbALin(s.P99Db);
+            return true;
+        }
+        private static float DbALin(float db) { return (float)Math.Pow(10.0, db / 20.0); }
+
+        // ============================== EL NIVELADO ==============================
+        //
+        // SUBIR SIN APLASTAR. Una cancion bajita se sube hacia el objetivo, pero no tanto que el limitador del
+        // final tenga que quitarle mas de 3 dB en su 1 % de momentos mas fuertes (el P99), ni mas de 6 dB en el
+        // golpe mas fuerte de toda la cancion. Medido con el limitador de la rocola en canciones de prueba con
+        // golpes: sin este tope, una cancion de -18 dBFS con picos a -0,5 se subia 6,6 dB y el limitador llegaba a
+        // quitar 7 dB y trabajaba el 36 % del tiempo; con picos casi al maximo, el 95 % (pruebas/nivelpicos.cs). Las
+        // canciones con buen rango suenan algo mas bajas que antes y enteras; las ya comprimidas, igual que antes.
+        // Sin picos medidos (medida de antes, o solo la estimacion) se sube como siempre.
+        internal const float SubeGrP99Db = 3f, SubeGrPicoDb = 6f;
+        // BAJAR UN POCO LAS MUY FUERTES. Antes nunca se bajaba nada y un disco moderno muy comprimido quedaba varios
+        // dB por encima del resto. Ahora, lo que pase de 2 dB por encima del objetivo se baja a la mitad, y como
+        // mucho 4 dB: a -8 dB con el objetivo de fabrica (-11,7 dB) baja 0,9 dB; a -4 dB, 2,8 dB.
+        internal const float BajaDesdeDb = 2f, BajaFraccion = 0.5f, BajaMaxDb = 4f;
+
+        // Cuanto se puede subir, como mucho, una cancion con esos picos. Nunca menos de 1 (este tope no baja).
+        internal static float TopeSubidaPorPicos(float picoLin, float p99Lin)
+        {
+            float a = TechoPicoReal * DbALin(SubeGrP99Db) / Math.Max(p99Lin, 1e-6f);
+            float b = TechoPicoReal * DbALin(SubeGrPicoDb) / Math.Max(picoLin, 1e-6f);
+            float t = Math.Min(a, b);
+            return (t > 1f) ? t : 1f;
+        }
+
+        // LA GANANCIA DEL NIVELADO, pura (la usa NormGainFor): 'rms' en la escala de siempre, 'tope' el de su etapa.
+        internal static float GananciaNivelado(float objetivo, float rms, float fuerza, float tope,
+                                               bool hayPicos, float picoLin, float p99Lin)
+        {
+            float g = (float)Math.Pow(objetivo / rms, fuerza);
+            if (float.IsNaN(g)) return 1f;   // (una muda da infinito: se queda en su tope, como siempre)
+            if (g >= 1f)
+            {
+                if (hayPicos) tope = Math.Min(tope, TopeSubidaPorPicos(picoLin, p99Lin));
+                if (g > tope) g = tope;
+                return g < 1f ? 1f : g;
+            }
+            double sobra = -20.0 * Math.Log10(g);   // cuanto pasa del objetivo (con la fuerza aplicada)
+            double baja = (sobra - BajaDesdeDb) * BajaFraccion;
+            if (!(baja > 0.0)) return 1f;
+            if (baja > BajaMaxDb) baja = BajaMaxDb;
+            return (float)Math.Pow(10.0, -baja / 20.0);
+        }
+
         // ============================== MEDIR LA CANCION ENTERA ==============================
 
         // Lo que la ultima MeasureFile de ESTE hilo midio de la cancion entera, si la leyo entera (canciones
@@ -627,8 +804,9 @@ namespace Rocola
             if (m.Cuadros + margen < esperados || m.Cuadros > esperados + margen) return false;
             double lk; int usados;
             if (!m.Integrada(out lk, out usados)) return false;   // ni un bloque de 400 ms
+            float pico = m.Picos.PicoDb, p99 = m.Picos.P99Db;
             s = new SonoridadIntegrada(MedidorBs1770.Algoritmo, double.IsNegativeInfinity(lk) ? float.NegativeInfinity : (float)lk,
-                                       (float)m.PesoTotal, m.Bloques);
+                                       (float)m.PesoTotal, m.Bloques, (float)Math.Round(pico, 2), (float)Math.Round(p99, 2));
             return true;
         }
 
