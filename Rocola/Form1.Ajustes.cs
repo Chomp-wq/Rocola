@@ -804,7 +804,7 @@ namespace Rocola
                     bar[6].Value = (int)Math.Round(excAmount * 100f);
 
                     Interruptor swSbr = new Interruptor();
-                    swSbr.SetBounds(16, 292, 424, 26); swSbr.ForeColor = cTexto; swSbr.Font = fNom;
+                    swSbr.SetBounds(16, 292, 150, 26); swSbr.ForeColor = cTexto; swSbr.Font = fNom;
                     swSbr.Text = "DSEE"; swSbr.Acento = Color.FromArgb(150, 205, 255);
                     swSbr.Checked = sbrOn && sbrAllowed; swSbr.Enabled = sbrAllowed;
                     Label lSbr = new Label(); lSbr.SetBounds(16, 322, 424, 68); lSbr.BackColor = Color.Transparent;
@@ -822,6 +822,12 @@ namespace Rocola
                               : "EXPERIMENTAL: encendido, ademas recrea esa banda."))
                         : "No disponible en este equipo: " + sbrReason;
                     tCal.Controls.Add(swSbr); tCal.Controls.Add(lSbr);
+                    // SALTAR LOS SILENCIOS LARGOS (SinSilencios.cs). A la derecha del DSEE, en su mismo renglon: la ventana no
+                    // tiene otro sitio (cabe justo en 1024x768). Se mira al abrir cada cancion: vale desde la siguiente.
+                    Interruptor swSil = new Interruptor();
+                    swSil.SetBounds(176, 292, 264, 26); swSil.ForeColor = cTexto; swSil.Font = fNom;
+                    swSil.Text = "Saltar silencios largos"; swSil.Acento = cCal; swSil.Checked = saltaSilencios;
+                    tCal.Controls.Add(swSil);
 
                     // ---------------- TU BIBLIOTECA ----------------
                     Label lCal = new Label(); lCal.SetBounds(16, 40, 896, 20); lCal.BackColor = Color.Transparent;
@@ -1014,6 +1020,7 @@ namespace Rocola
                         sbrOn = swSbr.Checked && sbrAllowed;
                         nocheOn = swNoche.Checked;   // al apagarlo de madrugada, la rampa lo devuelve solo (AvanzaModoNoche)
                         iaHarvestOn = swIa.Checked;
+                        saltaSilencios = swSil.Checked;
                         changed = true;
                         updateLabels();
                         ApplyNormNow();   // se oye el cambio al instante en la cancion que suena
@@ -1022,6 +1029,7 @@ namespace Rocola
                     for (int k = 0; k < bar.Length; k++) { bar[k].Scroll += apply; if (au[k] != null) au[k].CheckedChanged += apply; }
                     swOn.CheckedChanged += apply; swSbr.CheckedChanged += apply; swIa.CheckedChanged += apply;
                     swNoche.CheckedChanged += apply;
+                    swSil.CheckedChanged += apply;
                     bReset.Click += delegate
                     {
                         swOn.Checked = true;
@@ -1031,6 +1039,7 @@ namespace Rocola
                         if (swSbr.Enabled) swSbr.Checked = false;            // el espectral apagado: es experimental
                         swIa.Checked = true;                                 // juntar material para la IA: encendido de fabrica
                         swNoche.Checked = true;                              // y bajar el volumen de madrugada, tambien
+                        swSil.Checked = true;                                // y saltar los silencios largos
                         if (perfilDisco != 0)                                // el tipo de disco, otra vez a medirlo sola
                         { perfilDisco = 0; lock (discoLock) discoLento.Clear(); AplicaPerfilDisco(); pintaDsk(); }
                         apply(bReset, EventArgs.Empty);

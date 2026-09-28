@@ -232,7 +232,7 @@ namespace Rocola
             loudCache = data.Loud; durCache = data.Dur; durFast = data.Fast; eqCache = data.Eq;
             iaDone = data.Ia; deepDone = data.Deep; incompatibleLogged = data.Incompatible;
             if (data.IntegEstado == 0) LoadIntegCache();   // el trabajador no la leyo: se lee aqui
-            else { integCache = data.Integ; integAjenas = data.IntegAjenas; integEstado = data.IntegEstado; }
+            else { lock (integCerrojo) integCache = data.Integ; integAjenas = data.IntegAjenas; integEstado = data.IntegEstado; }
             eqCacheVer = data.EqVersion; eqAvg = data.Average;
             eqAvgSanas = data.Healthy; eqAvgSoloSanas = data.OnlyHealthy;
             RememberEqAverage();
@@ -440,7 +440,8 @@ namespace Rocola
                     else if (s.StartsWith("nivel_fuerza=")) { float v; if (float.TryParse(s.Substring(13).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) normStrength = Clampf(v, 0f, 1f); }
                     else if (s.StartsWith("realce=")) { float v; if (float.TryParse(s.Substring(7).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) excAmount = Clampf(v, 0f, 1f); }   // realce de agudos (exciter, tipo DSEE)
                     else if (s.StartsWith("bajo=")) { float v; if (float.TryParse(s.Substring(5).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) bassAmount = Clampf(v, 0f, 1f); }   // bajo psicoacustico (armonicos del grave)
-                    else if (s.StartsWith("noche=")) nocheOn = s.Substring(6).Trim() != "0";   // modo noche (baja el volumen de madrugada)
+                    else if (s.StartsWith("noche=")) nocheOn = s.Substring(6).Trim() != "0";
+                    else if (s.StartsWith("saltar_silencios=")) saltaSilencios = s.Substring(17).Trim() != "0";   // saltar los silencios largos (SinSilencios.cs)   // modo noche (baja el volumen de madrugada)
                     else if (s.StartsWith("turno=")) turnoOn = s.Substring(6).Trim() != "0";   // el letrero de cuando suena tu cancion
                     else if (s.StartsWith("marca_cola=")) marcaColaOn = s.Substring(11).Trim() != "0";   // el palomito de "ya la pusiste"
                     // Las tres perillas del fondo. Todas pasan por su funcion, que acota: un disparate en el
@@ -558,6 +559,7 @@ namespace Rocola
                 sb.Append("bajo=").Append(bassAmount.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("subir_db=").Append(masterDb.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("noche=").Append(nocheOn ? "1" : "0").Append("\r\n");
+                sb.Append("saltar_silencios=").Append(saltaSilencios ? "1" : "0").Append("\r\n");
                 sb.Append("turno=").Append(turnoOn ? "1" : "0").Append("\r\n");
                 sb.Append("marca_cola=").Append(marcaColaOn ? "1" : "0").Append("\r\n");
                 sb.Append("portada_manda=").Append(Math.Round(portadaManda * 100f)).Append("\r\n");

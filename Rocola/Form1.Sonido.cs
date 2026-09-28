@@ -1045,9 +1045,13 @@ namespace Rocola
                     int hz = source.WaveFormat.SampleRate;
                     float yaSe = SegundosDe(t.Path);
                     tf = (yaSe > 0.01f) ? (long)(yaSe * hz) : (long)(source.TotalTime.TotalSeconds * hz);
-                    FuenteSinRelleno sinRelleno = source as FuenteSinRelleno;
+                    FuenteSinSilencios sinSilencios = source as FuenteSinSilencios;
+                    FuenteSinRelleno sinRelleno = ((sinSilencios != null) ? sinSilencios.Interior : source) as FuenteSinRelleno;
                     if (sinRelleno != null && saltadoSeg <= 0) tf = sinRelleno.CuadrosMusica;   // sin el relleno acaba antes: el fundido tambien
-                    tf -= (long)(saltadoSeg * hz);   // retomada: el fundido cuenta desde donde se retomo
+                    // Sin los silencios largos: lo que queda por sonar desde donde va (el principio mudo ya se salto al
+                    // abrirla, y una retomada ya movio la cuenta), asi el fundido cae en el margen mudo del final.
+                    if (sinSilencios != null) tf = sinSilencios.Salen(tf);
+                    else tf -= (long)(saltadoSeg * hz);   // retomada: el fundido cuenta desde donde se retomo
                 }
                 catch { }
                 if (tf > 0) tf += audioTailDelay;
@@ -1064,7 +1068,7 @@ namespace Rocola
         // sanos y, en el peor caso, hace lo mismo que antes: saltar.
         private IAudioSource OpenAudio(string path)
         {
-            try { return SinRelleno(path, new FileAudioSource(path)); }   // sin el hueco del codificador (RellenoMp3.cs)
+            try { return SinSilencios(path, SinRelleno(path, new FileAudioSource(path))); }   // sin el hueco del codificador (RellenoMp3.cs) ni los silencios largos (SinSilencios.cs)
             catch
             {
                 bool isMp3 = path != null && path.Length > 4 && path.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase);
@@ -1074,7 +1078,7 @@ namespace Rocola
                     try
                     {
                         clean = BuildCleanMp3(path);
-                        if (clean != null) return new TolerantMp3Source(clean);   // reconstruido a una sola frecuencia: ahora SI suena
+                        if (clean != null) return SinSilencios(path, new TolerantMp3Source(clean));   // reconstruido a una sola frecuencia: ahora SI suena
                     }
                     catch { if (clean != null) { try { clean.Dispose(); } catch { } } }   // el tolerante tampoco pudo: cae al throw de abajo
                 }

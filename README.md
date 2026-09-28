@@ -1,5 +1,20 @@
 # Rocola
 
+## Saltar los silencios largos — 28 de septiembre de 2026
+
+- Las canciones con varios segundos mudos al principio, un final callado o una "pista oculta" después de un minuto
+  de nada ya no dejan la rocola en silencio. **2 s o más** al principio o al final se saltan (se deja 0,3 s antes de
+  que suene y 0,5 s después del último sonido); **5 s o más** en medio también (la pista oculta sí suena). Las
+  pausas cortas son de la música y no se tocan. "Silencio" es por debajo de −60 dBFS.
+- Interruptor en **Ctrl+F3 → Sonido → Calidad del sonido, al lado del DSEE**, encendido de fábrica y guardado en
+  `rocola_config.txt` (`saltar_silencios=`). Se nota desde la siguiente canción.
+- Sale de la medida entera de cada canción, que ahora apunta también dónde suena (`rocola_sonoridad.txt`, algoritmo 3):
+  la biblioteca se vuelve a medir sola en reposo y, mientras una canción no esté medida, suena como siempre.
+- Coste al sonar: nada que se note. El principio mudo se descarta al abrir la canción, en segundo plano; el hueco de
+  en medio se salta buscando en el archivo, no descomprimiéndolo.
+
+Las dos ramas. Probado con canciones sintéticas (`pruebas/silencios.cs`); no se ha oído en el bar ni se probó en XP.
+
 ## La aurora se mueve a 60 cuadros por segundo — 28 de septiembre de 2026
 
 - La forma de la aurora (la altura de cada banda del espectro) se recalculaba 24 veces por segundo, con medidas del

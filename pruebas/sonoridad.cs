@@ -463,7 +463,7 @@ class Sonoridad
               "ida y vuelta: LKFS (a la milesima), pesos, bloques, algoritmo y la cancion MUDA; rutas sin distinguir mayusculas");
         Check(texto.Contains("1|-11.482|2|2398|C:\\musica\\a.mp3") && texto.Contains("|muda|"), "el formato escrito es el documentado: algoritmo|LKFS|pesos|bloques|ruta");
         // Un algoritmo POSTERIOR: no se usa, pero se conserva tal cual. Lo roto se salta.
-        string futuro = "3|-9.5|2|100|C:\\musica\\a.mp3";   // el 2 es el de ahora (con los picos)
+        string futuro = "9|-9.5|2|100|C:\\musica\\a.mp3";   // uno de un algoritmo que aun no existe
         t = TablaNueva(); aj = new List<string>();
         ok = Lee(texto + futuro + "\r\nbasura\r\n1|NaN|2|100|x.mp3\r\n1|-10|0|100|y.mp3\r\n1|-10|2|0|z.mp3\r\n1|-10|2|5|\r\n0|-10|2|5|w.mp3\r\n", t, aj);
         a = t["C:\\musica\\a.mp3"];
