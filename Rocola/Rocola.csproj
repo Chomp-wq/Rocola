@@ -103,6 +103,7 @@
     <Compile Include="RellenoMp3.cs" />
     <Compile Include="SinSilencios.cs" />
     <Compile Include="SubirTodo.cs" />
+    <Compile Include="NivelDisco.cs" />
     <Compile Include="PicoReal.cs" />
     <Compile Include="Realce.cs" />
     <Compile Include="ModoNoche.cs" />

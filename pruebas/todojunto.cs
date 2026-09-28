@@ -187,7 +187,7 @@ class TodoJunto
                 // Lo que queda puesto en la cadena es lo que dicen los ajustes.
                 object tap = Get(f, "curTap");
                 float g = (float)Get(tap, "Gain"), m = (float)Get(tap, "Master");
-                float gE = (float)Call(f, "NormGainFor", wav), mE = (float)Call(f, "MasterEfectivo") * (float)Call(f, "FactorNoche");
+                float gE = (float)Call(f, "GananciaDe", track), mE = (float)Call(f, "MasterEfectivo") * (float)Call(f, "FactorNoche");
                 float bajo = (float)Get(Get(f, "curBass"), "Amount"), bajoE = (float)Call(f, "BassAmountNow");
                 float nDb = (float)Get(Get(f, "curNoche"), "Db"), nDbE = (float)Call(f, "NocheCompensaDb");
                 bool dsee = (bool)Get(Get(f, "curSbr"), "Active");

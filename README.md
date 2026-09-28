@@ -1,5 +1,14 @@
 # Rocola
 
+## Nivel por disco y la espera de la cola — 28 de septiembre de 2026
+
+- Cuando suenan seguidas canciones del mismo disco, se nivelan juntas: el disco llega al volumen de siempre y por
+  dentro conserva sus diferencias (la balada sigue más bajita que el tema de antes, como en el disco). Sin racha de
+  disco, todo igual que antes.
+- La espera de la cola ("en ~7 min") cuenta lo que de verdad suena: sin los silencios largos que se saltan.
+
+Las dos ramas. Probado con la cuenta; no se ha oído en el bar ni se probó en XP.
+
 ## "Subir TODO el volumen", parejo y sin aplastar — 28 de septiembre de 2026
 
 - Ese deslizador de Ctrl+F3 sumaba sus dB encima del nivelado sin mirar los picos: con +6 dB el limitador aplastaba

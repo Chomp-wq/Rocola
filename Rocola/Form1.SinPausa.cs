@@ -147,6 +147,7 @@ namespace Rocola
             PlayItem item = b.Item;
             if (queue.Count > 0 && object.ReferenceEquals(queue[0], item)) queue.RemoveAt(0);
             else if (item != null) queue.Remove(item);
+            sonoAntes = nowPlaying;   // lo que sono justo antes (para el nivel por disco, NivelDisco.cs)
             nowPlaying = item;
             RefrescaCola();
             SaveState();   // estado vivo: cambio lo que suena / la cola (para reanudar tras un corte de luz)
@@ -270,7 +271,7 @@ namespace Rocola
         {
             CadenaCancion p = cadenaPreparada;
             if (p == null || p.Cancion == null || p.Tap == null) return;
-            p.Tap.Gain = NormGainFor(p.Cancion.Path);
+            p.Tap.Gain = GananciaDe(p.Cancion);
             p.Tap.Excite = ExcitePara(p);
             p.Tap.Master = MasterEfectivo() * FactorNoche();
             p.Tap.EqDb = EqCorrFor(p.Cancion.Path);

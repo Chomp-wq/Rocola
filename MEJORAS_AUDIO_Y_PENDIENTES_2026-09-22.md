@@ -1628,6 +1628,21 @@ La revisión encontró y arregló dos choques de saltar silencios con el resto (
 techo no se rehacía al cargar la tabla de medidas del arranque. El EQ automático no entra en esta prueba: necesita una
 huella aprendida de la biblioteca (lo prueba `eqauto`).
 
+### 1.31 Nivel por disco: pistas seguidas del mismo disco con la misma ganancia (28 de septiembre, las dos ramas)
+
+El nivelado deja cada canción al volumen objetivo por su cuenta, y cuando suenan seguidas pistas del mismo disco eso
+borra lo que el disco trae a propósito (la balada más bajita, la intro tranquila). Ahora (`Rocola/NivelDisco.cs`), si
+la canción que va a sonar tiene justo antes o justo después otra de su mismo disco, se nivela con la ganancia del disco
+entero: el disco llega al volumen de siempre y por dentro suena como se grabó.
+- El disco es la carpeta de la canción: da igual si se pidió desde la pared, el buscador o "lo más sonado".
+- Su volumen es la media de potencia de sus pistas medidas enteras (pesada por lo que dura cada una); sus picos, los
+  más altos de todas, así que la ganancia del disco no aplasta a ninguna (el mismo tope que el nivelado).
+- Hacen falta 2 pistas medidas, la mitad del disco y la propia canción; si no, canción por canción, como siempre.
+- La canción que ya suena conserva su ganancia aunque después se pida otra de su disco (cambiarla a media canción se
+  oiría); la racha cuenta desde la siguiente. Si se toca algo en Ctrl+F3, se recalcula con la cola de ese momento.
+- Sin interruptor: sin racha de disco no cambia nada.
+Probado en `pruebas/discoparejo.cs` con discos de mentira; no se ha oído en el bar.
+
 ## 2. Comprobaciones y cómo repetirlas
 
 En cada repositorio, con sus herramientas de compilación .NET, Python con NumPy y FFmpeg:

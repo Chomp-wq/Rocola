@@ -1206,7 +1206,7 @@ namespace Rocola
             }
             if (sbrAllowed) { c.Sbr = new SpectralTap(chain, VentanaDsee()); c.Sbr.Active = dsee; chain = c.Sbr; }   // HD: ventana fina; respaldo espectral si ULTRA aun no tiene la version IA
             LevelTap tap = new LevelTap(chain, this);
-            tap.Gain = NormGainFor(t.Path);
+            tap.Gain = GananciaDe(t);   // la del disco si suena en racha con otra de su disco (NivelDisco.cs); si no, la suya
             tap.Excite = ExciteAmountPara(t.Path, dsee);   // realce de agudos: mas a las dañadas, menos a las que ya traen su aire
             tap.Master = MasterEfectivo() * FactorNoche();  // SUBIR TODO (lo mismo a todas, sin pasar del techo de la biblioteca: SubirTodo.cs), y de madrugada mas bajo
             tap.EqDb = EqCorrFor(t.Path);      // EQ automatico: correccion aprendida (null la 1a vez que suena)

@@ -1335,7 +1335,7 @@ namespace Rocola
         private void ApplyNormNow()
         {
             RevisaRespaldoDsee();   // ULTRA puede acabar de encenderse o apagarse: la cancion que suena se entera YA
-            LevelTap t = curTap; if (t != null && nowPlaying != null && nowPlaying.Song != null) { t.Gain = NormGainFor(nowPlaying.Song.Path); t.Excite = ExciteAmountFor(nowPlaying.Song.Path); t.Master = MasterEfectivo() * FactorNoche(); t.EqDb = EqCorrFor(nowPlaying.Song.Path); }
+            LevelTap t = curTap; if (t != null && nowPlaying != null && nowPlaying.Song != null) { t.Gain = GananciaDe(nowPlaying.Song); t.Excite = ExciteAmountFor(nowPlaying.Song.Path); t.Master = MasterEfectivo() * FactorNoche(); t.EqDb = EqCorrFor(nowPlaying.Song.Path); }
             DeepBassProvider bp = curBass; if (bp != null) bp.Amount = BassAmountNow();   // bajo psicoacustico: al instante, ya ajustado a la cancion
             CompensaNoche cn = curNoche; if (cn != null) cn.Db = NocheCompensaDb();   // el modo noche, si se acaba de encender o apagar
             SpectralTap sp = curSbr; if (sp != null) sp.Active = DseeActivo();   // reconstruccion espectral: alterna EN VIVO SIN matar el respaldo de ULTRA
@@ -2538,6 +2538,7 @@ namespace Rocola
                 return;
             }
 
+            sonoAntes = nowPlaying;   // lo que sono justo antes (para el nivel por disco, NivelDisco.cs)
             nowPlaying = queue[0];
             queue.RemoveAt(0); RefrescaCola();   // (nowPlaying ya esta puesto: la marca de "SONANDO" sale en la misma pasada)
             SaveState();   // estado vivo: cambio lo que suena / la cola (para reanudar tras un corte de luz)
