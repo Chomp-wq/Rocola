@@ -10,7 +10,11 @@
 - Hay que volver a medir la biblioteca (lo hace sola en reposo; mientras, se nivela como antes).
 
 Las dos ramas. Probado con señales sintéticas y el limitador de verdad; no se escuchó en el bar ni se probó en XP.
-[Detalles: 1.25 y 1.26](MEJORAS_AUDIO_Y_PENDIENTES_2026-09-22.md#125-subir-sin-aplastar-el-nivelado-mira-los-picos-de-cada-canción-y-baja-un-poco-las-muy-fuertes-28-de-septiembre-las-dos-ramas).
+- Los MP3 de un disco continuo ya no dejan un hueco de ~40 ms entre pista y pista: se lee la etiqueta LAME y se mide
+  en cada equipo cuánto retrasa su descompresor (con un MP3 de prueba que la rocola lleva dentro). Si no se puede
+  medir, suena como antes.
+
+[Detalles: 1.25, 1.26 y 1.27](MEJORAS_AUDIO_Y_PENDIENTES_2026-09-22.md#125-subir-sin-aplastar-el-nivelado-mira-los-picos-de-cada-canción-y-baja-un-poco-las-muy-fuertes-28-de-septiembre-las-dos-ramas).
 
 ## El letrero "+4 créditos" vuelve a salir al meter una moneda — 25 de septiembre de 2026
 

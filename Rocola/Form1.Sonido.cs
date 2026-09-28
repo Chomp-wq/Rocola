@@ -1231,6 +1231,8 @@ namespace Rocola
                     int hz = source.WaveFormat.SampleRate;
                     float yaSe = SegundosDe(t.Path);
                     tf = (yaSe > 0.01f) ? (long)(yaSe * hz) : (long)(source.TotalTime.TotalSeconds * hz);
+                    FuenteSinRelleno sinRelleno = source as FuenteSinRelleno;
+                    if (sinRelleno != null && saltadoSeg <= 0) tf = sinRelleno.CuadrosMusica;   // sin el relleno acaba antes: el fundido tambien
                     tf -= (long)(saltadoSeg * hz);   // retomada: el fundido cuenta desde donde se retomo
                 }
                 catch { }
@@ -1248,7 +1250,7 @@ namespace Rocola
         // sanos y, en el peor caso, hace lo mismo que antes: saltar.
         private IAudioSource OpenAudio(string path)
         {
-            try { return new FileAudioSource(path); }
+            try { return SinRelleno(path, new FileAudioSource(path)); }   // sin el hueco del codificador (RellenoMp3.cs)
             catch
             {
                 bool isMp3 = path != null && path.Length > 4 && path.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase);
