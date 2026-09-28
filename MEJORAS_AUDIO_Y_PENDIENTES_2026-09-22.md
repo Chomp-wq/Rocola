@@ -1591,6 +1591,10 @@ Qué hace ahora (`Rocola/SinSilencios.cs`):
    150 px (antes 424 para cuatro letras) y el nuevo va a su derecha. En HD va en la tarjeta de la biblioteca.
 5. **La tabla la escribe la pantalla y la canción se abre en segundo plano**: quien la cambia o la lee desde otro hilo
    pasa por un cerrojo.
+6. **Con el resto (revisado después, el mismo día).** La canción envuelta dice su final de verdad: el paso sin pausa
+   prepara la siguiente cuando "le quedan 12 s" y la barra de progreso se llena con eso; contando con el final del
+   archivo, con el silencio final cortado la siguiente llegaba tarde y volvía el hueco. Y (HD) con DSEE ULTRA suena la
+   versión de Apollo, que es otro archivo alineado con la original: se usa la medida de la original.
 
 Pruebas (`pruebas/silencios.cs`, 37 comprobaciones, con la rocola de verdad): el mapa de sonido de canciones
 sintéticas (3 s mudos, 10 de música, 60 mudos, 5 de música, 4 mudos → 3,0 / 78,0 / hueco 13,0–73,0), mono y estéreo, el
@@ -1603,6 +1607,23 @@ muestras al llegar al final.
 
 Pendiente: oírlo en el bar; la cuenta de "en ~N min" de la cola sigue usando la duración entera de cada canción (se
 queda algo larga con las que tienen silencios); y en XP real.
+
+### 1.30 Todo el sonido a la vez (28 de septiembre, las dos ramas)
+
+Cada opción tenía su batería; faltaba mirar que no chocaran entre sí. `pruebas/todojunto.cs` pasa una canción de
+prueba por la cadena de verdad (OpenAudio + ArmaCadena) con todo apagado, con todo encendido (nivelado, Subir TODO +6,
+realce, DSEE, grave sintético, grave en mono, des-recorte, modo noche, fundido y saltar silencios) y cambiando una
+opción cada 0,4 s como desde Ctrl+F3 (ApplyNormNow). Resultado en este equipo (señales sintéticas):
+- nada roto (ni NaN ni infinitos) y nada por encima del techo del limitador;
+- sin chasquidos al cambiar en vivo (el salto más grande entre dos muestras, 0,56, no pasa del de todo encendido, 0,71)
+  y sin perder ni repetir una sola muestra;
+- tras cada cambio, la cadena tiene puesto exactamente lo que dicen los ajustes;
+- con el techo de Subir TODO, el limitador pasa de 3 dB el 1,3 % del tiempo (sin techo, el 22,7 %);
+- todo encendido cuesta unos 36–54 ms por segundo de música en esta máquina (4–5 % de un núcleo).
+
+La revisión encontró y arregló dos choques de saltar silencios con el resto (ver 1.29, punto 6) y uno de Subir TODO: el
+techo no se rehacía al cargar la tabla de medidas del arranque. El EQ automático no entra en esta prueba: necesita una
+huella aprendida de la biblioteca (lo prueba `eqauto`).
 
 ## 2. Comprobaciones y cómo repetirlas
 

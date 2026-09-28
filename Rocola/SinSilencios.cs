@@ -124,6 +124,8 @@ namespace Rocola
             try { salta(cuadro); pos = cuadro * ch; return true; }
             catch { return false; }
         }
+        // Donde acaba de verdad (cuadro), o -1 si acaba donde el archivo.
+        internal long FinCuadro { get { return fin >= 0 ? fin / ch : -1; } }
         // Retomar desde fuera (volvio el aparato de sonido): se sigue contando desde ahi.
         internal void Movido(long cuadro) { pos = Math.Max(0, cuadro) * ch; }
         internal long Cuadro { get { return pos / ch; } }
@@ -177,7 +179,9 @@ namespace Rocola
             lock (integCerrojo)
             {
                 System.Collections.Generic.Dictionary<string, SonoridadIntegrada> t = integCache;
-                if (t == null || !t.TryGetValue(path, out s)) return false;
+                // Con DSEE ULTRA suena la version de Apollo (otro archivo, alineado con la original): vale la medida de
+                // la original (RutaOriginalDe, en AperturaAudio.cs).
+                if (t == null || (!t.TryGetValue(path, out s) && !t.TryGetValue(RutaOriginalDe(path), out s))) return false;
             }
             if (!s.ConSilencios) return false;
             m = s.Silencios;
@@ -216,7 +220,20 @@ namespace Rocola
             public int Read(float[] buffer, int offset, int count) { return recorte.Lee(buffer, offset, count); }
             public float Volume { set { Interior.Volume = value; } }
             public TimeSpan CurrentTime { get { return Interior.CurrentTime; } }
-            public TimeSpan TotalTime { get { return Interior.TotalTime; } }
+            // EL FINAL DE VERDAD. El paso sin pausa prepara la siguiente cuando a esta le quedan 12 s (TotalTime menos
+            // CurrentTime) y la barra de progreso se llena con lo mismo: con el final mudo cortado, contando con el del
+            // archivo la cancion acababa cuando aun "quedaban" los segundos del silencio y la siguiente llegaba tarde.
+            public TimeSpan TotalTime
+            {
+                get
+                {
+                    TimeSpan t = Interior.TotalTime;
+                    long f = recorte.FinCuadro;
+                    if (f < 0) return t;
+                    TimeSpan corte = TimeSpan.FromSeconds((double)f / tasa);
+                    return corte < t ? corte : t;
+                }
+            }
             public void Salta(TimeSpan donde) { Interior.Salta(donde); recorte.Movido((long)(donde.TotalSeconds * tasa)); }
             public void Dispose() { Interior.Dispose(); }
         }

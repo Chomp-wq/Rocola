@@ -237,7 +237,20 @@ namespace Rocola
             if (!iaVivo || path == null) return path;
             bool yaBuena;
             string enh = IaEnhancedPath(path, out yaBuena);
+            if (enh != null && !string.Equals(enh, path, StringComparison.OrdinalIgnoreCase))
+                lock (iaOriginalCerrojo) iaOriginal[enh] = path;   // de que cancion es esta version (SinSilencios.cs)
             return (enh != null) ? enh : path;
+        }
+        // La version de Apollo es OTRO archivo, alineado con la cancion original. Lo que se mide de la cancion entera (donde
+        // suena, para saltar los silencios largos) vale tambien para ella: aqui se recuerda de cual viene. Se abre en
+        // segundo plano, asi que va con cerrojo.
+        private static readonly object iaOriginalCerrojo = new object();
+        private static readonly System.Collections.Generic.Dictionary<string, string> iaOriginal = new System.Collections.Generic.Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        private string RutaOriginalDe(string ruta)
+        {
+            if (ruta == null) return null;
+            string o;
+            lock (iaOriginalCerrojo) return iaOriginal.TryGetValue(ruta, out o) ? o : ruta;
         }
         private void PideLookahead(string songPath)
         {

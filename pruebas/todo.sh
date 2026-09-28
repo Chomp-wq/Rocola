@@ -76,6 +76,10 @@ CPU="$CPU relleno"
 # 'silencios': saltar los silencios largos (SinSilencios.cs): donde suena cada cancion (medida entera, algoritmo 3), la
 # tabla, que se salta y que no, el recorte muestra a muestra, el fundido, abrir de verdad, el interruptor y lo guardado.
 CPU="$CPU silencios"
+# 'todojunto': todo el sonido a la vez en la cadena de verdad (nivelado, Subir TODO, realce, DSEE, grave sintetico, grave
+# en mono, des-recorte, modo noche, fundido y saltar silencios), y cambiandolo en vivo como desde Ctrl+F3: nada roto, nada
+# por encima del techo, sin chasquidos ni muestras perdidas, la cadena siempre como dicen los ajustes, el limitador y el coste.
+CPU="$CPU todojunto"
 GPU="$GPU espacioprecarga estelaestelar estrellaflujo estrella3d pantallaviva"
 # 'pantallaviva' sale en las dos: sin tarjeta grafica solo existe la pestaña de ajustes (se comprueba que se guarda y
 # que no hay nada mas); con ella, todo lo de la tanda 1 de la pantalla (PantallaVivaGpu.cs).

@@ -268,7 +268,27 @@ class Silencios
             Check(tf.Name == "FuenteSinSilencios" && Math.Abs(primero / (double)fs - 0.3) < 0.11, "con el interruptor encendido, OpenAudio la abre sin el principio mudo: la musica a los 0,3 s");
             Check(Math.Abs(dura - (0.3 + 10 + 0.5 + 0.3 + 5 + 0.5)) < 0.25, "sin los 12 s del hueco ni el final mudo: " + F(dura, "0.00") + " s (esperados ~16,6)");
             Check(salen == sale.Count / 2, "el fundido cuenta lo que de verdad suena (" + salen + " cuadros)");
+            PropertyInfo pt = tf.GetProperty("TotalTime"), pc = tf.GetProperty("CurrentTime");
+            double quedan = ((TimeSpan)pt.GetValue(src, null) - (TimeSpan)pc.GetValue(src, null)).TotalSeconds, total2 = ((TimeSpan)pt.GetValue(src, null)).TotalSeconds;
+            Check(Math.Abs(quedan) < 0.1 && Math.Abs(total2 - 30.5) < 0.05,
+                  "la cancion dice su final de verdad (" + F(total2, "0.00") + " s de 34): al acabar no \"quedan\" los segundos mudos, y el paso sin pausa prepara la siguiente a tiempo");
             ((IDisposable)src).Dispose();
+            // La version de Apollo (DSEE ULTRA, HD) es otro archivo alineado con la original: vale la medida de la original.
+            FieldInfo mapaIa = TF.GetField("iaOriginal", T);
+            if (mapaIa != null)
+            {
+                string apollo = Path.Combine(dir, "oculta_apollo.wav");
+                File.Copy(ruta, apollo);
+                ((IDictionary)mapaIa.GetValue(null))[apollo] = ruta;
+                object srcA = Call(f, "OpenAudio", apollo);
+                List<float> saleA = Lee(srcA); ((IDisposable)srcA).Dispose();
+                ((IDictionary)mapaIa.GetValue(null)).Remove(apollo);
+                Check(srcA.GetType().Name == "FuenteSinSilencios" && saleA.Count == sale.Count, "con DSEE ULTRA suena la version de Apollo (otro archivo) y tambien se le saltan los silencios");
+                int leeIa, escIa; Codigo.UsosDeCampo(TF.GetMethod("RutaQueSonaria", T), "iaOriginal", out leeIa, out escIa);
+                Check(Codigo.Llama(TF.GetMethod("MapaDe", T), "RutaOriginalDe") && leeIa > 0 && Codigo.Llama(TF.GetMethod("RutaQueSonaria", T), "set_Item"),
+                      "la tabla se busca tambien por la cancion original, que se apunta al elegir la version de Apollo");
+            }
+            else Info("(esta rama no tiene la version de Apollo: nada que comprobar ahi)");
             // Apagado: tal cual.
             Set(f, "saltaSilencios", false);
             object src2 = Call(f, "OpenAudio", ruta);
