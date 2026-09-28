@@ -436,6 +436,7 @@ namespace Rocola
                 try { output.Dispose(); } catch { }
                 output = null;
             }
+            SueltaBomba();   // el hilo de la musica, parado y esperado ANTES de soltar el lector (BombaSonido.cs)
             if (reader != null) { try { reader.Dispose(); } catch { } reader = null; }
             SueltaSinPausa();   // la siguiente preparada (o ya entrando): con la salida ya parada
             curTap = null; curSbr = null; curBass = null; curNoche = null;   // ya no hay taps actuales

@@ -17,7 +17,7 @@ Copy-Item -LiteralPath $app -Destination (Join-Path $out 'rocola.exe') -Force
 $previousPython = $env:ROCOLA_TEST_PYTHON
 try {
     $env:ROCOLA_TEST_PYTHON = (Get-Command $Python -ErrorAction Stop).Source
-    foreach ($test in @('dsee','limite','entrenador','iaparidad','iaorigen','sonoridad','picoreal','realce','transiciones','sinpausa','salida','videoaudio','eqpreparado','iadatos','eqauto','calidad','nivel','bajoauto','bajo','noche','gravemono','nivelpicos','soltar','relleno','silencios','todojunto','discoparejo','flotantexp')) {
+    foreach ($test in @('dsee','limite','entrenador','iaparidad','iaorigen','sonoridad','picoreal','realce','transiciones','sinpausa','salida','videoaudio','eqpreparado','iadatos','eqauto','calidad','nivel','bajoauto','bajo','noche','gravemono','nivelpicos','soltar','relleno','silencios','todojunto','discoparejo','bomba','flotantexp')) {
         $exe = Join-Path $out ($test + '.exe')
         & $compiler /nologo /optimize+ /warnaserror+ ("/out:$exe") /r:System.Core.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll ("/r:$naudio") (Join-Path $testRoot ($test+'.cs')) (Join-Path $testRoot 'leercodigo.cs')
         if ($LASTEXITCODE -ne 0) { throw "No compila $test" }

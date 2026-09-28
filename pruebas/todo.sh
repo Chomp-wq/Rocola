@@ -29,7 +29,7 @@ FUENTES="../Rocola/Form1.cs ../Rocola/Form1.Ajustes.cs ../Rocola/Form1.Bibliotec
 FUENTES="$FUENTES $RAIZ/Rocola/EstrellaGpu.cs $RAIZ/Rocola/Estrella3dGpu.cs $RAIZ/Rocola/RelojPantallaGpu.cs $RAIZ/Rocola/AuroraFinaGpu.cs $RAIZ/Rocola/PantallaVivaGpu.cs $RAIZ/Rocola/DiscoVivoGpu.cs $RAIZ/Rocola/SuenaVivoGpu.cs $RAIZ/Rocola/AtraccionGpu.cs $RAIZ/Rocola/EstiloGpu.cs $RAIZ/Rocola/DibujoLigeroGpu.cs $RAIZ/Rocola/BuscadorLigeroGpu.cs $RAIZ/Rocola/BuscadorPortadasGpu.cs $RAIZ/Rocola/PrecargaPaginaGpu.cs $RAIZ/Rocola/PaletaCaratulaGpu.cs $RAIZ/Rocola/CreditosServicio.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/TextoMovilGpu.cs"
 TMP_PRUEBAS="${TMPDIR:-/tmp}/rocola_pruebas_$$"
-FUENTES="$FUENTES $RAIZ/Rocola/AudioControles.cs $RAIZ/Rocola/Sonoridad.cs $RAIZ/Rocola/RellenoMp3.cs $RAIZ/Rocola/SinSilencios.cs $RAIZ/Rocola/SubirTodo.cs $RAIZ/Rocola/NivelDisco.cs $RAIZ/Rocola/FlotanteNLayer.cs $RAIZ/Rocola/PicoReal.cs $RAIZ/Rocola/Realce.cs"
+FUENTES="$FUENTES $RAIZ/Rocola/AudioControles.cs $RAIZ/Rocola/Sonoridad.cs $RAIZ/Rocola/RellenoMp3.cs $RAIZ/Rocola/SinSilencios.cs $RAIZ/Rocola/SubirTodo.cs $RAIZ/Rocola/NivelDisco.cs $RAIZ/Rocola/BombaSonido.cs $RAIZ/Rocola/FlotanteNLayer.cs $RAIZ/Rocola/PicoReal.cs $RAIZ/Rocola/Realce.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/ModoNoche.cs $RAIZ/Rocola/GraveMono.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/SinPausa.cs $RAIZ/Rocola/Form1.SinPausa.cs $RAIZ/Rocola/SalidaSonido.cs"
 if ! mkdir -p "$TMP_PRUEBAS"; then
@@ -79,6 +79,10 @@ CPU="$CPU silencios"
 CPU="$CPU todojunto"
 # 'discoparejo': el nivel por disco (NivelDisco.cs): pistas seguidas del mismo disco con la ganancia del disco entero.
 CPU="$CPU discoparejo"
+# 'bomba': la musica en su propio hilo (BombaSonido.cs). La salida clasica pide la musica desde la pantalla; la cadena la
+# lee un hilo aparte que deja un colchon corto hecho, y la pantalla solo copia. Mismo sonido bit a bit, el final y los
+# fallos como antes, cuanto espera la pantalla a un hilo atrasado y lo que le cuesta cada bloque.
+CPU="$CPU bomba"
 # 'flotantexp': los MP3 en coma flotante con NLayer (solo esta rama): el descompresor, la comparacion con el de siempre,
 # los dos frenos (solo las canciones que llegan al maximo y solo si el equipo lo aguanta) y que este conectado.
 CPU="$CPU flotantexp"

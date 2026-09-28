@@ -106,6 +106,7 @@
     <Compile Include="SinSilencios.cs" />
     <Compile Include="SubirTodo.cs" />
     <Compile Include="NivelDisco.cs" />
+    <Compile Include="BombaSonido.cs" />
     <Compile Include="FlotanteNLayer.cs" />
     <Compile Include="PicoReal.cs" />
     <Compile Include="Realce.cs" />

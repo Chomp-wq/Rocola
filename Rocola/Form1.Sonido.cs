@@ -56,7 +56,7 @@ namespace Rocola
         // decide el interruptor para todas las canciones, y el colchon de WaveOut es fijo.
         private bool DseeDe(CadenaCancion c) { return sbrOn; }
         private float ExcitePara(CadenaCancion c) { return ExciteAmountFor(c.Cancion.Path); }
-        private int RetrasoAudible() { return AudioVisualDelayMs; }
+        private int RetrasoAudible() { return AudioVisualDelayMs + AdelantoBomba(); }   // mas lo que el hilo de la musica lee por delante (BombaSonido.cs)
         private bool IaMejoradaPara(string path) { return false; }
         private void AlEntrarPorRelevo(CadenaCancion b) { }
 
@@ -1237,8 +1237,9 @@ namespace Rocola
 #else
             const bool fina = false;
 #endif
+            int retraso = RetrasoAudible();   // el colchon de la salida y lo que la bomba lee por delante
             lock (levelLock)
-                while (levelQ.Count > 0 && unchecked(now - (levelQ.Peek().At + AudioVisualDelayMs)) >= 0)
+                while (levelQ.Count > 0 && unchecked(now - (levelQ.Peek().At + retraso)) >= 0)
                 {
                     Lvl l = levelQ.Dequeue(); rmsLo = l.Lo; rmsMid = l.Mid; rmsHi = l.Hi;
                     if (l.Esp != null && !fina) Array.Copy(l.Esp, specNow, SpecBands);

@@ -72,6 +72,7 @@ namespace Rocola
         // del APARATO no se confunde con un rechazo de formato: se relanza tal cual.
         private void AbreSalidaClasica(ISampleProvider muestras, bool flotante)
         {
+            muestras = ConBomba(muestras);   // la cadena la pasa el hilo de la musica; la pantalla solo copia (BombaSonido.cs)
             Exception rechazo = null;
             if (flotante && !flotanteRechazado)
             {
