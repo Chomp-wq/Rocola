@@ -117,3 +117,36 @@ Batería nueva **`pruebas/franjareloj.cs`** (16 comprobaciones), verde en HD y e
 - El dibujo de Windows: las pruebas usan el de Mono. El recorte del dibujo se mantiene al mover el origen (así trabaja
   Windows y así lo dan las pruebas), pero no se ha mirado en un Windows real.
 - Windows XP real.
+
+## 3. La rocola, por delante de las tareas de Windows
+
+### Qué pasaba
+
+La rocola corría con la prioridad normal de Windows. El equipo del bar es de la rocola, pero Windows sigue a lo suyo
+(actualizaciones, el antivirus repasando el disco, el indexador) y, con la misma prioridad, le quita procesador justo
+cuando lo necesita: en dos núcleos, eso es la música o la pantalla esperando.
+
+### Qué cambia
+
+Al arrancar, la rocola se pone con prioridad **"por encima de lo normal"** (`Program.cs`, `PrioridadDeLaRocola`):
+
+- Solo la rocola que se queda: si ya había una corriendo, la segunda se cierra sin tocar nada.
+- Nunca "alta" ni "tiempo real", que pueden estorbar al propio Windows (el ratón, el sonido del sistema).
+- Lo de fondo de la rocola (el repaso de la biblioteca, las portadas) sigue en prioridad mínima o baja dentro de ella:
+  nunca por delante de su pantalla ni de su música. Los programas que lanza (el motor de la IA en HD) no la heredan:
+  Windows les da la normal.
+- Si Windows no deja cambiarla, sigue como siempre.
+
+### Comprobaciones automáticas
+
+Batería nueva **`pruebas/prioridad.cs`**: se pone después de mirar si ya había otra rocola y antes de abrir la ventana; es
+"por encima de lo normal" y nunca alta ni tiempo real; no hay otro sitio que la cambie; va protegida y llamarla de verdad
+no revienta nada.
+
+**Averías metidas a propósito**: 4 (ponerla alta, quitarle la protección, ponerla antes de mirar si ya había otra rocola,
+no ponerla); la batería las detecta todas.
+
+### Lo que no se ha comprobado
+
+- Cuánto se nota en el equipo del bar con Windows ocupado en sus cosas: no se puede medir aquí.
+- Windows XP real (la prioridad "por encima de lo normal" existe desde Windows 2000).
