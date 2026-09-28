@@ -1250,8 +1250,16 @@ namespace Rocola
                 {
                     int hz = source.WaveFormat.SampleRate;
                     float yaSe = SegundosDe(t.Path);
-                    tf = (yaSe > 0.01f) ? (long)(yaSe * hz) : (long)(source.TotalTime.TotalSeconds * hz);
                     FuenteSinSilencios sinSilencios = source as FuenteSinSilencios;
+                    // LO APUNTADO TIENE QUE SER DE ESTE ARCHIVO. Se apunta por ruta, y en esa ruta puede haber hoy otro
+                    // archivo (la cancion completa en lugar de una descarga cortada, otra version con el mismo nombre). Con
+                    // la duracion del de antes, el fundido bajaba a cero donde acababa aquel y el resto de la cancion pagada
+                    // sonaba en SILENCIO. El lector ya esta abierto y sabe lo que dura sin leer nada (el MP3 se indexo al
+                    // abrirlo): si no cuadra con lo apuntado (un segundo de margen), manda el archivo.
+                    double delArchivo = 0;
+                    try { delArchivo = ((sinSilencios != null) ? sinSilencios.Interior : source).TotalTime.TotalSeconds; } catch { }   // si no lo sabe, como antes
+                    if (yaSe > 0.01f && delArchivo > 0 && Math.Abs(delArchivo - yaSe) > 1.0) yaSe = 0f;
+                    tf = (yaSe > 0.01f) ? (long)(yaSe * hz) : (long)(delArchivo * hz);
                     FuenteSinRelleno sinRelleno = ((sinSilencios != null) ? sinSilencios.Interior : source) as FuenteSinRelleno;
                     if (sinRelleno != null && saltadoSeg <= 0) tf = sinRelleno.CuadrosMusica;   // sin el relleno acaba antes: el fundido tambien
                     // Sin los silencios largos: lo que queda por sonar desde donde va (el principio mudo ya se salto al
