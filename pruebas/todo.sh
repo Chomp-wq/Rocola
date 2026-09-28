@@ -110,6 +110,9 @@ CPU="$CPU firmabiblioteca"
 # 'otroarchivo': en la ruta de una cancion hay hoy otro archivo (la completa en lugar de una descarga cortada). Con la
 # duracion apuntada del de antes, el fundido bajaba a cero alli y el resto sonaba en silencio: ahora manda el lector.
 CPU="$CPU otroarchivo"
+# 'estadopendiente': tras un apagon, una moneda antes de restaurar el estado ya no pisa los creditos y la cola de antes:
+# se conservan y se les suma lo de ahora (con la misma regla de las 7 AM).
+CPU="$CPU estadopendiente"
 # 'franjareloj' solo con tarjeta grafica: el reloj de la cancion repinta y sube solo su recuadro de la franja de abajo
 # (FranjaLigeraGpu.cs). Identica a rehacerla entera, pixel a pixel; las cintas no se tocan; lo demas, entera; y la tarjeta
 # imitada recibe solo el trozo.
