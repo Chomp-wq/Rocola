@@ -741,6 +741,7 @@ namespace Rocola
                 this.FormClosed += delegate { SueltaCintasTexto(); };
                 this.FormClosed += delegate { if (idlePanelBmp != null) { idlePanelBmp.Dispose(); idlePanelBmp = null; } if (idleClockUnderlay != null) { idleClockUnderlay.Dispose(); idleClockUnderlay = null; } };
                 gpuPanel.GetUiBotVersion = delegate { return EnsureUiBotOverlay(); };
+                gpuPanel.GetUiBotCambio = UiBotCambioDesde;   // y que trozo cambio (el reloj y la barra: FranjaLigeraGpu.cs)
                 gpuPanel.GetUiGlows = FillUiGlows;                                   // halos animados (destello de boton, pulso de letra, TOP, atraccion): quads GPU, sin re-subir textura
                 // Las piezas vivas del buscador (tarjeta y tecla elegidas): imagenes chicas aparte, encima de
                 // la grande. Sin esto, mover el recuadro re-subia la pantalla completa (ver EnsureUiPieza).
@@ -1112,21 +1113,26 @@ namespace Rocola
         private Bitmap uiBotOverlay; private int uiBotVer; private long uiBotLastSig = SigNada;
         private int EnsureUiBotOverlay()
         {
-            int w = ClientSize.Width, h = ClientSize.Height;
+            Size cs = tamanoFranjaPrueba.IsEmpty ? ClientSize : tamanoFranjaPrueba;   // (el de prueba solo lo ponen las baterias)
+            int w = cs.Width, h = cs.Height;
             if (w < 8 || h < 8) return uiBotVer;
             int top = BotStripTop(h);
             int bh = h - top;
             long sig = UiBotSig();
             if (uiBotOverlay != null && uiBotOverlay.Width == w && uiBotOverlay.Height == bh && sig == uiBotLastSig) return uiBotVer;
+            long fija = uiBotSigFija;   // la firma de todo menos el reloj y la barra (la apunta UiBotSig)
+            // Si solo cambiaron el reloj o la barra, se repinta solo su recuadro y la tarjeta sube solo ese trozo (FranjaLigeraGpu.cs).
+            Rectangle zona = (uiBotOverlay != null && uiBotOverlay.Width == w && uiBotOverlay.Height == bh) ? ZonaFranja(top, w, bh, fija) : Rectangle.Empty;
             if (uiBotOverlay == null || uiBotOverlay.Width != w || uiBotOverlay.Height != bh)
             {
                 if (uiBotOverlay != null) uiBotOverlay.Dispose();
                 uiBotOverlay = new Bitmap(w, bh, PixelFormat.Format32bppPArgb);
             }
-            using (CapturaTexto(0))
+            using (zona.IsEmpty ? CapturaTexto(0) : CapturaRecuadro())   // (por recuadro, las cintas de verdad no se tocan)
             using (Graphics g = Graphics.FromImage(uiBotOverlay))
             {
-                g.Clear(Color.Transparent);
+                if (zona.IsEmpty) g.Clear(Color.Transparent);
+                else EmpiezaRecuadro(g, zona);   // solo el recuadro: lo de fuera ya esta como tiene que estar
                 if (!attractOn)   // en atraccion la pantalla es limpia: la franja queda transparente
                 {
                     g.SmoothingMode = SmoothingMode.AntiAlias;
@@ -1147,6 +1153,7 @@ namespace Rocola
                 }
             }
             uiBotLastSig = sig; uiBotVer++;
+            ApuntaFranja(top, fija, zona);   // lo que tiene ahora, y que trozo cambio (FranjaLigeraGpu.cs)
             return uiBotVer;
         }
 
@@ -1481,7 +1488,7 @@ namespace Rocola
         {
             long sb = SigBase;
             sb = Mix(sb, ClientSize.Width); sb = Mix(sb, ClientSize.Height);
-            if (attractOn) return Mix(sb, 'A');   // en atraccion la franja va limpia (transparente)
+            if (attractOn) { uiBotSigFija = SigNada; return Mix(sb, 'A'); }   // en atraccion la franja va limpia (transparente)
             sb = Mix(sb, textosDeslizantes);
             sb = Mix(sb, LetraLejosActiva() ? 1 : 0);   // la letra de lejos cambia como se hornea (EstiloGpu.cs)
             if (lblNowTop != null) sb = Mix(sb, lblNowTop.Text);
@@ -1489,7 +1496,7 @@ namespace Rocola
             if (lblMejorada != null && lblMejorada.Visible) { sb = Mix(sb, 'M'); sb = Mix(sb, iaBadgeKind); sb = Mix(sb, lblMejorada.Left); sb = Mix(sb, lblMejorada.ForeColor.ToArgb()); }
             if (pastGenero != null && pastGenero.Visible) { Color tg = pastGenero.Tinte; sb = Mix(sb, pastGenero.Texto); sb = Mix(sb, tg.ToArgb()); sb = Mix(sb, pastGenero.Left); }
             if (lblNext != null) sb = Mix(sb, lblNext.Text);
-            if (lblTime != null) sb = Mix(sb, lblTime.Text);
+            if (lblTime != null) { Rectangle rt = lblTime.Bounds; sb = Mix(sb, rt.X); sb = Mix(sb, rt.Y); sb = Mix(sb, rt.Width); sb = Mix(sb, rt.Height); }   // donde va el reloj (lo que dice, al final)
             if (pastCred != null) { Color ac = pastCred.Acento; sb = Mix(sb, pastCred.Etiqueta); sb = Mix(sb, pastCred.Valor); sb = Mix(sb, ac.ToArgb()); sb = Mix(sb, pastCred.Left); sb = Mix(sb, pastCred.Paso); }
             if (pastCola != null)
             {
@@ -1502,7 +1509,16 @@ namespace Rocola
             }
             sb = Mix(sb, progresoFluido ? 1 : 0);
             sb = Mix(sb, neonIntenso); sb = Mix(sb, progresoNeon);
-            if (progress != null && !progresoFluido && !(neonIntenso && progresoNeon)) { sb = Mix(sb, (int)(progress.Value * 300)); sb = Mix(sb, progress.Accent.ToArgb()); sb = Mix(sb, progress.Neon ? 1 : 0); }
+            if (progress != null && !progresoFluido && !(neonIntenso && progresoNeon))
+            {
+                Rectangle rp = progress.Bounds; sb = Mix(sb, rp.X); sb = Mix(sb, rp.Y); sb = Mix(sb, rp.Width); sb = Mix(sb, rp.Height);
+                sb = Mix(sb, progress.Accent.ToArgb()); sb = Mix(sb, progress.Neon ? 1 : 0);
+            }
+            // EL RELOJ Y LA BARRA, AL FINAL: lo de antes es la firma de todo lo demas. Si solo cambian ellos, la franja se
+            // repinta solo por su recuadro y la tarjeta sube solo ese trozo (FranjaLigeraGpu.cs).
+            uiBotSigFija = sb;
+            if (lblTime != null) sb = Mix(sb, lblTime.Text);
+            sb = Mix(sb, BitConverter.DoubleToInt64Bits(BarraEnFranja()));   // la barra, con su valor exacto
             return (sb == SigNada) ? 1L : sb;   // que nunca coincida con "sin firma"
         }
 
