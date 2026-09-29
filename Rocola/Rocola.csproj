@@ -103,6 +103,8 @@
     <Compile Include="AperturaAudio.cs" />
     <Compile Include="AudioControles.cs" />
     <Compile Include="Sonoridad.cs" />
+    <Compile Include="FuentesMedidas.cs" />
+    <Compile Include="PlanBiblioteca.cs" />
     <Compile Include="RellenoMp3.cs" />
     <Compile Include="SinSilencios.cs" />
     <Compile Include="SubirTodo.cs" />

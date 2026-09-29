@@ -255,6 +255,7 @@ class Silencios
                   "MideIntegrada apunta donde suena: " + (con ? Txt(m) : "nada"));
             IDictionary tab = (IDictionary)Activator.CreateInstance(typeof(Dictionary<,>).MakeGenericType(typeof(string), TS), StringComparer.OrdinalIgnoreCase);
             tab[ruta] = s; Set(f, "integCache", tab); Set(f, "crossfadeSec", 0.5f);
+            Call(f, "ActualizaFuenteMedida", ruta, Call(null, "TomaFuenteMedida")); // sello capturado por el analisis real
             // Encendido.
             Set(f, "saltaSilencios", true);
             object src = Call(f, "OpenAudio", ruta);
@@ -302,6 +303,16 @@ class Silencios
             object src3 = Call(f, "OpenAudio", ruta);
             List<float> sale3 = Lee(src3); ((IDisposable)src3).Dispose();
             Check(src3.GetType().Name != "FuenteSinSilencios" && sale3.Count == x.Length, "si la cancion aun no esta medida con el algoritmo 3, suena entera");
+            // Misma duracion y numero de bytes: el mapa sigue perteneciendo al archivo anterior.
+            tab[ruta] = s;
+            DateTime anterior = File.GetLastWriteTimeUtc(ruta);
+            float[] igualDura = Cancion(fs, 2, new double[] { 34 }, true);
+            using (WaveFileWriter w = new WaveFileWriter(ruta, WaveFormat.CreateIeeeFloatWaveFormat(fs, 2))) w.WriteSamples(igualDura, 0, igualDura.Length);
+            File.SetLastWriteTimeUtc(ruta, anterior.AddSeconds(2));
+            object srcIgual = Call(f, "OpenAudio", ruta);
+            List<float> saleIgual = Lee(srcIgual); ((IDisposable)srcIgual).Dispose();
+            Check(srcIgual.GetType().Name != "FuenteSinSilencios" && saleIgual.Count == igualDura.Length && Pico(saleIgual, 4410) > 0.1f,
+                  "otro archivo de los mismos 34 s no hereda el recorte antiguo: suena entero desde el principio");
             // OTRO ARCHIVO CON LA MISMA RUTA (una version mejor con el mismo nombre): el mapa medido es del de antes. La de
             // ahora suena desde el primer instante y dura 40 s: con el mapa viejo se saltaban sus primeros 2,7 s y se cortaba
             // a los 30,5 s. No se usa: suena entera, como antes de medirla.
@@ -339,6 +350,7 @@ class Silencios
             IDictionary tab = (IDictionary)Activator.CreateInstance(typeof(Dictionary<,>).MakeGenericType(typeof(string), TS), StringComparer.OrdinalIgnoreCase);
             tab[ruta] = a[1]; Set(f, "integCache", tab); Set(f, "crossfadeSec", 0.5f);
             IDictionary dur = (IDictionary)Get(f, "durCache"); dur[ruta] = 34f;
+            Call(f, "ActualizaFuenteMedida", ruta, Call(null, "TomaFuenteMedida")); // certificado coherente con las tablas de esta fixture
             Set(f, "saltaSilencios", true);
             float s1 = (float)Call(f, "SegundosQueSuenan", ruta);
             Set(f, "saltaSilencios", false);

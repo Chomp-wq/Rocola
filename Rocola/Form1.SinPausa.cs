@@ -31,6 +31,7 @@ namespace Rocola
             internal Track Cancion;
             internal PlayItem Item;              // el elemento de la cola con el que suena
             internal IAudioSource Lector;
+            internal FuenteMedida Fuente;
             internal ISampleProvider Salida;     // lo que se lee (hasta el fundido; sin la salida)
             internal LevelTap Tap;
             internal SpectralTap Sbr;
@@ -128,9 +129,15 @@ namespace Rocola
             // 1) LA QUE ACABO. Su medida la guardo el hilo del sonido en el primer bloque de la nueva; si la nueva
             //    no llego a dar ni un bloque (archivo vacio) sigue en los campos de siempre. Y su lector se suelta:
             //    el hilo del sonido ya no lo lee.
-            MedidaCancion m = b.Tap != null ? b.Tap.Medida : null;
-            if (m != null && m.CierreAnterior.Listo) CierraMedida(m.CierreAnterior, eqMeasCut, eqMeasCutLo);
-            else { FinalizeLoudMeasure(); FinalizeEqMeasure(); InstalaMedida(b); }
+            // Releva publica la ficha antes del primer Read de la nueva. Si ese Read tarda,
+            // el relevo de UI puede coincidir con su primer bloque: consulta y cierre deben
+            // ser atomicos respecto a PublicaBloqueDe. Lectores, cola y UI quedan fuera.
+            lock (levelLock)
+            {
+                MedidaCancion m = b.Tap != null ? b.Tap.Medida : null;
+                if (m != null && m.CierreAnterior.Listo) CierraMedida(m.CierreAnterior, eqMeasCut, eqMeasCutLo);
+                else { FinalizeLoudMeasure(); FinalizeEqMeasure(); InstalaMedida(b); }
+            }
             IAudioSource viejo = reader;
             reader = b.Lector;
             if (viejo != null && !object.ReferenceEquals(viejo, b.Lector)) { try { viejo.Dispose(); } catch { } }
@@ -195,8 +202,9 @@ namespace Rocola
 
         // Al parar la salida (saltar, cerrar, fallo): la siguiente preparada se suelta, y si ya habia entrado
         // sin que la pantalla se enterara, la medida que el hilo del sonido guardo de la anterior se cierra.
-        // Se llama con la salida ya detenida: el hilo del sonido no lee nada de esto.
-        private void SueltaSinPausa()
+        // Bajo levelLock y con la publicacion ya invalidada. El lector se devuelve al cierre de la bomba:
+        // el hilo puede seguir dentro del ultimo Read y debe conservarlo hasta salir.
+        private IAudioSource SueltaSinPausa()
         {
             CadenaCancion p = cadenaPreparada;
             cadenaPreparada = null;
@@ -204,9 +212,9 @@ namespace Rocola
             {
                 MedidaCancion m = p.Tap != null ? p.Tap.Medida : null;
                 if (m != null && m.CierreAnterior.Listo) CierraMedida(m.CierreAnterior, eqMeasCut, eqMeasCutLo);
-                if (p.Lector != null && !object.ReferenceEquals(p.Lector, reader)) { try { p.Lector.Dispose(); } catch { } }
             }
             secuencia = null; cadenaSonando = null; tapMedido = null;
+            return p != null ? p.Lector : null;
         }
 
         // LA MEDIDA EN VIVO EN EL RELEVO. La llama el LevelTap de cada cancion antes de medir su bloque, en el
@@ -219,8 +227,10 @@ namespace Rocola
             if (nueva == null) return;   // un LevelTap armado aparte (las pruebas) mide como siempre
             MedidaCancion.Cierre c = nueva.CierreAnterior;
             c.Ruta = curMeasurePath; c.SumSq = curSumSq; c.Muestras = curSamples; c.Tasa = kwRate; c.Canales = kwCanales;
+            c.Fuente = curFuenteMedida;
             c.EqRuta = eqMeasPath; c.EqSumas = eqMeasSum; c.EqN = eqMeasN; c.EqTasa = eqMeasRate;
             curMeasurePath = nueva.Ruta; curSumSq = 0; curSamples = 0; kwRate = 0;   // el K-weighting empieza de cero
+            curFuenteMedida = nueva.Fuente as FuenteMedida;
             eqMeasPath = nueva.EqRuta; eqMeasSum = nueva.EqSumas; eqMeasN = 0; eqMeasRate = 0; eqPendN = 0;
             tapMedido = tap;
             c.Listo = true;   // lo ultimo: la pantalla solo lo cierra con todo copiado
@@ -229,6 +239,7 @@ namespace Rocola
         // La nueva no dio ni un bloque: su medida se pone aqui (la salida ya no lee).
         private void InstalaMedida(CadenaCancion c)
         {
+            curFuenteMedida = c.Fuente;
             curMeasurePath = c.MedidaRuta; curSumSq = 0; curSamples = 0; kwRate = 0;
             eqMeasPath = c.EqRuta; eqMeasSum = new double[8]; eqMeasN = 0; eqMeasRate = 0; eqPendN = 0;
             tapMedido = c.Tap;
@@ -240,8 +251,8 @@ namespace Rocola
         {
             if (c == null || !c.Listo) return;
             c.Listo = false;
-            CierraSonoridad(c.Ruta, c.SumSq, c.Muestras, c.Tasa, c.Canales);
-            CierraHuella(c.EqRuta, c.EqSumas, c.EqN, c.EqTasa, corte, corteBajo);
+            CierraSonoridadDeFuente(c.Ruta, c.SumSq, c.Muestras, c.Tasa, c.Canales, c.Fuente as FuenteMedida);
+            CierraHuellaDeFuente(c.EqRuta, c.EqSumas, c.EqN, c.EqTasa, corte, corteBajo, c.Fuente as FuenteMedida);
         }
 
         // DISCO CONTINUO: la que entra ('nueva') sigue con la memoria de los filtros de la que acaba ('vieja'): la

@@ -114,6 +114,7 @@ namespace Rocola
             bitacoraFirmaMs = Desde(firmaTick);   // leer la guardada y recorrer las carpetas (bitacora)
             if (guardadaVale)
             {
+                lastFreshRootSig = sigObservada; // la firma ya verificada tambien identifica los generos guardados
                 // ARMADO EN SEGUNDO PLANO: ordenar e indexar las 118 mil canciones tomaba 1-3 segundos
                 // DEL HILO DE LA INTERFAZ al arrancar; aqui corre en el worker y el arranque no se congela.
                 tracks.AddRange(ctk);
@@ -535,7 +536,13 @@ namespace Rocola
         private string LetterTintFile() { return RutaDatos("rocola_letras.txt"); }
 
         // Con que biblioteca se calcularon los colores. Si esto cambia, hay que volver a leer los generos.
-        private int FirmaBiblioteca() { return tracks.Count * 31 + albums.Count; }
+        private int FirmaBiblioteca()
+        {
+            if (string.IsNullOrEmpty(lastFreshRootSig)) return 0;
+            uint h = 2166136261U;
+            unchecked { for (int i = 0; i < lastFreshRootSig.Length; i++) { h ^= lastFreshRootSig[i]; h *= 16777619U; } }
+            return h == 0 ? 1 : unchecked((int)h);
+        }
 
         // Arma los dos diccionarios ENTEROS y se los entrega a la barra de una pieza. La barra los lee desde
         // el dibujado, asi que nunca puede pillar uno a medio llenar: o ve el de antes, o ve el nuevo.
@@ -625,13 +632,14 @@ namespace Rocola
                 string f = LetterTintFile();
                 if (!File.Exists(f)) return;
                 string[] L = File.ReadAllLines(f);
-                // v1 solo tenia letras; v2 lleva ademas el genero de cada disco. Un archivo v1 se descarta y se
-                // vuelve a calcular: es un paseo de fondo, no una perdida.
-                if (L.Length < 2 || L[0] != "ROCOLA-LETRAS v2") return;
+                // v3 agrega la identidad completa de la biblioteca. Las tablas anteriores se recalculan
+                // en fondo: el numero de canciones no basta para identificar sus generos.
+                if (firmaAhora == 0 || L.Length < 3 || L[0] != "ROCOLA-LETRAS v3") return;
                 int firma;
                 if (!L[1].StartsWith("n=") || !int.TryParse(L[1].Substring(2), out firma)) return;
                 if (firma != firmaAhora) return;   // la biblioteca cambio: hay que recalcular
-                for (int i = 2; i < L.Length; i++)
+                if (L[2] != "sig=" + lastFreshRootSig) return; // identidad completa, no solo cantidades/hash corto
+                for (int i = 3; i < L.Length; i++)
                 {
                     string ln = L[i];
                     if (ln.Length < 5) continue;
@@ -809,6 +817,24 @@ namespace Rocola
         private void StartDurScan()
         {
             int myGen = ++durScanGen;
+            LecturaBiblioteca lectura = CapturaLecturaBiblioteca();
+            if (lectura == null) return;
+            if (planDuracion != null) planDuracion.Cancela();
+            planDuracion = lectura;
+            durScanLeft = 0;
+            durScanTh = new System.Threading.Thread(delegate ()
+            {
+                try
+                {
+                    lectura.Prepara();
+                    if (lectura.Cancelada || preScanStop || myGen != durScanGen) return;
+                    lecturaPlan = lectura;
+                    List<Track> tracks = lectura.Tracks;
+                    List<Album> videoAlbums = lectura.Videos;
+                    Dictionary<char, List<Album>> byLetter = new Dictionary<char, List<Album>>();
+                    foreach (KeyValuePair<char, List<Album>> par in lectura.Letras) byLetter[par.Key] = par.Value;
+                    Dictionary<string, float> durCache = lectura.Dur, durFast = lectura.Rapidas;
+                    bool tintesPend = lectura.Tintes;
             List<string> pend = new List<string>();
             for (int i = 0; i < tracks.Count; i++)
             {
@@ -838,13 +864,13 @@ namespace Rocola
                     }
                 }
             if (pend.Count > cuantasCanciones) Diag("duraciones: " + (pend.Count - cuantasCanciones) + " videos por medir");
-            durScanLeft = pend.Count;
+            if (lectura.Cancelada || preScanStop || myGen != durScanGen) return;
 
             // EL COLOR DE LAS LETRAS. Si hay que calcularlo, se prepara aqui la lista de (letra, archivo) y el
             // paseo de fondo le lee el ID3 a cada uno DESPUES de las duraciones. Se leen con un Track SUELTO,
             // no con el de la biblioteca, para no tocar desde este hilo nada que la pantalla este usando.
             char[] gLet = null; string[] gRuta = null; string[] gDisco = null;
-            int firmaLet = FirmaBiblioteca();
+            int firmaLet = lectura.Firma;
             if (tintesPend)
             {
                 List<char> cl = new List<char>(tracks.Count);
@@ -898,9 +924,9 @@ namespace Rocola
             int durTotal = 0;
             for (int i = 0; i < visitas.Count; i++) if (visitas[i].Dur) durTotal++;
             int genTotal = (gLet != null) ? gLet.Length : 0;
+            try { BeginInvoke((MethodInvoker)delegate { if (!lectura.Cancelada && myGen == durScanGen) durScanLeft = durTotal; }); }
+            catch { return; }
 
-            durScanTh = new System.Threading.Thread(delegate ()
-            {
                 List<string> lote = new List<string>(128);
                 List<float> lotd = new List<float>(128);
                 object medidorVideo = null;   // el reproductor con el que se miden los videos (de este hilo)
@@ -909,13 +935,17 @@ namespace Rocola
                 int durHechas = 0, genHechas = 0;
                 try
                 {
-                    System.Threading.Thread.Sleep(4000);   // deja respirar el arranque
+                    if (!lectura.Espera(4000)) return;   // despierta inmediatamente al cancelar
                     for (int i = 0; i < visitas.Count; i++)
                     {
                         if (preScanStop || myGen != durScanGen) break;
-                        while (!preScanStop && myGen == durScanGen && videoOn) System.Threading.Thread.Sleep(500);
+                        while (!preScanStop && myGen == durScanGen && videoOn && lectura.Espera(500)) { }
                         if (preScanStop || myGen != durScanGen) break;
                         Visita v = visitas[i];
+                        while (YieldCoverWork(UnidadDe(v.Ruta), CargaTrabajo.Procesadores <= 2))
+                        {
+                            if (!lectura.Espera(40) || preScanStop || myGen != durScanGen) return;
+                        }
                         bool caro = false;   // hubo que leer el archivo entero (el respaldo), no solo la cabecera
 
                         // ---- LA DURACION ----
@@ -1038,6 +1068,8 @@ namespace Rocola
                 }
                 catch { }
                 finally { SueltaMedidorVideo(ref medidorVideo); }   // el objeto COM se crea y se suelta en ESTE hilo, que es el STA
+                }
+                finally { lecturaPlan = null; lectura.Dispose(); }
             });
             durScanTh.IsBackground = true;
             durScanTh.Priority = System.Threading.ThreadPriority.Lowest;
@@ -1292,6 +1324,16 @@ namespace Rocola
 
         private List<string> TandaPorMedir(bool turbo, out int elegibles)
         {
+            LecturaBiblioteca p = lecturaPlan;
+            List<Track> tracks = p != null ? p.Tracks : this.tracks;
+            List<Album> videoAlbums = p != null ? p.Videos : this.videoAlbums;
+            Dictionary<string, float> durCache = p != null ? p.Dur : this.durCache;
+            Dictionary<string, float> loudCache = p != null ? p.Loud : this.loudCache;
+            Dictionary<string, int> songCounts = p != null ? p.Canciones : this.songCounts;
+            Dictionary<string, int> videoCounts = p != null ? p.VideoCounts : this.videoCounts;
+            Dictionary<string, long> songSeq = p != null ? p.Sec : this.songSeq;
+            Dictionary<string, long> videoSeq = p != null ? p.VideoSec : this.videoSeq;
+            HashSet<string> deepDone = p != null ? p.Deep : this.deepDone;
             List<string> pend = new List<string>();
             elegibles = 0;
             for (int i = 0; i < tracks.Count; i++)
@@ -1340,13 +1382,14 @@ namespace Rocola
             // Las tablas se miran SOLO por las canciones de esta tanda y no al reves: con cien mil canciones
             // apuntadas, copiar las tablas enteras para ordenar unos cuantos miles seria trabajo de mas.
             HashSet<string> enCola = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            for (int i = 0; i < queue.Count; i++)
+            for (int i = 0; p == null && i < queue.Count; i++)
             {
                 PlayItem it = queue[i];
                 if (it == null) continue;
                 string k = it.PathKey();
                 if (k.Length > 0) enCola.Add(k);
             }
+            if (p != null) enCola = p.Cola;
             Dictionary<string, int> veces = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             Dictionary<string, long> recientes = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
             for (int i = 0; i < pend.Count; i++)
@@ -1403,13 +1446,14 @@ namespace Rocola
         private void RevisaCarriles()
         {
             if (preScanCarriles <= 0) return;   // no hay pre-analisis corriendo
-            if (CarrilesPara(preScanTurbo, RocolaSola(), diskSlow, Environment.ProcessorCount, minisPendientes > 0) == preScanCarriles) return;
+            if (CarrilesPara(preScanTurbo, RocolaSola(), RepasoEnDiscoLento(), CargaTrabajo.Procesadores, minisPendientes > 0) == preScanCarriles) return;
             StartPreScan(false);
         }
 
         private void StartPreScan() { StartPreScan(true); }
         private void StartPreScan(bool respiroDeArranque)
         {
+            if (libBuilding || IsDisposed || Disposing) return;
             preScanStop = false;
             // Cada llamada (arranque o re-escaneo con F5) abre una GENERACION nueva: el hilo anterior se da
             // por caducado en cuanto lo nota y sale solo. Antes se volvia con "ya hay uno trabajando", asi que
@@ -1417,11 +1461,29 @@ namespace Rocola
             int myGen = ++preScanGen;
             ReiniciaMedidasHechas();
             bool turbo = preScanTurbo;
+            LecturaBiblioteca lectura = CapturaLecturaBiblioteca();
+            if (lectura == null) return;
+            if (planRepaso != null) planRepaso.Cancela();
+            planRepaso = lectura;
+            preScanCarriles = CarrilesPara(turbo, RocolaSola(), RepasoEnDiscoLento(), CargaTrabajo.Procesadores, minisPendientes > 0);
+            preparaRepasoTh = new System.Threading.Thread(delegate ()
+            {
+                bool compartida = false;
+                try
+                {
+                    lectura.Prepara();
+                    if (lectura.Cancelada || preScanStop || myGen != preScanGen) return;
+                    lecturaPlan = lectura;
             int elegibles;
             List<string> pend = TandaPorMedir(turbo, out elegibles);
             // Y DETRAS, LA CANCION ENTERA: la sonoridad integrada de las que aun no la tienen (ver Sonoridad.cs).
             // Va despues de las estimaciones: primero que todo suene nivelado, luego que lo este de verdad.
             List<string> pendInteg = TandaIntegrada();
+            if (lectura.Cancelada || preScanStop || myGen != preScanGen) return;
+            compartida = true;
+            try { BeginInvoke((MethodInvoker)delegate
+            {
+            if (lectura.Cancelada || preScanStop || myGen != preScanGen) { lectura.Dispose(); return; }
             integLeft = pendInteg.Count;
             // CADA cuanto se vuelcan las tablas a disco. Un volcado reescribe ENTERAS las tablas de sonoridad y
             // de EQ: con cien mil canciones son ~17 MB por volcado. Hacerlo cada 10 canciones durante un repaso a
@@ -1431,14 +1493,15 @@ namespace Rocola
             // Desde el 28/09 un volcado ya no reescribe las tablas: anade al final solo lo nuevo (DiarioTablas.cs). Con
             // 20.000 canciones, unos 24 MB en toda la primera medicion en vez de unos 3 GB (calculado).
             int guardaCada = turbo ? 10 : 25;
-            int escala = loudCache.Count / 500;                        // se calcula aqui, en el hilo de la interfaz
+            int escala = lectura.LoudCount / 500;                        // se calcula aqui, en el hilo de la interfaz
             if (escala > guardaCada) guardaCada = escala;              // (las tablas son suyas: leerlas desde el hilo de fondo seria una carrera)
             if (guardaCada > 300) guardaCada = 300;
             preScanLeft = pend.Count;
             // La barra del entrenamiento a fondo se mide sobre TODA la biblioteca (no sobre la tanda que queda),
             // para que al reanudar siga desde donde iba en vez de volver a arrancar en cero.
             preScanTotal = turbo ? elegibles : pend.Count;
-            if (pend.Count == 0 && pendInteg.Count == 0) return;
+            if (lectura.Cancelada || preScanStop || myGen != preScanGen) return;
+            if (pend.Count == 0 && pendInteg.Count == 0) { preScanCarriles = 0; lectura.Dispose(); return; }
             // CUANTOS CARRILES. El repaso A FONDO es el trabajo mas largo que hace la rocola -descomprime la
             // biblioteca entera- y hasta ahora lo hacia UN solo hilo: en un equipo de ocho o dieciseis nucleos
             // eso es dejar quieto el 90% de la maquina durante horas.
@@ -1455,7 +1518,7 @@ namespace Rocola
             // hay nadie eligiendo ni nada a lo que fallarle. La cuenta esta aparte y se prueba con casos a
             // mano, porque lo que de verdad importa de ella es que con alguien delante devuelva uno.
             bool aSolas = RocolaSola();
-            int carriles = CarrilesPara(turbo, aSolas, diskSlow, Environment.ProcessorCount, minisPendientes > 0);
+            int carriles = CarrilesPara(turbo, aSolas, RepasoEnDiscoLento(), CargaTrabajo.Procesadores, minisPendientes > 0);
             preScanCarriles = carriles;
             int siguiente = -1;      // de aqui saca cada carril la siguiente cancion (reparto por demanda: las
             int hechasTot = 0;       // canciones no duran lo mismo, y asi ninguno se queda esperando al otro)
@@ -1472,7 +1535,7 @@ namespace Rocola
                     // El respiro del arranque se paga UNA vez, no en cada revision de carriles: entrar y
                     // salir de la atraccion no es encender la rocola, y esperar 15 s cada vez se comeria
                     // justo el rato que se queria aprovechar.
-                    if (!turbo && respiroDeArranque) System.Threading.Thread.Sleep(15000);   // dejar respirar el arranque (y al calentador de caratulas)
+                    if (!turbo && respiroDeArranque && !lectura.Espera(15000)) return;   // dejar respirar el arranque (y al calentador de caratulas)
                     for (; ; )
                     {
                         int i = System.Threading.Interlocked.Increment(ref siguiente);
@@ -1482,7 +1545,7 @@ namespace Rocola
                         // video, este hilo no toca nada). En ENTRENAMIENTO A FONDO no espera a nadie: para eso
                         // se enciende, para que la maquina se dedique por completo a dejar todo calibrado.
                         while (!turbo && !preScanStop && myGen == preScanGen && (Environment.TickCount - lastInputTick < 8000 || videoOn))
-                            System.Threading.Thread.Sleep(500);
+                            if (!lectura.Espera(500)) return;
                         if (preScanStop || myGen != preScanGen) break;
                         string ruta = pend[i];
                         // En sistemas anteriores a Vista no existe Media Foundation. En los demas se prueba
@@ -1503,7 +1566,13 @@ namespace Rocola
                         SonoridadIntegrada entera; bool hayEntera = false;
                         try
                         {
-                            midio = MeasureFileResponsive(ruta, turbo, delegate { return preScanStop || myGen != preScanGen; }, out rms, out dur, out eqCurve);
+                            Func<bool> cancela = delegate { return preScanStop || myGen != preScanGen || lectura.Cancelada; };
+                            using (TurnoAnalisis turno = PideTurnoAnalisis(ruta, cancela))
+                            {
+                                if (turno == null) return;
+                                midio = MeasureFileResponsive(ruta, turbo, cancela, out rms, out dur, out eqCurve);
+                            }
+                            FuenteMedida fuente = TomaFuenteMedida();
                             hayEntera = TomaIntegrada(out entera);   // si la leyo entera (corta, o a fondo), trae tambien la integrada
                             if (!midio)
                             {
@@ -1520,9 +1589,9 @@ namespace Rocola
                                      try
                                      {
                                      if (myGen != preScanGen) return;   // llego de una generacion caducada: descartar
-                                    PublicaMedida(ruta, rms, dur, eqCurve);
-                                    if (hayEntera) PublicaIntegrada(ruta, entera);
-                                    if (turbo) MarkDeepDone(ruta);
+                                     bool publicada = PublicaMedidaDeFuente(ruta, rms, dur, eqCurve, fuente);
+                                    if (hayEntera) PublicaIntegradaDeFuente(ruta, entera, fuente);
+                                     if (turbo && publicada) MarkDeepDone(ruta); // nunca dar por terminada una medida de una fuente sustituida
                                      if (preScanLeft > 0) System.Threading.Interlocked.Decrement(ref preScanLeft);
                                      }
                                      finally { SueltaMedida(ruta); }
@@ -1541,9 +1610,9 @@ namespace Rocola
                         // nucleo hay que frenar fuerte; con dos o mas sobra maquina y puede ir mas rapido.
                         int respiro;
                         if (turbo || RocolaSola()) respiro = 1;   // sola no hay de quien descansar
-                        else if (nowPlaying != null) respiro = (Environment.ProcessorCount >= 2) ? (diskSlow ? 220 : 120) : (diskSlow ? 700 : 400);
-                        else respiro = diskSlow ? 120 : 40;
-                        System.Threading.Thread.Sleep(respiro);
+                        else if (nowPlaying != null) respiro = (CargaTrabajo.Procesadores >= 2) ? (DiscoLento(ruta) ? 220 : 120) : (DiscoLento(ruta) ? 700 : 400);
+                        else respiro = DiscoLento(ruta) ? 120 : 40;
+                        if (!lectura.Espera(respiro)) return;
                     }
                     // ===== SEGUNDA TANDA: LA CANCION ENTERA (sonoridad integrada BS.1770, ver Sonoridad.cs) =====
                     // Mismas reglas que la primera: espera a que nadie este usando la rocola y a que no haya video,
@@ -1555,7 +1624,7 @@ namespace Rocola
                         int k = System.Threading.Interlocked.Increment(ref siguienteInteg);
                         if (k >= pendInteg.Count) break;
                         while (!turbo && !preScanStop && myGen == preScanGen && (Environment.TickCount - lastInputTick < 8000 || videoOn))
-                            System.Threading.Thread.Sleep(500);
+                            if (!lectura.Espera(500)) return;
                         if (preScanStop || myGen != preScanGen) break;
                         string ruta = pendInteg[k];
                         if (YaIntegrada(ruta)) { System.Threading.Interlocked.Decrement(ref integLeft); continue; }   // la midio otro mientras tanto
@@ -1572,7 +1641,15 @@ namespace Rocola
                         try
                         {
                             SonoridadIntegrada si;
-                            if (!MideIntegradaResponsive(ruta, delegate { return preScanStop || myGen != preScanGen; }, out si))
+                            bool midio;
+                            Func<bool> cancela = delegate { return preScanStop || myGen != preScanGen || lectura.Cancelada; };
+                            using (TurnoAnalisis turno = PideTurnoAnalisis(ruta, cancela))
+                            {
+                                if (turno == null) return;
+                                midio = MideIntegradaResponsive(ruta, cancela, out si);
+                            }
+                            FuenteMedida fuente = TomaFuenteMedida();
+                            if (!midio)
                             {
                                 if (preScanStop || myGen != preScanGen) break;
                                 System.Threading.Interlocked.Decrement(ref integLeft);   // rota, corta o de canales desconocidos: se queda la estimacion
@@ -1586,7 +1663,7 @@ namespace Rocola
                                     try
                                     {
                                         if (myGen != preScanGen) return;   // generacion caducada: descartar
-                                        PublicaIntegrada(ruta, si);
+                                        PublicaIntegradaDeFuente(ruta, si, fuente);
                                         if (integLeft > 0) System.Threading.Interlocked.Decrement(ref integLeft);
                                     }
                                     finally { SueltaMedida(ruta); }
@@ -1604,9 +1681,9 @@ namespace Rocola
                         int gasto = Environment.TickCount - t0; if (gasto < 0 || gasto > 10000) gasto = 10000;
                         int respiroI;
                         if (turbo || RocolaSola()) respiroI = 1;
-                        else if (nowPlaying != null) respiroI = Math.Max(gasto, (Environment.ProcessorCount >= 2) ? (diskSlow ? 220 : 120) : (diskSlow ? 700 : 400));
-                        else respiroI = diskSlow ? 120 : 40;
-                        System.Threading.Thread.Sleep(respiroI);
+                        else if (nowPlaying != null) respiroI = Math.Max(gasto, (CargaTrabajo.Procesadores >= 2) ? (DiscoLento(ruta) ? 220 : 120) : (DiscoLento(ruta) ? 700 : 400));
+                        else respiroI = DiscoLento(ruta) ? 120 : 40;
+                        if (!lectura.Espera(respiroI)) return;
                     }
                 }
                 catch { }
@@ -1615,6 +1692,11 @@ namespace Rocola
                     // El volcado final lo hace el ULTIMO carril que termina, no todos: si no, con cuatro
                     // carriles se reescribirian las tablas enteras cuatro veces seguidas para nada.
                     ultimo = System.Threading.Interlocked.Decrement(ref vivos) == 0;
+                    if (ultimo)
+                    {
+                        if (myGen == preScanGen) preScanCarriles = 0;
+                        lectura.Dispose();
+                    }
                     try { if (ultimo && IsHandleCreated && (hechasTot > 0 || hechasInteg > 0)) BeginInvoke((MethodInvoker)delegate { SaveLoudCache(); SaveIntegCache(); FlushEqIfDirty(); if (iaDoneDirty) { iaDoneDirty = false; SaveIaDone(); } if (deepDoneDirty) { deepDoneDirty = false; SaveDeepDone(); } }); } catch { }
                 }
             });
@@ -1629,6 +1711,15 @@ namespace Rocola
                 preScanTh[carril].Priority = turbo ? System.Threading.ThreadPriority.BelowNormal : System.Threading.ThreadPriority.Lowest;
                 preScanTh[carril].Start();
             }
+            }); }
+            catch { compartida = false; throw; }
+                }
+                catch { if (myGen == preScanGen) preScanCarriles = 0; }
+                finally { lecturaPlan = null; if (!compartida) lectura.Dispose(); }
+            });
+            preparaRepasoTh.IsBackground = true;
+            preparaRepasoTh.Priority = System.Threading.ThreadPriority.BelowNormal;
+            preparaRepasoTh.Start();
         }
 
         // CUANTO DURA UNA CANCION, Y EL UNICO SITIO QUE LO SABE.
@@ -1977,6 +2068,8 @@ namespace Rocola
                 if (!byLetter.TryGetValue(al.Letter, out lst)) { lst = new List<Album>(); byLetter[al.Letter] = lst; }
                 lst.Add(al);
             }
+            origenesTop = IndiceTop(albums);
+            albumsDelIndiceTop = albums;
         }
 
         private static string LeafName(string folder)

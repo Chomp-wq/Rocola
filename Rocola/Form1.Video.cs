@@ -429,6 +429,9 @@ namespace Rocola
             CancelAudioOpen(); // saltar/cerrar invalida resultados que aun esten abriendo
             CancelaReintentoSalida();   // y la espera a que vuelva el aparato de sonido (SalidaSonido.cs)
             progressTimer.Stop();
+            InvalidaPublicacionAudio();   // los bloques tardios ya no pueden publicar medidas ni pulso
+            BombaSonido anterior = bomba; bomba = null;
+            if (anterior != null) anterior.Dispose();   // tambien despierta cualquier lectura de la salida que esperaba musica
             if (output != null)
             {
                 output.PlaybackStopped -= Output_PlaybackStopped;
@@ -436,13 +439,17 @@ namespace Rocola
                 try { output.Dispose(); } catch { }
                 output = null;
             }
-            SueltaBomba();   // el hilo de la musica, parado y esperado ANTES de soltar el lector (BombaSonido.cs)
-            if (reader != null) { try { reader.Dispose(); } catch { } reader = null; }
-            SueltaSinPausa();   // la siguiente preparada (o ya entrando): con la salida ya parada
+            IAudioSource lectorActual = reader; reader = null;
+            IAudioSource lectorPreparado;
+            lock (levelLock)
+            {
+                lectorPreparado = SueltaSinPausa();   // retira la siguiente; conserva el lector hasta acabar el ultimo Read
+                FinalizeLoudMeasure();   // solo lo publicado antes de cancelar; la cancion nueva no recibe un bloque viejo
+                FinalizeEqMeasure();
+                ClearLevels();
+            }
+            SueltaLectoresAudio(anterior, lectorActual, lectorPreparado);
             curTap = null; curSbr = null; curBass = null; curNoche = null;   // ya no hay taps actuales
-            FinalizeLoudMeasure();   // guarda la sonoridad medida de la cancion que acaba de sonar (audio ya detenido: sin carrera)
-            FinalizeEqMeasure();     // y su huella tonal (mismo momento seguro)
-            ClearLevels();   // sin cancion no hay trozos pendientes: el pulso cae a cero
             rmsLo = rmsMid = rmsHi = 0f; avgLo = avgMid = avgHi = 0f;
         }
 
@@ -928,6 +935,7 @@ namespace Rocola
                 gpuPanel.GetPieza = delegate(int i) { return uiPieza[i]; };
                 gpuPanel.GetPiezaRect = delegate(int i) { return uiPiezaRect[i]; };
                 gpuPanel.GetPiezaVersion = delegate(int i) { return EnsureUiPieza(i); };
+                gpuPanel.GetPiezaCambios = CambiosPiezaBuscador;
                 gpuPanel.GetCartas = FillCartas;   // el buscador con portadas: cada tarjeta entra por su cuenta (BuscadorPortadasGpu.cs)
                 gpuPanel.GetPiezasSuben = PiezasSubenConLaVentana;   // las piezas de los dos buscadores van con la ventana
                 gpuPanel.GetPiezaVistaPrevia = PiezaVistaPreviaBuscador;   // y lo que se desliza de su vista previa
@@ -1417,7 +1425,6 @@ namespace Rocola
             using (cual == PiezaVistaPreviaBuscador() ? CapturaTexto(4) : new CapturaCintas(null))   // en el buscador con portadas, la tarjeta elegida (BuscadorPortadasGpu.cs)
             using (Graphics g = Graphics.FromImage(uiPieza[cual]))
             {
-                g.Clear(Color.Transparent);
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;   // igual que la imagen grande
                 // SE LE PASA EL DESPLAZAMIENTO; NO SE MUEVE EL LIENZO. La primera version movia el lienzo
@@ -1426,9 +1433,16 @@ namespace Rocola
                 // trasformaciones. La letra se iba fuera de la imagen chica y en el bar la tecla elegida
                 // salia como un rectangulo rosa VACIO. Con el desplazamiento por delante cae donde debe en
                 // los dos sitios.
-                searchOverlay.DibujaPiezaViva(g, cual, -donde.X, -donde.Y);
+                if (searchOverlay.Nuevo && cual == SearchOverlay.PiezaCartas)
+                    uiCartasCambios = searchOverlay.PintaCartasConCambios(g, -donde.X, -donde.Y, uiPiezaSig[cual] == SigNada);
+                else
+                {
+                    g.Clear(Color.Transparent);
+                    searchOverlay.DibujaPiezaViva(g, cual, -donde.X, -donde.Y);
+                }
             }
             uiPiezaSig[cual] = sig; uiPiezaVer[cual]++;
+            if (cual == SearchOverlay.PiezaCartas) uiCartasCambiosVer = uiPiezaVer[cual];
             return uiPiezaVer[cual];
         }
 

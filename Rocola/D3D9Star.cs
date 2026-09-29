@@ -2170,7 +2170,7 @@ namespace Rocola
                     int pv = GetPiezaVersion(i);   // prepara la imagen por dentro
                     if (pv == piezaVer[i] && (piezaTex[i] != IntPtr.Zero || piezaW[i] == -1)) continue;
                     Bitmap pb = GetPieza(i);
-                    if (pb != null) piezaTex[i] = Upload(piezaTex[i], ref piezaW[i], ref piezaH[i], pb, out piezaU[i], out piezaV[i]);
+                    if (pb != null) SubePieza(i, pb);
                     else { if (piezaTex[i] != IntPtr.Zero) D3D9.Release(piezaTex[i]); piezaTex[i] = IntPtr.Zero; piezaW[i] = piezaH[i] = -1; }
                     piezaVer[i] = pv;
                 }

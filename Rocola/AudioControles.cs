@@ -24,12 +24,14 @@ namespace Rocola
         }
         private bool HasStereoEq(string path)
         {
+            System.Collections.Generic.Dictionary<string, float[]> eqCache = lecturaPlan != null ? lecturaPlan.Eq : this.eqCache;
             float[] curve;
             return path != null && eqCache.TryGetValue(path, out curve) &&
                 curve != null && curve.Length > EqFingerprint && curve[EqFingerprint] == 1f;
         }
         private bool NeedsStereoEqRefresh(string path)
         {
+            System.Collections.Generic.Dictionary<string, float[]> eqCache = lecturaPlan != null ? lecturaPlan.Eq : this.eqCache;
             // Una duracion sin huella puede corresponder a un archivo demasiado corto.
             // No volver a decodificarlo para siempre: migrar solo huellas existentes.
             return eqCache.ContainsKey(path) && !HasStereoEq(path);

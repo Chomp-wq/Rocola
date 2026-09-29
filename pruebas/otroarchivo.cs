@@ -149,6 +149,7 @@ class OtroArchivo
             Check(tv.Contains("otra.mp3") && !tv.Contains("cancion.wav"), "y queda guardado asi: la tabla de volumen ya no la trae");
             Check(File.Exists(errores) && File.ReadAllText(errores).Contains("Otro archivo en la misma ruta"), "y apuntado en rocola_error.txt");
             object h = Aprendida(ruta, 40.3f, otra);
+            Call(h, "ActualizaFuenteMedida", ruta, Call(null, "CapturaFuente", ruta)); // certificado de la fuente actual, no una tabla antigua
             object cad2 = Arma(h, ruta);
             Check(((Dictionary<string, float>)Get(h, "loudCache")).ContainsKey(ruta) && Get(cad2, "MedidaRuta") == null,
                   "el mismo archivo (unas decimas de diferencia) no se olvida ni se vuelve a medir");

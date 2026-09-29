@@ -28,6 +28,7 @@ NLAYER="$RAIZ/packages/NLayer.1.12.0/lib/net35/NLayer.dll"
 FUENTES="../Rocola/Form1.cs ../Rocola/Form1.Ajustes.cs ../Rocola/Form1.Biblioteca.cs ../Rocola/Form1.Buscador.cs ../Rocola/Form1.Datos.cs ../Rocola/Form1.Fondo.cs ../Rocola/Form1.Ia.cs ../Rocola/Form1.Pared.cs ../Rocola/Form1.Portadas.cs ../Rocola/Form1.Sonido.cs ../Rocola/Form1.Video.cs ../Rocola/Form1.Vistas.cs ../Rocola/Form1.Designer.cs ../Rocola/Program.cs ../Rocola/D3D9Star.cs ../Rocola/Rendimiento.cs ../Rocola/EstadoReposoGpu.cs ../Rocola/AcabadoGpu.cs ../Rocola/CieloNaturalGpu.cs $RAIZ/Rocola/AperturaAudio.cs $RAIZ/Rocola/CargaTrabajo.cs $RAIZ/Rocola/EscaneoMemo.cs $RAIZ/Rocola/LunaGpu.cs $RAIZ/Rocola/Optimizaciones.cs $RAIZ/Rocola/RespuestaGpu.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/EstrellaGpu.cs $RAIZ/Rocola/Estrella3dGpu.cs $RAIZ/Rocola/RelojPantallaGpu.cs $RAIZ/Rocola/AuroraFinaGpu.cs $RAIZ/Rocola/PantallaVivaGpu.cs $RAIZ/Rocola/DiscoVivoGpu.cs $RAIZ/Rocola/SuenaVivoGpu.cs $RAIZ/Rocola/AtraccionGpu.cs $RAIZ/Rocola/EstiloGpu.cs $RAIZ/Rocola/DibujoLigeroGpu.cs $RAIZ/Rocola/BuscadorLigeroGpu.cs $RAIZ/Rocola/FranjaLigeraGpu.cs $RAIZ/Rocola/BuscadorPortadasGpu.cs $RAIZ/Rocola/PrecargaPaginaGpu.cs $RAIZ/Rocola/PaletaCaratulaGpu.cs $RAIZ/Rocola/CreditosServicio.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/TextoMovilGpu.cs"
+FUENTES="$FUENTES $RAIZ/Rocola/FuentesMedidas.cs $RAIZ/Rocola/PlanBiblioteca.cs"
 TMP_PRUEBAS="${TMPDIR:-/tmp}/rocola_pruebas_$$"
 FUENTES="$FUENTES $RAIZ/Rocola/AudioControles.cs $RAIZ/Rocola/Sonoridad.cs $RAIZ/Rocola/RellenoMp3.cs $RAIZ/Rocola/SinSilencios.cs $RAIZ/Rocola/SubirTodo.cs $RAIZ/Rocola/NivelDisco.cs $RAIZ/Rocola/BombaSonido.cs $RAIZ/Rocola/DiarioTablas.cs $RAIZ/Rocola/CancionEnMemoria.cs $RAIZ/Rocola/MedidasBitacora.cs $RAIZ/Rocola/FlotanteNLayer.cs $RAIZ/Rocola/PicoReal.cs $RAIZ/Rocola/Realce.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/ModoNoche.cs $RAIZ/Rocola/GraveMono.cs"
@@ -83,6 +84,7 @@ CPU="$CPU discoparejo"
 # lee un hilo aparte que deja un colchon corto hecho, y la pantalla solo copia. Mismo sonido bit a bit, el final y los
 # fallos como antes, cuanto espera la pantalla a un hilo atrasado y lo que le cuesta cada bloque.
 CPU="$CPU bomba"
+CPU="$CPU cierrebomba"
 # 'tirones': lo que paraba la pantalla al poner una cancion: el primer segundo de musica lo hace el hilo de la musica y la
 # salida arranca cuando esta (sin esperar la pantalla), la tabla de volumen se copia sin rehacer su indice en la pantalla,
 # y el techo de "Subir TODO" con medidas nuevas se cuenta en otro hilo.
@@ -132,6 +134,8 @@ CPU="$CPU firmabiblioteca"
 # 'otroarchivo': en la ruta de una cancion hay hoy otro archivo (la completa en lugar de una descarga cortada). Con la
 # duracion apuntada del de antes, el fundido bajaba a cero alli y el resto sonaba en silencio: ahora manda el lector.
 CPU="$CPU otroarchivo"
+CPU="$CPU fuentes"
+CPU="$CPU planbiblioteca"
 # 'estadopendiente': tras un apagon, una moneda antes de restaurar el estado ya no pisa los creditos y la cola de antes:
 # se conservan y se les suma lo de ahora (con la misma regla de las 7 AM).
 CPU="$CPU estadopendiente"
@@ -181,6 +185,7 @@ GPU="$GPU buscaligero paginasgpu"
 # entrada de las tarjetas, los atajos, las portadas, la tarjeta imitada (tambien con la ventana que sube y baja), lo
 # quieto horneado y las cintas de la tarjeta elegida. Sin ella: que no hay nada del nuevo y la pestana.
 GPU="$GPU buscaportadas"
+GPU="$GPU rendercache"
 CPU="$CPU buscaportadas"
 # 'bloqueos', con el perfil de tarjeta grafica, que es el programa entero (el dibujo por tarjeta incluido): lee el
 # programa compilado y sigue todo lo que corre en la pantalla hasta lo que puede esperar (disco, esperas, programas,
@@ -278,7 +283,13 @@ corre() {
     fi
     ct="$TMP_PRUEBAS/c_$t.txt"
     rt="$TMP_PRUEBAS/r_$t.txt"
-    if ! mcs -sdk:4 -warn:4 -warnaserror+ -out:$t.exe -r:System.Windows.Forms.dll -r:System.Drawing.dll -r:"$NAUDIO" $t.cs $COMUN > "$ct" 2>&1; then
+    apoyo="$COMUN"
+    principal=""
+    if [ "$t" = "rendercache" ]; then
+      apoyo="$apoyo franjareloj.cs buscaportadas.cs"
+      principal="-main:RenderCache"
+    fi
+    if ! mcs -sdk:4 -warn:4 -warnaserror+ $principal -out:$t.exe -r:System.Windows.Forms.dll -r:System.Drawing.dll -r:"$NAUDIO" $t.cs $apoyo > "$ct" 2>&1; then
       echo "  COMPILA MAL  $t"; tail -5 "$ct"; mal=$((mal+1)); continue
     fi
     if grep -q 'warning CS' "$ct"; then

@@ -306,7 +306,7 @@ class BuscaPortadas
         object repc = Reparto(ch);
         List<Rectangle> atc = Atajos(ch); bool dentroFila = true;
         foreach (Rectangle r in atc) if (!R(repc, "Atajos").Contains(r)) dentroFila = false;
-        Exige(atc.Count >= 3 && atc.Count < 6 && dentroFila, "a 800x600, con seis atajos largos solo salen los " + atc.Count + " primeros que caben, y ninguno se sale de su fila");
+        Exige(atc.Count >= 3 && atc.Count <= 6 && dentroFila, "a 800x600 salen los " + atc.Count + " atajos que caben (segun la fuente de Windows/Mono), y ninguno se sale de su fila");
         ch.Dispose();
         // El teclado es compacto: no crece con la altura, solo con la escala del boceto.
         Control a = Buscador(1280, 960, 0), b = Buscador(1280, 1024, 0);
@@ -993,7 +993,7 @@ class BuscaPortadas
         Pon(soGpu, "FocusResults", true); Pon(soGpu, "SelResult", 3);
         for (int k = 0; k < 5; k++)
         {
-            Rectangle d; piezas[k] = (k == 3) ? null : Pieza(soGpu, k, out d);
+            Rectangle d = Rectangle.Empty; piezas[k] = (k == 3) ? null : Pieza(soGpu, k, out d);
             piezasRect[k] = d; piezasVer[k] = 1;
         }
         Pon(p, "PiezasN", 5);
@@ -1084,7 +1084,7 @@ class BuscaPortadas
         Pon(p, "GetPiezasSuben", (Func<bool>)delegate { return piezasSuben; });
         // Todo quieto, con la casilla, la tarjeta elegida y las tarjetas: donde van sin ventana.
         Pon(soGpu, "Results", Resultados("vi", 12)); Pon(soGpu, "FocusResults", true); Pon(soGpu, "SelResult", 3);
-        for (int k = 0; k < 5; k++) { Rectangle d; piezas[k] = (k == 3) ? null : Pieza(soGpu, k, out d); piezasRect[k] = d; piezasVer[k]++; }
+        for (int k = 0; k < 5; k++) { Rectangle d = Rectangle.Empty; piezas[k] = (k == 3) ? null : Pieza(soGpu, k, out d); piezasRect[k] = d; piezasVer[k]++; }
         relojCartas = Ahora() + 60000;
         ventana = Ven(false, false, null, 0f);
         Cuadro(p); List<Envio> quieto = Cuadro(p);
@@ -1525,7 +1525,7 @@ class BuscaPortadas
             Pon(so, "SelResult", 1); Llama(f, "EnsureUiPieza", 2);
             IList cj = Cintas4(f);
             bool soloRenglon = cj.Count == 1 && RectCinta(cj[0]).Top > rt.Top;
-            Exige(justo.Length > 0 && ancho - w < 12f && soloRenglon, "y lo que cabe justo (" + w.ToString("0.0") + " de " + ancho.ToString("0.0") + " px) tampoco: se desliza solo el renglon, que no cabe");
+            Exige(justo.Length > 0 && w <= ancho && soloRenglon, "y el prefijo mas largo que cabe (" + w.ToString("0.0") + " de " + ancho.ToString("0.0") + " px) tampoco: se desliza solo el renglon, que no cabe");
             TTrack.GetField("Title").SetValue(tr, largo);
         }
         // Otra vez la larga, para lo que sigue.

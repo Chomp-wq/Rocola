@@ -191,8 +191,14 @@ namespace Rocola
                     bool midio, queued = false;
                     try
                     {
-                        midio = MeasureFileResponsive(ruta, false, delegate { return mio != warmSongGen || preScanStop; }, out wrms, out wdur, out weq);
+                        Func<bool> cancela = delegate { return mio != warmSongGen || preScanStop; };
+                        using (TurnoAnalisis turno = PideTurnoAnalisis(ruta, cancela))
+                        {
+                            if (turno == null) return;
+                            midio = MeasureFileResponsive(ruta, false, cancela, out wrms, out wdur, out weq);
+                        }
                         SonoridadIntegrada wentera; bool whay = TomaIntegrada(out wentera);   // solo si la leyo entera (canciones cortas)
+                        FuenteMedida wfuente = TomaFuenteMedida();
                         if (!midio) return;
                         if (mio != warmSongGen) return;
                         // Las tablas son del hilo de la pantalla: se le encarga a el que las escriba.
@@ -201,7 +207,7 @@ namespace Rocola
                             if (IsHandleCreated)
                             {
                                 BeginInvoke((MethodInvoker)delegate {
-                                    try { if (mio == warmSongGen && !preScanStop) { PublicaMedida(ruta, wrms, wdur, weq); if (whay) PublicaIntegrada(ruta, wentera); } }
+                                    try { if (mio == warmSongGen && !preScanStop) { PublicaMedidaDeFuente(ruta, wrms, wdur, weq, wfuente); if (whay) PublicaIntegradaDeFuente(ruta, wentera, wfuente); } }
                                     finally { SueltaMedida(ruta); }
                                 });
                                 queued = true;
