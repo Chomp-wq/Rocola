@@ -419,3 +419,39 @@ Quedan anotados como pendientes, con su motivo, tres que tocan el disco o espera
 
 Lo que no ve: una espera dentro de otra biblioteca que no sea de las de la lista, un bucle largo sin llamadas, ni lo que
 hace un delegado guardado en un campo y llamado después (como la firma de la siguiente canción).
+
+## 12. La etiqueta de la siguiente canción, leída por adelantado (29 de septiembre)
+
+Al empezar una canción, la rocola leía su etiqueta ID3 (título, artista, disco y género, que da el color del fondo)
+abriendo el MP3 en el hilo de la pantalla. Con un disco mecánico ocupado, o con el antivirus mirando cada archivo que se
+abre, eso es un tirón justo al cambiar de canción.
+
+Ahora la lectura por adelantado de la siguiente (`PrecalientaSiguiente`), que ya la leía entera y la dejaba en memoria,
+lee también su etiqueta, en su hilo y **de esos mismos bytes**, sobre una copia de la canción hecha en la pantalla
+(`Track.CopiaEtiqueta`, `LeeEtiquetaAparte`). Al empezar, `EnsureTags` la pasa a la canción si es para esa misma
+canción, si la canción sigue como cuando se copió y si el archivo no cambió desde que se leyó: tamaño y fechas, sin
+abrirlo ni leerlo (`AudioFileSignature`, lo mismo que ya mira la apertura por delante). Si falla cualquiera de las
+tres, se lee como siempre. Hay un solo hueco, porque la siguiente es una: no se agranda cada canción de la biblioteca.
+
+Sigue leyéndose al empezar, como antes, la primera de la noche, una elegida con la cola vacía y un archivo que cambió.
+
+**`pruebas/etiquetadelante.cs`** (21 comprobaciones, verde en las dos ramas; con la rocola anterior falla):
+
+- el mismo resultado, campo por campo, que leerla al empezar, en nueve archivos (v2.3 con carátula delante, v2.4, solo
+  v1, v2 a medias completada por v1, sin etiqueta, v2.3 con escape, v2 truncada, un WAV y `.MP3`), leída de la memoria
+  y del archivo;
+- al empezar no se abre el archivo: con el archivo bloqueado por otro, la etiqueta llega entera (y, de control, sin la
+  lectura por adelantado no llega nada);
+- nunca una etiqueta vieja: archivo cambiado (por tamaño, o con el mismo tamaño y otra fecha), canción cambiada, lo
+  leído para otra canción del mismo archivo, y el hueco reemplazado;
+- la lectura por adelantado de verdad la deja lista (1,5 s después, con su pausa), y el enganche en el programa.
+
+Cinco mutaciones la ponen en rojo: sin mirar lo leído, sin comprobar el archivo, sin comprobar de qué canción es, sin
+comprobar que la canción no cambió y sin que el calentador la deje.
+
+Medido aquí, con el archivo ya en la memoria del sistema: leerla al empezar, 27–36 µs; ya leída, 7–9 µs. La diferencia
+que importa no es esa, sino que al empezar ya no se abre el archivo, y abrirlo es lo que puede esperar al disco o al
+antivirus. Eso no se puede medir en este servidor.
+
+`bloqueos` lo refleja: `Track.ReadId3` sigue en su lista, ahora solo para cuando no llegó leída, y entra
+`AudioFileSignature` (tamaño y fechas, sin abrir el archivo).

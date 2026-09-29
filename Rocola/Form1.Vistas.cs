@@ -2424,12 +2424,72 @@ namespace Rocola
 
             // Lee el ID3 bajo demanda (una sola vez), sobre todo para el GENERO (color de fondo).
             private bool tagsLoaded = false;
+            public bool TagsLoaded { get { return tagsLoaded; } }
             public void EnsureTags()
             {
                 if (tagsLoaded) return;
                 tagsLoaded = true;
+                if (TomaEtiquetaLeida()) return;   // ya leida por adelantado, y sigue valiendo (ver abajo)
                 try { if (System.IO.Path.GetExtension(Path).ToLowerInvariant() == ".mp3") ReadId3(Path, this); }
                 catch { }
+            }
+
+            // LA ETIQUETA DE LA SIGUIENTE, LEIDA POR ADELANTADO (29/09). Leerla al empezar la cancion era abrir el MP3 y
+            // leer su cabecera en el hilo de la pantalla, justo al cambiar de cancion: con un disco mecanico ocupado, o con
+            // el antivirus mirando cada archivo que se abre, un tiron. Ahora la lectura por adelantado de la siguiente
+            // (PrecalientaSiguiente) la lee en su hilo, de los MISMOS bytes que acaba de leer, sobre una COPIA de la cancion
+            // hecha en la pantalla (CopiaEtiqueta), y la deja aqui. Al empezar, EnsureTags la pasa a la cancion si:
+            //   - es para esta cancion (el mismo objeto) y la cancion sigue como cuando se copio, y
+            //   - el archivo no cambio desde que se leyo: tamano y fechas (AudioFileSignature), sin abrirlo ni leerlo.
+            // Si no, se lee como siempre. El resultado es el mismo campo por campo: el mismo lector sobre los mismos bytes.
+            // Hay UN solo hueco (la siguiente es una): no se agranda cada cancion de la biblioteca.
+            private static readonly object etiquetaCerrojo = new object();
+            private static Track etiquetaDe, etiquetaAntes, etiquetaLeida;
+            private static string etiquetaFirma;
+            // En la pantalla: la cancion tal como esta (solo lo que la etiqueta puede cambiar).
+            public Track CopiaEtiqueta()
+            {
+                Track c = new Track();
+                c.Path = Path; c.Artist = Artist; c.Title = Title; c.Album = Album; c.Genre = Genre;
+                return c;
+            }
+            // En el hilo de fondo: lo que EnsureTags dejaria en la cancion, leido sobre una copia de 'antes', de 'datos'
+            // (el archivo entero ya en memoria) o, si no los hay, del archivo. No toca ninguna cancion de la biblioteca.
+            public static Track LeeEtiquetaAparte(Track antes, byte[] datos)
+            {
+                Track c = antes.CopiaEtiqueta();
+                try
+                {
+                    if (System.IO.Path.GetExtension(c.Path).ToLowerInvariant() == ".mp3")
+                    {
+                        if (datos != null) { using (MemoryStream ms = new MemoryStream(datos, false)) ReadId3Stream(ms, c); }
+                        else ReadId3(c.Path, c);
+                    }
+                }
+                catch { }
+                return c;
+            }
+            // Y la deja lista para 'cancion', con la firma que tenia el archivo ANTES de leerlo.
+            public static void PonEtiquetaLeida(Track cancion, Track antes, Track leida, string firma)
+            {
+                if (cancion == null || antes == null || leida == null || firma == null) return;
+                lock (etiquetaCerrojo) { etiquetaDe = cancion; etiquetaAntes = antes; etiquetaLeida = leida; etiquetaFirma = firma; }
+            }
+            private bool TomaEtiquetaLeida()
+            {
+                Track antes, leida; string firma;
+                lock (etiquetaCerrojo)
+                {
+                    if (!object.ReferenceEquals(etiquetaDe, this)) return false;
+                    antes = etiquetaAntes; leida = etiquetaLeida; firma = etiquetaFirma;
+                    etiquetaDe = null; etiquetaAntes = null; etiquetaLeida = null; etiquetaFirma = null;
+                }
+                if (antes == null || leida == null || firma == null) return false;
+                if (!string.Equals(antes.Path, Path, StringComparison.Ordinal) || antes.Artist != Artist || antes.Title != Title
+                    || antes.Album != Album || antes.Genre != Genre) return false;
+                if (firma != Form1.AudioFileSignature(Path)) return false;   // el archivo cambio: se lee el de ahora
+                Artist = leida.Artist; Title = leida.Title; Album = leida.Album; Genre = leida.Genre;
+                return true;
             }
 
             private static void ReadId3(string path, Track t)

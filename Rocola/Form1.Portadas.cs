@@ -72,11 +72,11 @@ namespace Rocola
         }
         private void PrecalientaSiguiente()
         {
-            string ruta = null;
+            string ruta = null; Track cancion = null;
             for (int i = 0; i < queue.Count; i++)
             {
                 PlayItem it = queue[i];
-                if (it != null && !it.IsVideo && it.Song != null && it.Song.Path != null) { ruta = it.Song.Path; break; }
+                if (it != null && !it.IsVideo && it.Song != null && it.Song.Path != null) { ruta = it.Song.Path; cancion = it.Song; break; }
             }
             if (ruta == null)
             {
@@ -93,6 +93,9 @@ namespace Rocola
             // escribe en ellas desde otro lado. Preguntarlo desde el hilo del calentador podria reventar
             // justo en el momento en que el otro esta metiendo una fila.
             bool yaMedida = durCache.ContainsKey(ruta);
+            // Y SU ETIQUETA, si aun no se leyo: se copia AQUI la cancion tal como esta y el hilo lee sobre la copia. La
+            // cancion no se toca hasta que la pantalla la empiece (Track.EnsureTags).
+            Track etiquetaAntes = (cancion != null && !cancion.TagsLoaded) ? cancion.CopiaEtiqueta() : null;
             System.Threading.Thread t = new System.Threading.Thread(delegate ()
             {
                 try
@@ -137,6 +140,11 @@ namespace Rocola
                             System.Threading.Thread.Sleep(lentoAqui ? 8 : 1);
                         }
                         if (entera != null && hecho == entera.Length && mio == warmSongGen) DejaEnMemoria(ruta, firma, entera);
+                        // Y SU ETIQUETA, de esos mismos bytes (o del archivo, que acaba de pasar entero por la memoria de
+                        // Windows, si no cabia): al empezar la cancion la pantalla ya no lo abre para leerla.
+                        if (etiquetaAntes != null && firma != null && mio == warmSongGen)
+                            Track.PonEtiquetaLeida(cancion, etiquetaAntes,
+                                Track.LeeEtiquetaAparte(etiquetaAntes, (entera != null && hecho == entera.Length) ? entera : null), firma);
                     }
 
                     // Y YA QUE ESTA LEIDA, SE ABRE SU LECTOR.
