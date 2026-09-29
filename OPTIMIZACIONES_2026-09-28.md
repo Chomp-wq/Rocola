@@ -397,3 +397,25 @@ si hay excepciones en la pantalla. Medido aquí: al arrancar 170–220 ms, usán
 rocola de antes del arranque sin esperar las tablas, 650 ms al arrancar: falla.
 
 Lo que no mide: Windows, la tarjeta gráfica ni un disco mecánico (aquí la ventana se dibuja por CPU con Mono).
+
+## 11. Lo que puede parar la pantalla, vigilado leyendo el programa (29 de septiembre)
+
+**`pruebas/bloqueos.cs`** lee el programa compilado y, desde todo lo que corre en la pantalla (temporizadores, teclas, dibujo,
+eventos y lo que se le manda con `BeginInvoke`: 212 entradas en HD), sigue las llamadas sin cruzar a lo que se encarga a un
+hilo de fondo (más de 2.000 métodos) y apunta cada sitio que llega a algo que puede esperar: el disco, bajar al disco,
+`Sleep`/`Join`/`WaitOne`/`Monitor.Wait`, lanzar o esperar un programa, abrir una imagen, abrir una canción o medirla.
+
+Cada sitio aceptado está en una lista **con su motivo**, revisada a mano: 52 en HD y 38 en Modest, casi todos de una sola
+vez (el arranque, restaurar tras un apagón, empezar el día), de ventanas de servicio o de la IA en vivo de HD. Un sitio
+nuevo hace fallar la batería y enseña el camino desde la pantalla hasta la llamada; uno de la lista que ya no ocurre,
+también. Con la rocola de antes de estas mejoras señala justo lo que se arregló: guardar el estado (`SaveState`), la
+bitácora (`Diag`, `LogError`, `NoteIncompatible`), borrar el estado y la espera del arranque (`CompleteStartupDataLoad`).
+
+Quedan anotados como pendientes, con su motivo, tres que tocan el disco o esperan al empezar o cambiar de canción:
+
+- la etiqueta ID3 de la canción que empieza (`Track.ReadId3`);
+- la IA en vivo de HD (`IaEnhancedPath` y compañía): ya está la versión mejorada;
+- esperar a que el hilo de la música suelte la canción anterior (`BombaSonido.Dispose`, como mucho 1 s).
+
+Lo que no ve: una espera dentro de otra biblioteca que no sea de las de la lista, un bucle largo sin llamadas, ni lo que
+hace un delegado guardado en un campo y llamado después (como la firma de la siguiente canción).
