@@ -177,6 +177,11 @@ GPU="$GPU buscaligero paginasgpu"
 # quieto horneado y las cintas de la tarjeta elegida. Sin ella: que no hay nada del nuevo y la pestana.
 GPU="$GPU buscaportadas"
 CPU="$CPU buscaportadas"
+# 'bloqueos', con el perfil de tarjeta grafica, que es el programa entero (el dibujo por tarjeta incluido): lee el
+# programa compilado y sigue todo lo que corre en la pantalla hasta lo que puede esperar (disco, esperas, programas,
+# abrir o medir canciones); falla con cualquier sitio nuevo que no este en su lista revisada, y con los de la lista que
+# ya no ocurren. Cada sitio de la lista lleva su motivo.
+GPU="$GPU bloqueos"
 
 # --- Que version de .NET pide este PROYECTO. No se deduce probando compiladores ni depende de que
 #     exista .git: las copias entregadas y los ZIP no tienen rama, pero el .csproj siempre declara
