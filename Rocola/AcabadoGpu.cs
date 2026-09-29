@@ -72,6 +72,7 @@ namespace Rocola
             public Bitmap BakeGpuListLayer(bool selected)
             {
                 int w = ClientSize.Width, h = selected ? RowH : ClientSize.Height;
+                pintandoGpu = true;   // con la tarjeta, la fila elegida queda dentro del cristal (DentroDelCristal)
                 Bitmap result = new Bitmap(w, h, PixelFormat.Format32bppPArgb);
                 int saved = Sel;
                 try
@@ -102,7 +103,7 @@ namespace Rocola
                     {
                         // La fila elegida se pinta sola, como si fuera la primera: se le dice donde esta de verdad, para
                         // que quede dentro de las esquinas del cristal (DentroDelCristal).
-                        pintandoGpu = true; gpuFilaY = (saved - PageStart) * RowH;
+                        gpuFilaY = (saved - PageStart) * RowH;
                         // La instantanea anterior conserva el titulo completo estatico.
                         using (new CapturaCintas(null))
                         {
@@ -127,11 +128,12 @@ namespace Rocola
                     return result;
                 }
                 catch { result.Dispose(); throw; }
-                finally { Sel = saved; pintandoGpu = false; gpuFilaY = 0; }
+                finally { Sel = saved; gpuFilaY = 0; }
             }
 
             public long GpuLayerSignature()
             {
+                pintandoGpu = true;
                 int saved = Sel;
                 try
                 {
@@ -172,6 +174,7 @@ namespace Rocola
             { RenderTransparentGpuTint(g, glass, false, Color.White); }
             public void RenderTransparentGpuTint(Graphics g, bool glass, bool tinted, Color tint)
             {
+                pintandoGpu = true;   // la fila elegida, dentro del cristal (Form1.Vistas.cs, DentroDelCristal)
                 int w = ClientSize.Width, h = ClientSize.Height;
                 if (w < 4 || h < 4) return;
                 AseguraHorneada(w, h);
@@ -215,6 +218,7 @@ namespace Rocola
             }
             public void RenderOpaqueGpu(Graphics g)
             {
+                pintandoGpu = true;
                 int w = Width, h = Height;
                 AseguraHorneada(w, h);
                 float d = DesplazaAhora();

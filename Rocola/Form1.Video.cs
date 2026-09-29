@@ -971,6 +971,7 @@ namespace Rocola
             {
                 gpuEnabled = false;
                 AjustaDiscoVivo(false);   // la lista del disco vuelve a ser la de siempre: ahora la pinta el procesador
+                if (songList != null) songList.pintandoGpu = false;   // y su fila elegida, la de siempre
                 gpuPanel.StopGpu(); gpuPanel.Visible = false;
                 SueltaPiezas();     // las piezas vivas del buscador solo existen para la tarjeta grafica
                 if (albumView != null) albumView.GpuCovered = false;   // vuelve a pintar la rejilla por CPU (ya no hay panel encima)
@@ -1712,7 +1713,7 @@ namespace Rocola
             else { PastillaView pa = c as PastillaView; if (pa != null) pa.RenderContentGpu(g);   // con la cancion que llega a la cola (DiscoVivoGpu.cs)
             else { ProgressView pv = c as ProgressView; if (pv != null) pv.RenderContent(g);
             else { GeneroView gv = c as GeneroView; if (gv != null) gv.RenderContent(g);
-            else { SongListView sl = c as SongListView; if (sl != null) sl.RenderContent(g);
+            else { SongListView sl = c as SongListView; if (sl != null) { sl.pintandoGpu = true; sl.RenderContent(g); }
             else { SongPagerBar sp = c as SongPagerBar; if (sp != null) sp.RenderContent(g);
             else { BuscaView bv = c as BuscaView; if (bv != null) bv.RenderContent(g, true); } } } } } } } }
             g.Restore(st);
