@@ -13,7 +13,9 @@ using NAudio.Wave;
 //   1) la cancion "cortada" medida (25 s) y en su ruta ahora la completa (40 s): suena entera, con musica hasta el final,
 //      y el fundido cae al final de la de ahora;
 //   2) con la duracion bien apuntada, el fundido sigue saliendo de lo apuntado (como siempre) y cae en su sitio;
-//   3) lo apuntado se sigue preguntando primero (turno.cs): el archivo solo manda si no cuadra.
+//   3) lo apuntado se sigue preguntando primero (turno.cs): el archivo solo manda si no cuadra;
+//   4) y lo aprendido del de antes (volumen, duracion, EQ, integrada, repaso a fondo) se olvida y se vuelve a aprender
+//      oyendola: antes se quedaba para siempre, porque la cancion "ya estaba medida". Lo de las demas, intacto.
 class OtroArchivo
 {
     const BindingFlags T = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static;
@@ -42,6 +44,44 @@ class OtroArchivo
         ((IDisposable)lector).Dispose();
         return seg;
     }
+    // Una rocola sin encender con lo que hace falta para guardar (las colas de guardado y las tablas publicadas).
+    static object Nueva()
+    {
+        object f = Codigo.FormSinEncender(TF);
+        foreach (FieldInfo fi in TF.GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public))
+            if (fi.FieldType.Name == "GuardadoReciente" && fi.GetValue(f) == null) fi.SetValue(f, Activator.CreateInstance(fi.FieldType, true));
+        Set(f, "startupReadPending", false);
+        return f;
+    }
+    // Una rocola que ya aprendio la cancion de 'ruta' (con la duracion 'dura') y otra cancion mas.
+    static object Aprendida(string ruta, float dura, string otra)
+    {
+        object f = Nueva();
+        Set(f, "integEstado", 1);
+        Set(f, "normalizeOn", true); Set(f, "eqAuto", true); Set(f, "excAmount", 0f); Set(f, "bassAmount", 0f); Set(f, "bassSongFactor", 1f); Set(f, "crossfadeSec", 0.5f);
+        Type ts = TF.Assembly.GetType("Rocola.SonoridadIntegrada", true);
+        IDictionary integ = (IDictionary)Activator.CreateInstance(TF.GetField("integCache", T).FieldType, StringComparer.OrdinalIgnoreCase);
+        Set(f, "integCache", integ);
+        Dictionary<string, float> loud = (Dictionary<string, float>)Get(f, "loudCache"), dur = (Dictionary<string, float>)Get(f, "durCache");
+        Dictionary<string, float[]> eq = (Dictionary<string, float[]>)Get(f, "eqCache");
+        HashSet<string> afondo = (HashSet<string>)Get(f, "deepDone");
+        foreach (string r in new string[] { ruta, otra })
+        {
+            float[] c = new float[12]; for (int i = 0; i < 8; i++) c[i] = 0.5f * i; c[8] = 16000f; c[11] = 1f;
+            loud[r] = 0.2f; dur[r] = (r == ruta) ? dura : 200f; eq[r] = c; afondo.Add(r);
+            integ[r] = Activator.CreateInstance(ts, BindingFlags.NonPublic | BindingFlags.Instance, null, new object[] { 1, -14f, 2f, 250 }, null);
+        }
+        TF.GetMethod("MedidaPuesta", T).Invoke(null, new object[] { ruta });
+        return f;
+    }
+    static object Arma(object f, string ruta)
+    {
+        Type tt = TF.GetNestedType("Track", T); object track = Activator.CreateInstance(tt, true); Set(track, "Path", ruta);
+        object lector = Call(f, "OpenAudio", ruta);
+        object cad = Call(f, "ArmaCadena", track, lector, false, 0.0);
+        ((IDisposable)lector).Dispose();
+        return cad;
+    }
     static void Escribe(string ruta, int segundos)
     {
         int fs = 44100, n = fs * segundos; float[] x = new float[2 * n];
@@ -54,10 +94,13 @@ class OtroArchivo
         TF = Assembly.LoadFrom(args.Length > 0 ? args[0] : "rocola.exe").GetType("Rocola.Form1", true);
         string dir = Path.Combine(Path.GetTempPath(), "rocola_otro_" + Guid.NewGuid().ToString("N").Substring(0, 8));
         Directory.CreateDirectory(dir);
+        FieldInfo carpeta = TF.GetField("carpetaDatos", T);
+        object previa = carpeta.GetValue(null);
         try
         {
+            carpeta.SetValue(null, dir);   // lo que se guarde, aqui (nunca junto a las pruebas)
             string ruta = Path.Combine(dir, "cancion.wav");
-            object f = Codigo.FormSinEncender(TF);
+            object f = Nueva();
             Set(f, "normalizeOn", false); Set(f, "excAmount", 0f); Set(f, "bassAmount", 0f); Set(f, "bassSongFactor", 1f);
             Set(f, "crossfadeSec", 0.5f);   // el fundido de fabrica
             Dictionary<string, float> dur = (Dictionary<string, float>)Get(f, "durCache");
@@ -83,9 +126,38 @@ class OtroArchivo
             List<string> pasos = Codigo.Nombres(TF.GetMethod("ArmaCadena", T));
             int iA = pasos.IndexOf("SegundosDe"), iB = pasos.IndexOf("get_TotalTime");
             Check(iA >= 0 && iB > iA, "ArmaCadena pregunta a lo apuntado y luego lo compara con lo que dice el lector ya abierto");
+
+            Console.WriteLine("\n  4) LO APRENDIDO DEL DE ANTES SE OLVIDA Y SE VUELVE A APRENDER\n");
+            string otra = "D:\\m\\otra.mp3";
+            object g = Aprendida(ruta, 25f, otra);
+            object cad = Arma(g, ruta);
+            Dictionary<string, float> loud = (Dictionary<string, float>)Get(g, "loudCache"), dur2 = (Dictionary<string, float>)Get(g, "durCache");
+            Dictionary<string, float[]> eq = (Dictionary<string, float[]>)Get(g, "eqCache");
+            IDictionary integ = (IDictionary)Get(g, "integCache");
+            HashSet<string> afondo = (HashSet<string>)Get(g, "deepDone");
+            bool yaMedida = (bool)TF.GetMethod("YaSeMidio", T).Invoke(null, new object[] { ruta });
+            Check(!loud.ContainsKey(ruta) && !dur2.ContainsKey(ruta) && !eq.ContainsKey(ruta) && !integ.Contains(ruta) && !afondo.Contains(ruta) && !yaMedida,
+                  "se olvida todo lo suyo: volumen, duracion, EQ, integrada, repaso a fondo y la medida de la sesion");
+            Check(loud.ContainsKey(otra) && dur2.ContainsKey(otra) && eq.ContainsKey(otra) && integ.Contains(otra) && afondo.Contains(otra),
+                  "lo de las demas canciones no se toca");
+            Check((string)Get(cad, "MedidaRuta") == ruta && (string)Get(cad, "EqRuta") == ruta, "y se vuelve a aprender oyendola esta misma vez (volumen y huella del EQ)");
+            Dictionary<string, float> rapida = (Dictionary<string, float>)Get(g, "durFast");
+            Check(rapida.ContainsKey(ruta) && Math.Abs(rapida[ruta] - 40f) < 0.2f, "la lista y la espera de la cola ya dicen lo que dura de verdad (" + (rapida.ContainsKey(ruta) ? rapida[ruta].ToString("0.0") : "-") + " s)");
+            Codigo.EsperaGuardado(TF, g);
+            string vol = Path.Combine(dir, "rocola_volumen.txt"), errores = Path.Combine(dir, "rocola_error.txt");
+            string tv = File.Exists(vol) ? File.ReadAllText(vol) : "";
+            Check(tv.Contains("otra.mp3") && !tv.Contains("cancion.wav"), "y queda guardado asi: la tabla de volumen ya no la trae");
+            Check(File.Exists(errores) && File.ReadAllText(errores).Contains("Otro archivo en la misma ruta"), "y apuntado en rocola_error.txt");
+            object h = Aprendida(ruta, 40.3f, otra);
+            object cad2 = Arma(h, ruta);
+            Check(((Dictionary<string, float>)Get(h, "loudCache")).ContainsKey(ruta) && Get(cad2, "MedidaRuta") == null,
+                  "el mismo archivo (unas decimas de diferencia) no se olvida ni se vuelve a medir");
+            Check(Codigo.Nombres(TF.GetMethod("ArmaCadena", T)).IndexOf("OlvidaSiEsOtroArchivo") >= 0
+                  && Codigo.Nombres(TF.GetMethod("ArmaCadena", T)).IndexOf("OlvidaSiEsOtroArchivo") < Codigo.Nombres(TF.GetMethod("ArmaCadena", T)).IndexOf("GananciaDe"),
+                  "se mira al ponerla, antes de calcular la ganancia, el EQ y el bajo");
         }
         catch (Exception e) { Check(false, "sin excepciones: " + (e.InnerException ?? e)); }
-        finally { try { Directory.Delete(dir, true); } catch { } }
+        finally { carpeta.SetValue(null, previa); try { Directory.Delete(dir, true); } catch { } }
         Console.WriteLine();
         Console.WriteLine(fallos == 0 ? ("  todo bien (" + oks + " comprobaciones)") : ("  FALLOS: " + fallos));
         return fallos == 0 ? 0 : 1;

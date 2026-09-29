@@ -1633,6 +1633,41 @@ namespace Rocola
         //
         // Las tablas son del hilo de la pantalla y no llevan candado -a proposito, para no pagarlo en cada
         // consulta-, asi que quien llame a esto tiene que estar EN ese hilo.
+        // OTRO ARCHIVO EN LA MISMA RUTA. Todo lo que la rocola aprende de una cancion (volumen, duracion, huella del EQ,
+        // sonoridad integrada con sus picos y su mapa de silencios) se apunta por RUTA. Si en esa ruta hay hoy otro archivo
+        // -la cancion completa en lugar de una descarga cortada, otra version con el mismo nombre-, lo apuntado es del de
+        // antes: el nivelado, el EQ automatico y el nivel por disco trabajaban con medidas ajenas, y la cancion no se volvia
+        // a medir nunca porque ya "estaba medida". Al ponerla se compara lo que dura con lo apuntado; las dos cuentas salen
+        // del mismo lector (MeasureFile apunta su TotalTime), asi que en el mismo archivo coinciden. Si no cuadran (un
+        // segundo de margen), se olvida todo lo suyo y se vuelve a aprender: oyendola esta misma vez (ArmaCadena mide lo
+        // que no tiene duracion apuntada) y en el proximo repaso. Queda apuntado en rocola_error.txt.
+        private void OlvidaSiEsOtroArchivo(string ruta, IAudioSource source)
+        {
+            float apuntada;
+            if (ruta == null || source == null || !durCache.TryGetValue(ruta, out apuntada) || !(apuntada > 0.01f)) return;
+            double real;
+            try { FuenteSinSilencios s = source as FuenteSinSilencios; real = ((s != null) ? s.Interior : source).TotalTime.TotalSeconds; }
+            catch { return; }   // si el lector no lo sabe, no se puede decir que sea otro
+            if (!(real > 0.05) || Math.Abs(real - apuntada) <= 1.0) return;
+            OlvidaMedidas(ruta);
+            durFast[ruta] = (float)real;   // lo que dura de verdad, para la lista y la espera de la cola hasta que se vuelva a medir
+            LogError("Otro archivo en la misma ruta: " + Path.GetFileName(ruta) + " duraba " + apuntada.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)
+                     + " s y ahora " + real.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " s; se vuelve a medir", null);
+        }
+        // Olvida lo aprendido de una ruta (en el hilo de la pantalla, dueno de las tablas) y lo guarda asi.
+        private void OlvidaMedidas(string ruta)
+        {
+            loudCache.Remove(ruta); durCache.Remove(ruta);
+            if (eqCache.Remove(ruta)) { eqCacheVer++; eqDirty = true; }
+            bool integ;
+            lock (integCerrojo) integ = integCache != null && integCache.Remove(ruta);
+            if (integ) integCambios++;
+            lock (deepDoneLock) deepDone.Remove(ruta);   // la marca del archivo no vale sin sus medidas (FillDeepDoneRecords)
+            OlvidaMedidaHecha(ruta);                     // que el repaso y el calentador la puedan volver a medir en esta sesion
+            InvalidateVideoMeasurements();
+            SaveLoudCache(); SaveIntegCache(); FlushEqIfDirty();
+        }
+
         private void PublicaMedida(string ruta, float rms, float dur, float[] eqCurve)
         {
             if (ruta == null) return;

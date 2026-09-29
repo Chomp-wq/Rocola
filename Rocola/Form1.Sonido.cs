@@ -1001,6 +1001,7 @@ namespace Rocola
         {
             CadenaCancion c = new CadenaCancion();
             c.Cancion = t; c.Lector = source; c.IaMejorada = iaMejorada;
+            OlvidaSiEsOtroArchivo(t.Path, source);   // en esa ruta hay hoy otro archivo: lo aprendido del de antes no vale
             // NIVELADO: si esta cancion ya se oyo antes, se aplica la ganancia que la lleva al nivel comun; si es
             // nueva, va a su volumen original y se APRENDE su sonoridad en esta pasada (para nivelarla la proxima vez).
             // De una cancion retomada a medias no se aprende nada: seria la medida de un trozo.
