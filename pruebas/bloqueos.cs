@@ -93,14 +93,11 @@ class Bloqueos
         { "proceso", "Form1.IaStopMotor", "hd", "reiniciar el motor de IA desde Ctrl+F3" },
     };
 
-    // ================================ EL LECTOR DEL CODIGO ================================
-    static int Largo1(int op)
-    {
-        if (op == 0x20 || op == 0x22 || op == 0x28 || op == 0x29 || op == 0x6F || op == 0x70 || op == 0x71 || op == 0x72 || op == 0x73 || op == 0x74 || op == 0x75 || op == 0x79 || op == 0x7B || op == 0x7C || op == 0x7D || op == 0x7E || op == 0x7F || op == 0x80 || op == 0x81 || op == 0x8C || op == 0x8D || op == 0x8F || (op >= 0xA3 && op <= 0xA5) || op == 0xC2 || op == 0xC6 || op == 0xD0 || (op >= 0x38 && op <= 0x44) || op == 0xDD || op == 0x21 || op == 0x23) return (op == 0x21 || op == 0x23) ? 8 : 4;
-        if ((op >= 0x2B && op <= 0x37) || op == 0xDE || op == 0x1F || op == 0x0E || op == 0x0F || op == 0x10 || op == 0x11 || op == 0x12 || op == 0x13) return 1;
-        return 0;
-    }
-    static int Largo2(int op2) { if ((op2 >= 0x09 && op2 <= 0x0E)) return 2; if (op2 == 0x06 || op2 == 0x07 || op2 == 0x15 || op2 == 0x16 || op2 == 0x1C || op2 == 0x1D) return 4; if (op2 == 0x12) return 1; return 0; }
+    // ================================ LAS LLAMADAS DE UN METODO ================================
+    // Se leen con el lector comun de las baterias (leercodigo.cs, Codigo.Pasos), como todas: 'leer' vigila que ninguna
+    // lleve su propia copia del recorrido. De cada instruccion interesan las llamadas (call, callvirt, newobj) y los
+    // delegados que se fabrican (ldftn, ldvirtftn), con a quien se le dan: la primera llamada de despues que no fabrica
+    // otro delegado.
     struct Llamada { public MethodBase M; public bool Delegado; public string Siguiente; }
     static readonly Dictionary<MethodBase, List<Llamada>> memo = new Dictionary<MethodBase, List<Llamada>>();
     static List<Llamada> Llamadas(MethodBase m)
@@ -108,34 +105,27 @@ class Bloqueos
         List<Llamada> r;
         if (memo.TryGetValue(m, out r)) return r;
         r = new List<Llamada>(); memo[m] = r;
-        MethodBody b = null; try { b = m.GetMethodBody(); } catch { }
-        if (b == null) return r;
-        byte[] il = b.GetILAsByteArray(); Module mod = m.Module;
-        int i = 0; List<int> pend = new List<int>();   // delegados a la espera de ver a quien se le dan
-        while (i < il.Length)
+        Module mod = m.Module;
+        List<int> pend = new List<int>();   // delegados a la espera de ver a quien se le dan
+        foreach (Codigo.Paso p in Codigo.Pasos(m))
         {
-            int op = il[i];
-            if (op == 0xFE)
+            if (p.Op == 0xFE)
             {
-                if (i + 1 >= il.Length) break;
-                int op2 = il[i + 1], l2 = Largo2(op2);
-                if ((op2 == 0x06 || op2 == 0x07) && i + 5 < il.Length)   // ldftn / ldvirtftn: se fabrica un delegado
+                if (p.Op2 == 0x06 || p.Op2 == 0x07)   // ldftn / ldvirtftn: se fabrica un delegado
                 {
-                    try { MethodBase t = mod.ResolveMethod(BitConverter.ToInt32(il, i + 2)); if (t != null) { Llamada l = new Llamada(); l.M = t; l.Delegado = true; r.Add(l); pend.Add(r.Count - 1); } } catch { }
+                    try { MethodBase t = mod.ResolveMethod(p.Numero); if (t != null) { Llamada l = new Llamada(); l.M = t; l.Delegado = true; r.Add(l); pend.Add(r.Count - 1); } } catch { }
                 }
-                i += 2 + l2; continue;
+                continue;
             }
-            if (op == 0x45) { int n = BitConverter.ToInt32(il, i + 1); i += 1 + 4 + 4 * n; continue; }   // switch
-            int largo = Largo1(op);
-            if ((op == 0x28 || op == 0x6F || op == 0x73) && i + 4 < il.Length)   // call / callvirt / newobj
+            if (p.Op == 0x28 || p.Op == 0x6F || p.Op == 0x73)   // call / callvirt / newobj
             {
                 try
                 {
-                    MethodBase t = mod.ResolveMethod(BitConverter.ToInt32(il, i + 1));
+                    MethodBase t = mod.ResolveMethod(p.Numero);
                     if (t != null)
                     {
                         Llamada l = new Llamada(); l.M = t; r.Add(l);
-                        bool fabricaDelegado = op == 0x73 && t.DeclaringType != null && t.DeclaringType.BaseType == typeof(MulticastDelegate);
+                        bool fabricaDelegado = p.Op == 0x73 && t.DeclaringType != null && t.DeclaringType.BaseType == typeof(MulticastDelegate);
                         if (!fabricaDelegado)   // a quien se le da el delegado: la primera llamada que no fabrica otro
                         {
                             foreach (int k in pend) { Llamada d = r[k]; d.Siguiente = N(t); r[k] = d; }
@@ -145,7 +135,6 @@ class Bloqueos
                 }
                 catch { }
             }
-            i += 1 + largo;
         }
         return r;
     }
