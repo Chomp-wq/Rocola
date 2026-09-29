@@ -100,6 +100,9 @@ namespace Rocola
                     using (Graphics output = Graphics.FromImage(result))
                     using (ImageAttributes key = new ImageAttributes())
                     {
+                        // La fila elegida se pinta sola, como si fuera la primera: se le dice donde esta de verdad, para
+                        // que quede dentro de las esquinas del cristal (DentroDelCristal).
+                        pintandoGpu = true; gpuFilaY = (saved - PageStart) * RowH;
                         // La instantanea anterior conserva el titulo completo estatico.
                         using (new CapturaCintas(null))
                         {
@@ -124,7 +127,7 @@ namespace Rocola
                     return result;
                 }
                 catch { result.Dispose(); throw; }
-                finally { Sel = saved; }
+                finally { Sel = saved; pintandoGpu = false; gpuFilaY = 0; }
             }
 
             public long GpuLayerSignature()

@@ -2033,6 +2033,26 @@ namespace Rocola
             // se separo para poder HORNEARLA a un mapa de bits y despues solo copiarla: dibujar una pagina
             // cuesta 1,8 ms -son catorce filas con su texto, su numero, su genero y su duracion- y al hojear
             // hacen falta DOS a la vez, en cada cuadro de la animacion. Horneada, cada cuadro es una copia.
+            // LA FILA ELEGIDA, DENTRO DEL CRISTAL (solo con tarjeta grafica). El cristal de la lista (BakeSongGlassTint) tiene
+            // esquinas de radio min(28, lado/4); la fila elegida se apartaba solo 4 px del borde y, en la primera y la ultima
+            // fila, sus esquinas se salian por la curva. Aqui se aparta lo justo para que su esquina (radio 9) quede dentro
+            // de la del cristal, con 2 px de aire para el borde. Las filas del medio quedan igual.
+#if ROCOLA_GPU
+            internal bool pintandoGpu; internal int gpuFilaY;
+            internal static Rectangle DentroDelCristal(Rectangle hl, int w, int h)
+            {
+                float R = Math.Min(28, Math.Min(w, h) / 4), cabe = R - 9f - 3f;
+                if (cabe <= 0f) return hl;
+                float c = 1f + R;                                         // centro de la esquina del cristal (arriba)
+                float dy = Math.Max(c - (hl.Top + 9f), (hl.Bottom - 9f) - (h - 2f - R));
+                if (dy <= 0f) return hl;
+                if (dy > cabe) dy = cabe;
+                int x = (int)Math.Ceiling(c - (float)Math.Sqrt(cabe * cabe - dy * dy) - 9f);
+                if (x <= hl.Left) return hl;
+                int quita = x - hl.Left;
+                return new Rectangle(hl.Left + quita, hl.Top, Math.Max(20, hl.Width - 2 * quita), hl.Height);
+            }
+#endif
             private void PintaPagina(Graphics g, int arranque)
             {
                 int w = ClientSize.Width, h = ClientSize.Height;
@@ -2088,6 +2108,9 @@ namespace Rocola
                     if (idx == Sel)
                     {
                         Rectangle hl = new Rectangle(r.X + 4, r.Y + 3, r.Width - 8, r.Height - 6);
+#if ROCOLA_GPU
+                        if (pintandoGpu) { hl.Offset(0, gpuFilaY); hl = DentroDelCristal(hl, ClientSize.Width, ClientSize.Height); hl.Offset(0, -gpuFilaY); }   // solo la tarjeta: el procesador no cambia
+#endif
                         hlB.Color = Color.FromArgb(150, Lighten(Accent, 0.15));
                         hlP.Color = Color.FromArgb(180, Lighten(Accent, 0.45));
                         using (GraphicsPath gp = RoundedPath(hl, 9)) { g.FillPath(hlB, gp); g.DrawPath(hlP, gp); }
