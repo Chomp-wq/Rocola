@@ -15,10 +15,10 @@ using System.Reflection;
 // fondo del color del genero y llama a PlayTrack, que mira la cache de IA y arranca la apertura -que
 // desde la precarga ya viene hecha de antes-. Todo eso en el hilo de la pantalla.
 //
-// DE TODO ESO, LO UNICO QUE PUEDE ESPERAR DE VERDAD ES BAJAR EL ESTADO AL DISCO, y esta puesto a
-// proposito: es lo que hace que un apagon no le quite el dinero al cliente. Decision del usuario,
-// septiembre de 2026. Por eso aqui hay un GUARDIAN: si alguien se lleva esa bajada a disco por delante,
-// o se la lleva a un hilo de fondo, esto se pone rojo y dice por que.
+// BAJAR EL ESTADO AL DISCO es lo que hace que un apagon no le quite el dinero al cliente. Hasta el 29 de
+// septiembre de 2026 se hacia aqui mismo, a la cara; ese dia el usuario decidio llevarlo a un hilo de
+// fondo (estadodetras.cs), en orden y con la misma bajada al disco. Aqui hay un GUARDIAN: si alguien se
+// lleva esa bajada a disco por delante, o vuelve a hacerla en el hilo de la pantalla, esto se pone rojo.
 //
 // Lo demas se mide en cada pasada y sale en la tabla, para que el dia que alguien vuelva a tocar el
 // arranque tenga con que comparar en vez de adivinar.
@@ -66,16 +66,19 @@ class Arranque
         MethodInfo escribe = TF.GetMethod("EscribeSeguroYa", EST);
         if (guarda == null || escribe == null) { Mal("falta SaveState o EscribeSeguroYa"); return; }
 
-        Exige(Codigo.Llama(guarda, "EscribeSeguro"), "el estado vivo se guarda por el camino seguro");
+        List<string> encargo = Codigo.ConAyudantes(TF, "EscribeEstado");
+        Exige(Codigo.Llama(guarda, "EscribeEstado") && Codigo.Llama(encargo, "EscribeSeguroYa"), "el estado vivo se guarda por el camino seguro");
         Exige(Codigo.Llama(escribe, "FlushFileBuffers"),
               "y ESE camino baja el archivo al disco de verdad, no solo a la memoria de Windows");
 
-        // Y SIGUE SIENDO A LA CARA. Esto no es una manía: es la decision que hace que una moneda que ya
-        // entro no se pierda en un apagon. Si algun dia se lleva a un hilo de fondo queda una ventana de
-        // unos milisegundos en la que esa moneda no esta en ningun lado. Que se decida a proposito, no
-        // por descuido: por eso esto esta aqui.
-        Exige(!Codigo.Llama(guarda, "GuardaEnFondo") && !Codigo.Llama(guarda, "QueueUserWorkItem"),
-              "y se hace a la cara, no en un hilo de fondo (decision del usuario: primero el dinero)");
+        // Y AHORA VA EN UN HILO DE FONDO, EN ORDEN. Decision del usuario del 29 de septiembre de 2026: en un
+        // disco mecanico ocupado, bajar el estado tardaba decenas de milisegundos en el hilo de la pantalla
+        // con cada moneda y cada cancion. Se acepta la ventana de unos milisegundos hasta que llega al disco;
+        // a cambio, el encargo va al escritor de fondo (el ultimo gana) y un encargo viejo nunca pisa a uno
+        // nuevo ni resucita un estado borrado (numero de orden bajo el candado del archivo).
+        Exige(!Codigo.Llama(guarda, "EscribeSeguro") && !Codigo.Llama(guarda, "EscribeSeguroYa") && Codigo.Llama(encargo, "GuardaUltimo"),
+              "y se escribe en un hilo de fondo, no en el que guarda (decision del usuario del 29/09/2026)");
+        Exige(Codigo.Llama(encargo, "CandadoDe"), "y en orden: el numero de cada encargo se mira bajo el candado del archivo");
 
         // Al cerrar se espera a los guardados que SI van en fondo (los gordos), que es lo que permite
         // que los demas puedan ir en fondo sin perderse.

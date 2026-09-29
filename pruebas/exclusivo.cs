@@ -162,7 +162,7 @@ class Exclusivo
         return x;
     }
     static int Lee(IWaveProvider p, byte[] b) { int n = 0, r; while (n < b.Length && (r = p.Read(b, n, b.Length - n)) > 0) n += r; return n; }
-    static string Apuntes() { string f = Path.Combine(tmp, "rocola_error.txt"); return File.Exists(f) ? File.ReadAllText(f) : ""; }
+    static string Apuntes() { Codigo.EsperaBitacora(); string f = Path.Combine(tmp, "rocola_error.txt"); return File.Exists(f) ? File.ReadAllText(f) : ""; }
     static int Veces(string texto, string que) { int n = 0, i = 0; while ((i = texto.IndexOf(que, i, StringComparison.Ordinal)) >= 0) { n++; i += que.Length; } return n; }
 
     // ================================================================================================

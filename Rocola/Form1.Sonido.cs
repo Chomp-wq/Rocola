@@ -1349,7 +1349,7 @@ namespace Rocola
                 if (string.IsNullOrEmpty(path) || !incompatibleLogged.Add(path)) return;   // ya anotada
                 string reason = (ex != null) ? ex.Message : "desconocido";
                 if (reason.Length > 160) reason = reason.Substring(0, 160);
-                File.AppendAllText(RutaDatos("rocola_incompatibles.txt"),
+                Bitacora.Apunta(RutaDatos("rocola_incompatibles.txt"), 0,   // detras de la pantalla, como la bitacora
                     DateTime.Now.ToString("yyyy-MM-dd HH:mm") + "  |  " + path + "  |  " + reason + "\r\n");
             }
             catch { }
@@ -1951,7 +1951,9 @@ namespace Rocola
             // REANUDA (creditos + cola). Es decir, la sola presencia del archivo al arrancar delata que fue apagon.
             // Si ni siquiera publicamos los datos iniciales, conservar tambien el estado anterior.
             if (!startupReadPending && (e.CloseReason == CloseReason.WindowsShutDown || e.CloseReason == CloseReason.UserClosing))
-                BorraSeguro(StateFile());
+                BorraEstado();
+            else EsperaGuardados();   // cierre por otra causa: que el ultimo estado encargado llegue al disco
+            Bitacora.Vacia(3000);   // y que la bitacora no se quede con apuntes en la cola
             IaStopMotor();   // motor y ffmpeg hijo que lanzamos: se van con la rocola
             base.OnFormClosing(e);
         }

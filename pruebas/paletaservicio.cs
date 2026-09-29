@@ -69,6 +69,7 @@ class PaletaServicio
             {
                 Call(form,f,"ChooseSearchResult",item);
                 Check((int)Get(form,f,"credits")==4*i,"No entrega cuatro por pulsacion");
+                Codigo.EsperaGuardado(form,f);   // el estado se escribe en un hilo de fondo (estadodetras.cs)
                 Check(File.ReadAllText(Path.Combine(dir,"rocola_estado.txt")).Contains("creditos="+4*i+"\r\n"),"No persiste creditos");
                 Check((long)Get(form,f,"statsCoins")==0&&(long)Get(form,f,"statsCreditsAdded")==0,"Cuenta servicio como monedas");
                 Check((bool)Get(form,f,"searchOpen"),"Cierra acceso tras usar");

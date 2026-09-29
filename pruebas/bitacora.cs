@@ -37,12 +37,14 @@ class Bitacora
             Console.WriteLine("\n  1) APAGADO: NADA\n");
             Set(f, "diagOn", false);
             Call(f, "ApuntaArranque", 12, 3); Call(f, "ApuntaBiblioteca", true); Call(f, "ApuntaCancion", 40);
+            Codigo.EsperaBitacora();   // la bitacora escribe detras (bitacoradetras.cs)
             Check(!File.Exists(diag), "sin \"diagnostico=1\" no se escribe nada");
 
             Console.WriteLine("\n  2) ENCENDIDO: UNA LINEA POR COSA\n");
             Set(f, "diagOn", true);
             Set(f, "bitacoraFirmaMs", 57);
             Call(f, "ApuntaArranque", 12, 3); Call(f, "ApuntaBiblioteca", true); Call(f, "ApuntaCancion", 40);
+            Codigo.EsperaBitacora();
             string t = File.Exists(diag) ? File.ReadAllText(diag) : "";
             Check(t.Contains("arranque: tablas leidas en 12 ms") && t.Contains("la ventana espero 3 ms"), "el arranque: lo que tardaron las tablas y lo que las espero la ventana");
             Check(t.Contains("biblioteca: lista en") && t.Contains("la guardada") && t.Contains("(recorrer las carpetas) 57 ms"), "la biblioteca: de donde salio y lo que costo comprobar la guardada");

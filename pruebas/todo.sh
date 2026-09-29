@@ -90,6 +90,12 @@ CPU="$CPU bomba"
 # salida arranca cuando esta (sin esperar la pantalla), la tabla de volumen se copia sin rehacer su indice en la pantalla,
 # y el techo de "Subir TODO" con medidas nuevas se cuenta en otro hilo.
 CPU="$CPU tirones"
+# 'estadodetras': los creditos y la cola se escriben en un hilo de fondo, en orden: con el disco ocupado la moneda no
+# espera, queda lo ultimo con los mismos bytes, un encargo viejo no resucita un estado borrado y restaurar ve lo encargado.
+CPU="$CPU estadodetras"
+# 'bitacoradetras': la bitacora (diagnostico, errores, incompatibles) la escribe un hilo de fondo: nadie abre el archivo por
+# su cuenta, con el archivo ocupado no se espera ni se pierde nada, lo escrito no cambia y un fallo grave se escribe ya.
+CPU="$CPU bitacoradetras"
 # 'prioridad': la rocola con prioridad por encima de lo normal (Program.cs): se pone al arrancar la unica rocola, nunca
 # "alta" ni "tiempo real", y en ningun otro sitio.
 CPU="$CPU prioridad"

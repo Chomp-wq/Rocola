@@ -359,12 +359,8 @@ namespace Rocola
         private void Diag(string msg)
         {
             if (!diagOn) return;
-            try
-            {
-                string f = RutaDatos("rocola_diagnostico.txt");
-                try { FileInfo fi = new FileInfo(f); if (fi.Exists && fi.Length > 2097152) fi.Delete(); } catch { }
-                File.AppendAllText(f, DateTime.Now.ToString("HH:mm:ss.fff") + "  " + msg + "\r\n");
-            }
+            // Con la hora de ahora, pero la escribe un hilo de fondo (Bitacora, en MedidasBitacora.cs). Tope ~2 MB, como siempre.
+            try { Bitacora.Apunta(RutaDatos("rocola_diagnostico.txt"), 2097152, DateTime.Now.ToString("HH:mm:ss.fff") + "  " + msg + "\r\n"); }
             catch { }
         }
 
@@ -1406,16 +1402,11 @@ namespace Rocola
         // error que llega por mensaje no se puede diagnosticar si no se sabe de que version salio.
         private void LogError(string context, Exception ex)
         {
+            // Lo escribe un hilo de fondo (Bitacora, en MedidasBitacora.cs), que tambien le pone el sello. Tope ~256KB.
             try
             {
-                string f = RutaDatos("rocola_error.txt");
-                string sello = "";
-                try { sello = DeCuandoEs(); } catch { }
-                if (sello.Length > 0) sello = "  (rocola del " + sello + ")";
-                string msg = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "  [" + context + "]" + sello + "\r\n"
-                           + (ex != null ? ex.ToString() : "(sin excepcion)") + "\r\n\r\n";
-                try { FileInfo fi = new FileInfo(f); if (fi.Exists && fi.Length > 262144) fi.Delete(); } catch { }   // tope ~256KB
-                File.AppendAllText(f, msg);
+                Bitacora.ApuntaConSello(RutaDatos("rocola_error.txt"), 262144, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "  [" + context + "]",
+                                        "\r\n" + (ex != null ? ex.ToString() : "(sin excepcion)") + "\r\n\r\n");
             }
             catch { }
         }

@@ -69,6 +69,7 @@ class GuardadoCortado
             Check(Lee(cfg) != null && Lee(eq) != null, "y los ajustes y el EQ tambien");
             Check(Lee(stats) == "el bueno" && Lee(stats + ".bak") == "la copia", "lo que si estaba no se toca");
             Check(!File.Exists(est), "el estado (creditos y cola) NO: ahi que falte quiere decir algo, y su lector ya mira la copia");
+            Codigo.EsperaBitacora();   // la bitacora escribe detras (bitacoradetras.cs)
             string errores = Lee(Path.Combine(dir, "rocola_error.txt"));
             Check(errores != null && errores.Contains("rocola_volumen.txt recuperado de su copia") && errores.Contains("rocola_config.txt recuperado"),
                   "y queda apuntado en rocola_error.txt");
