@@ -276,34 +276,43 @@ namespace Rocola
         // nadie la ponga -que es lo normal- no cambia absolutamente nada.
         //
         // Se calcula UNA vez: si cambiara a media sesion, la mitad de los archivos acabarian en un sitio y
-        // la otra mitad en otro.
-        private static string carpetaDatos;
+        // la otra mitad en otro. Y bajo candado: si dos hilos la pedian a la vez por primera vez, sus dos
+        // pruebas de escritura chocaban en el mismo archivo, el que perdia creia que alli no se podia
+        // escribir y los datos se iban a la carpeta del programa. En la rocola no pasaba porque Main la pide
+        // antes que nadie, pero lo que la pida primero desde otro hilo no tiene por que saberlo.
+        private static volatile string carpetaDatos;
+        private static readonly object carpetaDatosCerrojo = new object();
         internal static string CarpetaDatos
         {
             get
             {
-                if (carpetaDatos != null) return carpetaDatos;
-                string d = null;
-                try { d = Environment.GetEnvironmentVariable("ROCOLA_DATOS"); } catch { }
-                if (!string.IsNullOrEmpty(d))
+                string ya = carpetaDatos;
+                if (ya != null) return ya;
+                lock (carpetaDatosCerrojo)
                 {
-                    d = d.Trim();
-                    try
+                    if (carpetaDatos != null) return carpetaDatos;
+                    string d = null;
+                    try { d = Environment.GetEnvironmentVariable("ROCOLA_DATOS"); } catch { }
+                    if (!string.IsNullOrEmpty(d))
                     {
-                        if (!Directory.Exists(d)) Directory.CreateDirectory(d);
-                        // Se comprueba que de verdad se puede escribir ANTES de fiarse: si el disco de la
-                        // musica no estuviera montado todavia, la ruta existiria vacia y la rocola escribiria
-                        // en un sitio que va a desaparecer. Mejor volver a la carpeta del programa.
-                        string prueba = Path.Combine(d, "rocola_escribible.tmp");
-                        File.WriteAllText(prueba, "ok");
-                        File.Delete(prueba);
-                        carpetaDatos = d;
-                        return carpetaDatos;
+                        d = d.Trim();
+                        try
+                        {
+                            if (!Directory.Exists(d)) Directory.CreateDirectory(d);
+                            // Se comprueba que de verdad se puede escribir ANTES de fiarse: si el disco de la
+                            // musica no estuviera montado todavia, la ruta existiria vacia y la rocola escribiria
+                            // en un sitio que va a desaparecer. Mejor volver a la carpeta del programa.
+                            string prueba = Path.Combine(d, "rocola_escribible.tmp");
+                            File.WriteAllText(prueba, "ok");
+                            File.Delete(prueba);
+                            carpetaDatos = d;
+                            return carpetaDatos;
+                        }
+                        catch { }
                     }
-                    catch { }
+                    carpetaDatos = Application.StartupPath;
+                    return carpetaDatos;
                 }
-                carpetaDatos = Application.StartupPath;
-                return carpetaDatos;
             }
         }
         private static string RutaDatos(string nombre) { return Path.Combine(CarpetaDatos, nombre); }
