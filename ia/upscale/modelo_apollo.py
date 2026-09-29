@@ -12,6 +12,7 @@ import os
 import sys
 
 import numpy as np
+from presupuesto_cpu import aplica_presupuesto
 
 DEFAULT_SOURCE = "JusperLee/Apollo"
 DEFAULT_REVISION = "0b123a4606d5345d9082f6f633d8bfebe84c8e79"
@@ -213,10 +214,7 @@ def cargar(gpu="auto", apollo_dir=None, modelo_resuelto=None):
     if repo not in sys.path:
         sys.path.insert(0, repo)
     import torch
-    try:
-        torch.set_num_threads(2)
-    except Exception:
-        pass
+    hilos = aplica_presupuesto(torch)
     try:
         from look2hear.models.apollo import Apollo
     except Exception as e:
@@ -247,6 +245,7 @@ def cargar(gpu="auto", apollo_dir=None, modelo_resuelto=None):
     except Exception:
         nombre = str(dev)
     print("   dispositivo:", dev, "-", nombre)
+    print("   presupuesto CPU:", hilos, "hilo(s), segun la afinidad disponible")
     model = model.to(dev).eval()
 
     def proc(x):

@@ -42,6 +42,7 @@ namespace Rocola
             private Dictionary<string, long> enArchivo;   // lo que ya dice el archivo: ruta -> huella de su medida
             private int filasArchivo;                      // lineas de registros que tiene (con las repetidas)
             private long largoArchivo = -1;                // el largo en que se dejo: si es otro, alguien lo toco
+            private long escritaArchivo, creadaArchivo;
             internal int Enteros, Anadidos, SinCambios;    // cuantas veces se escribio entero, se anadio o no hizo falta
             internal long Bytes;                           // bytes escritos en total (pruebas y diagnostico)
 
@@ -56,7 +57,7 @@ namespace Rocola
                     if (vigente != null && !vigente()) return false;
                     try
                     {
-                        bool entero = enArchivo == null || LargoDe(ruta) != largoArchivo;
+                        bool entero = enArchivo == null || CambioArchivo(ruta);
                         List<int> cambian = null;
                         if (!entero)
                         {
@@ -112,7 +113,7 @@ namespace Rocola
                 for (int i = 0; i < filas.Count; i++) nuevo[filas[i].Key] = huella(filas[i].Key, filas[i].Value);
                 enArchivo = nuevo;
                 filasArchivo = filas.Count + (cola != null ? cola.Count : 0);
-                largoArchivo = LargoDe(ruta);
+                ObservaArchivo(ruta);
                 Enteros++;
                 if (largoArchivo > 0) Bytes += largoArchivo;
                 return true;
@@ -138,7 +139,7 @@ namespace Rocola
                 if (vigente != null && !vigente()) return 1;
                 using (FileStream fs = new FileStream(ruta, FileMode.Open, FileAccess.Write, FileShare.Read))
                 {
-                    if (fs.Length != largoArchivo) { enArchivo = null; return 2; }   // lo toco alguien entre medias
+                    if (fs.Length != largoArchivo || CambioArchivo(ruta)) { enArchivo = null; return 2; }   // incluso mismo largo
                     fs.Position = fs.Length;
                     fs.Write(datos, 0, datos.Length);
                     fs.Flush();
@@ -146,6 +147,7 @@ namespace Rocola
                     try { FlushFileBuffers(fs.SafeFileHandle.DangerousGetHandle()); } catch { }
                     largoArchivo = fs.Length;
                 }
+                ObservaArchivo(ruta);
                 for (int i = 0; i < cambian.Count; i++)
                 {
                     KeyValuePair<string, T> f = filas[cambian[i]];
@@ -157,10 +159,15 @@ namespace Rocola
                 return 0;
             }
 
-            private static long LargoDe(string ruta)
+            private bool CambioArchivo(string ruta)
             {
-                try { FileInfo fi = new FileInfo(ruta); return fi.Exists ? fi.Length : -1; }
-                catch { return -2; }
+                try { FileInfo f = new FileInfo(ruta); return !f.Exists || f.Length != largoArchivo || f.LastWriteTimeUtc.Ticks != escritaArchivo || f.CreationTimeUtc.Ticks != creadaArchivo; }
+                catch { return true; }
+            }
+            private void ObservaArchivo(string ruta)
+            {
+                FileInfo f = new FileInfo(ruta);
+                largoArchivo = f.Length; escritaArchivo = f.LastWriteTimeUtc.Ticks; creadaArchivo = f.CreationTimeUtc.Ticks;
             }
         }
 

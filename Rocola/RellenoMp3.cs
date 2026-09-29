@@ -360,6 +360,7 @@ namespace Rocola
         private sealed class FuenteSinRelleno : IAudioSource
         {
             private readonly IAudioSource s;
+            internal IAudioSource Interior { get { return s; } }
             private readonly RecorteRelleno recorte;
             internal readonly long CuadrosMusica;   // lo que dura la musica (para el fundido de salida)
             internal FuenteSinRelleno(IAudioSource origen, long cuadrosFuera, long cuadrosMusica)

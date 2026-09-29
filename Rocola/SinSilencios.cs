@@ -236,6 +236,8 @@ namespace Rocola
             {
                 MapaSilencios m;
                 if (!MapaDe(path, out m)) return s;
+                if (!CoincideFuenteLector(path, s)) return s; // el sello viaja con el lector, tambien si se precargo
+                if (!FuenteDelMapa(path, m)) return s; // archivo original y mapa certificados, no solo misma duracion
                 if (!m.DeEsteArchivo(s.TotalTime.TotalSeconds)) return s;   // en esa ruta hay ahora otro archivo (ver DeEsteArchivo)
                 PlanSilencios p = PlanSilencios.De(m, s.WaveFormat.SampleRate, crossfadeSec);
                 if (p == null) return s;

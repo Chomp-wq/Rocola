@@ -184,63 +184,68 @@ namespace Rocola
         private static string perfilTexto = "";  // lo medido, en palabras (se ensena en Ctrl+F3)
         private void PerfilaDisco(List<Track> lista)
         {
-            if (perfilHecho || lista == null || lista.Count == 0) return;
-            perfilHecho = true;
+            if (lista == null || lista.Count == 0) return;
             try
             {
-                // Las medidas se van APARTANDO POR UNIDAD: si la musica esta repartida entre un SSD y un disco
-                // duro, cada uno saca su propio veredicto en vez de salir todo del promedio de los dos.
-                Dictionary<string, List<int>> porUnidad = new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
+                HashSet<string> conocidas;
+                lock (discoLock) conocidas = new HashSet<string>(discoLento.Keys, StringComparer.OrdinalIgnoreCase);
+                Dictionary<string, List<Track>> nuevas = new Dictionary<string, List<Track>>(StringComparer.OrdinalIgnoreCase);
+                Dictionary<string, int> cantidades = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                for (int i = 0; i < lista.Count; i++)
+                {
+                    Track t = lista[i]; if (t == null || t.Path == null) continue;
+                    string unidad = UnidadDe(t.Path); int cuenta;
+                    cantidades.TryGetValue(unidad, out cuenta); cantidades[unidad] = cuenta + 1;
+                    if (conocidas.Contains(unidad)) continue;
+                    List<Track> muestras;
+                    if (!nuevas.TryGetValue(unidad, out muestras)) { muestras = new List<Track>(); nuevas[unidad] = muestras; }
+                    muestras.Add(t);
+                }
+                if (nuevas.Count == 0 && perfilHecho) return;
                 byte[] buf = new byte[4096];
                 Random rnd = new Random(unchecked(Environment.TickCount * 397));
-                int paso = lista.Count / MuestrasDisco; if (paso < 1) paso = 1;
-                int hechas = 0;
-                for (int i = 0; i < lista.Count && hechas < MuestrasDisco; i += paso)
+                foreach (KeyValuePair<string, List<Track>> unidad in nuevas)
                 {
-                    Track t = lista[i];
-                    if (t == null || t.Path == null) continue;
-                    try
+                    List<int> medidas = new List<int>(MuestrasDisco);
+                    List<Track> archivos = unidad.Value;
+                    int count = Math.Min(MuestrasDisco, archivos.Count);
+                    for (int k = 0; k < count; k++)
                     {
-                        System.Diagnostics.Stopwatch sw = System.Diagnostics.Stopwatch.StartNew();
-                        using (FileStream fs = new FileStream(t.Path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 4096))
+                        Track t = archivos[(int)((long)k * archivos.Count / count)];
+                        try
                         {
-                            long largo = fs.Length;
-                            if (largo > 8192) fs.Position = (long)(rnd.NextDouble() * (largo - 4096));   // a un sitio SALTEADO
-                            fs.Read(buf, 0, buf.Length);
+                            System.Diagnostics.Stopwatch sw = System.Diagnostics.Stopwatch.StartNew();
+                            using (FileStream fs = new FileStream(t.Path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 4096))
+                            {
+                                long largo = fs.Length;
+                                if (largo > 8192) fs.Position = (long)(rnd.NextDouble() * (largo - 4096));
+                                fs.Read(buf, 0, buf.Length);
+                            }
+                            sw.Stop(); medidas.Add((int)sw.ElapsedMilliseconds);
                         }
-                        sw.Stop();
-                        string u = UnidadDe(t.Path);
-                        List<int> l;
-                        if (!porUnidad.TryGetValue(u, out l)) { l = new List<int>(8); porUnidad[u] = l; }
-                        l.Add((int)sw.ElapsedMilliseconds);
-                        hechas++;
+                        catch { }
                     }
-                    catch { }
+                    if (medidas.Count < 3) continue;   // mantener el respaldo conservador sin muestras suficientes
+                    medidas.Sort();
+                    lock (discoLock) discoLento[unidad.Key] = medidas[medidas.Count / 2] > UmbralDiscoMs;
                 }
-                if (hechas < 5) { perfilHecho = false; return; }   // no se pudo medir: sigue el respaldo de arriba
-                // Cada unidad, por su MEDIANA. Y el veredicto general, el de la unidad donde cayeron mas
-                // muestras: ahi es donde esta la mayoria de la musica.
                 string mandaU = null; int mandaN = 0; bool mandaLento = true;
                 StringBuilder det = new StringBuilder();
                 lock (discoLock)
                 {
-                    foreach (KeyValuePair<string, List<int>> kv in porUnidad)
+                    foreach (KeyValuePair<string, int> cantidad in cantidades)
                     {
-                        List<int> l = kv.Value;
-                        if (l.Count < 3) continue;   // con una o dos medidas no se decide nada de esa unidad
-                        l.Sort();
-                        bool lentoU = l[l.Count / 2] > UmbralDiscoMs;
-                        discoLento[kv.Key] = lentoU;
+                        bool lento;
+                        if (!discoLento.TryGetValue(cantidad.Key, out lento)) continue;
                         if (det.Length > 0) det.Append(", ");
-                        det.Append(kv.Key).Append(' ').Append(lentoU ? "disco duro" : "SSD").Append(" (").Append(l[l.Count / 2]).Append(" ms)");
-                        if (l.Count > mandaN) { mandaN = l.Count; mandaU = kv.Key; mandaLento = lentoU; }
+                        det.Append(cantidad.Key).Append(' ').Append(lento ? "disco duro" : "SSD");
+                        if (cantidad.Value > mandaN) { mandaN = cantidad.Value; mandaU = cantidad.Key; mandaLento = lento; }
                     }
                 }
                 if (mandaU == null) { perfilHecho = false; return; }
-                medidoLento = mandaLento;
-                diskProbeN = 16;   // ya esta decidido: el perfilado de oido no tiene nada que corregir
-                AplicaPerfilDisco();
-                perfilTexto = det.ToString();
+                perfilHecho = true;
+                medidoLento = mandaLento; diskProbeN = 16;
+                AplicaPerfilDisco(); perfilTexto = det.ToString();
                 Diag("disco: " + det + "  -> manda " + mandaU + ", " + coverCarriles + " carril(es)"
                      + (perfilDisco != 0 ? "  (forzado a mano: " + (perfilDisco == 1 ? "SSD" : "disco duro") + ")" : ""));
             }

@@ -750,6 +750,7 @@ namespace Rocola
                 gpuPanel.GetPieza = delegate(int i) { return uiPieza[i]; };
                 gpuPanel.GetPiezaRect = delegate(int i) { return uiPiezaRect[i]; };
                 gpuPanel.GetPiezaVersion = delegate(int i) { return EnsureUiPieza(i); };
+                gpuPanel.GetPiezaCambios = CambiosPiezaBuscador;
                 gpuPanel.GetCartas = FillCartas;   // el buscador con portadas: cada tarjeta entra por su cuenta (BuscadorPortadasGpu.cs)
                 gpuPanel.GetPiezasSuben = PiezasSubenConLaVentana;   // las piezas de los dos buscadores van con la ventana
                 gpuPanel.GetPiezaVistaPrevia = PiezaVistaPreviaBuscador;   // y lo que se desliza de su vista previa
@@ -1239,7 +1240,6 @@ namespace Rocola
             using (cual == PiezaVistaPreviaBuscador() ? CapturaTexto(4) : new CapturaCintas(null))   // en el buscador con portadas, la tarjeta elegida (BuscadorPortadasGpu.cs)
             using (Graphics g = Graphics.FromImage(uiPieza[cual]))
             {
-                g.Clear(Color.Transparent);
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;   // igual que la imagen grande
                 // SE LE PASA EL DESPLAZAMIENTO; NO SE MUEVE EL LIENZO. La primera version movia el lienzo
@@ -1248,9 +1248,16 @@ namespace Rocola
                 // trasformaciones. La letra se iba fuera de la imagen chica y en el bar la tecla elegida
                 // salia como un rectangulo rosa VACIO. Con el desplazamiento por delante cae donde debe en
                 // los dos sitios.
-                searchOverlay.DibujaPiezaViva(g, cual, -donde.X, -donde.Y);
+                if (searchOverlay.Nuevo && cual == SearchOverlay.PiezaCartas)
+                    uiCartasCambios = searchOverlay.PintaCartasConCambios(g, -donde.X, -donde.Y, uiPiezaSig[cual] == SigNada);
+                else
+                {
+                    g.Clear(Color.Transparent);
+                    searchOverlay.DibujaPiezaViva(g, cual, -donde.X, -donde.Y);
+                }
             }
             uiPiezaSig[cual] = sig; uiPiezaVer[cual]++;
+            if (cual == SearchOverlay.PiezaCartas) uiCartasCambiosVer = uiPiezaVer[cual];
             return uiPiezaVer[cual];
         }
 

@@ -21,8 +21,8 @@
 //    cadena sale de la lectura de la salida (la atiende NAudio, que avisa con PlaybackStopped).
 //  - 'buffer' puede ser la vista flotante que NAudio pone sobre su byte[]: se copia muestra a muestra, nunca con
 //    Array.Copy ni Array.Clear (ver Realce.cs).
-//  - Al parar, el hilo se detiene y se espera ANTES de soltar el lector (DisposePlaybackNow): nadie lee un archivo
-//    cerrado, y las medidas de la cancion se cierran con el audio de verdad quieto.
+//  - Al parar se invalida la publicacion de esta cancion y se pide terminar al hilo, sin esperar al disco.
+//    El propio hilo libera los lectores despues de salir de su ultimo Read; nunca se cierra un lector en uso.
 //  - EL ARRANQUE, SIN PARAR LA PANTALLA (29 de septiembre). Al arrancar, WaveOut llena sus 20 bloques de una vez: pide
 //    1 s de musica seguido. Con el colchon de 200 ms, la pantalla se quedaba esperando a que el hilo descomprimiera y
 //    procesara ese segundo entero (medido: 44 ms en un procesador de servidor, con 20.000 canciones en las tablas;
@@ -53,6 +53,8 @@ namespace Rocola
         private bool salidaLeyo;                    // la salida ya pidio musica: desde ahi, solo el colchon
         private Action alEstarLista;                // el aviso del primer segundo hecho (una vez)
         private Thread hilo;
+        private bool lecturaTerminada, liberacionPedida;
+        private Action alParar;
         private bool parar, fin, atascada;
         private Exception fallo;
         private long huecos;                     // bloques que salieron en silencio por un hilo atrasado
@@ -116,6 +118,7 @@ namespace Rocola
         {
             lock (cerrojo)
             {
+                if (parar) return 0;
                 if (hilo == null && !parar) Arranca();
                 salidaLeyo = true; alEstarLista = null;   // la salida ya arranco: desde aqui, el colchon de siempre
                 int hechos = 0;
@@ -190,23 +193,71 @@ namespace Rocola
             catch (Exception ex)
             {
                 Action lista;
-                lock (cerrojo) { fallo = ex; fin = true; lista = TomaAviso(true); Monitor.PulseAll(cerrojo); }
+                lock (cerrojo) { fallo = parar ? null : ex; fin = true; lista = parar ? null : TomaAviso(true); Monitor.PulseAll(cerrojo); }
                 if (lista != null) lista();   // la salida arranca igual: el fallo le llega al leer, como antes
+            }
+            finally
+            {
+                Action libera;
+                lock (cerrojo) { lecturaTerminada = true; libera = alParar; alParar = null; Monitor.PulseAll(cerrojo); }
+                Libera(libera);   // el ultimo Read ya termino: sus recursos pueden cerrarse sin competir con el lector
             }
         }
 
-        // Para el hilo y lo espera (como mucho 1 s: si se quedo colgado en el disco, se sigue sin el).
-        public void Dispose()
+        private static void Libera(Action libera) { if (libera != null) try { libera(); } catch { } }
+
+        // Cancelacion inmediata. Si Read sigue esperando al disco, conserva sus lectores hasta su finally.
+        // Si ya termino (o nunca empezo), libera en segundo plano: ni un Dispose lento detiene la pantalla.
+        internal void CuandoPare(Action libera)
         {
-            Thread h;
-            lock (cerrojo) { parar = true; Monitor.PulseAll(cerrojo); h = hilo; }
-            if (h != null && h != Thread.CurrentThread) { try { h.Join(1000); } catch { } }
+            Action ya = null;
+            lock (cerrojo)
+            {
+                parar = true; lleno = 0; alEstarLista = null;
+                if (libera != null && !liberacionPedida)
+                {
+                    liberacionPedida = true;
+                    if (hilo == null || lecturaTerminada) ya = libera; else alParar = libera;
+                }
+                Monitor.PulseAll(cerrojo);
+            }
+            if (ya != null)
+            {
+                Action pendiente = ya;
+                try { if (ThreadPool.QueueUserWorkItem(delegate { Libera(pendiente); })) return; } catch { }
+                Libera(pendiente);   // si el runtime no admite mas trabajos, conserva al menos la propiedad segura
+            }
         }
+        public void Dispose() { CuandoPare(null); }
     }
 
     public partial class Form1
     {
         private BombaSonido bomba;   // la de la salida clasica que suena (null con WASAPI o sin musica)
+        private long publicacionAudio;
+
+        // Solo el informe breve de un bloque, nunca Read ni el DSP. La misma puerta permite cerrar su medida
+        // e invalidarla antes de empezar otra cancion: un bloque de un lector lento no contamina la nueva.
+        private void PublicaBloqueDe(LevelTap tap, float[] buffer, int offset, int count, int rate, int canales)
+        {
+            lock (levelLock)
+            {
+                if (tap.Publicacion != publicacionAudio) return;
+                MedidaDe(tap);
+                ReportAudioBlock(buffer, offset, count, rate, canales);
+            }
+        }
+        private void InvalidaPublicacionAudio() { lock (levelLock) { unchecked { publicacionAudio++; } } }
+        private static void LiberaLectoresAudio(IAudioSource actual, IAudioSource preparada)
+        {
+            if (actual != null) try { actual.Dispose(); } catch { }
+            if (preparada != null && !object.ReferenceEquals(actual, preparada)) try { preparada.Dispose(); } catch { }
+        }
+        private static void SueltaLectoresAudio(BombaSonido anterior, IAudioSource actual, IAudioSource preparada)
+        {
+            if (anterior != null) anterior.CuandoPare(delegate { LiberaLectoresAudio(actual, preparada); });
+            else LiberaLectoresAudio(actual, preparada);   // WASAPI ya detuvo su propio lector con output.Dispose
+        }
 
         // La salida clasica lee de aqui: la cadena la pasa el hilo de la musica (BombaSonido).
         private ISampleProvider ConBomba(ISampleProvider cadena)
@@ -227,7 +278,7 @@ namespace Rocola
         // de la musica haga el primer segundo entero), se le pide al hilo que avise cuando lo tenga, y 'arranca' se hace
         // entonces en el hilo de la pantalla. Si mientras tanto se salto o se paro la cancion (otra salida u otra bomba),
         // no se hace nada. Sin ventana a la que volver (y sin prueba que lo pida) devuelve false: se arranca como antes.
-        internal Action<System.Windows.Forms.MethodInvoker> vuelveALaPantalla;   // solo las pruebas (null = BeginInvoke)
+        internal Action<System.Windows.Forms.MethodInvoker> vuelveALaPantalla = null;   // solo las pruebas (null = BeginInvoke)
         private bool ArrancaCuandoEsteLista(System.Windows.Forms.MethodInvoker arranca)
         {
             BombaSonido b = bomba; IWavePlayer o = output;

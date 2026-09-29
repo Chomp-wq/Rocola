@@ -103,19 +103,14 @@ class EnMemoria
     {
         List<string> r = new List<string>();
         if (m == null) return r;
-        foreach (string s in Codigo.Llamadas(m))
+        foreach (Codigo.Paso paso in Codigo.Pasos(m))
         {
-            if (s.IndexOf("<AbreMp3>", StringComparison.Ordinal) < 0 || !s.EndsWith("..ctor")) continue;
-            Type st = TF.GetNestedType(s.Substring(0, s.Length - 6), T);
-            if (st == null) continue;
-            List<MethodInfo> ms = new List<MethodInfo>(st.GetMethods(T | BindingFlags.DeclaredOnly));
-            ms.Sort(delegate(MethodInfo x, MethodInfo y) { return string.CompareOrdinal(x.Name, y.Name); });
-            foreach (MethodInfo x in ms)
-            {
-                StringBuilder sb = new StringBuilder();
-                foreach (Codigo.Paso p in Codigo.Pasos(x)) sb.Append(p.Op).Append('.').Append(p.Op2).Append(' ');
-                r.Add(sb.ToString());
-            }
+            // ldftn/ldvirtftn: el delegado real, sin depender del nombre de su clase (distinto en Mono y csc).
+            if (paso.Op != 0xFE || (paso.Op2 != 0x06 && paso.Op2 != 0x07)) continue;
+            MethodBase delegado = m.Module.ResolveMethod(paso.Numero);
+            StringBuilder sb = new StringBuilder();
+            foreach (Codigo.Paso p in Codigo.Pasos(delegado)) sb.Append(p.Op).Append('.').Append(p.Op2).Append(' ');
+            r.Add(sb.ToString());
         }
         return r;
     }

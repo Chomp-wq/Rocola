@@ -162,6 +162,7 @@ class Tirones
         Call(f, "SueltaBomba");
         // Sin ventana a la que volver: como antes (Play en el momento).
         object g = Codigo.FormSinEncender(TF);
+        typeof(Form).GetConstructor(Type.EmptyTypes).Invoke(g, new object[0]); // solo inicializa la base WinForms, sin arrancar la Rocola
         Call(g, "ConBomba", new Lenta(44100L * 2)); Set(g, "output", new Falsa());
         Check(!(bool)arranca.Invoke(g, new object[] { (MethodInvoker)delegate { } }), "sin ventana a la que volver, la salida arranca como antes");
         Call(g, "SueltaBomba");

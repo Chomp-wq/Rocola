@@ -335,7 +335,12 @@ class FranjaReloj
     static int DistintosEnTextura(IntPtr tex, Bitmap b)
     {
         TexImitada t; if (!creadas.TryGetValue(tex.ToInt64(), out t)) return -1;
-        int[] px = Pixeles(b); int[] fila = new int[b.Width]; int n = 0;
+        // Direct3D recibe ARGB no premultiplicado (SubeBitmap), aunque el lienzo de GDI+ sea PArgb.
+        int[] px = new int[b.Width * b.Height];
+        BitmapData bd = b.LockBits(new Rectangle(0, 0, b.Width, b.Height), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+        try { for (int y = 0; y < b.Height; y++) Marshal.Copy(new IntPtr(bd.Scan0.ToInt64() + (long)y * bd.Stride), px, y * b.Width, b.Width); }
+        finally { b.UnlockBits(bd); }
+        int[] fila = new int[b.Width]; int n = 0;
         for (int y = 0; y < b.Height; y++)
         {
             Marshal.Copy(new IntPtr(t.Mem.ToInt64() + (long)y * t.W * 4), fila, 0, b.Width);

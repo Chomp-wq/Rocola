@@ -1008,6 +1008,8 @@ namespace Rocola
         private void StartScan(List<string> roots)
         {
             if (scanner != null && scanner.IsBusy) return;   // ya hay un escaneo en curso (doble F5): ignorar
+            CancelaPlanesBiblioteca(); // despertar los planes antes de vaciar la biblioteca de la generacion anterior
+            ++preScanGen; ++durScanGen; // descartar tambien sus publicaciones ya encoladas en la pantalla
             InvalidateCoverMemory();   // F5/nuevo disco: una portada reemplazada no puede quedarse congelada en RAM
             libBuilding = true;   // desde aqui y hasta Completed, las listas son del worker
             if (searchOpen) CloseSearch();            // un re-escaneo invalida lo que el buscador muestra

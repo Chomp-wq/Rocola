@@ -686,6 +686,7 @@ namespace Rocola
         // Se guarda en segundo plano, como la tabla de volumen, y solo si hay algo nuevo.
         private void SaveIntegCache()
         {
+            SaveFuentesMedidas();
             if (startupReadPending || integEstado != 1 || integCache == null) return;
             long hasta = integCambios;
             if (hasta == System.Threading.Interlocked.Read(ref integGuardados)) return;
@@ -880,6 +881,8 @@ namespace Rocola
         // huella del EQ, ni material para la IA). Cancelable en cada bloque, como MeasureFile.
         private bool MideIntegrada(string path, out SonoridadIntegrada s)
         {
+            fuenteLeida = null;
+            FuenteMedida fuenteInicio = CapturaFuente(path);
             s = new SonoridadIntegrada();
             if (path == null || EsVideo(path) || MeasurementCancelled()) return false;
             LectorMedida rd = null;
@@ -902,7 +905,7 @@ namespace Rocola
                     m.Procesa(buf, 0, n);   // el medidor ya sabe completar un cuadro partido
                 }
                 if (MeasurementCancelled()) return false;
-                return CierraIntegrada(m, total, tasa, out s);
+                return CierraIntegrada(m, total, tasa, out s) && TerminaFuenteLeida(path, fuenteInicio);
             }
             catch { s = new SonoridadIntegrada(); return false; }
             finally { if (rd != null) { try { rd.Dispose(); } catch { } } }
@@ -933,6 +936,11 @@ namespace Rocola
         // pedido, lo mas sonado, lo mas reciente.
         private List<string> TandaIntegrada()
         {
+            LecturaBiblioteca p = lecturaPlan;
+            List<Track> tracks = p != null ? p.Tracks : this.tracks;
+            Dictionary<string, SonoridadIntegrada> integCache = p != null ? p.Integ : this.integCache;
+            Dictionary<string, int> songCounts = p != null ? p.Canciones : this.songCounts;
+            Dictionary<string, long> songSeq = p != null ? p.Sec : this.songSeq;
             List<string> pend = new List<string>();
             if (tracks == null || integCache == null) return pend;
             for (int i = 0; i < tracks.Count; i++)
@@ -944,13 +952,14 @@ namespace Rocola
                 pend.Add(tk.Path);
             }
             HashSet<string> enCola = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            for (int i = 0; queue != null && i < queue.Count; i++)
+            for (int i = 0; p == null && queue != null && i < queue.Count; i++)
             {
                 PlayItem it = queue[i];
                 if (it == null) continue;
                 string k = it.PathKey();
                 if (k.Length > 0) enCola.Add(k);
             }
+            if (p != null) enCola = p.Cola;
             Dictionary<string, int> veces = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             Dictionary<string, long> recientes = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
             for (int i = 0; i < pend.Count; i++)

@@ -322,7 +322,7 @@ namespace Rocola
         {
             string path = curMeasurePath; curMeasurePath = null;
             double sumSq = curSumSq; long samples = curSamples; curSumSq = 0; curSamples = 0;
-            CierraSonoridad(path, sumSq, samples, kwRate, kwCanales);
+            CierraSonoridadDeFuente(path, sumSq, samples, kwRate, kwCanales, curFuenteMedida);
         }
         // Lo mismo con lo que se guardo de una cancion que acabo por relevo sin pausa (Form1.SinPausa.cs).
         private void CierraSonoridad(string path, double sumSq, long samples, int tasa, int canales)
@@ -474,6 +474,8 @@ namespace Rocola
         // que da practicamente la misma sonoridad a una fraccion del costo.
         private bool MeasureFile(string path, bool aFondo, out float rms, out float durSec, out float[] eqCurve)
         {
+            fuenteLeida = null;
+            FuenteMedida fuenteInicio = CapturaFuente(path);
             rms = 0f; durSec = 0f; eqCurve = null;
             integradaLista = false;   // lo que deja para TomaIntegrada: nada, salvo que lea la cancion entera
             if (MeasurementCancelled()) return false;
@@ -688,7 +690,7 @@ namespace Rocola
                 float corteHz = measuredCut;
                 float corteLo = measuredCutLo;
                 float recorte = (nSamp > 0) ? (float)((double)clipN / nSamp) : 0f;
-                if (nSamp < 40000) return durSec > 0.01f;   // muy poco audio util: al menos queda la duracion
+                if (nSamp < 40000) return durSec > 0.01f && TerminaFuenteLeida(path, fuenteInicio);   // muy poco audio util
                 rms = (float)Math.Sqrt(sumSq / nSamp);
                 // SILENCIO DE VERDAD. Un archivo sin nada de sonido da cero, y con cero no se guardaba: se
                 // quedaba como "sin medir", se volvia a medir en cada arranque para siempre, y no aparecia
@@ -709,9 +711,9 @@ namespace Rocola
                     for (int b = 0; b < 8; b++) curve[b] -= refDb;
                     eqCurve = curve;
                 }
-                return true;
+                return TerminaFuenteLeida(path, fuenteInicio);
             }
-            catch { return durSec > 0.01f; }
+            catch { return durSec > 0.01f && TerminaFuenteLeida(path, fuenteInicio); }
             finally { if (rd != null) { try { rd.Dispose(); } catch { } } }
         }
 
@@ -1067,6 +1069,8 @@ namespace Rocola
                     if (enh != null) iaSrc = enh; else IaRequestJob(t.Path);   // aun no lista: suena la original y se pide para la proxima
                     iaNowEnhanced = (enh != null && !yaBuena);   // [IA] solo si de verdad suena la version mejorada (con .orig suena el original tal cual)
                 }
+                if (iaSrc != null && !string.Equals(iaSrc, t.Path, StringComparison.OrdinalIgnoreCase))
+                    lock (iaOriginalCerrojo) iaOriginal[iaSrc] = t.Path; // tambien la primera cancion, sin lookahead previo
                 // Y con ULTRA encendido, todo lo que NO suene por la version de Apollo lo atiende el DSEE
                 // normal mientras tanto. Las marcadas .orig incluidas: ahi suena el original, y si le falta
                 // banda el reconstructor la recrea; si no le falta, es un pase directo que no cuesta nada.
@@ -1115,6 +1119,7 @@ namespace Rocola
                 cad.Item = nowPlaying;
                 // Lo que se aprende oyendola va en los campos de siempre (la salida aun no arranco: sin carrera).
                 curMeasurePath = cad.MedidaRuta; curSumSq = 0; curSamples = 0;
+                curFuenteMedida = cad.Fuente;
                 eqMeasPath = cad.EqRuta;
                 eqMeasCut = 0f;   // el acantilado es de ESTA cancion: se vuelve a medir
                 eqMeasSum = new double[8]; eqMeasN = 0; eqMeasRate = 0;
@@ -1201,6 +1206,8 @@ namespace Rocola
             CadenaCancion c = new CadenaCancion();
             c.Cancion = t; c.Lector = source; c.IaMejorada = iaMejorada;
             OlvidaSiEsOtroArchivo(t.Path, source);   // en esa ruta hay hoy otro archivo: lo aprendido del de antes no vale
+            c.Fuente = FuenteDeLector(t.Path, source);
+            if (c.Fuente != null && !c.Fuente.Igual(CapturaFuente(t.Path))) OlvidaMedidas(t.Path);
             bool dsee = DseeActivoPara(iaMejorada);   // el reconstructor para ESTA cancion (con ULTRA, segun si viene mejorada)
             // NIVELADO: si esta cancion ya se oyo antes, se aplica la ganancia que la lleva al nivel comun; si es
             // nueva, va a su volumen original y se APRENDE su sonoridad en esta pasada (para nivelarla la proxima vez).
@@ -1227,6 +1234,7 @@ namespace Rocola
             tap.EqDb = EqCorrFor(t.Path);      // EQ automatico: correccion aprendida (null la 1a vez que suena)
             audioTailDelay += tap.DelayFrames;   // realce 2x: retiene 31 cuadros y los entrega al final (Realce.cs)
             c.Tap = tap; tap.Medida = new MedidaCancion(c.MedidaRuta, c.EqRuta);   // lo que aprende oyendola (ver MedidaDe)
+            tap.Medida.Fuente = c.Fuente;
             // MODO NOCHE: al bajar el volumen de madrugada, devuelve los graves y agudos que el oido pierde
             // (ModoNoche.cs). De dia no hace nada: sale tal cual.
             c.Noche = new CompensaNoche(tap); c.Noche.Db = NocheCompensaDb();
@@ -1288,7 +1296,9 @@ namespace Rocola
         // sanos y, en el peor caso, hace lo mismo que antes: saltar.
         private IAudioSource OpenAudio(string path)
         {
-            try { return SinSilencios(path, SinRelleno(path, new FileAudioSource(path))); }   // sin el hueco del codificador (RellenoMp3.cs) ni los silencios largos (SinSilencios.cs)
+            string original = RutaOriginalDe(path);
+            FuenteMedida inicio = CapturaFuente(original);
+            try { return SinSilencios(path, SinRelleno(path, SellaFuenteAudio(original, inicio, new FileAudioSource(path)))); }   // sin el hueco del codificador ni los silencios largos
             catch
             {
                 bool isMp3 = path != null && path.Length > 4 && path.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase);
@@ -1298,7 +1308,7 @@ namespace Rocola
                     try
                     {
                         clean = BuildCleanMp3(path);
-                        if (clean != null) return SinSilencios(path, new TolerantMp3Source(clean));   // reconstruido a una sola frecuencia: ahora SI suena
+                        if (clean != null) return SinSilencios(path, SellaFuenteAudio(original, inicio, new TolerantMp3Source(clean)));   // reconstruido a una sola frecuencia
                     }
                     catch { if (clean != null) { try { clean.Dispose(); } catch { } } }   // el tolerante tampoco pudo: cae al throw de abajo
                 }
@@ -1448,6 +1458,9 @@ namespace Rocola
             CancelAudioOpen(); // saltar/cerrar invalida resultados que aun esten abriendo
             CancelaReintentoSalida();   // y la espera a que vuelva el aparato de sonido (SalidaSonido.cs)
             progressTimer.Stop();
+            InvalidaPublicacionAudio();   // los bloques tardios ya no pueden publicar medidas ni pulso
+            BombaSonido anterior = bomba; bomba = null;
+            if (anterior != null) anterior.Dispose();   // tambien despierta cualquier lectura de la salida que esperaba musica
             if (output != null)
             {
                 output.PlaybackStopped -= Output_PlaybackStopped;
@@ -1458,13 +1471,17 @@ namespace Rocola
             if (outputResampler != null) { try { outputResampler.Dispose(); } catch { } outputResampler = null; }
             if (outputDevice != null) { try { outputDevice.Dispose(); } catch { } outputDevice = null; }
             SueltaExclusivo();   // el aparato del exclusivo y lo que recibia (SalidaExclusiva.cs)
-            SueltaBomba();   // el hilo de la musica, parado y esperado ANTES de soltar el lector (BombaSonido.cs)
-            if (reader != null) { try { reader.Dispose(); } catch { } reader = null; }
-            SueltaSinPausa();   // la siguiente preparada (o ya entrando): con la salida ya parada
+            IAudioSource lectorActual = reader; reader = null;
+            IAudioSource lectorPreparado;
+            lock (levelLock)
+            {
+                lectorPreparado = SueltaSinPausa();   // retira la siguiente; conserva el lector hasta acabar el ultimo Read
+                FinalizeLoudMeasure();   // solo lo publicado antes de cancelar; la cancion nueva no recibe un bloque viejo
+                FinalizeEqMeasure();
+                ClearLevels();
+            }
+            SueltaLectoresAudio(anterior, lectorActual, lectorPreparado);
             curTap = null; curSbr = null; curBass = null; curNoche = null;   // ya no hay taps actuales
-            FinalizeLoudMeasure();   // guarda la sonoridad medida de la cancion que acaba de sonar (audio ya detenido: sin carrera)
-            FinalizeEqMeasure();     // y su huella tonal (mismo momento seguro)
-            ClearLevels();   // sin cancion no hay trozos pendientes: el pulso cae a cero
             rmsLo = rmsMid = rmsHi = 0f; avgLo = avgMid = avgHi = 0f;
         }
 
@@ -3404,6 +3421,7 @@ namespace Rocola
         {
             private readonly NAudio.Wave.ISampleProvider src;
             private readonly Form1 owner;
+            internal readonly long Publicacion;   // la reproduccion para la que puede apuntar medidas y pulso
             internal MedidaCancion Medida;     // lo que aprende oyendola, si entra por relevo sin pausa (Form1.SinPausa.cs)
             public volatile float Gain = 1f;   // objetivos; la rampa se aplica DESPUES de medir
             public volatile float Master = 1f; // los picos los controla el limitador final
@@ -3453,7 +3471,7 @@ namespace Rocola
             }
             public LevelTap(NAudio.Wave.ISampleProvider s, Form1 o)
             {
-                src=s;owner=o;audioChannels=Math.Max(1,s.WaveFormat.Channels);
+                src=s;owner=o;Publicacion=o==null?0:o.publicacionAudio;audioChannels=Math.Max(1,s.WaveFormat.Channels);
                 rampFrames=Math.Max(1,(int)(s.WaveFormat.SampleRate*.020));
                 eqFadeFrames=Math.Max(1,(int)(s.WaveFormat.SampleRate*.030));
                 exciterPole=ExciterPole(s.WaveFormat.SampleRate);exLp=new float[audioChannels];
@@ -3488,8 +3506,7 @@ namespace Rocola
                     // de medir nada. Es UNA comparacion por muestra, y de paso atrapa los valores absurdos
                     // (un archivo roto que devuelve 1e30) que reventarian el nivelado.
                     { int fin0 = offset + n; for (int i = offset; i < fin0; i++) { float x0 = buffer[i]; if (!(x0 >= -4f && x0 <= 4f)) buffer[i] = 0f; } }
-                    owner.MedidaDe(this);   // relevo sin pausa: en su primer bloque, la medida en vivo pasa a ser de esta cancion
-                    owner.ReportAudioBlock(buffer, offset, n, WaveFormat.SampleRate, WaveFormat.Channels);   // mide el nivel CRUDO (beat + sonoridad + huella tonal) ANTES de tocar nada
+                    owner.PublicaBloqueDe(this, buffer, offset, n, WaveFormat.SampleRate, WaveFormat.Channels);   // mide el crudo solo mientras esta reproduccion sigue vigente
                     float g, ex;
                     Objetivos(out g, out ex);
                     PreparedEq prepared=pendingEq;

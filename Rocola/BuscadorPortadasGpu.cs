@@ -86,6 +86,13 @@ namespace Rocola
     public partial class Form1
     {
         // Manda el buscador nuevo: el interruptor encendido y la tarjeta grafica dibujando.
+        private Rectangle[] uiCartasCambios;
+        private int uiCartasCambiosVer = -1;
+        private Rectangle[] CambiosPiezaBuscador(int cual, int desde)
+        {
+            return cual == SearchOverlay.PiezaCartas && desde == uiCartasCambiosVer - 1
+                && uiCartasCambiosVer == uiPiezaVer[cual] ? uiCartasCambios : null;
+        }
         private bool BuscadorPortadasActivo() { return buscadorPortadas && gpuEnabled && gpuPanel != null; }
 
         // Al cambiar el interruptor, al encender o apagar la tarjeta y al abrir el buscador.
@@ -937,6 +944,105 @@ namespace Rocola
             private object vcLista; private int vcN = -1, vcScroll = -1, vcCola = -1, vcDatos = -1, vcPortadas = -1, vcAcento, vcW = -1, vcH = -1, vcFilas = -1;
             private string vcQuery, vcModo; private double vcCuando = double.MinValue, vcCuandoVista = double.MinValue;
             private readonly List<Album> portadasFaltan = new List<Album>();
+            private sealed class FirmaCarta
+            {
+                internal SearchItem Item; internal Image Cover;
+                internal string Tipo, Titulo, Sub, Genero, Path;
+                internal int ColorTipo, Cola; internal bool Suena;
+                internal bool Igual(FirmaCarta other)
+                {
+                    return other != null && ReferenceEquals(Item, other.Item) && ReferenceEquals(Cover, other.Cover)
+                        && Tipo == other.Tipo && Titulo == other.Titulo && Sub == other.Sub && Genero == other.Genero
+                        && Path == other.Path && ColorTipo == other.ColorTipo && Cola == other.Cola && Suena == other.Suena;
+                }
+            }
+            private FirmaCarta[] cartasPintadas;
+            private object cartasPintadasLista;
+            private int cartasPintadasScroll, cartasPintadasW, cartasPintadasH, cartasPintadasAccent;
+            private string cartasPintadasQuery;
+            private Rectangle cartasPintadasResultados, cartasPintadasBarra;
+            private int cartasPintadasFilas;
+            private bool cartasRecortadas;
+
+            // Una portada o una marca de cola no cambian toda la pagina. Se compara lo que cada
+            // tarjeta realmente muestra, y se repinta en el mismo lienzo solo donde cambio.
+            // null = reconstruccion completa; arreglo vacio = nada visible cambio.
+            internal Rectangle[] PintaCartasConCambios(Graphics g, int dx, int dy, bool entera)
+            {
+                RepartoBusca r = AseguraReparto(); AseguraFuentes(r.S); EnsurePaintRes();
+                int first = resScroll * 2, n = Math.Max(0, Math.Min(CartasTotales() - first, r.Filas * 2));
+                FirmaCarta[] next = new FirmaCarta[n];
+                for (int j = 0; j < n; j++)
+                {
+                    SearchItem it = Results[first + j]; FirmaCarta f = new FirmaCarta(); next[j] = f; f.Item = it;
+                    if (it == null) continue;
+                    Color c; DatosCarta(it, out f.Tipo, out c, out f.Titulo, out f.Sub); f.ColorTipo = c.ToArgb();
+                    f.Cola = GetQueuePos != null ? GetQueuePos(it) : 0; f.Suena = GetSonando != null && GetSonando(it);
+                    Album album = AlbumDePortada(it); f.Path = album != null ? album.CoverPath : null;
+                    Rectangle cover = CajaPortadaCarta(CartaRect(first + j), r.S);
+                    f.Cover = Miniatura(album, cover.Width);
+                    f.Genero = f.Cover == null && GetGenero != null ? GetGenero(it) : null;
+                }
+                bool partial = !entera && n > 0 && cartasPintadas != null && cartasPintadas.Length == n
+                    && ReferenceEquals(cartasPintadasLista, Results) && cartasPintadasScroll == resScroll
+                    && cartasPintadasW == Width && cartasPintadasH == Height && cartasPintadasQuery == Query
+                    && cartasPintadasResultados == r.Resultados && cartasPintadasBarra == r.Barra && cartasPintadasFilas == r.Filas
+                    && cartasPintadasAccent == Accent.ToArgb();
+                Rectangle[] regions = null;
+                if (partial)
+                {
+                    List<Rectangle> dirty = new List<Rectangle>();
+                    for (int j = 0; j < n; j++)
+                        if (!next[j].Igual(cartasPintadas[j]))
+                        {
+                            Rectangle cr = CartaRect(first + j);
+                            // Incluye sombra, borde y filtrado. Se redibujan tambien vecinos que
+                            // intersectan el recuadro: borrar una sombra nunca borra otra tarjeta.
+                            int margin = MargenQuieto(QuietoCarta, cr.Width, cr.Height, r.S) + 2;
+                            cr.Inflate(margin, margin); cr.Offset(dx, dy);
+                            cr.Intersect(Rectangle.Ceiling(g.VisibleClipBounds));
+                            if (!cr.IsEmpty) dirty.Add(cr);
+                        }
+                    // Unir recuadros solapados evita volver a mezclar bordes antialias.
+                    for (int i = 0; i < dirty.Count; i++)
+                        for (int j = i + 1; j < dirty.Count; j++)
+                            if (dirty[i].IntersectsWith(dirty[j]))
+                            { dirty[i] = Rectangle.Union(dirty[i], dirty[j]); dirty.RemoveAt(j); i = -1; break; }
+                    regions = dirty.ToArray();
+                    cartasRecortadas = true;
+                    try
+                    {
+                        foreach (Rectangle area in regions)
+                        {
+                            GraphicsState state = g.Save();
+                            try
+                            {
+                                g.SetClip(area, CombineMode.Intersect);
+                                g.CompositingMode = CompositingMode.SourceCopy;
+                                using (SolidBrush clear = new SolidBrush(Color.Transparent)) g.FillRectangle(clear, area);
+                                g.CompositingMode = CompositingMode.SourceOver;
+                                HorneaCartas(g, dx, dy);
+                            }
+                            finally { g.Restore(state); }
+                        }
+                    }
+                    finally { cartasRecortadas = false; }
+                }
+                else { g.Clear(Color.Transparent); HorneaCartas(g, dx, dy); }
+                // Las portadas pendientes fuera del ultimo recuadro tambien deben seguir encargadas.
+                portadasFaltan.Clear();
+                for (int j = 0; j < next.Length; j++)
+                    if (next[j].Cover == null && next[j].Path != null)
+                    {
+                        Album album = AlbumDePortada(next[j].Item);
+                        if (album != null && !portadasFaltan.Contains(album)) portadasFaltan.Add(album);
+                    }
+                cartasPintadas = next; cartasPintadasLista = Results; cartasPintadasScroll = resScroll;
+                cartasPintadasW = Width; cartasPintadasH = Height; cartasPintadasQuery = Query;
+                cartasPintadasAccent = Accent.ToArgb();
+                cartasPintadasResultados = r.Resultados; cartasPintadasBarra = r.Barra; cartasPintadasFilas = r.Filas;
+                return regions;
+            }
             internal int VersionCartas()
             {
                 RepartoBusca r = rep;
@@ -1010,7 +1116,11 @@ namespace Rocola
                     items[j] = Results[i];
                     if (c.IsEmpty) continue;
                     Rectangle enImagen = c; enImagen.Offset(dx, dy);
-                    faltan[j] = DibujaCartaNueva(g, i, enImagen, false, qn);
+                    int margin = MargenQuieto(QuietoCarta, enImagen.Width, enImagen.Height, s) + 2;
+                    Rectangle ink = Rectangle.Inflate(enImagen, margin, margin);
+                    if (!cartasRecortadas || ink.IntersectsWith(Rectangle.Ceiling(g.VisibleClipBounds)))
+                        faltan[j] = DibujaCartaNueva(g, i, enImagen, false, qn);
+                    else faltan[j] = j < hornoPortada.Length ? hornoPortada[j] : null;
                     rects[j] = Rectangle.Inflate(enImagen, MargenTarj, MargenTarj);
                     // Como entra. Llego otra lista: las casillas que cambiaron, una tras otra, y las demas como iban.
                     // Bajando de fila: ya puestas. Si no (la cola, una portada, el color): como iban.
@@ -1273,7 +1383,7 @@ namespace Rocola
                     if (!string.IsNullOrEmpty(gen)) { Color cg = ColorDeEtiqueta(gen); c1 = Shade(cg, .35); c2 = Lighten(cg, .12); }
                     using (LinearGradientBrush lb = new LinearGradientBrush(cov, c1, c2, 45f)) g.FillPath(lb, gp);
                     GraphicsState gs = g.Save();
-                    g.SetClip(gp);
+                    g.SetClip(gp, CombineMode.Intersect); // respetar el recuadro parcial: no volver a pintar vecinos fuera de el
                     int d = (int)(cov.Width * .78f);
                     sbS.Color = Color.FromArgb(36, 255, 255, 255);
                     g.FillEllipse(sbS, cov.Right - d + (int)(cov.Width * .28f), cov.Y - (int)(cov.Width * .28f), d, d);
@@ -1571,6 +1681,23 @@ namespace Rocola
 
     internal sealed partial class GpuPanel
     {
+        public Func<int, int, Rectangle[]> GetPiezaCambios;
+        private void SubePieza(int i, Bitmap bitmap)
+        {
+            if (piezaTex[i] != IntPtr.Zero && piezaW[i] == bitmap.Width && piezaH[i] == bitmap.Height && GetPiezaCambios != null)
+            {
+                Rectangle[] changes = GetPiezaCambios(i, piezaVer[i]);
+                if (changes != null)
+                {
+                    bool updated = true;
+                    foreach (Rectangle area in changes)
+                        if (!new Rectangle(0, 0, bitmap.Width, bitmap.Height).Contains(area)
+                            || !stars.UpdateOverlayRegion(piezaTex[i], bitmap, area)) { updated = false; break; }
+                    if (updated) return;
+                }
+            }
+            piezaTex[i] = Upload(piezaTex[i], ref piezaW[i], ref piezaH[i], bitmap, out piezaU[i], out piezaV[i]);
+        }
         // EL BUSCADOR CON PORTADAS: cada tarjeta es su trozo de la pieza de las tarjetas, con su transparencia y lo que le
         // falta por subir, y cuanto se ve la tarjeta elegida (que entra con la suya). Lo pone el formulario (FillCartas).
         // Sin tarjetas, la pieza se dibuja entera.

@@ -45,10 +45,21 @@ namespace Rocola
                     + "|" + rect.Width + "|" + height + "|" + (int)sf.LineAlignment;
                 string key = identity + "|" + color.ToArgb();
                 CintaTexto run = used < Items.Count ? Items[used] : null;
+                // El orden cambia si otro titulo empieza/deja de desbordarse. Conservar la cinta
+                // por identidad evita hornear otra vez las que solo cambiaron de ranura.
+                if (run == null || run.Key != key)
+                    for (int i = used + 1; i < Items.Count; i++)
+                        if (Items[i].Key == key)
+                        {
+                            run = Items[i]; Items.RemoveAt(i); Items.Insert(used, run); break;
+                        }
                 if (run == null || run.Key != key)
                 {
+                    CintaTexto prior = null;
+                    for (int i = used; i < Items.Count; i++)
+                        if (Items[i].Identity == identity) { prior = Items[i]; break; }
                     CintaTexto next = new CintaTexto { Key = key, Identity = identity, Width = width,
-                        Born = run != null && run.Identity == identity ? run.Born : Environment.TickCount,
+                        Born = prior != null ? prior.Born : Environment.TickCount,
                         Tiles = new Bitmap[(width + 1023) / 1024] };
                     try
                     {
@@ -67,8 +78,8 @@ namespace Rocola
                         }
                     }
                     catch { foreach (Bitmap b in next.Tiles) if (b != null) b.Dispose(); throw; }
-                    if (run != null) { run.Dispose(); Items[used] = next; }
-                    else Items.Add(next);
+                    if (prior != null) { Items.Remove(prior); prior.Dispose(); }
+                    Items.Insert(used, next);
                     run = next;
                 }
                 run.Rect = target; used++;
@@ -148,12 +159,16 @@ namespace Rocola
             internal CintaTexto Run;
             internal int W, H, Group, Part;
             internal float U, V;
+            internal bool Seen;
         }
         private readonly List<CintaTile> cintaTiles = new List<CintaTile>();
+        private readonly Dictionary<Bitmap, CintaTile> cintaByBitmap = new Dictionary<Bitmap, CintaTile>();
+        private readonly List<Bitmap> cintaOldSources = new List<Bitmap>();
         private readonly D3D9.Vtx[] cintaQuad = new D3D9.Vtx[6];
         private void PreparaCintasTexto()
         {
-            int count = 0;
+            cintaTiles.Clear();
+            foreach (CintaTile tile in cintaByBitmap.Values) tile.Seen = false;
             CintasTexto[] groups = GetCintasTexto != null ? GetCintasTexto() : null;
             if (groups != null)
                 for (int group = 0; group < groups.Length; group++)
@@ -163,22 +178,28 @@ namespace Rocola
                         for (int part = 0; part < run.Tiles.Length; part++)
                         {
                             CintaTile tile;
-                            if (count == cintaTiles.Count) { tile = new CintaTile(); cintaTiles.Add(tile); }
-                            else tile = cintaTiles[count];
                             Bitmap source = run.Tiles[part];
-                            if (!ReferenceEquals(source, tile.Source) || tile.Tex == IntPtr.Zero)
+                            if (!cintaByBitmap.TryGetValue(source, out tile))
+                            {
+                                tile = new CintaTile(); tile.Source = source; cintaByBitmap.Add(source, tile);
+                            }
+                            if (tile.Tex == IntPtr.Zero)
                             {
                                 tile.Tex = Upload(tile.Tex, ref tile.W, ref tile.H, source, out tile.U, out tile.V);
                                 tile.Source = source;
                             }
-                            tile.Run = run; tile.Group = group; tile.Part = part; count++;
+                            tile.Run = run; tile.Group = group; tile.Part = part; tile.Seen = true;
+                            cintaTiles.Add(tile);
                         }
                 }
-            while (cintaTiles.Count > count)
+            cintaOldSources.Clear();
+            foreach (KeyValuePair<Bitmap, CintaTile> kv in cintaByBitmap)
+                if (!kv.Value.Seen) cintaOldSources.Add(kv.Key);
+            foreach (Bitmap source in cintaOldSources)
             {
-                int i = cintaTiles.Count - 1;
-                if (cintaTiles[i].Tex != IntPtr.Zero) D3D9.Release(cintaTiles[i].Tex);
-                cintaTiles.RemoveAt(i);
+                CintaTile tile = cintaByBitmap[source];
+                if (tile.Tex != IntPtr.Zero) D3D9.Release(tile.Tex);
+                cintaByBitmap.Remove(source);
             }
         }
         private void DibujaCintasTexto(bool lista)
@@ -227,8 +248,8 @@ namespace Rocola
         }
         private void SueltaCintasGpu()
         {
-            foreach (CintaTile t in cintaTiles) if (t.Tex != IntPtr.Zero) D3D9.Release(t.Tex);
-            cintaTiles.Clear();
+            foreach (CintaTile t in cintaByBitmap.Values) if (t.Tex != IntPtr.Zero) D3D9.Release(t.Tex);
+            cintaByBitmap.Clear(); cintaTiles.Clear(); cintaOldSources.Clear();
         }
     }
 }

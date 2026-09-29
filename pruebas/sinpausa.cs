@@ -95,6 +95,12 @@ class SinPausa
             if (mi.Name == m && mi.GetParameters().Length == a.Length) return mi.Invoke(o, a);
         throw new MissingMethodException(o.GetType().Name, m);
     }
+    // El cierre ahora devuelve el lector al dueno de la salida; esta prueba sin salida asume esa propiedad.
+    static void SueltaPreparada(object f)
+    {
+        object lector = Inv(f, "SueltaSinPausa");
+        if (lector != null) ((IDisposable)lector).Dispose();
+    }
     // Sin 'Static': un tipo con constructor estatico daria dos constructores sin argumentos.
     static object Nuevo(Type t, params object[] a) { return Activator.CreateInstance(t, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, a, null); }
 
@@ -553,6 +559,62 @@ class SinPausa
                 fi.SetValue(f, Activator.CreateInstance(fi.FieldType, true));
     }
 
+    // El primer Read de la nueva puede terminar justo cuando UI recoge el relevo.
+    // El cerrojo representa una publicacion en curso: el cierre debe esperar y ver
+    // su CierreAnterior completo, no entrar en el respaldo que reinicia los campos.
+    static void RelevoYPrimerBloque(string ra, string rb)
+    {
+        object f = Codigo.FormSinEncender(TF); PonGuardados(f);
+        Set(f, "startupReadPending", true);
+        Set(f, "stateRestored", true); // fixture independiente: no restaurar la cola de otra escena
+        int fs = 44100, ch = 2; long muestras = 20L * fs * ch;
+        object disco = Nuevo(TAlbum), pA = Pista(ra), pB = Pista(rb);
+        object iA = Item(pA, disco), iB = Item(pB, disco);
+        object lA = Lector(ra), lB = Lector(rb), mb = Nuevo(TMedida, rb, rb);
+        object tapB = Tap(f, lB, mb), cadB = CadenaDe(pB, iB, lB, tapB);
+        Set(f, "reader", lA); Set(f, "nowPlaying", iA);
+        Set(f, "cadenaSonando", CadenaDe(pA, iA, lA, Tap(f, lA, null)));
+        Set(f, "cadenaPreparada", cadB); ((IList)Get(f, "queue")).Add(iB);
+        Set(f, "curMeasurePath", ra); Set(f, "curSumSq", muestras * .01); Set(f, "curSamples", muestras);
+        Set(f, "kwRate", fs); Set(f, "kwCanales", ch);
+        Set(f, "eqMeasPath", ra); Set(f, "eqMeasSum", new double[8]); Set(f, "eqMeasN", 0L);
+        object puerta = Get(f, "levelLock"); Exception fallo = null;
+        using (ManualResetEvent empezo = new ManualResetEvent(false))
+        using (ManualResetEvent termino = new ManualResetEvent(false))
+        {
+            Thread ui = new Thread(delegate()
+            {
+                empezo.Set();
+                try { Inv(f, "PasaRelevo", cadB); }
+                catch (Exception ex) { fallo = ex; }
+                finally { termino.Set(); }
+            });
+            ui.IsBackground = true;
+            bool espera, intacta;
+            Monitor.Enter(puerta);
+            try
+            {
+                ui.Start(); empezo.WaitOne();
+                espera = !termino.WaitOne(200, false);
+                intacta = object.ReferenceEquals(Get(f, "reader"), lA) && (long)Get(f, "curSamples") == muestras;
+                float[] bloque = new float[512]; for (int i = 0; i < bloque.Length; i++) bloque[i] = .2f;
+                Inv(f, "PublicaBloqueDe", tapB, bloque, 0, bloque.Length, fs, ch);
+            }
+            finally { Monitor.Exit(puerta); }
+            bool acabo = ui.Join(5000);
+            Check(espera && intacta, "recoger el relevo espera la publicacion en curso; no reinicia ni cierra su medida a medias");
+            Check(acabo && fallo == null && (string)Get(f, "curMeasurePath") == rb && (long)Get(f, "curSamples") == 512L
+                  && object.ReferenceEquals(Get(f, "tapMedido"), tapB),
+                  "el relevo conserva las 512 muestras del primer bloque de la nueva, sin perderlas ni mezclarlas");
+            IDictionary loud = (IDictionary)Get(f, "loudCache");
+            Check(acabo && loud.Contains(ra) && Math.Abs((float)loud[ra] - .1f) < 1e-4 && !(bool)Get(Get(mb, "CierreAnterior"), "Listo")
+                  && Suelto(lA) && !Suelto(lB),
+                  "la anterior se guarda una sola vez y su lector se cierra fuera del cerrojo; la nueva sigue abierta");
+        }
+        Codigo.EsperaGuardado(TF, f);
+        ((IDisposable)lA).Dispose(); ((IDisposable)lB).Dispose();
+    }
+
     static void LaRocola()
     {
         Console.WriteLine("\n  3) LA ROCOLA: LA MEDIDA, LA COLA Y LO QUE SE SUELTA\n");
@@ -633,7 +695,7 @@ class SinPausa
             Set(cierreD, "Tasa", fs); Set(cierreD, "Canales", ch); Set(cierreD, "Listo", true);
             Set(f, "cadenaPreparada", cadD);
             loud.Remove(rb);
-            Inv(f, "SueltaSinPausa");
+            SueltaPreparada(f);
             Check(Suelto(lD) && Get(f, "cadenaPreparada") == null && Get(f, "secuencia") == null && loud.Contains(rb),
                   "al parar la salida, la siguiente preparada se suelta, y si ya habia entrado sin oirse, se guarda lo medido de la anterior");
             Check(q.Count == 2 && object.ReferenceEquals(q[1], iD), "y la cola no se toca: PlayNext la abrira desde el principio por el camino de siempre");
@@ -709,7 +771,7 @@ class SinPausa
             Escena(f, disco, rutas, null, true, out iA, out iB, out iC, out lB);
             r = AlParar(f, new IOException("DAC desenchufado"));
             bool sinDar = r.Exception is IOException && object.ReferenceEquals(Get(f, "nowPlaying"), iA) && Cola(f, iB, iC) && (int)Get(f, "credits") == 5;
-            Inv(f, "SueltaSinPausa");
+            SueltaPreparada(f);
             Check(sinDar && Suelto(lB) && Get(f, "cadenaPreparada") == null,
                   "falla la SALIDA con B dentro pero sin oirse: B NO se da por sonada; sigue primera en la cola y PlayNext la empieza desde el principio (como antes)");
 
@@ -717,7 +779,7 @@ class SinPausa
             r = AlParar(f, new IOException("DAC desenchufado"));
             Check(r.Exception is IOException && object.ReferenceEquals(Get(f, "nowPlaying"), iA) && Cola(f, iB, iC),
                   "falla la salida antes de que B entre: el aviso es de A, como siempre; la cola intacta");
-            Inv(f, "SueltaSinPausa");
+            SueltaPreparada(f);
 
             Escena(f, disco, rutas, "B", true, out iA, out iB, out iC, out lB);
             r = AlParar(f, null);
@@ -730,7 +792,7 @@ class SinPausa
             r = AlParar(f, null);
             Check(r.Exception is InvalidDataException && object.ReferenceEquals(Get(f, "nowPlaying"), iA) && Cola(f, iB, iC),
                   "A revienta a media cancion: el fallo es de A; B no llego a entrar y PlayNext la abrira desde el principio");
-            Inv(f, "SueltaSinPausa");
+            SueltaPreparada(f);
         }
 
         // h) DE PUNTA A PUNTA, con la ArmaCadena de verdad (des-recorte, DSEE, nivelado con realce, grave,
@@ -827,9 +889,11 @@ class SinPausa
                   "la siguiente de OTRO disco si entra sin pausa, pero la que suena conserva su fundido de salida");
             Check(cadL != null && Get(Get(cadL, "Mono"), "anterior") == null && Get(Get(cadL, "Noche"), "anterior") == null,
                   "y como la que suena acaba fundiendo a silencio, la siguiente empieza sus filtros de cero (no arrastra la memoria de una musica que ya no se oye)");
-            Inv(f, "SueltaSinPausa");
+            SueltaPreparada(f);
             Set(f, "sbrAllowed", false); Set(f, "sbrOn", false); Set(f, "lookahead", null); Set(f, "output", null);
         }
+        Codigo.EsperaGuardado(TF, f);
+        RelevoYPrimerBloque(ra, rb); // al final: SaveState no altera los escenarios que verifican su contenido
     }
 
     // ================================================================================================
@@ -857,9 +921,10 @@ class SinPausa
               && Codigo.LeeCampo(new List<MethodBase> { Met(TF, "PreparaSiguienteSinPausa") }, "audioOpeningForMeasurement")
               && guardas.Contains("get_IsVideo") || Codigo.LeeCampo(new List<MethodBase> { Met(TF, "PreparaSiguienteSinPausa") }, "IsVideo"),
               "no prepara con un video de por medio ni durante la medida de Ctrl+F3");
-        List<string> lee = Codigo.Nombres(TLevel.GetMethod("Read", T));
+        List<string> lee = Codigo.Nombres(Met(TF, "PublicaBloqueDe"));
         int iM = lee.IndexOf("MedidaDe"), iR = lee.IndexOf("ReportAudioBlock");
-        Check(iM >= 0 && iR > iM, "cada bloque pasa por MedidaDe ANTES de medirse: nunca se mide un bloque en la cuenta de otra cancion");
+        Check(Codigo.Llama(TLevel.GetMethod("Read", T), "PublicaBloqueDe") && iM >= 0 && iR > iM,
+              "cada bloque pasa por MedidaDe ANTES de medirse, bajo el guardian de generacion: nunca se mide en la cuenta de otra cancion");
         List<string> para = Codigo.Nombres(Met(TF, "Output_PlaybackStopped"));
         int iRel = para.IndexOf("RecogeAlParar"), iDev = para.IndexOf("RefundCredit");
         int devoluciones = 0; foreach (string n in para) if (n == "RefundCredit") devoluciones++;

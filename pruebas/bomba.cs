@@ -205,13 +205,13 @@ class Bomba
               "el hilo se va en " + sw.ElapsedMilliseconds + " ms y nadie vuelve a leer la cadena (el lector ya se puede soltar)");
         Stopwatch sw2 = Stopwatch.StartNew(); Lee(b, buf, 0, buf.Length); sw2.Stop();
         Check(sw2.ElapsedMilliseconds < 50, "y si la salida aun pide algo despues, no se queda esperando");
-        // Parada con la cadena ocupada (a media lectura lenta): espera a que termine esa lectura y sale.
+        // Parada con la cadena ocupada: no espera en la pantalla; el hilo sale tras terminar su ultimo Read.
         Fuente lenta = new Fuente(44100 * 2 * 60, 44100, 2);
         object b2 = Nueva(lenta); Lee(b2, buf, 0, buf.Length);
         lenta.AtrasaEn = 0; lenta.AtrasoMs = 300; Thread.Sleep(30);
         Stopwatch sw3 = Stopwatch.StartNew(); Suelta(b2); sw3.Stop(); int l2 = lenta.Lecturas; Thread.Sleep(400);
         Check(!(bool)Get(b2, "Viva") && lenta.Lecturas == l2 && sw3.ElapsedMilliseconds < 1100,
-              "con una lectura lenta a medias, se espera a que acabe (" + sw3.ElapsedMilliseconds + " ms) y el hilo ya no lee mas");
+              "con una lectura lenta a medias, se cancela (" + sw3.ElapsedMilliseconds + " ms) y despues el hilo ya no lee mas");
     }
 
     static void Coste()
@@ -333,10 +333,9 @@ class Bomba
         Console.WriteLine("\n  8) LOS ENGANCHES\n");
         Check(Codigo.Llama(Met(TF, "AbreSalidaClasica"), "ConBomba"), "la salida clasica (WaveOut, la de los equipos de dos nucleos) lee de la bomba");
         List<string> para = Codigo.Nombres(Met(TF, "DisposePlaybackNow"));
-        int iStop = para.IndexOf("Stop"), iBomba = para.IndexOf("SueltaBomba"), iFin = para.IndexOf("FinalizeLoudMeasure");
-        int iLector = -1; for (int i = iBomba + 1; iBomba >= 0 && i < para.Count; i++) if (para[i] == "Dispose") { iLector = i; break; }
-        Check(iStop >= 0 && iBomba > iStop && iLector > iBomba && iFin > iBomba,
-              "al parar: primero la salida, despues el hilo de la musica, y solo entonces se suelta el lector y se cierran las medidas");
+        int iInvalida = para.IndexOf("InvalidaPublicacionAudio"), iStop = para.LastIndexOf("Stop"), iFin = para.IndexOf("FinalizeLoudMeasure"), iLector = para.IndexOf("SueltaLectoresAudio"); // Stop del audio, no el del temporizador
+        Check(iInvalida >= 0 && iStop > iInvalida && iFin > iStop && iLector > iFin,
+              "al parar se invalida la publicacion, se detiene la salida, se cierra lo medido y los lectores pasan al cierre seguro");
         Check(Codigo.Llama(Met(TF, "RetrasoAudible"), "AdelantoBomba") && Codigo.Llama(Met(TF, "ConsumeLevels"), "RetrasoAudible"),
               "el pulso y la aurora (ConsumeLevels) y el relevo sin pausa (RetrasoAudible) suman lo que la bomba lee por delante");
         int crea = 0; string donde = "";

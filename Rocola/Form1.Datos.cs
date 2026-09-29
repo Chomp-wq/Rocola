@@ -67,6 +67,8 @@ namespace Rocola
             public Dictionary<string, SonoridadIntegrada> Integ = new Dictionary<string, SonoridadIntegrada>(StringComparer.OrdinalIgnoreCase);
             public List<string> IntegAjenas = new List<string>();
             public int IntegEstado;
+            public Dictionary<string, RegistroFuente> Fuentes = new Dictionary<string, RegistroFuente>(StringComparer.OrdinalIgnoreCase);
+            public int FuentesEstado = 1;
             public int MsLeer;   // lo que tardo en leerlas (bitacora: MedidasBitacora.cs)
         }
 
@@ -84,11 +86,17 @@ namespace Rocola
             if (load.Cancelled) return null;
             int leer = Environment.TickCount;
             StartupData data = new StartupData();
-            for (int table = 0; table < Math.Min(8, load.Paths.Length); table++)
+            for (int table = 0; table < Math.Min(9, load.Paths.Length); table++)
             {
                 if (load.Cancelled) return null;
                 try
                 {
+                    if (table == 8)
+                    {
+                        if (File.Exists(load.Paths[8])) using (StreamReader r = new StreamReader(load.Paths[8]))
+                            data.FuentesEstado = LeeFuentes(new StartupTextReader(r, load), data.Fuentes);
+                        continue;
+                    }
                     if (table == 7)
                     {
                         // La integrada tiene sus reglas: si no existe se empieza de cero, pero si existe y no se
@@ -107,7 +115,7 @@ namespace Rocola
                         ReadStartupTableRecords(reader, table, data);
                 }
                 catch (OperationCanceledException) { return null; }
-                catch { }   // archivo opcional ausente/ilegible: conserva esa tabla vacia, nunca parcial
+                catch { if (table == 8) { data.Fuentes.Clear(); data.FuentesEstado = 2; } }   // ninguna tabla parcial
             }
             if (load.Cancelled) return null;
             ComputeEqAverage(data.Eq, ref data.Average, ref data.Healthy, ref data.OnlyHealthy);
@@ -215,7 +223,7 @@ namespace Rocola
             try
             {
                 startupLoad = CreateStartupLoad(new string[] { LoudFile(), EqFile(), IaDoneFile(),
-                    DeepDoneFile(), DurFastFile(), RutaDatos("rocola_incompatibles.txt"), LibStatsFile(), IntegFile() });
+                    DeepDoneFile(), DurFastFile(), RutaDatos("rocola_incompatibles.txt"), LibStatsFile(), IntegFile(), FuentesFile() });
             }
             catch { startupLoad = null; }   // no cambia el arranque si no se pudo crear el trabajador
         }
@@ -242,6 +250,7 @@ namespace Rocola
             InvalidateVideoMeasurements();
             loudCache = data.Loud; durCache = data.Dur; durFast = data.Fast; eqCache = data.Eq;
             iaDone = data.Ia; deepDone = data.Deep; incompatibleLogged = data.Incompatible;
+            lock (fuentesCerrojo) { fuentesMedidas = data.Fuentes; fuentesEstado = data.FuentesEstado; }
             if (data.IntegEstado == 0) LoadIntegCache();   // el trabajador no la leyo: se lee aqui
             else { lock (integCerrojo) integCache = data.Integ; integAjenas = data.IntegAjenas; integEstado = data.IntegEstado; }
             eqCacheVer = data.EqVersion; eqAvg = data.Average;
@@ -808,7 +817,7 @@ namespace Rocola
         private void RecuperaGuardadosCortados()
         {
             string[] rutas = { ConfigFile, KeysFile(), LoudFile(), EqFile(), IntegFile(), LibStatsFile(), LibCacheFile(),
-                               LetterTintFile(), IaDoneFile(), DeepDoneFile(), DurFastFile(), RutaDatos("rocola_incompatibles.txt") };
+                               LetterTintFile(), IaDoneFile(), DeepDoneFile(), DurFastFile(), RutaDatos("rocola_incompatibles.txt"), FuentesFile() };
             for (int i = 0; i < rutas.Length; i++)
             {
                 string bak = rutas[i] + ".bak";
@@ -966,6 +975,7 @@ namespace Rocola
         }
         private void SaveEqCache()
         {
+            SaveFuentesMedidas();
             if (startupReadPending) return;
             List<KeyValuePair<string, float[]>> snap;
             try { snap = new List<KeyValuePair<string, float[]>>(eqCache); }   // copia rapida en el hilo de UI
@@ -1259,7 +1269,7 @@ namespace Rocola
             string path = eqMeasPath; eqMeasPath = null;
             double[] sums = eqMeasSum; long n = eqMeasN; int tasa = eqMeasRate;
             eqMeasSum = new double[8]; eqMeasN = 0;
-            CierraHuella(path, sums, n, tasa, eqMeasCut, eqMeasCutLo);
+            CierraHuellaDeFuente(path, sums, n, tasa, eqMeasCut, eqMeasCutLo, curFuenteMedida);
         }
         // Lo mismo con lo que se guardo de una cancion que acabo por relevo sin pausa (Form1.SinPausa.cs).
         private void CierraHuella(string path, double[] sums, long n, int tasa, float corte, float corteBajo)
@@ -1294,6 +1304,7 @@ namespace Rocola
 
         private void LoadLoudCache()
         {
+            LoadFuentesMedidas();
             InvalidateVideoMeasurements();
             try { ReadLoudCache(LoudFile(), loudCache, durCache); } catch { }
         }
@@ -1311,6 +1322,7 @@ namespace Rocola
         }
         private void SaveLoudCache()
         {
+            SaveFuentesMedidas();
             if (startupReadPending) return;
             List<KeyValuePair<string, float>> snap;
             List<KeyValuePair<string, float>> durCopia;
@@ -1635,6 +1647,8 @@ namespace Rocola
         private string DurFastFile() { return RutaDatos("rocola_duracion.txt"); }
         private void GuardaTintes(int firma)
         {
+            if (firma == 0 || string.IsNullOrEmpty(lastFreshRootSig)) return; // escaneo concurrente/incompleto
+            string firmaCompleta = lastFreshRootSig;
             Dictionary<char, string> copia = new Dictionary<char, string>(letterTag);
             Dictionary<string, string> copiaD = new Dictionary<string, string>(discTag, StringComparer.OrdinalIgnoreCase);
             string ruta = LetterTintFile();
@@ -1647,7 +1661,7 @@ namespace Rocola
                     Func<bool> vigente = delegate { return version == System.Threading.Interlocked.Read(ref tintesSaveVersion); };
                     EscribeFlujoSeguro(ruta, delegate(TextWriter writer)
                     {
-                        writer.Write("ROCOLA-LETRAS v2\r\nn="); writer.Write(firma); writer.Write("\r\n");
+                        writer.Write("ROCOLA-LETRAS v3\r\nn="); writer.Write(firma); writer.Write("\r\nsig="); writer.Write(firmaCompleta); writer.Write("\r\n");
                         foreach (KeyValuePair<char, string> kv in copia)
                         {
                             if (!vigente()) return false;
@@ -1720,6 +1734,8 @@ namespace Rocola
         // que no tiene duracion apuntada) y en el proximo repaso. Queda apuntado en rocola_error.txt.
         private void OlvidaSiEsOtroArchivo(string ruta, IAudioSource source)
         {
+            try
+            {
             float apuntada;
             if (ruta == null || source == null || !durCache.TryGetValue(ruta, out apuntada) || !(apuntada > 0.01f)) return;
             double real;
@@ -1730,15 +1746,19 @@ namespace Rocola
             durFast[ruta] = (float)real;   // lo que dura de verdad, para la lista y la espera de la cola hasta que se vuelva a medir
             LogError("Otro archivo en la misma ruta: " + Path.GetFileName(ruta) + " duraba " + apuntada.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)
                      + " s y ahora " + real.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " s; se vuelve a medir", null);
+            }
+            finally { CompruebaFuenteMedida(ruta); }
         }
         // Olvida lo aprendido de una ruta (en el hilo de la pantalla, dueno de las tablas) y lo guarda asi.
         private void OlvidaMedidas(string ruta)
         {
+            lock (fuentesCerrojo) { if (fuentesMedidas.Remove(ruta)) fuentesCambios++; }
             loudCache.Remove(ruta); durCache.Remove(ruta);
             if (eqCache.Remove(ruta)) { eqCacheVer++; eqDirty = true; }
             bool integ;
             lock (integCerrojo) integ = integCache != null && integCache.Remove(ruta);
             if (integ) integCambios++;
+            lock (integHechasCerrojo) integHechas.Remove(ruta); // permitir reanalizar el archivo sustituido en esta sesion
             lock (deepDoneLock) deepDone.Remove(ruta);   // la marca del archivo no vale sin sus medidas (FillDeepDoneRecords)
             OlvidaMedidaHecha(ruta);                     // que el repaso y el calentador la puedan volver a medir en esta sesion
             InvalidateVideoMeasurements();
@@ -2490,16 +2510,20 @@ namespace Rocola
 
             // 1) recolectar todas las canciones pedidas que EXISTEN en la biblioteca, con su disco de origen
             List<TopEntry> all = new List<TopEntry>();
-            for (int i = 0; i < albums.Count; i++)
+            Dictionary<string, List<OrigenTop>> indice = object.ReferenceEquals(albumsDelIndiceTop, albums) ? origenesTop : null;
+            if (indice == null) indice = IndiceTop(albums);   // respaldo para bibliotecas armadas sin el escaner
+            List<OrigenTop> elegidos = new List<OrigenTop>();
+            foreach (KeyValuePair<string, int> cuenta in songCounts)
             {
-                Album al = albums[i];
-                for (int j = 0; j < al.Tracks.Count; j++)
-                {
-                    Track t = al.Tracks[j];
-                    int c;
-                    if (t != null && t.Path != null && songCounts.TryGetValue(t.Path, out c))
-                    { TopEntry te = new TopEntry(); te.T = t; te.C = c; te.A = al; all.Add(te); }
-                }
+                List<OrigenTop> origen;
+                if (indice.TryGetValue(cuenta.Key, out origen)) elegidos.AddRange(origen);
+            }
+            elegidos.Sort(delegate(OrigenTop a, OrigenTop b) { return a.Orden.CompareTo(b.Orden); });
+            for (int i = 0; i < elegidos.Count; i++)
+            {
+                OrigenTop o = elegidos[i]; int c;
+                if (!songCounts.TryGetValue(o.Pista.Path, out c)) continue;
+                TopEntry te = new TopEntry(); te.T = o.Pista; te.C = c; te.A = o.Disco; all.Add(te);
             }
             if (all.Count == 0) return;
 
@@ -2767,6 +2791,8 @@ namespace Rocola
 
         private void GuardaTodoAlCerrar()
         {
+            CancelaPlanesBiblioteca();
+            try { if (preparaRepasoTh != null && preparaRepasoTh.IsAlive) preparaRepasoTh.Join(1200); } catch { }
             if (startupReadPending) return;   // no sobrescribir datos anteriores con tablas aun vacias
             try
             {

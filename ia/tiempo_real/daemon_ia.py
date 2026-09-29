@@ -29,6 +29,7 @@ if sys.stderr is None: sys.stderr = open(os.devnull, "w")
 # ffmpeg es un programa de CONSOLA: lanzado desde pythonw (que no tiene consola) Windows le creaba
 # una ventana CMD nueva por cada cancion (el parpadeo molesto). CREATE_NO_WINDOW la suprime.
 NOWIN = getattr(subprocess, "CREATE_NO_WINDOW", 0)   # 0 fuera de Windows
+FONDO = NOWIN | getattr(subprocess, "BELOW_NORMAL_PRIORITY_CLASS", 0)
 # BLINDAJE ANTI-CONGELON: un archivo corrupto (tipico de discos rescatados) puede decodificar a
 # HORAS de audio basura -> gigas y gigas en RAM -> Windows se ahoga en swap y la maquina entera se
 # congela. Tope duro: canciones de mas de 15 min (o que ffprobe no puede leer) NO pasan por la IA;
@@ -37,7 +38,6 @@ NOWIN = getattr(subprocess, "CREATE_NO_WINDOW", 0)   # 0 fuera de Windows
 MAX_SEG = 15 * 60
 TIMEOUT_PROBE = 30
 TIMEOUT_DECODE = 20 * 60
-TIMEOUT_ENCODE = 20 * 60
 MAX_REINTENTOS = 3
 BACKOFF = (60, 5 * 60, 30 * 60)
 PIPELINE_VERSION = "apollo-safe-v4-float-decode"
@@ -48,6 +48,8 @@ from util_audio import FS, leer_wav, escribir_wav_float, acantilado_hz, por_troz
 from util_audio import (REMUESTREO_HEREDADO, REMUESTREOS, remuestreador, args_decodificar,
                         firma_herramienta, sondeo_audio, sin_remuestreo)
 from memoria_audio import MemoriaAudio
+from presupuesto_cpu import hilos_audio, procesadores_disponibles
+HILOS_AUDIO = hilos_audio(procesadores_disponibles())
 
 def _ticks_desde_stat(st):
     # DateTime.UnixEpoch.Ticks: reproduce File.GetLastWriteTimeUtc(path).Ticks de C#.
@@ -143,7 +145,7 @@ def _run(cmd, timeout):
     try:
         return subprocess.run(cmd, check=True, stdin=subprocess.DEVNULL,
                               stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-                              timeout=timeout, creationflags=NOWIN)
+                              timeout=timeout, creationflags=FONDO)
     except subprocess.TimeoutExpired:
         raise RuntimeError("el proceso externo excedio el limite de %ds" % timeout)
     except subprocess.CalledProcessError as e:
@@ -523,7 +525,8 @@ def procesar_uno(job_path, listos, proc, ffmpeg, pipeline, ffprobe, seg=10.0, fi
             _log(cache, "SIN IA (queda el original): %s -> %s" % (os.path.basename(src or "?"), motivo))
             dst = _marca_original(listos, h, motivo)
             return _finaliza_cache(job_path, listos, h, job, pipeline, dst, cache)
-        _run([ffmpeg, "-nostdin", "-y", "-v", "error", "-t", str(MAX_SEG + 30), "-i", src] +
+        _run([ffmpeg, "-nostdin", "-y", "-v", "error", "-threads", str(HILOS_AUDIO),
+              "-filter_threads", str(HILOS_AUDIO), "-t", str(MAX_SEG + 30), "-i", src] +
              args_decodificar(filtro) + [tmp], TIMEOUT_DECODE)
         with MemoriaAudio(tmp) as memoria:
             x, _ = leer_wav(tmp, reservar=memoria.crear)
