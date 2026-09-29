@@ -102,6 +102,9 @@ CPU="$CPU arranquevivo"
 # 'vigiapantalla': la rocola mide siempre cuanto tarda la pantalla en atender; mas de 150 ms a la bitacora con lo que la
 # paro, mas de 500 ms siempre a los errores (sin inundarlos); las entradas grandes marcan lo que hacen.
 CPU="$CPU vigiapantalla"
+# 'ventanareal': la rocola entera con su ventana (Xvfb), una biblioteca y unas tablas de 40.000 canciones generadas, y un
+# guion de uso; falla si la pantalla se para mas de 500 ms al arrancar o mas de 150 ms usandola. Tarda cerca de un minuto.
+CPU="$CPU ventanareal"
 # 'prioridad': la rocola con prioridad por encima de lo normal (Program.cs): se pone al arrancar la unica rocola, nunca
 # "alta" ni "tiempo real", y en ningun otro sitio.
 CPU="$CPU prioridad"

@@ -382,3 +382,18 @@ marca sale como «después de»; los umbrales, el límite de apuntes y las marca
 ### Lo que no se ha comprobado
 
 - La rocola del bar con Windows y la tarjeta de verdad: ahí es donde el vigía va a contar lo que pasa.
+
+## 10. La rocola entera, con su ventana, en la tanda (29 de septiembre)
+
+Hasta ahora lo que se medía con la ventana real se hacía a mano, fuera de la tanda. **`pruebas/ventanareal.cs`** lo deja
+dentro: arranca la rocola entera con su ventana (Xvfb), con una biblioteca generada (121 discos) y tablas de arranque de
+40.000 canciones escritas por la propia rocola, todo en una carpeta temporal. La usa con un guion (pedir canciones, pasar
+páginas, entrar a un disco, abrir el buscador, saltar, pedir seis seguidas) con una salida de sonido de mentira que pide la
+música como WaveOut, así que la cadena de sonido trabaja de verdad. Un hilo aparte cronometra cuánto tarda la pantalla en
+atender.
+
+Falla si la pantalla se para **más de 500 ms al arrancar** o **más de 150 ms usándola**, si no suenan al menos 5 canciones o
+si hay excepciones en la pantalla. Medido aquí: al arrancar 170–220 ms, usándola 20–30 ms la peor, en las dos ramas. Con la
+rocola de antes del arranque sin esperar las tablas, 650 ms al arrancar: falla.
+
+Lo que no mide: Windows, la tarjeta gráfica ni un disco mecánico (aquí la ventana se dibuja por CPU con Mono).
