@@ -231,3 +231,38 @@ soltar la memoria, cerrar sin soltar la canción); la batería las detecta todas
   sistema; la igualdad se comprobó con un descompresor de prueba y comparando el código.
 - El tope de memoria libre (aquí no se puede preguntar a Windows) y un XP real con poca memoria.
 - Cuánto se nota en el disco del bar.
+
+## 6. Los tirones de la pantalla al poner una canción (29 de septiembre)
+
+### Qué pasaba
+
+Al poner una canción la pantalla se paraba en seco. Se midió con la rocola de verdad y 20.000 canciones en las tablas, en
+un procesador de servidor (en el equipo del bar, varias veces más):
+
+| Qué | Antes | Ahora |
+|---|---|---|
+| Empezar la canción: la salida clásica llena sus 20 bloques (1 s de música) de una vez | 44-48 ms esperando al hilo de la música | 0,6 ms al pedirla y 0,3 ms al arrancar (el segundo lo hace el hilo de la música, unos 38 ms) |
+| Guardar la tabla de volumen (al acabar una canción recién medida, y cada tanto mientras se mide la biblioteca) | 23 ms | 0,8 ms |
+| El techo de "Subir TODO" con medidas nuevas (una vez por minuto mientras se mide la biblioteca, desde el latido de la pantalla) | 11-13 ms | 1,3 ms |
+
+### Qué cambia
+
+- **El primer segundo lo hace el hilo de la música** (`BombaSonido.CuandoEsteLista`): empieza en cuanto se arma la salida,
+  lo deja hecho en un anillo más grande y avisa; la salida arranca entonces, en la pantalla, y solo copia
+  (`ArrancaCuandoEsteLista`, `SalidaClasicaLista`: los mismos pasos de siempre y en el mismo orden). Si mientras tanto se
+  salta la canción, el aviso viejo no arranca nada. Sonando, el colchón vuelve a sus 200 ms. Lo que suena no cambia ni una
+  muestra. WASAPI (HD) ya hacía su primer llenado en su propio hilo.
+- **La tabla de volumen** se copia como lista; el índice de las duraciones se arma al escribir, fuera de la pantalla.
+- **El techo de "Subir TODO"** con medidas nuevas: la pantalla copia los valores y la cuenta va en otro hilo; hasta que
+  llega vale el de antes. Con un ajuste de Ctrl+F3 se sigue contando al momento. Da exactamente lo mismo.
+
+### Comprobaciones automáticas
+
+Batería nueva **`pruebas/tirones.cs`** (21 comprobaciones, verde en las dos ramas; con el programa anterior, 6 fallos).
+Las demás baterías de la bomba, el diario de las tablas y el nivelado siguen en verde.
+
+### Lo que no se ha comprobado
+
+- WaveOut de verdad (aquí no hay Windows): el arranque se probó con una salida de prueba que pide sus 20 bloques como
+  WaveOut.Play.
+- Cuánto se nota en el equipo del bar y en XP real.

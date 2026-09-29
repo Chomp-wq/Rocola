@@ -13,11 +13,15 @@
 // techo y Ctrl+F3 lo dice ("pides +6, tu musica aguanta +3: se aplican +3"). Con menos de 20 canciones con los picos
 // medidos no se puede saber y se aplica lo pedido, como antes. Para mas volumen que eso, el amplificador.
 //
-// COSTE. El techo se calcula en la pantalla recorriendo la tabla de medidas (unos milisegundos con decenas de miles de
-// canciones, medido en pruebas/nivelpicos.cs) y se guarda: se rehace si cambian los ajustes del nivelado o, como mucho
-// una vez por minuto, si llegaron medidas nuevas. Nunca en el hilo de audio.
+// COSTE. El techo se calcula recorriendo la tabla de medidas y se guarda: se rehace si cambian los ajustes del nivelado
+// (en la pantalla, al momento: es un ajuste de Ctrl+F3) o, como mucho una vez por minuto, si llegaron medidas nuevas.
+// Esto ultimo pasa sin parar mientras se mide la biblioteca, y la cuenta se pedia desde el latido de la pantalla (el
+// modo noche mira el volumen en cada vuelta): 11 ms con 20.000 canciones en un procesador de servidor, un tiron cada
+// minuto. Ahora, con medidas nuevas, la pantalla solo copia los valores (1 ms) y la cuenta va en otro hilo; hasta que
+// llega, vale el techo de antes (el que ya se estaba aplicando). Nunca en el hilo de audio.
 using System;
 using System.Collections.Generic;
+using System.Threading;
 
 namespace Rocola
 {
@@ -32,6 +36,7 @@ namespace Rocola
         private long subirCambios = -1; private int subirCuando;
         private float subirObj = -1f, subirFuerza = -1f; private bool subirNivela; private bool subirHecho;
         private object subirTabla;                         // la tabla con la que se calculo (al arrancar se carga entera de golpe)
+        private bool subirEnFondo;                         // hay una cuenta del techo en marcha fuera de la pantalla
 
         // Cuanto se puede subir UNA cancion, encima de su nivelado, sin que el limitador pase del tope (dB, >= 0).
         internal static float HolguraDb(float ganancia, float picoLin, float p99Lin)
@@ -51,14 +56,31 @@ namespace Rocola
         }
 
         // La ganancia de nivelado de una cancion de la tabla (la misma cuenta que NormGainFor con su medida entera).
-        private float GananciaDeTabla(SonoridadIntegrada s)
+        private float GananciaDeTabla(SonoridadIntegrada s) { return GananciaDeTabla(s, normalizeOn, normTarget, normStrength); }
+        private static float GananciaDeTabla(SonoridadIntegrada s, bool nivela, float objetivo, float fuerza)
         {
-            if (!normalizeOn || normStrength <= 0.001f) return 1f;
+            if (!nivela || fuerza <= 0.001f) return 1f;
             float rms = s.RmsPorCanal;
             if (!(rms > 0.0001f)) return 1f;
             float cap = (float)Math.Pow(10.0, TierCapDb(rms) / 20.0);
             if (cap > NormMaxBoost) cap = NormMaxBoost;
-            return GananciaNivelado(normTarget, rms, normStrength, cap, true, DbALin(s.PicoDb), DbALin(s.P99Db));
+            return GananciaNivelado(objetivo, rms, fuerza, cap, true, DbALin(s.PicoDb), DbALin(s.P99Db));
+        }
+        // La cuenta entera, sin tocar nada de la ventana (sirve en la pantalla y fuera): el techo y con cuantas se hizo.
+        private static float TechoDeTabla(ICollection<SonoridadIntegrada> valores, bool nivela, float objetivo, float fuerza, out int medidas)
+        {
+            int n = 0; float[] h = null;
+            if (valores != null)
+            {
+                h = new float[valores.Count];
+                foreach (SonoridadIntegrada s in valores)
+                {
+                    if (!s.Valida || !s.ConPicos || s.Muda || float.IsNaN(s.PicoDb) || s.PicoDb <= PicosBloques.Nada) continue;
+                    h[n++] = HolguraDb(GananciaDeTabla(s, nivela, objetivo, fuerza), DbALin(s.PicoDb), DbALin(s.P99Db));
+                }
+            }
+            medidas = n;
+            return (n >= SubirMinMedidas) ? TechoDeHolguras(h, n) : float.NaN;
         }
 
         // El techo de la biblioteca (dB), guardado. 'medidas' dice con cuantas canciones se calculo.
@@ -69,24 +91,47 @@ namespace Rocola
                            || !object.ReferenceEquals(subirTabla, integCache);   // tabla nueva (la del arranque): se rehace ya
             bool nuevas = subirCambios != integCambios && unchecked(ahora - subirCuando) >= SubirRehacerMs;
             if (subirHecho && !ajustes && !nuevas) { medidas = subirMedidas; return subirTecho; }
+            if (subirHecho && !ajustes && RehaceTechoEnFondo(ahora)) { medidas = subirMedidas; return subirTecho; }   // medidas nuevas: fuera
             subirHecho = true; subirCuando = ahora; subirCambios = integCambios;
             subirObj = normTarget; subirFuerza = normStrength; subirNivela = normalizeOn; subirTabla = integCache;
             Dictionary<string, SonoridadIntegrada> t = integCache;
-            int n = 0; float[] h = null;
-            if (t != null)
-            {
-                h = new float[t.Count];
-                foreach (KeyValuePair<string, SonoridadIntegrada> kv in t)
-                {
-                    SonoridadIntegrada s = kv.Value;
-                    if (!s.Valida || !s.ConPicos || s.Muda || float.IsNaN(s.PicoDb) || s.PicoDb <= PicosBloques.Nada) continue;
-                    h[n++] = HolguraDb(GananciaDeTabla(s), DbALin(s.PicoDb), DbALin(s.P99Db));
-                }
-            }
+            int n;
+            subirTecho = TechoDeTabla(t != null ? t.Values : null, normalizeOn, normTarget, normStrength, out n);
             subirMedidas = n;
-            subirTecho = (n >= SubirMinMedidas) ? TechoDeHolguras(h, n) : float.NaN;
             medidas = n;
             return subirTecho;
+        }
+
+        // CON MEDIDAS NUEVAS, LA CUENTA FUERA DE LA PANTALLA: se copian los valores (la tabla es de la pantalla) y los
+        // ajustes de ahora, se cuenta en otro hilo y el resultado vuelve a la pantalla, que lo pone si nada cambio
+        // mientras. Hasta entonces vale el de antes. Sin ventana a la que volver (y sin prueba que lo pida), false: se
+        // cuenta aqui, como antes.
+        private bool RehaceTechoEnFondo(int ahora)
+        {
+            if (subirEnFondo) return true;   // ya hay una en marcha: mientras, el de antes
+            Action<System.Windows.Forms.MethodInvoker> vuelve = vuelveALaPantalla;
+            Dictionary<string, SonoridadIntegrada> t = integCache;
+            if (t == null || (vuelve == null && !IsHandleCreated)) return false;
+            SonoridadIntegrada[] valores = new SonoridadIntegrada[t.Count];
+            t.Values.CopyTo(valores, 0);
+            bool nivela = normalizeOn; float objetivo = normTarget, fuerza = normStrength;
+            subirEnFondo = true; subirCuando = ahora; subirCambios = integCambios;
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                int n;
+                float techo = TechoDeTabla(valores, nivela, objetivo, fuerza, out n);
+                System.Windows.Forms.MethodInvoker pon = delegate
+                {
+                    subirEnFondo = false;
+                    // Si mientras tanto cambiaron los ajustes o la tabla, ya se rehizo en la pantalla con lo nuevo.
+                    if (subirNivela != nivela || subirObj != objetivo || subirFuerza != fuerza || !object.ReferenceEquals(subirTabla, t)) return;
+                    subirTecho = techo; subirMedidas = n;
+                };
+                if (vuelve != null) { vuelve(pon); return; }
+                try { BeginInvoke(pon); }
+                catch (InvalidOperationException) { }   // la ventana ya se cerro
+            });
+            return true;
         }
 
         // Los dB de "Subir TODO" que de verdad se aplican: lo pedido, sin pasar del techo de la biblioteca.

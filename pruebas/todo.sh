@@ -83,6 +83,10 @@ CPU="$CPU discoparejo"
 # lee un hilo aparte que deja un colchon corto hecho, y la pantalla solo copia. Mismo sonido bit a bit, el final y los
 # fallos como antes, cuanto espera la pantalla a un hilo atrasado y lo que le cuesta cada bloque.
 CPU="$CPU bomba"
+# 'tirones': lo que paraba la pantalla al poner una cancion: el primer segundo de musica lo hace el hilo de la musica y la
+# salida arranca cuando esta (sin esperar la pantalla), la tabla de volumen se copia sin rehacer su indice en la pantalla,
+# y el techo de "Subir TODO" con medidas nuevas se cuenta en otro hilo.
+CPU="$CPU tirones"
 # 'prioridad': la rocola con prioridad por encima de lo normal (Program.cs): se pone al arrancar la unica rocola, nunca
 # "alta" ni "tiempo real", y en ningun otro sitio.
 CPU="$CPU prioridad"

@@ -979,6 +979,8 @@ namespace Rocola
                     if (EsFalloDelDispositivo(sex) && SalidaCaida(t, desde, sex, false)) return;
                     throw;
                 }
+                // Sin parar la pantalla: la salida arranca cuando el hilo de la musica tiene el primer segundo (BombaSonido.cs).
+                if (ArrancaCuandoEsteLista(delegate { SalidaClasicaLista(t, desde, abiertaMs); })) return;
                 try { output.Play(); }
                 catch (Exception pex) { if (EsFalloDelDispositivo(pex) && SalidaCaida(t, desde, pex, false)) return; throw; }
                 SalidaArranco(IdSalidaPorDefecto());   // el aparato esta: en cual (SalidaSonido.cs; en XP no se pregunta)

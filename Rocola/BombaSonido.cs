@@ -23,6 +23,13 @@
 //    Array.Copy ni Array.Clear (ver Realce.cs).
 //  - Al parar, el hilo se detiene y se espera ANTES de soltar el lector (DisposePlaybackNow): nadie lee un archivo
 //    cerrado, y las medidas de la cancion se cierran con el audio de verdad quieto.
+//  - EL ARRANQUE, SIN PARAR LA PANTALLA (29 de septiembre). Al arrancar, WaveOut llena sus 20 bloques de una vez: pide
+//    1 s de musica seguido. Con el colchon de 200 ms, la pantalla se quedaba esperando a que el hilo descomprimiera y
+//    procesara ese segundo entero (medido: 44 ms en un procesador de servidor, con 20.000 canciones en las tablas;
+//    varias veces eso en el equipo del bar), y se veia como un tiron en cada cancion que se ponia. Ahora el hilo
+//    empieza en cuanto se arma la salida, deja ese primer segundo hecho en un anillo mas grande y avisa
+//    (CuandoEsteLista); la salida arranca entonces y solo copia. Mientras, la pantalla sigue. Despues del arranque, el
+//    colchon vuelve a ser de 200 ms, como siempre. Lo que suena no cambia ni una muestra.
 // Es una optimizacion que no cambia ni el sonido ni lo que se ve: siempre activa y sin interruptor.
 using System;
 using System.Threading;
@@ -35,12 +42,16 @@ namespace Rocola
         internal const int ColchonMs = 200;     // lo que el hilo deja hecho por delante
         internal const int TrozoMs = 25;        // lo que lee de una vez
         internal const int EsperaMaxMs = 600;   // lo mas que la pantalla espera a un hilo atrasado
+        internal const int ArranqueMs = 1000;   // lo que la salida clasica llena de una vez al arrancar (20 bloques de 50 ms)
 
         private readonly ISampleProvider src;
         private readonly object cerrojo = new object();
         private readonly float[] anillo, trozo;
         private int ini, lleno;                  // el colchon: donde empieza y cuanto tiene (muestras)
         private readonly int trozoN;
+        private readonly int colchonN, arranqueN;   // lo que se deja hecho sonando, y lo que hace falta para arrancar
+        private bool salidaLeyo;                    // la salida ya pidio musica: desde ahi, solo el colchon
+        private Action alEstarLista;                // el aviso del primer segundo hecho (una vez)
         private Thread hilo;
         private bool parar, fin, atascada;
         private Exception fallo;
@@ -55,24 +66,58 @@ namespace Rocola
             WaveFormat f = s.WaveFormat;
             int ch = Math.Max(1, f.Channels), hz = Math.Max(8000, f.SampleRate);
             int cuadrosTrozo = Math.Max(64, hz * TrozoMs / 1000);
-            int cuadrosAnillo = Math.Max(cuadrosTrozo * 4, hz * ColchonMs / 1000);
+            int cuadrosColchon = Math.Max(cuadrosTrozo * 4, hz * ColchonMs / 1000);
+            int cuadrosArranque = hz * ArranqueMs / 1000;
             trozoN = cuadrosTrozo * ch;
-            anillo = new float[cuadrosAnillo * ch];
+            colchonN = cuadrosColchon * ch;
+            arranqueN = cuadrosArranque * ch;
+            // El anillo cabe el primer segundo (y dos trozos de holgura); sonando se usa solo el colchon.
+            anillo = new float[Math.Max(cuadrosColchon, cuadrosArranque + 2 * cuadrosTrozo) * ch];
             trozo = new float[trozoN];
             // El hilo lee un trozo en cuanto cabe: cada trozo entra con el colchon entre medio lleno de un trozo y lleno.
-            AdelantoMs = (int)((cuadrosAnillo - cuadrosTrozo * 3L / 2) * 1000 / hz);
+            AdelantoMs = (int)((cuadrosColchon - cuadrosTrozo * 3L / 2) * 1000 / hz);
         }
 
         public WaveFormat WaveFormat { get { return src.WaveFormat; } }
         internal long Huecos { get { lock (cerrojo) return huecos; } }
         internal int HiloLector { get { lock (cerrojo) return hiloLector; } }
         internal bool Viva { get { Thread h; lock (cerrojo) h = hilo; return h != null && h.IsAlive; } }
+        internal bool Lista { get { lock (cerrojo) return fin || lleno >= arranqueN; } }   // el primer segundo ya esta hecho
+        internal int Hecho { get { lock (cerrojo) return lleno; } }                         // muestras en el anillo (pruebas)
+
+        // EL AVISO DEL ARRANQUE. Pone el hilo a trabajar YA (sin esperar a que la salida pida) y avisa, una vez y desde el
+        // hilo de la musica, cuando el primer segundo esta hecho, o antes si la cancion se acabo o fallo: entonces la
+        // salida arranca y solo copia. Si ya lo esta (o la salida ya empezo a pedir), avisa aqui mismo. El aviso no debe
+        // lanzar: corre en el hilo de la musica.
+        internal void CuandoEsteLista(Action lista)
+        {
+            if (lista == null) return;
+            bool ya;
+            lock (cerrojo)
+            {
+                if (parar) return;
+                if (hilo == null) Arranca();
+                ya = fin || salidaLeyo || lleno >= arranqueN;
+                if (!ya) alEstarLista = lista;
+            }
+            if (ya) lista();
+        }
+        // Bajo el cerrojo: el aviso, si ya toca (una sola vez).
+        private Action TomaAviso(bool acabo)
+        {
+            if (alEstarLista == null || (!acabo && lleno < arranqueN)) return null;
+            Action a = alEstarLista; alEstarLista = null;
+            return a;
+        }
+        // Hasta donde llena el hilo: el primer segundo mientras la salida no ha pedido nada; despues, el colchon.
+        private int Hasta() { return salidaLeyo ? colchonN : anillo.Length; }
 
         public int Read(float[] buffer, int offset, int count)
         {
             lock (cerrojo)
             {
                 if (hilo == null && !parar) Arranca();
+                salidaLeyo = true; alEstarLista = null;   // la salida ya arranco: desde aqui, el colchon de siempre
                 int hechos = 0;
                 int limite = Environment.TickCount + EsperaMaxMs;
                 while (hechos < count)
@@ -120,24 +165,33 @@ namespace Rocola
                 {
                     lock (cerrojo)
                     {
-                        while (!parar && anillo.Length - lleno < trozoN) Monitor.Wait(cerrojo);
+                        while (!parar && Hasta() - lleno < trozoN) Monitor.Wait(cerrojo);
                         if (parar) return;
                     }
                     int n = src.Read(trozo, 0, trozoN);   // fuera del cerrojo: la pantalla puede ir copiando mientras
+                    Action lista;
                     lock (cerrojo)
                     {
                         if (parar) return;
-                        if (n <= 0) { fin = true; Monitor.PulseAll(cerrojo); return; }
-                        int len = anillo.Length, p = ini + lleno; if (p >= len) p -= len;
-                        for (int i = 0; i < n; i++) { anillo[p] = trozo[i]; if (++p == len) p = 0; }
-                        lleno += n; atascada = false;
-                        Monitor.PulseAll(cerrojo);
+                        if (n <= 0) { fin = true; lista = TomaAviso(true); Monitor.PulseAll(cerrojo); }
+                        else
+                        {
+                            int len = anillo.Length, p = ini + lleno; if (p >= len) p -= len;
+                            for (int i = 0; i < n; i++) { anillo[p] = trozo[i]; if (++p == len) p = 0; }
+                            lleno += n; atascada = false;
+                            lista = TomaAviso(false);
+                            Monitor.PulseAll(cerrojo);
+                        }
                     }
+                    if (lista != null) lista();   // fuera del cerrojo
+                    if (n <= 0) return;
                 }
             }
             catch (Exception ex)
             {
-                lock (cerrojo) { fallo = ex; fin = true; Monitor.PulseAll(cerrojo); }
+                Action lista;
+                lock (cerrojo) { fallo = ex; fin = true; lista = TomaAviso(true); Monitor.PulseAll(cerrojo); }
+                if (lista != null) lista();   // la salida arranca igual: el fallo le llega al leer, como antes
             }
         }
 
@@ -168,5 +222,45 @@ namespace Rocola
         }
         // Lo que la bomba lee por delante de lo que ya pidio la salida (0 sin bomba).
         private int AdelantoBomba() { BombaSonido b = bomba; return (b != null) ? b.AdelantoMs : 0; }
+
+        // EL ARRANQUE DE LA SALIDA CLASICA, SIN PARAR LA PANTALLA. En vez de llamar a Play ya (que espera a que el hilo
+        // de la musica haga el primer segundo entero), se le pide al hilo que avise cuando lo tenga, y 'arranca' se hace
+        // entonces en el hilo de la pantalla. Si mientras tanto se salto o se paro la cancion (otra salida u otra bomba),
+        // no se hace nada. Sin ventana a la que volver (y sin prueba que lo pida) devuelve false: se arranca como antes.
+        internal Action<System.Windows.Forms.MethodInvoker> vuelveALaPantalla;   // solo las pruebas (null = BeginInvoke)
+        private bool ArrancaCuandoEsteLista(System.Windows.Forms.MethodInvoker arranca)
+        {
+            BombaSonido b = bomba; IWavePlayer o = output;
+            Action<System.Windows.Forms.MethodInvoker> vuelve = vuelveALaPantalla;
+            if (b == null || o == null || arranca == null || (vuelve == null && !IsHandleCreated)) return false;
+            b.CuandoEsteLista(delegate
+            {
+                System.Windows.Forms.MethodInvoker enLaPantalla = delegate
+                {
+                    if (!object.ReferenceEquals(b, bomba) || !object.ReferenceEquals(o, output)) return;   // se salto o se paro mientras
+                    arranca();
+                };
+                if (vuelve != null) { vuelve(enLaPantalla); return; }
+                try { BeginInvoke(enLaPantalla); }
+                catch (InvalidOperationException) { }   // la ventana ya se cerro: no queda nada que arrancar
+            });
+            return true;
+        }
+        // Lo que hace StartOpenedTrack al arrancar la salida clasica, cuando se arranca aqui: el primer segundo ya esta
+        // hecho, asi que Play solo copia. Los mismos pasos y en el mismo orden.
+        private void SalidaClasicaLista(Track t, double desde, int abiertaMs)
+        {
+            try
+            {
+                try { output.Play(); }
+                catch (Exception pex) { if (EsFalloDelDispositivo(pex) && SalidaCaida(t, desde, pex, false)) return; throw; }
+                SalidaArranco(IdSalidaPorDefecto());   // el aparato esta: en cual (SalidaSonido.cs)
+                progressTimer.Start();
+                UpdateNowPlayingUI();
+                PrecalientaSiguiente();
+                ApuntaCancion(abiertaMs);
+            }
+            catch (Exception ex) { AudioStartFailed(t, ex); }
+        }
     }
 }
