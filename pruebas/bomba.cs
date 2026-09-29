@@ -22,7 +22,9 @@ using NAudio.Wave.SampleProviders;
 //   7) la cadena de verdad (OpenAudio + ArmaCadena, todo encendido): por la bomba sale bit a bit lo mismo que leida a
 //      mano; y por AbreSalidaClasica la salida recibe la bomba;
 //   8) los enganches: la salida clasica la pone, al parar se para ANTES de soltar el lector, y el pulso, la aurora y
-//      el relevo cuentan lo que la bomba lee por delante.
+//      el relevo cuentan lo que la bomba lee por delante;
+//   9) con musica de verdad por la medida (LevelTap), la bomba y el ritmo de WaveOut, el pulso le llega a la pantalla
+//      en cada vuelta (el que desliza y hace latir las estrellas y la luna).
 class Bomba
 {
     const BindingFlags T = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static;
@@ -344,6 +346,57 @@ class Bomba
         Check(Codigo.Llama(Met(TF, "ConBomba"), "SueltaBomba"), "y abrir la salida otra vez nunca deja un hilo de musica viejo corriendo");
     }
 
+    // Tres tonos (grave, medio y agudo), para que las tres bandas de la medida tengan algo.
+    class Tonos : ISampleProvider
+    {
+        readonly WaveFormat wf = WaveFormat.CreateIeeeFloatWaveFormat(44100, 2); long n;
+        public WaveFormat WaveFormat { get { return wf; } }
+        public int Read(float[] b, int o, int c)
+        {
+            for (int i = 0; i < c; i += 2, n++)
+            {
+                double t = n / 44100.0;
+                float v = (float)(0.2 * Math.Sin(2 * Math.PI * 80 * t) + 0.15 * Math.Sin(2 * Math.PI * 1000 * t) + 0.1 * Math.Sin(2 * Math.PI * 6000 * t));
+                b[o + i] = v; if (i + 1 < c) b[o + i + 1] = v;
+            }
+            return c;
+        }
+    }
+
+    // EL PULSO LLEGA A LA PANTALLA. La medida (LevelTap) apunta cada trozo con la hora en que se leyo, y la pantalla lo
+    // toma cuando ya se oye (ConsumeLevels: el colchon de la salida mas lo que la bomba lee por delante). La cola de en
+    // medio tiene tope: si guarda menos tiempo del que hay que esperar, lo mas viejo se tira antes de oirse, a la
+    // pantalla no le llega nada y las estrellas ni se deslizan ni laten. Con la bomba los trozos son de 25 ms (antes, los
+    // bloques de 50 ms de WaveOut): con el tope de antes, 96 medidas eran 0,6 s y hay que esperar mas de 1 s.
+    static void ElPulso()
+    {
+        Console.WriteLine("\n  9) EL PULSO LLEGA A LA PANTALLA (ESTRELLAS Y LUNA)\n");
+        object f = Codigo.FormSinEncender(TF);
+        Set(f, "audioVisualDelayMs", 850);   // lo que pone la salida clasica (WaveOut, 20 bloques de 50 ms)
+        object tap = Activator.CreateInstance(TF.GetNestedType("LevelTap", T), T, null, new object[] { new Tonos(), f }, null);
+        ISampleProvider salida = (ISampleProvider)Call(f, "ConBomba", tap);
+        float[] bloque = new float[44100 * 2 / 20];   // 50 ms, como cada bloque de WaveOut
+        int inicio = Environment.TickCount, pedidos = 0, vueltas = 0, conPulso = 0, primero = -1;
+        try
+        {
+            while (Environment.TickCount - inicio < 3500)
+            {
+                int ya = Environment.TickCount - inicio;
+                while (pedidos * 50 < ya + 1000) { salida.Read(bloque, 0, bloque.Length); pedidos++; }   // WaveOut: 1 s por delante
+                Set(f, "rmsLo", 0f); Set(f, "rmsMid", 0f); Set(f, "rmsHi", 0f);
+                Call(f, "ConsumeLevels", Environment.TickCount);   // lo que hace la pantalla en cada vuelta
+                bool llego = (float)Get(f, "rmsLo") + (float)Get(f, "rmsMid") + (float)Get(f, "rmsHi") > 0f;
+                if (llego && primero < 0) primero = ya;
+                if (ya >= 2000) { vueltas++; if (llego) conPulso++; }
+                Thread.Sleep(40);   // la vuelta de la pantalla (unas 24 por segundo; con el equipo cargado alguna no trae nada nuevo)
+            }
+        }
+        finally { Call(f, "SueltaBomba"); }
+        Info("espera hasta oirse: " + Call(f, "RetrasoAudible") + " ms; primer pulso a los " + primero + " ms; con pulso " + conPulso + " de " + vueltas + " vueltas");
+        Check(primero >= 0 && primero < 2000, "el primer pulso le llega a la pantalla en cuanto la musica se oye");
+        Check(vueltas > 0 && conPulso * 3 >= vueltas * 2, "y despues, vuelta tras vuelta: las estrellas se deslizan y laten (" + conPulso + " de " + vueltas + ")");
+    }
+
     static int Main(string[] args)
     {
         Assembly asm = Assembly.LoadFrom(args.Length > 0 ? args[0] : "rocola.exe");
@@ -354,7 +407,7 @@ class Bomba
         Environment.SetEnvironmentVariable("ROCOLA_DATOS", dir);
         try
         {
-            LoMismo(); OtroHilo(); Fallo(); Atrasada(); Parar(); Coste(); DeVerdad(dir); Enganches();
+            LoMismo(); OtroHilo(); Fallo(); Atrasada(); Parar(); Coste(); DeVerdad(dir); Enganches(); ElPulso();
         }
         catch (Exception e) { Check(false, "la bateria reviento: " + e); }
         finally { try { Directory.Delete(dir, true); } catch { } }

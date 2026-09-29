@@ -1649,17 +1649,24 @@ namespace Rocola
             }
         }
 
+        // EL TOPE DE LA COLA DE MEDIDAS tiene que guardar MAS tiempo del que la pantalla espera a que se oigan (el
+        // colchon de la salida mas lo que la bomba lee por delante: ~1 s con WaveOut). Eran 96: con los bloques de 50 ms
+        // de WaveOut, 1,2 s. Pero la bomba (BombaSonido.cs) lee trozos de 25 ms y cada uno da 4 medidas de 6 ms: 96 eran
+        // 0,6 s, lo mas viejo se tiraba ANTES de oirse y a la pantalla no le llegaba nunca el pulso. Las estrellas ni se
+        // deslizaban ni latian, y la luna tampoco. 384 son 2,4 s en el peor caso; en memoria, 12 KB.
+        private const int MedidasTope = 384;
+
         // Bajo levelLock: un espectro no se reutiliza hasta que sale de la cola y la UI
-        // ha copiado sus valores. Reciclar antes del alta mantiene tambien el pico en 96.
+        // ha copiado sus valores. Reciclar antes del alta mantiene tambien el pico en MedidasTope.
         private void ReturnLevelBuffer(float[] values)
         {
             if (values == null) return;
-            if (levelBuffers == null) levelBuffers = new Stack<float[]>(96);
-            if (levelBuffers.Count < 96) levelBuffers.Push(values);
+            if (levelBuffers == null) levelBuffers = new Stack<float[]>(MedidasTope);
+            if (levelBuffers.Count < MedidasTope) levelBuffers.Push(values);
         }
         private void EnqueueLevel(int at, float lo, float mid, float hi, float[] values, int offset)
         {
-            while (levelQ.Count >= 96) ReturnLevelBuffer(levelQ.Dequeue().Esp);
+            while (levelQ.Count >= MedidasTope) ReturnLevelBuffer(levelQ.Dequeue().Esp);
             float[] esp = null;
             if (values != null)
             {
