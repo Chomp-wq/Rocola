@@ -182,7 +182,9 @@ class HistorialArranque
    CheckText(text.ToString());
   }
   Failure();Worker();Allocations();
-  List<string> shown=Codigo.Nombres(form.GetMethod("OnShown",F));
+  // Lo que necesita las tablas sigue en SigueArranque (la ventana ya no las espera parada: arranquevivo.cs).
+  MethodInfo sigue=form.GetMethod("SigueArranque",F);
+  List<string> shown=Codigo.Nombres(sigue!=null?sigue:form.GetMethod("OnShown",F));
   Check(shown.IndexOf("CompleteStartupDataLoad")<shown.IndexOf("LoadStats"),"Lee historial antes del trabajador");
   Check(shown.IndexOf("LoadStats")<shown.IndexOf("LoadMusicFolder"),"Biblioteca antes del historial");
   Check(Codigo.Nombres(form.GetMethod("CompleteStartupDataLoad",F)).Contains("PublishStartupStats"),"No publica instantanea");

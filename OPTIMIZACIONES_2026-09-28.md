@@ -311,3 +311,40 @@ Las demás baterías de la bomba, el diario de las tablas y el nivelado siguen e
 
 - Un disco mecánico real con `FlushFileBuffers` de Windows: lo que se ahorra por moneda en el bar no está medido aquí.
 - Un apagón de verdad justo en los milisegundos entre la moneda y el disco.
+
+## 8. El arranque sin la ventana parada esperando las tablas (29 de septiembre)
+
+### Qué pasaba
+
+Las tablas del arranque (volumen, EQ, lo más sonado…) las lee un hilo aparte desde que se crea la ventana. Pero al
+mostrarse, la ventana se quedaba parada esperándolas (`Monitor.Wait` en `CompleteStartupDataLoad`): sin pintar ni atender
+nada. Con la ventana real y tablas de 40.000 canciones generadas por la propia rocola, en este servidor:
+
+| | La parada más larga al arrancar |
+|---|---|
+| Antes | 816–1.146 ms |
+| Ahora | 178 ms (preparar la tarjeta gráfica) y 265–283 ms (publicar la biblioteca recién armada) |
+
+Las dos que quedan no son de las tablas: la tarjeta se prepara en el hilo de la ventana por obligación, y publicar la
+biblioteca es un paso aparte (el vigía de la pantalla lo apunta; ver la sección siguiente).
+
+### Qué cambia
+
+- Al mostrarse, la ventana hace lo que no necesita las tablas (configuración, vigía del foco) y deja apuntado qué seguir
+  (`EsperaLasTablas`). El lector avisa al terminar, desde su hilo y fuera de su candado, y la ventana sigue con
+  `SigueArranque`: las tablas, lo más sonado y la biblioteca (que es la que restaura créditos y cola), **en el mismo orden de
+  siempre**. Publicar las tablas ya no espera nunca.
+- Las teclas que llegan mientras tanto **esperan su turno** y se atienden al final, en orden, como las dejaba en cola la
+  ventana parada: una moneda no puede contarse antes de leer las monedas y lo más sonado guardados (los pisaría al
+  publicarlos). Salir (Ctrl+Alt+Q) funciona siempre. El latido no anima nada mientras tanto: ese procesador es del lector.
+- Cerrar mientras se leen las tablas no sigue con nada y no guarda tablas vacías, como antes.
+
+### Comprobaciones automáticas
+
+**`pruebas/arranquevivo.cs`** (18 comprobaciones, verde en las dos ramas; con el programa anterior, 9 fallos: se queda
+esperando al lector). Usa una tubería como tabla lenta para ver que el lector avisa una vez y fuera de su candado.
+`historialarranque.cs` mira el orden en `SigueArranque`.
+
+### Lo que no se ha comprobado
+
+- Un disco mecánico real con tablas grandes (ahí la espera de antes era mayor) y la tarjeta gráfica de verdad.

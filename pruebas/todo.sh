@@ -96,6 +96,9 @@ CPU="$CPU estadodetras"
 # 'bitacoradetras': la bitacora (diagnostico, errores, incompatibles) la escribe un hilo de fondo: nadie abre el archivo por
 # su cuenta, con el archivo ocupado no se espera ni se pierde nada, lo escrito no cambia y un fallo grave se escribe ya.
 CPU="$CPU bitacoradetras"
+# 'arranquevivo': al arrancar, la ventana no se queda parada esperando las tablas: el lector avisa al terminar, publicar no
+# espera nunca, las teclas de mientras esperan su turno (salir no) y el orden sigue siendo tablas, historial y biblioteca.
+CPU="$CPU arranquevivo"
 # 'prioridad': la rocola con prioridad por encima de lo normal (Program.cs): se pone al arrancar la unica rocola, nunca
 # "alta" ni "tiempo real", y en ningun otro sitio.
 CPU="$CPU prioridad"
