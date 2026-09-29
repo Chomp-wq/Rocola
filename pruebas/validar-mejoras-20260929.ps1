@@ -22,7 +22,7 @@ foreach ($mode in @('gpu', 'cpu')) {
     if ($LASTEXITCODE -ne 0) { throw "No compila $mode" }
 }
 $app = Join-Path $OutputDirectory 'Rocola-gpu.exe'
-if (!$Tests) { $Tests = @('fuentes','planbiblioteca','cierrebomba','bomba','sinpausa','diario','otroarchivo','silencios','nivelpicos','nofinitos','tablasarranque','historialarranque','etiquetadelante','enmemoria','tirones','panelreposo','textosgpu','franjareloj','buscaportadas','bloqueos') }
+if (!$Tests) { $Tests = @('fuentes','planbiblioteca','cierrebomba','bomba','sinpausa','diario','otroarchivo','silencios','nivelpicos','nofinitos','tablasarranque','historialarranque','etiquetadelante','enmemoria','tirones','panelreposo','textosgpu','franjareloj','buscaportadas','bloqueos','cristalcache','paginasgpu') }
 Push-Location $testRoot
 try {
     foreach ($test in $Tests) {

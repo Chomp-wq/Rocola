@@ -183,7 +183,7 @@ GPU="$GPU buscaligero paginasgpu"
 # entrada de las tarjetas, los atajos, las portadas, la tarjeta imitada (tambien con la ventana que sube y baja), lo
 # quieto horneado y las cintas de la tarjeta elegida. Sin ella: que no hay nada del nuevo y la pestana.
 GPU="$GPU buscaportadas"
-GPU="$GPU rendercache"
+GPU="$GPU rendercache cristalcache"
 CPU="$CPU buscaportadas"
 # 'bloqueos', con el perfil de tarjeta grafica, que es el programa entero (el dibujo por tarjeta incluido): lee el
 # programa compilado y sigue todo lo que corre en la pantalla hasta lo que puede esperar (disco, esperas, programas,

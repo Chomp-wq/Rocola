@@ -67,6 +67,50 @@ namespace Rocola
             private ImageAttributes tinteCristalGpu;
             private Color tinteCristalColor;
             private int gpuSnapshotSel = -1;
+            private Bitmap gpuSnapshotRow, gpuSelectedRaw;
+            private ImageAttributes GpuColorKey()
+            {
+                if (claveGpu == null || claveGpuDe != BackColor)
+                {
+                    if (claveGpu == null) claveGpu = new ImageAttributes();
+                    claveGpu.SetColorKey(BackColor, BackColor, ColorAdjustType.Bitmap);
+                    claveGpuDe = BackColor;
+                }
+                return claveGpu;
+            }
+            private Bitmap GpuRowBuffer(ref Bitmap buffer, int w, int h)
+            {
+                if (buffer == null || buffer.Width != w || buffer.Height != h)
+                {
+                    SueltaDibujo(ref buffer);
+                    buffer = new Bitmap(w, h, PixelFormat.Format32bppPArgb);
+                }
+                return buffer;
+            }
+            // Restaurar una fila no debe volver a medir/dibujar todas las canciones de la pagina.
+            // Guardamos sus pixeles originales: mismos bordes y suavizado, sin otro mapa de pagina.
+            private void UpdateGpuSnapshot(Graphics snapshot, Bitmap selected, int index, int w)
+            {
+                GraphicsState state = snapshot.Save();
+                try
+                {
+                    snapshot.CompositingMode = CompositingMode.SourceCopy;
+                    if (gpuSnapshotSel >= PageStart && gpuSnapshotSel < PageStart + RowsPerPage &&
+                        gpuSnapshotRow != null && gpuSnapshotRow.Width == w && gpuSnapshotRow.Height == RowH)
+                        snapshot.DrawImageUnscaled(gpuSnapshotRow, 0, (gpuSnapshotSel - PageStart) * RowH);
+                }
+                finally { snapshot.Restore(state); }
+                int y = (index - PageStart) * RowH;
+                Bitmap original = GpuRowBuffer(ref gpuSnapshotRow, w, RowH);
+                using (Graphics copy = Graphics.FromImage(original))
+                {
+                    copy.CompositingMode = CompositingMode.SourceCopy;
+                    copy.Clear(Color.Transparent);
+                    copy.DrawImage(hornoPag, new Rectangle(0, 0, w, RowH), 0, y, w, RowH, GraphicsUnit.Pixel);
+                }
+                snapshot.DrawImageUnscaled(selected, 0, y);
+                gpuSnapshotSel = index;
+            }
             // Capas inmutables: pagina sin seleccion y una sola fila elegida.
             // Se conserva el horneado anterior para el hojeo ya existente.
             public Bitmap BakeGpuListLayer(bool selected)
@@ -82,24 +126,22 @@ namespace Rocola
                         Sel = -1; hornoSig = long.MinValue;
                         using (new CapturaCintas(null)) AseguraHorneada(w, h);
                         using (Graphics output = Graphics.FromImage(result))
-                        using (ImageAttributes key = new ImageAttributes())
                         {
-                            key.SetColorKey(BackColor, BackColor, ColorAdjustType.Bitmap);
+                            ImageAttributes key = GpuColorKey();
                             if (capturandoCintas == null)
                                 output.DrawImage(hornoPag, new Rectangle(0, 0, w, h), 0, 0, w, h, GraphicsUnit.Pixel, key);
-                            else using (Bitmap raw = new Bitmap(w, h, PixelFormat.Format32bppPArgb))
+                            else using (Bitmap pageRaw = new Bitmap(w, h, PixelFormat.Format32bppPArgb))
                             {
-                                using (Graphics g = Graphics.FromImage(raw)) PintaPagina(g, PageStart);
-                                output.DrawImage(raw, new Rectangle(0, 0, w, h), 0, 0, w, h, GraphicsUnit.Pixel, key);
+                                using (Graphics g = Graphics.FromImage(pageRaw)) PintaPagina(g, PageStart);
+                                output.DrawImage(pageRaw, new Rectangle(0, 0, w, h), 0, 0, w, h, GraphicsUnit.Pixel, key);
                             }
                         }
                         gpuSnapshotSel = -1;
                         return result;
                     }
-                    using (Bitmap raw = new Bitmap(w, h, PixelFormat.Format32bppPArgb))
+                    Bitmap raw = GpuRowBuffer(ref gpuSelectedRaw, w, h);
                     using (Graphics g = Graphics.FromImage(raw))
                     using (Graphics output = Graphics.FromImage(result))
-                    using (ImageAttributes key = new ImageAttributes())
                     {
                         // La fila elegida se pinta sola, como si fuera la primera: se le dice donde esta de verdad, para
                         // que quede dentro de las esquinas del cristal (DentroDelCristal).
@@ -110,20 +152,10 @@ namespace Rocola
                             PintaPagina(g, saved);
                             if (hornoPag != null)
                             using (Graphics snapshot = Graphics.FromImage(hornoPag))
-                            {
-                                if (gpuSnapshotSel >= PageStart && gpuSnapshotSel < PageStart + RowsPerPage)
-                                {
-                                    snapshot.SetClip(new Rectangle(0, (gpuSnapshotSel - PageStart) * RowH, w, RowH));
-                                    Sel = -1; PintaPagina(snapshot, PageStart); Sel = saved;
-                                }
-                                snapshot.ResetClip();
-                                snapshot.DrawImageUnscaled(raw, 0, (saved - PageStart) * RowH);
-                                gpuSnapshotSel = saved;
-                            }
+                                UpdateGpuSnapshot(snapshot, raw, saved, w);
                         }
                         if (capturandoCintas != null) PintaPagina(g, saved);
-                        key.SetColorKey(BackColor, BackColor, ColorAdjustType.Bitmap);
-                        output.DrawImage(raw, new Rectangle(0, 0, w, h), 0, 0, w, h, GraphicsUnit.Pixel, key);
+                        output.DrawImage(raw, new Rectangle(0, 0, w, h), 0, 0, w, h, GraphicsUnit.Pixel, GpuColorKey());
                     }
                     return result;
                 }
@@ -167,6 +199,7 @@ namespace Rocola
                 SueltaDibujo(ref veloGpu); SueltaDibujo(ref claveGpu);
                 SueltaDibujo(ref cristalGpu);
                 SueltaDibujo(ref tinteCristalGpu);
+                SueltaDibujo(ref gpuSnapshotRow); SueltaDibujo(ref gpuSelectedRaw);
             }
             public void RenderTransparentGpu(Graphics g)
             { RenderTransparentGpuMode(g, false); }
@@ -204,14 +237,8 @@ namespace Rocola
                 else g.FillRectangle(veloGpu, 0, 0, w, h);
                 // Elimina el relleno exacto, no reduce el alfa del texto ni de
                 // la seleccion. Conserva la cache, geometria y paginacion.
-                // Se rehace solo si cambio el color de fondo, que es de donde sale la clave.
-                if (claveGpu == null || claveGpuDe != BackColor)
-                {
-                    SueltaDibujo(ref claveGpu);
-                    claveGpu = new ImageAttributes();
-                    claveGpu.SetColorKey(BackColor, BackColor, ColorAdjustType.Bitmap);
-                    claveGpuDe = BackColor;
-                }
+                // La clave se actualiza al cambiar el fondo, reutilizando su atributo nativo.
+                GpuColorKey();
                 if (dx != 0f && hornoAnt != null)
                     g.DrawImage(hornoAnt, GpuSlideVertical ? new Rectangle(0, (int)(dx-slideDesde), w, h) : new Rectangle((int)(dx-slideDesde), 0, w, h), 0, 0, w, h, GraphicsUnit.Pixel, claveGpu);
                 g.DrawImage(hornoPag, GpuSlideVertical ? new Rectangle(0, (int)dx, w, h) : new Rectangle((int)dx, 0, w, h), 0, 0, w, h, GraphicsUnit.Pixel, claveGpu);
@@ -294,7 +321,7 @@ namespace Rocola
             else if (index != 0)
             {
                 sig = Mix(sig, songList.GpuLayerSignature()); sig = Mix(sig, colaVer); sig = Mix(sig, generoVer);
-                if (index == 2) sig = Mix(sig, songList.Sel);
+                if (index == 2) { Color accent = songList.Accent; sig = Mix(sig, songList.Sel); sig = Mix(sig, accent.ToArgb()); }
             }
             uiPiezaRect[index] = rect; // mover una capa no obliga a volver a subir sus pixeles
             if (uiPieza[index] != null && uiPiezaSig[index] == sig) return uiPiezaVer[index];

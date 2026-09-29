@@ -47,6 +47,15 @@ class PaginasGpu
             try
             {
                 for(int i=0;i<4;i++)Call(f,"EnsureSongPiece",i);
+                Bitmap cachedPage=((Bitmap[])Get(f,"uiPieza"))[1];
+                int pageVersion=((int[])Get(f,"uiPiezaVer"))[1], rowVersion=((int[])Get(f,"uiPiezaVer"))[2];
+                Set(c,"Accent",Color.HotPink);
+                Call(f,"EnsureSongPiece",1); Call(f,"EnsureSongPiece",2);
+                Check(ReferenceEquals(cachedPage,((Bitmap[])Get(f,"uiPieza"))[1]) && pageVersion==((int[])Get(f,"uiPiezaVer"))[1],"El acento rehace la pagina sin seleccion");
+                Check(rowVersion<((int[])Get(f,"uiPiezaVer"))[2],"El resaltado pierde los cambios de color");
+                c.BackColor=Color.FromArgb(18,12,25); Call(f,"EnsureSongPiece",1);
+                Check(pageVersion<((int[])Get(f,"uiPiezaVer"))[1],"La clave de transparencia pierde cambios de fondo");
+                Call(f,"EnsureSongPiece",2);
                 Call(c,"StartGpuSlide",1,vertical); Set(c,"PageStart",12);Set(c,"Sel",12);
                 Check((float)Prop(c,"GpuSlideTravel") == (vertical ? 800 : width),"Distancia no corresponde al eje");
                 Check((bool)Prop(f,"CanUseSongGlass"),"El hojeo desactiva las capas GPU");
