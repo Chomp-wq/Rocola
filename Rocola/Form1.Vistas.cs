@@ -1979,7 +1979,13 @@ namespace Rocola
                 long k = 17;
                 k = k * 31 + PageStart; k = k * 31 + Sel; k = k * 31 + Datos;
                 k = k * 31 + w; k = k * 31 + h; k = k * 31 + RowH;
-                k = k * 31 + Accent.ToArgb(); k = k * 31 + BackColor.ToArgb();
+#if ROCOLA_GPU
+                // El acento solo pinta el resaltado. La capa sin seleccion no cambia con el tinte.
+                k = k * 31 + (pintandoGpu && Sel < 0 ? 0 : Accent.ToArgb());
+#else
+                k = k * 31 + Accent.ToArgb();
+#endif
+                k = k * 31 + BackColor.ToArgb();
                 k = k * 31 + (int)(Font.SizeInPoints * 64f);
                 k = k * 31 + ((GetCount != null) ? GetCount() : 0);
 #if ROCOLA_GPU
@@ -2005,6 +2011,7 @@ namespace Rocola
                 }
 #if ROCOLA_GPU
                 eqIdx = -1;   // donde van las barritas del ecualizador: lo vuelve a apuntar este horneado (DiscoVivoGpu.cs)
+                gpuSnapshotSel = -1;   // el mapa nuevo ya no contiene la fila guardada del mapa anterior
 #endif
                 using (Graphics gb = Graphics.FromImage(hornoPag)) PintaPagina(gb, PageStart);
                 hornoSig = sig;

@@ -119,7 +119,7 @@ En cada rama, desde su raíz:
 ```
 
 Compila GPU/CPU con advertencias como errores, usa la versión de .NET del proyecto
-y ejecuta 20 baterías más `rendercache`. Acepta `-Tests` y `-OutputDirectory`.
+y ejecuta 22 baterías más `rendercache`. Acepta `-Tests` y `-OutputDirectory`.
 No sustituye releases ni escribe datos de producción. `todo.sh` también registra
 las nuevas baterías; su sintaxis se comprueba, pero Mono/Linux no se ejecutó en esta pasada.
 
@@ -140,11 +140,36 @@ tablas/historial de arranque, etiquetas por adelantado, audio en memoria, arranq
 panel de reposo, textos GPU y auditor de bloqueos. Apertura asíncrona y precarga se comprueban
 adicionalmente con `-Tests aperturaaudio,precarga`.
 
+## Continuación: selección y color del cristal GPU
+
+El vidrio ya tenía una textura neutra teñida por D3D9. Se corrigió otra causa de trabajo
+repetido: la firma de la página sin selección incluía el acento que únicamente pinta el
+resaltado. Ahora un cambio de acento reconstruye la fila elegida, no la página completa.
+La fila conserva el color en su propia firma; la clave de fondo sigue invalidando el
+contenido cuando corresponde. No se neutralizan textos ni se aproximan degradados.
+
+Al mover la selección se restauran los píxeles originales de la fila anterior. Antes se
+medían y dibujaban todas las canciones bajo un clip para borrar esa fila. Se reutilizan
+dos buffers del tamaño de una fila y el atributo de transparencia; no se retiene otra
+imagen de página completa. Se adaptan al tamaño actual y se liberan al destruir la lista.
+Una reconstrucción de página invalida el respaldo para no restaurar datos de otra página.
+
+`cristalcache` pasa 9.660 comprobaciones por rama y compara composición e instantáneas pixel a pixel con el algoritmo anterior,
+usando sprites idénticos como entrada. Incluye colores, filas de 44/64/80 px, selección
+repetida, primera/última fila, paginación, resize, liberación, textos deslizantes,
+lista grande, minutos de cola y posición del ecualizador. También comprueba menos consultas
+a las canciones y reutilización de buffers. `paginasgpu` vigila que un cambio de acento
+no reenvíe la página y que el resaltado y la clave de fondo sí respondan.
+
+Son optimizaciones automáticas, sin nuevos interruptores y exclusivamente en GPU.
+Se conserva el renderizador CPU. No se deduce una mejora de FPS real de estos fixtures.
+
 ## Pendiente / no afirmado
 
-- Separar tinte y textura del panel de canciones para evitar hornearlo al cambiar color:
-  **no implementado**. El tintado fijo de D3D9 no reproduce todavía exactamente degradados,
-  aclarados, textos y placeholders actuales. Se mantiene su acabado existente.
+- Convertir todos los colores del contenido en tintes GPU independientes no está implementado:
+  el tintado fijo no reproduce exactamente todos los aclarados y textos. Se evita ya la
+  reconstrucción por acento de las capas que no dependen de él; los cambios reales del
+  fondo/claves de transparencia todavía reconstruyen su contenido para conservar el acabado.
 - No se midieron FPS reales, latencia del dispositivo, navegación sobre la biblioteca del
   usuario ni velocidad de un HDD/SSD físico. Los números de fixtures no representan esas medidas.
 - Modest compila contra .NET 3.5 en este Windows; falta la comprobación física en Windows XP.
