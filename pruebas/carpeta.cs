@@ -76,6 +76,32 @@ class Carpeta
         Check(unArchivo != null && unArchivo.StartsWith(aparte, StringComparison.Ordinal),
               "y cada archivo suyo se arma dentro de ella");
 
+        Console.WriteLine("\n  3b) AUNQUE LA PIDAN VARIOS HILOS A LA VEZ, SE DECIDE UNA VEZ\n");
+        // En la rocola la pide Main antes que nadie. Pero si la primera vez llegaban dos hilos juntos (en las
+        // baterias: el guardado del volumen en el fondo y el del estado), sus dos pruebas de escritura chocaban,
+        // el que perdia creia que alli no se podia escribir y los datos se iban junto al programa.
+        int rondas = 200, malas = 0;
+        for (int r = 0; r < rondas; r++)
+        {
+            fCache.SetValue(null, null);
+            string[] vistos = new string[4];
+            System.Threading.ManualResetEvent ya = new System.Threading.ManualResetEvent(false);
+            System.Threading.Thread[] hilos = new System.Threading.Thread[vistos.Length];
+            for (int i = 0; i < hilos.Length; i++)
+            {
+                int k = i;
+                hilos[i] = new System.Threading.Thread(delegate() { ya.WaitOne(); try { vistos[k] = (string)pCarpeta.GetValue(null, null); } catch { } });
+                hilos[i].Start();
+            }
+            ya.Set();
+            foreach (System.Threading.Thread h in hilos) h.Join();
+            bool mal = !Igual((string)fCache.GetValue(null), aparte);
+            foreach (string v in vistos) if (!Igual(v, aparte)) mal = true;
+            if (mal) malas++;
+        }
+        Console.WriteLine("     " + rondas + " rondas de 4 hilos a la vez; con la carpeta equivocada: " + malas);
+        Check(malas == 0, "cuatro hilos que la piden a la vez por primera vez reciben todos la carpeta pedida (no la del programa)");
+
         Console.WriteLine("\n  4) SI NO SE PUEDE ESCRIBIR ALLI, NO SE FIA\n");
         // Un disco que aun no esta montado deja la ruta existiendo pero vacia. Escribir ahi seria
         // escribir en algo que va a desaparecer, asi que se vuelve a la carpeta del programa.
