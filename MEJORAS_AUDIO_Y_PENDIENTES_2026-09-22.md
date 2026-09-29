@@ -1577,8 +1577,8 @@ el mismo que usa la rama de Linux), y con el mismo cuidado:
   cuenta de muestras y la misma señal (a menos de −50 dB), salvo lo que el de siempre recortó. Si no, esa sesión sigue
   con el de siempre.
 - Si falla a media canción, sigue el de siempre desde ese cuadro; con tres fallos en la sesión ya no se usa.
-- **Sin NLayer.dll** junto a Rocola.exe, se apunta y todo sigue como antes. Al desplegar hay que copiar `NLayer.dll`
-  junto a `NAudio.dll`.
+- `NLayer.dll` va **dentro de Rocola.exe** (29 de septiembre): no hay que copiarla. Si aun así no se pudiera cargar,
+  se apunta y todo sigue como antes.
 
 Y dos frenos, porque en XP el sonido se descomprime en el hilo de la pantalla y el equipo es modesto:
 - **Solo en las canciones que lo necesitan:** las que llegan al máximo digital (su pico medido, 1.25, es de −0,05 dBFS o

@@ -15,7 +15,8 @@
 //     necesita: los dos descomprimen los mismos cuadros y NLayer tiene que dar la misma cuenta de muestras y la misma
 //     senal (a menos de -50 dB), salvo lo que el de siempre recorto. Si no, esa sesion sigue con el de siempre.
 //   - Si falla a media cancion, sigue el de siempre desde ese mismo cuadro; con tres fallos en la sesion ya no se usa.
-//   - Si falta NLayer.dll junto a Rocola.exe, se apunta y se sigue con el de siempre.
+//   - NLayer.dll va dentro de Rocola.exe (NLayerIncluido, mas abajo). Si aun asi no se pudiera cargar, se apunta y se
+//     sigue con el de siempre.
 // Y dos frenos que en HD no hacen falta, porque en XP el sonido se descomprime en el hilo de la pantalla y el equipo es
 // modesto:
 //   - SOLO EN LAS CANCIONES QUE LO NECESITAN: las que llegan al maximo digital (su pico medido, Sonoridad.cs, es de
@@ -33,11 +34,45 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Reflection;
 using System.Threading;
 using NAudio.Wave;
 
 namespace Rocola
 {
+    // NLAYER VA DENTRO DE Rocola.exe. Antes habia que copiar NLayer.dll junto al programa al desplegar, y si se
+    // olvidaba, los MP3 que llegan al maximo volvian a recortarse (solo quedaba apuntado). Ahora la DLL va dentro del
+    // exe como recurso y, cuando .NET la busca y no la encuentra junto al programa, se carga desde ahi. Si hay una
+    // NLayer.dll al lado (de un despliegue anterior), .NET usa esa, que es la misma. Program.Main lo engancha antes
+    // que nada.
+    internal static class NLayerIncluido
+    {
+        internal const string Recurso = "Rocola.NLayer.dll";
+        private static readonly object cerrojo = new object();
+        private static Assembly cargada;
+
+        internal static void Engancha() { AppDomain.CurrentDomain.AssemblyResolve += Resuelve; }
+
+        private static Assembly Resuelve(object quien, ResolveEventArgs e)
+        {
+            string n = e != null ? e.Name : null;
+            if (n == null || !(n == "NLayer" || n.StartsWith("NLayer,", StringComparison.OrdinalIgnoreCase))) return null;
+            lock (cerrojo)
+            {
+                if (cargada != null) return cargada;
+                using (Stream s = typeof(NLayerIncluido).Assembly.GetManifestResourceStream(Recurso))
+                {
+                    if (s == null) return null;   // compilado sin el recurso: falla como antes y se apunta
+                    byte[] b = new byte[s.Length];
+                    int leidos = 0, r;
+                    while (leidos < b.Length && (r = s.Read(b, leidos, b.Length - leidos)) > 0) leidos += r;
+                    cargada = Assembly.Load(b);
+                    return cargada;
+                }
+            }
+        }
+    }
+
     // Lo que suelta un descompresor de cuadros MP3 (de NAudio: IMp3FrameDecompressor), en coma flotante: el de
     // siempre da enteros de 16 bits y se pasan a coma flotante con la MISMA cuenta que hace NAudio
     // (Pcm16BitToSampleProvider: entero / 32768f), asi que sale lo mismo que antes, bit a bit; NLayer ya da

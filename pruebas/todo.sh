@@ -120,6 +120,8 @@ GPU="$GPU franjareloj"
 # 'flotantexp': los MP3 en coma flotante con NLayer (solo esta rama): el descompresor, la comparacion con el de siempre,
 # los dos frenos (solo las canciones que llegan al maximo y solo si el equipo lo aguanta) y que este conectado.
 CPU="$CPU flotantexp"
+# 'nlayerdentro': NLayer.dll va dentro de Rocola.exe; en una carpeta sin NLayer.dll al lado se carga igual.
+CPU="$CPU nlayerdentro"
 GPU="$GPU espacioprecarga estelaestelar estrellaflujo estrella3d pantallaviva"
 # 'pantallaviva' sale en las dos: sin tarjeta grafica solo existe la pestaña de ajustes (se comprueba que se guarda y
 # que no hay nada mas); con ella, todo lo de la tanda 1 de la pantalla (PantallaVivaGpu.cs).
@@ -203,11 +205,11 @@ done
 
 echo "  compilando la rocola..."
 if ! mcs -sdk:$SDK -langversion:5 -warn:4 -warnaserror+ -target:winexe -out:rocola_cpu.exe \
-     -r:System.Windows.Forms.dll -r:System.Drawing.dll -r:"$NAUDIO" -r:"$NLAYER" $FUENTES > "$C_ROCOLA" 2>&1; then
+     -r:System.Windows.Forms.dll -r:System.Drawing.dll -r:"$NAUDIO" -r:"$NLAYER" -resource:"$NLAYER",Rocola.NLayer.dll $FUENTES > "$C_ROCOLA" 2>&1; then
   echo "  LA ROCOLA NO COMPILA SIN AVISOS:"; tail -12 "$C_ROCOLA"; exit 1
 fi
 if ! mcs -sdk:$SDK -langversion:5 -warn:4 -warnaserror+ -target:winexe -out:rocola_gpu.exe -d:ROCOLA_GPU \
-     -r:System.Windows.Forms.dll -r:System.Drawing.dll -r:"$NAUDIO" -r:"$NLAYER" $FUENTES > "$C_GPU" 2>&1; then
+     -r:System.Windows.Forms.dll -r:System.Drawing.dll -r:"$NAUDIO" -r:"$NLAYER" -resource:"$NLAYER",Rocola.NLayer.dll $FUENTES > "$C_GPU" 2>&1; then
   echo "  EL PERFIL CON TARJETA GRAFICA NO COMPILA SIN AVISOS:"; tail -12 "$C_GPU"; exit 1
 fi
 # --- LOS AVISOS SE CUENTAN, Y DE LOS DOS PERFILES ---

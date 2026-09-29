@@ -62,6 +62,7 @@ namespace Rocola
         [STAThread]
         static void Main()
         {
+            NLayerIncluido.Engancha();   // NLayer va dentro de Rocola.exe: no hace falta NLayer.dll al lado (FlotanteNLayer.cs)
             bool primera;
             unica = new System.Threading.Mutex(true, ClaveInstancia(Form1.CarpetaDatos), out primera);
             if (!primera) { AlFrenteLaQueYaCorre(); return; }   // ya hay una rocola corriendo: esta se va

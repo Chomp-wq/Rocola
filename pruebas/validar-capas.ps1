@@ -12,11 +12,10 @@ $nlayer = Join-Path $repoRoot 'packages\NLayer.1.12.0\lib\net35\NLayer.dll'
 New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
 $OutputDirectory = (Resolve-Path $OutputDirectory).Path
 Copy-Item -LiteralPath $naudio -Destination (Join-Path $OutputDirectory 'NAudio.dll') -Force
-Copy-Item -LiteralPath $nlayer -Destination (Join-Path $OutputDirectory 'NLayer.dll') -Force
 foreach ($mode in @('gpu', 'cpu')) {
     $defines = if ($mode -eq 'gpu') { '/define:TRACE;ROCOLA_GPU' } else { '/define:TRACE' }
     $exe = Join-Path $OutputDirectory ('Rocola-' + $mode + '.exe')
-    & $compiler /nologo /target:winexe /optimize+ /warnaserror+ $defines ("/out:$exe") /r:System.dll /r:System.Core.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll /r:System.Xml.dll ("/r:$naudio") ("/r:$nlayer") $sources
+    & $compiler /nologo /target:winexe /optimize+ /warnaserror+ $defines ("/out:$exe") /r:System.dll /r:System.Core.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll /r:System.Xml.dll ("/r:$naudio") ("/r:$nlayer") ("/resource:$nlayer,Rocola.NLayer.dll") $sources
     if ($LASTEXITCODE -ne 0) { throw "No compila $mode" }
 }
 $exe = Join-Path $OutputDirectory 'Rocola-gpu.exe'

@@ -88,7 +88,7 @@ Las dos ramas. Probado con señales sintéticas y el limitador de verdad; no se 
   medir, suena como antes.
 
 - Solo en esta rama: los MP3 que llegan al máximo digital se descomprimen en coma flotante con NLayer (así no se
-  recortan sus picos), si el equipo lo aguanta. Al desplegar, copiar también `NLayer.dll`. Y un ajuste de XP sin
+  recortan sus picos), si el equipo lo aguanta. `NLayer.dll` va dentro de `Rocola.exe`: no hay que copiarla. Y un ajuste de XP sin
   código: la calidad de conversión de la frecuencia de muestreo, en la más alta (ver 1.28).
 
 [Detalles: 1.25, 1.26, 1.27 y 1.28](MEJORAS_AUDIO_Y_PENDIENTES_2026-09-22.md#125-subir-sin-aplastar-el-nivelado-mira-los-picos-de-cada-canción-y-baja-un-poco-las-muy-fuertes-28-de-septiembre-las-dos-ramas).
@@ -590,9 +590,8 @@ Sin portada cromática disponible se usa el fondo de reserva.
 ## Compilar
 
 Proyecto clásico de **.NET Framework 3.5** (Visual Studio). Abre `Rocola.slnx` y compila en
-Release. El resultado (`Rocola.exe` + `NAudio.dll` + `NLayer.dll`) se copia junto a la carpeta `musica`, como siempre. Sin
-`NLayer.dll` la rocola funciona igual, pero sin descomprimir en coma flotante los MP3 que llegan al máximo (lo apunta en
-rocola_error.txt).
+Release. El resultado (`Rocola.exe` + `NAudio.dll`) se copia junto a la carpeta `musica`, como siempre. `NLayer.dll`
+(también en `packages/`, sin internet) va **dentro** de `Rocola.exe`: no hay que copiarla ni descargar nada.
 
 - Código: `Rocola/Form1.cs` (monolítico) + `Form1.Designer.cs` + `Program.cs` + `D3D9Star.cs`.
 - Dependencia: **NAudio 1.9.0** (net35): la DLL viene **incluida** en `packages/` y el proyecto
