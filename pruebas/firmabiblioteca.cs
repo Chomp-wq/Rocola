@@ -12,7 +12,9 @@ using System.Runtime.InteropServices;
 // pasa a ser 'nobody', porque a root no le cierra nada un permiso) y se mira, con la rocola de verdad:
 //   1) la firma sale (antes: excepcion), es estable, y la carpeta cerrada queda apuntada (distinta de la abierta);
 //   2) la firma de antes y la de despues del recorrido coinciden: es la condicion para que la biblioteca se guarde;
-//   3) lo de las carpetas que si se leen no cambia: las bibliotecas ya guardadas siguen valiendo.
+//   3) lo de las carpetas que si se leen no cambia: las bibliotecas ya guardadas siguen valiendo;
+//   4) el recorrido de verdad (ScanFolders) salta la carpeta cerrada y sigue con lo demas, y ahora LO DICE en
+//      rocola_error.txt, con el motivo (antes se la tragaba sin decir nada).
 class FirmaBiblioteca
 {
     const BindingFlags T = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static;
@@ -43,12 +45,16 @@ class FirmaBiblioteca
         string raiz = Path.Combine(dir, "musica"), abierta = Path.Combine(raiz, "Disco A"), cerrada = Path.Combine(raiz, "Disco B");
         Directory.CreateDirectory(abierta); Directory.CreateDirectory(cerrada);
         File.WriteAllText(Path.Combine(abierta, "01 - Uno.mp3"), "x");
+        string datos = Path.Combine(dir, "datos"); Directory.CreateDirectory(datos);   // donde la rocola apunta lo que pasa
+        FieldInfo carpetaDatos = TF.GetField("carpetaDatos", T);
+        object previa = carpetaDatos.GetValue(null);
+        carpetaDatos.SetValue(null, datos);
         string sinCerrar = Firma(raiz);
         bool root = false, cerro = false;
         try
         {
             root = geteuid() == 0;
-            foreach (string p in new string[] { dir, raiz, abierta, cerrada, Path.Combine(abierta, "01 - Uno.mp3") })
+            foreach (string p in new string[] { dir, raiz, abierta, cerrada, datos, Path.Combine(abierta, "01 - Uno.mp3") })
                 if (root) chown(p, Nadie, Nadie);
             cerro = chmod(cerrada, 0) == 0;
             if (cerro && root) cerro = setgid(Nadie) == 0 && setuid(Nadie) == 0;   // a root no le cierra nada un permiso
@@ -72,13 +78,26 @@ class FirmaBiblioteca
                 try { antes = (string)TF.GetMethod("RootsSigForScan", T).Invoke(f, new object[] { raices }); } catch (TargetInvocationException) { }
                 try { despues = (string)TF.GetMethod("RootsSig", T).Invoke(null, new object[] { raices }); } catch (TargetInvocationException) { }
                 Check(antes != null && antes == despues, "la de antes del recorrido y la de despues coinciden: la biblioteca se guarda y el proximo arranque no recorre el disco");
+                // El recorrido de verdad: salta la carpeta cerrada, sigue con lo demas y lo dice.
+                object g = Codigo.FormSinEncender(TF);
+                List<string> audio = new List<string>(), video = new List<string>();
+                Dictionary<string, string> portadas = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                TF.GetMethod("ScanFolders", T).Invoke(g, new object[] { raiz, audio, video, portadas });
+                MethodInfo avisa = TF.GetMethod("AvisaCarpetasSaltadas", T);
+                if (avisa != null) avisa.Invoke(g, null);
+                string errores = Path.Combine(datos, "rocola_error.txt");
+                string te = File.Exists(errores) ? File.ReadAllText(errores) : "";
+                Check(audio.Count == 1 && audio[0].EndsWith("01 - Uno.mp3"), "el recorrido de la biblioteca sigue con lo demas: la cancion del disco que si se lee esta");
+                Check(te.Contains("1 carpeta no se pudo leer") && te.Contains("Disco B") && te.Contains("UnauthorizedAccessException"),
+                      "y la carpeta que no se pudo leer queda dicha en rocola_error.txt, con el motivo (antes, nada)");
+                Check(avisa != null && Codigo.Llama(TF.GetMethod("ScanLibraryCore", T), "AvisaCarpetasSaltadas"), "al acabar cada recorrido del disco");
                 chmod(cerrada, Convert.ToUInt32("755", 8));
             }
             // Lo que si se lee no cambia: dos carpetas abiertas dan la firma de siempre (la misma cuenta, carpeta a carpeta).
             string otra = Firma(raiz);
             Check(!otra.StartsWith("EXCEPCION") && (!cerro || otra == sinCerrar), "con todo abierto, la firma es la de siempre: las bibliotecas ya guardadas siguen valiendo");
         }
-        finally { try { Directory.Delete(dir, true); } catch { } }
+        finally { carpetaDatos.SetValue(null, previa); try { Directory.Delete(dir, true); } catch { } }
         Console.WriteLine();
         Console.WriteLine(fallos == 0 ? ("  todo bien (" + oks + " comprobaciones)") : ("  FALLOS: " + fallos));
         return fallos == 0 ? 0 : 1;

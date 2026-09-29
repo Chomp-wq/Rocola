@@ -136,7 +136,9 @@ namespace Rocola
             // antes y despues del escaneo para detectar cambios concurrentes.
             string sigAntes = sigObservada;
             if (sigAntes == null) try { sigAntes = RootsSigForScan(roots); } catch { }
+            carpetasSaltadas = null;
             for (int r = 0; r < roots.Count; r++) ScanFolders(roots[r], audio, vids, covs);
+            AvisaCarpetasSaltadas();   // las que no se pudieron leer, dichas (ver ScanFolders)
             for (int i = 0; i < audio.Count; i++) found.Add(Track.FromFile(audio[i]));
             tracks.AddRange(found);
             PerfilaDisco(tracks);   // idem por el camino del escaneo fresco
@@ -1806,6 +1808,30 @@ namespace Rocola
 
         // Camina el arbol UNA vez y clasifica lo que encuentra: audio, video y la portada de cada carpeta.
         // Es el reemplazo de las dos caminatas separadas + el GetFiles extra que hacia FindCover por carpeta.
+        // LAS CARPETAS QUE NO SE PUEDEN LEER se saltan (sin permiso, una ruta de mas de 260 letras, un disco que se fue
+        // a media lectura) y sus canciones no entran en la biblioteca. Se saltaban SIN DECIR NADA: el dueno veia que
+        // faltaba un disco y no habia forma de saber por que. Ahora quedan en rocola_error.txt al acabar el recorrido,
+        // con el motivo (las primeras 20 y cuantas mas), una vez por recorrido del disco.
+        private List<string> carpetasSaltadas;   // (solo el hilo del recorrido)
+        private const int SaltadasDichas = 20;
+        private void Saltada(string dir, Exception ex)
+        {
+            if (carpetasSaltadas == null) carpetasSaltadas = new List<string>();
+            string linea = dir + "  (" + (ex != null ? ex.GetType().Name + ": " + ex.Message : "?") + ")";
+            if (carpetasSaltadas.Count > 0 && carpetasSaltadas[carpetasSaltadas.Count - 1].StartsWith(dir + "  (")) return;   // la misma carpeta, dos veces
+            carpetasSaltadas.Add(linea);
+        }
+        private void AvisaCarpetasSaltadas()
+        {
+            List<string> l = carpetasSaltadas; carpetasSaltadas = null;
+            if (l == null || l.Count == 0) return;
+            StringBuilder sb = new StringBuilder();
+            sb.Append(l.Count).Append(l.Count == 1 ? " carpeta no se pudo leer" : " carpetas no se pudieron leer").Append(" y sus canciones no estan en la biblioteca:");
+            for (int i = 0; i < l.Count && i < SaltadasDichas; i++) sb.Append("\r\n  ").Append(l[i]);
+            if (l.Count > SaltadasDichas) sb.Append("\r\n  ... y ").Append(l.Count - SaltadasDichas).Append(" mas");
+            LogError("Biblioteca: " + sb, null);
+        }
+
         private void ScanFolders(string root, List<string> audio, List<string> video, Dictionary<string, string> covers)
         {
             Stack<string> dirs = new Stack<string>();
@@ -1815,7 +1841,7 @@ namespace Rocola
                 string dir = dirs.Pop();
                 string[] files = null, subs = null;
                 bool reused = scanDirectoryMemo != null && scanDirectoryMemo.Take(dir, out files, out subs);
-                if (!reused) try { files = Directory.GetFiles(dir); } catch { }
+                if (!reused) try { files = Directory.GetFiles(dir); } catch (Exception ex) { Saltada(dir, ex); }
                 if (files != null)
                 {
                     for (int i = 0; i < files.Length; i++)
@@ -1831,7 +1857,7 @@ namespace Rocola
                     }
                     if (audio.Count % 50 < files.Length) { try { scanner.ReportProgress(0, audio.Count); } catch { } }   // avance para la pantalla de arranque
                 }
-                if (!reused) try { subs = Directory.GetDirectories(dir); } catch { }
+                if (!reused) try { subs = Directory.GetDirectories(dir); } catch (Exception ex) { Saltada(dir, ex); }
                 if (subs != null)
                     foreach (string d in subs)
                     {
