@@ -181,12 +181,8 @@ namespace Rocola
             lock (apuntados) { if (apuntados.Contains(texto)) return; apuntados.Add(texto); }
             try
             {
-                string f = Path.Combine(Form1.CarpetaDatos, "rocola_error.txt");
-                try { FileInfo fi = new FileInfo(f); if (fi.Exists && fi.Length > 262144) fi.Delete(); } catch { }
-                string sello = "";
-                try { sello = Form1.DeCuandoEs(); } catch { }
-                if (sello.Length > 0) sello = "  (rocola del " + sello + ")";
-                File.AppendAllText(f, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "  [Sin huecos]" + sello + "\r\n" + texto + "\r\n\r\n");
+                Bitacora.ApuntaConSello(Path.Combine(Form1.CarpetaDatos, "rocola_error.txt"), 262144,   // detras (MedidasBitacora.cs)
+                                        DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "  [Sin huecos]", "\r\n" + texto + "\r\n\r\n");
             }
             catch { }
         }

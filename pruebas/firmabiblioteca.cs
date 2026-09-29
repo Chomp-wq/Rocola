@@ -85,6 +85,7 @@ class FirmaBiblioteca
                 TF.GetMethod("ScanFolders", T).Invoke(g, new object[] { raiz, audio, video, portadas });
                 MethodInfo avisa = TF.GetMethod("AvisaCarpetasSaltadas", T);
                 if (avisa != null) avisa.Invoke(g, null);
+                Codigo.EsperaBitacora();   // la bitacora escribe detras (bitacoradetras.cs)
                 string errores = Path.Combine(datos, "rocola_error.txt");
                 string te = File.Exists(errores) ? File.ReadAllText(errores) : "";
                 Check(audio.Count == 1 && audio[0].EndsWith("01 - Uno.mp3"), "el recorrido de la biblioteca sigue con lo demas: la cancion del disco que si se lee esta");

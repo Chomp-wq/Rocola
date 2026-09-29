@@ -1152,7 +1152,7 @@ namespace Rocola
                 if (string.IsNullOrEmpty(path) || !incompatibleLogged.Add(path)) return;   // ya anotada
                 string reason = (ex != null) ? ex.Message : "desconocido";
                 if (reason.Length > 160) reason = reason.Substring(0, 160);
-                File.AppendAllText(RutaDatos("rocola_incompatibles.txt"),
+                Bitacora.Apunta(RutaDatos("rocola_incompatibles.txt"), 0,   // detras de la pantalla, como la bitacora
                     DateTime.Now.ToString("yyyy-MM-dd HH:mm") + "  |  " + path + "  |  " + reason + "\r\n");
             }
             catch { }

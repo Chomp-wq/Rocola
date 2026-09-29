@@ -1808,7 +1808,9 @@ namespace Rocola
             // REANUDA (creditos + cola). Es decir, la sola presencia del archivo al arrancar delata que fue apagon.
             // Si ni siquiera publicamos los datos iniciales, conservar tambien el estado anterior.
             if (!startupReadPending && (e.CloseReason == CloseReason.WindowsShutDown || e.CloseReason == CloseReason.UserClosing))
-                BorraSeguro(StateFile());
+                BorraEstado();
+            else WaitDataWrites(15000);   // cierre por otra causa: que el ultimo estado encargado llegue al disco
+            Bitacora.Vacia(3000);   // y que la bitacora no se quede con apuntes en la cola
             base.OnFormClosing(e);
         }
 

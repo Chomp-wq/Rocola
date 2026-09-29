@@ -82,6 +82,7 @@ namespace Rocola
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             Application.Run(new Form1());
+            Bitacora.Vacia(3000);   // lo que quedara por apuntar (la bitacora escribe detras: MedidasBitacora.cs)
             // Se suelta al salir por las buenas. (Ademas hay que TOCAR la variable en algun sitio: si solo
             // se guardara y nunca se usara, el recolector de basura podria llevarsela con la rocola aun
             // corriendo, y entonces otra rocola podria arrancar encima.)
@@ -112,14 +113,11 @@ namespace Rocola
         {
             try
             {
-                string f = System.IO.Path.Combine(Form1.CarpetaDatos, "rocola_error.txt");
-                try { System.IO.FileInfo fi = new System.IO.FileInfo(f); if (fi.Exists && fi.Length > 262144) fi.Delete(); } catch { }
-                string sello = "";
-                try { sello = Form1.DeCuandoEs(); } catch { }
-                if (sello.Length > 0) sello = "  (rocola del " + sello + ")";
-                System.IO.File.AppendAllText(f,
-                    DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "  [" + context + "]" + sello + "\r\n"
-                    + (ex != null ? ex.ToString() : "(sin excepcion)") + "\r\n\r\n");
+                Bitacora.ApuntaConSello(System.IO.Path.Combine(Form1.CarpetaDatos, "rocola_error.txt"), 262144,
+                    DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "  [" + context + "]",
+                    "\r\n" + (ex != null ? ex.ToString() : "(sin excepcion)") + "\r\n\r\n");
+                // Un fallo asi puede terminar el proceso: se escribe ya, en este hilo, con lo que hubiera pendiente.
+                Bitacora.Vacia(3000);
             }
             catch { }
         }

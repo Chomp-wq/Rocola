@@ -163,6 +163,7 @@ class Salida
         bool cae16 = dos && r1.Suelta && r1.Suscritos == 0 && object.ReferenceEquals(Get(f, "output"), r2) && r2.Suscritos == 1
                      && r2.Formato.Encoding == WaveFormatEncoding.Pcm && r2.Formato.BitsPerSample == 16
                      && (string)Get(f, "formatoSalida") == "PCM16+TPDF" && (bool)Get(f, "flotanteRechazado");
+        Codigo.EsperaBitacora();   // la bitacora escribe detras (bitacoradetras.cs)
         string err = Path.Combine(tmp, "rocola_error.txt");
         bool apunto = File.Exists(err) && File.ReadAllText(err).Contains("no admite coma flotante");
         Check(cae16 && apunto, "si el sistema la rechaza, se suelta esa salida (sin avisos colgando) y se abre en 16 bits con dither; queda apuntado");
@@ -336,6 +337,7 @@ class Salida
         Set(f, "reintentos", 0);
         string incompat = Path.Combine(tmp, "rocola_incompatibles.txt");
         bool r1 = (bool)Inv(f, "SalidaCaida", tA, 12.5, Mm(NAudio.MmResult.BadDeviceId), false);
+        Codigo.EsperaBitacora();   // para que "no se apunto" no pase solo por no haber llegado aun
         System.Windows.Forms.Timer tm = (System.Windows.Forms.Timer)Get(f, "reintentoSalida");
         bool quieto = r1 && (int)Get(f, "credits") == 5 && q.Count == 1 && object.ReferenceEquals(q[0], iB) && object.ReferenceEquals(Get(f, "nowPlaying"), iA)
                       && !File.Exists(incompat);

@@ -1849,7 +1849,7 @@ namespace Rocola
             if (estadoAntes == null)
             {
                 string f = StateFile();
-                string[] L = LeeLineasSeguro(f);
+                string[] L = EstadoSinEscribir() ?? LeeLineasSeguro(f);   // lo encargado que aun no llego al disco, o el archivo
                 if (L != null && L.Length > 0 && L[0] != "ROCOLA-ESTADO v1")
                     try { L = File.Exists(f + ".bak") ? File.ReadAllLines(f + ".bak") : null; } catch { L = null; }   // como RestoreState
                 estadoAntes = (L != null && L.Length > 0 && L[0] == "ROCOLA-ESTADO v1") ? L : new string[0];
@@ -1880,9 +1880,69 @@ namespace Rocola
                     sb.Append(antes != null ? "cola=" : "sonando=").Append(nowPlaying.IsVideo ? 'V' : 'S').Append('|').Append(nowPlaying.PathKey()).Append("\r\n");
                 for (int i = 0; i < queue.Count; i++)
                     sb.Append("cola=").Append(queue[i].IsVideo ? 'V' : 'S').Append('|').Append(queue[i].PathKey()).Append("\r\n");
-                EscribeSeguro(StateFile(), sb.ToString());   // archivo diminuto (<1KB): escritura sincrona sin costo notable
+                EscribeEstado(sb.ToString());   // lo escribe un hilo de fondo, en orden (ver abajo)
             }
             catch { }
+        }
+
+        // EL ESTADO SE ESCRIBE DETRAS DE LA PANTALLA. Los creditos y la cola se guardan con cada moneda, cada cancion que
+        // se pone y cada cambio de tema, y guardarlos es bajarlos al disco de verdad (EscribeSeguroYa: archivo de paso,
+        // FlushFileBuffers y cambio de un tiron). En un disco mecanico ocupado eso tarda decenas de milisegundos, y se
+        // hacia en el hilo de la pantalla: la moneda o el tema nuevo se notaban como un tiron. Ahora la pantalla arma el
+        // texto -lo barato- y lo encarga; lo escribe un hilo de fondo, en el mismo archivo y de la misma forma. Si se
+        // juntan varios, se escribe el ultimo (GuardaUltimo). Decision del usuario del 29 de septiembre de 2026: se
+        // acepta la ventana de unos milisegundos entre encargarlo y tenerlo en el disco.
+        //
+        // EL ORDEN. Cada encargo y cada borrado lleva su numero, y bajo el candado del archivo solo se aplica si es mas
+        // nuevo que lo ultimo aplicado: un encargo viejo que llega tarde nunca pisa a uno nuevo ni resucita un estado
+        // que se borro a proposito (cierre, dia nuevo). Y lo encargado que aun no llego al disco se lee de aqui mismo
+        // (EstadoSinEscribir): restaurar nunca ve lo de antes de la ultima moneda.
+        private GuardadoReciente estadoCola;   // el encargo pendiente (se crea al primer uso)
+        private int estadoPedido;              // numero del ultimo encargo o borrado pedido
+        private int estadoHecho;               // numero del ultimo aplicado en el disco (se cambia bajo el candado del archivo)
+        private string estadoUltimo;           // el texto del ultimo encargo (null si lo ultimo fue borrar)
+
+        private void EscribeEstado(string texto)
+        {
+            string ruta = StateFile();
+            int n = System.Threading.Interlocked.Increment(ref estadoPedido);
+            estadoUltimo = texto;
+            GuardadoReciente cola = estadoCola;
+            if (cola == null) estadoCola = cola = new GuardadoReciente();
+            GuardaUltimo(cola, delegate
+            {
+                lock (CandadoDe(ruta))
+                {
+                    if (n <= estadoHecho) return;   // ya se aplico algo mas nuevo (otro encargo o un borrado)
+                    estadoHecho = n;
+                    EscribeSeguroYa(ruta, texto);
+                }
+            });
+        }
+
+        // Borrar el estado es al momento (es raro: al cerrar a proposito, al empezar el dia o con un estado de otro dia) y
+        // deja atras cualquier encargo anterior que aun no se haya escrito.
+        private void BorraEstado()
+        {
+            string ruta = StateFile();
+            int n = System.Threading.Interlocked.Increment(ref estadoPedido);
+            estadoUltimo = null;
+            lock (CandadoDe(ruta))
+            {
+                if (n > estadoHecho) estadoHecho = n;
+                BorraSeguro(ruta);
+            }
+        }
+
+        // Las lineas del ultimo encargo si aun no llego al disco (como las daria File.ReadAllLines); null si el disco ya
+        // esta al dia y hay que leerlo de ahi.
+        private string[] EstadoSinEscribir()
+        {
+            string t = estadoUltimo;
+            if (t == null || System.Threading.Thread.VolatileRead(ref estadoHecho) >= System.Threading.Thread.VolatileRead(ref estadoPedido)) return null;
+            List<string> L = new List<string>();
+            using (StringReader r = new StringReader(t)) { string s; while ((s = r.ReadLine()) != null) L.Add(s); }
+            return L.ToArray();
         }
 
         // Al cruzar las 7 AM (nuevo dia del negocio) reinicia el estado guardado. PERO nunca interrumpe una sesion
@@ -1896,7 +1956,7 @@ namespace Rocola
             if ((DateTime.Now - lastInput).TotalMinutes < DayResetIdleMins) return;     // botones recientes: EN USO -> se aplaza
             stateDay = BusinessDay(DateTime.Now);                                       // ociosa y dia nuevo -> reinicia UNA vez
             if (credits > 0) { credits = 0; UpdateCredits(); }                          // creditos que quedaron de anoche -> a cero
-            BorraSeguro(StateFile());                                                   // borra el estado guardado (y su copia) -> arranque limpio
+            BorraEstado();                                                              // borra el estado guardado (y su copia) -> arranque limpio
             BackupLearnedData();                                                        // cierre del dia: respalda lo aprendido (una vez al dia)
         }
 
@@ -2040,8 +2100,9 @@ namespace Rocola
             {
                 string f = StateFile();
                 // Si el archivo bueno falta o quedo vacio -un corte de luz de los de antes- se lee la copia:
-                // se pierde como mucho lo ultimo que se hizo, no el dinero entero del cliente.
-                string[] L = LeeLineasSeguro(f);
+                // se pierde como mucho lo ultimo que se hizo, no el dinero entero del cliente. Y si hay un guardado
+                // encargado que aun no llego al disco, manda ese: es lo ultimo que paso (ver EscribeEstado).
+                string[] L = EstadoSinEscribir() ?? LeeLineasSeguro(f);
                 if (L == null || L.Length < 1) return;
                 if (L[0] != "ROCOLA-ESTADO v1")
                 {
@@ -2053,7 +2114,7 @@ namespace Rocola
                 // sesion, p.ej. un parpadeo de luz justo al dar las 7 mientras te desvelas), se reanuda igual.
                 DateTime saved = SavedStateTime(L, f);
                 if (BusinessDay(DateTime.Now) != BusinessDay(saved) && (DateTime.Now - saved).TotalMinutes > StateRecentMins)
-                { BorraSeguro(f); return; }
+                { BorraEstado(); return; }
                 // mapas ruta -> cancion/disco para reconstruir los elementos (solo lo que SIGA existiendo)
                 Dictionary<string, Track> byPath = new Dictionary<string, Track>(StringComparer.OrdinalIgnoreCase);
                 Dictionary<string, Album> discByPath = new Dictionary<string, Album>(StringComparer.OrdinalIgnoreCase);

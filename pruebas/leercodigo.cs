@@ -425,11 +425,27 @@ static class Codigo
     // barrera y aguantando solo por la espera a ciegas, que es justo lo que no se quiere.
     public static void EsperaGuardado(Type tf, object f)
     {
+        EsperaBitacora();
         if (tf == null || f == null) return;
         MethodInfo m = tf.GetMethod("EsperaGuardados", BindingFlags.Instance | BindingFlags.NonPublic);
         if (m != null) { try { m.Invoke(f, null); } catch { } return; }
         m = tf.GetMethod("WaitDataWrites", BindingFlags.Instance | BindingFlags.NonPublic);
         if (m != null) { try { m.Invoke(f, new object[] { 15000 }); } catch { } }
+    }
+
+    // LA BITACORA TAMBIEN SE ESCRIBE DETRAS (MedidasBitacora.cs: Bitacora). Apuntar un error o una linea del diagnostico
+    // la deja en una cola; una prueba que apunta y acto seguido lee rocola_error.txt tiene que esperar a que llegue. Se
+    // busca la bitacora entre lo cargado, asi no hace falta pasarle nada; en una rocola sin ella no hay nada que esperar.
+    public static void EsperaBitacora()
+    {
+        foreach (Assembly a in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            Type b = null;
+            try { b = a.GetType("Rocola.Bitacora", false); } catch { }
+            if (b == null) continue;
+            MethodInfo m = b.GetMethod("Vacia", BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
+            if (m != null) { try { m.Invoke(null, new object[] { 15000 }); } catch { } }
+        }
     }
 
     // EL CODIGO DE Form1 YA NO ESTA EN UN SOLO ARCHIVO. Esta repartido por temas -Form1.Sonido.cs,

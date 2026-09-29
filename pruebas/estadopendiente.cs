@@ -24,6 +24,8 @@ class EstadoPendiente
     static object Get(object o, string n) { return TF.GetField(n, T).GetValue(o); }
     static void Set(object o, string n, object v) { TF.GetField(n, T).SetValue(o, v); }
     static object Call(object o, string n, params object[] a) { try { return TF.GetMethod(n, T).Invoke(o, a); } catch (TargetInvocationException e) { throw e.InnerException; } }
+    // El estado se escribe en un hilo de fondo (estadodetras.cs): guardar lo deja encargado, y se espera antes de leerlo.
+    static void Guarda(object o) { Call(o, "SaveState"); Codigo.EsperaGuardado(TF, o); }
     static string Lee(string p) { return File.Exists(p) ? File.ReadAllText(p) : ""; }
     static string Linea(string texto, string clave) { foreach (string l in texto.Split('\n')) if (l.TrimEnd('\r').StartsWith(clave)) return l.TrimEnd('\r'); return null; }
     static int Cuenta(string texto, string clave) { int n = 0; foreach (string l in texto.Split('\n')) if (l.StartsWith(clave)) n++; return n; }
@@ -62,7 +64,7 @@ class EstadoPendiente
             object f = Nueva();
             Check(!(bool)Get(f, "stateRestored"), "al arrancar, el estado aun no se restauro (espera a la biblioteca)");
             Set(f, "credits", 4);   // la moneda (AddCoin suma y guarda)
-            Call(f, "SaveState");
+            Guarda(f);
             string t = Lee(est);
             Check(Linea(t, "creditos=") == "creditos=11", "los creditos de antes (7) mas los de la moneda (4): " + Linea(t, "creditos="));
             Check(t.Contains("sonando=S|D:\\m\\a.mp3") && t.Contains("cola=S|D:\\m\\b.mp3"), "la cancion y la cola de antes siguen ahi");
@@ -70,7 +72,7 @@ class EstadoPendiente
             // Se gasta uno en una cancion (la parte de la biblioteca que si esta) y se vuelve a guardar.
             Set(f, "credits", 3);
             IList cola = (IList)Get(f, "queue"); cola.Add(Item("E:\\otra\\c.mp3"));
-            Call(f, "SaveState");
+            Guarda(f);
             t = Lee(est);
             Check(Linea(t, "creditos=") == "creditos=10", "otro guardado no cuenta dos veces lo de antes: 7 + 3 = " + Linea(t, "creditos="));
             Check(Cuenta(t, "sonando=") == 1 && t.IndexOf("D:\\m\\b.mp3") < t.IndexOf("E:\\otra\\c.mp3"), "la cola de ahora va detras de la de antes, y sigue habiendo una sola que sonaba");
@@ -84,7 +86,7 @@ class EstadoPendiente
             File.WriteAllText(est, "ROCOLA-ESTADO v1\r\nts=" + DateTime.Now.AddDays(-2).Ticks + "\r\ncreditos=9\r\ncola=S|D:\\m\\z.mp3\r\n");
             object g = Nueva();
             Set(g, "credits", 4);
-            Call(g, "SaveState");
+            Guarda(g);
             t = Lee(est);
             Check(Linea(t, "creditos=") == "creditos=4" && !t.Contains("z.mp3"), "un estado de hace dos dias se descartaria al restaurar: se guarda solo lo de ahora");
 
@@ -93,13 +95,13 @@ class EstadoPendiente
             object h = Nueva();
             Set(h, "stateRestored", true);
             Set(h, "credits", 2);
-            Call(h, "SaveState");
+            Guarda(h);
             t = Lee(est);
             Check(Linea(t, "creditos=") == "creditos=2" && !t.Contains("a.mp3"), "con el estado ya restaurado se guarda solo lo de ahora");
             File.Delete(est); File.Delete(est + ".bak");
             object k = Nueva();
             Set(k, "credits", 4);
-            Call(k, "SaveState");
+            Guarda(k);
             t = Lee(est);
             Check(Linea(t, "creditos=") == "creditos=4", "sin nada guardado de antes, lo de ahora tal cual");
             Check(Codigo.Llama(TF.GetMethod("AddCoin", T), "SaveState") && Codigo.Llama(TF.GetMethod("SaveState", T), "EstadoPorRestaurar"),

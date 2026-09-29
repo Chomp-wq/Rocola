@@ -266,3 +266,48 @@ Las demás baterías de la bomba, el diario de las tablas y el nivelado siguen e
 - WaveOut de verdad (aquí no hay Windows): el arranque se probó con una salida de prueba que pide sus 20 bloques como
   WaveOut.Play.
 - Cuánto se nota en el equipo del bar y en XP real.
+
+## 7. El disco fuera del hilo de la pantalla: créditos, cola y bitácora (29 de septiembre)
+
+### Qué pasaba
+
+- **Créditos y cola.** Se guardan con cada moneda, cada canción que se pone, cada cambio de tema y cada crédito devuelto.
+  Guardarlos es bajarlos al disco de verdad (archivo de paso, `FlushFileBuffers` y cambio de un tirón), y eso se hacía en
+  el hilo de la pantalla. En este servidor no se nota (aquí no existe `FlushFileBuffers`), pero en un disco mecánico
+  ocupado bajar un archivo al disco tarda decenas de milisegundos: un tirón en cada moneda.
+- **La bitácora.** `rocola_diagnostico.txt` (con `diagnostico=1`), `rocola_error.txt` y `rocola_incompatibles.txt` se
+  escribían en el hilo que apuntaba, muchas veces el de la pantalla: abrir, mirar el tamaño y pegar la línea. Con el
+  diagnóstico encendido son varias líneas por canción. Y si el archivo estaba ocupado un instante (un antivirus), la línea
+  se perdía.
+
+### Qué cambia
+
+- **Créditos y cola** (decisión del usuario del 29 de septiembre de 2026, que sustituye a la de guardarlos a la cara): la
+  pantalla arma el texto y lo encarga (`EscribeEstado`); lo escribe un hilo de fondo, en el mismo archivo y de la misma
+  forma (mismos bytes, copia `.bak`, bajada al disco). Si se juntan varios, se escribe el último. Cada encargo y cada
+  borrado lleva un número de orden que se mira bajo el candado del archivo: un encargo viejo nunca pisa a uno nuevo ni
+  resucita un estado borrado a propósito (`BorraEstado`: cierre, día nuevo, estado de otro día). Lo encargado que aún no
+  llegó al disco se lee de la memoria al restaurar (`EstadoSinEscribir`). Al cerrar sin borrar se espera al último
+  encargo. Queda una ventana de unos milisegundos entre la moneda y el disco; antes era la del propio `FlushFileBuffers`.
+- **La bitácora** (`Bitacora`, en `MedidasBitacora.cs`): quien apunta deja la línea, con su hora de ahora, en una cola y
+  sigue; un hilo de fondo las escribe en orden y de a tandas, con el mismo formato, el mismo tope de tamaño y el mismo
+  sello de versión (que también sale del disco, así que lo pone el hilo que escribe). Con el archivo ocupado se reintenta
+  durante un segundo en vez de perder la línea. Un fallo grave (`LogCrash`) se escribe antes de volver, y al cerrar no
+  queda nada en la cola.
+
+### Comprobaciones automáticas
+
+- **`pruebas/estadodetras.cs`** (21 comprobaciones, verde en las dos ramas; con el programa anterior se queda esperando
+  al disco y falla): con el disco ocupado, 35 guardados vuelven en 0,1 ms el peor; al soltarse queda el último con los
+  mismos bytes; 25 veces encargar y borrar con el disco ocupado, ninguna resucita; restaurar ve lo encargado; unos 50 µs
+  por guardado en la pantalla.
+- **`pruebas/bitacoradetras.cs`** (17 comprobaciones, verde en las dos ramas; con el programa anterior 11 fallos): con el
+  archivo ocupado, apuntar 200 líneas no espera y llegan las 200 en orden (antes se perdían todas); formato, sello y tope
+  iguales; el fallo grave se escribe ya.
+- Las baterías que leían el estado o la bitácora justo después de apuntar esperan ahora a que llegue (`Codigo.EsperaGuardado`,
+  `Codigo.EsperaBitacora`); `arranque.cs` vigila la decisión nueva en lugar de la anterior.
+
+### Lo que no se ha comprobado
+
+- Un disco mecánico real con `FlushFileBuffers` de Windows: lo que se ahorra por moneda en el bar no está medido aquí.
+- Un apagón de verdad justo en los milisegundos entre la moneda y el disco.

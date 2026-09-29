@@ -102,7 +102,9 @@ class Apagon
         Check(mSave != null && mFile != null, "la rocola guarda creditos y cola en su archivo de estado");
         if (mSave != null && mFile != null)
         {
-            object f = FormatterServices.GetUninitializedObject(TF);
+            // Con sus cerrojos puestos: el estado se escribe en un hilo de fondo (estadodetras.cs) y se espera a
+            // cada guardado, porque aqui lo que se mira es que el segundo deje copia del primero.
+            object f = Codigo.FormSinEncender(TF);
             Type TPI = TF.GetNestedType("PlayItem", BindingFlags.NonPublic | BindingFlags.Public);
             TF.GetField("queue", IN).SetValue(f, Activator.CreateInstance(typeof(List<>).MakeGenericType(TPI)));
             FieldInfo fCred = TF.GetField("credits", IN);
@@ -110,8 +112,8 @@ class Apagon
             try { if (File.Exists(est)) File.Delete(est); } catch { }
             try { if (File.Exists(est + ".bak")) File.Delete(est + ".bak"); } catch { }
 
-            fCred.SetValue(f, 12); mSave.Invoke(f, null);
-            fCred.SetValue(f, 3); mSave.Invoke(f, null);
+            fCred.SetValue(f, 12); mSave.Invoke(f, null); Codigo.EsperaGuardado(TF, f);
+            fCred.SetValue(f, 3); mSave.Invoke(f, null); Codigo.EsperaGuardado(TF, f);
             bool hayCopia = File.Exists(est + ".bak");
             bool copiaBuena = hayCopia && File.ReadAllText(est + ".bak").Contains("creditos=12");
             bool buenoBueno = File.ReadAllText(est).Contains("creditos=3");
@@ -191,14 +193,19 @@ class Apagon
 
         // Y los tres sitios por los que se descarta el estado tienen que borrarlo asi. Da igual por cual
         // se llegue -el cierre a proposito, el dia nuevo a las 7, o encontrarse un estado de otro dia-:
-        // si uno solo se quedara borrando a mano, la copia volveria a resucitarlo.
+        // si uno solo se quedara borrando a mano, la copia volveria a resucitarlo. Desde que el estado se
+        // escribe en un hilo de fondo, pasan por BorraEstado, que ademas deja atras los encargos viejos
+        // (estadodetras.cs); por dentro sigue siendo este mismo borrado.
+        MethodInfo mBorraEstado = TF.GetMethod("BorraEstado", IN);
+        bool porEstado = mBorraEstado != null && Codigo.Nombres(mBorraEstado).Contains("BorraSeguro");
+        Check(porEstado, "el borrado del estado (BorraEstado) usa este borrado que se lleva la copia");
         string[] sitios = { "OnFormClosing", "CheckBusinessDayReset", "RestoreState" };
         string[] cuando = { "al cerrar a proposito", "al empezar el dia a las 7", "con un estado de otro dia" };
         for (int i = 0; i < sitios.Length; i++)
         {
             MethodInfo m = TF.GetMethod(sitios[i], IN);
             List<string> hace = (m == null) ? new List<string>() : Codigo.Nombres(m);
-            Check(m != null && hace.Contains("BorraSeguro"), cuando[i] + " se borra el estado con la copia y todo");
+            Check(m != null && (hace.Contains("BorraSeguro") || (porEstado && hace.Contains("BorraEstado"))), cuando[i] + " se borra el estado con la copia y todo");
             Check(m != null && !hace.Contains("Delete"), "   ...y ya no se borra a mano por su cuenta");
         }
 
