@@ -455,3 +455,35 @@ antivirus. Eso no se puede medir en este servidor.
 
 `bloqueos` lo refleja: `Track.ReadId3` sigue en su lista, ahora solo para cuando no llegó leída, y entra
 `AudioFileSignature` (tamaño y fechas, sin abrir el archivo).
+
+## 13. La IA en vivo pregunta menos al disco (29 de septiembre, solo HD)
+
+Con la IA en vivo encendida, antes de sonar cada canción la rocola pregunta si Apollo ya dejó lista su versión mejorada
+(`IaEnhancedPath`). Cada pregunta era: abrir y leer la huella del modelo, mirar el tamaño y la fecha de la canción,
+hasta cuatro consultas a la carpeta de la caché y, si la encontraba, marcarla como usada (una escritura de metadatos).
+Y la pantalla pregunta varias veces por la misma canción: al pedirla por delante, al empezarla y, en los últimos
+segundos de la anterior, **dos veces por segundo** mientras prepara el relevo sin pausa.
+
+Ahora (decisión del usuario del 29 de septiembre de 2026, que sustituye a la de leer la huella fresca cada vez):
+
+- **La huella del modelo** se recuerda diez segundos por carpeta de caché, como ya se hacía con dónde vive la caché.
+  Un modelo nuevo aparece solo, sin reiniciar. Con una huella de hasta diez segundos de vieja puede sonar la versión
+  de *esa misma canción* hecha por el modelo anterior, o la original; nunca otra canción. El encargo al motor
+  (`IaWriteJob`, en segundo plano) la sigue leyendo fresca.
+- **La búsqueda de cada canción** se recuerda diez segundos, con la identidad completa como clave: la huella de la
+  canción (ruta, tamaño y fecha, que se sigue mirando en cada pregunta), la mezcla, la huella del modelo y la carpeta.
+  Una canción reemplazada en la misma ruta es otra clave. Se recuerdan cuatro como mucho. En esos diez segundos, una
+  versión recién terminada se usa en la pregunta siguiente, y una recién borrada por la limpieza no abre y suena la
+  original, que es el camino que ya existía. Se marca como usada una vez por recuerdo.
+
+**`pruebas/apollo.cs`** (28 comprobaciones; con la rocola anterior falla) cambia la vigilancia de «la huella se lee
+fresca» por la nueva: dentro de los diez segundos se usa la recordada, pasado ese rato se vuelve a leer, otra carpeta
+no la hereda, «aún no hay modelo» también caduca y el encargo al motor la lee fresca. Y para la búsqueda: la segunda
+pregunta no toca el disco (ni busca ni vuelve a marcar), caduca, la marca `.orig`, y la identidad entera (canción
+reemplazada, otra mezcla, otra carpeta). Cuatro mutaciones la ponen en rojo: la huella fresca, sin recuerdo, la clave
+sin la identidad de la canción y el recuerdo eterno.
+
+Medido aquí: preguntar sin recuerdo, 28–69 µs; con recuerdo, 5–20 µs (solo la identidad de la canción). Lo que
+importa en el bar es que la pregunta repetida ya no abre ni escribe nada en el disco.
+
+`bloqueos`: la búsqueda en la carpeta pasa a `IaBuscaListo`, y los motivos de la lista dicen ahora cada cuánto.

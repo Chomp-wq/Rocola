@@ -946,8 +946,32 @@ namespace Rocola
             catch { return RutaDatos("ia_cache"); }
         }
 
+        // LA HUELLA DEL MODELO, RECORDADA DIEZ SEGUNDOS (decision del usuario del 29 de septiembre de 2026, que sustituye
+        // a la de leerla fresca cada vez). Se leia del archivo -abrirlo y leerlo- en cada busqueda de la pantalla, y la
+        // pantalla busca varias veces por cancion (al pedir la siguiente por delante, al prepararla sin pausa dos veces por
+        // segundo en sus ultimos segundos y al empezarla). Ahora se recuerda por carpeta de cache y se vuelve a mirar cada
+        // diez segundos, como donde vive la cache (IaCacheFor): un modelo nuevo aparece solo, sin reiniciar.
+        //
+        // Lo que puede pasar con una huella de hasta 10 s de vieja: que suene la version de ESA MISMA cancion hecha por el
+        // modelo anterior, si esta en la cache, o la original. Nunca otra cancion: la huella del modelo es solo una parte
+        // del nombre del archivo, y la identidad de la cancion (ruta, tamano y fecha) se sigue mirando cada vez. El encargo
+        // al motor (IaWriteJob, en segundo plano) la sigue leyendo fresca, asi que los trabajos nuevos van con la de ahora.
+        private static readonly object iaHuellaCerrojo = new object();
+        private static string iaHuellaRecordada, iaHuellaDeQue;
+        private static bool iaHuellaHay;
+        private static int iaHuellaCuando;
         private string IaPipelineFingerprint()
-        { return ReadIaPipelineFingerprint(IaCache()); }
+        { return IaHuellaFor(IaCache()); }
+        private static string IaHuellaFor(string cache)
+        {
+            string clave = cache ?? "";
+            int ahora = Environment.TickCount;
+            lock (iaHuellaCerrojo)
+                if (iaHuellaHay && iaHuellaDeQue == clave && unchecked((uint)(ahora - iaHuellaCuando)) < IaCacheRecuerdoMs) return iaHuellaRecordada;
+            string r = ReadIaPipelineFingerprint(cache);   // tambien "no hay" (Apollo aun no esta listo) se recuerda ese rato
+            lock (iaHuellaCerrojo) { iaHuellaRecordada = r; iaHuellaDeQue = clave; iaHuellaCuando = ahora; iaHuellaHay = true; }
+            return r;
+        }
         private static string ReadIaPipelineFingerprint(string cache)
         {
             try
@@ -999,13 +1023,62 @@ namespace Rocola
                 string pipeline = IaPipelineFingerprint(); if (pipeline == null) return null;
                 string h = IaHashFor(path, iaMezcla, pipeline); if (h == null) return null;
                 string dir = Path.Combine(IaCache(), "listos");
-                if (File.Exists(Path.Combine(dir, h + ".error"))) return null;             // backoff/terminal: original
-                string p = Path.Combine(dir, h + ".mp3"); if (File.Exists(p)) return IaTouch(p);   // formato heredado, si coincide la identidad
-                p = Path.Combine(dir, h + ".wav"); if (File.Exists(p)) return IaTouch(p);          // salida actual: WAV float32 sin recompresion
-                if (File.Exists(Path.Combine(dir, h + ".orig"))) { yaBuena = true; return path; }
-                return null;
+                string clave = h + "|" + dir;
+                string recordada;
+                if (IaBusquedaRecordada(clave, out recordada, out yaBuena)) return yaBuena ? path : recordada;
+                string r = IaBuscaListo(path, h, dir, out yaBuena);
+                IaApuntaBusqueda(clave, r, yaBuena);
+                return r;
             }
-            catch { return null; }
+            catch { yaBuena = false; return null; }
+        }
+        private static string IaBuscaListo(string path, string h, string dir, out bool yaBuena)
+        {
+            yaBuena = false;
+            if (File.Exists(Path.Combine(dir, h + ".error"))) return null;             // backoff/terminal: original
+            string p = Path.Combine(dir, h + ".mp3"); if (File.Exists(p)) return IaTouch(p);   // formato heredado, si coincide la identidad
+            p = Path.Combine(dir, h + ".wav"); if (File.Exists(p)) return IaTouch(p);          // salida actual: WAV float32 sin recompresion
+            if (File.Exists(Path.Combine(dir, h + ".orig"))) { yaBuena = true; return path; }
+            return null;
+        }
+
+        // LA BUSQUEDA DE CADA CANCION, RECORDADA DIEZ SEGUNDOS (29/09). En los ultimos segundos de cada cancion, preparar
+        // la siguiente sin pausa pregunta dos veces por segundo (RutaQueSonaria e IaMejoradaPara) por la misma cancion, y
+        // cada pregunta eran hasta cuatro consultas a la carpeta de la cache mas marcar el archivo como usado (una escritura
+        // de metadatos). Ahora la respuesta se recuerda diez segundos, con la identidad COMPLETA como clave: la huella de la
+        // cancion (ruta, tamano y fecha, que se sigue mirando cada vez), la mezcla, la huella del modelo y la carpeta. Una
+        // cancion reemplazada es otra clave. Lo que puede pasar en esos diez segundos: que una version recien terminada por
+        // el motor se use en la proxima pregunta y no en esta, o que una recien borrada por la limpieza no abra; eso ya
+        // tiene su camino (se borra y suena la original, como antes). Se marca como usada una vez por recuerdo, que para la
+        // limpieza (borra lo menos usado, por dias) es lo mismo. Solo unas pocas (la que suena y la siguiente).
+        private sealed class IaBusqueda { internal string Clave, Ruta; internal bool YaBuena; internal int Cuando; }
+        private static readonly object iaBusquedaCerrojo = new object();
+        private static readonly IaBusqueda[] iaBusquedas = new IaBusqueda[4];
+        private static int iaBusquedaSig;
+        private static bool IaBusquedaRecordada(string clave, out string ruta, out bool yaBuena)
+        {
+            int ahora = Environment.TickCount;
+            lock (iaBusquedaCerrojo)
+                for (int i = 0; i < iaBusquedas.Length; i++)
+                {
+                    IaBusqueda b = iaBusquedas[i];
+                    if (b != null && b.Clave == clave && unchecked((uint)(ahora - b.Cuando)) < IaCacheRecuerdoMs)
+                    { ruta = b.Ruta; yaBuena = b.YaBuena; return true; }
+                }
+            ruta = null; yaBuena = false;
+            return false;
+        }
+        private static void IaApuntaBusqueda(string clave, string ruta, bool yaBuena)
+        {
+            IaBusqueda b = new IaBusqueda();
+            b.Clave = clave; b.Ruta = ruta; b.YaBuena = yaBuena; b.Cuando = Environment.TickCount;
+            lock (iaBusquedaCerrojo)
+            {
+                for (int i = 0; i < iaBusquedas.Length; i++)
+                    if (iaBusquedas[i] != null && iaBusquedas[i].Clave == clave) { iaBusquedas[i] = b; return; }
+                iaBusquedas[iaBusquedaSig] = b;
+                iaBusquedaSig = (iaBusquedaSig + 1) % iaBusquedas.Length;
+            }
         }
 
         // Marca "recien usada" la version de cache que va a sonar. La limpieza del motor borra por fecha
