@@ -82,6 +82,11 @@ namespace Rocola
             if (ruta == null) return;
             lock (medidasCerrojo) medidasHechas.Add(ruta);
         }
+        private static void OlvidaMedidaHecha(string ruta)
+        {
+            if (ruta == null) return;
+            lock (medidasCerrojo) medidasHechas.Remove(ruta);
+        }
         private static bool YaSeMidio(string ruta)
         {
             if (ruta == null) return false;
