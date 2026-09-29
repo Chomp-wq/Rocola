@@ -780,24 +780,6 @@ namespace Rocola
             if (pastCola != null) pastCola.ConPortadas = colaPortadasOn;
             NeuralEnv.TryLoad(RutaLectura("rocola_ia.bin"));   // IA propia (el modelo entrenado: en la carpeta de datos, o el de fabrica)
             EqNet.TryLoad(RutaLectura("rocola_eq_ia.bin"));    // IA del EQ automatico (objetivo por cancion)
-            bool prepared = CompleteStartupDataLoad();
-            if (!prepared) LoadStats();   // antes de armar TOP y restaurar creditos/cola
-            if (!prepared) LoadLoudCache();   // fallback si fallo el trabajador
-            if (!prepared) LoadIntegCache();
-            if (!prepared) LoadEqCache();
-            IaCountPairs();      // cuanto material de entrenamiento de la IA llevamos juntado
-            if (!prepared) LoadIaDone();
-            if (!prepared) LoadDeepDone();
-            if (!prepared) LoadDurFast();
-            if (!prepared) LoadIncompatible();
-            startupReadPending = false;
-            BackupLearnedData(); // respalda lo aprendido de la sesion ANTERIOR antes de que esta lo modifique
-            LayoutControls();
-#if ROCOLA_GPU
-            if (gpuPrefOn) ApplyAlbumGpu(true, false, false);   // render por GPU por defecto (o preferencia guardada); silencioso si el device falla; no re-guarda
-#endif
-            LoadMusicFolder();
-
             // SIN CURSOR: la rocola se usa con botones. Se oculta y se manda a una esquina
             // (en el autoarranque XP lo deja dibujado a media pantalla aunque no haya mouse).
             try
@@ -828,7 +810,70 @@ namespace Rocola
             }
             focusTimer.Start();
 
+            // LAS TABLAS DEL ARRANQUE (volumen, EQ, lo mas sonado...) las lee un hilo aparte desde el constructor. Antes
+            // la ventana se quedaba aqui PARADA esperandolas (Monitor.Wait): 150-230 ms medidos en este servidor, mas con
+            // un disco mecanico lento, y en ese rato no pintaba ni atendia nada. Ahora sigue viva, y lo que necesita las
+            // tablas sigue en SigueArranque cuando el lector avisa, en el mismo orden de siempre: tablas, biblioteca y, con
+            // ella, creditos y cola. Las teclas de mientras esperan su turno (ProcessCmdKey).
+            EsperaLasTablas();
+        }
+
+        private bool arranqueEnEspera;   // la ventana ya se ve y las tablas del arranque aun no estan
+        private bool arranqueSeguido;    // SigueArranque ya corrio (una sola vez)
+        private List<KeyValuePair<Message, Keys>> teclasEnEspera;
+
+        private void EsperaLasTablas()
+        {
+            StartupLoad load = startupLoad;
+            bool esperar = false;
+            if (load != null && !startupClosing)
+                lock (load)
+                    if (!load.Done && !load.Cancelled)
+                    {
+                        esperar = true; arranqueEnEspera = true;
+                        load.AlTerminar = delegate
+                        {
+                            try { BeginInvoke((MethodInvoker)SigueArranque); } catch { }   // la ventana se cerro mientras tanto
+                        };
+                    }
+            if (!esperar) SigueArranque();
+        }
+
+        // Lo del arranque que necesita las tablas ya leidas (ver EsperaLasTablas).
+        private void SigueArranque()
+        {
+            if (arranqueSeguido) return;
+            arranqueSeguido = true;
+            arranqueEnEspera = false;
+            if (startupClosing || IsDisposed) { teclasEnEspera = null; return; }
+            bool prepared = CompleteStartupDataLoad();
+            if (!prepared) LoadStats();   // antes de armar TOP y restaurar creditos/cola
+            if (!prepared) LoadLoudCache();   // fallback si fallo el trabajador
+            if (!prepared) LoadIntegCache();
+            if (!prepared) LoadEqCache();
+            IaCountPairs();      // cuanto material de entrenamiento de la IA llevamos juntado
+            if (!prepared) LoadIaDone();
+            if (!prepared) LoadDeepDone();
+            if (!prepared) LoadDurFast();
+            if (!prepared) LoadIncompatible();
+            startupReadPending = false;
+            BackupLearnedData(); // respalda lo aprendido de la sesion ANTERIOR antes de que esta lo modifique
+            LayoutControls();
+#if ROCOLA_GPU
+            if (gpuPrefOn) ApplyAlbumGpu(true, false, false);   // render por GPU por defecto (o preferencia guardada); silencioso si el device falla; no re-guarda
+#endif
+            LoadMusicFolder();
+
             if (needConfig) StartConfig();   // primera vez: configurar los botones de la rocola
+            AtiendeTeclasEnEspera();
+        }
+
+        // Las teclas que llegaron mientras se leian las tablas, en el mismo orden: como las dejaba en cola la ventana parada.
+        private void AtiendeTeclasEnEspera()
+        {
+            List<KeyValuePair<Message, Keys>> t = teclasEnEspera; teclasEnEspera = null;
+            if (t == null) return;
+            for (int i = 0; i < t.Count; i++) { Message m = t[i].Key; ProcessCmdKey(ref m, t[i].Value); }
         }
 
         // Trae la rocola al frente y le da el foco del teclado (robusto para el autoarranque).
@@ -1756,6 +1801,16 @@ namespace Rocola
                 return true;
             }
 
+            // Mientras se leen las tablas del arranque (EsperaLasTablas) las teclas esperan su turno, como esperaban con la
+            // ventana parada: una moneda no puede contarse antes de leer las monedas y lo mas sonado ya guardados (los
+            // pisaria al publicarlos), y aun no hay biblioteca que elegir. Se atienden en orden al terminar.
+            if (arranqueEnEspera)
+            {
+                if (teclasEnEspera == null) teclasEnEspera = new List<KeyValuePair<Message, Keys>>();
+                if (teclasEnEspera.Count < 256) teclasEnEspera.Add(new KeyValuePair<Message, Keys>(msg, keyData));
+                return true;
+            }
+
             lastInput = DateTime.Now;   // cualquier tecla reinicia la inactividad
             lastInputTick = Environment.TickCount;   // el precalentador de miniaturas pausa si hay actividad
 #if ROCOLA_GPU
@@ -2030,6 +2085,9 @@ namespace Rocola
 
         private void AnimTimer_Tick(object sender, EventArgs e)
         {
+            // Mientras se leen las tablas del arranque no se anima nada (EsperaLasTablas): antes la ventana ni atendia
+            // este reloj, y en dos nucleos ese rato de procesador es del lector.
+            if (arranqueEnEspera) return;
             phase += 0.045;
             frameTick++;
             // Si el disco que contenia la cola de un apagon vuelve a aparecer, reescanea y restaura sin

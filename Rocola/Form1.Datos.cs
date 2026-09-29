@@ -77,6 +77,7 @@ namespace Rocola
             public volatile bool Cancelled;
             public bool Done;
             public StartupData Data;
+            public Action AlTerminar;   // lo que sigue del arranque, en la ventana (EsperaLasTablas); se cambia bajo el candado
         }
 
         private static StartupData ReadStartupData(StartupLoad load)
@@ -190,12 +191,15 @@ namespace Rocola
                 try { data = ReadStartupData(load); } catch { }   // fallback de lectura en el hilo original
                 finally
                 {
+                    Action aviso;
                     lock (load)
                     {
                         load.Data = load.Cancelled ? null : data;
                         load.Done = true;
                         System.Threading.Monitor.PulseAll(load);
+                        aviso = load.AlTerminar; load.AlTerminar = null;
                     }
+                    if (aviso != null) { try { aviso(); } catch { } }   // la ventana sigue con el arranque
                 }
             });
             worker.IsBackground = true;
@@ -225,9 +229,11 @@ namespace Rocola
             int espera = Environment.TickCount;   // (bitacora: MedidasBitacora.cs)
             lock (load)
             {
-                // Barrera deliberada: OnShown no devuelve el control antes de tener las tablas.
-                // Solapa la preparacion, pero no adelanta entrada de monedas ni restauracion.
-                while (!load.Done && !load.Cancelled) System.Threading.Monitor.Wait(load);
+                // YA NO ES UNA BARRERA. Se llama cuando el lector ya termino (EsperaLasTablas, Form1.cs): la ventana
+                // sigue viva mientras tanto y las teclas esperan su turno, asi que ni las monedas ni la restauracion
+                // se adelantan a las tablas. Si por lo que fuera aun no hubiera terminado, no se espera: se leen aqui
+                // mismo, por el camino de siempre (prepared = false).
+                if (!load.Done && !load.Cancelled) return false;
                 data = load.Cancelled ? null : load.Data;
                 load.Data = null;
             }
