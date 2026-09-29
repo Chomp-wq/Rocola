@@ -99,6 +99,9 @@ CPU="$CPU bitacoradetras"
 # 'arranquevivo': al arrancar, la ventana no se queda parada esperando las tablas: el lector avisa al terminar, publicar no
 # espera nunca, las teclas de mientras esperan su turno (salir no) y el orden sigue siendo tablas, historial y biblioteca.
 CPU="$CPU arranquevivo"
+# 'vigiapantalla': la rocola mide siempre cuanto tarda la pantalla en atender; mas de 150 ms a la bitacora con lo que la
+# paro, mas de 500 ms siempre a los errores (sin inundarlos); las entradas grandes marcan lo que hacen.
+CPU="$CPU vigiapantalla"
 # 'prioridad': la rocola con prioridad por encima de lo normal (Program.cs): se pone al arrancar la unica rocola, nunca
 # "alta" ni "tiempo real", y en ningun otro sitio.
 CPU="$CPU prioridad"

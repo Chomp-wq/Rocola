@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Threading;
+using System.Windows.Forms;
 
 namespace Rocola
 {
@@ -44,6 +45,112 @@ namespace Rocola
             if (!diagOn) return;
             Diag("cancion: abierta en " + abiertaMs + " ms, sonando en " + Desde(bitacoraCancion) + " ms (en memoria hasta ahora: "
                  + EnMemoriaDelAdelanto + " de la lectura por adelantado, " + EnMemoriaLeidas + " leidas al abrir)");
+        }
+    }
+
+    // ============================== EL VIGIA DE LA PANTALLA ==============================
+    //
+    // Cuanto tarda la pantalla en atender, medido siempre y dentro de la propia rocola (antes solo se podia medir desde
+    // fuera, con un banco de pruebas). Un hilo aparte le da un toque cada tanto (BeginInvoke) y cronometra cuanto tarda
+    // en atenderlo. Si pasa del umbral, apunta cuanto duro y QUE estaba haciendo la pantalla: eso lo marcan las entradas
+    // grandes al empezar (una tecla, el latido, un cuadro de la tarjeta, empezar una cancion, publicar la biblioteca, el
+    // arranque), con una cadena y un reloj, nada mas. Si la marca empezo mas o menos cuando empezo la parada, es eso lo
+    // que la paro ("en:"); si empezo mucho antes, la pantalla ya lo habia terminado y la paro otra cosa que vino despues,
+    // sin marca ("despues de:"). Y si la pantalla lleva diez segundos sin atender, lo dice sin esperar a que vuelva.
+    internal sealed class VigiaPantalla
+    {
+        private static volatile string hace;   // lo ultimo que empezo la pantalla (lo marca ella misma)
+        private static int haceTick;
+        internal static void Hace(string que) { haceTick = Environment.TickCount; hace = que; }
+        internal static string QueHace(int llevaMs)
+        {
+            string q = hace;
+            if (q == null) return "sin nada marcado";
+            int desde = unchecked(Environment.TickCount - haceTick);
+            return (desde <= llevaMs + 60 ? "en: " : "despues de: ") + q + " (empezo hace " + desde + " ms)";
+        }
+
+        internal const int SigueParadaMs = 10000;   // sin atender tanto: se dice ya, sin esperar a que vuelva
+        private readonly Control pantalla;
+        private readonly int umbral, paso;
+        private readonly Action<int, string> avisa;
+        private volatile bool parar;
+        private Thread hilo;
+
+        // 'avisa' corre en el hilo del vigia: tiene que ser barato y no tocar la pantalla.
+        internal VigiaPantalla(Control pantalla, int umbralMs, int pasoMs, Action<int, string> avisa)
+        { this.pantalla = pantalla; umbral = umbralMs; paso = pasoMs; this.avisa = avisa; }
+
+        internal void Arranca()
+        {
+            if (hilo != null) return;
+            hilo = new Thread(Bucle);
+            hilo.IsBackground = true; hilo.Name = "vigia de la pantalla";
+            hilo.Start();
+        }
+        internal void Para() { parar = true; }
+
+        private void Bucle()
+        {
+            ManualResetEvent atendido = new ManualResetEvent(false);
+            MethodInvoker toque = delegate { atendido.Set(); };
+            while (!parar)
+            {
+                Thread.Sleep(paso);
+                if (parar) break;
+                atendido.Reset();
+                int t0 = Environment.TickCount;
+                try
+                {
+                    if (pantalla.IsDisposed || !pantalla.IsHandleCreated) continue;
+                    pantalla.BeginInvoke(toque);
+                }
+                catch { continue; }   // cerrandose: no hay a quien preguntar
+                string que = null; bool dichoQueSigue = false, cerrada = false;
+                while (!atendido.WaitOne(25, false))
+                {
+                    if (parar) return;
+                    if (pantalla.IsDisposed) { cerrada = true; break; }
+                    int lleva = unchecked(Environment.TickCount - t0);
+                    if (que == null && lleva >= umbral) que = QueHace(lleva);
+                    if (!dichoQueSigue && lleva >= SigueParadaMs) { dichoQueSigue = true; try { avisa(lleva, que + " (y sigue parada)"); } catch { } }
+                }
+                if (cerrada) break;
+                int total = unchecked(Environment.TickCount - t0);
+                if (total < umbral) continue;
+                if (que == null) que = QueHace(total);
+                try { avisa(total, que); } catch { }
+            }
+        }
+    }
+
+    public partial class Form1
+    {
+        private VigiaPantalla vigiaPantalla;
+        internal const int ParadaDiagMs = 150, ParadaErrorMs = 500;   // a la bitacora (con diagnostico=1) / a los errores, siempre
+        private int paradaErrorTick, paradasSinApuntar;
+        private bool paradaApuntada;
+
+        private void ArrancaVigia()
+        {
+            if (vigiaPantalla != null) return;
+            // Un toque cada 25 ms: una parada se mide con 25 ms de margen como mucho (con 100 se escapaban paradas de 200 que
+            // empezaban justo antes de un toque). Son unos 40 mensajes por segundo: nada para la pantalla.
+            vigiaPantalla = new VigiaPantalla(this, ParadaDiagMs, 25, ApuntaParada);
+            vigiaPantalla.Arranca();
+        }
+
+        // En el hilo del vigia. Diag y LogError solo dejan la linea en la cola de la bitacora: no esperan al disco.
+        private void ApuntaParada(int ms, string que)
+        {
+            if (ms >= ParadaDiagMs) Diag("pantalla parada " + ms + " ms, " + que);
+            if (ms < ParadaErrorMs) return;
+            // Al archivo de errores siempre, pero sin inundarlo: como mucho una cada diez segundos, diciendo cuantas se callaron.
+            int ahora = Environment.TickCount;
+            if (paradaApuntada && unchecked(ahora - paradaErrorTick) < 10000) { paradasSinApuntar++; return; }
+            string callo = paradasSinApuntar > 0 ? " (y " + paradasSinApuntar + " mas de " + ParadaErrorMs + " ms desde el apunte anterior)" : "";
+            paradaApuntada = true; paradaErrorTick = ahora; paradasSinApuntar = 0;
+            LogError("Pantalla parada " + ms + " ms, " + que + callo, null);
         }
     }
 

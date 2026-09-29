@@ -1099,6 +1099,7 @@ namespace Rocola
         }
         private void StartOpenedTrack(Track t, IAudioSource source, Exception error, bool forceWaveOut, bool forceCompartido)
         {
+            VigiaPantalla.Hace("arrancar la cancion ya abierta");
             try
             {
                 reader = source;
@@ -1858,6 +1859,7 @@ namespace Rocola
 
         private void ProgressTimer_Tick(object sender, EventArgs e)
         {
+            VigiaPantalla.Hace("el reloj de la cancion");
             if (reader == null) return;
             // LA SALIDA SE QUEDO MUDA (SalidaSonido.cs): como si hubiera avisado de un fallo del aparato.
             if (SalidaMuda()) { MudoEnExclusivo(); NAudio.Wave.IWavePlayer o = output; if (o != null) Output_PlaybackStopped(o, new StoppedEventArgs(new SalidaMudaException())); return; }
@@ -1936,6 +1938,7 @@ namespace Rocola
 
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
+            if (vigiaPantalla != null) vigiaPantalla.Para();   // cerrar tarda lo que tenga que tardar: no es una parada
             DetieneVigiaFoco();
             AdvanceThumbWarm();
             CancelStartupDataLoad();

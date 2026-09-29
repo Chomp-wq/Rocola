@@ -655,6 +655,7 @@ namespace Rocola
         // panel GPU (Direct3D 9) cubre toda la ventana y compone: fondo estrellado + cubos + barras + mini-cubo.
         private void ApplyAlbumGpu(bool on, bool announceFail, bool persist)
         {
+            VigiaPantalla.Hace("preparar la tarjeta grafica");
             if (lblGpu == null)
             {
                 lblGpu = new Label();

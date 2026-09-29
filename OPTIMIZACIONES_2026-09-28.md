@@ -348,3 +348,37 @@ esperando al lector). Usa una tubería como tabla lenta para ver que el lector a
 ### Lo que no se ha comprobado
 
 - Un disco mecánico real con tablas grandes (ahí la espera de antes era mayor) y la tarjeta gráfica de verdad.
+
+## 9. El vigía de la pantalla, dentro de la rocola (29 de septiembre)
+
+### Qué pasaba
+
+Cuánto tardaba la pantalla en atender solo se podía medir desde fuera, con un banco de pruebas. En el bar no había forma de
+saber si hubo un tirón ni qué lo causó.
+
+### Qué cambia
+
+- Un hilo aparte (`VigiaPantalla`, en `MedidasBitacora.cs`) le da un toque a la pantalla cada 25 ms y cronometra cuánto tarda
+  en atenderlo. **Siempre en marcha**, sin interruptor (no cambia nada de lo que se ve ni se oye); son unos 40 mensajes por
+  segundo.
+- Las entradas grandes marcan lo que hacen al empezar (una cadena y un reloj, 16 ns): una tecla, el latido, un cuadro de la
+  tarjeta, el reloj de la canción, empezar una canción, arrancar la ya abierta, publicar la biblioteca, poner una portada,
+  preparar la tarjeta y el arranque. El dibujo por CPU no se toca.
+- **150 ms o más**: a `rocola_diagnostico.txt` (con `diagnostico=1`), diciendo qué la paró («en:») o qué fue lo último antes
+  («después de:», si la paró algo sin marca). **500 ms o más**: siempre a `rocola_error.txt`, como mucho una cada 10 s y
+  diciendo cuántas se callaron. Si la pantalla lleva **10 s** sin atender, se dice sin esperar a que vuelva.
+- Se arranca al mostrarse la ventana y se para al cerrar (cerrar tarda lo que tenga que tardar).
+
+Con la ventana real, `diagnostico=1` y tablas de 40.000 canciones, el vigía de la rocola apuntó las dos paradas del arranque
+que el banco de pruebas midió desde fuera: 176 ms (fuera, 190) en el primer latido y 272 ms (fuera, 275) al publicar la
+biblioteca. Con un toque cada 100 ms se le escapaba la primera: por eso va cada 25.
+
+### Comprobaciones automáticas
+
+**`pruebas/vigiapantalla.cs`** (19 comprobaciones, verde en las dos ramas; con el programa anterior falla: no hay vigía).
+Con una ventana de verdad parada a propósito: 420 ms se dicen como 416 con su marca, 80 ms no se dicen, lo que no tiene
+marca sale como «después de»; los umbrales, el límite de apuntes y las marcas de las entradas.
+
+### Lo que no se ha comprobado
+
+- La rocola del bar con Windows y la tarjeta de verdad: ahí es donde el vigía va a contar lo que pasa.
