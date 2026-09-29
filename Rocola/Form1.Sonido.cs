@@ -940,6 +940,7 @@ namespace Rocola
         }
         private void StartOpenedTrack(Track t, IAudioSource source, Exception error)
         {
+            VigiaPantalla.Hace("arrancar la cancion ya abierta");
             try
             {
                 reader = source;

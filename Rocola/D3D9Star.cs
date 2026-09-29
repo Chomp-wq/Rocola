@@ -2039,6 +2039,7 @@ namespace Rocola
         private bool NoPresentado() { FallosMedidos++; Fps = 0; frames = 0; return false; }
         private bool RenderFrame()
         {
+            VigiaPantalla.Hace("un cuadro de la tarjeta");
             if (stars == null || !stars.Ok) return NoPresentado();
             double msTrab0 = AhoraMs();   // arranca el cronometro del TRABAJO de este cuadro (ver MsTrabajo)
             stars.SetEfectos(Estrellas, Fugaces, RelevoPatron, Width, Height);   // las perillas de Ctrl+F3

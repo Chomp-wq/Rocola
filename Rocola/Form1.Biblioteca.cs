@@ -160,6 +160,7 @@ namespace Rocola
 
         private void Scanner_RunWorkerCompleted(object sender, RunWorkerCompletedEventArgs e)
         {
+            VigiaPantalla.Hace("publicar la biblioteca");
             libBuilding = false;   // las listas vuelven a ser de la interfaz (tambien si hubo error)
             if (e.Error != null) { lblStatus.Text = "Error al escanear: " + e.Error.Message; return; }
 
@@ -2224,6 +2225,7 @@ namespace Rocola
         // Una caratula recien decodificada llega del disco: se aplica donde haga falta.
         private void ApplyArrivedCover(string key)
         {
+            VigiaPantalla.Hace("poner una portada que llego");
             try
             {
                 PortadaLlegoBuscador(key);   // si la esperaba una tarjeta del buscador con portadas

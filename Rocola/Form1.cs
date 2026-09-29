@@ -770,8 +770,10 @@ namespace Rocola
         // (con un vigia durante el arranque) y, si hace falta, configura botones.
         protected override void OnShown(EventArgs e)
         {
+            VigiaPantalla.Hace("el arranque: mostrarse");
             base.OnShown(e);
             if (startupClosing || IsDisposed) return;
+            ArrancaVigia();   // cuanto tarda la pantalla en atender, siempre (MedidasBitacora.cs)
             ProbeAudioTier();    // requisitos de maquina para el NIVEL 2 de audio (antes de leer dsee= de config)
             LoadConfigPrefs();   // preferencias: render GPU/CPU + carpetas de musica adicionales (Ctrl+F2)
             Diag("rocola del " + DeCuandoEs());   // LO PRIMERO de la bitacora: de cuando es la que esta corriendo
@@ -842,6 +844,7 @@ namespace Rocola
         // Lo del arranque que necesita las tablas ya leidas (ver EsperaLasTablas).
         private void SigueArranque()
         {
+            VigiaPantalla.Hace("el arranque: publicar las tablas y seguir");
             if (arranqueSeguido) return;
             arranqueSeguido = true;
             arranqueEnEspera = false;
@@ -1788,6 +1791,7 @@ namespace Rocola
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
+            VigiaPantalla.Hace("una tecla (" + keyData + ")");
             // SALIR (Ctrl+Alt+Q x3). Va lo primero para que ninguna pantalla se quede con la tecla: tiene
             // que funcionar siempre, este donde este el cliente. Cierra con Close(), que es el camino de
             // siempre -el mismo que Alt+F4-: cerrar
@@ -2085,6 +2089,7 @@ namespace Rocola
 
         private void AnimTimer_Tick(object sender, EventArgs e)
         {
+            VigiaPantalla.Hace("el latido (animaciones y avisos)");
             // Mientras se leen las tablas del arranque no se anima nada (EsperaLasTablas): antes la ventana ni atendia
             // este reloj, y en dos nucleos ese rato de procesador es del lector.
             if (arranqueEnEspera) return;

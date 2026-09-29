@@ -2653,6 +2653,7 @@ namespace Rocola
         // Reproduce el siguiente elemento (cancion o video). Tambien sirve para SALTAR el actual.
         private void PlayNext()
         {
+            VigiaPantalla.Hace("empezar la siguiente cancion");
             DisposePlaybackNow();      // detiene cualquier cancion (se desuscribe antes; no re-dispara)
             StopVideoPlayback();       // detiene cualquier video
 

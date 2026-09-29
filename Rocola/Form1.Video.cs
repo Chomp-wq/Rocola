@@ -779,6 +779,7 @@ namespace Rocola
 
         private void ProgressTimer_Tick(object sender, EventArgs e)
         {
+            VigiaPantalla.Hace("el reloj de la cancion");
             if (reader == null) return;
             // LA SALIDA SE QUEDO MUDA (SalidaSonido.cs): como si hubiera avisado de un fallo del aparato.
             if (SalidaMuda()) { NAudio.Wave.IWavePlayer o = output; if (o != null) Output_PlaybackStopped(o, new NAudio.Wave.StoppedEventArgs(new SalidaMudaException())); return; }
@@ -832,6 +833,7 @@ namespace Rocola
         // panel GPU (Direct3D 9) cubre toda la ventana y compone: fondo estrellado + cubos + barras + mini-cubo.
         private void ApplyAlbumGpu(bool on, bool announceFail, bool persist)
         {
+            VigiaPantalla.Hace("preparar la tarjeta grafica");
             if (lblGpu == null)
             {
                 lblGpu = new Label();
@@ -1793,6 +1795,7 @@ namespace Rocola
 
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
+            if (vigiaPantalla != null) vigiaPantalla.Para();   // cerrar tarda lo que tenga que tardar: no es una parada
             DetieneVigiaFoco();
             AdvanceThumbWarm();
             CancelStartupDataLoad();
