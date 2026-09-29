@@ -1174,6 +1174,8 @@ namespace Rocola
                 audioVisualDelayMs = isWasapi ? 240 : 850;   // el pulso visual se alinea al colchon REAL de la salida en uso
                 if (!isWasapi)   // WASAPI ya arranco dentro de su bloque protegido
                 {
+                    // Sin parar la pantalla: la salida arranca cuando el hilo de la musica tiene el primer segundo (BombaSonido.cs).
+                    if (ArrancaCuandoEsteLista(delegate { SalidaClasicaLista(t, desde, abiertaMs); })) return;
                     try { output.Play(); }
                     catch (Exception pex) { if (EsFalloDelDispositivo(pex) && SalidaCaida(t, desde, pex, false)) return; throw; }
                 }

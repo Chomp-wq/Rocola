@@ -1307,8 +1307,11 @@ namespace Rocola
         {
             if (startupReadPending) return;
             List<KeyValuePair<string, float>> snap;
-            Dictionary<string, float> durSnap;
-            try { snap = new List<KeyValuePair<string, float>>(loudCache); durSnap = new Dictionary<string, float>(durCache, StringComparer.OrdinalIgnoreCase); }   // copia (rapida): las tablas solo se tocan aqui
+            List<KeyValuePair<string, float>> durCopia;
+            // Copias de las dos tablas (son de la pantalla y solo se tocan aqui). Como LISTAS: copiar la de duraciones como
+            // diccionario rehacia su indice aqui mismo, pasando cada ruta por el comparador sin mayusculas (23 ms con
+            // 20.000 canciones en un procesador de servidor, en cada guardado). El indice se arma fuera, al escribir.
+            try { snap = new List<KeyValuePair<string, float>>(loudCache); durCopia = new List<KeyValuePair<string, float>>(durCache); }
             catch { return; }
             long version = System.Threading.Interlocked.Increment(ref loudSaveVersion);
             DiarioTabla diario = diarioVolumen ?? (diarioVolumen = new DiarioTabla());   // solo lo nuevo (DiarioTablas.cs)
@@ -1318,6 +1321,8 @@ namespace Rocola
                 {
                     Func<bool> vigente = delegate { return version == System.Threading.Interlocked.Read(ref loudSaveVersion); };
                     if (!vigente()) return;
+                    Dictionary<string, float> durSnap = new Dictionary<string, float>(durCopia.Count, StringComparer.OrdinalIgnoreCase);
+                    foreach (KeyValuePair<string, float> kv in durCopia) durSnap[kv.Key] = kv.Value;
                     lock (loudSaveLock)
                     {
                         // Anade al final solo las canciones nuevas o que cambiaron; entera cuando toca (DiarioTablas.cs).
