@@ -1984,6 +1984,7 @@ namespace Rocola
                 k = k * 31 + ((GetCount != null) ? GetCount() : 0);
 #if ROCOLA_GPU
                 if (Vivo != 0) { k = k * 31 + Vivo; k = k * 31 + EsperaVer; }   // lo que cambia con la tarjeta (DiscoVivoGpu.cs)
+                if (pintandoGpu) k = k * 31 + 7;   // la fila elegida dentro del cristal (DentroDelCristal): otro horneado
 #endif
                 return k;
             }
@@ -2035,22 +2036,18 @@ namespace Rocola
             // hacen falta DOS a la vez, en cada cuadro de la animacion. Horneada, cada cuadro es una copia.
             // LA FILA ELEGIDA, DENTRO DEL CRISTAL (solo con tarjeta grafica). El cristal de la lista (BakeSongGlassTint) tiene
             // esquinas de radio min(28, lado/4); la fila elegida se apartaba solo 4 px del borde y, en la primera y la ultima
-            // fila, sus esquinas se salian por la curva. Aqui se aparta lo justo para que su esquina (radio 9) quede dentro
-            // de la del cristal, con 2 px de aire para el borde. Las filas del medio quedan igual.
+            // fila, sus esquinas se salian por la curva. Con la tarjeta se recorta a la forma del cristal: sigue la curva de
+            // la esquina sin estrecharse (no pisa el numero). Las filas del medio quedan igual.
 #if ROCOLA_GPU
             internal bool pintandoGpu; internal int gpuFilaY;
-            internal static Rectangle DentroDelCristal(Rectangle hl, int w, int h)
+            // Recorta lo que se pinte a la forma del cristal, 2 px hacia dentro (la fila elegida sigue la curva de la esquina).
+            internal void RecortaAlCristal(Graphics g)
             {
-                float R = Math.Min(28, Math.Min(w, h) / 4), cabe = R - 9f - 3f;
-                if (cabe <= 0f) return hl;
-                float c = 1f + R;                                         // centro de la esquina del cristal (arriba)
-                float dy = Math.Max(c - (hl.Top + 9f), (hl.Bottom - 9f) - (h - 2f - R));
-                if (dy <= 0f) return hl;
-                if (dy > cabe) dy = cabe;
-                int x = (int)Math.Ceiling(c - (float)Math.Sqrt(cabe * cabe - dy * dy) - 9f);
-                if (x <= hl.Left) return hl;
-                int quita = x - hl.Left;
-                return new Rectangle(hl.Left + quita, hl.Top, Math.Max(20, hl.Width - 2 * quita), hl.Height);
+                int w = ClientSize.Width, h = ClientSize.Height;
+                int R = Math.Min(28, Math.Min(w, h) / 4);
+                GraphicsPath p = RoundedPath(new Rectangle(3, 3 - gpuFilaY, w - 7, h - 7), Math.Max(1, R - 2));
+                g.SetClip(p, CombineMode.Intersect);
+                p.Dispose();
             }
 #endif
             private void PintaPagina(Graphics g, int arranque)
@@ -2109,11 +2106,14 @@ namespace Rocola
                     {
                         Rectangle hl = new Rectangle(r.X + 4, r.Y + 3, r.Width - 8, r.Height - 6);
 #if ROCOLA_GPU
-                        if (pintandoGpu) { hl.Offset(0, gpuFilaY); hl = DentroDelCristal(hl, ClientSize.Width, ClientSize.Height); hl.Offset(0, -gpuFilaY); }   // solo la tarjeta: el procesador no cambia
+                        GraphicsState recorte = null; if (pintandoGpu) { recorte = g.Save(); RecortaAlCristal(g); }   // solo la tarjeta: el procesador no cambia
 #endif
                         hlB.Color = Color.FromArgb(150, Lighten(Accent, 0.15));
                         hlP.Color = Color.FromArgb(180, Lighten(Accent, 0.45));
                         using (GraphicsPath gp = RoundedPath(hl, 9)) { g.FillPath(hlB, gp); g.DrawPath(hlP, gp); }
+#if ROCOLA_GPU
+                        if (recorte != null) g.Restore(recorte);
+#endif
                     }
                     // EL NUMERO DE PISTA en un circulito, y en VERDE si esa cancion ya esta pedida. Antes no
                     // habia forma de saber que ya la habias puesto: la volvias a pedir y gastabas otro credito.
