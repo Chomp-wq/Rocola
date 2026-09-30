@@ -241,18 +241,21 @@ namespace Rocola
         private BombaSonido bomba;   // la de la salida clasica que suena (null con WASAPI o sin musica)
         private long publicacionAudio;
 
-        // Solo el informe breve de un bloque, nunca Read ni el DSP. La misma puerta permite cerrar su medida
+        // Calculo de audio separado de la cola visual: la UI no espera filtros por muestra.
+        // Orden unico si se necesitan ambas puertas: audioDatosLock -> levelLock.
+        private readonly object audioDatosLock = new object();
+        // La misma puerta permite cerrar su medida
         // e invalidarla antes de empezar otra cancion: un bloque de un lector lento no contamina la nueva.
         private void PublicaBloqueDe(LevelTap tap, float[] buffer, int offset, int count, int rate, int canales)
         {
-            lock (levelLock)
+            lock (audioDatosLock)
             {
                 if (tap.Publicacion != publicacionAudio) return;
                 MedidaDe(tap);
                 ReportAudioBlock(buffer, offset, count, rate, canales);
             }
         }
-        private void InvalidaPublicacionAudio() { lock (levelLock) { unchecked { publicacionAudio++; } } }
+        private void InvalidaPublicacionAudio() { lock (audioDatosLock) { unchecked { publicacionAudio++; } } }
         private static void LiberaLectoresAudio(IAudioSource actual, IAudioSource preparada)
         {
             if (actual != null) try { actual.Dispose(); } catch { }

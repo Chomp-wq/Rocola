@@ -1099,6 +1099,7 @@ namespace Rocola
             public Color Prom, Uno, Dos;
 #if ROCOLA_GPU
             public Color[] Paleta;
+            public Image Fuente;
 #endif
         }
         private readonly Dictionary<string, ColoresDisco> colorPortada = new Dictionary<string, ColoresDisco>(StringComparer.OrdinalIgnoreCase);
@@ -1113,6 +1114,14 @@ namespace Rocola
             if (colorPortada.TryGetValue(k, out c)) return c.Prom;
             Bitmap b = LoadCover(a) as Bitmap;
             if (b == null) return SinColor;
+#if ROCOLA_GPU
+            lock (coverLock)
+            {
+                if (gpuEnabled && coloresPreparados.TryGetValue(k, out c) && object.ReferenceEquals(c.Fuente, b))
+                { c.Fuente = null; colorPortada[k] = c; return c.Prom; } // no retener bitmaps expulsados en la cache de tonos
+            }
+            c.Fuente = null; // tambien si el preparado era de otro bitmap de la misma ruta
+#endif
             c.Prom = ColoresDePortada(b, out c.Uno, out c.Dos);
 #if ROCOLA_GPU
             c.Paleta = ExtractCoverPalette(b);

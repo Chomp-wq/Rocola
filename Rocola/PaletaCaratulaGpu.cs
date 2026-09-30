@@ -15,10 +15,12 @@ namespace Rocola
             if (bitmap == null) return new Color[0];
             int[] count = new int[27], red = new int[27], green = new int[27], blue = new int[27];
             int nx = Math.Min(32, bitmap.Width), ny = Math.Min(32, bitmap.Height), total = 0;
+            int[] pixels = MuestrasPaleta(bitmap, nx, ny);
             for (int y = 0; y < ny; y++)
                 for (int x = 0; x < nx; x++)
                 {
-                    Color c = bitmap.GetPixel((2*x+1)*bitmap.Width/(2*nx), (2*y+1)*bitmap.Height/(2*ny));
+                    Color c = pixels != null ? Color.FromArgb(pixels[y*nx+x])
+                        : bitmap.GetPixel((2*x+1)*bitmap.Width/(2*nx), (2*y+1)*bitmap.Height/(2*ny));
                     if (c.A < 128) continue;
                     int max = Math.Max(c.R, Math.Max(c.G, c.B)), min = Math.Min(c.R, Math.Min(c.G, c.B));
                     int bin = max < 36 || max-min < 24 ? 24 + Math.Min(2, max/86) : Math.Min(23, (int)(c.GetHue()/15));
@@ -52,6 +54,34 @@ namespace Rocola
             // Orden estable por tono para evitar saltos de banda al cambiar de disco.
             Array.Sort(result, delegate(Color a, Color b) { return a.GetHue().CompareTo(b.GetHue()); });
             return result;
+        }
+        // Misma rejilla/mismos bytes; sin 1024 cruces GDI+. PArgb translucido conserva
+        // GetPixel: su redondeo de des-premultiplicacion no se adivina ni cambia la paleta.
+        private static int[] MuestrasPaleta(Bitmap b, int nx, int ny)
+        {
+            System.Drawing.Imaging.PixelFormat f = b.PixelFormat;
+            bool prem = f == System.Drawing.Imaging.PixelFormat.Format32bppPArgb;
+            bool rgb = f == System.Drawing.Imaging.PixelFormat.Format32bppRgb || f == System.Drawing.Imaging.PixelFormat.Format24bppRgb;
+            if (!prem && !rgb && f != System.Drawing.Imaging.PixelFormat.Format32bppArgb) return null;
+            int bytes = f == System.Drawing.Imaging.PixelFormat.Format24bppRgb ? 3 : 4;
+            System.Drawing.Imaging.BitmapData d = null;
+            try
+            {
+                d = b.LockBits(new Rectangle(0, 0, b.Width, b.Height), System.Drawing.Imaging.ImageLockMode.ReadOnly, f);
+                int[] r = new int[nx*ny];
+                for (int y = 0; y < ny; y++) for (int x = 0; x < nx; x++)
+                {
+                    int px = (2*x+1)*b.Width/(2*nx), py = (2*y+1)*b.Height/(2*ny);
+                    IntPtr p = new IntPtr(d.Scan0.ToInt64() + (long)py*d.Stride + px*bytes);
+                    int a = rgb ? 255 : System.Runtime.InteropServices.Marshal.ReadByte(p, 3);
+                    if (prem && a != 255) return null;
+                    r[y*nx+x] = (a << 24) | (System.Runtime.InteropServices.Marshal.ReadByte(p, 2) << 16)
+                        | (System.Runtime.InteropServices.Marshal.ReadByte(p, 1) << 8) | System.Runtime.InteropServices.Marshal.ReadByte(p);
+                }
+                return r;
+            }
+            catch { return null; }
+            finally { if (d != null) b.UnlockBits(d); }
         }
 
         private void SyncGpuCoverPalette()

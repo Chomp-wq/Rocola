@@ -145,7 +145,7 @@ namespace Rocola
         }
         private void MideEntradaOriginal(LevelTap tap, float[] buffer, int offset, int n)
         {
-            lock (levelLock)
+            lock (audioDatosLock)
             {
                 if (tap.Publicacion != publicacionAudio) return;
                 MedidaDe(tap);

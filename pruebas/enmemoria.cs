@@ -228,7 +228,7 @@ class EnMemoria
         Codigo.UsosDeCampo(fas.GetMethod("Dispose", T), "enMemoria", out lee, out escribe);
         Check(escribe > 0, "al cerrar la fuente, suelta la cancion (aunque alguien se quede con el objeto)");
         List<string> cal = Codigo.ConAyudantes(TF, "PrecalientaSiguiente");
-        Check(Codigo.Llama(cal, "ReservaEnMemoria") && Codigo.Llama(cal, "DejaEnMemoria") && Codigo.Llama(cal, "Sleep") && Codigo.Llama(cal, "YieldSongWarm"),
+        Check(Codigo.Llama(cal, "ReservaEnMemoria") && Codigo.Llama(cal, "DejaEnMemoria") && Codigo.Llama(cal, "Sleep") && Codigo.Llama(cal, "EsperaPortadas"),
               "la lectura por adelantado guarda los bytes sin dejar de ceder el disco ni de hacer sus pausas");
         Check(Codigo.Llama(TF.GetMethod("SueltaLookahead", T), "SueltaEnMemoria"), "soltar lo que se miraba por delante suelta tambien los bytes guardados");
     }

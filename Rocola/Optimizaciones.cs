@@ -103,12 +103,7 @@ namespace Rocola
             measureCancellation = delegate
             {
                 if (cancel != null && cancel()) return true;
-                while (YieldCoverWork(unit, smallCpu))
-                {
-                    System.Threading.Thread.Sleep(40);
-                    if (cancel != null && cancel()) return true;
-                }
-                return false;
+                return !EsperaPortadas(unit, smallCpu, cancel);
             };
             try { return MeasureFile(path, aFondo, out rms, out durSec, out eqCurve); }
             finally { measureCancellation = previous; }

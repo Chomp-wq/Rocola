@@ -48,6 +48,7 @@ namespace Rocola
             }
             private static Dictionary<string, T> Indice<T>(List<KeyValuePair<string, T>> filas)
             {
+                if (filas == null) return new Dictionary<string, T>(StringComparer.OrdinalIgnoreCase);
                 Dictionary<string, T> r = new Dictionary<string, T>(filas.Count, StringComparer.OrdinalIgnoreCase);
                 for (int i = 0; i < filas.Count; i++) r[filas[i].Key] = filas[i].Value;
                 return r;
@@ -59,6 +60,8 @@ namespace Rocola
         private LecturaBiblioteca planDuracion, planRepaso;
         private Thread preparaRepasoTh;
         private LecturaBiblioteca CapturaLecturaBiblioteca()
+        { return CapturaParaBiblioteca(true); }
+        private LecturaBiblioteca CapturaParaBiblioteca(bool completa)
         {
             if (libBuilding || IsDisposed || Disposing) return null;
             LecturaBiblioteca p = new LecturaBiblioteca();
@@ -67,16 +70,20 @@ namespace Rocola
             p.Letras = new List<KeyValuePair<char, List<Album>>>(byLetter);
             p.DurDatos = new List<KeyValuePair<string, float>>(durCache);
             p.RapidasDatos = new List<KeyValuePair<string, float>>(durFast);
-            p.LoudDatos = new List<KeyValuePair<string, float>>(loudCache);
-            p.EqDatos = new List<KeyValuePair<string, float[]>>(eqCache);
-            lock (integCerrojo) p.IntegDatos = new List<KeyValuePair<string, SonoridadIntegrada>>(integCache);
-            p.CancionesDatos = new List<KeyValuePair<string, int>>(songCounts);
-            p.VideosDatos = new List<KeyValuePair<string, int>>(videoCounts);
-            p.SecDatos = new List<KeyValuePair<string, long>>(songSeq);
-            p.VideoSecDatos = new List<KeyValuePair<string, long>>(videoSeq);
-            lock (deepDoneLock) p.DeepDatos = new List<string>(deepDone);
-            p.ColaDatos = new List<string>(queue.Count);
-            for (int i = 0; i < queue.Count; i++) if (queue[i] != null) p.ColaDatos.Add(queue[i].PathKey());
+            if (completa)
+            {
+                p.LoudDatos = new List<KeyValuePair<string, float>>(loudCache);
+                p.EqDatos = new List<KeyValuePair<string, float[]>>(eqCache);
+                lock (integCerrojo) p.IntegDatos = new List<KeyValuePair<string, SonoridadIntegrada>>(integCache);
+                p.CancionesDatos = new List<KeyValuePair<string, int>>(songCounts);
+                p.VideosDatos = new List<KeyValuePair<string, int>>(videoCounts);
+                p.SecDatos = new List<KeyValuePair<string, long>>(songSeq);
+                p.VideoSecDatos = new List<KeyValuePair<string, long>>(videoSeq);
+                lock (deepDoneLock) p.DeepDatos = new List<string>(deepDone);
+                p.ColaDatos = new List<string>(queue.Count);
+                for (int i = 0; i < queue.Count; i++) if (queue[i] != null) p.ColaDatos.Add(queue[i].PathKey());
+            }
+            else { p.DeepDatos = new List<string>(); p.ColaDatos = new List<string>(); }
             p.Tintes = tintesPend; p.Firma = FirmaBiblioteca(); p.LoudCount = loudCache.Count;
             return p;
         }
@@ -84,6 +91,8 @@ namespace Rocola
         {
             if (planDuracion != null) planDuracion.Cancela();
             if (planRepaso != null) planRepaso.Cancela();
+            lock (analisisUnidadLock) Monitor.PulseAll(analisisUnidadLock);
+            lock (coverLock) Monitor.PulseAll(coverLock);
         }
 
         // Turnos de los lectores de analisis: un HDD no recibe varios archivos a la vez.
@@ -101,6 +110,7 @@ namespace Rocola
                 {
                     int n; if (x.analisisUnidad.TryGetValue(unidad, out n))
                     { if (n <= 1) x.analisisUnidad.Remove(unidad); else x.analisisUnidad[unidad] = n - 1; }
+                    Monitor.PulseAll(x.analisisUnidadLock);
                 }
             }
         }
@@ -114,8 +124,9 @@ namespace Rocola
                 {
                     int n; analisisUnidad.TryGetValue(unit, out n);
                     if (n == 0) { analisisUnidad[unit] = 1; return new TurnoAnalisis(this, unit); }
+                    // Se despierta al liberar/cancelar; el limite solo cubre canceladores ajenos.
+                    Monitor.Wait(analisisUnidadLock, 250);
                 }
-                Thread.Sleep(20);
             }
             return null;
         }
