@@ -56,7 +56,7 @@ namespace Rocola
         // decide el interruptor para todas las canciones, y el colchon de WaveOut es fijo.
         private bool DseeDe(CadenaCancion c) { return sbrOn; }
         private float ExcitePara(CadenaCancion c) { return ExciteAmountFor(c.Cancion.Path); }
-        private int RetrasoAudible() { return AudioVisualDelayMs + AdelantoBomba(); }   // mas lo que el hilo de la musica lee por delante (BombaSonido.cs)
+        private int RetrasoAudible() { return RetardoVisualSalida() + AdelantoBomba(); }   // snapshot de la salida abierta + adelanto de la bomba
         private bool IaMejoradaPara(string path) { return false; }
         private void AlEntrarPorRelevo(CadenaCancion b) { }
 
@@ -1073,7 +1073,12 @@ namespace Rocola
             {
                 DeclipProvider dc = new DeclipProvider(chain); chain = dc; audioTailDelay += dc.DelayFrames;
             }
-            if (sbrAllowed) { c.Sbr = new SpectralTap(chain); c.Sbr.Active = sbrOn; chain = c.Sbr; }
+            if (sbrAllowed)
+            {
+                c.Sbr = new SpectralTap(chain);
+                c.Sbr.ConectaOriginal(original, audioTailDelay);
+                c.Sbr.Active = sbrOn; chain = c.Sbr;
+            }
             LevelTap tap = new LevelTap(chain, this);
             original.Tap = tap; tap.MideOriginal = true;
             tap.Gain = GananciaDe(t);   // la del disco si suena en racha con otra de su disco (NivelDisco.cs); si no, la suya
@@ -1448,6 +1453,23 @@ namespace Rocola
             private readonly NAudio.Wave.ISampleProvider src;
             private readonly int ch, rate;
             private readonly bool[] musicales;
+            private readonly bool disposicionSegura;
+            private readonly float[] cortesGrupo, gravesGrupo;
+            private readonly int[] recreadosGrupo;
+            private FuenteOriginal corteOriginal;
+            private int retardoOriginal, canalDeteccion, ventanasCorte;
+            private float[] originalRe, originalIm, originalReB, originalImB;
+            private long inicioOriginal;
+            internal long VentanasOriginales;
+            internal void ConectaOriginal(FuenteOriginal original, int retardo)
+            {
+                // Sin etapa que cambie PCM, su FFT YA es original: no duplicar.
+                if (retardo <= 0 || !disposicionSegura) return;
+                corteOriginal = original; retardoOriginal = retardo;
+                original.PreparaCorte(Frame, retardo);
+                originalRe = new float[Frame]; originalIm = new float[Frame];
+                if (ch > 1) { originalReB = new float[Frame]; originalImB = new float[Frame]; }
+            }
             private readonly float binHz;
             public volatile bool Active;                   // false = pase directo (costo ~cero)
             // ENCENDER Y APAGAR EN VIVO SIN SALTOS (Ctrl+F3, A/B). Antes, al alternar se tiraba el colchon del
@@ -1520,6 +1542,9 @@ namespace Rocola
                 src = s;
                 ch = Math.Max(1, s.WaveFormat.Channels);
                 musicales = FormatoAudio.Musicales(s.WaveFormat);
+                disposicionSegura = ch <= 2 || FormatoAudio.Mascara(s.WaveFormat) != 0;
+                cortesGrupo = new float[(ch + 1) / 2]; gravesGrupo = new float[cortesGrupo.Length];
+                recreadosGrupo = new int[cortesGrupo.Length];
                 rate = Math.Max(8000, s.WaveFormat.SampleRate);
                 binHz = (float)rate / Frame;
                 inBuf = new float[ch][]; outAcc = new float[ch][];
@@ -1543,6 +1568,8 @@ namespace Rocola
 
             public int Read(float[] buffer, int offset, int count)
             {
+                // Sin layout multicanal no adivinar LFE ni enlazar canales.
+                if (!disposicionSegura) return src.Read(buffer, offset, count);
                 bool act = Active;
                 if (!arrancado)
                 {
@@ -1646,6 +1673,8 @@ namespace Rocola
             // ataque. No se pierde ni se repite nada: lo que sale sigue justo donde iba el pase directo.
             private void EmpiezaStft()
             {
+                inicioOriginal = corteOriginal != null ? corteOriginal.CuadrosOriginales - retardoOriginal : 0;
+                ventanasCorte = 0;
                 stft = true; saliendo = false; ultimoCero = false; restoN = 0;
                 ventanaImpar = false;
                 if (suaveListo != null) for (int c = 0; c < suaveListo.Length; c++) suaveListo[c] = false;
@@ -1676,8 +1705,17 @@ namespace Rocola
                 twCos = plan.Cos; twSin = plan.Sin; twSinNeg = plan.SinNeg;
             }
             public int FrameLen { get { return Frame; } }
-            public float CutHz { get { return cutHz; } }   // acantilado detectado hasta ahora (0 = aun sin medir)
-            public float CutLoHz { get { return cutLoHz; } }   // por ABAJO: donde la grabacion deja de tener grave (0 = sin medir)
+            public float CutHz { get {
+                if (cortesGrupo == null) return cutHz; // analizador de cosecha, un canal
+                float mayor = 0; for (int i = 0; i < cortesGrupo.Length; i++) mayor = Math.Max(mayor, cortesGrupo[i]);
+                return mayor;
+            } }
+            public float CutLoHz { get {
+                if (gravesGrupo == null) return cutLoHz;
+                float menor = 0; for (int i = 0; i < gravesGrupo.Length; i++)
+                    if (gravesGrupo[i] > 0 && (menor == 0 || gravesGrupo[i] < menor)) menor = gravesGrupo[i];
+                return menor;
+            } }
 
             // Analiza UN cuadro (Frame muestras de UN canal) y actualiza el acantilado. Igual que en vivo.
             public void AnalyzeFrame(float[] mono, int off)
@@ -1754,13 +1792,7 @@ namespace Rocola
                     // aparecia de golpe. Se mide desde la primera ventana de musica entera. Y por lo mismo, tampoco las
                     // del final, rellenadas con ceros (srcEnded): el corte seco de la ultima nota salpica igual y
                     // movia el corte con el que se recreaban los ultimos milisegundos.
-                    if (cn == 0 && !firstFrame && !srcEnded)
-                    {
-                        // Potencia de AMBOS canales ya separados; no mezclar las ondas
-                        // (los agudos en contrafase se cancelarian). Sin FFT adicionales.
-                        detectPair = true; DetectCliff(); detectPair = false;
-                        ActualizaCorte();
-                    }
+                    PreparaCorteGrupo(cn, true);
                     canalRegen = cn; if (musicales[cn]) Regenerate();
                     Intercambia(); canalRegen = cn + 1; if (musicales[cn + 1]) Regenerate(); Intercambia();
                     // se vuelven a juntar: parte real = canal par, parte imaginaria = canal impar
@@ -1774,12 +1806,13 @@ namespace Rocola
                     float[] xin = inBuf[cn];
                     for (int i = 0; i < Frame; i++) { re[i] = xin[i] * win[i]; im[i] = 0f; }
                     Fft(false);
-                    if (cn == 0 && !firstFrame && !srcEnded) { DetectCliff(); ActualizaCorte(); }   // ni la de arranque ni las del final miden (ver arriba)
+                    PreparaCorteGrupo(cn, false);
                     canalRegen = cn; if (musicales[cn]) Regenerate();
                     Fft(true);
                     float[] acc = outAcc[cn];
                     for (int i = 0; i < Frame; i++) acc[i] += re[i] * win[i];
                 }
+                ventanasCorte++;
                 if (firstFrame) { emitFrames = 0; firstFrame = false; } // descarta solo el prefijo artificial
                 if (emitFrames < 0) emitFrames = 0; else if (emitFrames > Hop) emitFrames = Hop;
                 for (int f = 0; f < emitFrames; f++) // la primera mitad ya recibio sus DOS solapes: lista para salir
@@ -1821,16 +1854,42 @@ namespace Rocola
             // enterarse de nada ni copiar un solo numero.
             private void Intercambia() { float[] tr = re, ti = im; re = reB; im = imB; reB = tr; imB = ti; }
 
+            // Cada pareja conserva su medida, sin que el frente gobierne los traseros
+            // ni el LFE decida el corte. Con Declip la FFT extra usa PCM ORIGINAL,
+            // alineado al retardo real; una de cada cuatro ventanas limita el costo.
+            private void PreparaCorteGrupo(int canal, bool pareja)
+            {
+                int g = canal / 2;
+                cutHz = cortesGrupo[g]; cutLoHz = gravesGrupo[g]; corteRecreado = recreadosGrupo[g];
+                canalDeteccion = canal; detectPair = pareja;
+                if (!firstFrame && !srcEnded && (musicales[canal] || (pareja && musicales[canal + 1])))
+                {
+                    if (corteOriginal == null) { DetectCliff(); ActualizaCorte(); }
+                    else if ((cutHz <= 0 || (ventanasCorte & 3) == 1) &&
+                        corteOriginal.CuadroOriginal(inicioOriginal + sourceFrames, canal, originalRe, originalIm, win))
+                    {
+                        float[] r = re, i = im, rb = reB, ib = imB;
+                        re = originalRe; im = originalIm; reB = originalReB; imB = originalImB;
+                        Fft(false); if (pareja) SeparaCanales();
+                        DetectCliff(); ActualizaCorte(); VentanasOriginales++;
+                        originalRe = re; originalIm = im; originalReB = reB; originalImB = imB;
+                        re = r; im = i; reB = rb; imB = ib;
+                    }
+                }
+                cortesGrupo[g] = cutHz; gravesGrupo[g] = cutLoHz; recreadosGrupo[g] = corteRecreado;
+                detectPair = false;
+            }
+
             private int Hz(float hz) { int b = (int)(hz / binHz); int ny = Frame / 2; return b < 1 ? 1 : (b > ny - 1 ? ny - 1 : b); }
 
             // Localiza el "acantilado" del codec: la frecuencia MAS ALTA donde todavia hay energia comparable
             // a la banda media (4-8 kHz). Suavizado entre ventanas para que no baile; en silencio no se mide.
             private double DetectionPower(int k)
             {
-                double p = musicales[0] ? re[k] * re[k] + im[k] * im[k] : 0.0;
+                double p = musicales[canalDeteccion] ? re[k] * re[k] + im[k] * im[k] : 0.0;
                 if (!detectPair) return p;
-                int n = musicales[0] ? 1 : 0;
-                if (musicales[1]) { p += reB[k] * reB[k] + imB[k] * imB[k]; n++; }
+                int n = musicales[canalDeteccion] ? 1 : 0;
+                if (musicales[canalDeteccion + 1]) { p += reB[k] * reB[k] + imB[k] * imB[k]; n++; }
                 return n > 0 ? p / n : 0.0;
             }
             private void DetectCliff()
@@ -1859,7 +1918,8 @@ namespace Rocola
                     if (e > refE * 0.002) { found = hz + 300f; break; }   // ~-27 dB de la banda media: aqui sigue VIVO
                 }
                 if (found <= 0f) found = 9000f;                  // nada vivo arriba de 9k: el corte anda por ahi
-                cutHz = (cutHz <= 0f) ? found : (cutHz * 0.85f + found * 0.15f);
+                float alfa = corteOriginal == null ? .15f : .478f; // 1-.85^4: misma escala de suavizado temporal
+                cutHz = (cutHz <= 0f) ? found : (cutHz * (1-alfa) + found * alfa);
                 DetectCliffLow(refE);
             }
 
@@ -1878,7 +1938,8 @@ namespace Rocola
                     if (e > refE * 0.02) { found = hz; break; }   // aqui ya hay grave de verdad
                 }
                 if (found <= 0f) found = 140f;                   // nada vivo por debajo de 140: grabacion muy flaca
-                cutLoHz = (cutLoHz <= 0f) ? found : (cutLoHz * 0.85f + found * 0.15f);
+                float alfa = corteOriginal == null ? .15f : .478f;
+                cutLoHz = (cutLoHz <= 0f) ? found : (cutLoHz * (1-alfa) + found * alfa);
             }
 
 

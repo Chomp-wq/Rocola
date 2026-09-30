@@ -1,5 +1,7 @@
 # Audio y entrenadores: cierre del 29 de septiembre de 2026
 
+Continuación y límites de las cuatro mejoras siguientes: [Audio del 30 de septiembre](AUDIO_MEJORAS_2026-09-30.md).
+
 Cambios compartidos en `rocola-hd` y `claude/modest-carson-fa2v2n`, salvo Apollo y DMO,
 que pertenecen a HD. Modest conserva .NET 3.5 y el destino Windows XP. No se modifica
 el renderizador CPU, la biblioteca, la configuración ni los modelos instalados.

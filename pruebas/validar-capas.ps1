@@ -16,14 +16,14 @@ $compiler = Join-Path $env:WINDIR ('Microsoft.NET\Framework\' + $framework + '\c
 $sources = @($project.Project.ItemGroup.Compile | ForEach-Object { if ($_.Include) { Join-Path $sourceRoot $_.Include } })
 $naudio = Join-Path $repoRoot 'packages\NAudio.1.9.0\lib\net35\NAudio.dll'
 $decoder = @()
-if ($framework -eq 'v3.5') {
+if (Test-Path -LiteralPath (Join-Path $repoRoot 'packages\NLayer.1.12.0\lib\net35\NLayer.dll')) {
     $nlayer = Join-Path $repoRoot 'packages\NLayer.1.12.0\lib\net35\NLayer.dll'
     $decoder = @("/r:$nlayer", "/resource:$nlayer,Rocola.NLayer.dll")
 }
 New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
 $OutputDirectory = (Resolve-Path $OutputDirectory).Path
 Copy-Item -LiteralPath $naudio -Destination (Join-Path $OutputDirectory 'NAudio.dll') -Force
-if ($framework -eq 'v3.5') {
+if (Test-Path -LiteralPath (Join-Path $repoRoot 'packages\NLayer.1.12.0\lib\net35\NLayer.dll')) {
     # Las pruebas por reflexion no llaman Main, que registra el resolver del recurso embebido.
     Copy-Item -LiteralPath $nlayer -Destination (Join-Path $OutputDirectory 'NLayer.dll') -Force
 }

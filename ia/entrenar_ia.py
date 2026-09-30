@@ -281,9 +281,16 @@ def mse_modelo(model, X, Y, lote=4096):
         total += float(error.sum()); count += error.size
     return total / max(1, count)
 
-def train(model, X, Y, Xv, Yv, epochs=60, lr=2e-3, batch=256, seed=3, l2=1e-5, preservar_inicial=False):
+def train(model, X, Y, Xv, Yv, epochs=60, lr=2e-3, batch=256, seed=3, l2=1e-5, preservar_inicial=False,
+          pesos=None, objetivo="mse"):
     if epochs <= 0 or batch <= 0 or len(X) == 0 or len(Xv) == 0:
         raise ValueError("Se requieren epocas/lote positivos y ejemplos de entrenamiento y validacion")
+    if objetivo not in ("mse", "envolvente"):
+        raise ValueError("Objetivo desconocido")
+    pesos = np.ones(len(X)) if pesos is None else np.asarray(pesos, dtype=np.float64)
+    if pesos.shape != (len(X),) or not np.isfinite(pesos).all() or np.any(pesos <= 0):
+        raise ValueError("Pesos TRAIN invalidos")
+    from calidad_dsee import perdida_envolvente
     rng = np.random.default_rng(seed)
     mW = [np.zeros_like(w) for w in model.W]; vW = [np.zeros_like(w) for w in model.W]
     mB = [np.zeros_like(b) for b in model.B]; vB = [np.zeros_like(b) for b in model.B]
@@ -302,7 +309,10 @@ def train(model, X, Y, Xv, Yv, epochs=60, lr=2e-3, batch=256, seed=3, l2=1e-5, p
         for s in range(0, len(X), batch):
             bi = idx[s:s + batch]
             acts = model.forward(X[bi])
-            g = 2.0 * (acts[-1] - Y[bi]) / len(bi)          # dMSE
+            if objetivo == "envolvente":
+                _, g = perdida_envolvente(acts[-1], Y[bi], pesos[bi])
+            else:
+                g = 2.0 * (acts[-1] - Y[bi]) * pesos[bi, None] / len(bi)
             tstep += 1
             c1, c2 = 1 - b1 ** tstep, 1 - b2 ** tstep
             for L in reversed(range(len(model.W))):
@@ -410,6 +420,10 @@ def particiones_rocola(ruta, X, nivel="artista", incluir_sin_origen=False, indic
     pesos = np.bincount(k[dentro], minlength=len(ent))
     etiquetas, nivel_usado = O.grupos(ent, nivel)
     informe["nivel"] = nivel_usado
+    # Identidades por fila, no valores del objetivo: solo tr se usa para pesos.
+    conocidas = np.maximum(k, 0)
+    informe["_canciones"] = np.where(dentro, ent["cancion"][conocidas], np.uint64(0))
+    informe["_grupos"] = np.where(dentro, etiquetas[conocidas], np.uint64(0))
     parte, motivo = O.reparte(etiquetas, pesos)
     if motivo:
         informe["motivo"] = motivo
@@ -466,7 +480,8 @@ def particiones_por_grupo(claves_trozo, origen_ejemplo, nivel="artista"):
     ent["cuenta"] = np.bincount(grupo_ej, minlength=len(unicas))
     etiquetas, nivel_usado = O.grupos(ent, nivel)
     parte, motivo = O.reparte(etiquetas, ent["cuenta"])
-    informe = {"independiente": not motivo, "motivo": motivo, "nivel": nivel_usado}
+    informe = {"independiente": not motivo, "motivo": motivo, "nivel": nivel_usado,
+               "_canciones": ent["cancion"][grupo_ej], "_grupos": etiquetas[grupo_ej]}
     if motivo:
         return None, informe
     parte_ej = parte[grupo_ej]
@@ -572,6 +587,14 @@ def main():
     Xtr, Ytr = _toma(X, tr), _toma(Y, tr)
     Xv, Yv = _toma(X, va), _toma(Y, va)
     Xp, Yp = _toma(X, pr), _toma(Y, pr)
+    import origen_dsee as O
+    identidades = informe.pop("_canciones", np.zeros(len(X), dtype=np.uint64))
+    grupos_peso = informe.pop("_grupos", identidades)
+    pesos_train, equilibrio = O.pesos_equilibrados(identidades[tr], grupos_peso[tr])
+    # Envolvente es una hipotesis offline explicita, no mejora audible demostrada.
+    objetivo = sys.argv[sys.argv.index("--perdida") + 1] if "--perdida" in sys.argv else "mse"
+    if objetivo not in ("mse", "envolvente"):
+        raise SystemExit("--perdida admite mse o envolvente")
 
     capas = [28, 48, 48, 12]
     if "--capas" in sys.argv:
@@ -605,7 +628,10 @@ def main():
             m.B[0] += w0 @ mu
         m = train(m, FilasNormalizadas(Xtr, mu, sd), Ytr,
                   FilasNormalizadas(Xv, mu, sd), Yv, epochs=epocas, seed=semilla,
-                  lr=1e-4 if ajustar else 2e-3, l2=1e-3 if ajustar else 1e-5, preservar_inicial=ajustar)
+                  lr=1e-4 if ajustar else 2e-3, l2=1e-3 if ajustar else 1e-5, preservar_inicial=ajustar,
+                  pesos=pesos_train, objetivo=objetivo)
+        m.equilibrio = equilibrio
+        m.objetivo = objetivo
         m.ajustado_instalado = ajustar
         m.semilla = semilla
         candidatos.append((mse_modelo(m, FilasNormalizadas(Xv, mu, sd), Yv), m))
@@ -752,6 +778,10 @@ def informe_reproducible(informe, capas, model, val, err, instalado, estado_inst
         "avisos_por_clase": list(avisos),
         "muestreo": "posiciones-estratificadas-v2",
         "entrenamiento": {"normalizacion": "solo entrenamiento, absorbida en primera capa",
+                          "equilibrio_train": getattr(model, "equilibrio", None),
+                          "objetivo": getattr(model, "objetivo", "mse"),
+                          "envolvente": {"delta": 0.5, "ancla_mse": 0.1, "rango_runtime": [-4, 0.1]},
+                          "seleccion": "MSE cruda sin pesos en validacion; test solo decide",
                           "semilla_elegida": getattr(model, "semilla", None),
                           "ajustado_instalado": getattr(model, "ajustado_instalado", False),
                           "lr": 1e-4 if getattr(model, "ajustado_instalado", False) else 2e-3,

@@ -181,6 +181,51 @@ def _componentes(claves_por_elemento):
 NIVELES = ("artista", "carpeta", "cancion")
 
 
+def pesos_equilibrados(canciones, grupos=None, limite=4.0):
+    """Solo identidades de TRAIN: igual masa por grupo y por cancion dentro del grupo.
+
+    Recosechas/canales de la misma cancion comparten masa. No consulta X, Y ni otras
+    particiones. Identidad 0 no se inventa: esas filas conservan peso 1. El recorte
+    limita extremos a [1/limite, limite], con media 1 tambien despues de recortar.
+    """
+    c = np.asarray(canciones)
+    g = c if grupos is None else np.asarray(grupos)
+    if (c.ndim != 1 or g.shape != c.shape or c.dtype.kind not in "ui" or
+            g.dtype.kind not in "ui" or np.any(c < 0) or np.any(g < 0) or
+            not np.isfinite(limite) or not 1 <= limite <= 8):
+        raise ValueError("Identidades/presupuesto de equilibrio invalidos")
+    c, g = c.astype(np.uint64), g.astype(np.uint64)
+    conocido = c != 0
+    pesos = np.ones(len(c), dtype=np.float64)
+    if conocido.any():
+        cc, gg = c[conocido], g[conocido].copy()
+        gg[gg == 0] = cc[gg == 0]
+        canciones_unicas, primero, inv, cuenta = np.unique(cc, return_index=True, return_inverse=True, return_counts=True)
+        grupo_cancion = gg[primero]
+        if np.any(gg != grupo_cancion[inv]):
+            raise ValueError("Una cancion no puede pertenecer a grupos distintos")
+        grupos_unicos, grupo_inv = np.unique(grupo_cancion, return_inverse=True)
+        canciones_grupo = np.bincount(grupo_inv)
+        bruto = len(cc) / (len(grupos_unicos) * canciones_grupo[grupo_inv[inv]] * cuenta[inv])
+        # Buscar una escala sin perder la media 1 ni romper los limites por normalizar.
+        abajo, arriba = 0.0, limite / float(bruto.min())
+        for _ in range(48):
+            escala = (abajo + arriba) / 2
+            if np.clip(bruto * escala, 1 / limite, limite).mean() < 1:
+                abajo = escala
+            else:
+                arriba = escala
+        pesos[conocido] = np.clip(bruto * ((abajo + arriba) / 2), 1 / limite, limite)
+        nc, ng = len(canciones_unicas), len(grupos_unicos)
+    else:
+        nc = ng = 0
+    return pesos, {"metodo": "grupo-cancion-acotado-v1", "filas": len(c),
+                   "canciones": nc, "grupos": ng, "sin_identidad": int((~conocido).sum()),
+                   "limite_factor": float(limite), "peso_min": float(pesos.min()) if len(c) else 1.0,
+                   "peso_max": float(pesos.max()) if len(c) else 1.0,
+                   "peso_medio": float(pesos.mean()) if len(c) else 1.0}
+
+
 def grupos(entradas, nivel="artista", tope_fraccion=0.5):
     """Etiqueta de grupo por entrada. nivel='artista' une cancion+carpeta+artista; 'carpeta' une
     cancion+carpeta; 'cancion' solo la cancion. Si un grupo se come mas de tope_fraccion de los
