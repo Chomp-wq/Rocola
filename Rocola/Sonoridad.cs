@@ -920,12 +920,7 @@ namespace Rocola
             measureCancellation = delegate
             {
                 if (cancel != null && cancel()) return true;
-                while (YieldCoverWork(unidad, chica))
-                {
-                    System.Threading.Thread.Sleep(40);
-                    if (cancel != null && cancel()) return true;
-                }
-                return false;
+                return !EsperaPortadas(unidad, chica, cancel);
             };
             try { return MideIntegrada(path, out s); }
             finally { measureCancellation = previo; }

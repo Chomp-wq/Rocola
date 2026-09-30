@@ -49,6 +49,30 @@ namespace Rocola
         private static int tablaIn, tablaOut;
         private static double[] tablaLista;
         private static bool calentando;
+        private sealed class TablaConversion
+        { internal int Entrada, Salida; internal double[] Datos; }
+        private static readonly System.Collections.Generic.List<TablaConversion> tablas = new System.Collections.Generic.List<TablaConversion>();
+        private const long TablasBytesTope = 6 * 1024 * 1024;
+        private static double[] BuscaTabla(int entrada, int salida)
+        {
+            if (tablaLista == null) tablas.Clear(); // reinicio de fixtures; sin referencias ocultas
+            if (tablaLista != null && tablaIn == entrada && tablaOut == salida) return tablaLista;
+            for (int i = 0; i < tablas.Count; i++)
+                if (tablas[i].Entrada == entrada && tablas[i].Salida == salida)
+                {
+                    TablaConversion t = tablas[i]; tablas.RemoveAt(i); tablas.Add(t);
+                    return t.Datos;
+                }
+            return null;
+        }
+        private static void ConservaTabla(int entrada, int salida, double[] datos)
+        {
+            tablaIn = entrada; tablaOut = salida; tablaLista = datos;
+            tablas.Add(new TablaConversion { Entrada = entrada, Salida = salida, Datos = datos });
+            long bytes = 0; for (int i = 0; i < tablas.Count; i++) bytes += tablas[i].Datos.LongLength * 8;
+            while (tablas.Count > 4 || bytes > TablasBytesTope)
+            { bytes -= tablas[0].Datos.LongLength * 8; tablas.RemoveAt(0); }
+        }
 
         internal static bool TablaPreparada(WaveFormat a, WaveFormat b)
         { return CapturaTabla(a, b) != null; }
@@ -60,7 +84,8 @@ namespace Rocola
             if (!SePuede(a, b)) return null;
             lock (tablaCerrojo)
             {
-                if (tablaLista != null && tablaIn == a.SampleRate && tablaOut == b.SampleRate) return tablaLista;
+                double[] lista = BuscaTabla(a.SampleRate, b.SampleRate);
+                if (lista != null) return lista;
                 if (calentando) return null;
                 calentando = true;
             }
@@ -76,7 +101,7 @@ namespace Rocola
                     finally
                     {
                         try { Thread.CurrentThread.Priority = prioridad; } catch { }
-                        lock (tablaCerrojo) { if (tabla != null) { tablaIn = hzIn; tablaOut = hzOut; tablaLista = tabla; } calentando = false; }
+                        lock (tablaCerrojo) { if (tabla != null) ConservaTabla(hzIn, hzOut, tabla); calentando = false; }
                     }
                 })) return null;
             }
@@ -96,7 +121,7 @@ namespace Rocola
             return MismoLayout(a, b) && a.SampleRate >= 8000 && b.SampleRate >= 8000
                 && a.SampleRate <= 192000 && b.SampleRate <= 192000 && a.Channels <= 8
                 && a.SampleRate <= b.SampleRate * 4L && b.SampleRate <= a.SampleRate * 4L
-                && DentroPresupuesto(a, b, Environment.ProcessorCount);
+                && DentroPresupuesto(a, b, CargaTrabajo.Procesadores);
         }
         internal static long PresupuestoTrabajo(int procesadores)
         { return 40000000L * Math.Max(1, procesadores / 2); }
@@ -133,7 +158,7 @@ namespace Rocola
             filtro = tablaPreparada;
             if (!soloPreparada)
             {
-                lock (tablaCerrojo) if (tablaIn == tasaIn && tablaOut == tasaOut) filtro = tablaLista;
+                lock (tablaCerrojo) filtro = BuscaTabla(tasaIn, tasaOut);
                 if (filtro == null) filtro = CreaFiltro(tasaIn, tasaOut); // constructor directo de fixtures, nunca usado por la UI
             }
         }

@@ -782,7 +782,7 @@ namespace Rocola
         private void StartDurScan()
         {
             int myGen = ++durScanGen;
-            LecturaBiblioteca lectura = CapturaLecturaBiblioteca();
+            LecturaBiblioteca lectura = CapturaParaBiblioteca(false);
             if (lectura == null) return;
             if (planDuracion != null) planDuracion.Cancela();
             planDuracion = lectura;
@@ -907,10 +907,8 @@ namespace Rocola
                         while (!preScanStop && myGen == durScanGen && videoOn && lectura.Espera(500)) { }
                         if (preScanStop || myGen != durScanGen) break;
                         Visita v = visitas[i];
-                        while (YieldCoverWork(UnidadDe(v.Ruta), CargaTrabajo.Procesadores <= 2))
-                        {
-                            if (!lectura.Espera(40) || preScanStop || myGen != durScanGen) return;
-                        }
+                        if (!EsperaPortadas(UnidadDe(v.Ruta), CargaTrabajo.Procesadores <= 2,
+                            delegate { return lectura.Cancelada || preScanStop || myGen != durScanGen; })) return;
                         bool caro = false;   // hubo que leer el archivo entero (el respaldo), no solo la cabecera
 
                         // ---- LA DURACION ----
@@ -2449,6 +2447,9 @@ namespace Rocola
 
         private void CachePut(string key, Image img)
         {
+#if ROCOLA_GPU
+            coloresPreparados.Remove(key);
+#endif
             Image previous;
             if (coverCache.TryGetValue(key, out previous))
             {
@@ -2461,6 +2462,9 @@ namespace Rocola
             while (coverOrder.Count > TopeDePortadas())
             {
                 string old = coverOrder.First.Value;
+#if ROCOLA_GPU
+                coloresPreparados.Remove(old);
+#endif
                 coverOrder.RemoveFirst(); coverNodes.Remove(old);
                 Image oldImg;
                 if (coverCache.TryGetValue(old, out oldImg)) { coverCache.Remove(old); if (oldImg != null) coverTrash.Add(oldImg); }

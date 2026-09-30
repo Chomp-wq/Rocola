@@ -181,10 +181,10 @@ class BuscaLigero
                     Rectangle z = Zona(W, mainH, f, r, a);
                     Bitmap despues = Compone(so, W, mainH);
                     int[] pa = Pixeles(antes), pd = Pixeles(despues);
-                    int fuera = 0, dentro = 0;
+                    int fuera = 0, dentro = 0; Rectangle resto = Rectangle.Empty;
                     for (int y = 0; y < mainH; y++)
                         for (int x = 0; x < W; x++)
-                            if (pa[y * W + x] != pd[y * W + x]) { if (z.Contains(x, y)) dentro++; else fuera++; }
+                            if (pa[y * W + x] != pd[y * W + x]) { if (z.Contains(x, y)) dentro++; else { fuera++; Rectangle pixel=new Rectangle(x,y,1,1); resto=resto.IsEmpty ? pixel : Rectangle.Union(resto,pixel); } }
                     casos++;
                     string q = null;
                     // Con los resultados enfocados, quedarse sin resultados devuelve el teclado a la mitad izquierda: media
@@ -199,7 +199,7 @@ class BuscaLigero
                         else enteras++;
                     }
                     else if (z.IsEmpty) { q = "no sabe que trozo es (se subiria entera)"; vacios++; }
-                    else if (fuera > 0) q = fuera + " pixeles cambian FUERA del trozo " + z;
+                    else if (fuera > 0) q = fuera + " pixeles cambian FUERA del trozo " + z + "; extension " + resto;
                     else if (dentro == 0) q = "no cambio nada";
                     if (q != null) { malos++; if (primero == null) primero = W + "x" + H + (foco ? ", resultados enfocados" : ", con teclado") + ", " + nombres[c] + ": " + q; }
                     bytesZona += (long)z.Width * z.Height * 4; bytesTodo += (long)W * mainH * 4;
@@ -369,6 +369,7 @@ class BuscaLigero
         Pon(d, "pp", pp);
         Enchufa(d, "createTex", "CreaTex"); Enchufa(d, "setRS", "SetRS"); Enchufa(d, "setFVF", "SetU1"); Enchufa(d, "setTSS", "SetTSS");
         Enchufa(d, "setSamp", "SetSamp"); Enchufa(d, "setTex", "SetTex"); Enchufa(d, "drawUp", "DrawUp"); Enchufa(d, "present", "Present");
+        Pon(d, "verticesSinSoporte", true); // doble UP; el anillo real se comprueba en verticesgpu
         Enchufa(d, "begin", "Hr"); Enchufa(d, "end", "Hr"); Enchufa(d, "testCoop", "Hr");
         string[] arr = { "cubeFaceV", "cubeBatchV", "cbx", "cbz", "cbo" }; int[] lar = { 6, 24, 4, 4, 4 };
         for (int i = 0; i < arr.Length; i++) { FieldInfo f = Campo(TDev, arr[i]); if (f != null && f.GetValue(d) == null) f.SetValue(d, Array.CreateInstance(f.FieldType.GetElementType(), lar[i])); }

@@ -40,6 +40,9 @@ namespace Rocola
 
         private volatile int warmGen = 0;          // generacion del precalentador (se reinicia al recargar musica)
         private readonly object coverLock = new object();
+#if ROCOLA_GPU
+        private readonly Dictionary<string, ColoresDisco> coloresPreparados = new Dictionary<string, ColoresDisco>(StringComparer.OrdinalIgnoreCase);
+#endif
         private const int ThumbPx = 256;         // resolucion de miniaturas (256 sobra a 1024x768; 384 gastaba 2x memoria sin verse mejor en la rocola)
         // PRECALENTAR LA SIGUIENTE CANCION.
         //
@@ -68,6 +71,18 @@ namespace Rocola
                 for (LinkedListNode<CoverJob> node = coverQHi.First; node != null; node = node.Next)
                     if (string.Equals(UnidadDe(node.Value.Key), unit, StringComparison.OrdinalIgnoreCase)) return true;
                 return false;
+            }
+        }
+        private bool EsperaPortadas(string unit, bool smallCpu, Func<bool> cancel)
+        {
+            lock (coverLock)
+            {
+                while (YieldCoverWork(unit, smallCpu))
+                {
+                    if (cancel != null && cancel()) return false;
+                    System.Threading.Monitor.Wait(coverLock, 250);
+                }
+                return cancel == null || !cancel();
             }
         }
         private void PrecalientaSiguiente()
@@ -129,11 +144,8 @@ namespace Rocola
                         while (true)
                         {
                             if (mio != warmSongGen) return;
-                            while (YieldSongWarm(ruta))
-                            {
-                                System.Threading.Thread.Sleep(40);
-                                if (mio != warmSongGen) return;
-                            }
+                            if (!EsperaPortadas(UnidadDe(ruta), CargaTrabajo.Procesadores <= 2,
+                                delegate { return mio != warmSongGen; })) return;
                             int n = (entera != null) ? fs.Read(entera, hecho, Math.Min(trozo, entera.Length - hecho)) : fs.Read(buf, 0, buf.Length);
                             if (n <= 0) break;
                             hecho += n;
@@ -419,6 +431,7 @@ namespace Rocola
             {
                 CancelQueuedCovers(coverQHi);
                 CancelQueuedCovers(coverQLo);
+                System.Threading.Monitor.PulseAll(coverLock);
             }
         }
 
@@ -441,8 +454,12 @@ namespace Rocola
             lock (coverLock)
             {
                 coverGen++;
+#if ROCOLA_GPU
+                coloresPreparados.Clear();
+#endif
                 coverArrivals.Clear();   // el mensaje pendiente puede atender llegadas de la nueva generacion
                 coverQHi.Clear(); coverQLo.Clear(); coverLoading.Clear(); coverRetryUntil.Clear();
+                System.Threading.Monitor.PulseAll(coverLock);
                 foreach (KeyValuePair<string, Image> kv in coverCache) if (kv.Value != null) coverTrash.Add(kv.Value);
                 coverCache.Clear(); coverOrder.Clear(); coverNodes.Clear();
             }
@@ -487,6 +504,7 @@ namespace Rocola
                     if (active <= 1) coverActiveUnits.Remove(job.Unit);
                     else coverActiveUnits[job.Unit] = active - 1;
                 }
+                System.Threading.Monitor.PulseAll(coverLock);
             }
         }
 
@@ -523,6 +541,18 @@ namespace Rocola
                         }
                     }
                     catch { if (thumb != null) { try { thumb.Dispose(); } catch { } thumb = null; } }
+#if ROCOLA_GPU
+                    ColoresDisco tonos = new ColoresDisco();
+                    if (gpuEnabled && thumb is Bitmap)
+                    {
+                        try
+                        {
+                            tonos.Prom = ColoresDePortada((Bitmap)thumb, out tonos.Uno, out tonos.Dos);
+                            tonos.Paleta = ExtractCoverPalette((Bitmap)thumb); tonos.Fuente = thumb;
+                        }
+                        catch { tonos.Fuente = null; } // un fallo de GDI no mata el trabajador ni pierde la portada
+                    }
+#endif
                     lock (coverLock)
                     {
                         // Validar y publicar en el MISMO candado que invalida. Un trabajo viejo
@@ -534,6 +564,9 @@ namespace Rocola
                         }
                         if (thumb != null) { CachePut(key, thumb); coverRetryUntil.Remove(key); }
                         else coverRetryUntil[key] = unchecked(Environment.TickCount + 30000);
+#if ROCOLA_GPU
+                        if (tonos.Fuente != null) coloresPreparados[key] = tonos;
+#endif
                         coverLoading.Remove(key);
                     }
                     if (thumb != null)

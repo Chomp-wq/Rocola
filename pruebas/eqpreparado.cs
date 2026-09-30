@@ -36,6 +36,7 @@ class EqPreparado
             if(!f.IsStatic && f.FieldType.Namespace!=null && f.FieldType.Namespace.StartsWith("System.Collections") && f.FieldType.GetConstructor(Type.EmptyTypes)!=null)
                 f.SetValue(owner,Activator.CreateInstance(f.FieldType));
         Set(form,owner,"levelLock",new object());
+        Set(form,owner,"audioDatosLock",new object());
         return (ISampleProvider)Activator.CreateInstance(form.GetNestedType("LevelTap",F),F,null,new object[]{new Input(rate,channels),owner},null);
     }
     static void Curve(ISampleProvider tap,float[] db) {

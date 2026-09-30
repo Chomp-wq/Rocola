@@ -362,6 +362,7 @@ class FranjaReloj
         Pon(d, "pp", pp);
         Enchufa(d, "createTex", "CreaTex"); Enchufa(d, "setRS", "SetRS"); Enchufa(d, "setFVF", "SetU1"); Enchufa(d, "setTSS", "SetTSS");
         Enchufa(d, "setSamp", "SetSamp"); Enchufa(d, "setTex", "SetTex"); Enchufa(d, "drawUp", "DrawUp"); Enchufa(d, "present", "Present");
+        Pon(d, "verticesSinSoporte", true); // doble UP sin vtable COM; el anillo se prueba en verticesgpu/HAL
         Enchufa(d, "begin", "Hr"); Enchufa(d, "end", "Hr"); Enchufa(d, "testCoop", "Hr");
         string[] arr = { "cubeFaceV", "cubeBatchV", "cbx", "cbz", "cbo" }; int[] lar = { 6, 24, 4, 4, 4 };
         for (int i = 0; i < arr.Length; i++) { FieldInfo f = Campo(TDev, arr[i]); if (f != null && f.GetValue(d) == null) f.SetValue(d, Array.CreateInstance(f.FieldType.GetElementType(), lar[i])); }

@@ -69,6 +69,9 @@ namespace Rocola
         [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int SetU3Del(IntPtr self, uint a, uint b, uint c);
         [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int SetTexDel(IntPtr self, uint stage, IntPtr tex);
         [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int DrawUpDel(IntPtr self, uint primType, uint primCount, IntPtr data, uint stride);
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int CreateVBDel(IntPtr self, uint length, uint usage, uint fvf, uint pool, out IntPtr vb, IntPtr shared);
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int LockVBDel(IntPtr self, uint offset, uint size, out IntPtr data, uint flags);
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int StreamDel(IntPtr self, uint stream, IntPtr vb, uint offset, uint stride);
         [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int CreateTexDel(IntPtr self, uint w, uint h, uint levels, uint usage, uint format, uint pool, out IntPtr tex, IntPtr shared);
         [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int LockRectDel(IntPtr self, uint level, out LockedRect lr, IntPtr rect, uint flags);
         [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int UnlockRectDel(IntPtr self, uint level);
@@ -90,6 +93,19 @@ namespace Rocola
     internal sealed class D3D9Device
     {
         private IntPtr d3d, dev;
+        // Anillo dinamico acotado. NOOVERWRITE nunca pisa vertices aun usados por la GPU.
+        private IntPtr verticesGpu;
+        private int verticesCap, verticesPos;
+        private bool verticesSinSoporte;
+        private bool verticesSoftware;
+        // Calibracion sobre dibujos reales, sin dibujos extra ni limite de FPS/CPU.
+        private int verticesModo, verticesPruebaTris, verticesPruebas;
+        private long verticesUpTicks, verticesVbTicks;
+        private D3D9.CreateVBDel creaVertices;
+        private D3D9.LockVBDel bloqueaVertices;
+        private D3D9.HrSelf sueltaVertices;
+        private D3D9.StreamDel flujoVertices;
+        private D3D9.SetU3Del dibujaVertices;
         private D3D9.PresentParams pp;
         private bool lost, resetPending, inScene;
 
@@ -125,6 +141,7 @@ namespace Rocola
                     // defectuosa antes de intentar el camino por software.
                     if (dv != IntPtr.Zero) D3D9.Release(dv);
                     dv = IntPtr.Zero;
+                    verticesSoftware = true;
                     hr = create(d3d, 0, D3D9.DEVTYPE_HAL, hwnd, D3D9.CREATE_SOFTWARE_VP | D3D9.CREATE_FPU_PRESERVE, ref pp, out dv);
                 }
                 if (hr < 0 || dv == IntPtr.Zero)
@@ -185,6 +202,7 @@ namespace Rocola
             if (inScene) { lost = true; return false; }
             try
             {
+                LiberaVertices();
                 if (reset(dev, ref pp) < 0)
                 {
                     // Se conserva el tamano PEDIDO. BeginFrame lo reintentara cuando el dispositivo vuelva
@@ -368,6 +386,7 @@ namespace Rocola
                     if (tc < 0 && tc != D3D9.E_DEVICENOTRESET) return false;
                     if (tc == D3D9.E_DEVICENOTRESET || resetPending)
                     {
+                        LiberaVertices();
                         if (reset(dev, ref pp) < 0 || !InitStates()) return false;
                         resetPending = false;
                         lost = false;
@@ -598,17 +617,93 @@ namespace Rocola
         {
             if (dev == IntPtr.Zero || lost || verts == null || tris <= 0 || tris > verts.Length / 3) return;
             GCHandle gh = GCHandle.Alloc(verts, GCHandleType.Pinned);
+            bool prueba = false, usaBuffer = false;
+            long inicio = 0;
             try
             {
+                // Los dibujos pequenos conservan UP: para un quad es mas barato que tres llamadas COM.
+                if (tris >= 64 && !verticesSinSoporte)
+                {
+                    if (verticesPruebaTris == 0) verticesPruebaTris = tris;
+                    prueba = verticesModo == 0 && tris == verticesPruebaTris;
+                    usaBuffer = verticesModo == 2 || (prueba && (verticesPruebas & 1) != 0);
+                    if (prueba) inicio = System.Diagnostics.Stopwatch.GetTimestamp();
+                    if (usaBuffer && DibujaVertices(tris, gh.AddrOfPinnedObject())) return;
+                }
                 if (drawUp(dev, D3D9.PT_TRIANGLELIST, (uint)tris, gh.AddrOfPinnedObject(), D3D9.VtxSize) < 0)
                     EstadoFallido();
             }
             catch { EstadoFallido(); }
-            finally { gh.Free(); }
+            finally
+            {
+                if (prueba && !lost && !verticesSinSoporte)
+                {
+                    long ticks = System.Diagnostics.Stopwatch.GetTimestamp() - inicio;
+                    // Las primeras parejas ceban recursos/JIT; no se comparan.
+                    if (verticesPruebas >= 4) { if (usaBuffer) verticesVbTicks += ticks; else verticesUpTicks += ticks; }
+                    if (++verticesPruebas >= 44)
+                    { verticesModo = verticesVbTicks < verticesUpTicks * .95 ? 2 : 1;
+                      if (verticesModo == 1) LiberaVertices(); }
+                }
+                gh.Free();
+            }
+        }
+        private bool DibujaVertices(int tris, IntPtr datos)
+        {
+            int n = tris * 3;
+            if (verticesSinSoporte || n > 196608) return false;
+            try
+            {
+                if (verticesGpu == IntPtr.Zero || n > verticesCap)
+                {
+                    LiberaVertices();
+                    if (creaVertices == null)
+                    {
+                        creaVertices = D3D9.Fn<D3D9.CreateVBDel>(dev, 26);
+                        flujoVertices = D3D9.Fn<D3D9.StreamDel>(dev, 100);
+                        dibujaVertices = D3D9.Fn<D3D9.SetU3Del>(dev, 81);
+                    }
+                    verticesCap = Math.Max(49152, n);
+                    // DYNAMIC | WRITEONLY, POOL_DEFAULT; liberado ANTES de cada Reset.
+                    if (creaVertices(dev, (uint)(verticesCap * D3D9.VtxSize), verticesSoftware ? 0x218u : 0x208u, D3D9.FVF, 0, out verticesGpu, IntPtr.Zero) < 0
+                        || verticesGpu == IntPtr.Zero)
+                    { LiberaVertices(); verticesSinSoporte = true; return false; }
+                    bloqueaVertices = D3D9.Fn<D3D9.LockVBDel>(verticesGpu, 11);
+                    sueltaVertices = D3D9.Fn<D3D9.HrSelf>(verticesGpu, 12);
+                }
+                if (verticesPos + n > verticesCap) verticesPos = 0;
+                IntPtr destino;
+                if (bloqueaVertices(verticesGpu, (uint)(verticesPos * D3D9.VtxSize), (uint)(n * D3D9.VtxSize),
+                    out destino, verticesPos == 0 ? 0x2000u : 0x1000u) < 0)
+                { LiberaVertices(); verticesSinSoporte = true; return false; }
+                if (destino == IntPtr.Zero)
+                { sueltaVertices(verticesGpu); LiberaVertices(); verticesSinSoporte = true; return false; }
+                bool copiado = false;
+                try { D3D9.CopyMemory(destino, datos, new UIntPtr((uint)(n * D3D9.VtxSize))); copiado = true; }
+                finally { if (sueltaVertices(verticesGpu) < 0) copiado = false; }
+                if (!copiado) { EstadoFallido(); return true; }
+                if (flujoVertices(dev, 0, verticesGpu, 0, D3D9.VtxSize) < 0 ||
+                    dibujaVertices(dev, D3D9.PT_TRIANGLELIST, (uint)verticesPos, (uint)tris) < 0)
+                { EstadoFallido(); return true; }
+                verticesPos += n;
+                return true;
+            }
+            catch { LiberaVertices(); verticesSinSoporte = true; EstadoFallido(); return true; }
+        }
+        private void LiberaVertices()
+        {
+            IntPtr v = verticesGpu; verticesGpu = IntPtr.Zero; verticesPos = verticesCap = 0;
+            if (v != IntPtr.Zero)
+            {
+                try { if (flujoVertices != null && dev != IntPtr.Zero) flujoVertices(dev, 0, IntPtr.Zero, 0, D3D9.VtxSize); } catch { }
+                D3D9.Release(v);
+            }
+            bloqueaVertices = null; sueltaVertices = null;
         }
 
         public void Dispose()
         {
+            LiberaVertices();
             lost = true;
             resetPending = false;
             inScene = false;

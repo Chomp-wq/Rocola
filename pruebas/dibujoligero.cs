@@ -177,6 +177,7 @@ class DibujoLigero
         Enchufa(d, "createTex", "CreaTex");
         Enchufa(d, "setRS", "SetRS"); Enchufa(d, "setFVF", "SetU1"); Enchufa(d, "setTSS", "SetTSS"); Enchufa(d, "setSamp", "SetSamp");
         Enchufa(d, "setTex", "SetTex"); Enchufa(d, "drawUp", "DrawUp"); Enchufa(d, "present", "Present");
+        Pon(d, "verticesSinSoporte", true); // doble UP; el anillo real se comprueba en verticesgpu
         Enchufa(d, "begin", "Hr"); Enchufa(d, "end", "Hr"); Enchufa(d, "testCoop", "Hr");
         if (Campo(TDev, "clear") != null) Enchufa(d, "clear", "Clear");   // el de antes todavia borraba: que se vea
         // Lo que en Modest se crea en la declaracion (un objeto hecho sin constructor no lo tiene).

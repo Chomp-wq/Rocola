@@ -1004,7 +1004,14 @@ namespace Rocola
             Rectangle arriba, derecha, zona = Rectangle.Empty;
             if (!searchOverlay.ZonasAlEscribir(out arriba, out derecha)) return Rectangle.Empty;
             if (res != uiBuscaRes) zona = derecha;   // las tarjetas de los resultados, con su cabecera
-            if (aviso != uiBuscaAviso) zona = zona.IsEmpty ? searchOverlay.ZonaAviso() : Rectangle.Union(zona, searchOverlay.ZonaAviso());
+            if (aviso != uiBuscaAviso)
+            {
+                Rectangle avisoZona = searchOverlay.ZonaAviso();
+                // TextRenderer sobre PArgb puede modificar alfa de otras formas en estas mismas filas.
+                // Subir la franja completa conserva TODOS los pixeles, sin subir la pantalla entera.
+                avisoZona.X = 0; avisoZona.Width = searchOverlay.Width;
+                zona = zona.IsEmpty ? avisoZona : Rectangle.Union(zona, avisoZona);
+            }
             zona.Offset(searchOverlay.Left, searchOverlay.Top);
             zona.Intersect(new Rectangle(0, 0, w, mainH));
             return zona;

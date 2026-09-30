@@ -588,7 +588,7 @@ class SinPausa
         Set(f, "curMeasurePath", ra); Set(f, "curSumSq", muestras * .01); Set(f, "curSamples", muestras);
         Set(f, "kwRate", fs); Set(f, "kwCanales", ch);
         Set(f, "eqMeasPath", ra); Set(f, "eqMeasSum", new double[8]); Set(f, "eqMeasN", 0L);
-        object puerta = Get(f, "levelLock"); Exception fallo = null;
+        object puerta = Get(f, "audioDatosLock"); Exception fallo = null;
         using (ManualResetEvent empezo = new ManualResetEvent(false))
         using (ManualResetEvent termino = new ManualResetEvent(false))
         {

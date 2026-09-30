@@ -155,7 +155,7 @@ namespace Rocola
             // Releva publica la ficha antes del primer Read de la nueva. Si ese Read tarda,
             // el relevo de UI puede coincidir con su primer bloque: consulta y cierre deben
             // ser atomicos respecto a PublicaBloqueDe. Lectores, cola y UI quedan fuera.
-            lock (levelLock)
+            lock (audioDatosLock)
             {
                 MedidaCancion m = b.Tap != null ? b.Tap.Medida : null;
                 if (m != null && m.CierreAnterior.Listo) CierraMedida(m.CierreAnterior, eqMeasCut, eqMeasCutLo);
@@ -228,7 +228,7 @@ namespace Rocola
 
         // Al parar la salida (saltar, cerrar, fallo): la siguiente preparada se suelta, y si ya habia entrado
         // sin que la pantalla se enterara, la medida que el hilo del sonido guardo de la anterior se cierra.
-        // Bajo levelLock y con la publicacion ya invalidada. El lector se devuelve al cierre de la bomba:
+        // Bajo audioDatosLock y con la publicacion ya invalidada. El lector se devuelve al cierre de la bomba:
         // el hilo puede seguir dentro del ultimo Read y debe conservarlo hasta salir.
         private IAudioSource SueltaSinPausa()
         {

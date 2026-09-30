@@ -1528,7 +1528,7 @@ namespace Rocola
             SueltaExclusivo();   // el aparato del exclusivo y lo que recibia (SalidaExclusiva.cs)
             IAudioSource lectorActual = reader; reader = null;
             IAudioSource lectorPreparado;
-            lock (levelLock)
+            lock (audioDatosLock)
             {
                 lectorPreparado = SueltaSinPausa();   // retira la siguiente; conserva el lector hasta acabar el ultimo Read
                 FinalizeLoudMeasure();   // solo lo publicado antes de cancelar; la cancion nueva no recibe un bloque viejo

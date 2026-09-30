@@ -93,7 +93,8 @@ namespace Rocola
                 {
                     if (table == 8)
                     {
-                        if (File.Exists(load.Paths[8])) using (StreamReader r = new StreamReader(load.Paths[8]))
+                        if (File.Exists(load.Paths[8])) using (FileStream fs = File.OpenRead(load.Paths[8]))
+                            using (TextReader r = LeeLineasSanas(fs))
                             data.FuentesEstado = LeeFuentes(new StartupTextReader(r, load), data.Fuentes);
                         continue;
                     }
@@ -250,7 +251,8 @@ namespace Rocola
             InvalidateVideoMeasurements();
             loudCache = data.Loud; durCache = data.Dur; durFast = data.Fast; eqCache = data.Eq;
             iaDone = data.Ia; deepDone = data.Deep; incompatibleLogged = data.Incompatible;
-            lock (fuentesCerrojo) { fuentesMedidas = data.Fuentes; fuentesEstado = data.FuentesEstado; }
+            lock (fuentesCerrojo) { fuentesMedidas = data.Fuentes; fuentesEstado = data.FuentesEstado;
+                fuentesTrabajo = null; diarioFuentes = null; fuentesPendientes.Clear(); fuentesGuardados = ++fuentesCambios; }
             if (data.IntegEstado == 0) LoadIntegCache();   // el trabajador no la leyo: se lee aqui
             else { lock (integCerrojo) integCache = data.Integ; integAjenas = data.IntegAjenas; integEstado = data.IntegEstado; }
             eqCacheVer = data.EqVersion; eqAvg = data.Average;
@@ -1752,7 +1754,7 @@ namespace Rocola
         // Olvida lo aprendido de una ruta (en el hilo de la pantalla, dueno de las tablas) y lo guarda asi.
         private void OlvidaMedidas(string ruta)
         {
-            lock (fuentesCerrojo) { if (fuentesMedidas.Remove(ruta)) fuentesCambios++; }
+            lock (fuentesCerrojo) { if (fuentesMedidas.Remove(ruta)) { fuentesPendientes[ruta] = null; fuentesCambios++; } }
             loudCache.Remove(ruta); durCache.Remove(ruta);
             if (eqCache.Remove(ruta)) { eqCacheVer++; eqDirty = true; }
             bool integ;

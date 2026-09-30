@@ -27,6 +27,9 @@ namespace Rocola
         private int fuentesEstado = 1; // 2: formato posterior/ilegible: nunca sobrescribirlo
         private long fuentesCambios, fuentesGuardados;
         private readonly GuardadoReciente fuentesCola = new GuardadoReciente();
+        private readonly Dictionary<string, RegistroFuente> fuentesPendientes = new Dictionary<string, RegistroFuente>(StringComparer.OrdinalIgnoreCase);
+        private Dictionary<string, RegistroFuente> fuentesTrabajo; // solo el escritor serial; copia completa una vez
+        private DiarioTabla diarioFuentes;
         private FuenteMedida curFuenteMedida;
         // El sello pertenece a los bytes del lector abierto, no a lo que haya en la
         // ruta cuando BeginInvoke entregue ese lector o termine la precarga.
@@ -117,7 +120,13 @@ namespace Rocola
             SonoridadIntegrada s = new SonoridadIntegrada(); bool hay;
             lock (integCerrojo) hay = integCache != null && integCache.TryGetValue(ruta, out s);
             r.Mapa = hay && s.Silencios.Valido ? FirmaMapa(s.Silencios) : "-";
-            lock (fuentesCerrojo) { fuentesMedidas[ruta] = r; fuentesCambios++; }
+            lock (fuentesCerrojo)
+            {
+                RegistroFuente antes;
+                if (fuentesMedidas.TryGetValue(ruta, out antes) && antes.Fuente.Igual(fuente)
+                    && antes.Medidas == r.Medidas && antes.Mapa == r.Mapa) return;
+                fuentesMedidas[ruta] = r; fuentesPendientes[ruta] = r; fuentesCambios++;
+            }
         }
         // Solo en UI: invalida TODAS las medidas correlacionadas, antes de aplicar EQ.
         private FuenteMedida CompruebaFuenteMedida(string ruta)
@@ -162,42 +171,72 @@ namespace Rocola
         private void LoadFuentesMedidas()
         {
             Dictionary<string, RegistroFuente> d = new Dictionary<string, RegistroFuente>(StringComparer.OrdinalIgnoreCase); int estado = 1;
-            try { if (File.Exists(FuentesFile())) using (StreamReader r = new StreamReader(FuentesFile())) estado = LeeFuentes(r, d); }
+            try { if (File.Exists(FuentesFile())) using (FileStream fs = File.OpenRead(FuentesFile()))
+                using (TextReader r = LeeLineasSanas(fs)) estado = LeeFuentes(r, d); }
             catch { estado = 2; d.Clear(); }
-            lock (fuentesCerrojo) { fuentesMedidas = d; fuentesEstado = estado; }
+            lock (fuentesCerrojo) { fuentesMedidas = d; fuentesEstado = estado; fuentesTrabajo = null;
+                diarioFuentes = null; fuentesPendientes.Clear(); fuentesGuardados = ++fuentesCambios; }
         }
         private void SaveFuentesMedidas()
         {
             if (startupReadPending || fuentesEstado != 1) return;
-            List<KeyValuePair<string, RegistroFuente>> snap; long hasta;
-            lock (fuentesCerrojo)
-            {
-                hasta = fuentesCambios; if (hasta == System.Threading.Interlocked.Read(ref fuentesGuardados)) return;
-                snap = new List<KeyValuePair<string, RegistroFuente>>(fuentesMedidas);
-            }
+            lock (fuentesCerrojo) if (fuentesCambios == fuentesGuardados) return;
             string ruta = FuentesFile();
             GuardaUltimo(fuentesCola, delegate
             {
                 try
                 {
-                    Func<bool> vigente = delegate { lock (fuentesCerrojo) return hasta == fuentesCambios; };
-                    if (EscribeFlujoSeguro(ruta, delegate(TextWriter w)
+                    long hasta; Dictionary<string, RegistroFuente> trabajo;
+                    List<KeyValuePair<string, RegistroFuente>> cambios; DiarioTabla diario;
+                    lock (fuentesCerrojo)
                     {
-                        w.Write("ROCOLA-FUENTES v1\r\n");
-                        for (int i = 0; i < snap.Count; i++)
+                        if (fuentesEstado != 1 || fuentesCambios == fuentesGuardados) return;
+                        hasta = fuentesCambios;
+                        if (fuentesTrabajo == null) fuentesTrabajo = new Dictionary<string, RegistroFuente>(fuentesMedidas, StringComparer.OrdinalIgnoreCase);
+                        trabajo = fuentesTrabajo;
+                        cambios = new List<KeyValuePair<string, RegistroFuente>>(fuentesPendientes);
+                        if (diarioFuentes == null) diarioFuentes = new DiarioTabla();
+                        diario = diarioFuentes;
+                    }
+                    for (int i = 0; i < cambios.Count; i++)
+                    { if (cambios[i].Value == null) trabajo.Remove(cambios[i].Key); else trabajo[cambios[i].Key] = cambios[i].Value; }
+                    // Ordenar/formatear/comparar tablas nunca en la UI. DiarioTabla anade solo diferencias
+                    // y conserva reemplazo atomico, recuperacion externa y compactacion de las otras tablas.
+                    List<KeyValuePair<string, RegistroFuente>> snap = new List<KeyValuePair<string, RegistroFuente>>(trabajo);
+                    Func<bool> vigente = delegate { lock (fuentesCerrojo)
+                        return fuentesEstado == 1 && hasta == fuentesCambios && object.ReferenceEquals(trabajo, fuentesTrabajo); };
+                    if (diario.Guarda(ruta, snap, HuellaFuente, EscribeFuente, "ROCOLA-FUENTES v1", null, vigente))
+                    {
+                        lock (fuentesCerrojo)
                         {
-                            if ((i & 127) == 0 && !vigente()) return false;
-                            RegistroFuente r = snap[i].Value;
-                            w.Write(r.Fuente.Largo.ToString(CultureInfo.InvariantCulture)); w.Write('|');
-                            w.Write(r.Fuente.Creada.ToString(CultureInfo.InvariantCulture)); w.Write('|');
-                            w.Write(r.Fuente.Escrita.ToString(CultureInfo.InvariantCulture)); w.Write('|');
-                            w.Write(r.Medidas); w.Write('|'); w.Write(r.Mapa); w.Write('|'); w.Write(snap[i].Key); w.Write("\r\n");
+                            if (!object.ReferenceEquals(trabajo, fuentesTrabajo)) return;
+                            for (int i = 0; i < cambios.Count; i++)
+                            { RegistroFuente actual; if (fuentesPendientes.TryGetValue(cambios[i].Key, out actual)
+                                && object.ReferenceEquals(actual, cambios[i].Value)) fuentesPendientes.Remove(cambios[i].Key); }
+                            System.Threading.Interlocked.Exchange(ref fuentesGuardados, hasta);
                         }
-                        return true;
-                    }, vigente)) System.Threading.Interlocked.Exchange(ref fuentesGuardados, hasta);
+                    }
                 }
                 catch { } // igual que las medidas: fallo de disco no detiene la reproduccion
             });
+        }
+        private static long HuellaFuente(string ruta, RegistroFuente r)
+        {
+            long h = HuellaVacia;
+            h = Mezcla(h, (int)r.Fuente.Largo); h = Mezcla(h, (int)(r.Fuente.Largo >> 32));
+            h = Mezcla(h, (int)r.Fuente.Creada); h = Mezcla(h, (int)(r.Fuente.Creada >> 32));
+            h = Mezcla(h, (int)r.Fuente.Escrita); h = Mezcla(h, (int)(r.Fuente.Escrita >> 32));
+            for (int i = 0; i < r.Medidas.Length; i++) h = Mezcla(h, r.Medidas[i]);
+            h = Mezcla(h, '|');
+            for (int i = 0; i < r.Mapa.Length; i++) h = Mezcla(h, r.Mapa[i]);
+            return h;
+        }
+        private static void EscribeFuente(TextWriter w, string ruta, RegistroFuente r)
+        {
+            w.Write(r.Fuente.Largo.ToString(CultureInfo.InvariantCulture)); w.Write('|');
+            w.Write(r.Fuente.Creada.ToString(CultureInfo.InvariantCulture)); w.Write('|');
+            w.Write(r.Fuente.Escrita.ToString(CultureInfo.InvariantCulture)); w.Write('|');
+            w.Write(r.Medidas); w.Write('|'); w.Write(r.Mapa); w.Write('|'); w.Write(ruta); w.Write("\r\n");
         }
         private bool PublicaMedidaDeFuente(string ruta, float rms, float dur, float[] eq, FuenteMedida fuente)
         {

@@ -169,6 +169,22 @@ ni sustituye archivos de los releases; necesita Direct3D 9 para las comprobacion
 Estas baterías usan el runtime de cada rama. No equivalen a una prueba con música,
 una medición de FPS en el equipo de destino ni una certificación de Windows XP.
 
+## Eficiencia compartida (30-09-2026, Windows)
+
+`powershell -File pruebas/validar-mejoras-20260929.ps1` compila GPU y CPU con
+advertencias como errores, ejecuta las regresiones y las dos nuevas baterias:
+
+- `eficiencia`: 34 comprobaciones de planes reducidos, bloqueos separados,
+  senales HDD, caches acotadas, muestras de color identicas y registro incremental.
+  Admite `eficiencia.exe Rocola-gpu.exe --dos-hilos` para limitar solo la prueba.
+- `verticesgpu`: 45 comprobaciones HAL reales, equivalencia de superficies entre
+  UP/anillo, Reset, reutilizacion, seleccion adaptativa y liberacion.
+
+El lanzador tambien incluye buscaligero, dibujoligero y aurorafina. No reemplaza
+releases ni datos del usuario. Afinidad reducida no equivale a un procesador
+antiguo; las mediciones sinteticas no certifican XP ni FPS en una biblioteca real.
+Detalles: `EFICIENCIA_2026-09-30.md`.
+
 ## Añadir una batería nueva
 
 1. Escribe `mibateria.cs` con un `Main` que reciba la ruta del ejecutable como primer argumento.
