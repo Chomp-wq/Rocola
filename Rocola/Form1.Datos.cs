@@ -1033,13 +1033,13 @@ namespace Rocola
             if (eqCache.Count < 10) { eqAvg = null; eqAvgSanas = 0; return; }
             float[] avg = new float[8]; int n = 0;
             foreach (KeyValuePair<string, float[]> kv in eqCache)
-                if (kv.Value[EqCut] >= EqSanaHz) { for (int b = 0; b < 8; b++) avg[b] += kv.Value[b]; n++; }
+                if (kv.Value[EqFingerprint] == EqVersionOriginal && kv.Value[EqCut] >= EqSanaHz) { for (int b = 0; b < 8; b++) avg[b] += kv.Value[b]; n++; }
             eqAvgSoloSanas = (n >= 10);
             if (!eqAvgSoloSanas)   // aun no hay bastantes sanas medidas: se usa todo, como se hacia antes
             {
                 for (int b = 0; b < 8; b++) avg[b] = 0f;
                 n = 0;
-                foreach (KeyValuePair<string, float[]> kv in eqCache) { for (int b = 0; b < 8; b++) avg[b] += kv.Value[b]; n++; }
+                foreach (KeyValuePair<string, float[]> kv in eqCache) if (kv.Value[EqFingerprint] == EqVersionOriginal) { for (int b = 0; b < 8; b++) avg[b] += kv.Value[b]; n++; }
             }
             if (n < 10) { eqAvg = null; eqAvgSanas = 0; return; }
             for (int b = 0; b < 8; b++) avg[b] /= n;
@@ -1076,7 +1076,7 @@ namespace Rocola
             float fuerza = eqAuto ? EqFuerzaAuto() : eqAmount;
             if (fuerza <= 0.001f || path == null || eqAvg == null) return null;
             float[] c;
-            if (!eqCache.TryGetValue(path, out c)) return null;
+            if (!eqCache.TryGetValue(path, out c) || c[EqFingerprint] != EqVersionOriginal) return null;
             // Banda por ENCIMA del acantilado de esta cancion: NUNCA se corrige, y por dos razones distintas
             // segun el caso. Con el DSEE apagado, ahi el codec no dejo musica: subirla seria subir ruido. Y con
             // el DSEE encendido tampoco, porque la huella guardada describe el ARCHIVO (donde esa banda esta
@@ -1295,7 +1295,7 @@ namespace Rocola
             curve[EqCut] = (corte > 0f) ? corte : (had ? prev[EqCut] : 0f);
             curve[EqCutLo] = (corteBajo > 0f) ? corteBajo : (had ? prev[EqCutLo] : 0f);
             curve[EqClip] = had ? prev[EqClip] : 0f;   // el recorte solo lo mide el pre-analisis (aqui ya viene reparado)
-            curve[EqFingerprint] = 1f;   // no promediar con la antigua medicion mono
+            curve[EqFingerprint] = EqVersionOriginal;   // nunca promediar con huellas mono o post-DSP
             if (!Finitos(curve)) return;   // una medida rota no se guarda (envenenaria la media de la biblioteca)
             eqCache[path] = curve; eqCacheVer++;
             EnsureEqAverage();

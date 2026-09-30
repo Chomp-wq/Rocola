@@ -2369,15 +2369,25 @@ namespace Rocola
             // de fondo. Sin etiqueta, o si no es un MP3: cadena vacia, que es "no se sabe".
             public static string SoloArtista(string path)
             {
+                string artista, genero;
+                SoloArtistaGenero(path, out artista, out genero);
+                return artista;
+            }
+
+            // Una sola lectura acotada para la metadata del corpus; no cargar portada ni adivinar etiquetas.
+            public static void SoloArtistaGenero(string path, out string artista, out string genero)
+            {
                 Track t = new Track();
                 t.Path = path; t.Artist = ""; t.Title = ""; t.Album = ""; t.Genre = "";
+                artista = ""; genero = "";
                 try
                 {
-                    if (System.IO.Path.GetExtension(path).ToLowerInvariant() != ".mp3") return "";
+                    if (System.IO.Path.GetExtension(path).ToLowerInvariant() != ".mp3") return;
                     ReadId3(path, t);
                 }
                 catch { }
-                return (t.Artist ?? "").Trim();
+                artista = (t.Artist ?? "").Trim();
+                genero = (t.Genre ?? "").Trim();
             }
 
             public static string SoloGenero(string path)

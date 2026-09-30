@@ -15,6 +15,21 @@ def cargar_csv(ruta):
                 filas.append((hz, row[2]))
     return filas
 
+
+def seleccionar(filas, cuantas, semilla=2026):
+    # Dano extremo, medio, leve y controles sanos. Distribuir sobrantes sin sesgo de orden.
+    rng = random.Random(semilla)
+    cubetas = [[r for hz, r in filas if condicion(hz)] for condicion in
+               (lambda hz: 0 < hz <= 9000, lambda hz: 9000 < hz < 12500,
+                lambda hz: 12500 <= hz < 15500, lambda hz: 15500 <= hz < 18500,
+                lambda hz: hz >= 18500)]
+    for c in cubetas: rng.shuffle(c)
+    elegidas = []
+    while len(elegidas) < cuantas and any(cubetas):
+        for c in cubetas:
+            if c and len(elegidas) < cuantas: elegidas.append(c.pop())
+    return elegidas
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--csv", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "calidad_biblioteca.csv"))
@@ -24,14 +39,7 @@ def main():
     if not os.path.exists(a.csv):
         print("[X] No encuentro", a.csv, "- corre primero 3_escanear.bat"); return 1
     filas = cargar_csv(a.csv)
-    rng = random.Random(2026)
-    # tres cubetas por nivel de dano; se toma un tercio de cada una (variedad real)
-    brutal = [r for hz, r in filas if 0 < hz <= 9000]
-    muy    = [r for hz, r in filas if 9000 < hz < 12500]
-    dan    = [r for hz, r in filas if 12500 <= hz < 15500]
-    for c in (brutal, muy, dan): rng.shuffle(c)
-    k = max(1, a.cuantas // 3)
-    elegidas = brutal[:k] + muy[:k] + dan[:k]
+    elegidas = seleccionar(filas, max(1, a.cuantas))
     if not elegidas:
         print("[X] El CSV no tiene canciones danadas (<15.5 kHz). Nada que probar aqui."); return 1
     os.makedirs(a.salida, exist_ok=True)

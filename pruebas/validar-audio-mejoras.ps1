@@ -1,12 +1,25 @@
 param(
     [string]$OutputDirectory = (Join-Path $env:TEMP ('rocola-audio-' + [Guid]::NewGuid().ToString('N'))),
     [string]$Python = 'python',
-    [string]$Ffmpeg = 'ffmpeg'
+    [string]$Ffmpeg = 'ffmpeg',
+    [switch]$SkipLayers
 )
 $ErrorActionPreference = 'Stop'
+$previousRocolaData = $env:ROCOLA_DATOS
+try {
+New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
+$OutputDirectory = (Resolve-Path $OutputDirectory).Path
+$isolatedRocolaData = Join-Path $OutputDirectory ('datos-pruebas-' + [Guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $isolatedRocolaData | Out-Null
+$env:ROCOLA_DATOS = $isolatedRocolaData
 $testRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Split-Path -Parent $testRoot
-& (Join-Path $testRoot 'validar-capas.ps1') -OutputDirectory $OutputDirectory
+if ($SkipLayers) {
+    # Repetir audio sin repetir las capas ya verificadas; siempre recompila las fuentes actuales.
+    & (Join-Path $testRoot 'validar-audio-20260929.ps1') -OutputDirectory $OutputDirectory -BuildOnly
+} else {
+    & (Join-Path $testRoot 'validar-capas.ps1') -OutputDirectory $OutputDirectory
+}
 $out = (Resolve-Path $OutputDirectory).Path
 [xml]$project = Get-Content (Join-Path $repoRoot 'Rocola\Rocola.csproj')
 $framework = if ($project.Project.PropertyGroup.TargetFrameworkVersion -contains 'v3.5') { 'v3.5' } else { 'v4.0.30319' }
@@ -28,7 +41,7 @@ try {
             & $Ffmpeg -hide_banner -loglevel error -nostdin -n -f lavfi -i 'anoisesrc=color=white:amplitude=0.12:sample_rate=44100:duration=12:seed=1234' -ac 2 -c:a pcm_s16le $fixture
             if ($LASTEXITCODE -ne 0) { throw 'No genera WAV de prueba' }
         }
-        if ($test -in @('dsee','limite','entrenador','iaparidad','iaorigen','sonoridad','picoreal','realce','transiciones','relleno')) { Push-Location $testRoot } else { Push-Location $out }
+        if ($test -in @('dsee','limite','entrenador','iaparidad','iaorigen','sonoridad','picoreal','realce','transiciones','relleno','enmemoria')) { Push-Location $testRoot } else { Push-Location $out }
         try {
             & $exe $app
             if ($LASTEXITCODE -ne 0) { throw "Fallo $test" }
@@ -90,6 +103,14 @@ try {
             if ($LASTEXITCODE -ne 0) { throw 'Fallo flotante' }
         } finally { Pop-Location }
     }
+    if ($SkipLayers) {
+        # Estos ejecutables normalmente los crean las capas. El modo audio tambien funciona en un TEMP nuevo.
+        foreach ($test in @('audiosuave','audioestereo','aperturaaudio')) {
+            $exe = Join-Path $out ($test + '.exe')
+            & $compiler /nologo /optimize+ /warnaserror+ ("/out:$exe") /r:System.Core.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll ("/r:$naudio") (Join-Path $testRoot ($test + '.cs')) (Join-Path $testRoot 'leercodigo.cs')
+            if ($LASTEXITCODE -ne 0) { throw "No compila $test" }
+        }
+    }
     & (Join-Path $testRoot 'validar-audio-formatos.ps1') -OutputDirectory $out -Ffmpeg $Ffmpeg
     # Solo este proceso de pruebas y sus hijos. No cambia afinidad del sistema/rocola instalada.
     $process = [System.Diagnostics.Process]::GetCurrentProcess()
@@ -111,3 +132,4 @@ try {
 } finally { $env:ROCOLA_TEST_PYTHON = $previousPython }
 Write-Output "PASS audio: controles, huellas, DSEE, limitador, cosecha, entrenadores y formatos. Salida: $out"
 Write-Output 'Afinidad a dos procesadores logicos NO equivale a probar un CPU antiguo, XP ni el DAC.'
+} finally { $env:ROCOLA_DATOS = $previousRocolaData }

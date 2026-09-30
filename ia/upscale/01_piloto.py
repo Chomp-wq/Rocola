@@ -17,6 +17,7 @@ import sys, os, time, glob, random, shutil, tempfile, argparse, math
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import numpy as np
 from util_audio import FS, leer_wav, escribir_wav, ganancia_wav, decodificar_a_wav, acantilado_hz, igualar_rms, por_trozos
+from util_audio import analizar_corte, mezcla_auto, mezclar
 
 # La carga de Apollo vive en modelo_apollo.py (robusta: descarga de HF + ruta local).
 def main():
@@ -60,20 +61,27 @@ def main():
             except Exception as e: print("   no se pudo decodificar:", e); continue
             x, _ = leer_wav(tmp)
         c0 = acantilado_hz(x)
+        evidencia = analizar_corte(x)
         t0 = time.time()
         y = por_trozos(x, proc, seg=a.seg)
         dt = time.time() - t0
         y = igualar_rms(y, x)
+        auto = mezclar(y, x, mezcla_auto(evidencia["corte_hz"], evidencia["confianza"]))
         c1 = acantilado_hz(y)
         dur = len(x) / FS
         rep.append("%s | %.0f -> %.0f | %.0f | %.1f | %.1fx" % (nombre, c0, c1, dur, dt, dur / max(dt, 1e-9)))
 
         po = os.path.join(a.salida, "pares", "%02d_original_%s.wav" % (i, nombre))
         pm = os.path.join(a.salida, "pares", "%02d_mejorada_%s.wav" % (i, nombre))
+        pa = os.path.join(a.salida, "pares", "%02d_auto_%s.wav" % (i, nombre))
         # El MISMO margen para ambos: atenuarlos por separado rompe el RMS igualado.
-        margen = min(ganancia_wav(x), ganancia_wav(y))
+        margen = min(ganancia_wav(x), ganancia_wav(y), ganancia_wav(auto))
         x *= margen; y *= margen
         escribir_wav(po, x); escribir_wav(pm, y)
+        escribir_wav(pa, auto * margen)
+        rep.append("  auto=%.0f%% confianza=%.2f motivo=%s" %
+                   (mezcla_auto(evidencia["corte_hz"], evidencia["confianza"]) * 100,
+                    evidencia["confianza"], evidencia["motivo"]))
         if rng.random() < 0.5:
             shutil.copyfile(po, os.path.join(a.salida, "ciego", "%02d_X.wav" % i))
             shutil.copyfile(pm, os.path.join(a.salida, "ciego", "%02d_Y.wav" % i))

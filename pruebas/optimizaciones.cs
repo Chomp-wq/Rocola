@@ -70,7 +70,7 @@ class Optimizaciones
  }
 
  static object Blank(Type t) {
-  object o=System.Runtime.Serialization.FormatterServices.GetUninitializedObject(t);
+  object o=Codigo.FormSinEncender(t); // inicializa tambien los cerrojos del cache persistente
   foreach(FieldInfo f in t.GetFields(F))
    if(!f.IsStatic&&f.FieldType.Namespace!=null&&f.FieldType.Namespace.StartsWith("System.Collections")&&f.FieldType.GetConstructor(Type.EmptyTypes)!=null)
     f.SetValue(o,Activator.CreateInstance(f.FieldType));
@@ -195,6 +195,9 @@ class Optimizaciones
   Check((int)Call(form,owner,"VideosMedidos")==19999,"Silencio conserva contador viejo");
   string loud=(string)Call(form,owner,"LoudFile");
   File.WriteAllText(loud,"0.08|video0.mp4");
+  Call(form,owner,"LoadLoudCache");
+  Check((int)Call(form,owner,"VideosMedidos")==19999,"Linea truncada publica una medida incompleta");
+  File.WriteAllText(loud,"0.08|video0.mp4\r\n"); // el diario solo acepta filas completas
   Call(form,owner,"LoadLoudCache");
   Check((int)Call(form,owner,"VideosMedidos")==20000,"Carga de medidas no invalida");
   Call(form,owner,"BuildVideoSection",new System.Collections.Generic.List<string>());

@@ -128,10 +128,12 @@ class ProcesoEntero(unittest.TestCase):
     def test_informe_identico_byte_a_byte_y_sin_rutas(self):
         with tempfile.TemporaryDirectory() as d:
             c1, _ = self._corre(d, [])
-            with open(os.path.join(d, "informe_dsee.json"), "rb") as f:
+            directorios=set(n for n in os.listdir(d) if n.startswith("dsee-candidato-"))
+            with open(os.path.join(d,next(iter(directorios)),"informe_dsee.json"), "rb") as f:
                 uno = f.read()
             c2, _ = self._corre(d, [])
-            with open(os.path.join(d, "informe_dsee.json"), "rb") as f:
+            nuevo=next(n for n in os.listdir(d) if n.startswith("dsee-candidato-") and n not in directorios)
+            with open(os.path.join(d,nuevo,"informe_dsee.json"), "rb") as f:
                 dos = f.read()
             self.assertEqual(c1, c2)
             self.assertEqual(uno, dos)
@@ -150,14 +152,16 @@ class ProcesoEntero(unittest.TestCase):
             # Aqui se prueba la huella y la paridad de los vectores, no la politica: se fuerza la decision.
             with mock.patch.object(Q, "decide", return_value=(True, ["forzado por la prueba"])):
                 codigo, texto = self._corre(d, [])
-            self.assertEqual(codigo, 0, texto[-400:])
-            with open(os.path.join(d, "rocola_ia.bin"), "rb") as f:
+            self.assertEqual(codigo, 4, texto[-400:])
+            candidatos = [n for n in os.listdir(d) if n.startswith("dsee-candidato-")]
+            ruta_candidato = os.path.join(d, candidatos[0], "candidato.bin")
+            with open(ruta_candidato, "rb") as f:
                 modelo = f.read()
-            with open(os.path.join(d, "ia_vectores_prueba.txt")) as f:
-                lineas = f.read().splitlines()
+            red = Q.cargar_ria1(ruta_candidato)
+            entradas = np.random.default_rng(7).normal(0, 1, (24, 28))
+            lineas = T.vectores_de_paridad(red, entradas, modelo).splitlines()
             self.assertTrue(lineas[0].startswith("# "))
             self.assertIn("sha256=" + hashlib.sha256(modelo).hexdigest(), lineas[0])
-            red = Q.cargar_ria1(os.path.join(d, "rocola_ia.bin"))
             filas = [l for l in lineas if "|" in l]
             self.assertEqual(len(filas), 24)
             for l in filas:

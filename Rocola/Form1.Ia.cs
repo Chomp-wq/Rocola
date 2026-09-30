@@ -790,13 +790,21 @@ namespace Rocola
         {
             public ulong Cancion, Carpeta, Artista;
             public int Rate, Frame, Canal;
+            public string Genero;   // metadata opcional: no es una entrada de la red
         }
         private static IaOrigen IaOrigenDe(string path, double durSec, int rate, int frame, int canal)
         {
             IaOrigen o = new IaOrigen();
             o.Rate = rate; o.Frame = frame; o.Canal = canal;
             o.Artista = 0;   // 0 es "desconocido": nunca se inventa
-            try { string a = Track.SoloArtista(path); if (IaArtistaFiable(a)) o.Artista = IaHuella(a); } catch { }
+            try
+            {
+                string artista, genero;
+                Track.SoloArtistaGenero(path, out artista, out genero);
+                if (IaArtistaFiable(artista)) o.Artista = IaHuella(artista);
+                o.Genero = IaGeneroFiable(genero);
+            }
+            catch { }
             try
             {
                 long seg = (long)Math.Round(durSec);
@@ -825,6 +833,36 @@ namespace Rocola
             ulong h = 14695981039346656037UL;
             unchecked { for (int i = 0; i < b.Length; i++) { h ^= b[i]; h *= 1099511628211UL; } }
             return h == 0 ? 1UL : h;
+        }
+        private static string IaGeneroFiable(string genero)
+        {
+            string g = (genero ?? "").Replace('\t', ' ').Replace('\r', ' ').Replace('\n', ' ').Trim().ToLowerInvariant();
+            if (g.Length == 0 || g == "unknown" || g == "desconocido" || g == "sin genero" || g == "<unknown>") return "";
+            return g.Length <= 128 ? g : g.Substring(0, 128);
+        }
+        // Sidecar opcional: preserva RIAX/64 y los datos existentes. Solo huella y etiqueta fiable;
+        // sirve para auditar cobertura por genero, nunca para partir una misma cancion entre conjuntos.
+        private void IaApuntaGenero(IaOrigen origen, bool datosNuevos)
+        {
+            try
+            {
+                string ruta = RutaDatos("rocola_ia_datos.generos.tsv");
+                if (datosNuevos && File.Exists(ruta))
+                {
+                    string aparte = ruta + ".anterior";
+                    if (File.Exists(aparte)) aparte += "-" + DateTime.UtcNow.Ticks.ToString(CultureInfo.InvariantCulture);
+                    File.Move(ruta, aparte);
+                }
+                // El salto inicial separa una ultima linea interrumpida por un apagon; la lectura ignora vacias.
+                byte[] texto = Encoding.UTF8.GetBytes("\n" + origen.Cancion.ToString("x16", CultureInfo.InvariantCulture)
+                    + "\t" + IaGeneroFiable(origen.Genero) + "\n");
+                using (FileStream fs = new FileStream(ruta, FileMode.Append, FileAccess.Write, FileShare.Read))
+                {
+                    fs.Write(texto, 0, texto.Length); fs.Flush();
+                    try { FlushFileBuffers(fs.SafeFileHandle.DangerousGetHandle()); } catch { }
+                }
+            }
+            catch { }   // No poder escribir metadata no invalida pares/index ya verificados.
         }
         private static uint[] iaCrcTabla;
         private static uint IaCrc32(byte[] d, int off, int n)
@@ -891,6 +929,7 @@ namespace Rocola
                     fs.Flush();
                     try { FlushFileBuffers(fs.SafeFileHandle.DangerousGetHandle()); } catch { }
                 }
+                IaApuntaGenero(o, datosNuevos);
             }
             catch { }   // sin entrada, esos ejemplos quedan "sin origen": el entrenador no los usa para validar
         }

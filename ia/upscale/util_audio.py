@@ -267,6 +267,45 @@ def escribir_wav_float(path, x, fs=FS):
         for p in range(0,len(x),block):
             f.write(x[p:p+block].astype('<f4').tobytes())
 
+def analizar_corte(x, fs=FS):
+    """Confianza de corte: exige caida abrupta, energia util y concordancia de ventanas.
+
+    No identifica un master sin perdida. Material oscuro/incierto conserva el original en automatico.
+    """
+    desconocido = {"corte_hz": 0.0, "confianza": 0.0, "reconstruir": False, "motivo": "sin evidencia"}
+    if x.ndim not in (1, 2) or x.size == 0 or not np.isfinite(x).all(): return desconocido
+    canales = x.T if x.ndim == 2 else x.reshape(1, -1)
+    n = 4096
+    if canales.shape[1] < n: return desconocido
+    # Hasta 96 ventanas distribuidas: coste acotado y sin favorecer intro/final.
+    posiciones = np.unique(np.linspace(0, canales.shape[1] - n, min(96, canales.shape[1] // n), dtype=int))
+    win = np.hanning(n); bhz = fs / n; espectros = []
+    for p in posiciones:
+        potencia = np.abs(np.fft.rfft(canales[:, p:p+n] * win, axis=1)) ** 2
+        m = potencia.mean(axis=0)
+        cuerpo = m[int(100/bhz):int(4000/bhz)].mean()
+        ref = m[int(4000/bhz):int(8000/bhz)].mean()
+        if ref > 1e-10 and ref > cuerpo * 3e-5: espectros.append(m)
+    if not espectros: return desconocido
+    espectros = np.asarray(espectros); m = espectros.mean(axis=0)
+    ref = m[int(4000/bhz):int(8000/bhz)].mean()
+    maxhz = min(20500, fs * .47)
+    encontrados = []
+    for hz in np.arange(9000, maxhz - 750, 150):
+        abajo = slice(int((hz-600)/bhz), int(hz/bhz))
+        arriba = slice(int((hz+150)/bhz), int((hz+750)/bhz))
+        previo = m[abajo].mean(); posterior = m[arriba].mean()
+        if previo <= ref * .003 or posterior >= previo * .03: continue
+        concordancia = np.mean(espectros[:, arriba].mean(axis=1) < espectros[:, abajo].mean(axis=1) * .06)
+        if concordancia >= .7:
+            encontrados.append((hz, float(concordancia)))
+    if not encontrados:
+        return {"corte_hz": float(acantilado_hz(x, fs)), "confianza": 0.0, "reconstruir": False, "motivo": "sin caida abrupta fiable"}
+    # Primera caida, no el borde superior de una ventana que ya pisa el silencio.
+    hz, confianza = min(encontrados, key=lambda p: p[0])
+    return {"corte_hz": float(hz), "confianza": confianza, "reconstruir": bool(hz < 18500), "motivo": "caida abrupta consistente"}
+
+
 def acantilado_hz(x, fs=FS):
     """Corte del codec (Hz) por espectro promedio: la frecuencia mas alta con energia
     comparable a la banda media (mismo criterio que el detector de la rocola)."""
@@ -402,11 +441,13 @@ def mezclar(mejorada, original, m, optimizar=True):
             return a
     return igualar_rms(m * a + (1.0 - m) * b, b)          # mezcla, re-igualada (volumen estable entre niveles)
 
-def mezcla_auto(cliff_hz):
+def mezcla_auto(cliff_hz, confianza=None):
     """Cuanta IA aplicar segun que tan danada esta: mientras MENOS sobrevivio (corte bajo),
     mas suave (la IA inventa mas y se nota mas el vaiven)."""
-    if cliff_hz <= 0:     return 0.60
-    if cliff_hz <= 9000:  return 0.55     # brutal: el modelo alucina mucho -> suave
-    if cliff_hz <= 12500: return 0.70
-    if cliff_hz <= 15500: return 0.82
-    return 1.00                            # poco danada: la IA acierta -> a fondo
+    # Un corte aislado no demuestra dano: llamadas antiguas siguen conservadoras.
+    if confianza is None or not np.isfinite(confianza) or confianza < .7 or cliff_hz <= 0 or cliff_hz >= 18500:
+        return 0.0
+    if cliff_hz <= 9000: return .35
+    if cliff_hz <= 12500: return .45
+    if cliff_hz <= 15500: return .55
+    return .60

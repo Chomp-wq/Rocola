@@ -122,12 +122,12 @@ class EleccionTests(unittest.TestCase):
 
 
 class HuellaTests(unittest.TestCase):
-    def test_el_remuestreo_de_siempre_conserva_la_huella_de_siempre(self):
+    def test_confianza_corte_versiona_cache_y_no_reutiliza_v4(self):
         fp = "a" * 64
         vieja = hashlib.sha256(("apollo-safe-v4-float-decode|modelo=%s|seg=%.9g|fs=%d|cache=%s" % (
             fp, 10.0, 44100, "wav-float32-v4-sin-recompresion")).encode("utf-8")).hexdigest()
-        self.assertEqual(daemon.huella_pipeline(fp, 10.0), vieja)
-        self.assertEqual(daemon.huella_pipeline(fp, 10.0, util_audio.REMUESTREO_HEREDADO), vieja)
+        self.assertNotEqual(daemon.huella_pipeline(fp, 10.0), vieja)
+        self.assertEqual(daemon.huella_pipeline(fp, 10.0, util_audio.REMUESTREO_HEREDADO), daemon.huella_pipeline(fp, 10.0))
 
     def test_otro_remuestreo_otra_huella_y_vecinas(self):
         fp = "b" * 64

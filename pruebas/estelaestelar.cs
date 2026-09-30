@@ -43,6 +43,8 @@ class EstelaEstelar {
  [STAThread]static int Main(string[] args){
   gpu=Assembly.LoadFrom(args[0]).GetType("Rocola.GpuPanel");
   using(Control panel=(Control)Activator.CreateInstance(gpu,true)){
+   // Esta bateria verifica la estela 2D; el modo 3D tiene otra malla y buffers.
+   Set(panel,"Estrella3D",false);
    panel.Size=new Size(1000,600);Set(panel,"idleBlend",1f);Set(panel,"starDrive",1f);
    for(int i=0;i<=120;i++){
     Call(panel,"AdvanceStarMusic",1f/60,.85f,.65f,.7f);

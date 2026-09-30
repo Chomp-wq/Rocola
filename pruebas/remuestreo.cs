@@ -23,8 +23,8 @@ using NAudio.Wave.SampleProviders;
 //   canales     lo de un canal no pasa al otro
 //   coste       milisegundos por segundo de musica
 //
-// Se mide tal como lo usa la rocola (calidad por defecto del DMO) y con la calidad maxima del DMO (60), para
-// saber si subirla compensa. El DMO es de Windows: donde no lo hay (Linux con Mono) se dice y la bateria
+// Se mide la calidad maxima que ahora elige la rocola (60), comparada con el DMO anterior (30), y el fallback
+// si configurar COM falla antes de consumir entrada. El DMO es de Windows: donde no lo hay se dice y la bateria
 // solo comprueba que sus medidas miden bien, con dos remuestreadores de referencia escritos aqui: uno de
 // alta precision (polifasico en doble precision, 512 coeficientes por fase) y uno malo a proposito
 // (interpolacion lineal). Si las medidas no separan esos dos, no sirven para juzgar al DMO.
@@ -152,15 +152,25 @@ class Remuestreo
     //  EL DE LA ROCOLA: SalidaRemuestreada (DMO de Windows Media)
     // =============================================================================================
     static Type TSR;
+    static int ultimaCalidad;
     const BindingFlags T = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
-    // mitadFiltro 0 = como la rocola (calidad por defecto del DMO); 1..60 = esa calidad (SetHalfFilterLength).
+    // 0 = produccion (60); -1 = fallback solicitado; -2 = fallo despues de liberar recursos; 1..60 = referencia explicita.
+    static bool RechazaCalidad(ResamplerDmoStream rs) { return false; }
+    static bool FallaConRecursos(ResamplerDmoStream rs) {
+        object dmo = typeof(ResamplerDmoStream).GetField("dmoResampler", T).GetValue(rs);
+        ((NAudio.Dmo.DmoResampler)dmo).MediaObject.FreeStreamingResources();
+        throw new InvalidOperationException("Fallo COM sintetico despues de liberar recursos");
+    }
     static Conversor Dmo(int mitadFiltro)
     {
         return delegate(float[] x, int ch, int fsIn, int fsOut)
         {
             object sr = Activator.CreateInstance(TSR, T, null, new object[] { new FuenteMem(x, fsIn, ch), fsOut }, null);
+            FieldInfo hook = TSR.GetField("ConfiguraPrueba", T | BindingFlags.Static);
             try
             {
+                if (mitadFiltro < 0) hook.SetValue(null, mitadFiltro == -1 ?
+                    new Func<ResamplerDmoStream, bool>(RechazaCalidad) : new Func<ResamplerDmoStream, bool>(FallaConRecursos));
                 if (mitadFiltro > 0) PonCalidad(sr, mitadFiltro);
                 ISampleProvider p = (ISampleProvider)sr;
                 long esperado = ((long)(x.Length / ch) * fsOut + fsIn - 1) / fsIn * ch;
@@ -168,9 +178,10 @@ class Remuestreo
                 float[] buf = new float[4096 * ch];
                 int n;
                 while ((n = p.Read(buf, 0, buf.Length)) > 0) for (int i = 0; i < n; i++) y.Add(buf[i]);
+                ultimaCalidad = (int)TSR.GetProperty("CalidadAplicada", T).GetValue(sr, null);
                 return y.ToArray();
             }
-            finally { ((IDisposable)sr).Dispose(); }
+            finally { hook.SetValue(null, null); ((IDisposable)sr).Dispose(); }
         };
     }
     // La calidad del DMO (IWMResamplerProps::SetHalfFilterLength, 1 a 60) no la expone NAudio: se arma el DMO
@@ -499,25 +510,35 @@ class Remuestreo
         }
         else
         {
+            float[] fixture = Seno(44100, 2, .125, 19000, .5, .25, .3);
+            float[] normal = Dmo(0)(fixture, 2, 44100, 48000);
+            Check(ultimaCalidad == 60, "Produccion aplica realmente DMO 60 antes de leer entrada");
+            float[] anterior = Dmo(30)(fixture, 2, 44100, 48000);
+            foreach (int fallo in new int[] { -1, -2 })
+            {
+                float[] recuperado = Dmo(fallo)(fixture, 2, 44100, 48000);
+                bool igual = recuperado.Length == anterior.Length;
+                for (int i = 0; i < anterior.Length && igual; i++) if (recuperado[i] != anterior[i]) igual = false;
+                Check(igual && ultimaCalidad == 30, "COM falla (" + fallo + "): DMO nuevo 30, PCM/cola identicos al anterior");
+            }
+            Check(normal.Length == anterior.Length, "Calidad 60 mantiene duracion exacta frente a 30");
             foreach (int[] cv in Conversiones)
             {
                 string q = F(cv[0] / 1000.0, "0.#") + " -> " + F(cv[1] / 1000.0, "0.#") + " kHz";
                 Medida d;
-                try { d = Mide("DMO como lo usa la rocola (calidad por defecto)", Dmo(0), cv[0], cv[1], true); }
+                try { d = Mide("DMO como lo usa la rocola (calidad 60)", Dmo(0), cv[0], cv[1], true); }
                 catch (Exception ex) { Check(false, q + ": el remuestreador de la rocola fallo: " + ex.GetBaseException().Message); continue; }
                 Imprime(d);
                 Check(d.Finitos && d.SobranCuadros == 0, q + ": duracion exacta y sin valores rotos");
                 Check(Math.Abs(d.Final - 1) < 0.02, q + ": la ultima rafaga de la cancion sale entera (" + F(d.Final, "0.0000") + ")");
                 Check(d.Cruce < -100, q + ": lo de un canal no pasa al otro (" + Db0(d.Cruce) + " dB)");
                 Check(Math.Abs(d.Tonos[0][1]) < 0.2 && d.Resto1k < -60, q + ": un tono de 1 kHz sale a su nivel (" + Db(d.Tonos[0][1]) + " dB) y limpio (" + Db0(d.Resto1k) + " dB)");
-                Medida d60 = null;
-                try { d60 = Mide("DMO con la calidad maxima (60)", Dmo(60), cv[0], cv[1], true); }
-                catch (Exception ex) { Info("la calidad 60 no se pudo poner: " + ex.GetBaseException().Message); }
-                if (d60 != null) Imprime(d60);
+                Medida d30 = null;
+                try { d30 = Mide("DMO anterior (30)", Dmo(30), cv[0], cv[1], true); }
+                catch (Exception ex) { Info("la referencia 30 no se pudo poner: " + ex.GetBaseException().Message); }
+                if (d30 != null) Imprime(d30);
             }
-            Info("Que mirar para decidir: si la calidad por defecto pierde mas de 0,5 dB antes de 18 kHz, deja plegado o");
-            Info("imagenes por encima de -80 dB, o no entrega el final entero, y la calidad 60 lo arregla con un coste");
-            Info("razonable en el equipo del bar (2 nucleos), conviene subirla. Si no, se queda como esta.");
+            Info("El coste es de esta maquina, no del equipo 2C/2T. Solo se instancia cuando hace falta cambiar tasa.");
         }
         Console.WriteLine(fallos == 0 ? ("\n  TODO BIEN (" + oks + " comprobaciones)") : ("\n  FALLOS: " + fallos));
         return fallos;

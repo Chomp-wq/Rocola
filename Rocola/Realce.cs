@@ -33,12 +33,9 @@
 // El grave sintetico (DeepBassProvider) NO se sobremuestrea: medido igual, su plegado queda entre 102 y 129 dB por
 // debajo de los armonicos que genera (trabaja por debajo de 320 Hz; sus productos no llegan ni cerca de Nyquist).
 //
-// Cuando se usa: si la cancion EMPIEZA con el realce encendido (lo normal: viene de fabrica), la etapa trabaja con
-// el retraso toda la cancion, aunque luego se apague desde Ctrl+F3 (apagado, el sonido sale intacto, solo
-// retrasado; cambiar el retraso a media cancion seria un salto en el tiempo). Si la cancion empezo con el realce en
-// cero, el camino es el directo de siempre, sin retraso ni coste; y si alguien lo sube a media cancion, esa
-// cancion usa el realce de antes (sin sobremuestrear) hasta que termina, para no saltar. Al acabar la cancion se
-// vacia lo retenido (31 cuadros), y el fundido final lo tiene en cuenta.
+// El retraso seco es siempre de 31 cuadros, tambien si empieza apagado. Los FIR solo se calculan
+// con mezcla no nula; la historia barata de entrada permite cebarlos al encender sin saltar en el tiempo
+// ni volver al realce sin sobremuestreo. Al acabar se vacia la misma cola en todos los modos.
 using System;
 
 namespace Rocola
@@ -94,6 +91,7 @@ namespace Rocola
         // (xv), del resto a media muestra (xg) y del resto en la muestra (xn).
         private readonly double[][] xh, xv, xg, xn;
         private readonly float[] lp;
+        private readonly bool[] listo;
         private readonly float polo;
         private readonly double c0, c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11, c12, c13, c14, c15;
         private readonly double d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15;
@@ -102,12 +100,12 @@ namespace Rocola
         {
             canales = Math.Max(1, canales);
             this.polo = polo;
-            lp = new float[canales];
+            lp = new float[canales]; listo = new bool[canales];
             xh = new double[canales][]; xv = new double[canales][]; xg = new double[canales][]; xn = new double[canales][];
             for (int c = 0; c < canales; c++)
             {
-                xh[c] = new double[Retraso + Trozo]; xv[c] = new double[Retraso + Trozo];
-                xg[c] = new double[Retraso + Trozo]; xn[c] = new double[Retraso + Trozo];
+                xh[c] = new double[2 * Retraso + Trozo]; xv[c] = new double[2 * Retraso + Trozo];
+                xg[c] = new double[2 * Retraso + Trozo]; xn[c] = new double[2 * Retraso + Trozo];
             }
             double[] k = C;
             c0 = k[0]; c1 = k[1]; c2 = k[2]; c3 = k[3]; c4 = k[4]; c5 = k[5]; c6 = k[6]; c7 = k[7];
@@ -116,13 +114,32 @@ namespace Rocola
             d8 = .5 * k[8]; d9 = .5 * k[9]; d10 = .5 * k[10]; d11 = .5 * k[11]; d12 = .5 * k[12]; d13 = .5 * k[13]; d14 = .5 * k[14]; d15 = .5 * k[15];
         }
 
+        private void CalculaResto(double[] h, double[] g, double[] nn, int desde, int hasta)
+        {
+            double[] xh = h;
+            double c0 = this.c0, c1 = this.c1, c2 = this.c2, c3 = this.c3, c4 = this.c4, c5 = this.c5, c6 = this.c6, c7 = this.c7;
+            double c8 = this.c8, c9 = this.c9, c10 = this.c10, c11 = this.c11, c12 = this.c12, c13 = this.c13, c14 = this.c14, c15 = this.c15;
+            for (int a = desde; a < hasta; a++)
+            {
+                int z = a - Retraso;
+                double y = c0 * (xh[a] + xh[z]) + c1 * (xh[a - 1] + xh[z + 1]) + c2 * (xh[a - 2] + xh[z + 2]) + c3 * (xh[a - 3] + xh[z + 3]) +
+                           c4 * (xh[a - 4] + xh[z + 4]) + c5 * (xh[a - 5] + xh[z + 5]) + c6 * (xh[a - 6] + xh[z + 6]) + c7 * (xh[a - 7] + xh[z + 7]) +
+                           c8 * (xh[a - 8] + xh[z + 8]) + c9 * (xh[a - 9] + xh[z + 9]) + c10 * (xh[a - 10] + xh[z + 10]) + c11 * (xh[a - 11] + xh[z + 11]) +
+                           c12 * (xh[a - 12] + xh[z + 12]) + c13 * (xh[a - 13] + xh[z + 13]) + c14 * (xh[a - 14] + xh[z + 14]) + c15 * (xh[a - 15] + xh[z + 15]);
+                g[a] = Resto(y);
+                nn[a] = Resto(xh[a - (Pares - 1)]);
+            }
+        }
+
         // Un canal: n muestras (n <= Trozo) desde buf[ini], cada salto. ks[kIni + j*salto] es la mezcla de cada una.
         // Sale en su sitio: el seco de hace Retraso muestras mas el realce de esa misma muestra, ya sin plegado.
         internal void Bloque(int canal, float[] buf, int ini, int salto, int n, float[] ks, int kIni)
         {
-            const int H = Retraso;
+            const int H = 2 * Retraso;
             double[] xh = this.xh[canal], xv = this.xv[canal], xg = this.xg[canal], xn = this.xn[canal];
             float l = lp[canal], p = polo;
+            bool activo = false;
+            for (int q = kIni, j = 0; j < n; j++, q += salto) if (ks[q] != 0f) { activo = true; break; }
             for (int j = 0, i = ini; j < n; j++, i += salto)
             {
                 float v = buf[i];
@@ -130,31 +147,30 @@ namespace Rocola
                 xh[H + j] = v - l; xv[H + j] = v;
             }
             lp[canal] = l;
-            double c0 = this.c0, c1 = this.c1, c2 = this.c2, c3 = this.c3, c4 = this.c4, c5 = this.c5, c6 = this.c6, c7 = this.c7;
-            double c8 = this.c8, c9 = this.c9, c10 = this.c10, c11 = this.c11, c12 = this.c12, c13 = this.c13, c14 = this.c14, c15 = this.c15;
-            // Subir a 2x: la muestra a medio camino (filtro) y la de siempre (tal cual, Pares-1 atras), saturar las dos.
-            for (int j = 0; j < n; j++)
+            if (!activo)
             {
-                int a = j + H;   // la muestra de ahora; xh[j] es la de hace Retraso
-                double y = c0 * (xh[a] + xh[j]) + c1 * (xh[a - 1] + xh[j + 1]) + c2 * (xh[a - 2] + xh[j + 2]) + c3 * (xh[a - 3] + xh[j + 3]) +
-                           c4 * (xh[a - 4] + xh[j + 4]) + c5 * (xh[a - 5] + xh[j + 5]) + c6 * (xh[a - 6] + xh[j + 6]) + c7 * (xh[a - 7] + xh[j + 7]) +
-                           c8 * (xh[a - 8] + xh[j + 8]) + c9 * (xh[a - 9] + xh[j + 9]) + c10 * (xh[a - 10] + xh[j + 10]) + c11 * (xh[a - 11] + xh[j + 11]) +
-                           c12 * (xh[a - 12] + xh[j + 12]) + c13 * (xh[a - 13] + xh[j + 13]) + c14 * (xh[a - 14] + xh[j + 14]) + c15 * (xh[a - 15] + xh[j + 15]);
-                xg[a] = Resto(y);
-                xn[a] = Resto(xh[a - (Pares - 1)]);
+                for (int j = 0, i = ini; j < n; j++, i += salto) buf[i] = (float)xv[j + Retraso];
+                listo[canal] = false;
+                Array.Copy(xh, n, xh, 0, H); Array.Copy(xv, n, xv, 0, H);
+                return;
             }
+            // Reconstruir los restos de los 31 cuadros anteriores con la historia completa,
+            // no con ceros: el primer cuadro tras activar tiene el mismo filtro que el continuo.
+            if (!listo[canal]) CalculaResto(xh, xg, xn, H - Retraso, H);
+            CalculaResto(xh, xg, xn, H, H + n);
+            listo[canal] = true;
             double d0 = this.d0, d1 = this.d1, d2 = this.d2, d3 = this.d3, d4 = this.d4, d5 = this.d5, d6 = this.d6, d7 = this.d7;
             double d8 = this.d8, d9 = this.d9, d10 = this.d10, d11 = this.d11, d12 = this.d12, d13 = this.d13, d14 = this.d14, d15 = this.d15;
             // Bajar a 1x con el mismo filtro (a la mitad) y juntar con la parte lineal y el seco, todos de hace Retraso.
             for (int j = 0, i = ini, q = kIni; j < n; j++, i += salto, q += salto)
             {
-                int a = j + H;
+                int a = j + H, z = a - Retraso;
                 double w = .5 * xn[a - Pares] +
-                           d0 * (xg[a] + xg[j]) + d1 * (xg[a - 1] + xg[j + 1]) + d2 * (xg[a - 2] + xg[j + 2]) + d3 * (xg[a - 3] + xg[j + 3]) +
-                           d4 * (xg[a - 4] + xg[j + 4]) + d5 * (xg[a - 5] + xg[j + 5]) + d6 * (xg[a - 6] + xg[j + 6]) + d7 * (xg[a - 7] + xg[j + 7]) +
-                           d8 * (xg[a - 8] + xg[j + 8]) + d9 * (xg[a - 9] + xg[j + 9]) + d10 * (xg[a - 10] + xg[j + 10]) + d11 * (xg[a - 11] + xg[j + 11]) +
-                           d12 * (xg[a - 12] + xg[j + 12]) + d13 * (xg[a - 13] + xg[j + 13]) + d14 * (xg[a - 14] + xg[j + 14]) + d15 * (xg[a - 15] + xg[j + 15]);
-                buf[i] = (float)xv[j] + ks[q] * (float)(2.5 * xh[j] + w);
+                           d0 * (xg[a] + xg[z]) + d1 * (xg[a - 1] + xg[z + 1]) + d2 * (xg[a - 2] + xg[z + 2]) + d3 * (xg[a - 3] + xg[z + 3]) +
+                           d4 * (xg[a - 4] + xg[z + 4]) + d5 * (xg[a - 5] + xg[z + 5]) + d6 * (xg[a - 6] + xg[z + 6]) + d7 * (xg[a - 7] + xg[z + 7]) +
+                           d8 * (xg[a - 8] + xg[z + 8]) + d9 * (xg[a - 9] + xg[z + 9]) + d10 * (xg[a - 10] + xg[z + 10]) + d11 * (xg[a - 11] + xg[z + 11]) +
+                           d12 * (xg[a - 12] + xg[z + 12]) + d13 * (xg[a - 13] + xg[z + 13]) + d14 * (xg[a - 14] + xg[z + 14]) + d15 * (xg[a - 15] + xg[z + 15]);
+                buf[i] = (float)xv[z] + ks[q] * (float)(2.5 * xh[z] + w);
             }
             Array.Copy(xh, n, xh, 0, H); Array.Copy(xv, n, xv, 0, H);
             Array.Copy(xg, n, xg, 0, H); Array.Copy(xn, n, xn, 0, H);
@@ -165,7 +181,7 @@ namespace Rocola
     {
         private partial class LevelTap
         {
-            // 0 = sin decidir; 1 = directo (la cancion empezo con el realce en cero); 2 = realce 2x con retraso.
+            // Siempre 2x con retraso estable; apagado usa solo la historia y el seco.
             private int modoRealce;
             private RealceSobremuestreado realce;   // se reserva al construir: leer no reserva nada
             private float[] realceK;                // la mezcla del realce de cada muestra del trozo
@@ -178,16 +194,16 @@ namespace Rocola
                 realceK = new float[RealceSobremuestreado.Trozo * audioChannels];
             }
 
-            // Se decide UNA vez por cancion, con la intensidad con la que empieza; ya no cambia.
+            // El modo no depende de la intensidad inicial ni de los cambios en vivo.
             private void FijaModoRealce(float excite)
             {
-                if (modoRealce == 0) modoRealce = excite > .001f ? 2 : 1;
+                modoRealce = 2;
             }
 
             // Cuadros que esta etapa retiene y entrega al final (para la cuenta del fundido). Fija el modo.
             public int DelayFrames
             {
-                get { FijaModoRealce(Excite); return modoRealce == 2 ? RealceSobremuestreado.Retraso : 0; }
+                get { FijaModoRealce(Excite); return RealceSobremuestreado.Retraso; }
             }
 
             // Ganancia, EQ y rampas muestra a muestra como siempre (primera pasada); el realce, por canal y por
@@ -203,14 +219,14 @@ namespace Rocola
                     {
                         if (audioChannel == 0) AdvanceAudioControls(g, ex, prepared);
                         float input = buffer[i] * gainRamp.Current;
-                        float v = ApplyPreparedEq(currentEq, input, audioChannel);
-                        if (eqMix < 1f)
+                        float v = canalesMusicales[audioChannel] ? ApplyPreparedEq(currentEq, input, audioChannel) : input;
+                        if (eqMix < 1f && canalesMusicales[audioChannel])
                         {
                             float old = ApplyPreparedEq(previousEq, input, audioChannel);
                             v = old + (v - old) * eqMix;
                         }
                         buffer[i] = v;
-                        realceK[i - s] = exciteRamp.Current * .5f * .4f;
+                        realceK[i - s] = canalesMusicales[audioChannel] ? exciteRamp.Current * .5f * .4f : 0f;
                         if (++audioChannel >= ch) audioChannel = 0;
                     }
                     for (int c = 0; c < ch; c++)

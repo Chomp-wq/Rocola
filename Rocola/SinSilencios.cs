@@ -116,6 +116,7 @@ namespace Rocola
         private readonly int ch;
         private long pos;                             // muestras desde el principio del archivo
         private long fin = -1, hDesde = -1, hHasta = -1;
+        private long inicioSalida, huecoSalidaDesde = -1, huecoSalidaHasta = -1;
         internal RecorteSilencios(Func<float[], int, int, int> origen, Action<long> saltaA, int canales, int tasa, PlanSilencios p)
         {
             lee = origen; salta = saltaA; ch = Math.Max(1, canales);
@@ -123,6 +124,7 @@ namespace Rocola
             if (p.Fin >= 0) fin = p.Fin * ch;
             if (p.HuecoDesde >= 0) { hDesde = p.HuecoDesde * ch; hHasta = p.HuecoHasta * ch; }
             if (p.Inicio > 0) Empieza(p.Inicio, tasa);
+            inicioSalida = pos; huecoSalidaDesde = hDesde; huecoSalidaHasta = hHasta;
         }
         // El principio mudo: se tira descomprimiendo (corto) o se salta con el lector (largo).
         private void Empieza(long cuadro, int tasa)
@@ -146,7 +148,19 @@ namespace Rocola
         // Donde acaba de verdad (cuadro), o -1 si acaba donde el archivo.
         internal long FinCuadro { get { return fin >= 0 ? fin / ch : -1; } }
         // Retomar desde fuera (volvio el aparato de sonido): se sigue contando desde ahi.
-        internal void Movido(long cuadro) { pos = Math.Max(0, cuadro) * ch; }
+        internal void Movido(long cuadro)
+        {
+            pos = Math.Max(0, cuadro) * ch; inicioSalida = pos;
+            hDesde = huecoSalidaDesde >= 0 && pos < huecoSalidaHasta ? huecoSalidaDesde : -1;
+            hHasta = huecoSalidaHasta;
+        }
+        internal long MusicaOida(long cuadrosSalida)
+        {
+            long p = inicioSalida / ch + Math.Max(0, cuadrosSalida);
+            if (huecoSalidaDesde >= 0 && inicioSalida < huecoSalidaHasta && p >= huecoSalidaDesde / ch)
+                p += Math.Max(0, huecoSalidaHasta / ch - Math.Max(inicioSalida / ch, huecoSalidaDesde / ch));
+            return fin >= 0 ? Math.Min(p, fin / ch) : p;
+        }
         internal long Cuadro { get { return pos / ch; } }
         internal int Lee(float[] buffer, int offset, int count)
         {
@@ -156,7 +170,7 @@ namespace Rocola
                 if (hDesde >= 0 && pos >= hDesde && pos < hHasta)
                 {
                     long h = hHasta; hDesde = -1;   // una sola vez: si el salto falla, se sigue leyendo el hueco
-                    Salta(h / ch);
+                    if (!Salta(h / ch)) { huecoSalidaDesde = -1; huecoSalidaHasta = -1; }
                     continue;
                 }
                 long lim = count;
@@ -238,7 +252,9 @@ namespace Rocola
                 if (!MapaDe(path, out m)) return s;
                 if (!CoincideFuenteLector(path, s)) return s; // el sello viaja con el lector, tambien si se precargo
                 if (!FuenteDelMapa(path, m)) return s; // archivo original y mapa certificados, no solo misma duracion
-                if (!m.DeEsteArchivo(s.TotalTime.TotalSeconds)) return s;   // en esa ruta hay ahora otro archivo (ver DeEsteArchivo)
+                FuenteSinRelleno sinRelleno = s as FuenteSinRelleno;
+                if (!m.DeEsteArchivo(sinRelleno != null ? sinRelleno.SegundosCrudos : s.TotalTime.TotalSeconds)) return s;
+                if (sinRelleno != null) m = sinRelleno.MapaMusica(m); // el mapa medido era del decoder, antes de quitar LAME
                 PlanSilencios p = PlanSilencios.De(m, s.WaveFormat.SampleRate, crossfadeSec);
                 if (p == null) return s;
                 return new FuenteSinSilencios(s, p);
@@ -255,10 +271,12 @@ namespace Rocola
             internal FuenteSinSilencios(IAudioSource origen, PlanSilencios p)
             {
                 Interior = origen; tasa = Math.Max(1, origen.WaveFormat.SampleRate);
-                recorte = new RecorteSilencios(origen.Read, delegate(long cuadro) { origen.Salta(TimeSpan.FromSeconds((double)cuadro / tasa)); },
+                recorte = new RecorteSilencios(origen.Read, delegate(long cuadro) { origen.Salta(TimeSpan.FromTicks((long)Math.Round((double)cuadro * TimeSpan.TicksPerSecond / tasa))); },
                                                origen.WaveFormat.Channels, tasa, p);
             }
             internal long Salen(long total) { return recorte.Salen(total); }
+            internal double MusicaOida(double segundosSalida)
+            { return recorte.MusicaOida((long)Math.Round(Math.Max(0, segundosSalida) * tasa)) / (double)tasa; }
             public NAudio.Wave.WaveFormat WaveFormat { get { return Interior.WaveFormat; } }
             public int Read(float[] buffer, int offset, int count) { return recorte.Lee(buffer, offset, count); }
             public float Volume { set { Interior.Volume = value; } }
@@ -273,11 +291,18 @@ namespace Rocola
                     TimeSpan t = Interior.TotalTime;
                     long f = recorte.FinCuadro;
                     if (f < 0) return t;
-                    TimeSpan corte = TimeSpan.FromSeconds((double)f / tasa);
+                    TimeSpan corte = TimeSpan.FromTicks((long)Math.Round((double)f * TimeSpan.TicksPerSecond / tasa));
                     return corte < t ? corte : t;
                 }
             }
-            public void Salta(TimeSpan donde) { Interior.Salta(donde); recorte.Movido((long)(donde.TotalSeconds * tasa)); }
+            public void Salta(TimeSpan donde)
+            {
+                long cuadro = Math.Max(0L, Math.Min((long)Math.Round(TotalTime.TotalSeconds * tasa),
+                    (long)Math.Round(donde.TotalSeconds * tasa)));
+                Interior.Salta(TimeSpan.FromTicks((long)Math.Round((double)cuadro * TimeSpan.TicksPerSecond / tasa)));
+                // El decoder puede ajustar la posicion; sus getters usan cuadros/ticks, nunca ms truncados.
+                recorte.Movido(Math.Max(0L, (long)Math.Round(Interior.CurrentTime.TotalSeconds * tasa)));
+            }
             public void Dispose() { Interior.Dispose(); }
         }
     }

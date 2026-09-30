@@ -17,8 +17,10 @@ import entrenar_eq as E
 import origen_dsee as O
 import calidad_dsee as C
 
+VERSION_HUELLA = 2  # potencia por canales medida ANTES del DSP
 
-def leer_agrupado(texto):
+
+def leer_agrupado(texto, diagnostico_legacy=False):
     # Conservar la ultima ficha de una misma ruta. No mezclar revisiones entre partes.
     fichas = {}
     malas = 0
@@ -29,15 +31,23 @@ def leer_agrupado(texto):
             malas += 1
             continue
         try:
-            v = np.asarray([float(x) for x in ficha.split(";")[:9]], dtype=np.float64)
-            if len(v) != 9 or not np.isfinite(v).all():
+            v = np.asarray([float(x) for x in ficha.split(";")], dtype=np.float64)
+            if len(v) < 9 or not np.isfinite(v).all():
                 raise ValueError("huella incompleta/no finita")
         except ValueError:
             malas += 1
             continue
         fichas[ruta] = v
     filas, claves = [], []
+    versiones = {}
+    excluidas = 0
     for ruta, v in sorted(fichas.items()):
+        version = int(v[11]) if len(v) >= 12 and v[11] == int(v[11]) else 0
+        versiones[str(version)] = versiones.get(str(version), 0) + 1
+        # Diagnostico viejo separado: nunca mezclar 0/1 con 2 ni interpretar versiones futuras.
+        if version not in ((0,1) if diagnostico_legacy else (VERSION_HUELLA,)):
+            excluidas += 1
+            continue
         if v[8] < E.SANA_HZ:
             continue
         filas.append(v[:8])
@@ -45,9 +55,10 @@ def leer_agrupado(texto):
         # No se deduce un artista del nombre de la carpeta ni se promete separarlo.
         claves.append((O.huella("album:" + ntpath.dirname(ruta)), O.huella("huella:" + v[:8].tobytes().hex())))
     if not filas:
-        raise ValueError("No hay fichas sanas con ruta verificable")
+        raise ValueError("No hay fichas sanas de la version seleccionada con ruta verificable; reanalizar medidas antiguas")
     grupos = O._componentes(claves)
-    return np.asarray(filas), grupos, {"rutas_unicas": len(fichas), "sanas": len(filas), "invalidas": malas}
+    return np.asarray(filas), grupos, {"rutas_unicas": len(fichas), "sanas": len(filas), "invalidas": malas,
+                                      "versiones": versiones, "excluidas_version": excluidas}
 
 
 def particiones(grupos):
@@ -73,14 +84,14 @@ def decide(errores):
     return True
 
 
-def entrenar(datos, instalado, destino, epocas=200):
-    if epocas <= 0:
-        raise ValueError("Epocas debe ser positivo")
+def entrenar(datos, instalado, destino, epocas=200, diagnostico_legacy=False):
+    if not 1 <= epocas <= 200:
+        raise ValueError("Presupuesto de epocas: 1..200")
     with open(datos, "rb") as f:
         crudo = f.read(64 * 1048576 + 1)
     if len(crudo) > 64 * 1048576:
         raise ValueError("Datos mayores que el presupuesto de 64 MiB; no se truncan")
-    d, grupos, lectura = leer_agrupado(crudo.decode("utf-8-sig", errors="replace"))
+    d, grupos, lectura = leer_agrupado(crudo.decode("utf-8-sig", errors="replace"), diagnostico_legacy)
     tr, va, te = particiones(grupos)
     ref = C.cargar_ria1(instalado, entradas=5, salidas=3)
     dims = [5] + [w.shape[0] for w in ref.W]
@@ -111,10 +122,30 @@ def entrenar(datos, instalado, destino, epocas=200):
     if malas.any() or malas_ref.any():
         raise ValueError("Inferencia no finita en la prueba final")
     media = y[tr].mean(axis=0)
+    # El objetivo runtime lleva el cinturon de +/-6 dB. No usar promedio del test.
+    pred_runtime = np.clip(pred, media - 6, media + 6)
+    inst_runtime = np.clip(instalado_pred, media - 6, media + 6)
     errores = {k: np.sqrt(np.mean((p - y[te]) ** 2, axis=0)).tolist() for k, p in
                (("candidato", pred), ("instalado", instalado_pred), ("promedio_entrenamiento", media))}
     paridad = float(np.max(np.abs(pred - m.predict(x[te]))))
-    aceptado = decide(errores) and np.isfinite(paridad) and paridad <= 1e-4
+    errores_runtime = {k: np.sqrt(np.mean((p - y[te]) ** 2, axis=0)).tolist() for k, p in
+                       (("candidato", pred_runtime), ("instalado", inst_runtime), ("promedio_entrenamiento", media))}
+    # Evitar ocultar regresiones por nivel de grave/brillo dentro del promedio global.
+    umbrales = np.quantile(y[tr], [1/3, 2/3], axis=0)
+    clases, bloqueos = {}, []
+    for banda, nombre in enumerate(("grave", "brillo", "aire")):
+        etiquetas = np.searchsorted(umbrales[:, banda], y[te, banda])
+        for clase in range(3):
+            sel = etiquetas == clase
+            if not sel.any(): continue
+            red = float(np.mean((pred_runtime[sel] - y[te][sel]) ** 2))
+            ref_error = float(np.mean((inst_runtime[sel] - y[te][sel]) ** 2))
+            clave = "%s_%d" % (nombre, clase)
+            clases[clave] = {"filas": int(sel.sum()), "candidato_mse": red, "instalado_mse": ref_error}
+            if sel.sum() >= 50 and red > ref_error * 1.1 + 1e-12:
+                bloqueos.append(clave)
+    aceptado = (decide(errores) and decide(errores_runtime) and not bloqueos and
+                np.isfinite(paridad) and paridad <= 1e-4 and not diagnostico_legacy)
     modelo = C.bytes_ria1(m)
     informe = {"formato": "ROCOLA-CANDIDATO-EQ 1", "semilla": 20260923, "epocas": epocas,
                "numpy": np.__version__, "python": sys.version.split()[0], "lectura": lectura,
@@ -125,6 +156,9 @@ def entrenar(datos, instalado, destino, epocas=200):
                "filas": [len(tr), len(va), len(te)], "grupos": [len(set(grupos[p])) for p in (tr, va, te)],
                "particion_sha256": hashlib.sha256(b"".join(p.astype("<i8").tobytes() for p in (tr, va, te))).hexdigest(),
                "rmse_db_por_banda": errores, "paridad_float32_max": paridad,
+               "runtime_objetivo_rmse": errores_runtime, "runtime_por_clase": clases,
+               "bloqueos_por_clase": bloqueos, "legacy_no_publicable": bool(diagnostico_legacy),
+               "version_huella_requerida": VERSION_HUELLA, "pcm_completo_verificado": False,
                "politica": "RMSE: mejora >=5% vs promedio train y >=2% vs instalado; ninguna banda >10% peor; paridad <=1e-4",
                "aceptado_numericamente": bool(aceptado), "activado": False, "escucha_pendiente": True,
                "limites": ["Separacion por album/copia exacta, no por artista ni genero",
@@ -148,7 +182,8 @@ if __name__ == "__main__":
     ap.add_argument("--instalado", required=True)
     ap.add_argument("--destino", required=True)
     ap.add_argument("--epocas", type=int, default=200)
+    ap.add_argument("--diagnostico-legacy", action="store_true", help="Solo diagnostico aislado; nunca exporta candidato")
     args = ap.parse_args()
-    result = entrenar(args.datos, args.instalado, args.destino, args.epocas)
+    result = entrenar(args.datos, args.instalado, args.destino, args.epocas, args.diagnostico_legacy)
     print(json.dumps(result, sort_keys=True))
     sys.exit(0 if result["aceptado_numericamente"] else 2)

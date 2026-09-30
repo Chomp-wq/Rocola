@@ -22,7 +22,7 @@ class Fuentes
     }
     static void Medida(object f, string ruta, object fuente)
     {
-        float[] eq = new float[12]; eq[8] = 17000; eq[11] = 1;
+        float[] eq = new float[12]; eq[8] = 17000; eq[11] = 2;
         Call(f, "PublicaMedidaDeFuente", ruta, .1234567f, 10.1234f, eq, fuente);
     }
     static bool Tiene(object f, string r) { return ((IDictionary)Get(f, "durCache")).Contains(r); }

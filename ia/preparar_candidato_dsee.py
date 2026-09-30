@@ -11,7 +11,7 @@ import origen_dsee as O
 from contrato_dsee import EXTRACTOR
 
 
-def preparar(datos, instalado, destino, max_mb=512):
+def preparar(datos, instalado, destino, max_mb=512, indice=None, generos=None):
     if max_mb <= 0:
         raise ValueError("El presupuesto debe ser positivo")
     # Cabecera y rangos cerrados: la rocola puede seguir agregando otros ejemplos.
@@ -19,7 +19,7 @@ def preparar(datos, instalado, destino, max_mb=512):
         cab = f.read(16)
     if cab != b"RIAD" + struct.pack("<iii", 1, 28, 12):
         raise ValueError("Cabecera RIAD incompatible")
-    ent, informe = O.lee_indice(O.ruta_indice(datos), datos)
+    ent, informe = O.lee_indice(indice or O.ruta_indice(datos), datos)
     ent = ent[ent["extractor"] == EXTRACTOR]
     grupos, nivel = O.grupos(ent)
     partes, motivo = O.reparte(grupos, ent["cuenta"])
@@ -60,6 +60,9 @@ def preparar(datos, instalado, destino, max_mb=512):
                    "origen_dsee.py", "publicar_dsee.py", "paridad_extractor.txt"):
         shutil.copy2(os.path.join(here, nombre), os.path.join(destino, nombre))
     shutil.copy2(instalado, os.path.join(destino, "instalado.bin"))
+    generos = generos or os.path.splitext(datos)[0] + ".generos.tsv"
+    if os.path.exists(generos):
+        shutil.copy2(generos, os.path.join(destino, "datos.generos.tsv"))
     with open(os.path.join(destino, "instalado.bin"), "rb") as f:
         instalado_sha = hashlib.sha256(f.read()).hexdigest()
     resumen = {"formato": "ROCOLA-CANDIDATO-DSEE 1", "extractor": EXTRACTOR,
@@ -79,5 +82,7 @@ if __name__ == "__main__":
     ap.add_argument("--instalado", required=True)
     ap.add_argument("--destino", required=True)
     ap.add_argument("--max-mb", type=int, default=512)
+    ap.add_argument("--indice", help="Indice arrastrado o copiado aparte; se verifica CRC")
+    ap.add_argument("--generos", help="Sidecar opcional; se copia como datos.generos.tsv")
     a = ap.parse_args()
-    print(json.dumps(preparar(a.datos, a.instalado, a.destino, a.max_mb), sort_keys=True))
+    print(json.dumps(preparar(a.datos, a.instalado, a.destino, a.max_mb,a.indice,a.generos), sort_keys=True))

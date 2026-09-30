@@ -76,6 +76,9 @@ class ReposoUnido
   using(Bitmap bottom=new Bitmap(640,80))
   using(Bitmap idle=new Bitmap(640,220))
   {
+   // Una UI visible: con una imagen vacia la optimizacion de teselas no envia
+   // geometria. Se comprueba el buffer que realmente se envia, no uiQuad viejo.
+   using(Graphics g=Graphics.FromImage(ui))g.Clear(Color.White);
    panel.Size=new Size(640,480);
    Set(gpu,panel,"GetUi",new Func<Bitmap>(delegate{return ui;}));
    Set(gpu,panel,"GetUiVersion",new Func<int>(delegate{return 1;}));
@@ -92,10 +95,16 @@ class ReposoUnido
      Set(gpu,panel,"idleBlend",blend);
      Check((bool)Call(gpu,panel,"DibujaUnCuadro"),"No presenta");
      float top=(float)gpu.GetProperty("StatusTopY",F).GetValue(panel,null);
-     Array uiQuad=(Array)Get(gpu,panel,"uiQuad");
-     uint ink=(uint)Get(vtx,uiQuad.GetValue(0),"Color");
      int expectedAlpha=(int)((float)gpu.GetProperty("ControlsOpacity",F).GetValue(panel,null)*255);
-     Check((ink>>24)==expectedAlpha,"El alfa no llega a los controles dibujados");
+     if(expectedAlpha>0){
+      object tiles=Get(gpu,panel,"uiTeselas");
+      Array drawn=tiles==null?(Array)Get(gpu,panel,"uiQuad"):(Array)Get(tiles.GetType(),tiles,"Vtx");
+      Check(drawn.Length>0,"UI visible sin geometria");
+      uint ink=(uint)Get(vtx,drawn.GetValue(0),"Color");
+      Check((ink>>24)==expectedAlpha,"El alfa no llega a los controles dibujados");
+     }
+     // Alfa cero omite el envio; los vertices cacheados conservan su ultimo
+     // color, no son una prueba de que la UI oculta se haya vuelto a dibujar.
      object aurora=Get(gpu,panel,"auCuadro");
      Near((float)Get(aurora.GetType(),aurora,"BaseY")-(float)Get(gpu,null,"AurLineaAlza"),top+1,"Seam en render real");
      if((float)Get(gpu,panel,"idleBlend")>0){

@@ -38,7 +38,7 @@ class Cadena : ISampleProvider
     private long pos;
     public int Lecturas;
     public Cadena(float[] datos, int fs, int ch, int cebadoCuadros, long fallaEnMuestra)
-    { d = datos; wf = WaveFormat.CreateIeeeFloatWaveFormat(fs, ch); cebado = cebadoCuadros * ch; fallaEn = fallaEnMuestra; }
+    { d = datos; wf = FormatoPrueba.Flotante(fs, ch); cebado = cebadoCuadros * ch; fallaEn = fallaEnMuestra; }
     public WaveFormat WaveFormat { get { return wf; } }
     public int Read(float[] b, int o, int c)
     {
@@ -56,7 +56,7 @@ class Cadena : ISampleProvider
 class FuenteSP : ISampleProvider
 {
     private readonly float[] d; private readonly WaveFormat wf; private int pos;
-    public FuenteSP(float[] datos, int fs, int ch) { d = datos; wf = WaveFormat.CreateIeeeFloatWaveFormat(fs, ch); }
+    public FuenteSP(float[] datos, int fs, int ch) { d = datos; wf = FormatoPrueba.Flotante(fs, ch); }
     public WaveFormat WaveFormat { get { return wf; } }
     public int Read(float[] b, int o, int c) { int n = Math.Min(c, d.Length - pos); if (n <= 0) return 0; Array.Copy(d, pos, b, o, n); pos += n; return n; }
 }
@@ -77,6 +77,16 @@ class SalidaFalsa : IWavePlayer
     public void Dispose() { }
 }
 
+static class FormatoPrueba
+{
+    internal static WaveFormat Flotante(int hz, int ch)
+    {
+        if (ch != 6) return WaveFormat.CreateIeeeFloatWaveFormat(hz, ch);
+        WaveFormatExtensible f = new WaveFormatExtensible(hz, 32, ch);
+        typeof(WaveFormatExtensible).GetField("dwChannelMask", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(f, 0x3f);
+        return f; // esta fixture de seis canales es FL,FR,FC,LFE,BL,BR, no un conteo sin disposicion
+    }
+}
 class SinPausa
 {
     const BindingFlags T = BindingFlags.Static | BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
@@ -863,12 +873,31 @@ class SinPausa
                   && object.ReferenceEquals(Get(f, "cadenaSonando"), cadB) && Get(f, "cadenaPreparada") == null,
                   "y el relevo deja a B sonando, con su lector en la barra de progreso, y a C primera de la cola");
 
-            // Lo que NO se prepara: va por el camino de siempre, y el lector del calentador se queda donde estaba.
+            // Otra tasa, mismo layout: espera la tabla sin tomar el lector ni bloquear la pantalla.
             monta(tA, disco, new object[] { iC }, pc);
             object lC = sonando[2];
+            TimeSpan inicioC=(TimeSpan)TIA.GetProperty("CurrentTime").GetValue(lC,null);
             Inv(f, "PreparaSiguienteSinPausa");
-            Check(Get(f, "cadenaPreparada") == null && (bool)Prop(Get(f, "lookahead"), "Listo") && !Suelto(lC),
-                  "la siguiente a 48 kHz tras una de 44,1: no se prepara; su lector abierto queda para PlayNext (sin soltarlo ni tomarlo)");
+            Check(Get(f, "cadenaPreparada") == null && (bool)Prop(Get(f, "lookahead"), "Listo")
+                  && (TimeSpan)TIA.GetProperty("CurrentTime").GetValue(lC,null)==inicioC,
+                  "la siguiente a 48 kHz tras44,1 espera tabla: no toma ni suelta el lector mientras se prepara");
+            Stopwatch esperaTabla = Stopwatch.StartNew();
+            while (Get(f, "cadenaPreparada") == null && esperaTabla.ElapsedMilliseconds < 3000)
+            { Thread.Sleep(10); Inv(f, "PreparaSiguienteSinPausa"); }
+            object distinta = Get(f, "cadenaPreparada");
+            bool tasaLista = distinta != null && object.ReferenceEquals(Get(distinta, "Lector"), lC)
+                && ((ISampleProvider)Get(distinta, "Salida")).WaveFormat.SampleRate == fs
+                && Get(Get(distinta, "Mono"), "anterior") == null && Get(Get(distinta, "Noche"), "anterior") == null;
+            Check(tasaLista, "misma disposicion y tasa distinta mantiene salida estable sin transferir estado de filtros de otra tasa");
+            if (tasaLista)
+            {
+                float[] mixtas = LeeTodo((ISampleProvider)sonando[1], new int[] { 997 * ch, 4096 * ch }, null, null);
+                Info("relevo tasas mixtas: " + mixtas.Length + " muestras; esperado " + ((7L * fs + (int)Get(sonando[0], "Retardo")) * ch));
+                Check(mixtas.Length == (7L * fs + (int)Get(sonando[0], "Retardo")) * ch,
+                    "cadenas reales44,1+48k duran7s y cola inicial: sin doble cebado ni padding de conversion");
+                AlParar(f, null);
+            }
+            else SueltaPreparada(f);
             object video = Item(tB, disco); Set(video, "IsVideo", true);
             monta(tA, disco, new object[] { video }, pb);
             Inv(f, "PreparaSiguienteSinPausa");

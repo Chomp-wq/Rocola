@@ -62,6 +62,9 @@ namespace Rocola
         internal static readonly Guid TipoFlotante = new Guid("00000003-0000-0010-8000-00aa00389b71");
 
         internal FormatoExacto(int hz, int canales, int contenedor, int bitsValidos, bool flotante)
+            : this(hz, canales, contenedor, bitsValidos, flotante, canales == 1 ? 4 : (canales == 2 ? 3 : 0)) { }
+
+        internal FormatoExacto(int hz, int canales, int contenedor, int bitsValidos, bool flotante, int mascaraAltavoces)
         {
             waveFormatTag = WaveFormatEncoding.Extensible;
             channels = (short)canales;
@@ -71,7 +74,7 @@ namespace Rocola
             averageBytesPerSecond = hz * blockAlign;
             extraSize = 22;
             validos = (short)bitsValidos;
-            mascara = canales == 2 ? 0x3 : (canales == 1 ? 0x4 : (int)((1L << canales) - 1));
+            mascara = mascaraAltavoces;
             tipo = flotante ? TipoFlotante : TipoPcm;
         }
 
@@ -101,14 +104,17 @@ namespace Rocola
         private static readonly MuestraExclusiva[] Buenas = { MuestraExclusiva.Pcm24en32, MuestraExclusiva.Pcm24, MuestraExclusiva.Pcm32, MuestraExclusiva.Flotante32 };
 
         internal static FormatoExacto Formato(int hz, int canales, MuestraExclusiva m)
+        { return Formato(hz, canales, m, canales == 1 ? 4 : (canales == 2 ? 3 : 0)); }
+
+        internal static FormatoExacto Formato(int hz, int canales, MuestraExclusiva m, int mascara)
         {
             switch (m)
             {
-                case MuestraExclusiva.Pcm24en32: return new FormatoExacto(hz, canales, 32, 24, false);
-                case MuestraExclusiva.Pcm24: return new FormatoExacto(hz, canales, 24, 24, false);
-                case MuestraExclusiva.Pcm32: return new FormatoExacto(hz, canales, 32, 32, false);
-                case MuestraExclusiva.Flotante32: return new FormatoExacto(hz, canales, 32, 32, true);
-                default: return new FormatoExacto(hz, canales, 16, 16, false);
+                case MuestraExclusiva.Pcm24en32: return new FormatoExacto(hz, canales, 32, 24, false, mascara);
+                case MuestraExclusiva.Pcm24: return new FormatoExacto(hz, canales, 24, 24, false, mascara);
+                case MuestraExclusiva.Pcm32: return new FormatoExacto(hz, canales, 32, 32, false, mascara);
+                case MuestraExclusiva.Flotante32: return new FormatoExacto(hz, canales, 32, 32, true, mascara);
+                default: return new FormatoExacto(hz, canales, 16, 16, false, mascara);
             }
         }
 
@@ -132,12 +138,18 @@ namespace Rocola
 
         // Todos los formatos a probar, en orden: las profundidades buenas en cada frecuencia y, al final, 16 bits.
         internal static List<FormatoExacto> Candidatos(int hzAparato, int hzCancion, int canales)
+        { return Candidatos(hzAparato, hzCancion, canales, canales == 1 ? 4 : (canales == 2 ? 3 : 0)); }
+
+        internal static List<FormatoExacto> Candidatos(int hzAparato, int hzCancion, int canales, int mascara)
         {
-            int ch = canales == 1 ? 2 : canales;   // una cancion mono sale por los dos lados
+            bool monoCentral = canales == 1 && mascara == 4;
+            int ch = monoCentral ? 2 : canales;   // mono central canonico conserva la duplicacion historica
+            if (monoCentral) mascara = 3;
             List<FormatoExacto> r = new List<FormatoExacto>();
             List<int> hz = Frecuencias(hzAparato, hzCancion);
-            foreach (int h in hz) foreach (MuestraExclusiva m in Buenas) r.Add(Formato(h, ch, m));
-            foreach (int h in hz) r.Add(Formato(h, ch, MuestraExclusiva.Pcm16));
+            if (canales > 2 && mascara == 0) return r; // sin disposicion no se inventan altavoces
+            foreach (int h in hz) foreach (MuestraExclusiva m in Buenas) r.Add(Formato(h, ch, m, mascara));
+            foreach (int h in hz) r.Add(Formato(h, ch, MuestraExclusiva.Pcm16, mascara));
             return r;
         }
 
@@ -354,13 +366,14 @@ namespace Rocola
             try
             {
                 int hzAparato = ap.Hz();
-                foreach (FormatoExacto fmt in Exclusivo.Candidatos(hzAparato, hzCancion, canales))
+                foreach (FormatoExacto fmt in Exclusivo.Candidatos(hzAparato, hzCancion, canales, FormatoAudio.Mascara(samples.WaveFormat)))
                 {
                     if (!ap.Admite(fmt)) continue;
                     admitioAlguno = true;
                     IWavePlayer wa = null;
                     try
                     {
+                        retardoFinalReloj = 0; // cada candidato tiene su propio camino, aun tras un rechazo con DMO
                         ISampleProvider s = samples;
                         if (s.WaveFormat.Channels == 1 && fmt.Channels == 2)
                         {
@@ -372,7 +385,8 @@ namespace Rocola
                         {
                             // Remuestrear reconstruye la onda y deja en muestras lo que caia ENTRE ellas: el ultimo
                             // limitador va DESPUES y mira el pico real (ver PicoReal.cs), igual que en compartido.
-                            s = new LimitadorPicoReal(NuevoRemuestreo(s, fmt.SampleRate), TechoPicoReal, 3.0);
+                            LimitadorPicoReal final = new LimitadorPicoReal(NuevoRemuestreo(s, fmt.SampleRate), TechoPicoReal, 3.0);
+                            s = final; MarcaRetardoFinalReloj(final);
                         }
                         SalidaExacta sx = new SalidaExacta(s, fmt);
                         sx.GananciaInicial(GananciaDeWindowsDe(ap));   // desde la primera muestra: nada de arrancar a tope
@@ -398,6 +412,7 @@ namespace Rocola
                         }
                         output = null;
                         SueltaRemuestreo();
+                        retardoFinalReloj = 0; // el compartido/nativo no hereda el limitador de un intento fallido
                         if (Exclusivo.EsDeFormato(ex)) continue;   // este formato no: el siguiente
                         throw;
                     }

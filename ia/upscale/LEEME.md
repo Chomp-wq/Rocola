@@ -1,5 +1,23 @@
 # Kit de upscaling — flujo completo
 
+## Conservacion y confianza — 29 de septiembre de 2026
+
+El modo automatico exige una caida abrupta persistente, cuerpo musical fiable y acuerdo entre
+ventanas de ambos canales (no mezcla mono que borre contrafase). Silencio, material oscuro sano,
+cortes dudosos y >=18.5kHz no se reconstruyen automaticamente. La confianza indica evidencia
+de corte, NO prueba que el codec lo causara: un master analogico puede tener un corte legitimo.
+Mezcla auto conservadora 35–60%; `--mezcla` numerico sigue siendo una eleccion explicita y
+conserva el umbral anterior de musica sana. No hay una promesa de recuperar el original perdido.
+
+El piloto reparte muestras entre cinco clases, incluyendo 15.5–18.5kHz y controles sanos,
+y compara tambien el nivel automatico. La salida masiva por defecto es WAV float32; conserva
+un maestro `_cache_float/*.wav` antes de una exportacion MP3 explicita. No modifica originales.
+El detector/master y el pipeline v5 forman parte de la identidad de cache; caches anteriores
+siguen existiendo, pero no se confunden con este procesamiento. WAV float usa lector managed
+tambien en Modest; esto no sustituye una prueba real en XP ni cambia su salida final PCM16+TPDF.
+WAV convertido no garantiza todas las etiquetas/portadas. Escuchar A/B a nivel igualado antes
+de adoptar copias procesadas; las metricas y pruebas sinteticas no demuestran preferencia musical.
+
 Orden de los dobles clic:
 
 1. **`1_instalar.bat`** — instala todo una vez (ver detalle abajo).
@@ -45,8 +63,8 @@ repente muy nitidos): es el modelo dudando segun el contenido. Por eso el detall
 MEZCLA con el original ("cuanta IA"), como el wet/dry de un estudio:
 - `4_muestras.bat` -> `6_comparar.bat`: genera cada cancion en varios niveles (0/40/55/70/100%%)
   para que oigas y elijas. El nivel `_AUTO` es el que el sistema pondria solo segun el dano.
-- `5_procesar.bat` te pregunta "cuanta IA": **auto** (suave en lo muy danado, fuerte en lo
-  poco danado) o un numero fijo 0-100. Auto es lo recomendado.
+- `5_procesar.bat` te pregunta "cuanta IA": **auto** (35–60% solo con corte confiable; cero
+  en sano/dudoso) o un numero fijo 0-100. Auto es conservador, no garantiza preferencia audible.
 
 
 ---

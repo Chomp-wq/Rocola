@@ -30,18 +30,18 @@ set "S=%S:"=%"
 if not defined S ( echo [X] No escribiste la carpeta de salida. & pause & exit /b 1 )
 if not exist "%S%\." ( echo [X] Esa carpeta de salida no existe: "%S%" & pause & exit /b 1 )
 echo.
-echo Formato de salida:  mp3 = compatible con todo, 320k.  wav = sin perdida, mucho mas pesado.
+echo Formato: wav float32 = maestro sin recodificacion con perdida. mp3 = copia 320k.
 set "F="
-set /p "F=Escribe mp3 o wav y Enter (Enter = mp3): "
+set /p "F=Escribe mp3 o wav y Enter (Enter = wav): "
 set "F=%F:"=%"
-if not defined F set "F=mp3"
+if not defined F set "F=wav"
 if /i not "%F%"=="mp3" if /i not "%F%"=="wav" (
   echo [X] El formato solo puede ser mp3 o wav.
   pause
   exit /b 1
 )
 echo.
-echo Cuanta IA: auto = suave en lo muy danado, fuerte en lo poco danado. O un numero 0-100.
+echo Cuanta IA: auto = conservadora solo con corte confiable. O un numero 0-100 explicito.
 set "IA="
 set /p "IA=Escribe auto o un numero y Enter (Enter = auto): "
 set "IA=%IA:"=%"

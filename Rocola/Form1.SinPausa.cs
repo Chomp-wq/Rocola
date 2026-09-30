@@ -43,7 +43,12 @@ namespace Rocola
             internal string MedidaRuta, EqRuta;  // que se aprende oyendola (null = nada)
             internal float BajoFactor, BajoBase;
             internal bool IaMejorada;            // suena la version de Apollo (solo HD)
+            internal double InicioMusica;
+            internal long CuadroComienzo;
+            internal int CebadoInicial;
         }
+        private static void SellaInicioReloj(CadenaCancion c)
+        { c.InicioMusica = c.Lector.CurrentTime.TotalSeconds; c.CuadroComienzo = 0; c.CebadoInicial = c.Retardo; }
 
         private Encadenado secuencia;            // lo que alimenta la salida abierta
         private CadenaCancion cadenaSonando;     // la de lo que la pantalla da por sonando
@@ -71,10 +76,17 @@ namespace Rocola
             // siguiente se abre en el aparato nuevo (SalidaSonido.cs).
             if (!MismaSalida()) return;
             // El lector de la siguiente lo abre por delante el calentador (MiraPorDelante). Si aun no esta, o
-            // viene en otra frecuencia o con otros canales, no se toca: la abrira el camino de siempre.
+            // no conserva la disposicion conocida o excede trabajo de conversion, queda para PlayNext.
             string ruta = RutaQueSonaria(sig.Song.Path);
-            if (ruta == null || !lookahead.Cumple(ruta, delegate(IAudioSource l) { return Encadenado.MismoFormato(l.WaveFormat, s.WaveFormat); }))
+            if (ruta == null || !lookahead.Cumple(ruta, delegate(IAudioSource l) { return Encadenado.MismoFormato(l.WaveFormat, s.WaveFormat) || RemuestreoContinuo.SePuede(l.WaveFormat, s.WaveFormat); }))
                 return;
+            double[] tablaConversion = null;
+            if (!lookahead.Cumple(ruta, delegate(IAudioSource l) {
+                if (Encadenado.MismoFormato(l.WaveFormat, s.WaveFormat)) return true;
+                tablaConversion = RemuestreoContinuo.CapturaTabla(l.WaveFormat, s.WaveFormat);
+                return tablaConversion != null;
+            }))
+                return; // un solo calentador acotado; el temporizador vuelve cuando la tabla ya esta hecha
             bool iaMejorada = IaMejoradaPara(sig.Song.Path);
             IAudioSource lector = lookahead.Toma(ruta);
             if (lector == null) return;
@@ -84,6 +96,14 @@ namespace Rocola
                 lector.Volume = FixedVolume;
                 c = ArmaCadena(sig.Song, lector, iaMejorada, 0);
                 c.Item = sig;
+                SellaInicioReloj(c); c.CebadoInicial = 0; // Encadenado descarta el cebado de los relevos
+                if (!Encadenado.MismoFormato(c.Salida.WaveFormat, s.WaveFormat))
+                {
+                    // Se quita el cebado a la tasa del origen; despues se convierte y se vuelve a limitar.
+                    // Otras disposiciones nunca se mezclan: se abre su salida al terminar, como siempre.
+                    LimitadorPicoReal lim = new LimitadorPicoReal(new RemuestreoContinuo(c.Salida, s.WaveFormat, c.Retardo, tablaConversion), TechoPicoReal, 3.0);
+                    c.Salida = lim; c.Retardo = lim.DelayFrames;
+                }
             }
             catch (Exception ex)
             {
@@ -98,7 +118,7 @@ namespace Rocola
             bool entera = cadenaSonando.Fundido == null;   // sin fundido ("fundido=0"), la que suena acaba entera
             if (SiguienteDelDisco(nowPlaying, sig) && cadenaSonando.Fundido != null) entera = cadenaSonando.Fundido.Quita();
             // Si acaba entera, la siguiente sigue con la memoria de sus filtros: el cambio no se oye (SigueA).
-            if (entera) SigueA(c, cadenaSonando);
+            if (entera && lector.WaveFormat.SampleRate == cadenaSonando.Lector.WaveFormat.SampleRate) SigueA(c, cadenaSonando);
         }
 
         // La siguiente ya suena. Lo mira el temporizador de la animacion (cada 42 ms): el relevo se recoge
@@ -107,10 +127,13 @@ namespace Rocola
         {
             Encadenado s = secuencia;
             if (s == null) return;
-            Encadenado.Relevo r = s.TomaRelevo(ahora, RetrasoAudible());
+            double pendientes, segundosOidos;
+            Encadenado.Relevo r = PendientePorReloj(out pendientes, out segundosOidos)
+                ? s.TomaRelevoPorCuadro(Math.Max(0L, (long)Math.Floor(segundosOidos * s.WaveFormat.SampleRate)))
+                : s.TomaRelevo(ahora, RetrasoAudible());
             if (r == null) return;
             CadenaCancion b = r.Ficha as CadenaCancion;
-            if (b != null) CompletaRelevo(b);
+            if (b != null) { b.CuadroComienzo = r.Cuadro; CompletaRelevo(b); }
         }
 
         // Lo mismo que hace PlayNext al pasar a la siguiente, menos cerrar y abrir la salida: la cancion que
@@ -191,11 +214,14 @@ namespace Rocola
             Exception deLaSalida = e != null ? e.Exception : null;
             object quien; Exception fallo;
             bool falloAlLeer = s.TomaFallo(out quien, out fallo);
-            if (deLaSalida == null || falloAlLeer)
+            double pendientes, segundosOidos;
+            Encadenado.Relevo oido = deLaSalida != null && !falloAlLeer && PendientePorReloj(out pendientes, out segundosOidos)
+                ? s.TomaRelevoPorCuadro(Math.Max(0L, (long)Math.Floor(segundosOidos * s.WaveFormat.SampleRate))) : null;
+            if (deLaSalida == null || falloAlLeer || oido != null)
             {
-                Encadenado.Relevo r = s.TomaRelevo(Environment.TickCount, int.MinValue);
+                Encadenado.Relevo r = oido ?? s.TomaRelevo(Environment.TickCount, int.MinValue);
                 CadenaCancion b = r != null ? r.Ficha as CadenaCancion : null;
-                if (b != null) { PasaRelevo(b); ApuntaGeneroTrasRelevo(); }
+                if (b != null) { b.CuadroComienzo = r.Cuadro; PasaRelevo(b); ApuntaGeneroTrasRelevo(); }
             }
             return (falloAlLeer && deLaSalida == null) ? new StoppedEventArgs(fallo) : e;
         }

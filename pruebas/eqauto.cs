@@ -19,7 +19,7 @@ class EqAuto
     // huella: 8 bandas en dB + corte en Hz
     static void Pon(string nom, float b0, float b6, float b7, float corte)
     {
-        float[] c = new float[9];
+        float[] c = new float[LEN]; c[11] = 2f;
         c[0]=b0; c[1]=0; c[2]=0; c[3]=0; c[4]=0; c[5]=0; c[6]=b6; c[7]=b7; c[CUT]=corte;
         cache[nom]=c;
     }
@@ -86,11 +86,13 @@ class EqAuto
         Check(Avg() == null, "con menos de 10 canciones medidas no hay objetivo (como siempre)");
         Check(Corr("una.mp3") == null, "y sin objetivo no se corrige nada");
 
-        // huella vieja (sin corte guardado): no cuenta como sana, pero tampoco rompe nada
+        // Medidas antiguas dependientes del DSP se conservan, pero no crean objetivo ni correccion.
         cache.Clear();
         for (int i = 0; i < 15; i++) Pon("vieja" + i + ".mp3", 0f, -4f, -6f, 0f);
+        foreach (float[] c in cache.Values) c[11] = 1f;
         float[] a3 = Avg();
-        Check(a3 != null && (int)Fld("eqAvgSanas") == 15, "las huellas del formato viejo (sin corte) siguen sirviendo");
+        Check(a3 == null && (int)Fld("eqAvgSanas") == 0 && Corr("vieja0.mp3") == null,
+              "las huellas viejas siguen almacenadas sin contaminar objetivo ni corregir canciones");
 
         // ---------- MODO AUTOMATICO: sin perilla, lo decide el programa ----------
         // De fabrica no hay nada que ajustar: la fuerza sale de cuanto se puede fiar uno del objetivo, que
@@ -134,8 +136,8 @@ class EqAuto
             // espectro. La que se sale de madre debe recibir MENOS correccion en ese brillo, no la misma.
             cache.Clear();
             for (int i = 0; i < 40; i++) Pon("s" + i + ".mp3", 0f, 0f, 0f, 22050f);
-            float[] cerca = new float[LEN]; cerca[6] = -3f; cerca[CUT] = 22050f; cache["cerca.mp3"] = cerca;
-            float[] lejos = new float[LEN]; lejos[6] = -3f; lejos[CUT] = 22050f;
+            float[] cerca = new float[LEN]; cerca[11] = 2f; cerca[6] = -3f; cerca[CUT] = 22050f; cache["cerca.mp3"] = cerca;
+            float[] lejos = new float[LEN]; lejos[11] = 2f; lejos[6] = -3f; lejos[CUT] = 22050f;
             for (int b = 1; b <= 5; b++) lejos[b] = -20f;      // ademas, medio espectro hundido: es rarisima
             cache["lejos.mp3"] = lejos;
             Avg();

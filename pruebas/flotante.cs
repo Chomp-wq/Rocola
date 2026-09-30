@@ -33,7 +33,9 @@ using NAudio.Wave.SampleProviders;
 //  11) el programa lo usa donde debe (leido del codigo compilado)
 //  12) EN WINDOWS, con el decodificador de verdad y pruebas/flotante_overs.mp3 (una mezcla sintetica masterizada a lo
 //      bruto: +8 dB y recortada, pasada a MP3 con LAME; ver genera_flotante_overs.py): la comparacion, cuanto pasa
-//      de 1,0 y lo que cuesta. Fuera de Windows se dice y no se da por comprobado.
+//      de 1,0 y lo que cuesta SI supera la comparacion. Si el codec instalado no la supera, se prueba el camino real
+//      Envuelve y se exige PCM/duracion identicos al ACM, no se fuerza a usar un codec desplazado. Fuera de Windows
+//      se dice y no se da por comprobado.
 
 // Cuadros MP3 de prueba: MPEG-1 capa III, 128 kbps, 44,1 kHz, estereo. El numero del cuadro va en los bytes 4-7.
 static class Mp3Prueba
@@ -594,7 +596,7 @@ class Flotante
                 Console.WriteLine("     NO SE PUEDE MEDIR AQUI: el decodificador de MP3 de Windows (mp3dmod.dll, como MFT) solo existe en Windows.");
                 Console.WriteLine("     Esta misma bateria lo compara y lo mide en Windows: validar-audio-mejoras.ps1 la corre.");
             }
-            else PruebaEnWindows(fix);
+            else PruebaEnWindows(fix, apuntes);
         }
 
         Console.WriteLine("\n" + (fallos == 0 ? "OK decodificacion en coma flotante: " + oks + " comprobaciones" : "FALLOS: " + fallos));
@@ -602,7 +604,7 @@ class Flotante
     }
 
     // Con el de Windows de verdad y el ACM de verdad, sobre el MP3 de prueba.
-    static void PruebaEnWindows(string fix)
+    static void PruebaEnWindows(string fix, List<string> apuntes)
     {
         Func<WaveFormat, IMp3FrameDecompressor> acmNuevo = delegate(WaveFormat f) { return Mp3FileReader.CreateAcmFrameDecompressor(f); };
         Func<WaveFormat, IMp3FrameDecompressor> mftNuevo = (Func<WaveFormat, IMp3FrameDecompressor>)Estatico("FabricaMft");
@@ -618,6 +620,46 @@ class Flotante
             }
         });
         Console.WriteLine("     comparacion con el de siempre: " + detalle);
+        if (veredicto == -1)
+        {
+            Check(!String.IsNullOrEmpty(detalle), "el rechazo del codec instalado explica su motivo");
+            Olvida();
+            apuntes.Clear();
+            bool mismoMotor = true, mismoPcm = true, mismaDuracion = false;
+            long muestras = 0;
+            EnHilo(ApartmentState.MTA, delegate
+            {
+                using (Mp3FileReader seguro = new Mp3FileReader(fix, delegate(WaveFormat f)
+                {
+                    IMp3FrameDecompressor acm = acmNuevo(f);
+                    IMp3FrameDecompressor elegido = (IMp3FrameDecompressor)Llama("Envuelve", f, acm, fix, acmNuevo);
+                    mismoMotor = mismoMotor && Object.ReferenceEquals(acm, elegido);
+                    return elegido;
+                }))
+                using (Mp3FileReader original = new Mp3FileReader(fix))
+                {
+                    mismaDuracion = seguro.TotalTime == original.TotalTime && seguro.Length == original.Length
+                        && seguro.WaveFormat.Equals(original.WaveFormat);
+                    byte[] a = new byte[8192], b = new byte[8192];
+                    int na, nb;
+                    do
+                    {
+                        na = seguro.Read(a, 0, a.Length); nb = original.Read(b, 0, b.Length);
+                        if (na != nb) mismoPcm = false;
+                        for (int i = 0; i < Math.Min(na, nb); i++) if (a[i] != b[i]) mismoPcm = false;
+                        muestras += na / seguro.WaveFormat.BlockAlign;
+                    } while (na > 0 || nb > 0);
+                }
+            });
+            Check(mismoMotor && (int)Estatico("Comprobaciones") == 1,
+                  "Envuelve compara el codec REAL una vez y conserva el ACM exacto si no es compatible");
+            Check(apuntes.Exists(s => s.Contains("NO se usa") || s.Contains("se sigue con el de siempre")),
+                  "la decision real registra que no habilito el codec incompatible");
+            Check(mismaDuracion && muestras > 0, "el camino seguro conserva formato, longitud y duracion del ACM");
+            Check(mismoPcm, "el archivo entero por el camino seguro es bit-identico al ACM");
+            Console.WriteLine("     CAPACIDAD NO HABILITADA AQUI: MP3 MFT flotante rechazado; alternativa ACM verificada, no se afirma mejora flotante real.");
+            return;
+        }
         Check(veredicto == 1, "el decodificador de Windows da lo mismo que el de siempre, sin desplazarse");
         // Descomprimir entero con cada uno y contar lo que pasa de 1,0.
         long sobreW = 0, topeS = 0, nW = 0, nS = 0; double picoW = 0, msW = 0, msS = 0;

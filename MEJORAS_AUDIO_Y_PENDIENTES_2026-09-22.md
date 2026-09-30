@@ -1,6 +1,9 @@
 # Mejoras de audio: implementación y guía para continuar
 Fecha: 22 de septiembre de 2026.
 
+Actualización del 29/09: [entrada original, continuidad, Apollo y entrenadores reforzados](AUDIO_MEJORAS_2026-09-29.md).
+Esta actualización sustituye los pendientes correspondientes de este historial. No se reemplazaron modelos instalados: los candidatos nuevos tampoco superaron el guard de calidad.
+
 Actualización del 23/09: [margen de pico real y entrenamiento real de candidatos DSEE/AutoEQ](AUDIO_PICOS_Y_CANDIDATOS_2026-09-23.md).
 El techo operativo ahora es 0,88. Los dos candidatos se rechazaron frente a los modelos instalados; estos siguen intactos.
 

@@ -30,10 +30,11 @@
 // Lo que el MP3 trae por encima de 1,0 sigue por la cadena en coma flotante: el nivelado lo baja y el limitador de
 // pico real del final no deja pasar nada del techo.
 //
-// NO PROBADO EN WINDOWS: esto se escribio y se probo con Mono en Linux, con decodificadores de mentira que hacen lo
-// que hacen los de Windows (pruebas/flotante.cs). El decodificador de Windows de verdad solo existe en Windows: la
-// misma bateria lo compara con el de siempre en Windows, y la linea "MP3 en coma flotante" de rocola_error.txt dice
-// en cada maquina que decidio y por que.
+// PRUEBAS: pruebas/flotante.cs cubre la logica con decodificadores sinteticos y, en Windows, compara el codec real.
+// No todos los codecs instalados entregan muestras alineadas con el ACM: si se rechaza, la prueba exige que la
+// alternativa real conserve su PCM y duracion exactos; no fuerza a habilitarlo. La linea "MP3 en coma flotante"
+// de rocola_error.txt dice en cada maquina que decidio y por que. Un PASS de la alternativa no acredita una mejora
+// flotante real en esa maquina.
 
 using System;
 using System.Collections.Generic;

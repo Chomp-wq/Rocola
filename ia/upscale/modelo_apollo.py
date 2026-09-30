@@ -17,7 +17,7 @@ from presupuesto_cpu import aplica_presupuesto
 DEFAULT_SOURCE = "JusperLee/Apollo"
 DEFAULT_REVISION = "0b123a4606d5345d9082f6f633d8bfebe84c8e79"
 DEFAULT_CHECKPOINT_SHA256 = "99d9af7f1ff20e63c393035513a655392818d66b4d7fc23d658175c1f15e8d76"
-PIPELINE_VERSION = "apollo-safe-v4-float-decode"
+PIPELINE_VERSION = "apollo-safe-v5-confianza-corte"
 
 
 def _revision_inmutable(revision):

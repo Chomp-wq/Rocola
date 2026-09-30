@@ -189,6 +189,8 @@ namespace Rocola
         //       80 Hz necesita mas ayuda del bajo psicoacustico que una que baja a 30.
         // 0 = todavia no se sabe. Ninguno cuesta un analisis aparte: salen del recorrido que ya se hacia.
         private const int EqLen = 12, EqCut = 8, EqClip = 9, EqCutLo = 10, EqFingerprint = 11;
+        // 2: potencia de canales del original, antes de cualquier DSP; 0/1 se migran al medir.
+        private const float EqVersionOriginal = 2f;
         // 20 s de musica: con menos, la huella no es confiable. Se cuenta en SEGUNDOS: antes eran 882.000
         // cuadros, que son 20 s solo a 44,1 kHz (9,2 s a 96 kHz y 40 s a 22,05 kHz).
         private const double EqMinSec = 20.0;

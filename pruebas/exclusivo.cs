@@ -127,8 +127,12 @@ class Exclusivo
     }
     static object EstEx(string m, params object[] a)
     {
-        try { return TEx.GetMethod(m, T).Invoke(null, a); }
-        catch (TargetInvocationException tie) { throw tie.InnerException; }
+        foreach (MethodInfo mi in TEx.GetMethods(T)) if (mi.Name == m && mi.GetParameters().Length == a.Length)
+        {
+            try { return mi.Invoke(null, a); }
+            catch (TargetInvocationException tie) { throw tie.InnerException; }
+        }
+        throw new MissingMethodException(TEx.Name, m);
     }
     static object Mu(string n) { return Enum.Parse(TMu, n); }
     static WaveFormat Formato(int hz, int ch, string tipo) { return (WaveFormat)EstEx("Formato", hz, ch, Mu(tipo)); }
@@ -193,8 +197,11 @@ class Exclusivo
         byte[] sf = new byte[16]; Array.Copy(ef, 24, sf, 0, 16);
         Check(BitConverter.ToInt16(e32, 18) == 32 && Iguales(s32, pcm) && Iguales(sf, flo),
               "32 bits ENTEROS (32 validos, PCM), que NAudio no sabe pedir: con NAudio 32 bits es siempre coma flotante");
-        WaveFormat seis = Formato(48000, 6, "Pcm24en32");
-        Check(BitConverter.ToInt32(Bytes(seis), 20) == 0x3F && seis.BlockAlign == 24, "seis canales: los seis altavoces de siempre (0x3F)");
+        WaveFormat seis = (WaveFormat)EstEx("Formato", 48000, 6, Mu("Pcm24en32"), 0x60f);
+        Check(BitConverter.ToInt32(Bytes(seis), 20) == 0x60f && seis.BlockAlign == 24, "seis canales: conserva mascara real de laterales, no deducida del conteo");
+        Check(BitConverter.ToInt32(Bytes(Formato(48000, 6, "Pcm24en32")), 20) == 0
+            && ((System.Collections.IList)EstEx("Candidatos", 48000, 48000, 6)).Count == 0,
+            "seis canales desconocidos: no inventa mascara ni formato exclusivo");
     }
 
     // ================================================================================================
@@ -426,6 +433,12 @@ class Exclusivo
                          && object.ReferenceEquals(Get(f, "output"), JugadorFalso.Hechos[1]) && Es(JugadorFalso.Hechos[1].Pedido, 48000, 2, 24, 24, false);
         Check(siguiente, "si al iniciar rechaza el formato, esa salida se suelta sin avisos colgando y se prueba el siguiente (24 bits en 3 bytes)");
         Cierra(f);
+
+        f=Form();ap=new AparatoFalso();Pon(f,ap);
+        ap.AlIniciar=delegate(WaveFormat w){return w.SampleRate==48000?Com(0x88890008):null;};
+        JugadorFalso.Hechos.Clear();ok=Abre(f,new Fuente(Musica(44100,2,.1,33,.5),44100,2));
+        Check(ok&&((IWavePosition)Get(f,"output")).OutputWaveFormat.SampleRate==44100&&(double)Get(f,"retardoFinalReloj")==0,
+            "DMO rechazado seguido de tasa nativa: reloj no hereda retardo de limitador descartado");Cierra(f);
 
         // e) NAudio cambiaria el formato (meteria su remuestreador detras del limitador): esa no se usa.
         f = Form(); ap = new AparatoFalso(); Pon(f, ap); ap.CambiaFormato = true;

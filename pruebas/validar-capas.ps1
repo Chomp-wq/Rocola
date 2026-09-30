@@ -1,5 +1,12 @@
 param([string]$OutputDirectory = (Join-Path $env:TEMP 'rocola-capas-validacion'))
 $ErrorActionPreference = 'Stop'
+$previousRocolaData = $env:ROCOLA_DATOS
+try {
+New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
+$OutputDirectory = (Resolve-Path $OutputDirectory).Path
+$isolatedRocolaData = Join-Path $OutputDirectory ('datos-pruebas-' + [Guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $isolatedRocolaData | Out-Null
+$env:ROCOLA_DATOS = $isolatedRocolaData
 $testRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Split-Path -Parent $testRoot
 $sourceRoot = Join-Path $repoRoot 'Rocola'
@@ -8,13 +15,22 @@ $framework = if ($project.Project.PropertyGroup.TargetFrameworkVersion -contains
 $compiler = Join-Path $env:WINDIR ('Microsoft.NET\Framework\' + $framework + '\csc.exe')
 $sources = @($project.Project.ItemGroup.Compile | ForEach-Object { if ($_.Include) { Join-Path $sourceRoot $_.Include } })
 $naudio = Join-Path $repoRoot 'packages\NAudio.1.9.0\lib\net35\NAudio.dll'
+$decoder = @()
+if ($framework -eq 'v3.5') {
+    $nlayer = Join-Path $repoRoot 'packages\NLayer.1.12.0\lib\net35\NLayer.dll'
+    $decoder = @("/r:$nlayer", "/resource:$nlayer,Rocola.NLayer.dll")
+}
 New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
 $OutputDirectory = (Resolve-Path $OutputDirectory).Path
 Copy-Item -LiteralPath $naudio -Destination (Join-Path $OutputDirectory 'NAudio.dll') -Force
+if ($framework -eq 'v3.5') {
+    # Las pruebas por reflexion no llaman Main, que registra el resolver del recurso embebido.
+    Copy-Item -LiteralPath $nlayer -Destination (Join-Path $OutputDirectory 'NLayer.dll') -Force
+}
 foreach ($mode in @('gpu', 'cpu')) {
     $defines = if ($mode -eq 'gpu') { '/define:TRACE;ROCOLA_GPU' } else { '/define:TRACE' }
     $exe = Join-Path $OutputDirectory ('Rocola-' + $mode + '.exe')
-    & $compiler /nologo /target:winexe /optimize+ /warnaserror+ $defines ("/out:$exe") /r:System.dll /r:System.Core.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll /r:System.Xml.dll ("/r:$naudio") $sources
+    & $compiler /nologo /target:winexe /optimize+ /warnaserror+ $defines ("/out:$exe") /r:System.dll /r:System.Core.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll /r:System.Xml.dll ("/r:$naudio") @decoder $sources
     if ($LASTEXITCODE -ne 0) { throw "No compila $mode" }
 }
 $exe = Join-Path $OutputDirectory 'Rocola-gpu.exe'
@@ -31,3 +47,4 @@ foreach ($test in @('capascolor', 'cristalcola', 'cubofila', 'respuesta', 'efect
 }
 } finally { Pop-Location }
 Write-Output "PASS: compilacion GPU/CPU y treinta y una baterias. No se reemplazo ningun ejecutable de produccion. Salida: $OutputDirectory"
+} finally { $env:ROCOLA_DATOS = $previousRocolaData }

@@ -14,6 +14,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from util_audio import FS, leer_wav, escribir_wav, acantilado_hz, por_trozos, mezcla_auto
+from util_audio import analizar_corte, escribir_wav_float
 from util_audio import REMUESTREO_HEREDADO, remuestreador, args_decodificar, sondeo_audio, sin_remuestreo
 from memoria_audio import MemoriaAudio
 
@@ -204,7 +205,7 @@ def _encode_desde_wav(ffmpeg, wav, original, dst, formato, calidad):
         cmd += ["-map", "1:v?", "-c:v", "copy", "-c:a", "libmp3lame",
                 "-b:a", "%dk" % calidad, "-id3v2_version", "3"]
     else:
-        cmd += ["-vn", "-c:a", "pcm_s16le"]
+        cmd += ["-vn", "-c:a", "pcm_f32le"]
     cmd.append(tmp)
     try:
         _run(cmd)
@@ -228,7 +229,7 @@ def _copiar_o_convertir_buena(ffmpeg, src, dst, formato, calidad):
                 cmd += ["-map", "0:v?", "-c:v", "copy", "-c:a", "libmp3lame",
                         "-b:a", "%dk" % calidad, "-id3v2_version", "3"]
             else:
-                cmd += ["-vn", "-c:a", "pcm_s16le"]
+                cmd += ["-vn", "-c:a", "pcm_f32le"]
             cmd.append(tmp)
             _run(cmd)
         os.replace(tmp, dst)
@@ -384,7 +385,7 @@ def main():
     ap.add_argument("--musica")
     ap.add_argument("--salida")
     ap.add_argument("--csv", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "calidad_biblioteca.csv"))
-    ap.add_argument("--formato", choices=FORMATOS_ROCOLA, default="mp3")
+    ap.add_argument("--formato", choices=FORMATOS_ROCOLA, default="wav")
     ap.add_argument("--calidad", type=int, default=320)
     ap.add_argument("--seg", type=float, default=10.0)
     ap.add_argument("--mezcla", default="auto")
@@ -455,7 +456,7 @@ def _procesar_carpeta(a, raiz, salida, ffmpeg, ffprobe):
         return 1
     parametros = {"formato": a.formato, "calidad": a.calidad, "seg": a.seg,
                   "mezcla": str(a.mezcla), "modelo": fingerprint,
-                  "umbral": UMBRAL_BUENA}
+                  "umbral": UMBRAL_BUENA, "detector": "confianza-corte-v1", "master": "float32-v1"}
 
     # El remuestreo a 44,1 kHz: el mejor que ESTE ffmpeg ejecuta de verdad (ver util_audio).
     remuestreo, filtro = remuestreador(ffmpeg)
@@ -516,13 +517,23 @@ def _procesar_carpeta(a, raiz, salida, ffmpeg, ffprobe):
                     with MemoriaAudio(dec) as memoria:
                         x, _ = leer_wav(dec, reservar=memoria.crear)
                         cliff = acantilado_hz(x)
-                        if cliff >= UMBRAL_BUENA:
+                        evidencia = analizar_corte(x)
+                        if cliff >= UMBRAL_BUENA or (a.mezcla == "auto" and not evidencia["reconstruir"]):
                             _copiar_o_convertir_buena(ffmpeg, src, dst, a.formato, a.calidad)
                         else:
                             y = por_trozos(x, proc, seg=a.seg, reservar=memoria.crear)
-                            m = mezcla_auto(cliff) if a.mezcla == "auto" else max(0.0, min(1.0, float(a.mezcla) / 100.0))
+                            m = mezcla_auto(evidencia["corte_hz"], evidencia["confianza"]) if a.mezcla == "auto" else max(0.0, min(1.0, float(a.mezcla) / 100.0))
                             out_wav = os.path.join(td, "out.wav")
-                            escribir_wav(out_wav, memoria.mezclar(y, x, m))
+                            mezcla = memoria.mezclar(y, x, m)
+                            # Master del resultado, aparte de originales y copia compatible con XP.
+                            master_dir = os.path.join(salida, "_cache_float")
+                            os.makedirs(master_dir, exist_ok=True)
+                            master_id = hashlib.sha256((_canon(src) + json.dumps(params_src, sort_keys=True) +
+                                                       json.dumps(entrada_antes, sort_keys=True)).encode("utf-8")).hexdigest()
+                            master = os.path.join(master_dir, master_id + ".wav")
+                            escribir_wav_float(master + ".tmp", mezcla)
+                            os.replace(master + ".tmp", master)
+                            escribir_wav_float(out_wav, mezcla)
                             _encode_desde_wav(ffmpeg, out_wav, src, dst, a.formato, a.calidad)
                             fue_mejorada = True
                 if entrada_antes != _identidad_entrada(src):

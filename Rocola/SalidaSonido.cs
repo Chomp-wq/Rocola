@@ -176,8 +176,60 @@ namespace Rocola
         {
             IAudioSource r = reader;
             if (r == null) return 0;
-            try { return PosicionOida(r.CurrentTime.TotalSeconds, r.TotalTime.TotalSeconds, RetrasoAudible()); }
+            try
+            {
+                double leido = r.CurrentTime.TotalSeconds, total = r.TotalTime.TotalSeconds;
+                double pendientes;
+                double oido;
+                if (PosicionPorReloj(out oido)) return LimitaPosicion(oido, total);
+                if (cadenaSonando == null && PendientePorReloj(out pendientes, out oido)) return LimitaPosicion(leido - pendientes, total); // fuente sintetica sin cadena
+                return PosicionOida(leido, total, RetrasoAudible());
+            }
             catch { return 0; }
+        }
+        private double retardoFinalReloj;
+        private void MarcaRetardoFinalReloj(LimitadorPicoReal lim)
+        { retardoFinalReloj = (double)lim.DelayFrames / Math.Max(1, lim.WaveFormat.SampleRate); }
+        private static double LimitaPosicion(double p, double total)
+        { return double.IsNaN(p) || p < 0 ? 0 : (total > 0 && p > total ? total : p); }
+        private bool PosicionPorReloj(out double segundos)
+        {
+            segundos = 0;
+            CadenaCancion c = cadenaSonando; Encadenado s = secuencia;
+            double pendientes, oido;
+            if (c == null || s == null || !PendientePorReloj(out pendientes, out oido)) return false;
+            double salida = oido
+                            - (double)c.CuadroComienzo / Math.Max(1, s.WaveFormat.SampleRate)
+                            - (double)c.CebadoInicial / Math.Max(1, c.Lector.WaveFormat.SampleRate);
+            salida = Math.Max(0, salida);
+            FuenteSinSilencios silencios = c.Lector as FuenteSinSilencios;
+            segundos = silencios != null ? silencios.MusicaOida(salida) : c.InicioMusica + salida;
+            return true;
+        }
+
+        // GetPosition existe en WaveOut de XP. No se abre otro aparato ni se exige una API moderna.
+        // El reloj cuenta lo entregado al dispositivo; la secuencia cuenta tambien el audio aun en la bomba.
+        // Si hubo huecos sinteticos o el driver no puede devolver su reloj, se conserva el respaldo anterior.
+        private bool PendientePorReloj(out double segundos, out double oido)
+        {
+            segundos = 0; oido = 0;
+            Encadenado s = secuencia; IWavePosition p = output as IWavePosition;
+            if (s == null || p == null || (bomba != null && bomba.Huecos > 0)) return false;
+            try
+            {
+                WaveFormat f = p.OutputWaveFormat;
+                if (f == null || f.AverageBytesPerSecond <= 0) return false;
+                // Una sola instantanea de lo entregado: Read puede avanzar incluso durante GetPosition.
+                long cuadros = s.CuadrosEntregados;
+                long bytes = p.GetPosition();
+                if (bytes < 0) return false;
+                double entregado = (double)cuadros / Math.Max(1, s.WaveFormat.SampleRate);
+                // Los consumidores usan ESTE reloj directamente, nunca otro CuadrosEntregados - pendientes.
+                oido = (double)bytes / f.AverageBytesPerSecond - retardoFinalReloj;
+                segundos = entregado - oido;
+                return segundos >= 0 && segundos <= Math.Max(5.0, RetrasoAudible() / 1000.0 + 2.0);
+            }
+            catch { return false; }
         }
         private double TomaReanudar() { double d = reanudarEn; reanudarEn = 0; inicioSeg = d > 0 ? d : 0; return inicioSeg; }
 

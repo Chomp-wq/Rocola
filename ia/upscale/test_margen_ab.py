@@ -29,19 +29,19 @@ class MargenComunTests(unittest.TestCase):
     def test_comparar_mezcla_saca_un_solo_margen(self):
         src = self._fuente("comparar_mezcla")
         # Un solo margen, sacado del MINIMO sobre todos los niveles...
-        self.assertRegex(src, r"margen\s*=\s*min\(\s*ganancia_wav\(.*for\s+niv\s+in\s+niveles\s*\)",
+        self.assertRegex(src, r"margen\s*=\s*min\(\s*ganancia_wav\(.*for\s+niv\s+in\s+niveles_cancion\s*\)",
                          "el margen ya no sale del minimo sobre todos los niveles")
         # ...y aplicado a cada mezcla.
         self.assertRegex(src, r"mezcla\s*=\s*mezclar\(.*\)\s*\*\s*margen",
                          "el margen comun ya no se aplica a cada nivel")
         # Y que no haya vuelto a aparecer una ganancia por nivel dentro del bucle.
-        dentro = src.split("for niv in niveles:")[-1]
+        dentro = src.split("for niv in niveles_cancion:")[-1]
         self.assertNotIn("ganancia_wav(", dentro,
                          "volvio a calcularse una ganancia por nivel: cada uno saldria a otro volumen")
 
     def test_piloto_usa_el_mismo_margen_para_los_dos(self):
         src = self._fuente("01_piloto")
-        self.assertRegex(src, r"margen\s*=\s*min\(\s*ganancia_wav\(x\)\s*,\s*ganancia_wav\(y\)\s*\)",
+        self.assertRegex(src, r"margen\s*=\s*min\(\s*ganancia_wav\(x\)\s*,\s*ganancia_wav\(y\)\s*,\s*ganancia_wav\(auto\)\s*\)",
                          "el piloto ya no saca un margen comun para el original y la mejorada")
         self.assertRegex(src, r"x\s*\*=\s*margen\s*;\s*y\s*\*=\s*margen",
                          "el margen comun ya no se aplica a los dos")

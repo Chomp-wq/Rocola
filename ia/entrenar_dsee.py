@@ -17,10 +17,11 @@ arrastrar los dos, uno solo, o la CARPETA entera donde esten (se buscan dentro).
 
 QUE SALE
 
-    rocola_ia.bin         el reconstructor de agudos del DSEE, aprendido de TU musica
-    rocola_eq_ia.bin      el objetivo del EQ automatico, por cancion en vez de uno para todas
+    entrenado/dsee-*/candidato.bin       reconstructor y su informe
+    entrenado/eq-*/candidato_eq.bin      objetivo EQ si supera el guardian
 
-Los dos se dejan en la carpeta `entrenado\\` y solo hay que copiarlos junto a Rocola.exe.
+Son candidatos aislados: NO sustituir instalados sin validacion PCM y escucha autorizada.
+Llevar tambien .idx junto al .bin y el sidecar opcional .generos.tsv, conservando el nombre base.
 
 QUE **NO** SE ENTRENA (porque no es una red, son medidas que la rocola ya lleva sola)
 
@@ -29,7 +30,7 @@ QUE **NO** SE ENTRENA (porque no es una red, son medidas que la rocola ya lleva 
     - el des-recorte, el realce y el fundido: ajustes fijos, no aprendidos
 """
 
-import os, struct, subprocess, sys
+import os, struct, subprocess, sys, tempfile
 from collections import deque
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
@@ -60,6 +61,8 @@ def mira_que_es(ruta):
         return "modelo"              # un modelo YA entrenado
     if cab[:4] == b"RIAX":
         return "indice_dsee"         # de que cancion viene cada ejemplo del material
+    if os.path.basename(ruta).lower().endswith(".generos.tsv"):
+        return "generos_dsee"        # metadata opcional; nunca son objetivos ni rutas de musica
     # Texto: la huella tonal son lineas "b0;b1;...;corte|ruta"
     try:
         with open(ruta, "r", encoding="utf-8", errors="replace") as f:
@@ -163,8 +166,7 @@ def cuantas_canciones(ruta):
 
 
 def corre(argv, titulo_paso):
-    """Devuelve el codigo de salida del entrenador. 0 = guardo modelo; 2 = corrio bien pero decidio
-    NO guardar (no le gana al promedio, que es la respuesta honesta y no un fallo); otro = fallo."""
+    """0/4 = candidato valido aislado; 2 = rechazado; 3 = no verificable; otro = fallo."""
     raya()
     raya("--- " + titulo_paso + " ---")
     raya("    " + " ".join(argv[1:]))
@@ -255,7 +257,7 @@ def main(argv):
     for p, que in otros:
         if que == "indice_dsee":
             raya("   [origen]        %-34s %10s   de que cancion viene cada ejemplo" % (os.path.basename(p), tam(p)))
-    otros = [(p, q) for p, q in otros if q != "indice_dsee"]
+    otros = [(p, q) for p, q in otros if q not in ("indice_dsee", "generos_dsee")]
     for p, que in otros[:12]:
         pista = "ya es un modelo entrenado, no material" if que == "modelo" else "no me sirve para entrenar"
         raya("   [ni idea]       %-34s %10s   (%s)" % (os.path.basename(p), tam(p), pista))
@@ -267,7 +269,7 @@ def main(argv):
         raya("    Busca junto a Rocola.exe:  rocola_ia_datos.bin  y  rocola_eq.txt")
         return 1
 
-    hechos, faltaron = [], []
+    candidatos, faltaron = [], []
 
     # ---------------- 1) EL RECONSTRUCTOR DE AGUDOS (el DSEE propiamente dicho) ----------------
     if datos_dsee:
@@ -279,28 +281,31 @@ def main(argv):
             raya("      la red aprende de memoria en vez de aprender de verdad. Deja la rocola encendida")
             raya("      unos dias mas, o enciende el REPASO A FONDO en Ctrl+F3 una noche.")
         idx = mayor[:-4] + ".idx" if mayor.lower().endswith(".bin") else mayor + ".idx"
-        if not os.path.exists(idx):
-            raya()
-            raya("  [!] Junto a %s no esta rocola_ia_datos.idx (de que cancion viene cada ejemplo)." % os.path.basename(mayor))
-            raya("      Sin el se entrena para mirar, pero no se puede validar con canciones que la red no")
-            raya("      haya visto, y el modelo NO se guarda. Las rocolas nuevas lo escriben solas al cosechar.")
-        # El DSEE ya no aparta ni devuelve copias: entrenar_ia.py publica modelo, vectores e informe como UNA
-        # version (publicar_dsee.py) y solo si le gana a la curva y al modelo puesto. Si no publica, no toca
-        # nada; si una publicacion se corto, se repara sola desde la version activa.
+        # Ningun entrenamiento instala ni recupera modelos: solo crea un candidato aislado.
         # El modelo que el dueno tiene PUESTO: si lo arrastro junto al material, el candidato se compara
-        # con ese; si no, con el que haya en esta carpeta. Nunca se reemplaza sin ganarle.
+        # con ese; si no, con el que haya en esta carpeta. El instalado nunca se reemplaza aqui.
         instalados = [p for p, q in otros_todos if q == "modelo" and os.path.basename(p).lower() == "rocola_ia.bin"]
         extra = ["--instalado", instalados[0]] if instalados else []
-        cod = corre(["entrenar_ia.py", "--datos", mayor, "--capas", "28,96,96,12"] + extra,
+        for tipo, extension, opcion in (("indice_dsee", ".idx", "--indice"),
+                                       ("generos_dsee", ".generos.tsv", "--generos")):
+            metadata = [p for p,q in otros_todos if q == tipo]
+            esperada = os.path.splitext(mayor)[0] + extension
+            elegida = next((p for p in metadata if os.path.basename(p).lower()==os.path.basename(esperada).lower()),
+                          metadata[0] if len(metadata)==1 else None)
+            if os.path.exists(esperada): elegida=esperada
+            if elegida: extra += [opcion,elegida]
+            elif metadata: raya("  [!] Metadata ambigua; conserva nombre base y arrastra el par correcto: "+opcion)
+        if not os.path.exists(idx) and "--indice" not in extra:
+            raya("  [!] No hay indice junto al .bin ni arrastrado: candidato diagnostico sin validacion independiente.")
+            raya("      Las rocolas nuevas escriben .idx al cosechar; trae .bin y .idx juntos.")
+        os.makedirs(SALIDA, exist_ok=True)
+        destino_dsee = tempfile.mkdtemp(prefix="dsee-", dir=SALIDA)
+        cod = corre(["entrenar_ia.py", "--datos", mayor, "--capas", "28,96,96,12",
+                     "--candidato", os.path.join(destino_dsee, "candidato.bin"),
+                     "--informe", os.path.join(destino_dsee, "informe_dsee.json")] + extra,
                     "PASO 1: el reconstructor de agudos (rocola_ia.bin)")
-        if cod == 0:
-            try:
-                import publicar_dsee
-                publicar_dsee.materializa(AQUI, (SALIDA,))       # copia exacta de la version activa
-                hechos.append(("rocola_ia.bin", "reconstruye los agudos que el MP3 corto"))
-            except Exception as e:
-                faltaron.append("el DSEE se publico, pero no se pudo copiar a la carpeta entrenado (%s); "
-                                "esta en ia\\modelos y en ia\\rocola_ia.bin" % e)
+        if cod in (0, 4):
+            candidatos.append(("DSEE", destino_dsee))
         elif cod == 2:
             faltaron.append("el DSEE no supero el control de calidad (curva fija y modelo puesto): se conserva el "
                             "modelo anterior; no es un fallo del entrenamiento. Mira informe_dsee.json")
@@ -323,48 +328,48 @@ def main(argv):
             raya()
             raya("  [!] Solo hay %s canciones medidas. Se entrena igual, pero con tan poco la red no suele" % format(n, ","))
             raya("      ganarle al promedio y lo mas probable es que decida no guardar nada. No pasa nada:")
-            raya("      la rocola sigue usando el promedio de la biblioteca, como siempre.")
-        guarda_copia("rocola_eq_ia.bin")
-        cod = corre(["entrenar_eq.py", "--datos", mayor, "--salida", "rocola_eq_ia.bin"],
+            raya("      el modelo EQ instalado se conserva; si no existe, sigue el promedio de la biblioteca.")
+        instalados = [p for p, q in otros_todos if q == "modelo" and os.path.basename(p).lower() == "rocola_eq_ia.bin"]
+        instalado = instalados[0] if instalados else os.path.join(AQUI, "rocola_eq_ia.bin")
+        # Cada entrenamiento queda aislado; nunca sustituye modelos sin escucha/PCM final.
+        os.makedirs(SALIDA, exist_ok=True)
+        destino = tempfile.mkdtemp(prefix="eq-", dir=SALIDA)
+        os.rmdir(destino)  # el evaluador exige destino nuevo
+        cod = corre(["entrenar_eq_candidato.py", "--datos", mayor, "--instalado", instalado, "--destino", destino],
                     "PASO 2: el objetivo del EQ automatico (rocola_eq_ia.bin)")
-        if cod == 0 and lleva_a_salida("rocola_eq_ia.bin"):
-            hechos.append(("rocola_eq_ia.bin", "le pone a cada cancion su propio objetivo de EQ"))
+        if cod == 0:
+            raya("  Candidato EQ validado numericamente en " + destino)
+            candidatos.append(("AutoEQ", destino))
         elif cod == 2:
-            # El entrenador compara contra el promedio sobre canciones que la red nunca vio, y si no le
-            # gana por un margen claro NO guarda nada. Eso NO es un fallo: es la respuesta honesta.
-            faltaron.append("el EQ automatico no le gano al promedio, asi que -bien hecho- no se guardo "
-                            "modelo: la rocola sigue con el promedio, que para tu biblioteca es igual de "
-                            "bueno. Con mas canciones analizadas puede cambiar; vuelve a intentarlo mas "
-                            "adelante")
-            devuelve_copia("rocola_eq_ia.bin")
+            # Rechazo frente al promedio train/instalado o guard runtime; no se modifica el activo.
+            faltaron.append("AutoEQ rechazado por el guardian agrupado frente al promedio y al instalado; "
+                            "modelo instalado intacto. Mira informe_eq.json")
         else:
             faltaron.append("el EQ automatico no se pudo entrenar (mira el mensaje de arriba)")
-            if devuelve_copia("rocola_eq_ia.bin"):
-                faltaron.append("se dejo puesto el rocola_eq_ia.bin que ya tenias, sin tocar")
+            faltaron.append("modelo EQ instalado intacto; se necesitan huellas limpias v2 y referencia actual")
     else:
         faltaron.append("no trajiste rocola_eq.txt: sin el no se puede entrenar el EQ automatico")
 
     # ---------------- resumen ----------------
     titulo("RESUMEN")
-    if hechos:
-        raya("  LISTO. Copia estos archivos JUNTO a Rocola.exe y reinicia la rocola:")
+    if candidatos:
+        raya("  CANDIDATOS ENTRENADOS; NO ACTIVADOS:")
         raya()
-        for nombre, para_que in hechos:
-            raya("     %-20s  %s" % (nombre, para_que))
+        for nombre, destino in candidatos:
+            raya("     %-12s  %s" % (nombre, destino))
         raya()
         raya("  Estan en:  " + SALIDA)
         raya()
-        raya("  Para comprobar que la rocola los tomo: Ctrl+F3, en la tarjeta CALIDAD DEL SONIDO")
-        raya("  la nota del reconstructor dira \"con IA PROPIA\".")
+        raya("  Validacion PCM y escucha a nivel igualado pendientes antes de cualquier activacion.")
     else:
-        raya("  No se genero ningun modelo.")
+        raya("  No hay candidatos aceptados; consulta los informes diagnosticos. Instalados intactos.")
     if faltaron:
         raya()
-        raya("  LO QUE NO SALIO")
+        raya("  LIMITES Y RESULTADOS DE LAS OTRAS PARTES")
         for f in faltaron:
             raya("     - " + f)
     raya()
-    return 0 if hechos else 1
+    return 0 if candidatos else 1
 
 
 if __name__ == "__main__":

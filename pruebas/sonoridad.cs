@@ -827,18 +827,41 @@ class Sonoridad
     // ---------------------------------------------------------------------------------------------
     //  11) LA TANDA DE LA CANCION ENTERA RESPETA A LOS DEMAS
     // ---------------------------------------------------------------------------------------------
-    static void Coordinacion()
+    static void Coordinacion(string dir)
     {
         Console.WriteLine("\n  11) LA TANDA DE LA CANCION ENTERA: DESPUES, EN REPOSO Y CEDIENDO\n");
         List<string> repaso = Codigo.ConAyudantes(TF, "StartPreScan");
-        Check(Codigo.Llama(repaso, "TandaIntegrada") && Codigo.Llama(repaso, "MideIntegradaResponsive") && Codigo.Llama(repaso, "PublicaIntegrada"),
-              "el repaso de la biblioteca arma la tanda de la cancion entera, la mide y la apunta");
+        Check(Codigo.Llama(repaso, "TandaIntegrada") && Codigo.Llama(repaso, "MideIntegradaResponsive")
+              && Codigo.Llama(repaso, "TomaFuenteMedida") && Codigo.Llama(repaso, "PublicaIntegradaDeFuente"),
+              "el repaso de la biblioteca arma la tanda de la cancion entera, la mide y la apunta con el sello del original");
         Check(Codigo.Llama(repaso, "SaveIntegCache"), "y la guarda por tandas, como la de volumen");
         Check(Codigo.Llama(Codigo.ConAyudantes(TF, "MideIntegradaResponsive"), "YieldCoverWork"), "cede el disco a las caratulas que se estan cargando");
         Check(Codigo.Llama(TF.GetMethod("MideIntegrada", T), "MeasurementCancelled") && Codigo.Llama(TF.GetMethod("MideIntegrada", T), "CierraIntegrada"),
               "se puede cancelar en cada bloque y solo cierra lo que leyo entero");
-        Check(Codigo.Llama(Codigo.ConAyudantes(TF, "PrecalientaSiguiente"), "TomaIntegrada") && Codigo.Llama(Codigo.ConAyudantes(TF, "PrecalientaSiguiente"), "PublicaIntegrada"),
-              "el calentador de la siguiente tambien apunta la integrada cuando ya leyo la cancion entera");
+        List<string> calentador = Codigo.ConAyudantes(TF, "PrecalientaSiguiente");
+        Check(Codigo.Llama(calentador, "TomaIntegrada") && Codigo.Llama(calentador, "TomaFuenteMedida")
+              && Codigo.Llama(calentador, "PublicaIntegradaDeFuente"),
+              "el calentador de la siguiente tambien apunta la integrada entera con el sello del original");
+        // El wrapper NO sustituye la publicacion por una llamada vacia: la conserva,
+        // pero solo despues de validar que el original no cambio mientras se media.
+        MethodInfo publica = TF.GetMethod("PublicaIntegradaDeFuente", T);
+        List<string> pasos = Codigo.Repasa(publica);
+        Check(pasos.IndexOf("AceptaFuenteMedida") >= 0
+              && pasos.IndexOf("PublicaIntegrada") > pasos.IndexOf("AceptaFuenteMedida")
+              && pasos.IndexOf("ActualizaFuenteMedida") > pasos.IndexOf("PublicaIntegrada"),
+              "el wrapper valida la fuente, publica la integrada y conserva su procedencia, en ese orden");
+        object f = Codigo.FormSinEncender(TF);
+        Set(f, "startupReadPending", true); // ninguna invalidacion encarga guardados de esta fixture
+        string ruta = Path.Combine(dir, "integrada-fuente.bin");
+        File.WriteAllBytes(ruta, new byte[128]);
+        object fuente = Call(null, "CapturaFuente", ruta);
+        Call(f, "PublicaIntegradaDeFuente", ruta, Integ(1, -20f, 2f, 500), fuente);
+        Check(Tabla(f).Contains(ruta) && Campo(Tabla(f)[ruta], "Lkfs") == -20f,
+              "con el original intacto el wrapper publica realmente la integrada");
+        File.SetLastWriteTimeUtc(ruta, File.GetLastWriteTimeUtc(ruta).AddSeconds(5));
+        Call(f, "PublicaIntegradaDeFuente", ruta, Integ(1, -10f, 2f, 500), fuente);
+        Check(Tabla(f).Contains(ruta) && Campo(Tabla(f)[ruta], "Lkfs") == -20f,
+              "si el original cambia, una integrada tardia no sustituye la ya publicada");
         Check(Codigo.LeeCampo(Codigo.MetodosConAyudantes(TF, "StartPreScan"), "nowPlaying"), "con musica sonando descansa segun lo que trabajo (lee si hay cancion)");
         List<string> tanda = Codigo.Llamadas(TF.GetMethod("TandaIntegrada", T));
         Check(Codigo.Llama(tanda, "OrdenaPorUso"), "y la tanda va en el orden de interes de siempre: lo pedido, lo mas sonado, lo mas reciente");
@@ -901,7 +924,7 @@ class Sonoridad
             Nivelado(dir);
             Minimos();
             Partidas();
-            Coordinacion();
+            Coordinacion(dir);
             Coste(dir);
         }
         finally { try { Directory.Delete(dir, true); } catch { } }

@@ -18,7 +18,7 @@
 // El recorte (FuenteSinRelleno): se quitan del principio el retraso del codificador mas el del descompresor, y se
 // corta al final en la duracion real de la musica. Solo en MP3 de MPEG-1 (32, 44,1 y 48 kHz) con etiqueta LAME
 // valida (con su CRC) y que cuadre con lo que hay en el archivo (un MP3 unido lleva la etiqueta de su primera parte: ver
-// Cuadra). Un salto dentro de la cancion (volvio el aparato de sonido) deja de recortar: sigue como antes.
+// Cuadra). Los saltos usan coordenadas de la musica y conservan el limite final de la etiqueta.
 // Lo recortado es silencio (el del codificador) y el relleno del final: en una cancion suelta no cambia nada que se
 // oiga, y en un disco continuo desaparece el hueco.
 using System;
@@ -253,23 +253,29 @@ namespace Rocola
     }
 
     // EL RECORTE: quita 'fuera' cuadros del principio y corta tras 'musica' cuadros. Cuenta en muestras (de todos los
-    // canales), asi que un origen que entrega cuadros partidos no descoloca nada. Deja() lo apaga (tras un salto).
+    // canales), asi que un origen que entrega cuadros partidos no descoloca nada. Movido conserva el final tras seek.
     internal sealed class RecorteRelleno
     {
         private readonly Func<float[], int, int, int> lee;
         private long saltar, quedan;
-        private bool recorta = true;
+        private readonly int canales;
+        private readonly long inicio, musica;
         private readonly float[] basura = new float[4096];
         internal RecorteRelleno(Func<float[], int, int, int> origen, int canales, long fuera, long musica)
         {
             lee = origen;
-            int ch = Math.Max(1, canales);
-            saltar = Math.Max(0, fuera) * ch; quedan = Math.Max(0, musica) * ch;
+            this.canales = Math.Max(1, canales);
+            inicio = Math.Max(0, fuera); this.musica = Math.Max(0, musica);
+            Movido(0);
         }
-        internal void Deja() { recorta = false; }
+        internal void Movido(long cuadroCrudo)
+        {
+            long p = Math.Max(0, cuadroCrudo);
+            saltar = Math.Max(0, inicio - p) * canales;
+            quedan = Math.Max(0, musica - Math.Max(0, p - inicio)) * canales;
+        }
         internal int Lee(float[] buffer, int offset, int count)
         {
-            if (!recorta) return lee(buffer, offset, count);
             while (saltar > 0)
             {
                 int r = lee(basura, 0, (int)Math.Min(saltar, basura.Length));
@@ -362,18 +368,40 @@ namespace Rocola
             private readonly IAudioSource s;
             internal IAudioSource Interior { get { return s; } }
             private readonly RecorteRelleno recorte;
+            private readonly long cuadrosInicio;
+            private readonly int tasa;
+            private long muestrasMusica;
             internal readonly long CuadrosMusica;   // lo que dura la musica (para el fundido de salida)
             internal FuenteSinRelleno(IAudioSource origen, long cuadrosFuera, long cuadrosMusica)
             {
-                s = origen; CuadrosMusica = cuadrosMusica;
+                s = origen; CuadrosMusica = cuadrosMusica; cuadrosInicio = cuadrosFuera;
+                tasa = Math.Max(1, origen.WaveFormat.SampleRate);
                 recorte = new RecorteRelleno(origen.Read, origen.WaveFormat.Channels, cuadrosFuera, cuadrosMusica);
             }
             public NAudio.Wave.WaveFormat WaveFormat { get { return s.WaveFormat; } }
-            public int Read(float[] buffer, int offset, int count) { return recorte.Lee(buffer, offset, count); }
+            public int Read(float[] buffer, int offset, int count) { int n = recorte.Lee(buffer, offset, count); if (n > 0) System.Threading.Interlocked.Add(ref muestrasMusica, n); return n; }
             public float Volume { set { s.Volume = value; } }
-            public TimeSpan CurrentTime { get { return s.CurrentTime; } }
-            public TimeSpan TotalTime { get { return s.TotalTime; } }
-            public void Salta(TimeSpan donde) { s.Salta(donde); recorte.Deja(); }   // tras un salto, como antes
+            public TimeSpan CurrentTime { get { return TiempoCuadros(System.Threading.Interlocked.Read(ref muestrasMusica) / Math.Max(1, WaveFormat.Channels)); } }
+            public TimeSpan TotalTime { get { return TiempoCuadros(CuadrosMusica); } }
+            private TimeSpan TiempoCuadros(long cuadros) { return TimeSpan.FromTicks((long)Math.Round((double)cuadros * TimeSpan.TicksPerSecond / tasa)); }
+            internal double SegundosCrudos { get { return s.TotalTime.TotalSeconds; } }
+            internal MapaSilencios MapaMusica(MapaSilencios m)
+            {
+                float d = (float)((double)cuadrosInicio / tasa);
+                if (m.Desde >= 0) m.Desde = Math.Max(0f, m.Desde - d);
+                if (m.Hasta >= 0) m.Hasta = Math.Min((float)TotalTime.TotalSeconds, Math.Max(0f, m.Hasta - d));
+                if (m.HuecoDesde >= 0) m.HuecoDesde = Math.Max(0f, m.HuecoDesde - d);
+                if (m.HuecoHasta >= 0) m.HuecoHasta = Math.Max(0f, m.HuecoHasta - d);
+                m.Dura = (float)TotalTime.TotalSeconds;
+                return m;
+            }
+            public void Salta(TimeSpan donde)
+            {
+                long p = Math.Max(0, Math.Min(CuadrosMusica, (long)Math.Round(donde.TotalSeconds * tasa)));
+                s.Salta(TiempoCuadros(p + cuadrosInicio));
+                recorte.Movido(p + cuadrosInicio);
+                System.Threading.Interlocked.Exchange(ref muestrasMusica, p * Math.Max(1, WaveFormat.Channels));
+            }
             public void Dispose() { s.Dispose(); }
         }
     }

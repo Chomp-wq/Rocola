@@ -44,13 +44,14 @@ class EqPreparado
     }
     // Camino anterior independiente: prepara al leer, conserva estados al desactivar
     // y compacta las mismas bandas en el mismo orden, sin suavizados nuevos.
-    // El realce, si la cancion EMPIEZA con el encendido, va a 2x (Rocola/Realce.cs): aqui se rehace aparte, con
+    // El realce conserva siempre 31 cuadros de latencia y va a 2x (Rocola/Realce.cs): aqui se rehace aparte, con
     // el historial entero de cada canal (sin anillos ni trozos), las mismas cuentas en el mismo orden.
     sealed class Reference : ISampleProvider {
         readonly ISampleProvider source; readonly Type form; readonly float[] centers;
         public float[] Curve; float[] used,state,lp; float[][] coef;int active;
         public float Gain=1f,Master=1f,Excite;
         readonly double[] C; readonly int K,D; List<double>[] H,V,G,N; float[] lp2; int modo;
+        readonly float[] resto32=new float[1];
         public Reference(Type f,int rate,int channels) {
             form=f;source=new Input(rate,channels);centers=(float[])Get(f,null,"EqCentros");
             Type re=f.Assembly.GetType("Rocola.RealceSobremuestreado",true);
@@ -67,7 +68,10 @@ class EqPreparado
             double y=0;for(int t=0;t<K;t++)y+=C[t]*(At(H[c],m-t)+At(H[c],m-D+t));
             G[c].Add(Resto(y));N[c].Add(Resto(At(H[c],m-(K-1))));
             double w=.5*At(N[c],m-K);for(int t=0;t<K;t++)w+=(.5*C[t])*(At(G[c],m-t)+At(G[c],m-D+t));
-            return (float)At(V[c],m-D)+k*(float)(2.5*At(H[c],m-D)+w);
+            // CLR 2 puede retener un cast float con precision interna en esta expresion.
+            // Materializarlo conserva el redondeo float32 real antes de la mezcla; Equal sigue exacto.
+            resto32[0]=(float)(2.5*At(H[c],m-D)+w);
+            return (float)At(V[c],m-D)+k*resto32[0];
         }
         public WaveFormat WaveFormat { get { return source.WaveFormat; } }
         public int Read(float[] buffer,int offset,int count) {
@@ -84,7 +88,7 @@ class EqPreparado
                 state=new float[ch*32];used=db;
             }
             if(eq&&active==0)eq=false;
-            if(modo==0)modo=excite?2:1;
+            if(modo==0)modo=2;
             if(modo==2){
                 float pole=WaveFormat.SampleRate==44100?.55f:(float)(1-Math.Pow(.45,44100.0/WaveFormat.SampleRate));
                 float k=ex*.5f*.4f;int ci=0;
@@ -150,7 +154,7 @@ class EqPreparado
                 for(int i=0;i<x.Length;i++)x[i]=y[i]=z[i]=777f;
                 Check(tap.Read(x,offset,count)==reference.Read(y,offset,count),"Longitud distinta");
                 Equal(x,y,"PCM de referencia distinto "+rate+"/"+channels+" cambio "+k);
-                if(old!=null && (excite==0 || rate==44100)){old.Read(z,offset,count);Equal(x,z,"PCM del Release anterior distinto");}
+                if(old!=null && excite>0 && rate==44100){old.Read(z,offset,count);Equal(x,z,"PCM del Release anterior distinto");}
             }
         }
     }

@@ -40,11 +40,12 @@ TIMEOUT_PROBE = 30
 TIMEOUT_DECODE = 20 * 60
 MAX_REINTENTOS = 3
 BACKOFF = (60, 5 * 60, 30 * 60)
-PIPELINE_VERSION = "apollo-safe-v4-float-decode"
+PIPELINE_VERSION = "apollo-safe-v5-confianza-corte"
 CACHE_FORMAT_VERSION = "wav-float32-v4-sin-recompresion"
 AQUI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(AQUI, "..", "upscale"))
 from util_audio import FS, leer_wav, escribir_wav_float, acantilado_hz, por_trozos, mezcla_auto
+from util_audio import analizar_corte
 from util_audio import (REMUESTREO_HEREDADO, REMUESTREOS, remuestreador, args_decodificar,
                         firma_herramienta, sondeo_audio, sin_remuestreo)
 from memoria_audio import MemoriaAudio
@@ -533,11 +534,12 @@ def procesar_uno(job_path, listos, proc, ffmpeg, pipeline, ffprobe, seg=10.0, fi
             if len(x) > (MAX_SEG + 31) * FS:
                 raise RuntimeError("la decodificacion excedio el limite de duracion")
             cliff = acantilado_hz(x)
-            if cliff >= 18500:                     # ya buena: solo la MARCA (bytes, no megas)
+            evidencia = analizar_corte(x)
+            if cliff >= 18500 or (mez == "auto" and not evidencia["reconstruir"]):
                 dst = _marca_original(listos, h, str(int(cliff)))
             else:
                 y = por_trozos(x, proc, seg=seg, reservar=memoria.crear)
-                m = mezcla_auto(cliff) if mez == "auto" else max(0.0, min(1.0, float(mez) / 100.0))
+                m = mezcla_auto(evidencia["corte_hz"], evidencia["confianza"]) if mez == "auto" else max(0.0, min(1.0, float(mez) / 100.0))
                 escribir_wav_float(out, memoria.mezclar(y, x, m))
                 dst = _a_cache(listos, h, out, ffmpeg)
                 if _duracion(ffprobe, dst) is None:

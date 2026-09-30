@@ -21,7 +21,7 @@ class Calidad
     static void Pon(string nom, float corte, float recorte, float corteLo)
     {
         float[] c = new float[LEN];
-        c[CUT] = corte; c[CLIP] = recorte; c[CUTLO] = corteLo;
+        c[CUT] = corte; c[CLIP] = recorte; c[CUTLO] = corteLo; c[11] = 2f;
         cache[nom] = c;
     }
     static float Real(string m, string p) { return (float)TF.GetMethod(m, BindingFlags.Instance|BindingFlags.NonPublic).Invoke(F, new object[]{ p }); }

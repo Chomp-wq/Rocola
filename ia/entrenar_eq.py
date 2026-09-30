@@ -21,25 +21,25 @@ esa leccion a las demas.
 DE DONDE SALEN LOS DATOS
 ------------------------
 De "rocola_eq.txt", que la rocola escribe sola mientras pre-analiza la biblioteca. Cada linea es
-    b0;b1;b2;b3;b4;b5;b6;b7;corteHz;recorte;corteGrave|ruta
+    b0;b1;b2;b3;b4;b5;b6;b7;corteHz;recorte;corteGrave;versionHuella|ruta
 con las 8 bandas en dB (relativas a la mediana de su cuerpo) y despues los datos de calidad. Esa
 ficha ha ido CRECIENDO con las versiones -al principio eran solo las 8 bandas, luego se le anadio
 el corte de agudos, luego el recorte y el corte de abajo- y siempre anadiendo AL FINAL. Por eso
-aqui se leen los 8 primeros y, si esta, el 9o; lo que venga detras se ignora sin quejarse, y un
-archivo de cualquier version de la rocola se puede leer. No hay que cosechar nada aparte.
+aqui la entrada CLI exige versionHuella=2 (medida original anterior al DSP). Legacy 0/1 solo
+se permite como diagnostico separado no publicable; no se interpreta una version futura.
 
 EL MODELO NO SE GUARDA SI NO SIRVE
 ----------------------------------
-Antes de escribir nada se compara contra lo que habria pasado usando el promedio de siempre, sobre
-canciones que la red NO vio al entrenar. Si no gana por un margen claro, NO se guarda el archivo y
-la rocola sigue con el promedio. Es la unica forma honesta de saber si la red aporta algo o solo
-esta memorizando.
+Se delega siempre a entrenar_eq_candidato.py: albumes/copia exacta separados, validacion para
+checkpoint y prueba final contra promedio de entrenamiento y modelo instalado actual.
+Solo exporta candidato aislado si cumple el guardian; nunca modifica el modelo instalado.
 
 USO
 ---
-    python3 entrenar_eq.py --datos rocola_eq.txt --salida rocola_eq_ia.bin
+    python3 entrenar_eq.py --datos rocola_eq.txt --instalado rocola_eq_ia.bin --destino eq_nuevo
 
-Luego se copia rocola_eq_ia.bin junto al Rocola.exe. Si no esta, la rocola usa el promedio.
+PCM y escucha autorizada pendientes antes de activar. --salida solo orienta el directorio del
+candidato; NO sobrescribe ese nombre. Sin modelo instalado legible no se certifica mejora.
 """
 
 import argparse, os, struct, sys
@@ -163,107 +163,30 @@ def normalizar_entrenamiento(x, tr):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Entrena el modelo del EQ automatico de la rocola.")
-    ap.add_argument("--datos", default="rocola_eq.txt", help="archivo de huellas que escribe la rocola")
-    ap.add_argument("--salida", default="rocola_eq_ia.bin", help="modelo a escribir")
+    """Entrada publica: siempre candidato agrupado independiente, nunca exportacion directa."""
+    import tempfile
+    import entrenar_eq_candidato as Q
+    ap = argparse.ArgumentParser(description="AutoEQ estricto: candidato aislado, huellas limpias v2")
+    ap.add_argument("--datos", default="rocola_eq.txt")
+    ap.add_argument("--instalado", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "rocola_eq_ia.bin"))
+    ap.add_argument("--destino")
+    ap.add_argument("--salida", default="rocola_eq_ia.bin", help="Nombre orientativo; no sustituye el archivo")
     ap.add_argument("--epocas", type=int, default=200)
-    ap.add_argument("--oculta", type=int, default=24, help="neuronas por capa oculta")
-    ap.add_argument("--margen", type=float, default=5.0,
-                    help="%% minimo que la red debe ganarle al promedio para que valga la pena guardarla")
-    ap.add_argument("--forzar", action="store_true", help="guardar aunque no le gane al promedio (para probar)")
-    a = ap.parse_args()
+    ap.add_argument("--diagnostico-legacy", action="store_true")
+    args = ap.parse_args()
+    destino = args.destino
+    if not destino:
+        destino = tempfile.mkdtemp(prefix="eq-candidato-", dir=os.path.dirname(os.path.abspath(args.salida)))
+        os.rmdir(destino)
+    try:
+        informe = Q.entrenar(args.datos, args.instalado, destino, args.epocas, args.diagnostico_legacy)
+    except (OSError, ValueError) as e:
+        print("AutoEQ no verificable; instalado intacto:", e)
+        return 3
+    print("Candidato aislado en", destino, "(requiere PCM/escucha antes de activar)")
+    return 0 if informe["aceptado_numericamente"] else 2
 
-    if not os.path.exists(a.datos):
-        print("No encuentro '%s'." % a.datos)
-        print("Es el archivo que la rocola escribe sola al pre-analizar; copialo aqui desde la carpeta del Rocola.exe.")
-        return 1
 
-    print("Leyendo %s ..." % a.datos)
-    curvas, cortes = leer_huellas(a.datos)
-    if len(curvas) == 0:
-        print("El archivo no tiene huellas legibles."); return 1
-    sanas = cortes >= SANA_HZ
-    medido = cortes > 0                      # canciones cuyo corte de agudos SI se sabe
-    print("  %d canciones en total, %d sanas (con sus agudos completos)" % (len(curvas), int(sanas.sum())))
-
-    # DE QUE CANCIONES SE APRENDE. Lo ideal es aprender solo de las sanas: en las danadas los agudos ya
-    # no existen y ensenarian a la red el dano del codec en vez de como suena una grabacion buena. Pero
-    # si no hay bastantes, plantarse seria tirar meses de pre-analisis: se entrena con TODAS, que es
-    # exactamente lo que la rocola hace con su promedio cuando no tiene bastantes sanas medidas. Y quien
-    # decide de verdad si el modelo vale es la prueba del final, no esto.
-    if sanas.sum() >= 200:
-        usa = sanas
-        print("  se aprende SOLO de las sanas: la red vera como suena lo que esta bien grabado")
-    else:
-        usa = np.ones(len(curvas), dtype=bool)
-        print()
-        if medido.sum() == 0:
-            print("  ESTE ARCHIVO NO TRAE EL DATO DEL CORTE DE AGUDOS.")
-            print("  Lo escribio una VERSION VIEJA de la rocola, que todavia no lo apuntaba, asi que no hay")
-            print("  forma de saber cuales de tus canciones conservan sus agudos. Copia otra vez rocola_eq.txt")
-            print("  de junto a Rocola.exe -el de ahora si lo trae- y vuelve a entrenar: el modelo saldra")
-            print("  mejor, porque aprendera solo de tus grabaciones completas.")
-        else:
-            print("  Solo hay %d canciones sanas de %d (para aprender solo de ellas harian falta 200)."
-                  % (int(sanas.sum()), len(curvas)))
-            c = cortes[medido]
-            print("  El corte de agudos mas alto que hay es %.1f kHz y la mitad de la biblioteca esta por"
-                  % (c.max() / 1000.0))
-            print("  debajo de %.1f kHz: es una biblioteca de copias comprimidas." % (np.median(c) / 1000.0))
-        print()
-        print("  Se entrena con TODAS las canciones, igual que hace la rocola con su promedio. Si aun asi")
-        print("  la red no le gana al promedio, no se guarda nada y la rocola sigue como esta.")
-
-    D = curvas[usa]
-    X = D[:, ENTRADAS]
-    Y = D[:, SALIDAS]
-
-    rng = np.random.default_rng(7)
-    idx = rng.permutation(len(X))
-    corte = int(len(idx) * 0.8)
-    tr, va = idx[:corte], idx[corte:]
-    # La validacion no participa en las estadisticas de entrenamiento.
-    Xn, mu, sd = normalizar_entrenamiento(X, tr)
-    print("  entrenando con %d canciones, validando con %d (nunca vistas)" % (len(tr), len(va)))
-
-    modelo = Mlp([len(ENTRADAS), a.oculta, a.oculta, len(SALIDAS)], rng)
-    modelo = entrenar(modelo, Xn[tr], Y[tr], Xn[va], Y[va], a.epocas)
-
-    # ---- la prueba que decide: ¿le gana al promedio de siempre? ----
-    # El promedio contra el que hay que ganar es EL QUE USA LA ROCOLA, no uno comodo: la rocola saca su
-    # objetivo de las canciones sanas si tiene al menos diez medidas, y si no, de todas. Compararse
-    # contra el de todas teniendo sanas seria hacerse trampas al solitario.
-    if sanas.sum() >= 10:
-        base = curvas[sanas][:, SALIDAS].mean(axis=0)
-        de_donde = "el promedio de tus %d canciones sanas" % int(sanas.sum())
-    else:
-        base = Y[tr].mean(axis=0)
-        de_donde = "el promedio de toda tu biblioteca"
-    print("\n  Se compara contra %s, que es lo que la rocola usa hoy." % de_donde)
-    err_base = np.sqrt(((Y[va] - base) ** 2).mean(axis=0))
-    err_red  = np.sqrt(((Y[va] - modelo.predict(Xn[va])) ** 2).mean(axis=0))
-    nombres = ["grave 50 Hz", "brillo 10 kHz", "aire 15.8 kHz"]
-    print("\n  ERROR AL ADIVINAR (dB, sobre canciones que la red nunca vio)\n")
-    print("    banda            promedio    red      mejora")
-    for i, n in enumerate(nombres):
-        mej = 100.0 * (1.0 - err_red[i] / max(1e-9, err_base[i]))
-        print("    %-14s   %6.2f   %6.2f    %+5.1f %%" % (n, err_base[i], err_red[i], mej))
-    mejora = 100.0 * (1.0 - err_red.mean() / max(1e-9, err_base.mean()))
-    print("\n    MEJORA GLOBAL: %+.1f %%" % mejora)
-
-    if mejora < a.margen and not a.forzar:
-        print("\n  La red NO le gana al promedio por un margen que valga la pena (hace falta %.0f%%)." % a.margen)
-        print("  NO se guarda el modelo: la rocola seguira usando el promedio, que para tu biblioteca")
-        print("  es igual de bueno y mas simple. Prueba con mas canciones analizadas, o con --oculta 48.")
-        return 2
-
-    # Los pesos de la primera capa absorben la normalizacion, asi la rocola no necesita saber de esto.
-    modelo.W[0] = modelo.W[0] / sd
-    modelo.B[0] = modelo.B[0] - modelo.W[0] @ mu
-    exportar(modelo, a.salida)
-    print("\n  Guardado '%s' (%.1f KB). Copialo junto al Rocola.exe." % (a.salida, os.path.getsize(a.salida)/1024.0))
-    print("  La rocola lo toma sola al arrancar; si lo borras, vuelve al promedio.")
-    return 0
 
 if __name__ == "__main__":
     sys.exit(main())

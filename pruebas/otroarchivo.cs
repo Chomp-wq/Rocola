@@ -67,7 +67,7 @@ class OtroArchivo
         HashSet<string> afondo = (HashSet<string>)Get(f, "deepDone");
         foreach (string r in new string[] { ruta, otra })
         {
-            float[] c = new float[12]; for (int i = 0; i < 8; i++) c[i] = 0.5f * i; c[8] = 16000f; c[11] = 1f;
+            float[] c = new float[12]; for (int i = 0; i < 8; i++) c[i] = 0.5f * i; c[8] = 16000f; c[11] = 2f;
             loud[r] = 0.2f; dur[r] = (r == ruta) ? dura : 200f; eq[r] = c; afondo.Add(r);
             integ[r] = Activator.CreateInstance(ts, BindingFlags.NonPublic | BindingFlags.Instance, null, new object[] { 1, -14f, 2f, 250 }, null);
         }
