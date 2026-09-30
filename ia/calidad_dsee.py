@@ -208,6 +208,17 @@ def evaluar_tres(model, instalado, x, y, lote=4096):
     return {k: v / len(x) for k, v in sumas.items()}
 
 
+def evaluar_runtime(model, instalado, x, y, lote=4096):
+    """Envolvente float32 con el clamp real. NO es una reconstruccion PCM completa."""
+    class Limitada:
+        def __init__(self, red): self.red = red
+        def predict(self, xs):
+            pred, malas = prediccion_como_la_rocola(self.red, xs)
+            if malas.any(): raise ValueError("Inferencia runtime no finita")
+            return np.clip(pred, -4.0, 0.1)
+    return evaluar_tres(Limitada(model), None if instalado is None else Limitada(instalado), x, y, lote)
+
+
 def _cumple(err, contra, reglas, tol):
     if contra.mean() <= tol:
         return False, "la referencia ya es practicamente perfecta: no hay mejora que medir"
@@ -310,7 +321,7 @@ def _mse_filas(pred, ys):
     return e / 12.0
 
 
-def errores_por_clase(model, instalado, x, y, transitorio=None, lote=4096):
+def errores_por_clase(model, instalado, x, y, transitorio=None, lote=4096, runtime=False):
     """MSE medio por fila de candidato, referencia e instalado, agrupado por clase. Dos pasadas por
     lotes: memoria de unos pocos numeros por fila, nunca el conjunto entero en float64."""
     n = len(x)
@@ -322,10 +333,15 @@ def errores_por_clase(model, instalado, x, y, transitorio=None, lote=4096):
         xs = np.asarray(x[p:p + lote], dtype=np.float64)
         ys = np.asarray(y[p:p + lote], dtype=np.float64)
         desc[p:p + len(xs)] = _descriptores(xs)
-        err["candidato"][p:p + len(xs)] = _mse_filas(model.predict(xs), ys)
+        def predice(red):
+            if not runtime: return red.predict(xs)
+            pred, malas = prediccion_como_la_rocola(red, xs)
+            if malas.any(): raise ValueError("Inferencia runtime no finita")
+            return np.clip(pred, -4.0, 0.1)
+        err["candidato"][p:p + len(xs)] = _mse_filas(predice(model), ys)
         err["referencia"][p:p + len(xs)] = _mse_filas(curva_fija(xs), ys)
         if instalado is not None:
-            err["instalado"][p:p + len(xs)] = _mse_filas(instalado.predict(xs), ys)
+            err["instalado"][p:p + len(xs)] = _mse_filas(predice(instalado), ys)
     umbrales = {}
     etiquetas = {}
     for k, (dim, nombres) in enumerate(DIMENSIONES):
@@ -358,7 +374,7 @@ def errores_por_clase(model, instalado, x, y, transitorio=None, lote=4096):
 def avisos_por_clase(por_clase, margen=0.10, minimo=MIN_FILAS_AVISO):
     """Clases (con suficientes filas) donde el candidato queda mas de un 10 % peor que el instalado, o
     que la curva fija si no hay instalado. Es informacion para escuchar con cuidado ESE tipo de
-    musica; no cambia la decision, que sigue la politica global y por banda."""
+    musica. El flujo de candidatos usa las clases runtime como guardian adicional."""
     avisos = []
     grupos = [(d, por_clase[d]) for d, _ in DIMENSIONES]
     if por_clase.get("transitorios", {}).get("disponible"):

@@ -20,9 +20,11 @@
 #      --por_archivo M  tope de trozos por cancion (defecto sin tope; 12 = mas VARIEDAD de canciones)
 #  Para preparar los wav desde tu biblioteca mp3 usa entrenar_con_mi_musica.bat (hace todo solo).
 #
-#  Salidas (en esta carpeta):
-#    rocola_ia.bin          -> copialo JUNTO AL Rocola.exe para activar la IA
-#    ia_vectores_prueba.txt -> vectores de paridad (los usa la bateria de pruebas en C#)
+#  Salidas aisladas: --candidato archivo_nuevo.bin, --informe informe_nuevo.json.
+#  Sin --candidato crea dsee-candidato-*/candidato.bin; no reemplaza modelos/vectores instalados.
+#  Codigo4 = candidato numericamente aceptado; PCM/escucha/activacion autorizada pendientes.
+#  --indice y --generos permiten metadata aparte; por defecto usa el mismo nombre base del .bin.
+#  --ajustar-instalado reutiliza la MISMA arquitectura: checkpoint0 y seleccion solo por validacion.
 #
 #  Requisitos: python3 + numpy. Para MP3, convierte antes a WAV (ffmpeg -i cancion.mp3 cancion.wav).
 # ============================================================================================
@@ -235,8 +237,42 @@ class FilasMapeadas:
         values = np.asarray(self.mapa[self.filas[rows], self.inicio:self.fin], dtype=np.float64)
         return values[..., columns]
 
+class FilasNormalizadas:
+    """Transformacion por lote; estadisticas exclusivamente del entrenamiento."""
+    def __init__(self, x, media, escala):
+        self.x, self.media, self.escala = x, media, escala
+    def __len__(self): return len(self.x)
+    def __getitem__(self, p): return (self.x[p] - self.media) / self.escala
+
+
+def normalizacion_dsee(x, lote=4096):
+    if not len(x):
+        raise ValueError("Entrenamiento vacio")
+    # Welford por lotes evita cancelacion y reservas del corpus entero.
+    n, media, m2 = 0, np.zeros(28), np.zeros(28)
+    for p in range(0, len(x), lote):
+        a = np.asarray(x[p:p + lote], dtype=np.float64)
+        if a.shape[1] != 28 or not np.isfinite(a).all():
+            raise ValueError("Entradas de entrenamiento invalidas")
+        k = len(a); centro = a.mean(axis=0); delta = centro - media
+        m2 += ((a - centro) ** 2).sum(axis=0) + delta ** 2 * n * k / (n + k)
+        media += delta * k / (n + k); n += k
+    sd = np.sqrt(np.maximum(m2 / n, 0))
+    return media, np.where(sd < 1e-6, 1.0, sd)
+
+
+def indices_estratificados(n, tope, semilla=20260929):
+    """Una posicion aleatoria por estrato temporal: no sincroniza con quintetos de cortes."""
+    if tope <= 0 or n <= tope:
+        return np.arange(n, dtype=np.int64)
+    # Estratos contiguos de anchura casi igual; reproducible, O(tope), sin leer objetivos.
+    bordes = np.linspace(0, n, tope + 1, dtype=np.int64)
+    rng = np.random.default_rng(semilla)
+    return bordes[:-1] + (rng.random(tope) * np.diff(bordes)).astype(np.int64)
+
+
 def mse_modelo(model, X, Y, lote=4096):
-    if not isinstance(X, FilasMapeadas):
+    if isinstance(X, np.ndarray) and isinstance(Y, np.ndarray):
         return float(((model.predict(X) - Y) ** 2).mean())
     total = 0.0
     count = 0
@@ -245,7 +281,7 @@ def mse_modelo(model, X, Y, lote=4096):
         total += float(error.sum()); count += error.size
     return total / max(1, count)
 
-def train(model, X, Y, Xv, Yv, epochs=60, lr=2e-3, batch=256, seed=3):
+def train(model, X, Y, Xv, Yv, epochs=60, lr=2e-3, batch=256, seed=3, l2=1e-5, preservar_inicial=False):
     if epochs <= 0 or batch <= 0 or len(X) == 0 or len(Xv) == 0:
         raise ValueError("Se requieren epocas/lote positivos y ejemplos de entrenamiento y validacion")
     rng = np.random.default_rng(seed)
@@ -255,6 +291,12 @@ def train(model, X, Y, Xv, Yv, epochs=60, lr=2e-3, batch=256, seed=3):
     best = float('inf')
     best_weights = best_biases = None
     best_epoch = 0
+    ancla = [w.copy() for w in model.W] if preservar_inicial else None
+    if preservar_inicial:
+        best = mse_modelo(model, Xv, Yv)
+        if not np.isfinite(best): raise ValueError("Checkpoint inicial invalido")
+        best_weights = [w.copy() for w in model.W]
+        best_biases = [b.copy() for b in model.B]
     for ep in range(epochs):
         idx = rng.permutation(len(X))
         for s in range(0, len(X), batch):
@@ -264,7 +306,7 @@ def train(model, X, Y, Xv, Yv, epochs=60, lr=2e-3, batch=256, seed=3):
             tstep += 1
             c1, c2 = 1 - b1 ** tstep, 1 - b2 ** tstep
             for L in reversed(range(len(model.W))):
-                gW = g.T @ acts[L]; gB = g.sum(axis=0)
+                gW = g.T @ acts[L] + l2 * (model.W[L] if ancla is None else model.W[L] - ancla[L]); gB = g.sum(axis=0)
                 if L > 0: g = (g @ model.W[L]) * (1.0 - acts[L] ** 2)
                 mW[L] = b1 * mW[L] + (1 - b1) * gW; vW[L] = b2 * vW[L] + (1 - b2) * gW ** 2
                 mB[L] = b1 * mB[L] + (1 - b1) * gB; vB[L] = b2 * vB[L] + (1 - b2) * gB ** 2
@@ -318,15 +360,13 @@ def cargar_datos_rocola(ruta, max_ejemplos=4000000, por_indices=False):
     if n < 100:
         raise SystemExit("Muy pocos ejemplos (%d). Deja que la rocola junte mas material." % n)
     mm = np.memmap(ruta, dtype="<f4", mode="r", offset=16, shape=(n, por))
-    paso = 1
-    if max_ejemplos and n > max_ejemplos:
-        paso = int(np.ceil(n / float(max_ejemplos)))
-        print("  el archivo trae %s ejemplos (%.1f GB): se toma 1 de cada %d, repartidos de punta a punta"
-              % (format(n, ","), cuerpo / 1024.0 ** 3, paso))
+    filas = indices_estratificados(n, max_ejemplos)
+    if len(filas) < n:
+        print("  %s de %s ejemplos, con posiciones estratificadas reproducibles"
+              % (format(len(filas), ","), format(n, ",")))
     if por_indices:
-        filas = np.arange(0, n, paso, dtype=np.int64)
         return FilasMapeadas(mm, filas, 0, nin), FilasMapeadas(mm, filas, nin, por)
-    crudo = np.array(mm[::paso], dtype=np.float64)
+    crudo = np.array(mm[filas], dtype=np.float64)
     del mm
     return crudo[:, :nin], crudo[:, nin:]
 
@@ -351,14 +391,14 @@ def _reparto_legado(n, rng, motivo):
     nv = max(100, n // 10)
     return [idx[2 * nv:], idx[:nv], idx[nv:2 * nv]], {"independiente": False, "motivo": motivo}
 
-def particiones_rocola(ruta, X, nivel="artista", incluir_sin_origen=False):
+def particiones_rocola(ruta, X, nivel="artista", incluir_sin_origen=False, indice=None, generos=None):
     """Reparto del material de la rocola segun su indice de origen. Devuelve (posiciones, informe) o
     (None, informe) si no hay reparto independiente posible. Las posiciones son indices dentro de X."""
     import origen_dsee as O
     filas = X.filas if isinstance(X, FilasMapeadas) else np.arange(len(X), dtype=np.int64)
     def avance(leidos, total):
         print("  comprobando que el indice describe este material: %.1f de %.1f GB" % (leidos / 1e9, total / 1e9))
-    ent, inf = O.lee_indice(O.ruta_indice(ruta), ruta, avance=avance)
+    ent, inf = O.lee_indice(indice or O.ruta_indice(ruta), ruta, avance=avance)
     informe = {"independiente": False, "motivo": "", "indice": inf, "nivel": nivel}
     if len(ent) == 0:
         informe["motivo"] = ("rocola_ia_datos.bin sin indice de origen (RIAD v1): no se sabe de que cancion "
@@ -379,12 +419,37 @@ def particiones_rocola(ruta, X, nivel="artista", incluir_sin_origen=False):
     informe["sin_origen"] = int(len(sin))
     informe["grupos"] = [int(len(np.unique(etiquetas[(parte == p) & (pesos > 0)]))) for p in range(3)]
     informe["independiente"] = True
+    # Genero es cobertura/evaluacion; nunca entrada de la red ni informacion del test usada al entrenar.
+    informe["cobertura_generos"] = cobertura_generos(ruta, ent, parte, pesos, generos)
     if incluir_sin_origen and len(sin):
         pos[0] = np.concatenate([pos[0], np.searchsorted(filas, sin)])
         informe["independiente"] = False
         informe["motivo"] = ("se sumaron %d ejemplos sin origen al entrenamiento: podrian ser de canciones "
                              "que estan en validacion o prueba" % len(sin))
     return pos, informe
+
+
+def cobertura_generos(ruta, entradas, partes, pesos, sidecar=None):
+    sidecar = sidecar or os.path.splitext(ruta)[0] + ".generos.tsv"
+    mapa = {}
+    if os.path.exists(sidecar):
+        with open(sidecar, encoding="utf-8", errors="replace") as f:
+            for linea in f:
+                campos = linea.rstrip("\r\n").split("\t")
+                if (len(campos) != 2 or len(campos[0]) != 16 or
+                        any(c not in "0123456789abcdef" for c in campos[0])): continue
+                try: cancion = int(campos[0], 16)
+                except ValueError: continue
+                genero = campos[1].strip().lower()
+                if not any(c in genero for c in ("/", "\\", ":")):
+                    mapa[cancion] = genero[:80] or "desconocido"
+    grupos = [{}, {}, {}]
+    for e, parte, peso in zip(entradas, partes, pesos):
+        if not peso: continue
+        genero = mapa.get(int(e["cancion"]), "desconocido")
+        grupos[int(parte)][genero] = grupos[int(parte)].get(genero, 0) + int(peso)
+    return {"disponible": bool(mapa), "ejemplos_por_particion": grupos,
+            "sin_prueba": sorted(g for g in grupos[0] if g != "desconocido" and g not in grupos[2])}
 
 def particiones_por_grupo(claves_trozo, origen_ejemplo, nivel="artista"):
     """El mismo reparto para trozos de WAV o sinteticos: claves_trozo[i] = (huella del archivo, huella de
@@ -409,15 +474,44 @@ def particiones_por_grupo(claves_trozo, origen_ejemplo, nivel="artista"):
     return [np.where(parte_ej == p)[0] for p in range(3)], informe
 
 
+def validar_ruta_informe(ruta, fuentes):
+    """Un error de --informe nunca debe reemplazar material, pesos ni candidato."""
+    destino = os.path.normcase(os.path.realpath(ruta))
+    for fuente in fuentes:
+        if not fuente: continue
+        coincide = destino == os.path.normcase(os.path.realpath(fuente))
+        if not coincide and os.path.exists(ruta) and os.path.exists(fuente):
+            coincide = os.path.samefile(ruta, fuente)
+        if coincide: raise ValueError("El informe no puede sobrescribir datos/modelo/candidato")
+
+
+def rutas_candidato(here, argv):
+    """Validar todas las salidas antes de cargar/entrenar; nunca sobrescribir existentes."""
+    import tempfile
+    def opcion(nombre, defecto=None): return argv[argv.index(nombre)+1] if nombre in argv else defecto
+    instalado=opcion("--instalado",os.path.join(here,"rocola_ia.bin"))
+    candidato=opcion("--candidato")
+    if candidato is None:
+        candidato=os.path.join(tempfile.mkdtemp(prefix="dsee-candidato-",dir=here),"candidato.bin")
+    informe=opcion("--informe",os.path.join(os.path.dirname(os.path.abspath(candidato)),"informe_dsee.json"))
+    datos=opcion("--datos")
+    fuentes=[instalado,os.path.join(here,"rocola_ia.bin"),os.path.join(here,"rocola_eq_ia.bin"),
+             os.path.join(here,"ia_vectores_prueba.txt"),os.path.join(here,"paridad_extractor.txt"),
+             os.path.join(os.path.dirname(os.path.abspath(instalado)),"ia_vectores_prueba.txt")]
+    if datos:
+        fuentes += [datos,opcion("--indice",os.path.splitext(datos)[0]+".idx"),
+                    opcion("--generos",os.path.splitext(datos)[0]+".generos.tsv")]
+    for salida,otra in ((candidato,informe),(informe,candidato)):
+        validar_ruta_informe(salida,fuentes+[otra])
+        if os.path.lexists(salida): raise FileExistsError("Destino de candidato/informe ya existe: "+salida)
+    return instalado,candidato,informe
+
+
 def main():
     rng = np.random.default_rng(20260715)
-    # Si una publicacion anterior se corto a medias, las copias se rehacen desde la version activa ANTES
-    # de nada: asi el "modelo instalado" con el que se compara es de verdad el publicado.
-    import publicar_dsee
-    rec = publicar_dsee.recuperar(os.path.dirname(os.path.abspath(__file__)))
-    if rec["limpiadas"] or rec["rehechas"] or rec["aviso"]:
-        print("Publicacion anterior reparada: %d copias rehechas, %d a medias quitadas. %s"
-              % (rec["rehechas"], rec["limpiadas"], rec["aviso"]))
+    here=os.path.dirname(os.path.abspath(__file__))
+    ruta_inst,ruta_candidato,ruta_rep=rutas_candidato(here,sys.argv)
+    # Entrenar solo crea candidatos. Recuperar/activar una version es una accion explicita aparte.
     nivel = sys.argv[sys.argv.index("--agrupar") + 1] if "--agrupar" in sys.argv else "artista"
     if nivel not in ("artista", "carpeta", "cancion"):
         raise SystemExit("--agrupar admite artista, carpeta o cancion")
@@ -428,10 +522,12 @@ def main():
         print("Leyendo el material que junto la rocola:", ruta)
         X, Y = cargar_datos_rocola(ruta, tope, por_indices=True)
         print("  %d ejemplos de %d entradas -> %d salidas" % (X.shape[0], X.shape[1], Y.shape[1]))
-        partes, informe = particiones_rocola(ruta, X, nivel, sin_origen)
+        indice = sys.argv[sys.argv.index("--indice") + 1] if "--indice" in sys.argv else None
+        generos = sys.argv[sys.argv.index("--generos") + 1] if "--generos" in sys.argv else None
+        partes, informe = particiones_rocola(ruta, X, nivel, sin_origen, indice, generos)
         transitorio = None                                   # cuadros sueltos: no se sabe cuales son ataques
         import origen_dsee as O
-        origen_datos = {"tipo": "rocola", "huella": O.huella_datos(ruta, O.ruta_indice(ruta)),
+        origen_datos = {"tipo": "rocola", "huella": O.huella_datos(ruta, indice or O.ruta_indice(ruta)),
                         "ejemplos_usados": int(len(X)), "max_ejemplos": int(tope)}
     else:
         if "--musica" in sys.argv:
@@ -487,14 +583,41 @@ def main():
         raise SystemExit("Demasiado grande para la rocola: maximo 8 capas de pesos y 512 neuronas.")
     epocas = int(sys.argv[sys.argv.index("--epocas") + 1]) if "--epocas" in sys.argv else 60
     print("Entrenando el MLP %s ..." % "->".join(str(c) for c in capas))
-    model = train(Mlp(capas, rng), Xtr, Ytr, Xv, Yv, epochs=epocas)   # la validacion SOLO elige el checkpoint
+    mu, sd = normalizacion_dsee(Xtr)
+    semillas = [int(v) for v in sys.argv[sys.argv.index("--semillas") + 1].split(",")] if "--semillas" in sys.argv else [3]
+    if not 1 <= len(semillas) <= 3 or len(set(semillas)) != len(semillas) or not 1 <= epocas <= 200:
+        raise SystemExit("Presupuesto: 1..3 semillas distintas y 1..200 epocas")
+    candidatos = []
+    ajustar = "--ajustar-instalado" in sys.argv
+    inicial = None
+    if ajustar:
+        from calidad_dsee import cargar_ria1
+        ruta_inicial = sys.argv[sys.argv.index("--instalado") + 1] if "--instalado" in sys.argv else os.path.join(os.path.dirname(os.path.abspath(__file__)), "rocola_ia.bin")
+        inicial = cargar_ria1(ruta_inicial)
+        if [28] + [w.shape[0] for w in inicial.W] != capas or len(semillas) != 1:
+            raise SystemExit("Ajuste instalado exige misma arquitectura y una sola semilla")
+    for semilla in semillas:
+        m = Mlp(capas, np.random.default_rng(semilla))
+        if inicial is not None:
+            m.W, m.B = [w.copy() for w in inicial.W], [b.copy() for b in inicial.B]
+            w0 = m.W[0].copy()
+            m.W[0] *= sd
+            m.B[0] += w0 @ mu
+        m = train(m, FilasNormalizadas(Xtr, mu, sd), Ytr,
+                  FilasNormalizadas(Xv, mu, sd), Yv, epochs=epocas, seed=semilla,
+                  lr=1e-4 if ajustar else 2e-3, l2=1e-3 if ajustar else 1e-5, preservar_inicial=ajustar)
+        m.ajustado_instalado = ajustar
+        m.semilla = semilla
+        candidatos.append((mse_modelo(m, FilasNormalizadas(Xv, mu, sd), Yv), m))
+    # Solo VALIDACION elige semilla/checkpoint; prueba final no se consulta aqui.
+    model = min(candidatos, key=lambda par: par[0])[1]
+    model.W[0] /= sd
+    model.B[0] -= model.W[0] @ mu
     from calidad_dsee import (cuantizar, evaluar_tres, decide, cargar_ria1, bytes_ria1, escribir_atomico, POLITICA,
-                              paridad_inferencia, errores_por_clase, avisos_por_clase, LIMITE_PARIDAD)
+                              paridad_inferencia, errores_por_clase, avisos_por_clase, LIMITE_PARIDAD, evaluar_runtime)
     cuantizar(model)
 
     # El modelo INSTALADO, leido como lo leeria la rocola. Por defecto, el que hay en esta carpeta.
-    here = os.path.dirname(os.path.abspath(__file__))
-    ruta_inst = sys.argv[sys.argv.index("--instalado") + 1] if "--instalado" in sys.argv else os.path.join(here, "rocola_ia.bin")
     instalado, estado_inst, huella_inst = None, "ausente: se compara solo con la curva fija", None
     if os.path.exists(ruta_inst):
         with open(ruta_inst, "rb") as f:
@@ -508,6 +631,10 @@ def main():
     val = evaluar_tres(model, instalado, Xv, Yv)
     err = evaluar_tres(model, instalado, Xp, Yp)          # la decision, con la particion de PRUEBA
     publicar, motivos = decide(err)
+    err_runtime = evaluar_runtime(model, instalado, Xp, Yp)
+    runtime_ok, runtime_motivos = decide(err_runtime)
+    publicar = publicar and runtime_ok
+    motivos += ["envolvente runtime: " + m for m in runtime_motivos]
     # Lo que calcularia la ROCOLA con este modelo (float32, en su mismo orden): si no coincide con lo que
     # se acaba de evaluar, lo evaluado no es lo que va a sonar, y no se publica.
     paridad = paridad_inferencia(model, Xp)
@@ -517,6 +644,11 @@ def main():
                              % (paridad["max_abs"], LIMITE_PARIDAD, paridad["no_finitas"])]
     por_clase = errores_por_clase(model, instalado, Xp, Yp, None if transitorio is None else transitorio[pr])
     avisos = avisos_por_clase(por_clase)
+    clases_runtime = errores_por_clase(model, instalado, Xp, Yp, None if transitorio is None else transitorio[pr], runtime=True)
+    bloqueos_clase = avisos_por_clase(clases_runtime)
+    if bloqueos_clase:
+        publicar = False
+        motivos += ["regresion de clase runtime: " + a for a in bloqueos_clase]
     mse_net, mse_base = err["candidato"].mean(), err["referencia"].mean()
     print("VALIDACION (eligio el checkpoint, epoca %s): red = %.4f  |  curva fija = %.4f"
           % (getattr(model, "mejor_epoca", "?"), val["candidato"].mean(), val["referencia"].mean()))
@@ -539,29 +671,31 @@ def main():
     else:
         codigo = 0 if publicar else 2
     modelo_bytes = bytes_ria1(model)
+    with open(ruta_candidato, "xb") as f: f.write(modelo_bytes)
+    print("Candidato aislado:", ruta_candidato)
+    # Facilita renderizar PCM incluso de un rechazado. Nunca instalar solo por envolvente.
+    if codigo == 0:
+        codigo = 4
+        motivos += ["candidato numerico aislado: PCM completo y escucha pendientes"]
     rep = informe_reproducible(informe, capas, model, val, err, instalado, estado_inst, huella_inst,
                                codigo, motivos, modelo_bytes, (tr, va, pr), origen_datos, POLITICA,
-                               paridad, por_clase, avisos, here)
-    ruta_rep = sys.argv[sys.argv.index("--informe") + 1] if "--informe" in sys.argv else os.path.join(here, "informe_dsee.json")
-    escribir_atomico(ruta_rep, lambda f: f.write(rep))
+                               paridad, por_clase, avisos, here, err_runtime, clases_runtime)
+    # Exclusivo tambien al escribir: otro proceso no puede crear un destino que luego pisemos.
+    with open(ruta_rep,"xb") as f:
+        f.write(rep); f.flush(); os.fsync(f.fileno())
     print("Informe reproducible:", os.path.basename(ruta_rep))
 
+    if codigo == 4:
+        print("Candidato guardado aparte; no se publica sin validar PCM/escucha.")
+        return 4
+
     if codigo == SALIDA_NO_VERIFICABLE:
-        print("NO se guarda: sin validacion independiente no se puede verificar la mejora. Se conservan modelo y vectores anteriores.")
+        print("Candidato diagnostico no verificable: falta validacion independiente. Modelo y vectores instalados intactos.")
         return codigo
     if codigo == 2:
-        print("NO se guarda: no supera la politica (curva fija y modelo instalado). Se conservan modelo y vectores anteriores.")
+        print("Candidato aislado rechazado por la politica; modelo y vectores instalados intactos.")
         return 2
-    vectors = vectores_de_paridad(model, Xp, modelo_bytes)
-    # Modelo, vectores e informe se publican como UNA version (ver publicar_dsee.py): un corte de luz a
-    # media publicacion deja el conjunto viejo o el nuevo, nunca una mezcla. rocola_ia.bin y los vectores
-    # de esta carpeta son copias de la version activa.
-    import publicar_dsee
-    version = publicar_dsee.publicar(here, {"rocola_ia.bin": modelo_bytes,
-                                            "ia_vectores_prueba.txt": vectors.encode("ascii"),
-                                            "informe_dsee.json": rep}, EXTRACTOR)
-    print("Listo: version %s publicada. rocola_ia.bin (copialo junto a Rocola.exe) + ia_vectores_prueba.txt" % version)
-    return 0
+    raise RuntimeError("Estado de candidato desconocido: nunca activar automaticamente")
 
 
 def vectores_de_paridad(model, Xp, modelo_bytes, n=24):
@@ -588,7 +722,7 @@ def _num(v):
 
 def informe_reproducible(informe, capas, model, val, err, instalado, estado_inst, huella_inst,
                          codigo, motivos, modelo_bytes, partes, origen_datos, politica,
-                         paridad=None, por_clase=None, avisos=(), here=None):
+                         paridad=None, por_clase=None, avisos=(), here=None, runtime=None, clases_runtime=None):
     """El informe: la misma entrada da el MISMO archivo, byte a byte. Sin fechas, sin rutas ni nombres."""
     rep = {
         "formato": "ROCOLA-INFORME-DSEE 1",
@@ -608,13 +742,25 @@ def informe_reproducible(informe, capas, model, val, err, instalado, estado_inst
         "instalado": {"estado": estado_inst, "sha256": huella_inst,
                       "parametros": instalado.parametros() if instalado is not None else None},
         "politica": politica,
-        "decision": {"codigo": int(codigo), "publicar": codigo == 0, "motivos": list(motivos)},
+        "decision": {"codigo": int(codigo), "publicar": False, "aceptado_numericamente": codigo == 4,
+                     "escucha_pendiente": True, "motivos": list(motivos)},
         "candidato_sha256": hashlib.sha256(modelo_bytes).hexdigest(),
         "paridad_inferencia": None if paridad is None else {k: _num(v) if isinstance(v, float) else v
                                                           for k, v in sorted(paridad.items())},
         "paridad_extractor": {"extractor": EXTRACTOR, "vectores_sha256": _sha_de(here, "paridad_extractor.txt")},
         "por_clase": por_clase,
         "avisos_por_clase": list(avisos),
+        "muestreo": "posiciones-estratificadas-v2",
+        "entrenamiento": {"normalizacion": "solo entrenamiento, absorbida en primera capa",
+                          "semilla_elegida": getattr(model, "semilla", None),
+                          "ajustado_instalado": getattr(model, "ajustado_instalado", False),
+                          "lr": 1e-4 if getattr(model, "ajustado_instalado", False) else 2e-3,
+                          "l2": 1e-3 if getattr(model, "ajustado_instalado", False) else 1e-5,
+                          "origen_instalado_conocido": False},
+        "cobertura_generos": informe.get("cobertura_generos"),
+        "prueba_runtime_envolvente": None if runtime is None else {k: _num(v) for k, v in sorted(runtime.items())},
+        "por_clase_runtime": clases_runtime,
+        "pcm_completo_verificado": False,
     }
     return (json.dumps(rep, sort_keys=True, indent=1, ensure_ascii=True, allow_nan=True) + "\n").encode("ascii")
 

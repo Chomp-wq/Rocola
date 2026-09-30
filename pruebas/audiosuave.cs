@@ -28,17 +28,19 @@ class AudioSuave {
  }
  static void Gain(int fs,int ch){
   ISampleProvider t=Tap(fs,ch,true);Set(t,"Gain",.2f);
-  float[] start=Read(t,ch*8,ch);
-  foreach(float x in start)Check(x==.1f*.2f,"Atenua el inicio de la cancion");
+  float[] start=Read(t,ch*(31+8),ch);
+  for(int i=0;i<start.Length;i++)Check(start[i]==(i<31*ch?0f:.1f*.2f),"Ganancia inicial exacta tras cebado de 31 cuadros");
   Set(t,"Master",.5f);int frames=(int)(fs*.020);
-  float[] ramp=Read(t,(frames+5)*ch,1);float prev=.1f*.2f;
+  float[] ramp=Read(t,(31+frames+5)*ch,1);float prev=.1f*.2f;
+  for(int i=0;i<31*ch;i++)Check(ramp[i]==prev,"Cambiar ganancia no cambia el seco ya retenido");
   for(int f=0;f<frames+5;f++){
-   float x=ramp[f*ch];Check(x<=prev+1e-8&&Math.Abs(x-prev)<.0001,"Escalon en ganancia");
-   for(int c=1;c<ch;c++)Check(x==ramp[f*ch+c],"Rampa diferente por canal");prev=x;
+   float x=ramp[(31+f)*ch];Check(x<=prev+1e-8&&Math.Abs(x-prev)<.0001,"Escalon en ganancia");
+   for(int c=1;c<ch;c++)Check(x==ramp[(31+f)*ch+c],"Rampa diferente por canal");prev=x;
   }
   Check(prev==.1f*(.2f*.5f),"Rampa no alcanza objetivo exacto");
   Set(t,"Master",1f);Read(t,ch*(frames/2),ch);
   float middle=(float)Get(Get(t,"gainRamp"),"Current");Set(t,"Master",0f);
+  Read(t,31*ch,ch);   // agotar solo lo retenido antes de la nueva peticion
   float first=Read(t,ch,ch)[0];Check(Math.Abs(first-.1f*middle)<.0001,"Retarget vuelve al objetivo anterior");
   Read(t,ch*frames,ch*31);Check((float)Get(Get(t,"gainRamp"),"Current")==0,"No termina retarget");
  }
@@ -62,11 +64,12 @@ class AudioSuave {
   float[] a={0,0,0,6,0,0,0,0};Eq(t,a);
   object prepared=Get(t,"pendingEq");
   float[][] cf=(float[][])Get(prepared,"Coefficients");
-  float[] dry=Read(reference,ch,ch),smooth=Read(t,ch,ch);
-  float wet=dry[0]*cf[0][0];
-  float expected=dry[0]+(wet-dry[0])/(int)(fs*.030);
-  Check(Math.Abs(smooth[0]-expected)<1e-7,"Primer cuadro no cruza desde filtro anterior");
-  Check(Math.Abs(smooth[0]-dry[0])<Math.Abs(wet-dry[0])*.01,"EQ cambia de golpe");
+  float[] dry=Read(reference,32*ch,ch),smooth=Read(t,32*ch,ch);
+  for(int i=0;i<31*ch;i++)Check(smooth[i]==dry[i],"Cambiar EQ modifica muestras retenidas");
+  float wet=dry[31*ch]*cf[0][0];
+  float expected=dry[31*ch]+(wet-dry[31*ch])/(int)(fs*.030);
+  Check(Math.Abs(smooth[31*ch]-expected)<1e-7,"Primer cuadro no cruza desde filtro anterior");
+  Check(Math.Abs(smooth[31*ch]-dry[31*ch])<Math.Abs(wet-dry[31*ch])*.01,"EQ cambia de golpe");
   // Identidad inicial A y miles de reescrituras no recrean ni comparten estados activos.
   object pending=Get(t,"pendingEq");Eq(t,a);Check(Object.ReferenceEquals(pending,Get(t,"pendingEq")),"Reprepara curva identica");
   Read(t,fs/10*ch,137*ch);Check((int)Get(t,"eqFadeLeft")==0,"EQ no alcanza el filtro nuevo");

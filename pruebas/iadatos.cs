@@ -222,7 +222,8 @@ class IaDatos
         if (indice != null)
         {
             Console.WriteLine("        indice de origen: " + indiceOn + " bytes encendido, " + indiceOff + " apagado");
-            Check(indiceOn == 16 + 64 && indiceOff == 0, "encendido se apunta de que cancion viene (una entrada); apagado, nada");
+            Check(indiceOn >= 16 + 64 && indiceOn <= 16 + 2 * 64 && (indiceOn - 16) % 64 == 0 && indiceOff == 0,
+                  "encendido registra uno o ambos canales del original (dsporiginal comprueba 0/1 y grupo); apagado, nada");
         }
 
         // =========================================================================================

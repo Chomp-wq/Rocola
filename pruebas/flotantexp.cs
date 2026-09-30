@@ -92,7 +92,9 @@ class FlotanteXp
     {
         Console.WriteLine("\n  1) NLAYER CUADRO A CUADRO\n");
         // NLayer leyendo el archivo entero (su propio lector), por reflexion: la referencia.
-        Assembly nlA = Assembly.LoadFrom("NLayer.dll");
+        // todo.sh deja la referencia junto al fixture; los runners Windows la dejan en su TEMP.
+        string referencia = File.Exists("NLayer.dll") ? "NLayer.dll" : Path.Combine(Path.GetDirectoryName(TF.Assembly.Location), "NLayer.dll");
+        Assembly nlA = Assembly.LoadFrom(referencia);
         Type mf = nlA.GetType("NLayer.MpegFile");
         List<float> refe = new List<float>();
         object arch = Activator.CreateInstance(mf, new object[] { "relleno_p0.mp3" });

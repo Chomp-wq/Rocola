@@ -1,5 +1,12 @@
 param([string]$OutputDirectory = (Join-Path $env:TEMP ('rocola-mejoras-29-' + [Guid]::NewGuid().ToString('N'))), [string[]]$Tests)
 $ErrorActionPreference = 'Stop'
+$previousRocolaData = $env:ROCOLA_DATOS
+try {
+New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
+$OutputDirectory = (Resolve-Path $OutputDirectory).Path
+$isolatedRocolaData = Join-Path $OutputDirectory ('datos-pruebas-' + [Guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $isolatedRocolaData | Out-Null
+$env:ROCOLA_DATOS = $isolatedRocolaData
 $testRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Split-Path -Parent $testRoot
 $sourceRoot = Join-Path $repoRoot 'Rocola'
@@ -16,6 +23,7 @@ if ($framework -eq 'v3.5') {
 New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
 $OutputDirectory = (Resolve-Path $OutputDirectory).Path
 Copy-Item -LiteralPath $naudio -Destination (Join-Path $OutputDirectory 'NAudio.dll') -Force
+if ($framework -eq 'v3.5') { Copy-Item -LiteralPath $nlayer -Destination (Join-Path $OutputDirectory 'NLayer.dll') -Force }
 foreach ($mode in @('gpu', 'cpu')) {
     $defines = if ($mode -eq 'gpu') { '/define:TRACE;ROCOLA_GPU' } else { '/define:TRACE' }
     & $compiler /nologo /target:winexe /optimize+ /warnaserror+ $defines ("/out:" + (Join-Path $OutputDirectory ('Rocola-' + $mode + '.exe'))) /r:System.dll /r:System.Core.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll /r:System.Xml.dll ("/r:$naudio") @decoder $sources
@@ -39,3 +47,4 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Fallo rendercache' }
 } finally { Pop-Location }
 Write-Output "PASS: perfiles GPU/CPU y regresiones. No se reemplazo ningun ejecutable ni datos de produccion. $OutputDirectory"
+} finally { $env:ROCOLA_DATOS = $previousRocolaData }

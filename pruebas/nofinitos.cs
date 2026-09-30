@@ -78,7 +78,7 @@ class NoFinitos
     }
 
     // ------------------------------- 2) lo que se publica -------------------------------
-    static float[] Curva(float v) { float[] c = new float[12]; for (int i = 0; i < 8; i++) c[i] = v + i * 0.25f; c[8] = 16000f; c[11] = 1f; return c; }
+    static float[] Curva(float v) { float[] c = new float[12]; for (int i = 0; i < 8; i++) c[i] = v + i * 0.25f; c[8] = 16000f; c[11] = 2f; return c; }
     static void Publica(string dir)
     {
         Console.WriteLine("\n  2) LO QUE SE GUARDA EN MEMORIA (y de ahi, en las tablas)\n");

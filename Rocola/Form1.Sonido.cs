@@ -374,6 +374,7 @@ namespace Rocola
         // por dentro (el lector mas un canal de muestras), asi que lo medido no cambia ni en un bit.
         private sealed class LectorMedida : IDisposable
         {
+            private readonly WaveFormat formato;
             private readonly Mp3FileReader mp3;
             private readonly SampleChannel canal;
             private readonly AudioFileReader otro;
@@ -386,8 +387,9 @@ namespace Rocola
                     finally { if (r != null) { try { r.Dispose(); } catch { } } }   // el canal fallo: el lector no se queda tirado
                 }
                 else otro = new AudioFileReader(ruta);
+                formato = FormatoAudio.DeArchivo((mp3 != null) ? canal.WaveFormat : otro.WaveFormat, ruta);
             }
-            public NAudio.Wave.WaveFormat WaveFormat { get { return (mp3 != null) ? canal.WaveFormat : otro.WaveFormat; } }
+            public NAudio.Wave.WaveFormat WaveFormat { get { return formato; } }
             public TimeSpan TotalTime { get { return (mp3 != null) ? mp3.TotalTime : otro.TotalTime; } }
             public TimeSpan CurrentTime { set { if (mp3 != null) mp3.CurrentTime = value; else otro.CurrentTime = value; } }
             public float Volume { set { if (mp3 != null) canal.Volume = value; else otro.Volume = value; } }
@@ -398,7 +400,7 @@ namespace Rocola
             public int Read(float[] b, int o, int c)
             {
                 int n = (mp3 != null) ? canal.Read(b, o, c) : otro.Read(b, o, c);
-                for (int i = o; i < o + n; i++) { float v = b[i]; if (v - v != 0f) b[i] = 0f; }
+                LimpiaMuestras(b, o, n);
                 return n;
             }
             public void Dispose()
@@ -452,6 +454,10 @@ namespace Rocola
                 // (una cancion dañada no puede enseñar nada: los agudos reales ya no estan en el archivo).
                 SpectralTap hv = null; float[] hvFrame = null, hvFeat = null, hvTgt = null;
                 int hvFill = 0; List<float> hvPairs = null;
+                // El presupuesto total no crece: cada ventana elige alternadamente
+                // un canal y cada lista conserva el indice correcto en su origen.
+                SpectralTap[] hvCanales = null; float[][] hvCuadros = null;
+                List<float>[] hvPares = null; long hvTurno = 0;
                 long hvVistos = 0, hvVistosMax = IaFramesPerSong;   // cuadros con sonido que han pasado / hasta donde mirar
                 int hvStride = 1, hvFase = 0;
                 // El ACANTILADO se mide SIEMPRE, cosechemos o no para la IA. Es el dato que dice si una cancion
@@ -511,6 +517,15 @@ namespace Rocola
                         hv = new SpectralTap(rate, 1);
                         hvFrame = new float[hv.FrameLen]; hvFeat = new float[28]; hvTgt = new float[12];
                         hvPairs = new List<float>(4096);
+                        int canalesIa = Math.Min(2, ch);
+                        hvCanales = new SpectralTap[canalesIa]; hvCuadros = new float[canalesIa][];
+                        hvPares = new List<float>[canalesIa];
+                        hvCanales[0] = hv; hvCuadros[0] = hvFrame; hvPares[0] = hvPairs;
+                        if (canalesIa == 2)
+                        {
+                            hvCanales[1] = new SpectralTap(rate, 1);
+                            hvCuadros[1] = new float[hv.FrameLen]; hvPares[1] = new List<float>(4096);
+                        }
                         // Los cuadros se toman REPARTIDOS por todo lo que se va a descomprimir, no seguidos
                         // desde el principio. Antes el modo pasivo cosechaba los 192 PRIMEROS: eso son 8,9
                         // segundos, siempre del mismo sitio de cada cancion, o sea que la red solo llegaba a
@@ -532,7 +547,11 @@ namespace Rocola
                 // La ficha de calidad usa la misma ventana tanto si se cosecha IA como si no.
                 // El analizador puede seguir avanzando para cosechar, pero no cambia esa ficha.
                 int qualityFrames = IaWarmFrames + 24;
-                float measuredCut = hv != null ? hv.CutHz : 0f, measuredCutLo = hv != null ? hv.CutLoHz : 0f;
+                // Calidad tiene SU estado y solo canal 0; alternar pares L/R, un canal mudo o
+                // el paso de cosecha no pueden cambiar su ventana ni el calor del detector.
+                SpectralTap qualityTap = hvCanales != null ? new SpectralTap(rate, 1) : hv;
+                long qualitySeen = 0;
+                float measuredCut = qualityTap != null ? qualityTap.CutHz : 0f, measuredCutLo = qualityTap != null ? qualityTap.CutLoHz : 0f;
                 for (int s = 0; s < segs && !preScanStop; s++)
                 {
                     if (segs > 1)
@@ -557,14 +576,32 @@ namespace Rocola
                             if (!esVideo) AccumulateEqFrame(buf, i, ch, bp, bpSt, bpSum);
                             bpN++;
                             // canal 0 hacia el analizador de la IA (el DSEE tambien trabaja por canal)
-                            if (hv != null && hvVistos < hvVistosMax)
+                            if (hv != null && ((soloCorte ? false : hvVistos < hvVistosMax) || qualitySeen < qualityFrames))
                             {
-                                hvFrame[hvFill++] = buf[i];
+                                hvFrame[hvFill] = buf[i];
+                                if (hvCuadros != null && hvCuadros.Length == 2) hvCuadros[1][hvFill] = buf[i + 1];
+                                hvFill++;
                                 if (hvFill >= hvFrame.Length)
                                 {
                                     hvFill = 0;
-                                    double en = 0; for (int q = 0; q < hvFrame.Length; q++) en += hvFrame[q] * hvFrame[q];
-                                    if (en / hvFrame.Length > 1e-8)   // saltar cuadros practicamente mudos
+                                    if (qualitySeen < qualityFrames)
+                                    {
+                                        double qualityEnergy = 0;
+                                        for (int q = 0; q < hvFrame.Length; q++) qualityEnergy += hvFrame[q] * hvFrame[q];
+                                        if (qualityEnergy / hvFrame.Length > 1e-8)
+                                        {
+                                            qualityTap.AnalyzeFrame(hvFrame, 0); qualitySeen++;
+                                            measuredCut = qualityTap.CutHz; measuredCutLo = qualityTap.CutLoHz;
+                                        }
+                                    }
+                                    // Alternar por grupos del paso: con stride par, alternar cada
+                                    // cuadro escogeria siempre el mismo canal para todos los pares.
+                                    int canalIa = hvCanales == null ? 0 : (int)((hvTurno++ / hvStride) % hvCanales.Length);
+                                    SpectralTap analizador = hvCanales == null ? hv : hvCanales[canalIa];
+                                    float[] cuadroIa = hvCuadros == null ? hvFrame : hvCuadros[canalIa];
+                                    List<float> paresIa = hvPares == null ? hvPairs : hvPares[canalIa];
+                                    double en = 0; for (int q = 0; q < cuadroIa.Length; q++) en += cuadroIa[q] * cuadroIa[q];
+                                    if (!soloCorte && hvVistos < hvVistosMax && en / cuadroIa.Length > 1e-8)   // saltar cuadros practicamente mudos
                                     {
                                         hvVistos++;
                                         // SOLO se le hace la FFT a los cuadros que van a servir. Antes se
@@ -576,15 +613,14 @@ namespace Rocola
                                                      || (((hvVistos + hvFase) % hvStride) == 0);
                                         if (sirve)
                                         {
-                                            hv.AnalyzeFrame(hvFrame, 0);
-                                            if (hvVistos <= qualityFrames) { measuredCut = hv.CutHz; measuredCutLo = hv.CutLoHz; }
+                                            analizador.AnalyzeFrame(cuadroIa, 0);
                                             if (!soloCorte && hvVistos > IaWarmFrames &&
                                                 (hvStride == 1 || ((hvVistos + hvFase) % hvStride) == 0))
                                                 for (int q = 0; q < IaCutsHz.Length; q++)
-                                                    if (hv.MakePair(IaCutsHz[q], hvFeat, hvTgt))
+                                                    if (analizador.MakePair(IaCutsHz[q], hvFeat, hvTgt))
                                                     {
-                                                        for (int z = 0; z < 28; z++) hvPairs.Add(hvFeat[z]);
-                                                        for (int z = 0; z < 12; z++) hvPairs.Add(hvTgt[z]);
+                                                        for (int z = 0; z < 28; z++) paresIa.Add(hvFeat[z]);
+                                                        for (int z = 0; z < 12; z++) paresIa.Add(hvTgt[z]);
                                                     }
                                         }
                                     }
@@ -622,11 +658,18 @@ namespace Rocola
                 if (MeasurementCancelled()) { integradaLista = false; return false; } // no publicar ni cosechar una medida cancelada
                 // Solo las canciones COMPLETAS (sin acantilado, el mismo umbral que usa el DSEE para no tocarlas)
                 // sirven de maestras: en las dañadas los agudos reales ya no existen y no hay nada que enseñar.
-                if (hv != null && !soloCorte && hvPairs.Count >= 40 && hv.CutHz >= EqSanaHz)
+                if (hv != null && !soloCorte && hvPares != null)
                 {
                     // Con su ORIGEN (cancion, carpeta, frecuencia, cuadro, canal 0) para que el entrenador pueda
                     // separar por cancion. Ver IaApuntaOrigen.
-                    if (IaAppendPairsOrigen(hvPairs, IaOrigenDe(path, total, rate, hv.FrameLen, 0))) MarkIaDone(path, nivelAhora);
+                    bool escribio = false, completas = true;
+                    for (int canalIa = 0; canalIa < hvPares.Length; canalIa++)
+                        if (hvPares[canalIa].Count >= 40 && hvCanales[canalIa].CutHz >= EqSanaHz)
+                        {
+                            bool ok = IaAppendPairsOrigen(hvPares[canalIa], IaOrigenDe(path, total, rate, hv.FrameLen, canalIa));
+                            escribio |= ok; completas &= ok;
+                        }
+                    if (escribio && completas) MarkIaDone(path, nivelAhora);
                 }
                 float corteHz = measuredCut;
                 float corteLo = measuredCutLo;
@@ -644,7 +687,7 @@ namespace Rocola
                 if (bpN >= 40000 && !esVideo)
                 {
                     float[] curve = new float[EqLen];
-                    curve[EqCut] = corteHz; curve[EqClip] = recorte; curve[EqCutLo] = corteLo; curve[EqFingerprint] = 1f;
+                    curve[EqCut] = corteHz; curve[EqClip] = recorte; curve[EqCutLo] = corteLo; curve[EqFingerprint] = EqVersionOriginal;
                     for (int b = 0; b < 8; b++) curve[b] = (float)(10.0 * Math.Log10(bpSum[b] / bpN + 1e-12));
                     float[] cuerpo = { curve[1], curve[2], curve[3], curve[4], curve[5] };
                     Array.Sort(cuerpo);
@@ -951,10 +994,12 @@ namespace Rocola
                 reader.Volume = FixedVolume;   // se queda en 1.0 (crudo): el nivelado se aplica en LevelTap, tras medir el volumen REAL
                 // RETOMADA: volvio el aparato de sonido y la cancion sigue desde donde iba (SalidaSonido.cs).
                 double desde = TomaReanudar();
-                if (desde > 0) reader.Salta(TimeSpan.FromSeconds(desde));
+                if (desde > 0) reader.Salta(TimeSpan.FromTicks((long)Math.Round(desde * TimeSpan.TicksPerSecond)));
                 // LA CADENA DE ESTA CANCION (ArmaCadena, mas abajo): la misma que arma el relevo sin pausa para la
                 // siguiente, asi que las dos suenan exactamente igual.
+                retardoFinalReloj = 0;
                 CadenaCancion cad = ArmaCadena(t, reader, false, desde);
+                SellaInicioReloj(cad);
                 cad.Item = nowPlaying;
                 // Lo que se aprende oyendola va en los campos de siempre (la salida aun no arranco: sin carrera).
                 curMeasurePath = cad.MedidaRuta; curSumSq = 0; curSamples = 0;
@@ -1013,14 +1058,15 @@ namespace Rocola
             // NIVELADO: si esta cancion ya se oyo antes, se aplica la ganancia que la lleva al nivel comun; si es
             // nueva, va a su volumen original y se APRENDE su sonoridad en esta pasada (para nivelarla la proxima vez).
             // De una cancion retomada a medias no se aprende nada: seria la medida de un trozo.
-            bool entera = saltadoSeg <= 0;
+            bool entera = saltadoSeg <= 0 && !iaMejorada;
             c.MedidaRuta = (entera && normalizeOn && !durCache.ContainsKey(t.Path)) ? t.Path : null;   // ya pre-analizada = medida COMPLETA y fiable: no se vuelve a medir (y se ahorra el K-weighting)
             c.EqRuta = (entera && EqMideHuella && !HasStereoEq(t.Path)) ? t.Path : null;   // actualiza huellas antiguas sin borrar la biblioteca
             // NIVEL 2 (reconstructor espectral): solo se INSERTA en maquinas que cumplen requisitos; con
             // Active=false es un pase directo (costo ~cero). Ctrl+F3 lo alterna EN VIVO para comparar A/B.
-            NAudio.Wave.ISampleProvider chain = source;
+            FuenteOriginal original = new FuenteOriginal(source, this);
+            NAudio.Wave.ISampleProvider chain = original;
             int audioTailDelay = 0;   // estos retardos se vacian: el fundido debe abarcar tambien su cola
-            // DES-RECORTE: repara picos aplastados de origen (antes de medir y de DSEE). Ya sabemos, cancion
+            // DES-RECORTE: repara picos aplastados de origen (despues de medir original, antes de DSEE). Ya sabemos, cancion
             // por cancion, si de verdad viene recortada; en las que NO -que son la mayoria- ni se pone en la
             // cadena: se ahorra su trabajo y su retardo de ~1.5 ms. Si aun no esta medida, se pone por si acaso.
             if (declipOn && DeclipVale(t.Path))
@@ -1029,6 +1075,7 @@ namespace Rocola
             }
             if (sbrAllowed) { c.Sbr = new SpectralTap(chain); c.Sbr.Active = sbrOn; chain = c.Sbr; }
             LevelTap tap = new LevelTap(chain, this);
+            original.Tap = tap; tap.MideOriginal = true;
             tap.Gain = GananciaDe(t);   // la del disco si suena en racha con otra de su disco (NivelDisco.cs); si no, la suya
             tap.Excite = ExciteAmountFor(t.Path);   // realce de agudos: mas a las dañadas, menos a las que ya traen su aire
             tap.Master = MasterEfectivo() * FactorNoche();  // SUBIR TODO (lo mismo a todas, sin pasar del techo de la biblioteca: SubirTodo.cs), y de madrugada mas bajo
@@ -1320,6 +1367,7 @@ namespace Rocola
         // NAudio por dentro (el lector mas un canal de muestras), asi que no cambia ni una muestra.
         private sealed class FileAudioSource : IAudioSource
         {
+            private readonly WaveFormat formato;
             private readonly Mp3FileReader mp3;
             private readonly SampleChannel canal;
             private readonly AudioFileReader r;
@@ -1343,14 +1391,15 @@ namespace Rocola
                     finally { if (m != null) { try { m.Dispose(); } catch { } } }   // el canal fallo: el lector no se queda tirado
                 }
                 else r = new AudioFileReader(path);
+                formato = FormatoAudio.DeArchivo((mp3 != null) ? canal.WaveFormat : r.WaveFormat, path);
             }
-            public NAudio.Wave.WaveFormat WaveFormat { get { return (mp3 != null) ? canal.WaveFormat : r.WaveFormat; } }
+            public NAudio.Wave.WaveFormat WaveFormat { get { return formato; } }
             public int Read(float[] buffer, int offset, int count)
             { return (mp3 != null) ? canal.Read(buffer, offset, count) : r.Read(buffer, offset, count); }
             public float Volume { set { if (mp3 != null) canal.Volume = value; else r.Volume = value; } }
-            public TimeSpan CurrentTime { get { return (mp3 != null) ? mp3.CurrentTime : r.CurrentTime; } }
-            public TimeSpan TotalTime { get { return (mp3 != null) ? mp3.TotalTime : r.TotalTime; } }
-            public void Salta(TimeSpan donde) { if (mp3 != null) mp3.CurrentTime = donde; else r.CurrentTime = donde; }
+            public TimeSpan CurrentTime { get { return TiempoLector(mp3 != null ? (WaveStream)mp3 : r, false); } }
+            public TimeSpan TotalTime { get { return TiempoLector(mp3 != null ? (WaveStream)mp3 : r, true); } }
+            public void Salta(TimeSpan donde) { SaltaCuadro(mp3 != null ? (WaveStream)mp3 : r, donde); }
             public void Dispose()
             {
                 if (mp3 != null) { try { mp3.Dispose(); } catch { } }
@@ -1381,9 +1430,9 @@ namespace Rocola
             public NAudio.Wave.WaveFormat WaveFormat { get { return sample.WaveFormat; } }
             public int Read(float[] buffer, int offset, int count) { return sample.Read(buffer, offset, count); }
             public float Volume { set { sample.Volume = value; } }
-            public TimeSpan CurrentTime { get { return mp3.CurrentTime; } }
-            public TimeSpan TotalTime { get { return mp3.TotalTime; } }
-            public void Salta(TimeSpan donde) { mp3.CurrentTime = donde; }
+            public TimeSpan CurrentTime { get { return TiempoLector(mp3, false); } }
+            public TimeSpan TotalTime { get { return TiempoLector(mp3, true); } }
+            public void Salta(TimeSpan donde) { SaltaCuadro(mp3, donde); }
             public void Dispose() { try { mp3.Dispose(); } catch { } try { ms.Dispose(); } catch { } }
         }
 
@@ -1398,6 +1447,7 @@ namespace Rocola
             private const int Frame = 2048, Hop = Frame / 2;
             private readonly NAudio.Wave.ISampleProvider src;
             private readonly int ch, rate;
+            private readonly bool[] musicales;
             private readonly float binHz;
             public volatile bool Active;                   // false = pase directo (costo ~cero)
             // ENCENDER Y APAGAR EN VIVO SIN SALTOS (Ctrl+F3, A/B). Antes, al alternar se tiraba el colchon del
@@ -1469,6 +1519,7 @@ namespace Rocola
             {
                 src = s;
                 ch = Math.Max(1, s.WaveFormat.Channels);
+                musicales = FormatoAudio.Musicales(s.WaveFormat);
                 rate = Math.Max(8000, s.WaveFormat.SampleRate);
                 binHz = (float)rate / Frame;
                 inBuf = new float[ch][]; outAcc = new float[ch][];
@@ -1569,6 +1620,7 @@ namespace Rocola
                         srcEnded = true;                              // un cuadro que quedo a medias al final no se completa
                         continue;
                     }
+                    LimpiaMuestras(inter, restoN, got);   // antes de FFT, solapes y suavizados
                     got += restoN;
                     int frames = got / ch;
                     sourceFrames += frames;
@@ -1614,6 +1666,7 @@ namespace Rocola
             public SpectralTap(int rateHz, int channels)   // solo analisis: no reproduce, no lee de ninguna fuente
             {
                 src = null; ch = channels < 1 ? 1 : channels; rate = rateHz < 8000 ? 44100 : rateHz;
+                musicales = new bool[ch]; for (int c = 0; c < ch; c++) musicales[c] = true;
                 binHz = (float)rate / Frame;
                 re = new float[Frame]; im = new float[Frame];
                 ganHoy = new float[Frame / 2];
@@ -1708,8 +1761,8 @@ namespace Rocola
                         detectPair = true; DetectCliff(); detectPair = false;
                         ActualizaCorte();
                     }
-                    canalRegen = cn; Regenerate();                // canal par
-                    Intercambia(); canalRegen = cn + 1; Regenerate(); Intercambia();   // canal impar (Regenerate trabaja sobre re/im)
+                    canalRegen = cn; if (musicales[cn]) Regenerate();
+                    Intercambia(); canalRegen = cn + 1; if (musicales[cn + 1]) Regenerate(); Intercambia();
                     // se vuelven a juntar: parte real = canal par, parte imaginaria = canal impar
                     for (int i = 0; i < Frame; i++) { float t = re[i] - imB[i]; im[i] = im[i] + reB[i]; re[i] = t; }
                     Fft(true);
@@ -1722,7 +1775,7 @@ namespace Rocola
                     for (int i = 0; i < Frame; i++) { re[i] = xin[i] * win[i]; im[i] = 0f; }
                     Fft(false);
                     if (cn == 0 && !firstFrame && !srcEnded) { DetectCliff(); ActualizaCorte(); }   // ni la de arranque ni las del final miden (ver arriba)
-                    canalRegen = cn; Regenerate();
+                    canalRegen = cn; if (musicales[cn]) Regenerate();
                     Fft(true);
                     float[] acc = outAcc[cn];
                     for (int i = 0; i < Frame; i++) acc[i] += re[i] * win[i];
@@ -1774,8 +1827,11 @@ namespace Rocola
             // a la banda media (4-8 kHz). Suavizado entre ventanas para que no baile; en silencio no se mide.
             private double DetectionPower(int k)
             {
-                double p = re[k] * re[k] + im[k] * im[k];
-                return detectPair ? (p + (reB[k] * reB[k] + imB[k] * imB[k])) * 0.5 : p;
+                double p = musicales[0] ? re[k] * re[k] + im[k] * im[k] : 0.0;
+                if (!detectPair) return p;
+                int n = musicales[0] ? 1 : 0;
+                if (musicales[1]) { p += reB[k] * reB[k] + imB[k] * imB[k]; n++; }
+                return n > 0 ? p / n : 0.0;
             }
             private void DetectCliff()
             {
@@ -2162,7 +2218,7 @@ namespace Rocola
             public DitherWaveProvider16(NAudio.Wave.ISampleProvider s)
             {
                 src = s;
-                fmt = new NAudio.Wave.WaveFormat(s.WaveFormat.SampleRate, 16, s.WaveFormat.Channels);
+                fmt = FormatoAudio.Pcm(s.WaveFormat.SampleRate, 16, s.WaveFormat.Channels, FormatoAudio.Mascara(s.WaveFormat));
                 rs = (uint)Environment.TickCount | 1u;   // semilla != 0 (xorshift no arranca en 0)
             }
             // Un uniforme [0,1) barato (xorshift32). Dos restados = dither TRIANGULAR (TPDF), estadisticamente
@@ -2219,6 +2275,8 @@ namespace Rocola
         // lleguen las lecturas; antes suponia cuadros enteros (una muestra suelta se quedaba sin su grave).
         private sealed class DeepBassProvider : NAudio.Wave.ISampleProvider
         {
+            private readonly bool[] musicales;
+            private readonly int nMusicales, primeroMusical;
             private readonly NAudio.Wave.ISampleProvider src;
             private readonly int ch;
             public volatile float Amount;      // 0..1 (perilla de Ctrl+F3)
@@ -2234,6 +2292,10 @@ namespace Rocola
             public DeepBassProvider(NAudio.Wave.ISampleProvider s, float amount)
             {
                 src = s; ch = Math.Max(1, s.WaveFormat.Channels); Amount = amount;
+                musicales = FormatoAudio.Musicales(s.WaveFormat);
+                primeroMusical = -1;
+                if (ch <= 2 || FormatoAudio.Mascara(s.WaveFormat) != 0)
+                    for (int c = 0; c < ch; c++) if (musicales[c]) { nMusicales++; if (primeroMusical < 0) primeroMusical = c; }
                 int fs = s.WaveFormat.SampleRate; if (fs < 8000) fs = 44100;
                 aLow = Coef(100f, fs);    // por debajo de aqui esta lo que la bocina no puede dar
                 aHp = Coef(95f, fs);      // los armonicos salen de ~95 Hz...
@@ -2252,7 +2314,7 @@ namespace Rocola
             public int Read(float[] buffer, int offset, int count)
             {
                 int n = src.Read(buffer, offset, count);
-                if (n <= 0) return n;
+                if (n <= 0 || nMusicales == 0) return n;   // layout desconocido: no mezclar canales
                 float amt = Amount, obj;
                 if (float.IsNaN(amt) || float.IsInfinity(amt)) obj = objetivo;   // un valor roto no mueve nada
                 else obj = amt > 0.001f ? amt * 0.85f : 0f;
@@ -2269,10 +2331,10 @@ namespace Rocola
                 if (fase != 0)
                 {
                     int k = Math.Min(ch - fase, n);
-                    for (int c = 0; c < k; c++) { float x = buffer[i + c]; suma = (float)(suma + x); buffer[i + c] = x + hSal; }
+                    for (int c = 0; c < k; c++) { float x = buffer[i + c]; if (musicales[fase + c]) { suma = (float)(suma + x); buffer[i + c] = x + hSal; } }
                     i += k; fase += k;
                     if (fase < ch) return n;
-                    cuadro[0] = suma; for (int c = 1; c < ch; c++) cuadro[c] = 0f;   // su suma, y ceros: la misma cuenta
+                    for (int c = 0; c < ch; c++) cuadro[c] = 0f; cuadro[primeroMusical] = suma;
                     fase = 0; suma = 0f;
                     Cuadros(cuadro, 0, 1);
                 }
@@ -2280,7 +2342,7 @@ namespace Rocola
                 Cuadros(buffer, i, enteros);
                 i += enteros * ch;
                 // Lo que sobra de un cuadro partido: recibe el grave del cuadro anterior y espera a la lectura siguiente.
-                for (; i < end; i++) { float x = buffer[i]; suma = (float)(suma + x); buffer[i] = x + hSal; fase++; }
+                for (; i < end; i++) { float x = buffer[i]; if (musicales[fase]) { suma = (float)(suma + x); buffer[i] = x + hSal; } fase++; }
                 return n;
             }
             // Cuadros enteros: a cada canal se le suma el grave del cuadro ANTERIOR (0 exacto si esta apagado) y con la
@@ -2293,10 +2355,10 @@ namespace Rocola
                 float mx = mix, hs = hSal; int q = quedan;
                 for (int f = 0; f < cuadros; f++, i += ch)
                 {
-                    float m = b[i];
-                    for (int c = 1; c < ch; c++) m = (float)(m + b[i + c]);
-                    if (ch > 1) m /= ch;                          // antes de sumar el grave: con este orden Mono va el doble de rapido
-                    for (int c = 0; c < ch; c++) b[i + c] += hs;
+                    float m = b[i + primeroMusical];
+                    for (int c = primeroMusical + 1; c < ch; c++) if (musicales[c]) m = (float)(m + b[i + c]);
+                    if (nMusicales > 1) m /= nMusicales;
+                    for (int c = 0; c < ch; c++) if (musicales[c]) b[i + c] += hs;
                     // 1) aislar el grave que la bocina NO puede reproducir
                     lp1 += (m - lp1) * aLow;
                     lp2 += (lp1 - lp2) * aLow;
@@ -2619,8 +2681,8 @@ namespace Rocola
             // REALCE DE AGUDOS (exciter armonico, tipo DSEE): separa la banda alta con un paso-alto de un polo,
             // la satura suave (tanh: crea armonicos NUEVOS por encima, el "aire" que el MP3 recorta) y mezcla
             // una pizca de vuelta. Todo en el dominio del tiempo (nada de FFT). La saturacion se calcula al
-            // doble de frecuencia para que sus armonicos no se plieguen (Realce.cs); el camino de una muestra
-            // por vez que queda abajo solo se usa si el realce se sube a media cancion desde cero.
+            // doble de frecuencia para que sus armonicos no se plieguen (Realce.cs), incluso al activarlo
+            // a media cancion; conserva el mismo retraso apagado, con historia barata sin ejecutar FIR.
             // 0 = apagado (la pasada ni se ejecuta si tampoco hay nivelado).
             public volatile float Excite = 0f;   // intensidad 0..1, suavizada al cambiar en vivo
             private float[] exLp;       // estado del filtro del exciter (uno por canal)
@@ -2663,10 +2725,11 @@ namespace Rocola
             public LevelTap(NAudio.Wave.ISampleProvider s, Form1 o)
             {
                 src=s;owner=o;Publicacion=o==null?0:o.publicacionAudio;audioChannels=Math.Max(1,s.WaveFormat.Channels);
+                canalesMusicales=FormatoAudio.Musicales(s.WaveFormat);
                 rampFrames=Math.Max(1,(int)(s.WaveFormat.SampleRate*.020));
                 eqFadeFrames=Math.Max(1,(int)(s.WaveFormat.SampleRate*.030));
                 exciterPole=ExciterPole(s.WaveFormat.SampleRate);exLp=new float[audioChannels];
-                PreparaRealce();   // realce 2x (Realce.cs): su memoria se reserva aqui, nunca al leer
+                PreparaRealce(); FijaModoRealce(0f);   // retraso estable, incluso si empieza apagado
             }
             public NAudio.Wave.WaveFormat WaveFormat { get { return src.WaveFormat; } }
             private void Objetivos(out float g, out float ex)
@@ -2697,7 +2760,7 @@ namespace Rocola
                     // de medir nada. Es UNA comparacion por muestra, y de paso atrapa los valores absurdos
                     // (un archivo roto que devuelve 1e30) que reventarian el nivelado.
                     { int fin0 = offset + n; for (int i = offset; i < fin0; i++) { float x0 = buffer[i]; if (!(x0 >= -4f && x0 <= 4f)) buffer[i] = 0f; } }
-                    owner.PublicaBloqueDe(this, buffer, offset, n, WaveFormat.SampleRate, WaveFormat.Channels);   // mide el crudo solo mientras esta reproduccion sigue vigente
+                    owner.PublicaBloqueDe(this, buffer, offset, n, WaveFormat.SampleRate, WaveFormat.Channels);   // pulso visual; FuenteOriginal ya midio antes del DSP
                     float g, ex;
                     Objetivos(out g, out ex);
                     PreparedEq prepared=pendingEq;

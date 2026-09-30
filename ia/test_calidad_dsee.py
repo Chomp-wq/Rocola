@@ -142,14 +142,12 @@ class CalidadDsee(unittest.TestCase):
                  mock.patch.object(trainer, "cargar_datos_rocola", return_value=(x, y)), \
                  mock.patch.object(trainer, "particiones_rocola", return_value=self.independiente()), \
                  mock.patch.object(trainer, "train", return_value=m), contextlib.redirect_stdout(io.StringIO()):
-                self.assertEqual(trainer.main(), 0)
-            with open(os.path.join(folder, "rocola_ia.bin"), "rb") as f:
+                self.assertEqual(trainer.main(), 4)
+            candidatos = [n for n in os.listdir(folder) if n.startswith("dsee-candidato-")]
+            with open(os.path.join(folder, candidatos[0], "candidato.bin"), "rb") as f:
                 self.assertEqual(f.read(4), b"RIA1")
-            with open(os.path.join(folder, "ia_vectores_prueba.txt")) as f:
-                lines = f.readlines()
-            # Primera linea: la huella del modelo que acompanan (sin '|': los lectores viejos la saltan).
-            self.assertTrue(lines[0].startswith("# rocola_ia.bin sha256="))
-            lines = lines[1:]
+            self.assertFalse(os.path.exists(os.path.join(folder, "rocola_ia.bin")))
+            lines = trainer.vectores_de_paridad(m, x[-100:], quality.bytes_ria1(m)).splitlines()[1:]
             self.assertEqual(len(lines), 24)
             for line in lines:
                 inputs, outputs = line.split("|")

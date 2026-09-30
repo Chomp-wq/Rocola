@@ -136,21 +136,21 @@ class Publicacion(unittest.TestCase):
 
 
 class DesdeElEntrenador(unittest.TestCase):
-    def test_publica_por_version_y_sin_rutas_en_lo_publicado(self):
+    def test_entrenador_candidato_no_activa_sin_pcm_y_escucha(self):
         with tempfile.TemporaryDirectory() as d:
             argv = ["entrenar_ia.py", "--clips", "60", "--epocas", "2"]
             with mock.patch.object(T, "__file__", os.path.join(d, "entrenar_ia.py")), \
                  mock.patch.object(T.sys, "argv", argv), \
                  mock.patch.object(Q, "decide", return_value=(True, ["forzado por la prueba"])), \
+                 mock.patch.object(Q, "avisos_por_clase", return_value=[]), \
                  contextlib.redirect_stdout(io.StringIO()):
-                self.assertEqual(T.main(), 0)
-            v = P._activo(d)[0]
-            self.assertTrue(v and v.startswith("dsee-"))
-            carpeta = os.path.join(d, P.CARPETA, v)
-            self.assertEqual(sorted(os.listdir(carpeta)), ["ia_vectores_prueba.txt", "informe_dsee.json", "manifiesto.txt", "rocola_ia.bin"])
-            for n in os.listdir(carpeta):
-                self.assertNotIn(d.encode("utf-8"), _lee(os.path.join(carpeta, n)), n)
-            self.assertEqual(_lee(os.path.join(d, "rocola_ia.bin")), _lee(os.path.join(carpeta, "rocola_ia.bin")))
+                self.assertEqual(T.main(), 4)
+            self.assertIsNone(P._activo(d)[0])
+            self.assertFalse(os.path.exists(os.path.join(d, "rocola_ia.bin")))
+            candidatos = [n for n in os.listdir(d) if n.startswith("dsee-candidato-")]
+            self.assertEqual(len(candidatos), 1)
+            self.assertNotIn(d.encode("utf-8"), _lee(os.path.join(d,candidatos[0],"informe_dsee.json")))
+            self.assertTrue(_lee(os.path.join(d, candidatos[0], "candidato.bin")).startswith(b"RIA1"))
 
 
 if __name__ == "__main__":

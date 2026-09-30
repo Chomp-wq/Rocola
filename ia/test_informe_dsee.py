@@ -128,7 +128,8 @@ class ElEntrenadorLoUsa(unittest.TestCase):
     def test_informe_con_clases_transitorios_y_paridad(self):
         with tempfile.TemporaryDirectory() as d:
             codigo, _ = self._corre(d)
-            with open(os.path.join(d, "informe_dsee.json"), encoding="ascii") as f:
+            candidato=next(n for n in os.listdir(d) if n.startswith("dsee-candidato-"))
+            with open(os.path.join(d,candidato,"informe_dsee.json"), encoding="ascii") as f:
                 inf = json.load(f)
             self.assertIn(codigo, (0, 2))
             self.assertTrue(inf["por_clase"]["transitorios"]["disponible"])        # sintetico: hay senal

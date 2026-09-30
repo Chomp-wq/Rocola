@@ -74,10 +74,25 @@ class DseeAislado(unittest.TestCase):
             self.assertEqual(inf["indice"]["crc_datos_malo"], 1)
             self.assertEqual(inf["ejemplos"], 2900)
 
+    def test_copia_indice_y_generos_explicitos_conserva_fuentes(self):
+        with tempfile.TemporaryDirectory() as d:
+            datos,idx,instalado=self.datos(d)
+            indice_aparte=os.path.join(d,"aparte.idx")
+            generos=os.path.join(d,"aparte.generos.tsv")
+            guardar(indice_aparte,leer(idx))
+            guardar(generos,b"0000000000000001\trock\n0000000000000001\t\n")
+            antes=[leer(p) for p in (datos,idx,instalado,indice_aparte,generos)]
+            destino=os.path.join(d,"candidato")
+            D.preparar(datos,instalado,destino,indice=indice_aparte,generos=generos)
+            self.assertEqual(leer(os.path.join(destino,"datos.generos.tsv")),leer(generos))
+            ent,inf=O.lee_indice(os.path.join(destino,"datos.idx"),os.path.join(destino,"datos.bin"))
+            self.assertEqual(inf["validas"],30)
+            self.assertEqual(antes,[leer(p) for p in (datos,idx,instalado,indice_aparte,generos)])
+
 
 class EqAislado(unittest.TestCase):
     def texto(self):
-        return "".join("0;%s;%s;%s;%s;%s;0;0;20000|D:/musica/album%d/tema%d.mp3\n" %
+        return "".join("0;%s;%s;%s;%s;%s;0;0;20000;0;0;2|D:/musica/album%d/tema%d.mp3\n" %
                        (i / 1000., i / 500., i / 800., i / 900., i / 1200., i // 20, i) for i in range(2400))
 
     def test_albumes_no_cruzan_y_particion_es_repetible(self):
@@ -90,7 +105,7 @@ class EqAislado(unittest.TestCase):
             self.assertFalse(set(grupos[partes[a]]) & set(grupos[partes[b]]))
 
     def test_copias_exactas_unen_albumes_ruta_repetida_no_duplica(self):
-        linea = "0;1;2;3;4;5;6;7;20000|"
+        linea = "0;1;2;3;4;5;6;7;20000;0;0;2|"
         d, g, _ = Q.leer_agrupado(linea + "D:/a/uno.mp3\n" + linea + "D:/b/dos.mp3\n" + linea + "d:/A/UNO.MP3\n")
         self.assertEqual(len(d), 2)
         self.assertEqual(g[0], g[1])
@@ -130,7 +145,11 @@ class EqAislado(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             datos, instalado, destino = [os.path.join(d, n) for n in ("datos.txt", "modelo.bin", "candidato")]
             guardar(datos, self.texto().encode("utf-8")); modelo(instalado, 5, 3)
-            with contextlib.redirect_stdout(io.StringIO()), mock.patch.object(Q, "decide", return_value=True):
+            def entrena_cero(m, *a, **kw):
+                for v in m.W + m.B: v[:] = 0
+                return m
+            with contextlib.redirect_stdout(io.StringIO()), mock.patch.object(Q, "decide", return_value=True), \
+                 mock.patch.object(Q.E, "entrenar", side_effect=entrena_cero):
                 inf = Q.entrenar(datos, instalado, destino, epocas=1)
             self.assertTrue(inf["aceptado_numericamente"])
             candidato = C.cargar_ria1(os.path.join(destino, "candidato_eq.bin"), 5, 3)

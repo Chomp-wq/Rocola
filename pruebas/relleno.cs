@@ -205,13 +205,13 @@ class Relleno
         List<float> otro = Une(true, 1152 + 529, false);
         igual = otro.Count == orig.Length; for (int i = 0; igual && i < orig.Length; i++) if (otro[i] != orig[i]) igual = false;
         Check(igual, "igual con un descompresor que retrasa un cuadro mas (lo que mida el equipo es lo que se quita)");
-        // Tras un salto (volvio el aparato de sonido) deja de recortar.
+        // Tras un salto se conserva el limite final y se reconstruye cuanto falta.
         object e; Lee("relleno_p0.mp3", out e);
         Imitado d2 = new Imitado(Descomprime(Pieza(0, 57331), 2, e, 529), 2);
         object rec = Activator.CreateInstance(TC, T, null, new object[] { (Func<float[], int, int, int>)d2.Read, 2, Campo(e, "Retraso") + 529, Musica(e) }, null);
-        TC.GetMethod("Deja", T).Invoke(rec, null);
+        TC.GetMethod("Movido", T).Invoke(rec, new object[] { 0L });
         float[] b = new float[4]; int n = (int)TC.GetMethod("Lee", T).Invoke(rec, new object[] { b, 0, 4 });
-        Check(n == 4 && b[0] == 0f && b[3] == 0f, "tras un salto, como antes: no quita nada");
+        Check(n == 4 && b[0] == Pieza(0, 2)[0] && b[3] == Pieza(0, 2)[3], "volver al principio conserva el recorte inicial");
     }
 
     static void Conectado()

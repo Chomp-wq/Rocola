@@ -35,7 +35,7 @@ class AudioEstereo {
   object owner=Codigo.FormSinEncender(form);
   object[] args={path,true,0f,0f,null};
   Check((bool)Call(owner,"MeasureFile",args),"No mide WAV");
-  float[] curve=args[4] as float[];Check(curve!=null&&curve.Length==12&&curve[11]==1,"No marca medicion nueva");
+  float[] curve=args[4] as float[];Check(curve!=null&&curve.Length==12&&curve[11]==2,"No marca medicion original nueva");
   return curve;
  }
  static void Cache(){
@@ -45,7 +45,7 @@ class AudioEstereo {
    string line="";for(int i=0;i<fields;i++)line+=(i>0?";":"")+(i==11?"1":i.ToString());
    float[] c=(float[])Call(null,"ReadEqValues",line,line.Length);
    Check(c.Length==12&&c[0]==0&&c[7]==7&&c[11]==(fields==12?1:0),"Formato viejo pierde datos");
-   cache["fixture"]=c;Check((bool)Call(f,"HasStereoEq","fixture")==(fields==12),"Migracion confunde versiones");
+   cache["fixture"]=c;Check(!(bool)Call(f,"HasStereoEq","fixture"),"Migracion acepta medida DSP vieja como original");
   }
   // Una huella vieja no se mezcla 50/50: sus primeras ocho bandas se reemplazan.
   float[] old=new float[12];for(int i=0;i<8;i++)old[i]=30;old[8]=18000;old[9]=.12f;old[10]=40;
@@ -54,7 +54,8 @@ class AudioEstereo {
   double[] sums=new double[8];for(int i=0;i<8;i++)sums[i]=882000;
   Set(f,"eqMeasSum",sums);Call(f,"FinalizeEqMeasure");
   float[] fresh=cache["old"];for(int i=0;i<8;i++)Check(fresh[i]==0,"Contamina huella con mezcla mono vieja");
-  Check(fresh[8]==18000&&fresh[9]==.12f&&fresh[10]==40&&fresh[11]==1,"Pierde metadatos");
+  Check(fresh[8]==18000&&fresh[9]==.12f&&fresh[10]==40&&fresh[11]==2,"Pierde metadatos/version original");
+  cache["fixture"]=fresh;Check((bool)Call(f,"HasStereoEq","fixture"),"No reconoce medida original nueva");
   Type track=form.GetNestedType("Track",F);IList tracks=(IList)Get(f,"tracks");
   Dictionary<string,float> durations=(Dictionary<string,float>)Get(f,"durCache");
   HashSet<string> deep=(HashSet<string>)Get(f,"deepDone");
@@ -70,8 +71,9 @@ class AudioEstereo {
  }
  static int Main(string[] args){
   form=Assembly.LoadFrom(args[0]).GetType("Rocola.Form1");
-  foreach(string method in new string[]{"MeasureFile","ReportAudioBlock"})
+  foreach(string method in new string[]{"MeasureFile","MideBloqueOriginal"})
    Check(Codigo.Llama(form.GetMethod(method,F),"AccumulateEqFrame"),"Ruta sin nueva medicion: "+method);
+  Check(Codigo.Llama(form.GetMethod("ReportAudioBlock",F),"MideBloqueOriginal"),"Fallback de pruebas no mide original");
   foreach(Codigo.Paso p in Codigo.Pasos(form.GetMethod("AccumulateEqFrame",F)))
    Check(p.Op!=0x8D&&p.Op!=0x73,"Reserva por cuadro de medicion");
   foreach(int fs in new int[]{22050,44100,48000,96000}){

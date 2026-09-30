@@ -165,58 +165,54 @@ class Entrenador
         try { File.Delete(tmpPy); } catch { }
 
         // ---------------------------------------------------------------------------------
-        Console.WriteLine("\n  6) EL ENTRENADOR DEL EQ ENTIENDE EL ARCHIVO QUE LA ROCOLA ESCRIBE HOY\n");
-        // La rocola apunta la huella tonal de cada cancion en rocola_eq.txt. Esa ficha fue creciendo con el
-        // tiempo -primero ocho numeros, luego el corte de los agudos, luego el recorte y el corte de abajo- y
-        // el entrenador del EQ se quedo entendiendo solo la version de hace dos cambios. Con el archivo de HOY
-        // decia "no tiene huellas legibles" y no entrenaba nada. Y con uno viejo, que no trae el dato del
-        // corte, decia "0 canciones sanas" y se plantaba igual. En los dos casos, meses de pre-analisis a la
-        // basura y ningun modelo, sin que el mensaje diera una pista de por donde iban los tiros.
+        Console.WriteLine("\n  6) AUTOEQ ACTUAL: HUELLA LIMPIA V2, LEGACY SEPARADO Y CANDIDATO AISLADO\n");
         string exe = (argv.Length > 0) ? argv[0] : "rocola.exe";
-        int cuantos = 11, dondeCorte = 8; float sanaHz = 19300f;
+        int cuantos = 12, dondeCorte = 8, dondeVersion = 11; float sanaHz = 19300f, version = 2f;
         try
         {
             Type TF = Assembly.LoadFrom(exe).GetType("Rocola.Form1", true);
             BindingFlags SN = BindingFlags.Static | BindingFlags.NonPublic;
             cuantos = (int)TF.GetField("EqLen", SN).GetRawConstantValue();
             dondeCorte = (int)TF.GetField("EqCut", SN).GetRawConstantValue();
+            dondeVersion = (int)TF.GetField("EqFingerprint", SN).GetRawConstantValue();
             sanaHz = (float)TF.GetField("EqSanaHz", SN).GetRawConstantValue();
+            version = (float)TF.GetField("EqVersionOriginal", SN).GetRawConstantValue();
+            Check(true, "lee el contrato del ejecutable que se esta probando");
         }
-        catch (Exception ex) { Console.WriteLine("     (no se pudo mirar el ejecutable: " + ex.Message + ")"); }
-        Console.WriteLine("     la rocola escribe " + cuantos + " numeros por cancion, y el corte va en el "
-                          + (dondeCorte + 1) + "o");
-
-        // El archivo de HOY, tal cual lo escribe la rocola, con una de cada tres canciones sana.
-        string eqHoy = Path.Combine(Path.GetTempPath(), "rocola_eq_hoy_" + Guid.NewGuid().ToString("N") + ".txt");
-        int cuantasCanciones = 1200;
-        int sanasPuestas = EscribeHuellas(eqHoy, cuantasCanciones, cuantos, dondeCorte, sanaHz, true);
-        string salHoy = CorreEq(eqHoy);
-        int total, sanas;
-        LeeCuenta(salHoy, out total, out sanas);
-        Console.WriteLine("     con el archivo de hoy lee " + total + " canciones de " + cuantasCanciones + " y ve " + sanas + " sanas");
-        Check(total == cuantasCanciones, "lee TODAS las canciones del archivo que la rocola escribe hoy");
-        Check(sanas == sanasPuestas, "y reconoce cuales conservan sus agudos (" + sanasPuestas + ")");
-        Check(salHoy.IndexOf("ilegibles", StringComparison.Ordinal) < 0, "y no da por ilegible ni una sola linea");
-
-        // Y el de una rocola VIEJA, que no trae el dato del corte: no puede saber cuales estan sanas, pero
-        // eso no es motivo para tirar meses de trabajo. Se entrena con todas, que es exactamente lo que la
-        // rocola hace con su promedio cuando no tiene bastantes sanas medidas.
-        string eqViejo = Path.Combine(Path.GetTempPath(), "rocola_eq_viejo_" + Guid.NewGuid().ToString("N") + ".txt");
-        EscribeHuellas(eqViejo, cuantasCanciones, 8, dondeCorte, sanaHz, false);
-        string salViejo = CorreEq(eqViejo);
-        LeeCuenta(salViejo, out total, out sanas);
-        Console.WriteLine("     con uno de una rocola vieja lee " + total + " canciones y ve " + sanas + " sanas");
-        Check(total == cuantasCanciones, "lee tambien los archivos de las versiones de antes");
-        Check(salViejo.IndexOf("Hacen falta al menos", StringComparison.Ordinal) < 0,
-              "y no se planta por no poder saber cuales estan sanas");
-        Check(salViejo.IndexOf("MEJORA GLOBAL", StringComparison.Ordinal) >= 0,
-              "entrena con todas y dice si le gana al promedio (que es lo que decide si guarda o no)");
-        Check(salViejo.IndexOf("copia otra vez", StringComparison.OrdinalIgnoreCase) >= 0
-              || salViejo.IndexOf("version vieja", StringComparison.OrdinalIgnoreCase) >= 0,
-              "y avisa de que ese archivo es de una version vieja, para que traiga uno nuevo");
-
-        try { File.Delete(eqHoy); } catch { }
-        try { File.Delete(eqViejo); } catch { }
+        catch (Exception ex) { Check(false, "no se pudo mirar el contrato: " + ex.Message); }
+        Check(cuantos == 12 && dondeCorte == 8 && dondeVersion == 11 && version == 2f,
+              "12 campos, corte en9 y versionHuella2 en12; no inventar origen limpio a legacy");
+        string pruebaEq = Path.Combine(Path.GetTempPath(), "rocola_eq_contrato_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(pruebaEq);
+        try
+        {
+            int cuantasCanciones = 6000; // 2000 sanas permiten train>=500/val>=200/test>=200 por album.
+            string eqHoy = Path.Combine(pruebaEq, "actual.txt");
+            int sanasPuestas = EscribeHuellas(eqHoy, cuantasCanciones, cuantos, dondeCorte, sanaHz, true, dondeVersion, version);
+            EscribeHuellas(Path.Combine(pruebaEq, "legacy0.txt"), cuantasCanciones, 9, dondeCorte, sanaHz, true, dondeVersion, 0);
+            EscribeHuellas(Path.Combine(pruebaEq, "legacy1.txt"), cuantasCanciones, cuantos, dondeCorte, sanaHz, true, dondeVersion, 1);
+            EscribeHuellas(Path.Combine(pruebaEq, "futura.txt"), cuantasCanciones, cuantos, dondeCorte, sanaHz, true, dondeVersion, 3);
+            EscribeHuellas(Path.Combine(pruebaEq, "sin_corte.txt"), cuantasCanciones, 8, dondeCorte, sanaHz, false, dondeVersion, 0);
+            string salEq = PruebaEq(pruebaEq);
+            Console.WriteLine(salEq);
+            Check(Num(salEq, "TOTAL") == cuantasCanciones, "lee TODAS las rutas actuales");
+            Check(Num(salEq, "SANAS") == sanasPuestas, "solo conserva las sanas actuales (" + sanasPuestas + ")");
+            Check(Num(salEq, "INVALIDAS") == 0 && Num(salEq, "VERSION") == 2, "huellasv2 legibles y contrato Python/C# coincide");
+            Check(Num(salEq, "EXCLUIDAS") == cuantasCanciones * 3, "mezcla diagnostica excluye0/1/futuras, sin contaminarv2");
+            Check(Num(salEq, "SOLO_V2") == 1, "las filas agrupadas no cambian al agregar huellas legacy/futuras");
+            Check(Num(salEq, "LEGACY_RECHAZADA") == 3, "entrada normal rechaza archivos0/1 y viejos sin corte");
+            Check(Num(salEq, "LEGACY_SEPARADO") == 1, "diagnostico legado usa0/1 y excluye2/futuras");
+            Check(Num(salEq, "VIEJAS_LEGIBLES") == cuantasCanciones && Num(salEq, "VIEJAS_SANAS") == 0,
+                  "lector diagnostico conserva fichas8campos, pero no las declara sanas ni limpias");
+            Check(Num(salEq, "CLI_TERMINO") == 1, "CLI publico entrena fixture sintetico y aplica guardian actual");
+            Check(Num(salEq, "GRUPOS_SEPARADOS") == 1, "ningun album/copia exacta aparece en dos particiones");
+            Check(Num(salEq, "TEST_INDEPENDIENTE") == 1, "train/val/test cumplen minimos y prueba decide politica, no checkpoints");
+            Check(Num(salEq, "GUARD_ACTUAL") == 1, "informe compara promedio train/instalado y objetivo runtime, clases y paridad");
+            Check(Num(salEq, "INSTALADO_INTACTO") == 1 && Num(salEq, "NO_ACTIVADO") == 1,
+                  "pesos de referencia temporales intactos, candidato nunca se instala");
+            Check(Num(salEq, "LEGACY_NO_PUBLICABLE") == 1, "CLI diagnostico nunca exporta/activa legacy");
+        }
+        finally { try { Directory.Delete(pruebaEq, true); } catch { } }
 
         Console.WriteLine();
         Console.WriteLine(fallos == 0 ? "  TODO BIEN" : ("  FALLOS: " + fallos));
@@ -225,7 +221,7 @@ class Entrenador
 
     // Escribe un rocola_eq.txt con 'cuantos' numeros por linea, como lo escribiria la rocola.
     // Devuelve cuantas canciones quedaron SANAS (con sus agudos completos).
-    static int EscribeHuellas(string ruta, int lineas, int cuantos, int dondeCorte, float sanaHz, bool conCorte)
+    static int EscribeHuellas(string ruta, int lineas, int cuantos, int dondeCorte, float sanaHz, bool conCorte, int dondeVersion, float version)
     {
         Random r = new Random(11);
         int sanas = 0;
@@ -240,6 +236,7 @@ class Entrenador
                 double v;
                 if (b < 8) v = Math.Round(-12.0 + r.NextDouble() * 18.0, 2);
                 else if (b == dondeCorte) v = sana ? (sanaHz + 700.0) : (14000.0 + r.NextDouble() * 4000.0);
+                else if (b == dondeVersion) v = version;
                 else v = Math.Round(r.NextDouble() * 60.0, 2);
                 sb.Append(v.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture));
             }
@@ -249,41 +246,55 @@ class Entrenador
         return sanas;
     }
 
-    static string CorreEq(string datos)
+    static string PruebaEq(string carpeta)
     {
-        string py = Path.GetFullPath(Path.Combine("..", Path.Combine("ia", "entrenar_eq.py")));
-        string fuera = Path.Combine(Path.GetTempPath(), "rocola_eq_ia_prueba_" + Guid.NewGuid().ToString("N") + ".bin");
-        try { File.Delete(fuera); } catch { }
+        string ia = Path.GetFullPath(Path.Combine("..", "ia"));
+        string script = Path.Combine(carpeta, "contrato.py");
+        string guion =
+            "import os,sys,json,hashlib,subprocess\n" +
+            "os.environ['OPENBLAS_NUM_THREADS']='1';os.environ['OMP_NUM_THREADS']='1'\n" +
+            "sys.path.insert(0,r'" + ia + "');import numpy as np;import entrenar_eq as E;import entrenar_eq_candidato as Q;import calidad_dsee as C\n" +
+            "root=r'" + carpeta + "'\n" +
+            "def texto(n):\n with open(os.path.join(root,n+'.txt'),encoding='utf-8-sig') as f:return f.read()\n" +
+            "hoy=texto('actual'); d,g,inf=Q.leer_agrupado(hoy)\n" +
+            "print('TOTAL',inf['rutas_unicas']);print('SANAS',len(d));print('INVALIDAS',inf['invalidas']);print('VERSION',Q.VERSION_HUELLA)\n" +
+            "viejas0=texto('legacy0').replace('cancion','antigua0');viejas1=texto('legacy1').replace('cancion','antigua1');futuras=texto('futura').replace('cancion','futura')\n" +
+            "mezcla=hoy+viejas0+viejas1+futuras;dm,gm,im=Q.leer_agrupado(mezcla)\n" +
+            "print('EXCLUIDAS',im['excluidas_version']);print('SOLO_V2',int(np.array_equal(dm,d) and np.array_equal(gm,g)))\n" +
+            "rechazadas=0\n" +
+            "for n in ('legacy0','legacy1','sin_corte'):\n" +
+            " try:Q.leer_agrupado(texto(n))\n" +
+            " except ValueError:rechazadas+=1\n" +
+            "print('LEGACY_RECHAZADA',rechazadas)\n" +
+            "dl,gl,il=Q.leer_agrupado(mezcla,diagnostico_legacy=True);print('LEGACY_SEPARADO',int(len(dl)==2*len(d) and il['excluidas_version']==12000))\n" +
+            "a,b=E.leer_huellas(os.path.join(root,'sin_corte.txt'));print('VIEJAS_LEGIBLES',len(a));print('VIEJAS_SANAS',int((b>=E.SANA_HZ).sum()))\n" +
+            "tr,va,te=Q.particiones(g);print('GRUPOS_SEPARADOS',int(not(set(g[tr])&set(g[va]) or set(g[tr])&set(g[te]) or set(g[va])&set(g[te]))))\n" +
+            "print('TEST_INDEPENDIENTE',int(len(tr)>=500 and len(va)>=200 and len(te)>=200))\n" +
+            "modelo=os.path.join(root,'instalado.bin');pesos=C.bytes_ria1(C.RedRia1([np.zeros((3,5))],[np.zeros(3)]))\n" +
+            "with open(modelo,'xb') as f:f.write(pesos)\n" +
+            "def sha(p):\n with open(p,'rb') as f:return hashlib.sha256(f.read()).hexdigest()\n" +
+            "antes=sha(modelo);dest=os.path.join(root,'candidato')\n" +
+            "p=subprocess.run([sys.executable,os.path.join(r'" + ia + "','entrenar_eq.py'),'--datos',os.path.join(root,'actual.txt'),'--instalado',modelo,'--destino',dest,'--epocas','6'],capture_output=True,text=True,timeout=60)\n" +
+            "print('CLI_TERMINO',int(p.returncode in (0,2)));print('CLI_CODIGO',p.returncode)\n" +
+            "with open(os.path.join(dest,'informe_eq.json')) as f:r=json.load(f)\n" +
+            "print('INSTALADO_INTACTO',int(sha(modelo)==antes));print('MODELO_SHA256',antes);print('NO_ACTIVADO',int(r['activado'] is False and r['escucha_pendiente'] is True))\n" +
+            "print('GUARD_ACTUAL',int(r['version_huella_requerida']==2 and r['legacy_no_publicable'] is False and set(r['rmse_db_por_banda'])=={'candidato','instalado','promedio_entrenamiento'} and 'runtime_objetivo_rmse' in r and 'bloqueos_por_clase' in r and r['paridad_float32_max']<=1e-4))\n" +
+            "ld=os.path.join(root,'legacy_candidato');p=subprocess.run([sys.executable,os.path.join(r'" + ia + "','entrenar_eq.py'),'--datos',os.path.join(root,'legacy1.txt'),'--instalado',modelo,'--destino',ld,'--epocas','1','--diagnostico-legacy'],capture_output=True,text=True,timeout=60)\n" +
+            "with open(os.path.join(ld,'informe_eq.json')) as f:rl=json.load(f)\n" +
+            "print('LEGACY_NO_PUBLICABLE',int(p.returncode==2 and rl['legacy_no_publicable'] is True and rl['aceptado_numericamente'] is False and rl['activado'] is False and not os.path.exists(os.path.join(ld,'candidato_eq.bin')) and sha(modelo)==antes))\n";
+        File.WriteAllText(script, guion);
         try
         {
-            ProcessStartInfo psi = new ProcessStartInfo(Environment.GetEnvironmentVariable("ROCOLA_TEST_PYTHON") ?? "python3",
-                "\"" + py + "\" --datos \"" + datos + "\" --salida \"" + fuera + "\" --epocas 6");
+            ProcessStartInfo psi = new ProcessStartInfo(Environment.GetEnvironmentVariable("ROCOLA_TEST_PYTHON") ?? "python3", "\"" + script + "\"");
             psi.UseShellExecute = false; psi.RedirectStandardOutput = true; psi.RedirectStandardError = true;
             using (Process pr = Process.Start(psi))
             {
-                string s = pr.StandardOutput.ReadToEnd() + pr.StandardError.ReadToEnd();
+                string salida = pr.StandardOutput.ReadToEnd() + pr.StandardError.ReadToEnd();
                 pr.WaitForExit();
-                return s;
+                return salida;
             }
         }
-        catch (Exception ex) { return "no se pudo lanzar python3: " + ex.Message; }
-        finally { try { File.Delete(fuera); } catch { } }
-    }
-
-    // De la linea "  N canciones en total, M sanas (...)" saca los dos numeros.
-    static void LeeCuenta(string salida, out int total, out int sanas)
-    {
-        total = -1; sanas = -1;
-        foreach (string l in salida.Replace("\r", "").Split('\n'))
-        {
-            int i = l.IndexOf(" canciones en total,", StringComparison.Ordinal);
-            if (i < 0) continue;
-            int.TryParse(l.Substring(0, i).Trim(), out total);
-            string resto = l.Substring(i + " canciones en total,".Length).Trim();
-            int j = resto.IndexOf(' ');
-            if (j > 0) int.TryParse(resto.Substring(0, j), out sanas);
-            return;
-        }
+        catch (Exception ex) { return "no se pudo probar Python: " + ex.Message; }
     }
 
     static int Num(string salida, string clave)

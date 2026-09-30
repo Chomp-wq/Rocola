@@ -82,6 +82,12 @@ class TodoJunto
         tab[wav] = a[1];
         // Una biblioteca de 25 como esta: con 20 o mas canciones medidas, "Subir TODO" ya tiene su techo.
         for (int i = 0; i < 24; i++) tab[Path.Combine(dir, "otra" + i + ".wav")] = a[1];
+        // Igual que el publicador real: el mapa pertenece al archivo analizado y no basta insertarlo en la tabla.
+        // Sin este sello, el guard de fuente rechaza correctamente un mapa inyectado por ruta/duracion.
+        object fuente = Call(null, "TomaFuenteMedida");
+        Call(f, "ActualizaFuenteMedida", wav, fuente);
+        Check(fuente != null && (bool)Call(f, "FuenteDelMapa", wav, Get(a[1], "Silencios")),
+              "el mapa de silencios conserva el sello del archivo analizado real, no solo su ruta y duracion");
         Type tt = TF.GetNestedType("Track", T); track = Activator.CreateInstance(tt, true); Set(track, "Path", wav);
         Type tp = TF.GetField("nowPlaying", T).FieldType; item = System.Runtime.Serialization.FormatterServices.GetUninitializedObject(tp); Set(item, "Song", track);
     }

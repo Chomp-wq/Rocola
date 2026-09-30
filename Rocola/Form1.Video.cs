@@ -560,70 +560,9 @@ namespace Rocola
             }
             fLp1 = lp1; fLp2 = lp2;   // persiste el estado de los filtros para el proximo bloque
             specLp = sl;
-            // NIVELADO PERCEPTUAL (K-weighting, tipo LUFS/BS.1770): en vez del RMS crudo, mide la sonoridad
-            // PESADA por como la oye el humano (realza agudos ~+4 dB, quita sub-graves) via 2 biquads/canal.
-            // Asi una cancion con mucho bajo (que el RMS crudo sobre-estima) y una brillante quedan de verdad
-            // al mismo volumen PERCIBIDO. Solo durante el aprendizaje de esta cancion.
-            if (curMeasurePath != null)
-            {
-                int ch3 = ch < 1 ? 1 : ch;
-                if (kwRate != rate || kwCoef1 == null || kwCanales != ch3 || kwSt == null)
-                {
-                    kwRate = rate; kwCanales = ch3; kwCanal = 0;
-                    kwCoef1 = EqShelfHi(1681.974f, rate, 3.99984f, 0.70717f);   // "head" shelf de BS.1770
-                    kwCoef2 = EqHighPass(38.1355f, rate, 0.50033f);             // RLB high-pass
-                    kwSt = new float[ch3 * 8];
-                }
-                float[] st = kwSt, c1 = kwCoef1, c2 = kwCoef2;
-                double sumK = 0; long nK = 0;
-                // MUESTRA A MUESTRA, recordando el canal que toca entre bloques. Antes se recorria por cuadros
-                // enteros: si una lectura partia un cuadro (un canal en este bloque y el otro en el siguiente),
-                // ese trozo se tiraba y, peor, todo el bloque siguiente se leia corrido un canal: el izquierdo
-                // pasaba por el filtro del derecho. Con cuadros enteros la cuenta es la misma que antes, bit a bit.
-                int c = kwCanal; if (c >= ch3) c = 0;
-                for (int i = offset; i < offset + count; i++)
-                {
-                    int b = c * 8; float x = buffer[i];
-                    float y1 = c1[0]*x + c1[1]*st[b] + c1[2]*st[b+1] - c1[3]*st[b+2] - c1[4]*st[b+3];
-                    st[b+1]=st[b]; st[b]=x; st[b+3]=st[b+2]; st[b+2]=y1;
-                    float y2 = c2[0]*y1 + c2[1]*st[b+4] + c2[2]*st[b+5] - c2[3]*st[b+6] - c2[4]*st[b+7];
-                    st[b+5]=st[b+4]; st[b+4]=y1; st[b+7]=st[b+6]; st[b+6]=y2;
-                    sumK += y2 * y2; nK++;
-                    if (++c >= ch3) c = 0;
-                }
-                kwCanal = c;
-                curSumSq += sumK; curSamples += nK;   // energia K-pesada (misma escala que el RMS de antes)
-            }
-            // EQ AUTOMATICO: potencia por banda y canal, solo mientras falta una huella actual.
-            if (eqMeasPath != null)
-            {
-                int ch2 = ch < 1 ? 1 : ch;
-                if (eqMeasRate != rate || eqMeasCoef == null || eqMeasSt == null || eqMeasSt.Length != ch2 * 32)
-                {
-                    eqMeasRate = rate; eqMeasCoef = new float[8][]; eqMeasSt = new float[ch2 * 32];
-                    for (int b = 0; b < 8; b++) eqMeasCoef[b] = EqBpf(EqCentros[b], rate);
-                    eqPendN = 0;
-                }
-                if (eqPend == null || eqPend.Length != ch2) { eqPend = new float[ch2]; eqPendN = 0; }
-                float[] st = eqMeasSt; double[] sums = eqMeasSum;
-                int i = offset, fin = offset + count;
-                // Lo mismo con la huella tonal: el cuadro que quedo partido en el bloque anterior se completa
-                // con el principio de este, y el que quede partido al final se guarda para el siguiente.
-                if (eqPendN > 0)
-                {
-                    while (eqPendN < ch2 && i < fin) eqPend[eqPendN++] = buffer[i++];
-                    if (eqPendN == ch2) { AccumulateEqFrame(eqPend, 0, ch2, eqMeasCoef, st, sums); eqMeasN++; eqPendN = 0; }
-                }
-                if (eqPendN == 0)
-                {
-                    for (; i + ch2 <= fin; i += ch2)
-                    {
-                        AccumulateEqFrame(buffer, i, ch2, eqMeasCoef, st, sums);
-                        eqMeasN++;
-                    }
-                    while (i < fin) eqPend[eqPendN++] = buffer[i++];
-                }
-            }
+            // La cadena real mide antes del DSP; los taps sinteticos conservan este respaldo.
+            if (tapMedido == null || !tapMedido.MideOriginal)
+                MideBloqueOriginal(buffer, offset, count, rate, ch);
             lock (levelLock)
             {
                 for (int c = 0; c < chunks; c++)

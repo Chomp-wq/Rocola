@@ -12,15 +12,14 @@ using NAudio.Wave;
 // de media banda, y la parte lineal y el seco se retrasan lo mismo. Esta bateria comprueba:
 //
 //   1) el filtro: coeficientes, retraso, banda de paso y de rechazo MEDIDAS;
-//   2) el paso directo: cancion que empieza con el realce en cero = intacta y sin retraso; con el realce apagado a
-//      media cancion = el seco intacto, retrasado 31 cuadros exactos;
+//   2) realce apagado al empezar o a mitad: seco intacto, retrasado 31 cuadros exactos;
 //   3) que todo sale alineado: con senal chica o sin nada que plegar, lo mismo que el realce de antes, retrasado;
 //   4) el plegado, contra una referencia INDEPENDIENTE (pruebas/ref_realce.py: saturacion a 16x con interpolacion
 //      exacta), en tonos, dos tonos, barrido, multitono y musica tipo MP3, a 44,1 y 48 kHz; y el de antes, igual;
 //   5) mono, estereo y seis canales: cada canal es suyo (nada cruzado) y el silencio sigue en silencio;
 //   6) cualquier tamano de lectura, tambien de una muestra o partiendo cuadros: bit a bit lo mismo;
 //   7) el final: la cola de 31 cuadros sale entera, archivos cortisimos, fuente vacia, NaN e infinitos;
-//   8) subirlo a media cancion desde cero no salta en el tiempo (usa el realce de antes hasta que acaba);
+//   8) subirlo a media cancion desde cero conserva el 2x, la historia y la latencia;
 //   9) el grave sintetico, medido aparte: su plegado (sin sobremuestrear) contra la misma referencia;
 //  10) el cableado (el retraso entra en la cuenta del fundido; leer no reserva memoria);
 //  11) lo que cuesta, por bloque de 50 ms, con el peor bloque.
@@ -253,10 +252,11 @@ class RealceBateria
             {
                 float[] x = MusicaMp3(fs, ch, 0.7, 0.4, Math.Min(19000, 0.45 * fs), fs + ch);
                 object t0 = Tap(x, fs, ch, null, 0f);
-                if (Retardo(t0) != 0) retardos = false;
+                if (Retardo(t0) != D) retardos = false;
                 float[] y0 = LeeTodo(t0, 1024 * ch, 0, null);
-                if (y0.Length != x.Length) directo = false;
-                else for (int i = 0; i < x.Length; i++) if (y0[i] != x[i]) { directo = false; break; }
+                if (y0.Length != x.Length + D * ch) directo = false;
+                else for (int i = 0; i < y0.Length; i++)
+                    if (y0[i] != (i < D * ch ? 0f : x[i - D * ch])) { directo = false; break; }
                 object t1 = Tap(x, fs, ch, null, 0.35f);
                 if (Retardo(t1) != D) retardos = false;
                 int corte = (int)(0.1 * fs) * ch;
@@ -269,8 +269,8 @@ class RealceBateria
                 // saturacion (el filtro es simetrico), que con la entrada que sube desde cero es casi nada.
                 for (int i = 0; i < D * ch; i++) if (Math.Abs(y1[i]) > 1e-6f) { retrasoBien = false; break; }
             }
-        Check(retardos, "DelayFrames: 0 si la cancion empieza con el realce en cero, 31 si empieza encendido");
-        Check(directo, "empieza con el realce en cero: sale intacta, bit a bit, sin retraso ni cola (4 frecuencias, 1/2/6 canales)");
+        Check(retardos, "DelayFrames: siempre 31, independientemente del realce inicial");
+        Check(directo, "empieza apagado: seco intacto bit a bit tras 31 cuadros, con cola exacta (4 frecuencias, 1/2/6 canales)");
         Check(retrasoBien && largoBien, "empieza encendido: los primeros 31 cuadros no traen nada del seco y al final salen 31 cuadros de mas (la cola)");
         Check(apagado, "apagado a media cancion: en cuanto acaba la rampa, sale el seco intacto de hace 31 cuadros, bit a bit");
     }
@@ -462,15 +462,30 @@ class RealceBateria
         int cambio = fs / 5 * ch;
         object t = Tap(x, fs, ch, null, 0f);
         float[] y = LeeTodo(t, 512 * ch, cambio, delegate(object tp) { TTap.GetField("Excite").SetValue(tp, 0.5f); });
-        bool antes = y.Length == x.Length;
-        for (int i = 0; i < cambio && antes; i++) if (y[i] != x[i]) antes = false;
-        double dif = 0; for (int i = cambio; i < x.Length; i++) dif = Math.Max(dif, Math.Abs(y[i] - x[i]));
-        // Sin salto en el tiempo: lo que sale sigue pegado a la entrada (un salto de 31 cuadros daria diferencias del
-        // orden de la senal misma).
-        double salto = 0; for (int i = cambio; i < x.Length; i++) salto = Math.Max(salto, Math.Abs(x[i] - (i >= D * ch ? x[i - D * ch] : 0f)));
-        Check(antes && dif > 0.005 && dif < salto * 0.5,
-              "el realce entra (mueve la onda hasta " + F(dif, "0.000") + ") sin retrasar nada: ni cola ni salto (un salto de 31 cuadros moveria " + F(salto, "0.00") + ")");
-        Check((int)TTap.GetField("modoRealce", T).GetValue(t) == 1, "esa cancion sigue por el camino directo hasta acabar (el realce de antes)");
+        bool antes = y.Length == x.Length + D * ch;
+        for (int i = 0; i < cambio && antes; i++) if (y[i] != (i < D * ch ? 0f : x[i - D * ch])) antes = false;
+        double dif = 0; for (int i = cambio; i < x.Length; i++) dif = Math.Max(dif, Math.Abs(y[i] - x[i - D * ch]));
+        Check(antes && dif > 0.005, "el realce entra desde cero y conserva seco, latencia y cola de 31 cuadros");
+        Check((int)TTap.GetField("modoRealce", T).GetValue(t) == 2, "activado a mitad tambien usa 2x; no abandona calidad");
+        // Referencia con FIR siempre calientes: mezcla subnormal antes del cambio, misma mezcla real despues.
+        // No comparte el cebado barato con el objeto probado; obliga al camino FIR en cada bloque.
+        bool historia = true; double error = 0;
+        foreach (int bloque in new int[] { 1, 7, 31, 257, 512 })
+        {
+            object frio = Crea(TRe, 1, .55f), caliente = Crea(TRe, 1, .55f);
+            float[] a = Canal(x, ch, 0), b = (float[])a.Clone(), ka = new float[a.Length], kb = new float[a.Length];
+            for (int i = 0; i < a.Length; i++) { ka[i] = i < fs / 5 ? 0f : .1f; kb[i] = i < fs / 5 ? 1e-30f : .1f; }
+            MethodInfo procesa = TRe.GetMethod("Bloque", T);
+            for (int s = 0; s < a.Length; s += bloque)
+            {
+                int n = Math.Min(bloque, a.Length - s);
+                procesa.Invoke(frio, new object[] { 0, a, s, 1, n, ka, s });
+                procesa.Invoke(caliente, new object[] { 0, b, s, 1, n, kb, s });
+            }
+            for (int i = fs / 5; i < a.Length; i++) error = Math.Max(error, Math.Abs(a[i] - b[i]));
+            if (error > 1e-7) historia = false;
+        }
+        Check(historia, "historia al activar igual a FIR calientes: error " + F(error, "0.0e0") + ", bloques 1/7/31/257/512");
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -548,10 +563,10 @@ class RealceBateria
     // ---------------------------------------------------------------------------------------------
     static void Coste()
     {
-        Console.WriteLine("\n  11) LO QUE CUESTA (esta maquina, Mono; no es la del bar)\n");
+        Console.WriteLine("\n  11) LO QUE CUESTA (esta maquina; no es el equipo 2C/2T ni XP)\n");
         int fs = 44100, ch = 2, bloque = 2205 * ch;   // 50 ms
         float[] x = MusicaMp3(fs, ch, 0.8, 10, 19000, 31);
-        string[] nombres = { "realce apagado (paso directo)", "realce de antes (subido a media cancion)", "realce 2x" };
+        string[] nombres = { "realce apagado (historia y seco)", "realce 2x activado a mitad", "realce 2x desde inicio" };
         double[] ns = new double[3], peor = new double[3];
         for (int modo = 0; modo < 3; modo++)
         {

@@ -18,7 +18,7 @@ class EqIa
     static int CUT;
 
     static void Pon(string nom, float[] ocho, float corte)
-    { float[] c = new float[9]; for (int b = 0; b < 8; b++) c[b] = ocho[b]; c[CUT] = corte; cache[nom] = c; }
+    { float[] c = new float[12]; c[11] = 2f; for (int b = 0; b < 8; b++) c[b] = ocho[b]; c[CUT] = corte; cache[nom] = c; }
 
     static int Main()
     {
