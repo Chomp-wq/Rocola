@@ -158,7 +158,7 @@ class Flotante
     static void Olvida()
     {
         ((IDictionary)Estatico("veredictos")).Clear();
-        PonEstatico("ausente", false); PonEstatico("fallosEnVivo", 0); PonEstatico("Comprobaciones", 0);
+        PonEstatico("ausente", false); PonEstatico("comparacionAtascada", false); PonEstatico("fallosEnVivo", 0); PonEstatico("Comprobaciones", 0);
     }
 
     static IMp3FrameDecompressor Desc(IMp3FrameDecompressor acm, Func<WaveFormat, IMp3FrameDecompressor> fabrica)
@@ -526,6 +526,20 @@ class Flotante
                 object env3 = mEnv.Invoke(null, new object[] { Mp3Fmt, a3, tmp, acmNuevo });
                 Check(object.ReferenceEquals(env3, a3) && (int)Estatico("Comprobaciones") == 0,
                       "fuera de Windows 7 o posterior ni se compara: el de siempre tal cual");
+                object nlAntes=Estatico("FabricaNLayer");
+                try {
+                    Olvida();PonEstatico("Posible",true);
+                    PonEstatico("FabricaMft",(Func<WaveFormat,IMp3FrameDecompressor>)delegate(WaveFormat f){throw new NotSupportedException("MFT rechazado");});
+                    Func<WaveFormat,IMp3FrameDecompressor> nlFab=delegate(WaveFormat f){return new MftFalso();};
+                    PonEstatico("FabricaNLayer",nlFab);
+                    IMp3FrameDecompressor e=(IMp3FrameDecompressor)mEnv.Invoke(null,new object[]{Mp3Fmt,new AcmFalso(),tmp,acmNuevo});
+                    Check(e.GetType()==TDesc,"Sin MFT, NLayer alineado/costo acotado se selecciona");
+                    List<float> nlPcm=null;
+                    EnHilo(ApartmentState.STA,delegate{nlPcm=Saca(e,cuadros,0,20,1152*8*2);});
+                    Check(nlPcm.Count==20*2304&&Distintas(nlPcm,0,0,20,DeWindows)==0,"Alternativa administrada funciona en STA y conserva overs");
+                    Check((int)Estatico("Comprobaciones")==1,"MFT y NLayer comparten una sola comprobacion por formato");
+                    e.Dispose();
+                } finally {PonEstatico("FabricaNLayer",nlAntes);}
             }
             finally
             {
@@ -626,7 +640,7 @@ class Flotante
             Olvida();
             apuntes.Clear();
             bool mismoMotor = true, mismoPcm = true, mismaDuracion = false;
-            long muestras = 0;
+            long muestras = 0, muestrasOriginal = 0; float pico = 0;
             EnHilo(ApartmentState.MTA, delegate
             {
                 using (Mp3FileReader seguro = new Mp3FileReader(fix, delegate(WaveFormat f)
@@ -638,26 +652,32 @@ class Flotante
                 }))
                 using (Mp3FileReader original = new Mp3FileReader(fix))
                 {
-                    mismaDuracion = seguro.TotalTime == original.TotalTime && seguro.Length == original.Length
-                        && seguro.WaveFormat.Equals(original.WaveFormat);
-                    byte[] a = new byte[8192], b = new byte[8192];
+                    mismaDuracion = seguro.TotalTime == original.TotalTime && seguro.WaveFormat.SampleRate == original.WaveFormat.SampleRate
+                        && seguro.WaveFormat.Channels == original.WaveFormat.Channels;
+                    SampleChannel sc=new SampleChannel(seguro,false), oc=new SampleChannel(original,false);
+                    float[] a = new float[2048], b = new float[2048];
                     int na, nb;
                     do
                     {
-                        na = seguro.Read(a, 0, a.Length); nb = original.Read(b, 0, b.Length);
+                        na = sc.Read(a, 0, a.Length); nb = oc.Read(b, 0, b.Length);
                         if (na != nb) mismoPcm = false;
-                        for (int i = 0; i < Math.Min(na, nb); i++) if (a[i] != b[i]) mismoPcm = false;
-                        muestras += na / seguro.WaveFormat.BlockAlign;
+                        for (int i = 0; i < Math.Min(na, nb); i++) {
+                            if (mismoMotor ? a[i]!=b[i] : (Math.Abs(b[i])<.999f && Math.Abs(a[i]-b[i])>.001f)) mismoPcm=false;
+                            pico=Math.Max(pico,Math.Abs(a[i]));
+                        }
+                        muestras += na; muestrasOriginal += nb;
                     } while (na > 0 || nb > 0);
                 }
             });
-            Check(mismoMotor && (int)Estatico("Comprobaciones") == 1,
-                  "Envuelve compara el codec REAL una vez y conserva el ACM exacto si no es compatible");
+            Check((int)Estatico("Comprobaciones") == 1,
+                  "Envuelve compara MFT y alternativa NLayer en un solo trabajador/plazo");
+            foreach(string apunte in apuntes) Console.WriteLine("     decision completa: "+apunte);
             Check(apuntes.Exists(s => s.Contains("NO se usa") || s.Contains("se sigue con el de siempre")),
                   "la decision real registra que no habilito el codec incompatible");
-            Check(mismaDuracion && muestras > 0, "el camino seguro conserva formato, longitud y duracion del ACM");
-            Check(mismoPcm, "el archivo entero por el camino seguro es bit-identico al ACM");
-            Console.WriteLine("     CAPACIDAD NO HABILITADA AQUI: MP3 MFT flotante rechazado; alternativa ACM verificada, no se afirma mejora flotante real.");
+            Check(mismaDuracion && muestras > 0 && muestras==muestrasOriginal, "el camino seguro conserva cuadros, canales y duracion del ACM");
+            Check(mismoPcm, mismoMotor ? "ACM rechazado NLayer: PCM bit-identico" : "NLayer real: PCM alineado en archivo entero salvo picos recortados por ACM");
+            Check(mismoMotor || pico>1.2f,"NLayer aceptado conserva picos flotantes por encima del maximo");
+            Console.WriteLine(mismoMotor ? "     ACM exacto: ambos flotantes rechazados en este equipo." : "     NLayer flotante REAL habilitado tras rechazo de MFT: pico="+pico);
             return;
         }
         Check(veredicto == 1, "el decodificador de Windows da lo mismo que el de siempre, sin desplazarse");

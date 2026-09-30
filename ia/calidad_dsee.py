@@ -208,6 +208,31 @@ def evaluar_tres(model, instalado, x, y, lote=4096):
     return {k: v / len(x) for k, v in sumas.items()}
 
 
+def perdida_envolvente(pred, objetivo, pesos=None, delta=0.5, ancla_mse=0.1):
+    """Hipotesis offline, no metrica de publicacion ni aprendizaje de fase/ataques.
+
+    Pseudo-Huber sobre log-envolvente representable por runtime [-4, .1]; un ancla
+    MSE cruda conserva gradiente hacia el objetivo real, incluso fuera del rango.
+    Umbrales fijos: ninguna estadistica de Y/test. Devuelve perdida y gradiente
+    consistente con la media sobre filas/bandas, con pesos globales solo de TRAIN.
+    """
+    p, y = np.asarray(pred, dtype=np.float64), np.asarray(objetivo, dtype=np.float64)
+    if (p.ndim != 2 or p.shape != y.shape or not p.size or not np.isfinite(p).all() or
+            not np.isfinite(y).all() or not np.isfinite(delta) or delta <= 0 or
+            not np.isfinite(ancla_mse) or not 0 < ancla_mse <= 1):
+        raise ValueError("Envolventes/parametros de perdida invalidos")
+    w = np.ones(len(p)) if pesos is None else np.asarray(pesos, dtype=np.float64)
+    if w.shape != (len(p),) or not np.isfinite(w).all() or np.any(w <= 0):
+        raise ValueError("Pesos de perdida invalidos")
+    error = p - np.clip(y, -4.0, 0.1)
+    razon = np.hypot(1.0, error / delta)
+    robusta = delta * delta * (razon - 1)
+    crudo = p - y
+    por_banda = (1 - ancla_mse) * robusta + ancla_mse * crudo ** 2
+    grad = ((1 - ancla_mse) * error / razon + 2 * ancla_mse * crudo) * w[:, None] / p.size
+    return float(np.sum(por_banda * w[:, None]) / p.size), grad
+
+
 def evaluar_runtime(model, instalado, x, y, lote=4096):
     """Envolvente float32 con el clamp real. NO es una reconstruccion PCM completa."""
     class Limitada:

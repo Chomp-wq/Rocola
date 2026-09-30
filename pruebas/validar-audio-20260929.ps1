@@ -2,7 +2,7 @@ param(
     [string]$OutputDirectory = (Join-Path $env:TEMP ('rocola-audio29-' + [Guid]::NewGuid().ToString('N'))),
     [string]$Python = 'python',
     [string]$Ffmpeg = 'ffmpeg',
-    [string[]]$Tests = @('iageneros', 'dsporiginal', 'salidacontinua'),
+    [string[]]$Tests = @('iageneros', 'dsporiginal', 'salidacontinua', 'latenciaadaptable'),
     [switch]$BuildOnly
 )
 $ErrorActionPreference = 'Stop'
@@ -22,14 +22,14 @@ $compiler = Join-Path $env:WINDIR ('Microsoft.NET\Framework\' + $framework + '\c
 $sources = @($project.Project.ItemGroup.Compile | ForEach-Object { if ($_.Include) { Join-Path $sourceRoot $_.Include } })
 $naudio = Join-Path $repoRoot 'packages\NAudio.1.9.0\lib\net35\NAudio.dll'
 $decoder = @()
-if ($framework -eq 'v3.5') {
+if (Test-Path -LiteralPath (Join-Path $repoRoot 'packages\NLayer.1.12.0\lib\net35\NLayer.dll')) {
     $nlayer = Join-Path $repoRoot 'packages\NLayer.1.12.0\lib\net35\NLayer.dll'
     $decoder = @("/r:$nlayer", "/resource:$nlayer,Rocola.NLayer.dll")
 }
 New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
 $OutputDirectory = (Resolve-Path $OutputDirectory).Path
 Copy-Item -LiteralPath $naudio -Destination (Join-Path $OutputDirectory 'NAudio.dll') -Force
-if ($framework -eq 'v3.5') { Copy-Item -LiteralPath $nlayer -Destination (Join-Path $OutputDirectory 'NLayer.dll') -Force }
+if (Test-Path -LiteralPath (Join-Path $repoRoot 'packages\NLayer.1.12.0\lib\net35\NLayer.dll')) { Copy-Item -LiteralPath $nlayer -Destination (Join-Path $OutputDirectory 'NLayer.dll') -Force }
 foreach ($mode in @('gpu', 'cpu')) {
     $defines = if ($mode -eq 'gpu') { '/define:TRACE;ROCOLA_GPU' } else { '/define:TRACE' }
     & $compiler /nologo /target:winexe /optimize+ /warnaserror+ $defines ("/out:" + (Join-Path $OutputDirectory ('Rocola-' + $mode + '.exe'))) /r:System.dll /r:System.Core.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll /r:System.Xml.dll ("/r:$naudio") @decoder $sources
@@ -58,6 +58,16 @@ try {
             if ($LASTEXITCODE -ne 0) { throw "Fallo $test" }
         }
     } finally { Pop-Location }
+    # Probar el ejecutable distribuible sin la DLL externa que necesita la reflexion.
+    $embedded = Join-Path $OutputDirectory ('nlayer-integrado-' + [Guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $embedded | Out-Null
+    Copy-Item -LiteralPath $app -Destination $embedded
+    Copy-Item -LiteralPath $naudio -Destination $embedded
+    $embeddedTest = Join-Path $embedded 'nlayerincluido.exe'
+    & $compiler /nologo /optimize+ /warnaserror+ ("/r:$naudio") ("/out:$embeddedTest") (Join-Path $testRoot 'nlayerincluido.cs')
+    if ($LASTEXITCODE -ne 0) { throw 'No compila NLayer integrado' }
+    & $embeddedTest (Join-Path $embedded 'Rocola-gpu.exe') (Join-Path $testRoot 'flotante_overs.mp3')
+    if ($LASTEXITCODE -ne 0) { throw 'Fallo NLayer integrado' }
     $smoke = Join-Path $OutputDirectory ('pcm-' + [Guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $smoke | Out-Null
     $fixture = Join-Path $smoke 'dsee-entrada.wav'

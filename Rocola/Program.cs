@@ -62,6 +62,7 @@ namespace Rocola
         [STAThread]
         static void Main()
         {
+            NLayerIncluido.Engancha();   // MP3 flotante alternativo incluido dentro del ejecutable (NLayerHd.cs).
             bool primera;
             unica = new System.Threading.Mutex(true, ClaveInstancia(Form1.CarpetaDatos), out primera);
             if (!primera) { AlFrenteLaQueYaCorre(); return; }   // ya hay una rocola corriendo: esta se va

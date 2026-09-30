@@ -60,16 +60,20 @@ namespace Rocola
         private long huecos;                     // bloques que salieron en silencio por un hilo atrasado
         private int hiloLector;                  // el hilo que lee la cadena (para las pruebas)
         internal readonly int AdelantoMs;        // cuanto antes de oirse se lee cada trozo, de media
+        internal readonly int ArranqueObjetivoMs, EsperaLecturaMs;
 
-        internal BombaSonido(ISampleProvider s)
+        internal BombaSonido(ISampleProvider s) : this(s, ArranqueMs, EsperaMaxMs) { }
+        internal BombaSonido(ISampleProvider s, int arranqueMs, int esperaMs)
         {
             if (s == null) throw new ArgumentNullException("s");
             src = s;
+            ArranqueObjetivoMs = Math.Max(ColchonMs, Math.Min(ArranqueMs, arranqueMs));
+            EsperaLecturaMs = Math.Max(100, Math.Min(EsperaMaxMs, esperaMs));
             WaveFormat f = s.WaveFormat;
             int ch = Math.Max(1, f.Channels), hz = Math.Max(8000, f.SampleRate);
             int cuadrosTrozo = Math.Max(64, hz * TrozoMs / 1000);
             int cuadrosColchon = Math.Max(cuadrosTrozo * 4, hz * ColchonMs / 1000);
-            int cuadrosArranque = hz * ArranqueMs / 1000;
+            int cuadrosArranque = hz * ArranqueObjetivoMs / 1000;
             trozoN = cuadrosTrozo * ch;
             colchonN = cuadrosColchon * ch;
             arranqueN = cuadrosArranque * ch;
@@ -82,6 +86,7 @@ namespace Rocola
 
         public WaveFormat WaveFormat { get { return src.WaveFormat; } }
         internal long Huecos { get { lock (cerrojo) return huecos; } }
+        internal bool SinMusicaTemporal { get { lock (cerrojo) return atascada; } }
         internal int HiloLector { get { lock (cerrojo) return hiloLector; } }
         internal bool Viva { get { Thread h; lock (cerrojo) h = hilo; return h != null && h.IsAlive; } }
         internal bool Lista { get { lock (cerrojo) return fin || lleno >= arranqueN; } }   // el primer segundo ya esta hecho
@@ -122,7 +127,7 @@ namespace Rocola
                 if (hilo == null && !parar) Arranca();
                 salidaLeyo = true; alEstarLista = null;   // la salida ya arranco: desde aqui, el colchon de siempre
                 int hechos = 0;
-                int limite = Environment.TickCount + EsperaMaxMs;
+                int limite = Environment.TickCount + EsperaLecturaMs;
                 while (hechos < count)
                 {
                     if (lleno > 0)
@@ -263,7 +268,8 @@ namespace Rocola
         private ISampleProvider ConBomba(ISampleProvider cadena)
         {
             SueltaBomba();
-            bomba = new BombaSonido(cadena);
+            int ms = latenciaAbiertaMs > 0 ? latenciaAbiertaMs : BombaSonido.ArranqueMs;
+            bomba = new BombaSonido(MideLatenciaSalida(cadena, false), ms, ms * 3 / 5);
             return bomba;
         }
         private void SueltaBomba()

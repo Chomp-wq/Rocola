@@ -36,6 +36,10 @@
     <Reference Include="NAudio, Version=1.9.0.0, Culture=neutral, processorArchitecture=MSIL">
       <HintPath>..\packages\NAudio.1.9.0\lib\net35\NAudio.dll</HintPath>
     </Reference>
+    <Reference Include="NLayer, Version=1.12.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <HintPath>..\packages\NLayer.1.12.0\lib\net35\NLayer.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.Xml.Linq" />
@@ -118,6 +122,7 @@
     <Compile Include="SalidaSonido.cs" />
     <Compile Include="SalidaExclusiva.cs" />
     <Compile Include="DecodificaFlotante.cs" />
+    <Compile Include="NLayerHd.cs" />
     <Compile Include="Optimizaciones.cs" />
     <Compile Include="LunaGpu.cs" />
     <Compile Include="EstrellaGpu.cs" />
@@ -151,6 +156,13 @@
       <DependentUpon>Resources.resx</DependentUpon>
     </Compile>
     <Content Include="rocola.ico" />
+    <EmbeddedResource Include="..\packages\NLayer.1.12.0\lib\net35\NLayer.dll">
+      <LogicalName>Rocola.NLayer.dll</LogicalName>
+    </EmbeddedResource>
+    <Content Include="..\AVISOS_NLAYER.txt">
+      <Link>AVISOS_NLAYER.txt</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <None Include="Properties\Settings.settings">
       <Generator>SettingsSingleFileGenerator</Generator>
       <LastGenOutput>Settings.Designer.cs</LastGenOutput>

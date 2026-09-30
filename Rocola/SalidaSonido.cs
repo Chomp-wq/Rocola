@@ -37,8 +37,89 @@ using NAudio.Wave.SampleProviders;
 
 namespace Rocola
 {
+    // Solo latencia, nunca cambia PCM, frecuencia, canales ni efectos. Perfil de
+    // sesion; una bajada por apertura tras 30 s reales sin picos. No reabre salida.
+    internal sealed class PerfilLatenciaAudio
+    {
+        private readonly object cerrojo = new object();
+        private readonly int[] niveles;
+        private int nivel;
+        private long desde;
+        private double musicaEstable;
+        internal PerfilLatenciaAudio(bool clasica) { niveles = clasica ? new int[] { 1000, 750, 500 } : new int[] { 300, 225, 150 }; }
+        internal int Sugerida { get { lock (cerrojo) return niveles[nivel]; } }
+        internal void Fallo() { lock (cerrojo) { nivel = 0; desde = 0; musicaEstable = 0; } }
+        internal void Observa(long ahora, double musicaMs, double costoMs, double atrasoMs, int abierta, bool consumidor)
+        {
+            lock (cerrojo)
+            {
+                if (musicaMs <= 0) return;
+                if (costoMs > Math.Max(10, musicaMs * .6) || atrasoMs > abierta * .25)
+                { nivel = 0; desde = ahora; musicaEstable = 0; return; }
+                if (!consumidor || niveles[nivel] != abierta) return;
+                if (desde == 0) desde = ahora;
+                musicaEstable += musicaMs;
+                double transcurrido = (ahora - desde) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+                if (transcurrido >= 30000 && musicaEstable >= 30000 && nivel + 1 < niveles.Length)
+                { nivel++; desde = 0; musicaEstable = 0; }
+            }
+        }
+    }
+
+    internal sealed class FuenteLatenciaAudio : ISampleProvider
+    {
+        private readonly ISampleProvider src;
+        private readonly PerfilLatenciaAudio perfil;
+        private readonly int latencia;
+        private readonly bool consumidor;
+        private readonly BombaSonido bomba;
+        private long ultimo, huecos;
+        private double duracionPrevia;
+        internal FuenteLatenciaAudio(ISampleProvider s, PerfilLatenciaAudio p, int ms, bool consume)
+        { src = s; perfil = p; latencia = ms; consumidor = consume; bomba = s as BombaSonido; }
+        public WaveFormat WaveFormat { get { return src.WaveFormat; } }
+        public int Read(float[] buffer, int offset, int count)
+        {
+            long antes = System.Diagnostics.Stopwatch.GetTimestamp();
+            int n;
+            try { n = src.Read(buffer, offset, count); }
+            catch { perfil.Fallo(); throw; }
+            long ahora = System.Diagnostics.Stopwatch.GetTimestamp();
+            double ms = n * 1000.0 / Math.Max(1, WaveFormat.SampleRate) / Math.Max(1, WaveFormat.Channels);
+            double costo = (ahora - antes) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+            double atraso = consumidor && ultimo != 0 ? Math.Max(0, (antes - ultimo) * 1000.0 / System.Diagnostics.Stopwatch.Frequency - duracionPrevia) : 0;
+            if (bomba != null && (bomba.SinMusicaTemporal || bomba.Huecos != huecos))
+            { huecos = bomba.Huecos; perfil.Fallo(); return n; }
+            perfil.Observa(ahora, ms, costo, atraso, latencia, consumidor);
+            ultimo = antes; duracionPrevia = ms;
+            return n;
+        }
+    }
+
     public partial class Form1 : Form
     {
+        private System.Collections.Generic.Dictionary<string, PerfilLatenciaAudio> perfilesLatencia;
+        private PerfilLatenciaAudio perfilLatencia;
+        private int latenciaAbiertaMs;
+        private bool latenciaClasica;
+        private int PreparaLatenciaSalida(string backend, ISampleProvider muestras)
+        {
+            if (perfilesLatencia == null) perfilesLatencia = new System.Collections.Generic.Dictionary<string, PerfilLatenciaAudio>();
+            bool clasica = backend == "waveout";
+            string clave = backend + ":" + muestras.WaveFormat.SampleRate + ":" + muestras.WaveFormat.Channels;
+            PerfilLatenciaAudio p;
+            if (!perfilesLatencia.TryGetValue(clave, out p))
+            {
+                if (perfilesLatencia.Count >= 8) perfilesLatencia.Clear();
+                perfilesLatencia[clave] = p = new PerfilLatenciaAudio(clasica);
+            }
+            perfilLatencia = p; latenciaClasica = clasica; latenciaAbiertaMs = p.Sugerida;
+            return latenciaAbiertaMs;
+        }
+        private ISampleProvider MideLatenciaSalida(ISampleProvider muestras, bool consumidor)
+        { return perfilLatencia == null ? muestras : new FuenteLatenciaAudio(muestras, perfilLatencia, latenciaAbiertaMs, consumidor); }
+        private int RetardoVisualSalida()
+        { return latenciaAbiertaMs <= 0 ? 850 : (int)(latenciaAbiertaMs * (latenciaClasica ? .85 : .8)); }
         // ------------------------------------------------------------------ 1) EL FORMATO
         internal Func<IWavePlayer> fabricaSalidaClasica = null;   // solo la ponen las pruebas (null = WaveOut de verdad)
         private string formatoSalida = "";                 // "float32" o "PCM16+TPDF": lo que recibe la salida clasica
@@ -59,11 +140,11 @@ namespace Rocola
             WaveOut wo = new WaveOut();
             // El audio se rellena desde el bucle de mensajes de la interfaz; con 1 SEGUNDO de colchon la musica
             // aguanta cualquier atoron (paginas, caratulas, GC, video) sin cortarse.
-            wo.DesiredLatency = 1000;
+            wo.DesiredLatency = latenciaAbiertaMs > 0 ? latenciaAbiertaMs : 1000;
             // BLOQUES CORTOS: cada vez que se vacia un bloque la interfaz se para a descifrar el MP3 y a pasarlo
             // por la cadena. Con 20 bloques de 50 ms se hace el mismo trabajo en pausas cuatro veces mas cortas
             // que con 5 de 200 ms, y caben de sobra dentro de un cuadro. El colchon sigue siendo de 1 segundo.
-            wo.NumberOfBuffers = 20;
+            wo.NumberOfBuffers = wo.DesiredLatency / 50;
             return wo;
         }
 
@@ -72,7 +153,9 @@ namespace Rocola
         // del APARATO no se confunde con un rechazo de formato: se relanza tal cual.
         private void AbreSalidaClasica(ISampleProvider muestras, bool flotante)
         {
+            PreparaLatenciaSalida("waveout", muestras);
             muestras = ConBomba(muestras);   // la cadena la pasa el hilo de la musica; la pantalla solo copia (BombaSonido.cs)
+            muestras = MideLatenciaSalida(muestras, true);
             Exception rechazo = null;
             if (flotante && !flotanteRechazado)
             {
@@ -248,6 +331,7 @@ namespace Rocola
         {
             if (t == null || audioOpeningForMeasurement) return false;
             if (!SigueEsperando(nowPlaying, aMedias)) return false;
+            if (perfilLatencia != null) perfilLatencia.Fallo();
             if (reintentos == 0)
                 LogError("Salida de sonido" + (formatoSalida.Length > 0 ? " (" + formatoSalida + ")" : "") + ": fallo el dispositivo; se espera y se retoma la misma cancion", ex);
             DisposePlaybackNow();

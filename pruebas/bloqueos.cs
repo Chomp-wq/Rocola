@@ -234,7 +234,8 @@ class Bloqueos
     static int Main(string[] args)
     {
         asm = System.Reflection.Assembly.LoadFrom(args.Length > 0 ? args[0] : "rocola.exe");
-        string rama = asm.GetType("Rocola.FlotanteNLayer", false) != null || asm.GetType("Rocola.NLayerIncluido", false) != null ? "modest" : "hd";
+        // NLayer existe en ambas ramas; la salida exclusiva sigue siendo propia de HD.
+        string rama = asm.GetType("Rocola.SalidaExacta", false) != null ? "hd" : "modest";
         Type[] tipos;
         try { tipos = asm.GetTypes(); } catch (ReflectionTypeLoadException e) { tipos = Array.FindAll(e.Types, delegate (Type x) { return x != null; }); }
         List<MethodBase> todos = new List<MethodBase>();

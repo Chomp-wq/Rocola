@@ -419,7 +419,10 @@ class Exclusivo
         remuestreos = 0; remuestreoHz = 0; JugadorFalso.Hechos.Clear();
         ok = Abre(f, new Fuente(Musica(44100, 2, 0.1, 3, 0.5), 44100, 2));
         object sx = Get(f, "salidaExacta");
-        Check(ok && remuestreos == 1 && remuestreoHz == 48000 && sx != null && Get(sx, "src").GetType().Name == "LimitadorPicoReal"
+        object ultimo=sx==null?null:Get(sx,"src");
+        bool medidor=ultimo!=null && ultimo.GetType().Name=="FuenteLatenciaAudio";
+        if(medidor)ultimo=Get(ultimo,"src");
+        Check(ok && remuestreos == 1 && remuestreoHz == 48000 && medidor && ultimo.GetType().Name == "LimitadorPicoReal"
               && JugadorFalso.Hechos[0].Pedido.SampleRate == 48000,
               "una cancion de 44,1 kHz en un aparato a 48: se remuestrea a 48 y el ultimo paso es el limitador de pico real, como en compartido");
         Cierra(f);
@@ -566,7 +569,8 @@ class Exclusivo
     // ================================================================================================
     //  7) EL CABLEADO
     // ================================================================================================
-    // ¿Crea un WasapiOut con este modo (0 compartido, 1 exclusivo), sin eventos y 300 ms?
+    // ¿Crea un WasapiOut con este modo, sin eventos? La latencia se prueba aparte
+    // por comportamiento; ya no es un literal fijo en la llamada al constructor.
     static bool CreaWasapi(List<MethodBase> ms, int modo)
     {
         foreach (MethodBase m in ms)
@@ -578,7 +582,8 @@ class Exclusivo
                 MethodBase c = null;
                 try { c = m.Module.ResolveMethod(p[i].Numero); } catch { }
                 if (c == null || c.DeclaringType.Name != "WasapiOut" || c.GetParameters().Length != 4) continue;
-                if (p[i - 3].Op == (modo == 1 ? 0x17 : 0x16) && p[i - 2].Op == 0x16 && p[i - 1].Op == 0x20 && p[i - 1].Numero == 300) return true;
+                for(int j=Math.Max(0,i-16);j<i-1;j++)
+                    if(p[j].Op==(modo==1?0x17:0x16)&&p[j+1].Op==0x16)return true;
             }
         }
         return false;
@@ -590,7 +595,9 @@ class Exclusivo
         int iCalla = arranca.IndexOf("CallaSiEsMedida"), iExc = arranca.IndexOf("AbreExclusiva"), iComp = arranca.IndexOf("PreparaSalidaWasapi");
         Check(iCalla >= 0 && iExc > iCalla && iComp > iExc, "la cancion prueba primero el exclusivo y despues el compartido, con la cadena ya callada si es la de la medida");
         Check(CreaWasapi(Codigo.MetodosConAyudantes(TF, "AparatoPredeterminado"), 1) && CreaWasapi(new List<MethodBase> { Met("StartOpenedTrack") }, 0),
-              "el exclusivo abre WASAPI EXCLUSIVO (sin eventos, 300 ms) y el compartido sigue siendo compartido");
+              "WASAPI conserva exclusivo/compartido sin eventos, con latencia adaptable");
+        Check(Codigo.Llama(Met("AbreExclusiva"),"PreparaLatenciaSalida") && Codigo.Llama(Met("StartOpenedTrack"),"PreparaLatenciaSalida"),
+              "Ambas salidas seleccionan perfil antes de abrirse, no durante una cancion");
         List<string> abre = Codigo.Llamadas(Met("AbreExclusiva"));
         int iRem = -1, iLim = -1, iSx = -1;
         for (int i = 0; i < abre.Count; i++)

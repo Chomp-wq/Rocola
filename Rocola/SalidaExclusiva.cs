@@ -388,7 +388,8 @@ namespace Rocola
                             LimitadorPicoReal final = new LimitadorPicoReal(NuevoRemuestreo(s, fmt.SampleRate), TechoPicoReal, 3.0);
                             s = final; MarcaRetardoFinalReloj(final);
                         }
-                        SalidaExacta sx = new SalidaExacta(s, fmt);
+                        PreparaLatenciaSalida("wasapi-exclusivo:" + id, s);
+                        SalidaExacta sx = new SalidaExacta(MideLatenciaSalida(s, true), fmt);
                         sx.GananciaInicial(GananciaDeWindowsDe(ap));   // desde la primera muestra: nada de arrancar a tope
                         wa = ap.Abre();
                         output = wa;
@@ -399,12 +400,13 @@ namespace Rocola
                         wa.Play();
                         aparatoExclusivo = ap; salidaExacta = sx;
                         formatoSalida = "WASAPI exclusivo, " + fmt.Descripcion;
-                        audioVisualDelayMs = 240;
+                        audioVisualDelayMs = RetardoVisualSalida();
                         ApuntaExclusivo(id, "en marcha: " + fmt.Descripcion + " (sin el mezclador de Windows)", null);
                         return true;
                     }
                     catch (Exception ex)
                     {
+                        if (perfilLatencia != null) perfilLatencia.Fallo();
                         if (wa != null)
                         {
                             wa.PlaybackStopped -= Output_PlaybackStopped;
@@ -467,7 +469,7 @@ namespace Rocola
             ap.Hz = delegate { return cliente().MixFormat.SampleRate; };
             ap.Admite = delegate(WaveFormat f) { return cliente().IsFormatSupported(NAudio.CoreAudioApi.AudioClientShareMode.Exclusive, f); };
             // Sin eventos y con 300 ms de colchon, como el compartido (NAudio lo rellena cada 150 ms).
-            ap.Abre = delegate { suelta(); return new WasapiOut(d, NAudio.CoreAudioApi.AudioClientShareMode.Exclusive, false, 300); };
+            ap.Abre = delegate { suelta(); return new WasapiOut(d, NAudio.CoreAudioApi.AudioClientShareMode.Exclusive, false, latenciaAbiertaMs > 0 ? latenciaAbiertaMs : 300); };
             ap.Propio = delegate { if (propio[0] < 0) propio[0] = (int)d.AudioEndpointVolume.HardwareSupport; return propio[0]; };
             ap.Db = delegate { return d.AudioEndpointVolume.MasterVolumeLevel; };
             ap.Silenciado = delegate { return d.AudioEndpointVolume.Mute; };

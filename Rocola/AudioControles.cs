@@ -93,12 +93,47 @@ namespace Rocola
             private readonly NAudio.Wave.ISampleProvider src;
             private readonly Form1 owner;
             internal LevelTap Tap;
+            private float[] corteAnillo;
+            private int corteEscribe;
+            private long corteMuestras;
+            internal long CuadrosOriginales { get { return corteMuestras / Math.Max(1, WaveFormat.Channels); } }
+            // Solo si Declip esta delante del DSEE: dos ventanas bastan para el
+            // Hop pedido por SpectralTap y el retardo real de Declip. No relee PCM.
+            internal void PreparaCorte(int ventana, int retardo)
+            {
+                corteAnillo = new float[checked((2 * ventana + retardo) * WaveFormat.Channels)];
+                corteEscribe = 0; corteMuestras = 0;
+            }
+            internal bool CuadroOriginal(long fin, int canal, float[] real, float[] imaginaria, float[] ventana)
+            {
+                if (corteAnillo == null || fin < ventana.Length) return false;
+                int canales = WaveFormat.Channels;
+                long inicio = (fin - ventana.Length) * canales;
+                if (fin * canales > corteMuestras || inicio < corteMuestras - corteAnillo.Length) return false;
+                int p = (int)(inicio % corteAnillo.Length) + canal;
+                bool pareja = canal + 1 < canales;
+                for (int i = 0; i < ventana.Length; i++)
+                {
+                    if (p >= corteAnillo.Length) p -= corteAnillo.Length;
+                    real[i] = corteAnillo[p] * ventana[i];
+                    imaginaria[i] = pareja ? corteAnillo[p + 1] * ventana[i] : 0f;
+                    p += canales;
+                }
+                return true;
+            }
             internal FuenteOriginal(NAudio.Wave.ISampleProvider src, Form1 owner) { this.src = src; this.owner = owner; }
             public NAudio.Wave.WaveFormat WaveFormat { get { return src.WaveFormat; } }
             public int Read(float[] buffer, int offset, int count)
             {
                 int n = src.Read(buffer, offset, count);
                 LimpiaMuestras(buffer, offset, n);
+                if (corteAnillo != null)
+                {
+                    // El buffer puede ser WaveBuffer (float sobre byte[]): no Array.Copy.
+                    for (int i = offset; i < offset + n; i++)
+                    { corteAnillo[corteEscribe++] = buffer[i]; if (corteEscribe == corteAnillo.Length) corteEscribe = 0; }
+                    corteMuestras += n;
+                }
                 if (n > 0 && Tap != null) owner.MideEntradaOriginal(Tap, buffer, offset, n);
                 return n;
             }

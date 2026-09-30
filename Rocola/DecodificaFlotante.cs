@@ -227,6 +227,7 @@ namespace Rocola
         private readonly int canales;
         private readonly MotorFlotante acm;
         private readonly Func<WaveFormat, IMp3FrameDecompressor> fabricaMft;   // null = solo el de siempre
+        private readonly bool administrado;
         private MotorFlotante mft;
         private bool mftVetado;
         private MotorFlotante ultimo;               // el que descomprimio el cuadro anterior
@@ -243,6 +244,7 @@ namespace Rocola
             formato = WaveFormat.CreateIeeeFloatWaveFormat(formatoMp3.SampleRate, canales);
             acm = new MotorFlotante(descompresorAcm, canales);
             fabricaMft = fabricaWindows;
+            administrado = fabricaWindows == DecodificacionFlotante.FabricaNLayer;
             tmp = new float[1152 * canales * 2]; descarte = new float[1152 * canales * 2];
         }
 
@@ -284,7 +286,7 @@ namespace Rocola
         private MotorFlotante Elige()
         {
             if (fabricaMft == null || mftVetado) return acm;
-            if (Thread.CurrentThread.GetApartmentState() == ApartmentState.STA) return acm;
+            if (!administrado && Thread.CurrentThread.GetApartmentState() == ApartmentState.STA) return acm;
             if (mft == null)
             {
                 IMp3FrameDecompressor d = null;
@@ -361,13 +363,15 @@ namespace Rocola
         internal static bool Posible = Environment.OSVersion.Platform == PlatformID.Win32NT
                                        && Environment.OSVersion.Version >= new Version(6, 1);
         internal static Func<WaveFormat, IMp3FrameDecompressor> FabricaMft = delegate(WaveFormat f) { return new MotorMft(f); };
+        internal static Func<WaveFormat, IMp3FrameDecompressor> FabricaNLayer = delegate(WaveFormat f) { return new MotorNLayer(f); };
         internal static Action<string> Apunte = null;   // las pruebas lo cambian para ver lo que se apuntaria
         internal static int Comprobaciones;         // cuantas veces se comparo con el de siempre en esta sesion
         internal const int MaxCuadros = 600;        // hasta ~15 s de cancion buscando musica que comparar
         internal const double UmbralDb = -50;       // el de Windows vale si se aparta menos que esto del de siempre
         private static readonly object candado = new object();
-        private static readonly Dictionary<int, int> veredictos = new Dictionary<int, int>();   // frecuencia*8+canales -> 1 / -1
+        private static readonly Dictionary<int, int> veredictos = new Dictionary<int, int>();   // frecuencia*8+canales -> 1 MFT / 2 NLayer / -1 rechazo
         private static bool ausente;                // el de Windows no se pudo preparar o no contesto: no se reintenta
+        private static bool comparacionAtascada;
         private static int fallosEnVivo;            // fallos a media cancion en la sesion
         private static readonly HashSet<string> apuntados = new HashSet<string>();
 
@@ -379,8 +383,12 @@ namespace Rocola
         {
             try
             {
-                if (!Usar(mp3, ruta, acmNuevo)) return acm;
-                return new DescompresorFlotante(mp3, acm, FabricaMft);
+                if (Usar(mp3, ruta, acmNuevo)) return new DescompresorFlotante(mp3, acm, FabricaMft);
+                int v;
+                lock (candado)
+                    if (Posible && !comparacionAtascada && Thread.VolatileRead(ref fallosEnVivo) < 3 && mp3 != null && veredictos.TryGetValue(mp3.SampleRate * 8 + Math.Max(1, mp3.Channels), out v) && v == 2)
+                        return new DescompresorFlotante(mp3, acm, FabricaNLayer);
+                return acm;
             }
             catch (Exception ex) { Apunta("MP3 en coma flotante: no se pudo armar; sigue el de siempre (" + Resumen(ex) + ")"); return acm; }
         }
@@ -391,9 +399,9 @@ namespace Rocola
             int clave = mp3.SampleRate * 8 + Math.Max(1, mp3.Channels);
             lock (candado)
             {
-                if (ausente || Thread.VolatileRead(ref fallosEnVivo) >= 3) return false;
+                if (comparacionAtascada || Thread.VolatileRead(ref fallosEnVivo) >= 3) return false;
                 int v;
-                if (veredictos.TryGetValue(clave, out v)) return v > 0;
+                if (veredictos.TryGetValue(clave, out v)) return v == 1;
                 if (ruta == null || acmNuevo == null) return false;
                 string detalle;
                 int r = CompruebaEnOtroHilo(mp3, ruta, acmNuevo, out detalle);
@@ -401,7 +409,7 @@ namespace Rocola
                 if (r != 0) veredictos[clave] = r;
                 string nombre = ""; try { nombre = Path.GetFileName(ruta); } catch { }
                 Apunta("MP3 en coma flotante (" + mp3.SampleRate + " Hz, " + mp3.Channels + " canales), comprobado con " + nombre + ": " + detalle);
-                return r > 0;
+                return r == 1;
             }
         }
 
@@ -415,14 +423,24 @@ namespace Rocola
                 try
                 {
                     using (FileStream fs = new FileStream(ruta, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
-                    { string dd; r = Compara(mp3, fs, acmNuevo, FabricaMft, out dd); d = dd; }
+                    {
+                        string dd = "MFT no disponible";
+                        r = ausente ? -1 : Compara(mp3, fs, acmNuevo, FabricaMft, out dd); d = dd;
+                        if (r < 0)
+                        {
+                            fs.Position = 0;
+                            int nl = Compara(mp3, fs, acmNuevo, FabricaNLayer, out dd);
+                            r = nl > 0 ? 2 : nl;
+                            d += "; alternativa NLayer: " + dd;
+                        }
+                    }
                 }
                 catch (Exception ex) { r = 0; d = "no se pudo leer (" + Resumen(ex) + "); se sigue con el de siempre"; }
             });
             t.IsBackground = true;
             try { t.SetApartmentState(ApartmentState.MTA); } catch { }
             t.Start();
-            if (!t.Join(8000)) { ausente = true; detalle = d; return 0; }
+            if (!t.Join(8000)) { comparacionAtascada = true; detalle = d; return 0; }
             detalle = d;
             return r;
         }
@@ -440,14 +458,17 @@ namespace Rocola
                 try { mm = Motor(mftNuevo, mp3); }
                 catch (Exception ex)
                 {
-                    ausente = true;
-                    detalle = "el decodificador de Windows no se pudo preparar (" + Resumen(ex) + "); se sigue con el de siempre";
+                    if (mftNuevo != FabricaNLayer) ausente = true;
+                    detalle = "el decodificador " + (mftNuevo == FabricaNLayer ? "NLayer" : "de Windows") + " no se pudo preparar (" + Resumen(ex) + "); se sigue con el de siempre";
                     return -1;
                 }
                 try { Id3v2Tag.ReadTag(datos); } catch { }   // saltar la etiqueta, como hace el lector
                 int ch = Math.Max(1, mp3.Channels);
                 float[] a = new float[1152 * ch * 64], m = new float[1152 * ch * 64];
                 int na = 0, nm = 0;
+                bool mideGasto = mftNuevo == FabricaNLayer;
+                long ticksGasto = 0, muestrasGasto = 0;
+                int cuadrosGasto = 0;
                 string juicio = "sin cuadros que comparar";
                 for (int k = 0; k < MaxCuadros; k++)
                 {
@@ -457,17 +478,24 @@ namespace Rocola
                     if (f == null) break;
                     if (f.SampleRate != mp3.SampleRate || (f.ChannelMode == ChannelMode.Mono ? 1 : 2) != ch) continue;
                     na += ma.Decodifica(f, ref a, na);
-                    try { nm += mm.Decodifica(f, ref m, nm); }
-                    catch (Exception ex) { detalle = "el de Windows fallo al comparar (" + Resumen(ex) + "); se sigue con el de siempre"; return -1; }
+                    try
+                    {
+                        long antes = mideGasto && k >= 16 ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
+                        int n = mm.Decodifica(f, ref m, nm); nm += n;
+                        if (antes != 0) { ticksGasto += System.Diagnostics.Stopwatch.GetTimestamp() - antes; muestrasGasto += n; cuadrosGasto++; }
+                    }
+                    catch (Exception ex) { detalle = (mideGasto ? "NLayer" : "el de Windows") + " fallo al comparar (" + Resumen(ex) + "); se sigue con el de siempre"; return -1; }
                     if ((k & 15) == 15)
                     {
                         int r = Juzga(a, na, m, nm, ch, out juicio);
-                        if (r != 0) { detalle = Explica(r, juicio); return r; }
+                        if (r < 0 || (r > 0 && (!mideGasto || cuadrosGasto >= 100)))
+                        { detalle = Explica(r, juicio); return RevisaGasto(r, mideGasto, ticksGasto, muestrasGasto, ch, mp3.SampleRate, ref detalle); }
                     }
                 }
                 int rf = Juzga(a, na, m, nm, ch, out juicio);
+                if (mideGasto && rf > 0 && cuadrosGasto < 100) rf = 0;
                 detalle = Explica(rf, juicio);
-                return rf;
+                return RevisaGasto(rf, mideGasto, ticksGasto, muestrasGasto, ch, mp3.SampleRate, ref detalle);
             }
             catch (Exception ex) { detalle = "la comparacion fallo (" + Resumen(ex) + "); se sigue con el de siempre"; return 0; }
             finally
@@ -475,6 +503,15 @@ namespace Rocola
                 if (mm != null) { try { mm.Dispose(); } catch { } }
                 if (ma != null) { try { ma.Dispose(); } catch { } }
             }
+        }
+
+        private static int RevisaGasto(int resultado, bool medir, long ticks, long muestras, int ch, int hz, ref string detalle)
+        {
+            if (!medir || resultado <= 0) return resultado;
+            double gasto = muestras > 0 ? ticks / (double)System.Diagnostics.Stopwatch.Frequency / (muestras / (double)ch / hz) : double.PositiveInfinity;
+            detalle += "; costo NLayer " + (100 * gasto).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + "% de un nucleo";
+            if (gasto <= .03) return resultado;
+            detalle += ": supera presupuesto 3%, sigue ACM"; return -1;
         }
 
         // Un descompresor recien hecho, envuelto; si el envoltorio no lo acepta, se cierra ahi mismo.
@@ -512,6 +549,8 @@ namespace Rocola
             for (int i = desde; i < hasta; i++)
             {
                 float x = a[i];
+                if (float.IsNaN(m[i]) || float.IsInfinity(m[i]) || Math.Abs(m[i]) > 8f)
+                { juicio = "muestras flotantes invalidas"; return -1; }
                 if (x >= techo || x <= -1f) continue;
                 double d = (double)x - m[i];
                 sr += (double)x * x; sd += d * d; n++;
@@ -529,7 +568,7 @@ namespace Rocola
         internal static void FalloEnVivo(string motivo, Exception ex)
         {
             Interlocked.Increment(ref fallosEnVivo);
-            Apunta("MP3 en coma flotante: el decodificador de Windows " + motivo + " (" + Resumen(ex) + ")");
+            Apunta("MP3 en coma flotante: el decodificador alternativo " + motivo + " (" + Resumen(ex) + ")");
         }
 
         // LO QUE NO ES MP3 NI WAV/AIFF (AAC, M4A, WMA, el sonido de los videos): Media Foundation pidiendo coma

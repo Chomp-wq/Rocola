@@ -46,6 +46,12 @@ class DspOriginal
         }return true;
     }
     sealed class Resultado { public object Owner, Sbr; public float[] Y; }
+    sealed class ModificaEspectro : ISampleProvider {
+        readonly ISampleProvider src;readonly Random rng=new Random(59);
+        internal ModificaEspectro(ISampleProvider s){src=s;}
+        public WaveFormat WaveFormat {get{return src.WaveFormat;}}
+        public int Read(float[] b,int o,int n){n=src.Read(b,o,n);for(int i=o;i<o+n;i++)b[i]=(float)(.1*(rng.NextDouble()-.5));return n;}
+    }
     static Resultado Ruta(float[] x,bool activo,int[] trozos) {
         object owner=Codigo.FormSinEncender(form);
         Set(owner,"auroraAmount",0f);Set(owner,"curMeasurePath","synthetic");Set(owner,"eqMeasPath","synthetic");Set(owner,"eqMeasSum",new double[8]);
@@ -167,10 +173,45 @@ class DspOriginal
             }
         } finally { carpeta.SetValue(null,antes);System.IO.Directory.Delete(dir,true); }
     }
+    static void CortesOriginales() {
+        float[] x=Senal(2);
+        object raw=Crea(original,new FuenteOriginalPrueba(x,Float(2,3),new int[]{1,7,509,2}),Codigo.FormSinEncender(form));
+        object dc=Crea(form.GetNestedType("DeclipProvider",B),raw);
+        int delay=(int)dc.GetType().GetProperty("DelayFrames",B).GetValue(dc,null);
+        object sp=Sbr((ISampleProvider)dc,true);
+        spectral.GetMethod("ConectaOriginal",B).Invoke(sp,new object[]{raw,delay});
+        float[] procesado=Lee((ISampleProvider)sp);
+        object referencia=Sbr(new FuenteOriginalPrueba(x,Float(2,3),null),true);Lee((ISampleProvider)referencia);
+        float c=(float)spectral.GetProperty("CutHz",B).GetValue(sp,null);
+        float cr=(float)spectral.GetProperty("CutHz",B).GetValue(referencia,null);
+        Check(procesado.Length==x.Length+delay*2,"DSEE original conserva el retardo/cola real de Declip con lecturas partidas");
+        Check((long)Get(sp,"VentanasOriginales")>15,"Detector usa ventanas originales aunque Declip preceda el DSEE");
+        Check(c>9000&&Math.Abs(c-cr)<600,"Corte original estable frente al camino sin Declip: "+c+" / "+cr);
+        // Etapa sintetica que si cambia radicalmente el espectro: demuestra
+        // que el detector consulta el original y no el PCM posterior a la etapa.
+        object antes=Crea(original,new FuenteOriginalPrueba(x,Float(2,3),null),Codigo.FormSinEncender(form));
+        object protegido=Sbr(new ModificaEspectro((ISampleProvider)antes),true);
+        spectral.GetMethod("ConectaOriginal",B).Invoke(protegido,new object[]{antes,1});
+        Lee((ISampleProvider)protegido);
+        float protegidoHz=(float)spectral.GetProperty("CutHz",B).GetValue(protegido,null);
+        object modificado=Sbr(new ModificaEspectro(new FuenteOriginalPrueba(x,Float(2,3),null)),true);Lee((ISampleProvider)modificado);
+        float modificadoHz=(float)spectral.GetProperty("CutHz",B).GetValue(modificado,null);
+        Check(protegidoHz<14000&&modificadoHz>=19300,"Prueba no vacua: espectro procesado completo, detector original conserva corte real");
+        float[] multi=Senal(6);Random rng=new Random(81);
+        for(int i=0;i<multi.Length/6;i++) {
+            multi[i*6+3]=(float)(rng.NextDouble()-.5); // LFE brillante no decide por el central
+            multi[i*6+4]=multi[i*6+5]=(float)(.1*(rng.NextDouble()-.5));
+        }
+        object seis=Sbr(new FuenteOriginalPrueba(multi,Float(6,0x60F),null),true);Lee((ISampleProvider)seis);
+        float[] cortes=(float[])Get(seis,"cortesGrupo");
+        Check(cortes[0]<14000&&cortes[1]<14000&&cortes[2]>19300,"Frente/central/traseros miden independientes y LFE no altera el central");
+        Check(Error(multi,Lee((ISampleProvider)Sbr(new FuenteOriginalPrueba(multi,Float(6,0),null),true)))==0,
+              "Layout multicanal desconocido deja DSEE seco y exacto");
+    }
     static int Main(string[] args) {
         Assembly a=Assembly.LoadFrom(args[0]);form=a.GetType("Rocola.Form1",true);
         original=form.GetNestedType("FuenteOriginal",B);spectral=form.GetNestedType("SpectralTap",B);tap=form.GetNestedType("LevelTap",B);
         bajo=form.GetNestedType("DeepBassProvider",B);formatos=a.GetType("Rocola.FormatoAudio",true);
-        Entrada();Mascara();Cosecha();Console.WriteLine("PASS DSP original: "+checks+" comprobaciones sinteticas; no XP/DAC/escucha.");return 0;
+        Entrada();Mascara();CortesOriginales();Cosecha();Console.WriteLine("PASS DSP original: "+checks+" comprobaciones sinteticas; no XP/DAC/escucha.");return 0;
     }
 }

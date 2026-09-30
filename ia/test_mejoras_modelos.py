@@ -9,6 +9,7 @@ import numpy as np
 import entrenar_ia as T
 import entrenar_eq_candidato as E
 import calidad_dsee as C
+import origen_dsee as O
 
 class MejorasEntrenamiento(unittest.TestCase):
     def test_informe_no_puede_pisar_modelo_datos_ni_candidato(self):
@@ -131,4 +132,44 @@ class MejorasEntrenamiento(unittest.TestCase):
         self.assertEqual(m.mejor_epoca,0)
         for a,b in zip(W+B,m.W+m.B): np.testing.assert_array_equal(a,b)
 
-if __name__ == "__main__": unittest.main()
+class MejorasModelos(unittest.TestCase):
+    def test_gradiente_envolvente(self):
+        rng=np.random.default_rng(83)
+        p=rng.normal(-1,1,(4,12)); y=rng.normal(-2,3,p.shape);w=np.array([.5,1,2,.5])
+        valor,grad=C.perdida_envolvente(p,y,w)
+        self.assertTrue(np.isfinite(valor))
+        for i,j in [(0,0),(2,4),(3,11)]:
+            a,b=p.copy(),p.copy();a[i,j]+=1e-5;b[i,j]-=1e-5
+            numerico=(C.perdida_envolvente(a,y,w)[0]-C.perdida_envolvente(b,y,w)[0])/2e-5
+            self.assertAlmostEqual(numerico,grad[i,j],places=8)
+    def test_equilibra_canciones_y_grupos(self):
+        c=np.array([1]*20+[2]*10+[3]*10,dtype=np.uint64)
+        g=np.array([11]*30+[22]*10,dtype=np.uint64)
+        w,rep=O.pesos_equilibrados(c,g)
+        self.assertAlmostEqual(w[c==1].sum(),w[c==2].sum())
+        self.assertAlmostEqual(w[g==11].sum(),w[g==22].sum())
+        self.assertAlmostEqual(w.mean(),1);self.assertEqual(rep['canciones'],3)
+    def test_acota_extremos_y_conserva_desconocidos(self):
+        c=np.array([1]*10000+[2,0],dtype=np.uint64)
+        w,_=O.pesos_equilibrados(c)
+        self.assertGreaterEqual(w.min(),.25);self.assertLessEqual(w.max(),4)
+        self.assertAlmostEqual(w.mean(),1,places=10);self.assertEqual(w[-1],1)
+        with self.assertRaises(ValueError):O.pesos_equilibrados(np.array([1,1]),np.array([2,3]))
+    def test_inicial_compite_y_determinismo(self):
+        rng=np.random.default_rng(4);x=rng.normal(0,.1,(40,28))
+        inicial=T.Mlp([28,12],np.random.default_rng(5));y=inicial.predict(x)
+        resultados=[]
+        for _ in range(2):
+            m=T.Mlp([28,12],np.random.default_rng(5))
+            with contextlib.redirect_stdout(io.StringIO()):
+                T.train(m,x,y,x,y,epochs=2,batch=13,preservar_inicial=True,objetivo='envolvente',pesos=np.ones(40))
+            self.assertEqual(m.mejor_epoca,0)
+            np.testing.assert_array_equal(m.W[0],inicial.W[0]);resultados.append(m.B[0])
+        np.testing.assert_array_equal(*resultados)
+    def test_equilibrio_no_consulta_targets(self):
+        # La API solo recibe identidades TRAIN; no existe acceso a X/Y/VAL/TEST.
+        c=np.array([8,8,9],dtype=np.uint64)
+        w,_=O.pesos_equilibrados(c)
+        np.testing.assert_array_equal(w,O.pesos_equilibrados(c.copy())[0])
+
+if __name__=='__main__':unittest.main()
