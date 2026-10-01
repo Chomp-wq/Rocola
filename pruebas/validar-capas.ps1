@@ -1,4 +1,4 @@
-param([string]$OutputDirectory = (Join-Path $env:TEMP 'rocola-capas-validacion'))
+param([string]$OutputDirectory = (Join-Path $env:TEMP 'rocola-capas-validacion'), [switch]$SinHal)
 $ErrorActionPreference = 'Stop'
 $previousRocolaData = $env:ROCOLA_DATOS
 try {
@@ -42,9 +42,10 @@ foreach ($test in @('capascolor', 'cristalcola', 'cubofila', 'respuesta', 'efect
     if ($LASTEXITCODE -ne 0) { throw "No compila $test" }
     if ($test -eq 'cristalcola') { & $testExe $exe (Join-Path $sourceRoot 'Form1.Ajustes.cs') }
     elseif ($test -eq 'cubofila' -or $test -eq 'efectoslayout') { & $testExe $exe (Join-Path $OutputDirectory ($test + '.png')) }
+    elseif ($test -eq 'caratulasadaptativas' -and $SinHal) { & $testExe $exe --sin-hal }
     else { & $testExe $exe }
     if ($LASTEXITCODE -ne 0) { throw "Fallo: $test" }
 }
 } finally { Pop-Location }
-Write-Output "PASS: compilacion GPU/CPU y treinta y dos baterias. No se reemplazo ningun ejecutable de produccion. Salida: $OutputDirectory"
+Write-Output "PASS: compilacion GPU/CPU y treinta y dos baterias. HAL LOD omitido explicitamente: $SinHal. No se reemplazo ningun ejecutable de produccion. Salida: $OutputDirectory"
 } finally { $env:ROCOLA_DATOS = $previousRocolaData }
