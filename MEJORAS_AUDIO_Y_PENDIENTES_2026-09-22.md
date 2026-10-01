@@ -1631,7 +1631,10 @@ Qué hace ahora (`Rocola/SinSilencios.cs`):
    entregar muestras; el hueco de en medio, con un salto del lector. Si el lector no puede saltar, se oye el hueco,
    como antes, y no se pierde nada. El fundido de salida se calcula con lo que de verdad va a sonar.
 4. **Interruptor.** Ctrl+F3 → Sonido → Calidad del sonido, al lado del DSEE ("Saltar silencios largos"), encendido de fábrica, guardado como
-   `saltar_silencios=` en `rocola_config.txt`. Se mira al abrir cada canción: se nota desde la siguiente. Decisión
+   `saltar_silencios=` en `rocola_config.txt`. Se mira al abrir cada canción: se nota desde la siguiente. Como la
+   siguiente ya está abierta antes de que le toque (el calentador la abre poco después de empezar cada canción y en
+   los últimos 12 s queda armada para entrar sin pausa), al cambiarlo se retira lo que aún no suena y se vuelve a
+   abrir (`SiguienteConElInterruptor`; arreglado el 01-10-2026: antes el cambio se notaba una canción más tarde). Decisión
    tuya del 28 de septiembre (anotada en `AGENTS.md`): esta opción de sonido sí lleva interruptor.
    En Modest la ventana está llena hasta el último píxel (cabe justo en 1024×768): el interruptor del DSEE se quedó con
    150 px (antes 424 para cuatro letras) y el nuevo va a su derecha. En HD va en la tarjeta de la biblioteca.

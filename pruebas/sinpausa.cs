@@ -919,6 +919,54 @@ class SinPausa
             Check(cadL != null && Get(Get(cadL, "Mono"), "anterior") == null && Get(Get(cadL, "Noche"), "anterior") == null,
                   "y como la que suena acaba fundiendo a silencio, la siguiente empieza sus filtros de cero (no arrastra la memoria de una musica que ya no se oye)");
             SueltaPreparada(f);
+
+            // EL INTERRUPTOR DE SALTAR SILENCIOS (Ctrl+F3) vale desde la siguiente. Los silencios se deciden al abrir, y la
+            // siguiente ya estaba abierta (calentador) o armada (relevo) con el ajuste de antes: se retira lo que aun no
+            // suena y se vuelve a pedir. Lo que ya entro, no.
+            {
+                object iB2 = Item(tB, disco), iC2 = Item(tC, disco);
+                monta(tA, disco, new object[] { iB2, iC2 }, pb);
+                object cadA2 = sonando[0], sec2 = sonando[1], lB2 = sonando[2];
+                Inv(f, "PreparaSiguienteSinPausa");
+                object armada = Get(f, "cadenaPreparada");
+                Inv(f, "SiguienteConElInterruptor");
+                object mira = Get(f, "lookahead");
+                Check(armada != null && Get(f, "cadenaPreparada") == null && !(bool)Prop(sec2, "HayPreparada") && Suelto(lB2)
+                      && (string)Prop(mira, "Para") == pb && Cola(f, iB2, iC2),
+                      "armada para entrar sin pausa y aun sin sonar: se retira, su lector se cierra y la siguiente se vuelve a abrir; la cola no cambia");
+                object lB3 = Lector(pb);
+                Set(f, "lookahead", MiraCon(pb, lB3));   // como la deja el calentador al terminar de abrirla otra vez
+                Inv(f, "PreparaSiguienteSinPausa");
+                object otra = Get(f, "cadenaPreparada");
+                Check(otra != null && object.ReferenceEquals(Get(otra, "Lector"), lB3) && (bool)Prop(sec2, "HayPreparada")
+                      && object.ReferenceEquals(Get(Get(otra, "Mono"), "anterior"), Get(cadA2, "Mono")),
+                      "y se vuelve a armar con la recien abierta; la que suena sigue sin fundido y la siguiente del disco sigue con sus filtros");
+                SueltaPreparada(f);
+
+                monta(tL, otro, new object[] { Item(tB, disco) }, pb);   // a 13 s del final: abierta, aun sin armar
+                object lAbierta = sonando[2];
+                Inv(f, "SiguienteConElInterruptor");
+                mira = Get(f, "lookahead");
+                Check(Suelto(lAbierta) && !(bool)Prop(mira, "Listo") && (string)Prop(mira, "Para") == pb,
+                      "abierta por el calentador: se suelta y se pide otra vez (se abre con el ajuste nuevo)");
+
+                object iB4 = Item(tB, disco);
+                monta(tA, disco, new object[] { iB4, Item(tC, disco) }, pb);
+                object sec4 = sonando[1], lB4 = sonando[2];
+                Inv(f, "PreparaSiguienteSinPausa");
+                object entro = Get(f, "cadenaPreparada");
+                LeeTodo((ISampleProvider)sec4, new int[] { 4096 }, null, null);   // el hilo del sonido ya paso a ella
+                Inv(f, "SiguienteConElInterruptor");
+                Check(entro != null && object.ReferenceEquals(Get(f, "cadenaPreparada"), entro) && !Suelto(lB4) && Prop(Get(f, "lookahead"), "Para") == null,
+                      "si ya entro por el relevo, ya es la que suena: no se toca");
+                AlParar(f, null);
+                SueltaPreparada(f);
+
+                monta(tA, disco, new object[] { Item(tB, disco) }, null);
+                Inv(f, "SiguienteConElInterruptor");
+                Check(Get(f, "lookahead") == null && Get(f, "cadenaPreparada") == null,
+                      "si el calentador aun no la pidio, no se adelanta: la pedira el a su hora, ya con el ajuste nuevo");
+            }
             Set(f, "sbrAllowed", false); Set(f, "sbrOn", false); Set(f, "lookahead", null); Set(f, "output", null);
         }
         Codigo.EsperaGuardado(TF, f);
