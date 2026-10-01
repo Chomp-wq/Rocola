@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Reflection;
+// Compilar junto a leercodigo.cs: lee el IL por el mismo sitio que las baterias (Codigo.BytesIL).
 class CpuCongelado
 {
  const BindingFlags B=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Instance|BindingFlags.Static;
@@ -23,14 +25,24 @@ class CpuCongelado
       if(same){m1=candidate;break;}
      }
      if(m1==null)throw new Exception("Falta "+m0.Name);
-     byte[] b0=m0.GetMethodBody().GetILAsByteArray(),b1=m1.GetMethodBody().GetILAsByteArray();
-     if(b0.Length!=b1.Length)throw new Exception("Cambio IL "+m0.Name);
-     for(int i=0;i<b0.Length;i++)if(b0[i]!=b1[i])throw new Exception("Cambio IL "+m0.Name+" "+i);
-     count++;Console.WriteLine("OK CPU congelado "+typeName+"."+m0.Name);
+     byte[] b0=Codigo.BytesIL(m0),b1=Codigo.BytesIL(m1);
+     if(b0==null||b1==null)throw new Exception("Sin cuerpo "+m0.Name);
+     bool mismos=b0.Length==b1.Length;
+     for(int i=0;mismos&&i<b0.Length;i++)if(b0[i]!=b1[i])mismos=false;
+     string como="mismos bytes";
+     if(!mismos)
+     {
+      // Un campo o un texto nuevo en OTRO sitio corre los numeros de tabla: se compara lo que nombra cada instruccion.
+      List<string> n0=Codigo.IlConNombres(m0),n1=Codigo.IlConNombres(m1);
+      for(int i=0;i<Math.Min(n0.Count,n1.Count);i++)if(n0[i]!=n1[i])throw new Exception("Cambio IL "+m0.Name+" instruccion "+i+": "+n0[i]+" / "+n1[i]);
+      if(n0.Count!=n1.Count)throw new Exception("Cambio IL "+m0.Name+": "+n0.Count+" / "+n1.Count+" instrucciones");
+      como="mismo IL; solo cambian numeros de tabla";
+     }
+     count++;Console.WriteLine("OK CPU congelado "+typeName+"."+m0.Name+" ("+como+")");
     }
    }
    if(count<10)throw new Exception("No verifico suficientes metodos");
-   Console.WriteLine("PASS CPU: "+count+" metodos IL identicos al ejecutable previo.");return 0;
+   Console.WriteLine("PASS CPU: "+count+" metodos con IL identico al ejecutable previo (nombres resueltos si los bytes difieren).");return 0;
   }catch(Exception e){Console.WriteLine("FALLO "+e);return 1;}
  }
 }

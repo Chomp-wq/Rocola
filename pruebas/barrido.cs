@@ -275,6 +275,7 @@ class Barrido
         if (TLev != null)
         {
             object F2 = FormatterServices.GetUninitializedObject(TF);
+            Codigo.PonCerrojos(F2);   // los candados que pone el constructor (audioDatosLock, de la bomba de sonido)
             SetF(F2, "levelLock", new object());
             SetF(F2, "specVis", new float[8]); SetF(F2, "specNow", new float[8]);
             SetF(F2, "specPiso", new float[8]); SetF(F2, "specGolpe", new float[8]);
