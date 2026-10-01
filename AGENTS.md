@@ -9,4 +9,5 @@
 - Decisión del usuario del 15 de septiembre de 2026: solo las opciones visuales llevan interruptores independientes y persistentes en Ctrl+F3. Las optimizaciones que conservan aspecto y funcionalidad son automáticas y siempre activas; no añadir interruptores ni preferencias para desactivarlas. Esta regla sustituye la anterior que exigía interruptores de rendimiento.
 - Decisión del usuario del 28 de septiembre de 2026: saltar los silencios largos de las canciones lleva su propio interruptor persistente en Ctrl+F3 (Sonido), encendido de fábrica.
 - Conservar música, modelos de IA, configuración y datos del usuario al compilar o desplegar.
+- Excepción solicitada por el usuario el 1 de octubre de 2026: ofrecer perfiles de carga de carátulas en Ctrl+F3, con Automático como predeterminado. Ajustan prioridades y presupuesto GPU sin desactivar el regulador, cambiar la calidad final ni superar los límites de HDD y equipos de dos hilos. No autoriza otros interruptores de optimización.
 - Distinguir pruebas automatizadas, comprobación visual real y mediciones de rendimiento. No afirmar compatibilidad real con XP sin probar en XP.

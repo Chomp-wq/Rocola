@@ -161,6 +161,8 @@ namespace Rocola
             swS[1].CheckedChanged += delegate { monedaCae = swS[1].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             swS[2].CheckedChanged += delegate { sinCreditosInvita = swS[2].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             swS[3].CheckedChanged += delegate { avisosClaros = swS[3].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            Tarjeta tCarga = TarjetaCargaCaratulas(fNom, fDes, cTexto, cTenue);
+            tCarga.SetBounds(488, 0, 456, 412); hSuena.Controls.Add(tCarga);
             // LA TANDA 4, en la tercera hoja: el modo atraccion (AtraccionGpu.cs).
             Tarjeta tAtr = new Tarjeta(); tAtr.SetBounds(16, 0, 456, 184); tAtr.Titulo = "MODO ATRACCION"; tAtr.Acento = cAc;
             string[] nomA = {
@@ -237,6 +239,10 @@ namespace Rocola
                 escaparate = topNoche = true;
                 letraLejos = colorGenero = textosDeslizantes = true;
                 buscadorPortadas = true;
+                caratulasCarga = 0;
+                hSuena.Controls.Remove(tCarga); tCarga.Dispose();
+                tCarga = TarjetaCargaCaratulas(fNom, fDes, cTexto, cTenue);
+                tCarga.SetBounds(488, 0, 456, 412); hSuena.Controls.Add(tCarga);
                 for (int i = 0; i < sw.Length; i++) sw[i].Checked = true;
                 for (int i = 0; i < swD.Length; i++) swD[i].Checked = true;
                 for (int i = 0; i < swS.Length; i++) swS[i].Checked = true;
@@ -248,7 +254,7 @@ namespace Rocola
             };
             hPared.Controls.Add(tPared); hPared.Controls.Add(tDisco); hSuena.Controls.Add(tSuena); hAtr.Controls.Add(tAtr); hAtr.Controls.Add(tEst); hAtr.Controls.Add(tBus);
             Panel[] hojas = { hPared, hSuena, hAtr };
-            string[] nomHoja = { "La pared y el disco", "Lo que suena y los creditos", "La atracción y el estilo" };
+            string[] nomHoja = { "La pared y el disco", "Reproducción y carátulas", "La atracción y el estilo" };
             BotonPlano[] bHoja = new BotonPlano[hojas.Length];
             for (int i = 0; i < hojas.Length; i++)
             {
