@@ -430,6 +430,9 @@ namespace Rocola
         {
             lock (coverLock)
             {
+#if ROCOLA_GPU
+                gpuPreviewPage++;
+#endif
                 CancelQueuedCovers(coverQHi);
                 CancelQueuedCovers(coverQLo);
                 System.Threading.Monitor.PulseAll(coverLock);
@@ -457,6 +460,8 @@ namespace Rocola
                 coverGen++;
 #if ROCOLA_GPU
                 coloresPreparados.Clear();
+                foreach (Bitmap b in gpuPreviewCache.Values) coverTrash.Add(b);
+                gpuPreviewCache.Clear(); gpuPreviewOrder.Clear(); gpuPreviewPage++; gpuPreviewLoaded = -1;
 #endif
                 coverArrivals.Clear();   // el mensaje pendiente puede atender llegadas de la nueva generacion
                 coverQHi.Clear(); coverQLo.Clear(); coverLoading.Clear(); coverRetryUntil.Clear();
@@ -486,7 +491,12 @@ namespace Rocola
                 CoverJob job = node.Value;
                 string unit = UnidadDe(job.Key);
                 int active; coverActiveUnits.TryGetValue(unit, out active);
-                int limit = DiscoLento(job.Key) ? 1 : coverCarriles;
+                int limit = DiscoLento(job.Key) ? 1 :
+#if ROCOLA_GPU
+                    AdaptiveCoverReaders();
+#else
+                    coverCarriles;
+#endif
                 if (active >= limit) continue;
                 jobs.Remove(node); job.Node = null; job.Unit = unit;
                 coverActiveUnits[unit] = active + 1;
@@ -514,6 +524,10 @@ namespace Rocola
         {
             while (true)
             {
+#if ROCOLA_GPU
+                if (gpuEnabled && coverGovernor.ReaderPause > 0)
+                    System.Threading.Thread.Sleep(coverGovernor.ReaderPause);
+#endif
                 CoverJob j = null;
                 lock (coverLock)
                 {
@@ -523,12 +537,18 @@ namespace Rocola
                 string key = j.Key;
                 bool entered = false;
                 Bitmap miniaturaParaGuardar = null;
+#if ROCOLA_GPU
+                Bitmap preview = null; byte[] previewBytes = null;
+#endif
                 try
                 {
                     if (j.Gen != coverGen) continue;
                     coverSem.WaitOne(); entered = true; // compartido con el generador de miniaturas
                     if (j.Gen != coverGen) continue;
                     Image thumb = null;
+#if ROCOLA_GPU
+                    try { LoadGpuPreviewBatch(j); } catch { } // preview no puede impedir la caratula final
+#endif
                     string identidadAntes = null;
                     try
                     {
@@ -553,6 +573,8 @@ namespace Rocola
                     }
                     catch { if (thumb != null) { try { thumb.Dispose(); } catch { } thumb = null; } }
 #if ROCOLA_GPU
+                    if (gpuEnabled && caratulasLod && thumb != null)
+                        try { preview = GpuPreviewStore.Small(thumb); previewBytes = GpuPreviewStore.ToBytes(preview); } catch { }
                     ColoresDisco tonos = new ColoresDisco();
                     if (gpuEnabled && thumb is Bitmap)
                     {
@@ -577,6 +599,7 @@ namespace Rocola
                         else coverRetryUntil[key] = unchecked(Environment.TickCount + 30000);
 #if ROCOLA_GPU
                         if (tonos.Fuente != null) coloresPreparados[key] = tonos;
+                        if (preview != null) { PutGpuPreview(key, preview); preview = null; }
 #endif
                         coverLoading.Remove(key);
                     }
@@ -601,9 +624,16 @@ namespace Rocola
                             SaveThumb(miniaturaParaGuardar, identidadAntes); }
                         catch { }
                     }
+#if ROCOLA_GPU
+                    if (previewBytes != null && thumb != null && j.Gen == coverGen)
+                        try { PreviewStore().Save(identidadAntes, previewBytes); } catch { }
+#endif
                 }
                 finally
                 {
+#if ROCOLA_GPU
+                    if (preview != null) preview.Dispose();
+#endif
                     if (miniaturaParaGuardar != null) try { miniaturaParaGuardar.Dispose(); } catch { }
                     if (entered) coverSem.Release(); ReleaseCoverUnit(j);
                 }

@@ -48,7 +48,9 @@ class SesionReal
             string key = (string)Call(view, "ClaveCasilla", album);
             if (key == null || !textures.Contains(key) || !images.Contains(key)) { pending = "cache: " + key; return false; }
             object tex = textures[key], image = images[key];
-            if ((IntPtr)Get(tex, "Tex") == IntPtr.Zero || !Object.ReferenceEquals(Get(tex, "Bmp"), Get(image, "Bmp"))) { pending = "subida: " + key; return false; }
+            FieldInfo hasCover = tex.GetType().GetField("HasCover", B);
+            if ((IntPtr)Get(tex, "Tex") == IntPtr.Zero || (hasCover != null && !(bool)hasCover.GetValue(tex)) || Get(image, "Cover") == null
+                || !Object.ReferenceEquals(Get(tex, "Bmp"), Get(image, "Bmp"))) { pending = "subida: " + key; return false; }
         }
         return true;
     }
@@ -116,15 +118,39 @@ class SesionReal
                             Console.WriteLine("AUDIO_REAL_MUDO " + Get(form, "bancoConMusica"));
                             foreach (object scene in (IEnumerable)Get(form, "bancoEscenas"))
                                 Console.WriteLine("ESCENA " + Get(scene, "Nombre") + "; trabajo_ms=" + ((double)Get(scene, "MsTrabajo")).ToString("F3", CultureInfo.InvariantCulture) + "; presentaciones_s=" + Get(scene, "Fps"));
+                            object covers = Get(form, "bancoPortadas");
+                            Console.WriteLine("PORTADAS_MAXIMOS p95_ms=" + Get(covers, "P95") + "; p99_ms=" + Get(covers, "P99")
+                                + "; mayores33_ms=" + Get(covers, "Lentos") + "; paginas_listas=" + Get(covers, "PaginasListas") + "/" + Get(covers, "PaginasSolicitadas") + "; maxima_ms=" + Get(covers, "PortadasMs"));
                         }
                         // Otro recorrido de paginas, al ritmo normal, incluyendo carga/asignacion real de texturas.
                         Touch(); Set(form, "currentLetter", 'C'); Set(form, "page", 0); Call(form, "RefreshAlbums"); WaitReady();
                         for (int i = 0; i < 6; i++)
                         {
                             Pump(1000);
+                            if (form.GetType().GetField("coverGovernor", B) != null)
+                            {
+                                object view = Get(form, "albumView"), reg = Get(form, "coverGovernor"), g = Get(form, "gpuPanel");
+                                IDictionary cache = (IDictionary)Get(view, "gpuCellCache"), textures = (IDictionary)Get(g, "cellTexCache");
+                                int baked = 0, uploaded = 0;
+                                foreach (object a in (IList)Get(view, "Ahead"))
+                                {
+                                    string k = (string)Call(view, "ClaveCasilla", a);
+                                    if (k != null && cache.Contains(k) && Get(cache[k], "Cover") != null) baked++;
+                                    if (k != null && textures.Contains(k) && (bool)Get(textures[k], "HasCover")) uploaded++;
+                                }
+                                Console.WriteLine("ADELANTE compuestas=" + baked + "; subidas=" + uploaded + "; coste_ms=" + ((long)Get(view, "gpuBakeCost") * 1000d / Stopwatch.Frequency)
+                                    + "; presion=" + Get(reg, "pressure") + "; presupuesto=" + Get(reg, "allowance") + "; urgente=" + Get(g, "UiUrgent"));
+                            }
                             Stopwatch input = Stopwatch.StartNew(); Call(form, "NextPage"); double callMs = input.Elapsed.TotalMilliseconds;
                             double readyMs = WaitReady();
                             Console.WriteLine("PAGINA " + Get(form, "page") + "; input_ms=" + callMs.ToString("F3", CultureInfo.InvariantCulture) + "; espera_texturas_ms=" + readyMs.ToString("F3", CultureInfo.InvariantCulture));
+                            FieldInfo regulator = form.GetType().GetField("coverGovernor", B);
+                            if (regulator != null)
+                            {
+                                object governor = regulator.GetValue(form);
+                                Console.WriteLine("REGULADOR base_ms=" + Get(governor, "baseMs") + "; lectores=" + Get(governor, "ReaderLimit")
+                                    + "; p95_ms=" + Call(governor, "Percentile", .95) + "; p99_ms=" + Call(governor, "Percentile", .99));
+                            }
                         }
                         Console.WriteLine("FIN errores_UI=" + errors + "; no mide fotones ni demuestra carga instantanea universal");
                     }

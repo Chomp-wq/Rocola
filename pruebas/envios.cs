@@ -213,7 +213,9 @@ class Envios
         foreach (Sitio s in sitios) if (s.EnBucle) bucles++;
         Console.WriteLine("     sitios que envian dentro de un bucle: " + bucles);
         Exige(bucles >= 1, "hay al menos un sitio que envia por vuelta (las casillas de la pared)");
-        Exige(bucles <= 6, "y NO se han ido multiplicando: siguen siendo " + bucles
+        int lod = 0;
+        foreach (Sitio s in sitios) if (s.EnBucle && s.Donde.Name == "DrawLod") lod++;
+        Exige(lod == 1 && bucles - lod <= 6, "solo LOD anade un envio por caratula provisional (maximo 36); otros bucles: " + (bucles - lod)
                            + ". Si este numero sube, alguien metio un envio nuevo dentro de un bucle");
     }
 

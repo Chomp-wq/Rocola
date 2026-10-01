@@ -49,6 +49,7 @@ class AtlasGpu
  {
   using(Control view=(Control)Activator.CreateInstance(V,true))
   {
+   Set(view,"PortadasLod",false); // comparacion del aspecto final/placeholder clasico, no del LOD nuevo
    object a=Album("atlas");Set(view,"EnCola",Provider(V,"EnCola","Q"));
    foreach(Size size in new Size[]{new Size(1024,768),new Size(1280,720),new Size(1920,1080),new Size(2560,1440),new Size(3440,1440),new Size(3840,2160),new Size(3440,768)})
    {

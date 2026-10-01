@@ -82,8 +82,10 @@ class HojeoPortadas {
    for(int i=0;i<count;i++)Check(Object.ReferenceEquals(cached[i],Get(cell,cells.GetValue(i),"Bmp")),"Volver a pagina rehornea cache");
    Set(view,panel,"gpuLastSlideTick",Environment.TickCount);
    Call(view,panel,"StartSlide",1,1280);foregroundCalls=0;Call(view,panel,"BuildGpuGrid",cells);
-   for(int i=0;i<count;i++)Check(Get(cell,cells.GetValue(i),"Bmp")==null,"Rafaga no oculta caratulas");
+   for(int i=0;i<count;i++)Check(Object.ReferenceEquals(cached[i],Get(cell,cells.GetValue(i),"Bmp")),"Rafaga descarta caratula completa ya preparada");
    Check(foregroundCalls==0,"Rafaga solicita caratulas");
+   Set(view,panel,"PortadasLod",false);Call(view,panel,"BuildGpuGrid",cells);
+   for(int i=0;i<count;i++)Check(Get(cell,cells.GetValue(i),"Bmp")==null,"LOD apagado no conserva ocultacion previa");
    Set(view,panel,"HojeoLigero",false);Call(view,panel,"BuildGpuGrid",cells);
    Check(Get(cell,cells.GetValue(0),"Bmp")!=null,"Toggle no restaura caratulas en rafaga");
    Set(view,panel,"slideTick",-1);

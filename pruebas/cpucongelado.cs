@@ -1,9 +1,44 @@
 using System;
 using System.Reflection;
+using System.Reflection.Emit;
+using System.Collections.Generic;
+using System.Text;
 class CpuCongelado
 {
  const BindingFlags B=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Instance|BindingFlags.Static;
  static string[] names={"Draw","BakeCell","GetOrBakeCell","PeekOrBakeCell","RebuildCubes","UpdateCells","OnPaint","CellMetrics","Geometry","ClearCellCache","PodaCeldas","BakeAhead"};
+ // Agregar tipos GPU renumera tokens de metadatos sin cambiar las instrucciones CPU.
+ // Comparar cada operando resuelto, nunca omitir los operandos ni aceptar solo igual longitud.
+ static string Code(MethodInfo method)
+ {
+  Dictionary<short,OpCode> ops=new Dictionary<short,OpCode>();
+  foreach(FieldInfo f in typeof(OpCodes).GetFields(B))if(f.FieldType==typeof(OpCode)){OpCode op=(OpCode)f.GetValue(null);ops[op.Value]=op;}
+  MethodBody body=method.GetMethodBody();byte[] code=body.GetILAsByteArray();StringBuilder result=new StringBuilder();
+  result.Append(body.InitLocals).Append('|').Append(body.MaxStackSize);
+  foreach(LocalVariableInfo local in body.LocalVariables)result.Append('|').Append(local.LocalType.FullName).Append(':').Append(local.IsPinned);
+  foreach(ExceptionHandlingClause clause in body.ExceptionHandlingClauses){result.Append('|').Append(clause.Flags).Append(':').Append(clause.TryOffset).Append(':').Append(clause.TryLength).Append(':').Append(clause.HandlerOffset).Append(':').Append(clause.HandlerLength);if(clause.Flags==ExceptionHandlingClauseOptions.Clause)result.Append(':').Append(clause.CatchType.FullName);if(clause.Flags==ExceptionHandlingClauseOptions.Filter)result.Append(':').Append(clause.FilterOffset);}
+  for(int i=0;i<code.Length;)
+  {
+   int first=code[i++];short value=(short)(first==254 ? 0xfe00|code[i++] : first);OpCode op=ops[value];result.Append('|').Append(op.Name).Append('=');int size=0;
+   switch(op.OperandType)
+   {
+    case OperandType.InlineField:case OperandType.InlineMethod:case OperandType.InlineType:case OperandType.InlineTok:
+     MemberInfo member=method.Module.ResolveMember(BitConverter.ToInt32(code,i),method.DeclaringType.GetGenericArguments(),method.GetGenericArguments());
+     result.Append(member.DeclaringType==null ? "" : member.DeclaringType.FullName).Append(':').Append(member.MemberType).Append(':').Append(member);i+=4;continue;
+    case OperandType.InlineString:result.Append(method.Module.ResolveString(BitConverter.ToInt32(code,i)));i+=4;continue;
+    case OperandType.InlineSig:result.Append(BitConverter.ToString(method.Module.ResolveSignature(BitConverter.ToInt32(code,i))));i+=4;continue;
+    case OperandType.InlineSwitch:size=4+4*BitConverter.ToInt32(code,i);break;
+    case OperandType.InlineI8:case OperandType.InlineR:size=8;break;
+    case OperandType.InlineI:case OperandType.InlineBrTarget:case OperandType.ShortInlineR:size=4;break;
+    case OperandType.InlineVar:size=2;break;
+    case OperandType.ShortInlineI:case OperandType.ShortInlineBrTarget:case OperandType.ShortInlineVar:size=1;break;
+    case OperandType.InlineNone:break;
+    default:throw new Exception("Operando no validado: "+op.OperandType);
+   }
+   if(i+size>code.Length)throw new Exception("IL truncado");for(int j=0;j<size;j++)result.Append(code[i++].ToString("x2"));
+  }
+  return result.ToString();
+ }
  static int Main(string[] args)
  {
   try{
@@ -23,14 +58,13 @@ class CpuCongelado
       if(same){m1=candidate;break;}
      }
      if(m1==null)throw new Exception("Falta "+m0.Name);
-     byte[] b0=m0.GetMethodBody().GetILAsByteArray(),b1=m1.GetMethodBody().GetILAsByteArray();
-     if(b0.Length!=b1.Length)throw new Exception("Cambio IL "+m0.Name);
-     for(int i=0;i<b0.Length;i++)if(b0[i]!=b1[i])throw new Exception("Cambio IL "+m0.Name+" "+i);
+     string c0=Code(m0),c1=Code(m1);
+     if(c0!=c1){int p=0;while(p<Math.Min(c0.Length,c1.Length)&&c0[p]==c1[p])p++;Console.WriteLine("ANTES "+c0.Substring(Math.Max(0,p-80),Math.Min(200,c0.Length-Math.Max(0,p-80))));Console.WriteLine("AHORA "+c1.Substring(Math.Max(0,p-80),Math.Min(200,c1.Length-Math.Max(0,p-80))));throw new Exception("Cambio IL/operandos/locales/excepciones "+m0.Name);}
      count++;Console.WriteLine("OK CPU congelado "+typeName+"."+m0.Name);
     }
    }
    if(count<10)throw new Exception("No verifico suficientes metodos");
-   Console.WriteLine("PASS CPU: "+count+" metodos IL identicos al ejecutable previo.");return 0;
+   Console.WriteLine("PASS CPU: "+count+" metodos con instrucciones y operandos resueltos identicos al ejecutable previo.");return 0;
   }catch(Exception e){Console.WriteLine("FALLO "+e);return 1;}
  }
 }

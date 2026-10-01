@@ -196,6 +196,7 @@ namespace Rocola
         {
             if (progress != null) progress.Neon = progresoNeon;
 #if ROCOLA_GPU
+            if (albumView != null) albumView.PortadasLod = caratulasLod;
             // Este va ANTES del corte de abajo: la pared de discos existe aunque el panel de la tarjeta no,
             // y es la pared la que decide como hornea sus casillas.
             if (albumView != null) albumView.HojeoLigero = hojeoLigero;   // aligerar mientras se pasa de pagina
@@ -251,8 +252,11 @@ namespace Rocola
             public string Nombre;
             public double MsTrabajo;   // lo que cuesta ARMAR un cuadro (sin la espera del monitor)
             public int Fps;            // los cuadros por segundo ENTREGADOS de verdad, con todo compitiendo
+            public double P95 = 0, P99 = 0, PortadasMs = 0;
+            public int Lentos = 0, PaginasListas = 0, PaginasSolicitadas = 0;
         }
         private List<EscenaMedida> bancoEscenas;   // null = aun sin medir
+        private EscenaMedida bancoPortadas = null;
         private string bancoPeor = "";             // el escenario que peor salio
         private double bancoMsPeor;
         private int bancoFpsPeor;
@@ -301,7 +305,7 @@ namespace Rocola
                 pasoEsc++;
                 switch (escena)
                 {
-                    case EscPagina: if ((pasoEsc & 3) < 2) NextPage(); else PrevPage(); break;
+                    case EscPagina: NextPage(); break; // paginas distintas, no alternar dos ya calientes
                     case EscLetra: ChangeLetter(((pasoEsc & 7) < 4) ? 1 : -1); break;
                     case EscBuscador:
                         // Escribe una palabra y la borra, sin parar. Cada letra rehace la lista de resultados
@@ -345,19 +349,21 @@ namespace Rocola
             if (gpuPanel == null || !gpuPanel.Visible) return;
             int t0 = Environment.TickCount, ultTick = t0 - 42, ultPaso = t0;
             int paso = PasoEscenaMs[escena];
+            int calentamiento = escena == EscPagina ? 0 : MsCalentando;
             bool contando = false;
             int tCuenta = t0;
             while (true)
             {
                 int ahora = Environment.TickCount;
                 int va = ahora - t0;
-                if (va >= MsCalentando + ms) break;
-                if (!contando && va >= MsCalentando)
+                if (va >= calentamiento + ms) break;
+                if (!contando && va >= calentamiento)
                 {
                     contando = true; tCuenta = ahora; cuadros = 0;
                     gpuPanel.ReiniciaMedida();   // lo de calentar no cuenta
                 }
                 if (ahora - ultTick >= 42) { ultTick = ahora; try { AnimTimer_Tick(null, EventArgs.Empty); } catch { } }
+                if (escena == EscPagina) paso = va < 1500 ? 600 : 180; // paso lento y rafaga en la misma medida
                 if (paso > 0 && ahora - ultPaso >= paso) { ultPaso = ahora; PasoDeEscena(escena); }
                 if (!bancoConMusica) PulsoDeMentira();   // sin cancion, un latido de mentira; con ella, el suyo
                 bool presentado = gpuPanel.DibujaUnCuadro();
@@ -372,7 +378,7 @@ namespace Rocola
         {
             EscenaMedida m = new EscenaMedida();
             m.Nombre = NombreEscena[escena]; m.MsTrabajo = 0.0; m.Fps = 0;
-            return MideEscena(escena, MsPorEscena, m);
+            return MideEscena(escena, escena == EscPagina ? 4500 : MsPorEscena, m);
         }
         private EscenaMedida MideEscena(int escena, int ms, EscenaMedida m)
         {
@@ -383,6 +389,10 @@ namespace Rocola
             if (gpuPanel.FallosMedidos != 0 || cuadros == 0)
                 throw new InvalidOperationException("La GPU no presento todos los cuadros; medicion no valida");
             m.MsTrabajo = gpuPanel.MsTrabajo;
+            m.P95 = coverGovernor.Percentile(.95); m.P99 = coverGovernor.Percentile(.99);
+            m.Lentos = coverGovernor.SlowFrames; m.PaginasListas = coverGovernor.CompletedPages;
+            m.PaginasSolicitadas = coverGovernor.StartedPages;
+            m.PortadasMs = coverGovernor.WorstPageMs;
             // Cuadros cuyo Present acepto el controlador, contados con el reloj de pared: con la musica
             // peleando por el mismo hilo, este numero es lo que se siente. El de arriba (ms de trabajo) dice
             // otra cosa distinta: margen de trabajo. No es una medicion de fotones ni latencia del monitor.
@@ -414,6 +424,7 @@ namespace Rocola
         {
             // Todo a cero primero: volver a medir no puede dejar ni un numero de la vez anterior asomando.
             bancoEscenas = new List<EscenaMedida>();
+            bancoPortadas = null;
             bancoPropuesta = null; bancoError = null;
             bancoConGpu = false; bancoConMusica = false;
             bancoPeor = ""; bancoMsPeor = 0.0; bancoFpsPeor = 0; bancoTope = 0; bancoFpsPropuesta = 0;
@@ -469,6 +480,13 @@ namespace Rocola
                 EnterAttract();
                 bancoEscenas.Add(MideEscena(EscAtraccion));
                 ExitAttract();
+                // Calibracion de portadas aparte: no contaminar los ahorros de las perillas.
+                try
+                {
+                    for (int i = 0; i < ef.Length; i++) PonNivel(ef[i].Clave, NivAlto);
+                    bancoPortadas = MideEscena(EscPagina);
+                }
+                finally { for (int i = 0; i < ef.Length; i++) PonNivel(ef[i].Clave, bkNiv[i]); }
 
                 // EL PEOR MANDA: de nada sirve que cuatro pantallas vayan sobradas si la quinta se arrastra.
                 EscenaMedida peor = null; int peorId = 0;
@@ -1182,11 +1200,11 @@ namespace Rocola
                 lFila[i].BackColor = Color.Transparent; lFila[i].ForeColor = cTexto; lFila[i].Font = fDes;
                 tMide.Controls.Add(lFila[i]);
             }
-            Label lTecho = new Label(); lTecho.SetBounds(16, 252, 424, 16); lTecho.BackColor = Color.Transparent;
+            Label lTecho = new Label(); lTecho.SetBounds(16, 252, 424, 32); lTecho.BackColor = Color.Transparent;
             lTecho.ForeColor = cApagado; lTecho.Font = fDes;
-            Label lSinMus = new Label(); lSinMus.SetBounds(16, 272, 424, 32); lSinMus.BackColor = Color.Transparent;
+            Label lSinMus = new Label(); lSinMus.SetBounds(16, 288, 424, 32); lSinMus.BackColor = Color.Transparent;
             lSinMus.ForeColor = Color.FromArgb(255, 196, 96); lSinMus.Font = fDes;
-            Label lVer = new Label(); lVer.SetBounds(16, 308, 424, 80); lVer.BackColor = Color.Transparent;
+            Label lVer = new Label(); lVer.SetBounds(16, 324, 424, 64); lVer.BackColor = Color.Transparent;
             lVer.ForeColor = cTenue; lVer.Font = fDes;
             tMide.Controls.Add(bMedir); tMide.Controls.Add(lTarda); tMide.Controls.Add(lCab);
             tMide.Controls.Add(lTecho); tMide.Controls.Add(lSinMus); tMide.Controls.Add(lVer);
@@ -1247,8 +1265,9 @@ namespace Rocola
                 "Ocultar discos en reposo con musica",
                 "Estado y cola ampliados en reposo",
                 "Lista de canciones transparente",
+                "Miniaturas provisionales durante la carga",
             };
-            bool[] valSw = { hojeoLigero, muroReposo, estadoExpandido, cancionesTransparentes };
+            bool[] valSw = { hojeoLigero, muroReposo, estadoExpandido, cancionesTransparentes, caratulasLod };
             Interruptor[] sw = new Interruptor[nomSw.Length];
             for (int i = 0; i < sw.Length; i++)
             {
@@ -1261,6 +1280,7 @@ namespace Rocola
             sw[1].CheckedChanged += delegate { muroReposo = sw[1].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             sw[2].CheckedChanged += delegate { estadoExpandido = sw[2].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             sw[3].CheckedChanged += delegate { cancionesTransparentes = sw[3].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            sw[4].CheckedChanged += delegate { caratulasLod = sw[4].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             Label lPierde = new Label(); lPierde.SetBounds(16, switchesY + sw.Length * 30 + 4, 424, 48); lPierde.BackColor = Color.Transparent;
             lPierde.ForeColor = cTenue; lPierde.Font = fDes;
             tEfe.Controls.Add(lGen); tEfe.Controls.Add(swHojeo); tEfe.Controls.Add(lPierde);
@@ -1338,6 +1358,13 @@ namespace Rocola
                 }
 
                 lTecho.Text = "El techo de esta pantalla son " + bancoTope + " cuadros por segundo.";
+                if (bancoConGpu && bancoPortadas != null)
+                {
+                    EscenaMedida pm = bancoPortadas;
+                    lTecho.Text = "Paginas: P95 " + pm.P95.ToString("0.0") + " / P99 " + pm.P99.ToString("0.0")
+                        + " ms; >33 ms: " + pm.Lentos + ".\nCaratulas listas: " + pm.PaginasListas
+                        + "/" + pm.PaginasSolicitadas + "; max lista: " + pm.PortadasMs.ToString("0") + " ms (efectos altos).";
+                }
                 lSinMus.Text = bancoConMusica ? "" :
                       "OJO: no se pudo poner ninguna cancion y se midio en\n"
                     + "silencio. De verdad saldra peor de lo que dice aqui.";
@@ -1458,7 +1485,7 @@ namespace Rocola
                 // pestaña: un boton que dice "graficos como de fabrica" y ademas te reordena el cielo seria
                 // una sorpresa, y en la ventana de al lado no se ve lo que cambio.
                 hojeoLigero = true; muroReposo = true; estadoExpandido = true;
-                cancionesTransparentes = true;
+                cancionesTransparentes = true; caratulasLod = true;
                 for (int i = 0; i < sw.Length; i++) sw[i].Checked = true;   // de fabrica vienen encendidos
                 AplicaEfectosGpu();
                 f3CambioGraf = true;
