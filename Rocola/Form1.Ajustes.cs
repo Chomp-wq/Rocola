@@ -629,7 +629,7 @@ namespace Rocola
             bool wasMaint = maintMode;
             maintMode = true;   // el dialogo modal necesita quedarse al frente; se devuelve en el finally
             bool changed = false;
-            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkUp = masterDb, bkEq = eqAmount, bkBass = bassAmount; int bkVid = videoVol, bkDsk = perfilDisco; bool bkNoche = nocheOn, bkOn = normalizeOn, bkSbr = sbrOn, bkIa = iaVivo, bkEqA = eqAuto, bkBassA = bassAuto, bkVidA = videoAuto, bkIaDat = iaHarvestOn; string bkIaMez = iaMezcla, bkIaGpu = iaGpu;   // por si se Cancela
+            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkUp = masterDb, bkEq = eqAmount, bkBass = bassAmount; int bkVid = videoVol, bkDsk = perfilDisco; bool bkNoche = nocheOn, bkOn = normalizeOn, bkSbr = sbrOn, bkIa = iaVivo, bkEqA = eqAuto, bkBassA = bassAuto, bkVidA = videoAuto, bkIaDat = iaHarvestOn, bkSil = saltaSilencios; string bkIaMez = iaMezcla, bkIaGpu = iaGpu;   // por si se Cancela
             try
             {
                 Cursor.Show();
@@ -1092,7 +1092,9 @@ namespace Rocola
                         sbrOn = swSbr.Checked && sbrAllowed;   // SOLO la preferencia: encender ULTRA ya no te la borra
                         nocheOn = swNoche.Checked;   // al apagarlo de madrugada, la rampa lo devuelve solo (AvanzaModoNoche)
                         iaHarvestOn = swIa.Checked;
+                        bool silAntes = saltaSilencios;
                         saltaSilencios = swSil.Checked;
+                        if (saltaSilencios != silAntes) SiguienteConElInterruptor();   // lo ya abierto para la siguiente traia el de antes
                         changed = true;
                         updateLabels();
                         ApplyNormNow();   // se oye el cambio al instante en la cancion que suena
@@ -1203,7 +1205,7 @@ namespace Rocola
                 if (changed || f3CambioGraf) { SaveConfigPrefs(); ShowToast(changed ? "Sonido actualizado" : "Imagen actualizada", Color.FromArgb(40, 130, 90)); }
                 f3CambioGraf = false;
             }
-            catch { nocheOn = bkNoche; normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; masterDb = bkUp; eqAmount = bkEq; bassAmount = bkBass; videoVol = bkVid; videoAuto = bkVidA; sbrOn = bkSbr; iaVivo = bkIa; eqAuto = bkEqA; bassAuto = bkBassA; iaMezcla = bkIaMez; iaGpu = bkIaGpu; perfilDisco = bkDsk; iaHarvestOn = bkIaDat; AplicaPerfilDisco(); }   // si algo truena, deja los valores como estaban
+            catch { nocheOn = bkNoche; normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; masterDb = bkUp; eqAmount = bkEq; bassAmount = bkBass; videoVol = bkVid; videoAuto = bkVidA; sbrOn = bkSbr; iaVivo = bkIa; eqAuto = bkEqA; bassAuto = bkBassA; iaMezcla = bkIaMez; iaGpu = bkIaGpu; perfilDisco = bkDsk; iaHarvestOn = bkIaDat; AplicaPerfilDisco(); if (saltaSilencios != bkSil) { saltaSilencios = bkSil; try { SiguienteConElInterruptor(); } catch { } } }   // si algo truena, deja los valores como estaban
             finally { try { Cursor.Hide(); } catch { } maintMode = wasMaint; ForceFocus(); }
         }
 

@@ -389,6 +389,13 @@ class Silencios
         bool letrero = false; foreach (string t in textos) if (t.StartsWith("Saltar silencios largos")) letrero = true;
         Check(letrero && Codigo.LeeCampo(ven, "saltaSilencios") && Codigo.EscribeCampo(ven, "saltaSilencios"),
               "Ctrl+F3 -> Sonido tiene el interruptor, lo pone como esta y lo cambia");
+        bool retira = false; foreach (MethodBase m in ven) if (Codigo.Llama(m, "SiguienteConElInterruptor")) retira = true;
+        Check(retira, "y al cambiarlo retira lo ya abierto para la siguiente: vale desde la siguiente, no desde la de despues (sinpausa.cs lo ejecuta)");
+        // Si la ventana truena, los ajustes de sonido vuelven a como estaban: el interruptor tambien (lo hace la ventana
+        // misma, en su catch, no el que lo cambia).
+        List<MethodBase> sola = new List<MethodBase>(); sola.Add(TF.GetMethod("VentanaAjustes", T));
+        Check(Codigo.EscribeCampo(sola, "saltaSilencios") && Codigo.Llama(sola[0], "SiguienteConElInterruptor"),
+              "si la ventana falla, el interruptor vuelve a como estaba, como los demas ajustes de sonido");
         string dir = Path.Combine(Path.GetTempPath(), "rocola_silencios_cfg_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
         try

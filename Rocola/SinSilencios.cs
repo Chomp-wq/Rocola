@@ -242,6 +242,29 @@ namespace Rocola
             return s.Salen((long)(totalSeg * hz)) / (double)hz;
         }
 
+        // EL INTERRUPTOR VALE DESDE LA SIGUIENTE, DE VERDAD. Los silencios se deciden al abrir la cancion (OpenAudio), y
+        // la siguiente se abre antes de que le toque: el calentador la deja abierta poco despues de empezar cada cancion
+        // (MiraPorDelante) y en los ultimos 12 s queda armada para entrar sin pausa. Las dos llevaban el ajuste de antes,
+        // asi que el cambio se notaba una cancion mas tarde. Al cambiarlo en Ctrl+F3 se retira lo que aun no suena y la
+        // siguiente se vuelve a abrir en segundo plano. La que suena, y la que ya entro por el relevo, siguen igual.
+        private void SiguienteConElInterruptor()
+        {
+            bool retirada = false;
+            CadenaCancion p = cadenaPreparada; Encadenado s = secuencia;
+            if (p != null && s != null && s.Cancela(p))
+            {
+                // No empezo: el hilo del sonido no la leyo ni la leera (Releva la toma bajo el mismo cerrojo).
+                cadenaPreparada = null; retirada = true;
+                if (p.Lector != null) try { p.Lector.Dispose(); } catch { }
+            }
+            string pedida = (lookahead != null) ? lookahead.Para : null;
+            if (lookahead != null) lookahead.Suelta();
+            // Si el calentador aun no la habia pedido, la pedira el, a su hora y ya con el ajuste nuevo.
+            if (!retirada && pedida == null) return;
+            PlayItem sig = queue.Count > 0 ? queue[0] : null;
+            if (sig != null && !sig.IsVideo && sig.Song != null && sig.Song.Path != null) PideLookahead(sig.Song.Path);
+        }
+
         // Envuelve la cancion si el interruptor esta encendido y hay algo que saltar; si no, la deja tal cual.
         private IAudioSource SinSilencios(string path, IAudioSource s)
         {
