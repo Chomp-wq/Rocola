@@ -94,6 +94,45 @@ namespace Rocola
                 }
             }
 
+            // Solo para un diccionario PROPIO del escritor serial, con todos sus cambios pendientes.
+            // null es una baja. Cancelar/fallar NO consume pendientes: el llamador los conserva.
+            internal bool GuardaCambios<T>(string ruta, Dictionary<string, T> actual, List<KeyValuePair<string, T>> cambios,
+                HuellaDe<T> huella, FilaDe<T> fila, string cabecera, Func<bool> vigente) where T : class
+            {
+                lock (CandadoDe(ruta))
+                {
+                    if (vigente != null && !vigente()) return false;
+                    try
+                    {
+                        bool entero = enArchivo == null || CambioArchivo(ruta);
+                        List<KeyValuePair<string, T>> nuevas = new List<KeyValuePair<string, T>>(cambios.Count);
+                        if (!entero)
+                        {
+                            for (int i = 0; i < cambios.Count; i++)
+                            {
+                                if ((i & 127) == 0 && vigente != null && !vigente()) return false;
+                                KeyValuePair<string, T> c = cambios[i]; long antes;
+                                bool existe = enArchivo.TryGetValue(c.Key, out antes);
+                                if (c.Value == null) { if (existe) entero = true; }
+                                else if (!existe || antes != huella(c.Key, c.Value)) nuevas.Add(c);
+                            }
+                            if (actual.Count < enArchivo.Count || filasArchivo + nuevas.Count > actual.Count + actual.Count / 2 + 1000) entero = true;
+                        }
+                        if (!entero && nuevas.Count == 0) { SinCambios++; return true; }
+                        if (!entero)
+                        {
+                            List<int> indices = new List<int>(nuevas.Count);
+                            for (int i = 0; i < nuevas.Count; i++) indices.Add(i);
+                            int r = Anade(ruta, nuevas, indices, huella, fila, vigente);
+                            if (r != 2) return r == 0;
+                        }
+                        // Primera vez, bajas, restauracion externa y compactacion conservan el camino seguro.
+                        return GuardaEntera(ruta, new List<KeyValuePair<string, T>>(actual), huella, fila, cabecera, null, vigente);
+                    }
+                    catch { enArchivo = null; throw; }
+                }
+            }
+
             private bool GuardaEntera<T>(string ruta, List<KeyValuePair<string, T>> filas, HuellaDe<T> huella, FilaDe<T> fila,
                                          string cabecera, List<string> cola, Func<bool> vigente)
             {

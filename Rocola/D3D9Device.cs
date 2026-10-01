@@ -93,6 +93,35 @@ namespace Rocola
     internal sealed class D3D9Device
     {
         private IntPtr d3d, dev;
+        private D3D9.Vtx[] verticesFijados;
+        private GCHandle pinVertices;
+        private IntPtr direccionVertices;
+        private long pinesBytes;
+        // Solo el ultimo array, durante una escena. Sin busquedas/listas ni arrays clavados entre cuadros.
+        private IntPtr FijaVertices(D3D9.Vtx[] datos, out GCHandle temporal)
+        {
+            temporal = new GCHandle();
+            if (inScene)
+            {
+                if (object.ReferenceEquals(verticesFijados, datos)) return direccionVertices;
+                SueltaPinesVertices();
+                long bytes = datos.LongLength * D3D9.VtxSize;
+                if (bytes <= 6 * 1024 * 1024)
+                {
+                    pinVertices = GCHandle.Alloc(datos, GCHandleType.Pinned);
+                    direccionVertices = pinVertices.AddrOfPinnedObject();
+                    verticesFijados = datos; pinesBytes = bytes; return direccionVertices;
+                }
+            }
+            temporal = GCHandle.Alloc(datos, GCHandleType.Pinned);
+            return temporal.AddrOfPinnedObject();
+        }
+        private void SueltaPinesVertices()
+        {
+            if (pinVertices.IsAllocated) pinVertices.Free();
+            verticesFijados = null; direccionVertices = IntPtr.Zero;
+            pinesBytes = 0;
+        }
         // Anillo dinamico acotado. NOOVERWRITE nunca pisa vertices aun usados por la GPU.
         private IntPtr verticesGpu;
         private int verticesCap, verticesPos;
@@ -202,6 +231,7 @@ namespace Rocola
             if (inScene) { lost = true; return false; }
             try
             {
+                SueltaPinesVertices();
                 LiberaVertices();
                 if (reset(dev, ref pp) < 0)
                 {
@@ -376,6 +406,7 @@ namespace Rocola
         // Inicia el cuadro (maneja perdida de dispositivo). Devuelve true si se puede dibujar.
         public bool BeginFrame()
         {
+            if (!inScene) SueltaPinesVertices(); // tambien un cuadro anterior abandonado por perdida
             if (dev == IntPtr.Zero) return false;
             try
             {
@@ -416,7 +447,7 @@ namespace Rocola
 
         public bool EndFrame()
         {
-            if (dev == IntPtr.Zero || !inScene) return false;
+            if (dev == IntPtr.Zero || !inScene) { SueltaPinesVertices(); return false; }
             inScene = false;
             try
             {
@@ -427,6 +458,7 @@ namespace Rocola
                 return true;
             }
             catch { lost = true; return false; }
+            finally { SueltaPinesVertices(); }
         }
 
         private void TssDiffuse()   // usa el color del vertice (sin textura)
@@ -616,7 +648,8 @@ namespace Rocola
         private void Draw(D3D9.Vtx[] verts, int tris)
         {
             if (dev == IntPtr.Zero || lost || verts == null || tris <= 0 || tris > verts.Length / 3) return;
-            GCHandle gh = GCHandle.Alloc(verts, GCHandleType.Pinned);
+            GCHandle gh;
+            IntPtr datos = FijaVertices(verts, out gh);
             bool prueba = false, usaBuffer = false;
             long inicio = 0;
             try
@@ -628,9 +661,9 @@ namespace Rocola
                     prueba = verticesModo == 0 && tris == verticesPruebaTris;
                     usaBuffer = verticesModo == 2 || (prueba && (verticesPruebas & 1) != 0);
                     if (prueba) inicio = System.Diagnostics.Stopwatch.GetTimestamp();
-                    if (usaBuffer && DibujaVertices(tris, gh.AddrOfPinnedObject())) return;
+                    if (usaBuffer && DibujaVertices(tris, datos)) return;
                 }
-                if (drawUp(dev, D3D9.PT_TRIANGLELIST, (uint)tris, gh.AddrOfPinnedObject(), D3D9.VtxSize) < 0)
+                if (drawUp(dev, D3D9.PT_TRIANGLELIST, (uint)tris, datos, D3D9.VtxSize) < 0)
                     EstadoFallido();
             }
             catch { EstadoFallido(); }
@@ -645,7 +678,7 @@ namespace Rocola
                     { verticesModo = verticesVbTicks < verticesUpTicks * .95 ? 2 : 1;
                       if (verticesModo == 1) LiberaVertices(); }
                 }
-                gh.Free();
+                if (gh.IsAllocated) gh.Free();
             }
         }
         private bool DibujaVertices(int tris, IntPtr datos)
@@ -703,6 +736,7 @@ namespace Rocola
 
         public void Dispose()
         {
+            SueltaPinesVertices();
             LiberaVertices();
             lost = true;
             resetPending = false;
