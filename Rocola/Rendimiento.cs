@@ -196,6 +196,7 @@ namespace Rocola
         {
             if (progress != null) progress.Neon = progresoNeon;
 #if ROCOLA_GPU
+            AplicaPerfilCargaCaratulas();
             if (albumView != null) albumView.PortadasLod = caratulasLod;
             // Este va ANTES del corte de abajo: la pared de discos existe aunque el panel de la tarjeta no,
             // y es la pared la que decide como hornea sus casillas.

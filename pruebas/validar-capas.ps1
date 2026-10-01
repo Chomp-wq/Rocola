@@ -45,6 +45,10 @@ foreach ($test in @('capascolor', 'cristalcola', 'cubofila', 'respuesta', 'efect
     elseif ($test -eq 'caratulasadaptativas' -and $SinHal) { & $testExe $exe --sin-hal }
     else { & $testExe $exe }
     if ($LASTEXITCODE -ne 0) { throw "Fallo: $test" }
+    if ($test -eq 'caratulasadaptativas') {
+        & $testExe (Join-Path $OutputDirectory 'Rocola-cpu.exe') --sin-hal
+        if ($LASTEXITCODE -ne 0) { throw "Fallo: perfiles comunes de caratulas (CPU)" }
+    }
 }
 } finally { Pop-Location }
 Write-Output "PASS: compilacion GPU/CPU y treinta y dos baterias. HAL LOD omitido explicitamente: $SinHal. No se reemplazo ningun ejecutable de produccion. Salida: $OutputDirectory"

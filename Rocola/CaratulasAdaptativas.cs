@@ -12,8 +12,63 @@ namespace Rocola
 {
     public partial class Form1
     {
-        // Solo cambia la apariencia provisional. El regulador no tiene interruptor.
+        // El LOD es visual. Los perfiles pedidos por el usuario ajustan la prioridad,
+        // nunca desactivan las protecciones ni reducen la calidad final.
         private bool caratulasLod = true;
+        private int caratulasCarga; // 0 automatico, 1 fluidez, 2 equilibrado, 3 carga rapida
+
+        internal static int PerfilCargaCaratulas(string text)
+        {
+            int n;
+            return int.TryParse(text, out n) && n >= 0 && n <= 3 ? n : 0;
+        }
+
+        private void AplicaPerfilCargaCaratulas()
+        {
+#if ROCOLA_GPU
+            if (coverGovernor != null) coverGovernor.SetProfile(caratulasCarga);
+#endif
+        }
+
+        private Tarjeta TarjetaCargaCaratulas(Font fNom, Font fDes, Color cTexto, Color cTenue)
+        {
+            Tarjeta card = new Tarjeta(); card.Size = new Size(456, 412);
+            card.Titulo = "CARGA DE CARATULAS"; card.Acento = Color.FromArgb(150, 190, 255);
+            string[] names = { "Automático", "Fluidez", "Equilibrado", "Carga rápida" };
+            string[] descriptions = {
+                "Se adapta al margen del equipo. Recomendado para empezar.",
+                "Menos trabajo simultáneo: prioriza la respuesta de la pantalla.",
+                "Un punto intermedio entre suavidad y velocidad de carga.",
+                "Más trabajo si hay margen; retrocede si detecta saturación."
+            };
+            BotonPlano[] buttons = new BotonPlano[4];
+            Action paint = delegate {
+                for (int j = 0; j < buttons.Length; j++) {
+                    bool selected = j == caratulasCarga;
+                    buttons[j].Relleno = selected ? Color.FromArgb(28, 62, 104) : Color.FromArgb(28, 34, 62);
+                    buttons[j].Borde = selected ? card.Acento : Color.FromArgb(60, 72, 118);
+                    buttons[j].ForeColor = selected ? cTexto : cTenue;
+                    buttons[j].Invalidate();
+                }
+            };
+            for (int i = 0; i < buttons.Length; i++) {
+                int k = i, y = 44 + i * 66;
+                buttons[i] = new BotonPlano(); buttons[i].SetBounds(16, y, 424, 30);
+                buttons[i].Font = fNom; buttons[i].Text = names[i]; buttons[i].AccessibleName = "Carga de carátulas: " + names[i];
+                buttons[i].Click += delegate { caratulasCarga = k; paint(); AplicaPerfilCargaCaratulas(); f3CambioGraf = true; };
+                Label description = new Label(); description.SetBounds(16, y + 34, 424, 26);
+                description.Font = fDes; description.ForeColor = cTenue; description.BackColor = Color.Transparent;
+                description.Text = descriptions[i]; card.Controls.Add(buttons[i]); card.Controls.Add(description);
+            }
+            Label note = new Label(); note.SetBounds(16, 312, 424, 84);
+            note.Font = fDes; note.ForeColor = cTenue; note.BackColor = Color.Transparent;
+            note.Text = "Solo GPU. La imagen final tiene la misma calidad en todos.\n"
+                + "Los HDD y equipos de dos hilos conservan un lector.\n"
+                + "Compara los perfiles en Imagen > Medir, con la misma\n"
+                + "resolución y efectos. Se guarda al cerrar Ctrl+F3.";
+            card.Controls.Add(note); paint();
+            return card;
+        }
     }
 #if ROCOLA_GPU
     // Un presupuesto para composicion y subidas, aprendiendo sin clasificar un PC para siempre.
@@ -21,6 +76,22 @@ namespace Rocola
     internal sealed class CoverGovernor
     {
         private readonly int processors;
+        private volatile int profile;
+        internal int ProfileReaders {
+            get {
+                int max = CargaTrabajo.Lectores(processors), p = profile;
+                if (p == 1) max = Math.Min(max, 2);
+                else if (p == 2) max = Math.Max(1, (max + 1) / 2);
+                return Math.Max(1, Math.Min(ReaderLimit, max));
+            }
+        }
+        internal void SetProfile(int value) { profile = value >= 0 && value <= 3 ? value : 0; }
+        private double ProfileBudget(double automatic)
+        {
+            if (profile == 0) return automatic; // predeterminado: regulador original intacto
+            double factor = profile == 1 ? .55 : profile == 2 ? .85 : profile == 3 ? 1.25 : 1;
+            return Math.Max(.35, Math.Min(12, Math.Min(automatic * factor, Math.Max(.35, (28 - baseMs) * .65))));
+        }
         private double baseMs = 1, allowance, spent, frameCover, previousAccepted;
         private int healthy, pressure, operations, lateStreak;
         private double frameTime, lastBackground = -1000, lastFrameCover;
@@ -49,7 +120,7 @@ namespace Rocola
         {
             spent = frameCover = 0; operations = 0;
             DeferBake = PendingUpload; frameTime = now; backgroundCandidate = false;
-            allowance = Budget(baseMs, fps);
+            allowance = ProfileBudget(Budget(baseMs, fps));
             if (pressure > 0) allowance = Math.Min(allowance, .5);
         }
         internal bool BeginBackground(double now)
@@ -57,7 +128,8 @@ namespace Rocola
             if (PendingUpload || pressure > 0) return false;
             spent = frameCover = 0; operations = 0; DeferBake = false;
             frameTime = now; backgroundCandidate = false;
-            allowance = Math.Max(.35, Math.Min(processors <= 2 ? 3 : 12, (28 - baseMs - lastFrameCover) * .45));
+            allowance = Math.Min(processors <= 2 ? 3 : 12, ProfileBudget(Math.Max(.35,
+                Math.Min(processors <= 2 ? 3 : 12, (28 - baseMs - lastFrameCover) * .45))));
             return true;
         }
         internal bool CanStart(long ticks, bool visible, bool preview)
@@ -67,7 +139,10 @@ namespace Rocola
             if (spent + cost <= limit) return true;
             // Una celda puede costar mas que el intervalo de 200 FPS. No dejar la precarga
             // bloqueada para siempre: admitir una pieza ocasional con margen bajo 30 FPS.
-            if (!visible && spent < .75 && pressure == 0 && frameTime - lastBackground >= (processors <= 2 ? 40 : 16) && baseMs + spent + cost < 28)
+            double cadence = profile == 1 ? 2 : profile == 2 ? 1.25 : profile == 3 ? .75 : 1;
+            if (!visible && spent < .75 && pressure == 0
+                && frameTime - lastBackground >= Math.Max(processors <= 2 ? 40 : 10, (processors <= 2 ? 40 : 16) * cadence)
+                && baseMs + spent + cost < 28)
             { backgroundCandidate = true; return true; }
             // Una operacion indivisible visible progresa; bajo presion solo una cada cuatro cuadros.
             return visible && operations == 0 && (pressure == 0 || (pressure & 3) == 0);
@@ -94,7 +169,7 @@ namespace Rocola
             else
             {
                 if (pressure > 0) pressure--;
-                if (++healthy >= 90)
+                if (++healthy >= (profile == 3 ? 45 : 90))
                 { ReaderLimit = Math.Min(CargaTrabajo.Lectores(processors), ReaderLimit + 1); healthy = 0; }
             }
             ReaderPause = pressure > 0 ? (processors <= 2 ? 16 : 8) : 0;
@@ -299,7 +374,7 @@ namespace Rocola
             }
         }
         private int AdaptiveCoverReaders()
-        { return gpuEnabled ? Math.Max(1, Math.Min(coverCarriles, coverGovernor.ReaderLimit)) : coverCarriles; }
+        { return gpuEnabled ? Math.Max(1, Math.Min(coverCarriles, coverGovernor.ProfileReaders)) : coverCarriles; }
         private bool NeedsGpuPreview(Album a)
         {
             if (!gpuEnabled || !caratulasLod) return false;

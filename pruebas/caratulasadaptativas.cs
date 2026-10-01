@@ -15,6 +15,75 @@ class CaratulasAdaptativas
  static object New(Type t,params object[] a){return a.Length==0 ? Activator.CreateInstance(t,true) : Activator.CreateInstance(t,B,null,a,null);}
  static void Check(bool v,string s){if(!v)throw new Exception(s);checks++;Console.WriteLine("OK "+s);}
  static string Key(int n){return n.ToString("x16")+"_256.jpg";}
+ static Control Find(Control p,string text){foreach(Control c in p.Controls){if(c.Text==text)return c;Control r=Find(c,text);if(r!=null)return r;}return null;}
+ static void Profiles(string root)
+ {
+  Check((int)Call(form,null,"PerfilCargaCaratulas","3")==3 && (int)Call(form,null,"PerfilCargaCaratulas"," 2 ")==2,"perfiles validos se leen sin depender del idioma");
+  foreach(string value in new string[]{null,"",-1+"","4","999999999999999","rapido"})
+   Check((int)Call(form,null,"PerfilCargaCaratulas",value)==0,"perfil invalido vuelve a automatico: "+value);
+  object owner=Codigo.FormSinEncender(form);Set(owner,"carpetaDatos",root);
+  if(governor!=null)Set(owner,"coverGovernor",New(governor,16));
+  using(Font nom=new Font("Segoe UI",10f,FontStyle.Bold))using(Font des=new Font("Segoe UI",8.5f))
+  using(Panel page=(Panel)Call(form,owner,"PaginaPantalla",nom,des,nom,Color.White,Color.Gray,Color.DimGray))
+  {
+   string[] names={"Automático","Fluidez","Equilibrado","Carga rápida"};
+   Control card=Find(page,names[0]).Parent, sheet=card.Parent;
+   Check(card.Bottom<=sheet.Height && card.Right<=sheet.Width,"tarjeta de carga cabe en la segunda hoja");
+   bool layout=true;foreach(Control c in card.Controls){layout &= c.Bottom<=card.Height && c.Right<=card.Width;foreach(Control d in card.Controls)if(c!=d && c.Bounds.IntersectsWith(d.Bounds))layout=false;}
+   Check(layout,"cuatro perfiles y explicaciones no se pisan ni se recortan");
+   bool space=true;foreach(Control c in sheet.Controls)if(c!=card && c.Bounds.IntersectsWith(card.Bounds))space=false;
+   Check(space,"tarjeta no tapa los controles de reproduccion");
+   Call(typeof(Control),Find(page,"Reproducción y carátulas"),"OnClick",EventArgs.Empty);
+   Check(sheet.Visible,"perfiles se pueden abrir desde su pestaña");
+   using(Bitmap screenshot=new Bitmap(card.Width,card.Height))
+   {
+    // Raiz independiente: DrawToBitmap de .NET incluye el offset del panel
+    // superior en algunos controles nativos si se captura una tarjeta anidada.
+    Point location=card.Location;sheet.Controls.Remove(card);card.Location=Point.Empty;
+    try{card.DrawToBitmap(screenshot,new Rectangle(Point.Empty,card.Size));}
+    finally{sheet.Controls.Add(card);card.Location=location;}
+    screenshot.Save(Path.Combine(root,"perfiles.png"),System.Drawing.Imaging.ImageFormat.Png);
+    using(Graphics graphics=Graphics.FromImage(screenshot))
+    {
+     bool textFits=true;foreach(Control c in card.Controls)if(c is Label && graphics.MeasureString(c.Text,c.Font,c.Width).Height>c.Height)textFits=false;
+     Check(textFits,"explicaciones completas caben con las fuentes reales");
+    }
+   }
+   for(int i=0;i<4;i++)
+   {
+    Call(typeof(Control),Find(page,names[i]),"OnClick",EventArgs.Empty);
+    Check((int)Get(owner,"caratulasCarga")==i && (bool)Get(owner,"f3CambioGraf"),"boton elige perfil "+names[i]);
+    if(governor!=null)Check((int)Get(Get(owner,"coverGovernor"),"profile")==i,"perfil se aplica sin reiniciar "+names[i]);
+    Call(form,owner,"SaveConfigPrefs");Codigo.EsperaGuardado(form,owner);
+    object read=Codigo.FormSinEncender(form);Set(read,"carpetaDatos",root);Call(form,read,"LoadConfigPrefs");
+    Check((int)Get(read,"caratulasCarga")==i && File.ReadAllText(Path.Combine(root,"rocola_config.txt")).Contains("caratulas_carga="+i),"perfil persiste "+names[i]);
+   }
+   // El aviso toast requiere la ventana completa: comprobar el estado antes de esa llamada.
+   try {Call(typeof(Control),Find(page,"Pantalla como de fabrica"),"OnClick",EventArgs.Empty);}catch(NullReferenceException){}
+   Check((int)Get(owner,"caratulasCarga")==0 && Find(page,names[0])!=null && !Object.ReferenceEquals(card,Find(page,names[0]).Parent),"fabrica restaura automatico y renueva la seleccion visible");
+  }
+  if(governor==null)return;
+  double[] budgets=new double[4];
+  for(int p=0;p<4;p++)
+  {
+   object g=New(governor,16);Call(governor,g,"SetProfile",p);Call(governor,g,"Begin",1d,200);budgets[p]=(double)Get(g,"allowance");
+   for(int i=0;i<900;i++){Call(governor,g,"Begin",10d*i,200);Call(governor,g,"Observe",10d*i+1,1d,200);}
+   int readers=(int)governor.GetProperty("ProfileReaders",B).GetValue(g,null);
+   Check(readers==(p==1?2:p==2?4:8),"lectores seguros segun perfil y hardware "+p);
+   Call(governor,g,"Spend",(long)(Stopwatch.Frequency*.002));Call(governor,g,"Observe",9010d,40d,200);
+   Call(governor,g,"Begin",9020d,200);
+   Check((double)Get(g,"allowance")<=.5 && (int)Get(g,"ReaderPause")>0,"perfil conserva proteccion bajo presion "+p);
+   object weak=New(governor,2);Call(governor,weak,"SetProfile",p);Set(weak,"ReaderLimit",8);
+   Call(governor,weak,"BeginBackground",1d);
+   Check((int)governor.GetProperty("ProfileReaders",B).GetValue(weak,null)==1 && (double)Get(weak,"allowance")<=3,"dos hilos conservan limites en perfil "+p);
+  }
+  Check(budgets[1]<budgets[2] && budgets[2]<budgets[0] && budgets[0]<budgets[3],"perfiles cambian presupuesto, no solo nombre");
+  object keep=New(governor,16);Call(governor,keep,"SetProfile",3);Call(governor,keep,"SetProfile",-1);Call(governor,keep,"Begin",1d,200);
+  Check((double)Get(keep,"allowance")== (double)Call(governor,null,"Budget",1d,200),"automatico mantiene exactamente el presupuesto anterior");
+  Set(keep,"baseMs",7d);Set(keep,"ReaderLimit",5);Set(keep,"pressure",6);
+  Call(governor,keep,"SetProfile",1);
+  Check((double)Get(keep,"baseMs")==7d && (int)Get(keep,"ReaderLimit")==5 && (int)Get(keep,"pressure")==6,"cambiar perfil conserva aprendizaje y presion");
+ }
  static void Regulator()
  {
   Check((double)Call(governor,null,"Budget",1d,200)>.35,"equipo rapido dispone de margen a 200 FPS");
@@ -134,7 +203,9 @@ class CaratulasAdaptativas
    for(int i=1;i<args.Length;i++){if(args[i]=="--dos-hilos")Process.GetCurrentProcess().ProcessorAffinity=new IntPtr(3);else if(args[i]=="--sin-hal")omitHal=true;else throw new ArgumentException("Opcion de prueba desconocida: "+args[i]);}
    Assembly a=Assembly.LoadFrom(args[0]);governor=a.GetType("Rocola.CoverGovernor");store=a.GetType("Rocola.GpuPreviewStore");panel=a.GetType("Rocola.GpuPanel");cell=a.GetType("Rocola.GpuGridCell");form=a.GetType("Rocola.Form1");view=form.GetNestedType("AlbumView",B);album=form.GetNestedType("Album",B);
    string root=Path.Combine(Path.GetTempPath(),"rocola-lod-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(root);
-   Regulator();Cache(root);Grid();Hal();Console.WriteLine("PASS "+checks+" comprobaciones; no equivale a XP/HDD/CPU antiguos ni FPS de biblioteca.");return 0;
+   Profiles(root);Console.WriteLine("Artefactos de prueba: "+root);
+   if(governor!=null){Regulator();Cache(root);Grid();Hal();}
+   Console.WriteLine("PASS "+checks+" comprobaciones; no equivale a XP/HDD/CPU antiguos ni FPS de biblioteca.");return 0;
   }
   catch(Exception e){Console.WriteLine("FALLO "+e);return 1;}
  }

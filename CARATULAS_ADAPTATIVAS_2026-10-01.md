@@ -7,18 +7,53 @@ resolucion final de las caratulas ni baja los efectos elegidos por el usuario.
 No limita un equipo potente a 30 FPS: ese valor es una referencia de proteccion,
 no un nuevo tope de dibujo ni una garantia de que nunca habra un tiron.
 
-Ctrl+F3 -> Pantalla -> Efectos contiene la unica opcion nueva:
+Ctrl+F3 -> Imagen -> Efectos contiene la opcion visual:
 **Miniaturas provisionales durante la carga**. Se guarda como `caratulas_lod`;
 viene encendida y solo cambia el aspecto mientras falta una imagen final.
-El ajuste automatico de lecturas, composicion y subidas NO tiene interruptor.
+El regulador de lecturas, composicion y subidas NO se puede desactivar.
+Por peticion posterior del usuario, ahora se puede elegir su prioridad en
+**Ctrl+F3 -> Pantalla -> Reproduccion y caratulas -> Carga de caratulas**:
 
-Ctrl+F3 -> Medir ahora incorpora un recorrido adicional con efectos altos y
+- **Automatico** (predeterminado): conserva exactamente los presupuestos del
+  regulador anterior y aprende cuanto margen tiene el equipo.
+- **Fluidez**: emplea el 55% del presupuesto automatico y, en SSD, limita los
+  lectores simultaneos a dos como maximo. Espacia las operaciones indivisibles
+  de precarga: puede tardar mas en completar una pagina.
+- **Equilibrado**: emplea el 85% del presupuesto y hasta la mitad redondeada
+  hacia arriba de los lectores permitidos por el hardware.
+- **Carga rapida**: admite hasta el 125% del presupuesto cuando hay margen, sin
+  superar 12 ms ni la reserva de seguridad. Libera lectores saludables cada
+  45 cuadros en vez de 90, sin superar el limite del hardware.
+
+Los porcentajes se acotan siempre por los presupuestos minimos y maximos.
+En todos los perfiles un HDD conserva un lector por unidad y un equipo de
+dos hilos conserva un lector y como maximo 3 ms de composicion de fondo.
+La deteccion de saturacion reduce presupuesto y lectores incluso en Carga
+rapida. Ningun perfil cambia el tope de FPS, la calidad final, la paleta,
+las miniaturas provisionales, el tamano de las caches ni el audio.
+El render CPU permanece intacto; solo guarda esta preferencia para GPU.
+
+El ajuste se aplica sin reiniciar ni vaciar las caches, y se guarda al cerrar
+Ctrl+F3 como `caratulas_carga=0..3`. Un valor desconocido vuelve a Automatico.
+Las operaciones ya iniciadas terminan normalmente; el nuevo perfil gobierna
+las siguientes, sin cancelar lecturas ni recalcular el fondo.
+Pantalla como de fabrica restaura Automatico y actualiza la seleccion visible.
+Esta es una excepcion solicitada a la regla de optimizaciones automaticas:
+no es un interruptor para desactivarlas.
+
+Ctrl+F3 -> Imagen -> Medir incorpora un recorrido adicional con efectos altos y
 musica si el medidor consigue abrirla. Enseña P95/P99 de intervalos entre
 presentaciones, intervalos mayores de 33 ms y paginas listas/solicitadas.
 La latencia maxima solo corresponde a paginas que llegaron a completarse.
 Las abandonadas al seguir pasando no se disfrazan de cargas de cero ms.
 El recorrido no cambia permanentemente los niveles de efectos ni guarda una
 clasificacion irreversible del PC.
+
+Para comparar perfiles, mantener resolucion y efectos, escoger uno y repetir
+Medir. Comparar P95/P99 y paginas listas, no solo FPS medios. Repetir varias
+veces: una cache caliente y una primera visita al HDD no son equivalentes.
+Carga rapida no garantiza 30 FPS en cualquier equipo; Fluidez tampoco elimina
+un bloqueo externo de Windows o el coste de una operacion indivisible.
 
 ## Que cambia
 
@@ -163,7 +198,7 @@ El runner alternativo `pruebas/todo.sh` incluye ahora la nueva fuente y bateria;
 la parte Direct3D de esa bateria se omite explicitamente fuera de Windows.
 No se afirma una ejecucion de ese runner con Mono/Linux en esta pasada.
 
-## Instalacion final
+## Instalacion anterior al selector de perfiles
 
 Se actualizaron `D:\Release1` y `D:\ReleaseHD` cuando ninguno de sus ejecutables
 estaba abierto; no se cerro el programa para forzar la actualizacion. Solo se
@@ -185,4 +220,38 @@ tambien la compilacion intermedia en su carpeta `respaldo`, dentro de
 `codex-caratulas-integrada-20261001-8f8e298f519f455398b7559ad5679340`.
 Los cambios posteriores de documentacion/pruebas no alteran esos
 ejecutables. No se relanzo la aplicacion con el dispositivo HAL no disponible.
+
+## Verificacion e instalacion del selector de perfiles
+
+Las dos ramas compilan en Release (.NET 4.8 HD / .NET 3.5 Modest). Cada rama
+paso las 32 baterias de `validar-capas.ps1 -SinHal`, incluyendo configuracion,
+distribucion de Ctrl+F3 y el regulador. La bateria ampliada verifica las cuatro
+selecciones reales, guardado/lectura, reset, presupuesto distinto, reserva bajo
+saturacion y limites de dos hilos. Se ejecuto tambien sobre el perfil CPU
+(solo preferencias comunes) y Modest con afinidad a dos hilos.
+Se inspecciono la imagen de la tarjeta y se midieron sus textos con las fuentes
+de la ventana. El comparador CPU confirma 14 metodos con instrucciones,
+operandos, locales y excepciones identicos a los ejecutables previos.
+
+HAL estuvo disponible en una comprobacion nativa del LOD en ambas ramas:
+subida real, reutilizacion de textura, dibujo, fundido y liberacion pasaron.
+En otra ejecucion volvio a no estar disponible; las repeticiones finales omiten
+esa parte explicitamente. No se midio el rendimiento real de cada perfil con
+la biblioteca y musica, ni se probo XP/HDD/equipos antiguos.
+
+La prueba adicional `pestanas.cs` confirma que las cinco paginas caben y la
+tira de pestañas no se solapa, pero conserva un fallo anterior por exigir que
+no exista el campo heredado `viniloDisco` (CPU congelado). Se reprodujo en el
+ejecutable anterior; no se retiro ese campo ni se cambio el render CPU.
+
+Se instalaron solo Rocola.exe, Rocola.pdb y NAudio.dll en D:\ReleaseHD y
+D:\Release1, con los programas cerrados y copias verificadas. Datos, ajustes,
+modelos, musica, creditos y cola permanecen intactos. Los anteriores estan en
+`respaldo/codex-perfiles-caratulas-20261001-f7b5c2ed9b5b4e1bb2f513a898db7e54`
+de cada instalacion.
+
+SHA-256 actuales:
+
+- HD: `2770E6747CCA95ADE18FC6FEAB5EFD597B46058A0BEBA25565724F20A9EFB548`.
+- Modest: `790728A808AE120C5F8C51610C9FCF9EC31D9508C2DB5E8BA0EEDB86B75090B3`.
 

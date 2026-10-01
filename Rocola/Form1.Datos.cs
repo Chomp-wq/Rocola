@@ -461,6 +461,7 @@ namespace Rocola
                     // Ctrl+F3 -> Pantalla -> El buscador (BuscadorPortadasGpu.cs): tambien solo por tarjeta grafica.
                     else if (s.StartsWith("buscador_portadas=")) buscadorPortadas = s.Substring("buscador_portadas=".Length).Trim() != "0";
                     else if (s.StartsWith("caratulas_lod=")) caratulasLod = s.Substring("caratulas_lod=".Length).Trim() != "0";
+                    else if (s.StartsWith("caratulas_carga=")) caratulasCarga = PerfilCargaCaratulas(s.Substring("caratulas_carga=".Length));
                     else if (s.StartsWith("disco="))   // tipo de disco: auto (medir), ssd o hdd (Ctrl+F3)
                     {
                         string d = s.Substring(6).Trim().ToLowerInvariant();
@@ -583,6 +584,7 @@ namespace Rocola
                 sb.Append("color_genero=").Append(colorGenero ? "1" : "0").Append("\r\n");
                 sb.Append("buscador_portadas=").Append(buscadorPortadas ? "1" : "0").Append("\r\n");
                 sb.Append("caratulas_lod=").Append(caratulasLod ? "1" : "0").Append("\r\n");
+                sb.Append("caratulas_carga=").Append(caratulasCarga).Append("\r\n");
                 sb.Append("disco=").Append(perfilDisco == 1 ? "ssd" : perfilDisco == 2 ? "hdd" : "auto").Append("\r\n");
                 sb.Append("video_gpu=").Append(videoGpuOn ? "1" : "0").Append("\r\n");
                 sb.Append("diagnostico=").Append(diagOn ? "1" : "0").Append("\r\n");
