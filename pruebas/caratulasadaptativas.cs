@@ -8,7 +8,7 @@ using System.Windows.Forms;
 class CaratulasAdaptativas
 {
  const BindingFlags B=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Instance|BindingFlags.Static;
- static Type governor,store,panel,cell,form,view,album; static int checks; static Bitmap preview;
+ static Type governor,store,panel,cell,form,view,album; static int checks; static Bitmap preview; static bool omitHal;
  static object Get(object o,string n){return o.GetType().GetField(n,B).GetValue(o);}
  static void Set(object o,string n,object v){o.GetType().GetField(n,B).SetValue(o,v);}
  static object Call(Type t,object o,string n,params object[] a){try{return t.GetMethod(n,B).Invoke(o,a);}catch(TargetInvocationException e){throw e.InnerException;}}
@@ -107,7 +107,7 @@ class CaratulasAdaptativas
  }
  static void Hal()
  {
-  if(Environment.OSVersion.Platform!=PlatformID.Win32NT){Console.WriteLine("OMITIDA textura HAL: requiere Windows/Direct3D9; las demas comprobaciones siguen activas.");return;}
+  if(omitHal || Environment.OSVersion.Platform!=PlatformID.Win32NT){Console.WriteLine("OMITIDA textura HAL: sin dispositivo solicitado o fuera de Windows; no confirma render GPU.");return;}
   using(Control host=new Control())using(Control p=(Control)New(panel))using(Bitmap bmp=new Bitmap(32,32))
   {
    host.Size=new Size(640,480);p.Size=host.Size;
@@ -131,7 +131,7 @@ class CaratulasAdaptativas
  {
   try
   {
-   if(args.Length>1 && args[1]=="--dos-hilos")Process.GetCurrentProcess().ProcessorAffinity=new IntPtr(3);
+   for(int i=1;i<args.Length;i++){if(args[i]=="--dos-hilos")Process.GetCurrentProcess().ProcessorAffinity=new IntPtr(3);else if(args[i]=="--sin-hal")omitHal=true;else throw new ArgumentException("Opcion de prueba desconocida: "+args[i]);}
    Assembly a=Assembly.LoadFrom(args[0]);governor=a.GetType("Rocola.CoverGovernor");store=a.GetType("Rocola.GpuPreviewStore");panel=a.GetType("Rocola.GpuPanel");cell=a.GetType("Rocola.GpuGridCell");form=a.GetType("Rocola.Form1");view=form.GetNestedType("AlbumView",B);album=form.GetNestedType("Album",B);
    string root=Path.Combine(Path.GetTempPath(),"rocola-lod-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(root);
    Regulator();Cache(root);Grid();Hal();Console.WriteLine("PASS "+checks+" comprobaciones; no equivale a XP/HDD/CPU antiguos ni FPS de biblioteca.");return 0;

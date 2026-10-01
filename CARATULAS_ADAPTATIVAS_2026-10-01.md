@@ -136,12 +136,14 @@ restringir afinidad no simula un procesador antiguo ni la latencia de un HDD.
 ## Integracion con cambios nuevos de GitHub
 
 Antes de publicar se incorporaron los cuatro commits nuevos de HD hasta
-`bede28c`, conservando sus arreglos de audio y de A CONTINUACION. Pasaron de nuevo
-las 32 baterias de HD. El unico conflicto fue la prueba CPU: se conserva la
+`bede28c` y los cuatro correspondientes de Modest hasta `73f6639`, conservando
+sus arreglos de audio y de A CONTINUACION. Pasaron de nuevo las 32 baterias de HD.
+El unico conflicto fue la prueba CPU: se conserva la
 comparacion estricta por instrucciones, operandos, locales y excepciones.
 Tambien se adapto el banco de estilo a los campos de tamaño de WinForms de
 Microsoft, sin cambiar el programa ni relajar sus expectativas: pasaron 42
-comprobaciones de estilo, las de sinpausa, 49 de silencios y 71 de rendercache.
+comprobaciones de estilo por rama, las de sinpausa, 49 de silencios en HD
+(47 en Modest) y 71 de rendercache por rama.
 Miniaturas y carriles tambien pasaron.
 
 En una repeticion posterior, el dispositivo HAL dejo de estar disponible en
@@ -150,6 +152,12 @@ anterior instalado como con el nuevo. La repeticion de atlas/LOD en ese momento
 fallo por falta de dispositivo; no se contabiliza como una comprobacion HAL
 correcta ni como una medicion de rendimiento. Las pruebas HAL anteriores ya
 habian terminado correctamente. No se desbloqueo ni cambio la sesion del usuario.
+La repeticion final de las 32 baterias de Modest tras integrar GitHub paso con
+`-SinHal`: las partes sin dispositivo permanecieron activas y la bateria nueva
+completo 31 comprobaciones logicas, omitiendo explicitamente sus siete checks
+HAL. HD tambien paso esa bateria logica con afinidad a dos hilos. La opcion es
+SOLO del runner de pruebas; sin ella, la comprobacion HAL de Windows sigue
+siendo obligatoria. No confundir esa repeticion con nuevas pruebas de dibujo.
 
 El runner alternativo `pruebas/todo.sh` incluye ahora la nueva fuente y bateria;
 la parte Direct3D de esa bateria se omite explicitamente fuera de Windows.
@@ -169,10 +177,12 @@ instalacion, dentro de:
 SHA-256 de los ejecutables instalados:
 
 - HD: `1BD25DD470DF2BDC1AF1F12AF746CC9E2C63DDD11E3BCBAEFE817D11B17F2F0F`.
-- Modest: `09125D7D6675BD0A2C61D7A8F4DE390B5AC1FB5D9D1CCA2254724C144563E81F`.
+- Modest: `337510A90DFB4F3E3562F33A45F49A9C1766AA543714069C215A6111E188BFDA`.
 
 La compilacion HD incluye los cambios de produccion de `8e9ab5d`; Modest, los de
-`ec4cc97`. Los cambios posteriores de documentacion/pruebas no alteran esos
+`cf36fb7`. La actualizacion adicional de Modest tras integrar GitHub conserva
+tambien la compilacion intermedia en su carpeta `respaldo`, dentro de
+`codex-caratulas-integrada-20261001-8f8e298f519f455398b7559ad5679340`.
+Los cambios posteriores de documentacion/pruebas no alteran esos
 ejecutables. No se relanzo la aplicacion con el dispositivo HAL no disponible.
-
 
