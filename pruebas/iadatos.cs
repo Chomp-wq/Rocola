@@ -174,6 +174,13 @@ class IaDatos
         bool habiaIndice = indice != null && File.Exists(indice);
         anterioresPrevios = new HashSet<string>(indice != null ? Anteriores(indice) : new string[0]);
         try { if (habiaIndice) File.Move(indice, indiceBak); } catch { }
+        // Y la lista de generos de lo cosechado (rocola_ia_datos.generos.tsv), que vive al lado desde el 29/09:
+        // igual. Sin esto la prueba la dejaba en la carpeta, o le anadia renglones a la del dueno.
+        string generos = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(datos)), "rocola_ia_datos.generos.tsv");
+        string generosBak = generos + ".guardado_por_la_prueba";
+        bool habiaGeneros = File.Exists(generos);
+        anterioresPrevios.UnionWith(Anteriores(generos));
+        try { if (habiaGeneros) File.Move(generos, generosBak); } catch { }
         long indiceOn = 0, indiceOff = 0;
 
         float rOn = 0, dOn = 0, rOff = 0, dOff = 0; float[] eOn = null, eOff = null;
@@ -210,6 +217,8 @@ class IaDatos
             try { if (habiaDatos) File.Move(datosBak, datos); } catch { }
             if (indice != null) BorraIndice(indice);
             try { if (habiaIndice) File.Move(indiceBak, indice); } catch { }
+            BorraIndice(generos);
+            try { if (habiaGeneros) File.Move(generosBak, generos); } catch { }
         }
 
         Check(usada != null, "hay al menos una cancion completa de la que se puede sacar material");

@@ -7,7 +7,9 @@
 //        termina en puntos suspensivos). Se queda con casi todo el alto del renglon de lo que sigue;
 //      * el ARTISTA, con su pastilla del genero y el letrero MEJORADA, baja casi ese renglon, lo que deja la caja del
 //        reloj (y el brillo del letrero va con el);
-//      * LO QUE SIGUE tiene una tarjeta lateral; en pantallas estrechas conserva su renglon bajo el artista.
+//      * LO QUE SIGUE tiene una tarjeta lateral ("A CONTINUACION"): alta, del titulo a la barra, si el renglon del artista
+//        le deja sitio; si no (el letrero MEJORADA, o las capsulas anchas de "Inserta una moneda"), baja, a la altura del
+//        titulo, con el artista pasando por debajo. Solo en pantallas estrechas conserva su renglon bajo el artista.
 //        El titulo reserva ese espacio y los textos largos terminan en puntos suspensivos.
 //    La franja mide lo mismo y nada mas se mueve: la pared de discos, las capsulas, la barra y el reloj siguen donde
 //    estaban. Las etiquetas de verdad no se tocan: si alguna vez las pinta el procesador, salen como siempre.
@@ -127,13 +129,30 @@ namespace Rocola
             if (next.StartsWith("Sigue:", StringComparison.OrdinalIgnoreCase)) next = next.Substring(6).Trim();
             return next == "-" ? "" : next;
         }
-        private Rectangle CajaSiguienteCompacto()
+        // LA TARJETA DE LO QUE SIGUE, entre lo que suena y las capsulas: acaba 20 px antes de la de la cola y empieza en el
+        // 43 % del ancho, o algo mas a la izquierda si asi no llega a sus 180 px (sin quitarle al titulo sus 240 px). Dos formas:
+        //  - ALTA, del titulo a la barra: cuando el renglon del artista (con su pastilla del genero y el letrero MEJORADA)
+        //    acaba 28 px antes. Es la de siempre, en el mismo sitio.
+        //  - BAJA, a la altura del titulo: el renglon del artista, que baja un renglon con la letra de lejos, pasa por debajo.
+        //    Hasta el 1-10-2026, con MEJORADA o con las capsulas anchas ("Inserta una moneda") a 1024 no cabia la alta y lo que
+        //    sigue volvia a su renglon de reserva, "SIGUE . ...", como en las pantallas estrechas.
+        // Si ni asi caben 180 px (pantallas estrechas), lo que sigue conserva su renglon bajo el artista.
+        internal const int TarjetaSiguienteMin = 180;
+        private Rectangle CajaSiguienteCompacto() { bool alta; return CajaSiguienteForma(out alta); }
+        private Rectangle CajaSiguienteForma(out bool alta)
         {
+            alta = false;
             if (lblNow == null || lblNowTop == null || progress == null || pastCola == null || TextoSiguiente().Length == 0) return Rectangle.Empty;
-            int left = Math.Max(FinRenglonArtista() + 28, Math.Max(ClientSize.Width * 43 / 100, lblNowTop.Left + 240));
             int right = pastCola.Left - 20;
-            Rectangle box = new Rectangle(left, lblNowTop.Top, Math.Max(0, right - left), Math.Max(0, progress.Top - lblNowTop.Top - 4));
-            return box.Width >= 180 && box.Height >= 28 ? box : Rectangle.Empty;
+            int left = Math.Max(lblNowTop.Left + 240, Math.Min(ClientSize.Width * 43 / 100, right - TarjetaSiguienteMin));
+            int top = lblNowTop.Top;
+            int leftAlta = Math.Max(left, FinRenglonArtista() + 28);
+            Rectangle box = new Rectangle(leftAlta, top, Math.Max(0, right - leftAlta), Math.Max(0, progress.Top - top - 4));
+            if (box.Width >= TarjetaSiguienteMin && box.Height >= 28) { alta = true; return box; }
+            // La baja llega hasta el renglon del artista ya bajado (sin la letra de lejos no baja, y no suele caber).
+            int baja = LetraLejosActiva() ? BajaLejos(lblNow.Bounds, lblNext.Height, lblTime.Bounds) : 0;
+            box = new Rectangle(left, top, Math.Max(0, right - left), Math.Max(0, lblNow.Top + baja - 4 - top));
+            return box.Width >= TarjetaSiguienteMin && box.Height >= 28 ? box : Rectangle.Empty;
         }
         private void PintaTituloCompacto(Graphics g, bool grande)
         {
@@ -181,6 +200,9 @@ namespace Rocola
             using (SolidBrush b = new SolidBrush(c))
             {
                 sf.FormatFlags |= StringFormatFlags.NoWrap; sf.Trimming = StringTrimming.None;
+                // Sin LineLimit (viene en GenericTypographic): un renglon un pelo mas alto que su caja se descartaba ENTERO.
+                // Le pasaba al titulo sin tarjeta al lado: su letra crece justo hasta llenar el renglon.
+                sf.FormatFlags &= ~StringFormatFlags.LineLimit;
                 sf.Alignment = al; sf.LineAlignment = StringAlignment.Center;
                 if (!TextoConCinta(g, texto, f, c, r, sf))
                     g.DrawString(RecortaLejos(g, texto, f, r.Width - 1f), f, b, r, sf);

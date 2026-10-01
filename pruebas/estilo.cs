@@ -266,15 +266,130 @@ class Estilo
             Check(Cuenta(b, r, Color.FromArgb(214,224,246), 10) > 60,
                   "en pantalla estrecha siguiente sigue visible, no se oculta");
         }
+        using (Bitmap b = PintaFranja(estrecho))
+        {
+            Label t = (Label)Get(estrecho, "lblNowTop");
+            int tinta = Cuenta(b, new Rectangle(t.Left, t.Top - 6, t.Width, t.Height + 12), Blanco, 30);
+            Info("el titulo sin tarjeta al lado: " + tinta + " pixeles de tinta");
+            Check(tinta > 200, "y el titulo se pinta tambien sin tarjeta al lado (su letra llena justo el renglon: GDI+ lo quitaba entero)");
+        }
         ((Label)Get(estrecho, "lblNext")).Text = "Sigue: -";
         Check((string)Run(estrecho, "TextoSiguiente") == "" &&
               ((Rectangle)Run(estrecho, "CajaSiguienteCompacto")).IsEmpty,
               "sin canciones en cola no aparece una tarjeta vacia");
+        TarjetaBaja();
         // El letrero MEJORADA y su brillo, igual de mas abajo; apagada, donde siempre.
         Label mej = (Label)Get(f1, "lblMejorada");
         Rectangle rm1 = (Rectangle)Run(f1, "RectMejorada"), rm0 = (Rectangle)Run(f0, "RectMejorada");
         Check(rm1.Y == mej.Top + baja && rm0 == ((Label)Get(f0, "lblMejorada")).Bounds && Codigo.Llama(M(form, "FillUiGlows"), "RectMejorada"),
               "el letrero MEJORADA baja con el artista, y su brillo va donde el");
+    }
+
+    // LA TARJETA DE LO QUE SIGUE CUANDO EL RENGLON DEL ARTISTA ES LARGO O LAS CAPSULAS CRECEN (1-10-2026). A 1024 de ancho,
+    // con el letrero MEJORADA o sin creditos ("Inserta una moneda"), la tarjeta alta no cabia y lo que sigue volvia a su
+    // renglon de reserva. Ahora: alta donde ya cabia (en el mismo sitio), baja a la altura del titulo con el artista por
+    // debajo, y algo mas a la izquierda si las capsulas crecen.
+    static object ConRenglon(string artista, bool genero, bool mejorada, int colaLeft)
+    {
+        object f = Franja("Enjoy the Silence", true, "Sigue:  Depeche Mode - Everything Counts");
+        Label art = (Label)Get(f, "lblNow"), mm = (Label)Get(f, "lblMejorada");
+        art.Text = artista;
+        int x = art.Left + Math.Min(art.Width, TextRenderer.MeasureText(art.Text, art.Font).Width) + 12;
+        if (genero)
+        {
+            Control gv = (Control)Activator.CreateInstance(Campo(form, "pastGenero").FieldType, true);
+            gv.Bounds = new Rectangle(x, art.Top, 60, art.Height); gv.Visible = true; Set(f, "pastGenero", gv);
+            x = gv.Right + 12;
+        }
+        if (mejorada) { mm.ForeColor = Color.FromArgb(255, 200, 60); mm.Bounds = new Rectangle(x, art.Top, 109, 22); mm.Visible = true; }
+        Control cola = (Control)Get(f, "pastCola");
+        cola.Bounds = new Rectangle(colaLeft, cola.Top, 198, cola.Height);
+        // La ventana de 1024x768 de la rocola (el form sin encender mide 0: la regla del 43 % no actuaria).
+        foreach (string c in new string[] { "client_size", "clientSize" })
+        {
+            FieldInfo fi = Campo(typeof(Control), c);
+            if (fi != null && fi.FieldType == typeof(Size)) fi.SetValue(f, new Size(1024, 768));
+        }
+        FieldInfo cr = Campo(typeof(Control), "client_rect");
+        if (cr != null && cr.FieldType == typeof(Rectangle)) cr.SetValue(f, new Rectangle(0, 0, 1024, 768));
+        // WinForms de Microsoft guarda el mismo estado en dos enteros (Mono usa Size/Rectangle).
+        foreach (string c in new string[] { "clientWidth", "_clientWidth", "clientHeight", "_clientHeight" })
+        {
+            FieldInfo fi = Campo(typeof(Control), c);
+            if (fi != null && fi.FieldType == typeof(int)) fi.SetValue(f, c.IndexOf("Width") >= 0 ? 1024 : 768);
+        }
+        return f;
+    }
+    // La caja de antes (hasta el 1-10-2026), para comprobar que donde ya cabia queda igual.
+    static Rectangle CajaDeAntes(object f)
+    {
+        Label tit = (Label)Get(f, "lblNowTop");
+        int left = Math.Max((int)Run(f, "FinRenglonArtista") + 28, Math.Max(((Form)f).ClientSize.Width * 43 / 100, tit.Left + 240));
+        int right = ((Control)Get(f, "pastCola")).Left - 20;
+        Rectangle box = new Rectangle(left, tit.Top, Math.Max(0, right - left), Math.Max(0, ((Control)Get(f, "progress")).Top - tit.Top - 4));
+        return box.Width >= 180 && box.Height >= 28 ? box : Rectangle.Empty;
+    }
+    static void TarjetaBaja()
+    {
+        Color dorado = Color.FromArgb(255, 200, 60), clara = Color.FromArgb(214, 224, 246);
+        // 1) Donde ya cabia, la misma caja que antes.
+        object f0 = ConRenglon("Depeche Mode", true, false, 660);
+        Rectangle c0 = (Rectangle)Run(f0, "CajaSiguienteCompacto");
+        Info("ventana del banco: " + ((Form)f0).ClientSize.Width + " px; sin MEJORADA la tarjeta va en " + c0.Left + ".." + c0.Right + " (antes " + CajaDeAntes(f0).Left + ".." + CajaDeAntes(f0).Right + ")");
+        Check(((Form)f0).ClientSize.Width == 1024, "el banco tiene la ventana de la rocola: 1024 de ancho");
+        Check(!c0.IsEmpty && c0 == CajaDeAntes(f0) && c0.Left == 1024 * 43 / 100, "donde la tarjeta ya cabia, queda exactamente donde estaba (en el 43 % del ancho)");
+
+        // 2) Con MEJORADA: la de antes no cabe; ahora sale la baja, a la altura del titulo, y el artista pasa por debajo.
+        object f1 = ConRenglon("Depeche Mode", true, true, 660);
+        Label tit = (Label)Get(f1, "lblNowTop"), art = (Label)Get(f1, "lblNow"), mm = (Label)Get(f1, "lblMejorada"), sig = (Label)Get(f1, "lblNext");
+        Rectangle c1 = (Rectangle)Run(f1, "CajaSiguienteCompacto");
+        int baja = (int)Run(f1, "BajaArtistaLejos");
+        Info("con MEJORADA (hasta x=" + mm.Right + "): antes " + (CajaDeAntes(f1).IsEmpty ? "sin tarjeta" : "tarjeta") + "; ahora " + c1.Left + ".." + c1.Right + " x " + c1.Top + ".." + c1.Bottom + "; el artista baja " + baja + " px");
+        Check(CajaDeAntes(f1).IsEmpty && !c1.IsEmpty && c1.Top == tit.Top && c1.Bottom <= art.Top + baja - 4 && c1.Width >= 180 && c1.Right == ((Control)Get(f1, "pastCola")).Left - 20 && baja > 0,
+              "con el letrero MEJORADA sale la tarjeta baja, a la altura del titulo, en vez del renglon de reserva");
+        using (Bitmap b = PintaFranja(f1))
+        {
+            Rectangle strip = new Rectangle(0, 640, 1024, 128);
+            using (Bitmap a = b.Clone(strip, b.PixelFormat)) a.Save(Path.Combine(dirPng, "franja_mejorada.png"), ImageFormat.Png);
+            int dentro = Cuenta(b, c1, clara, 10), fuera = Cuenta(b, strip, clara, 10) - dentro;
+            int oroArriba = Cuenta(b, new Rectangle(0, 640, 1024, c1.Bottom - 640), dorado, 30), oro = Cuenta(b, strip, dorado, 30);
+            int verdeArriba = Cuenta(b, new Rectangle(0, 640, 1024, c1.Bottom - 640), Verde, 30), verde = Cuenta(b, strip, Verde, 30);
+            int reserva = Cuenta(b, new Rectangle(sig.Left, sig.Top + baja, c1.Left - sig.Left, sig.Height), clara, 10);
+            Info("lo que sigue: " + dentro + " pixeles claros en la tarjeta, " + fuera + " fuera; MEJORADA " + oro + " (" + oroArriba + " a la altura de la tarjeta); artista " + verde + " (" + verdeArriba + ")");
+            Check(dentro > 60 && fuera == 0 && reserva == 0, "lo que sigue esta en su tarjeta, y no en el renglon de reserva");
+            Check(oro > 30 && oroArriba == 0 && verde > 30 && verdeArriba == 0, "el artista y su letrero MEJORADA van debajo de la tarjeta, sin pisarla");
+        }
+
+        // 3) El artista largo y sin letreros: con la tarjeta baja no se corta (va por debajo de ella).
+        object fl = ConRenglon("Los Cadetes de Linares con la Banda Sinaloense", false, false, 660);
+        Label artL = (Label)Get(fl, "lblNow");
+        artL.Width = 400;
+        Rectangle cl = (Rectangle)Run(fl, "CajaSiguienteCompacto");
+        using (Bitmap b = PintaFranja(fl))
+        {
+            int x1 = -1;
+            for (int y = 640; y < 768; y++) for (int x = 0; x < 1024; x++) if (Parecido(b.GetPixel(x, y), Verde, 30)) x1 = Math.Max(x1, x);
+            Info("artista largo: la tarjeta va en " + cl.Left + ".." + cl.Right + " x " + cl.Top + ".." + cl.Bottom + "; el artista llega a x=" + x1);
+            Check(!cl.IsEmpty && cl.Bottom < artL.Top + (int)Run(fl, "BajaArtistaLejos") && x1 > cl.Left,
+                  "con el artista largo, la tarjeta baja va por encima y el artista no se corta en ella");
+        }
+
+        // 4) Sin creditos ("Inserta una moneda" empuja la cola 75 px): la alta se corre a la izquierda, sin quitarle al
+        //    titulo sus 240 px; con MEJORADA, la baja.
+        object fs = ConRenglon("Depeche Mode", true, false, 585), fsm = ConRenglon("Depeche Mode", true, true, 585);
+        Rectangle cs = (Rectangle)Run(fs, "CajaSiguienteCompacto"), csm = (Rectangle)Run(fsm, "CajaSiguienteCompacto");
+        Label titS = (Label)Get(fs, "lblNowTop");
+        Info("sin creditos: " + cs.Left + ".." + cs.Right + " (alta: " + cs.Height + " px); con MEJORADA " + csm.Left + ".." + csm.Right + " (" + csm.Height + " px)");
+        Check(CajaDeAntes(fs).IsEmpty && !cs.IsEmpty && cs.Width >= 180 && cs.Left >= titS.Left + 240 && cs.Left < 1024 * 43 / 100 && !csm.IsEmpty && csm.Height < cs.Height,
+              "sin creditos la tarjeta tambien sale: alta mas a la izquierda (el titulo conserva 240 px) o, con MEJORADA, baja");
+        using (Bitmap b = PintaFranja(fs))
+        {
+            int x1 = -1;
+            // (fuera de la tarjeta: el claro de lo que sigue tambien cae dentro de la tolerancia del blanco del titulo)
+            for (int y = titS.Top - 4; y < titS.Bottom + 20; y++) for (int x = 0; x < 1024; x++) if (!cs.Contains(x, y) && Parecido(b.GetPixel(x, y), Blanco, 30)) x1 = Math.Max(x1, x);
+            Check(x1 > 0 && x1 < cs.Left - 10, "y el titulo acaba antes de la tarjeta (x=" + x1 + ", la tarjeta empieza en " + cs.Left + ")");
+        }
+        Check(Codigo.Llama(M(form, "PintaArtistaCompacto"), "CajaSiguienteForma"), "el renglon del artista solo se corta ante la tarjeta alta");
     }
 
     // ================================================================================================

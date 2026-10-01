@@ -89,17 +89,25 @@ namespace Rocola
             }
             // Restaurar una fila no debe volver a medir/dibujar todas las canciones de la pagina.
             // Guardamos sus pixeles originales: mismos bordes y suavizado, sin otro mapa de pagina.
+            // La copia exacta (SourceCopy) va recortada a su renglon y el modo de mezcla se repone a mano. En Windows
+            // da lo mismo; en libgdiplus (Mono, donde corren las baterias) Restore no devuelve el modo al dibujo y
+            // SourceCopy sin recorte vaciaba el resto de la pagina: la fila elegida quedaba sola en la instantanea.
             private void UpdateGpuSnapshot(Graphics snapshot, Bitmap selected, int index, int w)
             {
+                CompositingMode modo = snapshot.CompositingMode;
                 GraphicsState state = snapshot.Save();
                 try
                 {
                     snapshot.CompositingMode = CompositingMode.SourceCopy;
                     if (gpuSnapshotSel >= PageStart && gpuSnapshotSel < PageStart + RowsPerPage &&
                         gpuSnapshotRow != null && gpuSnapshotRow.Width == w && gpuSnapshotRow.Height == RowH)
-                        snapshot.DrawImageUnscaled(gpuSnapshotRow, 0, (gpuSnapshotSel - PageStart) * RowH);
+                    {
+                        int antes = (gpuSnapshotSel - PageStart) * RowH;
+                        snapshot.SetClip(new Rectangle(0, antes, w, RowH), CombineMode.Intersect);
+                        snapshot.DrawImageUnscaled(gpuSnapshotRow, 0, antes);
+                    }
                 }
-                finally { snapshot.Restore(state); }
+                finally { snapshot.Restore(state); snapshot.CompositingMode = modo; }
                 int y = (index - PageStart) * RowH;
                 Bitmap original = GpuRowBuffer(ref gpuSnapshotRow, w, RowH);
                 using (Graphics copy = Graphics.FromImage(original))

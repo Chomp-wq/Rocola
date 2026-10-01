@@ -835,7 +835,8 @@ class Sonoridad
               && Codigo.Llama(repaso, "TomaFuenteMedida") && Codigo.Llama(repaso, "PublicaIntegradaDeFuente"),
               "el repaso de la biblioteca arma la tanda de la cancion entera, la mide y la apunta con el sello del original");
         Check(Codigo.Llama(repaso, "SaveIntegCache"), "y la guarda por tandas, como la de volumen");
-        Check(Codigo.Llama(Codigo.ConAyudantes(TF, "MideIntegradaResponsive"), "YieldCoverWork"), "cede el disco a las caratulas que se estan cargando");
+        // Cede por EsperaPortadas, que espera con YieldCoverWork: un salto (Codigo.ConUnSalto).
+        Check(Codigo.Llama(Codigo.ConUnSalto(TF, "MideIntegradaResponsive"), "YieldCoverWork"), "cede el disco a las caratulas que se estan cargando");
         Check(Codigo.Llama(TF.GetMethod("MideIntegrada", T), "MeasurementCancelled") && Codigo.Llama(TF.GetMethod("MideIntegrada", T), "CierraIntegrada"),
               "se puede cancelar en cada bloque y solo cierra lo que leyo entero");
         List<string> calentador = Codigo.ConAyudantes(TF, "PrecalientaSiguiente");

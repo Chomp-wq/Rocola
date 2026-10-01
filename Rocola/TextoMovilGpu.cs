@@ -126,8 +126,8 @@ namespace Rocola
             int right = r.Right;
             if (pastGenero != null && pastGenero.Visible) right = Math.Min(right, pastGenero.Left - 8);
             if (lblMejorada != null && lblMejorada.Visible) right = Math.Min(right, lblMejorada.Left - 8);
-            Rectangle next = CajaSiguienteCompacto();
-            if (!next.IsEmpty) right = Math.Min(right, next.Left - 16);
+            bool alta; Rectangle next = CajaSiguienteForma(out alta);
+            if (alta) right = Math.Min(right, next.Left - 16);   // la tarjeta baja va por encima del renglon: no lo corta
             r.Width = Math.Max(0, right - r.Left);
             using (StringFormat sf = new StringFormat())
             {

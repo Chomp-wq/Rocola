@@ -2681,7 +2681,9 @@ namespace Rocola
             // RELEVO SIN PAUSA a la pista siguiente del MISMO disco: el fundido se quita si aun no empezo (un disco
             // continuo tiene que seguir continuo). 0 = normal, 1 = quitado a tiempo, 2 = ya empezo y se termina.
             private int estadoFundido;
-            internal bool Quita() { return System.Threading.Interlocked.CompareExchange(ref estadoFundido, 1, 0) == 0; }
+            // true: la cancion acaba entera, quitado ahora o ya antes (si la siguiente se retiro y se vuelve a preparar,
+            // SiguienteConElInterruptor). false: el fundido ya empezo y se termina.
+            internal bool Quita() { return System.Threading.Interlocked.CompareExchange(ref estadoFundido, 1, 0) != 2; }
             public FadeProvider(NAudio.Wave.ISampleProvider s, long total, double fadeSec)
             {
                 src = s; ch = Math.Max(1, s.WaveFormat.Channels);
