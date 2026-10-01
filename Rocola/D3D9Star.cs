@@ -99,7 +99,6 @@ namespace Rocola
         private D3D9.Vtx[] verticesFijados;
         private GCHandle pinVertices;
         private IntPtr direccionVertices;
-        private long pinesBytes;
         // Solo el ultimo array, durante una escena. Sin busquedas/listas ni arrays clavados entre cuadros.
         private IntPtr FijaVertices(D3D9.Vtx[] datos, out GCHandle temporal)
         {
@@ -113,7 +112,7 @@ namespace Rocola
                 {
                     pinVertices = GCHandle.Alloc(datos, GCHandleType.Pinned);
                     direccionVertices = pinVertices.AddrOfPinnedObject();
-                    verticesFijados = datos; pinesBytes = bytes; return direccionVertices;
+                    verticesFijados = datos; return direccionVertices;
                 }
             }
             temporal = GCHandle.Alloc(datos, GCHandleType.Pinned);
@@ -123,7 +122,6 @@ namespace Rocola
         {
             if (pinVertices.IsAllocated) pinVertices.Free();
             verticesFijados = null; direccionVertices = IntPtr.Zero;
-            pinesBytes = 0;
         }
         // Anillo dinamico acotado. NOOVERWRITE nunca pisa vertices aun usados por la GPU.
         private IntPtr verticesGpu;
