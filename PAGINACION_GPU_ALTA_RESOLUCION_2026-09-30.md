@@ -83,9 +83,12 @@ Ejecutar desde cada rama:
 powershell -File pruebas/validar-mejoras-20260929.ps1
 powershell -File pruebas/validar-capas.ps1
 
-La comparacion CPU es manual: compilar pruebas/cpucongelado.cs y ejecutar con las
-rutas del ejecutable CPU anterior y del nuevo. Los perfiles deben compilarse con
-el mismo compilador/opciones para comparar su IL.
+La comparacion CPU es manual: compilar pruebas/cpucongelado.cs junto a
+pruebas/leercodigo.cs (lee el IL por el mismo sitio que las baterias) y ejecutar
+con las rutas del ejecutable CPU anterior y del nuevo. Los perfiles deben
+compilarse con el mismo compilador/opciones para comparar su IL. Si los bytes
+difieren solo por numeros de tabla corridos (un campo o un texto nuevo en otro
+sitio), compara lo que nombra cada instruccion.
 
 No se certifica XP real, FPS en la biblioteca del usuario ni HDD/SSD fisicos.
 Las compilaciones/pruebas se realizan en temporales, sin sustituir releases,

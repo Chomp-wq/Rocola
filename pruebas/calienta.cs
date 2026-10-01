@@ -110,7 +110,9 @@ class Calienta
             Check(env != null && Codigo.Llama(env, "MeasureFile"),
                   "y acaba en MeasureFile: sigue habiendo un solo sitio que mide un archivo");
         }
-        Check(AlgunAyudante("PrecalientaSiguiente", "PublicaMedida"),
+        // Lo medido pasa antes por PublicaMedidaDeFuente, que comprueba que el archivo no cambio mientras se
+        // media y solo entonces llama a PublicaMedida: se mira con un salto (Codigo.ConUnSalto).
+        Check(Codigo.Llama(Codigo.ConUnSalto(TF, "PrecalientaSiguiente"), "PublicaMedida"),
               "y apunta lo medido donde lo apunta el pre-analisis");
 
         Console.WriteLine("\n  3) PERO NO MIDE LO QUE YA ESTA MEDIDO\n");
@@ -132,7 +134,7 @@ class Calienta
             Check(lee > 0, "el sitio que apunta escribe tambien " + tabla[i]);
         }
         MethodBase prescan = Met("StartPreScan");
-        bool prescanPub = (prescan != null) && Codigo.Llama(Codigo.ConAyudantes(TF, "StartPreScan"), "PublicaMedida");
+        bool prescanPub = (prescan != null) && Codigo.Llama(Codigo.ConUnSalto(TF, "StartPreScan"), "PublicaMedida");
         Check(prescanPub, "y el pre-analisis apunta por ese mismo sitio, no por su cuenta");
 
         Console.WriteLine("\n  5) Y SIGUE CEDIENDO EL DISCO\n");

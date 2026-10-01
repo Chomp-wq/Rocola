@@ -185,7 +185,10 @@ advertencias como errores, ejecuta las regresiones y las nuevas baterias:
   siete resoluciones, cambio de portada, marcas y superficies HAL fraccionarias.
   Admite `atlasgpu.exe Rocola-gpu.exe --dos-hilos`.
 - `cpucongelado` (manual, recibe ejecutables CPU anterior/nuevo): compara el IL de
-  14 metodos del renderizador congelado. Requiere compilar con las mismas opciones.
+  14 metodos del renderizador congelado. Se compila junto a `leercodigo.cs`; los dos
+  ejecutables deben compilarse con las mismas opciones. Si los bytes difieren solo porque
+  se corrieron los numeros de tabla (un campo o un texto nuevo en otro sitio), compara lo
+  que nombra cada instruccion y lo dice.
 
 El lanzador tambien incluye buscaligero, dibujoligero y aurorafina. No reemplaza
 releases ni datos del usuario. Afinidad reducida no equivale a un procesador
@@ -221,6 +224,32 @@ y errores van exclusivamente a esa copia. Cerrar otras sesiones de pruebas prime
 termina al estar listas las texturas, no al acabar la animacion. La copia de miniaturas
 y la precarga de un segundo hacen que esto NO sea una prueba de disco frio.
 Resultados y limitaciones: `DESPLIEGUE_Y_SESION_REAL_2026-09-30.md`.
+
+## La tanda en Linux tras los cambios del 29 y 30-09 (01-10-2026)
+
+Ocho baterías quedaron en rojo con `todo.sh` (Mono). Lo que era del programa y lo que era de la prueba:
+
+- `ssd` (programa y prueba): Ctrl+F3 dejó de mostrar los milisegundos medidos de cada unidad. Ahora se
+  recuerda la mediana de cada unidad (que ya no se vuelve a medir) y vuelve a salir. La prueba olvida
+  las unidades al empezar de cero y comprueba que una unidad conocida no se mide otra vez.
+- `calienta` y `sonoridad`: lo medido pasa ahora por `PublicaMedidaDeFuente` y la espera por
+  `EsperaPortadas`; las pruebas siguen un salto (`Codigo.ConUnSalto`).
+- `leer`: `cpucongelado` lee el IL por `leercodigo.cs` (`Codigo.BytesIL`). Y como un campo nuevo
+  corre los números de tabla del ejecutable, si los bytes difieren compara lo que nombra cada
+  instrucción (`Codigo.IlConNombres`): con el campo nuevo de `ssd`, los 14 métodos del dibujo por
+  procesador salen iguales; cambiar un número dentro de `Cube.Draw` sí lo detecta.
+- `barrido`: el Form1 a medio hacer lleva sus candados (`Codigo.PonCerrojos`).
+- `cristalcache` (programa, solo tarjeta): en libgdiplus `Restore` no devuelve el modo de mezcla y
+  `SourceCopy` sin recorte vaciaba la página. La fila se devuelve recortada a su renglón y con el modo
+  repuesto; en Windows el resultado es el mismo.
+- `rendercache`: compila sin aviso; carga la copia con RtlMoveMemory llevado a memmove, como
+  `franjareloj`; y su referencia lleva un recorte rectangular, porque en Mono un recorte con forma
+  se suaviza solo si va solo (en Windows nunca).
+- `planbiblioteca`: fuera de Windows C:\ y D:\ son la misma unidad; ese paso se salta y la espera tiene tope.
+- `iadatos` (no estaba en rojo): aparta y devuelve también `rocola_ia_datos.generos.tsv`; antes
+  quedaba en la carpeta o reemplazaba la del dueño.
+
+Comprobado con Mono en Linux; no en Windows ni en XP.
 
 ## Añadir una batería nueva
 

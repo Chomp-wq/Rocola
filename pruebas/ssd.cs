@@ -49,6 +49,14 @@ class Ssd
         PonEst("diskProbeN", 0);
         PonEst("diskProbeMs", 0);
         PonEst("coverCarriles", 1);
+        // Y sin unidades medidas: la rocola ya no vuelve a medir una unidad que conoce, asi que empezar de cero
+        // es olvidarlas tambien (veredicto y mediana).
+        Olvida("discoLento"); Olvida("discoMediana");
+    }
+    static void Olvida(string n)
+    {
+        FieldInfo f = TF.GetField(n, BindingFlags.Static | BindingFlags.NonPublic);
+        if (f != null) ((IDictionary)f.GetValue(null)).Clear();
     }
 
     static int Main(string[] argv)
@@ -143,6 +151,18 @@ class Ssd
         Check((bool)Est("diskSlow") && (int)Est("coverCarriles") == 1,
               "con dos canciones nada mas no se arriesga: sigue en modo disco duro");
         Check(!(bool)Est("perfilHecho"), "y lo deja pendiente para volver a intentarlo, no se da por hecho");
+
+        // UNA UNIDAD YA MEDIDA NO SE VUELVE A MEDIR (al rearmar la biblioteca o al sumar una carpeta de otro
+        // disco): se queda su veredicto y su mediana sigue a la vista en Ctrl+F3. Para saber que no se midio
+        // otra vez se le apunta a mano una que no puede salir aqui (disco duro, 99 ms) y se perfila de nuevo
+        // con los doce archivos de antes.
+        Reinicia();
+        string unidadBanco = (string)TF.GetMethod("UnidadDe", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null, new object[] { rutas[0] });
+        ((IDictionary)Est("discoLento"))[unidadBanco] = true; ((IDictionary)Est("discoMediana"))[unidadBanco] = 99;
+        mPerfil.Invoke(F, new object[] { ListaTracks(rutas) });
+        Console.WriteLine("     con la unidad ya medida: " + Est("perfilTexto"));
+        Check((bool)Est("perfilHecho") && (bool)Est("diskSlow") && ((string)Est("perfilTexto")).IndexOf("(99 ms)", StringComparison.Ordinal) >= 0,
+              "una unidad ya medida no se vuelve a medir: conserva su veredicto y su mediana sigue a la vista");
 
         // Y el respaldo de siempre (16 miniaturas cronometradas) sigue funcionando.
         Reinicia();

@@ -890,7 +890,7 @@ namespace Rocola
                         int q = (so == bDskS) ? 1 : (so == bDskH) ? 2 : 0;
                         if (q == perfilDisco) return;
                         perfilDisco = q; AplicaPerfilDisco(); changed = true;
-                        lock (discoLock) discoLento.Clear();   // el forzado manda sobre lo medido de cada unidad
+                        lock (discoLock) { discoLento.Clear(); discoMediana.Clear(); }   // el forzado manda sobre lo medido de cada unidad
                         pintaDsk();
                     };
                     bDskA.Click += ponDsk; bDskS.Click += ponDsk; bDskH.Click += ponDsk;
@@ -1041,7 +1041,7 @@ namespace Rocola
                         swNoche.Checked = true;                              // y bajar el volumen de madrugada, tambien
                         swSil.Checked = true;                                // y saltar los silencios largos
                         if (perfilDisco != 0)                                // el tipo de disco, otra vez a medirlo sola
-                        { perfilDisco = 0; lock (discoLock) discoLento.Clear(); AplicaPerfilDisco(); pintaDsk(); }
+                        { perfilDisco = 0; lock (discoLock) { discoLento.Clear(); discoMediana.Clear(); } AplicaPerfilDisco(); pintaDsk(); }
                         apply(bReset, EventArgs.Empty);
                     };
                     bOk.Click += delegate { dlg.Close(); };

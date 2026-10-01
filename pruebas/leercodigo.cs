@@ -121,6 +121,79 @@ static class Codigo
         public int Numero;     // los cuatro bytes de detras, si los lleva (si no, 0)
     }
 
+    // Los BYTES del metodo tal cual, sin interpretar. Para comparar dos compilaciones del mismo metodo
+    // (cpucongelado.cs): asi tambien esa herramienta lee el programa por este sitio. Sin cuerpo: null.
+    public static byte[] BytesIL(MethodBase m)
+    {
+        if (m == null) return null;
+        MethodBody b = null; try { b = m.GetMethodBody(); } catch { }
+        if (b == null) return null;
+        try { return b.GetILAsByteArray(); } catch { return null; }
+    }
+
+    // EL METODO CON NOMBRES EN VEZ DE NUMEROS DE TABLA. Los bytes de un metodo nombran campos, metodos, tipos y
+    // textos por su numero en las tablas del ejecutable; con solo anadir un campo o un texto en OTRO sitio del
+    // programa esos numeros se corren, y dos metodos identicos dejan de tener los mismos bytes. Aqui va cada
+    // instruccion con lo que nombra (tipo, nombre y firma, o el texto) y lo demas tal cual. Para comparar un
+    // mismo metodo entre dos compilaciones (cpucongelado.cs). Sin cuerpo: null.
+    public static List<string> IlConNombres(MethodBase m)
+    {
+        byte[] il = BytesIL(m);
+        if (il == null) return null;
+        Module mod = m.Module;
+        Type[] deTipo = null, deMetodo = null;
+        try { if (m.DeclaringType != null && m.DeclaringType.IsGenericType) deTipo = m.DeclaringType.GetGenericArguments(); } catch { }
+        try { if (m.IsGenericMethod) deMetodo = m.GetGenericArguments(); } catch { }
+        List<string> r = new List<string>();
+        int i = 0;
+        while (i < il.Length)
+        {
+            int op = il[i], op2 = -1, largo;
+            if (op == 0xFE)
+            {
+                if (i + 1 >= il.Length) { r.Add("?"); break; }
+                op2 = il[i + 1]; largo = Largo2(op2);
+            }
+            else if (op == 0x45)
+            {
+                if (i + 4 >= il.Length) { r.Add("?"); break; }
+                int n = BitConverter.ToInt32(il, i + 1);
+                if (n < 0 || n > (il.Length - i) / 4) { r.Add("?"); break; }
+                largo = 4 + 4 * n;
+            }
+            else largo = Largo1(op);
+            int dato = i + (op2 >= 0 ? 2 : 1);
+            if (dato + largo > il.Length) { r.Add("?"); break; }
+            string paso = op2 >= 0 ? "FE" + op2.ToString("X2") : op.ToString("X2");
+            if (largo == 4 && NombraAlgo(op, op2)) paso += " " + LoNombrado(mod, BitConverter.ToInt32(il, dato), op, deTipo, deMetodo);
+            else if (largo > 0) paso += " " + BitConverter.ToString(il, dato, largo);
+            r.Add(paso);
+            i = dato + largo;
+        }
+        return r;
+    }
+    // Las de cuatro bytes que nombran algo de las tablas (no los numeros, los saltos ni la salida de un "intenta").
+    private static bool NombraAlgo(int op, int op2)
+    {
+        if (op2 >= 0) return op2 == 0x06 || op2 == 0x07 || op2 == 0x15 || op2 == 0x16 || op2 == 0x1C;
+        return op != 0x20 && op != 0x22 && op != 0xDD && (op < 0x38 || op > 0x44);
+    }
+    private static string LoNombrado(Module mod, int numero, int op, Type[] deTipo, Type[] deMetodo)
+    {
+        try
+        {
+            if (op == 0x72) return "\"" + mod.ResolveString(numero) + "\"";
+            if (op == 0x29) return "firma " + BitConverter.ToString(mod.ResolveSignature(numero));
+            MemberInfo mi = mod.ResolveMember(numero, deTipo, deMetodo);
+            if (mi == null) return "#" + numero.ToString("X8");
+            Type t = mi as Type;
+            if (t != null) return t.ToString();   // sin el ensamblado: los dos ejecutables pueden llamarse distinto
+            Type d = mi.DeclaringType;
+            return (d != null ? d.ToString() + "::" : "") + mi.ToString();
+        }
+        catch { return "#" + numero.ToString("X8"); }
+    }
+
     // El metodo entero ya leido, instruccion por instruccion y en orden.
     public static List<Paso> Pasos(MethodBase m)
     {
@@ -332,6 +405,31 @@ static class Codigo
                 if (m.Name == metodo || m.Name.IndexOf(picos, StringComparison.Ordinal) >= 0
                     || t.Name.IndexOf(picos, StringComparison.Ordinal) >= 0)
                     r.AddRange(Llamadas(m));
+        return r;
+    }
+
+    // ConAyudantes Y UN SALTO MAS: tambien lo que llaman los metodos de la propia clase (y de las suyas de
+    // dentro) a los que se llama desde ahi. Una envoltura de pocos renglones -PublicaMedidaDeFuente, que mira
+    // que el archivo no cambiara mientras se media y luego llama a PublicaMedida; EsperaPortadas, que espera
+    // con YieldCoverWork- no debe esconder la promesa que una bateria vigila. Un salto, no mas: si hicieran
+    // falta dos, el camino se reparte demasiado y eso tambien conviene verlo.
+    public static List<string> ConUnSalto(Type raiz, string metodo)
+    {
+        List<string> r = ConAyudantes(raiz, metodo);
+        if (raiz == null) return r;
+        List<string> propios = new List<string>();
+        foreach (Type t in ConLosDeDentro(raiz)) propios.Add(t.Name);
+        List<string> vistos = new List<string>();
+        vistos.Add(metodo);
+        foreach (string s in r.ToArray())
+        {
+            int p = s.LastIndexOf('.');
+            if (p <= 0 || p + 1 >= s.Length || !propios.Contains(s.Substring(0, p))) continue;
+            string nombre = s.Substring(p + 1);
+            if (vistos.Contains(nombre)) continue;
+            vistos.Add(nombre);
+            r.AddRange(ConAyudantes(raiz, nombre));
+        }
         return r;
     }
 

@@ -70,9 +70,18 @@ class PlanesBiblioteca
             object turno = Call(f, "PideTurnoAnalisis", "C:\\musica\\uno.mp3", new Func<bool>(delegate { return false; }));
             object cancelado = Call(f, "PideTurnoAnalisis", "C:\\musica\\dos.mp3", new Func<bool>(delegate { return true; }));
             Check(turno != null && cancelado == null, "turno HDD cancelable sin abrir otro lector simultaneo");
-            object ssd = Call(f, "PideTurnoAnalisis", "D:\\musica\\otro.mp3", new Func<bool>(delegate { return false; }));
-            Check(ssd != null, "SSD independiente no espera al turno HDD");
-            ((IDisposable)ssd).Dispose(); ((IDisposable)turno).Dispose();
+            // Fuera de Windows "C:\\x" y "D:\\x" no tienen unidad (las dos dan la misma): no hay dos discos que
+            // separar y el segundo turno esperaria al primero para siempre. Ahi se salta, como en ssd y
+            // cargaadaptativa. Y la espera lleva tope: si el SSD esperara al HDD, falla en vez de colgarse.
+            if ((string)Call(null, "UnidadDe", "C:\\musica\\uno.mp3") != (string)Call(null, "UnidadDe", "D:\\musica\\otro.mp3"))
+            {
+                Stopwatch tope = Stopwatch.StartNew();
+                object ssd = Call(f, "PideTurnoAnalisis", "D:\\musica\\otro.mp3", new Func<bool>(delegate { return tope.ElapsedMilliseconds > 5000; }));
+                Check(ssd != null, "SSD independiente no espera al turno HDD");
+                ((IDisposable)ssd).Dispose();
+            }
+            else Console.WriteLine("(se salta en este sistema: C:\\ y D:\\ no son unidades distintas; el SSD independiente se comprueba en Windows)");
+            ((IDisposable)turno).Dispose();
             Check(((IDictionary)Get(f, "analisisUnidad")).Count == 0, "al terminar se liberan los turnos");
             Set(null, "perfilDisco", 1); Check(!(bool)Call(null, "RepasoEnDiscoLento"), "perfil SSD forzado conserva paralelismo");
             Set(null, "perfilDisco", 2); Check((bool)Call(null, "RepasoEnDiscoLento"), "perfil HDD forzado conserva proteccion");
