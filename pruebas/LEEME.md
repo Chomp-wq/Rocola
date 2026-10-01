@@ -194,6 +194,34 @@ Detalles: `EFICIENCIA_2026-09-30.md`.
 La paginacion a resolucion alta se documenta en
 `PAGINACION_GPU_ALTA_RESOLUCION_2026-09-30.md`.
 
+## Sesion real opcional (30-09-2026)
+
+`sesionreal.cs` es un instrumento de integracion y medicion, no una regresion
+sintetica ni parte del lanzador predeterminado. Abre Form1 completo a la resolucion
+de la pantalla, espera la biblioteca y llama al medidor integrado con una cancion
+real muda. Empieza en C, no en una seccion que pudiera tener una sola pagina.
+Despues mide seis cambios pausados con precarga, comprobando la portada en memoria,
+el bitmap compuesto y la referencia exacta de la textura GPU subida.
+
+Recibe `sesionreal.exe <Rocola.exe> <datos COPIADOS en TEMP>`; agregar
+`--solo-paginas` omite el medidor de las cinco escenas. Compilar con los mismos
+ensamblados System/Core/Drawing/Windows.Forms de las otras pruebas y el compilador
+de cada rama. Situar el instrumento y NAudio.dll en la copia temporal; copiar tambien
+los dos modelos pequenos `rocola_ia.bin` y `rocola_eq_ia.bin` para conservar inferencia.
+
+La carpeta debe contener copias de las tablas `rocola_*.txt` y `rocola_miniaturas`,
+con `dir=` apuntando a musica real de solo lectura e `ia_datos=0` en la CONFIGURACION
+COPIADA. No copiar el material de entrenamiento gigante ni apuntar a datos originales.
+El instrumento rechaza carpetas fuera de TEMP y recogida IA habilitada. No reanuda
+la cola o cancion de la copia; no cambia volumen de Windows. Sus guardados, medidas
+y errores van exclusivamente a esa copia. Cerrar otras sesiones de pruebas primero.
+
+`presentaciones_s` cuenta Present aceptados por el controlador, no fotones/Hz.
+`input_ms` es NextPage interno, no latencia de teclado fisico; `espera_texturas_ms`
+termina al estar listas las texturas, no al acabar la animacion. La copia de miniaturas
+y la precarga de un segundo hacen que esto NO sea una prueba de disco frio.
+Resultados y limitaciones: `DESPLIEGUE_Y_SESION_REAL_2026-09-30.md`.
+
 ## Añadir una batería nueva
 
 1. Escribe `mibateria.cs` con un `Main` que reciba la ruta del ejecutable como primer argumento.
