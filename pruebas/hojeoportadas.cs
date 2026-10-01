@@ -91,7 +91,7 @@ class HojeoPortadas {
    object nextAlbum=Activator.CreateInstance(album,true);
    Set(album,nextAlbum,"Folder","siguiente");Set(album,nextAlbum,"CoverPath","proxima");Set(album,nextAlbum,"Artist","Artista");Set(album,nextAlbum,"Name","Nuevo");
    ahead.Add(nextAlbum);Call(view,panel,"SetAhead",ahead);
-   IDictionary cache=(IDictionary)Get(view,panel,"cellCache");int before=cache.Count;
+   IDictionary cache=(IDictionary)Get(view,panel,"gpuCellCache");int before=cache.Count;
    ready=false;foregroundCalls=0;
    for(int i=0;i<5;i++)Call(view,panel,"BakeAheadGpu");
    Check(cache.Count==before,"Prehornea placeholders sin imagen");

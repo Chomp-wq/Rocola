@@ -370,6 +370,125 @@ namespace Rocola
             private bool cubesPending;                       // (CPU) quedan celdas por hornear: se reparte en varios repintados (como en GPU) para no congelar en equipos lentos
             private const int CpuBakeBudget = 9;             // (CPU) celdas horneadas por repintado (media pagina): una pagina nueva se llena en 2 pasadas, sin congelon
 #if ROCOLA_GPU
+            // Atlas GPU: conserva medidas y filtro pero no guarda las columnas transparentes
+            // del disco ni una superficie grande para sus dos lineas de texto.
+            private sealed class CeldaGpu { internal Bitmap Bmp; internal GpuCellLayout Layout; internal Image Cover; internal long Uso; internal bool Queued; }
+            private readonly Dictionary<string, CeldaGpu> gpuCellCache = new Dictionary<string, CeldaGpu>();
+            private readonly Dictionary<Album, CeldaGpu> gpuAnonymousCache = new Dictionary<Album, CeldaGpu>();
+            private long gpuCellUso;
+            private void ClearGpuCells()
+            {
+                foreach (CeldaGpu c in gpuCellCache.Values) c.Bmp.Dispose(); gpuCellCache.Clear();
+                foreach (CeldaGpu c in gpuAnonymousCache.Values) c.Bmp.Dispose(); gpuAnonymousCache.Clear();
+                gpuCellUso = 0;
+            }
+            private void PodaGpuCells()
+            {
+                int count = gpuCellCache.Count + gpuAnonymousCache.Count;
+                if (count <= capCeldas) return;
+                long[] usos = new long[count]; int n = 0;
+                foreach (CeldaGpu c in gpuCellCache.Values) usos[n++] = c.Uso;
+                foreach (CeldaGpu c in gpuAnonymousCache.Values) usos[n++] = c.Uso;
+                Array.Sort(usos); long corte = usos[Math.Max(0, count - keepCeldas)];
+                List<string> fuera = new List<string>();
+                foreach (KeyValuePair<string, CeldaGpu> c in gpuCellCache) if (c.Value.Uso < corte) fuera.Add(c.Key);
+                foreach (string k in fuera) { gpuCellCache[k].Bmp.Dispose(); gpuCellCache.Remove(k); }
+                List<Album> sinCarpeta = new List<Album>();
+                foreach (KeyValuePair<Album, CeldaGpu> c in gpuAnonymousCache) if (c.Value.Uso < corte) sinCarpeta.Add(c.Key);
+                foreach (Album a in sinCarpeta) { gpuAnonymousCache[a].Bmp.Dispose(); gpuAnonymousCache.Remove(a); }
+            }
+            internal static GpuCellLayout PlanAtlasGpu(int cw, int side, int labelH, int gap, bool enCola)
+            {
+                GpuCellLayout p = new GpuCellLayout();
+                int x = (cw - side) / 2;
+                int l = Math.Max(0, (int)Math.Round(x + side * .5 - side * .5 / Math.Sqrt(2)) - 2);
+                int r = Math.Min(cw, (int)Math.Round(x + side * .5 + side * .5 / Math.Sqrt(2)) + 3);
+                if (enCola)
+                {
+                    float d = Math.Max(13f, side * .26f), q = x + side - d * .92f;
+                    float margin = Math.Max(1f, d * .07f) * .5f + 2f;
+                    l = Math.Min(l, Math.Max(0, (int)Math.Floor(q - margin)));
+                    r = Math.Max(r, Math.Min(cw, (int)Math.Ceiling(q + d + margin)));
+                }
+                int split = (cw + 1) / 2, width = Math.Max(r - l + 2, split + 2);
+                int faceH = side + 2, height = faceH + 2 + 2 * (labelH + 2);
+                if (cw < 4 || r <= l || GpuAtlasBytes(width, height) >= GpuAtlasBytes(cw, side + gap + labelH)
+                    || (long)width * height >= (long)cw * (side + gap + labelH)) return p;
+                p.FaceAt = new Rectangle(l, 0, r - l, faceH);
+                p.Face = new Rectangle(1, 1, r - l, faceH);
+                p.Text1At = new Rectangle(0, side + gap, split, labelH);
+                p.Text1 = new Rectangle(1, faceH + 3, split, labelH);
+                p.Text2At = new Rectangle(split, side + gap, cw - split, labelH);
+                p.Text2 = new Rectangle(1, faceH + 3 + labelH + 2, cw - split, labelH);
+                p.Width = width; p.Height = height; return p;
+            }
+            private static long GpuAtlasBytes(int w, int h)
+            { long tw = 1, th = 1; while (tw < w) tw <<= 1; while (th < h) th <<= 1; return tw * th * 4; }
+            private Bitmap BakeGpuCell(Album a, int cw, int side, int labelH, int gap, Image cover, out GpuCellLayout layout)
+            {
+                bool q = EnCola != null && EnCola(a);
+                layout = PlanAtlasGpu(cw, side, labelH, gap, q);
+                if (layout.Width == 0) return BakeCell(a, cw, side, labelH, gap, cover);
+                Bitmap bmp = new Bitmap(layout.Width, layout.Height, PixelFormat.Format32bppPArgb);
+                try
+                {
+                    using (Graphics g = Graphics.FromImage(bmp))
+                    {
+                        g.Clear(Color.Transparent); g.InterpolationMode = InterpolationMode.Bilinear;
+                        g.SmoothingMode = SmoothingMode.AntiAlias;
+                        g.SetClip(layout.Face);
+                        g.TranslateTransform(layout.Face.X - layout.FaceAt.X, layout.Face.Y);
+                        Rectangle disco = new Rectangle((cw - side) / 2, 0, side, side);
+                        Cube.Draw(g, disco, cover, 0.0); if (q) Palomito(g, disco);
+                    }
+                    // Texto una sola vez, con las mismas medidas/fuente. Copias PArgb sin recomponer alfa.
+                    using (Bitmap label = new Bitmap(cw, labelH + 2, PixelFormat.Format32bppPArgb))
+                    {
+                        using (Graphics g = Graphics.FromImage(label))
+                        {
+                            g.Clear(Color.Transparent); g.SmoothingMode = SmoothingMode.AntiAlias;
+                            EnsureLabelRes();
+                            g.DrawString(AlbumLabel(a), lblFont, lblBrush, new Rectangle(2, 1, cw - 4, labelH), lblSF);
+                        }
+                        CopiaEtiquetaGpu(label, bmp, layout.Text1At, layout.Text1);
+                        CopiaEtiquetaGpu(label, bmp, layout.Text2At, layout.Text2);
+                    }
+                    return bmp;
+                }
+                catch { bmp.Dispose(); throw; }
+            }
+            private static void CopiaEtiquetaGpu(Bitmap source, Bitmap dest, Rectangle at, Rectangle to)
+            {
+                // Un pixel vecino a cada lado evita costuras con filtrado bilineal durante el deslizamiento.
+                int from = Math.Max(0, at.X - 1), end = Math.Min(source.Width, at.Right + 1);
+                Rectangle src = new Rectangle(from, 0, end - from, source.Height);
+                Rectangle dst = new Rectangle(to.X + from - at.X, to.Y - 1, src.Width, src.Height);
+                BitmapData s = null, d = null;
+                try
+                {
+                    s = source.LockBits(src, ImageLockMode.ReadOnly, PixelFormat.Format32bppPArgb);
+                    d = dest.LockBits(dst, ImageLockMode.WriteOnly, PixelFormat.Format32bppPArgb);
+                    for (int y = 0; y < src.Height; y++) D3D9.CopyMemory(
+                        new IntPtr(d.Scan0.ToInt64() + (long)y * d.Stride),
+                        new IntPtr(s.Scan0.ToInt64() + (long)y * s.Stride), (UIntPtr)(uint)(src.Width * 4));
+                }
+                finally { try { if (d != null) dest.UnlockBits(d); } finally { if (s != null) source.UnlockBits(s); } }
+            }
+            private Bitmap PeekGpuCell(Album a, int cw, int side, int labelH, int gap, Image cover, ref int budget, out GpuCellLayout layout)
+            {
+                layout = new GpuCellLayout(); string key = ClaveCasilla(a); CeldaGpu c = null;
+                if (key != null) gpuCellCache.TryGetValue(key, out c);
+                else gpuAnonymousCache.TryGetValue(a, out c);
+                bool queued = key == null && EnCola != null && EnCola(a);
+                if (c != null && ((ReferenceEquals(c.Cover, cover) && c.Queued == queued) || budget <= 0))
+                { c.Uso = ++gpuCellUso; layout = c.Layout; return c.Bmp; }
+                if (budget <= 0) return null;
+                budget--; Bitmap bmp = BakeGpuCell(a, cw, side, labelH, gap, cover, out layout);
+                if (c != null) c.Bmp.Dispose();
+                CeldaGpu next = new CeldaGpu { Bmp = bmp, Layout = layout, Cover = cover, Uso = ++gpuCellUso, Queued = queued };
+                if (key != null) gpuCellCache[key] = next; else gpuAnonymousCache[a] = next;
+                return bmp;
+            }
             // La rejilla por GPU ya NO usa una textura a pantalla completa (cubeCache): el panel pide las celdas
             // con BuildGpuGrid y dibuja cada disco como su propio quad. cubeCache queda solo para el render por CPU.
             public Bitmap ContourSpriteBmp { get { EnsureContourSprite(); return contourSprite; } }   // sprite del resalte (lo hornea si falta: el panel GPU lo lee aunque el OnPaint por CPU este suprimido)
@@ -540,7 +659,7 @@ namespace Rocola
                     Image tapa = (PeekCoverGpu != null) ? PeekCoverGpu(a) : null;
                     buf[n] = new GpuGridCell();
                     buf[n].Key = ClaveCasilla(a);
-                    buf[n].Bmp = PeekOrBakeCell(a, cw, side, labelH, gap, tapa, ref nada, false);
+                    buf[n].Bmp = PeekGpuCell(a, cw, side, labelH, gap, tapa, ref nada, out buf[n].Layout);
                     buf[n].Placeholder = HojeoLigero;
                     buf[n].CoverRect = new RectangleF(ox + area.X + cdx, oy + area.Y, area.Width, area.Height);
                     buf[n].Slot = PageSize + i;
@@ -584,7 +703,7 @@ namespace Rocola
                 int cw = w / Cols, ch = h / Rows;
                 if (cw < 4 || ch < 4) return 0;
                 if (cellCacheW != w || cellCacheH != h) { ClearCellCache(); cellCacheW = w; cellCacheH = h; RecalculaCajon(w, h); }   // tamano nuevo: rehornear (y el cajon cambia de tope: la casilla mide otra cosa)
-                else if (cellCache.Count > capCeldas) PodaCeldas();                                              // lleno: fuera las mas viejas
+                else PodaGpuCells();
                 int side, labelH, gap; CellMetrics(cw, ch, out side, out labelH, out gap);
                 // Una pagina aislada muestra las caratulas desde el primer cuadro disponible.
                 // Solo ocultarlas al encadenar paginas rapido; nunca degradar su resolucion.
@@ -607,7 +726,8 @@ namespace Rocola
                     // En rafaga no hornear; en pasos normales reutilizar la cache y el presupuesto habitual.
                     long cellStart = System.Diagnostics.Stopwatch.GetTimestamp();
                     int beforeBudget = budget;
-                    buf[n].Bmp = chica ? null : PeekOrBakeCell(a, cw, side, labelH, gap, (GetCover != null) ? GetCover(a) : null, ref budget, false);
+                    buf[n].Layout = new GpuCellLayout();
+                    buf[n].Bmp = chica ? null : PeekGpuCell(a, cw, side, labelH, gap, (GetCover != null) ? GetCover(a) : null, ref budget, out buf[n].Layout);
                     if (budget < beforeBudget)
                         gpuBakeCost = CargaTrabajo.AprendeCoste(gpuBakeCost, System.Diagnostics.Stopwatch.GetTimestamp() - cellStart);
                     buf[n].Placeholder = HojeoLigero;
@@ -636,11 +756,11 @@ namespace Rocola
                 for (int i = 0; i < count; i++)
                 {
                     string key = ClaveCasilla(Ahead[i]);
-                    CellSprite sprite;
+                    CeldaGpu sprite;
                     cells[i] = new GpuGridCell();
                     cells[i].Key = key;
-                    if (key != null && cellCache.TryGetValue(key, out sprite) && sprite.HasCover)
-                        cells[i].Bmp = sprite.Bmp;
+                    if (key != null && gpuCellCache.TryGetValue(key, out sprite) && sprite.Cover != null)
+                    { cells[i].Bmp = sprite.Bmp; cells[i].Layout = sprite.Layout; }
                 }
                 return count;
             }
@@ -665,14 +785,15 @@ namespace Rocola
                     if (cover == null) continue; // no hornear un disco vacio que habria que rehacer
                     int previous = budget;
                     long start = System.Diagnostics.Stopwatch.GetTimestamp();
-                    PeekOrBakeCell(a, cw, side, labelH, gap, cover, ref budget);
+                    GpuCellLayout layout;
+                    PeekGpuCell(a, cw, side, labelH, gap, cover, ref budget, out layout);
                     if (budget < previous)
                     {
                         long cost = Math.Max(1L, System.Diagnostics.Stopwatch.GetTimestamp() - start);
                         aheadBakeTicks = Math.Max(cost, aheadBakeTicks - aheadBakeTicks / 4);
                     }
                 }
-                if (cellCache.Count > capCeldas) PodaCeldas();
+                PodaGpuCells();
             }
 #endif
 
@@ -1177,6 +1298,9 @@ namespace Rocola
 
             private void ClearCellCache()
             {
+#if ROCOLA_GPU
+                ClearGpuCells();
+#endif
                 foreach (CellSprite cs in cellCache.Values) if (cs.Bmp != null) cs.Bmp.Dispose();
                 cellCache.Clear();
                 aheadBakeTicks = 0;

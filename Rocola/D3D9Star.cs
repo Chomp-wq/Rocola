@@ -1021,9 +1021,10 @@ namespace Rocola
     internal struct GpuCubeState { public GpuCubeInfo Sel, Relay, Mini; public bool Pared; }   // album: seleccionado (gira) + relevo (decae); Mini = cubo de la barra inferior; Pared = Sel es el de la pared de discos
 
     // Una CELDA de la rejilla de discos para dibujarla como su PROPIO quad con textura (en vez de recomponer una
-    // textura a pantalla completa por pagina). Bmp = disco estatico + etiqueta ya horneado (null si aun no listo).
+    // textura a pantalla completa por pagina). Bmp = atlas o celda entera (null si aun no listo).
     // Key = Folder (estable) para cachear su textura entre paginas; null = no cachear (discos TOP / sin carpeta).
-    internal struct GpuGridCell { public string Key; public Bitmap Bmp; public int Slot; public float X, Y, W, H; public float A; public bool Placeholder; public RectangleF CoverRect; public bool Sel; }   // Sel = la casilla elegida (la portada enfocada no la apaga)
+    internal struct GpuCellLayout { public Rectangle Face, FaceAt, Text1, Text1At, Text2, Text2At; public int Width, Height; }
+    internal struct GpuGridCell { public string Key; public Bitmap Bmp; public GpuCellLayout Layout; public int Slot; public float X, Y, W, H; public float A; public bool Placeholder; public RectangleF CoverRect; public bool Sel; }   // Sel = la casilla elegida (la portada enfocada no la apaga)
     internal struct GpuProgress { public bool Has, Neon; public Rectangle Rect; public double Value; public uint Color; public object Key; }
     // TRANSICION entre dos CUBOS de la rocola (celda de la rejilla, cubo grande del disco, cubo gigante de la
     // atraccion, cubo del buscador): la portada viaja de uno al otro dibujada ENCIMA de todo, girando, con
@@ -1075,11 +1076,13 @@ namespace Rocola
         private const int MaxCells = 36;                  // dos paginas: pasando de pagina se ven la que sale y la que entra (PantallaVivaGpu.cs)
         private const int CellTexCap = 3 * 18;            // ~3 paginas de texturas de celda en VRAM (acotado); se expulsa lo mas viejo
         private const int GridUploadBudget = 6;           // texturas de celda NUEVAS subidas por cuadro (barrer sin bajon)
-        private sealed class CellTex { public IntPtr Tex; public int Bw, Bh; public float U = 1f, V = 1f; public Bitmap Bmp; public int Frame; }
+        private sealed class CellTex { public IntPtr Tex; public int Bw, Bh; public float U = 1f, V = 1f; public Bitmap Bmp; public int Frame; public GpuCellLayout Layout; }
         private readonly Dictionary<string, CellTex> cellTexCache = new Dictionary<string, CellTex>();
         private readonly CellTex[] slotTex = new CellTex[MaxCells];   // celdas sin Folder (TOP): textura por slot, no se cachea entre paginas
         private readonly GpuGridCell[] gridBuf = new GpuGridCell[MaxCells];
         private readonly IntPtr[] gridTex = new IntPtr[MaxCells];     // textura resuelta por celda (subida ANTES de Begin, dibujada despues)
+        private readonly GpuCellLayout[] gridLayouts = new GpuCellLayout[MaxCells];
+        private readonly D3D9.Vtx[] atlasQuad = new D3D9.Vtx[18];
         public Func<GpuTrans> GetTrans;                   // portada de la transicion entrar/salir de disco (null = sin animacion)
         private IntPtr transTex; private Bitmap transLastBmp; private int transBw, transBh; private float transU = 1f, transV = 1f;
         public Func<GpuAurora> GetAurora;                 // aurora del horizonte (espectro); null o Has=false = nada
@@ -1463,7 +1466,7 @@ namespace Rocola
                     int beforeBudget = upBudget;
                     long oneStart = System.Diagnostics.Stopwatch.GetTimestamp();
                     if (gridBuf[i].Bmp != null && EnsureCellTex(gridBuf[i], ref upBudget, out tex, out u, out v))
-                    { gridTex[i] = tex; gridU[i] = u; gridV[i] = v; }
+                    { gridTex[i] = tex; gridU[i] = u; gridV[i] = v; gridLayouts[i] = UploadedCellLayout(gridBuf[i]); }
                     else gridTex[i] = IntPtr.Zero;   // aun sin hornear o sin presupuesto de subida: se salta este cuadro (aparece luego)
                     if (upBudget < beforeBudget)
                         gridUploadCost = CargaTrabajo.AprendeCoste(gridUploadCost, System.Diagnostics.Stopwatch.GetTimestamp() - oneStart);
@@ -1633,10 +1636,13 @@ namespace Rocola
                     if (gridTex[i] != IntPtr.Zero)
                     {
                         GpuGridCell c = gridBuf[i];
+                        c.Layout = gridLayouts[i]; // el presupuesto puede haber devuelto la textura anterior
                         if (c.X + c.W <= 0f || c.X >= Width) continue;   // hojeando: la casilla ya salio de la pantalla, no se pinta
                         int ca = (int)(Math.Max(0f, Math.Min(1f, c.A * WallOpacity)) * 255f + 0.5f);
                         if (ca <= 0) continue;
                         float apagada = atenua[i];   // portada enfocada: las demas, un poco mas oscuras (0 = como siempre)
+                        if (c.Layout.Width > 0)
+                        { DrawAtlasCell(gridTex[i], c, gridU[i], gridV[i], ColorCelda(ca, apagada)); continue; }
                         if (ca >= 255 && !(apagada > 0f)) SetTexQuad(cellQuad, c.X, c.Y, c.X + c.W, c.Y + c.H, gridU[i], gridV[i]);
                         else SetTexQuadA(cellQuad, c.X, c.Y, c.X + c.W, c.Y + c.H, gridU[i], gridV[i], ColorCelda(ca, apagada));
                         stars.DrawQuad(gridTex[i], cellQuad);
@@ -1822,7 +1828,7 @@ namespace Rocola
                     upBudget--;
                     cellBytesDirty = true;
                     ct.Tex = Upload(ct.Tex, ref ct.Bw, ref ct.Bh, c.Bmp, out ct.U, out ct.V);   // portada llego / re-horneada: re-sube (mismo tamano -> reutiliza)
-                    ct.Bmp = c.Bmp;
+                    ct.Bmp = c.Bmp; ct.Layout = c.Layout;
                     if (ct.Tex == IntPtr.Zero) return false;
                     tex = ct.Tex; u = ct.U; v = ct.V; return true;
                 }
@@ -1831,7 +1837,7 @@ namespace Rocola
                 ct = new CellTex();
                 cellBytesDirty = true;
                 ct.Tex = Upload(IntPtr.Zero, ref ct.Bw, ref ct.Bh, c.Bmp, out ct.U, out ct.V);
-                ct.Bmp = c.Bmp; ct.Frame = cellFrame;
+                ct.Bmp = c.Bmp; ct.Layout = c.Layout; ct.Frame = cellFrame;
                 cellTexCache[c.Key] = ct;
                 if (ct.Tex == IntPtr.Zero) return false;
                 tex = ct.Tex; u = ct.U; v = ct.V; return true;
@@ -1845,10 +1851,41 @@ namespace Rocola
                 upBudget--;
                 cellBytesDirty = true;
                 st.Tex = Upload(st.Tex, ref st.Bw, ref st.Bh, c.Bmp, out st.U, out st.V);
-                st.Bmp = c.Bmp;
+                st.Bmp = c.Bmp; st.Layout = c.Layout;
                 if (st.Tex == IntPtr.Zero) return false;
             }
             tex = st.Tex; u = st.U; v = st.V; return true;
+        }
+        private GpuCellLayout UploadedCellLayout(GpuGridCell c)
+        {
+            CellTex ct = null;
+            if (c.Key != null) cellTexCache.TryGetValue(c.Key, out ct);
+            else if (c.Slot >= 0 && c.Slot < slotTex.Length) ct = slotTex[c.Slot];
+            return ct != null ? ct.Layout : new GpuCellLayout();
+        }
+        private void DrawAtlasCell(IntPtr tex, GpuGridCell c, float u, float v, uint color)
+        {
+            AtlasCellVertices(c, u, v, color, atlasQuad);
+            stars.DrawTexturedBatch(tex, atlasQuad, 6); // tres regiones, un solo envio y una textura
+        }
+        internal static void AtlasCellVertices(GpuGridCell c, float u, float v, uint color, D3D9.Vtx[] result)
+        {
+            GpuCellLayout p = c.Layout;
+            float sx = c.W / (p.Text1At.Width + p.Text2At.Width);
+            float sy = c.H / p.Text2At.Bottom;
+            AtlasPart(result, 0, c.X, c.Y, sx, sy, p.Face, p.FaceAt, u / p.Width, v / p.Height, color);
+            AtlasPart(result, 6, c.X, c.Y, sx, sy, p.Text1, p.Text1At, u / p.Width, v / p.Height, color);
+            AtlasPart(result, 12, c.X, c.Y, sx, sy, p.Text2, p.Text2At, u / p.Width, v / p.Height, color);
+        }
+        private static void AtlasPart(D3D9.Vtx[] r, int o, float x, float y, float sx, float sy,
+            Rectangle src, Rectangle at, float u, float v, uint color)
+        {
+            float x0 = x + at.X * sx, x1 = x + at.Right * sx, y0 = y + at.Y * sy, y1 = y + at.Bottom * sy;
+            float u0 = src.X * u, u1 = src.Right * u, v0 = src.Y * v, v1 = src.Bottom * v;
+            SetV(ref r[o], x0, y0, u0, v0); SetV(ref r[o + 1], x1, y0, u1, v0);
+            SetV(ref r[o + 2], x1, y1, u1, v1); SetV(ref r[o + 3], x0, y0, u0, v0);
+            SetV(ref r[o + 4], x1, y1, u1, v1); SetV(ref r[o + 5], x0, y1, u0, v1);
+            for (int i = 0; i < 6; i++) r[o + i].Color = color;
         }
 
         private bool AheadContains(string key, int count)
