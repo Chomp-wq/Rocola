@@ -14,6 +14,14 @@ La página nueva aún necesita dibujarse y subirse una vez cuando cambia su cont
 
 - Indicador de página con cápsula redondeada, contador central y señales de anterior/siguiente donde corresponda. El espacio superior se adapta a la altura de la ventana.
 - En la barra compacta, lo siguiente pasa a una tarjeta lateral «A CONTINUACIÓN», con título legible. El título actual reserva ese espacio. En pantallas estrechas, lo siguiente ocupa su propio renglón y el artista no baja sobre él. No aparece una tarjeta vacía cuando no hay cola.
+  - *1 de octubre de 2026.* A 1024 de ancho la tarjeta solo cabía con créditos y sin el letrero MEJORADA: con MEJORADA
+    (el renglón del artista crece unos 120 px) o sin créditos («Inserta una moneda» empuja la cola 75 px) se veía el
+    renglón de reserva «SIGUE · …». Medido con la ventana real en cinco estados: salía en 1; ahora en los 5. La tarjeta
+    tiene dos formas: **alta**, del título a la barra, en el mismo sitio que antes cuando ya cabía (idéntica píxel a
+    píxel); y **baja**, a la altura del título, con el artista y su letrero pasando por debajo. Si las cápsulas crecen,
+    empieza algo antes del 43 % del ancho para llegar a sus 180 px, sin quitarle al título sus 240 px. El renglón de
+    reserva queda solo para pantallas estrechas. De paso, el título sin tarjeta al lado ya no desaparece: su letra
+    crecía justo hasta llenar el renglón y GDI+ descartaba la línea entera (sin las cintas deslizantes se notaba).
 - Se retiraron los vinilos del dibujo y la preparación de sus imágenes, dentro del disco y en el estado ampliado. La carátula, el cubo, los títulos y sus otros efectos se conservan. Ya no se reserva espacio lateral para el vinilo.
 - Se retiró «Vinilo que asoma» de Ctrl+F3. La antigua clave vinilo_disco se ignora y deja de guardarse. Las funciones internas antiguas permanecen por ahora para pruebas de compatibilidad, pero la aplicación ya no las conecta al dibujo.
 - No se modificó la distribución de la cola ampliada ni se añadió un interruptor de rendimiento.
