@@ -1024,7 +1024,7 @@ namespace Rocola
     // textura a pantalla completa por pagina). Bmp = atlas o celda entera (null si aun no listo).
     // Key = Folder (estable) para cachear su textura entre paginas; null = no cachear (discos TOP / sin carpeta).
     internal struct GpuCellLayout { public Rectangle Face, FaceAt, Text1, Text1At, Text2, Text2At; public int Width, Height; }
-    internal struct GpuGridCell { public string Key; public Bitmap Bmp; public GpuCellLayout Layout; public int Slot; public float X, Y, W, H; public float A; public bool Placeholder; public RectangleF CoverRect; public bool Sel; }   // Sel = la casilla elegida (la portada enfocada no la apaga)
+    internal struct GpuGridCell { public string Key; public Bitmap Bmp, Preview; public GpuCellLayout Layout; public int Slot; public float X, Y, W, H; public float A; public bool Placeholder, HasCover, NeedsCover; public RectangleF CoverRect; public bool Sel; }   // Preview nunca sustituye la imagen final ni su paleta.
     internal struct GpuProgress { public bool Has, Neon; public Rectangle Rect; public double Value; public uint Color; public object Key; }
     // TRANSICION entre dos CUBOS de la rocola (celda de la rejilla, cubo grande del disco, cubo gigante de la
     // atraccion, cubo del buscador): la portada viaja de uno al otro dibujada ENCIMA de todo, girando, con
@@ -1076,7 +1076,7 @@ namespace Rocola
         private const int MaxCells = 36;                  // dos paginas: pasando de pagina se ven la que sale y la que entra (PantallaVivaGpu.cs)
         private const int CellTexCap = 3 * 18;            // ~3 paginas de texturas de celda en VRAM (acotado); se expulsa lo mas viejo
         private const int GridUploadBudget = 6;           // texturas de celda NUEVAS subidas por cuadro (barrer sin bajon)
-        private sealed class CellTex { public IntPtr Tex; public int Bw, Bh; public float U = 1f, V = 1f; public Bitmap Bmp; public int Frame; public GpuCellLayout Layout; }
+        private sealed class CellTex { public IntPtr Tex; public int Bw, Bh; public float U = 1f, V = 1f; public Bitmap Bmp; public int Frame; public GpuCellLayout Layout; public bool HasCover; }
         private readonly Dictionary<string, CellTex> cellTexCache = new Dictionary<string, CellTex>();
         private readonly CellTex[] slotTex = new CellTex[MaxCells];   // celdas sin Folder (TOP): textura por slot, no se cachea entre paginas
         private readonly GpuGridCell[] gridBuf = new GpuGridCell[MaxCells];
@@ -1098,7 +1098,7 @@ namespace Rocola
         private readonly GpuGridCell[] aheadGrid = new GpuGridCell[36];
         private long gridUploadCost;
         private double lastAheadMs, lastFrameWork;
-        private long GridWorkLimit { get { return CargaTrabajo.PresupuestoGpu(CargaTrabajo.Procesadores, TopeFpsReal, lastFrameWork); } }
+        private long GridWorkLimit { get { return CoverControl != null ? CoverControl.RemainingTicks : CargaTrabajo.PresupuestoGpu(CargaTrabajo.Procesadores, TopeFpsReal, lastFrameWork); } }
         private readonly D3D9.Vtx[] cellQuad = new D3D9.Vtx[6];
         private IntPtr contourTex; private Bitmap lastContour; private float contU = 1f, contV = 1f;
         private readonly D3D9.Vtx[] contourQuad = new D3D9.Vtx[6];
@@ -1169,7 +1169,7 @@ namespace Rocola
         public double MsTrabajo { get { return (msTrabN > 0) ? (msTrabSuma / msTrabN) : 0.0; } }
         public int CuadrosMedidos { get { return msTrabN; } }
         public int FallosMedidos { get; private set; }
-        public void ReiniciaMedida() { msTrabSuma = 0.0; msTrabN = 0; FallosMedidos = 0; Fps = 0; frames = 0; fpsTick = Environment.TickCount; }
+        public void ReiniciaMedida() { msTrabSuma = 0.0; msTrabN = 0; FallosMedidos = 0; Fps = 0; frames = 0; fpsTick = Environment.TickCount; if (CoverControl != null) CoverControl.ResetMeasure(); }
         public float Dim = 1f;                            // atenuacion del starfield mientras se navega con musica (el form la anima; 1 = normal)
         public float WallOpacity = 1f;
         public bool ProgresoFluido = true;
@@ -1361,6 +1361,7 @@ namespace Rocola
 
         public void StopGpu()
         {
+            TrimLod(true);
             SueltaCintasGpu();
             ClearPaletteFade(); paletteKey = 0;
             TrimRecentCovers(true);
@@ -1454,27 +1455,49 @@ namespace Rocola
             // REJILLA POR CELDAS: pedimos las celdas de la pagina y aseguramos (subimos si falta) su textura ANTES
             // de Begin, repartiendo las subidas NUEVAS por cuadro (presupuesto) para no bajar los fps al barrer.
             gridN = 0;
+            if (CoverControl != null) CoverControl.Begin(AhoraMs(), TopeFpsReal);
             if (ShowAlbum && GetGrid != null)
             {
                 gridN = GetGrid(gridBuf);
                 cellFrame++;
-                int upBudget = GridUploadBudget;
+                if (CoverControl != null) CoverControl.PendingUpload = false;
+                int upBudget = CoverControl != null ? 32 : GridUploadBudget;
                 long uploadStart = System.Diagnostics.Stopwatch.GetTimestamp();
                 for (int i = 0; i < gridN; i++)
                 {
                     IntPtr tex; float u, v;
+                    if (CoverControl != null && !CoverControl.CanStart(gridUploadCost, true, false)) upBudget = 0;
                     int beforeBudget = upBudget;
                     long oneStart = System.Diagnostics.Stopwatch.GetTimestamp();
                     if (gridBuf[i].Bmp != null && EnsureCellTex(gridBuf[i], ref upBudget, out tex, out u, out v))
                     { gridTex[i] = tex; gridU[i] = u; gridV[i] = v; gridLayouts[i] = UploadedCellLayout(gridBuf[i]); }
                     else gridTex[i] = IntPtr.Zero;   // aun sin hornear o sin presupuesto de subida: se salta este cuadro (aparece luego)
                     if (upBudget < beforeBudget)
-                        gridUploadCost = CargaTrabajo.AprendeCoste(gridUploadCost, System.Diagnostics.Stopwatch.GetTimestamp() - oneStart);
-                    if (upBudget < GridUploadBudget && upBudget > 0 &&
+                    {
+                        long spent = System.Diagnostics.Stopwatch.GetTimestamp() - oneStart;
+                        gridUploadCost = CargaTrabajo.AprendeCoste(gridUploadCost, spent);
+                        if (CoverControl != null && beforeBudget - upBudget == 1) CoverControl.Spend(spent);
+                    }
+                    PrepareLod(i, gridTex[i] != IntPtr.Zero && UploadedCover(gridBuf[i]));
+                    if (CoverControl != null && gridBuf[i].Bmp != null)
+                    {
+                        CellTex pending;
+                        if (gridBuf[i].Key != null && (!cellTexCache.TryGetValue(gridBuf[i].Key, out pending)
+                            || pending.Tex == IntPtr.Zero || pending.Bmp != gridBuf[i].Bmp)) CoverControl.PendingUpload = true;
+                    }
+                    if (CoverControl == null && upBudget < GridUploadBudget && upBudget > 0 &&
                         !CargaTrabajo.PuedeEmpezar(System.Diagnostics.Stopwatch.GetTimestamp() - uploadStart, gridUploadCost, GridWorkLimit, false))
                         upBudget = 0; // las texturas cacheadas siguen disponibles con presupuesto cero
                 }
                 EvictCellTex();
+                TrimLod(false);
+                if (CoverControl != null && gridN > 0)
+                {
+                    bool ready = true;
+                    for (int i = 0; i < gridN && gridBuf[i].Slot < 18; i++)
+                        if (gridTex[i] == IntPtr.Zero || (gridBuf[i].NeedsCover && !UploadedCover(gridBuf[i]))) ready = false;
+                    CoverControl.FinishPage(ready, AhoraMs());
+                }
             }
             // Contorno de seleccion: sprite estatico (se sube cuando cambia el bitmap, p.ej. al cambiar tamano).
             if (GetContour != null)
@@ -1490,6 +1513,8 @@ namespace Rocola
             // Cubos que GIRAN (seleccionado + relevo): suben la PORTADA como textura SOLO cuando cambia
             // (al navegar o al ciclar un disco TOP), no en cada cuadro. El giro luego es solo geometria.
             GpuCubeState cs = (GetCubeState != null) ? GetCubeState() : new GpuCubeState();
+            if (ShowAlbum && cs.Sel.CoverA == null)
+                for (int i = 0; i < gridN; i++) if (gridBuf[i].Sel && gridBuf[i].Preview != null) { cs.Sel.CoverA = gridBuf[i].Preview; break; }
             EnsureRecentCover(ref selTexA, ref selImgA, ref selBwA, ref selBhA, ref selUA, ref selVA, cs.Sel.CoverA);
             EnsureRecentCover(ref selTexB, ref selImgB, ref selBwB, ref selBhB, ref selUB, ref selVB, cs.Sel.CoverB);
             EnsureRecentCover(ref relTex, ref relImg, ref relBw, ref relBh, ref relU, ref relV, cs.Relay.CoverA);
@@ -1598,16 +1623,19 @@ namespace Rocola
             double uploadMs = gridUploadCost * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
             if (ShowAlbum && GetGridAhead != null && !UiUrgent &&
                 aheadNow - lastAheadMs >= (CargaTrabajo.Procesadores <= 2 ? 40 : 20) &&
-                aheadNow - msTrab0 + uploadMs < GridWorkLimit * 1000.0 / System.Diagnostics.Stopwatch.Frequency &&
-                lastFrameWork + uploadMs < 850.0 / Math.Max(1, TopeFpsReal))
+                (CoverControl != null
+                    ? CoverControl.CanStart(gridUploadCost, false, false) && aheadNow - msTrab0 < 28
+                    : aheadNow - msTrab0 + uploadMs < GridWorkLimit * 1000.0 / System.Diagnostics.Stopwatch.Frequency &&
+                      lastFrameWork + uploadMs < 850.0 / Math.Max(1, TopeFpsReal)))
             {
                 lastAheadMs = aheadNow;
                 bool ready = gridN > 0;
                 for (int i = 0; i < gridN; i++) if (gridTex[i] == IntPtr.Zero) ready = false;
                 if (ready)
                 {
-                    double margin = Math.Min(GridWorkLimit * 1000.0 / System.Diagnostics.Stopwatch.Frequency - (AhoraMs()-msTrab0),
-                        850.0 / Math.Max(1, TopeFpsReal) - lastFrameWork);
+                    double margin = CoverControl != null ? GridWorkLimit * 1000.0 / System.Diagnostics.Stopwatch.Frequency
+                        : Math.Min(GridWorkLimit * 1000.0 / System.Diagnostics.Stopwatch.Frequency - (AhoraMs()-msTrab0),
+                          850.0 / Math.Max(1, TopeFpsReal) - lastFrameWork);
                     aheadAvailableTicks = Math.Max(1L, (long)(margin * System.Diagnostics.Stopwatch.Frequency / 1000));
                     WarmAheadCells();
                 }
@@ -1631,6 +1659,7 @@ namespace Rocola
             }
             // Rejilla de discos: un quad por celda (textura ya resuelta arriba). Las celdas aun sin textura (recien
             // horneadas o sin presupuesto de subida este cuadro) se saltan y aparecen en los cuadros siguientes.
+            if (ShowAlbum) DrawLod(true); // previews con marca: detras de la marca horneada
             if (ShowAlbum)
                 for (int i = 0; i < gridN; i++)
                     if (gridTex[i] != IntPtr.Zero)
@@ -1657,6 +1686,7 @@ namespace Rocola
                             Math.Max(0f, Math.Min(1f, c.A * WallOpacity)) * 0.35f, 0);
                         stars.BlankCubeColor = 0x003C466Eu;
                     }
+            if (ShowAlbum) DrawLod(false);
             if (ShowAlbum && contourTex != IntPtr.Zero && GetContourRect != null)
             {
                 Rectangle r = GetContourRect();
@@ -1804,6 +1834,7 @@ namespace Rocola
             double trabajo = AhoraMs() - msTrab0;
             lastFrameWork = trabajo;
             if (!stars.End()) return NoPresentado();
+            if (CoverControl != null) CoverControl.Observe(AhoraMs(), trabajo, TopeFpsReal);
             msTrabSuma += trabajo; msTrabN++;
             frames++;
             if (Environment.TickCount - fpsTick >= 1000) { Fps = frames; frames = 0; fpsTick = Environment.TickCount; }
@@ -1828,7 +1859,7 @@ namespace Rocola
                     upBudget--;
                     cellBytesDirty = true;
                     ct.Tex = Upload(ct.Tex, ref ct.Bw, ref ct.Bh, c.Bmp, out ct.U, out ct.V);   // portada llego / re-horneada: re-sube (mismo tamano -> reutiliza)
-                    ct.Bmp = c.Bmp; ct.Layout = c.Layout;
+                    ct.Bmp = c.Bmp; ct.Layout = c.Layout; ct.HasCover = c.HasCover;
                     if (ct.Tex == IntPtr.Zero) return false;
                     tex = ct.Tex; u = ct.U; v = ct.V; return true;
                 }
@@ -1837,7 +1868,7 @@ namespace Rocola
                 ct = new CellTex();
                 cellBytesDirty = true;
                 ct.Tex = Upload(IntPtr.Zero, ref ct.Bw, ref ct.Bh, c.Bmp, out ct.U, out ct.V);
-                ct.Bmp = c.Bmp; ct.Layout = c.Layout; ct.Frame = cellFrame;
+                ct.Bmp = c.Bmp; ct.Layout = c.Layout; ct.Frame = cellFrame; ct.HasCover = c.HasCover;
                 cellTexCache[c.Key] = ct;
                 if (ct.Tex == IntPtr.Zero) return false;
                 tex = ct.Tex; u = ct.U; v = ct.V; return true;
@@ -1851,7 +1882,7 @@ namespace Rocola
                 upBudget--;
                 cellBytesDirty = true;
                 st.Tex = Upload(st.Tex, ref st.Bw, ref st.Bh, c.Bmp, out st.U, out st.V);
-                st.Bmp = c.Bmp; st.Layout = c.Layout;
+                st.Bmp = c.Bmp; st.Layout = c.Layout; st.HasCover = c.HasCover;
                 if (st.Tex == IntPtr.Zero) return false;
             }
             tex = st.Tex; u = st.U; v = st.V; return true;
@@ -1940,10 +1971,13 @@ namespace Rocola
                 if (cellTexCache.TryGetValue(cell.Key, out old) &&
                     (old.Frame == cellFrame || (old.Tex != IntPtr.Zero && ReferenceEquals(old.Bmp, cell.Bmp)))) continue;
                 if (!ReserveAheadSpace(cell, count)) continue;
+                if (CoverControl != null && !CoverControl.CanStart(gridUploadCost, false, false)) break;
                 int budget = 1; IntPtr tex; float u, v;
                 long start = System.Diagnostics.Stopwatch.GetTimestamp();
                 EnsureCellTex(cell, ref budget, out tex, out u, out v);
-                gridUploadCost = CargaTrabajo.AprendeCoste(gridUploadCost, System.Diagnostics.Stopwatch.GetTimestamp() - start);
+                long spent = System.Diagnostics.Stopwatch.GetTimestamp() - start;
+                gridUploadCost = CargaTrabajo.AprendeCoste(gridUploadCost, spent);
+                if (CoverControl != null && budget == 0) CoverControl.Spend(spent);
                 if (cellTexCache.TryGetValue(cell.Key, out old)) old.Frame = unchecked(cellFrame - 1);
                 remaining--; // hasta 1/2/4, solo si queda margen; visibles siempre primero
             }

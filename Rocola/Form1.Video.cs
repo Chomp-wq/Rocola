@@ -702,6 +702,7 @@ namespace Rocola
                 // De paso recoge lo que el cielo se corre al pasar de pagina (PantallaVivaGpu.cs).
                 gpuPanel.GetGrid = delegate(GpuGridCell[] celdas)
                 {
+                    coverGovernor.Page(lastPageSig + "|" + coverGen, false, GpuPanel.AhoraMs());
                     int cuantas = albumView.BuildGpuGrid(celdas);
                     gpuPanel.EmpujeCielo += albumView.TomaEmpuje();
                     return cuantas;
@@ -716,6 +717,7 @@ namespace Rocola
                 gpuPanel.GetMoneda = BuildMonedaState;   // la moneda que cae en la capsula de creditos
                 gpuPanel.GetReposo = BuildReposoState;   // lo que suena, en grande: el vinilo y el titulo del panel de reposo
                 gpuPanel.GetAtraccion = BuildAtraccionState;   // el modo atraccion: el escaparate y lo mas pedido (AtraccionGpu.cs)
+                gpuPanel.CoverControl = coverGovernor;
                 gpuPanel.GetGridAhead = albumView.BuildGpuAhead;
                 gpuPanel.GetContour = delegate { return albumView.ContourSpriteBmp; };          // resalte de seleccion
                 gpuPanel.GetContourRect = delegate {

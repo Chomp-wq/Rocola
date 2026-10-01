@@ -565,6 +565,9 @@ namespace Rocola
                 if (a == null || a.CoverPath == null) return null;
                 lock (coverLock) { Image c; return CoverEnCache(a.CoverPath, false, out c) ? c : null; }
             };
+            albumView.PeekPreviewGpu = PeekGpuPreview;
+            albumView.PortadasLod = caratulasLod;
+            albumView.CoverControl = coverGovernor;
 #endif
             // LA MARCA DE "YA LA PUSISTE". La pared no guarda la cola: pregunta. Asi no hay dos listas
             // que puedan decir cosas distintas, y apagar la marca es dejar de contestar.
@@ -1089,7 +1092,11 @@ namespace Rocola
                         if (myGen != warmGen) return;
                         Album a0 = snap[i];
                         if (a0 == null || a0.CoverPath == null) continue;
-                        try { if (!File.Exists(ThumbCachePath(a0.CoverPath))) faltan++; } catch { }
+                        try { if (!File.Exists(ThumbCachePath(a0.CoverPath))
+#if ROCOLA_GPU
+                            || NeedsGpuPreview(a0)
+#endif
+                            ) faltan++; } catch { }
                     }
                     if (!PublishThumbRemaining(myGen, faltan)) return;
                     if (faltan > 0) Diag("miniaturas: faltan " + faltan + " por hacer");
@@ -1098,7 +1105,11 @@ namespace Rocola
                         if (myGen != warmGen) return;   // recargaron la musica: este hilo ya caduco
                         Album a = snap[i];
                         if (a == null || a.CoverPath == null) continue;
-                        try { if (File.Exists(ThumbCachePath(a.CoverPath))) continue; } catch { continue; }
+                        try { if (File.Exists(ThumbCachePath(a.CoverPath))
+#if ROCOLA_GPU
+                            && !NeedsGpuPreview(a)
+#endif
+                            ) continue; } catch { continue; }
                         // Si alguien uso la rocola hace poco, esperar (no robarle CPU ni DISCO a la interfaz).
                         //
                         // SALVO QUE ESTE SOLA. Hacer la miniatura de un disco cuesta 72 ms la primera vez
@@ -1129,8 +1140,18 @@ namespace Rocola
                             bool fgBusy;
                             lock (coverLock) { fgBusy = (coverLoading.Count + coverQHi.Count + coverQLo.Count) > 0; }
                             if (fgBusy) { i--; System.Threading.Thread.Sleep(60); continue; }
+#if ROCOLA_GPU
+                            string previewIdentity = gpuEnabled && caratulasLod ? ThumbCachePath(a.CoverPath) : null;
+#endif
                             Image im = DecodeCover(a.CoverPath);   // crea la miniatura en disco como efecto
-                            if (im != null) im.Dispose();          // no ocupar memoria: solo queremos el disco
+                            if (im != null)
+                            {
+                                try {
+#if ROCOLA_GPU
+                                    if (myGen == warmGen) WarmGpuPreview(a, im, previewIdentity);
+#endif
+                                } finally { im.Dispose(); }
+                            }
                         }
                         catch { }
                         finally { coverSem.Release(); }
@@ -1542,7 +1563,8 @@ namespace Rocola
             // de pagina, ya estan listas y el deslizamiento sale fluido de una. Dos casillas por vuelta y con
             // tope de 4 ms: si alguien esta usando la rocola en ese momento, no le quita nada.
             if (gpuEnabled && albumView != null && albumView.Visible && !attractOn && !searchOpen && !videoOn
-                && transMode == 0 && winMode == 0 && !albumView.Sliding) albumView.BakeAheadGpu();
+                && transMode == 0 && winMode == 0 && !albumView.Sliding && coverGovernor.BeginBackground(GpuPanel.AhoraMs()))
+                albumView.BakeAheadGpu();
 #endif
             PrecalientaUnPoco();   // y las pantallas que al encender no se ven, horneadas antes de que hagan falta
             CheckBusinessDayReset();   // al cruzar las 7 AM: reinicia el estado (nada de anoche cruza el corte del dia)

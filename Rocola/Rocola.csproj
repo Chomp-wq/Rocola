@@ -100,6 +100,7 @@
     <Compile Include="AcabadoGpu.cs" />
     <Compile Include="RespuestaGpu.cs" />
     <Compile Include="CargaTrabajo.cs" />
+    <Compile Include="CaratulasAdaptativas.cs" />
     <Compile Include="EscaneoMemo.cs" />
     <Compile Include="AperturaAudio.cs" />
     <Compile Include="AudioControles.cs" />
