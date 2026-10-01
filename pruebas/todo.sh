@@ -19,6 +19,9 @@
 cd "$(dirname "$0")" || exit 1
 RAIZ="$(cd .. && pwd)"
 NAUDIO="$RAIZ/packages/NAudio.1.9.0/lib/net35/NAudio.dll"
+# NLayer: el MP3 flotante alternativo (NLayerHd.cs). Va DENTRO de Rocola.exe como recurso, igual que en el .csproj; sin
+# esto la tanda no compilaba la rocola de esta rama.
+NLAYER="$RAIZ/packages/NLayer.1.12.0/lib/net35/NLayer.dll"
 # El dibujo por tarjeta grafica va en dos archivos: D3D9Star.cs es el dibujo (el mismo que en la rama de
 # Linux) y D3D9Device.cs es el dispositivo, que es lo unico que cambia de un sistema a otro. WinSistema.cs
 # lleva las dos cosas que el dibujo le pregunta a Windows (el refresco de la pantalla y si hay mensajes).
@@ -34,7 +37,7 @@ TMP_PRUEBAS="${TMPDIR:-/tmp}/rocola_pruebas_$$"
 FUENTES="$FUENTES $RAIZ/Rocola/AudioControles.cs $RAIZ/Rocola/Sonoridad.cs $RAIZ/Rocola/RellenoMp3.cs $RAIZ/Rocola/SinSilencios.cs $RAIZ/Rocola/SubirTodo.cs $RAIZ/Rocola/NivelDisco.cs $RAIZ/Rocola/BombaSonido.cs $RAIZ/Rocola/DiarioTablas.cs $RAIZ/Rocola/CancionEnMemoria.cs $RAIZ/Rocola/MedidasBitacora.cs $RAIZ/Rocola/PicoReal.cs $RAIZ/Rocola/Realce.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/ModoNoche.cs $RAIZ/Rocola/GraveMono.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/SinPausa.cs $RAIZ/Rocola/Form1.SinPausa.cs $RAIZ/Rocola/SalidaSonido.cs"
-FUENTES="$FUENTES $RAIZ/Rocola/SalidaExclusiva.cs $RAIZ/Rocola/DecodificaFlotante.cs"
+FUENTES="$FUENTES $RAIZ/Rocola/SalidaExclusiva.cs $RAIZ/Rocola/DecodificaFlotante.cs $RAIZ/Rocola/NLayerHd.cs"
 if ! mkdir -p "$TMP_PRUEBAS"; then
   echo "  No se pudo crear la carpeta temporal: $TMP_PRUEBAS"
   exit 1
@@ -292,11 +295,11 @@ fi
 
 echo "  compilando la rocola..."
 if ! mcs -sdk:$SDK -langversion:5 -warn:4 -warnaserror+ -target:winexe -out:rocola_cpu.exe \
-     -r:System.Windows.Forms.dll -r:System.Drawing.dll -r:"$NAUDIO" $FUENTES > "$C_ROCOLA" 2>&1; then
+     -r:System.Windows.Forms.dll -r:System.Drawing.dll -r:"$NAUDIO" -r:"$NLAYER" -resource:"$NLAYER",Rocola.NLayer.dll $FUENTES > "$C_ROCOLA" 2>&1; then
   echo "  LA ROCOLA NO COMPILA SIN AVISOS:"; tail -12 "$C_ROCOLA"; exit 1
 fi
 if ! mcs -sdk:$SDK -langversion:5 -warn:4 -warnaserror+ -target:winexe -out:rocola_gpu.exe -d:ROCOLA_GPU \
-     -r:System.Windows.Forms.dll -r:System.Drawing.dll -r:"$NAUDIO" $FUENTES > "$C_GPU" 2>&1; then
+     -r:System.Windows.Forms.dll -r:System.Drawing.dll -r:"$NAUDIO" -r:"$NLAYER" -resource:"$NLAYER",Rocola.NLayer.dll $FUENTES > "$C_GPU" 2>&1; then
   echo "  EL PERFIL CON TARJETA GRAFICA NO COMPILA SIN AVISOS:"; tail -12 "$C_GPU"; exit 1
 fi
 # --- LOS AVISOS SE CUENTAN, Y DE LOS DOS PERFILES ---
@@ -374,6 +377,12 @@ corre() {
 # (No se guarda en el repo: es el mismo archivo que ya vive en packages/.)
 if ! cp -f "$NAUDIO" ./NAudio.dll; then
   echo "  No se pudo copiar NAudio.dll junto a las baterias"
+  exit 1
+fi
+# Y NLayer, igual: la rocola lo saca de dentro de si misma solo cuando arranca de verdad (Program.cs); una bateria que
+# la carga como biblioteca lo busca al lado.
+if ! cp -f "$NLAYER" ./NLayer.dll; then
+  echo "  No se pudo copiar NLayer.dll junto a las baterias"
   exit 1
 fi
 

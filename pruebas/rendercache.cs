@@ -14,7 +14,10 @@ using System.Windows.Forms;
 class RenderCache
 {
     const BindingFlags F = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance;
+    // 'groups' lo lee el metodo dinamico de GroupsGetter (Ldsfld): el compilador no lo ve y avisaria (CS0414).
+#pragma warning disable 414
     static int checks; static Assembly app; static object groups; static Rectangle[] changes;
+#pragma warning restore 414
     static Type H = typeof(FranjaReloj), B = typeof(BuscaPortadas);
     static void Check(bool value, string text) { if (!value) throw new Exception(text); checks++; }
     static object Get(object o, string n) { return o.GetType().GetField(n, F).GetValue(o); }
@@ -76,14 +79,31 @@ class RenderCache
     {
         using (Graphics g = Graphics.FromImage(bitmap))
         {
+            g.SetClip(new Rectangle(0, 0, bitmap.Width, bitmap.Height));   // (ver Completa)
             g.SmoothingMode = SmoothingMode.AntiAlias; g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
             return (Rectangle[])Call(overlay, "PintaCartasConCambios", g, -bounds.X, -bounds.Y, full);
         }
     }
+    // La pieza entera de referencia, como Pieza (buscaportadas), pero con un recorte rectangular de toda la imagen.
+    // En Windows no cambia nada: GDI+ nunca suaviza un recorte. En Mono (libgdiplus) un recorte con forma se suaviza
+    // si va solo y no si se cruza con otro, y la tarjeta de iniciales recorta su brillo con su forma: sin esto, la
+    // reconstruccion por recuadros diferia en unos pixeles de esa esquina que en Windows salen iguales.
+    static Bitmap Completa(Control overlay)
+    {
+        object[] a = { 4, Rectangle.Empty }; Call(overlay, "PiezaViva", a); Rectangle donde = (Rectangle)a[1];
+        Bitmap b = new Bitmap(donde.Width, donde.Height, PixelFormat.Format32bppPArgb);
+        using (Graphics g = Graphics.FromImage(b))
+        {
+            g.SetClip(new Rectangle(0, 0, b.Width, b.Height));
+            g.Clear(Color.Transparent);
+            g.SmoothingMode = SmoothingMode.AntiAlias; g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
+            Call(overlay, "DibujaPiezaViva", g, 4, -donde.X, -donde.Y);
+        }
+        return b;
+    }
     static void Same(Control overlay, Bitmap actual)
     {
-        object[] args = { overlay, 4, Rectangle.Empty };
-        using (Bitmap expected = (Bitmap)Static(B, "Pieza", args))
+        using (Bitmap expected = Completa(overlay))
         {
             int different = (int)Static(B, "Distintos", actual, expected);
             if (different != 0)
@@ -145,9 +165,21 @@ class RenderCache
             Check(Locks.Count == 1, "reinicio no sube completa");
         }
     }
+    // En Linux (Mono) la rocola copia memoria con RtlMoveMemory, de Windows: se carga la COPIA con su .config que
+    // prepara franjareloj (Cargable), igual que franjareloj, buscaportadas y dibujoligero. Sin ella ninguna subida
+    // llegaba a la textura y cada pasada lo volvia a subir todo. La carpeta de la copia se borra al acabar.
     [STAThread] static int Main(string[] args)
     {
-        app = Assembly.LoadFrom(args.Length > 0 ? args[0] : "rocola.exe");
+        try { return Prueba((string)Static(H, "Cargable", args.Length > 0 ? args[0] : "rocola.exe")); }
+        finally
+        {
+            string copia = (string)H.GetField("carpetaCopia", F).GetValue(null);
+            if (copia != null) try { System.IO.Directory.Delete(copia, true); } catch { }
+        }
+    }
+    static int Prueba(string ruta)
+    {
+        app = Assembly.LoadFrom(ruta);
         foreach (Type helper in new Type[] { H, B })
             foreach (string field in new string[] { "TPanel", "TStar", "TDev", "TD3D" })
                 Init(helper, field, field == "TPanel" ? "Rocola.GpuPanel" : field == "TStar" ? "Rocola.GpuStarfield" : field == "TDev" ? "Rocola.D3D9Device" : "Rocola.D3D9");

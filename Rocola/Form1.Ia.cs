@@ -118,6 +118,9 @@ namespace Rocola
         // guarda uno POR UNIDAD (C:\, D:\...) y cada archivo se trata como merece el disco donde ESTA. Lo que
         // no se puede repartir -cuantas caratulas se leen a la vez- se decide por donde este LA MAYORIA.
         private static readonly Dictionary<string, bool> discoLento = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        // Y la mediana que dio cada unidad, en ms, para ensenarla en Ctrl+F3: una unidad ya medida no se vuelve
+        // a medir (PerfilaDisco), pero su numero sigue a la vista. Mismo candado; se borra junto con discoLento.
+        private static readonly Dictionary<string, int> discoMediana = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         private static readonly object discoLock = new object();
         private static string UnidadDe(string ruta)
         {
@@ -227,7 +230,8 @@ namespace Rocola
                     }
                     if (medidas.Count < 3) continue;   // mantener el respaldo conservador sin muestras suficientes
                     medidas.Sort();
-                    lock (discoLock) discoLento[unidad.Key] = medidas[medidas.Count / 2] > UmbralDiscoMs;
+                    int mediana = medidas[medidas.Count / 2];
+                    lock (discoLock) { discoLento[unidad.Key] = mediana > UmbralDiscoMs; discoMediana[unidad.Key] = mediana; }
                 }
                 string mandaU = null; int mandaN = 0; bool mandaLento = true;
                 StringBuilder det = new StringBuilder();
@@ -239,6 +243,7 @@ namespace Rocola
                         if (!discoLento.TryGetValue(cantidad.Key, out lento)) continue;
                         if (det.Length > 0) det.Append(", ");
                         det.Append(cantidad.Key).Append(' ').Append(lento ? "disco duro" : "SSD");
+                        int ms; if (discoMediana.TryGetValue(cantidad.Key, out ms)) det.Append(" (").Append(ms).Append(" ms)");
                         if (cantidad.Value > mandaN) { mandaN = cantidad.Value; mandaU = cantidad.Key; mandaLento = lento; }
                     }
                 }
