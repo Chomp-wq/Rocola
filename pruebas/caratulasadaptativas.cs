@@ -107,6 +107,7 @@ class CaratulasAdaptativas
  }
  static void Hal()
  {
+  if(Environment.OSVersion.Platform!=PlatformID.Win32NT){Console.WriteLine("OMITIDA textura HAL: requiere Windows/Direct3D9; las demas comprobaciones siguen activas.");return;}
   using(Control host=new Control())using(Control p=(Control)New(panel))using(Bitmap bmp=new Bitmap(32,32))
   {
    host.Size=new Size(640,480);p.Size=host.Size;
