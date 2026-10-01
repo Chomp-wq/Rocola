@@ -171,7 +171,7 @@ una medición de FPS en el equipo de destino ni una certificación de Windows XP
 ## Eficiencia compartida (30-09-2026, Windows)
 
 `powershell -File pruebas/validar-mejoras-20260929.ps1` compila GPU y CPU con
-advertencias como errores, ejecuta las regresiones y las dos nuevas baterias:
+advertencias como errores, ejecuta las regresiones y las nuevas baterias:
 
 - `eficiencia`: 34 comprobaciones de planes reducidos, bloqueos separados,
   senales HDD, caches acotadas, muestras de color identicas y registro incremental.
@@ -180,11 +180,19 @@ advertencias como errores, ejecuta las regresiones y las dos nuevas baterias:
   caratula publicada antes del guardado y pin GPU acotado dentro de la escena.
 - `verticesgpu`: 83 comprobaciones HAL reales, equivalencia de superficies entre
   UP/anillo, Reset, reutilizacion, seleccion adaptativa y liberacion.
+- `atlasgpu`: 480 comprobaciones de casillas compactadas, texto identico,
+  redondeo de caratulas acotado a un nivel por canal, precarga y cache entre paginas,
+  siete resoluciones, cambio de portada, marcas y superficies HAL fraccionarias.
+  Admite `atlasgpu.exe Rocola-gpu.exe --dos-hilos`.
+- `cpucongelado` (manual, recibe ejecutables CPU anterior/nuevo): compara el IL de
+  14 metodos del renderizador congelado. Requiere compilar con las mismas opciones.
 
 El lanzador tambien incluye buscaligero, dibujoligero y aurorafina. No reemplaza
 releases ni datos del usuario. Afinidad reducida no equivale a un procesador
 antiguo; las mediciones sinteticas no certifican XP ni FPS en una biblioteca real.
 Detalles: `EFICIENCIA_2026-09-30.md`.
+La paginacion a resolucion alta se documenta en
+`PAGINACION_GPU_ALTA_RESOLUCION_2026-09-30.md`.
 
 ## Añadir una batería nueva
 

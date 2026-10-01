@@ -498,7 +498,7 @@ class PantallaViva
             int quieta = (int)grid.Invoke(v, new object[] { buf });
             int sel = 0; for (int k = 0; k < quieta; k++) if ((bool)Get(buf.GetValue(k), "Sel")) sel++;
             Check(quieta == 18 && sel == 1 && (bool)Get(buf.GetValue(3), "Sel"), "quieta: 18 casillas y solo la elegida marcada como tal");
-            IDictionary cache = (IDictionary)Get(v, "cellCache");
+            IDictionary cache = (IDictionary)Get(v, "gpuCellCache");
             int enCaja = cache.Count;
             Set(v, "Page", B1);
             Set(v, "gpuLastSlideTick", Environment.TickCount - 5000);
