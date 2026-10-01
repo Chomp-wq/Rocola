@@ -176,7 +176,9 @@ advertencias como errores, ejecuta las regresiones y las dos nuevas baterias:
 - `eficiencia`: 34 comprobaciones de planes reducidos, bloqueos separados,
   senales HDD, caches acotadas, muestras de color identicas y registro incremental.
   Admite `eficiencia.exe Rocola-gpu.exe --dos-hilos` para limitar solo la prueba.
-- `verticesgpu`: 45 comprobaciones HAL reales, equivalencia de superficies entre
+- `eficiencia2`: 32 comprobaciones de guardado por pendientes, errores/reintentos,
+  caratula publicada antes del guardado y pin GPU acotado dentro de la escena.
+- `verticesgpu`: 83 comprobaciones HAL reales, equivalencia de superficies entre
   UP/anillo, Reset, reutilizacion, seleccion adaptativa y liberacion.
 
 El lanzador tambien incluye buscaligero, dibujoligero y aurorafina. No reemplaza

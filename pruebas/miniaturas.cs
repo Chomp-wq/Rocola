@@ -80,7 +80,7 @@ class Miniaturas
         try
         {
             Console.WriteLine("\n  1) DONDE SE GUARDAN  (esto es todo el asunto)\n");
-            string ruta = (string)mRutaMini.Invoke(null, new object[] { Path.Combine(donde, "Disco 1", "cover.jpg") });
+        string ruta = (string)mRutaMini.Invoke(null, new object[] { Path.Combine(Path.Combine(donde, "Disco 1"), "cover.jpg") });
             Console.WriteLine("     la miniatura de una portada iria a:");
             Console.WriteLine("       " + ruta);
             Check(ruta != null && ruta.StartsWith(donde, StringComparison.Ordinal),

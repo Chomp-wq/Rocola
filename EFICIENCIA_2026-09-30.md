@@ -29,8 +29,10 @@ El escritor serial crea una copia inicial; despues recibe cambios y bajas.
 Solo borra pendientes que corresponden al objeto/version que realmente guardo.
 Una solicitud agrupada o un guardado cancelado no pierde los cambios anteriores.
 
-La comparacion completa del diario sigue siendo O(N), pero ocurre en segundo
-plano. No se afirma que todos los trabajos de guardado sean O(1).
+La segunda pasada de esta fecha sustituye la comparacion completa del registro
+de fuentes por sus pendientes. Primera escritura, bajas y compactacion siguen
+siendo O(N); las otras tablas conservan su comparacion completa en segundo plano.
+Detalles y limites: EFICIENCIA_SEGUNDA_PASADA_2026-09-30.md.
 Prueba sintetica: 2.000 entradas, primera escritura 81.799 bytes; cambio de una
 entrada 40 bytes. Son bytes reales escritos en datos de prueba, no tiempos de HDD.
 

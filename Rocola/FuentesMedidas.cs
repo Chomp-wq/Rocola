@@ -200,12 +200,11 @@ namespace Rocola
                     }
                     for (int i = 0; i < cambios.Count; i++)
                     { if (cambios[i].Value == null) trabajo.Remove(cambios[i].Key); else trabajo[cambios[i].Key] = cambios[i].Value; }
-                    // Ordenar/formatear/comparar tablas nunca en la UI. DiarioTabla anade solo diferencias
-                    // y conserva reemplazo atomico, recuperacion externa y compactacion de las otras tablas.
-                    List<KeyValuePair<string, RegistroFuente>> snap = new List<KeyValuePair<string, RegistroFuente>>(trabajo);
+                    // Las escrituras normales solo comparan los cambios. El diccionario es del escritor,
+                    // no de la UI; la instantanea completa solo hace falta al reconstruir/compactar.
                     Func<bool> vigente = delegate { lock (fuentesCerrojo)
                         return fuentesEstado == 1 && hasta == fuentesCambios && object.ReferenceEquals(trabajo, fuentesTrabajo); };
-                    if (diario.Guarda(ruta, snap, HuellaFuente, EscribeFuente, "ROCOLA-FUENTES v1", null, vigente))
+                    if (diario.GuardaCambios(ruta, trabajo, cambios, HuellaFuente, EscribeFuente, "ROCOLA-FUENTES v1", vigente))
                     {
                         lock (fuentesCerrojo)
                         {

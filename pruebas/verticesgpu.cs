@@ -45,7 +45,7 @@ class VerticesGpu
  static int[] Pixels(object d)
  {
   IntPtr dev=(IntPtr)Get(d,"dev"),back=IntPtr.Zero,off=IntPtr.Zero;bool locked=false;
-  Check(Fn<Hr>(dev,42)(dev)>=0,"EndScene antes de lectura"); Set(d,"inScene",false);
+  Check(Fn<Hr>(dev,42)(dev)>=0,"EndScene antes de lectura"); Set(d,"inScene",false); Call(d,"SueltaPinesVertices");
   try{
    Check(Fn<Back>(dev,18)(dev,0,0,0,out back)>=0,"obtener superficie HAL");
    Desc desc;Check(Fn<Description>(back,12)(back,out desc)>=0,"descripcion de superficie");
@@ -71,7 +71,10 @@ class VerticesGpu
    try{
     Check((bool)T.GetProperty("Ok",B).GetValue(d,null),"Direct3D HAL disponible");
     Array sky=Sky(320,240),mesh=Geometry(120,320,240);
-    Set(d,"verticesSinSoporte",true);Draw(d,sky,mesh,120,4);int[] up=Pixels(d);
+    Set(d,"verticesSinSoporte",true);Draw(d,sky,mesh,120,4);
+    Check(object.ReferenceEquals(Get(d,"verticesFijados"),mesh),"el ultimo array reutilizado pertenece a esta escena HAL");
+    int[] up=Pixels(d);
+    Check(Get(d,"verticesFijados")==null,"lectura tras EndScene no deja un pin vivo");
     Set(d,"verticesSinSoporte",false);Set(d,"verticesModo",2);Draw(d,sky,mesh,120,4);int[] vb=Pixels(d);
     Check((IntPtr)Get(d,"verticesGpu")!=IntPtr.Zero,"usa el anillo GPU y no el respaldo UP");
     bool same=up.Length==vb.Length;for(int i=0;i<up.Length && same;i++)same=up[i]==vb[i];Check(same,"anillo GPU identico pixel a pixel a UP, con transparencias");
@@ -85,7 +88,25 @@ class VerticesGpu
     Set(d,"verticesModo",0);Set(d,"verticesPruebaTris",0);Set(d,"verticesPruebas",0);
     Draw(d,sky,mesh,120,44);Pixels(d);
     Check((int)Get(d,"verticesModo")!=0,"calibra con dibujos reales y elige automaticamente");
-   }finally{Call(d,"Dispose");}Check((IntPtr)Get(d,"verticesGpu")==IntPtr.Zero,"Dispose libera vertices");}
+    object changed=mesh.GetValue(0);V.GetField("Color").SetValue(changed,0xFFFF3399u);mesh.SetValue(changed,0);
+    Set(d,"verticesSinSoporte",true);Draw(d,sky,mesh,120,3);int[] changedUp=Pixels(d);
+    Set(d,"verticesSinSoporte",false);Set(d,"verticesModo",2);Draw(d,sky,mesh,120,3);int[] changedVb=Pixels(d);
+    same=changedUp.Length==changedVb.Length;for(int i=0;i<changedUp.Length && same;i++)same=changedUp[i]==changedVb[i];
+    Check(same,"modificar el mismo array conserva pixeles identicos en UP y anillo");
+    V.GetField("Color").SetValue(changed,0xFFFF3399u);mesh.SetValue(changed,0);
+    Set(d,"verticesSinSoporte",true);Draw(d,sky,mesh,120,1);
+    V.GetField("Color").SetValue(changed,0xFF33FF99u);mesh.SetValue(changed,0);Call(d,"DrawMesh",mesh,120);
+    int[] vivo=Pixels(d);
+    V.GetField("Color").SetValue(changed,0xFFFF3399u);mesh.SetValue(changed,0);Draw(d,sky,mesh,120,1);
+    V.GetField("Color").SetValue(changed,0xFF33FF99u);mesh.SetValue(changed,0);
+    Set(d,"inScene",false);Call(d,"DrawMesh",mesh,120);Set(d,"inScene",true);int[] temporal=Pixels(d);
+    same=vivo.Length==temporal.Length;for(int i=0;i<vivo.Length && same;i++)same=vivo[i]==temporal[i];
+    Check(same,"mutacion durante la escena se lee igual con pin reutilizado o temporal");
+    Draw(d,sky,mesh,120,1);Check((bool)Call(d,"EndFrame"),"EndFrame HAL presenta una escena normal");
+    Check(Get(d,"verticesFijados")==null && (long)Get(d,"pinesBytes")==0,"EndFrame libera el pin y su referencia");
+    Draw(d,sky,mesh,120,1);Check(Get(d,"verticesFijados")!=null,"escena abierta al probar Dispose");
+   }finally{Call(d,"Dispose");}Check((IntPtr)Get(d,"verticesGpu")==IntPtr.Zero,"Dispose libera vertices");
+   Check(Get(d,"verticesFijados")==null && (long)Get(d,"pinesBytes")==0,"Dispose libera tambien la ultima escena HAL abierta");}
    Console.WriteLine(checks+" comprobaciones de vertices HAL.");return 0;
   }catch(Exception e){Console.WriteLine("FALLO "+e);return 1;}
  }

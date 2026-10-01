@@ -522,6 +522,7 @@ namespace Rocola
                 }
                 string key = j.Key;
                 bool entered = false;
+                Bitmap miniaturaParaGuardar = null;
                 try
                 {
                     if (j.Gen != coverGen) continue;
@@ -529,7 +530,16 @@ namespace Rocola
                     if (j.Gen != coverGen) continue;
                     Image thumb = null;
                     string identidadAntes = null;
-                    try { identidadAntes = ThumbCachePath(key); thumb = DecodeCoverWithIdentity(key, identidadAntes); } catch { }
+                    try
+                    {
+                        identidadAntes = ThumbCachePath(key);
+#if ROCOLA_GPU
+                        if (gpuEnabled) thumb = DecodeCoverForPublication(key, identidadAntes, out miniaturaParaGuardar);
+                        else
+#endif
+                        thumb = DecodeCoverWithIdentity(key, identidadAntes);
+                    }
+                    catch { }
                     // Si la portada fue reemplazada mientras se decodificaba, el bitmap pertenece a la
                     // version anterior. No se publica en la cache de memoria con la misma ruta.
                     try
@@ -583,8 +593,20 @@ namespace Rocola
                             }
                         }
                         catch { }
+                    // La imagen ya esta publicada y el aviso a UI ya esta encolado. Guardar SOLO la
+                    // copia privada: la portada publicada puede estar dibujandose o haber sido expulsada.
+                    if (miniaturaParaGuardar != null && thumb != null && j.Gen == coverGen)
+                    {
+                        try { if (string.Equals(identidadAntes, ThumbCachePath(key), StringComparison.OrdinalIgnoreCase))
+                            SaveThumb(miniaturaParaGuardar, identidadAntes); }
+                        catch { }
+                    }
                 }
-                finally { if (entered) coverSem.Release(); ReleaseCoverUnit(j); }
+                finally
+                {
+                    if (miniaturaParaGuardar != null) try { miniaturaParaGuardar.Dispose(); } catch { }
+                    if (entered) coverSem.Release(); ReleaseCoverUnit(j);
+                }
             }
         }
 
@@ -665,6 +687,16 @@ namespace Rocola
 
         private static Image DecodeCoverWithIdentity(string path, string cacheFile)
         {
+            Bitmap pendiente;
+            return DecodeCoverCore(path, cacheFile, false, out pendiente);
+        }
+#if ROCOLA_GPU
+        private static Image DecodeCoverForPublication(string path, string cacheFile, out Bitmap pendiente)
+        { return DecodeCoverCore(path, cacheFile, true, out pendiente); }
+#endif
+        private static Image DecodeCoverCore(string path, string cacheFile, bool publicarPrimero, out Bitmap pendiente)
+        {
+            pendiente = null;
             // 1) miniatura en cache -> leerla (rapido)
             if (cacheFile != null)
             {
@@ -712,7 +744,12 @@ namespace Rocola
                         g.PixelOffsetMode = PixelOffsetMode.Half;
                         g.DrawImage(src, 0, 0, ThumbPx, ThumbPx);
                     }
-                    if (cacheFile != null) SaveThumb(thumb, cacheFile);
+                    if (cacheFile != null)
+                    {
+                        if (publicarPrimero)
+                            try { pendiente = (Bitmap)thumb.Clone(); } catch { }
+                        if (pendiente == null) SaveThumb(thumb, cacheFile);
+                    }
                     return thumb;
                 }
             }
