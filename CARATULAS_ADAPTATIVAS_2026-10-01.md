@@ -133,5 +133,46 @@ La version final de Modest tambien recorrio seis paginas reales con afinidad a
 dos procesadores logicos: esperas de 0.418, 15.786, 35.950, 25.293, 30.335 y
 29.016 ms, un solo lector y cero errores de UI. El PC sigue siendo moderno:
 restringir afinidad no simula un procesador antiguo ni la latencia de un HDD.
-La instalacion y publicacion se registran separadamente cuando se completan.
+## Integracion con cambios nuevos de GitHub
+
+Antes de publicar se incorporaron los cuatro commits nuevos de HD hasta
+`bede28c`, conservando sus arreglos de audio y de A CONTINUACION. Pasaron de nuevo
+las 32 baterias de HD. El unico conflicto fue la prueba CPU: se conserva la
+comparacion estricta por instrucciones, operandos, locales y excepciones.
+Tambien se adapto el banco de estilo a los campos de tamaño de WinForms de
+Microsoft, sin cambiar el programa ni relajar sus expectativas: pasaron 42
+comprobaciones de estilo, las de sinpausa, 49 de silencios y 71 de rendercache.
+Miniaturas y carriles tambien pasaron.
+
+En una repeticion posterior, el dispositivo HAL dejo de estar disponible en
+esta sesion. Una sonda independiente obtuvo HAL=False tanto con el ejecutable
+anterior instalado como con el nuevo. La repeticion de atlas/LOD en ese momento
+fallo por falta de dispositivo; no se contabiliza como una comprobacion HAL
+correcta ni como una medicion de rendimiento. Las pruebas HAL anteriores ya
+habian terminado correctamente. No se desbloqueo ni cambio la sesion del usuario.
+
+El runner alternativo `pruebas/todo.sh` incluye ahora la nueva fuente y bateria;
+la parte Direct3D de esa bateria se omite explicitamente fuera de Windows.
+No se afirma una ejecucion de ese runner con Mono/Linux en esta pasada.
+
+## Instalacion final
+
+Se actualizaron `D:\Release1` y `D:\ReleaseHD` cuando ninguno de sus ejecutables
+estaba abierto; no se cerro el programa para forzar la actualizacion. Solo se
+copiaron Rocola.exe, Rocola.pdb y NAudio.dll, verificando el contenido por SHA-256.
+No se copiaron ni sustituyeron configuracion, creditos, cola, musica o modelos.
+
+Los archivos anteriores se conservan en la subcarpeta `respaldo` de cada
+instalacion, dentro de:
+`codex-caratulas-20261001-f424263559014ea2ad8dc1e3219845c7`.
+
+SHA-256 de los ejecutables instalados:
+
+- HD: `1BD25DD470DF2BDC1AF1F12AF746CC9E2C63DDD11E3BCBAEFE817D11B17F2F0F`.
+- Modest: `09125D7D6675BD0A2C61D7A8F4DE390B5AC1FB5D9D1CCA2254724C144563E81F`.
+
+La compilacion HD incluye los cambios de produccion de `8e9ab5d`; Modest, los de
+`ec4cc97`. Los cambios posteriores de documentacion/pruebas no alteran esos
+ejecutables. No se relanzo la aplicacion con el dispositivo HAL no disponible.
+
 

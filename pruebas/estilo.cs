@@ -312,6 +312,12 @@ class Estilo
         }
         FieldInfo cr = Campo(typeof(Control), "client_rect");
         if (cr != null && cr.FieldType == typeof(Rectangle)) cr.SetValue(f, new Rectangle(0, 0, 1024, 768));
+        // WinForms de Microsoft guarda el mismo estado en dos enteros (Mono usa Size/Rectangle).
+        foreach (string c in new string[] { "clientWidth", "_clientWidth", "clientHeight", "_clientHeight" })
+        {
+            FieldInfo fi = Campo(typeof(Control), c);
+            if (fi != null && fi.FieldType == typeof(int)) fi.SetValue(f, c.IndexOf("Width") >= 0 ? 1024 : 768);
+        }
         return f;
     }
     // La caja de antes (hasta el 1-10-2026), para comprobar que donde ya cabia queda igual.
