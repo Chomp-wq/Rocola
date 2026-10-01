@@ -1521,6 +1521,9 @@ namespace Rocola
             // Mientras se leen las tablas del arranque no se anima nada (EsperaLasTablas): antes la ventana ni atendia
             // este reloj, y en dos nucleos ese rato de procesador es del lector.
             if (arranqueEnEspera) return;
+#if ROCOLA_GPU
+            EnsureCoverReaders(); // rearmar la cola cuando el regulador recupera margen
+#endif
             phase += 0.045;
             frameTick++;
             { SpectralTap sp0 = curSbr; if (sp0 != null && sp0.CutHz > 0f) { eqMeasCut = sp0.CutHz; eqMeasCutLo = sp0.CutLoHz; } }
@@ -1560,8 +1563,8 @@ namespace Rocola
             DrainCoverTrash();   // libera carátulas expulsadas (seguro: no hay repintado en curso)
 #if ROCOLA_GPU
             // Con la rocola quieta, se van horneando las casillas de la pagina de al lado: cuando alguien pase
-            // de pagina, ya estan listas y el deslizamiento sale fluido de una. Dos casillas por vuelta y con
-            // tope de 4 ms: si alguien esta usando la rocola en ese momento, no le quita nada.
+            // de pagina, ya estan listas. El regulador comparte presupuesto de preparacion
+            // y subidas, respetando el perfil elegido y el margen real del equipo.
             if (gpuEnabled && albumView != null && albumView.Visible && !attractOn && !searchOpen && !videoOn
                 && transMode == 0 && winMode == 0 && !albumView.Sliding && coverGovernor.BeginBackground(GpuPanel.AhoraMs()))
                 albumView.BakeAheadGpu();

@@ -255,6 +255,10 @@ namespace Rocola
             public int Fps;            // los cuadros por segundo ENTREGADOS de verdad, con todo compitiendo
             public double P95 = 0, P99 = 0, PortadasMs = 0;
             public int Lentos = 0, PaginasListas = 0, PaginasSolicitadas = 0;
+            public int PerfilCarga = 0, Ancho = 0, Alto = 0, PreviasGpu = 0, VistasGpu = 0;
+            public string Inicio = "";
+            public DateTime Hora = DateTime.MinValue;
+            public bool MusicaReal = false;
         }
         private List<EscenaMedida> bancoEscenas;   // null = aun sin medir
         private EscenaMedida bancoPortadas = null;
@@ -485,7 +489,18 @@ namespace Rocola
                 try
                 {
                     for (int i = 0; i < ef.Length; i++) PonNivel(ef[i].Clave, NivAlto);
+                    // Mismo comienzo en cada comparacion; no borrar caches ni interrumpir el audio.
+                    currentLetter = bkLetra; page = bkPag; selAlbumIndex = bkSel; RefreshAlbums();
+                    int measuredProfile = caratulasCarga, measuredWidth = gpuPanel.Width, measuredHeight = gpuPanel.Height;
+                    DateTime measuredTime = DateTime.Now;
                     bancoPortadas = MideEscena(EscPagina);
+                    if (caratulasCarga != measuredProfile || gpuPanel.Width != measuredWidth || gpuPanel.Height != measuredHeight)
+                        throw new InvalidOperationException("Cambio el perfil o la resolucion durante la medida; vuelve a medir.");
+                    bancoPortadas.PerfilCarga = measuredProfile; bancoPortadas.Ancho = measuredWidth; bancoPortadas.Alto = measuredHeight;
+                    bancoPortadas.Inicio = bkLetra + "/" + (bkPag + 1); bancoPortadas.Hora = measuredTime;
+                    bancoPortadas.MusicaReal = bancoConMusica;
+                    bancoPortadas.PreviasGpu = coverGovernor.ReadyAtFirstSeen; bancoPortadas.VistasGpu = coverGovernor.SeenCovers;
+                    RegisterCoverMeasurement(bancoPortadas);
                 }
                 finally { for (int i = 0; i < ef.Length; i++) PonNivel(ef[i].Clave, bkNiv[i]); }
 
@@ -1192,6 +1207,10 @@ namespace Rocola
             Label lTarda = new Label(); lTarda.SetBounds(16, 82, 424, 32); lTarda.BackColor = Color.Transparent;
             lTarda.ForeColor = cTenue; lTarda.Font = fDes;
             lTarda.Text = "Tarda medio minuto. Pone una cancion muda y usa la rocola sola:\npasa de pagina, cambia de letra, escribe y entra en discos.";
+            BotonPlano bHistorial = new BotonPlano(); bHistorial.SetBounds(328, 590, 144, 38);
+            bHistorial.Font = fBot; bHistorial.Text = "Comparar perfiles";
+            bHistorial.Enabled = historialCaratulas != null && historialCaratulas.Count > 0;
+            bHistorial.Click += delegate { ShowCoverHistory(); }; pg.Controls.Add(bHistorial);
             Label lCab = new Label(); lCab.SetBounds(16, 120, 424, 16); lCab.BackColor = Color.Transparent;
             lCab.ForeColor = cApagado; lCab.Font = fDes; lCab.Text = "PANTALLA                          TRABAJO   CUADROS/S";
             Label[] lFila = new Label[5];
@@ -1295,6 +1314,7 @@ namespace Rocola
             Action pinta = delegate
             {
                 // Los tres botones de cada fila, y el mando general si TODAS estan en el mismo nivel.
+                bHistorial.Enabled = historialCaratulas != null && historialCaratulas.Count > 0;
                 int comun = -2;
                 for (int i = 0; i < ef.Length; i++)
                 {
@@ -1362,6 +1382,8 @@ namespace Rocola
                 if (bancoConGpu && bancoPortadas != null)
                 {
                     EscenaMedida pm = bancoPortadas;
+                    lTarda.Text = CoverMeasurementContext(pm);
+                    lTarda.ForeColor = CoverMeasurementStale(pm) ? cMal : cTenue;
                     lTecho.Text = "Paginas: P95 " + pm.P95.ToString("0.0") + " / P99 " + pm.P99.ToString("0.0")
                         + " ms; >33 ms: " + pm.Lentos + ".\nCaratulas listas: " + pm.PaginasListas
                         + "/" + pm.PaginasSolicitadas + "; max lista: " + pm.PortadasMs.ToString("0") + " ms (efectos altos).";
@@ -1374,6 +1396,12 @@ namespace Rocola
                     lTecho.Text = ""; lVer.ForeColor = cMal;
                     lVer.Text = "Medicion incompleta: " + bancoError;
                     lProp.Text = "No se aplican recomendaciones de una medicion fallida. Revisa el dispositivo y vuelve a medir.";
+                    bApli.Enabled = false; bApli.Relleno = cOff; bApli.Borde = cBordeOff; bApli.ForeColor = cApagado;
+                    return;
+                }
+                if (CoverMeasurementStale(bancoPortadas))
+                {
+                    lProp.Text = "Esta medida corresponde a otro perfil o resolucion. Vuelve a medir antes de aplicar una propuesta.";
                     bApli.Enabled = false; bApli.Relleno = cOff; bApli.Borde = cBordeOff; bApli.ForeColor = cApagado;
                     return;
                 }
@@ -1473,6 +1501,7 @@ namespace Rocola
             bApli.Click += delegate
             {
                 if (bancoPropuesta == null) return;
+                if (CoverMeasurementStale(bancoPortadas)) { pinta(); return; }
                 for (int i = 0; i < ef.Length && i < bancoPropuesta.Length; i++) PonNivel(ef[i].Clave, bancoPropuesta[i]);
                 f3CambioGraf = true;
                 pinta();
@@ -1494,6 +1523,9 @@ namespace Rocola
             };
 
             pg.Controls.Add(tMide); pg.Controls.Add(tProp); pg.Controls.Add(tEfe); pg.Controls.Add(bResetG);
+            CoverProfileChanged += pinta;
+            pg.Disposed += delegate { CoverProfileChanged -= pinta; };
+            pg.VisibleChanged += delegate { if (pg.Visible) pinta(); };
             pinta();
             return pg;
         }

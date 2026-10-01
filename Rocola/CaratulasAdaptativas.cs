@@ -16,6 +16,85 @@ namespace Rocola
         // nunca desactivan las protecciones ni reducen la calidad final.
         private bool caratulasLod = true;
         private int caratulasCarga; // 0 automatico, 1 fluidez, 2 equilibrado, 3 carga rapida
+        private readonly List<EscenaMedida> historialCaratulas = new List<EscenaMedida>();
+        private event Action CoverProfileChanged;
+
+        internal static string NombreCargaCaratulas(int profile)
+        { return profile == 1 ? "Fluidez" : profile == 2 ? "Equilibrado" : profile == 3 ? "Carga rápida" : "Automático"; }
+
+        private void RegisterCoverMeasurement(EscenaMedida measure)
+        {
+            if (historialCaratulas == null || measure == null) return;
+            historialCaratulas.Add(measure);
+            if (historialCaratulas.Count > 12) historialCaratulas.RemoveAt(0);
+            if (CoverProfileChanged != null) CoverProfileChanged();
+        }
+        private bool CoverMeasurementStale(EscenaMedida measure)
+        {
+            if (measure == null) return false;
+            return measure.PerfilCarga != caratulasCarga
+#if ROCOLA_GPU
+                || (gpuPanel != null && (measure.Ancho != gpuPanel.Width || measure.Alto != gpuPanel.Height))
+#endif
+                ;
+        }
+        private string CoverMeasurementContext(EscenaMedida measure)
+        {
+            return (CoverMeasurementStale(measure) ? "Anterior: " : "") + NombreCargaCaratulas(measure.PerfilCarga)
+                + " · " + measure.Ancho + "×" + measure.Alto + " · " + measure.Hora.ToString("HH:mm:ss")
+                + "\nGPU previas: " + measure.PreviasGpu + "/" + measure.VistasGpu + "; sin limpiar cachés.";
+        }
+        private Panel BuildCoverHistory(Font normal, Font small, Color text, Color muted)
+        {
+            Panel page = new Panel(); page.Size = new Size(920, 508); page.BackColor = Color.FromArgb(11, 14, 32);
+            Label title = new Label(); title.SetBounds(16, 14, 888, 28); title.Font = normal;
+            title.ForeColor = text; title.Text = "COMPARACIÓN DE CARGA DE CARÁTULAS"; page.Controls.Add(title);
+            string[] headings = { "Perfil", "Resolución", "Inicio", "P95 / P99 (ms)", "FPS", "Listas/pedidas", "GPU previas", "Hora / audio" };
+            int[] widths = { 130, 110, 70, 135, 60, 100, 100, 160 };
+            int x = 16;
+            for (int c = 0; c < headings.Length; c++) {
+                Label header = new Label(); header.SetBounds(x, 54, widths[c], 22);
+                header.Font = small; header.ForeColor = muted; header.Text = headings[c]; page.Controls.Add(header);
+                x += widths[c];
+            }
+            int count = historialCaratulas == null ? 0 : historialCaratulas.Count;
+            for (int i = 0; i < count; i++) {
+                EscenaMedida m = historialCaratulas[count - 1 - i];
+                string[] values = { NombreCargaCaratulas(m.PerfilCarga), m.Ancho + "×" + m.Alto, m.Inicio,
+                    m.P95.ToString("0.0") + " / " + m.P99.ToString("0.0"), m.Fps.ToString(),
+                    m.PaginasListas + "/" + m.PaginasSolicitadas, m.PreviasGpu + "/" + m.VistasGpu,
+                    m.Hora.ToString("HH:mm:ss") + (m.MusicaReal ? " · música" : " · simulado") };
+                Panel row = new Panel(); row.SetBounds(16, 82 + i * 30, 865, 28);
+                row.BackColor = i % 2 == 0 ? Color.FromArgb(22, 28, 56) : Color.FromArgb(17, 22, 47);
+                int left = 0;
+                for (int c = 0; c < values.Length; c++) {
+                    Label value = new Label(); value.SetBounds(left, 4, widths[c], 20);
+                    value.Font = small; value.ForeColor = text; value.Text = values[c]; value.BackColor = Color.Transparent;
+                    row.Controls.Add(value); left += widths[c];
+                }
+                page.Controls.Add(row);
+            }
+            Label note = new Label(); note.SetBounds(16, 456, 888, 48); note.Font = small; note.ForeColor = muted;
+            note.Text = "Últimas 12 pruebas de esta sesión, con efectos altos. GPU previas: carátulas listas al primer encuentro.\n"
+                + "Compara el mismo inicio, resolución y ajustes; la música y las cachés influyen. No se borran cachés.";
+            page.Controls.Add(note); return page;
+        }
+        private void ShowCoverHistory()
+        {
+            using (Form dialog = new Form())
+            using (Font normal = new Font("Segoe UI", 10f, FontStyle.Bold))
+            using (Font small = new Font("Segoe UI", 8.5f))
+            {
+                dialog.Text = "Carga de carátulas · Comparación"; dialog.ClientSize = new Size(920, 548);
+                dialog.StartPosition = FormStartPosition.CenterParent; dialog.FormBorderStyle = FormBorderStyle.FixedDialog;
+                dialog.MaximizeBox = dialog.MinimizeBox = false; dialog.BackColor = Color.FromArgb(11, 14, 32);
+                dialog.Controls.Add(BuildCoverHistory(normal, small, Color.FromArgb(232, 238, 255), Color.FromArgb(150, 165, 200)));
+                BotonPlano close = new BotonPlano(); close.SetBounds(736, 510, 168, 30); close.Font = normal; close.Text = "Cerrar";
+                close.Click += delegate { dialog.Close(); }; dialog.Controls.Add(close);
+                dialog.KeyPreview = true; dialog.KeyDown += delegate(object sender, KeyEventArgs e) { if (e.KeyCode == Keys.Escape) dialog.Close(); };
+                dialog.ShowDialog(this);
+            }
+        }
 
         internal static int PerfilCargaCaratulas(string text)
         {
@@ -27,7 +106,9 @@ namespace Rocola
         {
 #if ROCOLA_GPU
             if (coverGovernor != null) coverGovernor.SetProfile(caratulasCarga);
+            EnsureCoverReaders();
 #endif
+            if (CoverProfileChanged != null) CoverProfileChanged();
         }
 
         private Tarjeta TarjetaCargaCaratulas(Font fNom, Font fDes, Color cTexto, Color cTenue)
@@ -93,9 +174,10 @@ namespace Rocola
             return Math.Max(.35, Math.Min(12, Math.Min(automatic * factor, Math.Max(.35, (28 - baseMs) * .65))));
         }
         private double baseMs = 1, allowance, spent, frameCover, previousAccepted;
-        private int healthy, pressure, operations, lateStreak;
+        private int pressure, operations;
+        private double healthyMs, lateMs, adaptAt = -1, pressureUntil = -1, visibleEscapeAt = -1000;
         private double frameTime, lastBackground = -1000, lastFrameCover;
-        private bool backgroundCandidate;
+        private bool backgroundCandidate, visibleCandidate;
         internal bool PendingUpload, DeferBake;
         internal volatile int ReaderLimit;
         internal volatile int ReaderPause;
@@ -104,6 +186,13 @@ namespace Rocola
         private int intervalCount, intervalPos;
         internal int SlowFrames, CompletedPages, StartedPages;
         internal double WorstInterval, WorstPageMs;
+        private readonly HashSet<string> firstSeen = new HashSet<string>();
+        internal int SeenCovers, ReadyAtFirstSeen;
+        internal void VisitCover(string key, bool ready)
+        {
+            if (key == null || firstSeen.Count >= 2048 || !firstSeen.Add(key)) return;
+            SeenCovers++; if (ready) ReadyAtFirstSeen++;
+        }
         private string pageKey;
         private double pageStart;
         internal CoverGovernor(int cpu) { processors = Math.Max(1, cpu); ReaderLimit = 1; }
@@ -119,7 +208,7 @@ namespace Rocola
         internal void Begin(double now, int fps)
         {
             spent = frameCover = 0; operations = 0;
-            DeferBake = PendingUpload; frameTime = now; backgroundCandidate = false;
+            DeferBake = PendingUpload; frameTime = now; backgroundCandidate = visibleCandidate = false;
             allowance = ProfileBudget(Budget(baseMs, fps));
             if (pressure > 0) allowance = Math.Min(allowance, .5);
         }
@@ -127,7 +216,7 @@ namespace Rocola
         {
             if (PendingUpload || pressure > 0) return false;
             spent = frameCover = 0; operations = 0; DeferBake = false;
-            frameTime = now; backgroundCandidate = false;
+            frameTime = now; backgroundCandidate = visibleCandidate = false;
             allowance = Math.Min(processors <= 2 ? 3 : 12, ProfileBudget(Math.Max(.35,
                 Math.Min(processors <= 2 ? 3 : 12, (28 - baseMs - lastFrameCover) * .45))));
             return true;
@@ -144,33 +233,45 @@ namespace Rocola
                 && frameTime - lastBackground >= Math.Max(processors <= 2 ? 40 : 10, (processors <= 2 ? 40 : 16) * cadence)
                 && baseMs + spent + cost < 28)
             { backgroundCandidate = true; return true; }
-            // Una operacion indivisible visible progresa; bajo presion solo una cada cuatro cuadros.
-            return visible && operations == 0 && (pressure == 0 || (pressure & 3) == 0);
+            // Progresar sin depender del numero de cuadros. Bajo presion, espaciar
+            // las piezas indivisibles visibles unos 66 ms; no bloquearlas para siempre.
+            if (visible && operations == 0 && (pressure == 0 || frameTime - visibleEscapeAt >= 66))
+            { visibleCandidate = true; return true; }
+            return false;
         }
         internal void Spend(long ticks)
         {
             double ms = Math.Max(0, ticks * 1000.0 / Stopwatch.Frequency);
             spent += ms; frameCover += ms; operations++;
             if (backgroundCandidate) { lastBackground = frameTime; backgroundCandidate = false; }
+            if (visibleCandidate) { visibleEscapeAt = frameTime; visibleCandidate = false; }
         }
         internal void Observe(double now, double work, int fps)
         {
             double interval = previousAccepted > 0 ? now - previousAccepted : work;
             previousAccepted = now;
-            lateStreak = interval > 36 ? lateStreak + 1 : 0;
+            double elapsed = adaptAt < 0 ? Math.Min(50, Math.Max(0, work)) : Math.Min(50, Math.Max(0, now - adaptAt));
+            adaptAt = now; // no acumular minutos de salud si Windows estuvo suspendido
+            lateMs = interval > 36 ? lateMs + elapsed : 0;
             double uncovered = Math.Max(.1, work - frameCover);
             lastFrameCover = frameCover;
-            baseMs += (uncovered - baseMs) * (uncovered > baseMs ? .3 : .025);
+            double alpha = 1 - Math.Pow(uncovered > baseMs ? .7 : .975, elapsed / 16.667);
+            baseMs += (uncovered - baseMs) * alpha;
             RecordInterval(interval);
             // Un mensaje aislado de WinForms no demuestra saturacion de lecturas.
             // Reaccion inmediata a trabajo caro; entre cuadros, exigir presion sostenida.
-            if ((work > 30 && frameCover > 1) || (lateStreak >= 3 && baseMs > 20))
-            { pressure = 12; healthy = 0; ReaderLimit = Math.Max(1, ReaderLimit / 2); }
+            if ((work > 30 && frameCover > 1) || (lateMs >= 100 && baseMs > 20))
+            { pressure = 1; pressureUntil = now + 200; healthyMs = 0; ReaderLimit = Math.Max(1, ReaderLimit / 2); }
             else
             {
-                if (pressure > 0) pressure--;
-                if (++healthy >= (profile == 3 ? 45 : 90))
-                { ReaderLimit = Math.Min(CargaTrabajo.Lectores(processors), ReaderLimit + 1); healthy = 0; }
+                if (pressure > 0 && now >= pressureUntil) pressure = 0;
+                if (pressure == 0)
+                {
+                    healthyMs += elapsed;
+                    double step = profile == 3 ? 375 : 750;
+                    if (healthyMs >= step)
+                    { ReaderLimit = Math.Min(CargaTrabajo.Lectores(processors), ReaderLimit + 1); healthyMs -= step; }
+                }
             }
             ReaderPause = pressure > 0 ? (processors <= 2 ? 16 : 8) : 0;
         }
@@ -189,7 +290,8 @@ namespace Rocola
             return copy[Math.Min(copy.Length - 1, (int)Math.Ceiling(copy.Length * fraction) - 1)];
         }
         internal void ResetMeasure()
-        { intervalCount = intervalPos = SlowFrames = CompletedPages = StartedPages = 0; WorstInterval = WorstPageMs = 0; previousAccepted = 0; pageKey = null; pageStart = -1; }
+        { intervalCount = intervalPos = SlowFrames = CompletedPages = StartedPages = SeenCovers = ReadyAtFirstSeen = 0;
+            firstSeen.Clear(); WorstInterval = WorstPageMs = 0; previousAccepted = 0; pageKey = null; pageStart = -1; }
         internal void Page(string key, bool ready, double now)
         {
             if (pageKey != key) { pageKey = key; pageStart = now; StartedPages++; }
@@ -375,6 +477,45 @@ namespace Rocola
         }
         private int AdaptiveCoverReaders()
         { return gpuEnabled ? Math.Max(1, Math.Min(coverCarriles, coverGovernor.ProfileReaders)) : coverCarriles; }
+
+        // Solo GPU. Bajo coverLock: el cupo global incluye las lecturas antiguas
+        // en vuelo; cambiar de perfil o F5 no permite duplicarlas ni las cancela.
+        private int ActiveCoverReaders()
+        { int n = 0; foreach (int value in coverActiveUnits.Values) n += value; return n; }
+
+        private int WantedCoverReaders()
+        {
+            int cap = AdaptiveCoverReaders(), active = ActiveCoverReaders();
+            if (active >= cap) return cap;
+            Dictionary<string, int> admitted = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            int wanted = active;
+            foreach (LinkedList<CoverJob> jobs in new LinkedList<CoverJob>[] { coverQHi, coverQLo })
+                foreach (CoverJob job in jobs)
+                {
+                    string unit = UnidadDe(job.Key); int running, extra;
+                    coverActiveUnits.TryGetValue(unit, out running); admitted.TryGetValue(unit, out extra);
+                    if (running + extra >= (DiscoLento(job.Key) ? 1 : cap)) continue;
+                    admitted[unit] = extra + 1;
+                    if (++wanted >= cap) return cap;
+                }
+            return wanted;
+        }
+        private void EnsureCoverReaders()
+        {
+            if (!gpuEnabled || coverGovernor == null || coverLock == null || IsDisposed || Disposing) return;
+            lock (coverLock)
+            {
+                if (coverPumpCount >= AdaptiveCoverReaders() || (coverQHi.Count == 0 && coverQLo.Count == 0)) return;
+                int wanted = WantedCoverReaders();
+                while (coverPumpCount < wanted)
+                {
+                    System.Threading.Thread t = new System.Threading.Thread(CoverPump);
+                    t.IsBackground = true; t.Priority = System.Threading.ThreadPriority.BelowNormal;
+                    coverPumpCount++;
+                    try { t.Start(); } catch { coverPumpCount--; break; }
+                }
+            }
+        }
         private bool NeedsGpuPreview(Album a)
         {
             if (!gpuEnabled || !caratulasLod) return false;

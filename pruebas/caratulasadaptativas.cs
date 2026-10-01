@@ -103,7 +103,7 @@ class CaratulasAdaptativas
   for(int i=1;i<=6;i++){Call(governor,fast,"Begin",50d*i,200);Call(governor,fast,"Observe",50d*i+1,1d,200);}
   Check((int)Get(fast,"pressure")==0,"intervalos externos lentos sin trabajo caro no estrangulan precarga");
   Check((bool)Call(governor,fast,"BeginBackground",350d) && (bool)Call(governor,fast,"CanStart",(long)(Stopwatch.Frequency*.005),false,false),"casilla de 5 ms puede precargarse con tope de 200 FPS");
-  for(int i=0;i<900;i++){Call(governor,fast,"Begin",5d*i,200);Call(governor,fast,"Observe",5d*i+1,1d,200);}
+  for(int i=0;i<1800;i++){Call(governor,fast,"Begin",5d*i,200);Call(governor,fast,"Observe",5d*i+1,1d,200);}
   Check((int)Get(fast,"ReaderLimit")==8,"equipo sano libera ocho lectores en lugar de quedar atado al arranque");
   Call(governor,fast,"ResetMeasure");for(int i=1;i<=100;i++)Call(governor,fast,"RecordInterval",(double)i);
   Check((double)Call(governor,fast,"Percentile",.95)==95 && (double)Call(governor,fast,"Percentile",.99)==99,"P95/P99 no ocultan picos tras una media");
@@ -113,6 +113,119 @@ class CaratulasAdaptativas
   Call(governor,fast,"Page","b",false,100d);Call(governor,fast,"Page","c",false,110d);Call(governor,fast,"FinishPage",true,120d);
   Check((int)Get(fast,"CompletedPages")==2,"pagina abandonada no se cuenta como terminada");
  }
+ static void TimedLearning()
+ {
+  foreach(int fps in new int[]{30,60,200})
+  {
+   object g=New(governor,16);
+   for(int i=0;i<=fps*3;i++){double now=1000d+i*1000d/fps;Call(governor,g,"Begin",now,fps);Call(governor,g,"Observe",now,1d,fps);}
+   Check((int)Get(g,"ReaderLimit")==5,"tres segundos sanos liberan cinco lectores a "+fps+" FPS");
+   Call(governor,g,"ResetMeasure");
+   for(int i=1;i<=fps*3;i++){double now=4000d+i*1000d/fps;Call(governor,g,"Begin",now,fps);Call(governor,g,"Observe",now,1d,fps);}
+   Check((int)Get(g,"ReaderLimit")==8,"reset del medidor conserva aprendizaje a "+fps+" FPS");
+   Call(governor,g,"Begin",7100d,fps);Call(governor,g,"Spend",(long)(Stopwatch.Frequency*.010));Call(governor,g,"Observe",7100d,40d,fps);
+   for(int i=1;i<=19;i++){Call(governor,g,"Begin",7100d+i*10,fps);Call(governor,g,"Observe",7100d+i*10,1d,fps);}
+   Check((int)Get(g,"pressure")==1,"presion dura al menos 200 ms a "+fps+" FPS");
+   Call(governor,g,"Begin",7301d,fps);Call(governor,g,"Observe",7301d,1d,fps);
+   Check((int)Get(g,"pressure")==0,"presion se libera por tiempo a "+fps+" FPS");
+  }
+  object rapid=New(governor,16);Call(governor,rapid,"SetProfile",3);
+  for(int i=0;i<=150;i++){Call(governor,rapid,"Begin",1000d+i*5,200);Call(governor,rapid,"Observe",1000d+i*5,1d,200);}
+  Check((int)Get(rapid,"ReaderLimit")==3,"carga rapida aprende cada 375 ms");
+  Set(rapid,"pressure",1);long expensive=(long)(Stopwatch.Frequency*.020);
+  Call(governor,rapid,"Begin",2000d,200);Check((bool)Call(governor,rapid,"CanStart",expensive,true,false),"primera pieza visible progresa bajo presion");Call(governor,rapid,"Spend",expensive);
+  Call(governor,rapid,"Begin",2065d,200);Check(!(bool)Call(governor,rapid,"CanStart",expensive,true,false),"pieza visible espera 66 ms sin depender de cuadros");
+  Call(governor,rapid,"Begin",2066d,200);Check((bool)Call(governor,rapid,"CanStart",expensive,true,false),"pieza visible reanuda a los 66 ms");
+  Call(governor,rapid,"VisitCover","ready",true);Call(governor,rapid,"VisitCover","ready",false);Call(governor,rapid,"VisitCover","late",false);Call(governor,rapid,"VisitCover","late",true);
+  Check((int)Get(rapid,"SeenCovers")==2 && (int)Get(rapid,"ReadyAtFirstSeen")==1,"GPU previas cuenta primera visita unica, no llegadas posteriores");
+  Call(governor,rapid,"ResetMeasure");Check((int)Get(rapid,"SeenCovers")==0,"cada prueba tiene sus contadores de cache");
+ }
+ static void WaitReaders(object owner,int count,bool pumps)
+ {
+  Stopwatch timer=Stopwatch.StartNew();
+  while(timer.ElapsedMilliseconds<3000){lock(Get(owner,"coverLock")){if((int)(pumps?Get(owner,"coverPumpCount"):Call(form,owner,"ActiveCoverReaders"))==count)return;}System.Threading.Thread.Sleep(1);}
+  throw new Exception("No convergieron los lectores: "+count);
+ }
+ static void Readers()
+ {
+  int lanes=(int)form.GetField("coverCarriles",B).GetValue(null), disk=(int)form.GetField("perfilDisco",B).GetValue(null);
+  FieldInfo semaphore=form.GetField("coverSem",B);object oldSemaphore=semaphore.GetValue(null);
+  object owner=Codigo.FormSinEncender(form);object g=New(governor,16);Set(owner,"gpuEnabled",true);Set(owner,"coverGovernor",g);Set(g,"ReaderLimit",4);Call(governor,g,"SetProfile",1);
+  System.Threading.Semaphore gate=new System.Threading.Semaphore(0,8);bool draining=false;
+  try
+  {
+   form.GetField("coverCarriles",B).SetValue(null,4);form.GetField("perfilDisco",B).SetValue(null,1); // SSD simulado, sin abrir archivos
+   Set(owner,"coverPumpCount",Int32.MaxValue);
+   foreach(string route in new string[]{@"C:\one.jpg",@"C:\two.jpg",@"D:\one.jpg",@"D:\two.jpg"})Call(form,owner,"RequestCoverByPath",route,true);
+   object hi=Get(owner,"coverQHi");object a=Call(form,owner,"TakeCoverJob",hi),b=Call(form,owner,"TakeCoverJob",hi);
+   Check(a!=null && b!=null && Call(form,owner,"TakeCoverJob",hi)==null,"Fluidez limita dos lectores globales aunque haya dos SSD");
+   Call(form,owner,"ReleaseCoverUnit",a);object c=Call(form,owner,"TakeCoverJob",hi);Check(c!=null,"liberar cupo global deja avanzar otra unidad");
+   Call(form,owner,"InvalidateCoverMemory");Check((int)Call(form,owner,"ActiveCoverReaders")==2,"F5 conserva lecturas en vuelo en el cupo global");
+   Call(form,owner,"ReleaseCoverUnit",b);Call(form,owner,"ReleaseCoverUnit",c);
+   form.GetField("perfilDisco",B).SetValue(null,2);Call(governor,g,"SetProfile",3);
+   foreach(string route in new string[]{@"C:\one.jpg",@"C:\two.jpg",@"D:\one.jpg",@"D:\two.jpg"})Call(form,owner,"RequestCoverByPath",route,true);
+   a=Call(form,owner,"TakeCoverJob",hi);b=Call(form,owner,"TakeCoverJob",hi);
+   Check((string)Get(a,"Unit")!=(string)Get(b,"Unit") && Call(form,owner,"TakeCoverJob",hi)==null,"dos HDD mantienen un lector por unidad");
+   Call(form,owner,"ReleaseCoverUnit",a);Call(form,owner,"ReleaseCoverUnit",b);Call(form,owner,"InvalidateCoverMemory");
+   // Trabajadores reales detenidos ANTES de decodificar: probar el despertar sin tocar imagenes/datos reales.
+   form.GetField("perfilDisco",B).SetValue(null,1);Set(owner,"coverPumpCount",0);Call(governor,g,"SetProfile",1);semaphore.SetValue(null,gate);
+   foreach(string route in new string[]{@"C:\one.jpg",@"C:\two.jpg",@"D:\one.jpg",@"D:\two.jpg"})Call(form,owner,"RequestCoverByPath",route,true);
+   WaitReaders(owner,2,false);Check((int)Get(owner,"coverPumpCount")==2,"cola despierta dos trabajadores reales en Fluidez");
+   Set(owner,"caratulasCarga",3);Call(form,owner,"AplicaPerfilCargaCaratulas");WaitReaders(owner,4,false);
+   Check((int)Get(owner,"coverPumpCount")==4,"cambio de perfil despierta trabajo pendiente sin otra peticion");
+   Set(owner,"caratulasCarga",1);Call(form,owner,"AplicaPerfilCargaCaratulas");
+   Check((int)Call(form,owner,"ActiveCoverReaders")==4 && Call(form,owner,"TakeCoverJob",hi)==null,"bajar perfil no cancela lecturas ni admite nuevas sobre el cupo");
+   Call(form,owner,"InvalidateCoverMemory");gate.Release(8);draining=true;WaitReaders(owner,0,true);
+   Check((int)Call(form,owner,"ActiveCoverReaders")==0,"trabajadores liberan cupos y terminan tras invalidar");
+  }
+  finally
+  {
+   if(!draining){Call(form,owner,"InvalidateCoverMemory");if((int)Get(owner,"coverPumpCount")!=Int32.MaxValue){gate.Release(8);WaitReaders(owner,0,true);}}
+   semaphore.SetValue(null,oldSemaphore);gate.Close();form.GetField("coverCarriles",B).SetValue(null,lanes);form.GetField("perfilDisco",B).SetValue(null,disk);
+  }
+ }
+ static void History(string root)
+ {
+  object owner=Codigo.FormSinEncender(form);Type scene=form.GetNestedType("EscenaMedida",B);object measure=null;
+  for(int i=0;i<13;i++)
+  {
+   measure=New(scene);Set(measure,"PerfilCarga",i%4);Set(measure,"Ancho",3440);Set(measure,"Alto",1440);Set(measure,"Inicio","A/12");Set(measure,"Hora",new DateTime(2026,10,1,12,34,i));Set(measure,"MusicaReal",true);
+   Set(measure,"P95",14.2d);Set(measure,"P99",33.1d);Set(measure,"Fps",60);Set(measure,"PreviasGpu",8);Set(measure,"VistasGpu",54);Call(form,owner,"RegisterCoverMeasurement",measure);
+  }
+  Check(((IList)Get(owner,"historialCaratulas")).Count==12,"historial acotado a doce pruebas por sesion");
+  Set(owner,"caratulasCarga",0);Check(!(bool)Call(form,owner,"CoverMeasurementStale",measure),"medida identifica su perfil original");
+  Set(owner,"caratulasCarga",1);Check((bool)Call(form,owner,"CoverMeasurementStale",measure) && ((string)Call(form,owner,"CoverMeasurementContext",measure)).StartsWith("Anterior:"),"medida de otro perfil queda marcada como anterior");
+  using(Font normal=new Font("Segoe UI",10f,FontStyle.Bold))using(Font small=new Font("Segoe UI",8.5f))
+  using(Panel page=(Panel)Call(form,owner,"BuildCoverHistory",normal,small,Color.White,Color.Gray))using(Bitmap image=new Bitmap(page.Width,page.Height))
+  {
+   bool fit=true;using(Graphics graphics=Graphics.FromImage(image))foreach(Control control in page.Controls)
+   {
+    fit &= control.Right<=page.Width && control.Bottom<=page.Height;
+    if(control is Label)fit &= graphics.MeasureString(control.Text,control.Font,control.Width).Height<=control.Height;
+    foreach(Control value in control.Controls)fit &= value.Right<=control.Width && value.Bottom<=control.Height && graphics.MeasureString(value.Text,value.Font,value.Width).Height<=value.Height;
+   }
+   Check(fit,"doce comparaciones y explicaciones caben con sus fuentes reales");page.DrawToBitmap(image,new Rectangle(Point.Empty,page.Size));image.Save(Path.Combine(root,"comparacion.png"));
+  }
+  using(Font normal=new Font("Segoe UI",10f,FontStyle.Bold))using(Font small=new Font("Segoe UI",8.5f))
+  using(Panel page=(Panel)Call(form,owner,"PaginaImagen",normal,normal,small,normal,Color.White,Color.Gray,Color.DimGray))
+  {
+   Control button=Find(page,"Comparar perfiles");Check(button!=null && button.Enabled && button.Right<=page.Width && button.Bottom<=page.Height,"comparacion accesible desde Imagen sin recortar su boton");
+   Check(((Delegate)Get(owner,"CoverProfileChanged")).GetInvocationList().Length==1,"pagina registra un aviso de cambio de perfil");
+   page.Dispose();Check(Get(owner,"CoverProfileChanged")==null,"cerrar pagina elimina sus avisos y no retiene controles");
+  }
+  if(governor==null)return;
+  using(Control gpu=(Control)New(panel))
+  {
+   gpu.Size=new Size(1024,768);Set(owner,"gpuPanel",gpu);Set(owner,"caratulasCarga",0);Check((bool)Call(form,owner,"CoverMeasurementStale",measure),"cambio de resolucion invalida la propuesta anterior");
+   gpu.Size=new Size(3440,1440);Check(!(bool)Call(form,owner,"CoverMeasurementStale",measure),"misma resolucion y perfil recuperan contexto valido");
+   object c=New(cell);Set(c,"Key","ready");Set(c,"Bmp",imageForReady);Set(c,"HasCover",true);
+   Type texture=panel.GetNestedType("CellTex",B);object cached=New(texture);Set(cached,"Tex",new IntPtr(1));Set(cached,"HasCover",true);Set(cached,"Bmp",imageForReady);((IDictionary)Get(gpu,"cellTexCache"))["ready"]=cached;
+   Check((bool)Call(panel,gpu,"PreparedCover",c),"GPU previa exige textura valida de la misma imagen");
+   Set(cached,"Bmp",null);Check(!(bool)Call(panel,gpu,"PreparedCover",c),"textura vieja no se cuenta como caratula preparada");
+   Set(cached,"Tex",IntPtr.Zero); // no liberar puntero ficticio al disponer
+  }
+ }
+ static readonly Bitmap imageForReady=new Bitmap(1,1);
  static void Cache(string root)
  {
   string path=Path.Combine(root,"pack.bin");object s=New(store,path,18);
@@ -173,6 +286,16 @@ class CaratulasAdaptativas
    Call(governor,governorObject,"BeginBackground",150d);Call(view,v,"BakeAheadGpu");
    Check((long)Get(cached,"Uso")>use,"vecina reutilizada protege su lugar en la cache");
   }
+  using(Control v=(Control)New(view))using(Bitmap p=new Bitmap(32,32))
+  {
+   preview=p;v.Size=new Size(640,480);Set(v,"PeekCoverGpu",Provider("PeekCoverGpu","Lod"));
+   Array cells=Array.CreateInstance(cell,36);Call(view,v,"BuildGpuGrid",cells);
+   IList ahead=(IList)Activator.CreateInstance(Get(v,"Page").GetType());
+   for(int i=0;i<3;i++){object a=New(album);Set(a,"Folder","ahead-"+i);Set(a,"Name","Disco "+i);Set(a,"Artist","Artista");ahead.Add(a);}
+   Call(view,v,"SetAhead",ahead);object g=New(governor,16);Call(governor,g,"SetProfile",3);Set(v,"CoverControl",g);
+   Set(v,"aheadBakeTicks",(long)(Stopwatch.Frequency*.004));Set(v,"gpuBakeCost",(long)(Stopwatch.Frequency*.004));Call(governor,g,"BeginBackground",1000d);Call(view,v,"BakeAheadGpu");
+   Check(((IDictionary)Get(v,"gpuCellCache")).Count==3,"precarga de casillas de 4 ms aprovecha presupuesto adaptativo sin tope fijo redundante");
+  }
  }
  static void Hal()
  {
@@ -203,8 +326,8 @@ class CaratulasAdaptativas
    for(int i=1;i<args.Length;i++){if(args[i]=="--dos-hilos")Process.GetCurrentProcess().ProcessorAffinity=new IntPtr(3);else if(args[i]=="--sin-hal")omitHal=true;else throw new ArgumentException("Opcion de prueba desconocida: "+args[i]);}
    Assembly a=Assembly.LoadFrom(args[0]);governor=a.GetType("Rocola.CoverGovernor");store=a.GetType("Rocola.GpuPreviewStore");panel=a.GetType("Rocola.GpuPanel");cell=a.GetType("Rocola.GpuGridCell");form=a.GetType("Rocola.Form1");view=form.GetNestedType("AlbumView",B);album=form.GetNestedType("Album",B);
    string root=Path.Combine(Path.GetTempPath(),"rocola-lod-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(root);
-   Profiles(root);Console.WriteLine("Artefactos de prueba: "+root);
-   if(governor!=null){Regulator();Cache(root);Grid();Hal();}
+   Profiles(root);History(root);Console.WriteLine("Artefactos de prueba: "+root);
+   if(governor!=null){Regulator();TimedLearning();Readers();Cache(root);Grid();Hal();}
    Console.WriteLine("PASS "+checks+" comprobaciones; no equivale a XP/HDD/CPU antiguos ni FPS de biblioteca.");return 0;
   }
   catch(Exception e){Console.WriteLine("FALLO "+e);return 1;}

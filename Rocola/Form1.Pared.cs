@@ -482,7 +482,7 @@ namespace Rocola
                 }
                 finally { try { if (d != null) dest.UnlockBits(d); } finally { if (s != null) source.UnlockBits(s); } }
             }
-            private Bitmap PeekGpuCell(Album a, int cw, int side, int labelH, int gap, Image cover, ref int budget, out GpuCellLayout layout)
+            private Bitmap PeekGpuCell(Album a, int cw, int side, int labelH, int gap, Image cover, bool visible, ref int budget, out GpuCellLayout layout)
             {
                 layout = new GpuCellLayout(); string key = ClaveCasilla(a); CeldaGpu c = null;
                 if (key != null) gpuCellCache.TryGetValue(key, out c);
@@ -490,7 +490,7 @@ namespace Rocola
                 bool queued = key == null && EnCola != null && EnCola(a);
                 if (c != null && ((ReferenceEquals(c.Cover, cover) && c.Queued == queued && (cover != null || c.Lod == PortadasLod)) || budget <= 0))
                 { c.Uso = ++gpuCellUso; layout = c.Layout; return c.Bmp; }
-                if (budget <= 0 || (CoverControl != null && (CoverControl.DeferBake || !CoverControl.CanStart(gpuBakeCost, true, false))))
+                if (budget <= 0 || (CoverControl != null && (CoverControl.DeferBake || !CoverControl.CanStart(gpuBakeCost, visible, false))))
                 { if (c != null) { c.Uso = ++gpuCellUso; layout = c.Layout; return c.Bmp; } return null; }
                 long start = System.Diagnostics.Stopwatch.GetTimestamp();
                 budget--; Bitmap bmp = BakeGpuCell(a, cw, side, labelH, gap, cover, out layout);
@@ -672,7 +672,7 @@ namespace Rocola
                     Image tapa = (PeekCoverGpu != null) ? PeekCoverGpu(a) : null;
                     buf[n] = new GpuGridCell();
                     buf[n].Key = ClaveCasilla(a);
-                    buf[n].Bmp = PeekGpuCell(a, cw, side, labelH, gap, tapa, ref nada, out buf[n].Layout);
+                    buf[n].Bmp = PeekGpuCell(a, cw, side, labelH, gap, tapa, true, ref nada, out buf[n].Layout);
                     CeldaGpu cached;
                     buf[n].HasCover = buf[n].Key != null && gpuCellCache.TryGetValue(buf[n].Key, out cached) && cached.Cover != null;
                     buf[n].Preview = PortadasLod && PeekPreviewGpu != null ? PeekPreviewGpu(a) as Bitmap : null;
@@ -745,7 +745,7 @@ namespace Rocola
                     int useBudget = chica ? 0 : budget;
                     buf[n].Layout = new GpuCellLayout();
                     Image cover = chica ? (PeekCoverGpu != null ? PeekCoverGpu(a) : null) : (GetCover != null ? GetCover(a) : null);
-                    buf[n].Bmp = chica && !PortadasLod ? null : PeekGpuCell(a, cw, side, labelH, gap, cover, ref useBudget, out buf[n].Layout);
+                    buf[n].Bmp = chica && !PortadasLod ? null : PeekGpuCell(a, cw, side, labelH, gap, cover, true, ref useBudget, out buf[n].Layout);
                     if (!chica) budget = useBudget;
                     CeldaGpu cached = null;
                     if (buf[n].Key != null) gpuCellCache.TryGetValue(buf[n].Key, out cached);
@@ -800,11 +800,11 @@ namespace Rocola
                 int w = Width, h = Height, cw = w / Cols, ch = h / Rows;
                 if (cw < 4 || ch < 4 || cellCacheW != w || cellCacheH != h) return;
                 int side, labelH, gap; CellMetrics(cw, ch, out side, out labelH, out gap);
-                int allowance = Math.Max(2, Math.Min(6, CargaTrabajo.Procesadores / 2));
+                int allowance = CoverControl != null ? 32 : Math.Max(2, Math.Min(6, CargaTrabajo.Procesadores / 2));
                 int budget = allowance, visited = 0;
                 long begin = System.Diagnostics.Stopwatch.GetTimestamp();
                 while (visited < Math.Min(24, Ahead.Count) && budget > 0 &&
-                    CargaTrabajo.PuedeEmpezar(System.Diagnostics.Stopwatch.GetTimestamp() - begin, aheadBakeTicks, GpuBakeLimit, budget == allowance))
+                    (CoverControl != null || CargaTrabajo.PuedeEmpezar(System.Diagnostics.Stopwatch.GetTimestamp() - begin, aheadBakeTicks, GpuBakeLimit, budget == allowance)))
                 {
                     if (aheadPos >= Ahead.Count) aheadPos = 0;
                     Album a = Ahead[aheadPos]; visited++;
@@ -818,7 +818,7 @@ namespace Rocola
                     long start = System.Diagnostics.Stopwatch.GetTimestamp();
                     GpuCellLayout layout;
                     if (CoverControl != null && !CoverControl.CanStart(aheadBakeTicks, false, false)) break;
-                    PeekGpuCell(a, cw, side, labelH, gap, cover, ref budget, out layout);
+                    PeekGpuCell(a, cw, side, labelH, gap, cover, false, ref budget, out layout);
                     if (budget < previous)
                     {
                         long cost = Math.Max(1L, System.Diagnostics.Stopwatch.GetTimestamp() - start);

@@ -1465,6 +1465,8 @@ namespace Rocola
                 long uploadStart = System.Diagnostics.Stopwatch.GetTimestamp();
                 for (int i = 0; i < gridN; i++)
                 {
+                    if (CoverControl != null && gridBuf[i].Slot < 18 && gridBuf[i].NeedsCover)
+                        CoverControl.VisitCover(gridBuf[i].Key, PreparedCover(gridBuf[i]));
                     IntPtr tex; float u, v;
                     if (CoverControl != null && !CoverControl.CanStart(gridUploadCost, true, false)) upBudget = 0;
                     int beforeBudget = upBudget;
@@ -1887,6 +1889,13 @@ namespace Rocola
             }
             tex = st.Tex; u = st.U; v = st.V; return true;
         }
+        private bool PreparedCover(GpuGridCell c)
+        {
+            CellTex cached;
+            return c.Bmp != null && c.HasCover && c.Key != null
+                && cellTexCache.TryGetValue(c.Key, out cached) && cached.Tex != IntPtr.Zero
+                && cached.HasCover && ReferenceEquals(cached.Bmp, c.Bmp);
+        }
         private GpuCellLayout UploadedCellLayout(GpuGridCell c)
         {
             CellTex ct = null;
@@ -1958,13 +1967,14 @@ namespace Rocola
         {
             if (GetGridAhead == null) return;
             int count = Math.Max(0, Math.Min(aheadGrid.Length, GetGridAhead(aheadGrid)));
-            int remaining = AheadUploadAllowance(CargaTrabajo.Procesadores);
+            int remaining = CoverControl != null ? 32 : AheadUploadAllowance(CargaTrabajo.Procesadores);
+            int initial = remaining;
             long begin = System.Diagnostics.Stopwatch.GetTimestamp();
             long available = aheadAvailableTicks > 0 ? Math.Min(GridWorkLimit, aheadAvailableTicks) : GridWorkLimit;
             for (int i = 0; i < count; i++)
             {
-                if (remaining <= 0 || !CargaTrabajo.PuedeEmpezar(System.Diagnostics.Stopwatch.GetTimestamp()-begin,
-                    gridUploadCost, available, remaining == AheadUploadAllowance(CargaTrabajo.Procesadores))) break;
+                if (remaining <= 0 || (CoverControl == null && !CargaTrabajo.PuedeEmpezar(System.Diagnostics.Stopwatch.GetTimestamp()-begin,
+                    gridUploadCost, available, remaining == initial))) break;
                 GpuGridCell cell = aheadGrid[i];
                 if (cell.Key == null || cell.Bmp == null) continue;
                 CellTex old;
@@ -1979,7 +1989,7 @@ namespace Rocola
                 gridUploadCost = CargaTrabajo.AprendeCoste(gridUploadCost, spent);
                 if (CoverControl != null && budget == 0) CoverControl.Spend(spent);
                 if (cellTexCache.TryGetValue(cell.Key, out old)) old.Frame = unchecked(cellFrame - 1);
-                remaining--; // hasta 1/2/4, solo si queda margen; visibles siempre primero
+                remaining--; // presupuesto compartido; sin regulador, conservar 1/2/4
             }
             Array.Clear(aheadGrid, 0, aheadGrid.Length); // no retener bitmaps expulsados por la cache de composicion
         }

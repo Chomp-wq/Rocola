@@ -485,6 +485,9 @@ namespace Rocola
         // Bajo coverLock. Saltar unidades ocupadas permite atender otra unidad sin abrir mas hilos.
         private CoverJob TakeCoverJob(LinkedList<CoverJob> jobs)
         {
+#if ROCOLA_GPU
+            if (gpuEnabled && ActiveCoverReaders() >= AdaptiveCoverReaders()) return null;
+#endif
             for (LinkedListNode<CoverJob> node = jobs.First; node != null; node = node.Next)
             {
                 CoverJob job = node.Value;

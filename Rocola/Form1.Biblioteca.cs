@@ -2345,6 +2345,10 @@ namespace Rocola
                 CoverJob j = new CoverJob(); j.Key = key; j.Gen = coverGen;
                 coverLoading.Add(key, j);
                 j.Node = highPriority ? coverQHi.AddLast(j) : coverQLo.AddLast(j);
+#if ROCOLA_GPU
+                if (gpuEnabled) EnsureCoverReaders();
+                else
+#endif
                 if (coverPumpCount < coverCarriles)
                 {
                     coverPumpCount++;
@@ -2370,6 +2374,10 @@ namespace Rocola
                 CoverJob j = new CoverJob(); j.Key = key; j.Gen = coverGen;
                 coverLoading.Add(key, j);
                 j.Node = highPriority ? coverQHi.AddLast(j) : coverQLo.AddLast(j);
+#if ROCOLA_GPU
+                if (gpuEnabled) EnsureCoverReaders();
+                else
+#endif
                 if (coverPumpCount < coverCarriles)   // SSD: un carril por nucleo (hasta 4); HDD: carril unico (cabezal)
                 {
                     coverPumpCount++;

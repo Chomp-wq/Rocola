@@ -17,7 +17,7 @@ Por peticion posterior del usuario, ahora se puede elegir su prioridad en
 - **Automatico** (predeterminado): conserva exactamente los presupuestos del
   regulador anterior y aprende cuanto margen tiene el equipo.
 - **Fluidez**: emplea el 55% del presupuesto automatico y, en SSD, limita los
-  lectores simultaneos a dos como maximo. Espacia las operaciones indivisibles
+  lectores simultaneos a dos como maximo GLOBAL. Espacia las operaciones indivisibles
   de precarga: puede tardar mas en completar una pagina.
 - **Equilibrado**: emplea el 85% del presupuesto y hasta la mitad redondeada
   hacia arriba de los lectores permitidos por el hardware.
@@ -50,7 +50,11 @@ El recorrido no cambia permanentemente los niveles de efectos ni guarda una
 clasificacion irreversible del PC.
 
 Para comparar perfiles, mantener resolucion y efectos, escoger uno y repetir
-Medir. Comparar P95/P99 y paginas listas, no solo FPS medios. Repetir varias
+Medir. Imagen -> **Comparar perfiles** conserva las ultimas 12 pruebas de la
+sesion: perfil, resolucion, inicio, P95/P99, FPS, paginas listas/pedidas, GPU
+previas y hora/audio. Una propuesta de otro perfil o resolucion se marca como
+anterior y no se aplica hasta volver a medir. Comparar P95/P99 y paginas listas,
+no solo FPS medios. Repetir varias
 veces: una cache caliente y una primera visita al HDD no son equivalentes.
 Carga rapida no garantiza 30 FPS en cualquier equipo; Fluidez tampoco elimina
 un bloqueo externo de Windows o el coste de una operacion indivisible.
@@ -250,8 +254,64 @@ modelos, musica, creditos y cola permanecen intactos. Los anteriores estan en
 `respaldo/codex-perfiles-caratulas-20261001-f7b5c2ed9b5b4e1bb2f513a898db7e54`
 de cada instalacion.
 
-SHA-256 actuales:
+SHA-256 del selector original (sustituidos por la revision siguiente):
 
 - HD: `2770E6747CCA95ADE18FC6FEAB5EFD597B46058A0BEBA25565724F20A9EFB548`.
 - Modest: `790728A808AE120C5F8C51610C9FCF9EC31D9508C2DB5E8BA0EEDB86B75090B3`.
+
+## Revision de coordinacion y comparaciones
+
+Se aplicaron las cinco mejoras del examen posterior en ambas ramas:
+
+1. El cupo GPU es global, ademas del limite por unidad: dos SSD no duplican
+   el cupo Fluidez. Cada HDD conserva un lector y dos hilos conservan uno en
+   total. Lecturas antiguas en vuelo siguen contando tras F5 o reducir el perfil;
+   no se cancelan ni se admiten otras por encima del cupo.
+2. Una cola pendiente despierta trabajadores al ampliar el perfil o recuperar
+   margen, aunque no llegue otra peticion. Se considera cuantos trabajos pueden
+   avanzar por unidad para no crear hilos inutiles para un HDD ocupado.
+3. Con el regulador conectado, la composicion de vecinas y sus subidas usan su
+   presupuesto sin los topes numericos anteriores de 2/4/6 casillas. Conservan
+   limites de recorrido, memoria y trabajo. La precarga no usa la excepcion de
+   progreso reservada a celdas visibles. Sin regulador se conserva el respaldo
+   anterior; el render CPU no cambia.
+4. Las medidas llevan perfil/resolucion y un historial acotado de comparacion.
+   El recorrido de caratulas comienza en la misma letra/pagina que al iniciar
+   Medir. GPU previas cuenta claves unicas cuya textura final actual ya estaba
+   lista ANTES de intentar subirla al encontrarla por primera vez. No significa
+   disco frio ni incluye todas las caches RAM/Windows. No se borran caches para
+   fabricar esa condicion. Las cinco escenas previas pueden calentarlas y la
+   musica real puede variar: no es un ensayo A/B controlado.
+5. El aprendizaje, la recuperacion y el espaciado bajo presion se basan en
+   milisegundos: un lector adicional cada 750 ms sanos, o 375 ms en Carga rapida;
+   proteccion de 200 ms y piezas indivisibles visibles separadas unos 66 ms bajo
+   presion. La media de coste ajusta su peso al tiempo transcurrido. No se
+   contabiliza una suspension larga de Windows como minutos de margen sano.
+
+Verificacion final: las 32 baterias pasan por rama, con compilaciones GPU/CPU
+y advertencias como errores. La bateria ampliada de caratulas completa 109
+comprobaciones GPU sin HAL y 28 comunes CPU; tambien pasa con afinidad a dos
+hilos en las dos ramas. Prueba trabajadores reales detenidos antes de abrir
+archivos para verificar el despertar de 2 a 4, limites globales entre unidades,
+HDD, F5, reduccion sin cancelar, aprendizaje a 30/60/200 FPS, presupuesto de
+vecinas, contexto/historial, medidas de texto y liberacion de eventos de UI.
+Se inspecciono la captura del historial. Release compila en .NET 4.8 / 3.5 y el
+comparador confirma 14 metodos CPU identicos a los ejecutables instalados antes.
+
+La comprobacion HAL solicitada en esta revision no consiguio un dispositivo
+valido en ninguna rama; se registra como fallida por disponibilidad, no como
+prueba de dibujo aprobada. Las repeticiones logicas finales usan `-SinHal`.
+No se midio nuevamente la biblioteca real ni se probo XP, HDD o CPU antiguo;
+no se garantiza 30 FPS ni carga instantanea a cualquier resolucion.
+
+Se actualizaron solo Rocola.exe, Rocola.pdb y NAudio.dll de D:\ReleaseHD y
+D:\Release1, sin procesos Rocola abiertos, verificando origen/destino y respaldos
+por SHA-256. No se alteraron musica, modelos, configuracion, creditos ni cola.
+Los archivos anteriores estan en cada instalacion dentro de:
+`respaldo/codex-perfiles-v2-20261001-195465fdc9c44eb5a2bfcceedcaf7156`.
+
+SHA-256 instalados de esta revision:
+
+- HD: `1359E4C9BD7DFB54AD1035ED47E48A914E24EE11A118A27DC2EDD7C4CDBA3D95`.
+- Modest: `8275813A083855064487C26B4F08C6C04D4BE0268552710D744B446124544CC5`.
 
