@@ -264,7 +264,13 @@ namespace Rocola
             if (!GeneroTodo || w < 4f || h < 4f || alfa <= .003f) return;
             float cx, cy, r; uint argb;
             HaloGenero(x, y, w, h, GeneroArgb, AhoraMs(), out cx, out cy, out r, out argb);
-            stars.DrawGlow(cx, cy, r, FadeArgb(argb, alfa));
+            if (FondoNatural)
+            {
+                float rx, ry;
+                HaloPortadaNatural(w, h, argb, out rx, out ry, out argb);
+                stars.DrawGlowElipse(cx, cy, rx, ry, FadeArgb(argb, alfa));
+            }
+            else stars.DrawGlow(cx, cy, r, FadeArgb(argb, alfa));
         }
     }
 #endif

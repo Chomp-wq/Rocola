@@ -153,8 +153,31 @@ class EspacioNaturalHal
         uint[] palette = (uint[])Get(panel, "flowColors");
         uint[] colors = { 0xEC63BEu, 0x953FC9u, 0x4C80D2u, 0x75C5DFu };
         for (int i = 0; i < palette.Length; i++) palette[i] = colors[(i * colors.Length / palette.Length) % colors.Length];
+        uint[] cover = (uint[])Get(panel, "coverBands");
+        float[] target = (float[])Get(panel, "coverTarget"), current = (float[])Get(panel, "coverCurrent");
+        for (int i = 0; i < cover.Length; i++)
+        {
+            uint rgb = colors[(i * colors.Length / cover.Length) % colors.Length]; cover[i] = rgb;
+            target[i * 3] = current[i * 3] = (rgb >> 16) & 255;
+            target[i * 3 + 1] = current[i * 3 + 1] = (rgb >> 8) & 255;
+            target[i * 3 + 2] = current[i * 3 + 2] = rgb & 255;
+        }
+        Set(panel, "coverTargetWeight", 1f); Set(panel, "coverColorsReady", true);
         Set(panel, "flowBlend", .55f); Set(panel, "coverWeight", 1f);
         Call(P, panel, "EnsureNieblas"); Call(P, panel, "EnsureVineta"); Call(P, panel, "EnsureLuna");
+        if (natural)
+        {
+            // Natural puede preparar sus mapas neutros fuera del hilo de dibujo.
+            // Tener IntPtr no basta: durante la preparacion se conserva el estilo anterior.
+            // Esperar la adopcion correcta, fuera de Begin/EndScene, no el horneado por cuadro.
+            Stopwatch ready = Stopwatch.StartNew();
+            while (!(bool)Get(panel, "nebEstiloDe") || !(bool)Get(panel, "hazEstiloDe")
+                || (IntPtr)Get(panel, "nebTex") == IntPtr.Zero || (IntPtr)Get(panel, "hazTex") == IntPtr.Zero)
+            {
+                if (ready.Elapsed.TotalSeconds > 5) throw new Exception("Preparacion Natural HAL no finalizo en cinco segundos");
+                System.Threading.Thread.Sleep(5); Call(P, panel, "EnsureNieblas");
+            }
+        }
         Check((IntPtr)Get(panel, "nebTex") != IntPtr.Zero && (IntPtr)Get(panel, "hazTex") != IntPtr.Zero
             && (IntPtr)Get(panel, "vinetaTex") != IntPtr.Zero && (IntPtr)Get(panel, "lunaTex") != IntPtr.Zero, "texturas preparadas antes de Begin");
         Set(sky, "TrasCielo", Hook("TrasCielo", "Background")); Set(sky, "TrasEstrellas", Hook("TrasEstrellas", "Protagonist"));
@@ -242,6 +265,61 @@ class EspacioNaturalHal
         }
         return sum / 72;
     }
+    static void ColdPreparation(Size size)
+    {
+        FieldInfo force = F.GetField("nebNaturalFuerza", All); object saved = force.GetValue(null);
+        try
+        {
+            Set(panel, "FondoNatural", true); Set(panel, "Nieblas", 0);
+            Call(P, panel, "EnsureNieblas");
+            Check(((Bitmap[])Get(panel, "mapasNebEstilo"))[1] == null
+                && ((Bitmap[])Get(panel, "mapasViaEstilo"))[1] == null
+                && Get(panel, "preparacionNatural") == null, "Natural apagado no prepara nebulosas");
+            Check((IntPtr)Get(panel, "ruidoTex") != IntPtr.Zero, "apagar nebulosas conserva grano independiente");
+            Set(panel, "Nieblas", 2); Set(panel, "CieloProfundo", true); force.SetValue(null, .31f);
+            Call(P, panel, "PreparaFondoNatural");
+            Check(Get(panel, "preparacionNatural") != null, "Natural frio usa preparador fuera de pantalla");
+            panel.Size = new Size(size.Width + 64, size.Height + 32);
+            Set(panel, "CieloProfundo", false); force.SetValue(null, .67f);
+            Call(P, panel, "PreparaFondoNatural");
+            Stopwatch ready = Stopwatch.StartNew();
+            do
+            {
+                Call(P, panel, "EnsureNieblas");
+                if ((IntPtr)Get(panel, "nebTex") != IntPtr.Zero && (bool)Get(panel, "nebEstiloDe")
+                    && !(bool)Get(panel, "nebNaturalDe") && (float)Get(panel, "nebFuerzaDe") == .67f
+                    && (int)Get(panel, "nebTW") == panel.Width / 4 && (int)Get(panel, "hazTW") == panel.Width / 4) break;
+                if (ready.Elapsed.TotalSeconds > 5) throw new Exception("Natural frio/resize no adopta ultimo pedido");
+                System.Threading.Thread.Sleep(5);
+            } while (true);
+            Check(((Bitmap[])Get(panel, "mapasNebEstilo"))[1].Size == new Size(panel.Width / 4, panel.Height / 4),
+                "Natural frio adopta tamano/detalle/fuerza actuales y descarta obsoletos");
+            // Simular grano en backoff, no un fallo real del controlador grafico.
+            Release((IntPtr)Get(panel, "ruidoTex")); Set(panel, "ruidoTex", IntPtr.Zero);
+            Set(panel, "naturalRuidoRetry", true); Set(panel, "naturalRuidoRetryMs", Environment.TickCount);
+            Release((IntPtr)Get(panel, "nebTex")); Set(panel, "nebTex", IntPtr.Zero);
+            Call(P, panel, "EnsureNieblas");
+            Check((IntPtr)Get(panel, "nebTex") != IntPtr.Zero && (IntPtr)Get(panel, "ruidoTex") == IntPtr.Zero,
+                "espera del grano no bloquea subida de nebulosa");
+            Set(panel, "naturalRuidoRetry", false); Call(P, panel, "EnsureNieblas");
+        }
+        finally { panel.Size = size; force.SetValue(null, saved); Set(panel, "CieloProfundo", true); }
+    }
+
+    static void RestartNatural(Size size)
+    {
+        Configure(size.Width, size.Height, true);
+        Bitmap neb = ((Bitmap[])Get(panel, "mapasNebEstilo"))[1], via = ((Bitmap[])Get(panel, "mapasViaEstilo"))[1];
+        object oldDevice = device;
+        Call(P, panel, "StopGpu");
+        Check((IntPtr)Get(oldDevice, "dev") == IntPtr.Zero, "reinicio libera device anterior");
+        Check((bool)Call(P, panel, "StartGpu"), "reinicio HAL disponible");
+        sky = Get(panel, "stars"); device = Get(sky, "gpu");
+        Configure(size.Width, size.Height, true);
+        Check(ReferenceEquals(neb, ((Bitmap[])Get(panel, "mapasNebEstilo"))[1])
+            && ReferenceEquals(via, ((Bitmap[])Get(panel, "mapasViaEstilo"))[1]), "reinicio reutiliza mapas CPU sin hornear");
+        Draw(); EndScene(); PresentScene();
+    }
     static void Run(Size size, string output)
     {
         using (Control control = (Control)Activator.CreateInstance(P, true))
@@ -249,6 +327,7 @@ class EspacioNaturalHal
             panel = control; panel.Size = size; panel.Visible = false;
             Check((bool)Call(P, panel, "StartGpu"), "HAL disponible para " + size.Width + "x" + size.Height);
             sky = Get(panel, "stars"); device = Get(sky, "gpu");
+            ColdPreparation(size);
             Cache();
             int[][] counts = new int[2][], triangles = new int[2][], frames = new int[2][];
             for (int style = 0; style < 2; style++)
@@ -302,6 +381,7 @@ class EspacioNaturalHal
                     Configure(size.Width, size.Height, natural);
                     Console.WriteLine("COSTE " + size + " " + (natural ? "Natural" : "Legacy") + ": " + Bench().ToString("0.000") + "ms/cuadro calentado, CPU+envios, sin Present/readback. Fixture sintetica; NO FPS reales.");
                 }
+            RestartNatural(size);
             Call(P, panel, "StopGpu");
             Check((IntPtr)Get(device, "dev") == IntPtr.Zero, "HAL y texturas liberados al cerrar fixture");
             Call(P, panel, "LiberaMapasEstilo");

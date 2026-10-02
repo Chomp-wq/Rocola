@@ -112,6 +112,9 @@ namespace Rocola
                 tabs[i] = tab; page.Controls.Add(tab);
             }
             repaint(); paintSheets();
+#if ROCOLA_GPU
+            if (gpuEnabled && gpuPanel != null) gpuPanel.PreparaFondoNatural();
+#endif
         }
     }
 }

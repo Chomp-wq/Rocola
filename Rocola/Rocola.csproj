@@ -107,6 +107,9 @@
     <Compile Include="EstilosFondo.cs" />
     <Compile Include="EspacioNaturalGpu.cs" />
     <Compile Include="NebulosaNaturalGpu.cs" />
+    <Compile Include="AuroraNaturalGpu.cs" />
+    <Compile Include="OpticaNaturalGpu.cs" />
+    <Compile Include="PreparacionFondoGpu.cs" />
     <Compile Include="EscaneoMemo.cs" />
     <Compile Include="AperturaAudio.cs" />
     <Compile Include="AudioControles.cs" />
