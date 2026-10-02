@@ -2,14 +2,41 @@
 
 ## Cómo elegirlo
 
-En Ctrl+F3, abrir **Fondo → Estilo** y elegir **Legacy** o **Espacio natural**.
+En Ctrl+F3, abrir **Fondo** y elegir **Legacy** o **Espacio natural** en el selector
+que permanece visible en la parte superior.
 La elección se aplica al instante y se guarda al cerrar la ventana de control.
-La hoja **Ajustes** conserva todos los mandos del fondo.
+Las hojas **Cielo y aurora**, **Interfaz** y **Estrella** conservan todos los mandos del fondo.
 
 Legacy es el valor de fábrica. Los archivos antiguos sin la clave `estilo_fondo`, y los valores
 no reconocidos, usan Legacy. La nueva preferencia admite `legacy` y `natural`.
 Cambiar de estilo no cambia la paleta musical, los interruptores individuales ni los FPS de ondas/cubos.
 **Fondo como de fábrica** restaura Legacy y las opciones originales del fondo.
+
+## Organización de Fondo — corrección del 2 de octubre
+
+El selector anterior quedaba detrás de las tarjetas de ajustes: podía tener `Visible=true`
+y aun así no verse ni recibir clics. El selector ocupa ahora una fila independiente,
+siempre a la vista. Debajo hay tres hojas con dos tarjetas cada una:
+
+- **Cielo y aurora:** nebulosas, estrellas, ondas y paleta musical; detalle natural y fuerza.
+- **Interfaz:** barra, cola, progreso, cristal del interior, transiciones y respuesta al toque.
+- **Estrella:** superficie, corona, polvo, ecos, 3D y comportamiento en reposo.
+
+Se reutilizan los mismos veintiocho interruptores y sus eventos; no se añaden preferencias
+ni se pierden funciones. Cambiar de hoja no modifica valores y cambiar de estilo no los restablece.
+El botón de fábrica y Listo siguen disponibles. Las notas del pie ya no se superponen a Listo.
+
+Fondo usa un área cliente de 960×694, aprovechando el espacio superior sin reducir las letras
+ni los controles. Su marco cabe a escala estándar en 1024×768. Al salir de Fondo se restauran
+el tamaño y la posición de Listo originales de las otras secciones; se oculta la fecha del pie
+solo en Fondo. El título de la ventana también identifica la sección seleccionada.
+
+La prueba `estilosconfig` verifica límites, textos, ausencia de solapamientos, orden de teclado,
+persistencia, retorno entre hojas y el control que realmente recibe el clic (`GetChildAtPoint`),
+no solo la propiedad Visible. Una ventana de prueba aislada con los controles reales permite
+comprobar las tres hojas mediante clics sin abrir la biblioteca ni guardar preferencias del usuario.
+También se repiten las cuarenta y seis baterías GPU/CPU y HAL en ambas ramas.
+Esto no certifica escalas de pantalla arbitrarias, FPS con música ni ejecución real en XP.
 
 ## Qué cambia Espacio natural
 
