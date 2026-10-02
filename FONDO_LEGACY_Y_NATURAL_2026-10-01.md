@@ -45,7 +45,7 @@ Esto no certifica escalas de pantalla arbitrarias, FPS con música ni ejecución
 - Nebulosas neutras con regiones separadas, vetas orgánicas y huecos transparentes.
   Cielo profundo y su deslizador siguen controlando el detalle.
 - Vía Láctea más delicada, con canales de polvo por ausencia de luz, sin otra capa negra.
-- Estrellas con núcleo fino, centelleo más moderado y destellos reservados a pocas luces grandes.
+- Estrellas con polvo de luz estable, centelleo más moderado y puntas en las medianas y grandes.
   Se conservan la distribución, la deriva, la densidad y el relevo de patrones.
 - Fugaces con cola afilada y cabeza luminosa, sin añadir partículas o triángulos.
 - Aurora con mayor contraste entre filamentos y un contorno luminoso más fino/difuso;
@@ -76,6 +76,36 @@ Las imágenes conceptuales anteriores eran propuestas; las capturas de prueba de
 son dibujos reales de Direct3D 9 con bandas sintéticas, no fotografías ni reproducción de una biblioteca.
 
 ## Coste y cachés
+
+### Corrección de estrellas y cuerpo del cielo — 2 de octubre
+
+La primera versión de Natural resultaba demasiado vacía: casi todas las medianas usaban
+la forma de punto y el atlas compartía un núcleo muy estrecho con el polvo pequeño.
+Al reducirlo a pocos píxeles, el filtrado lineal no bastaba: una estrella podía casi desaparecer
+entre centros de píxel y volver a encenderse al desplazarse. No era el centelleo musical previsto.
+
+El polvo tiene ahora su propio perfil de cobertura dentro de la misma casilla del atlas,
+con un tamaño continuo mínimo suficiente para mantener su luz al derivar. Las medianas y grandes
+recuperan cuatro puntas, diferenciadas por intensidad, con núcleo y halo suaves.
+No se redondea su posición ni se paraliza el movimiento. El centelleo suave sigue activo.
+
+Las tres regiones de nebulosa son más amplias y su nube base tiene más cuerpo; la Vía Láctea
+conserva canales oscuros y gana relieve. El cielo alto sigue azul/negro, sin teñirse entero de
+la paleta de la canción. Se mantienen los topes de alfa, los vacíos y todos los mandos existentes.
+Con fuerza de fábrica, el mapa de nebulosa pasa de alfa medio 5,06 a 7,54 y la Vía Láctea de
+0,43 a 1,20 en la muestra de 256×192. No se cambian las preferencias guardadas.
+
+La fixture HAL añade 32 posiciones fraccionarias, cinco tamaños y los dos estados de Estrellas
+finas, con centelleo y latido congelados. Mide luz integrada, no la intensidad de un píxel individual:
+la amplitud relativa `(máximo-mínimo)/media` pasaba de más de 200% en el polvo, llegando a 908%;
+con la corrección queda por debajo de 8% en los diez casos de este PC. El límite de regresión
+es 20%. Las láminas se leen del backbuffer real, sin suavizado posterior.
+
+Se conservan el atlas de 128×128, las cantidades, mallas, capas y envíos. El mayor cuerpo de
+algunas luces cambia su cobertura de píxeles: no se promete coste GPU idéntico ni FPS universales.
+No hay más estrellas, partículas, pasadas de pantalla completa, ruido aleatorio por cuadro ni
+asignaciones nuevas en el bucle estelar. Legacy y el renderizado CPU permanecen intactos.
+La prueba completa cuenta ahora 2425 comprobaciones HAL por rama, además de las 46 baterías.
 
 Se reutilizan las pasadas existentes. Aurora: 8640 vértices de relleno y 7992 de luz,
 dos envíos. Campo: máximo 1400 estrellas, tres capas. Protagonista: veinte caras,

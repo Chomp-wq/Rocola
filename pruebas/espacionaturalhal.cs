@@ -410,12 +410,75 @@ class EspacioNaturalHal
             Assembly a = Assembly.LoadFrom(args[0]); P = a.GetType("Rocola.GpuPanel"); S = a.GetType("Rocola.GpuStarfield");
             D = a.GetType("Rocola.D3D9Device"); A = a.GetType("Rocola.GpuAurora"); F = a.GetType("Rocola.Form1");
             if (P == null) { Console.WriteLine("OK CPU congelado: no se genera una fixture GPU."); return 0; }
-            foreach (Size size in new Size[] { new Size(1024, 768), new Size(3440, 1440) }) Run(size, output);
+            bool diagnostic = Array.IndexOf(args, "--diagnostico-estrellas") >= 0;
+            EstrellasEstables(output, !diagnostic);
+            if (!diagnostic) foreach (Size size in new Size[] { new Size(1024, 768), new Size(3440, 1440) }) Run(size, output);
             Console.WriteLine("PASS " + checks + " verificaciones HAL. Capturas: " + output);
             return 0;
         }
         catch (Exception e) { Console.WriteLine("FALLO " + e); return 1; }
         finally { Environment.SetEnvironmentVariable("ROCOLA_DATOS", before); }
+    }
+
+    // Aisla una estrella y congela titileo/latido. Moverla una fraccion de pixel
+    // no debe apagarla: un nucleo menor que un pixel aliasa aun con filtro lineal.
+    static void EstrellasEstables(string output, bool requireStable)
+    {
+        using (Control host = new Control())
+        {
+            host.Size = new Size(80, 64);
+            sky = Activator.CreateInstance(S, All, null, new object[] { host.Handle, 80, 64, 7731 }, null);
+            try
+            {
+                Check((bool)S.GetProperty("Ok", All).GetValue(sky, null), "HAL de estabilidad subpixel disponible");
+                device = Get(sky, "gpu"); Set(sky, "FondoNatural", true);
+                Call(S, sky, "ActualizaAtlasNatural");
+                Type vt = S.Assembly.GetType("Rocola.D3D9+Vtx", true);
+                Array black = Array.CreateInstance(vt, 12), v = Array.CreateInstance(vt, 6);
+                Call(S, null, "SetQuad", black, 0, 0f, 0f, 80f, 32f, 0xFF000000u, 0xFF000000u, 0xFF000000u, 0xFF000000u);
+                Call(S, null, "SetQuad", black, 6, 0f, 32f, 80f, 64f, 0xFF000000u, 0xFF000000u, 0xFF000000u, 0xFF000000u);
+                foreach (bool fine in new bool[] { false, true })
+                foreach (float size in new float[] { 1f, 1.4f, 2.2f, 8f, 10f })
+                {
+                    Set(sky, "EstrellasFinas", fine);
+                    int kind = size < 3 ? 0 : 1;
+                    long minimum = long.MaxValue, maximum = 0, sum = 0;
+                    using (Bitmap sheet = new Bitmap(640, 256))
+                    using (Graphics g = Graphics.FromImage(sheet))
+                    {
+                        for (int step = 0; step < 32; step++)
+                        {
+                            float offset = step / 32f;
+                            Call(S, sky, "BuildStarVerts", v, new float[] { 40f + offset }, new float[] { 32f + offset * .73f },
+                                new float[] { 0 }, new float[] { 0 }, new float[] { size }, new int[] { kind }, new int[] { kind == 0 ? 2 : 0 },
+                                new uint[] { 0xFFFFFFFFu }, 1, 0d, 1f, 0f, new float[3], new float[3], 80f, 64f);
+                            Check((bool)Call(D, device, "BeginFrame"), "cuadro HAL de estrella aislada");
+                            Call(D, device, "DrawSky", black);
+                            Call(D, device, "DrawStars", v, 2, Get(sky, "glowTex"));
+                            EndScene();
+                            int[] pixels = ReadPixels(80, 64);
+                            long energy = 0;
+                            foreach (int pixel in pixels) energy += (pixel & 255) + ((pixel >> 8) & 255) + ((pixel >> 16) & 255);
+                            minimum = Math.Min(minimum, energy); maximum = Math.Max(maximum, energy); sum += energy;
+                            // Lamina real de HAL; sin suavizado ni interpolacion GDI de las estrellas.
+                            using (Bitmap frame = new Bitmap(80, 64, PixelFormat.Format32bppArgb))
+                            {
+                                BitmapData data = frame.LockBits(new Rectangle(0, 0, 80, 64), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+                                try { for (int y = 0; y < 64; y++) Marshal.Copy(pixels, y * 80, new IntPtr(data.Scan0.ToInt64() + (long)y * data.Stride), 80); }
+                                finally { frame.UnlockBits(data); }
+                                g.DrawImageUnscaled(frame, (step % 8) * 80, (step / 8) * 64);
+                            }
+                            PresentScene();
+                        }
+                        sheet.Save(Path.Combine(output, "subpixel-" + (fine ? "finas-" : "normal-") + size.ToString(System.Globalization.CultureInfo.InvariantCulture) + ".png"), ImageFormat.Png);
+                    }
+                    double spread = (maximum - minimum) / Math.Max(1.0, sum / 32.0);
+                    Console.WriteLine("SUBPIXEL " + (fine ? "finas" : "normal") + " radio=" + size + " luz min/max=" + minimum + "/" + maximum + " variacion=" + spread.ToString("P1"));
+                    if (requireStable) Check(minimum > 0 && spread < .20, "estrella no se apaga ni cambia mas de 20% de luz al derivar sin titileo");
+                }
+            }
+            finally { Call(S, sky, "Dispose"); sky = device = null; }
+        }
     }
 }
 static class StopwatchCompat

@@ -37,19 +37,19 @@ namespace Rocola
                     float px = u + wx * .085f, py = v + wy * .085f;
                     // Tres regiones separadas, no un velo que tine todo el cielo. Los huecos
                     // son ausencia de luz (alfa cero), no manchas negras pintadas por encima.
-                    float envelope = NaturalCloudRegion(px, py, .18f, .23f, .24f, .18f)
-                        + .72f * NaturalCloudRegion(px, py, .53f, .40f, .25f, .15f)
-                        + .90f * NaturalCloudRegion(px, py, .83f, .20f, .19f, .15f);
+                    float envelope = NaturalCloudRegion(px, py, .18f, .23f, .28f, .22f)
+                        + .72f * NaturalCloudRegion(px, py, .53f, .40f, .32f, .19f)
+                        + .90f * NaturalCloudRegion(px, py, .83f, .20f, .25f, .19f);
                     float broad = CloudNoise(px * 6.5f + 9f, py * 7.5f + 13f);
                     float holes = Math.Max(0f, (broad - .38f) * 1.62f);
                     float ridge = 1f - Math.Abs(CloudNoise(px * 22f + wx * 5f, py * 28f + wy * 4f + 8f) * 2f - 1f);
                     float fine = CloudNoise(px * 54f + 5f, py * 43f + 17f);
                     float filament = ridge * ridge * ridge * (.62f + .38f * fine);
-                    float value = Math.Min(1f, envelope) * holes * (.37f + detail * (filament * .98f + fine * .13f));
+                    float value = Math.Min(1f, envelope) * holes * (.44f + detail * (filament * .98f + fine * .13f));
                     // El detalle suma filamentos sobre una nube base ligera; a cero la base
                     // sigue siendo usable, pero las vetas desaparecen. NebFuerza sigue siendo
                     // la referencia comun del proyecto, sin pasar su control al renderer CPU.
-                    int alpha = (int)Math.Min(70f, value * 65f * Form1.NebFuerza);
+                    int alpha = (int)Math.Min(70f, value * 60f * Form1.NebFuerza);
                     pixels[y * w + x] = unchecked((int)((uint)alpha << 24 | 0x00FFFFFFu));
                 }
             }
@@ -72,7 +72,7 @@ namespace Rocola
                     float u = x / (float)Math.Max(1, w - 1), v = y / (float)Math.Max(1, h - 1);
                     float warp = CloudNoise(u * 4.1f + 31f, v * 5.8f + 12f) - .5f;
                     float center = .82f - .74f * u + warp * .018f;
-                    float width = .067f + .012f * (float)Math.Sin(u * 5.2f);
+                    float width = .085f + .014f * (float)Math.Sin(u * 5.2f);
                     float distance = (v - center) / width;
                     float envelope = (float)Math.Exp(-distance * distance * 1.75f);
                     float cloud = CloudNoise(u * 17f + 5f, v * 25f + 41f);
@@ -81,10 +81,10 @@ namespace Rocola
                     // Canales de polvo: se recorta la emision de la banda. No se anade una
                     // pasada negra ni un buffer extra para simular nubes que la tapen.
                     float gap = Math.Max(0f, (lane - .24f) / .76f);
-                    gap *= gap;
+                    gap *= .65f + .35f * gap;
                     float value = envelope * gap * (.26f + .74f * cloud) * (.65f + .35f * grain);
                     float sky = 1f - v;
-                    int alpha = (int)Math.Min(48f, value * 105f * (.22f + .78f * sky * sky));
+                    int alpha = (int)Math.Min(48f, value * 150f * (.22f + .78f * sky * sky));
                     pixels[y * w + x] = unchecked((int)((uint)alpha << 24 | 0x00FFFFFFu));
                 }
             }

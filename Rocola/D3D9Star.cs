@@ -1246,9 +1246,16 @@ namespace Rocola
                 // reducir las puntas grandes, dejando algunas estrellas protagonistas.
                 if (EstrellasFinas) s *= k == 0 ? 0.85f : (k == 1 ? 0.66f : (i % 5 == 0 ? 0.78f : 0.42f));
                 int f = (fm != null) ? fm[i] : FormaEstrella;
-                // Nucleos fotograficos; los rayos de difraccion quedan para unas pocas luces destacadas.
-                // No cambia la semilla, las tres capas, el numero de vertices ni la llamada de dibujo.
-                if (FondoNatural) f = k == 0 ? FormaPunto : (k == 1 ? (i % 13 == 0 ? FormaEstrella : FormaPunto) : (i % 4 == 0 ? FormaRayos : FormaEstrella));
+                if (FondoNatural)
+                {
+                    // El polvo necesita cobertura real de pixel: un nucleo diminuto
+                    // minificado parpadeaba al pasar entre centros de pixeles, aun
+                    // con filtrado lineal. Conservar la variedad, sin clavar posiciones.
+                    if (k == 0) s = 1.25f + s * .65f;
+                    // Medianas y grandes vuelven a tener silueta, no puntos repetidos.
+                    // Mismo atlas, semilla, tres capas, vertices y envio de geometria.
+                    f = k == 0 ? FormaPunto : k == 1 ? FormaEstrella : FormaRayos;
+                }
                 SetQuadUV(buf, vi, x - s, y - s, x + s, y + s, c, AtlasU0[f], AtlasV0[f], AtlasU1[f], AtlasV1[f]);
                 vi += 6;
             }
@@ -1705,15 +1712,21 @@ namespace Rocola
                     {
                         double dx = (x + .5 - celda * .5) / (celda * .5), dy = (y + .5 - celda * .5) / (celda * .5);
                         double rr = dx * dx + dy * dy;
-                        // PSF suave, nucleo blanco compacto y halo lejano casi invisible.
-                        double core = Math.Exp(-rr * 115), halo = .17 * Math.Exp(-rr * 17) + .022 * Math.Exp(-rr * 4);
+                        bool dust = forma == FormaPunto;
+                        // Dos escalas en el mismo atlas: el polvo se reduce a 3-5 px,
+                        // no puede compartir el nucleo subpixel de una luz grande.
+                        // Horneado unico; sin mipmaps, nuevas texturas ni coste por cuadro.
+                        double core = dust ? .88 * Math.Exp(-rr * 2.8) : Math.Exp(-rr * 27);
+                        double halo = dust ? .12 * Math.Exp(-rr * 8) : .21 * Math.Exp(-rr * 14) + .018 * Math.Exp(-rr * 3);
                         double rays = 0;
-                        if (forma != FormaPunto)
+                        if (!dust)
                         {
-                            double strength = forma == FormaRayos ? .32 : .11;
-                            rays = strength * (Math.Exp(-dx * dx * 1700 - Math.Abs(dy) * 5) + Math.Exp(-dy * dy * 1700 - Math.Abs(dx) * 5));
+                            double strength = forma == FormaRayos ? .94 : .76;
+                            double rx = Math.Max(0, 1 - Math.Abs(dx) / .96), ry = Math.Max(0, 1 - Math.Abs(dy) / .96);
+                            rays = strength * (rx * rx * Math.Exp(-dy * dy * (50 + Math.Abs(dx) * 120))
+                                + ry * ry * Math.Exp(-dx * dx * (50 + Math.Abs(dy) * 120)));
                         }
-                        double edge = Math.Max(0, 1 - Math.Sqrt(rr)); edge = Math.Min(1, edge * 5);
+                        double edge = Math.Max(0, 1 - rr); edge = Math.Min(1, edge * 3);
                         int alpha = (int)(255 * Math.Min(1, (core + halo + rays) * edge) + .5);
                         pixels[(oy + y) * side + ox + x] = (alpha << 24) | 0xFFFFFF;
                     }
