@@ -555,12 +555,14 @@ namespace Rocola
                     Image ca, cb; float f; SelectedCovers(out ca, out cb, out f);
                     st.Sel.Has = true; st.Sel.X = a.X; st.Sel.Y = a.Y; st.Sel.W = a.Width; st.Sel.H = a.Height;
                     st.Sel.Angle = SelAngle; st.Sel.CoverA = ca as Bitmap; st.Sel.CoverB = cb as Bitmap; st.Sel.Fade = f;
+                    st.Sel.Key = Page[Selected];
                 }
                 if (prevIdx >= 0 && prevIdx != Selected && prevIdx < Page.Count)   // RELEVO: el que dejamos, girando y decayendo
                 {
                     Rectangle a2, l2; Geometry(w, h, prevIdx, out a2, out l2);
                     st.Relay.Has = true; st.Relay.X = a2.X; st.Relay.Y = a2.Y; st.Relay.W = a2.Width; st.Relay.H = a2.Height;
                     st.Relay.Angle = prevAngle; st.Relay.CoverA = ((GetCover != null) ? GetCover(Page[prevIdx]) : null) as Bitmap;
+                    st.Relay.Key = Page[prevIdx];
                 }
                 return st;
             }
@@ -1549,7 +1551,7 @@ namespace Rocola
         }
 
         // ==========  CUBO DE LA CANCION (gira + se inclina)  ==========
-        private class CubeBox : Control
+        private partial class CubeBox : Control
         {
             public Image Cover;
             public double Angle;

@@ -207,6 +207,8 @@ namespace Rocola
             if (pastCred != null) pastCred.MonedaGrande = monedaCae;           // la moneda que cae (Pantalla -> Lo que suena y los creditos)
             AjustaBuscadorPortadas();                                         // el buscador con portadas (Pantalla -> El buscador)
             if (gpuPanel == null) return;
+            gpuPanel.OndasFps = NormalizaFluidezAnimacion(animOndasFps);
+            gpuPanel.CubosFps = NormalizaFluidezAnimacion(animCubosFps);
             gpuPanel.PortadaEnfocada = portadaEnfocada;
             gpuPanel.GeneroTodo = colorGenero;   // el color del genero en todo (Pantalla -> El estilo)
             gpuPanel.Nieblas = nieblasNiv;
@@ -1238,7 +1240,7 @@ namespace Rocola
 
             // ---------------- EFECTOS: el mando general y las seis filas ----------------
             EfectoGrafico[] ef = Efectos();
-            Label lGen = new Label(); lGen.SetBounds(16, 38, 424, 16); lGen.BackColor = Color.Transparent;
+            Label lGen = new Label(); lGen.SetBounds(16, 38, 424, 18); lGen.BackColor = Color.Transparent;
             lGen.ForeColor = cApagado; lGen.Font = fDes;
             BotonPlano[] bGen = new BotonPlano[3];
             string[] nomNivel = { "Bajo", "Medio", "Alto" };
@@ -1254,7 +1256,7 @@ namespace Rocola
             {
                 // 48 px de contenido y 4 de separacion; fuentes y botones intactos.
                 int y = 94 + i * 52;
-                lNom[i] = new Label(); lNom[i].SetBounds(16, y, 424, 18); lNom[i].BackColor = Color.Transparent;
+                lNom[i] = new Label(); lNom[i].SetBounds(16, y, 424, 22); lNom[i].BackColor = Color.Transparent;
                 lNom[i].ForeColor = cTexto; lNom[i].Font = fNom; lNom[i].Text = ef[i].Nombre;
                 lCost[i] = new Label(); lCost[i].SetBounds(322, y + 24, 118, 18); lCost[i].BackColor = Color.Transparent;
                 lCost[i].ForeColor = cApagado; lCost[i].Font = fDes; lCost[i].TextAlign = ContentAlignment.TopRight;
@@ -1301,13 +1303,15 @@ namespace Rocola
             sw[2].CheckedChanged += delegate { estadoExpandido = sw[2].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             sw[3].CheckedChanged += delegate { cancionesTransparentes = sw[3].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             sw[4].CheckedChanged += delegate { caratulasLod = sw[4].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
-            Label lPierde = new Label(); lPierde.SetBounds(16, switchesY + sw.Length * 30 + 4, 424, 48); lPierde.BackColor = Color.Transparent;
+            Label lPierde = new Label(); lPierde.SetBounds(16, switchesY + sw.Length * 30 + 4, 424, 52); lPierde.BackColor = Color.Transparent;
             lPierde.ForeColor = cTenue; lPierde.Font = fDes;
             tEfe.Controls.Add(lGen); tEfe.Controls.Add(swHojeo); tEfe.Controls.Add(lPierde);
 
             BotonPlano bResetG = new BotonPlano();
             bResetG.SetBounds(16, 590, 300, 38); bResetG.Font = fBot; bResetG.Text = "Graficos como de fabrica";
 
+            Action pintaFluidez;
+            Panel hojasGraficas = MontaFluidezGrafica(tEfe, fNom, fDes, fBot, cTexto, cTenue, out pintaFluidez);
             int ultimoTocado = 0;
 
             // ---------------- LO QUE SE ENSENA, SEGUN LO QUE HAYA ----------------
@@ -1511,6 +1515,8 @@ namespace Rocola
             {
                 foreach (EfectoGrafico e in ef) PonNivel(e.Clave, NivAlto);
                 fpsTope = 0;
+                animOndasFps = animCubosFps = 60;
+                pintaFluidez();
                 // Solo lo de ESTA pagina. Los once adornos del fondo los devuelve el boton de su propia
                 // pestaña: un boton que dice "graficos como de fabrica" y ademas te reordena el cielo seria
                 // una sorpresa, y en la ventana de al lado no se ve lo que cambio.
@@ -1522,7 +1528,7 @@ namespace Rocola
                 pinta();
             };
 
-            pg.Controls.Add(tMide); pg.Controls.Add(tProp); pg.Controls.Add(tEfe); pg.Controls.Add(bResetG);
+            pg.Controls.Add(tMide); pg.Controls.Add(tProp); pg.Controls.Add(hojasGraficas); pg.Controls.Add(bResetG);
             CoverProfileChanged += pinta;
             pg.Disposed += delegate { CoverProfileChanged -= pinta; };
             pg.VisibleChanged += delegate { if (pg.Visible) pinta(); };

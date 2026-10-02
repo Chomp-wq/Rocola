@@ -725,7 +725,7 @@ namespace Rocola
                     if (r.Width > 0) r.Offset(albumView.Left, albumView.Top);   // coords de albumView -> pantalla
                     return r;
                 };
-                gpuPanel.GetCubeState = delegate { return BuildGpuCubeState(); };   // album (offset a pantalla) + mini-cubo
+                gpuPanel.GetCubeState = delegate { return CubosDelCuadro(); };   // movimiento GPU a 24/50/60, sin depender del timer de controles
                 gpuPanel.GetProgress = delegate {
                     GpuProgress p = new GpuProgress();
                     if (progress == null || !progress.Visible || attractOn) return p;
@@ -833,6 +833,7 @@ namespace Rocola
                 ParCuboAtraccion(out ca, out cb, out f);   // puede dar null (portadas aun cargando): el cubo muestra relleno azulado
                 RectangleF cubo = CuboAtraccionAhora();   // el de siempre, o el del escaparate (AtraccionGpu.cs): lo mismo que la animacion de entrada/salida
                 st.Sel.Has = true;
+                st.Sel.Key = attractView;
                 st.Sel.X = cubo.X; st.Sel.Y = cubo.Y; st.Sel.W = cubo.Width; st.Sel.H = cubo.Height;
                 st.Sel.Angle = AnguloAtraccion(); st.Sel.CoverA = ca as Bitmap; st.Sel.CoverB = cb as Bitmap; st.Sel.Fade = f;
                 return st;   // en atraccion no hay mini-cubo (no suena nada)
@@ -849,6 +850,7 @@ namespace Rocola
                 {
                     area.Offset(searchOverlay.Left, searchOverlay.Top);   // coords del buscador -> pantalla
                     st.Sel.Has = true; st.Sel.X = area.X; st.Sel.Y = area.Y; st.Sel.W = area.Width; st.Sel.H = area.Height;
+                    st.Sel.Key = searchOverlay;
                     st.Sel.Angle = searchOverlay.PreviewAngle; st.Sel.CoverA = ca as Bitmap; st.Sel.CoverB = cb as Bitmap; st.Sel.Fade = f;
                 }
             }
@@ -889,6 +891,7 @@ namespace Rocola
             info.W = side; info.H = side;
             info.Angle = cb.Angle;
             info.CoverA = cb.Cover as Bitmap;
+            info.Key = cb;
             info.Tilt = (float)(10.0 * Math.Sin(cb.Phase * 0.9) * Math.PI / 180.0);   // mismo bamboleo que CubeBox.OnPaint
         }
 

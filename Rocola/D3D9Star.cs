@@ -1010,6 +1010,7 @@ namespace Rocola
     // CoverB + Fade hacen el fundido suave entre la portada actual y la siguiente.
     internal struct GpuCubeInfo
     {
+        public object Key;
         public bool Has;
         public float X, Y, W, H;       // celda donde va el cubo (coords del panel)
         public double Angle;           // giro actual (radianes)
@@ -1032,6 +1033,7 @@ namespace Rocola
     // asi que aterriza calcada sobre el cubo de destino. X,Y,W,H = celda del cubo (igual que GpuCubeInfo).
     internal struct GpuTrans
     {
+        public int Key;
         public bool Has; public Bitmap Bmp;
         public float X, Y, W, H;   // celda donde va el cubo (coords de pantalla)
         public float Alpha;        // 1 = opaca; baja al final para fundirse con el cubo de destino
@@ -1517,7 +1519,9 @@ namespace Rocola
             }
             // Cubos que GIRAN (seleccionado + relevo): suben la PORTADA como textura SOLO cuando cambia
             // (al navegar o al ciclar un disco TOP), no en cada cuadro. El giro luego es solo geometria.
+            BeginCubeFrame();
             GpuCubeState cs = (GetCubeState != null) ? GetCubeState() : new GpuCubeState();
+            SampleCubePose(ref cs.Sel, 0); SampleCubePose(ref cs.Relay, 1); SampleCubePose(ref cs.Mini, 2);
             if (ShowAlbum && cs.Sel.CoverA == null)
                 for (int i = 0; i < gridN; i++) if (gridBuf[i].Sel && gridBuf[i].Preview != null) { cs.Sel.CoverA = gridBuf[i].Preview; break; }
             EnsureRecentCover(ref selTexA, ref selImgA, ref selBwA, ref selBhA, ref selUA, ref selVA, cs.Sel.CoverA);
@@ -1547,6 +1551,7 @@ namespace Rocola
             // entre cubos no llegaba a dibujarse NUNCA (la del buscador al abrir si, porque esa reusa la textura
             // de la UI, que ya venia subida de antes). Aqui se resuelven; abajo solo se dibujan.
             GpuTrans tr = (GetTrans != null) ? GetTrans() : new GpuTrans();
+            SampleCubeFlight(ref tr);
             if (tr.Has && tr.Bmp != null) EnsureCover(ref transTex, ref transLastBmp, ref transBw, ref transBh, ref transU, ref transV, tr.Bmp);
             GpuWin gw = (GetWin != null) ? GetWin() : new GpuWin();
             if (gw.Has && gw.Bmp != null) EnsureCover(ref winTex, ref winLastBmp, ref winBw, ref winBh, ref winU, ref winV, gw.Bmp);
@@ -2993,6 +2998,7 @@ namespace Rocola
 
         private void DrawAurora(GpuAurora au)
         {
+            bool updateWave = SampleWave(ref au);
             // au es una copia: no modificar el espectro ni el renderizador CPU.
             if (OndasSuaves) { au.Alto *= 0.78f; au.Dim *= 0.85f; au.DimFilo *= 0.65f; }
             if (au.Alto < 2f || au.Dim <= 0.02f) return;
@@ -3009,7 +3015,7 @@ namespace Rocola
             if (aurV == null || aurV.Length < nv) aurV = new D3D9.Vtx[nv];
             int nb = AurBrilloVtx;
             if (aurVb == null || aurVb.Length < nb) aurVb = new D3D9.Vtx[nb];
-            double tkAur = AhoraMs();   // reloj FINO: con el tope puesto, cada cuadro dura ~15 ms y el reloj de
+            double tkAur = waveCadence.SampleMs;   // reloj independiente de 24/50/60, sin frenar el resto del panel
                                         // Windows -que salta de 15.6 en 15.6- haria avanzar la aurora a tirones
             if (aurRelojOk)
             {
@@ -3020,6 +3026,7 @@ namespace Rocola
             }
             aurFinoAnt = tkAur; aurRelojOk = true;
             float t = (float)aurT;
+            if (updateWave) {
             // DEGRADADO del pie a la punta de los dos extremos (grave y agudo), girando el tono por el BORDE de la
             // rueda (ver AurTonoMezcla): asi a media altura el color sigue siendo un color y no una mezcla sucia. Con
             // el ancho y la paleta de la portada da el color de partida de cada franja; se guarda y solo se rehace
@@ -3078,6 +3085,7 @@ namespace Rocola
             // relleno y para el filo, o se despegarian.
             AurSuaviza(aurH, aurHs);
             if (!AuroraBandas) { AurSuaviza(aurHs, aurH); AurSuaviza(aurH, aurHs); }
+            }
             int n = AurMalla(aurV, aurHs, aurCortina, aurSueloC, aurA, aurR, Width, au.BaseY, Height);
             if (n >= 3) stars.DrawMesh(aurV, n / 3);   // TODO el relleno en UNA sola llamada de dibujo
             // Y encima el BRILLO -el filo de neon y la linea del horizonte- en otra sola llamada, esta

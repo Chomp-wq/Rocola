@@ -52,6 +52,17 @@ foreach ($test in @('capascolor', 'cristalcola', 'cubofila', 'respuesta', 'efect
 }
 } finally { Pop-Location }
 $stutterExe = Join-Path $OutputDirectory 'tironescaratulas.exe'
+foreach ($extraTest in @('colacompacta', 'ajustesfluidez', 'cadenciavisual')) {
+    $extraExe = Join-Path $OutputDirectory ($extraTest + '.exe')
+    & $compiler /nologo /target:exe /optimize+ /warnaserror+ ("/out:$extraExe") /r:System.dll /r:System.Core.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll (Join-Path $testRoot ($extraTest + '.cs')) (Join-Path $testRoot 'leercodigo.cs')
+    if ($LASTEXITCODE -ne 0) { throw "No compila $extraTest" }
+    & $extraExe $exe
+    if ($LASTEXITCODE -ne 0) { throw "Fallo: $extraTest" }
+    if ($extraTest -eq 'ajustesfluidez') {
+        & $extraExe (Join-Path $OutputDirectory 'Rocola-cpu.exe')
+        if ($LASTEXITCODE -ne 0) { throw 'Fallo: ajustes comunes (CPU)' }
+    }
+}
 & $compiler /nologo /target:exe /optimize+ /warnaserror+ ("/out:$stutterExe") /r:System.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll (Join-Path $testRoot 'tironescaratulas.cs')
 if ($LASTEXITCODE -ne 0) { throw 'No compila tironescaratulas' }
 if ($SinHal) { & $stutterExe $exe --sin-hal } else { & $stutterExe $exe }
@@ -61,5 +72,5 @@ $partsExe = Join-Path $OutputDirectory 'partescaratulas.exe'
 if ($LASTEXITCODE -ne 0) { throw 'No compila partescaratulas' }
 if ($SinHal) { & $partsExe $exe --sin-hal } else { & $partsExe $exe }
 if ($LASTEXITCODE -ne 0) { throw 'Fallo: partescaratulas' }
-Write-Output "PASS: compilacion GPU/CPU y treinta y cuatro baterias. HAL LOD omitido explicitamente: $SinHal. No se reemplazo ningun ejecutable de produccion. Salida: $OutputDirectory"
+Write-Output "PASS: compilacion GPU/CPU y treinta y siete baterias. HAL LOD omitido explicitamente: $SinHal. No se reemplazo ningun ejecutable de produccion. Salida: $OutputDirectory"
 } finally { $env:ROCOLA_DATOS = $previousRocolaData }

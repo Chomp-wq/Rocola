@@ -976,11 +976,12 @@ namespace Rocola
         {
             GpuTrans g = new GpuTrans();
             if (transMode == 0 || transImg == null) return g;
-            float t = (Environment.TickCount - transTick) / (float)TransMs;   // avance EN VIVO: fluido a los fps del render
+            float t = (float)(CubeFlightElapsed(transTick) / TransMs);   // reloj fino; la cadencia del cubo se aplica en el panel
             if (t < 0f) t = 0f; else if (t > 1f) t = 1f;
             float e = t * t * t * (t * (t * 6f - 15f) + 10f);      // suavizado quintico
             RectangleF a = transFrom, b = transTo;
             g.Has = true; g.Bmp = transImg as Bitmap;
+            g.Key = transTick;
             if (g.Bmp == null) { g.Has = false; return g; }
             g.X = a.X + (b.X - a.X) * e; g.Y = a.Y + (b.Y - a.Y) * e;
             g.W = a.Width + (b.Width - a.Width) * e; g.H = a.Height + (b.Height - a.Height) * e;
