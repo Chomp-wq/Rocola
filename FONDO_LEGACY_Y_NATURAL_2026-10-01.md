@@ -55,7 +55,7 @@ Esto no certifica escalas de pantalla arbitrarias, FPS con música ni ejecución
 - Estrella protagonista del icono con material plata/acero, reflejos claros y tinte musical sutil.
   Conserva su movimiento suave; no añade desplazamientos bruscos al ritmo de la canción.
 - Ecos de colores, corona y polvo orbital más delicados, sin aumentar sus cantidades.
-- Viñeta de borde más suave y grano contra bandas reutilizado. El relevo de patrones usa
+- Viñeta de borde más suave y grano contra bandas reutilizado con modulación más delicada. El relevo de patrones usa
   una mezcla suavizada sin ampliar su duración ni dibujar más estrellas.
 - Reposo Natural con amortiguación crítica: panel, horizonte, cubo, estrella y controles comparten
   la misma posición animada. Invertir el destino mantiene la velocidad; se vuelve más deprisa
@@ -105,7 +105,60 @@ Se conservan el atlas de 128×128, las cantidades, mallas, capas y envíos. El m
 algunas luces cambia su cobertura de píxeles: no se promete coste GPU idéntico ni FPS universales.
 No hay más estrellas, partículas, pasadas de pantalla completa, ruido aleatorio por cuadro ni
 asignaciones nuevas en el bucle estelar. Legacy y el renderizado CPU permanecen intactos.
-La prueba completa cuenta ahora 2425 comprobaciones HAL por rama, además de las 46 baterías.
+Esa pasada contó con 2425 comprobaciones HAL por rama, además de las 46 baterías.
+
+### Distribución Legacy y acabados propios — segunda revisión del 2 de octubre
+
+El aumento del polvo visible no venía de crear más estrellas: ambas opciones ya compartían
+la semilla y la distribución. El nuevo perfil antialias, junto con un cuadrilátero más amplio,
+sumaba hasta unas cinco veces la luz de un punto Legacy pequeño. El cielo parecía sobrepoblado.
+Ahora se compensa esa cobertura por su área, sin encoger el núcleo hasta recuperar el parpadeo.
+Medianas y grandes también equilibran su luz respecto a las dos formas Legacy correspondientes.
+Se conservan los centros, cantidades, densidad elegida, grumos, vacíos, tamaños base, formas,
+temperaturas, fases y tres profundidades de deriva. No se descartan estrellas ni se cambian
+las preferencias del usuario. Natural mantiene un centelleo y pulso de tamaño más contenidos.
+
+La comprobación HAL compara los dos estilos con 32 posiciones fraccionarias, seis tamaños
+incluyendo las grandes y ambos estados de Estrellas finas. En este PC la luz media Natural
+queda entre 96,8% y 102,4% de Legacy, con oscilación por deriva de como máximo 8,0%.
+Las guardas de regresión exigen un rango de 85–115% para luz y menos de 20% de oscilación.
+Se compara luz integrada, no una captura elegida ni el brillo de un único píxel.
+
+Se revisaron todos los efectos del fondo. Natural no es una versión con menos funciones:
+
+| Efecto | Acabado Legacy | Acabado Espacio natural |
+| --- | --- | --- |
+| Bóveda | Degradado azul original | Perfil nocturno negro/azul de tres alturas |
+| Nebulosas | Receta original, con o sin detalle y tinte cine | Regiones orgánicas, filamentos, huecos y tinte nocturno propio |
+| Vía Láctea | Banda original | Banda con canales de polvo oscuro y relieve |
+| Campo estelar | Atlas original | Mismo patrón y jerarquía, núcleos suaves estables y puntas ópticas propias |
+| Centelleo y relevo | Intensidad y mezcla originales | Centelleo moderado, mezcla smoothstep sin apagar el campo |
+| Fugaces/bólidos | Cola original | Cola afilada, cabeza clara y matiz dorado de bólidos |
+| Cortina de aurora | Distribución lineal original | Seis alturas no lineales con velos luminosos que evolucionan |
+| Rayos y ondas | Contraste original | Filamentos más definidos y disipación propia, conservando las ocho bandas musicales |
+| Filo, horizonte y suelo | Neón original | Contorno fino/difuso y caída de luz propia, unidos a la barra |
+| Estrella protagonista 3D | Material coloreado original | Plata/acero, reflejos por normales y tinte musical sutil |
+| Estrella protagonista 2D | Textura facetada azul original | Nueva textura plata/acero, bisel fino y reflejos contenidos, también sin detalle |
+| Corona | Halo original | Corona más concentrada con luz blanca/azulada |
+| Polvo orbital | Tamaño/luz originales | Tamaño y luminosidad por profundidad, delante y detrás del cuerpo |
+| Ecos de la estrella | Caída y borde originales | Curva y borde propios, con la misma paleta musical dinámica |
+| Viñeta y grano | Recetas originales | Borde más suave y grano más delicado; la misma teja evita ruido por cuadro |
+| Entrada/salida de reposo | Curva original | Amortiguación crítica y luz interpolada, sin desunir los elementos |
+| Halo de selección/género y vidrio | Acabado original | Halo elíptico, cristal oscuro, borde fino y cachés separadas por estilo |
+
+La segunda revisión completa el material de la estrella 2D y el tratamiento del grano,
+que antes compartían su receta visual. La geometría, los relojes, la música, la paleta y los
+mandos comunes siguen compartidos: duplicar esos motores no mejoraría el aspecto y pondría
+en riesgo funciones y rendimiento. Cambiar entre estilos actualiza la textura 2D existente;
+ni el color musical, ni la resolución, ni los cuadros estables vuelven a subirla.
+No hay estrellas, partículas, caras, ecos, pasadas o interruptores nuevos. Legacy conserva
+sus píxeles originales, incluida la estrella 2D; el renderizado CPU sigue congelado.
+
+La fixture HAL ampliada cuenta 5617 comprobaciones e incluye capturas con protagonista
+en 2D y 3D a 1024×768 y 3440×1440. La batería estelar verifica además la distribución exacta
+en tres resoluciones, tres densidades y los dos modos de Estrellas finas, y contrasta Legacy
+con el Release anterior. Se repiten las 46 baterías en ambas ramas. Las capturas son ensayos
+aislados de Direct3D, no FPS certificados con biblioteca/música ni una prueba real de XP.
 
 Se reutilizan las pasadas existentes. Aurora: 8640 vértices de relleno y 7992 de luz,
 dos envíos. Campo: máximo 1400 estrellas, tres capas. Protagonista: veinte caras,

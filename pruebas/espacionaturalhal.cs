@@ -330,15 +330,22 @@ class EspacioNaturalHal
             ColdPreparation(size);
             Cache();
             int[][] counts = new int[2][], triangles = new int[2][], frames = new int[2][];
+            IntPtr starTexture = IntPtr.Zero;
             for (int style = 0; style < 2; style++)
             {
                 Configure(size.Width, size.Height, style == 1);
+                Check((bool)Get(panel, "lunaEstiloDe") == (style == 1), "superficie protagonista adopta el estilo");
+                if (starTexture == IntPtr.Zero) starTexture = (IntPtr)Get(panel, "lunaTex");
+                else Check(starTexture == (IntPtr)Get(panel, "lunaTex"), "estrella 2D cambia material reutilizando textura GPU");
                 Draw(); EndScene(); PresentScene(); // calienta atlas, mapas y geometria antes de observar
                 Observe(true);
                 try
                 {
                     Array.Clear(calls, 0, calls.Length); Array.Clear(tris, 0, tris.Length);
                     Draw(); EndScene();
+                    Array grain = (Array)Get(panel, "nieblaQuad");
+                    uint grainTint = (uint)grain.GetValue(0).GetType().GetField("Color", All).GetValue(grain.GetValue(0));
+                    Check(grainTint == (style == 1 ? 0xD0FFFFFFu : 0xFFFFFFFFu), "grano propio Natural, receta Legacy sin cambios");
                     counts[style] = (int[])calls.Clone(); triangles[style] = (int[])tris.Clone();
                     frames[style] = ReadPixels(size.Width, size.Height);
                     Save(frames[style], size.Width, size.Height, Path.Combine(output, (style == 1 ? "natural-" : "legacy-") + size.Width + "x" + size.Height + ".png"));
@@ -381,6 +388,18 @@ class EspacioNaturalHal
                     Configure(size.Width, size.Height, natural);
                     Console.WriteLine("COSTE " + size + " " + (natural ? "Natural" : "Legacy") + ": " + Bench().ToString("0.000") + "ms/cuadro calentado, CPU+envios, sin Present/readback. Fixture sintetica; NO FPS reales.");
                 }
+            foreach (bool natural in new bool[] { false, true })
+            {
+                Configure(size.Width, size.Height, natural); Set(panel, "Estrella3D", false);
+                Draw(); EndScene();
+                Save(ReadPixels(size.Width, size.Height), size.Width, size.Height,
+                    Path.Combine(output, (natural ? "natural-2d-" : "legacy-2d-") + size.Width + "x" + size.Height + ".png"));
+                PresentScene();
+                IntPtr sameTexture = (IntPtr)Get(panel, "lunaTex");
+                Call(P, panel, "EnsureLuna");
+                Check(sameTexture == (IntPtr)Get(panel, "lunaTex"), "material 2D estable no vuelve a subir");
+                Set(panel, "Estrella3D", true);
+            }
             RestartNatural(size);
             Call(P, panel, "StopGpu");
             Check((IntPtr)Get(device, "dev") == IntPtr.Zero, "HAL y texturas liberados al cerrar fixture");
@@ -431,17 +450,20 @@ class EspacioNaturalHal
             try
             {
                 Check((bool)S.GetProperty("Ok", All).GetValue(sky, null), "HAL de estabilidad subpixel disponible");
-                device = Get(sky, "gpu"); Set(sky, "FondoNatural", true);
-                Call(S, sky, "ActualizaAtlasNatural");
+                device = Get(sky, "gpu");
                 Type vt = S.Assembly.GetType("Rocola.D3D9+Vtx", true);
                 Array black = Array.CreateInstance(vt, 12), v = Array.CreateInstance(vt, 6);
                 Call(S, null, "SetQuad", black, 0, 0f, 0f, 80f, 32f, 0xFF000000u, 0xFF000000u, 0xFF000000u, 0xFF000000u);
                 Call(S, null, "SetQuad", black, 6, 0f, 32f, 80f, 64f, 0xFF000000u, 0xFF000000u, 0xFF000000u, 0xFF000000u);
+                float[] sizes = { 1f, 1.4f, 2.2f, 8f, 10f, 34f };
+                double[] legacyLight = new double[sizes.Length * 2];
+                foreach (bool natural in new bool[] { false, true })
                 foreach (bool fine in new bool[] { false, true })
-                foreach (float size in new float[] { 1f, 1.4f, 2.2f, 8f, 10f })
+                foreach (float size in sizes)
                 {
+                    Set(sky, "FondoNatural", natural); Call(S, sky, "ActualizaAtlasNatural");
                     Set(sky, "EstrellasFinas", fine);
-                    int kind = size < 3 ? 0 : 1;
+                    int kind = size < 3 ? 0 : size > 20 ? 2 : 1;
                     long minimum = long.MaxValue, maximum = 0, sum = 0;
                     using (Bitmap sheet = new Bitmap(640, 256))
                     using (Graphics g = Graphics.FromImage(sheet))
@@ -450,7 +472,7 @@ class EspacioNaturalHal
                         {
                             float offset = step / 32f;
                             Call(S, sky, "BuildStarVerts", v, new float[] { 40f + offset }, new float[] { 32f + offset * .73f },
-                                new float[] { 0 }, new float[] { 0 }, new float[] { size }, new int[] { kind }, new int[] { kind == 0 ? 2 : 0 },
+                                new float[] { 0 }, new float[] { 0 }, new float[] { size }, new int[] { kind }, new int[] { kind == 0 ? 2 : kind == 2 ? 1 : 0 },
                                 new uint[] { 0xFFFFFFFFu }, 1, 0d, 1f, 0f, new float[3], new float[3], 80f, 64f);
                             Check((bool)Call(D, device, "BeginFrame"), "cuadro HAL de estrella aislada");
                             Call(D, device, "DrawSky", black);
@@ -470,11 +492,18 @@ class EspacioNaturalHal
                             }
                             PresentScene();
                         }
-                        sheet.Save(Path.Combine(output, "subpixel-" + (fine ? "finas-" : "normal-") + size.ToString(System.Globalization.CultureInfo.InvariantCulture) + ".png"), ImageFormat.Png);
+                        sheet.Save(Path.Combine(output, "subpixel-" + (natural ? "natural-" : "legacy-") + (fine ? "finas-" : "normal-") + size.ToString(System.Globalization.CultureInfo.InvariantCulture) + ".png"), ImageFormat.Png);
                     }
                     double spread = (maximum - minimum) / Math.Max(1.0, sum / 32.0);
-                    Console.WriteLine("SUBPIXEL " + (fine ? "finas" : "normal") + " radio=" + size + " luz min/max=" + minimum + "/" + maximum + " variacion=" + spread.ToString("P1"));
-                    if (requireStable) Check(minimum > 0 && spread < .20, "estrella no se apaga ni cambia mas de 20% de luz al derivar sin titileo");
+                    Console.WriteLine("SUBPIXEL " + (natural ? "Natural " : "Legacy ") + (fine ? "finas" : "normal") + " radio=" + size + " luz min/max=" + minimum + "/" + maximum + " media=" + (sum / 32.0).ToString("0.0") + " variacion=" + spread.ToString("P1"));
+                    int sample = (fine ? sizes.Length : 0) + Array.IndexOf(sizes, size);
+                    if (!natural) legacyLight[sample] = sum / 32.0;
+                    if (requireStable && natural) {
+                        Check(minimum > 0 && spread < .20, "estrella no se apaga ni cambia mas de 20% de luz al derivar sin titileo");
+                        double ratio = sum / 32.0 / legacyLight[sample];
+                        Console.WriteLine("JERARQUIA Natural/Legacy=" + ratio.ToString("0.000"));
+                        Check(ratio > .85 && ratio < 1.15, "Natural conserva la jerarquia luminosa Legacy, sin multiplicar el polvo");
+                    }
                 }
             }
             finally { Call(S, sky, "Dispose"); sky = device = null; }
