@@ -866,7 +866,7 @@ namespace Rocola
             sw[9].CheckedChanged += delegate { neonIntenso = sw[9].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             sw[10].CheckedChanged += delegate { progresoFluido = sw[10].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
 
-            Label lAd = new Label(); lAd.SetBounds(340, 598, 604, 32); lAd.BackColor = Color.Transparent;
+            Label lAd = new Label(); lAd.SetBounds(340, 598, 440, 32); lAd.BackColor = Color.Transparent;
             lAd.ForeColor = cApagado; lAd.Font = fDes;
             lAd.Text = "Efectos GPU: el coste depende del equipo.\nPruebalos con musica; puedes apagarlos por separado.";
             Interruptor swFlujo=new Interruptor();swFlujo.SetBounds(16,392,424,26);
@@ -1011,7 +1011,15 @@ namespace Rocola
 
             pg.Controls.Add(tAd); pg.Controls.Add(tNat); pg.Controls.Add(bResetF);
             pg.Controls.Add(lAd);
-            MontaEstiloFondo(pg, tAd, tNat, fNom, fDes, fBot, cTexto, cTenue, out pintaEstilo);
+            Control[][] groups = {
+                new Control[] { sw[0], sw[1], sw[2], sw[3], sw[4], sw[5], swFlujo, swPaleta },
+                new Control[] { lNatN, lNatV, lNatD, barNat },
+                new Control[] { sw[6], sw[7], sw[8], sw[9], sw[10], swDoce, tactile[2] },
+                new Control[] { swCristal, extras[0], extras[1], tactile[1], tactile[0], lExtras },
+                new Control[] { moonSwitches[0], moonSwitches[1], moonSwitches[2], moonSwitches[3], sw3d, swEstela },
+                new Control[] { extras[2], extras[3], lMoon }
+            };
+            MontaEstiloFondo(pg, tAd, tNat, groups, fNom, fDes, fBot, cTexto, cTenue, out pintaEstilo);
             pinta();
             return pg;
         }

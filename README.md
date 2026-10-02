@@ -2,7 +2,7 @@
 
 ## Fondo Legacy y Espacio natural — 1 de octubre de 2026
 
-En **Ctrl+F3 → Fondo → Estilo** se puede conservar **Legacy** o elegir **Espacio natural**:
+En **Ctrl+F3 → Fondo**, el selector superior permite conservar **Legacy** o elegir **Espacio natural**:
 cielo negro/azul, nebulosas orgánicas, estrellas finas, fugaces afiladas, aurora con vetas y
 estrella de plata/acero. Solo GPU; los ajustes individuales se conservan. Legacy sigue siendo
 el valor de fábrica y el de las configuraciones antiguas.
