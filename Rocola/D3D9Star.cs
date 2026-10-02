@@ -376,6 +376,7 @@ namespace Rocola
             }
             float tr = transing ? (nowMs - transStart) / (float)TransMs : 1f;
             if (tr >= 1f) { transing = false; tr = 1f; }
+            if (FondoNatural) tr = RelevoNatural(tr);
 
             // Cielo de 3 PARADAS como en CPU: negro arriba -> azul noche -> color del genero abajo (antes 2
             // paradas: el genero teñia casi toda la pantalla). Dos quads apilados en la parada media.
@@ -1500,6 +1501,7 @@ namespace Rocola
             if (vinetaTex != IntPtr.Zero) { D3D9.Release(vinetaTex); vinetaTex = IntPtr.Zero; }
             if (idleTex != IntPtr.Zero) { D3D9.Release(idleTex); idleTex = IntPtr.Zero; }
             idleLastBmp = null; idleBlend = 0; idleClock = 0; idleUploadedVersion = -1;
+            idleNaturalVelocity = 0; naturalLightReady = false;
             vinetaRetry = 0;
             if (ruidoTex != IntPtr.Zero) { D3D9.Release(ruidoTex); ruidoTex = IntPtr.Zero; ruTW = ruTH = 0; }
             ResetStarEchoes();
@@ -1659,7 +1661,9 @@ namespace Rocola
                     if (idleTex != IntPtr.Zero) idleUploadedVersion = IdlePanelVersion;
                 }
             }
-            idleBlend = StepIdle(idleBlend, IdleExpandTarget && idleTex != IntPtr.Zero, idleDt);
+            if (FondoNatural)
+                idleBlend = PasoReposoNatural(idleBlend, IdleExpandTarget && idleTex != IntPtr.Zero, ref idleNaturalVelocity, idleDt);
+            else { idleNaturalVelocity = 0; idleBlend = StepIdle(idleBlend, IdleExpandTarget && idleTex != IntPtr.Zero, idleDt); }
             // ANIMACIONES: sus texturas TAMBIEN se aseguran AQUI, antes de Begin. Crear o bloquear una textura
             // con la escena ya abierta no es valido en Direct3D 9: fallaba en silencio y la portada que viajaba
             // entre cubos no llegaba a dibujarse NUNCA (la del buscador al abrir si, porque esa reusa la textura
@@ -1727,9 +1731,10 @@ namespace Rocola
             EnsureLuna(); // ninguna reserva/subida de la luna dentro de Begin
             stars.EstrellasFinas = EstrellasFinas;
             if (ShowFps) EnsureFpsTex();   // crea/actualiza la textura del contador ANTES de Begin (solo si se pide, Ctrl+F1)
-            stars.SetDim(Dim);             // atenuacion mientras se navega con musica (estrellas/brillos; el cielo queda igual)
+            CapturaLuzNatural(idleDt);
+            stars.SetDim(SceneDim);       // luz interpolada solo en Natural; el cielo conserva su perfil
             float pulseCrudo = (GetPulse != null) ? GetPulse() : 0f;
-            float pulse = pulseCrudo * Dim;   // el beat tambien baja mientras esta atenuado (la deriva NO: ver Begin)
+            float pulse = pulseCrudo * SceneDim;   // el beat tambien baja mientras esta atenuado (la deriva NO: ver Begin)
             // La aurora se dibuja DENTRO de Begin, justo despues del cielo y antes de las estrellas.
             auCuadro = (GetAurora != null) ? GetAurora() : new GpuAurora();
             // Se engancha SIEMPRE: aqui van la via lactea y las nebulosas, haya aurora o no.

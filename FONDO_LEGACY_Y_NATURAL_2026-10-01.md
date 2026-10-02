@@ -28,13 +28,23 @@ Cambiar de estilo no cambia la paleta musical, los interruptores individuales ni
 - Estrella protagonista del icono con material plata/acero, reflejos claros y tinte musical sutil.
   Conserva su movimiento suave; no añade desplazamientos bruscos al ritmo de la canción.
 - Ecos de colores, corona y polvo orbital más delicados, sin aumentar sus cantidades.
-- Viñeta de borde más suave. El grano contra bandas, las transiciones de reposo/navegación
-  y los ajustes individuales existentes siguen activos.
+- Viñeta de borde más suave y grano contra bandas reutilizado. El relevo de patrones usa
+  una mezcla suavizada sin ampliar su duración ni dibujar más estrellas.
+- Reposo Natural con amortiguación crítica: panel, horizonte, cubo, estrella y controles comparten
+  la misma posición animada. Invertir el destino mantiene la velocidad; se vuelve más deprisa
+  a los controles que al reposo. La luz estelar interpola el latido con el reloj GPU.
 - Halos de selección/género elípticos y proporcionales a las carátulas, con brillo más equilibrado.
   En Natural las nebulosas mantienen el perfil azul nocturno también sin Nebulosas cine;
   ese mando sigue modificando su presentación y Legacy conserva sus tintes originales.
 
-La interfaz, el sonido y el renderizado CPU no se rediseñan en esta pasada.
+El vidrio de la lista GPU también tiene acabado Natural: oscuro y ligeramente transparente,
+esquinas más redondas, reflejo contenido y borde fino. Mantiene texto, distribución y funciones.
+Se hornea por tamaño/estilo; cambiar de color solo modula la textura neutral, sin rehornearla.
+El proveedor por capas y el compuesto invalidan correctamente al cambiar de estilo.
+El polvo orbital ya pasaba delante y detrás de la estrella; Natural añade tamaño y luminosidad
+continuos según profundidad, reutilizando el seno de la órbita y las mismas dieciocho motas.
+
+El sonido y el renderizado CPU no se rediseñan en esta pasada.
 Las imágenes conceptuales anteriores eran propuestas; las capturas de prueba de esta implementación
 son dibujos reales de Direct3D 9 con bandas sintéticas, no fotografías ni reproducción de una biblioteca.
 
@@ -76,9 +86,9 @@ En ambas ramas:
 
 - Compilación Release y compilación estricta GPU/CPU.
 - Suite de capas ampliada: controles, configuración, audio, carga de portadas y regresiones.
-- Cuarenta y cinco baterías por rama, incluyendo HAL real. En la fixture del fondo se mantienen
+- Cuarenta y seis baterías por rama, incluyendo HAL real. En la fixture del fondo se mantienen
   quince envíos a 1024×768 y veintidós a 3440×1440. Coste calentado de construcción/envío:
-  aproximadamente 0,24–0,31 ms HD / 0,37–0,42 ms Modest para Natural en esta pasada,
+  aproximadamente 0,24–0,31 ms HD / 0,37–0,42 ms Modest para Natural en la segunda pasada,
   sin Present ni readback en el cronómetro; no implica igualdad de FPS reales.
 - Comparación contra los Release anteriores: mapas, atlas, geometría de aurora,
   posiciones y colores Legacy conservados exactamente.
@@ -99,3 +109,39 @@ En ambas ramas:
 
 Los ensayos HAL son fixtures sintéticas y no prueban FPS reales con una biblioteca grande.
 Modest mantiene el destino .NET 3.5/Windows XP; no se dispone de XP para verificarlo en un equipo real.
+
+## Lista original y cierre del 2 de octubre
+
+La propuesta era “espacio profundo con luz natural”, no cambiar la distribución de carátulas.
+Todos sus apartados quedan cubiertos por la alternativa Natural y las funciones existentes:
+
+| Idea propuesta | Implementación GPU y límites |
+| --- | --- |
+| Cielo azul/negro profundo | Perfil CieloEstilo; la paleta musical no recolorea toda la bóveda. |
+| Nebulosas, velo y Vía Láctea | Mapas orgánicos con huecos y filamentos, preparados fuera del hilo de pantalla. |
+| Estrellas y profundidad | Atlas de núcleos finos, tamaños y blancos variados; las tres capas de deriva existentes. |
+| Centelleo, pulso y destellos | Intensidad moderada y cruces/rayos selectivos; sin aumentar estrellas. |
+| Fugaces y bólidos | Cabeza definida, cola afilada y progresiva; las fugaces anchas son doradas, cuatro triángulos. |
+| Relevo, viñeta y grano | Mezcla smoothstep dentro de los 1300 ms originales, viñeta Natural y grano común contra bandas. |
+| Aurora y ondas | Velos a seis alturas no lineales, rayos y pliegues; mismas ocho bandas y cadencia seleccionada. |
+| Filo, horizonte y suelo | Núcleo fino, resplandor suave y disipación; misma coordenada que la barra, incluso animándose. |
+| Estrella protagonista | Icono de veinte caras plata/acero, reflejos por normales y cuerpo sólido. |
+| Corona y polvo orbital | Halo contenido, órbitas inclinadas con profundidad de luz/tamaño y orden delante/detrás. |
+| Estela | Hasta doce copias con tinte dinámico y caída suave por edad; protagonista nítido. |
+| Respiración y calma al navegar | Respiración existente más centelleo moderado e interpolación de luz estelar entre latidos. |
+| Revelado en reposo | Una posición amortiguada compartida por panel, horizonte, cubo, estrella y controles. |
+| Halos de selección/género y vidrio | Halos elípticos concentrados, cristal oscuro y bordes delicados; cachés conservadas. |
+| Colores dinámicos | La paleta existente sigue viajando por aurora, protagonista y ecos; el cielo alto conserva la noche. |
+
+No se añaden capas de pantalla completa, shaders, partículas, caras, ecos ni preferencias.
+Legacy conserva su receta, su curva de reposo y su vidrio original. Los interruptores visuales
+existentes siguen gobernando cada efecto y no se cambian al seleccionar un estilo.
+
+La nueva batería acabadofinalnatural comprueba mezcla de patrones, reposo a 24/50/60/180 Hz,
+inversión de destino, interpolación de luz, profundidad de polvo y caché de vidrio en sus dos
+proveedores. Compara píxel a píxel el vidrio Legacy con el Release anterior cuando se le pasa
+como tercer argumento. No abre Form1 real ni toca música, créditos o preferencias.
+
+Las capturas y los tiempos HAL siguen siendo fixtures sintéticas: no certifican los FPS con
+una biblioteca grande y música ni igualdad de rendimiento en todos los equipos. Lo que se
+verifica es el presupuesto de geometría/envíos y la ausencia de trabajo nuevo caro por cuadro.

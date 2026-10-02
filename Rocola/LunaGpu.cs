@@ -98,7 +98,7 @@ namespace Rocola
         }
         private void DrawDetailedMoon()
         {
-            float emphasis=LunaProtagonista ? Math.Max(MoonEmphasis(Dim,true),idleBlend) : 0;
+            float emphasis=LunaProtagonista ? Math.Max(MoonEmphasis(SceneDim,true),idleBlend) : 0;
             float diameter=DetailedMoonDiameter(Height,emphasis)*MoonSceneScale(idleBlend,LunaActiva), radius=diameter*.5f;
             PointF center=LunaActiva
                 ? StarSceneCenter()
@@ -150,11 +150,17 @@ namespace Rocola
                     for(int tail=5;tail>=0;tail--)
                     {
                         double a=angle-tail*(FondoNatural ? .085 : .05);
-                        if ((Math.Sin(a)>=0)!=front) continue;
+                        double depth = Math.Sin(a);
+                        if ((depth>=0)!=front) continue;
                         float dx=(float)Math.Cos(a)*radius*(FondoNatural ? (1.26f+orbit*.15f) : (1.38f+orbit*.17f));
-                        float dy=(float)Math.Sin(a)*radius*(FondoNatural ? (.32f+orbit*.08f) : (.40f+orbit*.09f))-dx*(FondoNatural ? .16f : .24f);
+                        float dy=(float)depth*radius*(FondoNatural ? (.32f+orbit*.08f) : (.40f+orbit*.09f))-dx*(FondoNatural ? .16f : .24f);
                         float size=radius*(FondoNatural ? (tail==0 ? .034f : .018f) : (tail==0 ? .043f : .025f));   // el polvo tampoco late: gira a su paso
                         uint alpha=(uint)((FondoNatural ? (tail==0 ? 132 : 34-tail*5) : (tail==0 ? 165 : 58-tail*8))*visibility);
+                        if (FondoNatural) {
+                            float depthSize, depthLight;
+                            ProfundidadPolvoNatural((float)depth, out depthSize, out depthLight);
+                            size *= depthSize; alpha = (uint)(alpha * depthLight);
+                        }
                         uint dust=FlowColor(0xD5E5FFu,(cx+dx)/Math.Max(1,Width),(cy+dy)/Math.Max(1,Height));
                         stars.GlowBatchAdd(cx+dx,cy+dy,Math.Max(1,size),(alpha<<24)|dust);
                     }

@@ -64,6 +64,8 @@ namespace Rocola
             private Color claveGpuDe;
             private Bitmap cristalGpu;
             private bool cristalNeutral;
+            public bool GpuGlassNatural;
+            private bool cristalNatural;
             private ImageAttributes tinteCristalGpu;
             private Color tinteCristalColor;
             private int gpuSnapshotSel = -1;
@@ -224,10 +226,10 @@ namespace Rocola
                 if (veloGpu == null) veloGpu = new SolidBrush(Color.FromArgb(210, 12, 16, 30));
                 if (glass)
                 {
-                    if (cristalGpu == null || cristalGpu.Width != w || cristalGpu.Height != h || cristalNeutral != tinted)
+                    if (cristalGpu == null || cristalGpu.Width != w || cristalGpu.Height != h || cristalNeutral != tinted || cristalNatural != GpuGlassNatural)
                     {
                         SueltaDibujo(ref cristalGpu);
-                        cristalGpu = BakeSongGlassTint(w, h, tinted); cristalNeutral = tinted;
+                        cristalGpu = BakeSongGlassStyled(w, h, tinted, GpuGlassNatural); cristalNeutral = tinted; cristalNatural = GpuGlassNatural;
                     }
                     if (tinted)
                     {
@@ -322,6 +324,7 @@ namespace Rocola
             }
             long sig = Mix(Mix(Mix(SigBase, 'G'), index), songList.Width);
             sig = Mix(sig, songList.Height); sig = Mix(sig, textosDeslizantes);
+            if (index == 0) sig = Mix(sig, NormalizaEstiloFondo(estiloFondo) == 1);
             if (index == 3)
             {
                 sig = Mix(sig, songList.GpuSlideToken); sig = Mix(sig, songList.PageStart);
@@ -334,7 +337,7 @@ namespace Rocola
             uiPiezaRect[index] = rect; // mover una capa no obliga a volver a subir sus pixeles
             if (uiPieza[index] != null && uiPiezaSig[index] == sig) return uiPiezaVer[index];
             Bitmap next;
-            if (index == 0) next = BakeSongGlassTint(songList.Width, songList.Height, true);
+            if (index == 0) next = BakeSongGlassStyled(songList.Width, songList.Height, true, NormalizaEstiloFondo(estiloFondo) == 1);
             else if (index == 3) next = songList.BakeGpuPrevious();
             else using (CapturaTexto(index == 1 ? 2 : 3)) next = songList.BakeGpuListLayer(index == 2);
             if (uiPieza[index] != null) uiPieza[index].Dispose();
@@ -344,16 +347,20 @@ namespace Rocola
         internal static Bitmap BakeSongGlass(int w, int h)
         { return BakeSongGlassTint(w, h, false); }
         internal static Bitmap BakeSongGlassTint(int w, int h, bool neutral)
+        { return BakeSongGlassStyled(w, h, neutral, false); }
+        internal static Bitmap BakeSongGlassStyled(int w, int h, bool neutral, bool natural)
         {
             Bitmap b = new Bitmap(w, h, PixelFormat.Format32bppPArgb);
             using (Graphics g = Graphics.FromImage(b))
-            using (GraphicsPath edge = RoundedPath(new Rectangle(1, 1, w - 3, h - 3), Math.Min(28, Math.Min(w, h) / 4)))
+            using (GraphicsPath edge = RoundedPath(new Rectangle(1, 1, w - 3, h - 3), Math.Min(natural ? 32 : 28, Math.Min(w, h) / 4)))
             using (LinearGradientBrush body = new LinearGradientBrush(new Rectangle(0, 0, w, h),
-                neutral ? Color.FromArgb(205, 55, 55, 55) : Color.FromArgb(205, 26, 37, 59),
-                neutral ? Color.FromArgb(218, 24, 24, 24) : Color.FromArgb(218, 9, 16, 31), 90f))
+                natural ? (neutral ? Color.FromArgb(212, 38, 38, 38) : Color.FromArgb(212, 19, 29, 45)) :
+                    neutral ? Color.FromArgb(205, 55, 55, 55) : Color.FromArgb(205, 26, 37, 59),
+                natural ? (neutral ? Color.FromArgb(229, 14, 14, 14) : Color.FromArgb(229, 7, 12, 23)) :
+                    neutral ? Color.FromArgb(218, 24, 24, 24) : Color.FromArgb(218, 9, 16, 31), 90f))
             using (LinearGradientBrush sheen = new LinearGradientBrush(new Rectangle(0, 0, w, h),
-                neutral ? Color.FromArgb(36, 255, 255, 255) : Color.FromArgb(36, 210, 230, 255), Color.FromArgb(0, 210, 230, 255), 115f))
-            using (Pen rim = new Pen(neutral ? Color.FromArgb(120, 255, 255, 255) : Color.FromArgb(96, 193, 222, 255), 1.3f))
+                neutral ? Color.FromArgb(natural ? 20 : 36, 255, 255, 255) : Color.FromArgb(natural ? 20 : 36, 210, 230, 255), Color.FromArgb(0, 210, 230, 255), 115f))
+            using (Pen rim = new Pen(neutral ? Color.FromArgb(natural ? 75 : 120, 255, 255, 255) : Color.FromArgb(natural ? 68 : 96, 193, 222, 255), natural ? 1f : 1.3f))
             {
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 g.FillPath(body, edge); g.FillPath(sheen, edge); g.DrawPath(rim, edge);
