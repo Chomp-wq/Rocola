@@ -110,11 +110,11 @@ class NebulosaNatural
                     if (((uint)p[y * neb.Width + x] >> 24) != ((uint)p[y * neb.Width + x - 1] >> 24)) variation++;
                 double avg = Mean(neb), avgVia = Mean(via);
                 Console.WriteLine("Natural: alfa medio neb=" + avg.ToString("0.00") + ", via=" + avgVia.ToString("0.00") + "; vacios=" + transparent + ", luces=" + bright);
-                Check(avg > 1 && avg < 15, "neb contenida, no un velo opaco que cubra todo");
+                Check(avg > 6 && avg < 15, "neb con cuerpo visible pero sin velo opaco que cubra todo");
                 Check(transparent > p.Length / 3, "mas de un tercio del cielo conserva vacios reales");
                 Check(bright < p.Length / 20, "picos luminosos selectivos");
                 Check(variation > p.Length / 15, "detalle espacial en los filamentos");
-                Check(avgVia > .1 && avgVia < 5, "via visible pero muy delicada");
+                Check(avgVia > .8 && avgVia < 5, "via con relieve visible sin borrar los canales de polvo");
                 if (output != null) Preview(output, neb, via, vin);
             }
             detail.SetValue(null, 0f);

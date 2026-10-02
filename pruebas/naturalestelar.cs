@@ -121,6 +121,12 @@ class NaturalEstelar
                 using (Bitmap old = (Bitmap)Call(baseline.GetType(stars.FullName, true), null, "BakeStarTexture", 64)) Check(SameBitmap(legacy, old), "atlas Legacy pixel-identico al anterior");
             for (int y = 64; y < 128; y++) for (int x = 64; x < 128; x++) Check(natural.GetPixel(x, y).A == 0, "cuarta celda transparente");
             Check(natural.GetPixel(31, 31).A > 230 && natural.GetPixel(0, 0).A == 0, "nucleo claro sin bloque en cantos");
+            Check(natural.GetPixel(16, 31).A > 35 && natural.GetPixel(31, 16).A > 35,
+                "mediana conserva cuatro puntas visibles, no un punto");
+            Check(natural.GetPixel(16, 16).A < natural.GetPixel(16, 31).A / 2,
+                "las puntas sobresalen del halo, no una pompa redonda");
+            Check(natural.GetPixel(64 + 16, 31).A > natural.GetPixel(16, 31).A,
+                "las grandes tienen rayos mas destacados que las medianas");
             if (folder != null) { legacy.Save(Path.Combine(folder, "atlas-legacy.png"), ImageFormat.Png); natural.Save(Path.Combine(folder, "atlas-natural.png"), ImageFormat.Png); }
         }
         bool invalid = false;
