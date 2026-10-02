@@ -159,7 +159,7 @@ namespace Rocola
             // La estrella se mueve para el momento en que se va a VER el cuadro, no para el de dibujarlo: asi cada
             // refresco de la pantalla la muestra avanzada lo mismo (RelojPantallaGpu.cs). Sin saberlo (sin compositor,
             // o un cuadro pedido fuera del bucle), con el reloj de siempre, y nunca hacia atras.
-            double now = vistoMs >= 0 ? vistoMs : AhoraMs();
+            double now = RelojPantalla.MomentoVista(AhoraMs(), vistoMs, periodoVistaMs);
             if (now < cuadroMs) now = cuadroMs;
             cuadroMs = now;
             float dt = (float)Math.Max(0, Math.Min(.1, (now - lunaClock) / 1000)); lunaClock = now;
