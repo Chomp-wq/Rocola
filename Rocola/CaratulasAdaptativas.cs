@@ -306,7 +306,7 @@ namespace Rocola
 
     // Previews 32x32 en un archivo secuencial. No 18 aperturas JPEG por pagina ni I/O en UI.
     // La clave es la identidad de la miniatura (ruta + longitud + fecha de la fuente), no solo su nombre.
-    internal sealed class GpuPreviewStore
+    internal sealed partial class GpuPreviewStore
     {
         internal const int Side = 32, Bytes = Side * Side * 4;
         private const int Magic = 0x32444F4C, RecordBytes = 8 + 4 + Bytes;
@@ -327,39 +327,27 @@ namespace Rocola
             if (!data.ContainsKey(key)) order.Enqueue(key);
             data[key] = bytes;
             while (data.Count > capacity) data.Remove(order.Dequeue());
+            // El indice puede expulsar entradas crudas fuera de orden. Acotar tambien sus
+            // nodos FIFO obsoletos, no solo el diccionario de pixeles.
+            if (order.Count > capacity * 2) {
+                HashSet<ulong> alive = new HashSet<ulong>(); int count = order.Count;
+                for (int i = 0; i < count; i++) { ulong k = order.Dequeue(); if (data.ContainsKey(k) && alive.Add(k)) order.Enqueue(k); }
+            }
         }
         private void Load()
         {
-            if (loaded) return; loaded = true;
-            try
-            {
-                if (!File.Exists(path)) return;
-                using (FileStream fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
-                using (BinaryReader r = new BinaryReader(fs))
-                {
-                    if (fs.Length > 64L * 1024 * 1024 || fs.Length < 4 || r.ReadInt32() != Magic)
-                    { writable = false; return; }
-                    while (fs.Length - fs.Position >= RecordBytes)
-                    {
-                        ulong key = r.ReadUInt64(); uint crc = r.ReadUInt32(); byte[] bytes = r.ReadBytes(Bytes);
-                        if (Checksum(bytes) == crc) Put(key, bytes);
-                        records++;
-                    }
-                    if (fs.Position != fs.Length) writable = false; // cola incompleta: recuperar mediante compactacion
-                }
-            }
-            catch { writable = false; }
+            IndexedLoad();
         }
         internal Bitmap Get(string identity)
         {
             lock (sync)
             {
-                Load(); byte[] bytes;
-                if (!data.TryGetValue(Key(identity), out bytes)) return null;
+                Load(); byte[] bytes = ReadPixels(Key(identity), null);
+                if (bytes == null) return null;
                 return FromBytes(bytes);
             }
         }
-        internal bool Contains(string identity) { lock (sync) { Load(); return data.ContainsKey(Key(identity)); } }
+        internal bool Contains(string identity) { lock (sync) { Load(); return ReadPixels(Key(identity), null) != null; } }
         internal static Bitmap Small(Image source)
         {
             Bitmap b = new Bitmap(Side, Side, PixelFormat.Format32bppPArgb);
@@ -386,41 +374,11 @@ namespace Rocola
         }
         internal void Save(string identity, byte[] bytes)
         {
-            if (bytes == null || bytes.Length != Bytes) return;
-            lock (sync)
-            {
-                Load(); ulong key = Key(identity);
-                if (data.ContainsKey(key)) return;
-                Put(key, bytes);
-                try
-                {
-                    Directory.CreateDirectory(Path.GetDirectoryName(path));
-                    if (!writable || records >= capacity + 128) { Compact(); return; }
-                    using (FileStream fs = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.Read))
-                    using (BinaryWriter w = new BinaryWriter(fs))
-                    {
-                        if (fs.Length == 0) w.Write(Magic);
-                        w.Write(key); w.Write(Checksum(bytes)); w.Write(bytes);
-                    }
-                    records++;
-                }
-                catch { writable = false; } // cache opcional: la imagen final sigue funcionando
-            }
+            IndexedSave(identity, bytes);
         }
         private void Compact()
         {
-            string tmp = path + ".tmp." + Guid.NewGuid().ToString("N");
-            try
-            {
-                using (BinaryWriter w = new BinaryWriter(File.Create(tmp)))
-                {
-                    w.Write(Magic);
-                    foreach (KeyValuePair<ulong, byte[]> p in data) { w.Write(p.Key); w.Write(Checksum(p.Value)); w.Write(p.Value); }
-                }
-                if (File.Exists(path)) File.Replace(tmp, path, null); else File.Move(tmp, path);
-                records = data.Count; writable = true;
-            }
-            finally { try { if (File.Exists(tmp)) File.Delete(tmp); } catch { } }
+            IndexedCompact();
         }
     }
 
@@ -431,6 +389,8 @@ namespace Rocola
         private readonly Dictionary<string, Bitmap> gpuPreviewCache = new Dictionary<string, Bitmap>(StringComparer.OrdinalIgnoreCase);
         private readonly Queue<string> gpuPreviewOrder = new Queue<string>();
         private int gpuPreviewPage, gpuPreviewLoaded = -1;
+        private bool coverWorkersStop;
+        private int coverWorkersStarted;
         // Llamado solo por los trabajadores de caratulas, dentro del mismo turno de disco.
         private GpuPreviewStore PreviewStore()
         {
@@ -466,11 +426,16 @@ namespace Rocola
                 foreach (CoverJob job in coverQLo) { if (keys.Count >= 54) break; keys.Add(job.Key); }
             }
             GpuPreviewStore store = PreviewStore();
+            string[] identities = new string[keys.Count];
             for (int i = 0; i < keys.Count; i++)
             {
                 lock (coverLock) { if (current.Gen != coverGen) return; if (gpuPreviewCache.ContainsKey(keys[i])) continue; }
-                Bitmap b = null;
-                try { b = store.Get(ThumbCachePath(keys[i])); } catch { }
+                try { identities[i] = ThumbCachePath(keys[i]); } catch { }
+            }
+            Bitmap[] images = store.GetBatch(identities);
+            for (int i = 0; i < images.Length; i++)
+            {
+                Bitmap b = images[i];
                 if (b == null) continue;
                 lock (coverLock) { if (current.Gen == coverGen) PutGpuPreview(keys[i], b); else b.Dispose(); }
             }
@@ -502,9 +467,10 @@ namespace Rocola
         }
         private void EnsureCoverReaders()
         {
-            if (!gpuEnabled || coverGovernor == null || coverLock == null || IsDisposed || Disposing) return;
+            if (!gpuEnabled || coverGovernor == null || coverLock == null || coverWorkersStop || startupClosing || IsDisposed || Disposing) return;
             lock (coverLock)
             {
+                if (coverQHi.Count != 0 || coverQLo.Count != 0) System.Threading.Monitor.PulseAll(coverLock);
                 if (coverPumpCount >= AdaptiveCoverReaders() || (coverQHi.Count == 0 && coverQLo.Count == 0)) return;
                 int wanted = WantedCoverReaders();
                 while (coverPumpCount < wanted)
@@ -512,8 +478,17 @@ namespace Rocola
                     System.Threading.Thread t = new System.Threading.Thread(CoverPump);
                     t.IsBackground = true; t.Priority = System.Threading.ThreadPriority.BelowNormal;
                     coverPumpCount++;
-                    try { t.Start(); } catch { coverPumpCount--; break; }
+                    try { t.Start(); coverWorkersStarted++; } catch { coverPumpCount--; break; }
                 }
+            }
+        }
+        private void StopCoverReaders()
+        {
+            if (!gpuEnabled) return;
+            lock (coverLock) {
+                coverWorkersStop = true; coverGen++;
+                coverQHi.Clear(); coverQLo.Clear(); coverLoading.Clear();
+                System.Threading.Monitor.PulseAll(coverLock);
             }
         }
         private bool NeedsGpuPreview(Album a)
@@ -562,6 +537,7 @@ namespace Rocola
         }
         private bool UploadedCover(GpuGridCell cell)
         {
+            if (cell.Direct) return NativeCoverReady(cell);
             CellTex t = null;
             if (cell.Key != null) cellTexCache.TryGetValue(cell.Key, out t);
             else if (cell.Slot >= 0 && cell.Slot < slotTex.Length) t = slotTex[cell.Slot];

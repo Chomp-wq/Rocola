@@ -1953,6 +1953,9 @@ namespace Rocola
             DetieneVigiaFoco();
             AdvanceThumbWarm();
             CancelStartupDataLoad();
+#if ROCOLA_GPU
+            StopCoverReaders();
+#endif
             preScanStop = true;   // que el pre-analisis suelte el archivo y termine
             unchecked { preScanGen++; durScanGen++; }
             DisposePlaybackNow();

@@ -1023,8 +1023,8 @@ namespace Rocola
     // Una CELDA de la rejilla de discos para dibujarla como su PROPIO quad con textura (en vez de recomponer una
     // textura a pantalla completa por pagina). Bmp = atlas o celda entera (null si aun no listo).
     // Key = Folder (estable) para cachear su textura entre paginas; null = no cachear (discos TOP / sin carpeta).
-    internal struct GpuCellLayout { public Rectangle Face, FaceAt, Text1, Text1At, Text2, Text2At; public int Width, Height; }
-    internal struct GpuGridCell { public string Key; public Bitmap Bmp, Preview; public GpuCellLayout Layout; public int Slot; public float X, Y, W, H; public float A; public bool Placeholder, HasCover, NeedsCover; public RectangleF CoverRect; public bool Sel; }   // Preview nunca sustituye la imagen final ni su paleta.
+    internal struct GpuCellLayout { public Rectangle Face, FaceAt, Text1, Text1At, Text2, Text2At, Top, TopAt, Bottom, BottomAt, Left, LeftAt, Right, RightAt; public int Width, Height; public bool Separate, HideBlank; }
+    internal struct GpuGridCell { public string Key; public Bitmap Bmp, Preview, FullCover; public bool Direct, CoverReady; public GpuCellLayout Layout; public int Slot; public float X, Y, W, H; public float A; public bool Placeholder, HasCover, NeedsCover; public RectangleF CoverRect; public bool Sel; }   // Preview nunca sustituye la imagen final ni su paleta.
     internal struct GpuProgress { public bool Has, Neon; public Rectangle Rect; public double Value; public uint Color; public object Key; }
     // TRANSICION entre dos CUBOS de la rocola (celda de la rejilla, cubo grande del disco, cubo gigante de la
     // atraccion, cubo del buscador): la portada viaja de uno al otro dibujada ENCIMA de todo, girando, con
@@ -1074,7 +1074,6 @@ namespace Rocola
         // al revisitar, sin reconstruir ni resubir una textura a pantalla completa por pagina. Las subidas nuevas
         // se reparten por cuadro (presupuesto) para que un barrido de paginas nuevas no baje los fps.
         private const int MaxCells = 36;                  // dos paginas: pasando de pagina se ven la que sale y la que entra (PantallaVivaGpu.cs)
-        private const int CellTexCap = 3 * 18;            // ~3 paginas de texturas de celda en VRAM (acotado); se expulsa lo mas viejo
         private const int GridUploadBudget = 6;           // texturas de celda NUEVAS subidas por cuadro (barrer sin bajon)
         private sealed class CellTex { public IntPtr Tex; public int Bw, Bh; public float U = 1f, V = 1f; public Bitmap Bmp; public int Frame; public GpuCellLayout Layout; public bool HasCover; }
         private readonly Dictionary<string, CellTex> cellTexCache = new Dictionary<string, CellTex>();
@@ -1082,7 +1081,7 @@ namespace Rocola
         private readonly GpuGridCell[] gridBuf = new GpuGridCell[MaxCells];
         private readonly IntPtr[] gridTex = new IntPtr[MaxCells];     // textura resuelta por celda (subida ANTES de Begin, dibujada despues)
         private readonly GpuCellLayout[] gridLayouts = new GpuCellLayout[MaxCells];
-        private readonly D3D9.Vtx[] atlasQuad = new D3D9.Vtx[18];
+        private readonly D3D9.Vtx[] atlasQuad = new D3D9.Vtx[42];
         public Func<GpuTrans> GetTrans;                   // portada de la transicion entrar/salir de disco (null = sin animacion)
         private IntPtr transTex; private Bitmap transLastBmp; private int transBw, transBh; private float transU = 1f, transV = 1f;
         public Func<GpuAurora> GetAurora;                 // aurora del horizonte (espectro); null o Has=false = nada
@@ -1409,6 +1408,7 @@ namespace Rocola
         {
             foreach (CellTex ct in cellTexCache.Values) if (ct.Tex != IntPtr.Zero) D3D9.Release(ct.Tex);
             cellTexCache.Clear();
+            ReleaseNativeCovers(); protectedAhead.Clear(); cellBudgetChecked = -2000;
             cellBytesDirty = true;
             for (int i = 0; i < slotTex.Length; i++) { CellTex ct = slotTex[i]; if (ct != null && ct.Tex != IntPtr.Zero) D3D9.Release(ct.Tex); slotTex[i] = null; }
             for (int i = 0; i < gridTex.Length; i++) gridTex[i] = IntPtr.Zero;
@@ -1456,6 +1456,7 @@ namespace Rocola
             // de Begin, repartiendo las subidas NUEVAS por cuadro (presupuesto) para no bajar los fps al barrer.
             gridN = 0;
             if (CoverControl != null) CoverControl.Begin(AhoraMs(), TopeFpsReal);
+            RefreshCellBudget();
             if (ShowAlbum && GetGrid != null)
             {
                 gridN = GetGrid(gridBuf);
@@ -1467,6 +1468,7 @@ namespace Rocola
                 {
                     if (CoverControl != null && gridBuf[i].Slot < 18 && gridBuf[i].NeedsCover)
                         CoverControl.VisitCover(gridBuf[i].Key, PreparedCover(gridBuf[i]));
+                    nativeGridTex[i] = PrepareNativeCover(gridBuf[i], ref upBudget, true, out nativeGridU[i], out nativeGridV[i]);
                     IntPtr tex; float u, v;
                     if (CoverControl != null && !CoverControl.CanStart(gridUploadCost, true, false)) upBudget = 0;
                     int beforeBudget = upBudget;
@@ -1480,7 +1482,8 @@ namespace Rocola
                         gridUploadCost = CargaTrabajo.AprendeCoste(gridUploadCost, spent);
                         if (CoverControl != null && beforeBudget - upBudget == 1) CoverControl.Spend(spent);
                     }
-                    PrepareLod(i, gridTex[i] != IntPtr.Zero && UploadedCover(gridBuf[i]));
+                    PrepareLod(i, gridBuf[i].Direct ? NativeCoverReady(gridBuf[i]) : gridTex[i] != IntPtr.Zero && UploadedCover(gridBuf[i]));
+                    if (CoverControl != null && gridBuf[i].Direct && gridBuf[i].FullCover != null && !NativeCoverReady(gridBuf[i])) CoverControl.PendingUpload = true;
                     if (CoverControl != null && gridBuf[i].Bmp != null)
                     {
                         CellTex pending;
@@ -1664,14 +1667,17 @@ namespace Rocola
             if (ShowAlbum) DrawLod(true); // previews con marca: detras de la marca horneada
             if (ShowAlbum)
                 for (int i = 0; i < gridN; i++)
-                    if (gridTex[i] != IntPtr.Zero)
+                    if (gridTex[i] != IntPtr.Zero || (gridBuf[i].Direct && nativeGridTex[i] != IntPtr.Zero))
                     {
                         GpuGridCell c = gridBuf[i];
-                        c.Layout = gridLayouts[i]; // el presupuesto puede haber devuelto la textura anterior
+                        if (gridTex[i] != IntPtr.Zero) c.Layout = gridLayouts[i]; // puede ser una etiqueta anterior
+                        c.CoverReady = nativeGridTex[i] != IntPtr.Zero;
                         if (c.X + c.W <= 0f || c.X >= Width) continue;   // hojeando: la casilla ya salio de la pantalla, no se pinta
                         int ca = (int)(Math.Max(0f, Math.Min(1f, c.A * WallOpacity)) * 255f + 0.5f);
                         if (ca <= 0) continue;
                         float apagada = atenua[i];   // portada enfocada: las demas, un poco mas oscuras (0 = como siempre)
+                        if (c.Direct) DrawNativeCover(i, c, ColorCelda(ca, apagada));
+                        if (gridTex[i] == IntPtr.Zero) continue;
                         if (c.Layout.Width > 0)
                         { DrawAtlasCell(gridTex[i], c, gridU[i], gridV[i], ColorCelda(ca, apagada)); continue; }
                         if (ca >= 255 && !(apagada > 0f)) SetTexQuad(cellQuad, c.X, c.Y, c.X + c.W, c.Y + c.H, gridU[i], gridV[i]);
@@ -1894,7 +1900,7 @@ namespace Rocola
             CellTex cached;
             return c.Bmp != null && c.HasCover && c.Key != null
                 && cellTexCache.TryGetValue(c.Key, out cached) && cached.Tex != IntPtr.Zero
-                && cached.HasCover && ReferenceEquals(cached.Bmp, c.Bmp);
+                && (c.Direct ? NativeCoverReady(c) : cached.HasCover) && ReferenceEquals(cached.Bmp, c.Bmp);
         }
         private GpuCellLayout UploadedCellLayout(GpuGridCell c)
         {
@@ -1906,11 +1912,12 @@ namespace Rocola
         private void DrawAtlasCell(IntPtr tex, GpuGridCell c, float u, float v, uint color)
         {
             AtlasCellVertices(c, u, v, color, atlasQuad);
-            stars.DrawTexturedBatch(tex, atlasQuad, 6); // tres regiones, un solo envio y una textura
+            stars.DrawTexturedBatch(tex, atlasQuad, c.Layout.Separate ? 14 : 6); // etiquetas/contorno, un envio
         }
         internal static void AtlasCellVertices(GpuGridCell c, float u, float v, uint color, D3D9.Vtx[] result)
         {
             GpuCellLayout p = c.Layout;
+            if (p.Separate) { SeparatedVertices(c, u, v, color, result); return; }
             float sx = c.W / (p.Text1At.Width + p.Text2At.Width);
             float sy = c.H / p.Text2At.Bottom;
             AtlasPart(result, 0, c.X, c.Y, sx, sy, p.Face, p.FaceAt, u / p.Width, v / p.Height, color);
@@ -1942,11 +1949,17 @@ namespace Rocola
             while (w < cell.Bmp.Width) w <<= 1;
             while (h < cell.Bmp.Height) h <<= 1;
             long incoming = w * h * 4;
+            if (cell.Direct && cell.FullCover != null && !NativeCoverReady(cell)) {
+                long nw = 1, nh = 1;
+                while (nw < cell.FullCover.Width) nw <<= 1;
+                while (nh < cell.FullCover.Height) nh <<= 1;
+                incoming += nw * nh * 4;
+            }
             if (incoming > cellTextureBudget) return false;
             CellTex old; cellTexCache.TryGetValue(cell.Key, out old);
             int extra = old == null ? 1 : 0;
             while (CachedCellBytes() - CellBytes(old) + incoming > cellTextureBudget ||
-                cellTexCache.Count + extra > CellTexCap)
+                cellTexCache.Count + extra > cellTextureCapacity)
             {
                 string victim = null; int oldest = 0;
                 foreach (KeyValuePair<string, CellTex> kv in cellTexCache)
@@ -1955,7 +1968,7 @@ namespace Rocola
                     if (age > oldest && !AheadContains(kv.Key, aheadCount))
                     { oldest = age; victim = kv.Key; }
                 }
-                if (victim == null) return false;
+                if (victim == null) { if (DiscardUnusedNative(false)) continue; return false; }
                 CellTex removed = cellTexCache[victim];
                 if (removed.Tex != IntPtr.Zero) D3D9.Release(removed.Tex);
                 cellTexCache.Remove(victim); cellBytesDirty = true;
@@ -1967,6 +1980,11 @@ namespace Rocola
         {
             if (GetGridAhead == null) return;
             int count = Math.Max(0, Math.Min(aheadGrid.Length, GetGridAhead(aheadGrid)));
+            protectedAhead.Clear(); protectedNativeAhead.Clear();
+            for (int i = 0; i < count; i++) {
+                if (aheadGrid[i].Key != null) protectedAhead.Add(aheadGrid[i].Key);
+                if (aheadGrid[i].FullCover != null) protectedNativeAhead.Add(aheadGrid[i].FullCover);
+            }
             int remaining = CoverControl != null ? 32 : AheadUploadAllowance(CargaTrabajo.Procesadores);
             int initial = remaining;
             long begin = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -1979,10 +1997,13 @@ namespace Rocola
                 if (cell.Key == null || cell.Bmp == null) continue;
                 CellTex old;
                 if (cellTexCache.TryGetValue(cell.Key, out old) &&
-                    (old.Frame == cellFrame || (old.Tex != IntPtr.Zero && ReferenceEquals(old.Bmp, cell.Bmp)))) continue;
+                    (old.Frame == cellFrame || (old.Tex != IntPtr.Zero && ReferenceEquals(old.Bmp, cell.Bmp) && (!cell.Direct || cell.FullCover == null || NativeCoverReady(cell))))) continue;
                 if (!ReserveAheadSpace(cell, count)) continue;
                 if (CoverControl != null && !CoverControl.CanStart(gridUploadCost, false, false)) break;
-                int budget = 1; IntPtr tex; float u, v;
+                int budget = remaining; float nu, nv;
+                PrepareNativeCover(cell, ref budget, false, out nu, out nv);
+                remaining = budget; if (remaining <= 0) break;
+                budget = 1; IntPtr tex; float u, v;
                 long start = System.Diagnostics.Stopwatch.GetTimestamp();
                 EnsureCellTex(cell, ref budget, out tex, out u, out v);
                 long spent = System.Diagnostics.Stopwatch.GetTimestamp() - start;
@@ -2018,18 +2039,25 @@ namespace Rocola
             if (!cellBytesDirty) return cellBytesTotal;
             long bytes = 0;
             foreach (CellTex ct in cellTexCache.Values) bytes += CellBytes(ct);
+            foreach (CellTex ct in nativeCovers.Values) bytes += CellBytes(ct);
             for (int i = 0; i < slotTex.Length; i++) bytes += CellBytes(slotTex[i]);
             cellBytesTotal = bytes; cellBytesDirty = false;
             return bytes;
         }
         private void EvictCellTex()
         {
+            EvictNativeCovers();
             long bytes = CachedCellBytes();
-            while (cellTexCache.Count > CellTexCap || bytes > cellTextureBudget)
+            while (cellTexCache.Count > cellTextureCapacity || bytes > cellTextureBudget)
             {
                 string oldestKey = null; int oldestAge = 0, oldestSlot = -1;
                 foreach (KeyValuePair<string, CellTex> kv in cellTexCache)
-                { int age = unchecked(cellFrame - kv.Value.Frame); if (age > oldestAge) { oldestAge = age; oldestKey = kv.Key; } }
+                { int age = unchecked(cellFrame - kv.Value.Frame); if (age > oldestAge && !protectedAhead.Contains(kv.Key)) { oldestAge = age; oldestKey = kv.Key; } }
+                if (oldestKey == null)
+                    foreach (KeyValuePair<string, CellTex> kv in cellTexCache) {
+                        int age = unchecked(cellFrame - kv.Value.Frame);
+                        if (age > oldestAge) { oldestAge = age; oldestKey = kv.Key; }
+                    }
                 // Los slots sin carpeta tambien ocupan memoria. Solo compiten si se exceden los bytes.
                 if (bytes > cellTextureBudget)
                     for (int i = 0; i < slotTex.Length; i++)

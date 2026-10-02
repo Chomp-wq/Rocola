@@ -172,7 +172,7 @@ class AtlasGpu
    queued=false;Call(V,view,"BuildGpuGrid",cells);Check(ReferenceEquals(b,Get(cells.GetValue(0),"Bmp")),"quitar marca reutiliza original");
    using(Bitmap replacement=new Bitmap(256,256))
    {
-    Bitmap oldCover=cover;cover=replacement;Call(V,view,"BuildGpuGrid",cells);Check(!ReferenceEquals(b,Get(cells.GetValue(0),"Bmp")),"sustituir portada invalida por identidad");cover=oldCover;
+    Bitmap oldCover=cover;cover=replacement;Call(V,view,"BuildGpuGrid",cells);Check(ReferenceEquals(b,Get(cells.GetValue(0),"Bmp"))&&ReferenceEquals(replacement,Get(cells.GetValue(0),"FullCover")),"sustituir portada actualiza fuente sin invalidar etiqueta");cover=oldCover;
    }
    Check(((IDictionary)Get(view,"cellCache")).Count==0,"GPU no compone ni llena cache CPU");
    object anonymous=Album(null);page.Clear();page.Add(anonymous);
