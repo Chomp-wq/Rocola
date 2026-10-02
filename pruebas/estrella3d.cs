@@ -394,8 +394,16 @@ class Estrella3dPrueba
             if ((bool)enMs.Invoke(null, new object[] { 5000.0, 1000000000L, per, 1000000000L, 10000000L, 0.0, 0.0 })) absurdos = false;
         Check(absurdos, "un periodo absurdo (0, 10 Hz, 1000 Hz) no se usa");
         MethodInfo rejilla = reloj.GetMethod("Rejilla", F), ahoraMs = gpu.GetMethod("AhoraMs", F);
+        // El PC de pruebas puede tener compositor: simular su ausencia en vez de exigir Windows XP real.
+        FieldInfo sinCompositor = reloj.GetField("sinCompositor", F);
+        object sinOriginal = sinCompositor.GetValue(null);
         object[] b = { (double)ahoraMs.Invoke(null, null), 0.0, 0.0 };
-        Check(!(bool)rejilla.Invoke(null, b), "sin compositor de Windows (XP, o esta maquina) no hay rejilla: el bucle y la estrella siguen como siempre");
+        try
+        {
+            sinCompositor.SetValue(null, true);
+            Check(!(bool)rejilla.Invoke(null, b), "sin compositor simulado (destino XP) no hay rejilla: el bucle y la estrella siguen como siempre");
+        }
+        finally { sinCompositor.SetValue(null, sinOriginal); }
         FieldInfo prueba = reloj.GetField("Prueba", F);
         long frec = System.Diagnostics.Stopwatch.Frequency;
         prueba.SetValue(null, (Func<long[]>)delegate { return new long[] { frec / 60, System.Diagnostics.Stopwatch.GetTimestamp() - 3 * frec / 1000 }; });
@@ -417,8 +425,10 @@ class Estrella3dPrueba
         using (Control p = (Control)Activator.CreateInstance(gpu, true))
         {
             double P = 1000.0 / 60;
-            prueba.SetValue(null, (Func<long[]>)delegate { return new long[] { frec / 60, System.Diagnostics.Stopwatch.GetTimestamp() - 3 * frec / 1000 }; });
             double ah = (double)ahoraMs.Invoke(null, null);
+            // Una rejilla FIJA en QPC: la misma en ambas llamadas, sin ruido de JIT/reflexion dentro de la consulta.
+            long refrescoPrueba = System.Diagnostics.Stopwatch.GetTimestamp() - 3 * frec / 1000;
+            prueba.SetValue(null, (Func<long[]>)delegate { return new long[] { frec / 60, refrescoPrueba }; });
             Run(p, "AgendaCuadro", ah, 15);
             double prox1 = (double)Get(p, "proxCuadroMs"), visto1 = (double)Get(p, "vistoMs");
             Run(p, "AgendaCuadro", ah, 33);
@@ -426,7 +436,12 @@ class Estrella3dPrueba
             Set(p, "proxCuadroMs", 1000.0); Run(p, "AgendaCuadro", 1000.2, 22);
             double prox3 = (double)Get(p, "proxCuadroMs"), visto3 = (double)Get(p, "vistoMs");
             prueba.SetValue(null, null);
-            Set(p, "proxCuadroMs", 1000.0); Run(p, "AgendaCuadro", 1000.2, 15);
+            try
+            {
+                sinCompositor.SetValue(null, true);
+                Set(p, "proxCuadroMs", 1000.0); Run(p, "AgendaCuadro", 1000.2, 15);
+            }
+            finally { sinCompositor.SetValue(null, sinOriginal); }
             double prox4 = (double)Get(p, "proxCuadroMs"), visto4 = (double)Get(p, "vistoMs");
             // El refresco de hace 3 ms es 'ah - 3': este cuadro se vera en el siguiente, y el proximo empieza 2 ms despues.
             Check(Math.Abs(visto1 - (ah - 3 + P)) < .05 && Math.Abs(prox1 - (ah - 3 + P + 2)) < .05 && Math.Abs(prox2 - (ah - 3 + 2 * P + 2)) < .05,

@@ -64,7 +64,10 @@ namespace Rocola
                 }
                 per = periodo; refr = refresco;
             }
-            return EnMs(ahoraMs, Stopwatch.GetTimestamp(), per, refr, Stopwatch.Frequency, out refrescoMs, out periodoMs);
+            // Antes se emparejaba 'ahoraMs' (tomado antes de consultar DWM) con un QPC tomado DESPUES.
+            // La duracion variable de la consulta desplazaba el refresco. El origen es ahora el mismo
+            // que usa AhoraMs: la conversion no depende de lo que tarde la consulta ni el llamador.
+            return EnMs(0, GpuPanel.InicioRelojTicks, per, refr, Stopwatch.Frequency, out refrescoMs, out periodoMs);
         }
 
         // La cuenta sola (la usan las pruebas): la rejilla en ticks del reloj fino de Windows ('ahora' es el tick que
@@ -90,6 +93,16 @@ namespace Rocola
         {
             double v = refrescoMs + (Math.Floor((t - refrescoMs) / periodoMs) + 1) * periodoMs;
             return v > t ? v : v + periodoMs;
+        }
+
+        // La preparacion de UI/texturas puede haber consumido el refresco previsto al comenzar el cuadro.
+        // Justo antes de integrar la estrella se comprueba el plazo, sin otra consulta nativa: solo si ya
+        // vencio se elige el refresco siguiente de LA MISMA rejilla. No cambia trayectoria ni velocidad.
+        internal static double MomentoVista(double ahoraMs, double previstoMs, double periodoMs)
+        {
+            if (previstoMs < 0) return ahoraMs;
+            if (!(periodoMs > 0) || previstoMs > ahoraMs) return previstoMs;
+            return Despues(ahoraMs, previstoMs, periodoMs);
         }
 
         // Cuando empezar el cuadro que sigue al que empieza en 'ahoraMs': 'Tras' despues de un refresco, uno de cada n

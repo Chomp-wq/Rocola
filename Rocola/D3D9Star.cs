@@ -2124,10 +2124,14 @@ namespace Rocola
         // RELOJ FINO para el limitador. Environment.TickCount avanza a SALTOS de ~15.6 ms en Windows, asi
         // que pidiendole "un cuadro cada 33 ms" solo podia contestar 46.8 (tres saltos): 21 cuadros por
         // segundo en vez de 30, que es lo que se veia. Este reloj mide de verdad, en microsegundos.
-        private static readonly System.Diagnostics.Stopwatch reloj = System.Diagnostics.Stopwatch.StartNew();
-        internal static double AhoraMs() { return reloj.Elapsed.TotalMilliseconds; }
+        // Un origen QPC unico tambien permite convertir el refresco de Windows SIN emparejar dos
+        // muestras tomadas en instantes distintos. Una consulta/pausa del hilo no mueve la rejilla.
+        internal static readonly long InicioRelojTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+        internal static double AhoraMs()
+        { return (System.Diagnostics.Stopwatch.GetTimestamp() - InicioRelojTicks) * 1000.0 / System.Diagnostics.Stopwatch.Frequency; }
         private double proxCuadroMs;                      // cuando TOCA el proximo cuadro (ms del reloj fino)
         private double vistoMs = -1;                      // cuando se VERA el que se esta dibujando (-1 = no se sabe)
+        private double periodoVistaMs;                   // rejilla de ESTE cuadro; se revalida despues de preparar UI
         public uint SkyTop = 0xFF06081A, SkyMid = 0xFF101C3A, SkyBot = 0xFF1A2C5A;   // el form los setea por genero (3 paradas)
 
         // Bucle de render por Application.Idle (patron estandar para D3D en WinForms): dibuja tan rapido como
@@ -2204,7 +2208,8 @@ namespace Rocola
             double refresco, periodo, sig = double.NaN;
             if (RelojPantalla.Rejilla(ahora, out refresco, out periodo)) sig = RelojPantalla.Siguiente(ahora, th, refresco, periodo);
             vistoMs = -1;
-            if (!double.IsNaN(sig)) { proxCuadroMs = sig; vistoMs = RelojPantalla.Despues(ahora, refresco, periodo); return; }
+            periodoVistaMs = 0;
+            if (!double.IsNaN(sig)) { proxCuadroMs = sig; periodoVistaMs = periodo; vistoMs = RelojPantalla.Despues(ahora, refresco, periodo); return; }
             proxCuadroMs += th;
             if (proxCuadroMs < ahora) proxCuadroMs = ahora + th;
         }
