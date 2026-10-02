@@ -11,3 +11,4 @@
 - Conservar música, modelos de IA, configuración y datos del usuario al compilar o desplegar.
 - Excepción solicitada por el usuario el 1 de octubre de 2026: ofrecer perfiles de carga de carátulas en Ctrl+F3, con Automático como predeterminado. Ajustan prioridades y presupuesto GPU sin desactivar el regulador, cambiar la calidad final ni superar los límites de HDD y equipos de dos hilos. No autoriza otros interruptores de optimización.
 - Distinguir pruebas automatizadas, comprobación visual real y mediciones de rendimiento. No afirmar compatibilidad real con XP sin probar en XP.
+- Decisión del usuario del 1 de octubre de 2026: conservar el estilo de fondo Legacy y ofrecer Espacio natural como alternativa persistente en Ctrl+F3 -> Fondo -> Estilo. Legacy es el predeterminado para configuraciones antiguas; cambiar de estilo no debe alterar los ajustes individuales. Solo GPU.

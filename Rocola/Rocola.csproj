@@ -105,6 +105,9 @@
     <Compile Include="CaratulasSeparadasGpu.cs" />
     <Compile Include="FluidezAnimaciones.cs" />
     <Compile Include="FluidezGpu.cs" />
+    <Compile Include="EstilosFondo.cs" />
+    <Compile Include="EspacioNaturalGpu.cs" />
+    <Compile Include="NebulosaNaturalGpu.cs" />
     <Compile Include="EscaneoMemo.cs" />
     <Compile Include="AperturaAudio.cs" />
     <Compile Include="AudioControles.cs" />

@@ -35,6 +35,7 @@ FUENTES="$FUENTES $RAIZ/Rocola/TextoMovilGpu.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/CaratulasAdaptativas.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/CaratulasSeparadasGpu.cs $RAIZ/Rocola/PreviewsIndexadosGpu.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/FluidezAnimaciones.cs $RAIZ/Rocola/FluidezGpu.cs"
+FUENTES="$FUENTES $RAIZ/Rocola/EstilosFondo.cs $RAIZ/Rocola/EspacioNaturalGpu.cs $RAIZ/Rocola/NebulosaNaturalGpu.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/FuentesMedidas.cs $RAIZ/Rocola/PlanBiblioteca.cs"
 TMP_PRUEBAS="${TMPDIR:-/tmp}/rocola_pruebas_$$"
 FUENTES="$FUENTES $RAIZ/Rocola/AudioControles.cs $RAIZ/Rocola/Sonoridad.cs $RAIZ/Rocola/RellenoMp3.cs $RAIZ/Rocola/SinSilencios.cs $RAIZ/Rocola/SubirTodo.cs $RAIZ/Rocola/NivelDisco.cs $RAIZ/Rocola/BombaSonido.cs $RAIZ/Rocola/DiarioTablas.cs $RAIZ/Rocola/CancionEnMemoria.cs $RAIZ/Rocola/MedidasBitacora.cs $RAIZ/Rocola/PicoReal.cs $RAIZ/Rocola/Realce.cs"
@@ -68,7 +69,10 @@ GPU="textosgpu fondo anim presencia barrido tope calma entrar mover banco pagina
 
 GPU="$GPU tironescaratulas"
 GPU="$GPU colacompacta cadenciavisual"
+GPU="$GPU naturalestelar nebulosanatural espacionatural espacionaturalhal"
 CPU="$CPU ajustesfluidez"
+CPU="$CPU estilosconfig"
+GPU="$GPU estilosconfig"
 # Y las que miran algo que SOLO EXISTE en la rama de tarjeta grafica. La limpieza de videos que no
 # suenan es una de esas: para saber si un video suena hay que descomprimir su sonido, y eso alli lo
 # hace Media Foundation, que llego con Windows Vista. En la rama de XP no hay con que, asi que ni

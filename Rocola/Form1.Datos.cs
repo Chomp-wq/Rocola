@@ -389,6 +389,7 @@ namespace Rocola
         {
             // Los archivos anteriores no contienen estas claves: conservar 60 FPS por defecto.
             animOndasFps = animCubosFps = 60;
+            estiloFondo = 0;   // Las configuraciones anteriores conservan el fondo Legacy.
             try
             {
                 if (!File.Exists(ConfigFile)) return;
@@ -401,6 +402,7 @@ namespace Rocola
                     else if (s.StartsWith("tope_fps=")) { int v; if (int.TryParse(s.Substring(9).Trim(), out v)) fpsTope = (v < 0) ? 0 : v; }   // cuadros/s del fondo (0 = automatico, segun la pantalla)
                     else if (s.StartsWith("anim_ondas_fps=")) animOndasFps = LeeFluidezAnimacion(s.Substring("anim_ondas_fps=".Length));
                     else if (s.StartsWith("anim_cubos_fps=")) animCubosFps = LeeFluidezAnimacion(s.Substring("anim_cubos_fps=".Length));
+                    else if (s.StartsWith("estilo_fondo=", StringComparison.OrdinalIgnoreCase)) estiloFondo = LeeEstiloFondo(s.Substring("estilo_fondo=".Length));
                     else if (s.StartsWith("estrellas=")) { int v; if (int.TryParse(s.Substring(10).Trim(), out v)) estrellasDens = Clampf(v / 100f, 0.1f, 1f); }   // cuantas estrellas (%)
                     else if (s.StartsWith("fugaces=")) fugacesNiv = NivelDe(s.Substring(8));     // estrellas fugaces
                     else if (s.StartsWith("nieblas=")) nieblasNiv = NivelDe(s.Substring(8));     // nebulosas y neblina de color
@@ -547,6 +549,7 @@ namespace Rocola
                 sb.Append("tope_fps=").Append(fpsTope).Append("\r\n");
                 sb.Append("anim_ondas_fps=").Append(NormalizaFluidezAnimacion(animOndasFps)).Append("\r\n");
                 sb.Append("anim_cubos_fps=").Append(NormalizaFluidezAnimacion(animCubosFps)).Append("\r\n");
+                sb.Append("estilo_fondo=").Append(TextoEstiloFondo(estiloFondo)).Append("\r\n");
                 sb.Append("estrellas=").Append((int)Math.Round(estrellasDens * 100f)).Append("\r\n");
                 sb.Append("fugaces=").Append(TextoNivel(fugacesNiv)).Append("\r\n");
                 sb.Append("nieblas=").Append(TextoNivel(nieblasNiv)).Append("\r\n");

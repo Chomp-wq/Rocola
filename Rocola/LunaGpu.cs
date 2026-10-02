@@ -121,12 +121,13 @@ namespace Rocola
             }
             UpdateStarEchoes(now,cx,cy,radius,angle,color);
             DrawStarEchoes(now);
+            if(FondoNatural)color=0xFF000000u|(PaletteFlow.Mix(0xD6E4FFu,color,.26f)&0xFFFFFFu);
             SetTexQuadA(lunaQuad,cx-radius,cy-radius,cx+radius,cy+radius,luU,luV,color);
             RotateStarQuad(lunaQuad,cx,cy,angle);
             stars.DrawQuad(lunaTex,lunaQuad);
             // Punto de luz blanco encima del tinte; la estrella no parece una pegatina plana.
             stars.GlowBatchBegin(1);
-            stars.GlowBatchAdd(cx-radius*.73f,cy-radius*.29f,radius*.16f,0xC0F1F7FFu);
+            stars.GlowBatchAdd(cx-radius*.73f,cy-radius*.29f,radius*(FondoNatural ? .10f : .16f),FondoNatural ? 0xA0F1F7FFu : 0xC0F1F7FFu);
             stars.GlowBatchEnd();
             DrawLunarDust(cx,cy,radius,visibility,true);
         }
@@ -137,8 +138,10 @@ namespace Rocola
             uint rgb=StarColorAt(cx,cy)&0xFFFFFFu;
             if (!front && HaloLunar)
             {
-                stars.GlowBatchAdd(cx,cy,radius*1.9f,((uint)(50*visibility)<<24)|rgb);   // la corona, quieta: sin latido
-                stars.GlowBatchAdd(cx-radius*.16f,cy-radius*.06f,radius*1.20f,((uint)(64*visibility)<<24)|FlowColor(0xC9DAFFu,cx/Math.Max(1,Width),cy/Math.Max(1,Height)));
+                stars.GlowBatchAdd(cx,cy,radius*(FondoNatural ? 1.52f : 1.9f),((uint)((FondoNatural ? 32 : 50)*visibility)<<24)|rgb);   // la corona, quieta: sin latido
+                uint corona=FlowColor(0xC9DAFFu,cx/Math.Max(1,Width),cy/Math.Max(1,Height));
+                if(FondoNatural)corona=PaletteFlow.Mix(0xD9E6FFu,corona,.24f)&0xFFFFFFu;
+                stars.GlowBatchAdd(cx-radius*.16f,cy-radius*.06f,radius*(FondoNatural ? 1.08f : 1.20f),((uint)((FondoNatural ? 48 : 64)*visibility)<<24)|corona);
             }
             if (PolvoLunar)
                 for(int orbit=0;orbit<3;orbit++)
@@ -146,12 +149,12 @@ namespace Rocola
                     double angle=(LunaActiva ? moonMotionTime*(.55+orbit*.12) : 0)+orbit*2.094;
                     for(int tail=5;tail>=0;tail--)
                     {
-                        double a=angle-tail*.05;
+                        double a=angle-tail*(FondoNatural ? .085 : .05);
                         if ((Math.Sin(a)>=0)!=front) continue;
-                        float dx=(float)Math.Cos(a)*radius*(1.38f+orbit*.17f);
-                        float dy=(float)Math.Sin(a)*radius*(.40f+orbit*.09f)-dx*.24f;
-                        float size=radius*(tail==0 ? .043f : .025f);   // el polvo tampoco late: gira a su paso
-                        uint alpha=(uint)((tail==0 ? 165 : 58-tail*8)*visibility);
+                        float dx=(float)Math.Cos(a)*radius*(FondoNatural ? (1.26f+orbit*.15f) : (1.38f+orbit*.17f));
+                        float dy=(float)Math.Sin(a)*radius*(FondoNatural ? (.32f+orbit*.08f) : (.40f+orbit*.09f))-dx*(FondoNatural ? .16f : .24f);
+                        float size=radius*(FondoNatural ? (tail==0 ? .034f : .018f) : (tail==0 ? .043f : .025f));   // el polvo tampoco late: gira a su paso
+                        uint alpha=(uint)((FondoNatural ? (tail==0 ? 132 : 34-tail*5) : (tail==0 ? 165 : 58-tail*8))*visibility);
                         uint dust=FlowColor(0xD5E5FFu,(cx+dx)/Math.Max(1,Width),(cy+dy)/Math.Max(1,Height));
                         stars.GlowBatchAdd(cx+dx,cy+dy,Math.Max(1,size),(alpha<<24)|dust);
                     }

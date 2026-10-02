@@ -209,6 +209,7 @@ namespace Rocola
             if (gpuPanel == null) return;
             gpuPanel.OndasFps = NormalizaFluidezAnimacion(animOndasFps);
             gpuPanel.CubosFps = NormalizaFluidezAnimacion(animCubosFps);
+            gpuPanel.FondoNatural = NormalizaEstiloFondo(estiloFondo) == 1;
             gpuPanel.PortadaEnfocada = portadaEnfocada;
             gpuPanel.GeneroTodo = colorGenero;   // el color del genero en todo (Pantalla -> El estilo)
             gpuPanel.Nieblas = nieblasNiv;
@@ -964,6 +965,8 @@ namespace Rocola
 
             BotonPlano bResetF = new BotonPlano();
             bResetF.SetBounds(16, 594, 300, 38); bResetF.Font = fBot; bResetF.Text = "Fondo como de fabrica";
+            bResetF.TabIndex = 4;
+            Action pintaEstilo = null;
 
             Action pinta = delegate
             {
@@ -982,6 +985,8 @@ namespace Rocola
             };
             bResetF.Click += delegate
             {
+                estiloFondo = 0;
+                if (pintaEstilo != null) pintaEstilo();
                 nebulosasCine = true; cieloProfundo = true; auroraBandas = true; ondasSuaves = true;
                 estrellasFinas = true; vinetaSuave = true; haloSeleccion = true; estadoTransparente = true;
                 progresoNeon = true; neonIntenso = true; progresoFluido = true;
@@ -1006,6 +1011,7 @@ namespace Rocola
 
             pg.Controls.Add(tAd); pg.Controls.Add(tNat); pg.Controls.Add(bResetF);
             pg.Controls.Add(lAd);
+            MontaEstiloFondo(pg, tAd, tNat, fNom, fDes, fBot, cTexto, cTenue, out pintaEstilo);
             pinta();
             return pg;
         }
