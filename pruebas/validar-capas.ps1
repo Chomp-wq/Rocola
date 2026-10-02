@@ -52,13 +52,13 @@ foreach ($test in @('capascolor', 'cristalcola', 'cubofila', 'respuesta', 'efect
 }
 } finally { Pop-Location }
 $stutterExe = Join-Path $OutputDirectory 'tironescaratulas.exe'
-foreach ($extraTest in @('colacompacta', 'ajustesfluidez', 'cadenciavisual')) {
+foreach ($extraTest in @('colacompacta', 'ajustesfluidez', 'cadenciavisual', 'estilosconfig', 'naturalestelar', 'nebulosanatural', 'espacionatural')) {
     $extraExe = Join-Path $OutputDirectory ($extraTest + '.exe')
     & $compiler /nologo /target:exe /optimize+ /warnaserror+ ("/out:$extraExe") /r:System.dll /r:System.Core.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll (Join-Path $testRoot ($extraTest + '.cs')) (Join-Path $testRoot 'leercodigo.cs')
     if ($LASTEXITCODE -ne 0) { throw "No compila $extraTest" }
     & $extraExe $exe
     if ($LASTEXITCODE -ne 0) { throw "Fallo: $extraTest" }
-    if ($extraTest -eq 'ajustesfluidez') {
+    if ($extraTest -eq 'ajustesfluidez' -or $extraTest -eq 'estilosconfig') {
         & $extraExe (Join-Path $OutputDirectory 'Rocola-cpu.exe')
         if ($LASTEXITCODE -ne 0) { throw 'Fallo: ajustes comunes (CPU)' }
     }
@@ -72,5 +72,11 @@ $partsExe = Join-Path $OutputDirectory 'partescaratulas.exe'
 if ($LASTEXITCODE -ne 0) { throw 'No compila partescaratulas' }
 if ($SinHal) { & $partsExe $exe --sin-hal } else { & $partsExe $exe }
 if ($LASTEXITCODE -ne 0) { throw 'Fallo: partescaratulas' }
-Write-Output "PASS: compilacion GPU/CPU y treinta y siete baterias. HAL LOD omitido explicitamente: $SinHal. No se reemplazo ningun ejecutable de produccion. Salida: $OutputDirectory"
+$naturalHalExe = Join-Path $OutputDirectory 'espacionaturalhal.exe'
+& $compiler /nologo /target:exe /optimize+ /warnaserror+ ("/out:$naturalHalExe") /r:System.dll /r:System.Core.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll (Join-Path $testRoot 'espacionaturalhal.cs')
+if ($LASTEXITCODE -ne 0) { throw 'No compila espacionaturalhal' }
+$naturalHalOutput = Join-Path $OutputDirectory 'fondo-hal'
+if ($SinHal) { & $naturalHalExe $exe $naturalHalOutput --sin-hal } else { & $naturalHalExe $exe $naturalHalOutput }
+if ($LASTEXITCODE -ne 0) { throw 'Fallo: espacionaturalhal' }
+Write-Output "PASS: compilacion GPU/CPU y cuarenta y dos baterias. HAL omitido explicitamente: $SinHal. No se reemplazo ningun ejecutable de produccion. Salida: $OutputDirectory"
 } finally { $env:ROCOLA_DATOS = $previousRocolaData }

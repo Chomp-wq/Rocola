@@ -160,6 +160,15 @@ namespace Rocola
             float life=(float)(1-age/1.8);
             return .86f*SafeMoonLevel(visibility)*life;
         }
+        internal static float StarEchoAlphaNatural(double age,float visibility,bool threeD)
+        {
+            double life = threeD ? EcoVida : 1.8;
+            if (double.IsNaN(age) || age < 0 || age >= life) return 0;
+            float entrance = age < EcoEntra ? (float)(age / EcoEntra) : 1;
+            float remaining = (float)(1 - age / life);
+            // Perfil polinomico suave; no ruido, reservas ni una potencia por eco.
+            return .72f * SafeMoonLevel(visibility) * entrance * remaining * remaining;
+        }
         private void UpdateStarEchoes(double now,float x,float y,float radius,float angle,uint color)
         {
             // Cambios de pantalla, pausas y reinicios no dejan fantasmas en otro lugar.
@@ -214,7 +223,7 @@ namespace Rocola
             {
                 StarEcho echo=starEchoes[(starEchoHead-starEchoCount+i+starEchoes.Length)%starEchoes.Length];
                 double age=now-echo.Time;
-                float alpha=StarEchoAlpha(age,starEchoVisibility)*echo.Strength;
+                float alpha=(FondoNatural ? StarEchoAlphaNatural(age,starEchoVisibility,false) : StarEchoAlpha(age,starEchoVisibility))*echo.Strength;
                 if(age<.055||alpha<.003f)continue;
                 float r=echo.Radius*(.88f+.10f*(float)(1-age/1.8));
                 uint tint=((uint)(alpha*255)<<24)|(echo.Color&0xFFFFFFu);

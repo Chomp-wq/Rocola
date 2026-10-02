@@ -143,6 +143,16 @@ namespace Rocola
             float r = .80f * tr * luz + .95f * reflejo, g = .86f * tg * luz + .95f * reflejo, b = .97f * tb * luz + .95f * reflejo;
             return (alfa << 24) | (Byte(r) << 16) | (Byte(g) << 8) | Byte(b);
         }
+        // Plata/acero con reflejo neutro: el disco colorea la luz ambiente, no sustituye el material.
+        // La malla, las normales y el reflejo ya calculados son los mismos veinte triangulos.
+        internal static uint ColorCaraNatural(uint tinte, float luz, float reflejo, uint alfa)
+        {
+            float tr = ((tinte >> 16) & 255) / 255f, tg = ((tinte >> 8) & 255) / 255f, tb = (tinte & 255) / 255f;
+            float r = .80f * (.74f + .26f * tr) * luz + .90f * reflejo;
+            float g = .86f * (.76f + .24f * tg) * luz + .93f * reflejo;
+            float b = .97f * (.78f + .22f * tb) * luz + .97f * reflejo;
+            return (alfa << 24) | (Byte(r) << 16) | (Byte(g) << 8) | Byte(b);
+        }
         private static uint Byte(float v) { return v <= 0f ? 0u : v >= 1f ? 255u : (uint)(v * 255f + .5f); }
     }
 
@@ -198,7 +208,7 @@ namespace Rocola
                 int a = Estrella3d.CA[mejor], b = Estrella3d.CB[mejor], c = Estrella3d.CC[mejor];
                 float gx = (e3px[a] + e3px[b] + e3px[c]) / 3f, gy = (e3py[a] + e3py[b] + e3py[c]) / 3f;
                 stars.GlowBatchBegin(1);
-                stars.GlowBatchAdd(gx, gy, r * (.14f + .22f * brillo), ((uint)(210 * Math.Min(1f, brillo)) << 24) | 0xF1F7FFu);
+                stars.GlowBatchAdd(gx, gy, r * (FondoNatural ? (.08f + .13f * brillo) : (.14f + .22f * brillo)), ((uint)((FondoNatural ? 175 : 210) * Math.Min(1f, brillo)) << 24) | 0xF1F7FFu);
                 stars.GlowBatchEnd();
             }
         }
@@ -220,7 +230,9 @@ namespace Rocola
                 if (!e3mira[c]) continue;   // una cara de espaldas nunca se ve en un solido cerrado
                 float refl;
                 float luz = Estrella3d.Luz(e3nx[c], e3ny[c], e3nz[c], LunaRealista && !eco, out refl);
-                uint col = eco ? ColorEco(tinte, luz, a8) : Estrella3d.ColorCara(tinte, LunaRealista ? luz : .45f + .55f * luz, refl, a8);
+                uint col = FondoNatural
+                    ? (eco ? ColorEcoNatural(tinte, luz, a8) : Estrella3d.ColorCaraNatural(tinte, LunaRealista ? luz : .45f + .55f * luz, refl, a8))
+                    : (eco ? ColorEco(tinte, luz, a8) : Estrella3d.ColorCara(tinte, LunaRealista ? luz : .45f + .55f * luz, refl, a8));
                 e3col[c] = col;
                 if (refl > brillo) { brillo = refl; mejor = c; }
                 V3(caras, v++, e3px[Estrella3d.CA[c]], e3py[Estrella3d.CA[c]], col);
@@ -267,6 +279,14 @@ namespace Rocola
             return (alfa << 24) | (Canal(r) << 16) | (Canal(g) << 8) | Canal(b);
         }
         private static uint Canal(float v) { return v <= 0f ? 0u : v >= 255f ? 255u : (uint)(v + .5f); }
+        private static uint ColorEcoNatural(uint tinte, float luz, uint alfa)
+        {
+            // Sigue usando la paleta real. Mas luz en el nucleo, menos saturacion de rotulador.
+            float k = .48f + .40f * Math.Min(1f, luz);
+            float r = ((tinte >> 16) & 255) * k, g = ((tinte >> 8) & 255) * k, b = (tinte & 255) * k;
+            float neutral = 16f * k;
+            return (alfa << 24) | (Canal(r + neutral) << 16) | (Canal(g + neutral) << 8) | Canal(b + neutral);
+        }
         // El filo de neon de una copia: su color, mas claro, con la mitad de su alfa (se suma encima).
         private static uint Neon(uint c)
         {
@@ -309,11 +329,11 @@ namespace Rocola
             for (int i = 0; i < starEchoCount; i++)
             {
                 StarEcho echo = starEchoes[(starEchoHead - starEchoCount + i + starEchoes.Length) % starEchoes.Length];
-                float alpha = StarEchoAlpha3d(now - echo.Time, starEchoVisibility) * echo.Strength;
+                float alpha = (FondoNatural ? StarEchoAlphaNatural(now - echo.Time, starEchoVisibility, true) : StarEchoAlpha3d(now - echo.Time, starEchoVisibility)) * echo.Strength;
                 if (alpha < .003f) continue;
                 int filo, mejor; float brillo;
                 v += PoseEstrella(e3ecos, v, e3ecoFilo, f, echo.X, echo.Y, echo.Radius, echo.Yaw, echo.Pitch, echo.Angle,
-                    echo.Color, alpha * 255f, true, 1.8f, out filo, out mejor, out brillo);
+                    echo.Color, alpha * 255f, true, FondoNatural ? 1.05f : 1.8f, out filo, out mejor, out brillo);
                 f += filo;
             }
             if (v > 0) stars.DrawMesh(e3ecos, v / 3);

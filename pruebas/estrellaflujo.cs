@@ -16,10 +16,23 @@ class EstrellaFlujo {
  static T Aurora<T>(){return (T)aurora;}
  static T Music<T>(){return (T)music;}
  static void Bounds(Control page){
+  List<Control> visible=new List<Control>();BoundsInside(page,visible);
+  // Las hojas Ajustes/Estilo comparten espacio y los botones del encabezado
+  // viven sobre el fondo vacío de la tarjeta. Comprobar los contenidos visibles,
+  // no sus lienzos: seguiría detectando cualquier texto o mando realmente tapado.
+  for(int i=0;i<visible.Count;i++)for(int j=0;j<i;j++)
+   Check(!InPage(visible[i],page).IntersectsWith(InPage(visible[j],page)),
+    "Controles visibles solapados: "+visible[i].Text+" / "+visible[j].Text);
+ }
+ static Rectangle InPage(Control control,Control page){
+  Rectangle r=control.Bounds;
+  for(Control parent=control.Parent;parent!=null&&parent!=page;parent=parent.Parent)r.Offset(parent.Left,parent.Top);
+  return r;
+ }
+ static void BoundsInside(Control page,List<Control> visible){
   foreach(Control c in page.Controls){
    Check(c.Left>=0&&c.Top>=0&&c.Right<=page.ClientSize.Width&&c.Bottom<=page.ClientSize.Height,"Control recortado: "+c.Text);
-   foreach(Control d in page.Controls)if(c!=d)Check(!c.Bounds.IntersectsWith(d.Bounds),"Controles solapados: "+c.Text+" / "+d.Text);
-   if(c.HasChildren)Bounds(c);
+   if(c.HasChildren)BoundsInside(c,visible);else if(c.Visible)visible.Add(c);
   }
  }
  static Control Find(Control p,string name){foreach(Control c in p.Controls){if(c.Text==name)return c;Control r=Find(c,name);if(r!=null)return r;}return null;}
@@ -179,6 +192,11 @@ class EstrellaFlujo {
   using(Font f=new Font("Segoe UI",9))
   using(Panel page=(Panel)Call(form,owner,"PaginaFondo",f,f,f,f,Color.White,Color.Gray,Color.Gray)){
    Bounds(page);
+   Control styleTab=Find(page,"Estilo"),adjustmentsTab=Find(page,"Ajustes");
+   if(styleTab!=null&&adjustmentsTab!=null){
+    Call(typeof(Control),styleTab,"OnClick",EventArgs.Empty);Bounds(page);
+    Call(typeof(Control),adjustmentsTab,"OnClick",EventArgs.Empty);Bounds(page);
+   }
    Control toggle=Find(page,"Colores del espectro en movimiento (GPU)");
    Check(toggle!=null,"Falta control");
    foreach(bool b in new bool[]{true,false,true}){

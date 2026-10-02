@@ -1,5 +1,16 @@
 # Rocola
 
+## Fondo Legacy y Espacio natural — 1 de octubre de 2026
+
+En **Ctrl+F3 → Fondo → Estilo** se puede conservar **Legacy** o elegir **Espacio natural**:
+cielo negro/azul, nebulosas orgánicas, estrellas finas, fugaces afiladas, aurora con vetas y
+estrella de plata/acero. Solo GPU; los ajustes individuales se conservan. Legacy sigue siendo
+el valor de fábrica y el de las configuraciones antiguas.
+
+Mismas mallas y cantidades, con mapas en caché. Verificado en ambas ramas con pruebas y capturas
+Direct3D 9 a 1024×768 y 3440×1440; no equivale a medir FPS con biblioteca/música ni a probar en XP.
+[Cómo usarlo y límites de las mediciones](FONDO_LEGACY_Y_NATURAL_2026-10-01.md).
+
 ## Menos disco: SSD y disco duro — 28 de septiembre de 2026
 
 - **Las tablas grandes ya no se reescriben enteras.** El volumen, el EQ y la sonoridad de cada canción se guardaban
