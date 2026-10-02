@@ -136,6 +136,48 @@ class NaturalEstelar
         Check(!Codigo.Llama(stars.GetMethod("BuildStarVerts", B), "GpuStarfield.BakeNaturalStarTexture"), "no hornea por estrella ni por cuadro");
         Check(Codigo.Llama(stars.GetMethod("ActualizaAtlasNatural", B), "D3D9.Release"), "libera atlas anterior al sustituirlo");
     }
+    static void DistributionAndSurface(Assembly baseline, string folder)
+    {
+        foreach (Size screen in new Size[] { new Size(640, 480), new Size(1024, 768), new Size(3440, 1440) })
+        foreach (float density in new float[] { .2f, .55f, 1f })
+        foreach (bool fine in new bool[] { false, true })
+        {
+            object legacy = Field(stars, screen.Width, screen.Height), natural = Field(stars, screen.Width, screen.Height);
+            Write(legacy, "densidad", density); Write(natural, "densidad", density);
+            Write(legacy, "EstrellasFinas", fine); Write(natural, "EstrellasFinas", fine); Write(natural, "FondoNatural", true);
+            Call(stars, legacy, "BuildStars", screen.Width, screen.Height, 7731);
+            Call(stars, natural, "BuildStars", screen.Width, screen.Height, 7731);
+            Check((int)Read(legacy, "nStars") == (int)Read(natural, "nStars"), "Natural comparte densidad Legacy, no oculta ni agrega estrellas");
+            foreach (string field in new string[] { "sx", "sy", "ssize", "skind", "sforma", "sphase", "sspeed", "scol" })
+            {
+                Array before = (Array)Read(legacy, field), after = (Array)Read(natural, field);
+                Check(before.Length == after.Length, "distribucion " + field + " conserva cantidad");
+                for (int i = 0; i < before.Length; i++) Check(before.GetValue(i).Equals(after.GetValue(i)), "patron, profundidad, tamanos y formas exactamente Legacy");
+            }
+            Array lv = FieldVertices(stars, legacy, screen.Width, screen.Height, 53.3, 0f);
+            Array nv = FieldVertices(stars, natural, screen.Width, screen.Height, 53.3, 0f);
+            for (int i = 0; i < lv.Length; i += 6) {
+                Check(Math.Abs((X(lv, i) + X(lv, i + 1)) - (X(nv, i) + X(nv, i + 1))) < .002f &&
+                    Math.Abs((Y(lv, i) + Y(lv, i + 2)) - (Y(nv, i) + Y(nv, i + 2))) < .002f,
+                    "cobertura antialias no desplaza la estrella ni rompe la deriva");
+                Check((Col(lv, i) & 0xFFFFFFu) == (Col(nv, i) & 0xFFFFFFu), "Natural conserva temperaturas estelares Legacy");
+            }
+        }
+        foreach (bool detailed in new bool[] { false, true })
+        using (Bitmap legacy = (Bitmap)Call(gpu, null, "BakeStar", detailed))
+        using (Bitmap natural = (Bitmap)Call(gpu, null, "BakeStarNatural", detailed))
+        using (Bitmap repeat = (Bitmap)Call(gpu, null, "BakeStarNatural", detailed))
+        {
+            Check(legacy.Size == natural.Size && natural.Size == new Size(256, 256), "estrella 2D conserva presupuesto de textura");
+            Check(!SameBitmap(legacy, natural) && SameBitmap(natural, repeat), "estrella Natural 2D tiene material propio determinista");
+            Check(natural.GetPixel(127, 127).A == 255 && natural.GetPixel(0, 0).A == 0, "superficie Natural solida y cantos transparentes");
+            if (baseline != null)
+                using (Bitmap old = (Bitmap)Call(baseline.GetType(gpu.FullName, true), null, "BakeStar", detailed))
+                    Check(SameBitmap(legacy, old), "estrella 2D Legacy pixel-identica al Release anterior");
+            if (folder != null) natural.Save(Path.Combine(folder, detailed ? "protagonista-natural-detallada.png" : "protagonista-natural-simple.png"), ImageFormat.Png);
+        }
+        Check(Codigo.Llama(gpu.GetMethod("EnsureLuna", B), "BakeStarNatural"), "material 2D Natural conectado, no solo un metodo sin uso");
+    }
     static void Meteors()
     {
         Array vertices = Make(12);
@@ -305,7 +347,7 @@ class NaturalEstelar
             string folder = args.Length > 2 ? Path.GetFullPath(args[2]) : null;
             if (folder != null) Directory.CreateDirectory(folder);
             stars = program.GetType("Rocola.GpuStarfield", true); gpu = program.GetType("Rocola.GpuPanel", true); mesh = program.GetType("Rocola.Estrella3d", true); vertex = program.GetType("Rocola.D3D9+Vtx", true);
-            BudgetAndLegacy(baseline); Textures(baseline, folder); Meteors(); MetalAndEchoes(baseline); IsolatedCost(); TransientFailure();
+            BudgetAndLegacy(baseline); Textures(baseline, folder); DistributionAndSurface(baseline, folder); Meteors(); MetalAndEchoes(baseline); IsolatedCost(); TransientFailure();
             if (args.Length > 3 && args[3] == "--hal") Hardware();
             Console.WriteLine("OK naturalestelar: " + checks + " comprobaciones; Legacy " + (baseline != null ? "contrastado con ejecutable anterior" : "retorno exacto, sin referencia externa") + "; mismas capas/mallas/ecos. No es medicion FPS de la aplicacion.");
             return 0;

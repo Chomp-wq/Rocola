@@ -1248,13 +1248,17 @@ namespace Rocola
                 int f = (fm != null) ? fm[i] : FormaEstrella;
                 if (FondoNatural)
                 {
-                    // El polvo necesita cobertura real de pixel: un nucleo diminuto
-                    // minificado parpadeaba al pasar entre centros de pixeles, aun
-                    // con filtrado lineal. Conservar la variedad, sin clavar posiciones.
-                    if (k == 0) s = 1.25f + s * .65f;
-                    // Medianas y grandes vuelven a tener silueta, no puntos repetidos.
-                    // Mismo atlas, semilla, tres capas, vertices y envio de geometria.
-                    f = k == 0 ? FormaPunto : k == 1 ? FormaEstrella : FormaRayos;
+                    // Misma distribucion, formas y jerarquia que Legacy. La cobertura
+                    // antialias del polvo no puede multiplicar su luz: compensar el
+                    // area del quad conserva su presencia sin recuperar el parpadeo.
+                    float light = k == 2 ? .94f : .52f;
+                    if (k == 0) {
+                        float coverage = 1.25f + s * .65f;
+                        light = .94f * s * s / (coverage * coverage);
+                        s = coverage;
+                    }
+                    uint naturalAlpha = (uint)Math.Min(255f, br * light);
+                    c = (naturalAlpha << 24) | (c & 0xFFFFFFu);
                 }
                 SetQuadUV(buf, vi, x - s, y - s, x + s, y + s, c, AtlasU0[f], AtlasV0[f], AtlasU1[f], AtlasV1[f]);
                 vi += 6;
@@ -3228,18 +3232,21 @@ namespace Rocola
         // La pared CPU mantiene su luna original, sin cambios.
         private IntPtr lunaTex; private int luTW, luTH; private float luU = 1f, luV = 1f;
         private int lunaDe = -1;
+        private bool lunaEstiloDe;
         private D3D9.Vtx[] lunaQuad = new D3D9.Vtx[6];
         private void EnsureLuna()
         {
             if (!ConLuna || Height < 64) return;
             int moonKey = MoonTextureSize;
-            if (lunaTex == IntPtr.Zero || lunaDe != moonKey || lunaDetalleDe != LunaRealista)
+            if (lunaTex == IntPtr.Zero || lunaDe != moonKey || lunaDetalleDe != LunaRealista || lunaEstiloDe != FondoNatural)
             {
-                using (Bitmap lb = BakeStar(LunaRealista))
+                using (Bitmap lb = FondoNatural ? BakeStarNatural(LunaRealista) : BakeStar(LunaRealista))
                 {
                     lunaTex = Upload(lunaTex, ref luTW, ref luTH, lb, out luU, out luV);
                 }
-                lunaDe = moonKey; lunaDetalleDe = LunaRealista;
+                if (lunaTex != IntPtr.Zero) {
+                    lunaDe = moonKey; lunaDetalleDe = LunaRealista; lunaEstiloDe = FondoNatural;
+                }
             }
         }
         private void DibujaLuna()
@@ -3256,6 +3263,10 @@ namespace Rocola
                 {
                     float aw = Math.Min(RuidoTeja, Width - x), ah = Math.Min(RuidoTeja, Height - y);
                     SetTexQuad(nieblaQuad, x, y, x + aw, y + ah, ruU * (aw / RuidoTeja), ruV * (ah / RuidoTeja));
+                    // El dither sigue evitando bandas, pero Natural usa un grano
+                    // mas delicado. Misma teja estatica: nada de puntos nuevos por cuadro.
+                    if (FondoNatural)
+                        for (int i = 0; i < 6; i++) nieblaQuad[i].Color = 0xD0FFFFFFu;
                     stars.DrawQuad(ruidoTex, nieblaQuad);
                 }
         }
