@@ -7,7 +7,10 @@ cielo negro/azul, nebulosas orgánicas, estrellas finas, fugaces afiladas, auror
 estrella de plata/acero. Solo GPU; los ajustes individuales se conservan. Legacy sigue siendo
 el valor de fábrica y el de las configuraciones antiguas.
 
-Mismas mallas y cantidades, con mapas en caché. Verificado en ambas ramas con pruebas y capturas
+La segunda pasada añade velos de aurora más naturales y halos proporcionales a las carátulas.
+Los mapas de Natural se preparan en segundo plano con trabajo acotado para equipos de dos hilos,
+sin cambiar sus mallas ni cantidades y conservando la caché.
+Verificado en ambas ramas con pruebas y capturas
 Direct3D 9 a 1024×768 y 3440×1440; no equivale a medir FPS con biblioteca/música ni a probar en XP.
 [Cómo usarlo y límites de las mediciones](FONDO_LEGACY_Y_NATURAL_2026-10-01.md).
 

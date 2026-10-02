@@ -259,6 +259,15 @@ namespace Rocola
             Halo(glowV, 0, cx, cy, r, argb);
             gpu.DrawStars(glowV, HaloVtx / 3, t);   // mismo camino aditivo que las estrellas
         }
+        // Acabado natural: luz proporcional a la portada, no un disco enorme
+        // detras de ella. La misma textura lisa, 18 vertices y un unico envio.
+        public void DrawGlowElipse(float cx, float cy, float rx, float ry, uint argb)
+        {
+            IntPtr t = uiGlowTex;
+            if (!Ok || t == IntPtr.Zero || !(rx >= 1f) || !(ry >= 1f) || (argb >> 24) == 0) return;
+            Halo(glowV, 0, cx, cy, rx, ry, argb);
+            gpu.DrawStars(glowV, HaloVtx / 3, t);
+        }
         // Escribe UN halo (6 triangulos en abanico) a partir del hueco i del arreglo que se le pase.
         private static void Halo(D3D9.Vtx[] a, int i, float cx, float cy, float r, uint c) { Halo(a, i, cx, cy, r, r, c); }
         // Con radios distintos a lo ancho y a lo alto sale una ELIPSE. Una luz de horizonte tiene que ser ancha
@@ -1465,6 +1474,7 @@ namespace Rocola
 
         public void StopGpu()
         {
+            CancelaPreparacionNatural();
             TrimLod(true);
             SueltaCintasGpu();
             ClearPaletteFade(); paletteKey = 0;
@@ -1768,7 +1778,13 @@ namespace Rocola
                     // Con la portada enfocada el halo crece con ella y toma su color (HaloArgb); si no, el de siempre.
                     float hx = hr.X, hy = hr.Y, hw = hr.Width, hh = hr.Height;
                     EnfocaCaja(ref hx, ref hy, ref hw, ref hh);
-                    stars.DrawGlow(hx + hw * 0.5f, hy + hh * 0.5f, Math.Max(hw, hh) * 0.85f, HaloArgb());
+                    if (FondoNatural)
+                    {
+                        float rx, ry; uint tint;
+                        HaloPortadaNatural(hw, hh, HaloArgb(), out rx, out ry, out tint);
+                        stars.DrawGlowElipse(hx + hw * 0.5f, hy + hh * 0.5f, rx, ry, tint);
+                    }
+                    else stars.DrawGlow(hx + hw * 0.5f, hy + hh * 0.5f, Math.Max(hw, hh) * 0.85f, HaloArgb());
                 }
             }
             // Rejilla de discos: un quad por celda (textura ya resuelta arriba). Las celdas aun sin textura (recien
@@ -2405,6 +2421,7 @@ namespace Rocola
         }
         private void EnsureNieblas()
         {
+            if (FondoNatural) { EnsureNieblasPreparadas(); return; }
             bool cambioMando = nebNaturalDe != CieloProfundo || nebEstiloDe != FondoNatural;
             bool cambioFuerza = nebFuerzaDe != Form1.nebNaturalFuerza;
             int ahoraNeb = Environment.TickCount;
@@ -2641,8 +2658,8 @@ namespace Rocola
                 uint a = (uint)(NebAlfa * 255f + 0.5f); if (a > 255) a = 255;
                 float mx = Width * NebDeriva, my = Height * NebDeriva;
                 float c = (float)Math.Cos(NebFase), sn = (float)Math.Sin(NebFase);
-                NieblaDeriva(mx, my, c * mx, sn * my, (a << 24) | TinteNebulosa(NebColor, false, NebulosasCine));
-                NieblaDeriva(mx, my, -c * mx, -sn * my, (a << 24) | TinteNebulosa(NebColor2, true, NebulosasCine));
+                NieblaDeriva(mx, my, c * mx, sn * my, (a << 24) | TinteNebulosaEstilo(NebColor, false, NebulosasCine, FondoNatural));
+                NieblaDeriva(mx, my, -c * mx, -sn * my, (a << 24) | TinteNebulosaEstilo(NebColor2, true, NebulosasCine, FondoNatural));
             }
             if (hazTex != IntPtr.Zero && Nieblas == GpuStarfield.Alto)
             {
@@ -2957,7 +2974,8 @@ namespace Rocola
             }
             for (int j = 0; j < AurFilas; j++)
             {
-                float f0 = (float)j / AurFilas, f1 = (float)(j + 1) / AurFilas;
+                float f0 = natural ? AuroraNaturalNivel(j) : (float)j / AurFilas;
+                float f1 = natural ? AuroraNaturalNivel(j + 1) : (float)(j + 1) / AurFilas;
                 float m0 = natural ? BajaNatural(f0) : AurBaja(f0), m1 = natural ? BajaNatural(f1) : AurBaja(f1);
                 float g0 = AurRampa(f0), g1 = AurRampa(f1);   // cuanto ondeo se deja ver a esa altura
                 int k0 = j * puntos, k1 = (j + 1) * puntos;
@@ -2967,15 +2985,17 @@ namespace Rocola
                 // cortinas llevan el mismo degradado y los picos se ven parejos entre si.
                 float yL0 = baseY - hCol[0] * f0, yL1 = baseY - hCol[0] * f1;
                 float wL0 = aCol[0] * m0 * (1f + (rCol[0] - 1f) * g0), wL1 = aCol[0] * m1 * (1f + (rCol[0] - 1f) * g1);
-                uint cL0 = AurArgb(cCortina[k0], wL0), cL1 = AurArgb(cCortina[k1], wL1);
+                uint cL0 = natural ? AurArgb(cCortina[k0] & 0xFFFFFFu, wL0 * AuroraNaturalPeso(cCortina[k0])) : AurArgb(cCortina[k0], wL0);
+                uint cL1 = natural ? AurArgb(cCortina[k1] & 0xFFFFFFu, wL1 * AuroraNaturalPeso(cCortina[k1])) : AurArgb(cCortina[k1], wL1);
                 for (int i = 0; i < AurCols; i++)
                 {
                     float x0 = i * paso, x1 = x0 + paso;
                     float hR = hCol[i + 1];
                     float yR0 = baseY - hR * f0, yR1 = baseY - hR * f1;
                     float wR0 = aCol[i + 1] * m0 * (1f + (rCol[i + 1] - 1f) * g0), wR1 = aCol[i + 1] * m1 * (1f + (rCol[i + 1] - 1f) * g1);
-                    uint cR0 = AurArgb(cCortina[k0 + i + 1], wR0);
-                    uint cR1 = AurArgb(cCortina[k1 + i + 1], wR1);
+                    uint rgb0 = cCortina[k0 + i + 1], rgb1 = cCortina[k1 + i + 1];
+                    uint cR0 = natural ? AurArgb(rgb0 & 0xFFFFFFu, wR0 * AuroraNaturalPeso(rgb0)) : AurArgb(rgb0, wR0);
+                    uint cR1 = natural ? AurArgb(rgb1 & 0xFFFFFFu, wR1 * AuroraNaturalPeso(rgb1)) : AurArgb(rgb1, wR1);
                     AurV3(ref v[n + 0], x0, yL1, cL1); AurV3(ref v[n + 1], x1, yR1, cR1); AurV3(ref v[n + 2], x0, yL0, cL0);
                     AurV3(ref v[n + 3], x1, yR1, cR1); AurV3(ref v[n + 4], x1, yR0, cR0); AurV3(ref v[n + 5], x0, yL0, cL0);
                     n += 6;
@@ -3176,15 +3196,17 @@ namespace Rocola
                 // para que todas las cortinas lleven el MISMO degradado y los picos salgan parejos entre si.
                 for (int k = 0; k <= AurFilas; k++)
                 {
-                    uint c = FlowColor(aurBase[k * puntos + i],fx,(au.BaseY-aurH[i]*k/AurFilas)/Math.Max(1,Height));   // la base: AurBases
+                    float yColor = FondoNatural ? au.BaseY - aurH[i] * AuroraNaturalNivel(k) : au.BaseY - aurH[i] * k / AurFilas;
+                    uint c = FlowColor(aurBase[k * puntos + i],fx,yColor/Math.Max(1,Height));   // la base: AurBases
                     // Por entero y no por "sin signo": el mismo numero (van de 0 a 255) sin la conversion lenta.
                     float rr = (int)((c >> 16) & 0xFF), gg = (int)((c >> 8) & 0xFF), bb = (int)(c & 0xFF);
                     TonoPorNivel(ref rr, ref gg, ref bb, v);
-                    aurCortina[k * puntos + i] = ((uint)(int)rr << 16) | ((uint)(int)gg << 8) | (uint)(int)bb;
+                    uint color = ((uint)(int)rr << 16) | ((uint)(int)gg << 8) | (uint)(int)bb;
+                    aurCortina[k * puntos + i] = FondoNatural ? AuroraNaturalVelo(color, k, fx, t, rayo) : color;
                 }
                 // EL FILO lleva el color de la PUNTA de su columna (el mismo de la cortina ahi arriba, no
                 // otro): asi el contorno es del color de la aurora, encendido, y no una raya postiza.
-                aurNc[i] = aurCortina[AurFilas * puntos + i];
+                aurNc[i] = FondoNatural ? aurCortina[AurFilas * puntos + i] & 0xFFFFFFu : aurCortina[AurFilas * puntos + i];
                 uint cPie = FlowColor(aurBasePie[i],fx,au.BaseY/Math.Max(1,Height));   // la base: AurBases
                 float r0 = (int)((cPie >> 16) & 0xFF), g0 = (int)((cPie >> 8) & 0xFF), b0 = (int)(cPie & 0xFF);
                 for (int k = 0; k <= AurSuelo; k++)                   // el suelo: el mismo color, hundiendose
@@ -3194,7 +3216,7 @@ namespace Rocola
                     aurSueloC[k * puntos + i] = ((uint)(int)rd << 16) | ((uint)(int)gd << 8) | (uint)(int)bd;
                 }
                 float al = (AurAlfaBase + AurAlfaPico * v) * au.Dim;
-                if (FondoNatural) al *= .94f;
+                if (FondoNatural) al *= 1.04f;   // más cuerpo; las vetas abren huecos de luz en el velo
                 if (al < 0f) al = 0f; else if (al > 1f) al = 1f;
                 aurA[i] = al;
                 // Brillo del FILO: sube con la banda y ademas con el ondeo, para que la veta se vea

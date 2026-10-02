@@ -3,6 +3,8 @@ using System;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
+using System.Diagnostics;
+using System.Threading;
 
 namespace Rocola
 {
@@ -17,10 +19,16 @@ namespace Rocola
         }
 
         internal static Bitmap BakeNebulosaNatural(int w, int h, bool detallada)
+        { return BakeNebulosaPreparada(w, h, detallada, Form1.nebNaturalFuerza, null, false); }
+
+        internal static Bitmap BakeNebulosaPreparada(int w, int h, bool detallada, float fuerza, Func<bool> cancel, bool slow)
         {
-            float detail = detallada ? NaturalNebDetail(Form1.nebNaturalFuerza) : 0f;
+            float detail = detallada ? NaturalNebDetail(fuerza) : 0f;
             int[] pixels = NaturalPixels(w, h);
+            long next = Stopwatch.GetTimestamp() + CargaTrabajo.LimiteTicks(2);
             for (int y = 0; y < h; y++)
+            {
+                if (PausaNaturalFila(y, cancel, slow, ref next)) return null;
                 for (int x = 0; x < w; x++)
                 {
                     float u = x / (float)Math.Max(1, w - 1), v = y / (float)Math.Max(1, h - 1);
@@ -44,13 +52,21 @@ namespace Rocola
                     int alpha = (int)Math.Min(70f, value * 65f * Form1.NebFuerza);
                     pixels[y * w + x] = unchecked((int)((uint)alpha << 24 | 0x00FFFFFFu));
                 }
+            }
+            if (cancel != null && cancel()) return null;
             return NaturalBitmap(w, h, pixels);
         }
 
         internal static Bitmap BakeViaNatural(int w, int h)
+        { return BakeViaPreparada(w, h, null, false); }
+
+        internal static Bitmap BakeViaPreparada(int w, int h, Func<bool> cancel, bool slow)
         {
             int[] pixels = NaturalPixels(w, h);
+            long next = Stopwatch.GetTimestamp() + CargaTrabajo.LimiteTicks(2);
             for (int y = 0; y < h; y++)
+            {
+                if (PausaNaturalFila(y, cancel, slow, ref next)) return null;
                 for (int x = 0; x < w; x++)
                 {
                     float u = x / (float)Math.Max(1, w - 1), v = y / (float)Math.Max(1, h - 1);
@@ -71,7 +87,20 @@ namespace Rocola
                     int alpha = (int)Math.Min(48f, value * 105f * (.22f + .78f * sky * sky));
                     pixels[y * w + x] = unchecked((int)((uint)alpha << 24 | 0x00FFFFFFu));
                 }
+            }
+            if (cancel != null && cancel()) return null;
             return NaturalBitmap(w, h, pixels);
+        }
+
+        private static bool PausaNaturalFila(int y, Func<bool> cancel, bool slow, ref long next)
+        {
+            if ((y & 3) != 0) return false;
+            if (cancel != null && cancel()) return true;
+            if (slow && Stopwatch.GetTimestamp() >= next) {
+                Thread.Sleep(1);
+                next = Stopwatch.GetTimestamp() + CargaTrabajo.LimiteTicks(2);
+            }
+            return false;
         }
 
         internal static Bitmap BakeVinetaNatural(int n)
