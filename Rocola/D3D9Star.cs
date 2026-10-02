@@ -1456,11 +1456,11 @@ namespace Rocola
             // de Begin, repartiendo las subidas NUEVAS por cuadro (presupuesto) para no bajar los fps al barrer.
             gridN = 0;
             if (CoverControl != null) CoverControl.Begin(AhoraMs(), TopeFpsReal);
-            RefreshCellBudget();
             if (ShowAlbum && GetGrid != null)
             {
                 gridN = GetGrid(gridBuf);
                 cellFrame++;
+                RefreshCellBudget();
                 if (CoverControl != null) CoverControl.PendingUpload = false;
                 int upBudget = CoverControl != null ? 32 : GridUploadBudget;
                 long uploadStart = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -1872,6 +1872,7 @@ namespace Rocola
                     tex = ct.Tex; u = ct.U; v = ct.V; return true;
                 }
                 if (upBudget <= 0) return false;   // celda nueva sin presupuesto: se salta este cuadro
+                if (cellTexCache.Count >= cellTextureCapacity + MaxCells) return false;
                 upBudget--;
                 ct = new CellTex();
                 cellBytesDirty = true;
@@ -1970,7 +1971,7 @@ namespace Rocola
                 }
                 if (victim == null) { if (DiscardUnusedNative(false)) continue; return false; }
                 CellTex removed = cellTexCache[victim];
-                if (removed.Tex != IntPtr.Zero) D3D9.Release(removed.Tex);
+                if (!ReleaseCoverTexture(removed.Tex)) return false;
                 cellTexCache.Remove(victim); cellBytesDirty = true;
             }
             return true;
@@ -2068,9 +2069,9 @@ namespace Rocola
                     }
                 if (oldestKey == null && oldestSlot < 0) break;
                 CellTex ct = oldestSlot >= 0 ? slotTex[oldestSlot] : cellTexCache[oldestKey];
+                if (!ReleaseCoverTexture(ct.Tex)) break;
                 bytes -= CellBytes(ct);
                 cellBytesTotal = bytes;
-                if (ct.Tex != IntPtr.Zero) D3D9.Release(ct.Tex);
                 if (oldestSlot >= 0) slotTex[oldestSlot] = null;
                 else cellTexCache.Remove(oldestKey);
             }

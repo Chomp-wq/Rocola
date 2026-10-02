@@ -298,7 +298,11 @@ class Optimizaciones
     System.Collections.IDictionary cache=(System.Collections.IDictionary)Get(t,panel,"cellTexCache");
     // Simular presion del presupuesto con dimensiones efectivas grandes.
     foreach(object entry in cache.Values){Set(entry.GetType(),entry,"Bw",4096);Set(entry.GetType(),entry,"Bh",4096);}
-    Set(t,panel,"cellBytesDirty",true);Call(t,panel,"EvictCellTex");CheckCellAccounting(t,panel);
+    Set(t,panel,"cellBytesDirty",true);
+    // La presion se resuelve por cuadros, no con un barrido entero del driver.
+    for(int frame=1001;frame<1101 && (long)Call(t,panel,"CachedCellBytes")>(long)Get(t,panel,"cellTextureBudget");frame++) {
+     Set(t,panel,"cellFrame",frame);Call(t,panel,"EvictCellTex");CheckCellAccounting(t,panel);
+    }
     Check((long)Call(t,panel,"CachedCellBytes")<=(long)Get(t,panel,"cellTextureBudget"),"No respeta limite adaptativo de texturas");
    } finally {Call(t,panel,"StopGpu");}
    Check((long)Call(t,panel,"CachedCellBytes")==0,"No limpia contabilidad al liberar GPU");

@@ -52,6 +52,11 @@ namespace Rocola
         private int cellTextureCapacity = 54;
         private double cellBudgetChecked = -2000;
         private int cellBudgetWidth, cellBudgetHeight;
+        private string memoryPageKey;
+        private double memoryPageChanged;
+        internal static bool CanProbeCoverMemory(double now, double changed, double checkedAt,
+            bool initial, bool busy)
+        { return !busy && now - changed >= 600 && (initial || now - checkedAt >= 10000); }
         private readonly HashSet<string> protectedAhead = new HashSet<string>();
         internal static long LiveCellBudget(uint available, int cacheMb, int pointerBytes, ulong freeRam)
         {
@@ -62,7 +67,15 @@ namespace Rocola
         private void RefreshCellBudget()
         {
             double now = AhoraMs();
-            if (stars == null || !stars.Ok || (now - cellBudgetChecked < 2000 && cellBudgetWidth == Width && cellBudgetHeight == Height)) return;
+            string key = gridN > 0 ? gridBuf[0].Key : null;
+            if (key != memoryPageKey || cellBudgetWidth != Width || cellBudgetHeight != Height) {
+                memoryPageKey = key; memoryPageChanged = now;
+                cellBudgetWidth = Width; cellBudgetHeight = Height;
+            }
+            // GetAvailableTextureMem es sincrono: no llamar al driver en pleno hojeo.
+            // El presupuesto anterior sigue protegiendo memoria durante la navegacion.
+            if (stars == null || !stars.Ok || !CanProbeCoverMemory(now, memoryPageChanged,
+                cellBudgetChecked, cellBudgetChecked < 0, UiUrgent || (CoverControl != null && CoverControl.PendingUpload))) return;
             cellBudgetChecked = now; cellBudgetWidth = Width; cellBudgetHeight = Height;
             uint available = stars.EstimatedTextureMemory;
             // El sondeo ya descuenta nuestras texturas: devolver su coste evita una espiral de poda.

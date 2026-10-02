@@ -77,6 +77,10 @@ class CargaAdaptativa {
   object[] args={cell,budget,IntPtr.Zero,0f,0f};
   Check((bool)Call(panelType,panel,"EnsureCellTex",args),"Textura no disponible");return (IntPtr)args[2];
  }
+ static void WarmFrame(Type t,object panel,object visible){
+  Set(t,panel,"cellFrame",(int)Get(t,panel,"cellFrame")+1);
+  Texture(t,panel,visible,0);Call(t,panel,"WarmAheadCells");
+ }
  static void Gpu(Assembly asm){
   Type t=asm.GetType("Rocola.GpuPanel"),ct=asm.GetType("Rocola.GpuGridCell");
   using(Control panel=(Control)Activator.CreateInstance(t,true))
@@ -99,15 +103,15 @@ class CargaAdaptativa {
     Check(cache.Count>=2&&cache.Count<=1+allowance,"Precarga excede presupuesto de subidas");
     IntPtr prepared=Texture(t,panel,ahead[0],0);
     Check(prepared!=IntPtr.Zero,"Pagina preparada aun necesita subida");
-    for(int i=0;i<50;i++)Call(t,panel,"WarmAheadCells");
+    for(int i=0;i<50;i++)WarmFrame(t,panel,visible);
     Check(cache.Count==37,"No completa vecinas");
     for(int i=0;i<ahead.Length;i++)ahead[i]=Cell(ct,"otra-"+i,small);
-    for(int i=0;i<50;i++)Call(t,panel,"WarmAheadCells");
+    for(int i=0;i<50;i++)WarmFrame(t,panel,visible);
     Check(cache.Count<=54,"Excede capacidad de cache");
     Check(Texture(t,panel,visible,0)==visibleTex,"Expulsa textura visible");
     IntPtr[] textures=new IntPtr[36];
     for(int i=0;i<36;i++)textures[i]=Texture(t,panel,ahead[i],0);
-    for(int i=0;i<100;i++)Call(t,panel,"WarmAheadCells");
+    for(int i=0;i<100;i++)WarmFrame(t,panel,visible);
     for(int i=0;i<36;i++)Check(Texture(t,panel,ahead[i],0)==textures[i],"Recrea vecinas ya preparadas");
     Call(t,panel,"StopGpu");
     Check((bool)Call(t,panel,"StartGpu"),"No recupera GPU");
@@ -115,10 +119,10 @@ class CargaAdaptativa {
     Set(t,panel,"cellFrame",100);
     visibleTex=Texture(t,panel,visible,1);
     for(int i=0;i<ahead.Length;i++)ahead[i]=Cell(ct,"grande-"+i,large);
-    for(int i=0;i<50;i++)Call(t,panel,"WarmAheadCells");
+    for(int i=0;i<50;i++)WarmFrame(t,panel,visible);
     Check(cache.Count==8,"No limita precarga a memoria disponible");
     object first=cache["grande-0"];IntPtr stable=(IntPtr)Get(first.GetType(),first,"Tex");
-    for(int i=0;i<100;i++)Call(t,panel,"WarmAheadCells");
+    for(int i=0;i<100;i++)WarmFrame(t,panel,visible);
     Check(Object.ReferenceEquals(cache["grande-0"],first)&&(IntPtr)Get(first.GetType(),first,"Tex")==stable,"Thrashing con vecinas que no caben");
     Check((long)Call(t,panel,"CachedCellBytes")<=32L*1024*1024,"Excede 32 MiB");
     Check(Texture(t,panel,visible,0)==visibleTex,"Expulsa visible bajo presion");
