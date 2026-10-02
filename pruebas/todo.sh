@@ -30,6 +30,7 @@ FUENTES="$FUENTES $RAIZ/Rocola/EstrellaGpu.cs $RAIZ/Rocola/Estrella3dGpu.cs $RAI
 FUENTES="$FUENTES $RAIZ/Rocola/TextoMovilGpu.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/CaratulasAdaptativas.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/CaratulasSeparadasGpu.cs $RAIZ/Rocola/PreviewsIndexadosGpu.cs"
+FUENTES="$FUENTES $RAIZ/Rocola/FluidezAnimaciones.cs $RAIZ/Rocola/FluidezGpu.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/FuentesMedidas.cs $RAIZ/Rocola/PlanBiblioteca.cs"
 TMP_PRUEBAS="${TMPDIR:-/tmp}/rocola_pruebas_$$"
 FUENTES="$FUENTES $RAIZ/Rocola/AudioControles.cs $RAIZ/Rocola/Sonoridad.cs $RAIZ/Rocola/RellenoMp3.cs $RAIZ/Rocola/SinSilencios.cs $RAIZ/Rocola/SubirTodo.cs $RAIZ/Rocola/NivelDisco.cs $RAIZ/Rocola/BombaSonido.cs $RAIZ/Rocola/DiarioTablas.cs $RAIZ/Rocola/CancionEnMemoria.cs $RAIZ/Rocola/MedidasBitacora.cs $RAIZ/Rocola/FlotanteNLayer.cs $RAIZ/Rocola/PicoReal.cs $RAIZ/Rocola/Realce.cs"
@@ -61,6 +62,8 @@ CPU="ajustes bajo eqauto bajoauto calidad eqia nivel titulo duracion prueba prue
 GPU="textosgpu fondo anim presencia barrido tope calma entrar mover banco paginar ceremonia respira teclea palomito nebulosa pedidas fondocoste cielohondo fugaces luna mando vineta geombusca capascolor cargaadaptativa cubofila lunadetalle optimizaciones reposounido respuesta hojeoportadas cristalcola panelreposo envios revision20260921 cuboagrupado caratulasadaptativas partescaratulas"
 
 GPU="$GPU tironescaratulas"
+GPU="$GPU colacompacta cadenciavisual"
+CPU="$CPU ajustesfluidez"
 # Y las que miran algo que SOLO EXISTE en la rama de tarjeta grafica. La limpieza de videos que no
 # suenan es una de esas: para saber si un video suena hay que descomprimir su sonido, y eso alli lo
 # hace Media Foundation, que llego con Windows Vista. En la rama de XP no hay con que, asi que ni

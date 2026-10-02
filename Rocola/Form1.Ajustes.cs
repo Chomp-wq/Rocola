@@ -574,7 +574,9 @@ namespace Rocola
             protected override bool IsInputKey(Keys k) { return (k == Keys.Space) || base.IsInputKey(k); }
             protected override void OnKeyDown(KeyEventArgs e)
             {
-                if (e.KeyCode == Keys.Space || e.KeyCode == Keys.Enter) { OnClick(EventArgs.Empty); e.Handled = true; }
+                if (!Enabled) { base.OnKeyDown(e); return; }
+                if (e.KeyCode == Keys.Space || e.KeyCode == Keys.Enter)
+                { OnClick(EventArgs.Empty); e.Handled = true; e.SuppressKeyPress = true; }
                 base.OnKeyDown(e);
             }
             protected override void OnGotFocus(EventArgs e) { Invalidate(); base.OnGotFocus(e); }

@@ -2330,7 +2330,10 @@ namespace Rocola
 #endif
                 searchOverlay.Phase = phase;
                 searchOverlay.PulseLo = levLo; searchOverlay.PulseMid = levMid; searchOverlay.PulseHi = levHi;   // cada estrella late con SU banda
-                searchOverlay.CubeAngle += 0.075;   // gira mas rapido
+#if ROCOLA_GPU
+                if (gpuPanel == null || !gpuPanel.Visible)
+#endif
+                    searchOverlay.CubeAngle += 0.075;   // CPU intacto; en GPU avanza el reloj de cubos
                 // El cuadro COMPLETO una de cada tres veces (~8/seg, el mismo criterio que el fondo del resto del
                 // programa); en los otros dos, solo lo que de verdad se mueve. Repintar la pantalla entera 24 veces
                 // por segundo era el gasto fijo mas grande de la rocola. (No-op si el buscador va por GPU: el
@@ -2341,7 +2344,7 @@ namespace Rocola
 #if ROCOLA_GPU
                 sGpu = (gpuPanel != null && gpuPanel.Visible);   // panel GPU encima: el mini-cubo lo dibuja la GPU (repintar el control seria invisible)
 #endif
-                if (miniCube.Visible) { miniCube.Phase = phase; miniCube.Avanza(0.06); if (!sGpu || miniCube.Girando) miniCube.Invalidate(); }   // el angulo avanza siempre (la GPU lo lee)
+                if (miniCube.Visible && !sGpu) { miniCube.Phase = phase; miniCube.Avanza(0.06); miniCube.Invalidate(); }
                 TickMejorada(sGpu);   // la franja de estado sigue visible bajo el buscador: el letrero sigue brillando
                 return;
             }
@@ -2376,7 +2379,11 @@ namespace Rocola
                 EnterAttract();
             if (attractOn)
             {
-                attractView.Phase = phase; attractView.Angle += 0.05; attractView.Invalidate();
+                attractView.Phase = phase;
+#if ROCOLA_GPU
+                if (gpuPanel == null || !gpuPanel.Visible)
+#endif
+                { attractView.Angle += 0.05; attractView.Invalidate(); }
                 return;
             }
 
@@ -2434,16 +2441,15 @@ namespace Rocola
             { SpectralTap sp0 = curSbr; if (sp0 != null && sp0.CutHz > 0f) { eqMeasCut = sp0.CutHz; eqMeasCutLo = sp0.CutLoHz; } }   // acantilados de la cancion que suena
             if (albumView.Visible && !albumGpuBg) { albumView.Phase = phase; albumView.PulseLo = levLo; albumView.PulseMid = levMid; albumView.PulseHi = levHi; albumView.AnimTick(fullFrame || transitioning); }
 #if ROCOLA_GPU
-            else if (albumView.Visible && albumGpuBg) { albumView.Phase = phase; albumView.StepSpinGpu(); }   // el giro avanza aunque el fondo+cubos los pinte la GPU (sin repintar por CPU)
+            else if (albumView.Visible && albumGpuBg) { albumView.Phase = phase; }   // GPU avanza el giro en CubosDelCuadro
 #endif
             if (panelSongs.Visible)
             {
                 panelSongs.Accent = bgAccent;
                 if ((fullFrame || transitioning) && !albumGpuBg) { panelSongs.Invalidate(); lblAlbum.Invalidate(); }   // glows: 1 de cada 3 (solo si el CPU esta a la vista)
-                cubeBox.Phase = phase; cubeBox.Angle += 0.06;   // el angulo/bamboleo avanzan SIEMPRE (la GPU los lee via BuildGpuCubeState)
-                if (!albumGpuBg) cubeBox.Invalidate();          // el cubo grande por CPU solo se repinta si se ve
+                if (!albumGpuBg) { cubeBox.Phase = phase; cubeBox.Angle += 0.06; cubeBox.Invalidate(); }
             }
-            if (miniCube.Visible) { miniCube.Phase = phase; miniCube.Avanza(0.06); if (!albumGpuBg || miniCube.Girando) miniCube.Invalidate(); }   // idem mini-cubo (en GPU lo dibuja el panel)
+            if (miniCube.Visible && !albumGpuBg) { miniCube.Phase = phase; miniCube.Avanza(0.06); miniCube.Invalidate(); }
         }
 
         // Barra de ayuda: instrucciones con FORMAS y COLORES de los botones fisicos. Sin nombres de teclas.
