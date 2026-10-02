@@ -49,6 +49,30 @@ namespace Rocola
     internal sealed partial class GpuPanel
     {
         private long aheadAvailableTicks;
+        private int cellTextureCapacity = 54;
+        private double cellBudgetChecked = -2000;
+        private int cellBudgetWidth, cellBudgetHeight;
+        private readonly HashSet<string> protectedAhead = new HashSet<string>();
+        internal static long LiveCellBudget(uint available, int cacheMb, int pointerBytes, ulong freeRam)
+        {
+            long target = AdaptiveCellBudget(available, cacheMb, pointerBytes);
+            if (freeRam > 0) target = Math.Min(target, (long)Math.Min((ulong)long.MaxValue, freeRam / 16));
+            return Math.Max(16L * 1024 * 1024, target);
+        }
+        private void RefreshCellBudget()
+        {
+            double now = AhoraMs();
+            if (stars == null || !stars.Ok || (now - cellBudgetChecked < 2000 && cellBudgetWidth == Width && cellBudgetHeight == Height)) return;
+            cellBudgetChecked = now; cellBudgetWidth = Width; cellBudgetHeight = Height;
+            uint available = stars.EstimatedTextureMemory;
+            // El sondeo ya descuenta nuestras texturas: devolver su coste evita una espiral de poda.
+            if (available != 0) available = (uint)Math.Min(uint.MaxValue, (ulong)available + (ulong)CachedCellBytes());
+            cellTextureBudget = LiveCellBudget(available, Form1.CacheCeldasMb(), IntPtr.Size, Form1.FreeCoverMemory());
+            long cell = 0; int count = 0;
+            foreach (CellTex texture in cellTexCache.Values) { cell += CellBytes(texture); count++; }
+            long average = count > 0 ? Math.Max(1, cell / count + 256 * 256 * 4) : 1024 * 1024;
+            cellTextureCapacity = (int)Math.Max(54, Math.Min(216, cellTextureBudget / average));
+        }
         // Estimacion gruesa al crear dispositivo, no sondeo por textura ni garantia de VRAM.
         // Reserva margen para fondo/video/driver y conserva 32 MiB si no hay informacion.
         internal static long AdaptiveCellBudget(uint available, int systemCacheMb, int pointerBytes)
@@ -60,6 +84,10 @@ namespace Rocola
         }
         internal static int AheadUploadAllowance(int processors)
         { return processors<=2 ? 1 : processors<=6 ? 2 : 4; }
+    }
+    public partial class Form1
+    {
+        internal static ulong FreeCoverMemory() { return MemoriaLibre(); }
     }
 }
 #endif

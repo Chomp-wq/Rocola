@@ -310,7 +310,7 @@ namespace Rocola
             if (old != null) for (int i = 0; i < old.Length; i++) if (old[i] != null) old[i].Dispose();
         }
 
-        private class AlbumView : Control
+        private partial class AlbumView : Control
         {
             public List<Album> Page = new List<Album>();
             public int Selected = 0;
@@ -424,6 +424,8 @@ namespace Rocola
             }
             private static long GpuAtlasBytes(int w, int h)
             { long tw = 1, th = 1; while (tw < w) tw <<= 1; while (th < h) th <<= 1; return tw * th * 4; }
+            // Referencia del atlas anterior para comparaciones de regresion. La ruta de produccion
+            // usa BakeSeparatedCell y no vuelve a ampliar una portada al rasterizar su etiqueta.
             private Bitmap BakeGpuCell(Album a, int cw, int side, int labelH, int gap, Image cover, out GpuCellLayout layout)
             {
                 bool q = EnCola != null && EnCola(a);
@@ -484,16 +486,18 @@ namespace Rocola
             }
             private Bitmap PeekGpuCell(Album a, int cw, int side, int labelH, int gap, Image cover, bool visible, ref int budget, out GpuCellLayout layout)
             {
-                layout = new GpuCellLayout(); string key = ClaveCasilla(a); CeldaGpu c = null;
+                layout = new GpuCellLayout(); layout.Separate = true; layout.HideBlank = PortadasLod;
+                string key = ClaveCasilla(a); CeldaGpu c = null;
                 if (key != null) gpuCellCache.TryGetValue(key, out c);
                 else gpuAnonymousCache.TryGetValue(a, out c);
                 bool queued = key == null && EnCola != null && EnCola(a);
-                if (c != null && ((ReferenceEquals(c.Cover, cover) && c.Queued == queued && (cover != null || c.Lod == PortadasLod)) || budget <= 0))
-                { c.Uso = ++gpuCellUso; layout = c.Layout; return c.Bmp; }
+                if (c != null && ((c.Layout.Separate && c.Queued == queued && c.Lod == PortadasLod)
+                    || (ReferenceEquals(c.Cover, cover) && c.Queued == queued && (cover != null || c.Lod == PortadasLod)) || budget <= 0))
+                { c.Cover = cover; c.Uso = ++gpuCellUso; layout = c.Layout; return c.Bmp; }
                 if (budget <= 0 || (CoverControl != null && (CoverControl.DeferBake || !CoverControl.CanStart(gpuBakeCost, visible, false))))
                 { if (c != null) { c.Uso = ++gpuCellUso; layout = c.Layout; return c.Bmp; } return null; }
                 long start = System.Diagnostics.Stopwatch.GetTimestamp();
-                budget--; Bitmap bmp = BakeGpuCell(a, cw, side, labelH, gap, cover, out layout);
+                budget--; Bitmap bmp = BakeSeparatedCell(a, cw, side, labelH, gap, out layout);
                 long elapsed = System.Diagnostics.Stopwatch.GetTimestamp() - start;
                 gpuBakeCost = CargaTrabajo.AprendeCoste(gpuBakeCost, elapsed);
                 if (CoverControl != null) CoverControl.Spend(elapsed);
@@ -673,6 +677,7 @@ namespace Rocola
                     buf[n] = new GpuGridCell();
                     buf[n].Key = ClaveCasilla(a);
                     buf[n].Bmp = PeekGpuCell(a, cw, side, labelH, gap, tapa, true, ref nada, out buf[n].Layout);
+                    buf[n].Direct = true; buf[n].FullCover = tapa as Bitmap;
                     CeldaGpu cached;
                     buf[n].HasCover = buf[n].Key != null && gpuCellCache.TryGetValue(buf[n].Key, out cached) && cached.Cover != null;
                     buf[n].Preview = PortadasLod && PeekPreviewGpu != null ? PeekPreviewGpu(a) as Bitmap : null;
@@ -746,6 +751,7 @@ namespace Rocola
                     buf[n].Layout = new GpuCellLayout();
                     Image cover = chica ? (PeekCoverGpu != null ? PeekCoverGpu(a) : null) : (GetCover != null ? GetCover(a) : null);
                     buf[n].Bmp = chica && !PortadasLod ? null : PeekGpuCell(a, cw, side, labelH, gap, cover, true, ref useBudget, out buf[n].Layout);
+                    buf[n].Direct = true; buf[n].FullCover = cover as Bitmap;
                     if (!chica) budget = useBudget;
                     CeldaGpu cached = null;
                     if (buf[n].Key != null) gpuCellCache.TryGetValue(buf[n].Key, out cached);
@@ -788,7 +794,8 @@ namespace Rocola
                     cells[i] = new GpuGridCell();
                     cells[i].Key = key;
                     if (key != null && gpuCellCache.TryGetValue(key, out sprite) && sprite.Cover != null)
-                    { cells[i].Bmp = sprite.Bmp; cells[i].Layout = sprite.Layout; cells[i].HasCover = true; }
+                    { cells[i].Bmp = sprite.Bmp; cells[i].Layout = sprite.Layout; cells[i].HasCover = true;
+                        cells[i].Direct = true; cells[i].FullCover = PeekCoverGpu != null ? PeekCoverGpu(Ahead[i]) as Bitmap : null; }
                 }
                 return count;
             }

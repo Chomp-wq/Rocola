@@ -525,6 +525,9 @@ namespace Rocola
         // Prioridad visible y limites por unidad. F5 no borra unidades ocupadas por lecturas en vuelo.
         private void CoverPump()
         {
+#if ROCOLA_GPU
+            int poolGeneration = coverGen;
+#endif
             while (true)
             {
 #if ROCOLA_GPU
@@ -535,6 +538,22 @@ namespace Rocola
                 lock (coverLock)
                 {
                     j = TakeCoverJob(coverQHi) ?? TakeCoverJob(coverQLo);
+#if ROCOLA_GPU
+                    if (gpuEnabled && j == null && !coverWorkersStop && !startupClosing && poolGeneration == coverGen
+                        && coverPumpCount <= AdaptiveCoverReaders())
+                    {
+                        long idleUntil = System.Diagnostics.Stopwatch.GetTimestamp() + System.Diagnostics.Stopwatch.Frequency * 2;
+                        while (j == null && !coverWorkersStop && !startupClosing && poolGeneration == coverGen
+                            && coverPumpCount <= AdaptiveCoverReaders())
+                        {
+                            int wait = (int)Math.Min(2000, Math.Max(0, (idleUntil - System.Diagnostics.Stopwatch.GetTimestamp()) * 1000 / System.Diagnostics.Stopwatch.Frequency));
+                            if (wait <= 0) break;
+                            System.Threading.Monitor.Wait(coverLock, wait);
+                            if (!coverWorkersStop && !startupClosing && poolGeneration == coverGen)
+                                j = TakeCoverJob(coverQHi) ?? TakeCoverJob(coverQLo);
+                        }
+                    }
+#endif
                     if (j == null) { coverPumpCount--; return; }
                 }
                 string key = j.Key;
