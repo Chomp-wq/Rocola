@@ -95,6 +95,26 @@ namespace Rocola
         private readonly D3D9.Vtx[] nativeSoftQuad = new D3D9.Vtx[54];
         private readonly float[] nativeXs = new float[4], nativeYs = new float[4], nativeUs = new float[4], nativeVs = new float[4];
         private long nativeUploadCost;
+        private int maintenanceFrame = -1, maintenanceCount;
+        private long maintenanceStart, maintenanceCost;
+        // Las liberaciones del driver tambien son trabajo: un barrido completo no puede
+        // quedar fuera del regulador. Al menos una por cuadro garantiza progreso.
+        private bool ReleaseCoverTexture(IntPtr texture)
+        {
+            if (texture == IntPtr.Zero) return true;
+            long now = Stopwatch.GetTimestamp();
+            if (maintenanceFrame != cellFrame) {
+                maintenanceFrame = cellFrame; maintenanceCount = 0; maintenanceStart = now;
+            }
+            if (maintenanceCount > 0 && (maintenanceCount >= 4 ||
+                now - maintenanceStart + maintenanceCost >= Stopwatch.Frequency * .00075 ||
+                (CoverControl != null && !CoverControl.CanStart(maintenanceCost, false, false)))) return false;
+            D3D9.Release(texture); maintenanceCount++;
+            long spent = Stopwatch.GetTimestamp() - now;
+            maintenanceCost = CargaTrabajo.AprendeCoste(maintenanceCost, spent);
+            if (CoverControl != null) CoverControl.Spend(spent);
+            return true;
+        }
         private IntPtr PrepareNativeCover(GpuGridCell cell, ref int budget, bool visible, out float u, out float v)
         {
             u = v = 1; if (!cell.Direct || cell.FullCover == null) return IntPtr.Zero;
@@ -102,6 +122,9 @@ namespace Rocola
             if (!nativeCovers.TryGetValue(cell.FullCover, out texture)) texture = new CellTex();
             if (visible || texture.Frame != cellFrame) texture.Frame = visible ? cellFrame : unchecked(cellFrame - 1);
             if (texture.Tex != IntPtr.Zero) { u = texture.U; v = texture.V; return texture.Tex; }
+            // La poda gradual puede tardar varios cuadros. No permitir crecimiento
+            // ilimitado si el usuario encadena paginas mas rapido que su limpieza.
+            if (nativeCovers.Count >= cellTextureCapacity + MaxCells) return IntPtr.Zero;
             if (budget <= 0 || (CoverControl != null && !CoverControl.CanStart(nativeUploadCost, visible, false))) return IntPtr.Zero;
             long start = Stopwatch.GetTimestamp(); budget--;
             texture.Tex = Upload(IntPtr.Zero, ref texture.Bw, ref texture.Bh, cell.FullCover, out texture.U, out texture.V);
@@ -173,7 +196,8 @@ namespace Rocola
                 int age = unchecked(cellFrame - row.Value.Frame); if (age > oldest) { oldest = age; victim = row.Key; }
             }
             if (victim == null) return false;
-            D3D9.Release(nativeCovers[victim].Tex); nativeCovers.Remove(victim); cellBytesDirty = true; return true;
+            if (!ReleaseCoverTexture(nativeCovers[victim].Tex)) return false;
+            nativeCovers.Remove(victim); cellBytesDirty = true; return true;
         }
         private void EvictNativeCovers()
         {

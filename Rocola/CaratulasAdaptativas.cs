@@ -521,6 +521,7 @@ namespace Rocola
             if (full && l == null) return;
             if (l == null || l.Bmp != cell.Preview || l.Tex == IntPtr.Zero)
             {
+                if (l == null && lodTextures.Count >= 144 && !DiscardOldLod()) return;
                 if (CoverControl != null && !CoverControl.CanStart(Stopwatch.Frequency / 10000, true, true)) return;
                 long start = Stopwatch.GetTimestamp(); float u, v;
                 IntPtr tex = stars.CreateOverlay(cell.Preview, out u, out v);
@@ -559,12 +560,23 @@ namespace Rocola
         }
         private void TrimLod(bool all)
         {
-            List<string> old = null;
-            foreach (KeyValuePair<string, LodTex> p in lodTextures)
-                if (all || unchecked(cellFrame - p.Value.Frame) > 4)
-                { if (old == null) old = new List<string>(); old.Add(p.Key); }
-            if (old == null) return;
-            foreach (string key in old) { D3D9.Release(lodTextures[key].Tex); lodTextures.Remove(key); }
+            if (all) {
+                foreach (LodTex texture in lodTextures.Values) D3D9.Release(texture.Tex);
+                lodTextures.Clear(); return;
+            }
+            // Conservar seis paginas de siluetas (432 KiB a 32x32). Antes se destruian
+            // tras cuatro cuadros y habia que volver a subirlas al retroceder.
+            while (lodTextures.Count > 108) if (!DiscardOldLod()) break;
+        }
+        private bool DiscardOldLod()
+        {
+            string victim = null; int oldest = 4;
+            foreach (KeyValuePair<string, LodTex> row in lodTextures) {
+                int age = unchecked(cellFrame - row.Value.Frame);
+                if (age > oldest) { oldest = age; victim = row.Key; }
+            }
+            if (victim == null || !ReleaseCoverTexture(lodTextures[victim].Tex)) return false;
+            lodTextures.Remove(victim); return true;
         }
     }
 #endif

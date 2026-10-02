@@ -376,26 +376,33 @@ namespace Rocola
             private readonly Dictionary<string, CeldaGpu> gpuCellCache = new Dictionary<string, CeldaGpu>();
             private readonly Dictionary<Album, CeldaGpu> gpuAnonymousCache = new Dictionary<Album, CeldaGpu>();
             private long gpuCellUso;
+            private bool gpuPruning;
             private void ClearGpuCells()
             {
                 foreach (CeldaGpu c in gpuCellCache.Values) c.Bmp.Dispose(); gpuCellCache.Clear();
                 foreach (CeldaGpu c in gpuAnonymousCache.Values) c.Bmp.Dispose(); gpuAnonymousCache.Clear();
                 gpuCellUso = 0;
+                gpuPruning = false;
             }
             private void PodaGpuCells()
             {
                 int count = gpuCellCache.Count + gpuAnonymousCache.Count;
-                if (count <= capCeldas) return;
-                long[] usos = new long[count]; int n = 0;
-                foreach (CeldaGpu c in gpuCellCache.Values) usos[n++] = c.Uso;
-                foreach (CeldaGpu c in gpuAnonymousCache.Values) usos[n++] = c.Uso;
-                Array.Sort(usos); long corte = usos[Math.Max(0, count - keepCeldas)];
-                List<string> fuera = new List<string>();
-                foreach (KeyValuePair<string, CeldaGpu> c in gpuCellCache) if (c.Value.Uso < corte) fuera.Add(c.Key);
-                foreach (string k in fuera) { gpuCellCache[k].Bmp.Dispose(); gpuCellCache.Remove(k); }
-                List<Album> sinCarpeta = new List<Album>();
-                foreach (KeyValuePair<Album, CeldaGpu> c in gpuAnonymousCache) if (c.Value.Uso < corte) sinCarpeta.Add(c.Key);
-                foreach (Album a in sinCarpeta) { gpuAnonymousCache[a].Bmp.Dispose(); gpuAnonymousCache.Remove(a); }
+                if (count > capCeldas) gpuPruning = true;
+                if (!gpuPruning) return;
+                long start = System.Diagnostics.Stopwatch.GetTimestamp();
+                for (int i = 0; i < 4 && count > keepCeldas; i++) {
+                    if (i > 0 && System.Diagnostics.Stopwatch.GetTimestamp() - start >= System.Diagnostics.Stopwatch.Frequency * .0005) break;
+                    string key = null; Album album = null; CeldaGpu victim = null;
+                    foreach (KeyValuePair<string, CeldaGpu> row in gpuCellCache)
+                        if (victim == null || row.Value.Uso < victim.Uso) { victim = row.Value; key = row.Key; }
+                    foreach (KeyValuePair<Album, CeldaGpu> row in gpuAnonymousCache)
+                        if (victim == null || row.Value.Uso < victim.Uso) { victim = row.Value; key = null; album = row.Key; }
+                    if (victim == null) break;
+                    victim.Bmp.Dispose();
+                    if (key != null) gpuCellCache.Remove(key); else gpuAnonymousCache.Remove(album);
+                    count--;
+                }
+                if (count <= keepCeldas) gpuPruning = false;
             }
             internal static GpuCellLayout PlanAtlasGpu(int cw, int side, int labelH, int gap, bool enCola)
             {
