@@ -109,6 +109,7 @@
     <Compile Include="NebulosaNaturalGpu.cs" />
     <Compile Include="AuroraNaturalGpu.cs" />
     <Compile Include="OpticaNaturalGpu.cs" />
+    <Compile Include="AcabadoNaturalGpu.cs" />
     <Compile Include="PreparacionFondoGpu.cs" />
     <Compile Include="EscaneoMemo.cs" />
     <Compile Include="AperturaAudio.cs" />
@@ -168,6 +169,10 @@
       <DependentUpon>Resources.resx</DependentUpon>
     </Compile>
     <Content Include="rocola.ico" />
+    <Content Include="..\AVISOS_NLAYER.txt">
+      <Link>AVISOS_NLAYER.txt</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <None Include="Properties\Settings.settings">
       <Generator>SettingsSingleFileGenerator</Generator>
       <LastGenOutput>Settings.Designer.cs</LastGenOutput>
