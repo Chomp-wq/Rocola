@@ -302,6 +302,26 @@ controles sinteticos. Ver FLUIDEZ_SESION_COMPLETA_2026-10-10.md.
 La pasada actual SOLO valido la autoprueba y la geometria: no llamar medicion real
 a la compilacion de este instrumento. Ver ESTELA_CACHE_Y_PRUEBAS_2026-10-10.md.
 
+## Comparaciones reales ejecutadas y repaso activo (10-10-2026)
+
+La continuacion corrigio la preparacion PlayItem/Song del instrumento de estrella:
+la version anterior fallaba antes de medir, no demostraba un fallo del reproductor.
+Ahora prepara el disco/paleta reales y comprueba Playing despues del calentamiento.
+Autoprueba actual: 43 controles, repetidos en proceso nativo y x86 en ambas ramas.
+
+Se agrega el cuarto argumento opcional `--con-repaso`. NO es un setting grafico.
+Con el exige pendientes y trabajadores vivos; sin el espera repaso terminado.
+Conservar ia_datos=0 SOLO en las copias; el modo activo no pausa trabajadores.
+Los pendientes suman obligaciones de varias tandas, no canciones unicas. La
+navegacion mantiene actividad: el propio programa aplaza el analisis mientras
+alguien usa los controles. En extendido si debe disminuir el trabajo pendiente.
+
+Se ejecutaron 32 escenas reales: ocho por rama, sin repaso y con biblioteca
+completa/repaso activo. Modest aun registra pausas con el repaso activo; no
+certificar fluidez por FPS medios ni por las autopruebas. Resultados y limites:
+`CIERRE_REAL_Y_APOLLO_2026-10-10.md`. Sustituye SOLO el estado pendiente de los
+informes anteriores; las evidencias sinteticas anteriores conservan su alcance.
+
 ## Añadir una batería nueva
 
 1. Escribe `mibateria.cs` con un `Main` que reciba la ruta del ejecutable como primer argumento.

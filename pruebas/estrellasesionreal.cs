@@ -17,6 +17,8 @@ class EstrellaSesionReal
     static object panel, track;
     static int mode = -1, errors, reports;
     static bool measuring;
+    static bool withReview;
+    static int pendingAtStart;
     static long sessionGeneration;
     static readonly Stopwatch stage = new Stopwatch();
     static double p95min, p95max, p99min, p99max, maximum, outside, schedule, prepare, draw, present;
@@ -55,6 +57,14 @@ class EstrellaSesionReal
             Count("preScanLeft") == 0 && Count("integLeft") == 0 && Count("durScanLeft") == 0 &&
             !Alive("preparaRepasoTh") && !Alive("preScanTh") && !Alive("durScanTh");
     }
+    static bool ReviewActive()
+    {
+        return !(bool)Get(form, "libBuilding") &&
+            (Count("preScanLeft") > 0 || Count("integLeft") > 0 || Count("durScanLeft") > 0) &&
+            (Alive("preScanTh") || Alive("durScanTh"));
+    }
+    static bool WorkReady() { return withReview ? ReviewActive() : Settled(); }
+    static int Pending() { return Count("preScanLeft") + Count("integLeft") + Count("durScanLeft"); }
     static bool ConflictingName(string name, string own)
     {
         return name.StartsWith("Rocola", StringComparison.OrdinalIgnoreCase) ||
@@ -113,6 +123,11 @@ class EstrellaSesionReal
         return data;
     }
     static bool Idle { get { return (mode & 1) != 0; } }
+    static bool SameSong()
+    {
+        object item = Get(form, "nowPlaying");
+        return item != null && !(bool)Get(item, "IsVideo") && ReferenceEquals(Get(item, "Song"), track);
+    }
     static string Label { get { return (mode < 4 ? "Legacy" : "Natural") + ((mode & 2) == 0 ? " 2D" : " 3D") + (Idle ? " extendido" : " navegacion quieta"); } }
     static void Next()
     {
@@ -121,8 +136,16 @@ class EstrellaSesionReal
         Set(form, "estiloFondo", mode < 4 ? 0 : 1); Set(form, "estrella3d", (mode & 2) != 0);
         Set(form, "lunaActiva", true); Set(form, "estadoExpandido", true); Set(form, "muroReposo", true);
         Call(form, "AplicaEfectosGpu");
+        Call(form, "DisposePlaybackNow");
+        object disc = null;
+        foreach (object album in (IList)Get(form, "albums"))
+            if (!(bool)Get(album, "IsTop") && ((IList)Get(album, "Tracks")).Contains(track)) { disc = album; break; }
+        if (disc == null) throw new InvalidOperationException("La pista no tiene disco de origen en la copia.");
+        object item = Activator.CreateInstance(form.GetType().GetNestedType("PlayItem", B), true);
+        Set(item, "Song", track); Set(item, "Disc", disc); Set(form, "nowPlaying", item);
+        Call(form, "RefrescaCola"); Call(track, "EnsureTags"); Call(form, "ApplyGenreBackground", track, disc);
         Call(form, "PlayTrackForMeasurement", track); // misma pista desde cero, DSP real y salida muda
-        if (Get(form, "output") == null || !ReferenceEquals(Get(form, "nowPlaying"), track))
+        if (Get(form, "output") == null || !SameSong())
             throw new InvalidOperationException("No se abrio la misma cancion real muda.");
         Set(panel, "ShowFps", true); Touch(Idle); stage.Reset(); stage.Start();
     }
@@ -134,7 +157,7 @@ class EstrellaSesionReal
             {
                 Touch(true); // permitir que el repaso normal termine durante la PREPARACION
                 if (stage.Elapsed.TotalMinutes > 15) throw new TimeoutException("El repaso no termino; no se certifica una escena aislada.");
-                if (!Settled()) return;
+                if (!WorkReady()) return;
                 IList tracks = (IList)Get(form, "tracks");
                 if (tracks.Count == 0) return;
                 if ((bool)Get(form, "attractOn")) Call(form, "ExitAttract");
@@ -142,8 +165,8 @@ class EstrellaSesionReal
                 if (panel == null || !((Control)panel).Visible) throw new InvalidOperationException("GPU no activa.");
                 Set(panel, "ReportFluidez", (Action<string>)Observe); Next(); return;
             }
-            if (!Settled()) throw new InvalidOperationException("Se reactivo el repaso o el escaneo; escena no valida.");
-            if (!ReferenceEquals(Get(form, "nowPlaying"), track) || Get(form, "output") == null)
+            if (!WorkReady()) throw new InvalidOperationException("Cambio el estado del repaso/escaneo; escena no valida.");
+            if (!SameSong() || Get(form, "output") == null)
                 throw new InvalidOperationException("Cambio/finalizo la cancion durante la escena.");
             if ((bool)Get(form, "attractOn")) throw new InvalidOperationException("Entro en atraccion.");
             if (form.WindowState == FormWindowState.Minimized) throw new InvalidOperationException("Ventana minimizada: escena no valida.");
@@ -152,7 +175,11 @@ class EstrellaSesionReal
             if (!measuring)
             {
                 if (stage.ElapsedMilliseconds < 5000 || (Idle ? blend < .997f : blend > .003f)) return;
+                object output = Get(form, "output");
+                if (output.GetType().GetProperty("PlaybackState").GetValue(output, null).ToString() != "Playing")
+                    throw new InvalidOperationException("La salida real no empezo a reproducir.");
                 NoOtherRocola(); Call(panel, "ReiniciaMedida");
+                pendingAtStart = Pending();
                 sessionGeneration = (long)Get(Get(panel, "fluidez"), "GeneracionSesion");
                 p95min = p99min = double.MaxValue; p95max = p99max = maximum = outside = schedule = prepare = draw = present = 0;
                 reports = 0; measuring = true; stage.Reset(); stage.Start(); return;
@@ -172,7 +199,8 @@ class EstrellaSesionReal
                 " episodios_gc_coincidente=" + Get(session, "EpisodiosGcSesion") + " max_sesion_ms=" + F(Number(session, "MaximoSesion")) +
                 " peor_preparar_dibujar_presentar_ms=" + F(Number(worst, "Preparar")) + "/" + F(Number(worst, "Dibujar")) + "/" + F(Number(worst, "Presentar")) +
                 " peor_fueraRender_agenda_ms=" + F(Number(worst, "FueraRender")) + "/" + F(Number(worst, "Agenda")) +
-                " peor_gc=" + Get(worst, "Gc0") + "/" + Get(worst, "Gc1") + "/" + Get(worst, "Gc2") + " repaso_pendiente=0");
+                " peor_gc=" + Get(worst, "Gc0") + "/" + Get(worst, "Gc1") + "/" + Get(worst, "Gc2") +
+                " repaso=" + (withReview ? "activo" : "terminado") + " repaso_pendiente_inicio=" + pendingAtStart + " repaso_pendiente_fin=" + Pending());
             Next();
         }
         catch (Exception e) { errors++; Console.Error.WriteLine(e); ((System.Windows.Forms.Timer)sender).Stop(); form.Close(); }
@@ -183,7 +211,18 @@ class EstrellaSesionReal
         try
         {
             form = (Form)System.Runtime.Serialization.FormatterServices.GetUninitializedObject(asm.GetType("Rocola.Form1", true));
+            track = Activator.CreateInstance(form.GetType().GetNestedType("Track", B), true);
+            object playItem = Activator.CreateInstance(form.GetType().GetNestedType("PlayItem", B), true);
+            if (SameSong()) throw new Exception("acepto ficha nula"); checks++;
+            Set(form, "nowPlaying", playItem);
+            if (SameSong()) throw new Exception("acepto ficha sin cancion"); checks++;
+            Set(playItem, "Song", track);
+            if (!SameSong()) throw new Exception("no reconoce Song de la ficha real"); checks++;
+            Set(playItem, "IsVideo", true);
+            if (SameSong()) throw new Exception("acepto video como musica"); checks++;
+            Set(form, "nowPlaying", null); track = null;
             if (!Settled()) throw new Exception("fixture al dia"); checks++;
+            if (ReviewActive()) throw new Exception("repaso ficticio sin trabajo"); checks++;
             foreach (string name in new string[] { "preScanLeft", "integLeft", "durScanLeft" })
             {
                 Set(form, name, 1); if (Settled()) throw new Exception("no detecto " + name); checks++; Set(form, name, 0);
@@ -199,6 +238,13 @@ class EstrellaSesionReal
                 Thread thread = new Thread(delegate() { stop.WaitOne(); }); thread.IsBackground = true; thread.Start();
                 try
                 {
+                    Set(form, "preScanLeft", 7);
+                    if (ReviewActive()) throw new Exception("pendientes sin carril no son repaso activo"); checks++;
+                    Set(form, "preScanTh", new Thread[] { thread });
+                    if (!ReviewActive() || Pending() != 7) throw new Exception("no detecto repaso real pendiente"); checks++;
+                    Set(form, "libBuilding", true);
+                    if (ReviewActive()) throw new Exception("certifico escaneo sin terminar"); checks++;
+                    Set(form, "libBuilding", false); Set(form, "preScanLeft", 0); Set(form, "preScanTh", null);
                     foreach (string name in new string[] { "preparaRepasoTh", "durScanTh" })
                     { Set(form, name, thread); if (Settled()) throw new Exception("hilo pendiente " + name); checks++; Set(form, name, null); }
                     Set(form, "preScanTh", new Thread[] { null, thread }); if (Settled()) throw new Exception("carril vivo"); checks++;
@@ -246,7 +292,9 @@ class EstrellaSesionReal
         try
         {
             if (args.Length == 2 && args[0] == "--autoprueba") return Self(Assembly.LoadFrom(Path.GetFullPath(args[1])));
-            if (args.Length != 3) throw new ArgumentException("estrellasesionreal.exe <Rocola.exe> <datos COPIADOS en TEMP> <ruta de pista real de esa biblioteca>");
+            if (args.Length != 3 && !(args.Length == 4 && args[3] == "--con-repaso"))
+                throw new ArgumentException("estrellasesionreal.exe <Rocola.exe> <datos COPIADOS en TEMP> <ruta de pista real de esa biblioteca> [--con-repaso]");
+            withReview = args.Length == 4;
             NoOtherRocola();
             string data = ValidateData(args[1]);
             Environment.SetEnvironmentVariable("ROCOLA_DATOS", data);

@@ -7,6 +7,16 @@ import sys, os, shutil, subprocess
 
 OK, MAL = "  [OK] ", "  [X]  "
 fallas = 0
+
+def prueba_inferencia(proc):
+    """El silencio tiene un atajo: NO sirve para comprobar el forward de Apollo."""
+    import numpy as np
+    t = np.arange(44100, dtype=np.float64) / 44100.0
+    x = np.stack((.04 * np.sin(2 * np.pi * 440 * t) + .02 * np.sin(2 * np.pi * 6840 * t),
+                  .03 * np.sin(2 * np.pi * 660 * t) + .02 * np.sin(2 * np.pi * 5220 * t)), axis=1)
+    y = np.asarray(proc(x))
+    return (y.shape == x.shape and np.isrealobj(y) and
+            np.issubdtype(y.dtype, np.number) and np.isfinite(y).all() and np.any(np.abs(y) > 1e-8))
 def rev(cond, bien, mal):
     global fallas
     print((OK + bien) if cond else (MAL + mal))
@@ -74,9 +84,7 @@ if os.path.isdir(apollo):
         try:
             import modelo_apollo
             proc = modelo_apollo.cargar(apollo_dir=apollo)
-            import numpy as _np
-            y = proc(_np.zeros((44100, 2), dtype=_np.float64))   # prueba real: procesa 1 segundo de silencio
-            rev(y is not None and y.shape[1] == 2, "Apollo cargado y probado en la GPU", "Apollo cargo pero la prueba fallo")
+            rev(prueba_inferencia(proc), "Apollo cargado e inferencia NO silenciosa verificada", "Apollo cargo pero la inferencia fallo")
         except Exception as e:
             rev(False, "", "No se pudo cargar Apollo (%s)" % e)
 

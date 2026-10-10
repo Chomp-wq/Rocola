@@ -1,5 +1,10 @@
 # Fluidez: no perder las pausas anteriores de la sesion
 
+Continuacion posterior: ver `CIERRE_REAL_Y_APOLLO_2026-10-10.md` para la instalacion
+de Modest, las comparaciones reales ya ejecutadas y Apollo actualizado en HD.
+El estado pendiente que figura al final de ESTE informe corresponde al momento
+anterior de la misma fecha; no sustituye las nuevas mediciones ni sus limites.
+
 Cambios compartidos en Modest (.NET 3.5) y HD (.NET 4.8), solo en el diagnostico
 GPU y el instrumento opcional. No se cambia la estrella, su trayectoria, la estela,
 los colores, el audio, la calidad de caratulas ni los controles. CPU congelado.

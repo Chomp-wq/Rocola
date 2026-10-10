@@ -17,6 +17,25 @@ conjunto mínimo de entrenamiento.
 No llames `entrenar_ia.py --help`: ese entrenador no reconoce esa opción y podría
 iniciar su prueba sintética. Utiliza el lanzador de arrastre indicado arriba.
 
-Las herramientas Apollo instaladas en `ia\upscale` y `ia\tiempo_real` no se sustituyen
-con esta actualización. El escáner optimizado del repositorio requiere un paquete
-Apollo coherente; no copies `util_audio.py` aisladamente sobre una versión antigua.
+Actualizacion posterior del 10-10-2026: Apollo de HD ya tiene el paquete coherente
+de `ia\upscale` y `ia\tiempo_real` (35 archivos), con respaldo anterior/nuevo y
+manifiesto en `D:\ReleaseHD\respaldo_apollo_20261010_9a681e66b2654de59a9a3e332a42cacc`.
+Conserva pesos, venv, codigo externo Apollo, cache, modelo.txt y ajustes del usuario.
+Se comprobaron 108 pruebas y una inferencia no silenciosa real en CUDA, tambien
+despues de instalar. No copies `util_audio.py` aisladamente sobre versiones antiguas.
+
+`pruebas/apollosesionreal.py` es una integracion opcional del repositorio: utiliza
+el paquete y codigo Apollo indicados, crea solamente salidas nuevas en TEMP y lee
+la entrada sin modificarla. Necesita FFmpeg/ffprobe en PATH y el entorno Apollo
+instalado. No ejecutarla durante un benchmark grafico o entrenamiento.
+
+Ejemplo desde el repositorio HD (sustituir la ruta de cancion):
+
+```powershell
+& 'D:\ReleaseHD\ia\upscale\venv\Scripts\python.exe' pruebas\apollosesionreal.py --entrada 'D:\musica\album\cancion.mp3' --paquete 'D:\ReleaseHD\ia' --apollo 'D:\ReleaseHD\ia\upscale\Apollo'
+```
+
+Usa una degradacion CONTROLADA de 12 segundos para probar la red, publica WAV
+float32 y genera X/Y a ciegas con niveles igualados. No demuestra preferencia
+audible ni reconstruccion fiel del original. No instala ni activa nuevos modelos.
+Detalle y limites: `CIERRE_REAL_Y_APOLLO_2026-10-10.md` en la raiz del repositorio.
