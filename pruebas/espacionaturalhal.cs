@@ -220,6 +220,25 @@ class EspacioNaturalHal
         stage = 0;
     }
 
+    static void GrainPixels(Size size, string output, bool natural)
+    {
+        // Comparacion A/B reproducible: aislar el ruido del reloj de fugaces,
+        // deriva y otras capas animadas de las capturas de escena completa.
+        Type vt = S.Assembly.GetType("Rocola.D3D9+Vtx", true);
+        Array background = Array.CreateInstance(vt, 12);
+        Call(S, null, "SetQuad", background, 0, 0f, 0f, (float)size.Width, size.Height / 2f,
+            0xFF284058u, 0xFF284058u, 0xFF284058u, 0xFF284058u);
+        Call(S, null, "SetQuad", background, 6, 0f, size.Height / 2f, (float)size.Width, (float)size.Height,
+            0xFF284058u, 0xFF284058u, 0xFF284058u, 0xFF284058u);
+        Check((bool)Call(D, device, "BeginFrame"), "cuadro aislado de ruido HAL");
+        Call(D, device, "DrawSky", background);
+        Call(P, panel, "DibujaRuido");
+        EndScene();
+        Save(ReadPixels(size.Width, size.Height), size.Width, size.Height,
+            Path.Combine(output, (natural ? "ruido-natural-" : "ruido-legacy-") + size.Width + "x" + size.Height + ".png"));
+        PresentScene();
+    }
+
     static void Cache()
     {
         bool original = (bool)Get(panel, "FondoNatural");
@@ -343,15 +362,21 @@ class EspacioNaturalHal
                 {
                     Array.Clear(calls, 0, calls.Length); Array.Clear(tris, 0, tris.Length);
                     Draw(); EndScene();
-                    Array grain = (Array)Get(panel, "nieblaQuad");
+                    // La optimizacion agrupa las teselas de ruido en una malla propia.
+                    // Comprobar lo ENVIADO, no el quad auxiliar que ahora usa la nebulosa.
+                    FieldInfo grainMesh = P.GetField("ruidoMalla", All);
+                    Array grain = grainMesh != null ? (Array)grainMesh.GetValue(panel) : (Array)Get(panel, "nieblaQuad");
                     uint grainTint = (uint)grain.GetValue(0).GetType().GetField("Color", All).GetValue(grain.GetValue(0));
                     Check(grainTint == (style == 1 ? 0xD0FFFFFFu : 0xFFFFFFFFu), "grano propio Natural, receta Legacy sin cambios");
+                    if (grainMesh != null)
+                        Check(calls[3] == 1 && tris[3] == grain.Length / 3, "ruido agrupado envia toda la malla una sola vez a HAL");
                     counts[style] = (int[])calls.Clone(); triangles[style] = (int[])tris.Clone();
                     frames[style] = ReadPixels(size.Width, size.Height);
                     Save(frames[style], size.Width, size.Height, Path.Combine(output, (style == 1 ? "natural-" : "legacy-") + size.Width + "x" + size.Height + ".png"));
                     PresentScene();
                 }
                 finally { Observe(false); }
+                GrainPixels(size, output, style == 1);
                 Console.WriteLine("ENVIO " + (style == 1 ? "Natural" : "Legacy") + " " + size + " draws=[" + string.Join(",", Array.ConvertAll(counts[style], delegate(int n) { return n.ToString(); })) + "] tris=[" + string.Join(",", Array.ConvertAll(triangles[style], delegate(int n) { return n.ToString(); })) + "]");
             }
             foreach (int index in new int[] { 0, 2, 3, 4 })

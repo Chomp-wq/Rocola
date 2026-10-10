@@ -358,6 +358,20 @@ namespace Rocola
         }
         // Se ANADE al final en vez de reescribir el archivo entero. Con cien mil canciones, reescribirlo cada
         // 10 canciones durante el repaso a fondo eran megas y megas al disco cada minuto, para nada.
+        // Bajo el cerrojo de la cola: mientras escribe una captura solo se ANADEN nuevas lineas.
+        // Retirar una a una con Remove desplaza toda la cola por cada linea (cuadratico).
+        // Confirmar el prefijo y mover el resto una sola vez conserva lo llegado durante el guardado.
+        private static void RetiraPrefijoGuardado(List<string> pendientes, List<string> guardadas)
+        {
+            int n = guardadas.Count;
+            bool prefijo = n <= pendientes.Count;
+            for (int i = 0; prefijo && i < n; i++)
+                prefijo = string.Equals(pendientes[i], guardadas[i], StringComparison.Ordinal);
+            if (prefijo) { pendientes.RemoveRange(0, n); return; }
+            // Respaldo ante una cola sustituida por otro flujo: la semantica anterior, sin
+            // descartar registros diferentes ni asumir que un prefijo parcialmente coincidente se guardo.
+            for (int i = 0; i < n && pendientes.Count > 0; i++) pendientes.Remove(guardadas[i]);
+        }
         private void SaveIaDone()
         {
             List<string> nuevas;
@@ -381,8 +395,7 @@ namespace Rocola
                 {
                     lock (iaDoneLock)
                     {
-                        if (ok)
-                            for (int i = 0; i < nuevas.Count && iaPend.Count > 0; i++) iaPend.Remove(nuevas[i]);
+                        if (ok) RetiraPrefijoGuardado(iaPend, nuevas);
                         iaDoneSaving = false; iaDoneDirty = iaPend.Count > 0;
                     }
                 }
@@ -456,8 +469,7 @@ namespace Rocola
                 {
                     lock (deepDoneLock)
                     {
-                        if (ok)
-                            for (int i = 0; i < nuevas.Count && deepPend.Count > 0; i++) deepPend.Remove(nuevas[i]);
+                        if (ok) RetiraPrefijoGuardado(deepPend, nuevas);
                         deepDoneSaving = false; deepDoneDirty = deepPend.Count > 0;
                     }
                 }
@@ -523,8 +535,7 @@ namespace Rocola
                 {
                     lock (durFastLock)
                     {
-                        if (ok)
-                            for (int i = 0; i < nuevas.Count && durFastPend.Count > 0; i++) durFastPend.Remove(nuevas[i]);
+                        if (ok) RetiraPrefijoGuardado(durFastPend, nuevas);
                         durFastSaving = false;
                     }
                 }
@@ -827,6 +838,8 @@ namespace Rocola
             if (planDuracion != null) planDuracion.Cancela();
             planDuracion = lectura;
             durScanLeft = 0;
+            try
+            {
             durScanTh = new System.Threading.Thread(delegate ()
             {
                 try
@@ -1056,7 +1069,7 @@ namespace Rocola
                 catch { }
                 finally { SueltaMedidorVideo(ref medidorVideo); }   // el objeto COM se crea y se suelta en ESTE hilo, que es el STA
                 }
-                finally { lecturaPlan = null; lectura.Dispose(); }
+                finally { lecturaPlan = null; FinalizaLecturaBiblioteca(lectura, false, myGen); }
             });
             durScanTh.IsBackground = true;
             durScanTh.Priority = System.Threading.ThreadPriority.Lowest;
@@ -1064,6 +1077,8 @@ namespace Rocola
             // duracion de los videos no se podria medir aqui.
             try { durScanTh.SetApartmentState(System.Threading.ApartmentState.STA); } catch { }
             durScanTh.Start();
+            }
+            catch { FinalizaLecturaBiblioteca(lectura, false, myGen); throw; }
         }
         private static bool EsVideo(string ruta)
         {
@@ -1453,6 +1468,8 @@ namespace Rocola
             if (planRepaso != null) planRepaso.Cancela();
             planRepaso = lectura;
             preScanCarriles = CarrilesPara(turbo, RocolaSola(), RepasoEnDiscoLento(), CargaTrabajo.Procesadores, minisPendientes > 0);
+            try
+            {
             preparaRepasoTh = new System.Threading.Thread(delegate ()
             {
                 bool compartida = false;
@@ -1470,7 +1487,10 @@ namespace Rocola
             compartida = true;
             try { BeginInvoke((MethodInvoker)delegate
             {
-            if (lectura.Cancelada || preScanStop || myGen != preScanGen) { lectura.Dispose(); return; }
+            bool repartida = false;
+            try
+            {
+            if (lectura.Cancelada || preScanStop || myGen != preScanGen) return;
             integLeft = pendInteg.Count;
             // CADA cuanto se vuelcan las tablas a disco. Un volcado reescribe ENTERAS las tablas de sonoridad y
             // de EQ: con cien mil canciones son ~17 MB por volcado. Hacerlo cada 10 canciones durante un repaso a
@@ -1488,7 +1508,7 @@ namespace Rocola
             // para que al reanudar siga desde donde iba en vez de volver a arrancar en cero.
             preScanTotal = turbo ? elegibles : pend.Count;
             if (lectura.Cancelada || preScanStop || myGen != preScanGen) return;
-            if (pend.Count == 0 && pendInteg.Count == 0) { preScanCarriles = 0; lectura.Dispose(); return; }
+            if (pend.Count == 0 && pendInteg.Count == 0) return;
             // CUANTOS CARRILES. El repaso A FONDO es el trabajo mas largo que hace la rocola -descomprime la
             // biblioteca entera- y hasta ahora lo hacia UN solo hilo: en un equipo de ocho o dieciseis nucleos
             // eso es dejar quieto el 90% de la maquina durante horas.
@@ -1510,13 +1530,23 @@ namespace Rocola
             int siguiente = -1;      // de aqui saca cada carril la siguiente cancion (reparto por demanda: las
             int hechasTot = 0;       // canciones no duran lo mismo, y asi ninguno se queda esperando al otro)
             int siguienteInteg = -1, hechasInteg = 0;   // lo mismo para la tanda de la cancion entera
-            int vivos = carriles;
+            // La reserva del lanzador evita que un carril muy corto cierre la lectura
+            // mientras aun se crean los otros. Tambien cubre un Thread.Start fallido.
+            int vivos = 1;
+            MethodInvoker finDeCarril = delegate
+            {
+                if (System.Threading.Interlocked.Decrement(ref vivos) != 0) return;
+                FinalizaLecturaBiblioteca(lectura, true, myGen);
+                try { if (IsHandleCreated && (hechasTot > 0 || hechasInteg > 0)) BeginInvoke((MethodInvoker)delegate { SaveLoudCache(); SaveIntegCache(); FlushEqIfDirty(); if (iaDoneDirty) { iaDoneDirty = false; SaveIaDone(); } if (deepDoneDirty) { deepDoneDirty = false; SaveDeepDone(); } }); } catch { }
+            };
+            repartida = true;
+            try
+            {
             Diag("repaso: " + pend.Count + " archivos en " + carriles + " carril(es)");
             preScanTh = new System.Threading.Thread[carriles];
             for (int carril = 0; carril < carriles; carril++)
             preScanTh[carril] = new System.Threading.Thread(delegate ()
             {
-                bool ultimo = false;
                 try
                 {
                     // El respiro del arranque se paga UNA vez, no en cada revision de carriles: entrar y
@@ -1678,13 +1708,7 @@ namespace Rocola
                 {
                     // El volcado final lo hace el ULTIMO carril que termina, no todos: si no, con cuatro
                     // carriles se reescribirian las tablas enteras cuatro veces seguidas para nada.
-                    ultimo = System.Threading.Interlocked.Decrement(ref vivos) == 0;
-                    if (ultimo)
-                    {
-                        if (myGen == preScanGen) preScanCarriles = 0;
-                        lectura.Dispose();
-                    }
-                    try { if (ultimo && IsHandleCreated && (hechasTot > 0 || hechasInteg > 0)) BeginInvoke((MethodInvoker)delegate { SaveLoudCache(); SaveIntegCache(); FlushEqIfDirty(); if (iaDoneDirty) { iaDoneDirty = false; SaveIaDone(); } if (deepDoneDirty) { deepDoneDirty = false; SaveDeepDone(); } }); } catch { }
+                    finDeCarril();
                 }
             });
             for (int carril = 0; carril < carriles; carril++)
@@ -1696,17 +1720,25 @@ namespace Rocola
             // normal sigue quedandose con TODO el tiempo que la interfaz no usa (que es casi todo), pero en
             // cuanto hay un cuadro que dibujar, manda el cuadro. En automatico, la minima de todas.
                 preScanTh[carril].Priority = turbo ? System.Threading.ThreadPriority.BelowNormal : System.Threading.ThreadPriority.Lowest;
-                preScanTh[carril].Start();
+                System.Threading.Interlocked.Increment(ref vivos);
+                try { preScanTh[carril].Start(); }
+                catch { finDeCarril(); throw; }
             }
+            }
+            finally { finDeCarril(); } // devuelve la reserva del lanzador, no la de un trabajador
+            }
+            finally { if (!repartida) FinalizaLecturaBiblioteca(lectura, true, myGen); }
             }); }
             catch { compartida = false; throw; }
                 }
                 catch { if (myGen == preScanGen) preScanCarriles = 0; }
-                finally { lecturaPlan = null; if (!compartida) lectura.Dispose(); }
+                finally { lecturaPlan = null; if (!compartida) FinalizaLecturaBiblioteca(lectura, true, myGen); }
             });
             preparaRepasoTh.IsBackground = true;
             preparaRepasoTh.Priority = System.Threading.ThreadPriority.BelowNormal;
             preparaRepasoTh.Start();
+            }
+            catch { FinalizaLecturaBiblioteca(lectura, true, myGen); throw; }
         }
 
         // CUANTO DURA UNA CANCION, Y EL UNICO SITIO QUE LO SABE.
@@ -2521,6 +2553,11 @@ namespace Rocola
         // Esas las recoge el GC cuando dejen de usarse, sin mantener otra lista creciente.
         private void DrainCoverTrash()
         {
+#if ROCOLA_GPU
+            // Una invalidacion puede expulsar cientos de mapas a la vez. No copiar ni liberar
+            // toda la papelera en un cuadro: conservar la lista y sacar por su extremo en O(1).
+            DrainCoverTrashAcotado(32, Math.Max(1L, System.Diagnostics.Stopwatch.Frequency / 1000L));
+#else
             List<Image> dump = null;
             lock (coverLock)
             {
@@ -2546,7 +2583,55 @@ namespace Rocola
                 if (enCola) continue;   // una capsula puede volver a dibujar esta imagen en otro cuadro
                 try { im.Dispose(); } catch { }
             }
+#endif
         }
+
+#if ROCOLA_GPU
+        private int DrainCoverTrashAcotado(int tope, long presupuestoTicks)
+        {
+            if (tope <= 0) return 0;
+            long inicio = System.Diagnostics.Stopwatch.GetTimestamp();
+            Image pin3 = transImg;
+            int retiradas = 0;
+            while (retiradas < tope)
+            {
+                Image im;
+                lock (coverLock)
+                {
+                    int ultimo = coverTrash.Count - 1;
+                    if (ultimo < 0) break;
+                    im = coverTrash[ultimo];
+                    coverTrash.RemoveAt(ultimo);
+                }
+                retiradas++;
+                bool enUso = im == null || im == pin3
+                    || (miniCube != null && miniCube.UsaPortada(im))
+                    || (cubeBox != null && cubeBox.UsaPortada(im));
+                if (!enUso && pastCola != null && pastCola.Portadas != null)
+                    for (int j = 0; j < pastCola.Portadas.Length; j++)
+                        if (object.ReferenceEquals(im, pastCola.Portadas[j])) { enUso = true; break; }
+                if (!enUso && searchOverlay != null) enUso = searchOverlay.RetienePortada(im);
+                // Las referencias aun usadas siguen siendo de sus controles/GC, como antes.
+                // No reencolarlas: un cubo fijo no debe hacer crecer una segunda cache sin limite.
+                if (!enUso) try { im.Dispose(); } catch { }
+                // Al menos una retirada para avanzar. El presupuesto se comprueba ENTRE imagenes:
+                // una llamada individual a GDI+ no se puede interrumpir ni se promete un tope absoluto.
+                if (System.Diagnostics.Stopwatch.GetTimestamp() - inicio >= presupuestoTicks) break;
+            }
+            return retiradas;
+        }
+
+        private partial class SearchOverlay
+        {
+            public bool RetienePortada(Image im)
+            {
+                if (artistCovers == null) return false;
+                for (int i = 0; i < artistCovers.Count; i++)
+                    if (object.ReferenceEquals(im, artistCovers[i])) return true;
+                return false;
+            }
+        }
+#endif
 
         private void SetSelectedLocal(int local, int dir)
         {

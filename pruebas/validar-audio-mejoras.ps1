@@ -27,10 +27,15 @@ $compiler = Join-Path $env:WINDIR ('Microsoft.NET\Framework\' + $framework + '\c
 $naudio = Join-Path $repoRoot 'packages\NAudio.1.9.0\lib\net35\NAudio.dll'
 $app = Join-Path $out 'Rocola-gpu.exe'
 Copy-Item -LiteralPath $app -Destination (Join-Path $out 'rocola.exe') -Force
+$mp3Fixtures = Join-Path $out 'mp3-fixtures'
+New-Item -ItemType Directory -Path $mp3Fixtures -Force | Out-Null
+foreach ($name in @('relleno_p0','relleno_mono','relleno_vbr','relleno_48k','relleno_mpeg2')) {
+    Copy-Item -LiteralPath (Join-Path $testRoot ($name+'.mp3')) -Destination $mp3Fixtures -Force
+}
 $previousPython = $env:ROCOLA_TEST_PYTHON
 try {
     $env:ROCOLA_TEST_PYTHON = (Get-Command $Python -ErrorAction Stop).Source
-    foreach ($test in @('dsee','limite','entrenador','iaparidad','iaorigen','sonoridad','picoreal','realce','transiciones','sinpausa','salida','videoaudio','eqpreparado','iadatos','eqauto','calidad','nivel','bajoauto','bajo','noche','gravemono','nivelpicos','soltar','relleno','silencios','todojunto','discoparejo','bomba','diario','enmemoria','memoriaanalisis','memoriaintegrada','wavdirecto')) {
+    foreach ($test in @('dsee','limite','entrenador','iaparidad','iaorigen','sonoridad','picoreal','realce','transiciones','sinpausa','salida','videoaudio','eqpreparado','iadatos','eqauto','calidad','nivel','bajoauto','bajo','noche','gravemono','nivelpicos','soltar','relleno','silencios','todojunto','discoparejo','bomba','diario','enmemoria','memoriaanalisis','memoriaintegrada','wavdirecto','corpusacotado','discoacotado','prefijosguardados','flotantesobrantes','mp3medidaligera')) {
         $exe = Join-Path $out ($test + '.exe')
         & $compiler /nologo /optimize+ /warnaserror+ ("/out:$exe") /r:System.Core.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll ("/r:$naudio") (Join-Path $testRoot ($test+'.cs')) (Join-Path $testRoot 'leercodigo.cs')
         if ($LASTEXITCODE -ne 0) { throw "No compila $test" }

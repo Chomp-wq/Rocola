@@ -68,6 +68,14 @@ class ArranqueEficiente
         Check(((IDictionary)Get(p[0], "Loud")).Count == 1 && ((IDictionary)Get(p[1], "Loud")).Count == 0,
             "analisis completo y lector ligero conservan sus tablas adicionales independientes");
         Call(p[1], "Cancela"); Check((bool)Get(p[1], "Cancelada") && !(bool)Get(p[0], "Cancelada"), "cancelar duraciones no cancela el repaso");
+        Set(f, "planRepaso", p[0]); Set(f, "planDuracion", p[1]); Set(f, "preScanGen", 4);
+        Call(f, "SueltaPlanTerminado", p[0], true, 4);
+        Check(Get(f, "planRepaso") == null && ReferenceEquals(Get(f, "planDuracion"), p[1])
+            && ReferenceEquals(Get(p[0], "Dur"), Get(p[1], "Dur")) && ((IList)Get(p[1], "Tracks")).Count == 1,
+            "retirar repaso UI no borra la base compartida del lector aun activo");
+        Call(f, "SueltaPlanTerminado", p[1], false, 4);
+        Check(Get(f, "planDuracion") == null && ((IDictionary)Get(p[0], "Loud")).Count == 1,
+            "retirar el segundo plan deja intacta su captura y tablas privadas");
         ((IDisposable)p[0]).Dispose(); Check(!(bool)Call(p[1], "Espera", 1), "liberar un plan no comparte ni invalida el cancelador del otro");
         ((IDisposable)p[1]).Dispose();
         object siguiente = Call(f, "CapturaLecturaBiblioteca"); Call(siguiente, "Prepara");

@@ -281,14 +281,20 @@ namespace Rocola
             cabe -= cabe % canales;
             if (nSobra == 0 && n <= cabe) { Buffer.BlockCopy(tmp, 0, dest, off, n * 4); return n * 4; }
             int total = nSobra + n;
-            float[] todo = new float[total];
-            Array.Copy(sobra, 0, todo, 0, nSobra);
-            Array.Copy(tmp, 0, todo, nSobra, n);
             int k = Math.Min(total, cabe);
-            Buffer.BlockCopy(todo, 0, dest, off, k * 4);
-            nSobra = total - k;
-            if (sobra.Length < nSobra) sobra = new float[nSobra];
-            Array.Copy(todo, k, sobra, 0, nSobra);
+            // La tira logica es sobra + tmp: entregar sus dos tramos sin concatenarlos.
+            // Primero sale lo viejo, aunque el destino sea tan pequeno que no llegue al cuadro nuevo.
+            int deSobra = Math.Min(nSobra, k), deTmp = k - deSobra;
+            Buffer.BlockCopy(sobra, 0, dest, off, deSobra * 4);
+            Buffer.BlockCopy(tmp, 0, dest, off + deSobra * 4, deTmp * 4);
+            int vieja = nSobra - deSobra, nueva = n - deTmp;
+            int pendientes = vieja + nueva;
+            float[] anterior = sobra;
+            // La retencion no crece mas que antes: solo hasta el sobrante real que debe salir despues.
+            if (sobra.Length < pendientes) sobra = new float[pendientes];
+            Array.Copy(anterior, deSobra, sobra, 0, vieja);  // admite el solape al compactar en el mismo array
+            Array.Copy(tmp, deTmp, sobra, vieja, nueva);
+            nSobra = pendientes;
             return k * 4;
         }
 

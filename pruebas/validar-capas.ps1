@@ -34,6 +34,11 @@ foreach ($mode in @('gpu', 'cpu')) {
     if ($LASTEXITCODE -ne 0) { throw "No compila $mode" }
 }
 $exe = Join-Path $OutputDirectory 'Rocola-gpu.exe'
+$mp3Fixtures = Join-Path $OutputDirectory 'mp3-fixtures'
+New-Item -ItemType Directory -Path $mp3Fixtures -Force | Out-Null
+foreach ($name in @('relleno_p0','relleno_mono','relleno_vbr','relleno_48k','relleno_mpeg2')) {
+    Copy-Item -LiteralPath (Join-Path $testRoot ($name+'.mp3')) -Destination $mp3Fixtures -Force
+}
 Push-Location $testRoot
 try {
 foreach ($test in @('capascolor', 'cristalcola', 'cubofila', 'respuesta', 'efectoslayout', 'reposounido', 'lunadetalle', 'estelaestelar', 'estrellaflujo', 'optimizaciones', 'eqpreparado', 'audiosuave', 'audioestereo', 'hojeoportadas', 'cargaadaptativa', 'escaneomemo', 'aperturaaudio', 'precarga', 'medidas', 'arranque', 'apollo', 'panelreposo', 'envios', 'revision20260921', 'cuboagrupado', 'etiqueta', 'id3selectivo', 'tablasarranque', 'historialarranque', 'paletaservicio', 'espacioprecarga', 'caratulasadaptativas')) {
@@ -52,7 +57,7 @@ foreach ($test in @('capascolor', 'cristalcola', 'cubofila', 'respuesta', 'efect
 }
 } finally { Pop-Location }
 $stutterExe = Join-Path $OutputDirectory 'tironescaratulas.exe'
-foreach ($extraTest in @('colacompacta', 'ajustesfluidez', 'cadenciavisual', 'estilosconfig', 'naturalestelar', 'nebulosanatural', 'espacionatural', 'auroranatural', 'opticanatural', 'preparacionnatural', 'acabadofinalnatural', 'estrella3d', 'ecosgeometria', 'estrellasesionreal', 'pausasestrella', 'audioeficiencia', 'datosdeltas', 'arranqueeficiente', 'fluidezcuadros', 'relojreposo', 'campoestelarbuffers', 'memoriaanalisis', 'memoriaintegrada', 'wavdirecto')) {
+foreach ($extraTest in @('colacompacta', 'ajustesfluidez', 'cadenciavisual', 'estilosconfig', 'naturalestelar', 'nebulosanatural', 'espacionatural', 'auroranatural', 'opticanatural', 'preparacionnatural', 'acabadofinalnatural', 'estrella3d', 'ecosgeometria', 'estrellasesionreal', 'pausasestrella', 'audioeficiencia', 'datosdeltas', 'arranqueeficiente', 'fluidezcuadros', 'relojreposo', 'campoestelarbuffers', 'memoriaanalisis', 'memoriaintegrada', 'wavdirecto', 'planbiblioteca', 'corpusacotado', 'discoacotado', 'prefijosguardados', 'flotantesobrantes', 'ruidomalla', 'papeleraportadas', 'mp3medidaligera')) {
     $extraExe = Join-Path $OutputDirectory ($extraTest + '.exe')
     & $compiler /nologo /target:exe /optimize+ /warnaserror+ ("/out:$extraExe") /r:System.dll /r:System.Core.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll ("/r:$naudio") (Join-Path $testRoot ($extraTest + '.cs')) (Join-Path $testRoot 'leercodigo.cs')
     if ($LASTEXITCODE -ne 0) { throw "No compila $extraTest" }
@@ -83,5 +88,5 @@ if ($LASTEXITCODE -ne 0) { throw 'No compila espacionaturalhal' }
 $naturalHalOutput = Join-Path $OutputDirectory 'fondo-hal'
 if ($SinHal) { & $naturalHalExe $exe $naturalHalOutput --sin-hal } else { & $naturalHalExe $exe $naturalHalOutput }
 if ($LASTEXITCODE -ne 0) { throw 'Fallo: espacionaturalhal' }
-Write-Output "PASS: compilacion GPU/CPU y cincuenta y nueve baterias. HAL omitido explicitamente: $SinHal. No se reemplazo ningun ejecutable de produccion. Salida: $OutputDirectory"
+Write-Output "PASS: compilacion GPU/CPU y sesenta y siete baterias. HAL omitido explicitamente: $SinHal. No se reemplazo ningun ejecutable de produccion. Salida: $OutputDirectory"
 } finally { $env:ROCOLA_DATOS = $previousRocolaData }

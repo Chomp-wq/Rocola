@@ -120,19 +120,55 @@ namespace Rocola
         private readonly object iaFileLock = new object();
         // Con el ORIGEN de esos pares (ver IaApuntaOrigen). Sin origen -como la llaman las pruebas de los
         // carriles- se guarda igual y esos ejemplos quedan "sin origen": nunca se inventa de donde vienen.
+        // El lote sigue siendo una sola entrada de origen. Solo su copia de trabajo se divide en bloques:
+        // ambos arrays quedan por debajo del LOH y se reutilizan bajo iaFileLock, aunque un repaso a fondo
+        // entregue millones de bytes. No cambia ni un float ni se elimina ningun ejemplo del lote.
+        private const int IaScratchFloats = 40 * 256;
+        private float[] iaParesScratch;
+        private byte[] iaBytesScratch;
+        private void IaPreparaScratch()
+        {
+            if (iaParesScratch == null) iaParesScratch = new float[IaScratchFloats];
+            if (iaBytesScratch == null) iaBytesScratch = new byte[IaScratchFloats * 4];
+        }
+        private uint IaEscribePares(Stream destino, List<float> pairs)
+        {
+            uint crc = 0xFFFFFFFFu;
+            for (int desde = 0; desde < pairs.Count; )
+            {
+                int cuantos = Math.Min(iaParesScratch.Length, pairs.Count - desde), bytes = cuantos * 4;
+                pairs.CopyTo(desde, iaParesScratch, 0, cuantos);
+                Buffer.BlockCopy(iaParesScratch, 0, iaBytesScratch, 0, bytes);
+                crc = IaCrc32Acumula(crc, iaBytesScratch, 0, bytes);
+                destino.Write(iaBytesScratch, 0, bytes);
+                desde += cuantos;
+            }
+            return crc ^ 0xFFFFFFFFu;
+        }
         private bool IaAppendPairs(List<float> pairs) { return IaAppendPairsOrigen(pairs, null); }
         private bool IaAppendPairsOrigen(List<float> pairs, IaOrigen origen)
         {
             if (pairs == null || pairs.Count < 40 || (pairs.Count % 40) != 0) return false;
             lock (iaFileLock)
             {
-                long primero; bool nuevo; byte[] raw;
+                long primero; bool nuevo; uint crcDatos;
                 try
                 {
+                    long loteBytes = (long)pairs.Count * 4L, tope = iaMaxBytes;
+                    // Un lote se admite completo o no se escribe: nunca recortar cuadros o canales.
+                    // Esta comprobacion temprana evita crear una cabecera si el lote ni siquiera cabe
+                    // en un corpus vacio. La decisiva usa el largo REAL, dentro del mismo candado.
+                    if (tope > 0 && loteBytes > Math.Max(0L, tope - 16L)) return false;
                     string f = IaDataFile();
                     using (FileStream fs = new FileStream(f, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read))
                     {
                         nuevo = fs.Length == 0;
+                        if (!nuevo && !IaHeaderValida(fs)) return false;   // no anexar encima de un archivo ajeno/corrupto
+                        long completos = nuevo ? 0L : Math.Max(0L, (fs.Length - 16) / 160);
+                        long valido = 16 + completos * 160;
+                        tope = iaMaxBytes;
+                        if (tope > 0 && valido + loteBytes > tope) return false;
+                        IaPreparaScratch();   // asignar antes de modificar una cabecera/cola interrumpida
                         if (nuevo)
                         {
                             byte[] head = new byte[16];
@@ -142,25 +178,19 @@ namespace Rocola
                             Buffer.BlockCopy(BitConverter.GetBytes(12), 0, head, 12, 4);
                             fs.Write(head, 0, head.Length);
                         }
-                        else if (!IaHeaderValida(fs)) return false;   // no anexar encima de un archivo ajeno/corrupto
-                        long completos = Math.Max(0, (fs.Length - 16) / 160);
-                        long valido = 16 + completos * 160;
                         if (fs.Length != valido) fs.SetLength(valido);   // recupera una ultima escritura interrumpida
                         fs.Position = valido;
-                        // Los mismos bytes que antes (float32 little-endian, uno tras otro), de una sola vez:
-                        // hacen falta enteros para la huella CRC32 del indice de origen.
-                        float[] valores = pairs.ToArray();
-                        raw = new byte[valores.Length * 4];
-                        Buffer.BlockCopy(valores, 0, raw, 0, raw.Length);
-                        fs.Write(raw, 0, raw.Length);
+                        // Los mismos float32 little-endian y el mismo CRC, sin duplicar todo el lote en RAM.
+                        crcDatos = IaEscribePares(fs, pairs);
                         fs.Flush();
                         try { FlushFileBuffers(fs.SafeFileHandle.DangerousGetHandle()); } catch { }
                         primero = completos;
                     }
-                    iaPairsTotal += pairs.Count / 40;
+                    long total = primero + pairs.Count / 40;
+                    iaPairsTotal = total > int.MaxValue ? int.MaxValue : (int)total;
                 }
                 catch { return false; }
-                if (origen != null) IaApuntaOrigen(primero, pairs.Count / 40, IaCrc32(raw, 0, raw.Length), origen, nuevo);
+                if (origen != null) IaApuntaOrigen(primero, pairs.Count / 40, crcDatos, origen, nuevo);
                 return true;
             }
         }
@@ -266,6 +296,8 @@ namespace Rocola
         }
         private static uint[] iaCrcTabla;
         private static uint IaCrc32(byte[] d, int off, int n)
+        { return IaCrc32Acumula(0xFFFFFFFFu, d, off, n) ^ 0xFFFFFFFFu; }
+        private static uint IaCrc32Acumula(uint crc, byte[] d, int off, int n)
         {
             uint[] t = iaCrcTabla;
             if (t == null)
@@ -279,9 +311,8 @@ namespace Rocola
                 }
                 iaCrcTabla = t;
             }
-            uint crc = 0xFFFFFFFFu;
             for (int i = 0; i < n; i++) crc = t[(crc ^ d[off + i]) & 0xFF] ^ (crc >> 8);
-            return crc ^ 0xFFFFFFFFu;
+            return crc;
         }
         private static void IaPon(byte[] e, int off, long v) { Buffer.BlockCopy(BitConverter.GetBytes(v), 0, e, off, 8); }
         private static void IaPon(byte[] e, int off, int v) { Buffer.BlockCopy(BitConverter.GetBytes(v), 0, e, off, 4); }

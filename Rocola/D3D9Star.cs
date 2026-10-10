@@ -2321,6 +2321,7 @@ namespace Rocola
             idleNaturalVelocity = 0; naturalLightReady = false;
             vinetaRetry = 0;
             if (ruidoTex != IntPtr.Zero) { D3D9.Release(ruidoTex); ruidoTex = IntPtr.Zero; ruTW = ruTH = 0; }
+            ruidoMalla = null; ruidoAncho = ruidoAlto = ruidoTriangulos = 0;
             ResetStarEchoes();
             if (lunaTex != IntPtr.Zero) { D3D9.Release(lunaTex); lunaTex = IntPtr.Zero; luTW = luTH = 0; lunaDe = -1; }
             if (uiBotTex != IntPtr.Zero) { D3D9.Release(uiBotTex); uiBotTex = IntPtr.Zero; }
@@ -3326,6 +3327,10 @@ namespace Rocola
         // una teja de 1024 cubre una pantalla de bar en cuatro estampados, y una de 1024x768 en uno.
         private const int RuidoTeja = 1024;
         private IntPtr ruidoTex; private int ruTW, ruTH; private float ruU = 1f, ruV = 1f;
+        private D3D9.Vtx[] ruidoMalla;
+        private int ruidoAncho, ruidoAlto, ruidoTriangulos;
+        private float ruidoU, ruidoV;
+        private bool ruidoNatural;
 
         // ESTRELLA GPU: superficie neutra preparada una vez por estilo (detallado/sencillo).
         // El color musical y el movimiento van en los vertices, sin rehornear ni subir
@@ -3358,18 +3363,36 @@ namespace Rocola
         }
         private void DibujaRuido()
         {
-            if (ruidoTex == IntPtr.Zero) return;
-            for (int y = 0; y < Height; y += RuidoTeja)
-                for (int x = 0; x < Width; x += RuidoTeja)
+            if (ruidoTex == IntPtr.Zero || Width <= 0 || Height <= 0) return;
+            PreparaMallaRuido();
+            stars.DrawTexturedBatch(ruidoTex, ruidoMalla, ruidoTriangulos);
+        }
+        private void PreparaMallaRuido()
+        {
+            int ancho = Width, alto = Height;
+            if (ancho <= 0 || alto <= 0) { ruidoMalla = null; ruidoTriangulos = 0; return; }
+            if (ruidoMalla != null && ruidoAncho == ancho && ruidoAlto == alto
+                && ruidoU == ruU && ruidoV == ruV && ruidoNatural == FondoNatural) return;
+            int n = checked(checked(((ancho - 1) / RuidoTeja + 1) * ((alto - 1) / RuidoTeja + 1)) * 6);
+            // Solo retener lo que necesita la geometria actual, nunca el maximo historico.
+            if (ruidoMalla == null || ruidoMalla.Length != n) ruidoMalla = new D3D9.Vtx[n];
+            int pos = 0;
+            for (int y = 0; y < alto; y += RuidoTeja)
+                for (int x = 0; x < ancho; x += RuidoTeja)
                 {
-                    float aw = Math.Min(RuidoTeja, Width - x), ah = Math.Min(RuidoTeja, Height - y);
-                    SetTexQuad(nieblaQuad, x, y, x + aw, y + ah, ruU * (aw / RuidoTeja), ruV * (ah / RuidoTeja));
-                    // El dither sigue evitando bandas, pero Natural usa un grano
-                    // mas delicado. Misma teja estatica: nada de puntos nuevos por cuadro.
+                    float aw = Math.Min(RuidoTeja, ancho - x), ah = Math.Min(RuidoTeja, alto - y);
+                    float u = ruU * (aw / RuidoTeja), v = ruV * (ah / RuidoTeja);
+                    // Mismos triangulos, UV parciales, orden y centro de pixel que cada
+                    // estampado original. La teja es estatica: no reconstruir por cuadro.
+                    SetV(ref ruidoMalla[pos], x, y, 0, 0); SetV(ref ruidoMalla[pos + 1], x + aw, y, u, 0);
+                    SetV(ref ruidoMalla[pos + 2], x + aw, y + ah, u, v); SetV(ref ruidoMalla[pos + 3], x, y, 0, 0);
+                    SetV(ref ruidoMalla[pos + 4], x + aw, y + ah, u, v); SetV(ref ruidoMalla[pos + 5], x, y + ah, 0, v);
                     if (FondoNatural)
-                        for (int i = 0; i < 6; i++) nieblaQuad[i].Color = 0xD0FFFFFFu;
-                    stars.DrawQuad(ruidoTex, nieblaQuad);
+                        for (int i = 0; i < 6; i++) ruidoMalla[pos + i].Color = 0xD0FFFFFFu;
+                    pos += 6;
                 }
+            ruidoAncho = ancho; ruidoAlto = alto; ruidoU = ruU; ruidoV = ruV; ruidoNatural = FondoNatural;
+            ruidoTriangulos = n / 3;
         }
 
         // Aqui hay DOS capas a pantalla completa, y ahi esta el escalon de en medio: la nebulosa lleva el

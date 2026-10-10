@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using System.Windows.Forms;
 
 namespace Rocola
 {
@@ -31,6 +32,7 @@ namespace Rocola
             internal LecturaBiblioteca BaseCompartida;
             private bool basePreparada;
             private readonly ManualResetEvent cancelada = new ManualResetEvent(false);
+            private int cerrada;
             internal volatile bool Cancelada;
             internal void Cancela() { Cancelada = true; try { cancelada.Set(); } catch (ObjectDisposedException) { } }
             internal bool Espera(int ms)
@@ -68,13 +70,37 @@ namespace Rocola
                 for (int i = 0; i < filas.Count; i++) r[filas[i].Key] = filas[i].Value;
                 return r;
             }
-            public void Dispose() { cancelada.Close(); }
+            public void Dispose() { if (Interlocked.Exchange(ref cerrada, 1) == 0) cancelada.Close(); }
         }
 
         [ThreadStatic] private static LecturaBiblioteca lecturaPlan;
         private LecturaBiblioteca planDuracion, planRepaso;
         private LecturaBiblioteca planArranqueComun; // solo durante la publicacion UI de biblioteca
         private Thread preparaRepasoTh;
+        // Terminar no borra las tablas: otro plan inicial puede seguir usando BaseCompartida.
+        // Solo la pantalla suelta SU referencia, y un final antiguo nunca retira un plan nuevo.
+        private void SueltaPlanTerminado(LecturaBiblioteca lectura, bool repaso, int generacion)
+        {
+            if (repaso)
+            {
+                if (!object.ReferenceEquals(planRepaso, lectura)) return;
+                planRepaso = null;
+                if (generacion == preScanGen) preScanCarriles = 0;
+            }
+            else if (object.ReferenceEquals(planDuracion, lectura)) planDuracion = null;
+        }
+        private void FinalizaLecturaBiblioteca(LecturaBiblioteca lectura, bool repaso, int generacion)
+        {
+            lectura.Dispose();
+            // Sin pantalla viva no publicar; al cerrar se recoge el propio formulario.
+            if (IsDisposed || Disposing || !IsHandleCreated) return;
+            try
+            {
+                if (InvokeRequired) BeginInvoke((MethodInvoker)delegate { SueltaPlanTerminado(lectura, repaso, generacion); });
+                else SueltaPlanTerminado(lectura, repaso, generacion);
+            }
+            catch (InvalidOperationException) { }
+        }
         private LecturaBiblioteca CapturaLecturaBiblioteca()
         { return CapturaParaBiblioteca(true); }
         private LecturaBiblioteca CapturaParaBiblioteca(bool completa)

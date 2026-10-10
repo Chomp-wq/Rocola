@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Windows.Forms;
 
@@ -22,6 +23,85 @@ class PlanesBiblioteca
         object a = Activator.CreateInstance(F.GetNestedType("Album", B), true);
         Set(a, "Name", name); Set(a, "Artist", "Artista"); Set(a, "Folder", name); Set(a, "CoverPath", name + ".jpg");
         foreach (object t in tracks) ((IList)Get(a, "Tracks")).Add(t); return a;
+    }
+    static object Fixture()
+    {
+        object f = Codigo.FormSinEncender(F);
+        typeof(Form).GetConstructor(Type.EmptyTypes).Invoke(f, new object[0]);
+        if (((Form)f).Handle == IntPtr.Zero) throw new Exception("sin handle de fixture"); // oculta, sin constructor de Rocola
+        return f;
+    }
+    static void Espera(Func<bool> terminada)
+    {
+        Stopwatch reloj = Stopwatch.StartNew();
+        while (!terminada() && reloj.ElapsedMilliseconds < 3000) { Application.DoEvents(); Thread.Sleep(1); }
+        if (!terminada()) throw new Exception("la finalizacion no llego a UI");
+    }
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    static WeakReference TerminaFixture(bool repaso, bool conTrabajador, out object owner)
+    {
+        owner = Fixture();
+        if (conTrabajador)
+        {
+            ((IList)Get(owner, "tracks")).Add(Track("Z:\\fixture-inexistente\\uno.mp3"));
+            Set(owner, "lastInputTick", Environment.TickCount); // el carril espera: no abre audio
+        }
+        if (repaso) F.GetMethod("StartPreScan", B, null, new Type[] { typeof(bool) }, null).Invoke(owner, new object[] { false });
+        else Call(owner, "StartDurScan");
+        object p = Get(owner, repaso ? "planRepaso" : "planDuracion");
+        WeakReference debil = new WeakReference(p);
+        object f = owner;
+        if (conTrabajador)
+        {
+            Espera(delegate { return Get(f, "preScanTh") != null; });
+            Call(p, "Cancela");
+        }
+        Espera(delegate { return Get(f, repaso ? "planRepaso" : "planDuracion") == null; });
+        Thread preparador = (Thread)Get(f, repaso ? "preparaRepasoTh" : "durScanTh");
+        Check(preparador.Join(1000), "termina el preparador de " + (repaso ? "repaso" : "duracion"));
+        Thread[] carriles = (Thread[])Get(f, "preScanTh");
+        if (carriles != null) foreach (Thread t in carriles) Check(t.Join(1000), "termina el carril cancelado sin tocar audio");
+        Application.DoEvents();
+        return debil;
+    }
+    static void PruebaFinPlanes()
+    {
+        object f = Fixture();
+        object viejo = Call(f, "CapturaLecturaBiblioteca"), nuevo = Call(f, "CapturaLecturaBiblioteca");
+        Set(f, "planRepaso", nuevo); Set(f, "preScanGen", 2); Set(f, "preScanCarriles", 3);
+        Call(f, "SueltaPlanTerminado", viejo, true, 1);
+        Check(ReferenceEquals(Get(f, "planRepaso"), nuevo) && (int)Get(f, "preScanCarriles") == 3,
+            "un final antiguo no retira ni cambia contadores del plan nuevo");
+        Set(f, "planDuracion", nuevo); Call(f, "SueltaPlanTerminado", viejo, false, 1);
+        Check(ReferenceEquals(Get(f, "planDuracion"), nuevo), "duracion antigua no retira captura nueva");
+        Call(f, "SueltaPlanTerminado", nuevo, true, 2);
+        Check(Get(f, "planRepaso") == null && (int)Get(f, "preScanCarriles") == 0, "UI suelta el plan propio y sus contadores");
+        Thread hilo = new Thread(delegate () { Call(f, "FinalizaLecturaBiblioteca", nuevo, false, 2); });
+        hilo.Start(); Check(hilo.Join(1000) && ReferenceEquals(Get(f, "planDuracion"), nuevo),
+            "el trabajador no escribe el campo de la pantalla antes de publicar");
+        Espera(delegate { return Get(f, "planDuracion") == null; });
+        Check(!(bool)Call(nuevo, "Espera", 1), "finalizacion cierra la espera del plan terminado");
+        ((IDisposable)nuevo).Dispose(); ((IDisposable)viejo).Dispose(); ((Form)f).Dispose();
+        for (int caso = 0; caso < 3; caso++)
+        {
+            object owner;
+            WeakReference debil = TerminaFixture(caso != 0, caso == 2, out owner);
+            GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect(); // solo fixture: no GC en produccion
+            Check(!debil.IsAlive, caso == 0 ? "duracion sin pendientes no retiene snapshot en formulario/hilo"
+                : caso == 1 ? "repaso sin pendientes no retiene snapshot en formulario/preparador"
+                : "cancelacion del ultimo carril no retiene snapshot en formulario/hilos");
+            GC.KeepAlive(owner); ((Form)owner).Dispose();
+        }
+        object sinPantalla = Codigo.FormSinEncender(F);
+        typeof(Form).GetConstructor(Type.EmptyTypes).Invoke(sinPantalla, new object[0]);
+        F.GetMethod("StartPreScan", B, null, new Type[] { typeof(bool) }, null).Invoke(sinPantalla, new object[] { false });
+        Thread sinHandle = (Thread)Get(sinPantalla, "preparaRepasoTh");
+        Check(sinHandle.Join(1000) && !(bool)Call(Get(sinPantalla, "planRepaso"), "Espera", 1),
+            "BeginInvoke fallido sin pantalla cierra el cancelador y termina el preparador");
+        ((Form)sinPantalla).Dispose();
+        Check(Codigo.Llama(Codigo.ConAyudantes(F, "StartDurScan"), "FinalizaLecturaBiblioteca")
+            && Codigo.Llama(Codigo.ConAyudantes(F, "StartPreScan"), "FinalizaLecturaBiblioteca"),
+            "duracion y repaso enlazan finalizacion en sus caminos de retorno/error");
     }
     [STAThread] static int Main(string[] args)
     {
@@ -90,6 +170,7 @@ class PlanesBiblioteca
         }
         finally { Set(null, "perfilDisco", oldPerfil); Set(null, "diskSlow", oldSlow); unidades.Clear(); foreach (DictionaryEntry e in antes) unidades[e.Key] = e.Value; }
         Check(Codigo.Nombres(F.GetMethod("StartScan", B)).IndexOf("CancelaPlanesBiblioteca") >= 0, "F5 cancela los planes antes del escaneo");
+        PruebaFinPlanes();
         Console.WriteLine(checks + " comprobaciones de planificacion; sin HDD/FPS reales."); return 0;
     }
     static string Top(object value)

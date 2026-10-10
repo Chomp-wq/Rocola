@@ -1,12 +1,14 @@
 # Reglas permanentes de la Rocola
 
+- Decision del usuario del 10 de octubre de 2026: desde ahora trabajar SOLO en la rama Modest (`claude/modest-carson-fa2v2n`). HD queda suspendida: no editar, compilar, desplegar ni publicar cambios en HD sin una nueva peticion expresa. Esta decision sustituye la regla anterior de duplicar mejoras en ambas ramas.
+
 - Peticion del usuario del 9 de octubre de 2026: incluir la estrella animada en las verificaciones de fluidez. Revisar Legacy y Natural, 2D/3D, navegacion y estado extendido; comprobar intervalos de cuadro (p95/p99/max), no solo FPS medios. Si se ejecuta con musica real, usar una copia con datos aislados y distinguir esa medicion de pruebas sinteticas. No prometer ausencia absoluta de pausas del sistema operativo.
 - Para atribuir tirones, comprobar si sigue activo el preanalisis de la biblioteca: terminar el escaneo y desactivar ia_datos no significa terminar el repaso. Separar cuadros presentados, huecos entre cuadros y fallos de presentacion; una diferencia de contadores GC indica coincidencia, no su duracion ni causalidad. No mezclar pruebas HAL/compilacion/entrenamiento con una medicion real comparativa.
 
-- Decisión del usuario del 16 de septiembre de 2026: subir a GitHub los cambios terminados y verificados de ambas ramas. Comprobar el resultado del push; no afirmar publicación si falla.
+- Decisión del usuario del 16 de septiembre de 2026: subir a GitHub los cambios terminados y verificados. Desde el 10 de octubre solo se publica la rama activa Modest; HD esta suspendida. Comprobar el resultado del push; no afirmar publicación si falla.
 - Priorizar respuesta y reproducción también en procesadores modestos de 2 núcleos/2 hilos. Las precargas deben tener presupuestos acotados y no saturar los núcleos disponibles.
 
-- Aplicar las mejoras compartidas en Modest y HD. Modest conserva .NET 3.5 y compatibilidad de destino con Windows XP; HD utiliza .NET 4.8.
+- Modest conserva .NET 3.5 y compatibilidad de destino con Windows XP. La referencia historica HD utiliza .NET 4.8, pero no se trabaja en ella mientras este suspendida.
 - Decisión del usuario del 8 de septiembre de 2026: el renderizado por CPU es obsoleto y queda congelado. No modificarlo para añadir efectos, corregir su apariencia ni optimizarlo. No retirar ni revertir retroactivamente su implementación sin petición expresa.
 - Las nuevas mejoras de renderizado se implementan exclusivamente en GPU. Se permite configurar sus opciones desde código común, sin alterar la salida del renderizador CPU.
 - Decisión del usuario del 15 de septiembre de 2026: solo las opciones visuales llevan interruptores independientes y persistentes en Ctrl+F3. Las optimizaciones que conservan aspecto y funcionalidad son automáticas y siempre activas; no añadir interruptores ni preferencias para desactivarlas. Esta regla sustituye la anterior que exigía interruptores de rendimiento.

@@ -827,6 +827,30 @@ namespace Rocola
 
         // Anade lineas sin dejarlas solamente en la cache de Windows. Se usa para los indices crecientes
         // (IA, repaso a fondo y duraciones), que no conviene reescribir enteros por cada cancion.
+        private static long UltimoLfAnexo(Stream origen)
+        {
+            // Solo para un final incompleto. Buscar por bloques evita un seek/ReadByte por caracter
+            // si un apagon dejo una cola larga. No interpreta texto ni cambia el ultimo LF elegido.
+            byte[] bloque = new byte[65536];
+            long hasta = origen.Length;
+            while (hasta > 0)
+            {
+                int cuantos = (int)Math.Min(bloque.Length, hasta);
+                long desde = hasta - cuantos;
+                origen.Position = desde;
+                int leidos = 0;
+                while (leidos < cuantos)
+                {
+                    int n = origen.Read(bloque, leidos, cuantos - leidos);
+                    if (n == 0) throw new IOException("El anexo original se trunco al comprobar su cola");
+                    leidos += n;
+                }
+                for (int i = cuantos - 1; i >= 0; i--)
+                    if (bloque[i] == (byte)'\n') return desde + i + 1;
+                hasta = desde;
+            }
+            return 0;
+        }
         private static void AnexaSeguro(string ruta, string texto)
         {
             if (string.IsNullOrEmpty(texto)) return;
@@ -845,13 +869,7 @@ namespace Rocola
                             if (fs.ReadByte() != (byte)'\n')
                             {
                                 reparar = true;
-                                while (pos >= 0)
-                                {
-                                    fs.Position = pos;
-                                    if (fs.ReadByte() == (byte)'\n') break;
-                                    pos--;
-                                }
-                                valido = pos + 1;
+                                valido = UltimoLfAnexo(fs);
                             }
                         }
                     }
@@ -2271,7 +2289,11 @@ namespace Rocola
                         using (System.Security.Cryptography.SHA256 copyHash = System.Security.Cryptography.SHA256.Create())
                         {
                             string dst = Path.Combine(pending, Path.GetFileName(archivo.Ruta));
-                            using (FileStream outputFile = new FileStream(dst, FileMode.CreateNew, FileAccess.Write, FileShare.None, buffer.Length, FileOptions.WriteThrough))
+                            // Mientras se copia, el destino es una carpeta PRIVADA no publicada. Forzar cada
+                            // bloque de 64 KiB al disco no protege nada adicional ante un apagon: la copia
+                            // solo se publica despues de FlushFileBuffers exitoso + hash verificado + Move.
+                            // Los respaldos anteriores se conservan si cualquier paso falla.
+                            using (FileStream outputFile = new FileStream(dst, FileMode.CreateNew, FileAccess.Write, FileShare.None, buffer.Length, FileOptions.None))
                             {
                                 long faltan = archivo.Largo;
                                 while (faltan > 0)

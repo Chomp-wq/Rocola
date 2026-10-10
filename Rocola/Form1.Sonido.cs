@@ -370,8 +370,9 @@ namespace Rocola
             catch { if (hecho != null) { try { hecho.Dispose(); } catch { } } throw; }
         }
 
-        // Lector para MEDIR una cancion (no para que suene). Los MP3 van por el camino de arriba, que no deja
-        // descompresores tirados; el resto de formatos, por donde siempre. Es EL MISMO montaje que usa NAudio
+        // Lector para MEDIR una cancion (no para que suene). Los MP3 conservan el descompresor de arriba, que no deja
+        // recursos tirados; solo se oculta un ID3 inicial validado que el medidor no usa. El resto, por donde siempre.
+        // Es EL MISMO montaje que usa NAudio
         // por dentro (el lector mas un canal de muestras), asi que lo medido no cambia ni en un bit.
         private sealed class LectorMedida : IDisposable
         {
@@ -380,25 +381,181 @@ namespace Rocola
             private readonly WaveStream wav;
             private readonly SampleChannel canal;
             private readonly AudioFileReader otro;
+            private readonly Stream flujoMp3;   // Mp3FileReader(Stream, ...) NO cierra el stream que recibe
+
+            // NAudio 1.9 copia DOS VECES el ID3 completo al abrir un MP3. Una caratula incrustada grande deja
+            // dos reservas grandes por cada pasada de medida, aunque aqui nunca se leen las etiquetas.
+            // No se cambia NAudio ni la reproduccion: esta vista conserva todos los bytes de audio y el ID3v1
+            // final, con posiciones/longitud relativas al MISMO inicio que antes usaba su tabla de cuadros.
+            private sealed class VistaMp3 : Stream
+            {
+                private Stream origen;
+                private readonly long inicio, largo;
+                internal VistaMp3(Stream archivo, long desde)
+                {
+                    if (archivo == null) throw new ArgumentNullException("archivo");
+                    if (!archivo.CanRead || !archivo.CanSeek) throw new ArgumentException("El MP3 debe poder leerse y buscarse.", "archivo");
+                    if (desde < 0 || desde > archivo.Length) throw new ArgumentOutOfRangeException("desde");
+                    inicio = desde; largo = archivo.Length - desde;
+                    archivo.Position = desde;
+                    origen = archivo;
+                }
+                private Stream Abierto
+                { get { if (origen == null) throw new ObjectDisposedException("VistaMp3"); return origen; } }
+                public override bool CanRead { get { return origen != null && origen.CanRead; } }
+                public override bool CanSeek { get { return origen != null && origen.CanSeek; } }
+                public override bool CanWrite { get { return false; } }
+                public override long Length { get { Stream s = Abierto; return largo; } }
+                public override long Position
+                {
+                    get { return Abierto.Position - inicio; }
+                    set { Seek(value, SeekOrigin.Begin); }
+                }
+                public override int Read(byte[] buffer, int offset, int count)
+                {
+                    Stream s = Abierto;
+                    if (buffer == null) throw new ArgumentNullException("buffer");
+                    if (offset < 0 || count < 0 || offset > buffer.Length - count) throw new ArgumentOutOfRangeException();
+                    long quedan = largo - (s.Position - inicio);
+                    if (quedan <= 0 || count == 0) return 0;
+                    return s.Read(buffer, offset, (int)Math.Min((long)count, quedan));
+                }
+                public override int ReadByte()
+                { Stream s = Abierto; return s.Position - inicio >= largo ? -1 : s.ReadByte(); }
+                public override long Seek(long offset, SeekOrigin origin)
+                {
+                    Stream s = Abierto;
+                    long basePos;
+                    switch (origin)
+                    {
+                        case SeekOrigin.Begin: basePos = 0; break;
+                        case SeekOrigin.Current: basePos = s.Position - inicio; break;
+                        case SeekOrigin.End: basePos = largo; break;
+                        default: throw new ArgumentException("Origen de busqueda no valido.", "origin");
+                    }
+                    long pos, fisica;
+                    try { pos = checked(basePos + offset); fisica = checked(inicio + pos); }
+                    catch (OverflowException) { throw new IOException("Posicion fuera del archivo MP3."); }
+                    if (pos < 0) throw new IOException("No se puede buscar antes del audio MP3.");
+                    s.Position = fisica;   // como FileStream, admite una posicion posterior al final; Read devuelve 0
+                    return pos;
+                }
+                public override void Flush() { Stream s = Abierto; }
+                public override void SetLength(long value) { throw new NotSupportedException(); }
+                public override void Write(byte[] buffer, int offset, int count) { throw new NotSupportedException(); }
+                protected override void Dispose(bool disposing)
+                {
+                    Stream s = origen; origen = null;
+                    try { if (disposing && s != null) s.Dispose(); }
+                    finally { base.Dispose(disposing); }
+                }
+            }
+
+            private static bool LeeDiez(Stream s, byte[] cabecera)
+            {
+                int n = 0, r;
+                while (n < 10 && (r = s.Read(cabecera, n, 10 - n)) > 0) n += r;
+                return n == 10;
+            }
+            // Solo los casos en que el desplazamiento es inequívoco y coincide con NAudio 1.9.
+            // Un ID3 roto, truncado o con cabecera extendida/compresion vuelve a la apertura historica.
+            // En particular, NAudio trata 0x40 avanzando otros cuatro bytes: NO se corrige eso aqui.
+            private static long InicioAudioMp3(Stream s)
+            {
+                if (!s.CanRead || !s.CanSeek) return 0;
+                long posicion = s.Position;
+                try
+                {
+                    if (s.Length < 10) return 0;
+                    s.Position = 0;
+                    byte[] h = new byte[10];
+                    if (!LeeDiez(s, h) || h[0] != 'I' || h[1] != 'D' || h[2] != '3') return 0;
+                    int version = h[3], flags = h[5];
+                    if (version < 2 || version > 4 || h[4] == 255 || (flags & 0x40) != 0) return 0;
+                    int permitidos = version == 2 ? 0x80 : (version == 3 ? 0xA0 : 0xB0);
+                    if ((flags & ~permitidos) != 0) return 0;
+                    for (int i = 6; i < 10; i++) if ((h[i] & 0x80) != 0) return 0;
+                    long tamano = ((long)h[6] << 21) | ((long)h[7] << 14) | ((long)h[8] << 7) | h[9];
+                    bool pie = version == 4 && (flags & 0x10) != 0;
+                    long fin = 10 + tamano + (pie ? 10 : 0);
+                    // Conservar tambien el comportamiento de la busqueda de ID3v1 al final en MP3 muy cortos.
+                    if (fin > s.Length - 128) return 0;
+                    if (pie)
+                    {
+                        s.Position = 10 + tamano;
+                        byte[] f = new byte[10];
+                        if (!LeeDiez(s, f) || f[0] != '3' || f[1] != 'D' || f[2] != 'I') return 0;
+                        for (int i = 3; i < 10; i++) if (f[i] != h[i]) return 0;
+                    }
+                    return fin;
+                }
+                finally { s.Position = posicion; }
+            }
+            private static Mp3FileReader AbreMp3Medida(string ruta, out Stream propio)
+            {
+                propio = null;
+                FileStream archivo = null;
+                Stream vista = null;
+                NAudio.Wave.IMp3FrameDecompressor hecho = null;
+                try
+                {
+                    archivo = File.OpenRead(ruta);   // misma apertura/comparticion de la ruta historica
+                    long inicio;
+                    try { inicio = InicioAudioMp3(archivo); }
+                    catch (IOException) { inicio = 0; }
+                    if (inicio == 0)
+                    {
+                        archivo.Dispose(); archivo = null;
+                        return AbreMp3(ruta);
+                    }
+                    vista = new VistaMp3(archivo, inicio); archivo = null;   // la vista pasa a ser duena del archivo
+                    Func<WaveFormat, NAudio.Wave.IMp3FrameDecompressor> otroAcm = delegate(WaveFormat f)
+                    { return Mp3FileReader.CreateAcmFrameDecompressor(f); };
+                    Mp3FileReader.FrameDecompressorBuilder armador = delegate(WaveFormat wf)
+                    {
+                        hecho = Mp3FileReader.CreateAcmFrameDecompressor(wf);
+                        hecho = DecodificacionFlotante.Envuelve(wf, hecho, ruta, otroAcm);
+                        return hecho;
+                    };
+                    Mp3FileReader lector = new Mp3FileReader(vista, armador);
+                    propio = vista; vista = null;
+                    return lector;
+                }
+                catch { if (hecho != null) { try { hecho.Dispose(); } catch { } } throw; }
+                finally
+                {
+                    if (vista != null) { try { vista.Dispose(); } catch { } }
+                    if (archivo != null) { try { archivo.Dispose(); } catch { } }
+                }
+            }
             public LectorMedida(string ruta)
             {
-                if (ruta != null && ruta.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase))
+                try
                 {
-                    Mp3FileReader r = AbreMp3(ruta);
-                    try { canal = new SampleChannel(r, false); mp3 = r; r = null; }
-                    finally { if (r != null) { try { r.Dispose(); } catch { } } }   // el canal fallo: el lector no se queda tirado
-                }
-                else
-                {
-                    WaveStream f = WavDirecto.Abre(ruta);
-                    if (f != null)
+                    if (ruta != null && ruta.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase))
                     {
-                        try { canal = new SampleChannel(f, false); wav = f; f = null; }
-                        finally { if (f != null) { try { f.Dispose(); } catch { } } }
+                        Stream flujo = null;
+                        Mp3FileReader r = AbreMp3Medida(ruta, out flujo);
+                        try { canal = new SampleChannel(r, false); mp3 = r; flujoMp3 = flujo; r = null; flujo = null; }
+                        finally
+                        {
+                            if (r != null) { try { r.Dispose(); } catch { } }
+                            if (flujo != null) { try { flujo.Dispose(); } catch { } }
+                        }
                     }
-                    else otro = new AudioFileReader(ruta);
+                    else
+                    {
+                        WaveStream f = WavDirecto.Abre(ruta);
+                        if (f != null)
+                        {
+                            try { canal = new SampleChannel(f, false); wav = f; f = null; }
+                            finally { if (f != null) { try { f.Dispose(); } catch { } } }
+                        }
+                        else otro = new AudioFileReader(ruta);
+                    }
+                    formato = FormatoAudio.DeArchivo((otro == null) ? canal.WaveFormat : otro.WaveFormat, ruta);
                 }
-                formato = FormatoAudio.DeArchivo((otro == null) ? canal.WaveFormat : otro.WaveFormat, ruta);
+                catch { Dispose(); throw; }
             }
             private WaveStream Lector { get { return (mp3 != null) ? (WaveStream)mp3 : wav; } }
             public NAudio.Wave.WaveFormat WaveFormat { get { return formato; } }
@@ -418,6 +575,7 @@ namespace Rocola
             public void Dispose()
             {
                 if (mp3 != null) { try { mp3.Dispose(); } catch { } }
+                if (flujoMp3 != null) { try { flujoMp3.Dispose(); } catch { } }
                 if (wav != null) { try { wav.Dispose(); } catch { } }
                 if (otro != null) { try { otro.Dispose(); } catch { } }
             }
