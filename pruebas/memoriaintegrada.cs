@@ -207,13 +207,20 @@ class MemoriaIntegrada
             {
                 object p = Call(form.Assembly.GetType("Rocola.DisposicionBs1770", true), null, "DeArchivo", file, channels[i]);
                 Check(Equal(State(p), State(new double[] { 1, 1, 1, 0, 1.41, 1.41 })), "WAV extensible realmente valida mascara y pesos 5.1");
-                // AudioFileReader puede pedir un ACM no instalado para Extensible. Comparar la conducta,
-                // pero NO dar por probado el codec si ambos rechazan un WAV cuya cabecera es valida.
-                Check(expected == actual, "Disponibilidad de lector extensible conservada");
+                Check(actual, "WAV extensible 5.1 realmente decodificado sin depender de ACM");
+                object reference = New(form.Assembly.GetType("Rocola.MedidorBs1770", true), rates[i], (double[])p);
+                Feed(reference, rates[i], channels[i], seconds[i], 0, false);
+                object[] close = { reference, seconds[i], rates[i], null };
+                Check((bool)Call(form, null, "CierraIntegrada", close), "Referencia PCM independiente completa");
+                using (MemoryStream stream = new MemoryStream()) using (BinaryWriter writer = new BinaryWriter(stream))
+                {
+                    writer.Write(true); Value(writer, close[3]); writer.Flush();
+                    Check(Equal(stream.ToArray(), current), "WAV 5.1 contra muestras independientes, todos los campos bit a bit");
+                }
                 Console.WriteLine("  WAV 5.1 extensible: lectura completa admitida por referencia=" + expected + ", actual=" + actual);
             }
             else Check(expected == valid && actual == valid, "Caso realmente medido/rechazado/cancelado " + i + ": anterior=" + expected + ", nuevo=" + actual);
-            Check(Equal(previous, current), "MideIntegrada antes/despues, todos los campos bit a bit: " + i);
+            if (!layout || expected) Check(Equal(previous, current), "MideIntegrada antes/despues, todos los campos bit a bit: " + i);
             object scratch = form.GetField("trabajoMedidaDelHilo", B).GetValue(null);
             Check(scratch == null || !(bool)Field(scratch, "EnUso"), "MideIntegrada libera incluso al cancelar " + i);
             if (i == 10) Check(Field(scratch, "integrada") == null, "Ruta real descarta capacidad grande tras leer todo el WAV");

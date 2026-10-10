@@ -422,7 +422,7 @@ namespace Rocola
         {
             private readonly WaveFormat formato;
             private readonly Mp3FileReader mp3;
-            private readonly WaveStream flotante;          // HD: Media Foundation en coma flotante
+            private readonly WaveStream flotante;          // WAV directo o Media Foundation en coma flotante
             private readonly SampleChannel canal;
             private readonly AudioFileReader otro;
             public LectorMedida(string ruta)
@@ -435,7 +435,8 @@ namespace Rocola
                 }
                 else
                 {
-                    WaveStream f = DecodificacionFlotante.AbreOtro(ruta);
+                    WaveStream f = WavDirecto.Abre(ruta);
+                    if (f == null) f = DecodificacionFlotante.AbreOtro(ruta);
                     if (f != null)
                     {
                         try { canal = new SampleChannel(f, false); flotante = f; f = null; }
@@ -2010,7 +2011,7 @@ namespace Rocola
         {
             private readonly WaveFormat formato;
             private readonly Mp3FileReader mp3;
-            private readonly WaveStream flotante;          // HD: Media Foundation en coma flotante
+            private readonly WaveStream flotante;          // WAV directo o Media Foundation en coma flotante
             private readonly SampleChannel canal;
             private readonly AudioFileReader r;
             private MemoryStream enMemoria;   // la cancion entera, si se abrio desde la memoria (CancionEnMemoria.cs)
@@ -2034,7 +2035,8 @@ namespace Rocola
                 }
                 else
                 {
-                    WaveStream f = DecodificacionFlotante.AbreOtro(path);
+                    WaveStream f = WavDirecto.Abre(path);
+                    if (f == null) f = DecodificacionFlotante.AbreOtro(path);
                     if (f != null)
                     {
                         try { canal = new SampleChannel(f, false); flotante = f; f = null; }
