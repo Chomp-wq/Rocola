@@ -52,7 +52,7 @@ foreach ($test in @('capascolor', 'cristalcola', 'cubofila', 'respuesta', 'efect
 }
 } finally { Pop-Location }
 $stutterExe = Join-Path $OutputDirectory 'tironescaratulas.exe'
-foreach ($extraTest in @('colacompacta', 'ajustesfluidez', 'cadenciavisual', 'estilosconfig', 'naturalestelar', 'nebulosanatural', 'espacionatural', 'auroranatural', 'opticanatural', 'preparacionnatural', 'acabadofinalnatural', 'estrella3d', 'pausasestrella', 'audioeficiencia', 'datosdeltas', 'arranqueeficiente', 'fluidezcuadros')) {
+foreach ($extraTest in @('colacompacta', 'ajustesfluidez', 'cadenciavisual', 'estilosconfig', 'naturalestelar', 'nebulosanatural', 'espacionatural', 'auroranatural', 'opticanatural', 'preparacionnatural', 'acabadofinalnatural', 'estrella3d', 'pausasestrella', 'audioeficiencia', 'datosdeltas', 'arranqueeficiente', 'fluidezcuadros', 'relojreposo', 'campoestelarbuffers')) {
     $extraExe = Join-Path $OutputDirectory ($extraTest + '.exe')
     & $compiler /nologo /target:exe /optimize+ /warnaserror+ ("/out:$extraExe") /r:System.dll /r:System.Core.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll ("/r:$naudio") (Join-Path $testRoot ($extraTest + '.cs')) (Join-Path $testRoot 'leercodigo.cs')
     if ($LASTEXITCODE -ne 0) { throw "No compila $extraTest" }
@@ -82,5 +82,5 @@ if ($LASTEXITCODE -ne 0) { throw 'No compila espacionaturalhal' }
 $naturalHalOutput = Join-Path $OutputDirectory 'fondo-hal'
 if ($SinHal) { & $naturalHalExe $exe $naturalHalOutput --sin-hal } else { & $naturalHalExe $exe $naturalHalOutput }
 if ($LASTEXITCODE -ne 0) { throw 'Fallo: espacionaturalhal' }
-Write-Output "PASS: compilacion GPU/CPU y cincuenta y dos baterias. HAL omitido explicitamente: $SinHal. No se reemplazo ningun ejecutable de produccion. Salida: $OutputDirectory"
+Write-Output "PASS: compilacion GPU/CPU y cincuenta y cuatro baterias. HAL omitido explicitamente: $SinHal. No se reemplazo ningun ejecutable de produccion. Salida: $OutputDirectory"
 } finally { $env:ROCOLA_DATOS = $previousRocolaData }

@@ -7,6 +7,39 @@ using System.Text;
 
 namespace Rocola
 {
+    // El texto solo cambia al pasar de segundo, aunque la fuente se sigue leyendo en cada cuadro.
+    // Se conserva TextoFaltan como unica autoridad del formato y del limite de fin de cancion.
+    internal sealed class CacheRelojReposo
+    {
+        // El lector activo ya pertenece a Form1. La cache no debe retener un lector cerrado
+        // (ni su MP3 en memoria) si el panel deja de pedir el reloj al terminar la musica.
+        private WeakReference fuente;
+        private string texto;
+        private string signoNegativo;
+        private long segundoActual, segundoTotal;
+        private int minutoActual, minutoTotal;
+
+        internal void Vaciar() { if (fuente != null) fuente.Target = null; texto = null; }
+
+        internal string Texto(object origen, TimeSpan actual, TimeSpan total, string siNo)
+        {
+            if (total.TotalSeconds <= 0 || actual.TotalSeconds < 0)
+            { Vaciar(); return siNo; }
+            if (actual > total) actual = total;
+            long sa = actual.Ticks / TimeSpan.TicksPerSecond, st = total.Ticks / TimeSpan.TicksPerSecond;
+            // Fmt usa TotalMinutes: conservar tambien esa cuenta, incluso para duraciones extremas
+            // donde el double puede redondear cerca del siguiente minuto antes que los ticks.
+            int ma = (int)actual.TotalMinutes, mt = (int)total.TotalMinutes;
+            string signo = ma < 0 || mt < 0 ? System.Globalization.CultureInfo.CurrentCulture.NumberFormat.NegativeSign : null;
+            if (texto != null && fuente != null && ReferenceEquals(fuente.Target, origen) && sa == segundoActual && st == segundoTotal &&
+                ma == minutoActual && mt == minutoTotal && signo == signoNegativo) return texto;
+            string nuevo = Form1.TextoFaltan(actual, total, siNo);
+            if (fuente == null) fuente = new WeakReference(origen); else fuente.Target = origen;
+            segundoActual = sa; segundoTotal = st; minutoActual = ma; minutoTotal = mt; signoNegativo = signo; texto = nuevo;
+            return nuevo;
+        }
+    }
+
     public partial class Form1
     {
         private Bitmap idlePanelBmp;
@@ -15,6 +48,19 @@ namespace Rocola
         private string idlePanelTime;
         private int idlePanelRevision;
         private int idlePanelProgressStart;
+        private CacheRelojReposo idleClockTexto;
+
+        private string TextoRelojReposoCache(IAudioSource r)
+        {
+            string corto = (lblTime != null) ? lblTime.Text : "";
+            if (!suenaGrande || r == null || nowPlaying == null || nowPlaying.IsVideo)
+            { if (idleClockTexto != null) idleClockTexto.Vaciar(); return corto; }
+            TimeSpan cur, tot;
+            try { cur = r.CurrentTime; tot = r.TotalTime; }
+            catch { if (idleClockTexto != null) idleClockTexto.Vaciar(); return corto; }
+            if (idleClockTexto == null) idleClockTexto = new CacheRelojReposo();
+            return idleClockTexto.Texto(r, cur, tot, corto);
+        }
 
         // EL PANEL SE REHACE CUANDO ALGO CAMBIA, NO CADA 400 ms MIRANDO A VER.
         //
@@ -79,7 +125,7 @@ namespace Rocola
             StringBuilder sig = new StringBuilder();
             sig.Append(w).Append('|').Append(h).Append('|').Append(nowPlaying.PathKey()).Append('|')
                 .Append(title).Append('|').Append(artist).Append('|').Append(queue.Count).Append('|').Append(bgAccent.ToArgb());
-            string time = TextoRelojReposo(reader);   // con "Lo que suena, en grande", tambien cuanto falta (SuenaVivoGpu.cs)
+            string time = TextoRelojReposoCache(reader);   // mismo formato de SuenaVivoGpu.cs, sin volver a formar cadenas por cuadro
             sig.Append('|').Append(estadoTransparente).Append('|').Append(iaBadgeKind);
             for (int i = 0; i < qt.Length; i++)
             {
@@ -140,7 +186,7 @@ namespace Rocola
         // de abajo y nada mas. Rehacer el panel entero por un digito costaria 1,70 ms cada segundo.
         private void ParcheaElReloj(int w, int h)
         {
-            string time = TextoRelojReposo(reader);
+            string time = TextoRelojReposoCache(reader);
             if (idleClockUnderlay == null || idlePanelBmp == null || idlePanelTime == time) return;
             idlePanelProgressStart = UpdateIdleClock(idlePanelBmp, idleClockUnderlay, time);
             idlePanelTime = time; idlePanelRevision++;
