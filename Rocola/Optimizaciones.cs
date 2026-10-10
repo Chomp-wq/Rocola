@@ -139,6 +139,19 @@ namespace Rocola
         }
         private static readonly object fftPlanLock = new object();
         private static AudioFftPlan fft2048, fft4096;
+        // Cuatro piezas pequenas, invocadas desde el precalentador despues del primer cuadro.
+        // Sin abrir audio ni modelos: no desplaza ni espera trabajo de reproduccion o portadas.
+        internal static bool PrecalientaTablasAudio(int paso)
+        {
+            switch (paso)
+            {
+                case 0: return GetAudioFftPlan(2048) != null;
+                case 1: return GetAudioFftPlan(4096) != null;
+                case 2: return DetectorPicoReal.GananciaMaxima > 0;
+                case 3: return RealceSobremuestreado.C != null;
+                default: return true;
+            }
+        }
         private static AudioFftPlan GetAudioFftPlan(int size)
         {
             if (size != 2048 && size != 4096) return new AudioFftPlan(size);

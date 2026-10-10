@@ -85,6 +85,11 @@ class Eficiencia2
         object data=Get(null,"carpetaDatos"),oldThumb=Get(null,"thumbDir");
         Set(null,"carpetaDatos",dir);Set(null,"thumbDir",null);
         object f=Codigo.FormSinEncender(F);typeof(Form).GetConstructor(Type.EmptyTypes).Invoke(f,new object[0]);Set(f,"gpuEnabled",true);
+        // Esta fixture omite el constructor de Form1: reponer tambien el regulador GPU,
+        // no solo diccionarios/cerrojos, para probar el camino realmente usado por la app.
+        FieldInfo gobernador=F.GetField("coverGovernor",B);
+        gobernador.SetValue(f,Activator.CreateInstance(gobernador.FieldType,B,null,new object[]{1},null));
+        Set(null,"coverCarriles",1);
         string path=Path.Combine(dir,"cover.png"),baseline=Path.Combine(dir,"original.jpg");
         using(Bitmap b=new Bitmap(600,600))using(Graphics g=Graphics.FromImage(b))
         {g.Clear(Color.MidnightBlue);g.FillEllipse(Brushes.HotPink,30,90,420,390);b.Save(path,ImageFormat.Png);}
@@ -146,7 +151,7 @@ class Eficiencia2
         GCHandle h=(GCHandle)Get(d,"pinVertices");
         Check(pin(d,a,out tmp)==uno && GCHandle.ToIntPtr(h)==GCHandle.ToIntPtr((GCHandle)Get(d,"pinVertices")),"dibujos repetidos reutilizan exactamente el mismo pin");
         pin(d,b,out tmp);Check(object.ReferenceEquals(Get(d,"verticesFijados"),b),"cambiar array sustituye el pin, no guarda un historial");
-        Call(d,"SueltaPinesVertices");Check(Get(d,"verticesFijados")==null && (long)Get(d,"pinesBytes")==0 && !((GCHandle)Get(d,"pinVertices")).IsAllocated,"fin de escena libera referencias y pin");
+        Call(d,"SueltaPinesVertices");Check(Get(d,"verticesFijados")==null && (IntPtr)Get(d,"direccionVertices")==IntPtr.Zero && !((GCHandle)Get(d,"pinVertices")).IsAllocated,"fin de escena libera referencias, direccion y pin");
         Array grande=Array.CreateInstance(vt,230000);pin(d,grande,out tmp);
         Check(tmp.IsAllocated && Get(d,"verticesFijados")==null,"array mayor del presupuesto conserva pin temporal");
         tmp.Free();

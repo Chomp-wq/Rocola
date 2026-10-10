@@ -34,6 +34,117 @@ namespace Rocola
     // medir sola.
     public partial class Form1
     {
+        // Pantalla: solo pendientes. Escritor serial: espejo completo, sin recorrer la
+        // biblioteca en cada tanda. Cancelar/fallar no consume cambios sin confirmar.
+        private sealed class CambiosTabla<T> where T : class
+        {
+            internal readonly object Origen;
+            internal readonly Dictionary<string, T> Trabajo;
+            private readonly object cerrojo = new object();
+            private readonly Dictionary<string, T> pendientes = new Dictionary<string, T>(StringComparer.OrdinalIgnoreCase);
+            internal CambiosTabla(object origen, Dictionary<string, T> trabajo) { Origen = origen; Trabajo = trabajo; }
+            internal void Marca(string ruta, T registro) { lock (cerrojo) pendientes[ruta] = registro; }
+            internal List<KeyValuePair<string, T>> Copia() { lock (cerrojo) return new List<KeyValuePair<string, T>>(pendientes); }
+            internal void Aplica(List<KeyValuePair<string, T>> cambios)
+            {
+                for (int i = 0; i < cambios.Count; i++)
+                    if (cambios[i].Value == null) Trabajo.Remove(cambios[i].Key);
+                    else Trabajo[cambios[i].Key] = cambios[i].Value;
+            }
+            internal void Confirma(List<KeyValuePair<string, T>> cambios)
+            {
+                lock (cerrojo) for (int i = 0; i < cambios.Count; i++)
+                {
+                    T actual;
+                    if (pendientes.TryGetValue(cambios[i].Key, out actual) && ReferenceEquals(actual, cambios[i].Value))
+                        pendientes.Remove(cambios[i].Key);
+                }
+            }
+        }
+        private sealed class RegistroVolumen
+        {
+            internal readonly float Rms, Duracion;
+            internal RegistroVolumen(float rms, float duracion) { Rms = rms; Duracion = duracion; }
+        }
+        private sealed class RegistroEq
+        {
+            internal readonly float[] Curva;
+            internal RegistroEq(float[] curva) { Curva = (float[])curva.Clone(); }
+        }
+        private sealed class RegistroIntegrada
+        {
+            internal readonly SonoridadIntegrada Valor;
+            internal RegistroIntegrada(SonoridadIntegrada valor) { Valor = valor; }
+        }
+        // El fallback de diagnostico (formulario sin constructor) conserva el guardado
+        // completo; todas las instancias normales usan deltas, sin opcion de desactivarlas.
+        private bool medidasDeltasActivas = true;
+        private CambiosTabla<RegistroVolumen> cambiosVolumen;
+        private CambiosTabla<RegistroEq> cambiosEq;
+        private CambiosTabla<RegistroIntegrada> cambiosIntegrada;
+
+        private static CambiosTabla<RegistroVolumen> PreparaVolumen(Dictionary<string, float> rms, Dictionary<string, float> dur)
+        {
+            Dictionary<string, RegistroVolumen> tabla = new Dictionary<string, RegistroVolumen>(rms.Count, StringComparer.OrdinalIgnoreCase);
+            foreach (KeyValuePair<string, float> kv in rms)
+            { float d; if (!dur.TryGetValue(kv.Key, out d)) d = 0f; tabla[kv.Key] = new RegistroVolumen(kv.Value, d); }
+            return new CambiosTabla<RegistroVolumen>(rms, tabla);
+        }
+        private static CambiosTabla<RegistroEq> PreparaEq(Dictionary<string, float[]> eq)
+        {
+            Dictionary<string, RegistroEq> tabla = new Dictionary<string, RegistroEq>(eq.Count, StringComparer.OrdinalIgnoreCase);
+            foreach (KeyValuePair<string, float[]> kv in eq) tabla[kv.Key] = new RegistroEq(kv.Value);
+            return new CambiosTabla<RegistroEq>(eq, tabla);
+        }
+        private static CambiosTabla<RegistroIntegrada> PreparaIntegrada(Dictionary<string, SonoridadIntegrada> integ)
+        {
+            Dictionary<string, RegistroIntegrada> tabla = new Dictionary<string, RegistroIntegrada>(integ.Count, StringComparer.OrdinalIgnoreCase);
+            foreach (KeyValuePair<string, SonoridadIntegrada> kv in integ) tabla[kv.Key] = new RegistroIntegrada(kv.Value);
+            return new CambiosTabla<RegistroIntegrada>(integ, tabla);
+        }
+        private void MarcarVolumen(string ruta)
+        {
+            if (!medidasDeltasActivas || ruta == null) return;
+            if (cambiosVolumen == null || !ReferenceEquals(cambiosVolumen.Origen, loudCache)) cambiosVolumen = PreparaVolumen(loudCache, durCache);
+            float r, d; if (!durCache.TryGetValue(ruta, out d)) d = 0f;
+            cambiosVolumen.Marca(ruta, loudCache.TryGetValue(ruta, out r) ? new RegistroVolumen(r, d) : null);
+        }
+        private void MarcarEq(string ruta)
+        {
+            if (!medidasDeltasActivas || ruta == null) return;
+            if (cambiosEq == null || !ReferenceEquals(cambiosEq.Origen, eqCache)) cambiosEq = PreparaEq(eqCache);
+            float[] c; cambiosEq.Marca(ruta, eqCache.TryGetValue(ruta, out c) ? new RegistroEq(c) : null);
+        }
+        private void MarcarIntegrada(string ruta)
+        {
+            if (!medidasDeltasActivas || ruta == null) return;
+            if (cambiosIntegrada == null || !ReferenceEquals(cambiosIntegrada.Origen, integCache)) cambiosIntegrada = PreparaIntegrada(integCache);
+            SonoridadIntegrada s; cambiosIntegrada.Marca(ruta, integCache.TryGetValue(ruta, out s) ? new RegistroIntegrada(s) : null);
+        }
+
+        private void GuardaTablaCambios<T>(CambiosTabla<T> tabla, GuardadoReciente cola, object cerrojo,
+            DiarioTabla diario, string ruta, List<string> ajenas, Func<bool> vigente,
+            HuellaDe<T> huella, FilaDe<T> fila, string cabecera, Action confirmado) where T : class
+        {
+            List<KeyValuePair<string, T>> cambios = tabla.Copia();   // O(tanda), no O(biblioteca)
+            GuardaUltimo(cola, delegate
+            {
+                try
+                {
+                    if (!vigente()) return;
+                    lock (cerrojo)
+                    {
+                        if (!vigente()) return;
+                        tabla.Aplica(cambios);
+                        if (!diario.GuardaCambiosConAjenas(ruta, tabla.Trabajo, cambios, huella, fila, cabecera, ajenas, vigente)) return;
+                        tabla.Confirma(cambios);
+                        if (confirmado != null) confirmado();
+                    }
+                }
+                catch { }   // los pendientes se conservan para reintentar, incluido al cerrar
+            });
+        }
+
         internal delegate long HuellaDe<T>(string ruta, T valor);
         internal delegate void FilaDe<T>(TextWriter w, string ruta, T valor);
 
@@ -75,7 +186,7 @@ namespace Rocola
                                 else cambian.Add(i);
                             }
                             if (conocidas < enArchivo.Count) entero = true;   // se quito alguna: solo lo dice el archivo entero
-                            else if (filasArchivo + cambian.Count > filas.Count + filas.Count / 2 + 1000) entero = true;   // compactar
+                            else if (filasArchivo + cambian.Count > filas.Count + filas.Count / 2 + 1000 + (cola == null ? 0 : cola.Count)) entero = true;   // compactar
                         }
                         if (!entero && cambian.Count == 0) { SinCambios++; return true; }
                         if (!entero)
@@ -98,6 +209,10 @@ namespace Rocola
             // null es una baja. Cancelar/fallar NO consume pendientes: el llamador los conserva.
             internal bool GuardaCambios<T>(string ruta, Dictionary<string, T> actual, List<KeyValuePair<string, T>> cambios,
                 HuellaDe<T> huella, FilaDe<T> fila, string cabecera, Func<bool> vigente) where T : class
+            { return GuardaCambiosConAjenas(ruta, actual, cambios, huella, fila, cabecera, null, vigente); }
+
+            internal bool GuardaCambiosConAjenas<T>(string ruta, Dictionary<string, T> actual, List<KeyValuePair<string, T>> cambios,
+                HuellaDe<T> huella, FilaDe<T> fila, string cabecera, List<string> cola, Func<bool> vigente) where T : class
             {
                 lock (CandadoDe(ruta))
                 {
@@ -116,7 +231,7 @@ namespace Rocola
                                 if (c.Value == null) { if (existe) entero = true; }
                                 else if (!existe || antes != huella(c.Key, c.Value)) nuevas.Add(c);
                             }
-                            if (actual.Count < enArchivo.Count || filasArchivo + nuevas.Count > actual.Count + actual.Count / 2 + 1000) entero = true;
+                            if (actual.Count < enArchivo.Count || filasArchivo + nuevas.Count > actual.Count + actual.Count / 2 + 1000 + (cola == null ? 0 : cola.Count)) entero = true;
                         }
                         if (!entero && nuevas.Count == 0) { SinCambios++; return true; }
                         if (!entero)
@@ -127,7 +242,7 @@ namespace Rocola
                             if (r != 2) return r == 0;
                         }
                         // Primera vez, bajas, restauracion externa y compactacion conservan el camino seguro.
-                        return GuardaEntera(ruta, new List<KeyValuePair<string, T>>(actual), huella, fila, cabecera, null, vigente);
+                        return GuardaEntera(ruta, new List<KeyValuePair<string, T>>(actual), huella, fila, cabecera, cola, vigente);
                     }
                     catch { enArchivo = null; throw; }
                 }
@@ -176,6 +291,7 @@ namespace Rocola
                     datos = ms.ToArray();
                 }
                 if (vigente != null && !vigente()) return 1;
+                using (ProteccionRespaldo cambio = ProtegeRespaldo(ruta))
                 using (FileStream fs = new FileStream(ruta, FileMode.Open, FileAccess.Write, FileShare.Read))
                 {
                     if (fs.Length != largoArchivo || CambioArchivo(ruta)) { enArchivo = null; return 2; }   // incluso mismo largo

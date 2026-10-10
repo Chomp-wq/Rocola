@@ -103,10 +103,10 @@ class VerticesGpu
     same=vivo.Length==temporal.Length;for(int i=0;i<vivo.Length && same;i++)same=vivo[i]==temporal[i];
     Check(same,"mutacion durante la escena se lee igual con pin reutilizado o temporal");
     Draw(d,sky,mesh,120,1);Check((bool)Call(d,"EndFrame"),"EndFrame HAL presenta una escena normal");
-    Check(Get(d,"verticesFijados")==null && (long)Get(d,"pinesBytes")==0,"EndFrame libera el pin y su referencia");
+    Check(Get(d,"verticesFijados")==null && (IntPtr)Get(d,"direccionVertices")==IntPtr.Zero,"EndFrame libera el pin, direccion y referencia");
     Draw(d,sky,mesh,120,1);Check(Get(d,"verticesFijados")!=null,"escena abierta al probar Dispose");
    }finally{Call(d,"Dispose");}Check((IntPtr)Get(d,"verticesGpu")==IntPtr.Zero,"Dispose libera vertices");
-   Check(Get(d,"verticesFijados")==null && (long)Get(d,"pinesBytes")==0,"Dispose libera tambien la ultima escena HAL abierta");}
+   Check(Get(d,"verticesFijados")==null && (IntPtr)Get(d,"direccionVertices")==IntPtr.Zero,"Dispose libera tambien la ultima escena HAL abierta");}
    Console.WriteLine(checks+" comprobaciones de vertices HAL.");return 0;
   }catch(Exception e){Console.WriteLine("FALLO "+e);return 1;}
  }

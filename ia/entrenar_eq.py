@@ -43,6 +43,8 @@ candidato; NO sobrescribe ese nombre. Sin modelo instalado legible no se certifi
 """
 
 import argparse, os, struct, sys
+from presupuesto_entrenamiento import configura_blas
+HILOS_ENTRENAMIENTO = configura_blas()
 import numpy as np
 
 # ---------------- contrato (identico a Form1.cs) ----------------

@@ -26,6 +26,10 @@ namespace Rocola
             internal HashSet<string> Deep, Cola;
             internal bool Tintes;
             internal int Firma, LoudCount;
+            // Los dos planes iniciales comparten solamente datos privados e inmutables.
+            // Cancelacion y tablas de analisis adicionales siguen siendo independientes.
+            internal LecturaBiblioteca BaseCompartida;
+            private bool basePreparada;
             private readonly ManualResetEvent cancelada = new ManualResetEvent(false);
             internal volatile bool Cancelada;
             internal void Cancela() { Cancelada = true; try { cancelada.Set(); } catch (ObjectDisposedException) { } }
@@ -36,7 +40,9 @@ namespace Rocola
             }
             internal void Prepara()
             {
-                Dur = Indice(DurDatos); Rapidas = Indice(RapidasDatos); Loud = Indice(LoudDatos);
+                LecturaBiblioteca origen = BaseCompartida ?? this;
+                origen.PreparaBase(); Dur = origen.Dur; Rapidas = origen.Rapidas;
+                Loud = Indice(LoudDatos);
                 Eq = Indice(EqDatos); Integ = Indice(IntegDatos);
                 Canciones = Indice(CancionesDatos); VideoCounts = Indice(VideosDatos);
                 Sec = Indice(SecDatos); VideoSec = Indice(VideoSecDatos);
@@ -45,6 +51,15 @@ namespace Rocola
                 DurDatos = null; RapidasDatos = null; LoudDatos = null; EqDatos = null; IntegDatos = null;
                 CancionesDatos = null; VideosDatos = null; SecDatos = null; VideoSecDatos = null;
                 DeepDatos = null; ColaDatos = null;
+            }
+            private void PreparaBase()
+            {
+                lock (this)
+                {
+                    if (basePreparada) return;
+                    Dur = Indice(DurDatos); Rapidas = Indice(RapidasDatos);
+                    DurDatos = null; RapidasDatos = null; basePreparada = true;
+                }
             }
             private static Dictionary<string, T> Indice<T>(List<KeyValuePair<string, T>> filas)
             {
@@ -58,18 +73,28 @@ namespace Rocola
 
         [ThreadStatic] private static LecturaBiblioteca lecturaPlan;
         private LecturaBiblioteca planDuracion, planRepaso;
+        private LecturaBiblioteca planArranqueComun; // solo durante la publicacion UI de biblioteca
         private Thread preparaRepasoTh;
         private LecturaBiblioteca CapturaLecturaBiblioteca()
         { return CapturaParaBiblioteca(true); }
         private LecturaBiblioteca CapturaParaBiblioteca(bool completa)
         {
             if (libBuilding || IsDisposed || Disposing) return null;
+            LecturaBiblioteca comun = planArranqueComun;
+            if (comun != null && completa) return comun;
             LecturaBiblioteca p = new LecturaBiblioteca();
-            p.Tracks = new List<Track>(tracks);
-            p.Videos = videoAlbums != null ? new List<Album>(videoAlbums) : new List<Album>();
-            p.Letras = new List<KeyValuePair<char, List<Album>>>(byLetter);
-            p.DurDatos = new List<KeyValuePair<string, float>>(durCache);
-            p.RapidasDatos = new List<KeyValuePair<string, float>>(durFast);
+            if (comun != null)
+            {
+                p.BaseCompartida = comun; p.Tracks = comun.Tracks; p.Videos = comun.Videos; p.Letras = comun.Letras;
+            }
+            else
+            {
+                p.Tracks = new List<Track>(tracks);
+                p.Videos = videoAlbums != null ? new List<Album>(videoAlbums) : new List<Album>();
+                p.Letras = new List<KeyValuePair<char, List<Album>>>(byLetter);
+                p.DurDatos = new List<KeyValuePair<string, float>>(durCache);
+                p.RapidasDatos = new List<KeyValuePair<string, float>>(durFast);
+            }
             if (completa)
             {
                 p.LoudDatos = new List<KeyValuePair<string, float>>(loudCache);
@@ -86,6 +111,58 @@ namespace Rocola
             else { p.DeepDatos = new List<string>(); p.ColaDatos = new List<string>(); }
             p.Tintes = tintesPend; p.Firma = FirmaBiblioteca(); p.LoudCount = loudCache.Count;
             return p;
+        }
+
+        // El trabajador publica SOLO dominantes que cambiaron desde la tanda anterior.
+        // El desempate recorre los votos en el mismo orden que la implementacion original.
+        private sealed class VotosTinte<T>
+        {
+            private readonly Dictionary<T, Dictionary<string, int>> votos;
+            private readonly Dictionary<T, string> publicados;
+            private readonly HashSet<T> tocados;
+            internal VotosTinte(IEqualityComparer<T> comparador)
+            {
+                votos = new Dictionary<T, Dictionary<string, int>>(comparador);
+                publicados = new Dictionary<T, string>(comparador); tocados = new HashSet<T>(comparador);
+            }
+            internal void Vota(T clave, string etiqueta)
+            {
+                Dictionary<string, int> cuenta;
+                if (!votos.TryGetValue(clave, out cuenta)) { cuenta = new Dictionary<string, int>(); votos[clave] = cuenta; }
+                int n; cuenta.TryGetValue(etiqueta, out n); cuenta[etiqueta] = n + 1; tocados.Add(clave);
+            }
+            internal void Delta(out T[] claves, out string[] etiquetas)
+            {
+                List<T> k = new List<T>(); List<string> e = new List<string>();
+                foreach (T clave in tocados)
+                {
+                    string mejor = null; int n = 0;
+                    foreach (KeyValuePair<string, int> voto in votos[clave])
+                        if (voto.Key != "Otros" && voto.Value > n) { mejor = voto.Key; n = voto.Value; }
+                    string anterior;
+                    if (mejor != null && (!publicados.TryGetValue(clave, out anterior) || anterior != mejor))
+                    { publicados[clave] = mejor; k.Add(clave); e.Add(mejor); }
+                }
+                tocados.Clear(); claves = k.ToArray(); etiquetas = e.ToArray();
+            }
+        }
+
+        private bool AplicaTintesNuevos(char[] letras, string[] etiquetas, string[] discos, string[] etDiscos)
+        {
+            bool cambio = false;
+            for (int i = 0; i < letras.Length && i < etiquetas.Length; i++)
+            {
+                string antes;
+                if (letterTag.TryGetValue(letras[i], out antes) && antes == etiquetas[i]) continue;
+                letterTag[letras[i]] = etiquetas[i]; cambio = true;
+            }
+            for (int i = 0; i < discos.Length && i < etDiscos.Length; i++)
+            {
+                string antes;
+                if (discTag.TryGetValue(discos[i], out antes) && antes == etDiscos[i]) continue;
+                discTag[discos[i]] = etDiscos[i]; cambio = true;
+            }
+            return cambio;
         }
         private void CancelaPlanesBiblioteca()
         {

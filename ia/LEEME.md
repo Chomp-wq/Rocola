@@ -1,5 +1,31 @@
 # IA propia de la rocola (modelo entrenado por el dueno con su biblioteca)
 
+## Eficiencia y repeticion de entrenamiento — 9 de octubre de 2026
+
+DSEE lee entradas y objetivos RIAD juntos por lote, sin cargar todo el corpus en RAM ni
+alterar ejemplos, semillas, permutaciones, normalizacion, perdida o Adam. La prueba
+`test_eficiencia_entrenamiento.py` compara lotes y pesos finales exactamente contra la
+lectura anterior, tanto con MSE como con la perdida de envolvente.
+
+`presupuesto_entrenamiento.py` debe permanecer junto a los tres entrenadores. Antes de
+importar NumPy limita BLAS segun la afinidad disponible: dos hilos de CPU usan un hilo de
+entrenamiento; una maquina de 32 usa 16 por defecto. No existe un tope universal de uno
+o dos para equipos potentes. La politica deja margen a la musica y la interfaz; no cambia
+modelos instalados, la afinidad ni las opciones del reproductor.
+
+Para repetir un entrenamiento con un presupuesto fijo, en una consola PowerShell nueva:
+
+```powershell
+$env:ROCOLA_HILOS_ENTRENAMIENTO = "1"
+python entrenar_ia.py --datos rocola_ia_datos.bin
+```
+
+Se admite de 1 al numero de CPU disponibles (tambien todas, si no se necesita dejar margen).
+El informe registra los hilos solicitados y la version NumPy. La repeticion exacta requiere
+la misma entrada, parametros, semilla, numero de hilos y pila NumPy/BLAS; no se garantiza
+igualdad bit a bit entre maquinas, bibliotecas BLAS o presupuestos distintos. Ejecutar desde
+una consola nueva asegura que el presupuesto se fije antes de cargar BLAS.
+
 ## Candidatos seguros — 29 de septiembre de 2026
 
 Entrenar no activa ni recupera modelos instalados. `entrenar_dsee.bat` deja candidatos e informes

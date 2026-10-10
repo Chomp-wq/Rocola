@@ -74,8 +74,10 @@ class Bloqueos
         { "disco", "Track.ReadId3", "", "la etiqueta ID3 de la cancion que empieza, SOLO si no llego leida por adelantado: la primera, una elegida con la cola vacia o un archivo que cambio (lo normal la deja lista PrecalientaSiguiente: 'etiquetadelante')" },
         { "disco", "Form1.AudioFileSignature", "", "al empezar la cancion: que la etiqueta leida por adelantado sigue valiendo (tamano y fechas del archivo, sin abrirlo ni leerlo)" },
         { "disco", "Form1.CapturaFuente", "", "al aplicar/publicar medidas: solo metadatos del original, como AudioFileSignature; impide usar volumen, EQ o recortes de una cancion sustituida. No abre ni recorre el audio" },
+        { "disco", "Form1.CapturaRespaldo", "", "al seguir el arranque o cerrar el dia: como maximo 15 handles y sus longitudes, o retener la generacion previa de una mutacion en curso. Solo toma un candado corto de metadatos, nunca el candado del formato/Write/Flush ni espera a un escritor (datosdeltas lo comprueba bajo contencion). NO lee/copia contenido ni calcula hashes: esas operaciones ceden en fondo. Abrir un handle en Windows sigue pudiendo tardar, especialmente en rutas remotas" },
         { "disco", "Form1.LoadFuentesMedidas", "", "arranque: solo si fallo el lector de tablas en fondo, igual que LoadLoudCache; la ruta normal carga la identidad con las otras tablas" },
         { "espera", "GpuPanel.RenderFrame", "", "solo con la tarjeta perdida: 5 ms antes de volver a intentarlo" },
+        { "espera", "GpuPanel.PausaNaturalFila", "", "falso positivo condicional: Sleep(1) exige slow=true, que solo usa el trabajador de PreparacionFondoNatural. Las dos envolturas alcanzables desde UI pasan false literal; esta bateria comprueba TODOS sus sitios alcanzables y falla si alguno deja de pasar false" },
         { "espera", "GpuPanel.EsperaMensajes", "modest", "plan B de 1 ms si Windows no tiene MsgWaitForMultipleObjectsEx" },
         { "espera", "Sistema.EsperaMensajes", "hd", "plan B de 1 ms si Windows no tiene MsgWaitForMultipleObjectsEx" },
         { "disco", "Form1.BorraVideosMudos", "hd", "limpieza de videos mudos: ventana de servicio, a pedido del operador" },
@@ -197,7 +199,7 @@ class Bloqueos
         // Los ayudantes de la rocola que van al disco o abren una cancion cuentan como la llamada misma: asi el sitio que
         // sale es QUIEN los usa (guardar el estado, la configuracion...), y no el ayudante, que lo usan todos.
         if (t == "Rocola.Form1" && (n == "EscribeSeguro" || n == "EscribeSeguroYa" || n == "AnexaSeguro" || n == "EscribeFlujoSeguro" || n == "PublicaGuardadoSeguro"
-            || n == "BorraSeguro" || n == "LeeLineasSeguro")) return "disco";
+            || n == "BorraSeguro" || n == "LeeLineasSeguro" || n == "AbreArchivoRespaldo")) return "disco";
         if (t == "Rocola.Bitacora" && n == "Vacia") return "disco";
         if (t == "Rocola.Form1" && n == "OpenAudio") return "abrir audio";
         if (t == "System.IO.FileStream" && n == ".ctor") return "disco";
@@ -230,6 +232,30 @@ class Bloqueos
     }
 
     sealed class Hallazgo { public string Cat, Sitio; public SortedDictionary<string, bool> Que = new SortedDictionary<string, bool>(); public string Camino; }
+
+    // La excepcion de PausaNaturalFila no autoriza esperas en UI. Verificar en el IL real
+    // que cada llamada alcanzable a los builders cancela el respiro (ultimo argumento=false).
+    static void SinRespirosNaturalesEnPantalla(Dictionary<MethodBase, MethodBase> alcanzados)
+    {
+        int llamadas = 0, peligrosas = 0;
+        foreach (MethodBase metodo in alcanzados.Keys)
+        {
+            List<Codigo.Paso> pasos = Codigo.Pasos(metodo);
+            for (int i = 0; i < pasos.Count; i++)
+            {
+                Codigo.Paso paso = pasos[i];
+                if (paso.Op != 0x28 && paso.Op != 0x6F) continue;
+                MethodBase destino = null; try { destino = metodo.Module.ResolveMethod(paso.Numero); } catch { }
+                if (destino == null || destino.DeclaringType == null || destino.DeclaringType.FullName != "Rocola.GpuPanel"
+                    || (destino.Name != "BakeNebulosaPreparada" && destino.Name != "BakeViaPreparada")) continue;
+                llamadas++;
+                // ldc.i4.0 inmediatamente antes de call: no una variable ni una suposicion del recorrido.
+                if (i == 0 || pasos[i - 1].Op != 0x16)
+                { peligrosas++; Console.WriteLine("  RESPIRO NATURAL EN UI sin false literal: " + Sitio(metodo) + " > " + destino.Name); }
+            }
+        }
+        Check(llamadas >= 2 && peligrosas == 0, "los builders naturales alcanzables desde UI siempre desactivan Sleep (" + llamadas + " llamadas, " + peligrosas + " peligrosas)");
+    }
 
     static int Main(string[] args)
     {
@@ -287,6 +313,7 @@ class Bloqueos
 
         Console.WriteLine("\n  LO QUE PUEDE PARAR LA PANTALLA (" + (rama == "hd" ? "rocola HD" : "rocola Modest") + ")\n");
         Console.WriteLine("        " + entradas.Count + " entradas de la pantalla, " + padre.Count + " metodos alcanzados, " + hallazgos.Count + " sitios que pueden esperar");
+        SinRespirosNaturalesEnPantalla(padre);
         Dictionary<string, string> motivos = new Dictionary<string, string>();
         List<string> sobran = new List<string>();
         for (int i = 0; i < Revisados.GetLength(0); i++)

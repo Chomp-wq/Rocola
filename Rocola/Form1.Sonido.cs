@@ -302,6 +302,7 @@ namespace Rocola
             // "aprendida" el guardado deja de dispararse en cada cancion (menos escrituras a disco, cero churn).
             if (had && Math.Abs(val - prev) < 0.004f) return;
             loudCache[path] = val;
+            MarcarVolumen(path);
             InvalidateVideoMeasurements();
             SaveLoudCache();
         }
@@ -1506,6 +1507,11 @@ namespace Rocola
             private bool srcEnded;
             private long sourceFrames, emittedFrames;      // conserva tambien la fraccion final menor que un Hop
             private readonly float[] iaIn = new float[28], iaOut = new float[12];   // IA propia: entrada/salida de la red (reusables)
+            // Limites exactos: solo dependen del corte y de esta FFT, no de las muestras.
+            // Conservar la aritmetica original al prepararlos evita cambiar un solo bin.
+            private int iaFeatureCut = -1, iaTargetCut = -1, iaTargetTop = -1;
+            private readonly int[] iaFeatureA = new int[24], iaFeatureB = new int[24];
+            private readonly int[] iaTargetA = new int[12], iaTargetB = new int[12];
             // LA COPIA POR BLOQUES (ver Regenerate)
             private int canalRegen;                        // canal que se esta recreando (lo pone ProcessFrame)
             private bool ventanaImpar;                     // paridad de la ventana: mantiene la fase de la copia
@@ -1741,12 +1747,10 @@ namespace Rocola
                 int sa = Hz(cut * binHz * 0.92f); if (sa >= cut) sa = cut - 1;
                 double seamE = 0; for (int k = sa; k < cut; k++) seamE += re[k] * re[k] + im[k] * im[k];
                 seamE = seamE / ((cut - sa) * n2) + 1e-12;
-                float fc = cut * binHz, top = topBin * binHz;
+                PreparaIaTargetBands(cut, topBin);
                 for (int j = 0; j < 12; j++)
                 {
-                    int a = Hz(fc * (float)Math.Pow(top / fc, j / 12.0));
-                    int b = Hz(fc * (float)Math.Pow(top / fc, (j + 1) / 12.0));
-                    if (a < cut) a = cut; if (b > topBin) b = topBin;
+                    int a = iaTargetA[j], b = iaTargetB[j];
                     if (b <= a) return false;
                     double realE = 0; for (int k = a; k < b; k++) realE += re[k] * re[k] + im[k] * im[k];
                     realE = realE / ((b - a) * n2) + 1e-12;
@@ -1950,12 +1954,11 @@ namespace Rocola
                 float n2 = (float)Frame * (float)Frame;
                 float fc = cut * binHz;
                 if (fc < 1200f) return false;
+                PreparaIaFeatureBands(cut);
                 double sum = 0;
                 for (int i = 0; i < 24; i++)
                 {
-                    int a = Hz(200f * (float)Math.Pow(fc / 200f, i / 24.0));
-                    int b = Hz(200f * (float)Math.Pow(fc / 200f, (i + 1) / 24.0));
-                    if (b <= a) b = a + 1;
+                    int a = iaFeatureA[i], b = iaFeatureB[i];
                     double e = 0; for (int k = a; k < b; k++) e += re[k] * re[k] + im[k] * im[k];
                     iaIn[i] = (float)Math.Log10(e / ((b - a) * n2) + 1e-12);
                     sum += iaIn[i];
@@ -1975,6 +1978,33 @@ namespace Rocola
 
             
 
+            private void PreparaIaFeatureBands(int cut)
+            {
+                if (iaFeatureCut == cut) return;
+                float fc = cut * binHz;
+                for (int i = 0; i < 24; i++)
+                {
+                    int a = Hz(200f * (float)Math.Pow(fc / 200f, i / 24.0));
+                    int b = Hz(200f * (float)Math.Pow(fc / 200f, (i + 1) / 24.0));
+                    if (b <= a) b = a + 1;
+                    iaFeatureA[i] = a; iaFeatureB[i] = b;
+                }
+                iaFeatureCut = cut;
+            }
+            private void PreparaIaTargetBands(int cut, int topBin)
+            {
+                if (iaTargetCut == cut && iaTargetTop == topBin) return;
+                float fc = cut * binHz, top = topBin * binHz;
+                for (int j = 0; j < 12; j++)
+                {
+                    int a = Hz(fc * (float)Math.Pow(top / fc, j / 12.0));
+                    int b = Hz(fc * (float)Math.Pow(top / fc, (j + 1) / 12.0));
+                    if (a < cut) a = cut; if (b > topBin) b = topBin;
+                    iaTargetA[j] = a; iaTargetB[j] = b;
+                }
+                iaTargetCut = cut; iaTargetTop = topBin;
+            }
+
             private bool RegenNeural(int cut, int topBin)
             {
                 if (!BuildIaFeatures(cut)) return false;
@@ -1984,12 +2014,10 @@ namespace Rocola
                 int sa = Hz(cut * binHz * 0.92f); if (sa >= cut) sa = cut - 1;
                 double seamE = 0; for (int k = sa; k < cut; k++) seamE += re[k] * re[k] + im[k] * im[k];
                 seamE = seamE / ((cut - sa) * n2) + 1e-12;
-                float fc = cut * binHz, top = topBin * binHz;
+                PreparaIaTargetBands(cut, topBin);
                 for (int j = 0; j < 12; j++)
                 {
-                    int a = Hz(fc * (float)Math.Pow(top / fc, j / 12.0));
-                    int b = Hz(fc * (float)Math.Pow(top / fc, (j + 1) / 12.0));
-                    if (a < cut) a = cut; if (b > topBin) b = topBin; if (b <= a) continue;
+                    int a = iaTargetA[j], b = iaTargetB[j]; if (b <= a) continue;
                     double mapped = 0;                               // energia de la fuente transpuesta en esta sub-banda (sin picos: ver FuenteSuave)
                     for (int t = a; t < b; t++) mapped += fuenteSuave[t >> 1];
                     mapped = mapped / ((b - a) * n2);
@@ -2781,10 +2809,18 @@ namespace Rocola
                 set
                 {
                     PreparedEq p = pendingEq;
-                    if (p != null && ReferenceEquals(p.Curve, value)) return;
+                    if (p != null && CurvaEqExacta(p.Curve, value)) return;
                     pendingEq = value == null ? null :
                         new PreparedEq(value, WaveFormat.SampleRate, WaveFormat.Channels);
                 }
+            }
+            private static bool CurvaEqExacta(float[] a, float[] b)
+            {
+                if (ReferenceEquals(a, b)) return true;
+                if (a == null || b == null || a.Length < 8 || b.Length < 8) return false;
+                // Sin tolerancia: una curva distinta conserva su transicion normal.
+                for (int i = 0; i < 8; i++) if (a[i] != b[i]) return false;
+                return true;
             }
             public LevelTap(NAudio.Wave.ISampleProvider s, Form1 o)
             {

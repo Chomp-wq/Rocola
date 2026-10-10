@@ -164,6 +164,7 @@ namespace Rocola
         private readonly List<CintaTile> cintaTiles = new List<CintaTile>();
         private readonly Dictionary<Bitmap, CintaTile> cintaByBitmap = new Dictionary<Bitmap, CintaTile>();
         private readonly List<Bitmap> cintaOldSources = new List<Bitmap>();
+        private readonly List<IntPtr> cintaRetiradas = new List<IntPtr>();
         private readonly D3D9.Vtx[] cintaQuad = new D3D9.Vtx[6];
         private void PreparaCintasTexto()
         {
@@ -183,24 +184,71 @@ namespace Rocola
                             {
                                 tile = new CintaTile(); tile.Source = source; cintaByBitmap.Add(source, tile);
                             }
-                            if (tile.Tex == IntPtr.Zero)
-                            {
-                                tile.Tex = Upload(tile.Tex, ref tile.W, ref tile.H, source, out tile.U, out tile.V);
-                                tile.Source = source;
-                            }
                             tile.Run = run; tile.Group = group; tile.Part = part; tile.Seen = true;
                             cintaTiles.Add(tile);
                         }
                 }
+            // Lo legible nunca espera al presupuesto. Solo se aplazan las partes fuera de la
+            // ventana del texto; se preparan con margen antes de que el desplazamiento las muestre.
+            int now = Environment.TickCount;
+            foreach (CintaTile tile in cintaTiles)
+                if (tile.Tex == IntPtr.Zero && CintaVisible(tile, now)) SubeCinta(tile);
+            long inicio = System.Diagnostics.Stopwatch.GetTimestamp();
+            long presupuesto = Math.Min(CargaTrabajo.PresupuestoGpu(CargaTrabajo.Procesadores, TopeFpsReal, lastFrameWork),
+                (long)(System.Diagnostics.Stopwatch.Frequency * .00035));
+            foreach (CintaTile tile in cintaTiles)
+            {
+                if (System.Diagnostics.Stopwatch.GetTimestamp() - inicio >= presupuesto) break;
+                if (tile.Tex == IntPtr.Zero) SubeCinta(tile);
+            }
             cintaOldSources.Clear();
             foreach (KeyValuePair<Bitmap, CintaTile> kv in cintaByBitmap)
                 if (!kv.Value.Seen) cintaOldSources.Add(kv.Key);
             foreach (Bitmap source in cintaOldSources)
             {
                 CintaTile tile = cintaByBitmap[source];
-                if (tile.Tex != IntPtr.Zero) D3D9.Release(tile.Tex);
+                if (tile.Tex != IntPtr.Zero) cintaRetiradas.Add(tile.Tex);
                 cintaByBitmap.Remove(source);
             }
+            inicio = System.Diagnostics.Stopwatch.GetTimestamp();
+            while (cintaRetiradas.Count > 0)
+            {
+                int i = cintaRetiradas.Count - 1;
+                D3D9.Release(cintaRetiradas[i]); cintaRetiradas.RemoveAt(i);
+                if (cintaRetiradas.Count <= 256 && System.Diagnostics.Stopwatch.GetTimestamp() - inicio >= presupuesto) break;
+            }
+        }
+        private void SubeCinta(CintaTile tile)
+        { tile.Tex = Upload(tile.Tex, ref tile.W, ref tile.H, tile.Source, out tile.U, out tile.V); }
+
+        private bool CintaVisible(CintaTile tile, int now)
+        {
+            bool lista = tile.Group >= 2;
+            if (lista && tile.Group != 4 && GetPiezaRect == null) return false;
+            if (lista && !CintaDeLista(tile.Group)) return false;
+            float alpha = lista ? SceneAlpha() * ControlsOpacity : tile.Group == 0 ? 1 - idleBlend : idleBlend;
+            if (alpha <= .003f) return false;
+            CintaTexto run = tile.Run; RectangleF r = run.Rect;
+            float left = 0, right = r.Width;
+            if (lista)
+            {
+                Rectangle origin = tile.Group == 4 ? OrigenVistaPrevia() : GetPiezaRect(tile.Group == 2 ? 1 : 2);
+                if (origin.IsEmpty) return false;
+                if (tile.Group == 2)
+                {
+                    Rectangle selected = GetPiezaRect(2);
+                    float rowY = origin.Y + r.Y + r.Height * .5f;
+                    if (!selected.IsEmpty && rowY >= selected.Top && rowY < selected.Bottom) return false;
+                }
+                float x = origin.X + r.X + (tile.Group == 4 || songFrameVertical ? 0 : songFrameSlide);
+                float y = origin.Y + r.Y + (tile.Group != 4 && songFrameVertical ? songFrameSlide : 0);
+                RectangleF clip = RectangleF.Intersect(new RectangleF(x, y, r.Width, r.Height), tile.Group == 4 ? origin : GetPiezaRect(0));
+                if (clip.IsEmpty || (tile.Group == 4 && AlfaVistaPrevia(origin) <= .003f)) return false;
+                left = clip.Left - x; right = clip.Right - x;
+            }
+            float off = CorreTitulo((uint)(now - run.Born), Math.Max(0, run.Width - r.Width));
+            float start = tile.Part * 1024 - off;
+            return start < right + 32 && start + tile.Source.Width > left - 32;
         }
         private void DibujaCintasTexto(bool lista)
         {
@@ -249,6 +297,8 @@ namespace Rocola
         private void SueltaCintasGpu()
         {
             foreach (CintaTile t in cintaByBitmap.Values) if (t.Tex != IntPtr.Zero) D3D9.Release(t.Tex);
+            foreach (IntPtr tex in cintaRetiradas) D3D9.Release(tex);
+            cintaRetiradas.Clear();
             cintaByBitmap.Clear(); cintaTiles.Clear(); cintaOldSources.Clear();
         }
     }

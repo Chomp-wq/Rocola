@@ -1678,6 +1678,91 @@ namespace Rocola
         // de dos nucleos del bar, sueltos los dos a la vez se pelean por el disco y salen los dos peor.
         private volatile int minisPendientes;
 
+        private sealed class MiniaturaPendiente
+        {
+            internal Album Disco;
+            internal string Ruta, Identidad;
+        }
+
+        private bool CalentadorVigente(int generacion)
+        { return generacion == warmGen && !startupClosing; }
+
+        // El censo tambien lee el disco. Ceder entre visitas, no solamente al decodificar:
+        // en bibliotecas grandes las consultas de metadatos pueden competir con la pagina visible.
+        private bool EsperaCensoMiniaturas(int generacion, string ruta)
+        {
+            string unidad = UnidadDe(ruta); bool pequena = CargaTrabajo.Procesadores <= 2;
+            while (CalentadorVigente(generacion))
+            {
+                if (!videoOn && (RocolaSola() || Environment.TickCount - lastInputTick >= 400)
+                    && !YieldCoverWork(unidad, pequena)) return true;
+                System.Threading.Thread.Sleep(100);
+            }
+            return false;
+        }
+
+        private bool TomaTurnoMiniatura(int generacion)
+        {
+            while (CalentadorVigente(generacion))
+                if (coverSem.WaitOne(100, false)) return true;
+            return false;
+        }
+
+        private bool FaltaMiniatura(string identidad)
+        {
+            if (!File.Exists(identidad)) return true;
+#if ROCOLA_GPU
+            if (gpuEnabled && caratulasLod && !PreviewStore().Contains(identidad)) return true;
+#endif
+            return false;
+        }
+
+        private bool PublicaMiniaturaCalentada(int generacion, MiniaturaPendiente pendiente, Image im, Bitmap porGuardar)
+        {
+            if (im == null || !CalentadorVigente(generacion) || pendiente.Disco.CoverPath != pendiente.Ruta
+                || pendiente.Identidad != ThumbCachePath(pendiente.Ruta)) return false;
+            if (porGuardar != null) SaveThumb(porGuardar, pendiente.Identidad);
+#if ROCOLA_GPU
+            WarmGpuPreview(pendiente.Disco, im, pendiente.Identidad);
+#endif
+            return true;
+        }
+
+        private List<MiniaturaPendiente> CensaMiniaturas(int myGen, List<Album> snap)
+        {
+            List<MiniaturaPendiente> pendientes = new List<MiniaturaPendiente>();
+            HashSet<string> visitadas = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            System.Diagnostics.Stopwatch tramo = System.Diagnostics.Stopwatch.StartNew();
+            int lote = 0; double presupuesto = CargaTrabajo.Procesadores <= 2 ? 1.5 : 3.0;
+            for (int i = 0; i < snap.Count; i++)
+            {
+                if (!CalentadorVigente(myGen)) return null;
+                Album a0 = snap[i];
+                if (a0 == null || a0.CoverPath == null || !visitadas.Add(a0.CoverPath)) continue;
+                string ruta = a0.CoverPath;
+                if (!EsperaCensoMiniaturas(myGen, ruta)) return null;
+                using (TurnoAnalisis turno = PideTurnoAnalisis(ruta, delegate { return !CalentadorVigente(myGen); }))
+                {
+                    if (turno == null || !TomaTurnoMiniatura(myGen)) return null;
+                    try
+                    {
+                        string identidad = ThumbCachePath(ruta);
+                        if (FaltaMiniatura(identidad))
+                        { MiniaturaPendiente p = new MiniaturaPendiente(); p.Disco = a0; p.Ruta = ruta; p.Identidad = identidad; pendientes.Add(p); }
+                    }
+                    catch { }
+                    finally { coverSem.Release(); }
+                }
+                if (++lote >= (DiscoLento(ruta) ? 16 : 64) || tramo.Elapsed.TotalMilliseconds >= presupuesto)
+                {
+                    if (!PublishThumbRemaining(myGen, pendientes.Count)) return null;
+                    System.Threading.Thread.Sleep(CargaTrabajo.Procesadores <= 2 ? 30 : 10);
+                    tramo.Reset(); tramo.Start(); lote = 0;
+                }
+            }
+            return pendientes;
+        }
+
         private void StartThumbWarm()
         {
             int myGen = AdvanceThumbWarm();
@@ -1686,40 +1771,29 @@ namespace Rocola
             {
                 try
                 {
-                    System.Threading.Thread.Sleep(12000);   // dejar respirar el arranque
+                    // Pausa cancelable: cerrar o recargar no deja un trabajador dormido doce segundos.
+                    for (int espera = 0; espera < 120 && CalentadorVigente(myGen); espera++)
+                        System.Threading.Thread.Sleep(100);
                     // Antes de ponerse a construir, barrer lo antiguo (solo si la carpeta se hizo grande;
                     // ver BarreMiniaturas). Va aqui y no en el arranque para no gastar ni un milisegundo
                     // del rato en que la rocola esta apareciendo.
-                    if (myGen != warmGen) return;
-                    int barridas = BarreMiniaturas();
+                    if (!CalentadorVigente(myGen)) return;
+                    int barridas = BarreMiniaturasConPausas(delegate
+                    { return EsperaCensoMiniaturas(myGen, CarpetaMiniaturas()); });
                     if (barridas > 0) Diag("miniaturas: barridas " + barridas + " de mas de " + MiniaturasDiasMax + " dias");
-                    // CUANTAS FALTAN, antes de empezar. Es una pasada de File.Exists por disco -barata al
-                    // lado de los 72 ms que cuesta hacer una- y con ella el pre-analisis sabe si tiene que
-                    // apartarse: mientras queden miniaturas, mandan ellas, que son lo que se ve.
-                    int faltan = 0;
-                    for (int i = 0; i < snap.Count; i++)
+                    // Una sola visita por fuente: guardar identidad y candidatas, no volver a recorrer
+                    // toda la biblioteca ni repetir FileInfo para la vista LOD. El presupuesto se comprueba
+                    // ENTRE operaciones: una llamada lenta de Windows no se puede interrumpir a medias.
+                    List<MiniaturaPendiente> pendientes = CensaMiniaturas(myGen, snap);
+                    if (pendientes == null) return;
+                    // Soltar el snapshot completo antes de decodificar las pocas que realmente faltan.
+                    snap.Clear();
+                    if (!PublishThumbRemaining(myGen, pendientes.Count)) return;
+                    if (pendientes.Count > 0) Diag("miniaturas: faltan " + pendientes.Count + " por hacer");
+                    for (int i = 0; i < pendientes.Count; i++)
                     {
-                        if (myGen != warmGen) return;
-                        Album a0 = snap[i];
-                        if (a0 == null || a0.CoverPath == null) continue;
-                        try { if (!File.Exists(ThumbCachePath(a0.CoverPath))
-#if ROCOLA_GPU
-                            || NeedsGpuPreview(a0)
-#endif
-                            ) faltan++; } catch { }
-                    }
-                    if (!PublishThumbRemaining(myGen, faltan)) return;
-                    if (faltan > 0) Diag("miniaturas: faltan " + faltan + " por hacer");
-                    for (int i = 0; i < snap.Count; i++)
-                    {
-                        if (myGen != warmGen) return;   // recargaron la musica: este hilo ya caduco
-                        Album a = snap[i];
-                        if (a == null || a.CoverPath == null) continue;
-                        try { if (File.Exists(ThumbCachePath(a.CoverPath))
-#if ROCOLA_GPU
-                            && !NeedsGpuPreview(a)
-#endif
-                            ) continue; } catch { continue; }
+                        if (!CalentadorVigente(myGen)) return;
+                        MiniaturaPendiente pendiente = pendientes[i]; Album a = pendiente.Disco;
                         // Si alguien uso la rocola hace poco, esperar (no robarle CPU ni DISCO a la interfaz).
                         //
                         // SALVO QUE ESTE SOLA. Hacer la miniatura de un disco cuesta 72 ms la primera vez
@@ -1731,7 +1805,7 @@ namespace Rocola
                         while (!RocolaSola() && Environment.TickCount - lastInputTick < 8000)
                         {
                             System.Threading.Thread.Sleep(400);
-                            if (myGen != warmGen) return;
+                            if (!CalentadorVigente(myGen)) return;
                         }
                         // si hay caratulas del primer plano en camino/formadas, o un VIDEO reproduciendose
                         // (el video lee del disco SIN colchon), cederles el disco por completo
@@ -1740,35 +1814,42 @@ namespace Rocola
                             int busy; lock (coverLock) { busy = coverLoading.Count + coverQHi.Count + coverQLo.Count; }
                             if (busy == 0 && !videoOn) break;
                             System.Threading.Thread.Sleep(300);
-                            if (myGen != warmGen) return;
+                            if (!CalentadorVigente(myGen)) return;
                         }
-                        coverSem.WaitOne();   // mismo turno unico de disco que las cargas normales
-                        try
+                        using (TurnoAnalisis turno = PideTurnoAnalisis(pendiente.Ruta, delegate { return !CalentadorVigente(myGen); }))
                         {
-                            if (myGen != warmGen) return;
-                            // si JUSTO llego trabajo del primer plano, soltar el turno y reintentar despues
-                            bool fgBusy;
-                            lock (coverLock) { fgBusy = (coverLoading.Count + coverQHi.Count + coverQLo.Count) > 0; }
-                            if (fgBusy) { i--; System.Threading.Thread.Sleep(60); continue; }
-#if ROCOLA_GPU
-                            string previewIdentity = gpuEnabled && caratulasLod ? ThumbCachePath(a.CoverPath) : null;
-#endif
-                            Image im = DecodeCover(a.CoverPath);   // crea la miniatura en disco como efecto
-                            if (im != null)
+                            if (turno == null || !TomaTurnoMiniatura(myGen)) return;
+                            try
                             {
-                                try {
+                                if (!CalentadorVigente(myGen)) return;
+                                bool fgBusy;
+                                lock (coverLock) { fgBusy = (coverLoading.Count + coverQHi.Count + coverQLo.Count) > 0; }
+                                if (fgBusy) { i--; continue; } // soltar ambos turnos antes de esperar otra vez
+                                // Las metadatas del censo valen para esa visita, no para siempre: si cambiaron
+                                // la caratula mientras esperaba, actualizar la identidad antes de leer/publicar.
+                                string identidad = ThumbCachePath(pendiente.Ruta);
+                                pendiente.Identidad = identidad;
+                                if (a.CoverPath != pendiente.Ruta || !FaltaMiniatura(identidad))
+                                { if (!PublishThumbRemaining(myGen, -1)) return; continue; }
+                                Bitmap porGuardar = null;
 #if ROCOLA_GPU
-                                    if (myGen == warmGen) WarmGpuPreview(a, im, previewIdentity);
+                                Image im = DecodeCoverForPublication(pendiente.Ruta, identidad, out porGuardar);
+#else
+                                Image im = DecodeCoverWithIdentity(pendiente.Ruta, identidad);
 #endif
-                                } finally { im.Dispose(); }
+                                try
+                                {
+                                    PublicaMiniaturaCalentada(myGen, pendiente, im, porGuardar);
+                                }
+                                finally { if (im != null) im.Dispose(); if (porGuardar != null) porGuardar.Dispose(); }
                             }
+                            catch { }
+                            finally { coverSem.Release(); }
                         }
-                        catch { }
-                        finally { coverSem.Release(); }
                         if (!PublishThumbRemaining(myGen, -1)) return;
                         // Respiro largo en disco duro; en SSD el freno era el respiro, no el disco. Y sola no
                         // hay de quien descansar.
-                        if (!RocolaSola()) System.Threading.Thread.Sleep(diskSlow ? 150 : 20);
+                        if (!RocolaSola()) System.Threading.Thread.Sleep(DiscoLento(pendiente.Ruta) ? 150 : 20);
                     }
                     PublishThumbRemaining(myGen, 0);   // solo la generacion vigente
                 }

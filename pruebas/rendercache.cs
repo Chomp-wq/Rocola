@@ -48,6 +48,9 @@ class RenderCache
             IList compact = (IList)Get(array.GetValue(0), "Items"), queue = (IList)Get(array.GetValue(1), "Items");
             compact.Add(Run("compact", 800)); for (int i = 0; i < 20; i++) queue.Add(Run("queue" + i, 1024));
             FieldInfo field = panel.GetType().GetField("GetCintasTexto", F); field.SetValue(panel, GroupsGetter(field.FieldType));
+            // Las dos franjas estan visibles: sus textos deben subirse en este mismo cuadro.
+            // Con idleBlend=0 la cola esta oculta y, correctamente, tiene presupuesto de precarga.
+            Set(panel, "idleBlend", .5f);
             Locks.Clear(); Call(panel, "PreparaCintasTexto"); Check(Locks.Count == 21, "primera subida de cintas");
             Locks.Clear(); Call(panel, "PreparaCintasTexto"); Check(Locks.Count == 0, "cintas quietas se resuben");
             compact.Add(Run("newcompact", 600)); Locks.Clear(); Call(panel, "PreparaCintasTexto");
@@ -59,6 +62,32 @@ class RenderCache
             Locks.Clear(); Call(panel, "PreparaCintasTexto"); Check(Locks.Count == 21, "reinicio no recupera todas las cintas");
             Call(panel, "SueltaCintasGpu"); groups = null;
             foreach (object g in array) if (g != null) ((IDisposable)g).Dispose();
+        }
+        using (Control panel = (Control)Static(H, "Panel", 1024, 768))
+        {
+            Type group = app.GetType("Rocola.CintasTexto"); Array array = Array.CreateInstance(group, 5); groups = array;
+            array.SetValue(Activator.CreateInstance(group, true), 0); array.SetValue(Activator.CreateInstance(group, true), 1);
+            IList compact = (IList)Get(array.GetValue(0), "Items"), queue = (IList)Get(array.GetValue(1), "Items");
+            compact.Add(Run("compact-visible", 800)); for (int i = 0; i < 20; i++) queue.Add(Run("queue-hidden" + i, 1024));
+            FieldInfo field = panel.GetType().GetField("GetCintasTexto", F); field.SetValue(panel, GroupsGetter(field.FieldType));
+            Set(panel, "idleBlend", 0f); Locks.Clear(); Call(panel, "PreparaCintasTexto");
+            IDictionary tiles = (IDictionary)Get(panel, "cintaByBitmap");
+            Bitmap visible = ((Bitmap[])Get(compact[0], "Tiles"))[0];
+            Check(tiles.Count == 21 && (IntPtr)Get(tiles[visible], "Tex") != IntPtr.Zero, "la compacta visible espera por la cola oculta");
+            int loaded = 0; foreach (object tile in tiles.Values) if ((IntPtr)Get(tile, "Tex") != IntPtr.Zero) loaded++;
+            Set(panel, "idleBlend", .5f); Locks.Clear(); Call(panel, "PreparaCintasTexto");
+            Check(Locks.Count == 21 - loaded, "al aparecer la cola no recupera todas sus cintas pendientes");
+            foreach (object tile in tiles.Values) Check((IntPtr)Get(tile, "Tex") != IntPtr.Zero, "una cinta visible sigue sin textura");
+            Locks.Clear(); Call(panel, "PreparaCintasTexto"); Check(Locks.Count == 0, "mostrar la cola resube cintas ya preparadas");
+            // Una retirada pendiente debe liberarse tambien al apagar/reiniciar, no solo con otro cuadro.
+            // Se mueve una textura existente a la cola de retiros; no se fabrica ningun puntero COM.
+            IList retired = (IList)Get(panel, "cintaRetiradas");
+            retired.Add(Get(tiles[visible], "Tex")); tiles.Remove(visible);
+            Check(Codigo.Llama(panel.GetType().GetMethod("StopGpu", F), "SueltaCintasGpu"), "StopGpu no libera las cintas");
+            Call(panel, "SueltaCintasGpu");
+            Check(tiles.Count == 0 && retired.Count == 0 && ((IList)Get(panel, "cintaTiles")).Count == 0, "apagado retiene cintas o retiradas pendientes");
+            groups = null; foreach (object g in array) if (g != null) ((IDisposable)g).Dispose();
+            Console.WriteLine("  OK cintas ocultas: visible inmediata, cola completa al aparecer y retiradas vaciadas al apagar");
         }
         using (Bitmap bitmap = new Bitmap(600, 100)) using (Graphics g = Graphics.FromImage(bitmap))
         using (Font font = new Font("Tahoma", 20, FontStyle.Bold, GraphicsUnit.Pixel)) using (StringFormat sf = new StringFormat())
