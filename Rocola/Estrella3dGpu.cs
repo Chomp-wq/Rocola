@@ -177,6 +177,15 @@ namespace Rocola
         private readonly D3D9.Vtx[] e3filo = new D3D9.Vtx[Estrella3d.Aristas * 6];
         private readonly D3D9.Vtx[] e3ecos = new D3D9.Vtx[12 * Estrella3d.Caras * 3];
         private readonly D3D9.Vtx[] e3ecoFilo = new D3D9.Vtx[12 * Estrella3d.Aristas * 6];
+        // Los ecos son poses congeladas: solo cambia su alfa, no su proyeccion ni su luz.
+        // Cache fija por slot del anillo, independiente del lote compacto que se manda a D3D.
+        // 80 KiB de vertices como maximo por panel; ninguna reserva durante el dibujo.
+        private readonly D3D9.Vtx[] e3ecoPose = new D3D9.Vtx[12 * Estrella3d.Caras * 3];
+        private readonly D3D9.Vtx[] e3ecoBorde = new D3D9.Vtx[12 * Estrella3d.Aristas * 6];
+        private readonly StarEcho[] e3ecoClave = new StarEcho[12];
+        private readonly bool[] e3ecoValida = new bool[12];
+        private readonly int[] e3ecoN = new int[12], e3ecoBordeN = new int[12];
+        private bool e3ecoNatural;
         private float starEchoCamino, starEchoUltX, starEchoUltY;   // distancia recorrida desde la ultima copia
         private bool starEchoHayUlt;
 
@@ -325,19 +334,51 @@ namespace Rocola
 
         private void DrawStarEchoes3d(double now)
         {
-            int v = 0, f = 0;
-            for (int i = 0; i < starEchoCount; i++)
-            {
-                StarEcho echo = starEchoes[(starEchoHead - starEchoCount + i + starEchoes.Length) % starEchoes.Length];
-                float alpha = (FondoNatural ? StarEchoAlphaNatural(now - echo.Time, starEchoVisibility, true) : StarEchoAlpha3d(now - echo.Time, starEchoVisibility)) * echo.Strength;
-                if (alpha < .003f) continue;
-                int filo, mejor; float brillo;
-                v += PoseEstrella(e3ecos, v, e3ecoFilo, f, echo.X, echo.Y, echo.Radius, echo.Yaw, echo.Pitch, echo.Angle,
-                    echo.Color, alpha * 255f, true, FondoNatural ? 1.05f : 1.8f, out filo, out mejor, out brillo);
-                f += filo;
-            }
+            int v, f;
+            PreparaEcos3d(now, out v, out f);
             if (v > 0) stars.DrawMesh(e3ecos, v / 3);
             if (f > 0) stars.DrawMeshAdd(e3ecoFilo, f / 3);
+        }
+
+        private void PreparaEcos3d(double now, out int v, out int f)
+        {
+            v = f = 0;
+            if (e3ecoNatural != FondoNatural)
+            { e3ecoNatural = FondoNatural; Array.Clear(e3ecoValida, 0, e3ecoValida.Length); }
+            for (int i = 0; i < starEchoCount; i++)
+            {
+                int slot = (starEchoHead - starEchoCount + i + starEchoes.Length) % starEchoes.Length;
+                StarEcho echo = starEchoes[slot];
+                float alpha = (FondoNatural ? StarEchoAlphaNatural(now - echo.Time, starEchoVisibility, true) : StarEchoAlpha3d(now - echo.Time, starEchoVisibility)) * echo.Strength;
+                if (alpha < .003f) continue;
+                StarEcho key = e3ecoClave[slot];
+                int c0 = slot * Estrella3d.Caras * 3, f0 = slot * Estrella3d.Aristas * 6;
+                if (!e3ecoValida[slot] || echo.X != key.X || echo.Y != key.Y || echo.Radius != key.Radius ||
+                    echo.Yaw != key.Yaw || echo.Pitch != key.Pitch || echo.Angle != key.Angle || echo.Color != key.Color)
+                {
+                    int filo, mejor; float brillo;
+                    e3ecoN[slot] = PoseEstrella(e3ecoPose, c0, e3ecoBorde, f0, echo.X, echo.Y, echo.Radius,
+                        echo.Yaw, echo.Pitch, echo.Angle, echo.Color, 255f, true, FondoNatural ? 1.05f : 1.8f,
+                        out filo, out mejor, out brillo);
+                    e3ecoBordeN[slot] = filo;
+                    e3ecoClave[slot] = echo; e3ecoValida[slot] = true;
+                }
+                // Mismo redondeo que PoseEstrella; el filo aditivo usa alfa entero / 2.
+                float alfa = alpha * 255f;
+                uint a8 = alfa <= 0 ? 0u : alfa >= 255 ? 255u : (uint)(alfa + .5f);
+                for (int k = 0; k < e3ecoN[slot]; k++)
+                {
+                    D3D9.Vtx vertex = e3ecoPose[c0 + k];
+                    vertex.Color = (a8 << 24) | (vertex.Color & 0xFFFFFFu);
+                    e3ecos[v++] = vertex;
+                }
+                for (int k = 0; k < e3ecoBordeN[slot]; k++)
+                {
+                    D3D9.Vtx vertex = e3ecoBorde[f0 + k];
+                    vertex.Color = (vertex.Color & 0xFFFFFFu) | (vertex.Color >= 0x1000000u ? (a8 / 2) << 24 : 0u);
+                    e3ecoFilo[f++] = vertex;
+                }
+            }
         }
     }
 }

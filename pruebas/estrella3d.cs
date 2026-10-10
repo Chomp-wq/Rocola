@@ -500,7 +500,7 @@ class Estrella3dPrueba
             }
         }
         try { Directory.Delete(dir, true); } catch { }
-        foreach (string m in new string[] { "PoseEstrella", "DrawStar3d", "DrawStarEchoes3d", "UpdateStarEchoes3d", "StarPitch" })
+        foreach (string m in new string[] { "PoseEstrella", "DrawStar3d", "DrawStarEchoes3d", "PreparaEcos3d", "UpdateStarEchoes3d", "StarPitch" })
         {
             bool nada = true; foreach (Codigo.Paso s in Codigo.Pasos(gpu.GetMethod(m, F))) if (s.Op == 0x8D) nada = false;
             Check(nada, "dibujar no reserva arreglos: " + m);

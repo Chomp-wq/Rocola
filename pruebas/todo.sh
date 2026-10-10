@@ -161,7 +161,7 @@ GPU="$GPU franjareloj"
 CPU="$CPU flotantexp"
 # 'nlayerdentro': NLayer.dll va dentro de Rocola.exe; en una carpeta sin NLayer.dll al lado se carga igual.
 CPU="$CPU nlayerdentro"
-GPU="$GPU espacioprecarga estelaestelar estrellaflujo estrella3d pantallaviva"
+GPU="$GPU espacioprecarga estelaestelar estrellaflujo estrella3d ecosgeometria pantallaviva"
 GPU="$GPU relojreposo campoestelarbuffers fluidezcuadros"
 # Memoria temporal de medida: rutas comunes de audio, sin cambiar dibujo CPU.
 CPU="$CPU memoriaanalisis memoriaintegrada wavdirecto"
