@@ -2214,7 +2214,22 @@ namespace Rocola
             for (int i = desde; i < hasta; i++)
             {
                 SearchItem si = searchIndex[i];
-                si.Key = Normalize(si.Display);
+                string artist = si.Kind == 0 ? si.Display : si.Kind == 2 && si.TrackRef != null
+                    ? si.TrackRef.Artist : si.AlbumRef == null ? "" : si.AlbumRef.Artist;
+                string title = si.Kind == 0 ? "" : si.Kind == 2 && si.TrackRef != null
+                    ? si.TrackRef.Title : si.AlbumRef == null ? si.Display : si.AlbumRef.Name;
+                string artistKey = MotorBusqueda.Normaliza(artist), titleKey = MotorBusqueda.Normaliza(title);
+                si.Key = artistKey.Length == 0 ? titleKey : titleKey.Length == 0 ? artistKey : artistKey + " " + titleKey;
+                si.TitleAt = si.Kind == 0 || artistKey.Length == 0 || titleKey.Length == 0 ? 0 : artistKey.Length + 1;
+                si.TitleLength = si.Key.Length - si.TitleAt;
+                // Se conserva el numero en Key (tambien se puede buscar); solo la prioridad
+                // de un titulo exacto ignora el prefijo de pista ya oculto en la presentacion.
+                if (si.Kind == 2 && MotorBusqueda.PrefijoPista(title))
+                {
+                    int firstSpace = titleKey.IndexOf(' ');
+                    if (firstSpace >= 0 && firstSpace + 1 < titleKey.Length)
+                    { si.TitleAt += firstSpace + 1; si.TitleLength -= firstSpace + 1; }
+                }
                 si.Mask = MarcaLetras(si.Key);
             }
         }
@@ -3193,7 +3208,8 @@ namespace Rocola
 
         // OPTIMIZACION (busqueda): q.Split(' ') se calculaba DENTRO de Score, que corre por CADA
         // entrada de searchIndex (decenas de miles) en CADA tecla. Ahora se recibe ya calculado
-        // (una sola vez por tecla desde RecomputeResults). El puntaje es identico.
+        // (una sola vez por tecla desde RecomputeResults). Se conserva el puntaje historico,
+        // salvo que una coincidencia real en etiquetas enormes ya no puede puntuar cero/negativo.
         private static int Score(string cand, string q, string[] toks)
         {
             if (q.Length == 0) return 0;
@@ -3208,7 +3224,8 @@ namespace Rocola
             while (pos >= 0)
             {
                 if (primera < 0) primera = pos;
-                if (pos > 0 && cand[pos - 1] == ' ') return 4000 - (pos - 1);
+                // Etiquetas muy largas no pueden convertir una coincidencia real en cero/negativo.
+                if (pos > 0 && cand[pos - 1] == ' ') return Math.Max(1, 4000 - (pos - 1));
                 pos = cand.IndexOf(q, pos + 1, StringComparison.Ordinal);
             }
             if (primera >= 0) return 2000 - Math.Min(primera, 1500);
@@ -3238,11 +3255,13 @@ namespace Rocola
             if (SecretCreditGate.Matches(query)) { UpdateSecretCredits(); return; }
             if (libBuilding)   // el worker esta llenando searchIndex: no iterarlo (carrera = crash)
             {
+                lastQuery = null; lastMatches = null; lastMatchesApproximate = false;
+                CuentaResultados(query, 0);
                 searchOverlay.Results = new List<SearchItem>();
                 searchOverlay.Invalidate();
                 return;
             }
-            string q = Normalize(query);
+            string q = MotorBusqueda.Normaliza(query);
             List<SearchItem> res = new List<SearchItem>();
             if (q.Length > 0)
             {
@@ -3253,7 +3272,7 @@ namespace Rocola
                 // Incremental: si la nueva busqueda EMPIEZA con la anterior, las coincidencias nuevas
                 // son un subconjunto de las anteriores -> re-evaluamos solo esas (mucho menos trabajo).
                 List<SearchItem> source =
-                    (lastQuery != null && lastQuery.Length > 0 && lastMatches != null && q.StartsWith(lastQuery, StringComparison.Ordinal))
+                    (!lastMatchesApproximate && lastQuery != null && lastQuery.Length > 0 && lastMatches != null && q.StartsWith(lastQuery, StringComparison.Ordinal))
                     ? lastMatches : searchIndex;
 
                 // LA PRIMERA LETRA ES LA CARA. Con una sola letra tecleada, la marca de letras no descarta a
@@ -3266,14 +3285,19 @@ namespace Rocola
                 // veces de la noche sale de memoria (medido: 10 veces menos, ver pruebas/bolsa.cs). Se guardan
                 // tambien los puntos, porque el orden depende de ellos y cada busqueda los pisa.
                 //
-                // Cabe de sobra: con 8.000 canciones, la bolsa de la letra que mas casa son 96 KB.
+                // La cache de letras tiene presupuesto agregado y desalojo LRU; no depende
+                // de que la biblioteca sea pequena ni de que se use solo el alfabeto latino.
                 List<SearchItem> matches = null;
                 BolsaLetra bolsa = null;
-                if ((q.Length == 1 && bolsaLetra.TryGetValue(q[0], out bolsa) && bolsa != null) ||
+                if ((q.Length == 1 && (bolsa = FindLetterQuery(q[0])) != null) ||
                     (q.Length > 1 && (bolsa = FindRecentQuery(q)) != null))
                 {
                     matches = bolsa.Lista;
-                    for (int i = 0; i < matches.Count; i++) matches[i].Score = bolsa.Puntos[i];   // los puntos, que otra busqueda los piso
+                    // Solo 40 puntos son necesarios si el top ya existe. La lista COMPLETA
+                    // se conserva para acotar, pero su Score anterior no participa en esa cuenta.
+                    for (int i = 0; i < bolsa.Mejores.Count; i++) bolsa.Mejores[i].Score = bolsa.Puntos[i];
+                    res.AddRange(bolsa.Mejores);
+                    lastMatchesApproximate = bolsa.Approximate;
                 }
                 else
                 {
@@ -3285,16 +3309,37 @@ namespace Rocola
                         SearchItem si = source[i];
                         if ((si.Mask & qMask) != qMask) continue;   // le falta alguna letra: imposible que case
                         int sc = Score(si.Key, q, toks);
+                        sc = MotorBusqueda.Relevancia(si.Key, si.TitleAt, si.TitleLength, q, sc);
                         if (sc > 0) { si.Score = sc; matches.Add(si); }
                     }
-                    if (q.Length == 1 || (q.Length <= 128 && matches.Count <= 32768))
+                    lastMatchesApproximate = false;
+                    // Las coincidencias literales siempre tienen preferencia. Una unica errata
+                    // solo se intenta si no hay ninguna, nunca al pulsar una letra corta.
+                    if (matches.Count == 0 && MotorBusqueda.PermiteErrata(q, toks))
+                    {
+                        int required = MotorBusqueda.LetrasImprescindibles(q);
+                        List<SearchItem> approximateSource = SearchCandidates(searchIndex, required);
+                        for (int i = 0; i < approximateSource.Count; i++)
+                        {
+                            SearchItem si = approximateSource[i];
+                            if ((si.Mask & required) != required) continue;
+                            int missing = qMask & ~si.Mask;
+                            if ((missing & (missing - 1)) != 0) continue;
+                            int sc = MotorBusqueda.Aproximado(si.Key, q, toks);
+                            sc = MotorBusqueda.RelevanciaAproximada(si.Key, si.TitleAt, si.TitleLength, q, toks, sc);
+                            if (sc > 0) { si.Score = sc; matches.Add(si); }
+                        }
+                        lastMatchesApproximate = matches.Count > 0;
+                    }
+                    TomaMejores(matches, res, 40);
+                    if ((q.Length == 1 && matches.Count <= 131072) || (q.Length <= 128 && matches.Count <= 32768))
                     {
                         BolsaLetra nb = new BolsaLetra();
-                        nb.Lista = matches; nb.Puntos = new int[matches.Count];
-                        for (int i = 0; i < matches.Count; i++) nb.Puntos[i] = matches[i].Score;
-                        if (q.Length == 1) bolsaLetra[q[0]] = nb;
+                        nb.Lista = matches; nb.Mejores = new List<SearchItem>(res); nb.Puntos = new int[res.Count];
+                        nb.Approximate = lastMatchesApproximate;
+                        for (int i = 0; i < res.Count; i++) nb.Puntos[i] = res[i].Score;
+                        if (q.Length == 1) RememberLetterQuery(q[0], nb);
                         else RememberQuery(q, nb);
-                        bolsa = nb;
                     }
                 }
                 // De todo lo que casa solo se ENSENAN 40. Ordenar la lista entera para tirar el resto era el
@@ -3303,16 +3348,10 @@ namespace Rocola
                 // 0.19 ms. La lista sin ordenar se guarda igual, porque para acotar la busqueda de la tecla
                 // siguiente lo unico que importa es QUIENES casan, no en que orden.
                 lastMatches = matches; lastQuery = q;
-                // Los puntos de TODAS las coincidencias ya fueron restaurados arriba:
-                // la tecla siguiente sigue teniendo su lista completa para acotar.
-                if (bolsa != null && bolsa.Mejores != null) res.AddRange(bolsa.Mejores);
-                else
-                {
-                    TomaMejores(matches, res, 40);
-                    if (bolsa != null) bolsa.Mejores = new List<SearchItem>(res);
-                }
+                // La tecla siguiente sigue teniendo TODAS las coincidencias para acotar,
+                // no solo las visibles; sus puntos se calculan con la nueva consulta.
             }
-            else { lastMatches = null; lastQuery = null; }
+            else { lastMatches = null; lastQuery = null; lastMatchesApproximate = false; }
             CuentaResultados(query, lastMatches != null ? lastMatches.Count : 0);   // la casilla del buscador con portadas lo dice
             searchOverlay.Results = res;
             searchOverlay.Invalidate();

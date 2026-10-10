@@ -99,6 +99,7 @@
     <Compile Include="AcabadoGpu.cs" />
     <Compile Include="RespuestaGpu.cs" />
     <Compile Include="CargaTrabajo.cs" />
+    <Compile Include="MotorBusqueda.cs" />
     <Compile Include="CaratulasAdaptativas.cs" />
     <Compile Include="PreviewsIndexadosGpu.cs" />
     <Compile Include="CaratulasSeparadasGpu.cs" />

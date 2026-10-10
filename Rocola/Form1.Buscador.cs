@@ -25,10 +25,14 @@ namespace Rocola
         private sealed class QueryBag { internal string Key; internal BolsaLetra Data; }
         private List<QueryBag> recentQueries;
         private int recentQueryItems;
+        private List<char> letterQueryOrder;
+        private bool lastMatchesApproximate;
         private void ClearRecentQueries()
         {
             if (recentQueries != null) recentQueries.Clear();
             recentQueryItems = 0;
+            if (bolsaLetra != null) bolsaLetra.Clear();
+            if (letterQueryOrder != null) letterQueryOrder.Clear();
         }
         private BolsaLetra FindRecentQuery(string key)
         {
@@ -54,11 +58,51 @@ namespace Rocola
             recentQueries.Add(entry); recentQueryItems += data.Lista.Count;
         }
 
+        private BolsaLetra FindLetterQuery(char key)
+        {
+            BolsaLetra data;
+            if (bolsaLetra == null || !bolsaLetra.TryGetValue(key, out data)) return null;
+            if (letterQueryOrder == null) letterQueryOrder = new List<char>();
+            letterQueryOrder.Remove(key); letterQueryOrder.Add(key);
+            return data;
+        }
+        private void RememberLetterQuery(char key, BolsaLetra data)
+        {
+            // Maximo 16 letras y 262144 referencias, tambien con bibliotecas grandes
+            // o alfabetos distintos. No es un limite de resultados ni del indice.
+            if (data.Lista.Count > 131072 || bolsaLetra == null) return;
+            if (letterQueryOrder == null) letterQueryOrder = new List<char>();
+            int retained = 0;
+            foreach (BolsaLetra old in bolsaLetra.Values) retained += old.Lista.Count;
+            while (bolsaLetra.Count > 0 && (bolsaLetra.Count >= 16 || retained + data.Lista.Count > 262144))
+            {
+                char oldest;
+                if (letterQueryOrder.Count > 0)
+                { oldest = letterQueryOrder[0]; letterQueryOrder.RemoveAt(0); }
+                else
+                {
+                    // Tambien tolerar que una prueba o el reescaneo vacie el diccionario solo.
+                    oldest = key;
+                    foreach (char candidate in bolsaLetra.Keys) { oldest = candidate; break; }
+                }
+                BolsaLetra old;
+                if (bolsaLetra.TryGetValue(oldest, out old)) { retained -= old.Lista.Count; bolsaLetra.Remove(oldest); }
+            }
+            bolsaLetra[key] = data;
+            letterQueryOrder.Remove(key); letterQueryOrder.Add(key);
+        }
+
         private SearchOverlay searchOverlay;
         // Lo que casa con cada letra SUELTA, ya puntuado. Ver RecomputeResults: la primera letra es la unica
         // que obliga a puntuar el indice entero, y para una letra el resultado no cambia mientras no cambie
         // la musica. Se vacia al rearmar la biblioteca.
-        private sealed class BolsaLetra { public List<SearchItem> Lista; public int[] Puntos; public List<SearchItem> Mejores; }
+        private sealed class BolsaLetra
+        {
+            public List<SearchItem> Lista;
+            public int[] Puntos;
+            public List<SearchItem> Mejores;
+            public bool Approximate;
+        }
         private BuscaView buscaView;        // casilla de BUSCAR (arriba en medio, con los dos botones dibujados)
         private static bool BuscaTramo(string texto, string qNorm, out int ini, out int largo)
         {
@@ -1489,6 +1533,7 @@ namespace Rocola
             public int Kind;     // 0=artista, 1=album, 2=cancion
             public string Display;
             public string Key;
+            public int TitleAt, TitleLength; // titulo/artista principal dentro de Key, sin otra copia
             public int Mask;    // que letras contiene Key (ver MarcaLetras)
             public int Score;
             public Album AlbumRef;

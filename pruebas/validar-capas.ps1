@@ -56,6 +56,13 @@ foreach ($test in @('capascolor', 'cristalcola', 'cubofila', 'respuesta', 'efect
     }
 }
 } finally { Pop-Location }
+$searchExe = Join-Path $OutputDirectory 'buscainteligente.exe'
+& $compiler /nologo /target:exe /optimize+ /warnaserror+ ("/out:$searchExe") /r:System.Core.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll (Join-Path $testRoot 'buscainteligente.cs')
+if ($LASTEXITCODE -ne 0) { throw 'No compila buscainteligente' }
+& $searchExe $exe
+if ($LASTEXITCODE -ne 0) { throw 'Fallo: buscador GPU' }
+& $searchExe (Join-Path $OutputDirectory 'Rocola-cpu.exe')
+if ($LASTEXITCODE -ne 0) { throw 'Fallo: motor comun de busqueda (CPU)' }
 $stutterExe = Join-Path $OutputDirectory 'tironescaratulas.exe'
 foreach ($extraTest in @('colacompacta', 'ajustesfluidez', 'cadenciavisual', 'estilosconfig', 'naturalestelar', 'nebulosanatural', 'espacionatural', 'auroranatural', 'opticanatural', 'preparacionnatural', 'acabadofinalnatural', 'estrella3d', 'ecosgeometria', 'estrellasesionreal', 'pausasestrella', 'audioeficiencia', 'datosdeltas', 'arranqueeficiente', 'fluidezcuadros', 'relojreposo', 'campoestelarbuffers', 'memoriaanalisis', 'memoriaintegrada', 'wavdirecto', 'planbiblioteca', 'corpusacotado', 'discoacotado', 'prefijosguardados', 'flotantesobrantes', 'ruidomalla', 'papeleraportadas', 'mp3medidaligera')) {
     $extraExe = Join-Path $OutputDirectory ($extraTest + '.exe')
@@ -88,5 +95,5 @@ if ($LASTEXITCODE -ne 0) { throw 'No compila espacionaturalhal' }
 $naturalHalOutput = Join-Path $OutputDirectory 'fondo-hal'
 if ($SinHal) { & $naturalHalExe $exe $naturalHalOutput --sin-hal } else { & $naturalHalExe $exe $naturalHalOutput }
 if ($LASTEXITCODE -ne 0) { throw 'Fallo: espacionaturalhal' }
-Write-Output "PASS: compilacion GPU/CPU y sesenta y siete baterias. HAL omitido explicitamente: $SinHal. No se reemplazo ningun ejecutable de produccion. Salida: $OutputDirectory"
+Write-Output "PASS: compilacion GPU/CPU y sesenta y ocho baterias. HAL omitido explicitamente: $SinHal. No se reemplazo ningun ejecutable de produccion. Salida: $OutputDirectory"
 } finally { $env:ROCOLA_DATOS = $previousRocolaData }

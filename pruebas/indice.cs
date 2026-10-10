@@ -205,7 +205,10 @@ class Indice
             string disp = (string)fDisp.GetValue(it);
             string key = (string)fKey.GetValue(it);
             if (key == null) { sinClave++; continue; }
-            string esperada = Referencia(disp);
+            // Normalize general y su salida historica se prueban arriba. Desde 10/10 el
+            // buscador tiene una canonicalizacion propia (separadores/apostrofes/espacios).
+            Type motor = asm.GetType("Rocola.MotorBusqueda");
+            string esperada = motor == null ? Referencia(disp) : (string)motor.GetMethod("Normaliza", SF).Invoke(null, new object[] { disp });
             if (key != esperada) malaClave++;
             else if ((int)fMask.GetValue(it) != (int)mM.Invoke(null, new object[] { key })) malaMarca++;
         }

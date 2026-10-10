@@ -206,7 +206,7 @@ class Bolsa
             TBol.GetField("Puntos").SetValue(entrada, new int[0]);
             // La entrada tiene dos niveles coherentes: coincidencias completas y top visible.
             FieldInfo fMejores = TBol.GetField("Mejores");
-            if (fMejores != null) fMejores.SetValue(entrada, null);
+            if (fMejores != null) fMejores.SetValue(entrada, Activator.CreateInstance(typeof(List<>).MakeGenericType(TItem)));
             rec("a"); int conMentira = Ensena(f).Count;
             Console.WriteLine("     con la respuesta de verdad: " + deVerdad + " resultados;  con una falsa metida a mano: " + conMentira);
             Check(deVerdad > 0 && conMentira == 0, "la respuesta guardada se consulta de verdad (no es un adorno)");
@@ -233,13 +233,13 @@ class Bolsa
                 Check(lee > 0 || escribe > 0, "al rearmar la biblioteca la bolsa se vacia (si no, apuntaria a canciones que ya no estan)");
             }
 
-            // Lo que ocupa. La letra mas repetida casa con casi todo el indice: una ficha apuntada (8 bytes)
-            // mas sus puntos (4) por entrada.
+            // Referencias logicas de la lista, sin cabeceras/capacidad sobrante. Los puntos
+            // ahora corresponden solo al top visible; no asumir cuatro bytes por cada coincidencia.
             Olvida(f);
             int mayor = 0;
             foreach (char c in letras) { rec(c.ToString()); int n = Ensena(f) == null ? 0 : ((IList)TBol.GetField("Lista").GetValue(((IDictionary)fBolsa.GetValue(f))[c])).Count; if (n > mayor) mayor = n; }
-            Console.WriteLine("     la letra que mas casa guarda " + mayor + " fichas apuntadas  ->  " + ((mayor * 12) / 1024) + " KB");
-            Check(mayor * 12 < 4 * 1024 * 1024, "guardarlo ocupa una miseria al lado del cajon de portadas (266 MB)");
+            Console.WriteLine("     la letra que mas casa guarda " + mayor + " referencias logicas; los puntos son solo los del top visible.");
+            Check(mayor <= 131072, "una letra no supera el presupuesto de coincidencias cacheadas");
         }
 
         // ---------- 3) Y CUANTO SE AHORRA ----------
@@ -247,7 +247,7 @@ class Bolsa
         Console.WriteLine(string.Format("     {0,-12} {1,9} | {2,11} {3,11} {4,8}", "biblioteca", "entradas", "1a vez", "2a vez", "gana"));
         Console.WriteLine("     " + new string('-', 60));
         int[] tam = { 2000, 8000, 20000 };
-        double ganaGrande = 0, primeraGrande = 0, segundaGrande = 0;
+        double ganaGrande = 0;
         foreach (int n in tam)
         {
             object g = Monta(n);
@@ -261,11 +261,10 @@ class Bolsa
             double gana = primeraVez / Math.Max(segundaVez, 0.000001);
             Console.WriteLine(string.Format("     {0,-12} {1,9} | {2,8:0.000} ms {3,8:0.000} ms {4,7}", n + " canciones", entradas,
                                             primeraVez, segundaVez, "x" + gana.ToString("0.0")));
-            if (n == 20000) { ganaGrande = gana; primeraGrande = primeraVez; segundaGrande = segundaVez; }
+            if (n == 20000) ganaGrande = gana;
         }
         Console.WriteLine();
-        Console.WriteLine("     En la maquina del bar hay que multiplicar por unas 4 o 5 veces: la primera letra pasa de");
-        Console.WriteLine("     unos " + (primeraGrande * 4.5).ToString("0.0") + " ms a unos " + (segundaGrande * 4.5).ToString("0.00") + " ms.");
+        Console.WriteLine("     Medicion sintetica en ESTE equipo; no permite predecir otro CPU con un multiplicador fijo.");
         Check(ganaGrande >= 2.0, "con 20000 canciones, la segunda vez que se teclea una letra cuesta menos de la MITAD");
 
         Console.WriteLine(fallos == 0 ? "\n  TODO BIEN\n" : "\n  " + fallos + " FALLO(S)\n");
