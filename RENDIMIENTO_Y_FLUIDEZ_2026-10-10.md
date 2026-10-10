@@ -1,5 +1,7 @@
 # Fluidez GPU y pausas entre cuadros — 10 de octubre de 2026
 
+Continuacion posterior del punto 3: `MEMORIA_ANALISIS_2026-10-10.md` documenta la reutilizacion ya implementada y su equivalencia de medidas/cosecha. Los resultados y hashes de este informe corresponden a la pasada GPU anterior, no al nuevo despliegue.
+
 ## Cambios compartidos en Modest y HD
 
 - El campo de estrellas alterna dos juegos de buffers para el patrón actual y el que se desvanece. Reutiliza también los vértices y los centros de agrupación. Tras preparar los dos juegos no vuelve a reservar un arreglo de vértices de aproximadamente 235 KiB en cada relevo de 60/180 segundos. No cambia semillas, orden, posiciones, densidad, colores, distribución Legacy/Natural ni transición; los cambios de tamaño/densidad conservan su comportamiento anterior.
