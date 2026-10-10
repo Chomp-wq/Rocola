@@ -167,6 +167,10 @@ class PanelReposo
         List<string> suyos = Escritos(bip);
         foreach (string s in Escritos(reloj)) if (!suyos.Contains(s)) suyos.Add(s);
         foreach (string s in Leidos(reloj, 0)) if (!suyos.Contains(s)) suyos.Add(s);
+        // La cache propia del reloj vive en su ayudante: sus escrituras tambien son contabilidad,
+        // no datos externos del panel. No se perdonan las entradas que el ayudante solo lee.
+        foreach (MethodBase d in Llamados(reloj, 0))
+            foreach (string s in Escritos(d)) if (!suyos.Contains(s)) suyos.Add(s);
 
         List<string> crudo = Leidos(bip, puerta);
         // Y LO QUE LEEN LOS METODOS A LOS QUE LLAMA, un escalon. Sin esto se escaparia lo que el panel no

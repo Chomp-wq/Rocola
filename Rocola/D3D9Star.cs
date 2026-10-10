@@ -73,6 +73,7 @@ namespace Rocola
         // el nuevo aparece, en vez de atenuar TODO el cielo. Asi el fondo nunca se queda sin estrellas.
         private float[] px, py, pphase, pspeed, psize; private int[] pkind, pforma; private uint[] pcol; private int pnStars;
         private D3D9.Vtx[] starV2;                            // vertices del patron ANTERIOR durante el entrecruzado
+        private float[] starCenterX, starCenterY, starCenterRadius;
         private int transStart; private bool transing;
         private const int TransMs = 1300;                    // duracion del entrecruzado
         // POR DEBAJO DE ESTO NO SE VE NADA. El brillo de una estrella acaba siendo un numero de 0 a 255, asi
@@ -141,10 +142,9 @@ namespace Rocola
             if (Math.Abs(dens - densidad) < 0.001f) return;   // lo de siempre: esto se llama en CADA cuadro
             densidad = dens;
             if (!Ok || w < 8 || h < 8) return;
-            // Cambiar cuantas estrellas hay obliga a rehacer el campo: viven en arreglos de ese tamano.
+            // Cambiar cuantas estrellas hay obliga a rehacer los datos, sin perder la capacidad de los buffers.
             int minuto = (curMinute != int.MinValue) ? curMinute : 0;
-            BuildStars(w, h, unchecked(seed0 + minuto * 40503));
-            transing = false; px = null;   // el entrecruzado en curso era del campo viejo: se corta
+            ReconstruyePatron(w, h, unchecked(seed0 + minuto * 40503));
         }
 
         public GpuStarfield(IntPtr hwnd, int w, int h, int seed)
@@ -165,8 +165,7 @@ namespace Rocola
             if (gpu.BufAncho == w && gpu.BufAlto == h) return;
             gpu.Redimensiona(w, h);
             int minuto = (curMinute != int.MinValue) ? curMinute : 0;
-            BuildStars(w, h, unchecked(seed0 + minuto * 40503));
-            transing = false; px = null;   // el entrecruzado en curso era del tamano viejo: se corta
+            ReconstruyePatron(w, h, unchecked(seed0 + minuto * 40503));
         }
 
         public void SetSky(uint top, uint mid, uint bot) { skyTop = top; skyMid = mid; skyBot = bot; }
@@ -367,10 +366,7 @@ namespace Rocola
             {
                 if (curMinute != int.MinValue)
                 {
-                    px = sx; py = sy; pphase = sphase; pspeed = sspeed; psize = ssize; pkind = skind; pforma = sforma; pcol = scol; pnStars = nStars;   // guarda el actual como ANTERIOR
-                    BuildStars(w, h, unchecked(seed0 + minute * 40503));     // construye el NUEVO (asigna arreglos nuevos; no pisa los anteriores)
-                    if (starV2 == null || starV2.Length < pnStars * 6) starV2 = new D3D9.Vtx[pnStars * 6];
-                    transing = true; transStart = nowMs;
+                    RenuevaPatron(w, h, unchecked(seed0 + minute * 40503), nowMs);
                 }
                 curMinute = minute;
             }
@@ -664,6 +660,40 @@ namespace Rocola
             return (float)(Math.Sqrt(-2.0 * Math.Log(u1)) * Math.Cos(2.0 * Math.PI * u2));
         }
 
+        private static T[] ConCapacidad<T>(T[] buffer, int count)
+        { return buffer != null && buffer.Length >= count ? buffer : new T[count]; }
+
+        private static void IntercambiaCampo<T>(ref T[] actual, ref T[] anterior)
+        { T[] reusable = anterior; anterior = actual; actual = reusable; }
+
+        private void RenuevaPatron(int w, int h, int seed, int nowMs)
+        {
+            // El actual se convierte en anterior ANTES de escribir el nuevo. El anterior viejo ya no
+            // participa, incluso si se cambia de nivel durante un cruce, y sirve de segundo buffer.
+            // Tras el primer relevo ya existen los dos juegos: ni arreglos de estrellas ni un nuevo
+            // starV grande (LOH) cada 60/180 s. No se copia ni se pisa el patron que se desvanece.
+            IntercambiaCampo(ref sx, ref px); IntercambiaCampo(ref sy, ref py);
+            IntercambiaCampo(ref sphase, ref pphase); IntercambiaCampo(ref sspeed, ref pspeed);
+            IntercambiaCampo(ref ssize, ref psize); IntercambiaCampo(ref skind, ref pkind);
+            IntercambiaCampo(ref sforma, ref pforma); IntercambiaCampo(ref scol, ref pcol);
+            pnStars = nStars;
+            BuildStars(w, h, seed);
+            starV2 = ConCapacidad(starV2, pnStars * 6);
+            transing = true; transStart = nowMs;
+        }
+
+        private void ReconstruyePatron(int w, int h, int seed)
+        {
+            BuildStars(w, h, seed);
+            // Tamano/densidad: el cruce anterior se corta igual que antes. Se conserva su capacidad
+            // para reutilizarla en el siguiente relevo, pero nunca se dibuja porque transing es false.
+            transing = false;
+        }
+
+        private static readonly uint[] starTemperatures = {
+            0xFF9BB0FF, 0xFFAABFFF, 0xFFCAD7FF, 0xFFE4EBFF, 0xFFF8F7FF, 0xFFFFFFFA,
+            0xFFFFF4EA, 0xFFFFEDCD, 0xFFFFDAA5, 0xFFFFC78E, 0xFFFFB280 };
+
         private void BuildStars(int w, int h, int seed)
         {
             Random rnd = new Random(seed);
@@ -674,18 +704,14 @@ namespace Rocola
             // Y la perilla de Ctrl+F3 lo recorta. El suelo de 200 se recorta CON ella: dejarlo fijo haria
             // que pedir "un cielo al 20%" en una pantalla pequena no quitara ni una estrella.
             if (densidad < 0.999f) { nStars = (int)(nStars * densidad); if (nStars < 24) nStars = 24; }
-            sx = new float[nStars]; sy = new float[nStars]; sphase = new float[nStars];
-            sspeed = new float[nStars]; ssize = new float[nStars]; skind = new int[nStars]; sforma = new int[nStars]; scol = new uint[nStars];
+            sx = ConCapacidad(sx, nStars); sy = ConCapacidad(sy, nStars); sphase = ConCapacidad(sphase, nStars);
+            sspeed = ConCapacidad(sspeed, nStars); ssize = ConCapacidad(ssize, nStars);
+            skind = ConCapacidad(skind, nStars); sforma = ConCapacidad(sforma, nStars); scol = ConCapacidad(scol, nStars);
             // DE QUE COLOR ES UNA ESTRELLA. Las de verdad van de blanco-azulado a blanco, amarillo y naranja:
             // no hay estrellas verdes ni violetas, y la inmensa mayoria de las que se ven son casi blancas.
             // Con la paleta de rotulador de antes el cielo parecia confeti. (La misma que usa la version por
             // CPU, para que el cielo se vea igual se juegue por donde se juegue.)
-            uint[] palTemp = { 0xFF9BB0FF, 0xFFAABFFF,   // 0-1  azul-blanco (las mas calientes)
-                               0xFFCAD7FF, 0xFFE4EBFF,   // 2-3  blanco-azul
-                               0xFFF8F7FF, 0xFFFFFFFA,   // 4-5  blancas
-                               0xFFFFF4EA, 0xFFFFEDCD,   // 6-7  blanco-amarillo (como el Sol)
-                               0xFFFFDAA5, 0xFFFFC78E,   // 8-9  naranjas
-                               0xFFFFB280 };             // 10   naranja hondo
+            uint[] palTemp = starTemperatures;  // misma paleta constante, sin volver a asignarla por relevo
             // DONDE SE PONEN. La MISMA receta que por CPU, para que el cielo se vea igual se juegue por
             // donde se juegue. Un cielo de verdad tiene grumos, parejas y zonas mas vacias, asi que una
             // CUARTA PARTE cae alrededor de unos centros y el resto suelta por cualquier sitio. Dos cosas
@@ -697,7 +723,11 @@ namespace Rocola
             // 2) LOS GRUMOS ESTIRADOS. Salian mas anchos que altos (el 0.7 de la altura), o sea bandas
             //    horizontales en vez de grumos. Ahora el radio es el mismo en los dos ejes.
             int nc = 10 + rnd.Next(5);
-            float[] ccx = new float[nc], ccy = new float[nc], ccr = new float[nc];
+            // rnd.Next(5) da como maximo 14 centros. Reservarlos una vez evita tres arreglos chicos
+            // cuando otra semilla pide mas centros; solo se rellenan los nc que pide la receta.
+            starCenterX = ConCapacidad(starCenterX, 14); starCenterY = ConCapacidad(starCenterY, 14);
+            starCenterRadius = ConCapacidad(starCenterRadius, 14);
+            float[] ccx = starCenterX, ccy = starCenterY, ccr = starCenterRadius;
             for (int c = 0; c < nc; c++)
             {
                 // Los centros no se pegan al canto: uno con el centro en el borde deja media campana fuera
@@ -752,7 +782,7 @@ namespace Rocola
                 uint al = (uint)(255.0 * (0.26 + m * 0.74)); if (al > 255) al = 255;
                 scol[i] = (al << 24) | (col & 0x00FFFFFFu);
             }
-            starV = new D3D9.Vtx[nStars * 6];
+            starV = ConCapacidad(starV, nStars * 6);   // el anterior se arma aparte en starV2; no necesita una copia
         }
 
         // LA BANDA DE LA VIA LACTEA, horneada a un cuarto de tamano. Es la MISMA receta que por CPU -las
@@ -1420,6 +1450,8 @@ namespace Rocola
         private bool compactaAplazada, renderSuspendido;
         private double vistoMs = -1;                      // cuando se VERA el que se esta dibujando (-1 = no se sabe)
         private double periodoVistaMs;                   // rejilla de ESTE cuadro; se revalida despues de preparar UI
+        private double fluidezAgendaMs;
+        private bool fluidezContando;
         public uint SkyTop = 0xFF06081A, SkyMid = 0xFF101C3A, SkyBot = 0xFF1A2C5A;   // el form los setea por genero (3 paradas)
 
         // Bucle de render por Application.Idle (el patron de siempre para dibujar por tarjeta en WinForms):
@@ -1480,7 +1512,13 @@ namespace Rocola
                 if (ThrottleMs > th) th = ThrottleMs;      // con video a la vista se pide ir MAS lento todavia
                 double ahora = AhoraMs();
                 if (ahora + 0.6 < proxCuadroMs) { Sistema.EsperaMensajes(MilisegundosEspera(proxCuadroMs - ahora)); continue; }
-                AgendaCuadro(ahora, th);
+                if (ShowFps)
+                {
+                    double agendaInicio = AhoraMs();
+                    AgendaCuadro(ahora, th);
+                    fluidezAgendaMs += AhoraMs() - agendaInicio;
+                }
+                else AgendaCuadro(ahora, th);
                 RenderFrame();
                 vistoMs = -1;   // un cuadro pedido fuera de este bucle (WM_PAINT, el medidor) no sabe cuando se vera
             }
@@ -1489,6 +1527,9 @@ namespace Rocola
         // Cuando toca el cuadro siguiente y cuando se vera el que empieza ahora. Con la rejilla de refrescos de Windows:
         // un cuadro por refresco, empezado justo despues de uno, y la estrella colocada para cuando se vera
         // (RelojPantallaGpu.cs). Sin ella, como siempre: 'th' despues del objetivo anterior, y sin saber cuando se vera.
+        internal static double PeriodoDiagnostico(double vistaMs, int limiteMs, int throttleMs)
+        { return Math.Max(vistaMs, Math.Max(limiteMs, throttleMs)); }
+
         private void AgendaCuadro(double ahora, int th)
         {
             double refresco, periodo, sig = double.NaN;
@@ -1597,13 +1638,26 @@ namespace Rocola
             last = cur;
         }
 
-        private bool NoPresentado() { FallosMedidos++; Fps = 0; frames = 0; return false; }
+        private bool NoPresentado()
+        {
+            FallosMedidos++; Fps = 0; frames = 0;
+            fluidez.DescartaContinuidad(); fluidezAgendaMs = 0;
+            return false;
+        }
         private bool RenderFrame()
         {
             VigiaPantalla.Hace("un cuadro de la tarjeta");
             if (!PuedeDibujar()) return false; // no preparar UI/texturas de una ventana minimizada
             if (stars == null || !stars.Ok) return NoPresentado();
             double msTrab0 = AhoraMs();   // arranca el cronometro del TRABAJO de este cuadro (ver MsTrabajo)
+            // Correlacionar Start->Start con el trabajo ANTERIOR y el hueco entre cuadros.
+            // Ctrl+F1 habilita GC/episodios; sin contador no se consultan los tres contadores GC.
+            if (fluidezContando != ShowFps)
+            { fluidezContando = ShowFps; fluidez.Reinicia(); fluidezAgendaMs = 0; }
+            double agendaDelHueco = fluidezAgendaMs; fluidezAgendaMs = 0;
+            int gc0Inicio = ShowFps ? GC.CollectionCount(0) : -1;
+            int gc1Inicio = ShowFps ? GC.CollectionCount(1) : -1;
+            int gc2Inicio = ShowFps ? GC.CollectionCount(2) : -1;
             stars.SetEfectos(Estrellas, Fugaces, RelevoPatron, Width, Height);   // las perillas de Ctrl+F3
             // Si la ventana cambio de tamano (resolucion de Windows, o el panel), el buffer de dibujo tiene
             // que cambiar con ella. Se hace AQUI, antes de abrir el cuadro: resetear el dispositivo con la
@@ -2025,8 +2079,16 @@ namespace Rocola
             double antesPresentar = AhoraMs();
             if (!stars.End()) return NoPresentado();
             double terminado = AhoraMs();
-            fluidez.Toma(msTrab0, antesDibujo - msTrab0, antesPresentar - antesDibujo, terminado - antesPresentar);
-            if (ShowFps && fluidez.Resume(terminado) && ReportFluidez != null) ReportFluidez(fluidez.Resumen());
+            // Un tope de 24/50/60 puede saltar varios refrescos: no clasificar ese intervalo normal como tiron.
+            double periodoObjetivo = PeriodoDiagnostico(periodoVistaMs, TopeMs(), ThrottleMs);
+            fluidez.TomaCuadro(msTrab0, terminado, antesDibujo - msTrab0, antesPresentar - antesDibujo,
+                terminado - antesPresentar, periodoObjetivo, agendaDelHueco, gc0Inicio, gc1Inicio, gc2Inicio);
+            if (ShowFps && ReportFluidez != null)
+            {
+                if (fluidez.Resume(terminado)) ReportFluidez(fluidez.Resumen());
+                string episodios = fluidez.DrenaEpisodios(terminado);
+                if (episodios.Length > 0) ReportFluidez(episodios);
+            }
             if (CoverControl != null) CoverControl.Observe(AhoraMs(), trabajo, TopeFpsReal);
             msTrabSuma += trabajo; msTrabN++;
             frames++;

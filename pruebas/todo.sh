@@ -38,6 +38,7 @@ FUENTES="$FUENTES $RAIZ/Rocola/FluidezAnimaciones.cs $RAIZ/Rocola/FluidezGpu.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/EstilosFondo.cs $RAIZ/Rocola/EspacioNaturalGpu.cs $RAIZ/Rocola/NebulosaNaturalGpu.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/AuroraNaturalGpu.cs $RAIZ/Rocola/OpticaNaturalGpu.cs $RAIZ/Rocola/PreparacionFondoGpu.cs $RAIZ/Rocola/AcabadoNaturalGpu.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/FuentesMedidas.cs $RAIZ/Rocola/PlanBiblioteca.cs"
+FUENTES="$FUENTES $RAIZ/Rocola/MedidaFluidezGpu.cs"
 TMP_PRUEBAS="${TMPDIR:-/tmp}/rocola_pruebas_$$"
 FUENTES="$FUENTES $RAIZ/Rocola/AudioControles.cs $RAIZ/Rocola/Sonoridad.cs $RAIZ/Rocola/RellenoMp3.cs $RAIZ/Rocola/SinSilencios.cs $RAIZ/Rocola/SubirTodo.cs $RAIZ/Rocola/NivelDisco.cs $RAIZ/Rocola/BombaSonido.cs $RAIZ/Rocola/DiarioTablas.cs $RAIZ/Rocola/CancionEnMemoria.cs $RAIZ/Rocola/MedidasBitacora.cs $RAIZ/Rocola/PicoReal.cs $RAIZ/Rocola/Realce.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/ModoNoche.cs $RAIZ/Rocola/GraveMono.cs"
@@ -162,6 +163,7 @@ CPU="$CPU estadopendiente"
 # imitada recibe solo el trozo.
 GPU="$GPU franjareloj"
 GPU="$GPU espacioprecarga estelaestelar estrellaflujo estrella3d pantallaviva"
+GPU="$GPU relojreposo campoestelarbuffers fluidezcuadros"
 # 'pantallaviva' sale en las dos: sin tarjeta grafica solo existe la pestaña de ajustes (se comprueba que se guarda y
 # que no hay nada mas); con ella, todo lo de la tanda 1 de la pantalla (PantallaVivaGpu.cs).
 CPU="$CPU pantallaviva"

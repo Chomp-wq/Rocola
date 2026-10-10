@@ -119,10 +119,24 @@ class SuenaVivo
     // le pone el tamaño por dentro, que es lo unico que leen los avisos y la invitacion.
     static void Tamano(object f, int w, int h)
     {
-        FieldInfo cs = typeof(Control).GetField("client_size", F), cr = typeof(Control).GetField("client_rect", F), bo = typeof(Control).GetField("bounds", F);
-        if (cs != null) cs.SetValue(f, new Size(w, h));
-        if (cr != null) cr.SetValue(f, new Rectangle(0, 0, w, h));
-        if (bo != null) bo.SetValue(f, new Rectangle(0, 0, w, h));
+        // Mono conserva Size/Rectangle; WinForms de Microsoft conserva dos enteros.
+        // No usar ClientSize.set: el Form sin constructor no tiene controles ni eventos preparados.
+        foreach (string nombre in new string[] { "client_size", "clientSize" })
+        {
+            FieldInfo fi = Campo(f.GetType(), nombre);
+            if (fi != null && fi.FieldType == typeof(Size)) fi.SetValue(f, new Size(w, h));
+        }
+        foreach (string nombre in new string[] { "client_rect", "bounds", "_bounds" })
+        {
+            FieldInfo fi = Campo(f.GetType(), nombre);
+            if (fi != null && fi.FieldType == typeof(Rectangle)) fi.SetValue(f, new Rectangle(0, 0, w, h));
+        }
+        foreach (string nombre in new string[] { "clientWidth", "_clientWidth", "clientHeight", "_clientHeight" })
+        {
+            FieldInfo fi = Campo(f.GetType(), nombre);
+            if (fi != null && fi.FieldType == typeof(int)) fi.SetValue(f, nombre.IndexOf("Width", StringComparison.Ordinal) >= 0 ? w : h);
+        }
+        Check(((Control)f).ClientSize == new Size(w, h), "el form sintetico tiene el tamaño solicitado, sin iniciar la aplicacion");
     }
     static Control Capsula(Type t, string etq, string valor)
     {
@@ -550,7 +564,7 @@ class SuenaVivo
         string s2 = (string)tf.Invoke(null, new object[] { TimeSpan.FromSeconds(10), TimeSpan.Zero, "0:10 / 0:00" });
         Info(s1);
         Check(s1 == "1:47 / 4:12" && s2 == "0:10 / 0:00", "el reloj dice transcurrido / duracion; sin duracion conocida conserva el anterior");
-        Check(Codigo.Llama(form.GetMethod("ParcheaElReloj", F), "TextoRelojReposo") && Codigo.Llama(form.GetMethod("BuildIdlePanel", F), "TextoRelojReposo"),
+        Check(Codigo.Llama(form.GetMethod("ParcheaElReloj", F), "TextoRelojReposoCache") && Codigo.Llama(form.GetMethod("BuildIdlePanel", F), "TextoRelojReposoCache"),
               "y el reloj del panel lo usa en sus dos caminos (el parche de cada segundo tambien)");
         // El titulo que se desliza: quieto, va, se para, vuelve; sin saltos y a su ritmo.
         MethodInfo ct = gpu.GetMethod("CorreTitulo", F);
