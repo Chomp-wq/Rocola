@@ -478,7 +478,7 @@ namespace Rocola
                 if (segs == 1 && !esVideo && rd.WaveFormat.SampleRate >= 8000)
                 {
                     double[] pesosInteg = DisposicionBs1770.DeArchivo(path, ch);
-                    if (pesosInteg != null) { try { integ = new MedidorBs1770(rd.WaveFormat.SampleRate, pesosInteg); } catch { integ = null; } }
+                    if (pesosInteg != null) { try { integ = trabajo.Sonoridad(rd.WaveFormat.SampleRate, pesosInteg); } catch { integ = null; } }
                 }
                 Func<float[], int, int, int> lee = rd.Read;
                 int cuadroLen = 2048;   // el de SpectralTap; se confirma al crearlo

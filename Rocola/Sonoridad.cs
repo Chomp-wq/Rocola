@@ -93,6 +93,23 @@ namespace Rocola
         // Los picos de la cancion, de paso (no tocan la cuenta de la sonoridad).
         internal readonly PicosBloques Picos;
 
+        // Solo para memoria exclusiva del trabajador de analisis. No cambia receta ni coeficientes:
+        // otra tasa/disposicion requiere otra instancia. Un retorno false no toca la medida existente.
+        internal bool Reinicia(int tasaMuestreo, double[] pesos)
+        {
+            if (tasaMuestreo != tasa || pesos == null || pesos.Length != canales) return false;
+            for (int c = 0; c < canales; c++)
+                if (BitConverter.DoubleToInt64Bits(peso[c]) != BitConverter.DoubleToInt64Bits(pesos[c])) return false;
+            Array.Clear(estado, 0, estado.Length);
+            Array.Clear(anillo, 0, anillo.Length); Array.Clear(cuentas, 0, cuentas.Length);
+            Array.Clear(bloques, 0, bloques.Length);
+            fase = 0; cuadros = 0; indiceSub = inicioSub = 0; finSub = tasa / 10;
+            previos = nBloques = 0;
+            Picos.Reinicia();
+            return true;
+        }
+        internal bool MemoriaRetenible(int maxBloques) { return bloques.Length <= maxBloques; }
+
         internal int Canales { get { return canales; } }
         internal double PesoTotal { get { return pesoTotal; } }
         internal long Cuadros { get { return cuadros; } }
@@ -320,6 +337,13 @@ namespace Rocola
         {
             porBloque = Math.Max(1, tasa / 10) * Math.Max(1, canales);
             this.tasa = Math.Max(1, tasa); cuadrosBloque = Math.Max(1, tasa / 10);
+        }
+
+        internal void Reinicia()
+        {
+            Array.Clear(hist, 0, hist.Length);
+            enBloque = nSonando = nBloques = 0; maxBloque = maxTotal = 0f;
+            primerSonido = ultimoSonido = huecoIni = huecoFin = -1;
         }
 
         internal void Procesa(float[] datos, int desde, int cuantos)
@@ -903,6 +927,7 @@ namespace Rocola
             s = new SonoridadIntegrada();
             if (path == null || EsVideo(path) || MeasurementCancelled()) return false;
             LectorMedida rd = null;
+            TrabajoMedida trabajo = null;
             try
             {
                 rd = new LectorMedida(path);
@@ -912,12 +937,13 @@ namespace Rocola
                 if (tasa < 8000 || ch < 1 || total <= 0.05 || total > 36000) return false;
                 double[] pesos = DisposicionBs1770.DeArchivo(path, ch);
                 if (pesos == null) return false;   // disposicion de altavoces desconocida: se queda la estimacion
-                MedidorBs1770 m = new MedidorBs1770(tasa, pesos);
-                float[] buf = new float[4096 * ch];
+                trabajo = TomaTrabajoMedida(tasa, ch, false);
+                MedidorBs1770 m = trabajo.Sonoridad(tasa, pesos);
+                float[] buf = trabajo.Buffer;
                 while (true)
                 {
                     if (MeasurementCancelled()) return false;
-                    int n = rd.Read(buf, 0, buf.Length);
+                    int n = rd.Read(buf, 0, trabajo.LecturaMax);
                     if (n <= 0) break;
                     m.Procesa(buf, 0, n);   // el medidor ya sabe completar un cuadro partido
                 }
@@ -925,7 +951,11 @@ namespace Rocola
                 return CierraIntegrada(m, total, tasa, out s) && TerminaFuenteLeida(path, fuenteInicio);
             }
             catch { s = new SonoridadIntegrada(); return false; }
-            finally { if (rd != null) { try { rd.Dispose(); } catch { } } }
+            finally
+            {
+                if (rd != null) { try { rd.Dispose(); } catch { } }
+                if (trabajo != null) trabajo.Suelta();
+            }
         }
 
         // Igual que MeasureFileResponsive: cede a las caratulas que se estan cargando del mismo disco.

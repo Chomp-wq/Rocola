@@ -164,8 +164,8 @@ CPU="$CPU nlayerdentro"
 GPU="$GPU espacioprecarga estelaestelar estrellaflujo estrella3d pantallaviva"
 GPU="$GPU relojreposo campoestelarbuffers fluidezcuadros"
 # Memoria temporal de medida: rutas comunes de audio, sin cambiar dibujo CPU.
-CPU="$CPU memoriaanalisis"
-GPU="$GPU memoriaanalisis"
+CPU="$CPU memoriaanalisis memoriaintegrada"
+GPU="$GPU memoriaanalisis memoriaintegrada"
 # 'pantallaviva' sale en las dos: sin tarjeta grafica solo existe la pestaña de ajustes (se comprueba que se guarda y
 # que no hay nada mas); con ella, todo lo de la tanda 1 de la pantalla (PantallaVivaGpu.cs).
 CPU="$CPU pantallaviva"

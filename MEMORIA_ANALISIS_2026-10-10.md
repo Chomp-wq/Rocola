@@ -54,12 +54,18 @@ Resultados de cierre:
 
 ## Despliegue de esta continuacion
 
+Estado historico del cierre de esta primera pasada. La continuacion indicada mas abajo contiene la compilacion y el despliegue mas recientes.
+
 HD: actualizados exclusivamente `D:\ReleaseHD\Rocola.exe` y `Rocola.pdb`, con copia recuperable del par anterior y del nuevo en `respaldo_memoria_20261010_ec9466bd6a6a4f898d868fac5ec5fb9c`. Se verifico la coincidencia exacta de los archivos instalados con Release y el paquete preparado. No se sustituyen configuracion, modelos, biblioteca, medidas ni herramientas externas.
 
 - SHA-256 EXE HD: `6435D12111A42148A026A7054E687542503757BE77ED8B1F9A14A03627EE4384`.
 - SHA-256 PDB HD: `5FFBB2023E92BBA0D438F4DEA422877C8EC822A64F4D0BC6A508AD76A00F341F`.
 
 Modest: `D:\Release1\Rocola.exe` sigue abierto; no se cierra ni se reemplaza. Queda compilada y verificada la continuacion con EXE SHA-256 `A65F3245E40F712C3279186A3245998C00DE305BE70F190295F2A106C84F80CE` y PDB `1EEB206F9C0EBE8C566860BBBC1D03ECD2D6863B58677FB1B36F852334268AB4`. La proxima instalacion debe usar este par actualizado, no el Release anterior a la reutilizacion del analisis.
+
+## Continuacion posterior: medidor integrado
+
+La siguiente pasada implementa y prueba la reutilizacion del medidor integrado y su histograma. Consultar [MEMORIA_INTEGRADA_2026-10-10.md](MEMORIA_INTEGRADA_2026-10-10.md) para el cambio, los limites, la equivalencia y el despliegue mas reciente. Los resultados y limites que siguen describen el cierre historico de esta primera pasada.
 
 ## Que no resuelve ni certifica esta pasada
 

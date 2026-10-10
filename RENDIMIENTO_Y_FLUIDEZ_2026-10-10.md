@@ -77,6 +77,8 @@ Los tiempos sintéticos no se convierten en una promesa de FPS ni en una gananci
 
 ## Despliegue y pendientes conservados
 
+Este apartado describe el cierre historico de la primera pasada de fluidez. Las continuaciones [MEMORIA_ANALISIS_2026-10-10.md](MEMORIA_ANALISIS_2026-10-10.md) y [MEMORIA_INTEGRADA_2026-10-10.md](MEMORIA_INTEGRADA_2026-10-10.md) detallan las optimizaciones verificadas posteriores y el estado mas reciente de instalacion. No sustituyen la comparacion real p95/p99/max pendiente.
+
 No se sustituyen música, modelos, configuración ni tablas de medidas. Cada instalación requiere que su Rocola esté cerrada y respaldo de los archivos sustituidos. Una compilación y un push no equivalen a haber actualizado un ejecutable abierto.
 
 HD: ejecutable y símbolos actualizados en `D:\ReleaseHD`, con respaldo recuperable en `respaldo_fluidez_20261010_d1e68fb0f5b74118a9da173db9198fb1`. Se comprobaron hashes del paquete instalado, configuración y modelos; los demás archivos de datos conservan tamaño y fecha. SHA-256 del ejecutable nuevo: `44807F7400D778CFE94A216F4C09C55914AC2DB8765CAF73B1A671A29753BEFE`.

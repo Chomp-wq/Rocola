@@ -23,11 +23,13 @@ try {
     $env:ROCOLA_DATOS = Join-Path $OutputDirectory ('datos-' + [Guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $env:ROCOLA_DATOS | Out-Null
     foreach ($architecture in @('anycpu', 'x86')) {
-        $exe = Join-Path $OutputDirectory ('memoriaanalisis-' + $architecture + '.exe')
-        & $compiler /nologo /target:exe /optimize+ /warnaserror+ ("/platform:$architecture") ("/out:$exe") /r:System.dll /r:System.Core.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll ("/r:$naudio") (Join-Path $testRoot 'memoriaanalisis.cs') (Join-Path $testRoot 'leercodigo.cs')
-        if ($LASTEXITCODE -ne 0) { throw "No compila memoriaanalisis ($architecture)" }
+      foreach ($test in @('memoriaanalisis', 'memoriaintegrada')) {
+        $exe = Join-Path $OutputDirectory ($test + '-' + $architecture + '.exe')
+        & $compiler /nologo /target:exe /optimize+ /warnaserror+ ("/platform:$architecture") ("/out:$exe") /r:System.dll /r:System.Core.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll ("/r:$naudio") (Join-Path $testRoot ($test + '.cs')) (Join-Path $testRoot 'leercodigo.cs')
+        if ($LASTEXITCODE -ne 0) { throw "No compila $test ($architecture)" }
         if ($BaselinePath) { & $exe $ApplicationPath $BaselinePath } else { & $exe $ApplicationPath }
-        if ($LASTEXITCODE -ne 0) { throw "Fallo memoriaanalisis ($architecture)" }
+        if ($LASTEXITCODE -ne 0) { throw "Fallo $test ($architecture)" }
+      }
     }
     if (!$BaselinePath) { Write-Output 'Sin referencia: verifica reutilizacion y aislamiento; NO certifica equivalencia antes/despues.' }
     Write-Output "PASS memoria de analisis, nativo/x86. Evidencia: $OutputDirectory. No reproduce musica ni mide FPS."
