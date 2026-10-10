@@ -252,6 +252,45 @@ Ocho baterías quedaron en rojo con `todo.sh` (Mono). Lo que era del programa y 
 
 Comprobado con Mono en Linux; no en Windows ni en XP.
 
+## Estela y medicion real de la estrella (10-10-2026)
+
+`ecosgeometria.cs` compara bit a bit caras y bordes de la estela 3D contra la receta
+sin cache. Acepta un segundo argumento opcional con el ejecutable anterior. Prueba
+Legacy/Natural, nacimientos, edades, transparencias, todos los campos de la clave,
+reemplazos del anillo y cambios de estilo. Su coste sintetico compara cache caliente
+con reconstruccion **mas copia**, no FPS reales ni el coste del binario anterior.
+
+`estrellasesionreal.cs` es opcional. Compilar con el compilador de cada rama y las
+referencias System/Core/Drawing/Windows.Forms; NAudio debe estar accesible como en
+`sesionreal.cs`. La autoprueba `--autoprueba <Rocola.exe>` no abre una ventana GPU ni
+reproduce musica y es la UNICA parte de este instrumento incluida en validar-capas.
+
+Uso real: `estrellasesionreal.exe <Rocola.exe> <datos COPIADOS en TEMP> <ruta absoluta
+de una pista real de esa biblioteca>`. Preparar una copia de un album pequeno, sus
+tablas, miniaturas, configuracion y dos modelos pequenos. Desactivar SOLO en esa
+copia `ia_datos=0`; no copiar el corpus de entrenamiento. No usar enlaces/junctions
+de datos hacia la instalacion original. La musica original se lee, no se reemplaza.
+La pista debe durar mas de 35 segundos. Cada escena la abre desde cero y muda al
+final de la cadena, conservando el trabajo DSP; no cambia el volumen de Windows.
+
+Rechaza otras Rocola/pruebas abiertas, sin cerrarlas. Espera escaneo, duraciones,
+repaso e integrada sin pendientes NI trabajadores vivos (hasta 15 minutos). No
+desactiva ni pausa el repaso para aparentar fluidez. Una biblioteca que no termine
+o se reactive durante la prueba invalida la escena; ia_datos=0 por si solo no basta.
+Ejecutar ambas ramas secuencialmente, sin HAL, compilacion o entrenamiento concurrentes.
+
+Recorre Legacy/Natural x estrella 2D/3D x navegacion quieta/estado extendido. La
+navegacion mantiene actividad sin pasar paginas, para aislar la animacion; los
+cambios de pagina siguen midiendose con sesionreal. Usa Application.Idle y el
+temporizador reales, SIN cuadros ni ticks forzados. Calienta 5 s y espera la expansion
+completa; mide 25 s por escena. Informa presentaciones, fallos y rangos p95/p99 de
+ventanas recientes de 512 cuadros, maximos de intervalo/fases/huecos/agenda. No son
+percentiles agregados, fotones ni certificacion XP; no sumar maximos independientes.
+Un cierre del usuario, cambio de pista, repaso nuevo o fallos de Present da error.
+
+La pasada actual SOLO valido la autoprueba y la geometria: no llamar medicion real
+a la compilacion de este instrumento. Ver ESTELA_CACHE_Y_PRUEBAS_2026-10-10.md.
+
 ## Añadir una batería nueva
 
 1. Escribe `mibateria.cs` con un `Main` que reciba la ruta del ejecutable como primer argumento.

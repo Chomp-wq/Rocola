@@ -1,5 +1,9 @@
 # Fluidez GPU y pausas entre cuadros — 10 de octubre de 2026
 
+Continuacion GPU: `ESTELA_CACHE_Y_PRUEBAS_2026-10-10.md` documenta la cache exacta
+de los ecos 3D y el instrumento preparado para las ocho escenas reales. La medicion
+comparativa sigue pendiente; los hashes y despliegue mas recientes estan alli.
+
 Continuacion posterior del punto 3: `MEMORIA_ANALISIS_2026-10-10.md` documenta la reutilizacion ya implementada y su equivalencia de medidas/cosecha. Los resultados y hashes de este informe corresponden a la pasada GPU anterior, no al nuevo despliegue.
 
 ## Cambios compartidos en Modest y HD

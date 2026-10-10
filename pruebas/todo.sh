@@ -162,7 +162,7 @@ CPU="$CPU estadopendiente"
 # (FranjaLigeraGpu.cs). Identica a rehacerla entera, pixel a pixel; las cintas no se tocan; lo demas, entera; y la tarjeta
 # imitada recibe solo el trozo.
 GPU="$GPU franjareloj"
-GPU="$GPU espacioprecarga estelaestelar estrellaflujo estrella3d pantallaviva"
+GPU="$GPU espacioprecarga estelaestelar estrellaflujo estrella3d ecosgeometria pantallaviva"
 GPU="$GPU relojreposo campoestelarbuffers fluidezcuadros"
 # Memoria temporal de medida: rutas comunes de audio, sin cambiar dibujo CPU.
 CPU="$CPU memoriaanalisis memoriaintegrada wavdirecto"
