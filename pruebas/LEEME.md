@@ -287,6 +287,17 @@ ventanas recientes de 512 cuadros, maximos de intervalo/fases/huecos/agenda. No 
 percentiles agregados, fotones ni certificacion XP; no sumar maximos independientes.
 Un cierre del usuario, cambio de pista, repaso nuevo o fallos de Present da error.
 
+La continuacion del 10-10 agrega totales de TODOS los intervalos/episodios de la
+fase, coincidencias GC (no duracion ni causa) y el mayor intervalo con sus propias
+fases, hueco, agenda y deltas GC. No se pierden al salir de los anillos de 512/32.
+`ventanas_max_ms` sigue siendo el mayor valor de los informes recientes;
+`max_sesion_ms` es el maximo de toda la fase. Los p95/p99 siguen siendo por ventana,
+no percentiles globales. Rechaza una minimizacion, una continuidad cortada o un
+reinicio de medida aunque ambos contadores vuelvan a crecer. La guardia reconoce
+instrumentos con sufijos HD/Modest, ademas de Rocola y sesionreal; ejecutar siempre
+por separado, sin otros benchmarks/compilacion/HAL/entrenamiento. Autoprueba: 35
+controles sinteticos. Ver FLUIDEZ_SESION_COMPLETA_2026-10-10.md.
+
 La pasada actual SOLO valido la autoprueba y la geometria: no llamar medicion real
 a la compilacion de este instrumento. Ver ESTELA_CACHE_Y_PRUEBAS_2026-10-10.md.
 

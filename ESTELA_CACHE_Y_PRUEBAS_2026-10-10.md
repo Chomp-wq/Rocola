@@ -1,5 +1,10 @@
 # Estela 3D: geometria reutilizada y prueba de fluidez preparada
 
+Continuacion: `FLUIDEZ_SESION_COMPLETA_2026-10-10.md` corrige la perdida de
+informacion al girar los anillos de diagnostico y refuerza el instrumento real.
+Sus hashes/despliegue son posteriores a los de este informe. La comparacion con
+musica sigue pendiente; estas verificaciones no certifican la desaparicion del tiron.
+
 Continuacion de las pasadas de fluidez y audio del 10-10-2026. Cambios compartidos
 en Modest y HD, exclusivamente en GPU. El renderizador CPU permanece congelado.
 
