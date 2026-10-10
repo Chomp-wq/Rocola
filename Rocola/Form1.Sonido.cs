@@ -430,6 +430,7 @@ namespace Rocola
             // o cosechar cuadros para la IA seria trabajo y disco gastados en algo que nunca se usaria.
             bool esVideo = EsVideo(path);
             LectorMedida rd = null;
+            TrabajoMedida trabajo = null;
             try
             {
                 rd = new LectorMedida(path);
@@ -439,17 +440,15 @@ namespace Rocola
                 double total = rd.TotalTime.TotalSeconds;
                 if (total <= 0.05 || total > 36000) return false;   // vacio o absurdo (archivo roto)
                 durSec = (float)total;
-                float[] c1 = EqShelfHi(1681.974f, rate, 3.99984f, 0.70717f);   // mismas dos etapas del K-weighting
-                float[] c2 = EqHighPass(38.1355f, rate, 0.50033f);             // que usa el nivelado en vivo
-                float[] st = new float[ch * 8];
-                float[] buf = new float[4096 * ch];
+                trabajo = TomaTrabajoMedida(rate, ch, !esVideo);
+                float[] c1 = trabajo.C1, c2 = trabajo.C2;   // misma receta K; estados nuevos por cancion
+                float[] st = trabajo.Estado, buf = trabajo.Buffer;
                 double sumSq = 0; long nSamp = 0;
                 // RECORTE DE ORIGEN: muestras pegadas al techo digital en rachas de 3 o mas. No es distorsion
                 // que metamos nosotros: viene asi masterizada. Se cuenta aqui, en el recorrido que ya se hacia.
-                long clipN = 0; int[] clipRun = new int[ch];
-                float[][] bp = new float[8][]; float[] bpSt = new float[ch * 32];   // huella tonal: estados por canal y banda
-                if (!esVideo) for (int b = 0; b < 8; b++) bp[b] = EqBpf(EqCentros[b], rate);   // (de un video no se saca huella: se quedan en nulo y el filtro se salta)
-                double[] bpSum = new double[8]; long bpN = 0;
+                long clipN = 0; int[] clipRun = trabajo.Recorte;
+                float[][] bp = trabajo.Bandas; float[] bpSt = trabajo.EstadoBandas;
+                double[] bpSum = trabajo.SumaBandas; long bpN = 0;
                 // COSECHA PARA LA IA: se analiza el canal 0 con el MISMO motor del DSEE. Los pares se guardan
                 // en memoria y solo se escriben al final, si resulta que la cancion SI conserva sus agudos
                 // (una cancion dañada no puede enseñar nada: los agudos reales ya no estan en el archivo).
@@ -508,24 +507,24 @@ namespace Rocola
                 if (!cosechar && !esVideo)
                 {
                     // Solo hace falta el acantilado: se analizan unos pocos cuadros y se para (ni se guardan pares).
-                    try { hv = new SpectralTap(rate, 1); hvFrame = new float[hv.FrameLen]; soloCorte = true; hvVistosMax = IaWarmFrames + 24; }
+                    try { hv = trabajo.Analizador(0, rate); hvFrame = trabajo.Cuadro(0, hv.FrameLen); soloCorte = true; hvVistosMax = IaWarmFrames + 24; }
                     catch { hv = null; }
                 }
                 if (cosechar)
                 {
                     try
                     {
-                        hv = new SpectralTap(rate, 1);
-                        hvFrame = new float[hv.FrameLen]; hvFeat = new float[28]; hvTgt = new float[12];
-                        hvPairs = new List<float>(4096);
+                        hv = trabajo.Analizador(0, rate);
+                        hvFrame = trabajo.Cuadro(0, hv.FrameLen); hvFeat = trabajo.Features; hvTgt = trabajo.Target;
+                        hvPairs = trabajo.Pares(0);
                         int canalesIa = Math.Min(2, ch);
                         hvCanales = new SpectralTap[canalesIa]; hvCuadros = new float[canalesIa][];
                         hvPares = new List<float>[canalesIa];
                         hvCanales[0] = hv; hvCuadros[0] = hvFrame; hvPares[0] = hvPairs;
                         if (canalesIa == 2)
                         {
-                            hvCanales[1] = new SpectralTap(rate, 1);
-                            hvCuadros[1] = new float[hv.FrameLen]; hvPares[1] = new List<float>(4096);
+                            hvCanales[1] = trabajo.Analizador(1, rate);
+                            hvCuadros[1] = trabajo.Cuadro(1, hv.FrameLen); hvPares[1] = trabajo.Pares(1);
                         }
                         // Los cuadros se toman REPARTIDOS por todo lo que se va a descomprimir, no seguidos
                         // desde el principio. Antes el modo pasivo cosechaba los 192 PRIMEROS: eso son 8,9
@@ -550,7 +549,7 @@ namespace Rocola
                 int qualityFrames = IaWarmFrames + 24;
                 // Calidad tiene SU estado y solo canal 0; alternar pares L/R, un canal mudo o
                 // el paso de cosecha no pueden cambiar su ventana ni el calor del detector.
-                SpectralTap qualityTap = hvCanales != null ? new SpectralTap(rate, 1) : hv;
+                SpectralTap qualityTap = hvCanales != null ? trabajo.Analizador(2, rate) : hv;
                 long qualitySeen = 0;
                 float measuredCut = qualityTap != null ? qualityTap.CutHz : 0f, measuredCutLo = qualityTap != null ? qualityTap.CutLoHz : 0f;
                 for (int s = 0; s < segs && !preScanStop; s++)
@@ -567,7 +566,7 @@ namespace Rocola
                     while (got < want)
                     {
                         if (MeasurementCancelled()) return false;
-                        int want2 = (int)Math.Min(buf.Length, want - got);
+                        int want2 = (int)Math.Min(trabajo.LecturaMax, want - got);
                         int n = LeeCuadrosCompletos(lee, buf, want2, ch);   // cuadros enteros: ningun canal se cruza con otro
                         if (n <= 0) break;
                         got += n;
@@ -649,7 +648,7 @@ namespace Rocola
                     while (true)
                     {
                         if (MeasurementCancelled()) return false;
-                        int n = LeeCuadrosCompletos(lee, buf, buf.Length, ch);
+                        int n = LeeCuadrosCompletos(lee, buf, trabajo.LecturaMax, ch);
                         if (n <= 0) break;
                         integ.Procesa(buf, 0, n);
                     }
@@ -690,7 +689,8 @@ namespace Rocola
                     float[] curve = new float[EqLen];
                     curve[EqCut] = corteHz; curve[EqClip] = recorte; curve[EqCutLo] = corteLo; curve[EqFingerprint] = EqVersionOriginal;
                     for (int b = 0; b < 8; b++) curve[b] = (float)(10.0 * Math.Log10(bpSum[b] / bpN + 1e-12));
-                    float[] cuerpo = { curve[1], curve[2], curve[3], curve[4], curve[5] };
+                    float[] cuerpo = trabajo.Cuerpo;
+                    for (int b = 0; b < cuerpo.Length; b++) cuerpo[b] = curve[b + 1];
                     Array.Sort(cuerpo);
                     float refDb = cuerpo[2];
                     for (int b = 0; b < 8; b++) curve[b] -= refDb;
@@ -699,7 +699,11 @@ namespace Rocola
                 return TerminaFuenteLeida(path, fuenteInicio);
             }
             catch { return durSec > 0.01f && TerminaFuenteLeida(path, fuenteInicio); }
-            finally { if (rd != null) { try { rd.Dispose(); } catch { } } }
+            finally
+            {
+                if (rd != null) { try { rd.Dispose(); } catch { } }
+                if (trabajo != null) trabajo.Suelta(); // tambien tras cancelacion, lectura rota o retorno temprano
+            }
         }
 
 #if ROCOLA_GPU
@@ -1712,6 +1716,16 @@ namespace Rocola
                 twCos = plan.Cos; twSin = plan.Sin; twSinNeg = plan.SinNeg;
             }
             public int FrameLen { get { return Frame; } }
+            internal bool ReiniciaAnalisis(int rateHz)
+            {
+                // Solo el constructor de medidas. Jamás resetear aqui el STFT de reproduccion.
+                int normal = rateHz < 8000 ? 44100 : rateHz;
+                if (src != null || inBuf != null || cortesGrupo != null || corteOriginal != null ||
+                    ch != 1 || rate != normal || FrameLen != 2048) return false;
+                cutHz = cutLoHz = 0f;
+                // AnalyzeFrame sobrescribe re/im completos; las caches de bins son pura geometria.
+                return true;
+            }
             public float CutHz { get {
                 if (cortesGrupo == null) return cutHz; // analizador de cosecha, un canal
                 float mayor = 0; for (int i = 0; i < cortesGrupo.Length; i++) mayor = Math.Max(mayor, cortesGrupo[i]);

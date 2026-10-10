@@ -7,6 +7,89 @@ namespace Rocola
         // Optimizaciones automaticas: no son preferencias visuales de Ctrl+F3.
         [ThreadStatic] private static Func<bool> measureCancellation;
 
+        // Solo scratch del analisis: ningun lector, formulario, ruta ni resultado publicado.
+        // Una instancia por hilo; una llamada reentrante recibe otra y no pisa la medida externa.
+        [ThreadStatic] private static TrabajoMedida trabajoMedidaDelHilo;
+        private sealed class TrabajoMedida
+        {
+            internal const int MaxCanalesRetenidos = 8, MaxParesRetenidos = 65536;
+            internal bool EnUso;
+            internal int LecturaMax;
+            private int frecuencia, frecuenciaBandas;
+            internal float[] C1, C2, Estado, Buffer, EstadoBandas;
+            internal int[] Recorte;
+            internal readonly float[][] Bandas = new float[8][];
+            internal readonly double[] SumaBandas = new double[8];
+            internal readonly float[] Cuerpo = new float[5], Features = new float[28], Target = new float[12];
+            private readonly SpectralTap[] analisis = new SpectralTap[3];
+            private readonly float[][] cuadros = new float[3][];
+            private readonly System.Collections.Generic.List<float>[] pares = new System.Collections.Generic.List<float>[2];
+
+            private static T[] Capacidad<T>(T[] buffer, int n)
+            { return buffer != null && buffer.Length >= n ? buffer : new T[n]; }
+            internal void Prepara(int rate, int canales, bool tonal)
+            {
+                if (frecuencia != rate)
+                {
+                    C1 = EqShelfHi(1681.974f, rate, 3.99984f, 0.70717f);
+                    C2 = EqHighPass(38.1355f, rate, 0.50033f);
+                    frecuencia = rate; frecuenciaBandas = 0;
+                    Array.Clear(Bandas, 0, Bandas.Length);
+                    Array.Clear(analisis, 0, analisis.Length); // solo se retiene un formato, no un diccionario
+                }
+                if (tonal && frecuenciaBandas != rate)
+                {
+                    for (int b = 0; b < Bandas.Length; b++) Bandas[b] = EqBpf(EqCentros[b], rate);
+                    frecuenciaBandas = rate;
+                }
+                LecturaMax = checked(4096 * canales); // el conteo LOGICO original, no Buffer.Length
+                Buffer = Capacidad(Buffer, LecturaMax); Estado = Capacidad(Estado, checked(canales * 8));
+                EstadoBandas = Capacidad(EstadoBandas, checked(canales * 32)); Recorte = Capacidad(Recorte, canales);
+                Array.Clear(Buffer, 0, Buffer.Length); Array.Clear(Estado, 0, Estado.Length);
+                Array.Clear(EstadoBandas, 0, EstadoBandas.Length); Array.Clear(Recorte, 0, Recorte.Length);
+                Array.Clear(SumaBandas, 0, SumaBandas.Length);
+            }
+            internal SpectralTap Analizador(int indice, int rate)
+            {
+                SpectralTap tap = analisis[indice];
+                if (tap == null || !tap.ReiniciaAnalisis(rate)) analisis[indice] = tap = new SpectralTap(rate, 1);
+                return tap;
+            }
+            internal float[] Cuadro(int indice, int largo)
+            {
+                // No sobredimensionar: el bucle usa Length como tamano de ventana.
+                if (cuadros[indice] == null || cuadros[indice].Length != largo) cuadros[indice] = new float[largo];
+                return cuadros[indice];
+            }
+            internal System.Collections.Generic.List<float> Pares(int indice)
+            {
+                if (pares[indice] == null) pares[indice] = new System.Collections.Generic.List<float>(4096);
+                pares[indice].Clear();
+                return pares[indice];
+            }
+            internal void Suelta()
+            {
+                for (int i = 0; i < pares.Length; i++)
+                    if (pares[i] != null)
+                    {
+                        // Un entrenamiento a fondo puede crecer mucho: medirlo entero, pero no retenerlo entero.
+                        if (pares[i].Capacity > MaxParesRetenidos) pares[i] = null;
+                        else pares[i].Clear();
+                    }
+                EnUso = false;
+            }
+        }
+        private static TrabajoMedida TomaTrabajoMedida(int rate, int canales, bool tonal)
+        {
+            TrabajoMedida trabajo = trabajoMedidaDelHilo;
+            if (canales > TrabajoMedida.MaxCanalesRetenidos || (trabajo != null && trabajo.EnUso))
+                trabajo = new TrabajoMedida(); // formatos grandes/reentrada: temporales, sin limitar su analisis
+            else if (trabajo == null) trabajoMedidaDelHilo = trabajo = new TrabajoMedida();
+            trabajo.EnUso = true;
+            try { trabajo.Prepara(rate, canales, tonal); return trabajo; }
+            catch { trabajo.Suelta(); throw; }
+        }
+
         // ==========================================================================================
         //  QUIEN MIDE QUE: una libreta con candado para que dos trabajadores no midan lo mismo.
         //
