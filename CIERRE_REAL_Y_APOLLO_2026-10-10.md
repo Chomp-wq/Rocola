@@ -155,4 +155,3 @@ Se deja el programa abierto; no se mantiene un proceso de pruebas concurrente.
 4. La recoleccion a fondo solicitada se deja trabajando en la instalacion Modest.
    Esto no entrena ni activa por si solo un modelo nuevo. No esperar a completar
    toda la biblioteca para devolver el control al usuario.
-
