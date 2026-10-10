@@ -17,6 +17,7 @@ class EstrellaSesionReal
     static object panel, track;
     static int mode = -1, errors, reports;
     static bool measuring;
+    static long sessionGeneration;
     static readonly Stopwatch stage = new Stopwatch();
     static double p95min, p95max, p99min, p99max, maximum, outside, schedule, prepare, draw, present;
     static object Get(object o, string n) { return o.GetType().GetField(n, B).GetValue(o); }
@@ -24,6 +25,16 @@ class EstrellaSesionReal
     static object Call(object o, string n, params object[] args) { return o.GetType().GetMethod(n, B).Invoke(o, args); }
     static int Count(string n) { return (int)Get(form, n); }
     static double Number(object o, string n) { return (double)Get(o, n); }
+    static object ValidSession(int frames, int failures)
+    {
+        object data = Get(panel, "fluidez");
+        long intervals = (long)Get(data, "IntervalosSesion");
+        // En el mismo hilo UI no puede entrar otro cuadro entre estas lecturas.
+        // Reset, minimizacion o dispositivo perdido no deben certificar solo el final.
+        if (failures != 0 || frames < 2 || intervals != frames - 1 || (long)Get(data, "GeneracionSesion") != sessionGeneration)
+            throw new InvalidOperationException("Fallo de Present o continuidad reiniciada: escena incompleta.");
+        return data;
+    }
     static void Touch(bool idle)
     {
         Set(form, "lastInput", DateTime.Now.AddSeconds(idle ? -30 : 0));
@@ -44,13 +55,25 @@ class EstrellaSesionReal
             Count("preScanLeft") == 0 && Count("integLeft") == 0 && Count("durScanLeft") == 0 &&
             !Alive("preparaRepasoTh") && !Alive("preScanTh") && !Alive("durScanTh");
     }
+    static bool ConflictingName(string name, string own)
+    {
+        return name.StartsWith("Rocola", StringComparison.OrdinalIgnoreCase) ||
+            name.StartsWith("estrellasesionreal", StringComparison.OrdinalIgnoreCase) ||
+            name.StartsWith("sesionreal", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(name, own, StringComparison.OrdinalIgnoreCase);
+    }
     static void NoOtherRocola()
     {
         using (Process own = Process.GetCurrentProcess())
-        foreach (string name in new string[] { "Rocola", own.ProcessName })
-        foreach (Process process in Process.GetProcessesByName(name))
+        foreach (Process process in Process.GetProcesses())
         using (process)
-            if (process.Id != own.Id) throw new InvalidOperationException("Hay otra Rocola o prueba abierta. No se cierra ni se mide en paralelo.");
+        {
+            if (process.Id == own.Id) continue;
+            string name;
+            try { name = process.ProcessName; }
+            catch (InvalidOperationException) { continue; } // termino durante la enumeracion
+            if (ConflictingName(name, own.ProcessName)) throw new InvalidOperationException("Hay otra Rocola o prueba abierta. No se cierra ni se mide en paralelo.");
+        }
     }
     static void Observe(string message)
     {
@@ -123,25 +146,33 @@ class EstrellaSesionReal
             if (!ReferenceEquals(Get(form, "nowPlaying"), track) || Get(form, "output") == null)
                 throw new InvalidOperationException("Cambio/finalizo la cancion durante la escena.");
             if ((bool)Get(form, "attractOn")) throw new InvalidOperationException("Entro en atraccion.");
+            if (form.WindowState == FormWindowState.Minimized) throw new InvalidOperationException("Ventana minimizada: escena no valida.");
             Touch(Idle);
             float blend = (float)Get(panel, "idleBlend");
             if (!measuring)
             {
                 if (stage.ElapsedMilliseconds < 5000 || (Idle ? blend < .997f : blend > .003f)) return;
                 NoOtherRocola(); Call(panel, "ReiniciaMedida");
+                sessionGeneration = (long)Get(Get(panel, "fluidez"), "GeneracionSesion");
                 p95min = p99min = double.MaxValue; p95max = p99max = maximum = outside = schedule = prepare = draw = present = 0;
                 reports = 0; measuring = true; stage.Reset(); stage.Start(); return;
             }
             if (stage.ElapsedMilliseconds < 25000) return;
-            measuring = false; NoOtherRocola();
+            measuring = false; double elapsed = stage.Elapsed.TotalMilliseconds; NoOtherRocola();
             int frames = (int)panel.GetType().GetProperty("CuadrosMedidos", B).GetValue(panel, null);
             int failures = (int)panel.GetType().GetProperty("FallosMedidos", B).GetValue(panel, null);
-            if (failures != 0 || frames == 0 || reports < 15) throw new InvalidOperationException("Fallo de Present o informes insuficientes; no certificar.");
+            object session = ValidSession(frames, failures), worst = Get(session, "PeorIntervaloSesion");
+            if (reports < 15) throw new InvalidOperationException("Informes insuficientes; no certificar.");
             Console.WriteLine("REAL " + Label + " resolucion=" + ((Control)panel).Width + "x" + ((Control)panel).Height +
-                " cuadros=" + frames + " fallos=" + failures + " presentaciones_s=" + F(frames * 1000 / stage.Elapsed.TotalMilliseconds) +
+                " cuadros=" + frames + " fallos=" + failures + " presentaciones_s=" + F(frames * 1000 / elapsed) +
                 " informes=" + reports + " ventanas_p95_ms=" + F(p95min) + ".." + F(p95max) + " ventanas_p99_ms=" + F(p99min) + ".." + F(p99max) +
-                " max_ms=" + F(maximum) + " fueraRender_max_ms=" + F(outside) + " agenda_max_ms=" + F(schedule) +
-                " preparar_dibujar_presentar_max_ms=" + F(prepare) + "/" + F(draw) + "/" + F(present) + " repaso_pendiente=0");
+                " ventanas_max_ms=" + F(maximum) + " fueraRender_max_ms=" + F(outside) + " agenda_max_ms=" + F(schedule) +
+                " preparar_dibujar_presentar_max_ms=" + F(prepare) + "/" + F(draw) + "/" + F(present) +
+                " intervalos_sesion=" + Get(session, "IntervalosSesion") + " episodios_sesion=" + Get(session, "EpisodiosSesion") +
+                " episodios_gc_coincidente=" + Get(session, "EpisodiosGcSesion") + " max_sesion_ms=" + F(Number(session, "MaximoSesion")) +
+                " peor_preparar_dibujar_presentar_ms=" + F(Number(worst, "Preparar")) + "/" + F(Number(worst, "Dibujar")) + "/" + F(Number(worst, "Presentar")) +
+                " peor_fueraRender_agenda_ms=" + F(Number(worst, "FueraRender")) + "/" + F(Number(worst, "Agenda")) +
+                " peor_gc=" + Get(worst, "Gc0") + "/" + Get(worst, "Gc1") + "/" + Get(worst, "Gc2") + " repaso_pendiente=0");
             Next();
         }
         catch (Exception e) { errors++; Console.Error.WriteLine(e); ((System.Windows.Forms.Timer)sender).Stop(); form.Close(); }
@@ -182,9 +213,25 @@ class EstrellaSesionReal
                 p95min = p99min = double.MaxValue; measuring = true;
                 Observe("fluidez GPU: prueba"); if (reports != 1 || p95min != 6 || p99max != 22 || maximum != 48 || outside != 42) throw new Exception("captura de ventana"); checks++;
                 Observe("episodios GPU:"); measuring = false; Observe("fluidez GPU:"); if (reports != 1) throw new Exception("calentamiento/episodios no son ventanas"); checks++;
+                Set(measure, "IntervalosSesion", 99L);
+                sessionGeneration = (long)Get(measure, "GeneracionSesion");
+                if (!ReferenceEquals(ValidSession(100, 0), measure)) throw new Exception("sesion completa"); checks++;
+                foreach (int[] invalid in new int[][] { new int[] { 100, 1 }, new int[] { 0, 0 }, new int[] { 1, 0 }, new int[] { 120, 0 } })
+                {
+                    bool rejected = false;
+                    try { ValidSession(invalid[0], invalid[1]); } catch (InvalidOperationException) { rejected = true; }
+                    if (!rejected) throw new Exception("certifico fallo/sesion reiniciada"); checks++;
+                }
+                Set(measure, "GeneracionSesion", sessionGeneration + 1);
+                bool resetRejected = false;
+                try { ValidSession(100, 0); } catch (InvalidOperationException) { resetRejected = true; }
+                if (!resetRejected) throw new Exception("reset simultaneo de ambos contadores oculto"); checks++;
             }
             for (mode = 0; mode < 8; mode++)
             { if (Idle != ((mode & 1) != 0) || Label.IndexOf(mode < 4 ? "Legacy" : "Natural") < 0) throw new Exception("matriz"); checks++; }
+            foreach (string name in new string[] { "Rocola", "rocola-gpu", "Rocola-cpu", "estrellasesionreal-hd", "estrellasesionreal-modest", "sesionreal", "otraPrueba" })
+            { if (!ConflictingName(name, "otraPrueba")) throw new Exception("prueba simultanea de otro nombre no detectada"); checks++; }
+            if (ConflictingName("explorer", "otraPrueba")) throw new Exception("proceso ajeno bloquea"); checks++;
             try { ValidateData(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)); throw new Exception("acepto datos originales"); }
             catch (ArgumentException) { checks++; }
             Console.WriteLine("PASS estrellasesionreal: " + checks + " controles sinteticos de preparacion/captura/matriz/aislamiento. No mide FPS reales.");

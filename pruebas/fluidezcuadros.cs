@@ -318,9 +318,66 @@ class FluidezCuadros
         Check((int)Field(d, "n") == 512, "estadisticas correlacionadas conservan 512 intervalos");
         NoFrameAllocations(type);
     }
+    static void Session(Assembly asm)
+    {
+        Type type = asm.GetType("Rocola.FluidezGpu", true);
+        Check(type.GetField("IntervalosSesion", B) != null, "Contadores de sesion presentes: una ventana no es toda la prueba");
+        object d = Activator.CreateInstance(type, true);
+        Frame(d, 100, 109, 3, 4, 2, 5, 0, 10, 2, 1);
+        Check((long)Field(d, "IntervalosSesion") == 0, "Primer cuadro solo establece origen");
+        Frame(d, 145, 150, 1, 2, 2, 5, 5, 11, 2, 1);
+        Check((long)Field(d, "IntervalosSesion") == 1 && (long)Field(d, "EpisodiosSesion") == 1 &&
+            (long)Field(d, "EpisodiosGcSesion") == 1, "Intervalo y episodio GC se cuentan una vez, no por generacion");
+        object worst = Field(d, "PeorIntervaloSesion");
+        Check((double)Field(worst, "Inicio") == 100 && (double)Field(worst, "Intervalo") == 45 &&
+            (double)Field(worst, "Preparar") == 3 && (double)Field(worst, "Dibujar") == 4 &&
+            (double)Field(worst, "Presentar") == 2 && (double)Field(worst, "FueraRender") == 36 &&
+            (double)Field(worst, "Agenda") == 5 && (int)Field(worst, "Gc0") == 1,
+            "Peor intervalo conserva SUS fases anteriores, hueco, agenda y GC");
+        double start = 145;
+        for (int i = 0; i < 600; i++) { start += 5; Frame(d, start, start + 1, .2, .3, .5, 5, 0, 11, 2, 1); }
+        Check((bool)Call(d, "Resume", 4000d) && (double)Field(d, "Maximo") == 5 &&
+            (double)Field(d, "MaximoSesion") == 45, "Ventana pierde la pausa vieja, sesion NO la pierde");
+        for (int i = 1; i <= 100; i++) { start += 40; Frame(d, start, start + 1, .2, .3, .5, 5, 0, 11 + i / 2, 2, 1); }
+        Check(Pending(d) == 32 && (int)Field(d, "EpisodiosDescartados") == 69 &&
+            (long)Field(d, "EpisodiosSesion") == 101 && (long)Field(d, "EpisodiosGcSesion") == 51,
+            "Sesion cuenta incluso episodios sobrescritos; GC sin cambio no es coincidencia");
+        Call(d, "DrenaEpisodios", 8000d);
+        Check((long)Field(d, "EpisodiosSesion") == 101 && (long)Field(d, "EpisodiosGcSesion") == 51 &&
+            (double)Field(d, "MaximoSesion") == 45, "Drenar texto no borra totales ni peor intervalo");
+        for (int i = 0; i < 600; i++) { start += 5; Frame(d, start, start + 1, .2, .3, .5, 5, 0, 61, 2, 1); }
+        Call(d, "Resume", 12000d);
+        Check((long)Field(d, "IntervalosSesion") == 1301 && (double)Field(d, "Maximo") == 5 &&
+            (double)Field(d, "MaximoSesion") == 45 && (double)Field(Field(d, "PeorIntervaloSesion"), "Agenda") == 5,
+            "Sesion sobrevive varios giros del anillo sin mezclar fases de otros cuadros");
+        Call(d, "DescartaContinuidad"); start += 5000;
+        Frame(d, start, start + 1, .2, .3, .5, 5, 0, 99, 9, 9);
+        Check((long)Field(d, "IntervalosSesion") == 1301 && (long)Field(d, "EpisodiosSesion") == 101,
+            "Fallo de presentacion no inventa un intervalo o episodio, ni borra totales");
+        Frame(d, double.NaN, start, 1, 0, 0, 5, 0, 99, 9, 9);
+        Frame(d, start + 10, start + 11, 1, 0, 0, 5, 0, 99, 9, 9);
+        Check((long)Field(d, "IntervalosSesion") == 1301, "Origen invalido corta continuidad sin aumentar totales");
+        long generation = (long)Field(d, "GeneracionSesion");
+        Call(d, "Reinicia");
+        Check((long)Field(d, "GeneracionSesion") == generation + 1 &&
+            (long)Field(d, "IntervalosSesion") == 0 && (long)Field(d, "EpisodiosSesion") == 0 &&
+            (long)Field(d, "EpisodiosGcSesion") == 0 && (double)Field(d, "MaximoSesion") == 0 &&
+            (double)Field(Field(d, "PeorIntervaloSesion"), "Intervalo") == 0,
+            "Nueva fase borra todos los contadores y el peor intervalo");
+        Frame(d, 0, 1, 1, 0, 0, 40, 0, -1, -1, -1);
+        Frame(d, 40, 41, 1, 0, 0, 5, 0, -1, -1, -1);
+        Check((long)Field(d, "IntervalosSesion") == 1 && (long)Field(d, "EpisodiosSesion") == 0 &&
+            (double)Field(d, "MaximoSesion") == 40, "Maximo incluye cuadros normales lentos sin marcarlos como tiron");
+        Frame(d, 60, 61, 1, 0, 0, 40, 0, -1, -1, -1);
+        Check((long)Field(d, "EpisodiosSesion") == 1 && (long)Field(d, "EpisodiosGcSesion") == 0,
+            "Umbral usa periodo anterior y GC desconocido no se inventa");
+        Frame(d, 100, 101, 1, 0, 0, 40, 0, 1, 1, 1);
+        Check((double)Field(Field(d, "PeorIntervaloSesion"), "Inicio") == 0,
+            "Empate conserva la primera pausa maxima y sus datos");
+    }
     [STAThread] static int Main(string[] args)
     {
-        try { Assembly asm = Assembly.LoadFrom(args[0]); Tiles(asm); Diagnostic(asm); Periods(asm); FailedPresentation(asm); Correlation(asm); Console.WriteLine("PASS " + checks + " comprobaciones: teselas exactas/progresivas y diagnostico correlacionado/acotado."); return 0; }
+        try { Assembly asm = Assembly.LoadFrom(args[0]); Session(asm); Tiles(asm); Diagnostic(asm); Periods(asm); FailedPresentation(asm); Correlation(asm); Console.WriteLine("PASS " + checks + " comprobaciones: teselas exactas/progresivas y diagnostico correlacionado/acotado."); return 0; }
         catch (Exception e) { Console.Error.WriteLine(e); return 1; }
     }
 }

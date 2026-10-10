@@ -12,7 +12,7 @@ namespace Rocola
         private readonly double[] preparar = new double[Capacidad], dibujar = new double[Capacidad], presentar = new double[Capacidad];
         private readonly double[] fueraRender = new double[Capacidad], agenda = new double[Capacidad];
         private readonly int[] gc0 = new int[Capacidad], gc1 = new int[Capacidad], gc2 = new int[Capacidad];
-        private struct Episodio
+        internal struct Episodio
         {
             internal double Inicio, Intervalo, Preparar, Dibujar, Presentar, FueraRender, Agenda, Periodo;
             internal int Gc0, Gc1, Gc2;
@@ -25,6 +25,11 @@ namespace Rocola
         private double informe = -1e9, informeEpisodios = -1e9;
         internal double P95, P99, Maximo, PrepararMax, DibujarMax, PresentarMax, FueraRenderMax, AgendaMax;
         internal int Gc0Max, Gc1Max, Gc2Max, EpisodiosDescartados;
+        // La ventana y el texto drenado no son toda la sesion. Solo escalares y una
+        // muestra correlacionada fija: no perder pausas al girar los dos anillos.
+        internal long IntervalosSesion, EpisodiosSesion, EpisodiosGcSesion, GeneracionSesion;
+        internal double MaximoSesion;
+        internal Episodio PeorIntervaloSesion;
         internal int Version;
         internal int EpisodiosPendientes { get { return episodioN; } }
         // Un intento no presentado no tiene las fases del ultimo cuadro exitoso. Conservar
@@ -37,6 +42,9 @@ namespace Rocola
             informe = informeEpisodios = -1e9;
             P95 = P99 = Maximo = PrepararMax = DibujarMax = PresentarMax = FueraRenderMax = AgendaMax = 0;
             Gc0Max = Gc1Max = Gc2Max = 0; Version++;
+            IntervalosSesion = EpisodiosSesion = EpisodiosGcSesion = 0;
+            GeneracionSesion++;
+            MaximoSesion = 0; PeorIntervaloSesion = new Episodio();
         }
         // Compatibilidad con fixtures anteriores. Sin un End medido, el fin es una aproximacion
         // por suma de fases; no atribuir esa aproximacion a bloqueos del scheduler o del driver.
@@ -71,16 +79,25 @@ namespace Rocola
                 fueraRender[pos] = fuera; agenda[pos] = trabajoAgenda;
                 gc0[pos] = d0; gc1[pos] = d1; gc2[pos] = d2;
                 pos = (pos + 1) % Capacidad; n = Math.Min(Capacidad, n + 1);
-                if (intervalo >= Math.Max(20, 2 * periodoAnterior))
+                IntervalosSesion++;
+                bool peor = intervalo > MaximoSesion;
+                bool tiron = intervalo >= Math.Max(20, 2 * periodoAnterior);
+                if (peor || tiron)
                 {
                     Episodio episodio = new Episodio();
                     episodio.Inicio = anterior; episodio.Intervalo = intervalo; episodio.Preparar = prepAnterior;
                     episodio.Dibujar = dibujoAnterior; episodio.Presentar = presentAnterior; episodio.FueraRender = fuera;
                     episodio.Agenda = trabajoAgenda; episodio.Periodo = periodoAnterior;
                     episodio.Gc0 = d0; episodio.Gc1 = d1; episodio.Gc2 = d2;
-                    episodios[episodioPos] = episodio; episodioPos = (episodioPos + 1) % CapacidadEpisodios;
-                    if (episodioN < CapacidadEpisodios) episodioN++;
-                    else if (EpisodiosDescartados < int.MaxValue) EpisodiosDescartados++;
+                    if (peor) { MaximoSesion = intervalo; PeorIntervaloSesion = episodio; }
+                    if (tiron)
+                    {
+                        EpisodiosSesion++;
+                        if (d0 > 0 || d1 > 0 || d2 > 0) EpisodiosGcSesion++; // coincidencia, NO duracion/causa GC
+                        episodios[episodioPos] = episodio; episodioPos = (episodioPos + 1) % CapacidadEpisodios;
+                        if (episodioN < CapacidadEpisodios) episodioN++;
+                        else if (EpisodiosDescartados < int.MaxValue) EpisodiosDescartados++;
+                    }
                 }
             }
             anterior = inicio; finAnterior = fin; prepAnterior = prep; dibujoAnterior = dibujo;
@@ -115,7 +132,9 @@ namespace Rocola
             return "fluidez GPU: p95=" + Numero(P95) + " p99=" + Numero(P99) + " max=" + Numero(Maximo)
                 + " ms; preparar/dibujar/presentar max=" + Numero(PrepararMax) + "/" + Numero(DibujarMax) + "/" + Numero(PresentarMax)
                 + " ms; cuadros=" + n + "; fueraRender/agenda max=" + Numero(FueraRenderMax) + "/" + Numero(AgendaMax)
-                + " ms; gc max=" + Gc0Max + "/" + Gc1Max + "/" + Gc2Max;
+                + " ms; gc max=" + Gc0Max + "/" + Gc1Max + "/" + Gc2Max
+                + "; sesion intervalos=" + IntervalosSesion + " episodios=" + EpisodiosSesion
+                + " gc_coincidente=" + EpisodiosGcSesion + " max=" + Numero(MaximoSesion) + " ms";
         }
         // Solo esta salida y Resumen crean texto. Nunca se llama al escritor de diagnostico
         // desde TomaCuadro: el consumidor drena como maximo una vez por segundo.
