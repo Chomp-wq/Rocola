@@ -41,10 +41,21 @@ Siguientes comprobaciones, sin cambiar la calidad ni sustituir a ciegas el decod
 
 1. Repetir una raíz de un álbum original cuyas duraciones, EQ estéreo vigente e integrada algoritmo 3 estén completos; confirmar que no aparezca repaso pendiente. Medir Legacy/Natural, 2D/3D, navegación y reposo con la misma pista y ajustes.
 2. Repetir después con la biblioteca completa y repaso activo. Comparar episodios y no solo FPS medios; no mezclar pruebas HAL, compilaciones o entrenamientos con esa medición.
-3. Evaluar un espacio de trabajo de análisis reutilizable por trabajador, reseteando exactamente filtros y ventanas entre canciones, frecuencias y canales. Ahorro estimado de 70–100 KiB por canción; no elimina las asignaciones del lector MP3 externo ni garantiza resolver todos los tirones.
+3. Evaluar un espacio de trabajo de análisis reutilizable por trabajador. El caso estéreo de 44,1–48 kHz, mayor de 60 segundos, sin cosecha ni integrada, reserva 36 arreglos propios y un analizador: 68.201 bytes de payload en x86 y 68.233 en x64 (unos 66,6 KiB, sin cabeceras ni asignaciones de NAudio). No todo es reutilizable: la curva publicada de 48 bytes debe permanecer independiente. La integrada/cosecha añade más memoria. Esto no mide GC, no elimina las reservas del lector MP3 externo ni garantiza resolver todos los tirones.
 4. Medir publicaciones de medidas, horneado de vecinos y retirada de imágenes antes de añadir límites o mover trabajo. No pausar el repaso ni ocultar episodios para aparentar una mejora.
 
 No se promete animación 100% libre de pausas de Windows. No hay validación física disponible en XP ni en HDD/procesador antiguo de dos hilos. La afinidad y pruebas sintéticas no sustituyen ese equipo.
+
+### Condiciones de la próxima reutilización del análisis
+
+- Un espacio exclusivo por trabajador, sin compartirlo con carriles, calentador o generaciones superpuestas. No retener formularios, rutas, lectores ni delegados; controlar la reentrada.
+- Resetear filtros, estados y acumuladores entre canciones, **no** entre los tres tramos de una misma medida: eso cambiaría el resultado. Leer siempre el tamaño lógico `4096 * canales`, no la capacidad retenida del arreglo.
+- Recalcular coeficientes con la misma receta al cambiar la frecuencia; conservar bandas ausentes bajo Nyquist. El analizador de medidas conserva ventana 2048 en ambas ramas y se reemplaza si cambia su frecuencia/geometría. Reiniciar cortes; no conectarlo a grupos ni fuentes de reproducción.
+- Mantener separados los analizadores de calidad y cosecha L/R. Reiniciar llenado, turno, muestras vistas, fase y listas; conservar orden, selección y límites. Acotar capacidad retenida sin recortar datos medidos.
+- La curva EQ publicada mediante `BeginInvoke` debe ser una copia independiente: reutilizarla permitiría que otra canción modificara el resultado ya encolado o almacenado.
+- Tratar la integrada como fase separada. Antes de reutilizar, resetear filtros K, fase, cuadros, subbloques, anillo, conteo de bloques, histograma, picos y mapa de silencios. Reutilizar coeficientes/pesos solo con el mismo formato y disposición; limitar memoria retenida, no la duración analizada.
+
+Antes de implementarlo, exigir comparación bit a bit de RMS, curva EQ, integrada, picos, silencios y bytes/CRC de cosecha contra instancias nuevas. Intercalar frecuencias/canales, cosecha encendida/apagada, vídeos, cancelaciones y archivos fallidos. La auditoría anterior es estática; no se modificó el audio en esta pasada.
 
 ## Verificación automatizada
 
