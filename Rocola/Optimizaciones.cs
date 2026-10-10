@@ -13,6 +13,7 @@ namespace Rocola
         private sealed class TrabajoMedida
         {
             internal const int MaxCanalesRetenidos = 8, MaxParesRetenidos = 65536;
+            internal const int MaxBloquesRetenidos = 8192;
             internal bool EnUso;
             internal int LecturaMax;
             private int frecuencia, frecuenciaBandas;
@@ -24,6 +25,7 @@ namespace Rocola
             private readonly SpectralTap[] analisis = new SpectralTap[3];
             private readonly float[][] cuadros = new float[3][];
             private readonly System.Collections.Generic.List<float>[] pares = new System.Collections.Generic.List<float>[2];
+            private MedidorBs1770 integrada;
 
             private static T[] Capacidad<T>(T[] buffer, int n)
             { return buffer != null && buffer.Length >= n ? buffer : new T[n]; }
@@ -67,8 +69,16 @@ namespace Rocola
                 pares[indice].Clear();
                 return pares[indice];
             }
+            internal MedidorBs1770 Sonoridad(int rate, double[] pesos)
+            {
+                MedidorBs1770 m = integrada;
+                if (m == null || !m.Reinicia(rate, pesos)) integrada = m = new MedidorBs1770(rate, pesos);
+                return m;
+            }
             internal void Suelta()
             {
+                // Retener hasta 64 KiB de bloques; canciones largas se analizan enteras, sin dejarlos en cache.
+                if (integrada != null && !integrada.MemoriaRetenible(MaxBloquesRetenidos)) integrada = null;
                 for (int i = 0; i < pares.Length; i++)
                     if (pares[i] != null)
                     {
