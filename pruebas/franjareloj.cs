@@ -164,6 +164,12 @@ class FranjaReloj
                             Rectangle z = (Rectangle)Toma(vivo, "uiBotZona");
                             object nuevo = Monta(e, Relojes[k], Avances[k]); Pinta(nuevo);
                             int d = Distintos(Imagen(vivo), Imagen(nuevo));
+                            if (d != 0 && primero == null)
+                            {
+                                int[] pa = Pixeles(Imagen(vivo)), pb = Pixeles(Imagen(nuevo));
+                                for (int ix = 0, n = 0; ix < pa.Length && n < 24; ix++) if (pa[ix] != pb[ix])
+                                { Info("diferencia " + (ix % Imagen(vivo).Width) + "," + (ix / Imagen(vivo).Width) + " " + pa[ix].ToString("X8") + " / " + pb[ix].ToString("X8") + " dentro=" + z.Contains(ix % Imagen(vivo).Width, ix / Imagen(vivo).Width)); n++; }
+                            }
                             bool cintasIgual = Cintas(vivo) == Cintas(nuevo);
                             pasos++;
                             if (!z.IsEmpty) { porRecuadro++; area += (long)z.Width * z.Height; }

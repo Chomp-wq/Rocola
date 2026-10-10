@@ -22,6 +22,10 @@ namespace Rocola
 {
     public partial class Form1 : Form
     {
+#if ROCOLA_GPU
+        private string paginaGpuClave, paginaGpuFirma;
+        private int paginaGpuGeneracion;
+#endif
         private Dictionary<string, int> videoCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         private const int VideoStatCap = 1000, VideoStatTarget = 900;
         private Dictionary<string, long> videoSeq = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
@@ -298,6 +302,7 @@ namespace Rocola
                 if (rutas[i] == null || File.Exists(rutas[i])) continue;
                 fuera.Add(rutas[i]); n++;
                 loudCache.Remove(rutas[i]); durCache.Remove(rutas[i]); durFast.Remove(rutas[i]);
+                MarcarVolumen(rutas[i]);
             }
             if (n == 0) return 0;
             InvalidateVideoMeasurements();
@@ -690,6 +695,7 @@ namespace Rocola
                     gpuPanel.TouchUi();
                 };
                 gpuPanel.ShowFps = gpuShowFps;
+                gpuPanel.ReportFluidez = delegate(string informe) { Diag(informe); };
                 gpuPanel.TopeFps = fpsTope;   // 0 = que lo decida el panel por el refresco de la pantalla
                 AplicaEfectosGpu();           // y las perillas de los efectos (Ctrl+F3 -> Imagen y rendimiento)
                 gpuPanel.GetPulse = delegate { return audioLevel; };
@@ -702,7 +708,12 @@ namespace Rocola
                 // De paso recoge lo que el cielo se corre al pasar de pagina (PantallaVivaGpu.cs).
                 gpuPanel.GetGrid = delegate(GpuGridCell[] celdas)
                 {
-                    coverGovernor.Page(lastPageSig + "|" + coverGen, false, GpuPanel.AhoraMs());
+                    if (paginaGpuClave == null || paginaGpuFirma != lastPageSig || paginaGpuGeneracion != coverGen)
+                    {
+                        paginaGpuFirma = lastPageSig; paginaGpuGeneracion = coverGen;
+                        paginaGpuClave = lastPageSig + "|" + coverGen;
+                    }
+                    coverGovernor.Page(paginaGpuClave, false, GpuPanel.AhoraMs());
                     int cuantas = albumView.BuildGpuGrid(celdas);
                     gpuPanel.EmpujeCielo += albumView.TomaEmpuje();
                     return cuantas;

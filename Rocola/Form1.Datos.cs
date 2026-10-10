@@ -70,6 +70,9 @@ namespace Rocola
             public Dictionary<string, RegistroFuente> Fuentes = new Dictionary<string, RegistroFuente>(StringComparer.OrdinalIgnoreCase);
             public int FuentesEstado = 1;
             public int MsLeer;   // lo que tardo en leerlas (bitacora: MedidasBitacora.cs)
+            public CambiosTabla<RegistroVolumen> CambiosVolumen;
+            public CambiosTabla<RegistroEq> CambiosEq;
+            public CambiosTabla<RegistroIntegrada> CambiosIntegrada;
         }
 
         private sealed class StartupLoad
@@ -120,6 +123,10 @@ namespace Rocola
             }
             if (load.Cancelled) return null;
             ComputeEqAverage(data.Eq, ref data.Average, ref data.Healthy, ref data.OnlyHealthy);
+            // Indices propios del escritor, preparados fuera de la pantalla UNA vez.
+            data.CambiosVolumen = PreparaVolumen(data.Loud, data.Dur);
+            data.CambiosEq = PreparaEq(data.Eq);
+            data.CambiosIntegrada = PreparaIntegrada(data.Integ);
             data.MsLeer = Desde(leer);
             return load.Cancelled ? null : data;
         }
@@ -250,6 +257,9 @@ namespace Rocola
             // Solo el hilo UI publica referencias. No hay Merge ni copia de cientos de miles de filas.
             InvalidateVideoMeasurements();
             loudCache = data.Loud; durCache = data.Dur; durFast = data.Fast; eqCache = data.Eq;
+            cambiosVolumen = data.CambiosVolumen; cambiosEq = data.CambiosEq;
+            cambiosIntegrada = data.CambiosIntegrada;
+            diarioVolumen = null; diarioEq = null; diarioInteg = null;
             iaDone = data.Ia; deepDone = data.Deep; incompatibleLogged = data.Incompatible;
             lock (fuentesCerrojo) { fuentesMedidas = data.Fuentes; fuentesEstado = data.FuentesEstado;
                 fuentesTrabajo = null; diarioFuentes = null; fuentesPendientes.Clear(); fuentesGuardados = ++fuentesCambios; }
@@ -779,27 +789,60 @@ namespace Rocola
             if (string.IsNullOrEmpty(texto)) return;
             byte[] datos = new UTF8Encoding(false).GetBytes(texto);
             lock (CandadoDe(ruta))
-            using (FileStream fs = new FileStream(ruta, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read))
             {
-                // Descarta una ultima linea partida por un apagon antes de pegarle registros nuevos.
-                if (fs.Length > 0)
+                long valido = 0; bool reparar = false;
+                try
                 {
-                    long pos = fs.Length - 1; fs.Position = pos;
-                    if (fs.ReadByte() != (byte)'\n')
+                    using (FileStream fs = new FileStream(ruta, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
                     {
-                        while (pos >= 0)
+                        valido = fs.Length;
+                        if (valido > 0)
                         {
-                            fs.Position = pos;
-                            if (fs.ReadByte() == (byte)'\n') break;
-                            pos--;
+                            long pos = valido - 1; fs.Position = pos;
+                            if (fs.ReadByte() != (byte)'\n')
+                            {
+                                reparar = true;
+                                while (pos >= 0)
+                                {
+                                    fs.Position = pos;
+                                    if (fs.ReadByte() == (byte)'\n') break;
+                                    pos--;
+                                }
+                                valido = pos + 1;
+                            }
                         }
-                        fs.SetLength(pos + 1);
                     }
                 }
-                fs.Position = fs.Length;
-                fs.Write(datos, 0, datos.Length);
-                fs.Flush();
-                try { FlushFileBuffers(fs.SafeFileHandle.DangerousGetHandle()); } catch { }
+                catch (FileNotFoundException) { }
+                if (reparar)
+                {
+                    // Nunca truncar el original: una captura de respaldo puede seguir leyendo esa generacion.
+                    // Solo el final corrupto exige este volcado; los anexos sanos siguen siendo O(tanda).
+                    string tmp = ruta + ".tmp";
+                    using (FileStream input = new FileStream(ruta, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                    using (FileStream output = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None))
+                    {
+                        byte[] buffer = new byte[65536]; long faltan = valido;
+                        while (faltan > 0)
+                        {
+                            int n = input.Read(buffer, 0, (int)Math.Min(buffer.Length, faltan));
+                            if (n == 0) throw new IOException("El anexo original se trunco durante su reparacion");
+                            output.Write(buffer, 0, n); faltan -= n;
+                        }
+                        output.Write(datos, 0, datos.Length); output.Flush();
+                        try { FlushFileBuffers(output.SafeFileHandle.DangerousGetHandle()); } catch { }
+                    }
+                    PublicaGuardadoSeguro(ruta, tmp, ruta + ".bak");
+                    return;
+                }
+                using (ProteccionRespaldo cambio = ProtegeRespaldo(ruta))
+                using (FileStream fs = new FileStream(ruta, FileMode.OpenOrCreate, FileAccess.Write, FileShare.Read))
+                {
+                    fs.Position = fs.Length;
+                    fs.Write(datos, 0, datos.Length);
+                    fs.Flush();
+                    try { FlushFileBuffers(fs.SafeFileHandle.DangerousGetHandle()); } catch { }
+                }
             }
         }
 
@@ -848,17 +891,22 @@ namespace Rocola
 
         private static void PublicaGuardadoSeguro(string ruta, string tmp, string bak)
         {
-            if (File.Exists(ruta))
+            // La captura no espera al formato/Flush ni al reemplazo: mientras este cambia el nombre,
+            // conserva un handle del original. El candado corto se suelta antes de tocar el disco.
+            using (ProteccionRespaldo cambio = ProtegeRespaldo(ruta))
             {
-                // Replace cambia el archivo de un tiron y deja el anterior como copia. En memorias USB
-                // (FAT32) no existe, asi que ahi se hace a mano.
-                try { File.Replace(tmp, ruta, bak, true); return; }
-                catch { }
-                try { if (File.Exists(bak)) File.Delete(bak); } catch { }
-                // Si no se pudo conservar el original, ABORTAR: nunca borrarlo para forzar el reemplazo.
-                File.Move(ruta, bak);
+                if (File.Exists(ruta))
+                {
+                    // Replace cambia el archivo de un tiron y deja el anterior como copia. En memorias USB
+                    // (FAT32) no existe, asi que ahi se hace a mano.
+                    try { File.Replace(tmp, ruta, bak, true); return; }
+                    catch { }
+                    try { if (File.Exists(bak)) File.Delete(bak); } catch { }
+                    // Si no se pudo conservar el original, ABORTAR: nunca borrarlo para forzar el reemplazo.
+                    File.Move(ruta, bak);
+                }
+                File.Move(tmp, ruta);
             }
-            File.Move(tmp, ruta);
         }
 
         // Escritura acotada por registros; no publica si falla o queda obsoleta.
@@ -926,6 +974,7 @@ namespace Rocola
         private void LoadEqCache()
         {
             try { if (!ReadEqCache(EqFile(), eqCache, ref eqCacheVer)) return; } catch { }
+            if (medidasDeltasActivas) { cambiosEq = PreparaEq(eqCache); diarioEq = null; }
             EnsureEqAverage();
         }
 
@@ -992,6 +1041,22 @@ namespace Rocola
         {
             SaveFuentesMedidas();
             if (startupReadPending) return;
+            if (medidasDeltasActivas)
+            {
+                if (cambiosEq == null || !ReferenceEquals(cambiosEq.Origen, eqCache)) cambiosEq = PreparaEq(eqCache);
+                CambiosTabla<RegistroEq> tabla = cambiosEq;
+                long v = System.Threading.Interlocked.Increment(ref eqSaveVersion);
+                DiarioTabla d = diarioEq ?? (diarioEq = new DiarioTabla());
+                GuardaTablaCambios(tabla, eqSaveQueue, eqSaveLock, d, EqFile(), null,
+                    delegate { return v == System.Threading.Interlocked.Read(ref eqSaveVersion) && ReferenceEquals(tabla, cambiosEq); },
+                    delegate(string ruta, RegistroEq r) { return HuellaEq(r.Curva); },
+                    delegate(TextWriter w, string ruta, RegistroEq r)
+                    {
+                        for (int b = 0; b < EqLen; b++) { if (b > 0) w.Write(';'); w.Write(r.Curva[b].ToString("0.##", CultureInfo.InvariantCulture)); }
+                        w.Write('|'); w.Write(ruta); w.Write("\r\n");
+                    }, null, null);
+                return;
+            }
             List<KeyValuePair<string, float[]>> snap;
             try { snap = new List<KeyValuePair<string, float[]>>(eqCache); }   // copia rapida en el hilo de UI
             catch { return; }
@@ -1312,7 +1377,7 @@ namespace Rocola
             curve[EqClip] = had ? prev[EqClip] : 0f;   // el recorte solo lo mide el pre-analisis (aqui ya viene reparado)
             curve[EqFingerprint] = EqVersionOriginal;   // nunca promediar con huellas mono o post-DSP
             if (!Finitos(curve)) return;   // una medida rota no se guarda (envenenaria la media de la biblioteca)
-            eqCache[path] = curve; eqCacheVer++;
+            eqCache[path] = curve; eqCacheVer++; MarcarEq(path);
             EnsureEqAverage();
             SaveEqCache();
         }
@@ -1322,6 +1387,7 @@ namespace Rocola
             LoadFuentesMedidas();
             InvalidateVideoMeasurements();
             try { ReadLoudCache(LoudFile(), loudCache, durCache); } catch { }
+            if (medidasDeltasActivas) { cambiosVolumen = PreparaVolumen(loudCache, durCache); diarioVolumen = null; }
         }
 
         private static void ReadLoudCache(string f, Dictionary<string, float> loudCache, Dictionary<string, float> durCache)
@@ -1339,6 +1405,22 @@ namespace Rocola
         {
             SaveFuentesMedidas();
             if (startupReadPending) return;
+            if (medidasDeltasActivas)
+            {
+                if (cambiosVolumen == null || !ReferenceEquals(cambiosVolumen.Origen, loudCache)) cambiosVolumen = PreparaVolumen(loudCache, durCache);
+                CambiosTabla<RegistroVolumen> tabla = cambiosVolumen;
+                long v = System.Threading.Interlocked.Increment(ref loudSaveVersion);
+                DiarioTabla d = diarioVolumen ?? (diarioVolumen = new DiarioTabla());
+                GuardaTablaCambios(tabla, loudSaveQueue, loudSaveLock, d, LoudFile(), null,
+                    delegate { return v == System.Threading.Interlocked.Read(ref loudSaveVersion) && ReferenceEquals(tabla, cambiosVolumen); },
+                    delegate(string ruta, RegistroVolumen r) { return HuellaVolumen(r.Rms, r.Duracion); },
+                    delegate(TextWriter w, string ruta, RegistroVolumen r)
+                    {
+                        w.Write(r.Rms.ToString("0.######", CultureInfo.InvariantCulture)); w.Write('|');
+                        w.Write(r.Duracion.ToString("0.##", CultureInfo.InvariantCulture)); w.Write('|'); w.Write(ruta); w.Write("\r\n");
+                    }, null, null);
+                return;
+            }
             List<KeyValuePair<string, float>> snap;
             List<KeyValuePair<string, float>> durCopia;
             // Copias de las dos tablas (son de la pantalla y solo se tocan aqui). Como LISTAS: copiar la de duraciones como
@@ -1699,11 +1781,10 @@ namespace Rocola
         private void PublicaTintes(int gen, char[] letras, string[] etiquetas, string[] discos, string[] etDiscos, bool ultimo, int firma)
         {
             if (gen != durScanGen) return;
-            for (int i = 0; i < letras.Length && i < etiquetas.Length; i++) letterTag[letras[i]] = etiquetas[i];
-            for (int i = 0; i < discos.Length && i < etDiscos.Length; i++) discTag[discos[i]] = etDiscos[i];
-            RecalculaGenerosArtista();   // con los generos de disco nuevos, los del artista cambian
+            bool cambia = AplicaTintesNuevos(letras, etiquetas, discos, etDiscos);
+            if (cambia) RecalculaGenerosArtista();   // no reconstruir filtros con votos repetidos
             if (ultimo) { tintesPend = false; GuardaTintes(firma); }
-            RecalculaLetras();
+            if (cambia) RecalculaLetras();
         }
 
         // Corre en el hilo de la interfaz: las tablas son suyas. "faltan" es el avance ABSOLUTO que reporta el
@@ -1768,11 +1849,11 @@ namespace Rocola
         private void OlvidaMedidas(string ruta)
         {
             lock (fuentesCerrojo) { if (fuentesMedidas.Remove(ruta)) { fuentesPendientes[ruta] = null; fuentesCambios++; } }
-            loudCache.Remove(ruta); durCache.Remove(ruta);
-            if (eqCache.Remove(ruta)) { eqCacheVer++; eqDirty = true; }
+            loudCache.Remove(ruta); durCache.Remove(ruta); MarcarVolumen(ruta);
+            if (eqCache.Remove(ruta)) { eqCacheVer++; eqDirty = true; MarcarEq(ruta); }
             bool integ;
             lock (integCerrojo) integ = integCache != null && integCache.Remove(ruta);
-            if (integ) integCambios++;
+            if (integ) { integCambios++; MarcarIntegrada(ruta); }
             lock (integHechasCerrojo) integHechas.Remove(ruta); // permitir reanalizar el archivo sustituido en esta sesion
             lock (deepDoneLock) deepDone.Remove(ruta);   // la marca del archivo no vale sin sus medidas (FillDeepDoneRecords)
             OlvidaMedidaHecha(ruta);                     // que el repaso y el calentador la puedan volver a medir en esta sesion
@@ -1786,7 +1867,8 @@ namespace Rocola
             bool puesto = false;
             if (dur > 0.01f && Finito(dur)) { durCache[ruta] = dur; puesto = true; }
             if (rms > 0f && Finito(rms)) { loudCache[ruta] = rms; InvalidateVideoMeasurements(); puesto = true; }   // incluido el silencio (ver LoudMudo)
-            if (eqCurve != null && Finitos(eqCurve)) { eqCache[ruta] = eqCurve; eqCacheVer++; eqDirty = true; puesto = true; }   // huella tonal del EQ automatico
+            if (puesto) MarcarVolumen(ruta);   // captura juntos RMS + duracion, aunque solo cambio uno
+            if (eqCurve != null && Finitos(eqCurve)) { eqCache[ruta] = eqCurve; eqCacheVer++; eqDirty = true; puesto = true; MarcarEq(ruta); }   // huella tonal del EQ automatico
             // Y se apunta en la libreta compartida, para que nadie la vuelva a medir en esta sesion. Solo
             // si de verdad quedo algo escrito: un archivo roto no da nada, y darlo por medido seria no
             // volver a intentarlo nunca.
@@ -2062,7 +2144,8 @@ namespace Rocola
         // El disco puede morir (ya paso). La musica no se recupera, pero SI todo lo que la rocola aprendio:
         // volumenes nivelados, huellas del EQ, estadisticas de lo mas sonado, indice de biblioteca,
         // config, mapa de botones y el modelo de IA. Se copia a respaldo\<fecha>\ (y a respaldo_dir= si se
-        // configuro, idealmente OTRO disco), guardando los 3 dias mas recientes. Son unos KB: barato y rapido.
+        // configuro, idealmente OTRO disco), guardando los 3 dias mas recientes. Las tablas/modelos pueden ocupar MB:
+        // solo se capturan handles y longitudes aqui; copia, hashes y Flush ceden en un trabajador de baja prioridad.
         private string BackupBaseDir() { return RutaDatos("respaldo"); }
         private void BackupLearnedData()
         {
@@ -2073,22 +2156,29 @@ namespace Rocola
                 Path.Combine(sp, "rocola_incompatibles.txt"),
                 IaDoneFile(), DeepDoneFile(),  // sin estas dos, un repaso a fondo empezaria de cero y la IA repetiria ejemplos
                 DurFastFile(), LetterTintFile(),   // sin este, la barra tendria que releer el ID3 de toda la biblioteca
-                IntegFile()   // sin esta, habria que volver a descomprimir la biblioteca entera para medirla
+                IntegFile(), FuentesFile()   // medidas + firmas: deben viajar juntas al restaurar
             };
-            System.Threading.ThreadPool.QueueUserWorkItem(delegate   // fuera del hilo de la interfaz (no frena nada)
+            RespaldoCapturado captura;
+            try { captura = CapturaRespaldo(files); }   // antes del primer guardado de esta sesion
+            catch (Exception ex) { LogError("No se pudo capturar el respaldo; anteriores conservados", ex); return; }
+            GuardaEnFondo(delegate
             {
+                System.Threading.Thread th = System.Threading.Thread.CurrentThread;
+                System.Threading.ThreadPriority anterior = th.Priority;
                 try
                 {
+                    th.Priority = System.Threading.ThreadPriority.Lowest;
                     string stamp = DateTime.Now.ToString("yyyy-MM-dd_HHmmssfff", CultureInfo.InvariantCulture) + "_" + Guid.NewGuid().ToString("N");
-                    BackupDestino(baseDir, stamp, files);
-                    if (!string.IsNullOrEmpty(second)) BackupDestino(Path.Combine(second, "respaldo_rocola"), stamp, files);
+                    BackupDestinoCapturado(baseDir, stamp, captura);
+                    if (!string.IsNullOrEmpty(second)) BackupDestinoCapturado(Path.Combine(second, "respaldo_rocola"), stamp, captura);
                 }
                 catch { }
+                finally { captura.Dispose(); try { th.Priority = anterior; } catch { } }
             });
         }
-        private void BackupDestino(string root, string stamp, string[] files)
+        private void BackupDestinoCapturado(string root, string stamp, RespaldoCapturado captura)
         {
-            try { BackupTo(Path.Combine(root, stamp), files); PruneBackups(root, 3); }
+            try { BackupToCapturado(Path.Combine(root, stamp), captura, CedeRespaldo); PruneBackups(root, 3); }
             catch (Exception ex)
             {
                 LogError("Respaldo incompleto en " + root + " (se conservan los anteriores)", ex);
@@ -2096,8 +2186,127 @@ namespace Rocola
             }
         }
 
+        private long respaldoPresupuestoInicio;
+        private void CedeRespaldo(string ruta)
+        {
+            // Ni nuevos hilos lectores ni un limite fijo que frene equipos potentes.
+            // Cede al trabajo visible de la MISMA unidad (a cualquier caratula en 2C).
+            if (!startupClosing)
+                while (YieldCoverWork(UnidadDe(ruta), CargaTrabajo.Procesadores <= 2))
+                { if (startupClosing) break; System.Threading.Thread.Sleep(8); }
+            long ahora = System.Diagnostics.Stopwatch.GetTimestamp();
+            long limite = System.Diagnostics.Stopwatch.Frequency * (CargaTrabajo.Procesadores <= 2 ? 2 : 5) / 1000;
+            if (respaldoPresupuestoInicio == 0 || ahora - respaldoPresupuestoInicio >= limite)
+            {
+                System.Threading.Thread.Sleep(CargaTrabajo.Procesadores <= 2 && !startupClosing ? 1 : 0);
+                respaldoPresupuestoInicio = System.Diagnostics.Stopwatch.GetTimestamp();
+            }
+        }
+
+        private sealed class ArchivoRespaldo
+        {
+            internal string Ruta;
+            internal FileStream Lector;
+            internal long Largo;
+            private int referencias = 1;
+            internal ArchivoRespaldo Retiene() { System.Threading.Interlocked.Increment(ref referencias); return this; }
+            internal void Libera() { if (System.Threading.Interlocked.Decrement(ref referencias) == 0) Lector.Dispose(); }
+        }
+        private sealed class RespaldoCapturado : IDisposable
+        {
+            internal readonly List<ArchivoRespaldo> Archivos = new List<ArchivoRespaldo>();
+            public void Dispose()
+            {
+                for (int i = 0; i < Archivos.Count; i++) Archivos[i].Libera();
+                Archivos.Clear();
+            }
+        }
+        // Distinto del candado largo de los escritores: aqui solo se abren handles y se retienen metadatos.
+        // NUNCA abarcar formato, copia, Write, Flush, Replace ni esperas. El orden de un escritor es
+        // CandadoDe -> EstadoRespaldo; la captura solo toma EstadoRespaldo, nunca CandadoDe.
+        private sealed class EstadoRespaldo { internal bool Cambiando; internal ArchivoRespaldo Anterior; }
+        private static readonly Dictionary<string, EstadoRespaldo> estadosRespaldo =
+            new Dictionary<string, EstadoRespaldo>(StringComparer.OrdinalIgnoreCase);
+        private static EstadoRespaldo EstadoRespaldoDe(string ruta)
+        {
+            lock (estadosRespaldo)
+            {
+                EstadoRespaldo estado;
+                if (!estadosRespaldo.TryGetValue(ruta, out estado))
+                { estado = new EstadoRespaldo(); estadosRespaldo[ruta] = estado; }
+                return estado;
+            }
+        }
+        private static ArchivoRespaldo AbreArchivoRespaldo(string ruta)
+        {
+            FileStream lector;
+            try { lector = new FileStream(ruta, FileMode.Open, FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete, 65536, FileOptions.SequentialScan); }
+            catch (FileNotFoundException) { return null; }
+            catch (DirectoryNotFoundException) { return null; }
+            try { return new ArchivoRespaldo { Ruta = ruta, Lector = lector, Largo = lector.Length }; }
+            catch { lector.Dispose(); throw; }
+        }
+        private sealed class ProteccionRespaldo : IDisposable
+        {
+            private readonly EstadoRespaldo estado;
+            private int liberada;
+            internal ProteccionRespaldo(EstadoRespaldo estado, string ruta)
+            {
+                this.estado = estado;
+                lock (estado)
+                {
+                    if (estado.Cambiando) throw new InvalidOperationException("Dos mutaciones del mismo guardado");
+                    estado.Anterior = AbreArchivoRespaldo(ruta);
+                    estado.Cambiando = true;
+                }
+            }
+            public void Dispose()
+            {
+                if (System.Threading.Interlocked.Exchange(ref liberada, 1) != 0) return;
+                ArchivoRespaldo anterior;
+                lock (estado)
+                {
+                    if (!estado.Cambiando) return;
+                    anterior = estado.Anterior; estado.Anterior = null; estado.Cambiando = false;
+                }
+                if (anterior != null) anterior.Libera();
+            }
+        }
+        private static ProteccionRespaldo ProtegeRespaldo(string ruta)
+        { return new ProteccionRespaldo(EstadoRespaldoDe(ruta), ruta); }
+        private static RespaldoCapturado CapturaRespaldo(string[] files)
+        {
+            RespaldoCapturado captura = new RespaldoCapturado();
+            try
+            {
+                for (int i = 0; i < files.Length; i++)
+                {
+                    if (string.IsNullOrEmpty(files[i])) continue;
+                    // Un anexo en curso queda cortado al largo anterior (ningun registro parcial).
+                    // Durante Replace o su fallback no se vuelve a abrir el nombre que esta cambiando.
+                    // La referencia retenida vive hasta terminar los destinos, aunque el escritor falle.
+                    EstadoRespaldo estado = EstadoRespaldoDe(files[i]);
+                    lock (estado)
+                    {
+                        ArchivoRespaldo archivo = estado.Cambiando
+                            ? (estado.Anterior == null ? null : estado.Anterior.Retiene())
+                            : AbreArchivoRespaldo(files[i]);
+                        if (archivo == null) continue;
+                        try { captura.Archivos.Add(archivo); }
+                        catch { archivo.Libera(); throw; }
+                    }
+                }
+                return captura;
+            }
+            catch { captura.Dispose(); throw; }
+        }
+
         private static readonly object backupLock = new object();
         private static void BackupTo(string dir, string[] files)
+        { using (RespaldoCapturado captura = CapturaRespaldo(files)) BackupToCapturado(dir, captura, null); }
+
+        private static void BackupToCapturado(string dir, RespaldoCapturado captura, Action<string> cede)
         {
             lock (backupLock)
             {
@@ -2112,24 +2321,24 @@ namespace Rocola
                 {
                     int copied = 0;
                     byte[] buffer = new byte[65536];
-                    for (int i = 0; i < files.Length; i++)
+                    for (int i = 0; i < captura.Archivos.Count; i++)
                     {
-                        if (string.IsNullOrEmpty(files[i])) continue;
-                        FileStream input;
-                        try { input = new FileStream(files[i], FileMode.Open, FileAccess.Read, FileShare.Read); }
-                        catch (FileNotFoundException) { continue; }       // datos opcionales aun no creados
-                        catch (DirectoryNotFoundException) { continue; }
-                        using (input)
+                        ArchivoRespaldo archivo = captura.Archivos[i];
+                        FileStream input = archivo.Lector; input.Position = 0;
                         using (System.Security.Cryptography.SHA256 copyHash = System.Security.Cryptography.SHA256.Create())
                         {
-                            string dst = Path.Combine(pending, Path.GetFileName(files[i]));
+                            string dst = Path.Combine(pending, Path.GetFileName(archivo.Ruta));
                             using (FileStream outputFile = new FileStream(dst, FileMode.CreateNew, FileAccess.Write, FileShare.None, buffer.Length, FileOptions.WriteThrough))
                             {
-                                int n;
-                                while ((n = input.Read(buffer, 0, buffer.Length)) > 0)
+                                long faltan = archivo.Largo;
+                                while (faltan > 0)
                                 {
+                                    if (cede != null) { cede(archivo.Ruta); cede(dst); }
+                                    int n = input.Read(buffer, 0, (int)Math.Min(buffer.Length, faltan));
+                                    if (n == 0) throw new IOException("El origen del respaldo se trunco durante la copia");
                                     outputFile.Write(buffer, 0, n);
                                     copyHash.TransformBlock(buffer, 0, n, buffer, 0);
+                                    faltan -= n;
                                 }
                                 copyHash.TransformFinalBlock(buffer, 0, 0);
                                 outputFile.Flush();
@@ -2138,7 +2347,11 @@ namespace Rocola
                             using (System.Security.Cryptography.SHA256 hash = System.Security.Cryptography.SHA256.Create())
                             using (FileStream check = File.OpenRead(dst))
                             {
-                                byte[] a = copyHash.Hash, b = hash.ComputeHash(check);
+                                int n;
+                                while ((n = check.Read(buffer, 0, buffer.Length)) > 0)
+                                { if (cede != null) cede(dst); hash.TransformBlock(buffer, 0, n, buffer, 0); }
+                                hash.TransformFinalBlock(buffer, 0, 0);
+                                byte[] a = copyHash.Hash, b = hash.Hash;
                                 for (int k = 0; k < a.Length; k++) if (a[k] != b[k]) throw new IOException("La copia del respaldo no coincide");
                             }
                             copied++;
@@ -2385,8 +2598,8 @@ namespace Rocola
         private void SaveStats(bool async)
         {
             PruneStats();   // acotar antes de escribir
-            string text;
-            try { text = BuildStatsText(); } catch { return; }   // se arma en el hilo de la interfaz (sin acceso cruzado a los diccionarios)
+            StatsPendientes snapshot;
+            try { snapshot = CopiaStats(); } catch { return; }   // solo numeros/rutas; ordenar y formatear fuera
             // Este archivo tiene DOS escritores -uno de fondo cada tanto y otro sincrono al cerrar- y si se
             // pisaban se llevaban por delante "LO MAS SONADO" entero. El candado por archivo esta dentro de
             // EscribeSeguro, asi que aqui ya no hace falta acordarse de nada.
@@ -2395,6 +2608,8 @@ namespace Rocola
             {
                 try
                 {
+                    if (version != System.Threading.Interlocked.Read(ref statsSaveVersion)) return;
+                    string text = TextoStats(snapshot);
                     lock (statsSaveLock)
                     {
                         if (version != System.Threading.Interlocked.Read(ref statsSaveVersion)) return;
@@ -2407,24 +2622,54 @@ namespace Rocola
         }
 
         private string BuildStatsText()
+        { return TextoStats(CopiaStats()); }
+
+        private struct FilaStats
         {
-            StringBuilder sb = new StringBuilder(songCounts.Count * 48 + 256);
+            internal string Ruta; internal int Cuenta; internal long Secuencia;
+        }
+        private sealed class StatsPendientes
+        {
+            internal FilaStats[] Canciones, Videos;
+            internal KeyValuePair<string, int>[] Artistas;
+            internal KeyValuePair<string, string>[] Generos;
+            internal long Total, CancionesTotal, VideosTotal, Monedas, Creditos;
+            internal CultureInfo Cultura;
+        }
+        private static FilaStats[] CopiaContadores(Dictionary<string, int> tabla, Dictionary<string, long> orden)
+        {
+            FilaStats[] filas = new FilaStats[tabla.Count]; int i = 0;
+            foreach (KeyValuePair<string, int> kv in tabla)
+            { long seq; orden.TryGetValue(kv.Key, out seq); filas[i++] = new FilaStats { Ruta = kv.Key, Cuenta = kv.Value, Secuencia = seq }; }
+            return filas;
+        }
+        private StatsPendientes CopiaStats()
+        {
+            return new StatsPendientes { Canciones = CopiaContadores(songCounts, songSeq), Videos = CopiaContadores(videoCounts, videoSeq),
+                Artistas = new List<KeyValuePair<string, int>>(artistCounts).ToArray(), Generos = new List<KeyValuePair<string, string>>(songGenre).ToArray(),
+                Total = statsTotal, CancionesTotal = statsSongTotal, VideosTotal = statsVideoTotal, Monedas = statsCoins, Creditos = statsCreditsAdded,
+                Cultura = CultureInfo.CurrentCulture };
+        }
+        private static int OrdenStats(FilaStats a, FilaStats b)
+        { return a.Secuencia != b.Secuencia ? (a.Secuencia < b.Secuencia ? -1 : 1) : string.Compare(a.Ruta, b.Ruta, StringComparison.OrdinalIgnoreCase); }
+        private static string TextoStats(StatsPendientes snapshot)
+        {
+            Array.Sort(snapshot.Canciones, OrdenStats); Array.Sort(snapshot.Videos, OrdenStats);
+            StringBuilder sb = new StringBuilder(snapshot.Canciones.Length * 48 + 256);
             sb.Append("ROCOLA-STATS v1\r\n");
-            sb.Append("total-reproducciones=").Append(statsTotal).Append("\r\n");
-            sb.Append("total-canciones=").Append(statsSongTotal).Append("\r\n");
-            sb.Append("total-videos=").Append(statsVideoTotal).Append("\r\n");
-            sb.Append("monedas=").Append(statsCoins).Append("\r\n");
-            sb.Append("creditos-cargados=").Append(statsCreditsAdded).Append("\r\n");
+            sb.Append("total-reproducciones=").Append(snapshot.Total.ToString(snapshot.Cultura)).Append("\r\n");
+            sb.Append("total-canciones=").Append(snapshot.CancionesTotal.ToString(snapshot.Cultura)).Append("\r\n");
+            sb.Append("total-videos=").Append(snapshot.VideosTotal.ToString(snapshot.Cultura)).Append("\r\n");
+            sb.Append("monedas=").Append(snapshot.Monedas.ToString(snapshot.Cultura)).Append("\r\n");
+            sb.Append("creditos-cargados=").Append(snapshot.Creditos.ToString(snapshot.Cultura)).Append("\r\n");
             sb.Append("[CANCIONES] count|ruta\r\n");
-            List<string> sk = KeysBySeq(songCounts, songSeq);
-            for (int i = 0; i < sk.Count; i++) sb.Append(songCounts[sk[i]]).Append('|').Append(sk[i]).Append("\r\n");
+            for (int i = 0; i < snapshot.Canciones.Length; i++) sb.Append(snapshot.Canciones[i].Cuenta.ToString(snapshot.Cultura)).Append('|').Append(snapshot.Canciones[i].Ruta).Append("\r\n");
             sb.Append("[ARTISTAS] count|artista\r\n");
-            foreach (KeyValuePair<string, int> kv in artistCounts) sb.Append(kv.Value).Append('|').Append(kv.Key).Append("\r\n");
+            foreach (KeyValuePair<string, int> kv in snapshot.Artistas) sb.Append(kv.Value.ToString(snapshot.Cultura)).Append('|').Append(kv.Key).Append("\r\n");
             sb.Append("[VIDEOS] count|ruta\r\n");
-            List<string> vk = KeysBySeq(videoCounts, videoSeq);
-            for (int i = 0; i < vk.Count; i++) sb.Append(videoCounts[vk[i]]).Append('|').Append(vk[i]).Append("\r\n");
+            for (int i = 0; i < snapshot.Videos.Length; i++) sb.Append(snapshot.Videos[i].Cuenta.ToString(snapshot.Cultura)).Append('|').Append(snapshot.Videos[i].Ruta).Append("\r\n");
             sb.Append("[GENEROS] genero|ruta\r\n");
-            foreach (KeyValuePair<string, string> kv in songGenre) sb.Append(kv.Value).Append('|').Append(kv.Key).Append("\r\n");
+            foreach (KeyValuePair<string, string> kv in snapshot.Generos) sb.Append(kv.Value).Append('|').Append(kv.Key).Append("\r\n");
             return sb.ToString();
         }
 

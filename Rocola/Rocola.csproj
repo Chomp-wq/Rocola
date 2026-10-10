@@ -148,6 +148,7 @@
     <Compile Include="EstiloGpu.cs" />
     <Compile Include="TextoMovilGpu.cs" />
     <Compile Include="DibujoLigeroGpu.cs" />
+    <Compile Include="MedidaFluidezGpu.cs" />
     <Compile Include="BuscadorLigeroGpu.cs" />
     <Compile Include="FranjaLigeraGpu.cs" />
     <Compile Include="BuscadorPortadasGpu.cs" />

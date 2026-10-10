@@ -193,8 +193,13 @@ namespace Rocola
 
             ApuntaBiblioteca(fromCache);   // (bitacora: MedidasBitacora.cs)
             StartThumbWarm();   // en segundo plano: construir las miniaturas que falten (1a vez tarda; luego todo vuela)
-            StartDurScan();     // barrido RAPIDO: la duracion de toda la biblioteca en minutos (no espera al analisis pesado)
-            StartPreScan();     // en segundo plano: medir volumen y duracion de las canciones nuevas (nivelado desde la 1a vez)
+            planArranqueComun = CapturaLecturaBiblioteca();
+            try
+            {
+                StartDurScan(); // canceladores propios; base inmutable compartida, no otra copia de toda la duracion
+                StartPreScan();
+            }
+            finally { planArranqueComun = null; }
 
             if (!fromCache) SaveLibraryCacheAsync();   // escaneo fresco: guardar la biblioteca para el proximo arranque
             cachedVideoPaths = null; cachedCovers = null; lastVideoPaths = null;
@@ -895,8 +900,8 @@ namespace Rocola
                 List<string> lote = new List<string>(128);
                 List<float> lotd = new List<float>(128);
                 object medidorVideo = null;   // el reproductor con el que se miden los videos (de este hilo)
-                Dictionary<char, Dictionary<string, int>> votos = new Dictionary<char, Dictionary<string, int>>();
-                Dictionary<string, Dictionary<string, int>> votosD = new Dictionary<string, Dictionary<string, int>>(StringComparer.OrdinalIgnoreCase);
+                VotosTinte<char> votos = new VotosTinte<char>(EqualityComparer<char>.Default);
+                VotosTinte<string> votosD = new VotosTinte<string>(StringComparer.OrdinalIgnoreCase);
                 int durHechas = 0, genHechas = 0;
                 try
                 {
@@ -910,6 +915,12 @@ namespace Rocola
                         if (!EsperaPortadas(UnidadDe(v.Ruta), CargaTrabajo.Procesadores <= 2,
                             delegate { return lectura.Cancelada || preScanStop || myGen != durScanGen; })) return;
                         bool caro = false;   // hubo que leer el archivo entero (el respaldo), no solo la cabecera
+                        // Cabecera/genero y el respaldo largo usan el mismo turno HDD que el analisis.
+                        // Cada SSD/unidad independiente conserva su concurrencia.
+                        using (TurnoAnalisis turno = PideTurnoAnalisis(v.Ruta,
+                            delegate { return lectura.Cancelada || preScanStop || myGen != durScanGen; }))
+                        {
+                        if (turno == null) return;
 
                         // ---- LA DURACION ----
                         if (v.Dur)
@@ -962,16 +973,9 @@ namespace Rocola
                             for (int k = 0; k < v.Gen.Count; k++)
                             {
                                 int gi = v.Gen[k];
-                                Dictionary<string, int> vv2;
-                                if (!votos.TryGetValue(gLet[gi], out vv2)) { vv2 = new Dictionary<string, int>(); votos[gLet[gi]] = vv2; }
-                                int ya; vv2.TryGetValue(et, out ya); vv2[et] = ya + 1;
+                                votos.Vota(gLet[gi], et);
                                 string carp = gDisco[gi];
-                                if (carp.Length > 0)
-                                {
-                                    Dictionary<string, int> vd;
-                                    if (!votosD.TryGetValue(carp, out vd)) { vd = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase); votosD[carp] = vd; }
-                                    int yd; vd.TryGetValue(et, out yd); vd[et] = yd + 1;
-                                }
+                                if (carp.Length > 0) votosD.Vota(carp, et);
                                 genHechas++;
                             }
                             // Se publica cada 256 votos, y por eso la barra se va tinendo poco a poco en vez de
@@ -982,25 +986,9 @@ namespace Rocola
                                 // El genero que MANDA en cada letra hasta ahora. "Otros" no gana nunca: una
                                 // letra cuyas canciones no traen genero se queda con su blanco de siempre, que
                                 // es mas honesto que pintarla del color de "no se sabe".
-                                List<char> kl = new List<char>(); List<string> vl = new List<string>();
-                                foreach (KeyValuePair<char, Dictionary<string, int>> kv in votos)
-                                {
-                                    string mejor = null; int mejorN = 0;
-                                    foreach (KeyValuePair<string, int> vv in kv.Value)
-                                        if (vv.Key != "Otros" && vv.Value > mejorN) { mejorN = vv.Value; mejor = vv.Key; }
-                                    if (mejor != null) { kl.Add(kv.Key); vl.Add(mejor); }
-                                }
-                                // Lo mismo para los discos, que es lo que le da color a los resultados del buscador.
-                                List<string> dk = new List<string>(); List<string> dv = new List<string>();
-                                foreach (KeyValuePair<string, Dictionary<string, int>> kv in votosD)
-                                {
-                                    string mejor = null; int mejorN = 0;
-                                    foreach (KeyValuePair<string, int> vv in kv.Value)
-                                        if (vv.Key != "Otros" && vv.Value > mejorN) { mejorN = vv.Value; mejor = vv.Key; }
-                                    if (mejor != null) { dk.Add(kv.Key); dv.Add(mejor); }
-                                }
-                                char[] ka = kl.ToArray(); string[] va = vl.ToArray(); bool ult = finGen;
-                                string[] dka = dk.ToArray(); string[] dva = dv.ToArray();
+                                char[] ka; string[] va, dka, dva; bool ult = finGen;
+                                votos.Delta(out ka, out va); votosD.Delta(out dka, out dva);
+                                if (ult || ka.Length != 0 || dka.Length != 0)
                                 try
                                 {
                                     if (!IsHandleCreated) break;
@@ -1009,6 +997,7 @@ namespace Rocola
                                 catch { break; }
                             }
                         }
+                        } // turno de esta visita; soltarlo ANTES del respiro
 
                         // EL RESPIRO va con el trabajo que se acaba de hacer. Leer una cabecera son unos
                         // kilobytes: con 4 ms de pausa el disco queda MUCHO mas libre que antes con 12, porque
@@ -2391,6 +2380,9 @@ namespace Rocola
         }
         private static ImageCodecInfo jpegEnc;
         private static int BarreMiniaturas()
+        { return BarreMiniaturasConPausas(null); }
+
+        private static int BarreMiniaturasConPausas(Func<bool> sigue)
         {
             try
             {
@@ -2402,6 +2394,11 @@ namespace Rocola
                 DateTime corte = DateTime.UtcNow.AddDays(-MiniaturasDiasMax);
                 for (int i = 0; i < files.Length; i++)
                 {
+                    if ((i & 31) == 0 && sigue != null)
+                    {
+                        if (!sigue()) return 0;
+                        System.Threading.Thread.Sleep(CargaTrabajo.Procesadores <= 2 ? 20 : 5);
+                    }
                     try
                     {
                         FileInfo fi = new FileInfo(files[i]);
@@ -2412,7 +2409,15 @@ namespace Rocola
                 }
                 if (total <= (long)MiniaturasTopeMb * 1024L * 1024L) return 0;
                 int fuera = 0;
-                for (int i = 0; i < viejas.Count; i++) { try { File.Delete(viejas[i]); fuera++; } catch { } }
+                for (int i = 0; i < viejas.Count; i++)
+                {
+                    if ((i & 15) == 0 && sigue != null)
+                    {
+                        if (!sigue()) break;
+                        System.Threading.Thread.Sleep(CargaTrabajo.Procesadores <= 2 ? 20 : 5);
+                    }
+                    try { File.Delete(viejas[i]); fuera++; } catch { }
+                }
                 return fuera;
             }
             catch { return 0; }

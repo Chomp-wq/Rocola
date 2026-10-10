@@ -30,6 +30,8 @@
 # ============================================================================================
 import sys, os, wave, struct, hashlib, json
 from functools import lru_cache
+from presupuesto_entrenamiento import configura_blas
+HILOS_ENTRENAMIENTO = configura_blas()
 import numpy as np
 
 FS = 44100
@@ -245,6 +247,27 @@ class FilasNormalizadas:
     def __getitem__(self, p): return (self.x[p] - self.media) / self.escala
 
 
+def leer_lote(X, Y, posiciones):
+    """Una extraccion conjunta del registro RIAD; conservar orden, float64 y contiguidad.
+
+    No ordena ni cambia los ejemplos: la permutacion y todas las operaciones Adam
+    permanecen iguales. Cuerpos/objetivos se separan solo despues de leer el lote.
+    """
+    base = X.x if isinstance(X, FilasNormalizadas) else X
+    if (isinstance(base, FilasMapeadas) and isinstance(Y, FilasMapeadas) and
+            base.mapa is Y.mapa):
+        filas = base.filas[posiciones]
+        if np.array_equal(filas, Y.filas[posiciones]):
+            inicio, fin = min(base.inicio, Y.inicio), max(base.fin, Y.fin)
+            datos = base.mapa[filas, inicio:fin]
+            x = np.asarray(datos[..., base.inicio-inicio:base.fin-inicio], dtype=np.float64, order="C")
+            y = np.asarray(datos[..., Y.inicio-inicio:Y.fin-inicio], dtype=np.float64, order="C")
+            if isinstance(X, FilasNormalizadas):
+                x = (x - X.media) / X.escala
+            return x, y
+    return X[posiciones], Y[posiciones]
+
+
 def normalizacion_dsee(x, lote=4096):
     if not len(x):
         raise ValueError("Entrenamiento vacio")
@@ -277,7 +300,8 @@ def mse_modelo(model, X, Y, lote=4096):
     total = 0.0
     count = 0
     for p in range(0, len(X), lote):
-        error = (model.predict(X[p:p+lote]) - Y[p:p+lote]) ** 2
+        x, y = leer_lote(X, Y, slice(p, p+lote))
+        error = (model.predict(x) - y) ** 2
         total += float(error.sum()); count += error.size
     return total / max(1, count)
 
@@ -308,11 +332,12 @@ def train(model, X, Y, Xv, Yv, epochs=60, lr=2e-3, batch=256, seed=3, l2=1e-5, p
         idx = rng.permutation(len(X))
         for s in range(0, len(X), batch):
             bi = idx[s:s + batch]
-            acts = model.forward(X[bi])
+            x, y = leer_lote(X, Y, bi)
+            acts = model.forward(x)
             if objetivo == "envolvente":
-                _, g = perdida_envolvente(acts[-1], Y[bi], pesos[bi])
+                _, g = perdida_envolvente(acts[-1], y, pesos[bi])
             else:
-                g = 2.0 * (acts[-1] - Y[bi]) * pesos[bi, None] / len(bi)
+                g = 2.0 * (acts[-1] - y) * pesos[bi, None] / len(bi)
             tstep += 1
             c1, c2 = 1 - b1 ** tstep, 1 - b2 ** tstep
             for L in reversed(range(len(model.W))):
@@ -778,6 +803,8 @@ def informe_reproducible(informe, capas, model, val, err, instalado, estado_inst
         "avisos_por_clase": list(avisos),
         "muestreo": "posiciones-estratificadas-v2",
         "entrenamiento": {"normalizacion": "solo entrenamiento, absorbida en primera capa",
+                          "blas_hilos": HILOS_ENTRENAMIENTO,
+                          "numpy": np.__version__,
                           "equilibrio_train": getattr(model, "equilibrio", None),
                           "objetivo": getattr(model, "objetivo", "mse"),
                           "envolvente": {"delta": 0.5, "ancla_mse": 0.1, "rango_runtime": [-4, 0.1]},

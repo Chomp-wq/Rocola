@@ -105,6 +105,94 @@ namespace Rocola
         }
     }
 
+// Analiza la misma imagen en tramos pequenos, sin clonarla ni bloquearla entre cuadros.
+    // Hasta terminar se pinta el quad completo; el recorte final es identico a De().
+    internal sealed class TrabajoTeselas
+    {
+        internal readonly Bitmap Fuente;
+        private readonly int w, h, lado, tx, ty;
+        private readonly bool[] pinta;
+        private readonly int[] fila;
+        private readonly List<int> r = new List<int>();
+        private List<int> abiertas = new List<int>(), nuevas = new List<int>();
+        private int y, banda, vertice;
+        private long pintado;
+        private TeselasVisibles resultado;
+
+        internal TrabajoTeselas(Bitmap fuente, int tamaño)
+        {
+            Fuente = fuente; w = fuente.Width; h = fuente.Height; lado = tamaño;
+            tx = (w + lado - 1) / lado; ty = (h + lado - 1) / lado;
+            pinta = new bool[tx * ty]; fila = new int[w];
+        }
+        internal TeselasVisibles Avanza(long presupuesto)
+        {
+            if (presupuesto <= 0) return null;
+            long inicio = System.Diagnostics.Stopwatch.GetTimestamp();
+            do
+            {
+                if (y < h)
+                {
+                    int filas = Math.Min(8, h - y);
+                    BitmapData bd = Fuente.LockBits(new Rectangle(0, y, w, filas), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+                    try
+                    {
+                        for (int f = 0; f < filas; f++)
+                        {
+                            Marshal.Copy(new IntPtr(bd.Scan0.ToInt64() + (long)f * bd.Stride), fila, 0, w);
+                            int yy = y + f;
+                            int ja = yy == 0 ? 0 : (yy - 1) / lado, jb = Math.Min(ty - 1, (yy + 1) / lado);
+                            for (int x = 0; x < w; )
+                            {
+                                if ((fila[x] & unchecked((int)0xFF000000)) == 0) { x++; continue; }
+                                int xa = x;
+                                while (x < w && (fila[x] & unchecked((int)0xFF000000)) != 0) x++;
+                                int ia = xa == 0 ? 0 : (xa - 1) / lado, ib = Math.Min(tx - 1, x / lado);
+                                for (int j = ja; j <= jb; j++)
+                                    for (int i = ia; i <= ib; i++) pinta[j * tx + i] = true;
+                            }
+                        }
+                    }
+                    finally { Fuente.UnlockBits(bd); }
+                    y += filas;
+                }
+                else if (banda < ty)
+                {
+                    nuevas.Clear();
+                    int y0 = banda * lado, y1 = Math.Min(h, y0 + lado);
+                    for (int i = 0; i < tx; )
+                    {
+                        if (!pinta[banda * tx + i]) { i++; continue; }
+                        int k = i; while (k < tx && pinta[banda * tx + k]) k++;
+                        int x0 = i * lado, x1 = Math.Min(w, k * lado), sigue = -1;
+                        foreach (int a in abiertas)
+                            if (r[a * 4] == x0 && r[a * 4 + 2] == x1) { sigue = a; break; }
+                        if (sigue >= 0) { r[sigue * 4 + 3] = y1; nuevas.Add(sigue); }
+                        else { nuevas.Add(r.Count / 4); r.Add(x0); r.Add(y0); r.Add(x1); r.Add(y1); }
+                        pintado += (long)(x1 - x0) * (y1 - y0); i = k;
+                    }
+                    List<int> t = abiertas; abiertas = nuevas; nuevas = t; banda++;
+                }
+                else
+                {
+                    if (resultado == null)
+                    {
+                        resultado = new TeselasVisibles();
+                        resultado.Ancho = w; resultado.Alto = h;
+                        resultado.Rect = r.ToArray(); resultado.N = r.Count / 4;
+                        resultado.Vtx = new D3D9.Vtx[resultado.N * 6];
+                        resultado.Fraccion = (double)pintado / ((double)w * h);
+                    }
+                    int hasta = Math.Min(resultado.Vtx.Length, vertice + 256);
+                    for (; vertice < hasta; vertice++) { resultado.Vtx[vertice].Z = 0f; resultado.Vtx[vertice].Rhw = 1f; }
+                    if (vertice == resultado.Vtx.Length) return resultado;
+                }
+            }
+            while (System.Diagnostics.Stopwatch.GetTimestamp() - inicio < presupuesto);
+            return null;
+        }
+    }
+
     internal sealed partial class GpuPanel
     {
         private TeselasVisibles hazTeselas, vinetaTeselas;   // lo que tienen que pintar la via lactea y la vineta
@@ -117,6 +205,7 @@ namespace Rocola
         // el buscador no espera a nada. Se sacan de la misma imagen que se subio: el form solo la retoca al cambiar su
         // version, y entonces se vuelve a subir y las teselas viejas se tiran.
         private TeselasVisibles uiTeselas, uiBotTeselas;
+        private TrabajoTeselas uiAnalisisTeselas, uiBotAnalisisTeselas;
         private double uiSubidaMs, uiBotSubidaMs;
         internal const double TeselasQuieta = 300;           // ms sin cambios antes de sacar las teselas de la interfaz
         internal const int LadoTeselaUi = 16;                // la interfaz va texel a pixel: teselas de 16 x 16 pixeles
@@ -124,6 +213,18 @@ namespace Rocola
         {
             if (b == null || b.Width != w || b.Height != h || AhoraMs() - subidaMs < TeselasQuieta) return null;
             return TeselasVisibles.De(b, LadoTeselaUi, false);
+        }
+
+        private TeselasVisibles TeselasEnPasos(ref TrabajoTeselas trabajo, Bitmap b, int w, int h, double subidaMs)
+        {
+            if (b == null || b.Width != w || b.Height != h || AhoraMs() - subidaMs < TeselasQuieta)
+            { trabajo = null; return null; }
+            if (trabajo == null || !ReferenceEquals(trabajo.Fuente, b)) trabajo = new TrabajoTeselas(b, LadoTeselaUi);
+            long ticks = Math.Min(CargaTrabajo.PresupuestoGpu(CargaTrabajo.Procesadores, TopeFpsReal, lastFrameWork),
+                (long)(System.Diagnostics.Stopwatch.Frequency * (CargaTrabajo.Procesadores <= 2 ? .00035 : .00075)));
+            TeselasVisibles listas = trabajo.Avanza(ticks);
+            if (listas != null) trabajo = null;
+            return listas;
         }
 
         // La imagen 't' estirada de (x0,y0) a (x1,y1) con (0,0)-(uMax,vMax) de su textura: lo mismo que un SetTexQuad +

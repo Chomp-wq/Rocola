@@ -2,6 +2,15 @@
 
 ## Conservacion y confianza — 29 de septiembre de 2026
 
+El escaner de calidad usa ahora un presupuesto automatico segun la afinidad disponible:
+dos hilos de CPU usan un trabajador; 32 usan 16. `--hilos N` permite un numero explicito
+positivo, sin superar las CPU disponibles. No hay un tope global de dos para equipos
+potentes. Mantiene como mucho dos tareas pendientes por trabajador, en vez de crear un
+futuro por cada cancion de toda la biblioteca. Cada FFmpeg de medicion usa un hilo y
+prioridad baja en Windows para evitar paralelismo anidado. No cambia posiciones de
+muestreo, filtros de remuestreo, salida float32 ni criterios de calidad; las metricas
+no prueban una mejora audible. Estos presupuestos son del escaner, no un ajuste visual.
+
 El modo automatico exige una caida abrupta persistente, cuerpo musical fiable y acuerdo entre
 ventanas de ambos canales (no mezcla mono que borre contrafase). Silencio, material oscuro sano,
 cortes dudosos y >=18.5kHz no se reconstruyen automaticamente. La confianza indica evidencia

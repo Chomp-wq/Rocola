@@ -1,5 +1,7 @@
 # Reglas permanentes de la Rocola
 
+- Peticion del usuario del 9 de octubre de 2026: incluir la estrella animada en las verificaciones de fluidez. Revisar Legacy y Natural, 2D/3D, navegacion y estado extendido; comprobar intervalos de cuadro (p95/p99/max), no solo FPS medios. Si se ejecuta con musica real, usar una copia con datos aislados y distinguir esa medicion de pruebas sinteticas. No prometer ausencia absoluta de pausas del sistema operativo.
+
 - Decisión del usuario del 16 de septiembre de 2026: subir a GitHub los cambios terminados y verificados de ambas ramas. Comprobar el resultado del push; no afirmar publicación si falla.
 - Priorizar respuesta y reproducción también en procesadores modestos de 2 núcleos/2 hilos. Las precargas deben tener presupuestos acotados y no saturar los núcleos disponibles.
 

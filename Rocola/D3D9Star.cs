@@ -1261,7 +1261,10 @@ namespace Rocola
         public Func<int> GetUiBotVersion;                 // cambia cuando algo de la franja cambia (re-subir textura)
         // Contador de FPS (diagnostico) en su PROPIA textura pequeña: si fuera parte de la textura de UI
         // obligaria a rehacerla (pantalla completa) 1 vez/seg -> el buscador oscilaba. Aparte cuesta nada.
-        private IntPtr fpsTex; private int fpsShown = int.MinValue; private float fpsU = 1f, fpsV = 1f; private int fpsTW, fpsTH;
+        private IntPtr fpsTex; private int fpsShown = int.MinValue, fpsFluidezMostrada = -1; private float fpsU = 1f, fpsV = 1f; private int fpsTW, fpsTH;
+        private readonly FluidezGpu fluidez = new FluidezGpu();
+        private int fpsBw, fpsBh;
+        internal Action<string> ReportFluidez;
         private readonly D3D9.Vtx[] fpsQuad = new D3D9.Vtx[6];
         public Rectangle AlbumRect;                       // donde van los cubos del album (coords del panel = pantalla); el form la fija
         public bool ShowAlbum = true;                     // navegacion: dibuja la rejilla de cubos + contorno. Buscador: false (lo cubre el buscador)
@@ -1300,7 +1303,7 @@ namespace Rocola
         public double MsTrabajo { get { return (msTrabN > 0) ? (msTrabSuma / msTrabN) : 0.0; } }
         public int CuadrosMedidos { get { return msTrabN; } }
         public int FallosMedidos { get; private set; }
-        public void ReiniciaMedida() { msTrabSuma = 0.0; msTrabN = 0; FallosMedidos = 0; Fps = 0; frames = 0; fpsTick = Environment.TickCount; if (CoverControl != null) CoverControl.ResetMeasure(); }
+        public void ReiniciaMedida() { msTrabSuma = 0.0; msTrabN = 0; FallosMedidos = 0; Fps = 0; frames = 0; fpsTick = Environment.TickCount; fluidez.Reinicia(); if (CoverControl != null) CoverControl.ResetMeasure(); }
         public float Dim = 1f;                            // atenuacion del starfield mientras se navega con musica (el form la anima; 1 = normal)
         public float WallOpacity = 1f;
         public bool ProgresoFluido = true;
@@ -1414,6 +1417,7 @@ namespace Rocola
         internal static double AhoraMs()
         { return (System.Diagnostics.Stopwatch.GetTimestamp() - InicioRelojTicks) * 1000.0 / System.Diagnostics.Stopwatch.Frequency; }
         private double proxCuadroMs;                      // cuando TOCA el proximo cuadro (ms del reloj fino)
+        private bool compactaAplazada, renderSuspendido;
         private double vistoMs = -1;                      // cuando se VERA el que se esta dibujando (-1 = no se sabe)
         private double periodoVistaMs;                   // rejilla de ESTE cuadro; se revalida despues de preparar UI
         public uint SkyTop = 0xFF06081A, SkyMid = 0xFF101C3A, SkyBot = 0xFF1A2C5A;   // el form los setea por genero (3 paradas)
@@ -1423,6 +1427,22 @@ namespace Rocola
         // temporizador) sale, lo atiende y vuelve. El Timer de WinForms era impreciso (se quedaba en ~40 fps).
         // Preguntar si hay algo esperando depende del sistema, asi que lo contesta Sistema.
         private static bool AppIdle() { return Sistema.SinNadaQueAtender(); }
+
+        private bool PuedeDibujar()
+        {
+            Form ventana = FindForm();
+            if (ventana != null && ventana.WindowState == FormWindowState.Minimized)
+            { renderSuspendido = true; return false; }
+            if (renderSuspendido)
+            {
+                renderSuspendido = false;
+                proxCuadroMs = 0; vistoMs = -1; periodoVistaMs = 0;
+                lunaClock = idleClock = AhoraMs(); cuadroMs = lunaClock;
+                frames = 0; fpsTick = Environment.TickCount;
+                fluidez.Reinicia();
+            }
+            return true;
+        }
 
         public GpuPanel()
         {
@@ -1454,7 +1474,7 @@ namespace Rocola
             //    objetivo, un cuadro que llega tarde NO arrastra su retraso al siguiente y el promedio sale
             //    el que se pidio, aunque el sueno de 1 ms se pase. Si se acumula mas de una vuelta de
             //    retraso -la maquina no da mas de si- se resincroniza en vez de intentar recuperarla.
-            while (stars != null && stars.Ok && Visible && AppIdle())
+            while (stars != null && stars.Ok && Visible && PuedeDibujar() && AppIdle())
             {
                 int th = TopeMs();                        // el tope de la pantalla
                 if (ThrottleMs > th) th = ThrottleMs;      // con video a la vista se pide ir MAS lento todavia
@@ -1497,6 +1517,8 @@ namespace Rocola
 
         public void StopGpu()
         {
+            uiAnalisisTeselas = uiBotAnalisisTeselas = null;
+            compactaAplazada = false;
             CancelaPreparacionNatural();
             TrimLod(true);
             SueltaCintasGpu();
@@ -1535,6 +1557,7 @@ namespace Rocola
                 piezaVer[i] = -1; piezaW[i] = piezaH[i] = -1;
             }
             if (fpsTex != IntPtr.Zero) { D3D9.Release(fpsTex); fpsTex = IntPtr.Zero; }
+            fpsBw = fpsBh = 0; fpsFluidezMostrada = -1; fluidez.Reinicia();
             lastContour = null; selImgA = selImgB = relImg = miniImg = null; uiVer = -1; uiBotVer = -1; fpsShown = int.MinValue;
             selBwA = selBhA = selBwB = selBhB = relBw = relBh = miniBw = miniBh = transBw = transBh = winBw = winBh = 0;   // sin textura no hay tamano subido
             uiBmpW = uiBmpH = -1; uiBotW = uiBotH = -1;   // fuerza recrear las texturas reutilizables tras reiniciar el device
@@ -1578,6 +1601,7 @@ namespace Rocola
         private bool RenderFrame()
         {
             VigiaPantalla.Hace("un cuadro de la tarjeta");
+            if (!PuedeDibujar()) return false; // no preparar UI/texturas de una ventana minimizada
             if (stars == null || !stars.Ok) return NoPresentado();
             double msTrab0 = AhoraMs();   // arranca el cronometro del TRABAJO de este cuadro (ver MsTrabajo)
             stars.SetEfectos(Estrellas, Fugaces, RelevoPatron, Width, Height);   // las perillas de Ctrl+F3
@@ -1717,13 +1741,13 @@ namespace Rocola
                     SubeUi(ub, gw);   // reutiliza la textura, y en el buscador sube solo lo que cambio (BuscadorLigeroGpu.cs)
                     uiVer = uv;
                     NoteHeavy(t0);   // mide el coste real y ajusta la espera (la UI cacheada es barata -> franja corta)
-                    uiTeselas = null; uiSubidaMs = AhoraMs();   // imagen nueva: sus teselas, cuando este quieta (DibujoLigeroGpu.cs)
+                    uiTeselas = null; uiAnalisisTeselas = null; uiSubidaMs = AhoraMs();   // cancelar cualquier analisis de la version anterior
                 }
-                else if (uiTeselas == null) uiTeselas = TeselasQuietas(GetUi(), uiBmpW, uiBmpH, uiSubidaMs);
+                else if (uiTeselas == null) uiTeselas = TeselasEnPasos(ref uiAnalisisTeselas, GetUi(), uiBmpW, uiBmpH, uiSubidaMs);
             }
             // Franja de ESTADO de abajo: textura chica aparte. El tic del reloj/progreso (~2/seg con musica)
             // rehace y sube SOLO esta tira (~400KB), no la textura principal. Misma franja de trabajo pesado.
-            if (GetUiBot != null && GetUiBotVersion != null && (uiBotTex == IntPtr.Zero || uiUrgent || canHeavy))
+            if (idleBlend < .997f && GetUiBot != null && GetUiBotVersion != null && (uiBotTex == IntPtr.Zero || uiUrgent || canHeavy || compactaAplazada))
             {
                 int bv = GetUiBotVersion();   // puede rehacer el bitmap de la tira por dentro
                 if (bv != uiBotVer || uiBotTex == IntPtr.Zero)
@@ -1731,10 +1755,12 @@ namespace Rocola
                     Bitmap bb = GetUiBot();
                     if (bb != null) SubeUiBot(bb);   // el trozo que cambio, o entera (FranjaLigeraGpu.cs)
                     uiBotVer = bv;
-                    uiBotTeselas = null; uiBotSubidaMs = AhoraMs();   // imagen nueva: sus teselas, cuando este quieta (DibujoLigeroGpu.cs)
+                    uiBotTeselas = null; uiBotAnalisisTeselas = null; uiBotSubidaMs = AhoraMs();   // no conservar recortes de una version antigua
                 }
-                else if (uiBotTeselas == null) uiBotTeselas = TeselasQuietas(GetUiBot(), uiBotW, uiBotH, uiBotSubidaMs);
+                else if (uiBotTeselas == null) uiBotTeselas = TeselasEnPasos(ref uiBotAnalisisTeselas, GetUiBot(), uiBotW, uiBotH, uiBotSubidaMs);
+                compactaAplazada = false;
             }
+            else if (idleBlend >= .997f) compactaAplazada = true;
             // Las piezas vivas. Se preguntan SIEMPRE (no solo cuando toca trabajo pesado): son diminutas, y
             // son justo lo que tiene que responder al instante cuando alguien se mueve entre casillas.
             if (GetPiezaVersion != null && GetPieza != null)
@@ -1764,7 +1790,6 @@ namespace Rocola
             auCuadro.BaseY = OndasUnidas && uiBotH > 0
                 ? AuroraBaseAtStatus(Height, uiBotH, idleH, idleBlend)
                 : auCuadro.BaseY - IdleRise;
-            UpdateMoonMusic(pulseCrudo);
             AdvanceCoverPalette(AhoraMs());
             stars.TrasCielo = trasCielo;
             stars.TrasEstrellas = trasEstrellas;
@@ -1791,6 +1816,10 @@ namespace Rocola
                     WarmAheadCells();
                 }
             }
+            // La precarga opcional tambien puede consumir el refresco previsto. Actualizar la estrella
+            // DESPUES de ese trabajo, no antes, para que no conserve una pose de un plazo ya vencido.
+            UpdateMoonMusic(pulseCrudo);
+            double antesDibujo = AhoraMs();
             if (!stars.Begin(Width, Height, pulse, pulseCrudo)) { System.Threading.Thread.Sleep(5); return NoPresentado(); }
             // Adornos solo del fondo: antes del muro y de toda la interfaz.
             if (VinetaSuave && vinetaTex != IntPtr.Zero)
@@ -1988,16 +2017,21 @@ namespace Rocola
             }
             DibujaAviso();   // el aviso claro (SuenaVivoGpu.cs): en el sitio del de siempre, encima de todo
             // Contador de FPS (diagnostico) encima de todo, en su textura pequeña. Oculto por defecto (Ctrl+F1).
-            if (ShowFps && fpsTex != IntPtr.Zero) { SetTexQuadA(fpsQuad, Width - fpsTW - 10, 6, Width - 10, 6 + fpsTH, fpsU, fpsV, FadeArgb(0xFFFFFFFFu, ControlsOpacity)); stars.DrawQuad(fpsTex, fpsQuad); }
+            if (ShowFps && fpsTex != IntPtr.Zero) { SetTexQuadA(fpsQuad, Width - fpsTW - 10, 6, Width - 10, 6 + fpsTH, fpsU, fpsV, 0xFFFFFFFFu); stars.DrawQuad(fpsTex, fpsQuad); }
             // El cronometro se para AQUI, justo antes de End: dentro de End esta Present, que es donde se
             // espera al monitor. Un cuadro que se pasa media vuelta esperando no costo media vuelta.
             double trabajo = AhoraMs() - msTrab0;
             lastFrameWork = trabajo;
+            double antesPresentar = AhoraMs();
             if (!stars.End()) return NoPresentado();
+            double terminado = AhoraMs();
+            fluidez.Toma(msTrab0, antesDibujo - msTrab0, antesPresentar - antesDibujo, terminado - antesPresentar);
+            if (ShowFps && fluidez.Resume(terminado) && ReportFluidez != null) ReportFluidez(fluidez.Resumen());
             if (CoverControl != null) CoverControl.Observe(AhoraMs(), trabajo, TopeFpsReal);
             msTrabSuma += trabajo; msTrabN++;
             frames++;
-            if (Environment.TickCount - fpsTick >= 1000) { Fps = frames; frames = 0; fpsTick = Environment.TickCount; }
+            int transcurrido = unchecked(Environment.TickCount - fpsTick);
+            if (transcurrido >= 1000) { Fps = (int)Math.Round(frames * 1000.0 / transcurrido); frames = 0; fpsTick = Environment.TickCount; }
             return true;
         }
 
@@ -2232,9 +2266,9 @@ namespace Rocola
         // Rehace la textura del contador SOLO cuando cambia el numero (~1/seg). Es diminuta: coste despreciable.
         private void EnsureFpsTex()
         {
-            if (fpsTex != IntPtr.Zero && fpsShown == Fps) return;
-            fpsShown = Fps;
-            fpsTW = 300; fpsTH = 26;
+            if (fpsTex != IntPtr.Zero && fpsShown == Fps && fpsFluidezMostrada == fluidez.Version) return;
+            fpsShown = Fps; fpsFluidezMostrada = fluidez.Version;
+            fpsTW = Math.Min(420, Math.Max(260, Width - 20)); fpsTH = 46;
             using (Bitmap bmp = new Bitmap(fpsTW, fpsTH, System.Drawing.Imaging.PixelFormat.Format32bppPArgb))
             {
                 using (Graphics g = Graphics.FromImage(bmp))
@@ -2246,9 +2280,9 @@ namespace Rocola
                     g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
                     g.FillRectangle(bg, 0, 0, fpsTW, fpsTH);
                     g.DrawString("GPU D3D9: " + Fps + " FPS  (tope " + TopeFpsReal + ")", f, yb, 6, 4);
+                    g.DrawString("p95 " + FluidezGpu.Numero(fluidez.P95) + " ms | max " + FluidezGpu.Numero(fluidez.Maximo) + " ms", f, yb, 6, 23);
                 }
-                if (fpsTex != IntPtr.Zero) { D3D9.Release(fpsTex); fpsTex = IntPtr.Zero; }
-                fpsTex = stars.CreateOverlay(bmp, out fpsU, out fpsV);
+                fpsTex = Upload(fpsTex, ref fpsBw, ref fpsBh, bmp, out fpsU, out fpsV);
             }
         }
 

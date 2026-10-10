@@ -1,11 +1,11 @@
 """AutoEQ aislado: albumes separados, prueba final y comparacion con el instalado.
 
 No instala modelos. Un resultado numerico favorable todavia requiere escucha A/B.
-Limita BLAS a un hilo antes de importar numpy (solo este proceso de entrenamiento).
+Presupuesto BLAS segun afinidad antes de importar numpy; se anota para reproducirlo.
 """
 import os
-os.environ["OPENBLAS_NUM_THREADS"] = "1"
-os.environ["OMP_NUM_THREADS"] = "1"
+from presupuesto_entrenamiento import configura_blas
+HILOS_ENTRENAMIENTO = configura_blas()
 import argparse
 import hashlib
 import io
@@ -148,6 +148,7 @@ def entrenar(datos, instalado, destino, epocas=200, diagnostico_legacy=False):
                 np.isfinite(paridad) and paridad <= 1e-4 and not diagnostico_legacy)
     modelo = C.bytes_ria1(m)
     informe = {"formato": "ROCOLA-CANDIDATO-EQ 1", "semilla": 20260923, "epocas": epocas,
+               "blas_hilos": HILOS_ENTRENAMIENTO,
                "numpy": np.__version__, "python": sys.version.split()[0], "lectura": lectura,
                "datos_sha256": hashlib.sha256(crudo).hexdigest(), "dimensiones": dims,
                "parametros": m.parametros(), "instalado_parametros": ref.parametros(),

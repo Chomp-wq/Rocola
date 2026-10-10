@@ -830,11 +830,75 @@ namespace Rocola
         // UNA pieza por latido, y solo con la rocola quieta: igual que el horneado de la pagina de al lado
         // (BakeAhead) y que el precalentador de portadas. Asi la rocola enciende igual de rapido que siempre
         // y en unos segundos esta todo caliente, sin quitarle la maquina a nadie.
+#if ROCOLA_GPU
+        private bool precalAudioLanzado;
+        private readonly object precalTrabajoLock = new object();
+        private volatile bool precalAudioConMargen, precalAudioEnCurso, precalPantallaEnCurso;
+        private double precalUltimoCoste = 8.0;
+
+        // Una sola pieza DSP por turno de un trabajador de baja prioridad, DESPUES del primer cuadro.
+        // No se abre musica ni se lee el disco; calentar no cambia mediciones ni la cadena de audio.
+        private void PrecalientaAudioDespuesDelCuadro()
+        {
+            precalAudioConMargen = gpuEnabled && gpuPanel != null && gpuPanel.CuadrosMedidos > 0
+                && WindowState != FormWindowState.Minimized && gpuPanel.MsTrabajo < 20.0;
+            if (precalAudioLanzado || !precalAudioConMargen || startupClosing
+                || Environment.TickCount - lastInputTick < PrecalQuieta) return;
+            precalAudioLanzado = true;
+            System.Threading.Thread t = new System.Threading.Thread(delegate ()
+            {
+                try
+                {
+                    for (int paso = 0; paso < 4 && !startupClosing; paso++)
+                    {
+                        while (!startupClosing)
+                        {
+                            bool portadas; lock (coverLock) { portadas = coverLoading.Count != 0 || coverQHi.Count != 0; }
+                            if (precalAudioConMargen && !precalPantallaEnCurso && !portadas && !videoOn
+                                && Environment.TickCount - lastInputTick >= PrecalQuieta) break;
+                            System.Threading.Thread.Sleep(100);
+                        }
+                        if (startupClosing) return;
+                        lock (precalTrabajoLock)
+                        {
+                            if (startupClosing) return;
+                            precalAudioEnCurso = true;
+                            try { PrecalientaTablasAudio(paso); }
+                            finally { precalAudioEnCurso = false; }
+                        }
+                        System.Threading.Thread.Sleep(CargaTrabajo.Procesadores <= 2 ? 100 : 40);
+                    }
+                }
+                catch { } // un lujo de arranque: la primera llamada normal conserva su inicializacion
+                finally { precalAudioEnCurso = false; }
+            });
+            t.IsBackground = true; t.Priority = System.Threading.ThreadPriority.Lowest; t.Start();
+        }
+#endif
+
         private void PrecalientaUnPoco()
         {
+#if ROCOLA_GPU
+            PrecalientaAudioDespuesDelCuadro();
+            if (gpuEnabled)
+            {
+                if (gpuPanel == null || gpuPanel.CuadrosMedidos == 0 || WindowState == FormWindowState.Minimized
+                    || precalAudioEnCurso || gpuPanel.MsTrabajo + precalUltimoCoste > 28.0) return;
+                // No competir con una pagina nueva. La caché visual llega antes que pantallas ocultas.
+                lock (coverLock) if (coverLoading.Count != 0 || coverQHi.Count != 0) return;
+            }
+#endif
             if (precalPaso < 0) return;
             if (Environment.TickCount - lastInputTick < PrecalQuieta) return;   // hay alguien usandola: ahora no
             bool hecho = false;
+#if ROCOLA_GPU
+            System.Diagnostics.Stopwatch coste = null;
+            if (gpuEnabled)
+            {
+                if (!System.Threading.Monitor.TryEnter(precalTrabajoLock)) return; // nunca esperar al DSP en UI
+                precalPantallaEnCurso = true; coste = System.Diagnostics.Stopwatch.StartNew();
+            }
+#endif
             try
             {
                 switch (precalPaso)
@@ -861,6 +925,16 @@ namespace Rocola
                 }
             }
             catch { hecho = true; }   // precalentar es un lujo: si una pieza no se deja dibujar aun, se pasa a la siguiente
+#if ROCOLA_GPU
+            finally
+            {
+                if (coste != null)
+                {
+                    precalUltimoCoste = Math.Max(2.0, Math.Min(20.0, coste.Elapsed.TotalMilliseconds));
+                    precalPantallaEnCurso = false; System.Threading.Monitor.Exit(precalTrabajoLock);
+                }
+            }
+#endif
             if (hecho || ++precalReintentos > 60) { precalPaso++; precalReintentos = 0; }
         }
     }

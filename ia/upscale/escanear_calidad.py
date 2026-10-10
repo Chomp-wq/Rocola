@@ -4,22 +4,24 @@
 #  ESCANER DE CALIDAD DE LA BIBLIOTECA: mide el "acantilado" (donde el codec corto los agudos)
 #  de CADA cancion y te dice DONDE el upscaling va a brillar y donde no vale la pena.
 #
-#    python escanear_calidad.py --musica D:\musica [--hilos 12] [--max 0]
+#    python escanear_calidad.py --musica D:\musica [--hilos N] [--max 0]
 #
 #  Salidas (junto a este script):
 #    calidad_biblioteca.csv   -> todas las canciones, de PEOR a mejor (acantilado;veredicto;ruta)
 #    peores_canciones.txt     -> el TOP 200 de las mas danadas: usa ESTAS para el piloto A/B
 # ============================================================================================
 import sys, os, csv, argparse, tempfile, subprocess, shutil, threading, math, json
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from util_audio import leer_wav, acantilado_hz, remuestreador, args_decodificar
+from presupuesto_cpu import procesadores_disponibles, hilos_audio
 
 EXTS = (".mp3", ".wav", ".flac", ".m4a", ".ogg", ".wma")
 
 TIMEOUT_FFMPEG = 2 * 60
 TIMEOUT_FFPROBE = 30
 NOWIN = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+FONDO = NOWIN | getattr(subprocess, "BELOW_NORMAL_PRIORITY_CLASS", 0)
 
 
 def _real(path):
@@ -43,7 +45,7 @@ def _duracion(ffprobe, ruta):
                             "-show_entries", "stream=index:format=duration",
                             "-of", "json", ruta], capture_output=True, text=True,
                            stdin=subprocess.DEVNULL, timeout=TIMEOUT_FFPROBE,
-                           creationflags=NOWIN)
+                           creationflags=FONDO)
         dato = json.loads(r.stdout) if r.returncode == 0 else {}
         dur = float(dato.get("format", {}).get("duration", 0))
         return dur if dato.get("streams") and math.isfinite(dur) and dur > 0 else None
@@ -71,11 +73,12 @@ def medir(ffmpeg, ffprobe, ruta, filtro=False):
         tmp = os.path.join(td, "muestra.wav")
         for ss in dict.fromkeys("%.3f" % p for p in posiciones):
             try:
-                subprocess.run([ffmpeg, "-nostdin", "-y", "-v", "error", "-ss", ss,
+                subprocess.run([ffmpeg, "-nostdin", "-y", "-v", "error",
+                                "-threads", "1", "-filter_threads", "1", "-ss", ss,
                                 "-t", "24", "-i", ruta] + args_decodificar(filtro) + [tmp], check=True,
                                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                stderr=subprocess.DEVNULL, timeout=TIMEOUT_FFMPEG,
-                               creationflags=NOWIN)
+                               creationflags=FONDO)
                 x, _ = leer_wav(tmp)
                 if len(x) > 44100:
                     return acantilado_hz(x)
@@ -122,10 +125,29 @@ def veredicto(hz):
     if hz < 18500: return "mejorable"
     return "ya buena"
 
+def trabajos_acotados(executor, funcion, rutas, hilos):
+    """A lo sumo dos tareas por trabajador: no crear miles de futuros al arrancar."""
+    pendientes = set()
+    entradas = iter(rutas)
+    tope = max(1, hilos) * 2
+    while True:
+        while len(pendientes) < tope:
+            try:
+                ruta = next(entradas)
+            except StopIteration:
+                break
+            pendientes.add(executor.submit(funcion, ruta))
+        if not pendientes:
+            return
+        terminados, pendientes = wait(pendientes, return_when=FIRST_COMPLETED)
+        for futuro in terminados:
+            futuro.result()  # conservar errores en vez de perderlos dentro de un trabajador
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--musica")
-    ap.add_argument("--hilos", type=int, default=12)
+    ap.add_argument("--hilos", type=int, default=None, help="automatico segun afinidad; deja margen a musica/pantalla")
     ap.add_argument("--max", type=int, default=0, help="0 = todas")
     ap.add_argument("--interactivo", action="store_true")
     a = ap.parse_args()
@@ -140,8 +162,10 @@ def main():
             print("[X] No pude abrir el selector de carpetas:", e); return 2
     if not a.musica or not os.path.isdir(a.musica):
         print("[X] La carpeta de musica no existe:", a.musica); return 2
-    if a.hilos < 1:
+    if a.hilos is not None and a.hilos < 1:
         print("[X] --hilos debe ser al menos 1"); return 2
+    disponibles = procesadores_disponibles()
+    a.hilos = min(a.hilos, disponibles) if a.hilos is not None else hilos_audio(disponibles)
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
         print("[X] Falta ffmpeg (corre 1_instalar.bat)"); return 1
@@ -172,7 +196,7 @@ def main():
             hecho[0] += 1
             if hecho[0] % 200 == 0: print("  %d / %d ..." % (hecho[0], len(rutas)))
     with ThreadPoolExecutor(max_workers=a.hilos) as ex:
-        list(ex.map(uno, rutas))
+        trabajos_acotados(ex, uno, rutas, a.hilos)
     res.sort(key=lambda t: (t[0] <= 0, t[0]))   # peor acantilado primero; ilegibles al final
     here = os.path.dirname(os.path.abspath(__file__))
     csv_final = os.path.join(here, "calidad_biblioteca.csv")

@@ -591,8 +591,11 @@ class DibujoLigero
         Exige(esc >= 2 && lee >= 2, "y lo mismo con la franja de abajo");
         int veces = 0; foreach (string s in Codigo.Nombres(rf)) if (s == "DibujaTeselas") veces++;
         Exige(veces >= 3, "el cuadro dibuja a trozos la vineta, la interfaz y la franja (" + veces + " sitios)");
-        int vq = 0; foreach (string s in Codigo.Nombres(rf)) if (s == "TeselasQuietas") vq++;
-        Exige(vq == 2, "y pide las teselas quietas de las dos imagenes de la interfaz");
+        // El analizador nuevo reparte las MISMAS teselas en pasos; seguir exigiendo dos
+        // sitios reales en RenderFrame, no un nombre anterior que ya no esta enchufado.
+        string pedido = Metodo(TPanel, "TeselasEnPasos") != null ? "TeselasEnPasos" : "TeselasQuietas";
+        int vq = 0; foreach (string s in Codigo.Nombres(rf)) if (s == pedido) vq++;
+        Exige(vq == 2, "y pide las teselas quietas de las dos imagenes de la interfaz (" + pedido + ")");
         Exige(Codigo.Llama(Metodo(TPanel, "DibujaNieblas"), "DibujaTeselas"), "la via lactea se dibuja a trozos");
         Exige(Codigo.Llama(Metodo(TPanel, "EnsureNieblas"), "De") && Codigo.Llama(Metodo(TPanel, "EnsureVineta"), "De"),
               "y sus teselas se sacan al hornear la via lactea y la vineta, una vez");
@@ -681,9 +684,19 @@ class DibujoLigero
         Llama(p, "AdvanceCoverPalette", reloj);
         Pon(p, "aurRelojOk", false); Pon(p, "aurT", t);
         if (sinGuardar) Pon(p, "aurBaseOk", false);
+        MuestraAuroraParaCache(p);
         envios.Clear();
         Llama(p, "DrawAurora", au);
         return Captura();
+    }
+    // Esta prueba compara la cache de color en UNA muestra, no la cadencia de ondas
+    // (cadenciavisual/ajustesfluidez la verifican aparte). Antes de la cadencia bastaba
+    // fijar aurT; ahora dos llamadas consecutivas pueden caer a distinto lado del tick
+    // REAL. Forzar la muestra de ambos paneles conserva el mismo escenario determinista.
+    static void MuestraAuroraParaCache(Control p)
+    {
+        FieldInfo cadencia = Campo(TPanel, "waveCadence");
+        if (cadencia != null) Pon(cadencia.GetValue(p), "tick", -1.0);
     }
     static bool MismosBytes(List<Envio> a, List<Envio> b)
     {
@@ -751,6 +764,7 @@ class DibujoLigero
             else { uint[] bandas = (uint[])Toma(pa, "coverBands"); bandas[k - 6] ^= 0x00010203u; }
             // sin avanzar la portada (se cambio a mano): solo el dibujo
             Pon(pa, "auCuadro", au1); Pon(pa, "aurRelojOk", false); Pon(pa, "aurT", 2.0 + k);
+            MuestraAuroraParaCache(pa);
             envios.Clear(); Llama(pa, "DrawAurora", au1); envios.Clear();
             pie = (uint[])Toma(pa, "aurBasePie");
             string que = k < nombres.Length ? nombres[k] : "el color " + (k - 6) + " de la portada";

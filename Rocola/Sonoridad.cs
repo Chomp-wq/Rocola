@@ -681,6 +681,7 @@ namespace Rocola
             try { estado = LeeIntegArchivo(IntegFile(), null, t, aj); } catch { estado = 2; t.Clear(); aj.Clear(); }
             lock (integCerrojo) integCache = t;
             integAjenas = aj; integEstado = estado;
+            if (medidasDeltasActivas) { cambiosIntegrada = PreparaIntegrada(t); diarioInteg = null; }
         }
 
         // Se guarda en segundo plano, como la tabla de volumen, y solo si hay algo nuevo.
@@ -690,6 +691,21 @@ namespace Rocola
             if (startupReadPending || integEstado != 1 || integCache == null) return;
             long hasta = integCambios;
             if (hasta == System.Threading.Interlocked.Read(ref integGuardados)) return;
+            if (medidasDeltasActivas)
+            {
+                if (cambiosIntegrada == null || !ReferenceEquals(cambiosIntegrada.Origen, integCache)) cambiosIntegrada = PreparaIntegrada(integCache);
+                CambiosTabla<RegistroIntegrada> tabla = cambiosIntegrada;
+                long v = System.Threading.Interlocked.Increment(ref integGuardaVersion);
+                if (integGuardaCola == null) integGuardaCola = new GuardadoReciente();
+                DiarioTabla d = diarioInteg ?? (diarioInteg = new DiarioTabla());
+                List<string> extranjeras = new List<string>(integAjenas ?? new List<string>());
+                GuardaTablaCambios(tabla, integGuardaCola, integGuardaCerrojo, d, IntegFile(), extranjeras,
+                    delegate { return integEstado == 1 && v == System.Threading.Interlocked.Read(ref integGuardaVersion) && ReferenceEquals(tabla, cambiosIntegrada); },
+                    delegate(string cancion, RegistroIntegrada r) { return HuellaInteg(r.Valor); },
+                    delegate(TextWriter w, string cancion, RegistroIntegrada r) { EscribeIntegRegistro(w, cancion, r.Valor); }, IntegCabecera,
+                    delegate { System.Threading.Interlocked.Exchange(ref integGuardados, hasta); });
+                return;
+            }
             List<KeyValuePair<string, SonoridadIntegrada>> copia;
             List<string> ajenas;
             try { copia = new List<KeyValuePair<string, SonoridadIntegrada>>(integCache); ajenas = new List<string>(integAjenas ?? new List<string>()); }
@@ -738,6 +754,7 @@ namespace Rocola
             SonoridadIntegrada antes;
             if (integCache.TryGetValue(ruta, out antes) && antes.Algoritmo > s.Algoritmo) return;   // nunca pisar una de algoritmo mas nuevo
             lock (integCerrojo) integCache[ruta] = s;
+            MarcarIntegrada(ruta);
             integCambios++;
             IntegradaPuesta(ruta);
             float est;
