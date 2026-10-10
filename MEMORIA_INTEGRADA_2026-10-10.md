@@ -2,6 +2,8 @@
 
 Continuacion de `MEMORIA_ANALISIS_2026-10-10.md`. Cambio compartido en Modest y HD, automatico, sin interruptores nuevos y sin modificar el aspecto ni el renderizado CPU.
 
+Seguimiento de esta misma fecha: la limitacion WAV extensible documentada abajo queda resuelta en la pasada [Lectura WAV directa](LECTURA_WAV_DIRECTA_2026-10-10.md). Este informe conserva los resultados y hashes historicos de la optimizacion de memoria; usar el informe nuevo para el despliegue mas reciente.
+
 ## Que se ha implementado
 
 El espacio de trabajo de cada hilo de analisis conserva ahora **un solo medidor BS.1770** reutilizable: filtros K en doble precision, historia de canales, anillo de subbloques, bloques de energia, histograma de picos y mapa de silencios.

@@ -70,6 +70,141 @@ namespace Rocola
         }
     }
 
+
+    // WAV PCM/float no necesita ACM, tampoco con WAVE_FORMAT_EXTENSIBLE.
+    // NAudio 1.9 lee ese fmt como WaveFormatExtraData: ToStandardWaveFormat no lo normaliza.
+    // Solo se adapta la descripcion; bytes, precision, canales y orden siguen intactos.
+    internal sealed class WavDirecto : NAudio.Wave.WaveStream
+    {
+        private static readonly Guid pcm = new Guid("00000001-0000-0010-8000-00aa00389b71");
+        private static readonly Guid ieee = new Guid("00000003-0000-0010-8000-00aa00389b71");
+        private readonly NAudio.Wave.WaveFileReader lector;
+        private readonly System.IO.Stream archivo;
+        private readonly NAudio.Wave.WaveFormat formato;
+        private readonly object sincroniza = new object();
+        private readonly byte[] cuadro;
+        private int pendiente, fin;
+        private bool cerrado;
+
+        internal static NAudio.Wave.WaveStream Abre(string ruta)
+        {
+            if (ruta == null || !ruta.EndsWith(".wav", StringComparison.OrdinalIgnoreCase)) return null;
+            System.IO.Stream a = null;
+            NAudio.Wave.WaveFileReader r = null;
+            try
+            {
+                // Poseer el archivo desde antes de construir el lector: cerrar tambien si falla la cabecera.
+                a = System.IO.File.OpenRead(ruta);
+                r = new NAudio.Wave.WaveFileReader(a);
+                NAudio.Wave.WaveFormat f = Estandar(r.WaveFormat);
+                if (f == null) return null; // WAV comprimido: conservar el camino de codecs anterior.
+                WavDirecto resultado = new WavDirecto(r, a, f);
+                r = null; a = null;
+                return resultado;
+            }
+            finally
+            {
+                try { if (r != null) r.Dispose(); }
+                finally { if (a != null) a.Dispose(); }
+            }
+        }
+        private static NAudio.Wave.WaveFormat Estandar(NAudio.Wave.WaveFormat f)
+        {
+            NAudio.Wave.WaveFormatEncoding tipo = f.Encoding;
+            int bits = f.BitsPerSample;
+            if (tipo == NAudio.Wave.WaveFormatEncoding.Extensible)
+            {
+                NAudio.Wave.WaveFormatExtraData ex = f as NAudio.Wave.WaveFormatExtraData;
+                if (ex == null || f.ExtraSize < 22 || ex.ExtraData.Length < 22)
+                    throw new System.IO.InvalidDataException("Cabecera WAV extensible incompleta");
+                byte[] guid = new byte[16];
+                Buffer.BlockCopy(ex.ExtraData, 6, guid, 0, 16);
+                Guid sub = new Guid(guid);
+                if (sub == pcm) tipo = NAudio.Wave.WaveFormatEncoding.Pcm;
+                else if (sub == ieee) tipo = NAudio.Wave.WaveFormatEncoding.IeeeFloat;
+                else return null; // No confundir otros subformatos con PCM por el numero de bits.
+                int validos = BitConverter.ToUInt16(ex.ExtraData, 0);
+                if (validos < 1 || validos > bits ||
+                    (tipo == NAudio.Wave.WaveFormatEncoding.IeeeFloat && validos != bits))
+                    throw new System.IO.InvalidDataException("Precision WAV extensible invalida");
+                // PCM de 20/24 bits en un contenedor mayor va alineado a la izquierda.
+                // El conversor PCM del contenedor conserva la amplitud; no desplazar ni renormalizar.
+            }
+            bool entero = tipo == NAudio.Wave.WaveFormatEncoding.Pcm;
+            bool flotante = tipo == NAudio.Wave.WaveFormatEncoding.IeeeFloat;
+            if (!entero && !flotante) return null;
+            if ((entero && bits != 8 && bits != 16 && bits != 24 && bits != 32) ||
+                (flotante && bits != 32 && bits != 64)) return null;
+            int alineacion = (bits / 8) * f.Channels;
+            if (f.SampleRate < 1 || f.Channels < 1 || alineacion < 1 ||
+                f.BlockAlign != alineacion || (long)f.SampleRate * alineacion != f.AverageBytesPerSecond)
+                throw new System.IO.InvalidDataException("Alineacion WAV invalida");
+            return NAudio.Wave.WaveFormat.CreateCustomFormat(tipo, f.SampleRate, f.Channels,
+                f.AverageBytesPerSecond, f.BlockAlign, bits);
+        }
+        private WavDirecto(NAudio.Wave.WaveFileReader lector, System.IO.Stream archivo, NAudio.Wave.WaveFormat formato)
+        {
+            if (lector.Length % formato.BlockAlign != 0 || lector.Length > archivo.Length - archivo.Position)
+                throw new System.IO.InvalidDataException("Datos WAV truncados o cuadro incompleto");
+            this.lector = lector; this.archivo = archivo; this.formato = formato;
+            cuadro = new byte[formato.BlockAlign]; // Un cuadro, no la cancion entera ni un buffer por lectura.
+        }
+        private void Abierto() { if (cerrado) throw new ObjectDisposedException("WavDirecto"); }
+        public override NAudio.Wave.WaveFormat WaveFormat { get { return formato; } }
+        public override long Length { get { return lector.Length; } }
+        public override long Position
+        {
+            get { lock (sincroniza) { Abierto(); return lector.Position - (fin - pendiente); } }
+            set { lock (sincroniza) { Abierto(); lector.Position = Math.Max(0L, value); pendiente = fin = 0; } }
+        }
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            if (buffer == null) throw new ArgumentNullException("buffer");
+            if (offset < 0 || count < 0 || offset > buffer.Length || count > buffer.Length - offset)
+                throw new ArgumentOutOfRangeException("count");
+            lock (sincroniza)
+            {
+                Abierto();
+                int n = Math.Min(count, fin - pendiente);
+                if (n > 0) { Buffer.BlockCopy(cuadro, pendiente, buffer, offset, n); pendiente += n; }
+                int alineacion = formato.BlockAlign;
+                int completos = (count - n) / alineacion * alineacion;
+                if (completos > 0)
+                {
+                    int leidos = lector.Read(buffer, offset + n, completos);
+                    if (leidos % alineacion != 0) throw new System.IO.EndOfStreamException("Cuadro WAV truncado");
+                    n += leidos;
+                    if (leidos < completos) return n;
+                }
+                if (n < count)
+                {
+                    int leidos = lector.Read(cuadro, 0, alineacion);
+                    if (leidos == 0) return n;
+                    if (leidos != alineacion) throw new System.IO.EndOfStreamException("Cuadro WAV truncado");
+                    int toma = count - n;
+                    Buffer.BlockCopy(cuadro, 0, buffer, offset + n, toma);
+                    pendiente = toma; fin = alineacion; n += toma;
+                }
+                return n;
+            }
+        }
+        protected override void Dispose(bool disposing)
+        {
+            try
+            {
+                if (disposing) lock (sincroniza)
+                {
+                    if (!cerrado)
+                    {
+                        cerrado = true;
+                        try { lector.Dispose(); } finally { archivo.Dispose(); }
+                    }
+                }
+            }
+            finally { base.Dispose(disposing); }
+        }
+    }
+
     public partial class Form1
     {
         private static void SaltaCuadro(NAudio.Wave.WaveStream lector, TimeSpan donde)

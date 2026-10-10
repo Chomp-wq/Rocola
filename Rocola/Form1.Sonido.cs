@@ -377,6 +377,7 @@ namespace Rocola
         {
             private readonly WaveFormat formato;
             private readonly Mp3FileReader mp3;
+            private readonly WaveStream wav;
             private readonly SampleChannel canal;
             private readonly AudioFileReader otro;
             public LectorMedida(string ruta)
@@ -387,26 +388,37 @@ namespace Rocola
                     try { canal = new SampleChannel(r, false); mp3 = r; r = null; }
                     finally { if (r != null) { try { r.Dispose(); } catch { } } }   // el canal fallo: el lector no se queda tirado
                 }
-                else otro = new AudioFileReader(ruta);
-                formato = FormatoAudio.DeArchivo((mp3 != null) ? canal.WaveFormat : otro.WaveFormat, ruta);
+                else
+                {
+                    WaveStream f = WavDirecto.Abre(ruta);
+                    if (f != null)
+                    {
+                        try { canal = new SampleChannel(f, false); wav = f; f = null; }
+                        finally { if (f != null) { try { f.Dispose(); } catch { } } }
+                    }
+                    else otro = new AudioFileReader(ruta);
+                }
+                formato = FormatoAudio.DeArchivo((otro == null) ? canal.WaveFormat : otro.WaveFormat, ruta);
             }
+            private WaveStream Lector { get { return (mp3 != null) ? (WaveStream)mp3 : wav; } }
             public NAudio.Wave.WaveFormat WaveFormat { get { return formato; } }
-            public TimeSpan TotalTime { get { return (mp3 != null) ? mp3.TotalTime : otro.TotalTime; } }
-            public TimeSpan CurrentTime { set { if (mp3 != null) mp3.CurrentTime = value; else otro.CurrentTime = value; } }
-            public float Volume { set { if (mp3 != null) canal.Volume = value; else otro.Volume = value; } }
+            public TimeSpan TotalTime { get { return (otro == null) ? Lector.TotalTime : otro.TotalTime; } }
+            public TimeSpan CurrentTime { set { if (otro == null) Lector.CurrentTime = value; else otro.CurrentTime = value; } }
+            public float Volume { set { if (otro == null) canal.Volume = value; else otro.Volume = value; } }
             // UNA MUESTRA QUE NO ES UN NUMERO (NaN o infinito: un WAV en coma flotante estropeado, por ejemplo) cuenta como
             // silencio, que es lo que llega a oirse. Antes la medida entera salia NaN y se daba por buena: la huella del EQ
             // se guardaba con NaN y, con ella, la media de toda la biblioteca (ComputeEqAverage) y el EQ automatico de
             // todas las canciones. (v - v no es 0 solo si v es NaN o infinito.)
             public int Read(float[] b, int o, int c)
             {
-                int n = (mp3 != null) ? canal.Read(b, o, c) : otro.Read(b, o, c);
+                int n = (otro == null) ? canal.Read(b, o, c) : otro.Read(b, o, c);
                 LimpiaMuestras(b, o, n);
                 return n;
             }
             public void Dispose()
             {
                 if (mp3 != null) { try { mp3.Dispose(); } catch { } }
+                if (wav != null) { try { wav.Dispose(); } catch { } }
                 if (otro != null) { try { otro.Dispose(); } catch { } }
             }
         }
@@ -1380,6 +1392,7 @@ namespace Rocola
         {
             private readonly WaveFormat formato;
             private readonly Mp3FileReader mp3;
+            private readonly WaveStream wav;
             private readonly SampleChannel canal;
             private readonly AudioFileReader r;
             private MemoryStream enMemoria;   // la cancion entera, si se abrio desde la memoria (CancionEnMemoria.cs)
@@ -1401,19 +1414,30 @@ namespace Rocola
                     try { canal = new SampleChannel(m, false); mp3 = m; m = null; enMemoria = ms; }
                     finally { if (m != null) { try { m.Dispose(); } catch { } } }   // el canal fallo: el lector no se queda tirado
                 }
-                else r = new AudioFileReader(path);
-                formato = FormatoAudio.DeArchivo((mp3 != null) ? canal.WaveFormat : r.WaveFormat, path);
+                else
+                {
+                    WaveStream f = WavDirecto.Abre(path);
+                    if (f != null)
+                    {
+                        try { canal = new SampleChannel(f, false); wav = f; f = null; }
+                        finally { if (f != null) { try { f.Dispose(); } catch { } } }
+                    }
+                    else r = new AudioFileReader(path);
+                }
+                formato = FormatoAudio.DeArchivo((r == null) ? canal.WaveFormat : r.WaveFormat, path);
             }
+            private WaveStream Lector { get { return (mp3 != null) ? (WaveStream)mp3 : wav; } }
             public NAudio.Wave.WaveFormat WaveFormat { get { return formato; } }
             public int Read(float[] buffer, int offset, int count)
-            { return (mp3 != null) ? canal.Read(buffer, offset, count) : r.Read(buffer, offset, count); }
-            public float Volume { set { if (mp3 != null) canal.Volume = value; else r.Volume = value; } }
-            public TimeSpan CurrentTime { get { return TiempoLector(mp3 != null ? (WaveStream)mp3 : r, false); } }
-            public TimeSpan TotalTime { get { return TiempoLector(mp3 != null ? (WaveStream)mp3 : r, true); } }
-            public void Salta(TimeSpan donde) { SaltaCuadro(mp3 != null ? (WaveStream)mp3 : r, donde); }
+            { return (r == null) ? canal.Read(buffer, offset, count) : r.Read(buffer, offset, count); }
+            public float Volume { set { if (r == null) canal.Volume = value; else r.Volume = value; } }
+            public TimeSpan CurrentTime { get { return TiempoLector(r == null ? Lector : r, false); } }
+            public TimeSpan TotalTime { get { return TiempoLector(r == null ? Lector : r, true); } }
+            public void Salta(TimeSpan donde) { SaltaCuadro(r == null ? Lector : r, donde); }
             public void Dispose()
             {
                 if (mp3 != null) { try { mp3.Dispose(); } catch { } }
+                if (wav != null) { try { wav.Dispose(); } catch { } }
                 if (r != null) { try { r.Dispose(); } catch { } }
                 enMemoria = null;   // que la cancion se pueda recoger aunque alguien se quede con este objeto
             }
