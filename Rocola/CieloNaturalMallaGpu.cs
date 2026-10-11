@@ -129,7 +129,7 @@ namespace Rocola
             if (float.IsNaN(hora) || float.IsInfinity(hora)) hora = 22f;
             hora %= 24f; if (hora < 0f) hora += 24f;
             float s = hora >= 12f ? hora - 24f : hora;   // 23 h -> -1; 3 h -> 3
-            hondura = s < 3f ? Suave((s + 1f) / 4f) : 1f - Suave((s - 3f) / 3f);
+            hondura = s < 3f ? SuaveHora((s + 1f) / 4f) : 1f - SuaveHora((s - 3f) / 3f);
             if (s < -1f || s > 6f) hondura = 0f;
             float dt = (hora - 19.5f) / 1.4f, da = (hora - 6.3f) / .8f;
             crepusculo = Math.Max((float)Math.Exp(-dt * dt), .7f * (float)Math.Exp(-da * da));
@@ -203,7 +203,7 @@ namespace Rocola
             r = 255 - (255 - r) * 45 / 100; g = 255 - (255 - g) * 45 / 100; b = 255 - (255 - b) * 45 / 100;
             return (r << 16) | (g << 8) | b;
         }
-        private static float Suave(float x)
+        private static float SuaveHora(float x)
         {
             if (!(x > 0f)) return 0f;
             if (x >= 1f) return 1f;

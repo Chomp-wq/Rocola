@@ -958,7 +958,7 @@ namespace Rocola
         private void Form_KeyPress(object sender, KeyPressEventArgs e)
         {
 #if ROCOLA_GPU
-            if (AsistenteVisible || asistentePendiente || (asistenteCombo != null && asistenteCombo.Capturada)) { e.Handled = true; return; }
+            if (AsistenteCapturaEntrada) { e.Handled = true; return; }   // guiando se escribe como siempre
 #endif
             if (!searchOpen) return;
             char c = e.KeyChar;
@@ -1147,6 +1147,12 @@ namespace Rocola
             lblStatus = new Label(); TransLabel(lblStatus, 9.5f); lblStatus.Text = "Cargando musica...";
             buscaView = new BuscaView();   // la casilla de BUSCAR, en medio de la fila de arriba
             Controls.Add(buscaView);
+#if ROCOLA_GPU
+            ayudaView = new AyudaView();   // y a su lado la de AYUDA, con su interrogacion dorada (AyudaCasillaGpu.cs)
+            ayudaView.MouseClick += delegate(object sAyuda, MouseEventArgs eAyuda)
+            { if (eAyuda.Button == MouseButtons.Left) AyudaTocada(new Point(ayudaView.Left + eAyuda.X, ayudaView.Top + eAyuda.Y)); };
+            Controls.Add(ayudaView);
+#endif
             helpBar = new HelpBar();   // instrucciones con formas/colores (sin nombres de teclas)
 
             lblAttract = new Label();
@@ -1396,6 +1402,9 @@ namespace Rocola
                 lblAttract.BringToFront();
                 if (helpBar != null) helpBar.Visible = false;
                 if (buscaView != null) buscaView.Visible = false;
+#if ROCOLA_GPU
+                if (ayudaView != null) ayudaView.Visible = false;
+#endif
                 return;   // lo demas queda detras del video; se reacomoda al salir
             }
             if (helpBar != null) helpBar.Visible = true;
@@ -1433,7 +1442,11 @@ namespace Rocola
                 buscaView.SetBounds(busX, 8, busW, filaH);
                 buscaView.Visible = (busW >= 120 && !videoOn);
             }
-            int headX = (buscaView != null && buscaView.Visible) ? (busX + busW + 12) : (helpX + helpW + 12);
+            int finBusca = busX + busW;
+#if ROCOLA_GPU
+            finBusca = AcomodaAyuda(busX, busW, filaH, barraDer, buscaView != null && buscaView.Visible);   // AYUDA, al lado de BUSCAR
+#endif
+            int headX = (buscaView != null && buscaView.Visible) ? (finBusca + 12) : (helpX + helpW + 12);
             headerView.SetBounds(headX, 8, Math.Max(0, barraDer - headX), filaH);
             if (lblConfig != null) lblConfig.SetBounds(0, 0, W, H);   // asistente de config: pantalla completa
 
@@ -2163,7 +2176,13 @@ namespace Rocola
             if (t == null) return;
             PlayItem it = new PlayItem(); it.IsVideo = false; it.Song = t; it.Disc = disc;
             AddResult r = AddItem(it);
-            if (r == AddResult.Added) ShowSongAddedToast(false);
+            if (r == AddResult.Added)
+            {
+                ShowSongAddedToast(false);
+#if ROCOLA_GPU
+                NotaPedidoAsistente();   // la guia de la estrella sabe que ya se logro (AsistenteGuiaRocola.cs)
+#endif
+            }
             else if (r == AddResult.NoCredit) { if (!InvitaSinCredito(it)) ShowToast("Inserta una moneda", Color.FromArgb(200, 130, 35)); }
             else ShowToast("Esa ya va seguida", Color.FromArgb(200, 130, 35));
         }
@@ -2175,6 +2194,9 @@ namespace Rocola
             AddResult r = AddItem(it);
             if (r == AddResult.Added)
             {   // el video tambien dice su turno: para quien lo pidio es exactamente lo mismo
+#if ROCOLA_GPU
+                NotaPedidoAsistente();
+#endif
                 string mv = TextoTurno(turnoPuesto, turnoSegs);
                 AvisoPedido();   // con avisos claros: "Pusiste «...»" y cuanto falta (SuenaVivoGpu.cs)
                 ShowToast(mv.Length > 0 ? mv : "Video agregado a la cola");

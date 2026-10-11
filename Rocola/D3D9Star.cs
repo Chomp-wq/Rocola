@@ -2367,6 +2367,7 @@ namespace Rocola
             SueltaSuenaVivo();      // los avisos, la invitacion, la moneda y lo del panel de reposo
             SueltaAtraccion();      // las fichas del escaparate, sus mensajes y la lista de la noche
             SueltaAsistente();      // panel prestado del asistente y su textura GPU
+            SueltaAyudaIcono();
             if (uiTex != IntPtr.Zero) { D3D9.Release(uiTex); uiTex = IntPtr.Zero; }
             if (hazTex != IntPtr.Zero) { D3D9.Release(hazTex); hazTex = IntPtr.Zero; }
             if (nebTex != IntPtr.Zero) { D3D9.Release(nebTex); nebTex = IntPtr.Zero; }
@@ -2620,6 +2621,7 @@ namespace Rocola
             EnsureNieblas();               // la via lactea y las nebulosas (una vez por tamano de pantalla)
             EnsureVineta();
             PreparaAsistente(); // texto/seleccion: una sola subida cuando realmente cambian
+            PreparaAyudaIcono(); // la interrogacion de AYUDA: horneada una vez por tamano (AyudaCasillaGpu.cs)
             EnsureLuna(); // ninguna reserva/subida de la luna dentro de Begin
             EnsureLunaReal(); // Natural: la luna de esta noche (LunaRealGpu.cs), tambien antes de Begin
             stars.EstrellasFinas = EstrellasFinas;
@@ -2753,6 +2755,7 @@ namespace Rocola
             {
                 uint uiAlfa = (uint)(SceneAlpha() * PaletteAlpha() * ControlsOpacity * AtrUiAlfa * 255);
                 if (uiAlfa > 0) DibujaTeselas(uiTex, uiTeselas, 0, 0, uiBmpW, uiBmpH, uiU, uiV, (uiAlfa << 24) | 0xFFFFFFu, uiQuad);   // sin lo transparente ni lo invisible (DibujoLigeroGpu.cs)
+                if (uiAlfa > 0) DibujaInterrogacion(uiAlfa / 255f);   // la interrogacion dorada de AYUDA, animada (AyudaCasillaGpu.cs)
             }
             DibujaAtraccion();   // el escaparate y lo mas pedido esta noche (AtraccionGpu.cs); fuera de la atraccion, nada
             // Y ENCIMA las piezas vivas (la tarjeta y la tecla elegidas). Van despues de la textura de UI a

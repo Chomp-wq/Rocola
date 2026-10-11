@@ -810,8 +810,9 @@ namespace Rocola
                 gpuPanel.MouseWheel += delegate { lastInput = DateTime.Now; gpuPanel.IdleExpandTarget = false; gpuPanel.TouchUi(); };
                 gpuPanel.MouseClick += delegate(object sender, MouseEventArgs e)
                 {
-                    if (AsistenteVisible || asistentePendiente || (asistenteCombo != null && asistenteCombo.Capturada))
+                    if (AsistenteCapturaEntrada)
                     { if (e.Button == MouseButtons.Left) AsistenteClick(e.Location); return; }
+                    if (e.Button == MouseButtons.Left && AyudaTocada(new Point(e.X + gpuPanel.Left, e.Y + gpuPanel.Top))) return;
                     // El control del buscador esta oculto al componer por GPU: reenviar
                     // el clic real usando sus coordenadas, sin duplicar la seleccion.
                     if (e.Button != MouseButtons.Left || !searchOpen || gpuMode != 2 ||
@@ -860,6 +861,7 @@ namespace Rocola
                 gpuPanel.CoverControl = coverGovernor;
                 gpuPanel.GetGridAhead = albumView.BuildGpuAhead;
                 gpuPanel.GetContour = delegate { return albumView.ContourSpriteBmp; };          // resalte de seleccion
+                gpuPanel.GetAyudaIcono = AyudaIconoRect;   // la interrogacion dorada de la casilla de AYUDA (AyudaCasillaGpu.cs)
                 gpuPanel.GetContourRect = delegate {
                     Rectangle r = albumView.ContourScreenRect();
                     if (r.Width > 0) r.Offset(albumView.Left, albumView.Top);   // coords de albumView -> pantalla
@@ -1251,6 +1253,7 @@ namespace Rocola
                 {
                     DrawCtrlOverlay(g, helpBar);
                     DrawCtrlOverlay(g, buscaView);
+                    if (ayudaView != null && ayudaView.Visible) DrawCtrlOverlay(g, ayudaView);   // AYUDA (su interrogacion la anima la tarjeta)
                     DrawCtrlOverlay(g, letterBar);
                     DrawCtrlOverlay(g, headerView);
                     DrawLabelOverlay(g, lblStatus);
@@ -1628,6 +1631,7 @@ namespace Rocola
                 // lo pone la tarjeta como halo aparte, y meterlo aqui obligaria a rehacer la textura entera
                 // veinticuatro veces por segundo.
                 if (buscaView != null) { sb = Mix(sb, buscaView.Visible); sb = Mix(sb, buscaView.Abierto); }
+                if (ayudaView != null) { sb = Mix(sb, ayudaView.Visible); sb = Mix(sb, ayudaView.Compacta); sb = Mix(sb, ayudaView.Abierta); sb = Mix(sb, ayudaView.Width); }
                 if (letterBar.AnimViva) sb = Mix(sb, (int)(letterBar.AnimPaso * 64f));
                 if (headerView != null)
                 {
@@ -1702,7 +1706,8 @@ namespace Rocola
             else { GeneroView gv = c as GeneroView; if (gv != null) gv.RenderContent(g);
             else { SongListView sl = c as SongListView; if (sl != null) { sl.pintandoGpu = true; sl.RenderContent(g); }
             else { SongPagerBar sp = c as SongPagerBar; if (sp != null) sp.RenderContent(g);
-            else { BuscaView bv = c as BuscaView; if (bv != null) bv.RenderContent(g, true); } } } } } } } }
+            else { BuscaView bv = c as BuscaView; if (bv != null) bv.RenderContent(g, true);
+            else { AyudaView av = c as AyudaView; if (av != null) av.RenderContent(g, true); } } } } } } } } }
             g.Restore(st);
         }
 

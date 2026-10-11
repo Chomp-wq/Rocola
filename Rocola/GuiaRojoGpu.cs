@@ -14,7 +14,7 @@ namespace Rocola
         private bool GuiaRojoVisible()
         {
             return GuiaRojoActiva(guiaRojo, gpuEnabled, ContainsFocus, BackHeld(),
-                maintMode || libBuilding || videoFull || searchOpen || attractOn || configMode || AsistenteVisible
+                maintMode || libBuilding || videoFull || searchOpen || attractOn || configMode || AsistenteCapturaEntrada
                 || (panelSongs != null && panelSongs.Visible)
                 || letterBar == null || !letterBar.Visible);
         }
@@ -31,7 +31,22 @@ namespace Rocola
         }
 
         internal static void PintaGuiaRojo(Graphics g, Rectangle barra, Rectangle busca)
+        { PintaGuiaRojoAyuda(g, barra, busca, Rectangle.Empty); }
+
+        // Con la casilla de AYUDA: su contorno y una flecha ROJA hacia abajo (rojo + abajo abre la ayuda).
+        internal static void PintaGuiaRojoAyuda(Graphics g, Rectangle barra, Rectangle busca, Rectangle ayuda)
         {
+            if (ayuda.Width > 0 && ayuda.Height > 0)
+            {
+                using (Pen borde = new Pen(Color.FromArgb(230, 255, 214, 94), 2f))
+                using (GraphicsPath contorno = RoundedPath(new Rectangle(ayuda.X, ayuda.Y, ayuda.Width - 1, ayuda.Height - 1), Math.Min(14, ayuda.Height / 2)))
+                    g.DrawPath(borde, contorno);
+                using (SolidBrush rojo = new SolidBrush(Color.FromArgb(255, 236, 76, 72)))
+                {
+                    Rectangle f = GuiaRojoFlechaAyuda(ayuda);
+                    g.FillPolygon(rojo, new PointF[] { new PointF(f.Left, f.Top), new PointF(f.Right, f.Top), new PointF(f.Left + f.Width * .5f, f.Bottom) });
+                }
+            }
             using (Pen borde = new Pen(Color.FromArgb(230, 255, 214, 94), 2f))
             using (SolidBrush oro = new SolidBrush(Color.FromArgb(255, 255, 222, 102)))
             {
@@ -56,11 +71,16 @@ namespace Rocola
             }
         }
 
+        // La flecha roja de la ayuda va en el hueco a la izquierda de su casilla, como la de BUSCAR.
+        internal static Rectangle GuiaRojoFlechaAyuda(Rectangle ayuda)
+        { return new Rectangle(ayuda.Left - 9, ayuda.Top + ayuda.Height / 2 - 7, 8, 14); }
+
         private void DrawGuiaRojo(Graphics g)
         {
             if (!GuiaRojoVisible()) return;
-            PintaGuiaRojo(g, letterBar.Bounds,
-                buscaView != null && buscaView.Visible ? buscaView.Bounds : Rectangle.Empty);
+            PintaGuiaRojoAyuda(g, letterBar.Bounds,
+                buscaView != null && buscaView.Visible ? buscaView.Bounds : Rectangle.Empty,
+                ayudaView != null && ayudaView.Visible ? ayudaView.Bounds : Rectangle.Empty);
         }
 
         private bool GuiaDireccionHeld(Keys configurada, Keys flecha)
@@ -69,7 +89,7 @@ namespace Rocola
         private int FillGuiaRojoGlows(GpuPanel.UiGlow[] buf, int n)
         {
             if (!GuiaRojoVisible()) return n;
-            for (int i = 0; i < 3 && n < buf.Length; i++)
+            for (int i = 0; i < 4 && n < buf.Length; i++)
             {
                 Rectangle r;
                 bool pulsa;
@@ -78,17 +98,24 @@ namespace Rocola
                     r = GuiaRojoFlecha(letterBar.Bounds, i == 1);
                     pulsa = GuiaDireccionHeld(i == 0 ? keyLeft : keyRight, i == 0 ? Keys.Left : Keys.Right);
                 }
-                else
+                else if (i == 2)
                 {
                     if (buscaView == null || !buscaView.Visible) continue;
                     r = buscaView.Bounds;
                     r = new Rectangle(r.Left - 11, r.Top + r.Height / 2 - 7, 8, 14);
                     pulsa = GuiaDireccionHeld(keyUp, Keys.Up);
                 }
+                else
+                {
+                    if (ayudaView == null || !ayudaView.Visible) continue;
+                    r = GuiaRojoFlechaAyuda(ayudaView.Bounds);
+                    pulsa = GuiaDireccionHeld(keyDown, Keys.Down);
+                }
                 buf[n].Cx = r.Left + r.Width * .5f;
                 buf[n].Cy = r.Top + r.Height * .5f;
                 buf[n].R = Math.Max(18f, r.Height * .9f);
-                buf[n].Argb = (uint)Color.FromArgb(pulsa ? 245 : 65, 255, 214, 80).ToArgb();
+                buf[n].Argb = i == 3 ? (uint)Color.FromArgb(pulsa ? 245 : 70, 255, 90, 80).ToArgb()
+                                     : (uint)Color.FromArgb(pulsa ? 245 : 65, 255, 214, 80).ToArgb();
                 n++;
             }
             return n;

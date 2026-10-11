@@ -114,6 +114,8 @@
     <Compile Include="CieloNaturalMallaGpu.cs" />
     <Compile Include="EstrellasNaturalesGpu.cs" />
     <Compile Include="LunaRealGpu.cs" />
+    <Compile Include="AyudaCasillaGpu.cs" />
+    <Compile Include="AsistenteGuiaRocola.cs" />
     <Compile Include="PreparacionFondoGpu.cs" />
     <Compile Include="EscaneoMemo.cs" />
     <Compile Include="AperturaAudio.cs" />
