@@ -51,7 +51,8 @@ class AsistenteVisual
             Check(r.Left-(center.X+radius*1.35f)<48,"Estrella junto al globo incluso en 4K/ultrapanoramico");
             Rectangle a = (Rectangle)Call(form, null, "AsistenteOpcionRect", r.Width, r.Height, 0);
             Rectangle b = (Rectangle)Call(form, null, "AsistenteOpcionRect", r.Width, r.Height, 1);
-            Check(a.Left >= 0 && a.Right <= r.Width && a.Top >= 0 && b.Bottom < r.Height * .93f && !a.IntersectsWith(b), "Opciones separadas y alcanzables: " + size);
+            Rectangle c = (Rectangle)Call(form, null, "AsistenteOpcionRect", r.Width, r.Height, 2);
+            Check(a.Left >= 0 && a.Right <= r.Width && a.Top >= 0 && c.Bottom < r.Height * .93f && !a.IntersectsWith(b) && !b.IntersectsWith(c), "Opciones separadas y alcanzables: " + size);
             foreach (int page in new int[] { 0, 1, 2 })
             for (int step = 0; step < (page == 1 ? 3 : 1); step++)
             foreach (int sel in new int[] { 0, 1 })
@@ -151,22 +152,27 @@ class AsistenteVisual
             Check((int)Get(owner,"asistenteEvento")==selectedEvent,"Repeticion/hover inmovil no reinicia el gesto");
             Call(form,owner,"SeleccionaAsistente",0);
             Call(form,owner,"BuildAsistenteState"); first=(Bitmap)Get(owner,"asistentePanel"); version=(int)Get(owner,"asistentePanelVersion");
-            Call(form,owner,"EligeAsistente"); Check((int)Get(owner,"asistentePagina")==1,"Primera opcion abre tutorial");
-            Call(form,owner,"BuildAsistenteState"); Check(!ReferenceEquals(first,Get(owner,"asistentePanel")) && (int)Get(owner,"asistentePanelVersion")==version+1,"Cambiar pagina reemplaza una sola imagen");
-            Call(form,owner,"EligeAsistente"); Call(form,owner,"EligeAsistente");
-            Check((int)Get(owner,"asistenteLeccion")==2,"Tres pasos de guia");
-            Call(form,owner,"EligeAsistente"); Check((int)Get(owner,"asistentePagina")==2,"Ultimo paso ayuda a poner una cancion");
-            Set(owner,"asistentePagina",0); Set(owner,"asistenteSeleccion",1); Call(form,owner,"EligeAsistente");
-            Check((int)Get(owner,"asistentePagina")==2,"Segunda opcion lleva a buscar");
-            Set(owner,"asistentePagina",1); Set(owner,"asistenteSeleccion",1); Call(form,owner,"EligeAsistente");
-            Check((int)Get(owner,"asistentePagina")==0 && (int)Get(owner,"asistenteSeleccion")==0,"Volver al inicio es coherente");
+            // Desde el 11-10-2026 el menu tiene tres opciones y cada una empieza una guia paso a paso.
+            Call(form,owner,"SeleccionaAsistente",9); Check((int)Get(owner,"asistenteSeleccion")==2,"Tres opciones, sin pasarse");
+            Call(form,owner,"SeleccionaAsistente",0);
+            Call(form,owner,"EligeAsistente"); Check((int)Get(owner,"asistenteMision")==1,"Primera opcion: poner una cancion, guiada");
+            Call(form,owner,"BuildAsistenteState"); Check(!ReferenceEquals(first,Get(owner,"asistentePanel")) && (int)Get(owner,"asistentePanelVersion")==version+1,"Empezar la guia reemplaza una sola imagen");
+            Bitmap guia=(Bitmap)Get(owner,"asistentePanel"); int vGuia=(int)Get(owner,"asistentePanelVersion");
+            for(int i=0;i<60;i++) Call(form,owner,"BuildAsistenteState");
+            Check(ReferenceEquals(guia,Get(owner,"asistentePanel")) && vGuia==(int)Get(owner,"asistentePanelVersion"),"Guiando, el globo no se rehace por cuadro");
+            Check((Size)Call(gpu,null,"AsistenteGuiaTam",640,480)==guia.Size,"Globo pequeno de la guia");
+            Set(owner,"asistenteMision",0); Set(owner,"asistenteSeleccion",1); Call(form,owner,"EligeAsistente");
+            Check((int)Get(owner,"asistenteMision")==2,"Segunda opcion: buscar por el nombre");
+            Set(owner,"asistenteMision",0); Set(owner,"asistenteSeleccion",2); Call(form,owner,"EligeAsistente");
+            Check((int)Get(owner,"asistenteMision")==3,"Tercera opcion: aprender a moverse");
             Call(form,owner,"SueltaAsistente"); Check(Get(owner,"asistentePanel")==null,"Bitmap del formulario se libera");
         }
         MethodInfo entry=form.GetMethod("ProcessCmdKey",B), frame=gpu.GetMethod("RenderFrame",B);
-        Check(Codigo.Llama(entry,"AsistenteEntrada") && Codigo.Llama(form.GetMethod("OnKeyUp",B),"ReenviaEntradaAsistente"),"Pulsar y soltar no pierde toques rapidos");
+        Check(Codigo.Llama(entry,"AsistenteEntrada") && form.GetMethod("ReenviaEntradaAsistente",B)==null,"Los botones responden al instante (sin acorde rojo+verde)");
         Check(Codigo.Llama(frame,"PreparaAsistente") && Codigo.Llama(frame,"AvanzaAsistente") && Codigo.Llama(frame,"DibujaAsistente"),"Conectado al cuadro GPU");
         Check(!Codigo.Llama(form.GetMethod("AbreAsistente",B),"AddItem") && !Codigo.Llama(form.GetMethod("EligeAsistente",B),"AddItem"),"Ayuda no encola ni gasta credito");
-        Check(Codigo.Llama(form.GetMethod("EligeAsistente",B),"OpenSearch"),"Ayuda usa el buscador real");
+        Check(Codigo.Llama(form.GetMethod("EligeAsistente",B),"EmpiezaMision") && Codigo.Llama(gpu.GetMethod("DibujaAsistente",B),"DibujaFocoGuia")
+            && Codigo.Llama(gpu.GetMethod("DibujaAsistente",B),"DibujaFlechaGuia"),"La ayuda guia sobre la Rocola real: foco y flecha");
         foreach(string method in new string[]{"AvanzaAsistente","DibujaAsistente","AsistenteMallaMiembros","AsistenteSegmento","AsistenteDisco",
             "AvanzaPersonalidad","AsistenteActua","AsistenteMezcla","AsistenteMiembrosExpresivos","AsistenteBrazosExpresivos",
             "AsistenteArmaBrazos","AsistenteGeometriaValida","AsistenteRotaMalla"})

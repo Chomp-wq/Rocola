@@ -1,5 +1,8 @@
 # La estrella te ayuda — Modest
 
+> **Actualización del 11-10-2026:** la ayuda ya no se abre manteniendo rojo y verde: ahora es ROJO + flecha ABAJO o tocando la casilla AYUDA, y guía paso a paso. Ver `AYUDA_GUIADA_MODEST_2026-10-11.md`.
+
+
 Mantener los botones rojo y verde juntos durante tres segundos abre la ayuda. Usa las teclas configuradas de la Rocola y sus alternativas existentes; no depende de letras de teclado fijas. La estrella del fondo salta al frente, se orienta hacia el usuario y despliega brazos y piernas negros. Habla mediante un globo redondeado con una cola que apunta hacia ella, no mediante una tarjeta separada. Al cerrar, regresa al cielo sin dejar otra estrella ni ecos antiguos detrás.
 
 La pregunta inicial es «¿Qué necesitas?»:

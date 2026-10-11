@@ -30,5 +30,17 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'No compila driver artificial' }
     & $tex | Tee-Object -FilePath (Join-Path $out 'texturas.txt')
     if ($LASTEXITCODE -ne 0) { throw 'Fallo texturas compatibles' }
+    # Tambien verificar las piezas incorporadas desde GitHub al integrar esta auditoria.
+    foreach ($test in @('naturalideas','ayudaguia')) {
+        $testExe = Join-Path $out ("$test.exe")
+        & $compiler /nologo /optimize+ /warnaserror+ ("/out:$testExe") @references (Join-Path $PSScriptRoot ("$test.cs")) (Join-Path $PSScriptRoot 'leercodigo.cs')
+        if ($LASTEXITCODE -ne 0) { throw "No compila $test" }
+        & $testExe (Join-Path $out 'Rocola-gpu.exe') | Tee-Object -FilePath (Join-Path $out ("$test-gpu.txt"))
+        if ($LASTEXITCODE -ne 0) { throw "Fallo $test GPU" }
+        if ($test -eq 'ayudaguia') {
+            & $testExe (Join-Path $out 'Rocola-cpu.exe') | Tee-Object -FilePath (Join-Path $out ("$test-cpu.txt"))
+            if ($LASTEXITCODE -ne 0) { throw 'Fallo ayuda en CPU' }
+        }
+    }
     Write-Output "PASS auditoria general .NET 3.5 GPU/CPU y driver artificial. Sin HAL ni instalacion de produccion. Evidencia: $out"
 } finally { $env:ROCOLA_DATOS = $previousData }

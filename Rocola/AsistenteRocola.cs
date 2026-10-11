@@ -6,54 +6,33 @@ using System.Windows.Forms;
 
 namespace Rocola
 {
-    // Tiempo real, no numero de cuadros. Una combinacion consumida exige liberar
-    // AMBOS botones antes de permitir otra; tampoco se reanuda al volver el foco.
-    internal sealed class AsistenteCombinacion
-    {
-        private bool capturada, cancelada, activada;
-        private int inicio;
-        private float progreso;
-        public bool Capturada { get { return capturada; } }
-        public float Progreso { get { return progreso; } }
-        public void Reinicia() { capturada = cancelada = activada = false; progreso = 0; }
-        public bool Actualiza(int ahora, bool rojo, bool verde, bool permitido)
-        {
-            if (!rojo && !verde) { Reinicia(); return false; }
-            if (!permitido)
-            {
-                if (capturada || (rojo && verde)) { capturada = cancelada = true; progreso = 0; }
-                return false;
-            }
-            if (!capturada)
-            {
-                if (!rojo || !verde) return false;
-                capturada = true; inicio = ahora; progreso = 0;
-            }
-            if (!rojo || !verde) { cancelada = true; progreso = 0; return false; }
-            if (cancelada || activada) return false;
-            int tiempo = unchecked(ahora - inicio);
-            if (tiempo < 0) { cancelada = true; progreso = 0; return false; }
-            progreso = Math.Min(1f, tiempo / 3000f);
-            if (tiempo < 3000) return false;
-            activada = true; return true;
-        }
-    }
-
     public partial class Form1
     {
         private bool asistenteAnimado = true;
 #if ROCOLA_GPU
-        private readonly AsistenteCombinacion asistenteCombo = new AsistenteCombinacion();
-        private bool asistenteVisible, asistenteReenvio, asistentePendiente, asistenteRestaurarVideo;
-        private Message asistenteMensaje;
-        private Keys asistenteTecla;
-        private int asistentePendienteTick, asistenteInicioTick, asistenteActividadTick;
+        // LA AYUDA SE ABRE CON EL ROJO Y LA FLECHA DE ABAJO (peticion del 11-10-2026), la gemela de BUSCAR, que
+        // es el rojo y la flecha de arriba. Las dos casillas estan una al lado de la otra y llevan sus dos botones
+        // dibujados, asi que no hay nada que adivinar. Antes era mantener rojo y verde tres segundos: nadie lo
+        // descubria, y obligaba a retrasar 120 ms cada toque de rojo o verde para reconocer el acorde. Eso se
+        // acabo: los botones responden ya, y ROJO + ABAJO con la ayuda abierta la vuelve a guardar.
+        //
+        // Y NO DA INSTRUCCIONES ESCRITAS Y YA: primero pregunta que quieres hacer y despues TE LLEVA DE LA MANO.
+        // Mira lo que de verdad esta pasando en la Rocola (donde estas, si tienes credito, si abriste el buscador,
+        // si ya pusiste la cancion), te senala con la mano y una flecha dorada lo que toca ahora, y tu lo haces con
+        // los botones de siempre: la ayuda no se queda con ellos. Al lograrlo celebra y vuelve sola al cielo.
+        private bool asistenteVisible, asistenteRestaurarVideo;
+        private int asistenteInicioTick, asistenteActividadTick;
         private int asistentePagina, asistenteLeccion, asistenteSeleccion;
         private int asistenteEvento;
         private AsistenteGestoGpu asistenteGesto;
         private Bitmap asistentePanel;
         private int asistentePanelVersion, asistentePanelPagina = -1, asistentePanelSeleccion = -1, asistentePanelLeccion = -1;
+        private Size asistentePanelTam;
         private bool AsistenteVisible { get { return asistenteVisible || (gpuPanel != null && gpuPanel.AsistenteEnTransicion); } }
+        // La ayuda solo se queda con los botones mientras PREGUNTA (el menu) y durante su regreso animado.
+        // Guiando, cada boton hace lo de siempre: es el cliente quien lo hace, la estrella solo senala.
+        private bool AsistenteCapturaEntrada
+        { get { return (asistenteVisible && asistenteMision == 0) || (!asistenteVisible && AsistenteVisible); } }
 
         private bool VerdeHeld()
         { return KeyHeld(keyOK) || (KeyHeld(Keys.Enter) && !IsConfiguredKey(Keys.Enter)); }
@@ -68,8 +47,9 @@ namespace Rocola
         private void AbreAsistente()
         {
             if (asistenteVisible) return;
-            asistentePendiente = false; asistenteVisible = true;
+            asistenteVisible = true;
             asistentePagina = asistenteLeccion = asistenteSeleccion = 0;
+            asistenteMision = 0; asistenteLogroTick = 0;
             asistenteInicioTick = asistenteActividadTick = Environment.TickCount;
             AnimaAsistente(AsistenteGestoGpu.Saludar);
             if (videoFull) ExitVideoFull();
@@ -82,173 +62,106 @@ namespace Rocola
         private void CierraAsistente()
         {
             AnimaAsistente(AsistenteGestoGpu.Despedir);
-            asistenteVisible = false; asistentePendiente = false;
+            asistenteVisible = false; asistenteMision = 0; asistenteLogroTick = 0;
             lastInput = DateTime.Now; searchLastActivity = DateTime.Now;
             asistenteRestaurarVideo = true;
             if (video != null) video.Visible = videoOn && !searchOpen && !AsistenteVisible;
             if (!startupClosing && !IsDisposed) { SyncGpuFullScreen(); KeepVideoOnTop(); }
         }
 
-        private void DescartaEntradaAsistente()
-        {
-            asistentePendiente = false;
-            if (asistenteCombo != null) asistenteCombo.Actualiza(Environment.TickCount, BackHeld(), VerdeHeld(), false);
-            if (asistenteVisible) CierraAsistente();
-        }
-
-        private void ReenviaEntradaAsistente()
-        {
-            if (!asistentePendiente) return;
-            Message mensaje = asistenteMensaje; Keys tecla = asistenteTecla;
-            asistentePendiente = false;
-            if (!AsistentePermitido() || asistenteVisible || asistenteCombo.Capturada) return;
-            asistenteReenvio = true;
-            try { ProcessCmdKey(ref mensaje, tecla); }
-            finally { asistenteReenvio = false; }
-        }
+        // ROJO + ABAJO, en una sola pulsacion (sin autorrepeticion). Pura: se prueba sin teclado.
+        internal static bool EsAtajoAyuda(bool rojoMantenido, bool esAbajo, bool repeticion)
+        { return rojoMantenido && esAbajo && !repeticion; }
 
         private bool AsistenteEntrada(Keys keyData, ref Message msg)
         {
-            if (asistenteReenvio || asistenteCombo == null) return false;
             Keys kc = keyData & Keys.KeyCode;
-            // Mantenimiento/salida siempre accesibles; no replay tardio al cerrar un dialogo.
+            // Mantenimiento/salida siempre accesibles.
             if ((keyData & (Keys.Control | Keys.Alt)) != 0 || kc == Keys.F5 || kc == Keys.F12
                 || ((kc == Keys.F8 || kc == Keys.F10) && !IsConfiguredKey(kc)))
-            { DescartaEntradaAsistente(); return false; }
-            if (!AsistentePermitido()) { DescartaEntradaAsistente(); return false; }
-            bool rojo = BackHeld() || IsBack(kc), verde = VerdeHeld() || IsOK(kc);
-            if (asistenteCombo.Actualiza(Environment.TickCount, rojo, verde, true)) AbreAsistente();
-            if (asistenteCombo.Capturada) { asistentePendiente = false; return true; }
-            if (!asistenteVisible && AsistenteVisible) return true; // regreso animado: no activar debajo
-            if (asistenteVisible)
+            { if (asistenteVisible) CierraAsistente(); return false; }
+            if (!AsistentePermitido()) { if (asistenteVisible) CierraAsistente(); return false; }
+            bool repeticion = (msg.LParam.ToInt64() & 0x40000000L) != 0;
+            if (asistenteVisible) asistenteActividadTick = Environment.TickCount;
+            if (EsAtajoAyuda(BackHeld(), IsDown(kc), repeticion))
             {
-                asistenteActividadTick = Environment.TickCount;
-                if (unchecked(Environment.TickCount - asistenteInicioTick) < 750) return true;
-                // Pulsacion unica: mantener verde/rojo no recorre varios pasos.
-                if ((msg.LParam.ToInt64() & 0x40000000L) != 0) return true;
-                if (IsBack(kc)) { if (asistentePagina == 0) CierraAsistente(); else { asistentePagina = asistenteSeleccion = 0; AnimaAsistente(AsistenteGestoGpu.Volver); } }
-                else if (IsLeft(kc) || IsUp(kc)) SeleccionaAsistente(0);
-                else if (IsRight(kc) || IsDown(kc)) SeleccionaAsistente(1);
-                else if (IsOK(kc)) EligeAsistente();
+                if (asistenteVisible) CierraAsistente(); else if (!AsistenteVisible) AbreAsistente();
                 return true;
             }
-            if (IsOK(kc) || IsBack(kc))
-            {
-                // Breve ventana para reconocer ambos ordenes del acorde. La pista
-                // responde ya; solo se aplaza la accion para no gastar/borrar antes.
-                if (asistentePendiente) return true;
-                if ((msg.LParam.ToInt64() & 0x40000000L) != 0) return false;
-                asistenteMensaje = msg; asistenteTecla = keyData;
-                asistentePendienteTick = Environment.TickCount; asistentePendiente = true;
-                if (searchOpen && searchOverlay != null) { if (IsOK(kc)) searchOverlay.FlashOK(); }
-                else if (helpBar != null) helpBar.Flash(IsOK(kc) ? HelpBar.FEntrar : HelpBar.FVolver);
-                return true;
-            }
-            ReenviaEntradaAsistente();
-            return false;
-        }
-
-        protected override void OnKeyUp(KeyEventArgs e)
-        {
-            // Atender el soltar real, no esperar hasta el siguiente timer: dos
-            // toques rapidos de verde no se convierten en una sola pulsacion.
-            if (asistenteCombo != null && (IsBack(e.KeyCode) || IsOK(e.KeyCode)))
-            {
-                bool permitido = AsistentePermitido();
-                if (asistenteCombo.Actualiza(Environment.TickCount, BackHeld(), VerdeHeld(), permitido)) AbreAsistente();
-                if (asistenteCombo.Capturada) asistentePendiente = false;
-                else if (asistentePendiente && (asistenteTecla & Keys.KeyCode) == e.KeyCode)
-                { if (permitido) ReenviaEntradaAsistente(); else asistentePendiente = false; }
-            }
-            base.OnKeyUp(e);
+            if (!AsistenteCapturaEntrada) return false;   // guiando: el boton hace lo suyo de siempre
+            if (!asistenteVisible) return true;           // regreso animado: no activar nada debajo
+            if (unchecked(Environment.TickCount - asistenteInicioTick) < 450) return true;
+            if (repeticion) return true;                  // mantener un boton no recorre varias opciones
+            if (IsBack(kc)) CierraAsistente();
+            else if (IsLeft(kc) || IsUp(kc)) SeleccionaAsistente(asistenteSeleccion - 1);
+            else if (IsRight(kc) || IsDown(kc)) SeleccionaAsistente(asistenteSeleccion + 1);
+            else if (IsOK(kc)) EligeAsistente();
+            return true;
         }
 
         private void TickAsistenteGpu()
         {
-            if (asistenteCombo == null) return; // propietarios aislados de pruebas sin constructor
             if (asistenteRestaurarVideo && !AsistenteVisible)
             {
                 asistenteRestaurarVideo = false;
                 if (video != null) video.Visible = videoOn && !searchOpen;
                 SyncGpuFullScreen(); KeepVideoOnTop();
             }
-            bool permitido = AsistentePermitido();
-            bool rojo = BackHeld(), verde = VerdeHeld();
-            if (asistenteCombo.Actualiza(Environment.TickCount, rojo, verde, permitido)) AbreAsistente();
-            if (!permitido) { asistentePendiente = false; if (asistenteVisible) CierraAsistente(); return; }
-            if (asistenteCombo.Capturada) asistentePendiente = false;
-            else if (asistentePendiente && (unchecked(Environment.TickCount - asistentePendienteTick) >= 120
-                || (!IsOK(asistenteTecla & Keys.KeyCode) ? !rojo : !verde))) ReenviaEntradaAsistente();
-            if (asistenteVisible)
-            {
-                if (unchecked(Environment.TickCount - asistenteActividadTick) >= 90000) { CierraAsistente(); return; }
-                // Solo evita decisiones de inactividad. El audio/FFT/color siguen en su latido normal.
-                lastInput = DateTime.Now; searchLastActivity = lastInput;
-                if (gpuPanel != null) gpuPanel.IdleExpandTarget = false;
-            }
+            if (ayudaView != null && ayudaView.Abierta != asistenteVisible) ayudaView.Abierta = asistenteVisible;
+            if (!asistenteVisible) return;
+            if (!AsistentePermitido()) { CierraAsistente(); return; }
+            if (unchecked(Environment.TickCount - asistenteActividadTick) >= 90000) { CierraAsistente(); return; }
+            if (asistenteMision != 0) EvaluaGuia();
+            if (!asistenteVisible) return;
+            // Solo evita decisiones de inactividad. El audio/FFT/color siguen en su latido normal.
+            lastInput = DateTime.Now; searchLastActivity = lastInput;
+            if (gpuPanel != null) gpuPanel.IdleExpandTarget = false;
         }
 
-        // Moneda y salto siguen disponibles en la ayuda, pero nunca reproducen
-        // despues un verde pendiente ni completan un acorde interrumpido.
+        // Una moneda real: la estrella lo celebra (y si estaba esperando la moneda, la guia sigue sola).
         private void InterrumpeComboAsistente(bool moneda)
         {
-            asistentePendiente = false;
-            if (asistenteCombo != null) asistenteCombo.Actualiza(Environment.TickCount, BackHeld(), VerdeHeld(), false);
             if (asistenteVisible) {
                 asistenteActividadTick = Environment.TickCount;
-                if (moneda) AnimaAsistente(AsistenteGestoGpu.Credito);
+                if (moneda) { AnimaAsistente(AsistenteGestoGpu.Credito); asistenteMonedaTick = Environment.TickCount; if (asistenteMonedaTick == 0) asistenteMonedaTick = 1; }
             }
         }
 
         private void AnimaAsistente(AsistenteGestoGpu gesto)
         { asistenteGesto = gesto; asistenteEvento = unchecked(asistenteEvento + 1); }
 
+        internal const int AsistenteOpciones = 3;
         private void SeleccionaAsistente(int seleccion)
         {
-            seleccion = Math.Max(0, Math.Min(1, seleccion));
+            seleccion = Math.Max(0, Math.Min(AsistenteOpciones - 1, seleccion));
             if (asistenteSeleccion == seleccion) return;
             asistenteSeleccion = seleccion; AnimaAsistente(AsistenteGestoGpu.Senalar);
         }
 
+        // Elegir en el menu empieza la mision: 1 poner una cancion (por los discos), 2 buscarla por su nombre,
+        // 3 aprender a moverse. Desde ahi la guia va sola (AsistenteGuiaRocola.cs).
         private void EligeAsistente()
         {
-            if (asistentePagina == 0) {
-                asistentePagina = asistenteSeleccion == 0 ? 1 : 2; asistenteLeccion = asistenteSeleccion = 0;
-                AnimaAsistente(asistentePagina == 1 ? AsistenteGestoGpu.Explicar : AsistenteGestoGpu.Buscar);
-            }
-            else if (asistentePagina == 1)
-            {
-                if (asistenteSeleccion == 1) asistentePagina = asistenteSeleccion = 0;
-                else if (asistenteLeccion < 2) asistenteLeccion++;
-                else { asistentePagina = 2; asistenteSeleccion = 0; }
-                AnimaAsistente(asistentePagina == 0 ? AsistenteGestoGpu.Volver : asistentePagina == 1 ? AsistenteGestoGpu.Explicar : AsistenteGestoGpu.Buscar);
-            }
-            else
-            {
-                bool buscar = asistenteSeleccion == 0;
-                CierraAsistente();
-                AnimaAsistente(AsistenteGestoGpu.Confirmar);
-                if (buscar) { if (!searchOpen) OpenSearch(); else MarkSearchActivity(); }
-                else { if (searchOpen) CloseSearch(); if (panelSongs != null && panelSongs.Visible) BackToAlbums(); }
-            }
+            if (!asistenteVisible || asistenteMision != 0) return;
+            EmpiezaMision(asistenteSeleccion + 1);
         }
 
         private void AsistenteClick(Point punto)
         {
-            if (!asistenteVisible || asistenteCombo.Capturada || unchecked(Environment.TickCount - asistenteInicioTick) < 750) return;
+            if (!asistenteVisible || asistenteMision != 0 || unchecked(Environment.TickCount - asistenteInicioTick) < 450) return;
             Rectangle r = GpuPanel.AsistentePanelRect(ClientSize.Width, ClientSize.Height);
             punto.Offset(-r.Left, -r.Top);
-            for (int i = 0; i < 2; i++) if (AsistenteOpcionRect(r.Width, r.Height, i).Contains(punto))
+            for (int i = 0; i < AsistenteOpciones; i++) if (AsistenteOpcionRect(r.Width, r.Height, i).Contains(punto))
             { asistenteSeleccion = i; asistenteActividadTick = Environment.TickCount; EligeAsistente(); return; }
         }
 
         private void AsistenteMueveRaton(Point punto)
         {
-            if (!asistenteVisible || asistenteCombo.Capturada || unchecked(Environment.TickCount - asistenteInicioTick) < 750) return;
+            if (!asistenteVisible || asistenteMision != 0 || unchecked(Environment.TickCount - asistenteInicioTick) < 450) return;
             asistenteActividadTick = Environment.TickCount;
             Rectangle r = GpuPanel.AsistentePanelRect(ClientSize.Width, ClientSize.Height);
             punto.Offset(-r.Left, -r.Top);
-            for (int i = 0; i < 2; i++) if (AsistenteOpcionRect(r.Width, r.Height, i).Contains(punto))
+            for (int i = 0; i < AsistenteOpciones; i++) if (AsistenteOpcionRect(r.Width, r.Height, i).Contains(punto))
             { SeleccionaAsistente(i); return; }
         }
 
@@ -258,6 +171,11 @@ namespace Rocola
             estado.Visible = asistenteVisible; estado.Animada = asistenteAnimado;
             estado.Gesto = asistenteGesto; estado.Evento = asistenteEvento;
             estado.Pagina = asistentePagina; estado.Leccion = asistenteLeccion; estado.Seleccion = asistenteSeleccion;
+            if (asistenteVisible && asistenteMision != 0)
+            {
+                estado.Guia = true; estado.Logro = asistenteLogroTick != 0;
+                estado.Objetivo = estado.Logro ? RectangleF.Empty : ObjetivoGuia(asistentePaso);
+            }
             // Conservar bitmap durante el regreso animado, sin volver a hornearlo.
             if (asistenteVisible) EnsureAsistentePanel();
             estado.Panel = asistentePanel; estado.Version = asistentePanelVersion;
@@ -266,19 +184,25 @@ namespace Rocola
 
         private void EnsureAsistentePanel()
         {
-            Rectangle r = GpuPanel.AsistentePanelRect(ClientSize.Width, ClientSize.Height);
-            if (asistentePanel != null && asistentePanel.Size == r.Size && asistentePanelPagina == asistentePagina
-                && asistentePanelSeleccion == asistenteSeleccion && asistentePanelLeccion == asistenteLeccion) return;
-            Bitmap nuevo = PintaPanelAsistente(r.Width, r.Height, asistentePagina, asistenteLeccion, asistenteSeleccion);
+            bool guia = asistenteMision != 0;
+            int w = ClientSize.Width, h = ClientSize.Height;
+            Size tam = guia ? GpuPanel.AsistenteGuiaTam(w, h) : GpuPanel.AsistentePanelRect(w, h).Size;
+            int pagina = guia ? 16 + asistenteMision : 0;
+            int leccion = guia ? ClaveGuia() : 0;
+            if (asistentePanel != null && asistentePanelTam == tam && asistentePanelPagina == pagina
+                && asistentePanelSeleccion == asistenteSeleccion && asistentePanelLeccion == leccion) return;
+            Bitmap nuevo = guia ? PintaGuiaActual(tam.Width, tam.Height)
+                : PintaPanelAsistente(tam.Width, tam.Height, 0, 0, asistenteSeleccion);
             Bitmap anterior = asistentePanel; asistentePanel = nuevo; asistentePanelVersion++;
-            asistentePanelPagina = asistentePagina; asistentePanelSeleccion = asistenteSeleccion; asistentePanelLeccion = asistenteLeccion;
+            asistentePanelTam = tam; asistentePanelPagina = pagina; asistentePanelSeleccion = asistenteSeleccion; asistentePanelLeccion = leccion;
+            asistentePagina = pagina; asistenteLeccion = leccion;
             if (anterior != null) anterior.Dispose();
         }
 
         internal static Rectangle AsistenteOpcionRect(int w, int h, int i)
         {
             int x = AsistenteGloboMargen(w), derecha = Math.Max(12, w / 20);
-            return new Rectangle(x, (int)(h * (.61f + i * .16f)), Math.Max(1, w - x - derecha), Math.Max(24, (int)(h * .13f)));
+            return new Rectangle(x, (int)(h * (.50f + i * .135f)), Math.Max(1, w - x - derecha), Math.Max(22, (int)(h * .115f)));
         }
 
         internal static int AsistenteGloboMargen(int w)
@@ -325,36 +249,29 @@ namespace Rocola
                 using (Pen brillo = new Pen(Color.FromArgb(220, 142, 215, 255), 1.8f))
                 { g.DrawPath(halo, borde); g.FillPath(vidrio, borde); g.DrawPath(brillo, borde); }
                 int x = AsistenteGloboMargen(w), tw = Math.Max(1, w - x - Math.Max(12, w / 20));
-                string saludo = pagina == 0 ? "¡HOLA! ESTOY PARA AYUDARTE" : pagina == 1 ? "VAMOS PASO A PASO" : "ENCONTREMOS TU CANCIÓN";
-                g.DrawString(saludo, pequeno, azul, new RectangleF(x, h * .045f, tw, h * .06f));
-                string cabecera = pagina == 0 ? "¿Qué necesitas?" : pagina == 1 ? "Cómo usar la Rocola" : "Vamos a poner una canción";
-                g.DrawString(cabecera, titulo, blanco, new RectangleF(x, h * .12f, tw, h * .17f));
-                string texto = pagina == 0 ? "Vamos paso a paso. Elige lo que necesitas; yo te acompaño y la música sigue sonando." : pagina == 2 ?
-                    "Busca por título o artista. Escribe con el teclado, o elige letras con las flechas y verde. Después elige un resultado y pulsa verde para añadirlo a la cola." :
-                    leccion == 0 ? "1. Muévete con las flechas entre los discos.\n2. Pulsa verde para ver sus canciones.\n3. Elige una canción y pulsa verde para añadirla a la cola." :
-                    leccion == 1 ? "Mantén rojo y pulsa izquierda o derecha para cambiar de letra.\nPara abrir o cerrar el buscador, mantén rojo y pulsa arriba." :
-                    "Cada canción cuesta 1 crédito. Inserta una moneda si no tienes.\nDentro de un disco, rojo vuelve a la pared. En el buscador, rojo borra.";
-                g.DrawString(texto, cuerpo, tenue, new RectangleF(x, h * .31f, tw, h * .27f));
+                g.DrawString("¡HOLA! TE ACOMPAÑO PASO A PASO", pequeno, azul, new RectangleF(x, h * .045f, tw, h * .06f));
+                g.DrawString("¿Qué quieres hacer?", titulo, blanco, new RectangleF(x, h * .12f, tw, h * .17f));
+                g.DrawString("Elige y yo te voy señalando qué botón tocar. Tú lo haces y la música sigue sonando.",
+                    cuerpo, tenue, new RectangleF(x, h * .30f, tw, h * .19f));
                 formato.LineAlignment = StringAlignment.Center;
-                for (int i = 0; i < 2; i++)
+                string[] nombres = { "Poner una canción", "Buscar una canción por su nombre", "Aprender a moverme" };
+                for (int i = 0; i < AsistenteOpciones; i++)
                 {
                     Rectangle r = AsistenteOpcionRect(w, h, i);
                     using (GraphicsPath camino = RoundedPath(r, Math.Min(14, r.Height / 3)))
                     using (SolidBrush relleno = new SolidBrush(i == seleccion ? Color.FromArgb(235, 42, 87, 130) : Color.FromArgb(150, 28, 42, 68)))
                     using (Pen contorno = new Pen(i == seleccion ? Color.FromArgb(150, 235, 188) : Color.FromArgb(90, 113, 150), i == seleccion ? 2f : 1f))
                     { g.FillPath(relleno, camino); g.DrawPath(contorno, camino); }
-                    string nombre = pagina == 0 ? (i == 0 ? "Cómo usar la Rocola" : "Ayúdame a poner una canción") : pagina == 1 ?
-                        (i == 1 ? "Volver al inicio" : leccion < 2 ? "Siguiente paso" : "Poner una canción") : (i == 0 ? "Abrir el buscador" : "Prefiero explorar los discos");
-                    g.DrawString(nombre, opcion, blanco, new RectangleF(r.Left + 12, r.Top, Math.Max(1, r.Width - 24), r.Height), formato);
+                    g.DrawString(nombres[i], opcion, blanco, new RectangleF(r.Left + 12, r.Top, Math.Max(1, r.Width - 24), r.Height), formato);
                 }
-                g.DrawString("FLECHAS: elegir · VERDE: aceptar · ROJO: volver", pequeno, azul, new RectangleF(x, h * .93f, tw, h * .065f));
+                g.DrawString("FLECHAS: elegir · VERDE: aceptar · ROJO: salir", pequeno, azul, new RectangleF(x, h * .925f, tw, h * .065f));
             }
             return bmp;
         }
 
         private void SueltaAsistente()
         {
-            asistentePendiente = asistenteVisible = false;
+            asistenteVisible = false; asistenteMision = 0; asistenteLogroTick = 0;
             if (asistentePanel != null) { asistentePanel.Dispose(); asistentePanel = null; }
         }
 #endif

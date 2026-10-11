@@ -38,6 +38,10 @@ FUENTES="$FUENTES $RAIZ/Rocola/FuentesMedidas.cs $RAIZ/Rocola/PlanBiblioteca.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/MedidaFluidezGpu.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/MotorBusqueda.cs $RAIZ/Rocola/GuiaRojoGpu.cs $RAIZ/Rocola/AsistenteRocola.cs $RAIZ/Rocola/AsistenteEstrellaGpu.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/AsistentePersonalidadGpu.cs"
+# La casilla de AYUDA y la guia paso a paso de la estrella (11-10-2026, solo GPU).
+FUENTES="$FUENTES $RAIZ/Rocola/AyudaCasillaGpu.cs $RAIZ/Rocola/AsistenteGuiaRocola.cs"
+# Espacio natural, tanda del 11-10-2026: boveda, estrellas y fugaces, y la luna real (solo GPU).
+FUENTES="$FUENTES $RAIZ/Rocola/CieloNaturalMallaGpu.cs $RAIZ/Rocola/EstrellasNaturalesGpu.cs $RAIZ/Rocola/LunaRealGpu.cs"
 TMP_PRUEBAS="${TMPDIR:-/tmp}/rocola_pruebas_$$"
 FUENTES="$FUENTES $RAIZ/Rocola/AudioControles.cs $RAIZ/Rocola/Sonoridad.cs $RAIZ/Rocola/RellenoMp3.cs $RAIZ/Rocola/SinSilencios.cs $RAIZ/Rocola/SubirTodo.cs $RAIZ/Rocola/NivelDisco.cs $RAIZ/Rocola/BombaSonido.cs $RAIZ/Rocola/DiarioTablas.cs $RAIZ/Rocola/CancionEnMemoria.cs $RAIZ/Rocola/MedidasBitacora.cs $RAIZ/Rocola/FlotanteNLayer.cs $RAIZ/Rocola/PicoReal.cs $RAIZ/Rocola/Realce.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/ModoNoche.cs $RAIZ/Rocola/GraveMono.cs"
@@ -71,6 +75,8 @@ GPU="$GPU tironescaratulas"
 GPU="$GPU colacompacta cadenciavisual"
 GPU="$GPU naturalestelar nebulosanatural espacionatural espacionaturalhal"
 GPU="$GPU auroranatural opticanatural preparacionnatural acabadofinalnatural"
+# 'naturalideas': las 34 ideas de Espacio natural del 11-10-2026 (cuentas puras y enchufes; sin HAL ni FPS).
+GPU="$GPU naturalideas"
 CPU="$CPU ajustesfluidez"
 CPU="$CPU estilosconfig"
 GPU="$GPU estilosconfig"
@@ -78,6 +84,9 @@ CPU="$CPU asistentecombo buscainteligente"
 GPU="$GPU asistentecombo asistentevisual buscainteligente guiarojo"
 CPU="$CPU auditoriageneral"
 GPU="$GPU auditoriageneral"
+# 'ayudaguia': la casilla de AYUDA con su interrogacion y lo que dibuja la guia paso a paso (11-10-2026).
+GPU="$GPU ayudaguia"
+CPU="$CPU ayudaguia"
 # Y las que miran algo que SOLO EXISTE en la rama de tarjeta grafica. La limpieza de videos que no
 # suenan es una de esas: para saber si un video suena hay que descomprimir su sonido, y eso alli lo
 # hace Media Foundation, que llego con Windows Vista. En la rama de XP no hay con que, asi que ni

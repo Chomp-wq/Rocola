@@ -13,6 +13,9 @@ namespace Rocola
         public int Version;
         public AsistenteGestoGpu Gesto;
         public int Evento, Pagina, Leccion, Seleccion;
+        // Guiando (AsistenteGuiaRocola.cs): globo pequeno apartado, y lo que hay que senalar en pantalla.
+        public bool Guia, Logro;
+        public RectangleF Objetivo;
     }
 
     internal struct AsistentePoseGpu
@@ -59,6 +62,45 @@ namespace Rocola
             int reserva = Math.Min(132, Math.Max(48, (int)(h * .11f)));
             int alto = Math.Max(1, Math.Min(800, Math.Min((int)(h * .65f), h - y - reserva)));
             return new Rectangle(x, y, Math.Min(1120, Math.Max(1, w - x - margen)), alto);
+        }
+
+        // EL GLOBO PEQUENO DE LA GUIA. Mismo tamano siempre (el formulario lo hornea una vez por paso) y se
+        // coloca en la esquina contraria a lo que hay que mirar, para no taparlo. La estrella va a su izquierda.
+        internal static Size AsistenteGuiaTam(int w, int h)
+        {
+            w = Math.Max(1, w); h = Math.Max(1, h);
+            int gw = Math.Max(260, Math.Min(660, (int)(w * .40f))), gh = Math.Max(124, Math.Min(250, (int)(h * .22f)));
+            return new Size(Math.Max(1, Math.Min(gw, w - 16)), Math.Max(1, Math.Min(gh, h - 16)));
+        }
+        internal static float AsistenteGuiaRadio(int alto) { return Math.Max(8f, alto * .34f); }
+        internal static Rectangle AsistenteGuiaRect(int w, int h, RectangleF objetivo)
+        {
+            w = Math.Max(1, w); h = Math.Max(1, h);
+            Size s = AsistenteGuiaTam(w, h);
+            float radio = AsistenteGuiaRadio(s.Height);
+            int margen = Math.Min(16, Math.Max(4, w / 60));
+            int xIzq = Math.Min(Math.Max(0, w - s.Width), margen + (int)(radio * 2.9f)), xDer = Math.Max(0, w - margen - s.Width);
+            int reserva = Math.Min(132, Math.Max(48, (int)(h * .11f)));
+            int yArr = Math.Min(Math.Max(0, h - s.Height), Math.Max(8, (int)(h * .13f))), yAba = Math.Max(0, h - reserva - s.Height - 10);
+            bool vacio = !(objetivo.Width > 0) || !(objetivo.Height > 0);
+            float ox = vacio ? 0 : objetivo.X + objetivo.Width * .5f, oy = vacio ? 0 : objetivo.Y + objetivo.Height * .5f;
+            // Primero la esquina opuesta al objetivo; luego las otras tres, por orden de cercania a esa.
+            bool abajo = vacio || oy < h * .5f, derecha = vacio || ox < w * .5f;
+            int[] xs = { derecha ? xDer : xIzq, derecha ? xIzq : xDer, derecha ? xDer : xIzq, derecha ? xIzq : xDer };
+            int[] ys = { abajo ? yAba : yArr, abajo ? yAba : yArr, abajo ? yArr : yAba, abajo ? yArr : yAba };
+            Rectangle mejor = new Rectangle(xs[0], ys[0], s.Width, s.Height); float menor = float.MaxValue;
+            for (int i = 0; i < 4; i++)
+            {
+                Rectangle r = new Rectangle(xs[i], ys[i], s.Width, s.Height);
+                if (vacio) return r;
+                // Lo que tapa del objetivo, y la estrella (a la izquierda del globo) tampoco debe taparlo.
+                RectangleF ocupa = new RectangleF(r.Left - radio * 2.9f, r.Top - radio * .2f, r.Width + radio * 2.9f, r.Height + radio * .4f);
+                RectangleF cruce = RectangleF.Intersect(ocupa, RectangleF.Inflate(objetivo, 10, 10));
+                float tapa = cruce.Width > 0 && cruce.Height > 0 ? cruce.Width * cruce.Height : 0;
+                if (tapa <= 0) return r;
+                if (tapa < menor) { menor = tapa; mejor = r; }
+            }
+            return mejor;
         }
 
         internal static PointF AsistenteCentroFrente(int w, int h)
@@ -117,7 +159,7 @@ namespace Rocola
             if (asistenteTex != IntPtr.Zero)
             {
                 asistenteVer = asistenteEstado.Version; asistenteBmp = asistenteEstado.Panel;
-                int textoClave = asistenteEstado.Pagina * 4 + asistenteEstado.Leccion;
+                int textoClave = asistenteEstado.Pagina * 65536 + asistenteEstado.Leccion;
                 if (asistenteTextoClave != textoClave) {
                     asistenteTextoClave = textoClave;
                     asistenteTextoInicio = (cuadroMs >= 0 ? cuadroMs : AhoraMs()) / 1000;
@@ -161,10 +203,10 @@ namespace Rocola
             }
             if (!asistenteDibujando) return;
             AvanzaPersonalidad(ahora, entrada);
-            AsistentePoseGpu hasta = asistenteEstado.Visible
-                ? new AsistentePoseGpu { Centro = AsistenteCentroFrente(Width, Height),
-                    Radio = AsistenteRadioFrente(Width, Height), Pitch = .08, Miembros = 1, Alfa = 1 }
-                : AsistentePoseFondo();
+            double dtGuia = asistenteUltimoAvance < 0 ? 0 : Math.Max(0, Math.Min(.25, ahora - asistenteUltimoAvance));
+            asistenteUltimoAvance = ahora;
+            AvanzaGlobosGuia(dtGuia);
+            AsistentePoseGpu hasta = asistenteEstado.Visible ? AsistentePoseFrente() : AsistentePoseFondo();
             float sx = Width / (float)Math.Max(1, asistenteOrigenW);
             float sy = Height / (float)Math.Max(1, asistenteOrigenH);
             AsistentePoseGpu desde = asistenteDesde;
@@ -174,6 +216,21 @@ namespace Rocola
             // vuelta de golpe cuando el reloj musical ya paso de 2 pi.
             hasta.Yaw = desde.Yaw + AsistenteGiroCorto(hasta.Yaw - desde.Yaw);
             double t = asistenteEstado.Animada ? Math.Max(0, (ahora - asistenteInicio) / AsistenteSaltoSegundos) : 1;
+            // Ya en primer plano, va SIGUIENDO su sitio (del menu al globo de la guia, y de esquina a esquina
+            // cuando cambia lo que senala) en vez de saltar: amortiguado, sin sacudidas.
+            if (asistenteEstado.Visible && t >= 1)
+            {
+                if (!asistenteSigueListo) { asistenteSigue = hasta; asistenteSigueListo = true; }
+                else
+                {
+                    float k = asistenteEstado.Animada ? 1 - (float)Math.Exp(-dtGuia * 6) : 1;
+                    asistenteSigue.Centro = new PointF(asistenteSigue.Centro.X + (hasta.Centro.X - asistenteSigue.Centro.X) * k,
+                        asistenteSigue.Centro.Y + (hasta.Centro.Y - asistenteSigue.Centro.Y) * k);
+                    asistenteSigue.Radio += (hasta.Radio - asistenteSigue.Radio) * k;
+                }
+                hasta.Centro = asistenteSigue.Centro; hasta.Radio = asistenteSigue.Radio;
+            }
+            else asistenteSigueListo = false;
             float p = AsistenteSuaviza(t);
             asistentePose.Centro = AsistenteTrayecto(desde.Centro, hasta.Centro, t, Height * .075f);
             // El arco nunca sale por el borde superior de la pantalla.
@@ -204,13 +261,18 @@ namespace Rocola
         {
             if (!asistenteDibujando || stars == null) return;
             float presencia = SafeMoonLevel(asistenteFrente);
+            bool guia = asistenteEstado.Visible ? asistenteEstado.Guia : asistenteGuiaListo;
+            if (guia) DibujaFocoGuia(presencia);   // guiando: se ve la Rocola, con foco en lo que toca usar
+            else
+            {
             uint velo = ((uint)(presencia * 138) << 24) | 0x00060B1Du;
             if ((velo >> 24) != 0)
             {
                 SetTexQuadA(asistenteVelo, 0, 0, Width, Height, 1, 1, velo);
                 stars.DrawColorQuad(asistenteVelo); // despues de toda la UI; nunca se atenúa el sonido
             }
-            Rectangle panel = AsistentePanelRect(Width, Height);
+            }
+            Rectangle panel = guia ? Rectangle.Round(asistenteGuiaPanel) : AsistentePanelRect(Width, Height);
             float entradaPanel = AsistenteSuaviza((presencia - .13) / .72);
             float panelAlpha = entradaPanel;
             // El mensaje nuevo respira sin mover las opciones ni reescribir el
@@ -234,7 +296,7 @@ namespace Rocola
                 stars.GlowBatchAdd(cx, cy, radio * 1.43f, ((uint)(46 * presencia * alfa) << 24) | tinte);
                 stars.GlowBatchAdd(cx, cy + radio * 1.46f, radio * .6f, ((uint)(18 * presencia * alfa) << 24) | tinte);
                 stars.GlowBatchEnd();
-                int n = AsistenteMiembrosExpresivos(asistenteMiembros, cx, cy, radio, presencia, alfa, asistenteExpresion, asistentePose.Giro);
+                int n = AsistenteMiembrosExpresivos(asistenteMiembros, cx, cy, radio, presencia, alfa, ExpresionGuia(cx, cy, presencia), asistentePose.Giro);
                 if (n > 0) stars.DrawMesh(asistenteMiembros, n / 3);
             }
             uint color = StarColorAt(cx, cy);
@@ -255,8 +317,9 @@ namespace Rocola
                 RotateStarQuad(lunaQuad, cx, cy, asistentePose.Giro);
                 stars.DrawQuad(lunaTex, lunaQuad);
             }
-            int brazos = AsistenteBrazosExpresivos(asistenteBrazos, cx, cy, radio, presencia, alfa, asistenteExpresion, asistentePose.Giro);
+            int brazos = AsistenteBrazosExpresivos(asistenteBrazos, cx, cy, radio, presencia, alfa, ExpresionGuia(cx, cy, presencia), asistentePose.Giro);
             if (brazos > 0) stars.DrawMesh(asistenteBrazos, brazos / 3);
+            if (guia && asistenteEstado.Visible) DibujaFlechaGuia(cx, cy, radio, presencia);
         }
 
         // Geometria negra con extremos redondos y filo suavizado. Se puede probar

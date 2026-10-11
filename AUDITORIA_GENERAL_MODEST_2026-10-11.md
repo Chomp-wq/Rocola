@@ -73,6 +73,18 @@ El limite y los modos de direccionamiento proceden de las interfaces oficiales
 y [direccionamiento de texturas](https://learn.microsoft.com/en-us/windows/win32/direct3d9/texture-addressing-modes).
 Las teselas, su margen y la gestion de referencias son decisiones de esta implementacion.
 
+## Integracion de los cambios recientes de GitHub
+
+Al publicar se encontraron las revisiones `db5fc30` (34 ideas de Espacio natural)
+y `3a3381b` (ayuda guiada). Se conservan mediante merge normal, sin forzar ni
+reemplazar sus cambios. El unico conflicto era la lista de pruebas en `todo.sh`:
+quedan incluidas tanto la auditoria como `ayudaguia`.
+Las correcciones enumeradas arriba no son una retirada del fondo o de la ayuda
+nuevos; sus reglas de uso estan en los informes de esas revisiones.
+El fetch general de este checkout solo seguia HD: se consulto y actualizo
+explicitamente la referencia remota de Modest. No fiarse de una referencia
+local antigua para decidir que no hay cambios nuevos antes de publicar.
+
 ## Verificacion reproducible
 
 `pruebas/validar-auditoria-general.ps1 -OutputDirectory <carpeta-temporal>`
@@ -88,6 +100,9 @@ advertencias como errores. No abre la Rocola de produccion ni un dispositivo de 
   sucia, bordes, actualizacion parcial, uniones bilineales en geometria animada,
   referencias compartidas entre consumidores reales, dispositivos distintos,
   liberacion del panel y fallos de creacion. No mide FPS ni representa una GPU vieja.
+- Integracion: `naturalideas`, 709 comprobaciones; `ayudaguia`, 8.319 GPU y un
+  control de ausencia de esa interfaz en CPU. Cuentas, cableado y dibujos
+  artificiales; no capturas HAL ni mediciones de fluidez reales.
 - `validar-capas.ps1 -SinHal`: 71 baterias generales del programa sobre la revision
   final. El flag omite la comparacion visual HAL opcional; otras baterias conservan
   sus fixtures graficos sinteticos. No es una medicion real con biblioteca/musica.

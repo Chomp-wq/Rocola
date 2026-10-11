@@ -153,6 +153,21 @@ namespace Rocola
             float b = .97f * (.78f + .22f * tb) * luz + .97f * reflejo;
             return (alfa << 24) | (Byte(r) << 16) | (Byte(g) << 8) | Byte(b);
         }
+        // 24 y 25) El mismo metal, pero en su cielo: las caras que miran arriba toman algo del azul de la
+        // noche y las que miran abajo el de la aurora; y las que se ven de canto encienden el borde, como el
+        // metal de verdad (Fresnel). Mismas veinte caras y la misma normal que ya se calculaba.
+        internal static uint ColorCaraNaturalEntorno(uint tinte, float luz, float reflejo, uint alfa,
+                                                     float nx, float ny, float nz, uint aurora)
+        {
+            uint c = ColorCaraNatural(tinte, luz, reflejo, alfa);
+            float r = ((c >> 16) & 255) / 255f, g = ((c >> 8) & 255) / 255f, b = (c & 255) / 255f;
+            float arriba = ny > 0f ? ny : 0f, abajo = ny < 0f ? -ny : 0f;
+            float ar = ((aurora >> 16) & 255) / 255f, ag = ((aurora >> 8) & 255) / 255f, ab = (aurora & 255) / 255f;
+            r += .10f * arriba + .20f * abajo * ar; g += .17f * arriba + .20f * abajo * ag; b += .32f * arriba + .20f * abajo * ab;
+            float canto = 1f - (nz > 0f ? nz : 0f); canto = canto * canto * canto;
+            r += .42f * canto; g += .46f * canto; b += .52f * canto;
+            return (alfa << 24) | (Byte(r) << 16) | (Byte(g) << 8) | Byte(b);
+        }
         private static uint Byte(float v) { return v <= 0f ? 0u : v >= 1f ? 255u : (uint)(v * 255f + .5f); }
     }
 
@@ -216,10 +231,17 @@ namespace Rocola
             {
                 int a = Estrella3d.CA[mejor], b = Estrella3d.CB[mejor], c = Estrella3d.CC[mejor];
                 float gx = (e3px[a] + e3px[b] + e3px[c]) / 3f, gy = (e3py[a] + e3py[b] + e3py[c]) / 3f;
+                if (FondoNatural)   // 26) el destello sale con los rayos del atlas de estrellas, no como un circulo
+                    stars.DrawDestello(gx, gy, r * (.30f + .42f * brillo), ((uint)(200 * Math.Min(1f, brillo)) << 24) | 0xF1F7FFu);
+                else
+                {
                 stars.GlowBatchBegin(1);
                 stars.GlowBatchAdd(gx, gy, r * (FondoNatural ? (.08f + .13f * brillo) : (.14f + .22f * brillo)), ((uint)((FondoNatural ? 175 : 210) * Math.Min(1f, brillo)) << 24) | 0xF1F7FFu);
                 stars.GlowBatchEnd();
+                }
             }
+            // 30) La corona del proximo cuadro sube un poco cuando pasa el destello (suavizado).
+            destelloCorona += ((mejor >= 0 ? Math.Min(1f, brillo) : 0f) - destelloCorona) * .25f;
         }
 
         // Una pose de la estrella en triangulos: sus caras visibles de atras hacia adelante en 'caras' y la franja de
@@ -240,7 +262,8 @@ namespace Rocola
                 float refl;
                 float luz = Estrella3d.Luz(e3nx[c], e3ny[c], e3nz[c], LunaRealista && !eco, out refl);
                 uint col = FondoNatural
-                    ? (eco ? ColorEcoNatural(tinte, luz, a8) : Estrella3d.ColorCaraNatural(tinte, LunaRealista ? luz : .45f + .55f * luz, refl, a8))
+                    ? (eco ? ColorEcoNatural(tinte, luz, a8) : Estrella3d.ColorCaraNaturalEntorno(tinte, LunaRealista ? luz : .45f + .55f * luz, refl, a8,
+                        e3nx[c], e3ny[c], e3nz[c], AuroraReal ? 0x5AE69Au : tinte))
                     : (eco ? ColorEco(tinte, luz, a8) : Estrella3d.ColorCara(tinte, LunaRealista ? luz : .45f + .55f * luz, refl, a8));
                 e3col[c] = col;
                 if (refl > brillo) { brillo = refl; mejor = c; }
@@ -302,6 +325,43 @@ namespace Rocola
             uint a = (c >> 24) / 2, r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255;
             r = r + (255 - r) / 3; g = g + (255 - g) / 3; b = b + (255 - b) / 3;
             return (a << 24) | (r << 16) | (g << 8) | b;
+        }
+
+        private float destelloCorona;
+        internal static float EdadEco(double edad, double vida)
+        {
+            if (double.IsNaN(edad) || !(vida > 0)) return 0f;
+            double e = edad / vida;
+            return e <= 0 ? 0f : e >= 1 ? 1f : (float)e;
+        }
+        private static void EnvejeceVertice(ref D3D9.Vtx v, float cx, float cy, float abre, float gris)
+        {
+            v.X = cx + (v.X - cx) * abre; v.Y = cy + (v.Y - cy) * abre;
+            uint c = v.Color;
+            int r = (int)((c >> 16) & 255), g = (int)((c >> 8) & 255), b = (int)(c & 255);
+            int l = (r * 77 + g * 151 + b * 28) >> 8;
+            r += (int)((l - r) * gris); g += (int)((l - g) * gris); b += (int)((l + 12 - b) * gris);
+            if (b > 255) b = 255;
+            v.Color = (c & 0xFF000000u) | ((uint)r << 16) | ((uint)g << 8) | (uint)b;
+        }
+        // 27) Se ladea hacia donde gira, como un avion. Se mide el giro del rumbo en pantalla, suavizado.
+        private double bancoMs = -1; private float bancoX, bancoY, bancoVx, bancoVy, bancoGiro, banco;
+        private float BancoNatural(double now, float cx, float cy)
+        {
+            double dt = now - bancoMs;
+            if (bancoMs < 0 || !(dt > 0) || dt > .25 || !LunaActiva)
+            { bancoMs = now; bancoX = cx; bancoY = cy; bancoVx = bancoVy = 0; banco *= .9f; return banco; }
+            float k = 1f - (float)Math.Exp(-dt * 5);
+            float vx = (float)((cx - bancoX) / dt), vy = (float)((cy - bancoY) / dt);
+            float nvx = bancoVx + (vx - bancoVx) * k, nvy = bancoVy + (vy - bancoVy) * k;
+            float v1 = bancoVx * bancoVx + bancoVy * bancoVy, v2 = nvx * nvx + nvy * nvy;
+            float giro = 0f;
+            if (v1 > 4f && v2 > 4f) giro = (float)(Math.Atan2(bancoVx * nvy - bancoVy * nvx, bancoVx * nvx + bancoVy * nvy) / dt);
+            bancoGiro += (giro - bancoGiro) * (1f - (float)Math.Exp(-dt * 3));
+            float meta = Math.Max(-.42f, Math.Min(.42f, bancoGiro * .9f));
+            banco += (meta - banco) * (1f - (float)Math.Exp(-dt * 2.5));
+            bancoMs = now; bancoX = cx; bancoY = cy; bancoVx = nvx; bancoVy = nvy;
+            return banco;
         }
 
         private void UpdateStarEchoes3d(double now, float x, float y, float r, double yaw, double pitch, float roll, uint color)
@@ -366,16 +426,22 @@ namespace Rocola
                 // Mismo redondeo que PoseEstrella; el filo aditivo usa alfa entero / 2.
                 float alfa = alpha * 255f;
                 uint a8 = alfa <= 0 ? 0u : alfa >= 255 ? 255u : (uint)(alfa + .5f);
+                // 29) Natural: la copia envejece, pierde color y se abre un poco, como un holograma que se
+                // disipa. Solo son cuentas sobre la pose ya guardada: ni se reproyecta ni se reserva nada.
+                float edad = FondoNatural ? EdadEco(now - echo.Time, EcoVida) : 0f;
+                float abre = 1f + .35f * edad, gris = .70f * edad;
                 for (int k = 0; k < e3ecoN[slot]; k++)
                 {
                     D3D9.Vtx vertex = e3ecoPose[c0 + k];
                     vertex.Color = (a8 << 24) | (vertex.Color & 0xFFFFFFu);
+                    if (edad > 0f) EnvejeceVertice(ref vertex, echo.X, echo.Y, abre, gris);
                     e3ecos[v++] = vertex;
                 }
                 for (int k = 0; k < e3ecoBordeN[slot]; k++)
                 {
                     D3D9.Vtx vertex = e3ecoBorde[f0 + k];
                     vertex.Color = (vertex.Color & 0xFFFFFFu) | (vertex.Color >= 0x1000000u ? (a8 / 2) << 24 : 0u);
+                    if (edad > 0f) EnvejeceVertice(ref vertex, echo.X, echo.Y, abre, gris);
                     e3ecoFilo[f++] = vertex;
                 }
             }

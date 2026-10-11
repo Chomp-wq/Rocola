@@ -57,7 +57,20 @@ class EcosGeometria
             object[] a = { faces, n, rim, f, Get(e,"X"), Get(e,"Y"), Get(e,"Radius"), Get(e,"Yaw"),
                 (double)(float)Get(e,"Pitch"), (double)(float)Get(e,"Angle"), Get(e,"Color"), alpha * 255f,
                 true, natural ? 1.05f : 1.8f, 0, 0, 0f };
-            n += (int)pose.Invoke(panel, a); f += (int)a[14];
+            int caras = (int)pose.Invoke(panel, a), bordes = (int)a[14];
+            if (natural)
+            {
+                // Natural (11-10-2026, idea 29): la copia envejece; misma cuenta que la cache, sin ella.
+                float edad = (float)type.GetMethod("EdadEco", B).Invoke(null, new object[] { age, (double)type.GetField("EcoVida", B).GetValue(null) });
+                if (edad > 0f)
+                {
+                    MethodInfo viejo = type.GetMethod("EnvejeceVertice", B);
+                    float cx = (float)Get(e, "X"), cy = (float)Get(e, "Y"), abre = 1f + .35f * edad, gris = .70f * edad;
+                    for (int k = n; k < n + caras; k++) { object[] va = { faces.GetValue(k), cx, cy, abre, gris }; viejo.Invoke(null, va); faces.SetValue(va[0], k); }
+                    for (int k = f; k < f + bordes; k++) { object[] va = { rim.GetValue(k), cx, cy, abre, gris }; viejo.Invoke(null, va); rim.SetValue(va[0], k); }
+                }
+            }
+            n += caras; f += bordes;
         }
     }
     static void Compare(object panel, object reference, Array ring, int head, int count, double now, float visibility, bool natural)
