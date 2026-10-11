@@ -14,7 +14,7 @@ namespace Rocola
         private bool GuiaRojoVisible()
         {
             return GuiaRojoActiva(guiaRojo, gpuEnabled, ContainsFocus, BackHeld(),
-                maintMode || libBuilding || videoFull || searchOpen || attractOn || configMode
+                maintMode || libBuilding || videoFull || searchOpen || attractOn || configMode || AsistenteVisible
                 || (panelSongs != null && panelSongs.Visible)
                 || letterBar == null || !letterBar.Visible);
         }

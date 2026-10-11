@@ -3175,7 +3175,11 @@ namespace Rocola
             searchOpen = false;
             UpdateSecretCredits();
             searchOverlay.Visible = false;
-            if (videoOn && video != null) { video.Visible = true; video.BringToFront(); }
+            if (videoOn && video != null) { video.Visible = true;
+#if ROCOLA_GPU
+                if (AsistenteVisible) video.Visible = false;
+#endif
+                if (video.Visible) video.BringToFront(); }
             this.Focus();
 #if ROCOLA_GPU
             // Aplica el cambio de modo YA (no esperes al proximo AnimTimer, ~40ms). SyncGpuFullScreen detecta la

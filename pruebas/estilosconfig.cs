@@ -130,6 +130,12 @@ class EstilosConfig
             object readGuide = Owner(); Call(form, readGuide, "LoadConfigPrefs");
             Check((bool)Get(readGuide, "guiaRojo") == guide, "Guía roja restaura su opción");
         }
+        foreach (bool animated in new bool[] { false, true }) {
+            Set(owner, "asistenteAnimado", animated); Call(form, owner, "SaveConfigPrefs"); Codigo.EsperaGuardado(form, owner);
+            Check(File.ReadAllText(path).Contains("asistente_animado=" + (animated ? "1" : "0")), "Animación del asistente se guarda");
+            object readAssistant = Owner(); Call(form, readAssistant, "LoadConfigPrefs");
+            Check((bool)Get(readAssistant, "asistenteAnimado") == animated, "Animación del asistente restaura su opción");
+        }
         foreach (string key in new string[] { "estilo_fondo=", "ESTILO_FONDO=", "Estilo_Fondo=" })
             foreach (string value in new string[] { "legacy", "LEGACY ", "natural", " Natural ", "raro" }) {
                 File.WriteAllText(path, "  " + key + value + "\r\n");

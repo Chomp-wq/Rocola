@@ -3,11 +3,11 @@
 //
 // BOTONES DE LA ROCOLA (configurables): la primera vez la rocola pide presionar cada boton
 // y los guarda en rocola_teclas.txt (junto al .exe). Funciones:
-//   ARRIBA / ABAJO  = pagina   (con REGRESAR mantenido = salta de letra A, B, C...)
-//   IZQUIERDA / DERECHA = mover de disco
+//   ARRIBA / ABAJO  = pagina
+//   IZQUIERDA / DERECHA = mover de disco (con REGRESAR mantenido = salta de letra A, B, C...)
 //   PONER  = entrar / poner cancion        REGRESAR = volver
 //   MONEDA = credito                       SALTAR = saltar la cancion actual
-//   BUSCAR = manten REGRESAR y presiona PONER
+//   BUSCAR = manten REGRESAR y presiona ARRIBA. AYUDA GPU = ROJO + VERDE durante 3 segundos.
 // Para reconfigurar botones: F8 (teclado de PC). F5 = re-escanear musica. F10 = pausa de mantenimiento.
 
 using System;
@@ -769,6 +769,9 @@ namespace Rocola
 
         protected override void OnFormClosed(FormClosedEventArgs e)
         {
+#if ROCOLA_GPU
+            SueltaAsistente();
+#endif
             try { if (statsDirty) { statsDirty = false; SaveStats(false); } } catch { }   // guardar estadisticas pendientes
             try { GuardaNoche(false); } catch { }   // y lo mas pedido esta noche (AtraccionGpu.cs)
             WaitDataWrites(5000);   // ultima barrera por si Windows cerro la ventana por otra ruta
@@ -954,6 +957,9 @@ namespace Rocola
         // Entrada de texto del buscador: cualquier caracter imprimible (incluye Ñ, acentos, comillas) y Borrar.
         private void Form_KeyPress(object sender, KeyPressEventArgs e)
         {
+#if ROCOLA_GPU
+            if (AsistenteVisible || asistentePendiente || (asistenteCombo != null && asistenteCombo.Capturada)) { e.Handled = true; return; }
+#endif
             if (!searchOpen) return;
             char c = e.KeyChar;
             if (c == '\b') { searchOverlay.Backspace(); MarkSearchActivity(); e.Handled = true; return; }
@@ -1517,6 +1523,9 @@ namespace Rocola
                 int vh = Math.Max(90, albumBottom - vy);
                 video.SetBounds(vx, vy, vw, vh);
                 video.Visible = videoOn && !searchOpen;   // garantia: oculto si no hay video sonando (o si el buscador esta abierto)
+#if ROCOLA_GPU
+                if (AsistenteVisible) video.Visible = false;
+#endif
             }
 
             LayoutSongsPanel();
@@ -1958,17 +1967,27 @@ namespace Rocola
             // ===== ENTRADAS ESPECIALES: SIEMPRE funcionan (buscador, video en pantalla completa, donde sea) =====
             // MONEDA (filtra AUTO-REPETICION: si la señal queda "mantenida", el teclado la repite y sumaria
             // creditos de mas; cada pulso real del monedero trae su propio pulsar/soltar y pasa siempre)
-            if (IsCoin(kc)) { if ((msg.LParam.ToInt64() & 0x40000000) == 0) { if (wasFull) ExitVideoFull(); AddCoin(); } return true; }
+            if (IsCoin(kc)) {
+#if ROCOLA_GPU
+                InterrumpeComboAsistente();
+#endif
+                if ((msg.LParam.ToInt64() & 0x40000000) == 0) { if (wasFull) ExitVideoFull(); AddCoin(); } return true; }
 
             // SALTAR: salta la cancion/video actual SIEMPRE (filtra auto-repeticion)
             if (IsSkip(kc) && (msg.LParam.ToInt64() & 0x40000000) == 0)
             {
+#if ROCOLA_GPU
+                InterrumpeComboAsistente();
+#endif
                 SkipSong();   // si el video estaba en pantalla completa, StopVideoPlayback ya sale de ella
                 return true;
             }
 
             // Cualquier OTRA tecla, si el video esta en pantalla completa, solo "despierta" la rocola.
             if (wasFull) { ExitVideoFull(); return true; }
+#if ROCOLA_GPU
+            if (AsistenteEntrada(keyData, ref msg)) return true;
+#endif
 
             // BRILLO DE INSTRUCCIONES: al pulsar un boton fisico, resalta su simbolo en la barra de ayuda.
             // Mover: arriba/abajo ROJO, izq/der AMARILLO (como las flechas de la cruceta). Guia visual.
@@ -2074,7 +2093,7 @@ namespace Rocola
                         searchOverlay.PressSelected();
                     return true;
                 }
-                if (IsBack(kc)) { searchOverlay.Backspace(); return true; }   // REGRESAR = borrar letra; cerrar = REGRESAR+PONER
+                if (IsBack(kc)) { searchOverlay.Backspace(); return true; }   // REGRESAR = borrar letra; cerrar = REGRESAR+ARRIBA
                 // letras, numeros, Ñ, acentos, comillas, espacio y BORRAR los entrega KeyPress (admite TODO caracter)
                 return base.ProcessCmdKey(ref msg, keyData);
             }
@@ -2212,6 +2231,7 @@ namespace Rocola
             // este reloj, y en dos nucleos ese rato de procesador es del lector.
             if (arranqueEnEspera) return;
 #if ROCOLA_GPU
+            TickAsistenteGpu();
             EnsureCoverReaders(); // rearmar la cola cuando el regulador recupera margen
 #endif
             phase += 0.045;

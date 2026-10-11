@@ -218,7 +218,7 @@ namespace Rocola
             swE[1].CheckedChanged += delegate { colorGenero = swE[1].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             swE[2].CheckedChanged += delegate { textosDeslizantes = swE[2].Checked; CambioElPanelDeReposo(); AplicaEfectosGpu(); f3CambioGraf = true; };
             // LA TANDA 6, debajo del estilo: el buscador con portadas (BuscadorPortadasGpu.cs).
-            Tarjeta tBus = new Tarjeta(); tBus.SetBounds(488, 272, 456, 112); tBus.Titulo = "EL BUSCADOR"; tBus.Acento = cAc;
+            Tarjeta tBus = new Tarjeta(); tBus.SetBounds(488, 268, 456, 184); tBus.Titulo = "BUSCADOR Y AYUDA"; tBus.Acento = cAc;
             Interruptor swB = new Interruptor(); swB.SetBounds(16, 40, 424, 26);
             swB.Font = fNom; swB.ForeColor = cTexto; swB.Acento = cAc;
             swB.Text = "Buscador con portadas (GPU)"; swB.Checked = buscadorPortadas;
@@ -228,6 +228,14 @@ namespace Rocola
                      + "atajos: lo m\u00e1s pedido hoy, videos, karaoke y lo \u00faltimo buscado.";
             tBus.Controls.Add(swB); tBus.Controls.Add(leB);
             swB.CheckedChanged += delegate { buscadorPortadas = swB.Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            Interruptor swAyuda = new Interruptor(); swAyuda.SetBounds(16, 112, 424, 26);
+            swAyuda.Font = fNom; swAyuda.ForeColor = cTexto; swAyuda.Acento = cAc;
+            swAyuda.Text = "Animación del asistente (GPU)"; swAyuda.Checked = asistenteAnimado;
+            Label leAyuda = new Label(); leAyuda.SetBounds(16, 142, 424, 32);
+            leAyuda.BackColor = Color.Transparent; leAyuda.ForeColor = cTenue; leAyuda.Font = fDes;
+            leAyuda.Text = "Rojo + verde 3 segundos: ayuda. Este ajuste controla el salto\ny los gestos de la estrella; la ayuda sigue funcionando.";
+            tBus.Controls.Add(swAyuda); tBus.Controls.Add(leAyuda);
+            swAyuda.CheckedChanged += delegate { asistenteAnimado = swAyuda.Checked; f3CambioGraf = true; };
             Label lPie = new Label(); lPie.SetBounds(16, 508, 928, 48); lPie.BackColor = Color.Transparent;
             lPie.ForeColor = cApagado; lPie.Font = fDes;
             lPie.Text = "Las ideas que se eligieron del lienzo de bocetos. Solo se ven con la tarjeta grafica: sin ella la pantalla\n"
@@ -241,7 +249,7 @@ namespace Rocola
                 suenaGrande = monedaCae = sinCreditosInvita = avisosClaros = true;
                 escaparate = topNoche = true;
                 letraLejos = colorGenero = textosDeslizantes = true;
-                buscadorPortadas = true;
+                buscadorPortadas = asistenteAnimado = true;
                 caratulasCarga = 0;
                 hSuena.Controls.Remove(tCarga); tCarga.Dispose();
                 tCarga = TarjetaCargaCaratulas(fNom, fDes, cTexto, cTenue);
@@ -252,6 +260,7 @@ namespace Rocola
                 for (int i = 0; i < swA.Length; i++) swA[i].Checked = true;
                 for (int i = 0; i < swE.Length; i++) swE[i].Checked = true;
                 swB.Checked = true;
+                swAyuda.Checked = true;
                 f3CambioGraf = true; AplicaEfectosGpu();
                 ShowToast("Pantalla como de fabrica", Color.FromArgb(40, 130, 90));
             };

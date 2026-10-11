@@ -2312,6 +2312,7 @@ namespace Rocola
             SueltaDiscoVivo();      // el vinilo y el boleto
             SueltaSuenaVivo();      // los avisos, la invitacion, la moneda y lo del panel de reposo
             SueltaAtraccion();      // las fichas del escaparate, sus mensajes y la lista de la noche
+            SueltaAsistente();      // panel prestado del asistente y su textura GPU
             if (uiTex != IntPtr.Zero) { D3D9.Release(uiTex); uiTex = IntPtr.Zero; }
             if (hazTex != IntPtr.Zero) { D3D9.Release(hazTex); hazTex = IntPtr.Zero; }
             if (nebTex != IntPtr.Zero) { D3D9.Release(nebTex); nebTex = IntPtr.Zero; }
@@ -2563,6 +2564,7 @@ namespace Rocola
             PreparaCintasTexto();
             EnsureNieblas();               // la via lactea y las nebulosas (una vez por tamano de pantalla)
             EnsureVineta();
+            PreparaAsistente(); // texto/seleccion: una sola subida cuando realmente cambian
             EnsureLuna(); // ninguna reserva/subida de la luna dentro de Begin
             stars.EstrellasFinas = EstrellasFinas;
             if (ShowFps) EnsureFpsTex();   // crea/actualiza la textura del contador ANTES de Begin (solo si se pide, Ctrl+F1)
@@ -2606,6 +2608,7 @@ namespace Rocola
             // La precarga opcional tambien puede consumir el refresco previsto. Actualizar la estrella
             // DESPUES de ese trabajo, no antes, para que no conserve una pose de un plazo ya vencido.
             UpdateMoonMusic(pulseCrudo);
+            AvanzaAsistente(); // reloj fino de ESTE cuadro, independiente del timer de la UI
             double antesDibujo = AhoraMs();
             if (!stars.Begin(Width, Height, pulse, pulseCrudo)) { System.Threading.Thread.Sleep(5); return NoPresentado(); }
             // Adornos solo del fondo: antes del muro y de toda la interfaz.
@@ -2803,6 +2806,7 @@ namespace Rocola
                 stars.DrawQuad(toastTex, toastQuad);
             }
             DibujaAviso();   // el aviso claro (SuenaVivoGpu.cs): en el sitio del de siempre, encima de todo
+            DibujaAsistente(); // personaje y ayuda delante de todas las vistas; musica sigue intacta
             // Contador de FPS (diagnostico) encima de todo, en su textura pequeña. Oculto por defecto (Ctrl+F1).
             if (ShowFps && fpsTex != IntPtr.Zero) { SetTexQuadA(fpsQuad, Width - fpsTW - 10, 6, Width - 10, 6 + fpsTH, fpsU, fpsV, 0xFFFFFFFFu); stars.DrawQuad(fpsTex, fpsQuad); }
             // El cronometro se para AQUI, justo antes de End: dentro de End esta Present, que es donde se
@@ -3342,7 +3346,7 @@ namespace Rocola
         private D3D9.Vtx[] lunaQuad = new D3D9.Vtx[6];
         private void EnsureLuna()
         {
-            if (!ConLuna || Height < 64) return;
+            if ((!ConLuna && (!AsistenteOcultaFondo || Estrella3D)) || Height < 64) return;
             int moonKey = MoonTextureSize;
             if (lunaTex == IntPtr.Zero || lunaDe != moonKey || lunaDetalleDe != LunaRealista || lunaEstiloDe != FondoNatural)
             {
@@ -3357,6 +3361,7 @@ namespace Rocola
         }
         private void DibujaLuna()
         {
+            if (AsistenteOcultaFondo) return; // no duplicar estrella ni ecos durante el viaje al frente
             if (!ConLuna || Height < 64) return;
             if (lunaTex == IntPtr.Zero) return;
             DrawDetailedMoon();

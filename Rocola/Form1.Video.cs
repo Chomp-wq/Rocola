@@ -248,6 +248,9 @@ namespace Rocola
                     IntPtr forceHandle = video.Handle;   // fuerza la creacion del control ActiveX
                 }
                 video.Visible = !searchOpen;   // si el buscador esta abierto, el cuadro queda oculto (el audio sigue)
+#if ROCOLA_GPU
+                if (AsistenteVisible) video.Visible = false;
+#endif
 
                 object ocx = video.GetOcxObj();
                 if (ocx == null) throw new Exception("control WMP nulo");
@@ -806,6 +809,8 @@ namespace Rocola
                 gpuPanel.MouseWheel += delegate { lastInput = DateTime.Now; gpuPanel.IdleExpandTarget = false; gpuPanel.TouchUi(); };
                 gpuPanel.MouseClick += delegate(object sender, MouseEventArgs e)
                 {
+                    if (AsistenteVisible || asistentePendiente || (asistenteCombo != null && asistenteCombo.Capturada))
+                    { if (e.Button == MouseButtons.Left) AsistenteClick(e.Location); return; }
                     // El control del buscador esta oculto al componer por GPU: reenviar
                     // el clic real usando sus coordenadas, sin duplicar la seleccion.
                     if (e.Button != MouseButtons.Left || !searchOpen || gpuMode != 2 ||
@@ -880,6 +885,7 @@ namespace Rocola
                 gpuPanel.GetUiBotVersion = delegate { return EnsureUiBotOverlay(); };
                 gpuPanel.GetUiBotCambio = UiBotCambioDesde;   // y que trozo cambio (el reloj y la barra: FranjaLigeraGpu.cs)
                 gpuPanel.GetUiGlows = FillUiGlows;                                   // halos animados (destello de boton, pulso de letra, TOP, atraccion): quads GPU, sin re-subir textura
+                gpuPanel.GetAsistenteState = BuildAsistenteState;
                 // Las piezas vivas del buscador (tarjeta y tecla elegidas): imagenes chicas aparte, encima de
                 // la grande. Sin esto, mover el recuadro re-subia la pantalla completa (ver EnsureUiPieza).
                 gpuPanel.PiezasN = NumPiezas;
@@ -1033,7 +1039,7 @@ namespace Rocola
         // (ambos se componen por GPU). En disco/video/atraccion/config se oculta y deja ver los controles CPU.
         // El cuadro del video (WMP) es una ventana HIJA hermana del panel GPU: si el panel acaba de
         // mostrarse, su BringToFront lo dejo por delante y taparia el video. Esto lo regresa arriba.
-        private void KeepVideoOnTop() { try { if (videoOn && video != null && video.Visible) video.BringToFront(); } catch { } }
+        private void KeepVideoOnTop() { try { if (!AsistenteVisible && videoOn && video != null && video.Visible) video.BringToFront(); } catch { } }
 
         private void SyncGpuFullScreen()
         {
@@ -1047,7 +1053,7 @@ namespace Rocola
             // del video queda ENCIMA del panel (KeepVideoOnTop) y Windows recorta el panel donde el video
             // esta: no se pisan. Si en algun fierro se viera mal, video_gpu=0 vuelve al comportamiento de
             // antes. El video a PANTALLA COMPLETA si sigue apagando el panel: ahi el es dueno de todo.
-            bool videoBlocks = videoOn && !videoGpuOn;
+            bool videoBlocks = videoOn && !videoGpuOn && !AsistenteVisible;
             bool notBlockedByVideoCfg = !videoBlocks && !videoFull && !cfgOn;
             bool noBlock = notBlockedByVideoCfg && !attractOn;
             bool disc = panelSongs != null && panelSongs.Visible;
@@ -1071,6 +1077,7 @@ namespace Rocola
             // (ShowAlbum, cubos): si no, se ve un instante el modo viejo detras del nuevo (p.ej. la rejilla de
             // discos por los huecos del teclado al cerrar el buscador). UiUrgent salta la limitacion de franja.
             int mode = search ? 2 : discGpu ? 3 : attract ? 4 : nav ? 1 : 0;
+            if (AsistenteVisible && !cfgOn && !videoFull && mode == 0) mode = 1;
             gpuPanel.SetScene(mode);
             if (mode != gpuMode) { gpuMode = mode; uiOverlaySig = SigNada; gpuPanel.UiUrgent = true; Diag("render: modo GPU " + mode + (videoOn ? " (video sonando)" : "")); }
             // Mientras el video SE VE, el panel baja a ~30 cuadros por segundo: el resto del equipo es para
@@ -1082,8 +1089,8 @@ namespace Rocola
             // video tiene los suyos y limitar el dibujado solo hace que se vea peor sin ganar nada. (Y el
             // limitador ya no se come nueve cuadros por el reloj gordo de Windows: ver Program y OnIdle.)
             gpuPanel.ThrottleMs = (videoOn && video != null && video.Visible && Environment.ProcessorCount < 4) ? 33 : 0;
-            albumView.GpuCovered = (nav || search || discGpu || attract);   // panel GPU encima: albumView no repinta por CPU (evita rebuild invisible al paginar)
-            if (nav || search || discGpu || attract)
+            albumView.GpuCovered = (nav || search || discGpu || attract || AsistenteVisible);   // panel GPU encima: albumView no repinta por CPU (evita rebuild invisible al paginar)
+            if (nav || search || discGpu || attract || AsistenteVisible)
             {
                 if (gpuPanel.Left != 0 || gpuPanel.Top != 0 || gpuPanel.Width != ClientSize.Width || gpuPanel.Height != ClientSize.Height)
                     gpuPanel.Bounds = new Rectangle(0, 0, ClientSize.Width, ClientSize.Height);

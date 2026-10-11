@@ -14,7 +14,7 @@
 #  Cada bateria es un programa suelto que CARGA el ejecutable de la rocola y le mira las tripas
 #  por dentro: mide lo que cuesta algo de verdad, cuenta los pixeles de lo que se pinta, o lee
 #  el codigo ya compilado para comprobar que una funcion sigue enchufada donde debe. Escribe
-#  lineas "OK" y "FALLO" y devuelve el numero de fallos.
+#  lineas "OK" o "PASS" y "FALLO", y devuelve el numero de fallos.
 # ============================================================================================
 cd "$(dirname "$0")" || exit 1
 RAIZ="$(cd .. && pwd)"
@@ -35,6 +35,7 @@ FUENTES="$FUENTES $RAIZ/Rocola/EstilosFondo.cs $RAIZ/Rocola/EspacioNaturalGpu.cs
 FUENTES="$FUENTES $RAIZ/Rocola/AuroraNaturalGpu.cs $RAIZ/Rocola/OpticaNaturalGpu.cs $RAIZ/Rocola/PreparacionFondoGpu.cs $RAIZ/Rocola/AcabadoNaturalGpu.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/FuentesMedidas.cs $RAIZ/Rocola/PlanBiblioteca.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/MedidaFluidezGpu.cs"
+FUENTES="$FUENTES $RAIZ/Rocola/MotorBusqueda.cs $RAIZ/Rocola/GuiaRojoGpu.cs $RAIZ/Rocola/AsistenteRocola.cs $RAIZ/Rocola/AsistenteEstrellaGpu.cs"
 TMP_PRUEBAS="${TMPDIR:-/tmp}/rocola_pruebas_$$"
 FUENTES="$FUENTES $RAIZ/Rocola/AudioControles.cs $RAIZ/Rocola/Sonoridad.cs $RAIZ/Rocola/RellenoMp3.cs $RAIZ/Rocola/SinSilencios.cs $RAIZ/Rocola/SubirTodo.cs $RAIZ/Rocola/NivelDisco.cs $RAIZ/Rocola/BombaSonido.cs $RAIZ/Rocola/DiarioTablas.cs $RAIZ/Rocola/CancionEnMemoria.cs $RAIZ/Rocola/MedidasBitacora.cs $RAIZ/Rocola/FlotanteNLayer.cs $RAIZ/Rocola/PicoReal.cs $RAIZ/Rocola/Realce.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/ModoNoche.cs $RAIZ/Rocola/GraveMono.cs"
@@ -71,6 +72,8 @@ GPU="$GPU auroranatural opticanatural preparacionnatural acabadofinalnatural"
 CPU="$CPU ajustesfluidez"
 CPU="$CPU estilosconfig"
 GPU="$GPU estilosconfig"
+CPU="$CPU asistentecombo buscainteligente"
+GPU="$GPU asistentecombo asistentevisual buscainteligente guiarojo"
 # Y las que miran algo que SOLO EXISTE en la rama de tarjeta grafica. La limpieza de videos que no
 # suenan es una de esas: para saber si un video suena hay que descomprimir su sonido, y eso alli lo
 # hace Media Foundation, que llego con Windows Vista. En la rama de XP no hay con que, asi que ni
@@ -322,8 +325,8 @@ corre() {
     xvfb-run -a mono $t.exe rocola.exe > "$rt" 2>&1
     rc=$?
     n=$(grep -c '^  FALLO' "$rt")
-    # Las baterias nuevas resumen con una linea "OK ..." sin sangria (y lanzan una excepcion si algo falla).
-    ok=$(grep -c '^  OK\|^OK ' "$rt")
+    # Algunas baterias resumen con "OK ..." o "PASS ..." sin sangria; sigue siendo obligatorio salir sin fallos.
+    ok=$(grep -c '^  OK\|^OK \|^PASS ' "$rt")
     if [ "$rc" -ne 0 ] || [ "$n" -ne 0 ] || [ "$ok" -eq 0 ]; then
       echo "  FALLA        $t   (salida $rc, $n fallos, $ok comprobaciones OK)"
       grep '^  FALLO' "$rt" | head -6
