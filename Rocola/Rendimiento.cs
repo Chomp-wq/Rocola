@@ -231,6 +231,9 @@ namespace Rocola
             gpuPanel.PolvoLunar = polvoLunar;
             gpuPanel.LunaProtagonista = lunaProtagonista;
             gpuPanel.EstelaEstelar = estelaEstelar;
+            gpuPanel.AuroraReal = auroraReal;   // estos tres solo cambian Espacio natural
+            gpuPanel.LunaReal = lunaFase;
+            gpuPanel.CieloHora = cieloHora;
             gpuPanel.Estrella3D = estrella3d;
             gpuPanel.ColoresFluidos = coloresFluidos;
             gpuPanel.RespuestaInmediata = respuestaInmediata;
@@ -962,6 +965,19 @@ namespace Rocola
             sw3d.Text = "Estrella en 3D girando (GPU)"; sw3d.Checked = estrella3d;
             sw3d.CheckedChanged += delegate { estrella3d = sw3d.Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             tNat.Controls.Add(sw3d);
+            // Espacio natural: tres efectos nuevos, cada uno con su interruptor (no cambian Legacy).
+            string[] nuevosNombres = { "Aurora con colores reales (Natural)", "Luna con su fase real (Natural)", "Cielo segun la hora (Natural)" };
+            bool[] nuevosValores = { auroraReal, lunaFase, cieloHora };
+            Interruptor[] nuevos = new Interruptor[nuevosNombres.Length];
+            for (int i = 0; i < nuevos.Length; i++)
+            {
+                nuevos[i] = new Interruptor(); nuevos[i].SetBounds(16, 140 + i * 36, 424, 26);
+                nuevos[i].Font = fNom; nuevos[i].ForeColor = cTexto; nuevos[i].Acento = cAc;
+                nuevos[i].Text = nuevosNombres[i]; nuevos[i].Checked = nuevosValores[i];
+            }
+            nuevos[0].CheckedChanged += delegate { auroraReal = nuevos[0].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            nuevos[1].CheckedChanged += delegate { lunaFase = nuevos[1].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            nuevos[2].CheckedChanged += delegate { cieloHora = nuevos[2].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
 
             BotonPlano bResetF = new BotonPlano();
             bResetF.SetBounds(16, 594, 300, 38); bResetF.Font = fBot; bResetF.Text = "Fondo como de fabrica";
@@ -997,6 +1013,8 @@ namespace Rocola
                 lunaRealista = haloLunar = polvoLunar = lunaProtagonista = true;
                 estelaEstelar = true; swEstela.Checked = true;
                 estrella3d = true; sw3d.Checked = true;
+                auroraReal = lunaFase = cieloHora = true;
+                for (int i = 0; i < nuevos.Length; i++) nuevos[i].Checked = true;
                 coloresFluidos = true; swFlujo.Checked = true;
                 paletaCompleta = true; swPaleta.Checked = true;
                 for (int i = 0; i < moonSwitches.Length; i++) moonSwitches[i].Checked = true;
@@ -1013,7 +1031,7 @@ namespace Rocola
             pg.Controls.Add(lAd);
             Control[][] groups = {
                 new Control[] { sw[0], sw[1], sw[2], sw[3], sw[4], sw[5], swFlujo, swPaleta },
-                new Control[] { lNatN, lNatV, lNatD, barNat },
+                new Control[] { lNatN, lNatV, lNatD, barNat, nuevos[0], nuevos[1], nuevos[2] },
                 new Control[] { sw[6], sw[7], sw[8], sw[9], sw[10], swDoce, tactile[2] },
                 new Control[] { swCristal, extras[0], extras[1], tactile[1], tactile[0], lExtras },
                 new Control[] { moonSwitches[0], moonSwitches[1], moonSwitches[2], moonSwitches[3], sw3d, swEstela },

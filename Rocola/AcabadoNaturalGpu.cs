@@ -44,6 +44,15 @@ namespace Rocola
             naturalDim += (Dim - naturalDim) * step;
         }
 
+        // 28) La luz principal de la estrella viene de arriba a la izquierda: las motas de ese lado brillan
+        // y las del lado contrario quedan en su sombra.
+        internal static float PolvoAlLado(float dx, float dy)
+        {
+            float l = (float)Math.Sqrt(dx * dx + dy * dy);
+            if (!(l > .001f)) return 1f;
+            float cara = (-.66f * dx - .75f * dy) / l;
+            return cara > 0f ? .56f + .44f * cara : .56f + .18f * cara;   // de 0.38 en la sombra a 1 de cara a la luz
+        }
         internal static void ProfundidadPolvoNatural(float depth, out float size, out float light)
         {
             if (float.IsNaN(depth)) depth = 0;

@@ -111,6 +111,9 @@
     <Compile Include="AuroraNaturalGpu.cs" />
     <Compile Include="OpticaNaturalGpu.cs" />
     <Compile Include="AcabadoNaturalGpu.cs" />
+    <Compile Include="CieloNaturalMallaGpu.cs" />
+    <Compile Include="EstrellasNaturalesGpu.cs" />
+    <Compile Include="LunaRealGpu.cs" />
     <Compile Include="PreparacionFondoGpu.cs" />
     <Compile Include="EscaneoMemo.cs" />
     <Compile Include="AperturaAudio.cs" />

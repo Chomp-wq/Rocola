@@ -70,9 +70,12 @@ namespace Rocola
                 card.SetBounds(i % 2 == 0 ? 16 : 488, 172, 456, 410);
                 card.Font = normal; card.Acento = styleCard.Acento; card.TabIndex = 4 + i % 2;
                 int row = 0;
+                // DETALLE NATURAL lleva arriba la fuerza (rotulo, texto y deslizador): sus interruptores
+                // van debajo del deslizador y algo mas juntos, para que quepan las notas.
+                int first = i == 1 ? 140 : 40, step = i == 1 ? 36 : 40;
                 foreach (Control control in groups[i]) {
                     card.Controls.Add(control);
-                    if (control is Interruptor) control.SetBounds(16, 40 + row++ * 40, 424, 28);
+                    if (control is Interruptor) control.SetBounds(16, first + row++ * step, 424, 28);
                 }
                 if (i >= 2) page.Controls.Add(card);
             }
@@ -82,9 +85,9 @@ namespace Rocola
             FondoNota(cards[0], "La paleta musical fluye por la aurora.\nEl cielo alto conserva su aspecto nocturno.", 358, 42, small, muted);
             FondoNota(cards[1], "El estilo cambia el acabado, no tus preferencias.\n"
                 + "La fuerza controla el detalle de las nebulosas;\n"
-                + "puedes ajustar cada efecto por separado.", 172, 76, small, muted);
+                + "puedes ajustar cada efecto por separado.", 254, 70, small, muted);
             FondoNota(cards[1], "Fluidez de ondas y cubos: se ajusta en Imagen.\n"
-                + "Colores de carátula y género: se ajustan en Colores.", 284, 64, small, muted);
+                + "Colores de carátula y género: se ajustan en Colores.", 330, 64, small, muted);
             FondoNota(cards[5], "Al entrar en reposo la estrella gana protagonismo.\n"
                 + "Al tocar los controles el movimiento se calma.\n\n"
                 + "El estado ampliado se activa en Imagen; ocultar\n"

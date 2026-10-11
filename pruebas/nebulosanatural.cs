@@ -40,7 +40,10 @@ class NebulosaNatural
         int[] p = Pixels(b);
         foreach (int color in p)
         {
-            Check((unchecked((uint)color) & 0x00FFFFFFu) == (black ? 0u : 0x00FFFFFFu), "neutro tintable; negro solo en la vineta");
+            // Desde el 11-10-2026 (ideas 5 y 9) los mapas Natural traen el color del gas y del nucleo
+            // galactico; la tarjeta los sigue tiñendo. La vineta sigue siendo negra.
+            if (black) Check((unchecked((uint)color) & 0x00FFFFFFu) == 0u, "negro solo en la vineta");
+            else Check(Math.Max((color >> 16) & 255, Math.Max((color >> 8) & 255, color & 255)) == 255, "color normalizado: la luz va en el alfa");
             Check((uint)color >> 24 <= max, "alfa contenido");
         }
     }

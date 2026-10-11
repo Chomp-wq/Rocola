@@ -160,7 +160,14 @@ class NaturalEstelar
                 Check(Math.Abs((X(lv, i) + X(lv, i + 1)) - (X(nv, i) + X(nv, i + 1))) < .002f &&
                     Math.Abs((Y(lv, i) + Y(lv, i + 2)) - (Y(nv, i) + Y(nv, i + 2))) < .002f,
                     "cobertura antialias no desplaza la estrella ni rompe la deriva");
-                Check((Col(lv, i) & 0xFFFFFFu) == (Col(nv, i) & 0xFFFFFFu), "Natural conserva temperaturas estelares Legacy");
+                // Desde el 11-10-2026 (idea 12) Natural no copia el color Legacy: las debiles se ven casi
+                // blancas y solo las brillantes conservan su temperatura. Sale siempre de la misma.
+                int kind = (int)((Array)Read(legacy, "skind")).GetValue(i / 6);
+                uint lc = Col(lv, i), nc = Col(nv, i);
+                int lMin = (int)Math.Min((lc >> 16) & 255, Math.Min((lc >> 8) & 255, lc & 255));
+                int nMin = (int)Math.Min((nc >> 16) & 255, Math.Min((nc >> 8) & 255, nc & 255));
+                if (kind == 0) Check(nMin >= lMin - 1, "Natural: el polvo debil se ve mas blanco, no mas teñido");
+                Check((nc & 0xFFFFFFu) != 0u, "Natural conserva la luz de cada estrella");
             }
         }
         foreach (bool detailed in new bool[] { false, true })

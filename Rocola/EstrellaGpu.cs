@@ -235,6 +235,13 @@ namespace Rocola
                 if(age<.055||alpha<.003f)continue;
                 float r=echo.Radius*(.88f+.10f*(float)(1-age/1.8));
                 uint tint=((uint)(alpha*255)<<24)|(echo.Color&0xFFFFFFu);
+                if(FondoNatural)
+                {
+                    // 29) La copia envejece: se abre y pierde color (la misma cuenta que en 3D).
+                    float edad=EdadEco(age,1.8);
+                    r*=1f+.35f*edad;
+                    D3D9.Vtx gris=new D3D9.Vtx(); gris.Color=tint; EnvejeceVertice(ref gris,0,0,1f,.70f*edad); tint=gris.Color;
+                }
                 SetTexQuadA(starEchoQuad,echo.X-r,echo.Y-r,echo.X+r,echo.Y+r,luU,luV,tint);
                 RotateStarQuad(starEchoQuad,echo.X,echo.Y,echo.Angle);
                 Array.Copy(starEchoQuad,0,starEchoBatch,vertices,6);vertices+=6;

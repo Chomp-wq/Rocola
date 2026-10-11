@@ -870,7 +870,7 @@ namespace Rocola
             fichaCuadro = (GetFicha != null) ? GetFicha() : new GpuFicha();
             if (fichaCuadro.Has && fichaCuadro.Bmp != null && (fichaCuadro.Ver != fichaVer || fichaTex == IntPtr.Zero))
             { fichaTex = Upload(fichaTex, ref fichaBw, ref fichaBh, fichaCuadro.Bmp, out fichaU, out fichaV); fichaVer = fichaCuadro.Ver; }
-            if (EmpujeCielo != 0f) { stars.Empuja(EmpujeCielo, Width); EmpujeCielo = 0f; }
+            if (EmpujeCielo != 0f) { stars.Empuja(EmpujeCielo, Width); if (FondoNatural) EmpujaCapasNatural(EmpujeCielo); EmpujeCielo = 0f; }
         }
         // El letrero, DENTRO del borde de abajo de la portada que crecio (aparece con ella), centrado con ella: debajo
         // va el nombre del disco, y ese no se tapa.

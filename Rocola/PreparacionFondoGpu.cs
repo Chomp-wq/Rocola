@@ -167,9 +167,12 @@ namespace Rocola
         private void EnsureNieblasPreparadas()
         {
             // El grano tiene su ajuste propio, incluso si las nebulosas estan apagadas.
+            // La teja del grano es propia de Natural (BakeRuidoNatural); la de Legacy se suelta al cambiar.
+            if (ruidoTex != IntPtr.Zero && !ruidoTexNatural) { D3D9.Release(ruidoTex); ruidoTex = IntPtr.Zero; }
             if (ruidoTex == IntPtr.Zero && (!naturalRuidoRetry || unchecked(Environment.TickCount - naturalRuidoRetryMs) >= 250)) {
-                using (Bitmap noise = Form1.BakeRuidoGrande(RuidoTeja))
+                using (Bitmap noise = BakeRuidoNatural(RuidoTeja))
                     ruidoTex = Upload(ruidoTex, ref ruTW, ref ruTH, noise, out ruU, out ruV);
+                ruidoTexNatural = ruidoTex != IntPtr.Zero;
                 naturalRuidoRetry = ruidoTex == IntPtr.Zero; naturalRuidoRetryMs = Environment.TickCount;
             }
             if (Nieblas == GpuStarfield.Bajo) {
