@@ -109,6 +109,8 @@ CPU="$CPU relleno"
 # 'silencios': saltar los silencios largos (SinSilencios.cs): donde suena cada cancion (medida entera, algoritmo 3), la
 # tabla, que se salta y que no, el recorte muestra a muestra, el fundido, abrir de verdad, el interruptor y lo guardado.
 CPU="$CPU silencios"
+# 'subgrave': las bocinas del billar (fotos del 9-10-2026): el subgrave fuera (30 Hz) y el estereo al 60 % (GraveMono.cs).
+CPU="$CPU subgrave"
 # 'todojunto': todo el sonido a la vez en la cadena de verdad (nivelado, Subir TODO, realce, DSEE, grave sintetico, grave
 # en mono, des-recorte, modo noche, fundido y saltar silencios), y cambiandolo en vivo como desde Ctrl+F3: nada roto, nada
 # por encima del techo, sin chasquidos ni muestras perdidas, la cadena siempre como dicen los ajustes, el limitador y el coste.

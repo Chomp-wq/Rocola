@@ -521,6 +521,8 @@ namespace Rocola
                     else if (s.StartsWith("noche_db=")) { float v; if (float.TryParse(s.Substring(9).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) nocheDb = Clampf(v, -24f, 0f); }   // cuanto baja (negativo)
                     else if (s.StartsWith("noche_compensa=")) nocheCompensa = NocheCompensa(s.Substring(15));   // graves y agudos que devuelve de noche (%)
                     else if (s.StartsWith("grave_mono=")) graveMonoHz = GraveMonoHz(s.Substring(11));   // corte del grave en mono (Hz; 0 = apagado)
+                    else if (s.StartsWith("ancho_estereo=")) anchoEstereo = AnchoEstereo(s.Substring(14));   // % del estereo (100 = como viene)
+                    else if (s.StartsWith("subgrave=")) subgraveHz = SubgraveHz(s.Substring(9));   // corte del subgrave (Hz; 0 = sin corte)
                     else if (s.StartsWith("subir_db=")) { float v; if (float.TryParse(s.Substring(9).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) masterDb = Clampf(v, 0f, 12f); }   // SUBIR TODO (dB extra general)
                     else if (s.StartsWith("fundido=")) { float v; if (float.TryParse(s.Substring(8).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) crossfadeSec = Clampf(v, 0f, 3f); }   // FUNDIDO entre canciones (segundos)
                     else if (s.StartsWith("declip=")) declipOn = s.Substring(7).Trim() != "0";   // des-recorte de picos aplastados (por defecto si)
@@ -648,6 +650,8 @@ namespace Rocola
                 sb.Append("noche_db=").Append(nocheDb.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("noche_compensa=").Append((nocheCompensa * 100f).ToString("0", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("grave_mono=").Append(graveMonoHz.ToString("0", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
+                sb.Append("ancho_estereo=").Append((anchoEstereo * 100f).ToString("0", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
+                sb.Append("subgrave=").Append(subgraveHz.ToString("0", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("fundido=").Append(crossfadeSec.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("declip=").Append(declipOn ? "1" : "0").Append("\r\n");
                 sb.Append("ia_datos=").Append(iaHarvestOn ? "1" : "0").Append("\r\n");

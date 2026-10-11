@@ -1,0 +1,187 @@
+using System;
+using System.Collections.Generic;
+using System.Reflection;
+using NAudio.Wave;
+
+// LAS BOCINAS DEL BILLAR (Rocola/GraveMono.cs, 11-10-2026): el subgrave fuera y el estereo un poco mas estrecho.
+// Con tonos sinteticos por la etapa de verdad:
+//  1) Apagado (ancho 100 %, sin subgrave) sale bit a bit como la etapa de siempre.
+//  2) El subgrave: Butterworth de cuarto orden en 30 Hz; lo que se oye no cambia.
+//  3) El ancho: lo que va todo a un lado sale por el otro 12 dB mas bajo (al 60 %); lo del centro, igual.
+//  4) Un archivo de un canal: solo el subgrave.
+//  5) Disco continuo: la siguiente pista sigue con los filtros de la anterior (sin golpe), y el silencio deja los
+//     filtros en cero (sin numeros desnormales).
+//  6) La configuracion, la cadena de cada cancion y que leer no reserve memoria.
+// No es escucharlo en el bar: eso solo se sabe alli.
+class Fuente : ISampleProvider
+{
+    readonly float[] x; int pos; readonly WaveFormat wf;
+    public Fuente(float[] datos, int fs, int ch) { x = datos; wf = WaveFormat.CreateIeeeFloatWaveFormat(fs, ch); }
+    public WaveFormat WaveFormat { get { return wf; } }
+    public int Read(float[] b, int o, int n)
+    {
+        int k = Math.Min(n, x.Length - pos);
+        if (k <= 0) return 0;
+        Array.Copy(x, pos, b, o, k); pos += k; return k;
+    }
+}
+
+class Subgrave
+{
+    static int fallos, oks;
+    static void Check(bool ok, string q) { Console.WriteLine((ok ? "  OK    " : "  FALLO ") + q); if (ok) oks++; else fallos++; }
+    static void Info(string q) { Console.WriteLine("        " + q); }
+    static string F(double v, string f) { return v.ToString(f, System.Globalization.CultureInfo.InvariantCulture); }
+    const BindingFlags T = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
+    static Type TF, TMono;
+    static object Nuevo(Type t, params object[] a) { return Activator.CreateInstance(t, T, null, a, null); }
+    static ISampleProvider Etapa(ISampleProvider s, float corte, float ancho, float sub) { return (ISampleProvider)Nuevo(TMono, s, corte, ancho, sub); }
+    static ISampleProvider Vieja(ISampleProvider s, float corte) { return (ISampleProvider)Nuevo(TMono, s, corte); }
+
+    static float[] LeeTodo(ISampleProvider p, int bloque)
+    {
+        List<float> r = new List<float>(); float[] buf = new float[bloque];
+        while (true) { int n = p.Read(buf, 0, bloque); if (n <= 0) break; for (int i = 0; i < n; i++) r.Add(buf[i]); }
+        return r.ToArray();
+    }
+    static float[] Tono(int fs, double hz, double seg, double gl, double gr)
+    {
+        int n = (int)(seg * fs); float[] x = new float[n * 2];
+        for (int i = 0; i < n; i++) { double v = 0.5 * Math.Sin(2 * Math.PI * hz * i / fs); x[2 * i] = (float)(gl * v); x[2 * i + 1] = (float)(gr * v); }
+        return x;
+    }
+    static float[] Ruido(int fs, double seg, int semilla)
+    {
+        Random r = new Random(semilla); int n = (int)(seg * fs); float[] x = new float[n * 2];
+        for (int i = 0; i < x.Length; i++) x[i] = (float)(0.3 * (r.NextDouble() * 2 - 1));
+        return x;
+    }
+    // Amplitud de 'hz' en un canal: proyeccion sobre seno y coseno en los ultimos 'seg' segundos (periodos enteros).
+    static double Amp(float[] y, int ch, int c, int fs, double hz, double seg)
+    {
+        int frames = y.Length / ch, per = Math.Max(1, (int)Math.Round(seg * hz));
+        int n = Math.Min(frames / 2, (int)Math.Round(per * fs / hz)), desde = frames - n;
+        double s = 0, co = 0;
+        for (int i = desde; i < frames; i++) { double w = 2 * Math.PI * hz * i / fs; s += y[i * ch + c] * Math.Sin(w); co += y[i * ch + c] * Math.Cos(w); }
+        return 2 * Math.Sqrt(s * s + co * co) / n;
+    }
+    static double Db(double v) { return 20 * Math.Log10(Math.Max(v, 1e-15)); }
+    static bool Igual(float[] a, float[] b)
+    {
+        if (a.Length != b.Length) return false;
+        for (int i = 0; i < a.Length; i++) if (a[i] != b[i]) return false;
+        return true;
+    }
+
+    static int Main(string[] args)
+    {
+        Assembly asm = Assembly.LoadFrom(args.Length > 0 ? args[0] : "rocola.exe");
+        TF = asm.GetType("Rocola.Form1", true);
+        TMono = TF.GetNestedType("GraveMono", T);
+        Check(TMono != null && TMono.GetConstructor(T, null, new Type[] { typeof(ISampleProvider), typeof(float), typeof(float), typeof(float) }, null) != null,
+              "la etapa del grave en mono lleva ahora el ancho y el subgrave");
+        int fs = 44100;
+
+        Console.WriteLine("\n  1) APAGADO, COMO SIEMPRE\n");
+        float[] ruido = Ruido(fs, 6.0, 3);
+        foreach (float corte in new float[] { 120f, 0f, 80f })
+            Check(Igual(LeeTodo(Vieja(new Fuente(ruido, fs, 2), corte), 1000), LeeTodo(Etapa(new Fuente(ruido, fs, 2), corte, 1f, 0f), 1000)),
+                  "con ancho 100 % y sin subgrave sale bit a bit como la etapa de siempre (corte " + corte + " Hz)");
+        object vieja = Vieja(new Fuente(ruido, fs, 1), 120f);
+        Check(!(bool)TMono.GetProperty("Activo", T).GetValue(vieja, null), "y un archivo de un canal, sin subgrave, ni se toca");
+
+        Console.WriteLine("\n  2) EL SUBGRAVE (30 Hz, cuarto orden)\n");
+        double fc = GetF("SubDeFabrica");
+        Check(Math.Abs(fc - 30) < .01, "de fabrica corta en 30 Hz");
+        foreach (double hz in new double[] { 15, 20, 25, 30, 40, 50, 60, 80, 120, 1000, 8000 })
+        {
+            float[] x = Tono(fs, hz, 4.0, 1, 1);
+            float[] y = LeeTodo(Etapa(new Fuente(x, fs, 2), 120f, 1f, 30f), 4096);
+            double g = Db(Amp(y, 2, 0, fs, hz, 1.5) / Amp(x, 2, 0, fs, hz, 1.5));
+            double teo = Db(1.0 / Math.Sqrt(1 + Math.Pow(30.0 / hz, 8)));
+            Info(F(hz, "0") + " Hz: " + F(g, "0.00") + " dB (Butterworth: " + F(teo, "0.00") + ")");
+            if (hz >= 25) Check(Math.Abs(g - teo) < .35, F(hz, "0") + " Hz como un Butterworth de cuarto orden en 30 Hz (" + F(g, "0.00") + " dB)");
+            if (hz == 20) Check(g < -12, "a 20 Hz ya quita mas de 12 dB (" + F(g, "0.0") + ")");
+            if (hz >= 60) Check(Math.Abs(g) < .05, F(hz, "0") + " Hz sale igual (" + F(g, "0.000") + " dB)");
+        }
+        Check(Math.Abs(fc - 30) < .01, "fin del barrido");
+
+        Console.WriteLine("\n  3) EL ANCHO (60 %)\n");
+        double an = GetF("AnchoDeFabrica");
+        Check(Math.Abs(an - .6) < 1e-6, "de fabrica, 60 %");
+        float[] izq = Tono(fs, 1000, 2.0, 1, 0);
+        float[] yi = LeeTodo(Etapa(new Fuente(izq, fs, 2), 120f, .6f, 30f), 4096);
+        double aL = Amp(yi, 2, 0, fs, 1000, .5), aR = Amp(yi, 2, 1, fs, 1000, .5);
+        Check(Math.Abs(Db(aR / aL) - Db(.4 / 1.6)) < .05 && Math.Abs(Db(aL / Amp(izq, 2, 0, fs, 1000, .5)) - Db(.8)) < .05,
+              "un instrumento todo a la izquierda sale por la derecha " + F(Db(aR / aL), "0.0") + " dB mas bajo (antes: nada), y por la izquierda a " + F(Db(.8), "0.0") + " dB");
+        float[] cen = Tono(fs, 1000, 2.0, 1, 1);
+        float[] yc = LeeTodo(Etapa(new Fuente(cen, fs, 2), 120f, .6f, 30f), 4096);
+        bool gemelos = true; for (int i = 0; i < yc.Length; i += 2) if (yc[i] != yc[i + 1]) { gemelos = false; break; }
+        Check(gemelos && Math.Abs(Db(Amp(yc, 2, 0, fs, 1000, .5) / Amp(cen, 2, 0, fs, 1000, .5))) < .01, "lo del centro (voz, bajo, bombo) sale igual y los dos canales identicos");
+        float[] ys = LeeTodo(Etapa(new Fuente(izq, fs, 2), 0f, .6f, 0f), 4096);
+        Check(Math.Abs(Db(Amp(ys, 2, 1, fs, 1000, .5) / Amp(ys, 2, 0, fs, 1000, .5)) - Db(.25)) < .05, "y lo mismo con el grave en mono apagado (grave_mono=0)");
+        float[] ycero = LeeTodo(Etapa(new Fuente(izq, fs, 2), 120f, 0f, 0f), 4096);
+        Check(Math.Abs(Db(Amp(ycero, 2, 1, fs, 1000, .5) / Amp(ycero, 2, 0, fs, 1000, .5))) < .01, "al 0 %, mono del todo");
+
+        Console.WriteLine("\n  4) UN ARCHIVO DE UN CANAL\n");
+        float[] m20 = new float[fs * 4], m1k = new float[fs * 4];
+        for (int i = 0; i < m20.Length; i++) { m20[i] = (float)(.5 * Math.Sin(2 * Math.PI * 20 * i / fs)); m1k[i] = (float)(.5 * Math.Sin(2 * Math.PI * 1000 * i / fs)); }
+        float[] o20 = LeeTodo(Etapa(new Fuente(m20, fs, 1), 120f, .6f, 30f), 999), o1k = LeeTodo(Etapa(new Fuente(m1k, fs, 1), 120f, .6f, 30f), 999);
+        Check(Db(Amp(o20, 1, 0, fs, 20, 1.5) / .5) < -12 && Math.Abs(Db(Amp(o1k, 1, 0, fs, 1000, .5) / .5)) < .05, "un canal: el subgrave tambien, y lo que se oye igual");
+
+        Console.WriteLine("\n  5) DISCO CONTINUO Y SILENCIO\n");
+        float[] todo = Ruido(fs, 4.0, 11);
+        int mitad = (todo.Length / 2) & ~1;
+        float[] a1 = new float[mitad], a2 = new float[todo.Length - mitad];
+        Array.Copy(todo, a1, mitad); Array.Copy(todo, mitad, a2, 0, a2.Length);
+        float[] junta = LeeTodo(Etapa(new Fuente(todo, fs, 2), 120f, .6f, 30f), 2048);
+        ISampleProvider ea = Etapa(new Fuente(a1, fs, 2), 120f, .6f, 30f), eb = Etapa(new Fuente(a2, fs, 2), 120f, .6f, 30f);
+        float[] p1 = LeeTodo(ea, 2048);
+        TMono.GetMethod("Sigue", T).Invoke(eb, new object[] { ea });
+        float[] p2 = LeeTodo(eb, 2048);
+        float[] seguidas = new float[p1.Length + p2.Length]; Array.Copy(p1, seguidas, p1.Length); Array.Copy(p2, 0, seguidas, p1.Length, p2.Length);
+        Check(Igual(junta, seguidas), "dos pistas seguidas sin fundido salen igual que una sola (el subgrave no da un golpe en el cambio)");
+        float[] tonoSilencio = new float[fs * 2 * 12];
+        Array.Copy(Tono(fs, 40, 1.0, 1, .3), tonoSilencio, fs * 2);
+        object es = Etapa(new Fuente(tonoSilencio, fs, 2), 120f, .6f, 30f);
+        LeeTodo((ISampleProvider)es, 4096);
+        double[] st = (double[])TMono.GetField("ss", T).GetValue(es);
+        bool ceros = true; foreach (double v in st) if (v != 0.0) ceros = false;
+        Check(ceros, "tras el silencio los filtros del subgrave quedan en cero exacto (sin desnormales, que en un procesador viejo son lentisimos)");
+
+        Console.WriteLine("\n  6) CONFIGURACION Y CADENA\n");
+        List<string> lee = Codigo.Textos(TF.GetMethod("LoadConfigPrefs", T)), esc = Codigo.Textos(TF.GetMethod("SaveConfigPrefs", T));
+        Check(lee.Contains("ancho_estereo=") && esc.Contains("ancho_estereo=") && lee.Contains("subgrave=") && esc.Contains("subgrave="),
+              "ancho_estereo= y subgrave= se leen y se guardan en la configuracion");
+        MethodInfo pa = TF.GetMethod("AnchoEstereo", T), ps = TF.GetMethod("SubgraveHz", T);
+        Func<string, float> A = delegate(string s) { return (float)pa.Invoke(null, new object[] { s }); };
+        Func<string, float> S = delegate(string s) { return (float)ps.Invoke(null, new object[] { s }); };
+        Check(Math.Abs(A("60") - .6f) < 1e-6 && A("100") == 1f && A("150") == 1f && A("-5") == 0f && A("0") == 0f, "ancho: 60 es 60 %, de 0 a 100");
+        Check(S("30") == 30f && S("0") == 0f && S("-3") == 0f && S("10") == 15f && S("200") == 60f, "subgrave: 0 lo quita; entre 15 y 60 Hz");
+        FieldInfo fa = TF.GetField("anchoEstereo", T); object antes = fa.GetValue(null);
+        fa.SetValue(null, .33f); Check(A("abc") == .33f && A("") == .33f, "un texto sin sentido deja lo que habia"); fa.SetValue(null, antes);
+        MethodBase arma = TF.GetMethod("ArmaCadena", T);
+        int l1, e1, l2, e2; Codigo.UsosDeCampo(arma, "anchoEstereo", out l1, out e1); Codigo.UsosDeCampo(arma, "subgraveHz", out l2, out e2);
+        Check(l1 > 0 && l2 > 0, "cada cancion arma su etapa con el ancho y el subgrave de la configuracion");
+        bool reserva = false;
+        foreach (string m in new string[] { "Read", "Enteros", "Cuadros", "SinCruce", "Subgrave", "Hereda", "Sigue" })
+            foreach (Codigo.Paso p in Codigo.Pasos(TMono.GetMethod(m, T))) if (p.Op == 0x8D || p.Op == 0x73) reserva = true;
+        Check(!reserva, "leer no reserva memoria");
+        // Lo que cuesta, comparado con la etapa de siempre (Mono, este equipo: orientativo).
+        float[] largo = Ruido(fs, 30.0, 5); float[] buf = new float[4410];
+        double tVieja = Mejor(delegate { ISampleProvider p = Vieja(new Fuente(largo, fs, 2), 120f); while (p.Read(buf, 0, buf.Length) > 0) { } });
+        double tNueva = Mejor(delegate { ISampleProvider p = Etapa(new Fuente(largo, fs, 2), 120f, .6f, 30f); while (p.Read(buf, 0, buf.Length) > 0) { } });
+        Info("30 s de musica: la etapa de siempre " + F(tVieja, "0.0") + " ms, con ancho y subgrave " + F(tNueva, "0.0") + " ms (" + F((tNueva - tVieja) / 30.0, "0.00") + " ms mas por segundo de musica)");
+        Check(tNueva < tVieja * 3 + 20, "cuesta poco mas que la etapa de siempre");
+
+        Console.WriteLine(fallos == 0 ? "\n  OK subgrave: " + oks + " comprobaciones (tonos sinteticos; no es oirlo en el bar)" : "\n  FALLO subgrave: " + fallos + " de " + (oks + fallos));
+        return fallos == 0 ? 0 : 1;
+    }
+    static double GetF(string n) { return Convert.ToDouble(TMono.GetField(n, T).GetValue(null)); }
+    static double Mejor(Action a)
+    {
+        double m = double.MaxValue;
+        for (int k = 0; k < 3; k++) { var w = System.Diagnostics.Stopwatch.StartNew(); a(); w.Stop(); m = Math.Min(m, w.Elapsed.TotalMilliseconds); }
+        return m;
+    }
+}

@@ -1961,8 +1961,11 @@ El 23 de septiembre contaste cómo está montado el sonido:
 Esto importa para tres propuestas:
 1. **Grave por debajo de ~120 Hz igual por los dos canales.** Hecho el 23 de septiembre (ver 1.24): no depende del
    tipo de bocina. Si alguna bocina resultara ser un subwoofer que solo recibe un canal, esto también lo arregla.
-2. **Estrechar un poco el estéreo** para quien está lejos de una bocina. Pendiente.
-3. **Quitar el grave que las bocinas no reproducen** (si no bajan de ~80 Hz). Antes hay que saber qué bocinas son;
+2. **Estrechar un poco el estéreo** para quien está lejos de una bocina. Hecho el 11 de octubre (Modest): al 60 %,
+   con las fotos de las bocinas. Ver `SONIDO_BOCINAS_MODEST_2026-10-11.md`.
+3. **Quitar el grave que las bocinas no reproducen.** Hecho el 11 de octubre (Modest), con las fotos: hay cajas de
+   ~12" que sí bajan a 50 Hz, así que solo se quita el subgrave (por debajo de 30 Hz). Mismo documento. Lo de antes:
+   (si no bajan de ~80 Hz). Antes hay que saber qué bocinas son;
    con un subwoofer no conviene.
 
 Para decidir, hace falta saber:

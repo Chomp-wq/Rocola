@@ -1265,8 +1265,9 @@ namespace Rocola
             // MODO NOCHE: al bajar el volumen de madrugada, devuelve los graves y agudos que el oido pierde
             // (ModoNoche.cs). De dia no hace nada: sale tal cual.
             c.Noche = new CompensaNoche(tap); c.Noche.Db = NocheCompensaDb();
-            // GRAVE EN MONO: por debajo del corte, el mismo grave por todas las bocinas; lo demas, tal cual (GraveMono.cs).
-            c.Mono = new GraveMono(c.Noche, graveMonoHz);
+            // GRAVE EN MONO: por debajo del corte, el mismo grave por todas las bocinas. Y para las bocinas del billar: sin
+            // el subgrave que ninguna reproduce y con el estereo un poco mas estrecho (GraveMono.cs).
+            c.Mono = new GraveMono(c.Noche, graveMonoHz, anchoEstereo, subgraveHz);
             // BAJO PSICOACUSTICO: despues de nivelar/ecualizar y ANTES del limitador, que es quien controla
             // los picos que anaden los armonicos.
             c.BajoFactor = BassFactorFor(t.Path);   // cuanto le toca a ESTA cancion (1 = la perilla tal cual)
