@@ -250,7 +250,7 @@ namespace Rocola
                 escaparate = topNoche = true;
                 letraLejos = colorGenero = textosDeslizantes = true;
                 buscadorPortadas = asistenteAnimado = true;
-                caratulasCarga = 0;
+                caratulasCarga = 0; caratulasJpeg = false;
                 hSuena.Controls.Remove(tCarga); tCarga.Dispose();
                 tCarga = TarjetaCargaCaratulas(fNom, fDes, cTexto, cTenue);
                 tCarga.SetBounds(488, 0, 456, 412); hSuena.Controls.Add(tCarga);

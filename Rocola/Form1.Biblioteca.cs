@@ -2511,18 +2511,29 @@ namespace Rocola
 
         private static void SaveThumb(Bitmap thumb, string cacheFile)
         {
-            string tmp = cacheFile + ".tmp." + Guid.NewGuid().ToString("N");
+            // Interruptor "Caratulas en JPEG" encendido y portada opaca: JPEG de calidad alta al lado de la identidad.
+            // Si no: PNG sin perdida en la identidad (ver MiniaturaGuardada en Form1.Portadas.cs).
+            ImageCodecInfo jpeg = null;
+            try { if (JpegActivo && MiniaturaOpaca(thumb)) jpeg = CodecJpegMiniatura(); } catch { jpeg = null; }
+            string destino = jpeg != null ? MiniaturaJpeg(cacheFile) : cacheFile;
+            string tmp = destino + ".tmp." + Guid.NewGuid().ToString("N");
             try
             {
-                lock (CandadoMiniatura(cacheFile))
+                lock (CandadoMiniatura(cacheFile))   // el mismo candado para los dos formatos: es la misma miniatura
                 {
-                    thumb.Save(tmp, ImageFormat.Png); // Sin perdida; mismo alfa/aspecto en primera carga y cache.
-                    if (File.Exists(cacheFile))
+                    if (jpeg != null)
+                        using (EncoderParameters ep = new EncoderParameters(1))
+                        {
+                            ep.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, MiniaturaCalidadJpeg);
+                            thumb.Save(tmp, jpeg, ep);
+                        }
+                    else thumb.Save(tmp, ImageFormat.Png); // Sin perdida; mismo alfa/aspecto en primera carga y cache.
+                    if (File.Exists(destino))
                     {
-                        try { File.Replace(tmp, cacheFile, null, true); tmp = null; return; }
-                        catch { try { File.Delete(cacheFile); } catch { } }
+                        try { File.Replace(tmp, destino, null, true); tmp = null; return; }
+                        catch { try { File.Delete(destino); } catch { } }
                     }
-                    File.Move(tmp, cacheFile); tmp = null;
+                    File.Move(tmp, destino); tmp = null;
                 }
             }
             catch { }

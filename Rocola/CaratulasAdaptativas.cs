@@ -16,6 +16,9 @@ namespace Rocola
         // nunca desactivan las protecciones ni reducen la calidad final.
         private bool caratulasLod = true;
         private int caratulasCarga; // 0 automatico, 1 fluidez, 2 equilibrado, 3 carga rapida
+        // Ctrl+F3 -> "Caratulas en JPEG (mas rapidas)" (peticion del 11-10-2026). Es VISUAL: cambia algo la nitidez,
+        // por eso lleva interruptor propio y viene APAGADO. Estatico: lo leen los guardados de miniatura, que lo son.
+        internal static volatile bool caratulasJpeg;
         private readonly List<EscenaMedida> historialCaratulas = new List<EscenaMedida>();
         private event Action CoverProfileChanged;
 
@@ -141,12 +144,19 @@ namespace Rocola
                 description.Font = fDes; description.ForeColor = cTenue; description.BackColor = Color.Transparent;
                 description.Text = descriptions[i]; card.Controls.Add(buttons[i]); card.Controls.Add(description);
             }
-            Label note = new Label(); note.SetBounds(16, 312, 424, 84);
+            Interruptor jpeg = new Interruptor(); jpeg.SetBounds(16, 306, 424, 26);
+            jpeg.Font = fNom; jpeg.ForeColor = cTexto; jpeg.Acento = card.Acento;
+            jpeg.Text = "Carátulas en JPEG (más rápidas)"; jpeg.Checked = caratulasJpeg;
+            jpeg.AccessibleName = "Carátulas en JPEG";
+            jpeg.CheckedChanged += delegate { caratulasJpeg = jpeg.Checked; f3CambioGraf = true; };
+            Label jpegNota = new Label(); jpegNota.SetBounds(16, 334, 424, 32);
+            jpegNota.Font = fDes; jpegNota.ForeColor = cTenue; jpegNota.BackColor = Color.Transparent;
+            jpegNota.Text = "Unas 6 veces menos disco y lectura más rápida, a cambio de algo\nde nitidez en letras y bordes de color. Las transparentes, sin pérdida.";
+            card.Controls.Add(jpeg); card.Controls.Add(jpegNota);
+            Label note = new Label(); note.SetBounds(16, 370, 424, 34);
             note.Font = fDes; note.ForeColor = cTenue; note.BackColor = Color.Transparent;
-            note.Text = "Solo GPU. La imagen final tiene la misma calidad en todos.\n"
-                + "Los HDD y equipos de dos hilos conservan un lector.\n"
-                + "Compara los perfiles en Imagen > Medir, con la misma\n"
-                + "resolución y efectos. Se guarda al cerrar Ctrl+F3.";
+            note.Text = "Solo GPU. Los perfiles no cambian la calidad; los HDD y equipos de dos\n"
+                + "hilos conservan un lector. Compara en Imagen > Medir. Se guarda al cerrar.";
             card.Controls.Add(note); paint();
             return card;
         }

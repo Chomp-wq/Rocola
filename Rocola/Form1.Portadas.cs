@@ -701,6 +701,96 @@ namespace Rocola
             return Path.Combine(CarpetaMiniaturas(), h.ToString("x16") + "_" + ThumbPx + "_v2.png");
         }
 
+        // CARATULAS EN JPEG (interruptor de Ctrl+F3, apagado de fabrica). La identidad de arriba no cambia; con el
+        // interruptor, las portadas OPACAS se guardan en JPEG de calidad alta al lado (mismo nombre, .jpg): unas seis
+        // veces menos disco y lectura que en PNG y mucho menos al guardarlas (medido con GDI+ de Mono: 22 KB frente a
+        // 142 KB; leer 0,85 ms frente a 2,7; guardar 0,6 ms frente a 23). A cambio, JPEG guarda el color a media
+        // resolucion: algo de nitidez en letras y bordes de color. Las que tienen TRANSPARENCIA siguen en PNG.
+        // Apagado se ignoran los JPEG: cada caratula vuelve a su PNG sin perdida.
+        internal const long MiniaturaCalidadJpeg = 92;
+        private static bool JpegActivo
+        {
+            get
+            {
+#if ROCOLA_GPU
+                return caratulasJpeg;   // solo con tarjeta grafica: el perfil por CPU esta congelado y sigue en PNG
+#else
+                return false;
+#endif
+            }
+        }
+        internal static string MiniaturaJpeg(string identidad) { return Path.ChangeExtension(identidad, ".jpg"); }
+        // La miniatura guardada que vale ahora para esa identidad, o null si no hay.
+        internal static string MiniaturaGuardada(string identidad)
+        {
+            if (string.IsNullOrEmpty(identidad)) return null;
+            if (JpegActivo) { string jpg = MiniaturaJpeg(identidad); if (File.Exists(jpg)) return jpg; }
+            return File.Exists(identidad) ? identidad : null;
+        }
+        // Con el interruptor, una miniatura que aun no esta en JPEG se rehace (en segundo plano) por si es opaca.
+        internal static bool MiniaturaPorRehacer(string identidad)
+        {
+            if (MiniaturaGuardada(identidad) == null) return true;
+            return JpegActivo && !File.Exists(MiniaturaJpeg(identidad));
+        }
+        // Si TODOS sus pixeles son opacos. Una pasada por 65 mil pixeles: mucho menos que guardar un PNG.
+        internal static bool MiniaturaOpaca(Bitmap b)
+        {
+            if (b == null) return false;
+            int w = b.Width, h = b.Height;
+            BitmapData d = b.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+            try
+            {
+                int[] fila = new int[w];
+                for (int y = 0; y < h; y++)
+                {
+                    System.Runtime.InteropServices.Marshal.Copy(new IntPtr(d.Scan0.ToInt64() + y * (long)d.Stride), fila, 0, w);
+                    for (int x = 0; x < w; x++) if ((uint)fila[x] < 0xFF000000u) return false;
+                }
+                return true;
+            }
+            finally { b.UnlockBits(d); }
+        }
+        // Deja opacos los pixeles que el remuestreo dejo a medias (solo el filo): se quita la premultiplicacion para
+        // no oscurecerlos. Solo para portadas sin transparencia, y solo con el interruptor.
+        internal static void HazOpaca(Bitmap b)
+        {
+            if (b == null || b.PixelFormat != PixelFormat.Format32bppPArgb) return;
+            int w = b.Width, h = b.Height;
+            BitmapData d = b.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.ReadWrite, PixelFormat.Format32bppPArgb);
+            try
+            {
+                int[] fila = new int[w];
+                for (int y = 0; y < h; y++)
+                {
+                    IntPtr p = new IntPtr(d.Scan0.ToInt64() + y * (long)d.Stride);
+                    System.Runtime.InteropServices.Marshal.Copy(p, fila, 0, w);
+                    bool cambia = false;
+                    for (int x = 0; x < w; x++)
+                    {
+                        uint v = (uint)fila[x], a = v >> 24;
+                        if (a == 255) continue;
+                        uint r = (v >> 16) & 255, gr = (v >> 8) & 255, bl = v & 255;
+                        if (a > 0) { r = Math.Min(255u, (r * 255 + a / 2) / a); gr = Math.Min(255u, (gr * 255 + a / 2) / a); bl = Math.Min(255u, (bl * 255 + a / 2) / a); }
+                        fila[x] = unchecked((int)(0xFF000000u | (r << 16) | (gr << 8) | bl)); cambia = true;
+                    }
+                    if (cambia) System.Runtime.InteropServices.Marshal.Copy(fila, 0, p, w);
+                }
+            }
+            finally { b.UnlockBits(d); }
+        }
+        private static ImageCodecInfo codecJpegMiniatura; private static bool codecJpegBuscado;
+        private static ImageCodecInfo CodecJpegMiniatura()
+        {
+            if (!codecJpegBuscado)
+            {
+                try { foreach (ImageCodecInfo c in ImageCodecInfo.GetImageEncoders()) if (c.MimeType == "image/jpeg") { codecJpegMiniatura = c; break; } }
+                catch { }
+                codecJpegBuscado = true;
+            }
+            return codecJpegMiniatura;
+        }
+
         // EL BARRIDO. Al salir de la carpeta temporal ya nadie las borra nunca, asi que hay que barrer.
         // Pero NO por "esto ya no esta en la biblioteca": la rocola admite varios discos de musica, y
         // desconectar uno un fin de semana no puede costar reconstruir todas sus portadas. Se barre por
@@ -741,13 +831,17 @@ namespace Rocola
         private static Image DecodeCoverWithIdentity(string path, string cacheFile)
         {
             Bitmap pendiente;
-            return DecodeCoverCore(path, cacheFile, false, out pendiente);
+            return DecodeCoverCore(path, cacheFile, false, false, out pendiente);
         }
 #if ROCOLA_GPU
         private static Image DecodeCoverForPublication(string path, string cacheFile, out Bitmap pendiente)
-        { return DecodeCoverCore(path, cacheFile, true, out pendiente); }
+        { return DecodeCoverCore(path, cacheFile, true, false, out pendiente); }
+        // El calentador, con "Caratulas en JPEG" encendido: una miniatura que solo esta en PNG se rehace desde la
+        // portada original (si es opaca saldra en JPEG). La pantalla, en cambio, sigue leyendo el PNG: es rapido.
+        private static Image DecodeCoverParaCalentar(string path, string cacheFile, out Bitmap pendiente)
+        { return DecodeCoverCore(path, cacheFile, true, JpegActivo, out pendiente); }
 #endif
-        private static Image DecodeCoverCore(string path, string cacheFile, bool publicarPrimero, out Bitmap pendiente)
+        private static Image DecodeCoverCore(string path, string cacheFile, bool publicarPrimero, bool soloJpeg, out Bitmap pendiente)
         {
             pendiente = null;
             // 1) miniatura en cache -> leerla (rapido)
@@ -755,17 +849,20 @@ namespace Rocola
             {
                 try
                 {
-                    if (File.Exists(cacheFile))
+                    string guardada = MiniaturaGuardada(cacheFile);   // PNG, o el JPEG si el interruptor esta encendido
+                    if (soloJpeg && guardada != null && !string.Equals(guardada, MiniaturaJpeg(cacheFile), StringComparison.OrdinalIgnoreCase))
+                        guardada = null;   // calentando para pasar a JPEG: el PNG no sirve, se rehace desde la original
+                    if (guardada != null)
                     {
                         byte[] cdata;
                         if (diskProbeN < 16)   // perfilado: cronometra las primeras lecturas de miniaturas
                         {
                             System.Diagnostics.Stopwatch dsw = System.Diagnostics.Stopwatch.StartNew();
-                            cdata = File.ReadAllBytes(cacheFile);
+                            cdata = File.ReadAllBytes(guardada);
                             dsw.Stop();
                             DiskProbe((int)dsw.ElapsedMilliseconds);
                         }
-                        else cdata = File.ReadAllBytes(cacheFile);   // I/O puro primero; GDI+ decodifica desde RAM
+                        else cdata = File.ReadAllBytes(guardada);   // I/O puro primero; GDI+ decodifica desde RAM
                         using (MemoryStream cms = new MemoryStream(cdata))
                         using (Image cimg = Image.FromStream(cms, false, false))
                         {
@@ -789,12 +886,25 @@ namespace Rocola
                 using (Image src = Image.FromStream(ms, false, false))
                 {
                     Bitmap thumb = new Bitmap(ThumbPx, ThumbPx, PixelFormat.Format32bppPArgb);
+                    // Con el interruptor JPEG: una portada SIN transparencia (casi todas) es opaca, pero al reducirla el
+                    // filtro mezclaba el borde con lo de fuera y lo dejaba semitransparente. Se reduce repitiendo su
+                    // propio borde y queda opaca de verdad, que es lo que permite guardarla en JPEG (SaveThumb). Las de
+                    // paleta (GIF) pueden traer un color transparente sin canal alfa: esas no cuentan como opacas.
+                    bool fuenteOpaca = JpegActivo && !Image.IsAlphaPixelFormat(src.PixelFormat)
+                                       && (src.PixelFormat & PixelFormat.Indexed) == 0 && (src.Flags & (int)ImageFlags.HasAlpha) == 0;
                     using (Graphics g = Graphics.FromImage(thumb))
                     {
                         g.InterpolationMode = InterpolationMode.HighQualityBilinear;   // filtro original de la miniatura (1 vez por disco)
                         g.PixelOffsetMode = PixelOffsetMode.Half;
-                        g.DrawImage(src, 0, 0, ThumbPx, ThumbPx);
+                        if (fuenteOpaca)
+                            using (ImageAttributes borde = new ImageAttributes())
+                            {
+                                borde.SetWrapMode(WrapMode.TileFlipXY);
+                                g.DrawImage(src, new Rectangle(0, 0, ThumbPx, ThumbPx), 0, 0, src.Width, src.Height, GraphicsUnit.Pixel, borde);
+                            }
+                        else g.DrawImage(src, 0, 0, ThumbPx, ThumbPx);
                     }
+                    if (fuenteOpaca) HazOpaca(thumb);
                     if (cacheFile != null)
                     {
                         if (publicarPrimero)

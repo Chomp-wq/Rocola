@@ -1737,7 +1737,8 @@ namespace Rocola
 
         private bool FaltaMiniatura(string identidad)
         {
-            if (!File.Exists(identidad)) return true;
+            // Sin miniatura que valga, o (con "Caratulas en JPEG") aun sin su JPEG: el calentador la hace.
+            if (MiniaturaPorRehacer(identidad)) return true;
 #if ROCOLA_GPU
             if (gpuEnabled && caratulasLod && !PreviewStore().Contains(identidad)) return true;
 #endif
@@ -1860,7 +1861,7 @@ namespace Rocola
                                 { if (!PublishThumbRemaining(myGen, -1)) return; continue; }
                                 Bitmap porGuardar = null;
 #if ROCOLA_GPU
-                                Image im = DecodeCoverForPublication(pendiente.Ruta, identidad, out porGuardar);
+                                Image im = DecodeCoverParaCalentar(pendiente.Ruta, identidad, out porGuardar);
 #else
                                 Image im = DecodeCoverWithIdentity(pendiente.Ruta, identidad);
 #endif

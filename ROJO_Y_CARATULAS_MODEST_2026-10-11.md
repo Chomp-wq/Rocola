@@ -68,22 +68,39 @@ No se cambiaron sus números a ciegas: el mejor perfil depende del disco y de la
 en la máquina real con Ctrl+F3 → Imagen → Medir, con el mismo inicio, resolución y efectos, y la tabla de
 comparación.
 
-### Probado y descartado: miniaturas en JPEG
+### Carátulas en JPEG: interruptor opcional (Ctrl+F3)
 
 Medido con el GDI+ de Mono (orientativo; en Windows los números cambian):
 
 | Formato | Tamaño | Guardar | Leer |
 | --- | --- | --- | --- |
-| PNG (actual, sin pérdida) | 142 KB | 23,5 ms | 2,7 ms |
+| PNG (de fábrica, sin pérdida) | 142 KB | 23,5 ms | 2,7 ms |
 | JPEG calidad 92 | 22 KB | 0,6 ms | 0,85 ms |
 
-Sería bastante más rápido, sobre todo en disco duro. Pero JPEG reduce el color a la mitad de resolución:
-con una carátula con letras y dibujos, la diferencia media fue de 7 niveles con picos de 150, y de 4 niveles
-de media incluso a calidad 100. Eso cambia la calidad final, que los perfiles de carga no deben tocar, y va
-contra la decisión del caché sin pérdida (`e345478`). Se dejó el PNG.
+JPEG guarda el color a media resolución: en carátulas con letras y dibujos se nota algo en los bordes de
+color (diferencia media de 7 niveles, picos de 150, incluso a calidad 100). Por eso no se aplicó por su
+cuenta: los perfiles de carga no deben cambiar la calidad final.
 
-Si se quisiera esa velocidad a cambio de algo de nitidez, tendría que ser una opción visual en Ctrl+F3,
-decidida por el usuario.
+A petición del usuario («Sí, añade las carátulas en jpeg como interruptor») queda como opción visual:
+
+- **Dónde:** Ctrl+F3 → tarjeta «Carga de carátulas» → «Carátulas en JPEG (más rápidas)».
+- **De fábrica:** apagado; «Pantalla como de fábrica» lo vuelve a apagar.
+- **Clave en la configuración:** `caratulas_jpeg=`.
+
+Encendido:
+
+- Las portadas sin transparencia se reducen repitiendo su propio borde (ya no queda un filo semitransparente)
+  y se guardan en JPEG de calidad 92 al lado de su identidad (mismo nombre, `.jpg`).
+- Las que tienen transparencia, y toda imagen de paleta (GIF), siguen en PNG sin pérdida.
+- Las miniaturas que ya estaban en PNG se siguen usando. El calentador de fondo las rehace en JPEG desde la
+  portada original, con sus mismas pausas.
+- Las transparentes se repasan una vez por sesión en segundo plano, porque no se sabe que son transparentes sin
+  abrir la portada. Son pocas.
+
+Apagado:
+
+- Los JPEG se ignoran y cada carátula vuelve a su PNG sin pérdida, rehecho al verla o en segundo plano.
+- Solo con tarjeta gráfica: con el perfil por CPU (congelado) el interruptor no cambia nada.
 
 ## Pruebas desfasadas tras `e345478` (puestas al día; el programa estaba bien)
 
@@ -98,6 +115,9 @@ decidida por el usuario.
 - **Pruebas automáticas (Linux/Mono, sin Direct3D):**
   - compilación .NET 3.5 de los dos perfiles con cero avisos;
   - `asistentecombo` (64 comprobaciones, 7 nuevas del regreso sin cuadros y los diagnósticos);
+  - batería nueva `caratulasjpeg`: 21 comprobaciones con GPU, 10 con CPU. Cubre apagado y encendido, la portada
+    opaca hasta el borde, las transparentes y GIF en PNG, la conversión del PNG por el calentador, la vuelta
+    atrás y la clave de configuración;
   - `guiarojo`, `ayudaguia`, `asistentevisual`, `estadodetras`, `buscaportadas`, `buscaligero`,
     `miniaturas`, `arranqueeficiente` y `bloqueos`.
 - **Legacy y CPU:**
