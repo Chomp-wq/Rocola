@@ -36,6 +36,7 @@ FUENTES="$FUENTES $RAIZ/Rocola/AuroraNaturalGpu.cs $RAIZ/Rocola/OpticaNaturalGpu
 FUENTES="$FUENTES $RAIZ/Rocola/FuentesMedidas.cs $RAIZ/Rocola/PlanBiblioteca.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/MedidaFluidezGpu.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/MotorBusqueda.cs $RAIZ/Rocola/GuiaRojoGpu.cs $RAIZ/Rocola/AsistenteRocola.cs $RAIZ/Rocola/AsistenteEstrellaGpu.cs"
+FUENTES="$FUENTES $RAIZ/Rocola/AsistentePersonalidadGpu.cs"
 TMP_PRUEBAS="${TMPDIR:-/tmp}/rocola_pruebas_$$"
 FUENTES="$FUENTES $RAIZ/Rocola/AudioControles.cs $RAIZ/Rocola/Sonoridad.cs $RAIZ/Rocola/RellenoMp3.cs $RAIZ/Rocola/SinSilencios.cs $RAIZ/Rocola/SubirTodo.cs $RAIZ/Rocola/NivelDisco.cs $RAIZ/Rocola/BombaSonido.cs $RAIZ/Rocola/DiarioTablas.cs $RAIZ/Rocola/CancionEnMemoria.cs $RAIZ/Rocola/MedidasBitacora.cs $RAIZ/Rocola/FlotanteNLayer.cs $RAIZ/Rocola/PicoReal.cs $RAIZ/Rocola/Realce.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/ModoNoche.cs $RAIZ/Rocola/GraveMono.cs"

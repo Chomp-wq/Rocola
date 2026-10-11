@@ -233,7 +233,7 @@ namespace Rocola
             swAyuda.Text = "Animación del asistente (GPU)"; swAyuda.Checked = asistenteAnimado;
             Label leAyuda = new Label(); leAyuda.SetBounds(16, 142, 424, 32);
             leAyuda.BackColor = Color.Transparent; leAyuda.ForeColor = cTenue; leAyuda.Font = fDes;
-            leAyuda.Text = "Rojo + verde 3 segundos: ayuda. Este ajuste controla el salto\ny los gestos de la estrella; la ayuda sigue funcionando.";
+            leAyuda.Text = "Rojo + verde 3 segundos: ayuda. Anima la cara, los gestos\ny el salto; al apagarlo, el globo y la ayuda siguen disponibles.";
             tBus.Controls.Add(swAyuda); tBus.Controls.Add(leAyuda);
             swAyuda.CheckedChanged += delegate { asistenteAnimado = swAyuda.Checked; f3CambioGraf = true; };
             Label lPie = new Label(); lPie.SetBounds(16, 508, 928, 48); lPie.BackColor = Color.Transparent;

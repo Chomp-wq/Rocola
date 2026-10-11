@@ -49,6 +49,8 @@ namespace Rocola
         private Keys asistenteTecla;
         private int asistentePendienteTick, asistenteInicioTick, asistenteActividadTick;
         private int asistentePagina, asistenteLeccion, asistenteSeleccion;
+        private int asistenteEvento;
+        private AsistenteGestoGpu asistenteGesto;
         private Bitmap asistentePanel;
         private int asistentePanelVersion, asistentePanelPagina = -1, asistentePanelSeleccion = -1, asistentePanelLeccion = -1;
         private bool AsistenteVisible { get { return asistenteVisible || (gpuPanel != null && gpuPanel.AsistenteEnTransicion); } }
@@ -69,6 +71,7 @@ namespace Rocola
             asistentePendiente = false; asistenteVisible = true;
             asistentePagina = asistenteLeccion = asistenteSeleccion = 0;
             asistenteInicioTick = asistenteActividadTick = Environment.TickCount;
+            AnimaAsistente(AsistenteGestoGpu.Saludar);
             if (videoFull) ExitVideoFull();
             if (attractOn) ExitAttract();
             if (video != null) video.Visible = false;
@@ -78,6 +81,7 @@ namespace Rocola
 
         private void CierraAsistente()
         {
+            AnimaAsistente(AsistenteGestoGpu.Despedir);
             asistenteVisible = false; asistentePendiente = false;
             lastInput = DateTime.Now; searchLastActivity = DateTime.Now;
             asistenteRestaurarVideo = true;
@@ -122,9 +126,9 @@ namespace Rocola
                 if (unchecked(Environment.TickCount - asistenteInicioTick) < 750) return true;
                 // Pulsacion unica: mantener verde/rojo no recorre varios pasos.
                 if ((msg.LParam.ToInt64() & 0x40000000L) != 0) return true;
-                if (IsBack(kc)) { if (asistentePagina == 0) CierraAsistente(); else { asistentePagina = asistenteSeleccion = 0; } }
-                else if (IsLeft(kc) || IsUp(kc)) asistenteSeleccion = 0;
-                else if (IsRight(kc) || IsDown(kc)) asistenteSeleccion = 1;
+                if (IsBack(kc)) { if (asistentePagina == 0) CierraAsistente(); else { asistentePagina = asistenteSeleccion = 0; AnimaAsistente(AsistenteGestoGpu.Volver); } }
+                else if (IsLeft(kc) || IsUp(kc)) SeleccionaAsistente(0);
+                else if (IsRight(kc) || IsDown(kc)) SeleccionaAsistente(1);
                 else if (IsOK(kc)) EligeAsistente();
                 return true;
             }
@@ -186,25 +190,44 @@ namespace Rocola
 
         // Moneda y salto siguen disponibles en la ayuda, pero nunca reproducen
         // despues un verde pendiente ni completan un acorde interrumpido.
-        private void InterrumpeComboAsistente()
+        private void InterrumpeComboAsistente(bool moneda)
         {
             asistentePendiente = false;
             if (asistenteCombo != null) asistenteCombo.Actualiza(Environment.TickCount, BackHeld(), VerdeHeld(), false);
+            if (asistenteVisible) {
+                asistenteActividadTick = Environment.TickCount;
+                if (moneda) AnimaAsistente(AsistenteGestoGpu.Credito);
+            }
+        }
+
+        private void AnimaAsistente(AsistenteGestoGpu gesto)
+        { asistenteGesto = gesto; asistenteEvento = unchecked(asistenteEvento + 1); }
+
+        private void SeleccionaAsistente(int seleccion)
+        {
+            seleccion = Math.Max(0, Math.Min(1, seleccion));
+            if (asistenteSeleccion == seleccion) return;
+            asistenteSeleccion = seleccion; AnimaAsistente(AsistenteGestoGpu.Mirar);
         }
 
         private void EligeAsistente()
         {
-            if (asistentePagina == 0) { asistentePagina = asistenteSeleccion == 0 ? 1 : 2; asistenteLeccion = asistenteSeleccion = 0; }
+            if (asistentePagina == 0) {
+                asistentePagina = asistenteSeleccion == 0 ? 1 : 2; asistenteLeccion = asistenteSeleccion = 0;
+                AnimaAsistente(asistentePagina == 1 ? AsistenteGestoGpu.Explicar : AsistenteGestoGpu.Buscar);
+            }
             else if (asistentePagina == 1)
             {
                 if (asistenteSeleccion == 1) asistentePagina = asistenteSeleccion = 0;
                 else if (asistenteLeccion < 2) asistenteLeccion++;
                 else { asistentePagina = 2; asistenteSeleccion = 0; }
+                AnimaAsistente(asistentePagina == 0 ? AsistenteGestoGpu.Volver : asistentePagina == 1 ? AsistenteGestoGpu.Explicar : AsistenteGestoGpu.Buscar);
             }
             else
             {
                 bool buscar = asistenteSeleccion == 0;
                 CierraAsistente();
+                AnimaAsistente(AsistenteGestoGpu.Confirmar);
                 if (buscar) { if (!searchOpen) OpenSearch(); else MarkSearchActivity(); }
                 else { if (searchOpen) CloseSearch(); if (panelSongs != null && panelSongs.Visible) BackToAlbums(); }
             }
@@ -219,10 +242,22 @@ namespace Rocola
             { asistenteSeleccion = i; asistenteActividadTick = Environment.TickCount; EligeAsistente(); return; }
         }
 
+        private void AsistenteMueveRaton(Point punto)
+        {
+            if (!asistenteVisible || asistenteCombo.Capturada || unchecked(Environment.TickCount - asistenteInicioTick) < 750) return;
+            asistenteActividadTick = Environment.TickCount;
+            Rectangle r = GpuPanel.AsistentePanelRect(ClientSize.Width, ClientSize.Height);
+            punto.Offset(-r.Left, -r.Top);
+            for (int i = 0; i < 2; i++) if (AsistenteOpcionRect(r.Width, r.Height, i).Contains(punto))
+            { SeleccionaAsistente(i); return; }
+        }
+
         private AsistenteEstadoGpu BuildAsistenteState()
         {
             AsistenteEstadoGpu estado = new AsistenteEstadoGpu();
             estado.Visible = asistenteVisible; estado.Animada = asistenteAnimado;
+            estado.Gesto = asistenteGesto; estado.Evento = asistenteEvento;
+            estado.Pagina = asistentePagina; estado.Leccion = asistenteLeccion; estado.Seleccion = asistenteSeleccion;
             // Conservar bitmap durante el regreso animado, sin volver a hornearlo.
             if (asistenteVisible) EnsureAsistentePanel();
             estado.Panel = asistentePanel; estado.Version = asistentePanelVersion;
@@ -241,10 +276,36 @@ namespace Rocola
         }
 
         internal static Rectangle AsistenteOpcionRect(int w, int h, int i)
-        { return new Rectangle(Math.Max(12, w / 20), (int)(h * (.61f + i * .16f)), Math.Max(1, w - Math.Max(12, w / 20) * 2), Math.Max(24, (int)(h * .13f))); }
+        {
+            int x = AsistenteGloboMargen(w), derecha = Math.Max(12, w / 20);
+            return new Rectangle(x, (int)(h * (.61f + i * .16f)), Math.Max(1, w - x - derecha), Math.Max(24, (int)(h * .13f)));
+        }
+
+        internal static int AsistenteGloboMargen(int w)
+        { return Math.Min(Math.Max(0, w - 1), Math.Max(12, w / 20) + Math.Min(32, Math.Max(18, w / 18))); }
+
+        // Contorno unico: la cola del globo apunta a la estrella y no deja una
+        // costura entre un rectangulo y un triangulo. Solo se compone al cambiar texto.
+        internal static GraphicsPath AsistenteGloboCamino(int w, int h)
+        {
+            GraphicsPath p = new GraphicsPath();
+            if (w < 64 || h < 64) { p.AddRectangle(new RectangleF(0, 0, Math.Max(1, w), Math.Max(1, h))); return p; }
+            float x = Math.Min(32, Math.Max(18, w / 18)), y = 2, derecha = w - 3, abajo = h - 3;
+            float r = Math.Min(36, Math.Min((derecha - x) * .18f, h * .10f));
+            float cola = h * .46f, baseCola = Math.Min(30, h * .055f);
+            p.AddArc(x, y, r * 2, r * 2, 180, 90);
+            p.AddArc(derecha - r * 2, y, r * 2, r * 2, 270, 90);
+            p.AddArc(derecha - r * 2, abajo - r * 2, r * 2, r * 2, 0, 90);
+            p.AddArc(x, abajo - r * 2, r * 2, r * 2, 90, 90);
+            p.AddLine(x, abajo - r, x, cola + baseCola);
+            p.AddBezier(x, cola + baseCola, x - 2, cola + baseCola * .3f, 4, cola + 4, 2, cola);
+            p.AddBezier(2, cola, 6, cola - 2, x - 3, cola - baseCola * .8f, x, cola - baseCola);
+            p.AddLine(x, cola - baseCola, x, y + r); p.CloseFigure(); return p;
+        }
 
         internal static Bitmap PintaPanelAsistente(int w, int h, int pagina, int leccion, int seleccion)
         {
+            w = Math.Max(1, w); h = Math.Max(1, h);
             Bitmap bmp = new Bitmap(w, h, PixelFormat.Format32bppPArgb);
             using (Graphics g = Graphics.FromImage(bmp))
             using (Font pequeno = new Font("Trebuchet MS", Math.Max(10, Math.Min(18, h * .034f)), FontStyle.Bold, GraphicsUnit.Pixel))
@@ -258,15 +319,17 @@ namespace Rocola
             {
                 g.Clear(Color.Transparent); g.SmoothingMode = SmoothingMode.AntiAlias;
                 g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
-                using (GraphicsPath borde = RoundedPath(new Rectangle(1, 1, w - 3, h - 3), Math.Min(24, h / 8)))
-                using (LinearGradientBrush vidrio = new LinearGradientBrush(new Rectangle(0, 0, w, h), Color.FromArgb(247, 20, 35, 66), Color.FromArgb(245, 10, 14, 32), 90f))
-                using (Pen brillo = new Pen(Color.FromArgb(190, 123, 196, 255), 2f))
-                { g.FillPath(vidrio, borde); g.DrawPath(brillo, borde); }
-                int x = Math.Max(12, w / 20), tw = w - 2 * x;
-                g.DrawString("LA ESTRELLA TE AYUDA", pequeno, azul, new RectangleF(x, h * .045f, tw, h * .06f));
+                using (GraphicsPath borde = AsistenteGloboCamino(w, h))
+                using (LinearGradientBrush vidrio = new LinearGradientBrush(new Rectangle(0, 0, w, h), Color.FromArgb(252, 24, 42, 74), Color.FromArgb(248, 10, 18, 37), 90f))
+                using (Pen halo = new Pen(Color.FromArgb(35, 101, 206, 255), 5f))
+                using (Pen brillo = new Pen(Color.FromArgb(220, 142, 215, 255), 1.8f))
+                { g.DrawPath(halo, borde); g.FillPath(vidrio, borde); g.DrawPath(brillo, borde); }
+                int x = AsistenteGloboMargen(w), tw = Math.Max(1, w - x - Math.Max(12, w / 20));
+                string saludo = pagina == 0 ? "¡HOLA! ESTOY PARA AYUDARTE" : pagina == 1 ? "VAMOS PASO A PASO" : "ENCONTREMOS TU CANCIÓN";
+                g.DrawString(saludo, pequeno, azul, new RectangleF(x, h * .045f, tw, h * .06f));
                 string cabecera = pagina == 0 ? "¿Qué necesitas?" : pagina == 1 ? "Cómo usar la Rocola" : "Vamos a poner una canción";
                 g.DrawString(cabecera, titulo, blanco, new RectangleF(x, h * .12f, tw, h * .17f));
-                string texto = pagina == 0 ? "Elige lo que necesitas. La música seguirá sonando." : pagina == 2 ?
+                string texto = pagina == 0 ? "Vamos paso a paso. Elige lo que necesitas; yo te acompaño y la música sigue sonando." : pagina == 2 ?
                     "Busca por título o artista. Escribe con el teclado, o elige letras con las flechas y verde. Después elige un resultado y pulsa verde para añadirlo a la cola." :
                     leccion == 0 ? "1. Muévete con las flechas entre los discos.\n2. Pulsa verde para ver sus canciones.\n3. Elige una canción y pulsa verde para añadirla a la cola." :
                     leccion == 1 ? "Mantén rojo y pulsa izquierda o derecha para cambiar de letra.\nPara abrir o cerrar el buscador, mantén rojo y pulsa arriba." :
@@ -282,9 +345,9 @@ namespace Rocola
                     { g.FillPath(relleno, camino); g.DrawPath(contorno, camino); }
                     string nombre = pagina == 0 ? (i == 0 ? "Cómo usar la Rocola" : "Ayúdame a poner una canción") : pagina == 1 ?
                         (i == 1 ? "Volver al inicio" : leccion < 2 ? "Siguiente paso" : "Poner una canción") : (i == 0 ? "Abrir el buscador" : "Prefiero explorar los discos");
-                    g.DrawString(nombre, opcion, blanco, new RectangleF(r.Left + 14, r.Top, r.Width - 28, r.Height), formato);
+                    g.DrawString(nombre, opcion, blanco, new RectangleF(r.Left + 12, r.Top, Math.Max(1, r.Width - 24), r.Height), formato);
                 }
-                g.DrawString("FLECHAS: elegir   ·   VERDE: aceptar   ·   ROJO: volver", pequeno, azul, new RectangleF(x, h * .93f, tw, h * .065f));
+                g.DrawString("FLECHAS: elegir · VERDE: aceptar · ROJO: volver", pequeno, azul, new RectangleF(x, h * .93f, tw, h * .065f));
             }
             return bmp;
         }

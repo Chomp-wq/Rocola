@@ -143,6 +143,7 @@
     <Compile Include="GuiaRojoGpu.cs" />
     <Compile Include="AsistenteRocola.cs" />
     <Compile Include="AsistenteEstrellaGpu.cs" />
+    <Compile Include="AsistentePersonalidadGpu.cs" />
     <Compile Include="DiscoVivoGpu.cs" />
     <Compile Include="SuenaVivoGpu.cs" />
     <Compile Include="AtraccionGpu.cs" />

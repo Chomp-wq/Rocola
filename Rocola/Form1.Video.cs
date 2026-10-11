@@ -804,6 +804,7 @@ namespace Rocola
                 gpuPanel.MouseMove += delegate(object senderMouse, MouseEventArgs mouse) {
                     if (Math.Abs(mouse.X - ultimoMouseGpu.X) + Math.Abs(mouse.Y - ultimoMouseGpu.Y) < 4) return;
                     ultimoMouseGpu = mouse.Location; lastInput = DateTime.Now; gpuPanel.IdleExpandTarget = false;
+                    AsistenteMueveRaton(mouse.Location);
                 };
                 gpuPanel.MouseDown += delegate { lastInput = DateTime.Now; gpuPanel.IdleExpandTarget = false; gpuPanel.TouchUi(); };
                 gpuPanel.MouseWheel += delegate { lastInput = DateTime.Now; gpuPanel.IdleExpandTarget = false; gpuPanel.TouchUi(); };

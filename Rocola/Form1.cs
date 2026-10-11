@@ -1969,7 +1969,7 @@ namespace Rocola
             // creditos de mas; cada pulso real del monedero trae su propio pulsar/soltar y pasa siempre)
             if (IsCoin(kc)) {
 #if ROCOLA_GPU
-                InterrumpeComboAsistente();
+                InterrumpeComboAsistente((msg.LParam.ToInt64() & 0x40000000) == 0);
 #endif
                 if ((msg.LParam.ToInt64() & 0x40000000) == 0) { if (wasFull) ExitVideoFull(); AddCoin(); } return true; }
 
@@ -1977,7 +1977,7 @@ namespace Rocola
             if (IsSkip(kc) && (msg.LParam.ToInt64() & 0x40000000) == 0)
             {
 #if ROCOLA_GPU
-                InterrumpeComboAsistente();
+                InterrumpeComboAsistente(false);
 #endif
                 SkipSong();   // si el video estaba en pantalla completa, StopVideoPlayback ya sale de ella
                 return true;

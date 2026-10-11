@@ -11,6 +11,8 @@ namespace Rocola
         public bool Visible, Animada;
         public Bitmap Panel;
         public int Version;
+        public AsistenteGestoGpu Gesto;
+        public int Evento, Pagina, Leccion, Seleccion;
     }
 
     internal struct AsistentePoseGpu
@@ -32,6 +34,8 @@ namespace Rocola
         private IntPtr asistenteTex;
         private Bitmap asistenteBmp; // referencia prestada; no se libera aqui
         private int asistenteVer = -1, asistenteW, asistenteH;
+        private int asistenteTextoClave = -1;
+        private double asistenteTextoInicio;
         private float asistenteU, asistenteV;
         private readonly D3D9.Vtx[] asistenteQuad = new D3D9.Vtx[6];
         private readonly D3D9.Vtx[] asistenteVelo = new D3D9.Vtx[6];
@@ -52,13 +56,18 @@ namespace Rocola
             // sean legibles tambien a 640x480. El tope evita tarjetas gigantes.
             int reserva = Math.Min(132, Math.Max(48, (int)(h * .11f)));
             int alto = Math.Max(1, Math.Min(800, Math.Min((int)(h * .65f), h - y - reserva)));
-            return new Rectangle(x, y, Math.Max(1, w - x - margen), alto);
+            return new Rectangle(x, y, Math.Min(1120, Math.Max(1, w - x - margen)), alto);
         }
 
         internal static PointF AsistenteCentroFrente(int w, int h)
         {
             Rectangle r = AsistentePanelRect(w, h);
-            return new PointF(Math.Max(1, w) * .22f, r.Y + r.Height * .46f);
+            float radio = AsistenteRadioFrente(w, h);
+            // Mantenerla junto al globo tambien en 4K/ultrapanoramico: el tope
+            // del tamano de la estrella no debe dejar medio metro de hueco.
+            float x = r.Left - radio * 1.40f - Math.Min(24, Math.Max(8, w / 32));
+            x = Math.Min(Math.Max(1, w), Math.Max(radio * 1.35f + 4, x));
+            return new PointF(x, r.Y + r.Height * .46f);
         }
 
         internal static float AsistenteRadioFrente(int w, int h)
@@ -104,7 +113,14 @@ namespace Rocola
             asistenteTex = Upload(asistenteTex, ref asistenteW, ref asistenteH,
                 asistenteEstado.Panel, out asistenteU, out asistenteV);
             if (asistenteTex != IntPtr.Zero)
-            { asistenteVer = asistenteEstado.Version; asistenteBmp = asistenteEstado.Panel; }
+            {
+                asistenteVer = asistenteEstado.Version; asistenteBmp = asistenteEstado.Panel;
+                int textoClave = asistenteEstado.Pagina * 4 + asistenteEstado.Leccion;
+                if (asistenteTextoClave != textoClave) {
+                    asistenteTextoClave = textoClave;
+                    asistenteTextoInicio = (cuadroMs >= 0 ? cuadroMs : AhoraMs()) / 1000;
+                }
+            }
         }
 
         private AsistentePoseGpu AsistentePoseFondo()
@@ -130,6 +146,7 @@ namespace Rocola
         private void AvanzaAsistente()
         {
             double ahora = (cuadroMs >= 0 ? cuadroMs : AhoraMs()) / 1000;
+            bool entrada = asistenteEstado.Visible && !asistenteAnteriorVisible;
             if (asistenteEstado.Visible != asistenteAnteriorVisible)
             {
                 asistenteDesde = asistenteDibujando ? asistentePose : AsistentePoseFondo();
@@ -141,6 +158,7 @@ namespace Rocola
                 ResetStarEchoes(); // la misma estrella viene al frente; no queda otra copia detras
             }
             if (!asistenteDibujando) return;
+            AvanzaPersonalidad(ahora, entrada);
             AsistentePoseGpu hasta = asistenteEstado.Visible
                 ? new AsistentePoseGpu { Centro = AsistenteCentroFrente(Width, Height),
                     Radio = AsistenteRadioFrente(Width, Height), Pitch = .08, Miembros = 1, Alfa = 1 }
@@ -167,10 +185,9 @@ namespace Rocola
             asistenteFrente = SafeMoonLevel(asistentePose.Miembros);
             if (asistenteEstado.Visible && t >= 1 && asistenteEstado.Animada)
             {
-                double vida = ahora - asistenteInicio - AsistenteSaltoSegundos;
-                // Un saludo calmo, no el giro/latido violento del fondo musical.
-                asistentePose.Giro = .035f * (float)Math.Sin(vida * 1.5);
-                asistentePose.Centro.Y += asistentePose.Radio * .012f * (float)Math.Sin(vida * 2);
+                asistentePose.Giro = asistenteExpresion.Inclinacion;
+                asistentePose.Centro.Y += asistentePose.Radio * asistenteExpresion.Rebote;
+                asistentePose.Radio *= asistenteExpresion.Escala;
             }
             if (!asistenteEstado.Visible && t >= 1)
             {
@@ -190,10 +207,15 @@ namespace Rocola
                 stars.DrawColorQuad(asistenteVelo); // despues de toda la UI; nunca se atenúa el sonido
             }
             Rectangle panel = AsistentePanelRect(Width, Height);
-            float panelAlpha = AsistenteSuaviza((presencia - .13) / .72);
+            float entradaPanel = AsistenteSuaviza((presencia - .13) / .72);
+            float panelAlpha = entradaPanel;
+            // El mensaje nuevo respira sin mover las opciones ni reescribir el
+            // texto letra a letra. La seleccion no vuelve a disparar este fundido.
+            if (asistenteEstado.Animada && asistenteEstado.Visible)
+                panelAlpha *= .82f + .18f * AsistenteSuaviza(((cuadroMs >= 0 ? cuadroMs : AhoraMs()) / 1000 - asistenteTextoInicio) / .18);
             if (asistenteTex != IntPtr.Zero && panelAlpha > .001f)
             {
-                float sube = asistenteEstado.Animada ? (1 - panelAlpha) * 16 : 0;
+                float sube = asistenteEstado.Animada ? (1 - entradaPanel) * 16 : 0;
                 SetTexQuadA(asistenteQuad, panel.Left, panel.Top + sube, panel.Right, panel.Bottom + sube,
                     asistenteU, asistenteV, ((uint)(panelAlpha * 255) << 24) | 0x00FFFFFFu);
                 stars.DrawQuad(asistenteTex, asistenteQuad);
@@ -201,9 +223,6 @@ namespace Rocola
             float alfa = SafeMoonLevel(asistentePose.Alfa);
             if (alfa <= .001f) return;
             float cx = asistentePose.Centro.X, cy = asistentePose.Centro.Y, radio = asistentePose.Radio;
-            double vida = Math.Max(0, (cuadroMs >= 0 ? cuadroMs : AhoraMs()) / 1000 - asistenteInicio);
-            float gesto = asistenteEstado.Animada && asistenteEstado.Visible
-                ? (float)Math.Sin(Math.Max(0, vida - AsistenteSaltoSegundos) * 2.1) : 0;
             if (presencia > 0)
             {
                 stars.GlowBatchBegin(2);
@@ -211,7 +230,7 @@ namespace Rocola
                 stars.GlowBatchAdd(cx, cy, radio * 1.43f, ((uint)(46 * presencia * alfa) << 24) | tinte);
                 stars.GlowBatchAdd(cx, cy + radio * 1.46f, radio * .6f, ((uint)(18 * presencia * alfa) << 24) | tinte);
                 stars.GlowBatchEnd();
-                int n = AsistenteMallaMiembros(asistenteMiembros, cx, cy, radio, presencia, gesto, alfa);
+                int n = AsistenteMiembrosExpresivos(asistenteMiembros, cx, cy, radio, presencia, alfa, asistenteExpresion, asistentePose.Giro);
                 if (n > 0) stars.DrawMesh(asistenteMiembros, n / 3);
             }
             uint color = StarColorAt(cx, cy);
@@ -232,6 +251,9 @@ namespace Rocola
                 RotateStarQuad(lunaQuad, cx, cy, asistentePose.Giro);
                 stars.DrawQuad(lunaTex, lunaQuad);
             }
+            float caraPresencia = AsistenteSuaviza((presencia - .50) / .50);
+            int cara = AsistenteMallaCara(asistenteCara, cx, cy, radio, caraPresencia, alfa, asistenteExpresion, asistentePose.Giro);
+            if (cara > 0) stars.DrawMesh(asistenteCara, cara / 3);
         }
 
         // Geometria negra con extremos redondos y filo suavizado. Se puede probar
@@ -239,40 +261,9 @@ namespace Rocola
         internal static int AsistenteMallaMiembros(D3D9.Vtx[] v, float cx, float cy,
             float radio, float cantidad, float gesto, float alfa)
         {
-            if (v == null || v.Length < 2600 || !(radio > 0) || float.IsInfinity(radio)
-                || float.IsNaN(cx) || float.IsInfinity(cx) || float.IsNaN(cy) || float.IsInfinity(cy)
-                || !(cantidad > 0)) return 0;
-            cantidad = SafeMoonLevel(cantidad); alfa = SafeMoonLevel(alfa);
-            if (cantidad <= 0 || alfa <= 0) return 0;
             gesto = Math.Max(-1, Math.Min(1, float.IsNaN(gesto) ? 0 : gesto));
-            float r = radio * cantidad, ancho = Math.Max(2, radio * .055f) * cantidad;
-            uint negro = ((uint)(alfa * 255) << 24) | 0x0006080Du;
-            int n = 0;
-            // Brazos: del valle central a un codo blando y una pequena mano negra.
-            AsistenteSegmento(v, ref n, cx - r * .43f, cy + r * .03f,
-                cx - r * 1.02f, cy + r * .32f, ancho, negro);
-            AsistenteSegmento(v, ref n, cx - r * 1.02f, cy + r * .32f,
-                cx - r * 1.19f, cy + r * .65f, ancho, negro);
-            AsistenteSegmento(v, ref n, cx + r * .43f, cy + r * .03f,
-                cx + r * 1.01f, cy + r * .13f, ancho, negro);
-            AsistenteSegmento(v, ref n, cx + r * 1.01f, cy + r * .13f,
-                cx + r * 1.17f, cy - r * (.20f + .15f * gesto), ancho, negro);
-            AsistenteDisco(v, ref n, cx - r * 1.19f, cy + r * .65f, ancho * 1.7f, negro);
-            AsistenteDisco(v, ref n, cx + r * 1.17f, cy - r * (.20f + .15f * gesto), ancho * 1.7f, negro);
-            // Piernitas por debajo de las dos puntas inferiores, sin fondo negro.
-            AsistenteSegmento(v, ref n, cx - r * .38f, cy + r * .51f,
-                cx - r * .43f, cy + r * 1.02f, ancho, negro);
-            AsistenteSegmento(v, ref n, cx - r * .43f, cy + r * 1.02f,
-                cx - r * .37f, cy + r * 1.40f, ancho, negro);
-            AsistenteSegmento(v, ref n, cx + r * .38f, cy + r * .51f,
-                cx + r * .43f, cy + r * 1.02f, ancho, negro);
-            AsistenteSegmento(v, ref n, cx + r * .43f, cy + r * 1.02f,
-                cx + r * .39f, cy + r * 1.40f, ancho, negro);
-            AsistenteSegmento(v, ref n, cx - r * .37f, cy + r * 1.40f,
-                cx - r * .56f, cy + r * 1.43f, ancho * 1.42f, negro);
-            AsistenteSegmento(v, ref n, cx + r * .39f, cy + r * 1.40f,
-                cx + r * .58f, cy + r * 1.43f, ancho * 1.42f, negro);
-            return n;
+            AsistenteExpresionGpu e = AsistenteNeutral(); e.ManoDerY = -.20f - .15f * gesto;
+            return AsistenteMiembrosExpresivos(v, cx, cy, radio, cantidad, alfa, e, 0);
         }
 
         private static void AsistenteSegmento(D3D9.Vtx[] v, ref int n, float x0, float y0,
@@ -331,12 +322,15 @@ namespace Rocola
             SueltaPanelAsistente();
             asistenteAnteriorVisible = asistenteDibujando = false; asistenteFrente = 0;
             asistenteEstado = new AsistenteEstadoGpu();
+            asistenteEventoVisto = Int32.MinValue;
+            asistenteExpresion = asistenteExpresionDesde = AsistenteNeutral();
         }
 
         private void SueltaPanelAsistente()
         {
             if (asistenteTex != IntPtr.Zero) { D3D9.Release(asistenteTex); asistenteTex = IntPtr.Zero; }
             asistenteBmp = null; asistenteVer = -1; asistenteW = asistenteH = 0;
+            asistenteTextoClave = -1;
         }
     }
 }
