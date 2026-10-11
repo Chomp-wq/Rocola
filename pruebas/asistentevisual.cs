@@ -168,7 +168,8 @@ class AsistenteVisual
         Check(!Codigo.Llama(form.GetMethod("AbreAsistente",B),"AddItem") && !Codigo.Llama(form.GetMethod("EligeAsistente",B),"AddItem"),"Ayuda no encola ni gasta credito");
         Check(Codigo.Llama(form.GetMethod("EligeAsistente",B),"OpenSearch"),"Ayuda usa el buscador real");
         foreach(string method in new string[]{"AvanzaAsistente","DibujaAsistente","AsistenteMallaMiembros","AsistenteSegmento","AsistenteDisco",
-            "AvanzaPersonalidad","AsistenteActua","AsistenteMezcla","AsistenteMiembrosExpresivos","AsistenteMallaCara","AsistenteOvalo","AsistenteTrazo","AsistenteRotaMalla"})
+            "AvanzaPersonalidad","AsistenteActua","AsistenteMezcla","AsistenteMiembrosExpresivos","AsistenteBrazosExpresivos",
+            "AsistenteArmaBrazos","AsistenteGeometriaValida","AsistenteRotaMalla"})
             foreach(Codigo.Paso step in Codigo.Pasos(gpu.GetMethod(method,B))) Check(step.Op!=0x8D,"Sin reservar arreglos en animacion: "+method);
     }
 
@@ -184,7 +185,11 @@ class AsistenteVisual
         Type gestures=form.Assembly.GetType("Rocola.AsistenteGestoGpu",true);
         FieldInfo[] fields=exp.GetFields(B);
         object neutral=Call(gpu,null,"AsistenteNeutral");
-        Array limbs=Array.CreateInstance(vtx,2603),face=Array.CreateInstance(vtx,2203);
+        Check(gpu.GetMethod("AsistenteMallaCara",B)==null && gpu.GetField("asistenteCara",B)==null,
+            "El renderer no contiene rostro ni buffer facial");
+        foreach(string name in new string[]{"Ojos","Guino","MiraX","MiraY","Cejas","Sonrisa","Boca"})
+            Check(exp.GetField(name,B)==null,"Expresiones exclusivamente corporales: "+name);
+        Array limbs=Array.CreateInstance(vtx,1903),arms=Array.CreateInstance(vtx,703);
         foreach(object gesture in Enum.GetValues(gestures))
         {
             object previous=null;
@@ -194,7 +199,6 @@ class AsistenteVisual
                 foreach(FieldInfo field in fields) {
                     float value=(float)field.GetValue(e);
                     Check(Finite(value)&&Math.Abs(value)<2,"Expresion finita y acotada: "+gesture+"/"+field.Name);
-                    // La mirada entre dos opciones cambia un maximo de .019 radios.
                     if(previous!=null) Check(Math.Abs(value-(float)field.GetValue(previous))<.12,
                         "Gesto continuo a 240 Hz: "+gesture+"/"+field.Name);
                 }
@@ -204,28 +208,38 @@ class AsistenteVisual
             {
                 object e=Call(gpu,null,"AsistenteActua",time,time,gesture,1,true);
                 foreach(float radius in new float[]{40,220})
-                foreach(bool isFace in new bool[]{false,true}) {
-                    Array vertices=isFace ? face : limbs; string method=isFace ? "AsistenteMallaCara" : "AsistenteMiembrosExpresivos";
+                foreach(bool front in new bool[]{false,true}) {
+                    Array vertices=front ? arms : limbs; string method=front ? "AsistenteBrazosExpresivos" : "AsistenteMiembrosExpresivos";
                     object sentinel=Activator.CreateInstance(vtx); Set(sentinel,"X",12345f); vertices.SetValue(sentinel,vertices.Length-1);
                     int n=(int)Call(gpu,null,method,vertices,500f,300f,radius,1f,1f,e,F(e,"Inclinacion"));
                     Check(n>0&&n%3==0&&n<=vertices.Length-3,"Geometria expresiva acotada: "+gesture);
                     Check(F(vertices.GetValue(vertices.Length-1),"X")==12345f,"No escribe fuera de malla");
                     for(int i=0;i<n;i++) {
                         object vertex=vertices.GetValue(i); float x=F(vertex,"X"),y=F(vertex,"Y");
-                        Check(Finite(x)&&Finite(y)&&Math.Abs(x-500)<radius*1.8f+5&&Math.Abs(y-300)<radius*1.8f+5,"Cara/miembros no salen de personaje");
+                        Check(Finite(x)&&Finite(y)&&Math.Abs(x-500)<radius*1.8f+5&&Math.Abs(y-300)<radius*1.8f+5,"Miembros no salen de personaje");
+                        Check(((uint)Get(vertex,"Color")&0xFFFFFFu)==0x06080Du,"Solo miembros negros, no rasgos sobre el icono");
                     }
                 }
             }
             object still=Call(gpu,null,"AsistenteActua",16.1,2.2,gesture,1,false);
             foreach(FieldInfo field in fields) Check((float)field.GetValue(still)==(float)field.GetValue(neutral),"Toggle apaga TODOS los gestos");
+            if(Convert.ToInt32(gesture)!=0) {
+                object active=Call(gpu,null,"AsistenteActua",.6,.6,gesture,1,true);
+                object idle=Call(gpu,null,"AsistenteActua",.6,.6,Enum.ToObject(gestures,0),1,true);
+                float difference=0;
+                foreach(FieldInfo field in fields) difference+=Math.Abs((float)field.GetValue(active)-(float)field.GetValue(idle));
+                Check(difference>.20f,"Cada accion tiene lenguaje corporal propio: "+gesture);
+            }
         }
         foreach(double bad in new double[]{double.NaN,double.PositiveInfinity,double.NegativeInfinity,-1}) {
             object safe=Call(gpu,null,"AsistenteActua",bad,bad,Enum.ToObject(gestures,1),0,true);
             foreach(FieldInfo field in fields) Check(Finite((float)field.GetValue(safe)),"Reloj invalido seguro");
         }
-        foreach(string method in new string[]{"AsistenteMallaCara","AsistenteMiembrosExpresivos"})
+        foreach(string method in new string[]{"AsistenteBrazosExpresivos","AsistenteMiembrosExpresivos"})
         foreach(float bad in new float[]{0,-1,float.NaN,float.PositiveInfinity})
-            Check((int)Call(gpu,null,method,method=="AsistenteMallaCara" ? face : limbs,0f,0f,bad,1f,1f,neutral,0f)==0,"Radio invalido no desborda");
+            Check((int)Call(gpu,null,method,method=="AsistenteBrazosExpresivos" ? arms : limbs,0f,0f,bad,1f,1f,neutral,0f)==0,"Radio invalido no desborda");
+        Check((int)Call(gpu,null,"AsistenteBrazosExpresivos",Array.CreateInstance(vtx,699),0f,0f,100f,1f,1f,neutral,0f)==0,"Buffer frontal corto no desborda");
+        Check((int)Call(gpu,null,"AsistenteMiembrosExpresivos",Array.CreateInstance(vtx,1899),0f,0f,100f,1f,1f,neutral,0f)==0,"Buffer posterior corto no desborda");
         using(Control p=(Control)Activator.CreateInstance(gpu,true)) {
             p.Size=new Size(640,480); Set(p,"uiBotH",68); Set(p,"asistenteEstado",GestureState("Saludar",1,0));
             Pose(p,1000); Pose(p,2100); object before=Get(p,"asistenteExpresion");
@@ -239,6 +253,31 @@ class AsistenteVisual
             Set(p,"asistenteEstado",State(true,false,null,1)); Pose(p,2500);
             foreach(FieldInfo field in fields) Check((float)field.GetValue(Get(p,"asistenteExpresion"))==(float)field.GetValue(neutral),"Desactivar en vivo conserva pose quieta");
         }
+        // Con postura/pasos vivos, las manos siguen sin entrar en los botones y
+        // los pies no pisan la barra de estado en ninguna resolucion habitual.
+        foreach(Size size in new Size[]{new Size(640,480),new Size(1024,768),new Size(1920,1080),new Size(3840,2160)})
+        using(Control p=(Control)Activator.CreateInstance(gpu,true)) {
+            p.Size=size; Set(p,"uiBotH",68); Rectangle card=Card(size); int serial=1;
+            foreach(object gesture in Enum.GetValues(gestures))
+            foreach(int selection in new int[]{0,1}) {
+                Set(p,"asistenteEstado",GestureState(gesture.ToString(),serial++,selection)); Pose(p,1000);
+                foreach(double t in new double[]{.0,.2,.6,1.5,2.3,4.3,8.5}) {
+                    object pose=Pose(p,1720+t*1000); PointF c=(PointF)Get(pose,"Centro");
+                    object e=Get(p,"asistenteExpresion");
+                    foreach(bool front in new bool[]{false,true}) {
+                        Array vertices=front ? arms : limbs;
+                        int n=(int)Call(gpu,null,front ? "AsistenteBrazosExpresivos" : "AsistenteMiembrosExpresivos",
+                            vertices,c.X,c.Y,F(pose,"Radio"),1f,1f,e,F(pose,"Giro"));
+                        for(int i=0;i<n;i++) {
+                            object v=vertices.GetValue(i);
+                            Check(F(v,"X")>0 && F(v,"X")<card.Left-2 && F(v,"Y")>0 && F(v,"Y")<size.Height-48,
+                                "Lenguaje corporal no recorta miembros ni tapa controles: "+size+"/"+gesture);
+                        }
+                    }
+                }
+                Set(p,"asistenteEstado",State(false,false,null,1)); Pose(p,12000);
+            }
+        }
     }
 
     // Coste CPU sintetico del reloj fino + dos mallas, SIN reflexion/boxing en el
@@ -250,8 +289,8 @@ class AsistenteVisual
         il.Emit(OpCodes.Ldarg_0); il.Emit(OpCodes.Castclass,gpu); il.Emit(OpCodes.Stloc,local);
         il.Emit(OpCodes.Ldloc,local); il.Emit(OpCodes.Ldarg_1); il.Emit(OpCodes.Stfld,gpu.GetField("cuadroMs",B));
         il.Emit(OpCodes.Ldloc,local); il.Emit(OpCodes.Call,gpu.GetMethod("AvanzaAsistente",B));
-        foreach(string method in new string[]{"AsistenteMiembrosExpresivos","AsistenteMallaCara"}) {
-            il.Emit(OpCodes.Ldloc,local); il.Emit(OpCodes.Ldfld,gpu.GetField(method=="AsistenteMallaCara" ? "asistenteCara" : "asistenteMiembros",B));
+        foreach(string method in new string[]{"AsistenteMiembrosExpresivos","AsistenteBrazosExpresivos"}) {
+            il.Emit(OpCodes.Ldloc,local); il.Emit(OpCodes.Ldfld,gpu.GetField(method=="AsistenteBrazosExpresivos" ? "asistenteBrazos" : "asistenteMiembros",B));
             foreach(float number in new float[]{200,200,100,1,1}) il.Emit(OpCodes.Ldc_R4,number);
             il.Emit(OpCodes.Ldloc,local); il.Emit(OpCodes.Ldfld,gpu.GetField("asistenteExpresion",B)); il.Emit(OpCodes.Ldc_R4,0f);
             il.Emit(OpCodes.Call,gpu.GetMethod(method,B)); il.Emit(OpCodes.Pop);
@@ -353,13 +392,32 @@ class AsistenteVisual
                             if(color.R+color.G+color.B>180)light++;
                         }
                         Check(black>20 && light>100,"Brazos/piernas negros y cuerpo visible en HAL");
+                        // Comparar el centro con EL MISMO material original sin
+                        // miembros/globo. Ojos, boca o placas faciales alterarian
+                        // estos pixeles; la geometria central debe quedar intacta.
+                        float presence=(float)Get(p,"asistenteFrente");
+                        try {
+                            Set(p,"asistenteFrente",0f);
+                            Check((bool)Call(sky.GetType(),sky,"Begin",size.Width,size.Height,0f,0f),"Begin material sin rasgos HAL");
+                            Call(gpu,p,"DibujaAsistente");
+                            Check(Fn<Hr>(dev,42)(dev)>=0,"EndScene material sin rasgos HAL");
+                            Set(device,"inScene",false); Call(device.GetType(),device,"SueltaPinesVertices");
+                            using(Bitmap original=ReadPixels(device,size)) {
+                                for(int y=(int)(c.Y-radius*.20f);y<(int)(c.Y+radius*.20f);y++)
+                                for(int x=(int)(c.X-radius*.20f);x<(int)(c.X+radius*.20f);x++) {
+                                    Color a=shot.GetPixel(x,y),b=original.GetPixel(x,y);
+                                    Check(Math.Abs(a.R-b.R)+Math.Abs(a.G-b.G)+Math.Abs(a.B-b.B)<=3,
+                                        "Icono sin rostro: centro igual al material original en HAL");
+                                }
+                            }
+                        } finally { Set(p,"asistenteFrente",presence); }
                     }
                     Check(Fn<Present>(dev,17)(dev,IntPtr.Zero,IntPtr.Zero,IntPtr.Zero,IntPtr.Zero)>=0,"Present asistente HAL");
                     // Capturas de acciones con el renderer real, no sprites dibujados
                     // por la prueba. El globo cambia solo con el mensaje, no con el gesto.
                     if(size.Width==640) {
                         int serial=2;
-                        foreach(string gesture in new string[]{"Saludar","Explicar","Buscar","Mirar","Confirmar","Credito","Despedir"}) {
+                        foreach(string gesture in new string[]{"Saludar","Explicar","Buscar","Senalar","Confirmar","Credito","Despedir"}) {
                             object s=GestureState(gesture,serial,1); Set(s,"Panel",bitmap); Set(s,"Version",1); source.Value=s;
                             double time=4000+serial*2000;
                             Call(gpu,p,"PreparaAsistente"); Pose(p,time); Pose(p,time+600);

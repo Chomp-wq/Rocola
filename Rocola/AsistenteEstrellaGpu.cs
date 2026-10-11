@@ -39,8 +39,10 @@ namespace Rocola
         private float asistenteU, asistenteV;
         private readonly D3D9.Vtx[] asistenteQuad = new D3D9.Vtx[6];
         private readonly D3D9.Vtx[] asistenteVelo = new D3D9.Vtx[6];
-        // Diez segmentos y sus extremos: < 72 KiB, reutilizados en todos los cuadros.
-        private readonly D3D9.Vtx[] asistenteMiembros = new D3D9.Vtx[2600];
+        // Dos lotes de miembros alrededor del cuerpo, < 72 KiB en total.
+        // No hay cara ni geometria facial, ni reservas por cuadro.
+        private readonly D3D9.Vtx[] asistenteMiembros = new D3D9.Vtx[1900];
+        private readonly D3D9.Vtx[] asistenteBrazos = new D3D9.Vtx[700];
         private static readonly float[] asistenteCirculoX = AsistenteCirculo(true);
         private static readonly float[] asistenteCirculoY = AsistenteCirculo(false);
         internal const double AsistenteSaltoSegundos = .72;
@@ -186,7 +188,9 @@ namespace Rocola
             if (asistenteEstado.Visible && t >= 1 && asistenteEstado.Animada)
             {
                 asistentePose.Giro = asistenteExpresion.Inclinacion;
+                asistentePose.Centro.X += asistentePose.Radio * asistenteExpresion.Desplazamiento;
                 asistentePose.Centro.Y += asistentePose.Radio * asistenteExpresion.Rebote;
+                asistentePose.Pitch += asistenteExpresion.Reverencia;
                 asistentePose.Radio *= asistenteExpresion.Escala;
             }
             if (!asistenteEstado.Visible && t >= 1)
@@ -251,9 +255,8 @@ namespace Rocola
                 RotateStarQuad(lunaQuad, cx, cy, asistentePose.Giro);
                 stars.DrawQuad(lunaTex, lunaQuad);
             }
-            float caraPresencia = AsistenteSuaviza((presencia - .50) / .50);
-            int cara = AsistenteMallaCara(asistenteCara, cx, cy, radio, caraPresencia, alfa, asistenteExpresion, asistentePose.Giro);
-            if (cara > 0) stars.DrawMesh(asistenteCara, cara / 3);
+            int brazos = AsistenteBrazosExpresivos(asistenteBrazos, cx, cy, radio, presencia, alfa, asistenteExpresion, asistentePose.Giro);
+            if (brazos > 0) stars.DrawMesh(asistenteBrazos, brazos / 3);
         }
 
         // Geometria negra con extremos redondos y filo suavizado. Se puede probar
@@ -261,9 +264,15 @@ namespace Rocola
         internal static int AsistenteMallaMiembros(D3D9.Vtx[] v, float cx, float cy,
             float radio, float cantidad, float gesto, float alfa)
         {
+            if (!AsistenteGeometriaValida(v, 2600, cx, cy, radio)) return 0;
+            cantidad = SafeMoonLevel(cantidad); alfa = SafeMoonLevel(alfa);
+            if (cantidad <= 0 || alfa <= 0) return 0;
             gesto = Math.Max(-1, Math.Min(1, float.IsNaN(gesto) ? 0 : gesto));
             AsistenteExpresionGpu e = AsistenteNeutral(); e.ManoDerY = -.20f - .15f * gesto;
-            return AsistenteMiembrosExpresivos(v, cx, cy, radio, cantidad, alfa, e, 0);
+            int n = AsistenteMiembrosExpresivos(v, cx, cy, radio, cantidad, alfa, e, 0);
+            AsistenteArmaBrazos(v, ref n, cx, cy, radio*cantidad,
+                Math.Max(2, radio*.055f)*cantidad, ((uint)(alfa*255)<<24)|0x0006080Du, e);
+            return n;
         }
 
         private static void AsistenteSegmento(D3D9.Vtx[] v, ref int n, float x0, float y0,

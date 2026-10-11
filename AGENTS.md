@@ -1,6 +1,7 @@
 # Reglas permanentes de la Rocola
 
 - Decision del usuario del 10 de octubre de 2026: desde ahora trabajar SOLO en la rama Modest (`claude/modest-carson-fa2v2n`). HD queda suspendida: no editar, compilar, desplegar ni publicar cambios en HD sin una nueva peticion expresa. Esta decision sustituye la regla anterior de duplicar mejoras en ambas ramas.
+- Decision del usuario del 10 de octubre de 2026: el asistente estrella NO tiene rostro. Conservar el cuerpo del icono; expresar personalidad exclusivamente con movimientos, postura, brazos, manos y pasos. No anadir ojos, boca, cejas ni animaciones faciales.
 
 - Peticion del usuario del 9 de octubre de 2026: incluir la estrella animada en las verificaciones de fluidez. Revisar Legacy y Natural, 2D/3D, navegacion y estado extendido; comprobar intervalos de cuadro (p95/p99/max), no solo FPS medios. Si se ejecuta con musica real, usar una copia con datos aislados y distinguir esa medicion de pruebas sinteticas. No prometer ausencia absoluta de pausas del sistema operativo.
 - Para atribuir tirones, comprobar si sigue activo el preanalisis de la biblioteca: terminar el escaneo y desactivar ia_datos no significa terminar el repaso. Separar cuadros presentados, huecos entre cuadros y fallos de presentacion; una diferencia de contadores GC indica coincidencia, no su duracion ni causalidad. No mezclar pruebas HAL/compilacion/entrenamiento con una medicion real comparativa.

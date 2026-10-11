@@ -207,7 +207,7 @@ namespace Rocola
         {
             seleccion = Math.Max(0, Math.Min(1, seleccion));
             if (asistenteSeleccion == seleccion) return;
-            asistenteSeleccion = seleccion; AnimaAsistente(AsistenteGestoGpu.Mirar);
+            asistenteSeleccion = seleccion; AnimaAsistente(AsistenteGestoGpu.Senalar);
         }
 
         private void EligeAsistente()
