@@ -1246,6 +1246,7 @@ namespace Rocola
                     DrawCtrlOverlay(g, letterBar);
                     DrawCtrlOverlay(g, headerView);
                     DrawLabelOverlay(g, lblStatus);
+                    DrawGuiaRojo(g);
                 }
                 // Las etiquetas de estado de abajo YA NO van aqui: tienen su propia textura chica
                 // (EnsureUiBotOverlay), asi el reloj de la cancion no rehace esta textura 2 veces/seg.
@@ -1501,6 +1502,7 @@ namespace Rocola
                     }
                 }
             }
+            n = FillGuiaRojoGlows(buf, n);
             // Atenuar tambien los halos de los controles, no los de la cancion
             // actual. Se aplica al alfa, sin invalidar ni rehornear la interfaz.
             if (gpuPanel != null)
@@ -1608,6 +1610,7 @@ namespace Rocola
             {
                 sb = Mix(sb, 'N'); sb = Mix(sb, letterBar.Current); sb = Mix(sb, letterBar.Letters);
                 sb = Mix(sb, letterBar.LupaGpu);   // encender o apagar la lupa rehace la barra
+                sb = Mix(sb, GuiaRojoVisible());
                 sb = Mix(sb, letterBar.Available == null ? 0 : letterBar.Available.Count);
                 // Los NUMEROS y los COLORES de las letras los va aprendiendo el paseo de fondo, y el
                 // DESLIZAMIENTO al cambiar de letra se mueve solo. Sin esto, en modo GPU la textura no se

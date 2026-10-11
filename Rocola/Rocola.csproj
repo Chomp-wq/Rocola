@@ -140,6 +140,7 @@
     <Compile Include="RelojPantallaGpu.cs" />
     <Compile Include="AuroraFinaGpu.cs" />
     <Compile Include="PantallaVivaGpu.cs" />
+    <Compile Include="GuiaRojoGpu.cs" />
     <Compile Include="DiscoVivoGpu.cs" />
     <Compile Include="SuenaVivoGpu.cs" />
     <Compile Include="AtraccionGpu.cs" />

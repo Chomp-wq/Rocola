@@ -57,6 +57,11 @@ foreach ($test in @('capascolor', 'cristalcola', 'cubofila', 'respuesta', 'efect
 }
 } finally { Pop-Location }
 $searchExe = Join-Path $OutputDirectory 'buscainteligente.exe'
+$guideExe = Join-Path $OutputDirectory 'guiarojo.exe'
+& $compiler /nologo /target:exe /optimize+ /warnaserror+ ("/out:$guideExe") /r:System.Drawing.dll /r:System.Windows.Forms.dll (Join-Path $testRoot 'guiarojo.cs') (Join-Path $testRoot 'leercodigo.cs')
+if ($LASTEXITCODE -ne 0) { throw 'No compila guia roja' }
+Push-Location $testRoot
+try { & $guideExe $exe; if ($LASTEXITCODE -ne 0) { throw 'Fallo: guia roja' } } finally { Pop-Location }
 & $compiler /nologo /target:exe /optimize+ /warnaserror+ ("/out:$searchExe") /r:System.Core.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll (Join-Path $testRoot 'buscainteligente.cs')
 if ($LASTEXITCODE -ne 0) { throw 'No compila buscainteligente' }
 & $searchExe $exe
@@ -95,5 +100,5 @@ if ($LASTEXITCODE -ne 0) { throw 'No compila espacionaturalhal' }
 $naturalHalOutput = Join-Path $OutputDirectory 'fondo-hal'
 if ($SinHal) { & $naturalHalExe $exe $naturalHalOutput --sin-hal } else { & $naturalHalExe $exe $naturalHalOutput }
 if ($LASTEXITCODE -ne 0) { throw 'Fallo: espacionaturalhal' }
-Write-Output "PASS: compilacion GPU/CPU y sesenta y ocho baterias. HAL omitido explicitamente: $SinHal. No se reemplazo ningun ejecutable de produccion. Salida: $OutputDirectory"
+Write-Output "PASS: compilacion GPU/CPU y sesenta y nueve baterias. HAL omitido explicitamente: $SinHal. No se reemplazo ningun ejecutable de produccion. Salida: $OutputDirectory"
 } finally { $env:ROCOLA_DATOS = $previousRocolaData }

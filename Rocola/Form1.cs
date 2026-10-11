@@ -1446,6 +1446,10 @@ namespace Rocola
             if (porCasilla > lettersH) lettersH = porCasilla;
             if (lettersH < 40) lettersH = 40; else if (lettersH > 104) lettersH = 104;
             letterBar.SetBounds(pad, lettersY, contentW, lettersH);
+#if ROCOLA_GPU
+            // Carriles para flechas sin tapar TOP/VIDEO. El hit-test usa el ancho real.
+            if (gpuEnabled) letterBar.SetBounds(pad + 20, lettersY, Math.Max(180, contentW - 40), lettersH);
+#endif
 
             // LA FRANJA DE ESTADO, en grande. Es lo que se lee DE LEJOS -de pie, a dos metros de la maquina-
             // y estaba pensada para mirarla de cerca: letra chica, cubo de 64 y una barra de duracion de 16 px

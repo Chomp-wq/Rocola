@@ -124,6 +124,12 @@ class EstilosConfig
         object owner = Owner(); Set(owner, "estiloFondo", 1); Call(form, owner, "LoadConfigPrefs");
         Check((int)Get(owner, "estiloFondo") == 0, "Sin configuración se restaura Legacy");
         string path = Path.Combine(root, "rocola_config.txt");
+        foreach (bool guide in new bool[] { false, true }) {
+            Set(owner, "guiaRojo", guide); Call(form, owner, "SaveConfigPrefs"); Codigo.EsperaGuardado(form, owner);
+            Check(File.ReadAllText(path).Contains("guia_rojo=" + (guide ? "1" : "0")), "Guía roja se guarda");
+            object readGuide = Owner(); Call(form, readGuide, "LoadConfigPrefs");
+            Check((bool)Get(readGuide, "guiaRojo") == guide, "Guía roja restaura su opción");
+        }
         foreach (string key in new string[] { "estilo_fondo=", "ESTILO_FONDO=", "Estilo_Fondo=" })
             foreach (string value in new string[] { "legacy", "LEGACY ", "natural", " Natural ", "raro" }) {
                 File.WriteAllText(path, "  " + key + value + "\r\n");

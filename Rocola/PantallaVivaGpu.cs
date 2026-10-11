@@ -78,14 +78,16 @@ namespace Rocola
                 "Ficha rápida del disco (GPU)",
                 "Pasar de página deslizando (GPU)",
                 "Barra de letras con lupa (GPU)",
+                "Guía al mantener el botón rojo (GPU)",
             };
             string[] explica = {
                 "La portada elegida crece, brilla con su propio color y dice cuantas\ncanciones trae y cuanto dura. Las demas se apagan un poco.",
                 "Si el cursor se queda un segundo en un disco, sale una tarjeta con\nsus canciones mas pedidas y cuantas van ya en la cola.",
                 "La pagina vieja sale mientras entra la nueva, columna a columna,\ny el cielo se corre un poco mas despacio: da profundidad.",
                 "La letra elegida y sus vecinas se ven mas grandes, y una rayita\ndebajo de cada una dice cuanta musica tiene.",
+                "Rojo + izquierda/derecha: cambiar de letra. Rojo + arriba:\nabrir el buscador. Las flechas brillan al presionarlas.",
             };
-            bool[] val = { portadaEnfocada, fichaDisco, paginaDesliza, letrasLupa };
+            bool[] val = { portadaEnfocada, fichaDisco, paginaDesliza, letrasLupa, guiaRojo };
             Interruptor[] sw = new Interruptor[nom.Length];
             for (int i = 0; i < sw.Length; i++)
             {
@@ -101,6 +103,7 @@ namespace Rocola
             sw[1].CheckedChanged += delegate { fichaDisco = sw[1].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             sw[2].CheckedChanged += delegate { paginaDesliza = sw[2].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             sw[3].CheckedChanged += delegate { letrasLupa = sw[3].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            sw[4].CheckedChanged += delegate { guiaRojo = sw[4].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             // LA TANDA 2, al lado: lo que pasa dentro de un disco (DiscoVivoGpu.cs).
             Tarjeta tDisco = new Tarjeta(); tDisco.SetBounds(488, 0, 456, 412); tDisco.Titulo = "DENTRO DEL DISCO"; tDisco.Acento = cAc;
             string[] nomD = {
@@ -233,7 +236,7 @@ namespace Rocola
             BotonPlano bReset = new BotonPlano(); bReset.SetBounds(16, 572, 300, 38); bReset.Font = fBot; bReset.Text = "Pantalla como de fabrica";
             bReset.Click += delegate
             {
-                portadaEnfocada = fichaDisco = paginaDesliza = letrasLupa = true;
+                portadaEnfocada = fichaDisco = paginaDesliza = letrasLupa = guiaRojo = true;
                 listaGrande = eqSonando = colaMinutos = vueloCola = true;
                 suenaGrande = monedaCae = sinCreditosInvita = avisosClaros = true;
                 escaparate = topNoche = true;
