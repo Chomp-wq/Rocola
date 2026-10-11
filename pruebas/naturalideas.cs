@@ -109,6 +109,24 @@ class NaturalIdeas
             Console.WriteLine("  grano por bloques de 8x8: natural " + dn.ToString("0.00") + ", legacy " + dl.ToString("0.00"));
             Check(dn < dl * .6, "grano Natural mas parejo que el de siempre");
         }
+        // La teja grande se arma repitiendo la pieza (sin cuenta por pixel): igual alfa y mitad de claros en toda ella.
+        int pieza = (int)panel.GetField("RuidoNaturalPieza", B).GetRawConstantValue();
+        using (Bitmap grande = (Bitmap)Run(panel, "BakeRuidoNatural", 1024))
+        using (Bitmap chica = (Bitmap)Run(panel, "BakeRuidoNatural", pieza))
+        {
+            bool repite = grande.Width == 1024 && grande.Height == 1024, alfaGrande = true; int clarosGrande = 0;
+            for (int y = 0; y < 1024; y += 3)
+                for (int x = 0; x < 1024; x += 5)
+                {
+                    Color c = grande.GetPixel(x, y);
+                    if (c.ToArgb() != chica.GetPixel(x % pieza, y % pieza).ToArgb()) repite = false;
+                    if (c.A != (int)form.GetField("RuidoAlfa", B).GetValue(null)) alfaGrande = false;
+                    if (c.R > 128) clarosGrande++;
+                }
+            int vistos = ((1024 + 2) / 3) * ((1024 + 4) / 5);
+            Check(repite, "teja grande de grano = la pieza de " + pieza + " repetida, pixel a pixel");
+            Check(alfaGrande && clarosGrande > vistos * .47 && clarosGrande < vistos * .53, "teja grande: mismo alfa y mitad de claros");
+        }
         bool rechaza = false; try { Run(panel, "BakeRuidoNatural", 0); } catch (ArgumentOutOfRangeException) { rechaza = true; }
         Check(rechaza, "teja de grano invalida rechazada");
         // 32) Vineta de objetivo: centro limpio, esquina igual que antes, y sube sin escalones.
@@ -201,6 +219,11 @@ class NaturalIdeas
         Check(hoy >= .25f && hoy < .4f && (float)p[1] > 0 && (float)p[2] > 0, "Oriónidas activas, lejos del maximo");
         p = new object[] { new DateTime(2028, 12, 31), 0f, 0f };
         Run(stars, "LluviaDeMeteoros", p); Check(true, "bisiesto sin error");
+        // 30) La corona sigue al destello igual a cualquier ritmo de cuadros (a 60, el 25 % de siempre).
+        float k60 = (float)Run(panel, "SuavizaCorona", 1 / 60.0), k30 = (float)Run(panel, "SuavizaCorona", 1 / 30.0), k24 = (float)Run(panel, "SuavizaCorona", 1 / 24.0);
+        Check(Math.Abs(k60 - .25f) < .005f, "corona: a 60 cuadros, el 25 % por cuadro");
+        Check(Math.Abs((1 - k30) - (1 - k60) * (1 - k60)) < .002f && Math.Abs(Math.Pow(1 - k24, 24) - Math.Pow(1 - k60, 60)) < .002, "corona: el mismo segundo a 24, 30 o 60 cuadros");
+        Check((float)Run(panel, "SuavizaCorona", 0.0) == 0f && (float)Run(panel, "SuavizaCorona", double.NaN) == 0f && (float)Run(panel, "SuavizaCorona", -1.0) == 0f && (float)Run(panel, "SuavizaCorona", 5.0) == 1f, "corona: tiempos raros acotados");
     }
 
     static void Aurora()
@@ -216,6 +239,22 @@ class NaturalIdeas
         for (int i = 0; i < 300; i++) { float q = (float)Run(panel, "PulsoReposoAurora", i / 300f, i * .7f, 1f); pmin = Math.Min(pmin, q); pmax = Math.Max(pmax, q); }
         Check(pmin >= .6f && pmax <= 1.4f && pmax - pmin > .2f, "en reposo laten los parches, sin apagarse");
         Check((float)Run(panel, "ArcoAurora", 0f) == 0f && (float)Run(panel, "ArcoAurora", 1f) == 0f && (float)Run(panel, "ArcoAurora", .5f) > .99f, "la curva no mueve el pie ni la cresta");
+        // 21) La curva se abre lejos del marco: la primera y la ultima columna no se despegan del borde de la
+        // pantalla (sin rendija), ninguna columna adelanta a la de al lado y la curva no pasa de 1.8 columnas.
+        int cols = (int)panel.GetField("AurCols", B).GetRawConstantValue();
+        float[] alturas = new float[cols + 1];
+        float paso = 1920f / cols; bool bordes = true, sinCruce = true, acotada = true, curva = false;
+        for (int prueba = 0; prueba < 40; prueba++)
+        {
+            for (int i = 0; i <= cols; i++) alturas[i] = 120f + 90f * (float)Math.Sin(i * .21 + prueba * .7) + prueba * 9f;
+            Run(panel, "PreparaPliegues", alturas, paso, 1080f);
+            float[] c = (float[])panel.GetField("aurCurva", B).GetValue(null);
+            if (c[0] != 0f || c[cols] != 0f) bordes = false;
+            for (int i = 0; i < cols; i++) if (paso + c[i + 1] - c[i] <= paso * .05f) sinCruce = false;
+            for (int i = 0; i <= cols; i++) { if (Math.Abs(c[i]) > paso * 1.8f + .01f) acotada = false; if (Math.Abs(c[i]) > paso * .5f) curva = true; }
+        }
+        Check(bordes, "la cortina no se despega de los bordes de la pantalla");
+        Check(sinCruce && acotada && curva, "la cortina se curva por dentro sin cruzar columnas");
     }
 
     static void Estrella()
@@ -277,10 +316,17 @@ class NaturalIdeas
     static void Enchufes()
     {
         Check(Llama(stars, "Begin", "GpuStarfield.DibujaCieloNatural"), "boveda Natural enchufada al cuadro");
+        // La sonda del anillo de vertices (D3D9Device.Draw) toma el primer dibujo de 64 triangulos o mas: la boveda,
+        // que va antes que las estrellas, tiene que quedarse por debajo para no ser ella la que se mida.
+        int filas = (int)stars.GetField("CieloFilasNatural", B).GetRawConstantValue(), cols = (int)stars.GetField("CieloColsNatural", B).GetRawConstantValue();
+        Check(filas >= 8 && filas * cols * 2 < 64, "la boveda Natural (" + filas * cols * 2 + " triangulos) no se cuela en la sonda del anillo");
         Check(Llama(stars, "BuildStarVerts", "GpuStarfield.ColorEstrellaNatural") && Llama(stars, "BuildStarVerts", "GpuStarfield.CentelleoNatural"), "color y centelleo Natural en el campo");
         Check(Llama(stars, "BuildStarVerts", "GpuStarfield.LuzJuntoALuna"), "la luna apaga las estrellas cercanas");
         Check(Llama(stars, "UpdateAndDrawShoots", "GpuStarfield.ApuntaDesdeRadiante") && Llama(stars, "UpdateAndDrawShoots", "GpuStarfield.DibujaRastro"), "lluvias y rastro enchufados");
         Check(Llama(panel, "RenderFrame", "GpuPanel.EnsureLunaReal") && Llama(panel, "RenderFrame", "GpuPanel.ActualizaHoraCielo"), "luna y hora preparadas antes del cuadro");
+        // Al apagar la tarjeta o recrear el dispositivo se sueltan TODAS las texturas: la de la luna tambien (si
+        // no, se seguiria dibujando con la de un dispositivo que ya no existe, y lo retendria).
+        Check(Llama(panel, "StopGpu", "GpuPanel.SueltaLunaReal") && Llama(panel, "SueltaLunaReal", "D3D9.Release"), "la luna se suelta con las demas texturas");
         Check(Llama(panel, "DibujaNieblas", "GpuPanel.DibujaNieblasNatural"), "nebulosas Natural con dos distancias");
         Check(Llama(panel, "EnsureNieblasPreparadas", "GpuPanel.BakeRuidoNatural"), "grano Natural propio");
         Check(Llama(panel, "DrawAurora", "GpuPanel.AuroraRealBase") && Llama(panel, "DrawAurora", "GpuPanel.PulsoReposoAurora"), "aurora real y pulso en reposo");

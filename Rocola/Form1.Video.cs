@@ -806,13 +806,17 @@ namespace Rocola
                     ultimoMouseGpu = mouse.Location; lastInput = DateTime.Now; gpuPanel.IdleExpandTarget = false;
                     AsistenteMueveRaton(mouse.Location);
                 };
-                gpuPanel.MouseDown += delegate { lastInput = DateTime.Now; gpuPanel.IdleExpandTarget = false; gpuPanel.TouchUi(); };
+                gpuPanel.MouseDown += delegate {
+                    lastInput = DateTime.Now; gpuPanel.IdleExpandTarget = false; gpuPanel.TouchUi();
+                    if (asistenteVisible) asistenteActividadTick = Environment.TickCount;   // tocar la pantalla tambien es usarla: la guia no se cierra por inactividad
+                };
                 gpuPanel.MouseWheel += delegate { lastInput = DateTime.Now; gpuPanel.IdleExpandTarget = false; gpuPanel.TouchUi(); };
                 gpuPanel.MouseClick += delegate(object sender, MouseEventArgs e)
                 {
+                    // La casilla AYUDA va primero: abre la ayuda y, con la ayuda abierta, la vuelve a guardar.
+                    if (e.Button == MouseButtons.Left && AyudaTocada(new Point(e.X + gpuPanel.Left, e.Y + gpuPanel.Top))) return;
                     if (AsistenteCapturaEntrada)
                     { if (e.Button == MouseButtons.Left) AsistenteClick(e.Location); return; }
-                    if (e.Button == MouseButtons.Left && AyudaTocada(new Point(e.X + gpuPanel.Left, e.Y + gpuPanel.Top))) return;
                     // El control del buscador esta oculto al componer por GPU: reenviar
                     // el clic real usando sus coordenadas, sin duplicar la seleccion.
                     if (e.Button != MouseButtons.Left || !searchOpen || gpuMode != 2 ||

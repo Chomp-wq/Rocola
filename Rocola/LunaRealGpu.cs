@@ -66,6 +66,14 @@ namespace Rocola
             stars.LunaRadio = visible ? r : 0f;
             stars.LunaLuz = visible ? lunaRealIlum : 0f;
         }
+        // Al apagar la tarjeta o recrear el dispositivo (StopGpu): la textura es del dispositivo viejo y no puede
+        // seguir apuntada, ni retenerlo. Al volver, EnsureLunaReal la hornea de nuevo.
+        private void SueltaLunaReal()
+        {
+            if (lunaRealTex != IntPtr.Zero) { D3D9.Release(lunaRealTex); lunaRealTex = IntPtr.Zero; }
+            lunaRealTW = lunaRealTH = 0; lunaRealPaso = -1; lunaRealRetryMs = 0;
+            if (stars != null) { stars.LunaRadio = 0f; stars.LunaLuz = 0f; }
+        }
         private void LunaRealCentro(out float cx, out float cy)
         {
             // Acompana a la via lactea en su paseo lento, la mitad de lejos: no salta ni se sale.

@@ -38,7 +38,7 @@ class AyudaGuia
             return mal;
         }
         vtx = asm.GetType("Rocola.D3D9+Vtx", true);
-        Casilla(); Interrogacion(); Globo(args.Length > 1 ? args[1] : null); Marco(); Flecha(); Enchufes();
+        Casilla(); Interrogacion(); Globo(args.Length > 1 ? args[1] : null); GloboQuieto(); Marco(); Flecha(); Enchufes();
         Console.WriteLine(mal == 0 ? "  OK ayudaguia: " + ok + " comprobaciones (casilla, interrogacion, globo, marco, flecha; sin HAL ni FPS)"
                                    : "  FALLO ayudaguia: " + mal + " de " + (ok + mal));
         return mal;
@@ -141,6 +141,55 @@ class AyudaGuia
             dibujo.Save(ruta, ImageFormat.Png); dibujo.Dispose();
             Console.WriteLine("  dibujo: " + ruta);
         }
+    }
+
+    // El globo con memoria: no cruza la pantalla cada vez que el objetivo pasa del centro, y se muda solo cuando
+    // taparia lo que hay que mirar (o la estrella lo taparia).
+    static void GloboQuieto()
+    {
+        Size[] pantallas = { new Size(640, 480), new Size(1024, 768), new Size(1920, 1080), new Size(3840, 2160) };
+        Random r = new Random(11);
+        foreach (Size s in pantallas)
+        {
+            float radio = (float)Run(gpu, "AsistenteGuiaRadio", ((Size)Run(gpu, "AsistenteGuiaTam", s.Width, s.Height)).Height);
+            // Un disco elegido que recorre la fila de arriba de punta a punta (el cliente moviendose): el globo
+            // empieza en su esquina y, mientras no lo tape, no se mueve.
+            Rectangle actual = (Rectangle)Run(gpu, "AsistenteGuiaRect", s.Width, s.Height, new RectangleF(s.Width * .1f, s.Height * .2f, s.Width * .1f, s.Height * .15f));
+            int mudanzas = 0;
+            for (int paso = 0; paso <= 40; paso++)
+            {
+                RectangleF o = new RectangleF(s.Width * (.05f + .8f * paso / 40f), s.Height * .2f, s.Width * .1f, s.Height * .15f);
+                Rectangle sig = (Rectangle)Run(gpu, "AsistenteGuiaRectSigue", s.Width, s.Height, o, actual);
+                if (sig != actual) mudanzas++;
+                Check(Tapa(sig, radio, o) <= 0f, "el globo con memoria no tapa el disco que recorre la fila: " + s + " paso " + paso);
+                actual = sig;
+            }
+            Check(mudanzas <= 1, "el globo no cruza la pantalla a cada disco (" + mudanzas + " mudanzas en " + s + ")");
+            // Objetivos al azar: si la esquina de ahora no tapa, se queda; si tapa, se muda a una que no tape
+            // (cuando el objetivo es pequeno) y siempre dentro de la pantalla.
+            for (int i = 0; i < 200; i++)
+            {
+                RectangleF o = new RectangleF((float)r.NextDouble() * s.Width * .85f, (float)r.NextDouble() * s.Height * .8f,
+                    20 + (float)r.NextDouble() * s.Width * .15f, 20 + (float)r.NextDouble() * s.Height * .12f);
+                Rectangle sig = (Rectangle)Run(gpu, "AsistenteGuiaRectSigue", s.Width, s.Height, o, actual);
+                Check(sig.Left >= 0 && sig.Top >= 0 && sig.Right <= s.Width && sig.Bottom <= s.Height, "el globo con memoria cabe en " + s);
+                if (Tapa(actual, radio, o) <= 0f) Check(sig == actual, "si no tapa, el globo se queda donde esta: " + s);
+                else if (o.Width < s.Width * .3f && o.Height < s.Height * .25f)
+                    Check(Tapa(sig, radio, o) <= 0f, "si tapa, se muda a una esquina libre: " + s + " " + o);
+                actual = sig;
+            }
+            // Un rectangulo que no es ninguna esquina (o de otro tamano de pantalla) no se conserva.
+            Rectangle raro = new Rectangle(3, 5, actual.Width, actual.Height);
+            Check((Rectangle)Run(gpu, "AsistenteGuiaRectSigue", s.Width, s.Height, RectangleF.Empty, raro) != raro, "fuera de esquina, el globo vuelve a la suya: " + s);
+            Rectangle otro = new Rectangle(actual.X, actual.Y, actual.Width + 7, actual.Height);
+            Check(((Rectangle)Run(gpu, "AsistenteGuiaRectSigue", s.Width, s.Height, RectangleF.Empty, otro)).Size != otro.Size, "otro tamano de pantalla, otro globo: " + s);
+        }
+    }
+    static float Tapa(Rectangle g, float radio, RectangleF o)
+    {
+        RectangleF ocupa = new RectangleF(g.Left - radio * 2.9f, g.Top - radio * .2f, g.Width + radio * 2.9f, g.Height + radio * .4f);
+        RectangleF c = RectangleF.Intersect(ocupa, RectangleF.Inflate(o, 10, 10));
+        return c.Width > 0 && c.Height > 0 ? c.Width * c.Height : 0f;
     }
 
     static void Marco()

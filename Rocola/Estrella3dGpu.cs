@@ -240,8 +240,11 @@ namespace Rocola
                 stars.GlowBatchEnd();
                 }
             }
-            // 30) La corona del proximo cuadro sube un poco cuando pasa el destello (suavizado).
-            destelloCorona += ((mejor >= 0 ? Math.Min(1f, brillo) : 0f) - destelloCorona) * .25f;
+            // 30) La corona del proximo cuadro sube un poco cuando pasa el destello. Suavizado POR TIEMPO, igual a
+            // 24, 50 o 60 cuadros por segundo: a 60 es el mismo 25 % por cuadro de antes.
+            double dtc = destelloCoronaReloj < 0 ? 0 : now - destelloCoronaReloj;
+            destelloCoronaReloj = now;
+            destelloCorona += ((mejor >= 0 ? Math.Min(1f, brillo) : 0f) - destelloCorona) * SuavizaCorona(dtc);
         }
 
         // Una pose de la estrella en triangulos: sus caras visibles de atras hacia adelante en 'caras' y la franja de
@@ -328,6 +331,14 @@ namespace Rocola
         }
 
         private float destelloCorona;
+        private double destelloCoronaReloj = -1;
+        // Cuanto se acerca la corona a su meta en 'dt' segundos (0..1). Pura: se prueba sin tarjeta.
+        internal static float SuavizaCorona(double dt)
+        {
+            if (!(dt > 0)) return 0f;
+            if (dt >= .25) return 1f;
+            return 1f - (float)Math.Exp(-dt * 17.26);
+        }
         internal static float EdadEco(double edad, double vida)
         {
             if (double.IsNaN(edad) || !(vida > 0)) return 0f;

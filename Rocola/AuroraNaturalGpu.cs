@@ -79,6 +79,9 @@ namespace Rocola
         // estos arreglos y la malla solo los lee. Solo los usa el hilo de pantalla (y las pruebas).
         private static readonly float[] aurPliegue = new float[AurCols + 1], aurCurva = new float[AurCols + 1],
                                         aurReflejoAlto = new float[AurCols + 1];
+        // En los bordes de la pantalla la cortina no se curva: la primera y la ultima columna se correrian hacia
+        // dentro y dejarian a media altura una rendija sin aurora pegada al marco. Se abre en estas columnas.
+        internal const int AurCurvaBorde = 6;
         internal static void PreparaPliegues(float[] h, float paso, float panel)
         {
             int n = AurCols;
@@ -88,7 +91,10 @@ namespace Rocola
                 int a = i > 0 ? i - 1 : 0, b = i < n ? i + 1 : n;
                 float pend = Math.Abs(h[b] - h[a]) / Math.Max(1f, paso * (b - a));
                 aurPliegue[i] = .82f + .42f * Math.Min(1f, pend * 1.6f);
-                aurCurva[i] = paso * 1.8f * AuroraNaturalOnda(i * .033f + h[i] * .0021f);
+                float curva = paso * 1.8f * AuroraNaturalOnda(i * .033f + h[i] * .0021f);
+                float borde = Math.Min(i, n - i) / (float)AurCurvaBorde;
+                if (borde < 1f) curva *= borde * borde * (3f - 2f * borde);
+                aurCurva[i] = curva;
                 float hn = h[i] * inv; aurReflejoAlto[i] = !(hn > 0f) ? 0f : hn > 1f ? 1f : hn;
             }
         }

@@ -12,7 +12,9 @@ ni la ayuda. HD sigue suspendida.
 
 - **ROJO + flecha ABAJO**: en la cruceta, las flechas arriba y abajo son rojas. Es la gemela de BUSCAR,
   que se abre con ROJO + ARRIBA. Con la ayuda abierta, ROJO + ABAJO la vuelve a guardar.
-- **Tocando la casilla AYUDA** (pantalla táctil o ratón).
+- **Tocando la casilla AYUDA** (pantalla táctil o ratón). Con la ayuda abierta, tocarla otra vez la guarda.
+  Mientras pregunta, tocar fuera de su globo también la guarda (en la pantalla táctil no hay botón ROJO a mano);
+  ese toque no llega a la pared.
 - Se retira el gesto anterior (mantener rojo y verde tres segundos) y, con él, la ventana de 120 ms que
   retrasaba cada toque de rojo o verde: los botones responden al instante.
 - Al mantener ROJO en la pared, la guía del botón rojo enmarca también la casilla AYUDA y dibuja a su
@@ -53,7 +55,8 @@ encendida.
    - **Aprender a moverme:** moverse entre discos → cambiar de página → saltar de letra (ROJO + ◄/►)
      → entrar en un disco → volver con ROJO.
 3. En cada paso:
-   - Un globo pequeño se coloca en la esquina contraria a lo que hay que mirar. Dice «PASO 2 DE 3», un
+   - Un globo pequeño se coloca en la esquina contraria a lo que hay que mirar y se queda allí mientras no lo
+     tape (no cruza la pantalla cada vez que el disco elegido pasa del centro). Dice «PASO 2 DE 3», un
      título corto, una frase y **los botones dibujados** como son en la máquina: rojo, verde, moneda,
      flechas rojas arriba/abajo y amarillas izquierda/derecha.
    - La estrella se pone a su lado y **señala con la mano**.
@@ -66,7 +69,7 @@ encendida.
    - Muestra «¡Lo lograste!» y lo celebra.
    - A los 2,6 segundos se vuelve a guardar sola en el cielo.
 
-   También se cierra tras 90 segundos sin tocar nada.
+   También se cierra tras 90 segundos sin tocar nada (tocar la pantalla cuenta como usarla).
 
 Mientras guía, el cuadro del vídeo se oculta para no tapar el globo ni la flecha; el sonido sigue. Al
 guardarse vuelve todo como estaba. La guía no pone canciones ni gasta créditos: lo hace el cliente.
@@ -88,9 +91,11 @@ guardarse vuelve todo como estaba. La guía no pone canciones ni gasta créditos
   - Compilación .NET 3.5 de los dos perfiles con cero avisos.
   - `asistentecombo`, reescrita: el atajo, que ya no existe el acorde, la tabla de pasos, el
     «paso X de N» y una misión completa en un formulario aislado (avanza sola, celebra y se guarda).
+    57 comprobaciones tras la revisión.
   - `asistentevisual`, actualizada: menú de tres opciones y globo de la guía.
   - Batería nueva `ayudaguia`: casilla, animación del signo, posición del globo en seis pantallas y
-    360 objetivos, marco, flecha y conexiones.
+    360 objetivos, el globo con memoria (un disco que recorre la fila y 800 objetivos al azar), marco, flecha y
+    conexiones. 10.111 comprobaciones tras la revisión.
   - `guiarojo` y `bloqueos`.
   - Tanda completa: 234 baterías bien. Las que fallan también fallan igual con el código anterior en esta
     máquina (Mono sin Windows ni HAL).
@@ -101,3 +106,16 @@ guardarse vuelve todo como estaba. La guía no pone canciones ni gasta créditos
   - Windows XP.
 
   Hay que probarlo en la pantalla del bar.
+
+## Revisión del 11-10-2026 (tarde)
+
+Petición del usuario: «Quiero que revises todo lo que hecho buscando mejoras».
+
+- **Fallo corregido: la misión «Buscar una canción por su nombre» no terminaba nunca.** La guía se
+  enteraba de la canción puesta desde `AddSong`/`AddVideoToQueue`, pero el buscador encola directamente con
+  `AddItem`. Ahora el aviso está en `AddItem`, por donde pasa todo pedido (disco, vídeo o buscador): al
+  elegir el resultado, la estrella dice «¡Lo lograste!» y se guarda.
+- El globo de la guía recuerda su esquina: solo se muda cuando taparía lo que hay que mirar.
+- Tocar la casilla AYUDA con la ayuda abierta la guarda; tocar fuera del globo de la pregunta también.
+- Tocar la pantalla cuenta como actividad para el cierre por inactividad de 90 s.
+- La casilla se repinta al encenderse o apagarse aunque no la componga la tarjeta.

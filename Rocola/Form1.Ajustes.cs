@@ -1368,6 +1368,8 @@ namespace Rocola
 #if ROCOLA_GPU
             VuelaBoleto(it);         // y dentro de un disco, la cancion sale de su fila (DiscoVivoGpu.cs)
             ultimoPedido = it;       // para el aviso claro (SuenaVivoGpu.cs)
+            NotaPedidoAsistente();   // la guia de la estrella sabe que ya se logro, venga de un disco o del
+                                     // buscador: todo pedido pasa por aqui (AsistenteGuiaRocola.cs)
 #endif
             RecordPlay(it);                                              // estadisticas: cuenta lo pedido
             credits--;                                                   // cada cosa cuesta 1 credito

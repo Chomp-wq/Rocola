@@ -1,6 +1,7 @@
 #if ROCOLA_GPU
 using System;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 
@@ -10,7 +11,7 @@ namespace Rocola
     //
     // Legacy pinta el cielo con dos cuadrilateros y tres paradas de color: entre parada y parada la tarjeta
     // mezcla en linea recta, y donde se juntan las dos rectas queda un quiebre que el ojo ve como una raya.
-    // Aqui la misma boveda se pinta con una malla de 12 franjas por 3 columnas (72 triangulos, una sola
+    // Aqui la misma boveda se pinta con una malla de 10 franjas por 3 columnas (60 triangulos, una sola
     // llamada, sin textura): la curva que une las tres paradas es suave (sin quiebre), cerca del horizonte
     // aparece el resplandor verdoso del aire, la luz del lado de la luna aclara un poco ese costado y, si el
     // interruptor lo pide, el cielo se hace mas hondo pasada la medianoche y toma un tono de crepusculo a
@@ -18,7 +19,11 @@ namespace Rocola
     // Legacy no pasa por aqui.
     internal sealed partial class GpuStarfield
     {
-        internal const int CieloFilasNatural = 12, CieloColsNatural = 3;
+        // 10 franjas y no mas, a proposito: con 64 triangulos o mas la boveda seria el primer dibujo "grande" del
+        // cuadro y la sonda de D3D9Device.Draw mediria el anillo de vertices con ella (pocos vertices, donde UP
+        // gana siempre) en vez de con las estrellas. Con 10 la curva sigue sin quiebre: frente a 12 franjas, el
+        // color se separa de la curva exacta lo mismo (alrededor de un nivel de 255 con los cortes de Ctrl+F3).
+        internal const int CieloFilasNatural = 10, CieloColsNatural = 3;
         private static readonly float[] CieloColX = { 0f, .55f, .80f, 1f };
         private static readonly float[] CieloColLuz = { 0f, 0f, 1f, .55f };
         private readonly D3D9.Vtx[] skyNatV = new D3D9.Vtx[CieloFilasNatural * CieloColsNatural * 6];
@@ -138,23 +143,46 @@ namespace Rocola
         // de cerca, son manchas. Esta usa ruido de gradiente entrelazado (el de Jimenez): el mismo numero de
         // puntos claros y oscuros, el mismo alfa y la misma subida media, pero repartidos sin grumos.
         // Misma teja de 1024 que se sube una vez; Legacy y la pared por CPU siguen con la suya.
+        // Como la de Legacy, se arma repitiendo una pieza con UN relleno y no pixel a pixel: la cuenta se hace en
+        // 256x256 (65 mil pixeles en vez de un millon, en el hilo de la interfaz y en equipos de dos nucleos).
+        // Con alfa 2 de 255, la costura entre pieza y pieza no se ve: sigue siendo mitad claros, sin grumos.
+        internal const int RuidoNaturalPieza = 256;
         internal static Bitmap BakeRuidoNatural(int lado)
         {
             if (lado < 1 || lado > 4096) throw new ArgumentOutOfRangeException("lado");
-            int[] pixels = new int[lado * lado];
+            int t = Math.Min(lado, RuidoNaturalPieza);
+            int[] pixels = new int[t * t];
             uint claro = (uint)Form1.RuidoAlfa << 24 | 0x00FFFFFFu, oscuro = (uint)Form1.RuidoAlfa << 24;
-            for (int y = 0; y < lado; y++)
-                for (int x = 0; x < lado; x++)
+            for (int y = 0; y < t; y++)
+                for (int x = 0; x < t; x++)
                 {
                     double f = .06711056 * x + .00583715 * y; f -= Math.Floor(f);
                     double n = 52.9829189 * f; n -= Math.Floor(n);
-                    pixels[y * lado + x] = unchecked((int)(n >= .5 ? claro : oscuro));
+                    pixels[y * t + x] = unchecked((int)(n >= .5 ? claro : oscuro));
                 }
-            Bitmap b = new Bitmap(lado, lado, PixelFormat.Format32bppArgb);
-            BitmapData data = b.LockBits(new Rectangle(0, 0, lado, lado), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
-            try { for (int y = 0; y < lado; y++) Marshal.Copy(pixels, y * lado, new IntPtr(data.Scan0.ToInt64() + y * (long)data.Stride), lado); }
-            finally { b.UnlockBits(data); }
-            return b;
+            Bitmap pieza = new Bitmap(t, t, PixelFormat.Format32bppArgb);
+            Bitmap b = null;
+            try
+            {
+                BitmapData data = pieza.LockBits(new Rectangle(0, 0, t, t), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+                try { for (int y = 0; y < t; y++) Marshal.Copy(pixels, y * t, new IntPtr(data.Scan0.ToInt64() + y * (long)data.Stride), t); }
+                finally { pieza.UnlockBits(data); }
+                if (t == lado) { Bitmap sola = pieza; pieza = null; return sola; }
+                b = new Bitmap(lado, lado, PixelFormat.Format32bppArgb);
+                using (Graphics g = Graphics.FromImage(b))
+                using (TextureBrush tb = new TextureBrush(pieza, WrapMode.Tile))
+                {
+                    g.CompositingMode = CompositingMode.SourceCopy;   // se COPIA el grano con su alfa, no se mezcla
+                    g.FillRectangle(tb, 0, 0, lado, lado);
+                }
+                Bitmap listo = b; b = null;
+                return listo;
+            }
+            finally
+            {
+                if (pieza != null) pieza.Dispose();
+                if (b != null) b.Dispose();
+            }
         }
         // NEBULOSAS DE ESPACIO NATURAL (ideas 5, 7, 8 y 31). Las mismas dos pasadas de la misma textura:
         //  7) cada una a su ritmo y con su recorrido (la lejana se mueve menos y mas despacio), asi se leen

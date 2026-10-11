@@ -23,11 +23,12 @@ Las demás ideas conservan aspecto y función o son acabado propio de Natural: n
 
 **Cielo** (`CieloNaturalMallaGpu.cs`)
 1. Resplandor del aire: franja verdosa muy tenue sobre el horizonte.
-2. Degradado sin quiebre: la bóveda Natural es una malla de 12×3 (72 triángulos, una llamada, sin textura)
+2. Degradado sin quiebre: la bóveda Natural es una malla de 10×3 (60 triángulos, una llamada, sin textura)
    con una curva Hermite monótona entre las tres paradas; desaparece la raya del corte.
 3. Luz lateral: el costado de la luna (derecha) se aclara un poco hacia abajo.
 4. Grano parejo: teja propia de ruido de gradiente entrelazado; mismo alfa y misma mitad de puntos claros
-   que la de siempre, sin grumos (desviación por bloques 8×8: 1,22 frente a 3,64).
+   que la de siempre, sin grumos (desviación por bloques 8×8: 1,22 frente a 3,64). Como la de Legacy, se
+   arma repitiendo una pieza (aquí de 256×256) con un solo relleno, no píxel a píxel.
 34. Cielo según la hora (interruptor): más hondo de madrugada y un crepúsculo cálido abajo hacia las 19:30
     (y algo al amanecer). Se lee el reloj una vez cada 20 s.
 
@@ -55,11 +56,13 @@ Las demás ideas conservan aspecto y función o son acabado propio de Natural: n
 18. Rastro azulado de unos 1,6 s tras un bólido (dos triángulos más en la misma llamada).
 19. Lluvias de meteoros en sus fechas reales (Cuadrántidas, Líridas, Eta Acuáridas, Perseidas, Oriónidas,
     Leónidas y Gemínidas): parte de las fugaces sale del radiante, más cerca del máximo. No cambia cuántas hay.
+    Aparecen repartidas por el cielo, cada una en su recta desde el radiante y con la cola apuntándole.
 
 **Aurora** (`AuroraNaturalGpu.cs`, `D3D9Star.cs`)
 20. Colores reales (interruptor): filo rosado abajo, cuerpo verde, arriba rojo y violeta. La música sigue
     mandando en la forma y la intensidad.
-21. Pliegues: más luz donde la silueta se inclina y curvatura interior; el pie y la cresta no se mueven.
+21. Pliegues: más luz donde la silueta se inclina y curvatura interior; el pie y la cresta no se mueven, y en
+    las seis columnas de cada borde la curva se abre poco a poco (la cortina no se despega del marco).
 22. Sin música, parches que laten despacio.
 23. Reflejo tenue del color de la cortina en el suelo, que se apaga antes del texto de la franja.
 
@@ -72,7 +75,8 @@ Las demás ideas conservan aspecto y función o son acabado propio de Natural: n
 **Corona, polvo y ecos**
 28. Polvo más brillante del lado de la luz y apagado en la sombra.
 29. Ecos que envejecen: se abren y pierden color (3D y plana).
-30. La corona sube un poco cuando pasa el destello del metal (estrella 3D).
+30. La corona sube un poco cuando pasa el destello del metal (estrella 3D), suavizado por tiempo: igual a
+    24, 50 o 60 cuadros por segundo.
 
 **Profundidad**
 31. Al pasar de página, nebulosas (30 %) y Vía Láctea (14 %) se corren menos que las estrellas grandes
@@ -88,7 +92,7 @@ Las demás ideas conservan aspecto y función o son acabado propio de Natural: n
 ## Coste
 
 - Sin pasadas nuevas de pantalla completa, sin memoria por cuadro y sin horneados al dibujar.
-- Nuevo por cuadro: la malla del cielo (72 triángulos, sustituye a 4), un cuadrilátero y dos halos de la luna,
+- Nuevo por cuadro: la malla del cielo (60 triángulos, sustituye a 4), un cuadrilátero y dos halos de la luna,
   hasta dos triángulos del rastro, un cuadrilátero del destello.
 - Texturas nuevas: la luna (128×128, se hornea al cambiar de fase, cada 7,4 h) y la teja de grano Natural
   (sustituye a la de siempre mientras Natural está activo).
@@ -99,8 +103,8 @@ Las demás ideas conservan aspecto y función o son acabado propio de Natural: n
 ## Cómo se comprobó
 
 - **Pruebas automáticas (Linux/Mono, sin Direct3D):** compilación de los dos perfiles a cero avisos;
-  batería nueva `naturalideas` (709 comprobaciones: cuentas puras de las 34 ideas y que cada pieza esté
-  enchufada); baterías del fondo existentes. Se actualizaron tres que exigían el aspecto Natural anterior:
+  batería nueva `naturalideas` (717 comprobaciones tras la revisión: cuentas puras de las 34 ideas y que cada
+  pieza esté enchufada); baterías del fondo existentes. Se actualizaron tres que exigían el aspecto Natural anterior:
   `naturalestelar` (color por brillo), `nebulosanatural` (mapas con color) y `ecosgeometria` (ecos que envejecen).
 - **Tanda completa (`pruebas/todo.sh`, Linux/Mono):** 230 baterías bien. Las 28 que fallan también fallan,
   con los mismos fallos, en el código anterior (1049d60) en esta máquina (Mono sin Windows/HAL: texto, GDI,
@@ -111,3 +115,36 @@ Las demás ideas conservan aspecto y función o son acabado propio de Natural: n
 - **No comprobado:** aspecto real en la tarjeta (sin capturas HAL; la batería `espacionaturalhal` solo corre en
   Windows), fluidez real (intervalos p95/p99/máximo con la estrella animada, Legacy y Natural, 2D/3D),
   Windows XP y la tarjeta del bar. Hay que mirarlo en la pantalla real con música.
+
+## Revisión del 11-10-2026 (tarde)
+
+Petición del usuario: «Quiero que revises todo lo que hecho buscando mejoras». Lo corregido en Natural
+(Legacy sigue sin cambios):
+
+- **Fallo corregido: la textura de la luna real no se soltaba al apagar la tarjeta o recrear el
+  dispositivo** (`StopGpu` soltaba todas las demás). Se habría seguido dibujando con la textura de un
+  dispositivo que ya no existe (posible cierre) y lo retenía en memoria. Ahora se suelta con las demás y se
+  vuelve a hornear al volver.
+
+- **Bóveda de 10 franjas en vez de 12** (60 triángulos en vez de 72). La sonda que decide si conviene el
+  anillo de vértices de la tarjeta (`D3D9Device.Draw`) mide el primer dibujo de 64 triángulos o más del
+  cuadro. Con 72, ese primer dibujo era la bóveda (pocos vértices, donde el envío directo gana siempre) y la
+  decisión podía quedar mal tomada para las estrellas. Con 10 franjas la curva sigue sin quiebre: frente a 12,
+  el color se separa de la curva exacta lo mismo (alrededor de un nivel de 255 con los cortes de Ctrl+F3).
+- **Grano**: la teja de 1024 se hacía con un millón de cuentas en el hilo de la interfaz (al arrancar, al
+  cambiar a Natural o tras perder la tarjeta). Ahora se calcula una pieza de 256 (16 veces menos) y se
+  repite con un relleno, como la de Legacy. Mismo alfa, mitad de claros y sin grumos.
+- **Aurora**: con la curvatura de los pliegues, la primera y la última columna se corrían hacia dentro y
+  dejaban una rendija sin aurora pegada al borde de la pantalla. Ya no.
+- **Lluvias de meteoros**: antes nacían todas a entre 30 y 160 px del radiante (en una pantalla de 768 de
+  alto); ahora se reparten por el cielo a lo largo de su recta, como en una lluvia de verdad.
+- **Corona**: el suavizado del destello dependía de los cuadros por segundo; ahora va por tiempo.
+
+Cómo se comprobó la revisión (Linux/Mono, sin Direct3D):
+- Compilación de los dos perfiles a cero avisos; `naturalideas` 718 comprobaciones (nuevas: la bóveda por
+  debajo de la sonda, la teja de grano repetida píxel a píxel, la aurora pegada a los bordes en 40 siluetas,
+  la corona igual a 24/30/60 cuadros y la luna soltada en `StopGpu`).
+- Huella de Legacy: los horneados, las funciones de color con Natural apagado y las mallas de aurora Legacy
+  siguen iguales bit a bit que en 1049d60.
+- Renderizado por CPU congelado: `cpucongelado` compara el IL de sus 14 métodos con el de 1049d60: idéntico.
+- No comprobado: aspecto real en la tarjeta, fluidez real (p95/p99/máximo) y Windows XP.

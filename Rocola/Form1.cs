@@ -2179,13 +2179,7 @@ namespace Rocola
             if (t == null) return;
             PlayItem it = new PlayItem(); it.IsVideo = false; it.Song = t; it.Disc = disc;
             AddResult r = AddItem(it);
-            if (r == AddResult.Added)
-            {
-                ShowSongAddedToast(false);
-#if ROCOLA_GPU
-                NotaPedidoAsistente();   // la guia de la estrella sabe que ya se logro (AsistenteGuiaRocola.cs)
-#endif
-            }
+            if (r == AddResult.Added) ShowSongAddedToast(false);
             else if (r == AddResult.NoCredit) { if (!InvitaSinCredito(it)) ShowToast("Inserta una moneda", Color.FromArgb(200, 130, 35)); }
             else ShowToast("Esa ya va seguida", Color.FromArgb(200, 130, 35));
         }
@@ -2197,9 +2191,6 @@ namespace Rocola
             AddResult r = AddItem(it);
             if (r == AddResult.Added)
             {   // el video tambien dice su turno: para quien lo pidio es exactamente lo mismo
-#if ROCOLA_GPU
-                NotaPedidoAsistente();
-#endif
                 string mv = TextoTurno(turnoPuesto, turnoSegs);
                 AvisoPedido();   // con avisos claros: "Pusiste «...»" y cuanto falta (SuenaVivoGpu.cs)
                 ShowToast(mv.Length > 0 ? mv : "Video agregado a la cola");

@@ -27,10 +27,11 @@ namespace Rocola
 
         private int asistenteMision, asistentePaso, asistenteLogroTick, asistenteBienTick, asistenteMonedaTick;
         private int asistenteAprende;                      // por cual de PasosAprender va
-        private int asistentePedidos, asistentePedidosBase; // canciones/videos puestos (sube en AddSong/AddVideoToQueue)
+        private int asistentePedidos, asistentePedidosBase; // canciones/videos puestos (sube en AddItem)
         private int guiaSelBase, guiaPagBase; private char guiaLetraBase;
 
-        // Una cancion o un video quedo en la cola: lo apunta AddSong/AddVideoToQueue.
+        // Una cancion o un video quedo en la cola: lo apunta AddItem, por donde pasa todo pedido (desde un disco,
+        // un video o el buscador).
         private void NotaPedidoAsistente() { asistentePedidos = unchecked(asistentePedidos + 1); }
 
         private void EmpiezaMision(int mision)
@@ -353,6 +354,7 @@ namespace Rocola
         private double asistenteUltimoAvance = -1;
         private AsistentePoseGpu asistenteSigue; private bool asistenteSigueListo;
         private RectangleF asistenteGuiaPanel; private bool asistenteGuiaListo, asistenteGuiaVisibleAntes;
+        private Rectangle asistenteGuiaMeta;   // la esquina elegida (el globo se desliza hacia ella)
         private readonly D3D9.Vtx[] asistenteMarco = new D3D9.Vtx[72];
         private readonly D3D9.Vtx[] asistenteFlecha = new D3D9.Vtx[36];
 
@@ -363,7 +365,9 @@ namespace Rocola
             asistenteGuiaVisibleAntes = visible;
             if (!visible) return;                                                    // regresando: el globo se queda donde estaba
             if (!asistenteEstado.Guia) { asistenteGuiaListo = false; return; }
-            Rectangle meta = AsistenteGuiaRect(Width, Height, asistenteEstado.Objetivo);
+            Rectangle meta = asistenteGuiaListo ? AsistenteGuiaRectSigue(Width, Height, asistenteEstado.Objetivo, asistenteGuiaMeta)
+                                                : AsistenteGuiaRect(Width, Height, asistenteEstado.Objetivo);
+            asistenteGuiaMeta = meta;
             if (!asistenteGuiaListo) { asistenteGuiaPanel = meta; asistenteGuiaListo = true; return; }
             float k = asistenteEstado.Animada ? 1 - (float)Math.Exp(-dt * 7) : 1;
             asistenteGuiaPanel = new RectangleF(asistenteGuiaPanel.X + (meta.X - asistenteGuiaPanel.X) * k,

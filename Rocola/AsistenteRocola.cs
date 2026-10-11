@@ -107,7 +107,11 @@ namespace Rocola
                 if (video != null) video.Visible = videoOn && !searchOpen;
                 SyncGpuFullScreen(); KeepVideoOnTop();
             }
-            if (ayudaView != null && ayudaView.Abierta != asistenteVisible) ayudaView.Abierta = asistenteVisible;
+            if (ayudaView != null && ayudaView.Abierta != asistenteVisible)
+            {   // encendida mientras la ayuda esta abierta (la textura de la interfaz lo ve en su firma; el control, aqui)
+                ayudaView.Abierta = asistenteVisible;
+                ayudaView.Invalidate();
+            }
             if (!asistenteVisible) return;
             if (!AsistentePermitido()) { CierraAsistente(); return; }
             if (unchecked(Environment.TickCount - asistenteActividadTick) >= 90000) { CierraAsistente(); return; }
@@ -150,6 +154,9 @@ namespace Rocola
         {
             if (!asistenteVisible || asistenteMision != 0 || unchecked(Environment.TickCount - asistenteInicioTick) < 450) return;
             Rectangle r = GpuPanel.AsistentePanelRect(ClientSize.Width, ClientSize.Height);
+            // Tocar fuera del globo guarda la pregunta (en una pantalla tactil no hay boton ROJO a mano). El toque no
+            // sigue hacia la pared: quien lo dio queria cerrar, no elegir un disco a ciegas.
+            if (!r.Contains(punto)) { CierraAsistente(); return; }
             punto.Offset(-r.Left, -r.Top);
             for (int i = 0; i < AsistenteOpciones; i++) if (AsistenteOpcionRect(r.Width, r.Height, i).Contains(punto))
             { asistenteSeleccion = i; asistenteActividadTick = Environment.TickCount; EligeAsistente(); return; }

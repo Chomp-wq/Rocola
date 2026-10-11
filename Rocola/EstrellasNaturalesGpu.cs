@@ -93,7 +93,9 @@ namespace Rocola
             float vel = (float)Math.Sqrt(s.VX * s.VX + s.VY * s.VY);
             double a = .15 * Math.PI + srnd.NextDouble() * .70 * Math.PI;   // siempre hacia abajo, abriendose
             float dx = (float)Math.Cos(a), dy = (float)Math.Sin(a);
-            float d = (h / 768f) * (30f + (float)srnd.NextDouble() * 130f);
+            // Como en una lluvia de verdad, no nacen todas pegadas al radiante: aparecen repartidas por el cielo,
+            // cada una en SU recta desde el, y con la cola apuntandole. Unas cerca y cortas, otras ya lejos.
+            float d = (w + h) * (.03f + .22f * (float)srnd.NextDouble());
             s.X = w * rx + dx * d; s.Y = h * ry + dy * d;
             s.VX = dx * vel; s.VY = dy * vel;
         }

@@ -73,15 +73,42 @@ namespace Rocola
             return new Size(Math.Max(1, Math.Min(gw, w - 16)), Math.Max(1, Math.Min(gh, h - 16)));
         }
         internal static float AsistenteGuiaRadio(int alto) { return Math.Max(8f, alto * .34f); }
+        // Las cuatro esquinas donde puede ir el globo (las mismas para elegir y para quedarse).
+        private static void EsquinasGuia(int w, int h, Size s, float radio, out int xIzq, out int xDer, out int yArr, out int yAba)
+        {
+            int margen = Math.Min(16, Math.Max(4, w / 60));
+            xIzq = Math.Min(Math.Max(0, w - s.Width), margen + (int)(radio * 2.9f)); xDer = Math.Max(0, w - margen - s.Width);
+            int reserva = Math.Min(132, Math.Max(48, (int)(h * .11f)));
+            yArr = Math.Min(Math.Max(0, h - s.Height), Math.Max(8, (int)(h * .13f))); yAba = Math.Max(0, h - reserva - s.Height - 10);
+        }
+        // Lo que tapa del objetivo el globo puesto en 'r' junto con la estrella (que va a su izquierda). 0 = nada.
+        private static float TapaGuia(Rectangle r, float radio, RectangleF objetivo)
+        {
+            if (!(objetivo.Width > 0) || !(objetivo.Height > 0)) return 0f;
+            RectangleF ocupa = new RectangleF(r.Left - radio * 2.9f, r.Top - radio * .2f, r.Width + radio * 2.9f, r.Height + radio * .4f);
+            RectangleF cruce = RectangleF.Intersect(ocupa, RectangleF.Inflate(objetivo, 10, 10));
+            return cruce.Width > 0 && cruce.Height > 0 ? cruce.Width * cruce.Height : 0f;
+        }
+        // CON MEMORIA: si el globo ya esta en una esquina que no tapa lo que hay que mirar, se queda. Asi no cruza
+        // la pantalla cada vez que el disco elegido pasa del centro mientras el cliente se mueve; solo se muda
+        // cuando taparia (o si la pantalla cambio de tamano).
+        internal static Rectangle AsistenteGuiaRectSigue(int w, int h, RectangleF objetivo, Rectangle actual)
+        {
+            Rectangle nueva = AsistenteGuiaRect(w, h, objetivo);
+            if (actual.Size != nueva.Size) return nueva;
+            int xIzq, xDer, yArr, yAba;
+            EsquinasGuia(Math.Max(1, w), Math.Max(1, h), nueva.Size, AsistenteGuiaRadio(nueva.Height), out xIzq, out xDer, out yArr, out yAba);
+            bool esquina = (actual.X == xIzq || actual.X == xDer) && (actual.Y == yArr || actual.Y == yAba);
+            if (!esquina || TapaGuia(actual, AsistenteGuiaRadio(actual.Height), objetivo) > 0f) return nueva;
+            return actual;
+        }
         internal static Rectangle AsistenteGuiaRect(int w, int h, RectangleF objetivo)
         {
             w = Math.Max(1, w); h = Math.Max(1, h);
             Size s = AsistenteGuiaTam(w, h);
             float radio = AsistenteGuiaRadio(s.Height);
-            int margen = Math.Min(16, Math.Max(4, w / 60));
-            int xIzq = Math.Min(Math.Max(0, w - s.Width), margen + (int)(radio * 2.9f)), xDer = Math.Max(0, w - margen - s.Width);
-            int reserva = Math.Min(132, Math.Max(48, (int)(h * .11f)));
-            int yArr = Math.Min(Math.Max(0, h - s.Height), Math.Max(8, (int)(h * .13f))), yAba = Math.Max(0, h - reserva - s.Height - 10);
+            int xIzq, xDer, yArr, yAba;
+            EsquinasGuia(w, h, s, radio, out xIzq, out xDer, out yArr, out yAba);
             bool vacio = !(objetivo.Width > 0) || !(objetivo.Height > 0);
             float ox = vacio ? 0 : objetivo.X + objetivo.Width * .5f, oy = vacio ? 0 : objetivo.Y + objetivo.Height * .5f;
             // Primero la esquina opuesta al objetivo; luego las otras tres, por orden de cercania a esa.
@@ -94,9 +121,7 @@ namespace Rocola
                 Rectangle r = new Rectangle(xs[i], ys[i], s.Width, s.Height);
                 if (vacio) return r;
                 // Lo que tapa del objetivo, y la estrella (a la izquierda del globo) tampoco debe taparlo.
-                RectangleF ocupa = new RectangleF(r.Left - radio * 2.9f, r.Top - radio * .2f, r.Width + radio * 2.9f, r.Height + radio * .4f);
-                RectangleF cruce = RectangleF.Intersect(ocupa, RectangleF.Inflate(objetivo, 10, 10));
-                float tapa = cruce.Width > 0 && cruce.Height > 0 ? cruce.Width * cruce.Height : 0;
+                float tapa = TapaGuia(r, radio, objetivo);
                 if (tapa <= 0) return r;
                 if (tapa < menor) { menor = tapa; mejor = r; }
             }

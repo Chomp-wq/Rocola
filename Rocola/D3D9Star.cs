@@ -2405,6 +2405,7 @@ namespace Rocola
             SueltaAtraccion();      // las fichas del escaparate, sus mensajes y la lista de la noche
             SueltaAsistente();      // panel prestado del asistente y su textura GPU
             SueltaAyudaIcono();
+            SueltaLunaReal();       // la luna de esta noche de Espacio natural (LunaRealGpu.cs)
             if (uiTex != IntPtr.Zero) { D3D9.Release(uiTex); uiTex = IntPtr.Zero; }
             if (hazTex != IntPtr.Zero) { D3D9.Release(hazTex); hazTex = IntPtr.Zero; }
             if (nebTex != IntPtr.Zero) { D3D9.Release(nebTex); nebTex = IntPtr.Zero; }
@@ -2414,6 +2415,7 @@ namespace Rocola
             idleNaturalVelocity = 0; naturalLightReady = false;
             vinetaRetry = 0;
             if (ruidoTex != IntPtr.Zero) { D3D9.Release(ruidoTex); ruidoTex = IntPtr.Zero; ruTW = ruTH = 0; }
+            ruidoTexNatural = false;
             ruidoMalla = null; ruidoAncho = ruidoAlto = ruidoTriangulos = 0;
             ResetStarEchoes();
             if (lunaTex != IntPtr.Zero) { D3D9.Release(lunaTex); lunaTex = IntPtr.Zero; luTW = luTH = 0; lunaDe = -1; }

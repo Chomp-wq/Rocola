@@ -406,6 +406,7 @@ class BuscaLigero
         bloqueos.Clear(); bloqueos.AddRange(todos);
         return ult;
     }
+    static int Pot2(int n) { int p = 1; while (p < n) p <<= 1; return p; }
     static List<Bloqueo> De(IntPtr tex) { List<Bloqueo> r = new List<Bloqueo>(); foreach (Bloqueo b in bloqueos) if (b.Tex == tex) r.Add(b); return r; }
     static List<Envio> ConTextura(List<Envio> es, IntPtr tex) { List<Envio> r = new List<Envio>(); foreach (Envio e in es) if (e.Tex == tex && e.ConTextura) r.Add(e); return r; }
 
@@ -449,7 +450,11 @@ class BuscaLigero
             CuadroHasta(p, version);
             IntPtr ui2 = (IntPtr)Toma(p, "uiTex");
             List<Bloqueo> bu = De(ui);
-            bool trozo = bu.Count == 1 && bu[0].Zona == z && !z.IsEmpty;
+            // Si el trozo toca el borde derecho o el de abajo de la imagen, se bloquea hasta el borde de la
+            // textura (potencia de 2) para extender el ultimo pixel: el filtro bilineal no lee basura al lado.
+            // Eso es relleno que no se ve; lo demas tiene que ser exactamente el trozo (TexturasCompatiblesGpu.cs).
+            Rectangle zb = Rectangle.FromLTRB(z.Left, z.Top, z.Right == W ? Pot2(W) : z.Right, z.Bottom == mainH ? Pot2(mainH) : z.Bottom);
+            bool trozo = bu.Count == 1 && (bu[0].Zona == z || bu[0].Zona == zb) && !z.IsEmpty;
             int dist = DistintosEnTextura(ui2, actual);
             Exige(trozo && ui2 == ui && creaciones == c0 && dist == 0,
                   nom[k] + ": la tarjeta recibe solo " + z.Width + "x" + z.Height + " de " + W + "x" + mainH + " (" + (100.0 * z.Width * z.Height / (W * mainH)).ToString("0") + " %), " +

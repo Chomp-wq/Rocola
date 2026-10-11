@@ -144,8 +144,15 @@ namespace Rocola
         // Tocar la casilla abre la ayuda (pantalla tactil o raton).
         private bool AyudaTocada(Point p)
         {
-            if (ayudaView == null || !ayudaView.Visible || AsistenteVisible) return false;
-            if (!ayudaView.Bounds.Contains(p) || !AsistentePermitido()) return false;
+            if (ayudaView == null || !ayudaView.Visible || !ayudaView.Bounds.Contains(p)) return false;
+            // Con la ayuda abierta (preguntando o guiando), tocar la casilla la vuelve a guardar: es la gemela
+            // tactil de ROJO + ABAJO, que tambien abre y cierra. El mismo toque que la abrio no la cierra.
+            if (asistenteVisible)
+            {
+                if (unchecked(Environment.TickCount - asistenteInicioTick) >= 450) CierraAsistente();
+                return true;
+            }
+            if (AsistenteVisible || !AsistentePermitido()) return false;   // aun regresando a su sitio
             AbreAsistente();
             return true;
         }

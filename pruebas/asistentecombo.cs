@@ -64,10 +64,18 @@ class AsistenteCombo
         Check(Codigo.Llama(form.GetMethod("AnimTimer_Tick", Todos), "TickAsistenteGpu"), "El latido sigue a la guia");
         Check(Codigo.Llama(form.GetMethod("TickAsistenteGpu", Todos), "EvaluaGuia"), "La guia se reevalua en cada latido");
         Check(Codigo.Llama(form.GetMethod("AyudaTocada", Todos), "AbreAsistente"), "Tocar la casilla de AYUDA abre la ayuda");
+        Check(Codigo.Llama(form.GetMethod("AyudaTocada", Todos), "CierraAsistente"), "Y con la ayuda abierta, tocarla la vuelve a guardar");
+        Check(Codigo.Llama(form.GetMethod("AsistenteClick", Todos), "CierraAsistente"), "Tocar fuera del globo de la pregunta la guarda");
+        Check(Codigo.Llama(form.Assembly.GetType("Rocola.GpuPanel", true).GetMethod("AvanzaGlobosGuia", Todos), "AsistenteGuiaRectSigue"),
+            "El globo de la guia recuerda su esquina (no cruza la pantalla a cada paso)");
         Check(!Codigo.Llama(form.GetMethod("EvaluaGuia", Todos), "AddItem") && !Codigo.Llama(form.GetMethod("EmpiezaMision", Todos), "AddItem"),
             "La guia no pone canciones ni gasta creditos: lo hace el cliente");
-        Check(Codigo.Llama(form.GetMethod("AddSong", Todos), "NotaPedidoAsistente") && Codigo.Llama(form.GetMethod("AddVideoToQueue", Todos), "NotaPedidoAsistente"),
-            "La guia se entera de cuando la cancion quedo en la cola");
+        // Todo pedido pasa por AddItem: desde un disco, un video o el buscador (ChooseSearchResult llama a AddItem
+        // directamente). Si el aviso estuviera solo en AddSong, la mision "Buscar" no llegaria nunca a su logro.
+        Check(Codigo.Llama(form.GetMethod("AddItem", Todos), "NotaPedidoAsistente"),
+            "La guia se entera de cuando la cancion quedo en la cola, venga de donde venga");
+        Check(Codigo.Llama(form.GetMethod("ChooseSearchResult", Todos), "AddItem"),
+            "El buscador encola por AddItem (y por tanto avisa a la guia)");
     }
 
     static void Pasos()
