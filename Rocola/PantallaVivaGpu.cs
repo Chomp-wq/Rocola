@@ -333,7 +333,8 @@ namespace Rocola
         // ---------------- EL LETRERO DE LA PORTADA ELEGIDA ----------------
         // Una sola imagen, horneada al cambiar de disco (no en cada cuadro) y reusada: el panel la sube solo
         // cuando cambia la version.
-        private Album focoAlbum; private Bitmap focoBmp; private int focoVer, focoLado = -1;
+        private Album focoAlbum; private Bitmap focoBmp; private int focoVer, focoLado = -1, focoDatosVer = -1;
+        private string focoTexto;
         private GpuFoco BuildFocoState()
         {
             GpuFoco f = new GpuFoco();
@@ -342,8 +343,14 @@ namespace Rocola
             if (a == null) return f;
             int lado = AlbumView.LadoPortada(albumView.Width, albumView.Height), cw = albumView.Width / Cols;
             int medida = lado * 4096 + cw;   // se rehace si cambia la portada o la casilla
-            if (!ReferenceEquals(a, focoAlbum) || focoBmp == null || medida != focoLado)
-            { HorneaFoco(a, lado, cw); focoAlbum = a; focoLado = medida; }
+            bool rehacer = !ReferenceEquals(a, focoAlbum) || focoBmp == null || medida != focoLado;
+            if (!rehacer && focoDatosVer != duracionesVer)
+            {
+                int can, vid; double seg; CuentaDisco(a, out can, out vid, out seg);
+                rehacer = focoTexto != TextoFoco(can, vid, seg);
+            }
+            if (rehacer) { HorneaFoco(a, lado, cw); focoAlbum = a; focoLado = medida; }
+            focoDatosVer = duracionesVer; // medir OTRO disco no provoca otra rasterizacion/subida
             f.Has = focoBmp != null; f.Bmp = focoBmp; f.Ver = focoVer;
             return f;
         }
@@ -362,7 +369,8 @@ namespace Rocola
                 if (focoBmp != null) focoBmp.Dispose();
                 focoBmp = new Bitmap(w, h, PixelFormat.Format32bppPArgb);
             }
-            PintaFoco(focoBmp, TextoFoco(can, vid, seg), TextoFoco(can, vid, -1), FamiliaUi());
+            focoTexto = TextoFoco(can, vid, seg);
+            PintaFoco(focoBmp, focoTexto, TextoFoco(can, vid, -1), FamiliaUi());
             focoVer++;
         }
         // La pastilla, centrada en su imagen: fondo oscuro translucido, filo claro y el texto blanco. Devuelve el
@@ -427,7 +435,10 @@ namespace Rocola
         // vez por parada, un poco ANTES de salir (FichaAntesMs): asi el cuadro en que aparece no carga con el dibujo
         // ni con la subida a la tarjeta. Se va en cuanto el cursor se mueve.
         internal const int FichaEsperaMs = 1100, FichaEntraMs = 220, FichaDuraMs = 9000, FichaSaleMs = 400, FichaAntesMs = 250;
-        private Album fichaAlbum; private int fichaDesde, fichaColaVer; private bool fichaHecha, fichaAcabada;
+        private Album fichaAlbum; private int fichaDesde, fichaColaVer, fichaDurVer, fichaGenVer, fichaMedida;
+        private Image fichaPortada;
+        private string fichaDuracionTexto;
+        private bool fichaHecha, fichaAcabada;
         private Bitmap fichaBmp; private int fichaVer;
         private GpuFicha BuildFichaState()
         {
@@ -445,14 +456,29 @@ namespace Rocola
             if (celda.Width < 8) return f;
             celda.Offset(albumView.Left, albumView.Top);
             // Se rehace si cambio la cola mientras se ve (alguien pidio una de este disco): el numero tiene que cuadrar.
-            if (!fichaHecha || fichaColaVer != colaVer)
-            { HorneaFicha(a, albumView.Width / Cols, albumView.Height / Rows); fichaHecha = true; fichaColaVer = colaVer; }
+            int medida = albumView.Width * 4096 + albumView.Height;
+            Image portada = albumView.PeekCoverGpu != null ? albumView.PeekCoverGpu(a) : null;
+            string duracion = !fichaHecha || fichaDurVer != duracionesVer ? DuracionesFicha(a) : fichaDuracionTexto;
+            if (!fichaHecha || fichaColaVer != colaVer || duracion != fichaDuracionTexto || fichaGenVer != generoVer
+                || fichaMedida != medida || !object.ReferenceEquals(fichaPortada, portada))
+            {
+                HorneaFicha(a, albumView.Width / Cols, albumView.Height / Rows); fichaHecha = true; fichaColaVer = colaVer;
+                fichaDuracionTexto = duracion; fichaGenVer = generoVer; fichaMedida = medida; fichaPortada = portada;
+            }
+            fichaDurVer = duracionesVer;
             if (fichaBmp == null) return f;
             float alfa = CurvaFicha(dt);
             PointF p = LugarFicha(celda, albumView.Bounds, fichaBmp.Width, fichaBmp.Height);
             f.Has = true; f.Bmp = fichaBmp; f.Ver = fichaVer;   // con alfa 0 tambien: el panel la sube antes de enseñarla
             f.X = p.X; f.Y = p.Y + 14f * (1f - alfa); f.Alpha = alfa;
             return f;
+        }
+        private string DuracionesFicha(Album a)
+        {
+            int can, vid; double seg; CuentaDisco(a, out can, out vid, out seg);
+            System.Text.StringBuilder texto = new System.Text.StringBuilder(TextoFoco(can, vid, seg));
+            if (a.Tracks != null) for (int i = 0; i < a.Tracks.Count; i++) texto.Append('|').Append(DurText(a.Tracks[i].Path));
+            return texto.ToString();
         }
         // 0 mientras espera; sube a 1 en FichaEntraMs frenando al llegar, se queda FichaDuraMs y se va en FichaSaleMs.
         internal static float CurvaFicha(int dt)

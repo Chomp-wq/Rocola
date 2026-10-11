@@ -50,6 +50,7 @@ class CuboAgrupado {
    }
    IntPtr tex=new IntPtr(textured);
    Set(dev,device,"stTex",tex);Set(dev,device,"stTss",textured!=0?2:1);
+   FieldInfo direccion=dev.GetField("stDireccion",F);if(direccion!=null)direccion.SetValue(device,1); // CLAMP ya establecido por InitStates
    actual=null;calls=0;
    host.GetMethod("DrawCube",F).Invoke(owner,new object[]{tex,um,vm,ax,ay,aw,ah,angle,alpha,tilt});
    Check(calls==1,"No agrupa en un envio");

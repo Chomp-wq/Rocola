@@ -2456,7 +2456,6 @@ namespace Rocola
             }
             return null;
         }
-        private static ImageCodecInfo jpegEnc;
         private static int BarreMiniaturas()
         { return BarreMiniaturasConPausas(null); }
 
@@ -2466,7 +2465,9 @@ namespace Rocola
             {
                 string d = CarpetaMiniaturas();
                 if (d == null || !Directory.Exists(d)) return 0;
-                string[] files = Directory.GetFiles(d, "*.jpg");
+                string[] jpg = Directory.GetFiles(d, "*.jpg"), png = Directory.GetFiles(d, "*.png");
+                string[] files = new string[jpg.Length + png.Length];
+                Array.Copy(jpg, files, jpg.Length); Array.Copy(png, 0, files, jpg.Length, png.Length);
                 long total = 0;
                 List<string> viejas = new List<string>();
                 DateTime corte = DateTime.UtcNow.AddDays(-MiniaturasDiasMax);
@@ -2515,15 +2516,7 @@ namespace Rocola
             {
                 lock (CandadoMiniatura(cacheFile))
                 {
-                    if (jpegEnc == null)
-                        foreach (ImageCodecInfo ci in ImageCodecInfo.GetImageEncoders()) if (ci.MimeType == "image/jpeg") { jpegEnc = ci; break; }
-                    if (jpegEnc == null) thumb.Save(tmp, ImageFormat.Jpeg);
-                    else
-                        using (EncoderParameters ep = new EncoderParameters(1))
-                        {
-                            ep.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 82L);
-                            thumb.Save(tmp, jpegEnc, ep);
-                        }
+                    thumb.Save(tmp, ImageFormat.Png); // Sin perdida; mismo alfa/aspecto en primera carga y cache.
                     if (File.Exists(cacheFile))
                     {
                         try { File.Replace(tmp, cacheFile, null, true); tmp = null; return; }

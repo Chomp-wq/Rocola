@@ -769,6 +769,7 @@ namespace Rocola
 
         protected override void OnFormClosed(FormClosedEventArgs e)
         {
+            DetieneEstadoReintentos();
 #if ROCOLA_GPU
             SueltaAsistente();
 #endif
@@ -1924,6 +1925,8 @@ namespace Rocola
             // siempre -el mismo que Alt+F4-: cerrar
             // A PROPOSITO borra el estado guardado y manana la rocola arranca limpia (solo un apagon -que
             // no corre nada- deja el archivo, y por eso al volver la luz reanuda creditos y cola).
+            // Un sostenido no son tres pulsaciones. KEYDOWN bit 30 indica que ya estaba apretada.
+            if (keyData == (Keys.Control | Keys.Alt | Keys.Q) && (msg.LParam.ToInt64() & 0x40000000L) != 0) return true;
             int vanSalir = PidenSalir(keyData);
             if (vanSalir > 0)
             {

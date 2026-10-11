@@ -277,12 +277,15 @@ def reparte(etiquetas, pesos, fracciones=(0.8, 0.1, 0.1), semilla=20260922,
     motivo != "" significa que no hay reparto independiente suficiente (y la particion es None)."""
     etiquetas = np.asarray(etiquetas, dtype=np.uint64)
     pesos = np.asarray(pesos, dtype=np.int64)
+    if etiquetas.ndim != 1 or pesos.shape != etiquetas.shape or np.any(pesos < 0):
+        raise ValueError("Etiquetas/pesos de reparto invalidos")
     if len(etiquetas) == 0:
         return None, "no hay ejemplos con origen conocido"
-    unicos, inv = np.unique(etiquetas, return_inverse=True)
+    activos = pesos > 0
+    unicos, inv = np.unique(etiquetas[activos], return_inverse=True)
     if len(unicos) < sum(min_grupos):
         return None, "solo hay %d grupos independientes; hacen falta al menos %d" % (len(unicos), sum(min_grupos))
-    peso_g = np.bincount(inv, weights=pesos, minlength=len(unicos))
+    peso_g = np.bincount(inv, weights=pesos[activos], minlength=len(unicos))
     total = float(peso_g.sum())
     orden = sorted(range(len(unicos)), key=lambda g: (_mezcla64(unicos[g], semilla), int(unicos[g])))
     fr = np.asarray(fracciones, dtype=np.float64) / float(sum(fracciones))
@@ -294,7 +297,8 @@ def reparte(etiquetas, pesos, fracciones=(0.8, 0.1, 0.1), semilla=20260922,
             g = orden[cursor]
             parte_grupo[g] = p
             acum += peso_g[g]; n += 1; cursor += 1
-    parte = parte_grupo[inv]
+    parte = np.full(len(etiquetas), -1, dtype=np.int64)
+    parte[activos] = parte_grupo[inv]
     for p in range(3):
         ng = int(np.sum(parte_grupo == p))
         ne = int(pesos[parte == p].sum())

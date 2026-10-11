@@ -628,6 +628,17 @@ namespace Rocola
                 Query = Escrito;
                 Changed();
             }
+
+            private bool PuedeElegirConsulta()
+            {
+                if (Query == Escrito) return true;
+                // Publicar los resultados nuevos, pero no heredar el indice de una tarjeta antigua.
+                // El siguiente toque confirma lo que ahora se ve. Solo GPU: CPU permanece congelado.
+#if ROCOLA_GPU
+                if (Nuevo) { PosaConsulta(); return false; }
+#endif
+                return true;
+            }
             // AL TECLEAR NO CAMBIA MEDIA PANTALLA. Escribir una letra toca la caja de lo escrito y las
             // tarjetas de la derecha, y nada mas: el teclado se queda exactamente igual, tecla por tecla.
             // Marcando solo esas dos zonas, lo que hay que volver a copiar debajo -el cielo- se reduce a la

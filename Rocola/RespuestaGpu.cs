@@ -233,8 +233,8 @@ namespace Rocola
                 ? TactileAlpha(AhoraMs() - focusStart, 120, .65f) : 1;
         }
 
-        // Solo texturas ya subidas, a resolucion original. Cada COM pertenece a
-        // un unico slot: al recuperar se intercambian, no se comparten ni duplican.
+        // Solo portadas inmutables ya subidas, a resolucion original. Cada slot
+        // posee una referencia: puede compartir el COM, nunca modificar su contenido.
         private sealed class CoverSlot
         {
             public IntPtr Tex; public Bitmap Bmp;
@@ -269,7 +269,7 @@ namespace Rocola
         }
         private void EnsureRecentCover(ref IntPtr tex, ref Bitmap last, ref int w, ref int h, ref float u, ref float v, Bitmap cur)
         {
-            if (!CachePortadas) { TrimRecentCovers(true); EnsureCover(ref tex, ref last, ref w, ref h, ref u, ref v, cur); return; }
+            if (!CachePortadas) { TrimRecentCovers(true); EnsureImmutableCover(ref tex, ref last, ref w, ref h, ref u, ref v, cur); return; }
             if (ReferenceEquals(cur, last) && (cur == null || tex != IntPtr.Zero)) return;
             int slot = -1;
             bool hit = false;
@@ -293,7 +293,7 @@ namespace Rocola
             tex = nextTex; last = nextBmp; w = nextW; h = nextH; u = nextU; v = nextV;
             // Un hueco vacio no debe mantener un bitmap ni contarse como textura.
             if (s.Tex == IntPtr.Zero) recentCovers[slot] = null;
-            if (!hit) EnsureCover(ref tex, ref last, ref w, ref h, ref u, ref v, cur);
+            if (!hit) EnsureImmutableCover(ref tex, ref last, ref w, ref h, ref u, ref v, cur);
             TrimRecentCovers(false);
         }
     }

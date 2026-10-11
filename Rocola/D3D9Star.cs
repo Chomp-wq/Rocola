@@ -60,6 +60,7 @@ namespace Rocola
         public const uint CULL_NONE = 1;
         public const uint TSS_COLOROP = 1, TSS_COLORARG1 = 2, TSS_COLORARG2 = 3, TSS_ALPHAOP = 4, TSS_ALPHAARG1 = 5, TSS_ALPHAARG2 = 6;
         public const uint TOP_SELECTARG1 = 2, TOP_MODULATE = 4, TA_DIFFUSE = 0, TA_TEXTURE = 2;
+        public const uint SAMP_ADDRESSU = 1, SAMP_ADDRESSV = 2, ADDRESS_WRAP = 1, ADDRESS_CLAMP = 3;
         public const uint SAMP_MAGFILTER = 5, SAMP_MINFILTER = 6, TEXF_LINEAR = 2;
         public const int E_DEVICELOST = unchecked((int)0x88760868);
         public const int E_DEVICENOTRESET = unchecked((int)0x88760869);
@@ -88,11 +89,17 @@ namespace Rocola
             IntPtr fn = Marshal.ReadIntPtr(vtbl, slot * IntPtr.Size);
             return (T)(object)Marshal.GetDelegateForFunctionPointer(fn, typeof(T));
         }
-        public static void Release(IntPtr punk) { try { Fn<UintSelf>(punk, 2)(punk); } catch { } }
+        public static void Release(IntPtr punk)
+        {
+            if (punk == IntPtr.Zero) return;
+            if (TexturasDivididasGpu.Libera(punk)) return;
+            PortadasCompartidasGpu.AlSoltar(punk);
+            try { Fn<UintSelf>(punk, 2)(punk); } catch { }
+        }
     }
 
     // -------- Dispositivo D3D9 sobre una ventana --------
-    internal sealed class D3D9Device
+    internal sealed partial class D3D9Device
     {
         public uint CubeBaseColor = 0x003C466Eu;
         private IntPtr d3d, dev;
@@ -193,6 +200,7 @@ namespace Rocola
                 testCoop = D3D9.Fn<D3D9.HrSelf>(dev, 3);
                 reset = D3D9.Fn<D3D9.ResetDel>(dev, 16);
                 createTex = D3D9.Fn<D3D9.CreateTexDel>(dev, 23);
+                LeeLimitesTexturas();
                 if (!InitStates()) Dispose();
             }
             catch
@@ -270,9 +278,11 @@ namespace Rocola
         private int stTss, stBlend;                  // 0 = sin fijar, 1 = diffuse / 2 = modulate ; 1 = sin mezcla, 2 = aditiva, 3 = normal
         private IntPtr stTex = new IntPtr(-1);       // -1 = sin fijar (IntPtr.Zero SI es un valor valido: sin textura)
 
+        private int stDireccion;
         private bool InitStates()
         {
             stTss = 0; stBlend = 0; stTex = new IntPtr(-1);   // tras crear o RESETEAR el dispositivo todo vuelve a su valor por defecto
+            stDireccion = 0;
             if (dev == IntPtr.Zero) return false;
             try
             {
@@ -282,6 +292,9 @@ namespace Rocola
                 if (setFVF(dev, D3D9.FVF) < 0) return false;
                 if (setSamp(dev, 0, D3D9.SAMP_MAGFILTER, D3D9.TEXF_LINEAR) < 0) return false;
                 if (setSamp(dev, 0, D3D9.SAMP_MINFILTER, D3D9.TEXF_LINEAR) < 0) return false;
+                if (setSamp(dev, 0, D3D9.SAMP_ADDRESSU, D3D9.ADDRESS_CLAMP) < 0 ||
+                    setSamp(dev, 0, D3D9.SAMP_ADDRESSV, D3D9.ADDRESS_CLAMP) < 0) return false;
+                stDireccion = 1;
                 return true;
             }
             catch { return false; }
@@ -293,7 +306,29 @@ namespace Rocola
             stTss = 0; stBlend = 0; stTex = new IntPtr(-1);
         }
 
+        private void Direccion(bool repetir)
+        {
+            int modo = repetir ? 2 : 1;
+            if (dev == IntPtr.Zero || lost || stDireccion == modo) return;
+            uint valor = repetir ? D3D9.ADDRESS_WRAP : D3D9.ADDRESS_CLAMP;
+            try
+            {
+                if (setSamp(dev, 0, D3D9.SAMP_ADDRESSU, valor) < 0 || setSamp(dev, 0, D3D9.SAMP_ADDRESSV, valor) < 0)
+                { EstadoFallido(); return; }
+                stDireccion = modo;
+            }
+            catch { EstadoFallido(); }
+        }
         private void Tex(IntPtr t)
+        { TexDireccion(t, false); }
+        private void TexDireccion(IntPtr t, bool repetir)
+        {
+            if (t != IntPtr.Zero) Direccion(repetir);
+            texturaLogica = t;
+            if (TexturasDivididasGpu.Busca(t) != null) return;
+            PonTexturaFisica(t);
+        }
+        private void PonTexturaFisica(IntPtr t)
         {
             if (dev == IntPtr.Zero || lost || stTex == t) return;
             try
@@ -353,6 +388,9 @@ namespace Rocola
         // Bloquea y rellena una textura garantizando que tanto GDI+ como Direct3D quedan desbloqueados aun
         // cuando el bitmap este corrupto, el driver rechace el recurso o falle una copia nativa.
         private static bool SubeBitmap(IntPtr tex, Bitmap bmp, int w, int h)
+        { return SubeBitmapBorde(tex, bmp, w, h, w, h); }
+
+        private static bool SubeBitmapBorde(IntPtr tex, Bitmap bmp, int w, int h, int tw, int th)
         {
             D3D9.UnlockRectDel unlockR = null;
             D3D9.LockedRect lr = new D3D9.LockedRect();
@@ -367,7 +405,7 @@ namespace Rocola
 
                 bd = bmp.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
                 int rowBytes = checked(w * 4);
-                if (lr.Bits == IntPtr.Zero || lr.Pitch < rowBytes || bd.Scan0 == IntPtr.Zero || Math.Abs((long)bd.Stride) < rowBytes)
+                if (lr.Bits == IntPtr.Zero || lr.Pitch < tw * 4 || bd.Scan0 == IntPtr.Zero || Math.Abs((long)bd.Stride) < rowBytes)
                     return false;
                 // Agrupa filas contiguas sin padding en bloques de hasta 64 KiB. Una copia gigante
                 // resulto mas lenta en la medicion; los bloques reducen interop sin ese retroceso.
@@ -385,6 +423,8 @@ namespace Rocola
                 else
                     for (int y = 0; y < h; y++)
                         D3D9.CopyMemory(new IntPtr(lr.Bits.ToInt64() + (long)y * lr.Pitch), new IntPtr(bd.Scan0.ToInt64() + (long)y * bd.Stride), (UIntPtr)(uint)rowBytes);
+                // Bilineal necesita texeles vecinos: extruir el ultimo valido, sin arrays ni pixeladas GDI.
+                RellenaBorde(lr, w, h, tw, th);
                 ok = true;
             }
             catch { ok = false; }
@@ -556,6 +596,12 @@ namespace Rocola
             Draw(v, tris);
         }
 
+        public void DrawQuadsWrap(IntPtr tex, D3D9.Vtx[] v, int tris)
+        {
+            if (dev == IntPtr.Zero || lost || tris <= 0 || tex == IntPtr.Zero) return;
+            TexDireccion(tex, true); TssModulate(); Blend(3); Draw(v, tris);
+        }
+
         // Buffers reutilizables del cubo (evita asignar por cuadro). Solo se usan desde el hilo de render.
         private readonly D3D9.Vtx[] cubeFaceV = new D3D9.Vtx[6];
         private readonly D3D9.Vtx[] cubeBatchV = new D3D9.Vtx[24];
@@ -639,12 +685,13 @@ namespace Rocola
             {
                 int w = bmp.Width, h = bmp.Height, tw = Pow2(w), th = Pow2(h);
                 if (tw == 0 || th == 0) return IntPtr.Zero;
+                if (tw > LimiteTexturaW || th > LimiteTexturaH) return CreaTexturaDividida(bmp, out uMax, out vMax);
                 if (createTex(dev, (uint)tw, (uint)th, 1, 0, D3D9.FMT_A8R8G8B8, D3D9.POOL_MANAGED, out tex, IntPtr.Zero) < 0 || tex == IntPtr.Zero)
                 {
                     if (tex != IntPtr.Zero) D3D9.Release(tex);
                     return IntPtr.Zero;
                 }
-                if (!SubeBitmap(tex, bmp, w, h))
+                if (!SubeBitmapBorde(tex, bmp, w, h, tw, th))
                 {
                     D3D9.Release(tex);
                     return IntPtr.Zero;
@@ -668,32 +715,9 @@ namespace Rocola
         {
             if (tex == IntPtr.Zero || bmp == null || area.Width <= 0 || area.Height <= 0 ||
                 !new Rectangle(0, 0, bmp.Width, bmp.Height).Contains(area)) return false;
-            BitmapData data = null; bool locked = false, ok = false;
-            D3D9.UnlockRectDel unlock = null;
-            try
-            {
-                D3D9.RectI rect = new D3D9.RectI();
-                rect.Left = area.Left; rect.Top = area.Top; rect.Right = area.Right; rect.Bottom = area.Bottom;
-                D3D9.LockedRect dest;
-                D3D9.LockRegionDel take = D3D9.Fn<D3D9.LockRegionDel>(tex, 19);
-                unlock = D3D9.Fn<D3D9.UnlockRectDel>(tex, 20);
-                if (take(tex, 0, out dest, ref rect, 0) < 0) return false;
-                locked = true;
-                data = bmp.LockBits(area, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
-                int bytes = checked(area.Width * 4);
-                if (dest.Bits == IntPtr.Zero || dest.Pitch < bytes || Math.Abs((long)data.Stride) < bytes) return false;
-                for (int y = 0; y < area.Height; y++)
-                    D3D9.CopyMemory(new IntPtr(dest.Bits.ToInt64() + (long)y * dest.Pitch),
-                        new IntPtr(data.Scan0.ToInt64() + (long)y * data.Stride), (UIntPtr)(uint)bytes);
-                ok = true;
-            }
-            catch { ok = false; }
-            finally
-            {
-                if (data != null) { try { bmp.UnlockBits(data); } catch { ok = false; } }
-                if (locked && unlock != null) { try { if (unlock(tex, 0) < 0) ok = false; } catch { ok = false; } }
-            }
-            return ok;
+            TexturasDivididasGpu.Surface dividida = TexturasDivididasGpu.Busca(tex);
+            if (dividida != null) return ActualizaDividida(dividida, bmp, area);
+            return ActualizaRegionBitmap(tex, bmp, area, area.Location, bmp.Width, bmp.Height);
         }
         public bool UpdateTexturePow2(IntPtr tex, Bitmap bmp, out float uMax, out float vMax)
         {
@@ -702,7 +726,10 @@ namespace Rocola
             try
             {
                 int w = bmp.Width, h = bmp.Height, tw = Pow2(w), th = Pow2(h);
-                if (tw == 0 || th == 0 || !SubeBitmap(tex, bmp, w, h)) return false;
+                TexturasDivididasGpu.Surface dividida = TexturasDivididasGpu.Busca(tex);
+                if (dividida != null)
+                { uMax = vMax = 1f; return ActualizaDividida(dividida, bmp, new Rectangle(0, 0, w, h)); }
+                if (tw == 0 || th == 0 || !SubeBitmapBorde(tex, bmp, w, h, tw, th)) return false;
                 uMax = (float)w / tw; vMax = (float)h / th;
                 return true;
             }
@@ -710,6 +737,13 @@ namespace Rocola
         }
 
         private void Draw(D3D9.Vtx[] verts, int tris)
+        {
+            TexturasDivididasGpu.Surface dividida = TexturasDivididasGpu.Busca(texturaLogica);
+            if (dividida != null) { DibujaDividida(dividida, verts, tris); return; }
+            DrawFisico(verts, tris);
+        }
+
+        private void DrawFisico(D3D9.Vtx[] verts, int tris)
         {
             if (dev == IntPtr.Zero || lost || verts == null || tris <= 0 || tris > verts.Length / 3) return;
             GCHandle gh;
@@ -934,6 +968,7 @@ namespace Rocola
 
         public void SetSky(uint top, uint mid, uint bot) { skyTop = top; skyMid = mid; skyBot = bot; }
         public IntPtr CreateOverlay(Bitmap bmp, out float uMax, out float vMax) { return gpu.CreateTexturePow2(bmp, out uMax, out vMax); }
+        public IntPtr CreateCoverShared(Bitmap bmp, out float uMax, out float vMax) { return gpu.CreaPortadaCompartida(bmp, out uMax, out vMax); }
         public bool UpdateOverlay(IntPtr tex, Bitmap bmp, out float uMax, out float vMax) { return gpu.UpdateTexturePow2(tex, bmp, out uMax, out vMax); }
         public bool UpdateOverlayRegion(IntPtr tex, Bitmap bmp, Rectangle area) { return gpu.UpdateTextureRegion(tex, bmp, area); }
         public void DrawCube(IntPtr tex, float uMax, float vMax, float x, float y, float w, float h, double angle, float alpha, double tilt)
@@ -1342,6 +1377,8 @@ namespace Rocola
         public void DrawQuad(IntPtr tex, D3D9.Vtx[] quad) { if (Ok) gpu.DrawTexQuad(tex, quad); }
         public void DrawTexturedBatch(IntPtr tex, D3D9.Vtx[] vertices, int triangles)
         { if (Ok && tex != IntPtr.Zero) gpu.DrawQuads(tex, vertices, triangles); }
+        public void DrawTexturedBatchWrap(IntPtr tex, D3D9.Vtx[] vertices, int triangles)
+        { if (Ok && tex != IntPtr.Zero) gpu.DrawQuadsWrap(tex, vertices, triangles); }
         public void DrawColorQuad(D3D9.Vtx[] quad) { if (Ok) gpu.DrawQuads(IntPtr.Zero, quad, 2); }
         public uint BlankCubeColor { set { if (gpu != null) gpu.CubeBaseColor = value; } }
         public void DrawMesh(D3D9.Vtx[] v, int tris) { if (Ok) gpu.DrawMesh(v, tris); }   // malla plana (fondo reactivo)
@@ -2372,6 +2409,18 @@ namespace Rocola
             last = cur;
         }
 
+        private void EnsureImmutableCover(ref IntPtr tex, ref Bitmap last, ref int bw, ref int bh, ref float u, ref float v, Bitmap cur)
+        {
+            if (ReferenceEquals(cur, last) && (cur == null || tex != IntPtr.Zero)) return;
+            // Nunca actualizar una portada compartida: otro cubo puede estar usando
+            // la misma referencia. Las capas de interfaz siguen usando EnsureCover.
+            if (tex != IntPtr.Zero) { D3D9.Release(tex); tex = IntPtr.Zero; }
+            bw = bh = 0; last = null; u = v = 1;
+            if (cur == null) return;
+            tex = stars.CreateCoverShared(cur, out u, out v);
+            if (tex != IntPtr.Zero) { bw = cur.Width; bh = cur.Height; last = cur; }
+        }
+
         private bool NoPresentado()
         {
             FallosMedidos++; Fps = 0; frames = 0;
@@ -2477,7 +2526,7 @@ namespace Rocola
             EnsureRecentCover(ref selTexA, ref selImgA, ref selBwA, ref selBhA, ref selUA, ref selVA, cs.Sel.CoverA);
             EnsureRecentCover(ref selTexB, ref selImgB, ref selBwB, ref selBhB, ref selUB, ref selVB, cs.Sel.CoverB);
             EnsureRecentCover(ref relTex, ref relImg, ref relBw, ref relBh, ref relU, ref relV, cs.Relay.CoverA);
-            EnsureCover(ref miniTex, ref miniImg, ref miniBw, ref miniBh, ref miniU, ref miniV, cs.Mini.CoverA);   // mini-cubo de la barra inferior
+            EnsureImmutableCover(ref miniTex, ref miniImg, ref miniBw, ref miniBh, ref miniU, ref miniV, cs.Mini.CoverA);   // mini-cubo de la barra inferior
             AplicaEnfoque(ref cs);         // portada enfocada: agranda el cubo elegido y apaga un poco las demas (Ctrl+F3 -> Pantalla)
             double idleNow = AhoraMs();
             double idleDt = idleClock == 0 ? 0 : (idleNow - idleClock) / 1000.0; idleClock = idleNow;
@@ -3370,7 +3419,7 @@ namespace Rocola
         {
             if (ruidoTex == IntPtr.Zero || Width <= 0 || Height <= 0) return;
             PreparaMallaRuido();
-            stars.DrawTexturedBatch(ruidoTex, ruidoMalla, ruidoTriangulos);
+            stars.DrawTexturedBatchWrap(ruidoTex, ruidoMalla, ruidoTriangulos);
         }
         private void PreparaMallaRuido()
         {

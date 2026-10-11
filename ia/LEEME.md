@@ -1,5 +1,16 @@
 # IA propia de la rocola (modelo entrenado por el dueno con su biblioteca)
 
+## Validacion del corpus DSEE — 11 de octubre de 2026
+
+El entrenador directo tambien rechaza lotes cuyo extractor no sea el contrato
+actual (2), aunque se permita material sin origen. Usar
+`preparar_candidato_dsee.py` para preparar un candidato compatible; no editar
+el numero del extractor ni alterar el corpus para eludir este control.
+Los grupos sin ejemplos seleccionados no cuentan para los minimos de
+entrenamiento/validacion/prueba. Un rechazo por grupos insuficientes requiere
+mas material independiente realmente seleccionado, no lotes vacios.
+Los modelos instalados y los datos originales no se sustituyen.
+
 ## Eficiencia y repeticion de entrenamiento — 9 de octubre de 2026
 
 DSEE lee entradas y objetivos RIAD juntos por lote, sin cargar todo el corpus en RAM ni

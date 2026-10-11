@@ -59,6 +59,23 @@ class Huellas(unittest.TestCase):
 
 
 class LecturaDelIndice(unittest.TestCase):
+    def test_entrenador_directo_rechaza_extractor_incompatible(self):
+        with tempfile.TemporaryDirectory() as d:
+            datos, idx, _ = _escribe(d, [("t.mp3", "/m", 20)])
+            ent, _ = O.lee_indice(idx, datos)
+            e = ent[0]
+            with open(idx, "r+b") as f:
+                f.seek(16)
+                f.write(O.entrada_bytes(int(e["primero"]), int(e["cuenta"]), 99, int(e["rate"]),
+                                        int(e["frame"]), int(e["canal"]), int(e["crc"]),
+                                        int(e["cancion"]), int(e["carpeta"]), int(e["artista"])))
+            antes = (_lee(datos), _lee(idx))
+            for permitir_sin_origen in (False, True):
+                with self.assertRaisesRegex(ValueError, "extractores incompatibles.*99"):
+                    T.particiones_rocola(datos, np.zeros((20, 28), dtype=np.float32),
+                                         incluir_sin_origen=permitir_sin_origen)
+            self.assertEqual(antes, (_lee(datos), _lee(idx)))
+
     def test_lee_lo_que_escribe_y_marca_lo_que_no_tiene_origen(self):
         with tempfile.TemporaryDirectory() as d:
             datos, idx, hechas = _escribe(d, [("a.mp3", "/m/A", 10), ("b.mp3", "/m/A", 20), ("c.mp3", "/m/B", 5)], sin_origen_tras=1)
@@ -113,6 +130,30 @@ class LecturaDelIndice(unittest.TestCase):
 
 
 class Grupos(unittest.TestCase):
+    def test_lotes_sin_ejemplos_elegidos_no_cuentan_como_grupos(self):
+        pesos = np.zeros(100, dtype=np.int64)
+        pesos[:3] = 1000
+        parte, motivo = O.reparte(np.arange(100), pesos)
+        self.assertIsNone(parte)
+        self.assertIn("solo hay 3 grupos", motivo)
+
+    def test_lotes_vacios_no_cambian_el_reparto_ni_los_minimos(self):
+        etiquetas = np.arange(20, dtype=np.uint64)
+        pesos = np.full(20, 400, dtype=np.int64)
+        antes, motivo = O.reparte(etiquetas, pesos)
+        self.assertEqual(motivo, "")
+        despues, motivo = O.reparte(np.concatenate((etiquetas, [999, 1000])), np.concatenate((pesos, [0, 0])))
+        self.assertEqual(motivo, "")
+        np.testing.assert_array_equal(antes, despues[:20])
+        np.testing.assert_array_equal(despues[20:], [-1, -1])
+        for p in range(3):
+            self.assertGreaterEqual(len(np.unique(etiquetas[antes == p])), (1, 3, 3)[p])
+
+    def test_reparto_rechaza_pesos_negativos_y_formas_incompatibles(self):
+        for etiquetas, pesos in (([1, 2], [1, -1]), ([1, 2], [1]), ([[1]], [[1]])):
+            with self.assertRaises(ValueError):
+                O.reparte(etiquetas, pesos)
+
     def _ent(self, filas):
         t = np.dtype([("primero", "<i8"), ("cuenta", "<i4"), ("cancion", "<u8"), ("carpeta", "<u8"), ("artista", "<u8")])
         e = np.zeros(len(filas), dtype=t)

@@ -22,6 +22,7 @@ class RuidoMalla
     static void Check(bool ok, string s) { if (!ok) throw new Exception(s); checks++; Console.WriteLine("OK " + s); }
     public static int Draw(IntPtr self, uint type, uint tris, IntPtr data, uint stride)
     { calls++; drawn = new byte[tris * 3 * stride]; Marshal.Copy(data, drawn, 0, drawn.Length); if (captured != null) captured.AddRange(drawn); return 0; }
+    public static int Sampler(IntPtr self, uint stage, uint type, uint value) { return 0; }
     static void Vertex(ref Vtx v, float x, float y, float u, float vv, uint color)
     { v.X = x - .5f; v.Y = y - .5f; v.Z = 0; v.Rhw = 1; v.Color = color; v.U = u; v.V = vv; }
     static byte[] Referencia(int w, int h, float um, float vm, bool natural)
@@ -53,6 +54,8 @@ class RuidoMalla
         Set(device, "verticesSinSoporte", true); // puntero ficticio: no usar vtable ni HAL
         FieldInfo draw = td.GetField("drawUp", B);
         draw.SetValue(device, Delegate.CreateDelegate(draw.FieldType, typeof(RuidoMalla).GetMethod("Draw")));
+        FieldInfo sampler = td.GetField("setSamp", B);
+        sampler.SetValue(device, Delegate.CreateDelegate(sampler.FieldType, typeof(RuidoMalla).GetMethod("Sampler")));
         Set(stars, "gpu", device);
         return (Control)Activator.CreateInstance(asm.GetType("Rocola.GpuPanel"), true);
     }
@@ -97,7 +100,8 @@ class RuidoMalla
                     "cien cuadros reutilizan la misma malla sin multiplicar envios");
             }
             Set(panel, "ruidoTex", IntPtr.Zero); calls = 0; Call(panel, "DibujaRuido"); Check(calls == 0, "sin textura no se envia geometria");
-            Check(Codigo.Llama(panel.GetType().GetMethod("DibujaRuido", B), "DrawTexturedBatch")
+            Check((Codigo.Llama(panel.GetType().GetMethod("DibujaRuido", B), "DrawTexturedBatch")
+                || Codigo.Llama(panel.GetType().GetMethod("DibujaRuido", B), "DrawTexturedBatchWrap"))
                 && !Codigo.Llama(panel.GetType().GetMethod("DibujaRuido", B), "DrawQuad"), "bucle real de ruido usa una sola tanda texturizada");
             Console.WriteLine("PASS " + checks + " comprobaciones; tarjeta simulada, sin HAL/audio/FPS reales"); return 0;
         }

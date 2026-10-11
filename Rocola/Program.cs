@@ -22,6 +22,14 @@ namespace Rocola
         // Se marca con una senal del sistema (un "mutex" con nombre). Si ya hay una corriendo, la nueva
         // trae la vieja al frente y se va sin hacer nada.
         private static System.Threading.Mutex unica;
+        private static string avisoCarpetaDatos;
+
+        internal static void AvisaCarpetaDatos(string carpeta, Exception ex)
+        {
+            avisoCarpetaDatos = "No se pudo usar la carpeta de datos:\r\n" + carpeta
+                + "\r\n\r\nSe usara la carpeta del programa:\r\n" + Application.StartupPath
+                + "\r\n\r\nLos datos de la otra carpeta no se han borrado.\r\n" + ex.Message;
+        }
 
         // El nombre de la senal sale de DONDE ESTAN LOS DATOS, no es fijo: asi dos instalaciones distintas
         // en el mismo equipo -por ejemplo una de pruebas- no se estorban. Y son los datos y no el programa
@@ -31,10 +39,19 @@ namespace Rocola
         // aqui hace falta que dos arranques distintos saquen EL MISMO nombre.
         internal static string ClaveInstancia(string carpeta)
         {
-            string c = (carpeta ?? "").TrimEnd('\\', '/').ToLowerInvariant();
+            string c = NormalizaCarpetaDatos(carpeta).TrimEnd('\\', '/').ToLowerInvariant();
             uint h = 2166136261u;
             for (int i = 0; i < c.Length; i++) { h ^= c[i]; h *= 16777619u; }
             return "Rocola_" + h.ToString("X8");
+        }
+
+        internal static string NormalizaCarpetaDatos(string carpeta)
+        {
+            // Una ruta relativa y sus variantes con puntos/barras deben designar la misma instalacion.
+            string ruta = System.IO.Path.GetFullPath((carpeta ?? "").Trim());
+            // Las baterias tambien se pueden compilar con Mono fuera de Windows.
+            // No convertir su ruta temporal nativa en un nombre con barras invertidas.
+            return System.IO.Path.DirectorySeparatorChar == '\\' ? ruta.Replace('/', '\\') : ruta;
         }
 
         [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr h);
@@ -75,6 +92,11 @@ namespace Rocola
             AppDomain.CurrentDomain.UnhandledException += delegate (object s, UnhandledExceptionEventArgs e)
             { LogCrash("UnhandledException", e.ExceptionObject as Exception); };   // hilos de fondo: al menos queda el rastro
             Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+            if (avisoCarpetaDatos != null)
+            {
+                LogCrash("Carpeta de datos: se utiliza la carpeta del programa", new System.IO.IOException(avisoCarpetaDatos));
+                MessageBox.Show(avisoCarpetaDatos, "Rocola - Carpeta de datos", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
 
             // (El reloj fino de Windows -timeBeginPeriod(1)- ya lo pide Form1 al construirse, y lo devuelve
             // al cerrarse. Aqui no hace falta repetirlo.)

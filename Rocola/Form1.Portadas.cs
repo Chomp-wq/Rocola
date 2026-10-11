@@ -697,7 +697,8 @@ namespace Rocola
             }
             catch { identidad += "|sin-archivo"; }
             ulong h = Fnv64(identidad);
-            return Path.Combine(CarpetaMiniaturas(), h.ToString("x16") + "_" + ThumbPx + ".jpg");
+            // Version nueva: nunca reutilizar el JPEG anterior, que perdia alfa y calidad.
+            return Path.Combine(CarpetaMiniaturas(), h.ToString("x16") + "_" + ThumbPx + "_v2.png");
         }
 
         // EL BARRIDO. Al salir de la carpeta temporal ya nadie las borra nunca, asi que hay que barrer.
@@ -768,14 +769,12 @@ namespace Rocola
                         using (MemoryStream cms = new MemoryStream(cdata))
                         using (Image cimg = Image.FromStream(cms, false, false))
                         {
-                            Bitmap tb = new Bitmap(ThumbPx, ThumbPx, PixelFormat.Format32bppPArgb);
-                            using (Graphics g = Graphics.FromImage(tb))
-                            {
-                                // la miniatura YA mide ThumbPx: copia 1:1 (mismos pixeles, sin filtro caro)
-                                g.InterpolationMode = InterpolationMode.NearestNeighbor;
-                                g.DrawImage(cimg, 0, 0, ThumbPx, ThumbPx);
-                            }
-                            return tb;
+                            // Una copia del bitmap, no otra pasada de composicion GDI+:
+                            // evita redondear el alfa otra vez y no retiene el stream.
+                            Bitmap cb = cimg as Bitmap;
+                            if (cb == null || cb.Width != ThumbPx || cb.Height != ThumbPx)
+                                throw new InvalidDataException("Miniatura de tamano incompatible");
+                            return cb.Clone(new Rectangle(0, 0, ThumbPx, ThumbPx), PixelFormat.Format32bppPArgb);
                         }
                     }
                 }

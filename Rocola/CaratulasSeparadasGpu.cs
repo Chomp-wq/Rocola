@@ -127,7 +127,8 @@ namespace Rocola
             if (nativeCovers.Count >= cellTextureCapacity + MaxCells) return IntPtr.Zero;
             if (budget <= 0 || (CoverControl != null && !CoverControl.CanStart(nativeUploadCost, visible, false))) return IntPtr.Zero;
             long start = Stopwatch.GetTimestamp(); budget--;
-            texture.Tex = Upload(IntPtr.Zero, ref texture.Bw, ref texture.Bh, cell.FullCover, out texture.U, out texture.V);
+            texture.Tex = stars.CreateCoverShared(cell.FullCover, out texture.U, out texture.V);
+            texture.Bw = cell.FullCover.Width; texture.Bh = cell.FullCover.Height;
             long spent = Stopwatch.GetTimestamp() - start; nativeUploadCost = CargaTrabajo.AprendeCoste(nativeUploadCost, spent);
             if (CoverControl != null) CoverControl.Spend(spent);
             if (texture.Tex != IntPtr.Zero) { nativeCovers[cell.FullCover] = texture; cellBytesDirty = true; }

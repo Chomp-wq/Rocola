@@ -1,5 +1,13 @@
 # Rocola
 
+## Auditoria de Modest — 11 de octubre de 2026
+
+Correcciones de guardado, buscador, fichas, transparencia de caratulas, bordes GPU,
+reloj de audio y validacion del entrenador DSEE. Las portadas comparten texturas
+sin reducir calidad; los paneles respetan los limites de la tarjeta. Solo Modest;
+HD suspendida y renderizado CPU congelado.
+[Cambios, pruebas y limites pendientes](AUDITORIA_GENERAL_MODEST_2026-10-11.md).
+
 ## Fondo Legacy y Espacio natural — 1 de octubre de 2026
 
 En **Ctrl+F3 → Fondo**, el selector superior permite conservar **Legacy** o elegir **Espacio natural**:

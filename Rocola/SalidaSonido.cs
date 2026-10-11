@@ -293,6 +293,25 @@ namespace Rocola
         // GetPosition existe en WaveOut de XP. No se abre otro aparato ni se exige una API moderna.
         // El reloj cuenta lo entregado al dispositivo; la secuencia cuenta tambien el audio aun en la bomba.
         // Si hubo huecos sinteticos o el driver no puede devolver su reloj, se conserva el respaldo anterior.
+        private IWavePosition relojSalida;
+        private long relojAnterior, relojVueltas;
+        private bool relojReiniciado;
+        private long AmpliaRelojSalida(IWavePosition salida, long bytes)
+        {
+            if (!object.ReferenceEquals(relojSalida, salida))
+            { relojSalida = salida; relojAnterior = 0; relojVueltas = 0; relojReiniciado = false; }
+            if (bytes < 0 || relojReiniciado) return -1;
+            if (!latenciaClasica && !(salida is WaveOut)) return bytes; // WASAPI ya da 64 bits
+            if (bytes > uint.MaxValue) return -1;
+            if (bytes < relojAnterior)
+            {
+                if (relojAnterior - bytes > 0x80000000L) relojVueltas += 0x100000000L;
+                else { relojReiniciado = true; return -1; } // reset, no inventar audio oido
+            }
+            relojAnterior = bytes;
+            return relojVueltas + bytes;
+        }
+
         private bool PendientePorReloj(out double segundos, out double oido)
         {
             segundos = 0; oido = 0;
@@ -304,7 +323,7 @@ namespace Rocola
                 if (f == null || f.AverageBytesPerSecond <= 0) return false;
                 // Una sola instantanea de lo entregado: Read puede avanzar incluso durante GetPosition.
                 long cuadros = s.CuadrosEntregados;
-                long bytes = p.GetPosition();
+                long bytes = AmpliaRelojSalida(p, p.GetPosition());
                 if (bytes < 0) return false;
                 double entregado = (double)cuadros / Math.Max(1, s.WaveFormat.SampleRate);
                 // Los consumidores usan ESTE reloj directamente, nunca otro CuadrosEntregados - pendientes.

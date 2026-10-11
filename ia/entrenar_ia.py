@@ -434,6 +434,11 @@ def particiones_rocola(ruta, X, nivel="artista", incluir_sin_origen=False, indic
     def avance(leidos, total):
         print("  comprobando que el indice describe este material: %.1f de %.1f GB" % (leidos / 1e9, total / 1e9))
     ent, inf = O.lee_indice(indice or O.ruta_indice(ruta), ruta, avance=avance)
+    incompatibles = ent[ent["extractor"] != EXTRACTOR]
+    if len(incompatibles):
+        raise ValueError("El corpus contiene %d lotes de extractores incompatibles (%s); se requiere extractor %d. "
+                         "Prepara un candidato compatible con preparar_candidato_dsee.py; no se entrenara con esos datos."
+                         % (len(incompatibles), sorted(set(map(int, incompatibles["extractor"]))), EXTRACTOR))
     informe = {"independiente": False, "motivo": "", "indice": inf, "nivel": nivel}
     if len(ent) == 0:
         informe["motivo"] = ("rocola_ia_datos.bin sin indice de origen (RIAD v1): no se sabe de que cancion "

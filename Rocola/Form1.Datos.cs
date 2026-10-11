@@ -326,17 +326,21 @@ namespace Rocola
                         d = d.Trim();
                         try
                         {
+                            d = Program.NormalizaCarpetaDatos(d);
                             if (!Directory.Exists(d)) Directory.CreateDirectory(d);
                             // Se comprueba que de verdad se puede escribir ANTES de fiarse: si el disco de la
                             // musica no estuviera montado todavia, la ruta existiria vacia y la rocola escribiria
                             // en un sitio que va a desaparecer. Mejor volver a la carpeta del programa.
-                            string prueba = Path.Combine(d, "rocola_escribible.tmp");
-                            File.WriteAllText(prueba, "ok");
-                            File.Delete(prueba);
+                            string prueba = Path.Combine(d, "rocola_escribible_" + Guid.NewGuid().ToString("N") + ".tmp");
+                            using (FileStream sonda = new FileStream(prueba, FileMode.CreateNew, FileAccess.Write,
+                                FileShare.None, 1, FileOptions.DeleteOnClose)) sonda.WriteByte(1);
                             carpetaDatos = d;
                             return carpetaDatos;
                         }
-                        catch { }
+                        catch (Exception ex)
+                        {
+                            Program.AvisaCarpetaDatos(d, ex);
+                        }
                     }
                     carpetaDatos = Application.StartupPath;
                     return carpetaDatos;
@@ -1754,6 +1758,9 @@ namespace Rocola
 
         // Corre en el hilo de la interfaz: las tablas son suyas. "faltan" es el avance ABSOLUTO que reporta el
         // hilo (cuenta tambien los archivos rotos, que no traen duracion pero ya quedaron atras).
+#if ROCOLA_GPU
+        private int duracionesVer;
+#endif
         private void PublicaDuraciones(int gen, string[] rutas, float[] segs, int faltan)
         {
             if (gen != durScanGen) return;   // generacion caducada (hubo re-escaneo): descartar
@@ -1764,6 +1771,9 @@ namespace Rocola
                 lock (durFastLock) durFastPend.Add(segs[i].ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) + "|" + rutas[i]);
             }
             durScanLeft = faltan < 0 ? 0 : faltan;
+#if ROCOLA_GPU
+            if (rutas.Length > 0) duracionesVer++;
+#endif
             SaveDurFast();
             if (rutas.Length > 0 && panelSongs != null && panelSongs.Visible && songList != null)
             {
@@ -1805,6 +1815,9 @@ namespace Rocola
             if (!(real > 0.05) || Math.Abs(real - apuntada) <= 1.0) return;
             OlvidaMedidas(ruta);
             durFast[ruta] = (float)real;   // lo que dura de verdad, para la lista y la espera de la cola hasta que se vuelva a medir
+#if ROCOLA_GPU
+            duracionesVer++;
+#endif
             LogError("Otro archivo en la misma ruta: " + Path.GetFileName(ruta) + " duraba " + apuntada.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)
                      + " s y ahora " + real.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " s; se vuelve a medir", null);
             }
@@ -1830,7 +1843,13 @@ namespace Rocola
         {
             if (ruta == null) return;
             bool puesto = false;
-            if (dur > 0.01f && Finito(dur)) { durCache[ruta] = dur; puesto = true; }
+            if (dur > 0.01f && Finito(dur))
+            {
+                durCache[ruta] = dur; puesto = true;
+#if ROCOLA_GPU
+                duracionesVer++;
+#endif
+            }
             if (rms > 0f && Finito(rms)) { loudCache[ruta] = rms; InvalidateVideoMeasurements(); puesto = true; }   // incluido el silencio (ver LoudMudo)
             if (puesto) MarcarVolumen(ruta);   // captura juntos RMS + duracion, aunque solo cambio uno
             if (eqCurve != null && Finitos(eqCurve)) { eqCache[ruta] = eqCurve; eqCacheVer++; eqDirty = true; puesto = true; MarcarEq(ruta); }   // huella tonal del EQ automatico
@@ -2043,26 +2062,78 @@ namespace Rocola
         // que se borro a proposito (cierre, dia nuevo). Y lo encargado que aun no llego al disco se lee de aqui mismo
         // (EstadoSinEscribir): restaurar nunca ve lo de antes de la ultima moneda.
         private GuardadoReciente estadoCola;   // el encargo pendiente (se crea al primer uso)
+        private readonly object estadoSolicitudLock = new object();
+        private System.Threading.Timer estadoReintento;
+        private bool estadoCerrado;
+        private int estadoFallos;
         private int estadoPedido;              // numero del ultimo encargo o borrado pedido
         private int estadoHecho;               // numero del ultimo aplicado en el disco (se cambia bajo el candado del archivo)
         private string estadoUltimo;           // el texto del ultimo encargo (null si lo ultimo fue borrar)
 
         private void EscribeEstado(string texto)
         {
-            string ruta = StateFile();
-            int n = System.Threading.Interlocked.Increment(ref estadoPedido);
-            estadoUltimo = texto;
-            GuardadoReciente cola = estadoCola;
-            if (cola == null) estadoCola = cola = new GuardadoReciente();
-            GuardaUltimo(cola, delegate
+            int n;
+            lock (estadoSolicitudLock)
             {
-                lock (CandadoDe(ruta))
+                n = System.Threading.Interlocked.Increment(ref estadoPedido);
+                estadoUltimo = texto;
+                if (estadoReintento != null) estadoReintento.Change(System.Threading.Timeout.Infinite, System.Threading.Timeout.Infinite);
+            }
+            EncolaEstado(n, texto);
+        }
+
+        private void EncolaEstado(int n, string texto)
+        {
+            string ruta = StateFile();
+            lock (estadoSolicitudLock)
+            {
+                if (estadoCerrado || n != estadoPedido || n <= System.Threading.Thread.VolatileRead(ref estadoHecho) || texto == null) return;
+                if (estadoCola == null) estadoCola = new GuardadoReciente();
+                // Validar y publicar la instantanea en el mismo candado. Un reintento
+                // viejo no puede sustituir el pendiente de una moneda nueva.
+                GuardaUltimo(estadoCola, delegate
                 {
-                    if (n <= estadoHecho) return;   // ya se aplico algo mas nuevo (otro encargo o un borrado)
-                    estadoHecho = n;
-                    EscribeSeguroYa(ruta, texto);
-                }
-            });
+                    try
+                    {
+                        lock (CandadoDe(ruta))
+                        {
+                            if (n <= estadoHecho || n != System.Threading.Thread.VolatileRead(ref estadoPedido)) return;
+                            EscribeSeguroYa(ruta, texto);
+                            // Solo un archivo PUBLICADO cuenta como aplicado. Un fallo sigue pendiente.
+                            System.Threading.Interlocked.Exchange(ref estadoHecho, n);
+                        }
+                        lock (estadoSolicitudLock) { if (n == estadoPedido) estadoFallos = 0; }
+                    }
+                    catch (Exception ex)
+                    {
+                        lock (estadoSolicitudLock)
+                        {
+                            if (estadoCerrado || n != estadoPedido) return;
+                            estadoFallos++;
+                            if (estadoFallos == 1) LogError("Estado de creditos/cola pendiente: se reintentara el guardado", ex);
+                            if (estadoReintento == null) estadoReintento = new System.Threading.Timer(ReintentaEstado, null,
+                                System.Threading.Timeout.Infinite, System.Threading.Timeout.Infinite);
+                            estadoReintento.Change(estadoFallos == 1 ? 500 : (estadoFallos < 4 ? 2000 : 10000), System.Threading.Timeout.Infinite);
+                        }
+                    }
+                });
+            }
+        }
+
+        private void DetieneEstadoReintentos()
+        {
+            lock (estadoSolicitudLock)
+            {
+                estadoCerrado = true;
+                if (estadoReintento != null) { estadoReintento.Dispose(); estadoReintento = null; }
+            }
+        }
+
+        private void ReintentaEstado(object ignorado)
+        {
+            int n; string texto;
+            lock (estadoSolicitudLock) { n = estadoPedido; texto = estadoUltimo; }
+            EncolaEstado(n, texto);
         }
 
         // Borrar el estado es al momento (es raro: al cerrar a proposito, al empezar el dia o con un estado de otro dia) y
@@ -2070,8 +2141,13 @@ namespace Rocola
         private void BorraEstado()
         {
             string ruta = StateFile();
-            int n = System.Threading.Interlocked.Increment(ref estadoPedido);
-            estadoUltimo = null;
+            int n;
+            lock (estadoSolicitudLock)
+            {
+                n = System.Threading.Interlocked.Increment(ref estadoPedido);
+                estadoUltimo = null;
+                if (estadoReintento != null) { estadoReintento.Dispose(); estadoReintento = null; }
+            }
             lock (CandadoDe(ruta))
             {
                 if (n > estadoHecho) estadoHecho = n;
@@ -2083,8 +2159,12 @@ namespace Rocola
         // esta al dia y hay que leerlo de ahi.
         private string[] EstadoSinEscribir()
         {
-            string t = estadoUltimo;
-            if (t == null || System.Threading.Thread.VolatileRead(ref estadoHecho) >= System.Threading.Thread.VolatileRead(ref estadoPedido)) return null;
+            string t;
+            lock (estadoSolicitudLock)
+            {
+                t = estadoUltimo;
+                if (t == null || System.Threading.Thread.VolatileRead(ref estadoHecho) >= estadoPedido) return null;
+            }
             List<string> L = new List<string>();
             using (StringReader r = new StringReader(t)) { string s; while ((s = r.ReadLine()) != null) L.Add(s); }
             return L.ToArray();

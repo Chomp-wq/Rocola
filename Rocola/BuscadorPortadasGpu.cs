@@ -1642,6 +1642,7 @@ namespace Rocola
                 }
                 if (FocusResults)
                 {
+                    if (!PuedeElegirConsulta()) return;
                     if (Results != null && SelResult >= 0 && SelResult < CartasTotales() && OnChoose != null) OnChoose(Results[SelResult]);
                     return;
                 }
@@ -1673,7 +1674,15 @@ namespace Rocola
                 {
                     Rectangle c = CartaRect(i);
                     if (c.IsEmpty) break;
-                    if (c.Contains(p)) { if (OnChoose != null) OnChoose(Results[i]); return; }
+                    if (c.Contains(p))
+                    {
+                        // Una tarjeta antigua no se puede cobrar mientras se posa lo recien escrito.
+                        if (!PuedeElegirConsulta()) return;
+                        EnChips = false; FocusResults = true; SelResult = i;
+                        Invalidate();
+                        if (OnChoose != null) OnChoose(Results[i]);
+                        return;
+                    }
                 }
             }
         }

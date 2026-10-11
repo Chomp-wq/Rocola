@@ -11,10 +11,19 @@ Cada una escribe líneas `OK` y `FALLO` y devuelve cuántos fallos hubo.
 ## Cómo se corren
 
 En Windows: `pruebas/validar-capas.ps1 -OutputDirectory <carpeta-temporal>`
-compila GPU/CPU y ejecuta 27 baterías, incluida `espacioprecarga`
+compila GPU/CPU y ejecuta las baterías generales, incluida `espacioprecarga`
 (siguiente página/letra, prioridades, memoria adaptativa, estrella y ocultación).
 No reemplaza ejecutables instalados. La prueba HAL usa Direct3D real cuando está
 disponible; si falta, lo indica y no demuestra el comportamiento de la tarjeta.
+
+Para la auditoria del 11 de octubre de 2026:
+`pruebas/validar-auditoria-general.ps1 -OutputDirectory <carpeta-temporal>`.
+Compila con .NET 3.5 y comprueba guardado fallido/reintentos, rutas equivalentes,
+buscador, fichas con datos tardios, alfa de miniaturas y reloj WinMM. Incluye un
+driver artificial para texturas limitadas, uniones, relleno, direccionamiento y
+referencias compartidas. No abre audio ni instala nada; no equivale a medir FPS,
+probar una GPU real antigua o Windows XP.
+[Resultados y limites](../AUDITORIA_GENERAL_MODEST_2026-10-11.md).
 
 ```sh
 sh pruebas/todo.sh              # la suite entera (compila la rocola sola y arranca)

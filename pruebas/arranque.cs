@@ -66,7 +66,7 @@ class Arranque
         MethodInfo escribe = TF.GetMethod("EscribeSeguroYa", EST);
         if (guarda == null || escribe == null) { Mal("falta SaveState o EscribeSeguroYa"); return; }
 
-        List<string> encargo = Codigo.ConAyudantes(TF, "EscribeEstado");
+        List<string> encargo = Codigo.ConUnSalto(TF, "EscribeEstado");
         Exige(Codigo.Llama(guarda, "EscribeEstado") && Codigo.Llama(encargo, "EscribeSeguroYa"), "el estado vivo se guarda por el camino seguro");
         Exige(Codigo.Llama(escribe, "FlushFileBuffers"),
               "y ESE camino baja el archivo al disco de verdad, no solo a la memoria de Windows");
