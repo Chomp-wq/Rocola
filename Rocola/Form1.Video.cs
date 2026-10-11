@@ -787,6 +787,7 @@ namespace Rocola
         private void ApplyAlbumGpu(bool on, bool announceFail, bool persist)
         {
             VigiaPantalla.Hace("preparar la tarjeta grafica");
+            bool gpuAntes = gpuEnabled;
             if (lblGpu == null)
             {
                 lblGpu = new Label();
@@ -950,6 +951,11 @@ namespace Rocola
                 if (lblGpu != null) lblGpu.Visible = false;
                 Invalidate(true);   // repinta la UI normal (CPU) que estaba tapada por el panel
             }
+            // LA FILA DE ARRIBA DEPENDE DE LA TARJETA: la casilla de AYUDA solo existe con ella, la fila se reparte de
+            // otra manera y la barra de letras deja sus carriles para las flechas. El arranque acomoda la pantalla
+            // ANTES de encender la tarjeta, y nada volvia a acomodarla hasta el primer cambio de cancion o de
+            // creditos: la casilla de AYUDA tardaba en salir (aviso del 11-10-2026). Se acomoda aqui mismo.
+            if (gpuEnabled != gpuAntes) LayoutControls();
             AjustaBuscadorPortadas();   // el buscador con portadas solo existe con la tarjeta dibujando
             // Cambiar de render no debe esconder una pantalla que sigue activa.
             // No reabrirla: conservar consulta, resultados y seleccion.
@@ -1634,7 +1640,8 @@ namespace Rocola
                 // La casilla de BUSCAR entra por si esta abierta o cerrada, NO por su parpadeo: el parpadeo
                 // lo pone la tarjeta como halo aparte, y meterlo aqui obligaria a rehacer la textura entera
                 // veinticuatro veces por segundo.
-                if (buscaView != null) { sb = Mix(sb, buscaView.Visible); sb = Mix(sb, buscaView.Abierto); }
+                if (buscaView != null) { sb = Mix(sb, buscaView.Visible); sb = Mix(sb, buscaView.Abierto); sb = Mix(sb, buscaView.Left); sb = Mix(sb, buscaView.Width); }
+                if (helpBar != null) sb = Mix(sb, helpBar.Justa);
                 if (ayudaView != null) { sb = Mix(sb, ayudaView.Visible); sb = Mix(sb, ayudaView.Compacta); sb = Mix(sb, ayudaView.Abierta); sb = Mix(sb, ayudaView.Width); }
                 if (letterBar.AnimViva) sb = Mix(sb, (int)(letterBar.AnimPaso * 64f));
                 if (headerView != null)

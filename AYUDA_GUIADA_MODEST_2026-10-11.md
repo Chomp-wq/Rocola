@@ -25,8 +25,9 @@ ni la ayuda. HD sigue suspendida.
 ## La casilla
 
 Va a la derecha de BUSCAR y se lee igual: signo de interrogación, «AYUDA», el botón rojo, un «+» y la
-flecha de abajo en rojo. En pantallas justas (1024×768) se dibuja sin la palabra, para no apretar el
-encabezado. El signo lo anima la tarjeta gráfica encima de la interfaz:
+flecha de abajo en rojo. Desde la tarde del 11-10-2026 mide lo que dibuja y lleva la palabra también en
+1024×768; solo va sin ella en pantallas más angostas (ver `AYUDA_Y_PANTALLAS_BAJAS_MODEST_2026-10-11.md`). El
+signo lo anima la tarjeta gráfica encima de la interfaz:
 - bota y se balancea;
 - cada cinco segundos da media vuelta como una moneda;
 - tiene un brillo dorado que respira.

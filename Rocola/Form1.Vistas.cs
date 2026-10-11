@@ -1035,6 +1035,28 @@ namespace Rocola
             }
 
             protected override void OnPaint(PaintEventArgs e) { RenderContent(e.Graphics); }
+#if ROCOLA_GPU
+            // LO QUE PIDE EN LA FILA DE ARRIBA (con tarjeta grafica, AcomodaAyuda): el nombre de seccion mas largo
+            // ("LO MAS SONADO", que va sin paginas) o "LETRA W" con su numero de pagina corto ("12/12"), a su tamano,
+            // sin encogerse ni callarse. Los puntitos y "pagina X de Y" entran si sobra. Se mide una vez por alto.
+            private int pideAlto = -1, pide;
+            private Font pideFuente;
+            public int AnchoPedido(int h)
+            {
+                if (h == pideAlto && ReferenceEquals(pideFuente, this.Font)) return pide;
+                using (Bitmap b = new Bitmap(1, 1)) using (Graphics g = Graphics.FromImage(b))
+                using (Font fs = new Font(this.Font.FontFamily, h * 0.446f, FontStyle.Bold))
+                using (Font fp = new Font(this.Font.FontFamily, h * 0.303f, FontStyle.Bold))
+                {
+                    float nombre = Math.Max(3f, h * 0.13f) + h * 0.32f + 4f + 2f;   // pastilla, su hueco y el aire del final
+                    float top = nombre + AnchoTexto(g, "LO MAS SONADO", fs);
+                    float letra = nombre + AnchoTexto(g, "LETRA W", fs) + h * 0.5f + h * 0.45f + AnchoTexto(g, "12/12", fp) + 8f;
+                    pide = (int)Math.Ceiling(Math.Max(top, letra));
+                }
+                pideAlto = h; pideFuente = this.Font;
+                return pide;
+            }
+#endif
             public void RenderContent(Graphics g)
             {
                 int w = Width, h = Height;

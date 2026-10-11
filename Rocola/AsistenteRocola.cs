@@ -28,7 +28,47 @@ namespace Rocola
         private Bitmap asistentePanel;
         private int asistentePanelVersion, asistentePanelPagina = -1, asistentePanelSeleccion = -1, asistentePanelLeccion = -1;
         private Size asistentePanelTam;
-        private bool AsistenteVisible { get { return asistenteVisible || (gpuPanel != null && gpuPanel.AsistenteEnTransicion); } }
+        private bool AsistenteVisible { get { return asistenteVisible || AsistenteRegresando; } }
+
+        // EL REGRESO ANIMADO TIENE TOPE (aviso del 11-10-2026: "despues de usar el asistente una vez, los controles se
+        // bloquean para siempre"). Mientras la estrella vuelve a su sitio (0,72 s) la rocola no deja que un boton active
+        // lo de debajo. Pero ese "regresando" lo decide la tarjeta con lo que vio en su ULTIMO cuadro: si los cuadros se
+        // paraban con la ayuda todavia abierta (el panel escondido por un video, la ventana minimizada, el dispositivo
+        // perdido), la tarjeta seguia creyendo que la ayuda estaba abierta y el regreso no se acababa nunca: se tragaba
+        // los botones, no salian las pistas del rojo y ROJO + ABAJO no la volvia a abrir. Ahora lo cuenta el formulario
+        // con su propio reloj: pasado RegresoTopeMs desde que se guardo, el regreso ya no retiene nada, digan lo que
+        // digan los cuadros (la animacion termina sola cuando vuelvan).
+        internal const int RegresoTopeMs = 1500;
+        private bool asistenteRegresando; private int asistenteCierreTick, regresoAtascadoApuntes;
+        private bool AsistenteRegresando
+        {
+            get
+            {
+                if (!asistenteRegresando) return false;
+                bool tarjeta = gpuPanel != null && gpuPanel.AsistenteEnTransicion;
+                if (tarjeta && RegresoVigente(asistenteCierreTick, Environment.TickCount)) return true;
+                asistenteRegresando = false;
+                if (tarjeta && regresoAtascadoApuntes < 20)
+                { regresoAtascadoApuntes++; LogError("Ayuda: el regreso de la estrella no termino a tiempo (sin cuadros); se sueltan los botones", null); }
+                return false;
+            }
+        }
+        // Pura: se prueba sin ventana ni tarjeta. Aguanta la vuelta del contador de Windows (49,7 dias).
+        internal static bool RegresoVigente(int cierreTick, int ahoraTick)
+        { int d = unchecked(ahoraTick - cierreTick); return d >= 0 && d < RegresoTopeMs; }
+
+        // LA ROCOLA TIENE EL TECLADO: algo suyo tiene el foco, o es la ventana de delante aunque el foco se haya quedado
+        // en nada o fuera de ella (el video, un control que se escondio). Antes se exigia el foco estricto, y con la
+        // ventana delante pero sin foco la ayuda y las pistas del rojo quedaban negadas sin remedio: el vigilante del
+        // foco solo actuaba si OTRA ventana se ponia delante (ahora tambien devuelve el foco, FocusTimer_Tick).
+        private static bool sinUser32;
+        private bool RocolaConTeclado()
+        {
+            if (ContainsFocus) return true;
+            if (sinUser32 || !IsHandleCreated) return false;
+            try { return GetForegroundWindow() == Handle; }
+            catch { sinUser32 = true; return false; }   // sin Windows (pruebas en Linux): solo cuenta el foco
+        }
         // La ayuda solo se queda con los botones mientras PREGUNTA (el menu) y durante su regreso animado.
         // Guiando, cada boton hace lo de siempre: es el cliente quien lo hace, la estrella solo senala.
         private bool AsistenteCapturaEntrada
@@ -39,7 +79,7 @@ namespace Rocola
 
         private bool AsistentePermitido()
         {
-            return gpuEnabled && gpuPanel != null && ContainsFocus && Enabled
+            return gpuEnabled && gpuPanel != null && RocolaConTeclado() && Enabled
                 && !arranqueEnEspera && !startupClosing && !IsDisposed && !configMode
                 && !maintMode && !libBuilding && keyOK != keyBack;
         }
@@ -47,7 +87,7 @@ namespace Rocola
         private void AbreAsistente()
         {
             if (asistenteVisible) return;
-            asistenteVisible = true;
+            asistenteVisible = true; asistenteRegresando = false;   // si aun regresaba, la tarjeta da media vuelta desde donde iba
             asistentePagina = asistenteLeccion = asistenteSeleccion = 0;
             asistenteMision = 0; asistenteLogroTick = 0;
             asistenteInicioTick = asistenteActividadTick = Environment.TickCount;
@@ -63,6 +103,7 @@ namespace Rocola
         {
             AnimaAsistente(AsistenteGestoGpu.Despedir);
             asistenteVisible = false; asistenteMision = 0; asistenteLogroTick = 0;
+            asistenteRegresando = true; asistenteCierreTick = Environment.TickCount;
             lastInput = DateTime.Now; searchLastActivity = DateTime.Now;
             asistenteRestaurarVideo = true;
             if (video != null) video.Visible = videoOn && !searchOpen && !AsistenteVisible;
@@ -74,7 +115,7 @@ namespace Rocola
         private void ApuntaAyudaNoPermitida()
         {
             if (ayudaNoPermitidaApuntes >= 20) return;
-            string motivo = !gpuEnabled || gpuPanel == null ? "sin tarjeta grafica" : !ContainsFocus ? "la rocola no tiene el foco del teclado"
+            string motivo = !gpuEnabled || gpuPanel == null ? "sin tarjeta grafica" : !RocolaConTeclado() ? "la rocola no tiene el foco del teclado"
                 : !Enabled ? "ventana deshabilitada" : arranqueEnEspera ? "arrancando" : configMode ? "configurando botones"
                 : maintMode ? "mantenimiento (F10)" : libBuilding ? "leyendo la biblioteca"
                 : keyOK == keyBack ? "verde y rojo son la misma tecla" : "cerrando";
@@ -103,7 +144,8 @@ namespace Rocola
             if (asistenteVisible) asistenteActividadTick = Environment.TickCount;
             if (EsAtajoAyuda(BackHeld(), IsDown(kc), repeticion))
             {
-                if (asistenteVisible) CierraAsistente(); else if (!AsistenteVisible) AbreAsistente();
+                // Tambien mientras la estrella regresa: antes ese medio segundo no hacia nada y parecia bloqueada.
+                if (asistenteVisible) CierraAsistente(); else AbreAsistente();
                 return true;
             }
             if (!AsistenteCapturaEntrada) return false;   // guiando: el boton hace lo suyo de siempre

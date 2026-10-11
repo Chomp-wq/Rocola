@@ -13,7 +13,7 @@ namespace Rocola
         // los destellos son quads GPU y no invalidan la textura de la interfaz.
         private bool GuiaRojoVisible()
         {
-            return GuiaRojoActiva(guiaRojo, gpuEnabled, ContainsFocus, BackHeld(),
+            return GuiaRojoActiva(guiaRojo, gpuEnabled, RocolaConTeclado(), BackHeld(),
                 maintMode || libBuilding || videoFull || searchOpen || attractOn || configMode || AsistenteCapturaEntrada
                 || (panelSongs != null && panelSongs.Visible)
                 || letterBar == null || !letterBar.Visible);
@@ -28,7 +28,7 @@ namespace Rocola
         {
             if (!guiaRojo) return "pistas del rojo apagadas en Ctrl+F3";
             if (!gpuEnabled) return "sin tarjeta grafica";
-            if (!ContainsFocus) return "la rocola no tiene el foco del teclado";
+            if (!RocolaConTeclado()) return "la rocola no tiene el foco del teclado";
             if (maintMode) return "mantenimiento (F10)";
             if (libBuilding) return "leyendo la biblioteca";
             if (videoFull) return "video a pantalla completa";

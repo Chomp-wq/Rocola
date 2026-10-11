@@ -165,6 +165,76 @@ class AsistenteCombo
         }
     }
 
+    // "Despues de usar el asistente una vez, los controles se bloquean para siempre" (aviso del 11-10-2026). El regreso
+    // de la estrella lo decidia la tarjeta con su ULTIMO cuadro: si los cuadros se paraban con la ayuda aun abierta, la
+    // tarjeta seguia creyendola abierta y el regreso no acababa nunca. Ahora el formulario le pone tope con su reloj.
+    static void Desbloqueo()
+    {
+        int tope = K("RegresoTopeMs");
+        Check(tope >= 800 && tope <= 2000, "El regreso retiene los botones como mucho un instante (" + tope + " ms)");
+        Check((bool)Run("RegresoVigente", 1000, 1000) && (bool)Run("RegresoVigente", 1000, 1000 + tope - 1), "Dentro del tope, el regreso sigue");
+        Check(!(bool)Run("RegresoVigente", 1000, 1000 + tope) && !(bool)Run("RegresoVigente", 1000, 999), "Pasado el tope (o con el reloj hacia atras), ya no retiene");
+        Check((bool)Run("RegresoVigente", int.MaxValue - 100, unchecked(int.MaxValue + 200)), "Aguanta la vuelta del contador de Windows");
+        Check(Codigo.Llama(form.GetMethod("get_AsistenteVisible", Todos), "get_AsistenteRegresando")
+            && Codigo.Llama(form.GetMethod("get_AsistenteRegresando", Todos), "RegresoVigente")
+            && Codigo.Llama(form.GetMethod("get_AsistenteRegresando", Todos), "LogError"), "El regreso lo acota el formulario, y si se atasca se apunta");
+        // Volver a abrirla mientras regresa (antes ese rato no hacia nada y parecia bloqueada).
+        Check(!Codigo.Llama(form.GetMethod("AyudaTocada", Todos), "get_AsistenteVisible"), "Tocar AYUDA la abre aunque la estrella aun regrese");
+        // Foco: con la ventana delante pero el foco en nada, la ayuda y las pistas del rojo se negaban para siempre.
+        Check(Codigo.Llama(form.GetMethod("AsistentePermitido", Todos), "RocolaConTeclado") && !Codigo.Llama(form.GetMethod("AsistentePermitido", Todos), "get_ContainsFocus"),
+            "La ayuda se permite con la ventana delante aunque el foco se haya quedado en nada");
+        Check(Codigo.Llama(form.GetMethod("GuiaRojoVisible", Todos), "RocolaConTeclado") && Codigo.Llama(form.GetMethod("MotivoSinGuiaRojo", Todos), "RocolaConTeclado"),
+            "Las pistas del rojo miran lo mismo");
+        Check(Codigo.Llama(form.GetMethod("FocusTimer_Tick", Todos), "get_ContainsFocus") && Codigo.Llama(form.GetMethod("FocusTimer_Tick", Todos), "Focus"),
+            "El vigilante del foco devuelve el foco a la ventana aunque ya este delante");
+
+        // El caso que bloqueaba, en un formulario aislado: la tarjeta dejo de dibujar con la ayuda abierta.
+        Type gpu = form.Assembly.GetType("Rocola.GpuPanel", true);
+        using (Form owner = (Form)Owner(new Size(1024, 768)))
+        using (Control panel = (Control)Activator.CreateInstance(gpu, true))
+        {
+            Check(!(bool)Call(owner, "RocolaConTeclado"), "Sin ventana de Windows (Linux): sin teclado, y sin reventar");
+            Set(owner, "gpuEnabled", true);
+            Set(owner, "asistenteVisible", true);
+            // Lo ultimo que vio la tarjeta: la ayuda abierta, dibujandose, y un cuadro reciente.
+            object estado = Activator.CreateInstance(form.Assembly.GetType("Rocola.AsistenteEstadoGpu", true));
+            estado.GetType().GetField("Visible", Todos).SetValue(estado, true);
+            gpu.GetField("asistenteEstado", Todos).SetValue(panel, estado);
+            gpu.GetField("asistenteDibujando", Todos).SetValue(panel, true);
+            gpu.GetField("asistenteUltimoAvance", Todos).SetValue(panel, (double)gpu.GetMethod("AhoraMs", Todos).Invoke(null, null) / 1000);
+            int antes = Environment.TickCount;
+            Call(owner, "CierraAsistente");   // sin panel puesto todavia: no hay pantalla que sincronizar
+            int cierre = (int)Get(owner, "asistenteCierreTick");
+            Check(!(bool)Get(owner, "asistenteVisible") && unchecked(cierre - antes) >= 0 && unchecked(Environment.TickCount - cierre) >= 0,
+                "Al guardarla, el formulario apunta cuando");
+            int lee, escribe;
+            Codigo.UsosDeCampo(form.GetMethod("CierraAsistente", Todos), "asistenteRegresando", out lee, out escribe);
+            Check(escribe > 0, "Guardarla empieza el regreso");
+            Codigo.UsosDeCampo(form.GetMethod("AbreAsistente", Todos), "asistenteRegresando", out lee, out escribe);
+            Check(escribe > 0, "Abrirla lo termina");
+            // Como lo deja CierraAsistente con la tarjeta puesta (aqui sin ella no hay regreso que esperar).
+            Set(owner, "gpuPanel", panel); Set(owner, "asistenteRegresando", true); Set(owner, "asistenteCierreTick", Environment.TickCount);
+            Check((bool)gpu.GetProperty("AsistenteEnTransicion", Todos).GetValue(panel, null), "La tarjeta, sin cuadros nuevos, sigue creyendo que regresa");
+            Check((bool)Get(owner, "asistenteRegresando") && (bool)Call(owner, "get_AsistenteCapturaEntrada"), "Recien guardada: el regreso retiene los botones");
+            Set(owner, "asistenteCierreTick", unchecked(Environment.TickCount - tope - 50));
+            Check(!(bool)Call(owner, "get_AsistenteVisible") && !(bool)Call(owner, "get_AsistenteCapturaEntrada"),
+                "Pasado el tope los botones vuelven, aunque la tarjeta siga parada");
+            Check(!(bool)Get(owner, "asistenteRegresando"), "Y se queda suelto (no vuelve a bloquear)");
+            Codigo.EsperaBitacora();
+            string bit = Environment.GetEnvironmentVariable("ROCOLA_DATOS");
+            string log = System.IO.Path.Combine(bit, "rocola_error.txt");
+            Check(System.IO.File.Exists(log) && System.IO.File.ReadAllText(log).Contains("regreso de la estrella"), "El atasco queda apuntado en rocola_error.txt");
+            // Reabrir mientras regresa: la tarjeta da media vuelta.
+            Set(owner, "asistenteRegresando", true); Set(owner, "asistenteCierreTick", Environment.TickCount);
+            Check((bool)Call(owner, "get_AsistenteVisible"), "Otra vez regresando");
+            Set(owner, "gpuPanel", null);
+            Call(owner, "AbreAsistente");
+            Check((bool)Get(owner, "asistenteVisible") && !(bool)Get(owner, "asistenteRegresando"), "ROJO + ABAJO durante el regreso la vuelve a abrir");
+            Set(owner, "asistenteVisible", false);
+            Call(owner, "SueltaAsistente");
+        }
+    }
+
     static void Cableado()
     {
         MethodInfo entry = form.GetMethod("AsistenteEntrada", Todos);
@@ -177,12 +247,15 @@ class AsistenteCombo
             Check(form.GetNestedType("AyudaView", Todos) == null, "La casilla de AYUDA solo existe con tarjeta grafica");
             return;
         }
-        Atajo(); Pasos(); Mision();
+        Atajo(); Pasos(); Mision(); Desbloqueo();
     }
 
     static int Main(string[] args)
     {
         if (args.Length != 1) throw new ArgumentException("Uso: asistentecombo.exe Rocola.exe");
+        string datos = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "rocola_asistentecombo_" + Guid.NewGuid().ToString("N"));
+        System.IO.Directory.CreateDirectory(datos);
+        Environment.SetEnvironmentVariable("ROCOLA_DATOS", datos);   // lo que se apunte en la bitacora, aparte
         Assembly assembly = Assembly.LoadFrom(args[0]);
         form = assembly.GetType("Rocola.Form1", true);
         Cableado();

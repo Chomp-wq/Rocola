@@ -90,6 +90,9 @@ CPU="$CPU ayudaguia"
 # 'caratulasjpeg': interruptor "Caratulas en JPEG" de Ctrl+F3 (11-10-2026); con CPU no cambia nada.
 GPU="$GPU caratulasjpeg"
 CPU="$CPU caratulasjpeg"
+# 'filabaja': la fila de arriba en pantallas bajas y la casilla de AYUDA desde el arranque (11-10-2026).
+GPU="$GPU filabaja"
+CPU="$CPU filabaja"
 # Y las que miran algo que SOLO EXISTE en la rama de tarjeta grafica. La limpieza de videos que no
 # suenan es una de esas: para saber si un video suena hay que descomprimir su sonido, y eso alli lo
 # hace Media Foundation, que llego con Windows Vista. En la rama de XP no hay con que, asi que ni

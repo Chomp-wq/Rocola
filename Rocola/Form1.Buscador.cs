@@ -203,6 +203,29 @@ namespace Rocola
                 return (int)(d * 1.15f) + 8 + (int)(alto * 2.05f) + 12 + d + 10 + d + 8 + (int)(d * 0.9f) + 22;
             }
             private static int Sim(int alto) { int d = (int)(alto * 0.52f); if (d < 12) d = 12; if (d > 30) d = 30; return d; }
+#if ROCOLA_GPU
+            // LO QUE DIBUJA DE VERDAD, medido con su letra (una vez por alto), con 12 px de aire al final como los 11 del
+            // principio. Ancho() reserva el texto a ojo y deja ~45 px vacios al final; con tarjeta grafica la fila de
+            // arriba se reparte con este (AcomodaAyuda). Sin tarjeta (dibujo por CPU, congelado) sigue Ancho().
+            private static int justoAlto = -1, justoTexto, justoMas;
+            public static int AnchoJusto(int alto)
+            {
+                int d = Sim(alto);
+                if (justoAlto != alto)
+                {
+                    using (Bitmap b = new Bitmap(1, 1)) using (Graphics g = Graphics.FromImage(b))
+                    using (Font f = new Font(FontFamily.GenericSansSerif, Math.Max(8f, alto * 0.30f), FontStyle.Bold))
+                    {
+                        g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
+                        justoTexto = (int)Math.Ceiling(g.MeasureString("BUSCAR", f).Width);
+                        justoMas = (int)Math.Ceiling(g.MeasureString("+", f).Width);
+                    }
+                    justoAlto = alto;
+                }
+                // Lo mismo que recorre RenderContent: lupa (d), 8 + BUSCAR + 12, rojo + 4, "+" + 6, flecha.
+                return Math.Min(Ancho(alto), 11 + d + 8 + justoTexto + 12 + d + 4 + justoMas + 6 + (int)(d * 0.9f) + 12);
+            }
+#endif
 
             protected override void OnPaint(PaintEventArgs e)
             {

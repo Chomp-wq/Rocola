@@ -953,6 +953,12 @@ namespace Rocola
             if (focoCerrando || IsDisposed || Disposing || !IsHandleCreated) return;
             if (maintMode) return;                       // pausa de mantenimiento (F10), hasta que se vuelva a pulsar
             if (GetForegroundWindow() != this.Handle) ForceFocus();
+#if ROCOLA_GPU
+            // DELANTE PERO SIN FOCO: el foco puede quedarse en nada o fuera de la rocola (en el video, o tras esconderse el
+            // control que lo tenia) con la ventana todavia delante. Lo de arriba solo actua si OTRA ventana se pone
+            // delante, y sin foco la ayuda y las pistas del rojo quedaban negadas. Se le devuelve a la ventana.
+            else if (gpuEnabled && !ContainsFocus && Enabled && !configMode) { try { this.Focus(); } catch { } }
+#endif
         }
 
         // Entrada de texto del buscador: cualquier caracter imprimible (incluye Ñ, acentos, comillas) y Borrar.
@@ -1430,7 +1436,12 @@ namespace Rocola
             // lejos, de pie y de noche: es lo que decide si el cliente que no sabe usarla acaba poniendo su
             // cancion o se va. Los 10 px salen de la rejilla de discos, que tiene de sobra.
             int filaH = H * 44 / 768; if (filaH < 44) filaH = 44; else if (filaH > 76) filaH = 76;
-            int helpW = Math.Max(120, Math.Min(HelpBar.Ancho(filaH), barraDer - helpX));
+            bool helpJusta = false;
+#if ROCOLA_GPU
+            helpJusta = gpuEnabled && W < 1000;   // pantallas angostas con tarjeta: menos aire, mas encabezado
+            if (helpBar != null) helpBar.Justa = helpJusta;
+#endif
+            int helpW = Math.Max(120, Math.Min(helpJusta ? HelpBar.AnchoJusta(filaH) : HelpBar.Ancho(filaH), barraDer - helpX));
             if (helpBar != null) helpBar.SetBounds(helpX, 8, helpW, filaH);
             // LA CASILLA DE BUSCAR, EN MEDIO. Va centrada respecto a la pantalla entera -no respecto al
             // hueco que queda- porque el sitio donde el ojo la busca es el centro de arriba. Si no cabe sin
@@ -1445,7 +1456,7 @@ namespace Rocola
             }
             int finBusca = busX + busW;
 #if ROCOLA_GPU
-            finBusca = AcomodaAyuda(busX, busW, filaH, barraDer, buscaView != null && buscaView.Visible);   // AYUDA, al lado de BUSCAR
+            finBusca = AcomodaAyuda(helpX + helpW + 12, W, filaH, barraDer, buscaView != null && buscaView.Visible);   // AYUDA, al lado de BUSCAR
 #endif
             int headX = (buscaView != null && buscaView.Visible) ? (finBusca + 12) : (helpX + helpW + 12);
             headerView.SetBounds(headX, 8, Math.Max(0, barraDer - headX), filaH);
@@ -2622,12 +2633,20 @@ namespace Rocola
             // LO QUE MIDE DE VERDAD. El acomodo le reservaba 400 px a ojo, y como sobraban, la casilla de
             // BUSCAR quedaba corrida a la derecha en vez de en el centro de la pantalla. Se mide una sola vez
             // por alto de fila (la letra es fija) y se guarda: esto se llama al acomodar, no al dibujar.
-            private static int anchoAlto = -1, anchoCache = -1;
-            public static int Ancho(int alto)
+            private static int anchoAlto = -1, anchoCache = -1, justaAlto = -1, justaCache = -1;
+            // JUSTA: con tarjeta grafica en pantallas angostas (menos de 1000 px, LayoutControls) va con menos aire entre
+            // los tres grupos, y ese sitio se lo queda el encabezado. Sin tarjeta nunca se pone: se ve como siempre.
+            public bool Justa { get; set; }
+            private static float Hueco(bool justa) { return justa ? 5f : 7f; }
+            private static float Grupo(bool justa) { return justa ? 12f : 20f; }
+            public static int Ancho(int alto) { return Medida(alto, false); }
+            public static int AnchoJusta(int alto) { return Medida(alto, true); }
+            private static int Medida(int alto, bool justa)
             {
-                if (anchoAlto == alto) return anchoCache;
+                if (!justa && anchoAlto == alto) return anchoCache;
+                if (justa && justaAlto == alto) return justaCache;
                 int d = Math.Min(20, alto - 8); if (d < 12) d = 12;
-                float gap = 7, grp = 20, x = 2;
+                float gap = Hueco(justa), grp = Grupo(justa), x = 2;
                 using (Font f = new Font(FontFamily.GenericSansSerif, 9.5f, FontStyle.Bold))
                 using (Bitmap b = new Bitmap(1, 1))
                 using (Graphics g = Graphics.FromImage(b))
@@ -2637,6 +2656,7 @@ namespace Rocola
                     x += d + gap + g.MeasureString("Entrar / Poner", f).Width + grp;
                     x += d + gap + g.MeasureString("Volver", f).Width;
                 }
+                if (justa) { justaAlto = alto; justaCache = (int)x + 8; return justaCache; }
                 anchoAlto = alto; anchoCache = (int)x + 8;   // un pelin de aire al final
                 return anchoCache;
             }
@@ -2652,7 +2672,7 @@ namespace Rocola
                 int cy = Height / 2;
                 Color txt = Color.FromArgb(228, 234, 250);
                 int d = Math.Min(20, Height - 8); if (d < 12) d = 12;
-                float gap = 7, grp = 20;
+                float gap = Hueco(Justa), grp = Grupo(Justa);
                 if (hbFont == null) hbFont = new Font(FontFamily.GenericSansSerif, 9.5f, FontStyle.Bold);
                 Font f = hbFont;
                 float x = 2;

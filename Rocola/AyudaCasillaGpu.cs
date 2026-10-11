@@ -36,11 +36,26 @@ namespace Rocola
             }
             private static int Sim(int alto) { int d = (int)(alto * 0.52f); if (d < 12) d = 12; if (d > 30) d = 30; return d; }
 
-            // Lo que mide de ancho con ese alto: interrogacion + (AYUDA) + rojo + mas + flecha, con aire.
+            // Lo que mide de ancho con ese alto: interrogacion + (AYUDA) + rojo + mas + flecha, y 12 px de aire al final
+            // (los mismos 11 del principio). Se MIDE con la letra de verdad, una vez por alto: la cuenta a ojo de antes
+            // le dejaba ~45 px vacios al final, justo lo que le faltaba al encabezado en 1024x768 (aviso del 11-10-2026).
+            private static int medidoAlto = -1, medidoPalabra, medidoMas;
             public static int Ancho(int alto, bool compacta)
             {
                 int d = Sim(alto);
-                return 11 + (int)(d * 1.15f) + (compacta ? 6 : 8 + (int)(alto * 1.80f)) + 12 + d + 10 + d + 8 + (int)(d * 0.9f) + 14;
+                if (medidoAlto != alto)
+                {
+                    using (Bitmap b = new Bitmap(1, 1)) using (Graphics g = Graphics.FromImage(b))
+                    using (Font f = new Font(FontFamily.GenericSansSerif, Math.Max(8f, alto * 0.30f), FontStyle.Bold))
+                    {
+                        g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
+                        medidoPalabra = (int)Math.Ceiling(g.MeasureString("AYUDA", f).Width);
+                        medidoMas = (int)Math.Ceiling(g.MeasureString("+", f).Width);
+                    }
+                    medidoAlto = alto;
+                }
+                // Lo mismo que recorre RenderContent: icono, (8 + AYUDA + 12 | 6), rojo + 4, "+" + 6, flecha.
+                return 11 + (int)(d * 1.15f) + (compacta ? 6 : 8 + medidoPalabra + 12) + d + 4 + medidoMas + 6 + (int)(d * 0.9f) + 12;
             }
 
             // Donde va el signo de interrogacion (coordenadas del control). Lo dibuja la tarjeta, animado.
@@ -117,19 +132,45 @@ namespace Rocola
             }
         }
 
-        // Acomoda la casilla al lado de la de BUSCAR. Devuelve donde acaba (para el encabezado).
-        private int AcomodaAyuda(int busX, int busW, int filaH, int barraDer, bool buscaVisible)
+        // LA FILA DE ARRIBA CON TARJETA GRAFICA: instrucciones | BUSCAR + AYUDA | encabezado. Devuelve donde acaba el
+        // par (el encabezado va detras). 'minX' es donde acaban las instrucciones; BUSCAR ya viene colocada a la manera
+        // de siempre (centrada en la pantalla), que es como se queda sin tarjeta.
+        //
+        // EN PANTALLAS BAJAS SE REPARTE (aviso del 11-10-2026, captura a 1024x768): BUSCAR iba centrada en la pantalla
+        // y dejaba 77 px vacios detras de las instrucciones, las dos casillas median ~45 px de mas por dentro, y el
+        // encabezado se quedaba en 208 px: "LO MAS SONADO" justo y sin numero de pagina, y la AYUDA sin su palabra.
+        // Ahora las casillas miden lo que dibujan, BUSCAR sigue en el centro si hay sitio, y si no, el par se corre a la
+        // izquierda lo justo para que el encabezado tenga lo que pide (HeaderView.AnchoPedido). Con sitio de sobra
+        // (1280 o mas) BUSCAR queda donde estaba.
+        private int AcomodaAyuda(int minX, int W, int filaH, int barraDer, bool buscaVisible)
         {
+            int busX = buscaView != null ? buscaView.Left : minX, busW = buscaView != null ? buscaView.Width : 0;
             if (ayudaView == null) return busX + busW;
-            int x = busX + busW + 10, libre = barraDer - x;
-            // Primero con la palabra; si al encabezado no le quedan 200 px, sin ella; si ni asi, no se pone.
-            bool compacta = libre - AyudaView.Ancho(filaH, false) < 200;
+            if (!buscaVisible || !gpuEnabled || buscaView == null) { ayudaView.Visible = false; return busX + busW; }
+            int libre = barraDer - minX;   // para BUSCAR, AYUDA, sus dos huecos y el encabezado
+            busW = Math.Min(BuscaView.AnchoJusto(filaH), Math.Max(0, libre));
+            int pide = headerView != null ? headerView.AnchoPedido(filaH) : 0;   // si no cabe, se queda con lo que haya
+            // Con la palabra si al encabezado le queda lo que pide; si no, sin ella; y si ni asi le quedan 90 px, sin AYUDA.
+            bool compacta = busW + 10 + AyudaView.Ancho(filaH, false) + 12 + pide > libre;
             int ancho = AyudaView.Ancho(filaH, compacta);
-            bool cabe = buscaVisible && gpuEnabled && ancho <= libre - 90;
+            bool cabe = busW + 10 + ancho + 12 + 90 <= libre;
+            int grupo = busW + (cabe ? 10 + ancho : 0);
+            busX = ColocaParBusca(W, busW, grupo, minX, barraDer, pide);
+            buscaView.SetBounds(busX, 8, busW, filaH);
             ayudaView.Compacta = compacta;
-            ayudaView.SetBounds(x, 8, ancho, filaH);
+            ayudaView.SetBounds(busX + busW + 10, 8, ancho, filaH);
             ayudaView.Visible = cabe;
-            return cabe ? x + ancho : busX + busW;
+            return busX + grupo;
+        }
+
+        // Donde empieza BUSCAR (con AYUDA a su derecha, 'grupo' de ancho entre las dos). Pura: se prueba sin ventana.
+        internal static int ColocaParBusca(int W, int busW, int grupo, int minX, int barraDer, int pideEncabezado)
+        {
+            int x = SitioBusca(W, busW, minX, barraDer);              // BUSCAR en el centro, como siempre
+            int tope = barraDer - 12 - pideEncabezado - grupo;        // mas a la derecha apretaria al encabezado
+            if (x > tope) x = tope;
+            if (x < minX) x = minX;                                   // nunca encima de las instrucciones
+            return x;
         }
 
         // El signo, en coordenadas de la pantalla, cuando se ve (si no, vacio).
@@ -152,8 +193,8 @@ namespace Rocola
                 if (unchecked(Environment.TickCount - asistenteInicioTick) >= 450) CierraAsistente();
                 return true;
             }
-            if (AsistenteVisible || !AsistentePermitido()) return false;   // aun regresando a su sitio
-            AbreAsistente();
+            if (!AsistentePermitido()) return false;
+            AbreAsistente();   // tambien mientras regresa a su sitio: da media vuelta desde donde iba
             return true;
         }
     }
