@@ -2,7 +2,8 @@ param(
     [Parameter(Mandatory=$true)][string]$Executable,
     [string]$CpuExecutable,
     [string]$OutputDirectory = (Join-Path $env:TEMP ('rocola-buscador-' + [Guid]::NewGuid().ToString('N'))),
-    [switch]$DosHilos
+    [switch]$DosHilos,
+    [string]$LibraryCache
 )
 $ErrorActionPreference = 'Stop'
 $previousData = $env:ROCOLA_DATOS
@@ -24,6 +25,18 @@ try {
     $data = Join-Path $out ('datos-' + [Guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $data | Out-Null
     $env:ROCOLA_DATOS = $data
+    $libraryCopy = $null
+    if ($LibraryCache) {
+        # Copia privada del listado, no musica ni modelos/corpus. Nunca escribir la fuente.
+        $source = (Resolve-Path -LiteralPath $LibraryCache).Path
+        $libraryCopy = Join-Path $data 'listado-para-prueba.txt'
+        $before = (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash
+        Copy-Item -LiteralPath $source -Destination $libraryCopy
+        if ((Get-FileHash -LiteralPath $libraryCopy -Algorithm SHA256).Hash -ne $before -or
+            (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -ne $before) {
+            throw 'El listado cambio durante la copia: repetir sin usar una instantanea incoherente'
+        }
+    }
     $compiler = Join-Path $env:WINDIR 'Microsoft.NET\Framework\v3.5\csc.exe'
     foreach ($platform in @('anycpu','x86')) {
         $testExe = Join-Path $out ('buscainteligente-' + $platform + '.exe')
@@ -35,6 +48,7 @@ try {
             $log = Join-Path $out ((Split-Path -Leaf $resolved) + '-' + $platform + '.txt')
             $arguments = @($resolved)
             if ($DosHilos) { $arguments += '--dos-hilos' }
+            if ($libraryCopy) { $arguments += @('--biblioteca', $libraryCopy) }
             & $testExe @arguments | Tee-Object -FilePath $log
             if ($LASTEXITCODE -ne 0) { throw "Fallo buscador $resolved / $platform" }
         }

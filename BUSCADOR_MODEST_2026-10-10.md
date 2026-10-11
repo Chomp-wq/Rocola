@@ -126,6 +126,38 @@ no es una comparacion de fluidez antes/despues.
 
 Evidencia local: `C:\Users\diego\AppData\Local\Temp\rocola-busqueda-1e78341f17164632830c791016654678`.
 
+### Continuacion: listado real, sin abrir la musica
+
+El runner acepta ademas `-LibraryCache <rocola_biblioteca.txt>`. Crea una copia
+privada del listado y exige hashes iguales antes/despues de copiar; rechaza una
+fuente que cambio durante la copia. El proceso de prueba lee esa instantanea con
+`ReadLibraryRecords` y arma discos e indice con las funciones reales. No llama al
+recorrido de firmas, no abre MP3/WAV/caratulas y no arranca otra Rocola. Los datos
+de la biblioteca quedan solo en TEMP: no se incluyen en el repositorio ni se
+imprimen rutas o nombres de los sondeos tomados del listado.
+
+En la biblioteca instalada: **62.776 canciones, 4.468 discos y 68.132 entradas**.
+Se comprueban los tramos de titulo y mascaras de todas las entradas. Se contrastan
+27 consultas, incluidas muestras repartidas por el indice, contra un recorrido
+completo sin mascaras/postings/cache: tanto las 40 visibles como el total. Las
+consultas repetidas y escribiendo caracter por caracter deben coincidir, y las
+entradas muestreadas deben recuperarse por su propio nombre aunque haya mas de
+40 nombres iguales.
+
+Pasaron 151.444 comprobaciones por arquitectura para GPU y 151.443 para la
+compilacion CPU existente (sin modificar su dibujo), nativo .NET 3.5 AnyCPU/x86
+con dos procesadores logicos. Incluyen las fixtures artificiales anteriores y
+la validacion del listado. La referencia completa comparte las reglas de
+relevancia con el motor: comprueba sus filtros y caches, no es una evaluacion
+independiente de gustos/relevancia musical. La distancia de erratas mantiene
+su referencia independiente. No son pruebas de teclado real, FPS ni XP fisico.
+
+Evidencia local adicional:
+`C:\Users\diego\AppData\Local\Temp\rocola-buscador-listado-20261010` y
+`C:\Users\diego\AppData\Local\Temp\rocola-buscador-listado-cpu-20261010`.
+La recoleccion de produccion siguio activa mientras se hicieron estas pruebas;
+no se usa ese escenario compartido para medir ni prometer una mejora de FPS.
+
 Release preparado: EXE SHA-256
 `0AB4CD066517B73FCE063119B4A81271F9F6DE5589DDA16657142AEC1B622380`;
 PDB `D8E0BE49E9BA7687E0DBDE5E15C88E722CB74191A513137F4DA7DAAC39170E97`.
@@ -148,3 +180,12 @@ consiguio cerrarlo. Se solicito al usuario cerrar ajustes y Rocola. **No se fuer
 la terminacion ni se sustituye el ejecutable abierto.** La recoleccion seguia
 activa y aumentando; al instalar se deben conservar datos/modelos/configuracion
 y reabrir repaso+cosecha. No dar por instalada esta compilacion solo por publicarla.
+
+En la continuacion se volvio a comprobar el problema del dialogo: solo se
+expone como ventana seleccionable su propietario deshabilitado. Traer Sonido
+al frente enfoca su control, pero la entrada de teclado vuelve al propietario
+y el menu de cierre no aparece. Se pidio cerrar **solo Sonido** para poder
+cerrar normalmente la Rocola despues. El EXE de produccion sigue siendo
+`987DE6E1F087566248C8967CA1B0353895B8E3C2A8367262B1C4D71D923EF503`,
+no el Release nuevo. Repaso+cosecha siguen activos; no se termina el proceso
+a la fuerza mientras escribe ejemplos para intentar sortear la limitacion.

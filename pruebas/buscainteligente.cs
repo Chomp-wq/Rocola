@@ -1,8 +1,10 @@
-// Contratos del buscador real por reflexion. Sin musica, HAL, UI abierta ni datos del usuario.
+// Contratos del buscador real por reflexion. Sin abrir musica, HAL ni una Rocola.
+// --biblioteca usa solo una copia del listado: no recorre raices ni abre caratulas.
 using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Reflection;
 using System.Runtime.Serialization;
 using System.Windows.Forms;
@@ -49,6 +51,12 @@ class BuscaInteligente
     static string Norm(string s) { return (string)Call(motor, null, "Normaliza", s); }
     static string Naive(object x, string raw)
     {
+        int count;
+        return Naive(x, raw, out count);
+    }
+    static string Naive(object x, string raw, out int count)
+    {
+        count = 0;
         string q = Norm(raw);
         if (q.Length == 0) return "";
         string[] tokens = q.IndexOf(' ') >= 0 ? q.Split(' ') : null;
@@ -68,6 +76,7 @@ class BuscaInteligente
                 score = (int)Call(motor, null, "RelevanciaAproximada", Get(hit, "Key"), Get(hit, "TitleAt"), Get(hit, "TitleLength"), q, tokens, score);
                 if (score > 0) { Set(hit, "Score", score); matches.Add(hit); }
             }
+        count = matches.Count;
         matches.Sort(delegate(object a, object b) {
             int order = (int)Get(b, "Score") - (int)Get(a, "Score");
             if (order == 0) order = (int)Get(a, "Kind") - (int)Get(b, "Kind");
@@ -231,13 +240,91 @@ class BuscaInteligente
         }
         finally { ((Control)Get(x, "searchOverlay")).Dispose(); }
     }
+    static void Library(string filename)
+    {
+        object x = Owner();
+        try
+        {
+            // Reader real, pero SIN TryLoadLibraryCache, que recorre el disco.
+            // BuildAlbums/BuildSearchIndex solo agrupan estos metadatos.
+            using (StreamReader reader = new StreamReader(filename))
+            {
+                Check(reader.ReadLine() == "ROCOLA-LIB v2", "Cabecera de biblioteca v2");
+                string roots = reader.ReadLine();
+                Check(roots != null && roots.StartsWith("roots=", StringComparison.Ordinal), "Raices del listado");
+                string signature = reader.ReadLine(), dirs = reader.ReadLine();
+                Check(signature != null && signature.StartsWith("sig=", StringComparison.Ordinal) &&
+                    dirs != null && dirs.StartsWith("dirs=", StringComparison.Ordinal), "Cabecera completa");
+                object[] arguments = { reader, null, null, null };
+                Check((bool)form.GetMethod("ReadLibraryRecords", B).Invoke(null, arguments), "Lector real acepta el listado completo");
+                Set(x, "tracks", arguments[1]); Set(x, "cachedCovers", arguments[3]);
+                Call(form, x, "BuildAlbums", new List<string>(roots.Substring(6).Split('|')));
+            }
+            Call(form, x, "BuildSearchIndex");
+            IList index = (IList)Get(x, "searchIndex");
+            Check(index.Count > 0, "Indice del listado no vacio");
+            List<string> probes = new List<string>(new string[] {
+                "precious", "depeche precious", "precious depeche", "preccious",
+                "depehce precious", "AC/DC", "jose jose", "dont say", "love ", "love i", ""
+            });
+            for (int i = 0; i < index.Count; i++)
+            {
+                object hit = index[i]; string key = (string)Get(hit, "Key");
+                int start = (int)Get(hit, "TitleAt"), length = (int)Get(hit, "TitleLength");
+                Check(key != null && start >= 0 && length >= 0 && start + length <= key.Length, "Tramo valido en la biblioteca");
+                Check((int)Get(hit, "Mask") == (int)Call(form, null, "MarcaLetras", key), "Mascara real completa");
+            }
+            // Muestras repartidas: no solo los artistas de las fixtures artificiales.
+            for (int p = 0; p < 8; p++)
+            {
+                object hit = index[(int)((long)p * index.Count / 8)];
+                string key = (string)Get(hit, "Key");
+                int start = (int)Get(hit, "TitleAt"), length = (int)Get(hit, "TitleLength");
+                if (length == 0) continue;
+                string title = key.Substring(start, length);
+                probes.Add(title); probes.Add(title.Substring(0, Math.Min(4, title.Length)));
+                Search(x, title, true);
+                Check(((IList)Get(x, "lastMatches")).Contains(hit), "Nombre propio recupera la entrada aunque no quepa en el top 40");
+            }
+            for (int p = 0; p < probes.Count; p++)
+            {
+                string query = probes[p];
+                string actual = Search(x, query, true);
+                int expectedCount;
+                string expected = Naive(x, query, out expectedCount);
+                Check(actual == expected, "Listado: top contra recorrido completo, consulta " + p);
+                Check((Get(x, "lastMatches") == null ? 0 : ((IList)Get(x, "lastMatches")).Count) == expectedCount,
+                    "Listado: total contra recorrido completo, consulta " + p);
+                Check(Search(x, query, false) == expected, "Listado: cache coherente, consulta " + p);
+                string canonical = Norm(query);
+                if (canonical.Length <= 128)
+                {
+                    Search(x, "", true);
+                    for (int j = 1; j <= canonical.Length; j++) Search(x, canonical.Substring(0, j), false);
+                    Check(Search(x, canonical, false) == expected, "Listado: escribir caracter a caracter, consulta " + p);
+                }
+            }
+            Console.WriteLine("LISTADO: " + ((IList)Get(x, "tracks")).Count + " canciones; " +
+                ((IList)Get(x, "albums")).Count + " discos; " + index.Count + " entradas; " + probes.Count +
+                " consultas contra referencia completa. Sin abrir musica/caratulas ni validar la firma del disco. No mide FPS.");
+        }
+        finally { ((Control)Get(x, "searchOverlay")).Dispose(); }
+    }
     [STAThread]
     static int Main(string[] args)
     {
         try
         {
             Assembly a = Assembly.LoadFrom(args[0]);
-            if (args.Length > 1 && args[1] == "--dos-hilos")
+            string library = null;
+            bool twoThreads = false;
+            for (int i = 1; i < args.Length; i++)
+            {
+                if (args[i] == "--dos-hilos") twoThreads = true;
+                else if (args[i] == "--biblioteca" && i + 1 < args.Length) library = args[++i];
+                else throw new ArgumentException("Opcion desconocida o incompleta");
+            }
+            if (twoThreads)
             {
                 long mask = Process.GetCurrentProcess().ProcessorAffinity.ToInt64();
                 int logical = 0;
@@ -249,6 +336,7 @@ class BuscaInteligente
             item = form.GetNestedType("SearchItem", B); album = form.GetNestedType("Album", B);
             track = form.GetNestedType("Track", B); view = form.GetNestedType("SearchOverlay", B);
             Pure(); Actual(); Large();
+            if (library != null) Library(library);
             Console.WriteLine("PASS buscainteligente: " + checks + " comprobaciones. Sin FPS/HAL/XP real."); return 0;
         }
         catch (Exception e) { Console.Error.WriteLine(e); return 1; }
