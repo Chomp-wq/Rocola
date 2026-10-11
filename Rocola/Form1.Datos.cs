@@ -464,7 +464,6 @@ namespace Rocola
                     else if (s.StartsWith("pagina_desliza=")) paginaDesliza = s.Substring("pagina_desliza=".Length).Trim() != "0";
                     else if (s.StartsWith("letras_lupa=")) letrasLupa = s.Substring("letras_lupa=".Length).Trim() != "0";
                     // Ctrl+F3 -> Pantalla -> Dentro del disco (DiscoVivoGpu.cs): tambien solo por tarjeta grafica.
-                    else if (s.StartsWith("vinilo_disco=")) { } // clave antigua ignorada: efecto retirado
                     else if (s.StartsWith("lista_grande=")) listaGrande = s.Substring("lista_grande=".Length).Trim() != "0";
                     else if (s.StartsWith("eq_sonando=")) eqSonando = s.Substring("eq_sonando=".Length).Trim() != "0";
                     else if (s.StartsWith("cola_minutos=")) colaMinutos = s.Substring("cola_minutos=".Length).Trim() != "0";
@@ -2636,19 +2635,6 @@ namespace Rocola
             }
         }
 
-        // Claves ordenadas por recencia (mas viejo primero): al guardarse asi, al recargar se reconstruye
-        // el orden de recencia leyendo el archivo de arriba hacia abajo.
-        private List<string> KeysBySeq(Dictionary<string, int> counts, Dictionary<string, long> seq)
-        {
-            List<string> ks = new List<string>(counts.Keys);
-            ks.Sort(delegate (string a, string b)
-            {
-                long sa = 0, sb = 0; seq.TryGetValue(a, out sa); seq.TryGetValue(b, out sb);
-                if (sa != sb) return (sa < sb) ? -1 : 1;
-                return string.Compare(a, b, StringComparison.OrdinalIgnoreCase);
-            });
-            return ks;
-        }
 
         private readonly object statsSaveLock = new object();
         private int statsSaveVersion;

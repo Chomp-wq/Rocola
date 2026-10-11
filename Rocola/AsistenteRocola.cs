@@ -74,8 +74,6 @@ namespace Rocola
         private bool AsistenteCapturaEntrada
         { get { return (asistenteVisible && asistenteMision == 0) || (!asistenteVisible && AsistenteVisible); } }
 
-        private bool VerdeHeld()
-        { return KeyHeld(keyOK) || (KeyHeld(Keys.Enter) && !IsConfiguredKey(Keys.Enter)); }
 
         private bool AsistentePermitido()
         {

@@ -532,9 +532,6 @@ namespace Rocola
             // al panel la celda, el angulo y la(s) portada(s): el panel sube la portada como textura UNA vez
             // (al cambiar) y dibuja el cubo girando como GEOMETRIA. Asi el giro casi no cuesta CPU.
 
-            // Avanza el giro SIN repintar por CPU (el fondo y los cubos los pinta la GPU). Lo llama el
-            // temporizador a 24fps cuando el fondo GPU esta activo, en vez de AnimTick (que invalida y repinta).
-            public void StepSpinGpu() { StepSpin(); }
 
             // Arma el estado de los cubos que giran para que el panel GPU los dibuje (mismo aspecto que CPU).
             public GpuCubeState BuildCubeState()

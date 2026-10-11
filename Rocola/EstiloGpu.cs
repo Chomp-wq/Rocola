@@ -70,13 +70,6 @@ namespace Rocola
             if (lblMejorada != null && lblMejorada.Visible) fin = Math.Max(fin, lblMejorada.Right);
             return fin;
         }
-        // Donde va "Sigue:" de lejos: en el renglon del artista (ya bajado), detras de lo que lleva y hasta el borde derecho
-        // de las capsulas.
-        internal static Rectangle CajaSigueLejos(Rectangle renglon, int finContenido, int derecha)
-        {
-            int x0 = finContenido + 24;
-            return new Rectangle(x0, renglon.Top, Math.Max(0, derecha - x0), renglon.Height);
-        }
         // Cuanto crece el titulo: lo mas que quepa entre 1,45 y 1,15; si ni asi cabe, 1,15 y puntos suspensivos.
         internal static float EscalaTituloLejos(Graphics g, string texto, Font f, float ancho, float alto)
         {
@@ -105,22 +98,11 @@ namespace Rocola
             PintaSiguienteCompacto(g);
             return true;
         }
-        internal static void PintaTituloLejos(Graphics g, Label titulo, int extra)
-        {
-            if (titulo == null || string.IsNullOrEmpty(titulo.Text)) return;
-            RectangleF r = new RectangleF(titulo.Left, titulo.Top, titulo.Width, titulo.Height + extra);
-            PintaTituloEnCaja(g, titulo, r);
-        }
         private static void PintaTituloEnCaja(Graphics g, Label titulo, RectangleF r)
         {
             float e = EscalaTituloLejos(g, titulo.Text, titulo.Font, r.Width, r.Height);
             using (Font f = new Font(titulo.Font.FontFamily, titulo.Font.Size * e, titulo.Font.Style, titulo.Font.Unit))
                 PintaRenglonLejos(g, titulo.Text, f, titulo.ForeColor, r, StringAlignment.Near);
-        }
-        internal static void PintaSigueLejos(Graphics g, Label sigue, Rectangle caja)
-        {
-            if (sigue == null || string.IsNullOrEmpty(sigue.Text) || caja.Width < 20 || caja.Height < 6) return;
-            PintaRenglonLejos(g, sigue.Text, sigue.Font, LejosSigue, caja, StringAlignment.Far);
         }
         private string TextoSiguiente()
         {

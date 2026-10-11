@@ -271,8 +271,6 @@ namespace Rocola
             catch { return 0; }
         }
         private double retardoFinalReloj;
-        private void MarcaRetardoFinalReloj(LimitadorPicoReal lim)
-        { retardoFinalReloj = (double)lim.DelayFrames / Math.Max(1, lim.WaveFormat.SampleRate); }
         private static double LimitaPosicion(double p, double total)
         { return double.IsNaN(p) || p < 0 ? 0 : (total > 0 && p > total ? total : p); }
         private bool PosicionPorReloj(out double segundos)

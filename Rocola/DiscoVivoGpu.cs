@@ -5,9 +5,6 @@
 // tarjeta grafica no hacen nada, y tampoco cuando el disco lo pinta el procesador (un video que lo tapa, Ctrl+F11):
 // ese dibujo esta congelado y sale exactamente como antes.
 //
-//  - VINILO QUE ASOMA. Si suena el disco que tienes abierto, un vinilo sale de detras de la portada y gira a 33 1/3
-//    vueltas por minuto. La etiqueta lleva la portada, con un aro del color del genero. Asoma hasta donde deja la
-//    lista (nunca la tapa) y, cuando deja de sonar, se vuelve a guardar.
 //  - LISTA GRANDE. Filas mas altas y letra mas grande, unas nueve canciones por pagina: se lee de lejos.
 //  - ECUALIZADOR EN LA QUE SUENA. La pastilla de SONANDO lleva cuatro barritas que se mueven con la musica en vez
 //    del triangulito. Las barras las pone la tarjeta encima de la lista: la pagina no se vuelve a hornear.
@@ -27,9 +24,6 @@ namespace Rocola
     public partial class Form1
     {
         // Existen en los dos perfiles porque la configuracion es la misma; sin tarjeta grafica no se usan.
-#if ROCOLA_GPU
-        private bool viniloDisco = false;  // efecto retirado; contrato interno conservado
-#endif
         private bool listaGrande = true;   // "lista_grande="
         private bool eqSonando = true;     // "eq_sonando="
         private bool colaMinutos = true;   // "cola_minutos="
@@ -38,7 +32,6 @@ namespace Rocola
 
 #if ROCOLA_GPU
     // Lo que el panel de la tarjeta necesita de cada idea, cuadro a cuadro.
-    internal struct GpuVinilo { public bool Has, Suena; public Bitmap Bmp; public int Ver; public float Cx, Cy, R, Corre, Cubo; }
     internal struct GpuEq { public bool Has; public float X, Y, W, H; public int Barra, Hueco; }
     internal struct GpuBoleto { public bool Has; public Bitmap Bmp; public int Ver; public RectangleF De, A; public double Desde; }
 
@@ -165,179 +158,6 @@ namespace Rocola
             return t + ((minutos == 0) ? " · ya casi" : (" · en ~" + minutos + " min"));
         }
 
-        // ---------------- EL VINILO ----------------
-        internal const float RadioVinilo = .33f;     // del lado del cubo: queda tapado del todo cuando esta guardado
-        internal const float EtiquetaVinilo = .36f;  // la etiqueta, del radio del vinilo
-        internal const float MargenVinilo = 12f;     // lo que queda entre el vinilo y la lista, como minimo
-        internal const float AsomaMax = .45f;        // y lo mas que sale, del lado del cubo
-        internal const float CuboCede = .16f;        // lo que se aparta el cubo hacia su lado, del lado del cubo
-        // El aire transparente alrededor del vinilo horneado: la tarjeta lo dibuja girado y con filtro, y asi su borde
-        // suavizado nunca toca el filo de la imagen (ni lo que haya mas alla en la textura).
-        internal const float ViniloAire = 2.5f;
-        // Lo que se aparta el cubo hacia la izquierda mientras el vinilo sale por la derecha, como una funda que suelta
-        // el disco: asi la etiqueta queda a la vista. Sin salirse de su caja mas que un pelo.
-        internal static float CuboCorre(float lado, float cajaAncho)
-        {
-            float margen = (cajaAncho - lado) * .5f + 10f;
-            float c = lado * CuboCede;
-            if (c > margen) c = margen;
-            return (c > 0f) ? c : 0f;
-        }
-        private Bitmap viniloBmp, viniloSurcos; private int viniloVer;
-        private Image viniloTapa; private int viniloColor, viniloLado = -1;
-        private PlayItem viniloDe; private int viniloGenVer = -1; private Color viniloGen;
-        // Si suena el disco abierto. Se mira de verdad solo cuando cambia la cola o el disco (colaVer sube tambien
-        // al cambiar la que suena), no en cada cuadro.
-        private int suenaVer = -1, suenaN = -1; private Album suenaDe; private bool suenaAbierto;
-        private bool DiscoAbiertoSuena()
-        {
-            if (nowPlaying == null || nowPlaying.IsVideo || string.IsNullOrEmpty(sonandoKey)) return false;
-            if (suenaVer == colaVer && ReferenceEquals(suenaDe, currentAlbum) && suenaN == songItems.Count) return suenaAbierto;
-            suenaVer = colaVer; suenaDe = currentAlbum; suenaN = songItems.Count;
-            suenaAbierto = false;
-            for (int i = 0; i < songItems.Count; i++)
-            {
-                Track t = songItems[i] as Track;
-                if (t != null && string.Equals(t.Path, sonandoKey, StringComparison.OrdinalIgnoreCase)) { suenaAbierto = true; break; }
-            }
-            return suenaAbierto;
-        }
-        // Lo mas que puede correrse el centro del vinilo sin que su borde llegue a MargenVinilo de la lista.
-        internal static float CorreVinilo(float cx, float r, float lado, float listaX)
-        {
-            float max = listaX - MargenVinilo - r - cx;
-            if (max > lado * AsomaMax) max = lado * AsomaMax;
-            return (max > 0f) ? max : 0f;
-        }
-        private GpuCubeInfo CuboDelDisco()
-        {
-            GpuCubeInfo ci = new GpuCubeInfo();
-            if (panelSongs != null && cubeBox != null)
-                FillCubeBoxGeom(ref ci, cubeBox, panelSongs.Left + cubeBox.Left, panelSongs.Top + cubeBox.Top);
-            return ci;
-        }
-        private GpuVinilo BuildViniloState()
-        {
-            GpuVinilo v = new GpuVinilo();
-            if (!viniloDisco || gpuMode != 3 || panelSongs == null || !panelSongs.Visible || songList == null || cubeBox == null) return v;
-            GpuCubeInfo ci = CuboDelDisco();
-            if (ci.W < 40f || viniloBmp == null) return v;
-            v.Has = true; v.Bmp = viniloBmp; v.Ver = viniloVer;
-            v.R = ci.W * RadioVinilo; v.Cx = ci.X + ci.W * .5f; v.Cy = ci.Y + ci.H * .5f;
-            v.Corre = CorreVinilo(v.Cx, v.R, ci.W, panelSongs.Left + songList.Left);
-            v.Cubo = CuboCorre(ci.W, cubeBox.Width);
-            v.Suena = DiscoAbiertoSuena();
-            return v;
-        }
-        // El vinilo se hornea ANTES de hacer falta: al cambiar la que suena (o su portada, o el tamaño del cubo), y
-        // no al entrar al disco, que es cuando vuela la portada y un tropiezo se veria. Mientras no suene nada se
-        // deja el que habia. Y si se esta guardando porque este disco ya no suena, su etiqueta no cambia a medio
-        // camino: la de la cancion nueva se pone cuando ya esta dentro.
-        private void PreparaVinilo()
-        {
-            if (!viniloDisco || nowPlaying == null || nowPlaying.IsVideo || miniCube == null) return;
-            if (gpuPanel != null && gpuPanel.ViniloFuera && !DiscoAbiertoSuena()) return;
-            Image tapa = miniCube.Cover;   // la portada de la que suena, la que ya tiene el cubito de abajo
-            // El color del genero se busca solo al cambiar la que suena o lo que se sabe de los generos.
-            if (!ReferenceEquals(nowPlaying, viniloDe) || viniloGenVer != generoVer)
-            { viniloGen = ColorDeLaQueSuena(); viniloDe = nowPlaying; viniloGenVer = generoVer; }
-            Color gen = viniloGen;
-            GpuCubeInfo ci = CuboDelDisco();
-            int lado = (int)Math.Ceiling(ci.W * RadioVinilo * 2f + 2f * ViniloAire);   // con su aire transparente alrededor
-            if (lado < 24) return;
-            if (viniloBmp != null && ReferenceEquals(tapa, viniloTapa) && gen.ToArgb() == viniloColor && lado == viniloLado) return;
-            // Los SURCOS son siempre los mismos: se hornean una vez por tamaño (son lo caro: decenas de circulos
-            // suavizados). Por cancion solo se copia ese disco y se le pone la etiqueta encima.
-            if (viniloSurcos == null || viniloSurcos.Width != lado)
-            {
-                if (viniloSurcos != null) viniloSurcos.Dispose();
-                viniloSurcos = new Bitmap(lado, lado, PixelFormat.Format32bppPArgb);
-                using (Graphics g = Graphics.FromImage(viniloSurcos)) { g.Clear(Color.Transparent); PintaSurcos(g, lado / 2f, lado / 2f - ViniloAire); }
-            }
-            if (viniloBmp == null || viniloBmp.Width != lado)
-            {
-                if (viniloBmp != null) viniloBmp.Dispose();
-                viniloBmp = new Bitmap(lado, lado, PixelFormat.Format32bppPArgb);
-            }
-            try
-            {
-                using (Graphics g = Graphics.FromImage(viniloBmp))
-                {
-                    g.CompositingMode = CompositingMode.SourceCopy;
-                    g.DrawImageUnscaled(viniloSurcos, 0, 0);
-                    g.CompositingMode = CompositingMode.SourceOver;
-                    PintaEtiqueta(g, lado / 2f, lado / 2f - ViniloAire, tapa, gen);
-                }
-            }
-            catch { return; }   // la portada estaba ocupada: se vuelve a intentar en la siguiente vuelta
-            viniloTapa = tapa; viniloColor = gen.ToArgb(); viniloLado = lado; viniloVer++;
-        }
-        private Color ColorDeLaQueSuena()
-        {
-            if (nowPlaying == null) return DefaultAccent;
-            string et = (nowPlaying.Song != null) ? GeneroDeCancion(nowPlaying.Song, nowPlaying.Disc) : null;
-            return string.IsNullOrEmpty(et) ? ColorDisco(nowPlaying.Disc) : ColorDeEtiqueta(et);
-        }
-        // El dibujo del vinilo, aparte del estado para poder mirarlo sin encender nada. Deja su aire transparente
-        // alrededor (ViniloAire).
-        internal static void PintaVinilo(Bitmap bmp, Image tapa, Color genero)
-        {
-            int lado = Math.Min(bmp.Width, bmp.Height);
-            float c = lado / 2f, R = c - ViniloAire;
-            using (Graphics g = Graphics.FromImage(bmp))
-            {
-                g.Clear(Color.Transparent);
-                if (R < 4f) return;
-                PintaSurcos(g, c, R);
-                PintaEtiqueta(g, c, R, tapa, genero);
-            }
-        }
-        // El disco negro con sus surcos, centrado en (c,c) y de radio R.
-        internal static void PintaSurcos(Graphics g, float c, float R)
-        {
-            if (R < 4f) return;
-            g.SmoothingMode = SmoothingMode.AntiAlias;
-            using (SolidBrush b = new SolidBrush(Color.FromArgb(255, 13, 13, 18))) g.FillEllipse(b, c - R, c - R, 2 * R, 2 * R);
-            float rEtq = R * EtiquetaVinilo;
-            // LOS SURCOS: un circulo fino cada 3 px, apenas mas claro que el disco. Y tres separaciones entre
-            // canciones, mas oscuras: es lo que hace que se lea "disco" de un vistazo.
-            using (Pen surco = new Pen(Color.FromArgb(46, 120, 120, 150), 1f))
-                for (float r = rEtq + 4f; r < R - 3f; r += 3f) g.DrawEllipse(surco, c - r, c - r, 2 * r, 2 * r);
-            using (Pen corte = new Pen(Color.FromArgb(210, 4, 4, 7), 1.6f))
-                for (int k = 1; k <= 3; k++)
-                {
-                    float r = rEtq + 4f + (R - 7f - rEtq) * k / 4f;
-                    g.DrawEllipse(corte, c - r, c - r, 2 * r, 2 * r);
-                }
-            using (Pen canto = new Pen(Color.FromArgb(150, 72, 72, 92), 1.5f))
-                g.DrawEllipse(canto, c - R + 1f, c - R + 1f, 2 * R - 2f, 2 * R - 2f);
-        }
-        // LA ETIQUETA: la portada recortada en circulo (asi se ve girar), un aro del color del genero y el agujero.
-        internal static void PintaEtiqueta(Graphics g, float c, float R, Image tapa, Color genero)
-        {
-            if (R < 4f) return;
-            g.SmoothingMode = SmoothingMode.AntiAlias;
-            g.InterpolationMode = InterpolationMode.HighQualityBicubic;
-            g.PixelOffsetMode = PixelOffsetMode.HighQuality;
-            float rEtq = R * EtiquetaVinilo;
-            RectangleF re = new RectangleF(c - rEtq, c - rEtq, 2 * rEtq, 2 * rEtq);
-            using (GraphicsPath pe = new GraphicsPath())
-            {
-                pe.AddEllipse(re);
-                if (tapa != null)
-                {
-                    GraphicsState st = g.Save();
-                    g.SetClip(pe);
-                    lock (tapa) g.DrawImage(tapa, re);
-                    g.Restore(st);
-                }
-                else using (SolidBrush b = new SolidBrush(genero)) g.FillPath(b, pe);
-            }
-            using (Pen aro = new Pen(Color.FromArgb(240, genero), Math.Max(2f, R * .035f))) g.DrawEllipse(aro, re);
-            float rh = Math.Max(2f, R * .04f);   // el agujero del centro
-            using (SolidBrush b = new SolidBrush(Color.FromArgb(255, 8, 8, 12))) g.FillEllipse(b, c - rh, c - rh, 2 * rh, 2 * rh);
-        }
-
         // ---------------- EL ECUALIZADOR ----------------
         // Donde van las barritas: lo apunto el horneado de la pagina (SongListView.PastillaSonandoEq), relativo a su
         // fila. Solo con la pagina quieta y la que suena a la vista.
@@ -437,7 +257,7 @@ namespace Rocola
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
                 g.InterpolationMode = InterpolationMode.HighQualityBilinear;
-                // Dos pixeles transparentes alrededor, como el vinilo: vuela girado y con filtro.
+                // Dos pixeles transparentes alrededor: vuela girado y con filtro, y asi su borde suavizado no toca el filo.
                 RectangleF caja = new RectangleF(2f, 2f, w - 4.5f, h - 4.5f);
                 using (GraphicsPath p = Redondo(caja, h * .28f))
                 {
@@ -466,7 +286,7 @@ namespace Rocola
             }
         }
 
-        // Una vez por latido del reloj de la pantalla: los minutos de la cola y el vinilo de lo que suena.
+        // Una vez por latido del reloj de la pantalla: los minutos de la cola.
         private void DiscoVivoTic()
         {
             ActualizaEsperas(false);
@@ -653,19 +473,13 @@ namespace Rocola
 
     internal sealed partial class GpuPanel
     {
-        public Func<GpuVinilo> GetVinilo;
         public Func<GpuEq> GetEq;
         public Func<GpuBoleto> GetBoleto;
-        // 33 1/3 vueltas por minuto, en radianes por segundo.
-        internal const double ViniloRadS = Math.PI * 2.0 * (100.0 / 3.0) / 60.0;
-        internal const float ViniloSaleMs = 650f, ViniloEntraMs = 450f;
-        private IntPtr viniloTex; private int viniloVer = -1, viniloBw, viniloBh; private float viniloU = 1f, viniloV = 1f;
         private IntPtr boletoTex; private int boletoVer = -1, boletoBw, boletoBh; private float boletoU = 1f, boletoV = 1f;
-        private GpuVinilo viniloCuadro; private GpuBoleto boletoCuadro;
-        private float viniloSal;                 // 0 = guardado detras de la portada; 1 = fuera del todo
-        private double viniloAng, discoUltMs, discoRelojMs;
+        private GpuBoleto boletoCuadro;
+        private double discoUltMs, discoRelojMs;
         private readonly float[] eqAlto = new float[4];
-        private readonly D3D9.Vtx[] viniloQuad = new D3D9.Vtx[6], boletoQuad = new D3D9.Vtx[6], eqV = new D3D9.Vtx[4 * 6];
+        private readonly D3D9.Vtx[] boletoQuad = new D3D9.Vtx[6], eqV = new D3D9.Vtx[4 * 6];
 
         // El momento del cuadro que se esta dibujando (el de cuando se VERA, si se sabe), sin ir nunca hacia atras.
         private double MomentoDisco()
@@ -675,69 +489,17 @@ namespace Rocola
             discoRelojMs = t;
             return t;
         }
-        // Texturas del vinilo y del boleto: ANTES de Begin, como las demas. Solo se suben cuando cambia su version.
+        // Textura del boleto: ANTES de Begin, como las demas. Solo se sube cuando cambia su version.
         private void PreparaDiscoVivo()
         {
-            viniloCuadro = (GetVinilo != null) ? GetVinilo() : new GpuVinilo();
-            if (viniloCuadro.Has && viniloCuadro.Bmp != null && (viniloCuadro.Ver != viniloVer || viniloTex == IntPtr.Zero))
-            { viniloTex = Upload(viniloTex, ref viniloBw, ref viniloBh, viniloCuadro.Bmp, out viniloU, out viniloV); viniloVer = viniloCuadro.Ver; }
             boletoCuadro = (GetBoleto != null) ? GetBoleto() : new GpuBoleto();
             if (boletoCuadro.Has && boletoCuadro.Bmp != null && (boletoCuadro.Ver != boletoVer || boletoTex == IntPtr.Zero))
             { boletoTex = Upload(boletoTex, ref boletoBw, ref boletoBh, boletoCuadro.Bmp, out boletoU, out boletoV); boletoVer = boletoCuadro.Ver; }
             double ahora = MomentoDisco();
             float dt = (discoUltMs > 0) ? (float)Math.Max(0, Math.Min(.1, (ahora - discoUltMs) / 1000.0)) : 0f;
             discoUltMs = ahora;
-            // El vinilo sale y se guarda a velocidad fija (y si cambia de idea a medio camino, vuelve desde donde
-            // esta: nunca salta). Fuera del disco se da por guardado, para que al volver a entrar salga otra vez.
-            if (!viniloCuadro.Has) viniloSal = 0f;
-            else viniloSal = PasoVinilo(viniloSal, viniloCuadro.Suena, dt);
-            // Gira con lo que ha salido: arranca y se para como un tocadiscos.
-            viniloAng += ViniloRadS * CurvaVinilo(viniloSal) * dt;
-            if (viniloAng > Math.PI * 2.0) viniloAng -= Math.PI * 2.0;
             PasoEq(ahora, dt);
         }
-        internal static float PasoVinilo(float sal, bool sale, float dt)
-        {
-            if (!(dt > 0f)) return sal;
-            if (sale) { sal += dt * 1000f / ViniloSaleMs; return (sal > 1f) ? 1f : sal; }
-            sal -= dt * 1000f / ViniloEntraMs; return (sal < 0f) ? 0f : sal;
-        }
-        // Arranca y frena suave en los dos sentidos.
-        internal static float CurvaVinilo(float s)
-        {
-            if (!(s > 0f)) return 0f;
-            if (s >= 1f) return 1f;
-            return s * s * (3f - 2f * s);
-        }
-        // Lo que el cubo del disco esta apartado ahora mismo (para que el viaje al salir del disco parta de ahi).
-        public float CuboCorrido;
-        // Si el vinilo esta fuera, aunque sea a medias (mientras se guarda, su etiqueta no se cambia).
-        public bool ViniloFuera { get { return viniloSal > 0f; } }
-        // Detras del cubo grande, antes de dibujarlo: el cubo se aparta un poco hacia su lado y el vinilo asoma por el
-        // otro, girando.
-        private void DibujaVinilo(ref GpuCubeState cs)
-        {
-            CuboCorrido = 0f;
-            if (sceneMode != 3 || !cs.Sel.Has || !viniloCuadro.Has || viniloTex == IntPtr.Zero || viniloCuadro.Bmp == null) return;
-            float e = CurvaVinilo(viniloSal);
-            if (e <= 0.001f) return;
-            CuboCorrido = viniloCuadro.Cubo * e;
-            cs.Sel.X -= CuboCorrido;
-            float bw = viniloCuadro.Bmp.Width, bh = viniloCuadro.Bmp.Height;
-            float cx = viniloCuadro.Cx + viniloCuadro.Corre * e, cy = viniloCuadro.Cy;
-            float esc = (2f * viniloCuadro.R) / Math.Max(1f, bw - 2f * Form1.ViniloAire);   // el disco (sin su aire) mide 2R
-            int a = (int)(Math.Min(1f, e * 3f) * SceneAlpha() * 255f + .5f); if (a > 255) a = 255;
-            if (a <= 0) return;
-            SetTexQuadGiro(viniloQuad, cx, cy, (bw - 2f) * .5f * esc, (bh - 2f) * .5f * esc, (float)viniloAng,
-                           viniloU / bw, viniloV / bh, viniloU * (bw - 1f) / bw, viniloV * (bh - 1f) / bh, ((uint)a << 24) | 0x00FFFFFFu);
-            stars.DrawQuad(viniloTex, viniloQuad);
-            // Dos brillos QUIETOS, como la luz del local sobre el vinilo: el disco gira y el reflejo no.
-            float rr = viniloCuadro.R, ga = 34f * e * SceneAlpha();
-            uint luz = ((uint)ga << 24) | 0x00E8F0FFu;
-            stars.DrawGlow(cx - rr * .47f, cy - rr * .47f, rr * .26f, luz);
-            stars.DrawGlow(cx + rr * .47f, cy + rr * .47f, rr * .22f, luz);
-        }
-
         // Un cuadro con textura GIRADO 'ang' alrededor de su centro, con su tramo de textura (u0,v0)-(u1,v1).
         internal static void SetTexQuadGiro(D3D9.Vtx[] v, float cx, float cy, float hw, float hh, float ang,
                                             float u0, float v0, float u1, float v1, uint argb)
@@ -853,9 +615,8 @@ namespace Rocola
         }
         private void SueltaDiscoVivo()
         {
-            if (viniloTex != IntPtr.Zero) { D3D9.Release(viniloTex); viniloTex = IntPtr.Zero; }
             if (boletoTex != IntPtr.Zero) { D3D9.Release(boletoTex); boletoTex = IntPtr.Zero; }
-            viniloVer = boletoVer = -1; viniloBw = viniloBh = boletoBw = boletoBh = 0;
+            boletoVer = -1; boletoBw = boletoBh = 0;
         }
     }
 #endif

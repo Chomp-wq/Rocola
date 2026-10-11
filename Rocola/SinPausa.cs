@@ -74,8 +74,6 @@ namespace Rocola
             { bytes -= tablas[0].Datos.LongLength * 8; tablas.RemoveAt(0); }
         }
 
-        internal static bool TablaPreparada(WaveFormat a, WaveFormat b)
-        { return CapturaTabla(a, b) != null; }
 
         // La referencia se captura bajo el mismo candado que publica el calentador.
         // Otro par puede sustituir la cache despues; esta tabla ya capturada sigue siendo valida.
@@ -305,7 +303,6 @@ namespace Rocola
         }
 
         public WaveFormat WaveFormat { get { return formato; } }
-        internal object FichaActual { get { lock (cerrojo) return fichaActual; } }
         internal long CuadrosEntregados { get { return Interlocked.Read(ref muestras) / ch; } }
         internal bool Terminado { get { lock (cerrojo) return terminado; } }
         internal bool HayPreparada { get { lock (cerrojo) return siguiente != null; } }

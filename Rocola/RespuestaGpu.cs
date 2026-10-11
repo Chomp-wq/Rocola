@@ -173,29 +173,6 @@ namespace Rocola
             lunaBeat += (SafeMoonLevel(music.Bass) - lunaBeat) * blend;
             lunaMid += (mid - lunaMid) * blend; lunaHigh += (high - lunaHigh) * blend;
         }
-        private void DrawMoonOrbits(float cx, float cy, float radius)
-        {
-            double seconds = AhoraMs() / 1000;
-            stars.GlowBatchBegin(19);
-            uint rgb = (NebColor & 0xFFFFFFu) | 0x00406080u;
-            stars.GlowBatchAdd(cx, cy, radius * (2.5f + lunaBeat), ((uint)((25 + lunaBeat * 50) * Dim) << 24) | rgb);
-            for (int orbit = 0; orbit < 3; orbit++)
-            {
-                float band = orbit == 0 ? lunaBeat : orbit == 1 ? lunaMid : lunaHigh;
-                double angle = seconds * (.35 + orbit * .16) + orbit * 2.094;
-                uint color = orbit == 0 ? 0xFFD899u : orbit == 1 ? 0xAACFFFu : 0xECC2FFu;
-                for (int tail = 5; tail >= 0; tail--)
-                {
-                    double a = angle - tail * .095;
-                    float x = cx + (float)Math.Cos(a) * radius * (1.7f + orbit * .33f);
-                    float y = cy + (float)Math.Sin(a) * radius * (.60f + orbit * .15f);
-                    float size = radius * (tail == 0 ? .24f + band * .22f : .12f);
-                    int alpha = (int)((tail == 0 ? 165 + band * 80 : 75 - tail * 11) * Dim);
-                    stars.GlowBatchAdd(x, y, Math.Max(1, size), ((uint)alpha << 24) | color);
-                }
-            }
-            stars.GlowBatchEnd();
-        }
         private double sceneStart = -1000, focusStart = -1000;
         private Rectangle focusPrevious;
         private int sceneMode;

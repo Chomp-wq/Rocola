@@ -20,8 +20,7 @@ using System.Windows.Forms;
 //     que cambia un minuto (y solo entonces); manda el titulo.
 //  4) EL ECUALIZADOR: la pastilla de SONANDO deja el hueco de las barritas, el horneado apunta donde van, y la
 //     tarjeta las pone encima solo con la pagina quieta y la que suena a la vista.
-//  5) EL VINILO: su dibujo, cuanto asoma (sin tocar la lista), el cubo que se aparta, la entrada y salida sin
-//     saltos, las 33 1/3 vueltas, y que se hornea antes de hacer falta y una vez por cancion.
+//  5) EL VINILO: retirado (24/09) y su codigo quitado (11/10); se comprueba que no quede nada.
 //  6) EL BOLETO Y LA CAPSULA: sale calcado encima de su fila, vuela en arco y cae dentro de la capsula; la capsula
 //     ensena el numero de antes hasta que llega y entonces salta, destella y el numero rueda.
 //  7) Ctrl+F3 -> Pantalla -> Dentro del disco: los cinco interruptores caben, se guardan, se leen y se aplican.
@@ -32,7 +31,7 @@ using System.Windows.Forms;
 class DiscoVivo
 {
     const BindingFlags F = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
-    static Type form, gpu, star, slT, pvT, trackT, itemT, cubeT, infoT, cajaT, bgT;
+    static Type form, gpu, star, slT, pvT, trackT, itemT, cajaT, bgT;
     static Assembly asmCpu;   // el perfil sin tarjeta, para comparar pixel a pixel
     static int fallos, oks;
     static string dirPng;
@@ -503,155 +502,14 @@ class DiscoVivo
     // ================================================================================================
     static void Vinilo()
     {
-        Console.WriteLine("\n  5) EL VINILO\n");
-        using (Bitmap tapa = Liso(40, 200, 90, 80))
-        using (Bitmap b = new Bitmap(210, 210, PixelFormat.Format32bppPArgb))
-        {
-            St(form, "PintaVinilo", b, tapa, Color.FromArgb(215, 120, 25));
-            bool borde = true;
-            for (int i = 0; i < 210; i++) for (int k = 0; k < 2; k++)
-                    if (b.GetPixel(i, k).A != 0 || b.GetPixel(i, 209 - k).A != 0 || b.GetPixel(k, i).A != 0 || b.GetPixel(209 - k, i).A != 0) borde = false;
-            Check(borde, "deja dos pixeles transparentes alrededor (la tarjeta lo dibuja girado y con filtro)");
-            float R = 105f - Cte<float>(form, "ViniloAire"), et = R * Cte<float>(form, "EtiquetaVinilo");
-            Color cuerpo = b.GetPixel(105 + (int)(R * .8f), 105), etiqueta = b.GetPixel(105 + (int)(et * .5f), 105 - (int)(et * .3f)), agujero = b.GetPixel(105, 105);
-            Color aro = b.GetPixel(105 + (int)Math.Round(et), 105);
-            Check(cuerpo.A == 255 && cuerpo.R < 60 && cuerpo.G < 60 && cuerpo.B < 70, "el disco es negro y opaco");
-            Check(Math.Abs(etiqueta.R - 40) < 12 && Math.Abs(etiqueta.G - 200) < 12 && Math.Abs(etiqueta.B - 90) < 12, "la etiqueta lleva la portada");
-            Check(aro.R > 150 && aro.G > 70 && aro.B < 90 && agujero.R < 30, "con un aro del color del genero y el agujero del centro");
-            b.Save(Path.Combine(dirPng, "vinilo.png"));
-        }
-        MethodInfo corre = form.GetMethod("CorreVinilo", F);
-        bool nunca = true;
-        float margen = Cte<float>(form, "MargenVinilo"), asoma = Cte<float>(form, "AsomaMax");
-        foreach (float lado in new float[] { 151f, 310f, 321f, 558f })
-            foreach (float listaX in new float[] { 140f, 238f, 442f, 759f, 2000f })
-            {
-                float cx = 26f + lado * .64f, r = lado * .33f;
-                float c = (float)corre.Invoke(null, new object[] { cx, r, lado, listaX });
-                if (c < 0f || c > lado * asoma + .01f) nunca = false;
-                if (c > 0f && cx + c + r > listaX - margen + .01f) nunca = false;
-            }
-        Check(nunca, "el vinilo nunca llega a " + Fm(margen, "0") + " px de la lista (no la tapa), ni sale mas del " + Fm(asoma * 100, "0") + " % del cubo, ni hacia atras");
-        float c768 = (float)corre.Invoke(null, new object[] { 225f, 102.3f, 310f, 442f });
-        Info("en 1024x768: el cubo mide 310 px, el vinilo 205 y asoma " + Fm(c768, "0") + " px");
-        MethodInfo cede = form.GetMethod("CuboCorre", F);
-        bool cabe = true;
-        foreach (float lado in new float[] { 151f, 310f, 558f }) foreach (float cajaW in new float[] { lado / .78f, lado + 4f })
-            {
-                float c = (float)cede.Invoke(null, new object[] { lado, cajaW });
-                if (c < 0f || c > lado * Cte<float>(form, "CuboCede") + .01f || c > (cajaW - lado) * .5f + 10.01f) cabe = false;
-            }
-        Check(cabe, "el cubo se aparta como mucho un " + Fm(Cte<float>(form, "CuboCede") * 100, "0") + " % de su lado, y sin salirse de su caja mas de 10 px");
-
-        MethodInfo pv = gpu.GetMethod("PasoVinilo", F), cv = gpu.GetMethod("CurvaVinilo", F);
-        float s = 0f; int ms = 0;
-        while (s < 1f && ms < 5000) { s = (float)pv.Invoke(null, new object[] { s, true, .001f }); ms++; }
-        float sale = Cte<float>(gpu, "ViniloSaleMs"), entra = Cte<float>(gpu, "ViniloEntraMs");
-        Check(Math.Abs(ms - sale) <= 2, "sale en " + ms + " ms");
-        int msIn = 0; while (s > 0f && msIn < 5000) { s = (float)pv.Invoke(null, new object[] { s, false, .001f }); msIn++; }
-        Check(Math.Abs(msIn - entra) <= 2, "y se guarda en " + msIn + " ms");
-        s = .5f; float s2 = (float)pv.Invoke(null, new object[] { s, false, .016f });
-        Check(Math.Abs(s2 - (.5f - 16f / entra)) < .001f && (float)pv.Invoke(null, new object[] { .3f, true, 0f }) == .3f && (float)pv.Invoke(null, new object[] { .3f, true, float.NaN }) == .3f,
-              "si cambia de idea a medio camino vuelve desde donde esta (sin saltos), y un reloj raro no lo mueve");
-        bool suave = true; float ant = 0f, maxPaso = 0f;
-        for (int i = 0; i <= 1000; i++) { float c = (float)cv.Invoke(null, new object[] { i / 1000f }); if (c < ant) suave = false; maxPaso = Math.Max(maxPaso, c - ant); ant = c; }
-        Check(suave && ant == 1f && (float)cv.Invoke(null, new object[] { 0f }) == 0f && maxPaso < .0016f
-              && (float)cv.Invoke(null, new object[] { .05f }) < .02f && (float)cv.Invoke(null, new object[] { .95f }) > .98f, "arranca y frena suave, en los dos sentidos");
-        double w = Cte<double>(gpu, "ViniloRadS");
-        Check(Math.Abs(w * 60.0 / (2 * Math.PI) - 100.0 / 3.0) < 1e-9, "gira a 33 1/3 vueltas por minuto (" + Fm(w, "0.000") + " rad/s), y gira con lo que ha salido: arranca y para como un tocadiscos");
-
-        // Si suena el disco abierto.
-        object f = Codigo.FormSinEncender(form);
-        IList items = (IList)Get(f, "songItems");
-        object it = Cancion("x/02 Cancion.mp3"); object tk = Get(it, "Song");
-        items.Add(Get(Cancion("x/01 Otra.mp3"), "Song")); items.Add(tk);
-        Set(f, "nowPlaying", it); Set(f, "sonandoKey", "X/02 CANCION.MP3"); Set(f, "colaVer", 1);
-        MethodInfo sue = form.GetMethod("DiscoAbiertoSuena", F);
-        Check((bool)sue.Invoke(f, null), "sabe cuando suena una cancion del disco abierto (sin distinguir mayusculas, como el resto)");
-        Set(f, "sonandoKey", "otra.mp3");
-        Check((bool)sue.Invoke(f, null), "no lo vuelve a buscar en cada cuadro: solo cuando cambia la cola o el disco");
-        Set(f, "colaVer", 2);
-        Check(!(bool)sue.Invoke(f, null), "y al cambiar, se entera");
-        object vid = Activator.CreateInstance(itemT, true); Set(vid, "IsVideo", true);
-        Set(f, "nowPlaying", vid); Set(f, "sonandoKey", "X/02 CANCION.MP3"); Set(f, "colaVer", 3);
-        Check(!(bool)sue.Invoke(f, null), "un VIDEO no saca vinilo");
-
-        // Se hornea antes de hacer falta, una vez por cancion; los surcos, una vez por tamaño.
-        object g = Codigo.FormSinEncender(form);
-        Control panel = (Control)Activator.CreateInstance(bgT, true); panel.SetBounds(14, 106, 996, 540);
-        Control caja = (Control)Activator.CreateInstance(cajaT, true); caja.SetBounds(12, 52, 398, 398);
-        Control mini = (Control)Activator.CreateInstance(cajaT, true); mini.SetBounds(14, 658, 96, 96);
-        Bitmap t1 = Liso(200, 40, 40, 60), t2 = Liso(40, 40, 200, 60);
-        Set(mini, "Cover", t1);
-        Set(g, "panelSongs", panel); Set(g, "cubeBox", caja); Set(g, "miniCube", mini); Set(g, "viniloDisco", true);
-        Set(g, "nowPlaying", Cancion("y/01 A.mp3"));
-        MethodInfo prep = form.GetMethod("PreparaVinilo", F);
-        prep.Invoke(g, null);
-        int v1 = (int)Get(g, "viniloVer"); Bitmap surcos = (Bitmap)Get(g, "viniloSurcos"), vbmp = (Bitmap)Get(g, "viniloBmp");
-        prep.Invoke(g, null); prep.Invoke(g, null);
-        Check(v1 == 1 && (int)Get(g, "viniloVer") == 1 && vbmp != null && vbmp.Width == (int)Math.Ceiling((int)(398 * .78) * .33f * 2f + 5f),
-              "se hornea al sonar la cancion, a la medida del cubo, y no otra vez en cada vuelta del reloj");
-        Set(mini, "Cover", t2); prep.Invoke(g, null);
-        Check((int)Get(g, "viniloVer") == 2 && ReferenceEquals(Get(g, "viniloSurcos"), surcos), "otra portada: otra etiqueta, pero los surcos (lo caro) son los mismos");
-        Set(g, "nowPlaying", vid); Set(mini, "Cover", t1); prep.Invoke(g, null);
-        Check((int)Get(g, "viniloVer") == 2, "con un video no se hornea nada");
-        Set(g, "viniloDisco", false); Set(g, "nowPlaying", Cancion("y/01 A.mp3")); prep.Invoke(g, null);
-        Check((int)Get(g, "viniloVer") == 2, "ni con el vinilo apagado");
-        Control pg = (Control)Activator.CreateInstance(gpu, true);
-        Set(g, "gpuPanel", pg); Set(g, "viniloDisco", true); Set(g, "nowPlaying", Cancion("y/09 Otra.mp3")); Set(mini, "Cover", t1);
-        Set(pg, "viniloSal", .5f);   // a medio guardar: el disco abierto (sin canciones) ya no suena
-        prep.Invoke(g, null);
-        bool quieto = (int)Get(g, "viniloVer") == 2;
-        Set(pg, "viniloSal", 0f); prep.Invoke(g, null);
-        Check(quieto && (int)Get(g, "viniloVer") == 3, "mientras se guarda porque ya no suena este disco, su etiqueta no cambia a medio camino (la nueva, ya guardado)");
-        Check(!Codigo.Llama(form.GetMethod("DiscoVivoTic", F), "PreparaVinilo"), "el reloj ya no prepara vinilos retirados");
-
-        // Lo que se entrega al panel.
-        Set(g, "viniloDisco", true); Set(g, "gpuMode", 3);
-        Control sl = Lista(slT, titulos, 3, true, ""); sl.Location = new Point(428, 80); Set(g, "songList", sl);
-        MethodInfo bv = form.GetMethod("BuildViniloState", F);
-        object est = bv.Invoke(g, null);
-        float R2 = (float)Get(est, "R"), cx2 = (float)Get(est, "Cx"), co = (float)Get(est, "Corre");
-        Check((bool)Get(est, "Has") && Math.Abs(R2 - 398 * .78f * .33f) < 1f && Math.Abs(cx2 + co + R2 - (14 + 428 - margen)) < 1f,
-              "dentro del disco se entrega con su medida y su sitio: en 1024x768 asoma hasta " + Fm(margen, "0") + " px de la lista");
-        Set(g, "gpuMode", 1);
-        Check(!(bool)Get(bv.Invoke(g, null), "Has"), "fuera del disco, no");
-
-        // El panel: el cubo se aparta, el vinilo va detras.
-        Control p = (Control)Activator.CreateInstance(gpu, true);
-        Set(p, "stars", System.Runtime.Serialization.FormatterServices.GetUninitializedObject(star));
-        Set(p, "viniloTex", new IntPtr(1));
-        Set(est, "Cubo", 40f); Set(p, "viniloCuadro", est); Set(p, "sceneMode", 3); Set(p, "viniloSal", 1f);
-        object cs = Activator.CreateInstance(cubeT); object sel = Activator.CreateInstance(infoT);
-        Set(sel, "Has", true); Set(sel, "X", 100f); Set(sel, "W", 310f); Set(sel, "H", 310f); Set(cs, "Sel", sel);
-        object[] a = { cs };
-        MethodInfo dv = gpu.GetMethod("DibujaVinilo", F);
-        dv.Invoke(p, a);
-        Check(Math.Abs((float)Get(Get(a[0], "Sel"), "X") - 60f) < .01f && Math.Abs((float)Get(p, "CuboCorrido") - 40f) < .01f, "con el vinilo fuera, el cubo se aparta hacia su lado lo que diga (y el panel lo apunta)");
-        Set(p, "viniloSal", 0f); a = new object[] { cs }; dv.Invoke(p, a);
-        Check(Math.Abs((float)Get(Get(a[0], "Sel"), "X") - 100f) < .01f && (float)Get(p, "CuboCorrido") == 0f, "guardado, el cubo esta en su sitio");
-        Set(p, "viniloSal", 1f); Set(p, "sceneMode", 1); a = new object[] { cs }; dv.Invoke(p, a);
-        Check(Math.Abs((float)Get(Get(a[0], "Sel"), "X") - 100f) < .01f && (float)Get(p, "CuboCorrido") == 0f, "y fuera del disco no toca nada");
-        Set(p, "viniloTex", IntPtr.Zero);
-        object h = Codigo.FormSinEncender(form);
-        Control ph = (Control)Activator.CreateInstance(bgT, true); ph.SetBounds(14, 106, 996, 540);
-        Control ch = (Control)Activator.CreateInstance(cajaT, true); ch.SetBounds(12, 52, 398, 398);
-        Set(h, "panelSongs", ph); Set(h, "cubeBox", ch); Set(h, "gpuPanel", p);
-        MethodInfo dcr = form.GetMethod("DiscCubeRect", F);
-        Set(p, "CuboCorrido", 40f);
-        object[] ang = { 0.0 };
-        RectangleF rc = (RectangleF)dcr.Invoke(h, ang);
-        Set(p, "CuboCorrido", 0f);
-        RectangleF rq = (RectangleF)dcr.Invoke(h, ang);
-        Check(Math.Abs(rq.X - rc.X - 40f) < .01f && rq.Width == rc.Width, "el viaje al salir del disco parte de donde se VE el cubo (apartado), sin saltito");
-        List<string> orden = Codigo.Repasa(gpu.GetMethod("RenderFrame", F));
-        int iv = orden.IndexOf("DibujaVinilo"), ifo = orden.IndexOf("DibujaFoco");
-        bool cuboDespues = false; for (int i = iv + 1; i < ifo && iv >= 0; i++) if (orden[i] == "DrawCube") cuboDespues = true;
-        Check(iv < 0 && !cuboDespues, "el renderizador ya no llama al vinilo");
-        MethodInfo pdv = gpu.GetMethod("PreparaDiscoVivo", F);
-        Set(p, "viniloSal", .7f); Set(p, "discoUltMs", 0.0);
-        pdv.Invoke(p, null);
-        Check((float)Get(p, "viniloSal") == 0f, "al salir del disco se da por guardado: al volver a entrar sale otra vez");
+        Console.WriteLine("\n  5) EL VINILO (retirado)\n");
+        // Se retiro el 24/09 y su codigo quedo "para pruebas de compatibilidad". El 11/10 se quito del todo: no queda
+        // ni el estado, ni su horneado, ni su textura, ni el cubo que se apartaba para dejarlo asomar.
+        Check(form.GetMethod("BuildViniloState", F) == null && form.GetMethod("PreparaVinilo", F) == null && form.GetMethod("PintaVinilo", F) == null
+              && form.GetField("viniloDisco", F) == null && form.Assembly.GetType("Rocola.GpuVinilo") == null, "el vinilo de dentro del disco ya no existe");
+        Check(gpu.GetMethod("DibujaVinilo", F) == null && gpu.GetField("GetVinilo", F) == null && gpu.GetField("CuboCorrido", F) == null && gpu.GetField("viniloTex", F) == null,
+              "y la tarjeta ya no lo prepara ni aparta el cubo");
+        Check(!Codigo.Llama(form.GetMethod("DiscoVivoTic", F), "PreparaVinilo"), "el reloj ya no prepara vinilos");
     }
 
     // ================================================================================================
@@ -884,21 +742,7 @@ class DiscoVivo
         double tp = Mide(40, () => plan.Invoke(g, new object[] { gl, 9, 12, 556, 55f, 24 }));
         Info("decidir el genero de toda la pagina: " + Fm(tp, "0.00") + " ms (solo al hornear)");
 
-        object f = Codigo.FormSinEncender(form);
-        Control caja = (Control)Activator.CreateInstance(cajaT, true); caja.SetBounds(12, 52, 398, 398);
-        Control mini = (Control)Activator.CreateInstance(cajaT, true);
-        Set(f, "cubeBox", caja); Set(f, "miniCube", mini); Set(f, "panelSongs", Activator.CreateInstance(bgT, true)); Set(f, "viniloDisco", true);
-        Set(f, "nowPlaying", Cancion("c/01.mp3"));
         Bitmap[] tapas = { Liso(200, 40, 40, 300), Liso(40, 200, 40, 300) };
-        int k = 0;
-        MethodInfo prep = form.GetMethod("PreparaVinilo", F);
-        System.Diagnostics.Stopwatch sw = System.Diagnostics.Stopwatch.StartNew();
-        Set(mini, "Cover", tapas[0]); prep.Invoke(f, null);
-        double tPrimero = sw.Elapsed.TotalMilliseconds;
-        double tCancion = Mide(20, () => { Set(mini, "Cover", tapas[(++k) & 1]); prep.Invoke(f, null); });
-        double tQuieto = Mide(500, () => prep.Invoke(f, null));
-        Info("el vinilo: la primera vez " + Fm(tPrimero, "0.0") + " ms (los surcos, una vez por tamaño), por cancion " + Fm(tCancion, "0.00") + " ms, y en cada vuelta del reloj " + Fm(tQuieto * 1000, "0") + " us");
-        Check(tCancion < tPrimero, "por cancion cuesta menos que la primera vez: los surcos no se vuelven a hornear");
         Font letra = new Font(FontFamily.GenericSansSerif, 16.7f, FontStyle.Bold);
         Bitmap bol = new Bitmap(262, 46, PixelFormat.Format32bppPArgb);
         double tb = Mide(40, () => St(form, "PintaBoleto", bol, tapas[0], "Hermoso Cariño", letra));
@@ -921,7 +765,7 @@ class DiscoVivo
         form = asm.GetType("Rocola.Form1"); gpu = asm.GetType("Rocola.GpuPanel"); star = asm.GetType("Rocola.GpuStarfield");
         slT = form.GetNestedType("SongListView", F); pvT = form.GetNestedType("PastillaView", F);
         trackT = form.GetNestedType("Track", F); itemT = form.GetNestedType("PlayItem", F);
-        cubeT = asm.GetType("Rocola.GpuCubeState"); infoT = asm.GetType("Rocola.GpuCubeInfo"); cajaT = form.GetNestedType("CubeBox", F); bgT = form.GetNestedType("BgPanel", F);
+        cajaT = form.GetNestedType("CubeBox", F); bgT = form.GetNestedType("BgPanel", F);
         dirPng = Path.Combine(Path.GetTempPath(), "rocola_discovivo_png"); Directory.CreateDirectory(dirPng);
         Console.WriteLine("  perfil: " + (gpu != null ? "con tarjeta grafica" : "sin tarjeta grafica (solo la pestaña de ajustes)"));
         if (gpu != null)

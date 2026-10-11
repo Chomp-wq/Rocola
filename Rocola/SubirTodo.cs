@@ -55,8 +55,6 @@ namespace Rocola
             return (float)(Math.Floor(h[fuera] * 10.0) / 10.0);   // a la decima, hacia abajo
         }
 
-        // La ganancia de nivelado de una cancion de la tabla (la misma cuenta que NormGainFor con su medida entera).
-        private float GananciaDeTabla(SonoridadIntegrada s) { return GananciaDeTabla(s, normalizeOn, normTarget, normStrength); }
         private static float GananciaDeTabla(SonoridadIntegrada s, bool nivela, float objetivo, float fuerza)
         {
             if (!nivela || fuerza <= 0.001f) return 1f;

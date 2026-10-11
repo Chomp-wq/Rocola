@@ -855,13 +855,12 @@ namespace Rocola
                 };
                 gpuPanel.GetFoco = BuildFocoState;     // el letrero de la portada enfocada
                 gpuPanel.GetFicha = BuildFichaState;   // la ficha rapida del disco
-                gpuPanel.GetVinilo = null; // efecto retirado, no se hornea ni se sube
                 gpuPanel.GetEq = BuildEqState;           // las barritas de la que suena
                 gpuPanel.GetBoleto = BuildBoletoState;   // el boleto que vuela de la fila a la cola
                 gpuPanel.GetAviso = BuildAvisoState;     // los avisos que se entienden (SuenaVivoGpu.cs)
                 gpuPanel.GetInvita = BuildInvitaState;   // sin creditos: la tarjeta que invita
                 gpuPanel.GetMoneda = BuildMonedaState;   // la moneda que cae en la capsula de creditos
-                gpuPanel.GetReposo = BuildReposoState;   // lo que suena, en grande: el vinilo y el titulo del panel de reposo
+                gpuPanel.GetReposo = BuildReposoState;   // lo que suena, en grande: el titulo y el genero del panel de reposo
                 gpuPanel.GetAtraccion = BuildAtraccionState;   // el modo atraccion: el escaparate y lo mas pedido (AtraccionGpu.cs)
                 gpuPanel.CoverControl = coverGovernor;
                 gpuPanel.GetGridAhead = albumView.BuildGpuAhead;

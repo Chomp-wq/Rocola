@@ -2292,8 +2292,7 @@ namespace Rocola
             // zoom es fluido aunque este temporizador vaya a 24. Aqui solo se apagan al cumplirse su tiempo.
             if (transMode != 0 && Environment.TickCount - transTick >= TransMs) AbortDiscTrans();
             if (winMode != 0 && Environment.TickCount - winTick >= WinMs) AbortWinTrans();
-            DiscoVivoTic();   // dentro del disco: los minutos de la cola y el vinilo de lo que suena (DiscoVivoGpu.cs)
-            SuenaVivoTic();   // y el vinilo del panel de reposo en grande (SuenaVivoGpu.cs)
+            DiscoVivoTic();   // dentro del disco: los minutos de la cola (DiscoVivoGpu.cs)
             AtraccionTic();   // y lo que se hornea para la atraccion, una cosa por vuelta (AtraccionGpu.cs)
 #endif
             DrainCoverTrash();   // libera carátulas expulsadas (seguro: no hay repintado en curso)

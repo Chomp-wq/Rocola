@@ -207,7 +207,7 @@ namespace Rocola
         //    16 frecuencia   20 cuadro      40 huella de la carpeta
         // Solo HUELLAS (FNV-1a de 64 bits), ni rutas ni nombres. La cancion es su nombre de archivo mas su
         // duracion: mover la biblioteca de sitio no la convierte en otra. La carpeta es el "album" tal como lo
-        // arma la rocola. El artista, SOLO si viene en la etiqueta del MP3 (Track.SoloArtista: nunca se
+        // arma la rocola. El artista, SOLO si viene en la etiqueta del MP3 (Track.SoloArtistaGenero: nunca se
         // adivina del nombre); sin etiqueta, o con comodines como "Various Artists", queda en 0 = no se sabe.
         //
         // Se escribe DESPUES de que los ejemplos llegaron al disco. Si se corta la luz entre las dos cosas, esos

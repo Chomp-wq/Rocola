@@ -23,7 +23,7 @@ using System.Windows.Forms;
 //  4) LA MONEDA QUE CAE: se entera sola de cada moneda (y de los creditos de servicio), cae acelerando hasta el numero,
 //     la capsula da su golpe solo en la imagen de la tarjeta, la monedita de dentro no se pinta, sube "+4 creditos" y
 //     el letrero de arriba no sale.
-//  5) LO QUE SUENA, EN GRANDE: el texto ya no se corre (el vinilo se retiro el 24/09), el titulo en una linea que se
+//  5) LO QUE SUENA, EN GRANDE: sin vinilo (retirado el 24/09, su codigo el 11/10), el titulo en una linea que se
 //     desliza si no cabe (quieto, va, se para, vuelve, sin saltos), cuanto falta, la pastilla del genero y los minutos
 //     de cada una de la cola (los mismos de la cola del disco), y que el panel se entera cuando cambian.
 //  6) Ctrl+F3 -> Pantalla: las dos hojas, los cuatro interruptores, 16 combinaciones guardadas y aplicadas.
@@ -506,7 +506,7 @@ class SuenaVivo
         Image[] cov = { Liso(Color.SteelBlue, 60), Liso(Color.SeaGreen, 60), Liso(Color.Crimson, 60) };
         MethodInfo gra = form.GetMethod("RenderIdlePanelGrande", F);
         object x = Activator.CreateInstance(grandeT, true);
-        Set(x, "Corre", 60); Set(x, "Genero", "Regional"); Set(x, "GeneroColor", Color.FromArgb(215, 120, 25)); Set(x, "Minutos", new int[] { 2, 6, -1 });
+        Set(x, "Genero", "Regional"); Set(x, "GeneroColor", Color.FromArgb(215, 120, 25)); Set(x, "Minutos", new int[] { 2, 6, -1 });
         string largo = "Mi Gusto Es (En Vivo desde Guadalajara, Edicion Aniversario)";
         object[] args = { 1024, 245, largo, "Mariachi Vargas de Tecalitlan", "1:47  ·  faltan 2:25", qt, qa, cov, 3, Color.MediumPurple, false, 2, false, x, 0 };
         Bitmap conX = (Bitmap)gra.Invoke(null, args);
@@ -516,8 +516,8 @@ class SuenaVivo
         sinX.Save(Path.Combine(dirPng, "reposo_siempre.png"), ImageFormat.Png);
         RectangleF caja = (RectangleF)Get(x, "TituloCaja"), gcaja = (RectangleF)Get(x, "GeneroCaja");
         Rectangle cover = (Rectangle)St(gpu, "IdleCoverRect", 1024, 245);
-        Check((bool)Get(x, "TituloFuera") && Math.Abs(caja.X - (cover.Right + 20 + 60)) < .5f && caja.Width > 50,
-              "el titulo que no cabe lo pinta la tarjeta deslizandose: el panel solo apunta su caja, corrida para el vinilo (" + Fm(caja.X, "0") + " px)");
+        Check((bool)Get(x, "TituloFuera") && Math.Abs(caja.X - (cover.Right + 20)) < .5f && caja.Width > 50,
+              "el titulo que no cabe lo pinta la tarjeta deslizandose: el panel solo apunta su caja, justo tras la portada (" + Fm(caja.X, "0") + " px)");
         int blancoCaja = Parecidos(conX, new Rectangle((int)caja.X, (int)caja.Y, (int)caja.Width, (int)caja.Height), Color.FromArgb(240, 245, 255), 12);
         Check(blancoCaja == 0, "y el panel deja esa caja vacia (no hay dos titulos)");
         Check(gcaja.Width > 20 && gcaja.Right <= caja.Right + 1 && gcaja.X >= caja.X - .5f && gcaja.Y > caja.Bottom, "la pastilla del genero va debajo del titulo, junto al artista o debajo si no le cabe, sin salirse");
@@ -530,7 +530,7 @@ class SuenaVivo
         Check((string)tmc.Invoke(null, new object[] { x, 0 }) == "en ~2 min" && (string)tmc.Invoke(null, new object[] { x, 2 }) == ""
               && (string)tmc.Invoke(null, new object[] { null, 0 }) == "", "y si no se sabe lo que dura alguna de delante, no se inventa");
         // Con un titulo corto, el titulo va en el panel, en una linea.
-        object xc = Activator.CreateInstance(grandeT, true); Set(xc, "Corre", 60); Set(xc, "Minutos", new int[0]);
+        object xc = Activator.CreateInstance(grandeT, true); Set(xc, "Minutos", new int[0]);
         object[] args2 = { 1024, 245, "El Rey", "Vicente Fernandez", "0:10", new string[0], new string[0], new Image[0], 0, Color.MediumPurple, false, 0, false, xc, 0 };
         using (Bitmap cortoB = (Bitmap)gra.Invoke(null, args2))
         {
@@ -553,11 +553,11 @@ class SuenaVivo
         Check((int)Get(rr2, "TituloVer") == (int)Get(rr, "TituloVer") && (Bitmap)Get(rr2, "Titulo") == tira, "y se hornea una sola vez por titulo, no en cada cuadro");
         Set(xc, "Titulo", "El Rey"); Set(xc, "W", 1024); Set(xc, "H", 245); Set(fr, "reposoUltimo", xc);
         Check((bool)Get(Run(fr, "BuildReposoState"), "Has") && Get(Run(fr, "BuildReposoState"), "Titulo") == null, "si cabe, no hay tira: va quieto en el panel");
-        // La insignia MEJORADA se corre con el texto (y su brillo con ella).
-        Rectangle b0 = (Rectangle)St(gpu, "IdleBadgeRect", 1024, 245), b1 = (Rectangle)St(gpu, "IdleBadgeRectCorrido", 1024, 245, 60), b2 = (Rectangle)St(gpu, "IdleBadgeRectCorrido", 1024, 245, 0);
-        Check(b1.X == b0.X + 60 && b1.Right <= (int)(1024 * .52f) - 24 + 1 && b2 == b0, "la insignia MEJORADA se corre con el texto sin pasarse de su mitad, y sin vinilo queda donde siempre");
-        Check(Codigo.LeeCampo(Codigo.MetodosConAyudantes(gpu, "IdleBadgeGlow"), "IdleCorre") && Codigo.EscribeCampo(Codigo.MetodosConAyudantes(form, "BuildIdlePanel"), "IdleCorre"),
-              "y su brillo va donde ella (el panel le dice a la tarjeta cuanto se corrio)");
+        // La insignia MEJORADA y su brillo van en su sitio de siempre: sin vinilo, el texto ya no se corre (11-10-2026: se
+        // quito el desplazamiento que quedaba siempre en cero).
+        Check(gpu.GetMethod("IdleBadgeRectCorrido", F) == null && gpu.GetField("IdleCorre", F) == null && grandeT.GetField("Corre", F) == null,
+              "sin restos del desplazamiento para el vinilo (IdleBadgeRectCorrido, IdleCorre, Corre)");
+        Check(Codigo.Llama(gpu.GetMethod("IdleBadgeGlow", F), "IdleBadgeRect"), "el brillo de la insignia va donde ella");
         // Cuanto falta.
         MethodInfo tf = form.GetMethod("TextoFaltan", F);
         string s1 = (string)tf.Invoke(null, new object[] { TimeSpan.FromSeconds(107), TimeSpan.FromSeconds(252), "x" });
@@ -596,13 +596,9 @@ class SuenaVivo
         object xr = er.Invoke(f, new object[] { 1024, 245, 3 });
         int[] mins = (int[])Get(xr, "Minutos");
         Check(mins.Length == 3 && mins[0] == 3 && mins[1] == 7 && mins[2] == -1, "cada una de la cola lleva los minutos de la cola del disco (los mismos, no otra cuenta)");
-        int corre = (int)Get(xr, "Corre");
-        Check(corre == 0, "el texto ya no se corre: el vinilo se retiro el 24/09 y no se le guarda sitio (" + corre + " px con una portada de " + cover.Width + ")");
-        // El vinilo: el mismo dibujo que el de dentro del disco, una vez por cancion.
-        Check(Codigo.Llama(form.GetMethod("PreparaViniloReposo", F), "PintaEtiqueta") && Codigo.Llama(form.GetMethod("PreparaViniloReposo", F), "PintaSurcos"),
-              "el vinilo del reposo es el mismo dibujo que el de dentro del disco (surcos una vez por tamaño, la etiqueta por cancion)");
-        Check(!Codigo.Llama(form.GetMethod("SuenaVivoTic", F), "PreparaViniloReposo") && !Codigo.Llama(form.GetMethod("BuildReposoState", F), "PreparaViniloReposo"),
-              "y retirado, no se hornea: ni en el reloj de la pantalla ni al dibujar");
+        // El vinilo se retiro el 24/09 y su codigo, el 11/10: no queda nada que lo hornee ni lo dibuje.
+        Check(form.GetMethod("PreparaViniloReposo", F) == null && gpu.GetMethod("DibujaViniloReposo", F) == null && form.GetMethod("SuenaVivoTic", F) == null,
+              "el vinilo del reposo ya no existe: ni se hornea ni se dibuja");
     }
 
     // ================================================================================================
@@ -707,7 +703,7 @@ class SuenaVivo
         string[] qt = { "Cielito Lindo", "Contrabando y Traicion", "Evidencias" }, qa = { "a", "b", "c" };
         Image[] cov = { null, null, null };
         MethodInfo gra = form.GetMethod("RenderIdlePanelGrande", F);
-        object x = Activator.CreateInstance(grandeT, true); Set(x, "Corre", 60); Set(x, "Genero", "Regional"); Set(x, "GeneroColor", Color.Orange); Set(x, "Minutos", new int[] { 2, 6, 9 });
+        object x = Activator.CreateInstance(grandeT, true); Set(x, "Genero", "Regional"); Set(x, "GeneroColor", Color.Orange); Set(x, "Minutos", new int[] { 2, 6, 9 });
         double tG = Mide(10, delegate { ((Bitmap)gra.Invoke(null, new object[] { 1024, 245, "Mi Gusto Es (En Vivo)", "Mariachi", "1:47", qt, qa, cov, 3, Color.Purple, false, 0, false, x, 0 })).Dispose(); });
         double tS = Mide(10, delegate { ((Bitmap)gra.Invoke(null, new object[] { 1024, 245, "Mi Gusto Es (En Vivo)", "Mariachi", "1:47", qt, qa, cov, 3, Color.Purple, false, 0, false, null, 0 })).Dispose(); });
         MethodInfo cur = gpu.GetMethod("CurvaAviso", F), pm = gpu.GetMethod("PasoMoneda", F), ct = gpu.GetMethod("CorreTitulo", F);

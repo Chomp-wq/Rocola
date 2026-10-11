@@ -15,7 +15,7 @@
 //  - BARRA DE LETRAS CON LUPA. La letra elegida y sus vecinas se ven mas grandes, y una rayita debajo de cada una
 //    dice cuanta musica tiene (Form1.Vistas.cs, LetterBar.RenderLupa).
 //
-// TANDA 2, DENTRO DEL DISCO, en DiscoVivoGpu.cs: el vinilo que asoma, la lista grande, el ecualizador en la que suena,
+// TANDA 2, DENTRO DEL DISCO, en DiscoVivoGpu.cs: la lista grande, el ecualizador en la que suena,
 // los minutos de la cola y el boleto que vuela a la cola. Sus interruptores van en esta misma pestaña, en su tarjeta.
 //
 // TANDA 3, LO QUE SUENA Y LOS CREDITOS, en SuenaVivoGpu.cs: lo que suena en grande, la moneda que cae, la tarjeta que
@@ -143,7 +143,7 @@ namespace Rocola
                 "Avisos que se entienden (GPU)",
             };
             string[] explicaS = {
-                "En reposo, un vinilo gira detras de la portada, el titulo se\ndesliza si no cabe y dice cuanto falta, tambien de las que siguen.",
+                "En reposo, el titulo va en una linea que se desliza si no cabe\ny dice cuanto falta, tambien de las que siguen.",
                 "Al meter una moneda cae una moneda dorada en la capsula de\ncreditos, el numero rueda y sube \"+4 creditos\".",
                 "Si alguien pide algo sin creditos, en vez del letrero naranja\nsale una tarjeta amable que invita a meter una moneda.",
                 "Los avisos entran por la derecha con su color y su icono, en\ndos renglones, y una linea dice cuanto les queda.",

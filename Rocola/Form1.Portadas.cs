@@ -286,14 +286,6 @@ namespace Rocola
             return null;
         }
 
-        // La carpeta del DISCO de una cancion: la subcarpeta de PRIMER nivel bajo su raiz de musica.
-        // Asi, si un disco tiene subcarpetas, TODA su musica (a cualquier profundidad) cae DENTRO del
-        // mismo disco en vez de aparecer como discos aparte. Si la cancion esta suelta en la raiz, el
-        // disco es la raiz misma. Si por lo que sea no cae bajo ninguna raiz, se usa su carpeta inmediata.
-        private static string AlbumFolderFor(string filePath, List<string> roots)
-        {
-            return AlbumFolderFromDirectory(Path.GetDirectoryName(filePath), roots);
-        }
 
         private static string AlbumFolderCached(string filePath, List<string> roots, string[] folderMemo)
         {

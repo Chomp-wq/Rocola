@@ -4,8 +4,7 @@
 // Cada idea tiene su interruptor en Ctrl+F3 -> Pantalla -> Lo que suena y los creditos y se guarda en rocola_config.txt.
 // Sin tarjeta grafica no hacen nada: el dibujo por procesador esta congelado y sale exactamente como antes.
 //
-//  - LO QUE SUENA, EN GRANDE. El panel que crece cuando nadie toca la rocola lleva un vinilo girando detras de la
-//    portada, el titulo en una sola linea que se desliza si no cabe, cuanto falta ("1:47 · faltan 2:25"), la pastilla
+//  - LO QUE SUENA, EN GRANDE. El panel que crece cuando nadie toca la rocola lleva el titulo en una sola linea que se desliza si no cabe, cuanto falta ("1:47 · faltan 2:25"), la pastilla
 //    del genero con un brillo que late con los graves, y en las siguientes cuanto falta para que suenen.
 //  - LA MONEDA QUE CAE. Al meter una moneda cae una moneda dorada girando hasta la capsula de Creditos; la capsula da
 //    un golpe con un destello verde, el numero rueda y sube "+4 creditos".
@@ -84,7 +83,7 @@ namespace Rocola
     internal struct GpuMoneda { public bool Has; public double Desde; public float X0, Y0, X1, Y1, R, GolpeX, GolpeY, GolpeR; public Bitmap Mas; public int MasVer; public float MasX, MasY; }
     internal struct GpuReposo
     {
-        public bool Has; public Bitmap Vinilo; public int ViniloVer;
+        public bool Has;
         public Bitmap Titulo; public int TituloVer; public float TituloX, TituloY, TituloW, TituloH, TituloExceso;
         public RectangleF Genero; public uint GeneroColor;
     }
@@ -93,7 +92,6 @@ namespace Rocola
     // siempre.
     internal sealed class ReposoGrande
     {
-        public int Corre;               // lo que se corre el texto a la derecha para dejar asomar el vinilo
         public string Genero = ""; public Color GeneroColor;
         public int[] Minutos;           // cuanto falta para cada una de la cola (-1 = no se sabe)
         // Lo que devuelve el horneado: donde quedo el titulo (si no cupo, lo pinta la tarjeta deslizandose) y la pastilla.
@@ -470,9 +468,6 @@ namespace Rocola
         // ======================================================================================================
         //  LO QUE SUENA, EN GRANDE (el panel de reposo)
         // ======================================================================================================
-        internal const float ViniloReposoRadio = .45f, ViniloReposoSale = .42f;   // del lado de la portada
-        private Bitmap viniloReposoBmp, viniloReposoSurcos; private int viniloReposoVer, viniloReposoLado = -1, viniloReposoColor;
-        private Image viniloReposoTapa;
         private Bitmap tituloReposoBmp; private int tituloReposoVer; private string tituloReposoDe; private int tituloReposoAlto = -1;
         private ReposoGrande reposoUltimo;
         private Font fTituloReposo; private int fTituloW, fTituloH;
@@ -482,7 +477,6 @@ namespace Rocola
         {
             if (!suenaGrande) return null;
             ReposoGrande x = new ReposoGrande();
-            x.Corre = 0; // sin reservar espacio para el vinilo retirado
             if (nowPlaying != null && !nowPlaying.IsVideo && nowPlaying.Song != null)
             {
                 string et = GeneroDeCancion(nowPlaying.Song, nowPlaying.Disc) ?? "";
@@ -509,43 +503,6 @@ namespace Rocola
             if (tot.TotalSeconds <= 0 || cur.TotalSeconds < 0) return siNo;
             if (cur > tot) cur = tot;
             return Fmt(cur) + " / " + Fmt(tot);
-        }
-        // El vinilo del panel grande: el mismo dibujo que el de dentro del disco, a la medida de la portada grande. Se
-        // hornea al cambiar la que suena (o su portada, o el tamaño), en el reloj de la pantalla, no al dibujar.
-        private void PreparaViniloReposo()
-        {
-            if (!ReposoGrandeActivo() || !gpuEnabled || nowPlaying == null || nowPlaying.IsVideo || miniCube == null) return;
-            int w = ClientSize.Width, h = GpuPanel.IdlePanelHeight(ClientSize.Height);
-            if (w < 480 || h < 140) return;
-            int cov = GpuPanel.IdleCoverRect(w, h).Width;
-            int lado = (int)Math.Ceiling(cov * ViniloReposoRadio * 2f + 2f * ViniloAire);
-            if (lado < 24) return;
-            Image tapa = miniCube.Cover;
-            Color gen = ColorDeLaQueSuena();
-            if (viniloReposoBmp != null && ReferenceEquals(tapa, viniloReposoTapa) && gen.ToArgb() == viniloReposoColor && lado == viniloReposoLado) return;
-            if (viniloReposoSurcos == null || viniloReposoSurcos.Width != lado)
-            {
-                if (viniloReposoSurcos != null) viniloReposoSurcos.Dispose();
-                viniloReposoSurcos = new Bitmap(lado, lado, PixelFormat.Format32bppPArgb);
-                using (Graphics g = Graphics.FromImage(viniloReposoSurcos)) { g.Clear(Color.Transparent); PintaSurcos(g, lado / 2f, lado / 2f - ViniloAire); }
-            }
-            if (viniloReposoBmp == null || viniloReposoBmp.Width != lado)
-            {
-                if (viniloReposoBmp != null) viniloReposoBmp.Dispose();
-                viniloReposoBmp = new Bitmap(lado, lado, PixelFormat.Format32bppPArgb);
-            }
-            try
-            {
-                using (Graphics g = Graphics.FromImage(viniloReposoBmp))
-                {
-                    g.CompositingMode = CompositingMode.SourceCopy;
-                    g.DrawImageUnscaled(viniloReposoSurcos, 0, 0);
-                    g.CompositingMode = CompositingMode.SourceOver;
-                    PintaEtiqueta(g, lado / 2f, lado / 2f - ViniloAire, tapa, gen);
-                }
-            }
-            catch { return; }   // la portada estaba ocupada: se vuelve a intentar en la siguiente vuelta
-            viniloReposoTapa = tapa; viniloReposoColor = gen.ToArgb(); viniloReposoLado = lado; viniloReposoVer++;
         }
         // El titulo que no cabe, en su propia imagen: la tarjeta lo desliza dentro de su caja. Se hornea con el panel.
         private void HorneaTituloReposo(string titulo, Font f)
@@ -586,7 +543,6 @@ namespace Rocola
             ReposoGrande x = reposoUltimo;
             if (x == null) return r;
             r.Has = true;
-            r.Vinilo = null; r.ViniloVer = 0;
             if (x.TituloFuera)
             {
                 // El titulo que se desliza se hornea aqui, al pedirlo la tarjeta y una vez por titulo (no dentro del panel).
@@ -610,12 +566,6 @@ namespace Rocola
                 r.GeneroColor = ((uint)c.R << 16) | ((uint)c.G << 8) | c.B;
             }
             return r;
-        }
-
-        // Una vez por latido del reloj de la pantalla.
-        private void SuenaVivoTic()
-        {
-            // El panel conserva titulo y genero; ya no hornea vinilos.
         }
 
         // EL TITULO EN UNA LINEA (EstadoReposoGpu.cs): si cabe, aqui; si no, lo pinta la tarjeta deslizandose y aqui solo
@@ -733,16 +683,6 @@ namespace Rocola
 
     internal sealed partial class GpuPanel
     {
-        // Lo que se corrio el texto del panel de reposo para dejar asomar el vinilo (lo pone Form1 al hornearlo): la
-        // insignia MEJORADA va corrida con el y su brillo tiene que ir donde ella.
-        public int IdleCorre;
-        internal static Rectangle IdleBadgeRectCorrido(int w, int h, int corre)
-        {
-            Rectangle b = IdleBadgeRect(w, h);
-            if (corre <= 0) return b;
-            int split = (int)(w * .52f), x = b.X + corre;
-            return new Rectangle(x, b.Y, Math.Max(30, Math.Min(156, split - x - 24)), b.Height);
-        }
         public Func<GpuAviso> GetAviso;
         public Func<GpuInvita> GetInvita;
         public Func<GpuMoneda> GetMoneda;
@@ -751,11 +691,9 @@ namespace Rocola
         private IntPtr invitaTex; private int invitaVer = -1, invitaBw, invitaBh; private float invitaU = 1f, invitaV = 1f;
         private IntPtr monedaTex; private int monedaBw, monedaBh; private float monedaU = 1f, monedaV = 1f;
         private IntPtr masTex; private int masVer = -1, masBw, masBh; private float masU = 1f, masV = 1f;
-        private IntPtr viniloRepTex; private int viniloRepVer = -1, viniloRepBw, viniloRepBh; private float viniloRepU = 1f, viniloRepV = 1f;
         private IntPtr tituloRepTex; private int tituloRepVer = -1, tituloRepBw, tituloRepBh; private float tituloRepU = 1f, tituloRepV = 1f;
         private GpuAviso avisoCuadro; private GpuInvita invitaCuadro; private GpuMoneda monedaCuadro; private GpuReposo reposoCuadro;
         private Bitmap monedaBmp;
-        private double viniloRepAng;
         private double tituloRepDesde = -1; private int tituloRepDe = -1;
         private readonly D3D9.Vtx[] svQuad = new D3D9.Vtx[6], svTira = new D3D9.Vtx[18];
 
@@ -777,17 +715,9 @@ namespace Rocola
             if (monedaCuadro.Has && monedaCuadro.Mas != null && (monedaCuadro.MasVer != masVer || masTex == IntPtr.Zero))
             { masTex = Upload(masTex, ref masBw, ref masBh, monedaCuadro.Mas, out masU, out masV); masVer = monedaCuadro.MasVer; }
             reposoCuadro = (GetReposo != null && (IdleExpandTarget || idleBlend > 0)) ? GetReposo() : new GpuReposo();
-            if (reposoCuadro.Has && reposoCuadro.Vinilo != null && (reposoCuadro.ViniloVer != viniloRepVer || viniloRepTex == IntPtr.Zero))
-            { viniloRepTex = Upload(viniloRepTex, ref viniloRepBw, ref viniloRepBh, reposoCuadro.Vinilo, out viniloRepU, out viniloRepV); viniloRepVer = reposoCuadro.ViniloVer; }
             if (reposoCuadro.Has && reposoCuadro.Titulo != null && (reposoCuadro.TituloVer != tituloRepVer || tituloRepTex == IntPtr.Zero))
             { tituloRepTex = Upload(tituloRepTex, ref tituloRepBw, ref tituloRepBh, reposoCuadro.Titulo, out tituloRepU, out tituloRepV); tituloRepVer = reposoCuadro.TituloVer; }
-            // El vinilo del reposo gira a 33 1/3 con lo que ha salido, como el de dentro del disco.
-            double ahora = MomentoDisco();
-            viniloRepAng += ViniloRadS * CurvaVinilo(SafeMoonLevel(idleBlend)) * Math.Max(0, Math.Min(.1, (ahora - viniloRepUlt) / 1000.0));
-            viniloRepUlt = ahora;
-            if (viniloRepAng > Math.PI * 2.0) viniloRepAng -= Math.PI * 2.0;
         }
-        private double viniloRepUlt;
 
         // ---------------- LA MONEDA ----------------
         // Una moneda dorada: degradado, canto, un "$" en relieve y aire transparente alrededor (se dibuja aplastada al
@@ -981,24 +911,6 @@ namespace Rocola
         }
 
         // ---------------- LO QUE SUENA, EN GRANDE ----------------
-        // Detras de la portada grande, antes de dibujarla: el vinilo sale por su derecha a la vez que el panel crece.
-        private void DibujaViniloReposo(float mx, float my, float mw, float mh)
-        {
-            if (!reposoCuadro.Has || viniloRepTex == IntPtr.Zero || reposoCuadro.Vinilo == null || idleBlend <= 0.001f) return;
-            float e = CurvaVinilo(SafeMoonLevel(idleBlend));
-            float r = mw * Form1.ViniloReposoRadio;
-            float cx = mx + mw * .5f + mw * Form1.ViniloReposoSale * e, cy = my + mh * .5f;
-            float bw = reposoCuadro.Vinilo.Width, bh = reposoCuadro.Vinilo.Height;
-            float esc = (2f * r) / Math.Max(1f, bw - 2f * Form1.ViniloAire);
-            int a = (int)(Math.Min(1f, e * 3f) * 255f + .5f); if (a > 255) a = 255;
-            if (a <= 0) return;
-            SetTexQuadGiro(svQuad, cx, cy, (bw - 2f) * .5f * esc, (bh - 2f) * .5f * esc, (float)viniloRepAng,
-                           viniloRepU / bw, viniloRepV / bh, viniloRepU * (bw - 1f) / bw, viniloRepV * (bh - 1f) / bh, ((uint)a << 24) | 0x00FFFFFFu);
-            stars.DrawQuad(viniloRepTex, svQuad);
-            uint luz = ((uint)(34f * e) << 24) | 0x00E8F0FFu;
-            stars.DrawGlow(cx - r * .47f, cy - r * .47f, r * .26f, luz);
-            stars.DrawGlow(cx + r * .47f, cy + r * .47f, r * .22f, luz);
-        }
         // EL TITULO QUE NO CABE, deslizandose dentro de su caja: quieto al principio, va hasta el final, se para, y vuelve.
         // Los bordes se desvanecen (dos tiras con el alfa en degradado), asi no se corta de golpe.
         internal const float TituloVelIda = 42f, TituloVelVuelta = 140f, TituloPausaIni = 2200f, TituloPausaFin = 1400f;
@@ -1066,11 +978,10 @@ namespace Rocola
             if (invitaTex != IntPtr.Zero) { D3D9.Release(invitaTex); invitaTex = IntPtr.Zero; }
             if (monedaTex != IntPtr.Zero) { D3D9.Release(monedaTex); monedaTex = IntPtr.Zero; }
             if (masTex != IntPtr.Zero) { D3D9.Release(masTex); masTex = IntPtr.Zero; }
-            if (viniloRepTex != IntPtr.Zero) { D3D9.Release(viniloRepTex); viniloRepTex = IntPtr.Zero; }
             if (tituloRepTex != IntPtr.Zero) { D3D9.Release(tituloRepTex); tituloRepTex = IntPtr.Zero; }
-            avisoVer = invitaVer = masVer = viniloRepVer = tituloRepVer = -1;
+            avisoVer = invitaVer = masVer = tituloRepVer = -1;
             avisoBw = avisoBh = invitaBw = invitaBh = monedaBw = monedaBh = masBw = masBh = 0;
-            viniloRepBw = viniloRepBh = tituloRepBw = tituloRepBh = 0;
+            tituloRepBw = tituloRepBh = 0;
         }
     }
 #endif

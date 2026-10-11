@@ -150,7 +150,6 @@ namespace Rocola
             using (CapturaTexto(1))
                 next = RenderIdlePanelGrande(w, h, title, artist, "", qt, qa, covers, queue.Count, bgAccent, estadoTransparente, iaBadgeKind, colaDoce, extra, out progressStart);
             reposoUltimo = extra;
-            if (gpuPanel != null) gpuPanel.IdleCorre = (extra != null) ? extra.Corre : 0;
             if (extra != null) { extra.Titulo = title; extra.W = w; extra.H = h; }   // el titulo que se desliza lo hornea la tarjeta al pedirlo
             if (idleClockUnderlay != null) { idleClockUnderlay.Dispose(); idleClockUnderlay = null; }
             idleClockUnderlay = next.Clone(new Rectangle(0, h - 34, w, 34), PixelFormat.Format32bppPArgb);
@@ -213,17 +212,6 @@ namespace Rocola
 
         // Textura exclusiva GPU: sus textos no se escalan durante la animacion.
         // El cubo actual se dibuja aparte como geometria y crece con el panel.
-        internal static Bitmap RenderIdlePanel(int w, int h, string title, string artist, string time,
-            string[] qt, string[] qa, Image[] covers, int count, Color accent)
-        { return RenderIdlePanelMode(w, h, title, artist, time, qt, qa, covers, count, accent, false); }
-
-        internal static Bitmap RenderIdlePanelMode(int w, int h, string title, string artist, string time,
-            string[] qt, string[] qa, Image[] covers, int count, Color accent, bool transparent)
-        { return RenderIdlePanelStyled(w, h, title, artist, time, qt, qa, covers, count, accent, transparent, 0); }
-
-        internal static Bitmap RenderIdlePanelStyled(int w, int h, string title, string artist, string time,
-            string[] qt, string[] qa, Image[] covers, int count, Color accent, bool transparent, int badgeKind)
-        { return RenderIdlePanelQueue(w, h, title, artist, time, qt, qa, covers, count, accent, transparent, badgeKind, false); }
 
         internal static Rectangle IdleQueueCell(int w, int h, int index, bool dozen)
         { return IdleQueueCellCount(w, h, index, dozen ? 12 : 3, dozen); }
@@ -314,7 +302,7 @@ namespace Rocola
                 int split = (int)(w * .52f);
                 Rectangle cover = GpuPanel.IdleCoverRect(w, h);
                 // Sin tarjeta bajo el cubo: se ve directamente el fondo del estado.
-                int tx = cover.Right + 20 + (extra != null ? extra.Corre : 0), tw = Math.Max(20, split - tx - 24);
+                int tx = cover.Right + 20, tw = Math.Max(20, split - tx - 24);
                 g.DrawString("A H O R A   S U E N A", small, color, new RectangleF(24, 12, split - 40, 26 * scale), line);
                 float titleH = Math.Min(90, h * .28f), artistY = 56 + titleH + 6;
                 if (extra == null)
@@ -325,7 +313,7 @@ namespace Rocola
                 else PintaTituloGrande(g, extra, title, artist, big, normal, small, white, color, line, tx, tw);   // en una linea
                 if (badgeKind != 0)
                 {
-                    Rectangle badge = GpuPanel.IdleBadgeRectCorrido(w, h, extra != null ? extra.Corre : 0);
+                    Rectangle badge = GpuPanel.IdleBadgeRect(w, h);
                     Color metal = badgeKind == 2 ? Color.FromArgb(255, 221, 132) : Color.FromArgb(218, 237, 255);
                     using (SolidBrush tint = new SolidBrush(Color.FromArgb(42, metal)))
                     using (SolidBrush ink = new SolidBrush(metal))

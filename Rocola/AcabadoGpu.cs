@@ -211,8 +211,6 @@ namespace Rocola
                 SueltaDibujo(ref tinteCristalGpu);
                 SueltaDibujo(ref gpuSnapshotRow); SueltaDibujo(ref gpuSelectedRaw);
             }
-            public void RenderTransparentGpu(Graphics g)
-            { RenderTransparentGpuMode(g, false); }
             public void RenderTransparentGpuMode(Graphics g, bool glass)
             { RenderTransparentGpuTint(g, glass, false, Color.White); }
             public void RenderTransparentGpuTint(Graphics g, bool glass, bool tinted, Color tint)

@@ -2156,7 +2156,7 @@ namespace Rocola
         }
         internal RectangleF IdleBadgeGlow(RectangleF normal)
         {
-            Rectangle badge = IdleBadgeRectCorrido(Width, idleH, IdleCorre);   // corrida si asoma el vinilo (SuenaVivoGpu.cs)
+            Rectangle badge = IdleBadgeRect(Width, idleH);
             float y = StatusTopY + badge.Y;
             return new RectangleF(normal.X + (badge.X - normal.X) * idleBlend,
                 normal.Y + (y - normal.Y) * idleBlend,
@@ -2400,7 +2400,7 @@ namespace Rocola
             SueltaPiezasVentana();   // las piezas que se llevo la ventana del buscador con portadas (BuscadorPortadasGpu.cs)
             if (toastTex != IntPtr.Zero) { D3D9.Release(toastTex); toastTex = IntPtr.Zero; toastVer = -1; }
             SueltaPantallaViva();   // el letrero de la elegida y la ficha rapida
-            SueltaDiscoVivo();      // el vinilo y el boleto
+            SueltaDiscoVivo();      // el boleto
             SueltaSuenaVivo();      // los avisos, la invitacion, la moneda y lo del panel de reposo
             SueltaAtraccion();      // las fichas del escaparate, sus mensajes y la lista de la noche
             SueltaAsistente();      // panel prestado del asistente y su textura GPU
@@ -2618,7 +2618,7 @@ namespace Rocola
             if (tt.Has && tt.Bmp != null && (tt.Ver != toastVer || toastTex == IntPtr.Zero))   // el bitmap se REUSA (mismo objeto), por eso manda la version
             { toastTex = Upload(toastTex, ref toastBw, ref toastBh, tt.Bmp, out toastU, out toastV); toastVer = tt.Ver; }
             PreparaPantallaViva();         // el letrero de la elegida, la ficha rapida y el empujon del cielo al pasar de pagina
-            PreparaDiscoVivo();            // dentro del disco: el vinilo, las barritas de la que suena y el boleto que vuela
+            PreparaDiscoVivo();            // dentro del disco: las barritas de la que suena y el boleto que vuela
             PreparaSuenaVivo();            // los avisos, la invitacion, la moneda y el panel de reposo en grande
             PreparaAtraccion();            // el escaparate y lo mas pedido esta noche (AtraccionGpu.cs)
             // Barras (UI) a textura: se re-sube solo cuando cambia algun texto/estado (firma del form), limitada a
@@ -2790,7 +2790,6 @@ namespace Rocola
             if (cs.Relay.Has)
                 stars.DrawCube(relTex, relU, relV, cs.Relay.X, cs.Relay.Y, cs.Relay.W, cs.Relay.H, cs.Relay.Angle, WallOpacity, cs.Relay.Tilt);
             if (cs.Sel.Has && sceneMode == 3) DibujaHaloGenero(cs.Sel.X, cs.Sel.Y, cs.Sel.W, cs.Sel.H, ShowAlbum ? WallOpacity : 1f);   // dentro del disco, el color del genero detras, con el mismo alfa que el cubo (EstiloGpu.cs)
-            // Sin vinilo ni desplazamiento lateral de la portada.
             if (cs.Sel.Has)
             {
                 stars.DrawCube(selTexA, selUA, selVA, cs.Sel.X, cs.Sel.Y, cs.Sel.W, cs.Sel.H, cs.Sel.Angle, ShowAlbum ? WallOpacity : 1f, cs.Sel.Tilt);

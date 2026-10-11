@@ -307,7 +307,6 @@ namespace Rocola
                 if (SelChip >= atajos.Count) SelChip = Math.Max(0, atajos.Count - 1);
                 Invalidate();
             }
-            internal int AtajosVisibles() { AseguraReparto(); return atajoRects.Count; }
 
             // Un atajo que pone resultados sin teclear (lo mas pedido, karaoke). La casilla dice cual es.
             public void MuestraAtajo(string etiqueta, List<SearchItem> lista)
