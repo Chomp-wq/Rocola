@@ -18,7 +18,20 @@ Con las 7 fotos del sistema de sonido (9 y 10 de octubre) se cierran los dos pen
 - **Ningún subwoofer.**
 - **El local:** techo de lámina, ladrillo y piso de loseta. Mucho rebote.
 
-## Lo que cambia en el programa (automático, en la etapa del grave en mono)
+## Lo que cambia en el programa (en la etapa del grave en mono, con interruptor)
+
+**Dos interruptores en Ctrl+F3 → Sonido**, en la tarjeta «Calidad del sonido», debajo de DSEE y Saltar silencios:
+«Quitar el subgrave» y «Estéreo al 60 %».
+
+- **Apagados de fábrica.** Son para este montaje: bocinas repartidas por zonas y sin subwoofer. En otro sitio, con un
+  par de bocinas y alguien enfrente, convienen el estéreo entero y todo el grave. **En el billar hay que encenderlos
+  una vez**; se guardan.
+- **Se oyen al instante** en la canción que suena, y también en la siguiente si ya estaba preparada.
+- «Dejar como de fábrica» los apaga.
+- Apagados, el sonido sale bit a bit como antes.
+
+(Petición del usuario del 11-10-2026: «Ponles interruptor en Ctrl+F3 al subgrave y al estéreo, esto no se usa siempre,
+se usaría específicamente para el setup del billar».)
 
 ### 1. El subgrave fuera (30 Hz)
 
@@ -48,13 +61,14 @@ mono, va al 60 %:
 
 | Clave | De fábrica | Qué hace |
 | --- | --- | --- |
-| `subgrave=` | `30` | Hz del corte; `0` lo quita (entre 15 y 60) |
-| `ancho_estereo=` | `60` | % del estéreo; `100` lo deja como viene, `0` mono del todo |
+| `corta_subgrave=` | `0` | El interruptor «Quitar el subgrave» |
+| `estereo_estrecho=` | `0` | El interruptor «Estéreo al 60 %» |
+| `subgrave=` | `30` | Hz del corte cuando está encendido (entre 15 y 60) |
+| `ancho_estereo=` | `60` | % del estéreo cuando está encendido (`0` = mono del todo) |
 | `grave_mono=` | `120` | Como antes: por debajo, el mismo grave por todas las bocinas |
 
-Con `subgrave=0` y `ancho_estereo=100` la etapa sale bit a bit como antes.
-
-Siguiendo a `grave_mono=`, no llevan interruptor en Ctrl+F3. Si lo quieres en la pestaña Sonido, se añade.
+Para dejarles sitio, la explicación del DSEE pasó de cuatro renglones a tres, con lo mismo. La ventana sigue cabiendo
+en 1024×768: lo comprueba la batería `ajustes`, que mide cada texto con el alto del peor caso.
 
 Coste: 1,7 ms por segundo de música en este equipo (0,17 % de un núcleo). Sin memoria nueva al leer. Las pistas
 seguidas del mismo disco heredan los filtros, sin golpe en el cambio. En el silencio los filtros quedan en cero
@@ -83,7 +97,8 @@ Visto en las fotos; conviene comprobarlo en persona:
 ## Cómo se comprobó
 
 - **Pruebas automáticas (Linux/Mono):**
-  - batería nueva `subgrave`, 37 comprobaciones: apagado bit a bit como antes, la curva del corte, el ancho a un lado
+  - batería nueva `subgrave`, 49 comprobaciones (12 de los interruptores: apagados bit a bit como antes, encendidos al
+    instante en la que suena, la ventana, la configuración y la cadena): apagado bit a bit como antes, la curva del corte, el ancho a un lado
     y al centro, un canal, pistas seguidas, silencio sin desnormales, configuración, la cadena de cada canción y que
     leer no reserve memoria;
   - siguen pasando `gravemono` (41), `todojunto`, `silencios`, `sinpausa`, `transiciones` y `audioestereo` en los dos

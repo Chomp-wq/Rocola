@@ -163,13 +163,16 @@ class Ajustes
              "Devuelve el golpe de bajo que el archivo no trae.\nSolo: a cada cancion se le da lo que le falta.   Esta: 170%.", true);
         Fila("brillo", cx, cy, 204, "Realce de brillo", "100%",
              "Devuelve el 'aire' que el MP3 apaga.\nSe le da mas a las canciones peor grabadas.", false);
-        CSw("dsee", cx + 16, cy + 292, 424, 26, "DSEE", fNom, 10f);
-        C("dsee.explica", cx + 16, cy + 322, 424, 68,
-          "Oye cada cancion y ve donde el MP3 le corto los agudos.\n"
-          + "Eso lo mide SIEMPRE: de ahi sacan el EQ automatico y los\n"
-          + "graves automaticos cuanto le falta a cada una.\n"
+        CSw("dsee", cx + 16, cy + 292, 150, 26, "DSEE", fNom, 10f);
+        CSw("silencios", cx + 176, cy + 292, 264, 26, "Saltar silencios largos", fNom, 10f);
+        C("dsee.explica", cx + 16, cy + 320, 424, 48,
+          "Mide SIEMPRE donde el MP3 le corto los agudos a cada cancion:\n"
+          + "de ahi sacan el EQ y los graves automaticos lo que le falta.\n"
           + (hd ? "Encendido, ademas los recrea. Se apaga con DSEE ULTRA."      // en HD manda el DSEE ULTRA
                 : "EXPERIMENTAL: encendido, ademas los recrea con la IA."), fDes, 8.5f, true);
+        // Las bocinas del billar (11-10-2026): debajo de la explicacion del DSEE, sin salirse de la tarjeta (acaba en 398).
+        CSw("subgrave", cx + 16, cy + 368, 196, 26, "Quitar el subgrave", fNom, 10f);
+        CSw("estereo", cx + 220, cy + 368, 220, 26, "Estereo al 60 %", fNom, 10f);
 
         // ---- tarjeta IA EN VIVO, solo en HD (16,480,928,232) ----
         if (hd)

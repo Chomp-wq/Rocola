@@ -12,6 +12,7 @@ using NAudio.Wave;
 //  5) Disco continuo: la siguiente pista sigue con los filtros de la anterior (sin golpe), y el silencio deja los
 //     filtros en cero (sin numeros desnormales).
 //  6) La configuracion, la cadena de cada cancion y que leer no reserve memoria.
+//  7) Los interruptores de Ctrl+F3 (apagados de fabrica: son para las bocinas del billar), al instante.
 // No es escucharlo en el bar: eso solo se sabe alli.
 class Fuente : ISampleProvider
 {
@@ -37,6 +38,7 @@ class Subgrave
     static object Nuevo(Type t, params object[] a) { return Activator.CreateInstance(t, T, null, a, null); }
     static ISampleProvider Etapa(ISampleProvider s, float corte, float ancho, float sub) { return (ISampleProvider)Nuevo(TMono, s, corte, ancho, sub); }
     static ISampleProvider Vieja(ISampleProvider s, float corte) { return (ISampleProvider)Nuevo(TMono, s, corte); }
+    static ISampleProvider ConInterruptores(ISampleProvider s, float corte, bool ancho, bool sub) { return (ISampleProvider)Nuevo(TMono, s, corte, .6f, 30f, ancho, sub); }
 
     static float[] LeeTodo(ISampleProvider p, int bloque)
     {
@@ -164,7 +166,7 @@ class Subgrave
         int l1, e1, l2, e2; Codigo.UsosDeCampo(arma, "anchoEstereo", out l1, out e1); Codigo.UsosDeCampo(arma, "subgraveHz", out l2, out e2);
         Check(l1 > 0 && l2 > 0, "cada cancion arma su etapa con el ancho y el subgrave de la configuracion");
         bool reserva = false;
-        foreach (string m in new string[] { "Read", "Enteros", "Cuadros", "SinCruce", "Subgrave", "Hereda", "Sigue" })
+        foreach (string m in new string[] { "Read", "Enteros", "Cuadros", "SinCruce", "Subgrave", "Hereda", "Sigue", "SubAhora", "Ajusta" })
             foreach (Codigo.Paso p in Codigo.Pasos(TMono.GetMethod(m, T))) if (p.Op == 0x8D || p.Op == 0x73) reserva = true;
         Check(!reserva, "leer no reserva memoria");
         // Lo que cuesta, comparado con la etapa de siempre (Mono, este equipo: orientativo).
@@ -174,8 +176,55 @@ class Subgrave
         Info("30 s de musica: la etapa de siempre " + F(tVieja, "0.0") + " ms, con ancho y subgrave " + F(tNueva, "0.0") + " ms (" + F((tNueva - tVieja) / 30.0, "0.00") + " ms mas por segundo de musica)");
         Check(tNueva < tVieja * 3 + 20, "cuesta poco mas que la etapa de siempre");
 
+        Interruptores(fs);
+
         Console.WriteLine(fallos == 0 ? "\n  OK subgrave: " + oks + " comprobaciones (tonos sinteticos; no es oirlo en el bar)" : "\n  FALLO subgrave: " + fallos + " de " + (oks + fallos));
         return fallos == 0 ? 0 : 1;
+    }
+    static void Interruptores(int fs)
+    {
+        Console.WriteLine("\n  7) LOS INTERRUPTORES DE Ctrl+F3\n");
+        FieldInfo fe = TF.GetField("estereoEstrecho", T), fsb = TF.GetField("cortaSubgrave", T);
+        Check(fe != null && fsb != null && !(bool)fe.GetValue(null) && !(bool)fsb.GetValue(null), "apagados de fabrica: son para el montaje del billar");
+        float[] ruido = Ruido(fs, 4.0, 21);
+        foreach (float corte in new float[] { 120f, 0f })
+        {
+            Check(Igual(LeeTodo(Vieja(new Fuente(ruido, fs, 2), corte), 777), LeeTodo(ConInterruptores(new Fuente(ruido, fs, 2), corte, false, false), 777)),
+                  "con los dos apagados sale bit a bit como antes (corte " + corte + " Hz)");
+            Check(Igual(LeeTodo(Etapa(new Fuente(ruido, fs, 2), corte, .6f, 30f), 777), LeeTodo(ConInterruptores(new Fuente(ruido, fs, 2), corte, true, true), 777)),
+                  "y con los dos encendidos, como la etapa con ancho y subgrave (corte " + corte + " Hz)");
+        }
+        float[] mono = new float[fs * 2]; Random r = new Random(4); for (int i = 0; i < mono.Length; i++) mono[i] = (float)(r.NextDouble() - .5);
+        Check(Igual(mono, LeeTodo(ConInterruptores(new Fuente(mono, fs, 1), 120f, false, false), 999)), "un archivo de un canal con los dos apagados sale tal cual");
+        // Al instante: encender el estereo estrecho a mitad de cancion cambia lo que sale desde la siguiente lectura.
+        float[] izq = Tono(fs, 1000, 3.0, 1, 0);
+        ISampleProvider et = ConInterruptores(new Fuente(izq, fs, 2), 120f, false, false);
+        float[] buf = new float[fs * 2];
+        int n1 = et.Read(buf, 0, buf.Length); float[] antes = new float[n1]; Array.Copy(buf, antes, n1);
+        MethodInfo aj = TMono.GetMethod("Ajusta", T);
+        aj.Invoke(et, new object[] { true, true });
+        int n2 = et.Read(buf, 0, buf.Length); float[] despues = new float[n2]; Array.Copy(buf, despues, n2);
+        double rAntes = Amp(antes, 2, 1, fs, 1000, .3) / Amp(antes, 2, 0, fs, 1000, .3), rDespues = Amp(despues, 2, 1, fs, 1000, .3) / Amp(despues, 2, 0, fs, 1000, .3);
+        Check(rAntes < 1e-3 && Math.Abs(Db(rDespues) - Db(.25)) < .1, "encenderlo se oye al instante en la cancion que suena (a la derecha: de nada a " + F(Db(rDespues), "0.0") + " dB)");
+        float[] grave = Tono(fs, 20, 6.0, 1, 1);
+        ISampleProvider eg = ConInterruptores(new Fuente(grave, fs, 2), 120f, false, false);
+        float[] g1 = new float[fs * 4]; int m1 = eg.Read(g1, 0, g1.Length);
+        aj.Invoke(eg, new object[] { false, true });
+        float[] g2 = new float[fs * 8]; int m2 = eg.Read(g2, 0, g2.Length);
+        float[] g2r = new float[m2]; Array.Copy(g2, g2r, m2);
+        Check(m1 > 0 && Db(Amp(g2r, 2, 0, fs, 20, 1.0) / .5) < -12, "y el subgrave tambien (20 Hz: " + F(Db(Amp(g2r, 2, 0, fs, 20, 1.0) / .5), "0.0") + " dB)");
+        // La ventana: los dos interruptores, lo que guardan y que se aplican ya.
+        List<MethodBase> ven = Codigo.MetodosConAyudantes(TF, "VentanaAjustes");
+        List<string> textos = new List<string>(); foreach (MethodBase m in ven) textos.AddRange(Codigo.Textos(m));
+        bool lSub = false, lEst = false; foreach (string t in textos) { if (t.StartsWith("Quitar el subgrave")) lSub = true; if (t.StartsWith("Estereo al ")) lEst = true; }
+        Check(lSub && lEst && Codigo.EscribeCampo(ven, "cortaSubgrave") && Codigo.EscribeCampo(ven, "estereoEstrecho"), "Ctrl+F3 -> Sonido tiene los dos interruptores y los cambia");
+        bool aplica = false; foreach (MethodBase m in ven) if (Codigo.Llama(m, "AplicaBocinas")) aplica = true;
+        Check(aplica && Codigo.Llama(TF.GetMethod("AplicaBocinas", T), "Ajusta"), "y los lleva al instante a lo que suena y a la siguiente");
+        List<string> lee = Codigo.Textos(TF.GetMethod("LoadConfigPrefs", T)), esc = Codigo.Textos(TF.GetMethod("SaveConfigPrefs", T));
+        Check(lee.Contains("estereo_estrecho=") && esc.Contains("estereo_estrecho=") && lee.Contains("corta_subgrave=") && esc.Contains("corta_subgrave="),
+              "se guardan en la configuracion (estereo_estrecho=, corta_subgrave=)");
+        int l1, e1, l2, e2; Codigo.UsosDeCampo(TF.GetMethod("ArmaCadena", T), "estereoEstrecho", out l1, out e1); Codigo.UsosDeCampo(TF.GetMethod("ArmaCadena", T), "cortaSubgrave", out l2, out e2);
+        Check(l1 > 0 && l2 > 0, "y cada cancion nueva nace con ellos como estan");
     }
     static double GetF(string n) { return Convert.ToDouble(TMono.GetField(n, T).GetValue(null)); }
     static double Mejor(Action a)

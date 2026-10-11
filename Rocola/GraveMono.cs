@@ -51,7 +51,10 @@
 //    a un lado desaparecia en la zona del otro. El lado (L - R) por encima del corte se multiplica por el ancho: al
 //    60 % lo que va todo a la izquierda sale por la derecha 12 dB mas bajo, en vez de nada. Lo que va al centro (casi
 //    todo: voz, bajo, bombo) no cambia ni de nivel. "ancho_estereo=" en % (de fabrica 60; 100 lo deja como viene).
-// Con los dos de fabrica cuestan unas pocas sumas por muestra. Con "subgrave=0" y "ancho_estereo=100" la etapa sale
+// Son para ESE montaje (bocinas repartidas por zonas, sin subwoofer): en otro sitio, con un par de bocinas y alguien
+// enfrente, convienen el estereo entero y todo el grave. Por eso cada una lleva su interruptor en Ctrl+F3 -> Sonido,
+// apagado de fabrica ("estereo_estrecho=" y "corta_subgrave=", 1/0), y se oye al instante en la cancion que suena.
+// "subgrave=" y "ancho_estereo=" fijan cuanto. Encendidos cuestan unas pocas sumas por muestra; apagados la etapa sale
 // bit a bit como antes (pruebas/subgrave.cs).
 using System;
 
@@ -63,6 +66,15 @@ namespace Rocola
         private static float graveMonoHz = GraveMono.HzDeFabrica;
         // El ancho del estereo (0..1; "ancho_estereo=" en %) y el corte del subgrave ("subgrave=" en Hz; 0 = sin corte).
         private static float anchoEstereo = GraveMono.AnchoDeFabrica, subgraveHz = GraveMono.SubDeFabrica;
+        // Los interruptores de Ctrl+F3 -> Sonido (apagados de fabrica: son para las bocinas del billar).
+        private static bool estereoEstrecho, cortaSubgrave;
+        // Lleva los interruptores a lo que ya suena y a la siguiente ya preparada: se oye al instante.
+        private void AplicaBocinas()
+        {
+            CadenaCancion c = cadenaSonando, p = cadenaPreparada;
+            if (c != null && c.Mono != null) c.Mono.Ajusta(estereoEstrecho, cortaSubgrave);
+            if (p != null && p.Mono != null) p.Mono.Ajusta(estereoEstrecho, cortaSubgrave);
+        }
         private static float AnchoEstereo(string texto)
         {
             float v;
@@ -93,12 +105,14 @@ namespace Rocola
             private readonly NAudio.Wave.ISampleProvider src;
             private readonly bool activo;                 // hay algo que hacer (si no, pasa tal cual)
             private readonly bool cruce;                  // estereo, con un corte que tenga sentido a esta frecuencia
-            private readonly bool estereo;                // se separa medio y lado (cruce, o un ancho distinto de 1)
+            private readonly bool ajustable;              // armada con ancho/subgrave (los interruptores la cambian en vivo)
             private readonly int tasa, canales;
             private readonly float hz, ancho, subHz;
+            // Los interruptores: los cambia la ventana de ajustes en cualquier momento; se leen al empezar cada lectura.
+            private volatile bool anchoOn, subOn, subReinicia;
             // El subgrave: dos paso-altos de segundo orden (Q de Butterworth de cuarto orden). En un paso-alto b2 = b0 y
             // b1 = -2 b0. Estados por canal y etapa: x1, x2, y1, y2 (16 en total, dos canales como mucho).
-            private readonly bool sub;
+            private readonly bool sub;                    // hay subgrave posible (coeficientes hechos)
             private readonly double p0, pa1, pa2, q0, qa1, qa2;
             private readonly double[] ss = new double[16];
             // Denominador comun 1 + a1 z^-1 + a2 z^-2 (Butterworth, Q = 0,7071, bilineal con el corte ajustado).
@@ -117,9 +131,16 @@ namespace Rocola
             private volatile GraveMono anterior;          // la pista que acaba justo antes, sin fundido (disco continuo)
 
             // Como siempre: solo el grave en mono (sin tocar el ancho ni el subgrave).
-            public GraveMono(NAudio.Wave.ISampleProvider s, float corteHz) : this(s, corteHz, 1f, 0f) { }
+            public GraveMono(NAudio.Wave.ISampleProvider s, float corteHz) : this(s, corteHz, 1f, 0f, false) { }
 
+            // Con el ancho y el subgrave encendidos (las pruebas).
             public GraveMono(NAudio.Wave.ISampleProvider s, float corteHz, float anchoEstereo, float subgraveHz)
+                : this(s, corteHz, anchoEstereo, subgraveHz, true, true) { }
+
+            public GraveMono(NAudio.Wave.ISampleProvider s, float corteHz, float anchoEstereo, float subgraveHz, bool conAncho, bool conSubgrave)
+                : this(s, corteHz, anchoEstereo, subgraveHz, true) { anchoOn = conAncho; subOn = conSubgrave; }
+
+            private GraveMono(NAudio.Wave.ISampleProvider s, float corteHz, float anchoEstereo, float subgraveHz, bool ajusta)
             {
                 src = s;
                 tasa = s.WaveFormat.SampleRate;
@@ -128,9 +149,10 @@ namespace Rocola
                 ancho = (anchoEstereo >= 0f && anchoEstereo <= 1f) ? anchoEstereo : 1f;
                 subHz = subgraveHz;
                 cruce = canales == 2 && tasa >= 8000 && corteHz > 0f && corteHz < 0.2f * tasa;
-                estereo = cruce || (canales == 2 && ancho != 1f);
                 sub = (canales == 1 || canales == 2) && tasa >= 8000 && subgraveHz > 0f && subgraveHz < 0.1f * tasa;
-                activo = estereo || sub;
+                // Armada para los interruptores, se queda en la cadena aunque esten apagados: asi encenderlos se oye ya.
+                ajustable = ajusta && (canales == 1 || canales == 2) && tasa >= 8000;
+                activo = cruce || ajustable;
                 if (sub)
                 {
                     double ws = 2.0 * Math.PI * subgraveHz / tasa, cs = Math.Cos(ws), sn = Math.Sin(ws);
@@ -147,8 +169,22 @@ namespace Rocola
             }
             public NAudio.Wave.WaveFormat WaveFormat { get { return src.WaveFormat; } }
             internal bool Activo { get { return activo; } }
-            internal float Ancho { get { return ancho; } }
-            internal bool ConSubgrave { get { return sub; } }
+            internal float Ancho { get { return (ajustable && anchoOn) ? ancho : 1f; } }
+            internal bool ConSubgrave { get { return sub && subOn; } }
+            // Los interruptores de Ctrl+F3, en vivo. Al encender el subgrave sus filtros empiezan de cero (lo hace el hilo
+            // del sonido en su siguiente lectura), no con lo que quedo de la ultima vez.
+            internal void Ajusta(bool conAncho, bool conSubgrave)
+            {
+                if (!ajustable) return;
+                if (conSubgrave && !subOn) subReinicia = true;
+                anchoOn = conAncho; subOn = conSubgrave;
+            }
+            private bool SubAhora()
+            {
+                if (!sub || !subOn) return false;
+                if (subReinicia) { subReinicia = false; Array.Clear(ss, 0, ss.Length); }
+                return true;
+            }
 
             // La siguiente pista del mismo disco sigue con los filtros de esta. Lo llama la pantalla al preparar el
             // relevo; se toma en la primera lectura, en el hilo del sonido, cuando esta ya acabo.
@@ -158,7 +194,7 @@ namespace Rocola
             {
                 GraveMono a = anterior; anterior = null;
                 if (a == null || !a.activo || !a.acabo || a.tasa != tasa || a.hz != hz || a.canales != canales
-                    || a.ancho != ancho || a.subHz != subHz) return;
+                    || a.ancho != ancho || a.subHz != subHz || a.ajustable != ajustable) return;
                 Array.Copy(a.ss, ss, ss.Length);
                 mx1 = a.mx1; mx2 = a.mx2; my1 = a.my1; my2 = a.my2;
                 sx1 = a.sx1; sx2 = a.sx2; sy1 = a.sy1; sy2 = a.sy2;
@@ -175,7 +211,7 @@ namespace Rocola
                 if (canales == 1)
                 {   // un canal: solo el subgrave
                     int n1 = src.Read(buffer, offset, count);
-                    if (n1 > 0) Subgrave(buffer, offset, n1, 0, 1);
+                    if (n1 > 0 && SubAhora()) Subgrave(buffer, offset, n1, 0, 1);
                     return n1;
                 }
                 int hechos = 0;
@@ -214,10 +250,9 @@ namespace Rocola
 
             private void Cuadros(float[] b, int i, int cuadros)
             {
-                if (!estereo) { Subgrave(b, i, cuadros, 0, 2); Subgrave(b, i + 1, cuadros, 1, 2); return; }
                 if (!cruce) { SinCruce(b, i, cuadros); return; }
                 int i0 = i;
-                double an = ancho;
+                double an = (ajustable && anchoOn) ? ancho : 1.0;
                 double a1 = this.a1, a2 = this.a2, b0 = this.b0, av = aVigila, ae = aEnergia, pv = pasoVuelta;
                 double mx1 = this.mx1, mx2 = this.mx2, my1 = this.my1, my2 = this.my2;
                 double sx1 = this.sx1, sx2 = this.sx2, sy1 = this.sy1, sy2 = this.sy2;
@@ -252,20 +287,23 @@ namespace Rocola
                 this.zx1 = zx1; this.zx2 = zx2; this.zy1 = zy1; this.zy2 = zy2;
                 this.vm1 = vm1; this.vm2 = vm2; this.vs1 = vs1; this.vs2 = vs2; this.em = em; this.es = es;
                 this.vuelta = vuelta; this.metaVuelta = meta;
-                if (sub) { Subgrave(b, i0, cuadros, 0, 2); Subgrave(b, i0 + 1, cuadros, 1, 2); }
+                if (SubAhora()) { Subgrave(b, i0, cuadros, 0, 2); Subgrave(b, i0 + 1, cuadros, 1, 2); }
             }
 
-            // Sin corte del grave en mono (grave_mono=0) pero con el estereo estrechado: medio y lado sin cruce.
+            // Sin corte del grave en mono (grave_mono=0): medio y lado sin cruce, y solo si el estereo va estrechado.
             private void SinCruce(float[] b, int i, int cuadros)
             {
-                double an = ancho;
-                for (int f = 0, k = i; f < cuadros; f++, k += 2)
+                if (anchoOn && ancho != 1f)
                 {
-                    double l = b[k], r = b[k + 1];
-                    double m = 0.5 * (l + r), s = 0.5 * (l - r) * an;
-                    b[k] = (float)(m + s); b[k + 1] = (float)(m - s);
+                    double an = ancho;
+                    for (int f = 0, k = i; f < cuadros; f++, k += 2)
+                    {
+                        double l = b[k], r = b[k + 1];
+                        double m = 0.5 * (l + r), s = 0.5 * (l - r) * an;
+                        b[k] = (float)(m + s); b[k + 1] = (float)(m - s);
+                    }
                 }
-                if (sub) { Subgrave(b, i, cuadros, 0, 2); Subgrave(b, i + 1, cuadros, 1, 2); }
+                if (SubAhora()) { Subgrave(b, i, cuadros, 0, 2); Subgrave(b, i + 1, cuadros, 1, 2); }
             }
 
             // El subgrave de un canal: 'n' muestras desde 'i', de 'paso' en 'paso'. Lo que se queda en casi nada se pone a

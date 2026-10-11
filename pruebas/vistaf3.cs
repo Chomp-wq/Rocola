@@ -135,8 +135,11 @@ class VistaF3
         Fila(tCal, 44, "EQ automatico", cCal, 0, 100, 0, "75%", "Empareja el tono de cada cancion con el de tu biblioteca.\nSolo: mas fuerza cuantas mas canciones medidas (van 4,182).", true, true, false);
         Fila(tCal, 124, "Graves (bajo profundo)", cGra, 0, 100, 30, "36%", "Devuelve el golpe de bajo que el archivo no trae.\nSolo: a cada cancion se le da lo que le falta.   Esta: 42%.", true, true, false);
         Fila(tCal, 204, "Realce de brillo", cBri, 0, 100, 35, "35%", "Devuelve el 'aire' que el MP3 apaga.\nSe le da mas a las canciones peor grabadas.", false, false, true);
-        tCal.Controls.Add(Inter(16, 292, 424, "DSEE", Color.FromArgb(150,205,255), false, fNom, cTexto, true));
-        tCal.Controls.Add(Lab(16, 322, 424, 68, "Oye cada cancion y ve donde el MP3 le corto los agudos.\nEso lo mide SIEMPRE: de ahi sacan el EQ automatico y los\ngraves automaticos cuanto le falta a cada una.\nEXPERIMENTAL: encendido, ademas los recrea con la IA.", fDes, cTenue, ContentAlignment.TopLeft));
+        tCal.Controls.Add(Inter(16, 292, 150, "DSEE", Color.FromArgb(150,205,255), false, fNom, cTexto, true));
+        tCal.Controls.Add(Inter(176, 292, 264, "Saltar silencios largos", cCal, true, fNom, cTexto, true));
+        tCal.Controls.Add(Lab(16, 320, 424, 48, "Mide SIEMPRE donde el MP3 le corto los agudos a cada cancion:\nde ahi sacan el EQ y los graves automaticos lo que le falta.\nEXPERIMENTAL: encendido, ademas los recrea con la IA.", fDes, cTenue, ContentAlignment.TopLeft));
+        tCal.Controls.Add(Inter(16, 368, 196, "Quitar el subgrave", cGra, false, fNom, cTexto, true));
+        tCal.Controls.Add(Inter(220, 368, 220, "Estereo al 60 %", cCal, false, fNom, cTexto, true));
 
         tBib.Controls.Add(Lab(16, 40, 896, 20, "Calidad:   3,914 completas     1,022 aceptables     286 pobres     141 con los picos recortados", fNom, Color.FromArgb(198,214,244), ContentAlignment.TopLeft));
         tBib.Controls.Add(Lab(16, 62, 896, 48, "Repasando la biblioteca a fondo ahora mismo.\nMaterial para la IA: 2,684,155 ejemplos (409 MB).   La cancion que suena entra en la etapa MEDIA.\nEl detalle, cancion por cancion, queda en rocola_calidad.txt junto al programa.", fDes, cTenue, ContentAlignment.TopLeft));

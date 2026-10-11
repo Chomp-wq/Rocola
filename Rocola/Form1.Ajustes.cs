@@ -631,7 +631,7 @@ namespace Rocola
             bool wasMaint = maintMode;
             maintMode = true;   // el dialogo modal necesita quedarse al frente; se devuelve en el finally
             bool changed = false;
-            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkUp = masterDb, bkEq = eqAmount, bkBass = bassAmount; int bkVid = videoVol, bkDsk = perfilDisco; bool bkNoche = nocheOn, bkOn = normalizeOn, bkSbr = sbrOn, bkEqA = eqAuto, bkBassA = bassAuto, bkVidA = videoAuto, bkIaDat = iaHarvestOn, bkSil = saltaSilencios;   // por si se Cancela
+            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkUp = masterDb, bkEq = eqAmount, bkBass = bassAmount; int bkVid = videoVol, bkDsk = perfilDisco; bool bkNoche = nocheOn, bkOn = normalizeOn, bkSbr = sbrOn, bkEqA = eqAuto, bkBassA = bassAuto, bkVidA = videoAuto, bkIaDat = iaHarvestOn, bkSil = saltaSilencios, bkEst = estereoEstrecho, bkSub = cortaSubgrave;   // por si se Cancela
             try
             {
                 Cursor.Show();
@@ -809,16 +809,15 @@ namespace Rocola
                     swSbr.SetBounds(16, 292, 150, 26); swSbr.ForeColor = cTexto; swSbr.Font = fNom;
                     swSbr.Text = "DSEE"; swSbr.Acento = Color.FromArgb(150, 205, 255);
                     swSbr.Checked = sbrOn && sbrAllowed; swSbr.Enabled = sbrAllowed;
-                    Label lSbr = new Label(); lSbr.SetBounds(16, 322, 424, 68); lSbr.BackColor = Color.Transparent;
+                    Label lSbr = new Label(); lSbr.SetBounds(16, 320, 424, 48); lSbr.BackColor = Color.Transparent;
                     lSbr.ForeColor = sbrAllowed ? cTenue : Color.FromArgb(224, 158, 120); lSbr.Font = fDes;
                     // El DSEE hace DOS cosas y conviene que se entienda cual es cual: una la hace SIEMPRE (medir
                     // donde el archivo se queda sin agudos, que es de donde salen el EQ y los graves automaticos)
                     // y la otra solo si se enciende (volver a crear esos agudos). El interruptor manda sobre la
                     // segunda, no sobre la primera, y por eso la explicacion las separa.
                     lSbr.Text = sbrAllowed
-                        ? ("Oye cada cancion y ve donde el MP3 le corto los agudos.\n"
-                           + "Eso lo mide SIEMPRE: de ahi sacan el EQ automatico y los\n"
-                           + "graves automaticos cuanto le falta a cada una.\n"
+                        ? ("Mide SIEMPRE donde el MP3 le corto los agudos a cada cancion:\n"
+                           + "de ahi sacan el EQ y los graves automaticos lo que le falta.\n"
                            + (NeuralEnv.Loaded
                               ? "EXPERIMENTAL: encendido, ademas los recrea con la IA."
                               : "EXPERIMENTAL: encendido, ademas recrea esa banda."))
@@ -830,6 +829,17 @@ namespace Rocola
                     swSil.SetBounds(176, 292, 264, 26); swSil.ForeColor = cTexto; swSil.Font = fNom;
                     swSil.Text = "Saltar silencios largos"; swSil.Acento = cCal; swSil.Checked = saltaSilencios;
                     tCal.Controls.Add(swSil);
+                    // LAS BOCINAS DEL BILLAR (GraveMono.cs, 11-10-2026): para un local con las bocinas repartidas por zonas y sin
+                    // subwoofer. Apagados de fabrica: con un par de bocinas y alguien enfrente convienen el estereo entero y todo
+                    // el grave. Se oyen al instante en la cancion que suena. Debajo de la explicacion del DSEE, que paso a tres
+                    // renglones para dejarles sitio (la ventana sigue cabiendo en 1024x768).
+                    Interruptor swSub = new Interruptor();
+                    swSub.SetBounds(16, 368, 196, 26); swSub.ForeColor = cTexto; swSub.Font = fNom;
+                    swSub.Text = "Quitar el subgrave"; swSub.Acento = cGra; swSub.Checked = cortaSubgrave;
+                    Interruptor swEst = new Interruptor();
+                    swEst.SetBounds(220, 368, 220, 26); swEst.ForeColor = cTexto; swEst.Font = fNom;
+                    swEst.Text = "Estereo al " + Math.Round(anchoEstereo * 100f) + " %"; swEst.Acento = cCal; swEst.Checked = estereoEstrecho;
+                    tCal.Controls.Add(swSub); tCal.Controls.Add(swEst);
 
                     // ---------------- TU BIBLIOTECA ----------------
                     Label lCal = new Label(); lCal.SetBounds(16, 40, 896, 20); lCal.BackColor = Color.Transparent;
@@ -1025,6 +1035,8 @@ namespace Rocola
                         bool silAntes = saltaSilencios;
                         saltaSilencios = swSil.Checked;
                         if (saltaSilencios != silAntes) SiguienteConElInterruptor();   // lo ya abierto para la siguiente traia el de antes
+                        cortaSubgrave = swSub.Checked; estereoEstrecho = swEst.Checked;
+                        AplicaBocinas();   // las bocinas del billar: al instante, en la que suena y en la siguiente
                         changed = true;
                         updateLabels();
                         ApplyNormNow();   // se oye el cambio al instante en la cancion que suena
@@ -1034,6 +1046,7 @@ namespace Rocola
                     swOn.CheckedChanged += apply; swSbr.CheckedChanged += apply; swIa.CheckedChanged += apply;
                     swNoche.CheckedChanged += apply;
                     swSil.CheckedChanged += apply;
+                    swSub.CheckedChanged += apply; swEst.CheckedChanged += apply;
                     bReset.Click += delegate
                     {
                         swOn.Checked = true;
@@ -1044,6 +1057,7 @@ namespace Rocola
                         swIa.Checked = true;                                 // juntar material para la IA: encendido de fabrica
                         swNoche.Checked = true;                              // y bajar el volumen de madrugada, tambien
                         swSil.Checked = true;                                // y saltar los silencios largos
+                        swSub.Checked = false; swEst.Checked = false;        // las bocinas del billar, apagadas: son para ese local
                         if (perfilDisco != 0)                                // el tipo de disco, otra vez a medirlo sola
                         { perfilDisco = 0; lock (discoLock) { discoLento.Clear(); discoMediana.Clear(); } AplicaPerfilDisco(); pintaDsk(); }
                         apply(bReset, EventArgs.Empty);
@@ -1130,7 +1144,7 @@ namespace Rocola
                 if (changed || f3CambioGraf) { SaveConfigPrefs(); ShowToast(changed ? "Sonido actualizado" : "Imagen actualizada", Color.FromArgb(40, 130, 90)); }
                 f3CambioGraf = false;
             }
-            catch { nocheOn = bkNoche; normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; masterDb = bkUp; eqAmount = bkEq; bassAmount = bkBass; videoVol = bkVid; videoAuto = bkVidA; sbrOn = bkSbr; eqAuto = bkEqA; bassAuto = bkBassA; perfilDisco = bkDsk; iaHarvestOn = bkIaDat; AplicaPerfilDisco(); if (saltaSilencios != bkSil) { saltaSilencios = bkSil; try { SiguienteConElInterruptor(); } catch { } } }   // si algo truena, deja los valores como estaban
+            catch { nocheOn = bkNoche; normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; masterDb = bkUp; eqAmount = bkEq; bassAmount = bkBass; videoVol = bkVid; videoAuto = bkVidA; sbrOn = bkSbr; eqAuto = bkEqA; bassAuto = bkBassA; perfilDisco = bkDsk; iaHarvestOn = bkIaDat; AplicaPerfilDisco(); if (saltaSilencios != bkSil) { saltaSilencios = bkSil; try { SiguienteConElInterruptor(); } catch { } } estereoEstrecho = bkEst; cortaSubgrave = bkSub; try { AplicaBocinas(); } catch { } }   // si algo truena, deja los valores como estaban
             finally { try { Cursor.Hide(); } catch { } maintMode = wasMaint; ForceFocus(); }
         }
 
