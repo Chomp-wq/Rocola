@@ -69,6 +69,19 @@ namespace Rocola
             if (!startupClosing && !IsDisposed) { SyncGpuFullScreen(); KeepVideoOnTop(); }
         }
 
+        // ROJO + ABAJO pulsado y la ayuda no se pudo abrir: se apunta por que (rocola_error.txt, tope por sesion).
+        private int ayudaNoPermitidaApuntes;
+        private void ApuntaAyudaNoPermitida()
+        {
+            if (ayudaNoPermitidaApuntes >= 20) return;
+            string motivo = !gpuEnabled || gpuPanel == null ? "sin tarjeta grafica" : !ContainsFocus ? "la rocola no tiene el foco del teclado"
+                : !Enabled ? "ventana deshabilitada" : arranqueEnEspera ? "arrancando" : configMode ? "configurando botones"
+                : maintMode ? "mantenimiento (F10)" : libBuilding ? "leyendo la biblioteca"
+                : keyOK == keyBack ? "verde y rojo son la misma tecla" : "cerrando";
+            ayudaNoPermitidaApuntes++;
+            LogError("ROJO + ABAJO sin ayuda: " + motivo, null);
+        }
+
         // ROJO + ABAJO, en una sola pulsacion (sin autorrepeticion). Pura: se prueba sin teclado.
         internal static bool EsAtajoAyuda(bool rojoMantenido, bool esAbajo, bool repeticion)
         { return rojoMantenido && esAbajo && !repeticion; }
@@ -80,8 +93,13 @@ namespace Rocola
             if ((keyData & (Keys.Control | Keys.Alt)) != 0 || kc == Keys.F5 || kc == Keys.F12
                 || ((kc == Keys.F8 || kc == Keys.F10) && !IsConfiguredKey(kc)))
             { if (asistenteVisible) CierraAsistente(); return false; }
-            if (!AsistentePermitido()) { if (asistenteVisible) CierraAsistente(); return false; }
             bool repeticion = (msg.LParam.ToInt64() & 0x40000000L) != 0;
+            if (!AsistentePermitido())
+            {
+                if (asistenteVisible) CierraAsistente();
+                else if (EsAtajoAyuda(BackHeld(), IsDown(kc), repeticion)) ApuntaAyudaNoPermitida();
+                return false;
+            }
             if (asistenteVisible) asistenteActividadTick = Environment.TickCount;
             if (EsAtajoAyuda(BackHeld(), IsDown(kc), repeticion))
             {
@@ -101,6 +119,7 @@ namespace Rocola
 
         private void TickAsistenteGpu()
         {
+            VigilaRojoMantenido();   // si el rojo mantenido no da sus pistas, la bitacora dice por que (GuiaRojoGpu.cs)
             if (asistenteRestaurarVideo && !AsistenteVisible)
             {
                 asistenteRestaurarVideo = false;

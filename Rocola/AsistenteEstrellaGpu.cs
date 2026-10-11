@@ -168,8 +168,15 @@ namespace Rocola
 
         // Incluye la estancia en primer plano y el regreso: el formulario no
         // debe ocultar este panel ni devolver WMP al frente a mitad del salto.
+        // El regreso solo lo termina un cuadro de la tarjeta (AvanzaAsistente). Si los cuadros se paran a mitad
+        // (ventana minimizada, dispositivo perdido, panel oculto), no puede quedarse "regresando" para siempre: el
+        // formulario se tragaria los botones, sin pistas del rojo ni forma de volver a abrir la ayuda. Pasado un
+        // segundo y medio sin cuadros, el regreso deja de bloquear (la animacion sigue al volver los cuadros).
         internal bool AsistenteEnTransicion
-        { get { return asistenteDibujando; } }
+        { get { return asistenteDibujando && !RegresoSinCuadros(asistenteEstado.Visible, asistenteUltimoAvance, AhoraMs() / 1000); } }
+        internal const double RegresoSinCuadrosSeg = 1.5;
+        internal static bool RegresoSinCuadros(bool visible, double ultimoAvance, double ahora)
+        { return !visible && ultimoAvance >= 0 && !(ahora - ultimoAvance < RegresoSinCuadrosSeg); }
 
         private void PreparaAsistente()
         {

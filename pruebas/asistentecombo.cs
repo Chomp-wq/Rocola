@@ -66,6 +66,20 @@ class AsistenteCombo
         Check(Codigo.Llama(form.GetMethod("AyudaTocada", Todos), "AbreAsistente"), "Tocar la casilla de AYUDA abre la ayuda");
         Check(Codigo.Llama(form.GetMethod("AyudaTocada", Todos), "CierraAsistente"), "Y con la ayuda abierta, tocarla la vuelve a guardar");
         Check(Codigo.Llama(form.GetMethod("AsistenteClick", Todos), "CierraAsistente"), "Tocar fuera del globo de la pregunta la guarda");
+        // El rojo mantenido (aviso del 11-10-2026): un regreso de la estrella que se quedara a medias porque la tarjeta
+        // dejo de dibujar no puede tragarse los botones para siempre, y si las pistas o la ayuda no salen, se apunta por que.
+        Type gpu = form.Assembly.GetType("Rocola.GpuPanel", true);
+        MethodInfo sin = gpu.GetMethod("RegresoSinCuadros", Todos);
+        double lim = (double)gpu.GetField("RegresoSinCuadrosSeg", Todos).GetRawConstantValue();
+        Check(!(bool)sin.Invoke(null, new object[] { false, 10.0, 10.0 + lim * .5 }), "Regresando con cuadros: sigue bloqueando la entrada mientras salta");
+        Check((bool)sin.Invoke(null, new object[] { false, 10.0, 10.0 + lim + .1 }), "Regreso sin cuadros: deja de tragarse los botones");
+        Check(!(bool)sin.Invoke(null, new object[] { true, 10.0, 99.0 }), "Con la ayuda a la vista no se toca");
+        Check(!(bool)sin.Invoke(null, new object[] { false, -1.0, 99.0 }) && (bool)sin.Invoke(null, new object[] { false, 10.0, double.NaN }), "Reloj raro: sin bloqueo eterno");
+        Check(Codigo.Llama(gpu.GetMethod("get_AsistenteEnTransicion", Todos), "RegresoSinCuadros"), "AsistenteEnTransicion usa el limite sin cuadros");
+        Check(Codigo.Llama(form.GetMethod("TickAsistenteGpu", Todos), "VigilaRojoMantenido") && Codigo.Llama(form.GetMethod("VigilaRojoMantenido", Todos), "MotivoSinGuiaRojo")
+            && Codigo.Llama(form.GetMethod("VigilaRojoMantenido", Todos), "LogError"), "Rojo mantenido sin pistas: se apunta el motivo");
+        Check(Codigo.Llama(form.GetMethod("AsistenteEntrada", Todos), "ApuntaAyudaNoPermitida") && Codigo.Llama(form.GetMethod("ApuntaAyudaNoPermitida", Todos), "LogError"),
+            "ROJO + ABAJO sin ayuda: se apunta el motivo");
         Check(Codigo.Llama(form.Assembly.GetType("Rocola.GpuPanel", true).GetMethod("AvanzaGlobosGuia", Todos), "AsistenteGuiaRectSigue"),
             "El globo de la guia recuerda su esquina (no cruza la pantalla a cada paso)");
         Check(!Codigo.Llama(form.GetMethod("EvaluaGuia", Todos), "AddItem") && !Codigo.Llama(form.GetMethod("EmpiezaMision", Todos), "AddItem"),

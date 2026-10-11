@@ -155,7 +155,10 @@ class EstadoDetras
             List<string> guarda = Codigo.Nombres(TF.GetMethod("SaveState", T));
             Check(guarda.Contains("EscribeEstado") && !guarda.Contains("EscribeSeguro") && !guarda.Contains("EscribeSeguroYa"),
                   "SaveState encarga el texto y no escribe en el hilo que lo llama");
+            // Desde la auditoria del 11-10-2026 el encargo lo valida y lo encola EncolaEstado (tambien los reintentos):
+            // el camino es el de EscribeEstado mas el suyo.
             List<string> escribe = Codigo.ConAyudantes(TF, "EscribeEstado");
+            escribe.AddRange(Codigo.ConAyudantes(TF, "EncolaEstado"));
             Check(Codigo.Llama(escribe, "GuardaUltimo") && Codigo.Llama(escribe, "EscribeSeguroYa") && Codigo.Llama(escribe, "CandadoDe"),
                   "el encargo va al escritor de fondo (el ultimo gana) y escribe con la escritura segura, bajo el candado del archivo");
             MethodInfo segura = TF.GetMethod("EscribeSeguroYa", T);

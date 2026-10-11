@@ -458,6 +458,9 @@ class BuscaPortadas
         for (int i = 0; i < at.Count; i++) Llama(s, "ClickAt", new Point(at[i].X + at[i].Width / 2, at[i].Y + at[i].Height / 2));
         bool orden = atajosPulsados.Count == at.Count; for (int i = 0; orden && i < at.Count; i++) if (atajosPulsados[i] != i) orden = false;
         Exige(orden && at.Count == 5, "tocar cada atajo lo usa (" + at.Count + ")");
+        // Lo recien tecleado se posa antes de elegir (desde el 11-10-2026 un toque no cobra una tarjeta de la consulta
+        // anterior): aqui se deja posar, como hace el temporizador al dejar de teclear.
+        Llama(s, "PosaConsulta");
         elegidos.Clear(); int vistas = 0; bool cartasBien = true;
         for (int i = 0; i < 12; i++)
         {

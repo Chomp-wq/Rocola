@@ -22,6 +22,41 @@ namespace Rocola
         internal static bool GuiaRojoActiva(bool opcion, bool gpu, bool foco, bool rojo, bool bloqueada)
         { return opcion && gpu && foco && rojo && !bloqueada; }
 
+        // POR QUE NO SALE (aviso del 11-10-2026: "al dejar presionado el rojo ya no salian las pistas ni podia usar
+        // el asistente"). Las mismas condiciones que GuiaRojoVisible, dichas con palabras. null = sale.
+        private string MotivoSinGuiaRojo()
+        {
+            if (!guiaRojo) return "pistas del rojo apagadas en Ctrl+F3";
+            if (!gpuEnabled) return "sin tarjeta grafica";
+            if (!ContainsFocus) return "la rocola no tiene el foco del teclado";
+            if (maintMode) return "mantenimiento (F10)";
+            if (libBuilding) return "leyendo la biblioteca";
+            if (videoFull) return "video a pantalla completa";
+            if (searchOpen) return "buscador abierto";
+            if (attractOn) return "modo atraccion";
+            if (configMode) return "configurando botones";
+            if (AsistenteCapturaEntrada) return asistenteVisible ? "la ayuda esta preguntando" : "la ayuda esta regresando a su sitio";
+            if (panelSongs != null && panelSongs.Visible) return "dentro de un disco";
+            if (letterBar == null || !letterBar.Visible) return "sin barra de letras";
+            return null;
+        }
+        // Si el rojo lleva un rato mantenido en la pared y la guia no sale por algo que no es de diseno, se apunta UNA
+        // vez por pulsacion en rocola_error.txt (siempre activo), con el motivo. Asi un fallo del bar se puede
+        // diagnosticar sin adivinar. El buscador, el disco, la atraccion y el video completo son de diseno: no se apuntan.
+        private int rojoMantenidoDesde, rojoApuntes; private bool rojoApuntado;
+        private void VigilaRojoMantenido()
+        {
+            if (!BackHeld()) { rojoMantenidoDesde = 0; rojoApuntado = false; return; }
+            int ahora = Environment.TickCount;
+            if (rojoMantenidoDesde == 0) { rojoMantenidoDesde = ahora == 0 ? 1 : ahora; return; }
+            if (rojoApuntado || rojoApuntes >= 20 || unchecked(ahora - rojoMantenidoDesde) < 700) return;
+            rojoApuntado = true;
+            string motivo = MotivoSinGuiaRojo();
+            if (motivo == null || searchOpen || attractOn || videoFull || (panelSongs != null && panelSongs.Visible)) return;
+            rojoApuntes++;
+            LogError("Rojo mantenido sin pistas: " + motivo, null);
+        }
+
         internal static Rectangle GuiaRojoFlecha(Rectangle barra, bool derecha)
         {
             int ancho = Math.Max(4, Math.Min(24, barra.Left - 2));
