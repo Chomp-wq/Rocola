@@ -8,6 +8,18 @@ sin reducir calidad; los paneles respetan los limites de la tarjeta. Solo Modest
 HD suspendida y renderizado CPU congelado.
 [Cambios, pruebas y limites pendientes](AUDITORIA_GENERAL_MODEST_2026-10-11.md).
 
+## El fondo Legacy, más ligero sin cambiar el aspecto — 12 de octubre de 2026
+
+- **Medido capa por capa** con un simulador de la tarjeta: el fondo pinta 5,9 pantallas por cuadro y gasta 0,14 ms
+  de procesador (aquí).
+- **Nebulosas sin detalle natural:** ya no pintan su mitad transparente (de 5,9 a 4,8 pantallas, -18 %). De fábrica
+  (con detalle) van enteras, exactamente como siempre.
+- **Vía láctea y viñeta**, con trozos más finos: un poco menos de pintura.
+- **La aurora** no rehace su malla en los cuadros en que no cambió (-23 % con ondas a 24 por segundo).
+- Lo que más ahorraría (no pintar debajo de las portadas) hay que comprobarlo en la tarjeta del bar.
+
+[Las medidas, los cambios y cómo se comprobó](FONDO_LIGERO_MODEST_2026-10-12.md).
+
 ## Décima tanda: fallos y mejoras de audio — 12 de octubre de 2026
 
 - **Las canciones ya no arrancan con un golpe seco:** entran en una curva de 5 ms (0,3 s al retomar a media

@@ -3244,7 +3244,13 @@ namespace Rocola
                 // de saber que el horneado ocurre, un mapa que no llego a hacerse quedaria dado por bueno
                 // y el mando no se veria hasta el siguiente cambio.
                 nebNaturalDe = CieloProfundo; nebFuerzaDe = Form1.nebNaturalFuerza; nebFuerzaMs = ahoraNeb;
-                using (Bitmap nb = CieloProfundo ? BakeNatural(mw, mh) : GpuStarfield.BakeNebulosas(mw, mh)) nebTex = Upload(nebTex, ref nebTW, ref nebTH, nb, out nebU, out nebV);
+                using (Bitmap nb = CieloProfundo ? BakeNatural(mw, mh) : GpuStarfield.BakeNebulosas(mw, mh))
+                {
+                    nebTex = Upload(nebTex, ref nebTW, ref nebTH, nb, out nebU, out nebV);
+                    // Sin el detalle natural, la mitad de la nebulosa es transparente del todo, y se pintaba dos veces
+                    // por cuadro a pantalla completa. Con el detalle, casi toda tiene algo: va entera, como siempre.
+                    nebTeselas = SiAhorran(TeselasVisibles.De(nb, TeselasVisibles.LadoTesela, true));   // (DibujoLigeroGpu.cs)
+                }
             }
             if (ruidoTex == IntPtr.Zero)
                 using (Bitmap rd = Form1.BakeRuidoGrande(RuidoTeja)) ruidoTex = Upload(ruidoTex, ref ruTW, ref ruTH, rd, out ruU, out ruV);
@@ -3532,10 +3538,10 @@ namespace Rocola
         private static float EnMargen(float v, float m) { return v > m ? m : (v < -m ? -m : v); }
         // Una pasada de la nebulosa, corrida (dx, dy) de su sitio. El cuadrilatero se sale de la pantalla por
         // los cuatro lados lo que dice el margen, asi que por mucho que se mueva nunca asoma su borde.
+        // Solo lo que no es transparente (DibujoLigeroGpu.cs): sin teselas, el cuadrilatero entero de siempre.
         private void NieblaDeriva(float mx, float my, float dx, float dy, uint argb)
         {
-            SetTexQuadA(nieblaQuad, -mx + dx, -my + dy, Width + mx + dx, Height + my + dy, nebU, nebV, argb);
-            stars.DrawQuad(nebTex, nieblaQuad);
+            DibujaTeselas(nebTex, nebTeselas, -mx + dx, -my + dy, Width + mx + dx, Height + my + dy, nebU, nebV, argb, nieblaQuad);
         }
 
         // ESCALERA DE TONOS: aqui esta lo que hace que se lea la intensidad. NO se dibuja subiendo el brillo
@@ -3987,6 +3993,7 @@ namespace Rocola
             return n;
         }
 
+        private int aurMallaN, aurBrilloN, aurMallaAncho, aurMallaAlto; private float aurMallaBase; private bool aurMallaOk;   // la ultima malla armada
         private void DrawAurora(GpuAurora au)
         {
             bool updateWave = SampleWave(ref au);
@@ -4077,11 +4084,17 @@ namespace Rocola
             AurSuaviza(aurH, aurHs);
             if (!AuroraBandas) { AurSuaviza(aurHs, aurH); AurSuaviza(aurH, aurHs); }
             }
-            int n = AurMalla(aurV, aurHs, aurCortina, aurSueloC, aurA, aurR, Width, au.BaseY, Height);
+            // LA MALLA SOLO SE REHACE SI CAMBIO ALGO DE LO QUE LA FORMA (fondo ligero, 12-10-2026). Sale de las alturas,
+            // colores y brillos de cada columna -que solo cambian arriba, cuando toca muestra de la onda-, del ancho, del
+            // alto y de donde va el horizonte. En los cuadros en que nada de eso cambio (pantalla de mas de 60 Hz, ondas a
+            // 24 o 30 por segundo, o el reposo quieto) saldria la misma malla, numero por numero: se dibuja la que ya esta.
+            bool mismaMalla = !updateWave && aurMallaOk && aurMallaBase == au.BaseY && aurMallaAncho == Width && aurMallaAlto == Height;
+            int n = mismaMalla ? aurMallaN : AurMalla(aurV, aurHs, aurCortina, aurSueloC, aurA, aurR, Width, au.BaseY, Height);
             if (n >= 3) stars.DrawMesh(aurV, n / 3);   // TODO el relleno en UNA sola llamada de dibujo
             // Y encima el BRILLO -el filo de neon y la linea del horizonte- en otra sola llamada, esta
             // sumando luz en vez de tapar. Dos llamadas de dibujo para toda la aurora.
-            int nb2 = AurBrillo(aurVb, aurHs, aurNc, aurNi, aurLc, aurLi, Width, au.BaseY);
+            int nb2 = mismaMalla ? aurBrilloN : AurBrillo(aurVb, aurHs, aurNc, aurNi, aurLc, aurLi, Width, au.BaseY);
+            aurMallaN = n; aurBrilloN = nb2; aurMallaBase = au.BaseY; aurMallaAncho = Width; aurMallaAlto = Height; aurMallaOk = true;
             if (nb2 >= 3) stars.DrawMeshAdd(aurVb, nb2 / 3);
             aurDibujada = n >= 3; aurDibujadaBase = au.BaseY;   // para su reflejo (CieloVivoGpu.cs)
         }

@@ -19,7 +19,8 @@
 // que caiga en una tesela saltada solo podia mezclar alfa cero, o sea dejar la pantalla como estaba. Las teselas
 // del borde de la imagen se pintan siempre: ahi la tarjeta puede leer fuera de lo horneado.
 //
-// Medido a 1024x768: la via lactea deja sin pintar el 40-48 % de su imagen y la vineta el 15 % (su centro).
+// Medido a 1024x768: la via lactea deja sin pintar el 40-48 % de su imagen y la vineta el 15 % (su centro). Con teselas de
+// 2 texeles (12-10-2026) el 45 % y el 17 %, y las nebulosas sin detalle natural, la mitad.
 #if ROCOLA_GPU
 using System;
 using System.Collections.Generic;
@@ -31,7 +32,11 @@ namespace Rocola
 {
     internal sealed class TeselasVisibles
     {
-        internal const int LadoTesela = 4;   // texeles; en pantalla, 16 px la via lactea y 32 la vineta
+        // TESELAS DE 2 TEXELES (fondo ligero, 12-10-2026; antes 4): en pantalla, 8 px la via lactea y las nebulosas y 16 la
+        // vineta. Mas finas se ajustan mejor al borde de lo transparente: la via lactea pasa de pintar el 59,7 % de su
+        // imagen al 55,4 % y la vineta del 84,8 % al 82,9 % (a 1024x768), a cambio de unos cien triangulos mas, que para
+        // la tarjeta no son nada. La regla de que tesela se salta es la misma.
+        internal const int LadoTesela = 2;
         internal int Ancho, Alto;            // la imagen horneada, en texeles
         internal int[] Rect = new int[0];    // x0,y0,x1,y1 de cada rectangulo a pintar (texeles; x1,y1 excluidos)
         internal int N;                      // cuantos rectangulos
@@ -195,7 +200,12 @@ namespace Rocola
 
     internal sealed partial class GpuPanel
     {
-        private TeselasVisibles hazTeselas, vinetaTeselas;   // lo que tienen que pintar la via lactea y la vineta
+        private TeselasVisibles hazTeselas, vinetaTeselas, nebTeselas;   // lo que tienen que pintar la via lactea, la vineta y las nebulosas
+        // SOLO SI AHORRAN. Partir en decenas de trozos una imagen que tiene algo casi en toda ella no quita pixeles y deja el
+        // redondeo del borde de los trozos (un nivel de 255 en algun pixel suelto). La nebulosa con el detalle natural pinta
+        // el 98 %: va entera, exactamente como siempre. Sin el detalle, la mitad: va a trozos.
+        internal const double TeselasAhorran = 0.9;
+        internal static TeselasVisibles SiAhorran(TeselasVisibles t) { return t != null && t.Fraccion < TeselasAhorran ? t : null; }
 
         // LA INTERFAZ, TAMBIEN SIN LO TRANSPARENTE. La imagen principal de la interfaz ocupa casi toda la pantalla en la
         // atraccion, dentro de un disco y en el buscador, y la franja de abajo va a lo ancho: buena parte de las dos es

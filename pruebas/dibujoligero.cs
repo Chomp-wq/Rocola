@@ -775,6 +775,88 @@ class DibujoLigero
         Exige(!Codigo.Llama(Metodo(TPanel, "DrawAurora"), "CoverColor"), "el cuadro de la aurora ya no pide el color de la portada columna a columna");
     }
 
+    // ======================= FONDO LIGERO (12-10-2026) =======================
+    // Las dos pasadas de la nebulosa (la del genero y la de la caratula, a la deriva) a trozos: con las dos mezclas de la
+    // tarjeta pintadas encima del mismo fondo, entero y a trozos salen igual que la via lactea (la misma tolerancia de
+    // redondeo en el borde de los trozos). Sin el detalle natural, la mitad de la nebulosa es transparente.
+    static void NebulosasATrozos()
+    {
+        Console.WriteLine("\n  6) LAS NEBULOSAS A TROZOS (fondo ligero)\n");
+        Random basura = new Random(77);
+        int lt = (int)Campo(TTes, "LadoTesela").GetValue(null);
+        foreach (int[] p in new int[][] { new int[] { 1024, 768 }, new int[] { 1366, 768 } })
+            foreach (bool natural in new bool[] { false, true })
+            {
+                int W = p[0], H = p[1];
+                Control panel = Panel(W, H, Cielo(Tarjeta(W, H), W, H));
+                int mw = Math.Max(8, W / 4), mh = Math.Max(8, H / 4);
+                Bitmap nb = natural ? (Bitmap)Estatico(TPanel, "BakeNatural", mw, mh) : (Bitmap)Estatico(TStar, "BakeNebulosas", mw, mh);
+                Textura tx = DeBitmap(nb, basura); IntPtr tex = Registra(tx);
+                object tes = De(nb, lt, true);
+                string q = Revisa(nb, lt, true, tes);
+                Exige(q == null, (natural ? "con" : "sin") + " detalle natural, " + W + "x" + H + ": sus teselas cumplen la regla" + (q != null ? " -- " + q : "")
+                                 + "; pinta el " + Pct((double)Toma(tes, "Fraccion")) + " de su imagen en " + Toma(tes, "N") + " rectangulos");
+                object usa = Estatico(TPanel, "SiAhorran", tes);
+                Exige(natural ? usa == null : usa == tes, natural ? "con el detalle natural (de fabrica) casi toda tiene algo: se pinta entera, exactamente como siempre"
+                                                             : "sin el detalle natural la mitad es transparente: va a trozos");
+                Pon(panel, "hazTex", IntPtr.Zero); Pon(panel, "nebTex", tex); Pon(panel, "nebU", (float)mw / tx.W); Pon(panel, "nebV", (float)mh / tx.H);
+                Pon(panel, "NebColor", 0xFF8C78FFu); Pon(panel, "NebColor2", 0xFF40C0A0u);
+                float[] fases = { 0f, 0.9f, 2.2f, 3.9f, 5.5f };
+                int peor = 0, peorNivel = 0, malas = 0;
+                for (int i = 0; i < fases.Length; i++)
+                {
+                    Pon(panel, "NebFase", fases[i]);
+                    envios.Clear();
+                    Pon(panel, "nebTeselas", null); Llama(panel, "DibujaNieblas"); List<Envio> entero = Captura();
+                    Pon(panel, "nebTeselas", tes); Llama(panel, "DibujaNieblas"); List<Envio> trozos = Captura();
+                    bool estado = entero.Count == 2 && trozos.Count == 2;
+                    for (int k = 0; estado && k < 2; k++)
+                        if (trozos[k].Tex != entero[k].Tex || trozos[k].Mezcla != entero[k].Mezcla || trozos[k].Suma != entero[k].Suma || trozos[k].ConTextura != entero[k].ConTextura) estado = false;
+                    int[] fa = Fondo(W, H, 60 + i), fb = (int[])fa.Clone();
+                    Pinta(entero, fa, W, H); Pinta(trozos, fb, W, H);
+                    int maxd; int dist = Compara(fa, fb, out maxd);
+                    if (!estado || dist > W * H / 1000 || maxd > 1) malas++;
+                    peor = Math.Max(peor, dist); peorNivel = Math.Max(peorNivel, maxd);
+                }
+                Exige(malas == 0, (natural ? "con" : "sin") + " detalle natural, " + W + "x" + H + ", " + fases.Length + " posiciones de la deriva: dos llamadas, la misma textura y mezcla,"
+                                  + " y los mismos pixeles (el peor caso: " + peor + " pixeles de " + (W * H) + " por " + peorNivel + " nivel de 255, el redondeo del borde de los trozos)");
+                nb.Dispose();
+            }
+    }
+
+    // La malla de la aurora no se rehace en los cuadros en que no cambio nada de lo que la forma: lo que se manda es lo
+    // mismo, byte a byte, que rehaciendola; y se rehace si cambia el horizonte o llega muestra nueva de la onda.
+    static void AuroraReusada()
+    {
+        Console.WriteLine("\n  7) LA AURORA SIN REHACER LA MALLA SI NO CAMBIO (fondo ligero)\n");
+        const int W = 1024, H = 768;
+        Control p = PanelAurora(W, H);
+        object au = Aurora(30, H);
+        List<Envio> a = CuadroAurora(p, au, 2000, 1.5, false);   // con muestra nueva: se arma
+        Exige(a.Count == 2 && (bool)Toma(p, "aurMallaOk"), "la primera vez se arma la malla y el brillo (dos llamadas)");
+        // Sin muestra nueva: con las alturas tocadas a mano, una malla rehecha cambiaria; la reusada no.
+        float[] hs = (float[])Toma(p, "aurHs"); float guarda = hs[3]; hs[3] += 40f;
+        envios.Clear(); Llama(p, "DrawAurora", au); List<Envio> b = Captura();
+        hs[3] = guarda;
+        Exige(MismosBytes(a, b), "en un cuadro sin muestra nueva de la onda se manda la misma malla, sin rehacerla (las alturas tocadas no se notan)");
+        // Y lo reusado es exactamente lo que saldria rehaciendola.
+        Pon(p, "aurMallaOk", false);
+        envios.Clear(); Llama(p, "DrawAurora", au); List<Envio> c = Captura();
+        Exige(MismosBytes(b, c), "y es byte a byte lo mismo que rehaciendola");
+        // Si se mueve el horizonte (el reposo que sube), se rehace aunque no haya muestra nueva.
+        object au2 = Aurora(30, H); SetF(au2, "BaseY", (float)TAu.GetField("BaseY").GetValue(au) - 3f);
+        envios.Clear(); Llama(p, "DrawAurora", au2); List<Envio> d = Captura();
+        Pon(p, "aurMallaOk", false);
+        envios.Clear(); Llama(p, "DrawAurora", au2); List<Envio> e2 = Captura();
+        Exige(!MismosBytes(c, d) && MismosBytes(d, e2), "con el horizonte movido se rehace (sale distinta, e igual que rehecha a proposito)");
+        // Con muestra nueva de la onda, siempre se rehace.
+        hs = (float[])Toma(p, "aurHs");
+        List<Envio> f = CuadroAurora(p, Aurora(31, H), 2100, 1.9, false);
+        Pon(p, "aurMallaOk", false);
+        List<Envio> g = CuadroAurora(p, Aurora(31, H), 2100, 1.9, false);
+        Exige(MismosBytes(f, g) && !MismosBytes(f, d), "con muestra nueva de la onda se rehace siempre (igual que sin lo guardado)");
+    }
+
     // ======================= LAS CUENTAS POR ENTERO =======================
     static uint LerpAntes(uint c0, uint c1, float f)
     {
@@ -906,6 +988,8 @@ class DibujoLigero
         try { MismaImagen(); } catch (Exception e) { Mal("la misma imagen: " + e.GetType().Name + ": " + e.Message); }
         try { Quieta(); } catch (Exception e) { Mal("la interfaz quieta: " + e.GetType().Name + ": " + e.Message); }
         try { AuroraIgual(); } catch (Exception e) { Mal("la aurora: " + e.GetType().Name + ": " + e.Message); }
+        try { NebulosasATrozos(); } catch (Exception e) { Mal("las nebulosas a trozos: " + e.GetType().Name + ": " + e.Message); }
+        try { AuroraReusada(); } catch (Exception e) { Mal("la aurora reusada: " + e.GetType().Name + ": " + e.Message); }
         try { PorEntero(); } catch (Exception e) { Mal("por entero: " + e.GetType().Name + ": " + e.Message); }
         try { CuadroDeVerdad(); } catch (Exception e) { Mal("el cuadro de verdad: " + e.GetType().Name + ": " + e.Message + " " + e.StackTrace); }
         Console.WriteLine(fallos == 0 ? "\n  todo bien" : ("\n  " + fallos + " fallos"));
