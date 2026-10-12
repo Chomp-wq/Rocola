@@ -1449,7 +1449,7 @@ namespace Rocola
                 // EL APARATO, NO LA CANCION (SalidaSonido.cs): se espera y se retoma la misma desde donde iba.
                 if (deLaSalida != null && EsFalloDelDispositivo(deLaSalida) && nowPlaying != null && !nowPlaying.IsVideo
                     && SalidaCaida(nowPlaying.Song, PosicionActual(), deLaSalida, true)) return;
-                EstadoPasajero("Aviso al reproducir: " + e.Exception.Message, EstadoPasajeroMs);
+                EstadoPasajero("Se cort\u00f3 la canci\u00f3n: " + MotivoFallo(e.Exception), EstadoPasajeroMs);   // el detalle, en rocola_error.txt
                 LogError("PlaybackStopped", e.Exception);
                 RefundCredit();   // la cancion que el cliente pago fallo al reproducirse: se le devuelve el credito
                 ShowToast("No se pudo reproducir: credito devuelto", Color.FromArgb(200, 80, 70));

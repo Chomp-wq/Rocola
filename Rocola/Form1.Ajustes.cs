@@ -1282,7 +1282,7 @@ namespace Rocola
             if (toastBmp == null) toastBmp = new Bitmap(ToastW, ToastH, PixelFormat.Format32bppPArgb);
             toastBorde = BordeLibreAvisos();   // con video, el aviso se centra en lo que se ve y no pasa de ahi
             PintaToastHasta(toastBmp, text, back, lblToast.Font, toastBorde - 24);
-            toastVer++; toastTick = Environment.TickCount;
+            toastVer++; toastTick = TickVivo();
         }
 
         // El dibujo en si, aparte del estado: asi se puede ver y comprobar sin arrancar la rocola entera.
@@ -1338,7 +1338,7 @@ namespace Rocola
         private GpuToast BuildToastState()
         {
             GpuToast t = new GpuToast();
-            if (toastTick < 0 || toastBmp == null) return t;
+            if (toastTick == -1 || toastBmp == null) return t;
             int dt = Environment.TickCount - toastTick;
             if (dt < 0 || dt >= ToastMs) { toastTick = -1; return t; }
             float a, dy; CurvaToast(dt, out a, out dy);

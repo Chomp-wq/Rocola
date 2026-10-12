@@ -81,6 +81,9 @@ GPU="$GPU avisosvideo"
 # 'lineaestado': la linea de estado no se queda con avisos viejos (avance tardio del escaneo, errores que se van solos).
 CPU="$CPU lineaestado"
 GPU="$GPU lineaestado"
+# 'segundatanda': el reloj de Windows que se atrasa, la vuelta del contador a los 24,9 dias y el motivo del fallo en corto.
+CPU="$CPU segundatanda"
+GPU="$GPU segundatanda"
 # 'ventanaf3': la ventana Ctrl+F3 de verdad, todas sus paginas y hojas: nada fuera de la ventana, nada debajo de Listo,
 # textos que caben (con la letra de Mono y con una mas ancha). No son las letras de XP.
 CPU="$CPU ventanaf3"

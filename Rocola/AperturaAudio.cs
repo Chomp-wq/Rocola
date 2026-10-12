@@ -279,7 +279,7 @@ namespace Rocola
                 DisposePlaybackNow();
                 return;
             }
-            EstadoPasajero("No se pudo reproducir " + System.IO.Path.GetFileName(t.Path) + " (" + ex.Message + ")", EstadoPasajeroMs);
+            EstadoPasajero("No se pudo reproducir " + System.IO.Path.GetFileName(t.Path) + ": " + MotivoFallo(ex), EstadoPasajeroMs);   // el detalle, en rocola_error.txt
             LogError("PlayTrack " + System.IO.Path.GetFileName(t.Path), ex);
             NoteIncompatible(t.Path, ex);
             RefundCredit();

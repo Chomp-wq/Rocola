@@ -581,7 +581,7 @@ namespace Rocola
             {
                 bool enCurso = Sliding;   // (antes de tocar nada) si la anterior aun no habia llegado
                 if (ancho < 8) { slideTick = -1; return; }
-                int now = Environment.TickCount;
+                int now = TickVivo();
                 gpuRapidSlide = RapidPageTurn(now, gpuLastSlideTick, gpuHasSlideTick);
                 gpuLastSlideTick = now; gpuHasSlideTick = true;
                 // PASAR DE PAGINA DESLIZANDO: la que se estaba viendo sale mientras entra la nueva. No si la pagina no
@@ -696,7 +696,7 @@ namespace Rocola
                 }
                 return n;
             }
-            public bool Sliding { get { return slideTick >= 0 && Environment.TickCount - slideTick < SlideMs; } }
+            public bool Sliding { get { return slideTick != -1 && Environment.TickCount - slideTick < SlideMs; } }
             // CURVA del hojeo (funcion pura, para poder comprobarla): devuelve cuanto FALTA por recorrer
             // (1 = recien empieza, 0 = ya llego) y la opacidad de entrada.
             internal static float CurvaHojeo(int dt, out float alpha)
@@ -712,7 +712,7 @@ namespace Rocola
             private float SlideNow(out float alpha)
             {
                 alpha = 1f;
-                if (slideTick < 0) return 0f;
+                if (slideTick == -1) return 0f;
                 int dt = Environment.TickCount - slideTick;
                 if (dt < 0 || dt >= SlideMs) { slideTick = -1; return 0f; }
                 return slideFrom * CurvaHojeo(dt, out alpha);
@@ -737,7 +737,7 @@ namespace Rocola
                 bool chica = Sliding && HojeoLigero && gpuRapidSlide;
                 float alpha; float dx = SlideNow(out alpha);   // hojeo: desplazamiento y desvanecido de ESTE cuadro
                 // Pasar de pagina deslizando: cada columna lleva su propio punto del camino (CurvaColumna).
-                int dtHojeo = (slideTick >= 0) ? Environment.TickCount - slideTick : -1;
+                int dtHojeo = (slideTick != -1) ? Environment.TickCount - slideTick : -1;
                 bool columnas = PaginaDesliza && dtHojeo >= 0;
                 if (!columnas) slideViejas = null;
                 bool izq = slideFrom > 0f;

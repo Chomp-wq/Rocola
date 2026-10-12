@@ -279,7 +279,8 @@ namespace Rocola
                 try { if (video != null) video.Visible = false; } catch { }
                 RefundCredit();   // compensacion al cliente: el video no abrio
                 ShowToast("No se pudo abrir el video: credito devuelto", Color.FromArgb(200, 80, 70));
-                EstadoPasajero("Video (WMP): " + ex.Message, EstadoPasajeroMs);
+                EstadoPasajero("No se pudo abrir el video: " + MotivoFallo(ex), EstadoPasajeroMs);
+                LogError("Video " + Path.GetFileName(path ?? ""), ex);   // el detalle, que antes solo se veia en la linea de estado
                 Diag("video: NO ABRIO - " + ex.Message);
                 // el video no arranco: pasar al siguiente sin trabar la cola (tras desenredar la pila de PlayNext)
                 try { if (this.IsHandleCreated) this.BeginInvoke((MethodInvoker)delegate { PlayNext(); }); } catch { }

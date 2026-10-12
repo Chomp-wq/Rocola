@@ -2185,6 +2185,46 @@ namespace Rocola
         }
         internal const int EstadoPasajeroMs = 15000;
 
+        // POR QUE NO SONO, DICHO PARA EL CLIENTE (segunda tanda del 12-10-2026). La linea de estado mostraba el mensaje
+        // de la excepcion tal cual: en ingles, tecnico y tan largo que se cortaba ("Got a frame at sample rate 48000, in
+        // an MP3 with sample rate 8000. Mp3FileReader does not support..."). Ahora dice el motivo en corto; el mensaje
+        // de verdad sigue completo en rocola_error.txt. El orden importa: el fin de archivo y el "no se encuentra" son
+        // tambien errores de lectura (IOException).
+        internal static string MotivoFallo(Exception ex)
+        {
+            if (ex is FileNotFoundException || ex is DirectoryNotFoundException || ex is DriveNotFoundException)
+                return "no se encuentra el archivo (¿se desconectó el disco?)";
+            if (ex is UnauthorizedAccessException) return "Windows no deja leer el archivo";
+            if (ex is EndOfStreamException) return "el archivo está incompleto o dañado";
+            if (ex is IOException) return "no se pudo leer el archivo del disco";
+            if (ex is System.Runtime.InteropServices.COMException) return "el reproductor de Windows no lo pudo abrir";
+            if (ex is FormatException || ex is InvalidDataException || ex is InvalidOperationException
+                || ex is ArgumentException || ex is NotSupportedException)
+                return "el archivo está dañado o en un formato que no se puede tocar";
+            return "no se pudo abrir";
+        }
+
+        // EL RELOJ DE WINDOWS TAMBIEN VA HACIA ATRAS (segunda tanda del 12-10-2026): el cambio de horario -XP no sabe
+        // que en Mexico se quito en 2022, y el ultimo domingo de octubre atrasa una hora-, una sincronizacion o
+        // alguien que lo corrige a mano. Las cuentas de inactividad restan horas del reloj: con la ultima tecla "en
+        // el futuro" daban negativo durante toda esa hora, y ni la atraccion, ni el video a pantalla completa, ni el
+        // cierre solo del buscador, ni el reinicio del dia llegaban. Si el reloj quedo detras de lo apuntado, se
+        // cuenta desde ahora, como si se acabara de tocar.
+        // EL RELOJ DE LOS MILISEGUNDOS TAMBIEN DA LA VUELTA: Environment.TickCount cuenta desde que se encendio
+        // Windows y a los 24,9 dias pasa a negativo (hasta los 49,7). Las animaciones que guardaban su arranque con
+        // -1 como "nada en marcha" y miraban "< 0" se apagaban todo ese tiempo: el aviso de siempre ("Pusiste...",
+        // "Inserta una moneda") no salia, y las paginas cambiaban de golpe. -1 sigue siendo "nada"; esto nunca lo da.
+        internal static int TickVivo() { int t = Environment.TickCount; return t == -1 ? -2 : t; }
+
+        private void RelojAtras()
+        {
+            DateTime ahora = DateTime.Now;
+            if (lastInput > ahora) lastInput = ahora;
+            if (searchLastActivity > ahora) searchLastActivity = ahora;
+            DateTime topeDemo = ahora.AddSeconds(RespiraDemoSegs);
+            if (respiraDemoHasta > topeDemo) respiraDemoHasta = topeDemo;
+        }
+
         private void ShowToast(string text) { ShowToast(text, Color.FromArgb(40, 165, 90)); }
         private void ShowToast(string text, Color back)
         {
@@ -2289,6 +2329,7 @@ namespace Rocola
             EnsureCoverReaders(); // rearmar la cola cuando el regulador recupera margen
 #endif
             CaducaEstado();   // los avisos de error de la linea de estado se van solos
+            RelojAtras();     // y si el reloj de Windows se atraso, la inactividad cuenta desde ahora
             phase += 0.045;
             frameTick++;
             // Si el disco que contenia la cola de un apagon vuelve a aparecer, reescanea y restaura sin

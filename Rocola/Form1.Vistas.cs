@@ -86,15 +86,15 @@ namespace Rocola
                 {
                     if (value == pagina) return;
                     animDir = (value > pagina) ? 1f : -1f;
-                    pagAnt = pagina; pagina = value; animTick = Environment.TickCount;
+                    pagAnt = pagina; pagina = value; animTick = TickVivo();
                 }
             }
-            public bool Animando { get { return animTick >= 0 && Environment.TickCount - animTick < SongListView.SlideMs; } }
+            public bool Animando { get { return animTick != -1 && Environment.TickCount - animTick < SongListView.SlideMs; } }
             public float Paso
             {
                 get
                 {
-                    if (animTick < 0) return 1f;
+                    if (animTick == -1) return 1f;
                     int dt = Environment.TickCount - animTick;
                     return (dt >= SongListView.SlideMs) ? 1f : (dt / (float)SongListView.SlideMs);
                 }
@@ -102,7 +102,7 @@ namespace Rocola
             // Cuanto falta por recorrer, con la curva de la lista. Cero = ya llego.
             private float FaltaAhora()
             {
-                if (animTick < 0) return 0f;
+                if (animTick == -1) return 0f;
                 int dt = Environment.TickCount - animTick;
                 if (dt < 0 || dt >= SongListView.SlideMs) { animTick = -1; return 0f; }
                 return SongListView.CurvaLista(dt);
@@ -1956,9 +1956,9 @@ namespace Rocola
                 // mientras la animacion esta corriendo.
                 Bitmap t = hornoAnt; hornoAnt = hornoPag; hornoPag = t;
                 hornoSig = long.MinValue;
-                slideDesde = dir * (float)w; slideTick = Environment.TickCount;
+                slideDesde = dir * (float)w; slideTick = TickVivo();
             }
-            public bool Sliding { get { return slideTick >= 0 && Environment.TickCount - slideTick < SlideMs; } }
+            public bool Sliding { get { return slideTick != -1 && Environment.TickCount - slideTick < SlideMs; } }
             // Olvida lo horneado y corta cualquier hojeo en curso. Se llama al ABRIR un disco: si no, venir de
             // la pagina 3 de otro disco haria "hojear" hasta la 1 del nuevo, que no significa nada.
             public void OlvidaPagina()
@@ -1974,7 +1974,7 @@ namespace Rocola
             {
                 get
                 {
-                    if (slideTick < 0) return 1f;
+                    if (slideTick == -1) return 1f;
                     int dt = Environment.TickCount - slideTick;
                     return (dt >= SlideMs) ? 1f : (dt / (float)SlideMs);
                 }
@@ -1989,7 +1989,7 @@ namespace Rocola
             }
             private float DesplazaAhora()
             {
-                if (slideTick < 0) return 0f;
+                if (slideTick == -1) return 0f;
                 int dt = Environment.TickCount - slideTick;
                 if (dt < 0 || dt >= SlideMs) { slideTick = -1; return 0f; }   // el mapa de la pagina vieja se GUARDA: es el otro lado del intercambio
                 return slideDesde * CurvaLista(dt);
