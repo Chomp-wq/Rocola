@@ -184,7 +184,8 @@ namespace Rocola
             else { tipo = TipoDeColor(fondo, texto); PartirAviso(texto, out tit, out det); }
             if (fAvisoTit == null) fAvisoTit = new Font(lblToast.Font.FontFamily, 14f, FontStyle.Bold);
             if (fAvisoDet == null) fAvisoDet = new Font(lblToast.Font.FontFamily, 11f, FontStyle.Bold);
-            Size tam = TamanoAviso(ClientSize.Width, tit, det, fAvisoTit, fAvisoDet);
+            int borde = BordeLibreAvisos();   // con video en ventana, a la izquierda de el (si no, quedaba detras)
+            Size tam = TamanoAviso(Math.Min(ClientSize.Width, borde), tit, det, fAvisoTit, fAvisoDet);
             if (avisoBmp == null || avisoBmp.Width != tam.Width || avisoBmp.Height != tam.Height)
             {
                 if (avisoBmp != null) avisoBmp.Dispose();
@@ -193,7 +194,7 @@ namespace Rocola
             PintaAviso(avisoBmp, tipo, tit, det, fAvisoTit, fAvisoDet);
             aviso.Has = true; aviso.Bmp = avisoBmp; aviso.Ver = ++avisoVer;
             aviso.Desde = GpuPanel.AhoraMs();
-            aviso.X = ClientSize.Width - 18f - tam.Width; aviso.Y = AvisoArriba;
+            aviso.X = Math.Max(8f, borde - 18f - tam.Width); aviso.Y = AvisoArriba;
             Color c = ColorAviso(tipo);
             aviso.Color = 0xFF000000u | ((uint)c.R << 16) | ((uint)c.G << 8) | c.B;
             toastTick = -1;   // el aviso de siempre no sale
@@ -302,7 +303,8 @@ namespace Rocola
             if (fInvTit == null) fInvTit = new Font(lblToast.Font.FontFamily, 17f, FontStyle.Bold);
             if (fInvTxt == null) fInvTxt = new Font(lblToast.Font.FontFamily, 12.5f, FontStyle.Bold);
             if (fInvPie == null) fInvPie = new Font(lblToast.Font.FontFamily, 10.5f, FontStyle.Bold);
-            Size tam = TamanoInvita(w);
+            int libre = BordeLibreAvisos();   // con video en ventana, centrada en lo que se ve (si no, la tapaba a medias)
+            Size tam = TamanoInvita(libre);
             if (invitaBmp == null || invitaBmp.Width != tam.Width || invitaBmp.Height != tam.Height)
             {
                 if (invitaBmp != null) invitaBmp.Dispose();
@@ -316,7 +318,7 @@ namespace Rocola
             invita.Has = true; invita.Bmp = invitaBmp; invita.Ver = ++invitaVer;
             if (!yaEstaba) invita.Desde = ahora;
             invita.Hasta = ahora + InvitaMs;
-            invita.X = (w - tam.Width) * .5f;
+            invita.X = Math.Max(0f, (libre - tam.Width) * .5f);
             invita.Y = Math.Max(90f, (BotStripTop(h) - tam.Height) * .5f);
             invita.RanuraX = ranura.X; invita.RanuraY = ranura.Y; invita.MonedaR = r;
             invita.Color = 0xFFF2CE48u;

@@ -2048,7 +2048,7 @@ namespace Rocola
             {
                 gpuDiscTry = !gpuDiscTry;
                 uiOverlaySig = SigNada;   // fuerza rehacer la textura de UI
-                if (lblStatus != null) lblStatus.Text = "Interior de disco por " + (gpuDiscTry ? "GPU" : "CPU");
+                EstadoPasajero("Interior de disco por " + (gpuDiscTry ? "GPU" : "CPU"), 8000);
                 SyncGpuFullScreen(); Invalidate(true);
                 return true;
             }
@@ -2164,6 +2164,27 @@ namespace Rocola
             return base.ProcessCmdKey(ref msg, keyData);
         }
 
+        // LOS AVISOS DE ERROR DE LA LINEA DE ESTADO SE VAN SOLOS (barrido del 12-10-2026). "No se pudo reproducir ...
+        // (el mensaje de Windows)", "Video (WMP): ...", "Aviso al reproducir: ..." se quedaban en la pantalla del cliente
+        // hasta volver a leer la biblioteca, o sea casi siempre hasta el dia siguiente; y "Sin salida de sonido" seguia
+        // puesto con las bocinas ya de vuelta. El detalle ya queda en rocola_error.txt y el cliente ya recibio su aviso.
+        // Solo se borra si nadie puso otra cosa encima entretanto.
+        private string estadoPasajero; private int estadoPasajeroHasta;
+        private void EstadoPasajero(string texto, int ms)
+        {
+            if (lblStatus == null) return;
+            lblStatus.Text = texto ?? "";
+            estadoPasajero = lblStatus.Text;
+            estadoPasajeroHasta = unchecked(Environment.TickCount + Math.Max(1000, ms));
+        }
+        private void CaducaEstado()
+        {
+            if (estadoPasajero == null || unchecked(Environment.TickCount - estadoPasajeroHasta) < 0) return;
+            if (lblStatus != null && lblStatus.Text == estadoPasajero) lblStatus.Text = "";
+            estadoPasajero = null;
+        }
+        internal const int EstadoPasajeroMs = 15000;
+
         private void ShowToast(string text) { ShowToast(text, Color.FromArgb(40, 165, 90)); }
         private void ShowToast(string text, Color back)
         {
@@ -2267,6 +2288,7 @@ namespace Rocola
             TickAsistenteGpu();
             EnsureCoverReaders(); // rearmar la cola cuando el regulador recupera margen
 #endif
+            CaducaEstado();   // los avisos de error de la linea de estado se van solos
             phase += 0.045;
             frameTick++;
             // Si el disco que contenia la cola de un apagon vuelve a aparecer, reescanea y restaura sin

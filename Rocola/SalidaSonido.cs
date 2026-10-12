@@ -358,7 +358,8 @@ namespace Rocola
             if (reintentoSalida == null) { reintentoSalida = new Timer(); reintentoSalida.Tick += ReintentoSalida_Tick; }
             reintentoSalida.Interval = espera;
             reintentoSalida.Start();
-            lblStatus.Text = "Sin salida de sonido: la musica sigue en cuanto vuelva el aparato";
+            // Mientras se reintenta sigue puesto (cada reintento lo renueva); cuando el aparato vuelve, se va solo.
+            EstadoPasajero("Sin salida de sonido: la musica sigue en cuanto vuelva el aparato", espera + EstadoPasajeroMs);
             if (reintentos == 3) ShowToast("Sin salida de sonido: la cola se conserva", System.Drawing.Color.FromArgb(200, 130, 35));
             return true;
         }

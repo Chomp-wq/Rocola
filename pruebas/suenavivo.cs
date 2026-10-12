@@ -373,7 +373,8 @@ class SuenaVivo
         Check(enganchado, "y el de la cancion pedida sale al pedir una cancion (disco o buscador) o un video, con lo que se acaba de pedir");
         MethodInfo hta = form.GetMethod("HorneaToast", F);
         List<string> pasos = Codigo.Repasa(hta);
-        Check(pasos.IndexOf("AvisoClaro") >= 0 && pasos.IndexOf("HorneaAviso") > pasos.IndexOf("AvisoClaro") && pasos.IndexOf("HorneaAviso") < pasos.IndexOf("PintaToast"),
+        int iPinta = pasos.IndexOf("PintaToastHasta"); if (iPinta < 0) iPinta = pasos.IndexOf("PintaToast");   // (12-10-2026: acotado al video)
+        Check(pasos.IndexOf("AvisoClaro") >= 0 && pasos.IndexOf("HorneaAviso") > pasos.IndexOf("AvisoClaro") && pasos.IndexOf("HorneaAviso") < iPinta,
               "el aviso claro se decide antes de hornear el de siempre (un solo sitio: todos los avisos pasan por aqui)");
     }
 

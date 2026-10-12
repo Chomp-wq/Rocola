@@ -155,8 +155,8 @@ namespace Rocola
             card.Controls.Add(jpeg); card.Controls.Add(jpegNota);
             Label note = new Label(); note.SetBounds(16, 370, 424, 34);
             note.Font = fDes; note.ForeColor = cTenue; note.BackColor = Color.Transparent;
-            note.Text = "Solo GPU. Los perfiles no cambian la calidad; los HDD y equipos de dos\n"
-                + "hilos conservan un lector. Compara en Imagen > Medir. Se guarda al cerrar.";
+            note.Text = "Solo GPU. Los perfiles no cambian la calidad de las carátulas.\n"
+                + "HDD y dos hilos: un solo lector. Compara en Imagen > Medir.";
             card.Controls.Add(note); paint();
             return card;
         }

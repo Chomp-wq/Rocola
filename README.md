@@ -8,6 +8,20 @@ sin reducir calidad; los paneles respetan los limites de la tarjeta. Solo Modest
 HD suspendida y renderizado CPU congelado.
 [Cambios, pruebas y limites pendientes](AUDITORIA_GENERAL_MODEST_2026-10-11.md).
 
+## Barrido de fallos visuales y de uso — 12 de octubre de 2026
+
+- **Con un video en ventana, los avisos ya no quedan tapados:** van enteros a la izquierda del video.
+- **La línea de estado ya no se queda con avisos viejos:** el «Encontradas N canciones…» tardío se ignora, y los
+  errores de reproducción se van solos.
+- **El artista largo de la franja de abajo termina en «…»,** en vez de cortarse a media palabra.
+- **Ctrl+F3:**
+  - el texto del asistente decía el atajo viejo;
+  - la fecha de la versión no se veía nunca, y ahora va en la barra de título;
+  - dos notas quedaban debajo de Listo;
+  - dos textos se cortaban con una letra ancha.
+
+[Qué se buscó, qué se arregló y qué no se tocó](BARRIDO_VISUAL_MODEST_2026-10-12.md).
+
 ## La ayuda revisada de raíz, y un solo fondo: Legacy — 12 de octubre de 2026
 
 - **La ayuda (ROJO + ABAJO o la casilla AYUDA) sigue usable después de un rato.**

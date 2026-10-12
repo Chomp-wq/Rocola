@@ -279,7 +279,7 @@ namespace Rocola
                 DisposePlaybackNow();
                 return;
             }
-            lblStatus.Text = "No se pudo reproducir " + System.IO.Path.GetFileName(t.Path) + " (" + ex.Message + ")";
+            EstadoPasajero("No se pudo reproducir " + System.IO.Path.GetFileName(t.Path) + " (" + ex.Message + ")", EstadoPasajeroMs);
             LogError("PlayTrack " + System.IO.Path.GetFileName(t.Path), ex);
             NoteIncompatible(t.Path, ex);
             RefundCredit();

@@ -645,7 +645,7 @@ namespace Rocola
                 using (Font fInt = new Font(ff, 9.5f, FontStyle.Bold))
                 using (Form dlg = new Form())
                 {
-                    dlg.Text = "Rocola  -  Sonido";
+                    dlg.Text = "Rocola - Sonido";
                     dlg.FormBorderStyle = FormBorderStyle.FixedDialog;
                     dlg.MaximizeBox = false; dlg.MinimizeBox = false; dlg.ShowInTaskbar = false; dlg.ShowIcon = false;
                     dlg.StartPosition = FormStartPosition.CenterParent;
@@ -715,18 +715,13 @@ namespace Rocola
                     Label lSub = new Label(); lSub.SetBounds(24, 42, 590, 18); lSub.BackColor = Color.Transparent;
                     lSub.ForeColor = cTenue; lSub.Font = fSub;
                     lSub.Text = "Todo lo que cambies aqui se oye al instante en la cancion que esta sonando.";
-                    // Y DE CUANDO ES ESTA ROCOLA, abajo. Es lo primero que hay que mirar cuando algo "no
-                    // funciona": si la fecha no es la del arreglo, no hay nada roto, es que no se copio.
-                    //
-                    // VA ENTRE LOS DOS BOTONES DE ABAJO, y no a la izquierda como estaba: alli se dibujaba
-                    // ENCIMA del boton "Graficos como de fabrica" de la pagina de Imagen, que ocupa de la y
-                    // 680 a la 718. Esta franja -de la 734 para abajo, entre el boton de fabrica (acaba en la
-                    // x 236) y el de Listo (empieza en la 804)- es la unica que esta libre en las cuatro
-                    // paginas. El texto mide 214 px, medido, y hay 540.
-                    Label lVer = new Label(); lVer.SetBounds(250, 734, 540, 18); lVer.BackColor = Color.Transparent;
-                    lVer.ForeColor = cApagado; lVer.Font = fSub;
+                    // Y DE CUANDO ES ESTA ROCOLA. Es lo primero que hay que mirar cuando algo "no funciona": si la
+                    // fecha no es la del arreglo, no hay nada roto, es que no se copio. VA EN LA BARRA DE TITULO
+                    // (barrido del 12-10-2026): abajo, en la y 734, quedaba FUERA de la ventana desde que esta mide
+                    // 732 de alto, y no se veia nunca. En el titulo se ve en todas las paginas y no le quita sitio
+                    // a nada.
                     string cuando = DeCuandoEs();
-                    lVer.Text = (cuando.Length > 0) ? ("Esta rocola es del " + cuando) : "";
+                    string sello = (cuando.Length > 0) ? ("   \u00b7   Esta rocola es del " + cuando) : "";
                     // MODO NOCHE. Va AQUI, en el renglon del subtitulo, y no dentro de una tarjeta: esta
                     // ventana mide 960x732 a proposito -con su barra de titulo cabe justo en 1024x768- y las
                     // tres tarjetas estan llenas hasta el ultimo pixel. Este renglon, en cambio, tiene 371 px
@@ -821,7 +816,7 @@ namespace Rocola
                            + (NeuralEnv.Loaded
                               ? "EXPERIMENTAL: encendido, ademas los recrea con la IA."
                               : "EXPERIMENTAL: encendido, ademas recrea esa banda."))
-                        : "No disponible en este equipo: " + sbrReason;
+                        : "No disponible en este equipo" + (string.IsNullOrEmpty(sbrReason) ? "." : ": " + sbrReason);
                     tCal.Controls.Add(swSbr); tCal.Controls.Add(lSbr);
                     // SALTAR LOS SILENCIOS LARGOS (SinSilencios.cs). A la derecha del DSEE, en su mismo renglon: la ventana no
                     // tiene otro sitio (cabe justo en 1024x768). Se mira al abrir cada cancion: vale desde la siguiente.
@@ -1094,7 +1089,7 @@ namespace Rocola
                         // tarjeta al agregarla -y en la rama del equipo potente hay una mas- y esa tarjeta se
                         // quedaria colgada encima de la pagina nueva.
                         foreach (Control cc in dlg.Controls)
-                            if (cc != lTit && cc != bPagS && cc != bPagI && cc != bPagD && cc != bPagC && cc != bPagF && cc != bPagP && cc != bOk && cc != pImg && cc != pDet && cc != pCol && cc != pFon && cc != pPan && cc != lVer)
+                            if (cc != lTit && cc != bPagS && cc != bPagI && cc != bPagD && cc != bPagC && cc != bPagF && cc != bPagP && cc != bOk && cc != pImg && cc != pDet && cc != pCol && cc != pFon && cc != pPan)
                                 cc.Visible = (f3Pagina == 0);
                         pImg.Visible = (f3Pagina == 1);
                         pDet.Visible = (f3Pagina == 2);
@@ -1102,7 +1097,7 @@ namespace Rocola
                         pFon.Visible = (f3Pagina == 4);
                         pPan.Visible = (f3Pagina == 5);
                         lTit.Text = nomPag[f3Pagina];
-                        dlg.Text = "Rocola - " + nomPag[f3Pagina];
+                        dlg.Text = "Rocola - " + nomPag[f3Pagina] + sello;
                         BotonPlano[] pb = { bPagS, bPagI, bPagD, bPagC, bPagF, bPagP };
                         for (int k = 0; k < pb.Length; k++)
                         {
@@ -1120,7 +1115,7 @@ namespace Rocola
                     bPagF.Click += delegate { f3Pagina = 4; pintaPag(); };
                     bPagP.Click += delegate { f3Pagina = 5; pintaPag(); };
 
-                    dlg.Controls.Add(lTit); dlg.Controls.Add(bPagS); dlg.Controls.Add(bPagI); dlg.Controls.Add(bPagD); dlg.Controls.Add(bPagC); dlg.Controls.Add(bPagF); dlg.Controls.Add(bPagP); dlg.Controls.Add(lVer); dlg.Controls.Add(lSub); dlg.Controls.Add(swNoche); dlg.Controls.Add(lSal);
+                    dlg.Controls.Add(lTit); dlg.Controls.Add(bPagS); dlg.Controls.Add(bPagI); dlg.Controls.Add(bPagD); dlg.Controls.Add(bPagC); dlg.Controls.Add(bPagF); dlg.Controls.Add(bPagP); dlg.Controls.Add(lSub); dlg.Controls.Add(swNoche); dlg.Controls.Add(lSal);
                     dlg.Controls.Add(tVol); dlg.Controls.Add(tCal); dlg.Controls.Add(tBib);
                     dlg.Controls.Add(lDskT); dlg.Controls.Add(bDskA); dlg.Controls.Add(bDskS); dlg.Controls.Add(bDskH); dlg.Controls.Add(lDskS);
                     dlg.Controls.Add(bReset); dlg.Controls.Add(bOk); dlg.Controls.Add(pImg); dlg.Controls.Add(pDet); dlg.Controls.Add(pCol); dlg.Controls.Add(pFon); dlg.Controls.Add(pPan);
@@ -1263,7 +1258,20 @@ namespace Rocola
             return w < ToastMinW ? ToastMinW : (w > ToastW ? ToastW : w);
         }
 #if ROCOLA_GPU
-        private Bitmap toastBmp; private int toastVer, toastTick = -1;
+        private Bitmap toastBmp; private int toastVer, toastTick = -1, toastBorde;
+
+        // LO QUE TAPA EL VIDEO (barrido del 12-10-2026). El cuadro de un video en ventana es una ventana de Windows ENCIMA
+        // del panel de la tarjeta: lo que la tarjeta dibuje detras no se ve. Los avisos salian centrados (o a la derecha) y
+        // con un video sonando se veian partidos por la mitad, o nada: "Pusiste...", "Inserta una moneda", la invitacion.
+        // Devuelve hasta donde llega, por la derecha, la parte de la pantalla que se ve: con video, hasta el video.
+        private int BordeLibreAvisos()
+        { return BordeLibre(ClientSize.Width, videoOn && !videoFull && video != null && video.Visible, video != null ? video.Left : 0); }
+        // Pura: se prueba sin ventana ni video.
+        internal static int BordeLibre(int ancho, bool videoEnVentana, int videoIzquierda)
+        {
+            if (videoEnVentana && videoIzquierda > ancho / 4 && videoIzquierda < ancho) return videoIzquierda - 8;
+            return ancho;
+        }
         private const int ToastMs = 1300, ToastInMs = 190, ToastOutMs = 260;   // ToastMs = lo mismo que dura el temporizador
 
         // Dibuja el aviso en su propio bitmap (se REUSA siempre el mismo: cero basura para el recolector) y le
@@ -1272,19 +1280,23 @@ namespace Rocola
         {
             if (AvisoClaro()) { HorneaAviso(text, back); return; }   // el aviso que se entiende (SuenaVivoGpu.cs)
             if (toastBmp == null) toastBmp = new Bitmap(ToastW, ToastH, PixelFormat.Format32bppPArgb);
-            PintaToast(toastBmp, text, back, lblToast.Font);
+            toastBorde = BordeLibreAvisos();   // con video, el aviso se centra en lo que se ve y no pasa de ahi
+            PintaToastHasta(toastBmp, text, back, lblToast.Font, toastBorde - 24);
             toastVer++; toastTick = Environment.TickCount;
         }
 
         // El dibujo en si, aparte del estado: asi se puede ver y comprobar sin arrancar la rocola entera.
         internal static void PintaToast(Bitmap bmp, string text, Color back, Font font)
+        { PintaToastHasta(bmp, text, back, font, ToastW); }
+        // 'maxAncho': lo mas que puede medir la pastilla (con video, lo que queda a su izquierda); si no cabe, puntos.
+        internal static void PintaToastHasta(Bitmap bmp, string text, Color back, Font font, int maxAncho)
         {
             using (Graphics g = Graphics.FromImage(bmp))
             {
                 g.Clear(Color.Transparent);
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;   // gris: ClearType deja flecos sobre transparente
-                int tw = AnchoToast(text, font);   // el texto MANDA el ancho de la pastilla
+                int tw = Math.Min(AnchoToast(text, font), Math.Max(ToastMinW, maxAncho));   // el texto MANDA el ancho de la pastilla
                 int x0 = (ToastW - tw) / 2;
                 using (GraphicsPath gp = RoundRect(new Rectangle(x0, 0, tw, ToastH), 16))
                 {
@@ -1331,7 +1343,7 @@ namespace Rocola
             if (dt < 0 || dt >= ToastMs) { toastTick = -1; return t; }
             float a, dy; CurvaToast(dt, out a, out dy);
             t.Has = true; t.Bmp = toastBmp; t.Ver = toastVer;
-            t.X = (ClientSize.Width - ToastW) * 0.5f;
+            t.X = ((toastBorde > 0 ? toastBorde : ClientSize.Width) - ToastW) * 0.5f;   // centrado en lo que se ve
             t.Y = 80f + dy;
             t.Alpha = a;
             return t;

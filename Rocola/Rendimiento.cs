@@ -1129,10 +1129,13 @@ namespace Rocola
             }
             t1.Controls.Add(l1); t2.Controls.Add(l2); t3.Controls.Add(l3); t4.Controls.Add(l4);
 
-            Label lPie = new Label(); lPie.SetBounds(330, 582, 614, 32); lPie.BackColor = Color.Transparent;
+            // Termina antes del boton Listo (x 804 de la ventana): antes llegaba al borde y, con una letra mas ancha,
+            // el final de la frase caia debajo del boton.
+            Label lPie = new Label(); lPie.SetBounds(330, 580, 460, 46); lPie.BackColor = Color.Transparent;
             lPie.ForeColor = cApagado; lPie.Font = fDes;
-            lPie.Text = "La pared esta detras de esta ventana: toca una y mirala. Todo se guarda al\n"
-                      + "cerrar. El coste depende del equipo; compruebalo con el medidor.";
+            lPie.Text = "La pared esta detras de esta ventana: toca una y mirala.\n"
+                      + "Todo se guarda al cerrar. El coste depende del equipo:\n"
+                      + "compruebalo con el medidor (Imagen).";
 
             BotonPlano bReset = new BotonPlano();
             bReset.SetBounds(16, 580, 300, 38); bReset.Font = fBot; bReset.Text = "Colores como de fabrica";
@@ -1313,7 +1316,9 @@ namespace Rocola
             sw[2].CheckedChanged += delegate { estadoExpandido = sw[2].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             sw[3].CheckedChanged += delegate { cancionesTransparentes = sw[3].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             sw[4].CheckedChanged += delegate { caratulasLod = sw[4].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
-            Label lPierde = new Label(); lPierde.SetBounds(16, switchesY + sw.Length * 30 + 4, 424, 52); lPierde.BackColor = Color.Transparent;
+            // 280 de ancho y no 424: la tarjeta baja hasta el boton Listo, y lo que se pierde con un nivel ("Un tercio de las
+            // estrellas: el cielo se ve bastante mas vacio") caia debajo de el. Asi parte la frase antes (barrido del 12-10-2026).
+            Label lPierde = new Label(); lPierde.SetBounds(16, switchesY + sw.Length * 30 + 4, 280, 52); lPierde.BackColor = Color.Transparent;
             lPierde.ForeColor = cTenue; lPierde.Font = fDes;
             tEfe.Controls.Add(lGen); tEfe.Controls.Add(swHojeo); tEfe.Controls.Add(lPierde);
 
@@ -1423,7 +1428,7 @@ namespace Rocola
                 {
                     lTecho.Text = "";
                     lVer.ForeColor = cMal;
-                    lVer.Text = "Esta rocola NO esta dibujando con la tarjeta grafica.\n\nPor ese camino el techo son"
+                    lVer.Text = "Esta rocola NO esta dibujando con la tarjeta grafica.\nPor ese camino el techo son"
                               + " 24 cuadros por segundo, puesto asi a proposito para gastar poco. La perilla que"
                               + " importa aqui es encender la tarjeta.";
                     lProp.Text = "Sin tarjeta grafica no hay nada que proponer aqui: bajar efectos no sube un techo que"

@@ -74,6 +74,17 @@ CPU="$CPU ajustesfluidez"
 # 'hojasfondo': Ctrl+F3 -> Fondo con un solo fondo, el Legacy (12-10-2026: Espacio natural retirado, sus claves se ignoran).
 CPU="$CPU hojasfondo"
 GPU="$GPU hojasfondo"
+# 'avisosvideo': con un video en ventana (una ventana de Windows encima de la tarjeta) los avisos y la invitacion van
+# a la izquierda de el, enteros; sin video, como siempre (barrido del 12-10-2026).
+CPU="$CPU avisosvideo"
+GPU="$GPU avisosvideo"
+# 'lineaestado': la linea de estado no se queda con avisos viejos (avance tardio del escaneo, errores que se van solos).
+CPU="$CPU lineaestado"
+GPU="$GPU lineaestado"
+# 'ventanaf3': la ventana Ctrl+F3 de verdad, todas sus paginas y hojas: nada fuera de la ventana, nada debajo de Listo,
+# textos que caben (con la letra de Mono y con una mas ancha). No son las letras de XP.
+CPU="$CPU ventanaf3"
+GPU="$GPU ventanaf3"
 CPU="$CPU asistentecombo buscainteligente"
 GPU="$GPU asistentecombo asistentevisual buscainteligente guiarojo"
 CPU="$CPU auditoriageneral"

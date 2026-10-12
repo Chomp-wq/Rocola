@@ -156,6 +156,9 @@ namespace Rocola
 
         private void Scanner_ProgressChanged(object sender, ProgressChangedEventArgs e)
         {
+            // Un aviso de avance que llega TARDE (despues de terminar, o de un escaneo viejo tras F5) no pisa el letrero:
+            // si no, "Encontradas N canciones..." se quedaba puesto para siempre encima de la pared (barrido del 12-10-2026).
+            if (!libBuilding || !ReferenceEquals(sender, scanner)) return;
             lblStatus.Text = "Encontradas " + ((int)e.UserState) + " canciones...";
         }
 

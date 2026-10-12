@@ -68,6 +68,17 @@ class AsistenteCombo
         Check(Codigo.Llama(form.GetMethod("GuiaRojoVisible", Todos), "RojoMantenido") && Codigo.Llama(form.GetMethod("VigilaRojoMantenido", Todos), "RojoMantenido"),
             "Las pistas del rojo miran el rojo con la misma regla que el atajo");
         Check(form.Assembly.GetType("Rocola.AsistenteCombinacion") == null, "Ya no queda el acorde rojo+verde de tres segundos");
+        // Y ningun texto que se ve lo sigue anunciando (Ctrl+F3 -> Pantalla lo decia hasta el 12-10-2026).
+        string viejo = null;
+        foreach (Type tipo in form.Assembly.GetTypes())
+            foreach (MethodInfo m in tipo.GetMethods(Todos | BindingFlags.DeclaredOnly))
+            {
+                if (m.GetMethodBody() == null) continue;
+                foreach (string t in Codigo.Textos(m))
+                    if (t.IndexOf("rojo + verde", StringComparison.OrdinalIgnoreCase) >= 0 || t.IndexOf("verde 3 segundos", StringComparison.OrdinalIgnoreCase) >= 0)
+                        viejo = tipo.Name + "." + m.Name + ": " + t;
+            }
+        Check(viejo == null, "Ningun texto anuncia ya el acorde viejo" + (viejo == null ? "" : " (" + viejo + ")"));
         Check(form.GetMethod("ReenviaEntradaAsistente", Todos) == null && form.GetField("asistentePendiente", Todos) == null,
             "Rojo y verde responden al instante: sin ventana de reconocimiento de acorde");
         MethodInfo entrada = form.GetMethod("AsistenteEntrada", Todos);

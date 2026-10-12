@@ -1,0 +1,112 @@
+using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.Reflection;
+using System.Reflection.Emit;
+using System.Windows.Forms;
+using Label = System.Windows.Forms.Label;
+
+// CTRL+F3 DE VERDAD, PAGINA POR PAGINA Y HOJA POR HOJA (barrido del 12-10-2026).
+// Abre la ventana real de ajustes (formulario aislado, datos aparte) y en cada pagina y cada hoja mira:
+//   - que nada visible quede fuera de la ventana (la fecha de la version estaba en la y 734 de una ventana de 732);
+//   - que ningun texto ni mando quede debajo del boton Listo (dos notas llegaban hasta el borde);
+//   - que los textos quepan en su caja: con la letra de Mono y con una mas ancha (DejaVu Sans), parecida a la de XP.
+// Las letras de Windows no estan aqui: es una aproximacion, no una foto de la maquina del bar.
+class VentanaF3
+{
+    const BindingFlags T = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
+    static Form dlg; static Control listo; static int ok, mal; static List<string> vistos = new List<string>();
+    static void Mal(string s) { if (vistos.Contains(s)) return; vistos.Add(s); mal++; Console.WriteLine("  FALLO " + s); }
+    static string Ruta(Control c) { string s = ""; for (Control x = c; x != null && x != dlg; x = x.Parent) s = (string.IsNullOrEmpty(x.Name) ? x.GetType().Name : x.Name) + "/" + s; return s; }
+    static string Corto(string s) { s = (s ?? "").Replace("\r", "").Replace("\n", " | "); return s.Length > 60 ? s.Substring(0, 60) + "..." : s; }
+    static Control Boton(Control p, string texto)
+    {
+        foreach (Control c in p.Controls) { if (c.GetType().Name == "BotonPlano" && c.Text == texto && c.Visible) return c; Control r = Boton(c, texto); if (r != null) return r; }
+        return null;
+    }
+    static void Click(Control c) { typeof(Control).GetMethod("OnClick", T).Invoke(c, new object[] { EventArgs.Empty }); }
+    static void Revisa(Control p, Graphics g, string donde)
+    {
+        Rectangle lr = listo.RectangleToScreen(listo.ClientRectangle), ventana = dlg.RectangleToScreen(dlg.ClientRectangle);
+        foreach (Control c in p.Controls)
+        {
+            if (!c.Visible) continue;
+            Rectangle r = c.RectangleToScreen(c.ClientRectangle);
+            if (c.Width > 0 && c.Height > 0 && !ventana.Contains(r)) Mal(donde + ": fuera de la ventana: " + Ruta(c) + " «" + Corto(c.Text) + "»"); else ok++;
+            if (c.Controls.Count > 0) { Revisa(c, g, donde); continue; }
+            if (c != listo && r.IntersectsWith(lr)) Mal(donde + ": debajo de Listo: " + Ruta(c) + " «" + Corto(c.Text) + "»"); else ok++;
+            if (string.IsNullOrEmpty(c.Text) || c.Font == null || c.Width <= 0) continue;
+            string tipo = c.GetType().Name;
+            if (c is Label && !((Label)c).AutoSize)
+            {
+                SizeF s = g.MeasureString(c.Text, c.Font, c.Width);
+                if (s.Height > c.Height + 1) Mal(donde + ": texto cortado (" + Math.Ceiling(s.Height) + " de " + c.Height + " px): " + Ruta(c) + " «" + Corto(c.Text) + "»"); else ok++;
+            }
+            else if (tipo == "Interruptor" || tipo == "BotonPlano")
+            {
+                SizeF s = g.MeasureString(c.Text, c.Font);
+                int sobra = tipo == "Interruptor" ? 50 : 6;
+                if (s.Width + sobra > c.Width + 1) Mal(donde + ": texto que no cabe (" + Math.Ceiling(s.Width + sobra) + " de " + c.Width + " px): " + Ruta(c) + " «" + Corto(c.Text) + "»"); else ok++;
+            }
+        }
+    }
+    static void Mira(string donde)
+    {
+        dlg.Refresh(); Application.DoEvents();
+        using (Graphics g = dlg.CreateGraphics()) Revisa(dlg, g, donde);
+    }
+    [STAThread] static int Main(string[] args)
+    {
+        Environment.SetEnvironmentVariable("ROCOLA_DATOS", System.IO.Path.Combine(System.IO.Path.GetTempPath(), "rocola_ventanaf3_" + Guid.NewGuid().ToString("N")));
+        Assembly asm = Assembly.LoadFrom(args[0]); Type form = asm.GetType("Rocola.Form1", true);
+        bool gpu = asm.GetType("Rocola.GpuPanel", false) != null;
+        int vueltas = 0;
+        foreach (string letra in new string[] { null, "DejaVu Sans" })
+        {
+            object f = Codigo.FormSinEncender(form);
+            DynamicMethod dm = new DynamicMethod("BaseF3", typeof(void), new Type[] { typeof(object) }, typeof(VentanaF3), true);
+            ILGenerator il = dm.GetILGenerator(); il.Emit(OpCodes.Ldarg_0); il.Emit(OpCodes.Castclass, typeof(Form));
+            il.Emit(OpCodes.Call, typeof(Form).GetConstructor(Type.EmptyTypes)); il.Emit(OpCodes.Ret);
+            dm.Invoke(null, new object[] { f });
+            form.GetMethod("BuildUi", T).Invoke(f, null);
+            try { form.GetMethod("LoadConfigPrefs", T).Invoke(f, null); } catch { }
+            if (gpu) form.GetField("gpuEnabled", T).SetValue(f, true);
+            if (letra != null) { try { form.GetField("familiaUi", T).SetValue(null, new FontFamily(letra)); } catch { Console.WriteLine("  (sin " + letra + ": se mira solo con la de Mono)"); continue; } }
+            dlg = null; listo = null;
+            string nombre = letra == null ? "letra de Mono" : letra;
+            Timer t = new Timer(); t.Interval = 400; int n = 0;
+            t.Tick += delegate
+            {
+                n++;
+                foreach (Form o in Application.OpenForms) if (!ReferenceEquals(o, f)) { dlg = o; break; }
+                if (dlg == null) { if (n > 30) { t.Stop(); Mal("la ventana de ajustes no se abrio"); } return; }
+                t.Stop(); dlg.Location = new Point(0, 0);
+                listo = Boton(dlg, "Listo");
+                if (listo == null) { Mal("no hay boton Listo"); dlg.Close(); return; }
+                foreach (string pag in new string[] { "Sonido", "Imagen", "Detalles", "Colores", "Fondo", "Pantalla" })
+                {
+                    Control b = Boton(dlg, pag); if (b == null) { Mal("falta la pagina " + pag); continue; }
+                    Click(b); Mira(nombre + ", " + pag);
+                    foreach (Control pg in dlg.Controls) if (pg is Panel && pg.Visible && pg.Width >= 900)
+                    {
+                        List<Control> hojas = new List<Control>();
+                        foreach (Control c in pg.Controls) if (c.GetType().Name == "BotonPlano" && c.Top <= 40 && c.Height <= 36) hojas.Add(c);
+                        hojas.Sort(delegate (Control x, Control y) { return x.Left.CompareTo(y.Left); });
+                        for (int i = 1; i < hojas.Count; i++) { Click(hojas[i]); Mira(nombre + ", " + pag + " > " + hojas[i].Text); }
+                        if (hojas.Count > 0) Click(hojas[0]);
+                    }
+                }
+                vueltas++;
+                dlg.Close();
+            };
+            t.Start();
+            form.GetMethod("VentanaAjustes", T).Invoke(f, null);
+            t.Stop(); t.Dispose();
+        }
+        Check(vueltas >= 1, "la ventana se abrio y se recorrio");
+        Console.WriteLine(mal == 0 ? "  OK ventanaf3: " + ok + " comprobaciones en " + vueltas + " vueltas (6 paginas y sus hojas; letras de Linux, no las de XP)"
+                                   : "  FALLO ventanaf3: " + mal + " problemas");
+        return mal;
+    }
+    static void Check(bool c, string s) { if (c) ok++; else Mal(s); }
+}

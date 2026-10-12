@@ -279,7 +279,7 @@ namespace Rocola
                 try { if (video != null) video.Visible = false; } catch { }
                 RefundCredit();   // compensacion al cliente: el video no abrio
                 ShowToast("No se pudo abrir el video: credito devuelto", Color.FromArgb(200, 80, 70));
-                lblStatus.Text = "Video (WMP): " + ex.Message;
+                EstadoPasajero("Video (WMP): " + ex.Message, EstadoPasajeroMs);
                 Diag("video: NO ABRIO - " + ex.Message);
                 // el video no arranco: pasar al siguiente sin trabar la cola (tras desenredar la pila de PlayNext)
                 try { if (this.IsHandleCreated) this.BeginInvoke((MethodInvoker)delegate { PlayNext(); }); } catch { }
@@ -1727,8 +1727,12 @@ namespace Rocola
         [ThreadStatic] private static SolidBrush lblBr;
         private static void DrawLabelOverlay(Graphics g, Label l) { DrawLabelOverlay(g, l, (l != null) ? l.ForeColor : Color.White); }
         private static void DrawLabelOverlay(Graphics g, Label l, Color color)
+        { if (l != null) DrawLabelOverlay(g, l, color, (RectangleF)l.Bounds); }
+        // En una caja propia (mas angosta que la etiqueta): los puntos suspensivos van donde de verdad se acaba el sitio.
+        // Recortar la etiqueta entera con un SetClip dejaba la ultima palabra cortada a la mitad (barrido del 12-10-2026).
+        private static void DrawLabelOverlay(Graphics g, Label l, Color color, RectangleF caja)
         {
-            if (l == null || string.IsNullOrEmpty(l.Text)) return;
+            if (l == null || string.IsNullOrEmpty(l.Text) || !(caja.Width > 0f)) return;
             StringFormat sf = lblSf ?? (lblSf = new StringFormat());
             SolidBrush b = lblBr ?? (lblBr = new SolidBrush(Color.White)); b.Color = color;
             sf.FormatFlags = StringFormatFlags.NoWrap; sf.Trimming = StringTrimming.EllipsisCharacter;
@@ -1739,7 +1743,7 @@ namespace Rocola
             if ((a & (ContentAlignment.TopLeft | ContentAlignment.TopCenter | ContentAlignment.TopRight)) != 0) sf.LineAlignment = StringAlignment.Near;
             else if ((a & (ContentAlignment.BottomLeft | ContentAlignment.BottomCenter | ContentAlignment.BottomRight)) != 0) sf.LineAlignment = StringAlignment.Far;
             else sf.LineAlignment = StringAlignment.Center;
-            g.DrawString(l.Text, l.Font, b, (RectangleF)l.Bounds, sf);
+            g.DrawString(l.Text, l.Font, b, caja, sf);
         }
 
 #endif

@@ -137,8 +137,11 @@ namespace Rocola
                     ? StringAlignment.Center : (align & (ContentAlignment.BottomLeft | ContentAlignment.BottomCenter | ContentAlignment.BottomRight)) != 0
                     ? StringAlignment.Far : StringAlignment.Near;
                 if (TextoConCinta(g, lblNow.Text, lblNow.Font, lblNow.ForeColor, r, sf)) return;
-                GraphicsState state = g.Save();
-                g.SetClip(r, CombineMode.Intersect); DrawLabelOverlay(g, lblNow); g.Restore(state);
+                // Si no cabe, con sus puntos suspensivos donde se acaba SU sitio (r), como el titulo. Antes se recortaba la
+                // etiqueta entera con un SetClip y la ultima palabra quedaba partida a la mitad (barrido del 12-10-2026).
+                if (g.MeasureString(lblNow.Text, lblNow.Font).Width > r.Width)
+                    PintaRenglonLejos(g, lblNow.Text, lblNow.Font, lblNow.ForeColor, r, StringAlignment.Near);
+                else DrawLabelOverlay(g, lblNow, lblNow.ForeColor, r);
             }
         }
         internal static bool TextoConCinta(Graphics g, string text, Font f, Color color, RectangleF rect, StringFormat sf)
