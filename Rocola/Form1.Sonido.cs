@@ -1268,11 +1268,14 @@ namespace Rocola
             // GRAVE EN MONO: por debajo del corte, el mismo grave por todas las bocinas. Y, con sus interruptores de Ctrl+F3,
             // para las bocinas del billar: sin el subgrave que ninguna reproduce y con el estereo mas estrecho (GraveMono.cs).
             c.Mono = new GraveMono(c.Noche, graveMonoHz, anchoEstereo, subgraveHz, estereoEstrecho, cortaSubgrave);
+            // EL LOCAL (SalaLocal.cs): claridad, partes suaves y balance, con sus mandos de Ctrl+F3 (apagados de fabrica:
+            // apagados no tocan ni una muestra). Delante del bajo psicoacustico y del limitador, que cuida los picos.
+            c.Sala = new SalaLocal(c.Mono, tap, normTarget, claridadLocal, partesSuaves, balanceDb);
             // BAJO PSICOACUSTICO: despues de nivelar/ecualizar y ANTES del limitador, que es quien controla
             // los picos que anaden los armonicos.
             c.BajoFactor = BassFactorFor(t.Path);   // cuanto le toca a ESTA cancion (1 = la perilla tal cual)
             c.BajoBase = BajoAuto(t.Path);          // y de cuanto se parte, si el bajo va en automatico
-            c.Bajo = new DeepBassProvider(c.Mono, BassAmountPara(c.BajoFactor, c.BajoBase));
+            c.Bajo = new DeepBassProvider(c.Sala, BassAmountPara(c.BajoFactor, c.BajoBase));
             // LIMITADOR DE PICO REAL: techo con margen para el error de estimacion entre
             // muestras (ver PicoReal.cs). Detras solo quedan el fundido (que solo baja) y el paso a 16 bits
             // con su dither de un bit.

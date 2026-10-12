@@ -427,6 +427,13 @@ namespace Rocola
                     else if (s.StartsWith("vineta_suave=")) vinetaSuave = s.Substring(13).Trim() != "0";
                     else if (s.StartsWith("halo_seleccion=")) haloSeleccion = s.Substring(15).Trim() != "0";
                     else if (s.StartsWith("estrellas_finas=")) estrellasFinas = s.Substring(16).Trim() != "0";
+                    else if (s.StartsWith("luna_del_cielo=")) lunaDelCielo = s.Substring(15).Trim() != "0";          // el cielo vivo (CieloVivoGpu.cs)
+                    else if (s.StartsWith("lluvias_estrellas=")) lluviasEstrellas = s.Substring(18).Trim() != "0";
+                    else if (s.StartsWith("fugaz_festejo=")) fugazFestejo = s.Substring(14).Trim() != "0";
+                    else if (s.StartsWith("cometa=")) cometaOn = s.Substring(7).Trim() != "0";
+                    else if (s.StartsWith("profundidad_pagina=")) profundidadPagina = s.Substring(19).Trim() != "0";
+                    else if (s.StartsWith("cielo_por_hora=")) cieloPorHora = s.Substring(15).Trim() != "0";
+                    else if (s.StartsWith("reflejo_aurora=")) reflejoAurora = s.Substring(15).Trim() != "0";
                     else if (s.StartsWith("ondas_suaves=")) ondasSuaves = s.Substring(13).Trim() != "0";
                     else if (s.StartsWith("progreso_fluido=")) progresoFluido = s.Substring(16).Trim() != "0";
                     else if (s.StartsWith("estado_expandido=")) estadoExpandido = s.Substring(17).Trim() != "0";
@@ -520,6 +527,9 @@ namespace Rocola
                     else if (s.StartsWith("subgrave=")) subgraveHz = SubgraveHz(s.Substring(9));   // corte del subgrave (Hz; 0 = sin corte)
                     else if (s.StartsWith("estereo_estrecho=")) estereoEstrecho = s.Substring(17).Trim() == "1";   // interruptor: estereo al ancho_estereo
                     else if (s.StartsWith("corta_subgrave=")) cortaSubgrave = s.Substring(15).Trim() == "1";       // interruptor: subgrave fuera
+                    else if (s.StartsWith("claridad_local=")) claridadLocal = s.Substring(15).Trim() == "1";       // interruptor: claridad para el local
+                    else if (s.StartsWith("partes_suaves=")) partesSuaves = s.Substring(14).Trim() == "1";         // interruptor: que las partes suaves se oigan
+                    else if (s.StartsWith("balance=")) balanceDb = BalanceDb(s.Substring(8));                       // dB que se baja un canal (-6..6)
                     else if (s.StartsWith("subir_db=")) { float v; if (float.TryParse(s.Substring(9).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) masterDb = Clampf(v, 0f, 12f); }   // SUBIR TODO (dB extra general)
                     else if (s.StartsWith("fundido=")) { float v; if (float.TryParse(s.Substring(8).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) crossfadeSec = Clampf(v, 0f, 3f); }   // FUNDIDO entre canciones (segundos)
                     else if (s.StartsWith("declip=")) declipOn = s.Substring(7).Trim() != "0";   // des-recorte de picos aplastados (por defecto si)
@@ -565,6 +575,13 @@ namespace Rocola
                 sb.Append("vineta_suave=").Append(vinetaSuave ? "1" : "0").Append("\r\n");
                 sb.Append("halo_seleccion=").Append(haloSeleccion ? "1" : "0").Append("\r\n");
                 sb.Append("estrellas_finas=").Append(estrellasFinas ? "1" : "0").Append("\r\n");
+                sb.Append("luna_del_cielo=").Append(lunaDelCielo ? "1" : "0").Append("\r\n");
+                sb.Append("lluvias_estrellas=").Append(lluviasEstrellas ? "1" : "0").Append("\r\n");
+                sb.Append("fugaz_festejo=").Append(fugazFestejo ? "1" : "0").Append("\r\n");
+                sb.Append("cometa=").Append(cometaOn ? "1" : "0").Append("\r\n");
+                sb.Append("profundidad_pagina=").Append(profundidadPagina ? "1" : "0").Append("\r\n");
+                sb.Append("cielo_por_hora=").Append(cieloPorHora ? "1" : "0").Append("\r\n");
+                sb.Append("reflejo_aurora=").Append(reflejoAurora ? "1" : "0").Append("\r\n");
                 sb.Append("ondas_suaves=").Append(ondasSuaves ? "1" : "0").Append("\r\n");
                 sb.Append("progreso_fluido=").Append(progresoFluido ? "1" : "0").Append("\r\n");
                 sb.Append("estado_expandido=").Append(estadoExpandido ? "1" : "0").Append("\r\n");
@@ -647,6 +664,9 @@ namespace Rocola
                 sb.Append("subgrave=").Append(subgraveHz.ToString("0", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("estereo_estrecho=").Append(estereoEstrecho ? "1" : "0").Append("\r\n");
                 sb.Append("corta_subgrave=").Append(cortaSubgrave ? "1" : "0").Append("\r\n");
+                sb.Append("claridad_local=").Append(claridadLocal ? "1" : "0").Append("\r\n");
+                sb.Append("partes_suaves=").Append(partesSuaves ? "1" : "0").Append("\r\n");
+                sb.Append("balance=").Append(balanceDb.ToString(System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("fundido=").Append(crossfadeSec.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("declip=").Append(declipOn ? "1" : "0").Append("\r\n");
                 sb.Append("ia_datos=").Append(iaHarvestOn ? "1" : "0").Append("\r\n");

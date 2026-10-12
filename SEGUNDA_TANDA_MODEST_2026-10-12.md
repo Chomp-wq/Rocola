@@ -97,5 +97,8 @@ créditos**, para cerrar el negocio.
   `hojea`, `pagina`, `pestanas`, `entrar`, `asistentecombo`, `filabaja` y `respira`. `duerme` falla igual que
   antes de estos cambios.
 - **El dibujo por CPU no cambió:** sus 14 métodos congelados son idénticos en los dos perfiles.
+- **Tanda completa (`pruebas/todo.sh`):** 27 problemas: los 26 de antes y `indice`, una medida de velocidad con
+  varios núcleos. Falló porque la tanda corrió a la vez que otras pruebas; sola pasa (dos veces seguidas).
+  `segundatanda` pasa en los dos perfiles.
 - **No comprobado:** en Windows XP de verdad, con el cambio de horario real o con 25 días encendida. Se comprobó la
   lógica.

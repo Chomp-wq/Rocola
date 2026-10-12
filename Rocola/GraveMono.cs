@@ -74,6 +74,9 @@ namespace Rocola
             CadenaCancion c = cadenaSonando, p = cadenaPreparada;
             if (c != null && c.Mono != null) c.Mono.Ajusta(estereoEstrecho, cortaSubgrave);
             if (p != null && p.Mono != null) p.Mono.Ajusta(estereoEstrecho, cortaSubgrave);
+            // Y los del local (SalaLocal.cs): claridad, partes suaves y balance.
+            if (c != null && c.Sala != null) c.Sala.Ajusta(claridadLocal, partesSuaves, balanceDb);
+            if (p != null && p.Sala != null) p.Sala.Ajusta(claridadLocal, partesSuaves, balanceDb);
         }
         private static float AnchoEstereo(string texto)
         {

@@ -38,6 +38,7 @@ namespace Rocola
             internal DeepBassProvider Bajo;
             internal CompensaNoche Noche;        // graves y agudos que devuelve el modo noche (ModoNoche.cs)
             internal GraveMono Mono;             // el grave en mono (GraveMono.cs)
+            internal SalaLocal Sala;             // claridad, partes suaves y balance del local (SalaLocal.cs)
             internal FadeProvider Fundido;
             internal int Retardo;                // cuadros de cebado: se descartan si entra por relevo
             internal string MedidaRuta, EqRuta;  // que se aprende oyendola (null = nada)
@@ -290,6 +291,7 @@ namespace Rocola
             if (nueva == null || vieja == null) return;
             if (nueva.Noche != null) nueva.Noche.Sigue(vieja.Noche);
             if (nueva.Mono != null) nueva.Mono.Sigue(vieja.Mono);
+            if (nueva.Sala != null) nueva.Sala.Sigue(vieja.Sala);
         }
 
         // ¿'b' es la pista que sigue a 'a' en el MISMO disco? (un disco TOP junta canciones de discos distintos)

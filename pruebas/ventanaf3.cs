@@ -34,6 +34,17 @@ class VentanaF3
             Rectangle r = c.RectangleToScreen(c.ClientRectangle);
             if (c.Width > 0 && c.Height > 0 && !ventana.Contains(r)) Mal(donde + ": fuera de la ventana: " + Ruta(c) + " «" + Corto(c.Text) + "»"); else ok++;
             if (c.Controls.Count > 0) { Revisa(c, g, donde); continue; }
+            // Un letrero que queda ENCIMA de un mando (antes en el orden de dibujo) y lo pisa: le borra un trozo con el fondo
+            // (el boton "El local y sus bocinas..." perdia su borde de arriba bajo la nota del DSEE).
+            string tipo0 = c.GetType().Name;
+            if ((tipo0 == "BotonPlano" || tipo0 == "Interruptor" || tipo0 == "Deslizador") && p != null)
+            {
+                int yo = p.Controls.GetChildIndex(c);
+                foreach (Control s in p.Controls)
+                    if (s != c && s.Visible && s is Label && p.Controls.GetChildIndex(s) < yo && s.Bounds.IntersectsWith(c.Bounds))
+                        Mal(donde + ": un letrero pisa un mando: " + Ruta(s) + " «" + Corto(s.Text) + "» sobre " + Ruta(c) + " «" + Corto(c.Text) + "»");
+                ok++;
+            }
             if (c != listo && r.IntersectsWith(lr)) Mal(donde + ": debajo de Listo: " + Ruta(c) + " «" + Corto(c.Text) + "»"); else ok++;
             if (string.IsNullOrEmpty(c.Text) || c.Font == null || c.Width <= 0) continue;
             string tipo = c.GetType().Name;
@@ -87,6 +98,18 @@ class VentanaF3
                 {
                     Control b = Boton(dlg, pag); if (b == null) { Mal("falta la pagina " + pag); continue; }
                     Click(b); Mira(nombre + ", " + pag);
+                    if (pag == "Sonido")
+                    {   // La hoja del local y sus bocinas (12-10-2026): se abre con su boton y se vuelve con el suyo.
+                        Control abre = Boton(dlg, "El local y sus bocinas...");
+                        Check(abre != null, "Sonido tiene el boton de la hoja del local");
+                        if (abre != null)
+                        {
+                            Click(abre); Mira(nombre + ", Sonido > El local y sus bocinas");
+                            Control vuelve = Boton(dlg, "Volver a las canciones");
+                            Check(vuelve != null && Boton(dlg, "Solo izquierda") != null && Boton(dlg, "Polaridad") != null, "la hoja del local tiene la prueba de bocinas y su boton de volver");
+                            if (vuelve != null) { Click(vuelve); Check(Boton(dlg, "El local y sus bocinas...") != null, "al volver se ven otra vez las canciones"); }
+                        }
+                    }
                     foreach (Control pg in dlg.Controls) if (pg is Panel && pg.Visible && pg.Width >= 900)
                     {
                         List<Control> hojas = new List<Control>();

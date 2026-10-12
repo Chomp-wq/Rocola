@@ -15,11 +15,12 @@ namespace Rocola
         {
             page.Name = "Fondo"; page.AccessibleName = "Ajustes del fondo";
             Color acento = Color.FromArgb(150, 190, 255);
-            Tarjeta[] cards = { adornments, details, new Tarjeta(), new Tarjeta(), new Tarjeta(), new Tarjeta() };
+            Tarjeta[] cards = { adornments, details, new Tarjeta(), new Tarjeta(), new Tarjeta(), new Tarjeta(), new Tarjeta(), new Tarjeta() };
             string[] cardNames = { "FondoAjustesAdornos", "FondoAjustesDetalle", "FondoInterfazBarra",
-                "FondoInterfazInterior", "FondoEstrellaAspecto", "FondoEstrellaReposo" };
+                "FondoInterfazInterior", "FondoEstrellaAspecto", "FondoEstrellaReposo", "FondoVivoLuna", "FondoVivoHora" };
             string[] titles = { "CIELO Y AURORA", "DETALLE DE LAS NEBULOSAS", "BARRA Y COLA",
-                "INTERIOR Y TRANSICIONES", "SUPERFICIE Y ESTELA", "MOVIMIENTO Y REPOSO" };
+                "INTERIOR Y TRANSICIONES", "SUPERFICIE Y ESTELA", "MOVIMIENTO Y REPOSO",
+                "LA LUNA, LAS FUGACES Y EL COMETA", "PROFUNDIDAD, HORA Y REFLEJO" };
             for (int i = 0; i < cards.Length; i++) {
                 Tarjeta card = cards[i]; card.Name = cardNames[i]; card.Titulo = titles[i];
                 card.AccessibleName = titles[i]; card.AccessibleRole = AccessibleRole.Grouping;
@@ -35,6 +36,11 @@ namespace Rocola
             // Las notas originales conservan contenido, pero no ocupan filas de interruptores.
             groups[3][groups[3].Length - 1].SetBounds(16, 270, 424, 80);
             groups[5][groups[5].Length - 1].SetBounds(16, 144, 424, 48);
+            if (groups.Length > 7)
+            {   // El cielo vivo (CieloVivoGpu.cs): su nota, debajo de sus interruptores.
+                groups[6][groups[6].Length - 1].SetBounds(16, 206, 424, 52);
+                groups[7][groups[7].Length - 1].SetBounds(16, 166, 424, 52);
+            }
             FondoNota(cards[0], "La paleta musical fluye por la aurora.\nEl cielo alto conserva su aspecto nocturno.", 358, 42, small, muted);
             FondoNota(cards[1], "La fuerza controla el detalle de las nebulosas;\n"
                 + "cada efecto se ajusta por separado.", 140, 48, small, muted);
@@ -45,7 +51,7 @@ namespace Rocola
                 + "El estado ampliado se activa en Imagen; ocultar\n"
                 + "los controles no impide volver a usarlos.", 212, 126, small, muted);
 
-            string[] sheets = { "Cielo y aurora", "Interfaz", "Estrella" };
+            string[] sheets = { "Cielo y aurora", "Interfaz", "Estrella", "Cielo vivo" };
             BotonPlano[] tabs = new BotonPlano[sheets.Length];
             int selectedSheet = 0;
             Action paintSheets = delegate {
@@ -61,7 +67,7 @@ namespace Rocola
             };
             for (int i = 0; i < tabs.Length; i++) {
                 int next = i;
-                BotonPlano tab = new BotonPlano(); tab.SetBounds(16 + i * 310, 4, 308, 32);
+                BotonPlano tab = new BotonPlano(); tab.SetBounds(16 + i * 233, 4, 228, 32);   // cuatro hojas (el cielo vivo es la cuarta)
                 tab.Font = button; tab.Text = sheets[i]; tab.TabIndex = i;
                 tab.AccessibleName = "Fondo: " + tab.Text;
                 tab.AccessibleRole = AccessibleRole.PushButton;

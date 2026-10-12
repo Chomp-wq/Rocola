@@ -8,6 +8,37 @@ sin reducir calidad; los paneles respetan los limites de la tarjeta. Solo Modest
 HD suspendida y renderizado CPU congelado.
 [Cambios, pruebas y limites pendientes](AUDITORIA_GENERAL_MODEST_2026-10-11.md).
 
+## El local y sus bocinas, y el cielo vivo de Legacy — 12 de octubre de 2026
+
+- **Ctrl+F3 → Sonido → «El local y sus bocinas…»:**
+  - claridad para el local;
+  - que las partes suaves se oigan;
+  - el balance;
+  - el subgrave y el estéreo, que se mudaron aquí;
+  - una prueba de bocinas (izquierda, derecha, las dos y polaridad).
+
+  Los ajustes vienen apagados de fábrica.
+- **Ctrl+F3 → Fondo → «Cielo vivo»** (solo con tarjeta gráfica), encendidos de fábrica y cada uno con su
+  interruptor:
+  - la luna con su fase real;
+  - las lluvias de estrellas en sus fechas;
+  - una fugaz dorada al poner una canción;
+  - un cometa de vez en cuando;
+  - más profundidad al pasar de página;
+  - el cielo según la hora;
+  - el reflejo de la aurora.
+
+[Qué hace cada uno, sus claves y cómo se comprobó](EL_LOCAL_Y_EL_CIELO_VIVO_MODEST_2026-10-12.md).
+
+## Segunda tanda de fallos para la versión final — 12 de octubre de 2026
+
+- **El reloj de Windows que se atrasa:** con el cambio de horario de XP, la atracción y el cierre del buscador ya no
+  se quedan una hora sin llegar.
+- **A los 24,9 días encendida** el aviso de siempre y el hojeo de páginas dejaban de verse. Arreglado.
+- **Los fallos al reproducir se explican en español y en corto,** sin el mensaje técnico en inglés.
+
+[Qué se buscó y cómo se comprobó](SEGUNDA_TANDA_MODEST_2026-10-12.md).
+
 ## Barrido de fallos visuales y de uso — 12 de octubre de 2026
 
 - **Con un video en ventana, los avisos ya no quedan tapados:** van enteros a la izquierda del video.

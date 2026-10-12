@@ -231,6 +231,9 @@ namespace Rocola
             gpuPanel.LunaProtagonista = lunaProtagonista;
             gpuPanel.EstelaEstelar = estelaEstelar;
             gpuPanel.Estrella3D = estrella3d;
+            gpuPanel.LunaDelCielo = lunaDelCielo; gpuPanel.LluviasEstrellas = lluviasEstrellas;   // el cielo vivo (CieloVivoGpu.cs)
+            gpuPanel.FugazFestejo = fugazFestejo; gpuPanel.Cometa = cometaOn;
+            gpuPanel.ProfundidadPagina = profundidadPagina; gpuPanel.CieloPorHora = cieloPorHora; gpuPanel.ReflejoAurora = reflejoAurora;
             gpuPanel.ColoresFluidos = coloresFluidos;
             gpuPanel.RespuestaInmediata = respuestaInmediata;
             gpuPanel.TransicionesTacto = transicionesTacto;
@@ -962,6 +965,30 @@ namespace Rocola
             sw3d.CheckedChanged += delegate { estrella3d = sw3d.Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             tNat.Controls.Add(sw3d);
 
+            // EL CIELO VIVO (CieloVivoGpu.cs, 12-10-2026): siete adornos de Legacy, cada uno con su interruptor, en su hoja.
+            string[] vivoNames = { "Luna con su fase real (GPU)", "Lluvias de estrellas en sus fechas (GPU)",
+                "Fugaz al poner una cancion (GPU)", "Cometa de vez en cuando (GPU)",
+                "Mas profundidad al pasar de pagina (GPU)", "Cielo segun la hora (GPU)", "Reflejo de la aurora (GPU)" };
+            bool[] vivoValues = { lunaDelCielo, lluviasEstrellas, fugazFestejo, cometaOn, profundidadPagina, cieloPorHora, reflejoAurora };
+            Interruptor[] vivo = new Interruptor[vivoNames.Length];
+            for (int i = 0; i < vivo.Length; i++)
+            {
+                vivo[i] = new Interruptor(); vivo[i].SetBounds(16, 40 + (i % 4) * 40, 424, 26);
+                vivo[i].Font = fNom; vivo[i].ForeColor = cTexto; vivo[i].Acento = cAc;
+                vivo[i].Text = vivoNames[i]; vivo[i].Checked = vivoValues[i];
+            }
+            vivo[0].CheckedChanged += delegate { lunaDelCielo = vivo[0].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            vivo[1].CheckedChanged += delegate { lluviasEstrellas = vivo[1].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            vivo[2].CheckedChanged += delegate { fugazFestejo = vivo[2].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            vivo[3].CheckedChanged += delegate { cometaOn = vivo[3].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            vivo[4].CheckedChanged += delegate { profundidadPagina = vivo[4].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            vivo[5].CheckedChanged += delegate { cieloPorHora = vivo[5].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            vivo[6].CheckedChanged += delegate { reflejoAurora = vivo[6].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            Label lVivo1 = new Label(); lVivo1.BackColor = Color.Transparent; lVivo1.ForeColor = cTenue; lVivo1.Font = fDes;
+            lVivo1.Text = "La luna sigue su fase de verdad: cerca de la luna nueva\nno se ve. Las lluvias, en sus fechas (agosto: Perseidas;\ndiciembre: Geminidas). El cometa pasa cada 35-70 min.";
+            Label lVivo2 = new Label(); lVivo2.BackColor = Color.Transparent; lVivo2.ForeColor = cTenue; lVivo2.Font = fDes;
+            lVivo2.Text = "La profundidad va con Pasar de pagina deslizando\n(Pantalla). Con la hora cambia solo el cielo de abajo:\nmas hondo de madrugada y calido al anochecer.";
+
             BotonPlano bResetF = new BotonPlano();
             bResetF.SetBounds(16, 594, 300, 38); bResetF.Font = fBot; bResetF.Text = "Fondo como de fabrica";
             bResetF.TabIndex = 4;
@@ -998,6 +1025,7 @@ namespace Rocola
                 for (int i = 0; i < moonSwitches.Length; i++) moonSwitches[i].Checked = true;
                 for (int i = 0; i < extras.Length; i++) extras[i].Checked = true;
                 for (int i = 0; i < tactile.Length; i++) tactile[i].Checked = true;
+                for (int i = 0; i < vivo.Length; i++) vivo[i].Checked = true;   // y el cielo vivo, encendido
                 nebNaturalFuerza = NebNaturalDef;
                 for (int i = 0; i < sw.Length; i++) sw[i].Checked = true;
                 barNat.Value = (int)Math.Round(NebNaturalDef * 100f);
@@ -1013,7 +1041,9 @@ namespace Rocola
                 new Control[] { sw[6], sw[7], sw[8], sw[9], sw[10], swDoce, tactile[2] },
                 new Control[] { swCristal, extras[0], extras[1], tactile[1], tactile[0], lExtras },
                 new Control[] { moonSwitches[0], moonSwitches[1], moonSwitches[2], moonSwitches[3], sw3d, swEstela },
-                new Control[] { extras[2], extras[3], lMoon }
+                new Control[] { extras[2], extras[3], lMoon },
+                new Control[] { vivo[0], vivo[1], vivo[2], vivo[3], lVivo1 },
+                new Control[] { vivo[4], vivo[5], vivo[6], lVivo2 }
             };
             MontaHojasFondo(pg, tAd, tNat, groups, fNom, fDes, fBot, cTexto, cTenue);
             pinta();

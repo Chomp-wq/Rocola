@@ -41,7 +41,7 @@ FUENTES="$FUENTES $RAIZ/Rocola/AsistentePersonalidadGpu.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/AyudaCasillaGpu.cs $RAIZ/Rocola/AsistenteGuiaRocola.cs"
 TMP_PRUEBAS="${TMPDIR:-/tmp}/rocola_pruebas_$$"
 FUENTES="$FUENTES $RAIZ/Rocola/AudioControles.cs $RAIZ/Rocola/Sonoridad.cs $RAIZ/Rocola/RellenoMp3.cs $RAIZ/Rocola/SinSilencios.cs $RAIZ/Rocola/SubirTodo.cs $RAIZ/Rocola/NivelDisco.cs $RAIZ/Rocola/BombaSonido.cs $RAIZ/Rocola/DiarioTablas.cs $RAIZ/Rocola/CancionEnMemoria.cs $RAIZ/Rocola/MedidasBitacora.cs $RAIZ/Rocola/FlotanteNLayer.cs $RAIZ/Rocola/PicoReal.cs $RAIZ/Rocola/Realce.cs"
-FUENTES="$FUENTES $RAIZ/Rocola/ModoNoche.cs $RAIZ/Rocola/GraveMono.cs"
+FUENTES="$FUENTES $RAIZ/Rocola/ModoNoche.cs $RAIZ/Rocola/GraveMono.cs $RAIZ/Rocola/SalaLocal.cs $RAIZ/Rocola/CieloVivoGpu.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/SinPausa.cs $RAIZ/Rocola/Form1.SinPausa.cs $RAIZ/Rocola/SalidaSonido.cs"
 if ! mkdir -p "$TMP_PRUEBAS"; then
   echo "  No se pudo crear la carpeta temporal: $TMP_PRUEBAS"
@@ -84,6 +84,9 @@ GPU="$GPU lineaestado"
 # 'segundatanda': el reloj de Windows que se atrasa, la vuelta del contador a los 24,9 dias y el motivo del fallo en corto.
 CPU="$CPU segundatanda"
 GPU="$GPU segundatanda"
+# 'cielovivo': el cielo vivo de Legacy (12-10-2026): luna, lluvias, festejo, cometa, profundidad, hora y reflejo (CieloVivoGpu.cs).
+CPU="$CPU cielovivo"
+GPU="$GPU cielovivo"
 # 'ventanaf3': la ventana Ctrl+F3 de verdad, todas sus paginas y hojas: nada fuera de la ventana, nada debajo de Listo,
 # textos que caben (con la letra de Mono y con una mas ancha). No son las letras de XP.
 CPU="$CPU ventanaf3"
@@ -119,6 +122,8 @@ CPU="$CPU relleno"
 CPU="$CPU silencios"
 # 'subgrave': las bocinas del billar (fotos del 9-10-2026): el subgrave fuera (30 Hz) y el estereo al 60 % (GraveMono.cs).
 CPU="$CPU subgrave"
+# 'salalocal': el local y sus bocinas (12-10-2026): claridad, partes suaves, balance y la prueba de bocinas (SalaLocal.cs).
+CPU="$CPU salalocal"
 # 'todojunto': todo el sonido a la vez en la cadena de verdad (nivelado, Subir TODO, realce, DSEE, grave sintetico, grave
 # en mono, des-recorte, modo noche, fundido y saltar silencios), y cambiandolo en vivo como desde Ctrl+F3: nada roto, nada
 # por encima del techo, sin chasquidos ni muestras perdidas, la cadena siempre como dicen los ajustes, el limitador y el coste.

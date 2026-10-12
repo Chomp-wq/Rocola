@@ -875,7 +875,7 @@ namespace Rocola
         private const float FadeMinimo = 0.002f;             // medio nivel de 255
         // Estrellas FUGACES: en CPU se podian pero costaban; en GPU son un par de cuadrangulos aditivos.
         // Cada una con tamaño, color, velocidad y largo de estela distintos.
-        private struct Shoot { public bool On; public float X, Y, VX, VY, Life, MaxLife, Wdt, Tail; public uint Col; }
+        private struct Shoot { public bool On; public float X, Y, VX, VY, Life, MaxLife, Wdt, Tail; public uint Col; public bool Nace; }   // Nace: sale a media altura (lluvias, CieloVivoGpu.cs): entra suave
         private readonly Shoot[] shoots = new Shoot[2];
         private D3D9.Vtx[] shootV = new D3D9.Vtx[2 * 12];    // 2 fugaces x (estela 6 + cabeza 6) vertices
         private int nextShoot; private double shootFinoAnt;   // la CITA de la proxima fugaz en ms de Windows (son segundos); su avance, con el reloj fino
@@ -1104,8 +1104,12 @@ namespace Rocola
             // -fuera de este archivo- porque la pared horneada tiene que usar exactamente el mismo: si cada
             // una llevara el suyo, la maquina del bar y la de repuesto pintarian cielos distintos.
             float midY = h * Form1.CorteDelCielo;
-            SetQuad(skyV, 0, 0, 0, w, midY, skyTop, skyTop, skyMid, skyMid);
-            SetQuad(skyV, 6, 0, midY, w, h, skyMid, skyMid, skyBot, skyBot);
+            // EL CIELO SEGUN LA HORA (CieloVivoGpu.cs): de madrugada mas hondo y al anochecer calido, solo de la parada
+            // media para abajo. Con el interruptor apagado los dos valen 0 y sale exactamente el cielo de siempre.
+            uint cMid = Form1.TineCielo(skyMid, Form1.HondoMedio * HoraHondo, Form1.CalorMedio * HoraCalor);
+            uint cBot = Form1.TineCielo(skyBot, Form1.HondoAbajo * HoraHondo, Form1.CalorAbajo * HoraCalor);
+            SetQuad(skyV, 0, 0, 0, w, midY, skyTop, skyTop, cMid, cMid);
+            SetQuad(skyV, 6, 0, midY, w, h, cMid, cMid, cBot, cBot);
             // Cielo azul/negro original; la paleta movil pertenece a la aurora.
             gpu.DrawSky(skyV);
             if (TrasCielo != null) TrasCielo();   // la aurora va aqui: entre el cielo y las estrellas
@@ -1125,6 +1129,7 @@ namespace Rocola
             }
             BuildStarVerts(starV, sx, sy, sphase, sspeed, ssize, skind, sforma, scol, nStars, t, (transing ? tr : 1f) * dim, pulse, driftX, driftY, w, h);   // patron ACTUAL (x atenuacion al navegar)
             gpu.DrawStars(starV, nStars * 2, glowTex);
+            DibujaCometa(w, h, nowMs, finoMs);   // el cometa (CieloVivoGpu.cs): lejos, detras de la luna
             if (TrasEstrellas != null) TrasEstrellas();   // la luna va aqui: esta muchisimo mas cerca que las estrellas
             UpdateAndDrawShoots(w, h, nowMs, finoMs);
             return true;
@@ -1271,7 +1276,7 @@ namespace Rocola
             // PERILLA DE Ctrl+F3. Se sale ANTES de tocar el reloj a proposito: al volver a encenderlas, el
             // primer cuadro las agenda de nuevo desde cero en vez de creerse que han pasado diez minutos y
             // soltar las dos de golpe.
-            if (fugaces == Bajo) { shootFinoAnt = 0.0; for (int i = 0; i < shoots.Length; i++) shoots[i].On = false; return; }
+            if (fugaces == Bajo) { shootFinoAnt = 0.0; festejoPedido = false; for (int i = 0; i < shoots.Length; i++) shoots[i].On = false; return; }
             // En MEDIO va una sola a la vez (la segunda ranura no se usa) y con el doble de espera entre una
             // y otra: sigue habiendo fugaces -que es lo que le da vida al cielo- pero cuestan la mitad.
             int ranuras = (fugaces == Alto) ? shoots.Length : 1;
@@ -1281,6 +1286,21 @@ namespace Rocola
             if (dt < 0f) dt = 0f; if (dt > 0.12f) dt = 0.12f;   // acota saltos
             shootFinoAnt = finoMs;
 
+            // LA FUGAZ DE FESTEJO (moneda o cancion puesta; CieloVivoGpu.cs): dorada, en la primera ranura libre o en la
+            // que menos vida le queda. No cambia la cita de las demas.
+            if (festejoPedido)
+            {
+                festejoPedido = false;
+                int libre = -1;
+                for (int i = 0; i < ranuras; i++) if (!shoots[i].On) { libre = i; break; }
+                if (libre < 0) { libre = 0; for (int i = 1; i < ranuras; i++) if (shoots[i].Life < shoots[libre].Life) libre = i; }
+                Form1.TiraFugazFestejo(srnd, w, h, out shoots[libre].X, out shoots[libre].Y, out shoots[libre].VX, out shoots[libre].VY,
+                                       out shoots[libre].MaxLife, out shoots[libre].Wdt, out shoots[libre].Tail);
+                shoots[libre].Life = shoots[libre].MaxLife; shoots[libre].Col = Form1.FestejoColor;
+                shoots[libre].Nace = false; shoots[libre].On = true;
+            }
+            float lluvia = LluviaAhora;   // 0 fuera de las fechas: todo como siempre
+            if (lluvia > 0f) { esperaBase = (int)(esperaBase * (1f - 0.45f * lluvia)); esperaAzar = Math.Max(1, (int)(esperaAzar * (1f - 0.45f * lluvia))); }
             if (nowMs - nextShoot >= 0)   // RESTA, no >=: sobrevive el desbordamiento de TickCount (~25 dias encendida)
             {
                 nextShoot = nowMs + esperaBase + srnd.Next(esperaAzar);   // alto: una cada 7-16s; medio: cada 15-30s
@@ -1291,6 +1311,13 @@ namespace Rocola
                         // De donde sale y hacia donde va lo dice Form1, fuera de este archivo, para que las
                         // dos paredes tiren las MISMAS fugaces (ver TiraFugaz).
                         bool gorda;
+                        // EN LAS FECHAS DE UNA LLUVIA, parte nace a media altura y se aleja del radiante (CieloVivoGpu.cs).
+                        shoots[i].Nace = lluvia > 0f && srnd.NextDouble() < 0.75 * lluvia;
+                        if (shoots[i].Nace)
+                            Form1.TiraFugazRadiante(srnd, w, h, lluviaRx * w, lluviaRy * h, out shoots[i].X, out shoots[i].Y,
+                                                    out shoots[i].VX, out shoots[i].VY,
+                                                    out shoots[i].MaxLife, out shoots[i].Wdt, out shoots[i].Tail, out gorda);
+                        else
                         Form1.TiraFugaz(srnd, w, h, out shoots[i].X, out shoots[i].Y,
                                         out shoots[i].VX, out shoots[i].VY,
                                         out shoots[i].MaxLife, out shoots[i].Wdt, out shoots[i].Tail, out gorda);
@@ -1308,6 +1335,7 @@ namespace Rocola
                 if (!shoots[i].On) continue;
                 Shoot s = shoots[i];
                 float k = s.Life / s.MaxLife; if (k < 0f) k = 0f;
+                if (s.Nace) { float edad = s.MaxLife - s.Life; if (edad < 0.15f) k *= Math.Max(0f, edad / 0.15f); }   // la de la lluvia entra suave
                 uint la = (uint)(230 * k * dim); if (la > 255) la = 255;   // fugaz atenuada mientras se navega con musica
                 float tailX = s.X - s.VX * s.Tail, tailY = s.Y - s.VY * s.Tail;   // estela de largo variado
                 float len = (float)Math.Sqrt(s.VX * s.VX + s.VY * s.VY);
@@ -2105,8 +2133,8 @@ namespace Rocola
         {
             SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.Opaque, true);
             SetStyle(ControlStyles.OptimizedDoubleBuffer, false);   // D3D9 maneja sus pixeles: nada de doble-buffer GDI
-            trasCielo = delegate { DibujaNieblas(); if (auCuadro.Has) DrawAurora(auCuadro); DibujaRuido(); };
-            trasEstrellas = delegate { DibujaLuna(); };
+            trasCielo = delegate { aurDibujada = false; DibujaNieblas(); if (auCuadro.Has) { DrawAurora(auCuadro); DibujaReflejoAurora(); } DibujaRuido(); };
+            trasEstrellas = delegate { DibujaLunaCielo(); DibujaLuna(); };   // la luna del cielo, lejos; la estrella, delante
         }
 
         private static int MilisegundosEspera(double restante)
@@ -2231,6 +2259,7 @@ namespace Rocola
             ruidoMalla = null; ruidoAncho = ruidoAlto = ruidoTriangulos = 0;
             ResetStarEchoes();
             if (lunaTex != IntPtr.Zero) { D3D9.Release(lunaTex); lunaTex = IntPtr.Zero; luTW = luTH = 0; lunaDe = -1; }
+            SueltaCieloVivo();      // la luna del cielo (CieloVivoGpu.cs)
             if (uiBotTex != IntPtr.Zero) { D3D9.Release(uiBotTex); uiBotTex = IntPtr.Zero; }
             for (int i = 0; i < MaxPiezas; i++)
             {
@@ -2482,6 +2511,7 @@ namespace Rocola
             PreparaAsistente(); // texto/seleccion: una sola subida cuando realmente cambian
             PreparaAyudaIcono(); // la interrogacion de AYUDA: horneada una vez por tamano (AyudaCasillaGpu.cs)
             EnsureLuna(); // ninguna reserva/subida de la luna dentro de Begin
+            ActualizaCieloVivo(); EnsureLunaCielo(); VuelvenNieblas();   // el cielo vivo (CieloVivoGpu.cs): fuera de Begin tambien
             stars.EstrellasFinas = EstrellasFinas;
             if (ShowFps) EnsureFpsTex();   // crea/actualiza la textura del contador ANTES de Begin (solo si se pide, Ctrl+F1)
             stars.SetDim(Dim);             // atenuacion mientras se navega con musica (estrellas/brillos; el cielo queda igual)
@@ -3441,19 +3471,22 @@ namespace Rocola
                 uint a = (uint)(NebAlfa * 255f + 0.5f); if (a > 255) a = 255;
                 float mx = Width * NebDeriva, my = Height * NebDeriva;
                 float c = (float)Math.Cos(NebFase), sn = (float)Math.Sin(NebFase);
-                NieblaDeriva(mx, my, c * mx, sn * my, (a << 24) | TinteNebulosa(NebColor, false, NebulosasCine));
-                NieblaDeriva(mx, my, -c * mx, -sn * my, (a << 24) | TinteNebulosa(NebColor2, true, NebulosasCine));
+                // MAS PROFUNDIDAD AL PASAR DE PAGINA (CieloVivoGpu.cs): se suma lo que se corrieron, sin salirse nunca del
+                // margen (asi el borde no asoma y la capa no cambia de tamano). Sin empuje, la cuenta de siempre.
+                NieblaDeriva(mx, my, EnMargen(c * mx + nebEmpuje, mx), sn * my, (a << 24) | TinteNebulosa(NebColor, false, NebulosasCine));
+                NieblaDeriva(mx, my, EnMargen(-c * mx + nebEmpuje, mx), -sn * my, (a << 24) | TinteNebulosa(NebColor2, true, NebulosasCine));
             }
             if (hazTex != IntPtr.Zero && Nieblas == GpuStarfield.Alto)
             {
                 // El cuadrilatero se sale de la pantalla lo que dice el margen por los cuatro lados, asi que
                 // por mucho que se mueva su borde nunca asoma. Es lo mismo que hace NieblaDeriva.
                 float mx = Width * HazDeriva, my = Height * HazDeriva;
-                float ox = (float)Math.Sin(HazFase) * mx, oy = (float)Math.Cos(HazFase) * my;
+                float ox = EnMargen((float)Math.Sin(HazFase) * mx + hazEmpuje, mx), oy = (float)Math.Cos(HazFase) * my;
                 DibujaTeselas(hazTex, hazTeselas, -mx + ox, -my + oy, Width + mx + ox, Height + my + oy, hazU, hazV, 0xFFFFFFFFu, nieblaQuad);   // solo lo que no es transparente (DibujoLigeroGpu.cs)
             }
         }
 
+        private static float EnMargen(float v, float m) { return v > m ? m : (v < -m ? -m : v); }
         // Una pasada de la nebulosa, corrida (dx, dy) de su sitio. El cuadrilatero se sale de la pantalla por
         // los cuatro lados lo que dice el margen, asi que por mucho que se mueva nunca asoma su borde.
         private void NieblaDeriva(float mx, float my, float dx, float dy, uint argb)
@@ -4007,6 +4040,7 @@ namespace Rocola
             // sumando luz en vez de tapar. Dos llamadas de dibujo para toda la aurora.
             int nb2 = AurBrillo(aurVb, aurHs, aurNc, aurNi, aurLc, aurLi, Width, au.BaseY);
             if (nb2 >= 3) stars.DrawMeshAdd(aurVb, nb2 / 3);
+            aurDibujada = n >= 3; aurDibujadaBase = au.BaseY;   // para su reflejo (CieloVivoGpu.cs)
         }
 
         // PRE-CALENTADO. Crear una textura es una peticion al driver y no siempre contesta rapido: si la
