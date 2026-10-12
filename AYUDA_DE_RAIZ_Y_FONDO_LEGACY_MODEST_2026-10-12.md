@@ -108,7 +108,9 @@ De aquí en adelante, las mejoras del fondo se hacen sobre Legacy (regla nueva e
   - siguen pasando `asistentevisual`, `guiarojo`, `ayudaguia`, `entrar`, `buscaportadas`, `cristalcola`,
     `estrella3d`, `estrellaflujo`, `ecosgeometria`, `campoestelarbuffers`, `ruidomalla`, `bloqueos`, `luna`, `fondo`
     y `espacioprecarga`;
-  - tanda completa: ver el commit.
+  - tanda completa (`pruebas/todo.sh`): 26 problemas, todos de antes de estos cambios (las mismas baterías que ya
+    fallaban en este Linux); ninguno nuevo. Antes eran 30: tres eran baterías de Natural, ya borradas, y
+    `paginasgpu` ahora pasa. `hojasfondo`, `asistentecombo` y `filabaja` pasan en los dos perfiles.
 - **Comprobación visual:** foto real de Ctrl+F3 → Fondo (Xvfb) y dibujo de la fila de arriba con video.
 - **No comprobado:**
   - en el bar, con video real y los botones de la rocola;
