@@ -2040,9 +2040,11 @@ namespace Rocola
             }
 
             // F5 = recargar musica (mantenimiento; sin boton visible)
-            if (keyData == Keys.F5) { try { File.Delete(LibCacheFile()); } catch { } LoadMusicFolder(); return true; }   // F5 ignora el cache: re-escaneo completo
+            // Como F8 y F10: si un boton de la rocola quedo en F5 (o F12), es ese boton y no la tecla de servicio. Si no,
+            // cada vez que se apretara se volveria a leer toda la biblioteca desde cero.
+            if (keyData == Keys.F5 && !IsConfiguredKey(Keys.F5)) { try { File.Delete(LibCacheFile()); } catch { } LoadMusicFolder(); return true; }   // F5 ignora el cache: re-escaneo completo
 #if ROCOLA_GPU
-            if (keyData == Keys.F12) { GpuTestWindow.Toggle(); return true; }   // F12 = ventana de prueba del render por GPU (Direct3D 9)
+            if (keyData == Keys.F12 && !IsConfiguredKey(Keys.F12)) { GpuTestWindow.Toggle(); return true; }   // F12 = ventana de prueba del render por GPU (Direct3D 9)
             if (keyData == (Keys.Control | Keys.F12)) { ToggleAlbumGpu(); return true; }   // Ctrl+F12 = fondo de discos por GPU (experimental)
             if (keyData == (Keys.Control | Keys.F11))   // Ctrl+F11 = alterna el interior de disco entre GPU (por defecto) y CPU (valvula de escape)
             {

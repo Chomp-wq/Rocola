@@ -87,6 +87,10 @@ GPU="$GPU segundatanda"
 # 'terceratanda': las canciones danadas no se vuelven a poner, el motivo del fallo primero y la biblioteca vacia.
 CPU="$CPU terceratanda"
 GPU="$GPU terceratanda"
+# 'cuartatanda': F5/F12 ceden ante un boton de la rocola, el archivo de teclas sin botones repetidos y la cancion que
+# se rompe a media cancion.
+CPU="$CPU cuartatanda"
+GPU="$GPU cuartatanda"
 # 'cielovivo': el cielo vivo de Legacy (12-10-2026): luna, lluvias, festejo, cometa, profundidad, hora y reflejo (CieloVivoGpu.cs).
 CPU="$CPU cielovivo"
 GPU="$GPU cielovivo"

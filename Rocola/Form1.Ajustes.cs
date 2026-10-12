@@ -1232,6 +1232,7 @@ namespace Rocola
                     string name = s.Substring(0, eq).Trim().ToLower();
                     int val;
                     if (!int.TryParse(s.Substring(eq + 1).Trim(), out val)) continue;
+                    if (val <= 0 || val > 0xFF) continue;   // solo una tecla sola (sin Ctrl/Alt/Shift): la rocola mira kc = tecla base
                     Keys k = (Keys)val;
                     if (name == "arriba") u = k;
                     else if (name == "abajo") d = k;
@@ -1244,6 +1245,13 @@ namespace Rocola
                 }
                 if (u == Keys.None || d == Keys.None || l == Keys.None || r == Keys.None ||
                     ok == Keys.None || bk == Keys.None || co == Keys.None || sk == Keys.None) return false;
+                // DOS FUNCIONES EN EL MISMO BOTON (el archivo editado a mano o a medias): la primera que se mira se queda
+                // con el boton y la otra no responde nunca; con la moneda y PONER en el mismo, no se podria pedir nada.
+                // El asistente no lo deja hacer ("cada boton debe ser distinto"): se vuelve a el.
+                Keys[] todas = { u, d, l, r, ok, bk, co, sk };
+                for (int i = 0; i < todas.Length; i++)
+                    for (int j = i + 1; j < todas.Length; j++)
+                        if (todas[i] == todas[j]) return false;
                 keyUp = u; keyDown = d; keyLeft = l; keyRight = r; keyOK = ok; keyBack = bk; keyCoin = co; keySkip = sk;
                 return true;
             }
@@ -1268,7 +1276,7 @@ namespace Rocola
             catch { }
         }
 
-        // Inicia el asistente (primera vez, o cuando se escriben diez ceros en el buscador).
+        // Inicia el asistente (primera vez, o con F8).
         private void StartConfig()
         {
             if (searchOpen) CloseSearch();

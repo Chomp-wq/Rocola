@@ -8,6 +8,17 @@ sin reducir calidad; los paneles respetan los limites de la tarjeta. Solo Modest
 HD suspendida y renderizado CPU congelado.
 [Cambios, pruebas y limites pendientes](AUDITORIA_GENERAL_MODEST_2026-10-11.md).
 
+## Cuarta tanda de fallos — 12 de octubre de 2026
+
+- **40 cortes de luz de golpe** en momentos al azar: siempre volvieron los mismos créditos, la misma canción y la misma
+  cola, y la configuración nunca se perdió.
+- **Un botón de la rocola en F5** ya no vuelve a leer toda la biblioteca cada vez que se aprieta.
+- **El archivo de teclas con dos funciones en el mismo botón** hace salir el asistente de botones, en vez de dejar una
+  función muerta.
+- **Una canción que se rompe a media canción** tampoco se puede pedir otra vez, igual que la que falla al empezar.
+
+[Qué se buscó y cómo se comprobó](CUARTA_TANDA_MODEST_2026-10-12.md).
+
 ## Tercera tanda de fallos — 12 de octubre de 2026
 
 - **Una canción dañada ya no se puede pedir una y otra vez:** tras fallar una vez, al pedirla dice «Esa canción está

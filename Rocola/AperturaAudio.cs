@@ -265,6 +265,7 @@ namespace Rocola
         {
             if (ex == null || ex is IOException && !(ex is EndOfStreamException)) return false;   // el disco, no el archivo
             if (ex is UnauthorizedAccessException || ex is System.Runtime.InteropServices.COMException || ex is OutOfMemoryException) return false;
+            if (ex is ObjectDisposedException) return false;   // un lector ya cerrado (saltar, cerrar): es de la rocola, no del archivo
             return ex is EndOfStreamException || ex is FormatException || ex is InvalidDataException
                 || ex is InvalidOperationException || ex is NotSupportedException || ex is ArgumentException;
         }

@@ -1454,6 +1454,9 @@ namespace Rocola
                     && SalidaCaida(nowPlaying.Song, PosicionActual(), deLaSalida, true)) return;
                 EstadoPasajero("Se cort\u00f3 la canci\u00f3n: " + MotivoFallo(e.Exception), EstadoPasajeroMs);   // el detalle, en rocola_error.txt
                 LogError("PlaybackStopped", e.Exception);
+                // Si fue el ARCHIVO (no la salida ni el disco), tampoco se deja volver a pedir, como cuando falla al empezar
+                // (AudioStartFailed): si no, cada vez sonaba un trozo, se cortaba y devolvia el credito.
+                if (deLaSalida == null && nowPlaying != null && !nowPlaying.IsVideo && nowPlaying.Song != null) MarcaDanada(nowPlaying.Song.Path, e.Exception);
                 RefundCredit();   // la cancion que el cliente pago fallo al reproducirse: se le devuelve el credito
                 ShowToast("No se pudo reproducir: credito devuelto", Color.FromArgb(200, 80, 70));
                 playFailStreak++;
