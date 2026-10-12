@@ -150,6 +150,8 @@ en una pantalla táctil. Aguanta la vuelta del reloj de Windows (a los 24,9 y 49
   - una tira de cuadros de la estrella (saltos de alegría y espera);
   - el tubo neón antes y después;
   - los mensajes.
+- **Tanda completa (`pruebas/todo.sh`):** 27 problemas. Son los 26 de siempre y `filabaja`, que aún pedía la regla
+  vieja (menos aire solo por debajo de 1000 px). Se puso al día en la octava tanda y pasa.
 - **No comprobado:** verlo en la tarjeta gráfica del bar, la letra de Windows en la fila de arriba y la estrella en
   movimiento real.
 
@@ -166,7 +168,8 @@ Revisé lo que ya hace el sonido:
 - modo noche;
 - el local y sus bocinas.
 
-Quedan estas ideas; ninguna está hecha:
+Quedan estas ideas; ninguna está hecha. (Lo que elegiste y qué pasó con cada una está en la
+[octava tanda](OCTAVA_TANDA_MODEST_2026-10-12.md). A2 ya existía: el modo noche lo hace.)
 
 - **A1. Saltar sin chasquido.** Al apretar SALTAR a media canción, la salida se corta en seco, a media onda, y eso
   suele oírse como un «clic» en las bocinas. Bajar el volumen en unos 60 ms antes de cortar lo quita. Casi no se

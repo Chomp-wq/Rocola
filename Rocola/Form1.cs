@@ -1442,6 +1442,7 @@ namespace Rocola
             // (era < 1000): en 1024x768 esos 22 px son los que le faltaban a la casilla de AYUDA para decir su palabra.
             helpJusta = gpuEnabled && W < 1180;
             if (helpBar != null) helpBar.Justa = helpJusta;
+            if (letterBar != null) letterBar.CuentaCorta = gpuEnabled;   // numeros de cada letra mas grandes, con miles abreviados (T2)
 #endif
             int helpW = Math.Max(120, Math.Min(helpJusta ? HelpBar.AnchoJusta(filaH) : HelpBar.Ancho(filaH), barraDer - helpX));
             if (helpBar != null) helpBar.SetBounds(helpX, 8, helpW, filaH);

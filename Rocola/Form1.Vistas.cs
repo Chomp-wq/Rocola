@@ -188,6 +188,11 @@ namespace Rocola
             private string scLetters; private int scAvailN = -2; private int scDatos = 0;     // firma de la tira cacheada
             private Font fMain, fVideo, fNum;
             private float fontSlot = -1f, fontAlto = -1f;   // cuerpos elegidos, y para que hueco de ancho y alto
+            // NUMEROS MAS GRANDES (T2, 12-10-2026; solo con tarjeta grafica, LayoutControls lo enciende). En 1024x768 el
+            // numero de canciones de cada letra salia diminuto: se reserva sitio para "8888". Con los miles abreviados
+            // ("2.3k") cabe una letra un 20 % mas grande. Apagado (sin tarjeta) todo queda como siempre.
+            private bool cuentaCorta, fontCorta;
+            public bool CuentaCorta { get { return cuentaCorta; } set { if (cuentaCorta == value) return; cuentaCorta = value; fontSlot = -1f; scLetters = null; Invalidate(); } }   // y la tira cacheada se rehace: lleva los numeros
             private string lblVideo = "VIDEO";                          // palabra, o simbolo si no cabe
             private StringFormat sfCen; private SolidBrush whiteB;
             public string Letters = "\u2605#ABCDEFGHIJKLMNOPQRSTUVWXYZ\u25BA";
@@ -291,7 +296,7 @@ namespace Rocola
             private void AjustaFuentes(Graphics g, float slot, int h)
             {
                 float altoL = h - AltoCuenta(slot, h);
-                if (fMain != null && Math.Abs(fontSlot - slot) < 0.5f && Math.Abs(fontAlto - altoL) < 0.5f) return;
+                if (fMain != null && Math.Abs(fontSlot - slot) < 0.5f && Math.Abs(fontAlto - altoL) < 0.5f && fontCorta == cuentaCorta) return;
                 if (fMain != null) fMain.Dispose();
                 if (fVideo != null) fVideo.Dispose();
                 if (fNum != null) { fNum.Dispose(); fNum = null; }
@@ -320,8 +325,9 @@ namespace Rocola
                     lblVideo = "\u25BA";
                     fVideo = CuerpoQueQuepa(g, "\u25BA", hueco, cuerpo);
                 }
-                if (AltoCuenta(slot, h) > 0f) fNum = CuerpoQueQuepa(g, "8888", hueco, cuerpo * 0.62f);
-                fontSlot = slot; fontAlto = altoL;
+                if (AltoCuenta(slot, h) > 0f)
+                    fNum = cuentaCorta ? CuerpoQueQuepa(g, "8.8k", hueco, cuerpo * 0.74f) : CuerpoQueQuepa(g, "8888", hueco, cuerpo * 0.62f);
+                fontSlot = slot; fontAlto = altoL; fontCorta = cuentaCorta;
             }
             // El cuerpo pedido, encogido de medio en medio lo justo para que 'muestra' quepa a lo ancho de su
             // casilla. Nunca baja de 5 puntos: por debajo no se leeria de todos modos.
@@ -533,10 +539,18 @@ namespace Rocola
                 Color tono = TonoLetra(ch, avail);
                 b.Color = Color.FromArgb(avail ? 185 : 105,
                                          (tono.R * 3 + 90) / 4, (tono.G * 3 + 105) / 4, (tono.B * 3 + 150) / 4);
-                g.DrawString(TextoCuenta(cuantas), fNum, b, new RectangleF(i * slot, h - bajo - 1f, slot, bajo), sfCen);
+                g.DrawString(cuentaCorta ? TextoCuentaCorta(cuantas) : TextoCuenta(cuantas), fNum, b, new RectangleF(i * slot, h - bajo - 1f, slot, bajo), sfCen);
             }
             // El hueco esta medido para CUATRO cifras. Una biblioteca con mas de 9999 canciones en una sola
             // letra escribiria un numero mas largo del que cabe, asi que a partir de ahi se dice en miles.
+            // Con miles abreviados: 147, 2.3k, 12k... (cabe en lo que mide "8.8k"). Punto decimal, como el resto de la rocola.
+            internal static string TextoCuentaCorta(int n)
+            {
+                if (n < 1000) return n.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                if (n < 9950) return (n / 1000.0).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + "k";
+                int miles = (n + 500) / 1000;
+                return (miles > 999 ? 999 : miles).ToString(System.Globalization.CultureInfo.InvariantCulture) + "k";
+            }
             private static string TextoCuenta(int n)
             {
                 if (n < 10000) return n.ToString();

@@ -8,6 +8,17 @@ sin reducir calidad; los paneles respetan los limites de la tarjeta. Solo Modest
 HD suspendida y renderizado CPU congelado.
 [Cambios, pruebas y limites pendientes](AUDITORIA_GENERAL_MODEST_2026-10-11.md).
 
+## Octava tanda: lo que elegiste de las propuestas — 12 de octubre de 2026
+
+- **A4, la tarjeta a una frecuencia fija:** en Ctrl+F3 → Sonido → El local y sus bocinas, «Tarjeta a:» 44,1 o 48 kHz.
+  La rocola convierte cada canción con su convertidor de calidad en vez del mezclador de XP. De fábrica, «Como la
+  canción».
+- **T1:** la letra de las texturas de la tarjeta, ajustada a los píxeles. Hay que mirarla en el bar.
+- **T2:** los números de la barra de letras, más grandes en 1024 (miles abreviados: «2.3k»). Solo con tarjeta.
+- **A1 no se hizo:** tocaría el volumen de Windows, algo que el programa prohíbe. **A2 ya existía** (el modo noche).
+
+[Qué se hizo, por qué A1 no, y cómo se comprobó](OCTAVA_TANDA_MODEST_2026-10-12.md).
+
 ## Séptima tanda: lo que pediste con fotos — 12 de octubre de 2026
 
 - **AYUDA con su palabra en 1024×768:** menos aire en las instrucciones y el encabezado cede un poco.

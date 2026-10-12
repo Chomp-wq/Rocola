@@ -86,7 +86,8 @@ class FilaBaja
                     int W = f.ClientSize.Width, pad = 14, barraDer = W - pad, filaH = busca.Height;
                     Check(W == r[0] && f.ClientSize.Height == r[1], n + "la ventana mide lo pedido");
                     bool justa = (bool)help.GetType().GetProperty("Justa", T).GetValue(help, null);
-                    Check(justa == (conTarjeta && W < 1000), n + (justa ? "instrucciones con menos aire" : "instrucciones como siempre"));
+                    // Desde el 12-10-2026 hasta 1180 de ancho (antes < 1000): en 1024x768 son los 22 px que le faltaban a AYUDA.
+                    Check(justa == (conTarjeta && W < 1180), n + (justa ? "instrucciones con menos aire" : "instrucciones como siempre"));
                     Check(help.Width == Math.Min((int)Static(help.GetType(), justa ? "AnchoJusta" : "Ancho", filaH), barraDer - pad), n + "las instrucciones miden lo que dibujan");
                     int minX = help.Right + 12;
                     Check(Pedido(busca) && busca.Left >= minX && busca.Right <= barraDer, n + "BUSCAR, detras de las instrucciones y dentro de la fila");

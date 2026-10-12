@@ -228,7 +228,7 @@ namespace Rocola
             {
                 g.Clear(Color.Transparent);
                 g.SmoothingMode = SmoothingMode.AntiAlias;
-                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;   // gris: ClearType deja flecos sobre transparente
+                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;   // gris: ClearType deja flecos sobre transparente
                 RectangleF caja = new RectangleF(AvisoAire, AvisoAire, w - 2 * AvisoAire - .5f, h - 2 * AvisoAire - .5f);
                 using (GraphicsPath p = Redondo(caja, RadioAviso(h)))
                 {
@@ -361,7 +361,7 @@ namespace Rocola
             {
                 g.Clear(Color.Transparent);
                 g.SmoothingMode = SmoothingMode.AntiAlias;
-                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
+                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
                 using (GraphicsPath p = Redondo(caja, 18f))
                 {
                     using (SolidBrush b = new SolidBrush(Color.FromArgb(240, 40, 30, 8))) g.FillPath(b, p);
@@ -456,7 +456,7 @@ namespace Rocola
             {
                 g.Clear(Color.Transparent);
                 g.SmoothingMode = SmoothingMode.AntiAlias;
-                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
+                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
                 sf.Alignment = StringAlignment.Center; sf.LineAlignment = StringAlignment.Center; sf.FormatFlags = StringFormatFlags.NoWrap;
                 RectangleF r = new RectangleF(0, 0, bmp.Width, bmp.Height);
                 // Un reborde oscuro fino: sobre el cielo claro de la aurora se sigue leyendo.
@@ -731,7 +731,7 @@ namespace Rocola
             {
                 g.Clear(Color.Transparent);
                 g.SmoothingMode = SmoothingMode.AntiAlias;
-                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
+                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
                 float a = 3f, d = n - 2 * a;
                 RectangleF r = new RectangleF(a, a, d, d);
                 using (GraphicsPath p = new GraphicsPath())

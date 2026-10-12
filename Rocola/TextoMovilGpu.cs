@@ -71,7 +71,7 @@ namespace Rocola
                             using (SolidBrush brush = new SolidBrush(color))
                             {
                                 g.Clear(Color.Transparent);
-                                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
+                                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
                                 g.TranslateTransform(-i * 1024, 0);
                                 g.DrawString(text, font, brush, new RectangleF(0, 0, width, height), sf);
                             }

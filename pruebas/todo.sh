@@ -101,6 +101,10 @@ GPU="$GPU sextatanda"
 # caricaturesca, tope de ROJO + ARRIBA/ABAJO y el tubo neon.
 CPU="$CPU septimatanda"
 GPU="$GPU septimatanda"
+# 'octavatanda': la tarjeta a una frecuencia fija (A4), letra ajustada a los pixeles y numeros de letras mas grandes
+# (T1, T2).
+CPU="$CPU octavatanda"
+GPU="$GPU octavatanda"
 # 'cielovivo': el cielo vivo de Legacy (12-10-2026): luna, lluvias, festejo, cometa, profundidad, hora y reflejo (CieloVivoGpu.cs).
 CPU="$CPU cielovivo"
 GPU="$GPU cielovivo"

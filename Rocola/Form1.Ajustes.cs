@@ -631,7 +631,7 @@ namespace Rocola
             bool wasMaint = maintMode;
             maintMode = true;   // el dialogo modal necesita quedarse al frente; se devuelve en el finally
             bool changed = false;
-            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkUp = masterDb, bkEq = eqAmount, bkBass = bassAmount; int bkVid = videoVol, bkDsk = perfilDisco; bool bkNoche = nocheOn, bkOn = normalizeOn, bkSbr = sbrOn, bkEqA = eqAuto, bkBassA = bassAuto, bkVidA = videoAuto, bkIaDat = iaHarvestOn, bkSil = saltaSilencios, bkEst = estereoEstrecho, bkSub = cortaSubgrave, bkCla = claridadLocal, bkSua = partesSuaves; int bkBal = balanceDb;   // por si se Cancela
+            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkUp = masterDb, bkEq = eqAmount, bkBass = bassAmount; int bkVid = videoVol, bkDsk = perfilDisco; bool bkNoche = nocheOn, bkOn = normalizeOn, bkSbr = sbrOn, bkEqA = eqAuto, bkBassA = bassAuto, bkVidA = videoAuto, bkIaDat = iaHarvestOn, bkSil = saltaSilencios, bkEst = estereoEstrecho, bkSub = cortaSubgrave, bkCla = claridadLocal, bkSua = partesSuaves; int bkBal = balanceDb, bkFrec = frecuenciaSalida;   // por si se Cancela
             try
             {
                 Cursor.Show();
@@ -879,6 +879,34 @@ namespace Rocola
                     Label lPru = new Label(); lPru.SetBounds(16, 268, 424, 40); lPru.BackColor = Color.Transparent;
                     lPru.ForeColor = Color.FromArgb(255, 214, 120); lPru.Font = fNom; tPru.Controls.Add(lPru);
                     string pruAviso = "";
+                    // LA TARJETA DE SONIDO A UNA FRECUENCIA FIJA (A4, Form1.Sonido.cs): en el renglon libre antes de "Volver".
+                    Label lFrec = new Label(); lFrec.SetBounds(16, 316, 92, 20); lFrec.BackColor = Color.Transparent;
+                    lFrec.ForeColor = cTexto; lFrec.Font = fNom; lFrec.Text = "Tarjeta a:"; tPru.Controls.Add(lFrec);
+                    BotonPlano bFrec0 = new BotonPlano(); bFrec0.SetBounds(110, 310, 138, 30); bFrec0.Font = fBot; bFrec0.Text = "Como la cancion";
+                    BotonPlano bFrec44 = new BotonPlano(); bFrec44.SetBounds(254, 310, 90, 30); bFrec44.Font = fBot; bFrec44.Text = "44,1 kHz";
+                    BotonPlano bFrec48 = new BotonPlano(); bFrec48.SetBounds(350, 310, 90, 30); bFrec48.Font = fBot; bFrec48.Text = "48 kHz";
+                    bFrec0.Name = "SonidoFrecuencia0"; bFrec44.Name = "SonidoFrecuencia44"; bFrec48.Name = "SonidoFrecuencia48";
+                    tPru.Controls.Add(bFrec0); tPru.Controls.Add(bFrec44); tPru.Controls.Add(bFrec48);
+                    Action pintaFrec = delegate
+                    {
+                        BotonPlano[] bb = { bFrec0, bFrec44, bFrec48 }; int[] hz = { 0, 44100, 48000 };
+                        for (int k = 0; k < 3; k++)
+                        {
+                            bool act = frecuenciaSalida == hz[k];
+                            bb[k].Relleno = act ? Color.FromArgb(28, 62, 104) : Color.FromArgb(28, 34, 62);
+                            bb[k].Borde = act ? Color.FromArgb(150, 205, 255) : Color.FromArgb(60, 72, 118);
+                            bb[k].ForeColor = act ? Color.FromArgb(226, 240, 255) : cApagado;
+                            bb[k].Invalidate();
+                        }
+                    };
+                    EventHandler ponFrec = delegate (object so, EventArgs ea)
+                    {
+                        int hz = so == bFrec44 ? 44100 : so == bFrec48 ? 48000 : 0;
+                        if (hz == frecuenciaSalida) return;
+                        frecuenciaSalida = hz; changed = true; CalientaFrecuenciaSalida(); pintaFrec();
+                    };
+                    bFrec0.Click += ponFrec; bFrec44.Click += ponFrec; bFrec48.Click += ponFrec;
+                    pintaFrec();
                     BotonPlano bVolver = new BotonPlano(); bVolver.SetBounds(16, 346, 424, 34); bVolver.Font = fBot;
                     bVolver.Text = "Volver a las canciones"; bVolver.Name = "SonidoLocalVolver"; tPru.Controls.Add(bVolver);
                     bool verLocal = false;
@@ -1118,6 +1146,7 @@ namespace Rocola
                         swSub.Checked = false; swEst.Checked = false;        // las bocinas del billar, apagadas: son para ese local
                         swCla.Checked = false; swSua.Checked = false;        // y la claridad y las partes suaves, igual
                         barBal.Value = SalaLocal.BalanceMax;                 // el balance, centrado
+                        if (frecuenciaSalida != 0) { frecuenciaSalida = 0; pintaFrec(); }   // la tarjeta, como la cancion (A4)
                         if (perfilDisco != 0)                                // el tipo de disco, otra vez a medirlo sola
                         { perfilDisco = 0; lock (discoLock) { discoLento.Clear(); discoMediana.Clear(); } AplicaPerfilDisco(); pintaDsk(); }
                         apply(bReset, EventArgs.Empty);
@@ -1208,7 +1237,7 @@ namespace Rocola
                 if (changed || f3CambioGraf) { SaveConfigPrefs(); ShowToast(changed ? "Sonido actualizado" : "Imagen actualizada", Color.FromArgb(40, 130, 90)); }
                 f3CambioGraf = false;
             }
-            catch { nocheOn = bkNoche; normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; masterDb = bkUp; eqAmount = bkEq; bassAmount = bkBass; videoVol = bkVid; videoAuto = bkVidA; sbrOn = bkSbr; eqAuto = bkEqA; bassAuto = bkBassA; perfilDisco = bkDsk; iaHarvestOn = bkIaDat; AplicaPerfilDisco(); if (saltaSilencios != bkSil) { saltaSilencios = bkSil; try { SiguienteConElInterruptor(); } catch { } } estereoEstrecho = bkEst; cortaSubgrave = bkSub; claridadLocal = bkCla; partesSuaves = bkSua; balanceDb = bkBal; try { AplicaBocinas(); } catch { } }   // si algo truena, deja los valores como estaban
+            catch { nocheOn = bkNoche; normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; masterDb = bkUp; eqAmount = bkEq; bassAmount = bkBass; videoVol = bkVid; videoAuto = bkVidA; sbrOn = bkSbr; eqAuto = bkEqA; bassAuto = bkBassA; perfilDisco = bkDsk; iaHarvestOn = bkIaDat; AplicaPerfilDisco(); if (saltaSilencios != bkSil) { saltaSilencios = bkSil; try { SiguienteConElInterruptor(); } catch { } } estereoEstrecho = bkEst; cortaSubgrave = bkSub; claridadLocal = bkCla; partesSuaves = bkSua; balanceDb = bkBal; frecuenciaSalida = bkFrec; try { AplicaBocinas(); } catch { } }   // si algo truena, deja los valores como estaban
             finally { try { Cursor.Hide(); } catch { } maintMode = wasMaint; ForceFocus(); }
         }
 

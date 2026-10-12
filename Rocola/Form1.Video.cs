@@ -1230,7 +1230,7 @@ namespace Rocola
             {
                 g.Clear(Color.Transparent);
                 g.SmoothingMode = SmoothingMode.AntiAlias;
-                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;   // gris: ClearType deja flecos sobre transparente
+                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;   // gris (ClearType deja flecos sobre transparente), ajustado a los pixeles: la letra chica sale mas nitida en pantallas bajas (T1, 12-10-2026; tambien la franja, las piezas y las cintas)
                 if (searchOpen && searchOverlay != null)
                 {
                     System.Drawing.Drawing2D.GraphicsState gs = g.Save();   // BUSCADOR (su UI sin starfield ni cubo)
@@ -1327,7 +1327,7 @@ namespace Rocola
                 if (!attractOn)   // en atraccion la pantalla es limpia: la franja queda transparente
                 {
                     g.SmoothingMode = SmoothingMode.AntiAlias;
-                    g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;   // gris: ClearType deja flecos sobre transparente
+                    g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;   // gris: ClearType deja flecos sobre transparente
                     g.TranslateTransform(0, -top);   // las etiquetas estan en coords del form; la tira empieza en 'top'
                     if (!FranjaLejos(g))   // la letra para leer de lejos (EstiloGpu.cs): el titulo grande y lo que sigue a la derecha
                     {
@@ -1429,7 +1429,7 @@ namespace Rocola
             using (Graphics g = Graphics.FromImage(uiPieza[cual]))
             {
                 g.SmoothingMode = SmoothingMode.AntiAlias;
-                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;   // igual que la imagen grande
+                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;   // igual que la imagen grande
                 // SE LE PASA EL DESPLAZAMIENTO; NO SE MUEVE EL LIENZO. La primera version movia el lienzo
                 // (TranslateTransform) y en Mono se veia perfecto... pero en Windows el texto de la tecla lo
                 // dibuja el SISTEMA (TextRenderer), y ese trabaja en pixeles de verdad: no hace caso a las

@@ -527,6 +527,7 @@ namespace Rocola
                     else if (s.StartsWith("subgrave=")) subgraveHz = SubgraveHz(s.Substring(9));   // corte del subgrave (Hz; 0 = sin corte)
                     else if (s.StartsWith("estereo_estrecho=")) estereoEstrecho = s.Substring(17).Trim() == "1";   // interruptor: estereo al ancho_estereo
                     else if (s.StartsWith("corta_subgrave=")) cortaSubgrave = s.Substring(15).Trim() == "1";       // interruptor: subgrave fuera
+                    else if (s.StartsWith("frecuencia_salida=")) { int v; if (int.TryParse(s.Substring(18).Trim(), System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out v)) frecuenciaSalida = FrecuenciaSalidaValida(v); }   // A4: la tarjeta a 44100 o 48000 (0 = como la cancion)
                     else if (s.StartsWith("claridad_local=")) claridadLocal = s.Substring(15).Trim() == "1";       // interruptor: claridad para el local
                     else if (s.StartsWith("partes_suaves=")) partesSuaves = s.Substring(14).Trim() == "1";         // interruptor: que las partes suaves se oigan
                     else if (s.StartsWith("balance=")) balanceDb = BalanceDb(s.Substring(8));                       // dB que se baja un canal (-6..6)
@@ -551,6 +552,7 @@ namespace Rocola
             }
             catch { }
             if (!sbrAllowed) sbrOn = false;   // la maquina no cumple los requisitos del NIVEL 2: apagado si o si
+            CalientaFrecuenciaSalida();   // la tabla del convertidor, lista antes de la primera cancion (A4)
         }
 
         private void SaveConfigPrefs()
@@ -664,6 +666,7 @@ namespace Rocola
                 sb.Append("subgrave=").Append(subgraveHz.ToString("0", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("estereo_estrecho=").Append(estereoEstrecho ? "1" : "0").Append("\r\n");
                 sb.Append("corta_subgrave=").Append(cortaSubgrave ? "1" : "0").Append("\r\n");
+                sb.Append("frecuencia_salida=").Append(frecuenciaSalida.ToString(System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("claridad_local=").Append(claridadLocal ? "1" : "0").Append("\r\n");
                 sb.Append("partes_suaves=").Append(partesSuaves ? "1" : "0").Append("\r\n");
                 sb.Append("balance=").Append(balanceDb.ToString(System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");

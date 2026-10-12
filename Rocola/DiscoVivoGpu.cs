@@ -255,7 +255,7 @@ namespace Rocola
             {
                 g.Clear(Color.Transparent);
                 g.SmoothingMode = SmoothingMode.AntiAlias;
-                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
+                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
                 g.InterpolationMode = InterpolationMode.HighQualityBilinear;
                 // Dos pixeles transparentes alrededor: vuela girado y con filtro, y asi su borde suavizado no toca el filo.
                 RectangleF caja = new RectangleF(2f, 2f, w - 4.5f, h - 4.5f);

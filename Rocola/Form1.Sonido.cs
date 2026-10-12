@@ -154,6 +154,38 @@ namespace Rocola
                 AplicaAPreparada();
             }
         }
+        // LA TARJETA DE SONIDO A UNA FRECUENCIA FIJA (A4, pedido el 12-10-2026). En Windows XP, si la tarjeta trabaja a
+        // 48 kHz y la cancion viene a 44,1 kHz, la conversion la hace el mezclador de Windows, que es de calidad baja (ensucia
+        // los agudos). Con "frecuencia_salida=48000" (o 44100) cada cancion se convierte AQUI, con el mismo convertidor
+        // sinc del relevo sin pausa (SinPausa.cs, RemuestreoContinuo) y su limitador de picos, y la tarjeta recibe ya su
+        // frecuencia. 0 = como la cancion (de fabrica: sin convertir nada, como siempre). La primera vez la tabla del
+        // convertidor se prepara en segundo plano: la cancion de ese momento sale tal cual y las siguientes ya convertidas.
+        private static int frecuenciaSalida = 0;
+        internal static int FrecuenciaSalidaValida(int hz) { return hz == 44100 || hz == 48000 ? hz : 0; }
+        private void AFrecuenciaDeLaTarjeta(CadenaCancion c)
+        {
+            int hz = frecuenciaSalida;
+            if (hz <= 0 || c == null || c.Salida == null) return;
+            NAudio.Wave.WaveFormat de = c.Salida.WaveFormat;
+            if (de == null || de.SampleRate == hz) return;
+            NAudio.Wave.WaveFormat a;
+            try { a = FormatoAudio.Flotante(hz, de.Channels, FormatoAudio.Mascara(de)); } catch { return; }
+            if (!RemuestreoContinuo.SePuede(de, a)) return;   // otra disposicion o fuera de presupuesto: como venga
+            double[] tabla = RemuestreoContinuo.CapturaTabla(de, a);
+            if (tabla == null) return;
+            LimitadorPicoReal lim = new LimitadorPicoReal(new RemuestreoContinuo(c.Salida, a, c.Retardo, tabla), TechoPicoReal, 3.0);
+            c.Salida = lim; c.Retardo = lim.DelayFrames;
+            // El reloj de la cancion descuenta el cebado en cuadros DE LA CANCION (SalidaSonido.cs): el convertidor ya tiro
+            // el de la cadena y solo queda el del limitador, que va en cuadros de la salida.
+            c.CebadoInicial = (int)Math.Round(lim.DelayFrames * (double)de.SampleRate / hz);
+        }
+        // Deja preparada en segundo plano la tabla mas comun (44,1 <-> 48 kHz), para que la primera cancion ya salga convertida.
+        private static void CalientaFrecuenciaSalida()
+        {
+            int hz = frecuenciaSalida;
+            if (hz <= 0) return;
+            try { RemuestreoContinuo.CapturaTabla(FormatoAudio.Flotante(hz == 48000 ? 44100 : 48000, 2, 3), FormatoAudio.Flotante(hz, 2, 3)); } catch { }
+        }
         private float crossfadeSec = 0.5f;   // FUNDIDO de salida entre canciones: segundos de rampa al terminar ("fundido=" en config; 0 = corte seco)
         private bool declipOn = true;        // DES-RECORTE (declipper): repara picos aplastados de origen en archivos mal masterizados ("declip=" en config)
         // ===== NIVELES DE MEJORA DE AUDIO segun la maquina (Ctrl+F3) =====
@@ -1174,6 +1206,7 @@ namespace Rocola
                 retardoFinalReloj = 0;
                 CadenaCancion cad = ArmaCadena(t, reader, false, desde);
                 SellaInicioReloj(cad);
+                AFrecuenciaDeLaTarjeta(cad);   // A4: a la frecuencia fija de la tarjeta, si se eligio una
                 cad.Item = nowPlaying;
                 // Lo que se aprende oyendola va en los campos de siempre (la salida aun no arranco: sin carrera).
                 curMeasurePath = cad.MedidaRuta; curSumSq = 0; curSamples = 0;

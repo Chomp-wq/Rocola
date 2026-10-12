@@ -76,6 +76,9 @@ namespace Rocola
             // Si Windows cambio de aparato de sonido, no se encadena: la salida se cierra al acabar esta y la
             // siguiente se abre en el aparato nuevo (SalidaSonido.cs).
             if (!MismaSalida()) return;
+            // Se eligio otra frecuencia para la tarjeta (A4) y esta salida va a la de antes: la siguiente abre la salida
+            // de nuevo, ya a la elegida, en vez de seguir encadenada a la vieja.
+            if (frecuenciaSalida > 0 && s.WaveFormat.SampleRate != frecuenciaSalida) return;
             // El lector de la siguiente lo abre por delante el calentador (MiraPorDelante). Si aun no esta, o
             // no conserva la disposicion conocida o excede trabajo de conversion, queda para PlayNext.
             string ruta = RutaQueSonaria(sig.Song.Path);
