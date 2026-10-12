@@ -13,7 +13,7 @@ namespace Rocola
         // los destellos son quads GPU y no invalidan la textura de la interfaz.
         private bool GuiaRojoVisible()
         {
-            return GuiaRojoActiva(guiaRojo, gpuEnabled, RocolaConTeclado(), BackHeld(),
+            return GuiaRojoActiva(guiaRojo, gpuEnabled, RocolaConTeclado(), RojoMantenido(),
                 maintMode || libBuilding || videoFull || searchOpen || attractOn || configMode || AsistenteCapturaEntrada
                 || (panelSongs != null && panelSongs.Visible)
                 || letterBar == null || !letterBar.Visible);
@@ -46,7 +46,7 @@ namespace Rocola
         private int rojoMantenidoDesde, rojoApuntes; private bool rojoApuntado;
         private void VigilaRojoMantenido()
         {
-            if (!BackHeld()) { rojoMantenidoDesde = 0; rojoApuntado = false; return; }
+            if (!RojoMantenido()) { rojoMantenidoDesde = 0; rojoApuntado = false; return; }
             int ahora = Environment.TickCount;
             if (rojoMantenidoDesde == 0) { rojoMantenidoDesde = ahora == 0 ? 1 : ahora; return; }
             if (rojoApuntado || rojoApuntes >= 20 || unchecked(ahora - rojoMantenidoDesde) < 700) return;

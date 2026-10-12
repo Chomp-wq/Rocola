@@ -163,6 +163,34 @@ namespace Rocola
             return busX + grupo;
         }
 
+        // CON VIDEO SONANDO, BUSCAR Y AYUDA VAN ENCIMA DEL VIDEO (revision de raiz del 12-10-2026: "despues de un rato ya no
+        // se puede usar el asistente"). Con video, letras, encabezado y discos se encogen a la mitad izquierda, y en esa fila
+        // ya no cabian: las dos casillas se escondian mientras durara el video, que en el bar es casi siempre. Encima del
+        // cuadro del video queda libre una franja del alto de la fila (el video empieza a la altura de las letras): ahora
+        // van ahi, centradas sobre el. Solo con tarjeta grafica; sin ella (dibujo por CPU, congelado) todo sigue igual.
+        private void AcomodaSobreVideo(int x0, int x1, int filaH)
+        {
+            int libre = Math.Max(0, x1 - x0);
+            int busW = Math.Min(BuscaView.AnchoJusto(filaH), libre);
+            bool compacta = ayudaView != null && busW + 10 + AyudaView.Ancho(filaH, false) > libre;
+            int ancho = ayudaView != null ? AyudaView.Ancho(filaH, compacta) : 0;
+            bool cabe = ayudaView != null && busW >= 120 && busW + 10 + ancho <= libre;
+            int busX = ParSobreVideo(x0, x1, busW, cabe ? ancho : 0);
+            buscaView.SetBounds(busX, 8, busW, filaH);
+            buscaView.Visible = busW >= 120;
+            if (ayudaView == null) return;
+            ayudaView.Compacta = compacta;
+            ayudaView.SetBounds(busX + busW + 10, 8, Math.Max(1, ancho), filaH);
+            ayudaView.Visible = cabe;
+        }
+
+        // Donde empieza BUSCAR para que el par (BUSCAR, 10 px, AYUDA) quede centrado entre x0 y x1. Pura.
+        internal static int ParSobreVideo(int x0, int x1, int busW, int ayudaW)
+        {
+            int grupo = busW + (ayudaW > 0 ? 10 + ayudaW : 0);
+            return x0 + Math.Max(0, (x1 - x0 - grupo) / 2);
+        }
+
         // Donde empieza BUSCAR (con AYUDA a su derecha, 'grupo' de ancho entre las dos). Pura: se prueba sin ventana.
         internal static int ColocaParBusca(int W, int busW, int grupo, int minX, int barraDer, int pideEncabezado)
         {
@@ -193,7 +221,8 @@ namespace Rocola
                 if (unchecked(Environment.TickCount - asistenteInicioTick) >= 450) CierraAsistente();
                 return true;
             }
-            if (!AsistentePermitido()) return false;
+            string motivo = MotivoSinAyuda();
+            if (motivo != null) { AvisaSinAyuda(motivo); return true; }
             AbreAsistente();   // tambien mientras regresa a su sitio: da media vuelta desde donde iba
             return true;
         }

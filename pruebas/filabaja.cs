@@ -120,9 +120,30 @@ class FilaBaja
             }
             if (gpu)
             {
-                // Con video sonando BUSCAR no esta en la fila, y la AYUDA tampoco (la abre ROJO + ABAJO igual).
-                S(f, "videoOn", true); f.ClientSize = new Size(1024, 768); C(f, "LayoutControls");
-                Check(!Pedido(busca) && !Pedido(ayuda) && cab.Left == help.Right + 12, "Con video: sin BUSCAR ni AYUDA en la fila, el encabezado tras las instrucciones");
+                // CON VIDEO SONANDO (revision del 12-10-2026): antes BUSCAR y AYUDA se escondian mientras durara el video, que
+                // en el bar es casi siempre, y la ayuda "dejaba de estar" al rato. Ahora van encima del cuadro del video.
+                Check((int)Static(form, "ParSobreVideo", 512, 1010, 203, 194) == 512 + (498 - 407) / 2, "El par, centrado sobre el video");
+                Check((int)Static(form, "ParSobreVideo", 400, 786, 203, 0) == 400 + (386 - 203) / 2, "Solo BUSCAR, centrada sobre el video");
+                Check((int)Static(form, "ParSobreVideo", 400, 500, 203, 194) == 400, "Si no cabe, empieza en el borde del video (nunca a su izquierda)");
+                S(f, "videoOn", true);
+                Control letras = (Control)G(f, "letterBar");   // el video empieza a la altura de las letras
+                foreach (int[] r in res)
+                {
+                    string n = r[0] + "x" + r[1] + " con video: ";
+                    f.ClientSize = new Size(r[0], r[1]); C(f, "LayoutControls");
+                    int W = f.ClientSize.Width, splitX = (int)(W * 0.50), contentRight = splitX - 12;
+                    Check(Pedido(busca) && Pedido(ayuda), n + "BUSCAR y AYUDA se ven");
+                    Check(busca.Left >= splitX && ayuda.Left == busca.Right + 10 && ayuda.Right <= W - 14, n + "encima del video, dentro de la pantalla");
+                    Check(Math.Abs((busca.Left + ayuda.Right) / 2 - (splitX + W - 14) / 2) <= 1, n + "centradas sobre el video");
+                    Check(busca.Top == 8 && ayuda.Top == 8 && busca.Height == help.Height, n + "en la fila de arriba, a su altura");
+                    Check(busca.Bottom <= letras.Top && ayuda.Bottom <= letras.Top, n + "sin pisar el cuadro del video (empieza con las letras)");
+                    Check(cab.Left == help.Right + 12 && cab.Right == contentRight, n + "el encabezado, en la mitad izquierda tras las instrucciones");
+                    if (W >= 1024) Check(!(bool)ayuda.GetType().GetField("Compacta", T).GetValue(ayuda), n + "AYUDA con su palabra");
+                }
+                f.ClientSize = new Size(1024, 768);
+                S(f, "gpuEnabled", false); C(f, "LayoutControls");
+                Check(!Pedido(busca) && !Pedido(ayuda) && cab.Left == help.Right + 12, "Sin tarjeta, con video, como siempre: sin BUSCAR ni AYUDA en la fila");
+                S(f, "gpuEnabled", true);
                 S(f, "videoOn", false);
                 // Apagar la tarjeta en marcha devuelve la fila de siempre.
                 S(f, "gpuEnabled", false); C(f, "LayoutControls");

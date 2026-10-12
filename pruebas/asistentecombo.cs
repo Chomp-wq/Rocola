@@ -5,7 +5,7 @@ using System.Reflection.Emit;
 using System.Windows.Forms;
 
 // EL CONTROL DE LA AYUDA Y LA GUIA PASO A PASO (11-10-2026).
-// La ayuda se abre con ROJO + flecha ABAJO (la gemela de BUSCAR, que es ROJO + ARRIBA) o tocando su casilla, y
+// La ayuda se abre con ROJO + flecha ABAJO, en cualquier orden (la gemela de BUSCAR, que es ROJO + ARRIBA) o tocando su casilla, y
 // lleva de la mano: mira el estado real de la Rocola y decide el paso que toca. Esta bateria comprueba el atajo,
 // que ya no queda el acorde rojo+verde de tres segundos (ni su ventana de 120 ms que retrasaba los botones), la
 // tabla de pasos, el "paso X de N", que una mision avanza sola con lo que hace el cliente, que celebra al
@@ -49,11 +49,24 @@ class AsistenteCombo
 
     static void Atajo()
     {
-        foreach (bool rojo in new bool[] { false, true })
-            foreach (bool abajo in new bool[] { false, true })
-                foreach (bool repite in new bool[] { false, true })
-                    Check((bool)Run("EsAtajoAyuda", rojo, abajo, repite) == (rojo && abajo && !repite),
-                        "ROJO + ABAJO abre/guarda la ayuda, una vez por pulsacion (" + rojo + "," + abajo + "," + repite + ")");
+        bool[] dos = { false, true };
+        foreach (bool esAbajo in dos) foreach (bool rojo in dos) foreach (bool esRojo in dos) foreach (bool abajo in dos) foreach (bool repite in dos)
+            Check((bool)Run("EsAtajoAyuda", esAbajo, rojo, esRojo, abajo, repite) == (!repite && ((esAbajo && rojo) || (esRojo && abajo))),
+                "ROJO + ABAJO abre/guarda la ayuda, una vez por pulsacion (" + esAbajo + "," + rojo + "," + esRojo + "," + abajo + "," + repite + ")");
+        // El orden da igual (revision del 12-10-2026): al apretar los dos a la vez cualquiera llega primero.
+        Check((bool)Run("EsAtajoAyuda", true, true, false, false, false), "ABAJO con el rojo apretado");
+        Check((bool)Run("EsAtajoAyuda", false, false, true, true, false), "ROJO con el abajo apretado (antes no hacia nada)");
+        Check(!(bool)Run("EsAtajoAyuda", true, false, false, false, false) && !(bool)Run("EsAtajoAyuda", false, false, true, false, false),
+            "Un boton solo no es el atajo");
+        // El otro boton, apretado segun la cola de mensajes O segun el teclado fisico.
+        foreach (string m in new string[] { "RojoMantenido", "AbajoMantenido" })
+            Check(Codigo.Llama(form.GetMethod(m, Todos), "SegunCola") && Codigo.Llama(form.GetMethod(m, Todos), "Fisica"), m + ": cola de mensajes y teclado fisico");
+        Check(Codigo.Llama(form.GetMethod("SegunCola", Todos), "KeyHeld") && Codigo.Llama(form.GetMethod("Fisica", Todos), "GetAsyncKeyState"), "GetKeyState y GetAsyncKeyState");
+        MethodInfo entrada0 = form.GetMethod("AsistenteEntrada", Todos);
+        Check(Codigo.Llama(entrada0, "RojoMantenido") && Codigo.Llama(entrada0, "AbajoMantenido") && !Codigo.Llama(entrada0, "BackHeld"),
+            "La entrada mira los dos botones mantenidos con la misma regla");
+        Check(Codigo.Llama(form.GetMethod("GuiaRojoVisible", Todos), "RojoMantenido") && Codigo.Llama(form.GetMethod("VigilaRojoMantenido", Todos), "RojoMantenido"),
+            "Las pistas del rojo miran el rojo con la misma regla que el atajo");
         Check(form.Assembly.GetType("Rocola.AsistenteCombinacion") == null, "Ya no queda el acorde rojo+verde de tres segundos");
         Check(form.GetMethod("ReenviaEntradaAsistente", Todos) == null && form.GetField("asistentePendiente", Todos) == null,
             "Rojo y verde responden al instante: sin ventana de reconocimiento de acorde");
@@ -66,20 +79,18 @@ class AsistenteCombo
         Check(Codigo.Llama(form.GetMethod("AyudaTocada", Todos), "AbreAsistente"), "Tocar la casilla de AYUDA abre la ayuda");
         Check(Codigo.Llama(form.GetMethod("AyudaTocada", Todos), "CierraAsistente"), "Y con la ayuda abierta, tocarla la vuelve a guardar");
         Check(Codigo.Llama(form.GetMethod("AsistenteClick", Todos), "CierraAsistente"), "Tocar fuera del globo de la pregunta la guarda");
-        // El rojo mantenido (aviso del 11-10-2026): un regreso de la estrella que se quedara a medias porque la tarjeta
-        // dejo de dibujar no puede tragarse los botones para siempre, y si las pistas o la ayuda no salen, se apunta por que.
+        // El regreso de la estrella ya no se le pregunta a la tarjeta (revision del 12-10-2026): lo cuenta el formulario.
         Type gpu = form.Assembly.GetType("Rocola.GpuPanel", true);
-        MethodInfo sin = gpu.GetMethod("RegresoSinCuadros", Todos);
-        double lim = (double)gpu.GetField("RegresoSinCuadrosSeg", Todos).GetRawConstantValue();
-        Check(!(bool)sin.Invoke(null, new object[] { false, 10.0, 10.0 + lim * .5 }), "Regresando con cuadros: sigue bloqueando la entrada mientras salta");
-        Check((bool)sin.Invoke(null, new object[] { false, 10.0, 10.0 + lim + .1 }), "Regreso sin cuadros: deja de tragarse los botones");
-        Check(!(bool)sin.Invoke(null, new object[] { true, 10.0, 99.0 }), "Con la ayuda a la vista no se toca");
-        Check(!(bool)sin.Invoke(null, new object[] { false, -1.0, 99.0 }) && (bool)sin.Invoke(null, new object[] { false, 10.0, double.NaN }), "Reloj raro: sin bloqueo eterno");
-        Check(Codigo.Llama(gpu.GetMethod("get_AsistenteEnTransicion", Todos), "RegresoSinCuadros"), "AsistenteEnTransicion usa el limite sin cuadros");
+        Check(gpu.GetProperty("AsistenteEnTransicion", Todos) == null && gpu.GetMethod("RegresoSinCuadros", Todos) == null,
+            "El formulario no depende de los cuadros de la tarjeta para soltar los botones");
         Check(Codigo.Llama(form.GetMethod("TickAsistenteGpu", Todos), "VigilaRojoMantenido") && Codigo.Llama(form.GetMethod("VigilaRojoMantenido", Todos), "MotivoSinGuiaRojo")
             && Codigo.Llama(form.GetMethod("VigilaRojoMantenido", Todos), "LogError"), "Rojo mantenido sin pistas: se apunta el motivo");
-        Check(Codigo.Llama(form.GetMethod("AsistenteEntrada", Todos), "ApuntaAyudaNoPermitida") && Codigo.Llama(form.GetMethod("ApuntaAyudaNoPermitida", Todos), "LogError"),
-            "ROJO + ABAJO sin ayuda: se apunta el motivo");
+        // Nunca mas un atajo que no hace nada sin decir por que: se dice EN LA PANTALLA y se apunta.
+        MethodInfo avisa = form.GetMethod("AvisaSinAyuda", Todos);
+        Check(form.GetMethod("ApuntaAyudaNoPermitida", Todos) == null, "Ya no queda el apunte mudo");
+        Check(Codigo.Llama(form.GetMethod("AsistenteEntrada", Todos), "AvisaSinAyuda") && Codigo.Llama(form.GetMethod("AyudaTocada", Todos), "AvisaSinAyuda"),
+            "ROJO + ABAJO y tocar AYUDA, si no se puede, avisan");
+        Check(Codigo.Llama(avisa, "ShowToast") && Codigo.Llama(avisa, "LogError"), "El aviso sale en la pantalla y queda en rocola_error.txt");
         Check(Codigo.Llama(form.Assembly.GetType("Rocola.GpuPanel", true).GetMethod("AvanzaGlobosGuia", Todos), "AsistenteGuiaRectSigue"),
             "El globo de la guia recuerda su esquina (no cruza la pantalla a cada paso)");
         Check(!Codigo.Llama(form.GetMethod("EvaluaGuia", Todos), "AddItem") && !Codigo.Llama(form.GetMethod("EmpiezaMision", Todos), "AddItem"),
@@ -167,22 +178,29 @@ class AsistenteCombo
 
     // "Despues de usar el asistente una vez, los controles se bloquean para siempre" (aviso del 11-10-2026). El regreso
     // de la estrella lo decidia la tarjeta con su ULTIMO cuadro: si los cuadros se paraban con la ayuda aun abierta, la
-    // tarjeta seguia creyendola abierta y el regreso no acababa nunca. Ahora el formulario le pone tope con su reloj.
+    // tarjeta seguia creyendola abierta y el regreso no acababa nunca. Y "despues de un rato ya no se puede usar"
+    // (12-10-2026): ahora el regreso lo cuenta solo el formulario, solo la niegan los bloqueos de verdad y, si no se
+    // puede, lo dice en la pantalla.
     static void Desbloqueo()
     {
         int tope = K("RegresoTopeMs");
-        Check(tope >= 800 && tope <= 2000, "El regreso retiene los botones como mucho un instante (" + tope + " ms)");
+        Check(tope >= 720 && tope <= 1000, "El regreso retiene los botones lo que dura el salto y nada mas (" + tope + " ms)");
         Check((bool)Run("RegresoVigente", 1000, 1000) && (bool)Run("RegresoVigente", 1000, 1000 + tope - 1), "Dentro del tope, el regreso sigue");
         Check(!(bool)Run("RegresoVigente", 1000, 1000 + tope) && !(bool)Run("RegresoVigente", 1000, 999), "Pasado el tope (o con el reloj hacia atras), ya no retiene");
         Check((bool)Run("RegresoVigente", int.MaxValue - 100, unchecked(int.MaxValue + 200)), "Aguanta la vuelta del contador de Windows");
-        Check(Codigo.Llama(form.GetMethod("get_AsistenteVisible", Todos), "get_AsistenteRegresando")
-            && Codigo.Llama(form.GetMethod("get_AsistenteRegresando", Todos), "RegresoVigente")
-            && Codigo.Llama(form.GetMethod("get_AsistenteRegresando", Todos), "LogError"), "El regreso lo acota el formulario, y si se atasca se apunta");
+        MethodInfo regresando = form.GetMethod("get_AsistenteRegresando", Todos);
+        int leeP, escP; Codigo.UsosDeCampo(regresando, "gpuPanel", out leeP, out escP);
+        Check(Codigo.Llama(form.GetMethod("get_AsistenteVisible", Todos), "get_AsistenteRegresando") && Codigo.Llama(regresando, "RegresoVigente") && leeP == 0,
+            "El regreso lo cuenta solo el formulario, con su reloj");
         // Volver a abrirla mientras regresa (antes ese rato no hacia nada y parecia bloqueada).
         Check(!Codigo.Llama(form.GetMethod("AyudaTocada", Todos), "get_AsistenteVisible"), "Tocar AYUDA la abre aunque la estrella aun regrese");
-        // Foco: con la ventana delante pero el foco en nada, la ayuda y las pistas del rojo se negaban para siempre.
-        Check(Codigo.Llama(form.GetMethod("AsistentePermitido", Todos), "RocolaConTeclado") && !Codigo.Llama(form.GetMethod("AsistentePermitido", Todos), "get_ContainsFocus"),
-            "La ayuda se permite con la ventana delante aunque el foco se haya quedado en nada");
+        // Solo la niegan los bloqueos de verdad (revision del 12-10-2026). El foco (si la tecla llego, la rocola la tiene),
+        // leer la biblioteca (la ayuda no la toca) y verde = rojo (era del acorde viejo) la negaban sin decir nada.
+        MethodInfo motivo = form.GetMethod("MotivoSinAyuda", Todos);
+        Check(Codigo.Llama(form.GetMethod("AsistentePermitido", Todos), "MotivoSinAyuda"), "Permitir y avisar usan la misma lista");
+        int leeL, escL, leeK, escK; Codigo.UsosDeCampo(motivo, "libBuilding", out leeL, out escL); Codigo.UsosDeCampo(motivo, "keyOK", out leeK, out escK);
+        Check(!Codigo.Llama(motivo, "RocolaConTeclado") && !Codigo.Llama(motivo, "get_ContainsFocus") && leeL == 0 && leeK == 0,
+            "Ni el foco, ni leer la biblioteca, ni verde = rojo niegan la ayuda");
         Check(Codigo.Llama(form.GetMethod("GuiaRojoVisible", Todos), "RocolaConTeclado") && Codigo.Llama(form.GetMethod("MotivoSinGuiaRojo", Todos), "RocolaConTeclado"),
             "Las pistas del rojo miran lo mismo");
         Check(Codigo.Llama(form.GetMethod("FocusTimer_Tick", Todos), "get_ContainsFocus") && Codigo.Llama(form.GetMethod("FocusTimer_Tick", Todos), "Focus"),
@@ -214,16 +232,29 @@ class AsistenteCombo
             Check(escribe > 0, "Abrirla lo termina");
             // Como lo deja CierraAsistente con la tarjeta puesta (aqui sin ella no hay regreso que esperar).
             Set(owner, "gpuPanel", panel); Set(owner, "asistenteRegresando", true); Set(owner, "asistenteCierreTick", Environment.TickCount);
-            Check((bool)gpu.GetProperty("AsistenteEnTransicion", Todos).GetValue(panel, null), "La tarjeta, sin cuadros nuevos, sigue creyendo que regresa");
             Check((bool)Get(owner, "asistenteRegresando") && (bool)Call(owner, "get_AsistenteCapturaEntrada"), "Recien guardada: el regreso retiene los botones");
             Set(owner, "asistenteCierreTick", unchecked(Environment.TickCount - tope - 50));
             Check(!(bool)Call(owner, "get_AsistenteVisible") && !(bool)Call(owner, "get_AsistenteCapturaEntrada"),
-                "Pasado el tope los botones vuelven, aunque la tarjeta siga parada");
+                "Pasado el tope los botones vuelven, aunque la tarjeta siga dibujando el regreso");
             Check(!(bool)Get(owner, "asistenteRegresando"), "Y se queda suelto (no vuelve a bloquear)");
+            // Lo que de verdad la niega, y lo que ya no (sin foco, como aqui en Linux, y leyendo la biblioteca).
+            Set(owner, "libBuilding", true);
+            Check(Call(owner, "MotivoSinAyuda") == null, "Sin foco del teclado y leyendo la biblioteca, la ayuda se puede abrir");
+            Set(owner, "libBuilding", false);
+            Set(owner, "configMode", true); Check((string)Call(owner, "MotivoSinAyuda") == "configurando botones", "Configurando botones: no"); Set(owner, "configMode", false);
+            Set(owner, "maintMode", true); Check(((string)Call(owner, "MotivoSinAyuda")).Contains("F10"), "En mantenimiento: no"); Set(owner, "maintMode", false);
+            Set(owner, "arranqueEnEspera", true); Check((string)Call(owner, "MotivoSinAyuda") == "arrancando", "Arrancando: no"); Set(owner, "arranqueEnEspera", false);
+            Set(owner, "gpuPanel", null); Check((string)Call(owner, "MotivoSinAyuda") == "sin tarjeta grafica", "Sin tarjeta: no"); Set(owner, "gpuPanel", panel);
+            // Y cuando no se puede, lo dice: en la pantalla (con tope de ritmo) y en rocola_error.txt.
+            Call(owner, "AvisaSinAyuda", "configurando botones");
+            int avisoTick = (int)Get(owner, "ayudaNoPermitidaTick");
+            Check(avisoTick != 0, "El aviso sale en la pantalla");
+            Call(owner, "AvisaSinAyuda", "configurando botones");
+            Check((int)Get(owner, "ayudaNoPermitidaTick") == avisoTick, "Mantenerlo no amontona avisos (uno cada segundo y medio)");
             Codigo.EsperaBitacora();
             string bit = Environment.GetEnvironmentVariable("ROCOLA_DATOS");
             string log = System.IO.Path.Combine(bit, "rocola_error.txt");
-            Check(System.IO.File.Exists(log) && System.IO.File.ReadAllText(log).Contains("regreso de la estrella"), "El atasco queda apuntado en rocola_error.txt");
+            Check(System.IO.File.Exists(log) && System.IO.File.ReadAllText(log).Contains("ROJO + ABAJO sin ayuda: configurando botones"), "Y queda apuntado en rocola_error.txt");
             // Reabrir mientras regresa: la tarjeta da media vuelta.
             Set(owner, "asistenteRegresando", true); Set(owner, "asistenteCierreTick", Environment.TickCount);
             Check((bool)Call(owner, "get_AsistenteVisible"), "Otra vez regresando");

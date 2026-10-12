@@ -119,13 +119,13 @@ class AsistenteVisual
             PointF actual = (PointF)Get(final,"Centro");
             Check(Math.Abs(actual.X-expected.X) < .01 && Math.Abs(actual.Y-expected.Y) < .01 && F(final,"Miembros") == 1, "Llega al mismo sitio independientemente de FPS/estilo");
             Set(panel, "asistenteEstado", State(false,true,null,1)); Pose(panel,2000);
-            Check((bool)gpu.GetProperty("AsistenteEnTransicion",B).GetValue(panel,null), "Sigue visible durante el regreso");
+            Check((bool)Get(panel,"asistenteDibujando"), "Sigue visible durante el regreso");
             Pose(panel,2720);
-            Check(!(bool)gpu.GetProperty("AsistenteEnTransicion",B).GetValue(panel,null), "Devuelve la estrella al fondo al terminar");
+            Check(!(bool)Get(panel,"asistenteDibujando"), "Devuelve la estrella al fondo al terminar");
             Set(panel,"asistenteEstado",State(true,false,null,1)); Pose(panel,3000);
             Check(F(Get(panel,"asistentePose"),"Miembros")==1, "Animacion apagada conserva ayuda y personaje");
             Set(panel,"asistenteEstado",State(false,false,null,1)); Pose(panel,3001);
-            Check(!(bool)gpu.GetProperty("AsistenteEnTransicion",B).GetValue(panel,null), "Cerrar sin animacion es inmediato");
+            Check(!(bool)Get(panel,"asistenteDibujando"), "Cerrar sin animacion es inmediato");
         }
         using (Control panel = (Control)Activator.CreateInstance(gpu,true))
         {

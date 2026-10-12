@@ -1261,7 +1261,7 @@ namespace Rocola
                 else
                 {
                     DrawCtrlOverlay(g, helpBar);
-                    DrawCtrlOverlay(g, buscaView);
+                    if (buscaView != null && buscaView.Visible) DrawCtrlOverlay(g, buscaView);   // escondida, no se pinta (con video, antes asomaba una tira)
                     if (ayudaView != null && ayudaView.Visible) DrawCtrlOverlay(g, ayudaView);   // AYUDA (su interrogacion la anima la tarjeta)
                     DrawCtrlOverlay(g, letterBar);
                     DrawCtrlOverlay(g, headerView);

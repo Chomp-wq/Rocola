@@ -30,26 +30,20 @@ namespace Rocola
         private Size asistentePanelTam;
         private bool AsistenteVisible { get { return asistenteVisible || AsistenteRegresando; } }
 
-        // EL REGRESO ANIMADO TIENE TOPE (aviso del 11-10-2026: "despues de usar el asistente una vez, los controles se
-        // bloquean para siempre"). Mientras la estrella vuelve a su sitio (0,72 s) la rocola no deja que un boton active
-        // lo de debajo. Pero ese "regresando" lo decide la tarjeta con lo que vio en su ULTIMO cuadro: si los cuadros se
-        // paraban con la ayuda todavia abierta (el panel escondido por un video, la ventana minimizada, el dispositivo
-        // perdido), la tarjeta seguia creyendo que la ayuda estaba abierta y el regreso no se acababa nunca: se tragaba
-        // los botones, no salian las pistas del rojo y ROJO + ABAJO no la volvia a abrir. Ahora lo cuenta el formulario
-        // con su propio reloj: pasado RegresoTopeMs desde que se guardo, el regreso ya no retiene nada, digan lo que
-        // digan los cuadros (la animacion termina sola cuando vuelvan).
-        internal const int RegresoTopeMs = 1500;
-        private bool asistenteRegresando; private int asistenteCierreTick, regresoAtascadoApuntes;
+        // EL REGRESO ANIMADO, CONTADO SOLO POR EL FORMULARIO (revision de raiz del 12-10-2026: "despues de un rato ya no se
+        // puede usar el asistente"). Mientras la estrella vuelve a su sitio (0,72 s) un boton no activa lo de debajo. Antes
+        // ese "regresando" se le preguntaba a la tarjeta grafica, que lo sabe por su ultimo cuadro; si los cuadros se paraban
+        // (video, ventana minimizada, dispositivo perdido) la respuesta se quedaba vieja. Ahora no se le pregunta nada: son
+        // RegresoTopeMs desde que se guardo y punto. La tarjeta anima a su ritmo; el formulario no la espera nunca.
+        internal const int RegresoTopeMs = 800;
+        private bool asistenteRegresando; private int asistenteCierreTick;
         private bool AsistenteRegresando
         {
             get
             {
                 if (!asistenteRegresando) return false;
-                bool tarjeta = gpuPanel != null && gpuPanel.AsistenteEnTransicion;
-                if (tarjeta && RegresoVigente(asistenteCierreTick, Environment.TickCount)) return true;
+                if (RegresoVigente(asistenteCierreTick, Environment.TickCount)) return true;
                 asistenteRegresando = false;
-                if (tarjeta && regresoAtascadoApuntes < 20)
-                { regresoAtascadoApuntes++; LogError("Ayuda: el regreso de la estrella no termino a tiempo (sin cuadros); se sueltan los botones", null); }
                 return false;
             }
         }
@@ -69,18 +63,60 @@ namespace Rocola
             try { return GetForegroundWindow() == Handle; }
             catch { sinUser32 = true; return false; }   // sin Windows (pruebas en Linux): solo cuenta el foco
         }
+        // ---------------- EL ROJO Y EL ABAJO, MANTENIDOS ----------------
+        // ROJO + ABAJO necesita saber si el otro boton sigue apretado. Antes se miraba solo GetKeyState, que es el estado
+        // "segun los mensajes que ya leyo este hilo". Ahora vale tambien el estado fisico del boton (GetAsyncKeyState), que
+        // no depende de quien se quedo con el mensaje. Y el orden da igual: ABAJO con el rojo apretado, o ROJO con el
+        // abajo apretado (al apretar los dos a la vez, cualquiera puede llegar primero; si llegaba primero el abajo, antes
+        // no pasaba nada y la ayuda parecia muerta).
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern short GetAsyncKeyState(int vKey);
+        private static bool sinAsync;
+        private static bool Fisica(Keys k)
+        {
+            if (sinAsync || k == Keys.None) return false;
+            try { return (GetAsyncKeyState((int)(k & Keys.KeyCode)) & 0x8000) != 0; }
+            catch { sinAsync = true; return false; }   // sin Windows (pruebas en Linux)
+        }
+        private static bool SegunCola(Keys k)
+        {
+            if (sinUser32 || k == Keys.None) return false;
+            try { return KeyHeld(k); } catch { sinUser32 = true; return false; }
+        }
+        private bool RojoMantenido()
+        {
+            bool escLibre = !IsConfiguredKey(Keys.Escape);
+            return SegunCola(keyBack) || Fisica(keyBack) || (escLibre && (SegunCola(Keys.Escape) || Fisica(Keys.Escape)));
+        }
+        private bool AbajoMantenido()
+        {
+            bool flechaLibre = !IsConfiguredKey(Keys.Down);
+            return SegunCola(keyDown) || Fisica(keyDown) || (flechaLibre && (SegunCola(Keys.Down) || Fisica(Keys.Down)));
+        }
+        // Pura: ¿esta tecla, con lo que hay mantenido, es ROJO + ABAJO? Una vez por pulsacion (sin autorrepeticion).
+        internal static bool EsAtajoAyuda(bool esAbajo, bool rojoMantenido, bool esRojo, bool abajoMantenido, bool repeticion)
+        { return !repeticion && ((esAbajo && rojoMantenido) || (esRojo && abajoMantenido)); }
+
         // La ayuda solo se queda con los botones mientras PREGUNTA (el menu) y durante su regreso animado.
         // Guiando, cada boton hace lo de siempre: es el cliente quien lo hace, la estrella solo senala.
         private bool AsistenteCapturaEntrada
         { get { return (asistenteVisible && asistenteMision == 0) || (!asistenteVisible && AsistenteVisible); } }
 
 
-        private bool AsistentePermitido()
+        // QUE IMPIDE LA AYUDA, Y SOLO ESO. null = se puede. Antes tambien la negaban el foco del teclado (si una tecla llego
+        // aqui, la rocola la tiene), leer la biblioteca (la ayuda no toca la biblioteca) y verde = rojo (era del acorde
+        // viejo): tres maneras de quedarse sin ayuda sin que nada lo dijera.
+        private string MotivoSinAyuda()
         {
-            return gpuEnabled && gpuPanel != null && RocolaConTeclado() && Enabled
-                && !arranqueEnEspera && !startupClosing && !IsDisposed && !configMode
-                && !maintMode && !libBuilding && keyOK != keyBack;
+            if (!gpuEnabled || gpuPanel == null) return "sin tarjeta grafica";
+            if (startupClosing || IsDisposed) return "cerrando";
+            if (arranqueEnEspera) return "arrancando";
+            if (configMode) return "configurando botones";
+            if (maintMode) return "mantenimiento (F10)";
+            if (!Enabled) return "hay una ventana de ajustes abierta";
+            return null;
         }
+        private bool AsistentePermitido() { return MotivoSinAyuda() == null; }
 
         private void AbreAsistente()
         {
@@ -108,22 +144,22 @@ namespace Rocola
             if (!startupClosing && !IsDisposed) { SyncGpuFullScreen(); KeepVideoOnTop(); }
         }
 
-        // ROJO + ABAJO pulsado y la ayuda no se pudo abrir: se apunta por que (rocola_error.txt, tope por sesion).
-        private int ayudaNoPermitidaApuntes;
-        private void ApuntaAyudaNoPermitida()
+        // ROJO + ABAJO y la ayuda no se puede abrir: SE DICE EN LA PANTALLA (y se apunta en rocola_error.txt, con tope). Nunca
+        // mas un atajo que no hace nada sin explicar por que.
+        private int ayudaNoPermitidaApuntes, ayudaNoPermitidaTick;
+        private void AvisaSinAyuda(string motivo)
         {
+            if (motivo == null) return;
+            int t = Environment.TickCount;
+            if (ayudaNoPermitidaTick == 0 || unchecked(t - ayudaNoPermitidaTick) > 1500)
+            {
+                ayudaNoPermitidaTick = t == 0 ? 1 : t;
+                try { ShowToast("La ayuda no esta disponible ahora: " + motivo, Color.FromArgb(200, 130, 35)); } catch { }
+            }
             if (ayudaNoPermitidaApuntes >= 20) return;
-            string motivo = !gpuEnabled || gpuPanel == null ? "sin tarjeta grafica" : !RocolaConTeclado() ? "la rocola no tiene el foco del teclado"
-                : !Enabled ? "ventana deshabilitada" : arranqueEnEspera ? "arrancando" : configMode ? "configurando botones"
-                : maintMode ? "mantenimiento (F10)" : libBuilding ? "leyendo la biblioteca"
-                : keyOK == keyBack ? "verde y rojo son la misma tecla" : "cerrando";
             ayudaNoPermitidaApuntes++;
             LogError("ROJO + ABAJO sin ayuda: " + motivo, null);
         }
-
-        // ROJO + ABAJO, en una sola pulsacion (sin autorrepeticion). Pura: se prueba sin teclado.
-        internal static bool EsAtajoAyuda(bool rojoMantenido, bool esAbajo, bool repeticion)
-        { return rojoMantenido && esAbajo && !repeticion; }
 
         private bool AsistenteEntrada(Keys keyData, ref Message msg)
         {
@@ -133,16 +169,19 @@ namespace Rocola
                 || ((kc == Keys.F8 || kc == Keys.F10) && !IsConfiguredKey(kc)))
             { if (asistenteVisible) CierraAsistente(); return false; }
             bool repeticion = (msg.LParam.ToInt64() & 0x40000000L) != 0;
-            if (!AsistentePermitido())
+            bool esAbajo = IsDown(kc), esRojo = IsBack(kc);
+            bool atajo = (esAbajo || esRojo) && EsAtajoAyuda(esAbajo, esAbajo && RojoMantenido(), esRojo, esRojo && AbajoMantenido(), repeticion);
+            string motivo = MotivoSinAyuda();
+            if (motivo != null)
             {
                 if (asistenteVisible) CierraAsistente();
-                else if (EsAtajoAyuda(BackHeld(), IsDown(kc), repeticion)) ApuntaAyudaNoPermitida();
+                if (atajo) { AvisaSinAyuda(motivo); return true; }
                 return false;
             }
             if (asistenteVisible) asistenteActividadTick = Environment.TickCount;
-            if (EsAtajoAyuda(BackHeld(), IsDown(kc), repeticion))
+            if (atajo)
             {
-                // Tambien mientras la estrella regresa: antes ese medio segundo no hacia nada y parecia bloqueada.
+                // Tambien mientras la estrella regresa: da media vuelta desde donde iba.
                 if (asistenteVisible) CierraAsistente(); else AbreAsistente();
                 return true;
             }

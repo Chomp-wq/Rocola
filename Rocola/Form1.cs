@@ -1447,7 +1447,11 @@ namespace Rocola
             // hueco que queda- porque el sitio donde el ojo la busca es el centro de arriba. Si no cabe sin
             // pisar las instrucciones, se corre a la derecha lo justo.
             int busX = helpX + helpW + 12, busW = 0;
-            if (buscaView != null)
+            bool sobreVideo = false;
+#if ROCOLA_GPU
+            sobreVideo = videoOn && gpuEnabled && buscaView != null;   // con video, BUSCAR y AYUDA van encima de el (AcomodaSobreVideo)
+#endif
+            if (buscaView != null && !sobreVideo)
             {
                 busW = Math.Min(BuscaView.Ancho(filaH), Math.Max(0, barraDer - busX));
                 busX = SitioBusca(W, busW, busX, barraDer);
@@ -1456,9 +1460,10 @@ namespace Rocola
             }
             int finBusca = busX + busW;
 #if ROCOLA_GPU
-            finBusca = AcomodaAyuda(helpX + helpW + 12, W, filaH, barraDer, buscaView != null && buscaView.Visible);   // AYUDA, al lado de BUSCAR
+            if (sobreVideo) AcomodaSobreVideo(splitX, W - pad, filaH);
+            else finBusca = AcomodaAyuda(helpX + helpW + 12, W, filaH, barraDer, buscaView != null && buscaView.Visible);   // AYUDA, al lado de BUSCAR
 #endif
-            int headX = (buscaView != null && buscaView.Visible) ? (finBusca + 12) : (helpX + helpW + 12);
+            int headX = (buscaView != null && buscaView.Visible && !sobreVideo) ? (finBusca + 12) : (helpX + helpW + 12);
             headerView.SetBounds(headX, 8, Math.Max(0, barraDer - headX), filaH);
             if (lblConfig != null) lblConfig.SetBounds(0, 0, W, H);   // asistente de config: pantalla completa
 
