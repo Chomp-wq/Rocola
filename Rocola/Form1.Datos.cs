@@ -404,7 +404,6 @@ namespace Rocola
         {
             // Los archivos anteriores no contienen estas claves: conservar 60 FPS por defecto.
             animOndasFps = animCubosFps = 60;
-            estiloFondo = 0;   // Las configuraciones anteriores conservan el fondo Legacy.
             try
             {
                 if (!File.Exists(ConfigFile)) return;
@@ -417,7 +416,6 @@ namespace Rocola
                     else if (s.StartsWith("tope_fps=")) { int v; if (int.TryParse(s.Substring(9).Trim(), out v)) fpsTope = (v < 0) ? 0 : v; }   // cuadros/s del fondo (0 = automatico, segun la pantalla)
                     else if (s.StartsWith("anim_ondas_fps=")) animOndasFps = LeeFluidezAnimacion(s.Substring("anim_ondas_fps=".Length));
                     else if (s.StartsWith("anim_cubos_fps=")) animCubosFps = LeeFluidezAnimacion(s.Substring("anim_cubos_fps=".Length));
-                    else if (s.StartsWith("estilo_fondo=", StringComparison.OrdinalIgnoreCase)) estiloFondo = LeeEstiloFondo(s.Substring("estilo_fondo=".Length));
                     else if (s.StartsWith("estrellas=")) { int v; if (int.TryParse(s.Substring(10).Trim(), out v)) estrellasDens = Clampf(v / 100f, 0.1f, 1f); }   // cuantas estrellas (%)
                     else if (s.StartsWith("fugaces=")) fugacesNiv = NivelDe(s.Substring(8));     // estrellas fugaces
                     else if (s.StartsWith("nieblas=")) nieblasNiv = NivelDe(s.Substring(8));     // nebulosas y neblina de color
@@ -448,9 +446,6 @@ namespace Rocola
                     else if (s.StartsWith("polvo_lunar=")) polvoLunar = s.Substring("polvo_lunar=".Length).Trim() != "0";
                     else if (s.StartsWith("luna_protagonista=")) lunaProtagonista = s.Substring("luna_protagonista=".Length).Trim() != "0";
                     else if (s.StartsWith("estela_estelar=")) estelaEstelar = s.Substring("estela_estelar=".Length).Trim() != "0";
-                    else if (s.StartsWith("aurora_real=")) auroraReal = s.Substring("aurora_real=".Length).Trim() != "0";
-                    else if (s.StartsWith("luna_fase=")) lunaFase = s.Substring("luna_fase=".Length).Trim() != "0";
-                    else if (s.StartsWith("cielo_hora=")) cieloHora = s.Substring("cielo_hora=".Length).Trim() != "0";
                     else if (s.StartsWith("estrella_3d=")) estrella3d = s.Substring("estrella_3d=".Length).Trim() != "0";
                     else if (s.StartsWith("colores_fluidos=")) coloresFluidos = s.Substring("colores_fluidos=".Length).Trim() != "0";
                     else if (s.StartsWith("respuesta_inmediata=")) respuestaInmediata = s.Substring(20).Trim() != "0";
@@ -559,7 +554,6 @@ namespace Rocola
                 sb.Append("tope_fps=").Append(fpsTope).Append("\r\n");
                 sb.Append("anim_ondas_fps=").Append(NormalizaFluidezAnimacion(animOndasFps)).Append("\r\n");
                 sb.Append("anim_cubos_fps=").Append(NormalizaFluidezAnimacion(animCubosFps)).Append("\r\n");
-                sb.Append("estilo_fondo=").Append(TextoEstiloFondo(estiloFondo)).Append("\r\n");
                 sb.Append("estrellas=").Append((int)Math.Round(estrellasDens * 100f)).Append("\r\n");
                 sb.Append("fugaces=").Append(TextoNivel(fugacesNiv)).Append("\r\n");
                 sb.Append("nieblas=").Append(TextoNivel(nieblasNiv)).Append("\r\n");
@@ -590,9 +584,6 @@ namespace Rocola
                 sb.Append("polvo_lunar=").Append(polvoLunar ? "1" : "0").Append("\r\n");
                 sb.Append("luna_protagonista=").Append(lunaProtagonista ? "1" : "0").Append("\r\n");
                 sb.Append("estela_estelar=").Append(estelaEstelar ? "1" : "0").Append("\r\n");
-                sb.Append("aurora_real=").Append(auroraReal ? "1" : "0").Append("\r\n");
-                sb.Append("luna_fase=").Append(lunaFase ? "1" : "0").Append("\r\n");
-                sb.Append("cielo_hora=").Append(cieloHora ? "1" : "0").Append("\r\n");
                 sb.Append("estrella_3d=").Append(estrella3d ? "1" : "0").Append("\r\n");
                 sb.Append("colores_fluidos=").Append(coloresFluidos ? "1" : "0").Append("\r\n");
                 sb.Append("respuesta_inmediata=").Append(respuestaInmediata ? "1" : "0").Append("\r\n");

@@ -15,22 +15,13 @@ namespace Rocola
         internal static Bitmap BakeDetailedMoon()
         {
             const int n = MoonTextureSize;
-            float[] relief, albedo;
-            MapaLunar(n, out relief, out albedo);
-            return SombreaMapaLunar(n, relief, albedo);
-        }
-        // El mapa de mares y crateres, a cualquier tamano. A 256 sale exactamente el de siempre (mismas
-        // cuentas y mismo azar); la luna real de Espacio natural (LunaRealGpu.cs) lo pide mas chico.
-        internal static void MapaLunar(int n, out float[] relief, out float[] albedo)
-        {
-            relief = new float[n * n];
-            albedo = new float[n * n];
-            double c0 = (n - 1) * .5, rad = n * 124.0 / 256.0, esc = n / 256.0;
+            float[] relief = new float[n * n];
+            float[] albedo = new float[n * n];
             Random random = new Random(7319);
             for (int y = 0; y < n; y++)
                 for (int x = 0; x < n; x++)
                 {
-                    double nx = (x - c0) / rad, ny = (y - c0) / rad;
+                    double nx = (x - 127.5) / 124, ny = (y - 127.5) / 124;
                     double sea = Math.Sin(nx * 5 + Math.Sin(ny * 6)) * Math.Cos(ny * 5 - nx * 2);
                     double maria = Math.Exp(-((nx+.25)*(nx+.25)*9+(ny+.32)*(ny+.32)*13))
                         + .8*Math.Exp(-((nx+.48)*(nx+.48)*20+(ny-.10)*(ny-.10)*12));
@@ -41,9 +32,9 @@ namespace Rocola
             // Cuencas con fondo hundido, pared y borde elevado; radios variados.
             for (int crater = 0; crater < 230; crater++)
             {
-                double cx = n / 16.0 + random.NextDouble() * (n * 224.0 / 256.0), cy = n / 16.0 + random.NextDouble() * (n * 224.0 / 256.0);
-                double r = (1.4 + Math.Pow(random.NextDouble(), 3) * 15) * esc;
-                double px=(cx-c0)/rad, py=(cy-c0)/rad, distance=Math.Sqrt(px*px+py*py);
+                double cx = 16 + random.NextDouble() * 224, cy = 16 + random.NextDouble() * 224;
+                double r = 1.4 + Math.Pow(random.NextDouble(), 3) * 15;
+                double px=(cx-127.5)/124, py=(cy-127.5)/124, distance=Math.Sqrt(px*px+py*py);
                 if (distance>=.97) continue;
                 double radialX=distance>.001 ? px/distance : 1, radialY=distance>.001 ? py/distance : 0;
                 double foreshorten=Math.Max(.25,Math.Sqrt(1-distance*distance));
@@ -58,13 +49,10 @@ namespace Rocola
                         if (d > 1.3) continue;
                         double bowl = d < 1 ? -.65 * (1-d*d) : 0;
                         double rim = .32 * Math.Exp(-Math.Pow((d-.94)/.12,2));
-                        relief[y*n+x] += (float)((bowl+rim)*r/rad*.22);
+                        relief[y*n+x] += (float)((bowl+rim)*r/124*.22);
                         albedo[y*n+x] += (float)(rim*.18 - Math.Max(0,1-d)*.045);
                     }
             }
-        }
-        private static Bitmap SombreaMapaLunar(int n, float[] relief, float[] albedo)
-        {
             int[] pixels = new int[n*n];
             for (int y = 1; y < n-1; y++)
                 for (int x = 1; x < n-1; x++)
@@ -110,7 +98,7 @@ namespace Rocola
         }
         private void DrawDetailedMoon()
         {
-            float emphasis=LunaProtagonista ? Math.Max(MoonEmphasis(SceneDim,true),idleBlend) : 0;
+            float emphasis=LunaProtagonista ? Math.Max(MoonEmphasis(Dim,true),idleBlend) : 0;
             float diameter=DetailedMoonDiameter(Height,emphasis)*MoonSceneScale(idleBlend,LunaActiva), radius=diameter*.5f;
             PointF center=LunaActiva
                 ? StarSceneCenter()
@@ -125,29 +113,21 @@ namespace Rocola
             float angle=LunaActiva ? StarRoll(moonMotionTime) : 0;
             // El momento en que se va a VER este cuadro (Estrella3dGpu.cs, "EL RELOJ DE LA PANTALLA").
             double now=(cuadroMs>=0 ? cuadroMs : AhoraMs())/1000.0;
-            // 27) Natural: se ladea en las curvas. En 3D el giro positivo va al reves que en el plano.
-            float bank=FondoNatural ? BancoNatural(now,cx,cy) : 0f;
             if(Estrella3D)
             {
-                DrawStar3d(now,cx,cy,radius,angle-bank,color);
+                DrawStar3d(now,cx,cy,radius,angle,color);
                 DrawLunarDust(cx,cy,radius,visibility,true);
                 return;
             }
-            angle+=bank;
             UpdateStarEchoes(now,cx,cy,radius,angle,color);
             DrawStarEchoes(now);
-            if(FondoNatural)color=0xFF000000u|(PaletteFlow.Mix(0xD6E4FFu,color,.26f)&0xFFFFFFu);
             SetTexQuadA(lunaQuad,cx-radius,cy-radius,cx+radius,cy+radius,luU,luV,color);
             RotateStarQuad(lunaQuad,cx,cy,angle);
             stars.DrawQuad(lunaTex,lunaQuad);
             // Punto de luz blanco encima del tinte; la estrella no parece una pegatina plana.
-            if(FondoNatural) stars.DrawDestello(cx-radius*.73f,cy-radius*.29f,radius*.30f,0x96F1F7FFu);   // 26) en cruz
-            else
-            {
             stars.GlowBatchBegin(1);
-            stars.GlowBatchAdd(cx-radius*.73f,cy-radius*.29f,radius*(FondoNatural ? .10f : .16f),FondoNatural ? 0xA0F1F7FFu : 0xC0F1F7FFu);
+            stars.GlowBatchAdd(cx-radius*.73f,cy-radius*.29f,radius*.16f,0xC0F1F7FFu);
             stars.GlowBatchEnd();
-            }
             DrawLunarDust(cx,cy,radius,visibility,true);
         }
         private void DrawLunarDust(float cx,float cy,float radius,float visibility,bool front)
@@ -157,11 +137,8 @@ namespace Rocola
             uint rgb=StarColorAt(cx,cy)&0xFFFFFFu;
             if (!front && HaloLunar)
             {
-                stars.GlowBatchAdd(cx,cy,radius*(FondoNatural ? 1.52f : 1.9f),((uint)((FondoNatural ? 32 : 50)*visibility)<<24)|rgb);   // la corona, quieta: sin latido
-                uint corona=FlowColor(0xC9DAFFu,cx/Math.Max(1,Width),cy/Math.Max(1,Height));
-                if(FondoNatural)corona=PaletteFlow.Mix(0xD9E6FFu,corona,.24f)&0xFFFFFFu;
-                float sube=FondoNatural && Estrella3D ? 1f+.75f*destelloCorona : 1f;   // 30) con el destello del metal
-                stars.GlowBatchAdd(cx-radius*.16f,cy-radius*.06f,radius*(FondoNatural ? 1.08f : 1.20f),((uint)Math.Min(255f,(FondoNatural ? 48 : 64)*visibility*sube)<<24)|corona);
+                stars.GlowBatchAdd(cx,cy,radius*1.9f,((uint)(50*visibility)<<24)|rgb);   // la corona, quieta: sin latido
+                stars.GlowBatchAdd(cx-radius*.16f,cy-radius*.06f,radius*1.20f,((uint)(64*visibility)<<24)|FlowColor(0xC9DAFFu,cx/Math.Max(1,Width),cy/Math.Max(1,Height)));
             }
             if (PolvoLunar)
                 for(int orbit=0;orbit<3;orbit++)
@@ -169,18 +146,12 @@ namespace Rocola
                     double angle=(LunaActiva ? moonMotionTime*(.55+orbit*.12) : 0)+orbit*2.094;
                     for(int tail=5;tail>=0;tail--)
                     {
-                        double a=angle-tail*(FondoNatural ? .085 : .05);
-                        double depth = Math.Sin(a);
-                        if ((depth>=0)!=front) continue;
-                        float dx=(float)Math.Cos(a)*radius*(FondoNatural ? (1.26f+orbit*.15f) : (1.38f+orbit*.17f));
-                        float dy=(float)depth*radius*(FondoNatural ? (.32f+orbit*.08f) : (.40f+orbit*.09f))-dx*(FondoNatural ? .16f : .24f);
-                        float size=radius*(FondoNatural ? (tail==0 ? .034f : .018f) : (tail==0 ? .043f : .025f));   // el polvo tampoco late: gira a su paso
-                        uint alpha=(uint)((FondoNatural ? (tail==0 ? 132 : 34-tail*5) : (tail==0 ? 165 : 58-tail*8))*visibility);
-                        if (FondoNatural) {
-                            float depthSize, depthLight;
-                            ProfundidadPolvoNatural((float)depth, out depthSize, out depthLight);
-                            size *= depthSize; alpha = (uint)(alpha * depthLight * PolvoAlLado(dx,dy));   // 28) luz de un lado
-                        }
+                        double a=angle-tail*.05;
+                        if ((Math.Sin(a)>=0)!=front) continue;
+                        float dx=(float)Math.Cos(a)*radius*(1.38f+orbit*.17f);
+                        float dy=(float)Math.Sin(a)*radius*(.40f+orbit*.09f)-dx*.24f;
+                        float size=radius*(tail==0 ? .043f : .025f);   // el polvo tampoco late: gira a su paso
+                        uint alpha=(uint)((tail==0 ? 165 : 58-tail*8)*visibility);
                         uint dust=FlowColor(0xD5E5FFu,(cx+dx)/Math.Max(1,Width),(cy+dy)/Math.Max(1,Height));
                         stars.GlowBatchAdd(cx+dx,cy+dy,Math.Max(1,size),(alpha<<24)|dust);
                     }

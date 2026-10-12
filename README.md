@@ -8,19 +8,18 @@ sin reducir calidad; los paneles respetan los limites de la tarjeta. Solo Modest
 HD suspendida y renderizado CPU congelado.
 [Cambios, pruebas y limites pendientes](AUDITORIA_GENERAL_MODEST_2026-10-11.md).
 
-## Fondo Legacy y Espacio natural — 1 de octubre de 2026
+## La ayuda revisada de raíz, y un solo fondo: Legacy — 12 de octubre de 2026
 
-En **Ctrl+F3 → Fondo**, el selector superior permite conservar **Legacy** o elegir **Espacio natural**:
-cielo negro/azul, nebulosas orgánicas, estrellas finas, fugaces afiladas, aurora con vetas y
-estrella de plata/acero. Solo GPU; los ajustes individuales se conservan. Legacy sigue siendo
-el valor de fábrica y el de las configuraciones antiguas.
+- **La ayuda (ROJO + ABAJO o la casilla AYUDA) sigue usable después de un rato.**
+  - Con un video sonando, BUSCAR y AYUDA ya no desaparecen: van encima del video.
+  - Solo la niegan los bloqueos de verdad, y si no se puede, lo dice en la pantalla.
+  - Los dos botones valen en cualquier orden.
+- **Espacio natural se retiró; Legacy es el único fondo.**
+  - En Ctrl+F3 → Fondo ya no hay selector de estilo.
+  - Las claves viejas de Natural se ignoran.
+  - Legacy no cambia: su huella da los mismos números.
 
-La segunda pasada añade velos de aurora más naturales y halos proporcionales a las carátulas.
-Los mapas de Natural se preparan en segundo plano con trabajo acotado para equipos de dos hilos,
-sin cambiar sus mallas ni cantidades y conservando la caché.
-Verificado en ambas ramas con pruebas y capturas
-Direct3D 9 a 1024×768 y 3440×1440; no equivale a medir FPS con biblioteca/música ni a probar en XP.
-[Cómo usarlo y límites de las mediciones](FONDO_LEGACY_Y_NATURAL_2026-10-01.md).
+[Causas, cambios y pruebas](AYUDA_DE_RAIZ_Y_FONDO_LEGACY_MODEST_2026-10-12.md).
 
 ## Menos disco: SSD y disco duro — 28 de septiembre de 2026
 

@@ -143,31 +143,6 @@ namespace Rocola
             float r = .80f * tr * luz + .95f * reflejo, g = .86f * tg * luz + .95f * reflejo, b = .97f * tb * luz + .95f * reflejo;
             return (alfa << 24) | (Byte(r) << 16) | (Byte(g) << 8) | Byte(b);
         }
-        // Plata/acero con reflejo neutro: el disco colorea la luz ambiente, no sustituye el material.
-        // La malla, las normales y el reflejo ya calculados son los mismos veinte triangulos.
-        internal static uint ColorCaraNatural(uint tinte, float luz, float reflejo, uint alfa)
-        {
-            float tr = ((tinte >> 16) & 255) / 255f, tg = ((tinte >> 8) & 255) / 255f, tb = (tinte & 255) / 255f;
-            float r = .80f * (.74f + .26f * tr) * luz + .90f * reflejo;
-            float g = .86f * (.76f + .24f * tg) * luz + .93f * reflejo;
-            float b = .97f * (.78f + .22f * tb) * luz + .97f * reflejo;
-            return (alfa << 24) | (Byte(r) << 16) | (Byte(g) << 8) | Byte(b);
-        }
-        // 24 y 25) El mismo metal, pero en su cielo: las caras que miran arriba toman algo del azul de la
-        // noche y las que miran abajo el de la aurora; y las que se ven de canto encienden el borde, como el
-        // metal de verdad (Fresnel). Mismas veinte caras y la misma normal que ya se calculaba.
-        internal static uint ColorCaraNaturalEntorno(uint tinte, float luz, float reflejo, uint alfa,
-                                                     float nx, float ny, float nz, uint aurora)
-        {
-            uint c = ColorCaraNatural(tinte, luz, reflejo, alfa);
-            float r = ((c >> 16) & 255) / 255f, g = ((c >> 8) & 255) / 255f, b = (c & 255) / 255f;
-            float arriba = ny > 0f ? ny : 0f, abajo = ny < 0f ? -ny : 0f;
-            float ar = ((aurora >> 16) & 255) / 255f, ag = ((aurora >> 8) & 255) / 255f, ab = (aurora & 255) / 255f;
-            r += .10f * arriba + .20f * abajo * ar; g += .17f * arriba + .20f * abajo * ag; b += .32f * arriba + .20f * abajo * ab;
-            float canto = 1f - (nz > 0f ? nz : 0f); canto = canto * canto * canto;
-            r += .42f * canto; g += .46f * canto; b += .52f * canto;
-            return (alfa << 24) | (Byte(r) << 16) | (Byte(g) << 8) | Byte(b);
-        }
         private static uint Byte(float v) { return v <= 0f ? 0u : v >= 1f ? 255u : (uint)(v * 255f + .5f); }
     }
 
@@ -200,7 +175,6 @@ namespace Rocola
         private readonly StarEcho[] e3ecoClave = new StarEcho[12];
         private readonly bool[] e3ecoValida = new bool[12];
         private readonly int[] e3ecoN = new int[12], e3ecoBordeN = new int[12];
-        private bool e3ecoNatural;
         private float starEchoCamino, starEchoUltX, starEchoUltY;   // distancia recorrida desde la ultima copia
         private bool starEchoHayUlt;
 
@@ -231,20 +205,10 @@ namespace Rocola
             {
                 int a = Estrella3d.CA[mejor], b = Estrella3d.CB[mejor], c = Estrella3d.CC[mejor];
                 float gx = (e3px[a] + e3px[b] + e3px[c]) / 3f, gy = (e3py[a] + e3py[b] + e3py[c]) / 3f;
-                if (FondoNatural)   // 26) el destello sale con los rayos del atlas de estrellas, no como un circulo
-                    stars.DrawDestello(gx, gy, r * (.30f + .42f * brillo), ((uint)(200 * Math.Min(1f, brillo)) << 24) | 0xF1F7FFu);
-                else
-                {
                 stars.GlowBatchBegin(1);
-                stars.GlowBatchAdd(gx, gy, r * (FondoNatural ? (.08f + .13f * brillo) : (.14f + .22f * brillo)), ((uint)((FondoNatural ? 175 : 210) * Math.Min(1f, brillo)) << 24) | 0xF1F7FFu);
+                stars.GlowBatchAdd(gx, gy, r * (.14f + .22f * brillo), ((uint)(210 * Math.Min(1f, brillo)) << 24) | 0xF1F7FFu);
                 stars.GlowBatchEnd();
-                }
             }
-            // 30) La corona del proximo cuadro sube un poco cuando pasa el destello. Suavizado POR TIEMPO, igual a
-            // 24, 50 o 60 cuadros por segundo: a 60 es el mismo 25 % por cuadro de antes.
-            double dtc = destelloCoronaReloj < 0 ? 0 : now - destelloCoronaReloj;
-            destelloCoronaReloj = now;
-            destelloCorona += ((mejor >= 0 ? Math.Min(1f, brillo) : 0f) - destelloCorona) * SuavizaCorona(dtc);
         }
 
         // Una pose de la estrella en triangulos: sus caras visibles de atras hacia adelante en 'caras' y la franja de
@@ -264,10 +228,7 @@ namespace Rocola
                 if (!e3mira[c]) continue;   // una cara de espaldas nunca se ve en un solido cerrado
                 float refl;
                 float luz = Estrella3d.Luz(e3nx[c], e3ny[c], e3nz[c], LunaRealista && !eco, out refl);
-                uint col = FondoNatural
-                    ? (eco ? ColorEcoNatural(tinte, luz, a8) : Estrella3d.ColorCaraNaturalEntorno(tinte, LunaRealista ? luz : .45f + .55f * luz, refl, a8,
-                        e3nx[c], e3ny[c], e3nz[c], AuroraReal ? 0x5AE69Au : tinte))
-                    : (eco ? ColorEco(tinte, luz, a8) : Estrella3d.ColorCara(tinte, LunaRealista ? luz : .45f + .55f * luz, refl, a8));
+                uint col = eco ? ColorEco(tinte, luz, a8) : Estrella3d.ColorCara(tinte, LunaRealista ? luz : .45f + .55f * luz, refl, a8);
                 e3col[c] = col;
                 if (refl > brillo) { brillo = refl; mejor = c; }
                 V3(caras, v++, e3px[Estrella3d.CA[c]], e3py[Estrella3d.CA[c]], col);
@@ -314,65 +275,12 @@ namespace Rocola
             return (alfa << 24) | (Canal(r) << 16) | (Canal(g) << 8) | Canal(b);
         }
         private static uint Canal(float v) { return v <= 0f ? 0u : v >= 255f ? 255u : (uint)(v + .5f); }
-        private static uint ColorEcoNatural(uint tinte, float luz, uint alfa)
-        {
-            // Sigue usando la paleta real. Mas luz en el nucleo, menos saturacion de rotulador.
-            float k = .48f + .40f * Math.Min(1f, luz);
-            float r = ((tinte >> 16) & 255) * k, g = ((tinte >> 8) & 255) * k, b = (tinte & 255) * k;
-            float neutral = 16f * k;
-            return (alfa << 24) | (Canal(r + neutral) << 16) | (Canal(g + neutral) << 8) | Canal(b + neutral);
-        }
         // El filo de neon de una copia: su color, mas claro, con la mitad de su alfa (se suma encima).
         private static uint Neon(uint c)
         {
             uint a = (c >> 24) / 2, r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255;
             r = r + (255 - r) / 3; g = g + (255 - g) / 3; b = b + (255 - b) / 3;
             return (a << 24) | (r << 16) | (g << 8) | b;
-        }
-
-        private float destelloCorona;
-        private double destelloCoronaReloj = -1;
-        // Cuanto se acerca la corona a su meta en 'dt' segundos (0..1). Pura: se prueba sin tarjeta.
-        internal static float SuavizaCorona(double dt)
-        {
-            if (!(dt > 0)) return 0f;
-            if (dt >= .25) return 1f;
-            return 1f - (float)Math.Exp(-dt * 17.26);
-        }
-        internal static float EdadEco(double edad, double vida)
-        {
-            if (double.IsNaN(edad) || !(vida > 0)) return 0f;
-            double e = edad / vida;
-            return e <= 0 ? 0f : e >= 1 ? 1f : (float)e;
-        }
-        private static void EnvejeceVertice(ref D3D9.Vtx v, float cx, float cy, float abre, float gris)
-        {
-            v.X = cx + (v.X - cx) * abre; v.Y = cy + (v.Y - cy) * abre;
-            uint c = v.Color;
-            int r = (int)((c >> 16) & 255), g = (int)((c >> 8) & 255), b = (int)(c & 255);
-            int l = (r * 77 + g * 151 + b * 28) >> 8;
-            r += (int)((l - r) * gris); g += (int)((l - g) * gris); b += (int)((l + 12 - b) * gris);
-            if (b > 255) b = 255;
-            v.Color = (c & 0xFF000000u) | ((uint)r << 16) | ((uint)g << 8) | (uint)b;
-        }
-        // 27) Se ladea hacia donde gira, como un avion. Se mide el giro del rumbo en pantalla, suavizado.
-        private double bancoMs = -1; private float bancoX, bancoY, bancoVx, bancoVy, bancoGiro, banco;
-        private float BancoNatural(double now, float cx, float cy)
-        {
-            double dt = now - bancoMs;
-            if (bancoMs < 0 || !(dt > 0) || dt > .25 || !LunaActiva)
-            { bancoMs = now; bancoX = cx; bancoY = cy; bancoVx = bancoVy = 0; banco *= .9f; return banco; }
-            float k = 1f - (float)Math.Exp(-dt * 5);
-            float vx = (float)((cx - bancoX) / dt), vy = (float)((cy - bancoY) / dt);
-            float nvx = bancoVx + (vx - bancoVx) * k, nvy = bancoVy + (vy - bancoVy) * k;
-            float v1 = bancoVx * bancoVx + bancoVy * bancoVy, v2 = nvx * nvx + nvy * nvy;
-            float giro = 0f;
-            if (v1 > 4f && v2 > 4f) giro = (float)(Math.Atan2(bancoVx * nvy - bancoVy * nvx, bancoVx * nvx + bancoVy * nvy) / dt);
-            bancoGiro += (giro - bancoGiro) * (1f - (float)Math.Exp(-dt * 3));
-            float meta = Math.Max(-.42f, Math.Min(.42f, bancoGiro * .9f));
-            banco += (meta - banco) * (1f - (float)Math.Exp(-dt * 2.5));
-            bancoMs = now; bancoX = cx; bancoY = cy; bancoVx = nvx; bancoVy = nvy;
-            return banco;
         }
 
         private void UpdateStarEchoes3d(double now, float x, float y, float r, double yaw, double pitch, float roll, uint color)
@@ -414,13 +322,11 @@ namespace Rocola
         private void PreparaEcos3d(double now, out int v, out int f)
         {
             v = f = 0;
-            if (e3ecoNatural != FondoNatural)
-            { e3ecoNatural = FondoNatural; Array.Clear(e3ecoValida, 0, e3ecoValida.Length); }
             for (int i = 0; i < starEchoCount; i++)
             {
                 int slot = (starEchoHead - starEchoCount + i + starEchoes.Length) % starEchoes.Length;
                 StarEcho echo = starEchoes[slot];
-                float alpha = (FondoNatural ? StarEchoAlphaNatural(now - echo.Time, starEchoVisibility, true) : StarEchoAlpha3d(now - echo.Time, starEchoVisibility)) * echo.Strength;
+                float alpha = StarEchoAlpha3d(now - echo.Time, starEchoVisibility) * echo.Strength;
                 if (alpha < .003f) continue;
                 StarEcho key = e3ecoClave[slot];
                 int c0 = slot * Estrella3d.Caras * 3, f0 = slot * Estrella3d.Aristas * 6;
@@ -429,7 +335,7 @@ namespace Rocola
                 {
                     int filo, mejor; float brillo;
                     e3ecoN[slot] = PoseEstrella(e3ecoPose, c0, e3ecoBorde, f0, echo.X, echo.Y, echo.Radius,
-                        echo.Yaw, echo.Pitch, echo.Angle, echo.Color, 255f, true, FondoNatural ? 1.05f : 1.8f,
+                        echo.Yaw, echo.Pitch, echo.Angle, echo.Color, 255f, true, 1.8f,
                         out filo, out mejor, out brillo);
                     e3ecoBordeN[slot] = filo;
                     e3ecoClave[slot] = echo; e3ecoValida[slot] = true;
@@ -437,22 +343,16 @@ namespace Rocola
                 // Mismo redondeo que PoseEstrella; el filo aditivo usa alfa entero / 2.
                 float alfa = alpha * 255f;
                 uint a8 = alfa <= 0 ? 0u : alfa >= 255 ? 255u : (uint)(alfa + .5f);
-                // 29) Natural: la copia envejece, pierde color y se abre un poco, como un holograma que se
-                // disipa. Solo son cuentas sobre la pose ya guardada: ni se reproyecta ni se reserva nada.
-                float edad = FondoNatural ? EdadEco(now - echo.Time, EcoVida) : 0f;
-                float abre = 1f + .35f * edad, gris = .70f * edad;
                 for (int k = 0; k < e3ecoN[slot]; k++)
                 {
                     D3D9.Vtx vertex = e3ecoPose[c0 + k];
                     vertex.Color = (a8 << 24) | (vertex.Color & 0xFFFFFFu);
-                    if (edad > 0f) EnvejeceVertice(ref vertex, echo.X, echo.Y, abre, gris);
                     e3ecos[v++] = vertex;
                 }
                 for (int k = 0; k < e3ecoBordeN[slot]; k++)
                 {
                     D3D9.Vtx vertex = e3ecoBorde[f0 + k];
                     vertex.Color = (vertex.Color & 0xFFFFFFu) | (vertex.Color >= 0x1000000u ? (a8 / 2) << 24 : 0u);
-                    if (edad > 0f) EnvejeceVertice(ref vertex, echo.X, echo.Y, abre, gris);
                     e3ecoFilo[f++] = vertex;
                 }
             }

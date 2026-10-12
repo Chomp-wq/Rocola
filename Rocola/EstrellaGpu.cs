@@ -12,17 +12,13 @@ namespace Rocola
         // Cinco puntas facetadas como rocola.ico. Geometria propia horneada una vez
         // para la GPU: no se modifica el icono ni el renderizador CPU.
         internal static Bitmap BakeStar(bool detailed)
-        { return BakeStarEstilo(detailed, false); }
-        internal static Bitmap BakeStarNatural(bool detailed)
-        { return BakeStarEstilo(detailed, true); }
-        private static Bitmap BakeStarEstilo(bool detailed, bool natural)
         {
             const int n = MoonTextureSize;
             int[] pixels = new int[n*n];
             for (int y=0;y<n;y++) for (int x=0;x<n;x++)
             {
                 double dx=(x-127.5)/127.5,dy=(y-127.5)/127.5,r=dx*dx+dy*dy;
-                int a=r>=1?0:(int)((natural ? 18 : 32)*Math.Exp(-r*3)*(1-r));
+                int a=r>=1?0:(int)(32*Math.Exp(-r*3)*(1-r));
                 pixels[y*n+x]=unchecked((int)((uint)a<<24))|0xB0CFFF;
             }
             Bitmap b=new Bitmap(n,n,PixelFormat.Format32bppArgb);
@@ -37,8 +33,8 @@ namespace Rocola
                 edge[i]=new PointF(center.X+r*(float)Math.Cos(angle),center.Y+r*(float)Math.Sin(angle));
             }
             using(Graphics g=Graphics.FromImage(b))
-            using(SolidBrush body=new SolidBrush(natural ? Color.FromArgb(205,214,226) : Color.FromArgb(185,201,230)))
-            using(Pen rim=new Pen(natural ? Color.FromArgb(220,36,46,61) : Color.FromArgb(235,22,34,61),natural ? 1.6f : 3f)){
+            using(SolidBrush body=new SolidBrush(Color.FromArgb(185,201,230)))
+            using(Pen rim=new Pen(Color.FromArgb(235,22,34,61),3f)){
                 g.SmoothingMode=SmoothingMode.AntiAlias;
                 g.FillPolygon(body,edge);
                 if(detailed){
@@ -47,21 +43,17 @@ namespace Rocola
                         Color.FromArgb(57,106,184),Color.FromArgb(27,57,113),Color.FromArgb(71,105,163),
                         Color.FromArgb(27,44,77),Color.FromArgb(139,156,188),Color.FromArgb(222,230,246),
                         Color.FromArgb(170,192,226),Color.FromArgb(244,248,255)};
-                    if(natural)facets=new Color[]{Color.FromArgb(243,247,252),Color.FromArgb(189,204,221),
-                        Color.FromArgb(107,127,150),Color.FromArgb(61,76,96),Color.FromArgb(116,134,154),
-                        Color.FromArgb(51,65,83),Color.FromArgb(154,173,193),Color.FromArgb(223,232,241),
-                        Color.FromArgb(197,211,225),Color.FromArgb(248,251,255)};
                     for(int i=0;i<10;i++)
                     using(LinearGradientBrush face=new LinearGradientBrush(center,edge[i],
                         facets[i],Color.FromArgb(255,Math.Min(255,facets[i].R+14),Math.Min(255,facets[i].G+14),Math.Min(255,facets[i].B+14))))
                         g.FillPolygon(face,new PointF[]{center,edge[i],edge[(i+1)%10]});
                 }
                 g.DrawPolygon(rim,edge);
-                using(Pen bevel=new Pen(natural ? Color.FromArgb(106,235,243,252) : Color.FromArgb(150,225,238,255),natural ? .8f : 1.2f))
+                using(Pen bevel=new Pen(Color.FromArgb(150,225,238,255),1.2f))
                     for(int i=0;i<10;i+=2)g.DrawLine(bevel,center,edge[i]);
                 if(detailed){
-                    PaintStarGlint(g,29,96,natural ? 9 : 15);
-                    PaintStarGlint(g,173,166,natural ? 5 : 9);
+                    PaintStarGlint(g,29,96,15);
+                    PaintStarGlint(g,173,166,9);
                 }
             }
             return b;
@@ -168,15 +160,6 @@ namespace Rocola
             float life=(float)(1-age/1.8);
             return .86f*SafeMoonLevel(visibility)*life;
         }
-        internal static float StarEchoAlphaNatural(double age,float visibility,bool threeD)
-        {
-            double life = threeD ? EcoVida : 1.8;
-            if (double.IsNaN(age) || age < 0 || age >= life) return 0;
-            float entrance = age < EcoEntra ? (float)(age / EcoEntra) : 1;
-            float remaining = (float)(1 - age / life);
-            // Perfil polinomico suave; no ruido, reservas ni una potencia por eco.
-            return .72f * SafeMoonLevel(visibility) * entrance * remaining * remaining;
-        }
         private void UpdateStarEchoes(double now,float x,float y,float radius,float angle,uint color)
         {
             // Cambios de pantalla, pausas y reinicios no dejan fantasmas en otro lugar.
@@ -231,17 +214,10 @@ namespace Rocola
             {
                 StarEcho echo=starEchoes[(starEchoHead-starEchoCount+i+starEchoes.Length)%starEchoes.Length];
                 double age=now-echo.Time;
-                float alpha=(FondoNatural ? StarEchoAlphaNatural(age,starEchoVisibility,false) : StarEchoAlpha(age,starEchoVisibility))*echo.Strength;
+                float alpha=StarEchoAlpha(age,starEchoVisibility)*echo.Strength;
                 if(age<.055||alpha<.003f)continue;
                 float r=echo.Radius*(.88f+.10f*(float)(1-age/1.8));
                 uint tint=((uint)(alpha*255)<<24)|(echo.Color&0xFFFFFFu);
-                if(FondoNatural)
-                {
-                    // 29) La copia envejece: se abre y pierde color (la misma cuenta que en 3D).
-                    float edad=EdadEco(age,1.8);
-                    r*=1f+.35f*edad;
-                    D3D9.Vtx gris=new D3D9.Vtx(); gris.Color=tint; EnvejeceVertice(ref gris,0,0,1f,.70f*edad); tint=gris.Color;
-                }
                 SetTexQuadA(starEchoQuad,echo.X-r,echo.Y-r,echo.X+r,echo.Y+r,luU,luV,tint);
                 RotateStarQuad(starEchoQuad,echo.X,echo.Y,echo.Angle);
                 Array.Copy(starEchoQuad,0,starEchoBatch,vertices,6);vertices+=6;

@@ -128,12 +128,14 @@ class EstrellaSesionReal
         object item = Get(form, "nowPlaying");
         return item != null && !(bool)Get(item, "IsVideo") && ReferenceEquals(Get(item, "Song"), track);
     }
-    static string Label { get { return (mode < 4 ? "Legacy" : "Natural") + ((mode & 2) == 0 ? " 2D" : " 3D") + (Idle ? " extendido" : " navegacion quieta"); } }
+    // Cuatro escenas: Legacy 2D/3D, navegando y en el estado extendido (Espacio natural se retiro el 12-10-2026).
+    const int Escenas = 4;
+    static string Label { get { return "Legacy" + ((mode & 2) == 0 ? " 2D" : " 3D") + (Idle ? " extendido" : " navegacion quieta"); } }
     static void Next()
     {
         mode++; measuring = false; reports = 0;
-        if (mode == 8) { form.Close(); return; }
-        Set(form, "estiloFondo", mode < 4 ? 0 : 1); Set(form, "estrella3d", (mode & 2) != 0);
+        if (mode == Escenas) { form.Close(); return; }
+        Set(form, "estrella3d", (mode & 2) != 0);
         Set(form, "lunaActiva", true); Set(form, "estadoExpandido", true); Set(form, "muroReposo", true);
         Call(form, "AplicaEfectosGpu");
         Call(form, "DisposePlaybackNow");
@@ -273,8 +275,8 @@ class EstrellaSesionReal
                 try { ValidSession(100, 0); } catch (InvalidOperationException) { resetRejected = true; }
                 if (!resetRejected) throw new Exception("reset simultaneo de ambos contadores oculto"); checks++;
             }
-            for (mode = 0; mode < 8; mode++)
-            { if (Idle != ((mode & 1) != 0) || Label.IndexOf(mode < 4 ? "Legacy" : "Natural") < 0) throw new Exception("matriz"); checks++; }
+            for (mode = 0; mode < Escenas; mode++)
+            { if (Idle != ((mode & 1) != 0) || Label.IndexOf("Legacy") < 0) throw new Exception("matriz"); checks++; }
             foreach (string name in new string[] { "Rocola", "rocola-gpu", "Rocola-cpu", "estrellasesionreal-hd", "estrellasesionreal-modest", "sesionreal", "otraPrueba" })
             { if (!ConflictingName(name, "otraPrueba")) throw new Exception("prueba simultanea de otro nombre no detectada"); checks++; }
             if (ConflictingName("explorer", "otraPrueba")) throw new Exception("proceso ajeno bloquea"); checks++;
@@ -322,7 +324,7 @@ class EstrellaSesionReal
                 };
                 stage.Start(); timer.Start(); Application.Run(form); timer.Stop();
             }
-            if (mode != 8) errors++;
+            if (mode != Escenas) errors++;
             Console.WriteLine("FIN escenas=" + mode + " errores=" + errors + "; intervalos de cuadros presentados, no fotones ni certificacion XP.");
             return errors == 0 ? 0 : 1;
         }

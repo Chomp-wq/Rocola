@@ -1,5 +1,8 @@
 # Espacio natural: las 34 ideas del fondo — 11 de octubre de 2026
 
+> **Retirado el 12 de octubre de 2026.** Espacio natural se borró a petición del usuario: Legacy es el único fondo.
+> Este documento queda como historia. Ver `AYUDA_DE_RAIZ_Y_FONDO_LEGACY_MODEST_2026-10-12.md`.
+
 Petición del usuario: «Hazlas todas, y todo lo que hagas ahora es para el natural, legacy se queda
 como está ahora». Rama Modest. Todo es de tarjeta gráfica y solo actúa con **Fondo → Espacio natural**.
 Legacy y el renderizado por CPU no cambian (comprobado por huellas, ver «Cómo se comprobó»).

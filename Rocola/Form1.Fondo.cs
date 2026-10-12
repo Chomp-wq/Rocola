@@ -58,8 +58,6 @@ namespace Rocola
         private bool controlesReposo = true, ondasUnidas = true;
         private bool lunaRealista = true, haloLunar = true, polvoLunar = true, lunaProtagonista = true;
         private bool estelaEstelar = true;
-        // Espacio natural, efectos nuevos con su propio interruptor (Ctrl+F3 -> Fondo, hoja Cielo y aurora).
-        private bool auroraReal = true, lunaFase = true, cieloHora = true;   // "aurora_real=", "luna_fase=", "cielo_hora="
         private bool estrella3d = true;          // la estrella grande en 3D, girando (Estrella3dGpu.cs); "estrella_3d=" en config
         private bool respuestaInmediata = true, transicionesTacto = true;
         // AVISOS PARA EL PANEL DE REPOSO. El panel solo existe con tarjeta grafica, pero las cosas que

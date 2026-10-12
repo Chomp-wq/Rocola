@@ -1228,7 +1228,6 @@ namespace Rocola
                     {
                         GraphicsState listState = g.Save(); g.TranslateTransform(songList.Left, songList.Top);
                         g.SetClip(new Rectangle(0, 0, songList.Width, songList.Height));
-                        songList.GpuGlassNatural = NormalizaEstiloFondo(estiloFondo) == 1;
                         songList.RenderTransparentGpuTint(g, cancionesCristal, glassCapas, Lighten(bgAccent, .55)); g.Restore(listState);
                     }
                     else

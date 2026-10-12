@@ -541,13 +541,6 @@ namespace Rocola
             Tex(IntPtr.Zero); TssDiffuse(); Blend(1);
             Draw(sky, 4);
         }
-        // La boveda de Espacio natural: la misma mezcla y estado que DrawSky, con mas franjas (CieloNaturalMallaGpu.cs).
-        public void DrawSkyMesh(D3D9.Vtx[] sky, int tris)
-        {
-            if (dev == IntPtr.Zero || lost || tris <= 0) return;
-            Tex(IntPtr.Zero); TssDiffuse(); Blend(1);
-            Draw(sky, tris);
-        }
         // Estrellas (textura de glow, aditivo). Se puede llamar 2 veces (patron anterior + nuevo) en el entrecruzado.
         public void DrawStars(D3D9.Vtx[] stars, int starTris, IntPtr glowTex)
         {
@@ -856,12 +849,6 @@ namespace Rocola
     // -------- Campo estrellado reusable (titileo + latido), teñible por genero --------
     internal sealed partial class GpuStarfield
     {
-        public bool FondoNatural;
-        private bool glowNatural;
-        private bool atlasRequested;
-        private double atlasRetryMs;
-        private Bitmap naturalStarAtlas, legacyStarAtlas;
-        internal Func<Bitmap, IntPtr> CreateStarAtlasForTest = null;
         private D3D9Device gpu; private IntPtr glowTex; private IntPtr uiGlowTex;   // glow de estrella (con chispa) / glow radial LISO para el destello de UI
         private float[] sx, sy, sphase, sspeed, ssize; private int[] skind, sforma; private uint[] scol; private int nStars;
         private D3D9.Vtx[] skyV = new D3D9.Vtx[12]; private D3D9.Vtx[] starV;   // cielo = 2 quads apilados (3 paradas de color)
@@ -890,7 +877,7 @@ namespace Rocola
         // Cada una con tamaño, color, velocidad y largo de estela distintos.
         private struct Shoot { public bool On; public float X, Y, VX, VY, Life, MaxLife, Wdt, Tail; public uint Col; }
         private readonly Shoot[] shoots = new Shoot[2];
-        private D3D9.Vtx[] shootV = new D3D9.Vtx[2 * 12 + 6];    // 2 fugaces x (estela 6 + cabeza 6) vertices, y el rastro de un bolido (Natural)
+        private D3D9.Vtx[] shootV = new D3D9.Vtx[2 * 12];    // 2 fugaces x (estela 6 + cabeza 6) vertices
         private int nextShoot; private double shootFinoAnt;   // la CITA de la proxima fugaz en ms de Windows (son segundos); su avance, con el reloj fino
         private readonly Random srnd = new Random();
         private static readonly uint[] shootPal = { 0x00FFFFFF, 0x00FFFFFF, 0x00CFE6FF, 0x00FFE6A0, 0x00A0FFE0, 0x00FFC0E0 };   // blanco (x2), azul, dorado, aqua, rosa
@@ -1005,15 +992,6 @@ namespace Rocola
             Halo(glowV, 0, cx, cy, r, argb);
             gpu.DrawStars(glowV, HaloVtx / 3, t);   // mismo camino aditivo que las estrellas
         }
-        // Acabado natural: luz proporcional a la portada, no un disco enorme
-        // detras de ella. La misma textura lisa, 18 vertices y un unico envio.
-        public void DrawGlowElipse(float cx, float cy, float rx, float ry, uint argb)
-        {
-            IntPtr t = uiGlowTex;
-            if (!Ok || t == IntPtr.Zero || !(rx >= 1f) || !(ry >= 1f) || (argb >> 24) == 0) return;
-            Halo(glowV, 0, cx, cy, rx, ry, argb);
-            gpu.DrawStars(glowV, HaloVtx / 3, t);
-        }
         // Escribe UN halo (6 triangulos en abanico) a partir del hueco i del arreglo que se le pase.
         private static void Halo(D3D9.Vtx[] a, int i, float cx, float cy, float r, uint c) { Halo(a, i, cx, cy, r, r, c); }
         // Con radios distintos a lo ancho y a lo alto sale una ELIPSE. Una luz de horizonte tiene que ser ancha
@@ -1053,16 +1031,6 @@ namespace Rocola
             Halo(glowBatch, glowBatchN * HaloVtx, cx, cy, rx, ry, argb);
             glowBatchN++;
         }
-        // 26) Un destello con la forma de rayos del atlas de estrellas (la casilla de las grandes): el mismo
-        // camino aditivo y la misma textura que el campo de estrellas, en un solo cuadrilatero.
-        private readonly D3D9.Vtx[] destelloV = new D3D9.Vtx[6];
-        public void DrawDestello(float cx, float cy, float r, uint argb)
-        {
-            if (!Ok || glowTex == IntPtr.Zero || !(r >= 1f) || (argb >> 24) == 0) return;
-            int f = FormaRayos;
-            SetQuadUV(destelloV, 0, cx - r, cy - r, cx + r, cy + r, argb, AtlasU0[f], AtlasV0[f], AtlasU1[f], AtlasV1[f]);
-            gpu.DrawStars(destelloV, 2, glowTex);
-        }
         public void GlowBatchEnd()
         {
             IntPtr t = uiGlowTex;   // ver DrawGlow: sin textura lisa no se dibuja halo (no se cae al atlas)
@@ -1085,7 +1053,6 @@ namespace Rocola
         public bool Begin(int w, int h, float pulse, float pulseCrudo)
         {
             if (!Ok) return false;
-            ActualizaAtlasNatural();   // solo al alternar estilo, nunca una subida por cuadro
             if (!gpu.BeginFrame()) return false;
             int nowMs = Environment.TickCount;      // para las esperas LARGAS (entrecruzado de patron, proxima fugaz)
             double finoMs = GpuPanel.AhoraMs();     // y el reloj FINO para el paso de cada cuadro (ver mas abajo)
@@ -1129,7 +1096,6 @@ namespace Rocola
             }
             float tr = transing ? (nowMs - transStart) / (float)TransMs : 1f;
             if (tr >= 1f) { transing = false; tr = 1f; }
-            if (FondoNatural) tr = RelevoNatural(tr);
 
             // Cielo de 3 PARADAS como en CPU: negro arriba -> azul noche -> color del genero abajo (antes 2
             // paradas: el genero teñia casi toda la pantalla). Dos quads apilados en la parada media.
@@ -1137,15 +1103,11 @@ namespace Rocola
             // DONDE esta esa parada lo dice la perilla "cuanto negro" de Ctrl+F3, y el numero vive en Form1
             // -fuera de este archivo- porque la pared horneada tiene que usar exactamente el mismo: si cada
             // una llevara el suyo, la maquina del bar y la de repuesto pintarian cielos distintos.
-            if (FondoNatural) DibujaCieloNatural(w, h);   // malla suave con aire, luz lateral y hora (CieloNaturalMallaGpu.cs)
-            else
-            {
             float midY = h * Form1.CorteDelCielo;
             SetQuad(skyV, 0, 0, 0, w, midY, skyTop, skyTop, skyMid, skyMid);
             SetQuad(skyV, 6, 0, midY, w, h, skyMid, skyMid, skyBot, skyBot);
             // Cielo azul/negro original; la paleta movil pertenece a la aurora.
             gpu.DrawSky(skyV);
-            }
             if (TrasCielo != null) TrasCielo();   // la aurora va aqui: entre el cielo y las estrellas
             // EL PATRON ANTERIOR, DESVANECIENDOSE. Mientras dura el cruce -1.3 segundos, una vez por
             // minuto- se arman y se dibujan DOS juegos de estrellas en vez de uno, o sea el doble de trabajo:
@@ -1284,40 +1246,19 @@ namespace Rocola
                 // que guardarlo en double no gana ni un decimal y arrastra toda la cuenta a double para nada.
                 // El double que importa es el del RELOJ, que es lo que entra ahi dentro.
                 float tw = Titileo(t * spd[i] + ph[i]);
-                if (FondoNatural) tw = TitMedia + (CentelleoNatural(tw, t * spd[i] * 2.73 + ph[i] * 1.7) - TitMedia) * (k == 0 ? .55f : .72f);
                 float br = (AireP[b] + tw * AireQ[b]) * f255;
                 if (!(br > 0f)) br = 0f;   // con el titileo muy agrandado el valle se pasaria de rosca; y el "!" atrapa el NaN
                 uint a = (uint)(int)br; if (a > 255) a = 255;   // por entero: el mismo numero sin la conversion lenta
-                uint rgb = FondoNatural ? ColorEstrellaNatural(col[i], k, y / h, t, ph[i]) : col[i], gb = AireGB[b];
+                uint rgb = col[i], gb = AireGB[b];
                 uint c = (a << 24) | (rgb & 0x00FF0000u)                     // alfa = brillo; el rojo, entero
                        | ((((rgb >> 8) & 0xFFu) * (gb >> 16) >> 8) << 8)      // el verde, algo comido
                        | ((rgb & 0xFFu) * (gb & 0xFFFFu) >> 8);               // y el azul, comido del todo
                 float s = sz[i];
-                if (k != 0 && pulse > 0.02f) s += pulse * (FondoNatural ? (k == 2 ? 2.5f : 1f) : (k == 2 ? 9f : 5f));   // latido: medianas/grandes crecen con la musica
+                if (k != 0 && pulse > 0.02f) s += pulse * (k == 2 ? 9f : 5f);   // latido: medianas/grandes crecen con la musica
                 // No cambiar el patron ni reconstruir el atlas al alternar: solo
                 // reducir las puntas grandes, dejando algunas estrellas protagonistas.
                 if (EstrellasFinas) s *= k == 0 ? 0.85f : (k == 1 ? 0.66f : (i % 5 == 0 ? 0.78f : 0.42f));
                 int f = (fm != null) ? fm[i] : FormaEstrella;
-                if (FondoNatural)
-                {
-                    // Misma distribucion, formas y jerarquia que Legacy. La cobertura
-                    // antialias del polvo no puede multiplicar su luz: compensar el
-                    // area del quad conserva su presencia sin recuperar el parpadeo.
-                    float light = k == 2 ? .94f : .52f;
-                    if (k == 2) {
-                        // 15) Las mas brillantes llevan los rayos algo mas largos; la luz se reparte en el area.
-                        float largo = .92f + .26f * ((col[i] >> 24) / 255f);
-                        s *= largo; light /= largo;
-                    }
-                    light *= LuzJuntoALuna(x, y);   // 33) la luna apaga las estrellas que tiene al lado
-                    if (k == 0) {
-                        float coverage = 1.25f + s * .65f;
-                        light = .94f * s * s / (coverage * coverage);
-                        s = coverage;
-                    }
-                    uint naturalAlpha = (uint)Math.Min(255f, br * light);
-                    c = (naturalAlpha << 24) | (c & 0xFFFFFFu);
-                }
                 SetQuadUV(buf, vi, x - s, y - s, x + s, y + s, c, AtlasU0[f], AtlasV0[f], AtlasU1[f], AtlasV1[f]);
                 vi += 6;
             }
@@ -1358,7 +1299,6 @@ namespace Rocola
                         // paleta de siempre.
                         shoots[i].Col = gorda ? ((srnd.Next(2) == 0) ? 0x00FFFFFFu : 0x00FFE6A0u)
                                               : shootPal[srnd.Next(shootPal.Length)];
-                        if (FondoNatural) ApuntaDesdeRadiante(ref shoots[i], w, h);   // noches de lluvia de meteoros
                         break;
                     }
             }
@@ -1367,13 +1307,6 @@ namespace Rocola
             {
                 if (!shoots[i].On) continue;
                 Shoot s = shoots[i];
-                if (FondoNatural)
-                {
-                    NaturalShootVertices(shootV, vi, s.X, s.Y, s.VX, s.VY, s.Wdt, s.Tail, s.Life / s.MaxLife, dim, s.Col);
-                    vi += 12;
-                }
-                else
-                {
                 float k = s.Life / s.MaxLife; if (k < 0f) k = 0f;
                 uint la = (uint)(230 * k * dim); if (la > 255) la = 255;   // fugaz atenuada mientras se navega con musica
                 float tailX = s.X - s.VX * s.Tail, tailY = s.Y - s.VY * s.Tail;   // estela de largo variado
@@ -1389,22 +1322,15 @@ namespace Rocola
                 VShoot(shootV, vi + 0, s.X - hs, s.Y - hs, hc); VShoot(shootV, vi + 1, s.X + hs, s.Y - hs, hc); VShoot(shootV, vi + 2, s.X + hs, s.Y + hs, hc);
                 VShoot(shootV, vi + 3, s.X - hs, s.Y - hs, hc); VShoot(shootV, vi + 4, s.X + hs, s.Y + hs, hc); VShoot(shootV, vi + 5, s.X - hs, s.Y + hs, hc);
                 vi += 6;
-                }
                 s.X += s.VX * dt; s.Y += s.VY * dt; s.Life -= dt;
                 // POR LOS CUATRO LADOS, y no es un detalle: antes solo podian irse por la derecha o por
                 // abajo porque solo podian ir hacia alla. Con la direccion suelta, una que se vaya por la
                 // izquierda seguiria viva, invisible y ocupando una de las dos ranuras hasta que se le
                 // acabara la vida, y mientras tanto no saldria ninguna otra.
                 if (s.Life <= 0f || s.X > w + Form1.FugazBorra || s.X < -Form1.FugazBorra
-                                 || s.Y > h + Form1.FugazBorra || s.Y < -Form1.FugazBorra)
-                {
-                    s.On = false;
-                    if (FondoNatural && s.Wdt > 2.6f && s.Life <= 0f) NotaRastro(s, finoMs);   // un bolido deja su rastro
-                }
+                                 || s.Y > h + Form1.FugazBorra || s.Y < -Form1.FugazBorra) s.On = false;
                 shoots[i] = s;
             }
-            if (FondoNatural) vi += DibujaRastro(shootV, vi, finoMs);
-            else rastroOn = false;
             if (vi > 0) gpu.DrawShootStreaks(shootV, vi / 3);
         }
         private static void VShoot(D3D9.Vtx[] v, int o, float x, float y, uint c) { v[o].X = x; v[o].Y = y; v[o].Z = 0f; v[o].Rhw = 1f; v[o].Color = c; v[o].U = 0f; v[o].V = 0f; }
@@ -1423,8 +1349,6 @@ namespace Rocola
         {
             if (glowTex != IntPtr.Zero) { D3D9.Release(glowTex); glowTex = IntPtr.Zero; }
             if (uiGlowTex != IntPtr.Zero) { D3D9.Release(uiGlowTex); uiGlowTex = IntPtr.Zero; }
-            if (naturalStarAtlas != null) { naturalStarAtlas.Dispose(); naturalStarAtlas = null; }
-            if (legacyStarAtlas != null) { legacyStarAtlas.Dispose(); legacyStarAtlas = null; }
             if (gpu != null) { gpu.Dispose(); gpu = null; }
         }
 
@@ -1773,114 +1697,6 @@ namespace Rocola
                 }
             }
             return bmp;
-        }
-
-        private void ActualizaAtlasNatural()
-        {
-            // Seleccionar otro estilo cancela la espera pendiente, incluso al volver al atlas ya activo.
-            if (atlasRequested != FondoNatural) { atlasRequested = FondoNatural; atlasRetryMs = 0; }
-            if (glowNatural == FondoNatural) return;
-            double now = GpuPanel.AhoraMs();
-            if (now < atlasRetryMs) return;
-            // Mismo atlas 2x2 de 128 px y una sola textura GPU. Cache RAM perezosa (maximo 128 KiB):
-            // un driver temporalmente perdido se recupera sin rehornear ni saturar el hilo de dibujo.
-            Bitmap bitmap;
-            if (FondoNatural)
-            {
-                if (naturalStarAtlas == null) naturalStarAtlas = BakeNaturalStarTexture(64);
-                bitmap = naturalStarAtlas;
-            }
-            else
-            {
-                if (legacyStarAtlas == null) legacyStarAtlas = BakeStarTexture(64);
-                bitmap = legacyStarAtlas;
-            }
-            IntPtr next = CreateStarAtlasForTest != null ? CreateStarAtlasForTest(bitmap) : gpu.CreateTextureFromBitmap(bitmap);
-            if (next == IntPtr.Zero) { atlasRetryMs = now + 1000; return; }
-            if (glowTex != IntPtr.Zero) D3D9.Release(glowTex);
-            glowTex = next;
-            glowNatural = FondoNatural;
-            atlasRetryMs = 0;
-        }
-
-        internal static Bitmap BakeNaturalStarTexture(int celda)
-        {
-            if (celda < 8 || celda > 256) throw new ArgumentOutOfRangeException("celda");
-            CalculaAtlas(celda);
-            int side = celda * 2;
-            int[] pixels = new int[side * side];
-            for (int forma = 0; forma < NFormas; forma++)
-            {
-                int ox = forma % 2 * celda, oy = forma / 2 * celda;
-                for (int y = 0; y < celda; y++)
-                    for (int x = 0; x < celda; x++)
-                    {
-                        double dx = (x + .5 - celda * .5) / (celda * .5), dy = (y + .5 - celda * .5) / (celda * .5);
-                        double rr = dx * dx + dy * dy;
-                        bool dust = forma == FormaPunto;
-                        // Dos escalas en el mismo atlas: el polvo se reduce a 3-5 px,
-                        // no puede compartir el nucleo subpixel de una luz grande.
-                        // Horneado unico; sin mipmaps, nuevas texturas ni coste por cuadro.
-                        double core = dust ? .88 * Math.Exp(-rr * 2.8) : Math.Exp(-rr * 27);
-                        double halo = dust ? .12 * Math.Exp(-rr * 8) : .21 * Math.Exp(-rr * 14) + .018 * Math.Exp(-rr * 3);
-                        double rays = 0, fringe = 0;
-                        if (!dust)
-                        {
-                            double strength = forma == FormaRayos ? .94 : .76;
-                            double rx = Math.Max(0, 1 - Math.Abs(dx) / .96), ry = Math.Max(0, 1 - Math.Abs(dy) / .96);
-                            double hr = rx * rx * Math.Exp(-dy * dy * (50 + Math.Abs(dx) * 120));
-                            double vr = ry * ry * Math.Exp(-dx * dx * (50 + Math.Abs(dy) * 120));
-                            rays = strength * (hr + vr);
-                            // 15) El filo de cada rayo se separa en color, como en una optica real: azul a
-                            // un lado y naranja al otro. El nucleo sigue blanco.
-                            fringe = (hr * Math.Max(-1, Math.Min(1, dy * 14)) + vr * Math.Max(-1, Math.Min(1, dx * 14)))
-                                * strength / Math.Max(1e-6, core + halo + rays);
-                        }
-                        double edge = Math.Max(0, 1 - rr); edge = Math.Min(1, edge * 3);
-                        int alpha = (int)(255 * Math.Min(1, (core + halo + rays) * edge) + .5);
-                        int cr = 255, cg = 255, cb = 255;
-                        double fk = Math.Min(1, Math.Abs(fringe)) * .55;
-                        if (fringe > 0) { cg = (int)(255 - 60 * fk + .5); cb = (int)(255 - 120 * fk + .5); }
-                        else if (fringe < 0) { cr = (int)(255 - 110 * fk + .5); cg = (int)(255 - 60 * fk + .5); }
-                        pixels[(oy + y) * side + ox + x] = (alpha << 24) | (cr << 16) | (cg << 8) | cb;
-                    }
-            }
-            Bitmap result = new Bitmap(side, side, PixelFormat.Format32bppArgb);
-            BitmapData data = result.LockBits(new Rectangle(0, 0, side, side), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
-            try { for (int y = 0; y < side; y++) Marshal.Copy(pixels, y * side, new IntPtr(data.Scan0.ToInt64() + y * data.Stride), side); }
-            finally { result.UnlockBits(data); }
-            return result;
-        }
-
-        // Dos triangulos de cola afilada y dos de cabeza romboidal, los mismos cuatro del estilo Legacy.
-        // No hay enjambres, azar por cuadro, texturas adicionales ni un segundo envio de geometria.
-        internal static void NaturalShootVertices(D3D9.Vtx[] v, int o, float x, float y, float vx, float vy,
-            float width, float tail, float life, float visibility, uint color)
-        {
-            float len = (float)Math.Sqrt(vx * vx + vy * vy), nx = len > .001f ? vx / len : 1, ny = len > .001f ? vy / len : 0;
-            bool bolido = width > 2.6f;
-            float k = BrilloFugazNatural(Form1Clamp(life), bolido), dimmer = Form1Clamp(visibility), px = -ny * width, py = nx * width;
-            uint alpha = (uint)Math.Min(255f, 230 * k * dimmer);
-            uint rgb = bolido ? 0xFFE6B6u : (Math.Max(192u, (color >> 16) & 255u) << 16) | (Math.Max(200u, (color >> 8) & 255u) << 8) | Math.Max(216u, color & 255u);
-            // 16) La cabeza arde verde azulada (o dorada en los bolidos) y la cola se apaga en naranja:
-            // la tarjeta mezcla el color a lo largo de los mismos cuatro triangulos.
-            if (!bolido) rgb = MezclaRgb(rgb, 0xBEFFE0u, .5f);
-            uint head = (alpha << 24) | rgb, far = bolido ? 0xFF7838u : 0xFF9650u;
-            float tx = x - vx * tail, ty = y - vy * tail;
-            VShoot(v, o, x + px, y + py, head); VShoot(v, o + 1, x - px, y - py, head); VShoot(v, o + 2, tx - px * .04f, ty - py * .04f, far);
-            VShoot(v, o + 3, x + px, y + py, head); VShoot(v, o + 4, tx - px * .04f, ty - py * .04f, far); VShoot(v, o + 5, tx + px * .04f, ty + py * .04f, far);
-            float h = .8f + width, along = h * 1.65f;
-            uint core = (Math.Min(255u, (uint)(255 * k * dimmer)) << 24) | 0xFFF9EEu;
-            VShoot(v, o + 6, x + nx * along, y + ny * along, core); VShoot(v, o + 7, x + px, y + py, head); VShoot(v, o + 8, x - nx * along * .65f, y - ny * along * .65f, far);
-            VShoot(v, o + 9, x + nx * along, y + ny * along, core); VShoot(v, o + 10, x - nx * along * .65f, y - ny * along * .65f, far); VShoot(v, o + 11, x - px, y - py, head);
-        }
-        private static float Form1Clamp(float v) { return !(v > 0) ? 0 : v >= 1 ? 1 : v; }
-        private static uint MezclaRgb(uint a, uint b, float f)
-        {
-            uint r = (uint)(((a >> 16) & 255) + ((((int)((b >> 16) & 255)) - (int)((a >> 16) & 255)) * f));
-            uint g = (uint)(((a >> 8) & 255) + ((((int)((b >> 8) & 255)) - (int)((a >> 8) & 255)) * f));
-            uint c = (uint)((a & 255) + ((((int)(b & 255)) - (int)(a & 255)) * f));
-            return (r << 16) | (g << 8) | c;
         }
 
         private static void SetQuad(D3D9.Vtx[] v, int o, float x0, float y0, float x1, float y1, uint cTL, uint cTR, uint cBR, uint cBL)
@@ -2289,7 +2105,7 @@ namespace Rocola
         {
             SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.Opaque, true);
             SetStyle(ControlStyles.OptimizedDoubleBuffer, false);   // D3D9 maneja sus pixeles: nada de doble-buffer GDI
-            trasCielo = delegate { DibujaNieblas(); DibujaLunaReal(); if (auCuadro.Has) DrawAurora(auCuadro); DibujaRuido(); };
+            trasCielo = delegate { DibujaNieblas(); if (auCuadro.Has) DrawAurora(auCuadro); DibujaRuido(); };
             trasEstrellas = delegate { DibujaLuna(); };
         }
 
@@ -2383,7 +2199,6 @@ namespace Rocola
         {
             uiAnalisisTeselas = uiBotAnalisisTeselas = null;
             compactaAplazada = false;
-            CancelaPreparacionNatural();
             TrimLod(true);
             SueltaCintasGpu();
             ClearPaletteFade(); paletteKey = 0;
@@ -2405,17 +2220,14 @@ namespace Rocola
             SueltaAtraccion();      // las fichas del escaparate, sus mensajes y la lista de la noche
             SueltaAsistente();      // panel prestado del asistente y su textura GPU
             SueltaAyudaIcono();
-            SueltaLunaReal();       // la luna de esta noche de Espacio natural (LunaRealGpu.cs)
             if (uiTex != IntPtr.Zero) { D3D9.Release(uiTex); uiTex = IntPtr.Zero; }
             if (hazTex != IntPtr.Zero) { D3D9.Release(hazTex); hazTex = IntPtr.Zero; }
             if (nebTex != IntPtr.Zero) { D3D9.Release(nebTex); nebTex = IntPtr.Zero; }
             if (vinetaTex != IntPtr.Zero) { D3D9.Release(vinetaTex); vinetaTex = IntPtr.Zero; }
             if (idleTex != IntPtr.Zero) { D3D9.Release(idleTex); idleTex = IntPtr.Zero; }
             idleLastBmp = null; idleBlend = 0; idleClock = 0; idleUploadedVersion = -1;
-            idleNaturalVelocity = 0; naturalLightReady = false;
             vinetaRetry = 0;
             if (ruidoTex != IntPtr.Zero) { D3D9.Release(ruidoTex); ruidoTex = IntPtr.Zero; ruTW = ruTH = 0; }
-            ruidoTexNatural = false;
             ruidoMalla = null; ruidoAncho = ruidoAlto = ruidoTriangulos = 0;
             ResetStarEchoes();
             if (lunaTex != IntPtr.Zero) { D3D9.Release(lunaTex); lunaTex = IntPtr.Zero; luTW = luTH = 0; lunaDe = -1; }
@@ -2503,9 +2315,7 @@ namespace Rocola
             // que cambiar con ella. Se hace AQUI, antes de abrir el cuadro: resetear el dispositivo con la
             // escena ya abierta no es valido en Direct3D 9.
             stars.Redimensiona(Width, Height);
-            stars.FondoNatural = FondoNatural;
-            stars.SetSky(CieloEstilo(SkyTop, 0, FondoNatural), CieloEstilo(SkyMid, 1, FondoNatural), CieloEstilo(SkyBot, 2, FondoNatural));
-            ActualizaHoraCielo();   // Natural: hondura y crepusculo segun la hora (CieloNaturalMallaGpu.cs)
+            stars.SetSky(SkyTop, SkyMid, SkyBot);
             // TRABAJO PESADO acotado: rehacer las barras (UI, bitmap a pantalla completa) cuesta; se limita a UNA
             // por franja (heavyGapMs, que SE AUTOAJUSTA al coste real). La rejilla de discos ya NO es trabajo
             // pesado: cada disco es su propio quad con textura cacheada (rejilla por celdas, mas abajo).
@@ -2602,9 +2412,7 @@ namespace Rocola
                     if (idleTex != IntPtr.Zero) idleUploadedVersion = IdlePanelVersion;
                 }
             }
-            if (FondoNatural)
-                idleBlend = PasoReposoNatural(idleBlend, IdleExpandTarget && idleTex != IntPtr.Zero, ref idleNaturalVelocity, idleDt);
-            else { idleNaturalVelocity = 0; idleBlend = StepIdle(idleBlend, IdleExpandTarget && idleTex != IntPtr.Zero, idleDt); }
+            idleBlend = StepIdle(idleBlend, IdleExpandTarget && idleTex != IntPtr.Zero, idleDt);
             // ANIMACIONES: sus texturas TAMBIEN se aseguran AQUI, antes de Begin. Crear o bloquear una textura
             // con la escena ya abierta no es valido en Direct3D 9: fallaba en silencio y la portada que viajaba
             // entre cubos no llegaba a dibujarse NUNCA (la del buscador al abrir si, porque esa reusa la textura
@@ -2674,13 +2482,11 @@ namespace Rocola
             PreparaAsistente(); // texto/seleccion: una sola subida cuando realmente cambian
             PreparaAyudaIcono(); // la interrogacion de AYUDA: horneada una vez por tamano (AyudaCasillaGpu.cs)
             EnsureLuna(); // ninguna reserva/subida de la luna dentro de Begin
-            EnsureLunaReal(); // Natural: la luna de esta noche (LunaRealGpu.cs), tambien antes de Begin
             stars.EstrellasFinas = EstrellasFinas;
             if (ShowFps) EnsureFpsTex();   // crea/actualiza la textura del contador ANTES de Begin (solo si se pide, Ctrl+F1)
-            CapturaLuzNatural(idleDt);
-            stars.SetDim(SceneDim);       // luz interpolada solo en Natural; el cielo conserva su perfil
+            stars.SetDim(Dim);             // atenuacion mientras se navega con musica (estrellas/brillos; el cielo queda igual)
             float pulseCrudo = (GetPulse != null) ? GetPulse() : 0f;
-            float pulse = pulseCrudo * SceneDim;   // el beat tambien baja mientras esta atenuado (la deriva NO: ver Begin)
+            float pulse = pulseCrudo * Dim;   // el beat tambien baja mientras esta atenuado (la deriva NO: ver Begin)
             // La aurora se dibuja DENTRO de Begin, justo despues del cielo y antes de las estrellas.
             auCuadro = (GetAurora != null) ? GetAurora() : new GpuAurora();
             // Se engancha SIEMPRE: aqui van la via lactea y las nebulosas, haya aurora o no.
@@ -2733,13 +2539,7 @@ namespace Rocola
                     // Con la portada enfocada el halo crece con ella y toma su color (HaloArgb); si no, el de siempre.
                     float hx = hr.X, hy = hr.Y, hw = hr.Width, hh = hr.Height;
                     EnfocaCaja(ref hx, ref hy, ref hw, ref hh);
-                    if (FondoNatural)
-                    {
-                        float rx, ry; uint tint;
-                        HaloPortadaNatural(hw, hh, HaloArgb(), out rx, out ry, out tint);
-                        stars.DrawGlowElipse(hx + hw * 0.5f, hy + hh * 0.5f, rx, ry, tint);
-                    }
-                    else stars.DrawGlow(hx + hw * 0.5f, hy + hh * 0.5f, Math.Max(hw, hh) * 0.85f, HaloArgb());
+                    stars.DrawGlow(hx + hw * 0.5f, hy + hh * 0.5f, Math.Max(hw, hh) * 0.85f, HaloArgb());
                 }
             }
             // Rejilla de discos: un quad por celda (textura ya resuelta arriba). Las celdas aun sin textura (recien
@@ -3390,18 +3190,11 @@ namespace Rocola
         }
         private void EnsureNieblas()
         {
-            if (FondoNatural) { EnsureNieblasPreparadas(); return; }
-            // Al volver de Natural, la teja de grano Natural se suelta y se vuelve a subir la de siempre.
-            if (ruidoTexNatural) { if (ruidoTex != IntPtr.Zero) D3D9.Release(ruidoTex); ruidoTex = IntPtr.Zero; ruidoTexNatural = false; }
-            bool cambioMando = nebNaturalDe != CieloProfundo || nebEstiloDe != FondoNatural;
+            bool cambioMando = nebNaturalDe != CieloProfundo;
             bool cambioFuerza = nebFuerzaDe != Form1.nebNaturalFuerza;
             int ahoraNeb = Environment.TickCount;
             if (TocaRehornear(cambioMando, cambioFuerza, ahoraNeb, nebFuerzaMs))
             { if (nebTex != IntPtr.Zero) { D3D9.Release(nebTex); nebTex = IntPtr.Zero; } nieblaRetryPending = false; }
-            if (hazEstiloDe != FondoNatural) {
-                if (hazTex != IntPtr.Zero) { D3D9.Release(hazTex); hazTex = IntPtr.Zero; }
-                nieblaRetryPending = false;
-            }
             bool nuevoTamano = nieblaW != Width || nieblaH != Height;
             if (!nuevoTamano && hazTex != IntPtr.Zero && nebTex != IntPtr.Zero && ruidoTex != IntPtr.Zero) return;
             int now = Environment.TickCount;
@@ -3410,20 +3203,18 @@ namespace Rocola
             int mw = Math.Max(8, Width / 4), mh = Math.Max(8, Height / 4);
             // Un fallo parcial solo reintenta la capa pendiente; no vuelve a hornear las que ya llegaron.
             if (nuevoTamano || hazTex == IntPtr.Zero)
+                using (Bitmap hz = GpuStarfield.BakeViaLactea(mw, mh))
                 {
-                    Bitmap hz = MapaViaEstilo(mw, mh);
                     hazTex = Upload(hazTex, ref hazTW, ref hazTH, hz, out hazU, out hazV);
                     hazTeselas = TeselasVisibles.De(hz, TeselasVisibles.LadoTesela, true);   // lo que tiene algo que pintar (DibujoLigeroGpu.cs)
-                    hazEstiloDe = FondoNatural;
                 }
             if (nuevoTamano || nebTex == IntPtr.Zero)
             {
                 // CON QUE se horneo se apunta AQUI, no arriba al soltar la textura: si se apuntara antes
                 // de saber que el horneado ocurre, un mapa que no llego a hacerse quedaria dado por bueno
                 // y el mando no se veria hasta el siguiente cambio.
-                nebNaturalDe = CieloProfundo; nebFuerzaDe = Form1.nebNaturalFuerza; nebFuerzaMs = ahoraNeb; nebEstiloDe = FondoNatural;
-                Bitmap nb = MapaNebEstilo(mw, mh);
-                nebTex = Upload(nebTex, ref nebTW, ref nebTH, nb, out nebU, out nebV);
+                nebNaturalDe = CieloProfundo; nebFuerzaDe = Form1.nebNaturalFuerza; nebFuerzaMs = ahoraNeb;
+                using (Bitmap nb = CieloProfundo ? BakeNatural(mw, mh) : GpuStarfield.BakeNebulosas(mw, mh)) nebTex = Upload(nebTex, ref nebTW, ref nebTH, nb, out nebU, out nebV);
             }
             if (ruidoTex == IntPtr.Zero)
                 using (Bitmap rd = Form1.BakeRuidoGrande(RuidoTeja)) ruidoTex = Upload(ruidoTex, ref ruTW, ref ruTH, rd, out ruU, out ruV);
@@ -3445,8 +3236,6 @@ namespace Rocola
         private D3D9.Vtx[] ruidoMalla;
         private int ruidoAncho, ruidoAlto, ruidoTriangulos;
         private float ruidoU, ruidoV;
-        private bool ruidoNatural;
-        private bool ruidoTexNatural;   // la teja subida es la de Natural (BakeRuidoNatural), no la de siempre
 
         // ESTRELLA GPU: superficie neutra preparada una vez por estilo (detallado/sencillo).
         // El color musical y el movimiento van en los vertices, sin rehornear ni subir
@@ -3454,20 +3243,19 @@ namespace Rocola
         // La pared CPU mantiene su luna original, sin cambios.
         private IntPtr lunaTex; private int luTW, luTH; private float luU = 1f, luV = 1f;
         private int lunaDe = -1;
-        private bool lunaEstiloDe;
         private D3D9.Vtx[] lunaQuad = new D3D9.Vtx[6];
         private void EnsureLuna()
         {
             if ((!ConLuna && (!AsistenteOcultaFondo || Estrella3D)) || Height < 64) return;
             int moonKey = MoonTextureSize;
-            if (lunaTex == IntPtr.Zero || lunaDe != moonKey || lunaDetalleDe != LunaRealista || lunaEstiloDe != FondoNatural)
+            if (lunaTex == IntPtr.Zero || lunaDe != moonKey || lunaDetalleDe != LunaRealista)
             {
-                using (Bitmap lb = FondoNatural ? BakeStarNatural(LunaRealista) : BakeStar(LunaRealista))
+                using (Bitmap lb = BakeStar(LunaRealista))
                 {
                     lunaTex = Upload(lunaTex, ref luTW, ref luTH, lb, out luU, out luV);
                 }
                 if (lunaTex != IntPtr.Zero) {
-                    lunaDe = moonKey; lunaDetalleDe = LunaRealista; lunaEstiloDe = FondoNatural;
+                    lunaDe = moonKey; lunaDetalleDe = LunaRealista;
                 }
             }
         }
@@ -3489,7 +3277,7 @@ namespace Rocola
             int ancho = Width, alto = Height;
             if (ancho <= 0 || alto <= 0) { ruidoMalla = null; ruidoTriangulos = 0; return; }
             if (ruidoMalla != null && ruidoAncho == ancho && ruidoAlto == alto
-                && ruidoU == ruU && ruidoV == ruV && ruidoNatural == FondoNatural) return;
+                && ruidoU == ruU && ruidoV == ruV) return;
             int n = checked(checked(((ancho - 1) / RuidoTeja + 1) * ((alto - 1) / RuidoTeja + 1)) * 6);
             // Solo retener lo que necesita la geometria actual, nunca el maximo historico.
             if (ruidoMalla == null || ruidoMalla.Length != n) ruidoMalla = new D3D9.Vtx[n];
@@ -3504,11 +3292,9 @@ namespace Rocola
                     SetV(ref ruidoMalla[pos], x, y, 0, 0); SetV(ref ruidoMalla[pos + 1], x + aw, y, u, 0);
                     SetV(ref ruidoMalla[pos + 2], x + aw, y + ah, u, v); SetV(ref ruidoMalla[pos + 3], x, y, 0, 0);
                     SetV(ref ruidoMalla[pos + 4], x + aw, y + ah, u, v); SetV(ref ruidoMalla[pos + 5], x, y + ah, 0, v);
-                    if (FondoNatural)
-                        for (int i = 0; i < 6; i++) ruidoMalla[pos + i].Color = 0xD0FFFFFFu;
                     pos += 6;
                 }
-            ruidoAncho = ancho; ruidoAlto = alto; ruidoU = ruU; ruidoV = ruV; ruidoNatural = FondoNatural;
+            ruidoAncho = ancho; ruidoAlto = alto; ruidoU = ruU; ruidoV = ruV;
             ruidoTriangulos = n / 3;
         }
 
@@ -3610,11 +3396,6 @@ namespace Rocola
         private Bitmap vinetaMapa;
         private void EnsureVineta()
         {
-            if (vinetaEstiloDe != FondoNatural) {
-                if (vinetaTex != IntPtr.Zero) { D3D9.Release(vinetaTex); vinetaTex = IntPtr.Zero; }
-                if (vinetaMapa != null) { vinetaMapa.Dispose(); vinetaMapa = null; }
-                vinetaTeselas = null; vinetaRetry = 0; vinetaEstiloDe = FondoNatural;
-            }
             if (!VinetaSuave)
             {
                 if (vinetaTex != IntPtr.Zero) { D3D9.Release(vinetaTex); vinetaTex = IntPtr.Zero; }
@@ -3627,7 +3408,7 @@ namespace Rocola
             int now = Environment.TickCount;
             if (vinetaRetry != 0 && unchecked(now - vinetaRetry) < 1000) return;
             vinetaRetry = now;
-            if (vinetaMapa == null) vinetaMapa = FondoNatural ? BakeVinetaNatural(128) : BakeVineta(128);
+            if (vinetaMapa == null) vinetaMapa = BakeVineta(128);
             if (vinetaTeselas == null) vinetaTeselas = TeselasVisibles.De(vinetaMapa, TeselasVisibles.LadoTesela, true);   // su centro es transparente (DibujoLigeroGpu.cs)
             vinetaTex = stars.CreateOverlay(vinetaMapa, out vinetaU, out vinetaV);
         }
@@ -3660,12 +3441,8 @@ namespace Rocola
                 uint a = (uint)(NebAlfa * 255f + 0.5f); if (a > 255) a = 255;
                 float mx = Width * NebDeriva, my = Height * NebDeriva;
                 float c = (float)Math.Cos(NebFase), sn = (float)Math.Sin(NebFase);
-                if (FondoNatural) DibujaNieblasNatural(mx, my, c, sn);   // dos distancias, respiracion y paralaje (CieloNaturalMallaGpu.cs)
-                else
-                {
-                NieblaDeriva(mx, my, c * mx, sn * my, (a << 24) | TinteNebulosaEstilo(NebColor, false, NebulosasCine, FondoNatural));
-                NieblaDeriva(mx, my, -c * mx, -sn * my, (a << 24) | TinteNebulosaEstilo(NebColor2, true, NebulosasCine, FondoNatural));
-                }
+                NieblaDeriva(mx, my, c * mx, sn * my, (a << 24) | TinteNebulosa(NebColor, false, NebulosasCine));
+                NieblaDeriva(mx, my, -c * mx, -sn * my, (a << 24) | TinteNebulosa(NebColor2, true, NebulosasCine));
             }
             if (hazTex != IntPtr.Zero && Nieblas == GpuStarfield.Alto)
             {
@@ -3673,7 +3450,6 @@ namespace Rocola
                 // por mucho que se mueva su borde nunca asoma. Es lo mismo que hace NieblaDeriva.
                 float mx = Width * HazDeriva, my = Height * HazDeriva;
                 float ox = (float)Math.Sin(HazFase) * mx, oy = (float)Math.Cos(HazFase) * my;
-                if (FondoNatural) { ox = ox * .80f + ParalajeVia(mx); oy *= .80f; }   // 31) su parte del paso de pagina
                 DibujaTeselas(hazTex, hazTeselas, -mx + ox, -my + oy, Width + mx + ox, Height + my + oy, hazU, hazV, 0xFFFFFFFFu, nieblaQuad);   // solo lo que no es transparente (DibujoLigeroGpu.cs)
             }
         }
@@ -3943,10 +3719,6 @@ namespace Rocola
         // de la franja de estado) hundiendose al tono profundo, para que no quede ninguna raya donde se acaba.
         internal static int AurMalla(D3D9.Vtx[] v, float[] hCol, uint[] cCortina, uint[] cSuelo, float[] aCol, float[] rCol,
                                      float ancho, float baseY, float alturaPanel)
-        { return AurMallaEstilo(v, hCol, cCortina, cSuelo, aCol, rCol, ancho, baseY, alturaPanel, false); }
-
-        private static int AurMallaEstilo(D3D9.Vtx[] v, float[] hCol, uint[] cCortina, uint[] cSuelo, float[] aCol, float[] rCol,
-                                         float ancho, float baseY, float alturaPanel, bool natural)
         {
             int puntos = AurCols + 1;
             if (v == null || hCol == null || cCortina == null || cSuelo == null || aCol == null || rCol == null) return 0;
@@ -3958,7 +3730,6 @@ namespace Rocola
             float hondo = borde - baseY;
             float paso = ancho / AurCols;
             int n = 0;
-            if (natural) PreparaPliegues(hCol, paso, alturaPanel);   // una vez por columna, no por vertice (AuroraNaturalGpu.cs)
             // Primero EL SUELO (del horizonte al borde de abajo) y luego la cortina. Las dos partes comparten
             // el color y la opacidad exactos del horizonte, asi que ahi no hay ni un salto: es la misma pieza.
             for (int j = 0; j < AurSuelo; j++)
@@ -3969,18 +3740,11 @@ namespace Rocola
                 float y0 = baseY + hondo * s0, y1 = baseY + hondo * s1;
                 // El borde DERECHO de una celda es el IZQUIERDO de la de al lado: mismo color, misma opacidad,
                 // misma cuenta. Se arrastra en vez de calcularlo dos veces.
-                float rf0 = natural ? ReflejoFila(s0) : 0f, rf1 = natural ? ReflejoFila(s1) : 0f;
-                uint cL0 = natural ? SueloReflejo(cSuelo[k0], cCortina[puntos], aCol[0], m0, rf0 * aurReflejoAlto[0], s0)
-                                   : AurArgb(cSuelo[k0], aCol[0] * m0);
-                uint cL1 = natural ? SueloReflejo(cSuelo[k1], cCortina[puntos], aCol[0], m1, rf1 * aurReflejoAlto[0], s1)
-                                   : AurArgb(cSuelo[k1], aCol[0] * m1);
+                uint cL0 = AurArgb(cSuelo[k0], aCol[0] * m0), cL1 = AurArgb(cSuelo[k1], aCol[0] * m1);
                 for (int i = 0; i < AurCols; i++)
                 {
                     float x0 = i * paso, x1 = x0 + paso;
-                    uint cR0 = natural ? SueloReflejo(cSuelo[k0 + i + 1], cCortina[puntos + i + 1], aCol[i + 1], m0, rf0 * aurReflejoAlto[i + 1], s0)
-                                       : AurArgb(cSuelo[k0 + i + 1], aCol[i + 1] * m0);
-                    uint cR1 = natural ? SueloReflejo(cSuelo[k1 + i + 1], cCortina[puntos + i + 1], aCol[i + 1], m1, rf1 * aurReflejoAlto[i + 1], s1)
-                                       : AurArgb(cSuelo[k1 + i + 1], aCol[i + 1] * m1);
+                    uint cR0 = AurArgb(cSuelo[k0 + i + 1], aCol[i + 1] * m0), cR1 = AurArgb(cSuelo[k1 + i + 1], aCol[i + 1] * m1);
                     AurV3(ref v[n + 0], x0, y0, cL0); AurV3(ref v[n + 1], x1, y0, cR0); AurV3(ref v[n + 2], x0, y1, cL1);
                     AurV3(ref v[n + 3], x1, y0, cR0); AurV3(ref v[n + 4], x1, y1, cR1); AurV3(ref v[n + 5], x0, y1, cL1);
                     n += 6;
@@ -3989,9 +3753,8 @@ namespace Rocola
             }
             for (int j = 0; j < AurFilas; j++)
             {
-                float f0 = natural ? AuroraNaturalNivel(j) : (float)j / AurFilas;
-                float f1 = natural ? AuroraNaturalNivel(j + 1) : (float)(j + 1) / AurFilas;
-                float m0 = natural ? BajaNatural(f0) : AurBaja(f0), m1 = natural ? BajaNatural(f1) : AurBaja(f1);
+                float f0 = (float)j / AurFilas, f1 = (float)(j + 1) / AurFilas;
+                float m0 = AurBaja(f0), m1 = AurBaja(f1);
                 float g0 = AurRampa(f0), g1 = AurRampa(f1);   // cuanto ondeo se deja ver a esa altura
                 int k0 = j * puntos, k1 = (j + 1) * puntos;
                 // Lo mismo que en el suelo: el lado derecho de una celda es el izquierdo de la siguiente, y eso
@@ -4000,32 +3763,19 @@ namespace Rocola
                 // cortinas llevan el mismo degradado y los picos se ven parejos entre si.
                 float yL0 = baseY - hCol[0] * f0, yL1 = baseY - hCol[0] * f1;
                 float wL0 = aCol[0] * m0 * (1f + (rCol[0] - 1f) * g0), wL1 = aCol[0] * m1 * (1f + (rCol[0] - 1f) * g1);
-                // 21) Natural: la cortina se dobla. Brilla mas donde la silueta se inclina (ahi se ve de canto)
-                // y su interior se curva a lo ancho; el pie y la cresta no se mueven, asi que el filo de neon
-                // y el horizonte siguen pegados a ella.
-                float plL = natural ? aurPliegue[0] : 1f;
-                // (el pliegue no toca el pie: ahi la cortina y el suelo son una sola pieza, con el mismo alfa)
-                float pg0 = AurRampa(f0), pg1 = AurRampa(f1);
-                float ar0 = natural ? ArcoAurora(f0) : 0f, ar1 = natural ? ArcoAurora(f1) : 0f;
-                float xL0 = natural ? aurCurva[0] * ar0 : 0f, xL1 = natural ? aurCurva[0] * ar1 : 0f;
-                uint cL0 = natural ? AurArgb(cCortina[k0] & 0xFFFFFFu, wL0 * (1f + (plL - 1f) * pg0) * AuroraNaturalPeso(cCortina[k0])) : AurArgb(cCortina[k0], wL0);
-                uint cL1 = natural ? AurArgb(cCortina[k1] & 0xFFFFFFu, wL1 * (1f + (plL - 1f) * pg1) * AuroraNaturalPeso(cCortina[k1])) : AurArgb(cCortina[k1], wL1);
+                uint cL0 = AurArgb(cCortina[k0], wL0), cL1 = AurArgb(cCortina[k1], wL1);
                 for (int i = 0; i < AurCols; i++)
                 {
                     float x0 = i * paso, x1 = x0 + paso;
                     float hR = hCol[i + 1];
                     float yR0 = baseY - hR * f0, yR1 = baseY - hR * f1;
                     float wR0 = aCol[i + 1] * m0 * (1f + (rCol[i + 1] - 1f) * g0), wR1 = aCol[i + 1] * m1 * (1f + (rCol[i + 1] - 1f) * g1);
-                    uint rgb0 = cCortina[k0 + i + 1], rgb1 = cCortina[k1 + i + 1];
-                    float plR = natural ? aurPliegue[i + 1] : 1f;
-                    float xR0 = 0f, xR1 = 0f;
-                    if (natural) { float onda = aurCurva[i + 1]; xR0 = onda * ar0; xR1 = onda * ar1; }
-                    uint cR0 = natural ? AurArgb(rgb0 & 0xFFFFFFu, wR0 * (1f + (plR - 1f) * pg0) * AuroraNaturalPeso(rgb0)) : AurArgb(rgb0, wR0);
-                    uint cR1 = natural ? AurArgb(rgb1 & 0xFFFFFFu, wR1 * (1f + (plR - 1f) * pg1) * AuroraNaturalPeso(rgb1)) : AurArgb(rgb1, wR1);
-                    AurV3(ref v[n + 0], x0 + xL1, yL1, cL1); AurV3(ref v[n + 1], x1 + xR1, yR1, cR1); AurV3(ref v[n + 2], x0 + xL0, yL0, cL0);
-                    AurV3(ref v[n + 3], x1 + xR1, yR1, cR1); AurV3(ref v[n + 4], x1 + xR0, yR0, cR0); AurV3(ref v[n + 5], x0 + xL0, yL0, cL0);
+                    uint cR0 = AurArgb(cCortina[k0 + i + 1], wR0);
+                    uint cR1 = AurArgb(cCortina[k1 + i + 1], wR1);
+                    AurV3(ref v[n + 0], x0, yL1, cL1); AurV3(ref v[n + 1], x1, yR1, cR1); AurV3(ref v[n + 2], x0, yL0, cL0);
+                    AurV3(ref v[n + 3], x1, yR1, cR1); AurV3(ref v[n + 4], x1, yR0, cR0); AurV3(ref v[n + 5], x0, yL0, cL0);
                     n += 6;
-                    yL0 = yR0; yL1 = yR1; cL0 = cR0; cL1 = cR1; xL0 = xR0; xL1 = xR1;
+                    yL0 = yR0; yL1 = yR1; cL0 = cR0; cL1 = cR1;
                 }
             }
             return n;
@@ -4084,10 +3834,6 @@ namespace Rocola
         //   cLinea/gCol = lo mismo para la linea del horizonte (color del PIE y su brillo)
         internal static int AurBrillo(D3D9.Vtx[] v, float[] hCol, uint[] cNeon, float[] nCol,
                                       uint[] cLinea, float[] gCol, float ancho, float baseY)
-        { return AurBrilloEstilo(v, hCol, cNeon, nCol, cLinea, gCol, ancho, baseY, false); }
-
-        private static int AurBrilloEstilo(D3D9.Vtx[] v, float[] hCol, uint[] cNeon, float[] nCol,
-                                         uint[] cLinea, float[] gCol, float ancho, float baseY, bool natural)
         {
             int puntos = AurCols + 1;
             if (v == null || hCol == null || cNeon == null || nCol == null || cLinea == null || gCol == null) return 0;
@@ -4096,21 +3842,17 @@ namespace Rocola
             if (cNeon.Length < puntos || cLinea.Length < puntos) return 0;
             int n = 0;
             // ---- LA LINEA DEL HORIZONTE (primero: el contorno va encima) ----
-            float lineAbove = natural ? 24f : AurLineaArriba, lineBelow = natural ? 8f : AurLineaAbajo;
-            float lineCore = natural ? 1f : AurLineaNucleo, white = natural ? .27f : AurNeonBlanco;
-            float glowOutside = natural ? 11f : AurNeonFuera, glowInside = natural ? 18f : AurNeonDentro;
-            float glowCore = natural ? .85f : AurNeonNucleo;
-            float lqA = lineAbove * AurLineaQuiebre, lqB = lineBelow * AurLineaQuiebre;
+            float lqA = AurLineaArriba * AurLineaQuiebre, lqB = AurLineaAbajo * AurLineaQuiebre;
             float ejeY = baseY - AurLineaAlza;   // la raya va un poco por encima del pie (ver AurLineaAlza)
-            float yFa = ejeY - lineAbove, yMa = ejeY - lqA, yNa = ejeY - lineCore;
-            float yNb = ejeY + lineCore, yMb = ejeY + lqB, yFb = ejeY + lineBelow;
+            float yFa = ejeY - AurLineaArriba, yMa = ejeY - lqA, yNa = ejeY - AurLineaNucleo;
+            float yNb = ejeY + AurLineaNucleo, yMb = ejeY + lqB, yFb = ejeY + AurLineaAbajo;
             int salto = AurCols / AurLineaCols;
             float pasoL = ancho / AurLineaCols;
             // El borde DERECHO de un tramo es exactamente el IZQUIERDO del siguiente: mismo color y misma
             // opacidad. Se arrastran en vez de volver a calcularlos -eran cuatro cuentas de bits por tramo
             // hechas dos veces- y de paso desaparece el par mLb/mRb, que era literalmente mLa/mRa otra vez.
             uint pL = cLinea[0];
-            uint kL = AurNeon(pL, white);
+            uint kL = AurNeon(pL, AurNeonBlanco);
             float aL = gCol[0];
             uint fL = AurArgb(pL, 0f);                                                 // el borde del resplandor: apagado
             uint mL = AurArgb(pL, aL * AurLineaHalo);
@@ -4120,7 +3862,7 @@ namespace Rocola
                 float x0 = i * pasoL, x1 = x0 + pasoL;
                 int j1 = (i + 1) * salto;
                 uint pR = cLinea[j1];
-                uint kR = AurNeon(pR, white);
+                uint kR = AurNeon(pR, AurNeonBlanco);
                 float aR = gCol[j1];
                 uint fR = AurArgb(pR, 0f);
                 uint mR = AurArgb(pR, aR * AurLineaHalo);
@@ -4133,7 +3875,7 @@ namespace Rocola
                 fL = fR; mL = mR; nLc = nRc;
             }
             // ---- EL CONTORNO, siguiendo la silueta por la curva (ver AurContCols) ----
-            float qf = glowOutside * AurNeonQuiebre;
+            float qf = AurNeonFuera * AurNeonQuiebre;
             int sub = AurContCols / AurCols;
             float pasoC = ancho / AurContCols;
             float tL = baseY - hCol[0];
@@ -4141,7 +3883,7 @@ namespace Rocola
             // Igual que en la raya: el extremo derecho de una columna ES el izquierdo de la siguiente. Antes se
             // recalculaban los cuatro colores en cada vuelta -288 vueltas por cuadro, cuatro cuentas de bits
             // cada una, todas repetidas-; ahora se arrastran.
-            uint kIz = AurNeon(cIz, white);
+            uint kIz = AurNeon(cIz, AurNeonBlanco);
             uint cfL = AurArgb(cIz, 0f);
             uint cmL = AurArgb(cIz, aIz * AurNeonHalo);
             uint cnL = AurArgb(kIz, aIz);
@@ -4155,14 +3897,14 @@ namespace Rocola
                 uint cDe = (u <= 0f) ? cNeon[i] : AurLerpRgb(cNeon[i], cNeon[i2], u);
                 float aDe = nCol[i] + (nCol[i2] - nCol[i]) * u;
                 float x0 = q * pasoC, x1 = x0 + pasoC;
-                uint kR = AurNeon(cDe, white);
+                uint kR = AurNeon(cDe, AurNeonBlanco);
                 uint cfR = AurArgb(cDe, 0f);
                 uint cmR = AurArgb(cDe, aDe * AurNeonHalo);
                 uint cnR = AurArgb(kR, aDe);
-                n = AurBanda(v, n, x0, x1, tL - glowOutside, tR - glowOutside, tL - qf, tR - qf, cfL, cfR, cmL, cmR);
-                n = AurBanda(v, n, x0, x1, tL - qf, tR - qf, tL - glowCore, tR - glowCore, cmL, cmR, cnL, cnR);
-                n = AurBanda(v, n, x0, x1, tL - glowCore, tR - glowCore, tL + glowCore, tR + glowCore, cnL, cnR, cnL, cnR);
-                n = AurBanda(v, n, x0, x1, tL + glowCore, tR + glowCore, tL + glowInside, tR + glowInside, cnL, cnR, cfL, cfR);
+                n = AurBanda(v, n, x0, x1, tL - AurNeonFuera, tR - AurNeonFuera, tL - qf, tR - qf, cfL, cfR, cmL, cmR);
+                n = AurBanda(v, n, x0, x1, tL - qf, tR - qf, tL - AurNeonNucleo, tR - AurNeonNucleo, cmL, cmR, cnL, cnR);
+                n = AurBanda(v, n, x0, x1, tL - AurNeonNucleo, tR - AurNeonNucleo, tL + AurNeonNucleo, tR + AurNeonNucleo, cnL, cnR, cnL, cnR);
+                n = AurBanda(v, n, x0, x1, tL + AurNeonNucleo, tR + AurNeonNucleo, tL + AurNeonDentro, tR + AurNeonDentro, cnL, cnR, cfL, cfR);
                 tL = tR; aIz = aDe;
                 cfL = cfR; cmL = cmR; cnL = cnR;
             }
@@ -4205,7 +3947,6 @@ namespace Rocola
             // el ancho y la paleta de la portada da el color de partida de cada franja; se guarda y solo se rehace
             // cuando cambia algo de eso (AurBases, en DibujoLigeroGpu.cs).
             AurBases(au, puntos);
-            bool realAurora = FondoNatural && AuroraReal;   // 20) los colores de una aurora de verdad (interruptor propio)
             for (int i = 0; i < puntos; i++)
             {
                 float fx = (float)i / AurCols;
@@ -4214,7 +3955,6 @@ namespace Rocola
                 if (v > 1f) v = 1f;
                 float alt = AurPiso + (1f - AurPiso) * v;
                 float rayo = AurRayo(fx, t);                       // el titileo: solo brillo
-                if (FondoNatural) rayo = RayoNatural(rayo);
                 aurR[i] = rayo;
                 aurH[i] = au.Alto * alt * AurOndaAlto(fx, t);      // la forma la pone la musica; el ondeo largo la mece
                 // COLOR de la columna, franja por franja. A lo ancho se funde el tono del extremo grave con el
@@ -4223,18 +3963,16 @@ namespace Rocola
                 // para que todas las cortinas lleven el MISMO degradado y los picos salgan parejos entre si.
                 for (int k = 0; k <= AurFilas; k++)
                 {
-                    float yColor = FondoNatural ? au.BaseY - aurH[i] * AuroraNaturalNivel(k) : au.BaseY - aurH[i] * k / AurFilas;
-                    uint c = realAurora ? AuroraRealBase(k, fx) : FlowColor(aurBase[k * puntos + i],fx,yColor/Math.Max(1,Height));   // la base: AurBases (o los colores reales: AuroraNaturalGpu.cs)
+                    uint c = FlowColor(aurBase[k * puntos + i],fx,(au.BaseY-aurH[i]*k/AurFilas)/Math.Max(1,Height));   // la base: AurBases
                     // Por entero y no por "sin signo": el mismo numero (van de 0 a 255) sin la conversion lenta.
                     float rr = (int)((c >> 16) & 0xFF), gg = (int)((c >> 8) & 0xFF), bb = (int)(c & 0xFF);
                     TonoPorNivel(ref rr, ref gg, ref bb, v);
-                    uint color = ((uint)(int)rr << 16) | ((uint)(int)gg << 8) | (uint)(int)bb;
-                    aurCortina[k * puntos + i] = FondoNatural ? AuroraNaturalVelo(color, k, fx, t, rayo) : color;
+                    aurCortina[k * puntos + i] = ((uint)(int)rr << 16) | ((uint)(int)gg << 8) | (uint)(int)bb;
                 }
                 // EL FILO lleva el color de la PUNTA de su columna (el mismo de la cortina ahi arriba, no
                 // otro): asi el contorno es del color de la aurora, encendido, y no una raya postiza.
-                aurNc[i] = FondoNatural ? aurCortina[AurFilas * puntos + i] & 0xFFFFFFu : aurCortina[AurFilas * puntos + i];
-                uint cPie = realAurora ? AuroraRealPie(fx) : FlowColor(aurBasePie[i],fx,au.BaseY/Math.Max(1,Height));   // la base: AurBases
+                aurNc[i] = aurCortina[AurFilas * puntos + i];
+                uint cPie = FlowColor(aurBasePie[i],fx,au.BaseY/Math.Max(1,Height));   // la base: AurBases
                 float r0 = (int)((cPie >> 16) & 0xFF), g0 = (int)((cPie >> 8) & 0xFF), b0 = (int)(cPie & 0xFF);
                 for (int k = 0; k <= AurSuelo; k++)                   // el suelo: el mismo color, hundiendose
                 {
@@ -4243,14 +3981,11 @@ namespace Rocola
                     aurSueloC[k * puntos + i] = ((uint)(int)rd << 16) | ((uint)(int)gd << 8) | (uint)(int)bd;
                 }
                 float al = (AurAlfaBase + AurAlfaPico * v) * au.Dim;
-                if (FondoNatural) al *= 1.04f;   // más cuerpo; las vetas abren huecos de luz en el velo
-                if (FondoNatural && au.Calma > 0f) al *= PulsoReposoAurora(fx, t, au.Calma);   // 22) en reposo, parches que laten despacio
                 if (al < 0f) al = 0f; else if (al > 1f) al = 1f;
                 aurA[i] = al;
                 // Brillo del FILO: sube con la banda y ademas con el ondeo, para que la veta se vea
                 // recorriendo el contorno igual que recorre la cortina.
                 float ne = (AurNeonBase + AurNeonPico * v) * rayo * au.Dim * au.DimFilo;
-                if (FondoNatural) ne *= .82f;
                 if (ne < 0f) ne = 0f; else if (ne > 1f) ne = 1f;
                 aurNi[i] = ne;
                 // La LINEA del horizonte lleva el color del pie sin matizar (limpio de lado a lado) y su
@@ -4266,13 +4001,11 @@ namespace Rocola
             AurSuaviza(aurH, aurHs);
             if (!AuroraBandas) { AurSuaviza(aurHs, aurH); AurSuaviza(aurH, aurHs); }
             }
-            int n = FondoNatural ? AurMallaNatural(aurV, aurHs, aurCortina, aurSueloC, aurA, aurR, Width, au.BaseY, Height) :
-                AurMalla(aurV, aurHs, aurCortina, aurSueloC, aurA, aurR, Width, au.BaseY, Height);
+            int n = AurMalla(aurV, aurHs, aurCortina, aurSueloC, aurA, aurR, Width, au.BaseY, Height);
             if (n >= 3) stars.DrawMesh(aurV, n / 3);   // TODO el relleno en UNA sola llamada de dibujo
             // Y encima el BRILLO -el filo de neon y la linea del horizonte- en otra sola llamada, esta
             // sumando luz en vez de tapar. Dos llamadas de dibujo para toda la aurora.
-            int nb2 = FondoNatural ? AurBrilloNatural(aurVb, aurHs, aurNc, aurNi, aurLc, aurLi, Width, au.BaseY) :
-                AurBrillo(aurVb, aurHs, aurNc, aurNi, aurLc, aurLi, Width, au.BaseY);
+            int nb2 = AurBrillo(aurVb, aurHs, aurNc, aurNi, aurLc, aurLi, Width, au.BaseY);
             if (nb2 >= 3) stars.DrawMeshAdd(aurVb, nb2 / 3);
         }
 
@@ -4311,7 +4044,6 @@ namespace Rocola
             if (disposing)
             {
                 StopGpu();
-                LiberaMapasEstilo();
                 if (vinetaMapa != null) { vinetaMapa.Dispose(); vinetaMapa = null; }   // el mapa guardado de la vineta
             }
             base.Dispose(disposing);

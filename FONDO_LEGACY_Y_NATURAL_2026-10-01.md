@@ -1,5 +1,8 @@
 # Fondo Legacy y Espacio natural — 1 de octubre de 2026
 
+> **Retirado el 12 de octubre de 2026.** Espacio natural se borró a petición del usuario: Legacy es el único fondo.
+> Este documento queda como historia. Ver `AYUDA_DE_RAIZ_Y_FONDO_LEGACY_MODEST_2026-10-12.md`.
+
 ## Cómo elegirlo
 
 En Ctrl+F3, abrir **Fondo** y elegir **Legacy** o **Espacio natural** en el selector

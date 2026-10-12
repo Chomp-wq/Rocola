@@ -82,20 +82,16 @@ if ($LASTEXITCODE -ne 0) { throw 'Fallo: buscador GPU' }
 & $searchExe (Join-Path $OutputDirectory 'Rocola-cpu.exe')
 if ($LASTEXITCODE -ne 0) { throw 'Fallo: motor comun de busqueda (CPU)' }
 $stutterExe = Join-Path $OutputDirectory 'tironescaratulas.exe'
-foreach ($extraTest in @('colacompacta', 'ajustesfluidez', 'cadenciavisual', 'estilosconfig', 'naturalestelar', 'nebulosanatural', 'espacionatural', 'auroranatural', 'opticanatural', 'preparacionnatural', 'acabadofinalnatural', 'estrella3d', 'ecosgeometria', 'estrellasesionreal', 'pausasestrella', 'audioeficiencia', 'datosdeltas', 'arranqueeficiente', 'fluidezcuadros', 'relojreposo', 'campoestelarbuffers', 'memoriaanalisis', 'memoriaintegrada', 'wavdirecto', 'planbiblioteca', 'corpusacotado', 'discoacotado', 'prefijosguardados', 'flotantesobrantes', 'ruidomalla', 'papeleraportadas', 'mp3medidaligera')) {
+foreach ($extraTest in @('colacompacta', 'ajustesfluidez', 'cadenciavisual', 'hojasfondo', 'estrella3d', 'ecosgeometria', 'estrellasesionreal', 'pausasestrella', 'audioeficiencia', 'datosdeltas', 'arranqueeficiente', 'fluidezcuadros', 'relojreposo', 'campoestelarbuffers', 'memoriaanalisis', 'memoriaintegrada', 'wavdirecto', 'planbiblioteca', 'corpusacotado', 'discoacotado', 'prefijosguardados', 'flotantesobrantes', 'ruidomalla', 'papeleraportadas', 'mp3medidaligera')) {
     $extraExe = Join-Path $OutputDirectory ($extraTest + '.exe')
     & $compiler /nologo /target:exe /optimize+ /warnaserror+ ("/out:$extraExe") /r:System.dll /r:System.Core.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll ("/r:$naudio") (Join-Path $testRoot ($extraTest + '.cs')) (Join-Path $testRoot 'leercodigo.cs')
     if ($LASTEXITCODE -ne 0) { throw "No compila $extraTest" }
     if ($extraTest -eq 'estrellasesionreal') { & $extraExe --autoprueba $exe }
     else { & $extraExe $exe }
     if ($LASTEXITCODE -ne 0) { throw "Fallo: $extraTest" }
-    if ($extraTest -eq 'ajustesfluidez' -or $extraTest -eq 'estilosconfig' -or $extraTest -eq 'memoriaanalisis' -or $extraTest -eq 'memoriaintegrada' -or $extraTest -eq 'wavdirecto') {
+    if ($extraTest -eq 'ajustesfluidez' -or $extraTest -eq 'hojasfondo' -or $extraTest -eq 'memoriaanalisis' -or $extraTest -eq 'memoriaintegrada' -or $extraTest -eq 'wavdirecto') {
         & $extraExe (Join-Path $OutputDirectory 'Rocola-cpu.exe')
         if ($LASTEXITCODE -ne 0) { throw 'Fallo: ajustes comunes (CPU)' }
-    }
-    if ($extraTest -eq 'preparacionnatural') {
-        & $extraExe $exe --dos-hilos
-        if ($LASTEXITCODE -ne 0) { throw 'Fallo: preparacion Natural con afinidad de dos hilos' }
     }
 }
 & $compiler /nologo /target:exe /optimize+ /warnaserror+ ("/out:$stutterExe") /r:System.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll (Join-Path $testRoot 'tironescaratulas.cs')
@@ -107,11 +103,5 @@ $partsExe = Join-Path $OutputDirectory 'partescaratulas.exe'
 if ($LASTEXITCODE -ne 0) { throw 'No compila partescaratulas' }
 if ($SinHal) { & $partsExe $exe --sin-hal } else { & $partsExe $exe }
 if ($LASTEXITCODE -ne 0) { throw 'Fallo: partescaratulas' }
-$naturalHalExe = Join-Path $OutputDirectory 'espacionaturalhal.exe'
-& $compiler /nologo /target:exe /optimize+ /warnaserror+ ("/out:$naturalHalExe") /r:System.dll /r:System.Core.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll (Join-Path $testRoot 'espacionaturalhal.cs')
-if ($LASTEXITCODE -ne 0) { throw 'No compila espacionaturalhal' }
-$naturalHalOutput = Join-Path $OutputDirectory 'fondo-hal'
-if ($SinHal) { & $naturalHalExe $exe $naturalHalOutput --sin-hal } else { & $naturalHalExe $exe $naturalHalOutput }
-if ($LASTEXITCODE -ne 0) { throw 'Fallo: espacionaturalhal' }
-Write-Output "PASS: compilacion GPU/CPU y setenta y una baterias. HAL omitido explicitamente: $SinHal. No se reemplazo ningun ejecutable de produccion. Salida: $OutputDirectory"
+Write-Output "PASS: compilacion GPU/CPU y todas las baterias de la lista (Espacio natural retirado el 12-10-2026). HAL omitido explicitamente: $SinHal. No se reemplazo ningun ejecutable de produccion. Salida: $OutputDirectory"
 } finally { $env:ROCOLA_DATOS = $previousRocolaData }

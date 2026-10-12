@@ -30,7 +30,7 @@ namespace Rocola
         private GpuAurora sampledWave;
         private readonly float[] sampledBands = new float[8];
         private int waveWidth, waveHeight;
-        private bool waveSmooth, waveDefined, waveNatural;
+        private bool waveSmooth, waveDefined;
         private readonly GpuCubeInfo[] sampledCubes = new GpuCubeInfo[3];
         private GpuTrans sampledTransit;
         private bool transitWasPresent;
@@ -62,7 +62,7 @@ namespace Rocola
         private bool SampleWaveAt(ref GpuAurora wave, double now)
         {
             bool force = sampledWave.Has != wave.Has || waveWidth != Width || waveHeight != Height ||
-                waveSmooth != OndasSuaves || waveDefined != AuroraBandas || waveNatural != FondoNatural;
+                waveSmooth != OndasSuaves || waveDefined != AuroraBandas;
             bool update = waveCadence.Step(now, OndasFps, force);
             float baseY = wave.BaseY;
             if (update) {
@@ -70,7 +70,7 @@ namespace Rocola
                 for (int i = 0; i < sampledBands.Length; i++)
                     sampledBands[i] = wave.B != null && i < wave.B.Length ? SafeMoonLevel(wave.B[i]) : 0;
                 sampledWave.B = sampledBands;
-                waveWidth = Width; waveHeight = Height; waveSmooth = OndasSuaves; waveDefined = AuroraBandas; waveNatural = FondoNatural;
+                waveWidth = Width; waveHeight = Height; waveSmooth = OndasSuaves; waveDefined = AuroraBandas;
             }
             wave = sampledWave; wave.BaseY = baseY; // union a la barra suave a cualquier FPS
             return update;

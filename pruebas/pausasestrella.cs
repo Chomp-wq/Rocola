@@ -4,7 +4,7 @@ using System.Reflection;
 using System.Threading;
 using System.Windows.Forms;
 
-// Regresion del reloj compartido por Legacy/Natural. No usa biblioteca ni datos del usuario.
+// Regresion del reloj de la estrella (Legacy, 2D y 3D). No usa biblioteca ni datos del usuario.
 class PausasEstrella
 {
     const BindingFlags All = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance;
@@ -70,11 +70,10 @@ class PausasEstrella
         MethodInfo moment = reloj.GetMethod("MomentoVista", All);
         Check(moment != null, "hay correccion del objetivo vencido antes de mover la estrella");
         if (moment != null) RejillaConocida(moment);
-        foreach (bool natural in new bool[] { false, true })
         foreach (bool threeD in new bool[] { false, true })
         using (Control panel = (Control)Activator.CreateInstance(gpu, true))
         {
-            Set(panel, "FondoNatural", natural); Set(panel, "Estrella3D", threeD);
+            Set(panel, "Estrella3D", threeD);
             Set(panel, "LunaActiva", true); Set(panel, "idleBlend", 1f);
             double now = (double)gpu.GetMethod("AhoraMs", All).Invoke(null, null);
             double predicted = now - 5, period = 1000.0 / 60;
@@ -89,7 +88,7 @@ class PausasEstrella
             // El SO puede pausar este proceso tambien: comprobar la rejilla, no exigir terminar en 11 ms.
             Check(frame > now && frame <= after + period + 1e-6 && Math.Abs(steps - Math.Round(steps)) < 1e-6
                 && (double)Get(panel, "starTravelX") > 0,
-                (natural ? "Natural" : "Legacy") + (threeD ? " 3D" : " 2D") + ": la barra tardia no deja la pose en un refresco pasado");
+                "Legacy" + (threeD ? " 3D" : " 2D") + ": la barra tardia no deja la pose en un refresco pasado");
             // Una peticion manual no hereda la rejilla del ultimo cuadro del bucle.
             Set(panel, "vistoMs", -1d);
             gpu.GetMethod("UpdateMoonMusic", All).Invoke(panel, new object[] { 0f });

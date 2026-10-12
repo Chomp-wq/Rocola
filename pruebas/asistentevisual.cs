@@ -97,12 +97,11 @@ class AsistenteVisual
     { Set(p, "cuadroMs", milliseconds); Call(gpu, p, "AvanzaAsistente"); return Get(p, "asistentePose"); }
     static void Animation()
     {
-        foreach (bool natural in new bool[] { false, true })
         foreach (bool threeD in new bool[] { false, true })
         foreach (int fps in new int[] { 24, 50, 60, 144, 240 })
         using (Control panel = (Control)Activator.CreateInstance(gpu, true))
         {
-            panel.Size = new Size(1024,768); Set(panel, "FondoNatural", natural); Set(panel, "Estrella3D", threeD);
+            panel.Size = new Size(1024,768); Set(panel, "Estrella3D", threeD);
             Set(panel, "ConLuna", true); Set(panel, "LunaActiva", false); Set(panel, "uiBotH", 68);
             Set(panel, "asistenteEstado", State(true, true, null, 1));
             object origin = Call(gpu, panel, "AsistentePoseFondo"); object first = Pose(panel, 1000);
@@ -303,10 +302,9 @@ class AsistenteVisual
         }
         il.Emit(OpCodes.Ret);
         Action<Control,double> frame=(Action<Control,double>)m.CreateDelegate(typeof(Action<Control,double>));
-        foreach(bool natural in new bool[]{false,true})
         foreach(bool threeD in new bool[]{false,true})
         using(Control p=(Control)Activator.CreateInstance(gpu,true)) {
-            p.Size=new Size(1024,768); Set(p,"uiBotH",68); Set(p,"FondoNatural",natural); Set(p,"Estrella3D",threeD);
+            p.Size=new Size(1024,768); Set(p,"uiBotH",68); Set(p,"Estrella3D",threeD);
             Set(p,"asistenteEstado",GestureState("Explicar",1,0));
             for(int i=0;i<300;i++) frame(p,1000+i*1000.0/60);
             double[] times=new double[2000]; int[] gc=new int[]{GC.CollectionCount(0),GC.CollectionCount(1),GC.CollectionCount(2)};
@@ -316,7 +314,7 @@ class AsistenteVisual
             }
             for(int i=0;i<3;i++) Check(GC.CollectionCount(i)==gc[i],"Cuadros sin colecciones GC (no implica causalidad de pausas externas)");
             Array.Sort(times);
-            Console.WriteLine("SINTETICO personalidad "+(natural?"Natural":"Legacy")+"/"+(threeD?"3D":"2D")+
+            Console.WriteLine("SINTETICO personalidad "+"Legacy"+"/"+(threeD?"3D":"2D")+
                 ": CPU p95="+times[1900].ToString("F3")+" ms p99="+times[1980].ToString("F3")+" ms max="+times[1999].ToString("F3")+" ms. No FPS reales.");
         }
     }
@@ -372,10 +370,9 @@ class AsistenteVisual
                 // Incluso con la estrella de fondo apagada, la ayuda debe tener su
                 // propio personaje. Nunca toca ni vuelve a encender esa preferencia.
                 Set(p,"ConLuna",false);
-                foreach(bool natural in new bool[]{false,true})
                 foreach(bool threeD in new bool[]{false,true})
                 {
-                    Set(p,"FondoNatural",natural); Set(p,"Estrella3D",threeD);
+                    Set(p,"Estrella3D",threeD);
                     source.Value=State(true,true,bitmap,1); Call(gpu,p,"PreparaAsistente"); Call(gpu,p,"EnsureLuna");
                     Pose(p,1000); Pose(p,1720);
                     IntPtr texture=(IntPtr)Get(p,"asistenteTex"); Check(texture!=IntPtr.Zero,"Tarjeta subida antes de Begin");
@@ -388,7 +385,7 @@ class AsistenteVisual
                     IntPtr dev=(IntPtr)Get(device,"dev"); Check(Fn<Hr>(dev,42)(dev)>=0,"EndScene asistente HAL");
                     Set(device,"inScene",false); Call(device.GetType(),device,"SueltaPinesVertices");
                     using(Bitmap shot=ReadPixels(device,size)) {
-                        string file=Path.Combine(output,"asistente-"+(natural?"natural":"legacy")+"-"+(threeD?"3d":"2d")+"-"+size.Width+"x"+size.Height+".png");
+                        string file=Path.Combine(output,"asistente-"+"legacy"+"-"+(threeD?"3d":"2d")+"-"+size.Width+"x"+size.Height+".png");
                         shot.Save(file,ImageFormat.Png);
                         int black=0,light=0; PointF c=(PointF)Call(gpu,null,"AsistenteCentroFrente",size.Width,size.Height);
                         float radius=(float)Call(gpu,null,"AsistenteRadioFrente",size.Width,size.Height);
@@ -432,7 +429,7 @@ class AsistenteVisual
                             Call(gpu,p,"DibujaAsistente"); Check(Fn<Hr>(dev,42)(dev)>=0,"EndScene gesto HAL");
                             Set(device,"inScene",false); Call(device.GetType(),device,"SueltaPinesVertices");
                             using(Bitmap shot=ReadPixels(device,size)) shot.Save(Path.Combine(output,
-                                "gesto-"+(natural?"natural":"legacy")+"-"+(threeD?"3d":"2d")+"-"+gesture.ToLowerInvariant()+".png"),ImageFormat.Png);
+                                "gesto-"+"legacy"+"-"+(threeD?"3d":"2d")+"-"+gesture.ToLowerInvariant()+".png"),ImageFormat.Png);
                             Check(Fn<Present>(dev,17)(dev,IntPtr.Zero,IntPtr.Zero,IntPtr.Zero,IntPtr.Zero)>=0,"Present gesto HAL"); serial++;
                         }
                     }

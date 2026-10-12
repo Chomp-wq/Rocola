@@ -31,7 +31,7 @@ try {
     & $tex | Tee-Object -FilePath (Join-Path $out 'texturas.txt')
     if ($LASTEXITCODE -ne 0) { throw 'Fallo texturas compatibles' }
     # Tambien verificar las piezas incorporadas desde GitHub al integrar esta auditoria.
-    foreach ($test in @('naturalideas','ayudaguia')) {
+    foreach ($test in @('ayudaguia')) {
         $testExe = Join-Path $out ("$test.exe")
         & $compiler /nologo /optimize+ /warnaserror+ ("/out:$testExe") @references (Join-Path $PSScriptRoot ("$test.cs")) (Join-Path $PSScriptRoot 'leercodigo.cs')
         if ($LASTEXITCODE -ne 0) { throw "No compila $test" }

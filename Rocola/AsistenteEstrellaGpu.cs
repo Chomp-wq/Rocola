@@ -192,7 +192,7 @@ namespace Rocola
 
         private AsistentePoseGpu AsistentePoseFondo()
         {
-            float enfasis = LunaProtagonista ? Math.Max(MoonEmphasis(SceneDim, true), idleBlend) : 0;
+            float enfasis = LunaProtagonista ? Math.Max(MoonEmphasis(Dim, true), idleBlend) : 0;
             float radio = DetailedMoonDiameter(Height, enfasis) * MoonSceneScale(idleBlend, LunaActiva) * .5f;
             PointF centro = LunaActiva ? StarSceneCenter()
                 : DetailedMoonCenter(Width, Height, moonMotionTime, idleBlend, IdleRise, false);
@@ -334,7 +334,6 @@ namespace Rocola
             }
             else if (lunaTex != IntPtr.Zero)
             {
-                if (FondoNatural) color = 0xFF000000u | (PaletteFlow.Mix(0xD6E4FFu, color, .26f) & 0xFFFFFFu);
                 color = FadeArgb(color, alfa);
                 SetTexQuadA(lunaQuad, cx - radio, cy - radio, cx + radio, cy + radio, luU, luV, color);
                 RotateStarQuad(lunaQuad, cx, cy, asistentePose.Giro);

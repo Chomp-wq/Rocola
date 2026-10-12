@@ -1085,12 +1085,9 @@ namespace Rocola
                     Panel pFon = PaginaFondo(fNom, fVal, fDes, fBot, cTexto, cTenue, cApagado);
                     Panel pPan = PaginaPantalla(fNom, fDes, fBot, cTexto, cTenue, cApagado);
                     string[] nomPag = { "Sonido", "Imagen y rendimiento", "Detalles que dan vida", "Colores del fondo", "El fondo y sus adornos", "La pantalla" };
-                    Size marcoNormal = dlg.ClientSize;
-                    int listoNormal = bOk.Top;
                     Action pintaPag = delegate
                     {
                         if (f3Pagina < 0 || f3Pagina > 5) f3Pagina = 0;
-                        AjustaMarcoFondo(dlg, bOk, lVer, f3Pagina == 4, marcoNormal, listoNormal);
                         // Se ensena o se esconde TODO lo que hay en la ventana menos el marco (titulo,
                         // pestanas y el boton de Listo, que se ven en las tres) y las paginas propias.
                         // Se hace asi y no con una lista de nombres a proposito: una lista se olvida de una

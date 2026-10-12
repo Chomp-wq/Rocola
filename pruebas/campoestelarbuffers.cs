@@ -21,10 +21,12 @@ class CampoEstelarBuffers
     static void Set(object x, string field, object value) { x.GetType().GetField(field, B).SetValue(x, value); }
     static object Call(object x, string method, params object[] args)
     { try { return x.GetType().GetMethod(method, B).Invoke(x, args); } catch (TargetInvocationException e) { throw e.InnerException; } }
-    static object Field(Type type, float density, bool natural, bool fine)
+    static object Field(Type type, float density, bool fine)
     {
         object field = FormatterServices.GetUninitializedObject(type);
-        Set(field, "densidad", density); Set(field, "FondoNatural", natural); Set(field, "EstrellasFinas", fine);
+        Set(field, "densidad", density); Set(field, "EstrellasFinas", fine);
+        // La referencia puede ser un ejecutable de cuando habia Espacio natural: se compara con su Legacy.
+        FieldInfo natural = type.GetField("FondoNatural", B); if (natural != null) natural.SetValue(field, false);
         return field;
     }
     static int Count(int w, int h, float density)
@@ -145,11 +147,10 @@ class CampoEstelarBuffers
     }
     static void RecipesAndChanges()
     {
-        foreach (bool natural in new bool[] { false, true })
             foreach (bool fine in new bool[] { false, true })
                 foreach (float density in new float[] { .1f, .55f, 1f }) {
-                    object field = Field(stars, density, natural, fine);
-                    object old = beforeStars == null ? null : Field(beforeStars, density, natural, fine);
+                    object field = Field(stars, density, fine);
+                    object old = beforeStars == null ? null : Field(beforeStars, density, fine);
                     int step = 0;
                     foreach (Size screen in new Size[] { new Size(3440,1440), new Size(640,480), new Size(1024,768), new Size(1920,1080), new Size(7680,4320) }) {
                         int w = screen.Width, h = screen.Height, seed = unchecked(7731 + step * 40503);
@@ -174,11 +175,11 @@ class CampoEstelarBuffers
                         step++;
                     }
                 }
-        Console.WriteLine("  OK recetas, densidades, tamaños y cruces Legacy/Natural");
+        Console.WriteLine("  OK recetas, densidades, tamaños y cruces (Legacy)");
     }
     static void StableBuffers()
     {
-        object field = Field(stars, 1f, false, true);
+        object field = Field(stars, 1f, true);
         Call(field, "BuildStars", 3440, 1440, 100);
         Array[] first = Arrays(field, false, false);
         object verts = Get(field, "starV");

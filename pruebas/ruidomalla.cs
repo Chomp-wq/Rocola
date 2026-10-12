@@ -25,14 +25,14 @@ class RuidoMalla
     public static int Sampler(IntPtr self, uint stage, uint type, uint value) { return 0; }
     static void Vertex(ref Vtx v, float x, float y, float u, float vv, uint color)
     { v.X = x - .5f; v.Y = y - .5f; v.Z = 0; v.Rhw = 1; v.Color = color; v.U = u; v.V = vv; }
-    static byte[] Referencia(int w, int h, float um, float vm, bool natural)
+    static byte[] Referencia(int w, int h, float um, float vm)
     {
         List<Vtx> all = new List<Vtx>();
         for (int y = 0; y < h; y += 1024) for (int x = 0; x < w; x += 1024)
         {
             float aw = Math.Min(1024, w - x), ah = Math.Min(1024, h - y);
             float u = um * (aw / 1024), v = vm * (ah / 1024);
-            uint color = natural ? 0xD0FFFFFFu : 0xFFFFFFFFu;
+            uint color = 0xFFFFFFFFu;
             Vtx[] q = new Vtx[6];
             Vertex(ref q[0], x, y, 0, 0, color); Vertex(ref q[1], x + aw, y, u, 0, color);
             Vertex(ref q[2], x + aw, y + ah, u, v, color); Vertex(ref q[3], x, y, 0, 0, color);
@@ -59,10 +59,12 @@ class RuidoMalla
         Set(stars, "gpu", device);
         return (Control)Activator.CreateInstance(asm.GetType("Rocola.GpuPanel"), true);
     }
-    static void Escena(Control panel, object stars, Size size, float uv, bool natural)
+    static void Escena(Control panel, object stars, Size size, float uv)
     {
         Set(panel, "stars", null); panel.Size = size; Set(panel, "stars", stars);
-        Set(panel, "ruidoTex", new IntPtr(2)); Set(panel, "ruU", uv); Set(panel, "ruV", uv * .81f); Set(panel, "FondoNatural", natural);
+        Set(panel, "ruidoTex", new IntPtr(2)); Set(panel, "ruU", uv); Set(panel, "ruV", uv * .81f);
+        // El ejecutable de referencia puede ser de cuando habia Espacio natural: se compara con su Legacy.
+        FieldInfo natural = panel.GetType().GetField("FondoNatural", B); if (natural != null) natural.SetValue(panel, false);
     }
     static void Libera(Control panel, object device)
     {
@@ -78,20 +80,20 @@ class RuidoMalla
             if (asm.GetType("Rocola.D3D9Device") == null) { Console.WriteLine("CPU congelado: no existe malla de ruido GPU"); return 0; }
             panel = Monta(asm, out device, out stars);
             if (args.Length > 1) before = Monta(Assembly.Load(File.ReadAllBytes(args[1])), out beforeDevice, out beforeStars);
-            foreach (bool natural in new bool[] { false, true }) foreach (float uv in new float[] { 1f, .73f })
+            foreach (float uv in new float[] { 1f, .73f })
             foreach (Size size in new Size[] { new Size(640,480), new Size(1024,768), new Size(1025,1025),
                 new Size(3440,1440), new Size(3840,2160), new Size(7680,4320), new Size(1024,768) })
             {
-                Escena(panel, stars, size, uv, natural);
+                Escena(panel, stars, size, uv);
                 calls = 0; drawn = null; Call(panel, "DibujaRuido");
-                Check(calls == 1 && Same(drawn, Referencia(size.Width, size.Height, uv, uv * .81f, natural)),
-                    size.Width + "x" + size.Height + " " + (natural ? "Natural" : "Legacy") + ": un envio, vertices/UV/color/orden byte-identicos");
+                Check(calls == 1 && Same(drawn, Referencia(size.Width, size.Height, uv, uv * .81f)),
+                    size.Width + "x" + size.Height + ": un envio, vertices/UV/color/orden byte-identicos");
                 Array mesh = (Array)Get(panel, "ruidoMalla"); int tiles = ((size.Width - 1) / 1024 + 1) * ((size.Height - 1) / 1024 + 1);
                 Check(mesh.Length == tiles * 6, "capacidad limitada a las tejas de la geometria actual");
                 if (before != null)
                 {
                     byte[] batch = drawn;
-                    Escena(before, beforeStars, size, uv, natural); captured = new List<byte>(); calls = 0;
+                    Escena(before, beforeStars, size, uv); captured = new List<byte>(); calls = 0;
                     try { Call(before, "DibujaRuido"); Check(Same(batch, captured.ToArray()), "identico al ejecutable baseline; envios antes=" + calls + ", ahora=1"); }
                     finally { captured = null; calls = 1; drawn = batch; }
                 }
