@@ -8,6 +8,19 @@ sin reducir calidad; los paneles respetan los limites de la tarjeta. Solo Modest
 HD suspendida y renderizado CPU congelado.
 [Cambios, pruebas y limites pendientes](AUDITORIA_GENERAL_MODEST_2026-10-11.md).
 
+## Séptima tanda: lo que pediste con fotos — 12 de octubre de 2026
+
+- **AYUDA con su palabra en 1024×768:** menos aire en las instrucciones y el encabezado cede un poco.
+- **Dentro de un disco** ya no flotan el latido de BUSCAR ni la interrogación de AYUDA.
+- **El menú del asistente** dibuja las flechas y el VERDE en la opción elegida, y se van con la selección. La leyenda
+  de abajo lleva sus botones.
+- **La estrella, más caricaturesca:** estira y aplasta, salta con anticipación, rebota y no se queda quieta. Sin cara.
+- **La barra de progreso neón** ahora es un tubo con resplandor suave, núcleo y una chispa en la punta.
+- **Tope a ROJO + ARRIBA/ABAJO:** cerrar siempre; abrir, no dos veces en 0,7 s ni más de seis en 30 s.
+- **Los mensajes de la atracción**, mejor dichos, y uno nuevo que presenta la ayuda.
+
+[Qué se hizo, cómo se comprobó y lo que queda para que elijas](SEPTIMA_TANDA_MODEST_2026-10-12.md).
+
 ## Sexta tanda: los textos del modo atracción — 12 de octubre de 2026
 
 - **Los mensajes que se turnan** («Toca un botón y elige…», «Busca cualquier canción…») se cortaban al final en

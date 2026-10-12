@@ -3370,10 +3370,53 @@ namespace Rocola
             float length = (float)(width * progressDraw);
             if (!(length > 0)) return;
             uint tint = ProgressLight(p.Color, 0.35f);
-            if (p.Neon && NeonIntenso) ProgressBand(x, y, length, h * 2.1f, 0x32000000u | tint);
-            if (p.Neon) ProgressBand(x, y, length, Math.Max(1, h - 1), (NeonIntenso ? 0x78000000u : 0x2D000000u) | tint);
-            ProgressBand(x, y, length, Math.Max(1, h * (NeonIntenso && p.Neon ? 0.65f : 0.48f)), (NeonIntenso && p.Neon ? 0xE0000000u : 0xA0000000u) | tint);
-            if (p.Neon) ProgressBand(x, y, length, Math.Max(1, h * (NeonIntenso ? 0.26f : 0.16f)), 0xFF000000u | ProgressLight(p.Color, NeonIntenso ? 0.96f : 0.88f));
+            if (p.Neon) { TuboNeon(x, y, length, h, p.Color, NeonIntenso, now); return; }
+            ProgressBand(x, y, length, Math.Max(1, h * 0.48f), 0xA0000000u | tint);
+        }
+
+        // EL TUBO DE NEON, REDISENADO (peticion del 12-10-2026: "la barra de progreso con el neon activado se ve rara").
+        // Antes eran cuatro franjas planas una encima de otra: el "resplandor" era un rectangulo de bordes duros arriba y
+        // abajo, y la punta, cuadrada. Ahora es como un tubo de verdad:
+        //  - el resplandor se desvanece hacia arriba y hacia abajo (degradado en los vertices, sin textura);
+        //  - el tubo es de su color en los bordes y mas claro en medio;
+        //  - un nucleo fino casi blanco, la luz del gas;
+        //  - en la punta, una chispa redonda que late: alli es donde va la cancion.
+        // Sin "neon intenso", lo mismo pero mas tenue. Todo son cuadros de color y un halo: nada se hornea por cuadro.
+        private void TuboNeon(float x, float y, float largo, float h, uint color, bool intenso, double ahoraMs)
+        {
+            uint tint = ProgressLight(color, 0.18f), claro = ProgressLight(color, 0.66f), nucleo = ProgressLight(color, 0.95f);
+            float halo = h * (intenso ? 2.6f : 1.7f);
+            BandaSuave(x, y, largo, halo, tint, (intenso ? 0x6E000000u : 0x34u << 24) | tint);
+            float tubo = Math.Max(2f, h * 0.70f);
+            BandaSuave(x, y, largo, tubo, (intenso ? 0xB4000000u : 0x8C000000u) | tint, 0xF2000000u | claro);
+            ProgressBand(x, y, largo, Math.Max(1f, h * 0.20f), 0xFF000000u | nucleo);
+            double t = (double.IsNaN(ahoraMs) ? 0 : ahoraMs) / 1000.0;
+            float latido = 0.5f + 0.5f * (float)Math.Sin(t * 4.6);
+            uint a = (uint)((intenso ? 150 : 95) * (0.72f + 0.28f * latido));
+            stars.GlowBatchBegin(2);
+            stars.GlowBatchAdd(x + largo, y, h * (1.7f + 0.5f * latido), (a << 24) | claro);
+            stars.GlowBatchAdd(x + largo, y, h * 0.75f, (Math.Min(255u, a + 70u) << 24) | nucleo);
+            stars.GlowBatchEnd();
+        }
+        // Una banda horizontal que se desvanece hacia arriba y hacia abajo: 'borde' en los filos, 'centro' en medio
+        // (el alfa va en el color). La punta derecha tambien se desvanece, como ProgressBand.
+        private void BandaSuave(float x, float y, float w, float alto, uint borde, uint centro)
+        {
+            if (!(w > 0) || !(alto > 0)) return;
+            if ((borde >> 24) == 0) borde &= 0x00FFFFFFu;
+            MediaBanda(x, y - alto * 0.5f, y, w, borde, centro);
+            MediaBanda(x, y, y + alto * 0.5f, w, centro, borde);
+        }
+        private void MediaBanda(float x, float y0, float y1, float w, uint arriba, uint abajo)
+        {
+            float edge = Math.Min(1.5f, w * 0.5f);
+            SetTexQuadA(progressQuad, x, y0, x + w - edge, y1, 1, 1, arriba);
+            progressQuad[2].Color = abajo; progressQuad[4].Color = abajo; progressQuad[5].Color = abajo;
+            stars.DrawColorQuad(progressQuad);
+            SetTexQuadA(progressQuad, x + w - edge, y0, x + w + edge, y1, 1, 1, arriba);
+            progressQuad[2].Color = abajo; progressQuad[4].Color = abajo; progressQuad[5].Color = abajo;
+            progressQuad[1].Color &= 0x00FFFFFFu; progressQuad[2].Color &= 0x00FFFFFFu; progressQuad[4].Color &= 0x00FFFFFFu;
+            stars.DrawColorQuad(progressQuad);
         }
         private static uint ProgressLight(uint c, float f)
         {

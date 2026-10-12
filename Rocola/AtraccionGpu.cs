@@ -442,14 +442,25 @@ namespace Rocola
         }
 
         // Los mensajes que se turnan debajo de la ficha.
+        // MEJOR DICHOS (peticion del 12-10-2026: "que se entiendan mejor y que al cliente de verdad le interese lo que la
+        // rocola ofrece; no super largos, mejor formulados"). Cortos, de tu a tu y cada uno con una razon para acercarse:
+        // que hay mucho para elegir, cuanto rinde una moneda, lo que esta sonando esta noche, que se puede buscar por el
+        // nombre y que hay quien te ensene (la ayuda de la estrella, ROJO + ABAJO). Caben en una pantalla 4:3 (sextatanda).
         private void ArmaMensajes()
         {
             mensajes.Clear();
-            int n = (attractView != null) ? attractView.SongCount : 0;
-            mensajes.Add(n > 0 ? "Toca un botón y elige entre " + n.ToString("#,0") + " canciones" : "Toca un botón para elegir tu canción");
-            mensajes.Add("Pon tu canción: una moneda = " + CreditsPerCoin + " canciones");
-            if (topNoche && topFilas.Count > 0) mensajes.Add("Lo más pedido esta noche: «" + topFilas[0].Titulo + "»");
-            mensajes.Add("Busca cualquier canción con el botón rojo y la flecha");
+            mensajes.AddRange(MensajesAtraccion(attractView != null ? attractView.SongCount : 0, CreditsPerCoin,
+                topNoche && topFilas.Count > 0 ? topFilas[0].Titulo : null));
+        }
+        internal static List<string> MensajesAtraccion(int canciones, int porMoneda, string favorita)
+        {
+            List<string> m = new List<string>(5);
+            m.Add(canciones > 0 ? "¡Elige tu canción! Hay " + canciones.ToString("#,0") + " esperándote" : "¡Elige tu canción! Toca cualquier botón");
+            m.Add("Una moneda = " + porMoneda + (porMoneda == 1 ? " canción" : " canciones") + ". ¡Tú pones la música!");
+            if (!string.IsNullOrEmpty(favorita)) m.Add("La favorita de esta noche: «" + favorita + "»");
+            m.Add("¿Buscas una? ROJO + ARRIBA y escríbela");
+            m.Add("¿Primera vez? ROJO + ABAJO y te guío");
+            return m;
         }
 
         // ======================================================================================================

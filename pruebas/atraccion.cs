@@ -371,8 +371,10 @@ class Atraccion
         List<string> ms = (List<string>)Get(f, "mensajes");
         int cpc = Cte<int>(form, "CreditsPerCoin");
         bool precio = false, busca = false, noche = false, elige = false;
-        foreach (string m in ms) { if (m.Contains("una moneda = " + cpc + " canciones")) precio = true; if (m.Contains("botón rojo")) busca = true; if (m.Contains("esta noche")) noche = true; if (m.Contains((12480).ToString("#,0"))) elige = true; }
-        Check(ms.Count == 3 && precio && busca && elige && !noche, "los mensajes: como elegir (entre " + (12480).ToString("#,0") + " canciones), lo que da una moneda de verdad (" + cpc + ") y como buscar");
+        // Reescritos el 12-10-2026: el de buscar dice los dos botones (ROJO + ARRIBA) y hay uno nuevo que presenta la ayuda.
+        bool ayuda = false;
+        foreach (string m in ms) { if (m.Contains("moneda = " + cpc + " canciones")) precio = true; if (m.Contains("ROJO + ARRIBA")) busca = true; if (m.Contains("ROJO + ABAJO")) ayuda = true; if (m.Contains("esta noche")) noche = true; if (m.Contains((12480).ToString("#,0"))) elige = true; }
+        Check(ms.Count == 4 && precio && busca && ayuda && elige && !noche, "los mensajes: como elegir (entre " + (12480).ToString("#,0") + " canciones), lo que da una moneda de verdad (" + cpc + "), como buscar y como pedir ayuda");
         MethodInfo fm = M(form, "FaseMensaje");
         bool uno = true, sube = true; int cambios = 0, antK = -1;
         for (double t = 0; t < 30000; t += 16.7)
@@ -507,8 +509,9 @@ class Atraccion
         IList filas = (IList)Get(f, "topFilas");
         Check(filas.Count == 3 && (int)Get(filas[0], "Veces") == 4 && (string)Get(filas[0], "Titulo") == (string)Get(ps[4], "Title") && (string)Get(filas[0], "Portada") == "c:/m/Juan Gabriel/cover.jpg"
               && (int)Get(f, "topTotal") == 9, "las mas pedidas, con su titulo, su artista y la portada de su disco; la que ya no esta en la biblioteca se salta");
-        List<string> ms = (List<string>)Get(f, "mensajes"); bool hay = false; foreach (string m in ms) if (m == "Lo más pedido esta noche: «" + (string)Get(ps[4], "Title") + "»") hay = true;
-        Check(hay && ms.Count == 4, "y el escaparate lo anuncia en sus mensajes");
+        // Los mensajes se reescribieron el 12-10-2026 (mejor dichos, y uno nuevo que presenta la ayuda): son cinco con lista.
+        List<string> ms = (List<string>)Get(f, "mensajes"); bool hay = false; foreach (string m in ms) if (m == "La favorita de esta noche: «" + (string)Get(ps[4], "Title") + "»") hay = true;
+        Check(hay && ms.Count == 5, "y el escaparate lo anuncia en sus mensajes");
         Set(f, "topNoche", false); Run(f, "ArmaMensajes");
         bool calla = true; foreach (string m in (List<string>)Get(f, "mensajes")) if (m.Contains("esta noche")) calla = false;
         Set(f, "topNoche", true); Run(f, "ArmaMensajes");

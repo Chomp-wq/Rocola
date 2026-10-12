@@ -34,6 +34,7 @@ namespace Rocola
         private double asistenteInicio;
         private int asistenteOrigenW, asistenteOrigenH;
         private float asistenteFrente;
+        private float asistenteEstira;   // estira y aplasta de este cuadro (AsistentePersonalidadGpu.cs); 0 = forma de siempre
         private IntPtr asistenteTex;
         private Bitmap asistenteBmp; // referencia prestada; no se libera aqui
         private int asistenteVer = -1, asistenteW, asistenteH;
@@ -163,6 +164,49 @@ namespace Rocola
                 desde.Y + (hasta.Y - desde.Y) * p - Math.Max(0, salto) * (float)(arco * arco));
         }
 
+        // EL LATIDO DEL VERDE, QUE VIAJA CON LA SELECCION (12-10-2026). El boton VERDE dibujado en la opcion elegida
+        // (Form1.AsistenteControlesOpcion) late, y al moverse de opcion el latido se DESLIZA de una a otra en vez de
+        // saltar: se ve que los controles van con la seleccion. Solo cuentas y un halo por cuadro (sin hornear).
+        private float asistenteSelVis = -1f; private double asistenteSelMs;
+        private void LatidoOpcionAsistente(Rectangle panel, float sube, float alfa)
+        {
+            if (!(alfa > .02f) || panel.Width < 64 || panel.Height < 64) return;
+            double ahora = cuadroMs >= 0 ? cuadroMs : AhoraMs();
+            int sel = Math.Max(0, Math.Min(Form1.AsistenteOpciones - 1, asistenteEstado.Seleccion));
+            asistenteSelVis = AsistenteSigueSeleccion(asistenteSelVis, sel, (ahora - asistenteSelMs) / 1000.0, asistenteEstado.Animada);
+            asistenteSelMs = ahora;
+            RectangleF v = AsistenteVerdeEn(panel.Width, panel.Height, asistenteSelVis);
+            if (v.Width <= 0) return;
+            double t = ahora / 1000.0;
+            float p = .5f + .5f * (float)Math.Sin(t * 4.2);
+            float cx = panel.Left + v.X + v.Width * .5f, cy = panel.Top + sube + v.Y + v.Height * .5f;
+            stars.GlowBatchBegin(1);
+            stars.GlowBatchAdd(cx, cy, v.Width * (1.05f + .22f * p), ((uint)((70 + 120 * p) * SafeMoonLevel(alfa)) << 24) | 0x0046C869u);
+            stars.GlowBatchEnd();
+        }
+        // Hacia donde va el latido: se acerca a la opcion elegida con un frenado suave (~0,2 s). -1 = aun no esta.
+        internal static float AsistenteSigueSeleccion(float actual, int destino, double dt, bool animada)
+        {
+            if (actual < 0 || !animada || double.IsNaN(dt) || dt > 1.0) return destino;
+            if (dt < 0) dt = 0;
+            float k = 1f - (float)Math.Exp(-dt * 16.0);
+            float nuevo = actual + (destino - actual) * k;
+            return Math.Abs(destino - nuevo) < .004f ? destino : nuevo;
+        }
+        // El boton VERDE de la opcion 'pos' (con decimales: entre dos opciones mientras se desliza), en coordenadas del globo.
+        internal static RectangleF AsistenteVerdeEn(int w, int h, float pos)
+        {
+            if (float.IsNaN(pos) || float.IsInfinity(pos)) return RectangleF.Empty;
+            pos = Math.Max(0f, Math.Min(Form1.AsistenteOpciones - 1, pos));
+            int i0 = (int)Math.Floor(pos), i1 = Math.Min(Form1.AsistenteOpciones - 1, i0 + 1);
+            float f = pos - i0;
+            Rectangle o0 = Form1.AsistenteOpcionRect(w, h, i0), o1 = Form1.AsistenteOpcionRect(w, h, i1);
+            Rectangle a, b, v0, v1;
+            Form1.AsistenteControlesOpcion(o0, out a, out b, out v0);
+            Form1.AsistenteControlesOpcion(o1, out a, out b, out v1);
+            return new RectangleF(v0.X + (v1.X - v0.X) * f, v0.Y + (v1.Y - v0.Y) * f, v0.Width, v0.Height);
+        }
+
         private bool AsistenteOcultaFondo
         { get { return asistenteEstado.Visible || asistenteDibujando; } }
 
@@ -272,7 +316,9 @@ namespace Rocola
                 asistentePose.Centro.Y += asistentePose.Radio * asistenteExpresion.Rebote;
                 asistentePose.Pitch += asistenteExpresion.Reverencia;
                 asistentePose.Radio *= asistenteExpresion.Escala;
+                asistenteEstira = asistenteExpresion.Estira;
             }
+            else asistenteEstira = 0f;
             if (!asistenteEstado.Visible && t >= 1)
             {
                 asistenteDibujando = false; asistenteFrente = 0;
@@ -308,7 +354,9 @@ namespace Rocola
                 SetTexQuadA(asistenteQuad, panel.Left, panel.Top + sube, panel.Right, panel.Bottom + sube,
                     asistenteU, asistenteV, ((uint)(panelAlpha * 255) << 24) | 0x00FFFFFFu);
                 stars.DrawQuad(asistenteTex, asistenteQuad);
+                if (!guia && asistenteEstado.Visible) LatidoOpcionAsistente(panel, sube, panelAlpha);
             }
+            if (guia || !asistenteEstado.Visible) asistenteSelVis = -1f;   // al volver a abrir el menu, el latido nace en su sitio
             float alfa = SafeMoonLevel(asistentePose.Alfa);
             if (alfa <= .001f) return;
             float cx = asistentePose.Centro.X, cy = asistentePose.Centro.Y, radio = asistentePose.Radio;
@@ -320,6 +368,7 @@ namespace Rocola
                 stars.GlowBatchAdd(cx, cy + radio * 1.46f, radio * .6f, ((uint)(18 * presencia * alfa) << 24) | tinte);
                 stars.GlowBatchEnd();
                 int n = AsistenteMiembrosExpresivos(asistenteMiembros, cx, cy, radio, presencia, alfa, ExpresionGuia(cx, cy, presencia), asistentePose.Giro);
+                AsistenteEstiraMalla(asistenteMiembros, n, cx, cy + radio * 1.40f, asistenteEstira);
                 if (n > 0) stars.DrawMesh(asistenteMiembros, n / 3);
             }
             uint color = StarColorAt(cx, cy);
@@ -329,6 +378,8 @@ namespace Rocola
                 int n = PoseEstrella(e3caras, 0, e3filo, 0, cx, cy, radio * Estrella3dEscala,
                     asistentePose.Yaw, asistentePose.Pitch, asistentePose.Giro, color, alfa * 255,
                     false, 1.1f, out filo, out mejor, out brillo);
+                AsistenteEstiraMalla(e3filo, filo, cx, cy + radio * 1.40f, asistenteEstira);
+                AsistenteEstiraMalla(e3caras, n, cx, cy + radio * 1.40f, asistenteEstira);
                 if (filo > 0) stars.DrawMesh(e3filo, filo / 3);
                 if (n > 0) stars.DrawMesh(e3caras, n / 3);
             }
@@ -337,9 +388,11 @@ namespace Rocola
                 color = FadeArgb(color, alfa);
                 SetTexQuadA(lunaQuad, cx - radio, cy - radio, cx + radio, cy + radio, luU, luV, color);
                 RotateStarQuad(lunaQuad, cx, cy, asistentePose.Giro);
+                AsistenteEstiraMalla(lunaQuad, lunaQuad.Length, cx, cy + radio * 1.40f, asistenteEstira);
                 stars.DrawQuad(lunaTex, lunaQuad);
             }
             int brazos = AsistenteBrazosExpresivos(asistenteBrazos, cx, cy, radio, presencia, alfa, ExpresionGuia(cx, cy, presencia), asistentePose.Giro);
+            AsistenteEstiraMalla(asistenteBrazos, brazos, cx, cy + radio * 1.40f, asistenteEstira);
             if (brazos > 0) stars.DrawMesh(asistenteBrazos, brazos / 3);
             if (guia && asistenteEstado.Visible) DibujaFlechaGuia(cx, cy, radio, presencia);
         }

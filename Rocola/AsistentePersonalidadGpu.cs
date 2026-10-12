@@ -11,6 +11,10 @@ namespace Rocola
     {
         public float ManoIzqX, ManoIzqY, ManoDerX, ManoDerY, PieIzqX, PieIzqY, PieDerX, PieDerY;
         public float Inclinacion, Rebote, Escala, Desplazamiento, Reverencia;
+        // ESTIRA Y APLASTA, como en los dibujos animados (12-10-2026: "animaciones mas caricaturescas y que se sientan
+        // mas vivas"). > 0 se estira hacia arriba (y adelgaza), < 0 se aplasta contra el suelo (y ensancha); el ancla son
+        // los pies. Solo el cuerpo y los miembros: ningun rasgo de cara.
+        public float Estira;
     }
 
     internal sealed partial class GpuPanel
@@ -127,7 +131,121 @@ namespace Rocola
             }
             // Pequena respiracion del cuerpo; amplitud constante, sin retexturizar.
             e.Escala += .012f * (float)(1 - Math.Cos(vida * 1.8));
+            AsistenteCaricatura(ref e, vida, edad, gesto, fuerza);
             return e;
+        }
+
+        // LA CAPA DE DIBUJO ANIMADO, encima de cada gesto: anticipacion (se agacha antes de saltar), estira y aplasta,
+        // rebotes que se pasan y vuelven, y los brazos que siguen al cuerpo con un poco de retraso. Mientras espera, no
+        // se queda quieta: cada 7 s hace una cosa distinta (un saltito, golpecitos con el pie o un vaiven). Todo son
+        // funciones suaves del tiempo: a 240 cuadros por segundo ningun valor da un salto.
+        private static void AsistenteCaricatura(ref AsistenteExpresionGpu e, double vida, double edad, AsistenteGestoGpu gesto, float fuerza)
+        {
+            float aire = 0f;
+            // Respira estirandose un poco, no solo creciendo.
+            e.Estira += .028f * (float)Math.Sin(vida * 1.8);
+            // MIENTRAS ESPERA: un ciclo de 7 s y en su final, una de tres cosas.
+            double ciclo = Math.Floor(vida / 7.0), fase = vida - ciclo * 7.0;
+            int cual = (int)(ciclo % 3);
+            // Con un gesto en curso, el juego de la espera entra con un fundido cuando el gesto ya se apago (4,6 s).
+            float espera = gesto == AsistenteGestoGpu.Reposo ? 1f : AsistenteSuaviza((edad - 4.6) / .5);
+            if (espera > 0f)
+            {
+                if (cual == 0)
+                {
+                    float r0 = 0f, s0 = 0f, a0 = 0f;
+                    AsistenteSaltito(fase, 5.0, .95, .20f, ref r0, ref s0, ref a0);
+                    e.Rebote += espera * r0; e.Estira += espera * s0; aire += espera * a0;
+                }
+                else if (cual == 1)
+                {
+                    float toca = espera * AsistenteImpulso(fase, 4.6, 1.6);
+                    e.PieDerY -= .11f * toca * (float)Math.Abs(Math.Sin(fase * 9.0));
+                    e.Inclinacion += .05f * toca;
+                    e.Estira -= .03f * toca * (float)Math.Abs(Math.Sin(fase * 9.0));
+                }
+                else
+                {
+                    float mece = espera * AsistenteImpulso(fase, 4.4, 2.0);
+                    e.Inclinacion += .11f * mece * (float)Math.Sin(fase * 6.0);
+                    e.Desplazamiento += .04f * mece * (float)Math.Sin(fase * 3.0);
+                    e.ManoIzqY -= .18f * mece; e.ManoDerY -= .18f * mece * (float)(.5 + .5 * Math.Sin(fase * 6.0));
+                }
+            }
+            switch (gesto)
+            {
+                case AsistenteGestoGpu.Saludar:
+                    AsistenteSaltito(edad, .02, .85, .17f, ref e.Rebote, ref e.Estira, ref aire);
+                    break;
+                case AsistenteGestoGpu.Senalar:
+                    // Se lanza hacia la opcion y rebota como un resorte hasta quedarse.
+                    e.Inclinacion += .075f * AsistenteResorte(edad, 15.0, 5.5);
+                    e.Estira += .07f * AsistenteImpulso(edad, 0, .32) - .04f * AsistenteImpulso(edad, .26, .3);
+                    break;
+                case AsistenteGestoGpu.Confirmar:
+                    AsistenteSaltito(edad, 0, .9, .26f, ref e.Rebote, ref e.Estira, ref aire);
+                    break;
+                case AsistenteGestoGpu.Credito:
+                    // Dos saltos de alegria, el segundo mas chico, con un giro de un lado a otro.
+                    AsistenteSaltito(edad, 0, .78, .30f, ref e.Rebote, ref e.Estira, ref aire);
+                    AsistenteSaltito(edad, .80, .70, .18f, ref e.Rebote, ref e.Estira, ref aire);
+                    e.Inclinacion += .09f * fuerza * (float)Math.Sin(edad * 7.0) * AsistenteImpulso(edad, 0, 1.6);
+                    break;
+                case AsistenteGestoGpu.Despedir:
+                    AsistenteSaltito(edad, .05, .75, .12f, ref e.Rebote, ref e.Estira, ref aire);
+                    break;
+                case AsistenteGestoGpu.Explicar:
+                    e.Estira += .035f * fuerza * (float)Math.Sin(edad * 8.4);   // asiente con todo el cuerpo al explicar
+                    break;
+                case AsistenteGestoGpu.Buscar:
+                    float piensa = fuerza * (1 - AsistenteSuaviza((edad - 1.4) / .7)), invita = fuerza * AsistenteSuaviza((edad - 1.4) / .7);
+                    e.Estira += -.06f * piensa + .05f * invita;   // se encoge pensando y se estira al ofrecer
+                    break;
+                case AsistenteGestoGpu.Volver:
+                    e.Estira -= .05f * AsistenteImpulso(edad, .05, .7);
+                    break;
+            }
+            // En el aire los brazos se van arriba (siguen al cuerpo) y los pies se juntan.
+            e.ManoIzqY -= .30f * aire; e.ManoDerY -= .30f * aire;
+            e.PieIzqX += .05f * aire; e.PieDerX -= .05f * aire;
+            if (e.Estira > .35f) e.Estira = .35f; else if (e.Estira < -.35f) e.Estira = -.35f;
+        }
+
+        // Un saltito de dibujo animado entre 'inicio' e 'inicio + dur' (en segundos): se agacha y se aplasta (22 %),
+        // sube y baja algo estirado (48 %), cae aplastandose y se asienta con un rebotito (30 %). Suma a lo que ya haya.
+        internal static void AsistenteSaltito(double t, double inicio, double dur, float alto, ref float rebote, ref float estira, ref float aire)
+        {
+            if (!(dur > 0)) return;
+            double u = (t - inicio) / dur;
+            if (!(u > 0) || u >= 1) return;
+            if (u < .22)
+            {
+                float c = AsistenteSuaviza(u / .22);
+                estira -= .13f * c; rebote += .035f * c;
+            }
+            else if (u < .70)
+            {
+                double v = (u - .22) / .48;
+                float sale = 1f - AsistenteSuaviza(v / .18), arco = (float)Math.Sin(v * Math.PI);
+                estira += -.13f * sale + .10f * arco;
+                rebote += .035f * sale - alto * arco;
+                aire += arco;
+            }
+            else
+            {
+                double w = (u - .70) / .30;
+                float cae = w < .45 ? (float)Math.Sin(w / .45 * Math.PI) : 0f;
+                float vuelve = w >= .45 ? (float)Math.Sin((w - .45) / .55 * Math.PI) : 0f;
+                estira += -.12f * cae + .035f * vuelve;
+                rebote += .03f * cae;
+            }
+        }
+
+        // Un resorte que se pasa y vuelve: 0 al empezar, oscila y se apaga. 'frec' en rad/s, 'amortigua' en 1/s.
+        internal static float AsistenteResorte(double t, double frec, double amortigua)
+        {
+            if (!(t > 0) || double.IsInfinity(t)) return 0f;
+            return (float)(Math.Exp(-amortigua * t) * Math.Sin(frec * t));
         }
 
         internal static AsistenteExpresionGpu AsistenteMezcla(AsistenteExpresionGpu a, AsistenteExpresionGpu b, float p)
@@ -141,7 +259,7 @@ namespace Rocola
                 Inclinacion = a.Inclinacion+(b.Inclinacion-a.Inclinacion)*p, Rebote = a.Rebote+(b.Rebote-a.Rebote)*p,
                 Desplazamiento = a.Desplazamiento+(b.Desplazamiento-a.Desplazamiento)*p,
                 Reverencia = a.Reverencia+(b.Reverencia-a.Reverencia)*p,
-                Escala = a.Escala+(b.Escala-a.Escala)*p };
+                Escala = a.Escala+(b.Escala-a.Escala)*p, Estira = a.Estira+(b.Estira-a.Estira)*p };
         }
 
         private void AvanzaPersonalidad(double ahora, bool entrada)
@@ -210,6 +328,17 @@ namespace Rocola
             AsistenteSegmento(v, ref n, cx+r*.98f, cy+r*derY, cx+r*e.ManoDerX, cy+r*e.ManoDerY, ancho, negro);
             AsistenteDisco(v, ref n, cx+r*e.ManoIzqX, cy+r*e.ManoIzqY, ancho*1.7f, negro);
             AsistenteDisco(v, ref n, cx+r*e.ManoDerX, cy+r*e.ManoDerY, ancho*1.7f, negro);
+        }
+
+        // Estira o aplasta lo ya armado alrededor de un ancla (los pies): x se ensancha cuando y se encoge, como una pelota
+        // de goma. 'estira' > 0 alarga hacia arriba. En el sitio, sin reservar nada.
+        internal static void AsistenteEstiraMalla(D3D9.Vtx[] v, int n, float ax, float ay, float estira)
+        {
+            if (v == null || n <= 0 || float.IsNaN(estira) || float.IsInfinity(estira) || Math.Abs(estira) < .0005f) return;
+            if (estira > .35f) estira = .35f; else if (estira < -.35f) estira = -.35f;
+            float sy = 1f + estira, sx = 1f - estira * .5f;
+            if (n > v.Length) n = v.Length;
+            for (int i = 0; i < n; i++) { v[i].X = ax + (v[i].X - ax) * sx; v[i].Y = ay + (v[i].Y - ay) * sy; }
         }
 
         private static void AsistenteRotaMalla(D3D9.Vtx[] v,int n,float cx,float cy,float giro)

@@ -1514,7 +1514,7 @@ namespace Rocola
                         { buf[n].Cx = hx + cx; buf[n].Cy = hy + cy; buf[n].R = r; buf[n].Argb = (uint)argb; n++; }
                     }
                 }
-                if (buscaView != null && buscaView.Visible && n < buf.Length)
+                if (buscaView != null && buscaView.Visible && FilaBuscaAyudaVisible() && n < buf.Length)   // dentro de un disco la casilla no se pinta: su latido tampoco
                 {
                     float bcx, bcy, br;
                     if (buscaView.GetLatido(out bcx, out bcy, out br))

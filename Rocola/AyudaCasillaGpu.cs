@@ -156,6 +156,16 @@ namespace Rocola
             int pide = headerView != null ? headerView.AnchoPedido(filaH) : 0;   // si no cabe, se queda con lo que haya
             // Con la palabra si al encabezado le queda lo que pide; si no, sin ella; y si ni asi le quedan 90 px, sin AYUDA.
             bool compacta = busW + 10 + AyudaView.Ancho(filaH, false) + 12 + pide > libre;
+            // LA PALABRA AYUDA EN PANTALLAS BAJAS (peticion del 12-10-2026, captura a 1024x768 con la casilla sin su
+            // palabra). Antes de quitarsela, el encabezado cede hasta un 15 % de lo que pide: su nombre se achica solo un
+            // poco (HeaderView.RenderContent lo encoge de medio en medio punto hasta caber) y el numero de pagina pasa a
+            // su forma corta. "LO MAS SONADO" sigue grande; la casilla de AYUDA dice lo que es.
+            int pideApretado = pide * 85 / 100;
+            if (compacta && busW + 10 + AyudaView.Ancho(filaH, false) + 12 + pideApretado <= libre)
+            {
+                compacta = false;
+                pide = libre - (busW + 10 + AyudaView.Ancho(filaH, false) + 12);   // todo lo que queda, que es al menos el 85 %
+            }
             int ancho = AyudaView.Ancho(filaH, compacta);
             bool cabe = busW + 10 + ancho + 12 + 90 <= libre;
             int grupo = busW + (cabe ? 10 + ancho : 0);
@@ -205,10 +215,20 @@ namespace Rocola
             return x;
         }
 
+        // LA FILA DE BUSCAR Y AYUDA SE VE: la pared de discos esta a la vista. Dentro de un disco la textura de la interfaz
+        // solo pinta las instrucciones, la etiqueta y la lista; las dos casillas siguen marcadas como visibles (la pared
+        // las recupera al volver), y lo que la tarjeta les pone encima -el latido azul de BUSCAR y la interrogacion que
+        // bota- se quedaba flotando sobre el disco (aviso del usuario del 12-10-2026, con foto). Lo mismo con el buscador
+        // abierto, la atraccion, el video a pantalla completa y la configuracion de botones.
+        private bool FilaBuscaAyudaVisible()
+        {
+            return !(panelSongs != null && panelSongs.Visible) && !searchOpen && !attractOn && !videoFull && !configMode;
+        }
+
         // El signo, en coordenadas de la pantalla, cuando se ve (si no, vacio).
         private RectangleF AyudaIconoRect()
         {
-            if (ayudaView == null || !ayudaView.Visible || searchOpen || attractOn || videoFull || configMode) return RectangleF.Empty;
+            if (ayudaView == null || !ayudaView.Visible || !FilaBuscaAyudaVisible()) return RectangleF.Empty;
             RectangleF r = ayudaView.Icono();
             r.Offset(ayudaView.Left, ayudaView.Top);
             return r;
@@ -218,6 +238,7 @@ namespace Rocola
         private bool AyudaTocada(Point p)
         {
             if (ayudaView == null || !ayudaView.Visible || !ayudaView.Bounds.Contains(p)) return false;
+            if (!FilaBuscaAyudaVisible()) return false;   // dentro de un disco (o con el buscador) no esta: el toque es para lo de abajo
             // Con la ayuda abierta (preguntando o guiando), tocar la casilla la vuelve a guardar: es la gemela
             // tactil de ROJO + ABAJO, que tambien abre y cierra. El mismo toque que la abrio no la cierra.
             if (asistenteVisible)
@@ -227,6 +248,7 @@ namespace Rocola
             }
             string motivo = MotivoSinAyuda();
             if (motivo != null) { AvisaSinAyuda(motivo); return true; }
+            if (!topeAyuda.Pide(Environment.TickCount)) { AvisaTopeCombo(); return true; }   // el mismo tope que ROJO + ABAJO
             AbreAsistente();   // tambien mientras regresa a su sitio: da media vuelta desde donde iba
             return true;
         }

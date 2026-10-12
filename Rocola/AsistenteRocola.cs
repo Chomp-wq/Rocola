@@ -181,8 +181,11 @@ namespace Rocola
             if (asistenteVisible) asistenteActividadTick = Environment.TickCount;
             if (atajo)
             {
-                // Tambien mientras la estrella regresa: da media vuelta desde donde iba.
-                if (asistenteVisible) CierraAsistente(); else AbreAsistente();
+                // Tambien mientras la estrella regresa: da media vuelta desde donde iba. Abrir tiene tope (TopeAperturas,
+                // Form1.cs): cerrar no.
+                if (asistenteVisible) CierraAsistente();
+                else if (topeAyuda.Pide(Environment.TickCount)) AbreAsistente();
+                else AvisaTopeCombo();
                 return true;
             }
             if (!AsistenteCapturaEntrada) return false;   // guiando: el boton hace lo suyo de siempre
@@ -310,6 +313,27 @@ namespace Rocola
             return new Rectangle(x, (int)(h * (.50f + i * .135f)), Math.Max(1, w - x - derecha), Math.Max(22, (int)(h * .115f)));
         }
 
+        // LOS CONTROLES DIBUJADOS EN LA OPCION ELEGIDA (peticion del 12-10-2026: "pon los controles en su pantalla,
+        // graficos, para que el cliente lo entienda mas facil; en cada casilla que el cliente se mueva los controles se
+        // moveran con cada seleccion"). Dentro de la opcion elegida, a la derecha: las dos flechas de subir y bajar (rojas,
+        // como en la cruceta; la que no lleva a ningun lado, apagada) y el boton VERDE de aceptar. Las otras opciones no
+        // llevan nada: los controles van con la seleccion. Coordenadas del globo, como AsistenteOpcionRect.
+        internal static void AsistenteControlesOpcion(Rectangle r, out Rectangle arriba, out Rectangle abajo, out Rectangle verde)
+        {
+            int d = Math.Max(12, (int)(r.Height * .62f)), k = Math.Max(9, (int)(r.Height * .40f));
+            int cy = r.Top + r.Height / 2;
+            verde = new Rectangle(r.Right - 10 - d, cy - d / 2, d, d);
+            int kx = verde.Left - 8 - k;
+            arriba = new Rectangle(kx, cy - k - 1, k, k);
+            abajo = new Rectangle(kx, cy + 1, k, k);
+        }
+        // Lo que ocupan esos controles al final de la opcion (con su aire): el nombre de la opcion acaba antes.
+        internal static int AsistenteAnchoControles(Rectangle r)
+        {
+            Rectangle a, b, v; AsistenteControlesOpcion(r, out a, out b, out v);
+            return r.Right - a.Left + 8;
+        }
+
         internal static int AsistenteGloboMargen(int w)
         { return Math.Min(Math.Max(0, w - 1), Math.Max(12, w / 20) + Math.Min(32, Math.Max(18, w / 18))); }
 
@@ -358,18 +382,51 @@ namespace Rocola
                 g.DrawString("¿Qué quieres hacer?", titulo, blanco, new RectangleF(x, h * .12f, tw, h * .17f));
                 g.DrawString("Elige y yo te voy señalando qué botón tocar. Tú lo haces y la música sigue sonando.",
                     cuerpo, tenue, new RectangleF(x, h * .30f, tw, h * .19f));
-                formato.LineAlignment = StringAlignment.Center;
+                formato.LineAlignment = StringAlignment.Center; formato.FormatFlags = StringFormatFlags.NoWrap;
                 string[] nombres = { "Poner una canción", "Buscar una canción por su nombre", "Aprender a moverme" };
-                for (int i = 0; i < AsistenteOpciones; i++)
+                Color rojo = Color.FromArgb(228, 72, 72), verdeC = Color.FromArgb(70, 200, 105), apagado = Color.FromArgb(104, 112, 134);
+                // Todas las opciones con la misma letra, la que deje caber el nombre mas largo junto a los controles.
+                Rectangle r0 = AsistenteOpcionRect(w, h, 0);
+                float libreTxt = Math.Max(1, r0.Width - 24 - AsistenteAnchoControles(r0));
+                Font fOpc = opcion, propia = null;
+                for (int paso = 0; paso < 8; paso++)
                 {
-                    Rectangle r = AsistenteOpcionRect(w, h, i);
-                    using (GraphicsPath camino = RoundedPath(r, Math.Min(14, r.Height / 3)))
-                    using (SolidBrush relleno = new SolidBrush(i == seleccion ? Color.FromArgb(235, 42, 87, 130) : Color.FromArgb(150, 28, 42, 68)))
-                    using (Pen contorno = new Pen(i == seleccion ? Color.FromArgb(150, 235, 188) : Color.FromArgb(90, 113, 150), i == seleccion ? 2f : 1f))
-                    { g.FillPath(relleno, camino); g.DrawPath(contorno, camino); }
-                    g.DrawString(nombres[i], opcion, blanco, new RectangleF(r.Left + 12, r.Top, Math.Max(1, r.Width - 24), r.Height), formato);
+                    float mas = 0; for (int i = 0; i < nombres.Length; i++) mas = Math.Max(mas, g.MeasureString(nombres[i], fOpc, PointF.Empty, formato).Width);
+                    if (mas <= libreTxt || fOpc.Size <= opcion.Size * .70f) break;
+                    if (propia != null) propia.Dispose();
+                    propia = new Font(opcion.FontFamily, Math.Max(opcion.Size * .70f, fOpc.Size * Math.Max(.70f, libreTxt / mas * .98f)), opcion.Style, GraphicsUnit.Pixel);
+                    fOpc = propia;
                 }
-                g.DrawString("FLECHAS: elegir · VERDE: aceptar · ROJO: salir", pequeno, azul, new RectangleF(x, h * .925f, tw, h * .065f));
+                try
+                {
+                    for (int i = 0; i < AsistenteOpciones; i++)
+                    {
+                        Rectangle r = AsistenteOpcionRect(w, h, i);
+                        bool elegida = i == seleccion;
+                        using (GraphicsPath camino = RoundedPath(r, Math.Min(14, r.Height / 3)))
+                        using (SolidBrush relleno = new SolidBrush(elegida ? Color.FromArgb(235, 42, 87, 130) : Color.FromArgb(150, 28, 42, 68)))
+                        using (Pen contorno = new Pen(elegida ? Color.FromArgb(150, 235, 188) : Color.FromArgb(90, 113, 150), elegida ? 2f : 1f))
+                        { g.FillPath(relleno, camino); g.DrawPath(contorno, camino); }
+                        g.DrawString(nombres[i], fOpc, blanco, new RectangleF(r.Left + 12, r.Top, Math.Max(1, r.Width - 24 - (elegida ? AsistenteAnchoControles(r) : 0)), r.Height), formato);
+                        if (!elegida) continue;
+                        Rectangle ka, kb, kv; AsistenteControlesOpcion(r, out ka, out kb, out kv);
+                        TeclaFlecha(g, ka.X, ka.Y + ka.Height / 2, ka.Width, i > 0 ? rojo : apagado, 0);
+                        TeclaFlecha(g, kb.X, kb.Y + kb.Height / 2, kb.Width, i < AsistenteOpciones - 1 ? rojo : apagado, 1);
+                        CtrlDot(g, kv.X, kv.Y + kv.Height / 2, kv.Width, verdeC);
+                    }
+                }
+                finally { if (propia != null) propia.Dispose(); }
+                // La leyenda de abajo, con los botones dibujados como son (antes: "FLECHAS: elegir · VERDE: aceptar · ROJO: salir").
+                int ld = Math.Max(12, Math.Min(26, (int)(h * .046f))), lcy = (int)(h * .955f);
+                float lx = x;
+                Color azulC = Color.FromArgb(150, 215, 255);
+                TeclaFlecha(g, lx, lcy, ld, rojo, 0); lx += ld + 3;
+                TeclaFlecha(g, lx, lcy, ld, rojo, 1); lx += ld + 6;
+                lx = CtrlTxt(g, pequeno, "elegir", lx, lcy, azulC) + ld;
+                lx = CtrlDot(g, lx, lcy, ld, verdeC) + 6;
+                lx = CtrlTxt(g, pequeno, "aceptar", lx, lcy, azulC) + ld;
+                lx = CtrlDot(g, lx, lcy, ld, rojo) + 6;
+                CtrlTxt(g, pequeno, "salir", lx, lcy, azulC);
             }
             return bmp;
         }

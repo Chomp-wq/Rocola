@@ -97,6 +97,10 @@ GPU="$GPU quintatanda"
 # 'sextatanda': los textos del modo atraccion caben enteros en nueve resoluciones (mensajes, ficha, lista de la noche).
 CPU="$CPU sextatanda"
 GPU="$GPU sextatanda"
+# 'septimatanda': AYUDA con su palabra en 1024x768, nada flotando dentro de un disco, controles del asistente, estrella
+# caricaturesca, tope de ROJO + ARRIBA/ABAJO y el tubo neon.
+CPU="$CPU septimatanda"
+GPU="$GPU septimatanda"
 # 'cielovivo': el cielo vivo de Legacy (12-10-2026): luna, lluvias, festejo, cometa, profundidad, hora y reflejo (CieloVivoGpu.cs).
 CPU="$CPU cielovivo"
 GPU="$GPU cielovivo"

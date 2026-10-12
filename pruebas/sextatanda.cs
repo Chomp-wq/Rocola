@@ -51,8 +51,15 @@ class SextaTanda
     {
         int[][] res = { new[] { 640, 480 }, new[] { 800, 600 }, new[] { 1024, 768 }, new[] { 1280, 720 }, new[] { 1280, 1024 },
                         new[] { 1366, 768 }, new[] { 1440, 900 }, new[] { 1600, 900 }, new[] { 1920, 1080 } };
-        List<string> msgs = new List<string> { "Toca un botón y elige entre 12,345 canciones", "Pon tu canción: una moneda = 4 canciones",
-            "Lo más pedido esta noche: «Amor Eterno (En Vivo Desde el Palacio de Bellas Artes)»", "Busca cualquier canción con el botón rojo y la flecha" };
+        // Los mensajes DE VERDAD (Form1.MensajesAtraccion, reescritos el 12-10-2026) con una biblioteca grande y una
+        // favorita de nombre largo; y los de antes, que eran los que se cortaban.
+        MethodInfo arma = F.GetMethod("MensajesAtraccion", B);
+        List<string> msgs = arma != null ? (List<string>)arma.Invoke(null, new object[] { 123456, 4, "Amor Eterno (En Vivo Desde el Palacio de Bellas Artes)" })
+            : new List<string>();
+        Check(arma != null && msgs.Count == 5, "cinco mensajes con lista de la noche (uno presenta la ayuda)");
+        foreach (string m in msgs) Check(m.StartsWith("La favorita") || m.Length <= 48, "mensajes cortos: «" + m + "»");   // la favorita trae su titulo
+        msgs.AddRange(new string[] { "Toca un botón y elige entre 12,345 canciones", "Pon tu canción: una moneda = 4 canciones",
+            "Lo más pedido esta noche: «Amor Eterno (En Vivo Desde el Palacio de Bellas Artes)»", "Busca cualquier canción con el botón rojo y la flecha" });
         MethodInfo hm = F.GetMethod("HorneaMensajes", B), col = F.GetMethod("ColumnaEscaparate", B), altoMsg = F.GetMethod("AltoMensaje", B);
         MethodInfo ficha = F.GetMethod("HorneaFichaVitrina", B), geo = F.GetMethod("GeometriaTop", B), top = F.GetMethod("HorneaTop", B);
         MethodInfo acorta = F.GetMethod("AcortaCita", B), palabras = F.GetMethod("AcortaPorPalabras", B);

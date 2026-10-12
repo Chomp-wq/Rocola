@@ -1438,7 +1438,9 @@ namespace Rocola
             int filaH = H * 44 / 768; if (filaH < 44) filaH = 44; else if (filaH > 76) filaH = 76;
             bool helpJusta = false;
 #if ROCOLA_GPU
-            helpJusta = gpuEnabled && W < 1000;   // pantallas angostas con tarjeta: menos aire, mas encabezado
+            // Pantallas angostas con tarjeta: menos aire entre los tres grupos de instrucciones. Hasta 1180 de ancho
+            // (era < 1000): en 1024x768 esos 22 px son los que le faltaban a la casilla de AYUDA para decir su palabra.
+            helpJusta = gpuEnabled && W < 1180;
             if (helpBar != null) helpBar.Justa = helpJusta;
 #endif
             int helpW = Math.Max(120, Math.Min(helpJusta ? HelpBar.AnchoJusta(filaH) : HelpBar.Ancho(filaH), barraDer - helpX));
@@ -1936,6 +1938,28 @@ namespace Rocola
         private int salirCuenta = 0;
         private DateTime salirUltima = DateTime.MinValue;
 
+        // EL TOPE DE LAS COMBINACIONES DEL ROJO. Abrir el buscador (ROJO + ARRIBA) o la ayuda (ROJO + ABAJO) cuesta: se
+        // reacomoda la pantalla, se hornea el panel y entra animado. Apretando sin parar se podia abrir y cerrar cientos de
+        // veces seguidas. Ahora abrir tiene tope (TopeAperturas); cerrar no, para que nunca te quedes dentro sin salir.
+        // Se crean al primer uso (no con valor inicial): asi tambien los tiene un formulario armado a mano en las pruebas.
+        private TopeAperturas topeBuscadorCampo, topeAyudaCampo;
+        private TopeAperturas topeBuscador { get { return topeBuscadorCampo ?? (topeBuscadorCampo = new TopeAperturas(6, 30000, 700)); } }
+        internal TopeAperturas topeAyuda { get { return topeAyudaCampo ?? (topeAyudaCampo = new TopeAperturas(6, 30000, 700)); } }
+        private int topeAvisoTick;
+        private bool TopeBuscadorDeja()
+        {
+            if (topeBuscador.Pide(Environment.TickCount)) return true;
+            AvisaTopeCombo();
+            return false;
+        }
+        private void AvisaTopeCombo()
+        {
+            int t = Environment.TickCount;
+            if (topeAvisoTick != 0 && unchecked(t - topeAvisoTick) >= 0 && unchecked(t - topeAvisoTick) < 1500) return;
+            topeAvisoTick = t == 0 ? 1 : t;
+            ShowToast("Espera un momento y vuelve a intentarlo", Color.FromArgb(200, 130, 35));
+        }
+
         private int PidenSalir(Keys keyData)
         {
             if (keyData != (Keys.Control | Keys.Alt | Keys.Q)) return 0;
@@ -2089,7 +2113,9 @@ namespace Rocola
             // ABRIR / CERRAR EL BUSCADOR: ROJO + ARRIBA. Antes era ROJO + VERDE y nadie lo encontraba,
             // porque no habia forma de saber que era un combo. Ahora los dos botones estan DIBUJADOS en la
             // casilla de BUSCAR que parpadea arriba en medio, asi que no hay nada que adivinar.
-            if (IsUp(kc) && BackHeld()) { ToggleSearch(); return true; }
+            // CON TOPE (peticion del 12-10-2026: "que no se pueda abrir y cerrar cientos de veces el buscador y el
+            // asistente"). Cerrar se puede siempre; ABRIR, no dos veces en menos de 0,7 s ni mas de seis en 30 s.
+            if (IsUp(kc) && BackHeld()) { if (searchOpen || TopeBuscadorDeja()) ToggleSearch(); return true; }
 
             // FRENO DE LA AUTO-REPETICION DE LAS FLECHAS.
             //
@@ -2759,6 +2785,32 @@ namespace Rocola
                 x = CtrlDot(g, x, cy, d, RedC);
                 x = CtrlTxt(g, f, "Volver", x + gap, cy, txt);
             }
+        }
+    }
+
+    // Como mucho 'rafaga' aperturas en 'ventanaMs', y nunca dos en menos de 'minMs'. Cuenta con el reloj de Windows en
+    // milisegundos (TickCount) y aguanta su vuelta (a los 24,9 y 49,7 dias). Pura: se prueba sin ventana.
+    internal sealed class TopeAperturas
+    {
+        private readonly int[] marcas; private int n, i; private readonly int ventanaMs, minMs;
+        internal TopeAperturas(int rafaga, int ventanaMs, int minMs)
+        { marcas = new int[Math.Max(1, rafaga)]; this.ventanaMs = Math.Max(0, ventanaMs); this.minMs = Math.Max(0, minMs); }
+        // true = se puede (y queda apuntada); false = todavia no.
+        internal bool Pide(int ahora)
+        {
+            int len = marcas.Length;
+            if (n > 0)
+            {
+                int d = unchecked(ahora - marcas[(i - 1 + len) % len]);
+                if (d >= 0 && d < minMs) return false;
+            }
+            if (n == len)
+            {
+                int d = unchecked(ahora - marcas[i]);   // la mas vieja de la rafaga
+                if (d >= 0 && d < ventanaMs) return false;
+            }
+            marcas[i] = ahora; i = (i + 1) % len; if (n < len) n++;
+            return true;
         }
     }
 }
