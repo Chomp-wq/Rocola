@@ -236,7 +236,9 @@ class AyudaGuia
         Check(Llama(gpu, "RenderFrame", "GpuPanel.PreparaAyudaIcono") && Llama(gpu, "RenderFrame", "GpuPanel.DibujaInterrogacion"), "la interrogacion se prepara antes y se dibuja con la interfaz");
         Check(!Llama(gpu, "DibujaInterrogacion", "GpuPanel.BakeInterrogacion"), "no se hornea al dibujar");
         Check(Llama(form, "LayoutControls", "Form1.AcomodaAyuda"), "la casilla se acomoda al lado de BUSCAR");
-        Check(Llama(form, "DrawGuiaRojo", "Form1.PintaGuiaRojoAyuda") && form.GetMethod("GuiaRojoFlechaAyuda", B) != null, "la guia del rojo senala tambien la ayuda");
+        // Desde el 12-10-2026 la guia ya no pinta una flecha suelta junto a la casilla: enciende la tecla de su flecha.
+        Check(Llama(form, "DrawGuiaRojo", "Form1.PintaGuiaRojoAyuda") && Llama(form, "DrawGuiaRojo", "Form1.TeclaAyuda")
+              && form.GetMethod("GuiaRojoTecla", B) != null, "la guia del rojo senala tambien la ayuda (enciende la tecla de su flecha)");
         Check(Llama(gpu, "AvanzaAsistente", "GpuPanel.AvanzaGlobosGuia") && Llama(gpu, "AvanzaAsistente", "GpuPanel.AsistentePoseFrente"), "la estrella sigue a su globo");
         foreach (string m in new string[] { "DibujaFocoGuia", "DibujaFlechaGuia", "MarcoGuia", "FlechaGuia", "DibujaInterrogacion", "AvanzaGlobosGuia" })
             foreach (Codigo.Paso p in Codigo.Pasos(gpu.GetMethod(m, B))) Check(p.Op != 0x8D, "sin reservar arreglos al dibujar: " + m);

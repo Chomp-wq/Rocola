@@ -8,6 +8,17 @@ sin reducir calidad; los paneles respetan los limites de la tarjeta. Solo Modest
 HD suspendida y renderizado CPU congelado.
 [Cambios, pruebas y limites pendientes](AUDITORIA_GENERAL_MODEST_2026-10-11.md).
 
+## Quinta tanda de fallos, y las flechas de BUSCAR y AYUDA — 12 de octubre de 2026
+
+- **Con el rojo mantenido**, ya no salen triangulitos sueltos junto a BUSCAR y AYUDA: se enciende la tecla de flecha
+  que cada casilla ya trae (roja, con la flecha en blanco), y brilla más al apretar esa dirección. Solo con tarjeta
+  gráfica.
+- **El reproductor de video que no se puede crear** se suelta antes de devolver el crédito. Así ya no hace caer la
+  rocola al reacomodar la pantalla.
+- **El buscador** aguantó 300.000 búsquedas al azar con letras raras sin un solo error.
+
+[Qué se buscó y cómo se comprobó](QUINTA_TANDA_MODEST_2026-10-12.md).
+
 ## Cuarta tanda de fallos — 12 de octubre de 2026
 
 - **40 cortes de luz de golpe** en momentos al azar: siempre volvieron los mismos créditos, la misma canción y la misma

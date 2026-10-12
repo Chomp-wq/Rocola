@@ -277,6 +277,7 @@ namespace Rocola
             {
                 videoOn = false;
                 try { if (video != null) video.Visible = false; } catch { }
+                SueltaVideoRoto();   // antes de devolver el credito: eso reacomoda la pantalla y volveria a tocar el control
                 RefundCredit();   // compensacion al cliente: el video no abrio
                 ShowToast("No se pudo abrir el video: credito devuelto", Color.FromArgb(200, 80, 70));
                 EstadoPasajero("No se pudo abrir el video: " + MotivoFallo(ex), EstadoPasajeroMs);
@@ -285,6 +286,25 @@ namespace Rocola
                 // el video no arranco: pasar al siguiente sin trabar la cola (tras desenredar la pila de PlayNext)
                 try { if (this.IsHandleCreated) this.BeginInvoke((MethodInvoker)delegate { PlayNext(); }); } catch { }
             }
+        }
+
+        // EL REPRODUCTOR QUE NO SE PUDO CREAR (quinta tanda, 12-10-2026). Si el reproductor de Windows no esta (un XP
+        // sin Windows Media Player, o registrado a medias), el control se quedaba puesto en la ventana sin nada dentro.
+        // Cada reacomodo de la pantalla (devolver el credito, una moneda, el buscador) lo volvia a mostrar u ocultar, y
+        // eso puede tronar fuera de cualquier 'try': con la prueba de mono, donde el reproductor no existe, la rocola
+        // se cerraba al pedir un video. Si no da su reproductor, se quita y se suelta: el siguiente video lo vuelve a
+        // intentar desde cero, y si tampoco, devuelve el credito igual.
+        private void SueltaVideoRoto()
+        {
+            VideoHost v = video;
+            if (v == null) return;
+            bool sirve = false;
+            try { sirve = v.GetOcxObj() != null; } catch { }
+            if (sirve) return;   // el reproductor esta: fallo ESE video, el control se queda para el siguiente
+            video = null;
+            try { Controls.Remove(v); } catch { }
+            try { v.Dispose(); } catch { }
+            Diag("video: reproductor no disponible, se suelta el control");
         }
 
         // Detiene/oculta el video SIN tocar la cola (lo usan PlayNext y el cierre del buscador).

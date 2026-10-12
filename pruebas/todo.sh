@@ -91,6 +91,9 @@ GPU="$GPU terceratanda"
 # se rompe a media cancion.
 CPU="$CPU cuartatanda"
 GPU="$GPU cuartatanda"
+# 'quintatanda': con el rojo mantenido se encienden las teclas de flecha de BUSCAR y AYUDA, sin flechitas sueltas fuera.
+CPU="$CPU quintatanda"
+GPU="$GPU quintatanda"
 # 'cielovivo': el cielo vivo de Legacy (12-10-2026): luna, lluvias, festejo, cometa, profundidad, hora y reflejo (CieloVivoGpu.cs).
 CPU="$CPU cielovivo"
 GPU="$GPU cielovivo"

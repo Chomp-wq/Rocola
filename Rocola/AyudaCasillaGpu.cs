@@ -92,8 +92,12 @@ namespace Rocola
                 x += Compacta ? 6 : 12;
                 x = CtrlDot(g, x, cy, d, Color.FromArgb(228, 72, 72)) + 4;
                 x = CtrlTxt(g, fTxt, "+", x, cy, tinta) + 6;
+                Tecla = new Rectangle((int)x, cy - (int)(d * 0.9f) / 2, (int)(d * 0.9f), (int)(d * 0.9f));   // la guia del rojo la resalta
                 FlechaAbajo(g, x, cy, (int)(d * 0.9f), Color.FromArgb(228, 72, 72));
             }
+            // Donde quedo la tecla de la flecha la ultima vez que se dibujo (coordenadas del control; vacio si aun no).
+            // Con el ROJO mantenido, la guia la resalta a ella en vez de pintar otra flecha fuera (GuiaRojoGpu.cs).
+            public Rectangle Tecla;
 
             // La flecha de ABAJO, en una tecla redondeada (la gemela de la de BUSCAR, que apunta arriba).
             internal static void FlechaAbajo(Graphics g, float x, int cy, int d, Color c)

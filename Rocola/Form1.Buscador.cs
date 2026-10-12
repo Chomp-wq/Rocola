@@ -264,8 +264,16 @@ namespace Rocola
                 // Y los dos botones que hay que apretar, dibujados tal cual son.
                 x = CtrlDot(g, x, cy, d, Color.FromArgb(228, 72, 72)) + 4;
                 x = CtrlTxt(g, fTxt, "+", x, cy, tinta) + 6;
+#if ROCOLA_GPU
+                Tecla = new Rectangle((int)x, cy - (int)(d * 0.9f) / 2, (int)(d * 0.9f), (int)(d * 0.9f));   // la guia del rojo la resalta
+#endif
                 Flecha(g, x, cy, (int)(d * 0.9f), Color.FromArgb(228, 72, 72));
             }
+#if ROCOLA_GPU
+            // Donde quedo la tecla de la flecha la ultima vez que se dibujo (coordenadas del control; vacio si aun no).
+            // Con el ROJO mantenido, la guia la resalta a ella en vez de pintar otra flecha fuera (GuiaRojoGpu.cs).
+            public Rectangle Tecla;
+#endif
 
             // Donde va el halo del parpadeo cuando lo dibuja la tarjeta grafica (coordenadas dentro del control).
             public bool GetLatido(out float cx, out float cy, out float r)

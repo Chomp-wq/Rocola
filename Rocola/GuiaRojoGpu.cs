@@ -66,21 +66,22 @@ namespace Rocola
         }
 
         internal static void PintaGuiaRojo(Graphics g, Rectangle barra, Rectangle busca)
-        { PintaGuiaRojoAyuda(g, barra, busca, Rectangle.Empty); }
+        { PintaGuiaRojoAyuda(g, barra, busca, Rectangle.Empty, Rectangle.Empty, Rectangle.Empty); }
 
-        // Con la casilla de AYUDA: su contorno y una flecha ROJA hacia abajo (rojo + abajo abre la ayuda).
-        internal static void PintaGuiaRojoAyuda(Graphics g, Rectangle barra, Rectangle busca, Rectangle ayuda)
+        // LAS FLECHAS DE BUSCAR Y AYUDA, LAS DE SU CASILLA (peticion del 12-10-2026: "en vez de que aparezcan las
+        // flechitas feas al presionar el boton rojo, que mejor se resalten las que ya tienen en su contenedor"). Cada
+        // casilla ya dibuja su tecla de flecha (arriba en BUSCAR, abajo en AYUDA). Antes, con el rojo mantenido, salia
+        // ademas un triangulito suelto en el hueco de al lado; ahora no sale nada fuera: la tecla de dentro se enciende
+        // (un filo claro y un velo encima, aqui) y la tarjeta le pone el brillo que late (FillGuiaRojoGlows), mas
+        // fuerte al apretar esa direccion. 'teclaBusca'/'teclaAyuda' van en las mismas coordenadas que las casillas.
+        internal static void PintaGuiaRojoAyuda(Graphics g, Rectangle barra, Rectangle busca, Rectangle ayuda, Rectangle teclaBusca, Rectangle teclaAyuda)
         {
             if (ayuda.Width > 0 && ayuda.Height > 0)
             {
                 using (Pen borde = new Pen(Color.FromArgb(230, 255, 214, 94), 2f))
                 using (GraphicsPath contorno = RoundedPath(new Rectangle(ayuda.X, ayuda.Y, ayuda.Width - 1, ayuda.Height - 1), Math.Min(14, ayuda.Height / 2)))
                     g.DrawPath(borde, contorno);
-                using (SolidBrush rojo = new SolidBrush(Color.FromArgb(255, 236, 76, 72)))
-                {
-                    Rectangle f = GuiaRojoFlechaAyuda(ayuda);
-                    g.FillPolygon(rojo, new PointF[] { new PointF(f.Left, f.Top), new PointF(f.Right, f.Top), new PointF(f.Left + f.Width * .5f, f.Bottom) });
-                }
+                ResaltaTecla(g, teclaAyuda, false);
             }
             using (Pen borde = new Pen(Color.FromArgb(230, 255, 214, 94), 2f))
             using (SolidBrush oro = new SolidBrush(Color.FromArgb(255, 255, 222, 102)))
@@ -99,23 +100,52 @@ namespace Rocola
                 {
                     using (GraphicsPath contorno = RoundedPath(new Rectangle(busca.X, busca.Y, busca.Width - 1, busca.Height - 1), Math.Min(14, busca.Height / 2)))
                         g.DrawPath(borde, contorno);
-                    // En el hueco entre controles: no tapa la lupa ni el texto.
-                    float x = busca.Left - 7, y = busca.Top + busca.Height * .5f;
-                    g.FillPolygon(oro, new PointF[] { new PointF(x, y - 7), new PointF(x - 4, y + 7), new PointF(x + 4, y + 7) });
+                    ResaltaTecla(g, teclaBusca, true);
                 }
             }
         }
 
-        // La flecha roja de la ayuda va en el hueco a la izquierda de su casilla, como la de BUSCAR.
-        internal static Rectangle GuiaRojoFlechaAyuda(Rectangle ayuda)
-        { return new Rectangle(ayuda.Left - 9, ayuda.Top + ayuda.Height / 2 - 7, 8, 14); }
+        // La tecla encendida, como una tecla de verdad cuando se ilumina: llena de rojo vivo, la flecha en blanco
+        // encima (en el mismo sitio y con la misma forma que la de la casilla) y un filo claro un poco por fuera, sin
+        // salirse de la casilla. Un velo claro encima la dejaba deslavada (se vio en la vista previa).
+        internal static void ResaltaTecla(Graphics g, Rectangle k, bool arriba)
+        {
+            if (k.Width < 4 || k.Height < 4) return;
+            int radio = Math.Max(3, k.Width / 4);
+            using (GraphicsPath dentro = RoundedPath(k, radio))
+            using (SolidBrush rojo = new SolidBrush(Color.FromArgb(250, 232, 70, 66)))
+                g.FillPath(rojo, dentro);
+            Rectangle f = Rectangle.Inflate(k, 2, 2);
+            using (GraphicsPath filo = RoundedPath(f, radio + 2))
+            using (Pen pn = new Pen(Color.FromArgb(240, 255, 214, 200), 2f))
+                g.DrawPath(pn, filo);
+            // Las mismas cuentas que Flecha (BUSCAR) y FlechaAbajo (AYUDA).
+            int d = k.Width, cy = k.Y + d / 2;
+            float cx = k.X + d / 2f, t = d * 0.30f, an = d * 0.24f, s = arriba ? 1f : -1f;
+            using (SolidBrush blanco = new SolidBrush(Color.FromArgb(255, 255, 250, 246)))
+                g.FillPolygon(blanco, new PointF[] { new PointF(cx, cy - s * t), new PointF(cx - an, cy + s * t * 0.62f), new PointF(cx + an, cy + s * t * 0.62f) });
+        }
+
+        // La tecla de la flecha de una casilla, en coordenadas de la pantalla (vacia si la casilla no se ve o aun no se
+        // dibujo). 'tecla' viene en coordenadas de la casilla.
+        internal static Rectangle GuiaRojoTecla(Rectangle casilla, Rectangle tecla)
+        {
+            if (casilla.Width <= 0 || casilla.Height <= 0 || tecla.Width <= 0 || tecla.Height <= 0) return Rectangle.Empty;
+            Rectangle r = new Rectangle(casilla.X + tecla.X, casilla.Y + tecla.Y, tecla.Width, tecla.Height);
+            return Rectangle.Intersect(r, casilla) == r ? r : Rectangle.Empty;   // una medida vieja que ya no cabe: nada
+        }
+        private Rectangle TeclaBusca()
+        { return buscaView != null && buscaView.Visible ? GuiaRojoTecla(buscaView.Bounds, buscaView.Tecla) : Rectangle.Empty; }
+        private Rectangle TeclaAyuda()
+        { return ayudaView != null && ayudaView.Visible ? GuiaRojoTecla(ayudaView.Bounds, ayudaView.Tecla) : Rectangle.Empty; }
 
         private void DrawGuiaRojo(Graphics g)
         {
             if (!GuiaRojoVisible()) return;
             PintaGuiaRojoAyuda(g, letterBar.Bounds,
                 buscaView != null && buscaView.Visible ? buscaView.Bounds : Rectangle.Empty,
-                ayudaView != null && ayudaView.Visible ? ayudaView.Bounds : Rectangle.Empty);
+                ayudaView != null && ayudaView.Visible ? ayudaView.Bounds : Rectangle.Empty,
+                TeclaBusca(), TeclaAyuda());
         }
 
         private bool GuiaDireccionHeld(Keys configurada, Keys flecha)
@@ -133,23 +163,17 @@ namespace Rocola
                     r = GuiaRojoFlecha(letterBar.Bounds, i == 1);
                     pulsa = GuiaDireccionHeld(i == 0 ? keyLeft : keyRight, i == 0 ? Keys.Left : Keys.Right);
                 }
-                else if (i == 2)
-                {
-                    if (buscaView == null || !buscaView.Visible) continue;
-                    r = buscaView.Bounds;
-                    r = new Rectangle(r.Left - 11, r.Top + r.Height / 2 - 7, 8, 14);
-                    pulsa = GuiaDireccionHeld(keyUp, Keys.Up);
-                }
                 else
                 {
-                    if (ayudaView == null || !ayudaView.Visible) continue;
-                    r = GuiaRojoFlechaAyuda(ayudaView.Bounds);
-                    pulsa = GuiaDireccionHeld(keyDown, Keys.Down);
+                    // El brillo va sobre la tecla de la flecha de la casilla (la roja de dentro), no en el hueco de fuera.
+                    r = i == 2 ? TeclaBusca() : TeclaAyuda();
+                    if (r.Width <= 0) continue;
+                    pulsa = i == 2 ? GuiaDireccionHeld(keyUp, Keys.Up) : GuiaDireccionHeld(keyDown, Keys.Down);
                 }
                 buf[n].Cx = r.Left + r.Width * .5f;
                 buf[n].Cy = r.Top + r.Height * .5f;
                 buf[n].R = Math.Max(18f, r.Height * .9f);
-                buf[n].Argb = i == 3 ? (uint)Color.FromArgb(pulsa ? 245 : 70, 255, 90, 80).ToArgb()
+                buf[n].Argb = i >= 2 ? (uint)Color.FromArgb(pulsa ? 245 : 80, 255, 96, 84).ToArgb()
                                      : (uint)Color.FromArgb(pulsa ? 245 : 65, 255, 214, 80).ToArgb();
                 n++;
             }
