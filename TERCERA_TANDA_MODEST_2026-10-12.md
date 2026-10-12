@@ -68,5 +68,7 @@ en la carpeta».
 - **Con la rocola entera:** la canción dañada, pedida dos veces, falla una sola vez y la segunda sale el aviso al
   momento, con los créditos intactos.
 - **Siguen pasando:** `segundatanda` y `lineaestado`.
+- **Tanda completa (`pruebas/todo.sh`):** 26 problemas, los mismos 26 de antes (baterías que ya fallaban en este
+  Linux); ninguno nuevo. `terceratanda` pasa en los dos perfiles.
 - **No comprobado:** en la máquina del bar con su biblioteca. El mono corre aquí con el dibujo por CPU, sin tarjeta
   gráfica.
