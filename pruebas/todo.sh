@@ -109,6 +109,9 @@ GPU="$GPU octavatanda"
 # video sin su menu del boton derecho.
 CPU="$CPU novenatanda"
 GPU="$GPU novenatanda"
+# 'decimatanda': el fundido de entrada (sin golpe seco al empezar o al retomar a media cancion).
+CPU="$CPU decimatanda"
+GPU="$GPU decimatanda"
 # 'cielovivo': el cielo vivo de Legacy (12-10-2026): luna, lluvias, festejo, cometa, profundidad, hora y reflejo (CieloVivoGpu.cs).
 CPU="$CPU cielovivo"
 GPU="$GPU cielovivo"

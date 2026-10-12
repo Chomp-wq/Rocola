@@ -121,6 +121,8 @@ namespace Rocola
             // para que un disco continuo siga continuo. Entre canciones sueltas queda el fundido de siempre.
             bool entera = cadenaSonando.Fundido == null;   // sin fundido ("fundido=0"), la que suena acaba entera
             if (SiguienteDelDisco(nowPlaying, sig) && cadenaSonando.Fundido != null) entera = cadenaSonando.Fundido.Quita();
+            // Y la siguiente, sin su fundido de entrada: la onda sigue sin corte (Form1.Sonido.cs, FadeProvider).
+            if (entera && SiguienteDelDisco(nowPlaying, sig) && c.Fundido != null) c.Fundido.SinEntrada();
             // Si acaba entera, la siguiente sigue con la memoria de sus filtros: el cambio no se oye (SigueA).
             if (entera && lector.WaveFormat.SampleRate == cadenaSonando.Lector.WaveFormat.SampleRate) SigueA(c, cadenaSonando);
         }

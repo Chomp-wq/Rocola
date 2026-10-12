@@ -850,6 +850,7 @@ class SinPausa
             Check(preparo && quitado, "a 4 s del final, la siguiente del mismo disco se prepara con el lector que ya abrio el calentador, y a la que suena se le quita el fundido; la cola aun no cambia");
             Check(object.ReferenceEquals(Get(Get(cadB, "Mono"), "anterior"), Get(cadA, "Mono")) && object.ReferenceEquals(Get(Get(cadB, "Noche"), "anterior"), Get(cadA, "Noche")),
                   "y como A acaba entera, B seguira con los filtros de A (grave en mono y compensacion de noche): el cambio no se oye");
+            Check((int)Get(Get(cadB, "Fundido"), "sinEntrada") == 1, "y B entra sin su fundido de entrada: un disco continuo no se corta ni 5 ms");
             float[] y = LeeTodo((ISampleProvider)sec1, new int[] { 2205 * ch, 999 * ch, 4096 * ch }, null, null);
             object medidaB = Get(Get(cadB, "Tap"), "Medida");
             bool midio = object.ReferenceEquals(Get(f, "tapMedido"), Get(cadB, "Tap")) && (bool)Get(Get(medidaB, "CierreAnterior"), "Listo")
@@ -860,6 +861,7 @@ class SinPausa
             object sB = Inv(f, "ArmaCadena", tB, Lector(pb), false, 0.0);
             float[] soloA = LeeTodo((ISampleProvider)Get(sA, "Salida"), new int[] { 4096 }, null, null);
             Inv(f, "SigueA", sB, sA);
+            Inv(Get(sB, "Fundido"), "SinEntrada");   // y sin fundido de entrada: la onda sigue sin corte (decima tanda)
             float[] soloB = LeeTodo((ISampleProvider)Get(sB, "Salida"), new int[] { 4096 }, null, null);
             int rbx = (int)Get(sB, "Retardo");
             float[] esperado = new float[soloA.Length + soloB.Length - rbx * ch];

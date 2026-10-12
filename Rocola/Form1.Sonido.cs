@@ -1347,7 +1347,9 @@ namespace Rocola
                 }
                 catch { }
                 if (tf > 0) tf += audioTailDelay;
-                c.Fundido = new FadeProvider(outChain, tf, crossfadeSec); outChain = c.Fundido;   // fundido suave de entrada/salida
+                c.Fundido = new FadeProvider(outChain, tf, crossfadeSec, audioTailDelay,
+                                             saltadoSeg > 0 ? FadeProvider.EntradaRetomadaSeg : FadeProvider.EntradaSeg);   // fundido suave de entrada/salida
+                outChain = c.Fundido;
             }
             c.Retardo = audioTailDelay; c.Salida = outChain;
             return c;
@@ -2944,16 +2946,29 @@ namespace Rocola
             // RELEVO SIN PAUSA a la pista siguiente del MISMO disco: el fundido se quita si aun no empezo (un disco
             // continuo tiene que seguir continuo). 0 = normal, 1 = quitado a tiempo, 2 = ya empezo y se termina.
             private int estadoFundido;
+            // FUNDIDO DE ENTRADA (decima tanda, 12-10-2026). La cancion entraba de golpe: si su primera muestra no es
+            // cero (un tema cortado de un disco en vivo, una retomada a media cancion) la bocina pasa de cero a donde va la
+            // onda en una muestra y se oye un golpe seco. Ahora entra en una curva de 5 ms (inaudible en el ataque: es lo
+            // que hace cualquier editor de audio en un corte) o de 0,3 s si se retoma a media cancion. Empieza donde
+            // empieza la musica, despues del cebado de la cadena (sus primeros cuadros son ceros). La pista siguiente del
+            // mismo disco que sigue sin corte no lleva entrada (SinEntrada): un disco continuo sigue continuo.
+            private readonly long entradaDesde, entradaHasta;
+            private int sinEntrada;
+            internal const double EntradaSeg = 0.005, EntradaRetomadaSeg = 0.3;
+            internal void SinEntrada() { System.Threading.Interlocked.Exchange(ref sinEntrada, 1); }
             // true: la cancion acaba entera, quitado ahora o ya antes (si la siguiente se retiro y se vuelve a preparar,
             // SiguienteConElInterruptor). false: el fundido ya empezo y se termina.
             internal bool Quita() { return System.Threading.Interlocked.CompareExchange(ref estadoFundido, 1, 0) != 2; }
-            public FadeProvider(NAudio.Wave.ISampleProvider s, long total, double fadeSec)
+            public FadeProvider(NAudio.Wave.ISampleProvider s, long total, double fadeSec) : this(s, total, fadeSec, 0, 0) { }
+            public FadeProvider(NAudio.Wave.ISampleProvider s, long total, double fadeSec, long musicaDesde, double entradaSec)
             {
                 src = s; ch = Math.Max(1, s.WaveFormat.Channels);
                 int rate = s.WaveFormat.SampleRate; if (rate < 8000) rate = 44100;
                 fadeFrames = (long)(fadeSec * rate); if (fadeFrames < 1) fadeFrames = 1;
                 totalFrames = total;
                 if (totalFrames > 0 && totalFrames < fadeFrames * 4) totalFrames = 0;   // cancion muy corta: sin fundido de salida
+                entradaDesde = Math.Max(0L, musicaDesde);
+                entradaHasta = entradaSec > 0 ? entradaDesde + Math.Max(1L, (long)(entradaSec * rate)) : entradaDesde;
             }
             public NAudio.Wave.WaveFormat WaveFormat { get { return src.WaveFormat; } }
             public int Read(float[] buffer, int offset, int count)
@@ -2961,6 +2976,7 @@ namespace Rocola
                 int n = src.Read(buffer, offset, count);
                 if (n <= 0) return n;
                 int frames = n / ch;
+                if (pos < entradaHasta && System.Threading.Thread.VolatileRead(ref sinEntrada) == 0) Entrada(buffer, offset, frames);
                 // Fuera de los ultimos segundos no hay nada que hacer, y eso es TODA la cancion menos el final.
                 // Antes se recorria muestra a muestra igualmente para acabar multiplicando por uno.
                 if (totalFrames <= 0 || pos + frames <= totalFrames - fadeFrames) { pos += frames; return n; }
@@ -2974,6 +2990,19 @@ namespace Rocola
                 }
                 pos += frames;
                 return n;
+            }
+            // Media onda de coseno: arranca sin escalon y llega a uno sin quiebre.
+            private void Entrada(float[] buffer, int offset, int frames)
+            {
+                double largo = entradaHasta - entradaDesde + 1;
+                for (int f = 0; f < frames; f++)
+                {
+                    long p = pos + f;
+                    if (p < entradaDesde) continue;   // el cebado de la cadena: ceros
+                    if (p >= entradaHasta) break;
+                    float g = (float)(0.5 - 0.5 * Math.Cos(Math.PI * (p - entradaDesde + 1) / largo));
+                    int bi = offset + f * ch; for (int c = 0; c < ch; c++) buffer[bi + c] *= g;
+                }
             }
         }
 

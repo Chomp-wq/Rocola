@@ -8,6 +8,17 @@ sin reducir calidad; los paneles respetan los limites de la tarjeta. Solo Modest
 HD suspendida y renderizado CPU congelado.
 [Cambios, pruebas y limites pendientes](AUDITORIA_GENERAL_MODEST_2026-10-11.md).
 
+## Décima tanda: fallos y mejoras de audio — 12 de octubre de 2026
+
+- **Las canciones ya no arrancan con un golpe seco:** entran en una curva de 5 ms (0,3 s al retomar a media
+  canción). Un disco continuo sigue empalmándose sin corte.
+- **La cadena de sonido, revisada de 8 a 96 kHz**, en mono y en estéreo, con todo encendido: nada roto ni pasado de
+  techo.
+- **Tres ideas de audio para que elijas** (mezcla estilo DJ, acortar finales larguísimos, igualar el volumen de los
+  videos).
+
+[Qué se arregló, qué se revisó y las propuestas](DECIMA_TANDA_MODEST_2026-10-12.md).
+
 ## Novena tanda de fallos — 12 de octubre de 2026
 
 - **La moneda ya no se pierde con una ventana de ajustes abierta** (Ctrl+F3, carpetas, carátulas): cuenta igual.
