@@ -8,6 +8,17 @@ sin reducir calidad; los paneles respetan los limites de la tarjeta. Solo Modest
 HD suspendida y renderizado CPU congelado.
 [Cambios, pruebas y limites pendientes](AUDITORIA_GENERAL_MODEST_2026-10-11.md).
 
+## Sexta tanda: los textos del modo atracción — 12 de octubre de 2026
+
+- **Los mensajes que se turnan** («Toca un botón y elige…», «Busca cualquier canción…») se cortaban al final en
+  pantallas 4:3 y 5:4. La letra se achicaba a la medida justa y se pasaba un pelo. Ahora se mide de nuevo hasta que
+  cabe.
+- **«Lo más pedido esta noche: «…»»** acorta el título dentro de las comillas.
+- **El nombre largo de un disco** prueba con la letra algo más chica y un tercer renglón antes de cortarse.
+- **En la lista de la noche** el título tiene más sitio y, si no cabe, se acorta por palabras.
+
+[Qué se encontró y cómo se comprobó](SEXTA_TANDA_MODEST_2026-10-12.md).
+
 ## Quinta tanda de fallos, y las flechas de BUSCAR y AYUDA — 12 de octubre de 2026
 
 - **Con el rojo mantenido**, ya no salen triangulitos sueltos junto a BUSCAR y AYUDA: se enciende la tecla de flecha

@@ -70,6 +70,14 @@ namespace Rocola
             if (lblMejorada != null && lblMejorada.Visible) fin = Math.Max(fin, lblMejorada.Right);
             return fin;
         }
+        // A otro tamano las letras no miden exactamente lo proporcional (se ajustan a la rejilla de pixeles): un titulo que
+        // por la cuenta cabia justo se pasaba un pelo con la letra de verdad y salia con puntos al final. Se comprueba
+        // midiendolo con la letra de ese tamano (sexta tanda, 12-10-2026). Solo al hornear la franja, nunca por cuadro.
+        private static bool CabeConLetra(Graphics g, string texto, Font f, float e, float ancho)
+        {
+            using (Font mayor = new Font(f.FontFamily, f.Size * e, f.Style, f.Unit))
+                return g.MeasureString(texto, mayor, PointF.Empty, StringFormat.GenericTypographic).Width <= ancho;
+        }
         // Cuanto crece el titulo: lo mas que quepa entre 1,45 y 1,15; si ni asi cabe, 1,15 y puntos suspensivos.
         internal static float EscalaTituloLejos(Graphics g, string texto, Font f, float ancho, float alto)
         {
@@ -78,7 +86,7 @@ namespace Rocola
             if (tope < LejosTituloMin) return Math.Max(1f, tope);
             float w = g.MeasureString(texto, f, PointF.Empty, StringFormat.GenericTypographic).Width;
             for (float e = tope; e > LejosTituloMin; e -= .05f)
-                if (w * e <= ancho) return e;
+                if (w * e <= ancho && CabeConLetra(g, texto, f, e, ancho)) return e;
             return LejosTituloMin;
         }
 

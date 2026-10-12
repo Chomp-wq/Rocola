@@ -48,7 +48,9 @@ el reproductor sí está.
   - elige resultados del buscador;
   - cambia de sección de letras.
 
-  Así salió el fallo del video.
+  Así salió el fallo del video. Con el arreglo, tres vueltas de 4 minutos y semillas distintas (casi 6.000 acciones,
+  diez relecturas de la biblioteca con música y cola, videos que no abren): **ninguna excepción**, y al dejarla quieta
+  la música siguió y la cola avanzó.
 - **El buscador,** con 300.000 búsquedas al azar:
   - acentos, eñes, comillas raras, emojis, caracteres rotos, tabuladores y espacios invisibles;
   - ninguna excepción;

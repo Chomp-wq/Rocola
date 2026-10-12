@@ -642,6 +642,8 @@ namespace Rocola
                 float etH = fEt.GetHeight(), titL = fTit.GetHeight(), artH = fArt.GetHeight(), pilH = fPil.GetHeight() + 8f;
                 string nombre = string.IsNullOrEmpty(d.Nombre) ? "Tu rocola" : d.Nombre;
                 float titH;
+                Font fNom = fTit;   // la del nombre: la grande, o una algo mas chica si no cabe en dos renglones
+                try {
                 // Las pastillas: el genero, cuantas veces se ha pedido y cuantas canciones trae. Si no caben en un renglon
                 // pasan al segundo; la que no cabe en dos, no sale.
                 List<string> pil = new List<string>(); List<Color> pc = new List<Color>();
@@ -657,11 +659,23 @@ namespace Rocola
                     g1.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
                     int letras, lineas;
                     g1.MeasureString(nombre, fTit, new SizeF(ancho, titL * 40f), mide, out letras, out lineas);
-                    titH = titL * Math.Max(1, Math.Min(2, lineas));
+                    // UN NOMBRE LARGO se cortaba con puntos a los dos renglones ("Los Tigres del Norte - Jefe de Je..."). Antes
+                    // de cortarlo se prueba con la letra algo mas chica (hasta el 78 %), que en la pantalla sigue siendo grande.
+                    for (int k = 0; k < 2 && lineas > 2; k++)
+                    {
+                        Font menor = Letra(fTit.Size * (k == 0 ? .88f : .78f));
+                        g1.MeasureString(nombre, menor, new SizeF(ancho, menor.GetHeight() * 40f), mide, out letras, out lineas);
+                        if (fNom != fTit) fNom.Dispose();
+                        fNom = menor; titL = menor.GetHeight();
+                    }
+                    // Con la letra ya achicada, si aun no cabe, un TERCER renglon (si hay sitio, abajo).
+                    titH = titL * Math.Max(1, Math.Min(fNom != fTit ? 3 : 2, lineas));
                     filas = DisponPastillas(g1, pil, fPil, pilH, ancho, out pos);
                 }
                 float gapPil = pilH * .30f;
-                float alto = etH + gapEt + titH + gapTit + (d.Artista.Length > 0 ? artH + gapArt : gapArt * .5f) + filas * pilH + Math.Max(0, filas - 1) * gapPil + 4f;
+                float resto = etH + gapEt + gapTit + (d.Artista.Length > 0 ? artH + gapArt : gapArt * .5f) + filas * pilH + Math.Max(0, filas - 1) * gapPil + 4f;
+                if (titH > titL * 2.5f && resto + titH > h * .46f - AltoMensaje(h)) titH = titL * 2f;   // sin sitio: dos y puntos
+                float alto = resto + titH;
                 Bitmap bmp = new Bitmap(ancho, (int)Math.Ceiling(alto), PixelFormat.Format32bppPArgb);
                 using (Graphics g = Graphics.FromImage(bmp))
                 {
@@ -671,7 +685,7 @@ namespace Rocola
                     float y = 0f;
                     using (SolidBrush b = new SolidBrush(AtrEtiqueta)) Espaciado(g, "EN ESTA ROCOLA", fEt, b, 0f, y, fEt.Size * .22f);
                     y += etH + gapEt;
-                    using (SolidBrush b = new SolidBrush(AtrTitulo)) g.DrawString(nombre, fTit, b, new RectangleF(0, y, ancho, titH + titL * .25f), dos);
+                    using (SolidBrush b = new SolidBrush(AtrTitulo)) g.DrawString(nombre, fNom, b, new RectangleF(0, y, ancho, titH + titL * .25f), dos);
                     y += titH + gapTit;
                     if (d.Artista.Length > 0)
                     {
@@ -688,6 +702,8 @@ namespace Rocola
                     }
                 }
                 return bmp;
+                }
+                finally { if (fNom != fTit) fNom.Dispose(); }
             }
         }
         // Letras con aire entre ellas (el letrero de arriba, como "A H O R A   S U E N A").
@@ -735,17 +751,84 @@ namespace Rocola
         }
         // Un renglon que quepa en su caja: si no cabe, la letra se achica hasta un 25 % y, si aun asi no, se corta con
         // puntos suspensivos. Devuelve lo que ocupa.
+        //
+        // TEXTOS CORTADOS (aviso del usuario del 12-10-2026: "ayer salian cortados unos textos" en la atraccion). La letra se
+        // achicaba a la medida JUSTA (ancho / lo que media). Pero a otro tamano las letras no miden exactamente lo
+        // proporcional -se ajustan a la rejilla de pixeles-, el renglon se pasaba por uno o dos pixeles y se cortaba el
+        // final: "...elige entre 12,345 cancio...", "...el boton rojo y la flech". Le pasaba a los cuatro mensajes en
+        // 1024x768. Ahora se achica con un poco de margen y se VUELVE A MEDIR con la letra chica, hasta que quepa (o
+        // hasta el 75 %; de ahi, puntos suspensivos como siempre).
         internal static float Renglon(Graphics g, string txt, Font f, Brush b, RectangleF r, StringFormat sf)
+        { return Renglon(g, txt, f, b, r, sf, .75f); }
+        // 'minimo': lo mas que se deja achicar la letra. Si ni asi cabe, se acorta POR PALABRAS con puntos suspensivos
+        // (antes lo cortaba la orilla: con GDI+ ponia los puntos a media palabra, y en otros sistemas partia una letra).
+        internal static float Renglon(Graphics g, string txt, Font f, Brush b, RectangleF r, StringFormat sf, float minimo)
         {
             if (string.IsNullOrEmpty(txt)) return 0f;
             float w = g.MeasureString(txt, f, PointF.Empty, sf).Width;
             if (w <= r.Width) { g.DrawString(txt, f, b, r, sf); return w; }
-            float esc = Math.Max(.75f, r.Width / w);
+            float esc = EscalaQueCabe(g, txt, f, r.Width, sf, minimo);
             using (Font chica = new Font(f.FontFamily, f.Size * esc, f.Style, f.Unit))
             {
-                g.DrawString(txt, chica, b, r, sf);
-                return Math.Min(r.Width, g.MeasureString(txt, chica, PointF.Empty, sf).Width);
+                string t = AcortaPorPalabras(g, txt, chica, r.Width, sf);
+                g.DrawString(t, chica, b, r, sf);
+                return Math.Min(r.Width, g.MeasureString(t, chica, PointF.Empty, sf).Width);
             }
+        }
+        // Cuanto hay que achicar la letra (entre 'minimo' y 1) para que el renglon quepa de verdad en 'ancho', midiendo
+        // cada tamano que se prueba. Solo se usa al hornear, nunca por cuadro.
+        internal static float EscalaQueCabe(Graphics g, string txt, Font f, float ancho, StringFormat sf)
+        { return EscalaQueCabe(g, txt, f, ancho, sf, .75f); }
+        internal static float EscalaQueCabe(Graphics g, string txt, Font f, float ancho, StringFormat sf, float minimo)
+        {
+            float w = g.MeasureString(txt, f, PointF.Empty, sf).Width;
+            if (w <= ancho || ancho <= 0f) return 1f;
+            float esc = Math.Max(minimo, ancho / w * .98f);
+            for (int i = 0; i < 6 && esc > minimo; i++)
+            {
+                float wc;
+                using (Font chica = new Font(f.FontFamily, f.Size * esc, f.Style, f.Unit)) wc = g.MeasureString(txt, chica, PointF.Empty, sf).Width;
+                if (wc <= ancho) break;
+                esc = Math.Max(minimo, esc * Math.Min(.99f, ancho / wc * .99f));
+            }
+            return esc;
+        }
+        // Si el texto no cabe con esa letra, se quitan palabras del final y se ponen puntos suspensivos hasta que quepa
+        // (y si una sola palabra no cabe, letras). Si cabe, el mismo texto.
+        internal static string AcortaPorPalabras(Graphics g, string txt, Font f, float ancho, StringFormat sf)
+        {
+            if (string.IsNullOrEmpty(txt) || g.MeasureString(txt, f, PointF.Empty, sf).Width <= ancho) return txt;
+            string t = txt;
+            while (t.Length > 1)
+            {
+                int corte = t.LastIndexOf(' ', t.Length - 1);
+                t = (corte > 0) ? t.Substring(0, corte) : t.Substring(0, t.Length - 1);
+                t = t.TrimEnd(' ', ',', '(', '-', ':', ';', '\u00ab');
+                string prueba = t + "\u2026";
+                if (g.MeasureString(prueba, f, PointF.Empty, sf).Width <= ancho) return prueba;
+            }
+            return "\u2026";
+        }
+        // Un texto con una cita entre comillas (« ») que ni con la letra al 75 % cabe: se acorta la CITA por palabras y se
+        // le ponen puntos suspensivos dentro, para que las comillas cierren y se lea el principio entero:
+        // "Lo mas pedido esta noche: «Amor Eterno (En Vivo…»". Sin cita, o si cabe, devuelve el mismo texto.
+        internal static string AcortaCita(Graphics g, string txt, Font f, float ancho, StringFormat sf)
+        {
+            if (string.IsNullOrEmpty(txt) || ancho <= 0f) return txt;
+            int a = txt.IndexOf('\u00ab'), z = txt.LastIndexOf('\u00bb');
+            if (a < 0 || z <= a + 1) return txt;
+            float tope = ancho / .75f;   // lo que cabe con la letra al 75 %
+            if (g.MeasureString(txt, f, PointF.Empty, sf).Width <= tope) return txt;
+            string antes = txt.Substring(0, a + 1), cita = txt.Substring(a + 1, z - a - 1), despues = txt.Substring(z);
+            while (cita.Length > 1)
+            {
+                int corte = cita.LastIndexOf(' ', cita.Length - 1);
+                cita = (corte > 0) ? cita.Substring(0, corte) : cita.Substring(0, cita.Length - 1);
+                cita = cita.TrimEnd(' ', ',', '(', '-', ':', ';');
+                string prueba = antes + cita + "\u2026" + despues;
+                if (g.MeasureString(prueba, f, PointF.Empty, sf).Width <= tope) return prueba;
+            }
+            return txt;
         }
         // Donde va cada pastilla: X en la fila, Y = numero de fila (0 o 1); X = -1 si no cabe. Devuelve las filas usadas.
         internal static int DisponPastillas(Graphics g, List<string> textos, Font f, float alto, float ancho, out PointF[] pos)
@@ -793,7 +876,8 @@ namespace Rocola
                 g.Clear(Color.Transparent);
                 g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
                 una.Trimming = StringTrimming.EllipsisCharacter; una.FormatFlags = StringFormatFlags.NoWrap; una.LineAlignment = StringAlignment.Center;
-                for (int i = 0; i < lista.Count; i++) anchos[i] = Renglon(g, lista[i], f, b, new RectangleF(0, i * mh, bmp.Width, mh), una);
+                for (int i = 0; i < lista.Count; i++)
+                    anchos[i] = Renglon(g, AcortaCita(g, lista[i], f, bmp.Width, una), f, b, new RectangleF(0, i * mh, bmp.Width, mh), una);
             }
             return bmp;
         }
@@ -824,7 +908,10 @@ namespace Rocola
             float rh = filaH;
             // Dentro de cada fila: el puesto, la portada, titulo y artista, la barra y "N veces".
             float puestoW = rh * .80f, lado = rh * .80f, px = puestoW + rh * .10f;
-            float tx = px + lado + rh * .24f, tw = Math.Max(rh * 2.5f, ancho * .40f);
+                        // El titulo manda y la barra es adorno: la mitad del ancho (era el 40 % y los titulos largos se cortaban),
+            // dejandole a la barra al menos 0,8 de fila para que no se meta debajo de "N veces".
+            float vecesW0 = rh * 1.1f;
+            float tx = px + lado + rh * .24f, tw = Math.Max(rh * 2.5f, Math.Min(ancho * .50f, ancho - tx - vecesW0 - rh * 1.35f));
             float vecesW = rh * 1.1f;
             barraX = tx + tw + rh * .30f; barraW = Math.Max(rh, ancho - vecesW - rh * .25f - barraX);
             barraH = Math.Max(8f, rh * .16f); barraDy = (rh - barraH) * .5f;
@@ -858,7 +945,8 @@ namespace Rocola
                     RectangleF rp = new RectangleF(px, y0 + (rh - lado) * .5f, lado, lado);
                     Image por = (portadas != null && i < portadas.Length) ? portadas[i] : null;
                     Tapa(g, rp, por, f);
-                    using (SolidBrush b = new SolidBrush(AtrTitulo)) Renglon(g, f.Titulo, fTit, b, new RectangleF(tx, y0 + rh * .10f, tw, rh * .46f), una);
+                    // El titulo puede achicarse algo mas (hasta el 62 %): con filas altas (pantallas 5:4) su letra es grande.
+                    using (SolidBrush b = new SolidBrush(AtrTitulo)) Renglon(g, f.Titulo, fTit, b, new RectangleF(tx, y0 + rh * .10f, tw, rh * .46f), una, .62f);
                     using (SolidBrush b = new SolidBrush(AtrTenue)) Renglon(g, f.Artista, fArt, b, new RectangleF(tx, y0 + rh * .54f, tw, rh * .34f), una);
                     // El carril de la barra (la barra la pone la tarjeta, creciendo).
                     using (GraphicsPath p = Redondo(new RectangleF(barraX, y0 + barraDy, barraW, barraH), barraH * .5f))

@@ -94,6 +94,9 @@ GPU="$GPU cuartatanda"
 # 'quintatanda': con el rojo mantenido se encienden las teclas de flecha de BUSCAR y AYUDA, sin flechitas sueltas fuera.
 CPU="$CPU quintatanda"
 GPU="$GPU quintatanda"
+# 'sextatanda': los textos del modo atraccion caben enteros en nueve resoluciones (mensajes, ficha, lista de la noche).
+CPU="$CPU sextatanda"
+GPU="$GPU sextatanda"
 # 'cielovivo': el cielo vivo de Legacy (12-10-2026): luna, lluvias, festejo, cometa, profundidad, hora y reflejo (CieloVivoGpu.cs).
 CPU="$CPU cielovivo"
 GPU="$GPU cielovivo"
