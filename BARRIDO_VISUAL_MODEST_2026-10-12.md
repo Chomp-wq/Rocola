@@ -98,4 +98,7 @@ En 800×600 (y en 1024 si era muy largo), el nombre del artista se cortaba en se
   `subgrave`, `silencios`, `noche`, `suenavivo`, `franjareloj`, `textosgpu`, `buscaportadas`, `filabaja`, `salida`,
   `videoaudio`, `transiciones` y `sinpausa`.
 - **Legacy y CPU sin cambios:** la huella de Legacy es idéntica, y los 14 métodos del dibujo por CPU también.
+- **Tanda completa (`pruebas/todo.sh`):** 26 problemas, los mismos 26 de la tanda anterior, todos de antes de este
+  barrido (baterías que ya fallaban en este Linux). Ninguno nuevo. `ventanaf3`, `avisosvideo` y `lineaestado` pasan en
+  los dos perfiles.
 - **No comprobado:** en la máquina del bar, con un video real y la tarjeta gráfica de verdad.
