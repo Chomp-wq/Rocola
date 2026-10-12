@@ -87,6 +87,8 @@ Además, un lector que la rocola ya cerró (al saltar o al cerrar) ya no cuenta 
     `vigiapantalla`;
   - con tarjeta, `asistentecombo`, `asistentevisual`, `bloqueos` y `mover`.
 - **El dibujo por CPU no cambió:** sus 14 métodos congelados son idénticos en los dos perfiles.
+- **Tanda completa (`pruebas/todo.sh`):** 26 problemas, los mismos 26 de antes (baterías que ya fallaban en este
+  Linux); ninguno nuevo. `cuartatanda` pasa en los dos perfiles.
 - **No comprobado:**
   - en la máquina del bar;
   - con un botón real en F5;
