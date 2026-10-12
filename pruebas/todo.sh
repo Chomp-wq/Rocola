@@ -105,6 +105,10 @@ GPU="$GPU septimatanda"
 # (T1, T2).
 CPU="$CPU octavatanda"
 GPU="$GPU octavatanda"
+# 'novenatanda': la moneda con una ventana de ajustes abierta, el toque que despierta la atraccion y el reproductor de
+# video sin su menu del boton derecho.
+CPU="$CPU novenatanda"
+GPU="$GPU novenatanda"
 # 'cielovivo': el cielo vivo de Legacy (12-10-2026): luna, lluvias, festejo, cometa, profundidad, hora y reflejo (CieloVivoGpu.cs).
 CPU="$CPU cielovivo"
 GPU="$GPU cielovivo"

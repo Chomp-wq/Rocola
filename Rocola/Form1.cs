@@ -706,6 +706,9 @@ namespace Rocola
         private Label lblConfig;            // pantalla del asistente de configuracion
         private AttractView attractView;    // modo atraccion (reposo): fondo estrellado + cubo gigante
         private bool attractOn = false;
+#if ROCOLA_GPU
+        private bool toqueDespierta;   // el toque que acaba de despertar la atraccion (no hace nada mas; Form1.Video.cs)
+#endif
         private const int AttractIdleSecs = 40;   // reposo antes de entrar al modo atraccion
         // SALIR SOLO DEL INTERIOR DE UN DISCO. Alguien abre un disco, se distrae -le hablan, se va a bailar,
         // se acaba su turno- y la rocola se queda con SU disco abierto. El siguiente que llega no ve la pared
@@ -1365,6 +1368,7 @@ namespace Rocola
 
             attractView = new AttractView();
             attractView.Visible = false;
+            attractView.MouseDown += delegate { lastInput = DateTime.Now; if (attractOn) ExitAttract(); };   // sin tarjeta: tocarla tambien despierta
             attractView.GetCoverByPath = LoadCoverByPath;
 
             Controls.Add(lblStatus); Controls.Add(helpBar); Controls.Add(pastCred); Controls.Add(pastGenero);

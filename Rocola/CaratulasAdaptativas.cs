@@ -95,6 +95,7 @@ namespace Rocola
                 BotonPlano close = new BotonPlano(); close.SetBounds(736, 510, 168, 30); close.Font = normal; close.Text = "Cerrar";
                 close.Click += delegate { dialog.Close(); }; dialog.Controls.Add(close);
                 dialog.KeyPreview = true; dialog.KeyDown += delegate(object sender, KeyEventArgs e) { if (e.KeyCode == Keys.Escape) dialog.Close(); };
+                MonedaTambienAqui(dialog);   // una moneda con la ventana abierta tambien cuenta (Form1.Ajustes.cs)
                 dialog.ShowDialog(this);
             }
         }

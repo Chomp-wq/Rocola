@@ -1224,6 +1224,7 @@ namespace Rocola
                     // ventana las mira antes con KeyPreview).
                     dlg.KeyPreview = true;
                     dlg.KeyDown += delegate (object so, KeyEventArgs ke) { if (ke.KeyCode == Keys.Escape) dlg.Close(); };
+                    MonedaTambienAqui(dlg);   // y una moneda con la ventana abierta tambien cuenta
                     // Refresco del avance mientras el dialogo esta abierto (el trabajo ocurre en otro hilo).
                     System.Windows.Forms.Timer tTrain = new System.Windows.Forms.Timer();
                     tTrain.Interval = 500;
@@ -1529,6 +1530,26 @@ namespace Rocola
             AvisoPedido();   // con tarjeta grafica y avisos claros: "Pusiste «El Rey»" y cuanto falta (SuenaVivoGpu.cs)
             if (search) ShowSearchToast(msg, true); else ShowToast(msg);
             MarkToast(ToastKind.Song);
+        }
+
+        // LA MONEDA CUENTA AUNQUE HAYA UNA VENTANA DE AJUSTES ABIERTA (novena tanda, 12-10-2026). La moneda solo se oia en
+        // la ventana principal (ProcessCmdKey): con Ctrl+F3 o las carpetas de musica abiertas, el pulso del monedero le
+        // llegaba a esa ventana y el dinero del cliente se perdia. Estas ventanas no tienen donde escribir, asi que la
+        // tecla de la moneda no le quita nada al encargado. Un pulso es una moneda: la autorrepeticion de un pulso que se
+        // queda apretado no suma (como en ProcessCmdKey).
+        private void MonedaTambienAqui(Form dlg)
+        {
+            bool abajo = false;
+            dlg.KeyPreview = true;
+            dlg.KeyDown += delegate (object so, KeyEventArgs ke)
+            {
+                if (!IsCoin(ke.KeyCode)) return;
+                ke.Handled = true; ke.SuppressKeyPress = true;
+                if (abajo) return;
+                abajo = true;
+                AddCoin();
+            };
+            dlg.KeyUp += delegate (object so, KeyEventArgs ke) { if (IsCoin(ke.KeyCode)) abajo = false; };
         }
 
         // Suma creditos (la moneda) y actualiza el letrero

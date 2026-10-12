@@ -257,6 +257,9 @@ namespace Rocola
 
                 Set(ocx, "uiMode", "none");
                 Set(ocx, "stretchToFit", true);
+                // Sin el menu del reproductor (novena tanda): con el boton derecho, o dejando el dedo en una pantalla tactil,
+                // salia el de Windows Media Player, con Pausa, Detener y Pantalla completa a mano del cliente.
+                try { Set(ocx, "enableContextMenu", false); } catch { }
                 object settings = Get(ocx, "settings");
                 videoVolSet = -1;   // fuerza el primer envio del volumen a este WMP recien apuntado
                 int vol0 = VideoVolumeFor(path);
@@ -830,11 +833,17 @@ namespace Rocola
                 };
                 gpuPanel.MouseDown += delegate {
                     lastInput = DateTime.Now; gpuPanel.IdleExpandTarget = false; gpuPanel.TouchUi();
+                    // TOCAR LA PANTALLA DESPIERTA LA ATRACCION, como cualquier boton (novena tanda, 12-10-2026). Antes el toque
+                    // solo reiniciaba la cuenta del reposo y la atraccion seguia: en una pantalla tactil no habia forma de
+                    // salir sin botones. Ese toque solo despierta (como la tecla que despierta): no abre nada debajo.
+                    toqueDespierta = attractOn;
+                    if (attractOn) ExitAttract();
                     if (asistenteVisible) asistenteActividadTick = Environment.TickCount;   // tocar la pantalla tambien es usarla: la guia no se cierra por inactividad
                 };
                 gpuPanel.MouseWheel += delegate { lastInput = DateTime.Now; gpuPanel.IdleExpandTarget = false; gpuPanel.TouchUi(); };
                 gpuPanel.MouseClick += delegate(object sender, MouseEventArgs e)
                 {
+                    if (toqueDespierta) { toqueDespierta = false; return; }   // el toque que desperto la atraccion no hace nada mas
                     // La casilla AYUDA va primero: abre la ayuda y, con la ayuda abierta, la vuelve a guardar.
                     if (e.Button == MouseButtons.Left && AyudaTocada(new Point(e.X + gpuPanel.Left, e.Y + gpuPanel.Top))) return;
                     if (AsistenteCapturaEntrada)

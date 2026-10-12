@@ -1690,6 +1690,7 @@ namespace Rocola
                     };
                     bOk.Click += delegate { dlg.Close(); };
                     dlg.CancelButton = bOk;   // Esc tambien cierra (los cambios ya hechos se aplican igual)
+                    MonedaTambienAqui(dlg);   // una moneda con la ventana abierta tambien cuenta (Form1.Ajustes.cs)
 
                     dlg.Controls.Add(info); dlg.Controls.Add(list);
                     dlg.Controls.Add(bAdd); dlg.Controls.Add(bDel); dlg.Controls.Add(bOk);

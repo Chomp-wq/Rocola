@@ -8,6 +8,14 @@ sin reducir calidad; los paneles respetan los limites de la tarjeta. Solo Modest
 HD suspendida y renderizado CPU congelado.
 [Cambios, pruebas y limites pendientes](AUDITORIA_GENERAL_MODEST_2026-10-11.md).
 
+## Novena tanda de fallos — 12 de octubre de 2026
+
+- **La moneda ya no se pierde con una ventana de ajustes abierta** (Ctrl+F3, carpetas, carátulas): cuenta igual.
+- **Tocar la pantalla despierta la atracción**, como un botón, y ese toque no abre nada debajo.
+- **El reproductor de video**, sin su menú del botón derecho (Pausa, Detener, Pantalla completa).
+
+[Qué se encontró, qué se revisó y cómo se comprobó](NOVENA_TANDA_MODEST_2026-10-12.md).
+
 ## Octava tanda: lo que elegiste de las propuestas — 12 de octubre de 2026
 
 - **A4, la tarjeta a una frecuencia fija:** en Ctrl+F3 → Sonido → El local y sus bocinas, «Tarjeta a:» 44,1 o 48 kHz.
