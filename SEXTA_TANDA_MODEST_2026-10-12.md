@@ -84,6 +84,8 @@ tamaños que ya cabían no cambian.
   - `ajustes`, `buscaportadas` y `carpetas` pasan;
   - `atraccion` y `estilo` fallan en lo mismo que antes de estos cambios: son de las 26 que ya fallaban en este Linux;
   - en `estilo`, la comprobación del tamaño del título pasa.
+- **Tanda completa (`pruebas/todo.sh`):** 26 problemas, los mismos 26 de antes (baterías que ya fallaban en este
+  Linux); ninguno nuevo. `sextatanda` y `quintatanda` pasan en los dos perfiles.
 - **Comprobación visual:** imágenes antes y después de los mensajes, el escaparate y la lista, en las nueve
   resoluciones.
 - **No comprobado:**

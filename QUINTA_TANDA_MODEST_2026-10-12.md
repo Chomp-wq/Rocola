@@ -76,6 +76,8 @@ el reproductor sí está.
   - `guiarojo`, `ayudaguia` y `asistentecombo`;
   - `cuartatanda`, `terceratanda` y `segundatanda`.
 - **El dibujo por CPU no cambió:** sus 14 métodos congelados son idénticos en los dos perfiles.
+- **Tanda completa (`pruebas/todo.sh`, con la sexta tanda encima):** 26 problemas, los mismos 26 de antes; ninguno
+  nuevo. `quintatanda` pasa en los dos perfiles.
 - **Comprobación visual:** vista previa por software de la fila de arriba, antes y después, a dos tamaños.
   - Con la primera versión (un velo claro encima) la flecha roja quedaba deslavada; por eso la tecla encendida es
     roja con la flecha blanca.
