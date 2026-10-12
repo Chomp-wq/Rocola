@@ -130,6 +130,7 @@ namespace Rocola
             private double vuelta, metaVuelta;            // cuanto grave del lado se devuelve en fase (0 o 1, en rampa)
             private readonly float[] sale = new float[2]; // un cuadro ya hecho que se entrego a medias
             private int saleN;
+            private int limpia;                           // cuadros desde la ultima limpieza de restos diminutos
             private bool empezo, acabo;
             private volatile GraveMono anterior;          // la pista que acaba justo antes, sin fundido (disco continuo)
 
@@ -283,6 +284,17 @@ namespace Rocola
                     double lado = h2 * an;                                           // el ancho (1 = como viene)
                     if (vuelta != 0.0) pm += vuelta * (ps - h2);                      // el grave del lado, de vuelta y en fase
                     b[i] = (float)(pm + lado); b[i + 1] = (float)(pm - lado);
+                    // En el silencio, los restos diminutos a cero (Desnormales.cs): cada 64 cuadros, no en cada uno.
+                    if (++limpia == Desnormales.Cada)
+                    {
+                        limpia = 0;
+                        mx1 = Desnormales.Limpia(mx1); mx2 = Desnormales.Limpia(mx2); my1 = Desnormales.Limpia(my1); my2 = Desnormales.Limpia(my2);
+                        sx1 = Desnormales.Limpia(sx1); sx2 = Desnormales.Limpia(sx2); sy1 = Desnormales.Limpia(sy1); sy2 = Desnormales.Limpia(sy2);
+                        tx1 = Desnormales.Limpia(tx1); tx2 = Desnormales.Limpia(tx2); ty1 = Desnormales.Limpia(ty1); ty2 = Desnormales.Limpia(ty2);
+                        zx1 = Desnormales.Limpia(zx1); zx2 = Desnormales.Limpia(zx2); zy1 = Desnormales.Limpia(zy1); zy2 = Desnormales.Limpia(zy2);
+                        vm1 = Desnormales.Limpia(vm1); vm2 = Desnormales.Limpia(vm2); vs1 = Desnormales.Limpia(vs1); vs2 = Desnormales.Limpia(vs2);
+                        em = Desnormales.Limpia(em); es = Desnormales.Limpia(es);
+                    }
                 }
                 this.mx1 = mx1; this.mx2 = mx2; this.my1 = my1; this.my2 = my2;
                 this.sx1 = sx1; this.sx2 = sx2; this.sy1 = sy1; this.sy2 = sy2;

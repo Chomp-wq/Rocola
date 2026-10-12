@@ -491,6 +491,7 @@ namespace Rocola
         [ThreadStatic] private static float[] tmpLo; [ThreadStatic] private static float[] tmpMid; [ThreadStatic] private static float[] tmpHi;
         [ThreadStatic] private static float[] tmpEsp;   // 4 trozos x 8 bandas
         [ThreadStatic] private static double[] tmpSum;  // sumas por banda: reusado (nada de asignar en el hilo de audio)
+        private int limpiaPulso;   // muestras desde la ultima limpieza de restos diminutos (hilo de audio)
         public void ReportAudioBlock(float[] buffer, int offset, int count, int rate, int ch)
         {
             if (count <= 0) return;
@@ -548,6 +549,11 @@ namespace Rocola
                     lp2 += (v - lp2) * A2;               // paso-bajo medio
                     float lo = lp1, mid = lp2 - lp1, hi = v - lp2;
                     sumLo += lo * lo; sumMid += mid * mid; sumHi += hi * hi;
+                    if (++limpiaPulso == Desnormales.Cada)   // en el silencio, los restos diminutos a cero (Desnormales.cs)
+                    {
+                        limpiaPulso = 0; lp1 = Desnormales.Limpia(lp1); lp2 = Desnormales.Limpia(lp2);
+                        if (espectro) Desnormales.Limpia(sl);
+                    }
                     if (!espectro) continue;             // aurora apagada (o sin GPU): la escalera ni se toca
                     fSum += v;                           // junta los canales del cuadro; la escalera corre UNA vez por cuadro
                     if (++fCnt < chEsp) continue;

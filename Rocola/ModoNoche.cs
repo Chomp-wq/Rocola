@@ -68,6 +68,7 @@ namespace Rocola
             private float visto = -1f;                        // el ultimo Db que se paso a mezclas
             private float kg, ka, og, oa, pg, pa;             // mezclas actuales, pedidas y paso de su rampa
             private int quedan, canal;                        // cuadros de rampa que faltan; canal de la muestra siguiente
+            private int limpia;                               // cuadros desde la ultima limpieza de restos diminutos
             private bool empezo, vivo, acabo;
             private volatile CompensaNoche anterior;          // la pista que acaba justo antes, sin fundido
 
@@ -137,6 +138,12 @@ namespace Rocola
                 for (int i = desde; i < fin; i++)
                 {
                     if (c == 0 && quedan > 0) { kg += pg; ka += pa; if (--quedan == 0) { kg = og; ka = oa; } }
+                    if (c == 0 && ++limpia == Desnormales.Cada)   // en el silencio, los restos diminutos a cero (Desnormales.cs)
+                    {
+                        limpia = 0;
+                        Desnormales.Limpia(gx); Desnormales.Limpia(gy);
+                        Desnormales.Limpia(hx1); Desnormales.Limpia(hx2); Desnormales.Limpia(hy1); Desnormales.Limpia(hy2);
+                    }
                     double x = b[i];
                     double g = gb * (x + gx[c]) - ga * gy[c];
                     gx[c] = x; gy[c] = g;

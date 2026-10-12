@@ -126,6 +126,7 @@
     <Compile Include="FlotanteNLayer.cs" />
     <Compile Include="PicoReal.cs" />
     <Compile Include="Realce.cs" />
+    <Compile Include="Desnormales.cs" />
     <Compile Include="ModoNoche.cs" />
     <Compile Include="GraveMono.cs" />
     <Compile Include="SalaLocal.cs" />

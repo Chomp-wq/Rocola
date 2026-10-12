@@ -144,6 +144,7 @@ namespace Rocola
             {
                 float v = buf[i];
                 l += (v - l) * p;
+                if (l < Desnormales.TopeFloat && l > -Desnormales.TopeFloat) l = 0f;   // se apaga en pocas muestras: aqui, en cada una (Desnormales.cs)
                 xh[H + j] = v - l; xv[H + j] = v;
             }
             lp[canal] = l;

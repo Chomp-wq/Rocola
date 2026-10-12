@@ -287,6 +287,7 @@ namespace Rocola
                 MideBloqueOriginal(buffer, offset, n, tap.WaveFormat.SampleRate, tap.WaveFormat.Channels);
             }
         }
+        private int kwLimpia, eqLimpia;   // cuadros desde la ultima limpieza de restos diminutos (Desnormales.cs)
         private void MideBloqueOriginal(float[] buffer, int offset, int count, int rate, int ch)
         {
             // NIVELADO PERCEPTUAL (K-weighting, tipo LUFS/BS.1770): en vez del RMS crudo, mide la sonoridad
@@ -318,7 +319,11 @@ namespace Rocola
                     float y2 = c2[0]*y1 + c2[1]*st[b+4] + c2[2]*st[b+5] - c2[3]*st[b+6] - c2[4]*st[b+7];
                     st[b+5]=st[b+4]; st[b+4]=y1; st[b+7]=st[b+6]; st[b+6]=y2;
                     sumK += y2 * y2; nK++;
-                    if (++c >= ch3) c = 0;
+                    if (++c >= ch3)
+                    {
+                        c = 0;
+                        if (++kwLimpia == Desnormales.Cada) { kwLimpia = 0; Desnormales.Limpia(st); }   // restos diminutos a cero (Desnormales.cs)
+                    }
                 }
                 kwCanal = c;
                 curSumSq += sumK; curSamples += nK;   // energia K-pesada (misma escala que el RMS de antes)
@@ -349,6 +354,7 @@ namespace Rocola
                     {
                         AccumulateEqFrame(buffer, i, ch2, eqMeasCoef, st, sums);
                         eqMeasN++;
+                        if (++eqLimpia == Desnormales.Cada) { eqLimpia = 0; Desnormales.Limpia(st); }   // restos diminutos a cero (Desnormales.cs)
                     }
                     while (i < fin) eqPend[eqPendN++] = buffer[i++];
                 }
@@ -417,6 +423,7 @@ namespace Rocola
             private readonly float exciterPole;
             private readonly bool[] canalesMusicales;
             internal bool MideOriginal;
+            private int limpia;   // cuadros desde la ultima limpieza de restos diminutos (Desnormales.cs)
             private AudioRamp gainRamp, exciteRamp;
             private bool audioReady;
             private int audioChannel, eqFadeLeft;
@@ -441,6 +448,14 @@ namespace Rocola
                 {
                     eqMix=(eqFadeFrames-eqFadeLeft+1f)/eqFadeFrames;
                     if(--eqFadeLeft==0){eqMix=1;previousEq=null;}
+                }
+                // En el silencio, los restos diminutos del EQ y del realce a cero (Desnormales.cs): cada 64 cuadros.
+                if(++limpia==Desnormales.Cada)
+                {
+                    limpia=0;
+                    if(currentEq!=null)Desnormales.Limpia(currentEq.State);
+                    if(previousEq!=null)Desnormales.Limpia(previousEq.State);
+                    Desnormales.Limpia(exLp);
                 }
             }
             private static float ApplyPreparedEq(PreparedEq eq, float input, int channel)

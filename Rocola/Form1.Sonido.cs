@@ -2615,6 +2615,7 @@ namespace Rocola
             private bool empezo, vivo;         // empezo: ya leyo; vivo: sus filtros siguen la musica
             private int fase; private float suma, hSal;   // cuadro que va llegando: canal, suma mono y lo que se le suma
             private readonly float[] cuadro;   // para completar un cuadro que llego partido (se reserva al construir)
+            private int limpia;                // cuadros desde la ultima limpieza de restos diminutos
             public DeepBassProvider(NAudio.Wave.ISampleProvider s, float amount)
             {
                 src = s; ch = Math.Max(1, s.WaveFormat.Channels); Amount = amount;
@@ -2709,6 +2710,12 @@ namespace Rocola
                     lpS += (h - lpS) * aLp;
                     if (q > 0) { mx = (float)(mx + paso); if (--q == 0) mx = objetivo; }
                     hs = (float)(lpS * mx);                   // el mismo grave a todos los canales: centrado
+                    if (++limpia == Desnormales.Cada)   // en el silencio, los restos diminutos a cero (Desnormales.cs)
+                    {
+                        limpia = 0;
+                        lp1 = Desnormales.Limpia(lp1); lp2 = Desnormales.Limpia(lp2); lp3 = Desnormales.Limpia(lp3);
+                        env = Desnormales.Limpia(env); hpS = Desnormales.Limpia(hpS); lpS = Desnormales.Limpia(lpS);
+                    }
                 }
                 hSal = hs; mix = mx; quedan = q;
             }

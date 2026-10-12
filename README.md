@@ -8,6 +8,17 @@ sin reducir calidad; los paneles respetan los limites de la tarjeta. Solo Modest
 HD suspendida y renderizado CPU congelado.
 [Cambios, pruebas y limites pendientes](AUDITORIA_GENERAL_MODEST_2026-10-11.md).
 
+## El sonido ya no se atasca en los silencios — 12 de octubre de 2026
+
+- **En el silencio exacto la cadena de sonido gastaba siete veces más** que con música: los filtros se apagaban en
+  números diminutos que el procesador calcula muy despacio. Pasaba al final de cada canción, justo cuando se prepara
+  la siguiente.
+- **Ahora esos restos se ponen a cero** cada 64 cuadros: de 95 a 13 ms por segundo en una canción con silencio largo.
+- **Lo que suena es lo mismo:** comparado byte a byte en 16 bits con canciones enteras. Con música gasta lo mismo.
+- Medido en esta máquina; en el equipo del bar (y en XP) no se pudo medir.
+
+[Lo que se midió, lo que se cambió y cómo se comprobó](RENDIMIENTO_SILENCIOS_MODEST_2026-10-12.md).
+
 ## El fondo Legacy, más ligero sin cambiar el aspecto — 12 de octubre de 2026
 
 - **Medido capa por capa** con un simulador de la tarjeta: el fondo pinta 5,9 pantallas por cuadro y gasta 0,14 ms
