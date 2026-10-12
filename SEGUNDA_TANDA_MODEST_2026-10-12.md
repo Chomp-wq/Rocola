@@ -99,6 +99,7 @@ créditos**, para cerrar el negocio.
 - **El dibujo por CPU no cambió:** sus 14 métodos congelados son idénticos en los dos perfiles.
 - **Tanda completa (`pruebas/todo.sh`):** 27 problemas: los 26 de antes y `indice`, una medida de velocidad con
   varios núcleos. Falló porque la tanda corrió a la vez que otras pruebas; sola pasa (dos veces seguidas).
-  `segundatanda` pasa en los dos perfiles.
+  `segundatanda` pasa en los dos perfiles. En la tanda siguiente, ya sin otras pruebas a la vez, `indice` pasó y quedaron los 26 de
+  antes.
 - **No comprobado:** en Windows XP de verdad, con el cambio de horario real o con 25 días encendida. Se comprobó la
   lógica.

@@ -112,6 +112,9 @@ Las claves viejas de Espacio natural (`luna_fase=`, `cielo_hora=`…) siguen ign
   - del fondo: `hojasfondo`, `fondo`, `fondocoste`, `cielohondo`, `fugaces`, `luna`, `nebulosa`, `vineta`,
     `aurorafina`, `dibujoligero`, `respira`, `mando`, `presencia`, `anim`, `textosgpu`, `envios`, `pedidas`,
     `reposounido`, `panelreposo`, `cielo`, `estrellas`, `pared` y `deriva`.
+- **Tanda completa (`pruebas/todo.sh`):** 26 problemas, los mismos 26 de antes de estos cambios (baterías que ya fallaban
+  en este Linux); ninguno nuevo. `salalocal`, `cielovivo`, `ventanaf3`, `hojasfondo` y `segundatanda` pasan en los dos
+  perfiles.
 - **Legacy y CPU:**
   - la huella de Legacy es idéntica: con los adornos el cielo de siempre sale igual;
   - los 14 métodos congelados del dibujo por CPU son idénticos en los dos perfiles.
