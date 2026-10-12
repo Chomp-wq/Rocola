@@ -1438,11 +1438,15 @@ namespace Rocola
         }
 
         // ---- Cola unificada (canciones + videos, en orden) + creditos ----
-        private enum AddResult { Added, NoCredit, Repeat }
+        private enum AddResult { Added, NoCredit, Repeat, Danada }   // Danada: esa cancion ya fallo por archivo danado (AperturaAudio.cs)
 
         private AddResult AddItem(PlayItem it)
         {
             if (it == null) return AddResult.Repeat;
+            // UNA CANCION QUE YA FALLO POR ESTAR DANADA no se vuelve a poner: se avisa al momento y no se cobra (antes
+            // entraba, fallaba al llegarle el turno y devolvia el credito, una y otra vez). Va antes que los creditos:
+            // de nada sirve pedir una moneda para algo que no va a sonar.
+            if (!it.IsVideo && it.Song != null && EstaDanada(it.Song.Path)) return AddResult.Danada;
             if (credits <= 0)
             {   // sin creditos no se puede poner nada, y ademas la capsula se SACUDE: a las dos de la
                 // manana nadie lee el letrero, pero un movimiento si se ve.

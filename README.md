@@ -8,6 +8,16 @@ sin reducir calidad; los paneles respetan los limites de la tarjeta. Solo Modest
 HD suspendida y renderizado CPU congelado.
 [Cambios, pruebas y limites pendientes](AUDITORIA_GENERAL_MODEST_2026-10-11.md).
 
+## Tercera tanda de fallos — 12 de octubre de 2026
+
+- **Una canción dañada ya no se puede pedir una y otra vez:** tras fallar una vez, al pedirla dice «Esa canción está
+  dañada: elige otra», sin cobrar ni entrar en la cola. Si el archivo se cambia, o el fallo fue del disco, se puede
+  volver a pedir.
+- **El motivo del fallo va primero** en la línea de estado, para que un nombre largo no lo tape.
+- **La biblioteca vacía** dice «No encontré música en la carpeta», no «MP3».
+
+[Qué se buscó y cómo se comprobó](TERCERA_TANDA_MODEST_2026-10-12.md).
+
 ## El local y sus bocinas, y el cielo vivo de Legacy — 12 de octubre de 2026
 
 - **Ctrl+F3 → Sonido → «El local y sus bocinas…»:**

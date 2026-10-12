@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.IO;
 using System.Threading;
 using System.Windows.Forms;
 namespace Rocola
@@ -252,6 +254,37 @@ namespace Rocola
             catch { SueltaLookahead(); } // precarga opcional: un fallo al crear el hilo no corta la UI
         }
         private void SueltaLookahead() { if (lookahead != null) lookahead.Suelta(); SueltaEnMemoria(); }   // (y lo leido por adelantado)
+        // LAS CANCIONES DANADAS (tercera tanda, 12-10-2026). Una cancion cuyo ARCHIVO esta roto (formato, cortado,
+        // cabecera mala) fallaba cada vez que alguien la ponia: entraba en la cola, al llegarle el turno no sonaba y se
+        // devolvia el credito. Ahora, despues del primer fallo, al pedirla se dice al momento que esta danada y no se cobra.
+        // Solo en esta sesion, y solo mientras el archivo sea el mismo (tamano y fechas): si el operador lo cambia, se
+        // vuelve a poder pedir. Un disco desconectado o que no deja leer NO la marca: al volver el disco, suena.
+        internal const string AvisoDanada = "Esa canci\u00f3n est\u00e1 da\u00f1ada: elige otra";
+        private readonly Dictionary<string, string> danadas = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        internal static bool EsArchivoDanado(Exception ex)
+        {
+            if (ex == null || ex is IOException && !(ex is EndOfStreamException)) return false;   // el disco, no el archivo
+            if (ex is UnauthorizedAccessException || ex is System.Runtime.InteropServices.COMException || ex is OutOfMemoryException) return false;
+            return ex is EndOfStreamException || ex is FormatException || ex is InvalidDataException
+                || ex is InvalidOperationException || ex is NotSupportedException || ex is ArgumentException;
+        }
+        private void MarcaDanada(string path, Exception ex)
+        {
+            if (string.IsNullOrEmpty(path) || !EsArchivoDanado(ex)) return;
+            string firma = AudioFileSignature(path);
+            if (firma == null) return;   // si ni existe, es el disco: no se marca
+            if (danadas.Count >= 4096) danadas.Clear();   // tope: nunca crece sin limite
+            danadas[path] = firma;
+        }
+        private bool EstaDanada(string path)
+        {
+            string antes;
+            if (string.IsNullOrEmpty(path) || danadas.Count == 0 || !danadas.TryGetValue(path, out antes)) return false;
+            if (antes == AudioFileSignature(path)) return true;
+            danadas.Remove(path);   // cambio el archivo (o ya no esta): que se intente de nuevo
+            return false;
+        }
+
         internal static string AudioFileSignature(string path)
         {
             try
@@ -279,7 +312,8 @@ namespace Rocola
                 DisposePlaybackNow();
                 return;
             }
-            EstadoPasajero("No se pudo reproducir " + System.IO.Path.GetFileName(t.Path) + ": " + MotivoFallo(ex), EstadoPasajeroMs);   // el detalle, en rocola_error.txt
+            EstadoPasajero("No se pudo reproducir: " + MotivoFallo(ex) + "  (" + System.IO.Path.GetFileName(t.Path) + ")", EstadoPasajeroMs);   // el motivo primero: un nombre largo se corta por la orilla y se llevaria el motivo; el detalle, en rocola_error.txt
+            MarcaDanada(t.Path, ex);   // si es el archivo (no el disco), no se vuelve a dejar poner hasta que lo cambien
             LogError("PlayTrack " + System.IO.Path.GetFileName(t.Path), ex);
             NoteIncompatible(t.Path, ex);
             RefundCredit();

@@ -191,7 +191,7 @@ namespace Rocola
             if (albumView != null) albumView.ResetCellCache();   // re-escaneo: descarta celdas horneadas (etiqueta/portada pueden haber cambiado para el mismo Folder)
             RefreshAlbums();
 
-            if (albums.Count == 0) lblStatus.Text = "No encontre MP3 en esa carpeta: " + MusicFolder;
+            if (albums.Count == 0) lblStatus.Text = "No encontr\u00e9 m\u00fasica en la carpeta: " + MusicFolder;   // no solo MP3: tambien WAV, WMA...
             else lblStatus.Text = "";   // las instrucciones las muestra la barra de ayuda (formas/colores)
 
             ApuntaBiblioteca(fromCache);   // (bitacora: MedidasBitacora.cs)
@@ -3418,6 +3418,7 @@ namespace Rocola
                 AddResult r = AddItem(p);
                 if (r == AddResult.Added) ShowSongAddedToast(true);
                 else if (r == AddResult.NoCredit) { if (!InvitaSinCredito(p)) ShowSearchToast("Inserta una moneda", false); }
+                else if (r == AddResult.Danada) ShowSearchToast(AvisoDanada, false);
                 else ShowSearchToast("Esa cancion ya va seguida", false);
                 return; // no cierra el buscador
             }

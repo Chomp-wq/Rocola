@@ -84,6 +84,9 @@ GPU="$GPU lineaestado"
 # 'segundatanda': el reloj de Windows que se atrasa, la vuelta del contador a los 24,9 dias y el motivo del fallo en corto.
 CPU="$CPU segundatanda"
 GPU="$GPU segundatanda"
+# 'terceratanda': las canciones danadas no se vuelven a poner, el motivo del fallo primero y la biblioteca vacia.
+CPU="$CPU terceratanda"
+GPU="$GPU terceratanda"
 # 'cielovivo': el cielo vivo de Legacy (12-10-2026): luna, lluvias, festejo, cometa, profundidad, hora y reflejo (CieloVivoGpu.cs).
 CPU="$CPU cielovivo"
 GPU="$GPU cielovivo"

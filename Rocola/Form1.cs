@@ -2259,6 +2259,7 @@ namespace Rocola
             AddResult r = AddItem(it);
             if (r == AddResult.Added) ShowSongAddedToast(false);
             else if (r == AddResult.NoCredit) { if (!InvitaSinCredito(it)) ShowToast("Inserta una moneda", Color.FromArgb(200, 130, 35)); }
+            else if (r == AddResult.Danada) ShowToast(AvisoDanada, Color.FromArgb(200, 80, 70));
             else ShowToast("Esa ya va seguida", Color.FromArgb(200, 130, 35));
         }
 
