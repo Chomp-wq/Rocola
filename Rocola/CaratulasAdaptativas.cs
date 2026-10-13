@@ -122,9 +122,9 @@ namespace Rocola
             string[] names = { "Automático", "Fluidez", "Equilibrado", "Carga rápida" };
             string[] descriptions = {
                 "Se adapta al margen del equipo. Recomendado para empezar.",
-                "Menos trabajo simultáneo: prioriza la respuesta de la pantalla.",
+                "Menos trabajo a la vez y una página de colchón: equipos débiles.",
                 "Un punto intermedio entre suavidad y velocidad de carga.",
-                "Más trabajo si hay margen; retrocede si detecta saturación."
+                "Más trabajo y páginas listas si hay margen; retrocede si satura."
             };
             BotonPlano[] buttons = new BotonPlano[4];
             Action paint = delegate {
@@ -152,7 +152,7 @@ namespace Rocola
             jpeg.CheckedChanged += delegate { caratulasJpeg = jpeg.Checked; f3CambioGraf = true; };
             Label jpegNota = new Label(); jpegNota.SetBounds(16, 334, 424, 32);
             jpegNota.Font = fDes; jpegNota.ForeColor = cTenue; jpegNota.BackColor = Color.Transparent;
-            jpegNota.Text = "Unas 6 veces menos disco y lectura más rápida, a cambio de algo\nde nitidez en letras y bordes de color. Las transparentes, sin pérdida.";
+            jpegNota.Text = "6 veces menos disco: más páginas listas, también en disco duro.\nAlgo menos nitidez en letras y bordes. Las transparentes, sin pérdida.";
             card.Controls.Add(jpeg); card.Controls.Add(jpegNota);
             Label note = new Label(); note.SetBounds(16, 370, 424, 34);
             note.Font = fDes; note.ForeColor = cTenue; note.BackColor = Color.Transparent;

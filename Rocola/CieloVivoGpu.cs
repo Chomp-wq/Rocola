@@ -358,7 +358,7 @@ namespace Rocola
         {
             if (lunaCieloTex != IntPtr.Zero) { D3D9.Release(lunaCieloTex); lunaCieloTex = IntPtr.Zero; }
             lunaCieloBw = lunaCieloBh = 0; lunaCieloPaso = -1; lunaCieloLado = 0;
-            aurDibujada = false; nebEmpuje = hazEmpuje = 0f;
+            aurDibujada = false; nebEmpuje = hazEmpuje = nebCrudo = hazCrudo = 0f;
         }
         private void DibujaLunaCielo()
         {
@@ -386,24 +386,39 @@ namespace Rocola
 
         // ---------------- 5) la profundidad al pasar de pagina: lo que se corren nebulosas y via lactea, y su vuelta
         internal const float NebEmpujeFr = 0.30f, HazEmpujeFr = 0.14f, EmpujeMargen = 0.02f, EmpujeVueltaSeg = 1.4f;
-        private float nebEmpuje, hazEmpuje; private double empujeUltMs;
+        // EL TOPE SIN CHOQUE (13-10-2026). Lo corrido se acumulaba y se cortaba en seco en el tope: hojeando rapido, las
+        // nebulosas iban, chocaban contra el tope y se quedaban clavadas mientras las portadas seguian, un tiron. Ahora se
+        // acumula aparte (nebCrudo/hazCrudo) y lo que se ve pasa por una rodilla: igual que antes hasta el 75 % del tope
+        // (un empujon solo, de una pagina, sale identico) y desde ahi se acerca al tope sin llegar a chocar.
+        private float nebEmpuje, hazEmpuje, nebCrudo, hazCrudo; private double empujeUltMs;
+        internal static float Rodilla(float x, float tope)
+        {
+            if (!(tope > 0f)) return 0f;
+            float k = 0.75f * tope, ax = x < 0f ? -x : x;
+            if (ax <= k) return x;
+            float y = k + (tope - k) * (float)Math.Tanh((ax - k) / (tope - k));
+            return x < 0f ? -y : y;
+        }
         private void EmpujaNieblas(float dx)
         {
-            if (!ProfundidadPagina || Width <= 0) { nebEmpuje = hazEmpuje = 0f; return; }
-            float tope = Width * EmpujeMargen;
-            nebEmpuje = Math.Max(-tope, Math.Min(tope, nebEmpuje + dx * NebEmpujeFr));
-            hazEmpuje = Math.Max(-tope, Math.Min(tope, hazEmpuje + dx * HazEmpujeFr));
+            if (!ProfundidadPagina || Width <= 0) { nebEmpuje = hazEmpuje = nebCrudo = hazCrudo = 0f; return; }
+            float tope = Width * EmpujeMargen, techo = 4f * tope;
+            nebCrudo = Math.Max(-techo, Math.Min(techo, nebCrudo + dx * NebEmpujeFr));
+            hazCrudo = Math.Max(-techo, Math.Min(techo, hazCrudo + dx * HazEmpujeFr));
+            nebEmpuje = Rodilla(nebCrudo, tope); hazEmpuje = Rodilla(hazCrudo, tope);
         }
         private void VuelvenNieblas()
         {
             double ahora = AhoraMs();
             float dt = empujeUltMs > 0 ? (float)Math.Max(0, Math.Min(.1, (ahora - empujeUltMs) / 1000.0)) : 0f;
             empujeUltMs = ahora;
-            if (!ProfundidadPagina) { nebEmpuje = hazEmpuje = 0f; return; }
+            if (!ProfundidadPagina) { nebEmpuje = hazEmpuje = nebCrudo = hazCrudo = 0f; return; }
             float k = (float)Math.Exp(-dt / EmpujeVueltaSeg * 3.0);
-            nebEmpuje *= k; hazEmpuje *= k;
-            if (Math.Abs(nebEmpuje) < 0.05f) nebEmpuje = 0f;
-            if (Math.Abs(hazEmpuje) < 0.05f) hazEmpuje = 0f;
+            nebCrudo *= k; hazCrudo *= k;
+            if (Math.Abs(nebCrudo) < 0.05f) nebCrudo = 0f;
+            if (Math.Abs(hazCrudo) < 0.05f) hazCrudo = 0f;
+            float tope = Width * EmpujeMargen;
+            nebEmpuje = Rodilla(nebCrudo, tope); hazEmpuje = Rodilla(hazCrudo, tope);
         }
     }
 

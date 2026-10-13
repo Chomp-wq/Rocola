@@ -132,6 +132,10 @@ GPU="$GPU repasoligero"
 # cuadros y salen los mismos bytes que con Mp3FileReader, con saltos, ID3, basura entre cuadros y archivos cortados.
 CPU="$CPU mp3ligero"
 GPU="$GPU mp3ligero"
+# 'hojeofino': hojear rapido sin micro tirones (13-10-2026): reloj fino en la pared y el cielo, empujones que se suman, la
+# rodilla de la niebla, la lectura de caratulas que reutiliza su arreglo y las paginas de colchon por perfil y JPEG.
+CPU="$CPU hojeofino"
+GPU="$GPU hojeofino"
 # 'cielovivo': el cielo vivo de Legacy (12-10-2026): luna, lluvias, festejo, cometa, profundidad, hora y reflejo (CieloVivoGpu.cs).
 CPU="$CPU cielovivo"
 GPU="$GPU cielovivo"

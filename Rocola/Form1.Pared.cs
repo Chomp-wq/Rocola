@@ -588,8 +588,16 @@ namespace Rocola
                 // cambio (no hay de donde salir) ni si la anterior iba a medio entrar: habria que sacarla de donde
                 // estaba, no de su sitio, y daria un salto. Ahi se va de golpe, como siempre.
                 slideViejas = (PaginaDesliza && !enCurso && paginaVista != null && !ReferenceEquals(paginaVista, Page)) ? paginaVista : null;
-                empujeHecho = PaginaDesliza ? 0f : 1f; empujeDir = dir; empujeDesde = now;
-                slideFrom = dir * (float)ancho; slideTick = now;
+                double fino = MsFino();
+                if (PaginaDesliza)
+                {
+                    // Un empujon nuevo NO tira lo que le faltaba al anterior: los dos siguen cada uno su curva y se suman
+                    // (TomaEmpuje). Antes el nuevo empezaba de cero: hojeando rapido el cielo frenaba en seco y volvia a
+                    // arrancar en cada pagina.
+                    int k = empujeSig; empujeSig = (empujeSig + 1) % EmpujesVivos;
+                    empujeHechoN[k] = 0f; empujeDirN[k] = dir; empujeDesdeN[k] = fino;
+                }
+                slideFrom = dir * (float)ancho; slideTick = now; slideFino = fino;
             }
             // ---------------- PASAR DE PAGINA DESLIZANDO (Ctrl+F3 -> Pantalla; PantallaVivaGpu.cs) ----------------
             // Las dos paginas van en fila, una detras de otra, y cada columna sale con un pequeño retraso respecto
@@ -619,6 +627,10 @@ namespace Rocola
             // de un 75 % a mitad de camino (simulado a 1000 px).
             internal static float CurvaColumna(int dt, int orden, bool vieja, out float alpha)
             {
+                return CurvaColumnaFina(dt, orden, vieja, out alpha);   // un entero se pasa a float exacto: la misma cuenta
+            }
+            internal static float CurvaColumnaFina(float dt, int orden, bool vieja, out float alpha)
+            {
                 float u = (dt - orden * DesfaseCol) / (float)ViajeCol;
                 if (!(u > 0f)) u = 0f; else if (u > 1f) u = 1f;
                 float q = 1f - u;
@@ -631,10 +643,29 @@ namespace Rocola
             // EL CIELO SE CORRE un poco al pasar de pagina, en el mismo sentido y mucho mas despacio que las portadas
             // (un 4.5 % del ancho de la pared): lo lejano se mueve menos, y eso se lee como profundidad.
             internal const float EmpujeFr = .045f;
-            private float empujeHecho = 1f; private int empujeDir, empujeDesde;
+            // EL RELOJ FINO (13-10-2026). El deslizamiento de la pared y el empujon del cielo se median con Environment.TickCount,
+            // que en Windows avanza a saltos de unos 15,6 ms: a 60 cuadros por segundo, un cuadro veia el tiempo quieto y el
+            // siguiente un salto doble, y el cielo -que se mueve despacio y se ve entero- iba a tirones aunque los FPS no
+            // bajaran. Ahora la parte de la tarjeta usa el cronometro de alta resolucion. (Sliding sigue con TickCount: lo
+            // usa tambien el dibujo por CPU, que no se toca.)
+            internal static double MsFino() { return System.Diagnostics.Stopwatch.GetTimestamp() * 1000.0 / System.Diagnostics.Stopwatch.Frequency; }
+            private double slideFino = -1;
+            internal const int EmpujesVivos = 4;   // empujones a la vez (hojeando rapido se solapan)
+            private readonly float[] empujeHechoN = { 1f, 1f, 1f, 1f };
+            private readonly int[] empujeDirN = new int[EmpujesVivos];
+            private readonly double[] empujeDesdeN = new double[EmpujesVivos];
+            private int empujeSig;
             internal static float CurvaCielo(int dt)
             {
                 if (dt <= 0) return 0f;
+                if (dt >= SlideMs) return 1f;
+                float u = dt / (float)SlideMs;
+                return u * u * (3f - 2f * u);
+            }
+            // Las tres curvas con el tiempo en fraccion de milisegundo (el reloj fino de la tarjeta): la misma cuenta.
+            internal static float CurvaCieloFina(float dt)
+            {
+                if (!(dt > 0f)) return 0f;
                 if (dt >= SlideMs) return 1f;
                 float u = dt / (float)SlideMs;
                 return u * u * (3f - 2f * u);
@@ -644,12 +675,18 @@ namespace Rocola
             // cielo de golpe mas tarde seria un salto.
             public float TomaEmpuje()
             {
-                if (empujeHecho >= 1f) return 0f;
-                int dt = Environment.TickCount - empujeDesde;
-                if (!PaginaDesliza || dt < 0 || dt > SlideMs + 150) { empujeHecho = 1f; return 0f; }
-                float p = CurvaCielo(dt);
-                float d = p - empujeHecho; empujeHecho = p;
-                return -empujeDir * EmpujeFr * Width * d;
+                float total = 0f; double ahora = -1;
+                for (int k = 0; k < EmpujesVivos; k++)
+                {
+                    if (empujeHechoN[k] >= 1f) continue;
+                    if (ahora < 0) ahora = MsFino();
+                    double dt = ahora - empujeDesdeN[k];
+                    if (!PaginaDesliza || dt < 0 || dt > SlideMs + 150) { empujeHechoN[k] = 1f; continue; }
+                    float p = CurvaCieloFina((float)dt);
+                    float d = p - empujeHechoN[k]; empujeHechoN[k] = p;
+                    total += -empujeDirN[k] * EmpujeFr * Width * d;
+                }
+                return total;
             }
             // El lado de la portada de una casilla (el mismo calculo que Geometry), para el letrero de la elegida.
             internal static int LadoPortada(int w, int h)
@@ -668,7 +705,7 @@ namespace Rocola
             // La pagina que SE VA: sus casillas tal como se vieron -sin hornear nada ni pedir portadas-, un ancho de
             // pared por detras de la nueva. Van en los puestos PageSize.. para no pisar las texturas por puesto de la
             // nueva, y DESPUES de ella en el buffer: si no caben, la que falta es la que sale, nunca la que entra.
-            private int CeldasViejas(GpuGridCell[] buf, int n, int w, int h, int cw, int side, int labelH, int gap, int dt, int ox, int oy)
+            private int CeldasViejas(GpuGridCell[] buf, int n, int w, int h, int cw, int side, int labelH, int gap, float dt, int ox, int oy)
             {
                 bool izq = slideFrom > 0f;
                 int nada = 0;
@@ -676,7 +713,7 @@ namespace Rocola
                 {
                     Album a = slideViejas[i];
                     int col = i % Cols;
-                    float al; float falta = CurvaColumna(dt, OrdenColumna(col, izq, true), true, out al);
+                    float al; float falta = CurvaColumnaFina(dt, OrdenColumna(col, izq, true), true, out al);
                     float cdx = slideFrom * (falta - 1f);
                     Rectangle area, lbl; Geometry(w, h, i, out area, out lbl);
                     Image tapa = (PeekCoverGpu != null) ? PeekCoverGpu(a) : null;
@@ -708,14 +745,23 @@ namespace Rocola
                 alpha = t < 0.45f ? (t / 0.45f) : 1f;
                 return 1f - e;
             }
+            internal static float CurvaHojeoFina(float dt, out float alpha)
+            {
+                alpha = 1f;
+                if (!(dt >= 0f) || dt >= SlideMs) return 0f;
+                float t = dt / (float)SlideMs;
+                float e = 1f - (1f - t) * (1f - t) * (1f - t);   // frenado suave al llegar (cubico)
+                alpha = t < 0.45f ? (t / 0.45f) : 1f;
+                return 1f - e;
+            }
             // Devuelve el desplazamiento de este cuadro y, de paso, el desvanecido de entrada.
             private float SlideNow(out float alpha)
             {
                 alpha = 1f;
                 if (slideTick == -1) return 0f;
-                int dt = Environment.TickCount - slideTick;
+                float dt = (float)(MsFino() - slideFino);   // reloj fino (ver MsFino)
                 if (dt < 0 || dt >= SlideMs) { slideTick = -1; return 0f; }
-                return slideFrom * CurvaHojeo(dt, out alpha);
+                return slideFrom * CurvaHojeoFina(dt, out alpha);
             }
 
             // Llena 'buf' con las celdas (disco estatico + etiqueta) de la pagina actual, en coords de PANTALLA (el
@@ -737,7 +783,7 @@ namespace Rocola
                 bool chica = Sliding && HojeoLigero && gpuRapidSlide;
                 float alpha; float dx = SlideNow(out alpha);   // hojeo: desplazamiento y desvanecido de ESTE cuadro
                 // Pasar de pagina deslizando: cada columna lleva su propio punto del camino (CurvaColumna).
-                int dtHojeo = (slideTick != -1) ? Environment.TickCount - slideTick : -1;
+                float dtHojeo = (slideTick != -1) ? (float)(MsFino() - slideFino) : -1f;   // reloj fino (ver MsFino)
                 bool columnas = PaginaDesliza && dtHojeo >= 0;
                 if (!columnas) slideViejas = null;
                 bool izq = slideFrom > 0f;
@@ -769,7 +815,7 @@ namespace Rocola
                         gpuBakeCost = CargaTrabajo.AprendeCoste(gpuBakeCost, System.Diagnostics.Stopwatch.GetTimestamp() - cellStart);
                     buf[n].Placeholder = HojeoLigero;
                     float cdx = dx, ca = alpha;
-                    if (columnas) cdx = slideFrom * CurvaColumna(dtHojeo, OrdenColumna(i % Cols, izq, false), false, out ca);
+                    if (columnas) cdx = slideFrom * CurvaColumnaFina(dtHojeo, OrdenColumna(i % Cols, izq, false), false, out ca);
                     buf[n].CoverRect = new RectangleF(ox + area.X + cdx, oy + area.Y, area.Width, area.Height);
                     buf[n].Slot = i;
                     buf[n].X = ox + (i % Cols) * cw + cdx; buf[n].Y = oy + area.Y; buf[n].W = cw; buf[n].H = side + gap + labelH;

@@ -340,13 +340,31 @@ namespace Rocola
             if (gpuEnabled && albumView != null && albumView.Ahead != null)
                 for (int i = 0; i < albumView.Ahead.Count; i++) RequestCover(albumView.Ahead[i], true, false);
 #endif
-            PrefetchPage(all, page + 1);
-            PrefetchPage(all, page - 1);
-            if (!diskSlow)   // con SSD sobran lecturas: dos paginas de colchon; con HDD, solo una
-            {
-                PrefetchPage(all, page + 2);
-                PrefetchPage(all, page - 2);
-            }
+            // Cuantas paginas de colchon a cada lado: segun el perfil de carga, el disco y si las miniaturas van en JPEG.
+            int colchon = PaginasDeColchon(
+#if ROCOLA_GPU
+                gpuEnabled, caratulasCarga,
+#else
+                false, 0,
+#endif
+                diskSlow, JpegActivo, CargaTrabajo.Procesadores);
+            for (int d = 1; d <= colchon; d++) { PrefetchPage(all, page + d); PrefetchPage(all, page - d); }
+        }
+
+        // PAGINAS DE COLCHON (peticion del 13-10-2026: que los perfiles aprovechen el JPEG). Una miniatura JPEG pesa unas
+        // seis veces menos que la PNG y se lee en un tercio del tiempo, sin pasar por la memoria de objetos grandes:
+        //  - Fluidez: una pagina a cada lado, tenga el disco que tenga. Es el de los equipos mas debiles: menos trabajo de
+        //    fondo; el JPEG ya le abarata cada lectura sin preleer mas.
+        //  - Automatico y Equilibrado: dos con SSD; con disco duro, dos si van en JPEG (lecturas cortas) y una en PNG.
+        //  - Carga rapida: igual, y tres con SSD y JPEG si sobran hilos (mas de dos).
+        // Solo cambia CUANTO se pide por adelantado, con la fila baja de siempre: los lectores siguen con su tope (uno
+        // por disco duro y uno en 2 hilos) y la calidad final es la misma. Sin GPU (congelado), lo de antes: 2 SSD, 1 HDD.
+        internal static int PaginasDeColchon(bool gpu, int perfil, bool lento, bool jpeg, int procesadores)
+        {
+            if (!gpu) return lento ? 1 : 2;
+            if (perfil == 1) return 1;
+            if (lento) return jpeg ? 2 : 1;
+            return (perfil == 3 && jpeg && procesadores > 2) ? 3 : 2;
         }
 
         private readonly List<string> coverArrivals = new List<string>();
@@ -833,6 +851,35 @@ namespace Rocola
         private static Image DecodeCoverParaCalentar(string path, string cacheFile, out Bitmap pendiente)
         { return DecodeCoverCore(path, cacheFile, true, JpegActivo, out pendiente); }
 #endif
+        // LEER UNA CARATULA SIN DEJAR BASURA GRANDE (13-10-2026). Antes cada lectura era File.ReadAllBytes: un arreglo nuevo del
+        // tamano del archivo. Una miniatura en PNG de 256x256 pesa casi siempre mas de 85 KB, y en .NET un arreglo asi va al
+        // monton de objetos grandes, que solo se limpia con una recoleccion COMPLETA, la que para todos los hilos (tambien
+        // el de la pantalla). Pasando paginas rapido son 18 por pagina: el cielo daba micro tirones aunque los FPS no
+        // bajaran. Ahora cada hilo lector usa SU arreglo, reservado una vez y reutilizado (GDI+ termina con el antes de
+        // devolver la miniatura: se copia con Clone o se dibuja en la nueva). Las JPEG (6 veces menos) ya cabian de sobra.
+        // Un archivo de mas de LecturaReutilizada (una portada original enorme) se lee como siempre.
+        internal const int LecturaReutilizada = 2 * 1024 * 1024;
+        [ThreadStatic] private static byte[] lecturaCaratula;
+        internal static byte[] LeeEntero(string ruta, out int largo)
+        {
+            using (FileStream fs = new FileStream(ruta, FileMode.Open, FileAccess.Read, FileShare.Read))   // lo mismo que File.ReadAllBytes
+            {
+                long n = fs.Length;
+                if (n > int.MaxValue) throw new IOException("archivo demasiado grande");
+                byte[] b;
+                if (n > LecturaReutilizada) b = new byte[n];
+                else
+                {
+                    b = lecturaCaratula;
+                    if (b == null || b.Length < n) { b = new byte[Math.Max((int)n, 256 * 1024)]; lecturaCaratula = b; }
+                }
+                int hecho = 0, r;
+                while (hecho < n && (r = fs.Read(b, hecho, (int)n - hecho)) > 0) hecho += r;
+                if (hecho != n) throw new EndOfStreamException("la caratula cambio mientras se leia");
+                largo = (int)n;
+                return b;
+            }
+        }
         private static Image DecodeCoverCore(string path, string cacheFile, bool publicarPrimero, bool soloJpeg, out Bitmap pendiente)
         {
             pendiente = null;
@@ -846,16 +893,16 @@ namespace Rocola
                         guardada = null;   // calentando para pasar a JPEG: el PNG no sirve, se rehace desde la original
                     if (guardada != null)
                     {
-                        byte[] cdata;
+                        byte[] cdata; int clargo;
                         if (diskProbeN < 16)   // perfilado: cronometra las primeras lecturas de miniaturas
                         {
                             System.Diagnostics.Stopwatch dsw = System.Diagnostics.Stopwatch.StartNew();
-                            cdata = File.ReadAllBytes(guardada);
+                            cdata = LeeEntero(guardada, out clargo);
                             dsw.Stop();
                             DiskProbe((int)dsw.ElapsedMilliseconds);
                         }
-                        else cdata = File.ReadAllBytes(guardada);   // I/O puro primero; GDI+ decodifica desde RAM
-                        using (MemoryStream cms = new MemoryStream(cdata))
+                        else cdata = LeeEntero(guardada, out clargo);   // I/O puro primero; GDI+ decodifica desde RAM
+                        using (MemoryStream cms = new MemoryStream(cdata, 0, clargo, false))
                         using (Image cimg = Image.FromStream(cms, false, false))
                         {
                             // Una copia del bitmap, no otra pasada de composicion GDI+:
@@ -873,8 +920,9 @@ namespace Rocola
             // 2) decodificar la portada original y GUARDAR la miniatura para la proxima vez
             try
             {
-                byte[] data = File.ReadAllBytes(path);   // I/O puro primero (lectura secuencial corta); GDI+ decodifica desde RAM
-                using (MemoryStream ms = new MemoryStream(data))
+                int largo;
+                byte[] data = LeeEntero(path, out largo);   // I/O puro primero (lectura secuencial corta); GDI+ decodifica desde RAM
+                using (MemoryStream ms = new MemoryStream(data, 0, largo, false))
                 using (Image src = Image.FromStream(ms, false, false))
                 {
                     Bitmap thumb = new Bitmap(ThumbPx, ThumbPx, PixelFormat.Format32bppPArgb);

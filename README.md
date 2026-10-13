@@ -8,6 +8,13 @@ sin reducir calidad; los paneles respetan los limites de la tarjeta. Solo Modest
 HD suspendida y renderizado CPU congelado.
 [Cambios, pruebas y limites pendientes](AUDITORIA_GENERAL_MODEST_2026-10-11.md).
 
+## Hojear rápido sin micro tirones en el fondo — 13 de octubre de 2026
+
+El cielo se mueve con un reloj fino y los empujones de varias páginas seguidas se suman. Las nebulosas ya no chocan
+contra su tope y la lectura de carátulas reutiliza su memoria. Los perfiles de carga aprovechan el JPEG: con disco
+duro, dos páginas de colchón; Fluidez, una sola, para equipos débiles.
+[Causas, cambios y pruebas](HOJEO_SIN_TIRONES_MODEST_2026-10-13.md).
+
 ## Los géneros para la IA, sin cargar la pantalla — 13 de octubre de 2026
 
 La copia de los géneros deducidos se hace casi toda en segundo plano: con 30.000 canciones, el hilo de la pantalla
