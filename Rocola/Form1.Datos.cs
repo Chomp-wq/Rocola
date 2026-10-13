@@ -1822,7 +1822,7 @@ namespace Rocola
             if (gen != durScanGen) return;
             bool cambia = AplicaTintesNuevos(letras, etiquetas, discos, etDiscos);
             if (cambia) RecalculaGenerosArtista();   // no reconstruir filtros con votos repetidos
-            if (ultimo) { tintesPend = false; GuardaTintes(firma); }
+            if (ultimo) { tintesPend = false; GuardaTintes(firma); ActualizaGenerosIa(true); }   // el paseo termino: los generos interpretados, ya completos, para la IA
             if (cambia) RecalculaLetras();
         }
 

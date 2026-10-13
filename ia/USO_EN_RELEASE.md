@@ -25,7 +25,8 @@ iniciar su prueba sintética. Utiliza el lanzador de arrastre indicado arriba.
    - `rocola_ia_datos.bin` y `rocola_ia_datos.idx`;
    - `rocola_ia_datos.generos.tsv`, el género de cada canción, sacado de su etiqueta.
 
-   Las canciones sin género en la etiqueta no cuentan. Hace falta que un género tenga **60 canciones o más** con
+   Las canciones sin género en la etiqueta cuentan con el que la rocola deduce de su disco (la pastilla de la
+   pantalla: «Regional», «Rock»…). Hace falta que un género tenga **60 canciones o más** con
    material.
 2. **Entrenar.** Arrastra la carpeta de la rocola (por ejemplo `D:\Release1`) sobre `ia\entrenar_dsee.bat`.
    Primero entrena el modelo general y después uno por cada género con material de sobra (como mucho los 6 con

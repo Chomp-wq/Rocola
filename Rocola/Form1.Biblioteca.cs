@@ -179,6 +179,7 @@ namespace Rocola
             LeeTintes(FirmaBiblioteca());   // el color de cada letra, si ya se calculo para esta misma biblioteca
             RecalculaGenerosArtista();      // y de esos generos de disco salen los del artista, sin leer nada mas
             nombreTag.Clear();              // biblioteca nueva: lo adivinado por el nombre se vuelve a mirar
+            ActualizaGenerosIa(true);       // y los generos interpretados, para la IA (Form1.Ia.cs)
             RecalculaLetras();
 
             string order = LetrasOrden;
@@ -733,7 +734,7 @@ namespace Rocola
         private void RecalculaGenerosArtista()
         {
             artistTag.Clear();
-            if (libBuilding || discTag.Count == 0 || albums == null) return;   // 'albums' es del worker mientras se re-escanea
+            if (libBuilding || discTag.Count == 0 || albums == null) { ActualizaGenerosIa(false); return; }   // 'albums' es del worker mientras se re-escanea
             Dictionary<string, Dictionary<string, int>> votos = new Dictionary<string, Dictionary<string, int>>(StringComparer.OrdinalIgnoreCase);
             for (int i = 0; i < albums.Count; i++)
             {
@@ -752,6 +753,7 @@ namespace Rocola
                 foreach (KeyValuePair<string, int> vv in kv.Value) if (vv.Value > mejorN) { mejorN = vv.Value; mejor = vv.Key; }
                 if (mejor != null) artistTag[kv.Key] = mejor;
             }
+            ActualizaGenerosIa(false);   // la copia para la IA (Form1.Ia.cs), como mucho cada 10 s
         }
 
         // Palabras que dentro de un NOMBRE de carpeta o de disco casi solo pueden querer decir el genero. Se

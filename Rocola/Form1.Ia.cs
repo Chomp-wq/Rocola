@@ -233,6 +233,7 @@ namespace Rocola
                 Track.SoloArtistaGenero(path, out artista, out genero);
                 if (IaArtistaFiable(artista)) o.Artista = IaHuella(artista);
                 o.Genero = IaGeneroFiable(genero);
+                if (o.Genero.Length == 0) o.Genero = IaGeneroFiable(GeneroInterpretado(path));   // sin etiqueta: el de su disco (GenerosIa)
             }
             catch { }
             try
@@ -293,6 +294,157 @@ namespace Rocola
                 }
             }
             catch { }   // No poder escribir metadata no invalida pares/index ya verificados.
+        }
+        // LOS GENEROS INTERPRETADOS, TAMBIEN PARA LA IA (13-10-2026). Una cancion sin genero en la etiqueta no tiene por
+        // que quedarse sin el: la rocola ya deduce el de su disco (GeneroDeCancion: lo que vota el paseo de fondo con las
+        // etiquetas de las demas canciones del disco, lo del artista, o lo que dice el nombre del disco o de la carpeta).
+        // Es la misma pastilla que se ve en pantalla. El material de la IA lo apunta ahora en rocola_ia_datos.generos.tsv
+        // para esas canciones, y el modelo del DSEE de ese genero se usa al sonar (ModeloDseePara): las dos cosas con el
+        // mismo genero. Las etiquetas de verdad siguen mandando: lo interpretado solo entra donde no hay etiqueta fiable.
+        //
+        // Esos datos son del hilo de la pantalla y el material se junta en el de fondo, asi que la pantalla deja una COPIA
+        // (GenerosIa) que nadie toca despues: por carpeta de la cancion, y por la huella de las canciones sin etiqueta con
+        // su duracion ya medida (para completar el material juntado antes: CompletaGenerosIa).
+        private sealed class GenerosIa
+        {
+            internal Dictionary<string, string> PorCarpeta = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            internal Dictionary<ulong, string> PorCancion = new Dictionary<ulong, string>();
+        }
+        private static volatile GenerosIa generosIa;
+        private int generosIaTick;
+        internal const int GenerosIaCadaMs = 10000;   // con votos llegando seguidos, la copia se rehace como mucho cada 10 s
+        // El genero de esta cancion segun su disco, si no trae etiqueta ("" si no se sabe). Cualquier hilo.
+        private static string GeneroInterpretado(string path)
+        {
+            GenerosIa g = generosIa;
+            if (g == null || string.IsNullOrEmpty(path)) return "";
+            string dir, et;
+            try { dir = Path.GetDirectoryName(path); } catch { return ""; }
+            return dir != null && g.PorCarpeta.TryGetValue(dir, out et) ? et : "";
+        }
+        private static bool SinEtiquetaFiable(string genero)
+        {
+            if (string.IsNullOrEmpty(genero)) return true;
+            string g = genero.Trim();
+            if (g.Length == 0) return true;
+            return g.Equals("unknown", StringComparison.OrdinalIgnoreCase) || g.Equals("desconocido", StringComparison.OrdinalIgnoreCase)
+                || g.Equals("sin genero", StringComparison.OrdinalIgnoreCase) || g.Equals("<unknown>", StringComparison.OrdinalIgnoreCase);
+        }
+        // Hilo de la pantalla. 'ya': rehacerla sin esperar (biblioteca recien escaneada, o el paseo de fondo termino).
+        private void ActualizaGenerosIa(bool ya)
+        {
+            // La copia para la IA nunca puede tumbar a quien la llama (los generos de la pantalla): si algo falla, la de antes sigue.
+            try { HazGenerosIa(ya); }
+            catch { }
+        }
+        private void HazGenerosIa(bool ya)
+        {
+            if (libBuilding || albums == null) return;
+            Dictionary<string, float> duraciones = durCache;
+            int ahora = Environment.TickCount;
+            if (!ya && generosIa != null && unchecked(ahora - generosIaTick) < GenerosIaCadaMs) return;
+            generosIaTick = ahora;
+            GenerosIa n = new GenerosIa();
+            for (int i = 0; i < albums.Count; i++)
+            {
+                Album a = albums[i];
+                if (a == null || a.Tracks == null || a.Tracks.Count == 0 || a.IsTop) continue;
+                string et = GeneroDeCancion(null, a);
+                if (string.IsNullOrEmpty(et) || et == "Otros") continue;
+                string ultima = null;
+                for (int k = 0; k < a.Tracks.Count; k++)
+                {
+                    Track t = a.Tracks[k];
+                    if (t == null || t.Path == null) continue;
+                    int barra = t.Path.LastIndexOfAny(Separadores);
+                    if (barra <= 0) continue;
+                    // La carpeta, sin crear una cadena por cancion: las de un disco suelen compartirla.
+                    if (ultima == null || ultima.Length != barra || string.Compare(t.Path, 0, ultima, 0, barra, StringComparison.OrdinalIgnoreCase) != 0)
+                    {
+                        ultima = t.Path.Substring(0, barra);
+                        if (!n.PorCarpeta.ContainsKey(ultima)) n.PorCarpeta[ultima] = et;
+                    }
+                    float d;
+                    if (duraciones != null && SinEtiquetaFiable(t.Genre) && duraciones.TryGetValue(t.Path, out d) && d > 0.01f)
+                    {
+                        long seg = (long)Math.Round((double)d);
+                        n.PorCancion[IaHuella(Path.GetFileName(t.Path) + "|" + seg.ToString(CultureInfo.InvariantCulture))] = et;
+                    }
+                }
+            }
+            generosIa = n;
+            if (ya && n.PorCancion.Count > 0) CompletaGenerosIaEnFondo(n);   // aunque ya no se junte material: el que hay se completa (sin .idx, nada)
+        }
+        private static readonly char[] Separadores = { '\\', '/' };
+
+        // EL MATERIAL QUE YA SE JUNTO. Las canciones recolectadas antes, sin etiqueta, quedaron en el archivo de generos con
+        // el genero vacio (o sin linea). Aqui se les anade la linea con el interpretado, solo a las que de verdad tienen
+        // material (su huella esta en rocola_ia_datos.idx) y solo si no tienen ya un genero: el entrenador se queda con la
+        // ultima linea de cada cancion. En segundo plano y con el mismo candado que el recolector: nunca se entrelaza con
+        // una cancion que se este apuntando.
+        private int completandoGeneros;
+        internal int GenerosCompletados;   // las pruebas: cuantas lineas anadio la ultima vez
+        private void CompletaGenerosIaEnFondo(GenerosIa g)
+        {
+            if (System.Threading.Interlocked.CompareExchange(ref completandoGeneros, 1, 0) != 0) return;
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate
+            {
+                try { CompletaGenerosIa(g); }
+                catch { }
+                finally { System.Threading.Interlocked.Exchange(ref completandoGeneros, 0); }
+            });
+        }
+        private void CompletaGenerosIa(GenerosIa g)
+        {
+            GenerosCompletados = 0;
+            lock (iaFileLock)
+            {
+                string idx = IaIndexFile(), tsv = RutaDatos("rocola_ia_datos.generos.tsv");
+                if (!File.Exists(idx)) return;
+                // Las canciones con material, del indice (64 bytes por entrada, la huella en el 32; las de CRC malo no cuentan).
+                HashSet<ulong> conMaterial = new HashSet<ulong>();
+                using (FileStream fs = new FileStream(idx, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                {
+                    byte[] cab = new byte[16];
+                    if (fs.Read(cab, 0, 16) != 16 || cab[0] != (byte)'R' || cab[1] != (byte)'I' || cab[2] != (byte)'A' || cab[3] != (byte)'X') return;
+                    byte[] e = new byte[64];
+                    while (fs.Read(e, 0, 64) == 64)
+                        if (IaCrc32(e, 0, 60) == BitConverter.ToUInt32(e, 60)) conMaterial.Add(BitConverter.ToUInt64(e, 32));
+                }
+                // Lo que ya dice el archivo de generos (la ultima linea de cada cancion manda, como en el entrenador).
+                Dictionary<ulong, string> ya = new Dictionary<ulong, string>();
+                if (File.Exists(tsv))
+                    using (StreamReader r = new StreamReader(new FileStream(tsv, FileMode.Open, FileAccess.Read, FileShare.ReadWrite), Encoding.UTF8))
+                    {
+                        string linea;
+                        while ((linea = r.ReadLine()) != null)
+                        {
+                            int tab = linea.IndexOf('\t');
+                            ulong h;
+                            if (tab != 16 || !ulong.TryParse(linea.Substring(0, 16), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out h)) continue;
+                            ya[h] = linea.Substring(17).Trim();
+                        }
+                    }
+                StringBuilder sb = new StringBuilder();
+                int n = 0;
+                foreach (KeyValuePair<ulong, string> kv in g.PorCancion)
+                {
+                    string antes;
+                    if (!conMaterial.Contains(kv.Key) || (ya.TryGetValue(kv.Key, out antes) && antes.Length > 0)) continue;
+                    string et = IaGeneroFiable(kv.Value);
+                    if (et.Length == 0) continue;
+                    sb.Append('\n').Append(kv.Key.ToString("x16", CultureInfo.InvariantCulture)).Append('\t').Append(et).Append('\n');
+                    n++;
+                }
+                if (n == 0) return;
+                byte[] texto = Encoding.UTF8.GetBytes(sb.ToString());
+                using (FileStream fs = new FileStream(tsv, FileMode.Append, FileAccess.Write, FileShare.Read))
+                {
+                    fs.Write(texto, 0, texto.Length); fs.Flush();
+                    try { FlushFileBuffers(fs.SafeFileHandle.DangerousGetHandle()); } catch { }
+                }
+                GenerosCompletados = n;
+            }
         }
         private static uint[] iaCrcTabla;
         private static uint IaCrc32(byte[] d, int off, int n)
@@ -437,6 +589,7 @@ namespace Rocola
         {
             if (!dseePorGenero || t == null) return null;
             string slug = SlugGenero(t.Genre);
+            if (slug.Length == 0) slug = SlugGenero(GeneroInterpretado(t.Path));   // sin etiqueta: el mismo genero con que se junto su material
             if (slug.Length == 0) return null;
             RedChica r;
             lock (dseeGeneros) if (dseeGeneros.TryGetValue(slug, out r) && r.Loaded) return r;

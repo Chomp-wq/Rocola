@@ -8,6 +8,12 @@ sin reducir calidad; los paneles respetan los limites de la tarjeta. Solo Modest
 HD suspendida y renderizado CPU congelado.
 [Cambios, pruebas y limites pendientes](AUDITORIA_GENERAL_MODEST_2026-10-11.md).
 
+## La IA aprende también con el género deducido — 13 de octubre de 2026
+
+Las canciones sin etiqueta de género se apuntan para la IA con el género que la rocola deduce de su disco (la
+pastilla de la pantalla), también el material ya juntado, y al sonar usan el modelo del DSEE de ese mismo género.
+[Qué se cambió y cómo se comprobó](GENEROS_INTERPRETADOS_IA_MODEST_2026-10-13.md).
+
 ## El instalador del DSEE por género, con doble clic — 13 de octubre de 2026
 
 `ia\instalar_dsee_genero.bat` busca solo los modelos entrenados, propone la carpeta de la rocola, pregunta por cada

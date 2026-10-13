@@ -266,6 +266,76 @@ class MejorasIa
             Set(rock, "Genre", "Salsa");
             Check((int)Call(null, "ModelosPorGenero") == 2 && Call(f, "ModeloDseePara", rock) != null,
                   "I3: un modelo instalado con la rocola abierta se encuentra al volver a buscar (" + Call(null, "ModelosPorGenero") + ")");
+
+            // ===== Los generos INTERPRETADOS, tambien para la IA (13-10-2026) =====
+            // Canciones sin etiqueta de genero en un disco cuyo genero la rocola deduce (aqui, por el nombre: "Cumbias...").
+            Type tAl = TF.GetNestedType("Album", T);
+            string carpCum = Path.Combine(dir, "Cumbias Del Recuerdo"), carpNada = Path.Combine(dir, "Coleccion 1");
+            Directory.CreateDirectory(carpCum); Directory.CreateDirectory(carpNada);
+            string pA = Path.Combine(carpCum, "a.wav"), pC = Path.Combine(carpCum, "c.wav"), pD = Path.Combine(carpCum, "d.wav"), pN = Path.Combine(carpNada, "n.wav");
+            foreach (string qq in new[] { pA, pC, pD, pN }) File.Copy(wav, qq, true);
+            Func<string, string, object> pista = delegate(string ruta, string genero)
+            { object t = Activator.CreateInstance(tt, true); Set(t, "Path", ruta); Set(t, "Genre", genero); return t; };
+            IList lista = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(tAl));
+            object alCum = Activator.CreateInstance(tAl, true); Set(alCum, "Folder", carpCum); Set(alCum, "Name", "Cumbias Del Recuerdo");
+            IList pistasCum = (IList)Get(alCum, "Tracks"); object tA = pista(pA, ""); pistasCum.Add(tA); pistasCum.Add(pista(pC, "Unknown")); pistasCum.Add(pista(pD, "Bolero"));
+            object alNada = Activator.CreateInstance(tAl, true); Set(alNada, "Folder", carpNada); Set(alNada, "Name", "Coleccion 1");
+            ((IList)Get(alNada, "Tracks")).Add(pista(pN, ""));
+            lista.Add(alCum); lista.Add(alNada);
+            Set(f, "albums", lista); Set(f, "libBuilding", false); Set(f, "iaHarvestOn", false);
+            IDictionary dur = (IDictionary)Get(f, "durCache");
+            dur[pA] = 200.4f; dur[pC] = 180f; dur[pD] = 150f; dur[pN] = 100f;
+            Call(f, "ActualizaGenerosIa", true);
+            // Tambien lanza el completado del material en segundo plano (aqui aun no hay material: no escribe nada). Se espera
+            // a que acabe para que no se cruce con el que se llama a mano mas abajo.
+            for (int espera = 0; espera < 500 && (int)Get(f, "completandoGeneros") != 0; espera++) System.Threading.Thread.Sleep(10);
+            Check((int)Get(f, "completandoGeneros") == 0 && !File.Exists(Path.Combine(dir, "rocola_ia_datos.generos.tsv")),
+                  "al rehacer la copia se completa lo ya juntado en segundo plano; sin material, no escribe nada");
+            string gA = (string)Call(null, "GeneroInterpretado", pA), gN = (string)Call(null, "GeneroInterpretado", pN);
+            // La etiqueta es la de la pastilla de la pantalla (GenreLabel): 'cumbias' cae en su familia (hoy, Regional).
+            string etCum = (string)TF.GetMethod("GenreLabel", T).Invoke(null, new object[] { "cumbia" }), slCum = etCum.ToLowerInvariant();
+            Check(gA == etCum && gN == "", "generos interpretados: el disco 'Cumbias...' es " + etCum + " ('" + gA + "'), como su pastilla; 'Coleccion 1' no se sabe, y no se inventa");
+            object origen = Call(null, "IaOrigenDe", pA, 200.4, 44100, 2048, 0);
+            Check(origen != null && (string)Get(origen, "Genero") == slCum, "el recolector apunta '" + slCum + "' a la cancion sin etiqueta ('" + (origen == null ? "?" : Get(origen, "Genero")) + "')");
+            Set(f, "dseePorGenero", true);
+            Ria1(Path.Combine(dir, "rocola_ia_genero_" + (string)Call(null, "SlugGenero", etCum) + ".bin"), 28, doce);
+            Call(null, "CargaModelosPorGenero");
+            object mA = Call(f, "ModeloDseePara", tA);
+            Check(mA != null, "y al sonar usa el modelo de " + slCum + ": el mismo genero con que se junto su material");
+            Check(Call(f, "ModeloDseePara", pista(pN, "")) == null, "sin genero deducido, el modelo general");
+            object copia = Get(f, "generosIa"); IDictionary porCancion = (IDictionary)Get(copia, "PorCancion");
+            MethodInfo huellaM = TF.GetMethod("IaHuella", T);
+            Func<string, int, ulong> huellaDe = delegate(string ruta, int seg) { return (ulong)huellaM.Invoke(null, new object[] { Path.GetFileName(ruta) + "|" + seg }); };
+            ulong hA = huellaDe(pA, 200), hC = huellaDe(pC, 180), hD = huellaDe(pD, 150), hB = 0x1234567890abcdefUL;
+            Check(porCancion.Contains(hA) && porCancion.Contains(hC) && !porCancion.Contains(hD) && porCancion.Count == 2,
+                  "la copia guarda las sin etiqueta fiable ('' y 'Unknown') con su duracion medida, y no la que trae 'Bolero'");
+            // El material ya juntado: A tiene material y su linea vacia; B tiene material y 'rock'; C no tiene material.
+            string idx = Path.Combine(dir, "rocola_ia_datos.idx"), tsv = Path.Combine(dir, "rocola_ia_datos.generos.tsv");
+            MethodInfo crc = TF.GetMethod("IaCrc32", T);
+            using (FileStream fsIdx = File.Create(idx))
+            {
+                byte[] cab = new byte[16]; cab[0] = (byte)'R'; cab[1] = (byte)'I'; cab[2] = (byte)'A'; cab[3] = (byte)'X';
+                Array.Copy(BitConverter.GetBytes(1), 0, cab, 4, 4); Array.Copy(BitConverter.GetBytes(64), 0, cab, 8, 4); fsIdx.Write(cab, 0, 16);
+                foreach (ulong hh in new[] { hA, hB })
+                {
+                    byte[] e = new byte[64]; Array.Copy(BitConverter.GetBytes(hh), 0, e, 32, 8);
+                    Array.Copy(BitConverter.GetBytes((uint)crc.Invoke(null, new object[] { e, 0, 60 })), 0, e, 60, 4); fsIdx.Write(e, 0, 64);
+                }
+            }
+            File.WriteAllText(tsv, "\n" + hA.ToString("x16") + "\t\n\n" + hB.ToString("x16") + "\trock\n");
+            Call(f, "CompletaGenerosIa", copia);
+            Dictionary<string, string> ultimo = new Dictionary<string, string>();
+            foreach (string l in File.ReadAllLines(tsv)) { string[] c2 = l.Split('\t'); if (c2.Length == 2 && c2[0].Length == 16) ultimo[c2[0]] = c2[1]; }
+            string uA, uB;
+            Check((int)Get(f, "GenerosCompletados") == 1 && ultimo.TryGetValue(hA.ToString("x16"), out uA) && uA == slCum
+                  && ultimo.TryGetValue(hB.ToString("x16"), out uB) && uB == "rock" && !ultimo.ContainsKey(hC.ToString("x16")),
+                  "el material ya juntado: la cancion sin genero recibe '" + slCum + "'; la que ya tenia 'rock' no se toca; la que no tiene material no se apunta");
+            Call(f, "CompletaGenerosIa", copia);
+            Check((int)Get(f, "GenerosCompletados") == 0, "y una segunda pasada no repite lineas");
+            Check(Codigo.Llama(TF.GetMethod("RecalculaGenerosArtista", T), "Form1.ActualizaGenerosIa") && Codigo.Llama(TF.GetMethod("Scanner_RunWorkerCompleted", T), "Form1.ActualizaGenerosIa")
+                  && Codigo.Llama(TF.GetMethod("PublicaTintes", T), "Form1.ActualizaGenerosIa") && Codigo.Llama(TF.GetMethod("IaOrigenDe", T), "Form1.GeneroInterpretado")
+                  && Codigo.Llama(TF.GetMethod("ModeloDseePara", T), "Form1.GeneroInterpretado") && Codigo.Llama(TF.GetMethod("CompletaGenerosIaEnFondo", T), "ThreadPool.QueueUserWorkItem"),
+                  "enchufado: la copia se rehace al escanear y con los votos del paseo; el recolector y el DSEE la usan; lo ya juntado se completa en segundo plano");
             ((IDisposable)lec).Dispose();
             Set(f, "dseePorGenero", false);
             lec = Call(f, "OpenAudio", wav);
