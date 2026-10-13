@@ -8,6 +8,13 @@ sin reducir calidad; los paneles respetan los limites de la tarjeta. Solo Modest
 HD suspendida y renderizado CPU congelado.
 [Cambios, pruebas y limites pendientes](AUDITORIA_GENERAL_MODEST_2026-10-11.md).
 
+## Lo que queda por mejorar, medido — 13 de octubre de 2026
+
+Ronda de medir, sin cambios en el programa. La cadena de sonido, el arranque de cada canción y el fondo ya van
+ligeros. Dos propuestas para elegir: leer los MP3 del repaso sin la basura de NAudio (más del 99 % de la que deja el
+repaso) y no pintar el cielo debajo de las portadas.
+[Medidas y propuestas](LO_QUE_QUEDA_MODEST_2026-10-13.md).
+
 ## Más mejoras: el repaso a fondo más rápido y el quitasiseo en discos seguidos — 13 de octubre de 2026
 
 - **El repaso a fondo de la biblioteca, un 25 % más rápido** (2,39 → 1,79 s por canción aquí). La huella del EQ y la
