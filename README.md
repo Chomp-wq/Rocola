@@ -8,6 +8,14 @@ sin reducir calidad; los paneles respetan los limites de la tarjeta. Solo Modest
 HD suspendida y renderizado CPU congelado.
 [Cambios, pruebas y limites pendientes](AUDITORIA_GENERAL_MODEST_2026-10-11.md).
 
+## ¿Qué partes del sonido pueden mejorar con IA? — 13 de octubre de 2026
+
+Revisión con propuestas, sin cambios en el programa: I1 (bajo y brillo a la medida de cada canción, con la red del EQ
+que ya existe; recomendada), I2 (quitar el siseo de grabaciones viejas), I3 (un DSEE más fino), I4 y I5 (finales con
+aplausos y claridad que sigue a la voz; necesitan ejemplos marcados a mano).
+
+[Las propuestas, sus riesgos y lo que no necesita IA](IA_EN_EL_SONIDO_MODEST_2026-10-13.md).
+
 ## El sonido ya no se atasca en los silencios — 12 de octubre de 2026
 
 - **En el silencio exacto la cadena de sonido gastaba siete veces más** que con música: los filtros se apagaban en
