@@ -17,6 +17,8 @@ HD suspendida y renderizado CPU congelado.
 - **Lo que suena es lo mismo:** comparado byte a byte en 16 bits con canciones enteras. Con música gasta lo mismo.
 - **Segunda pasada:** el convertidor de frecuencia («Tarjeta a 44,1/48 kHz» y el relevo entre frecuencias) gasta
   un tercio menos, con los mismos bits.
+- **Tercera pasada:** el repaso a fondo de la biblioteca ya no se atasca en los silencios (60 s mudos costaban
+  5,8 s; ahora, 0,6), con los mismos valores medidos.
 - Medido en esta máquina; en el equipo del bar (y en XP) no se pudo medir.
 
 [Lo que se midió, lo que se cambió y cómo se comprobó](RENDIMIENTO_SILENCIOS_MODEST_2026-10-12.md).

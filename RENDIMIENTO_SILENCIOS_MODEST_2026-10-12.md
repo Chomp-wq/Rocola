@@ -123,6 +123,44 @@ También pasan `sinpausa`, `octavatanda`, `eficiencia` y `desnormales`. `salidac
 Linux no hay `Msacm32.dll` para el MP3. Tanda completa: los mismos 26 problemas de siempre, ninguno nuevo; el dibujo
 por CPU, idéntico.
 
+## Tercera pasada (13 de octubre): el repaso a fondo de la biblioteca, sin atascarse en los silencios
+
+Petición del usuario: «busca más mejoras».
+
+En la primera pasada medí el preanálisis en su modo rápido, que solo recorre trozos de cada canción, y no se
+encarecía con silencios. Pero **el repaso a fondo** (el que va midiendo la biblioteca entera en segundo plano, durante
+horas, en el equipo de dos núcleos) recorre cada canción de principio a fin. Ahí sí pasaba lo mismo que en la cadena:
+la huella del EQ y la sonoridad que mide se apagaban en restos diminutos.
+
+Medido aquí (repaso a fondo, mejor de varias medidas):
+
+| Canción | Antes | Ahora |
+| --- | --- | --- |
+| 60 s de música | 0,65 s | 0,64 s |
+| 60 s de música y 60 s de silencio | 6,43 s | 1,24 s |
+| 4 minutos de música | 2,37 s | 2,35 s |
+| Esa misma con 7 s de silencio | 3,10 s | 2,55 s |
+
+Cada segundo de silencio costaba unas nueve veces lo que uno de música; ahora, lo mismo. Pesa en las canciones con
+finales mudos largos, pistas ocultas o pausas, que son justo las que el repaso lee enteras.
+
+**Qué se cambió:** en `MeasureFile` (`Form1.Sonido.cs`), cada 64 cuadros los estados de la huella del EQ y de la
+sonoridad que bajan de 1e-15 se ponen a cero, con la misma pieza `Desnormales.cs`.
+
+**Los mismos valores, bit a bit.** Con el ejecutable de antes y el de ahora, en seis archivos (con y sin silencios) y
+en los dos modos del preanálisis, sale exactamente lo mismo:
+
+- el volumen;
+- la duración;
+- la huella del EQ (con su corte de agudos y su recorte);
+- la sonoridad integrada, con su mapa de silencios.
+
+**Batería `desnormales`, ampliada.** Mide en el repaso a fondo una canción de 3 s de música y 20 de silencio frente a
+otra de 23 s de música. Mira que ningún estado quede en un resto diminuto y que el silencio no cueste más del doble.
+Con el ejecutable de antes falla las dos (1,9 s frente a 0,2 s); con el de ahora pasa (0,23 frente a 0,23).
+
+Tanda completa: los mismos 26 problemas de siempre, ninguno nuevo; el dibujo por CPU, idéntico.
+
 ## Lo que no se pudo medir
 
 - **Los tiempos son de esta máquina**, no del equipo del bar. La proporción (unas siete veces) es la de aquí.

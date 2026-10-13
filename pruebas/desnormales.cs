@@ -15,7 +15,8 @@ using NAudio.Wave;
 // y 6 s de ceros exactos, sin saltar el silencio. Se mira:
 //   1) que tras dos segundos de silencio la salida sea cero exacto (antes: restos de 1e-20 y menos, sin fin);
 //   2) que ningun estado de ninguna etapa quede en desnormal ni en un resto por debajo del tope (lo que se limpia);
-//   3) que el silencio no cueste mas que la musica (con margen: es una medida de tiempo y la maquina puede ir cargada).
+//   3) que el silencio no cueste mas que la musica (con margen: es una medida de tiempo y la maquina puede ir cargada);
+//   4) lo mismo en el repaso a fondo de la biblioteca (MeasureFile entero): la huella del EQ y la sonoridad.
 // Que con musica lo que suena sea el mismo, muestra a muestra y byte a byte en 16 bits, se comprobo comparando el
 // ejecutable de antes y el de ahora sobre canciones enteras (ver RENDIMIENTO_SILENCIOS_MODEST_2026-10-12.md).
 // Son senales sinteticas: miden la cuenta, no el oido.
@@ -165,6 +166,34 @@ class Desnormales
             Console.WriteLine("        medida: " + (porMus * 20).ToString("0.0") + " ms por segundo con musica, " + (porSil * 20).ToString("0.0") + " en silencio");
             Check(nMus > 10 && nSil > 10 && porSil <= 2.5 * porMus, "el silencio no cuesta mas que la musica (con margen de 2,5 veces; antes eran unas siete)");
             ((IDisposable)lector).Dispose();
+
+            // 4) EL REPASO A FONDO DE LA BIBLIOTECA (MeasureFile entero): la huella del EQ y la sonoridad que mide tambien se
+            //    apagaban en restos diminutos. Una cancion de 3 s de musica y 20 de silencio frente a otra de 23 s de musica.
+            string mus = Path.Combine(dir, "musica23.wav"), sil = Path.Combine(dir, "musica3_silencio20.wav");
+            float[] xm = Cancion(fs, 23.0, 0.0), xs = Cancion(fs, 3.0, 20.0);
+            using (WaveFileWriter w = new WaveFileWriter(mus, WaveFormat.CreateIeeeFloatWaveFormat(fs, 2))) w.WriteSamples(xm, 0, xm.Length);
+            using (WaveFileWriter w = new WaveFileWriter(sil, WaveFormat.CreateIeeeFloatWaveFormat(fs, 2))) w.WriteSamples(xs, 0, xs.Length);
+            SetSiHay(f, "iaHarvestOn", false);
+            MethodInfo mf = null; foreach (MethodInfo m in TF.GetMethods(T)) if (m.Name == "MeasureFile" && m.GetParameters().Length == 5) mf = m;
+            double msMusica = double.MaxValue, msSilencio = double.MaxValue;
+            for (int vuelta = 0; vuelta < 3; vuelta++)
+                foreach (string ruta in new string[] { mus, sil })
+                {
+                    long t0 = Stopwatch.GetTimestamp();
+                    bool medido = (bool)mf.Invoke(f, new object[] { ruta, true, 0f, 0f, null });
+                    double ms = (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency;
+                    if (vuelta == 0) Check(medido, "el repaso a fondo mide " + Path.GetFileName(ruta));
+                    if (ruta == mus) msMusica = Math.Min(msMusica, ms); else msSilencio = Math.Min(msSilencio, ms);
+                    if (ruta == sil && vuelta == 2)
+                    {
+                        object trabajo = TF.GetField("trabajoMedidaDelHilo", T).GetValue(null);
+                        List<string> d2 = new List<string>();
+                        int r2 = Restos(trabajo, "TrabajoMedida", d2, new string[] { "Estado", "EstadoBandas" });
+                        Check(trabajo != null && r2 == 0, "tras el repaso a fondo, ningun estado de la huella ni de la sonoridad en un resto diminuto (" + r2 + (d2.Count > 0 ? ": " + string.Join(", ", d2.ToArray()) : "") + ")");
+                    }
+                }
+            Console.WriteLine("        repaso a fondo: " + msMusica.ToString("0") + " ms la de musica, " + msSilencio.ToString("0") + " ms la del silencio (mejor de tres)");
+            Check(msSilencio <= 2.0 * msMusica, "en el repaso a fondo, 20 s de silencio no cuestan mas que 20 s de musica (con margen de 2 veces; antes eran unas ocho)");
         }
         catch (Exception e) { Exception z = e is TargetInvocationException ? e.InnerException : e; Check(false, "excepcion: " + z.GetType().Name + ": " + z.Message + "\n" + z.StackTrace); }
         finally { try { Directory.Delete(dir, true); } catch { } }

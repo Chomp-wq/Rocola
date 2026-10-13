@@ -777,6 +777,7 @@ namespace Rocola
                         {
                             if (!esVideo) AccumulateEqFrame(buf, i, ch, bp, bpSt, bpSum);
                             bpN++;
+                            if ((bpN & (Desnormales.Cada - 1)) == 0) { Desnormales.Limpia(bpSt); Desnormales.Limpia(st); }   // en el silencio, los restos diminutos a cero (Desnormales.cs)
                             // canal 0 hacia el analizador de la IA (el DSEE tambien trabaja por canal)
                             if (hv != null && ((soloCorte ? false : hvVistos < hvVistosMax) || qualitySeen < qualityFrames))
                             {
