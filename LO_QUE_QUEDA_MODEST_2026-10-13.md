@@ -2,11 +2,11 @@
 
 Petición del usuario: «Busca más mejoras».
 
-Esta ronda es de medir y buscar. No cambia nada del programa.
+Esta ronda es de medir y buscar. No cambia nada del programa. Las cifras son de esta máquina (Linux, Mono), no del
+equipo del bar.
 
 **Actualización:** el usuario eligió las dos, y están hechas; ver
-[REPASO_Y_PARED_LIGEROS_MODEST_2026-10-13.md](REPASO_Y_PARED_LIGEROS_MODEST_2026-10-13.md). Las cifras son de esta máquina (Linux, Mono), no del
-equipo del bar.
+[REPASO_Y_PARED_LIGEROS_MODEST_2026-10-13.md](REPASO_Y_PARED_LIGEROS_MODEST_2026-10-13.md).
 
 ## Lo que ya va ligero (no merece más trabajo)
 
