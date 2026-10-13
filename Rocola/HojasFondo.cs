@@ -38,7 +38,7 @@ namespace Rocola
             groups[5][groups[5].Length - 1].SetBounds(16, 144, 424, 48);
             if (groups.Length > 7)
             {   // El cielo vivo (CieloVivoGpu.cs): su nota, debajo de sus interruptores.
-                groups[6][groups[6].Length - 1].SetBounds(16, 206, 424, 52);
+                groups[6][groups[6].Length - 1].SetBounds(16, 166, 424, 52);
                 groups[7][groups[7].Length - 1].SetBounds(16, 166, 424, 52);
             }
             FondoNota(cards[0], "La paleta musical fluye por la aurora.\nEl cielo alto conserva su aspecto nocturno.", 358, 42, small, muted);

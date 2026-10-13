@@ -161,6 +161,10 @@ GPU="$GPU ajustesvivos"
 # hace falta (bit a bit en las canciones sin el defecto), escuchar sin mejoras y lo que el limitador baja, y su hoja.
 CPU="$CPU arreglos"
 GPU="$GPU arreglos"
+# 'fotos1013': las fotos del 13-10-2026: la ayuda se despide sola a los 15 s, «EN ESTA ROCOLA» entero en la ficha del
+# modo atraccion y el reflejo de la aurora pegado a la raya del horizonte (el cometa retirado lo mira 'cielovivo').
+CPU="$CPU fotos1013"
+GPU="$GPU fotos1013"
 CPU="$CPU asistentecombo buscainteligente"
 GPU="$GPU asistentecombo asistentevisual buscainteligente guiarojo"
 CPU="$CPU auditoriageneral"

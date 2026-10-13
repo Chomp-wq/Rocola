@@ -22,6 +22,23 @@ namespace Rocola
         // los botones de siempre: la ayuda no se queda con ellos. Al lograrlo celebra y vuelve sola al cielo.
         private bool asistenteVisible, asistenteRestaurarVideo;
         private int asistenteInicioTick, asistenteActividadTick;
+        // LA DESPEDIDA (13-10-2026; peticion: «si alguien deja el asistente abierto, despues de 15 segundos diga adios y se
+        // cierre»). Con 15 s sin que nadie toque nada, la estrella se despide (gesto y «¡Adios!» en su globo) y a los 2,2 s
+        // se cierra. Si alguien toca algo mientras se despide, se queda. 0 = no se esta despidiendo.
+        internal const int AdiosTrasMs = 15000, AdiosMs = 2200;
+        private int asistenteAdiosTick;
+        private bool AsistenteDespidiendo { get { return asistenteVisible && asistenteAdiosTick != 0; } }
+        // Lo que hace el reloj de la ayuda con el tiempo quieto: 0 nada, 1 empezar a despedirse, 2 cerrar, 3 seguir (alguien
+        // volvio a usarla mientras se despedia). Pura, para las pruebas.
+        internal static int PasoDespedida(int ahora, int actividad, int adios)
+        {
+            if (adios != 0)
+            {
+                if (unchecked(actividad - adios) > 0) return 3;
+                return unchecked(ahora - adios) >= AdiosMs ? 2 : 0;
+            }
+            return unchecked(ahora - actividad) >= AdiosTrasMs ? 1 : 0;
+        }
         private int asistentePagina, asistenteLeccion, asistenteSeleccion;
         private int asistenteEvento;
         private AsistenteGestoGpu asistenteGesto;
@@ -123,7 +140,7 @@ namespace Rocola
             if (asistenteVisible) return;
             asistenteVisible = true; asistenteRegresando = false;   // si aun regresaba, la tarjeta da media vuelta desde donde iba
             asistentePagina = asistenteLeccion = asistenteSeleccion = 0;
-            asistenteMision = 0; asistenteLogroTick = 0;
+            asistenteMision = 0; asistenteLogroTick = 0; asistenteAdiosTick = 0;
             asistenteInicioTick = asistenteActividadTick = Environment.TickCount;
             AnimaAsistente(AsistenteGestoGpu.Saludar);
             if (videoFull) ExitVideoFull();
@@ -135,7 +152,8 @@ namespace Rocola
 
         private void CierraAsistente()
         {
-            AnimaAsistente(AsistenteGestoGpu.Despedir);
+            if (asistenteAdiosTick == 0) AnimaAsistente(AsistenteGestoGpu.Despedir);   // si ya se despidio, no otra vez
+            asistenteAdiosTick = 0;
             asistenteVisible = false; asistenteMision = 0; asistenteLogroTick = 0;
             asistenteRegresando = true; asistenteCierreTick = Environment.TickCount;
             lastInput = DateTime.Now; searchLastActivity = DateTime.Now;
@@ -215,7 +233,13 @@ namespace Rocola
             }
             if (!asistenteVisible) return;
             if (!AsistentePermitido()) { CierraAsistente(); return; }
-            if (unchecked(Environment.TickCount - asistenteActividadTick) >= 90000) { CierraAsistente(); return; }
+            int ahora = Environment.TickCount;
+            switch (PasoDespedida(ahora, asistenteActividadTick, asistenteAdiosTick))
+            {
+                case 1: asistenteAdiosTick = ahora == 0 ? 1 : ahora; AnimaAsistente(AsistenteGestoGpu.Despedir); break;   // 15 s quieta: se despide
+                case 2: CierraAsistente(); return;                                                                      // y se va
+                case 3: asistenteAdiosTick = 0; AnimaAsistente(AsistenteGestoGpu.Saludar); break;                       // alguien volvio: se queda
+            }
             if (asistenteMision != 0) EvaluaGuia();
             if (!asistenteVisible) return;
             // Solo evita decisiones de inactividad. El audio/FFT/color siguen en su latido normal.
@@ -279,7 +303,7 @@ namespace Rocola
             estado.Visible = asistenteVisible; estado.Animada = asistenteAnimado;
             estado.Gesto = asistenteGesto; estado.Evento = asistenteEvento;
             estado.Pagina = asistentePagina; estado.Leccion = asistenteLeccion; estado.Seleccion = asistenteSeleccion;
-            if (asistenteVisible && asistenteMision != 0)
+            if (asistenteVisible && asistenteMision != 0 && asistenteAdiosTick == 0)
             {
                 estado.Guia = true; estado.Logro = asistenteLogroTick != 0;
                 estado.Objetivo = estado.Logro ? RectangleF.Empty : ObjetivoGuia(asistentePaso);
@@ -292,14 +316,16 @@ namespace Rocola
 
         private void EnsureAsistentePanel()
         {
-            bool guia = asistenteMision != 0;
+            bool adios = asistenteAdiosTick != 0;
+            bool guia = asistenteMision != 0 && !adios;   // despidiendose: el globo de siempre, con el adios
             int w = ClientSize.Width, h = ClientSize.Height;
             Size tam = guia ? GpuPanel.AsistenteGuiaTam(w, h) : GpuPanel.AsistentePanelRect(w, h).Size;
-            int pagina = guia ? 16 + asistenteMision : 0;
+            int pagina = adios ? PaginaAdios : guia ? 16 + asistenteMision : 0;
             int leccion = guia ? ClaveGuia() : 0;
             if (asistentePanel != null && asistentePanelTam == tam && asistentePanelPagina == pagina
                 && asistentePanelSeleccion == asistenteSeleccion && asistentePanelLeccion == leccion) return;
-            Bitmap nuevo = guia ? PintaGuiaActual(tam.Width, tam.Height)
+            Bitmap nuevo = adios ? PintaAdiosAsistente(tam.Width, tam.Height)
+                : guia ? PintaGuiaActual(tam.Width, tam.Height)
                 : PintaPanelAsistente(tam.Width, tam.Height, 0, 0, asistenteSeleccion);
             Bitmap anterior = asistentePanel; asistentePanel = nuevo; asistentePanelVersion++;
             asistentePanelTam = tam; asistentePanelPagina = pagina; asistentePanelSeleccion = asistenteSeleccion; asistentePanelLeccion = leccion;
@@ -354,6 +380,35 @@ namespace Rocola
             p.AddBezier(x, cola + baseCola, x - 2, cola + baseCola * .3f, 4, cola + 4, 2, cola);
             p.AddBezier(2, cola, 6, cola - 2, x - 3, cola - baseCola * .8f, x, cola - baseCola);
             p.AddLine(x, cola - baseCola, x, y + r); p.CloseFigure(); return p;
+        }
+
+        // El globo de la despedida: el mismo globo, con «¡Adios!» y como volver a llamarla.
+        internal const int PaginaAdios = 99;
+        internal static Bitmap PintaAdiosAsistente(int w, int h)
+        {
+            w = Math.Max(1, w); h = Math.Max(1, h);
+            Bitmap bmp = new Bitmap(w, h, PixelFormat.Format32bppPArgb);
+            using (Graphics g = Graphics.FromImage(bmp))
+            using (Font titulo = new Font("Trebuchet MS", Math.Max(22, Math.Min(56, h * .14f)), FontStyle.Bold, GraphicsUnit.Pixel))
+            using (Font cuerpo = new Font("Trebuchet MS", Math.Max(13, Math.Min(24, h * .05f)), FontStyle.Regular, GraphicsUnit.Pixel))
+            using (SolidBrush blanco = new SolidBrush(Color.FromArgb(246, 248, 255)))
+            using (SolidBrush tenue = new SolidBrush(Color.FromArgb(185, 206, 234)))
+            using (StringFormat centro = new StringFormat())
+            {
+                g.Clear(Color.Transparent); g.SmoothingMode = SmoothingMode.AntiAlias;
+                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
+                using (GraphicsPath borde = AsistenteGloboCamino(w, h))
+                using (LinearGradientBrush vidrio = new LinearGradientBrush(new Rectangle(0, 0, w, h), Color.FromArgb(252, 24, 42, 74), Color.FromArgb(248, 10, 18, 37), 90f))
+                using (Pen halo = new Pen(Color.FromArgb(35, 101, 206, 255), 5f))
+                using (Pen brillo = new Pen(Color.FromArgb(220, 142, 215, 255), 1.8f))
+                { g.DrawPath(halo, borde); g.FillPath(vidrio, borde); g.DrawPath(brillo, borde); }
+                int x = AsistenteGloboMargen(w), tw = Math.Max(1, w - x - Math.Max(12, w / 20));
+                centro.Alignment = StringAlignment.Near; centro.LineAlignment = StringAlignment.Center;
+                g.DrawString("¡Adiós!", titulo, blanco, new RectangleF(x, h * .18f, tw, h * .30f), centro);
+                g.DrawString("Aquí estaré cuando me necesites: ROJO + ABAJO, o la casilla AYUDA.",
+                    cuerpo, tenue, new RectangleF(x, h * .50f, tw, h * .34f));
+            }
+            return bmp;
         }
 
         internal static Bitmap PintaPanelAsistente(int w, int h, int pagina, int leccion, int seleccion)

@@ -8,8 +8,8 @@
 //     Geminidas. Esos dias parte de las fugaces nace a media altura y se aleja de un mismo punto (el radiante), con la
 //     cola apuntandole; cerca del maximo son mas y salen algo mas seguido. Las dos ranuras de siempre: no hay mas.
 //  3) LA FUGAZ DE FESTEJO: al meter una moneda o poner una cancion cruza una fugaz dorada (una cada 2,5 s como mucho).
-//  4) EL COMETA: de vez en cuando (el primero a los 6-15 minutos de encender; despues cada 35-70) cruza el cielo
-//     despacio, en dos minutos y medio, con su cola de polvo y su cola azul. Dos llamadas de dibujo mientras pasa.
+//  4) EL COMETA: se retiro el 13-10-2026 a peticion del usuario (foto: «Quita esa estrella fugaz»). Su clave, cometa=,
+//     se ignora al leer una configuracion vieja.
 //  5) MAS PROFUNDIDAD AL PASAR DE PAGINA: las nebulosas se corren un 30 % de lo que se corren las estrellas grandes y
 //     la via lactea un 14 %, y vuelven despacio a su sitio. Va con "Pasar de pagina deslizando" (Ctrl+F3 -> Pantalla).
 //  6) EL CIELO SEGUN LA HORA: de madrugada el cielo de abajo se oscurece un poco y al anochecer (hacia las 19:30) se
@@ -31,7 +31,7 @@ namespace Rocola
     {
         // Los interruptores (Ctrl+F3 -> Fondo -> Cielo vivo). Existen en los dos ejecutables para que la configuracion
         // se conserve igual; solo la tarjeta grafica los usa.
-        private bool lunaDelCielo = true, lluviasEstrellas = true, fugazFestejo = true, cometaOn = true;
+        private bool lunaDelCielo = true, lluviasEstrellas = true, fugazFestejo = true;
         private bool profundidadPagina = true, cieloPorHora = true, reflejoAurora = true;
 
         // La fugaz de festejo: al meter una moneda o poner una cancion (lo llaman AddCoin y AddItem).
@@ -198,49 +198,7 @@ namespace Rocola
         internal const uint FestejoColor = 0x00FFE08Au;   // dorado
         internal const int FestejoCadaMs = 2500;           // como mucho una cada 2,5 s
 
-        // ---------------- 4) EL COMETA
-        internal const double CometaSeg = 150.0;           // lo que tarda en cruzar
-        // Donde va la cabeza (p de 0 a 1 en su paso), hacia donde va la cola y cuanto se ve (entra y sale suave).
-        internal static void CometaEn(double p, float w, float h, bool aDerecha, float alturaFr,
-                                     out float x, out float y, out float colaX, out float colaY, out float brillo)
-        {
-            if (p < 0) p = 0; else if (p > 1) p = 1;
-            float u = aDerecha ? (float)p : (float)(1.0 - p);
-            x = w * (-0.08f + 1.16f * u);
-            y = h * (alturaFr + 0.05f * (float)Math.Sin(Math.PI * p));
-            // La cola apunta hacia arriba y hacia atras (lejos del horizonte, donde estaria el sol).
-            float tx = aDerecha ? -0.55f : 0.55f, ty = -0.83f, tl = (float)Math.Sqrt(tx * tx + ty * ty);
-            colaX = tx / tl; colaY = ty / tl;
-            double e = Math.Min(p, 1.0 - p) / 0.12; if (e > 1.0) e = 1.0;
-            brillo = (float)(e * e * (3 - 2 * e));
-        }
-        // Las dos colas en triangulos aditivos (las de las fugaces): la de polvo, ancha y blanca, y la de iones, fina y
-        // azul y mas derecha. Devuelve cuantos vertices escribio (0 si no hay sitio o no se ve).
-        internal static int CometaColas(D3D9.Vtx[] v, float x, float y, float colaX, float colaY, float brillo, float w)
-        {
-            if (v == null || v.Length < 12 || !(brillo > 0.004f)) return 0;
-            int n = 0;
-            n = CometaCola(v, n, x, y, colaX, colaY, w * 0.15f, 2.5f, 15f, 0x00EAF2FFu, 150f * brillo);
-            float ix = colaX * 0.55f, iy = colaY * 1.15f, il = (float)Math.Sqrt(ix * ix + iy * iy);
-            n = CometaCola(v, n, x, y, ix / il, iy / il, w * 0.19f, 1.2f, 6f, 0x0096C8FFu, 90f * brillo);
-            return n;
-        }
-        private static int CometaCola(D3D9.Vtx[] v, int o, float x, float y, float dx, float dy, float largo, float anchoCabeza, float anchoFin, uint rgb, float alfa)
-        {
-            float px = -dy, py = dx;   // perpendicular
-            float ex = x + dx * largo, ey = y + dy * largo;
-            uint a = (uint)Math.Max(0f, Math.Min(255f, alfa));
-            uint cab = (a << 24) | (rgb & 0x00FFFFFFu), fin = rgb & 0x00FFFFFFu;
-            V3(v, o + 0, x + px * anchoCabeza, y + py * anchoCabeza, cab); V3(v, o + 1, x - px * anchoCabeza, y - py * anchoCabeza, cab);
-            V3(v, o + 2, ex - px * anchoFin, ey - py * anchoFin, fin);
-            V3(v, o + 3, x + px * anchoCabeza, y + py * anchoCabeza, cab); V3(v, o + 4, ex - px * anchoFin, ey - py * anchoFin, fin);
-            V3(v, o + 5, ex + px * anchoFin, ey + py * anchoFin, fin);
-            return o + 6;
-        }
         private static void V3(D3D9.Vtx[] v, int i, float x, float y, uint c) { v[i].X = x; v[i].Y = y; v[i].Z = 0f; v[i].Rhw = 1f; v[i].Color = c; v[i].U = 0f; v[i].V = 0f; }
-        // Cuando vuelve: el primero a los 6-15 minutos de encender, despues cada 35-70 minutos (en milisegundos).
-        internal static int CometaEspera(Random r, bool primero)
-        { return primero ? (6 + r.Next(10)) * 60000 : (35 + r.Next(36)) * 60000; }
 
         // ---------------- 6) EL CIELO SEGUN LA HORA
         // hondo: 1 de 0:30 a 4:30 (y en rampa desde las 22:30 y hasta las 6:00). calor: el anochecer (19:30) y algo el
@@ -304,7 +262,7 @@ namespace Rocola
     internal sealed partial class GpuPanel
     {
         // Los interruptores (los pone AplicaEfectosGpu).
-        public bool LunaDelCielo = true, LluviasEstrellas = true, FugazFestejo = true, Cometa = true;
+        public bool LunaDelCielo = true, LluviasEstrellas = true, FugazFestejo = true;
         public bool ProfundidadPagina = true, CieloPorHora = true, ReflejoAurora = true;
 
         // ---------------- lo que se lee del reloj cada 20 s (la hora, la fase, la lluvia)
@@ -329,7 +287,6 @@ namespace Rocola
             stars.HoraHondo = CieloPorHora ? horaHondo : 0f;
             stars.HoraCalor = CieloPorHora ? horaCalor : 0f;
             stars.LluviasOn = LluviasEstrellas;
-            stars.CometaOn = Cometa;
         }
 
         // ---------------- 3) la fugaz de festejo
@@ -380,7 +337,10 @@ namespace Rocola
         {
             if (!ReflejoAurora || !aurDibujada || aurHs == null || aurNc == null || aurNi == null) return;
             if (reflejoV == null) reflejoV = new D3D9.Vtx[AurCols * 6];
-            int n = Form1.AurReflejo(reflejoV, aurHs, aurNc, aurNi, AurCols, Width, aurDibujadaBase, Form1.ReflejoHueco(Height));
+            // PEGADO A LA RAYA (foto del 13-10-2026: «la barra de estado queda un poco despegada del espectro»). Nacia en el pie
+            // del relleno, 15 px por debajo de la raya del horizonte (AurLineaAlza): entre el brillo de la raya y el reflejo
+            // quedaba una franja oscura, y la raya se veia suelta encima de la barra. Ahora nace justo bajo el nucleo de la raya.
+            int n = Form1.AurReflejo(reflejoV, aurHs, aurNc, aurNi, AurCols, Width, aurDibujadaBase - AurLineaAlza, Form1.ReflejoHueco(Height));
             if (n >= 3) stars.DrawMeshAdd(reflejoV, n / 3);
         }
 
@@ -427,7 +387,7 @@ namespace Rocola
         // ---------------- 6) el cielo segun la hora (lo pone el panel cada 20 s)
         public float HoraHondo, HoraCalor;
         // ---------------- 2) la lluvia del dia y 3) el festejo
-        public bool LluviasOn = true, CometaOn = true;
+        public bool LluviasOn = true;
         private float lluviaFuerza, lluviaRx = 0.5f, lluviaRy = -0.1f;
         internal void Lluvia(float fuerza, float rx, float ry) { lluviaFuerza = fuerza; lluviaRx = rx; lluviaRy = ry; }
         private bool festejoPedido; private int festejoTick; private bool festejoHubo;
@@ -439,31 +399,6 @@ namespace Rocola
         }
         private float LluviaAhora { get { return LluviasOn ? lluviaFuerza : 0f; } }
 
-        // ---------------- 4) el cometa
-        private bool cometaVa, cometaAgendado, cometaDerecha; private int cometaCita; private double cometaDesde; private float cometaAltura;
-        private readonly D3D9.Vtx[] cometaV = new D3D9.Vtx[12];
-        private void DibujaCometa(int w, int h, int nowMs, double finoMs)
-        {
-            if (!CometaOn || fugaces == Bajo) { cometaVa = false; return; }
-            if (!cometaAgendado) { cometaAgendado = true; cometaCita = nowMs + Form1.CometaEspera(srnd, true); }
-            if (!cometaVa)
-            {
-                if (unchecked(nowMs - cometaCita) < 0) return;
-                cometaVa = true; cometaDesde = finoMs; cometaDerecha = srnd.Next(2) == 0;
-                cometaAltura = 0.12f + (float)srnd.NextDouble() * 0.12f;
-            }
-            double p = (finoMs - cometaDesde) / 1000.0 / Form1.CometaSeg;
-            if (p >= 1.0 || p < 0.0) { cometaVa = false; cometaCita = nowMs + Form1.CometaEspera(srnd, false); return; }
-            float x, y, cx, cy, br;
-            Form1.CometaEn(p, w, h, cometaDerecha, cometaAltura, out x, out y, out cx, out cy, out br);
-            br *= dim;
-            int n = Form1.CometaColas(cometaV, x, y, cx, cy, br, w);
-            if (n >= 3) gpu.DrawShootStreaks(cometaV, n / 3);
-            uint a1 = (uint)Math.Max(0f, Math.Min(255f, 210f * br)), a2 = (uint)Math.Max(0f, Math.Min(255f, 60f * br));
-            if (a2 > 0) DrawGlow(x, y, 26f, (a2 << 24) | 0x00C8DCFFu);
-            if (a1 > 0) DrawGlow(x, y, 7f, (a1 << 24) | 0x00F4F8FFu);
-        }
-        internal bool CometaPasando { get { return cometaVa; } }
     }
 #endif
 }

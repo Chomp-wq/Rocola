@@ -9,7 +9,7 @@ using System.Reflection;
 //  2) Las lluvias: Perseidas, Geminidas, Cuadrantidas (cruzan el ano), Orionidas; fuera de fechas, nada. Sus fugaces
 //     nacen dentro de la pantalla y se alejan del radiante.
 //  3) La fugaz de festejo: entra por un costado, arriba, y baja.
-//  4) El cometa: entra y sale suave, cruza la pantalla, la cola apunta arriba y atras; cuando vuelve.
+//  4) El cometa: retirado el 13-10-2026 (ya no esta, y su clave se ignora).
 //  5) La profundidad: las nebulosas no salen nunca de su margen.
 //  6) El cielo segun la hora: madrugada, anochecer, mediodia; con todo en cero sale el mismo color.
 //  7) El reflejo de la aurora: no pasa del hueco, se apaga hacia abajo y lleva el color del filo.
@@ -41,7 +41,7 @@ class CieloVivo
             // Sin tarjeta grafica no hay cielo vivo: el dibujo por CPU esta congelado. Solo se mira que la configuracion
             // se conserve igual en este ejecutable.
             List<string> tl0 = Codigo.Textos(TF.GetMethod("LoadConfigPrefs", T)), ts0 = Codigo.Textos(TF.GetMethod("TextoConfig", T));
-            foreach (string k in new string[] { "luna_del_cielo=", "lluvias_estrellas=", "fugaz_festejo=", "cometa=", "profundidad_pagina=", "cielo_por_hora=", "reflejo_aurora=" })
+            foreach (string k in new string[] { "luna_del_cielo=", "lluvias_estrellas=", "fugaz_festejo=", "profundidad_pagina=", "cielo_por_hora=", "reflejo_aurora=" })
                 Check(tl0.Contains(k) && ts0.Contains(k), "sin tarjeta, la configuracion conserva " + k);
             Console.WriteLine(fallos == 0 ? "  OK cielovivo: " + oks + " comprobaciones (sin tarjeta grafica: solo la configuracion; CPU congelado)"
                                           : "  FALLO cielovivo: " + fallos + " de " + (oks + fallos));
@@ -130,28 +130,13 @@ class CieloVivo
         Check(baja, "y baja en diagonal suave");
         Check((int)TF.GetField("FestejoCadaMs", T).GetValue(null) >= 1500, "como mucho una cada " + TF.GetField("FestejoCadaMs", T).GetValue(null) + " ms");
 
-        Console.WriteLine("\n  4) EL COMETA\n");
+        Console.WriteLine("\n  4) EL COMETA, RETIRADO (13-10-2026)\n");
         {
-            Func<double, bool, float[]> en = delegate (double p, bool haciaDerecha)
-            {
-                object[] a = { p, 1024f, 768f, haciaDerecha, 0.18f, 0f, 0f, 0f, 0f, 0f };
-                TF.GetMethod("CometaEn", T).Invoke(null, a);
-                return new float[] { Fl(a, 5), Fl(a, 6), Fl(a, 7), Fl(a, 8), Fl(a, 9) };
-            };
-            float[] p0 = en(0.0, true), pm = en(0.5, true), p1 = en(1.0, true), q = en(0.5, false);
-            Check(p0[4] == 0f && p1[4] == 0f && Math.Abs(pm[4] - 1f) < 1e-6, "entra y sale suave (0 en las puntas, entero a la mitad)");
-            Check(p0[0] < 0 && p1[0] > 1024 && pm[0] > 300 && pm[0] < 724, "cruza la pantalla entera");
-            Check(pm[1] > 768 * 0.15f && pm[1] < 768 * 0.3f, "por el cielo de arriba");
-            Check(pm[3] < 0 && pm[2] < 0 && q[2] > 0, "la cola apunta hacia arriba y hacia atras");
-            Array vv = Array.CreateInstance(TVtx, 12);
-            int n = (int)TF.GetMethod("CometaColas", T).Invoke(null, new object[] { vv, 500f, 150f, pm[2], pm[3], 1f, 1024f });
-            Check(n == 12, "dos colas: cuatro triangulos");
-            uint aCab = (uint)TVtx.GetField("Color").GetValue(vv.GetValue(0)) >> 24, aFin = (uint)TVtx.GetField("Color").GetValue(vv.GetValue(2)) >> 24;
-            Check(aCab > 100 && aFin == 0, "brillante en la cabeza y nada al final de la cola");
-            Check((int)TF.GetMethod("CometaColas", T).Invoke(null, new object[] { vv, 500f, 150f, pm[2], pm[3], 0f, 1024f }) == 0, "apagado no dibuja nada");
-            int pri = (int)TF.GetMethod("CometaEspera", T).Invoke(null, new object[] { new Random(1), true });
-            int otro = (int)TF.GetMethod("CometaEspera", T).Invoke(null, new object[] { new Random(1), false });
-            Check(pri >= 6 * 60000 && pri <= 15 * 60000 && otro >= 35 * 60000 && otro <= 70 * 60000, "el primero a los 6-15 min y despues cada 35-70");
+            Check(TF.GetMethod("CometaEn", T) == null && TF.GetMethod("CometaColas", T) == null && TF.GetField("cometaOn", T) == null,
+                  "el cometa ya no esta (ni su cuenta ni su interruptor)");
+            Check(TStars.GetMethod("DibujaCometa", T) == null, "y el cielo ya no lo dibuja");
+            List<string> tlc = Codigo.Textos(TF.GetMethod("LoadConfigPrefs", T)), tsc = Codigo.Textos(TF.GetMethod("TextoConfig", T));
+            Check(!tlc.Contains("cometa=") && !tsc.Contains("cometa="), "cometa= de una configuracion vieja se ignora y ya no se escribe");
         }
 
         Console.WriteLine("\n  5) LA PROFUNDIDAD\n");
@@ -219,7 +204,7 @@ class CieloVivo
         Console.WriteLine("\n  8) TODO CONECTADO\n");
         {
             List<string> begin = Codigo.Llamadas(TStars.GetMethod("Begin", T));
-            Check(Codigo.Llama(begin, "TineCielo") && Codigo.Llama(begin, "DibujaCometa"), "el cielo de cada cuadro lleva la hora y el cometa");
+            Check(Codigo.Llama(begin, "TineCielo"), "el cielo de cada cuadro lleva la hora");
             List<string> fug = Codigo.Llamadas(TStars.GetMethod("UpdateAndDrawShoots", T));
             Check(Codigo.Llama(fug, "TiraFugazRadiante") && Codigo.Llama(fug, "TiraFugazFestejo") && Codigo.Llama(fug, "TiraFugaz"), "las fugaces: las de siempre, las de la lluvia y la de festejo");
             List<string> rf = Codigo.Llamadas(TPanel.GetMethod("RenderFrame", T));
@@ -239,18 +224,18 @@ class CieloVivo
             Check(Codigo.Llama(TPanel.GetMethod("PreparaPantallaViva", T), "EmpujaNieblas"), "al pasar de pagina se empujan tambien las nebulosas");
             Check(Codigo.Llama(TF.GetMethod("AddItem", T), "FestejaEnElCielo") && Codigo.Llama(TF.GetMethod("AddCoin", T), "FestejaEnElCielo"), "la moneda y la cancion puesta piden su fugaz");
             List<string> ap = Codigo.IlConNombres(TF.GetMethod("AplicaEfectosGpu", T));
-            foreach (string p in new string[] { "LunaDelCielo", "LluviasEstrellas", "FugazFestejo", "Cometa", "ProfundidadPagina", "CieloPorHora", "ReflejoAurora" })
+            foreach (string p in new string[] { "LunaDelCielo", "LluviasEstrellas", "FugazFestejo", "ProfundidadPagina", "CieloPorHora", "ReflejoAurora" })
             {
                 string campo = p;
                 Check(ap.Exists(delegate (string s) { return s.StartsWith("7D ") && s.EndsWith(" " + campo); }), "Ctrl+F3 lleva " + p + " a la tarjeta");
             }
             List<string> tl = Codigo.Textos(TF.GetMethod("LoadConfigPrefs", T)), ts = Codigo.Textos(TF.GetMethod("TextoConfig", T));
-            foreach (string k in new string[] { "luna_del_cielo=", "lluvias_estrellas=", "fugaz_festejo=", "cometa=", "profundidad_pagina=", "cielo_por_hora=", "reflejo_aurora=" })
+            foreach (string k in new string[] { "luna_del_cielo=", "lluvias_estrellas=", "fugaz_festejo=", "profundidad_pagina=", "cielo_por_hora=", "reflejo_aurora=" })
                 Check(tl.Contains(k) && ts.Contains(k), "la configuracion lee y guarda " + k);
             Check(!tl.Contains("cielo_hora=") && !tl.Contains("luna_fase="), "las claves viejas de Espacio natural siguen ignoradas");
             List<string> pag = new List<string>();
             foreach (MethodBase m in Codigo.MetodosConAyudantes(TF, "PaginaFondo")) pag.AddRange(Codigo.Textos(m));
-            foreach (string s in new string[] { "Luna con su fase real", "Lluvias de estrellas en sus fechas", "Fugaz al poner una cancion", "Cometa de vez en cuando", "Mas profundidad al pasar de pagina", "Cielo segun la hora", "Reflejo de la aurora" })
+            foreach (string s in new string[] { "Luna con su fase real", "Lluvias de estrellas en sus fechas", "Fugaz al poner una cancion", "Mas profundidad al pasar de pagina", "Cielo segun la hora", "Reflejo de la aurora" })
                 Check(pag.Contains(s), "en Ctrl+F3 -> Fondo: «" + s + "»");
             List<string> hojas = Codigo.Textos(TF.GetMethod("MontaHojasFondo", T));
             Check(hojas.Contains("Cielo vivo"), "con su hoja: Cielo vivo");

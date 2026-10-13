@@ -694,7 +694,7 @@ namespace Rocola
                     g.SmoothingMode = SmoothingMode.AntiAlias;
                     g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
                     float y = 0f;
-                    using (SolidBrush b = new SolidBrush(AtrEtiqueta)) Espaciado(g, "EN ESTA ROCOLA", fEt, b, 0f, y, fEt.Size * .22f);
+                    using (SolidBrush b = new SolidBrush(AtrEtiqueta)) EspaciadoEntero(g, "EN ESTA ROCOLA", fEt, b, ancho, etH, fEt.Size * .22f);
                     y += etH + gapEt;
                     using (SolidBrush b = new SolidBrush(AtrTitulo)) g.DrawString(nombre, fNom, b, new RectangleF(0, y, ancho, titH + titL * .25f), dos);
                     y += titH + gapTit;
@@ -718,6 +718,56 @@ namespace Rocola
             }
         }
         // Letras con aire entre ellas (el letrero de arriba, como "A H O R A   S U E N A").
+        // EL LETRERO ENTERO, ARRIBA DE LA FICHA (foto del 13-10-2026: en el bar «EN ESTA ROCOLA» salia sin la parte de arriba de
+        // las letras). Dibujado en la y 0 de la ficha, la letra del bar (Trebuchet MS) se salia por arriba y por la izquierda, y
+        // lo que cae fuera de la imagen no existe. Ahora se dibuja con margen de sobra en una imagen aparte, se buscan sus
+        // pixeles de verdad y se pega desde la primera fila con tinta, en la y 0: entero con cualquier letra y cualquier tamaño.
+        // Por la izquierda se respeta donde empezaba (x 0), salvo que la letra se saliera: entonces se corre lo justo.
+        private static void EspaciadoEntero(Graphics g, string txt, Font f, Brush b, int ancho, float alto, float aire)
+        {
+            int pad = (int)Math.Ceiling(alto) + 4;
+            int tw = ancho + 2 * pad, th = (int)Math.Ceiling(alto * 2f) + 2 * pad;
+            using (Bitmap tmp = new Bitmap(tw, th, PixelFormat.Format32bppPArgb))
+            {
+                using (Graphics gt = Graphics.FromImage(tmp))
+                {
+                    gt.Clear(Color.Transparent);
+                    gt.SmoothingMode = g.SmoothingMode; gt.TextRenderingHint = g.TextRenderingHint;
+                    Espaciado(gt, txt, f, b, pad, pad, aire);
+                }
+                int x0, y0, x1, y1;
+                if (!Tinta(tmp, out x0, out y0, out x1, out y1)) return;
+                int sx = Math.Min(x0, pad);                       // donde empezaba la linea, o antes si la letra se salia
+                int ww = Math.Min(ancho, x1 - sx + 1), hh = y1 - y0 + 1;
+                if (ww <= 0 || hh <= 0) return;
+                CompositingMode cm = g.CompositingMode; InterpolationMode im = g.InterpolationMode;
+                g.CompositingMode = CompositingMode.SourceOver; g.InterpolationMode = InterpolationMode.NearestNeighbor;
+                g.DrawImage(tmp, new Rectangle(0, 0, ww, hh), sx, y0, ww, hh, GraphicsUnit.Pixel);
+                g.CompositingMode = cm; g.InterpolationMode = im;
+            }
+        }
+        // El rectangulo de pixeles con algo de tinta (alfa > 0). False si no hay ninguno.
+        internal static bool Tinta(Bitmap bmp, out int x0, out int y0, out int x1, out int y1)
+        {
+            x0 = bmp.Width; y0 = bmp.Height; x1 = -1; y1 = -1;
+            BitmapData d = bmp.LockBits(new Rectangle(0, 0, bmp.Width, bmp.Height), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+            try
+            {
+                int[] fila = new int[bmp.Width];
+                for (int y = 0; y < bmp.Height; y++)
+                {
+                    System.Runtime.InteropServices.Marshal.Copy(new IntPtr(d.Scan0.ToInt64() + (long)y * d.Stride), fila, 0, bmp.Width);
+                    for (int x = 0; x < fila.Length; x++)
+                        if (((uint)fila[x] >> 24) != 0)
+                        {
+                            if (x < x0) x0 = x; if (x > x1) x1 = x;
+                            if (y < y0) y0 = y; if (y > y1) y1 = y;
+                        }
+                }
+            }
+            finally { bmp.UnlockBits(d); }
+            return x1 >= 0;
+        }
         private static void Espaciado(Graphics g, string txt, Font f, Brush b, float x, float y, float aire)
         {
             using (StringFormat sf = new StringFormat(StringFormat.GenericTypographic))

@@ -8,6 +8,13 @@ sin reducir calidad; los paneles respetan los limites de la tarjeta. Solo Modest
 HD suspendida y renderizado CPU congelado.
 [Cambios, pruebas y limites pendientes](AUDITORIA_GENERAL_MODEST_2026-10-11.md).
 
+## Cuatro arreglos de las fotos — 13 de octubre de 2026
+
+Fuera el cometa del cielo; la ayuda dice «¡Adiós!» y se cierra sola a los 15 s sin uso; el reflejo de la aurora nace
+pegado a la raya del horizonte (ya no queda una franja oscura bajo la barra); «EN ESTA ROCOLA» sale entero en el modo
+atracción.
+[Qué se cambió y cómo se comprobó](FOTOS_COMETA_AYUDA_BARRA_MODEST_2026-10-13.md).
+
 ## Sonido: S1 a S5 — 13 de octubre de 2026
 
 En Ctrl+F3 → Sonido → **Lo que suena ahora...**: un canal mudo se oye por los dos (S1) y la corriente continua se quita

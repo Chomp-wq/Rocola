@@ -1148,7 +1148,6 @@ namespace Rocola
             }
             BuildStarVerts(starV, sx, sy, sphase, sspeed, ssize, skind, sforma, scol, nStars, t, (transing ? tr : 1f) * dim, pulse, driftX, driftY, w, h);   // patron ACTUAL (x atenuacion al navegar)
             gpu.DrawStars(starV, nStars * 2, glowTex);
-            DibujaCometa(w, h, nowMs, finoMs);   // el cometa (CieloVivoGpu.cs): lejos, detras de la luna
             if (TrasEstrellas != null) TrasEstrellas();   // la luna va aqui: esta muchisimo mas cerca que las estrellas
             UpdateAndDrawShoots(w, h, nowMs, finoMs);
             return true;

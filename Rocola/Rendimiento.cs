@@ -243,7 +243,7 @@ namespace Rocola
             gpuPanel.EstelaEstelar = estelaEstelar;
             gpuPanel.Estrella3D = estrella3d;
             gpuPanel.LunaDelCielo = lunaDelCielo; gpuPanel.LluviasEstrellas = lluviasEstrellas;   // el cielo vivo (CieloVivoGpu.cs)
-            gpuPanel.FugazFestejo = fugazFestejo; gpuPanel.Cometa = cometaOn;
+            gpuPanel.FugazFestejo = fugazFestejo;
             gpuPanel.ProfundidadPagina = profundidadPagina; gpuPanel.CieloPorHora = cieloPorHora; gpuPanel.ReflejoAurora = reflejoAurora;
             gpuPanel.ColoresFluidos = coloresFluidos;
             gpuPanel.TransicionesTacto = transicionesTacto;
@@ -1093,27 +1093,27 @@ namespace Rocola
             sw3d.CheckedChanged += delegate { estrella3d = sw3d.Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             tNat.Controls.Add(sw3d);
 
-            // EL CIELO VIVO (CieloVivoGpu.cs, 12-10-2026): siete adornos de Legacy, cada uno con su interruptor, en su hoja.
+            // EL CIELO VIVO (CieloVivoGpu.cs, 12-10-2026): los adornos de Legacy, cada uno con su interruptor, en su hoja. (El
+            // cometa se retiro el 13-10-2026.)
             string[] vivoNames = { "Luna con su fase real", "Lluvias de estrellas en sus fechas",
-                "Fugaz al poner una cancion", "Cometa de vez en cuando",
+                "Fugaz al poner una cancion",
                 "Mas profundidad al pasar de pagina", "Cielo segun la hora", "Reflejo de la aurora" };
-            bool[] vivoValues = { lunaDelCielo, lluviasEstrellas, fugazFestejo, cometaOn, profundidadPagina, cieloPorHora, reflejoAurora };
+            bool[] vivoValues = { lunaDelCielo, lluviasEstrellas, fugazFestejo, profundidadPagina, cieloPorHora, reflejoAurora };
             Interruptor[] vivo = new Interruptor[vivoNames.Length];
             for (int i = 0; i < vivo.Length; i++)
             {
-                vivo[i] = new Interruptor(); vivo[i].SetBounds(16, 40 + (i % 4) * 40, 424, 26);
+                vivo[i] = new Interruptor(); vivo[i].SetBounds(16, 40 + (i % 3) * 40, 424, 26);
                 vivo[i].Font = fNom; vivo[i].ForeColor = cTexto; vivo[i].Acento = cAc;
                 vivo[i].Text = vivoNames[i]; vivo[i].Checked = vivoValues[i];
             }
             vivo[0].CheckedChanged += delegate { lunaDelCielo = vivo[0].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             vivo[1].CheckedChanged += delegate { lluviasEstrellas = vivo[1].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             vivo[2].CheckedChanged += delegate { fugazFestejo = vivo[2].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
-            vivo[3].CheckedChanged += delegate { cometaOn = vivo[3].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
-            vivo[4].CheckedChanged += delegate { profundidadPagina = vivo[4].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
-            vivo[5].CheckedChanged += delegate { cieloPorHora = vivo[5].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
-            vivo[6].CheckedChanged += delegate { reflejoAurora = vivo[6].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            vivo[3].CheckedChanged += delegate { profundidadPagina = vivo[3].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            vivo[4].CheckedChanged += delegate { cieloPorHora = vivo[4].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            vivo[5].CheckedChanged += delegate { reflejoAurora = vivo[5].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             Label lVivo1 = new Label(); lVivo1.BackColor = Color.Transparent; lVivo1.ForeColor = cTenue; lVivo1.Font = fDes;
-            lVivo1.Text = "La luna sigue su fase de verdad: cerca de la luna nueva\nno se ve. Las lluvias, en sus fechas (agosto: Perseidas;\ndiciembre: Geminidas). El cometa pasa cada 35-70 min.";
+            lVivo1.Text = "La luna sigue su fase de verdad: cerca de la luna nueva\nno se ve. Las lluvias, en sus fechas (agosto: Perseidas;\ndiciembre: Geminidas).";
             Label lVivo2 = new Label(); lVivo2.BackColor = Color.Transparent; lVivo2.ForeColor = cTenue; lVivo2.Font = fDes;
             lVivo2.Text = "Con la hora cambia solo el cielo de abajo: mas\nhondo de madrugada y calido al anochecer.";
 
@@ -1170,8 +1170,8 @@ namespace Rocola
                 new Control[] { swCristal, extras[0], tactile[0], lExtras },
                 new Control[] { moonSwitches[0], moonSwitches[1], moonSwitches[2], moonSwitches[3], sw3d, swEstela },
                 new Control[] { extras[1], extras[2], lMoon },
-                new Control[] { vivo[0], vivo[1], vivo[2], vivo[3], lVivo1 },
-                new Control[] { vivo[4], vivo[5], vivo[6], lVivo2 }
+                new Control[] { vivo[0], vivo[1], vivo[2], lVivo1 },
+                new Control[] { vivo[3], vivo[4], vivo[5], lVivo2 }
             };
             MontaHojasFondo(pg, tAd, tNat, groups, fNom, fDes, fBot, cTexto, cTenue);
 
@@ -1185,7 +1185,7 @@ namespace Rocola
             Necesita(barNat, delegate { return cieloProfundo; }, "Nebulosas con detalle natural (hoja Cielo y aurora)", lNatD);
             Necesita(swEstela, delegate { return lunaActiva; }, "Estrella viajera con orbitas (esta hoja)");
             Necesita(extras[2], delegate { return estadoExpandido; }, "Estado ampliado en reposo (Imagen)");
-            Necesita(vivo[4], delegate { return paginaDesliza; }, "Pasar de pagina deslizando (Pantalla)");
+            Necesita(vivo[3], delegate { return paginaDesliza; }, "Pasar de pagina deslizando (Pantalla)");
             // Y todo lo de esta pagina es de la tarjeta grafica.
             SoloConTarjeta(sw); SoloConTarjeta(swFlujo, swPaleta, barNat, swCristal, swDoce, swEstela, sw3d);
             SoloConTarjeta(extras); SoloConTarjeta(tactile); SoloConTarjeta(moonSwitches); SoloConTarjeta(vivo);

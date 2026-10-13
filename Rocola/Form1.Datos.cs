@@ -435,7 +435,6 @@ namespace Rocola
                     else if (s.StartsWith("luna_del_cielo=")) lunaDelCielo = s.Substring(15).Trim() != "0";          // el cielo vivo (CieloVivoGpu.cs)
                     else if (s.StartsWith("lluvias_estrellas=")) lluviasEstrellas = s.Substring(18).Trim() != "0";
                     else if (s.StartsWith("fugaz_festejo=")) fugazFestejo = s.Substring(14).Trim() != "0";
-                    else if (s.StartsWith("cometa=")) cometaOn = s.Substring(7).Trim() != "0";
                     else if (s.StartsWith("profundidad_pagina=")) profundidadPagina = s.Substring(19).Trim() != "0";
                     else if (s.StartsWith("cielo_por_hora=")) cieloPorHora = s.Substring(15).Trim() != "0";
                     else if (s.StartsWith("reflejo_aurora=")) reflejoAurora = s.Substring(15).Trim() != "0";
@@ -598,7 +597,6 @@ namespace Rocola
             sb.Append("luna_del_cielo=").Append(lunaDelCielo ? "1" : "0").Append("\r\n");
             sb.Append("lluvias_estrellas=").Append(lluviasEstrellas ? "1" : "0").Append("\r\n");
             sb.Append("fugaz_festejo=").Append(fugazFestejo ? "1" : "0").Append("\r\n");
-            sb.Append("cometa=").Append(cometaOn ? "1" : "0").Append("\r\n");
             sb.Append("profundidad_pagina=").Append(profundidadPagina ? "1" : "0").Append("\r\n");
             sb.Append("cielo_por_hora=").Append(cieloPorHora ? "1" : "0").Append("\r\n");
             sb.Append("reflejo_aurora=").Append(reflejoAurora ? "1" : "0").Append("\r\n");
