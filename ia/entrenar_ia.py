@@ -25,6 +25,9 @@
 #  Codigo4 = candidato numericamente aceptado; PCM/escucha/activacion autorizada pendientes.
 #  --indice y --generos permiten metadata aparte; por defecto usa el mismo nombre base del .bin.
 #  --ajustar-instalado reutiliza la MISMA arquitectura: checkpoint0 y seleccion solo por validacion.
+#  --genero cumbia  (I3, 13-10-2026) entrena SOLO con el material de las canciones de ese genero (la etiqueta del
+#                   sidecar .generos.tsv) y lo compara contra el instalado (el general) en la prueba de ese
+#                   genero: solo sale aceptado si le gana ahi. Lo instala instalar_dsee_genero.py.
 #
 #  Requisitos: python3 + numpy. Para MP3, convierte antes a WAV (ffmpeg -i cancion.mp3 cancion.wav).
 # ============================================================================================
@@ -473,7 +476,8 @@ def particiones_rocola(ruta, X, nivel="artista", incluir_sin_origen=False, indic
     return pos, informe
 
 
-def cobertura_generos(ruta, entradas, partes, pesos, sidecar=None):
+def lee_generos(ruta, sidecar=None):
+    """El sidecar .generos.tsv: huella de cancion -> etiqueta (en minusculas). Ultimo registro gana."""
     sidecar = sidecar or os.path.splitext(ruta)[0] + ".generos.tsv"
     mapa = {}
     if os.path.exists(sidecar):
@@ -487,6 +491,58 @@ def cobertura_generos(ruta, entradas, partes, pesos, sidecar=None):
                 genero = campos[1].strip().lower()
                 if not any(c in genero for c in ("/", "\\", ":")):
                     mapa[cancion] = genero[:80] or "desconocido"
+    return mapa
+
+
+# EL NOMBRE DE ARCHIVO DE UN GENERO: la MISMA cuenta que Form1.SlugGenero de la rocola (Form1.Ia.cs). La rocola busca
+# rocola_ia_genero_<esto>.bin con la etiqueta de cada cancion; si las dos cuentas no coincidieran, el modelo no se
+# usaria nunca. Lo vigilan test_genero_dsee.py y pruebas/mejorasia.cs con los mismos ejemplos.
+_NO_FIABLES = ("unknown", "desconocido", "sin genero", "<unknown>")
+_ACENTOS = {"\u00e1": "a", "\u00e9": "e", "\u00ed": "i", "\u00f3": "o", "\u00fa": "u", "\u00fc": "u", "\u00f1": "n"}
+
+
+def slug_genero(genero):
+    g = (genero or "").replace("\t", " ").replace("\r", " ").replace("\n", " ").strip().lower()
+    if not g or g in _NO_FIABLES:
+        return ""
+    g = g[:128]
+    sb = []
+    for c in g:
+        c = _ACENTOS.get(c, c)
+        if ("a" <= c <= "z") or ("0" <= c <= "9"):
+            sb.append(c)
+        elif sb and sb[-1] != "_":
+            sb.append("_")
+        if len(sb) >= 40:
+            break
+    return "".join(sb).strip("_")
+
+
+def solo_genero(partes, informe, ruta, sidecar, genero):
+    """Deja en cada particion solo las filas de canciones de ese genero (por su slug). El reparto por grupos no
+    cambia: una cancion sigue en la misma particion que antes, asi que la prueba sigue siendo de canciones que el
+    entrenamiento no vio."""
+    objetivo = slug_genero(genero)
+    if not objetivo:
+        raise SystemExit("--genero necesita una etiqueta de genero valida")
+    if partes is None:
+        raise SystemExit("--genero necesita material con indice de origen: " + informe.get("motivo", ""))
+    mapa = lee_generos(ruta, sidecar)
+    if not mapa:
+        raise SystemExit("--genero necesita el sidecar de generos (rocola_ia_datos.generos.tsv) junto al material")
+    canciones = informe["_canciones"]
+    unicas = np.unique(canciones)
+    del_genero = {int(c) for c in unicas if slug_genero(mapa.get(int(c), "")) == objetivo}
+    marca = np.fromiter((int(c) in del_genero for c in canciones), dtype=bool, count=len(canciones))
+    nuevas = [p[marca[p]] for p in partes]
+    grupos = informe.get("_grupos", canciones)
+    informe["grupos"] = [int(len(np.unique(grupos[p]))) for p in nuevas]
+    informe["genero"] = objetivo
+    return nuevas, informe
+
+
+def cobertura_generos(ruta, entradas, partes, pesos, sidecar=None):
+    mapa = lee_generos(ruta, sidecar)
     grupos = [{}, {}, {}]
     for e, parte, peso in zip(entradas, partes, pesos):
         if not peso: continue
@@ -537,7 +593,8 @@ def rutas_candidato(here, argv):
     instalado=opcion("--instalado",os.path.join(here,"rocola_ia.bin"))
     candidato=opcion("--candidato")
     if candidato is None:
-        candidato=os.path.join(tempfile.mkdtemp(prefix="dsee-candidato-",dir=here),"candidato.bin")
+        g=slug_genero(opcion("--genero","")) if "--genero" in argv else ""
+        candidato=os.path.join(tempfile.mkdtemp(prefix=("dsee-genero-%s-candidato-" % g) if g else "dsee-candidato-",dir=here),"candidato.bin")
     informe=opcion("--informe",os.path.join(os.path.dirname(os.path.abspath(candidato)),"informe_dsee.json"))
     datos=opcion("--datos")
     fuentes=[instalado,os.path.join(here,"rocola_ia.bin"),os.path.join(here,"rocola_eq_ia.bin"),
@@ -574,7 +631,16 @@ def main():
         import origen_dsee as O
         origen_datos = {"tipo": "rocola", "huella": O.huella_datos(ruta, indice or O.ruta_indice(ruta)),
                         "ejemplos_usados": int(len(X)), "max_ejemplos": int(tope)}
+        if "--genero" in sys.argv:
+            partes, informe = solo_genero(partes, informe, ruta, generos, sys.argv[sys.argv.index("--genero") + 1])
+            origen_datos["genero"] = informe["genero"]
+            print("  solo el genero '%s': %d / %d / %d ejemplos" % ((informe["genero"],) + tuple(len(p) for p in partes)))
+            if sum(len(p) for p in partes) <= 500 or min(len(p) for p in partes) == 0:
+                print("Muy poco material de ese genero para entrenar, validar y probar. No se guarda ningun modelo.")
+                return 1
     else:
+        if "--genero" in sys.argv:
+            raise SystemExit("--genero solo vale con --datos (el material que junta la rocola, con sus generos)")
         if "--musica" in sys.argv:
             folder = sys.argv[sys.argv.index("--musica") + 1]
             nclips = int(sys.argv[sys.argv.index("--clips") + 1]) if "--clips" in sys.argv else 400

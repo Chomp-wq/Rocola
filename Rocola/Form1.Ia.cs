@@ -387,6 +387,62 @@ namespace Rocola
         private static readonly RedChica EqNet = new RedChica(EqNetIn, EqNetOut);
         private const int EqNetIn = 5, EqNetOut = 3;
         private static readonly int[] EqNetSalida = { 0, 6, 7 };   // que bandas predice: 50 Hz, 10 kHz y 15.8 kHz
+        // I3, EL DSEE POR GENERO (13-10-2026; interruptor "Modelos del DSEE por genero" en Ctrl+F3, apagado de fabrica:
+        // "dsee_genero="). Ademas del modelo general (rocola_ia.bin), el entrenador puede sacar uno por genero con el
+        // material de ese genero (ia/entrenar_ia.py --genero cumbia), con las mismas guardas, y publicar_dsee.py lo deja como
+        // rocola_ia_genero_<genero>.bin en la carpeta de datos. Con el interruptor encendido, cada cancion usa el de su
+        // genero (la etiqueta del archivo, la misma que se apunta junto al material); si no hay, el general. Solo se nota
+        // con el DSEE encendido. Se mira al armar la cadena de cada cancion.
+        private bool dseePorGenero;
+        private static readonly Dictionary<string, RedChica> dseeGeneros = new Dictionary<string, RedChica>(StringComparer.Ordinal);
+        internal const string PrefijoDseeGenero = "rocola_ia_genero_";
+        // El nombre de archivo de un genero: la etiqueta fiable (IaGeneroFiable) con solo letras a-z, cifras y '_'. La
+        // misma cuenta que slug_genero() de ia/entrenar_ia.py.
+        internal static string SlugGenero(string genero)
+        {
+            string g = IaGeneroFiable(genero);
+            if (g.Length == 0) return "";
+            StringBuilder sb = new StringBuilder();
+            foreach (char c0 in g)
+            {
+                char c = c0;
+                switch (c) { case '\u00e1': c = 'a'; break; case '\u00e9': c = 'e'; break; case '\u00ed': c = 'i'; break; case '\u00f3': c = 'o'; break; case '\u00fa': case '\u00fc': c = 'u'; break; case '\u00f1': c = 'n'; break; }
+                if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')) sb.Append(c);
+                else if (sb.Length > 0 && sb[sb.Length - 1] != '_') sb.Append('_');
+                if (sb.Length >= 40) break;
+            }
+            return sb.ToString().Trim('_');
+        }
+        // Al arrancar, en segundo plano (listar la carpeta y leer los modelos no para la pantalla): los modelos por genero
+        // de la carpeta de datos (los de fabrica no traen ninguno). Hasta que esten, cada cancion usa el general.
+        private static void CargaModelosPorGenero()
+        {
+            try
+            {
+                if (!Directory.Exists(CarpetaDatos)) return;
+                foreach (string f in Directory.GetFiles(CarpetaDatos, PrefijoDseeGenero + "*.bin"))
+                {
+                    string slug = Path.GetFileNameWithoutExtension(f).Substring(PrefijoDseeGenero.Length);
+                    if (slug.Length == 0 || slug != SlugGenero(slug)) continue;   // un nombre que no saldria de una etiqueta: no se usa
+                    RedChica r = new RedChica(28, 12);
+                    r.TryLoad(f);
+                    if (r.Loaded) lock (dseeGeneros) dseeGeneros[slug] = r;
+                }
+            }
+            catch { }
+        }
+        // El modelo del DSEE para esta cancion: el de su genero si el interruptor esta encendido y lo hay; si no, null (el
+        // general, como siempre).
+        private RedChica ModeloDseePara(Track t)
+        {
+            if (!dseePorGenero || t == null) return null;
+            string slug = SlugGenero(t.Genre);
+            if (slug.Length == 0) return null;
+            RedChica r;
+            lock (dseeGeneros) if (dseeGeneros.TryGetValue(slug, out r) && r.Loaded) return r;
+            return null;
+        }
+        private static int ModelosPorGenero() { lock (dseeGeneros) return dseeGeneros.Count; }
 
         private sealed class RedChica
         {

@@ -531,6 +531,9 @@ namespace Rocola
                     else if (s.StartsWith("claridad_local=")) claridadLocal = s.Substring(15).Trim() == "1";       // interruptor: claridad para el local
                     else if (s.StartsWith("partes_suaves=")) partesSuaves = s.Substring(14).Trim() == "1";         // interruptor: que las partes suaves se oigan
                     else if (s.StartsWith("balance=")) balanceDb = BalanceDb(s.Substring(8));                       // dB que se baja un canal (-6..6)
+                    else if (s.StartsWith("a_la_medida=")) aLaMedida = s.Substring(12).Trim() == "1";              // I1: bajo y brillo a la medida de cada cancion
+                    else if (s.StartsWith("quita_siseo=")) quitaSiseo = s.Substring(12).Trim() == "1";             // I2: quitar el siseo de las grabaciones viejas
+                    else if (s.StartsWith("dsee_genero=")) dseePorGenero = s.Substring(12).Trim() == "1";          // I3: el modelo del DSEE del genero de la cancion
                     else if (s.StartsWith("subir_db=")) { float v; if (float.TryParse(s.Substring(9).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) masterDb = Clampf(v, 0f, 12f); }   // SUBIR TODO (dB extra general)
                     else if (s.StartsWith("fundido=")) { float v; if (float.TryParse(s.Substring(8).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) crossfadeSec = Clampf(v, 0f, 3f); }   // FUNDIDO entre canciones (segundos)
                     else if (s.StartsWith("declip=")) declipOn = s.Substring(7).Trim() != "0";   // des-recorte de picos aplastados (por defecto si)
@@ -670,6 +673,9 @@ namespace Rocola
                 sb.Append("claridad_local=").Append(claridadLocal ? "1" : "0").Append("\r\n");
                 sb.Append("partes_suaves=").Append(partesSuaves ? "1" : "0").Append("\r\n");
                 sb.Append("balance=").Append(balanceDb.ToString(System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
+                sb.Append("a_la_medida=").Append(aLaMedida ? "1" : "0").Append("\r\n");
+                sb.Append("quita_siseo=").Append(quitaSiseo ? "1" : "0").Append("\r\n");
+                sb.Append("dsee_genero=").Append(dseePorGenero ? "1" : "0").Append("\r\n");
                 sb.Append("fundido=").Append(crossfadeSec.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
                 sb.Append("declip=").Append(declipOn ? "1" : "0").Append("\r\n");
                 sb.Append("ia_datos=").Append(iaHarvestOn ? "1" : "0").Append("\r\n");
@@ -1173,28 +1179,7 @@ namespace Rocola
             // el objetivo lo dice la IA mirando el cuerpo de ESTA cancion: cuanto grave y cuanto aire tendria una
             // cancion bien grabada que sonara como esta. Asi una balada de piano y un corrido dejan de ser
             // empujados hacia la misma curva. Sin modelo, todo sigue como antes (el promedio para las 8 bandas).
-            float[] meta = eqAvg;
-            if (EqNet.Loaded)
-            {
-                float[] ent = eqNetIn ?? (eqNetIn = new float[EqNetIn]);
-                float[] sal = eqNetOut ?? (eqNetOut = new float[EqNetOut]);
-                for (int i = 0; i < EqNetIn; i++) ent[i] = c[i + 1];   // el cuerpo: bandas 1..5
-                if (EqNet.Predict(ent, sal))
-                {
-                    float[] m = eqMeta ?? (eqMeta = new float[8]);
-                    for (int b = 0; b < 8; b++) m[b] = eqAvg[b];
-                    for (int i = 0; i < EqNetOut; i++)
-                    {
-                        float v = sal[i];
-                        // Cinturon de seguridad: por muy convencida que este la red, el objetivo no se aleja mas
-                        // de 6 dB del promedio de la biblioteca. Un modelo mal entrenado no puede desmadrar el EQ.
-                        float lim = eqAvg[EqNetSalida[i]];
-                        if (v > lim + 6f) v = lim + 6f; else if (v < lim - 6f) v = lim - 6f;
-                        m[EqNetSalida[i]] = v;
-                    }
-                    meta = m;
-                }
-            }
+            float[] meta = MetaDeCancion(c) ?? eqAvg;
             // CANCION RARA. Si se aleja muchisimo del objetivo, casi seguro es que QUERIA sonar asi: un disco
             // muy oscuro a proposito, una grabacion en vivo, una voz sola. Empujarla a la fuerza hacia el resto
             // la estropea, asi que cuanto mas lejos esta de la biblioteca, con mas cuidado se le toca. Solo se
@@ -1228,6 +1213,46 @@ namespace Rocola
             return any ? dbs : null;
         }
 
+        // EL OBJETIVO DE ESTA CANCION: cuanto grave (50 Hz) y cuanto aire (10 y 15,8 kHz) tendria una cancion BIEN
+        // GRABADA con su mismo cuerpo, segun la red del EQ; las demas bandas, el promedio de la biblioteca. Null si no
+        // hay modelo o no hay promedio. Es lo que siempre uso el EQ automatico; desde el 13-10-2026 (I1, "A la medida
+        // de cada cancion") lo usan tambien el bajo psicoacustico y el realce. Arreglos propios en cada llamada: la
+        // llama la pantalla y tambien quien prepara la siguiente.
+        private float[] MetaDeCancion(float[] c)
+        {
+            float[] avg = eqAvg;
+            if (c == null || c.Length < EqLen || avg == null || avg.Length < 8 || !EqNet.Loaded) return null;
+            float[] ent = new float[EqNetIn], sal = new float[EqNetOut];
+            for (int i = 0; i < EqNetIn; i++) ent[i] = c[i + 1];   // el cuerpo: bandas 1..5
+            if (!EqNet.Predict(ent, sal)) return null;
+            float[] m = new float[8];
+            for (int b = 0; b < 8; b++) m[b] = avg[b];
+            for (int i = 0; i < EqNetOut; i++)
+            {
+                float v = sal[i];
+                // Cinturon de seguridad: por muy convencida que este la red, el objetivo no se aleja mas
+                // de 6 dB del promedio de la biblioteca. Un modelo mal entrenado no puede desmadrar el EQ.
+                float lim = avg[EqNetSalida[i]];
+                if (v > lim + 6f) v = lim + 6f; else if (v < lim - 6f) v = lim - 6f;
+                m[EqNetSalida[i]] = v;
+            }
+            return m;
+        }
+        // I1, A LA MEDIDA DE CADA CANCION (interruptor de Ctrl+F3, apagado de fabrica: "a_la_medida="). Con el
+        // interruptor encendido y el modelo del EQ cargado, el bajo y el realce se comparan con el objetivo de ESTA
+        // cancion (MetaDeCancion) y no con el promedio de toda la biblioteca: una balada de piano y un corrido dejan de
+        // medirse con la misma vara. Sin modelo, o apagado, todo como antes.
+        private bool aLaMedida;
+        private float[] MetaALaMedida(float[] c) { return aLaMedida ? MetaDeCancion(c) : null; }
+        // Al cambiar el interruptor en vivo: el bajo de la que suena y el de la siguiente ya preparada se recalculan con la
+        // vara nueva (el realce lo recalcula ApplyNormNow, que va detras). La rampa del bajo hace el resto.
+        private void AplicaALaMedida()
+        {
+            if (nowPlaying != null && !nowPlaying.IsVideo && nowPlaying.Song != null) bassSongFactor = BassFactorFor(nowPlaying.Song.Path);
+            CadenaCancion p = cadenaPreparada;
+            if (p != null && p.Cancion != null) p.BajoFactor = BassFactorFor(p.Cancion.Path);
+        }
+
         // CUANTO realce de brillo le toca a ESTA cancion. El EQ no puede devolver una banda que el codec borro
         // -ahi no hay musica que subir-, pero el realce SI: fabrica armonicos a partir de lo que aun queda, asi
         // que cae justo donde el EQ no llega. Por eso una cancion dañada recibe mas realce y una completa menos:
@@ -1255,6 +1280,21 @@ namespace Rocola
             // algo de realce encima sigue teniendo sentido. Y con el reconstructor apagado no cambia nada.
             if (sbrOn && sbrAllowed && corte < EqSanaHz)
                 f = ExciteCompleta + (f - ExciteCompleta) * 0.5f;
+            // I1: el aire que le falta (o le sobra) a ESTA cancion frente a su objetivo, en las bandas de 10 y 15,8 kHz
+            // que su archivo SI conserva (lo que el codec corto ya lo cuenta el corte, arriba). Le falta: mas realce; le
+            // sobra: menos. Como mucho un 25 % arriba o un 20 % abajo.
+            float[] meta = MetaALaMedida(c);
+            if (meta != null)
+            {
+                float falta = 0f; int nb = 0;
+                for (int b = 6; b < 8; b++)
+                {
+                    if (corte > 100f && EqCentros[b] > corte) continue;
+                    if (c[b] <= -25f) continue;
+                    falta += meta[b] - c[b]; nb++;
+                }
+                if (nb > 0) f *= Clampf(1f + (falta / nb) / 12f, 0.80f, 1.25f);
+            }
             return f;
         }
         private float ExciteAmountFor(string path) { return Clampf(excAmount * ExciteFactorFor(path), 0f, 1f); }

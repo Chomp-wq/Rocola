@@ -8,6 +8,21 @@ sin reducir calidad; los paneles respetan los limites de la tarjeta. Solo Modest
 HD suspendida y renderizado CPU congelado.
 [Cambios, pruebas y limites pendientes](AUDITORIA_GENERAL_MODEST_2026-10-11.md).
 
+## Mejoras con IA en el sonido: I1, I2 e I3 — 13 de octubre de 2026
+
+En Ctrl+F3 → Sonido → **Mejoras con IA**, cada una con su interruptor, apagadas de fábrica:
+
+- **I1, bajo y brillo a la medida de cada canción:** el bajo y el realce se comparan con el objetivo de esa canción
+  (la IA del EQ), no con el promedio. Necesita el modelo del EQ entrenado.
+- **I2, quitar el siseo de grabaciones viejas:** baja hasta 6 dB el ruido fijo de los agudos cuando la música está
+  cerca de él. En música limpia no toca ni un bit.
+- **I3, modelos del DSEE por género:** cada canción usa el de su género, si se entrenó. El entrenamiento ya los
+  saca solo para los géneros con material de sobra.
+
+Apagadas, el sonido es idéntico byte a byte al de antes. Hay que escucharlas en el bar.
+
+[Qué hace cada una, cómo se comprobó y lo que falta](MEJORAS_IA_SONIDO_MODEST_2026-10-13.md).
+
 ## ¿Qué partes del sonido pueden mejorar con IA? — 13 de octubre de 2026
 
 Revisión con propuestas, sin cambios en el programa: I1 (bajo y brillo a la medida de cada canción, con la red del EQ

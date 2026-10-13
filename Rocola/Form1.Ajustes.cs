@@ -631,7 +631,7 @@ namespace Rocola
             bool wasMaint = maintMode;
             maintMode = true;   // el dialogo modal necesita quedarse al frente; se devuelve en el finally
             bool changed = false;
-            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkUp = masterDb, bkEq = eqAmount, bkBass = bassAmount; int bkVid = videoVol, bkDsk = perfilDisco; bool bkNoche = nocheOn, bkOn = normalizeOn, bkSbr = sbrOn, bkEqA = eqAuto, bkBassA = bassAuto, bkVidA = videoAuto, bkIaDat = iaHarvestOn, bkSil = saltaSilencios, bkEst = estereoEstrecho, bkSub = cortaSubgrave, bkCla = claridadLocal, bkSua = partesSuaves; int bkBal = balanceDb, bkFrec = frecuenciaSalida;   // por si se Cancela
+            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkUp = masterDb, bkEq = eqAmount, bkBass = bassAmount; int bkVid = videoVol, bkDsk = perfilDisco; bool bkNoche = nocheOn, bkOn = normalizeOn, bkSbr = sbrOn, bkEqA = eqAuto, bkBassA = bassAuto, bkVidA = videoAuto, bkIaDat = iaHarvestOn, bkSil = saltaSilencios, bkEst = estereoEstrecho, bkSub = cortaSubgrave, bkCla = claridadLocal, bkSua = partesSuaves; int bkBal = balanceDb, bkFrec = frecuenciaSalida; bool bkMed = aLaMedida, bkSis = quitaSiseo, bkGen = dseePorGenero;   // por si se Cancela
             try
             {
                 Cursor.Show();
@@ -833,7 +833,7 @@ namespace Rocola
                     // partes suaves, el balance y la prueba de bocinas, y en esta tarjeta ya no cabian: van en una hoja propia
                     // que ocupa el sitio de las dos tarjetas de arriba. Aqui queda el boton que la abre (donde estaban los dos
                     // interruptores) y alli, uno para volver.
-                    BotonPlano bLocal = new BotonPlano(); bLocal.SetBounds(16, 368, 424, 26); bLocal.Font = fBot;   // el renglon de los dos interruptores: la nota del DSEE llega a 368
+                    BotonPlano bLocal = new BotonPlano(); bLocal.SetBounds(16, 368, 208, 26); bLocal.Font = fBot;   // el renglon de los dos interruptores: la nota del DSEE llega a 368
                     bLocal.Text = "El local y sus bocinas..."; bLocal.Name = "SonidoLocalAbrir";
                     bLocal.AccessibleName = "El local y sus bocinas"; bLocal.AccessibleRole = AccessibleRole.PushButton;
                     tCal.Controls.Add(bLocal);
@@ -910,6 +910,49 @@ namespace Rocola
                     BotonPlano bVolver = new BotonPlano(); bVolver.SetBounds(16, 346, 424, 34); bVolver.Font = fBot;
                     bVolver.Text = "Volver a las canciones"; bVolver.Name = "SonidoLocalVolver"; tPru.Controls.Add(bVolver);
                     bool verLocal = false;
+                    // LAS MEJORAS CON IA (13-10-2026: I1, I2 e I3). Su propia hoja, como la del local: aqui ya no cabe nada. El
+                    // boton comparte el renglon con el del local (cada uno con la mitad; los dos textos miden menos de 170 px).
+                    BotonPlano bIa = new BotonPlano(); bIa.SetBounds(232, 368, 208, 26); bIa.Font = fBot;
+                    bIa.Text = "Mejoras con IA..."; bIa.Name = "SonidoIaAbrir";
+                    bIa.AccessibleName = "Mejoras con IA"; bIa.AccessibleRole = AccessibleRole.PushButton;
+                    tCal.Controls.Add(bIa);
+                    Panel pIa = new Panel(); pIa.SetBounds(16, 100, 928, 398); pIa.BackColor = dlg.BackColor;
+                    pIa.Name = "SonidoIa"; pIa.Visible = false;
+                    Tarjeta tIa = new Tarjeta(); tIa.SetBounds(0, 0, 456, 398); tIa.Titulo = "MEJORAS CON IA"; tIa.Acento = cBri;
+                    Tarjeta tMod = new Tarjeta(); tMod.SetBounds(472, 0, 456, 398); tMod.Titulo = "LOS MODELOS"; tMod.Acento = cBib;
+                    pIa.Controls.Add(tIa); pIa.Controls.Add(tMod);
+                    Func<int, string, Color, bool, Interruptor> interIa = delegate (int y, string texto, Color ac, bool on)
+                    {
+                        Interruptor sw = new Interruptor(); sw.SetBounds(16, y, 424, 26); sw.ForeColor = cTexto; sw.Font = fNom;
+                        sw.Text = texto; sw.Acento = ac; sw.Checked = on; tIa.Controls.Add(sw); return sw;
+                    };
+                    Interruptor swMed = interIa(40, "Bajo y brillo a la medida de cada cancion", cGra, aLaMedida);
+                    swMed.Name = "SonidoIaMedida";
+                    notaLocal(tIa, 66, 32, "Compara cada cancion con lo que tendria una bien grabada\ncomo ella (la IA del EQ), no con el promedio de todas.");
+                    Interruptor swSis = interIa(110, "Quitar el siseo de grabaciones viejas", cCal, quitaSiseo);
+                    swSis.Name = "SonidoIaSiseo";
+                    notaLocal(tIa, 136, 32, "Aprende el ruido fijo de cada cancion y lo baja hasta 6 dB\nen los agudos. Se nota desde la siguiente cancion.");
+                    Interruptor swGen = interIa(180, "Modelos del DSEE por genero", cBri, dseePorGenero);
+                    swGen.Name = "SonidoIaGenero";
+                    notaLocal(tIa, 206, 32, "Cada cancion usa el modelo de su genero, si se entreno.\nSolo con el DSEE encendido; desde la siguiente cancion.");
+                    notaLocal(tIa, 332, 48, "Apagados de fabrica: escuchalos en el local antes\nde dejarlos encendidos.");
+                    Label lEqIa = notaLocal(tMod, 40, 48, "");
+                    Label lDsIa = notaLocal(tMod, 104, 64, "");
+                    notaLocal(tMod, 184, 64, "Se entrenan en otra PC con el material que junta la rocola\n(carpeta ia: entrenar_ia.py y entrenar_eq.py) y se dejan en\nla carpeta de datos. Se cargan al arrancar la rocola.");
+                    BotonPlano bVolverIa = new BotonPlano(); bVolverIa.SetBounds(16, 346, 424, 34); bVolverIa.Font = fBot;
+                    bVolverIa.Text = "Volver a las canciones"; bVolverIa.Name = "SonidoIaVolver"; tMod.Controls.Add(bVolverIa);
+                    Action pintaIa = delegate
+                    {
+                        lEqIa.Text = EqNet.Loaded
+                            ? "IA del EQ: cargada. \"A la medida\" la usa para el bajo\ny el brillo de cada cancion."
+                            : "IA del EQ: sin modelo (rocola_eq_ia.bin). Sin ella,\n\"a la medida\" no cambia nada: todo como siempre.";
+                        int nGen = ModelosPorGenero();
+                        lDsIa.Text = (NeuralEnv.Loaded ? "DSEE: modelo general cargado." : "DSEE: sin modelo; usa la curva clasica.")
+                            + "\nPor genero: " + (nGen == 0 ? "ninguno todavia (rocola_ia_genero_*.bin)." : nGen + (nGen == 1 ? " modelo." : " modelos."))
+                            + (sbrAllowed ? "" : "\nEl DSEE no esta disponible en este equipo.");
+                    };
+                    pintaIa();
+                    bool verIa = false;
 
                     // ---------------- TU BIBLIOTECA ----------------
                     Label lCal = new Label(); lCal.SetBounds(16, 40, 896, 20); lCal.BackColor = Color.Transparent;
@@ -1113,6 +1156,9 @@ namespace Rocola
                         claridadLocal = swCla.Checked; partesSuaves = swSua.Checked;
                         balanceDb = Math.Max(-SalaLocal.BalanceMax, Math.Min(SalaLocal.BalanceMax, barBal.Value - SalaLocal.BalanceMax));
                         AplicaBocinas();   // las bocinas del billar: al instante, en la que suena y en la siguiente
+                        bool medAntes = aLaMedida;
+                        aLaMedida = swMed.Checked; quitaSiseo = swSis.Checked; dseePorGenero = swGen.Checked;
+                        if (aLaMedida != medAntes) AplicaALaMedida();   // I1: el bajo de la que suena y de la siguiente, ya con la vara nueva
                         changed = true;
                         updateLabels();
                         ApplyNormNow();   // se oye el cambio al instante en la cancion que suena
@@ -1124,6 +1170,7 @@ namespace Rocola
                     swSil.CheckedChanged += apply;
                     swSub.CheckedChanged += apply; swEst.CheckedChanged += apply;
                     swCla.CheckedChanged += apply; swSua.CheckedChanged += apply; barBal.Scroll += apply;
+                    swMed.CheckedChanged += apply; swSis.CheckedChanged += apply; swGen.CheckedChanged += apply;
                     EventHandler prueba = delegate (object so, EventArgs ea)
                     {
                         PruebaModo m = (so == bPruI) ? PruebaModo.Izquierda : (so == bPruD) ? PruebaModo.Derecha
@@ -1146,6 +1193,7 @@ namespace Rocola
                         swSub.Checked = false; swEst.Checked = false;        // las bocinas del billar, apagadas: son para ese local
                         swCla.Checked = false; swSua.Checked = false;        // y la claridad y las partes suaves, igual
                         barBal.Value = SalaLocal.BalanceMax;                 // el balance, centrado
+                        swMed.Checked = false; swSis.Checked = false; swGen.Checked = false;   // las mejoras con IA, apagadas
                         if (frecuenciaSalida != 0) { frecuenciaSalida = 0; pintaFrec(); }   // la tarjeta, como la cancion (A4)
                         if (perfilDisco != 0)                                // el tipo de disco, otra vez a medirlo sola
                         { perfilDisco = 0; lock (discoLock) { discoLento.Clear(); discoMediana.Clear(); } AplicaPerfilDisco(); pintaDsk(); }
@@ -1183,11 +1231,12 @@ namespace Rocola
                         // tarjeta al agregarla -y en la rama del equipo potente hay una mas- y esa tarjeta se
                         // quedaria colgada encima de la pagina nueva.
                         foreach (Control cc in dlg.Controls)
-                            if (cc != lTit && cc != bPagS && cc != bPagI && cc != bPagD && cc != bPagC && cc != bPagF && cc != bPagP && cc != bOk && cc != pImg && cc != pDet && cc != pCol && cc != pFon && cc != pPan && cc != pLoc)
+                            if (cc != lTit && cc != bPagS && cc != bPagI && cc != bPagD && cc != bPagC && cc != bPagF && cc != bPagP && cc != bOk && cc != pImg && cc != pDet && cc != pCol && cc != pFon && cc != pPan && cc != pLoc && cc != pIa)
                                 cc.Visible = (f3Pagina == 0);
                         // La hoja del local va en el sitio de las dos tarjetas de arriba: o una, o las otras.
                         pLoc.Visible = (f3Pagina == 0 && verLocal);
-                        tVol.Visible = tCal.Visible = (f3Pagina == 0 && !verLocal);
+                        pIa.Visible = (f3Pagina == 0 && verIa && !verLocal);
+                        tVol.Visible = tCal.Visible = (f3Pagina == 0 && !verLocal && !verIa);
                         pImg.Visible = (f3Pagina == 1);
                         pDet.Visible = (f3Pagina == 2);
                         pCol.Visible = (f3Pagina == 3);
@@ -1207,6 +1256,8 @@ namespace Rocola
                     };
                     bPagS.Click += delegate { f3Pagina = 0; updateLabels(); pintaPag(); };
                     bLocal.Click += delegate { verLocal = true; updateLabels(); pintaPag(); };
+                    bIa.Click += delegate { verIa = true; pintaIa(); pintaPag(); };
+                    bVolverIa.Click += delegate { verIa = false; pintaPag(); };
                     bVolver.Click += delegate { verLocal = false; pintaPag(); };
                     bPagI.Click += delegate { f3Pagina = 1; pintaPag(); };
                     bPagD.Click += delegate { f3Pagina = 2; pintaPag(); };
@@ -1219,6 +1270,7 @@ namespace Rocola
                     dlg.Controls.Add(lDskT); dlg.Controls.Add(bDskA); dlg.Controls.Add(bDskS); dlg.Controls.Add(bDskH); dlg.Controls.Add(lDskS);
                     dlg.Controls.Add(bReset); dlg.Controls.Add(bOk); dlg.Controls.Add(pImg); dlg.Controls.Add(pDet); dlg.Controls.Add(pCol); dlg.Controls.Add(pFon); dlg.Controls.Add(pPan);
                     dlg.Controls.Add(pLoc); pLoc.BringToFront();
+                    dlg.Controls.Add(pIa); pIa.BringToFront();
                     pintaPag();
                     // Escape cierra, como toda la vida (los controles propios se comen las teclas, asi que la
                     // ventana las mira antes con KeyPreview).
@@ -1238,7 +1290,7 @@ namespace Rocola
                 if (changed || f3CambioGraf) { SaveConfigPrefs(); ShowToast(changed ? "Sonido actualizado" : "Imagen actualizada", Color.FromArgb(40, 130, 90)); }
                 f3CambioGraf = false;
             }
-            catch { nocheOn = bkNoche; normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; masterDb = bkUp; eqAmount = bkEq; bassAmount = bkBass; videoVol = bkVid; videoAuto = bkVidA; sbrOn = bkSbr; eqAuto = bkEqA; bassAuto = bkBassA; perfilDisco = bkDsk; iaHarvestOn = bkIaDat; AplicaPerfilDisco(); if (saltaSilencios != bkSil) { saltaSilencios = bkSil; try { SiguienteConElInterruptor(); } catch { } } estereoEstrecho = bkEst; cortaSubgrave = bkSub; claridadLocal = bkCla; partesSuaves = bkSua; balanceDb = bkBal; frecuenciaSalida = bkFrec; try { AplicaBocinas(); } catch { } }   // si algo truena, deja los valores como estaban
+            catch { nocheOn = bkNoche; normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; masterDb = bkUp; eqAmount = bkEq; bassAmount = bkBass; videoVol = bkVid; videoAuto = bkVidA; sbrOn = bkSbr; eqAuto = bkEqA; bassAuto = bkBassA; perfilDisco = bkDsk; iaHarvestOn = bkIaDat; AplicaPerfilDisco(); if (saltaSilencios != bkSil) { saltaSilencios = bkSil; try { SiguienteConElInterruptor(); } catch { } } estereoEstrecho = bkEst; cortaSubgrave = bkSub; claridadLocal = bkCla; partesSuaves = bkSua; balanceDb = bkBal; frecuenciaSalida = bkFrec; aLaMedida = bkMed; quitaSiseo = bkSis; dseePorGenero = bkGen; try { AplicaBocinas(); } catch { } }   // si algo truena, deja los valores como estaban
             finally { try { Cursor.Hide(); } catch { } maintMode = wasMaint; ForceFocus(); }
         }
 

@@ -33,7 +33,6 @@ namespace Rocola
         private bool eqAuto = true;                // "eq_automatico=" en config
         private bool bassAuto = true;              // "bajo_automatico=" en config
         private float bassAutoBase = 0.30f;        // lo que el programa eligio para la cancion que suena
-        private float[] eqNetIn, eqNetOut, eqMeta; // buffers del modelo del EQ (reusados: cero basura por cancion)
         private string eqMeasPath = null;          // cancion cuya huella se esta midiendo (null = no medir)
         private float eqMeasCut = 0f, eqMeasCutLo = 0f;   // cortes (arriba y abajo) de la cancion que suena (0 = aun no se sabe)
         private double[] eqMeasSum = new double[8]; private long eqMeasN = 0;   // energia acumulada por banda (hilo de audio)
@@ -224,9 +223,12 @@ namespace Rocola
             float[] c = null;
             if (path != null) eqCache.TryGetValue(path, out c);
             float f = 1f;
-            if (c != null && c.Length >= EqLen && eqAvg != null && c[0] > -25f && c[1] > -25f)
+            // I1 (A la medida, Form1.Datos.cs): con el interruptor y el modelo del EQ, la vara es el objetivo de ESTA
+            // cancion (cuanto grave tendria una bien grabada como ella) en vez del promedio de la biblioteca.
+            float[] vara = MetaALaMedida(c) ?? eqAvg;
+            if (c != null && c.Length >= EqLen && vara != null && c[0] > -25f && c[1] > -25f)
             {
-                float rel = (c[0] - eqAvg[0]) - (c[1] - eqAvg[1]);   // dB de grave profundo DE MAS que la cancion tipica
+                float rel = (c[0] - vara[0]) - (c[1] - vara[1]);   // dB de grave profundo DE MAS que la cancion tipica
                 f = Clampf(1f + rel / 12f, 0.45f, 1.55f);
             }
             // Y ademas: si la GRABACION viene cortada por abajo (muchas viejas no tienen nada bajo 80 Hz), ese
@@ -1281,10 +1283,17 @@ namespace Rocola
             {
                 DeclipProvider dc = new DeclipProvider(chain); chain = dc; audioTailDelay += dc.DelayFrames;
             }
+            // QUITAR EL SISEO (I2, Siseo.cs): con su interruptor, antes del DSEE y del realce (que si no le darian brillo al
+            // siseo). Retrasa 11,6 ms, que se suman a la cola que el fundido tiene que abarcar.
+            if (quitaSiseo)
+            {
+                QuitaSiseo qs = new QuitaSiseo(chain); chain = qs; audioTailDelay += qs.DelayFrames;
+            }
             if (sbrAllowed)
             {
                 c.Sbr = new SpectralTap(chain);
                 c.Sbr.ConectaOriginal(original, audioTailDelay);
+                c.Sbr.Red = ModeloDseePara(t);   // I3: el modelo de su genero, si se pidio y lo hay (Form1.Ia.cs)
                 c.Sbr.Active = sbrOn; chain = c.Sbr;
             }
             LevelTap tap = new LevelTap(chain, this);
@@ -1690,6 +1699,7 @@ namespace Rocola
             private float[] originalRe, originalIm, originalReB, originalImB;
             private long inicioOriginal;
             internal long VentanasOriginales;
+            internal RedChica Red;   // el modelo de esta cancion (I3, el de su genero); null = el general (NeuralEnv)
             internal void ConectaOriginal(FuenteOriginal original, int retardo)
             {
                 // Sin etapa que cambie PCM, su FFT YA es original: no duplicar.
@@ -2245,7 +2255,7 @@ namespace Rocola
             private bool RegenNeural(int cut, int topBin)
             {
                 if (!BuildIaFeatures(cut)) return false;
-                if (!NeuralEnv.Predict(iaIn, iaOut)) return false;
+                if (!(Red ?? NeuralEnv).Predict(iaIn, iaOut)) return false;
                 for (int t = cut; t <= topBin; t++) ganHoy[t - cut] = 0f;
                 float n2 = (float)Frame * (float)Frame;
                 int sa = Hz(cut * binHz * 0.92f); if (sa >= cut) sa = cut - 1;
@@ -2301,7 +2311,7 @@ namespace Rocola
                 if (topBin <= cut + 4) return;
                 FuenteSuave(cut);                                 // cuanto suena la fuente, sin picos ni huecos: lo usan las dos de abajo
                 // La envolvente: la IA propia (aprendida) o, si no hay modelo o no puede, la curva clasica.
-                if (!(NeuralEnv.Loaded && RegenNeural(cut, topBin)) && !EnvolventeClasica(cut, topBin)) return;
+                if (!((Red ?? NeuralEnv).Loaded && RegenNeural(cut, topBin)) && !EnvolventeClasica(cut, topBin)) return;
                 CopiaPorBloques(cut, topBin);
             }
 

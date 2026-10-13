@@ -799,6 +799,7 @@ namespace Rocola
             if (pastCola != null) pastCola.ConPortadas = colaPortadasOn;
             NeuralEnv.TryLoad(RutaLectura("rocola_ia.bin"));   // IA propia (el modelo entrenado: en la carpeta de datos, o el de fabrica)
             EqNet.TryLoad(RutaLectura("rocola_eq_ia.bin"));    // IA del EQ automatico (objetivo por cancion)
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate { CargaModelosPorGenero(); });   // I3: los del DSEE por genero, en segundo plano (Form1.Ia.cs): sin ellos aun, el general
             // SIN CURSOR: la rocola se usa con botones. Se oculta y se manda a una esquina
             // (en el autoarranque XP lo deja dibujado a media pantalla aunque no haya mouse).
             try

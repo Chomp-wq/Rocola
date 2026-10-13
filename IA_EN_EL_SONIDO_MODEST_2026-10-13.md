@@ -4,6 +4,9 @@ Petición del usuario: «Revisa si algún apartado del sonido puede mejorarse co
 
 Esto es una revisión con propuestas. No se ha cambiado nada del programa.
 
+**Actualización (13 de octubre):** el usuario eligió I1, I2 e I3, y están hechas; ver
+[MEJORAS_IA_SONIDO_MODEST_2026-10-13.md](MEJORAS_IA_SONIDO_MODEST_2026-10-13.md). I4 e I5 no se hacen.
+
 ## El límite de partida
 
 En XP con .NET 3.5 no hay ningún motor para ejecutar modelos de IA. Lo que se puede usar es lo que ya usa la rocola:

@@ -40,7 +40,7 @@ FUENTES="$FUENTES $RAIZ/Rocola/AsistentePersonalidadGpu.cs"
 # La casilla de AYUDA y la guia paso a paso de la estrella (11-10-2026, solo GPU).
 FUENTES="$FUENTES $RAIZ/Rocola/AyudaCasillaGpu.cs $RAIZ/Rocola/AsistenteGuiaRocola.cs"
 TMP_PRUEBAS="${TMPDIR:-/tmp}/rocola_pruebas_$$"
-FUENTES="$FUENTES $RAIZ/Rocola/AudioControles.cs $RAIZ/Rocola/Sonoridad.cs $RAIZ/Rocola/RellenoMp3.cs $RAIZ/Rocola/SinSilencios.cs $RAIZ/Rocola/SubirTodo.cs $RAIZ/Rocola/NivelDisco.cs $RAIZ/Rocola/BombaSonido.cs $RAIZ/Rocola/DiarioTablas.cs $RAIZ/Rocola/CancionEnMemoria.cs $RAIZ/Rocola/MedidasBitacora.cs $RAIZ/Rocola/FlotanteNLayer.cs $RAIZ/Rocola/PicoReal.cs $RAIZ/Rocola/Realce.cs $RAIZ/Rocola/Desnormales.cs"
+FUENTES="$FUENTES $RAIZ/Rocola/AudioControles.cs $RAIZ/Rocola/Sonoridad.cs $RAIZ/Rocola/RellenoMp3.cs $RAIZ/Rocola/SinSilencios.cs $RAIZ/Rocola/SubirTodo.cs $RAIZ/Rocola/NivelDisco.cs $RAIZ/Rocola/BombaSonido.cs $RAIZ/Rocola/DiarioTablas.cs $RAIZ/Rocola/CancionEnMemoria.cs $RAIZ/Rocola/MedidasBitacora.cs $RAIZ/Rocola/FlotanteNLayer.cs $RAIZ/Rocola/PicoReal.cs $RAIZ/Rocola/Realce.cs $RAIZ/Rocola/Desnormales.cs $RAIZ/Rocola/Siseo.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/ModoNoche.cs $RAIZ/Rocola/GraveMono.cs $RAIZ/Rocola/SalaLocal.cs $RAIZ/Rocola/CieloVivoGpu.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/SinPausa.cs $RAIZ/Rocola/Form1.SinPausa.cs $RAIZ/Rocola/SalidaSonido.cs"
 if ! mkdir -p "$TMP_PRUEBAS"; then
@@ -120,6 +120,10 @@ GPU="$GPU desnormales"
 # interpoladas y el anillo sin vueltas: los mismos bits que interpolando en cada cuadro, en muchos pares de tasas.
 CPU="$CPU remuestreoligero"
 GPU="$GPU remuestreoligero"
+# 'mejorasia': las mejoras con IA del sonido (13-10-2026): I1 bajo y brillo a la medida de cada cancion (la red del EQ),
+# I2 quitar el siseo (Siseo.cs) e I3 los modelos del DSEE por genero. Las tres con su interruptor, apagadas de fabrica.
+CPU="$CPU mejorasia"
+GPU="$GPU mejorasia"
 # 'cielovivo': el cielo vivo de Legacy (12-10-2026): luna, lluvias, festejo, cometa, profundidad, hora y reflejo (CieloVivoGpu.cs).
 CPU="$CPU cielovivo"
 GPU="$GPU cielovivo"

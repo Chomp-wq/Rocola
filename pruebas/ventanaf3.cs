@@ -109,6 +109,20 @@ class VentanaF3
                             Check(vuelve != null && Boton(dlg, "Solo izquierda") != null && Boton(dlg, "Polaridad") != null, "la hoja del local tiene la prueba de bocinas y su boton de volver");
                             if (vuelve != null) { Click(vuelve); Check(Boton(dlg, "El local y sus bocinas...") != null, "al volver se ven otra vez las canciones"); }
                         }
+                        // La hoja de las mejoras con IA (13-10-2026: I1, I2 e I3), igual: su boton, sus tres interruptores y volver.
+                        Control abreIa = Boton(dlg, "Mejoras con IA...");
+                        Check(abreIa != null, "Sonido tiene el boton de la hoja de las mejoras con IA");
+                        if (abreIa != null)
+                        {
+                            Click(abreIa); Mira(nombre + ", Sonido > Mejoras con IA");
+                            int sw = 0;
+                            foreach (string nomSw in new string[] { "SonidoIaMedida", "SonidoIaSiseo", "SonidoIaGenero" })
+                            { Control[] c = dlg.Controls.Find(nomSw, true); if (c.Length == 1 && c[0].Visible) sw++; }
+                            Check(sw == 3, "la hoja de las mejoras con IA tiene sus tres interruptores a la vista (" + sw + ")");
+                            Control vuelveIa = Boton(dlg, "Volver a las canciones");
+                            Check(vuelveIa != null, "la hoja de las mejoras con IA tiene su boton de volver");
+                            if (vuelveIa != null) { Click(vuelveIa); Check(Boton(dlg, "Mejoras con IA...") != null, "al volver de la IA se ven otra vez las canciones"); }
+                        }
                     }
                     foreach (Control pg in dlg.Controls) if (pg is Panel && pg.Visible && pg.Width >= 900)
                     {

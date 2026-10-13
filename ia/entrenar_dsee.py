@@ -317,6 +317,33 @@ def main(argv):
         else:
             faltaron.append("el reconstructor de agudos no se pudo entrenar (mira el mensaje de arriba); "
                             "el rocola_ia.bin que ya tenias sigue puesto, sin tocar")
+        # ---------- 1b) EL DSEE POR GENERO (I3, 13-10-2026) ----------
+        # Con el sidecar de generos, un candidato por cada genero con material de sobra (al menos 60 canciones; como
+        # mucho los 6 con mas). Cada uno se compara contra el modelo general en la prueba de SU genero: solo sale
+        # aceptado si le gana ahi. Quedan aislados; se instalan con instalar_dsee_genero.py tras escucharlos.
+        sidecar = None
+        if "--generos" in extra: sidecar = extra[extra.index("--generos") + 1]
+        elif os.path.exists(os.path.splitext(mayor)[0] + ".generos.tsv"): sidecar = os.path.splitext(mayor)[0] + ".generos.tsv"
+        if sidecar and cod in (0, 2, 4):
+            import entrenar_ia as T
+            cuenta = {}
+            for g in T.lee_generos(mayor, sidecar).values():
+                slug = T.slug_genero(g)
+                if slug: cuenta[slug] = cuenta.get(slug, 0) + 1
+            elegidos = sorted((g for g in cuenta if cuenta[g] >= 60), key=lambda g: -cuenta[g])[:6]
+            if not elegidos:
+                faltaron.append("DSEE por genero: ningun genero tiene 60 canciones o mas con material; no se entreno ninguno")
+            for g in elegidos:
+                destino_g = tempfile.mkdtemp(prefix="dsee-genero-%s-" % g, dir=SALIDA)
+                cod_g = corre(["entrenar_ia.py", "--datos", mayor, "--capas", "28,96,96,12", "--genero", g,
+                               "--candidato", os.path.join(destino_g, "candidato.bin"),
+                               "--informe", os.path.join(destino_g, "informe_dsee.json")] + extra,
+                              "PASO 1b: el DSEE solo para '%s' (%d canciones)" % (g, cuenta[g]))
+                if cod_g in (0, 4):
+                    candidatos.append(("DSEE " + g, destino_g))
+                else:
+                    faltaron.append("DSEE de '%s': no le gano al general en su genero (o falto material); se sigue usando "
+                                    "el general para ese genero" % g)
     else:
         faltaron.append("no trajiste rocola_ia_datos.bin: sin el no se puede entrenar el reconstructor")
 
@@ -361,6 +388,9 @@ def main(argv):
         raya("  Estan en:  " + SALIDA)
         raya()
         raya("  Validacion PCM y escucha a nivel igualado pendientes antes de cualquier activacion.")
+        if any(n.startswith("DSEE ") for n, _ in candidatos):
+            raya("  Los de genero, tras escucharlos: python instalar_dsee_genero.py --candidato <carpeta>\\candidato.bin")
+            raya("  --destino <carpeta de datos de la rocola> --escuchado")
     else:
         raya("  No hay candidatos aceptados; consulta los informes diagnosticos. Instalados intactos.")
     if faltaron:
