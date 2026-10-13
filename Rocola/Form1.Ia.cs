@@ -302,9 +302,9 @@ namespace Rocola
         // para esas canciones, y el modelo del DSEE de ese genero se usa al sonar (ModeloDseePara): las dos cosas con el
         // mismo genero. Las etiquetas de verdad siguen mandando: lo interpretado solo entra donde no hay etiqueta fiable.
         //
-        // Esos datos son del hilo de la pantalla y el material se junta en el de fondo, asi que la pantalla deja una COPIA
-        // (GenerosIa) que nadie toca despues: por carpeta de la cancion, y por la huella de las canciones sin etiqueta con
-        // su duracion ya medida (para completar el material juntado antes: CompletaGenerosIa).
+        // Esos datos son del hilo de la pantalla y el material se junta en el de fondo, asi que se deja una COPIA (GenerosIa)
+        // que nadie toca despues: por carpeta de la cancion, y por la huella de las canciones sin etiqueta con su duracion
+        // ya medida (para completar el material juntado antes: CompletaGenerosIa).
         private sealed class GenerosIa
         {
             internal Dictionary<string, string> PorCarpeta = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -337,44 +337,101 @@ namespace Rocola
             try { HazGenerosIa(ya); }
             catch { }
         }
+        // EN LA PANTALLA, SOLO LO QUE ES SUYO: la etiqueta de cada disco (GeneroDeCancion lee tablas de la pantalla) y que
+        // canciones tiene. Las carpetas, las duraciones (del archivo de medidas, rocola_volumen.txt) y las huellas se hacen en
+        // segundo plano: con 30.000 canciones eran unos 40 ms del hilo de la pantalla en esta maquina, y mas en la del bar.
+        private int generosIaSerie;
+        private static int generosIaPublicada;
+        private static readonly object generosIaCerrojo = new object();
+        internal static int GenerosIaPublicada { get { lock (generosIaCerrojo) return generosIaPublicada; } }   // las pruebas
+        internal int GenerosIaPedida { get { return generosIaSerie; } }
         private void HazGenerosIa(bool ya)
         {
             if (libBuilding || albums == null) return;
-            Dictionary<string, float> duraciones = durCache;
             int ahora = Environment.TickCount;
             if (!ya && generosIa != null && unchecked(ahora - generosIaTick) < GenerosIaCadaMs) return;
             generosIaTick = ahora;
-            GenerosIa n = new GenerosIa();
+            List<string> etiquetas = new List<string>();
+            List<int> hasta = new List<int>();
+            List<Track> pistas = new List<Track>();
             for (int i = 0; i < albums.Count; i++)
             {
                 Album a = albums[i];
-                if (a == null || a.Tracks == null || a.Tracks.Count == 0 || a.IsTop) continue;
-                string et = GeneroDeCancion(null, a);
+                if (a == null || a.Tracks == null || a.Tracks.Count == 0 || a.IsTop || a.Folder == null) continue;
+                // GeneroDeCancion(null, a), pero lo que dice el NOMBRE, si aun no esta guardado, se mira en segundo plano: tras
+                // un escaneo son todos los discos de golpe (26 ms con 2.000 aqui). Se apunta con un prefijo que no es genero.
+                string et, guardado;
+                if (discTag.TryGetValue(a.Folder, out et) && et.Length > 0) { }
+                else if (!string.IsNullOrEmpty(a.Artist) && artistTag.TryGetValue(a.Artist, out et) && et.Length > 0) { }
+                else if (nombreTag.TryGetValue(a.Folder, out guardado)) et = guardado;
+                else et = PorNombre + a.Folder + PorNombre + (a.Name ?? "");
                 if (string.IsNullOrEmpty(et) || et == "Otros") continue;
-                string ultima = null;
-                for (int k = 0; k < a.Tracks.Count; k++)
+                int antes = pistas.Count;
+                for (int k = 0; k < a.Tracks.Count; k++) { Track t = a.Tracks[k]; if (t != null && t.Path != null) pistas.Add(t); }
+                if (pistas.Count > antes) { etiquetas.Add(et); hasta.Add(pistas.Count); }
+            }
+            int serie = ++generosIaSerie;
+            string volumen = ya ? LoudFile() : null;   // el material ya juntado se completa solo en las vueltas forzadas
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate
+            {
+                try { ConstruyeGenerosIa(serie, etiquetas, hasta, pistas, volumen); }
+                catch { }
+            });
+        }
+        // Segundo plano. Las cadenas de Track no cambian (si se relee una etiqueta, se cambia la referencia entera).
+        private void ConstruyeGenerosIa(int serie, List<string> etiquetas, List<int> hasta, List<Track> pistas, string volumen)
+        {
+            GenerosIa n = new GenerosIa();
+            Dictionary<string, float> duraciones = null;
+            if (volumen != null)
+            {
+                duraciones = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
+                ReadLoudCache(volumen, new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase), duraciones);
+            }
+            int desde = 0;
+            for (int e = 0; e < etiquetas.Count; e++)
+            {
+                string et = etiquetas[e], ultima = null;
+                if (et.StartsWith(PorNombre, StringComparison.Ordinal))   // lo que dice el nombre, aqui y no en la pantalla
                 {
-                    Track t = a.Tracks[k];
-                    if (t == null || t.Path == null) continue;
-                    int barra = t.Path.LastIndexOfAny(Separadores);
+                    int corte = et.IndexOf(PorNombre, PorNombre.Length, StringComparison.Ordinal);
+                    et = corte > 0 ? NombreDice(et.Substring(PorNombre.Length, corte - PorNombre.Length), et.Substring(corte + PorNombre.Length)) : "";
+                    if (et.Length == 0 || et == "Otros") { desde = hasta[e]; continue; }
+                }
+                for (int k = desde; k < hasta[e]; k++)
+                {
+                    Track t = pistas[k];
+                    string ruta = t.Path;
+                    if (ruta == null) continue;
+                    int barra = ruta.LastIndexOfAny(Separadores);
                     if (barra <= 0) continue;
                     // La carpeta, sin crear una cadena por cancion: las de un disco suelen compartirla.
-                    if (ultima == null || ultima.Length != barra || string.Compare(t.Path, 0, ultima, 0, barra, StringComparison.OrdinalIgnoreCase) != 0)
+                    if (ultima == null || ultima.Length != barra || string.Compare(ruta, 0, ultima, 0, barra, StringComparison.OrdinalIgnoreCase) != 0)
                     {
-                        ultima = t.Path.Substring(0, barra);
+                        ultima = ruta.Substring(0, barra);
                         if (!n.PorCarpeta.ContainsKey(ultima)) n.PorCarpeta[ultima] = et;
                     }
                     float d;
-                    if (duraciones != null && SinEtiquetaFiable(t.Genre) && duraciones.TryGetValue(t.Path, out d) && d > 0.01f)
+                    if (duraciones != null && SinEtiquetaFiable(t.Genre) && duraciones.TryGetValue(ruta, out d) && d > 0.01f)
                     {
                         long seg = (long)Math.Round((double)d);
-                        n.PorCancion[IaHuella(Path.GetFileName(t.Path) + "|" + seg.ToString(CultureInfo.InvariantCulture))] = et;
+                        n.PorCancion[IaHuella(Path.GetFileName(ruta) + "|" + seg.ToString(CultureInfo.InvariantCulture))] = et;
                     }
                 }
+                desde = hasta[e];
             }
-            generosIa = n;
-            if (ya && n.PorCancion.Count > 0) CompletaGenerosIaEnFondo(n);   // aunque ya no se junte material: el que hay se completa (sin .idx, nada)
+            lock (generosIaCerrojo)
+            {
+                if (serie <= generosIaPublicada && generosIa != null) return;   // ya hay una mas nueva publicada
+                generosIaPublicada = serie; generosIa = n;
+            }
+            if (n.PorCancion.Count > 0 && System.Threading.Interlocked.CompareExchange(ref completandoGeneros, 1, 0) == 0)
+            {
+                try { CompletaGenerosIa(n); }
+                finally { System.Threading.Interlocked.Exchange(ref completandoGeneros, 0); }
+            }
         }
+        private const string PorNombre = "\u0001";   // marca de "mirar el nombre en segundo plano" (no sale de ninguna etiqueta)
         private static readonly char[] Separadores = { '\\', '/' };
 
         // EL MATERIAL QUE YA SE JUNTO. Las canciones recolectadas antes, sin etiqueta, quedaron en el archivo de generos con
@@ -384,16 +441,6 @@ namespace Rocola
         // una cancion que se este apuntando.
         private int completandoGeneros;
         internal int GenerosCompletados;   // las pruebas: cuantas lineas anadio la ultima vez
-        private void CompletaGenerosIaEnFondo(GenerosIa g)
-        {
-            if (System.Threading.Interlocked.CompareExchange(ref completandoGeneros, 1, 0) != 0) return;
-            System.Threading.ThreadPool.QueueUserWorkItem(delegate
-            {
-                try { CompletaGenerosIa(g); }
-                catch { }
-                finally { System.Threading.Interlocked.Exchange(ref completandoGeneros, 0); }
-            });
-        }
         private void CompletaGenerosIa(GenerosIa g)
         {
             GenerosCompletados = 0;

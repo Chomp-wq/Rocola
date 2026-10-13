@@ -283,12 +283,14 @@ class MejorasIa
             ((IList)Get(alNada, "Tracks")).Add(pista(pN, ""));
             lista.Add(alCum); lista.Add(alNada);
             Set(f, "albums", lista); Set(f, "libBuilding", false); Set(f, "iaHarvestOn", false);
-            IDictionary dur = (IDictionary)Get(f, "durCache");
-            dur[pA] = 200.4f; dur[pC] = 180f; dur[pD] = 150f; dur[pN] = 100f;
+            // Las duraciones medidas salen del archivo de medidas (rocola_volumen.txt: "rms|duracion|ruta"), leido en segundo plano.
+            File.WriteAllText(Path.Combine(dir, "rocola_volumen.txt"), "0.1|200.4|" + pA + "\n0.1|180|" + pC + "\n0.1|150|" + pD + "\n0.1|100|" + pN + "\n");
             Call(f, "ActualizaGenerosIa", true);
-            // Tambien lanza el completado del material en segundo plano (aqui aun no hay material: no escribe nada). Se espera
-            // a que acabe para que no se cruce con el que se llama a mano mas abajo.
-            for (int espera = 0; espera < 500 && (int)Get(f, "completandoGeneros") != 0; espera++) System.Threading.Thread.Sleep(10);
+            // La copia se hace en segundo plano (y con ella el completado del material: aqui aun no hay, no escribe nada). Se
+            // espera a que se publique y acabe, para que no se cruce con el que se llama a mano mas abajo.
+            int pedida = (int)Get(f, "GenerosIaPedida");
+            for (int espera = 0; espera < 500 && ((int)TF.GetProperty("GenerosIaPublicada", T).GetValue(null, null) < pedida || (int)Get(f, "completandoGeneros") != 0); espera++)
+                System.Threading.Thread.Sleep(10);
             Check((int)Get(f, "completandoGeneros") == 0 && !File.Exists(Path.Combine(dir, "rocola_ia_datos.generos.tsv")),
                   "al rehacer la copia se completa lo ya juntado en segundo plano; sin material, no escribe nada");
             string gA = (string)Call(null, "GeneroInterpretado", pA), gN = (string)Call(null, "GeneroInterpretado", pN);
@@ -334,8 +336,12 @@ class MejorasIa
             Check((int)Get(f, "GenerosCompletados") == 0, "y una segunda pasada no repite lineas");
             Check(Codigo.Llama(TF.GetMethod("RecalculaGenerosArtista", T), "Form1.ActualizaGenerosIa") && Codigo.Llama(TF.GetMethod("Scanner_RunWorkerCompleted", T), "Form1.ActualizaGenerosIa")
                   && Codigo.Llama(TF.GetMethod("PublicaTintes", T), "Form1.ActualizaGenerosIa") && Codigo.Llama(TF.GetMethod("IaOrigenDe", T), "Form1.GeneroInterpretado")
-                  && Codigo.Llama(TF.GetMethod("ModeloDseePara", T), "Form1.GeneroInterpretado") && Codigo.Llama(TF.GetMethod("CompletaGenerosIaEnFondo", T), "ThreadPool.QueueUserWorkItem"),
-                  "enchufado: la copia se rehace al escanear y con los votos del paseo; el recolector y el DSEE la usan; lo ya juntado se completa en segundo plano");
+                  && Codigo.Llama(TF.GetMethod("ModeloDseePara", T), "Form1.GeneroInterpretado") && Codigo.Llama(TF.GetMethod("HazGenerosIa", T), "ThreadPool.QueueUserWorkItem")
+                  && Codigo.Llama(TF.GetMethod("ConstruyeGenerosIa", T), "Form1.CompletaGenerosIa") && !Codigo.Llama(TF.GetMethod("HazGenerosIa", T), "Form1.IaHuella")
+                  && !Codigo.Llama(TF.GetMethod("HazGenerosIa", T), "Form1.ReadLoudCache")
+                  && !Codigo.Llama(TF.GetMethod("HazGenerosIa", T), "Form1.NombreDice") && !Codigo.Llama(TF.GetMethod("HazGenerosIa", T), "Form1.GeneroPorNombre")
+                  && Codigo.Llama(TF.GetMethod("ConstruyeGenerosIa", T), "Form1.NombreDice") && Codigo.Llama(TF.GetMethod("GeneroPorNombre", T), "Form1.NombreDice"),
+                  "enchufado: la copia se rehace al escanear y con los votos del paseo; el recolector y el DSEE la usan; lo que dice el nombre, huellas, duraciones y lo ya juntado, en segundo plano (la pastilla usa la misma cuenta)");
             ((IDisposable)lec).Dispose();
             Set(f, "dseePorGenero", false);
             lec = Call(f, "OpenAudio", wav);

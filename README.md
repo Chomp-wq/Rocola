@@ -8,6 +8,11 @@ sin reducir calidad; los paneles respetan los limites de la tarjeta. Solo Modest
 HD suspendida y renderizado CPU congelado.
 [Cambios, pruebas y limites pendientes](AUDITORIA_GENERAL_MODEST_2026-10-11.md).
 
+## Los géneros para la IA, sin cargar la pantalla — 13 de octubre de 2026
+
+La copia de los géneros deducidos se hace casi toda en segundo plano: con 30.000 canciones, el hilo de la pantalla
+pasa de 41 ms a 1,3–2 ms cada vez. [Detalle](GENEROS_IA_SIN_TIRON_MODEST_2026-10-13.md).
+
 ## La IA aprende también con el género deducido — 13 de octubre de 2026
 
 Las canciones sin etiqueta de género se apuntan para la IA con el género que la rocola deduce de su disco (la

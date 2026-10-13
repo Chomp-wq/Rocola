@@ -784,21 +784,28 @@ namespace Rocola
             if (a == null || a.Folder == null) return "";
             string ya;
             if (nombreTag.TryGetValue(a.Folder, out ya)) return ya;
+            string et = NombreDice(a.Folder, a.Name);
+            nombreTag[a.Folder] = et;
+            return et;
+        }
+        // Lo que dicen el nombre del disco, su carpeta y la de encima. Sin estado: vale en cualquier hilo (la copia de los
+        // generos para la IA lo hace en segundo plano, Form1.Ia.cs).
+        private static string NombreDice(string carpeta, string nombre)
+        {
             string et = "";
             try
             {
                 // El nombre del disco, su carpeta y la de encima ("...\Cumbias\Los Angeles Azules"). Nada mas
                 // arriba: subiendo se llega a carpetas del sistema que no dicen nada de la musica.
-                string carp = Path.GetFileName(a.Folder.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+                string carp = Path.GetFileName(carpeta.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
                 string padre = "";
-                try { DirectoryInfo di = Directory.GetParent(a.Folder); if (di != null) padre = di.Name; }
+                try { DirectoryInfo di = Directory.GetParent(carpeta); if (di != null) padre = di.Name; }
                 catch { }
-                et = EnNombre(a.Name);
+                et = EnNombre(nombre);
                 if (et.Length == 0) et = EnNombre(carp);
                 if (et.Length == 0) et = EnNombre(padre);
             }
             catch { }
-            nombreTag[a.Folder] = et;
             return et;
         }
 
