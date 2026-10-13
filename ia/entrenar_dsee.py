@@ -332,7 +332,10 @@ def main(argv):
                 if slug: cuenta[slug] = cuenta.get(slug, 0) + 1
             elegidos = sorted((g for g in cuenta if cuenta[g] >= 60), key=lambda g: -cuenta[g])[:6]
             if not elegidos:
-                faltaron.append("DSEE por genero: ningun genero tiene 60 canciones o mas con material; no se entreno ninguno")
+                mas = sorted(cuenta, key=lambda g: -cuenta[g])[:5]
+                faltaron.append("DSEE por genero: ningun genero tiene 60 canciones o mas con material; no se entreno ninguno"
+                                + (" (los que mas: " + ", ".join("%s %d" % (g, cuenta[g]) for g in mas) + ")" if mas
+                                   else " (ninguna cancion con genero en la etiqueta)"))
             for g in elegidos:
                 destino_g = tempfile.mkdtemp(prefix="dsee-genero-%s-" % g, dir=SALIDA)
                 cod_g = corre(["entrenar_ia.py", "--datos", mayor, "--capas", "28,96,96,12", "--genero", g,
@@ -344,6 +347,10 @@ def main(argv):
                 else:
                     faltaron.append("DSEE de '%s': no le gano al general en su genero (o falto material); se sigue usando "
                                     "el general para ese genero" % g)
+        elif cod in (0, 2, 4):
+            # Antes se saltaba sin decir nada: sin el archivo de generos no hay modelos por genero.
+            faltaron.append("DSEE por genero: no se entreno ninguno porque no esta rocola_ia_datos.generos.tsv junto al "
+                            "material (la rocola lo escribe al juntar material; traelo con el .bin y el .idx)")
     else:
         faltaron.append("no trajiste rocola_ia_datos.bin: sin el no se puede entrenar el reconstructor")
 
@@ -389,8 +396,7 @@ def main(argv):
         raya()
         raya("  Validacion PCM y escucha a nivel igualado pendientes antes de cualquier activacion.")
         if any(n.startswith("DSEE ") for n, _ in candidatos):
-            raya("  Los de genero, tras escucharlos: python instalar_dsee_genero.py --candidato <carpeta>\\candidato.bin")
-            raya("  --destino <carpeta de datos de la rocola> --escuchado")
+            raya("  Los de genero, tras escucharlos: doble clic en instalar_dsee_genero.bat (pregunta uno por uno)")
     else:
         raya("  No hay candidatos aceptados; consulta los informes diagnosticos. Instalados intactos.")
     if faltaron:

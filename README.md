@@ -8,6 +8,13 @@ sin reducir calidad; los paneles respetan los limites de la tarjeta. Solo Modest
 HD suspendida y renderizado CPU congelado.
 [Cambios, pruebas y limites pendientes](AUDITORIA_GENERAL_MODEST_2026-10-11.md).
 
+## El instalador del DSEE por género, con doble clic — 13 de octubre de 2026
+
+`ia\instalar_dsee_genero.bat` busca solo los modelos entrenados, propone la carpeta de la rocola, pregunta por cada
+género y no se cierra hasta apretar Enter. La rocola los encuentra sin reiniciar al abrir Ctrl+F3 → Sonido → Mejoras
+con IA. Paso a paso en [ia/USO_EN_RELEASE.md](ia/USO_EN_RELEASE.md);
+[qué se cambió](DSEE_POR_GENERO_INSTALAR_MODEST_2026-10-13.md).
+
 ## El repaso sin basura y el cielo sin pintar bajo las portadas — 13 de octubre de 2026
 
 - **Los MP3 del repaso:** el mismo lector de NAudio, pero cada cuadro reutiliza su memoria. Leer una canción entera deja

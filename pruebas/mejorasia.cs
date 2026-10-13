@@ -260,6 +260,12 @@ class MejorasIa
             object cad2 = Call(f, "ArmaCadena", cumbia, lec, false, 0.0);
             object sbr = Get(cad2, "Sbr");
             Check(sbr != null && object.ReferenceEquals(Get(sbr, "Red"), m), "I3: el DSEE de la cumbia lleva el modelo de cumbia");
+            // Instalado con la rocola abierta (instalar_dsee_genero.bat): al abrir la hoja de Ctrl+F3 se vuelven a buscar y ya cuenta.
+            Ria1(Path.Combine(dir, "rocola_ia_genero_salsa.bin"), 28, doce);
+            Call(null, "CargaModelosPorGenero");
+            Set(rock, "Genre", "Salsa");
+            Check((int)Call(null, "ModelosPorGenero") == 2 && Call(f, "ModeloDseePara", rock) != null,
+                  "I3: un modelo instalado con la rocola abierta se encuentra al volver a buscar (" + Call(null, "ModelosPorGenero") + ")");
             ((IDisposable)lec).Dispose();
             Set(f, "dseePorGenero", false);
             lec = Call(f, "OpenAudio", wav);

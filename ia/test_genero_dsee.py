@@ -105,5 +105,57 @@ class Instalador(unittest.TestCase):
             self.assertFalse(any(n.endswith(".instalando") for n in os.listdir(destino)))
 
 
+class ConDobleClic(unittest.TestCase):
+    """Sin argumentos (doble clic) antes imprimia la ayuda y la ventana se cerraba en el acto. Ahora busca los modelos,
+    pregunta y espera a que se lea."""
+    def _respuestas(self, *r):
+        cola = list(r)
+        return lambda texto="": cola.pop(0)
+
+    def test_busca_los_modelos_pregunta_e_instala_el_que_se_escucho(self):
+        with tempfile.TemporaryDirectory() as d:
+            ent, destino = os.path.join(d, "entrenado"), os.path.join(d, "Release1")
+            os.makedirs(destino)
+            _candidato(os.path.join(ent, "dsee-genero-cumbia-ab12"))
+            _candidato(os.path.join(ent, "dsee-genero-salsa-cd34"), genero="salsa", aceptado=False)
+            _candidato(os.path.join(ent, "dsee-genero-bolero-ef56"), genero="bolero")
+            os.makedirs(os.path.join(ent, "dsee-genero-rock-gh78"))   # entrenamiento cortado: sin archivos
+            lista = I.candidatos_de_genero(ent)
+            estado = {g: m for _, g, _, m in lista}
+            self.assertIsNone(estado["cumbia"]); self.assertIsNone(estado["bolero"])
+            self.assertIn("no lo acepto", estado["salsa"]); self.assertIn("no termino", estado["rock"])
+            log = os.path.join(d, "log.txt")
+            cod = I.interactivo(self._respuestas("", "n", "s"), ent, destino, log)   # Enter = la carpeta propuesta; bolero no, cumbia si (en orden)
+            self.assertEqual(cod, 0)
+            self.assertEqual(sorted(os.listdir(destino)), ["rocola_ia_genero_cumbia.bin"])   # bolero: dijo que no
+            self.assertIn("NO: el entrenador no lo acepto", open(log, encoding="utf-8").read())
+
+    def test_sin_modelos_lo_explica(self):
+        with tempfile.TemporaryDirectory() as d:
+            cod = I.interactivo(self._respuestas(), os.path.join(d, "entrenado"), d, os.path.join(d, "log.txt"))
+            self.assertEqual(cod, 1)
+            self.assertIn("rocola_ia_datos.generos.tsv", open(os.path.join(d, "log.txt"), encoding="utf-8").read())
+
+    def test_carpeta_que_no_existe_no_instala(self):
+        with tempfile.TemporaryDirectory() as d:
+            ent = os.path.join(d, "entrenado"); _candidato(os.path.join(ent, "dsee-genero-cumbia-ab12"))
+            cod = I.interactivo(self._respuestas(os.path.join(d, "no_esta"), "s"), ent, d, os.path.join(d, "log.txt"))
+            self.assertEqual(cod, 2)
+            self.assertFalse(any(n.startswith("rocola_ia_genero_") for n in os.listdir(d)))
+
+    def test_sin_argumentos_espera_antes_de_cerrar_aunque_falle(self):
+        from unittest import mock
+        for efecto in (lambda: 1, mock.Mock(side_effect=RuntimeError("roto"))):
+            with mock.patch.object(I, "interactivo", efecto), mock.patch("builtins.input", return_value="") as espera, \
+                    mock.patch("sys.stderr"), mock.patch("sys.stdout"):
+                I.main(["instalar_dsee_genero.py"])
+                self.assertEqual(espera.call_count, 1)
+
+    def test_el_bat_existe_busca_python_y_no_se_cierra_solo(self):
+        bat = open(os.path.join(os.path.dirname(os.path.abspath(I.__file__)), "instalar_dsee_genero.bat"), "rb").read().decode("ascii")
+        self.assertIn("\r\n", bat)
+        self.assertIn("instalar_dsee_genero.py", bat); self.assertIn(":prueba", bat); self.assertIn("pause", bat)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -938,7 +938,7 @@ namespace Rocola
                     notaLocal(tIa, 332, 48, "Apagados de fabrica: escuchalos en el local antes\nde dejarlos encendidos.");
                     Label lEqIa = notaLocal(tMod, 40, 48, "");
                     Label lDsIa = notaLocal(tMod, 104, 64, "");
-                    notaLocal(tMod, 184, 64, "Se entrenan en otra PC con el material que junta la rocola\n(carpeta ia: entrenar_ia.py y entrenar_eq.py) y se dejan en\nla carpeta de datos. Se cargan al arrancar la rocola.");
+                    notaLocal(tMod, 184, 64, "Se entrenan en otra PC con el material que junta la rocola\n(carpeta ia: entrenar_dsee.bat; los de genero se instalan con\ninstalar_dsee_genero.bat). Se buscan al abrir esta hoja.");
                     BotonPlano bVolverIa = new BotonPlano(); bVolverIa.SetBounds(16, 346, 424, 34); bVolverIa.Font = fBot;
                     bVolverIa.Text = "Volver a las canciones"; bVolverIa.Name = "SonidoIaVolver"; tMod.Controls.Add(bVolverIa);
                     Action pintaIa = delegate
@@ -1256,7 +1256,18 @@ namespace Rocola
                     };
                     bPagS.Click += delegate { f3Pagina = 0; updateLabels(); pintaPag(); };
                     bLocal.Click += delegate { verLocal = true; updateLabels(); pintaPag(); };
-                    bIa.Click += delegate { verIa = true; pintaIa(); pintaPag(); };
+                    bIa.Click += delegate
+                    {
+                        verIa = true; pintaIa(); pintaPag();
+                        // Un modelo por genero recien instalado (instalar_dsee_genero.bat) se ve sin reiniciar: se vuelven a
+                        // buscar en segundo plano (leer la carpeta de datos no va en el hilo de la pantalla) y la hoja se repinta.
+                        System.Threading.ThreadPool.QueueUserWorkItem(delegate
+                        {
+                            CargaModelosPorGenero();
+                            try { if (!dlg.IsDisposed && dlg.IsHandleCreated) dlg.BeginInvoke((MethodInvoker)delegate { if (!dlg.IsDisposed) pintaIa(); }); }
+                            catch (InvalidOperationException) { }   // la ventana se cerro mientras tanto
+                        });
+                    };
                     bVolverIa.Click += delegate { verIa = false; pintaPag(); };
                     bVolver.Click += delegate { verLocal = false; pintaPag(); };
                     bPagI.Click += delegate { f3Pagina = 1; pintaPag(); };
