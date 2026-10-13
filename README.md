@@ -8,6 +8,12 @@ sin reducir calidad; los paneles respetan los limites de la tarjeta. Solo Modest
 HD suspendida y renderizado CPU congelado.
 [Cambios, pruebas y limites pendientes](AUDITORIA_GENERAL_MODEST_2026-10-11.md).
 
+## Actualizar una rocola con una versión vieja — 13 de octubre de 2026
+
+Compatible desde la primera versión: lo más sonado, monedas, botones, créditos, medidas y material de la IA se leen tal
+cual; la configuración se convierte sola. Pasos para actualizar sin perder nada.
+[Guía y lo que se revisó](ACTUALIZAR_ROCOLA_VIEJA_MODEST_2026-10-13.md).
+
 ## Performance y un medidor más listo — 13 de octubre de 2026
 
 Imagen tiene un botón Performance (con Bajo, Medio y Alto) y una hoja con dos ahorros casi idénticos: el cielo a media

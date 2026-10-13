@@ -407,12 +407,15 @@ namespace Rocola
             try
             {
                 if (!File.Exists(ConfigFile)) return;
+                bool vioEspectro = false;
                 foreach (string line in File.ReadAllLines(ConfigFile))
                 {
                     string s = line.Trim();
                     if (s.StartsWith("gpu=")) gpuPrefOn = s.Substring(4).Trim() != "0";
                     else if (s.StartsWith("animacion=")) animNiv = NivelDe(s.Substring(10));   // zoom al entrar/salir de un disco
-                    else if (s.StartsWith("espectro=")) { float v; if (float.TryParse(s.Substring(9).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) auroraAmount = Clampf(v / 100f, 0f, 1f); }   // aurora del horizonte (0 = apagada)
+                    else if (s.StartsWith("espectro=")) { float v; if (float.TryParse(s.Substring(9).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) { auroraAmount = Clampf(v / 100f, 0f, 1f); vioEspectro = true; } }   // aurora del horizonte (0 = apagada)
+                    // VERSION VIEJA (10-08-2026): durante un dia la aurora se guardo como "fondo=". Si no hay "espectro=", vale ese.
+                    else if (s.StartsWith("fondo=") && !vioEspectro) { float v; if (float.TryParse(s.Substring(6).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) auroraAmount = Clampf(v / 100f, 0f, 1f); }
                     else if (s.StartsWith("tope_fps=")) { int v; if (int.TryParse(s.Substring(9).Trim(), out v)) fpsTope = (v < 0) ? 0 : v; }   // cuadros/s del fondo (0 = automatico, segun la pantalla)
                     else if (s.StartsWith("anim_ondas_fps=")) animOndasFps = LeeFluidezAnimacion(s.Substring("anim_ondas_fps=".Length));
                     else if (s.StartsWith("anim_cubos_fps=")) animCubosFps = LeeFluidezAnimacion(s.Substring("anim_cubos_fps=".Length));

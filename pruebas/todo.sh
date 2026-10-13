@@ -132,6 +132,10 @@ GPU="$GPU repasoligero"
 # cuadros y salen los mismos bytes que con Mp3FileReader, con saltos, ID3, basura entre cuadros y archivos cortados.
 CPU="$CPU mp3ligero"
 GPU="$GPU mp3ligero"
+# 'compatvieja': la actualizacion sobre una rocola vieja (13-10-2026): configuracion, lo mas sonado, monedas, botones,
+# medidas, caches y material de la IA con el formato de las versiones anteriores se leen y se guardan en el nuevo.
+CPU="$CPU compatvieja"
+GPU="$GPU compatvieja"
 # 'performance': el preset Performance de Imagen (13-10-2026; PerformanceGpu.cs): juntar ordenes (la misma imagen, menos
 # ordenes), el cielo a media resolucion y el grano con la vineta en una pasada (casi identicos, comparados con un raster de
 # referencia), presentar sin esperar al monitor, el medidor renovado (PlanDeAhorros) y los interruptores guardados.
