@@ -26,7 +26,7 @@ NLAYER="$RAIZ/packages/NLayer.1.12.0/lib/net35/NLayer.dll"
 # probando un programa SIN el panel de reposo, sin la vineta y sin las nebulosas naturales, mientras que en
 # Windows se instala uno que si los trae. Una prueba que mira otro programa no prueba nada.
 FUENTES="../Rocola/Form1.cs ../Rocola/Form1.Ajustes.cs ../Rocola/Form1.Biblioteca.cs ../Rocola/Form1.Buscador.cs ../Rocola/Form1.Datos.cs ../Rocola/Form1.Fondo.cs ../Rocola/Form1.Ia.cs ../Rocola/Form1.Pared.cs ../Rocola/Form1.Portadas.cs ../Rocola/Form1.Sonido.cs ../Rocola/Form1.Video.cs ../Rocola/Form1.Vistas.cs ../Rocola/Form1.Designer.cs ../Rocola/Program.cs ../Rocola/D3D9Star.cs ../Rocola/Rendimiento.cs ../Rocola/EstadoReposoGpu.cs ../Rocola/AcabadoGpu.cs ../Rocola/CieloNaturalGpu.cs $RAIZ/Rocola/AperturaAudio.cs $RAIZ/Rocola/CargaTrabajo.cs $RAIZ/Rocola/EscaneoMemo.cs $RAIZ/Rocola/LunaGpu.cs $RAIZ/Rocola/Optimizaciones.cs $RAIZ/Rocola/RespuestaGpu.cs"
-FUENTES="$FUENTES $RAIZ/Rocola/EstrellaGpu.cs $RAIZ/Rocola/Estrella3dGpu.cs $RAIZ/Rocola/RelojPantallaGpu.cs $RAIZ/Rocola/AuroraFinaGpu.cs $RAIZ/Rocola/PantallaVivaGpu.cs $RAIZ/Rocola/DiscoVivoGpu.cs $RAIZ/Rocola/SuenaVivoGpu.cs $RAIZ/Rocola/AtraccionGpu.cs $RAIZ/Rocola/EstiloGpu.cs $RAIZ/Rocola/DibujoLigeroGpu.cs $RAIZ/Rocola/PerformanceGpu.cs $RAIZ/Rocola/AjustesVivos.cs $RAIZ/Rocola/BuscadorLigeroGpu.cs $RAIZ/Rocola/FranjaLigeraGpu.cs $RAIZ/Rocola/BuscadorPortadasGpu.cs $RAIZ/Rocola/PrecargaPaginaGpu.cs $RAIZ/Rocola/PaletaCaratulaGpu.cs $RAIZ/Rocola/CreditosServicio.cs"
+FUENTES="$FUENTES $RAIZ/Rocola/EstrellaGpu.cs $RAIZ/Rocola/Estrella3dGpu.cs $RAIZ/Rocola/RelojPantallaGpu.cs $RAIZ/Rocola/AuroraFinaGpu.cs $RAIZ/Rocola/PantallaVivaGpu.cs $RAIZ/Rocola/DiscoVivoGpu.cs $RAIZ/Rocola/SuenaVivoGpu.cs $RAIZ/Rocola/AtraccionGpu.cs $RAIZ/Rocola/EstiloGpu.cs $RAIZ/Rocola/DibujoLigeroGpu.cs $RAIZ/Rocola/PerformanceGpu.cs $RAIZ/Rocola/AjustesVivos.cs $RAIZ/Rocola/LoQueSuena.cs $RAIZ/Rocola/ArreglosGrabacion.cs $RAIZ/Rocola/BuscadorLigeroGpu.cs $RAIZ/Rocola/FranjaLigeraGpu.cs $RAIZ/Rocola/BuscadorPortadasGpu.cs $RAIZ/Rocola/PrecargaPaginaGpu.cs $RAIZ/Rocola/PaletaCaratulaGpu.cs $RAIZ/Rocola/CreditosServicio.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/TextoMovilGpu.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/TexturasCompatiblesGpu.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/CaratulasAdaptativas.cs"
@@ -157,6 +157,10 @@ GPU="$GPU ventanaf3"
 # lo tocado se guarda quieto medio segundo, y un guardado viejo no pisa al nuevo. Y los ajustes retirados ya no estan.
 CPU="$CPU ajustesvivos"
 GPU="$GPU ajustesvivos"
+# 'arreglos': S1 a S5 del sonido (13-10-2026): un canal mudo por los dos, la continua fuera, el estereo estrecho solo si
+# hace falta (bit a bit en las canciones sin el defecto), escuchar sin mejoras y lo que el limitador baja, y su hoja.
+CPU="$CPU arreglos"
+GPU="$GPU arreglos"
 CPU="$CPU asistentecombo buscainteligente"
 GPU="$GPU asistentecombo asistentevisual buscainteligente guiarojo"
 CPU="$CPU auditoriageneral"

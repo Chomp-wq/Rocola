@@ -40,6 +40,9 @@ namespace Rocola
             internal GraveMono Mono;             // el grave en mono (GraveMono.cs)
             internal SalaLocal Sala;             // claridad, partes suaves y balance del local (SalaLocal.cs)
             internal QuitaSiseo Siseo;           // el quitasiseo, si esta encendido (Siseo.cs)
+            internal ArreglaGrabacion Arreglo;   // el canal mudo y la continua (ArreglosGrabacion.cs)
+            internal DeclipProvider Declip;      // el des-recorte, si esta cancion lo lleva
+            internal LimitadorPicoReal Limitador; // el limitador de pico real (lo que baja lo ensena Ctrl+F3: S5)
             internal FadeProvider Fundido;
             internal int Retardo;                // cuadros de cebado: se descartan si entra por relevo
             internal string MedidaRuta, EqRuta;  // que se aprende oyendola (null = nada)
@@ -299,6 +302,7 @@ namespace Rocola
             if (nueva.Mono != null) nueva.Mono.Sigue(vieja.Mono);
             if (nueva.Sala != null) nueva.Sala.Sigue(vieja.Sala);
             if (nueva.Siseo != null) nueva.Siseo.Sigue(vieja.Siseo);
+            if (nueva.Arreglo != null) nueva.Arreglo.Sigue(vieja.Arreglo);
         }
 
         // ¿'b' es la pista que sigue a 'a' en el MISMO disco? (un disco TOP junta canciones de discos distintos)
@@ -324,6 +328,7 @@ namespace Rocola
             if (p.Bajo != null) p.Bajo.Amount = BassAmountPara(p.BajoFactor, p.BajoBase);
             if (p.Noche != null) p.Noche.Db = NocheCompensaDb();
             if (p.Sbr != null) p.Sbr.Active = DseeDe(p);
+            AplicaSinMejoras(p);   // "Escuchar sin mejoras" (S4, LoQueSuena.cs): la siguiente tambien, si esta puesto
         }
     }
 }

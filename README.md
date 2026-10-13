@@ -8,6 +8,13 @@ sin reducir calidad; los paneles respetan los limites de la tarjeta. Solo Modest
 HD suspendida y renderizado CPU congelado.
 [Cambios, pruebas y limites pendientes](AUDITORIA_GENERAL_MODEST_2026-10-11.md).
 
+## Sonido: S1 a S5 — 13 de octubre de 2026
+
+En Ctrl+F3 → Sonido → **Lo que suena ahora...**: un canal mudo se oye por los dos (S1) y la corriente continua se quita
+(S2), los dos encendidos y solo en las canciones con ese defecto; el estéreo estrecho solo si hace falta (S3, apagado);
+«Escuchar sin mejoras» 15 s al mismo volumen (S4); y lo que le hace la cadena a la canción que suena (S5).
+[Qué hace cada una y cómo se comprobó](SONIDO_S1_S5_MODEST_2026-10-13.md).
+
 ## Más mejoras de audio, para elegir — 13 de octubre de 2026
 
 Revisión con propuestas, sin cambios en el programa: un canal mudo por los dos (S1), quitar la continua (S2), estéreo

@@ -274,6 +274,22 @@ namespace Rocola
 
             private float[] intervalos = new float[0];   // pico real de cada intervalo del bloque (el mayor de los canales)
 
+            // LO QUE ENSENA CTRL+F3 (S5): cuanto bajo el limitador como mucho y el nivel que salio, desde la ultima vez que se
+            // pregunto. Solo se apuntan: la salida es la misma bit a bit. (Se leen desde la pantalla; un valor a medio
+            // escribir solo desvia una lectura de un medidor.)
+            private float minEnv = 1f, sumaCuadrados;
+            private int muestrasMedidas;
+            internal float TomaBajadaDb()
+            {
+                float m = minEnv; minEnv = 1f;
+                return m < 1f ? (float)(20.0 * Math.Log10(Math.Max(m, 1e-6f))) : 0f;
+            }
+            internal float TomaNivelDb()
+            {
+                float s2 = sumaCuadrados; int n = muestrasMedidas; sumaCuadrados = 0f; muestrasMedidas = 0;
+                return n > 0 && s2 > 0f ? (float)(10.0 * Math.Log10(s2 / n)) : -120f;
+            }
+
             // Todo un bloque: primero el detector de cada canal (en su bucle apretado), luego la ganancia.
             private void Bloque(float[] entrada, int o, float[] salida, int so, int frames)
             {
@@ -305,6 +321,7 @@ namespace Rocola
                     // La exponencial se acerca al objetivo sin alcanzarlo del todo: lo que falte se corrige con la
                     // MISMA ganancia para todos los canales, nunca recortando uno.
                     if (peak > 0f && peak * env > ceiling) env = (ceiling / peak) * 0.9999999f;
+                    if (env < minEnv) minEnv = env;
                 }
                 spos++; if (spos == R) spos = 0;
                 int di = dpos * ch;
@@ -313,7 +330,9 @@ namespace Rocola
                     float outv = delay[di + c] * env;
                     delay[di + c] = (entrada == null) ? 0f : entrada[o + c];
                     salida[so + c] = sale ? outv : 0f;
+                    if (sale) sumaCuadrados += outv * outv;
                 }
+                if (sale) muestrasMedidas += ch;
                 dpos++; if (dpos == total) dpos = 0;
                 paso++;
             }

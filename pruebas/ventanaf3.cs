@@ -124,6 +124,30 @@ class VentanaF3
                             if (vuelveIa != null) { Click(vuelveIa); Check(Boton(dlg, "Mejoras con IA...") != null, "al volver de la IA se ven otra vez las canciones"); }
                         }
                     }
+                    if (pag == "Sonido")
+                    {   // Lo que suena ahora (13-10-2026: S1 a S5): su hoja, sus tres interruptores, el boton sin mejoras y volver.
+                        Control abreA = Boton(dlg, "Lo que suena ahora...");
+                        Check(abreA != null, "Sonido tiene el boton de lo que suena ahora");
+                        if (abreA != null)
+                        {
+                            Click(abreA); Mira(nombre + ", Sonido > Lo que suena ahora");
+                            int swA = 0;
+                            foreach (string nomSw in new string[] { "SonidoCanalMudo", "SonidoContinua", "SonidoEstereoAuto" })
+                            { Control[] c = dlg.Controls.Find(nomSw, true); if (c.Length == 1 && c[0].Visible) swA++; }
+                            Check(swA == 3, "la hoja de lo que suena tiene sus tres interruptores a la vista (" + swA + ")");
+                            Control sinM = Boton(dlg, "Escuchar sin mejoras (15 s)");
+                            Check(sinM != null, "y el boton de escuchar sin mejoras");
+                            if (sinM != null)
+                            {
+                                Click(sinM); Mira(nombre + ", Sonido > Lo que suena ahora (sin mejoras)");
+                                Control vol = null; foreach (Control c in dlg.Controls.Find("SonidoSinMejoras", true)) vol = c;
+                                Check(vol != null && vol.Text.StartsWith("Volver a las mejoras"), "al pulsarlo dice como volver y cuanto queda");
+                                if (vol != null) Click(vol);
+                            }
+                            Control vuelveA = Boton(dlg, "Volver a las canciones");
+                            if (vuelveA != null) { Click(vuelveA); Check(Boton(dlg, "El local y sus bocinas...") != null, "al volver de lo que suena se ven otra vez las canciones"); }
+                        }
+                    }
                     foreach (Control pg in dlg.Controls) if (pg is Panel && pg.Visible && pg.Width >= 900)
                     {
                         List<Control> hojas = new List<Control>();

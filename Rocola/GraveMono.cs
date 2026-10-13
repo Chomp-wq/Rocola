@@ -56,6 +56,12 @@
 // apagado de fabrica ("estereo_estrecho=" y "corta_subgrave=", 1/0), y se oye al instante en la cancion que suena.
 // "subgrave=" y "ancho_estereo=" fijan cuanto. Encendidos cuestan unas pocas sumas por muestra; apagados la etapa sale
 // bit a bit como antes (pruebas/subgrave.cs).
+//
+// SOLO SI HACE FALTA (S3, 13-10-2026; "estereo_auto=", apagado de fabrica; necesita el estereo estrecho encendido). Las
+// mezclas modernas ya llevan casi todo al centro y no hace falta estrecharlas; las de los 60 y 70, con la bateria a un
+// lado y la voz al otro, si. Se vigila, por encima del corte, la energia del lado frente a la del medio (unos 3 s): si
+// el lado pasa del 60 % del medio (paneo extremo), se estrecha, entrando en un segundo; si baja del 35 %, vuelve a como
+// viene. En medio no cambia (para que no vaya y venga). Con el automatico apagado, todo sale bit a bit como antes.
 using System;
 
 namespace Rocola
@@ -68,12 +74,17 @@ namespace Rocola
         private static float anchoEstereo = GraveMono.AnchoDeFabrica, subgraveHz = GraveMono.SubDeFabrica;
         // Los interruptores de Ctrl+F3 -> Sonido (apagados de fabrica: son para las bocinas del billar).
         private static bool estereoEstrecho, cortaSubgrave;
+        // S3 (13-10-2026): el estereo estrecho solo en las canciones que lo necesitan ("estereo_auto=", apagado de fabrica).
+        private static bool estereoAuto;
         // Lleva los interruptores a lo que ya suena y a la siguiente ya preparada: se oye al instante.
         private void AplicaBocinas()
         {
             CadenaCancion c = cadenaSonando, p = cadenaPreparada;
-            if (c != null && c.Mono != null) c.Mono.Ajusta(estereoEstrecho, cortaSubgrave);
-            if (p != null && p.Mono != null) p.Mono.Ajusta(estereoEstrecho, cortaSubgrave);
+            if (c != null && c.Mono != null) { c.Mono.Ajusta(estereoEstrecho, cortaSubgrave); c.Mono.SoloSiHaceFalta(estereoAuto); }
+            if (p != null && p.Mono != null) { p.Mono.Ajusta(estereoEstrecho, cortaSubgrave); p.Mono.SoloSiHaceFalta(estereoAuto); }
+            // Y los arreglos de la grabacion (ArreglosGrabacion.cs): el canal mudo y la continua.
+            if (c != null && c.Arreglo != null) c.Arreglo.Ajusta(canalMudo, quitaContinua);
+            if (p != null && p.Arreglo != null) p.Arreglo.Ajusta(canalMudo, quitaContinua);
             // Y los del local (SalaLocal.cs): claridad, partes suaves y balance.
             if (c != null && c.Sala != null) c.Sala.Ajusta(claridadLocal, partesSuaves, balanceDb);
             if (p != null && p.Sala != null) p.Sala.Ajusta(claridadLocal, partesSuaves, balanceDb);
@@ -112,7 +123,12 @@ namespace Rocola
             private readonly int tasa, canales;
             private readonly float hz, ancho, subHz;
             // Los interruptores: los cambia la ventana de ajustes en cualquier momento; se leen al empezar cada lectura.
-            private volatile bool anchoOn, subOn, subReinicia;
+            private volatile bool anchoOn, subOn, subReinicia, autoOn;
+            // S3: la energia del lado y del medio por encima del corte, y cuanto se estrecha ahora (0 = como viene).
+            internal const double AutoSeg = 3.0, AutoEntra = 0.6, AutoSale = 0.35, AutoRampaSeg = 1.0, AutoPiso = 1e-7;
+            private readonly double aAuto, pasoAuto;
+            private double eaM, eaS, kAuto, metaAuto;
+            internal volatile float AnchoAhora = 1f;   // el ancho que sale ahora (lo ensena Ctrl+F3: S5)
             // El subgrave: dos paso-altos de segundo orden (Q de Butterworth de cuarto orden). En un paso-alto b2 = b0 y
             // b1 = -2 b0. Estados por canal y etapa: x1, x2, y1, y2 (16 en total, dos canales como mucho).
             private readonly bool sub;                    // hay subgrave posible (coeficientes hechos)
@@ -157,6 +173,8 @@ namespace Rocola
                 // Armada para los interruptores, se queda en la cadena aunque esten apagados: asi encenderlos se oye ya.
                 ajustable = ajusta && (canales == 1 || canales == 2) && tasa >= 8000;
                 activo = cruce || ajustable;
+                aAuto = 1.0 - Math.Exp(-1.0 / (AutoSeg * Math.Max(1, tasa)));
+                pasoAuto = 1.0 / (AutoRampaSeg * Math.Max(1, tasa));
                 if (sub)
                 {
                     double ws = 2.0 * Math.PI * subgraveHz / tasa, cs = Math.Cos(ws), sn = Math.Sin(ws);
@@ -183,6 +201,20 @@ namespace Rocola
                 if (conSubgrave && !subOn) subReinicia = true;
                 anchoOn = conAncho; subOn = conSubgrave;
             }
+            // S3: el estrecho, solo en las canciones que lo necesitan (necesita el estrecho encendido).
+            internal void SoloSiHaceFalta(bool on) { if (ajustable) autoOn = on; }
+            // Cuanto estrechar en este cuadro (S3), con las energias de lado y medio por encima del corte.
+            private double PasoAuto(double lado2, double medio2)
+            {
+                eaS += (lado2 - eaS) * aAuto; eaM += (medio2 - eaM) * aAuto;
+                if (eaM > AutoPiso || eaS > AutoPiso)
+                {
+                    double r = eaS / Math.Max(eaM, 1e-30);
+                    if (r > AutoEntra) metaAuto = 1.0; else if (r < AutoSale) metaAuto = 0.0;
+                }
+                if (kAuto != metaAuto) kAuto = kAuto < metaAuto ? Math.Min(metaAuto, kAuto + pasoAuto) : Math.Max(metaAuto, kAuto - pasoAuto);
+                return 1.0 - (1.0 - ancho) * kAuto;
+            }
             private bool SubAhora()
             {
                 if (!sub || !subOn) return false;
@@ -206,6 +238,7 @@ namespace Rocola
                 zx1 = a.zx1; zx2 = a.zx2; zy1 = a.zy1; zy2 = a.zy2;
                 vm1 = a.vm1; vm2 = a.vm2; vs1 = a.vs1; vs2 = a.vs2; em = a.em; es = a.es;
                 vuelta = a.vuelta; metaVuelta = a.metaVuelta;
+                eaM = a.eaM; eaS = a.eaS; kAuto = a.kAuto; metaAuto = a.metaAuto;
             }
 
             public int Read(float[] buffer, int offset, int count)
@@ -257,6 +290,7 @@ namespace Rocola
                 if (!cruce) { SinCruce(b, i, cuadros); return; }
                 int i0 = i;
                 double an = (ajustable && anchoOn) ? ancho : 1.0;
+                bool auto = ajustable && anchoOn && autoOn && ancho != 1f;
                 double a1 = this.a1, a2 = this.a2, b0 = this.b0, av = aVigila, ae = aEnergia, pv = pasoVuelta;
                 double mx1 = this.mx1, mx2 = this.mx2, my1 = this.my1, my2 = this.my2;
                 double sx1 = this.sx1, sx2 = this.sx2, sy1 = this.sy1, sy2 = this.sy2;
@@ -281,7 +315,9 @@ namespace Rocola
                     vs1 += (s - vs1) * av; vs2 += (vs1 - vs2) * av; es += (vs2 * vs2 - es) * ae;
                     if (es > 2.0 * em) meta = 1.0; else if (es < em) meta = 0.0;
                     if (vuelta != meta) { vuelta = vuelta < meta ? Math.Min(meta, vuelta + pv) : Math.Max(meta, vuelta - pv); }
-                    double lado = h2 * an;                                           // el ancho (1 = como viene)
+                    double anF = an;
+                    if (auto) { double mh = m - vm2; anF = PasoAuto(h2 * h2, mh * mh); }   // S3: solo si hace falta
+                    double lado = h2 * anF;                                          // el ancho (1 = como viene)
                     if (vuelta != 0.0) pm += vuelta * (ps - h2);                      // el grave del lado, de vuelta y en fase
                     b[i] = (float)(pm + lado); b[i + 1] = (float)(pm - lado);
                     // En el silencio, los restos diminutos a cero (Desnormales.cs): cada 64 cuadros, no en cada uno.
@@ -302,6 +338,7 @@ namespace Rocola
                 this.zx1 = zx1; this.zx2 = zx2; this.zy1 = zy1; this.zy2 = zy2;
                 this.vm1 = vm1; this.vm2 = vm2; this.vs1 = vs1; this.vs2 = vs2; this.em = em; this.es = es;
                 this.vuelta = vuelta; this.metaVuelta = meta;
+                AnchoAhora = auto ? (float)(1.0 - (1.0 - ancho) * kAuto) : (float)an;
                 if (SubAhora()) { Subgrave(b, i0, cuadros, 0, 2); Subgrave(b, i0 + 1, cuadros, 1, 2); }
             }
 
@@ -311,13 +348,18 @@ namespace Rocola
                 if (anchoOn && ancho != 1f)
                 {
                     double an = ancho;
+                    bool auto = autoOn;
                     for (int f = 0, k = i; f < cuadros; f++, k += 2)
                     {
                         double l = b[k], r = b[k + 1];
-                        double m = 0.5 * (l + r), s = 0.5 * (l - r) * an;
+                        double m = 0.5 * (l + r), s0 = 0.5 * (l - r);
+                        double anF = auto ? PasoAuto(s0 * s0, m * m) : an;   // S3: sin cruce, con toda la banda
+                        double s = s0 * anF;
                         b[k] = (float)(m + s); b[k + 1] = (float)(m - s);
                     }
+                    AnchoAhora = auto ? (float)(1.0 - (1.0 - ancho) * kAuto) : (float)an;
                 }
+                else AnchoAhora = 1f;
                 if (SubAhora()) { Subgrave(b, i, cuadros, 0, 2); Subgrave(b, i + 1, cuadros, 1, 2); }
             }
 

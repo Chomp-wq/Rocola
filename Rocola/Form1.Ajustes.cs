@@ -654,7 +654,7 @@ namespace Rocola
             bool wasMaint = maintMode;
             maintMode = true;   // el dialogo modal necesita quedarse al frente; se devuelve en el finally
             bool changed = false;
-            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkUp = masterDb, bkEq = eqAmount, bkBass = bassAmount; int bkVid = videoVol, bkDsk = perfilDisco; bool bkNoche = nocheOn, bkOn = normalizeOn, bkSbr = sbrOn, bkEqA = eqAuto, bkBassA = bassAuto, bkVidA = videoAuto, bkIaDat = iaHarvestOn, bkSil = saltaSilencios, bkEst = estereoEstrecho, bkSub = cortaSubgrave, bkCla = claridadLocal, bkSua = partesSuaves; int bkBal = balanceDb, bkFrec = frecuenciaSalida; bool bkMed = aLaMedida, bkSis = quitaSiseo, bkGen = dseePorGenero;   // por si se Cancela
+            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkUp = masterDb, bkEq = eqAmount, bkBass = bassAmount; int bkVid = videoVol, bkDsk = perfilDisco; bool bkNoche = nocheOn, bkOn = normalizeOn, bkSbr = sbrOn, bkEqA = eqAuto, bkBassA = bassAuto, bkVidA = videoAuto, bkIaDat = iaHarvestOn, bkSil = saltaSilencios, bkEst = estereoEstrecho, bkSub = cortaSubgrave, bkCla = claridadLocal, bkSua = partesSuaves; int bkBal = balanceDb, bkFrec = frecuenciaSalida; bool bkMed = aLaMedida, bkSis = quitaSiseo, bkGen = dseePorGenero, bkMudo = canalMudo, bkDc = quitaContinua, bkAuto = estereoAuto;   // por si se Cancela
             try
             {
                 Cursor.Show();
@@ -736,9 +736,10 @@ namespace Rocola
                     // El subtitulo ya no ocupa el renglon entero: se queda con su mitad izquierda (su texto
                     // gasta 545 px medidos) y la derecha es del interruptor de aqui abajo. Antes reclamaba los
                     // 916 aunque no los usara, y asi los dos decian ser dueños del mismo sitio.
-                    Label lSub = new Label(); lSub.SetBounds(24, 42, 590, 18); lSub.BackColor = Color.Transparent;
+                    // Y desde el 13-10-2026 comparte su mitad con el boton de «Lo que suena ahora...» (S4 y S5).
+                    Label lSub = new Label(); lSub.SetBounds(24, 42, 380, 18); lSub.BackColor = Color.Transparent;
                     lSub.ForeColor = cTenue; lSub.Font = fSub;
-                    lSub.Text = "Todo lo que cambies aqui se oye al instante en la cancion que esta sonando.";
+                    lSub.Text = "Todo se oye al instante en la cancion que suena.";
                     // Y DE CUANDO ES ESTA ROCOLA. Es lo primero que hay que mirar cuando algo "no funciona": si la
                     // fecha no es la del arreglo, no hay nada roto, es que no se copio. VA EN LA BARRA DE TITULO
                     // (barrido del 12-10-2026): abajo, en la y 734, quedaba FUERA de la ventana desde que esta mide
@@ -980,6 +981,52 @@ namespace Rocola
                     pintaIa();
                     bool verIa = false;
 
+                    // LO QUE SUENA AHORA (13-10-2026: S4 y S5, LoQueSuena.cs; S1, S2 y S3, ArreglosGrabacion.cs y GraveMono.cs).
+                    // Su propia hoja, como las del local y la IA; el boton va en el renglon del subtitulo, que tenia sitio.
+                    BotonPlano bAhora = new BotonPlano(); bAhora.SetBounds(412, 37, 204, 24); bAhora.Font = fBot;
+                    bAhora.Text = "Lo que suena ahora..."; bAhora.Name = "SonidoAhoraAbrir";
+                    bAhora.AccessibleName = "Lo que suena ahora"; bAhora.AccessibleRole = AccessibleRole.PushButton;
+                    Panel pAhora = new Panel(); pAhora.SetBounds(16, 100, 928, 398); pAhora.BackColor = dlg.BackColor;
+                    pAhora.Name = "SonidoAhora"; pAhora.Visible = false;
+                    Tarjeta tAhora = new Tarjeta(); tAhora.SetBounds(0, 0, 456, 398); tAhora.Titulo = "LO QUE SUENA AHORA"; tAhora.Acento = cVol;
+                    Tarjeta tArr = new Tarjeta(); tArr.SetBounds(472, 0, 456, 398); tArr.Titulo = "ARREGLOS DE LA GRABACION"; tArr.Acento = cGra;
+                    pAhora.Controls.Add(tAhora); pAhora.Controls.Add(tArr);
+                    Label lAhora = notaLocal(tAhora, 40, 100, "");
+                    lAhora.ForeColor = cTexto; lAhora.Name = "SonidoAhoraTexto";
+                    BotonPlano bSinMej = new BotonPlano(); bSinMej.SetBounds(16, 150, 424, 34); bSinMej.Font = fBot;
+                    bSinMej.Name = "SonidoSinMejoras"; tAhora.Controls.Add(bSinMej);
+                    notaLocal(tAhora, 192, 64, "Mientras dura, la cancion suena sin des-recorte, siseo, DSEE,\nrealce, EQ, bajo, claridad, partes suaves ni arreglos, al\nmismo volumen: para comparar con el oido. No se guarda.");
+                    notaLocal(tAhora, 332, 48, "Se mira cada medio segundo. Los videos no pasan por la\ncadena de sonido: con un video aqui no hay nada que ver.");
+                    Func<int, string, Color, bool, Interruptor> interArr = delegate (int y, string texto, Color ac, bool on)
+                    {
+                        Interruptor sw = new Interruptor(); sw.SetBounds(16, y, 424, 26); sw.ForeColor = cTexto; sw.Font = fNom;
+                        sw.Text = texto; sw.Acento = ac; sw.Checked = on; tArr.Controls.Add(sw); return sw;
+                    };
+                    Interruptor swMudo = interArr(40, "Un canal mudo, por los dos", cGra, canalMudo);
+                    swMudo.Name = "SonidoCanalMudo";
+                    notaLocal(tArr, 66, 32, "Si una cancion trae un canal vacio, los dos dan el que suena,\na la misma potencia. Solo en las que lo traen.");
+                    Interruptor swDc = interArr(110, "Quitar la corriente continua", cCal, quitaContinua);
+                    swDc.Name = "SonidoContinua";
+                    notaLocal(tArr, 136, 32, "Si la onda viene corrida, se centra: el limitador no la baja\nde mas y los conos no se empujan. Solo en las que la traen.");
+                    Interruptor swAuto = interArr(180, "Estereo estrecho solo si hace falta", cBri, estereoAuto);
+                    swAuto.Name = "SonidoEstereoAuto";
+                    Necesita(swAuto, delegate { return estereoEstrecho; }, "Estereo al " + Math.Round(anchoEstereo * 100f) + " % (El local y sus bocinas)");
+                    notaLocal(tArr, 222, 32, "Estrecha solo las canciones con un instrumento entero a un\nlado; las mezclas modernas suenan como vienen.");
+                    notaLocal(tArr, 270, 48, "Los dos primeros, encendidos de fabrica: en las canciones sin\nese defecto no tocan ni un bit. Se oyen al instante.");
+                    BotonPlano bVolverAhora = new BotonPlano(); bVolverAhora.SetBounds(16, 346, 424, 34); bVolverAhora.Font = fBot;
+                    bVolverAhora.Text = "Volver a las canciones"; bVolverAhora.Name = "SonidoAhoraVolver"; tArr.Controls.Add(bVolverAhora);
+                    bool verAhora = false;
+                    Action pintaAhora = delegate
+                    {
+                        int quedan = SinMejorasQuedan();
+                        bSinMej.Text = quedan > 0 ? "Volver a las mejoras (" + quedan + " s)" : "Escuchar sin mejoras (" + SinMejorasSeg + " s)";
+                        bSinMej.Relleno = quedan > 0 ? Color.FromArgb(104, 62, 28) : Color.FromArgb(40, 52, 98);
+                        bSinMej.Invalidate();
+                        lAhora.Text = TextoLoQueSuena();
+                    };
+                    bSinMej.Click += delegate { PonSinMejoras(!sinMejoras); pintaAhora(); };
+                    pintaAhora();
+
                     // ---------------- TU BIBLIOTECA ----------------
                     Label lCal = new Label(); lCal.SetBounds(16, 40, 896, 20); lCal.BackColor = Color.Transparent;
                     lCal.ForeColor = Color.FromArgb(198, 214, 244); lCal.Font = fNom;
@@ -1179,6 +1226,7 @@ namespace Rocola
                         saltaSilencios = swSil.Checked;
                         if (saltaSilencios != silAntes) SiguienteConElInterruptor();   // lo ya abierto para la siguiente traia el de antes
                         cortaSubgrave = swSub.Checked; estereoEstrecho = swEst.Checked;
+                        canalMudo = swMudo.Checked; quitaContinua = swDc.Checked; estereoAuto = swAuto.Checked;   // S1, S2 y S3
                         claridadLocal = swCla.Checked; partesSuaves = swSua.Checked;
                         balanceDb = Math.Max(-SalaLocal.BalanceMax, Math.Min(SalaLocal.BalanceMax, barBal.Value - SalaLocal.BalanceMax));
                         AplicaBocinas();   // las bocinas del billar: al instante, en la que suena y en la siguiente
@@ -1197,6 +1245,7 @@ namespace Rocola
                     swSub.CheckedChanged += apply; swEst.CheckedChanged += apply;
                     swCla.CheckedChanged += apply; swSua.CheckedChanged += apply; barBal.Scroll += apply;
                     swMed.CheckedChanged += apply; swSis.CheckedChanged += apply; swGen.CheckedChanged += apply;
+                    swMudo.CheckedChanged += apply; swDc.CheckedChanged += apply; swAuto.CheckedChanged += apply;
                     EventHandler prueba = delegate (object so, EventArgs ea)
                     {
                         PruebaModo m = (so == bPruI) ? PruebaModo.Izquierda : (so == bPruD) ? PruebaModo.Derecha
@@ -1220,6 +1269,7 @@ namespace Rocola
                         swCla.Checked = false; swSua.Checked = false;        // y la claridad y las partes suaves, igual
                         barBal.Value = SalaLocal.BalanceMax;                 // el balance, centrado
                         swMed.Checked = false; swSis.Checked = false; swGen.Checked = false;   // las mejoras con IA, apagadas
+                        swMudo.Checked = true; swDc.Checked = true; swAuto.Checked = false;   // S1 y S2 encendidos; S3, apagado
                         if (frecuenciaSalida != 0) { frecuenciaSalida = 0; pintaFrec(); }   // la tarjeta, como la cancion (A4)
                         if (perfilDisco != 0)                                // el tipo de disco, otra vez a medirlo sola
                         { perfilDisco = 0; lock (discoLock) { discoLento.Clear(); discoMediana.Clear(); } AplicaPerfilDisco(); pintaDsk(); }
@@ -1257,12 +1307,13 @@ namespace Rocola
                         // tarjeta al agregarla -y en la rama del equipo potente hay una mas- y esa tarjeta se
                         // quedaria colgada encima de la pagina nueva.
                         foreach (Control cc in dlg.Controls)
-                            if (cc != lTit && cc != bPagS && cc != bPagI && cc != bPagD && cc != bPagC && cc != bPagF && cc != bPagP && cc != bOk && cc != pImg && cc != pDet && cc != pCol && cc != pFon && cc != pPan && cc != pLoc && cc != pIa)
+                            if (cc != lTit && cc != bPagS && cc != bPagI && cc != bPagD && cc != bPagC && cc != bPagF && cc != bPagP && cc != bOk && cc != pImg && cc != pDet && cc != pCol && cc != pFon && cc != pPan && cc != pLoc && cc != pIa && cc != pAhora)
                                 cc.Visible = (f3Pagina == 0);
                         // La hoja del local va en el sitio de las dos tarjetas de arriba: o una, o las otras.
                         pLoc.Visible = (f3Pagina == 0 && verLocal);
                         pIa.Visible = (f3Pagina == 0 && verIa && !verLocal);
-                        tVol.Visible = tCal.Visible = (f3Pagina == 0 && !verLocal && !verIa);
+                        pAhora.Visible = (f3Pagina == 0 && verAhora && !verLocal && !verIa);
+                        tVol.Visible = tCal.Visible = (f3Pagina == 0 && !verLocal && !verIa && !verAhora);
                         pImg.Visible = (f3Pagina == 1);
                         pDet.Visible = (f3Pagina == 2);
                         pCol.Visible = (f3Pagina == 3);
@@ -1295,6 +1346,8 @@ namespace Rocola
                         });
                     };
                     bVolverIa.Click += delegate { verIa = false; pintaPag(); };
+                    bAhora.Click += delegate { verLocal = false; verIa = false; verAhora = true; pintaAhora(); pintaPag(); };
+                    bVolverAhora.Click += delegate { verAhora = false; pintaPag(); };
                     bVolver.Click += delegate { verLocal = false; pintaPag(); };
                     bPagI.Click += delegate { f3Pagina = 1; pintaPag(); };
                     bPagD.Click += delegate { f3Pagina = 2; pintaPag(); };
@@ -1308,6 +1361,7 @@ namespace Rocola
                     dlg.Controls.Add(bReset); dlg.Controls.Add(bOk); dlg.Controls.Add(pImg); dlg.Controls.Add(pDet); dlg.Controls.Add(pCol); dlg.Controls.Add(pFon); dlg.Controls.Add(pPan);
                     dlg.Controls.Add(pLoc); pLoc.BringToFront();
                     dlg.Controls.Add(pIa); pIa.BringToFront();
+                    dlg.Controls.Add(bAhora); dlg.Controls.Add(pAhora); pAhora.BringToFront();
                     pintaPag();
                     // Escape cierra, como toda la vida (los controles propios se comen las teclas, asi que la
                     // ventana las mira antes con KeyPreview).
@@ -1322,18 +1376,19 @@ namespace Rocola
                     RefrescaRequisitos();
                     // A2: lo tocado se guarda en cuanto se deja quieto medio segundo, no solo al cerrar.
                     EmpiezaGuardadoAlMomento();
-                    tTrain.Tick += delegate { if (f3Pagina == 0) updateLabels(); GuardaAlMomento(); };
+                    tTrain.Tick += delegate { if (f3Pagina == 0) updateLabels(); if (verAhora || sinMejoras) pintaAhora(); GuardaAlMomento(); };
                     tTrain.Start();
                     updateLabels();
                     dlg.ShowDialog(this);
                     tTrain.Stop(); tTrain.Dispose();
                     OlvidaRequisitos();
+                    if (sinMejoras) PonSinMejoras(false);   // "Escuchar sin mejoras" no sobrevive a la ventana
                     ParaPruebaBocinas();   // la prueba de bocinas no sigue sonando con la ventana cerrada
                 }
                 if (changed || f3CambioGraf) { SaveConfigPrefs(); ShowToast(changed ? "Sonido actualizado" : "Imagen actualizada", Color.FromArgb(40, 130, 90)); }
                 f3CambioGraf = false;
             }
-            catch { nocheOn = bkNoche; normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; masterDb = bkUp; eqAmount = bkEq; bassAmount = bkBass; videoVol = bkVid; videoAuto = bkVidA; sbrOn = bkSbr; eqAuto = bkEqA; bassAuto = bkBassA; perfilDisco = bkDsk; iaHarvestOn = bkIaDat; AplicaPerfilDisco(); if (saltaSilencios != bkSil) { saltaSilencios = bkSil; try { SiguienteConElInterruptor(); } catch { } } estereoEstrecho = bkEst; cortaSubgrave = bkSub; claridadLocal = bkCla; partesSuaves = bkSua; balanceDb = bkBal; frecuenciaSalida = bkFrec; aLaMedida = bkMed; quitaSiseo = bkSis; dseePorGenero = bkGen; try { AplicaBocinas(); } catch { } }   // si algo truena, deja los valores como estaban
+            catch { nocheOn = bkNoche; normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; masterDb = bkUp; eqAmount = bkEq; bassAmount = bkBass; videoVol = bkVid; videoAuto = bkVidA; sbrOn = bkSbr; eqAuto = bkEqA; bassAuto = bkBassA; perfilDisco = bkDsk; iaHarvestOn = bkIaDat; AplicaPerfilDisco(); if (saltaSilencios != bkSil) { saltaSilencios = bkSil; try { SiguienteConElInterruptor(); } catch { } } estereoEstrecho = bkEst; cortaSubgrave = bkSub; claridadLocal = bkCla; partesSuaves = bkSua; balanceDb = bkBal; frecuenciaSalida = bkFrec; aLaMedida = bkMed; quitaSiseo = bkSis; dseePorGenero = bkGen; canalMudo = bkMudo; quitaContinua = bkDc; estereoAuto = bkAuto; sinMejoras = false; try { AplicaBocinas(); ApplyNormNow(); } catch { } }   // si algo truena, deja los valores como estaban
             finally { try { Cursor.Hide(); } catch { } maintMode = wasMaint; ForceFocus(); }
         }
 

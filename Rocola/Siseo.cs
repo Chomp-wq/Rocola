@@ -61,6 +61,8 @@ namespace Rocola
         private bool acabo;
         private long dentro, fuera;                      // cuadros leidos del origen y entregados (salen dentro + h)
         internal long TrozosConQuita;                    // cuantos trozos (por canal) llevaron alguna rebaja (las pruebas)
+        internal volatile bool Pasa;                     // S4 ("Escuchar sin mejoras"): no quita nada (las ganancias vuelven a 1)
+        internal volatile float RebajaDb;                // lo que mas baja ahora, en dB (0 = nada; lo ensena Ctrl+F3: S5)
         private bool empezo;
         private volatile QuitaSiseo anterior;            // la pista que acaba justo antes, sin fundido (disco continuo)
 
@@ -212,6 +214,9 @@ namespace Rocola
             }
             bool algo = false;
             for (int c = 0; c < ch; c++) { quitaCanal[c] = Ganancias(c); algo |= quitaCanal[c]; }
+            float gMin = 1f;
+            for (int c = 0; c < ch; c++) for (int b = 0; b < nb; b++) if (ganancia[c][b] < gMin) gMin = ganancia[c][b];
+            RebajaDb = gMin < 1f ? (float)(20.0 * Math.Log10(gMin)) : 0f;
             if (!algo) return;   // no se quita nada: no se resta nada, y las muestras salen con sus mismos bits
             // Lo que se quita a cada canal: (1 - g) de cada bin de sus bandas con rebaja; fuera de las bandas, nada.
             for (int k = 0; k < n; k++) { re[k] = 0.0; im[k] = 0.0; }
@@ -277,7 +282,7 @@ namespace Rocola
                 if (s[b] < mt[b]) mt[b] = s[b];
                 if (piso[b] > 0.0 && s[b] <= 2.0 * piso[b]) cc[b]++;
                 float meta = 1f;
-                if (hayPiso && piso[b] > 0.0 && qu[b])
+                if (hayPiso && piso[b] > 0.0 && qu[b] && !Pasa)
                 {
                     // A 6 dB o mas sobre el piso, nada; en el piso, la rebaja entera; en medio, en dB, lineal.
                     double sobre = s[b] / piso[b];

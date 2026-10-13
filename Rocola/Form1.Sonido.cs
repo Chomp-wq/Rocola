@@ -1267,12 +1267,15 @@ namespace Rocola
             FuenteOriginal original = new FuenteOriginal(source, this);
             NAudio.Wave.ISampleProvider chain = original;
             int audioTailDelay = 0;   // estos retardos se vacian: el fundido debe abarcar tambien su cola
+            // LOS ARREGLOS DE LA GRABACION (S1 y S2, ArreglosGrabacion.cs): un canal mudo por los dos y la continua fuera. Lo
+            // primero, para que nada de lo de detras trabaje con el defecto. Sin retardo; sin el defecto, sale bit a bit.
+            c.Arreglo = new ArreglaGrabacion(chain, canalMudo, quitaContinua); chain = c.Arreglo;
             // DES-RECORTE: repara picos aplastados de origen (despues de medir original, antes de DSEE). Ya sabemos, cancion
             // por cancion, si de verdad viene recortada; en las que NO -que son la mayoria- ni se pone en la
             // cadena: se ahorra su trabajo y su retardo de ~1.5 ms. Si aun no esta medida, se pone por si acaso.
             if (declipOn && DeclipVale(t.Path))
             {
-                DeclipProvider dc = new DeclipProvider(chain); chain = dc; audioTailDelay += dc.DelayFrames;
+                DeclipProvider dc = new DeclipProvider(chain); chain = dc; audioTailDelay += dc.DelayFrames; c.Declip = dc;
             }
             // QUITAR EL SISEO (I2, Siseo.cs): con su interruptor, antes del DSEE y del realce (que si no le darian brillo al
             // siseo). Retrasa 11,6 ms, que se suman a la cola que el fundido tiene que abarcar.
@@ -1302,6 +1305,7 @@ namespace Rocola
             // GRAVE EN MONO: por debajo del corte, el mismo grave por todas las bocinas. Y, con sus interruptores de Ctrl+F3,
             // para las bocinas del billar: sin el subgrave que ninguna reproduce y con el estereo mas estrecho (GraveMono.cs).
             c.Mono = new GraveMono(c.Noche, graveMonoHz, anchoEstereo, subgraveHz, estereoEstrecho, cortaSubgrave);
+            c.Mono.SoloSiHaceFalta(estereoAuto);   // y solo si hace falta (S3)
             // EL LOCAL (SalaLocal.cs): claridad, partes suaves y balance, con sus mandos de Ctrl+F3 (apagados de fabrica:
             // apagados no tocan ni una muestra). Delante del bajo psicoacustico y del limitador, que cuida los picos.
             c.Sala = new SalaLocal(c.Mono, tap, normTarget, claridadLocal, partesSuaves, balanceDb);
@@ -1314,7 +1318,7 @@ namespace Rocola
             // muestras (ver PicoReal.cs). Detras solo quedan el fundido (que solo baja) y el paso a 16 bits
             // con su dither de un bit.
             LimitadorPicoReal lim = new LimitadorPicoReal(c.Bajo, TechoPicoReal, 3.0);
-            audioTailDelay += lim.DelayFrames;
+            audioTailDelay += lim.DelayFrames; c.Limitador = lim;
             NAudio.Wave.ISampleProvider outChain = lim;
             if (crossfadeSec > 0.01f)
             {
@@ -2763,10 +2767,15 @@ namespace Rocola
                 drainFrames -= frames;
                 return frames * ch;
             }
+            // S4 ("Escuchar sin mejoras"): con Pasa no se repara nada; sale lo grabado con su mismo retraso. Y lo que se
+            // reparo, para que Ctrl+F3 lo ensene (S5).
+            internal volatile bool Pasa;
+            internal long Reparados;
             private void Repair(int c, float landing)
             {
                 int L = runLen[c];
-                if (L < MinRun || L > MaxRun || tooLong[c]) return;
+                if (L < MinRun || L > MaxRun || tooLong[c] || Pasa) return;
+                Reparados++;
                 // arco: p(i) = preVal + preSlope*i + a2*i^2, con p(L+1) = landing (aterriza en la salida del techo)
                 float lp1 = L + 1f;
                 float a2 = (landing - preVal[c] - preSlope[c] * lp1) / (lp1 * lp1);

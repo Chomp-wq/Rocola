@@ -525,6 +525,9 @@ namespace Rocola
                     else if (s.StartsWith("grave_mono=")) graveMonoHz = GraveMonoHz(s.Substring(11));   // corte del grave en mono (Hz; 0 = apagado)
                     else if (s.StartsWith("ancho_estereo=")) anchoEstereo = AnchoEstereo(s.Substring(14));   // % del estereo (100 = como viene)
                     else if (s.StartsWith("subgrave=")) subgraveHz = SubgraveHz(s.Substring(9));   // corte del subgrave (Hz; 0 = sin corte)
+                    else if (s.StartsWith("canal_mudo=")) canalMudo = s.Substring(11).Trim() != "0";   // S1: un canal mudo, por los dos
+                    else if (s.StartsWith("quita_continua=")) quitaContinua = s.Substring(15).Trim() != "0";   // S2: quitar la continua
+                    else if (s.StartsWith("estereo_auto=")) estereoAuto = s.Substring(13).Trim() == "1";   // S3: estrecho solo si hace falta
                     else if (s.StartsWith("estereo_estrecho=")) estereoEstrecho = s.Substring(17).Trim() == "1";   // interruptor: estereo al ancho_estereo
                     else if (s.StartsWith("corta_subgrave=")) cortaSubgrave = s.Substring(15).Trim() == "1";       // interruptor: subgrave fuera
                     else if (s.StartsWith("frecuencia_salida=")) { int v; if (int.TryParse(s.Substring(18).Trim(), System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out v)) frecuenciaSalida = FrecuenciaSalidaValida(v); }   // A4: la tarjeta a 44100 o 48000 (0 = como la cancion)
@@ -676,6 +679,9 @@ namespace Rocola
             sb.Append("subgrave=").Append(subgraveHz.ToString("0", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
             sb.Append("estereo_estrecho=").Append(estereoEstrecho ? "1" : "0").Append("\r\n");
             sb.Append("corta_subgrave=").Append(cortaSubgrave ? "1" : "0").Append("\r\n");
+            sb.Append("canal_mudo=").Append(canalMudo ? "1" : "0").Append("\r\n");
+            sb.Append("quita_continua=").Append(quitaContinua ? "1" : "0").Append("\r\n");
+            sb.Append("estereo_auto=").Append(estereoAuto ? "1" : "0").Append("\r\n");
             sb.Append("frecuencia_salida=").Append(frecuenciaSalida.ToString(System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
             sb.Append("claridad_local=").Append(claridadLocal ? "1" : "0").Append("\r\n");
             sb.Append("partes_suaves=").Append(partesSuaves ? "1" : "0").Append("\r\n");
@@ -1548,6 +1554,7 @@ namespace Rocola
             CompensaNoche cn = curNoche; if (cn != null) cn.Db = NocheCompensaDb();   // el modo noche, si se acaba de encender o apagar
             SpectralTap sp = curSbr; if (sp != null) sp.Active = sbrOn;   // reconstruccion espectral: alterna EN VIVO (A/B desde Ctrl+F3)
             AplicaAPreparada();   // y a la siguiente, si ya esta preparada para entrar sin pausa
+            AplicaSinMejoras(cadenaSonando);   // "Escuchar sin mejoras" (S4, LoQueSuena.cs): encima de lo de siempre
         }
 
         // Todas las raices de musica que EXISTEN ahora: la carpeta "musica" principal + las agregadas con Ctrl+F2.
