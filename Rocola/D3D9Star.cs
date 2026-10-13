@@ -19,7 +19,7 @@ using System.Windows.Forms;
 namespace Rocola
 {
     // -------- Interop crudo con Direct3D 9 (sin SlimDX) --------
-    internal static class D3D9
+    internal static partial class D3D9
     {
         [DllImport("d3d9.dll")] public static extern IntPtr Direct3DCreate9(uint sdkVersion);
         // Copia bloque a bloque entre punteros sin pasar por un arreglo administrado (mitad de copias que Marshal.Copy).
@@ -201,6 +201,7 @@ namespace Rocola
                 reset = D3D9.Fn<D3D9.ResetDel>(dev, 16);
                 createTex = D3D9.Fn<D3D9.CreateTexDel>(dev, 23);
                 LeeLimitesTexturas();
+                juntar = true;   // las ordenes chicas seguidas se juntan (PerformanceGpu.cs)
                 if (!InitStates()) Dispose();
             }
             catch
@@ -242,6 +243,7 @@ namespace Rocola
             {
                 SueltaPinesVertices();
                 LiberaVertices();
+                LiberaMedia(); juntaN = 0;   // la imagen intermedia tambien es POOL_DEFAULT (PerformanceGpu.cs)
                 if (reset(dev, ref pp) < 0)
                 {
                     // Se conserva el tamano PEDIDO. BeginFrame lo reintentara cuando el dispositivo vuelva
@@ -282,7 +284,7 @@ namespace Rocola
         private bool InitStates()
         {
             stTss = 0; stBlend = 0; stTex = new IntPtr(-1);   // tras crear o RESETEAR el dispositivo todo vuelve a su valor por defecto
-            stDireccion = 0;
+            stDireccion = 0; juntaN = 0;
             if (dev == IntPtr.Zero) return false;
             try
             {
@@ -311,6 +313,7 @@ namespace Rocola
             int modo = repetir ? 2 : 1;
             if (dev == IntPtr.Zero || lost || stDireccion == modo) return;
             uint valor = repetir ? D3D9.ADDRESS_WRAP : D3D9.ADDRESS_CLAMP;
+            Junta(); Cambios++;   // lo pendiente se pinta con el estado de antes (PerformanceGpu.cs)
             try
             {
                 if (setSamp(dev, 0, D3D9.SAMP_ADDRESSU, valor) < 0 || setSamp(dev, 0, D3D9.SAMP_ADDRESSV, valor) < 0)
@@ -331,6 +334,7 @@ namespace Rocola
         private void PonTexturaFisica(IntPtr t)
         {
             if (dev == IntPtr.Zero || lost || stTex == t) return;
+            Junta(); Cambios++;
             try
             {
                 if (setTex(dev, 0, t) < 0) { EstadoFallido(); return; }
@@ -341,6 +345,7 @@ namespace Rocola
         private void Blend(int modo)   // 1 = sin mezcla, 2 = aditiva (brillos), 3 = normal (encima)
         {
             if (dev == IntPtr.Zero || lost || stBlend == modo) return;
+            Junta(); Cambios++;
             try
             {
                 if (modo == 1)
@@ -459,6 +464,7 @@ namespace Rocola
                     if (tc == D3D9.E_DEVICENOTRESET || resetPending)
                     {
                         LiberaVertices();
+                        LiberaMedia(); juntaN = 0;   // (PerformanceGpu.cs)
                         if (reset(dev, ref pp) < 0 || !InitStates()) return false;
                         resetPending = false;
                         lost = false;
@@ -489,6 +495,7 @@ namespace Rocola
         public bool EndFrame()
         {
             if (dev == IntPtr.Zero || !inScene) { SueltaPinesVertices(); return false; }
+            try { Junta(); } catch { }   // lo que quedaba por juntar va dentro de esta escena (PerformanceGpu.cs)
             inScene = false;
             try
             {
@@ -505,6 +512,7 @@ namespace Rocola
         private void TssDiffuse()   // usa el color del vertice (sin textura)
         {
             if (dev == IntPtr.Zero || lost || stTss == 1) return;
+            Junta(); Cambios++;
             try
             {
                 if (setTSS(dev, 0, D3D9.TSS_COLOROP, D3D9.TOP_SELECTARG1) < 0 ||
@@ -519,6 +527,7 @@ namespace Rocola
         private void TssModulate()  // textura * color del vertice
         {
             if (dev == IntPtr.Zero || lost || stTss == 2) return;
+            Junta(); Cambios++;
             try
             {
                 if (setTSS(dev, 0, D3D9.TSS_COLOROP, D3D9.TOP_MODULATE) < 0 ||
@@ -738,14 +747,21 @@ namespace Rocola
 
         private void Draw(D3D9.Vtx[] verts, int tris)
         {
+            if (enMedia) { verts = EscalaMedia(verts, tris); if (verts == null) return; }   // a la imagen intermedia (PerformanceGpu.cs)
             TexturasDivididasGpu.Surface dividida = TexturasDivididasGpu.Busca(texturaLogica);
-            if (dividida != null) { DibujaDividida(dividida, verts, tris); return; }
+            if (dividida != null) { Junta(); DibujaDividida(dividida, verts, tris); return; }
             DrawFisico(verts, tris);
         }
 
         private void DrawFisico(D3D9.Vtx[] verts, int tris)
         {
             if (dev == IntPtr.Zero || lost || verts == null || tris <= 0 || tris > verts.Length / 3) return;
+            Pedidos++;
+            if (CuentaArea) AreaPx += AreaDe(verts, tris);
+            // JUNTAR ORDENES (PerformanceGpu.cs): lo chico con el mismo estado que lo anterior se manda junto. Lo grande va
+            // directo, como siempre, despues de lo que quedara pendiente.
+            if (tris < JuntaMaxTris && inScene && Encola(verts, tris)) return;
+            Junta();
             GCHandle gh;
             IntPtr datos = FijaVertices(verts, out gh);
             bool prueba = false, usaBuffer = false;
@@ -759,10 +775,11 @@ namespace Rocola
                     prueba = verticesModo == 0 && tris == verticesPruebaTris;
                     usaBuffer = verticesModo == 2 || (prueba && (verticesPruebas & 1) != 0);
                     if (prueba) inicio = System.Diagnostics.Stopwatch.GetTimestamp();
-                    if (usaBuffer && DibujaVertices(tris, datos)) return;
+                    if (usaBuffer && DibujaVertices(tris, datos)) { Envios++; return; }
                 }
                 if (drawUp(dev, D3D9.PT_TRIANGLELIST, (uint)tris, datos, D3D9.VtxSize) < 0)
                     EstadoFallido();
+                else Envios++;
             }
             catch { EstadoFallido(); }
             finally
@@ -836,6 +853,7 @@ namespace Rocola
         {
             SueltaPinesVertices();
             LiberaVertices();
+            LiberaMedia(); SueltaJunta();   // (PerformanceGpu.cs)
             lost = true;
             resetPending = false;
             inScene = false;
@@ -1110,8 +1128,9 @@ namespace Rocola
             uint cBot = Form1.TineCielo(skyBot, Form1.HondoAbajo * HoraHondo, Form1.CalorAbajo * HoraCalor);
             SetQuad(skyV, 0, 0, 0, w, midY, skyTop, skyTop, cMid, cMid);
             SetQuad(skyV, 6, 0, midY, w, h, cMid, cMid, cBot, cBot);
-            // Cielo azul/negro original; la paleta movil pertenece a la aurora.
-            gpu.DrawSky(skyV);
+            // Cielo azul/negro original; la paleta movil pertenece a la aurora. Con el cielo a media resolucion
+            // (Ctrl+F3 -> Imagen -> Performance) el cielo y las nebulosas salen de la imagen intermedia (PerformanceGpu.cs).
+            if (CieloBase == null || !CieloBase(w, h, midY, skyTop, cMid, cBot)) gpu.DrawSky(skyV);
             if (TrasCielo != null) TrasCielo();   // la aurora va aqui: entre el cielo y las estrellas
             // EL PATRON ANTERIOR, DESVANECIENDOSE. Mientras dura el cruce -1.3 segundos, una vez por
             // minuto- se arman y se dibujan DOS juegos de estrellas en vez de uno, o sea el doble de trabajo:
@@ -1973,7 +1992,7 @@ namespace Rocola
         public double MsTrabajo { get { return (msTrabN > 0) ? (msTrabSuma / msTrabN) : 0.0; } }
         public int CuadrosMedidos { get { return msTrabN; } }
         public int FallosMedidos { get; private set; }
-        public void ReiniciaMedida() { msTrabSuma = 0.0; msTrabN = 0; FallosMedidos = 0; Fps = 0; frames = 0; fpsTick = Environment.TickCount; fluidez.Reinicia(); if (CoverControl != null) CoverControl.ResetMeasure(); }
+        public void ReiniciaMedida() { msTrabSuma = 0.0; msTrabN = 0; FallosMedidos = 0; Fps = 0; frames = 0; fpsTick = Environment.TickCount; fluidez.Reinicia(); ReiniciaCuenta(); if (CoverControl != null) CoverControl.ResetMeasure(); }
         public float Dim = 1f;                            // atenuacion del starfield mientras se navega con musica (el form la anima; 1 = normal)
         public float WallOpacity = 1f;
         public bool ProgresoFluido = true;
@@ -2133,7 +2152,14 @@ namespace Rocola
         {
             SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.Opaque, true);
             SetStyle(ControlStyles.OptimizedDoubleBuffer, false);   // D3D9 maneja sus pixeles: nada de doble-buffer GDI
-            trasCielo = delegate { aurDibujada = false; DibujaNieblas(); if (auCuadro.Has) { DrawAurora(auCuadro); DibujaReflejoAurora(); } DibujaRuido(); };
+            trasCielo = delegate
+            {
+                aurDibujada = false;
+                if (!cieloMedioEsteCuadro) DibujaNieblas();   // si no, ya van en la imagen intermedia (PerformanceGpu.cs)
+                if (auCuadro.Has) { DrawAurora(auCuadro); DibujaReflejoAurora(); }
+                if (!granoUnidoEsteCuadro) DibujaRuido();     // si no, va junto con la vineta, en una pasada
+            };
+            cieloBase = CieloMedioBase;
             trasEstrellas = delegate { DibujaLunaCielo(); DibujaLuna(); };   // la luna del cielo, lejos; la estrella, delante
         }
 
@@ -2331,6 +2357,7 @@ namespace Rocola
             if (!PuedeDibujar()) return false; // no preparar UI/texturas de una ventana minimizada
             if (stars == null || !stars.Ok) return NoPresentado();
             double msTrab0 = AhoraMs();   // arranca el cronometro del TRABAJO de este cuadro (ver MsTrabajo)
+            stars.EmpiezaCuenta(CuentaArea);   // ordenes de dibujo y area de este cuadro (PerformanceGpu.cs)
             // Correlacionar Start->Start con el trabajo ANTERIOR y el hueco entre cuadros.
             // Ctrl+F1 habilita GC/episodios; sin contador no se consultan los tres contadores GC.
             if (fluidezContando != ShowFps)
@@ -2527,6 +2554,7 @@ namespace Rocola
             AdvanceCoverPalette(AhoraMs());
             stars.TrasCielo = trasCielo;
             stars.TrasEstrellas = trasEstrellas;
+            stars.CieloBase = cieloBase;
             // Dispositivo perdido (sesion bloqueada, cambio de pantalla...): sin este respiro, el bucle de
             // Application.Idle reintentaria a TODA MAQUINA y clavaria un nucleo entero hasta recuperarlo.
             double aheadNow = AhoraMs();
@@ -2556,11 +2584,18 @@ namespace Rocola
             AvanzaAsistente(); // reloj fino de ESTE cuadro, independiente del timer de la UI
             double antesDibujo = AhoraMs();
             HuecosDePortadas();   // donde las portadas opacas tapan el cielo: ahi no se pinta (DibujoLigeroGpu.cs)
+            DecideAhorros();      // cielo a media resolucion y grano con vineta en una pasada (PerformanceGpu.cs)
             if (!stars.Begin(Width, Height, pulse, pulseCrudo)) { System.Threading.Thread.Sleep(5); return NoPresentado(); }
             // Adornos solo del fondo: antes del muro y de toda la interfaz.
             if (VinetaSuave && vinetaTex != IntPtr.Zero)
             {
-                DibujaTeselasFondo(vinetaTex, vinetaTeselas, 0, 0, Width, Height, vinetaU, vinetaV, 0xFFFFFFFFu, adornoQuad);   // sin pintar su centro transparente ni bajo las portadas (DibujoLigeroGpu.cs)
+                // Con "grano y vineta en una pasada" van los dos juntos aqui (PerformanceGpu.cs). Si esa pasada no se pudo, este
+                // cuadro van por separado.
+                if (!(granoUnidoEsteCuadro && DibujaGranoYVineta()))
+                {
+                    if (granoUnidoEsteCuadro) DibujaRuido();
+                    DibujaTeselasFondo(vinetaTex, vinetaTeselas, 0, 0, Width, Height, vinetaU, vinetaV, 0xFFFFFFFFu, adornoQuad);   // sin pintar su centro transparente ni bajo las portadas (DibujoLigeroGpu.cs)
+                }
             }
             if (HaloSeleccion && ShowAlbum && GetContourRect != null)
             {
@@ -2768,6 +2803,7 @@ namespace Rocola
             }
             if (CoverControl != null) CoverControl.Observe(AhoraMs(), trabajo, TopeFpsReal);
             msTrabSuma += trabajo; msTrabN++;
+            TerminaCuenta(antesDibujo - msTrab0, antesPresentar - antesDibujo, terminado - antesPresentar);   // (PerformanceGpu.cs)
             frames++;
             int transcurrido = unchecked(Environment.TickCount - fpsTick);
             if (transcurrido >= 1000) { Fps = (int)Math.Round(frames * 1000.0 / transcurrido); frames = 0; fpsTick = Environment.TickCount; }
@@ -3155,6 +3191,7 @@ namespace Rocola
         private double aurFinoAnt; private bool aurRelojOk;   // para medir el paso de cada cuadro (reloj FINO: ver AhoraMs)
         private GpuAurora auCuadro;                          // la aurora de ESTE cuadro (la pide el render y la dibuja TrasCielo)
         private readonly GpuStarfield.Dibuja trasCielo;      // delegado creado UNA vez (nada de basura por cuadro)
+        private readonly GpuStarfield.DibujaBase cieloBase;  // el cielo a media resolucion (PerformanceGpu.cs)
         private readonly GpuStarfield.Dibuja trasEstrellas; // idem: la luna, delante de las estrellas
 
         // LA VIA LACTEA Y LAS NEBULOSAS. Son manchas grandes y muy suaves, o sea justo lo que se puede
@@ -3305,9 +3342,18 @@ namespace Rocola
         }
         private void DibujaRuido()
         {
-            if (ruidoTex == IntPtr.Zero || Width <= 0 || Height <= 0) return;
+            D3D9.Vtx[] malla; int n = MallaRuido(out malla);
+            if (n > 0) stars.DrawTexturedBatchWrap(ruidoTex, malla, n / 3);
+        }
+        // Los vertices del grano de este cuadro (los mismos para la pasada sola y para la unida con la vineta). Devuelve
+        // cuantos; 'malla' es un arreglo reusado: se usa antes de volver a pedir trozos.
+        private int MallaRuido(out D3D9.Vtx[] malla)
+        {
+            malla = null;
+            if (ruidoTex == IntPtr.Zero || Width <= 0 || Height <= 0) return 0;
             PreparaMallaRuido();
-            if (nHuecos > 0 && ruidoMalla != null)
+            if (ruidoMalla == null) return 0;
+            if (nHuecos > 0)
             {
                 // Sin pintar debajo de las portadas (DibujoLigeroGpu.cs): cada teja, menos los huecos.
                 int v = 0;
@@ -3316,10 +3362,11 @@ namespace Rocola
                     D3D9.Vtx a = ruidoMalla[p], c = ruidoMalla[p + 2];
                     v = Trozos(v, a.X + 0.5f, a.Y + 0.5f, c.X + 0.5f, c.Y + 0.5f, a.U, a.V, c.U, c.V, a.Color);
                 }
-                if (v > 0) stars.DrawTexturedBatchWrap(ruidoTex, trozosHuecos, v / 3);
-                return;
+                malla = trozosHuecos;
+                return v;
             }
-            stars.DrawTexturedBatchWrap(ruidoTex, ruidoMalla, ruidoTriangulos);
+            malla = ruidoMalla;
+            return ruidoTriangulos * 3;
         }
         private void PreparaMallaRuido()
         {

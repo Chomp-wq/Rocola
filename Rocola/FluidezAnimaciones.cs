@@ -22,17 +22,21 @@ namespace Rocola
 
         // No crecer la tarjeta ya llena de Imagen. Las dos hojas comparten su espacio,
         // con botones en el antiguo encabezado, sin tapar los mandos de los efectos.
-        private Panel MontaFluidezGrafica(Tarjeta effects, Font normal, Font small, Font button,
+        // TRES HOJAS (13-10-2026): Efectos, Fluidez y Performance (los ahorros que casi no se notan; Rendimiento.cs la llena).
+        private Panel MontaFluidezGrafica(Tarjeta effects, Tarjeta performance, Font normal, Font small, Font button,
                                          Color text, Color muted, out Action paintFluency)
         {
             Panel sheets = new Panel(); sheets.Bounds = effects.Bounds;
             sheets.BackColor = Color.FromArgb(11, 14, 32);
             effects.Location = Point.Empty; effects.Name = "Efectos"; effects.Titulo = "";
-            foreach (Control previous in effects.Controls) previous.TabIndex += 2;
+            foreach (Control previous in effects.Controls) previous.TabIndex += 3;
+            foreach (Control previous in performance.Controls) previous.TabIndex += 3;
             Tarjeta fluency = new Tarjeta(); fluency.Size = effects.Size;
             fluency.Name = "Fluidez"; fluency.Titulo = ""; fluency.Acento = Color.FromArgb(150, 190, 255);
-            Tarjeta[] cards = { effects, fluency };
-            BotonPlano[][] tabs = new BotonPlano[2][];
+            performance.Location = Point.Empty; performance.Size = effects.Size;
+            Tarjeta[] cards = { effects, fluency, performance };
+            string[] tabNames = { "Efectos", "Fluidez", "Performance" };
+            BotonPlano[][] tabs = new BotonPlano[cards.Length][];
             int selectedSheet = 0;
             Action paintSheets = delegate {
                 for (int page = 0; page < cards.Length; page++) {
@@ -47,11 +51,11 @@ namespace Rocola
                 }
             };
             for (int page = 0; page < cards.Length; page++) {
-                tabs[page] = new BotonPlano[2];
-                for (int i = 0; i < 2; i++) {
+                tabs[page] = new BotonPlano[cards.Length];
+                for (int i = 0; i < cards.Length; i++) {
                     int next = i;
-                    BotonPlano tab = new BotonPlano(); tab.SetBounds(16 + i * 218, 6, 206, 28);
-                    tab.Font = button; tab.Text = i == 0 ? "Efectos" : "Fluidez";
+                    BotonPlano tab = new BotonPlano(); tab.SetBounds(16 + i * 144, 6, 136, 28);
+                    tab.Font = button; tab.Text = tabNames[i];
                     tab.TabIndex = i;
                     tab.AccessibleName = "Imagen: " + tab.Text;
                     tab.Click += delegate { selectedSheet = next; paintSheets(); };
@@ -92,7 +96,7 @@ namespace Rocola
                     int setting = group, fps = values[i];
                     BotonPlano option = new BotonPlano(); option.SetBounds(16 + i * 144, y + 78, 136, 36);
                     option.Font = button; option.Text = fps + " FPS";
-                    option.TabIndex = 2 + group * 3 + i;
+                    option.TabIndex = 3 + group * 3 + i;
                     option.AccessibleName = names[group] + ": " + option.Text;
                     option.Click += delegate {
                         if (setting == 0) animOndasFps = fps; else animCubosFps = fps;

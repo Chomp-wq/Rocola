@@ -8,6 +8,18 @@ sin reducir calidad; los paneles respetan los limites de la tarjeta. Solo Modest
 HD suspendida y renderizado CPU congelado.
 [Cambios, pruebas y limites pendientes](AUDITORIA_GENERAL_MODEST_2026-10-11.md).
 
+## Performance y un medidor más listo — 13 de octubre de 2026
+
+Imagen tiene un botón Performance (con Bajo, Medio y Alto) y una hoja con dos ahorros casi idénticos: el cielo a media
+resolución y el grano con la viñeta en una pasada. Las órdenes de dibujo seguidas se juntan solas. El medidor mide sin
+esperar al monitor, dice qué frena, apunta a 60 y comprueba su propuesta.
+[Qué se cambió y cómo se comprobó](PERFORMANCE_MODEST_2026-10-13.md).
+
+## Los ajustes de Ctrl+F3, revisados — 13 de octubre de 2026
+
+Lo que confunde o está fuera de sitio en las seis páginas, y siete propuestas para elegir.
+[Revisión y propuestas](AJUSTES_CTRL_F3_REVISION_MODEST_2026-10-13.md).
+
 ## Hojear rápido sin micro tirones en el fondo — 13 de octubre de 2026
 
 El cielo se mueve con un reloj fino y los empujones de varias páginas seguidas se suman. Las nebulosas ya no chocan

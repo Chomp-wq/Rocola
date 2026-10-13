@@ -1131,7 +1131,8 @@ class DibujoLigero
             Pon(panel, "ShowAlbum", true);
             // enchufado: los huecos se sacan antes de abrir la escena y las capas los usan
             MethodInfo rf = Metodo(TPanel, "RenderFrame");
-            Exige(Codigo.Llama(rf, "GpuPanel.HuecosDePortadas") && Codigo.Llama(Metodo(TPanel, "DibujaRuido"), "GpuPanel.Trozos")
+            Exige(Codigo.Llama(rf, "GpuPanel.HuecosDePortadas") && (Codigo.Llama(Metodo(TPanel, "DibujaRuido"), "GpuPanel.Trozos")
+                      || (Codigo.Llama(Metodo(TPanel, "DibujaRuido"), "GpuPanel.MallaRuido") && Codigo.Llama(Metodo(TPanel, "MallaRuido"), "GpuPanel.Trozos")))
                   && Codigo.Llama(Metodo(TPanel, "NieblaDeriva"), "GpuPanel.DibujaTeselasFondo") && Codigo.Llama(Metodo(TPanel, "PrepareNativeCover"), "GpuPanel.InteriorOpaco"),
                   "enchufado: el cuadro saca los huecos; nebulosa, via lactea, grano y vineta los usan; la opacidad se mira al subir la portada");
             List<string> llam = Codigo.Llamadas(rf); int iH = llam.IndexOf("GpuPanel.HuecosDePortadas"), iB = llam.IndexOf("GpuStarfield.Begin");

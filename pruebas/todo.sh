@@ -26,7 +26,7 @@ NLAYER="$RAIZ/packages/NLayer.1.12.0/lib/net35/NLayer.dll"
 # probando un programa SIN el panel de reposo, sin la vineta y sin las nebulosas naturales, mientras que en
 # Windows se instala uno que si los trae. Una prueba que mira otro programa no prueba nada.
 FUENTES="../Rocola/Form1.cs ../Rocola/Form1.Ajustes.cs ../Rocola/Form1.Biblioteca.cs ../Rocola/Form1.Buscador.cs ../Rocola/Form1.Datos.cs ../Rocola/Form1.Fondo.cs ../Rocola/Form1.Ia.cs ../Rocola/Form1.Pared.cs ../Rocola/Form1.Portadas.cs ../Rocola/Form1.Sonido.cs ../Rocola/Form1.Video.cs ../Rocola/Form1.Vistas.cs ../Rocola/Form1.Designer.cs ../Rocola/Program.cs ../Rocola/D3D9Star.cs ../Rocola/Rendimiento.cs ../Rocola/EstadoReposoGpu.cs ../Rocola/AcabadoGpu.cs ../Rocola/CieloNaturalGpu.cs $RAIZ/Rocola/AperturaAudio.cs $RAIZ/Rocola/CargaTrabajo.cs $RAIZ/Rocola/EscaneoMemo.cs $RAIZ/Rocola/LunaGpu.cs $RAIZ/Rocola/Optimizaciones.cs $RAIZ/Rocola/RespuestaGpu.cs"
-FUENTES="$FUENTES $RAIZ/Rocola/EstrellaGpu.cs $RAIZ/Rocola/Estrella3dGpu.cs $RAIZ/Rocola/RelojPantallaGpu.cs $RAIZ/Rocola/AuroraFinaGpu.cs $RAIZ/Rocola/PantallaVivaGpu.cs $RAIZ/Rocola/DiscoVivoGpu.cs $RAIZ/Rocola/SuenaVivoGpu.cs $RAIZ/Rocola/AtraccionGpu.cs $RAIZ/Rocola/EstiloGpu.cs $RAIZ/Rocola/DibujoLigeroGpu.cs $RAIZ/Rocola/BuscadorLigeroGpu.cs $RAIZ/Rocola/FranjaLigeraGpu.cs $RAIZ/Rocola/BuscadorPortadasGpu.cs $RAIZ/Rocola/PrecargaPaginaGpu.cs $RAIZ/Rocola/PaletaCaratulaGpu.cs $RAIZ/Rocola/CreditosServicio.cs"
+FUENTES="$FUENTES $RAIZ/Rocola/EstrellaGpu.cs $RAIZ/Rocola/Estrella3dGpu.cs $RAIZ/Rocola/RelojPantallaGpu.cs $RAIZ/Rocola/AuroraFinaGpu.cs $RAIZ/Rocola/PantallaVivaGpu.cs $RAIZ/Rocola/DiscoVivoGpu.cs $RAIZ/Rocola/SuenaVivoGpu.cs $RAIZ/Rocola/AtraccionGpu.cs $RAIZ/Rocola/EstiloGpu.cs $RAIZ/Rocola/DibujoLigeroGpu.cs $RAIZ/Rocola/PerformanceGpu.cs $RAIZ/Rocola/BuscadorLigeroGpu.cs $RAIZ/Rocola/FranjaLigeraGpu.cs $RAIZ/Rocola/BuscadorPortadasGpu.cs $RAIZ/Rocola/PrecargaPaginaGpu.cs $RAIZ/Rocola/PaletaCaratulaGpu.cs $RAIZ/Rocola/CreditosServicio.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/TextoMovilGpu.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/TexturasCompatiblesGpu.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/CaratulasAdaptativas.cs"
@@ -132,6 +132,11 @@ GPU="$GPU repasoligero"
 # cuadros y salen los mismos bytes que con Mp3FileReader, con saltos, ID3, basura entre cuadros y archivos cortados.
 CPU="$CPU mp3ligero"
 GPU="$GPU mp3ligero"
+# 'performance': el preset Performance de Imagen (13-10-2026; PerformanceGpu.cs): juntar ordenes (la misma imagen, menos
+# ordenes), el cielo a media resolucion y el grano con la vineta en una pasada (casi identicos, comparados con un raster de
+# referencia), presentar sin esperar al monitor, el medidor renovado (PlanDeAhorros) y los interruptores guardados.
+CPU="$CPU performance"
+GPU="$GPU performance"
 # 'hojeofino': hojear rapido sin micro tirones (13-10-2026): reloj fino en la pared y el cielo, empujones que se suman, la
 # rodilla de la niebla, la lectura de caratulas que reutiliza su arreglo y las paginas de colchon por perfil y JPEG.
 CPU="$CPU hojeofino"

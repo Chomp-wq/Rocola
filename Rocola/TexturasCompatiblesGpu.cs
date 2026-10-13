@@ -99,7 +99,13 @@ namespace Rocola
         // tiene holgura para que GetDeviceCaps escriba el resto de la estructura.
         [StructLayout(LayoutKind.Explicit, Size = 512)]
         private struct CapsTextura
-        { [FieldOffset(88)] public uint W; [FieldOffset(92)] public uint H; }
+        {
+            [FieldOffset(88)] public uint W; [FieldOffset(92)] public uint H;
+            // Lo que piden los ahorros de Performance (PerformanceGpu.cs), con los desplazamientos de D3DCAPS9.
+            [FieldOffset(20)] public uint Intervalos; [FieldOffset(44)] public uint MezclaOrigen;
+            [FieldOffset(140)] public uint Fvf; [FieldOffset(144)] public uint OperacionesTextura;
+            [FieldOffset(152)] public uint TexturasALaVez;
+        }
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         private delegate int CapsDel(IntPtr self, ref CapsTextura caps);
         private int limiteTexturaW, limiteTexturaH;
@@ -113,7 +119,10 @@ namespace Rocola
             {
                 CapsTextura caps = new CapsTextura();
                 if (D3D9.Fn<CapsDel>(dev, 7)(dev, ref caps) >= 0)
-                { limiteTexturaW = PotenciaInferior(caps.W); limiteTexturaH = PotenciaInferior(caps.H); }
+                {
+                    limiteTexturaW = PotenciaInferior(caps.W); limiteTexturaH = PotenciaInferior(caps.H);
+                    LeeCapacidades(caps.Intervalos, caps.MezclaOrigen, caps.Fvf, caps.OperacionesTextura, caps.TexturasALaVez);
+                }
             }
             catch { } // limite conservador si el driver no expone las capacidades
         }

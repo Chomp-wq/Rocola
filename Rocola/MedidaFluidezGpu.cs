@@ -127,6 +127,22 @@ namespace Rocola
             }
             Version++; return true;
         }
+        // Lo tipico (la mediana) de cada parte de los cuadros guardados, y el p95 del intervalo. Para el medidor de Ctrl+F3:
+        // la media se la lleva un solo cuadro raro; la mediana dice lo que cuesta un cuadro normal.
+        internal void Medianas(out double intervalo, out double prep, out double dibujo, out double present, out double fuera, out double p95)
+        {
+            intervalo = prep = dibujo = present = fuera = p95 = 0;
+            if (n == 0) return;
+            intervalo = Percentil(intervalos, .5); p95 = Percentil(intervalos, .95);
+            prep = Percentil(preparar, .5); dibujo = Percentil(dibujar, .5);
+            present = Percentil(presentar, .5); fuera = Percentil(fueraRender, .5);
+        }
+        private double Percentil(double[] datos, double f)
+        {
+            Array.Copy(datos, ordenados, n); Array.Sort(ordenados, 0, n);
+            return ordenados[Math.Max(0, Math.Min(n - 1, (int)Math.Ceiling(n * f) - 1))];
+        }
+        internal int Muestras { get { return n; } }
         internal string Resumen()
         {
             return "fluidez GPU: p95=" + Numero(P95) + " p99=" + Numero(P99) + " max=" + Numero(Maximo)
